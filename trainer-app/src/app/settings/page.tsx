@@ -57,7 +57,7 @@ export default async function SettingsPage() {
         injuryBodyPart: injury?.bodyPart ?? undefined,
         injurySeverity: injury?.severity ?? undefined,
         injuryDescription: injury?.description ?? undefined,
-        injuryActive: injury?.isActive ?? true,
+        injuryActive: injury ? injury.isActive : false,
       }
     : undefined;
 

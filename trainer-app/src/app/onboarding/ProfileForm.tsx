@@ -57,8 +57,39 @@ export default function ProfileForm({
     });
 
     if (!response.ok) {
-      const body = await response.json().catch(() => ({}));
-      setError(body.error ?? "Failed to save profile");
+      const rawText = await response.text();
+      let body: Record<string, unknown> = {};
+      try {
+        body = rawText ? JSON.parse(rawText) : {};
+      } catch {
+        body = { error: rawText };
+      }
+
+      const detail =
+        (body as { details?: { formErrors?: string[]; fieldErrors?: Record<string, string[]> } })
+          ?.details?.formErrors?.join?.(", ") ??
+        (body as { details?: { fieldErrors?: Record<string, string[]> } })?.details?.fieldErrors
+          ? Object.entries(
+              (body as { details?: { fieldErrors?: Record<string, string[]> } }).details!
+                .fieldErrors ?? {}
+            )
+              .map(([key, value]) => `${key}: ${(value ?? []).join(", ")}`)
+              .join(" · ")
+          : null;
+
+      const fallbackDetails =
+        detail ??
+        ((body as { details?: unknown })?.details
+          ? JSON.stringify((body as { details?: unknown }).details)
+          : rawText || null);
+
+      const message = [
+        (body as { error?: string })?.error ?? "Failed to save profile",
+        fallbackDetails,
+      ]
+        .filter(Boolean)
+        .join(" — ");
+      setError(message);
       return;
     }
 

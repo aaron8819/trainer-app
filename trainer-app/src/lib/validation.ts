@@ -2,6 +2,9 @@ import { z } from "zod";
 
 const optionalNumber = (schema: z.ZodNumber) =>
   z.preprocess((value) => {
+    if (value === null || value === "") {
+      return undefined;
+    }
     if (typeof value === "number" && Number.isNaN(value)) {
       return undefined;
     }

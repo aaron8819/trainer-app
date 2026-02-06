@@ -103,6 +103,11 @@ export async function POST(request: Request) {
           },
         });
       }
+    } else if (parsed.data.injuryActive === false) {
+      await tx.injury.updateMany({
+        where: { userId: user.id, isActive: true },
+        data: { isActive: false },
+      });
     }
   });
 

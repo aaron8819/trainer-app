@@ -248,7 +248,11 @@ export function mapCheckIn(checkIns: { date: Date; readiness: number; painFlags:
   };
 }
 
-type ExerciseWithAliases = Exercise & { aliases?: { alias: string }[] };
+type ExerciseWithAliases = Exercise & {
+  aliases?: { alias: string }[];
+  exerciseEquipment: { equipment: { type: EquipmentType } }[];
+  exerciseMuscles: { role: string; muscle: { name: string } }[];
+};
 
 export function mapBaselinesToExerciseIds(
   baselines: Baseline[],

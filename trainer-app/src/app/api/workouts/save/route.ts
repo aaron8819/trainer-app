@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db/prisma";
 import { saveWorkoutSchema } from "@/lib/validation";
 import { resolveUser } from "@/lib/api/workout-context";
 import { BaselineCategory, PrimaryGoal, WorkoutStatus } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
@@ -138,7 +139,7 @@ type BaselineUpdateSummary = {
 };
 
 async function updateBaselinesFromWorkout(
-  tx: typeof prisma,
+  tx: Prisma.TransactionClient,
   workoutId: string,
   userId: string
 ) {

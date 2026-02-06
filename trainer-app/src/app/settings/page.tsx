@@ -24,6 +24,20 @@ export default async function SettingsPage() {
       ])
     : [null, null, null, null, null];
 
+  type RpeTarget = { min: number; max: number; targetRpe?: number };
+  const rpeTargets = Array.isArray(preferences?.rpeTargets) ? preferences.rpeTargets : [];
+  const getRpeTarget = (min: number, fallback: number) => {
+    const match = rpeTargets.find((entry): entry is RpeTarget => {
+      if (!entry || typeof entry !== "object") {
+        return false;
+      }
+      const candidate = entry as { min?: unknown; max?: unknown };
+      return typeof candidate.min === "number" && typeof candidate.max === "number" && candidate.min === min;
+    });
+    const value = match?.targetRpe;
+    return typeof value === "number" ? value : fallback;
+  };
+
   const initialValues = user
     ? {
         userId: user.id,
@@ -53,17 +67,11 @@ export default async function SettingsPage() {
         favoriteExercisesText: (preferences?.favoriteExercises ?? []).join(", "),
         avoidExercisesText: (preferences?.avoidExercises ?? []).join(", "),
         rpe5to8:
-          preferences?.rpeTargets && Array.isArray(preferences.rpeTargets)
-            ? Number(preferences.rpeTargets.find((entry: { min: number; max: number }) => entry.min === 5)?.targetRpe ?? 8.5)
-            : 8.5,
+          getRpeTarget(5, 8.5),
         rpe8to12:
-          preferences?.rpeTargets && Array.isArray(preferences.rpeTargets)
-            ? Number(preferences.rpeTargets.find((entry: { min: number; max: number }) => entry.min === 8)?.targetRpe ?? 7.75)
-            : 7.75,
+          getRpeTarget(8, 7.75),
         rpe12to20:
-          preferences?.rpeTargets && Array.isArray(preferences.rpeTargets)
-            ? Number(preferences.rpeTargets.find((entry: { min: number; max: number }) => entry.min === 12)?.targetRpe ?? 7.5)
-            : 7.5,
+          getRpeTarget(12, 7.5),
         progressionStyle: preferences?.progressionStyle ?? "double_progression",
         optionalConditioning: preferences?.optionalConditioning ?? true,
         benchFrequency: preferences?.benchFrequency ?? 2,

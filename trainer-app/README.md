@@ -24,10 +24,9 @@ Open `http://localhost:3000` to view the app.
 
 ## Key Engine Docs
 
-- `trainer-app/docs/workout-engine.md` : current behavior and end-to-end flow
+- `trainer-app/docs/engine_refactor_2.5.md` : consolidated behavior, schema, and refactor status
 - `trainer-app/docs/engine_refactor` : refactor goals + acceptance criteria
 - `trainer-app/docs/engine_refactor_clarifications` : authoritative decisions
-- `trainer-app/docs/engine-schema-behavior.md` : schema + behavior reference
 - `trainer-app/docs/ppl_programmingguidelines` : programming rules for strict PPL
 - `trainer-app/docs/ppl-exercise-options.md` : export of live DB exercise options
 

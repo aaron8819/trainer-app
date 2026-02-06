@@ -184,8 +184,8 @@ model Profile {
   user        User         @relation(fields: [userId], references: [id])
   age         Int?
   sex         String?
-  heightCm    Int?
-  weightKg    Int?
+  heightIn    Int?
+  weightLb    Float?
   trainingAge TrainingAge?
 }
 

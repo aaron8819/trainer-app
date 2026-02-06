@@ -1,5 +1,21 @@
 import { z } from "zod";
 
+const optionalNumber = (schema: z.ZodNumber) =>
+  z.preprocess((value) => {
+    if (typeof value === "number" && Number.isNaN(value)) {
+      return undefined;
+    }
+    return value;
+  }, schema.optional());
+
+const optionalString = (schema: z.ZodString) =>
+  z.preprocess((value) => {
+    if (typeof value === "string" && value.trim() === "") {
+      return undefined;
+    }
+    return value;
+  }, schema.optional());
+
 export const generateWorkoutSchema = z.object({
   userId: z.string().optional(),
   date: z.string().optional(),
@@ -56,22 +72,22 @@ export const analyticsSummarySchema = z.object({
 
 export const profileSetupSchema = z.object({
   userId: z.string().optional(),
-  email: z.string().email().optional(),
-  age: z.number().int().min(13).max(100).optional(),
-  sex: z.string().max(40).optional(),
-  heightIn: z.number().int().min(48).max(96).optional(),
-  weightLb: z.number().min(80).max(600).optional(),
+  email: optionalString(z.string().email()),
+  age: optionalNumber(z.number().int().min(13).max(100)),
+  sex: optionalString(z.string().max(40)),
+  heightIn: optionalNumber(z.number().int().min(48).max(96)),
+  weightLb: optionalNumber(z.number().min(80).max(600)),
   trainingAge: z.enum(["BEGINNER", "INTERMEDIATE", "ADVANCED"]),
   primaryGoal: z.enum(["HYPERTROPHY", "STRENGTH", "FAT_LOSS", "ATHLETICISM", "GENERAL_HEALTH"]),
   secondaryGoal: z.enum(["POSTURE", "CONDITIONING", "INJURY_PREVENTION", "NONE"]),
   daysPerWeek: z.number().int().min(1).max(7),
   sessionMinutes: z.number().int().min(20).max(180),
   splitType: z.enum(["PPL", "UPPER_LOWER", "FULL_BODY", "CUSTOM"]),
-  equipmentNotes: z.string().max(500).optional(),
-  proteinTarget: z.number().int().min(0).max(400).optional(),
-  injuryBodyPart: z.string().max(80).optional(),
-  injurySeverity: z.number().int().min(1).max(5).optional(),
-  injuryDescription: z.string().max(200).optional(),
+  equipmentNotes: optionalString(z.string().max(500)),
+  proteinTarget: optionalNumber(z.number().int().min(0).max(400)),
+  injuryBodyPart: optionalString(z.string().max(80)),
+  injurySeverity: optionalNumber(z.number().int().min(1).max(5)),
+  injuryDescription: optionalString(z.string().max(200)),
   injuryActive: z.boolean().optional(),
 });
 

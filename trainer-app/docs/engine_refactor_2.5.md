@@ -16,6 +16,7 @@ This document captures the finalized implementation plan for the workout engine 
 - Item 10 (seed stimulusBias assignments) implemented in seed data.
 - Item 8 (slot-based accessory selection) implemented with standalone tests and engine integration.
 - Item 9 (recency weighting + seeded randomization) implemented for slot selection.
+- Main lift selection now uses the same recency-weighted seeded randomization for PPL main lifts.
 - Item 11 (smart timeboxing trims by priority) implemented with tests.
 - Item 12 (seed isCompound for accessories) implemented in seed data.
 - Item 13 (seed contraindications + pain filtering) implemented in seed data and engine filtering.
@@ -36,6 +37,191 @@ This document captures the finalized implementation plan for the workout engine 
 - Hybrid load estimation is required (history -> baseline -> estimation).
 - Periodization fallback uses calendar-based weeks, not count-based.
 - Weighted selection must be deterministic in tests via a seeded PRNG.
+
+## Consolidated Engine Behavior + Schema
+
+This section consolidates the prior `workout-engine.md` and `engine-schema-behavior.md` references into a single source of truth.
+
+### Key Engine Guarantees
+
+1. **Strict split purity (hard gate)**
+- PPL days are filtered by `Exercise.splitTags`.
+- Push day only selects exercises tagged `PUSH`.
+- Pull day only selects exercises tagged `PULL`.
+- Legs day only selects exercises tagged `LEGS`.
+- Exercises tagged with both `PUSH` and `PULL` are rejected and must be reclassified.
+
+2. **Template-only special blocks**
+- `CORE`, `MOBILITY`, `PREHAB`, `CONDITIONING` exercises are only selectable in explicit warmup or finisher blocks.
+- They are never chosen as general accessories.
+
+3. **Movement intelligence**
+- The engine pairs main lifts by `movementPatternsV2`:
+- Push: 1 horizontal + 1 vertical press.
+- Pull: 1 vertical pull + 1 horizontal row (prefers chest-supported when low-back pain).
+- Legs: 1 squat + 1 hinge.
+
+4. **Timeboxing is enforced**
+- The session time budget is enforced by dropping accessories first until the plan fits `sessionMinutes`.
+
+5. **Load progression guardrails**
+- Double progression logic remains the default.
+- RPE guardrails adjust load up or down by 2-3%.
+- Any load change is capped at 7% per step.
+
+6. **Volume spike caps**
+- Weekly volume is enforced using a rolling 7-day window.
+- If a muscle group would exceed 20% over the prior window, accessories are trimmed.
+
+7. **Readiness + pain check-ins**
+- The most recent `SessionCheckIn` drives readiness and pain filtering.
+- Injuries reduce high joint-stress exercises.
+
+### Schema Changes (Summary)
+
+Exercise (extended):
+- `splitTags` (SplitTag[])
+- `movementPatternsV2` (MovementPatternV2[])
+- `isMainLiftEligible` (boolean)
+- `isCompound` (boolean)
+- `fatigueCost` (int 1-5)
+- `stimulusBias` (StimulusBias[])
+- `contraindications` (jsonb)
+- `timePerSetSec` (int)
+
+ExerciseAlias (new):
+- `exerciseId` -> `Exercise.id`
+- `alias` (unique)
+
+Baseline (extended):
+- `exerciseId` (nullable FK)
+
+ExerciseVariation (extended):
+- `variationType` (VariationType)
+- `metadata` (jsonb)
+
+Constraints (extended):
+- `availableEquipment` (EquipmentType[])
+
+SessionCheckIn (new):
+- `readiness` (1-5)
+- `painFlags` (jsonb)
+- `date`, `notes`, `workoutId`
+
+SubstitutionRule (extended):
+- `priority` (int)
+- `constraints` (jsonb)
+- `preserves` (jsonb)
+
+### Data Inputs Used
+
+Profile:
+- Training age controls set scaling.
+
+Goals:
+- Rep range and target RPE are taken from `rules.ts` by primary goal.
+- Rep ranges are role-specific (main vs accessory).
+
+Constraints:
+- `Constraints.availableEquipment` is enforced.
+- `sessionMinutes` is used to timebox the plan.
+
+Exercise Library:
+- Uses the upgraded `Exercise` model:
+- `splitTags`, `movementPatternsV2`, `isMainLiftEligible`, `isCompound`, `fatigueCost`, `timePerSetSec`.
+
+Session Check-In:
+- `readiness` drives fatigue adjustments.
+- `painFlags` drive joint-friendly filtering and substitutions.
+
+### End-to-End Flow
+
+1. **API request**
+- `POST /api/workouts/generate` or `POST /api/workouts/next`
+
+2. **Load data**
+- `loadWorkoutContext()` fetches profile, goals, constraints, injuries, baselines, exercises, workouts, preferences, and the most recent `SessionCheckIn`.
+
+3. **Map DB models to engine types**
+- `mapProfile`, `mapGoals`, `mapConstraints`, `mapExercises`, `mapHistory`, `mapCheckIn`.
+
+4. **Generate workout**
+- `generateWorkout()` selects a split day, chooses main lifts and accessories, then timeboxes the plan.
+
+5. **Apply loads**
+- `applyLoads()` assigns target load using: history -> baseline -> estimation (muscle-based donor scaling, then bodyweight ratios, then equipment defaults).
+
+6. **Return plan**
+- The API returns the final `WorkoutPlan` with warmup, main lifts, accessories, sets, and estimated time.
+
+### Selection Details (PPL)
+
+Main lift pairing:
+- Push: 1 horizontal press + 1 vertical press.
+- Pull: 1 vertical pull + 1 horizontal row.
+- Legs: 1 squat + 1 hinge.
+
+Main lift variety:
+- Main lifts use recency weighting and seeded randomness for variety.
+- Recent main lifts are deprioritized.
+
+Accessories:
+- Accessories are chosen from the same splitTag pool.
+- PPL accessory selection uses slot-based picks by primary muscles and stimulusBias.
+- Fill slots favor uncovered muscles relative to main lifts and prior accessories.
+- Selection uses recency weighting and seeded randomness for variety.
+- Special blocks only appear if the template explicitly requests them.
+
+Warmup or finisher blocks:
+- `MOBILITY` and `PREHAB` are used as warmup options.
+- `CORE` can be appended as an optional finisher.
+- `CONDITIONING` can be appended on legs day when optional conditioning is enabled.
+
+### Progression Summary
+
+- If all sets hit the top of the rep range at or below target RPE, load increases.
+- If early sets exceed target RPE by +1, load decreases next session.
+- If all sets are at or below target RPE by -2, load increases.
+- All load changes are capped at 7%.
+- Main lifts use a top set + back-off structure; back-off loads are derived from the top set.
+- Rest periods scale by exercise type (main lift vs compound accessory vs isolation).
+
+### Known Gaps (Tracked)
+
+- Muscle volume caps rely on `Exercise.primaryMuscles`; these are not fully seeded yet.
+- Substitution suggestions are available (`suggestSubstitutes`) but not currently surfaced in the UI.
+- Contraindications are now seeded and used as the primary pain filter; regex heuristics are still a fallback.
+- Legs slot isolation picks should enforce non-compound constraints (quad or hamstring iso slots can still pick compound hinges in edge cases).
+
+### Current UI Flow (Generation)
+
+- Entry point is the dashboard at `/`, which renders `GenerateWorkoutCard`.
+- Tapping "Generate Workout" expands the inline `SessionCheckInForm` instead of calling the API immediately.
+- Submit path: `POST /api/session-checkins` then `POST /api/workouts/generate`.
+- Skip path: `POST /api/workouts/generate` directly with no check-in saved.
+- During generation, buttons show "Generating..." and disable; errors appear inline.
+- After generation, the card shows a preview and a "Save Workout" button.
+- Saving calls `POST /api/workouts/save`; on success, links appear for `/workout/[id]` and `/log/[id]`.
+
+### Workout Detail Layout (Current)
+
+- Route `/workout/[id]` shows a "Session Overview" header with estimated minutes and a "Start logging" button.
+- The "Why this workout was generated" panel includes readiness and pain flags when a check-in exists.
+- Exercises are grouped into Warmup, Main Lifts, and Accessories sections.
+- Each exercise card shows set count, target reps, target load, target RPE, and a short "Why" note.
+
+### UI File Touchpoints
+
+- `trainer-app/src/app/page.tsx`
+- `trainer-app/src/components/GenerateWorkoutCard.tsx`
+- `trainer-app/src/components/SessionCheckInForm.tsx`
+- `trainer-app/src/app/api/session-checkins/route.ts`
+- `trainer-app/src/app/api/workouts/generate/route.ts`
+- `trainer-app/src/app/api/workouts/save/route.ts`
+- `trainer-app/src/app/workout/[id]/page.tsx`
+- `trainer-app/src/app/log/[id]/page.tsx`
+- `trainer-app/src/components/LogWorkoutClient.tsx`
+- `trainer-app/src/lib/ui/workout-sections.ts`
 
 ## Scope and Goals
 
@@ -215,6 +401,7 @@ Plan:
   - novelty bonus
 - Deterministic seeded PRNG for tests.
 - Default to Math.random in production if no seed is provided.
+- Main lifts now use the same recency-weighted selection as accessories.
 
 ### Item 10 - Seed stimulusBias and use for diversity
 

@@ -110,12 +110,20 @@ export async function loadWorkoutContext(userId: string) {
 }
 
 export function mapProfile(userId: string, profile: Profile, injuries: Injury[]): UserProfile {
+  const heightCm =
+    profile.heightIn !== null && profile.heightIn !== undefined
+      ? Math.round(profile.heightIn * 2.54)
+      : undefined;
+  const weightKg =
+    profile.weightLb !== null && profile.weightLb !== undefined
+      ? Number((profile.weightLb * 0.45359237).toFixed(1))
+      : undefined;
   return {
     id: userId,
     age: profile.age ?? undefined,
     sex: profile.sex ?? undefined,
-    heightCm: profile.heightCm ?? undefined,
-    weightKg: profile.weightKg ?? undefined,
+    heightCm,
+    weightKg,
     trainingAge: (profile.trainingAge ?? TrainingAge.INTERMEDIATE).toLowerCase() as UserProfile["trainingAge"],
     injuries: injuries.map((injury) => ({
       bodyPart: injury.bodyPart,

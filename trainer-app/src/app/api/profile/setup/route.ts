@@ -24,24 +24,24 @@ export async function POST(request: Request) {
     (await prisma.user.create({ data: { email: "owner@local" } }));
 
   await prisma.$transaction(async (tx) => {
-    const heightCm = parsed.data.heightIn ? Math.round(parsed.data.heightIn * 2.54) : null;
-    const weightKg = parsed.data.weightLb ? Number((parsed.data.weightLb * 0.45359237).toFixed(1)) : null;
+    const heightIn = parsed.data.heightIn ?? null;
+    const weightLb = parsed.data.weightLb ?? null;
 
     await tx.profile.upsert({
       where: { userId: user.id },
       update: {
         age: parsed.data.age ?? null,
         sex: parsed.data.sex ?? null,
-        heightCm,
-        weightKg,
+        heightIn,
+        weightLb,
         trainingAge: parsed.data.trainingAge,
       },
       create: {
         userId: user.id,
         age: parsed.data.age ?? null,
         sex: parsed.data.sex ?? null,
-        heightCm,
-        weightKg,
+        heightIn,
+        weightLb,
         trainingAge: parsed.data.trainingAge,
       },
     });

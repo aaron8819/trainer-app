@@ -9,7 +9,7 @@ This document describes the current data model for the Trainer App, with emphasi
 - Relations: `profile`, `constraints`, `goals`, `injuries`, `preferences`, `programs`, `workouts`, `readinessLogs`, `fatigueLogs`, `sessionCheckIns`, `baselines`
 
 ### Profile
-- `userId`, `age`, `sex`, `heightCm`, `weightKg`, `trainingAge`
+- `userId`, `age`, `sex`, `heightIn`, `weightLb`, `trainingAge`
 - Purpose: drives set scaling and general defaults.
 
 ### Goals

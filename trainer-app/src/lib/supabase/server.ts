@@ -9,13 +9,14 @@ export function createSupabaseServerClient() {
     throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY");
   }
 
+  const cookieStore = cookies();
+
   return createServerClient(url, anonKey, {
     cookies: {
       getAll() {
-        return cookies().getAll();
+        return cookieStore.getAll();
       },
       setAll(cookieList) {
-        const cookieStore = cookies();
         for (const cookie of cookieList) {
           cookieStore.set(cookie);
         }

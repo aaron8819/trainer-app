@@ -1,0 +1,9 @@
+# Repo root ignores (project lives under trainer-app)
+/baselines.txt
+/exercisehistory.txt
+/workoutengine.txt
+/Trainer – Power Prompt.txt
+
+# OS/editor noise
+.DS_Store
+Thumbs.db

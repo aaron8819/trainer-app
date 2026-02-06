@@ -1,0 +1,196 @@
+export type TrainingAge = "beginner" | "intermediate" | "advanced";
+export type PrimaryGoal =
+  | "hypertrophy"
+  | "strength"
+  | "fat_loss"
+  | "athleticism"
+  | "general_health";
+export type SecondaryGoal = "posture" | "conditioning" | "injury_prevention" | "none";
+export type SplitType = "ppl" | "upper_lower" | "full_body" | "custom";
+export type SplitDay = "push" | "pull" | "legs" | "upper" | "lower" | "full_body";
+export type MovementPattern =
+  | "squat"
+  | "hinge"
+  | "push"
+  | "pull"
+  | "push_pull"
+  | "carry"
+  | "rotate"
+  | "lunge";
+export type MovementPatternV2 =
+  | "horizontal_push"
+  | "vertical_push"
+  | "horizontal_pull"
+  | "vertical_pull"
+  | "squat"
+  | "hinge"
+  | "lunge"
+  | "carry"
+  | "rotation"
+  | "anti_rotation"
+  | "flexion"
+  | "extension";
+export type SplitTag =
+  | "push"
+  | "pull"
+  | "legs"
+  | "core"
+  | "mobility"
+  | "prehab"
+  | "conditioning";
+export type StimulusBias = "mechanical" | "metabolic" | "stretch" | "stability";
+export type JointStress = "low" | "medium" | "high";
+export type EquipmentType =
+  | "barbell"
+  | "dumbbell"
+  | "machine"
+  | "cable"
+  | "bodyweight"
+  | "kettlebell"
+  | "band"
+  | "sled"
+  | "bench"
+  | "rack"
+  | "other";
+
+export type InjuryFlag = {
+  bodyPart: string;
+  severity: 1 | 2 | 3 | 4 | 5;
+  isActive: boolean;
+};
+
+export type UserProfile = {
+  id: string;
+  age?: number;
+  sex?: string;
+  heightCm?: number;
+  weightKg?: number;
+  trainingAge: TrainingAge;
+  injuries: InjuryFlag[];
+};
+
+export type Goals = {
+  primary: PrimaryGoal;
+  secondary: SecondaryGoal;
+};
+
+export type Constraints = {
+  daysPerWeek: number;
+  sessionMinutes: number;
+  splitType: SplitType;
+  availableEquipment: EquipmentType[];
+};
+
+export type RpeTargetRange = {
+  min: number;
+  max: number;
+  targetRpe: number;
+};
+
+export type UserPreferences = {
+  favoriteExercises?: string[];
+  avoidExercises?: string[];
+  rpeTargets?: RpeTargetRange[];
+  progressionStyle?: string;
+  optionalConditioning?: boolean;
+  benchFrequency?: number;
+  squatFrequency?: number;
+  deadliftFrequency?: number;
+};
+
+export type Exercise = {
+  id: string;
+  name: string;
+  movementPattern: MovementPattern;
+  movementPatternsV2: MovementPatternV2[];
+  splitTags: SplitTag[];
+  jointStress: JointStress;
+  isMainLift: boolean;
+  isMainLiftEligible?: boolean;
+  isCompound?: boolean;
+  fatigueCost?: number;
+  stimulusBias?: StimulusBias[];
+  contraindications?: Record<string, unknown>;
+  timePerSetSec?: number;
+  equipment: EquipmentType[];
+  muscles?: string[];
+  primaryMuscles?: string[];
+  secondaryMuscles?: string[];
+};
+
+export type WorkoutSet = {
+  setIndex: number;
+  targetReps: number;
+  targetRpe?: number;
+  targetLoad?: number;
+  restSeconds?: number;
+};
+
+export type WorkoutExercise = {
+  id: string;
+  exercise: Exercise;
+  orderIndex: number;
+  isMainLift: boolean;
+  notes?: string;
+  sets: WorkoutSet[];
+  warmupSets?: WorkoutSet[];
+};
+
+export type WorkoutPlan = {
+  id: string;
+  scheduledDate: string;
+  warmup: WorkoutExercise[];
+  mainLifts: WorkoutExercise[];
+  accessories: WorkoutExercise[];
+  estimatedMinutes: number;
+  notes?: string;
+};
+
+export type SetLog = {
+  exerciseId: string;
+  setIndex: number;
+  reps: number;
+  rpe?: number;
+  load?: number;
+};
+
+export type WorkoutHistoryEntry = {
+  date: string;
+  completed: boolean;
+  status?: "PLANNED" | "IN_PROGRESS" | "COMPLETED" | "SKIPPED";
+  advancesSplit?: boolean;
+  forcedSplit?: SplitDay;
+  exercises: {
+    exerciseId: string;
+    movementPattern: MovementPattern;
+    sets: SetLog[];
+  }[];
+  readinessScore?: 1 | 2 | 3 | 4 | 5;
+  sorenessNotes?: string;
+  painFlags?: Record<string, 0 | 1 | 2 | 3>;
+};
+
+export type FatigueState = {
+  readinessScore: 1 | 2 | 3 | 4 | 5;
+  sorenessNotes?: string;
+  missedLastSession: boolean;
+  painFlags?: Record<string, 0 | 1 | 2 | 3>;
+};
+
+export type SessionCheckIn = {
+  date: string;
+  readiness: 1 | 2 | 3 | 4 | 5;
+  painFlags?: Record<string, 0 | 1 | 2 | 3>;
+  notes?: string;
+};
+
+export type ProgressionRule = {
+  name: string;
+  primaryGoal: PrimaryGoal;
+  repRange: {
+    main: [number, number];
+    accessory: [number, number];
+  };
+  targetRpe: number;
+  maxLoadIncreasePct: number;
+};

@@ -1,0 +1,168 @@
+import type { Constraints, Exercise, Goals, UserProfile, WorkoutHistoryEntry } from "./types";
+
+export const exampleUser: UserProfile = {
+  id: "demo-user",
+  trainingAge: "intermediate",
+  injuries: [],
+  age: 30,
+  heightCm: 180,
+  weightKg: 82,
+};
+
+export const exampleGoals: Goals = {
+  primary: "hypertrophy",
+  secondary: "conditioning",
+};
+
+export const exampleConstraints: Constraints = {
+  daysPerWeek: 4,
+  sessionMinutes: 55,
+  splitType: "upper_lower",
+  availableEquipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight", "bench", "rack"],
+};
+
+export const exampleExerciseLibrary: Exercise[] = [
+  {
+    id: "bench",
+    name: "Barbell Bench Press",
+    movementPattern: "push",
+    movementPatternsV2: ["horizontal_push"],
+    splitTags: ["push"],
+    jointStress: "high",
+    isMainLift: true,
+    isMainLiftEligible: true,
+    equipment: ["barbell", "bench", "rack"],
+  },
+  {
+    id: "row",
+    name: "Barbell Row",
+    movementPattern: "pull",
+    movementPatternsV2: ["horizontal_pull"],
+    splitTags: ["pull"],
+    jointStress: "medium",
+    isMainLift: true,
+    isMainLiftEligible: true,
+    equipment: ["barbell"],
+  },
+  {
+    id: "squat",
+    name: "Barbell Back Squat",
+    movementPattern: "squat",
+    movementPatternsV2: ["squat"],
+    splitTags: ["legs"],
+    jointStress: "high",
+    isMainLift: true,
+    isMainLiftEligible: true,
+    equipment: ["barbell", "rack"],
+  },
+  {
+    id: "rdl",
+    name: "Romanian Deadlift",
+    movementPattern: "hinge",
+    movementPatternsV2: ["hinge"],
+    splitTags: ["legs"],
+    jointStress: "medium",
+    isMainLift: true,
+    isMainLiftEligible: true,
+    equipment: ["barbell"],
+  },
+  {
+    id: "lat-pull",
+    name: "Lat Pulldown",
+    movementPattern: "pull",
+    movementPatternsV2: ["vertical_pull"],
+    splitTags: ["pull"],
+    jointStress: "medium",
+    isMainLift: false,
+    equipment: ["cable", "machine"],
+  },
+  {
+    id: "db-press",
+    name: "Dumbbell Bench Press",
+    movementPattern: "push",
+    movementPatternsV2: ["horizontal_push"],
+    splitTags: ["push"],
+    jointStress: "medium",
+    isMainLift: false,
+    equipment: ["dumbbell", "bench"],
+  },
+  {
+    id: "split-squat",
+    name: "Bulgarian Split Squat",
+    movementPattern: "lunge",
+    movementPatternsV2: ["lunge"],
+    splitTags: ["legs"],
+    jointStress: "high",
+    isMainLift: false,
+    equipment: ["dumbbell", "bench"],
+  },
+  {
+    id: "leg-press",
+    name: "Leg Press",
+    movementPattern: "squat",
+    movementPatternsV2: ["squat"],
+    splitTags: ["legs"],
+    jointStress: "medium",
+    isMainLift: false,
+    equipment: ["machine"],
+  },
+  {
+    id: "face-pull",
+    name: "Face Pull",
+    movementPattern: "pull",
+    movementPatternsV2: ["horizontal_pull"],
+    splitTags: ["pull"],
+    jointStress: "low",
+    isMainLift: false,
+    equipment: ["cable"],
+  },
+  {
+    id: "lateral-raise",
+    name: "Lateral Raise",
+    movementPattern: "push_pull",
+    movementPatternsV2: ["vertical_push"],
+    splitTags: ["push"],
+    jointStress: "low",
+    isMainLift: false,
+    equipment: ["dumbbell"],
+  },
+  {
+    id: "plank",
+    name: "Plank",
+    movementPattern: "rotate",
+    movementPatternsV2: ["anti_rotation"],
+    splitTags: ["core"],
+    jointStress: "low",
+    isMainLift: false,
+    equipment: ["bodyweight"],
+  },
+  {
+    id: "farmers-carry",
+    name: "Farmer's Carry",
+    movementPattern: "carry",
+    movementPatternsV2: ["carry"],
+    splitTags: ["conditioning"],
+    jointStress: "medium",
+    isMainLift: false,
+    equipment: ["dumbbell"],
+  },
+];
+
+export const exampleHistory: WorkoutHistoryEntry[] = [
+  {
+    date: new Date(Date.now() - 86400000).toISOString(),
+    completed: true,
+    readinessScore: 3,
+    exercises: [
+      {
+        exerciseId: "bench",
+        movementPattern: "push",
+        sets: [
+          { exerciseId: "bench", setIndex: 1, reps: 8, rpe: 7, load: 175 },
+          { exerciseId: "bench", setIndex: 2, reps: 8, rpe: 7, load: 175 },
+          { exerciseId: "bench", setIndex: 3, reps: 8, rpe: 7.5, load: 175 },
+        ],
+      },
+    ],
+  },
+];

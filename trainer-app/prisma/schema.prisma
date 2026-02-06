@@ -1,0 +1,457 @@
+// Prisma schema for Personal AI Trainer
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum TrainingAge {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+}
+
+enum PrimaryGoal {
+  HYPERTROPHY
+  STRENGTH
+  FAT_LOSS
+  ATHLETICISM
+  GENERAL_HEALTH
+}
+
+enum SecondaryGoal {
+  POSTURE
+  CONDITIONING
+  INJURY_PREVENTION
+  NONE
+}
+
+enum SplitType {
+  PPL
+  UPPER_LOWER
+  FULL_BODY
+  CUSTOM
+}
+
+enum MovementPattern {
+  SQUAT
+  HINGE
+  PUSH
+  PULL
+  PUSH_PULL
+  CARRY
+  ROTATE
+  LUNGE
+}
+
+enum MovementPatternV2 {
+  HORIZONTAL_PUSH
+  VERTICAL_PUSH
+  HORIZONTAL_PULL
+  VERTICAL_PULL
+  SQUAT
+  HINGE
+  LUNGE
+  CARRY
+  ROTATION
+  ANTI_ROTATION
+  FLEXION
+  EXTENSION
+}
+
+enum SplitTag {
+  PUSH
+  PULL
+  LEGS
+  CORE
+  MOBILITY
+  PREHAB
+  CONDITIONING
+}
+
+enum JointStress {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum EquipmentType {
+  BARBELL
+  DUMBBELL
+  MACHINE
+  CABLE
+  BODYWEIGHT
+  KETTLEBELL
+  BAND
+  CARDIO
+  SLED
+  BENCH
+  RACK
+  OTHER
+}
+
+enum WorkoutStatus {
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+  SKIPPED
+}
+
+enum WorkoutSelectionMode {
+  AUTO
+  MANUAL
+  BONUS
+}
+
+enum StimulusBias {
+  MECHANICAL
+  METABOLIC
+  STRETCH
+  STABILITY
+}
+
+enum SplitDay {
+  PUSH
+  PULL
+  LEGS
+  UPPER
+  LOWER
+  FULL_BODY
+}
+
+enum MuscleRole {
+  PRIMARY
+  SECONDARY
+}
+
+enum BaselineCategory {
+  MAIN_LIFT
+  BARBELL_ACCESSORY
+  DUMBBELL
+  MACHINE_CABLE
+  BENCH_VARIATION
+  OTHER
+}
+
+enum VariationType {
+  TEMPO
+  PAUSED
+  SINGLE_ARM
+  SINGLE_LEG
+  GRIP
+  ANGLE
+  RANGE_OF_MOTION
+  OTHER
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  createdAt DateTime @default(now())
+
+  profile        Profile?
+  constraints    Constraints?
+  goals          Goals?
+  injuries       Injury[]
+  programs       Program[]
+  workouts       Workout[]
+  readinessLogs  ReadinessLog[]
+  fatigueLogs    FatigueLog[]
+  sessionCheckIns SessionCheckIn[]
+  baselines      Baseline[]
+  preferences    UserPreference?
+}
+
+model UserPreference {
+  userId               String   @id
+  user                 User     @relation(fields: [userId], references: [id])
+  favoriteExercises    String[] @default([])
+  avoidExercises       String[] @default([])
+  rpeTargets           Json?
+  progressionStyle     String?
+  optionalConditioning Boolean  @default(true)
+  benchFrequency       Int?
+  squatFrequency       Int?
+  deadliftFrequency    Int?
+  updatedAt            DateTime @updatedAt
+}
+
+model Profile {
+  userId      String       @id
+  user        User         @relation(fields: [userId], references: [id])
+  age         Int?
+  sex         String?
+  heightCm    Int?
+  weightKg    Int?
+  trainingAge TrainingAge?
+}
+
+model Constraints {
+  userId         String    @id
+  user           User      @relation(fields: [userId], references: [id])
+  daysPerWeek    Int
+  sessionMinutes Int
+  splitType      SplitType
+  equipmentNotes String?
+  availableEquipment EquipmentType[] @default([])
+}
+
+model Goals {
+  userId        String         @id
+  user          User           @relation(fields: [userId], references: [id])
+  primaryGoal   PrimaryGoal
+  secondaryGoal SecondaryGoal
+  proteinTarget Int?
+}
+
+model Injury {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  bodyPart    String
+  description String?
+  severity    Int      // 1-5
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+}
+
+model Equipment {
+  id   String        @id @default(uuid())
+  name String        @unique
+  type EquipmentType
+
+  exerciseEquipment ExerciseEquipment[]
+}
+
+model Muscle {
+  id   String @id @default(uuid())
+  name String @unique
+
+  exerciseMuscles ExerciseMuscle[]
+}
+
+model Exercise {
+  id              String          @id @default(uuid())
+  name            String          @unique
+  movementPattern MovementPattern
+  movementPatternsV2 MovementPatternV2[] @default([])
+  splitTags       SplitTag[] @default([])
+  jointStress     JointStress
+  isMainLift      Boolean         @default(false)
+  isMainLiftEligible Boolean      @default(false)
+  isCompound      Boolean         @default(false)
+  fatigueCost     Int             @default(3)
+  stimulusBias    StimulusBias[]  @default([])
+  contraindications Json?
+  timePerSetSec   Int             @default(120)
+
+  variations        ExerciseVariation[]
+  aliases           ExerciseAlias[]
+  exerciseMuscles   ExerciseMuscle[]
+  exerciseEquipment ExerciseEquipment[]
+  workoutExercises  WorkoutExercise[]
+  substitutionsFrom SubstitutionRule[] @relation("SubstitutionFrom")
+  substitutionsTo   SubstitutionRule[] @relation("SubstitutionTo")
+  baselines         Baseline[]
+}
+
+model ExerciseVariation {
+  id          String   @id @default(uuid())
+  exerciseId  String
+  exercise    Exercise @relation(fields: [exerciseId], references: [id])
+  name        String
+  description String?
+  variationType VariationType?
+  metadata    Json?
+}
+
+model ExerciseAlias {
+  id         String   @id @default(uuid())
+  exerciseId String
+  exercise   Exercise @relation(fields: [exerciseId], references: [id])
+  alias      String   @unique
+}
+
+model ExerciseMuscle {
+  exerciseId String
+  muscleId   String
+  role       MuscleRole
+
+  exercise Exercise @relation(fields: [exerciseId], references: [id])
+  muscle   Muscle   @relation(fields: [muscleId], references: [id])
+
+  @@id([exerciseId, muscleId])
+}
+
+model ExerciseEquipment {
+  exerciseId  String
+  equipmentId String
+
+  exercise  Exercise  @relation(fields: [exerciseId], references: [id])
+  equipment Equipment @relation(fields: [equipmentId], references: [id])
+
+  @@id([exerciseId, equipmentId])
+}
+
+model SubstitutionRule {
+  id            String   @id @default(uuid())
+  fromExerciseId String
+  toExerciseId   String
+  score         Int      // 1-100
+  reason        String?
+  priority      Int?
+  constraints   Json?
+  preserves     Json?
+
+  fromExercise Exercise @relation("SubstitutionFrom", fields: [fromExerciseId], references: [id])
+  toExercise   Exercise @relation("SubstitutionTo", fields: [toExerciseId], references: [id])
+}
+
+model Program {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  blocks ProgramBlock[]
+}
+
+model ProgramBlock {
+  id         String   @id @default(uuid())
+  programId  String
+  program    Program  @relation(fields: [programId], references: [id])
+  blockIndex Int
+  weeks      Int
+  deloadWeek Int?
+
+  workouts Workout[]
+}
+
+model Workout {
+  id              String        @id @default(uuid())
+  userId          String
+  user            User          @relation(fields: [userId], references: [id])
+  programBlockId  String?
+  programBlock    ProgramBlock? @relation(fields: [programBlockId], references: [id])
+  scheduledDate   DateTime
+  completedAt     DateTime?
+  status          WorkoutStatus @default(PLANNED)
+  estimatedMinutes Int?
+  notes           String?
+  selectionMode   WorkoutSelectionMode @default(AUTO)
+  forcedSplit     SplitDay?
+  advancesSplit   Boolean @default(true)
+
+  exercises WorkoutExercise[]
+  sessionCheckIns SessionCheckIn[]
+}
+
+model WorkoutExercise {
+  id              String          @id @default(uuid())
+  workoutId       String
+  workout         Workout         @relation(fields: [workoutId], references: [id])
+  exerciseId      String
+  exercise        Exercise        @relation(fields: [exerciseId], references: [id])
+  orderIndex      Int
+  isMainLift      Boolean
+  movementPattern MovementPattern
+  notes           String?
+
+  sets WorkoutSet[]
+}
+
+model WorkoutSet {
+  id                String   @id @default(uuid())
+  workoutExerciseId String
+  workoutExercise   WorkoutExercise @relation(fields: [workoutExerciseId], references: [id])
+  setIndex          Int
+  targetReps        Int
+  targetRpe         Float?
+  targetLoad        Float?
+  restSeconds       Int?
+
+  logs SetLog[]
+}
+
+model SetLog {
+  id            String   @id @default(uuid())
+  workoutSetId  String
+  workoutSet    WorkoutSet @relation(fields: [workoutSetId], references: [id])
+  actualReps    Int?
+  actualRpe     Float?
+  actualLoad    Float?
+  completedAt   DateTime @default(now())
+  notes         String?
+  wasSkipped    Boolean  @default(false)
+}
+
+model ReadinessLog {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  date       DateTime
+  score      Int      // 1-5
+  sleepHours Float?
+  soreness   String?
+  notes      String?
+}
+
+model FatigueLog {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  date       DateTime
+  score      Int      // 1-5
+  notes      String?
+}
+
+model SessionCheckIn {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  workoutId  String?
+  workout    Workout? @relation(fields: [workoutId], references: [id])
+  date       DateTime
+  readiness  Int      // 1-5
+  painFlags  Json?
+  notes      String?
+  createdAt  DateTime @default(now())
+}
+
+model ProgressionRule {
+  id              String        @id @default(uuid())
+  name            String
+  primaryGoal     PrimaryGoal
+  movementPattern MovementPattern?
+  rules           Json
+}
+
+model Baseline {
+  id               String           @id @default(uuid())
+  userId           String
+  user             User             @relation(fields: [userId], references: [id])
+  exerciseId       String?
+  exercise         Exercise?        @relation(fields: [exerciseId], references: [id])
+  exerciseName     String
+  context          String           @default("default")
+  category         BaselineCategory
+  unit             String           @default("lbs")
+  workingWeightMin Float?
+  workingWeightMax Float?
+  workingRepsMin   Int?
+  workingRepsMax   Int?
+  topSetWeight     Float?
+  topSetReps       Int?
+  projected1RMMin  Float?
+  projected1RMMax  Float?
+  notes            String?
+  createdAt        DateTime         @default(now())
+
+  @@unique([userId, exerciseName, context])
+  @@index([exerciseId])
+}

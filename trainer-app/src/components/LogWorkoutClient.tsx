@@ -239,6 +239,7 @@ export default function LogWorkoutClient({
     }
     if (
       set.targetRpe !== undefined &&
+      set.targetRpe !== null &&
       set.actualRpe !== null &&
       set.actualRpe !== undefined &&
       set.actualRpe > set.targetRpe

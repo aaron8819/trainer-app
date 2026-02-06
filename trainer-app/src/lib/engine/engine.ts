@@ -27,6 +27,7 @@ import type {
   WorkoutSet,
 } from "./types";
 import { pickAccessoriesBySlot } from "./pick-accessories-by-slot";
+import { createRng } from "./random";
 
 export const SPLIT_PATTERNS: Record<string, MovementPattern[][]> = {
   ppl: [
@@ -251,6 +252,7 @@ export function selectExercises(
   const isStrictPpl = constraints.splitType === "ppl";
   const avoidSet = buildNameSet(preferences?.avoidExercises);
   const favoriteSet = buildNameSet(preferences?.favoriteExercises);
+  const rng = createRng(randomSeed);
 
   const available = exerciseLibrary.filter((exercise) =>
     exercise.equipment.some((item) => constraints.availableEquipment.includes(item))
@@ -314,7 +316,9 @@ export function selectExercises(
       mainPool,
       favoriteSet,
       fatigueState.painFlags,
-      accessoryPool
+      accessoryPool,
+      history,
+      rng
     );
     mainLifts.push(...dayMain);
 
@@ -559,7 +563,9 @@ function pickMainLiftsForPpl(
   mainPool: Exercise[],
   favoriteSet: Set<string>,
   painFlags?: Record<string, 0 | 1 | 2 | 3>,
-  fallbackPool?: Exercise[]
+  fallbackPool?: Exercise[],
+  history: WorkoutHistoryEntry[] = [],
+  rng: () => number = Math.random
 ) {
   const pickFavoriteFirst = (items: Exercise[]) =>
     items.sort((a, b) => {
@@ -571,6 +577,18 @@ function pickMainLiftsForPpl(
   const mainLifts: Exercise[] = [];
   const hasPattern = (exercise: Exercise, pattern: MovementPatternV2) =>
     exercise.movementPatternsV2?.includes(pattern);
+  const recencyIndex = buildRecencyIndex(history);
+  const pickWeighted = (items: Exercise[]) =>
+    weightedPick(
+      items.map((exercise) => ({
+        exercise,
+        weight:
+          Math.max(0.1, favoriteSet.has(normalizeName(exercise.name)) ? 3 : 1) *
+          getRecencyMultiplier(exercise.id, recencyIndex) *
+          getNoveltyMultiplier(exercise.id, recencyIndex),
+      })),
+      rng
+    );
 
   if (dayTag === "push") {
     const horizontal = pickFavoriteFirst(
@@ -579,10 +597,13 @@ function pickMainLiftsForPpl(
     const vertical = pickFavoriteFirst(
       mainPool.filter((exercise) => hasPattern(exercise, "vertical_push"))
     );
-    if (horizontal[0]) {
-      mainLifts.push(horizontal[0]);
+    const horizontalPick = pickWeighted(horizontal);
+    if (horizontalPick) {
+      mainLifts.push(horizontalPick);
     }
-    let verticalPick = vertical.find((exercise) => !mainLifts.includes(exercise));
+    let verticalPick =
+      pickWeighted(vertical.filter((exercise) => !mainLifts.includes(exercise))) ??
+      vertical.find((exercise) => !mainLifts.includes(exercise));
     if (!verticalPick && fallbackPool) {
       const fallbackVertical = fallbackPool
         .filter((exercise) => hasPattern(exercise, "vertical_push"))
@@ -595,7 +616,10 @@ function pickMainLiftsForPpl(
           const bFav = favoriteSet.has(normalizeName(b.name)) ? 1 : 0;
           return bFav - aFav;
         });
-      verticalPick = fallbackVertical.find((exercise) => !mainLifts.includes(exercise));
+      verticalPick =
+        pickWeighted(
+          fallbackVertical.filter((exercise) => !mainLifts.includes(exercise))
+        ) ?? fallbackVertical.find((exercise) => !mainLifts.includes(exercise));
     }
     if (verticalPick) {
       mainLifts.push(verticalPick);
@@ -614,8 +638,9 @@ function pickMainLiftsForPpl(
         return bPref - aPref;
       });
     }
-    if (vertical[0]) {
-      mainLifts.push(vertical[0]);
+    const verticalPick = pickWeighted(vertical);
+    if (verticalPick) {
+      mainLifts.push(verticalPick);
     }
     if (mainLifts.length === 0 && fallbackPool) {
       const fallbackVertical = fallbackPool
@@ -629,12 +654,17 @@ function pickMainLiftsForPpl(
           const bFav = favoriteSet.has(normalizeName(b.name)) ? 1 : 0;
           return bFav - aFav;
         });
-      const fallbackPick = fallbackVertical.find((exercise) => !mainLifts.includes(exercise));
+      const fallbackPick =
+        pickWeighted(
+          fallbackVertical.filter((exercise) => !mainLifts.includes(exercise))
+        ) ?? fallbackVertical.find((exercise) => !mainLifts.includes(exercise));
       if (fallbackPick) {
         mainLifts.push(fallbackPick);
       }
     }
-    const horizontalPick = horizontal.find((exercise) => !mainLifts.includes(exercise));
+    const horizontalPick =
+      pickWeighted(horizontal.filter((exercise) => !mainLifts.includes(exercise))) ??
+      horizontal.find((exercise) => !mainLifts.includes(exercise));
     if (horizontalPick) {
       mainLifts.push(horizontalPick);
     }
@@ -645,16 +675,76 @@ function pickMainLiftsForPpl(
     const hinge = pickFavoriteFirst(
       mainPool.filter((exercise) => hasPattern(exercise, "hinge"))
     );
-    if (squat[0]) {
-      mainLifts.push(squat[0]);
+    const squatPick = pickWeighted(squat);
+    if (squatPick) {
+      mainLifts.push(squatPick);
     }
-    const hingePick = hinge.find((exercise) => !mainLifts.includes(exercise));
+    const hingePick =
+      pickWeighted(hinge.filter((exercise) => !mainLifts.includes(exercise))) ??
+      hinge.find((exercise) => !mainLifts.includes(exercise));
     if (hingePick) {
       mainLifts.push(hingePick);
     }
   }
 
   return mainLifts;
+}
+
+function buildRecencyIndex(history: WorkoutHistoryEntry[]) {
+  const sorted = [...history].sort(
+    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+  );
+  const index = new Map<string, number>();
+  sorted.forEach((entry, entryIndex) => {
+    for (const exercise of entry.exercises) {
+      if (!index.has(exercise.exerciseId)) {
+        index.set(exercise.exerciseId, entryIndex);
+      }
+    }
+  });
+  return index;
+}
+
+function getRecencyMultiplier(exerciseId: string, recencyIndex: Map<string, number>) {
+  const lastSeen = recencyIndex.get(exerciseId);
+  if (lastSeen === undefined) {
+    return 1;
+  }
+  if (lastSeen === 0) {
+    return 0.3;
+  }
+  if (lastSeen === 1) {
+    return 0.5;
+  }
+  if (lastSeen === 2) {
+    return 0.7;
+  }
+  return 1;
+}
+
+function getNoveltyMultiplier(exerciseId: string, recencyIndex: Map<string, number>) {
+  return recencyIndex.has(exerciseId) ? 1 : 1.5;
+}
+
+function weightedPick(
+  items: { exercise: Exercise; weight: number }[],
+  rng: () => number
+): Exercise | undefined {
+  if (items.length === 0) {
+    return undefined;
+  }
+  const total = items.reduce((sum, item) => sum + item.weight, 0);
+  if (total <= 0) {
+    return items[0].exercise;
+  }
+  let roll = rng() * total;
+  for (const item of items) {
+    roll -= item.weight;
+    if (roll <= 0) {
+      return item.exercise;
+    }
+  }
+  return items[items.length - 1].exercise;
 }
 
 export function prescribeSetsReps(

@@ -1,4 +1,7 @@
-﻿"use client";\r\n\r\nimport Link from "next/link";\r\nimport { useMemo, useState } from "react";
+﻿﻿"use client";
+
+import Link from "next/link";
+import { useMemo, useState } from "react";
 
 export type LogSetInput = {
   setId: string;
@@ -93,7 +96,8 @@ export default function LogWorkoutClient({
   const [completed, setCompleted] = useState(false);
   const [skipped, setSkipped] = useState(false);
   const [baselineSummary, setBaselineSummary] = useState<BaselineUpdateSummary | null>(null);
-  const [loggedSetIds, setLoggedSetIds] = useState<Set<string>>(new Set());\r\n  const [skipReason, setSkipReason] = useState("");
+  const [loggedSetIds, setLoggedSetIds] = useState<Set<string>>(new Set());
+  const [skipReason, setSkipReason] = useState("");
 
   const allExercises = [...data.warmup, ...data.main, ...data.accessory];
 
@@ -201,7 +205,9 @@ export default function LogWorkoutClient({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         workoutId,
-        status: "SKIPPED",\r\n        notes: skipReason ? `Skipped: ${skipReason}` : "Skipped",\r\n        exercises: [],
+        status: "SKIPPED",
+        notes: skipReason ? `Skipped: ${skipReason}` : "Skipped",
+        exercises: [],
       }),
     });
 
@@ -416,6 +422,7 @@ export default function LogWorkoutClient({
     </div>
   );
 }
+
 
 
 

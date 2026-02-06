@@ -1,4 +1,4 @@
-import Link from "next/link";
+ï»¿import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
 import { SPLIT_PATTERNS } from "@/lib/engine";
 import { PrimaryGoal, SplitDay, SplitType, TrainingAge, WorkoutSelectionMode } from "@prisma/client";
@@ -512,9 +512,9 @@ export default async function WorkoutDetailPage({
                         <div>
                           <h3 className="text-lg font-semibold">{exercise.exercise.name}</h3>
                           <p className="mt-1 text-sm text-slate-600">
-                            {exercise.sets.length} sets · {exercise.sets[0]?.targetReps ?? "--"} reps
-                            {targetLoad ? ` · ${targetLoad} lbs` : ""}
-                            {exercise.sets[0]?.targetRpe ? ` · RPE ${exercise.sets[0].targetRpe}` : ""}
+                            {exercise.sets.length} sets ï¿½ {exercise.sets[0]?.targetReps ?? "--"} reps
+                            {targetLoad ? ` ï¿½ ${targetLoad} lbs` : ""}
+                            {exercise.sets[0]?.targetRpe ? ` ï¿½ RPE ${exercise.sets[0].targetRpe}` : ""}
                           </p>
                         </div>
                         <span className="text-xs uppercase tracking-wide text-slate-500">
@@ -530,8 +530,8 @@ export default async function WorkoutDetailPage({
                             <span>Set {set.setIndex}</span>
                             <span>
                               {set.targetReps} reps
-                              {set.targetLoad ? ` · ${set.targetLoad} lbs` : ""}
-                              {set.targetRpe ? ` · RPE ${set.targetRpe}` : ""}
+                              {set.targetLoad ? ` ï¿½ ${set.targetLoad} lbs` : ""}
+                              {set.targetRpe ? ` ï¿½ RPE ${set.targetRpe}` : ""}
                             </span>
                           </div>
                         ))}
@@ -547,6 +547,7 @@ export default async function WorkoutDetailPage({
     </main>
   );
 }
+
 
 
 

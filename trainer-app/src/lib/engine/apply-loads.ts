@@ -1,14 +1,12 @@
+import { computeNextLoad } from "./progression";
+import { estimateWorkoutMinutes, trimAccessoriesByPriority } from "./timeboxing";
 import {
-  computeNextLoad,
-  estimateWorkoutMinutes,
   getBackOffMultiplier,
-  trimAccessoriesByPriority,
-} from "./engine";
-import {
   REP_RANGES_BY_GOAL,
   TARGET_RPE_BY_GOAL,
   type PeriodizationModifiers,
 } from "./rules";
+import { getPrimaryMuscles } from "./utils";
 import type {
   Exercise,
   Goals,
@@ -313,6 +311,7 @@ function estimateFromDonors(
   const targetCompound = isCompound(target);
   const targetFatigue = target.fatigueCost ?? DEFAULT_FATIGUE_COST;
 
+  const targetPatterns = target.movementPatternsV2 ?? [];
   const candidates: { score: number; load: number; name: string }[] = [];
 
   for (const [donorId, donorLoad] of baselineIndex.entries()) {
@@ -321,14 +320,16 @@ function estimateFromDonors(
       continue;
     }
     const donorMuscles = getPrimaryMuscles(donor);
-    const overlap = countOverlap(targetMuscles, donorMuscles);
-    if (overlap === 0) {
+    const muscleOverlap = countOverlap(targetMuscles, donorMuscles);
+    if (muscleOverlap === 0) {
       continue;
     }
 
     const donorEquipment = getLoadEquipment(donor);
     const donorCompound = isCompound(donor);
     const donorFatigue = donor.fatigueCost ?? DEFAULT_FATIGUE_COST;
+    const donorPatterns = donor.movementPatternsV2 ?? [];
+    const patternOverlap = countOverlap(targetPatterns, donorPatterns);
 
     const equipmentScale = getEquipmentScale(donorEquipment, targetEquipment);
     const compoundScale = getCompoundScale(donorCompound, targetCompound);
@@ -340,7 +341,11 @@ function estimateFromDonors(
     );
 
     const scaledLoad = donorLoad * equipmentScale * compoundScale * isolationPenalty * fatigueScale;
-    const score = overlap * 4 + (donorEquipment === targetEquipment ? 2 : 0) + (donorCompound === targetCompound ? 1 : 0);
+    const score =
+      muscleOverlap * 4 +
+      patternOverlap * 3 +
+      (donorEquipment === targetEquipment ? 2 : 0) +
+      (donorCompound === targetCompound ? 1 : 0);
 
     candidates.push({ score, load: scaledLoad, name: donor.name });
   }
@@ -357,16 +362,6 @@ function estimateFromDonors(
   });
 
   return candidates[0].load;
-}
-
-function getPrimaryMuscles(exercise: Exercise): string[] {
-  if (exercise.primaryMuscles && exercise.primaryMuscles.length > 0) {
-    return exercise.primaryMuscles;
-  }
-  if (exercise.secondaryMuscles && exercise.secondaryMuscles.length > 0) {
-    return exercise.secondaryMuscles;
-  }
-  return [];
 }
 
 function countOverlap(a: string[], b: string[]) {

@@ -158,8 +158,6 @@ model User {
   injuries       Injury[]
   programs       Program[]
   workouts       Workout[]
-  readinessLogs  ReadinessLog[]
-  fatigueLogs    FatigueLog[]
   sessionCheckIns SessionCheckIn[]
   baselines      Baseline[]
   preferences    UserPreference?
@@ -186,7 +184,7 @@ model Profile {
   sex         String?
   heightIn    Int?
   weightLb    Float?
-  trainingAge TrainingAge?
+  trainingAge TrainingAge @default(INTERMEDIATE)
 }
 
 model Constraints {
@@ -216,6 +214,8 @@ model Injury {
   severity    Int      // 1-5
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
+
+  @@index([userId, isActive])
 }
 
 model Equipment {
@@ -300,9 +300,8 @@ model SubstitutionRule {
   id            String   @id @default(uuid())
   fromExerciseId String
   toExerciseId   String
-  score         Int      // 1-100
   reason        String?
-  priority      Int?
+  priority      Int      @default(50)
   constraints   Json?
   preserves     Json?
 
@@ -349,17 +348,20 @@ model Workout {
 
   exercises WorkoutExercise[]
   sessionCheckIns SessionCheckIn[]
+
+  @@index([userId, scheduledDate])
 }
 
 model WorkoutExercise {
-  id              String          @id @default(uuid())
+  id              String              @id @default(uuid())
   workoutId       String
-  workout         Workout         @relation(fields: [workoutId], references: [id])
+  workout         Workout             @relation(fields: [workoutId], references: [id])
   exerciseId      String
-  exercise        Exercise        @relation(fields: [exerciseId], references: [id])
+  exercise        Exercise            @relation(fields: [exerciseId], references: [id])
   orderIndex      Int
   isMainLift      Boolean
-  movementPattern MovementPattern
+  movementPattern MovementPattern?
+  movementPatternsV2 MovementPatternV2[] @default([])
   notes           String?
 
   sets WorkoutSet[]
@@ -390,25 +392,6 @@ model SetLog {
   wasSkipped    Boolean  @default(false)
 }
 
-model ReadinessLog {
-  id         String   @id @default(uuid())
-  userId     String
-  user       User     @relation(fields: [userId], references: [id])
-  date       DateTime
-  score      Int      // 1-5
-  sleepHours Float?
-  soreness   String?
-  notes      String?
-}
-
-model FatigueLog {
-  id         String   @id @default(uuid())
-  userId     String
-  user       User     @relation(fields: [userId], references: [id])
-  date       DateTime
-  score      Int      // 1-5
-  notes      String?
-}
 
 model SessionCheckIn {
   id         String   @id @default(uuid())
@@ -421,23 +404,18 @@ model SessionCheckIn {
   painFlags  Json?
   notes      String?
   createdAt  DateTime @default(now())
+
+  @@index([userId, date])
 }
 
-model ProgressionRule {
-  id              String        @id @default(uuid())
-  name            String
-  primaryGoal     PrimaryGoal
-  movementPattern MovementPattern?
-  rules           Json
-}
 
 model Baseline {
   id               String           @id @default(uuid())
   userId           String
   user             User             @relation(fields: [userId], references: [id])
-  exerciseId       String?
-  exercise         Exercise?        @relation(fields: [exerciseId], references: [id])
-  exerciseName     String
+  exerciseId       String
+  exercise         Exercise         @relation(fields: [exerciseId], references: [id])
+  exerciseName     String           // denormalized display field
   context          String           @default("default")
   category         BaselineCategory
   unit             String           @default("lbs")
@@ -452,6 +430,6 @@ model Baseline {
   notes            String?
   createdAt        DateTime         @default(now())
 
-  @@unique([userId, exerciseName, context])
+  @@unique([userId, exerciseId, context])
   @@index([exerciseId])
 }

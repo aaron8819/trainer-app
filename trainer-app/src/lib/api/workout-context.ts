@@ -20,7 +20,6 @@ import {
   EquipmentType,
   PrimaryGoal,
   SecondaryGoal,
-  TrainingAge,
   WorkoutStatus,
 } from "@prisma/client";
 import type {
@@ -124,7 +123,7 @@ export function mapProfile(userId: string, profile: Profile, injuries: Injury[])
     sex: profile.sex ?? undefined,
     heightCm,
     weightKg,
-    trainingAge: (profile.trainingAge ?? TrainingAge.INTERMEDIATE).toLowerCase() as UserProfile["trainingAge"],
+    trainingAge: profile.trainingAge.toLowerCase() as UserProfile["trainingAge"],
     injuries: injuries.map((injury) => ({
       bodyPart: injury.bodyPart,
       severity: injury.severity as 1 | 2 | 3 | 4 | 5,
@@ -263,40 +262,15 @@ type ExerciseWithAliases = Exercise & {
 };
 
 export function mapBaselinesToExerciseIds(
-  baselines: Baseline[],
-  exercises: ExerciseWithAliases[]
+  baselines: Baseline[]
 ): BaselineInput[] {
-  const exerciseByName = new Map<string, string>();
-  const aliasToId = new Map<string, string>();
-
-  for (const exercise of exercises) {
-    exerciseByName.set(normalizeName(exercise.name), exercise.id);
-    for (const alias of exercise.aliases ?? []) {
-      aliasToId.set(normalizeName(alias.alias), exercise.id);
-    }
-  }
-
-  const mapped: BaselineInput[] = [];
-  for (const baseline of baselines) {
-    const baselineWithId = baseline as Baseline & { exerciseId?: string | null };
-    const normalized = normalizeName(baseline.exerciseName);
-    const exerciseId =
-      baselineWithId.exerciseId ?? exerciseByName.get(normalized) ?? aliasToId.get(normalized);
-
-    if (!exerciseId) {
-      continue;
-    }
-
-    mapped.push({
-      exerciseId,
-      context: baseline.context ?? undefined,
-      workingWeightMin: baseline.workingWeightMin ?? undefined,
-      workingWeightMax: baseline.workingWeightMax ?? undefined,
-      topSetWeight: baseline.topSetWeight ?? undefined,
-    });
-  }
-
-  return mapped;
+  return baselines.map((baseline) => ({
+    exerciseId: baseline.exerciseId,
+    context: baseline.context ?? undefined,
+    workingWeightMin: baseline.workingWeightMin ?? undefined,
+    workingWeightMax: baseline.workingWeightMax ?? undefined,
+    topSetWeight: baseline.topSetWeight ?? undefined,
+  }));
 }
 
 export function applyLoads(
@@ -309,7 +283,7 @@ export function applyLoads(
   sessionMinutes?: number,
   periodization?: PeriodizationModifiers
 ): WorkoutPlan {
-  const baselineInputs = mapBaselinesToExerciseIds(baselines, exercises);
+  const baselineInputs = mapBaselinesToExerciseIds(baselines);
   const exerciseById = Object.fromEntries(
     mapExercises(exercises).map((exercise) => [exercise.id, exercise])
   );
@@ -326,11 +300,3 @@ export function applyLoads(
 }
 
 export { deriveWeekInBlock, type WeekInBlockHistoryEntry };
-
-function normalizeName(name: string) {
-  return name
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .replace(/[^\w\s()-]/g, "")
-    .trim();
-}

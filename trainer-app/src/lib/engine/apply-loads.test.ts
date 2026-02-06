@@ -243,6 +243,70 @@ describe("applyLoads", () => {
     expect(lateralRaise?.sets[0].targetLoad).toBe(22);
   });
 
+  it("prefers donors with movement pattern overlap", () => {
+    // Two donors both overlap on "Chest" muscle with the target (bench press).
+    // "machine-press" shares horizontal_push pattern; "chest-fly" does not.
+    // Pattern overlap should boost machine-press as donor.
+    const extraExercises: Record<string, Exercise> = {
+      ...exercises,
+      "machine-press": {
+        id: "machine-press",
+        name: "Machine Chest Press",
+        movementPattern: "push",
+        movementPatternsV2: ["horizontal_push"],
+        splitTags: ["push"],
+        jointStress: "medium",
+        isMainLift: false,
+        isCompound: true,
+        fatigueCost: 3,
+        equipment: ["machine"],
+        primaryMuscles: ["Chest"],
+      },
+      "chest-fly": {
+        id: "chest-fly",
+        name: "Cable Chest Fly",
+        movementPattern: "push",
+        movementPatternsV2: ["vertical_push"],
+        splitTags: ["push"],
+        jointStress: "low",
+        isMainLift: false,
+        isCompound: false,
+        fatigueCost: 2,
+        equipment: ["cable"],
+        primaryMuscles: ["Chest"],
+      },
+    };
+
+    const baselines: BaselineInput[] = [
+      { exerciseId: "machine-press", topSetWeight: 120, context: "default" },
+      { exerciseId: "chest-fly", topSetWeight: 60, context: "default" },
+    ];
+
+    const workout: WorkoutPlan = {
+      ...baseWorkout,
+      mainLifts: [baseWorkout.mainLifts[0]],
+      accessories: [],
+    };
+
+    const result = applyLoads(workout, {
+      history: [],
+      baselines,
+      exerciseById: extraExercises,
+      primaryGoal: "hypertrophy",
+      profile: { weightKg: 80 },
+    });
+
+    // Bench press (barbell, horizontal_push, compound, chest) should pick
+    // machine-press as donor (higher pattern overlap score) over chest-fly.
+    // machine-press: muscleOverlap=1*4 + patternOverlap=1*3 + equip=0 + compound=1 = 8
+    // chest-fly:     muscleOverlap=1*4 + patternOverlap=0*3 + equip=0 + compound=0 = 4
+    const benchLoad = result.mainLifts[0].sets[0].targetLoad;
+    expect(benchLoad).toBeDefined();
+    // machine-press donor: 120 * equipScale(machine→barbell=1.1) * compoundScale(1.0)
+    //   * isolationPenalty(1.0) * fatigueScale(clamp(4/3, 0.45, 0.9)=0.9) = 120*1.1*0.9 = 118.8 → 119
+    expect(benchLoad).toBe(119);
+  });
+
   it("adds warmup ramp-up sets for main lifts with resolved load", () => {
     const baselines: BaselineInput[] = [
       { exerciseId: "bench", context: "default", topSetWeight: 200 },

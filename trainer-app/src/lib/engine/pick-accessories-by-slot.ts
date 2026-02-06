@@ -1,8 +1,17 @@
 import type { Exercise, MovementPatternV2, SplitTag, WorkoutHistoryEntry } from "./types";
 import { createRng } from "./random";
+import {
+  buildRecencyIndex,
+  getNoveltyMultiplier,
+  getPrimaryMuscles,
+  getRecencyMultiplier,
+  normalizeName,
+  weightedPick,
+} from "./utils";
+import type { VolumeContext } from "./volume";
 
 export type AccessorySlotOptions = {
-  dayTag: SplitTag;
+  dayTag: SplitTag | "upper" | "lower" | "full_body";
   accessoryPool: Exercise[];
   mainLifts: Exercise[];
   favoriteSet?: Set<string>;
@@ -12,11 +21,6 @@ export type AccessorySlotOptions = {
   volumeContext?: VolumeContext;
   mainLiftSetCount?: number;
   accessorySetCount?: number;
-};
-
-export type VolumeContext = {
-  recent: Record<string, number>;
-  previous: Record<string, number>;
 };
 
 type SlotType =
@@ -30,6 +34,7 @@ type SlotType =
   | "hamstring_isolation"
   | "glute_or_unilateral"
   | "calf"
+  | "back_compound"
   | "fill";
 
 export function pickAccessoriesBySlot(options: AccessorySlotOptions): Exercise[] {
@@ -100,7 +105,10 @@ export function pickAccessoriesBySlot(options: AccessorySlotOptions): Exercise[]
   return selected;
 }
 
-function buildSlots(dayTag: SplitTag, maxAccessories: number): SlotType[] {
+function buildSlots(
+  dayTag: SplitTag | "upper" | "lower" | "full_body",
+  maxAccessories: number
+): SlotType[] {
   const baseSlots: SlotType[] = (() => {
     switch (dayTag) {
       case "push":
@@ -109,6 +117,12 @@ function buildSlots(dayTag: SplitTag, maxAccessories: number): SlotType[] {
         return ["rear_delt_or_upper_back", "biceps", "pull_variant"];
       case "legs":
         return ["quad_isolation", "hamstring_isolation", "glute_or_unilateral", "calf"];
+      case "upper":
+        return ["chest_isolation", "side_delt", "back_compound", "biceps", "triceps_isolation"];
+      case "lower":
+        return ["quad_isolation", "hamstring_isolation", "glute_or_unilateral", "calf"];
+      case "full_body":
+        return ["chest_isolation", "back_compound", "quad_isolation", "hamstring_isolation"];
       default:
         return [];
     }
@@ -133,7 +147,13 @@ function pickForSlot(
   previousVolume: Record<string, number> | undefined,
   accessorySetCount: number
 ): Exercise | undefined {
-  const candidates = remaining.filter((exercise) => matchesSlot(slot, exercise));
+  let candidates = remaining.filter((exercise) => matchesSlot(slot, exercise));
+  if ((slot === "quad_isolation" || slot === "hamstring_isolation") && candidates.length > 0) {
+    const isolationOnly = candidates.filter((exercise) => !exercise.isCompound);
+    if (isolationOnly.length > 0) {
+      candidates = isolationOnly;
+    }
+  }
   if (candidates.length === 0) {
     return undefined;
   }
@@ -195,6 +215,11 @@ function matchesSlot(slot: SlotType, exercise: Exercise): boolean {
       return hasMuscle("glutes") || patterns.includes("lunge") || exercise.movementPattern === "lunge";
     case "calf":
       return hasMuscle("calves");
+    case "back_compound":
+      return (
+        (patterns.includes("vertical_pull") || patterns.includes("horizontal_pull")) &&
+        (hasMuscle("back") || hasMuscle("upper back"))
+      );
     default:
       return true;
   }
@@ -272,6 +297,13 @@ function scoreSlot(
       score += hasMuscle("calves") ? 6 : 0;
       score += !isCompound ? 2 : 0;
       break;
+    case "back_compound": {
+      const hasPullPattern = patterns.has("vertical_pull") || patterns.has("horizontal_pull");
+      score += hasPullPattern ? 4 : 0;
+      score += hasMuscle("back") || hasMuscle("upper back") ? 6 : 0;
+      score += isCompound ? 2 : 0;
+      break;
+    }
     case "fill":
       score += uncovered.length * 3;
       break;
@@ -285,63 +317,6 @@ function scoreSlot(
 
   score += favoriteBonus + uncoveredBonus;
   return score;
-}
-
-function buildRecencyIndex(history: WorkoutHistoryEntry[]) {
-  const sorted = [...history].sort(
-    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-  );
-  const index = new Map<string, number>();
-  sorted.forEach((entry, entryIndex) => {
-    for (const exercise of entry.exercises) {
-      if (!index.has(exercise.exerciseId)) {
-        index.set(exercise.exerciseId, entryIndex);
-      }
-    }
-  });
-  return index;
-}
-
-function getRecencyMultiplier(exerciseId: string, recencyIndex: Map<string, number>) {
-  const lastSeen = recencyIndex.get(exerciseId);
-  if (lastSeen === undefined) {
-    return 1;
-  }
-  if (lastSeen === 0) {
-    return 0.3;
-  }
-  if (lastSeen === 1) {
-    return 0.5;
-  }
-  if (lastSeen === 2) {
-    return 0.7;
-  }
-  return 1;
-}
-
-function getNoveltyMultiplier(exerciseId: string, recencyIndex: Map<string, number>) {
-  return recencyIndex.has(exerciseId) ? 1 : 1.5;
-}
-
-function weightedPick(
-  items: { exercise: Exercise; weight: number }[],
-  rng: () => number
-): Exercise | undefined {
-  if (items.length === 0) {
-    return undefined;
-  }
-  const total = items.reduce((sum, item) => sum + item.weight, 0);
-  if (total <= 0) {
-    return items[0].exercise;
-  }
-  let roll = rng() * total;
-  for (const item of items) {
-    roll -= item.weight;
-    if (roll <= 0) {
-      return item.exercise;
-    }
-  }
-  return items[items.length - 1].exercise;
 }
 
 function buildPlannedVolume(
@@ -393,18 +368,4 @@ function getVolumeMultiplier(
     return current + accessorySetCount > baseline * 1.2;
   });
   return exceeds ? 0.2 : 1;
-}
-
-function getPrimaryMuscles(exercise: Exercise): string[] {
-  if (exercise.primaryMuscles && exercise.primaryMuscles.length > 0) {
-    return exercise.primaryMuscles;
-  }
-  if (exercise.secondaryMuscles && exercise.secondaryMuscles.length > 0) {
-    return exercise.secondaryMuscles;
-  }
-  return [];
-}
-
-function normalizeName(name: string) {
-  return name.toLowerCase().replace(/\s+/g, " ").replace(/[^\w\s()-]/g, "").trim();
 }

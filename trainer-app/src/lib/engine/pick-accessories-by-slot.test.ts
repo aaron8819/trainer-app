@@ -274,6 +274,128 @@ describe("pickAccessoriesBySlot", () => {
     expect(picks[0].name).toBe("Pec Deck");
   });
 
+  it("prefers non-compound exercises for isolation slots with compound fallback", () => {
+    const legsMainLifts: Exercise[] = [
+      {
+        id: "squat",
+        name: "Back Squat",
+        movementPattern: "squat",
+        movementPatternsV2: ["squat"],
+        splitTags: ["legs"],
+        jointStress: "high",
+        isMainLift: true,
+        isMainLiftEligible: true,
+        isCompound: true,
+        fatigueCost: 4,
+        equipment: ["barbell"],
+        primaryMuscles: ["Quads", "Glutes"],
+      },
+      {
+        id: "rdl",
+        name: "Romanian Deadlift",
+        movementPattern: "hinge",
+        movementPatternsV2: ["hinge"],
+        splitTags: ["legs"],
+        jointStress: "medium",
+        isMainLift: true,
+        isMainLiftEligible: true,
+        isCompound: true,
+        fatigueCost: 4,
+        equipment: ["barbell"],
+        primaryMuscles: ["Hamstrings", "Glutes"],
+      },
+    ];
+
+    const accessoryPool: Exercise[] = [
+      {
+        id: "leg-press",
+        name: "Leg Press",
+        movementPattern: "squat",
+        movementPatternsV2: ["squat"],
+        splitTags: ["legs"],
+        jointStress: "medium",
+        isMainLift: false,
+        isMainLiftEligible: false,
+        isCompound: true,
+        fatigueCost: 3,
+        equipment: ["machine"],
+        primaryMuscles: ["Quads"],
+      },
+      {
+        id: "leg-extension",
+        name: "Leg Extension",
+        movementPattern: "squat",
+        movementPatternsV2: ["squat"],
+        splitTags: ["legs"],
+        jointStress: "low",
+        isMainLift: false,
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 2,
+        equipment: ["machine"],
+        primaryMuscles: ["Quads"],
+      },
+      {
+        id: "leg-curl",
+        name: "Leg Curl",
+        movementPattern: "hinge",
+        movementPatternsV2: ["hinge"],
+        splitTags: ["legs"],
+        jointStress: "low",
+        isMainLift: false,
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 2,
+        equipment: ["machine"],
+        primaryMuscles: ["Hamstrings"],
+      },
+      {
+        id: "hip-thrust",
+        name: "Hip Thrust",
+        movementPattern: "hinge",
+        movementPatternsV2: ["hinge"],
+        splitTags: ["legs"],
+        jointStress: "medium",
+        isMainLift: false,
+        isMainLiftEligible: false,
+        isCompound: true,
+        fatigueCost: 3,
+        equipment: ["barbell"],
+        primaryMuscles: ["Glutes"],
+      },
+      {
+        id: "calf-raise",
+        name: "Standing Calf Raise",
+        movementPattern: "carry",
+        movementPatternsV2: ["carry"],
+        splitTags: ["legs"],
+        jointStress: "low",
+        isMainLift: false,
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 2,
+        equipment: ["machine"],
+        primaryMuscles: ["Calves"],
+      },
+    ];
+
+    const picks = pickAccessoriesBySlot({
+      dayTag: "legs",
+      accessoryPool,
+      mainLifts: legsMainLifts,
+      maxAccessories: 4,
+      randomSeed: 42,
+    });
+
+    // quad_isolation slot should prefer Leg Extension (non-compound) over Leg Press (compound)
+    const quadPick = picks.find((p) => p.primaryMuscles?.includes("Quads"));
+    expect(quadPick?.name).toBe("Leg Extension");
+
+    // hamstring_isolation slot should pick Leg Curl (non-compound)
+    const hamPick = picks.find((p) => p.primaryMuscles?.includes("Hamstrings"));
+    expect(hamPick?.name).toBe("Leg Curl");
+  });
+
   it("deprioritizes candidates that would exceed volume caps", () => {
     const accessoryPool: Exercise[] = [
       {

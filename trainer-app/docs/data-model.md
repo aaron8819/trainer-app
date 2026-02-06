@@ -6,11 +6,12 @@ This document describes the current data model for the Trainer App, with emphasi
 
 ### User
 - `id`, `email`, `createdAt`
-- Relations: `profile`, `constraints`, `goals`, `injuries`, `preferences`, `programs`, `workouts`, `readinessLogs`, `fatigueLogs`, `sessionCheckIns`, `baselines`
+- Relations: `profile`, `constraints`, `goals`, `injuries`, `preferences`, `programs`, `workouts`, `sessionCheckIns`, `baselines`
 
 ### Profile
-- `userId`, `age`, `sex`, `heightIn`, `weightLb`, `trainingAge`
+- `userId`, `age`, `sex`, `heightIn`, `weightLb`, `trainingAge` (non-nullable, default `INTERMEDIATE`)
 - Purpose: drives set scaling and general defaults.
+- Note: height is stored in inches, weight in pounds. The engine receives these converted to metric (cm, kg) via `mapProfile()`.
 
 ### Goals
 - `userId`, `primaryGoal`, `secondaryGoal`, `proteinTarget`
@@ -84,8 +85,7 @@ Relations:
 
 ### SubstitutionRule
 - `fromExerciseId`, `toExerciseId`
-- `priority` (new), `constraints`, `preserves`
-- `score` (legacy, retained for backward compatibility)
+- `priority` (non-nullable, default 50), `constraints`, `preserves`
 - Purpose: deterministic substitution ranking and constraint-aware swaps.
 
 ## Programs and Workouts
@@ -107,7 +107,8 @@ Relations:
 
 ### WorkoutExercise
 - `workoutId`, `exerciseId`, `orderIndex`, `isMainLift`
-- `movementPattern` (legacy)
+- `movementPattern` (legacy, optional)
+- `movementPatternsV2` (MovementPatternV2[], default `{}`)
 - `notes`
 - Relations: `sets`
 
@@ -118,26 +119,22 @@ Relations:
 ### SetLog
 - `workoutSetId`, `actualReps`, `actualRpe`, `actualLoad`, `completedAt`, `notes`, `wasSkipped`
 
-## Readiness and Fatigue
-
-### ReadinessLog
-- `userId`, `date`, `score`, `sleepHours`, `soreness`, `notes`
-
-### FatigueLog
-- `userId`, `date`, `score`, `notes`
-
-## Progression and Baselines
-
-### ProgressionRule
-- `name`, `primaryGoal`, `movementPattern?`, `rules` (json)
-- Purpose: configurable progression behavior.
+## Baselines
 
 ### Baseline
-- `userId`, `exerciseName`, `context`, `category`, `unit`
+- `userId`, `exerciseId` (non-nullable FK), `exerciseName` (denormalized display field), `context`, `category`, `unit`
 - `workingWeightMin`, `workingWeightMax`, `workingRepsMin`, `workingRepsMax`
 - `topSetWeight`, `topSetReps`
 - `projected1RMMin`, `projected1RMMax`, `notes`
+- Unique constraint: `(userId, exerciseId, context)`
 - Purpose: seed loads for newly generated workouts.
+
+## Removed Tables
+
+The following tables were removed in Phase 6 (2026-02-06) as they were unused:
+- **ReadinessLog** — superseded by `SessionCheckIn`
+- **FatigueLog** — superseded by `SessionCheckIn`
+- **ProgressionRule** — engine uses hardcoded constants from `rules.ts`; the engine `ProgressionRule` type remains for future extensibility
 
 ## Enum Reference (Highlights)
 

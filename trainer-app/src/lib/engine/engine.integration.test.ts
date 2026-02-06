@@ -6,6 +6,7 @@ import type {
   Constraints,
   Exercise,
   Goals,
+  SplitDay,
   SplitTag,
   UserProfile,
   WorkoutPlan,
@@ -697,5 +698,190 @@ describe("engine end-to-end fixtures", () => {
     expect(week4Main.sets[0].targetRpe).toBeLessThanOrEqual(6);
     expect(week4Main.sets[0].targetLoad).toBeLessThan(week1Main.sets[0].targetLoad ?? 0);
     expect(week4Main.sets[1].targetLoad).toBe(week4Main.sets[0].targetLoad);
+  });
+});
+
+// --- Non-PPL split tests ---
+
+const upperLowerConstraints: Constraints = {
+  ...seededConstraints,
+  daysPerWeek: 4,
+  splitType: "upper_lower",
+};
+
+const fullBodyConstraints: Constraints = {
+  ...seededConstraints,
+  daysPerWeek: 3,
+  splitType: "full_body",
+};
+
+// Add a rotate exercise for full_body coverage
+const nonPplLibrary: Exercise[] = [
+  ...seededExerciseLibrary,
+  createExercise({
+    id: "wood-chop",
+    name: "Cable Wood Chop",
+    movementPattern: "rotate",
+    movementPatternsV2: ["rotation"],
+    splitTags: ["core"],
+    jointStress: "low",
+    isMainLift: false,
+    isMainLiftEligible: false,
+    isCompound: false,
+    fatigueCost: 2,
+    equipment: ["cable"],
+    primaryMuscles: ["Core"],
+  }),
+];
+
+const nonPplExerciseById = Object.fromEntries(
+  nonPplLibrary.map((exercise) => [exercise.id, exercise])
+) as Record<string, Exercise>;
+
+function runNonPplFixture(
+  split: SplitDay,
+  constraints: Constraints,
+  randomSeed: number
+): WorkoutPlan {
+  const generated = generateWorkout(
+    seededUser,
+    seededGoals,
+    constraints,
+    [],
+    nonPplLibrary,
+    undefined,
+    { forcedSplit: split, randomSeed }
+  );
+
+  return applyLoads(generated, {
+    history: [],
+    baselines: seededBaselines,
+    exerciseById: nonPplExerciseById,
+    primaryGoal: seededGoals.primary,
+    profile: { weightKg: seededUser.weightKg },
+    sessionMinutes: constraints.sessionMinutes,
+  });
+}
+
+describe("upper_lower split end-to-end", () => {
+  it("upper day selects only push/pull movement pattern exercises", () => {
+    const workout = runNonPplFixture("upper", upperLowerConstraints, 701);
+    const allExercises = [...workout.mainLifts, ...workout.accessories];
+
+    expect(allExercises.length).toBeGreaterThan(0);
+    for (const entry of allExercises) {
+      expect(["push", "pull", "push_pull"]).toContain(
+        entry.exercise.movementPattern
+      );
+    }
+  });
+
+  it("upper day has at least 2 main lifts and 3 accessories", () => {
+    const workout = runNonPplFixture("upper", upperLowerConstraints, 702);
+
+    expect(workout.mainLifts.length).toBeGreaterThanOrEqual(2);
+    expect(workout.accessories.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("lower day selects only squat/hinge/lunge/carry movement pattern exercises", () => {
+    const workout = runNonPplFixture("lower", upperLowerConstraints, 703);
+    const allExercises = [...workout.mainLifts, ...workout.accessories];
+
+    expect(allExercises.length).toBeGreaterThan(0);
+    for (const entry of allExercises) {
+      expect(["squat", "hinge", "lunge", "carry"]).toContain(
+        entry.exercise.movementPattern
+      );
+    }
+  });
+
+  it("lower day has at least 2 main lifts (squat + hinge)", () => {
+    const workout = runNonPplFixture("lower", upperLowerConstraints, 704);
+
+    expect(workout.mainLifts.length).toBeGreaterThanOrEqual(2);
+    const patterns = workout.mainLifts.map((l) => l.exercise.movementPattern);
+    expect(patterns).toContain("squat");
+    expect(patterns).toContain("hinge");
+  });
+
+  it("respects equipment constraints for upper_lower", () => {
+    const limitedEquip: Constraints = {
+      ...upperLowerConstraints,
+      availableEquipment: ["dumbbell", "bodyweight", "bench"],
+    };
+    const workout = runNonPplFixture("upper", limitedEquip, 705);
+    const allExercises = [...workout.mainLifts, ...workout.accessories];
+
+    for (const entry of allExercises) {
+      const hasAllowed = entry.exercise.equipment.some((eq) =>
+        limitedEquip.availableEquipment.includes(eq)
+      );
+      expect(hasAllowed).toBe(true);
+    }
+  });
+
+  it("timeboxes accessories to fit session budget", () => {
+    const fullWorkout = runNonPplFixture("upper", upperLowerConstraints, 706);
+    const shortSession: Constraints = {
+      ...upperLowerConstraints,
+      sessionMinutes: 40,
+    };
+    const trimmedWorkout = runNonPplFixture("upper", shortSession, 706);
+
+    expect(trimmedWorkout.estimatedMinutes).toBeLessThanOrEqual(40);
+    expect(trimmedWorkout.accessories.length).toBeLessThan(fullWorkout.accessories.length);
+    // Should still have main lifts even with tight budget
+    expect(trimmedWorkout.mainLifts.length).toBeGreaterThan(0);
+  });
+});
+
+describe("full_body split end-to-end", () => {
+  it("includes exercises from multiple movement patterns", () => {
+    const workout = runNonPplFixture("full_body", fullBodyConstraints, 801);
+    const allExercises = [...workout.mainLifts, ...workout.accessories];
+    const patterns = new Set(allExercises.map((e) => e.exercise.movementPattern));
+
+    // full_body targets ["push", "pull", "squat", "hinge", "rotate"]
+    // Should have at least push, pull, and one lower body pattern
+    expect(patterns.size).toBeGreaterThanOrEqual(3);
+    expect(allExercises.length).toBeGreaterThan(0);
+  });
+
+  it("has at least 2 main lifts from different patterns", () => {
+    const workout = runNonPplFixture("full_body", fullBodyConstraints, 802);
+
+    expect(workout.mainLifts.length).toBeGreaterThanOrEqual(2);
+    const mainPatterns = new Set(
+      workout.mainLifts.map((l) => l.exercise.movementPattern)
+    );
+    expect(mainPatterns.size).toBeGreaterThanOrEqual(2);
+  });
+
+  it("all exercises have loads assigned", () => {
+    const workout = runNonPplFixture("full_body", fullBodyConstraints, 803);
+    const allExercises = [...workout.mainLifts, ...workout.accessories];
+
+    for (const entry of allExercises) {
+      for (const set of entry.sets) {
+        expect(set.targetLoad).toBeDefined();
+      }
+    }
+  });
+
+  it("fits within session time budget", () => {
+    const workout = runNonPplFixture("full_body", fullBodyConstraints, 804);
+
+    expect(workout.estimatedMinutes).toBeLessThanOrEqual(
+      fullBodyConstraints.sessionMinutes
+    );
+  });
+
+  it("no duplicate exercises in the workout", () => {
+    const workout = runNonPplFixture("full_body", fullBodyConstraints, 805);
+    const allIds = [
+      ...workout.mainLifts.map((e) => e.exercise.id),
+      ...workout.accessories.map((e) => e.exercise.id),
+    ];
+    expect(new Set(allIds).size).toBe(allIds.length);
   });
 });

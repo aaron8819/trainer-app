@@ -94,7 +94,7 @@ ExerciseAlias (new):
 - `alias` (unique)
 
 Baseline (extended):
-- `exerciseId` (nullable FK)
+- `exerciseId` (non-nullable FK, unique constraint: `userId, exerciseId, context`)
 
 ExerciseVariation (extended):
 - `variationType` (VariationType)
@@ -189,9 +189,9 @@ Warmup or finisher blocks:
 ### Known Gaps (Tracked)
 
 - Muscle volume caps rely on `Exercise.primaryMuscles`; these are not fully seeded yet.
-- Substitution suggestions are available (`suggestSubstitutes`) but not currently surfaced in the UI.
-- Contraindications are now seeded and used as the primary pain filter; regex heuristics are still a fallback.
-- Legs slot isolation picks should enforce non-compound constraints (quad or hamstring iso slots can still pick compound hinges in edge cases).
+- Substitution suggestions are available (`suggestSubstitutes`) but not currently surfaced in the UI. Tests added in Phase 4B.
+- ~~Contraindications are still a fallback~~ — now the primary pain filter; regex heuristics are still a fallback for untagged exercises.
+- ~~Legs slot isolation picks should enforce non-compound constraints~~ — **Resolved in Phase 3B**: isolation slots prefer `!isCompound` with compound fallback when the filtered pool is empty.
 
 ### Current UI Flow (Generation)
 
@@ -440,7 +440,7 @@ Plan:
 Implementation summary:
 - Model: 4-week linear block (Week 1 accumulation, Week 2 baseline, Week 3 intensification, Week 4 deload).
 - Week derivation: ProgramBlock present uses `weekInBlock = floor((scheduledDate - blockStartDate) / 7) % blockWeeks` with `blockStartDate` = earliest workout date in the block; no ProgramBlock uses a rolling 4-week window `weekInBlock = floor((scheduledDate - oldestRecentWorkoutDate) / 7) % 4`; sparse history (< 2 weeks) forces `weekInBlock = 0`.
-- Modifiers by week: Week 1 `rpeOffset = -1.0`, `setMultiplier = 1.0`, `backOffMultiplier = standard`; Week 2 `rpeOffset = 0`, `setMultiplier = 1.0`, `backOffMultiplier = standard`; Week 3 `rpeOffset = +0.5`, `setMultiplier = 0.85`, `backOffMultiplier = standard`; Week 4 deload `setMultiplier = 0.6`, `backOffMultiplier = 0.75`, `rpeCap = 6.0`.
+- Modifiers by week: Week 0 (Introduction) `rpeOffset = -1.0`, `setMultiplier = 1.0`, `backOffMultiplier = standard`; Week 1 (Accumulation) `rpeOffset = 0`, `setMultiplier = 1.0`, `backOffMultiplier = standard`; Week 2 (Intensification) `rpeOffset = +0.5`, `setMultiplier = 0.85`, `backOffMultiplier = standard`; Week 3 (Deload) `setMultiplier = 0.6`, `backOffMultiplier = 0.75`, `rpeCap = 6.0`.
 - Deload behavior: main-lift top-set structure is skipped; all sets are uniform at deload RPE, and deload loads use the 0.75 back-off scale.
 - Touchpoints: `deriveWeekInBlock` in `trainer-app/src/lib/api/periodization.ts`; `getPeriodizationModifiers` in `trainer-app/src/lib/engine/rules.ts`; `generateWorkout` and `applyLoads` consume modifiers.
 - Schema: no new fields (week is derived at generation time).
@@ -452,15 +452,21 @@ Plan:
 
 ## Testing Strategy
 
-- Add canonical fixture builder in engine tests to avoid repeated setup.
-- Use seeded PRNG in tests for any randomized selection.
-- Add tests for:
+- Canonical fixture builder in `sample-data.ts` (`exampleUser`, `exampleGoals`, `exampleConstraints`, `exampleExerciseLibrary`).
+- Seeded PRNG in all randomized tests (`randomSeed` parameter).
+- Test coverage includes:
   - Perpetual PPL queue
-  - Hybrid load estimation tiers
+  - Hybrid load estimation tiers (history, baseline, donor, bodyweight)
   - Top set/back-off load scaling
   - Rep range split (main vs accessory)
-  - Slot-based accessory selection
-  - End-to-end PPL fixtures (push/pull/legs) covering generate -> applyLoads
+  - Slot-based accessory selection (PPL, upper_lower, full_body)
+  - End-to-end PPL fixtures covering generate -> applyLoads
+  - Non-PPL integration tests (upper_lower, full_body) — Phase 4C
+  - Baseline update logic (`baseline-updater.test.ts`, 20 tests) — Phase 4A
+  - Substitution suggestions (`substitution.test.ts`, 8 tests) — Phase 4B
+  - Donor estimation with movement pattern overlap — Phase 7A
+  - Volume caps using `scoreAccessoryRetention` — Phase 3A
+  - Utils (`utils.test.ts`, 26 tests) — Phase 1A
 
 ## Risks and Mitigations
 
@@ -475,17 +481,33 @@ Plan:
 
 ## Known Follow-ups
 
-- Legs slot isolation picks should enforce non-compound constraints (quad/hamstring iso slots can still pick compound hinges in edge cases).
+- ~~Legs slot isolation picks should enforce non-compound constraints~~ — **Resolved in Phase 3B.**
 
 ## File Touchpoints (Core)
 
-- trainer-app/src/lib/engine/engine.ts
-- trainer-app/src/lib/engine/rules.ts
-- trainer-app/src/lib/engine/types.ts
-- trainer-app/src/lib/api/workout-context.ts
-- trainer-app/src/app/api/workouts/generate/route.ts
-- trainer-app/src/app/api/workouts/next/route.ts
-- trainer-app/prisma/schema.prisma
-- trainer-app/prisma/seed.ts
-- trainer-app/src/lib/engine/engine.test.ts
+Engine modules (decomposed from monolithic `engine.ts` in Phase 2):
+- `src/lib/engine/engine.ts` — orchestrator (`generateWorkout`, `buildWorkoutExercise`)
+- `src/lib/engine/split-queue.ts` — `SPLIT_PATTERNS`, `getSplitDayIndex`, `resolveTargetPatterns`, `resolveAllowedPatterns`
+- `src/lib/engine/filtering.ts` — `selectExercises`, `isMainLiftEligible`, `hasBlockedTag`, pain/stall/injury filtering
+- `src/lib/engine/main-lift-picker.ts` — `pickMainLiftsForPpl`
+- `src/lib/engine/pick-accessories-by-slot.ts` — slot-based accessory selection (PPL + upper_lower + full_body)
+- `src/lib/engine/prescription.ts` — `prescribeSetsReps`, `resolveSetCount`, `getRestSeconds`
+- `src/lib/engine/volume.ts` — `buildVolumeContext`, `enforceVolumeCaps`, `deriveFatigueState`
+- `src/lib/engine/timeboxing.ts` — `estimateWorkoutMinutes`, `trimAccessoriesByPriority`
+- `src/lib/engine/substitution.ts` — `suggestSubstitutes`
+- `src/lib/engine/progression.ts` — `computeNextLoad`, `shouldDeload`
+- `src/lib/engine/utils.ts` — shared helpers (`normalizeName`, `buildRecencyIndex`, `weightedPick`, etc.)
+- `src/lib/engine/random.ts` — seeded PRNG (`createRng`)
+- `src/lib/engine/rules.ts` — constants and periodization (`REP_RANGES_BY_GOAL`, `getBackOffMultiplier`, etc.)
+- `src/lib/engine/types.ts` — all engine type definitions
+- `src/lib/engine/index.ts` — barrel re-exports
+
+Other core files:
+- `src/lib/api/workout-context.ts` — DB-to-engine mapping
+- `src/lib/api/baseline-updater.ts` — baseline update logic (extracted from route in Phase 4A)
+- `src/app/api/workouts/generate/route.ts`
+- `src/app/api/workouts/next/route.ts`
+- `src/app/api/workouts/save/route.ts`
+- `prisma/schema.prisma`
+- `prisma/seed.ts`
 

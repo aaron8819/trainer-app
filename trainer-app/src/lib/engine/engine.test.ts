@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
-import {
-  computeNextLoad,
-  generateWorkout,
-  shouldDeload,
-} from "./engine";
+import { generateWorkout } from "./engine";
+import { computeNextLoad, shouldDeload } from "./progression";
 import {
   exampleConstraints,
   exampleExerciseLibrary,
@@ -223,6 +220,7 @@ describe("engine core", () => {
       undefined,
       {
         preferences: { favoriteExercises: ["Push Main Favorite"] },
+        randomSeed: 42,
       }
     );
 

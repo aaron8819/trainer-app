@@ -1453,27 +1453,52 @@ async function seedOwner() {
 }
 
 async function seedBaselines(userId: string) {
+  // Build name → exercise ID lookup (includes aliases)
+  const exercises = await prisma.exercise.findMany({
+    include: { aliases: true },
+  });
+  const nameToId = new Map<string, string>();
+  for (const exercise of exercises) {
+    nameToId.set(exercise.name.toLowerCase(), exercise.id);
+    for (const alias of exercise.aliases) {
+      nameToId.set(alias.alias.toLowerCase(), exercise.id);
+    }
+  }
+
+  let seeded = 0;
+  let skipped = 0;
   for (const baseline of baselineSeed) {
+    const exerciseId = nameToId.get(baseline.exerciseName.toLowerCase());
+    if (!exerciseId) {
+      skipped++;
+      continue;
+    }
+
+    const context = baseline.context ?? "default";
     await prisma.baseline.upsert({
       where: {
-        userId_exerciseName_context: {
+        userId_exerciseId_context: {
           userId,
-          exerciseName: baseline.exerciseName,
-          context: baseline.context ?? "default",
+          exerciseId,
+          context,
         },
       },
       update: {
         ...baseline,
-        context: baseline.context ?? "default",
+        exerciseId,
+        context,
         userId,
       },
       create: {
         ...baseline,
-        context: baseline.context ?? "default",
+        exerciseId,
+        context,
         userId,
       },
     });
+    seeded++;
   }
+  console.log(`  ${seeded} baselines seeded, ${skipped} skipped (no matching exercise).`);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

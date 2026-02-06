@@ -1,12 +1,4 @@
-import type { PrimaryGoal, ProgressionRule } from "./types";
-
-export const VOLUME_TARGETS_BY_GOAL: Record<PrimaryGoal, { min: number; max: number }> = {
-  hypertrophy: { min: 12, max: 20 },
-  strength: { min: 8, max: 14 },
-  fat_loss: { min: 8, max: 12 },
-  athleticism: { min: 8, max: 14 },
-  general_health: { min: 6, max: 10 },
-};
+import type { PrimaryGoal } from "./types";
 
 export const REP_RANGES_BY_GOAL: Record<
   PrimaryGoal,
@@ -44,6 +36,10 @@ const DEFAULT_BACKOFF_MULTIPLIER_BY_GOAL: Record<PrimaryGoal, number> = {
   general_health: 0.85,
 };
 
+export function getBackOffMultiplier(primaryGoal: PrimaryGoal): number {
+  return DEFAULT_BACKOFF_MULTIPLIER_BY_GOAL[primaryGoal] ?? 0.85;
+}
+
 export function getPeriodizationModifiers(
   weekInBlock: number,
   goal: PrimaryGoal
@@ -52,7 +48,7 @@ export function getPeriodizationModifiers(
   const standardBackOff = DEFAULT_BACKOFF_MULTIPLIER_BY_GOAL[goal] ?? 0.85;
 
   switch (weekIndex) {
-    case 0:
+    case 0: // Introduction week (lighter RPE, not a deload)
       return {
         rpeOffset: -1.0,
         setMultiplier: 1.0,
@@ -92,13 +88,3 @@ export const DELOAD_THRESHOLDS = {
 export const PLATEAU_CRITERIA = {
   noProgressSessions: 3,
 };
-
-export const PROGRESSION_RULES: ProgressionRule[] = (Object.keys(
-  REP_RANGES_BY_GOAL
-) as PrimaryGoal[]).map((goal) => ({
-  name: `${goal} default`,
-  primaryGoal: goal,
-  repRange: REP_RANGES_BY_GOAL[goal],
-  targetRpe: TARGET_RPE_BY_GOAL[goal],
-  maxLoadIncreasePct: 0.07,
-}));

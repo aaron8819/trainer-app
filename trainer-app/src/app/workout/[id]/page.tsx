@@ -2,6 +2,7 @@
 import { prisma } from "@/lib/db/prisma";
 import { SPLIT_PATTERNS } from "@/lib/engine";
 import { PrimaryGoal, SplitDay, SplitType, TrainingAge, WorkoutSelectionMode } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -118,7 +119,16 @@ function buildBaselineSummary({
   baselines,
   context,
 }: {
-  workout: NonNullable<Awaited<ReturnType<typeof prisma.workout.findUnique>>>;
+  workout: Prisma.WorkoutGetPayload<{
+    include: {
+      exercises: {
+        include: {
+          exercise: true;
+          sets: { include: { logs: true } };
+        };
+      };
+    };
+  }>;
   baselines: { exerciseName: string; context: string; topSetWeight: number | null }[];
   context: string;
 }): BaselineSummary {

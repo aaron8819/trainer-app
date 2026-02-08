@@ -114,13 +114,17 @@ Relations:
 
 ### WorkoutTemplate
 - `id`, `userId`, `name`, `targetMuscles`, `isStrict`, `createdAt`, `updatedAt`
-- Relations: `exercises` (WorkoutTemplateExercise[])
-- Purpose: user-defined workout templates (Phase 3 shell).
+- Relations: `exercises` (WorkoutTemplateExercise[]), `workouts` (Workout[])
+- Purpose: user-defined workout templates for template mode sessions.
+- API: CRUD via `/api/templates` (list, create) and `/api/templates/[id]` (detail, update, delete).
+- API layer: `src/lib/api/templates.ts` — `loadTemplates`, `loadTemplateDetail`, `createTemplate`, `updateTemplate`, `deleteTemplate`.
+- On delete: associated `Workout.templateId` is set to null (preserves workout history).
 
 ### WorkoutTemplateExercise
 - `id`, `templateId`, `exerciseId`, `orderIndex`
 - Unique constraint: `(templateId, orderIndex)`
 - Purpose: ordered exercise list within a template.
+- On template update: exercises are fully replaced (delete all + insert new) in a transaction.
 
 ### WorkoutExercise
 - `workoutId`, `exerciseId`, `orderIndex`, `isMainLift`

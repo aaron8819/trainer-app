@@ -119,6 +119,27 @@ export const upsertBaselineSchema = z.object({
   notes: z.string().max(500).optional(),
 });
 
+const templateExerciseSchema = z.object({
+  exerciseId: z.string(),
+  orderIndex: z.number().int().min(0),
+});
+
+export const createTemplateSchema = z.object({
+  userId: z.string().optional(),
+  name: z.string().min(1).max(100),
+  targetMuscles: z.array(z.string()).default([]),
+  isStrict: z.boolean().default(false),
+  exercises: z.array(templateExerciseSchema).default([]),
+});
+
+export const updateTemplateSchema = z.object({
+  userId: z.string().optional(),
+  name: z.string().min(1).max(100).optional(),
+  targetMuscles: z.array(z.string()).optional(),
+  isStrict: z.boolean().optional(),
+  exercises: z.array(templateExerciseSchema).optional(),
+});
+
 export const preferencesSchema = z.object({
   userId: z.string().optional(),
   favoriteExercises: z.array(z.string()).optional(),

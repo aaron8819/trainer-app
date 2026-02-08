@@ -124,8 +124,42 @@ Prisma with PostgreSQL via Supabase. Env vars in `.env` (see `.env.example`). Pa
 
 Profile stores height in inches (`heightIn`) and weight in pounds (`weightLb`). The engine receives these converted to metric (`heightCm`, `weightKg`) via `mapProfile()`.
 
-To apply migrations manually:
+### Migration Rules
+
+**CRITICAL: Migrations must be applied before running the app.** A stale database causes cryptic runtime errors like "The column `(not available)` does not exist in the current database."
+
+**When to check for pending migrations:**
+- After pulling new code or switching branches
+- After any schema change (`schema.prisma` modified)
+- When you see Prisma runtime errors about missing columns/tables
+- Before running `npm run dev` or `npm run build` after schema work
+
+**Standard workflow when schema changes:**
+```bash
+# 1. Update schema.prisma
+# 2. Create migration (dev only — generates SQL + applies it)
+npx prisma migrate dev --name descriptive_name
+# 3. Regenerate client
+npm run prisma:generate
+# 4. Commit both schema and migration files
+```
+
+**Apply existing migrations (after pulling code with new migrations):**
+```bash
+# Preferred — applies all pending migrations:
+npx prisma migrate deploy
+
+# Check status first if unsure:
+npx prisma migrate status
+```
+
+**Manual apply (if `migrate deploy` fails):**
 ```bash
 npx prisma db execute --file prisma/migrations/<migration_dir>/migration.sql
 npx prisma migrate resolve --applied <migration_dir>
+```
+
+**After applying any migration, always regenerate the client:**
+```bash
+npm run prisma:generate
 ```

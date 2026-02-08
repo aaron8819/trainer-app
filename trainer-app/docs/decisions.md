@@ -4,6 +4,14 @@ Record of significant design decisions and their rationale. Newest first.
 
 ---
 
+## ADR-015: Template CRUD — delete nullifies workout FK, exercises use full replacement (2026-02-08)
+
+**Decision**: When a template is deleted, associated `Workout.templateId` values are set to null (preserving workout history). When updating a template's exercises, the API uses full replacement (delete all existing + insert new) rather than diffing.
+
+**Rationale**: Deleting a template shouldn't cascade-delete completed workouts — those are historical training data. Nullifying the FK is handled in a transaction in the API layer rather than via Prisma `onDelete: SetNull` to avoid a schema migration. Full replacement for exercises is simpler than diffing (which requires matching by exerciseId + orderIndex) and the exercise list is always small (< 20 items), so the cost is negligible.
+
+---
+
 ## ADR-014: History-based PPL split queue (2026-02-08)
 
 **Decision**: PPL split selection now uses `getHistoryBasedSplitDay()` which classifies the last 3 completed sessions by dominant muscle split (via `MUSCLE_SPLIT_MAP`) and picks the least-recently-trained split. Falls back to movement-pattern classification when muscle data is unavailable.

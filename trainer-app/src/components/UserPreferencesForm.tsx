@@ -2,11 +2,14 @@
 
 import { useState } from "react";
 import { useForm } from "react-hook-form";
+import { ExercisePicker } from "./library/ExercisePicker";
+import { ExercisePickerTrigger } from "./library/ExercisePickerTrigger";
+import type { ExerciseListItem } from "@/lib/exercise-library/types";
 
 type PreferenceFormValues = {
   userId?: string;
-  favoriteExercisesText: string;
-  avoidExercisesText: string;
+  favoriteExercises: string[];
+  avoidExercises: string[];
   rpe5to8: number;
   rpe8to12: number;
   rpe12to20: number;
@@ -18,8 +21,8 @@ type PreferenceFormValues = {
 };
 
 const defaults: PreferenceFormValues = {
-  favoriteExercisesText: "",
-  avoidExercisesText: "",
+  favoriteExercises: [],
+  avoidExercises: [],
   rpe5to8: 8.5,
   rpe8to12: 7.75,
   rpe12to20: 7.5,
@@ -30,23 +33,24 @@ const defaults: PreferenceFormValues = {
   deadliftFrequency: 1,
 };
 
-const toList = (value: string) =>
-  value
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-
 export default function UserPreferencesForm({
   initialValues,
+  exercises,
 }: {
   initialValues?: Partial<PreferenceFormValues>;
+  exercises?: ExerciseListItem[];
 }) {
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [favPickerOpen, setFavPickerOpen] = useState(false);
+  const [avoidPickerOpen, setAvoidPickerOpen] = useState(false);
 
   const form = useForm<PreferenceFormValues>({
     defaultValues: { ...defaults, ...initialValues },
   });
+
+  const favorites = form.watch("favoriteExercises");
+  const avoids = form.watch("avoidExercises");
 
   const onSubmit = form.handleSubmit(async (values) => {
     setStatus(null);
@@ -57,8 +61,8 @@ export default function UserPreferencesForm({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         userId: values.userId,
-        favoriteExercises: toList(values.favoriteExercisesText),
-        avoidExercises: toList(values.avoidExercisesText),
+        favoriteExercises: values.favoriteExercises,
+        avoidExercises: values.avoidExercises,
         rpeTargets: [
           { min: 5, max: 8, targetRpe: values.rpe5to8 },
           { min: 8, max: 12, targetRpe: values.rpe8to12 },
@@ -91,22 +95,38 @@ export default function UserPreferencesForm({
           These influence exercise selection and target RPEs.
         </p>
         <div className="mt-4 grid gap-4">
-          <label className="text-sm">
-            Favorite exercises (comma separated)
-            <input
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
-              placeholder="Barbell Bench Press, Barbell Back Squat, Barbell Deadlift"
-              {...form.register("favoriteExercisesText")}
-            />
-          </label>
-          <label className="text-sm">
-            Avoid exercises (comma separated)
-            <input
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
-              placeholder="Incline Dumbbell Curl"
-              {...form.register("avoidExercisesText")}
-            />
-          </label>
+          <div>
+            <label className="text-sm font-medium">Favorite exercises</label>
+            <div className="mt-1">
+              <ExercisePickerTrigger
+                selectedNames={favorites}
+                onRemove={(name) =>
+                  form.setValue(
+                    "favoriteExercises",
+                    favorites.filter((n) => n !== name)
+                  )
+                }
+                onAdd={() => setFavPickerOpen(true)}
+                label="Add exercises"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="text-sm font-medium">Avoid exercises</label>
+            <div className="mt-1">
+              <ExercisePickerTrigger
+                selectedNames={avoids}
+                onRemove={(name) =>
+                  form.setValue(
+                    "avoidExercises",
+                    avoids.filter((n) => n !== name)
+                  )
+                }
+                onAdd={() => setAvoidPickerOpen(true)}
+                label="Add exercises"
+              />
+            </div>
+          </div>
           <label className="text-sm">
             Progression style
             <select
@@ -198,6 +218,23 @@ export default function UserPreferencesForm({
         {status ? <span className="text-sm text-emerald-600">{status}</span> : null}
         {error ? <span className="text-sm text-rose-600">{error}</span> : null}
       </div>
+
+      <ExercisePicker
+        isOpen={favPickerOpen}
+        onClose={() => setFavPickerOpen(false)}
+        selectedNames={favorites}
+        onSelectionChange={(names) => form.setValue("favoriteExercises", names)}
+        mode="multi"
+        exercises={exercises}
+      />
+      <ExercisePicker
+        isOpen={avoidPickerOpen}
+        onClose={() => setAvoidPickerOpen(false)}
+        selectedNames={avoids}
+        onSelectionChange={(names) => form.setValue("avoidExercises", names)}
+        mode="multi"
+        exercises={exercises}
+      />
     </form>
   );
 }

@@ -98,6 +98,27 @@ export const deleteWorkoutSchema = z.object({
   workoutId: z.string(),
 });
 
+export const toggleFavoriteSchema = z.object({
+  userId: z.string().optional(),
+});
+
+export const toggleAvoidSchema = z.object({
+  userId: z.string().optional(),
+});
+
+export const upsertBaselineSchema = z.object({
+  userId: z.string().optional(),
+  exerciseId: z.string(),
+  context: z.string().default("default"),
+  workingWeightMin: z.number().optional(),
+  workingWeightMax: z.number().optional(),
+  workingRepsMin: z.number().int().optional(),
+  workingRepsMax: z.number().int().optional(),
+  topSetWeight: z.number().optional(),
+  topSetReps: z.number().int().optional(),
+  notes: z.string().max(500).optional(),
+});
+
 export const preferencesSchema = z.object({
   userId: z.string().optional(),
   favoriteExercises: z.array(z.string()).optional(),

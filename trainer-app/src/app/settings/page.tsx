@@ -1,6 +1,7 @@
 import ProfileForm from "../onboarding/ProfileForm";
 import { prisma } from "@/lib/db/prisma";
 import UserPreferencesForm from "@/components/UserPreferencesForm";
+import { loadExerciseLibrary } from "@/lib/api/exercise-library";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -14,15 +15,16 @@ export default async function SettingsPage() {
       },
     },
   });
-  const [profile, goals, constraints, injury, preferences] = user
+  const [profile, goals, constraints, injury, preferences, exercises] = user
     ? await Promise.all([
         prisma.profile.findUnique({ where: { userId: user.id } }),
         prisma.goals.findUnique({ where: { userId: user.id } }),
         prisma.constraints.findUnique({ where: { userId: user.id } }),
         prisma.injury.findFirst({ where: { userId: user.id, isActive: true } }),
         prisma.userPreference.findUnique({ where: { userId: user.id } }),
+        loadExerciseLibrary(user.id),
       ])
-    : [null, null, null, null, null];
+    : [null, null, null, null, null, []];
 
   type RpeTarget = { min: number; max: number; targetRpe?: number };
   const rpeTargets = Array.isArray(preferences?.rpeTargets) ? preferences.rpeTargets : [];
@@ -64,8 +66,8 @@ export default async function SettingsPage() {
   const preferenceValues = user
     ? {
         userId: user.id,
-        favoriteExercisesText: (preferences?.favoriteExercises ?? []).join(", "),
-        avoidExercisesText: (preferences?.avoidExercises ?? []).join(", "),
+        favoriteExercises: preferences?.favoriteExercises ?? [],
+        avoidExercises: preferences?.avoidExercises ?? [],
         rpe5to8:
           getRpeTarget(5, 8.5),
         rpe8to12:
@@ -87,7 +89,7 @@ export default async function SettingsPage() {
         <p className="mt-2 text-slate-600">Manage goals, split, equipment, and preferences.</p>
 
         <ProfileForm initialValues={initialValues} />
-        <UserPreferencesForm initialValues={preferenceValues} />
+        <UserPreferencesForm initialValues={preferenceValues} exercises={exercises} />
       </div>
     </main>
   );

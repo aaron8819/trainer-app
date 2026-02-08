@@ -147,18 +147,31 @@ function resolveTargetRpe(
   return targetRpe;
 }
 
-export function getRestSeconds(exercise: Exercise, isMainLift: boolean) {
+export function getRestSeconds(
+  exercise: Exercise,
+  isMainLift: boolean,
+  targetReps?: number
+) {
   const fatigueCost = exercise.fatigueCost ?? 3;
   const isCompound = exercise.isCompound ?? exercise.isMainLift;
+  const reps = targetReps ?? (isMainLift ? 5 : 10);
 
+  // Heavy compounds (1-5 reps)
+  if (isMainLift && reps <= 5) {
+    return fatigueCost >= 4 ? 300 : 240;
+  }
+
+  // Main lifts moderate rep range (6-12)
   if (isMainLift) {
-    return fatigueCost >= 4 ? 180 : REST_SECONDS.main;
+    return fatigueCost >= 4 ? 180 : 150;
   }
+
+  // Compound accessories
   if (isCompound) {
-    return 120;
+    return reps <= 8 ? 150 : 120;
   }
-  if (fatigueCost >= 3) {
-    return 90;
-  }
+
+  // Isolation exercises
+  if (fatigueCost >= 3) return 90;
   return 60;
 }

@@ -112,6 +112,8 @@ export type Exercise = {
   stimulusBias?: StimulusBias[];
   contraindications?: Record<string, unknown>;
   timePerSetSec?: number;
+  sfrScore?: number;
+  lengthPositionScore?: number;
   equipment: EquipmentType[];
   muscles?: string[];
   primaryMuscles?: string[];
@@ -163,6 +165,7 @@ export type WorkoutHistoryEntry = {
   exercises: {
     exerciseId: string;
     movementPattern: MovementPattern;
+    primaryMuscles?: string[];
     sets: SetLog[];
   }[];
   readinessScore?: 1 | 2 | 3 | 4 | 5;

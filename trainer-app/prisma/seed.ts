@@ -179,38 +179,107 @@ const exercises: SeedExercise[] = [
   { name: "Dead Bug", movementPattern: MovementPattern.ROTATE, jointStress: JointStress.LOW, isMainLift: false, equipment: ["Bodyweight"] },
 ];
 
-const stimulusBiasByName: Record<string, StimulusBias[]> = {
-  "Barbell Bench Press": [StimulusBias.MECHANICAL],
-  "Barbell Back Squat": [StimulusBias.MECHANICAL],
-  "Conventional Deadlift": [StimulusBias.MECHANICAL],
-  "Trap Bar Deadlift": [StimulusBias.MECHANICAL],
-  "Overhead Press": [StimulusBias.MECHANICAL],
-  "Barbell Row": [StimulusBias.MECHANICAL],
-  "Pull-Up": [StimulusBias.MECHANICAL],
-  "Machine Chest Press": [StimulusBias.MECHANICAL],
-  "Front Squat": [StimulusBias.MECHANICAL],
+// ═══════════════════════════════════════════════════════════════════════════
+// Unified exercise field tuning — all 66 exercises
+// fatigueCost (1-5), timePerSetSec, sfrScore (1-5), lengthPositionScore (1-5),
+// stimulusBias, contraindications
+// ═══════════════════════════════════════════════════════════════════════════
 
-  "Cable Fly": [StimulusBias.STRETCH],
-  "Incline Dumbbell Curl": [StimulusBias.STRETCH],
-  "Pec Deck": [StimulusBias.STRETCH],
-  "Overhead Triceps Extension": [StimulusBias.STRETCH],
-  "Romanian Deadlift": [StimulusBias.STRETCH],
-  "Dumbbell Incline Press": [StimulusBias.MECHANICAL, StimulusBias.STRETCH],
-  "Low-Incline Dumbbell Press": [StimulusBias.MECHANICAL, StimulusBias.STRETCH],
+type ExerciseTuning = {
+  fatigueCost: number;
+  timePerSetSec: number;
+  sfrScore: number;
+  lengthPositionScore: number;
+  stimulusBias: StimulusBias[];
+  contraindications?: Record<string, boolean>;
+};
 
-  "Lateral Raise": [StimulusBias.METABOLIC],
-  "Dumbbell Lateral Raises": [StimulusBias.METABOLIC],
-  "Cable Lateral Raise": [StimulusBias.METABOLIC],
-  "Face Pull": [StimulusBias.METABOLIC],
-  "Leg Extension": [StimulusBias.METABOLIC],
-  "Leg Curl": [StimulusBias.METABOLIC],
-  "Cable Crunch": [StimulusBias.METABOLIC],
-  "Triceps Pushdown": [StimulusBias.METABOLIC],
+const EXERCISE_FIELD_TUNING: Record<string, ExerciseTuning> = {
+  // ── Squat Pattern ──────────────────────────────────────────────────────
+  "Barbell Back Squat":      { fatigueCost: 5, timePerSetSec: 210, sfrScore: 1, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL], contraindications: { knee: true, low_back: true } },
+  "Front Squat":             { fatigueCost: 4, timePerSetSec: 180, sfrScore: 2, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL], contraindications: { knee: true } },
+  "Hack Squat":              { fatigueCost: 3, timePerSetSec: 150, sfrScore: 4, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL] },
+  "Reverse Hack Squat":      { fatigueCost: 3, timePerSetSec: 150, sfrScore: 4, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL] },
+  "Leg Press":               { fatigueCost: 3, timePerSetSec: 120, sfrScore: 4, lengthPositionScore: 2, stimulusBias: [StimulusBias.MECHANICAL], contraindications: { knee: true } },
+  "Belt Squat":              { fatigueCost: 3, timePerSetSec: 150, sfrScore: 3, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL] },
+  "Leg Extension":           { fatigueCost: 2, timePerSetSec: 90, sfrScore: 5, lengthPositionScore: 2, stimulusBias: [StimulusBias.METABOLIC] },
 
-  "Plank": [StimulusBias.STABILITY],
-  "Pallof Press": [StimulusBias.STABILITY],
-  "Dead Bug": [StimulusBias.STABILITY],
-  "Farmer's Carry": [StimulusBias.STABILITY],
+  // ── Hinge Pattern ──────────────────────────────────────────────────────
+  "Romanian Deadlift":       { fatigueCost: 3, timePerSetSec: 150, sfrScore: 2, lengthPositionScore: 4, stimulusBias: [StimulusBias.STRETCH], contraindications: { low_back: true } },
+  "Conventional Deadlift":   { fatigueCost: 5, timePerSetSec: 210, sfrScore: 1, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL], contraindications: { low_back: true } },
+  "Trap Bar Deadlift":       { fatigueCost: 5, timePerSetSec: 210, sfrScore: 1, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL], contraindications: { low_back: true } },
+  "Hip Thrust":              { fatigueCost: 3, timePerSetSec: 120, sfrScore: 3, lengthPositionScore: 2, stimulusBias: [StimulusBias.MECHANICAL] },
+  "Leg Curl":                { fatigueCost: 2, timePerSetSec: 90, sfrScore: 5, lengthPositionScore: 3, stimulusBias: [StimulusBias.METABOLIC] },
+  "Hip Abduction Machine":   { fatigueCost: 1, timePerSetSec: 75, sfrScore: 5, lengthPositionScore: 3, stimulusBias: [StimulusBias.METABOLIC] },
+  "Glute Bridge":            { fatigueCost: 1, timePerSetSec: 60, sfrScore: 4, lengthPositionScore: 1, stimulusBias: [StimulusBias.STABILITY] },
+
+  // ── Lunge Pattern ──────────────────────────────────────────────────────
+  "Walking Lunge":           { fatigueCost: 3, timePerSetSec: 120, sfrScore: 3, lengthPositionScore: 4, stimulusBias: [StimulusBias.MECHANICAL], contraindications: { knee: true } },
+  "Split Squat":             { fatigueCost: 2, timePerSetSec: 120, sfrScore: 3, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL] },
+  "Bulgarian Split Squat":   { fatigueCost: 3, timePerSetSec: 120, sfrScore: 3, lengthPositionScore: 4, stimulusBias: [StimulusBias.STRETCH], contraindications: { knee: true } },
+
+  // ── Calves ─────────────────────────────────────────────────────────────
+  "Standing Calf Raise":     { fatigueCost: 2, timePerSetSec: 75, sfrScore: 4, lengthPositionScore: 5, stimulusBias: [StimulusBias.METABOLIC] },
+  "Seated Calf Raise":       { fatigueCost: 2, timePerSetSec: 75, sfrScore: 4, lengthPositionScore: 4, stimulusBias: [StimulusBias.METABOLIC] },
+
+  // ── Push — Pressing ────────────────────────────────────────────────────
+  "Barbell Bench Press":     { fatigueCost: 4, timePerSetSec: 180, sfrScore: 2, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL] },
+  "Incline Barbell Bench":   { fatigueCost: 4, timePerSetSec: 180, sfrScore: 2, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL] },
+  "Smith Machine Incline Press": { fatigueCost: 3, timePerSetSec: 150, sfrScore: 3, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL] },
+  "Dumbbell Bench Press":    { fatigueCost: 3, timePerSetSec: 150, sfrScore: 3, lengthPositionScore: 4, stimulusBias: [StimulusBias.MECHANICAL, StimulusBias.STRETCH] },
+  "Dumbbell Incline Press":  { fatigueCost: 3, timePerSetSec: 120, sfrScore: 3, lengthPositionScore: 4, stimulusBias: [StimulusBias.MECHANICAL, StimulusBias.STRETCH] },
+  "Low-Incline Dumbbell Press": { fatigueCost: 3, timePerSetSec: 120, sfrScore: 3, lengthPositionScore: 4, stimulusBias: [StimulusBias.MECHANICAL, StimulusBias.STRETCH] },
+  "Push-Up":                 { fatigueCost: 1, timePerSetSec: 75, sfrScore: 3, lengthPositionScore: 3, stimulusBias: [StimulusBias.METABOLIC] },
+  "Overhead Press":          { fatigueCost: 4, timePerSetSec: 180, sfrScore: 2, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL], contraindications: { shoulder: true } },
+  "Dumbbell Shoulder Press": { fatigueCost: 3, timePerSetSec: 120, sfrScore: 3, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL], contraindications: { shoulder: true } },
+  "Machine Chest Press":     { fatigueCost: 3, timePerSetSec: 120, sfrScore: 4, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL] },
+  "Machine Shoulder Press":  { fatigueCost: 3, timePerSetSec: 120, sfrScore: 4, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL], contraindications: { shoulder: true } },
+
+  // ── Push — Accessories ─────────────────────────────────────────────────
+  "Triceps Pushdown":        { fatigueCost: 2, timePerSetSec: 75, sfrScore: 4, lengthPositionScore: 1, stimulusBias: [StimulusBias.METABOLIC] },
+  "JM Press":                { fatigueCost: 3, timePerSetSec: 90, sfrScore: 3, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL] },
+  "Skull Crusher":           { fatigueCost: 3, timePerSetSec: 90, sfrScore: 3, lengthPositionScore: 4, stimulusBias: [StimulusBias.STRETCH], contraindications: { elbow: true } },
+  "Dips":                    { fatigueCost: 3, timePerSetSec: 120, sfrScore: 3, lengthPositionScore: 4, stimulusBias: [StimulusBias.MECHANICAL], contraindications: { shoulder: true } },
+  "Overhead Triceps Extension": { fatigueCost: 2, timePerSetSec: 75, sfrScore: 4, lengthPositionScore: 5, stimulusBias: [StimulusBias.STRETCH], contraindications: { shoulder: true, elbow: true } },
+  "Cable Fly":               { fatigueCost: 2, timePerSetSec: 75, sfrScore: 4, lengthPositionScore: 5, stimulusBias: [StimulusBias.STRETCH] },
+  "Pec Deck":                { fatigueCost: 2, timePerSetSec: 75, sfrScore: 5, lengthPositionScore: 4, stimulusBias: [StimulusBias.STRETCH] },
+  "Lateral Raise":           { fatigueCost: 2, timePerSetSec: 75, sfrScore: 4, lengthPositionScore: 3, stimulusBias: [StimulusBias.METABOLIC] },
+  "Dumbbell Lateral Raises": { fatigueCost: 2, timePerSetSec: 75, sfrScore: 4, lengthPositionScore: 3, stimulusBias: [StimulusBias.METABOLIC] },
+  "Cable Lateral Raise":     { fatigueCost: 2, timePerSetSec: 75, sfrScore: 5, lengthPositionScore: 3, stimulusBias: [StimulusBias.METABOLIC] },
+
+  // ── Pull — Rows / Pulls ────────────────────────────────────────────────
+  "Pull-Up":                 { fatigueCost: 3, timePerSetSec: 120, sfrScore: 2, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL] },
+  "Lat Pulldown":            { fatigueCost: 3, timePerSetSec: 90, sfrScore: 4, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL] },
+  "Barbell Row":             { fatigueCost: 4, timePerSetSec: 150, sfrScore: 2, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL], contraindications: { low_back: true } },
+  "Seated Cable Row":        { fatigueCost: 2, timePerSetSec: 90, sfrScore: 4, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL] },
+  "Chest-Supported Row":     { fatigueCost: 2, timePerSetSec: 90, sfrScore: 4, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL] },
+  "Chest-Supported T-Bar Row": { fatigueCost: 3, timePerSetSec: 120, sfrScore: 3, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL] },
+  "Single-Arm Dumbbell Row": { fatigueCost: 2, timePerSetSec: 90, sfrScore: 3, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL] },
+  "T-Bar Row":               { fatigueCost: 3, timePerSetSec: 150, sfrScore: 3, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL], contraindications: { low_back: true } },
+  "Face Pull":               { fatigueCost: 2, timePerSetSec: 75, sfrScore: 4, lengthPositionScore: 3, stimulusBias: [StimulusBias.METABOLIC] },
+  "Machine Rear Delt Fly":   { fatigueCost: 2, timePerSetSec: 75, sfrScore: 5, lengthPositionScore: 3, stimulusBias: [StimulusBias.METABOLIC] },
+  "Reverse Fly":             { fatigueCost: 2, timePerSetSec: 75, sfrScore: 4, lengthPositionScore: 3, stimulusBias: [StimulusBias.METABOLIC] },
+
+  // ── Pull — Arm Accessories ─────────────────────────────────────────────
+  "Dumbbell Curl":           { fatigueCost: 2, timePerSetSec: 75, sfrScore: 4, lengthPositionScore: 3, stimulusBias: [StimulusBias.METABOLIC] },
+  "Barbell Curl":            { fatigueCost: 2, timePerSetSec: 90, sfrScore: 3, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL], contraindications: { elbow: true } },
+  "Hammer Curl":             { fatigueCost: 2, timePerSetSec: 75, sfrScore: 4, lengthPositionScore: 3, stimulusBias: [StimulusBias.METABOLIC] },
+  "Incline Dumbbell Curl":   { fatigueCost: 2, timePerSetSec: 75, sfrScore: 4, lengthPositionScore: 5, stimulusBias: [StimulusBias.STRETCH] },
+  "Bayesian Curl":           { fatigueCost: 2, timePerSetSec: 75, sfrScore: 5, lengthPositionScore: 5, stimulusBias: [StimulusBias.STRETCH] },
+  "Cable Preacher Curl":     { fatigueCost: 2, timePerSetSec: 75, sfrScore: 5, lengthPositionScore: 3, stimulusBias: [StimulusBias.METABOLIC] },
+
+  // ── Core ───────────────────────────────────────────────────────────────
+  "Plank":                   { fatigueCost: 1, timePerSetSec: 60, sfrScore: 3, lengthPositionScore: 1, stimulusBias: [StimulusBias.STABILITY] },
+  "Hanging Leg Raise":       { fatigueCost: 2, timePerSetSec: 75, sfrScore: 3, lengthPositionScore: 3, stimulusBias: [StimulusBias.METABOLIC] },
+  "Cable Crunch":            { fatigueCost: 1, timePerSetSec: 60, sfrScore: 4, lengthPositionScore: 3, stimulusBias: [StimulusBias.METABOLIC] },
+  "Pallof Press":            { fatigueCost: 1, timePerSetSec: 60, sfrScore: 4, lengthPositionScore: 3, stimulusBias: [StimulusBias.STABILITY] },
+  "Dead Bug":                { fatigueCost: 1, timePerSetSec: 60, sfrScore: 3, lengthPositionScore: 3, stimulusBias: [StimulusBias.STABILITY] },
+
+  // ── Conditioning / Carries ─────────────────────────────────────────────
+  "Farmer's Carry":          { fatigueCost: 2, timePerSetSec: 75, sfrScore: 3, lengthPositionScore: 1, stimulusBias: [StimulusBias.STABILITY] },
+  "Sled Push":               { fatigueCost: 3, timePerSetSec: 90, sfrScore: 3, lengthPositionScore: 2, stimulusBias: [StimulusBias.METABOLIC] },
+  "Sled Pull":               { fatigueCost: 3, timePerSetSec: 90, sfrScore: 3, lengthPositionScore: 2, stimulusBias: [StimulusBias.METABOLIC] },
+  "Sled Drag":               { fatigueCost: 3, timePerSetSec: 90, sfrScore: 3, lengthPositionScore: 2, stimulusBias: [StimulusBias.METABOLIC] },
 };
 
 const compoundAccessoryNames = new Set<string>([
@@ -244,23 +313,25 @@ const mainLiftEligibleOverrides = new Set<string>([
   "Lat Pulldown (wide, neutral, single-arm)",
 ]);
 
-const fatigueCostOverrides: Record<string, number> = {
-  "Dumbbell Shoulder Press": 3,
-  "Machine Shoulder Press": 3,
-  "Lat Pulldown": 3,
-  "Lat Pulldown (wide, neutral, single-arm)": 3,
-};
-
-const contraindicationsByName: Record<string, Record<string, boolean>> = {
-  "Skull Crusher": { elbow: true },
-  "Barbell Curl": { elbow: true },
-  "Dips": { shoulder: true },
-  "Overhead Press": { shoulder: true },
-  "Dumbbell Shoulder Press": { shoulder: true },
-  "Machine Shoulder Press": { shoulder: true },
-  "Overhead Triceps Extension": { shoulder: true },
-  "Barbell Row": { low_back: true },
-  "T-Bar Row": { low_back: true },
+// Muscle volume landmarks (populated into DB for future user customization)
+const MUSCLE_LANDMARKS: Record<string, { mv: number; mev: number; mav: number; mrv: number; sraHours: number }> = {
+  "Chest":       { mv: 6,  mev: 10, mav: 16, mrv: 22, sraHours: 60 },
+  "Back":        { mv: 6,  mev: 10, mav: 18, mrv: 25, sraHours: 60 },
+  "Upper Back":  { mv: 6,  mev: 10, mav: 18, mrv: 25, sraHours: 48 },
+  "Front Delts": { mv: 0,  mev: 0,  mav: 7,  mrv: 12, sraHours: 48 },
+  "Side Delts":  { mv: 6,  mev: 8,  mav: 19, mrv: 26, sraHours: 36 },
+  "Rear Delts":  { mv: 6,  mev: 8,  mav: 19, mrv: 26, sraHours: 36 },
+  "Quads":       { mv: 6,  mev: 8,  mav: 15, mrv: 20, sraHours: 72 },
+  "Hamstrings":  { mv: 6,  mev: 6,  mav: 13, mrv: 20, sraHours: 72 },
+  "Glutes":      { mv: 0,  mev: 0,  mav: 8,  mrv: 16, sraHours: 72 },
+  "Biceps":      { mv: 6,  mev: 8,  mav: 17, mrv: 26, sraHours: 36 },
+  "Triceps":     { mv: 4,  mev: 6,  mav: 12, mrv: 18, sraHours: 36 },
+  "Calves":      { mv: 6,  mev: 8,  mav: 14, mrv: 20, sraHours: 36 },
+  "Core":        { mv: 0,  mev: 0,  mav: 12, mrv: 20, sraHours: 36 },
+  "Lower Back":  { mv: 0,  mev: 0,  mav: 4,  mrv: 10, sraHours: 72 },
+  "Forearms":    { mv: 0,  mev: 0,  mav: 6,  mrv: 12, sraHours: 36 },
+  "Adductors":   { mv: 0,  mev: 0,  mav: 8,  mrv: 14, sraHours: 48 },
+  "Hip Flexors": { mv: 0,  mev: 0,  mav: 4,  mrv: 8,  sraHours: 36 },
 };
 const exerciseAliases: ExerciseAliasSeed[] = [
   { exerciseName: "Dumbbell Shoulder Press", alias: "DB Shoulder Press" },
@@ -1297,10 +1368,14 @@ async function seedEquipment() {
 async function seedMuscles() {
   console.log("Seeding muscles...");
   for (const name of muscleSeed) {
+    const landmarks = MUSCLE_LANDMARKS[name];
+    const data = landmarks
+      ? { mv: landmarks.mv, mev: landmarks.mev, mav: landmarks.mav, mrv: landmarks.mrv, sraHours: landmarks.sraHours }
+      : {};
     await prisma.muscle.upsert({
       where: { name },
-      update: {},
-      create: { name },
+      update: data,
+      create: { name, ...data },
     });
   }
 }
@@ -1314,42 +1389,35 @@ async function seedExercises() {
   for (const exercise of exercises) {
     const splitTag = resolveSplitTag(exercise.name, exercise.movementPattern);
     const movementPatternsV2 = resolveMovementPatternsV2(exercise.name, exercise.movementPattern);
-    const fatigueCost = fatigueCostOverrides[exercise.name] ?? (exercise.isMainLift ? 4 : exercise.jointStress === JointStress.HIGH ? 3 : 2);
-    const stimulusBias = stimulusBiasByName[exercise.name] ?? [];
+    const tuning = EXERCISE_FIELD_TUNING[exercise.name];
+    const fatigueCost = tuning?.fatigueCost ?? (exercise.isMainLift ? 4 : exercise.jointStress === JointStress.HIGH ? 3 : 2);
+    const stimulusBias = tuning?.stimulusBias ?? [];
     const isCompound = compoundAccessoryNames.has(exercise.name) || exercise.isMainLift;
     const isMainLiftEligible = mainLiftEligibleOverrides.has(exercise.name) || exercise.isMainLift;
     const isWarmupTag = splitTag === SplitTag.MOBILITY || splitTag === SplitTag.PREHAB || splitTag === SplitTag.CORE;
-    const timePerSetSec = exercise.isMainLift ? 210 : isWarmupTag ? 60 : 120;
-    const contraindications = contraindicationsByName[exercise.name];
+    const timePerSetSec = tuning?.timePerSetSec ?? (exercise.isMainLift ? 210 : isWarmupTag ? 60 : 120);
+    const sfrScore = tuning?.sfrScore ?? 3;
+    const lengthPositionScore = tuning?.lengthPositionScore ?? 3;
+    const contraindications = tuning?.contraindications;
+    const data = {
+      movementPattern: exercise.movementPattern,
+      movementPatternsV2,
+      splitTags: [splitTag],
+      jointStress: exercise.jointStress,
+      isMainLift: exercise.isMainLift,
+      isMainLiftEligible: isMainLiftEligible,
+      isCompound: isCompound,
+      fatigueCost,
+      stimulusBias,
+      contraindications,
+      timePerSetSec,
+      sfrScore,
+      lengthPositionScore,
+    };
     const created = await prisma.exercise.upsert({
       where: { name: exercise.name },
-      update: {
-        movementPattern: exercise.movementPattern,
-        movementPatternsV2,
-        splitTags: [splitTag],
-        jointStress: exercise.jointStress,
-        isMainLift: exercise.isMainLift,
-        isMainLiftEligible: isMainLiftEligible,
-        isCompound: isCompound,
-        fatigueCost,
-        stimulusBias,
-        contraindications,
-        timePerSetSec: timePerSetSec,
-      },
-      create: {
-        name: exercise.name,
-        movementPattern: exercise.movementPattern,
-        movementPatternsV2,
-        splitTags: [splitTag],
-        jointStress: exercise.jointStress,
-        isMainLift: exercise.isMainLift,
-        isMainLiftEligible: isMainLiftEligible,
-        isCompound: isCompound,
-        fatigueCost,
-        stimulusBias,
-        contraindications,
-        timePerSetSec: timePerSetSec,
-      },
+      update: data,
+      create: { name: exercise.name, ...data },
     });
 
     for (const equipmentName of exercise.equipment) {

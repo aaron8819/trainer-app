@@ -41,11 +41,13 @@ Canonical exercise definition used by the engine.
 
 Key fields:
 - `name` (unique)
-- `movementPattern` (legacy, coarse)
+- `movementPattern` (legacy, coarse — nullable, being deprecated)
 - `movementPatternsV2` (programming intelligence)
 - `splitTags` (strict split eligibility)
-- `isMainLift`, `isMainLiftEligible`, `isCompound`
+- `isMainLift` (nullable, being deprecated), `isMainLiftEligible`, `isCompound`
 - `fatigueCost`
+- `sfrScore` (stimulus-to-fatigue ratio, 1-5, default 3)
+- `lengthPositionScore` (lengthened-position loading, 1-5, default 3)
 - `stimulusBias`
 - `contraindications`
 - `timePerSetSec`
@@ -75,7 +77,12 @@ Relations:
 
 ### Muscle
 - `name`
-- Purpose: muscle definitions for volume accounting and analytics.
+- `mv` (Maintenance Volume, sets/week, default 0)
+- `mev` (Minimum Effective Volume, default 0)
+- `mav` (Maximum Adaptive Volume, default 0)
+- `mrv` (Maximum Recoverable Volume, default 0)
+- `sraHours` (SRA recovery window in hours, default 48)
+- Purpose: muscle definitions for volume accounting, per-muscle volume caps, and SRA tracking.
 
 ### Equipment
 - `name`, `type`
@@ -99,11 +106,21 @@ Relations:
 - Relations: `workouts`
 
 ### Workout
-- `userId`, `programBlockId?`
+- `userId`, `programBlockId?`, `templateId?`
 - `scheduledDate`, `completedAt`, `status`
 - `estimatedMinutes`, `notes`
 - `selectionMode`, `forcedSplit`, `advancesSplit`
-- Relations: `exercises`
+- Relations: `exercises`, `template?`
+
+### WorkoutTemplate
+- `id`, `userId`, `name`, `targetMuscles`, `isStrict`, `createdAt`, `updatedAt`
+- Relations: `exercises` (WorkoutTemplateExercise[])
+- Purpose: user-defined workout templates (Phase 3 shell).
+
+### WorkoutTemplateExercise
+- `id`, `templateId`, `exerciseId`, `orderIndex`
+- Unique constraint: `(templateId, orderIndex)`
+- Purpose: ordered exercise list within a template.
 
 ### WorkoutExercise
 - `workoutId`, `exerciseId`, `orderIndex`, `isMainLift`

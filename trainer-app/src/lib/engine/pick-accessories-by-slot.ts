@@ -77,6 +77,7 @@ export function pickAccessoriesBySlot(options: AccessorySlotOptions): Exercise[]
     const pick = pickForSlot(
       slot,
       remaining,
+      mainLifts,
       mainPatterns,
       coveredMuscles,
       favoriteSet,
@@ -138,6 +139,7 @@ function buildSlots(
 function pickForSlot(
   slot: SlotType,
   remaining: Exercise[],
+  mainLifts: Exercise[],
   mainPatterns: Set<MovementPatternV2>,
   coveredMuscles: Set<string>,
   favoriteSet: Set<string> | undefined,
@@ -158,6 +160,10 @@ function pickForSlot(
     return undefined;
   }
 
+  const mainSecondaryMuscles = new Set(
+    mainLifts.flatMap((e) => (e.secondaryMuscles ?? []).map((m) => m.toLowerCase()))
+  );
+
   const scored = candidates.map((exercise) => {
     const score = scoreSlot(slot, exercise, mainPatterns, coveredMuscles, favoriteSet);
     const recencyMultiplier = getRecencyMultiplier(exercise.id, recencyIndex);
@@ -168,8 +174,12 @@ function pickForSlot(
       previousVolume,
       accessorySetCount
     );
+    // Indirect volume penalty: if exercise's primary muscles overlap with main lifts' secondary
+    const primaryMuscles = getPrimaryMuscles(exercise).map((m) => m.toLowerCase());
+    const indirectOverlap = primaryMuscles.some((m) => mainSecondaryMuscles.has(m));
+    const indirectPenalty = indirectOverlap ? 0.7 : 1;
     const weight =
-      Math.max(0.1, score) * recencyMultiplier * noveltyMultiplier * volumeMultiplier;
+      Math.max(0.1, score) * recencyMultiplier * noveltyMultiplier * volumeMultiplier * indirectPenalty;
     return { exercise, score, weight };
   });
 
@@ -314,6 +324,12 @@ function scoreSlot(
   if (slot !== "pull_variant" && overlap) {
     score -= 1;
   }
+
+  // SFR bonus: higher SFR exercises are preferred for accessories
+  score += (exercise.sfrScore ?? 3) * 0.5;
+
+  // Lengthened-position bonus: exercises loading muscles at long lengths
+  score += (exercise.lengthPositionScore ?? 3) * 0.3;
 
   score += favoriteBonus + uncoveredBonus;
   return score;

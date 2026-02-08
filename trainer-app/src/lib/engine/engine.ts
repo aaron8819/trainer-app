@@ -17,11 +17,17 @@ import type {
   WorkoutPlan,
 } from "./types";
 import { createId } from "./utils";
-import { SPLIT_PATTERNS, getSplitDayIndex, resolveTargetPatterns } from "./split-queue";
+import {
+  SPLIT_PATTERNS,
+  getSplitDayIndex,
+  getHistoryBasedSplitDay,
+  resolveTargetPatterns,
+} from "./split-queue";
 import { selectExercises } from "./filtering";
 import { prescribeSetsReps, getRestSeconds, REST_SECONDS } from "./prescription";
 import { buildVolumeContext, deriveFatigueState, enforceVolumeCaps } from "./volume";
 import { estimateWorkoutMinutes, trimAccessoriesByPriority } from "./timeboxing";
+import { buildMuscleRecoveryMap, generateSraWarnings } from "./sra";
 
 export function generateWorkout(
   profile: UserProfile,
@@ -40,13 +46,21 @@ export function generateWorkout(
     periodization?: PeriodizationModifiers;
   }
 ): WorkoutPlan {
-  const patternOptions = SPLIT_PATTERNS[constraints.splitType] ?? SPLIT_PATTERNS.full_body;
-  const dayIndex = getSplitDayIndex(history, patternOptions.length);
-  const targetPatterns = resolveTargetPatterns(
-    constraints.splitType,
-    dayIndex,
-    options?.forcedSplit
-  );
+  let targetPatterns: ReturnType<typeof resolveTargetPatterns>;
+
+  if (constraints.splitType === "ppl" && !options?.forcedSplit) {
+    // History-based PPL split: pick least-recently-trained split
+    const splitDay = getHistoryBasedSplitDay(history, exerciseLibrary);
+    targetPatterns = resolveTargetPatterns(constraints.splitType, 0, splitDay);
+  } else {
+    const patternOptions = SPLIT_PATTERNS[constraints.splitType] ?? SPLIT_PATTERNS.full_body;
+    const dayIndex = getSplitDayIndex(history, patternOptions.length);
+    targetPatterns = resolveTargetPatterns(
+      constraints.splitType,
+      dayIndex,
+      options?.forcedSplit
+    );
+  }
 
   const fatigueState = deriveFatigueState(history, options?.checkIn);
   const periodization =
@@ -125,6 +139,23 @@ export function generateWorkout(
   allExercises = [...warmup, ...mainLifts, ...finalAccessories];
   estimatedMinutes = estimateWorkoutMinutes(allExercises);
 
+  // SRA warnings
+  const recoveryMap = buildMuscleRecoveryMap(history, exerciseLibrary);
+  const allTargetMuscles = [
+    ...mainLifts.flatMap((e) => e.exercise.primaryMuscles ?? []),
+    ...finalAccessories.flatMap((e) => e.exercise.primaryMuscles ?? []),
+  ];
+  const sraWarnings = generateSraWarnings(recoveryMap, [...new Set(allTargetMuscles)]);
+
+  const notesParts: string[] = [];
+  if (fatigueState.readinessScore <= 2) {
+    notesParts.push("Autoregulated for recovery");
+  }
+  if (sraWarnings.length > 0) {
+    const muscleList = sraWarnings.map((w) => `${w.muscle} (${w.recoveryPercent}%)`).join(", ");
+    notesParts.push(`Under-recovered: ${muscleList}`);
+  }
+
   return {
     id: createId(),
     scheduledDate: new Date().toISOString(),
@@ -132,7 +163,7 @@ export function generateWorkout(
     mainLifts,
     accessories: finalAccessories,
     estimatedMinutes,
-    notes: fatigueState.readinessScore <= 2 ? "Autoregulated for recovery" : undefined,
+    notes: notesParts.length > 0 ? notesParts.join(". ") : undefined,
   };
 }
 
@@ -147,15 +178,17 @@ function buildWorkoutExercise(
   preferences?: UserPreferences,
   periodization?: PeriodizationModifiers
 ): WorkoutExercise {
-  const restSeconds = getRestSeconds(exercise, isMainLift);
-  const sets = prescribeSetsReps(
+  const prescribedSets = prescribeSetsReps(
     isMainLift,
     profile.trainingAge,
     goals,
     fatigueState,
     preferences,
     periodization
-  ).map((set) => ({
+  );
+  const topSetReps = prescribedSets[0]?.targetReps;
+  const restSeconds = getRestSeconds(exercise, isMainLift, topSetReps);
+  const sets = prescribedSets.map((set) => ({
     ...set,
     targetRpe: progressionRule?.targetRpe ?? set.targetRpe,
     restSeconds,

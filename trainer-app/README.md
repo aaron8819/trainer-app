@@ -22,13 +22,13 @@ npm run dev
 
 Open `http://localhost:3000` to view the app.
 
-## Key Engine Docs
+## Documentation
 
-- `trainer-app/docs/engine_refactor_2.5.md` : consolidated behavior, schema, and refactor status
-- `trainer-app/docs/engine_refactor` : refactor goals + acceptance criteria
-- `trainer-app/docs/engine_refactor_clarifications` : authoritative decisions
-- `trainer-app/docs/ppl_programmingguidelines` : programming rules for strict PPL
-- `trainer-app/docs/ppl-exercise-options.md` : export of live DB exercise options
+See [docs/index.md](docs/index.md) for the full documentation map. Key references:
+
+- [docs/architecture.md](docs/architecture.md) — Engine behavior, guarantees, generation flow
+- [docs/data-model.md](docs/data-model.md) — Database schema reference
+- [docs/seeded-data.md](docs/seeded-data.md) — Exercise catalog and seed data
 
 ## Scripts
 

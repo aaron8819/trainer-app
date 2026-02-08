@@ -2,6 +2,14 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Project Layout
+
+The app lives in the `trainer-app/` subdirectory. **All commands below must be run from `trainer-app/`.**
+
+```bash
+cd trainer-app
+```
+
 ## Commands
 
 ```bash
@@ -15,6 +23,7 @@ npx vitest run -t "test name substring"                   # Run tests matching a
 npm run prisma:generate  # Generate Prisma client (also runs on postinstall)
 npm run prisma:studio    # Visual DB browser
 npm run db:seed          # Seed exercises, equipment, muscles, aliases
+npm run export:ppl-options  # Export PPL options from DB
 ```
 
 ## Architecture
@@ -27,67 +36,21 @@ Next.js 16 (App Router) · React 19 · TypeScript (strict mode) · Prisma 7 + Po
 
 ### Key Architectural Boundaries
 
-**The engine is pure.** `src/lib/engine/` contains no database access and produces deterministic output given the same inputs + seed. Load assignment (`applyLoads`) lives in the API/context layer (`src/lib/api/`), not in the engine, to preserve testability.
-
-**Split between layers:**
+**The engine is pure.** `src/lib/engine/` contains no database access and produces deterministic output given the same inputs + seed. See [docs/architecture.md](trainer-app/docs/architecture.md) for the full engine behavior spec, module map, and generation flow.
 
 | Layer | Location | Responsibility |
 |-------|----------|---------------|
-| Engine | `src/lib/engine/` | Exercise selection, volume prescription, timeboxing, periodization. **No DB, no Prisma, no I/O.** |
-| API/Context | `src/lib/api/` | DB queries, mapping DB models → engine types, load assignment (`applyLoads`), user resolution |
-| Routes | `src/app/api/` | HTTP handlers, Zod validation via `safeParse`, user resolution dispatch |
+| Engine | `src/lib/engine/` | Exercise selection, volume prescription, load assignment, timeboxing, periodization. **No DB, no Prisma, no I/O.** |
+| API/Context | `src/lib/api/` | DB queries, mapping DB models -> engine types, orchestrating load assignment with DB history |
+| Routes | `src/app/api/` | Thin HTTP handlers, Zod validation via `safeParse` |
 | UI | `src/app/` + `src/components/` | Pages and interactive components |
 | Validation | `src/lib/validation.ts` | Zod schemas shared across routes |
 | DB | `src/lib/db/prisma.ts` | Singleton Prisma client with PrismaPg adapter |
 
-**Engine modules** (`src/lib/engine/`):
-
-| Module | Responsibility |
-|--------|---------------|
-| `engine.ts` | Orchestrator: `generateWorkout`, `buildWorkoutExercise` |
-| `split-queue.ts` | Split patterns, day index, target pattern resolution |
-| `filtering.ts` | Exercise filtering (equipment, pain, injury, stall), `selectExercises` |
-| `main-lift-picker.ts` | PPL main lift pairing with recency weighting |
-| `pick-accessories-by-slot.ts` | Slot-based accessory selection (PPL, upper_lower, full_body) |
-| `prescription.ts` | Set/rep prescription, rest seconds |
-| `volume.ts` | Volume context, caps enforcement, fatigue state derivation |
-| `timeboxing.ts` | Time estimation, priority-based accessory trimming |
-| `substitution.ts` | Exercise substitution suggestions |
-| `progression.ts` | Load progression (`computeNextLoad`, `shouldDeload`) |
-| `utils.ts` | Shared helpers (`normalizeName`, `weightedPick`, `buildRecencyIndex`, etc.) |
-| `rules.ts` | Constants, rep ranges, periodization modifiers |
-| `random.ts` | Seeded PRNG (`createRng`) |
-| `types.ts` | All engine type definitions |
-
 **When to use which layer:**
-- `src/lib/api/` — Data loading, DB-to-engine mapping, anything that touches Prisma. This is where `applyLoads`, `resolveUser`, `loadWorkoutContext`, and all `map*` functions live.
-- `src/app/api/` — Thin HTTP route handlers. Parse request with Zod, call into `src/lib/api/`, return `NextResponse.json()`. Keep route files short.
 - `src/lib/engine/` — Pure computation only. If you need data from the database, accept it as a parameter.
-
-### Workout Generation Flow
-
-```
-POST /api/workouts/generate
-  → resolveUser() → loadWorkoutContext() (parallel DB loads)
-  → map DB models to engine types
-  → generateWorkout() (pure engine: split selection → main lifts → accessories → timeboxing → volume caps)
-  → applyLoads() (hybrid estimation: history → baseline → body-weight formula; periodization modifiers)
-  → return WorkoutPlan JSON
-```
-
-### Engine Invariants
-
-These are hard constraints the engine enforces — do not weaken them:
-
-- **Strict split purity**: PPL filtered by `Exercise.splitTags`. Push day only gets PUSH exercises, etc.
-- **Template-only special blocks**: CORE/MOBILITY/PREHAB/CONDITIONING only in explicit warmup/finisher blocks, never as general accessories.
-- **Main lift pairing**: Push = 1 horizontal + 1 vertical press. Pull = 1 vertical pull + 1 horizontal row. Legs = 1 squat + 1 hinge.
-- **Perpetual split queue**: PPL index advances on completed workouts with `advancesSplit=true`, not on weekly reset.
-- **Top-set/back-off by setIndex**: No explicit `setType` field — inferred from position.
-- **Timeboxing**: Accessories trimmed first to fit `sessionMinutes`.
-- **Volume spike caps**: Rolling 7-day window, 20% spike cap per muscle group.
-- **Load progression cap**: Max 7% step increase.
-- **Deterministic randomization**: Seeded PRNG for reproducible test fixtures.
+- `src/lib/api/` — Data loading, DB-to-engine mapping, anything that touches Prisma.
+- `src/app/api/` — Thin HTTP route handlers. Parse request with Zod, call into `src/lib/api/`, return `NextResponse.json()`.
 
 ### Anti-Patterns (Don't Do These)
 
@@ -99,17 +62,6 @@ These are hard constraints the engine enforces — do not weaken them:
 - **Don't put business logic in route files** (`src/app/api/`). Route files should be thin — delegate to `src/lib/api/` or `src/lib/engine/`.
 - **Don't weaken volume spike caps or load progression guardrails** without explicit instruction.
 - **Don't select CORE/MOBILITY/PREHAB/CONDITIONING as general accessories**. They only appear in explicit warmup/finisher blocks.
-
-### Periodization (4-week cycle)
-
-| Week | Phase | RPE Adj | Sets Mult | Back-off |
-|------|-------|---------|-----------|----------|
-| 0 | Introduction | -1 | 1.0× | 0.85× |
-| 1 | Accumulation | +0 | 1.0× | 0.85× |
-| 2 | Intensification | +0.5 | 0.85× | 0.85× |
-| 3 | Deload | +0 | 0.6× | 0.75× |
-
-Fallback uses calendar-based weeks when no program block exists.
 
 ## Conventions
 
@@ -146,10 +98,25 @@ Tests live alongside source in `src/lib/engine/*.test.ts` and `src/lib/api/*.tes
 
 ## Key Documentation
 
-- `docs/engine_refactor_2.5.md` — Consolidated engine behavior, schema, and implementation status (source of truth)
+See [docs/index.md](trainer-app/docs/index.md) for the full documentation map.
+
+- `docs/architecture.md` — Engine behavior, guarantees, generation flow, module map (source of truth)
+- `docs/decisions.md` — Architectural Decision Records
 - `docs/data-model.md` — Complete DB schema reference
-- `docs/seeded_data.md` — Baseline exercise catalog
+- `docs/seeded-data.md` — Baseline exercise catalog
 - `prisma/schema.prisma` — Database schema
+
+**When to read docs** (before starting work):
+- Changing engine behavior or adding engine modules → read `docs/architecture.md`
+- Changing DB schema or adding models → read `docs/data-model.md`
+- Adding or modifying exercises in seed data → read `docs/seeded-data.md`
+- Making an architectural decision (new pattern, new module, changing a constraint) → read `docs/decisions.md`
+
+**When to update docs** (after completing work):
+- Changed engine behavior, added/removed modules, or modified guarantees → update `docs/architecture.md`
+- Changed DB schema → update `docs/data-model.md`
+- Changed seed data → update `docs/seeded-data.md`
+- Made an architectural decision worth recording → append to `docs/decisions.md`
 
 ## Database
 

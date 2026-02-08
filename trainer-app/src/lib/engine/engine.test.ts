@@ -79,7 +79,7 @@ describe("engine core", () => {
   });
 
   it("detects deload need after repeated plateau", () => {
-    const plateauHistory = buildHistory(3).map((entry) => ({
+    const plateauHistory = buildHistory(5).map((entry) => ({
       ...entry,
       exercises: [
         {
@@ -374,6 +374,7 @@ describe("engine core", () => {
         jointStress: "medium",
         isMainLift: true,
         isMainLiftEligible: true,
+        primaryMuscles: ["Chest", "Triceps"],
         equipment: ["barbell"],
       },
       {
@@ -385,6 +386,7 @@ describe("engine core", () => {
         jointStress: "medium",
         isMainLift: true,
         isMainLiftEligible: true,
+        primaryMuscles: ["Front Delts", "Triceps"],
         equipment: ["barbell"],
       },
       {
@@ -396,6 +398,7 @@ describe("engine core", () => {
         jointStress: "medium",
         isMainLift: true,
         isMainLiftEligible: true,
+        primaryMuscles: ["Back", "Biceps"],
         equipment: ["barbell"],
       },
       {
@@ -407,6 +410,7 @@ describe("engine core", () => {
         jointStress: "medium",
         isMainLift: true,
         isMainLiftEligible: true,
+        primaryMuscles: ["Upper Back", "Biceps"],
         equipment: ["barbell"],
       },
       {
@@ -418,6 +422,7 @@ describe("engine core", () => {
         jointStress: "medium",
         isMainLift: true,
         isMainLiftEligible: true,
+        primaryMuscles: ["Quads", "Glutes"],
         equipment: ["barbell"],
       },
       {
@@ -429,17 +434,41 @@ describe("engine core", () => {
         jointStress: "medium",
         isMainLift: true,
         isMainLiftEligible: true,
+        primaryMuscles: ["Hamstrings", "Glutes"],
         equipment: ["barbell"],
       },
     ];
 
-    const history = Array.from({ length: 5 }, (_, index) => ({
-      date: new Date(Date.now() - index * 86400000).toISOString(),
-      completed: true,
-      status: "COMPLETED" as const,
-      advancesSplit: true,
-      exercises: [],
-    }));
+    // History: most recent = pull, then legs → push is least recently trained
+    const history = [
+      {
+        date: new Date(Date.now() - 1 * 86400000).toISOString(),
+        completed: true,
+        status: "COMPLETED" as const,
+        advancesSplit: true,
+        exercises: [
+          { exerciseId: "pull-main-a", movementPattern: "pull" as const, primaryMuscles: ["Back", "Biceps"], sets: [{ exerciseId: "pull-main-a", setIndex: 1, reps: 8 }] },
+        ],
+      },
+      {
+        date: new Date(Date.now() - 2 * 86400000).toISOString(),
+        completed: true,
+        status: "COMPLETED" as const,
+        advancesSplit: true,
+        exercises: [
+          { exerciseId: "legs-main-a", movementPattern: "squat" as const, primaryMuscles: ["Quads", "Glutes"], sets: [{ exerciseId: "legs-main-a", setIndex: 1, reps: 8 }] },
+        ],
+      },
+      {
+        date: new Date(Date.now() - 3 * 86400000).toISOString(),
+        completed: true,
+        status: "COMPLETED" as const,
+        advancesSplit: true,
+        exercises: [
+          { exerciseId: "push-main-a", movementPattern: "push" as const, primaryMuscles: ["Chest", "Triceps"], sets: [{ exerciseId: "push-main-a", setIndex: 1, reps: 8 }] },
+        ],
+      },
+    ];
 
     const workout = generateWorkout(
       exampleUser,
@@ -449,6 +478,7 @@ describe("engine core", () => {
       library
     );
 
+    // Push was trained least recently (3 days ago), so next workout should be push
     expect(workout.mainLifts[0].exercise.name).toBe("Push Main A");
   });
 

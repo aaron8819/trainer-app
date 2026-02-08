@@ -161,6 +161,7 @@ model User {
   sessionCheckIns SessionCheckIn[]
   baselines      Baseline[]
   preferences    UserPreference?
+  templates      WorkoutTemplate[]
 }
 
 model UserPreference {
@@ -227,35 +228,43 @@ model Equipment {
 }
 
 model Muscle {
-  id   String @id @default(uuid())
-  name String @unique
+  id       String @id @default(uuid())
+  name     String @unique
+  mv       Int    @default(0)
+  mev      Int    @default(0)
+  mav      Int    @default(0)
+  mrv      Int    @default(0)
+  sraHours Int    @default(48)
 
   exerciseMuscles ExerciseMuscle[]
 }
 
 model Exercise {
-  id              String          @id @default(uuid())
-  name            String          @unique
-  movementPattern MovementPattern
-  movementPatternsV2 MovementPatternV2[] @default([])
-  splitTags       SplitTag[] @default([])
-  jointStress     JointStress
-  isMainLift      Boolean         @default(false)
-  isMainLiftEligible Boolean      @default(false)
-  isCompound      Boolean         @default(false)
-  fatigueCost     Int             @default(3)
-  stimulusBias    StimulusBias[]  @default([])
-  contraindications Json?
-  timePerSetSec   Int             @default(120)
+  id                  String          @id @default(uuid())
+  name                String          @unique
+  movementPattern     MovementPattern?
+  movementPatternsV2  MovementPatternV2[] @default([])
+  splitTags           SplitTag[] @default([])
+  jointStress         JointStress
+  isMainLift          Boolean?
+  isMainLiftEligible  Boolean         @default(false)
+  isCompound          Boolean         @default(false)
+  fatigueCost         Int             @default(3)
+  stimulusBias        StimulusBias[]  @default([])
+  contraindications   Json?
+  timePerSetSec       Int             @default(120)
+  sfrScore            Int             @default(3)
+  lengthPositionScore Int             @default(3)
 
-  variations        ExerciseVariation[]
-  aliases           ExerciseAlias[]
-  exerciseMuscles   ExerciseMuscle[]
-  exerciseEquipment ExerciseEquipment[]
-  workoutExercises  WorkoutExercise[]
-  substitutionsFrom SubstitutionRule[] @relation("SubstitutionFrom")
-  substitutionsTo   SubstitutionRule[] @relation("SubstitutionTo")
-  baselines         Baseline[]
+  variations            ExerciseVariation[]
+  aliases               ExerciseAlias[]
+  exerciseMuscles       ExerciseMuscle[]
+  exerciseEquipment     ExerciseEquipment[]
+  workoutExercises      WorkoutExercise[]
+  substitutionsFrom     SubstitutionRule[] @relation("SubstitutionFrom")
+  substitutionsTo       SubstitutionRule[] @relation("SubstitutionTo")
+  baselines             Baseline[]
+  templateExercises     WorkoutTemplateExercise[]
 }
 
 model ExerciseVariation {
@@ -337,6 +346,8 @@ model Workout {
   user            User          @relation(fields: [userId], references: [id])
   programBlockId  String?
   programBlock    ProgramBlock? @relation(fields: [programBlockId], references: [id])
+  templateId      String?
+  template        WorkoutTemplate? @relation(fields: [templateId], references: [id])
   scheduledDate   DateTime
   completedAt     DateTime?
   status          WorkoutStatus @default(PLANNED)
@@ -432,4 +443,29 @@ model Baseline {
 
   @@unique([userId, exerciseId, context])
   @@index([exerciseId])
+}
+
+model WorkoutTemplate {
+  id             String   @id @default(uuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id])
+  name           String
+  targetMuscles  String[] @default([])
+  isStrict       Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  exercises WorkoutTemplateExercise[]
+  workouts  Workout[]
+}
+
+model WorkoutTemplateExercise {
+  id         String          @id @default(uuid())
+  templateId String
+  template   WorkoutTemplate @relation(fields: [templateId], references: [id])
+  exerciseId String
+  exercise   Exercise        @relation(fields: [exerciseId], references: [id])
+  orderIndex Int
+
+  @@unique([templateId, orderIndex])
 }

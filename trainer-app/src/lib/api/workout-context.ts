@@ -39,10 +39,14 @@ import type {
 } from "@/lib/engine/types";
 import { deriveWeekInBlock, type WeekInBlockHistoryEntry } from "./periodization";
 
+type ExerciseWithMuscles = Exercise & {
+  exerciseMuscles?: { role: string; muscle: { name: string } }[];
+};
+
 type WorkoutWithRelations = Workout & {
   programBlock?: ProgramBlock | null;
   exercises: (WorkoutExercise & {
-    exercise: Exercise;
+    exercise: ExerciseWithMuscles;
     sets: (WorkoutSet & { logs: SetLog[] })[];
   })[];
 };
@@ -95,7 +99,11 @@ export async function loadWorkoutContext(userId: string) {
         programBlock: true,
         exercises: {
           include: {
-            exercise: true,
+            exercise: {
+              include: {
+                exerciseMuscles: { include: { muscle: true } },
+              },
+            },
             sets: { include: { logs: true } },
           },
         },
@@ -159,13 +167,13 @@ export function mapExercises(
   return exercises.map((exercise) => ({
     id: exercise.id,
     name: exercise.name,
-    movementPattern: exercise.movementPattern.toLowerCase() as MovementPattern,
+    movementPattern: (exercise.movementPattern?.toLowerCase() ?? "push") as MovementPattern,
     movementPatternsV2: (exercise.movementPatternsV2 ?? []).map((pattern) =>
       pattern.toLowerCase()
     ) as MovementPatternV2[],
     splitTags: (exercise.splitTags ?? []).map((tag) => tag.toLowerCase()) as SplitTag[],
     jointStress: exercise.jointStress.toLowerCase() as JointStress,
-    isMainLift: exercise.isMainLift,
+    isMainLift: exercise.isMainLift ?? false,
     isMainLiftEligible: exercise.isMainLiftEligible ?? exercise.isMainLift,
     isCompound: exercise.isCompound ?? exercise.isMainLift,
     fatigueCost: exercise.fatigueCost ?? undefined,
@@ -173,6 +181,8 @@ export function mapExercises(
       | StimulusBias[],
     contraindications: (exercise.contraindications as Record<string, unknown>) ?? undefined,
     timePerSetSec: exercise.timePerSetSec ?? undefined,
+    sfrScore: exercise.sfrScore ?? undefined,
+    lengthPositionScore: exercise.lengthPositionScore ?? undefined,
     equipment: exercise.exerciseEquipment.map((item) =>
       item.equipment.type.toLowerCase()
     ) as Constraints["availableEquipment"],
@@ -196,7 +206,10 @@ export function mapHistory(workouts: WorkoutWithRelations[]): WorkoutHistoryEntr
       : undefined,
     exercises: workout.exercises.map((exercise) => ({
       exerciseId: exercise.exerciseId,
-      movementPattern: exercise.exercise.movementPattern.toLowerCase() as WorkoutHistoryEntry["exercises"][number]["movementPattern"],
+      movementPattern: (exercise.exercise.movementPattern?.toLowerCase() ?? "push") as WorkoutHistoryEntry["exercises"][number]["movementPattern"],
+      primaryMuscles: exercise.exercise.exerciseMuscles
+        ?.filter((m) => m.role === "PRIMARY")
+        .map((m) => m.muscle.name) ?? [],
       sets: exercise.sets.map((set) => {
         const log = set.logs[0];
         return {

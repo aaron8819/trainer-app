@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import SessionCheckInForm from "@/components/SessionCheckInForm";
+import { TemplateScoreBadge } from "@/components/templates/TemplateScoreBadge";
 
 type WorkoutSet = {
   setIndex: number;
@@ -39,6 +40,8 @@ type TemplateSummary = {
   id: string;
   name: string;
   exerciseCount: number;
+  score?: number;
+  scoreLabel?: string;
 };
 
 type SessionCheckInPayload = {
@@ -214,6 +217,18 @@ export function GenerateFromTemplateCard({ templates }: GenerateFromTemplateCard
             ))}
           </select>
         </label>
+        {(() => {
+          const selected = templates.find((t) => t.id === selectedTemplateId);
+          return selected?.score !== undefined && selected.scoreLabel ? (
+            <div className="mt-2">
+              <TemplateScoreBadge
+                score={selected.score}
+                label={selected.scoreLabel}
+                size="sm"
+              />
+            </div>
+          ) : null;
+        })()}
       </div>
 
       {showCheckIn ? (

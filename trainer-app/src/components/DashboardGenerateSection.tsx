@@ -8,6 +8,8 @@ type TemplateSummary = {
   id: string;
   name: string;
   exerciseCount: number;
+  score?: number;
+  scoreLabel?: string;
 };
 
 type DashboardGenerateSectionProps = {

@@ -16,3 +16,4 @@ export * from "./substitution";
 export * from "./progression";
 export * from "./sra";
 export * from "./template-session";
+export * from "./template-analysis";

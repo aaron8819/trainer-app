@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db/prisma";
 import type { z } from "zod";
 import type { createTemplateSchema, updateTemplateSchema } from "@/lib/validation";
+import { analyzeTemplate, type AnalysisExerciseInput, type ScoreLabel } from "@/lib/engine/template-analysis";
 
 type CreateTemplateInput = z.infer<typeof createTemplateSchema>;
 type UpdateTemplateInput = z.infer<typeof updateTemplateSchema>;
@@ -175,6 +176,59 @@ export async function updateTemplate(
   });
 
   return loadTemplateDetail(templateId);
+}
+
+export interface TemplateListItemWithScore extends TemplateListItem {
+  score: number;
+  scoreLabel: ScoreLabel;
+}
+
+export async function loadTemplatesWithScores(
+  userId: string
+): Promise<TemplateListItemWithScore[]> {
+  const templates = await prisma.workoutTemplate.findMany({
+    where: { userId },
+    orderBy: { updatedAt: "desc" },
+    include: {
+      _count: { select: { exercises: true } },
+      exercises: {
+        include: {
+          exercise: {
+            include: {
+              exerciseMuscles: { include: { muscle: true } },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  return templates.map((t) => {
+    const inputs: AnalysisExerciseInput[] = t.exercises.map((te) => ({
+      isCompound: te.exercise.isCompound,
+      movementPatternsV2: (te.exercise.movementPatternsV2 ?? []).map((p) =>
+        p.toLowerCase()
+      ),
+      muscles: te.exercise.exerciseMuscles.map((m) => ({
+        name: m.muscle.name,
+        role: m.role.toLowerCase() as "primary" | "secondary",
+      })),
+    }));
+
+    const analysis = analyzeTemplate(inputs);
+
+    return {
+      id: t.id,
+      name: t.name,
+      targetMuscles: t.targetMuscles,
+      isStrict: t.isStrict,
+      exerciseCount: t._count.exercises,
+      createdAt: t.createdAt.toISOString(),
+      updatedAt: t.updatedAt.toISOString(),
+      score: analysis.overallScore,
+      scoreLabel: analysis.overallLabel,
+    };
+  });
 }
 
 export async function deleteTemplate(templateId: string): Promise<boolean> {

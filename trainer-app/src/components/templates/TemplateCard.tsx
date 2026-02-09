@@ -1,12 +1,15 @@
 "use client";
 
 import Link from "next/link";
+import { TemplateScoreBadge } from "./TemplateScoreBadge";
 
 type TemplateCardProps = {
   id: string;
   name: string;
   exerciseCount: number;
   targetMuscles: string[];
+  score?: number;
+  scoreLabel?: string;
   onDeleteClick: (id: string) => void;
 };
 
@@ -15,6 +18,8 @@ export function TemplateCard({
   name,
   exerciseCount,
   targetMuscles,
+  score,
+  scoreLabel,
   onDeleteClick,
 }: TemplateCardProps) {
   return (
@@ -22,9 +27,14 @@ export function TemplateCard({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <h3 className="text-sm font-semibold text-slate-900 truncate">{name}</h3>
-          <p className="mt-1 text-xs text-slate-500">
-            {exerciseCount} exercise{exerciseCount !== 1 ? "s" : ""}
-          </p>
+          <div className="mt-1 flex items-center gap-2">
+            <p className="text-xs text-slate-500">
+              {exerciseCount} exercise{exerciseCount !== 1 ? "s" : ""}
+            </p>
+            {score !== undefined && scoreLabel && (
+              <TemplateScoreBadge score={score} label={scoreLabel} size="sm" />
+            )}
+          </div>
           {targetMuscles.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-1">
               {targetMuscles.map((muscle) => (

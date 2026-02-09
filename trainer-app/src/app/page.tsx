@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db/prisma";
 import { DashboardGenerateSection } from "@/components/DashboardGenerateSection";
 import RecentWorkouts from "@/components/RecentWorkouts";
 import { SPLIT_PATTERNS } from "@/lib/engine";
-import { loadTemplates } from "@/lib/api/templates";
+import { loadTemplatesWithScores } from "@/lib/api/templates";
 import type { MovementPattern } from "@/lib/engine/types";
 
 export const dynamic = "force-dynamic";
@@ -66,7 +66,7 @@ export default async function Home() {
           where: { userId: targetUserId, status: "COMPLETED", advancesSplit: true },
         })
       : 0,
-    targetUserId ? loadTemplates(targetUserId) : [],
+    targetUserId ? loadTemplatesWithScores(targetUserId) : [],
   ]);
 
   const toLabel = (patterns: MovementPattern[]) => {
@@ -145,6 +145,8 @@ export default async function Home() {
               id: t.id,
               name: t.name,
               exerciseCount: t.exerciseCount,
+              score: t.score,
+              scoreLabel: t.scoreLabel,
             }))}
           />
           <div className="space-y-6">
@@ -234,7 +236,6 @@ export default async function Home() {
         </section>
 
         <RecentWorkouts
-          latestIncomplete={latestIncomplete ? { id: latestIncomplete.id } : null}
           recentWorkouts={recentList}
           statusLabels={STATUS_LABELS}
           statusClasses={STATUS_CLASSES}

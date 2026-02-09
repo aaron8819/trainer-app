@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { ExercisePicker } from "@/components/library/ExercisePicker";
+import { TemplateAnalysisPanel } from "@/components/templates/TemplateAnalysisPanel";
 import { MUSCLE_GROUP_LABELS } from "@/lib/exercise-library/constants";
 import type { ExerciseListItem, MuscleGroup } from "@/lib/exercise-library/types";
 
@@ -239,6 +240,11 @@ export function TemplateForm({
           </div>
         )}
       </div>
+
+      <TemplateAnalysisPanel
+        selectedExerciseIds={selectedExercises.map((e) => e.exerciseId)}
+        exerciseLibrary={exercises}
+      />
 
       {error && <p className="text-sm text-rose-600">{error}</p>}
 

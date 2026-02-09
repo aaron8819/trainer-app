@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
-import { loadTemplates } from "@/lib/api/templates";
+import { loadTemplatesWithScores } from "@/lib/api/templates";
 import { TemplateListShell } from "@/components/templates/TemplateListShell";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +14,7 @@ export default async function TemplatesPage() {
     );
   }
 
-  const templates = await loadTemplates(user.id);
+  const templates = await loadTemplatesWithScores(user.id);
 
   return (
     <main className="min-h-screen bg-white">
@@ -25,6 +25,8 @@ export default async function TemplatesPage() {
             name: t.name,
             exerciseCount: t.exerciseCount,
             targetMuscles: t.targetMuscles,
+            score: t.score,
+            scoreLabel: t.scoreLabel,
           }))}
         />
       </div>

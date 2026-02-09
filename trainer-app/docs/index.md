@@ -4,7 +4,8 @@
 
 | Document | Purpose | Audience |
 |----------|---------|----------|
-| [spec-v2.md](spec-v2.md) | **v2 spec**: engine KB alignment, exercise library, template mode | Claude + developers |
+| [spec-v2.md](spec-v2.md) | **v2 spec** (COMPLETE): engine KB alignment, exercise library, template mode, polish | Claude + developers |
+| [spec-v3.md](spec-v3.md) | **v3 ideas**: training phases, indirect volume, exercise rotation, supersets | Claude + developers |
 | [knowledgebase/](knowledgebase/) | Scientific foundations (hypertrophy & strength research) | Claude + developers |
 | [architecture.md](architecture.md) | Engine behavior, guarantees, generation flow, module map (v1) | Claude + developers |
 | [decisions.md](decisions.md) | Architectural Decision Records (ADRs) | Claude + developers |

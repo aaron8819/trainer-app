@@ -520,10 +520,4 @@ Status legend: [x] done, [~] partial/deferred, [ ] not started
 
 ---
 
-## Open Questions (for future sessions)
-
-1. **Training phase (bulk/cut/maintain)**: The knowledgebase says to reduce volume 20-33% during a cut. Should we add a `trainingPhase` field to Profile and have the engine adjust automatically?
-2. **Indirect volume accounting**: How precisely should we count indirect volume? (e.g., bench press counts as direct chest + indirect triceps + indirect front delts) — needs a weighting model.
-3. **Exercise rotation across mesocycles**: How to implement "maintain core movements 2-3 mesos, rotate accessories"? Needs tracking of which exercises have been used in recent mesocycles.
-4. **Dynamic fatigueCost**: Future enhancement — adjust effective fatigue cost based on user's logged RPE history for that exercise.
-5. **Supersets**: The knowledgebase mentions agonist-antagonist supersets save ~50% time. Should templates support superset pairing?
+*Open questions moved to [spec-v3.md](spec-v3.md).*

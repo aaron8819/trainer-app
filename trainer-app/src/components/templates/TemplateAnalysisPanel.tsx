@@ -22,6 +22,8 @@ function toAnalysisInput(ex: ExerciseListItem): AnalysisExerciseInput {
     isCompound: ex.isCompound,
     movementPatternsV2: ex.movementPatternsV2,
     muscles,
+    sfrScore: ex.sfrScore,
+    lengthPositionScore: ex.lengthPositionScore,
   };
 }
 
@@ -97,6 +99,8 @@ export function TemplateAnalysisPanel({
           label="Movement Diversity"
           score={analysis.movementPatternDiversity.score}
         />
+        <ScoreBar label="Stretch Position" score={analysis.lengthPosition.score} />
+        <ScoreBar label="Fatigue Efficiency" score={analysis.sfrEfficiency.score} />
       </div>
 
       {analysis.suggestions.length > 0 && (

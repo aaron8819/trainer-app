@@ -13,6 +13,8 @@ export type SmartBuildExercise = {
   equipment: string[];
   primaryMuscles: string[];
   secondaryMuscles: string[];
+  sfrScore?: number;
+  lengthPositionScore?: number;
   isFavorite: boolean;
   isAvoided: boolean;
 };
@@ -76,6 +78,8 @@ function toAnalysisInput(ex: SmartBuildExercise): AnalysisExerciseInput {
       ...ex.primaryMuscles.map((name) => ({ name, role: "primary" as const })),
       ...ex.secondaryMuscles.map((name) => ({ name, role: "secondary" as const })),
     ],
+    sfrScore: ex.sfrScore,
+    lengthPositionScore: ex.lengthPositionScore,
   };
 }
 

@@ -437,56 +437,67 @@ When generating a PPL workout, if the selected split would hit muscles that have
 
 ---
 
-## 8. Phasing
+## 8. Phasing & Implementation Status
 
-### Phase 1 — Foundation (Engine + DB)
+Status legend: [x] done, [~] partial/deferred, [ ] not started
+
+### Phase 1 — Foundation (Engine + DB) — COMPLETE
 
 **Goal**: Align engine with knowledgebase, tune exercise fields, update data model.
 
-- Add new DB fields: `sfrScore`, `lengthPositionScore` on Exercise; `mv`, `mev`, `mav`, `mrv`, `sraHours` on Muscle
-- Tune existing fields: `fatigueCost`, `timePerSetSec`, `stimulusBias`, `contraindications` for all exercises
-- Deprecate `movementPattern` → derive from `movementPatternsV2` (rename to `movementPatterns`)
-- Collapse `isMainLift` + `isMainLiftEligible` → single `isMainLiftEligible`
-- Implement muscle-specific volume model (MV/MEV/MAV/MRV tracking)
-- Implement flexible mesocycle periodization (RIR ramp, reactive deload triggers)
-- Update load progression to vary by training age
-- Update rest periods to match knowledgebase tiers
-- Update RPE adjustment from 2-3% to ~4% per point
-- Implement SRA tracking (per-muscle recovery windows)
-- Redesign PPL split queue to be history-based
+- [x] Add new DB fields: `sfrScore`, `lengthPositionScore` on Exercise; `mv`, `mev`, `mav`, `mrv`, `sraHours` on Muscle
+- [x] Tune existing fields: `fatigueCost`, `timePerSetSec`, `stimulusBias`, `contraindications` for all exercises — comprehensive tuning for all 66 exercises in seed data
+- [~] Deprecate `movementPattern` → derive from `movementPatternsV2` (rename to `movementPatterns`) — both fields coexist; engine uses V2 exclusively; old field retained for safe migration
+- [~] Collapse `isMainLift` + `isMainLiftEligible` → single `isMainLiftEligible` — both fields coexist; `isMainLiftEligible` is source of truth; old field retained for backward compatibility
+- [x] Implement muscle-specific volume model (MV/MEV/MAV/MRV tracking) — `VOLUME_LANDMARKS` + `EnhancedVolumeContext` in `volume.ts`
+- [x] Implement flexible mesocycle periodization (RIR ramp, reactive deload triggers) — `getMesocyclePeriodization()` + `shouldDeload()` in `progression.ts`
+- [x] Update load progression to vary by training age — `computeNextLoad()` dispatches: beginner (linear), intermediate (double), advanced (autoregulated)
+- [x] Update rest periods to match knowledgebase tiers — `getRestSeconds()` in `prescription.ts` with fatigueCost-modulated tiers
+- [x] Update RPE adjustment from 2-3% to ~4% per point — 0.04 (4%) in `progression.ts`
+- [x] Implement SRA tracking (per-muscle recovery windows) — `sra.ts` module with `buildMuscleRecoveryMap()` + `generateSraWarnings()`
+- [x] Redesign PPL split queue to be history-based — `getHistoryBasedSplitDay()` in `split-queue.ts`
 
-### Phase 2 — Exercise Library UI
+### Phase 2 — Exercise Library UI — COMPLETE
 
 **Goal**: Browsable, filterable exercise catalog with actions.
 
-- Library page (`/library`) with list view
-- Filtering: muscle group (hierarchical), compound/isolation, movement pattern, text search
-- Exercise detail view: muscles, patterns, stimulus bias, history, variations, substitutions
-- Actions: favorite, avoid, set baseline, add to template, view history
-- Inline exercise picker component (reused in template builder)
+- [x] Library page (`/library`) with list view — `ExerciseLibraryShell` + `ExerciseList` components
+- [x] Filtering: muscle group (hierarchical), compound/isolation, movement pattern, text search — `FilterBar` + `MuscleGroupChips` + `filtering.ts`
+- [x] Exercise detail view: muscles, patterns, stimulus bias, joint stress, SFR/length-position scores, variations, substitutions — `ExerciseDetailSheet`
+- [x] Actions: favorite, avoid, set baseline — API routes + `ExerciseDetailSheet` actions
+- [~] Action: add to template — button present but disabled (deferred to Phase 3 integration)
+- [~] Action: view history — not implemented (deferred to Phase 4)
+- [~] Sorting: only alphabetical implemented; by muscle group / movement pattern deferred
+- [~] Exercise detail: personal history — placeholder only ("Coming soon")
+- [x] Inline exercise picker component (reused in template builder) — `ExercisePicker` + `ExercisePickerTrigger`
 
-### Phase 3 — Template Mode
+### Phase 3 — Template Mode — COMPLETE
 
 **Goal**: Full template creation, management, and session generation.
 
-- Template data model + migrations
-- Template management pages (browse, create, edit, delete)
-- Custom creation (pick from library)
-- Smart Build creation (engine-assisted: target muscles + goal → suggested exercises)
-- Template analysis scoring (volume, balance, lengthened-position, SFR, missing muscles)
-- Session generation from template (engine prescribes loads/reps/RPE)
-- Session mode selector (PPL vs Template) on dashboard
-- SRA warnings when generating sessions
+- [x] Template data model + migrations — `WorkoutTemplate` + `WorkoutTemplateExercise` models, `Workout.templateId` FK
+- [x] Template management pages (browse, create, edit, delete) — `/templates`, `/templates/new`, `/templates/[id]/edit` + API CRUD
+- [x] Custom creation (pick from library) — `TemplateForm` + `ExercisePicker` with reordering
+- [x] Smart Build creation (engine-assisted) — core algorithm works (`smart-build.ts`); optional training goal + time budget inputs deferred to Phase 4
+- [x] Template analysis scoring — all 6 dimensions implemented: muscle coverage, push/pull balance, compound/isolation ratio, movement diversity, lengthened-position coverage (`scoreLengthPosition`), SFR efficiency (`scoreSfrEfficiency`)
+- [x] Session generation from template (engine prescribes loads/reps/RPE) — `generateWorkoutFromTemplate()` + `applyLoads()`
+- [x] Session mode selector (PPL vs Template) on dashboard — `DashboardGenerateSection` with toggle
+- [x] SRA warnings when generating sessions — warnings generated, returned in API, displayed in UI
 
-### Phase 4 — Polish
+### Phase 4 — Polish — NOT STARTED
 
 **Goal**: Quality-of-life features building on the foundation.
 
-- Save-as-template from any completed workout
-- Flexible template mode (engine can substitute exercises for variety/injury)
-- SRA-based guidance in workout review
-- Volume tracking dashboard (sets/muscle/week vs landmarks)
-- Template analytics (usage frequency, muscle coverage trends)
+- [ ] Smart Build: add optional training goal input (hypertrophy/strength/endurance bias)
+- [ ] Smart Build: add optional time budget input (caps exercise count)
+- [ ] Save-as-template from any completed workout
+- [ ] Flexible template mode (engine can substitute exercises for variety/injury)
+- [ ] SRA-based guidance in workout review
+- [ ] Volume tracking dashboard (sets/muscle/week vs landmarks)
+- [ ] Template analytics (usage frequency, muscle coverage trends)
+- [ ] Exercise library: "add to template" action (connect detail sheet to template builder)
+- [ ] Exercise library: personal history view (last performed, best weight, recent trend)
+- [ ] Exercise library: sort by muscle group / movement pattern
 
 ---
 

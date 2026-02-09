@@ -102,6 +102,8 @@ export function TemplateForm({
       equipment: ex.equipment,
       primaryMuscles: ex.primaryMuscles,
       secondaryMuscles: ex.secondaryMuscles,
+      sfrScore: ex.sfrScore,
+      lengthPositionScore: ex.lengthPositionScore,
       isFavorite: ex.isFavorite,
       isAvoided: ex.isAvoided,
     }));

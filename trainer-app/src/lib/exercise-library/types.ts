@@ -18,6 +18,8 @@ export type ExerciseListItem = {
   equipment: EquipmentType[];
   primaryMuscles: string[];
   secondaryMuscles: string[];
+  sfrScore: number;
+  lengthPositionScore: number;
   isFavorite: boolean;
   isAvoided: boolean;
 };
@@ -27,8 +29,6 @@ export type ExerciseDetail = ExerciseListItem & {
   isMainLiftEligible: boolean;
   fatigueCost: number;
   stimulusBias: StimulusBias[];
-  sfrScore: number;
-  lengthPositionScore: number;
   timePerSetSec: number;
   aliases: string[];
   variations: { id: string; name: string; description?: string }[];

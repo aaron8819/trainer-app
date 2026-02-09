@@ -39,6 +39,8 @@ export async function loadExerciseLibrary(userId?: string): Promise<ExerciseList
     secondaryMuscles: exercise.exerciseMuscles
       .filter((m) => m.role === "SECONDARY")
       .map((m) => m.muscle.name),
+    sfrScore: exercise.sfrScore ?? 3,
+    lengthPositionScore: exercise.lengthPositionScore ?? 3,
     isFavorite: favorites.has(exercise.name),
     isAvoided: avoids.has(exercise.name),
   }));

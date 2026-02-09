@@ -5,6 +5,8 @@ import {
   scorePushPullBalance,
   scoreCompoundIsolation,
   scoreMovementDiversity,
+  scoreLengthPosition,
+  scoreSfrEfficiency,
   scoreToLabel,
   type AnalysisExerciseInput,
 } from "./template-analysis";
@@ -275,6 +277,120 @@ describe("scoreMovementDiversity", () => {
   });
 });
 
+// --- scoreLengthPosition ---
+
+describe("scoreLengthPosition", () => {
+  it("returns 0 for empty exercises", () => {
+    const result = scoreLengthPosition([]);
+    expect(result.score).toBe(0);
+    expect(result.averageScore).toBe(0);
+    expect(result.exercisesAtLength).toBe(0);
+    expect(result.exercisesShort).toBe(0);
+  });
+
+  it("returns 50 when all exercises default (no field)", () => {
+    const exercises: AnalysisExerciseInput[] = [
+      { isCompound: true, movementPatternsV2: [], muscles: [] },
+      { isCompound: false, movementPatternsV2: [], muscles: [] },
+    ];
+    const result = scoreLengthPosition(exercises);
+    // Default score is 3, maps to (3-1)/4*100 = 50
+    expect(result.score).toBe(50);
+    expect(result.averageScore).toBe(3);
+  });
+
+  it("scores high for exercises with high lengthPositionScore", () => {
+    const exercises: AnalysisExerciseInput[] = [
+      { isCompound: false, movementPatternsV2: [], muscles: [], lengthPositionScore: 5 },
+      { isCompound: false, movementPatternsV2: [], muscles: [], lengthPositionScore: 5 },
+      { isCompound: false, movementPatternsV2: [], muscles: [], lengthPositionScore: 4 },
+    ];
+    const result = scoreLengthPosition(exercises);
+    expect(result.score).toBeGreaterThanOrEqual(85);
+    expect(result.exercisesAtLength).toBe(3);
+    expect(result.exercisesShort).toBe(0);
+  });
+
+  it("scores low for exercises with low lengthPositionScore", () => {
+    const exercises: AnalysisExerciseInput[] = [
+      { isCompound: true, movementPatternsV2: [], muscles: [], lengthPositionScore: 1 },
+      { isCompound: true, movementPatternsV2: [], muscles: [], lengthPositionScore: 2 },
+      { isCompound: true, movementPatternsV2: [], muscles: [], lengthPositionScore: 1 },
+    ];
+    const result = scoreLengthPosition(exercises);
+    expect(result.score).toBeLessThan(30);
+    expect(result.exercisesShort).toBe(3);
+  });
+
+  it("caps score at 100", () => {
+    const exercises: AnalysisExerciseInput[] = Array.from({ length: 10 }, () => ({
+      isCompound: false,
+      movementPatternsV2: [],
+      muscles: [],
+      lengthPositionScore: 5,
+    }));
+    const result = scoreLengthPosition(exercises);
+    expect(result.score).toBe(100);
+  });
+});
+
+// --- scoreSfrEfficiency ---
+
+describe("scoreSfrEfficiency", () => {
+  it("returns 0 for empty exercises", () => {
+    const result = scoreSfrEfficiency([]);
+    expect(result.score).toBe(0);
+    expect(result.averageSfr).toBe(0);
+    expect(result.highSfrCount).toBe(0);
+    expect(result.lowSfrCount).toBe(0);
+  });
+
+  it("returns 50 when all exercises default (no field)", () => {
+    const exercises: AnalysisExerciseInput[] = [
+      { isCompound: true, movementPatternsV2: [], muscles: [] },
+      { isCompound: false, movementPatternsV2: [], muscles: [] },
+    ];
+    const result = scoreSfrEfficiency(exercises);
+    // Default score is 3, maps to (3-1)/4*100 = 50
+    expect(result.score).toBe(50);
+    expect(result.averageSfr).toBe(3);
+  });
+
+  it("scores high for exercises with high sfrScore", () => {
+    const exercises: AnalysisExerciseInput[] = [
+      { isCompound: false, movementPatternsV2: [], muscles: [], sfrScore: 5 },
+      { isCompound: false, movementPatternsV2: [], muscles: [], sfrScore: 5 },
+      { isCompound: false, movementPatternsV2: [], muscles: [], sfrScore: 4 },
+    ];
+    const result = scoreSfrEfficiency(exercises);
+    expect(result.score).toBeGreaterThanOrEqual(85);
+    expect(result.highSfrCount).toBe(3);
+    expect(result.lowSfrCount).toBe(0);
+  });
+
+  it("scores low for exercises with low sfrScore", () => {
+    const exercises: AnalysisExerciseInput[] = [
+      { isCompound: true, movementPatternsV2: [], muscles: [], sfrScore: 1 },
+      { isCompound: true, movementPatternsV2: [], muscles: [], sfrScore: 2 },
+      { isCompound: true, movementPatternsV2: [], muscles: [], sfrScore: 1 },
+    ];
+    const result = scoreSfrEfficiency(exercises);
+    expect(result.score).toBeLessThan(30);
+    expect(result.lowSfrCount).toBe(3);
+  });
+
+  it("caps score at 100", () => {
+    const exercises: AnalysisExerciseInput[] = Array.from({ length: 10 }, () => ({
+      isCompound: false,
+      movementPatternsV2: [],
+      muscles: [],
+      sfrScore: 5,
+    }));
+    const result = scoreSfrEfficiency(exercises);
+    expect(result.score).toBe(100);
+  });
+});
+
 // --- analyzeTemplate (integration) ---
 
 describe("analyzeTemplate", () => {
@@ -293,6 +409,8 @@ describe("analyzeTemplate", () => {
     expect(result.pushPullBalance.score).toBeGreaterThanOrEqual(0);
     expect(result.compoundIsolationRatio.score).toBeGreaterThanOrEqual(0);
     expect(result.movementPatternDiversity.score).toBeGreaterThanOrEqual(0);
+    expect(result.lengthPosition.score).toBeGreaterThanOrEqual(0);
+    expect(result.sfrEfficiency.score).toBeGreaterThanOrEqual(0);
   });
 
   it("handles empty template", () => {
@@ -326,10 +444,12 @@ describe("analyzeTemplate", () => {
   it("overall score is weighted average of sub-scores", () => {
     const result = analyzeTemplate(BALANCED_TEMPLATE);
     const expected = Math.round(
-      result.muscleCoverage.score * 0.4 +
-        result.pushPullBalance.score * 0.2 +
-        result.compoundIsolationRatio.score * 0.2 +
-        result.movementPatternDiversity.score * 0.2
+      result.muscleCoverage.score * 0.3 +
+        result.pushPullBalance.score * 0.15 +
+        result.compoundIsolationRatio.score * 0.15 +
+        result.movementPatternDiversity.score * 0.15 +
+        result.lengthPosition.score * 0.1 +
+        result.sfrEfficiency.score * 0.15
     );
     expect(result.overallScore).toBe(expected);
   });

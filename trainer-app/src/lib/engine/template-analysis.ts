@@ -6,6 +6,8 @@ export type AnalysisExerciseInput = {
   isCompound: boolean;
   movementPatternsV2: string[];
   muscles: { name: string; role: "primary" | "secondary" }[];
+  sfrScore?: number;
+  lengthPositionScore?: number;
 };
 
 export type ScoreLabel = "Excellent" | "Good" | "Fair" | "Needs Work" | "Poor";
@@ -41,6 +43,22 @@ export type MovementPatternScore = {
   missingPatterns: string[];
 };
 
+export type LengthPositionScore = {
+  score: number;
+  label: ScoreLabel;
+  averageScore: number;
+  exercisesAtLength: number;
+  exercisesShort: number;
+};
+
+export type SfrEfficiencyScore = {
+  score: number;
+  label: ScoreLabel;
+  averageSfr: number;
+  highSfrCount: number;
+  lowSfrCount: number;
+};
+
 export type TemplateAnalysis = {
   overallScore: number;
   overallLabel: ScoreLabel;
@@ -48,6 +66,8 @@ export type TemplateAnalysis = {
   pushPullBalance: PushPullBalanceScore;
   compoundIsolationRatio: CompoundIsolationScore;
   movementPatternDiversity: MovementPatternScore;
+  lengthPosition: LengthPositionScore;
+  sfrEfficiency: SfrEfficiencyScore;
   exerciseCount: number;
   suggestions: string[];
 };
@@ -284,13 +304,81 @@ export function scoreMovementDiversity(
   };
 }
 
+export function scoreLengthPosition(
+  exercises: AnalysisExerciseInput[]
+): LengthPositionScore {
+  if (exercises.length === 0) {
+    return {
+      score: 0,
+      label: scoreToLabel(0),
+      averageScore: 0,
+      exercisesAtLength: 0,
+      exercisesShort: 0,
+    };
+  }
+
+  const scores = exercises.map((ex) => ex.lengthPositionScore ?? 3);
+  const averageScore = scores.reduce((sum, s) => sum + s, 0) / scores.length;
+  const exercisesAtLength = scores.filter((s) => s >= 4).length;
+  const exercisesShort = scores.filter((s) => s <= 2).length;
+
+  // Map 1-5 average to 0-100: (avg - 1) / 4 * 100
+  let score = Math.round(((averageScore - 1) / 4) * 100);
+  score += exercisesAtLength * 10;
+  score -= exercisesShort * 5;
+  score = clamp(score, 0, 100);
+
+  return {
+    score,
+    label: scoreToLabel(score),
+    averageScore: Math.round(averageScore * 100) / 100,
+    exercisesAtLength,
+    exercisesShort,
+  };
+}
+
+export function scoreSfrEfficiency(
+  exercises: AnalysisExerciseInput[]
+): SfrEfficiencyScore {
+  if (exercises.length === 0) {
+    return {
+      score: 0,
+      label: scoreToLabel(0),
+      averageSfr: 0,
+      highSfrCount: 0,
+      lowSfrCount: 0,
+    };
+  }
+
+  const scores = exercises.map((ex) => ex.sfrScore ?? 3);
+  const averageSfr = scores.reduce((sum, s) => sum + s, 0) / scores.length;
+  const highSfrCount = scores.filter((s) => s >= 4).length;
+  const lowSfrCount = scores.filter((s) => s <= 2).length;
+
+  // Map 1-5 average to 0-100: (avg - 1) / 4 * 100
+  let score = Math.round(((averageSfr - 1) / 4) * 100);
+  score += highSfrCount * 10;
+  score -= lowSfrCount * 5;
+  score = clamp(score, 0, 100);
+
+  return {
+    score,
+    label: scoreToLabel(score),
+    averageSfr: Math.round(averageSfr * 100) / 100,
+    highSfrCount,
+    lowSfrCount,
+  };
+}
+
 // --- Main analysis function ---
 
 const WEIGHTS = {
-  muscleCoverage: 0.4,
-  pushPullBalance: 0.2,
-  compoundIsolation: 0.2,
-  movementDiversity: 0.2,
+  muscleCoverage: 0.3,
+  pushPullBalance: 0.15,
+  compoundIsolation: 0.15,
+  movementDiversity: 0.15,
+  lengthPosition: 0.1,
+  sfrEfficiency: 0.15,
 };
 
 export function analyzeTemplate(
@@ -300,13 +388,17 @@ export function analyzeTemplate(
   const pushPullBalance = scorePushPullBalance(exercises);
   const compoundIsolationRatio = scoreCompoundIsolation(exercises);
   const movementPatternDiversity = scoreMovementDiversity(exercises);
+  const lengthPosition = scoreLengthPosition(exercises);
+  const sfrEfficiency = scoreSfrEfficiency(exercises);
 
   const overallScore = clamp(
     Math.round(
       muscleCoverage.score * WEIGHTS.muscleCoverage +
         pushPullBalance.score * WEIGHTS.pushPullBalance +
         compoundIsolationRatio.score * WEIGHTS.compoundIsolation +
-        movementPatternDiversity.score * WEIGHTS.movementDiversity
+        movementPatternDiversity.score * WEIGHTS.movementDiversity +
+        lengthPosition.score * WEIGHTS.lengthPosition +
+        sfrEfficiency.score * WEIGHTS.sfrEfficiency
     ),
     0,
     100
@@ -317,6 +409,8 @@ export function analyzeTemplate(
     pushPullBalance,
     compoundIsolationRatio,
     movementPatternDiversity,
+    lengthPosition,
+    sfrEfficiency,
     exercises.length
   );
 
@@ -327,6 +421,8 @@ export function analyzeTemplate(
     pushPullBalance,
     compoundIsolationRatio,
     movementPatternDiversity,
+    lengthPosition,
+    sfrEfficiency,
     exerciseCount: exercises.length,
     suggestions,
   };
@@ -339,6 +435,8 @@ function generateSuggestions(
   pushPull: PushPullBalanceScore,
   compound: CompoundIsolationScore,
   movement: MovementPatternScore,
+  lengthPos: LengthPositionScore,
+  sfr: SfrEfficiencyScore,
   exerciseCount: number
 ): string[] {
   const suggestions: string[] = [];
@@ -385,6 +483,20 @@ function generateSuggestions(
       .map((p) => p.replace(/_/g, " "))
       .join(", ");
     suggestions.push(`Add ${missing} movements for more balanced training.`);
+  }
+
+  // Length-position coverage
+  if (lengthPos.score < 50) {
+    suggestions.push(
+      "Consider exercises that load muscles at longer lengths for greater hypertrophy."
+    );
+  }
+
+  // SFR efficiency
+  if (sfr.score < 50) {
+    suggestions.push(
+      "Consider swapping high-fatigue exercises for more efficient alternatives."
+    );
   }
 
   return suggestions.slice(0, 3);

@@ -32,9 +32,9 @@ The engine pairs main lifts by `movementPatternsV2`:
 
 Main lifts use recency weighting and seeded randomness for variety. Recent main lifts are deprioritized.
 
-### 4. Timeboxing
+### 4. Timeboxing (PPL Auto Only)
 
-The session time budget (`sessionMinutes`) is enforced by dropping accessories first. Accessories are trimmed by lowest priority (scored by fatigue cost and unique muscle contribution), not by position order.
+The session time budget (`sessionMinutes`) is enforced by dropping accessories first. Accessories are trimmed by lowest priority (scored by fatigue cost and unique muscle contribution), not by position order. **Template mode skips timeboxing** — all template exercises are preserved regardless of estimated duration.
 
 ### 5. Load Progression Guardrails
 
@@ -99,6 +99,44 @@ POST /api/workouts/generate
 
   5. Return WorkoutPlan JSON
 ```
+
+### Template Mode Generation Flow
+
+```
+POST /api/workouts/generate-from-template
+  1. Load data (parallel)
+     loadTemplateDetail(templateId) + loadWorkoutContext(userId)
+     Template: exercises with metadata (muscles, equipment, movement patterns)
+     Context: profile, goals, constraints, injuries, baselines, exercises,
+              workouts, preferences, most recent SessionCheckIn
+
+  2. Map DB models to engine types
+     mapProfile, mapGoals, mapExercises, mapHistory, mapPreferences, mapCheckIn
+
+  3. Generate workout from template (pure engine)
+     generateWorkoutFromTemplate()
+       -> classify exercises as main lifts vs accessories
+       -> derive fatigue state from history + check-in
+       -> prescribe sets/reps per exercise (prescribeSetsReps)
+       -> assign rest periods (getRestSeconds)
+       -> estimate session duration
+       -> build muscle recovery map, generate SRA warnings
+       -> NO timeboxing — full template structure preserved
+       -> NO split selection — user chose the template
+
+  4. Apply loads (pure engine)
+     applyLoads()
+       -> Same three-tier strategy as PPL Auto
+       -> No sessionMinutes trimming (template preserves all exercises)
+
+  5. Return { workout, templateId, sraWarnings }
+```
+
+**Key differences from PPL Auto:**
+- Exercise selection is user-defined (template), not engine-generated
+- Timeboxing is skipped — the full template is always preserved
+- Saved workouts set `advancesSplit: false` — template sessions don't rotate the PPL queue
+- SRA warnings are advisory (the template is preserved even if muscles are under-recovered)
 
 ---
 
@@ -215,7 +253,8 @@ Defined in `prescription.ts`.
 
 | Module | Responsibility |
 |--------|---------------|
-| `engine.ts` | Orchestrator: `generateWorkout`, `buildWorkoutExercise` |
+| `engine.ts` | Orchestrator: `generateWorkout`, `buildWorkoutExercise` (PPL Auto mode) |
+| `template-session.ts` | Template mode: `generateWorkoutFromTemplate` (prescribe sets/reps/rest for user-defined exercises) |
 | `apply-loads.ts` | Load assignment: history -> baseline -> estimation; periodization modifiers |
 | `split-queue.ts` | Split patterns, day index, history-based PPL split, target pattern resolution |
 | `filtering.ts` | Exercise filtering (equipment, pain, injury, stall), `selectExercises` |
@@ -262,11 +301,29 @@ Defined in `prescription.ts`.
 
 ## UI Flow (Workout Generation)
 
-1. Dashboard (`/`) renders `GenerateWorkoutCard`
+The dashboard (`/`) renders `DashboardGenerateSection` with a **PPL Auto / Template** mode selector.
+
+### PPL Auto Mode
+
+1. `GenerateWorkoutCard` with next split label and queue preview
 2. Tapping "Generate Workout" expands inline `SessionCheckInForm`
 3. Submit: `POST /api/session-checkins` then `POST /api/workouts/generate`
 4. Skip: `POST /api/workouts/generate` directly (no check-in saved)
 5. After generation: preview + "Save Workout" button
 6. Save: `POST /api/workouts/save` -> links to `/workout/[id]` and `/log/[id]`
+
+### Template Mode
+
+1. `GenerateFromTemplateCard` with template dropdown
+2. Select a template, then optional `SessionCheckInForm`
+3. Generate: `POST /api/workouts/generate-from-template`
+4. Preview shows exercises with sets/reps/load, SRA warnings, estimated duration
+5. Save: `POST /api/workouts/save` (with `templateId`, `advancesSplit: false`)
+
+### Template Management
+
+- `/templates` — list page with exercise counts, target muscles, create/edit/delete
+- `/templates/new` — create form with `ExercisePicker` integration
+- `/templates/[id]/edit` — edit form with exercise reordering
 
 **Workout detail** (`/workout/[id]`): session overview with estimated minutes, exercises grouped into Warmup/Main Lifts/Accessories, each card shows sets/reps/load/RPE and a "Why" note.

@@ -11,23 +11,17 @@ type WorkoutListItem = {
   exercisesCount: number;
 };
 
-type ResumeItem = {
-  id: string;
-};
-
 type StatusMap = {
   [key: string]: string;
 };
 
 type Props = {
-  latestIncomplete: ResumeItem | null;
   recentWorkouts: WorkoutListItem[];
   statusLabels: StatusMap;
   statusClasses: StatusMap;
 };
 
 export default function RecentWorkouts({
-  latestIncomplete,
   recentWorkouts,
   statusLabels,
   statusClasses,

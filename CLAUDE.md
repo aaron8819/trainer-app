@@ -163,3 +163,5 @@ npx prisma migrate resolve --applied <migration_dir>
 ```bash
 npm run prisma:generate
 ```
+
+See `.claude/patterns.md` for learned workflow patterns and preferences.

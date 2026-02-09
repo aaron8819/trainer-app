@@ -4,6 +4,16 @@ Record of significant design decisions and their rationale. Newest first.
 
 ---
 
+## ADR-016: Template session generation — skip timeboxing, don't advance split (2026-02-09)
+
+**Decision**: Template-based workout generation (`generateWorkoutFromTemplate`) preserves the full template exercise list without timeboxing. Saved template workouts set `advancesSplit: false` so they don't rotate the PPL split queue.
+
+**Rationale**: When a user defines a template, they've intentionally chosen their exercises — trimming exercises to fit a time budget would undermine the template's purpose. Template workouts also shouldn't advance the PPL rotation because they operate outside the PPL system; a user doing a custom arm day shouldn't cause their next auto-generated session to skip a push/pull/legs day.
+
+**Implementation**: `generateWorkoutFromTemplate()` is a pure engine module in `template-session.ts` that accepts template exercises and prescribes sets/reps/rest using the same `prescribeSetsReps()` and `getRestSeconds()` functions as PPL auto mode. The API layer (`src/lib/api/template-session.ts`) loads template + workout context in parallel, maps to engine types, calls the pure function, then applies loads via `applyLoads()`. SRA warnings are generated but advisory — under-recovered muscles don't cause exercise removal. The dashboard uses a `DashboardGenerateSection` mode selector to toggle between PPL Auto and Template generation.
+
+---
+
 ## ADR-015: Template CRUD — delete nullifies workout FK, exercises use full replacement (2026-02-08)
 
 **Decision**: When a template is deleted, associated `Workout.templateId` values are set to null (preserving workout history). When updating a template's exercises, the API uses full replacement (delete all existing + insert new) rather than diffing.

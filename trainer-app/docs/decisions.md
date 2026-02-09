@@ -4,6 +4,14 @@ Record of significant design decisions and their rationale. Newest first.
 
 ---
 
+## ADR-017: Template analysis — 6 scoring dimensions with rebalanced weights (2026-02-09)
+
+**Decision**: Template analysis scores 6 dimensions: muscle coverage (0.30), push/pull balance (0.15), compound/isolation ratio (0.15), movement diversity (0.15), lengthened-position coverage (0.10), and SFR efficiency (0.15). The `sfrScore` and `lengthPositionScore` fields were promoted from `ExerciseDetail` to `ExerciseListItem` so they flow through the exercise library API to all consumers.
+
+**Rationale**: The spec calls for 5 scoring dimensions; we split "movement balance" into push/pull and compound/isolation (already done) and added the two missing evidence-based dimensions. SFR efficiency gets more weight than length-position because fatigue management has a bigger practical impact on training sustainability. Muscle coverage remains the heaviest weight because missing entire muscle groups is the most impactful template deficiency. Promoting the scores to `ExerciseListItem` ensures Smart Build and the analysis panel can access them without requiring full `ExerciseDetail` loads.
+
+---
+
 ## ADR-016: Template session generation — skip timeboxing, don't advance split (2026-02-09)
 
 **Decision**: Template-based workout generation (`generateWorkoutFromTemplate`) preserves the full template exercise list without timeboxing. Saved template workouts set `advancesSplit: false` so they don't rotate the PPL split queue.

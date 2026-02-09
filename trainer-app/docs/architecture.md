@@ -140,6 +140,25 @@ POST /api/workouts/generate-from-template
 
 ---
 
+## Template Analysis (6 Scoring Dimensions)
+
+`analyzeTemplate()` in `template-analysis.ts` scores a template's exercise list across 6 weighted dimensions:
+
+| Dimension | Weight | Scoring Logic |
+|-----------|--------|---------------|
+| Muscle Coverage | 0.30 | Critical muscles (MEV > 0) weighted 80%, non-critical 20%. Primary hit = 1.0, secondary-only = 0.4 |
+| Push/Pull Balance | 0.15 | Deviation from 1:1 push/pull ratio. All-legs templates get neutral score (75) |
+| Compound/Isolation | 0.15 | Optimal 40-60% compound = 100. Linear penalty outside that range |
+| Movement Diversity | 0.15 | Coverage of 8 core patterns + bonus for rotation/anti-rotation |
+| Lengthened-Position | 0.10 | Average `lengthPositionScore` (1-5) mapped to 0-100, +10 per exercise >= 4, -5 per exercise <= 2 |
+| SFR Efficiency | 0.15 | Average `sfrScore` (1-5) mapped to 0-100, same bonus/penalty structure |
+
+Each dimension returns a 0-100 score with a label (Excellent/Good/Fair/Needs Work/Poor). The overall score is the weighted sum, capped at 0-100. Up to 3 actionable suggestions are generated for weak dimensions.
+
+**Smart Build** (`smart-build.ts`) uses `analyzeTemplate()` to score its selections and iteratively improve by swapping weak exercises. It threads `sfrScore` and `lengthPositionScore` from `SmartBuildExercise` into the analysis input.
+
+---
+
 ## PPL Accessory Selection (Slot-Based)
 
 Accessories are chosen via slot-based selection. Each slot targets specific muscles/stimulus:
@@ -267,6 +286,8 @@ Defined in `prescription.ts`.
 | `progression.ts` | Load progression (`computeNextLoad`, `shouldDeload`) |
 | `utils.ts` | Shared helpers (`normalizeName`, `weightedPick`, `buildRecencyIndex`, etc.) |
 | `volume-landmarks.ts` | Volume landmarks (MV/MEV/MAV/MRV), muscle-to-split mapping |
+| `template-analysis.ts` | Template scoring: muscle coverage, push/pull balance, compound/isolation, movement diversity, lengthened-position coverage, SFR efficiency |
+| `smart-build.ts` | Engine-assisted template creation: exercise selection, scoring, iterative improvement |
 | `sra.ts` | SRA recovery tracking, warning generation |
 | `rules.ts` | Constants, rep ranges, mesocycle periodization |
 | `random.ts` | Seeded PRNG (`createRng`) |

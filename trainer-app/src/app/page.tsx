@@ -1,8 +1,9 @@
 ﻿import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
-import GenerateWorkoutCard from "@/components/GenerateWorkoutCard";
+import { DashboardGenerateSection } from "@/components/DashboardGenerateSection";
 import RecentWorkouts from "@/components/RecentWorkouts";
 import { SPLIT_PATTERNS } from "@/lib/engine";
+import { loadTemplates } from "@/lib/api/templates";
 import type { MovementPattern } from "@/lib/engine/types";
 
 export const dynamic = "force-dynamic";
@@ -58,13 +59,14 @@ export default async function Home() {
   const targetUserId =
     latestWorkout?.userId ?? latestCompleted?.userId ?? latestIncomplete?.userId ?? fallbackUser?.id;
 
-  const [constraints, advancingCompletedCount] = await Promise.all([
+  const [constraints, advancingCompletedCount, templates] = await Promise.all([
     targetUserId ? prisma.constraints.findUnique({ where: { userId: targetUserId } }) : null,
     targetUserId
       ? prisma.workout.count({
           where: { userId: targetUserId, status: "COMPLETED", advancesSplit: true },
         })
       : 0,
+    targetUserId ? loadTemplates(targetUserId) : [],
   ]);
 
   const toLabel = (patterns: MovementPattern[]) => {
@@ -136,7 +138,15 @@ export default async function Home() {
         </header>
 
         <section className="grid gap-6 md:grid-cols-2">
-          <GenerateWorkoutCard nextAutoLabel={nextAutoLabel} queuePreview={queuePreview} />
+          <DashboardGenerateSection
+            nextAutoLabel={nextAutoLabel}
+            queuePreview={queuePreview}
+            templates={templates.map((t) => ({
+              id: t.id,
+              name: t.name,
+              exerciseCount: t.exerciseCount,
+            }))}
+          />
           <div className="space-y-6">
             {latestIncomplete ? (
               <div className="rounded-2xl border border-slate-200 p-6 shadow-sm">

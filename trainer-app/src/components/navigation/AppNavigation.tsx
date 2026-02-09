@@ -17,6 +17,15 @@ const LibraryIcon = () => (
   </svg>
 );
 
+const TemplatesIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="3" width="7" height="7" />
+    <rect x="14" y="3" width="7" height="7" />
+    <rect x="3" y="14" width="7" height="7" />
+    <rect x="14" y="14" width="7" height="7" />
+  </svg>
+);
+
 const AnalyticsIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
     <line x1="18" y1="20" x2="18" y2="10" />
@@ -34,6 +43,7 @@ const SettingsIcon = () => (
 
 const NAV_ITEMS = [
   { href: "/", label: "Home", icon: <HomeIcon /> },
+  { href: "/templates", label: "Templates", icon: <TemplatesIcon /> },
   { href: "/library", label: "Library", icon: <LibraryIcon /> },
   { href: "/analytics", label: "Analytics", icon: <AnalyticsIcon /> },
   { href: "/settings", label: "Settings", icon: <SettingsIcon /> },

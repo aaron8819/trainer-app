@@ -1,0 +1,304 @@
+"use client";
+
+import { useState } from "react";
+import Link from "next/link";
+import SessionCheckInForm from "@/components/SessionCheckInForm";
+
+type WorkoutSet = {
+  setIndex: number;
+  targetReps: number;
+  targetRpe?: number;
+  targetLoad?: number;
+  restSeconds?: number;
+};
+
+type WorkoutExercise = {
+  id: string;
+  orderIndex: number;
+  isMainLift: boolean;
+  exercise: { id: string; name: string };
+  sets: WorkoutSet[];
+};
+
+type WorkoutPlan = {
+  id: string;
+  scheduledDate: string;
+  warmup: WorkoutExercise[];
+  mainLifts: WorkoutExercise[];
+  accessories: WorkoutExercise[];
+  estimatedMinutes: number;
+  notes?: string;
+};
+
+type SraWarning = {
+  muscle: string;
+  recoveryPercent: number;
+};
+
+type TemplateSummary = {
+  id: string;
+  name: string;
+  exerciseCount: number;
+};
+
+type SessionCheckInPayload = {
+  readiness: number;
+  painFlags: Record<"shoulder" | "elbow" | "low_back" | "knee" | "wrist", 0 | 2>;
+  notes?: string;
+};
+
+type GenerateFromTemplateCardProps = {
+  templates: TemplateSummary[];
+};
+
+export function GenerateFromTemplateCard({ templates }: GenerateFromTemplateCardProps) {
+  const [selectedTemplateId, setSelectedTemplateId] = useState(templates[0]?.id ?? "");
+  const [workout, setWorkout] = useState<WorkoutPlan | null>(null);
+  const [sraWarnings, setSraWarnings] = useState<SraWarning[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [savedId, setSavedId] = useState<string | null>(null);
+  const [showCheckIn, setShowCheckIn] = useState(false);
+
+  const generateWorkout = async () => {
+    const response = await fetch("/api/workouts/generate-from-template", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ templateId: selectedTemplateId }),
+    });
+
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      setError(body.error ?? "Failed to generate workout");
+      return false;
+    }
+
+    const body = await response.json();
+    setWorkout(body.workout as WorkoutPlan);
+    setSraWarnings(body.sraWarnings ?? []);
+    return true;
+  };
+
+  const handleGenerateClick = () => {
+    if (!selectedTemplateId) {
+      setError("Select a template first");
+      return;
+    }
+    setError(null);
+    setSavedId(null);
+    setWorkout(null);
+    setSraWarnings([]);
+    setShowCheckIn(true);
+  };
+
+  const handleCheckInSubmit = async (payload: SessionCheckInPayload) => {
+    setLoading(true);
+    setError(null);
+    setSavedId(null);
+
+    const response = await fetch("/api/session-checkins", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      setError(body.error ?? "Failed to save check-in");
+      setLoading(false);
+      return;
+    }
+
+    const generated = await generateWorkout();
+    setLoading(false);
+    if (generated) {
+      setShowCheckIn(false);
+    }
+  };
+
+  const handleCheckInSkip = async () => {
+    setLoading(true);
+    setError(null);
+    setSavedId(null);
+
+    const generated = await generateWorkout();
+    setLoading(false);
+    if (generated) {
+      setShowCheckIn(false);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!workout) return;
+
+    setSaving(true);
+    setError(null);
+
+    const payload = {
+      workoutId: workout.id,
+      templateId: selectedTemplateId,
+      scheduledDate: workout.scheduledDate,
+      estimatedMinutes: workout.estimatedMinutes,
+      advancesSplit: false,
+      exercises: [
+        ...workout.mainLifts.map((e) => ({ ...e, section: "MAIN" as const })),
+        ...workout.accessories.map((e) => ({ ...e, section: "ACCESSORY" as const })),
+      ].map((exercise) => ({
+        section: (exercise as { section: "MAIN" | "ACCESSORY" }).section,
+        exerciseId: exercise.exercise.id,
+        sets: exercise.sets.map((set) => ({
+          setIndex: set.setIndex,
+          targetReps: set.targetReps,
+          targetRpe: set.targetRpe,
+          targetLoad: set.targetLoad,
+          restSeconds: set.restSeconds,
+        })),
+      })),
+    };
+
+    const response = await fetch("/api/workouts/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      setError(body.error ?? "Failed to save workout");
+      setSaving(false);
+      return;
+    }
+
+    const body = await response.json().catch(() => ({}));
+    setSavedId(body.workoutId ?? workout.id);
+    setSaving(false);
+  };
+
+  if (templates.length === 0) {
+    return (
+      <div className="rounded-2xl border border-slate-200 p-6 shadow-sm">
+        <h2 className="text-xl font-semibold">Template Workout</h2>
+        <p className="mt-2 text-slate-600">No templates yet. Create one to get started.</p>
+        <Link
+          href="/templates/new"
+          className="mt-4 inline-block rounded-full bg-slate-900 px-5 py-2 text-sm font-semibold text-white"
+        >
+          Create Template
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-slate-200 p-6 shadow-sm">
+      <h2 className="text-xl font-semibold">Template Workout</h2>
+      <p className="mt-2 text-slate-600">
+        Generate a workout from one of your saved templates.
+      </p>
+
+      <div className="mt-4">
+        <label className="flex flex-col gap-2">
+          <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Template
+          </span>
+          <select
+            className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
+            value={selectedTemplateId}
+            onChange={(e) => setSelectedTemplateId(e.target.value)}
+          >
+            {templates.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name} ({t.exerciseCount} exercises)
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {showCheckIn ? (
+        <SessionCheckInForm
+          onSubmit={handleCheckInSubmit}
+          onSkip={handleCheckInSkip}
+          isSubmitting={loading}
+        />
+      ) : (
+        <div className="mt-4 flex flex-wrap gap-3">
+          <button
+            className="rounded-full bg-slate-900 px-5 py-2 text-sm font-semibold text-white disabled:opacity-60"
+            onClick={handleGenerateClick}
+            disabled={loading}
+          >
+            {loading ? "Generating..." : "Generate Workout"}
+          </button>
+          {workout && (
+            <button
+              className="rounded-full border border-slate-900 px-5 py-2 text-sm font-semibold disabled:opacity-60"
+              onClick={handleSave}
+              disabled={saving}
+            >
+              {saving ? "Saving..." : "Save Workout"}
+            </button>
+          )}
+        </div>
+      )}
+
+      {error && <p className="mt-3 text-sm text-rose-600">{error}</p>}
+
+      {savedId && (
+        <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
+          <span className="text-emerald-600">Saved!</span>
+          <Link className="font-semibold text-slate-900" href={`/workout/${savedId}`}>
+            View workout
+          </Link>
+          <Link className="font-semibold text-slate-900" href={`/log/${savedId}`}>
+            Start logging
+          </Link>
+        </div>
+      )}
+
+      {sraWarnings.length > 0 && !savedId && (
+        <div className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
+          <span className="font-semibold">Recovery note:</span>{" "}
+          {sraWarnings.map((w) => `${w.muscle} (${w.recoveryPercent}%)`).join(", ")} may still be recovering.
+        </div>
+      )}
+
+      {workout && (
+        <div className="mt-6 space-y-4">
+          <div className="rounded-xl border border-slate-200 p-4">
+            <p className="text-sm text-slate-500">Estimated time</p>
+            <p className="text-lg font-semibold">{workout.estimatedMinutes} minutes</p>
+          </div>
+          {workout.notes && (
+            <p className="text-xs text-slate-500">{workout.notes}</p>
+          )}
+          {[
+            { label: "Main Lifts", items: workout.mainLifts },
+            { label: "Accessories", items: workout.accessories },
+          ].map((section) =>
+            section.items.length > 0 ? (
+              <div key={section.label} className="rounded-xl border border-slate-200 p-4">
+                <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+                  {section.label}
+                </h3>
+                <div className="mt-3 space-y-3">
+                  {section.items.map((exercise) => (
+                    <div key={exercise.id} className="rounded-lg border border-slate-100 p-3">
+                      <p className="text-sm font-semibold">{exercise.exercise.name}</p>
+                      <p className="text-xs text-slate-500">
+                        {exercise.sets.length} sets · {exercise.sets[0]?.targetReps ?? ""} reps
+                        {exercise.sets[0]?.targetLoad ? ` · ${exercise.sets[0].targetLoad} lbs` : ""}
+                        {exercise.sets[0]?.targetRpe ? ` · RPE ${exercise.sets[0].targetRpe}` : ""}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

@@ -154,7 +154,7 @@ export function applyLoads(workout: WorkoutPlan, options: ApplyLoadsOptions): Wo
     };
   };
 
-  let mainLifts = workout.mainLifts.map(applyToExercise);
+  const mainLifts = workout.mainLifts.map(applyToExercise);
   let accessories = workout.accessories.map(applyToExercise);
   const budgetMinutes = options.sessionMinutes;
   let estimatedMinutes = estimateWorkoutMinutes([

@@ -40,6 +40,7 @@ export async function POST(request: Request) {
         selectionMode: parsed.data.selectionMode ?? undefined,
         forcedSplit: parsed.data.forcedSplit ?? undefined,
         advancesSplit: parsed.data.advancesSplit ?? undefined,
+        templateId: parsed.data.templateId ?? undefined,
       },
       create: {
         id: parsed.data.workoutId,
@@ -52,6 +53,7 @@ export async function POST(request: Request) {
         selectionMode: parsed.data.selectionMode ?? undefined,
         forcedSplit: parsed.data.forcedSplit ?? undefined,
         advancesSplit: parsed.data.advancesSplit ?? undefined,
+        templateId: parsed.data.templateId ?? undefined,
       },
     });
 

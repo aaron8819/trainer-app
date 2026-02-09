@@ -27,9 +27,15 @@ export const generateWorkoutSchema = z.object({
   advancesSplit: z.boolean().optional(),
 });
 
+export const generateFromTemplateSchema = z.object({
+  userId: z.string().optional(),
+  templateId: z.string(),
+});
+
 export const saveWorkoutSchema = z.object({
   workoutId: z.string(),
   userId: z.string().optional(),
+  templateId: z.string().optional(),
   scheduledDate: z.string().optional(),
   status: z.enum(["PLANNED", "IN_PROGRESS", "COMPLETED", "SKIPPED"]).optional(),
   estimatedMinutes: z.number().optional(),

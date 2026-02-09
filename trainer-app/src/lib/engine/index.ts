@@ -17,3 +17,4 @@ export * from "./progression";
 export * from "./sra";
 export * from "./template-session";
 export * from "./template-analysis";
+export * from "./smart-build";

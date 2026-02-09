@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { ExercisePicker } from "@/components/library/ExercisePicker";
 import { TemplateAnalysisPanel } from "@/components/templates/TemplateAnalysisPanel";
 import { MUSCLE_GROUP_LABELS } from "@/lib/exercise-library/constants";
+import { smartBuild, type SmartBuildExercise } from "@/lib/engine/smart-build";
 import type { ExerciseListItem, MuscleGroup } from "@/lib/exercise-library/types";
 
 type SelectedExercise = {
@@ -90,6 +91,36 @@ export function TemplateForm({
     );
   };
 
+  const handleSmartBuild = useCallback(() => {
+    const exercisePool: SmartBuildExercise[] = exercises.map((ex) => ({
+      id: ex.id,
+      name: ex.name,
+      isCompound: ex.isCompound,
+      movementPatternsV2: ex.movementPatternsV2,
+      splitTags: ex.splitTags,
+      jointStress: ex.jointStress,
+      equipment: ex.equipment,
+      primaryMuscles: ex.primaryMuscles,
+      secondaryMuscles: ex.secondaryMuscles,
+      isFavorite: ex.isFavorite,
+      isAvoided: ex.isAvoided,
+    }));
+
+    const result = smartBuild({
+      targetMuscleGroups: targetMuscles,
+      exercisePool,
+      seed: Date.now(),
+    });
+
+    const newExercises: SelectedExercise[] = result.exercises.map((ex, i) => ({
+      exerciseId: ex.id,
+      name: ex.name,
+      orderIndex: i,
+    }));
+
+    setSelectedExercises(newExercises);
+  }, [exercises, targetMuscles]);
+
   const handleSubmit = async () => {
     if (!name.trim()) {
       setError("Name is required");
@@ -168,6 +199,21 @@ export function TemplateForm({
           ))}
         </div>
       </div>
+
+      {targetMuscles.length > 0 && (
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleSmartBuild}
+            className="rounded-full bg-indigo-600 px-4 py-1.5 text-xs font-semibold text-white
+              transition-colors hover:bg-indigo-700"
+          >
+            Smart Build
+          </button>
+          <span className="text-xs text-slate-400">
+            Auto-pick exercises for selected muscles
+          </span>
+        </div>
+      )}
 
       <div>
         <div className="flex items-center justify-between">

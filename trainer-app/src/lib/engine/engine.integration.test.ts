@@ -13,6 +13,7 @@ import type {
 } from "./types";
 
 type SeededExerciseInput = Omit<Exercise, "isMainLiftEligible" | "isCompound" | "fatigueCost" | "stimulusBias" | "primaryMuscles"> & {
+  isMainLift: boolean;
   isMainLiftEligible?: boolean;
   isCompound?: boolean;
   fatigueCost?: number;
@@ -20,21 +21,23 @@ type SeededExerciseInput = Omit<Exercise, "isMainLiftEligible" | "isCompound" | 
   primaryMuscles?: Exercise["primaryMuscles"];
 };
 
-const createExercise = (input: SeededExerciseInput): Exercise => ({
-  isMainLiftEligible: input.isMainLiftEligible ?? input.isMainLift,
-  isCompound: input.isCompound ?? input.isMainLift,
-  fatigueCost: input.fatigueCost ?? (input.isMainLift ? 4 : 2),
-  stimulusBias: input.stimulusBias ?? [],
-  primaryMuscles: input.primaryMuscles ?? [],
-  ...input,
-});
+const createExercise = (input: SeededExerciseInput): Exercise => {
+  const { isMainLift, ...rest } = input;
+  return {
+    isMainLiftEligible: input.isMainLiftEligible ?? isMainLift,
+    isCompound: input.isCompound ?? isMainLift,
+    fatigueCost: input.fatigueCost ?? (isMainLift ? 4 : 2),
+    stimulusBias: input.stimulusBias ?? [],
+    primaryMuscles: input.primaryMuscles ?? [],
+    ...rest,
+  };
+};
 
 const seededExerciseLibrary: Exercise[] = [
   createExercise({
     id: "barbell-bench-press",
     name: "Barbell Bench Press",
-    movementPattern: "push",
-    movementPatternsV2: ["horizontal_push"],
+    movementPatterns: ["horizontal_push"],
     splitTags: ["push"],
     jointStress: "high",
     isMainLift: true,
@@ -45,8 +48,7 @@ const seededExerciseLibrary: Exercise[] = [
   createExercise({
     id: "overhead-press",
     name: "Overhead Press",
-    movementPattern: "push",
-    movementPatternsV2: ["vertical_push"],
+    movementPatterns: ["vertical_push"],
     splitTags: ["push"],
     jointStress: "high",
     isMainLift: true,
@@ -57,8 +59,7 @@ const seededExerciseLibrary: Exercise[] = [
   createExercise({
     id: "cable-fly",
     name: "Cable Fly",
-    movementPattern: "push",
-    movementPatternsV2: ["horizontal_push"],
+    movementPatterns: ["horizontal_push"],
     splitTags: ["push"],
     jointStress: "low",
     isMainLift: false,
@@ -72,8 +73,7 @@ const seededExerciseLibrary: Exercise[] = [
   createExercise({
     id: "pec-deck",
     name: "Pec Deck",
-    movementPattern: "push",
-    movementPatternsV2: ["horizontal_push"],
+    movementPatterns: ["horizontal_push"],
     splitTags: ["push"],
     jointStress: "low",
     isMainLift: false,
@@ -87,8 +87,7 @@ const seededExerciseLibrary: Exercise[] = [
   createExercise({
     id: "lateral-raise",
     name: "Lateral Raise",
-    movementPattern: "push_pull",
-    movementPatternsV2: ["vertical_push"],
+    movementPatterns: ["vertical_push"],
     splitTags: ["push"],
     jointStress: "low",
     isMainLift: false,
@@ -102,8 +101,7 @@ const seededExerciseLibrary: Exercise[] = [
   createExercise({
     id: "cable-lateral-raise",
     name: "Cable Lateral Raise",
-    movementPattern: "push_pull",
-    movementPatternsV2: ["vertical_push"],
+    movementPatterns: ["vertical_push"],
     splitTags: ["push"],
     jointStress: "low",
     isMainLift: false,
@@ -117,8 +115,7 @@ const seededExerciseLibrary: Exercise[] = [
   createExercise({
     id: "triceps-pushdown",
     name: "Triceps Pushdown",
-    movementPattern: "push",
-    movementPatternsV2: ["horizontal_push"],
+    movementPatterns: ["horizontal_push"],
     splitTags: ["push"],
     jointStress: "low",
     isMainLift: false,
@@ -132,8 +129,7 @@ const seededExerciseLibrary: Exercise[] = [
   createExercise({
     id: "overhead-triceps-extension",
     name: "Overhead Triceps Extension",
-    movementPattern: "push",
-    movementPatternsV2: ["vertical_push"],
+    movementPatterns: ["vertical_push"],
     splitTags: ["push"],
     jointStress: "medium",
     isMainLift: false,
@@ -147,8 +143,7 @@ const seededExerciseLibrary: Exercise[] = [
   createExercise({
     id: "dumbbell-incline-press",
     name: "Dumbbell Incline Press",
-    movementPattern: "push",
-    movementPatternsV2: ["horizontal_push"],
+    movementPatterns: ["horizontal_push"],
     splitTags: ["push"],
     jointStress: "medium",
     isMainLift: false,
@@ -162,8 +157,7 @@ const seededExerciseLibrary: Exercise[] = [
   createExercise({
     id: "machine-chest-press",
     name: "Machine Chest Press",
-    movementPattern: "push",
-    movementPatternsV2: ["horizontal_push"],
+    movementPatterns: ["horizontal_push"],
     splitTags: ["push"],
     jointStress: "medium",
     isMainLift: false,
@@ -177,8 +171,7 @@ const seededExerciseLibrary: Exercise[] = [
   createExercise({
     id: "lat-pulldown",
     name: "Lat Pulldown",
-    movementPattern: "pull",
-    movementPatternsV2: ["vertical_pull"],
+    movementPatterns: ["vertical_pull"],
     splitTags: ["pull"],
     jointStress: "medium",
     isMainLift: true,
@@ -189,8 +182,7 @@ const seededExerciseLibrary: Exercise[] = [
   createExercise({
     id: "barbell-row",
     name: "Barbell Row",
-    movementPattern: "pull",
-    movementPatternsV2: ["horizontal_pull"],
+    movementPatterns: ["horizontal_pull"],
     splitTags: ["pull"],
     jointStress: "medium",
     isMainLift: true,
@@ -201,8 +193,7 @@ const seededExerciseLibrary: Exercise[] = [
   createExercise({
     id: "face-pull",
     name: "Face Pull",
-    movementPattern: "pull",
-    movementPatternsV2: ["horizontal_pull"],
+    movementPatterns: ["horizontal_pull"],
     splitTags: ["pull"],
     jointStress: "low",
     isMainLift: false,
@@ -216,8 +207,7 @@ const seededExerciseLibrary: Exercise[] = [
   createExercise({
     id: "rear-delt-fly-machine",
     name: "Machine Rear Delt Fly",
-    movementPattern: "pull",
-    movementPatternsV2: ["horizontal_pull"],
+    movementPatterns: ["horizontal_pull"],
     splitTags: ["pull"],
     jointStress: "low",
     isMainLift: false,
@@ -231,8 +221,7 @@ const seededExerciseLibrary: Exercise[] = [
   createExercise({
     id: "dumbbell-curl",
     name: "Dumbbell Curl",
-    movementPattern: "pull",
-    movementPatternsV2: ["horizontal_pull"],
+    movementPatterns: ["horizontal_pull"],
     splitTags: ["pull"],
     jointStress: "low",
     isMainLift: false,
@@ -245,8 +234,7 @@ const seededExerciseLibrary: Exercise[] = [
   createExercise({
     id: "incline-dumbbell-curl",
     name: "Incline Dumbbell Curl",
-    movementPattern: "pull",
-    movementPatternsV2: ["horizontal_pull"],
+    movementPatterns: ["horizontal_pull"],
     splitTags: ["pull"],
     jointStress: "low",
     isMainLift: false,
@@ -260,8 +248,7 @@ const seededExerciseLibrary: Exercise[] = [
   createExercise({
     id: "seated-cable-row",
     name: "Seated Cable Row",
-    movementPattern: "pull",
-    movementPatternsV2: ["horizontal_pull"],
+    movementPatterns: ["horizontal_pull"],
     splitTags: ["pull"],
     jointStress: "low",
     isMainLift: false,
@@ -274,8 +261,7 @@ const seededExerciseLibrary: Exercise[] = [
   createExercise({
     id: "chest-supported-row",
     name: "Chest-Supported Row",
-    movementPattern: "pull",
-    movementPatternsV2: ["horizontal_pull"],
+    movementPatterns: ["horizontal_pull"],
     splitTags: ["pull"],
     jointStress: "low",
     isMainLift: false,
@@ -288,8 +274,7 @@ const seededExerciseLibrary: Exercise[] = [
   createExercise({
     id: "straight-arm-pulldown",
     name: "Straight-Arm Pulldown",
-    movementPattern: "pull",
-    movementPatternsV2: ["vertical_pull"],
+    movementPatterns: ["vertical_pull"],
     splitTags: ["pull"],
     jointStress: "low",
     isMainLift: false,
@@ -302,8 +287,7 @@ const seededExerciseLibrary: Exercise[] = [
   createExercise({
     id: "one-arm-dumbbell-row",
     name: "One-Arm Dumbbell Row",
-    movementPattern: "pull",
-    movementPatternsV2: ["horizontal_pull"],
+    movementPatterns: ["horizontal_pull"],
     splitTags: ["pull"],
     jointStress: "medium",
     isMainLift: false,
@@ -316,8 +300,7 @@ const seededExerciseLibrary: Exercise[] = [
   createExercise({
     id: "reverse-fly",
     name: "Reverse Fly",
-    movementPattern: "pull",
-    movementPatternsV2: ["horizontal_pull"],
+    movementPatterns: ["horizontal_pull"],
     splitTags: ["pull"],
     jointStress: "low",
     isMainLift: false,
@@ -331,8 +314,7 @@ const seededExerciseLibrary: Exercise[] = [
   createExercise({
     id: "barbell-back-squat",
     name: "Barbell Back Squat",
-    movementPattern: "squat",
-    movementPatternsV2: ["squat"],
+    movementPatterns: ["squat"],
     splitTags: ["legs"],
     jointStress: "high",
     isMainLift: true,
@@ -343,8 +325,7 @@ const seededExerciseLibrary: Exercise[] = [
   createExercise({
     id: "romanian-deadlift",
     name: "Romanian Deadlift",
-    movementPattern: "hinge",
-    movementPatternsV2: ["hinge"],
+    movementPatterns: ["hinge"],
     splitTags: ["legs"],
     jointStress: "medium",
     isMainLift: true,
@@ -355,8 +336,7 @@ const seededExerciseLibrary: Exercise[] = [
   createExercise({
     id: "leg-extension",
     name: "Leg Extension",
-    movementPattern: "squat",
-    movementPatternsV2: ["squat"],
+    movementPatterns: ["squat"],
     splitTags: ["legs"],
     jointStress: "medium",
     isMainLift: false,
@@ -370,8 +350,7 @@ const seededExerciseLibrary: Exercise[] = [
   createExercise({
     id: "hack-squat",
     name: "Hack Squat",
-    movementPattern: "squat",
-    movementPatternsV2: ["squat"],
+    movementPatterns: ["squat"],
     splitTags: ["legs"],
     jointStress: "medium",
     isMainLift: false,
@@ -385,8 +364,7 @@ const seededExerciseLibrary: Exercise[] = [
   createExercise({
     id: "leg-curl",
     name: "Leg Curl",
-    movementPattern: "hinge",
-    movementPatternsV2: ["hinge"],
+    movementPatterns: ["hinge"],
     splitTags: ["legs"],
     jointStress: "medium",
     isMainLift: false,
@@ -400,8 +378,7 @@ const seededExerciseLibrary: Exercise[] = [
   createExercise({
     id: "walking-lunge",
     name: "Walking Lunge",
-    movementPattern: "lunge",
-    movementPatternsV2: ["lunge"],
+    movementPatterns: ["lunge"],
     splitTags: ["legs"],
     jointStress: "medium",
     isMainLift: false,
@@ -415,8 +392,7 @@ const seededExerciseLibrary: Exercise[] = [
   createExercise({
     id: "split-squat",
     name: "Split Squat",
-    movementPattern: "lunge",
-    movementPatternsV2: ["lunge"],
+    movementPatterns: ["lunge"],
     splitTags: ["legs"],
     jointStress: "medium",
     isMainLift: false,
@@ -430,8 +406,7 @@ const seededExerciseLibrary: Exercise[] = [
   createExercise({
     id: "standing-calf-raise",
     name: "Standing Calf Raise",
-    movementPattern: "carry",
-    movementPatternsV2: ["carry"],
+    movementPatterns: ["carry"],
     splitTags: ["legs"],
     jointStress: "low",
     isMainLift: false,
@@ -445,8 +420,7 @@ const seededExerciseLibrary: Exercise[] = [
   createExercise({
     id: "seated-calf-raise",
     name: "Seated Calf Raise",
-    movementPattern: "carry",
-    movementPatternsV2: ["carry"],
+    movementPatterns: ["carry"],
     splitTags: ["legs"],
     jointStress: "low",
     isMainLift: false,
@@ -460,8 +434,7 @@ const seededExerciseLibrary: Exercise[] = [
   createExercise({
     id: "leg-press",
     name: "Leg Press",
-    movementPattern: "squat",
-    movementPatternsV2: ["squat"],
+    movementPatterns: ["squat"],
     splitTags: ["legs"],
     jointStress: "medium",
     isMainLift: false,
@@ -475,8 +448,7 @@ const seededExerciseLibrary: Exercise[] = [
   createExercise({
     id: "hip-abduction-machine",
     name: "Hip Abduction Machine",
-    movementPattern: "hinge",
-    movementPatternsV2: ["hinge"],
+    movementPatterns: ["hinge"],
     splitTags: ["legs"],
     jointStress: "low",
     isMainLift: false,
@@ -490,8 +462,7 @@ const seededExerciseLibrary: Exercise[] = [
   createExercise({
     id: "glute-bridge",
     name: "Glute Bridge",
-    movementPattern: "hinge",
-    movementPatternsV2: ["hinge"],
+    movementPatterns: ["hinge"],
     splitTags: ["legs"],
     jointStress: "low",
     isMainLift: false,
@@ -640,7 +611,7 @@ function getAccessoryNames(workout: WorkoutPlan) {
 }
 
 function hasMainLiftPattern(workout: WorkoutPlan, pattern: string) {
-  return workout.mainLifts.some((lift) => lift.exercise.movementPatternsV2?.includes(pattern));
+  return workout.mainLifts.some((lift) => lift.exercise.movementPatterns?.includes(pattern));
 }
 
 function hasAccessoryPrimaryMuscle(workout: WorkoutPlan, muscles: string[]) {
@@ -721,8 +692,7 @@ const nonPplLibrary: Exercise[] = [
   createExercise({
     id: "wood-chop",
     name: "Cable Wood Chop",
-    movementPattern: "rotate",
-    movementPatternsV2: ["rotation"],
+    movementPatterns: ["rotation"],
     splitTags: ["core"],
     jointStress: "low",
     isMainLift: false,
@@ -768,11 +738,16 @@ describe("upper_lower split end-to-end", () => {
     const workout = runNonPplFixture("upper", upperLowerConstraints, 701);
     const allExercises = [...workout.mainLifts, ...workout.accessories];
 
+    const upperV2 = [
+      "horizontal_push", "vertical_push", "horizontal_pull", "vertical_pull",
+      "flexion", "extension",
+    ];
     expect(allExercises.length).toBeGreaterThan(0);
     for (const entry of allExercises) {
-      expect(["push", "pull", "push_pull"]).toContain(
-        entry.exercise.movementPattern
+      const hasUpper = (entry.exercise.movementPatterns ?? []).some(
+        (p) => upperV2.includes(p)
       );
+      expect(hasUpper).toBe(true);
     }
   });
 
@@ -787,11 +762,13 @@ describe("upper_lower split end-to-end", () => {
     const workout = runNonPplFixture("lower", upperLowerConstraints, 703);
     const allExercises = [...workout.mainLifts, ...workout.accessories];
 
+    const lowerV2 = ["squat", "hinge", "lunge", "carry"];
     expect(allExercises.length).toBeGreaterThan(0);
     for (const entry of allExercises) {
-      expect(["squat", "hinge", "lunge", "carry"]).toContain(
-        entry.exercise.movementPattern
+      const hasLower = (entry.exercise.movementPatterns ?? []).some(
+        (p) => lowerV2.includes(p)
       );
+      expect(hasLower).toBe(true);
     }
   });
 
@@ -799,7 +776,7 @@ describe("upper_lower split end-to-end", () => {
     const workout = runNonPplFixture("lower", upperLowerConstraints, 704);
 
     expect(workout.mainLifts.length).toBeGreaterThanOrEqual(2);
-    const patterns = workout.mainLifts.map((l) => l.exercise.movementPattern);
+    const patterns = workout.mainLifts.flatMap((l) => l.exercise.movementPatterns ?? []);
     expect(patterns).toContain("squat");
     expect(patterns).toContain("hinge");
   });
@@ -839,10 +816,10 @@ describe("full_body split end-to-end", () => {
   it("includes exercises from multiple movement patterns", () => {
     const workout = runNonPplFixture("full_body", fullBodyConstraints, 801);
     const allExercises = [...workout.mainLifts, ...workout.accessories];
-    const patterns = new Set(allExercises.map((e) => e.exercise.movementPattern));
+    const patterns = new Set(allExercises.flatMap((e) => e.exercise.movementPatterns ?? []));
 
-    // full_body targets ["push", "pull", "squat", "hinge", "rotate"]
-    // Should have at least push, pull, and one lower body pattern
+    // full_body targets push, pull, squat, hinge, rotate V2 equivalents
+    // Should have at least 3 distinct V2 patterns
     expect(patterns.size).toBeGreaterThanOrEqual(3);
     expect(allExercises.length).toBeGreaterThan(0);
   });
@@ -852,7 +829,7 @@ describe("full_body split end-to-end", () => {
 
     expect(workout.mainLifts.length).toBeGreaterThanOrEqual(2);
     const mainPatterns = new Set(
-      workout.mainLifts.map((l) => l.exercise.movementPattern)
+      workout.mainLifts.flatMap((l) => l.exercise.movementPatterns ?? [])
     );
     expect(mainPatterns.size).toBeGreaterThanOrEqual(2);
   });

@@ -47,7 +47,7 @@ export async function POST(request: Request) {
       exerciseId: parsed.data.exerciseId,
       exerciseName: exercise.name,
       context: parsed.data.context,
-      category: exercise.isMainLift ? "MAIN_LIFT" : "OTHER",
+      category: exercise.isMainLiftEligible ? "MAIN_LIFT" : "OTHER",
       ...payload,
     },
   });

@@ -3,13 +3,25 @@ import {
   BaselineCategory,
   EquipmentType,
   JointStress,
-  MovementPattern,
   MovementPatternV2,
   MuscleRole,
   SplitTag,
   StimulusBias,
   PrismaClient,
 } from "@prisma/client";
+
+/** V1 movement pattern — kept locally in seed for split/pattern derivation */
+const MovementPattern = {
+  SQUAT: "SQUAT",
+  HINGE: "HINGE",
+  PUSH: "PUSH",
+  PULL: "PULL",
+  PUSH_PULL: "PUSH_PULL",
+  CARRY: "CARRY",
+  ROTATE: "ROTATE",
+  LUNGE: "LUNGE",
+} as const;
+type MovementPattern = (typeof MovementPattern)[keyof typeof MovementPattern];
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 
@@ -42,9 +54,9 @@ const prisma = new PrismaClient({ adapter });
 
 type SeedExercise = {
   name: string;
-  movementPattern: MovementPattern;
+  movementPatternV1: MovementPattern;
   jointStress: JointStress;
-  isMainLift: boolean;
+  isMainLiftV1: boolean;
   equipment: string[];
 };
 
@@ -111,72 +123,72 @@ const muscleSeed = [
 // ═══════════════════════════════════════════════════════════════════════════
 
 const exercises: SeedExercise[] = [
-  { name: "Barbell Back Squat", movementPattern: MovementPattern.SQUAT, jointStress: JointStress.HIGH, isMainLift: true, equipment: ["Barbell", "Rack"] },
-  { name: "Front Squat", movementPattern: MovementPattern.SQUAT, jointStress: JointStress.HIGH, isMainLift: true, equipment: ["Barbell", "Rack"] },
-  { name: "Hack Squat", movementPattern: MovementPattern.SQUAT, jointStress: JointStress.MEDIUM, isMainLift: false, equipment: ["Machine"] },
-  { name: "Reverse Hack Squat", movementPattern: MovementPattern.SQUAT, jointStress: JointStress.MEDIUM, isMainLift: false, equipment: ["Machine"] },
-  { name: "Leg Press", movementPattern: MovementPattern.SQUAT, jointStress: JointStress.MEDIUM, isMainLift: false, equipment: ["Machine"] },
-  { name: "Belt Squat", movementPattern: MovementPattern.SQUAT, jointStress: JointStress.MEDIUM, isMainLift: true, equipment: ["Machine"] },
-  { name: "Romanian Deadlift", movementPattern: MovementPattern.HINGE, jointStress: JointStress.MEDIUM, isMainLift: true, equipment: ["Barbell"] },
-  { name: "Conventional Deadlift", movementPattern: MovementPattern.HINGE, jointStress: JointStress.HIGH, isMainLift: true, equipment: ["Barbell"] },
-  { name: "Trap Bar Deadlift", movementPattern: MovementPattern.HINGE, jointStress: JointStress.HIGH, isMainLift: true, equipment: ["Barbell"] },
-  { name: "Hip Thrust", movementPattern: MovementPattern.HINGE, jointStress: JointStress.MEDIUM, isMainLift: false, equipment: ["Barbell", "Bench"] },
-  { name: "Barbell Bench Press", movementPattern: MovementPattern.PUSH, jointStress: JointStress.HIGH, isMainLift: true, equipment: ["Barbell", "Bench", "Rack"] },
-  { name: "Incline Barbell Bench", movementPattern: MovementPattern.PUSH, jointStress: JointStress.HIGH, isMainLift: true, equipment: ["Barbell", "Bench"] },
-  { name: "Smith Machine Incline Press", movementPattern: MovementPattern.PUSH, jointStress: JointStress.MEDIUM, isMainLift: true, equipment: ["Machine"] },
-  { name: "Dumbbell Bench Press", movementPattern: MovementPattern.PUSH, jointStress: JointStress.MEDIUM, isMainLift: true, equipment: ["Dumbbell", "Bench"] },
-  { name: "Dumbbell Incline Press", movementPattern: MovementPattern.PUSH, jointStress: JointStress.MEDIUM, isMainLift: false, equipment: ["Dumbbell", "Bench"] },
-  { name: "Low-Incline Dumbbell Press", movementPattern: MovementPattern.PUSH, jointStress: JointStress.MEDIUM, isMainLift: false, equipment: ["Dumbbell", "Bench"] },
-  { name: "Push-Up", movementPattern: MovementPattern.PUSH, jointStress: JointStress.LOW, isMainLift: false, equipment: ["Bodyweight"] },
-  { name: "Overhead Press", movementPattern: MovementPattern.PUSH, jointStress: JointStress.HIGH, isMainLift: true, equipment: ["Barbell"] },
-  { name: "Dumbbell Shoulder Press", movementPattern: MovementPattern.PUSH, jointStress: JointStress.MEDIUM, isMainLift: false, equipment: ["Dumbbell", "Bench"] },
-  { name: "Lateral Raise", movementPattern: MovementPattern.PUSH_PULL, jointStress: JointStress.LOW, isMainLift: false, equipment: ["Dumbbell"] },
-  { name: "Dumbbell Lateral Raises", movementPattern: MovementPattern.PUSH_PULL, jointStress: JointStress.LOW, isMainLift: false, equipment: ["Dumbbell"] },
-  { name: "Cable Lateral Raise", movementPattern: MovementPattern.PUSH_PULL, jointStress: JointStress.LOW, isMainLift: false, equipment: ["Cable"] },
-  { name: "Face Pull", movementPattern: MovementPattern.PULL, jointStress: JointStress.LOW, isMainLift: false, equipment: ["Cable"] },
-  { name: "Machine Rear Delt Fly", movementPattern: MovementPattern.PULL, jointStress: JointStress.LOW, isMainLift: false, equipment: ["Machine"] },
-  { name: "Pull-Up", movementPattern: MovementPattern.PULL, jointStress: JointStress.HIGH, isMainLift: true, equipment: ["Bodyweight"] },
-  { name: "Lat Pulldown", movementPattern: MovementPattern.PULL, jointStress: JointStress.MEDIUM, isMainLift: false, equipment: ["Cable", "Machine"] },
-  { name: "Barbell Row", movementPattern: MovementPattern.PULL, jointStress: JointStress.MEDIUM, isMainLift: true, equipment: ["Barbell"] },
-  { name: "Seated Cable Row", movementPattern: MovementPattern.PULL, jointStress: JointStress.LOW, isMainLift: false, equipment: ["Cable"] },
-  { name: "Chest-Supported Row", movementPattern: MovementPattern.PULL, jointStress: JointStress.LOW, isMainLift: false, equipment: ["Dumbbell", "Bench"] },
-  { name: "Chest-Supported T-Bar Row", movementPattern: MovementPattern.PULL, jointStress: JointStress.MEDIUM, isMainLift: true, equipment: ["Machine"] },
-  { name: "Single-Arm Dumbbell Row", movementPattern: MovementPattern.PULL, jointStress: JointStress.MEDIUM, isMainLift: false, equipment: ["Dumbbell", "Bench"] },
-  { name: "Dumbbell Curl", movementPattern: MovementPattern.PULL, jointStress: JointStress.LOW, isMainLift: false, equipment: ["Dumbbell"] },
-  { name: "Barbell Curl", movementPattern: MovementPattern.PULL, jointStress: JointStress.MEDIUM, isMainLift: false, equipment: ["Barbell"] },
-  { name: "Hammer Curl", movementPattern: MovementPattern.PULL, jointStress: JointStress.LOW, isMainLift: false, equipment: ["Dumbbell"] },
-  { name: "Incline Dumbbell Curl", movementPattern: MovementPattern.PULL, jointStress: JointStress.LOW, isMainLift: false, equipment: ["Dumbbell", "Bench"] },
-  { name: "Bayesian Curl", movementPattern: MovementPattern.PULL, jointStress: JointStress.LOW, isMainLift: false, equipment: ["Cable"] },
-  { name: "Cable Preacher Curl", movementPattern: MovementPattern.PULL, jointStress: JointStress.LOW, isMainLift: false, equipment: ["Cable"] },
-  { name: "Triceps Pushdown", movementPattern: MovementPattern.PUSH, jointStress: JointStress.LOW, isMainLift: false, equipment: ["Cable"] },
-  { name: "JM Press", movementPattern: MovementPattern.PUSH, jointStress: JointStress.MEDIUM, isMainLift: false, equipment: ["Barbell", "Bench"] },
-  { name: "Skull Crusher", movementPattern: MovementPattern.PUSH, jointStress: JointStress.MEDIUM, isMainLift: false, equipment: ["Barbell", "Bench"] },
-  { name: "Dips", movementPattern: MovementPattern.PUSH, jointStress: JointStress.HIGH, isMainLift: false, equipment: ["Bodyweight"] },
-  { name: "Overhead Triceps Extension", movementPattern: MovementPattern.PUSH, jointStress: JointStress.MEDIUM, isMainLift: false, equipment: ["Dumbbell"] },
-  { name: "Leg Extension", movementPattern: MovementPattern.SQUAT, jointStress: JointStress.MEDIUM, isMainLift: false, equipment: ["Machine"] },
-  { name: "Leg Curl", movementPattern: MovementPattern.HINGE, jointStress: JointStress.MEDIUM, isMainLift: false, equipment: ["Machine"] },
-  { name: "Standing Calf Raise", movementPattern: MovementPattern.CARRY, jointStress: JointStress.LOW, isMainLift: false, equipment: ["Machine"] },
-  { name: "Seated Calf Raise", movementPattern: MovementPattern.CARRY, jointStress: JointStress.LOW, isMainLift: false, equipment: ["Machine"] },
-  { name: "Hip Abduction Machine", movementPattern: MovementPattern.HINGE, jointStress: JointStress.LOW, isMainLift: false, equipment: ["Machine"] },
-  { name: "Plank", movementPattern: MovementPattern.ROTATE, jointStress: JointStress.LOW, isMainLift: false, equipment: ["Bodyweight"] },
-  { name: "Hanging Leg Raise", movementPattern: MovementPattern.ROTATE, jointStress: JointStress.MEDIUM, isMainLift: false, equipment: ["Bodyweight"] },
-  { name: "Cable Crunch", movementPattern: MovementPattern.ROTATE, jointStress: JointStress.LOW, isMainLift: false, equipment: ["Cable"] },
-  { name: "Pallof Press", movementPattern: MovementPattern.ROTATE, jointStress: JointStress.LOW, isMainLift: false, equipment: ["Cable"] },
-  { name: "Farmer's Carry", movementPattern: MovementPattern.CARRY, jointStress: JointStress.MEDIUM, isMainLift: false, equipment: ["Dumbbell"] },
-  { name: "Sled Push", movementPattern: MovementPattern.CARRY, jointStress: JointStress.HIGH, isMainLift: false, equipment: ["Sled"] },
-  { name: "Sled Pull", movementPattern: MovementPattern.CARRY, jointStress: JointStress.HIGH, isMainLift: false, equipment: ["Sled"] },
-  { name: "Sled Drag", movementPattern: MovementPattern.CARRY, jointStress: JointStress.HIGH, isMainLift: false, equipment: ["Sled"] },
-  { name: "Walking Lunge", movementPattern: MovementPattern.LUNGE, jointStress: JointStress.MEDIUM, isMainLift: false, equipment: ["Dumbbell"] },
-  { name: "Split Squat", movementPattern: MovementPattern.LUNGE, jointStress: JointStress.MEDIUM, isMainLift: false, equipment: ["Dumbbell"] },
-  { name: "Bulgarian Split Squat", movementPattern: MovementPattern.LUNGE, jointStress: JointStress.HIGH, isMainLift: false, equipment: ["Dumbbell", "Bench"] },
-  { name: "Glute Bridge", movementPattern: MovementPattern.HINGE, jointStress: JointStress.LOW, isMainLift: false, equipment: ["Bodyweight"] },
-  { name: "Cable Fly", movementPattern: MovementPattern.PUSH, jointStress: JointStress.LOW, isMainLift: false, equipment: ["Cable"] },
-  { name: "Machine Chest Press", movementPattern: MovementPattern.PUSH, jointStress: JointStress.MEDIUM, isMainLift: true, equipment: ["Machine"] },
-  { name: "Pec Deck", movementPattern: MovementPattern.PUSH, jointStress: JointStress.LOW, isMainLift: false, equipment: ["Machine"] },
-  { name: "Machine Shoulder Press", movementPattern: MovementPattern.PUSH, jointStress: JointStress.MEDIUM, isMainLift: false, equipment: ["Machine"] },
-  { name: "T-Bar Row", movementPattern: MovementPattern.PULL, jointStress: JointStress.MEDIUM, isMainLift: true, equipment: ["Machine"] },
-  { name: "Reverse Fly", movementPattern: MovementPattern.PULL, jointStress: JointStress.LOW, isMainLift: false, equipment: ["Dumbbell"] },
-  { name: "Dead Bug", movementPattern: MovementPattern.ROTATE, jointStress: JointStress.LOW, isMainLift: false, equipment: ["Bodyweight"] },
+  { name: "Barbell Back Squat", movementPatternV1: MovementPattern.SQUAT, jointStress: JointStress.HIGH, isMainLiftV1: true, equipment: ["Barbell", "Rack"] },
+  { name: "Front Squat", movementPatternV1: MovementPattern.SQUAT, jointStress: JointStress.HIGH, isMainLiftV1: true, equipment: ["Barbell", "Rack"] },
+  { name: "Hack Squat", movementPatternV1: MovementPattern.SQUAT, jointStress: JointStress.MEDIUM, isMainLiftV1: false, equipment: ["Machine"] },
+  { name: "Reverse Hack Squat", movementPatternV1: MovementPattern.SQUAT, jointStress: JointStress.MEDIUM, isMainLiftV1: false, equipment: ["Machine"] },
+  { name: "Leg Press", movementPatternV1: MovementPattern.SQUAT, jointStress: JointStress.MEDIUM, isMainLiftV1: false, equipment: ["Machine"] },
+  { name: "Belt Squat", movementPatternV1: MovementPattern.SQUAT, jointStress: JointStress.MEDIUM, isMainLiftV1: true, equipment: ["Machine"] },
+  { name: "Romanian Deadlift", movementPatternV1: MovementPattern.HINGE, jointStress: JointStress.MEDIUM, isMainLiftV1: true, equipment: ["Barbell"] },
+  { name: "Conventional Deadlift", movementPatternV1: MovementPattern.HINGE, jointStress: JointStress.HIGH, isMainLiftV1: true, equipment: ["Barbell"] },
+  { name: "Trap Bar Deadlift", movementPatternV1: MovementPattern.HINGE, jointStress: JointStress.HIGH, isMainLiftV1: true, equipment: ["Barbell"] },
+  { name: "Hip Thrust", movementPatternV1: MovementPattern.HINGE, jointStress: JointStress.MEDIUM, isMainLiftV1: false, equipment: ["Barbell", "Bench"] },
+  { name: "Barbell Bench Press", movementPatternV1: MovementPattern.PUSH, jointStress: JointStress.HIGH, isMainLiftV1: true, equipment: ["Barbell", "Bench", "Rack"] },
+  { name: "Incline Barbell Bench", movementPatternV1: MovementPattern.PUSH, jointStress: JointStress.HIGH, isMainLiftV1: true, equipment: ["Barbell", "Bench"] },
+  { name: "Smith Machine Incline Press", movementPatternV1: MovementPattern.PUSH, jointStress: JointStress.MEDIUM, isMainLiftV1: true, equipment: ["Machine"] },
+  { name: "Dumbbell Bench Press", movementPatternV1: MovementPattern.PUSH, jointStress: JointStress.MEDIUM, isMainLiftV1: true, equipment: ["Dumbbell", "Bench"] },
+  { name: "Dumbbell Incline Press", movementPatternV1: MovementPattern.PUSH, jointStress: JointStress.MEDIUM, isMainLiftV1: false, equipment: ["Dumbbell", "Bench"] },
+  { name: "Low-Incline Dumbbell Press", movementPatternV1: MovementPattern.PUSH, jointStress: JointStress.MEDIUM, isMainLiftV1: false, equipment: ["Dumbbell", "Bench"] },
+  { name: "Push-Up", movementPatternV1: MovementPattern.PUSH, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Bodyweight"] },
+  { name: "Overhead Press", movementPatternV1: MovementPattern.PUSH, jointStress: JointStress.HIGH, isMainLiftV1: true, equipment: ["Barbell"] },
+  { name: "Dumbbell Shoulder Press", movementPatternV1: MovementPattern.PUSH, jointStress: JointStress.MEDIUM, isMainLiftV1: false, equipment: ["Dumbbell", "Bench"] },
+  { name: "Lateral Raise", movementPatternV1: MovementPattern.PUSH_PULL, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Dumbbell"] },
+  { name: "Dumbbell Lateral Raises", movementPatternV1: MovementPattern.PUSH_PULL, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Dumbbell"] },
+  { name: "Cable Lateral Raise", movementPatternV1: MovementPattern.PUSH_PULL, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Cable"] },
+  { name: "Face Pull", movementPatternV1: MovementPattern.PULL, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Cable"] },
+  { name: "Machine Rear Delt Fly", movementPatternV1: MovementPattern.PULL, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Machine"] },
+  { name: "Pull-Up", movementPatternV1: MovementPattern.PULL, jointStress: JointStress.HIGH, isMainLiftV1: true, equipment: ["Bodyweight"] },
+  { name: "Lat Pulldown", movementPatternV1: MovementPattern.PULL, jointStress: JointStress.MEDIUM, isMainLiftV1: false, equipment: ["Cable", "Machine"] },
+  { name: "Barbell Row", movementPatternV1: MovementPattern.PULL, jointStress: JointStress.MEDIUM, isMainLiftV1: true, equipment: ["Barbell"] },
+  { name: "Seated Cable Row", movementPatternV1: MovementPattern.PULL, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Cable"] },
+  { name: "Chest-Supported Row", movementPatternV1: MovementPattern.PULL, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Dumbbell", "Bench"] },
+  { name: "Chest-Supported T-Bar Row", movementPatternV1: MovementPattern.PULL, jointStress: JointStress.MEDIUM, isMainLiftV1: true, equipment: ["Machine"] },
+  { name: "Single-Arm Dumbbell Row", movementPatternV1: MovementPattern.PULL, jointStress: JointStress.MEDIUM, isMainLiftV1: false, equipment: ["Dumbbell", "Bench"] },
+  { name: "Dumbbell Curl", movementPatternV1: MovementPattern.PULL, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Dumbbell"] },
+  { name: "Barbell Curl", movementPatternV1: MovementPattern.PULL, jointStress: JointStress.MEDIUM, isMainLiftV1: false, equipment: ["Barbell"] },
+  { name: "Hammer Curl", movementPatternV1: MovementPattern.PULL, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Dumbbell"] },
+  { name: "Incline Dumbbell Curl", movementPatternV1: MovementPattern.PULL, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Dumbbell", "Bench"] },
+  { name: "Bayesian Curl", movementPatternV1: MovementPattern.PULL, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Cable"] },
+  { name: "Cable Preacher Curl", movementPatternV1: MovementPattern.PULL, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Cable"] },
+  { name: "Triceps Pushdown", movementPatternV1: MovementPattern.PUSH, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Cable"] },
+  { name: "JM Press", movementPatternV1: MovementPattern.PUSH, jointStress: JointStress.MEDIUM, isMainLiftV1: false, equipment: ["Barbell", "Bench"] },
+  { name: "Skull Crusher", movementPatternV1: MovementPattern.PUSH, jointStress: JointStress.MEDIUM, isMainLiftV1: false, equipment: ["Barbell", "Bench"] },
+  { name: "Dips", movementPatternV1: MovementPattern.PUSH, jointStress: JointStress.HIGH, isMainLiftV1: false, equipment: ["Bodyweight"] },
+  { name: "Overhead Triceps Extension", movementPatternV1: MovementPattern.PUSH, jointStress: JointStress.MEDIUM, isMainLiftV1: false, equipment: ["Dumbbell"] },
+  { name: "Leg Extension", movementPatternV1: MovementPattern.SQUAT, jointStress: JointStress.MEDIUM, isMainLiftV1: false, equipment: ["Machine"] },
+  { name: "Leg Curl", movementPatternV1: MovementPattern.HINGE, jointStress: JointStress.MEDIUM, isMainLiftV1: false, equipment: ["Machine"] },
+  { name: "Standing Calf Raise", movementPatternV1: MovementPattern.CARRY, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Machine"] },
+  { name: "Seated Calf Raise", movementPatternV1: MovementPattern.CARRY, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Machine"] },
+  { name: "Hip Abduction Machine", movementPatternV1: MovementPattern.HINGE, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Machine"] },
+  { name: "Plank", movementPatternV1: MovementPattern.ROTATE, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Bodyweight"] },
+  { name: "Hanging Leg Raise", movementPatternV1: MovementPattern.ROTATE, jointStress: JointStress.MEDIUM, isMainLiftV1: false, equipment: ["Bodyweight"] },
+  { name: "Cable Crunch", movementPatternV1: MovementPattern.ROTATE, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Cable"] },
+  { name: "Pallof Press", movementPatternV1: MovementPattern.ROTATE, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Cable"] },
+  { name: "Farmer's Carry", movementPatternV1: MovementPattern.CARRY, jointStress: JointStress.MEDIUM, isMainLiftV1: false, equipment: ["Dumbbell"] },
+  { name: "Sled Push", movementPatternV1: MovementPattern.CARRY, jointStress: JointStress.HIGH, isMainLiftV1: false, equipment: ["Sled"] },
+  { name: "Sled Pull", movementPatternV1: MovementPattern.CARRY, jointStress: JointStress.HIGH, isMainLiftV1: false, equipment: ["Sled"] },
+  { name: "Sled Drag", movementPatternV1: MovementPattern.CARRY, jointStress: JointStress.HIGH, isMainLiftV1: false, equipment: ["Sled"] },
+  { name: "Walking Lunge", movementPatternV1: MovementPattern.LUNGE, jointStress: JointStress.MEDIUM, isMainLiftV1: false, equipment: ["Dumbbell"] },
+  { name: "Split Squat", movementPatternV1: MovementPattern.LUNGE, jointStress: JointStress.MEDIUM, isMainLiftV1: false, equipment: ["Dumbbell"] },
+  { name: "Bulgarian Split Squat", movementPatternV1: MovementPattern.LUNGE, jointStress: JointStress.HIGH, isMainLiftV1: false, equipment: ["Dumbbell", "Bench"] },
+  { name: "Glute Bridge", movementPatternV1: MovementPattern.HINGE, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Bodyweight"] },
+  { name: "Cable Fly", movementPatternV1: MovementPattern.PUSH, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Cable"] },
+  { name: "Machine Chest Press", movementPatternV1: MovementPattern.PUSH, jointStress: JointStress.MEDIUM, isMainLiftV1: true, equipment: ["Machine"] },
+  { name: "Pec Deck", movementPatternV1: MovementPattern.PUSH, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Machine"] },
+  { name: "Machine Shoulder Press", movementPatternV1: MovementPattern.PUSH, jointStress: JointStress.MEDIUM, isMainLiftV1: false, equipment: ["Machine"] },
+  { name: "T-Bar Row", movementPatternV1: MovementPattern.PULL, jointStress: JointStress.MEDIUM, isMainLiftV1: true, equipment: ["Machine"] },
+  { name: "Reverse Fly", movementPatternV1: MovementPattern.PULL, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Dumbbell"] },
+  { name: "Dead Bug", movementPatternV1: MovementPattern.ROTATE, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Bodyweight"] },
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1387,24 +1399,22 @@ async function seedExercises() {
   );
 
   for (const exercise of exercises) {
-    const splitTag = resolveSplitTag(exercise.name, exercise.movementPattern);
-    const movementPatternsV2 = resolveMovementPatternsV2(exercise.name, exercise.movementPattern);
+    const splitTag = resolveSplitTag(exercise.name, exercise.movementPatternV1);
+    const movementPatterns = resolveMovementPatternsV2(exercise.name, exercise.movementPatternV1);
     const tuning = EXERCISE_FIELD_TUNING[exercise.name];
-    const fatigueCost = tuning?.fatigueCost ?? (exercise.isMainLift ? 4 : exercise.jointStress === JointStress.HIGH ? 3 : 2);
+    const fatigueCost = tuning?.fatigueCost ?? (exercise.isMainLiftV1 ? 4 : exercise.jointStress === JointStress.HIGH ? 3 : 2);
     const stimulusBias = tuning?.stimulusBias ?? [];
-    const isCompound = compoundAccessoryNames.has(exercise.name) || exercise.isMainLift;
-    const isMainLiftEligible = mainLiftEligibleOverrides.has(exercise.name) || exercise.isMainLift;
+    const isCompound = compoundAccessoryNames.has(exercise.name) || exercise.isMainLiftV1;
+    const isMainLiftEligible = mainLiftEligibleOverrides.has(exercise.name) || exercise.isMainLiftV1;
     const isWarmupTag = splitTag === SplitTag.MOBILITY || splitTag === SplitTag.PREHAB || splitTag === SplitTag.CORE;
-    const timePerSetSec = tuning?.timePerSetSec ?? (exercise.isMainLift ? 210 : isWarmupTag ? 60 : 120);
+    const timePerSetSec = tuning?.timePerSetSec ?? (exercise.isMainLiftV1 ? 210 : isWarmupTag ? 60 : 120);
     const sfrScore = tuning?.sfrScore ?? 3;
     const lengthPositionScore = tuning?.lengthPositionScore ?? 3;
     const contraindications = tuning?.contraindications;
     const data = {
-      movementPattern: exercise.movementPattern,
-      movementPatternsV2,
+      movementPatterns,
       splitTags: [splitTag],
       jointStress: exercise.jointStress,
-      isMainLift: exercise.isMainLift,
       isMainLiftEligible: isMainLiftEligible,
       isCompound: isCompound,
       fatigueCost,

@@ -38,12 +38,10 @@ This document summarizes the data seeded by `trainer-app/prisma/seed.ts`. It ref
 ## Exercises
 
 Seeded exercises are created with:
-- `movementPattern`
 - `splitTags` (derived by pattern + name heuristics)
-- `movementPatternsV2` (derived by name heuristics)
-- `isMainLiftEligible` = `isMainLift`
-- `isCompound` seeded for main lifts + compound accessories
-- `fatigueCost` and `timePerSetSec` defaults
+- `movementPatterns` (derived by name heuristics)
+- `isMainLiftEligible`, `isCompound`
+- `fatigueCost`, `timePerSetSec`, `sfrScore`, `lengthPositionScore`
 - `stimulusBias` (seeded for key compounds and accessories)
 - `contraindications` (seeded for pain filtering)
 
@@ -222,7 +220,7 @@ Baselines are seeded for the owner user (`owner@local`) and include:
 
 ## Notes
 
-- `splitTags` and `movementPatternsV2` are derived during seeding using name heuristics.
+- `splitTags` and `movementPatterns` are derived during seeding using name heuristics.
 - The exercise list is intentionally focused on PPL-friendly movements and the user's preferred training style.
 - `seed.ts` now seeds **ExerciseMuscle mappings** for all known exercises (including legacy/variant names).
 

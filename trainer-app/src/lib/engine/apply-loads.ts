@@ -10,6 +10,7 @@ import { getPrimaryMuscles } from "./utils";
 import type {
   Exercise,
   Goals,
+  MovementPatternV2,
   UserProfile,
   WorkoutHistoryEntry,
   WorkoutPlan,
@@ -61,13 +62,13 @@ const BASE_BODYWEIGHT_RATIO: Record<LoadEquipment, { compound: number; isolation
   other: { compound: 0.3, isolation: 0.15 },
 };
 
-const PATTERN_MULTIPLIER: Partial<Record<Exercise["movementPattern"], number>> = {
+const PATTERN_MULTIPLIER: Partial<Record<MovementPatternV2, number>> = {
   squat: 1.2,
   hinge: 1.15,
   lunge: 1.1,
   carry: 1.1,
-  rotate: 0.6,
-  push_pull: 0.9,
+  rotation: 0.6,
+  anti_rotation: 0.6,
 };
 
 const EQUIPMENT_DEFAULTS: Record<LoadEquipment, number> = {
@@ -311,7 +312,7 @@ function estimateFromDonors(
   const targetCompound = isCompound(target);
   const targetFatigue = target.fatigueCost ?? DEFAULT_FATIGUE_COST;
 
-  const targetPatterns = target.movementPatternsV2 ?? [];
+  const targetPatterns = target.movementPatterns ?? [];
   const candidates: { score: number; load: number; name: string }[] = [];
 
   for (const [donorId, donorLoad] of baselineIndex.entries()) {
@@ -328,7 +329,7 @@ function estimateFromDonors(
     const donorEquipment = getLoadEquipment(donor);
     const donorCompound = isCompound(donor);
     const donorFatigue = donor.fatigueCost ?? DEFAULT_FATIGUE_COST;
-    const donorPatterns = donor.movementPatternsV2 ?? [];
+    const donorPatterns = donor.movementPatterns ?? [];
     const patternOverlap = countOverlap(targetPatterns, donorPatterns);
 
     const equipmentScale = getEquipmentScale(donorEquipment, targetEquipment);
@@ -377,7 +378,7 @@ function isBodyweightOnly(exercise: Exercise) {
 }
 
 function isCompound(exercise: Exercise) {
-  return exercise.isCompound ?? exercise.isMainLift;
+  return exercise.isCompound ?? false;
 }
 
 function getLoadEquipment(exercise: Exercise): LoadEquipment {
@@ -444,7 +445,10 @@ function getBodyweightRatio(exercise: Exercise) {
   if (!base) {
     return undefined;
   }
-  const multiplier = PATTERN_MULTIPLIER[exercise.movementPattern] ?? 1;
+  const patterns = exercise.movementPatterns ?? [];
+  const multiplier = patterns.length > 0
+    ? Math.max(...patterns.map((p) => PATTERN_MULTIPLIER[p] ?? 1))
+    : 1;
   return base * multiplier;
 }
 

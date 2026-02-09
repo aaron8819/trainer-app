@@ -1,5 +1,7 @@
 import type {
+  Constraints,
   Exercise,
+  EquipmentType,
   FatigueState,
   Goals,
   SessionCheckIn,
@@ -15,10 +17,18 @@ import { deriveFatigueState } from "./volume";
 import { estimateWorkoutMinutes } from "./timeboxing";
 import { buildMuscleRecoveryMap, generateSraWarnings, type SraWarning } from "./sra";
 import type { PeriodizationModifiers } from "./rules";
+import { suggestSubstitutes } from "./substitution";
 
 export type TemplateExerciseInput = {
   exercise: Exercise;
   orderIndex: number;
+};
+
+export type SubstitutionSuggestion = {
+  originalExerciseId: string;
+  originalName: string;
+  reason: string;
+  alternatives: { id: string; name: string; score: number }[];
 };
 
 export type GenerateFromTemplateOptions = {
@@ -29,11 +39,13 @@ export type GenerateFromTemplateOptions = {
   preferences?: UserPreferences;
   checkIn?: SessionCheckIn;
   periodization?: PeriodizationModifiers;
+  isStrict?: boolean;
 };
 
 export type TemplateWorkoutResult = {
   workout: WorkoutPlan;
   sraWarnings: SraWarning[];
+  substitutions: SubstitutionSuggestion[];
 };
 
 export function generateWorkoutFromTemplate(
@@ -47,6 +59,49 @@ export function generateWorkoutFromTemplate(
   const workoutExercises = templateExercises.map((input) =>
     buildTemplateExercise(input, profile, goals, fatigueState, preferences, periodization)
   );
+
+  // Flexible mode: suggest substitutions for exercises with pain flags
+  const substitutions: SubstitutionSuggestion[] = [];
+  if (options.isStrict === false && checkIn?.painFlags) {
+    const defaultConstraints: Constraints = {
+      daysPerWeek: 4,
+      sessionMinutes: 60,
+      splitType: "ppl",
+      availableEquipment: exerciseLibrary.length > 0
+        ? [...new Set(exerciseLibrary.flatMap((e) => e.equipment))]
+        : ["barbell", "dumbbell", "machine", "cable", "bodyweight"] as EquipmentType[],
+    };
+
+    for (const we of workoutExercises) {
+      const contra = we.exercise.contraindications as Record<string, unknown> | undefined;
+      if (!contra) continue;
+
+      const hasPainConflict = Object.keys(checkIn.painFlags).some(
+        (bodyPart) => contra[bodyPart] && (checkIn.painFlags![bodyPart] ?? 0) >= 1
+      );
+
+      if (hasPainConflict) {
+        const subs = suggestSubstitutes(
+          we.exercise,
+          exerciseLibrary,
+          defaultConstraints,
+          checkIn.painFlags
+        );
+        if (subs.length > 0) {
+          substitutions.push({
+            originalExerciseId: we.exercise.id,
+            originalName: we.exercise.name,
+            reason: "Pain conflict detected",
+            alternatives: subs.map((s) => ({
+              id: s.id,
+              name: s.name,
+              score: 0,
+            })),
+          });
+        }
+      }
+    }
+  }
 
   const mainLifts = workoutExercises.filter((e) => e.isMainLift);
   const accessories = workoutExercises.filter((e) => !e.isMainLift);
@@ -80,7 +135,7 @@ export function generateWorkoutFromTemplate(
     notes: notesParts.length > 0 ? notesParts.join(". ") : undefined,
   };
 
-  return { workout, sraWarnings };
+  return { workout, sraWarnings, substitutions };
 }
 
 function buildTemplateExercise(
@@ -92,7 +147,7 @@ function buildTemplateExercise(
   periodization?: PeriodizationModifiers
 ): WorkoutExercise {
   const { exercise, orderIndex } = input;
-  const isMainLift = exercise.isMainLiftEligible ?? exercise.isMainLift;
+  const isMainLift = exercise.isMainLiftEligible ?? false;
 
   const prescribedSets = prescribeSetsReps(
     isMainLift,

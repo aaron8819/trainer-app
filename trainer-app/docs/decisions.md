@@ -4,6 +4,30 @@ Record of significant design decisions and their rationale. Newest first.
 
 ---
 
+## ADR-020: Analytics dashboard with recharts (2026-02-09)
+
+**Decision**: Added a tabbed analytics dashboard at `/analytics` using `recharts` for charting. Four tabs: Recovery (progress bars), Volume (bar chart + line chart), Overview (pie chart), Templates (stat cards). Each tab fetches from dedicated API endpoints.
+
+**Rationale**: Users need visibility into their training patterns — muscle recovery status, volume trends relative to landmarks, push/pull/legs balance, and template usage. Recharts was chosen for its React-native API and SSR compatibility (all chart components use `"use client"` directive). Dedicated API routes keep the analytics data pipeline separate from workout generation.
+
+---
+
+## ADR-019: Smart Build — training goal bias and time budget (2026-02-09)
+
+**Decision**: `smartBuild()` accepts optional `trainingGoal` (strength/hypertrophy/fat_loss/general_health) and `timeBudgetMinutes`. Goal bias adjusts exercise scoring and compound count. Time budget trims the exercise list after ordering by cumulative `sets * (timePerSetSec + restSec)`.
+
+**Rationale**: Different goals call for different exercise compositions — strength training needs more compounds, hypertrophy benefits from high-SFR isolations. Time budgets allow users to constrain template length without manually trimming. Trimming happens after ordering (not during selection) so the highest-quality exercises are preserved.
+
+---
+
+## ADR-018: Schema cleanup — drop V1 movementPattern, remove isMainLift from Exercise (2026-02-09)
+
+**Decision**: Dropped `Exercise.movementPattern` (V1 singular enum) and renamed `movementPatternsV2` to `movementPatterns` across the codebase. Dropped `Exercise.isMainLift` (kept `WorkoutExercise.isMainLift` for historical data). All fallback patterns `?? exercise.isMainLift` changed to `?? false`, using `isMainLiftEligible` as the sole source of truth.
+
+**Rationale**: The V1 `movementPattern` was a coarse single-value enum superseded by the V2 array (which supports multiple fine-grained patterns like horizontal_push + vertical_push). Keeping both created mapping complexity in every consumer. Similarly, `isMainLift` on Exercise was redundant with `isMainLiftEligible` — the former was a static seed value while the latter reflects actual engine selection criteria. The V1→V2 pattern mapping was handled via a `matchesV1Pattern()` helper during the transition, and `WorkoutHistoryEntry` retains a derived V1 pattern for backward compatibility.
+
+---
+
 ## ADR-017: Template analysis — 6 scoring dimensions with rebalanced weights (2026-02-09)
 
 **Decision**: Template analysis scores 6 dimensions: muscle coverage (0.30), push/pull balance (0.15), compound/isolation ratio (0.15), movement diversity (0.15), lengthened-position coverage (0.10), and SFR efficiency (0.15). The `sfrScore` and `lengthPositionScore` fields were promoted from `ExerciseDetail` to `ExerciseListItem` so they flow through the exercise library API to all consumers.

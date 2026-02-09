@@ -30,7 +30,7 @@ export function pickMainLiftsForPpl(
 
   const mainLifts: Exercise[] = [];
   const hasPattern = (exercise: Exercise, pattern: MovementPatternV2) =>
-    exercise.movementPatternsV2?.includes(pattern);
+    exercise.movementPatterns?.includes(pattern);
   const recencyIndex = buildRecencyIndex(history);
   const pickWeighted = (items: Exercise[]) =>
     weightedPick(

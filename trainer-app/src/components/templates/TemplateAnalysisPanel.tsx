@@ -20,7 +20,7 @@ function toAnalysisInput(ex: ExerciseListItem): AnalysisExerciseInput {
   }
   return {
     isCompound: ex.isCompound,
-    movementPatternsV2: ex.movementPatternsV2,
+    movementPatterns: ex.movementPatterns,
     muscles,
     sfrScore: ex.sfrScore,
     lengthPositionScore: ex.lengthPositionScore,

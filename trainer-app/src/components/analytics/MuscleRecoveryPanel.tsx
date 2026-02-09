@@ -1,0 +1,89 @@
+"use client";
+
+import { useEffect, useState } from "react";
+
+type MuscleRecovery = {
+  name: string;
+  recoveryPercent: number;
+  isRecovered: boolean;
+  lastTrainedHoursAgo: number | null;
+  sraWindowHours: number;
+};
+
+const SPLIT_GROUPS: Record<string, string[]> = {
+  Push: ["Chest", "Front Delts", "Side Delts", "Triceps"],
+  Pull: ["Back", "Upper Back", "Rear Delts", "Biceps", "Forearms"],
+  Legs: ["Quads", "Hamstrings", "Glutes", "Calves", "Adductors", "Hip Flexors", "Core", "Lower Back"],
+};
+
+function recoveryColor(percent: number): string {
+  if (percent >= 100) return "bg-emerald-500";
+  if (percent >= 75) return "bg-yellow-500";
+  if (percent >= 50) return "bg-orange-500";
+  return "bg-red-500";
+}
+
+function recoveryTextColor(percent: number): string {
+  if (percent >= 100) return "text-emerald-700";
+  if (percent >= 75) return "text-yellow-700";
+  if (percent >= 50) return "text-orange-700";
+  return "text-red-700";
+}
+
+export function MuscleRecoveryPanel({ userId }: { userId?: string }) {
+  const [muscles, setMuscles] = useState<MuscleRecovery[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (userId) params.set("userId", userId);
+    fetch(`/api/analytics/recovery?${params}`)
+      .then((r) => r.json())
+      .then((data) => setMuscles(data.muscles ?? []))
+      .finally(() => setLoading(false));
+  }, [userId]);
+
+  if (loading) {
+    return <div className="animate-pulse rounded-2xl border border-slate-200 p-6 text-sm text-slate-400">Loading recovery data...</div>;
+  }
+
+  if (muscles.length === 0) {
+    return <div className="rounded-2xl border border-slate-200 p-6 text-sm text-slate-500">No recovery data. Complete a workout to see muscle recovery status.</div>;
+  }
+
+  const muscleMap = new Map(muscles.map((m) => [m.name, m]));
+
+  return (
+    <div className="space-y-4">
+      {Object.entries(SPLIT_GROUPS).map(([group, muscleNames]) => {
+        const groupMuscles = muscleNames
+          .map((name) => muscleMap.get(name))
+          .filter((m): m is MuscleRecovery => m !== undefined && m.lastTrainedHoursAgo !== null);
+
+        if (groupMuscles.length === 0) return null;
+
+        return (
+          <div key={group} className="rounded-xl border border-slate-200 p-4">
+            <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">{group}</h4>
+            <div className="space-y-2">
+              {groupMuscles.map((muscle) => (
+                <div key={muscle.name} className="flex items-center gap-3">
+                  <span className="w-24 text-xs text-slate-600 truncate">{muscle.name}</span>
+                  <div className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${recoveryColor(muscle.recoveryPercent)}`}
+                      style={{ width: `${Math.min(muscle.recoveryPercent, 100)}%` }}
+                    />
+                  </div>
+                  <span className={`w-10 text-right text-xs font-medium ${recoveryTextColor(muscle.recoveryPercent)}`}>
+                    {muscle.recoveryPercent}%
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}

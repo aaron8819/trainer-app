@@ -36,17 +36,6 @@ enum SplitType {
   CUSTOM
 }
 
-enum MovementPattern {
-  SQUAT
-  HINGE
-  PUSH
-  PULL
-  PUSH_PULL
-  CARRY
-  ROTATE
-  LUNGE
-}
-
 enum MovementPatternV2 {
   HORIZONTAL_PUSH
   VERTICAL_PUSH
@@ -242,11 +231,9 @@ model Muscle {
 model Exercise {
   id                  String          @id @default(uuid())
   name                String          @unique
-  movementPattern     MovementPattern?
-  movementPatternsV2  MovementPatternV2[] @default([])
+  movementPatterns    MovementPatternV2[] @default([])
   splitTags           SplitTag[] @default([])
   jointStress         JointStress
-  isMainLift          Boolean?
   isMainLiftEligible  Boolean         @default(false)
   isCompound          Boolean         @default(false)
   fatigueCost         Int             @default(3)
@@ -371,8 +358,7 @@ model WorkoutExercise {
   exercise        Exercise            @relation(fields: [exerciseId], references: [id])
   orderIndex      Int
   isMainLift      Boolean
-  movementPattern MovementPattern?
-  movementPatternsV2 MovementPatternV2[] @default([])
+  movementPatterns MovementPatternV2[] @default([])
   notes           String?
 
   sets WorkoutSet[]

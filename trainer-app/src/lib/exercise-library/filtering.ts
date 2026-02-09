@@ -33,7 +33,7 @@ export function filterExercises(
     }
 
     if (filters.movementPattern) {
-      if (!exercise.movementPatternsV2.includes(filters.movementPattern)) {
+      if (!exercise.movementPatterns.includes(filters.movementPattern)) {
         return false;
       }
     }
@@ -66,14 +66,23 @@ export function sortExercises(
 ): ExerciseListItem[] {
   const sorted = [...exercises];
   sorted.sort((a, b) => {
-    if (sort.field === "name") {
-      const cmp = a.name.localeCompare(b.name);
-      return sort.direction === "asc" ? cmp : -cmp;
+    let cmp: number;
+    switch (sort.field) {
+      case "name":
+        cmp = a.name.localeCompare(b.name);
+        break;
+      case "sfrScore":
+        cmp = a.sfrScore - b.sfrScore;
+        break;
+      case "lengthPositionScore":
+        cmp = a.lengthPositionScore - b.lengthPositionScore;
+        break;
+      case "muscleGroup":
+        cmp = (a.primaryMuscles[0] ?? "").localeCompare(b.primaryMuscles[0] ?? "");
+        break;
+      default:
+        cmp = a.name.localeCompare(b.name);
     }
-    // For numeric fields on ExerciseListItem, only name is available.
-    // fatigueCost, sfrScore, lengthPositionScore are on ExerciseDetail.
-    // Fall back to name sort for list items.
-    const cmp = a.name.localeCompare(b.name);
     return sort.direction === "asc" ? cmp : -cmp;
   });
   return sorted;

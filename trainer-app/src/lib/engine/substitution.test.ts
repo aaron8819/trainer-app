@@ -5,11 +5,9 @@ import type { Constraints, Exercise } from "./types";
 const baseExercise: Exercise = {
   id: "target",
   name: "Barbell Bench Press",
-  movementPattern: "push",
-  movementPatternsV2: ["horizontal_push"],
+  movementPatterns: ["horizontal_push"],
   splitTags: ["push"],
   jointStress: "high",
-  isMainLift: true,
   isMainLiftEligible: true,
   isCompound: true,
   fatigueCost: 4,
@@ -27,10 +25,8 @@ const constraints: Constraints = {
 
 function makeExercise(overrides: Partial<Exercise> & { id: string; name: string }): Exercise {
   return {
-    movementPattern: "push",
     splitTags: ["push"],
     jointStress: "low",
-    isMainLift: false,
     equipment: ["dumbbell"],
     ...overrides,
   };
@@ -42,14 +38,14 @@ describe("suggestSubstitutes", () => {
       makeExercise({
         id: "pattern-match",
         name: "Dumbbell Bench Press",
-        movementPatternsV2: ["horizontal_push"],
+        movementPatterns: ["horizontal_push"],
         primaryMuscles: ["chest"],
         stimulusBias: ["mechanical"],
       }),
       makeExercise({
         id: "no-pattern",
         name: "Lateral Raise",
-        movementPatternsV2: ["vertical_push"],
+        movementPatterns: ["vertical_push"],
         primaryMuscles: ["chest"],
         stimulusBias: ["mechanical"],
       }),
@@ -64,13 +60,13 @@ describe("suggestSubstitutes", () => {
       makeExercise({
         id: "muscle-match",
         name: "Dumbbell Fly",
-        movementPatternsV2: [],
+        movementPatterns: [],
         primaryMuscles: ["chest", "triceps"],
       }),
       makeExercise({
         id: "no-muscle",
         name: "Lateral Raise",
-        movementPatternsV2: [],
+        movementPatterns: [],
         primaryMuscles: ["side delts"],
       }),
     ];
@@ -84,14 +80,14 @@ describe("suggestSubstitutes", () => {
       makeExercise({
         id: "stim-match",
         name: "Cable Fly",
-        movementPatternsV2: [],
+        movementPatterns: [],
         primaryMuscles: [],
         stimulusBias: ["mechanical"],
       }),
       makeExercise({
         id: "no-stim",
         name: "Pec Deck",
-        movementPatternsV2: [],
+        movementPatterns: [],
         primaryMuscles: [],
         stimulusBias: ["stretch"],
       }),
@@ -106,7 +102,7 @@ describe("suggestSubstitutes", () => {
       makeExercise({
         id: `ex-${i}`,
         name: `Exercise ${i}`,
-        movementPatternsV2: ["horizontal_push"],
+        movementPatterns: ["horizontal_push"],
         primaryMuscles: ["chest"],
       })
     );
@@ -134,14 +130,14 @@ describe("suggestSubstitutes", () => {
         id: "blocked",
         name: "Plank",
         splitTags: ["push", "core"],
-        movementPatternsV2: ["horizontal_push"],
+        movementPatterns: ["horizontal_push"],
         primaryMuscles: ["chest"],
       }),
       makeExercise({
         id: "allowed",
         name: "Dumbbell Press",
         splitTags: ["push"],
-        movementPatternsV2: ["horizontal_push"],
+        movementPatterns: ["horizontal_push"],
         primaryMuscles: ["chest"],
       }),
     ];
@@ -157,7 +153,7 @@ describe("suggestSubstitutes", () => {
       makeExercise({
         id: "other",
         name: "Dumbbell Press",
-        movementPatternsV2: ["horizontal_push"],
+        movementPatterns: ["horizontal_push"],
         primaryMuscles: ["chest"],
       }),
     ];
@@ -171,14 +167,14 @@ describe("suggestSubstitutes", () => {
       makeExercise({
         id: "contra",
         name: "Skull Crusher",
-        movementPatternsV2: ["horizontal_push"],
+        movementPatterns: ["horizontal_push"],
         primaryMuscles: ["triceps"],
         contraindications: { elbow: true },
       }),
       makeExercise({
         id: "safe",
         name: "Cable Pushdown",
-        movementPatternsV2: ["horizontal_push"],
+        movementPatterns: ["horizontal_push"],
         primaryMuscles: ["triceps"],
       }),
     ];

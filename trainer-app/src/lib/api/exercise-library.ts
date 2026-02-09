@@ -22,10 +22,10 @@ export async function loadExerciseLibrary(userId?: string): Promise<ExerciseList
   return exercises.map((exercise) => ({
     id: exercise.id,
     name: exercise.name,
-    isCompound: exercise.isCompound ?? exercise.isMainLift ?? false,
-    movementPatternsV2: (exercise.movementPatternsV2 ?? []).map(
+    isCompound: exercise.isCompound ?? false,
+    movementPatterns: (exercise.movementPatterns ?? []).map(
       (p) => p.toLowerCase()
-    ) as ExerciseListItem["movementPatternsV2"],
+    ) as ExerciseListItem["movementPatterns"],
     splitTags: (exercise.splitTags ?? []).map(
       (t) => t.toLowerCase()
     ) as ExerciseListItem["splitTags"],
@@ -110,12 +110,11 @@ export async function loadExerciseDetail(
   return {
     id: exercise.id,
     name: exercise.name,
-    isCompound: exercise.isCompound ?? exercise.isMainLift ?? false,
-    isMainLift: exercise.isMainLift ?? false,
+    isCompound: exercise.isCompound ?? false,
     isMainLiftEligible: exercise.isMainLiftEligible ?? false,
-    movementPatternsV2: (exercise.movementPatternsV2 ?? []).map(
+    movementPatterns: (exercise.movementPatterns ?? []).map(
       (p) => p.toLowerCase()
-    ) as ExerciseDetail["movementPatternsV2"],
+    ) as ExerciseDetail["movementPatterns"],
     splitTags: (exercise.splitTags ?? []).map(
       (t) => t.toLowerCase()
     ) as ExerciseDetail["splitTags"],

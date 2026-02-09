@@ -21,8 +21,8 @@ export function suggestSubstitutes(
     .filter((exercise) => !hasBlockedTag(exercise));
 
   const scoreCandidate = (exercise: Exercise) => {
-    const patternOverlap = (exercise.movementPatternsV2 ?? []).filter((pattern) =>
-      target.movementPatternsV2?.includes(pattern)
+    const patternOverlap = (exercise.movementPatterns ?? []).filter((pattern) =>
+      target.movementPatterns?.includes(pattern)
     ).length;
     const muscleOverlap = (exercise.primaryMuscles ?? []).filter((muscle) =>
       target.primaryMuscles?.includes(muscle)

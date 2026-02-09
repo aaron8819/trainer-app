@@ -4,7 +4,7 @@ import { VOLUME_LANDMARKS, MUSCLE_SPLIT_MAP } from "./volume-landmarks";
 
 export type AnalysisExerciseInput = {
   isCompound: boolean;
-  movementPatternsV2: string[];
+  movementPatterns: string[];
   muscles: { name: string; role: "primary" | "secondary" }[];
   sfrScore?: number;
   lengthPositionScore?: number;
@@ -277,7 +277,7 @@ export function scoreMovementDiversity(
   const coveredSet = new Set<string>();
 
   for (const ex of exercises) {
-    for (const pattern of ex.movementPatternsV2) {
+    for (const pattern of ex.movementPatterns) {
       coveredSet.add(pattern);
     }
   }

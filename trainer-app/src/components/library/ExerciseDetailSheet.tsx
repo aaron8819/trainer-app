@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { SlideUpSheet } from "@/components/ui/SlideUpSheet";
 import { BaselineEditor } from "./BaselineEditor";
+import { AddToTemplateSheet } from "./AddToTemplateSheet";
+import { PersonalHistorySection } from "./PersonalHistorySection";
 import type { ExerciseDetail } from "@/lib/exercise-library/types";
 import {
   MOVEMENT_PATTERN_LABELS,
@@ -32,6 +34,7 @@ export function ExerciseDetailSheet({ exerciseId, onClose, onNavigate }: Exercis
   const [avoidState, setAvoidState] = useState(false);
   const [prevId, setPrevId] = useState<string | null>(null);
   const [refreshCounter, setRefreshCounter] = useState(0);
+  const [templateSheetOpen, setTemplateSheetOpen] = useState(false);
 
   // React 19: adjust state from props during render (no side effects)
   if (exerciseId !== prevId) {
@@ -114,9 +117,9 @@ export function ExerciseDetailSheet({ exerciseId, onClose, onNavigate }: Exercis
             >
               {detail.isCompound ? "Compound" : "Isolation"}
             </span>
-            {detail.isMainLift && (
+            {detail.isMainLiftEligible && (
               <span className="rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700">
-                Main Lift
+                Main Lift Eligible
               </span>
             )}
           </div>
@@ -135,11 +138,11 @@ export function ExerciseDetailSheet({ exerciseId, onClose, onNavigate }: Exercis
           </section>
 
           {/* Movement Patterns */}
-          {detail.movementPatternsV2.length > 0 && (
+          {detail.movementPatterns.length > 0 && (
             <section>
               <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Movement Patterns</h3>
               <div className="mt-1.5 flex flex-wrap gap-1.5">
-                {detail.movementPatternsV2.map((p) => (
+                {detail.movementPatterns.map((p) => (
                   <span key={p} className="rounded-full bg-violet-50 px-2.5 py-0.5 text-xs text-violet-600">
                     {MOVEMENT_PATTERN_LABELS[p]}
                   </span>
@@ -252,10 +255,12 @@ export function ExerciseDetailSheet({ exerciseId, onClose, onNavigate }: Exercis
             )}
           </section>
 
-          {/* Personal History placeholder */}
+          {/* Personal History */}
           <section>
             <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Personal History</h3>
-            <p className="mt-1.5 text-xs text-slate-400">Coming soon</p>
+            <div className="mt-1.5">
+              <PersonalHistorySection exerciseId={detail.id} />
+            </div>
           </section>
 
           {/* Baseline Editor */}
@@ -314,9 +319,8 @@ export function ExerciseDetailSheet({ exerciseId, onClose, onNavigate }: Exercis
               Baseline
             </button>
             <button
-              disabled
-              className="flex items-center gap-1.5 rounded-lg bg-slate-50 px-3 py-2 text-sm font-medium text-slate-300"
-              title="Coming in Phase 3"
+              onClick={() => setTemplateSheetOpen(true)}
+              className="flex items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200"
             >
               <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                 <line x1="12" y1="5" x2="12" y2="19" />
@@ -326,6 +330,14 @@ export function ExerciseDetailSheet({ exerciseId, onClose, onNavigate }: Exercis
             </button>
           </div>
         </div>
+      )}
+      {detail && (
+        <AddToTemplateSheet
+          isOpen={templateSheetOpen}
+          onClose={() => setTemplateSheetOpen(false)}
+          exerciseId={detail.id}
+          exerciseName={detail.name}
+        />
       )}
     </SlideUpSheet>
   );

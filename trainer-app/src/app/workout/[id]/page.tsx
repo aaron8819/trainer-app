@@ -532,7 +532,7 @@ export default async function WorkoutDetailPage({
                         </span>
                       </div>
                       <p className="mt-2 text-xs text-slate-500">
-                        Why: {(exercise.movementPatternsV2?.length ? exercise.movementPatternsV2.map((p: string) => p.toLowerCase().replace(/_/g, " ")).join(", ") : exercise.movementPattern?.toLowerCase() ?? "unknown")} pattern. {stressNote} {loadNote}
+                        Why: {(exercise.movementPatterns?.length ? exercise.movementPatterns.map((p: string) => p.toLowerCase().replace(/_/g, " ")).join(", ") : "unknown")} pattern. {stressNote} {loadNote}
                       </p>
                       <div className="mt-3 grid gap-2 text-sm text-slate-600">
                         {exercise.sets.map((set) => (

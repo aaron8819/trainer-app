@@ -5,11 +5,9 @@ import type { Exercise, WorkoutHistoryEntry } from "./types";
 const makeExercise = (id: string, primaryMuscles: string[]): Exercise => ({
   id,
   name: id,
-  movementPattern: "push",
-  movementPatternsV2: ["horizontal_push"],
+  movementPatterns: ["horizontal_push"],
   splitTags: ["push"],
   jointStress: "low",
-  isMainLift: false,
   equipment: ["cable"],
   primaryMuscles,
 });

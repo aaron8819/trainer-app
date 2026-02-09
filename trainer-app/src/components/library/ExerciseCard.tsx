@@ -60,7 +60,7 @@ export function ExerciseCard({ exercise, onClick }: ExerciseCardProps) {
         >
           {exercise.isCompound ? "Compound" : "Isolation"}
         </span>
-        {exercise.movementPatternsV2.slice(0, 2).map((p) => (
+        {exercise.movementPatterns.slice(0, 2).map((p) => (
           <span key={p} className="rounded-full bg-violet-50 px-2 py-0.5 text-[10px] text-violet-600">
             {MOVEMENT_PATTERN_LABELS[p]}
           </span>

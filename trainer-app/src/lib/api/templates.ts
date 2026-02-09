@@ -21,7 +21,7 @@ export interface TemplateExerciseDetail {
   exerciseId: string;
   name: string;
   isCompound: boolean;
-  movementPatternsV2: string[];
+  movementPatterns: string[];
   muscles: { name: string; role: "primary" | "secondary" }[];
   equipment: string[];
 }
@@ -90,7 +90,7 @@ export async function loadTemplateDetail(
       exerciseId: te.exerciseId,
       name: te.exercise.name,
       isCompound: te.exercise.isCompound,
-      movementPatternsV2: (te.exercise.movementPatternsV2 ?? []).map(
+      movementPatterns: (te.exercise.movementPatterns ?? []).map(
         (p) => p.toLowerCase()
       ),
       muscles: te.exercise.exerciseMuscles.map((m) => ({
@@ -206,7 +206,7 @@ export async function loadTemplatesWithScores(
   return templates.map((t) => {
     const inputs: AnalysisExerciseInput[] = t.exercises.map((te) => ({
       isCompound: te.exercise.isCompound,
-      movementPatternsV2: (te.exercise.movementPatternsV2 ?? []).map((p) =>
+      movementPatterns: (te.exercise.movementPatterns ?? []).map((p) =>
         p.toLowerCase()
       ),
       muscles: te.exercise.exerciseMuscles.map((m) => ({

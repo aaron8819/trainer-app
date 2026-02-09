@@ -25,7 +25,7 @@ function toAnalysisInput(ex: Exercise): AnalysisExerciseInput {
   }
   return {
     isCompound: ex.isCompound ?? false,
-    movementPatternsV2: ex.movementPatternsV2,
+    movementPatterns: ex.movementPatterns,
     muscles,
   };
 }
@@ -166,7 +166,7 @@ describe("scorePushPullBalance", () => {
     // An exercise with both push and pull primary muscles should count for both
     const hybrid: AnalysisExerciseInput = {
       isCompound: true,
-      movementPatternsV2: ["horizontal_push"],
+      movementPatterns: ["horizontal_push"],
       muscles: [
         { name: "Chest", role: "primary" },
         { name: "Back", role: "primary" },
@@ -251,7 +251,7 @@ describe("scoreMovementDiversity", () => {
     // Even with bonus patterns, score should not exceed 100
     const allPatterns: AnalysisExerciseInput = {
       isCompound: true,
-      movementPatternsV2: [
+      movementPatterns: [
         "horizontal_push",
         "vertical_push",
         "horizontal_pull",
@@ -290,8 +290,8 @@ describe("scoreLengthPosition", () => {
 
   it("returns 50 when all exercises default (no field)", () => {
     const exercises: AnalysisExerciseInput[] = [
-      { isCompound: true, movementPatternsV2: [], muscles: [] },
-      { isCompound: false, movementPatternsV2: [], muscles: [] },
+      { isCompound: true, movementPatterns: [], muscles: [] },
+      { isCompound: false, movementPatterns: [], muscles: [] },
     ];
     const result = scoreLengthPosition(exercises);
     // Default score is 3, maps to (3-1)/4*100 = 50
@@ -301,9 +301,9 @@ describe("scoreLengthPosition", () => {
 
   it("scores high for exercises with high lengthPositionScore", () => {
     const exercises: AnalysisExerciseInput[] = [
-      { isCompound: false, movementPatternsV2: [], muscles: [], lengthPositionScore: 5 },
-      { isCompound: false, movementPatternsV2: [], muscles: [], lengthPositionScore: 5 },
-      { isCompound: false, movementPatternsV2: [], muscles: [], lengthPositionScore: 4 },
+      { isCompound: false, movementPatterns: [], muscles: [], lengthPositionScore: 5 },
+      { isCompound: false, movementPatterns: [], muscles: [], lengthPositionScore: 5 },
+      { isCompound: false, movementPatterns: [], muscles: [], lengthPositionScore: 4 },
     ];
     const result = scoreLengthPosition(exercises);
     expect(result.score).toBeGreaterThanOrEqual(85);
@@ -313,9 +313,9 @@ describe("scoreLengthPosition", () => {
 
   it("scores low for exercises with low lengthPositionScore", () => {
     const exercises: AnalysisExerciseInput[] = [
-      { isCompound: true, movementPatternsV2: [], muscles: [], lengthPositionScore: 1 },
-      { isCompound: true, movementPatternsV2: [], muscles: [], lengthPositionScore: 2 },
-      { isCompound: true, movementPatternsV2: [], muscles: [], lengthPositionScore: 1 },
+      { isCompound: true, movementPatterns: [], muscles: [], lengthPositionScore: 1 },
+      { isCompound: true, movementPatterns: [], muscles: [], lengthPositionScore: 2 },
+      { isCompound: true, movementPatterns: [], muscles: [], lengthPositionScore: 1 },
     ];
     const result = scoreLengthPosition(exercises);
     expect(result.score).toBeLessThan(30);
@@ -325,7 +325,7 @@ describe("scoreLengthPosition", () => {
   it("caps score at 100", () => {
     const exercises: AnalysisExerciseInput[] = Array.from({ length: 10 }, () => ({
       isCompound: false,
-      movementPatternsV2: [],
+      movementPatterns: [],
       muscles: [],
       lengthPositionScore: 5,
     }));
@@ -347,8 +347,8 @@ describe("scoreSfrEfficiency", () => {
 
   it("returns 50 when all exercises default (no field)", () => {
     const exercises: AnalysisExerciseInput[] = [
-      { isCompound: true, movementPatternsV2: [], muscles: [] },
-      { isCompound: false, movementPatternsV2: [], muscles: [] },
+      { isCompound: true, movementPatterns: [], muscles: [] },
+      { isCompound: false, movementPatterns: [], muscles: [] },
     ];
     const result = scoreSfrEfficiency(exercises);
     // Default score is 3, maps to (3-1)/4*100 = 50
@@ -358,9 +358,9 @@ describe("scoreSfrEfficiency", () => {
 
   it("scores high for exercises with high sfrScore", () => {
     const exercises: AnalysisExerciseInput[] = [
-      { isCompound: false, movementPatternsV2: [], muscles: [], sfrScore: 5 },
-      { isCompound: false, movementPatternsV2: [], muscles: [], sfrScore: 5 },
-      { isCompound: false, movementPatternsV2: [], muscles: [], sfrScore: 4 },
+      { isCompound: false, movementPatterns: [], muscles: [], sfrScore: 5 },
+      { isCompound: false, movementPatterns: [], muscles: [], sfrScore: 5 },
+      { isCompound: false, movementPatterns: [], muscles: [], sfrScore: 4 },
     ];
     const result = scoreSfrEfficiency(exercises);
     expect(result.score).toBeGreaterThanOrEqual(85);
@@ -370,9 +370,9 @@ describe("scoreSfrEfficiency", () => {
 
   it("scores low for exercises with low sfrScore", () => {
     const exercises: AnalysisExerciseInput[] = [
-      { isCompound: true, movementPatternsV2: [], muscles: [], sfrScore: 1 },
-      { isCompound: true, movementPatternsV2: [], muscles: [], sfrScore: 2 },
-      { isCompound: true, movementPatternsV2: [], muscles: [], sfrScore: 1 },
+      { isCompound: true, movementPatterns: [], muscles: [], sfrScore: 1 },
+      { isCompound: true, movementPatterns: [], muscles: [], sfrScore: 2 },
+      { isCompound: true, movementPatterns: [], muscles: [], sfrScore: 1 },
     ];
     const result = scoreSfrEfficiency(exercises);
     expect(result.score).toBeLessThan(30);
@@ -382,7 +382,7 @@ describe("scoreSfrEfficiency", () => {
   it("caps score at 100", () => {
     const exercises: AnalysisExerciseInput[] = Array.from({ length: 10 }, () => ({
       isCompound: false,
-      movementPatternsV2: [],
+      movementPatterns: [],
       muscles: [],
       sfrScore: 5,
     }));

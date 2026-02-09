@@ -81,9 +81,8 @@ export async function POST(request: Request) {
             workoutId: workout.id,
             exerciseId: exercise.exerciseId,
             orderIndex: exerciseIndex,
-            isMainLift: section === "MAIN" ? true : exerciseRecord?.isMainLift ?? false,
-            movementPattern: exerciseRecord?.movementPattern ?? "PUSH",
-            movementPatternsV2: exerciseRecord?.movementPatternsV2 ?? [],
+            isMainLift: section === "MAIN" ? true : false,
+            movementPatterns: exerciseRecord?.movementPatterns ?? [],
             sets: {
               create: exercise.sets.map((set) => ({
                 setIndex: set.setIndex,

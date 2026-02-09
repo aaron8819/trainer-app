@@ -37,6 +37,29 @@ import type {
   WorkoutHistoryEntry,
   WorkoutPlan,
 } from "@/lib/engine/types";
+
+const V2_TO_V1: Record<string, MovementPattern> = {
+  horizontal_push: "push",
+  vertical_push: "push",
+  horizontal_pull: "pull",
+  vertical_pull: "pull",
+  squat: "squat",
+  hinge: "hinge",
+  lunge: "lunge",
+  carry: "carry",
+  rotation: "rotate",
+  anti_rotation: "rotate",
+  flexion: "push",
+  extension: "push",
+};
+
+function deriveV1Pattern(v2Patterns: string[]): MovementPattern {
+  for (const p of v2Patterns) {
+    const v1 = V2_TO_V1[p.toLowerCase()];
+    if (v1) return v1;
+  }
+  return "push";
+}
 import { deriveWeekInBlock, type WeekInBlockHistoryEntry } from "./periodization";
 
 type ExerciseWithMuscles = Exercise & {
@@ -167,15 +190,13 @@ export function mapExercises(
   return exercises.map((exercise) => ({
     id: exercise.id,
     name: exercise.name,
-    movementPattern: (exercise.movementPattern?.toLowerCase() ?? "push") as MovementPattern,
-    movementPatternsV2: (exercise.movementPatternsV2 ?? []).map((pattern) =>
+    movementPatterns: (exercise.movementPatterns ?? []).map((pattern) =>
       pattern.toLowerCase()
     ) as MovementPatternV2[],
     splitTags: (exercise.splitTags ?? []).map((tag) => tag.toLowerCase()) as SplitTag[],
     jointStress: exercise.jointStress.toLowerCase() as JointStress,
-    isMainLift: exercise.isMainLift ?? false,
-    isMainLiftEligible: exercise.isMainLiftEligible ?? exercise.isMainLift,
-    isCompound: exercise.isCompound ?? exercise.isMainLift,
+    isMainLiftEligible: exercise.isMainLiftEligible ?? false,
+    isCompound: exercise.isCompound ?? false,
     fatigueCost: exercise.fatigueCost ?? undefined,
     stimulusBias: (exercise.stimulusBias ?? []).map((bias) => bias.toLowerCase()) as unknown as
       | StimulusBias[],
@@ -206,7 +227,7 @@ export function mapHistory(workouts: WorkoutWithRelations[]): WorkoutHistoryEntr
       : undefined,
     exercises: workout.exercises.map((exercise) => ({
       exerciseId: exercise.exerciseId,
-      movementPattern: (exercise.exercise.movementPattern?.toLowerCase() ?? "push") as WorkoutHistoryEntry["exercises"][number]["movementPattern"],
+      movementPattern: deriveV1Pattern(exercise.exercise.movementPatterns ?? []),
       primaryMuscles: exercise.exercise.exerciseMuscles
         ?.filter((m) => m.role === "PRIMARY")
         .map((m) => m.muscle.name) ?? [],

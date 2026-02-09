@@ -13,7 +13,7 @@ function makeExercise(overrides: Partial<SmartBuildExercise> & { id: string }): 
   return {
     name: overrides.id,
     isCompound: false,
-    movementPatternsV2: [],
+    movementPatterns: [],
     splitTags: [],
     jointStress: "medium",
     equipment: ["barbell"],
@@ -32,7 +32,7 @@ function buildTestPool(): SmartBuildExercise[] {
       id: "bench",
       name: "Barbell Bench Press",
       isCompound: true,
-      movementPatternsV2: ["horizontal_push"],
+      movementPatterns: ["horizontal_push"],
       splitTags: ["push"],
       jointStress: "high",
       equipment: ["barbell", "bench", "rack"],
@@ -43,7 +43,7 @@ function buildTestPool(): SmartBuildExercise[] {
       id: "row",
       name: "Barbell Row",
       isCompound: true,
-      movementPatternsV2: ["horizontal_pull"],
+      movementPatterns: ["horizontal_pull"],
       splitTags: ["pull"],
       equipment: ["barbell"],
       primaryMuscles: ["Back", "Upper Back"],
@@ -53,7 +53,7 @@ function buildTestPool(): SmartBuildExercise[] {
       id: "squat",
       name: "Barbell Back Squat",
       isCompound: true,
-      movementPatternsV2: ["squat"],
+      movementPatterns: ["squat"],
       splitTags: ["legs"],
       jointStress: "high",
       equipment: ["barbell", "rack"],
@@ -64,7 +64,7 @@ function buildTestPool(): SmartBuildExercise[] {
       id: "rdl",
       name: "Romanian Deadlift",
       isCompound: true,
-      movementPatternsV2: ["hinge"],
+      movementPatterns: ["hinge"],
       splitTags: ["legs"],
       equipment: ["barbell"],
       primaryMuscles: ["Hamstrings", "Glutes"],
@@ -74,7 +74,7 @@ function buildTestPool(): SmartBuildExercise[] {
       id: "lat-pull",
       name: "Lat Pulldown",
       isCompound: true,
-      movementPatternsV2: ["vertical_pull"],
+      movementPatterns: ["vertical_pull"],
       splitTags: ["pull"],
       equipment: ["cable", "machine"],
       primaryMuscles: ["Back"],
@@ -84,7 +84,7 @@ function buildTestPool(): SmartBuildExercise[] {
       id: "db-press",
       name: "Dumbbell Bench Press",
       isCompound: true,
-      movementPatternsV2: ["horizontal_push"],
+      movementPatterns: ["horizontal_push"],
       splitTags: ["push"],
       equipment: ["dumbbell", "bench"],
       primaryMuscles: ["Chest"],
@@ -94,7 +94,7 @@ function buildTestPool(): SmartBuildExercise[] {
       id: "split-squat",
       name: "Bulgarian Split Squat",
       isCompound: true,
-      movementPatternsV2: ["lunge"],
+      movementPatterns: ["lunge"],
       splitTags: ["legs"],
       equipment: ["dumbbell", "bench"],
       primaryMuscles: ["Quads", "Glutes"],
@@ -104,7 +104,7 @@ function buildTestPool(): SmartBuildExercise[] {
       id: "leg-press",
       name: "Leg Press",
       isCompound: true,
-      movementPatternsV2: ["squat"],
+      movementPatterns: ["squat"],
       splitTags: ["legs"],
       equipment: ["machine"],
       primaryMuscles: ["Quads"],
@@ -114,7 +114,7 @@ function buildTestPool(): SmartBuildExercise[] {
       id: "face-pull",
       name: "Face Pull",
       isCompound: false,
-      movementPatternsV2: ["horizontal_pull"],
+      movementPatterns: ["horizontal_pull"],
       splitTags: ["pull"],
       jointStress: "low",
       equipment: ["cable"],
@@ -125,7 +125,7 @@ function buildTestPool(): SmartBuildExercise[] {
       id: "lateral-raise",
       name: "Lateral Raise",
       isCompound: false,
-      movementPatternsV2: ["vertical_push"],
+      movementPatterns: ["vertical_push"],
       splitTags: ["push"],
       jointStress: "low",
       equipment: ["dumbbell"],
@@ -135,7 +135,7 @@ function buildTestPool(): SmartBuildExercise[] {
       id: "curl",
       name: "Barbell Curl",
       isCompound: false,
-      movementPatternsV2: ["flexion"],
+      movementPatterns: ["flexion"],
       splitTags: ["pull"],
       jointStress: "low",
       equipment: ["barbell"],
@@ -146,7 +146,7 @@ function buildTestPool(): SmartBuildExercise[] {
       id: "tricep-push",
       name: "Tricep Pushdown",
       isCompound: false,
-      movementPatternsV2: ["extension"],
+      movementPatterns: ["extension"],
       splitTags: ["push"],
       jointStress: "low",
       equipment: ["cable"],
@@ -156,7 +156,7 @@ function buildTestPool(): SmartBuildExercise[] {
       id: "plank",
       name: "Plank",
       isCompound: false,
-      movementPatternsV2: ["anti_rotation"],
+      movementPatterns: ["anti_rotation"],
       splitTags: ["core"],
       jointStress: "low",
       equipment: ["bodyweight"],
@@ -166,7 +166,7 @@ function buildTestPool(): SmartBuildExercise[] {
       id: "farmers-carry",
       name: "Farmer's Carry",
       isCompound: false,
-      movementPatternsV2: ["carry"],
+      movementPatterns: ["carry"],
       splitTags: ["conditioning"],
       equipment: ["dumbbell"],
       primaryMuscles: ["Forearms", "Core"],
@@ -302,6 +302,75 @@ describe("scoreExerciseForBuild", () => {
     const novelScore = scoreExerciseForBuild(facePull, targets, coveredMuscles, noPatterns, false);
     const knownScore = scoreExerciseForBuild(facePull, targets, coveredMuscles, withPatterns, false);
     expect(novelScore).toBeGreaterThan(knownScore);
+  });
+});
+
+describe("training goal bias", () => {
+  const pool = buildTestPool();
+
+  it("strength goal selects more compounds", () => {
+    const strengthResult = smartBuild({
+      targetMuscleGroups: ["chest", "back", "shoulders"],
+      exercisePool: pool,
+      exerciseCount: 7,
+      seed: 42,
+      trainingGoal: "strength",
+    });
+    const neutralResult = smartBuild({
+      targetMuscleGroups: ["chest", "back", "shoulders"],
+      exercisePool: pool,
+      exerciseCount: 7,
+      seed: 42,
+    });
+    const strengthCompounds = strengthResult.exercises.filter((e) => e.isCompound).length;
+    const neutralCompounds = neutralResult.exercises.filter((e) => e.isCompound).length;
+    expect(strengthCompounds).toBeGreaterThanOrEqual(neutralCompounds);
+  });
+
+  it("hypertrophy goal scores isolations and high SFR higher", () => {
+    const benchEx = pool.find((e) => e.id === "bench")!;
+    const curlEx = pool.find((e) => e.id === "curl")!;
+    const highSfrCurl = { ...curlEx, sfrScore: 5, lengthPositionScore: 5 };
+    const targets = new Set(["Chest", "Biceps", "Triceps"]);
+    const covered = new Set<string>();
+    const patterns = new Set<string>();
+
+    const curlScore = scoreExerciseForBuild(highSfrCurl, targets, covered, patterns, false, "hypertrophy");
+    const curlNoGoal = scoreExerciseForBuild(highSfrCurl, targets, covered, patterns, false);
+    expect(curlScore).toBeGreaterThan(curlNoGoal);
+  });
+});
+
+describe("time budget", () => {
+  const pool = buildTestPool();
+
+  it("trims exercises to fit time budget", () => {
+    const unlimited = smartBuild({
+      targetMuscleGroups: ["chest", "back", "legs"],
+      exercisePool: pool,
+      exerciseCount: 8,
+      seed: 42,
+    });
+    const limited = smartBuild({
+      targetMuscleGroups: ["chest", "back", "legs"],
+      exercisePool: pool,
+      exerciseCount: 8,
+      timeBudgetMinutes: 30,
+      seed: 42,
+    });
+    expect(limited.exercises.length).toBeLessThan(unlimited.exercises.length);
+    expect(limited.exercises.length).toBeGreaterThan(0);
+  });
+
+  it("keeps all exercises when budget is generous", () => {
+    const result = smartBuild({
+      targetMuscleGroups: ["chest"],
+      exercisePool: pool,
+      exerciseCount: 3,
+      timeBudgetMinutes: 120,
+      seed: 42,
+    });
+    expect(result.exercises.length).toBe(3);
   });
 });
 

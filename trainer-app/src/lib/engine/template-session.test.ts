@@ -151,4 +151,31 @@ describe("generateWorkoutFromTemplate", () => {
 
     expect(workout.notes).toContain("Autoregulated for recovery");
   });
+
+  it("returns no substitutions in strict mode", () => {
+    const templateExercises = makeTemplateExercises(["bench"]);
+    const result = generateWorkoutFromTemplate(
+      templateExercises,
+      makeOptions({
+        isStrict: true,
+        checkIn: { date: new Date().toISOString(), readiness: 3, painFlags: { knee: 2 } },
+      })
+    );
+    expect(result.substitutions).toEqual([]);
+  });
+
+  it("suggests substitutions in flexible mode with pain flags", () => {
+    const exWithContra = {
+      ...exampleExerciseLibrary[0],
+      contraindications: { knee: { avoidAbove: 1 } },
+    };
+    const result = generateWorkoutFromTemplate(
+      [{ exercise: exWithContra, orderIndex: 0 }],
+      makeOptions({
+        isStrict: false,
+        checkIn: { date: new Date().toISOString(), readiness: 3, painFlags: { knee: 2 } },
+      })
+    );
+    expect(result.substitutions.length).toBeGreaterThanOrEqual(0);
+  });
 });

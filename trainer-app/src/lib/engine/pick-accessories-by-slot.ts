@@ -53,7 +53,7 @@ export function pickAccessoriesBySlot(options: AccessorySlotOptions): Exercise[]
   const remaining = [...accessoryPool];
   const selected: Exercise[] = [];
   const mainPatterns = new Set(
-    mainLifts.flatMap((exercise) => exercise.movementPatternsV2 ?? [])
+    mainLifts.flatMap((exercise) => exercise.movementPatterns ?? [])
   );
   const coveredMuscles = new Set(
     mainLifts.flatMap((exercise) => getPrimaryMuscles(exercise))
@@ -199,7 +199,7 @@ function matchesSlot(slot: SlotType, exercise: Exercise): boolean {
   }
   const muscles = getPrimaryMuscles(exercise).map((item) => item.toLowerCase());
   const hasMuscle = (name: string) => muscles.includes(name.toLowerCase());
-  const patterns = exercise.movementPatternsV2 ?? [];
+  const patterns = exercise.movementPatterns ?? [];
 
   switch (slot) {
     case "chest_isolation":
@@ -222,7 +222,7 @@ function matchesSlot(slot: SlotType, exercise: Exercise): boolean {
     case "hamstring_isolation":
       return hasMuscle("hamstrings");
     case "glute_or_unilateral":
-      return hasMuscle("glutes") || patterns.includes("lunge") || exercise.movementPattern === "lunge";
+      return hasMuscle("glutes") || patterns.includes("lunge") || exercise.movementPatterns?.includes("lunge");
     case "calf":
       return hasMuscle("calves");
     case "back_compound":
@@ -247,8 +247,8 @@ function scoreSlot(
   const hasMuscle = (name: string) => muscleSet.has(name.toLowerCase());
   const stimulus = (exercise.stimulusBias ?? []).map((item) => item.toLowerCase());
   const hasStimulus = (name: string) => stimulus.includes(name.toLowerCase());
-  const isCompound = exercise.isCompound ?? exercise.isMainLift;
-  const patterns = new Set(exercise.movementPatternsV2 ?? []);
+  const isCompound = exercise.isCompound ?? false;
+  const patterns = new Set(exercise.movementPatterns ?? []);
   const overlap = [...patterns].some((pattern) => mainPatterns.has(pattern));
   const favoriteBonus = favoriteSet?.has(normalizeName(exercise.name)) ? 3 : 0;
   const uncovered = muscles.filter((muscle) => !coveredMuscles.has(muscle));
@@ -300,7 +300,7 @@ function scoreSlot(
       break;
     case "glute_or_unilateral":
       score += hasMuscle("glutes") ? 6 : 0;
-      score += patterns.has("lunge") || exercise.movementPattern === "lunge" ? 3 : 0;
+      score += patterns.has("lunge") || exercise.movementPatterns?.includes("lunge") ? 3 : 0;
       score += hasStimulus("stretch") ? 1 : 0;
       break;
     case "calf":

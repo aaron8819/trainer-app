@@ -3,6 +3,7 @@ import type {
   Exercise,
   FatigueState,
   MovementPattern,
+  MovementPatternV2,
   SplitTag,
   UserPreferences,
   UserProfile,
@@ -15,6 +16,25 @@ import { pickMainLiftsForPpl } from "./main-lift-picker";
 import { pickAccessoriesBySlot, type AccessorySlotOptions } from "./pick-accessories-by-slot";
 import { resolveSetCount } from "./prescription";
 import type { VolumeContext } from "./volume";
+
+const V1_TO_V2_MAP: Record<string, MovementPatternV2[]> = {
+  push: ["horizontal_push", "vertical_push"],
+  pull: ["horizontal_pull", "vertical_pull"],
+  squat: ["squat"],
+  hinge: ["hinge"],
+  lunge: ["lunge"],
+  carry: ["carry"],
+  rotate: ["rotation", "anti_rotation"],
+  push_pull: ["horizontal_push", "vertical_push", "horizontal_pull", "vertical_pull"],
+};
+
+function matchesV1Pattern(exercise: Exercise, v1Pattern: string): boolean {
+  const v2Patterns = V1_TO_V2_MAP[v1Pattern];
+  if (!v2Patterns) {
+    return false;
+  }
+  return (exercise.movementPatterns ?? []).some((p) => v2Patterns.includes(p));
+}
 
 const BLOCKED_TAGS: SplitTag[] = ["core", "mobility", "prehab", "conditioning"];
 const WARMUP_TAGS: SplitTag[] = ["mobility", "prehab"];
@@ -174,12 +194,12 @@ export function selectExercises(
     }
   } else {
     const patternFilteredBase = sanitized.filter((exercise) =>
-      allowedPatterns.includes(exercise.movementPattern)
+      allowedPatterns.some((pattern) => matchesV1Pattern(exercise, pattern))
     );
     const patternFiltered = applyStallFilter(patternFilteredBase, stalledSet);
 
     const patternMatches = (pattern: MovementPattern) => {
-      const matches = patternFiltered.filter((exercise) => exercise.movementPattern === pattern);
+      const matches = patternFiltered.filter((exercise) => matchesV1Pattern(exercise, pattern));
       return matches.sort((a, b) => {
         const aFav = favoriteSet.has(normalizeName(a.name)) ? 1 : 0;
         const bFav = favoriteSet.has(normalizeName(b.name)) ? 1 : 0;
@@ -235,7 +255,11 @@ export function selectExercises(
     }
 
     warmup.push(
-      ...patternFiltered.filter((exercise) => ["rotate", "carry"].includes(exercise.movementPattern)).slice(0, 2)
+      ...patternFiltered.filter((exercise) =>
+        (exercise.movementPatterns ?? []).some((p) =>
+          (["rotation", "anti_rotation", "carry"] as MovementPatternV2[]).includes(p)
+        )
+      ).slice(0, 2)
     );
   }
 
@@ -243,7 +267,7 @@ export function selectExercises(
 }
 
 export function isMainLiftEligible(exercise: Exercise) {
-  return exercise.isMainLiftEligible ?? exercise.isMainLift;
+  return exercise.isMainLiftEligible ?? false;
 }
 
 export function hasBlockedTag(exercise: Exercise) {
@@ -354,7 +378,7 @@ export function applyPainConstraints(exercises: Exercise[], painFlags?: Record<s
       if (contraindications["low_back"]) {
         return false;
       }
-      if (exercise.movementPatternsV2?.includes("hinge")) {
+      if (exercise.movementPatterns?.includes("hinge")) {
         return false;
       }
     }

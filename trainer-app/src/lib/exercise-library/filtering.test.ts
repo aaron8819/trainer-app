@@ -7,7 +7,7 @@ function makeExercise(overrides: Partial<ExerciseListItem> = {}): ExerciseListIt
     id: "ex-1",
     name: "Barbell Bench Press",
     isCompound: true,
-    movementPatternsV2: ["horizontal_push"],
+    movementPatterns: ["horizontal_push"],
     splitTags: ["push"],
     jointStress: "medium",
     equipment: ["barbell", "bench"],
@@ -26,7 +26,7 @@ const library: ExerciseListItem[] = [
     id: "1",
     name: "Barbell Bench Press",
     isCompound: true,
-    movementPatternsV2: ["horizontal_push"],
+    movementPatterns: ["horizontal_push"],
     splitTags: ["push"],
     equipment: ["barbell", "bench"],
     primaryMuscles: ["Chest"],
@@ -37,7 +37,7 @@ const library: ExerciseListItem[] = [
     id: "2",
     name: "Cable Lateral Raise",
     isCompound: false,
-    movementPatternsV2: [],
+    movementPatterns: [],
     splitTags: ["push"],
     equipment: ["cable"],
     primaryMuscles: ["Side Delts"],
@@ -47,7 +47,7 @@ const library: ExerciseListItem[] = [
     id: "3",
     name: "Barbell Back Squat",
     isCompound: true,
-    movementPatternsV2: ["squat"],
+    movementPatterns: ["squat"],
     splitTags: ["legs"],
     equipment: ["barbell", "rack"],
     primaryMuscles: ["Quads", "Glutes"],
@@ -57,7 +57,7 @@ const library: ExerciseListItem[] = [
     id: "4",
     name: "Dumbbell Bicep Curl",
     isCompound: false,
-    movementPatternsV2: ["flexion"],
+    movementPatterns: ["flexion"],
     splitTags: ["pull"],
     equipment: ["dumbbell"],
     primaryMuscles: ["Biceps"],
@@ -67,7 +67,7 @@ const library: ExerciseListItem[] = [
     id: "5",
     name: "Pull-Up",
     isCompound: true,
-    movementPatternsV2: ["vertical_pull"],
+    movementPatterns: ["vertical_pull"],
     splitTags: ["pull"],
     equipment: ["bodyweight"],
     primaryMuscles: ["Back", "Upper Back"],
@@ -207,5 +207,35 @@ describe("sortExercises", () => {
     const original = [...library];
     sortExercises(library, { field: "name", direction: "asc" });
     expect(library.map((e) => e.id)).toEqual(original.map((e) => e.id));
+  });
+
+  it("sorts by sfrScore ascending", () => {
+    const items = [
+      makeExercise({ id: "a", name: "A", sfrScore: 5 }),
+      makeExercise({ id: "b", name: "B", sfrScore: 2 }),
+      makeExercise({ id: "c", name: "C", sfrScore: 4 }),
+    ];
+    const result = sortExercises(items, { field: "sfrScore", direction: "asc" });
+    expect(result.map((e) => e.sfrScore)).toEqual([2, 4, 5]);
+  });
+
+  it("sorts by lengthPositionScore descending", () => {
+    const items = [
+      makeExercise({ id: "a", name: "A", lengthPositionScore: 2 }),
+      makeExercise({ id: "b", name: "B", lengthPositionScore: 5 }),
+      makeExercise({ id: "c", name: "C", lengthPositionScore: 3 }),
+    ];
+    const result = sortExercises(items, { field: "lengthPositionScore", direction: "desc" });
+    expect(result.map((e) => e.lengthPositionScore)).toEqual([5, 3, 2]);
+  });
+
+  it("sorts by muscleGroup (first primary muscle)", () => {
+    const items = [
+      makeExercise({ id: "a", name: "A", primaryMuscles: ["Triceps"] }),
+      makeExercise({ id: "b", name: "B", primaryMuscles: ["Biceps"] }),
+      makeExercise({ id: "c", name: "C", primaryMuscles: ["Chest"] }),
+    ];
+    const result = sortExercises(items, { field: "muscleGroup", direction: "asc" });
+    expect(result.map((e) => e.primaryMuscles[0])).toEqual(["Biceps", "Chest", "Triceps"]);
   });
 });

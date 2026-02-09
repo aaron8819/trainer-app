@@ -41,10 +41,9 @@ Canonical exercise definition used by the engine.
 
 Key fields:
 - `name` (unique)
-- `movementPattern` (legacy, coarse — nullable, being deprecated)
-- `movementPatternsV2` (programming intelligence)
+- `movementPatterns` (MovementPatternV2[], programming intelligence)
 - `splitTags` (strict split eligibility)
-- `isMainLift` (nullable, being deprecated), `isMainLiftEligible`, `isCompound`
+- `isMainLiftEligible`, `isCompound`
 - `fatigueCost`
 - `sfrScore` (stimulus-to-fatigue ratio, 1-5, default 3)
 - `lengthPositionScore` (lengthened-position loading, 1-5, default 3)
@@ -128,8 +127,7 @@ Relations:
 
 ### WorkoutExercise
 - `workoutId`, `exerciseId`, `orderIndex`, `isMainLift`
-- `movementPattern` (legacy, optional)
-- `movementPatternsV2` (MovementPatternV2[], default `{}`)
+- `movementPatterns` (MovementPatternV2[], default `{}`)
 - `notes`
 - Relations: `sets`
 
@@ -167,7 +165,7 @@ The following tables were removed in Phase 6 (2026-02-06) as they were unused:
 ## Engine-Relevant Notes
 
 - Split purity is enforced via `Exercise.splitTags`.
-- `movementPatternsV2` powers main lift pairing and substitution logic.
+- `movementPatterns` powers main lift pairing and substitution logic.
 - `SessionCheckIn` is the primary source for readiness and pain adjustments.
 - Weekly volume caps use `ExerciseMuscle` primary roles.
 - `prisma/seed.ts` seeds ExerciseMuscle mappings; supplemental scripts exist in `prisma/seed-exercise-muscles.ts` and `prisma/patch-exercise-muscles.ts` when needed.

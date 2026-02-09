@@ -12,7 +12,7 @@ export type ExerciseListItem = {
   id: string;
   name: string;
   isCompound: boolean;
-  movementPatternsV2: MovementPatternV2[];
+  movementPatterns: MovementPatternV2[];
   splitTags: SplitTag[];
   jointStress: JointStress;
   equipment: EquipmentType[];
@@ -25,7 +25,6 @@ export type ExerciseListItem = {
 };
 
 export type ExerciseDetail = ExerciseListItem & {
-  isMainLift: boolean;
   isMainLiftEligible: boolean;
   fatigueCost: number;
   stimulusBias: StimulusBias[];
@@ -46,7 +45,7 @@ export type ExerciseDetail = ExerciseListItem & {
   };
 };
 
-export type SortField = "name" | "fatigueCost" | "sfrScore" | "lengthPositionScore";
+export type SortField = "name" | "fatigueCost" | "sfrScore" | "lengthPositionScore" | "muscleGroup";
 export type SortDirection = "asc" | "desc";
 
 export type ExerciseFilters = {

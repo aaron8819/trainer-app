@@ -153,7 +153,7 @@ export function getRestSeconds(
   targetReps?: number
 ) {
   const fatigueCost = exercise.fatigueCost ?? 3;
-  const isCompound = exercise.isCompound ?? exercise.isMainLift;
+  const isCompound = exercise.isCompound ?? false;
   const reps = targetReps ?? (isMainLift ? 5 : 10);
 
   // Heavy compounds (1-5 reps)

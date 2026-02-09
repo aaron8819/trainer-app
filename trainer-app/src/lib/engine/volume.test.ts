@@ -13,11 +13,8 @@ function makeWorkoutExercise(
     exercise: {
       id,
       name: id,
-      movementPattern: "push",
       splitTags: ["push"],
       jointStress: "low",
-      isMainLift: false,
-      isMainLiftEligible: false,
       isCompound: false,
       fatigueCost,
       equipment: ["cable"],

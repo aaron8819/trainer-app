@@ -8,15 +8,6 @@ export type PrimaryGoal =
 export type SecondaryGoal = "posture" | "conditioning" | "injury_prevention" | "none";
 export type SplitType = "ppl" | "upper_lower" | "full_body" | "custom";
 export type SplitDay = "push" | "pull" | "legs" | "upper" | "lower" | "full_body";
-export type MovementPattern =
-  | "squat"
-  | "hinge"
-  | "push"
-  | "pull"
-  | "push_pull"
-  | "carry"
-  | "rotate"
-  | "lunge";
 export type MovementPatternV2 =
   | "horizontal_push"
   | "vertical_push"
@@ -30,6 +21,17 @@ export type MovementPatternV2 =
   | "anti_rotation"
   | "flexion"
   | "extension";
+/** V1 movement pattern — kept for WorkoutHistoryEntry backward compat */
+export type MovementPattern =
+  | "squat"
+  | "hinge"
+  | "push"
+  | "pull"
+  | "push_pull"
+  | "carry"
+  | "rotate"
+  | "lunge";
+
 export type SplitTag =
   | "push"
   | "pull"
@@ -101,11 +103,9 @@ export type UserPreferences = {
 export type Exercise = {
   id: string;
   name: string;
-  movementPattern: MovementPattern;
-  movementPatternsV2: MovementPatternV2[];
+  movementPatterns: MovementPatternV2[];
   splitTags: SplitTag[];
   jointStress: JointStress;
-  isMainLift: boolean;
   isMainLiftEligible?: boolean;
   isCompound?: boolean;
   fatigueCost?: number;

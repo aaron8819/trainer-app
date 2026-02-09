@@ -24,7 +24,7 @@ PPL days are filtered by `Exercise.splitTags`. Push day only selects exercises t
 
 ### 3. Movement Intelligence
 
-The engine pairs main lifts by `movementPatternsV2`:
+The engine pairs main lifts by `movementPatterns`:
 
 - **Push**: 1 horizontal press + 1 vertical press
 - **Pull**: 1 vertical pull + 1 horizontal row (prefers chest-supported when low-back pain)
@@ -138,6 +138,8 @@ POST /api/workouts/generate-from-template
 - Saved workouts set `advancesSplit: false` — template sessions don't rotate the PPL queue
 - SRA warnings are advisory (the template is preserved even if muscles are under-recovered)
 
+**Flexible mode** (`isStrict: false`): When pain flags conflict with template exercises (via `contraindications`), the engine returns `substitutions: SubstitutionSuggestion[]` alongside the workout. Each suggestion lists the original exercise, the conflict reason, and up to 3 scored alternatives from `suggestSubstitutes()`.
+
 ---
 
 ## Template Analysis (6 Scoring Dimensions)
@@ -155,7 +157,7 @@ POST /api/workouts/generate-from-template
 
 Each dimension returns a 0-100 score with a label (Excellent/Good/Fair/Needs Work/Poor). The overall score is the weighted sum, capped at 0-100. Up to 3 actionable suggestions are generated for weak dimensions.
 
-**Smart Build** (`smart-build.ts`) uses `analyzeTemplate()` to score its selections and iteratively improve by swapping weak exercises. It threads `sfrScore` and `lengthPositionScore` from `SmartBuildExercise` into the analysis input.
+**Smart Build** (`smart-build.ts`) uses `analyzeTemplate()` to score its selections and iteratively improve by swapping weak exercises. It threads `sfrScore` and `lengthPositionScore` from `SmartBuildExercise` into the analysis input. Accepts optional `trainingGoal` (strength biases compounds, hypertrophy biases high-SFR isolations, fat_loss biases compounds for calorie burn) and `timeBudgetMinutes` (trims exercises to fit time budget based on `timePerSetSec + restSec` per exercise).
 
 ---
 
@@ -294,11 +296,33 @@ Defined in `prescription.ts`.
 | `types.ts` | All engine type definitions |
 | `sample-data.ts` | Test fixture builders |
 
+### API Module Map
+
+| Module | Responsibility |
+|--------|---------------|
+| `src/lib/api/workout-context.ts` | DB-to-engine mapping, load orchestration |
+| `src/lib/api/periodization.ts` | `deriveWeekInBlock`, mesocycle position |
+| `src/lib/api/templates.ts` | Template CRUD, scoring with analysis |
+| `src/lib/api/template-session.ts` | Template workout generation orchestration |
+| `src/lib/api/exercise-library.ts` | Exercise list/detail, substitution, favorites/avoids |
+| `src/lib/api/analytics.ts` | `computeWeeklyMuscleVolume`, `getVolumeLandmarks` |
+| `src/lib/api/exercise-history.ts` | `loadExerciseHistory`, `computePersonalBests`, `computeTrend` |
+
+### Analytics Routes
+
+| Route | Method | Description |
+|-------|--------|-------------|
+| `/api/analytics/recovery` | GET | Per-muscle SRA recovery status (last 14 days) |
+| `/api/analytics/volume` | GET `?weeks=N` | Weekly muscle volume + volume landmarks |
+| `/api/analytics/templates` | GET | Template usage stats (completion rate, frequency) |
+| `/api/exercises/[id]/history` | GET `?limit=N` | Exercise personal history, trend, personal bests |
+| `/api/templates/[id]/exercises` | POST `{ exerciseId }` | Add exercise to template |
+
 ---
 
 ## Schema Fields Used by Engine
 
-**Exercise** (extended): `splitTags`, `movementPatternsV2`, `isMainLiftEligible`, `isCompound`, `fatigueCost`, `stimulusBias`, `contraindications`, `timePerSetSec`, `sfrScore`, `lengthPositionScore`
+**Exercise** (extended): `splitTags`, `movementPatterns`, `isMainLiftEligible`, `isCompound`, `fatigueCost`, `stimulusBias`, `contraindications`, `timePerSetSec`, `sfrScore`, `lengthPositionScore`
 
 **ExerciseAlias**: `exerciseId` -> `Exercise.id`, `alias` (unique)
 
@@ -314,9 +338,7 @@ Defined in `prescription.ts`.
 
 ## Known Gaps
 
-- `suggestSubstitutes` is implemented and tested but not surfaced in the UI.
 - Double timeboxing (engine trims, then `applyLoads` may trim again after adding warmup sets) is acceptable but could be unified if short workouts become an issue.
-- Field renames (`movementPatternsV2` → `movementPatterns`, `isMainLift` → derive from `isMainLiftEligible`) are planned for a future migration after all code is updated.
 
 ---
 
@@ -348,3 +370,23 @@ The dashboard (`/`) renders `DashboardGenerateSection` with a **PPL Auto / Templ
 - `/templates/[id]/edit` — edit form with exercise reordering
 
 **Workout detail** (`/workout/[id]`): session overview with estimated minutes, exercises grouped into Warmup/Main Lifts/Accessories, each card shows sets/reps/load/RPE and a "Why" note.
+
+### Analytics Dashboard
+
+`/analytics` provides a tabbed analytics view:
+
+| Tab | Components | Data Source |
+|-----|-----------|-------------|
+| Recovery | `MuscleRecoveryPanel` (progress bars, Push/Pull/Legs groups) | `/api/analytics/recovery` |
+| Volume | `MuscleVolumeChart` (bar chart with MEV/MAV/MRV lines) + `WeeklyVolumeTrend` (line chart, top 6 muscles) | `/api/analytics/volume` |
+| Overview | `SplitDistribution` (pie chart, Push/Pull/Legs sets) | `/api/analytics/volume` |
+| Templates | `TemplateStatsSection` (cards with completion rates, frequency) | `/api/analytics/templates` |
+
+### Exercise Library Features
+
+The exercise detail sheet (`ExerciseDetailSheet`) provides:
+- **Personal history**: Last 3 sessions, trend indicator (improving/stable/declining), personal bests (max load/reps/volume) via `PersonalHistorySection`
+- **Add to template**: Select from existing templates via `AddToTemplateSheet`
+- **Save as template**: `SaveAsTemplateButton` on completed workout pages derives target muscles from exercises
+
+The library supports sorting by: Name A-Z, Name Z-A, Best SFR, Lowest Fatigue, Best Stretch Position, Muscle Group.

@@ -7,7 +7,7 @@ export type SmartBuildExercise = {
   id: string;
   name: string;
   isCompound: boolean;
-  movementPatternsV2: string[];
+  movementPatterns: string[];
   splitTags: string[];
   jointStress: string;
   equipment: string[];
@@ -15,6 +15,7 @@ export type SmartBuildExercise = {
   secondaryMuscles: string[];
   sfrScore?: number;
   lengthPositionScore?: number;
+  timePerSetSec?: number;
   isFavorite: boolean;
   isAvoided: boolean;
 };
@@ -24,6 +25,8 @@ export type SmartBuildInput = {
   exercisePool: SmartBuildExercise[];
   availableEquipment?: string[];
   exerciseCount?: number;
+  trainingGoal?: string;
+  timeBudgetMinutes?: number;
   seed?: number;
 };
 
@@ -73,7 +76,7 @@ function weightedPick<T>(
 function toAnalysisInput(ex: SmartBuildExercise): AnalysisExerciseInput {
   return {
     isCompound: ex.isCompound,
-    movementPatternsV2: ex.movementPatternsV2,
+    movementPatterns: ex.movementPatterns,
     muscles: [
       ...ex.primaryMuscles.map((name) => ({ name, role: "primary" as const })),
       ...ex.secondaryMuscles.map((name) => ({ name, role: "secondary" as const })),
@@ -130,7 +133,8 @@ export function scoreExerciseForBuild(
   targetMuscles: Set<string>,
   coveredMuscles: Set<string>,
   coveredPatterns: Set<string>,
-  isCompoundPhase: boolean
+  isCompoundPhase: boolean,
+  trainingGoal?: string
 ): number {
   let score = 0;
 
@@ -167,7 +171,7 @@ export function scoreExerciseForBuild(
     }
 
     // Novel movement pattern bonus
-    for (const p of ex.movementPatternsV2) {
+    for (const p of ex.movementPatterns) {
       if (!coveredPatterns.has(p)) {
         score += 2;
       }
@@ -187,13 +191,27 @@ export function scoreExerciseForBuild(
     }
   }
 
+  // Training goal bias
+  if (trainingGoal === "strength") {
+    if (ex.isCompound) score += 4;
+  } else if (trainingGoal === "hypertrophy") {
+    if (!ex.isCompound) score += 2;
+    if ((ex.sfrScore ?? 3) >= 4) score += 2;
+    if ((ex.lengthPositionScore ?? 3) >= 4) score += 1;
+  } else if (trainingGoal === "fat_loss") {
+    if (ex.isCompound) score += 2;
+  }
+
   return score;
 }
 
-function determineCompoundCount(totalCount: number): number {
-  if (totalCount <= 5) return 2;
-  if (totalCount <= 7) return 3;
-  return Math.round(totalCount * 0.4);
+function determineCompoundCount(totalCount: number, trainingGoal?: string): number {
+  let count: number;
+  if (totalCount <= 5) count = 2;
+  else if (totalCount <= 7) count = 3;
+  else count = Math.round(totalCount * 0.4);
+  if (trainingGoal === "strength") count = Math.min(count + 1, totalCount);
+  return count;
 }
 
 function updateCoveredSets(
@@ -203,7 +221,7 @@ function updateCoveredSets(
 ): void {
   for (const m of ex.primaryMuscles) coveredMuscles.add(m);
   for (const m of ex.secondaryMuscles) coveredMuscles.add(m);
-  for (const p of ex.movementPatternsV2) coveredPatterns.add(p);
+  for (const p of ex.movementPatterns) coveredPatterns.add(p);
 }
 
 export function smartBuild(input: SmartBuildInput): SmartBuildResult {
@@ -212,6 +230,8 @@ export function smartBuild(input: SmartBuildInput): SmartBuildResult {
     exercisePool,
     availableEquipment,
     exerciseCount = 7,
+    trainingGoal,
+    timeBudgetMinutes,
     seed,
   } = input;
 
@@ -243,7 +263,7 @@ export function smartBuild(input: SmartBuildInput): SmartBuildResult {
   const selected: SmartBuildExercise[] = [];
 
   // 3. Determine compound count
-  const compoundCount = determineCompoundCount(targetCount);
+  const compoundCount = determineCompoundCount(targetCount, trainingGoal);
 
   // 4. Select compounds
   const compounds = pool.filter((ex) => ex.isCompound);
@@ -251,7 +271,7 @@ export function smartBuild(input: SmartBuildInput): SmartBuildResult {
 
   for (let i = 0; i < compoundCount && compoundPool.length > 0; i++) {
     const scores = compoundPool.map((ex) =>
-      scoreExerciseForBuild(ex, targetMuscleSet, coveredMuscles, coveredPatterns, true)
+      scoreExerciseForBuild(ex, targetMuscleSet, coveredMuscles, coveredPatterns, true, trainingGoal)
     );
 
     const pick = weightedPick(compoundPool, scores, rng);
@@ -269,7 +289,7 @@ export function smartBuild(input: SmartBuildInput): SmartBuildResult {
 
   for (let i = 0; i < remainingSlots && accessoryPool.length > 0; i++) {
     const scores = accessoryPool.map((ex) =>
-      scoreExerciseForBuild(ex, targetMuscleSet, coveredMuscles, coveredPatterns, false)
+      scoreExerciseForBuild(ex, targetMuscleSet, coveredMuscles, coveredPatterns, false, trainingGoal)
     );
 
     const pick = weightedPick(accessoryPool, scores, rng);
@@ -299,6 +319,23 @@ export function smartBuild(input: SmartBuildInput): SmartBuildResult {
 
   const ordered = [...compoundSelected, ...isolationSelected];
 
+  // Trim to time budget
+  if (timeBudgetMinutes) {
+    const budgetSec = timeBudgetMinutes * 60;
+    let cumSec = 0;
+    const trimmed: SmartBuildExercise[] = [];
+    for (const ex of ordered) {
+      const sets = ex.isCompound ? 4 : 3;
+      const perSet = (ex.timePerSetSec ?? 120) + (ex.isCompound ? 120 : 75);
+      const exTime = sets * perSet;
+      if (cumSec + exTime > budgetSec && trimmed.length > 0) break;
+      cumSec += exTime;
+      trimmed.push(ex);
+    }
+    ordered.length = 0;
+    ordered.push(...trimmed);
+  }
+
   // 7. Score and attempt improvement
   let analysis = analyzeTemplate(ordered.map(toAnalysisInput));
 
@@ -323,7 +360,7 @@ export function smartBuild(input: SmartBuildInput): SmartBuildResult {
 
       // Find best replacement from remaining pool
       const swapScores = accessoryPool.map((ex) =>
-        scoreExerciseForBuild(ex, targetMuscleSet, coveredMuscles, coveredPatterns, false)
+        scoreExerciseForBuild(ex, targetMuscleSet, coveredMuscles, coveredPatterns, false, trainingGoal)
       );
 
       let bestReplacementIdx = -1;

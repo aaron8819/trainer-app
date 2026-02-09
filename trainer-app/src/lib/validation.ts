@@ -146,6 +146,10 @@ export const updateTemplateSchema = z.object({
   exercises: z.array(templateExerciseSchema).optional(),
 });
 
+export const addExerciseToTemplateSchema = z.object({
+  exerciseId: z.string(),
+});
+
 export const preferencesSchema = z.object({
   userId: z.string().optional(),
   favoriteExercises: z.array(z.string()).optional(),

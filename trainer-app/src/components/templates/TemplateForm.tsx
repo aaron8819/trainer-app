@@ -40,6 +40,9 @@ export function TemplateForm({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [trainingGoal, setTrainingGoal] = useState<string | undefined>(undefined);
+  const [timeBudgetMinutes, setTimeBudgetMinutes] = useState<number | undefined>(undefined);
+  const [isStrict, setIsStrict] = useState(false);
 
   const exerciseByName = useMemo(
     () => new Map(exercises.map((e) => [e.name, e])),
@@ -96,7 +99,7 @@ export function TemplateForm({
       id: ex.id,
       name: ex.name,
       isCompound: ex.isCompound,
-      movementPatternsV2: ex.movementPatternsV2,
+      movementPatterns: ex.movementPatterns,
       splitTags: ex.splitTags,
       jointStress: ex.jointStress,
       equipment: ex.equipment,
@@ -112,6 +115,8 @@ export function TemplateForm({
       targetMuscleGroups: targetMuscles,
       exercisePool,
       seed: Date.now(),
+      trainingGoal,
+      timeBudgetMinutes,
     });
 
     const newExercises: SelectedExercise[] = result.exercises.map((ex, i) => ({
@@ -121,7 +126,7 @@ export function TemplateForm({
     }));
 
     setSelectedExercises(newExercises);
-  }, [exercises, targetMuscles]);
+  }, [exercises, targetMuscles, trainingGoal, timeBudgetMinutes]);
 
   const handleSubmit = async () => {
     if (!name.trim()) {
@@ -139,6 +144,7 @@ export function TemplateForm({
     const payload = {
       name: name.trim(),
       targetMuscles,
+      isStrict,
       exercises: selectedExercises.map((e) => ({
         exerciseId: e.exerciseId,
         orderIndex: e.orderIndex,
@@ -200,6 +206,57 @@ export function TemplateForm({
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Training Goal & Time Budget */}
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Training Goal
+          </label>
+          <select
+            value={trainingGoal ?? ""}
+            onChange={(e) => setTrainingGoal(e.target.value || undefined)}
+            className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+          >
+            <option value="">Any</option>
+            <option value="strength">Strength</option>
+            <option value="hypertrophy">Hypertrophy</option>
+            <option value="fat_loss">Fat Loss</option>
+            <option value="general_health">General Health</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Time Budget (min)
+          </label>
+          <input
+            type="number"
+            value={timeBudgetMinutes ?? ""}
+            onChange={(e) =>
+              setTimeBudgetMinutes(e.target.value ? parseInt(e.target.value, 10) : undefined)
+            }
+            placeholder="No limit"
+            min={15}
+            max={180}
+            className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+          />
+        </div>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <label className="flex items-center gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={isStrict}
+            onChange={(e) => setIsStrict(e.target.checked)}
+            className="h-4 w-4 rounded border-slate-300"
+          />
+          Strict mode
+        </label>
+        <span className="text-xs text-slate-400">
+          {isStrict ? "No exercise substitutions" : "Allow substitutions when needed"}
+        </span>
       </div>
 
       {targetMuscles.length > 0 && (

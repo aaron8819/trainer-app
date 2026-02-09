@@ -25,6 +25,7 @@ const constraints: Constraints = {
 
 function makeExercise(overrides: Partial<Exercise> & { id: string; name: string }): Exercise {
   return {
+    movementPatterns: [],
     splitTags: ["push"],
     jointStress: "low",
     equipment: ["dumbbell"],
@@ -115,8 +116,8 @@ describe("suggestSubstitutes", () => {
     const library: Exercise[] = [
       makeExercise({
         id: "wrong-equip",
-        name: "Smith Machine Press",
-        equipment: ["smith_machine"],
+        name: "Sled Press",
+        equipment: ["sled"],
       }),
     ];
 

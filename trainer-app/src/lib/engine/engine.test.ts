@@ -8,7 +8,7 @@ import {
   exampleHistory,
   exampleUser,
 } from "./sample-data";
-import type { Exercise } from "./types";
+import type { Constraints, EquipmentType, Exercise } from "./types";
 
 const baseGoals = { ...exampleGoals };
 
@@ -115,9 +115,9 @@ describe("engine core", () => {
   });
 
   it("limits selection to available equipment", () => {
-    const constraints = {
+    const constraints: Constraints = {
       ...exampleConstraints,
-      availableEquipment: ["dumbbell", "bodyweight"],
+      availableEquipment: ["dumbbell", "bodyweight"] as EquipmentType[],
     };
 
     const workout = generateWorkout(

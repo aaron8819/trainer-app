@@ -13,6 +13,7 @@ function makeWorkoutExercise(
     exercise: {
       id,
       name: id,
+      movementPatterns: [],
       splitTags: ["push"],
       jointStress: "low",
       isCompound: false,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { pickAccessoriesBySlot } from "./pick-accessories-by-slot";
-import type { Exercise } from "./types";
+import type { Exercise, MovementPattern, WorkoutHistoryEntry } from "./types";
 
 const pushMainLifts: Exercise[] = [
   {
@@ -220,14 +220,14 @@ describe("pickAccessoriesBySlot", () => {
       },
     ];
 
-    const history = [
+    const history: WorkoutHistoryEntry[] = [
       {
         date: new Date("2026-02-04T10:00:00Z").toISOString(),
         completed: true,
         exercises: [
           {
             exerciseId: "cable-fly",
-            movementPattern: "push",
+            movementPattern: "push" as MovementPattern,
             sets: [{ exerciseId: "cable-fly", setIndex: 1, reps: 12 }],
           },
         ],

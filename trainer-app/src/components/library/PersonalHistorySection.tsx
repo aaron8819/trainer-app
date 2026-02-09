@@ -29,9 +29,15 @@ const TREND_LABELS: Record<string, { label: string; color: string }> = {
 export function PersonalHistorySection({ exerciseId }: { exerciseId: string }) {
   const [data, setData] = useState<HistoryData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [prevExerciseId, setPrevExerciseId] = useState(exerciseId);
+
+  if (exerciseId !== prevExerciseId) {
+    setPrevExerciseId(exerciseId);
+    setLoading(true);
+    setData(null);
+  }
 
   useEffect(() => {
-    setLoading(true);
     fetch(`/api/exercises/${exerciseId}/history?limit=3`)
       .then((r) => r.json())
       .then((d) => setData(d))

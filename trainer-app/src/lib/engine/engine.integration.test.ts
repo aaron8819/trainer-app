@@ -6,6 +6,7 @@ import type {
   Constraints,
   Exercise,
   Goals,
+  MovementPatternV2,
   SplitDay,
   SplitTag,
   UserProfile,
@@ -526,7 +527,7 @@ const exerciseById = Object.fromEntries(
   seededExerciseLibrary.map((exercise) => [exercise.id, exercise])
 ) as Record<string, Exercise>;
 
-function runFixture(split: SplitTag, randomSeed: number): WorkoutPlan {
+function runFixture(split: SplitDay, randomSeed: number): WorkoutPlan {
   const generated = generateWorkout(
     seededUser,
     seededGoals,
@@ -542,12 +543,12 @@ function runFixture(split: SplitTag, randomSeed: number): WorkoutPlan {
     baselines: seededBaselines,
     exerciseById,
     primaryGoal: seededGoals.primary,
-    profile: { weightKg: seededUser.weightKg },
+    profile: { weightKg: seededUser.weightKg, trainingAge: seededUser.trainingAge },
     sessionMinutes: seededConstraints.sessionMinutes,
   });
 }
 
-function runFixtureWithPeriodization(split: SplitTag, weekInBlock: number): WorkoutPlan {
+function runFixtureWithPeriodization(split: SplitDay, weekInBlock: number): WorkoutPlan {
   const periodization = getPeriodizationModifiers(weekInBlock, seededGoals.primary);
   const generated = generateWorkout(
     seededUser,
@@ -564,7 +565,7 @@ function runFixtureWithPeriodization(split: SplitTag, weekInBlock: number): Work
     baselines: seededBaselines,
     exerciseById,
     primaryGoal: seededGoals.primary,
-    profile: { weightKg: seededUser.weightKg },
+    profile: { weightKg: seededUser.weightKg, trainingAge: seededUser.trainingAge },
     sessionMinutes: seededConstraints.sessionMinutes,
     periodization,
   });
@@ -610,7 +611,7 @@ function getAccessoryNames(workout: WorkoutPlan) {
   return workout.accessories.map((entry) => entry.exercise.name).sort();
 }
 
-function hasMainLiftPattern(workout: WorkoutPlan, pattern: string) {
+function hasMainLiftPattern(workout: WorkoutPlan, pattern: MovementPatternV2) {
   return workout.mainLifts.some((lift) => lift.exercise.movementPatterns?.includes(pattern));
 }
 
@@ -728,7 +729,7 @@ function runNonPplFixture(
     baselines: seededBaselines,
     exerciseById: nonPplExerciseById,
     primaryGoal: seededGoals.primary,
-    profile: { weightKg: seededUser.weightKg },
+    profile: { weightKg: seededUser.weightKg, trainingAge: seededUser.trainingAge },
     sessionMinutes: constraints.sessionMinutes,
   });
 }

@@ -26,11 +26,19 @@ export function AddToTemplateSheet({
   const [loading, setLoading] = useState(false);
   const [addingTo, setAddingTo] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [prevIsOpen, setPrevIsOpen] = useState(false);
+
+  if (isOpen && !prevIsOpen) {
+    setPrevIsOpen(true);
+    setLoading(true);
+    setSuccess(null);
+  }
+  if (!isOpen && prevIsOpen) {
+    setPrevIsOpen(false);
+  }
 
   useEffect(() => {
     if (!isOpen) return;
-    setLoading(true);
-    setSuccess(null);
     fetch("/api/templates")
       .then((r) => r.json())
       .then((data) => setTemplates(data.templates ?? data ?? []))

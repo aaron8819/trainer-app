@@ -328,7 +328,6 @@ describe("training goal bias", () => {
   });
 
   it("hypertrophy goal scores isolations and high SFR higher", () => {
-    const benchEx = pool.find((e) => e.id === "bench")!;
     const curlEx = pool.find((e) => e.id === "curl")!;
     const highSfrCurl = { ...curlEx, sfrScore: 5, lengthPositionScore: 5 };
     const targets = new Set(["Chest", "Biceps", "Triceps"]);

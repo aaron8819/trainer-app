@@ -140,7 +140,7 @@ describe("applyLoads", () => {
       baselines: [],
       exerciseById: exercises,
       primaryGoal: "hypertrophy",
-      profile: { weightKg: 80 },
+      profile: { weightKg: 80, trainingAge: "intermediate" },
     });
 
     expect(result.mainLifts[0].sets[0].targetLoad).toBe(102.5);
@@ -170,7 +170,7 @@ describe("applyLoads", () => {
       baselines: [],
       exerciseById: exercises,
       primaryGoal: "strength",
-      profile: { weightKg: 80 },
+      profile: { weightKg: 80, trainingAge: "intermediate" },
     });
 
     expect(result.mainLifts[0].sets[0].targetLoad).toBe(200);
@@ -192,7 +192,7 @@ describe("applyLoads", () => {
       baselines,
       exerciseById: exercises,
       primaryGoal: "hypertrophy",
-      profile: { weightKg: 80 },
+      profile: { weightKg: 80, trainingAge: "intermediate" },
     });
 
     const legPress = result.accessories.find((item) => item.exercise.id === "leg-press");
@@ -213,7 +213,7 @@ describe("applyLoads", () => {
       baselines,
       exerciseById: exercises,
       primaryGoal: "hypertrophy",
-      profile: { weightKg: 80 },
+      profile: { weightKg: 80, trainingAge: "intermediate" },
     });
 
     const facePull = result.accessories.find((item) => item.exercise.id === "face-pull");
@@ -226,7 +226,7 @@ describe("applyLoads", () => {
       baselines: [],
       exerciseById: exercises,
       primaryGoal: "hypertrophy",
-      profile: { weightKg: 100 },
+      profile: { weightKg: 100, trainingAge: "intermediate" },
     });
 
     const lateralRaise = result.accessories.find((item) => item.exercise.id === "lateral-raise");
@@ -279,7 +279,7 @@ describe("applyLoads", () => {
       baselines,
       exerciseById: extraExercises,
       primaryGoal: "hypertrophy",
-      profile: { weightKg: 80 },
+      profile: { weightKg: 80, trainingAge: "intermediate" },
     });
 
     // Bench press (barbell, horizontal_push, compound, chest) should pick

@@ -4,6 +4,35 @@ Record of significant design decisions and their rationale. Newest first.
 
 ---
 
+## ADR-029: Canonical exercise preferences by ID + transactional toggles (2026-02-10)
+
+**Decision**:
+- Added `UserPreference.favoriteExerciseIds` and `UserPreference.avoidExerciseIds` as canonical preference storage.
+- Kept legacy `favoriteExercises`/`avoidExercises` arrays for backward compatibility and settings UX continuity.
+- Exercise library favorite/avoid status now resolves by ID first, with legacy name fallback.
+- Favorite/avoid toggle endpoints now use serializable transactions with retry on write conflicts.
+- `sortExercises(..., { field: "muscleGroup" })` now sorts by canonical mapped muscle group instead of `primaryMuscles[0]` order.
+- Exercise detail substitute generation now uses user constraints when available and a short-lived in-process cache for the substitution pool.
+- Verification script now deep-normalizes contraindication JSON to avoid false drift mismatches from nested key ordering.
+
+**Rationale**: Name-based preference identity is brittle under exercise renames and can produce stale or lost preference behavior. ID-based identity removes rename fragility while preserving existing UI and engine behavior. Toggle endpoints previously used non-atomic read-modify-write updates, which were vulnerable to lost updates under concurrency. Serializable transactions with bounded retries provide correct write semantics. Deterministic sorting and deeper normalization remove avoidable non-determinism in UI and verification workflows.
+
+---
+
+## ADR-028: Exercise library filter model refactor (2026-02-10)
+
+**Decision**:
+- Replaced single-value exercise-library filters (`muscleGroup`, `muscle`, `movementPattern`, `isCompound`) with multi-select arrays (`muscleGroups[]`, `muscles[]`, `movementPatterns[]`, `exerciseTypes[]`).
+- Filter semantics are now explicit: OR within each category, AND across categories.
+- Muscle matching for library filters uses primary-muscle mappings only.
+- Compact picker mode now exposes the same filters as the full library via a collapsible toggle instead of hiding them.
+- Removed legacy single-select `MuscleGroupChips` behavior and deleted `SINGLE_MUSCLE_GROUPS`.
+- Expanded movement pattern chips to include the full pattern taxonomy (`carry`, `rotation`, `anti_rotation`, `abduction`, `adduction`, `isolation`), not just the common subset.
+
+**Rationale**: The spec defines multi-select hierarchical muscle filtering and multi-select movement patterns. The previous implementation was single-select and hid advanced filters in the template/preferences picker, which made template assembly slower and made filter behavior feel inconsistent. Aligning the filter contract and UI across library + picker improves discoverability, predictability, and reduces classification confusion caused by missing chip categories.
+
+---
+
 ## ADR-027: Single-owner runtime context + set-log upsert semantics (2026-02-10)
 
 **Decision**:

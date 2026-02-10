@@ -144,6 +144,8 @@ export const addExerciseToTemplateSchema = z.object({
 export const preferencesSchema = z.object({
   favoriteExercises: z.array(z.string()).optional(),
   avoidExercises: z.array(z.string()).optional(),
+  favoriteExerciseIds: z.array(z.string()).optional(),
+  avoidExerciseIds: z.array(z.string()).optional(),
   rpeTargets: z
     .array(
       z.object({

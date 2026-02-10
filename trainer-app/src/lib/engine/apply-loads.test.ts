@@ -147,6 +147,51 @@ describe("applyLoads", () => {
     expect(result.mainLifts[0].sets[1].targetLoad).toBe(87);
   });
 
+  it("ignores non-completed history entries when deriving next load", () => {
+    const history: WorkoutHistoryEntry[] = [
+      {
+        date: new Date("2026-02-05T10:00:00Z").toISOString(),
+        completed: false,
+        status: "PLANNED",
+        exercises: [
+          {
+            exerciseId: "bench",
+            movementPattern: "push",
+            sets: [
+              { exerciseId: "bench", setIndex: 1, reps: 12, rpe: 10, load: 300 },
+            ],
+          },
+        ],
+      },
+      {
+        date: new Date("2026-02-04T10:00:00Z").toISOString(),
+        completed: true,
+        status: "COMPLETED",
+        exercises: [
+          {
+            exerciseId: "bench",
+            movementPattern: "push",
+            sets: [
+              { exerciseId: "bench", setIndex: 1, reps: 12, rpe: 7, load: 100 },
+              { exerciseId: "bench", setIndex: 2, reps: 12, rpe: 7, load: 100 },
+            ],
+          },
+        ],
+      },
+    ];
+
+    const result = applyLoads(baseWorkout, {
+      history,
+      baselines: [],
+      exerciseById: exercises,
+      primaryGoal: "hypertrophy",
+      profile: { weightKg: 80, trainingAge: "intermediate" },
+    });
+
+    expect(result.mainLifts[0].sets[0].targetLoad).toBe(102.5);
+    expect(result.mainLifts[0].sets[1].targetLoad).toBe(87);
+  });
+
   it("uses a strength back-off multiplier of 0.90 for main lifts", () => {
     const history: WorkoutHistoryEntry[] = [
       {

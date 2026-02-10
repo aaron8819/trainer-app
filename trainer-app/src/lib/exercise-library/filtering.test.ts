@@ -98,46 +98,67 @@ describe("filterExercises", () => {
   });
 
   it("filters by muscle group", () => {
-    const result = filterExercises(library, { muscleGroup: "back" });
+    const result = filterExercises(library, { muscleGroups: ["back"] });
     expect(result).toHaveLength(1);
     expect(result[0].name).toBe("Pull-Up");
   });
 
   it("filters by muscle group — legs finds quads, glutes, etc.", () => {
-    const result = filterExercises(library, { muscleGroup: "legs" });
+    const result = filterExercises(library, { muscleGroups: ["legs"] });
     expect(result).toHaveLength(1);
     expect(result[0].name).toBe("Barbell Back Squat");
   });
 
-  it("filters by specific muscle", () => {
-    const result = filterExercises(library, { muscle: "Triceps" });
+  it("filters by specific muscle (primary muscles only)", () => {
+    const result = filterExercises(library, { muscles: ["Biceps"] });
     expect(result).toHaveLength(1);
-    expect(result[0].name).toBe("Barbell Bench Press");
+    expect(result[0].name).toBe("Dumbbell Bicep Curl");
   });
 
   it("muscle filter overrides muscleGroup filter", () => {
     const result = filterExercises(library, {
-      muscleGroup: "arms",
-      muscle: "Biceps",
+      muscleGroups: ["arms"],
+      muscles: ["Biceps"],
     });
-    // Should match Dumbbell Bicep Curl (primary) and Pull-Up (secondary)
-    expect(result).toHaveLength(2);
+    expect(result).toHaveLength(1);
+    expect(result[0].name).toBe("Dumbbell Bicep Curl");
   });
 
   it("filters by isCompound = true", () => {
-    const result = filterExercises(library, { isCompound: true });
+    const result = filterExercises(library, { exerciseTypes: ["compound"] });
     expect(result).toHaveLength(3);
   });
 
   it("filters by isCompound = false", () => {
-    const result = filterExercises(library, { isCompound: false });
+    const result = filterExercises(library, { exerciseTypes: ["isolation"] });
     expect(result).toHaveLength(2);
   });
 
   it("filters by movement pattern", () => {
-    const result = filterExercises(library, { movementPattern: "squat" });
+    const result = filterExercises(library, { movementPatterns: ["squat"] });
     expect(result).toHaveLength(1);
     expect(result[0].name).toBe("Barbell Back Squat");
+  });
+
+  it("supports multi-select muscle groups (OR within category)", () => {
+    const result = filterExercises(library, { muscleGroups: ["back", "legs"] });
+    expect(result).toHaveLength(2);
+    expect(result.map((e) => e.name)).toEqual(["Barbell Back Squat", "Pull-Up"]);
+  });
+
+  it("supports multi-select movement patterns (OR within category)", () => {
+    const result = filterExercises(library, {
+      movementPatterns: ["vertical_pull", "squat"],
+    });
+    expect(result).toHaveLength(2);
+    expect(result.map((e) => e.name)).toEqual(["Barbell Back Squat", "Pull-Up"]);
+  });
+
+  it("treats compound + isolation selection as inclusive", () => {
+    const result = filterExercises(library, {
+      exerciseTypes: ["compound", "isolation"],
+    });
+    expect(result).toHaveLength(5);
   });
 
   it("filters by equipment", () => {
@@ -159,7 +180,7 @@ describe("filterExercises", () => {
 
   it("combines multiple filters with AND logic", () => {
     const result = filterExercises(library, {
-      isCompound: true,
+      exerciseTypes: ["compound"],
       splitTag: "push",
     });
     expect(result).toHaveLength(1);
@@ -174,7 +195,7 @@ describe("filterExercises", () => {
   it("handles search + muscleGroup together", () => {
     const result = filterExercises(library, {
       search: "barbell",
-      muscleGroup: "chest",
+      muscleGroups: ["chest"],
     });
     expect(result).toHaveLength(1);
     expect(result[0].name).toBe("Barbell Bench Press");
@@ -230,14 +251,25 @@ describe("sortExercises", () => {
     expect(result.map((e) => e.lengthPositionScore)).toEqual([5, 3, 2]);
   });
 
-  it("sorts by muscleGroup (first primary muscle)", () => {
+  it("sorts by muscleGroup with deterministic tie-breakers", () => {
     const items = [
       makeExercise({ id: "a", name: "A", primaryMuscles: ["Triceps"] }),
       makeExercise({ id: "b", name: "B", primaryMuscles: ["Biceps"] }),
       makeExercise({ id: "c", name: "C", primaryMuscles: ["Chest"] }),
     ];
     const result = sortExercises(items, { field: "muscleGroup", direction: "asc" });
-    expect(result.map((e) => e.primaryMuscles[0])).toEqual(["Biceps", "Chest", "Triceps"]);
+    expect(result.map((e) => e.primaryMuscles[0])).toEqual(["Biceps", "Triceps", "Chest"]);
+  });
+
+  it("sorts by canonical muscle group regardless of primaryMuscles order", () => {
+    const items = [
+      makeExercise({ id: "a", name: "A", primaryMuscles: ["Triceps", "Chest"] }),
+      makeExercise({ id: "b", name: "B", primaryMuscles: ["Lats", "Upper Back"] }),
+      makeExercise({ id: "c", name: "C", primaryMuscles: ["Quads", "Glutes"] }),
+    ];
+
+    const result = sortExercises(items, { field: "muscleGroup", direction: "asc" });
+    expect(result.map((e) => e.id)).toEqual(["a", "b", "c"]);
   });
 });
 
@@ -307,8 +339,8 @@ const fullLibrary: ExerciseListItem[] = [
 describe("filterExercises — comprehensive", () => {
   // ── Muscle Group Filters ─────────────────────────────────────────────
 
-  it("muscleGroup=chest finds exercises with Chest primary/secondary", () => {
-    const result = filterExercises(fullLibrary, { muscleGroup: "chest" });
+  it("muscleGroup=chest finds exercises with Chest as a primary muscle", () => {
+    const result = filterExercises(fullLibrary, { muscleGroups: ["chest"] });
     const names = result.map((e) => e.name);
     expect(names).toContain("Barbell Bench Press");
     expect(names).toContain("Cable Fly");
@@ -318,7 +350,7 @@ describe("filterExercises — comprehensive", () => {
   });
 
   it("muscleGroup=shoulders finds front delts, side delts, rear delts", () => {
-    const result = filterExercises(fullLibrary, { muscleGroup: "shoulders" });
+    const result = filterExercises(fullLibrary, { muscleGroups: ["shoulders"] });
     const names = result.map((e) => e.name);
     expect(names).toContain("Overhead Press");
     expect(names).toContain("Lateral Raise");
@@ -326,11 +358,12 @@ describe("filterExercises — comprehensive", () => {
     expect(names).toContain("Face Pull");
     expect(names).toContain("Reverse Fly");
     expect(names).toContain("Machine Rear Delt Fly");
+    expect(names).not.toContain("Barbell Bench Press");
     expect(names.length).toBeGreaterThanOrEqual(6);
   });
 
   it("muscleGroup=arms finds biceps, triceps, forearms", () => {
-    const result = filterExercises(fullLibrary, { muscleGroup: "arms" });
+    const result = filterExercises(fullLibrary, { muscleGroups: ["arms"] });
     const names = result.map((e) => e.name);
     expect(names).toContain("Dumbbell Curl");
     expect(names).toContain("Barbell Curl");
@@ -338,11 +371,12 @@ describe("filterExercises — comprehensive", () => {
     expect(names).toContain("Triceps Pushdown");
     expect(names).toContain("Skull Crusher");
     expect(names).toContain("Overhead Triceps Extension");
+    expect(names).not.toContain("Pull-Up");
     expect(names.length).toBeGreaterThanOrEqual(6);
   });
 
   it("muscleGroup=legs finds quads, hamstrings, glutes, calves, etc.", () => {
-    const result = filterExercises(fullLibrary, { muscleGroup: "legs" });
+    const result = filterExercises(fullLibrary, { muscleGroups: ["legs"] });
     const names = result.map((e) => e.name);
     expect(names).toContain("Barbell Back Squat");
     expect(names).toContain("Leg Extension");
@@ -355,7 +389,7 @@ describe("filterExercises — comprehensive", () => {
   });
 
   it("muscleGroup=back finds back, upper back, lower back", () => {
-    const result = filterExercises(fullLibrary, { muscleGroup: "back" });
+    const result = filterExercises(fullLibrary, { muscleGroups: ["back"] });
     const names = result.map((e) => e.name);
     expect(names).toContain("Pull-Up");
     expect(names).toContain("Lat Pulldown");
@@ -366,7 +400,7 @@ describe("filterExercises — comprehensive", () => {
   });
 
   it("muscleGroup=core finds core exercises", () => {
-    const result = filterExercises(fullLibrary, { muscleGroup: "core" });
+    const result = filterExercises(fullLibrary, { muscleGroups: ["core"] });
     const names = result.map((e) => e.name);
     expect(names).toContain("Plank");
     expect(names).toContain("Cable Crunch");
@@ -377,7 +411,7 @@ describe("filterExercises — comprehensive", () => {
   // ── Movement Pattern Filters ─────────────────────────────────────────
 
   it("movementPattern=horizontal_push finds bench, flies, laterals, dips", () => {
-    const result = filterExercises(fullLibrary, { movementPattern: "horizontal_push" });
+    const result = filterExercises(fullLibrary, { movementPatterns: ["horizontal_push"] });
     const names = result.map((e) => e.name);
     expect(names).toContain("Barbell Bench Press");
     expect(names).toContain("Cable Fly");
@@ -390,7 +424,7 @@ describe("filterExercises — comprehensive", () => {
   });
 
   it("movementPattern=vertical_push finds OHP and shoulder presses", () => {
-    const result = filterExercises(fullLibrary, { movementPattern: "vertical_push" });
+    const result = filterExercises(fullLibrary, { movementPatterns: ["vertical_push"] });
     const names = result.map((e) => e.name);
     expect(names).toContain("Overhead Press");
     expect(names).toContain("Dumbbell Shoulder Press");
@@ -399,7 +433,7 @@ describe("filterExercises — comprehensive", () => {
   });
 
   it("movementPattern=horizontal_pull finds rows, face pulls, rear delts", () => {
-    const result = filterExercises(fullLibrary, { movementPattern: "horizontal_pull" });
+    const result = filterExercises(fullLibrary, { movementPatterns: ["horizontal_pull"] });
     const names = result.map((e) => e.name);
     expect(names).toContain("Barbell Row");
     expect(names).toContain("Seated Cable Row");
@@ -412,7 +446,7 @@ describe("filterExercises — comprehensive", () => {
   });
 
   it("movementPattern=vertical_pull finds pull-ups and pulldowns", () => {
-    const result = filterExercises(fullLibrary, { movementPattern: "vertical_pull" });
+    const result = filterExercises(fullLibrary, { movementPatterns: ["vertical_pull"] });
     const names = result.map((e) => e.name);
     expect(names).toContain("Pull-Up");
     expect(names).toContain("Lat Pulldown");
@@ -420,7 +454,7 @@ describe("filterExercises — comprehensive", () => {
   });
 
   it("movementPattern=flexion finds curls and leg curl", () => {
-    const result = filterExercises(fullLibrary, { movementPattern: "flexion" });
+    const result = filterExercises(fullLibrary, { movementPatterns: ["flexion"] });
     const names = result.map((e) => e.name);
     expect(names).toContain("Dumbbell Curl");
     expect(names).toContain("Barbell Curl");
@@ -431,7 +465,7 @@ describe("filterExercises — comprehensive", () => {
   });
 
   it("movementPattern=extension finds triceps isolation, leg extension, calves", () => {
-    const result = filterExercises(fullLibrary, { movementPattern: "extension" });
+    const result = filterExercises(fullLibrary, { movementPatterns: ["extension"] });
     const names = result.map((e) => e.name);
     expect(names).toContain("Triceps Pushdown");
     expect(names).toContain("Skull Crusher");
@@ -442,7 +476,7 @@ describe("filterExercises — comprehensive", () => {
   });
 
   it("movementPattern=squat finds squat-pattern exercises", () => {
-    const result = filterExercises(fullLibrary, { movementPattern: "squat" });
+    const result = filterExercises(fullLibrary, { movementPatterns: ["squat"] });
     const names = result.map((e) => e.name);
     expect(names).toContain("Barbell Back Squat");
     expect(names).toContain("Front Squat");
@@ -453,7 +487,7 @@ describe("filterExercises — comprehensive", () => {
   });
 
   it("movementPattern=hinge finds deadlifts, hip thrusts, etc.", () => {
-    const result = filterExercises(fullLibrary, { movementPattern: "hinge" });
+    const result = filterExercises(fullLibrary, { movementPatterns: ["hinge"] });
     const names = result.map((e) => e.name);
     expect(names).toContain("Romanian Deadlift");
     expect(names).toContain("Conventional Deadlift");
@@ -463,20 +497,20 @@ describe("filterExercises — comprehensive", () => {
   });
 
   it("movementPattern=lunge finds lunges and split squats", () => {
-    const result = filterExercises(fullLibrary, { movementPattern: "lunge" });
+    const result = filterExercises(fullLibrary, { movementPatterns: ["lunge"] });
     const names = result.map((e) => e.name);
     expect(names).toContain("Walking Lunge");
     expect(names).toContain("Bulgarian Split Squat");
   });
 
   it("movementPattern=carry finds farmer carry and sled work (if present)", () => {
-    const result = filterExercises(fullLibrary, { movementPattern: "carry" });
+    const result = filterExercises(fullLibrary, { movementPatterns: ["carry"] });
     const names = result.map((e) => e.name);
     expect(names).toContain("Farmer's Carry");
   });
 
   it("movementPattern=anti_rotation finds plank, pallof press", () => {
-    const result = filterExercises(fullLibrary, { movementPattern: "anti_rotation" });
+    const result = filterExercises(fullLibrary, { movementPatterns: ["anti_rotation"] });
     const names = result.map((e) => e.name);
     expect(names).toContain("Plank");
     expect(names).toContain("Pallof Press");
@@ -485,7 +519,7 @@ describe("filterExercises — comprehensive", () => {
   // ── Compound / Isolation Filters ─────────────────────────────────────
 
   it("isCompound=true finds multi-joint exercises", () => {
-    const result = filterExercises(fullLibrary, { isCompound: true });
+    const result = filterExercises(fullLibrary, { exerciseTypes: ["compound"] });
     const names = result.map((e) => e.name);
     expect(names).toContain("Barbell Back Squat");
     expect(names).toContain("Barbell Bench Press");
@@ -500,7 +534,7 @@ describe("filterExercises — comprehensive", () => {
   });
 
   it("isCompound=false finds isolation exercises", () => {
-    const result = filterExercises(fullLibrary, { isCompound: false });
+    const result = filterExercises(fullLibrary, { exerciseTypes: ["isolation"] });
     const names = result.map((e) => e.name);
     expect(names).toContain("Leg Extension");
     expect(names).toContain("Leg Curl");
@@ -521,8 +555,8 @@ describe("filterExercises — comprehensive", () => {
 
   it("shoulders + compound finds presses but not lateral raises", () => {
     const result = filterExercises(fullLibrary, {
-      muscleGroup: "shoulders",
-      isCompound: true,
+      muscleGroups: ["shoulders"],
+      exerciseTypes: ["compound"],
     });
     const names = result.map((e) => e.name);
     expect(names).toContain("Overhead Press");
@@ -534,8 +568,8 @@ describe("filterExercises — comprehensive", () => {
 
   it("legs + isolation finds leg extension, leg curl, calf raises", () => {
     const result = filterExercises(fullLibrary, {
-      muscleGroup: "legs",
-      isCompound: false,
+      muscleGroups: ["legs"],
+      exerciseTypes: ["isolation"],
     });
     const names = result.map((e) => e.name);
     expect(names).toContain("Leg Extension");
@@ -549,8 +583,8 @@ describe("filterExercises — comprehensive", () => {
 
   it("arms + flexion finds only curls", () => {
     const result = filterExercises(fullLibrary, {
-      muscleGroup: "arms",
-      movementPattern: "flexion",
+      muscleGroups: ["arms"],
+      movementPatterns: ["flexion"],
     });
     const names = result.map((e) => e.name);
     expect(names).toContain("Dumbbell Curl");
@@ -564,7 +598,7 @@ describe("filterExercises — comprehensive", () => {
   it("push + extension finds triceps isolation only", () => {
     const result = filterExercises(fullLibrary, {
       splitTag: "push",
-      movementPattern: "extension",
+      movementPatterns: ["extension"],
     });
     const names = result.map((e) => e.name);
     expect(names).toContain("Triceps Pushdown");
@@ -577,7 +611,7 @@ describe("filterExercises — comprehensive", () => {
   it("pull + compound finds rows and pulldowns but not curls", () => {
     const result = filterExercises(fullLibrary, {
       splitTag: "pull",
-      isCompound: true,
+      exerciseTypes: ["compound"],
     });
     const names = result.map((e) => e.name);
     expect(names).toContain("Pull-Up");
@@ -587,3 +621,4 @@ describe("filterExercises — comprehensive", () => {
     expect(names).not.toContain("Barbell Curl");
   });
 });
+

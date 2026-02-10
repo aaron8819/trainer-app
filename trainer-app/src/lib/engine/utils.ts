@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import type { Exercise, WorkoutHistoryEntry } from "./types";
+import { filterCompletedHistory, sortHistoryByDateDesc } from "./history";
 
 export function normalizeName(name: string): string {
   return name
@@ -17,9 +18,7 @@ export function buildNameSet(items?: string[]): Set<string> {
 }
 
 export function buildRecencyIndex(history: WorkoutHistoryEntry[]): Map<string, number> {
-  const sorted = [...history].sort(
-    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-  );
+  const sorted = sortHistoryByDateDesc(filterCompletedHistory(history));
   const index = new Map<string, number>();
   sorted.forEach((entry, entryIndex) => {
     for (const exercise of entry.exercises) {

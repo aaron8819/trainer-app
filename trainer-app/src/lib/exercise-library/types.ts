@@ -53,13 +53,14 @@ export type ExerciseDetail = ExerciseListItem & {
 
 export type SortField = "name" | "fatigueCost" | "sfrScore" | "lengthPositionScore" | "muscleGroup";
 export type SortDirection = "asc" | "desc";
+export type ExerciseTypeFilter = "compound" | "isolation";
 
 export type ExerciseFilters = {
   search?: string;
-  muscleGroup?: MuscleGroup;
-  muscle?: string;
-  isCompound?: boolean;
-  movementPattern?: MovementPatternV2;
+  muscleGroups?: MuscleGroup[];
+  muscles?: string[];
+  exerciseTypes?: ExerciseTypeFilter[];
+  movementPatterns?: MovementPatternV2[];
   equipment?: EquipmentType;
   splitTag?: SplitTag;
   favoritesOnly?: boolean;

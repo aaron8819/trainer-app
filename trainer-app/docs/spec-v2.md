@@ -148,6 +148,11 @@ Columns/info shown per exercise:
 | Movement pattern | Multi-select (horizontal push, vertical pull, squat, hinge, etc.) |
 | Text search by name | Free text |
 
+Filter semantics:
+- OR within a filter category (e.g., selecting both `arms` and `back` returns either).
+- AND across categories (e.g., `arms` + `flexion` returns only exercises matching both).
+- Muscle filters use primary-muscle mappings.
+
 Sorting: alphabetical, by muscle group, by movement pattern.
 
 ### Exercise Detail View
@@ -169,8 +174,8 @@ When tapping an exercise:
 
 | Action | Description |
 |--------|-------------|
-| Favorite | Adds to `UserPreference.favoriteExercises` — engine biases toward it |
-| Avoid | Adds to `UserPreference.avoidExercises` — engine filters it out |
+| Favorite | Adds to `UserPreference.favoriteExerciseIds` (canonical) and mirrors name-based compatibility fields |
+| Avoid | Adds to `UserPreference.avoidExerciseIds` (canonical) and mirrors name-based compatibility fields |
 | Set/edit baseline | Opens baseline editor (weight range, rep range, top set) |
 | Add to template | Pick an existing template or start a new one |
 | View history | Navigate to exercise history (past workouts, load over time) |
@@ -462,14 +467,14 @@ Status legend: [x] done, [~] partial/deferred, [ ] not started
 **Goal**: Browsable, filterable exercise catalog with actions.
 
 - [x] Library page (`/library`) with list view — `ExerciseLibraryShell` + `ExerciseList` components
-- [x] Filtering: muscle group (hierarchical), compound/isolation, movement pattern, text search — `FilterBar` + `MuscleGroupChips` + `filtering.ts`
+- [x] Filtering: muscle group (hierarchical, multi-select), compound/isolation, movement pattern (multi-select), text search — `FilterBar` + `MuscleGroupChips` + `filtering.ts`
 - [x] Exercise detail view: muscles, patterns, stimulus bias, joint stress, SFR/length-position scores, variations, substitutions — `ExerciseDetailSheet`
 - [x] Actions: favorite, avoid, set baseline — API routes + `ExerciseDetailSheet` actions
 - [x] Action: add to template — `AddToTemplateSheet` integrated in detail view (Phase 4)
 - [x] Action: view history — `PersonalHistorySection` with trend + personal bests (Phase 4)
 - [x] Sorting: 6 sort options (name, SFR, fatigue, stretch position, muscle group) (Phase 4)
 - [x] Exercise detail: personal history — last 3 sessions, trend, personal bests (Phase 4)
-- [x] Inline exercise picker component (reused in template builder) — `ExercisePicker` + `ExercisePickerTrigger`
+- [x] Inline exercise picker component (reused in template builder) — `ExercisePicker` + `ExercisePickerTrigger` with collapsible advanced filters
 
 ### Phase 3 — Template Mode — COMPLETE
 
@@ -521,3 +526,5 @@ Status legend: [x] done, [~] partial/deferred, [ ] not started
 ---
 
 *Open questions moved to [spec-v3.md](spec-v3.md).*
+
+

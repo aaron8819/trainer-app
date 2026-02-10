@@ -169,6 +169,8 @@ model UserPreference {
   user                 User     @relation(fields: [userId], references: [id])
   favoriteExercises    String[] @default([])
   avoidExercises       String[] @default([])
+  favoriteExerciseIds  String[] @default([])
+  avoidExerciseIds     String[] @default([])
   rpeTargets           Json?
   progressionStyle     String?
   optionalConditioning Boolean  @default(true)

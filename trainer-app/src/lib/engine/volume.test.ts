@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { enforceVolumeCaps } from "./volume";
-import type { WorkoutExercise } from "./types";
+import { buildVolumeContext, deriveFatigueState, enforceVolumeCaps } from "./volume";
+import type { Exercise, WorkoutExercise, WorkoutHistoryEntry } from "./types";
 
 function makeWorkoutExercise(
   id: string,
@@ -90,5 +90,84 @@ describe("enforceVolumeCaps", () => {
 
     const result = enforceVolumeCaps(accessories, mainLifts, volumeContext);
     expect(result).toHaveLength(0);
+  });
+});
+
+describe("buildVolumeContext", () => {
+  it("excludes non-completed workouts from recent and previous volume", () => {
+    const exerciseLibrary: Exercise[] = [
+      {
+        id: "bench",
+        name: "Bench Press",
+        movementPatterns: ["horizontal_push"],
+        splitTags: ["push"],
+        jointStress: "medium",
+        equipment: ["barbell"],
+        primaryMuscles: ["Chest"],
+      },
+    ];
+    const history: WorkoutHistoryEntry[] = [
+      {
+        date: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+        completed: true,
+        status: "COMPLETED",
+        exercises: [
+          {
+            exerciseId: "bench",
+            movementPattern: "push",
+            sets: [
+              { exerciseId: "bench", setIndex: 1, reps: 8 },
+              { exerciseId: "bench", setIndex: 2, reps: 8 },
+            ],
+          },
+        ],
+      },
+      {
+        date: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+        completed: false,
+        status: "PLANNED",
+        exercises: [
+          {
+            exerciseId: "bench",
+            movementPattern: "push",
+            sets: [
+              { exerciseId: "bench", setIndex: 1, reps: 8 },
+              { exerciseId: "bench", setIndex: 2, reps: 8 },
+              { exerciseId: "bench", setIndex: 3, reps: 8 },
+            ],
+          },
+        ],
+      },
+    ];
+
+    const context = buildVolumeContext(history, exerciseLibrary);
+
+    expect(context.recent.Chest).toBe(2);
+  });
+});
+
+describe("deriveFatigueState", () => {
+  it("uses the most recent workout by date regardless of input array order", () => {
+    const history: WorkoutHistoryEntry[] = [
+      {
+        date: "2026-02-10T00:00:00Z",
+        completed: true,
+        status: "COMPLETED",
+        readinessScore: 1,
+        exercises: [],
+      },
+      {
+        date: "2026-02-01T00:00:00Z",
+        completed: false,
+        status: "SKIPPED",
+        readinessScore: 5,
+        exercises: [],
+      },
+    ];
+
+    const state = deriveFatigueState(history);
+
+    expect(state.readinessScore).toBe(1);
+    expect(state.missedLastSession).toBe(false);
   });
 });

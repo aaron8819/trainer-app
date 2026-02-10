@@ -37,15 +37,31 @@ function normalizeArray(values: string[] | undefined): string[] {
     .sort((a, b) => a.localeCompare(b));
 }
 
+function sortJsonValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => sortJsonValue(item));
+  }
+
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) =>
+      a.localeCompare(b)
+    );
+    return Object.fromEntries(entries.map(([key, child]) => [key, sortJsonValue(child)]));
+  }
+
+  return value;
+}
+
 function stableContraindications(value: Record<string, unknown> | null | undefined): string {
-  if (!value || typeof value !== "object") {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
     return "";
   }
-  const entries = Object.entries(value).sort(([a], [b]) => a.localeCompare(b));
-  if (entries.length === 0) {
+
+  if (Object.keys(value).length === 0) {
     return "";
   }
-  return JSON.stringify(Object.fromEntries(entries));
+
+  return JSON.stringify(sortJsonValue(value));
 }
 
 function normalizeJsonExercise(exercise: JsonExercise) {

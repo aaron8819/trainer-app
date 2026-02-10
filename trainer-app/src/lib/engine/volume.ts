@@ -7,6 +7,10 @@ import type {
 } from "./types";
 import { buildAccessoryMuscleCounts, scoreAccessoryRetention } from "./timeboxing";
 import { VOLUME_LANDMARKS, type VolumeLandmarks } from "./volume-landmarks";
+import {
+  getMostRecentHistoryEntry,
+  isCompletedHistoryEntry,
+} from "./history";
 
 export type VolumeContext = {
   recent: Record<string, number>;
@@ -43,6 +47,8 @@ export function buildVolumeContext(
   const weeklyIndirect: Record<string, number> = {};
 
   for (const entry of history) {
+    if (!isCompletedHistoryEntry(entry)) continue;
+
     const entryTime = new Date(entry.date).getTime();
     const delta = now - entryTime;
     const isRecent = delta <= windowMs;
@@ -168,7 +174,7 @@ export function deriveFatigueState(
   history: WorkoutHistoryEntry[],
   checkIn?: SessionCheckIn
 ): FatigueState {
-  const last = history[history.length - 1];
+  const last = getMostRecentHistoryEntry(history);
   return {
     readinessScore: (checkIn?.readiness ?? last?.readinessScore ?? 3) as 1 | 2 | 3 | 4 | 5,
     sorenessNotes: last?.sorenessNotes,

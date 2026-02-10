@@ -98,6 +98,8 @@ export type RpeTargetRange = {
 export type UserPreferences = {
   favoriteExercises?: string[];
   avoidExercises?: string[];
+  favoriteExerciseIds?: string[];
+  avoidExerciseIds?: string[];
   rpeTargets?: RpeTargetRange[];
   progressionStyle?: string;
   optionalConditioning?: boolean;

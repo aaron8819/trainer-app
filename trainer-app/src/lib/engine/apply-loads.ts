@@ -1,5 +1,6 @@
 import { computeNextLoad } from "./progression";
 import { estimateWorkoutMinutes, trimAccessoriesByPriority } from "./timeboxing";
+import { filterCompletedHistory, sortHistoryByDateDesc } from "./history";
 import {
   getBackOffMultiplier,
   REP_RANGES_BY_GOAL,
@@ -189,9 +190,7 @@ export function applyLoads(workout: WorkoutPlan, options: ApplyLoadsOptions): Wo
 }
 
 function buildHistoryIndex(history: WorkoutHistoryEntry[]) {
-  const sorted = [...history].sort(
-    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-  );
+  const sorted = sortHistoryByDateDesc(filterCompletedHistory(history));
   const index = new Map<string, WorkoutSetHistory>();
   for (const entry of sorted) {
     for (const exercise of entry.exercises) {

@@ -43,11 +43,31 @@ export const MOVEMENT_PATTERN_LABELS: Record<MovementPatternV2, string> = {
   isolation: "Isolation",
 };
 
+export const COMMON_MOVEMENT_PATTERNS: MovementPatternV2[] = [
+  "horizontal_push",
+  "vertical_push",
+  "horizontal_pull",
+  "vertical_pull",
+  "squat",
+  "hinge",
+  "lunge",
+  "flexion",
+  "extension",
+];
+
+export const ALL_MOVEMENT_PATTERNS: MovementPatternV2[] = [
+  ...COMMON_MOVEMENT_PATTERNS,
+  "carry",
+  "rotation",
+  "anti_rotation",
+  "abduction",
+  "adduction",
+  "isolation",
+];
+
 export const STIMULUS_BIAS_LABELS: Record<StimulusBias, string> = {
   mechanical: "Mechanical Tension",
   metabolic: "Metabolic Stress",
   stretch: "Stretch-Mediated",
   stability: "Stability",
 };
-
-export const SINGLE_MUSCLE_GROUPS: MuscleGroup[] = ["chest", "core"];

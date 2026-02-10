@@ -22,7 +22,9 @@ This document describes the current data model for the Trainer App, with emphasi
 - Purpose: drives split queue, timeboxing, and equipment filtering.
 
 ### UserPreference
-- `favoriteExercises`, `avoidExercises`, `rpeTargets`, `progressionStyle`
+- `favoriteExercises`, `avoidExercises` (legacy name-based arrays for compatibility/UI)
+- `favoriteExerciseIds`, `avoidExerciseIds` (canonical ID-based arrays)
+- `rpeTargets`, `progressionStyle`
 - `optionalConditioning`, `benchFrequency`, `squatFrequency`, `deadliftFrequency`
 - Purpose: biases selection and targets.
 

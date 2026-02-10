@@ -1,5 +1,6 @@
 import type { Constraints, Exercise, MovementPattern, SplitDay, WorkoutHistoryEntry } from "./types";
 import { MUSCLE_SPLIT_MAP } from "./volume-landmarks";
+import { isCompletedHistoryEntry } from "./history";
 
 export const SPLIT_PATTERNS: Record<string, MovementPattern[][]> = {
   ppl: [
@@ -27,7 +28,7 @@ export const SPLIT_PATTERNS: Record<string, MovementPattern[][]> = {
 
 export function getSplitDayIndex(history: WorkoutHistoryEntry[], patternLength: number): number {
   const advancingCompleted = history.filter(
-    (entry) => entry.advancesSplit !== false && entry.status === "COMPLETED"
+    (entry) => entry.advancesSplit !== false && isCompletedHistoryEntry(entry)
   );
   const completedCount = advancingCompleted.length;
   return completedCount % Math.max(1, patternLength);
@@ -90,7 +91,7 @@ export function getHistoryBasedSplitDay(
   exerciseLibrary: Exercise[]
 ): SplitDay {
   const completed = history
-    .filter((e) => e.completed && e.advancesSplit !== false)
+    .filter((e) => isCompletedHistoryEntry(e) && e.advancesSplit !== false)
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   if (completed.length === 0) return "push";

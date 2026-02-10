@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { classifySessionBySplit, getHistoryBasedSplitDay } from "./split-queue";
+import {
+  classifySessionBySplit,
+  getHistoryBasedSplitDay,
+  getSplitDayIndex,
+} from "./split-queue";
 import type { Exercise, WorkoutHistoryEntry } from "./types";
 
 const makeExercise = (id: string, primaryMuscles: string[]): Exercise => ({
@@ -147,5 +151,24 @@ describe("getHistoryBasedSplitDay", () => {
     ];
     // The legs session doesn't advance split, so only push is counted → pull and legs missing → pull first in order
     expect(getHistoryBasedSplitDay(history, library)).toBe("pull");
+  });
+});
+
+describe("getSplitDayIndex", () => {
+  it("counts legacy completed entries without a status value", () => {
+    const history: WorkoutHistoryEntry[] = [
+      {
+        date: "2026-02-10T00:00:00Z",
+        completed: true,
+        exercises: [],
+      },
+      {
+        date: "2026-02-09T00:00:00Z",
+        completed: true,
+        exercises: [],
+      },
+    ];
+
+    expect(getSplitDayIndex(history, 4)).toBe(2);
   });
 });

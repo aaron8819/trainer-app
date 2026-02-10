@@ -12,6 +12,7 @@ import type {
 import { buildNameSet, normalizeName } from "./utils";
 import { createRng } from "./random";
 import { resolveAllowedPatterns } from "./split-queue";
+import { filterCompletedHistory } from "./history";
 import { pickMainLiftsForPpl } from "./main-lift-picker";
 import { pickAccessoriesBySlot, type AccessorySlotOptions } from "./pick-accessories-by-slot";
 import { resolveSetCount } from "./prescription";
@@ -57,15 +58,29 @@ export function selectExercises(
   const isStrictPpl = constraints.splitType === "ppl";
   const avoidSet = buildNameSet(preferences?.avoidExercises);
   const favoriteSet = buildNameSet(preferences?.favoriteExercises);
+  const avoidIdSet = new Set(preferences?.avoidExerciseIds ?? []);
+  const favoriteIdSet = new Set(preferences?.favoriteExerciseIds ?? []);
+
+  for (const exercise of exerciseLibrary) {
+    if (avoidIdSet.has(exercise.id)) {
+      avoidSet.add(normalizeName(exercise.name));
+    }
+    if (favoriteIdSet.has(exercise.id)) {
+      favoriteSet.add(normalizeName(exercise.name));
+    }
+  }
+
   const rng = createRng(randomSeed);
 
   const available = exerciseLibrary.filter((exercise) =>
     exercise.equipment.some((item) => constraints.availableEquipment.includes(item))
   );
 
-  const preferenceFiltered = available.filter(
-    (exercise) => !avoidSet.has(normalizeName(exercise.name))
-  );
+  const preferenceFiltered = available.filter((exercise) => {
+    const avoidedByName = avoidSet.has(normalizeName(exercise.name));
+    const avoidedById = avoidIdSet.has(exercise.id);
+    return !avoidedByName && !avoidedById;
+  });
 
   const hasActiveInjury = injuries.some((injury) => injury.isActive && injury.severity >= 3);
   const injuryFiltered = hasActiveInjury
@@ -81,8 +96,10 @@ export function selectExercises(
 
   const pickFavoriteFirst = (items: Exercise[]) =>
     items.sort((a, b) => {
-      const aFav = favoriteSet.has(normalizeName(a.name)) ? 1 : 0;
-      const bFav = favoriteSet.has(normalizeName(b.name)) ? 1 : 0;
+      const aFav =
+        favoriteSet.has(normalizeName(a.name)) || favoriteIdSet.has(a.id) ? 1 : 0;
+      const bFav =
+        favoriteSet.has(normalizeName(b.name)) || favoriteIdSet.has(b.id) ? 1 : 0;
       return bFav - aFav;
     });
 
@@ -201,8 +218,10 @@ export function selectExercises(
     const patternMatches = (pattern: MovementPattern) => {
       const matches = patternFiltered.filter((exercise) => matchesV1Pattern(exercise, pattern));
       return matches.sort((a, b) => {
-        const aFav = favoriteSet.has(normalizeName(a.name)) ? 1 : 0;
-        const bFav = favoriteSet.has(normalizeName(b.name)) ? 1 : 0;
+        const aFav =
+          favoriteSet.has(normalizeName(a.name)) || favoriteIdSet.has(a.id) ? 1 : 0;
+        const bFav =
+          favoriteSet.has(normalizeName(b.name)) || favoriteIdSet.has(b.id) ? 1 : 0;
         return bFav - aFav;
       });
     };
@@ -220,8 +239,10 @@ export function selectExercises(
       const candidates = patternFiltered
         .filter((exercise) => isMainLiftEligible(exercise))
         .sort((a, b) => {
-          const aFav = favoriteSet.has(normalizeName(a.name)) ? 1 : 0;
-          const bFav = favoriteSet.has(normalizeName(b.name)) ? 1 : 0;
+          const aFav =
+            favoriteSet.has(normalizeName(a.name)) || favoriteIdSet.has(a.id) ? 1 : 0;
+          const bFav =
+            favoriteSet.has(normalizeName(b.name)) || favoriteIdSet.has(b.id) ? 1 : 0;
           return bFav - aFav;
         });
       mainLifts.push(...candidates.slice(0, minMainLifts - mainLifts.length));
@@ -309,7 +330,7 @@ export function applyStallFilter(exercises: Exercise[], stalledSet: Set<string>)
 export function findStalledExercises(history: WorkoutHistoryEntry[]) {
   const byExercise: Record<string, { date: number; volume: number }[]> = {};
 
-  for (const entry of history) {
+  for (const entry of filterCompletedHistory(history)) {
     const entryTime = new Date(entry.date).getTime();
     for (const exercise of entry.exercises) {
       const totalVolume = exercise.sets.reduce((sum, set) => {

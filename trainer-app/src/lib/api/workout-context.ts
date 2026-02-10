@@ -279,6 +279,8 @@ export function mapHistory(workouts: WorkoutWithRelations[]): WorkoutHistoryEntr
 export function mapPreferences(preferences: {
   favoriteExercises: string[];
   avoidExercises: string[];
+  favoriteExerciseIds?: string[];
+  avoidExerciseIds?: string[];
   rpeTargets: unknown;
   progressionStyle: string | null;
   optionalConditioning: boolean;
@@ -297,6 +299,8 @@ export function mapPreferences(preferences: {
   return {
     favoriteExercises: preferences.favoriteExercises ?? [],
     avoidExercises: preferences.avoidExercises ?? [],
+    favoriteExerciseIds: preferences.favoriteExerciseIds ?? [],
+    avoidExerciseIds: preferences.avoidExerciseIds ?? [],
     rpeTargets: parsedRpe,
     progressionStyle: preferences.progressionStyle ?? undefined,
     optionalConditioning: preferences.optionalConditioning ?? undefined,

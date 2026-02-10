@@ -1,9 +1,14 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import type { ExerciseFilters, MuscleGroup } from "@/lib/exercise-library/types";
 import type { MovementPatternV2 } from "@/lib/engine/types";
-import { MOVEMENT_PATTERN_LABELS } from "@/lib/exercise-library/constants";
+import {
+  ALL_MOVEMENT_PATTERNS,
+  MOVEMENT_PATTERN_LABELS,
+  MUSCLE_GROUP_HIERARCHY,
+  MUSCLE_TO_GROUP,
+} from "@/lib/exercise-library/constants";
 import { MuscleGroupChips } from "./MuscleGroupChips";
 
 type FilterBarProps = {
@@ -13,45 +18,93 @@ type FilterBarProps = {
   compact?: boolean;
 };
 
-const MOVEMENT_PATTERNS: MovementPatternV2[] = [
-  "horizontal_push",
-  "vertical_push",
-  "horizontal_pull",
-  "vertical_pull",
-  "squat",
-  "hinge",
-  "lunge",
-  "flexion",
-  "extension",
-];
-
 export function FilterBar({ filters, onFiltersChange, resultCount, compact }: FilterBarProps) {
-  const [searchInput, setSearchInput] = useState(filters.search ?? "");
+  const [showFilters, setShowFilters] = useState(!compact);
 
-  useEffect(() => {
-    const timeout = setTimeout(() => {
-      onFiltersChange({ ...filters, search: searchInput || undefined });
-    }, 200);
-    return () => clearTimeout(timeout);
-  }, [searchInput]); // eslint-disable-line react-hooks/exhaustive-deps
+  const selectedGroups = filters.muscleGroups ?? [];
+  const selectedMuscles = filters.muscles ?? [];
+  const selectedExerciseTypes = filters.exerciseTypes ?? [];
+  const selectedMovementPatterns = filters.movementPatterns ?? [];
 
-  const hasFilters = Boolean(
-    filters.search ||
-      filters.muscleGroup ||
-      filters.muscle ||
-      filters.isCompound !== undefined ||
-      filters.movementPattern ||
-      filters.favoritesOnly
-  );
+  const activeCategoryCount = useMemo(() => {
+    let count = 0;
+    if (filters.search) count += 1;
+    if (selectedGroups.length > 0 || selectedMuscles.length > 0) count += 1;
+    if (selectedExerciseTypes.length > 0) count += 1;
+    if (selectedMovementPatterns.length > 0) count += 1;
+    if (filters.favoritesOnly) count += 1;
+    return count;
+  }, [
+    filters.search,
+    selectedGroups.length,
+    selectedMuscles.length,
+    selectedExerciseTypes.length,
+    selectedMovementPatterns.length,
+    filters.favoritesOnly,
+  ]);
+
+  const hasFilters = activeCategoryCount > 0;
+
+  const asOptionalArray = <T,>(values: T[]): T[] | undefined =>
+    values.length > 0 ? values : undefined;
+
+  const toggleValue = <T,>(values: T[], value: T): T[] =>
+    values.includes(value) ? values.filter((item) => item !== value) : [...values, value];
 
   const clearAll = () => {
-    setSearchInput("");
     onFiltersChange({});
   };
 
+  const toggleGroup = (group: MuscleGroup) => {
+    const wasSelected = selectedGroups.includes(group);
+    const nextGroups = toggleValue(selectedGroups, group);
+    const groupMuscles = MUSCLE_GROUP_HIERARCHY[group] ?? [];
+    const nextMuscles = wasSelected
+      ? selectedMuscles.filter((muscle) => !groupMuscles.includes(muscle))
+      : selectedMuscles;
+
+    onFiltersChange({
+      ...filters,
+      muscleGroups: asOptionalArray(nextGroups),
+      muscles: asOptionalArray(nextMuscles),
+    });
+  };
+
+  const toggleMuscle = (muscle: string) => {
+    const nextMuscles = toggleValue(selectedMuscles, muscle);
+    const muscleGroup = MUSCLE_TO_GROUP[muscle];
+    const nextGroups =
+      muscleGroup && !selectedGroups.includes(muscleGroup)
+        ? [...selectedGroups, muscleGroup]
+        : selectedGroups;
+
+    onFiltersChange({
+      ...filters,
+      muscleGroups: asOptionalArray(nextGroups),
+      muscles: asOptionalArray(nextMuscles),
+    });
+  };
+
+  const toggleExerciseType = (type: "compound" | "isolation") => {
+    const nextExerciseTypes = toggleValue(selectedExerciseTypes, type);
+    onFiltersChange({
+      ...filters,
+      exerciseTypes: asOptionalArray(nextExerciseTypes),
+    });
+  };
+
+  const toggleMovementPattern = (pattern: MovementPatternV2) => {
+    const nextMovementPatterns = toggleValue(selectedMovementPatterns, pattern);
+    onFiltersChange({
+      ...filters,
+      movementPatterns: asOptionalArray(nextMovementPatterns),
+    });
+  };
+
+  const filtersVisible = compact ? showFilters : true;
+
   return (
     <div className="space-y-3">
-      {/* Search */}
       <div className="relative">
         <svg
           className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
@@ -66,37 +119,39 @@ export function FilterBar({ filters, onFiltersChange, resultCount, compact }: Fi
         <input
           type="text"
           placeholder="Search exercises..."
-          value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
+          value={filters.search ?? ""}
+          onChange={(e) => {
+            const value = e.target.value;
+            onFiltersChange({ ...filters, search: value || undefined });
+          }}
           className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-400"
         />
       </div>
 
-      {!compact && (
+      {compact && (
+        <button
+          onClick={() => setShowFilters((open) => !open)}
+          className="inline-flex items-center rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+        >
+          {showFilters ? "Hide filters" : "Show filters"}
+          {activeCategoryCount > 0 ? ` (${activeCategoryCount})` : ""}
+        </button>
+      )}
+
+      {filtersVisible && (
         <>
-          {/* Muscle Groups */}
           <MuscleGroupChips
-            selectedGroup={filters.muscleGroup}
-            selectedMuscle={filters.muscle}
-            onGroupChange={(group: MuscleGroup | undefined) =>
-              onFiltersChange({ ...filters, muscleGroup: group, muscle: undefined })
-            }
-            onMuscleChange={(muscle: string | undefined) =>
-              onFiltersChange({ ...filters, muscle })
-            }
+            selectedGroups={selectedGroups}
+            selectedMuscles={selectedMuscles}
+            onToggleGroup={toggleGroup}
+            onToggleMuscle={toggleMuscle}
           />
 
-          {/* Compound / Isolation toggle */}
           <div className="flex flex-wrap gap-1.5">
             <button
-              onClick={() =>
-                onFiltersChange({
-                  ...filters,
-                  isCompound: filters.isCompound === true ? undefined : true,
-                })
-              }
+              onClick={() => toggleExerciseType("compound")}
               className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                filters.isCompound === true
+                selectedExerciseTypes.includes("compound")
                   ? "bg-blue-600 text-white"
                   : "bg-blue-50 text-blue-700 hover:bg-blue-100"
               }`}
@@ -104,14 +159,9 @@ export function FilterBar({ filters, onFiltersChange, resultCount, compact }: Fi
               Compound
             </button>
             <button
-              onClick={() =>
-                onFiltersChange({
-                  ...filters,
-                  isCompound: filters.isCompound === false ? undefined : false,
-                })
-              }
+              onClick={() => toggleExerciseType("isolation")}
               className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                filters.isCompound === false
+                selectedExerciseTypes.includes("isolation")
                   ? "bg-blue-600 text-white"
                   : "bg-blue-50 text-blue-700 hover:bg-blue-100"
               }`}
@@ -135,19 +185,13 @@ export function FilterBar({ filters, onFiltersChange, resultCount, compact }: Fi
             </button>
           </div>
 
-          {/* Movement Patterns */}
           <div className="flex flex-wrap gap-1.5">
-            {MOVEMENT_PATTERNS.map((pattern) => (
+            {ALL_MOVEMENT_PATTERNS.map((pattern) => (
               <button
                 key={pattern}
-                onClick={() =>
-                  onFiltersChange({
-                    ...filters,
-                    movementPattern: filters.movementPattern === pattern ? undefined : pattern,
-                  })
-                }
+                onClick={() => toggleMovementPattern(pattern)}
                 className={`rounded-full px-2.5 py-0.5 text-xs transition-colors ${
-                  filters.movementPattern === pattern
+                  selectedMovementPatterns.includes(pattern)
                     ? "bg-violet-600 text-white"
                     : "bg-violet-50 text-violet-700 hover:bg-violet-100"
                 }`}
@@ -159,7 +203,6 @@ export function FilterBar({ filters, onFiltersChange, resultCount, compact }: Fi
         </>
       )}
 
-      {/* Result count + Clear */}
       <div className="flex items-center justify-between text-xs text-slate-500">
         <span>{resultCount} exercise{resultCount !== 1 ? "s" : ""}</span>
         {hasFilters && (

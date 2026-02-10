@@ -76,6 +76,31 @@ describe("buildRecencyIndex", () => {
     expect(index.get("bench")).toBe(0);
     expect(index.get("squat")).toBe(1);
   });
+
+  it("ignores non-completed entries for recency", () => {
+    const history: WorkoutHistoryEntry[] = [
+      {
+        date: new Date("2024-01-04").toISOString(),
+        completed: false,
+        status: "PLANNED",
+        exercises: [
+          { exerciseId: "bench", movementPattern: "push", sets: [] },
+        ],
+      },
+      {
+        date: new Date("2024-01-03").toISOString(),
+        completed: true,
+        status: "COMPLETED",
+        exercises: [
+          { exerciseId: "squat", movementPattern: "squat", sets: [] },
+        ],
+      },
+    ];
+
+    const index = buildRecencyIndex(history);
+    expect(index.has("bench")).toBe(false);
+    expect(index.get("squat")).toBe(0);
+  });
 });
 
 describe("getRecencyMultiplier", () => {

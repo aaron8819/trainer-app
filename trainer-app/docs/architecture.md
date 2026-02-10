@@ -399,4 +399,11 @@ The exercise detail sheet (`ExerciseDetailSheet`) provides:
 - **Add to template**: Select from existing templates via `AddToTemplateSheet`
 - **Save as template**: `SaveAsTemplateButton` on completed workout pages derives target muscles from exercises
 
+Library filtering behavior:
+- Muscle group and movement pattern chips are multi-select.
+- Matching uses OR within a category and AND across categories.
+- Muscle filters use primary-muscle mappings.
+- The compact `ExercisePicker` exposes the same filters behind a collapsible toggle.
+
 The library supports sorting by: Name A-Z, Name Z-A, Best SFR, Lowest Fatigue (fatigueCost), Best Stretch Position, Muscle Group. All sort fields (`fatigueCost`, `sfrScore`, `lengthPositionScore`) are available on `ExerciseListItem` — no detail-level load required.
+

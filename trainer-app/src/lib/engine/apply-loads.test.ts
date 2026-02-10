@@ -144,7 +144,7 @@ describe("applyLoads", () => {
     });
 
     expect(result.mainLifts[0].sets[0].targetLoad).toBe(102.5);
-    expect(result.mainLifts[0].sets[1].targetLoad).toBe(87);
+    expect(result.mainLifts[0].sets[1].targetLoad).toBe(90);
   });
 
   it("ignores non-completed history entries when deriving next load", () => {
@@ -189,7 +189,7 @@ describe("applyLoads", () => {
     });
 
     expect(result.mainLifts[0].sets[0].targetLoad).toBe(102.5);
-    expect(result.mainLifts[0].sets[1].targetLoad).toBe(87);
+    expect(result.mainLifts[0].sets[1].targetLoad).toBe(90);
   });
 
   it("uses a strength back-off multiplier of 0.90 for main lifts", () => {

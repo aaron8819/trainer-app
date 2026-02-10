@@ -1,6 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { clampRepRange, prescribeSetsReps, type ExerciseRepRange } from "./prescription";
-import type { FatigueState, Goals } from "./types";
+import {
+  clampRepRange,
+  getRestSeconds,
+  prescribeSetsReps,
+  resolveSetCount,
+  type ExerciseRepRange,
+} from "./prescription";
+import type { Exercise, FatigueState, Goals } from "./types";
 
 const defaultFatigue: FatigueState = {
   readinessScore: 3,
@@ -72,6 +78,7 @@ describe("prescribeSetsReps with exerciseRepRange", () => {
       undefined, undefined, exerciseRange
     );
     expect(sets[0].targetReps).toBe(12);
+    expect(sets[0].targetRepRange).toEqual({ min: 12, max: 15 });
   });
 
   it("does not affect reps when exercise range is wider than goal", () => {
@@ -82,5 +89,144 @@ describe("prescribeSetsReps with exerciseRepRange", () => {
       undefined, undefined, exerciseRange
     );
     expect(sets[0].targetReps).toBe(6);
+    expect(sets[0].targetRepRange).toBeUndefined();
+  });
+
+  it("keeps accessory targetReps at the lower bound for backward compatibility", () => {
+    const sets = prescribeSetsReps(
+      false,
+      "intermediate",
+      hypertrophyGoals,
+      defaultFatigue
+    );
+
+    expect(sets[0].targetReps).toBe(10);
+    expect(sets[0].targetRepRange).toEqual({ min: 10, max: 15 });
+  });
+
+  it("widens single-point accessory intersections upward to preserve progression room", () => {
+    const exerciseRange: ExerciseRepRange = { min: 10, max: 20 };
+    const sets = prescribeSetsReps(
+      false,
+      "intermediate",
+      strengthGoals,
+      defaultFatigue,
+      undefined,
+      undefined,
+      exerciseRange
+    );
+
+    expect(sets[0].targetReps).toBe(10);
+    expect(sets[0].targetRepRange).toEqual({ min: 10, max: 12 });
+  });
+
+  it("expands downward only when upward widening cannot fit inside exercise range", () => {
+    const exerciseRange: ExerciseRepRange = { min: 5, max: 10 };
+    const sets = prescribeSetsReps(
+      false,
+      "intermediate",
+      hypertrophyGoals,
+      defaultFatigue,
+      undefined,
+      undefined,
+      exerciseRange
+    );
+
+    expect(sets[0].targetReps).toBe(8);
+    expect(sets[0].targetRepRange).toEqual({ min: 8, max: 10 });
+  });
+
+  it("keeps main-lift back-off reps equal to top-set reps", () => {
+    const sets = prescribeSetsReps(
+      true,
+      "intermediate",
+      hypertrophyGoals,
+      defaultFatigue
+    );
+
+    expect(sets.length).toBeGreaterThan(1);
+    expect(sets[1].targetReps).toBe(sets[0].targetReps);
+  });
+});
+
+describe("prescribeSetsReps target RPE", () => {
+  it("uses training-age-specific base RPE for hypertrophy main lifts", () => {
+    const beginner = prescribeSetsReps(
+      true,
+      "beginner",
+      hypertrophyGoals,
+      defaultFatigue
+    );
+    const advanced = prescribeSetsReps(
+      true,
+      "advanced",
+      hypertrophyGoals,
+      defaultFatigue
+    );
+
+    expect(beginner[0].targetRpe).toBe(7);
+    expect(advanced[0].targetRpe).toBe(8.5);
+  });
+
+  it("applies +0.5 RPE bump to hypertrophy isolation accessories", () => {
+    const sets = prescribeSetsReps(
+      false,
+      "intermediate",
+      hypertrophyGoals,
+      defaultFatigue,
+      undefined,
+      undefined,
+      undefined,
+      true
+    );
+
+    expect(sets[0].targetRpe).toBe(8.5);
+  });
+
+  it("keeps compound accessories at the base hypertrophy RPE", () => {
+    const sets = prescribeSetsReps(
+      false,
+      "intermediate",
+      hypertrophyGoals,
+      defaultFatigue
+    );
+
+    expect(sets[0].targetRpe).toBe(8);
+  });
+});
+
+describe("getRestSeconds", () => {
+  const isolationExercise: Exercise = {
+    id: "lateral-raise",
+    name: "Lateral Raise",
+    movementPatterns: ["isolation"],
+    splitTags: ["push"],
+    jointStress: "low",
+    isMainLiftEligible: false,
+    isCompound: false,
+    fatigueCost: 2,
+    equipment: ["dumbbell"],
+  };
+
+  it("uses 75 seconds as the isolation rest floor", () => {
+    expect(getRestSeconds(isolationExercise, false, 15)).toBe(75);
+  });
+
+  it("keeps higher-fatigue isolations at 90 seconds", () => {
+    expect(
+      getRestSeconds({ ...isolationExercise, fatigueCost: 3 }, false, 15)
+    ).toBe(90);
+  });
+});
+
+describe("resolveSetCount", () => {
+  it("applies readiness and missed-session penalties as a single non-stacking reduction", () => {
+    const stackedPenaltyState: FatigueState = {
+      readinessScore: 2,
+      missedLastSession: true,
+    };
+
+    const sets = resolveSetCount(true, "advanced", stackedPenaltyState);
+    expect(sets).toBe(4);
   });
 });

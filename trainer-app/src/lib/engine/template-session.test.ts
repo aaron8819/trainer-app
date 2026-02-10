@@ -30,6 +30,20 @@ function makeTemplateExercises(ids: string[]): TemplateExerciseInput[] {
   });
 }
 
+function makeTemplateExercisesWithSuperset(
+  entries: { id: string; supersetGroup?: number }[]
+): TemplateExerciseInput[] {
+  return entries.map((entry, index) => {
+    const exercise = exampleExerciseLibrary.find((e) => e.id === entry.id);
+    if (!exercise) throw new Error(`Exercise ${entry.id} not found`);
+    return {
+      exercise,
+      orderIndex: index,
+      supersetGroup: entry.supersetGroup,
+    };
+  });
+}
+
 describe("generateWorkoutFromTemplate", () => {
   it("generates a workout with correct number of exercises", () => {
     const templateExercises = makeTemplateExercises(["bench", "row", "lateral-raise"]);
@@ -49,6 +63,14 @@ describe("generateWorkoutFromTemplate", () => {
     expect(workout.mainLifts.map((e) => e.exercise.id).sort()).toEqual(["bench", "squat"]);
     // lateral-raise and face-pull are not
     expect(workout.accessories.length).toBe(2);
+  });
+
+  it("caps template main lifts to the first two eligible exercises by order", () => {
+    const templateExercises = makeTemplateExercises(["bench", "row", "squat"]);
+    const { workout } = generateWorkoutFromTemplate(templateExercises, makeOptions());
+
+    expect(workout.mainLifts.map((entry) => entry.exercise.id)).toEqual(["bench", "row"]);
+    expect(workout.accessories.map((entry) => entry.exercise.id)).toContain("squat");
   });
 
   it("prescribes more sets for main lifts than accessories", () => {
@@ -177,5 +199,92 @@ describe("generateWorkoutFromTemplate", () => {
       })
     );
     expect(result.substitutions.length).toBeGreaterThanOrEqual(0);
+  });
+
+  it("applies hypertrophy isolation RPE bump for template accessories", () => {
+    const templateExercises = makeTemplateExercises(["lateral-raise"]);
+    const { workout } = generateWorkoutFromTemplate(templateExercises, makeOptions());
+
+    expect(workout.accessories[0].sets[0].targetRpe).toBe(8.5);
+  });
+
+  it("applies periodization offsets in template generation", () => {
+    const templateExercises = makeTemplateExercises(["bench"]);
+    const { workout } = generateWorkoutFromTemplate(
+      templateExercises,
+      makeOptions({
+        periodization: {
+          rpeOffset: -1,
+          setMultiplier: 1,
+          backOffMultiplier: 0.85,
+          isDeload: false,
+        },
+      })
+    );
+
+    expect(workout.mainLifts[0].sets[0].targetRpe).toBe(7);
+  });
+
+  it("carries superset groups for accessory pairs only", () => {
+    const templateExercises = makeTemplateExercisesWithSuperset([
+      { id: "bench", supersetGroup: 1 },
+      { id: "lateral-raise", supersetGroup: 2 },
+      { id: "face-pull", supersetGroup: 2 },
+    ]);
+    const { workout } = generateWorkoutFromTemplate(templateExercises, makeOptions());
+
+    expect(workout.mainLifts[0].supersetGroup).toBeUndefined();
+    expect(workout.accessories.map((e) => e.supersetGroup)).toEqual([2, 2]);
+    expect(workout.accessories[0].notes).toContain("Superset");
+  });
+
+  it("respects exercise-specific rep range bounds in template prescriptions", () => {
+    const templateExercises: TemplateExerciseInput[] = [
+      {
+        exercise: {
+          ...exampleExerciseLibrary.find((e) => e.id === "bench")!,
+          repRangeMin: 8,
+          repRangeMax: 12,
+        },
+        orderIndex: 0,
+      },
+      {
+        exercise: {
+          ...exampleExerciseLibrary.find((e) => e.id === "lateral-raise")!,
+          repRangeMin: 12,
+          repRangeMax: 20,
+        },
+        orderIndex: 1,
+      },
+    ];
+
+    const { workout } = generateWorkoutFromTemplate(templateExercises, makeOptions());
+    expect(workout.mainLifts[0].sets[0].targetReps).toBe(8);
+    expect(workout.accessories[0].sets[0].targetRepRange).toEqual({ min: 12, max: 15 });
+  });
+
+  it("demotes out-of-range main-lift-eligible exercises to accessory prescription", () => {
+    const templateExercises: TemplateExerciseInput[] = [
+      {
+        exercise: {
+          ...exampleExerciseLibrary.find((e) => e.id === "bench")!,
+          isMainLiftEligible: true,
+          repRangeMin: 10,
+          repRangeMax: 20,
+        },
+        orderIndex: 0,
+      },
+    ];
+
+    const { workout } = generateWorkoutFromTemplate(
+      templateExercises,
+      makeOptions({ goals: { primary: "strength", secondary: "none" } })
+    );
+
+    expect(workout.mainLifts).toHaveLength(0);
+    expect(workout.accessories).toHaveLength(1);
+    expect(workout.accessories[0].sets).toHaveLength(3);
+    expect(workout.accessories[0].sets[0].targetRepRange).toEqual({ min: 10, max: 12 });
+    expect(workout.accessories[0].sets[0].targetReps).toBe(10);
   });
 });

@@ -5,12 +5,34 @@ import { analyzeTemplate, type AnalysisExerciseInput, type ScoreLabel } from "@/
 
 type CreateTemplateInput = z.infer<typeof createTemplateSchema>;
 type UpdateTemplateInput = z.infer<typeof updateTemplateSchema>;
+export type TemplateIntent =
+  | "FULL_BODY"
+  | "UPPER_LOWER"
+  | "PUSH_PULL_LEGS"
+  | "BODY_PART"
+  | "CUSTOM";
+
+const TEMPLATE_INTENTS: readonly TemplateIntent[] = [
+  "FULL_BODY",
+  "UPPER_LOWER",
+  "PUSH_PULL_LEGS",
+  "BODY_PART",
+  "CUSTOM",
+];
+
+function normalizeTemplateIntent(value: unknown): TemplateIntent {
+  if (typeof value === "string" && TEMPLATE_INTENTS.includes(value as TemplateIntent)) {
+    return value as TemplateIntent;
+  }
+  return "CUSTOM";
+}
 
 export interface TemplateListItem {
   id: string;
   name: string;
   targetMuscles: string[];
   isStrict: boolean;
+  intent: TemplateIntent;
   exerciseCount: number;
   createdAt: string;
   updatedAt: string;
@@ -19,6 +41,7 @@ export interface TemplateListItem {
 export interface TemplateExerciseDetail {
   orderIndex: number;
   exerciseId: string;
+  supersetGroup?: number | null;
   name: string;
   isCompound: boolean;
   movementPatterns: string[];
@@ -31,6 +54,7 @@ export interface TemplateDetail {
   name: string;
   targetMuscles: string[];
   isStrict: boolean;
+  intent: TemplateIntent;
   createdAt: string;
   updatedAt: string;
   exercises: TemplateExerciseDetail[];
@@ -50,6 +74,7 @@ export async function loadTemplates(userId: string): Promise<TemplateListItem[]>
     name: t.name,
     targetMuscles: t.targetMuscles,
     isStrict: t.isStrict,
+    intent: normalizeTemplateIntent((t as { intent?: unknown }).intent),
     exerciseCount: t._count.exercises,
     createdAt: t.createdAt.toISOString(),
     updatedAt: t.updatedAt.toISOString(),
@@ -87,11 +112,13 @@ export async function loadTemplateDetail(
     name: template.name,
     targetMuscles: template.targetMuscles,
     isStrict: template.isStrict,
+    intent: normalizeTemplateIntent((template as { intent?: unknown }).intent),
     createdAt: template.createdAt.toISOString(),
     updatedAt: template.updatedAt.toISOString(),
     exercises: template.exercises.map((te) => ({
       orderIndex: te.orderIndex,
       exerciseId: te.exerciseId,
+      supersetGroup: te.supersetGroup,
       name: te.exercise.name,
       isCompound: te.exercise.isCompound,
       movementPatterns: (te.exercise.movementPatterns ?? []).map(
@@ -119,6 +146,7 @@ export async function createTemplate(
         name: data.name,
         targetMuscles: data.targetMuscles,
         isStrict: data.isStrict,
+        intent: data.intent,
       },
     });
 
@@ -128,6 +156,7 @@ export async function createTemplate(
           templateId: created.id,
           exerciseId: e.exerciseId,
           orderIndex: e.orderIndex,
+          supersetGroup: e.supersetGroup,
         })),
       });
     }
@@ -155,6 +184,7 @@ export async function updateTemplate(
     if (data.name !== undefined) updateData.name = data.name;
     if (data.targetMuscles !== undefined) updateData.targetMuscles = data.targetMuscles;
     if (data.isStrict !== undefined) updateData.isStrict = data.isStrict;
+    if (data.intent !== undefined) updateData.intent = data.intent;
 
     if (Object.keys(updateData).length > 0) {
       await tx.workoutTemplate.update({
@@ -174,6 +204,7 @@ export async function updateTemplate(
             templateId,
             exerciseId: e.exerciseId,
             orderIndex: e.orderIndex,
+            supersetGroup: e.supersetGroup,
           })),
         });
       }
@@ -197,6 +228,7 @@ export async function loadTemplatesWithScores(
     include: {
       _count: { select: { exercises: true } },
       exercises: {
+        orderBy: { orderIndex: "asc" },
         include: {
           exercise: {
             include: {
@@ -211,6 +243,7 @@ export async function loadTemplatesWithScores(
   return templates.map((t) => {
     const inputs: AnalysisExerciseInput[] = t.exercises.map((te) => ({
       isCompound: te.exercise.isCompound,
+      isMainLiftEligible: te.exercise.isMainLiftEligible,
       movementPatterns: (te.exercise.movementPatterns ?? []).map((p) =>
         p.toLowerCase()
       ),
@@ -218,15 +251,22 @@ export async function loadTemplatesWithScores(
         name: m.muscle.name,
         role: m.role.toLowerCase() as "primary" | "secondary",
       })),
+      sfrScore: te.exercise.sfrScore,
+      lengthPositionScore: te.exercise.lengthPositionScore,
+      fatigueCost: te.exercise.fatigueCost,
+      orderIndex: te.orderIndex,
     }));
 
-    const analysis = analyzeTemplate(inputs);
+    const analysis = analyzeTemplate(inputs, {
+      intent: normalizeTemplateIntent((t as { intent?: unknown }).intent),
+    });
 
     return {
       id: t.id,
       name: t.name,
       targetMuscles: t.targetMuscles,
       isStrict: t.isStrict,
+      intent: normalizeTemplateIntent((t as { intent?: unknown }).intent),
       exerciseCount: t._count.exercises,
       createdAt: t.createdAt.toISOString(),
       updatedAt: t.updatedAt.toISOString(),

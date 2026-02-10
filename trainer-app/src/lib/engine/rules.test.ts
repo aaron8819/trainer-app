@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { getMesocyclePeriodization, getPeriodizationModifiers, type MesocycleConfig } from "./rules";
+import {
+  getBaseTargetRpe,
+  getMesocyclePeriodization,
+  getPeriodizationModifiers,
+  type MesocycleConfig,
+} from "./rules";
 
 describe("getMesocyclePeriodization", () => {
   it("returns deload modifiers when isDeload is true", () => {
@@ -39,7 +44,7 @@ describe("getMesocyclePeriodization", () => {
   it("uses goal-specific backoff multiplier", () => {
     const hyp = getMesocyclePeriodization({ totalWeeks: 4, currentWeek: 1, isDeload: false }, "hypertrophy");
     const str = getMesocyclePeriodization({ totalWeeks: 4, currentWeek: 1, isDeload: false }, "strength");
-    expect(hyp.backOffMultiplier).toBe(0.85);
+    expect(hyp.backOffMultiplier).toBe(0.88);
     expect(str.backOffMultiplier).toBe(0.9);
   });
 });
@@ -61,5 +66,18 @@ describe("getPeriodizationModifiers (backward compat)", () => {
     const week4 = getPeriodizationModifiers(4, "hypertrophy");
     const week0 = getPeriodizationModifiers(0, "hypertrophy");
     expect(week4.rpeOffset).toBe(week0.rpeOffset);
+  });
+});
+
+describe("getBaseTargetRpe", () => {
+  it("uses training-age-specific values for hypertrophy", () => {
+    expect(getBaseTargetRpe("hypertrophy", "beginner")).toBe(7);
+    expect(getBaseTargetRpe("hypertrophy", "intermediate")).toBe(8);
+    expect(getBaseTargetRpe("hypertrophy", "advanced")).toBe(8.5);
+  });
+
+  it("keeps non-hypertrophy goals unchanged", () => {
+    expect(getBaseTargetRpe("strength", "beginner")).toBe(8);
+    expect(getBaseTargetRpe("fat_loss", "advanced")).toBe(7);
   });
 });

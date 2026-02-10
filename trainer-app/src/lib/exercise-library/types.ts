@@ -13,6 +13,7 @@ export type ExerciseListItem = {
   id: string;
   name: string;
   isCompound: boolean;
+  isMainLiftEligible?: boolean;
   movementPatterns: MovementPatternV2[];
   splitTags: SplitTag[];
   jointStress: JointStress;

@@ -1,5 +1,8 @@
 import type { WorkoutExercise, WorkoutSet } from "./types";
-import { getRestSeconds, REST_SECONDS } from "./prescription";
+import { getRestSeconds, REST_SECONDS, resolveSetTargetReps } from "./prescription";
+
+const SUPERSET_SHARED_REST_MULTIPLIER = 0.6;
+const SUPERSET_SHARED_REST_FLOOR_SECONDS = 60;
 
 export function estimateWorkoutMinutes(exercises: WorkoutExercise[]): number {
   const estimateWorkSeconds = (reps?: number, fallback?: number) => {
@@ -10,7 +13,7 @@ export function estimateWorkoutMinutes(exercises: WorkoutExercise[]): number {
     return Math.max(20, Math.min(90, seconds));
   };
 
-  const estimateSetSeconds = (
+  const resolveSetTiming = (
     set: WorkoutSet,
     exercise: WorkoutExercise,
     isWarmupSet: boolean
@@ -23,22 +26,101 @@ export function estimateWorkoutMinutes(exercises: WorkoutExercise[]): number {
     const fallbackWork =
       exercise.exercise.timePerSetSec ??
       (exercise.isMainLift ? 60 : 40);
-    const workSeconds = estimateWorkSeconds(set.targetReps, fallbackWork);
+    const workSeconds = estimateWorkSeconds(resolveSetTargetReps(set), fallbackWork);
     const cappedWorkSeconds = isWarmupSet ? Math.min(30, workSeconds) : workSeconds;
-    return restSeconds + cappedWorkSeconds;
+    return { workSeconds: cappedWorkSeconds, restSeconds };
   };
 
-  const totalSeconds = exercises.reduce((total, exercise) => {
-    const workSeconds = exercise.sets.reduce(
-      (sum, set) => sum + estimateSetSeconds(set, exercise, false),
-      0
-    );
-    const warmupSeconds = (exercise.warmupSets ?? []).reduce(
-      (sum, set) => sum + estimateSetSeconds(set, exercise, true),
-      0
-    );
-    return total + workSeconds + warmupSeconds;
-  }, 0);
+  const estimateWarmupSeconds = (exercise: WorkoutExercise) =>
+    (exercise.warmupSets ?? []).reduce((sum, set) => {
+      const timing = resolveSetTiming(set, exercise, true);
+      return sum + timing.workSeconds + timing.restSeconds;
+    }, 0);
+
+  const estimateWorkingSeconds = (exercise: WorkoutExercise) =>
+    exercise.sets.reduce((sum, set) => {
+      const timing = resolveSetTiming(set, exercise, false);
+      return sum + timing.workSeconds + timing.restSeconds;
+    }, 0);
+
+  const supersetGroups = new Map<number, WorkoutExercise[]>();
+  for (const exercise of exercises) {
+    if (!exercise.supersetGroup || exercise.isMainLift) {
+      continue;
+    }
+    const group = supersetGroups.get(exercise.supersetGroup) ?? [];
+    group.push(exercise);
+    supersetGroups.set(exercise.supersetGroup, group);
+  }
+
+  const pairedIds = new Set<string>();
+  const pairedGroups: WorkoutExercise[][] = [];
+  for (const items of supersetGroups.values()) {
+    if (items.length === 2) {
+      pairedGroups.push(items);
+      for (const item of items) {
+        pairedIds.add(item.id);
+      }
+    }
+  }
+
+  const estimateSupersetPairSeconds = (
+    first: WorkoutExercise,
+    second: WorkoutExercise
+  ) => {
+    const rounds = Math.max(first.sets.length, second.sets.length);
+    let seconds = 0;
+
+    for (let i = 0; i < rounds; i += 1) {
+      const firstSet = first.sets[i];
+      const secondSet = second.sets[i];
+      const timingA = firstSet ? resolveSetTiming(firstSet, first, false) : undefined;
+      const timingB = secondSet ? resolveSetTiming(secondSet, second, false) : undefined;
+
+      if (timingA) {
+        seconds += timingA.workSeconds;
+      }
+      if (timingB) {
+        seconds += timingB.workSeconds;
+      }
+
+      const restCandidates: number[] = [];
+      if (timingA) {
+        restCandidates.push(timingA.restSeconds);
+      }
+      if (timingB) {
+        restCandidates.push(timingB.restSeconds);
+      }
+      if (restCandidates.length > 0) {
+        const maxStandaloneRest = Math.max(...restCandidates);
+        const sharedRest = Math.max(
+          SUPERSET_SHARED_REST_FLOOR_SECONDS,
+          Math.round(maxStandaloneRest * SUPERSET_SHARED_REST_MULTIPLIER)
+        );
+        seconds += sharedRest;
+      }
+    }
+
+    return seconds;
+  };
+
+  const warmupSeconds = exercises.reduce(
+    (sum, exercise) => sum + estimateWarmupSeconds(exercise),
+    0
+  );
+
+  let totalSeconds = warmupSeconds;
+
+  for (const [first, second] of pairedGroups) {
+    totalSeconds += estimateSupersetPairSeconds(first, second);
+  }
+
+  for (const exercise of exercises) {
+    if (pairedIds.has(exercise.id)) {
+      continue;
+    }
+    totalSeconds += estimateWorkingSeconds(exercise);
+  }
 
   return Math.round(totalSeconds / 60);
 }

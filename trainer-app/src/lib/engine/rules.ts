@@ -1,4 +1,4 @@
-import type { PrimaryGoal } from "./types";
+import type { PrimaryGoal, TrainingAge } from "./types";
 
 export const REP_RANGES_BY_GOAL: Record<
   PrimaryGoal,
@@ -19,6 +19,12 @@ export const TARGET_RPE_BY_GOAL: Record<PrimaryGoal, number> = {
   general_health: 7.0,
 };
 
+const HYPERTROPHY_TARGET_RPE_BY_TRAINING_AGE: Record<TrainingAge, number> = {
+  beginner: 7.0,
+  intermediate: 8.0,
+  advanced: 8.5,
+};
+
 export const DELOAD_RPE_CAP = 6.0;
 
 export type PeriodizationModifiers = {
@@ -35,7 +41,7 @@ export type MesocycleConfig = {
 };
 
 const DEFAULT_BACKOFF_MULTIPLIER_BY_GOAL: Record<PrimaryGoal, number> = {
-  hypertrophy: 0.85,
+  hypertrophy: 0.88,
   strength: 0.9,
   fat_loss: 0.85,
   athleticism: 0.85,
@@ -44,6 +50,13 @@ const DEFAULT_BACKOFF_MULTIPLIER_BY_GOAL: Record<PrimaryGoal, number> = {
 
 export function getBackOffMultiplier(primaryGoal: PrimaryGoal): number {
   return DEFAULT_BACKOFF_MULTIPLIER_BY_GOAL[primaryGoal] ?? 0.85;
+}
+
+export function getBaseTargetRpe(primaryGoal: PrimaryGoal, trainingAge: TrainingAge): number {
+  if (primaryGoal === "hypertrophy") {
+    return HYPERTROPHY_TARGET_RPE_BY_TRAINING_AGE[trainingAge] ?? 8.0;
+  }
+  return TARGET_RPE_BY_GOAL[primaryGoal];
 }
 
 export function getMesocyclePeriodization(

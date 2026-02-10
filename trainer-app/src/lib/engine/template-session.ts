@@ -12,16 +12,17 @@ import type {
   WorkoutPlan,
 } from "./types";
 import { createId } from "./utils";
-import { prescribeSetsReps, getRestSeconds } from "./prescription";
+import { prescribeSetsReps, getRestSeconds, resolveSetTargetReps } from "./prescription";
 import { deriveFatigueState } from "./volume";
 import { estimateWorkoutMinutes } from "./timeboxing";
 import { buildMuscleRecoveryMap, generateSraWarnings, type SraWarning } from "./sra";
-import type { PeriodizationModifiers } from "./rules";
+import { REP_RANGES_BY_GOAL, type PeriodizationModifiers } from "./rules";
 import { suggestSubstitutes } from "./substitution";
 
 export type TemplateExerciseInput = {
   exercise: Exercise;
   orderIndex: number;
+  supersetGroup?: number;
 };
 
 export type SubstitutionSuggestion = {
@@ -42,6 +43,8 @@ export type GenerateFromTemplateOptions = {
   isStrict?: boolean;
 };
 
+const DEFAULT_MAIN_LIFT_SLOT_CAP = 2;
+
 export type TemplateWorkoutResult = {
   workout: WorkoutPlan;
   sraWarnings: SraWarning[];
@@ -55,9 +58,18 @@ export function generateWorkoutFromTemplate(
   const { profile, goals, history, exerciseLibrary, preferences, checkIn, periodization } =
     options;
   const fatigueState = deriveFatigueState(history, checkIn);
+  const mainLiftSlots = resolveMainLiftSlots(templateExercises, goals);
 
-  const workoutExercises = templateExercises.map((input) =>
-    buildTemplateExercise(input, profile, goals, fatigueState, preferences, periodization)
+  const workoutExercises = templateExercises.map((input, index) =>
+    buildTemplateExercise(
+      input,
+      profile,
+      goals,
+      fatigueState,
+      mainLiftSlots.has(index),
+      preferences,
+      periodization
+    )
   );
 
   // Flexible mode: suggest substitutions for exercises with pain flags
@@ -104,7 +116,9 @@ export function generateWorkoutFromTemplate(
   }
 
   const mainLifts = workoutExercises.filter((e) => e.isMainLift);
-  const accessories = workoutExercises.filter((e) => !e.isMainLift);
+  const accessories = applyAccessorySupersetMetadata(
+    workoutExercises.filter((e) => !e.isMainLift)
+  );
   const allExercises = [...mainLifts, ...accessories];
   const estimatedMinutes = estimateWorkoutMinutes(allExercises);
 
@@ -143,11 +157,13 @@ function buildTemplateExercise(
   profile: UserProfile,
   goals: Goals,
   fatigueState: FatigueState,
+  isMainLift: boolean,
   preferences?: UserPreferences,
   periodization?: PeriodizationModifiers
 ): WorkoutExercise {
   const { exercise, orderIndex } = input;
-  const isMainLift = exercise.isMainLiftEligible ?? false;
+  const exerciseRepRange = resolveExerciseRepRange(exercise);
+  const supersetGroup = !isMainLift ? input.supersetGroup : undefined;
 
   const prescribedSets = prescribeSetsReps(
     isMainLift,
@@ -155,9 +171,12 @@ function buildTemplateExercise(
     goals,
     fatigueState,
     preferences,
-    periodization
+    periodization,
+    exerciseRepRange,
+    !isMainLift && !(exercise.isCompound ?? false)
   );
-  const topSetReps = prescribedSets[0]?.targetReps;
+  const topSetReps =
+    prescribedSets.length > 0 ? resolveSetTargetReps(prescribedSets[0]) : undefined;
   const restSeconds = getRestSeconds(exercise, isMainLift, topSetReps);
   const sets = prescribedSets.map((set) => ({
     ...set,
@@ -170,6 +189,97 @@ function buildTemplateExercise(
     orderIndex,
     isMainLift,
     notes: isMainLift ? "Primary movement" : undefined,
+    supersetGroup,
     sets,
   };
+}
+
+function resolveMainLiftSlots(
+  templateExercises: TemplateExerciseInput[],
+  goals: Goals,
+  slotCap = DEFAULT_MAIN_LIFT_SLOT_CAP
+): Set<number> {
+  if (slotCap <= 0 || templateExercises.length === 0) {
+    return new Set<number>();
+  }
+
+  const eligible = templateExercises
+    .map((input, index) => {
+      const exerciseRepRange = resolveExerciseRepRange(input.exercise);
+      const isMainLiftEligible = input.exercise.isMainLiftEligible ?? false;
+      const canBeMainLift =
+        isMainLiftEligible && !shouldDemoteMainLiftForRepRange(goals, exerciseRepRange);
+      if (!canBeMainLift) {
+        return undefined;
+      }
+      return { index, orderIndex: input.orderIndex };
+    })
+    .filter((entry): entry is { index: number; orderIndex: number } => Boolean(entry))
+    .sort((a, b) => {
+      if (a.orderIndex !== b.orderIndex) {
+        return a.orderIndex - b.orderIndex;
+      }
+      return a.index - b.index;
+    });
+
+  return new Set(eligible.slice(0, slotCap).map((entry) => entry.index));
+}
+
+function resolveExerciseRepRange(exercise: Exercise) {
+  return exercise.repRangeMin != null && exercise.repRangeMax != null
+    ? { min: exercise.repRangeMin, max: exercise.repRangeMax }
+    : undefined;
+}
+
+function shouldDemoteMainLiftForRepRange(
+  goals: Goals,
+  exerciseRepRange?: { min: number; max: number }
+): boolean {
+  if (!exerciseRepRange) {
+    return false;
+  }
+  const goalMainRange = REP_RANGES_BY_GOAL[goals.primary].main;
+  return !hasRepRangeOverlap(goalMainRange, exerciseRepRange);
+}
+
+function hasRepRangeOverlap(
+  goalRange: [number, number],
+  exerciseRange: { min: number; max: number }
+): boolean {
+  return exerciseRange.min <= goalRange[1] && exerciseRange.max >= goalRange[0];
+}
+
+function applyAccessorySupersetMetadata(accessories: WorkoutExercise[]): WorkoutExercise[] {
+  if (accessories.length === 0) {
+    return accessories;
+  }
+
+  const groups = new Map<number, WorkoutExercise[]>();
+  for (const exercise of accessories) {
+    if (!exercise.supersetGroup) continue;
+    const group = groups.get(exercise.supersetGroup) ?? [];
+    group.push(exercise);
+    groups.set(exercise.supersetGroup, group);
+  }
+
+  const validGroups = new Set<number>();
+  for (const [groupId, items] of groups.entries()) {
+    if (items.length === 2) {
+      validGroups.add(groupId);
+    }
+  }
+
+  if (validGroups.size === 0) {
+    return accessories;
+  }
+
+  return accessories.map((exercise) => {
+    if (!exercise.supersetGroup || !validGroups.has(exercise.supersetGroup)) {
+      return exercise;
+    }
+
+    const label = `Superset ${exercise.supersetGroup}`;
+    const notes = exercise.notes ? `${exercise.notes}. ${label}` : label;
+    return { ...exercise, notes };
+  });
 }

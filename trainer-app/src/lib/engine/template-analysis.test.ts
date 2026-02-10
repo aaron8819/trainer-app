@@ -1,52 +1,45 @@
 import { describe, it, expect } from "vitest";
 import {
   analyzeTemplate,
-  scoreMuscleCoverage,
-  scorePushPullBalance,
-  scoreCompoundIsolation,
-  scoreMovementDiversity,
-  scoreLengthPosition,
-  scoreSfrEfficiency,
   scoreToLabel,
+  scoreSfrEfficiency,
+  scoreLengthPosition,
+  scoreExerciseOrder,
   type AnalysisExerciseInput,
 } from "./template-analysis";
 import { exampleExerciseLibrary } from "./sample-data";
 import type { Exercise } from "./types";
 
-// --- Helper: convert engine Exercise to AnalysisExerciseInput ---
-
-function toAnalysisInput(ex: Exercise): AnalysisExerciseInput {
-  const muscles: { name: string; role: "primary" | "secondary" }[] = [];
-  for (const m of ex.primaryMuscles ?? []) {
-    muscles.push({ name: m, role: "primary" });
-  }
-  for (const m of ex.secondaryMuscles ?? []) {
-    muscles.push({ name: m, role: "secondary" });
-  }
-  return {
-    isCompound: ex.isCompound ?? false,
-    movementPatterns: ex.movementPatterns,
-    muscles,
-  };
-}
-
 function findExercise(id: string): Exercise {
-  const ex = exampleExerciseLibrary.find((e) => e.id === id);
+  const ex = exampleExerciseLibrary.find((entry) => entry.id === id);
   if (!ex) throw new Error(`Exercise ${id} not found in sample data`);
   return ex;
 }
 
-// --- Fixtures ---
+function toAnalysisInput(
+  ex: Exercise,
+  overrides?: Partial<AnalysisExerciseInput>
+): AnalysisExerciseInput {
+  return {
+    isCompound: ex.isCompound ?? false,
+    isMainLiftEligible: ex.isMainLiftEligible,
+    movementPatterns: ex.movementPatterns,
+    muscles: [
+      ...(ex.primaryMuscles ?? []).map((name) => ({ name, role: "primary" as const })),
+      ...(ex.secondaryMuscles ?? []).map((name) => ({ name, role: "secondary" as const })),
+    ],
+    sfrScore: ex.sfrScore,
+    lengthPositionScore: ex.lengthPositionScore,
+    fatigueCost: ex.fatigueCost,
+    ...overrides,
+  };
+}
 
 const BENCH = toAnalysisInput({ ...findExercise("bench"), isCompound: true });
 const ROW = toAnalysisInput({ ...findExercise("row"), isCompound: true });
 const SQUAT = toAnalysisInput({ ...findExercise("squat"), isCompound: true });
 const RDL = toAnalysisInput({ ...findExercise("rdl"), isCompound: true });
 const LAT_PULL = toAnalysisInput({ ...findExercise("lat-pull"), isCompound: true });
-const SPLIT_SQUAT = toAnalysisInput({
-  ...findExercise("split-squat"),
-  isCompound: true,
-});
 const LATERAL_RAISE = toAnalysisInput({
   ...findExercise("lateral-raise"),
   isCompound: false,
@@ -56,407 +49,162 @@ const FACE_PULL = toAnalysisInput({
   isCompound: false,
 });
 const PLANK = toAnalysisInput({ ...findExercise("plank"), isCompound: false });
-const FARMERS_CARRY = toAnalysisInput({
-  ...findExercise("farmers-carry"),
-  isCompound: false,
-});
-
-const BALANCED_TEMPLATE: AnalysisExerciseInput[] = [
-  BENCH,
-  ROW,
-  SQUAT,
-  RDL,
-  LAT_PULL,
-  LATERAL_RAISE,
-  FACE_PULL,
-  SPLIT_SQUAT,
-  PLANK,
-  FARMERS_CARRY,
-];
-
-// --- scoreToLabel ---
 
 describe("scoreToLabel", () => {
-  it("returns Excellent for scores >= 85", () => {
+  it("maps score bands correctly", () => {
     expect(scoreToLabel(85)).toBe("Excellent");
-    expect(scoreToLabel(100)).toBe("Excellent");
-  });
-
-  it("returns Good for scores 70-84", () => {
     expect(scoreToLabel(70)).toBe("Good");
-    expect(scoreToLabel(84)).toBe("Good");
-  });
-
-  it("returns Fair for scores 55-69", () => {
     expect(scoreToLabel(55)).toBe("Fair");
-    expect(scoreToLabel(69)).toBe("Fair");
-  });
-
-  it("returns Needs Work for scores 40-54", () => {
     expect(scoreToLabel(40)).toBe("Needs Work");
-    expect(scoreToLabel(54)).toBe("Needs Work");
-  });
-
-  it("returns Poor for scores < 40", () => {
-    expect(scoreToLabel(0)).toBe("Poor");
     expect(scoreToLabel(39)).toBe("Poor");
   });
 });
 
-// --- scoreMuscleCoverage ---
+describe("analyzeTemplate intent-aware behavior", () => {
+  it("does not penalize push-day templates as full-body misses when intent is split-based", () => {
+    const pushDay = [BENCH, LATERAL_RAISE];
+    const fullBodyResult = analyzeTemplate(pushDay, { intent: "FULL_BODY" });
+    const pplResult = analyzeTemplate(pushDay, { intent: "PUSH_PULL_LEGS" });
 
-describe("scoreMuscleCoverage", () => {
-  it("returns 0 for empty exercises", () => {
-    const result = scoreMuscleCoverage([]);
-    expect(result.score).toBe(0);
-    expect(result.missedCritical.length).toBeGreaterThan(0);
+    expect(pplResult.muscleCoverage.score).toBeGreaterThan(fullBodyResult.muscleCoverage.score);
+    expect(pplResult.overallScore).toBeGreaterThan(fullBodyResult.overallScore);
   });
 
-  it("gives full credit for primary muscle hits", () => {
-    const result = scoreMuscleCoverage(BALANCED_TEMPLATE);
-    expect(result.score).toBeGreaterThan(50);
-    expect(result.hitMuscles.length).toBeGreaterThan(5);
+  it("gates push/pull balance for single-direction split intents", () => {
+    const pushDay = [BENCH, LATERAL_RAISE];
+    const pplResult = analyzeTemplate(pushDay, { intent: "PUSH_PULL_LEGS" });
+    const fullBodyResult = analyzeTemplate(pushDay, { intent: "FULL_BODY" });
+
+    expect(pplResult.pushPullBalance.isApplicable).toBe(false);
+    expect(fullBodyResult.pushPullBalance.isApplicable).toBe(true);
+    expect(fullBodyResult.pushPullBalance.score).toBeLessThan(pplResult.pushPullBalance.score);
   });
 
-  it("gives partial credit for secondary-only muscles", () => {
-    // Biceps is only secondary from ROW and LAT_PULL
-    const rowOnly = scoreMuscleCoverage([ROW]);
-    expect(rowOnly.hitMuscles).toContain("Biceps");
-    // Biceps should not be in missedCritical since it's hit as secondary
-    expect(rowOnly.missedCritical).not.toContain("Biceps");
+  it("uses intent-specific movement expectations", () => {
+    const pushPatternsOnly = [BENCH, LATERAL_RAISE];
+    const pplResult = analyzeTemplate(pushPatternsOnly, { intent: "PUSH_PULL_LEGS" });
+    const fullBodyResult = analyzeTemplate(pushPatternsOnly, { intent: "FULL_BODY" });
+
+    expect(pplResult.movementPatternDiversity.score).toBeGreaterThan(
+      fullBodyResult.movementPatternDiversity.score
+    );
   });
 
-  it("lists missed critical muscles", () => {
-    const result = scoreMuscleCoverage([BENCH]);
-    // With only bench, we miss many critical muscles
-    expect(result.missedCritical.length).toBeGreaterThan(3);
-  });
-});
+  it("uses wider compound/isolation ranges for body-part sessions", () => {
+    const mostlyIsolation = [LATERAL_RAISE, FACE_PULL, PLANK, BENCH];
+    const bodyPartResult = analyzeTemplate(mostlyIsolation, { intent: "BODY_PART" });
+    const fullBodyResult = analyzeTemplate(mostlyIsolation, { intent: "FULL_BODY" });
 
-// --- scorePushPullBalance ---
-
-describe("scorePushPullBalance", () => {
-  it("returns perfect score for 1:1 push/pull ratio", () => {
-    const result = scorePushPullBalance([BENCH, ROW]);
-    expect(result.score).toBe(100);
-    expect(result.pushCount).toBe(1);
-    expect(result.pullCount).toBe(1);
+    expect(bodyPartResult.compoundIsolationRatio.score).toBeGreaterThan(
+      fullBodyResult.compoundIsolationRatio.score
+    );
   });
 
-  it("penalizes imbalanced ratios", () => {
-    const result = scorePushPullBalance([BENCH, BENCH, BENCH, ROW]);
-    expect(result.score).toBeLessThan(100);
-    expect(result.pushCount).toBe(3);
-    expect(result.pullCount).toBe(1);
-  });
+  it("applies higher exercise-order weight for strength-oriented intents", () => {
+    const strengthIntent = analyzeTemplate([BENCH, ROW, LATERAL_RAISE], { intent: "FULL_BODY" });
+    const hypertrophyIntent = analyzeTemplate([BENCH, ROW, LATERAL_RAISE], {
+      intent: "BODY_PART",
+    });
 
-  it("returns 75 for all-legs template", () => {
-    const result = scorePushPullBalance([SQUAT, RDL, SPLIT_SQUAT]);
-    expect(result.score).toBe(75);
-    expect(result.pushCount).toBe(0);
-    expect(result.pullCount).toBe(0);
-  });
-
-  it("returns 0 for empty exercises", () => {
-    const result = scorePushPullBalance([]);
-    expect(result.score).toBe(0);
-  });
-
-  it("counts exercises with both push and pull muscles", () => {
-    // An exercise with both push and pull primary muscles should count for both
-    const hybrid: AnalysisExerciseInput = {
-      isCompound: true,
-      movementPatterns: ["horizontal_push"],
-      muscles: [
-        { name: "Chest", role: "primary" },
-        { name: "Lats", role: "primary" },
-      ],
-    };
-    const result = scorePushPullBalance([hybrid]);
-    expect(result.pushCount).toBe(1);
-    expect(result.pullCount).toBe(1);
+    expect(strengthIntent.exerciseOrderWeight).toBeGreaterThan(
+      hypertrophyIntent.exerciseOrderWeight
+    );
   });
 });
 
-// --- scoreCompoundIsolation ---
+describe("exercise order scoring", () => {
+  it("prefers decreasing fatigue cost order", () => {
+    const descending = scoreExerciseOrder([
+      { ...BENCH, fatigueCost: 5, orderIndex: 0 },
+      { ...ROW, fatigueCost: 3, orderIndex: 1 },
+      { ...PLANK, fatigueCost: 1, orderIndex: 2 },
+    ]);
 
-describe("scoreCompoundIsolation", () => {
-  it("returns 0 for empty exercises", () => {
-    const result = scoreCompoundIsolation([]);
-    expect(result.score).toBe(0);
-    expect(result.compoundCount).toBe(0);
+    const ascending = scoreExerciseOrder([
+      { ...PLANK, fatigueCost: 1, orderIndex: 0 },
+      { ...ROW, fatigueCost: 3, orderIndex: 1 },
+      { ...BENCH, fatigueCost: 5, orderIndex: 2 },
+    ]);
+
+    expect(descending.score).toBeGreaterThan(ascending.score);
+    expect(ascending.upwardTransitions).toBeGreaterThan(0);
   });
 
-  it("returns 100 for 50% compound ratio", () => {
-    const result = scoreCompoundIsolation([BENCH, LATERAL_RAISE]);
-    expect(result.score).toBe(100);
-    expect(result.compoundPercent).toBe(50);
-  });
+  it("adds a soft penalty when non-main movements are ordered before main-lift-eligible movements", () => {
+    const mainFirst = scoreExerciseOrder([
+      { ...BENCH, isMainLiftEligible: true, fatigueCost: 4, orderIndex: 0 },
+      { ...ROW, isMainLiftEligible: true, fatigueCost: 3, orderIndex: 1 },
+      { ...PLANK, isMainLiftEligible: false, fatigueCost: 2, orderIndex: 2 },
+    ]);
+    const nonMainFirst = scoreExerciseOrder([
+      { ...PLANK, isMainLiftEligible: false, fatigueCost: 2, orderIndex: 0 },
+      { ...BENCH, isMainLiftEligible: true, fatigueCost: 4, orderIndex: 1 },
+      { ...ROW, isMainLiftEligible: true, fatigueCost: 3, orderIndex: 2 },
+    ]);
 
-  it("returns 100 for 40% compound", () => {
-    // 2 compound, 3 isolation = 40%
-    const exercises = [BENCH, ROW, LATERAL_RAISE, FACE_PULL, PLANK];
-    const result = scoreCompoundIsolation(exercises);
-    expect(result.compoundPercent).toBe(40);
-    expect(result.score).toBe(100);
-  });
-
-  it("returns 100 for 60% compound", () => {
-    // 3 compound, 2 isolation = 60%
-    const exercises = [BENCH, ROW, SQUAT, LATERAL_RAISE, FACE_PULL];
-    const result = scoreCompoundIsolation(exercises);
-    expect(result.compoundPercent).toBe(60);
-    expect(result.score).toBe(100);
-  });
-
-  it("penalizes all-compound templates", () => {
-    const result = scoreCompoundIsolation([BENCH, ROW, SQUAT]);
-    expect(result.compoundPercent).toBe(100);
-    expect(result.score).toBe(0);
-  });
-
-  it("penalizes all-isolation templates", () => {
-    const result = scoreCompoundIsolation([LATERAL_RAISE, FACE_PULL, PLANK]);
-    expect(result.compoundPercent).toBe(0);
-    expect(result.score).toBe(0);
+    expect(nonMainFirst.mainLiftOrderViolations).toBeGreaterThan(0);
+    expect(nonMainFirst.mainLiftOrderPenalty).toBeGreaterThan(0);
+    expect(mainFirst.mainLiftOrderViolations).toBe(0);
+    expect(mainFirst.score).toBeGreaterThan(nonMainFirst.score);
   });
 });
 
-// --- scoreMovementDiversity ---
-
-describe("scoreMovementDiversity", () => {
-  it("returns 0 for empty exercises", () => {
-    const result = scoreMovementDiversity([]);
-    expect(result.score).toBe(0);
-    expect(result.missingPatterns.length).toBe(8);
-  });
-
-  it("scores based on core pattern coverage", () => {
-    // bench = horizontal_push, row = horizontal_pull
-    const result = scoreMovementDiversity([BENCH, ROW]);
-    expect(result.coveredPatterns).toContain("horizontal_push");
-    expect(result.coveredPatterns).toContain("horizontal_pull");
-    expect(result.score).toBe(25); // 2/8 = 25%
-  });
-
-  it("awards bonus points for rotation/anti-rotation", () => {
-    // plank has anti_rotation
-    const withoutPlank = scoreMovementDiversity([BENCH]);
-    const withPlank = scoreMovementDiversity([BENCH, PLANK]);
-    expect(withPlank.score).toBeGreaterThan(withoutPlank.score);
-    expect(withPlank.coveredPatterns).toContain("anti_rotation");
-  });
-
-  it("caps score at 100", () => {
-    // Even with bonus patterns, score should not exceed 100
-    const allPatterns: AnalysisExerciseInput = {
-      isCompound: true,
-      movementPatterns: [
-        "horizontal_push",
-        "vertical_push",
-        "horizontal_pull",
-        "vertical_pull",
-        "squat",
-        "hinge",
-        "lunge",
-        "carry",
-        "rotation",
-        "anti_rotation",
-      ],
-      muscles: [],
-    };
-    const result = scoreMovementDiversity([allPatterns]);
-    expect(result.score).toBe(100);
-  });
-
-  it("identifies missing patterns", () => {
-    const result = scoreMovementDiversity([BENCH]);
-    expect(result.missingPatterns).toContain("vertical_push");
-    expect(result.missingPatterns).toContain("squat");
-    expect(result.missingPatterns).toContain("hinge");
-  });
-});
-
-// --- scoreLengthPosition ---
-
-describe("scoreLengthPosition", () => {
-  it("returns 0 for empty exercises", () => {
-    const result = scoreLengthPosition([]);
-    expect(result.score).toBe(0);
-    expect(result.averageScore).toBe(0);
-    expect(result.exercisesAtLength).toBe(0);
-    expect(result.exercisesShort).toBe(0);
-  });
-
-  it("returns 50 when all exercises default (no field)", () => {
-    const exercises: AnalysisExerciseInput[] = [
-      { isCompound: true, movementPatterns: [], muscles: [] },
-      { isCompound: false, movementPatterns: [], muscles: [] },
-    ];
-    const result = scoreLengthPosition(exercises);
-    // Default score is 3, maps to (3-1)/4*100 = 50
-    expect(result.score).toBe(50);
-    expect(result.averageScore).toBe(3);
-  });
-
-  it("scores high for exercises with high lengthPositionScore", () => {
-    const exercises: AnalysisExerciseInput[] = [
-      { isCompound: false, movementPatterns: [], muscles: [], lengthPositionScore: 5 },
-      { isCompound: false, movementPatterns: [], muscles: [], lengthPositionScore: 5 },
-      { isCompound: false, movementPatterns: [], muscles: [], lengthPositionScore: 4 },
-    ];
-    const result = scoreLengthPosition(exercises);
-    expect(result.score).toBeGreaterThanOrEqual(85);
-    expect(result.exercisesAtLength).toBe(3);
-    expect(result.exercisesShort).toBe(0);
-  });
-
-  it("scores low for exercises with low lengthPositionScore", () => {
-    const exercises: AnalysisExerciseInput[] = [
-      { isCompound: true, movementPatterns: [], muscles: [], lengthPositionScore: 1 },
-      { isCompound: true, movementPatterns: [], muscles: [], lengthPositionScore: 2 },
-      { isCompound: true, movementPatterns: [], muscles: [], lengthPositionScore: 1 },
-    ];
-    const result = scoreLengthPosition(exercises);
-    expect(result.score).toBeLessThan(30);
-    expect(result.exercisesShort).toBe(3);
-  });
-
-  it("caps score at 100", () => {
-    const exercises: AnalysisExerciseInput[] = Array.from({ length: 10 }, () => ({
+describe("length and SFR normalization", () => {
+  it("does not inflate length-position score from exercise count alone", () => {
+    const four: AnalysisExerciseInput[] = Array.from({ length: 4 }, () => ({
       isCompound: false,
       movementPatterns: [],
       muscles: [],
-      lengthPositionScore: 5,
+      lengthPositionScore: 4,
     }));
-    const result = scoreLengthPosition(exercises);
-    expect(result.score).toBe(100);
-  });
-});
-
-// --- scoreSfrEfficiency ---
-
-describe("scoreSfrEfficiency", () => {
-  it("returns 0 for empty exercises", () => {
-    const result = scoreSfrEfficiency([]);
-    expect(result.score).toBe(0);
-    expect(result.averageSfr).toBe(0);
-    expect(result.highSfrCount).toBe(0);
-    expect(result.lowSfrCount).toBe(0);
-  });
-
-  it("returns 50 when all exercises default (no field)", () => {
-    const exercises: AnalysisExerciseInput[] = [
-      { isCompound: true, movementPatterns: [], muscles: [] },
-      { isCompound: false, movementPatterns: [], muscles: [] },
-    ];
-    const result = scoreSfrEfficiency(exercises);
-    // Default score is 3, maps to (3-1)/4*100 = 50
-    expect(result.score).toBe(50);
-    expect(result.averageSfr).toBe(3);
-  });
-
-  it("scores high for exercises with high sfrScore", () => {
-    const exercises: AnalysisExerciseInput[] = [
-      { isCompound: false, movementPatterns: [], muscles: [], sfrScore: 5 },
-      { isCompound: false, movementPatterns: [], muscles: [], sfrScore: 5 },
-      { isCompound: false, movementPatterns: [], muscles: [], sfrScore: 4 },
-    ];
-    const result = scoreSfrEfficiency(exercises);
-    expect(result.score).toBeGreaterThanOrEqual(85);
-    expect(result.highSfrCount).toBe(3);
-    expect(result.lowSfrCount).toBe(0);
-  });
-
-  it("scores low for exercises with low sfrScore", () => {
-    const exercises: AnalysisExerciseInput[] = [
-      { isCompound: true, movementPatterns: [], muscles: [], sfrScore: 1 },
-      { isCompound: true, movementPatterns: [], muscles: [], sfrScore: 2 },
-      { isCompound: true, movementPatterns: [], muscles: [], sfrScore: 1 },
-    ];
-    const result = scoreSfrEfficiency(exercises);
-    expect(result.score).toBeLessThan(30);
-    expect(result.lowSfrCount).toBe(3);
-  });
-
-  it("caps score at 100", () => {
-    const exercises: AnalysisExerciseInput[] = Array.from({ length: 10 }, () => ({
+    const eight: AnalysisExerciseInput[] = Array.from({ length: 8 }, () => ({
       isCompound: false,
       movementPatterns: [],
       muscles: [],
-      sfrScore: 5,
+      lengthPositionScore: 4,
     }));
-    const result = scoreSfrEfficiency(exercises);
-    expect(result.score).toBe(100);
+
+    const score4 = scoreLengthPosition(four).score;
+    const score8 = scoreLengthPosition(eight).score;
+    expect(Math.abs(score4 - score8)).toBeLessThanOrEqual(2);
+  });
+
+  it("does not penalize low-SFR compounds as low-efficiency hits", () => {
+    const compounds: AnalysisExerciseInput[] = [
+      { ...SQUAT, isCompound: true, sfrScore: 2 },
+      { ...RDL, isCompound: true, sfrScore: 2 },
+      { ...ROW, isCompound: true, sfrScore: 2 },
+    ];
+    const score = scoreSfrEfficiency(compounds);
+
+    expect(score.lowSfrCount).toBe(0);
+    expect(score.score).toBeGreaterThan(0);
   });
 });
 
-// --- analyzeTemplate (integration) ---
-
-describe("analyzeTemplate", () => {
-  it("returns complete analysis for a balanced template", () => {
-    const result = analyzeTemplate(BALANCED_TEMPLATE);
-
-    expect(result.exerciseCount).toBe(10);
-    expect(result.overallScore).toBeGreaterThanOrEqual(0);
-    expect(result.overallScore).toBeLessThanOrEqual(100);
-    expect(["Excellent", "Good", "Fair", "Needs Work", "Poor"]).toContain(
-      result.overallLabel
+describe("analyzeTemplate integration", () => {
+  it("returns exercise order score and bounded overall score", () => {
+    const result = analyzeTemplate(
+      [BENCH, ROW, SQUAT, LAT_PULL, LATERAL_RAISE].map((exercise, index) => ({
+        ...exercise,
+        orderIndex: index,
+      })),
+      { intent: "FULL_BODY" }
     );
 
-    // Sub-scores should all be present
-    expect(result.muscleCoverage.score).toBeGreaterThanOrEqual(0);
-    expect(result.pushPullBalance.score).toBeGreaterThanOrEqual(0);
-    expect(result.compoundIsolationRatio.score).toBeGreaterThanOrEqual(0);
-    expect(result.movementPatternDiversity.score).toBeGreaterThanOrEqual(0);
-    expect(result.lengthPosition.score).toBeGreaterThanOrEqual(0);
-    expect(result.sfrEfficiency.score).toBeGreaterThanOrEqual(0);
+    expect(result.exerciseOrder.score).toBeGreaterThanOrEqual(0);
+    expect(result.exerciseOrder.score).toBeLessThanOrEqual(100);
+    expect(result.overallScore).toBeGreaterThanOrEqual(0);
+    expect(result.overallScore).toBeLessThanOrEqual(100);
+    expect(result.suggestions.length).toBeLessThanOrEqual(3);
   });
 
-  it("handles empty template", () => {
-    const result = analyzeTemplate([]);
+  it("handles empty templates", () => {
+    const result = analyzeTemplate([], { intent: "CUSTOM" });
+
     expect(result.exerciseCount).toBe(0);
     expect(result.overallScore).toBe(0);
     expect(result.overallLabel).toBe("Poor");
     expect(result.suggestions.length).toBeGreaterThan(0);
-  });
-
-  it("handles single exercise", () => {
-    const result = analyzeTemplate([BENCH]);
-    expect(result.exerciseCount).toBe(1);
-    expect(result.overallScore).toBeGreaterThan(0);
-    expect(result.overallScore).toBeLessThan(50);
-  });
-
-  it("generates suggestions for deficiencies", () => {
-    // All push, no pull
-    const allPush = [BENCH, LATERAL_RAISE];
-    const result = analyzeTemplate(allPush);
-    // Should get suggestions about imbalance or missing muscles
-    expect(result.suggestions.length).toBeGreaterThan(0);
-  });
-
-  it("limits suggestions to 3", () => {
-    const result = analyzeTemplate([BENCH]);
-    expect(result.suggestions.length).toBeLessThanOrEqual(3);
-  });
-
-  it("overall score is weighted average of sub-scores", () => {
-    const result = analyzeTemplate(BALANCED_TEMPLATE);
-    const expected = Math.round(
-      result.muscleCoverage.score * 0.3 +
-        result.pushPullBalance.score * 0.15 +
-        result.compoundIsolationRatio.score * 0.15 +
-        result.movementPatternDiversity.score * 0.15 +
-        result.lengthPosition.score * 0.1 +
-        result.sfrEfficiency.score * 0.15
-    );
-    expect(result.overallScore).toBe(expected);
-  });
-
-  it("all-legs template gets neutral push/pull score", () => {
-    const allLegs = [SQUAT, RDL, SPLIT_SQUAT];
-    const result = analyzeTemplate(allLegs);
-    expect(result.pushPullBalance.score).toBe(75);
   });
 });

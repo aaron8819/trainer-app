@@ -123,6 +123,7 @@ export async function loadExerciseLibrary(userId?: string): Promise<ExerciseList
       id: exercise.id,
       name: exercise.name,
       isCompound: exercise.isCompound ?? false,
+      isMainLiftEligible: exercise.isMainLiftEligible ?? false,
       movementPatterns: (exercise.movementPatterns ?? []).map(
         (p) => p.toLowerCase()
       ) as ExerciseListItem["movementPatterns"],

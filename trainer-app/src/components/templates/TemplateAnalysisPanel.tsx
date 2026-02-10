@@ -1,16 +1,21 @@
 "use client";
 
 import { useMemo } from "react";
-import { analyzeTemplate, type AnalysisExerciseInput } from "@/lib/engine/template-analysis";
+import {
+  analyzeTemplate,
+  type AnalysisExerciseInput,
+  type TemplateIntent,
+} from "@/lib/engine/template-analysis";
 import { TemplateScoreBadge } from "./TemplateScoreBadge";
 import type { ExerciseListItem } from "@/lib/exercise-library/types";
 
 type TemplateAnalysisPanelProps = {
   selectedExerciseIds: string[];
   exerciseLibrary: ExerciseListItem[];
+  intent?: TemplateIntent;
 };
 
-function toAnalysisInput(ex: ExerciseListItem): AnalysisExerciseInput {
+function toAnalysisInput(ex: ExerciseListItem, orderIndex: number): AnalysisExerciseInput {
   const muscles: { name: string; role: "primary" | "secondary" }[] = [];
   for (const m of ex.primaryMuscles) {
     muscles.push({ name: m, role: "primary" });
@@ -20,10 +25,13 @@ function toAnalysisInput(ex: ExerciseListItem): AnalysisExerciseInput {
   }
   return {
     isCompound: ex.isCompound,
+    isMainLiftEligible: ex.isMainLiftEligible,
     movementPatterns: ex.movementPatterns,
     muscles,
     sfrScore: ex.sfrScore,
     lengthPositionScore: ex.lengthPositionScore,
+    fatigueCost: ex.fatigueCost,
+    orderIndex,
   };
 }
 
@@ -54,6 +62,7 @@ function ScoreBar({ label, score }: { label: string; score: number }) {
 export function TemplateAnalysisPanel({
   selectedExerciseIds,
   exerciseLibrary,
+  intent,
 }: TemplateAnalysisPanelProps) {
   const exerciseMap = useMemo(
     () => new Map(exerciseLibrary.map((e) => [e.id, e])),
@@ -62,14 +71,15 @@ export function TemplateAnalysisPanel({
 
   const analysis = useMemo(() => {
     const inputs: AnalysisExerciseInput[] = [];
-    for (const id of selectedExerciseIds) {
+    for (let i = 0; i < selectedExerciseIds.length; i += 1) {
+      const id = selectedExerciseIds[i];
       const ex = exerciseMap.get(id);
       if (ex) {
-        inputs.push(toAnalysisInput(ex));
+        inputs.push(toAnalysisInput(ex, i));
       }
     }
-    return analyzeTemplate(inputs);
-  }, [selectedExerciseIds, exerciseMap]);
+    return analyzeTemplate(inputs, { intent });
+  }, [selectedExerciseIds, exerciseMap, intent]);
 
   if (selectedExerciseIds.length === 0) {
     return null;
@@ -101,7 +111,18 @@ export function TemplateAnalysisPanel({
         />
         <ScoreBar label="Stretch Position" score={analysis.lengthPosition.score} />
         <ScoreBar label="Fatigue Efficiency" score={analysis.sfrEfficiency.score} />
+        <ScoreBar label="Exercise Order" score={analysis.exerciseOrder.score} />
       </div>
+
+      <p className="mt-2 text-[11px] text-slate-500">
+        Exercise Order weight for this intent: {Math.round(analysis.exerciseOrderWeight * 100)}%
+      </p>
+      {analysis.exerciseOrder.mainLiftOrderViolations > 0 && (
+        <p className="mt-1 text-[11px] text-amber-700">
+          Main-lift priority check: {analysis.exerciseOrder.mainLiftOrderViolations} ordering
+          violation{analysis.exerciseOrder.mainLiftOrderViolations === 1 ? "" : "s"} found.
+        </p>
+      )}
 
       {analysis.suggestions.length > 0 && (
         <div className="mt-3 space-y-1">

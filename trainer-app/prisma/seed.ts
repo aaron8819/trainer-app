@@ -6,6 +6,7 @@ import {
   JointStress,
   MovementPatternV2,
   MuscleRole,
+  Prisma,
   SplitTag,
   StimulusBias,
   PrismaClient,
@@ -700,7 +701,10 @@ async function seedExercisesFromJson() {
       fatigueCost: ex.fatigueCost,
       stimulusBias,
       // Preserve explicit nulls from JSON so stale DB values are cleared.
-      contraindications: ex.contraindications ?? null,
+      contraindications:
+        ex.contraindications === null
+          ? Prisma.JsonNull
+          : ex.contraindications,
       timePerSetSec,
       sfrScore: ex.sfrScore,
       lengthPositionScore: ex.lengthPositionScore,

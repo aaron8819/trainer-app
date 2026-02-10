@@ -29,7 +29,7 @@ export async function computeWeeklyMuscleVolume(
               exerciseMuscles: { include: { muscle: true } },
             },
           },
-          sets: { include: { logs: true } },
+          sets: { include: { logs: { orderBy: { completedAt: "desc" }, take: 1 } } },
         },
       },
     },
@@ -93,3 +93,4 @@ export function getVolumeLandmarks(): Record<
   }
   return result;
 }
+

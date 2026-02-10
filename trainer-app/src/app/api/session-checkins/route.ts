@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
-import { resolveUser } from "@/lib/api/workout-context";
+import { resolveOwner } from "@/lib/api/workout-context";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,7 +14,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid readiness" }, { status: 400 });
     }
 
-    const user = await resolveUser(body.userId);
+    const user = await resolveOwner();
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }

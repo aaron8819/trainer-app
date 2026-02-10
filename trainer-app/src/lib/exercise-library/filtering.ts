@@ -77,6 +77,9 @@ export function sortExercises(
       case "lengthPositionScore":
         cmp = a.lengthPositionScore - b.lengthPositionScore;
         break;
+      case "fatigueCost":
+        cmp = a.fatigueCost - b.fatigueCost;
+        break;
       case "muscleGroup":
         cmp = (a.primaryMuscles[0] ?? "").localeCompare(b.primaryMuscles[0] ?? "");
         break;

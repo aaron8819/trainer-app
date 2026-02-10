@@ -394,7 +394,7 @@ model WorkoutSet {
 
 model SetLog {
   id            String   @id @default(uuid())
-  workoutSetId  String
+  workoutSetId  String   @unique
   workoutSet    WorkoutSet @relation(fields: [workoutSetId], references: [id])
   actualReps    Int?
   actualRpe     Float?

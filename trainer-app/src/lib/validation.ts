@@ -20,7 +20,6 @@ const optionalString = (schema: z.ZodString) =>
   }, schema.optional());
 
 export const generateWorkoutSchema = z.object({
-  userId: z.string().optional(),
   date: z.string().optional(),
   selectionMode: z.enum(["AUTO", "MANUAL", "BONUS"]).optional(),
   forcedSplit: z.enum(["PUSH", "PULL", "LEGS", "UPPER", "LOWER", "FULL_BODY"]).optional(),
@@ -28,13 +27,11 @@ export const generateWorkoutSchema = z.object({
 });
 
 export const generateFromTemplateSchema = z.object({
-  userId: z.string().optional(),
   templateId: z.string(),
 });
 
 export const saveWorkoutSchema = z.object({
   workoutId: z.string(),
-  userId: z.string().optional(),
   templateId: z.string().optional(),
   scheduledDate: z.string().optional(),
   status: z.enum(["PLANNED", "IN_PROGRESS", "COMPLETED", "SKIPPED"]).optional(),
@@ -80,7 +77,6 @@ export const analyticsSummarySchema = z.object({
 });
 
 export const profileSetupSchema = z.object({
-  userId: z.string().optional(),
   email: optionalString(z.string().email()),
   age: optionalNumber(z.number().int().min(13).max(100)),
   sex: optionalString(z.string().max(40)),
@@ -105,15 +101,12 @@ export const deleteWorkoutSchema = z.object({
 });
 
 export const toggleFavoriteSchema = z.object({
-  userId: z.string().optional(),
 });
 
 export const toggleAvoidSchema = z.object({
-  userId: z.string().optional(),
 });
 
 export const upsertBaselineSchema = z.object({
-  userId: z.string().optional(),
   exerciseId: z.string(),
   context: z.string().default("default"),
   workingWeightMin: z.number().optional(),
@@ -131,7 +124,6 @@ const templateExerciseSchema = z.object({
 });
 
 export const createTemplateSchema = z.object({
-  userId: z.string().optional(),
   name: z.string().min(1).max(100),
   targetMuscles: z.array(z.string()).default([]),
   isStrict: z.boolean().default(false),
@@ -139,7 +131,6 @@ export const createTemplateSchema = z.object({
 });
 
 export const updateTemplateSchema = z.object({
-  userId: z.string().optional(),
   name: z.string().min(1).max(100).optional(),
   targetMuscles: z.array(z.string()).optional(),
   isStrict: z.boolean().optional(),
@@ -151,7 +142,6 @@ export const addExerciseToTemplateSchema = z.object({
 });
 
 export const preferencesSchema = z.object({
-  userId: z.string().optional(),
   favoriteExercises: z.array(z.string()).optional(),
   avoidExercises: z.array(z.string()).optional(),
   rpeTargets: z

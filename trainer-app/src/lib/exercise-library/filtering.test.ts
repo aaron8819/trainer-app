@@ -13,6 +13,7 @@ function makeExercise(overrides: Partial<ExerciseListItem> = {}): ExerciseListIt
     equipment: ["barbell", "bench"],
     primaryMuscles: ["Chest"],
     secondaryMuscles: ["Triceps", "Front Delts"],
+    fatigueCost: 3,
     sfrScore: 3,
     lengthPositionScore: 3,
     isFavorite: false,

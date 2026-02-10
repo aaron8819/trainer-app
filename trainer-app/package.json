@@ -14,7 +14,10 @@
         "prisma:studio": "prisma studio",
         "db:seed": "tsx prisma/seed.ts",
         "postinstall": "prisma generate",
-        "export:ppl-options": "tsx scripts/export-ppl-options.ts"
+        "export:ppl-options": "tsx scripts/export-ppl-options.ts",
+        "verify:exercise-library": "tsx scripts/verify-exercise-library.ts",
+        "repair:exercise-library": "tsx scripts/repair-exercise-library.ts",
+        "repair:exercise-library:apply": "tsx scripts/repair-exercise-library.ts --apply"
     },
     "dependencies": {
         "@prisma/adapter-pg": "^7.3.0",

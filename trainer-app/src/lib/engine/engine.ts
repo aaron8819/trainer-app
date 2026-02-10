@@ -24,7 +24,7 @@ import {
   resolveTargetPatterns,
 } from "./split-queue";
 import { selectExercises } from "./filtering";
-import { prescribeSetsReps, getRestSeconds, REST_SECONDS } from "./prescription";
+import { prescribeSetsReps, getRestSeconds, REST_SECONDS, type ExerciseRepRange } from "./prescription";
 import { buildVolumeContext, deriveFatigueState, enforceVolumeCaps } from "./volume";
 import { estimateWorkoutMinutes, trimAccessoriesByPriority } from "./timeboxing";
 import { buildMuscleRecoveryMap, generateSraWarnings } from "./sra";
@@ -178,13 +178,18 @@ function buildWorkoutExercise(
   preferences?: UserPreferences,
   periodization?: PeriodizationModifiers
 ): WorkoutExercise {
+  const exerciseRepRange: ExerciseRepRange | undefined =
+    exercise.repRangeMin != null && exercise.repRangeMax != null
+      ? { min: exercise.repRangeMin, max: exercise.repRangeMax }
+      : undefined;
   const prescribedSets = prescribeSetsReps(
     isMainLift,
     profile.trainingAge,
     goals,
     fatigueState,
     preferences,
-    periodization
+    periodization,
+    exerciseRepRange
   );
   const topSetReps = prescribedSets[0]?.targetReps;
   const restSeconds = getRestSeconds(exercise, isMainLift, topSetReps);

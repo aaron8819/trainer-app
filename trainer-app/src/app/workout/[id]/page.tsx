@@ -1,5 +1,13 @@
 ﻿import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
+import {
+  loadWorkoutContext,
+  mapConstraints,
+  mapExercises,
+  mapHistory,
+  resolveOwner,
+} from "@/lib/api/workout-context";
+import { getSplitPreview } from "@/lib/api/split-preview";
 import { SPLIT_PATTERNS } from "@/lib/engine";
 import { PrimaryGoal, SplitDay, SplitType, TrainingAge, WorkoutSelectionMode } from "@prisma/client";
 import type { Prisma } from "@prisma/client";
@@ -84,26 +92,6 @@ const resolveForcedPatterns = (forcedSplit?: SplitDay | null) => {
   return null;
 };
 
-const patternLabel = (patterns: string[]) => {
-  const normalized = patterns.join(",");
-  if (normalized === "push") {
-    return "Push";
-  }
-  if (normalized === "pull") {
-    return "Pull";
-  }
-  if (normalized === "squat,hinge") {
-    return "Legs";
-  }
-  if (normalized === "push,pull") {
-    return "Upper";
-  }
-  if (normalized.includes("squat") || normalized.includes("hinge")) {
-    return "Lower";
-  }
-  return "Full Body";
-};
-
 const formatPainFlags = (painFlags?: unknown) => {
   if (!painFlags || typeof painFlags !== "object") {
     return [] as string[];
@@ -124,7 +112,7 @@ function buildBaselineSummary({
       exercises: {
         include: {
           exercise: true;
-          sets: { include: { logs: true } };
+          sets: { include: { logs: { orderBy: { completedAt: "desc" }, take: 1 } } };
         };
       };
     };
@@ -276,14 +264,15 @@ export default async function WorkoutDetailPage({
     );
   }
 
-  const workout = await prisma.workout.findUnique({
-    where: { id: resolvedParams.id },
+  const owner = await resolveOwner();
+  const workout = await prisma.workout.findFirst({
+    where: { id: resolvedParams.id, userId: owner.id },
     include: {
       exercises: {
         orderBy: { orderIndex: "asc" },
         include: {
           exercise: true,
-          sets: { orderBy: { setIndex: "asc" }, include: { logs: true } },
+          sets: { orderBy: { setIndex: "asc" }, include: { logs: { orderBy: { completedAt: "desc" }, take: 1 } } },
         },
       },
     },
@@ -333,9 +322,14 @@ export default async function WorkoutDetailPage({
       advancesSplit: true,
     },
   });
-  const advancingCompletedCount = await prisma.workout.count({
-    where: { userId: workout.userId, status: "COMPLETED", advancesSplit: true },
-  });
+    const previewContext = await loadWorkoutContext(owner.id);
+  const splitPreview = previewContext.constraints
+    ? getSplitPreview(
+        mapConstraints(previewContext.constraints),
+        mapHistory(previewContext.workouts),
+        mapExercises(previewContext.exercises)
+      )
+    : undefined;
   const daysPerWeek = Math.max(1, constraints?.daysPerWeek ?? 3);
   const splitKey = (constraints?.splitType?.toLowerCase() ??
     "full_body") as keyof typeof SPLIT_PATTERNS;
@@ -343,12 +337,8 @@ export default async function WorkoutDetailPage({
   const dayIndex = workoutsBefore % daysPerWeek;
   const forcedPatterns = resolveForcedPatterns(workout.forcedSplit);
   const targetPatterns = forcedPatterns ?? splitOptions[dayIndex % splitOptions.length];
-  const nextAutoIndex = advancingCompletedCount % daysPerWeek;
-  const nextAutoPatterns = splitOptions[nextAutoIndex % splitOptions.length];
-  const queuePreview = Array.from(
-    { length: Math.min(3, splitOptions.length) },
-    (_, offset) => patternLabel(splitOptions[(nextAutoIndex + offset) % splitOptions.length])
-  ).join(" → ");
+  const nextAutoLabel = splitPreview?.nextAutoLabel ?? "Not available";
+  const queuePreview = splitPreview?.queuePreview ?? "Not available";
   const hasHighSeverityInjury = injuries.some((injury) => injury.severity >= 3);
   const primaryGoal = goals?.primaryGoal?.toLowerCase() ?? "general_health";
   const secondaryGoal = goals?.secondaryGoal?.toLowerCase() ?? "none";
@@ -427,7 +417,7 @@ export default async function WorkoutDetailPage({
                 {workout.advancesSplit ?? true ? "yes" : "no"}.
               </p>
               <p>
-                Next auto day: {patternLabel(nextAutoPatterns)}. Queue: {queuePreview}.
+                Next auto day: {nextAutoLabel}. Queue: {queuePreview}.
               </p>
               <p>
                 Training age: {trainingAge}. Main lifts default to 4 sets; accessories default to 3 sets.

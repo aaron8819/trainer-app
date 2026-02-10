@@ -125,7 +125,6 @@ export type Exercise = {
   repRangeMin?: number;
   repRangeMax?: number;
   equipment: EquipmentType[];
-  muscles?: string[];
   primaryMuscles?: string[];
   secondaryMuscles?: string[];
 };

@@ -12,7 +12,7 @@ import {
   mapCheckIn,
   mapPreferences,
   mapProfile,
-  resolveUser,
+  resolveOwner,
 } from "@/lib/api/workout-context";
 
 export async function POST(request: Request) {
@@ -23,7 +23,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
 
-  const user = await resolveUser(parsed.data.userId);
+  const user = await resolveOwner();
   if (!user) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }

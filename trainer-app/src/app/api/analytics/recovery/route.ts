@@ -1,14 +1,11 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
-import { resolveUser, mapExercises, mapHistory } from "@/lib/api/workout-context";
+import { resolveOwner, mapExercises, mapHistory } from "@/lib/api/workout-context";
 import { buildMuscleRecoveryMap } from "@/lib/engine/sra";
 import { WorkoutStatus } from "@prisma/client";
 
-export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const userId = searchParams.get("userId") ?? undefined;
-
-  const user = await resolveUser(userId);
+export async function GET() {
+  const user = await resolveOwner();
   if (!user) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
@@ -33,7 +30,7 @@ export async function GET(request: Request) {
                 exerciseMuscles: { include: { muscle: true } },
               },
             },
-            sets: { include: { logs: true } },
+            sets: { include: { logs: { orderBy: { completedAt: "desc" }, take: 1 } } },
           },
         },
       },

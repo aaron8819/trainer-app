@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { resolveUser } from "@/lib/api/workout-context";
+import { resolveOwner } from "@/lib/api/workout-context";
 import { loadExerciseHistory } from "@/lib/api/exercise-history";
 
 export async function GET(
@@ -8,10 +8,9 @@ export async function GET(
 ) {
   const { id: exerciseId } = await params;
   const { searchParams } = new URL(request.url);
-  const userId = searchParams.get("userId") ?? undefined;
   const limit = parseInt(searchParams.get("limit") ?? "3", 10);
 
-  const user = await resolveUser(userId);
+  const user = await resolveOwner();
   if (!user) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }

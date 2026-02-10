@@ -1,11 +1,11 @@
 import { loadExerciseLibrary } from "@/lib/api/exercise-library";
-import { prisma } from "@/lib/db/prisma";
+import { resolveOwner } from "@/lib/api/workout-context";
 import { TemplateForm } from "@/components/templates/TemplateForm";
 
 export const dynamic = "force-dynamic";
 
 export default async function NewTemplatePage() {
-  const user = await prisma.user.findFirst({ orderBy: { createdAt: "desc" } });
+  const user = await resolveOwner();
   const exercises = await loadExerciseLibrary(user?.id);
 
   return (

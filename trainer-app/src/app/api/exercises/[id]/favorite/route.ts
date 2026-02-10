@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { toggleFavoriteSchema } from "@/lib/validation";
-import { resolveUser } from "@/lib/api/workout-context";
+import { resolveOwner } from "@/lib/api/workout-context";
 
 export async function POST(
   request: Request,
@@ -15,7 +15,7 @@ export async function POST(
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
 
-  const user = await resolveUser(parsed.data.userId);
+  const user = await resolveOwner();
   if (!user) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }

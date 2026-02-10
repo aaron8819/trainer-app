@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { loadTemplateDetail } from "@/lib/api/templates";
 import { loadExerciseLibrary } from "@/lib/api/exercise-library";
-import { prisma } from "@/lib/db/prisma";
+import { resolveOwner } from "@/lib/api/workout-context";
 import { TemplateForm } from "@/components/templates/TemplateForm";
 
 export const dynamic = "force-dynamic";
@@ -10,14 +10,14 @@ type Params = Promise<{ id: string }>;
 
 export default async function EditTemplatePage({ params }: { params: Params }) {
   const { id } = await params;
-  const template = await loadTemplateDetail(id);
+  const owner = await resolveOwner();
+  const template = await loadTemplateDetail(id, owner.id);
 
   if (!template) {
     notFound();
   }
 
-  const user = await prisma.user.findFirst({ orderBy: { createdAt: "desc" } });
-  const exercises = await loadExerciseLibrary(user?.id);
+  const exercises = await loadExerciseLibrary(owner.id);
 
   const initialExercises = template.exercises.map((te) => ({
     exerciseId: te.exerciseId,

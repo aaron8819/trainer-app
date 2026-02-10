@@ -126,7 +126,7 @@ export async function updateBaselinesFromWorkout(
       exercises: {
         include: {
           exercise: true,
-          sets: { include: { logs: true } },
+          sets: { include: { logs: { orderBy: { completedAt: "desc" }, take: 1 } } },
         },
       },
     },
@@ -263,3 +263,4 @@ export async function updateBaselinesFromWorkout(
     skippedItems,
   };
 }
+

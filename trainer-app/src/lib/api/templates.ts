@@ -57,10 +57,14 @@ export async function loadTemplates(userId: string): Promise<TemplateListItem[]>
 }
 
 export async function loadTemplateDetail(
-  templateId: string
+  templateId: string,
+  userId?: string
 ): Promise<TemplateDetail | null> {
-  const template = await prisma.workoutTemplate.findUnique({
-    where: { id: templateId },
+  const template = await prisma.workoutTemplate.findFirst({
+    where: {
+      id: templateId,
+      ...(userId ? { userId } : {}),
+    },
     include: {
       exercises: {
         orderBy: { orderIndex: "asc" },
@@ -131,16 +135,17 @@ export async function createTemplate(
     return created;
   });
 
-  const detail = await loadTemplateDetail(template.id);
+  const detail = await loadTemplateDetail(template.id, userId);
   return detail!;
 }
 
 export async function updateTemplate(
   templateId: string,
-  data: UpdateTemplateInput
+  data: UpdateTemplateInput,
+  userId: string
 ): Promise<TemplateDetail | null> {
-  const existing = await prisma.workoutTemplate.findUnique({
-    where: { id: templateId },
+  const existing = await prisma.workoutTemplate.findFirst({
+    where: { id: templateId, userId },
   });
 
   if (!existing) return null;
@@ -175,7 +180,7 @@ export async function updateTemplate(
     }
   });
 
-  return loadTemplateDetail(templateId);
+  return loadTemplateDetail(templateId, userId);
 }
 
 export interface TemplateListItemWithScore extends TemplateListItem {
@@ -231,9 +236,9 @@ export async function loadTemplatesWithScores(
   });
 }
 
-export async function deleteTemplate(templateId: string): Promise<boolean> {
-  const existing = await prisma.workoutTemplate.findUnique({
-    where: { id: templateId },
+export async function deleteTemplate(templateId: string, userId: string): Promise<boolean> {
+  const existing = await prisma.workoutTemplate.findFirst({
+    where: { id: templateId, userId },
   });
 
   if (!existing) return false;

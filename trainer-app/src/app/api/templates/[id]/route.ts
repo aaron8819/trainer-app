@@ -5,14 +5,16 @@ import {
   deleteTemplate,
 } from "@/lib/api/templates";
 import { updateTemplateSchema } from "@/lib/validation";
+import { resolveOwner } from "@/lib/api/workout-context";
 
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const owner = await resolveOwner();
 
-  const template = await loadTemplateDetail(id);
+  const template = await loadTemplateDetail(id, owner.id);
   if (!template) {
     return NextResponse.json({ error: "Template not found" }, { status: 404 });
   }
@@ -25,6 +27,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const owner = await resolveOwner();
   const body = await request.json().catch(() => ({}));
   const parsed = updateTemplateSchema.safeParse(body);
 
@@ -32,7 +35,7 @@ export async function PUT(
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
 
-  const template = await updateTemplate(id, parsed.data);
+  const template = await updateTemplate(id, parsed.data, owner.id);
   if (!template) {
     return NextResponse.json({ error: "Template not found" }, { status: 404 });
   }
@@ -45,8 +48,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const owner = await resolveOwner();
 
-  const deleted = await deleteTemplate(id);
+  const deleted = await deleteTemplate(id, owner.id);
   if (!deleted) {
     return NextResponse.json({ error: "Template not found" }, { status: 404 });
   }

@@ -21,14 +21,13 @@ type VolumeData = {
   landmarks: Record<string, { mv: number; mev: number; mav: number; mrv: number }>;
 };
 
-export function MuscleVolumeChart({ userId }: { userId?: string }) {
+export function MuscleVolumeChart() {
   const [data, setData] = useState<VolumeData | null>(null);
   const [selectedMuscle, setSelectedMuscle] = useState<string>("Chest");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const params = new URLSearchParams({ weeks: "4" });
-    if (userId) params.set("userId", userId);
     fetch(`/api/analytics/volume?${params}`)
       .then((r) => r.json())
       .then((d) => {
@@ -44,7 +43,7 @@ export function MuscleVolumeChart({ userId }: { userId?: string }) {
       })
       .finally(() => setLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId]);
+  }, []);
 
   if (loading) {
     return <div className="animate-pulse rounded-2xl border border-slate-200 p-6 text-sm text-slate-400">Loading volume data...</div>;

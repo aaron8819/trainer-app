@@ -4,6 +4,42 @@ Record of significant design decisions and their rationale. Newest first.
 
 ---
 
+## ADR-027: Single-owner runtime context + set-log upsert semantics (2026-02-10)
+
+**Decision**:
+- Runtime identity is now resolved server-side as a canonical owner (`resolveOwner()`); client-supplied `userId` is no longer part of core API contracts.
+- ID-based template/workout/log operations enforce owner scoping before mutation or read.
+- `SetLog` moved to one-current-record semantics via unique `(workoutSetId)` and route-level `upsert`.
+- `/api/workouts/next` was removed; split preview logic is centralized and aligned with generator behavior.
+
+**Rationale**: This app is intentionally single-user long-term, so optional user identity in request payloads was unnecessary complexity and a source of drift. Enforcing owner-scoped operations keeps boundaries explicit and future-proofs for eventual multi-user support. Set logging was previously append-style while reads used `logs[0]`, which could produce stale progression/baseline signals; unique upsert semantics make log reads deterministic.
+
+---
+
+## ADR-026: Exercise rep range clamping in prescription (2026-02-10)
+
+**Decision**: `prescribeSetsReps()` accepts an optional `exerciseRepRange: { min, max }` parameter. When provided, the goal-based rep range is intersected with the exercise's range via `clampRepRange()`. If the intersection is invalid (no overlap), the exercise's range is used as a fallback.
+
+**Rationale**: Exercises like calf raises, face pulls, or lateral raises have biomechanical rep ranges that may not overlap with goal defaults (e.g., strength goal prescribes 3-6 reps, but calf raises are best at 10-20). The exercise's own range, defined in the seed data, is more authoritative than generic goal defaults. The clamping is backward compatible — exercises without `repRangeMin`/`repRangeMax` use goal-based ranges unchanged.
+
+---
+
+## ADR-025: Standardized defaults in mapExercises (2026-02-10)
+
+**Decision**: Changed `fatigueCost`, `sfrScore`, and `lengthPositionScore` defaults in `mapExercises()` from `?? undefined` to `?? 3`. This matches the defaults already used in `loadExerciseLibrary()` and eliminates downstream `?? 3` guards in engine modules.
+
+**Rationale**: The engine modules (`prescription.ts`, `pick-accessories-by-slot.ts`, `filtering.ts`) all assumed these fields could be undefined and applied `?? 3` fallbacks locally. Centralizing the default at the mapping layer reduces redundancy and prevents bugs where a new consumer forgets the fallback.
+
+---
+
+## ADR-024: fatigueCost promoted to ExerciseListItem (2026-02-10)
+
+**Decision**: Moved `fatigueCost` from `ExerciseDetail` to `ExerciseListItem` in the exercise library types. Added the `fatigueCost` sort case to `sortExercises()`. Removed the now-redundant `fatigueCost` from `ExerciseDetail` (it's inherited via `extends ExerciseListItem`).
+
+**Rationale**: The "Lowest Fatigue" sort option in the exercise library was silently falling through to the default name sort because `fatigueCost` wasn't on `ExerciseListItem`. Promoting it follows the same pattern used for `sfrScore` and `lengthPositionScore` (ADR-017). All three scoring fields are now available at the list level for sorting and analysis without requiring a detail-level fetch.
+
+---
+
 ## ADR-023: JSON-driven exercise database (133 exercises) (2026-02-09)
 
 **Decision**: Replaced the hardcoded TypeScript exercise arrays (`exercises[]`, `EXERCISE_FIELD_TUNING`, `exerciseMuscleMappings`) in `seed.ts` with a single JSON import from `prisma/exercises_comprehensive.json`. The JSON contains 133 exercises (up from 66) with all metadata: movement patterns, split tags, muscle mappings, equipment, difficulty, rep ranges, and unilateral flags.

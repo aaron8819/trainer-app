@@ -699,7 +699,8 @@ async function seedExercisesFromJson() {
       isCompound: ex.isCompound,
       fatigueCost: ex.fatigueCost,
       stimulusBias,
-      contraindications: ex.contraindications ?? undefined,
+      // Preserve explicit nulls from JSON so stale DB values are cleared.
+      contraindications: ex.contraindications ?? null,
       timePerSetSec,
       sfrScore: ex.sfrScore,
       lengthPositionScore: ex.lengthPositionScore,

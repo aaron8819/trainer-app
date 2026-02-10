@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { saveWorkoutSchema } from "@/lib/validation";
-import { resolveUser } from "@/lib/api/workout-context";
+import { resolveOwner } from "@/lib/api/workout-context";
 import { WorkoutStatus } from "@prisma/client";
 import {
   updateBaselinesFromWorkout,
@@ -16,7 +16,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
 
-  const user = await resolveUser(parsed.data.userId);
+  const user = await resolveOwner();
   if (!user) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
@@ -28,8 +28,27 @@ export async function POST(request: Request) {
 
   let baselineSummary: BaselineUpdateSummary | null = null;
 
-  await prisma.$transaction(async (tx) => {
-    const workout = await tx.workout.upsert({
+  try {
+    await prisma.$transaction(async (tx) => {
+      const existingWorkout = await tx.workout.findUnique({
+        where: { id: parsed.data.workoutId },
+        select: { id: true, userId: true },
+      });
+      if (existingWorkout && existingWorkout.userId !== user.id) {
+        throw new Error("WORKOUT_NOT_FOUND");
+      }
+
+      if (parsed.data.templateId) {
+        const template = await tx.workoutTemplate.findFirst({
+          where: { id: parsed.data.templateId, userId: user.id },
+          select: { id: true },
+        });
+        if (!template) {
+          throw new Error("TEMPLATE_NOT_FOUND");
+        }
+      }
+
+      const workout = await tx.workout.upsert({
       where: { id: parsed.data.workoutId },
       update: {
         scheduledDate,
@@ -57,54 +76,63 @@ export async function POST(request: Request) {
       },
     });
 
-    if (parsed.data.exercises && parsed.data.exercises.length > 0) {
-      const existingExercises = await tx.workoutExercise.findMany({
-        where: { workoutId: workout.id },
-        select: { id: true },
-      });
-
-      if (existingExercises.length > 0) {
-        const exerciseIds = existingExercises.map((item) => item.id);
-        await tx.workoutSet.deleteMany({ where: { workoutExerciseId: { in: exerciseIds } } });
-        await tx.workoutExercise.deleteMany({ where: { id: { in: exerciseIds } } });
-      }
-
-      for (const [exerciseIndex, exercise] of parsed.data.exercises.entries()) {
-        const exerciseRecord = await tx.exercise.findUnique({
-          where: { id: exercise.exerciseId },
+      if (parsed.data.exercises && parsed.data.exercises.length > 0) {
+        const existingExercises = await tx.workoutExercise.findMany({
+          where: { workoutId: workout.id },
+          select: { id: true },
         });
 
-        const section = exercise.section ?? (exerciseIndex < 2 ? "WARMUP" : exerciseIndex < 5 ? "MAIN" : "ACCESSORY");
+        if (existingExercises.length > 0) {
+          const exerciseIds = existingExercises.map((item) => item.id);
+          await tx.workoutSet.deleteMany({ where: { workoutExerciseId: { in: exerciseIds } } });
+          await tx.workoutExercise.deleteMany({ where: { id: { in: exerciseIds } } });
+        }
 
-        const createdExercise = await tx.workoutExercise.create({
-          data: {
-            workoutId: workout.id,
-            exerciseId: exercise.exerciseId,
-            orderIndex: exerciseIndex,
-            isMainLift: section === "MAIN" ? true : false,
-            movementPatterns: exerciseRecord?.movementPatterns ?? [],
-            sets: {
-              create: exercise.sets.map((set) => ({
-                setIndex: set.setIndex,
-                targetReps: set.targetReps,
-                targetRpe: set.targetRpe ?? undefined,
-                targetLoad: set.targetLoad ?? undefined,
-                restSeconds: set.restSeconds ?? undefined,
-              })),
+        for (const [exerciseIndex, exercise] of parsed.data.exercises.entries()) {
+          const exerciseRecord = await tx.exercise.findUnique({
+            where: { id: exercise.exerciseId },
+          });
+
+          const section = exercise.section ?? (exerciseIndex < 2 ? "WARMUP" : exerciseIndex < 5 ? "MAIN" : "ACCESSORY");
+
+          const createdExercise = await tx.workoutExercise.create({
+            data: {
+              workoutId: workout.id,
+              exerciseId: exercise.exerciseId,
+              orderIndex: exerciseIndex,
+              isMainLift: section === "MAIN" ? true : false,
+              movementPatterns: exerciseRecord?.movementPatterns ?? [],
+              sets: {
+                create: exercise.sets.map((set) => ({
+                  setIndex: set.setIndex,
+                  targetReps: set.targetReps,
+                  targetRpe: set.targetRpe ?? undefined,
+                  targetLoad: set.targetLoad ?? undefined,
+                  restSeconds: set.restSeconds ?? undefined,
+                })),
+              },
             },
-          },
-        });
+          });
 
-        if (!createdExercise) {
-          throw new Error("Failed to create workout exercise");
+          if (!createdExercise) {
+            throw new Error("Failed to create workout exercise");
+          }
         }
       }
-    }
 
-    if (status === WorkoutStatus.COMPLETED) {
-      baselineSummary = await updateBaselinesFromWorkout(tx, workout.id, user.id);
+      if (status === WorkoutStatus.COMPLETED) {
+        baselineSummary = await updateBaselinesFromWorkout(tx, workout.id, user.id);
+      }
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message === "WORKOUT_NOT_FOUND") {
+      return NextResponse.json({ error: "Workout not found" }, { status: 404 });
     }
-  });
+    if (error instanceof Error && error.message === "TEMPLATE_NOT_FOUND") {
+      return NextResponse.json({ error: "Template not found" }, { status: 404 });
+    }
+    throw error;
+  }
 
   return NextResponse.json({
     status: "saved",

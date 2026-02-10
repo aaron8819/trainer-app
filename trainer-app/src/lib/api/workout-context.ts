@@ -17,13 +17,14 @@ import type {
   SetLog,
 } from "@prisma/client";
 import {
-  EquipmentType,
+  EquipmentType as PrismaEquipmentType,
   PrimaryGoal,
   SecondaryGoal,
   WorkoutStatus,
 } from "@prisma/client";
 import type {
   Constraints,
+  EquipmentType,
   Goals,
   JointStress,
   MovementPattern,
@@ -79,10 +80,26 @@ type WorkoutWithRelations = Workout & {
 
 export async function resolveUser(userId?: string | null) {
   if (userId) {
-    return prisma.user.findUnique({ where: { id: userId } });
+    const owner = await resolveOwner();
+    return owner.id === userId ? owner : null;
   }
+
+  return resolveOwner();
+}
+
+export async function resolveOwner() {
+  const configuredOwnerEmail = process.env.OWNER_EMAIL?.trim().toLowerCase();
+  if (configuredOwnerEmail) {
+    const configuredOwner = await prisma.user.findUnique({
+      where: { email: configuredOwnerEmail },
+    });
+    if (configuredOwner) {
+      return configuredOwner;
+    }
+  }
+
   const withProfile = await prisma.user.findFirst({
-    orderBy: { createdAt: "desc" },
+    orderBy: { createdAt: "asc" },
     where: {
       profile: {
         isNot: null,
@@ -100,7 +117,14 @@ export async function resolveUser(userId?: string | null) {
     return withProfile;
   }
 
-  return prisma.user.findFirst({ orderBy: { createdAt: "desc" } });
+  const firstUser = await prisma.user.findFirst({ orderBy: { createdAt: "asc" } });
+  if (firstUser) {
+    return firstUser;
+  }
+
+  return prisma.user.create({
+    data: { email: configuredOwnerEmail ?? "owner@local" },
+  });
 }
 
 export async function loadWorkoutContext(userId: string) {
@@ -130,7 +154,7 @@ export async function loadWorkoutContext(userId: string) {
                 exerciseMuscles: { include: { muscle: true } },
               },
             },
-            sets: { include: { logs: true } },
+            sets: { include: { logs: { orderBy: { completedAt: "desc" }, take: 1 } } },
           },
         },
       },
@@ -186,7 +210,7 @@ export function mapConstraints(constraints: ConstraintsRecord): Constraints {
 
 export function mapExercises(
   exercises: (Exercise & {
-    exerciseEquipment: { equipment: { type: EquipmentType } }[];
+    exerciseEquipment: { equipment: { type: PrismaEquipmentType } }[];
     exerciseMuscles: { role: string; muscle: { name: string } }[];
   })[]
 ) {
@@ -200,20 +224,20 @@ export function mapExercises(
     jointStress: exercise.jointStress.toLowerCase() as JointStress,
     isMainLiftEligible: exercise.isMainLiftEligible ?? false,
     isCompound: exercise.isCompound ?? false,
-    fatigueCost: exercise.fatigueCost ?? undefined,
+    fatigueCost: exercise.fatigueCost ?? 3,
     stimulusBias: (exercise.stimulusBias ?? []).map((bias) => bias.toLowerCase()) as unknown as
       | StimulusBias[],
     contraindications: (exercise.contraindications as Record<string, unknown>) ?? undefined,
     timePerSetSec: exercise.timePerSetSec ?? undefined,
-    sfrScore: exercise.sfrScore ?? undefined,
-    lengthPositionScore: exercise.lengthPositionScore ?? undefined,
+    sfrScore: exercise.sfrScore ?? 3,
+    lengthPositionScore: exercise.lengthPositionScore ?? 3,
     difficulty: exercise.difficulty ? exercise.difficulty.toLowerCase() as "beginner" | "intermediate" | "advanced" : undefined,
     isUnilateral: exercise.isUnilateral ?? undefined,
     repRangeMin: exercise.repRangeMin ?? undefined,
     repRangeMax: exercise.repRangeMax ?? undefined,
     equipment: exercise.exerciseEquipment.map((item) =>
       item.equipment.type.toLowerCase()
-    ) as Constraints["availableEquipment"],
+    ) as EquipmentType[],
     primaryMuscles: exercise.exerciseMuscles
       .filter((item) => item.role === "PRIMARY")
       .map((item) => item.muscle.name),
@@ -298,7 +322,7 @@ export function mapCheckIn(checkIns: { date: Date; readiness: number; painFlags:
 
 type ExerciseWithAliases = Exercise & {
   aliases?: { alias: string }[];
-  exerciseEquipment: { equipment: { type: EquipmentType } }[];
+  exerciseEquipment: { equipment: { type: PrismaEquipmentType } }[];
   exerciseMuscles: { role: string; muscle: { name: string } }[];
 };
 

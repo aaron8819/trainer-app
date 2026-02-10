@@ -136,10 +136,11 @@ Relations:
 
 ### WorkoutSet
 - `workoutExerciseId`, `setIndex`, `targetReps`, `targetRpe`, `targetLoad`, `restSeconds`
-- Relations: `logs`
+- Relations: `logs` (at most one current log record)
 
 ### SetLog
 - `workoutSetId`, `actualReps`, `actualRpe`, `actualLoad`, `completedAt`, `notes`, `wasSkipped`
+- Unique constraint: `(workoutSetId)` — set logging is upserted, not append-only.
 
 ## Baselines
 

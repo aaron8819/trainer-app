@@ -1,13 +1,11 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
-import { resolveUser } from "@/lib/api/workout-context";
+import { resolveOwner } from "@/lib/api/workout-context";
 import { WorkoutStatus } from "@prisma/client";
 
-export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const userId = searchParams.get("userId") ?? undefined;
+export async function GET() {
 
-  const user = await resolveUser(userId);
+  const user = await resolveOwner();
   if (!user) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }

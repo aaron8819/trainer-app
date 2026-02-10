@@ -22,7 +22,7 @@ export async function generateSessionFromTemplate(
   templateId: string
 ): Promise<GenerateSessionResult> {
   const [template, context] = await Promise.all([
-    loadTemplateDetail(templateId),
+    loadTemplateDetail(templateId, userId),
     loadWorkoutContext(userId),
   ]);
 

@@ -2,19 +2,13 @@ import ProfileForm from "../onboarding/ProfileForm";
 import { prisma } from "@/lib/db/prisma";
 import UserPreferencesForm from "@/components/UserPreferencesForm";
 import { loadExerciseLibrary } from "@/lib/api/exercise-library";
+import { resolveOwner } from "@/lib/api/workout-context";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function SettingsPage() {
-  const user = await prisma.user.findFirst({
-    orderBy: { createdAt: "desc" },
-    where: {
-      profile: {
-        isNot: null,
-      },
-    },
-  });
+  const user = await resolveOwner();
   const [profile, goals, constraints, injury, preferences, exercises] = user
     ? await Promise.all([
         prisma.profile.findUnique({ where: { userId: user.id } }),

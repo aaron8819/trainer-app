@@ -12,18 +12,16 @@ type TemplateStat = {
   avgFrequencyDays: number | null;
 };
 
-export function TemplateStatsSection({ userId }: { userId?: string }) {
+export function TemplateStatsSection() {
   const [templates, setTemplates] = useState<TemplateStat[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const params = new URLSearchParams();
-    if (userId) params.set("userId", userId);
-    fetch(`/api/analytics/templates?${params}`)
+    fetch("/api/analytics/templates")
       .then((r) => r.json())
       .then((data) => setTemplates(data.templates ?? []))
       .finally(() => setLoading(false));
-  }, [userId]);
+  }, []);
 
   if (loading) {
     return <div className="animate-pulse rounded-2xl border border-slate-200 p-6 text-sm text-slate-400">Loading template stats...</div>;

@@ -86,6 +86,10 @@ export function pickMainLiftsForPpl(
       mainPool.filter((exercise) => hasPattern(exercise, "horizontal_pull"))
     );
     if (painFlags?.low_back && painFlags.low_back >= 2) {
+      // Acceptable exception to the "no regex on names" anti-pattern:
+      // This is positive selection (preferring chest-supported rows for low-back pain),
+      // scoped to a single sort comparator, and only ~3 exercises qualify.
+      // Defer adding an `isChestSupported` field until more exercises need it.
       horizontal = horizontal.sort((a, b) => {
         const aPref = /chest[- ]?supported/i.test(a.name) ? 1 : 0;
         const bPref = /chest[- ]?supported/i.test(b.name) ? 1 : 0;

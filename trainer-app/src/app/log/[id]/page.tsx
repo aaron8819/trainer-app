@@ -1,5 +1,6 @@
 ﻿import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
+import { resolveOwner } from "@/lib/api/workout-context";
 import LogWorkoutClient from "@/components/LogWorkoutClient";
 import { splitExercises } from "@/lib/ui/workout-sections";
 
@@ -27,14 +28,15 @@ export default async function LogWorkoutPage({
     );
   }
 
-  const workout = await prisma.workout.findUnique({
-    where: { id: resolvedParams.id },
+  const owner = await resolveOwner();
+  const workout = await prisma.workout.findFirst({
+    where: { id: resolvedParams.id, userId: owner.id },
     include: {
       exercises: {
         orderBy: { orderIndex: "asc" },
         include: {
           exercise: true,
-          sets: { orderBy: { setIndex: "asc" }, include: { logs: true } },
+          sets: { orderBy: { setIndex: "asc" }, include: { logs: { orderBy: { completedAt: "desc" }, take: 1 } } },
         },
       },
     },

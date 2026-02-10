@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { analyticsSummarySchema } from "@/lib/validation";
 import { prisma } from "@/lib/db/prisma";
 import { WorkoutStatus } from "@prisma/client";
+import { resolveOwner } from "@/lib/api/workout-context";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -16,6 +17,7 @@ export async function GET(request: Request) {
 
   const dateFrom = parsed.data.dateFrom ? new Date(parsed.data.dateFrom) : undefined;
   const dateTo = parsed.data.dateTo ? new Date(parsed.data.dateTo) : undefined;
+  const owner = await resolveOwner();
   const workoutDateFilter =
     dateFrom || dateTo
       ? {
@@ -28,6 +30,7 @@ export async function GET(request: Request) {
 
   const workoutsCompleted = await prisma.workout.count({
     where: {
+      userId: owner.id,
       status: WorkoutStatus.COMPLETED,
       ...workoutDateFilter,
     },
@@ -45,6 +48,13 @@ export async function GET(request: Request) {
 
   const setLogs = await prisma.setLog.findMany({
     where: {
+      workoutSet: {
+        workoutExercise: {
+          workout: {
+            userId: owner.id,
+          },
+        },
+      },
       ...completedAtFilter,
     },
     include: {

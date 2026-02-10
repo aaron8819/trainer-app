@@ -58,7 +58,7 @@ The engine tracks Stimulus-Recovery-Adaptation windows per muscle group. Each mu
 
 ### 7. Readiness and Pain Check-Ins
 
-The most recent `SessionCheckIn` drives readiness and pain filtering. Injuries reduce high joint-stress exercises. Pain filtering uses exercise `contraindications` as the primary filter, with regex heuristics as fallback for untagged exercises.
+The most recent `SessionCheckIn` drives readiness and pain filtering. Injuries reduce high joint-stress exercises. Pain filtering uses exercise `contraindications` as the primary filter. One accepted exception: `main-lift-picker.ts` uses a regex to prefer chest-supported rows when low-back pain is flagged (positive selection for ~3 exercises, documented in code).
 
 ### 8. Deterministic Randomization
 
@@ -71,7 +71,7 @@ All randomized selection uses a seeded PRNG (`createRng` from `random.ts`). Test
 ```
 POST /api/workouts/generate
   1. Load data
-     resolveUser() -> loadWorkoutContext()
+     resolveOwner() -> loadWorkoutContext(ownerId)
      Fetches: profile, goals, constraints, injuries, baselines, exercises,
               workouts, preferences, most recent SessionCheckIn
 
@@ -105,7 +105,7 @@ POST /api/workouts/generate
 ```
 POST /api/workouts/generate-from-template
   1. Load data (parallel)
-     loadTemplateDetail(templateId) + loadWorkoutContext(userId)
+     loadTemplateDetail(templateId, ownerId) + loadWorkoutContext(ownerId)
      Template: exercises with metadata (muscles, equipment, movement patterns)
      Context: profile, goals, constraints, injuries, baselines, exercises,
               workouts, preferences, most recent SessionCheckIn
@@ -253,6 +253,16 @@ Donor scoring: `muscleOverlap * 4 + patternOverlap * 3 + equipMatch * 2 + compou
 
 Rep ranges are role-specific (main lift vs accessory) and goal-dependent. Defined in `rules.ts` via `REP_RANGES_BY_GOAL`. Strength accessories target higher reps (6-10) than main lifts (3-6). Hypertrophy accessories target 10-15 while main lifts target 6-10.
 
+### Exercise-Specific Rep Range Clamping
+
+When an exercise defines `repRangeMin`/`repRangeMax`, the goal-based rep range is clamped to the exercise's valid range via `clampRepRange()` in `prescription.ts`:
+
+1. **Intersection**: The effective range is `[max(goalMin, exerciseMin), min(goalMax, exerciseMax)]`
+2. **No overlap fallback**: If the intersection is invalid (min > max), the exercise's range is used instead (the exercise knows its biomechanics better than goal defaults)
+3. **No exercise range**: Goal-based range is used unchanged (backward compatible)
+
+This prevents prescribing rep ranges that are biomechanically inappropriate — e.g., a calf raise exercise with `repRangeMin: 10` won't be prescribed 3-rep heavy singles even on a strength program.
+
 ## Rest Periods
 
 Rest scales by exercise type and rep range via `getRestSeconds()`. Accepts optional `targetReps` for rep-aware rest.
@@ -281,7 +291,7 @@ Defined in `prescription.ts`.
 | `filtering.ts` | Exercise filtering (equipment, pain, injury, stall), `selectExercises` |
 | `main-lift-picker.ts` | PPL main lift pairing with recency weighting |
 | `pick-accessories-by-slot.ts` | Slot-based accessory selection (PPL, upper_lower, full_body) |
-| `prescription.ts` | Set/rep prescription, rest seconds |
+| `prescription.ts` | Set/rep prescription, rest seconds, exercise rep range clamping |
 | `volume.ts` | Volume context (per-muscle MRV), caps enforcement, fatigue state derivation |
 | `timeboxing.ts` | Time estimation, priority-based accessory trimming |
 | `substitution.ts` | Exercise substitution suggestions |
@@ -322,7 +332,7 @@ Defined in `prescription.ts`.
 
 ## Schema Fields Used by Engine
 
-**Exercise** (extended): `splitTags`, `movementPatterns`, `isMainLiftEligible`, `isCompound`, `fatigueCost`, `stimulusBias`, `contraindications`, `timePerSetSec`, `sfrScore`, `lengthPositionScore`
+**Exercise** (extended): `splitTags`, `movementPatterns`, `isMainLiftEligible`, `isCompound`, `fatigueCost`, `stimulusBias`, `contraindications`, `timePerSetSec`, `sfrScore`, `lengthPositionScore`, `repRangeMin`, `repRangeMax`
 
 **ExerciseAlias**: `exerciseId` -> `Exercise.id`, `alias` (unique)
 
@@ -389,4 +399,4 @@ The exercise detail sheet (`ExerciseDetailSheet`) provides:
 - **Add to template**: Select from existing templates via `AddToTemplateSheet`
 - **Save as template**: `SaveAsTemplateButton` on completed workout pages derives target muscles from exercises
 
-The library supports sorting by: Name A-Z, Name Z-A, Best SFR, Lowest Fatigue, Best Stretch Position, Muscle Group.
+The library supports sorting by: Name A-Z, Name Z-A, Best SFR, Lowest Fatigue (fatigueCost), Best Stretch Position, Muscle Group. All sort fields (`fatigueCost`, `sfrScore`, `lengthPositionScore`) are available on `ExerciseListItem` — no detail-level load required.

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { generateFromTemplateSchema } from "@/lib/validation";
-import { resolveUser } from "@/lib/api/workout-context";
+import { resolveOwner } from "@/lib/api/workout-context";
 import { generateSessionFromTemplate } from "@/lib/api/template-session";
 
 export async function POST(request: Request) {
@@ -11,7 +11,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
 
-  const user = await resolveUser(parsed.data.userId);
+  const user = await resolveOwner();
   if (!user) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }

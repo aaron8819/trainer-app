@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { profileSetupSchema } from "@/lib/validation";
-import { resolveUser } from "@/lib/api/workout-context";
+import { resolveOwner } from "@/lib/api/workout-context";
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
@@ -11,17 +11,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid request", details: parsed.error.flatten() }, { status: 400 });
   }
 
-  const user =
-    (parsed.data.userId
-      ? await resolveUser(parsed.data.userId)
-      : parsed.data.email
-      ? await prisma.user.upsert({
-          where: { email: parsed.data.email },
-          update: {},
-          create: { email: parsed.data.email },
-        })
-      : await resolveUser()) ??
-    (await prisma.user.create({ data: { email: "owner@local" } }));
+  const user = parsed.data.email
+    ? await prisma.user.upsert({
+        where: { email: parsed.data.email },
+        update: {},
+        create: { email: parsed.data.email },
+      })
+    : await resolveOwner();
 
   await prisma.$transaction(async (tx) => {
     const heightIn = parsed.data.heightIn ?? null;

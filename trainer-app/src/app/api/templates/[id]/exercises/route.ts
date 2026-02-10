@@ -2,12 +2,14 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { addExerciseToTemplateSchema } from "@/lib/validation";
 import { loadTemplateDetail } from "@/lib/api/templates";
+import { resolveOwner } from "@/lib/api/workout-context";
 
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: templateId } = await params;
+  const owner = await resolveOwner();
   const body = await request.json().catch(() => ({}));
   const parsed = addExerciseToTemplateSchema.safeParse(body);
 
@@ -15,8 +17,8 @@ export async function POST(
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
 
-  const template = await prisma.workoutTemplate.findUnique({
-    where: { id: templateId },
+  const template = await prisma.workoutTemplate.findFirst({
+    where: { id: templateId, userId: owner.id },
     include: { exercises: { orderBy: { orderIndex: "desc" }, take: 1 } },
   });
 
@@ -42,6 +44,6 @@ export async function POST(
     },
   });
 
-  const detail = await loadTemplateDetail(templateId);
+  const detail = await loadTemplateDetail(templateId, owner.id);
   return NextResponse.json(detail);
 }

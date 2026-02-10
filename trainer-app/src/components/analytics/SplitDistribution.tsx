@@ -12,25 +12,24 @@ type VolumeData = {
 
 const SPLIT_MAP: Record<string, string> = {
   Chest: "Push", "Front Delts": "Push", "Side Delts": "Push", Triceps: "Push",
-  Back: "Pull", "Upper Back": "Pull", "Rear Delts": "Pull", Biceps: "Pull", Forearms: "Pull",
+  Lats: "Pull", "Upper Back": "Pull", "Rear Delts": "Pull", Biceps: "Pull", Forearms: "Pull",
   Quads: "Legs", Hamstrings: "Legs", Glutes: "Legs", Calves: "Legs",
-  Adductors: "Legs", "Hip Flexors": "Legs", Core: "Legs", "Lower Back": "Legs",
+  Adductors: "Legs", Abductors: "Legs", Core: "Legs", Abs: "Legs", "Lower Back": "Legs",
 };
 
 const COLORS = { Push: "#3b82f6", Pull: "#22c55e", Legs: "#f59e0b" };
 
-export function SplitDistribution({ userId }: { userId?: string }) {
+export function SplitDistribution() {
   const [data, setData] = useState<VolumeData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const params = new URLSearchParams({ weeks: "4" });
-    if (userId) params.set("userId", userId);
     fetch(`/api/analytics/volume?${params}`)
       .then((r) => r.json())
       .then((d) => setData(d))
       .finally(() => setLoading(false));
-  }, [userId]);
+  }, []);
 
   if (loading) {
     return <div className="animate-pulse rounded-2xl border border-slate-200 p-6 text-sm text-slate-400">Loading split data...</div>;

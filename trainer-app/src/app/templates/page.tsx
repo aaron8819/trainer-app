@@ -1,11 +1,11 @@
-import { prisma } from "@/lib/db/prisma";
+import { resolveOwner } from "@/lib/api/workout-context";
 import { loadTemplatesWithScores } from "@/lib/api/templates";
 import { TemplateListShell } from "@/components/templates/TemplateListShell";
 
 export const dynamic = "force-dynamic";
 
 export default async function TemplatesPage() {
-  const user = await prisma.user.findFirst({ orderBy: { createdAt: "desc" } });
+  const user = await resolveOwner();
   if (!user) {
     return (
       <main className="min-h-screen bg-white px-6 py-10">

@@ -39,6 +39,7 @@ export async function loadExerciseLibrary(userId?: string): Promise<ExerciseList
     secondaryMuscles: exercise.exerciseMuscles
       .filter((m) => m.role === "SECONDARY")
       .map((m) => m.muscle.name),
+    fatigueCost: exercise.fatigueCost ?? 3,
     sfrScore: exercise.sfrScore ?? 3,
     lengthPositionScore: exercise.lengthPositionScore ?? 3,
     difficulty: exercise.difficulty ? exercise.difficulty.toLowerCase() as "beginner" | "intermediate" | "advanced" : undefined,
@@ -134,6 +135,7 @@ export async function loadExerciseDetail(
     stimulusBias: (exercise.stimulusBias ?? []).map(
       (b) => b.toLowerCase()
     ) as ExerciseDetail["stimulusBias"],
+    contraindications: (exercise.contraindications as Record<string, unknown>) ?? undefined,
     sfrScore: exercise.sfrScore ?? 3,
     lengthPositionScore: exercise.lengthPositionScore ?? 3,
     difficulty: exercise.difficulty ? exercise.difficulty.toLowerCase() as "beginner" | "intermediate" | "advanced" : undefined,

@@ -12,8 +12,8 @@ type MuscleRecovery = {
 
 const SPLIT_GROUPS: Record<string, string[]> = {
   Push: ["Chest", "Front Delts", "Side Delts", "Triceps"],
-  Pull: ["Back", "Upper Back", "Rear Delts", "Biceps", "Forearms"],
-  Legs: ["Quads", "Hamstrings", "Glutes", "Calves", "Adductors", "Hip Flexors", "Core", "Lower Back"],
+  Pull: ["Lats", "Upper Back", "Rear Delts", "Biceps", "Forearms"],
+  Legs: ["Quads", "Hamstrings", "Glutes", "Calves", "Adductors", "Abductors", "Core", "Lower Back", "Abs"],
 };
 
 function recoveryColor(percent: number): string {
@@ -30,18 +30,16 @@ function recoveryTextColor(percent: number): string {
   return "text-red-700";
 }
 
-export function MuscleRecoveryPanel({ userId }: { userId?: string }) {
+export function MuscleRecoveryPanel() {
   const [muscles, setMuscles] = useState<MuscleRecovery[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const params = new URLSearchParams();
-    if (userId) params.set("userId", userId);
-    fetch(`/api/analytics/recovery?${params}`)
+    fetch("/api/analytics/recovery")
       .then((r) => r.json())
       .then((data) => setMuscles(data.muscles ?? []))
       .finally(() => setLoading(false));
-  }, [userId]);
+  }, []);
 
   if (loading) {
     return <div className="animate-pulse rounded-2xl border border-slate-200 p-6 text-sm text-slate-400">Loading recovery data...</div>;

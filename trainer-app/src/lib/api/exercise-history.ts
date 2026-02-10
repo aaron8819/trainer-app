@@ -39,7 +39,7 @@ export async function loadExerciseHistory(
       workout: { select: { scheduledDate: true } },
       sets: {
         orderBy: { setIndex: "asc" },
-        include: { logs: true },
+        include: { logs: { orderBy: { completedAt: "desc" }, take: 1 } },
       },
     },
   });
@@ -107,3 +107,4 @@ export function computeTrend(sessions: ExerciseSession[]): ExerciseTrend {
   if (change < -0.03) return "declining";
   return "stable";
 }
+

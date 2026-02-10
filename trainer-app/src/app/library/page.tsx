@@ -1,12 +1,12 @@
 import { loadExerciseLibrary } from "@/lib/api/exercise-library";
-import { resolveUser } from "@/lib/api/workout-context";
+import { resolveOwner } from "@/lib/api/workout-context";
 import { ExerciseLibraryShell } from "@/components/library/ExerciseLibraryShell";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function LibraryPage() {
-  const user = await resolveUser();
+  const user = await resolveOwner();
   const exercises = await loadExerciseLibrary(user?.id);
 
   return (

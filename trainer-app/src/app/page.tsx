@@ -1,10 +1,16 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
+import {
+  loadWorkoutContext,
+  mapConstraints,
+  mapExercises,
+  mapHistory,
+  resolveOwner,
+} from "@/lib/api/workout-context";
+import { getSplitPreview } from "@/lib/api/split-preview";
 import { DashboardGenerateSection } from "@/components/DashboardGenerateSection";
 import RecentWorkouts from "@/components/RecentWorkouts";
-import { SPLIT_PATTERNS } from "@/lib/engine";
 import { loadTemplatesWithScores } from "@/lib/api/templates";
-import type { MovementPattern } from "@/lib/engine/types";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -25,92 +31,49 @@ const STATUS_CLASSES: Record<string, string> = {
 };
 
 export default async function Home() {
-  const [latestWorkout, latestCompleted, latestIncomplete, recentWorkouts, fallbackUser] = await Promise.all([
-    prisma.workout.findFirst({
-      orderBy: { scheduledDate: "desc" },
-      include: {
-        exercises: {
-          orderBy: { orderIndex: "asc" },
-          include: { exercise: true },
+  const owner = await resolveOwner();
+  const [latestWorkout, latestCompleted, latestIncomplete, recentWorkouts, templates, context] =
+    await Promise.all([
+      prisma.workout.findFirst({
+        where: { userId: owner.id },
+        orderBy: { scheduledDate: "desc" },
+        include: {
+          exercises: {
+            orderBy: { orderIndex: "asc" },
+            include: { exercise: true },
+          },
         },
-      },
-    }),
-    prisma.workout.findFirst({
-      where: { status: "COMPLETED" },
-      orderBy: { completedAt: "desc" },
-    }),
-    prisma.workout.findFirst({
-      where: { status: { in: ["PLANNED", "IN_PROGRESS"] } },
-      orderBy: { scheduledDate: "desc" },
-    }),
-    prisma.workout.findMany({
-      orderBy: { scheduledDate: "desc" },
-      take: 6,
-      include: {
-        exercises: {
-          orderBy: { orderIndex: "asc" },
-          include: { exercise: true },
+      }),
+      prisma.workout.findFirst({
+        where: { userId: owner.id, status: "COMPLETED" },
+        orderBy: { completedAt: "desc" },
+      }),
+      prisma.workout.findFirst({
+        where: { userId: owner.id, status: { in: ["PLANNED", "IN_PROGRESS"] } },
+        orderBy: { scheduledDate: "desc" },
+      }),
+      prisma.workout.findMany({
+        where: { userId: owner.id },
+        orderBy: { scheduledDate: "desc" },
+        take: 6,
+        include: {
+          exercises: {
+            orderBy: { orderIndex: "asc" },
+            include: { exercise: true },
+          },
         },
-      },
-    }),
-    prisma.user.findFirst({ orderBy: { createdAt: "desc" } }),
-  ]);
+      }),
+      loadTemplatesWithScores(owner.id),
+      loadWorkoutContext(owner.id),
+    ]);
 
-  const targetUserId =
-    latestWorkout?.userId ?? latestCompleted?.userId ?? latestIncomplete?.userId ?? fallbackUser?.id;
-
-  const [constraints, advancingCompletedCount, templates] = await Promise.all([
-    targetUserId ? prisma.constraints.findUnique({ where: { userId: targetUserId } }) : null,
-    targetUserId
-      ? prisma.workout.count({
-          where: { userId: targetUserId, status: "COMPLETED", advancesSplit: true },
-        })
-      : 0,
-    targetUserId ? loadTemplatesWithScores(targetUserId) : [],
-  ]);
-
-  const toLabel = (patterns: MovementPattern[]) => {
-    const normalized = patterns.join(",");
-    if (normalized === "push") {
-      return "Push";
-    }
-    if (normalized === "pull") {
-      return "Pull";
-    }
-    if (normalized === "squat,hinge") {
-      return "Legs";
-    }
-    if (normalized === "push,pull") {
-      return "Upper";
-    }
-    if (normalized.includes("squat") || normalized.includes("hinge")) {
-      return "Lower";
-    }
-    return "Full Body";
-  };
-
-  const nextAutoLabel = (() => {
-    if (!constraints) {
-      return undefined;
-    }
-    const splitKey = constraints.splitType.toLowerCase();
-    const patternOptions = SPLIT_PATTERNS[splitKey] ?? SPLIT_PATTERNS.full_body;
-    const dayIndex = advancingCompletedCount % Math.max(1, constraints.daysPerWeek);
-    return toLabel(patternOptions[dayIndex % patternOptions.length]);
-  })();
-
-  const queuePreview = (() => {
-    if (!constraints) {
-      return undefined;
-    }
-    const splitKey = constraints.splitType.toLowerCase();
-    const patternOptions = SPLIT_PATTERNS[splitKey] ?? SPLIT_PATTERNS.full_body;
-    const dayIndex = advancingCompletedCount % Math.max(1, constraints.daysPerWeek);
-    const preview = Array.from({ length: Math.min(3, patternOptions.length) }, (_, offset) =>
-      toLabel(patternOptions[(dayIndex + offset) % patternOptions.length])
-    );
-    return preview.join(" → ");
-  })();
+  const splitPreview = context.constraints
+    ? getSplitPreview(
+        mapConstraints(context.constraints),
+        mapHistory(context.workouts),
+        mapExercises(context.exercises)
+      )
+    : undefined;
 
   const nextSessionName = latestWorkout
     ? latestWorkout.exercises
@@ -139,8 +102,8 @@ export default async function Home() {
 
         <section className="grid gap-6 md:grid-cols-2">
           <DashboardGenerateSection
-            nextAutoLabel={nextAutoLabel}
-            queuePreview={queuePreview}
+            nextAutoLabel={splitPreview?.nextAutoLabel}
+            queuePreview={splitPreview?.queuePreview}
             templates={templates.map((t) => ({
               id: t.id,
               name: t.name,
@@ -153,9 +116,7 @@ export default async function Home() {
             {latestIncomplete ? (
               <div className="rounded-2xl border border-slate-200 p-6 shadow-sm">
                 <h2 className="text-xl font-semibold">Resume Workout</h2>
-                <p className="mt-2 text-slate-600">
-                  Continue your latest in-progress session.
-                </p>
+                <p className="mt-2 text-slate-600">Continue your latest in-progress session.</p>
                 <div className="mt-4 flex flex-wrap items-center gap-3">
                   <Link
                     className="rounded-full bg-slate-900 px-5 py-2 text-sm font-semibold text-white"
@@ -190,9 +151,7 @@ export default async function Home() {
         <section className="mt-10 grid gap-6 md:grid-cols-3">
           <div className="rounded-2xl border border-slate-200 p-5">
             <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Next Session</h3>
-            <p className="mt-3 text-lg font-semibold">
-              {latestWorkout ? "Upcoming Workout" : "No workout"}
-            </p>
+            <p className="mt-3 text-lg font-semibold">{latestWorkout ? "Upcoming Workout" : "No workout"}</p>
             <p className="mt-2 text-sm text-slate-600">{nextSessionName}</p>
             {latestWorkout ? (
               <Link

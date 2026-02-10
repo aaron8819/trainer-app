@@ -20,18 +20,33 @@ export const REST_SECONDS = {
   warmup: 45,
 };
 
+export type ExerciseRepRange = { min: number; max: number };
+
 export function prescribeSetsReps(
   isMainLift: boolean,
   trainingAge: UserProfile["trainingAge"],
   goals: Goals,
   fatigueState: FatigueState,
   preferences?: UserPreferences,
-  periodization?: PeriodizationModifiers
+  periodization?: PeriodizationModifiers,
+  exerciseRepRange?: ExerciseRepRange
 ): WorkoutSet[] {
   if (isMainLift) {
-    return prescribeMainLiftSets(trainingAge, goals, fatigueState, preferences, periodization);
+    return prescribeMainLiftSets(trainingAge, goals, fatigueState, preferences, periodization, exerciseRepRange);
   }
-  return prescribeAccessorySets(trainingAge, goals, fatigueState, preferences, periodization);
+  return prescribeAccessorySets(trainingAge, goals, fatigueState, preferences, periodization, exerciseRepRange);
+}
+
+export function clampRepRange(
+  goalRange: [number, number],
+  exerciseRange?: ExerciseRepRange
+): [number, number] {
+  if (!exerciseRange) return goalRange;
+  const min = Math.max(goalRange[0], exerciseRange.min);
+  const max = Math.min(goalRange[1], exerciseRange.max);
+  // If clamping produces an invalid range, fall back to the exercise's range
+  if (min > max) return [exerciseRange.min, exerciseRange.max];
+  return [min, max];
 }
 
 function prescribeMainLiftSets(
@@ -39,21 +54,23 @@ function prescribeMainLiftSets(
   goals: Goals,
   fatigueState: FatigueState,
   preferences?: UserPreferences,
-  periodization?: PeriodizationModifiers
+  periodization?: PeriodizationModifiers,
+  exerciseRepRange?: ExerciseRepRange
 ): WorkoutSet[] {
-  const repRange = REP_RANGES_BY_GOAL[goals.primary];
+  const goalRepRange = REP_RANGES_BY_GOAL[goals.primary];
+  const effectiveMain = clampRepRange(goalRepRange.main, exerciseRepRange);
   const setCount = resolveSetCount(
     true,
     trainingAge,
     fatigueState,
     periodization?.setMultiplier
   );
-  const topSetReps = repRange.main[0];
+  const topSetReps = effectiveMain[0];
   const backOffMultiplier = getBackOffMultiplier(goals.primary);
   const backOffReps =
     backOffMultiplier >= 0.9
-      ? repRange.main[0]
-      : Math.min(repRange.main[1], repRange.main[0] + 2);
+      ? effectiveMain[0]
+      : Math.min(effectiveMain[1], effectiveMain[0] + 2);
   const targetRpe = resolveTargetRpe(
     topSetReps,
     goals,
@@ -84,16 +101,18 @@ function prescribeAccessorySets(
   goals: Goals,
   fatigueState: FatigueState,
   preferences?: UserPreferences,
-  periodization?: PeriodizationModifiers
+  periodization?: PeriodizationModifiers,
+  exerciseRepRange?: ExerciseRepRange
 ): WorkoutSet[] {
-  const repRange = REP_RANGES_BY_GOAL[goals.primary];
+  const goalRepRange = REP_RANGES_BY_GOAL[goals.primary];
+  const effectiveAccessory = clampRepRange(goalRepRange.accessory, exerciseRepRange);
   const setCount = resolveSetCount(
     false,
     trainingAge,
     fatigueState,
     periodization?.setMultiplier
   );
-  const targetReps = repRange.accessory[0];
+  const targetReps = effectiveAccessory[0];
   const targetRpe = resolveTargetRpe(
     targetReps,
     goals,

@@ -21,18 +21,17 @@ type VolumeData = {
 
 const COLORS = ["#3b82f6", "#ef4444", "#22c55e", "#f59e0b", "#8b5cf6", "#ec4899"];
 
-export function WeeklyVolumeTrend({ userId }: { userId?: string }) {
+export function WeeklyVolumeTrend() {
   const [data, setData] = useState<VolumeData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const params = new URLSearchParams({ weeks: "8" });
-    if (userId) params.set("userId", userId);
     fetch(`/api/analytics/volume?${params}`)
       .then((r) => r.json())
       .then((d) => setData(d))
       .finally(() => setLoading(false));
-  }, [userId]);
+  }, []);
 
   if (loading) {
     return <div className="animate-pulse rounded-2xl border border-slate-200 p-6 text-sm text-slate-400">Loading trend data...</div>;

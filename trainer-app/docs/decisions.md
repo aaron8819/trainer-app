@@ -4,6 +4,39 @@ Record of significant design decisions and their rationale. Newest first.
 
 ---
 
+## ADR-023: JSON-driven exercise database (133 exercises) (2026-02-09)
+
+**Decision**: Replaced the hardcoded TypeScript exercise arrays (`exercises[]`, `EXERCISE_FIELD_TUNING`, `exerciseMuscleMappings`) in `seed.ts` with a single JSON import from `prisma/exercises_comprehensive.json`. The JSON contains 133 exercises (up from 66) with all metadata: movement patterns, split tags, muscle mappings, equipment, difficulty, rep ranges, and unilateral flags.
+
+**Changes**:
+- Schema: Added `Difficulty` enum, `ABDUCTION`/`ADDUCTION`/`ISOLATION` movement patterns, `EZ_BAR`/`TRAP_BAR` equipment types, and new Exercise fields (`difficulty`, `isUnilateral`, `repRangeMin`, `repRangeMax`)
+- Muscles: Renamed "Back" → "Lats", removed "Hip Flexors", added "Abs" and "Abductors" (18 total)
+- Seed: Complete rewrite — imports JSON, applies 19 exercise renames, renames muscles, seeds 34 aliases, prunes 5 stale exercises
+- Engine types: Updated with new movement patterns, equipment types, `Difficulty` type, and optional Exercise fields
+- Tests: Updated across 9 test files for muscle renames; seed-validation tests validate JSON directly
+
+**Rationale**: The previous seed used 3 separate parallel data structures (exercise array, tuning map, muscle mapping map) that were hard to keep in sync and limited to 66 exercises. A single JSON file is reviewable, diffable, and extensible. It also eliminates the regex-based derivation that caused classification errors (ADR-021). The 67 new exercises fill gaps in the library: forearm exercises, unilateral variations, ab exercises, adductor/abductor isolation, and more curl/triceps variations.
+
+---
+
+## ADR-022: Baseline unique constraint recovery (2026-02-09)
+
+**Decision**: Manually added the `Baseline_userId_exerciseId_context_key` unique constraint to the database after deduplicating existing rows. The constraint was defined in `schema.prisma` (`@@unique([userId, exerciseId, context])`) but was missing from the actual database.
+
+**Rationale**: The migration `20260206_schema_improvements` was marked as applied by Prisma, but the `ADD CONSTRAINT` statement failed silently because duplicate `(userId, exerciseId, context)` rows existed. This caused `prisma.baseline.upsert()` to fail with "no unique or exclusion constraint matching the ON CONFLICT specification." The fix was to deduplicate rows first (`DELETE FROM "Baseline" a USING "Baseline" b WHERE a."userId" = b."userId" AND a."exerciseId" = b."exerciseId" AND a."context" = b."context" AND a."id" < b."id"`), then add the constraint manually. This is a one-time recovery, not a new migration — the schema already declares the constraint correctly.
+
+**Lesson**: Prisma `migrate deploy` can mark a migration as applied even when individual statements within it fail. After migration issues, always verify the actual DB state matches the schema.
+
+---
+
+## ADR-021: Explicit exercise categorization — no regex (2026-02-09)
+
+**Decision**: Replaced regex-based `resolveMovementPatternsV2()` and `resolveSplitTag()` in `seed.ts` with explicit `movementPatterns`, `splitTag`, `isCompound`, and `isMainLiftEligible` fields on each `SeedExercise`. Deleted all regex constants (`HORIZONTAL_PUSH_REGEX`, etc.), `compoundAccessoryNames`, and `mainLiftEligibleOverrides`.
+
+**Rationale**: The regex approach derived structured data (movement pattern) from unstructured data (exercise name), causing widespread misclassification: curls were tagged `HORIZONTAL_PULL`, triceps pushdowns as `HORIZONTAL_PUSH`, leg extensions as `SQUAT`, calf raises as `CARRY`. These errors made exercise library filters return empty results for shoulders, arms, legs, compound, and isolation categories. Explicit assignment follows the same pattern already used for muscle mappings and equipment — each exercise's categorization is visible, reviewable, and has zero edge cases.
+
+---
+
 ## ADR-020: Analytics dashboard with recharts (2026-02-09)
 
 **Decision**: Added a tabbed analytics dashboard at `/analytics` using `recharts` for charting. Four tabs: Recovery (progress bars), Volume (bar chart + line chart), Overview (pie chart), Templates (stat cards). Each tab fetches from dedicated API endpoints.

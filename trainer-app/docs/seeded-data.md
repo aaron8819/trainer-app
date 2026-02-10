@@ -2,7 +2,9 @@
 
 This document summarizes the data seeded by `trainer-app/prisma/seed.ts`. It reflects what is inserted when running `npm run db:seed`.
 
-## Equipment
+The single source of truth for exercises is `prisma/exercises_comprehensive.json` (133 exercises). The seed script imports this JSON and upserts all exercises, muscle mappings, and equipment mappings from it.
+
+## Equipment (12)
 
 - Barbell
 - Dumbbell
@@ -14,11 +16,13 @@ This document summarizes the data seeded by `trainer-app/prisma/seed.ts`. It ref
 - Sled
 - Bench
 - Rack
+- EZ_Bar
+- Trap_Bar
 
-## Muscles
+## Muscles (18)
 
 - Chest
-- Back
+- Lats
 - Upper Back
 - Lower Back
 - Front Delts
@@ -31,197 +35,209 @@ This document summarizes the data seeded by `trainer-app/prisma/seed.ts`. It ref
 - Hamstrings
 - Glutes
 - Adductors
+- Abductors
 - Calves
 - Core
-- Hip Flexors
+- Abs
 
-## Exercises
+## Exercises (133)
 
-Seeded exercises are created with:
-- `splitTags` (derived by pattern + name heuristics)
-- `movementPatterns` (derived by name heuristics)
-- `isMainLiftEligible`, `isCompound`
-- `fatigueCost`, `timePerSetSec`, `sfrScore`, `lengthPositionScore`
-- `stimulusBias` (seeded for key compounds and accessories)
-- `contraindications` (seeded for pain filtering)
+All exercises are seeded with explicit fields from JSON (no name-based derivation):
+- `splitTag`, `movementPatterns`, `isCompound`, `isMainLiftEligible`
+- `fatigueCost`, `sfrScore`, `lengthPositionScore`, `stimulusBias`, `contraindications`
+- `timePerSetSec`, `difficulty`, `isUnilateral`, `repRangeMin`, `repRangeMax`
+- Primary and secondary muscle mappings
+- Equipment requirements
 
-## Exercise Aliases
+### Legs (33)
 
-Aliases are seeded to resolve baseline names and legacy variants via `ExerciseAlias`:
-- DB Shoulder Press -> Dumbbell Shoulder Press
-- Front-Foot Elevated Split Squat -> Split Squat
-- Romanian Deadlift (BB) -> Romanian Deadlift
-- DB Romanian Deadlift -> Romanian Deadlift
-- Incline DB Press -> Dumbbell Incline Press
-- One-Arm DB Row -> Single-Arm Dumbbell Row
-- Incline DB Curls -> Incline Dumbbell Curl
-- DB Skull Crushers -> Skull Crusher
-- DB Lateral Raise -> Lateral Raise
-- Face Pulls (Rope) -> Face Pull
-- Tricep Rope Pushdown -> Triceps Pushdown
-- Decline Barbell Bench -> Barbell Bench Press
-- Flat DB Press -> Dumbbell Bench Press
-
-## Stimulus Bias (Seeded)
-
-Examples (non-exhaustive):
-- MECHANICAL: Barbell Bench Press, Barbell Back Squat, Conventional Deadlift, Trap Bar Deadlift, Overhead Press, Barbell Row, Pull-Up.
-- STRETCH: Cable Fly, Pec Deck, Overhead Triceps Extension, Romanian Deadlift, Incline Dumbbell Curl.
-- METABOLIC: Lateral Raise, Face Pull, Leg Extension, Leg Curl, Cable Crunch, Triceps Pushdown.
-- STABILITY: Plank, Pallof Press, Dead Bug, Farmer's Carry.
-
-## Contraindications (Seeded)
-
-Examples (non-exhaustive):
-- Elbow: Skull Crusher, Barbell Curl.
-- Shoulder: Overhead Press, Dumbbell Shoulder Press, Machine Shoulder Press, Overhead Triceps Extension, Dips.
-- Low back: Barbell Row, T-Bar Row.
-
-### Squat Pattern
-
-- Barbell Back Squat (main)
-- Front Squat (main)
-- Hack Squat
-- Reverse Hack Squat
-- Leg Press
-- Belt Squat (main)
-- Leg Extension
-
-### Hinge Pattern
-
-- Romanian Deadlift (main)
-- Conventional Deadlift (main)
-- Trap Bar Deadlift (main)
-- Hip Thrust
-- Leg Curl
-- Hip Abduction Machine
-- Glute Bridge
-
-### Lunge Pattern
-
-- Walking Lunge
-- Split Squat
+- Back Extension (45 Degree)
+- Barbell Back Squat
+- Barbell Hip Thrust
+- Belt Squat
 - Bulgarian Split Squat
+- Cable Hip Abduction
+- Cable Pull-Through
+- Conventional Deadlift
+- Copenhagen Plank
+- Front Squat
+- Glute Bridge
+- Goblet Squat
+- Good Morning
+- Hack Squat
+- Hip Abduction Machine
+- Hip Adduction Machine
+- Leg Extension
+- Leg Press
+- Leg Press Calf Raise
+- Lying Leg Curl
+- Nordic Hamstring Curl
+- Reverse Hyperextension
+- Reverse Lunge
+- Romanian Deadlift
+- Seated Calf Raise
+- Seated Leg Curl
+- Single-Leg Hip Thrust
+- Sissy Squat
+- Standing Calf Raise
+- Stiff-Legged Deadlift
+- Sumo Deadlift
+- Trap Bar Deadlift
+- Walking Lunge
 
-### Push (Pressing)
+### Push (36)
 
-- Barbell Bench Press (main)
-- Incline Barbell Bench (main)
-- Smith Machine Incline Press (main)
-- Dumbbell Bench Press (main)
-- Dumbbell Incline Press
-- Low-Incline Dumbbell Press
-- Push-Up
-- Overhead Press (main)
-- Dumbbell Shoulder Press
-- Machine Chest Press (main)
-- Machine Shoulder Press
-
-### Push Accessories
-
-- Triceps Pushdown
-- JM Press
-- Skull Crusher
-- Dips
-- Overhead Triceps Extension
+- Arnold Press
+- Barbell Bench Press
+- Barbell Overhead Press
+- Cable Crossover
 - Cable Fly
-- Pec Deck
-- Lateral Raise
+- Cable Front Raise
 - Cable Lateral Raise
+- Cable Triceps Pushdown
+- Close-Grip Bench Press
+- Decline Barbell Bench Press
+- Decline Dumbbell Bench Press
+- Deficit Push-Up
+- Diamond Push-Up
+- Dip (Chest Emphasis)
+- Dip (Triceps Emphasis)
+- Dumbbell Bench Press
+- Dumbbell Fly
+- Dumbbell Front Raise
+- Dumbbell Lateral Raise
+- Dumbbell Overhead Press
+- Incline Barbell Bench Press
+- Incline Dumbbell Bench Press
+- Incline Dumbbell Fly
+- Incline Machine Press
+- Landmine Press
+- Low-to-High Cable Fly
+- Lying Triceps Extension (Skull Crusher)
+- Machine Chest Press
+- Machine Lateral Raise
+- Machine Shoulder Press
+- Overhead Cable Triceps Extension
+- Overhead Dumbbell Extension
+- Pec Deck Machine
+- Push-Up
+- Rope Triceps Pushdown
+- Seated Barbell Overhead Press
 
-### Pull (Rows / Pulls)
+### Pull (42)
 
-- Pull-Up (main)
-- Lat Pulldown
-- Barbell Row (main)
-- Seated Cable Row
-- Chest-Supported Row
-- Chest-Supported T-Bar Row (main)
-- Single-Arm Dumbbell Row
-- T-Bar Row (main)
-- Reverse Fly
-- Face Pull
-- Machine Rear Delt Fly
-
-### Pull Accessories (Arms)
-
-- Dumbbell Curl
+- Alternating Dumbbell Curl
 - Barbell Curl
+- Barbell Row
+- Barbell Shrug
+- Bayesian Curl
+- Cable Curl
+- Cable Pullover
+- Cable Rear Delt Fly
+- Chest-Supported Dumbbell Row
+- Chest-Supported T-Bar Row
+- Chin-Up
+- Close-Grip Lat Pulldown
+- Close-Grip Seated Cable Row
+- Concentration Curl
+- Cross-Body Hammer Curl
+- Dead Hang
+- Dumbbell Curl
+- Dumbbell Pullover
+- Dumbbell Rear Delt Fly
+- Dumbbell Row
+- Dumbbell Shrug
+- EZ-Bar Curl
+- Face Pull
 - Hammer Curl
 - Incline Dumbbell Curl
-- Bayesian Curl
-- Cable Preacher Curl
+- Inverted Row
+- Lat Pulldown
+- Meadows Row
+- Neutral Grip Pull-Up
+- One-Arm Dumbbell Row
+- Pendlay Row
+- Preacher Curl
+- Pull-Up
+- Reverse Curl
+- Reverse Pec Deck
+- Reverse Wrist Curl
+- Seated Cable Row
+- Spider Curl
+- Straight-Arm Pulldown
+- T-Bar Row
+- Weighted Pull-Up
+- Wrist Curl
 
-### Core / Rotation
+### Core (16)
 
-- Plank
-- Hanging Leg Raise
+- Ab Wheel Rollout
+- Bicycle Crunch
 - Cable Crunch
+- Decline Sit-Up
+- Dragon Flag
+- Hanging Knee Raise
+- Hanging Leg Raise
+- Landmine Rotation
+- Machine Crunch
 - Pallof Press
-- Dead Bug
+- Plank
+- RKC Plank
+- Reverse Crunch
+- Russian Twist
+- Side Plank
+- Wood Chop
 
-### Conditioning / Carries
+### Conditioning (6)
 
-- Farmer's Carry
-- Sled Push
-- Sled Pull
+- Farmer's Walk
+- Overhead Carry
 - Sled Drag
+- Sled Pull
+- Sled Push
+- Suitcase Carry
 
-### Legacy / Variant Names (Compatibility)
+## Exercise Aliases (34)
 
-`seed.ts` also includes **ExerciseMuscle mappings for all known DB exercises**, including legacy and variant names that may already exist in the database. These mappings are applied only if the exercise name exists.
+Aliases resolve legacy names and backward-compatible references. Each alias maps to a canonical exercise name via the `ExerciseAlias` table.
 
-Examples (non-exhaustive):
-- Barbell Deadlift
-- Decline Barbell Bench Press
-- Incline Barbell Bench Press
-- Rear Delt Fly Machine
-- Seated Calf Raises
-- Sled Drags
-- Captain's Chair Knee Raises
+Examples:
+- Hip Thrust → Barbell Hip Thrust
+- Leg Curl → Lying Leg Curl
+- Overhead Press → Barbell Overhead Press
+- Dumbbell Shoulder Press → Dumbbell Overhead Press
+- Lateral Raise → Dumbbell Lateral Raise
+- Triceps Pushdown → Cable Triceps Pushdown
+- Skull Crusher → Lying Triceps Extension (Skull Crusher)
+- Dips → Dip (Chest Emphasis)
+- Chest-Supported Row → Chest-Supported Dumbbell Row
+- Single-Arm Dumbbell Row → One-Arm Dumbbell Row
+- Machine Rear Delt Fly → Reverse Pec Deck
+- Reverse Fly → Dumbbell Rear Delt Fly
+- Cable Preacher Curl → Preacher Curl
+- Farmer's Carry → Farmer's Walk
+
+## Exercise Renames (Applied During Seed)
+
+When the seed runs, 19 exercise renames are applied to migrate old names to canonical names. After renaming, old names become aliases. Renames include:
+- Hip Thrust → Barbell Hip Thrust
+- Incline Barbell Bench → Incline Barbell Bench Press
+- Dumbbell Incline Press → Incline Dumbbell Bench Press
+- Overhead Press → Barbell Overhead Press
+- Lateral Raise → Dumbbell Lateral Raise
 
 ## Baselines
 
-Baselines are seeded for the owner user (`owner@local`) and include:
+Baselines are seeded for the owner user (`owner@local`) and include 31 baselines covering main lifts and accessories.
 
-### Main Lift Baselines
+## Stale Exercise Pruning
 
-- Barbell Back Squat (heavy + volume contexts)
-- Flat Barbell Bench Press (strength + volume contexts)
-- Barbell Deadlift (strength + volume contexts)
-- Overhead Press
-
-### Accessory Baselines
-
-- DB Shoulder Press
-- Incline Barbell Bench
-- Romanian Deadlift (BB)
-- Incline DB Press
-- Flat DB Press
-- One-Arm DB Row
-- DB Romanian Deadlift
-- Incline DB Curls
-- DB Skull Crushers
-- DB Lateral Raise
-- Front-Foot Elevated Split Squat
-- Chest-Supported Machine Row
-- Iso-Lateral Low Row
-- Lat Pulldown
-- Straight-Arm Pulldown
-- Face Pulls (Rope)
-- Machine Shrugs
-- Machine Shoulder Press
-- Rope Hammer Curls
-- Tricep Rope Pushdown
-- Rear Delt Fly Machine
-- Assisted Dips
-- Leg Press
-- Decline Barbell Bench
+After seeding, exercises not in `exercises_comprehensive.json` are pruned (5 removed):
+- Reverse Hack Squat, Split Squat, Low-Incline Dumbbell Press, JM Press, Dead Bug
 
 ## Notes
 
-- `splitTags` and `movementPatterns` are derived during seeding using name heuristics.
-- The exercise list is intentionally focused on PPL-friendly movements and the user's preferred training style.
-- `seed.ts` now seeds **ExerciseMuscle mappings** for all known exercises (including legacy/variant names).
-
-
+- All exercise metadata is explicit in JSON — no regex or name-based derivation.
+- The JSON file is the single source of truth for the exercise catalog.
+- `splitTag`, `movementPatterns`, `isCompound`, `isMainLiftEligible` are directly defined per exercise.
+- Volume landmarks and SRA hours remain in `volume-landmarks.ts` (engine constants, not DB-driven).

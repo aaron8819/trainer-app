@@ -21,10 +21,12 @@
 
 ## Archive
 
-Completed project documents from the engine refactor (2026-02-06). Preserved for historical reference.
+Completed project documents. Preserved for historical reference.
 
 | Document | What it was |
 |----------|------------|
+| [archive/comprehensive-exercise-db.md](archive/comprehensive-exercise-db.md) | 133-exercise JSON-driven DB replacement (2026-02-09) |
+| [archive/phase-3-template-mode-core.md](archive/phase-3-template-mode-core.md) | Template mode implementation plan (2026-02-08) |
 | [archive/engine_refactor_2.5.md](archive/engine_refactor_2.5.md) | Original refactor spec with implementation status |
 | [archive/engine-and-data-model-analysis.md](archive/engine-and-data-model-analysis.md) | Audit with 22 recommendations (all resolved) |
 | [archive/implementation-plan.md](archive/implementation-plan.md) | 8-phase execution plan (all phases complete) |

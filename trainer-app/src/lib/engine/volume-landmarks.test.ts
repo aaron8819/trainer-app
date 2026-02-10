@@ -4,13 +4,15 @@ import { VOLUME_LANDMARKS, MUSCLE_SPLIT_MAP } from "./volume-landmarks";
 describe("VOLUME_LANDMARKS", () => {
   const muscles = Object.keys(VOLUME_LANDMARKS);
 
-  it("has all 17 canonical muscles", () => {
-    expect(muscles).toHaveLength(17);
+  it("has all 18 canonical muscles", () => {
+    expect(muscles).toHaveLength(18);
     expect(muscles).toContain("Chest");
+    expect(muscles).toContain("Lats");
     expect(muscles).toContain("Quads");
     expect(muscles).toContain("Biceps");
     expect(muscles).toContain("Core");
-    expect(muscles).toContain("Hip Flexors");
+    expect(muscles).toContain("Abs");
+    expect(muscles).toContain("Abductors");
   });
 
   it("maintains mev <= mav <= mrv for every muscle", () => {
@@ -34,9 +36,9 @@ describe("VOLUME_LANDMARKS", () => {
 });
 
 describe("MUSCLE_SPLIT_MAP", () => {
-  it("covers all 17 muscles", () => {
+  it("covers all 18 muscles", () => {
     const mapped = Object.keys(MUSCLE_SPLIT_MAP);
-    expect(mapped).toHaveLength(17);
+    expect(mapped).toHaveLength(18);
     for (const muscle of Object.keys(VOLUME_LANDMARKS)) {
       expect(MUSCLE_SPLIT_MAP[muscle], `${muscle} mapped`).toBeDefined();
     }
@@ -50,7 +52,7 @@ describe("MUSCLE_SPLIT_MAP", () => {
   });
 
   it("maps pull muscles correctly", () => {
-    expect(MUSCLE_SPLIT_MAP["Back"]).toBe("pull");
+    expect(MUSCLE_SPLIT_MAP["Lats"]).toBe("pull");
     expect(MUSCLE_SPLIT_MAP["Biceps"]).toBe("pull");
     expect(MUSCLE_SPLIT_MAP["Rear Delts"]).toBe("pull");
   });

@@ -169,7 +169,7 @@ describe("scorePushPullBalance", () => {
       movementPatterns: ["horizontal_push"],
       muscles: [
         { name: "Chest", role: "primary" },
-        { name: "Back", role: "primary" },
+        { name: "Lats", role: "primary" },
       ],
     };
     const result = scorePushPullBalance([hybrid]);

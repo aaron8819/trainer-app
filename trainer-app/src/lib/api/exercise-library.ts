@@ -41,6 +41,8 @@ export async function loadExerciseLibrary(userId?: string): Promise<ExerciseList
       .map((m) => m.muscle.name),
     sfrScore: exercise.sfrScore ?? 3,
     lengthPositionScore: exercise.lengthPositionScore ?? 3,
+    difficulty: exercise.difficulty ? exercise.difficulty.toLowerCase() as "beginner" | "intermediate" | "advanced" : undefined,
+    isUnilateral: exercise.isUnilateral ?? undefined,
     isFavorite: favorites.has(exercise.name),
     isAvoided: avoids.has(exercise.name),
   }));
@@ -134,7 +136,11 @@ export async function loadExerciseDetail(
     ) as ExerciseDetail["stimulusBias"],
     sfrScore: exercise.sfrScore ?? 3,
     lengthPositionScore: exercise.lengthPositionScore ?? 3,
+    difficulty: exercise.difficulty ? exercise.difficulty.toLowerCase() as "beginner" | "intermediate" | "advanced" : undefined,
+    isUnilateral: exercise.isUnilateral ?? undefined,
     timePerSetSec: exercise.timePerSetSec ?? 120,
+    repRangeMin: exercise.repRangeMin ?? undefined,
+    repRangeMax: exercise.repRangeMax ?? undefined,
     aliases: exercise.aliases.map((a) => a.alias),
     variations: exercise.variations.map((v) => ({
       id: v.id,

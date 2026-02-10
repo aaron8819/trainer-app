@@ -20,7 +20,10 @@ export type MovementPatternV2 =
   | "rotation"
   | "anti_rotation"
   | "flexion"
-  | "extension";
+  | "extension"
+  | "abduction"
+  | "adduction"
+  | "isolation";
 /** V1 movement pattern — kept for WorkoutHistoryEntry backward compat */
 export type MovementPattern =
   | "squat"
@@ -42,6 +45,7 @@ export type SplitTag =
   | "conditioning";
 export type StimulusBias = "mechanical" | "metabolic" | "stretch" | "stability";
 export type JointStress = "low" | "medium" | "high";
+export type Difficulty = "beginner" | "intermediate" | "advanced";
 export type EquipmentType =
   | "barbell"
   | "dumbbell"
@@ -53,6 +57,8 @@ export type EquipmentType =
   | "sled"
   | "bench"
   | "rack"
+  | "ez_bar"
+  | "trap_bar"
   | "other";
 
 export type InjuryFlag = {
@@ -114,6 +120,10 @@ export type Exercise = {
   timePerSetSec?: number;
   sfrScore?: number;
   lengthPositionScore?: number;
+  difficulty?: Difficulty;
+  isUnilateral?: boolean;
+  repRangeMin?: number;
+  repRangeMax?: number;
   equipment: EquipmentType[];
   muscles?: string[];
   primaryMuscles?: string[];

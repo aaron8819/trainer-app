@@ -39,11 +39,11 @@ export type SmartBuildResult = {
 
 const MUSCLE_GROUP_MAP: Record<string, string[]> = {
   chest: ["Chest"],
-  back: ["Back", "Upper Back", "Lower Back"],
+  back: ["Lats", "Upper Back", "Lower Back"],
   shoulders: ["Front Delts", "Side Delts", "Rear Delts"],
   arms: ["Biceps", "Triceps", "Forearms"],
-  legs: ["Quads", "Hamstrings", "Glutes", "Adductors", "Calves", "Hip Flexors"],
-  core: ["Core"],
+  legs: ["Quads", "Hamstrings", "Glutes", "Adductors", "Abductors", "Calves"],
+  core: ["Core", "Abs"],
 };
 
 const BLOCKED_TAGS = new Set(["core", "mobility", "prehab", "conditioning"]);

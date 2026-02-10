@@ -1,6 +1,7 @@
 import "dotenv/config";
 import {
   BaselineCategory,
+  Difficulty,
   EquipmentType,
   JointStress,
   MovementPatternV2,
@@ -10,20 +11,9 @@ import {
   PrismaClient,
 } from "@prisma/client";
 
-/** V1 movement pattern — kept locally in seed for split/pattern derivation */
-const MovementPattern = {
-  SQUAT: "SQUAT",
-  HINGE: "HINGE",
-  PUSH: "PUSH",
-  PULL: "PULL",
-  PUSH_PULL: "PUSH_PULL",
-  CARRY: "CARRY",
-  ROTATE: "ROTATE",
-  LUNGE: "LUNGE",
-} as const;
-type MovementPattern = (typeof MovementPattern)[keyof typeof MovementPattern];
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
+import exercisesJson from "./exercises_comprehensive.json";
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
@@ -52,30 +42,59 @@ const prisma = new PrismaClient({ adapter });
 // Types
 // ═══════════════════════════════════════════════════════════════════════════
 
-type SeedExercise = {
-  name: string;
-  movementPatternV1: MovementPattern;
-  jointStress: JointStress;
-  isMainLiftV1: boolean;
-  equipment: string[];
-};
-
-type MuscleMappingEntry = { muscle: string; role: MuscleRole };
-
+type JsonExercise = (typeof exercisesJson.exercises)[number];
 type ExerciseAliasSeed = { exerciseName: string; alias: string };
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Regex helpers
+// Enum mappings (JSON string → Prisma enum)
 // ═══════════════════════════════════════════════════════════════════════════
 
-const HORIZONTAL_PUSH_REGEX = /(bench|chest|incline|decline|dip|push[- ]?up)/i;
-const VERTICAL_PUSH_REGEX = /(overhead|shoulder|arnold|military|strict press)/i;
-const HORIZONTAL_PULL_REGEX = /(row|t-bar|chest-supported)/i;
-const VERTICAL_PULL_REGEX = /(pull[- ]?up|pulldown|lat|chin)/i;
-const CORE_REGEX = /(plank|dead bug|pallof|leg raise|knee raise|cable crunch|ab wheel|core)/i;
-const MOBILITY_REGEX = /(stretch|mobility|soft tissue|pose|hip flexor|arm circles)/i;
-const PREHAB_REGEX = /(band pull-aparts|scapular|prone y-t|prehab)/i;
-const CONDITIONING_REGEX = /(sled|carry)/i;
+const MOVEMENT_PATTERN_MAP: Record<string, MovementPatternV2> = {
+  horizontal_push: MovementPatternV2.HORIZONTAL_PUSH,
+  vertical_push: MovementPatternV2.VERTICAL_PUSH,
+  horizontal_pull: MovementPatternV2.HORIZONTAL_PULL,
+  vertical_pull: MovementPatternV2.VERTICAL_PULL,
+  squat: MovementPatternV2.SQUAT,
+  hinge: MovementPatternV2.HINGE,
+  lunge: MovementPatternV2.LUNGE,
+  carry: MovementPatternV2.CARRY,
+  rotation: MovementPatternV2.ROTATION,
+  anti_rotation: MovementPatternV2.ANTI_ROTATION,
+  flexion: MovementPatternV2.FLEXION,
+  extension: MovementPatternV2.EXTENSION,
+  abduction: MovementPatternV2.ABDUCTION,
+  adduction: MovementPatternV2.ADDUCTION,
+  isolation: MovementPatternV2.ISOLATION,
+};
+
+const SPLIT_TAG_MAP: Record<string, SplitTag> = {
+  push: SplitTag.PUSH,
+  pull: SplitTag.PULL,
+  legs: SplitTag.LEGS,
+  core: SplitTag.CORE,
+  conditioning: SplitTag.CONDITIONING,
+  mobility: SplitTag.MOBILITY,
+  prehab: SplitTag.PREHAB,
+};
+
+const JOINT_STRESS_MAP: Record<string, JointStress> = {
+  low: JointStress.LOW,
+  medium: JointStress.MEDIUM,
+  high: JointStress.HIGH,
+};
+
+const STIMULUS_BIAS_MAP: Record<string, StimulusBias> = {
+  mechanical: StimulusBias.MECHANICAL,
+  metabolic: StimulusBias.METABOLIC,
+  stretch: StimulusBias.STRETCH,
+  stability: StimulusBias.STABILITY,
+};
+
+const DIFFICULTY_MAP: Record<string, Difficulty> = {
+  beginner: Difficulty.BEGINNER,
+  intermediate: Difficulty.INTERMEDIATE,
+  advanced: Difficulty.ADVANCED,
+};
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Seed data — Equipment
@@ -92,15 +111,17 @@ const equipmentSeed = [
   { name: "Sled", type: EquipmentType.SLED },
   { name: "Bench", type: EquipmentType.BENCH },
   { name: "Rack", type: EquipmentType.RACK },
+  { name: "EZ_Bar", type: EquipmentType.EZ_BAR },
+  { name: "Trap_Bar", type: EquipmentType.TRAP_BAR },
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Seed data — Muscles (17 canonical)
+// Seed data — Muscles (18 canonical)
 // ═══════════════════════════════════════════════════════════════════════════
 
 const muscleSeed = [
   "Chest",
-  "Back",
+  "Lats",
   "Upper Back",
   "Lower Back",
   "Front Delts",
@@ -113,222 +134,16 @@ const muscleSeed = [
   "Hamstrings",
   "Glutes",
   "Adductors",
+  "Abductors",
   "Calves",
   "Core",
-  "Hip Flexors",
+  "Abs",
 ];
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Seed data — Exercises
-// ═══════════════════════════════════════════════════════════════════════════
-
-const exercises: SeedExercise[] = [
-  { name: "Barbell Back Squat", movementPatternV1: MovementPattern.SQUAT, jointStress: JointStress.HIGH, isMainLiftV1: true, equipment: ["Barbell", "Rack"] },
-  { name: "Front Squat", movementPatternV1: MovementPattern.SQUAT, jointStress: JointStress.HIGH, isMainLiftV1: true, equipment: ["Barbell", "Rack"] },
-  { name: "Hack Squat", movementPatternV1: MovementPattern.SQUAT, jointStress: JointStress.MEDIUM, isMainLiftV1: false, equipment: ["Machine"] },
-  { name: "Reverse Hack Squat", movementPatternV1: MovementPattern.SQUAT, jointStress: JointStress.MEDIUM, isMainLiftV1: false, equipment: ["Machine"] },
-  { name: "Leg Press", movementPatternV1: MovementPattern.SQUAT, jointStress: JointStress.MEDIUM, isMainLiftV1: false, equipment: ["Machine"] },
-  { name: "Belt Squat", movementPatternV1: MovementPattern.SQUAT, jointStress: JointStress.MEDIUM, isMainLiftV1: true, equipment: ["Machine"] },
-  { name: "Romanian Deadlift", movementPatternV1: MovementPattern.HINGE, jointStress: JointStress.MEDIUM, isMainLiftV1: true, equipment: ["Barbell"] },
-  { name: "Conventional Deadlift", movementPatternV1: MovementPattern.HINGE, jointStress: JointStress.HIGH, isMainLiftV1: true, equipment: ["Barbell"] },
-  { name: "Trap Bar Deadlift", movementPatternV1: MovementPattern.HINGE, jointStress: JointStress.HIGH, isMainLiftV1: true, equipment: ["Barbell"] },
-  { name: "Hip Thrust", movementPatternV1: MovementPattern.HINGE, jointStress: JointStress.MEDIUM, isMainLiftV1: false, equipment: ["Barbell", "Bench"] },
-  { name: "Barbell Bench Press", movementPatternV1: MovementPattern.PUSH, jointStress: JointStress.HIGH, isMainLiftV1: true, equipment: ["Barbell", "Bench", "Rack"] },
-  { name: "Incline Barbell Bench", movementPatternV1: MovementPattern.PUSH, jointStress: JointStress.HIGH, isMainLiftV1: true, equipment: ["Barbell", "Bench"] },
-  { name: "Smith Machine Incline Press", movementPatternV1: MovementPattern.PUSH, jointStress: JointStress.MEDIUM, isMainLiftV1: true, equipment: ["Machine"] },
-  { name: "Dumbbell Bench Press", movementPatternV1: MovementPattern.PUSH, jointStress: JointStress.MEDIUM, isMainLiftV1: true, equipment: ["Dumbbell", "Bench"] },
-  { name: "Dumbbell Incline Press", movementPatternV1: MovementPattern.PUSH, jointStress: JointStress.MEDIUM, isMainLiftV1: false, equipment: ["Dumbbell", "Bench"] },
-  { name: "Low-Incline Dumbbell Press", movementPatternV1: MovementPattern.PUSH, jointStress: JointStress.MEDIUM, isMainLiftV1: false, equipment: ["Dumbbell", "Bench"] },
-  { name: "Push-Up", movementPatternV1: MovementPattern.PUSH, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Bodyweight"] },
-  { name: "Overhead Press", movementPatternV1: MovementPattern.PUSH, jointStress: JointStress.HIGH, isMainLiftV1: true, equipment: ["Barbell"] },
-  { name: "Dumbbell Shoulder Press", movementPatternV1: MovementPattern.PUSH, jointStress: JointStress.MEDIUM, isMainLiftV1: false, equipment: ["Dumbbell", "Bench"] },
-  { name: "Lateral Raise", movementPatternV1: MovementPattern.PUSH_PULL, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Dumbbell"] },
-  { name: "Dumbbell Lateral Raises", movementPatternV1: MovementPattern.PUSH_PULL, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Dumbbell"] },
-  { name: "Cable Lateral Raise", movementPatternV1: MovementPattern.PUSH_PULL, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Cable"] },
-  { name: "Face Pull", movementPatternV1: MovementPattern.PULL, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Cable"] },
-  { name: "Machine Rear Delt Fly", movementPatternV1: MovementPattern.PULL, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Machine"] },
-  { name: "Pull-Up", movementPatternV1: MovementPattern.PULL, jointStress: JointStress.HIGH, isMainLiftV1: true, equipment: ["Bodyweight"] },
-  { name: "Lat Pulldown", movementPatternV1: MovementPattern.PULL, jointStress: JointStress.MEDIUM, isMainLiftV1: false, equipment: ["Cable", "Machine"] },
-  { name: "Barbell Row", movementPatternV1: MovementPattern.PULL, jointStress: JointStress.MEDIUM, isMainLiftV1: true, equipment: ["Barbell"] },
-  { name: "Seated Cable Row", movementPatternV1: MovementPattern.PULL, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Cable"] },
-  { name: "Chest-Supported Row", movementPatternV1: MovementPattern.PULL, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Dumbbell", "Bench"] },
-  { name: "Chest-Supported T-Bar Row", movementPatternV1: MovementPattern.PULL, jointStress: JointStress.MEDIUM, isMainLiftV1: true, equipment: ["Machine"] },
-  { name: "Single-Arm Dumbbell Row", movementPatternV1: MovementPattern.PULL, jointStress: JointStress.MEDIUM, isMainLiftV1: false, equipment: ["Dumbbell", "Bench"] },
-  { name: "Dumbbell Curl", movementPatternV1: MovementPattern.PULL, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Dumbbell"] },
-  { name: "Barbell Curl", movementPatternV1: MovementPattern.PULL, jointStress: JointStress.MEDIUM, isMainLiftV1: false, equipment: ["Barbell"] },
-  { name: "Hammer Curl", movementPatternV1: MovementPattern.PULL, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Dumbbell"] },
-  { name: "Incline Dumbbell Curl", movementPatternV1: MovementPattern.PULL, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Dumbbell", "Bench"] },
-  { name: "Bayesian Curl", movementPatternV1: MovementPattern.PULL, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Cable"] },
-  { name: "Cable Preacher Curl", movementPatternV1: MovementPattern.PULL, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Cable"] },
-  { name: "Triceps Pushdown", movementPatternV1: MovementPattern.PUSH, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Cable"] },
-  { name: "JM Press", movementPatternV1: MovementPattern.PUSH, jointStress: JointStress.MEDIUM, isMainLiftV1: false, equipment: ["Barbell", "Bench"] },
-  { name: "Skull Crusher", movementPatternV1: MovementPattern.PUSH, jointStress: JointStress.MEDIUM, isMainLiftV1: false, equipment: ["Barbell", "Bench"] },
-  { name: "Dips", movementPatternV1: MovementPattern.PUSH, jointStress: JointStress.HIGH, isMainLiftV1: false, equipment: ["Bodyweight"] },
-  { name: "Overhead Triceps Extension", movementPatternV1: MovementPattern.PUSH, jointStress: JointStress.MEDIUM, isMainLiftV1: false, equipment: ["Dumbbell"] },
-  { name: "Leg Extension", movementPatternV1: MovementPattern.SQUAT, jointStress: JointStress.MEDIUM, isMainLiftV1: false, equipment: ["Machine"] },
-  { name: "Leg Curl", movementPatternV1: MovementPattern.HINGE, jointStress: JointStress.MEDIUM, isMainLiftV1: false, equipment: ["Machine"] },
-  { name: "Standing Calf Raise", movementPatternV1: MovementPattern.CARRY, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Machine"] },
-  { name: "Seated Calf Raise", movementPatternV1: MovementPattern.CARRY, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Machine"] },
-  { name: "Hip Abduction Machine", movementPatternV1: MovementPattern.HINGE, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Machine"] },
-  { name: "Plank", movementPatternV1: MovementPattern.ROTATE, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Bodyweight"] },
-  { name: "Hanging Leg Raise", movementPatternV1: MovementPattern.ROTATE, jointStress: JointStress.MEDIUM, isMainLiftV1: false, equipment: ["Bodyweight"] },
-  { name: "Cable Crunch", movementPatternV1: MovementPattern.ROTATE, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Cable"] },
-  { name: "Pallof Press", movementPatternV1: MovementPattern.ROTATE, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Cable"] },
-  { name: "Farmer's Carry", movementPatternV1: MovementPattern.CARRY, jointStress: JointStress.MEDIUM, isMainLiftV1: false, equipment: ["Dumbbell"] },
-  { name: "Sled Push", movementPatternV1: MovementPattern.CARRY, jointStress: JointStress.HIGH, isMainLiftV1: false, equipment: ["Sled"] },
-  { name: "Sled Pull", movementPatternV1: MovementPattern.CARRY, jointStress: JointStress.HIGH, isMainLiftV1: false, equipment: ["Sled"] },
-  { name: "Sled Drag", movementPatternV1: MovementPattern.CARRY, jointStress: JointStress.HIGH, isMainLiftV1: false, equipment: ["Sled"] },
-  { name: "Walking Lunge", movementPatternV1: MovementPattern.LUNGE, jointStress: JointStress.MEDIUM, isMainLiftV1: false, equipment: ["Dumbbell"] },
-  { name: "Split Squat", movementPatternV1: MovementPattern.LUNGE, jointStress: JointStress.MEDIUM, isMainLiftV1: false, equipment: ["Dumbbell"] },
-  { name: "Bulgarian Split Squat", movementPatternV1: MovementPattern.LUNGE, jointStress: JointStress.HIGH, isMainLiftV1: false, equipment: ["Dumbbell", "Bench"] },
-  { name: "Glute Bridge", movementPatternV1: MovementPattern.HINGE, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Bodyweight"] },
-  { name: "Cable Fly", movementPatternV1: MovementPattern.PUSH, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Cable"] },
-  { name: "Machine Chest Press", movementPatternV1: MovementPattern.PUSH, jointStress: JointStress.MEDIUM, isMainLiftV1: true, equipment: ["Machine"] },
-  { name: "Pec Deck", movementPatternV1: MovementPattern.PUSH, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Machine"] },
-  { name: "Machine Shoulder Press", movementPatternV1: MovementPattern.PUSH, jointStress: JointStress.MEDIUM, isMainLiftV1: false, equipment: ["Machine"] },
-  { name: "T-Bar Row", movementPatternV1: MovementPattern.PULL, jointStress: JointStress.MEDIUM, isMainLiftV1: true, equipment: ["Machine"] },
-  { name: "Reverse Fly", movementPatternV1: MovementPattern.PULL, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Dumbbell"] },
-  { name: "Dead Bug", movementPatternV1: MovementPattern.ROTATE, jointStress: JointStress.LOW, isMainLiftV1: false, equipment: ["Bodyweight"] },
-];
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Unified exercise field tuning — all 66 exercises
-// fatigueCost (1-5), timePerSetSec, sfrScore (1-5), lengthPositionScore (1-5),
-// stimulusBias, contraindications
-// ═══════════════════════════════════════════════════════════════════════════
-
-type ExerciseTuning = {
-  fatigueCost: number;
-  timePerSetSec: number;
-  sfrScore: number;
-  lengthPositionScore: number;
-  stimulusBias: StimulusBias[];
-  contraindications?: Record<string, boolean>;
-};
-
-const EXERCISE_FIELD_TUNING: Record<string, ExerciseTuning> = {
-  // ── Squat Pattern ──────────────────────────────────────────────────────
-  "Barbell Back Squat":      { fatigueCost: 5, timePerSetSec: 210, sfrScore: 1, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL], contraindications: { knee: true, low_back: true } },
-  "Front Squat":             { fatigueCost: 4, timePerSetSec: 180, sfrScore: 2, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL], contraindications: { knee: true } },
-  "Hack Squat":              { fatigueCost: 3, timePerSetSec: 150, sfrScore: 4, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL] },
-  "Reverse Hack Squat":      { fatigueCost: 3, timePerSetSec: 150, sfrScore: 4, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL] },
-  "Leg Press":               { fatigueCost: 3, timePerSetSec: 120, sfrScore: 4, lengthPositionScore: 2, stimulusBias: [StimulusBias.MECHANICAL], contraindications: { knee: true } },
-  "Belt Squat":              { fatigueCost: 3, timePerSetSec: 150, sfrScore: 3, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL] },
-  "Leg Extension":           { fatigueCost: 2, timePerSetSec: 90, sfrScore: 5, lengthPositionScore: 2, stimulusBias: [StimulusBias.METABOLIC] },
-
-  // ── Hinge Pattern ──────────────────────────────────────────────────────
-  "Romanian Deadlift":       { fatigueCost: 3, timePerSetSec: 150, sfrScore: 2, lengthPositionScore: 4, stimulusBias: [StimulusBias.STRETCH], contraindications: { low_back: true } },
-  "Conventional Deadlift":   { fatigueCost: 5, timePerSetSec: 210, sfrScore: 1, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL], contraindications: { low_back: true } },
-  "Trap Bar Deadlift":       { fatigueCost: 5, timePerSetSec: 210, sfrScore: 1, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL], contraindications: { low_back: true } },
-  "Hip Thrust":              { fatigueCost: 3, timePerSetSec: 120, sfrScore: 3, lengthPositionScore: 2, stimulusBias: [StimulusBias.MECHANICAL] },
-  "Leg Curl":                { fatigueCost: 2, timePerSetSec: 90, sfrScore: 5, lengthPositionScore: 3, stimulusBias: [StimulusBias.METABOLIC] },
-  "Hip Abduction Machine":   { fatigueCost: 1, timePerSetSec: 75, sfrScore: 5, lengthPositionScore: 3, stimulusBias: [StimulusBias.METABOLIC] },
-  "Glute Bridge":            { fatigueCost: 1, timePerSetSec: 60, sfrScore: 4, lengthPositionScore: 1, stimulusBias: [StimulusBias.STABILITY] },
-
-  // ── Lunge Pattern ──────────────────────────────────────────────────────
-  "Walking Lunge":           { fatigueCost: 3, timePerSetSec: 120, sfrScore: 3, lengthPositionScore: 4, stimulusBias: [StimulusBias.MECHANICAL], contraindications: { knee: true } },
-  "Split Squat":             { fatigueCost: 2, timePerSetSec: 120, sfrScore: 3, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL] },
-  "Bulgarian Split Squat":   { fatigueCost: 3, timePerSetSec: 120, sfrScore: 3, lengthPositionScore: 4, stimulusBias: [StimulusBias.STRETCH], contraindications: { knee: true } },
-
-  // ── Calves ─────────────────────────────────────────────────────────────
-  "Standing Calf Raise":     { fatigueCost: 2, timePerSetSec: 75, sfrScore: 4, lengthPositionScore: 5, stimulusBias: [StimulusBias.METABOLIC] },
-  "Seated Calf Raise":       { fatigueCost: 2, timePerSetSec: 75, sfrScore: 4, lengthPositionScore: 4, stimulusBias: [StimulusBias.METABOLIC] },
-
-  // ── Push — Pressing ────────────────────────────────────────────────────
-  "Barbell Bench Press":     { fatigueCost: 4, timePerSetSec: 180, sfrScore: 2, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL] },
-  "Incline Barbell Bench":   { fatigueCost: 4, timePerSetSec: 180, sfrScore: 2, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL] },
-  "Smith Machine Incline Press": { fatigueCost: 3, timePerSetSec: 150, sfrScore: 3, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL] },
-  "Dumbbell Bench Press":    { fatigueCost: 3, timePerSetSec: 150, sfrScore: 3, lengthPositionScore: 4, stimulusBias: [StimulusBias.MECHANICAL, StimulusBias.STRETCH] },
-  "Dumbbell Incline Press":  { fatigueCost: 3, timePerSetSec: 120, sfrScore: 3, lengthPositionScore: 4, stimulusBias: [StimulusBias.MECHANICAL, StimulusBias.STRETCH] },
-  "Low-Incline Dumbbell Press": { fatigueCost: 3, timePerSetSec: 120, sfrScore: 3, lengthPositionScore: 4, stimulusBias: [StimulusBias.MECHANICAL, StimulusBias.STRETCH] },
-  "Push-Up":                 { fatigueCost: 1, timePerSetSec: 75, sfrScore: 3, lengthPositionScore: 3, stimulusBias: [StimulusBias.METABOLIC] },
-  "Overhead Press":          { fatigueCost: 4, timePerSetSec: 180, sfrScore: 2, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL], contraindications: { shoulder: true } },
-  "Dumbbell Shoulder Press": { fatigueCost: 3, timePerSetSec: 120, sfrScore: 3, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL], contraindications: { shoulder: true } },
-  "Machine Chest Press":     { fatigueCost: 3, timePerSetSec: 120, sfrScore: 4, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL] },
-  "Machine Shoulder Press":  { fatigueCost: 3, timePerSetSec: 120, sfrScore: 4, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL], contraindications: { shoulder: true } },
-
-  // ── Push — Accessories ─────────────────────────────────────────────────
-  "Triceps Pushdown":        { fatigueCost: 2, timePerSetSec: 75, sfrScore: 4, lengthPositionScore: 1, stimulusBias: [StimulusBias.METABOLIC] },
-  "JM Press":                { fatigueCost: 3, timePerSetSec: 90, sfrScore: 3, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL] },
-  "Skull Crusher":           { fatigueCost: 3, timePerSetSec: 90, sfrScore: 3, lengthPositionScore: 4, stimulusBias: [StimulusBias.STRETCH], contraindications: { elbow: true } },
-  "Dips":                    { fatigueCost: 3, timePerSetSec: 120, sfrScore: 3, lengthPositionScore: 4, stimulusBias: [StimulusBias.MECHANICAL], contraindications: { shoulder: true } },
-  "Overhead Triceps Extension": { fatigueCost: 2, timePerSetSec: 75, sfrScore: 4, lengthPositionScore: 5, stimulusBias: [StimulusBias.STRETCH], contraindications: { shoulder: true, elbow: true } },
-  "Cable Fly":               { fatigueCost: 2, timePerSetSec: 75, sfrScore: 4, lengthPositionScore: 5, stimulusBias: [StimulusBias.STRETCH] },
-  "Pec Deck":                { fatigueCost: 2, timePerSetSec: 75, sfrScore: 5, lengthPositionScore: 4, stimulusBias: [StimulusBias.STRETCH] },
-  "Lateral Raise":           { fatigueCost: 2, timePerSetSec: 75, sfrScore: 4, lengthPositionScore: 3, stimulusBias: [StimulusBias.METABOLIC] },
-  "Dumbbell Lateral Raises": { fatigueCost: 2, timePerSetSec: 75, sfrScore: 4, lengthPositionScore: 3, stimulusBias: [StimulusBias.METABOLIC] },
-  "Cable Lateral Raise":     { fatigueCost: 2, timePerSetSec: 75, sfrScore: 5, lengthPositionScore: 3, stimulusBias: [StimulusBias.METABOLIC] },
-
-  // ── Pull — Rows / Pulls ────────────────────────────────────────────────
-  "Pull-Up":                 { fatigueCost: 3, timePerSetSec: 120, sfrScore: 2, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL] },
-  "Lat Pulldown":            { fatigueCost: 3, timePerSetSec: 90, sfrScore: 4, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL] },
-  "Barbell Row":             { fatigueCost: 4, timePerSetSec: 150, sfrScore: 2, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL], contraindications: { low_back: true } },
-  "Seated Cable Row":        { fatigueCost: 2, timePerSetSec: 90, sfrScore: 4, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL] },
-  "Chest-Supported Row":     { fatigueCost: 2, timePerSetSec: 90, sfrScore: 4, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL] },
-  "Chest-Supported T-Bar Row": { fatigueCost: 3, timePerSetSec: 120, sfrScore: 3, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL] },
-  "Single-Arm Dumbbell Row": { fatigueCost: 2, timePerSetSec: 90, sfrScore: 3, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL] },
-  "T-Bar Row":               { fatigueCost: 3, timePerSetSec: 150, sfrScore: 3, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL], contraindications: { low_back: true } },
-  "Face Pull":               { fatigueCost: 2, timePerSetSec: 75, sfrScore: 4, lengthPositionScore: 3, stimulusBias: [StimulusBias.METABOLIC] },
-  "Machine Rear Delt Fly":   { fatigueCost: 2, timePerSetSec: 75, sfrScore: 5, lengthPositionScore: 3, stimulusBias: [StimulusBias.METABOLIC] },
-  "Reverse Fly":             { fatigueCost: 2, timePerSetSec: 75, sfrScore: 4, lengthPositionScore: 3, stimulusBias: [StimulusBias.METABOLIC] },
-
-  // ── Pull — Arm Accessories ─────────────────────────────────────────────
-  "Dumbbell Curl":           { fatigueCost: 2, timePerSetSec: 75, sfrScore: 4, lengthPositionScore: 3, stimulusBias: [StimulusBias.METABOLIC] },
-  "Barbell Curl":            { fatigueCost: 2, timePerSetSec: 90, sfrScore: 3, lengthPositionScore: 3, stimulusBias: [StimulusBias.MECHANICAL], contraindications: { elbow: true } },
-  "Hammer Curl":             { fatigueCost: 2, timePerSetSec: 75, sfrScore: 4, lengthPositionScore: 3, stimulusBias: [StimulusBias.METABOLIC] },
-  "Incline Dumbbell Curl":   { fatigueCost: 2, timePerSetSec: 75, sfrScore: 4, lengthPositionScore: 5, stimulusBias: [StimulusBias.STRETCH] },
-  "Bayesian Curl":           { fatigueCost: 2, timePerSetSec: 75, sfrScore: 5, lengthPositionScore: 5, stimulusBias: [StimulusBias.STRETCH] },
-  "Cable Preacher Curl":     { fatigueCost: 2, timePerSetSec: 75, sfrScore: 5, lengthPositionScore: 3, stimulusBias: [StimulusBias.METABOLIC] },
-
-  // ── Core ───────────────────────────────────────────────────────────────
-  "Plank":                   { fatigueCost: 1, timePerSetSec: 60, sfrScore: 3, lengthPositionScore: 1, stimulusBias: [StimulusBias.STABILITY] },
-  "Hanging Leg Raise":       { fatigueCost: 2, timePerSetSec: 75, sfrScore: 3, lengthPositionScore: 3, stimulusBias: [StimulusBias.METABOLIC] },
-  "Cable Crunch":            { fatigueCost: 1, timePerSetSec: 60, sfrScore: 4, lengthPositionScore: 3, stimulusBias: [StimulusBias.METABOLIC] },
-  "Pallof Press":            { fatigueCost: 1, timePerSetSec: 60, sfrScore: 4, lengthPositionScore: 3, stimulusBias: [StimulusBias.STABILITY] },
-  "Dead Bug":                { fatigueCost: 1, timePerSetSec: 60, sfrScore: 3, lengthPositionScore: 3, stimulusBias: [StimulusBias.STABILITY] },
-
-  // ── Conditioning / Carries ─────────────────────────────────────────────
-  "Farmer's Carry":          { fatigueCost: 2, timePerSetSec: 75, sfrScore: 3, lengthPositionScore: 1, stimulusBias: [StimulusBias.STABILITY] },
-  "Sled Push":               { fatigueCost: 3, timePerSetSec: 90, sfrScore: 3, lengthPositionScore: 2, stimulusBias: [StimulusBias.METABOLIC] },
-  "Sled Pull":               { fatigueCost: 3, timePerSetSec: 90, sfrScore: 3, lengthPositionScore: 2, stimulusBias: [StimulusBias.METABOLIC] },
-  "Sled Drag":               { fatigueCost: 3, timePerSetSec: 90, sfrScore: 3, lengthPositionScore: 2, stimulusBias: [StimulusBias.METABOLIC] },
-};
-
-const compoundAccessoryNames = new Set<string>([
-  "Hack Squat",
-  "Reverse Hack Squat",
-  "Leg Press",
-  "Hip Thrust",
-  "Dumbbell Incline Press",
-  "Low-Incline Dumbbell Press",
-  "Push-Up",
-  "Dumbbell Shoulder Press",
-  "Machine Shoulder Press",
-  "Machine Chest Press",
-  "Dips",
-  "Walking Lunge",
-  "Split Squat",
-  "Bulgarian Split Squat",
-  "Lat Pulldown",
-  "Seated Cable Row",
-  "Chest-Supported Row",
-  "Single-Arm Dumbbell Row",
-  "Chest-Supported T-Bar Row",
-  "T-Bar Row",
-  "Glute Bridge",
-]);
-
-const mainLiftEligibleOverrides = new Set<string>([
-  "Dumbbell Shoulder Press",
-  "Machine Shoulder Press",
-  "Lat Pulldown",
-  "Lat Pulldown (wide, neutral, single-arm)",
-]);
-
-// Muscle volume landmarks (populated into DB for future user customization)
+// Muscle volume landmarks
 const MUSCLE_LANDMARKS: Record<string, { mv: number; mev: number; mav: number; mrv: number; sraHours: number }> = {
   "Chest":       { mv: 6,  mev: 10, mav: 16, mrv: 22, sraHours: 60 },
-  "Back":        { mv: 6,  mev: 10, mav: 18, mrv: 25, sraHours: 60 },
+  "Lats":        { mv: 6,  mev: 10, mav: 18, mrv: 25, sraHours: 60 },
   "Upper Back":  { mv: 6,  mev: 10, mav: 18, mrv: 25, sraHours: 48 },
   "Front Delts": { mv: 0,  mev: 0,  mav: 7,  mrv: 12, sraHours: 48 },
   "Side Delts":  { mv: 6,  mev: 8,  mav: 19, mrv: 26, sraHours: 36 },
@@ -343,792 +158,166 @@ const MUSCLE_LANDMARKS: Record<string, { mv: number; mev: number; mav: number; m
   "Lower Back":  { mv: 0,  mev: 0,  mav: 4,  mrv: 10, sraHours: 72 },
   "Forearms":    { mv: 0,  mev: 0,  mav: 6,  mrv: 12, sraHours: 36 },
   "Adductors":   { mv: 0,  mev: 0,  mav: 8,  mrv: 14, sraHours: 48 },
-  "Hip Flexors": { mv: 0,  mev: 0,  mav: 4,  mrv: 8,  sraHours: 36 },
+  "Abductors":   { mv: 0,  mev: 0,  mav: 6,  mrv: 12, sraHours: 36 },
+  "Abs":         { mv: 0,  mev: 0,  mav: 10, mrv: 16, sraHours: 36 },
 };
-const exerciseAliases: ExerciseAliasSeed[] = [
-  { exerciseName: "Dumbbell Shoulder Press", alias: "DB Shoulder Press" },
-  { exerciseName: "Split Squat", alias: "Front-Foot Elevated Split Squat" },
-  { exerciseName: "Romanian Deadlift", alias: "Romanian Deadlift (BB)" },
-  { exerciseName: "Romanian Deadlift", alias: "DB Romanian Deadlift" },
-  { exerciseName: "Dumbbell Incline Press", alias: "Incline DB Press" },
-  { exerciseName: "Single-Arm Dumbbell Row", alias: "One-Arm DB Row" },
-  { exerciseName: "Incline Dumbbell Curl", alias: "Incline DB Curls" },
-  { exerciseName: "Skull Crusher", alias: "DB Skull Crushers" },
-  { exerciseName: "Lateral Raise", alias: "DB Lateral Raise" },
-  { exerciseName: "Face Pull", alias: "Face Pulls (Rope)" },
-  { exerciseName: "Triceps Pushdown", alias: "Tricep Rope Pushdown" },
-  { exerciseName: "Barbell Bench Press", alias: "Decline Barbell Bench" },
-  { exerciseName: "Dumbbell Bench Press", alias: "Flat DB Press" },
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Time per set overrides (exercises needing non-120s default)
+// ═══════════════════════════════════════════════════════════════════════════
+
+const TIME_PER_SET_OVERRIDES: Record<string, number> = {
+  // Heavy compounds — long rest
+  "Barbell Back Squat": 210,
+  "Front Squat": 180,
+  "Conventional Deadlift": 210,
+  "Sumo Deadlift": 210,
+  "Trap Bar Deadlift": 210,
+  "Barbell Bench Press": 180,
+  "Incline Barbell Bench Press": 180,
+  "Decline Barbell Bench Press": 180,
+  "Barbell Overhead Press": 180,
+  "Seated Barbell Overhead Press": 180,
+  "Barbell Row": 150,
+  "Pendlay Row": 150,
+  "T-Bar Row": 150,
+
+  // Machine compounds — moderate rest
+  "Hack Squat": 150,
+  "Belt Squat": 150,
+
+  // Quick isolations
+  "Leg Extension": 90,
+  "Lying Leg Curl": 90,
+  "Seated Leg Curl": 90,
+  "Cable Triceps Pushdown": 75,
+  "Rope Triceps Pushdown": 75,
+  "Dumbbell Lateral Raise": 75,
+  "Cable Lateral Raise": 75,
+  "Machine Lateral Raise": 75,
+  "Dumbbell Curl": 75,
+  "EZ-Bar Curl": 90,
+  "Cable Curl": 75,
+  "Bayesian Curl": 75,
+  "Preacher Curl": 75,
+  "Spider Curl": 75,
+  "Concentration Curl": 75,
+  "Hammer Curl": 75,
+  "Cross-Body Hammer Curl": 75,
+  "Incline Dumbbell Curl": 75,
+  "Face Pull": 75,
+  "Standing Calf Raise": 75,
+  "Seated Calf Raise": 75,
+  "Leg Press Calf Raise": 75,
+  "Cable Fly": 75,
+  "Low-to-High Cable Fly": 75,
+  "Pec Deck Machine": 75,
+  "Reverse Pec Deck": 75,
+  "Dumbbell Rear Delt Fly": 75,
+  "Cable Rear Delt Fly": 75,
+  "Reverse Curl": 75,
+  "Wrist Curl": 60,
+  "Reverse Wrist Curl": 60,
+  "Hip Abduction Machine": 75,
+  "Cable Hip Abduction": 75,
+  "Hip Adduction Machine": 75,
+
+  // Core — quick
+  "Plank": 60,
+  "RKC Plank": 60,
+  "Side Plank": 60,
+  "Cable Crunch": 60,
+  "Machine Crunch": 60,
+  "Pallof Press": 60,
+  "Reverse Crunch": 60,
+  "Bicycle Crunch": 60,
+
+  // Conditioning
+  "Farmer's Walk": 75,
+  "Sled Push": 90,
+  "Sled Pull": 90,
+  "Sled Drag": 90,
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Exercise renames (old name → new name in JSON)
+// ═══════════════════════════════════════════════════════════════════════════
+
+const EXERCISE_RENAMES: [string, string][] = [
+  ["Hip Thrust", "Barbell Hip Thrust"],
+  ["Leg Curl", "Lying Leg Curl"],
+  ["Incline Barbell Bench", "Incline Barbell Bench Press"],
+  ["Smith Machine Incline Press", "Incline Machine Press"],
+  ["Dumbbell Incline Press", "Incline Dumbbell Bench Press"],
+  ["Pec Deck", "Pec Deck Machine"],
+  ["Overhead Press", "Barbell Overhead Press"],
+  ["Dumbbell Shoulder Press", "Dumbbell Overhead Press"],
+  ["Lateral Raise", "Dumbbell Lateral Raise"],
+  ["Triceps Pushdown", "Cable Triceps Pushdown"],
+  ["Skull Crusher", "Lying Triceps Extension (Skull Crusher)"],
+  ["Dips", "Dip (Chest Emphasis)"],
+  ["Overhead Triceps Extension", "Overhead Dumbbell Extension"],
+  ["Chest-Supported Row", "Chest-Supported Dumbbell Row"],
+  ["Single-Arm Dumbbell Row", "One-Arm Dumbbell Row"],
+  ["Machine Rear Delt Fly", "Reverse Pec Deck"],
+  ["Reverse Fly", "Dumbbell Rear Delt Fly"],
+  ["Cable Preacher Curl", "Preacher Curl"],
+  ["Farmer's Carry", "Farmer's Walk"],
+];
+
+// Muscle rename (old name → new name)
+const MUSCLE_RENAMES: [string, string][] = [
+  ["Back", "Lats"],
+];
+
+// Exercises to delete before renames (merge conflicts)
+const EXERCISES_TO_DELETE_BEFORE_RENAME = [
+  "Dumbbell Lateral Raises",
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Seed data — ExerciseMuscle mappings (all 122 DB exercises)
+// Exercise aliases (old names become aliases for searchability)
 // ═══════════════════════════════════════════════════════════════════════════
 
-const P = MuscleRole.PRIMARY;
-const S = MuscleRole.SECONDARY;
+const exerciseAliases: ExerciseAliasSeed[] = [
+  // Old names from renames
+  { exerciseName: "Barbell Hip Thrust", alias: "Hip Thrust" },
+  { exerciseName: "Lying Leg Curl", alias: "Leg Curl" },
+  { exerciseName: "Incline Barbell Bench Press", alias: "Incline Barbell Bench" },
+  { exerciseName: "Incline Machine Press", alias: "Smith Machine Incline Press" },
+  { exerciseName: "Incline Dumbbell Bench Press", alias: "Dumbbell Incline Press" },
+  { exerciseName: "Pec Deck Machine", alias: "Pec Deck" },
+  { exerciseName: "Barbell Overhead Press", alias: "Overhead Press" },
+  { exerciseName: "Dumbbell Overhead Press", alias: "Dumbbell Shoulder Press" },
+  { exerciseName: "Dumbbell Lateral Raise", alias: "Lateral Raise" },
+  { exerciseName: "Dumbbell Lateral Raise", alias: "Dumbbell Lateral Raises" },
+  { exerciseName: "Cable Triceps Pushdown", alias: "Triceps Pushdown" },
+  { exerciseName: "Lying Triceps Extension (Skull Crusher)", alias: "Skull Crusher" },
+  { exerciseName: "Dip (Chest Emphasis)", alias: "Dips" },
+  { exerciseName: "Overhead Dumbbell Extension", alias: "Overhead Triceps Extension" },
+  { exerciseName: "Chest-Supported Dumbbell Row", alias: "Chest-Supported Row" },
+  { exerciseName: "One-Arm Dumbbell Row", alias: "Single-Arm Dumbbell Row" },
+  { exerciseName: "Reverse Pec Deck", alias: "Machine Rear Delt Fly" },
+  { exerciseName: "Dumbbell Rear Delt Fly", alias: "Reverse Fly" },
+  { exerciseName: "Preacher Curl", alias: "Cable Preacher Curl" },
+  { exerciseName: "Farmer's Walk", alias: "Farmer's Carry" },
 
-const exerciseMuscleMappings: Record<string, MuscleMappingEntry[]> = {
-
-  // ── Squat Pattern ──────────────────────────────────────────────────────
-
-  "Barbell Back Squat": [
-    { muscle: "Quads", role: P },
-    { muscle: "Glutes", role: P },
-    { muscle: "Hamstrings", role: S },
-    { muscle: "Core", role: S },
-    { muscle: "Calves", role: S },
-    { muscle: "Lower Back", role: S },
-    { muscle: "Adductors", role: S },
-  ],
-  "Front Squat": [
-    { muscle: "Quads", role: P },
-    { muscle: "Glutes", role: S },
-    { muscle: "Hamstrings", role: S },
-    { muscle: "Core", role: S },
-    { muscle: "Lower Back", role: S },
-    { muscle: "Upper Back", role: S },
-  ],
-  "Hack Squat": [
-    { muscle: "Quads", role: P },
-    { muscle: "Glutes", role: S },
-  ],
-  "Reverse Hack Squat": [
-    { muscle: "Quads", role: P },
-    { muscle: "Glutes", role: S },
-    { muscle: "Hamstrings", role: S },
-  ],
-  "Leg Press": [
-    { muscle: "Quads", role: P },
-    { muscle: "Glutes", role: S },
-    { muscle: "Hamstrings", role: S },
-    { muscle: "Adductors", role: S },
-  ],
-  "Belt Squat": [
-    { muscle: "Quads", role: P },
-    { muscle: "Glutes", role: P },
-    { muscle: "Adductors", role: S },
-  ],
-  "Leg Extension": [
-    { muscle: "Quads", role: P },
-  ],
-  "Bodyweight Squats": [
-    { muscle: "Quads", role: P },
-    { muscle: "Glutes", role: S },
-    { muscle: "Core", role: S },
-  ],
-  "Goblet Squats": [
-    { muscle: "Quads", role: P },
-    { muscle: "Glutes", role: S },
-    { muscle: "Core", role: S },
-    { muscle: "Adductors", role: S },
-  ],
-  "Goblet Squat Pulses": [
-    { muscle: "Quads", role: P },
-    { muscle: "Glutes", role: S },
-    { muscle: "Core", role: S },
-  ],
-  "Pause Squats": [
-    { muscle: "Quads", role: P },
-    { muscle: "Glutes", role: P },
-    { muscle: "Core", role: S },
-    { muscle: "Lower Back", role: S },
-    { muscle: "Adductors", role: S },
-  ],
-  "Tempo Squats": [
-    { muscle: "Quads", role: P },
-    { muscle: "Glutes", role: P },
-    { muscle: "Core", role: S },
-    { muscle: "Lower Back", role: S },
-    { muscle: "Adductors", role: S },
-  ],
-  "Smith Machine Squats": [
-    { muscle: "Quads", role: P },
-    { muscle: "Glutes", role: S },
-  ],
-  "Banded Squats": [
-    { muscle: "Quads", role: P },
-    { muscle: "Glutes", role: S },
-  ],
-  "Wall Sits": [
-    { muscle: "Quads", role: P },
-    { muscle: "Core", role: S },
-  ],
-  "Wall Sit Circuits": [
-    { muscle: "Quads", role: P },
-    { muscle: "Core", role: S },
-  ],
-
-  // ── Hinge Pattern ──────────────────────────────────────────────────────
-
-  "Romanian Deadlift": [
-    { muscle: "Hamstrings", role: P },
-    { muscle: "Glutes", role: P },
-    { muscle: "Lower Back", role: S },
-    { muscle: "Core", role: S },
-  ],
-  "Conventional Deadlift": [
-    { muscle: "Hamstrings", role: P },
-    { muscle: "Glutes", role: P },
-    { muscle: "Lower Back", role: P },
-    { muscle: "Quads", role: S },
-    { muscle: "Upper Back", role: S },
-    { muscle: "Core", role: S },
-    { muscle: "Forearms", role: S },
-  ],
-  "Barbell Deadlift": [
-    { muscle: "Hamstrings", role: P },
-    { muscle: "Glutes", role: P },
-    { muscle: "Lower Back", role: P },
-    { muscle: "Quads", role: S },
-    { muscle: "Upper Back", role: S },
-    { muscle: "Core", role: S },
-    { muscle: "Forearms", role: S },
-  ],
-  "Trap Bar Deadlift": [
-    { muscle: "Quads", role: P },
-    { muscle: "Glutes", role: P },
-    { muscle: "Hamstrings", role: S },
-    { muscle: "Lower Back", role: S },
-    { muscle: "Upper Back", role: S },
-    { muscle: "Core", role: S },
-    { muscle: "Forearms", role: S },
-  ],
-  "Dumbbell Romanian Deadlift": [
-    { muscle: "Hamstrings", role: P },
-    { muscle: "Glutes", role: P },
-    { muscle: "Lower Back", role: S },
-    { muscle: "Core", role: S },
-  ],
-  "Rack Pulls": [
-    { muscle: "Lower Back", role: P },
-    { muscle: "Glutes", role: P },
-    { muscle: "Hamstrings", role: S },
-    { muscle: "Upper Back", role: S },
-    { muscle: "Forearms", role: S },
-  ],
-  "Hip Thrust": [
-    { muscle: "Glutes", role: P },
-    { muscle: "Hamstrings", role: S },
-    { muscle: "Core", role: S },
-    { muscle: "Adductors", role: S },
-  ],
-  "Barbell Hip Thrust": [
-    { muscle: "Glutes", role: P },
-    { muscle: "Hamstrings", role: S },
-    { muscle: "Core", role: S },
-    { muscle: "Adductors", role: S },
-  ],
-  "Dumbbell Hip Thrusts": [
-    { muscle: "Glutes", role: P },
-    { muscle: "Hamstrings", role: S },
-    { muscle: "Core", role: S },
-  ],
-  "Glute Bridge": [
-    { muscle: "Glutes", role: P },
-    { muscle: "Hamstrings", role: S },
-    { muscle: "Core", role: S },
-  ],
-  "Banded Glute Bridges": [
-    { muscle: "Glutes", role: P },
-    { muscle: "Hamstrings", role: S },
-  ],
-  "Dumbbell Glute Bridges": [
-    { muscle: "Glutes", role: P },
-    { muscle: "Hamstrings", role: S },
-  ],
-  "Barbell Good Mornings": [
-    { muscle: "Hamstrings", role: P },
-    { muscle: "Lower Back", role: P },
-    { muscle: "Glutes", role: S },
-    { muscle: "Core", role: S },
-  ],
-  "Banded Good Mornings": [
-    { muscle: "Hamstrings", role: P },
-    { muscle: "Lower Back", role: S },
-    { muscle: "Glutes", role: S },
-  ],
-  "Leg Curl": [
-    { muscle: "Hamstrings", role: P },
-  ],
-  "Lying Hamstring Curl": [
-    { muscle: "Hamstrings", role: P },
-  ],
-  "Seated Hamstring Curl": [
-    { muscle: "Hamstrings", role: P },
-  ],
-  "Hip Abduction Machine": [
-    { muscle: "Glutes", role: P },
-  ],
-  "Banded Lateral Walks": [
-    { muscle: "Glutes", role: P },
-    { muscle: "Hip Flexors", role: S },
-  ],
-  "Banded Glute Kickbacks": [
-    { muscle: "Glutes", role: P },
-    { muscle: "Hamstrings", role: S },
-  ],
-  "Alternating Fire Hydrants": [
-    { muscle: "Glutes", role: P },
-    { muscle: "Hip Flexors", role: S },
-  ],
-
-  // ── Lunge Pattern ──────────────────────────────────────────────────────
-
-  "Walking Lunge": [
-    { muscle: "Quads", role: P },
-    { muscle: "Glutes", role: P },
-    { muscle: "Hamstrings", role: S },
-    { muscle: "Core", role: S },
-    { muscle: "Hip Flexors", role: S },
-    { muscle: "Adductors", role: S },
-  ],
-  "Split Squat": [
-    { muscle: "Quads", role: P },
-    { muscle: "Glutes", role: S },
-    { muscle: "Hamstrings", role: S },
-    { muscle: "Hip Flexors", role: S },
-  ],
-  "Bulgarian Split Squat": [
-    { muscle: "Quads", role: P },
-    { muscle: "Glutes", role: P },
-    { muscle: "Hamstrings", role: S },
-    { muscle: "Core", role: S },
-    { muscle: "Hip Flexors", role: S },
-    { muscle: "Adductors", role: S },
-  ],
-  "Front-Foot Elevated Split Squats": [
-    { muscle: "Quads", role: P },
-    { muscle: "Glutes", role: P },
-    { muscle: "Hamstrings", role: S },
-    { muscle: "Core", role: S },
-    { muscle: "Hip Flexors", role: S },
-    { muscle: "Adductors", role: S },
-  ],
-  "Reverse Lunges": [
-    { muscle: "Quads", role: P },
-    { muscle: "Glutes", role: P },
-    { muscle: "Hamstrings", role: S },
-    { muscle: "Core", role: S },
-    { muscle: "Hip Flexors", role: S },
-  ],
-  "Step-Ups": [
-    { muscle: "Quads", role: P },
-    { muscle: "Glutes", role: S },
-    { muscle: "Hamstrings", role: S },
-    { muscle: "Core", role: S },
-  ],
-  "Step-Downs": [
-    { muscle: "Quads", role: P },
-    { muscle: "Glutes", role: S },
-    { muscle: "Core", role: S },
-  ],
-
-  // ── Calves ─────────────────────────────────────────────────────────────
-
-  "Standing Calf Raise": [
-    { muscle: "Calves", role: P },
-  ],
-  "Standing Calf Raises": [
-    { muscle: "Calves", role: P },
-  ],
-  "Seated Calf Raise": [
-    { muscle: "Calves", role: P },
-  ],
-  "Seated Calf Raises": [
-    { muscle: "Calves", role: P },
-  ],
-  "Single-Leg Calf Raises": [
-    { muscle: "Calves", role: P },
-  ],
-
-  // ── Push — Pressing ────────────────────────────────────────────────────
-
-  "Barbell Bench Press": [
-    { muscle: "Chest", role: P },
-    { muscle: "Triceps", role: P },
-    { muscle: "Front Delts", role: S },
-  ],
-  "Incline Barbell Bench": [
-    { muscle: "Chest", role: P },
-    { muscle: "Front Delts", role: P },
-    { muscle: "Triceps", role: S },
-  ],
-  "Incline Barbell Bench Press": [
-    { muscle: "Chest", role: P },
-    { muscle: "Front Delts", role: P },
-    { muscle: "Triceps", role: S },
-  ],
-  "Decline Barbell Bench Press": [
-    { muscle: "Chest", role: P },
-    { muscle: "Triceps", role: P },
-    { muscle: "Front Delts", role: S },
-  ],
-  "Smith Machine Incline Press": [
-    { muscle: "Chest", role: P },
-    { muscle: "Front Delts", role: P },
-    { muscle: "Triceps", role: S },
-  ],
-  "Dumbbell Bench Press": [
-    { muscle: "Chest", role: P },
-    { muscle: "Triceps", role: S },
-    { muscle: "Front Delts", role: S },
-  ],
-  "Flat Dumbbell Press": [
-    { muscle: "Chest", role: P },
-    { muscle: "Triceps", role: S },
-    { muscle: "Front Delts", role: S },
-  ],
-  "Dumbbell Incline Press": [
-    { muscle: "Chest", role: P },
-    { muscle: "Front Delts", role: S },
-    { muscle: "Triceps", role: S },
-  ],
-  "Incline Dumbbell Press": [
-    { muscle: "Chest", role: P },
-    { muscle: "Front Delts", role: S },
-    { muscle: "Triceps", role: S },
-  ],
-  "Low-Incline Dumbbell Press": [
-    { muscle: "Chest", role: P },
-    { muscle: "Front Delts", role: S },
-    { muscle: "Triceps", role: S },
-  ],
-  "Push-Up": [
-    { muscle: "Chest", role: P },
-    { muscle: "Triceps", role: S },
-    { muscle: "Front Delts", role: S },
-    { muscle: "Core", role: S },
-  ],
-  "Push-Up AMRAP Sets": [
-    { muscle: "Chest", role: P },
-    { muscle: "Triceps", role: S },
-    { muscle: "Front Delts", role: S },
-    { muscle: "Core", role: S },
-  ],
-  "Close-Grip Push-Ups": [
-    { muscle: "Triceps", role: P },
-    { muscle: "Chest", role: S },
-    { muscle: "Front Delts", role: S },
-  ],
-  "Overhead Press": [
-    { muscle: "Front Delts", role: P },
-    { muscle: "Triceps", role: P },
-    { muscle: "Side Delts", role: S },
-    { muscle: "Upper Back", role: S },
-    { muscle: "Core", role: S },
-  ],
-  "Dumbbell Shoulder Press": [
-    { muscle: "Front Delts", role: P },
-    { muscle: "Triceps", role: S },
-    { muscle: "Side Delts", role: S },
-  ],
-  "Arnold Press": [
-    { muscle: "Front Delts", role: P },
-    { muscle: "Side Delts", role: S },
-    { muscle: "Triceps", role: S },
-  ],
-  "Machine Chest Press": [
-    { muscle: "Chest", role: P },
-    { muscle: "Triceps", role: S },
-    { muscle: "Front Delts", role: S },
-  ],
-  "Machine Shoulder Press": [
-    { muscle: "Front Delts", role: P },
-    { muscle: "Triceps", role: S },
-    { muscle: "Side Delts", role: S },
-  ],
-
-  // ── Push — Accessories ─────────────────────────────────────────────────
-
-  "Triceps Pushdown": [
-    { muscle: "Triceps", role: P },
-  ],
-  "Tricep Rope Pushdowns": [
-    { muscle: "Triceps", role: P },
-  ],
-  "JM Press": [
-    { muscle: "Triceps", role: P },
-    { muscle: "Chest", role: S },
-  ],
-  "Skull Crusher": [
-    { muscle: "Triceps", role: P },
-  ],
-  "Dumbbell Skull Crushers": [
-    { muscle: "Triceps", role: P },
-  ],
-  "Dips": [
-    { muscle: "Chest", role: P },
-    { muscle: "Triceps", role: P },
-    { muscle: "Front Delts", role: S },
-  ],
-  "Assisted Dips": [
-    { muscle: "Chest", role: P },
-    { muscle: "Triceps", role: P },
-    { muscle: "Front Delts", role: S },
-  ],
-  "Close-Grip Bench Press": [
-    { muscle: "Triceps", role: P },
-    { muscle: "Chest", role: P },
-    { muscle: "Front Delts", role: S },
-  ],
-  "Overhead Triceps Extension": [
-    { muscle: "Triceps", role: P },
-  ],
-  "Cable Fly": [
-    { muscle: "Chest", role: P },
-    { muscle: "Front Delts", role: S },
-  ],
-  "Pec Deck": [
-    { muscle: "Chest", role: P },
-    { muscle: "Front Delts", role: S },
-  ],
-  "Lateral Raise": [
-    { muscle: "Side Delts", role: P },
-  ],
-  "Cable Lateral Raise": [
-    { muscle: "Side Delts", role: P },
-  ],
-  "Dumbbell Lateral Raises": [
-    { muscle: "Side Delts", role: P },
-  ],
-
-  // ── Pull — Rows / Pulls ───────────────────────────────────────────────
-
-  "Pull-Up": [
-    { muscle: "Back", role: P },
-    { muscle: "Biceps", role: S },
-    { muscle: "Forearms", role: S },
-    { muscle: "Core", role: S },
-  ],
-  "Lat Pulldown": [
-    { muscle: "Back", role: P },
-    { muscle: "Biceps", role: S },
-    { muscle: "Forearms", role: S },
-  ],
-  "Lat Pulldown (wide, neutral, single-arm)": [
-    { muscle: "Back", role: P },
-    { muscle: "Biceps", role: S },
-    { muscle: "Forearms", role: S },
-  ],
-  "Single-Arm Cable Lat Pulldown": [
-    { muscle: "Back", role: P },
-    { muscle: "Biceps", role: S },
-    { muscle: "Forearms", role: S },
-  ],
-  "Straight-Arm Pulldown": [
-    { muscle: "Back", role: P },
-    { muscle: "Triceps", role: S },
-    { muscle: "Core", role: S },
-  ],
-  "Barbell Row": [
-    { muscle: "Back", role: P },
-    { muscle: "Upper Back", role: P },
-    { muscle: "Biceps", role: S },
-    { muscle: "Rear Delts", role: S },
-    { muscle: "Lower Back", role: S },
-    { muscle: "Forearms", role: S },
-  ],
-  "Seated Cable Row": [
-    { muscle: "Back", role: P },
-    { muscle: "Upper Back", role: S },
-    { muscle: "Biceps", role: S },
-    { muscle: "Rear Delts", role: S },
-  ],
-  "Chest-Supported Row": [
-    { muscle: "Back", role: P },
-    { muscle: "Upper Back", role: S },
-    { muscle: "Biceps", role: S },
-    { muscle: "Rear Delts", role: S },
-  ],
-  "Chest-Supported Machine Row": [
-    { muscle: "Back", role: P },
-    { muscle: "Upper Back", role: S },
-    { muscle: "Biceps", role: S },
-    { muscle: "Rear Delts", role: S },
-  ],
-  "Chest-Supported T-Bar Row": [
-    { muscle: "Back", role: P },
-    { muscle: "Upper Back", role: P },
-    { muscle: "Biceps", role: S },
-    { muscle: "Rear Delts", role: S },
-  ],
-  "T-Bar Row": [
-    { muscle: "Back", role: P },
-    { muscle: "Upper Back", role: P },
-    { muscle: "Biceps", role: S },
-    { muscle: "Rear Delts", role: S },
-    { muscle: "Lower Back", role: S },
-  ],
-  "One-Arm Dumbbell Row": [
-    { muscle: "Back", role: P },
-    { muscle: "Upper Back", role: S },
-    { muscle: "Biceps", role: S },
-    { muscle: "Core", role: S },
-    { muscle: "Rear Delts", role: S },
-  ],
-  "Single-Arm Dumbbell Row": [
-    { muscle: "Back", role: P },
-    { muscle: "Upper Back", role: S },
-    { muscle: "Biceps", role: S },
-    { muscle: "Core", role: S },
-    { muscle: "Rear Delts", role: S },
-  ],
-  "Iso-Lateral Low Row": [
-    { muscle: "Back", role: P },
-    { muscle: "Upper Back", role: S },
-    { muscle: "Biceps", role: S },
-    { muscle: "Rear Delts", role: S },
-  ],
-  "Banded Rows": [
-    { muscle: "Back", role: P },
-    { muscle: "Upper Back", role: S },
-    { muscle: "Biceps", role: S },
-  ],
-  "Banded Rows Burnouts": [
-    { muscle: "Back", role: P },
-    { muscle: "Upper Back", role: S },
-    { muscle: "Biceps", role: S },
-  ],
-  "Machine Shrugs": [
-    { muscle: "Upper Back", role: P },
-  ],
-  "Reverse Fly": [
-    { muscle: "Rear Delts", role: P },
-    { muscle: "Upper Back", role: P },
-  ],
-  "Dumbbell Reverse Flys": [
-    { muscle: "Rear Delts", role: P },
-    { muscle: "Upper Back", role: P },
-  ],
-  "Rear Delt Fly Machine": [
-    { muscle: "Rear Delts", role: P },
-    { muscle: "Upper Back", role: P },
-  ],
-  "Machine Rear Delt Fly": [
-    { muscle: "Rear Delts", role: P },
-    { muscle: "Upper Back", role: P },
-  ],
-  "Face Pull": [
-    { muscle: "Rear Delts", role: P },
-    { muscle: "Upper Back", role: P },
-    { muscle: "Side Delts", role: S },
-  ],
-
-  // ── Pull — Arm Accessories ─────────────────────────────────────────────
-
-  "Dumbbell Curl": [
-    { muscle: "Biceps", role: P },
-    { muscle: "Forearms", role: S },
-  ],
-  "Barbell Curl": [
-    { muscle: "Biceps", role: P },
-    { muscle: "Forearms", role: S },
-  ],
-  "Hammer Curl": [
-    { muscle: "Biceps", role: P },
-    { muscle: "Forearms", role: P },
-  ],
-  "Rope Hammer Curls": [
-    { muscle: "Biceps", role: P },
-    { muscle: "Forearms", role: P },
-  ],
-  "Incline Dumbbell Curl": [
-    { muscle: "Biceps", role: P },
-  ],
-  "Bayesian Curl": [
-    { muscle: "Biceps", role: P },
-  ],
-  "Cable Preacher Curl": [
-    { muscle: "Biceps", role: P },
-  ],
-  "Cable Reverse Curls": [
-    { muscle: "Biceps", role: P },
-    { muscle: "Forearms", role: P },
-  ],
-  "Banded Curl Burnouts": [
-    { muscle: "Biceps", role: P },
-  ],
-  "Isometric Biceps Holds": [
-    { muscle: "Biceps", role: P },
-    { muscle: "Forearms", role: S },
-  ],
-  "Forearm Wrist Extensions": [
-    { muscle: "Forearms", role: P },
-  ],
-
-  // ── Core ───────────────────────────────────────────────────────────────
-
-  "Plank": [
-    { muscle: "Core", role: P },
-    { muscle: "Front Delts", role: S },
-  ],
-  "Hanging Leg Raise": [
-    { muscle: "Core", role: P },
-    { muscle: "Hip Flexors", role: P },
-    { muscle: "Forearms", role: S },
-  ],
-  "Hanging Knee Raises": [
-    { muscle: "Core", role: P },
-    { muscle: "Hip Flexors", role: P },
-    { muscle: "Forearms", role: S },
-  ],
-  "Captain\u2019s Chair Knee Raises": [
-    { muscle: "Core", role: P },
-    { muscle: "Hip Flexors", role: P },
-    { muscle: "Forearms", role: S },
-  ],
-  "Lying Leg Raises": [
-    { muscle: "Core", role: P },
-    { muscle: "Hip Flexors", role: P },
-  ],
-  "Supported Leg Extension Crunches": [
-    { muscle: "Core", role: P },
-  ],
-  "Cable Crunch": [
-    { muscle: "Core", role: P },
-  ],
-  "Pallof Press": [
-    { muscle: "Core", role: P },
-    { muscle: "Front Delts", role: S },
-  ],
-  "Dead Bug": [
-    { muscle: "Core", role: P },
-    { muscle: "Hip Flexors", role: S },
-  ],
-  "Copenhagen Planks": [
-    { muscle: "Core", role: P },
-    { muscle: "Adductors", role: P },
-  ],
-  "Cartwheel Twists": [
-    { muscle: "Core", role: P },
-    { muscle: "Hip Flexors", role: S },
-  ],
-
-  // ── Conditioning / Carries ─────────────────────────────────────────────
-
-  "Farmer's Carry": [
-    { muscle: "Forearms", role: P },
-    { muscle: "Core", role: P },
-    { muscle: "Upper Back", role: S },
-    { muscle: "Side Delts", role: S },
-  ],
-  "Sled Push": [
-    { muscle: "Quads", role: P },
-    { muscle: "Glutes", role: S },
-    { muscle: "Calves", role: S },
-    { muscle: "Core", role: S },
-  ],
-  "Sled Pull": [
-    { muscle: "Hamstrings", role: P },
-    { muscle: "Glutes", role: P },
-    { muscle: "Back", role: S },
-    { muscle: "Core", role: S },
-  ],
-  "Sled Drag": [
-    { muscle: "Hamstrings", role: P },
-    { muscle: "Glutes", role: S },
-    { muscle: "Calves", role: S },
-    { muscle: "Core", role: S },
-  ],
-  "Sled Drags": [
-    { muscle: "Hamstrings", role: P },
-    { muscle: "Glutes", role: S },
-    { muscle: "Calves", role: S },
-    { muscle: "Core", role: S },
-  ],
-
-  // ── Prehab / Mobility ─────────────────────────────────────────────────
-
-  "Scapular Pull-Ups": [
-    { muscle: "Upper Back", role: P },
-    { muscle: "Back", role: S },
-  ],
-  "Scapular Push-Ups": [
-    { muscle: "Upper Back", role: P },
-    { muscle: "Front Delts", role: S },
-  ],
-  "Prone Y-T Raises": [
-    { muscle: "Upper Back", role: P },
-    { muscle: "Rear Delts", role: P },
-  ],
-  "Band Pull-Aparts": [
-    { muscle: "Rear Delts", role: P },
-    { muscle: "Upper Back", role: P },
-  ],
-  "Dead Hangs": [
-    { muscle: "Forearms", role: P },
-    { muscle: "Back", role: S },
-  ],
-  "Hip Flexor Stretch": [
-    { muscle: "Hip Flexors", role: P },
-  ],
-};
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Resolver functions
-// ═══════════════════════════════════════════════════════════════════════════
-
-function resolveSplitTag(name: string, pattern: MovementPattern): SplitTag {
-  if (MOBILITY_REGEX.test(name)) {
-    return SplitTag.MOBILITY;
-  }
-  if (PREHAB_REGEX.test(name)) {
-    return SplitTag.PREHAB;
-  }
-  if (CONDITIONING_REGEX.test(name)) {
-    return SplitTag.CONDITIONING;
-  }
-  if (CORE_REGEX.test(name)) {
-    return SplitTag.CORE;
-  }
-  switch (pattern) {
-    case MovementPattern.PUSH:
-    case MovementPattern.PUSH_PULL:
-      return SplitTag.PUSH;
-    case MovementPattern.PULL:
-      return SplitTag.PULL;
-    default:
-      return SplitTag.LEGS;
-  }
-}
-
-function resolveMovementPatternsV2(name: string, pattern: MovementPattern): MovementPatternV2[] {
-  if (pattern === MovementPattern.PUSH || pattern === MovementPattern.PUSH_PULL) {
-    if (VERTICAL_PUSH_REGEX.test(name)) {
-      return [MovementPatternV2.VERTICAL_PUSH];
-    }
-    if (HORIZONTAL_PUSH_REGEX.test(name)) {
-      return [MovementPatternV2.HORIZONTAL_PUSH];
-    }
-    return [MovementPatternV2.HORIZONTAL_PUSH];
-  }
-  if (pattern === MovementPattern.PULL) {
-    if (VERTICAL_PULL_REGEX.test(name)) {
-      return [MovementPatternV2.VERTICAL_PULL];
-    }
-    if (HORIZONTAL_PULL_REGEX.test(name)) {
-      return [MovementPatternV2.HORIZONTAL_PULL];
-    }
-    return [MovementPatternV2.HORIZONTAL_PULL];
-  }
-  if (pattern === MovementPattern.SQUAT) {
-    return [MovementPatternV2.SQUAT];
-  }
-  if (pattern === MovementPattern.HINGE) {
-    return [MovementPatternV2.HINGE];
-  }
-  if (pattern === MovementPattern.LUNGE) {
-    return [MovementPatternV2.LUNGE];
-  }
-  if (pattern === MovementPattern.CARRY) {
-    return [MovementPatternV2.CARRY];
-  }
-  if (pattern === MovementPattern.ROTATE) {
-    return [MovementPatternV2.ROTATION];
-  }
-  return [];
-}
+  // Legacy aliases from old seed
+  { exerciseName: "Dumbbell Overhead Press", alias: "DB Shoulder Press" },
+  { exerciseName: "Romanian Deadlift", alias: "Romanian Deadlift (BB)" },
+  { exerciseName: "Romanian Deadlift", alias: "DB Romanian Deadlift" },
+  { exerciseName: "Incline Dumbbell Bench Press", alias: "Incline DB Press" },
+  { exerciseName: "One-Arm Dumbbell Row", alias: "One-Arm DB Row" },
+  { exerciseName: "Incline Dumbbell Curl", alias: "Incline DB Curls" },
+  { exerciseName: "Lying Triceps Extension (Skull Crusher)", alias: "DB Skull Crushers" },
+  { exerciseName: "Dumbbell Lateral Raise", alias: "DB Lateral Raise" },
+  { exerciseName: "Face Pull", alias: "Face Pulls (Rope)" },
+  { exerciseName: "Cable Triceps Pushdown", alias: "Tricep Rope Pushdown" },
+  { exerciseName: "Barbell Bench Press", alias: "Flat Barbell Bench Press" },
+  { exerciseName: "Barbell Bench Press", alias: "Decline Barbell Bench" },
+  { exerciseName: "Dumbbell Bench Press", alias: "Flat DB Press" },
+  { exerciseName: "Bulgarian Split Squat", alias: "Front-Foot Elevated Split Squat" },
+];
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Seed data — Baselines
@@ -1184,7 +373,7 @@ const baselineSeed = [
     notes: "Volume",
   },
   {
-    exerciseName: "Barbell Deadlift",
+    exerciseName: "Conventional Deadlift",
     category: BaselineCategory.MAIN_LIFT,
     context: "strength",
     topSetWeight: 185,
@@ -1198,7 +387,7 @@ const baselineSeed = [
     notes: "Strength",
   },
   {
-    exerciseName: "Barbell Deadlift",
+    exerciseName: "Conventional Deadlift",
     category: BaselineCategory.MAIN_LIFT,
     context: "volume",
     workingWeightMin: 155,
@@ -1280,13 +469,13 @@ const baselineSeed = [
     workingWeightMax: 20,
   },
   {
-    exerciseName: "Chest-Supported Machine Row",
+    exerciseName: "Chest-Supported Row",
     category: BaselineCategory.MACHINE_CABLE,
     workingWeightMin: 100,
     workingWeightMax: 125,
   },
   {
-    exerciseName: "Iso-Lateral Low Row",
+    exerciseName: "Seated Cable Row",
     category: BaselineCategory.MACHINE_CABLE,
     workingWeightMin: 50,
     workingWeightMax: 60,
@@ -1299,10 +488,12 @@ const baselineSeed = [
     workingWeightMax: 130,
   },
   {
-    exerciseName: "Straight-Arm Pulldown",
+    exerciseName: "Lat Pulldown",
     category: BaselineCategory.MACHINE_CABLE,
+    context: "light",
     workingWeightMin: 45,
     workingWeightMax: 50,
+    notes: "Straight-arm variation",
   },
   {
     exerciseName: "Face Pulls (Rope)",
@@ -1311,10 +502,12 @@ const baselineSeed = [
     workingWeightMax: 40,
   },
   {
-    exerciseName: "Machine Shrugs",
+    exerciseName: "Barbell Row",
     category: BaselineCategory.MACHINE_CABLE,
+    context: "shrug",
     workingWeightMin: 160,
     workingWeightMax: 160,
+    notes: "Machine shrug equivalent",
   },
   {
     exerciseName: "Machine Shoulder Press",
@@ -1323,10 +516,11 @@ const baselineSeed = [
     workingWeightMax: 55,
   },
   {
-    exerciseName: "Rope Hammer Curls",
+    exerciseName: "Hammer Curl",
     category: BaselineCategory.MACHINE_CABLE,
     workingWeightMin: 35,
     workingWeightMax: 40,
+    notes: "Rope variation",
   },
   {
     exerciseName: "Tricep Rope Pushdown",
@@ -1335,17 +529,17 @@ const baselineSeed = [
     workingWeightMax: 35,
   },
   {
-    exerciseName: "Rear Delt Fly Machine",
+    exerciseName: "Machine Rear Delt Fly",
     category: BaselineCategory.MACHINE_CABLE,
     workingWeightMin: 80,
     workingWeightMax: 80,
   },
   {
-    exerciseName: "Assisted Dips",
+    exerciseName: "Dips",
     category: BaselineCategory.MACHINE_CABLE,
     workingWeightMin: 105.5,
     workingWeightMax: 105.5,
-    notes: "Assistance",
+    notes: "Assisted — weight is assistance level",
   },
   {
     exerciseName: "Leg Press",
@@ -1365,6 +559,72 @@ const baselineSeed = [
 // ═══════════════════════════════════════════════════════════════════════════
 // Seed functions
 // ═══════════════════════════════════════════════════════════════════════════
+
+async function renameExercises() {
+  console.log("Renaming exercises...");
+
+  // First delete exercises that conflict with rename targets
+  for (const name of EXERCISES_TO_DELETE_BEFORE_RENAME) {
+    const existing = await prisma.exercise.findUnique({ where: { name } });
+    if (existing) {
+      // Clean up relations first
+      await prisma.exerciseMuscle.deleteMany({ where: { exerciseId: existing.id } });
+      await prisma.exerciseEquipment.deleteMany({ where: { exerciseId: existing.id } });
+      await prisma.exerciseAlias.deleteMany({ where: { exerciseId: existing.id } });
+      await prisma.exerciseVariation.deleteMany({ where: { exerciseId: existing.id } });
+      await prisma.baseline.deleteMany({ where: { exerciseId: existing.id } });
+      await prisma.substitutionRule.deleteMany({
+        where: { OR: [{ fromExerciseId: existing.id }, { toExerciseId: existing.id }] },
+      });
+      // Only delete if no workout history or templates
+      const refs = await prisma.workoutExercise.findFirst({ where: { exerciseId: existing.id } });
+      const tmpl = await prisma.workoutTemplateExercise.findFirst({ where: { exerciseId: existing.id } });
+      if (!refs && !tmpl) {
+        await prisma.exercise.delete({ where: { id: existing.id } });
+        console.log(`  Deleted conflicting: ${name}`);
+      } else {
+        console.warn(`  ⚠ Cannot delete ${name} (has history/templates)`);
+      }
+    }
+  }
+
+  let renamed = 0;
+  for (const [oldName, newName] of EXERCISE_RENAMES) {
+    const existing = await prisma.exercise.findUnique({ where: { name: oldName } });
+    if (existing) {
+      // Check if target name already exists (from a previous run)
+      const target = await prisma.exercise.findUnique({ where: { name: newName } });
+      if (target) {
+        console.log(`  Skip rename ${oldName} → ${newName} (target exists)`);
+        continue;
+      }
+      await prisma.exercise.update({ where: { id: existing.id }, data: { name: newName } });
+      // Also update baseline denormalized name
+      await prisma.baseline.updateMany({
+        where: { exerciseId: existing.id },
+        data: { exerciseName: newName },
+      });
+      renamed++;
+    }
+  }
+  console.log(`  ${renamed} exercises renamed.`);
+}
+
+async function renameMuscles() {
+  console.log("Renaming muscles...");
+  for (const [oldName, newName] of MUSCLE_RENAMES) {
+    const existing = await prisma.muscle.findUnique({ where: { name: oldName } });
+    if (existing) {
+      const target = await prisma.muscle.findUnique({ where: { name: newName } });
+      if (target) {
+        console.log(`  Skip rename ${oldName} → ${newName} (target exists)`);
+        continue;
+      }
+      await prisma.muscle.update({ where: { id: existing.id }, data: { name: newName } });
+      console.log(`  Renamed: ${oldName} → ${newName}`);
+    }
+  }
+}
 
 async function seedEquipment() {
   console.log("Seeding equipment...");
@@ -1392,69 +652,77 @@ async function seedMuscles() {
   }
 }
 
-async function seedExercises() {
-  console.log("Seeding exercises...");
-  const equipmentByName = new Map(
-    (await prisma.equipment.findMany()).map((item) => [item.name, item])
-  );
+function resolveTimePerSet(ex: JsonExercise): number {
+  const override = TIME_PER_SET_OVERRIDES[ex.name];
+  if (override) return override;
+  if (ex.isMainLiftEligible) return 210;
+  if (ex.splitTag === "core") return 60;
+  if (ex.splitTag === "conditioning") return 90;
+  return 120;
+}
 
-  for (const exercise of exercises) {
-    const splitTag = resolveSplitTag(exercise.name, exercise.movementPatternV1);
-    const movementPatterns = resolveMovementPatternsV2(exercise.name, exercise.movementPatternV1);
-    const tuning = EXERCISE_FIELD_TUNING[exercise.name];
-    const fatigueCost = tuning?.fatigueCost ?? (exercise.isMainLiftV1 ? 4 : exercise.jointStress === JointStress.HIGH ? 3 : 2);
-    const stimulusBias = tuning?.stimulusBias ?? [];
-    const isCompound = compoundAccessoryNames.has(exercise.name) || exercise.isMainLiftV1;
-    const isMainLiftEligible = mainLiftEligibleOverrides.has(exercise.name) || exercise.isMainLiftV1;
-    const isWarmupTag = splitTag === SplitTag.MOBILITY || splitTag === SplitTag.PREHAB || splitTag === SplitTag.CORE;
-    const timePerSetSec = tuning?.timePerSetSec ?? (exercise.isMainLiftV1 ? 210 : isWarmupTag ? 60 : 120);
-    const sfrScore = tuning?.sfrScore ?? 3;
-    const lengthPositionScore = tuning?.lengthPositionScore ?? 3;
-    const contraindications = tuning?.contraindications;
+async function seedExercisesFromJson() {
+  console.log("Seeding exercises from JSON...");
+
+  let created = 0;
+  let updated = 0;
+
+  for (const ex of exercisesJson.exercises) {
+    const movementPatterns = ex.movementPatterns.map((p) => {
+      const mapped = MOVEMENT_PATTERN_MAP[p];
+      if (!mapped) throw new Error(`Unknown movement pattern: ${p} in ${ex.name}`);
+      return mapped;
+    });
+
+    const splitTag = SPLIT_TAG_MAP[ex.splitTag];
+    if (!splitTag) throw new Error(`Unknown split tag: ${ex.splitTag} in ${ex.name}`);
+
+    const jointStress = JOINT_STRESS_MAP[ex.jointStress];
+    if (!jointStress) throw new Error(`Unknown joint stress: ${ex.jointStress} in ${ex.name}`);
+
+    const stimulusBias = ex.stimulusBias.map((b) => {
+      const mapped = STIMULUS_BIAS_MAP[b];
+      if (!mapped) throw new Error(`Unknown stimulus bias: ${b} in ${ex.name}`);
+      return mapped;
+    });
+
+    const difficulty = DIFFICULTY_MAP[ex.difficulty];
+    if (!difficulty) throw new Error(`Unknown difficulty: ${ex.difficulty} in ${ex.name}`);
+
+    const timePerSetSec = resolveTimePerSet(ex);
+
     const data = {
       movementPatterns,
       splitTags: [splitTag],
-      jointStress: exercise.jointStress,
-      isMainLiftEligible: isMainLiftEligible,
-      isCompound: isCompound,
-      fatigueCost,
+      jointStress,
+      isMainLiftEligible: ex.isMainLiftEligible,
+      isCompound: ex.isCompound,
+      fatigueCost: ex.fatigueCost,
       stimulusBias,
-      contraindications,
+      contraindications: ex.contraindications ?? undefined,
       timePerSetSec,
-      sfrScore,
-      lengthPositionScore,
+      sfrScore: ex.sfrScore,
+      lengthPositionScore: ex.lengthPositionScore,
+      difficulty,
+      isUnilateral: ex.unilateral,
+      repRangeMin: ex.repRangeRecommendation.min,
+      repRangeMax: ex.repRangeRecommendation.max,
     };
-    const created = await prisma.exercise.upsert({
-      where: { name: exercise.name },
-      update: data,
-      create: { name: exercise.name, ...data },
-    });
 
-    for (const equipmentName of exercise.equipment) {
-      const equipment = equipmentByName.get(equipmentName);
-      if (!equipment) {
-        continue;
-      }
-
-      await prisma.exerciseEquipment.upsert({
-        where: {
-          exerciseId_equipmentId: {
-            exerciseId: created.id,
-            equipmentId: equipment.id,
-          },
-        },
-        update: {},
-        create: {
-          exerciseId: created.id,
-          equipmentId: equipment.id,
-        },
-      });
+    const existing = await prisma.exercise.findUnique({ where: { name: ex.name } });
+    if (existing) {
+      await prisma.exercise.update({ where: { id: existing.id }, data });
+      updated++;
+    } else {
+      await prisma.exercise.create({ data: { name: ex.name, ...data } });
+      created++;
     }
   }
+  console.log(`  ${created} created, ${updated} updated.`);
 }
 
-async function seedExerciseMuscles() {
-  console.log("Seeding exercise-muscle mappings...");
+async function seedExerciseMusclesFromJson() {
+  console.log("Seeding exercise-muscle mappings from JSON...");
 
   const exercisesByName = new Map(
     (await prisma.exercise.findMany()).map((e) => [e.name, e])
@@ -1463,41 +731,86 @@ async function seedExerciseMuscles() {
     (await prisma.muscle.findMany()).map((m) => [m.name, m])
   );
 
-  let created = 0;
+  let mappingsCreated = 0;
   let exerciseCount = 0;
   const notFound: string[] = [];
 
-  for (const [exerciseName, mappings] of Object.entries(exerciseMuscleMappings)) {
-    const exercise = exercisesByName.get(exerciseName);
+  for (const ex of exercisesJson.exercises) {
+    const exercise = exercisesByName.get(ex.name);
     if (!exercise) {
-      notFound.push(exerciseName);
+      notFound.push(ex.name);
       continue;
     }
 
-    await prisma.exerciseMuscle.deleteMany({
-      where: { exerciseId: exercise.id },
-    });
+    // Clear existing mappings
+    await prisma.exerciseMuscle.deleteMany({ where: { exerciseId: exercise.id } });
 
-    for (const { muscle: muscleName, role } of mappings) {
+    for (const muscleName of ex.primaryMuscles) {
       const muscle = musclesByName.get(muscleName);
-      if (!muscle) continue;
-
+      if (!muscle) {
+        console.warn(`  ⚠ Unknown muscle "${muscleName}" in ${ex.name}`);
+        continue;
+      }
       await prisma.exerciseMuscle.create({
-        data: {
-          exerciseId: exercise.id,
-          muscleId: muscle.id,
-          role,
-        },
+        data: { exerciseId: exercise.id, muscleId: muscle.id, role: MuscleRole.PRIMARY },
       });
-      created++;
+      mappingsCreated++;
     }
+
+    for (const muscleName of ex.secondaryMuscles) {
+      const muscle = musclesByName.get(muscleName);
+      if (!muscle) {
+        console.warn(`  ⚠ Unknown muscle "${muscleName}" in ${ex.name}`);
+        continue;
+      }
+      await prisma.exerciseMuscle.create({
+        data: { exerciseId: exercise.id, muscleId: muscle.id, role: MuscleRole.SECONDARY },
+      });
+      mappingsCreated++;
+    }
+
     exerciseCount++;
   }
 
-  console.log(`  ${created} mappings across ${exerciseCount} exercises.`);
+  console.log(`  ${mappingsCreated} mappings across ${exerciseCount} exercises.`);
   if (notFound.length > 0) {
-    console.warn(`  ⚠ Mapping keys not found in DB (${notFound.length}): ${notFound.join(", ")}`);
+    console.warn(`  ⚠ Exercises not found in DB (${notFound.length}): ${notFound.join(", ")}`);
   }
+}
+
+async function seedExerciseEquipmentFromJson() {
+  console.log("Seeding exercise-equipment mappings from JSON...");
+
+  const exercisesByName = new Map(
+    (await prisma.exercise.findMany()).map((e) => [e.name, e])
+  );
+  const equipmentByName = new Map(
+    (await prisma.equipment.findMany()).map((e) => [e.name, e])
+  );
+
+  let mappings = 0;
+
+  for (const ex of exercisesJson.exercises) {
+    const exercise = exercisesByName.get(ex.name);
+    if (!exercise) continue;
+
+    // Clear existing
+    await prisma.exerciseEquipment.deleteMany({ where: { exerciseId: exercise.id } });
+
+    for (const equipName of ex.equipment) {
+      const equipment = equipmentByName.get(equipName);
+      if (!equipment) {
+        console.warn(`  ⚠ Unknown equipment "${equipName}" in ${ex.name}`);
+        continue;
+      }
+      await prisma.exerciseEquipment.create({
+        data: { exerciseId: exercise.id, equipmentId: equipment.id },
+      });
+      mappings++;
+    }
+  }
+
+  console.log(`  ${mappings} equipment mappings created.`);
 }
 
 async function seedExerciseAliases() {
@@ -1507,9 +820,16 @@ async function seedExerciseAliases() {
   );
 
   let created = 0;
+  let skipped = 0;
   for (const entry of exerciseAliases) {
     const exercise = exercisesByName.get(entry.exerciseName);
     if (!exercise) {
+      skipped++;
+      continue;
+    }
+    // Don't create alias if it matches an existing exercise name
+    const conflicting = exercisesByName.get(entry.alias);
+    if (conflicting) {
       continue;
     }
     await prisma.exerciseAlias.upsert({
@@ -1519,7 +839,7 @@ async function seedExerciseAliases() {
     });
     created++;
   }
-  console.log(`  ${created} aliases seeded.`);
+  console.log(`  ${created} aliases seeded, ${skipped} skipped (no matching exercise).`);
 }
 
 async function seedOwner() {
@@ -1579,18 +899,77 @@ async function seedBaselines(userId: string) {
   console.log(`  ${seeded} baselines seeded, ${skipped} skipped (no matching exercise).`);
 }
 
+async function pruneStaleExercises() {
+  const canonicalNames = new Set(exercisesJson.exercises.map((e) => e.name));
+  const allExercises = await prisma.exercise.findMany({
+    include: {
+      workoutExercises: { select: { id: true }, take: 1 },
+      templateExercises: { select: { id: true }, take: 1 },
+      baselines: { select: { id: true }, take: 1 },
+    },
+  });
+
+  const stale = allExercises.filter((e) => !canonicalNames.has(e.name));
+  if (stale.length === 0) {
+    console.log("  No stale exercises to prune.");
+    return;
+  }
+
+  let pruned = 0;
+  const kept: string[] = [];
+
+  for (const exercise of stale) {
+    const hasHistory = exercise.workoutExercises.length > 0;
+    const hasTemplates = exercise.templateExercises.length > 0;
+
+    if (hasHistory || hasTemplates) {
+      const reasons = [
+        hasHistory && "workout history",
+        hasTemplates && "templates",
+      ].filter(Boolean);
+      kept.push(`${exercise.name} (${reasons.join(", ")})`);
+      continue;
+    }
+
+    // Safe to delete — remove related records first (no cascade)
+    await prisma.baseline.deleteMany({ where: { exerciseId: exercise.id } });
+    await prisma.exerciseMuscle.deleteMany({ where: { exerciseId: exercise.id } });
+    await prisma.exerciseEquipment.deleteMany({ where: { exerciseId: exercise.id } });
+    await prisma.exerciseAlias.deleteMany({ where: { exerciseId: exercise.id } });
+    await prisma.exerciseVariation.deleteMany({ where: { exerciseId: exercise.id } });
+    await prisma.substitutionRule.deleteMany({
+      where: { OR: [{ fromExerciseId: exercise.id }, { toExerciseId: exercise.id }] },
+    });
+    await prisma.exercise.delete({ where: { id: exercise.id } });
+    pruned++;
+  }
+
+  console.log(`  Pruned ${pruned} stale exercises.`);
+  if (kept.length > 0) {
+    console.warn(`  ⚠ Kept ${kept.length} non-canonical exercises (referenced by user data):`);
+    for (const k of kept) {
+      console.warn(`    - ${k}`);
+    }
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Main
 // ═══════════════════════════════════════════════════════════════════════════
 
 async function main() {
+  await renameExercises();
+  await renameMuscles();
   await seedEquipment();
   await seedMuscles();
-  await seedExercises();
+  await seedExercisesFromJson();
   await seedExerciseAliases();
-  await seedExerciseMuscles();
+  await seedExerciseMusclesFromJson();
+  await seedExerciseEquipmentFromJson();
   const user = await seedOwner();
   await seedBaselines(user.id);
+  console.log("Pruning stale exercises...");
+  await pruneStaleExercises();
   console.log("✅ Seed complete.");
 }
 
@@ -1602,15 +981,3 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
-
-
-
-
-
-
-
-
-
-
-
-

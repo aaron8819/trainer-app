@@ -3,11 +3,11 @@ import type { MovementPatternV2, StimulusBias } from "@/lib/engine/types";
 
 export const MUSCLE_GROUP_HIERARCHY: Record<MuscleGroup, string[]> = {
   chest: ["Chest"],
-  back: ["Back", "Upper Back", "Lower Back"],
+  back: ["Lats", "Upper Back", "Lower Back"],
   shoulders: ["Front Delts", "Side Delts", "Rear Delts"],
   arms: ["Biceps", "Triceps", "Forearms"],
-  legs: ["Quads", "Hamstrings", "Glutes", "Adductors", "Calves", "Hip Flexors"],
-  core: ["Core"],
+  legs: ["Quads", "Hamstrings", "Glutes", "Adductors", "Abductors", "Calves"],
+  core: ["Core", "Abs"],
 };
 
 export const MUSCLE_TO_GROUP: Record<string, MuscleGroup> = Object.fromEntries(
@@ -38,6 +38,9 @@ export const MOVEMENT_PATTERN_LABELS: Record<MovementPatternV2, string> = {
   anti_rotation: "Anti-Rotation",
   flexion: "Flexion",
   extension: "Extension",
+  abduction: "Abduction",
+  adduction: "Adduction",
+  isolation: "Isolation",
 };
 
 export const STIMULUS_BIAS_LABELS: Record<StimulusBias, string> = {

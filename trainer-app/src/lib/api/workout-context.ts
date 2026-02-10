@@ -51,6 +51,9 @@ const V2_TO_V1: Record<string, MovementPattern> = {
   anti_rotation: "rotate",
   flexion: "push",
   extension: "push",
+  abduction: "push",
+  adduction: "push",
+  isolation: "push",
 };
 
 function deriveV1Pattern(v2Patterns: string[]): MovementPattern {
@@ -204,6 +207,10 @@ export function mapExercises(
     timePerSetSec: exercise.timePerSetSec ?? undefined,
     sfrScore: exercise.sfrScore ?? undefined,
     lengthPositionScore: exercise.lengthPositionScore ?? undefined,
+    difficulty: exercise.difficulty ? exercise.difficulty.toLowerCase() as "beginner" | "intermediate" | "advanced" : undefined,
+    isUnilateral: exercise.isUnilateral ?? undefined,
+    repRangeMin: exercise.repRangeMin ?? undefined,
+    repRangeMax: exercise.repRangeMax ?? undefined,
     equipment: exercise.exerciseEquipment.map((item) =>
       item.equipment.type.toLowerCase()
     ) as Constraints["availableEquipment"],

@@ -49,6 +49,9 @@ enum MovementPatternV2 {
   ANTI_ROTATION
   FLEXION
   EXTENSION
+  ABDUCTION
+  ADDUCTION
+  ISOLATION
 }
 
 enum SplitTag {
@@ -79,7 +82,15 @@ enum EquipmentType {
   SLED
   BENCH
   RACK
+  EZ_BAR
+  TRAP_BAR
   OTHER
+}
+
+enum Difficulty {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
 }
 
 enum WorkoutStatus {
@@ -242,6 +253,10 @@ model Exercise {
   timePerSetSec       Int             @default(120)
   sfrScore            Int             @default(3)
   lengthPositionScore Int             @default(3)
+  difficulty          Difficulty      @default(BEGINNER)
+  isUnilateral        Boolean         @default(false)
+  repRangeMin         Int             @default(1)
+  repRangeMax         Int             @default(20)
 
   variations            ExerciseVariation[]
   aliases               ExerciseAlias[]

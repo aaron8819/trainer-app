@@ -376,7 +376,7 @@ describe("engine core", () => {
         splitTags: ["pull"],
         jointStress: "medium",
         isMainLiftEligible: true,
-        primaryMuscles: ["Back", "Biceps"],
+        primaryMuscles: ["Lats", "Biceps"],
         equipment: ["barbell"],
       },
       {

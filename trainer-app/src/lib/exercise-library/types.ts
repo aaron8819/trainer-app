@@ -1,4 +1,5 @@
 import type {
+  Difficulty,
   EquipmentType,
   JointStress,
   MovementPatternV2,
@@ -20,6 +21,8 @@ export type ExerciseListItem = {
   secondaryMuscles: string[];
   sfrScore: number;
   lengthPositionScore: number;
+  difficulty?: Difficulty;
+  isUnilateral?: boolean;
   isFavorite: boolean;
   isAvoided: boolean;
 };
@@ -29,6 +32,8 @@ export type ExerciseDetail = ExerciseListItem & {
   fatigueCost: number;
   stimulusBias: StimulusBias[];
   timePerSetSec: number;
+  repRangeMin?: number;
+  repRangeMax?: number;
   aliases: string[];
   variations: { id: string; name: string; description?: string }[];
   substitutes: { id: string; name: string; primaryMuscles: string[] }[];

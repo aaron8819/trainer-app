@@ -25,7 +25,7 @@ const exercises: Record<string, Exercise> = {
     isCompound: true,
     fatigueCost: 4,
     equipment: ["barbell"],
-    primaryMuscles: ["Back", "Rear Delts"],
+    primaryMuscles: ["Lats", "Rear Delts"],
   },
   facePull: {
     id: "face-pull",

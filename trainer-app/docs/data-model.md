@@ -50,6 +50,9 @@ Key fields:
 - `stimulusBias`
 - `contraindications`
 - `timePerSetSec`
+- `difficulty` (Difficulty enum: BEGINNER/INTERMEDIATE/ADVANCED, default BEGINNER)
+- `isUnilateral` (boolean, default false)
+- `repRangeMin`, `repRangeMax` (recommended rep range, defaults 1-20)
 
 Relations:
 - `exerciseMuscles` (primary/secondary muscle groups)
@@ -159,7 +162,8 @@ The following tables were removed in Phase 6 (2026-02-06) as they were unused:
 
 - `SplitType`: `PPL`, `UPPER_LOWER`, `FULL_BODY`, `CUSTOM`
 - `SplitTag`: `PUSH`, `PULL`, `LEGS`, `CORE`, `MOBILITY`, `PREHAB`, `CONDITIONING`
-- `MovementPatternV2`: `HORIZONTAL_PUSH`, `VERTICAL_PUSH`, `HORIZONTAL_PULL`, `VERTICAL_PULL`, `SQUAT`, `HINGE`, `LUNGE`, `CARRY`, `ROTATION`, `ANTI_ROTATION`, `FLEXION`, `EXTENSION`
+- `MovementPatternV2`: `HORIZONTAL_PUSH`, `VERTICAL_PUSH`, `HORIZONTAL_PULL`, `VERTICAL_PULL`, `SQUAT`, `HINGE`, `LUNGE`, `CARRY`, `ROTATION`, `ANTI_ROTATION`, `FLEXION`, `EXTENSION`, `ABDUCTION`, `ADDUCTION`, `ISOLATION`
+- `Difficulty`: `BEGINNER`, `INTERMEDIATE`, `ADVANCED`
 - `StimulusBias`: `MECHANICAL`, `METABOLIC`, `STRETCH`, `STABILITY`
 
 ## Engine-Relevant Notes
@@ -168,4 +172,5 @@ The following tables were removed in Phase 6 (2026-02-06) as they were unused:
 - `movementPatterns` powers main lift pairing and substitution logic.
 - `SessionCheckIn` is the primary source for readiness and pain adjustments.
 - Weekly volume caps use `ExerciseMuscle` primary roles.
-- `prisma/seed.ts` seeds ExerciseMuscle mappings; supplemental scripts exist in `prisma/seed-exercise-muscles.ts` and `prisma/patch-exercise-muscles.ts` when needed.
+- `prisma/seed.ts` imports exercise data from `prisma/exercises_comprehensive.json` (133 exercises). All exercise fields, muscle mappings, and equipment mappings are driven by this single JSON source of truth.
+- Exercise renames and muscle renames are applied before seeding. Stale exercises (not in JSON) are pruned automatically.

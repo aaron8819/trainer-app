@@ -1,0 +1,4579 @@
+{
+  "_instructions": "Comprehensive evidence-based exercise database for hypertrophy and strength training. Each exercise carefully selected and classified based on biomechanics, muscle activation research, and practical effectiveness.",
+  "_fieldGuide": {
+    "movementPatterns": "Array. Values: horizontal_push, vertical_push, horizontal_pull, vertical_pull, squat, hinge, lunge, carry, rotation, anti_rotation, flexion, extension, abduction, adduction, isolation (only for exercises that don't fit other patterns)",
+    "splitTag": "Which PPL day. Values: push, pull, legs, core, conditioning",
+    "isCompound": "Multi-joint movement (true) vs single-joint isolation (false)",
+    "isMainLiftEligible": "Can be selected as the primary heavy lift for a session (1-6 reps, high mechanical tension)",
+    "difficulty": "beginner, intermediate, or advanced - based on technique complexity and prerequisite strength",
+    "unilateral": "true if exercise works one limb at a time, false if bilateral",
+    "repRangeRecommendation": "Object with min and max rep recommendations for hypertrophy/strength",
+    "jointStress": "low, medium, high - cumulative stress on joints and connective tissue",
+    "equipment": "Array of: Barbell, Dumbbell, Machine, Cable, Bodyweight, Kettlebell, Band, Sled, Bench, Rack, EZ_Bar, Trap_Bar",
+    "fatigueCost": "1-5, systemic fatigue generated per set (CNS + metabolic + muscular)",
+    "sfrScore": "1-5, stimulus-to-fatigue ratio (5 = excellent stimulus with minimal fatigue)",
+    "lengthPositionScore": "1-5, how well it loads the muscle in a stretched/lengthened position (5 = maximal stretch under load)",
+    "stimulusBias": "Array of: mechanical (heavy tension), metabolic (pump/burn), stretch (lengthened position emphasis), stability (motor control)",
+    "contraindications": "Object with body part keys (knee, low_back, shoulder, elbow, wrist, hip) mapping to true, or null",
+    "primaryMuscles": "Array of muscles this exercise primarily targets",
+    "secondaryMuscles": "Array of muscles this exercise secondarily targets"
+  },
+  "_muscles": [
+    "Chest",
+    "Front Delts",
+    "Side Delts",
+    "Rear Delts",
+    "Triceps",
+    "Lats",
+    "Upper Back",
+    "Lower Back",
+    "Biceps",
+    "Forearms",
+    "Quads",
+    "Hamstrings",
+    "Glutes",
+    "Adductors",
+    "Abductors",
+    "Calves",
+    "Abs",
+    "Core"
+  ],
+  "exercises": [
+    {
+      "name": "Barbell Back Squat",
+      "movementPatterns": [
+        "squat"
+      ],
+      "splitTag": "legs",
+      "isCompound": true,
+      "isMainLiftEligible": true,
+      "jointStress": "high",
+      "equipment": [
+        "Barbell",
+        "Rack"
+      ],
+      "fatigueCost": 5,
+      "sfrScore": 2,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "mechanical",
+        "stretch"
+      ],
+      "contraindications": {
+        "knee": true,
+        "low_back": true
+      },
+      "primaryMuscles": [
+        "Quads",
+        "Glutes"
+      ],
+      "secondaryMuscles": [
+        "Hamstrings",
+        "Core",
+        "Lower Back",
+        "Adductors"
+      ],
+      "difficulty": "intermediate",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 3,
+        "max": 8
+      }
+    },
+    {
+      "name": "Front Squat",
+      "movementPatterns": [
+        "squat"
+      ],
+      "splitTag": "legs",
+      "isCompound": true,
+      "isMainLiftEligible": true,
+      "jointStress": "high",
+      "equipment": [
+        "Barbell",
+        "Rack"
+      ],
+      "fatigueCost": 4,
+      "sfrScore": 2,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "mechanical"
+      ],
+      "contraindications": {
+        "knee": true,
+        "wrist": true
+      },
+      "primaryMuscles": [
+        "Quads"
+      ],
+      "secondaryMuscles": [
+        "Glutes",
+        "Core",
+        "Upper Back"
+      ],
+      "difficulty": "intermediate",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 3,
+        "max": 8
+      }
+    },
+    {
+      "name": "Goblet Squat",
+      "movementPatterns": [
+        "squat"
+      ],
+      "splitTag": "legs",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Dumbbell",
+        "Kettlebell"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 4,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "mechanical",
+        "stability"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Quads",
+        "Glutes"
+      ],
+      "secondaryMuscles": [
+        "Core"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 6,
+        "max": 12
+      }
+    },
+    {
+      "name": "Hack Squat",
+      "movementPatterns": [
+        "squat"
+      ],
+      "splitTag": "legs",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "medium",
+      "equipment": [
+        "Machine"
+      ],
+      "fatigueCost": 3,
+      "sfrScore": 4,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "mechanical"
+      ],
+      "contraindications": {
+        "knee": true
+      },
+      "primaryMuscles": [
+        "Quads"
+      ],
+      "secondaryMuscles": [
+        "Glutes"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 6,
+        "max": 12
+      }
+    },
+    {
+      "name": "Leg Press",
+      "movementPatterns": [
+        "squat"
+      ],
+      "splitTag": "legs",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "medium",
+      "equipment": [
+        "Machine"
+      ],
+      "fatigueCost": 3,
+      "sfrScore": 4,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "mechanical"
+      ],
+      "contraindications": {
+        "knee": true,
+        "low_back": true
+      },
+      "primaryMuscles": [
+        "Quads",
+        "Glutes"
+      ],
+      "secondaryMuscles": [
+        "Hamstrings",
+        "Adductors"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 6,
+        "max": 12
+      }
+    },
+    {
+      "name": "Belt Squat",
+      "movementPatterns": [
+        "squat"
+      ],
+      "splitTag": "legs",
+      "isCompound": true,
+      "isMainLiftEligible": true,
+      "jointStress": "low",
+      "equipment": [
+        "Machine"
+      ],
+      "fatigueCost": 3,
+      "sfrScore": 4,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "mechanical"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Quads",
+        "Glutes"
+      ],
+      "secondaryMuscles": [
+        "Adductors",
+        "Calves"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 3,
+        "max": 10
+      }
+    },
+    {
+      "name": "Bulgarian Split Squat",
+      "movementPatterns": [
+        "lunge"
+      ],
+      "splitTag": "legs",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "medium",
+      "equipment": [
+        "Dumbbell",
+        "Bench"
+      ],
+      "fatigueCost": 3,
+      "sfrScore": 4,
+      "lengthPositionScore": 5,
+      "stimulusBias": [
+        "mechanical",
+        "stretch",
+        "stability"
+      ],
+      "contraindications": {
+        "knee": true
+      },
+      "primaryMuscles": [
+        "Quads",
+        "Glutes"
+      ],
+      "secondaryMuscles": [
+        "Hamstrings",
+        "Adductors"
+      ],
+      "difficulty": "beginner",
+      "unilateral": true,
+      "repRangeRecommendation": {
+        "min": 6,
+        "max": 12
+      }
+    },
+    {
+      "name": "Walking Lunge",
+      "movementPatterns": [
+        "lunge"
+      ],
+      "splitTag": "legs",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "medium",
+      "equipment": [
+        "Dumbbell",
+        "Barbell"
+      ],
+      "fatigueCost": 3,
+      "sfrScore": 3,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "mechanical",
+        "stability"
+      ],
+      "contraindications": {
+        "knee": true
+      },
+      "primaryMuscles": [
+        "Quads",
+        "Glutes"
+      ],
+      "secondaryMuscles": [
+        "Hamstrings",
+        "Calves",
+        "Core"
+      ],
+      "difficulty": "beginner",
+      "unilateral": true,
+      "repRangeRecommendation": {
+        "min": 6,
+        "max": 12
+      }
+    },
+    {
+      "name": "Reverse Lunge",
+      "movementPatterns": [
+        "lunge"
+      ],
+      "splitTag": "legs",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "medium",
+      "equipment": [
+        "Dumbbell",
+        "Barbell"
+      ],
+      "fatigueCost": 3,
+      "sfrScore": 4,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "mechanical",
+        "stability"
+      ],
+      "contraindications": {
+        "knee": true
+      },
+      "primaryMuscles": [
+        "Quads",
+        "Glutes"
+      ],
+      "secondaryMuscles": [
+        "Hamstrings"
+      ],
+      "difficulty": "beginner",
+      "unilateral": true,
+      "repRangeRecommendation": {
+        "min": 6,
+        "max": 12
+      }
+    },
+    {
+      "name": "Leg Extension",
+      "movementPatterns": [
+        "extension"
+      ],
+      "splitTag": "legs",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "medium",
+      "equipment": [
+        "Machine"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 5,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "metabolic",
+        "stretch"
+      ],
+      "contraindications": {
+        "knee": true
+      },
+      "primaryMuscles": [
+        "Quads"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 10,
+        "max": 20
+      }
+    },
+    {
+      "name": "Sissy Squat",
+      "movementPatterns": [
+        "squat"
+      ],
+      "splitTag": "legs",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "high",
+      "equipment": [
+        "Bodyweight",
+        "Machine"
+      ],
+      "fatigueCost": 3,
+      "sfrScore": 4,
+      "lengthPositionScore": 5,
+      "stimulusBias": [
+        "stretch",
+        "metabolic"
+      ],
+      "contraindications": {
+        "knee": true
+      },
+      "primaryMuscles": [
+        "Quads"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 15
+      }
+    },
+    {
+      "name": "Conventional Deadlift",
+      "movementPatterns": [
+        "hinge"
+      ],
+      "splitTag": "legs",
+      "isCompound": true,
+      "isMainLiftEligible": true,
+      "jointStress": "high",
+      "equipment": [
+        "Barbell"
+      ],
+      "fatigueCost": 5,
+      "sfrScore": 2,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "mechanical"
+      ],
+      "contraindications": {
+        "low_back": true
+      },
+      "primaryMuscles": [
+        "Hamstrings",
+        "Glutes",
+        "Lower Back"
+      ],
+      "secondaryMuscles": [
+        "Quads",
+        "Upper Back",
+        "Lats",
+        "Core",
+        "Forearms"
+      ],
+      "difficulty": "intermediate",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 1,
+        "max": 6
+      }
+    },
+    {
+      "name": "Sumo Deadlift",
+      "movementPatterns": [
+        "hinge"
+      ],
+      "splitTag": "legs",
+      "isCompound": true,
+      "isMainLiftEligible": true,
+      "jointStress": "high",
+      "equipment": [
+        "Barbell"
+      ],
+      "fatigueCost": 5,
+      "sfrScore": 2,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "mechanical"
+      ],
+      "contraindications": {
+        "low_back": true,
+        "hip": true
+      },
+      "primaryMuscles": [
+        "Glutes",
+        "Hamstrings",
+        "Adductors"
+      ],
+      "secondaryMuscles": [
+        "Quads",
+        "Lower Back",
+        "Upper Back",
+        "Forearms"
+      ],
+      "difficulty": "intermediate",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 1,
+        "max": 6
+      }
+    },
+    {
+      "name": "Trap Bar Deadlift",
+      "movementPatterns": [
+        "hinge"
+      ],
+      "splitTag": "legs",
+      "isCompound": true,
+      "isMainLiftEligible": true,
+      "jointStress": "medium",
+      "equipment": [
+        "Trap_Bar"
+      ],
+      "fatigueCost": 4,
+      "sfrScore": 3,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "mechanical"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Quads",
+        "Glutes",
+        "Hamstrings"
+      ],
+      "secondaryMuscles": [
+        "Lower Back",
+        "Upper Back",
+        "Forearms"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 1,
+        "max": 6
+      }
+    },
+    {
+      "name": "Romanian Deadlift",
+      "movementPatterns": [
+        "hinge"
+      ],
+      "splitTag": "legs",
+      "isCompound": true,
+      "isMainLiftEligible": true,
+      "jointStress": "medium",
+      "equipment": [
+        "Barbell",
+        "Dumbbell"
+      ],
+      "fatigueCost": 3,
+      "sfrScore": 3,
+      "lengthPositionScore": 5,
+      "stimulusBias": [
+        "stretch",
+        "mechanical"
+      ],
+      "contraindications": {
+        "low_back": true
+      },
+      "primaryMuscles": [
+        "Hamstrings",
+        "Glutes"
+      ],
+      "secondaryMuscles": [
+        "Lower Back",
+        "Forearms"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 3,
+        "max": 10
+      }
+    },
+    {
+      "name": "Stiff-Legged Deadlift",
+      "movementPatterns": [
+        "hinge"
+      ],
+      "splitTag": "legs",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "medium",
+      "equipment": [
+        "Barbell",
+        "Dumbbell"
+      ],
+      "fatigueCost": 3,
+      "sfrScore": 3,
+      "lengthPositionScore": 5,
+      "stimulusBias": [
+        "stretch"
+      ],
+      "contraindications": {
+        "low_back": true
+      },
+      "primaryMuscles": [
+        "Hamstrings"
+      ],
+      "secondaryMuscles": [
+        "Glutes",
+        "Lower Back"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 6,
+        "max": 12
+      }
+    },
+    {
+      "name": "Good Morning",
+      "movementPatterns": [
+        "hinge"
+      ],
+      "splitTag": "legs",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "high",
+      "equipment": [
+        "Barbell"
+      ],
+      "fatigueCost": 3,
+      "sfrScore": 3,
+      "lengthPositionScore": 5,
+      "stimulusBias": [
+        "stretch",
+        "mechanical"
+      ],
+      "contraindications": {
+        "low_back": true
+      },
+      "primaryMuscles": [
+        "Hamstrings",
+        "Lower Back"
+      ],
+      "secondaryMuscles": [
+        "Glutes"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 6,
+        "max": 12
+      }
+    },
+    {
+      "name": "Lying Leg Curl",
+      "movementPatterns": [
+        "flexion"
+      ],
+      "splitTag": "legs",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Machine"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 5,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Hamstrings"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 10,
+        "max": 20
+      }
+    },
+    {
+      "name": "Seated Leg Curl",
+      "movementPatterns": [
+        "flexion"
+      ],
+      "splitTag": "legs",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Machine"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 5,
+      "lengthPositionScore": 5,
+      "stimulusBias": [
+        "stretch",
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Hamstrings"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 10,
+        "max": 20
+      }
+    },
+    {
+      "name": "Nordic Hamstring Curl",
+      "movementPatterns": [
+        "isolation"
+      ],
+      "splitTag": "legs",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "medium",
+      "equipment": [
+        "Bodyweight",
+        "Band"
+      ],
+      "fatigueCost": 3,
+      "sfrScore": 4,
+      "lengthPositionScore": 5,
+      "stimulusBias": [
+        "stretch",
+        "mechanical"
+      ],
+      "contraindications": {
+        "knee": true
+      },
+      "primaryMuscles": [
+        "Hamstrings"
+      ],
+      "secondaryMuscles": [
+        "Glutes"
+      ],
+      "difficulty": "advanced",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 15
+      }
+    },
+    {
+      "name": "Barbell Hip Thrust",
+      "movementPatterns": [
+        "hinge"
+      ],
+      "splitTag": "legs",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Barbell",
+        "Bench"
+      ],
+      "fatigueCost": 3,
+      "sfrScore": 4,
+      "lengthPositionScore": 2,
+      "stimulusBias": [
+        "mechanical",
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Glutes"
+      ],
+      "secondaryMuscles": [
+        "Hamstrings",
+        "Adductors"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 6,
+        "max": 12
+      }
+    },
+    {
+      "name": "Single-Leg Hip Thrust",
+      "movementPatterns": [
+        "hinge"
+      ],
+      "splitTag": "legs",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Dumbbell",
+        "Bench",
+        "Bodyweight"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 4,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "metabolic",
+        "stability"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Glutes"
+      ],
+      "secondaryMuscles": [
+        "Hamstrings"
+      ],
+      "difficulty": "beginner",
+      "unilateral": true,
+      "repRangeRecommendation": {
+        "min": 6,
+        "max": 12
+      }
+    },
+    {
+      "name": "Glute Bridge",
+      "movementPatterns": [
+        "hinge"
+      ],
+      "splitTag": "legs",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Barbell",
+        "Dumbbell",
+        "Bodyweight"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 4,
+      "lengthPositionScore": 2,
+      "stimulusBias": [
+        "metabolic",
+        "stability"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Glutes"
+      ],
+      "secondaryMuscles": [
+        "Hamstrings"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 6,
+        "max": 12
+      }
+    },
+    {
+      "name": "Back Extension (45 Degree)",
+      "movementPatterns": [
+        "extension"
+      ],
+      "splitTag": "legs",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Machine",
+        "Bodyweight"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 4,
+      "lengthPositionScore": 4,
+      "stimulusBias": [
+        "metabolic",
+        "stretch"
+      ],
+      "contraindications": {
+        "low_back": true
+      },
+      "primaryMuscles": [
+        "Glutes",
+        "Hamstrings",
+        "Lower Back"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 6,
+        "max": 12
+      }
+    },
+    {
+      "name": "Reverse Hyperextension",
+      "movementPatterns": [
+        "extension"
+      ],
+      "splitTag": "legs",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Machine"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 4,
+      "lengthPositionScore": 4,
+      "stimulusBias": [
+        "stretch",
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Glutes",
+        "Hamstrings"
+      ],
+      "secondaryMuscles": [
+        "Lower Back"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 6,
+        "max": 12
+      }
+    },
+    {
+      "name": "Cable Pull-Through",
+      "movementPatterns": [
+        "hinge"
+      ],
+      "splitTag": "legs",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Cable"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 4,
+      "lengthPositionScore": 4,
+      "stimulusBias": [
+        "stretch",
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Glutes",
+        "Hamstrings"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 6,
+        "max": 12
+      }
+    },
+    {
+      "name": "Hip Abduction Machine",
+      "movementPatterns": [
+        "abduction"
+      ],
+      "splitTag": "legs",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Machine"
+      ],
+      "fatigueCost": 1,
+      "sfrScore": 5,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Abductors"
+      ],
+      "secondaryMuscles": [
+        "Glutes"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 15
+      }
+    },
+    {
+      "name": "Cable Hip Abduction",
+      "movementPatterns": [
+        "abduction"
+      ],
+      "splitTag": "legs",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Cable"
+      ],
+      "fatigueCost": 1,
+      "sfrScore": 5,
+      "lengthPositionScore": 4,
+      "stimulusBias": [
+        "metabolic",
+        "stretch"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Abductors"
+      ],
+      "secondaryMuscles": [
+        "Glutes"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 15
+      }
+    },
+    {
+      "name": "Hip Adduction Machine",
+      "movementPatterns": [
+        "adduction"
+      ],
+      "splitTag": "legs",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Machine"
+      ],
+      "fatigueCost": 1,
+      "sfrScore": 5,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Adductors"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 15
+      }
+    },
+    {
+      "name": "Copenhagen Plank",
+      "movementPatterns": [
+        "adduction"
+      ],
+      "splitTag": "legs",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Bench",
+        "Bodyweight"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 4,
+      "lengthPositionScore": 4,
+      "stimulusBias": [
+        "mechanical",
+        "stability"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Adductors"
+      ],
+      "secondaryMuscles": [
+        "Core"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 15
+      }
+    },
+    {
+      "name": "Standing Calf Raise",
+      "movementPatterns": [
+        "extension"
+      ],
+      "splitTag": "legs",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Machine",
+        "Barbell"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 4,
+      "lengthPositionScore": 5,
+      "stimulusBias": [
+        "stretch",
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Calves"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 10,
+        "max": 20
+      }
+    },
+    {
+      "name": "Seated Calf Raise",
+      "movementPatterns": [
+        "extension"
+      ],
+      "splitTag": "legs",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Machine"
+      ],
+      "fatigueCost": 1,
+      "sfrScore": 5,
+      "lengthPositionScore": 5,
+      "stimulusBias": [
+        "stretch",
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Calves"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 10,
+        "max": 20
+      }
+    },
+    {
+      "name": "Leg Press Calf Raise",
+      "movementPatterns": [
+        "extension"
+      ],
+      "splitTag": "legs",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Machine"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 4,
+      "lengthPositionScore": 5,
+      "stimulusBias": [
+        "stretch",
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Calves"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 10,
+        "max": 20
+      }
+    },
+    {
+      "name": "Barbell Bench Press",
+      "movementPatterns": [
+        "horizontal_push"
+      ],
+      "splitTag": "push",
+      "isCompound": true,
+      "isMainLiftEligible": true,
+      "jointStress": "medium",
+      "equipment": [
+        "Barbell",
+        "Bench"
+      ],
+      "fatigueCost": 4,
+      "sfrScore": 3,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "mechanical"
+      ],
+      "contraindications": {
+        "shoulder": true
+      },
+      "primaryMuscles": [
+        "Chest",
+        "Triceps"
+      ],
+      "secondaryMuscles": [
+        "Front Delts"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 3,
+        "max": 10
+      }
+    },
+    {
+      "name": "Incline Barbell Bench Press",
+      "movementPatterns": [
+        "horizontal_push"
+      ],
+      "splitTag": "push",
+      "isCompound": true,
+      "isMainLiftEligible": true,
+      "jointStress": "medium",
+      "equipment": [
+        "Barbell",
+        "Bench"
+      ],
+      "fatigueCost": 4,
+      "sfrScore": 3,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "mechanical"
+      ],
+      "contraindications": {
+        "shoulder": true
+      },
+      "primaryMuscles": [
+        "Chest",
+        "Front Delts"
+      ],
+      "secondaryMuscles": [
+        "Triceps"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 3,
+        "max": 10
+      }
+    },
+    {
+      "name": "Decline Barbell Bench Press",
+      "movementPatterns": [
+        "horizontal_push"
+      ],
+      "splitTag": "push",
+      "isCompound": true,
+      "isMainLiftEligible": true,
+      "jointStress": "medium",
+      "equipment": [
+        "Barbell",
+        "Bench"
+      ],
+      "fatigueCost": 4,
+      "sfrScore": 3,
+      "lengthPositionScore": 2,
+      "stimulusBias": [
+        "mechanical"
+      ],
+      "contraindications": {
+        "shoulder": true
+      },
+      "primaryMuscles": [
+        "Chest"
+      ],
+      "secondaryMuscles": [
+        "Triceps",
+        "Front Delts"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 3,
+        "max": 10
+      }
+    },
+    {
+      "name": "Dumbbell Bench Press",
+      "movementPatterns": [
+        "horizontal_push"
+      ],
+      "splitTag": "push",
+      "isCompound": true,
+      "isMainLiftEligible": true,
+      "jointStress": "medium",
+      "equipment": [
+        "Dumbbell",
+        "Bench"
+      ],
+      "fatigueCost": 3,
+      "sfrScore": 4,
+      "lengthPositionScore": 4,
+      "stimulusBias": [
+        "mechanical",
+        "stretch"
+      ],
+      "contraindications": {
+        "shoulder": true
+      },
+      "primaryMuscles": [
+        "Chest",
+        "Triceps"
+      ],
+      "secondaryMuscles": [
+        "Front Delts"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 3,
+        "max": 10
+      }
+    },
+    {
+      "name": "Incline Dumbbell Bench Press",
+      "movementPatterns": [
+        "horizontal_push"
+      ],
+      "splitTag": "push",
+      "isCompound": true,
+      "isMainLiftEligible": true,
+      "jointStress": "medium",
+      "equipment": [
+        "Dumbbell",
+        "Bench"
+      ],
+      "fatigueCost": 3,
+      "sfrScore": 4,
+      "lengthPositionScore": 4,
+      "stimulusBias": [
+        "mechanical",
+        "stretch"
+      ],
+      "contraindications": {
+        "shoulder": true
+      },
+      "primaryMuscles": [
+        "Chest",
+        "Front Delts"
+      ],
+      "secondaryMuscles": [
+        "Triceps"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 3,
+        "max": 10
+      }
+    },
+    {
+      "name": "Decline Dumbbell Bench Press",
+      "movementPatterns": [
+        "horizontal_push"
+      ],
+      "splitTag": "push",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "medium",
+      "equipment": [
+        "Dumbbell",
+        "Bench"
+      ],
+      "fatigueCost": 3,
+      "sfrScore": 4,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "mechanical",
+        "stretch"
+      ],
+      "contraindications": {
+        "shoulder": true
+      },
+      "primaryMuscles": [
+        "Chest"
+      ],
+      "secondaryMuscles": [
+        "Triceps",
+        "Front Delts"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 6,
+        "max": 12
+      }
+    },
+    {
+      "name": "Machine Chest Press",
+      "movementPatterns": [
+        "horizontal_push"
+      ],
+      "splitTag": "push",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Machine"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 5,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "mechanical",
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Chest"
+      ],
+      "secondaryMuscles": [
+        "Triceps",
+        "Front Delts"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 6,
+        "max": 12
+      }
+    },
+    {
+      "name": "Incline Machine Press",
+      "movementPatterns": [
+        "horizontal_push"
+      ],
+      "splitTag": "push",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Machine"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 5,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "mechanical",
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Chest",
+        "Front Delts"
+      ],
+      "secondaryMuscles": [
+        "Triceps"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 6,
+        "max": 12
+      }
+    },
+    {
+      "name": "Dumbbell Fly",
+      "movementPatterns": [
+        "horizontal_push"
+      ],
+      "splitTag": "push",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "medium",
+      "equipment": [
+        "Dumbbell",
+        "Bench"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 4,
+      "lengthPositionScore": 5,
+      "stimulusBias": [
+        "stretch",
+        "metabolic"
+      ],
+      "contraindications": {
+        "shoulder": true
+      },
+      "primaryMuscles": [
+        "Chest"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 15
+      }
+    },
+    {
+      "name": "Incline Dumbbell Fly",
+      "movementPatterns": [
+        "horizontal_push"
+      ],
+      "splitTag": "push",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "medium",
+      "equipment": [
+        "Dumbbell",
+        "Bench"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 4,
+      "lengthPositionScore": 5,
+      "stimulusBias": [
+        "stretch",
+        "metabolic"
+      ],
+      "contraindications": {
+        "shoulder": true
+      },
+      "primaryMuscles": [
+        "Chest"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 15
+      }
+    },
+    {
+      "name": "Cable Fly",
+      "movementPatterns": [
+        "horizontal_push"
+      ],
+      "splitTag": "push",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Cable"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 5,
+      "lengthPositionScore": 5,
+      "stimulusBias": [
+        "stretch",
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Chest"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 15
+      }
+    },
+    {
+      "name": "Low-to-High Cable Fly",
+      "movementPatterns": [
+        "horizontal_push"
+      ],
+      "splitTag": "push",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Cable"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 5,
+      "lengthPositionScore": 5,
+      "stimulusBias": [
+        "stretch",
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Chest"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 15
+      }
+    },
+    {
+      "name": "Pec Deck Machine",
+      "movementPatterns": [
+        "horizontal_push"
+      ],
+      "splitTag": "push",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Machine"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 5,
+      "lengthPositionScore": 5,
+      "stimulusBias": [
+        "stretch",
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Chest"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 15
+      }
+    },
+    {
+      "name": "Push-Up",
+      "movementPatterns": [
+        "horizontal_push"
+      ],
+      "splitTag": "push",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Bodyweight"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 4,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "mechanical",
+        "stability"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Chest",
+        "Triceps"
+      ],
+      "secondaryMuscles": [
+        "Front Delts",
+        "Core"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 6,
+        "max": 12
+      }
+    },
+    {
+      "name": "Deficit Push-Up",
+      "movementPatterns": [
+        "horizontal_push"
+      ],
+      "splitTag": "push",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Bodyweight"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 4,
+      "lengthPositionScore": 5,
+      "stimulusBias": [
+        "stretch",
+        "stability"
+      ],
+      "contraindications": {
+        "shoulder": true
+      },
+      "primaryMuscles": [
+        "Chest"
+      ],
+      "secondaryMuscles": [
+        "Triceps",
+        "Front Delts",
+        "Core"
+      ],
+      "difficulty": "intermediate",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 6,
+        "max": 12
+      }
+    },
+    {
+      "name": "Dip (Chest Emphasis)",
+      "movementPatterns": [
+        "vertical_push"
+      ],
+      "splitTag": "push",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "high",
+      "equipment": [
+        "Bodyweight",
+        "Machine"
+      ],
+      "fatigueCost": 3,
+      "sfrScore": 3,
+      "lengthPositionScore": 4,
+      "stimulusBias": [
+        "mechanical",
+        "stretch"
+      ],
+      "contraindications": {
+        "shoulder": true
+      },
+      "primaryMuscles": [
+        "Chest",
+        "Triceps"
+      ],
+      "secondaryMuscles": [
+        "Front Delts"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 6,
+        "max": 12
+      }
+    },
+    {
+      "name": "Barbell Overhead Press",
+      "movementPatterns": [
+        "vertical_push"
+      ],
+      "splitTag": "push",
+      "isCompound": true,
+      "isMainLiftEligible": true,
+      "jointStress": "medium",
+      "equipment": [
+        "Barbell",
+        "Rack"
+      ],
+      "fatigueCost": 4,
+      "sfrScore": 3,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "mechanical"
+      ],
+      "contraindications": {
+        "shoulder": true,
+        "low_back": true
+      },
+      "primaryMuscles": [
+        "Front Delts",
+        "Triceps"
+      ],
+      "secondaryMuscles": [
+        "Side Delts",
+        "Upper Back",
+        "Core"
+      ],
+      "difficulty": "intermediate",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 3,
+        "max": 10
+      }
+    },
+    {
+      "name": "Seated Barbell Overhead Press",
+      "movementPatterns": [
+        "vertical_push"
+      ],
+      "splitTag": "push",
+      "isCompound": true,
+      "isMainLiftEligible": true,
+      "jointStress": "medium",
+      "equipment": [
+        "Barbell",
+        "Bench"
+      ],
+      "fatigueCost": 3,
+      "sfrScore": 3,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "mechanical"
+      ],
+      "contraindications": {
+        "shoulder": true
+      },
+      "primaryMuscles": [
+        "Front Delts",
+        "Triceps"
+      ],
+      "secondaryMuscles": [
+        "Side Delts",
+        "Upper Back"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 3,
+        "max": 10
+      }
+    },
+    {
+      "name": "Dumbbell Overhead Press",
+      "movementPatterns": [
+        "vertical_push"
+      ],
+      "splitTag": "push",
+      "isCompound": true,
+      "isMainLiftEligible": true,
+      "jointStress": "medium",
+      "equipment": [
+        "Dumbbell",
+        "Bench"
+      ],
+      "fatigueCost": 3,
+      "sfrScore": 4,
+      "lengthPositionScore": 4,
+      "stimulusBias": [
+        "mechanical",
+        "stability"
+      ],
+      "contraindications": {
+        "shoulder": true
+      },
+      "primaryMuscles": [
+        "Front Delts",
+        "Triceps"
+      ],
+      "secondaryMuscles": [
+        "Side Delts",
+        "Core"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 3,
+        "max": 10
+      }
+    },
+    {
+      "name": "Arnold Press",
+      "movementPatterns": [
+        "vertical_push"
+      ],
+      "splitTag": "push",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "medium",
+      "equipment": [
+        "Dumbbell",
+        "Bench"
+      ],
+      "fatigueCost": 3,
+      "sfrScore": 3,
+      "lengthPositionScore": 4,
+      "stimulusBias": [
+        "mechanical",
+        "stretch"
+      ],
+      "contraindications": {
+        "shoulder": true
+      },
+      "primaryMuscles": [
+        "Front Delts",
+        "Side Delts"
+      ],
+      "secondaryMuscles": [
+        "Triceps"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 6,
+        "max": 12
+      }
+    },
+    {
+      "name": "Machine Shoulder Press",
+      "movementPatterns": [
+        "vertical_push"
+      ],
+      "splitTag": "push",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Machine"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 5,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "mechanical",
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Front Delts"
+      ],
+      "secondaryMuscles": [
+        "Triceps",
+        "Side Delts"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 6,
+        "max": 12
+      }
+    },
+    {
+      "name": "Landmine Press",
+      "movementPatterns": [
+        "vertical_push"
+      ],
+      "splitTag": "push",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Barbell"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 4,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "mechanical",
+        "stability"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Front Delts",
+        "Chest"
+      ],
+      "secondaryMuscles": [
+        "Triceps",
+        "Core"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 6,
+        "max": 12
+      }
+    },
+    {
+      "name": "Dumbbell Lateral Raise",
+      "movementPatterns": [
+        "abduction"
+      ],
+      "splitTag": "push",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Dumbbell"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 5,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Side Delts"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 10,
+        "max": 20
+      }
+    },
+    {
+      "name": "Cable Lateral Raise",
+      "movementPatterns": [
+        "abduction"
+      ],
+      "splitTag": "push",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Cable"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 5,
+      "lengthPositionScore": 4,
+      "stimulusBias": [
+        "metabolic",
+        "stretch"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Side Delts"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 10,
+        "max": 20
+      }
+    },
+    {
+      "name": "Machine Lateral Raise",
+      "movementPatterns": [
+        "abduction"
+      ],
+      "splitTag": "push",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Machine"
+      ],
+      "fatigueCost": 1,
+      "sfrScore": 5,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Side Delts"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 10,
+        "max": 20
+      }
+    },
+    {
+      "name": "Dumbbell Front Raise",
+      "movementPatterns": [
+        "flexion"
+      ],
+      "splitTag": "push",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Dumbbell"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 4,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Front Delts"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 15
+      }
+    },
+    {
+      "name": "Cable Front Raise",
+      "movementPatterns": [
+        "flexion"
+      ],
+      "splitTag": "push",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Cable"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 4,
+      "lengthPositionScore": 4,
+      "stimulusBias": [
+        "metabolic",
+        "stretch"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Front Delts"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 15
+      }
+    },
+    {
+      "name": "Dumbbell Rear Delt Fly",
+      "movementPatterns": [
+        "horizontal_pull"
+      ],
+      "splitTag": "pull",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Dumbbell",
+        "Bench"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 4,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Rear Delts"
+      ],
+      "secondaryMuscles": [
+        "Upper Back"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 15
+      }
+    },
+    {
+      "name": "Cable Rear Delt Fly",
+      "movementPatterns": [
+        "horizontal_pull"
+      ],
+      "splitTag": "pull",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Cable"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 5,
+      "lengthPositionScore": 4,
+      "stimulusBias": [
+        "metabolic",
+        "stretch"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Rear Delts"
+      ],
+      "secondaryMuscles": [
+        "Upper Back"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 15
+      }
+    },
+    {
+      "name": "Reverse Pec Deck",
+      "movementPatterns": [
+        "horizontal_pull"
+      ],
+      "splitTag": "pull",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Machine"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 5,
+      "lengthPositionScore": 4,
+      "stimulusBias": [
+        "metabolic",
+        "stretch"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Rear Delts"
+      ],
+      "secondaryMuscles": [
+        "Upper Back"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 15
+      }
+    },
+    {
+      "name": "Face Pull",
+      "movementPatterns": [
+        "horizontal_pull"
+      ],
+      "splitTag": "pull",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Cable"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 4,
+      "lengthPositionScore": 4,
+      "stimulusBias": [
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Rear Delts",
+        "Upper Back"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 15
+      }
+    },
+    {
+      "name": "Close-Grip Bench Press",
+      "movementPatterns": [
+        "horizontal_push"
+      ],
+      "splitTag": "push",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "medium",
+      "equipment": [
+        "Barbell",
+        "Bench"
+      ],
+      "fatigueCost": 3,
+      "sfrScore": 3,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "mechanical"
+      ],
+      "contraindications": {
+        "elbow": true,
+        "shoulder": true
+      },
+      "primaryMuscles": [
+        "Triceps"
+      ],
+      "secondaryMuscles": [
+        "Chest",
+        "Front Delts"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 6,
+        "max": 12
+      }
+    },
+    {
+      "name": "Dip (Triceps Emphasis)",
+      "movementPatterns": [
+        "vertical_push"
+      ],
+      "splitTag": "push",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "medium",
+      "equipment": [
+        "Bodyweight",
+        "Machine"
+      ],
+      "fatigueCost": 3,
+      "sfrScore": 3,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "mechanical"
+      ],
+      "contraindications": {
+        "shoulder": true,
+        "elbow": true
+      },
+      "primaryMuscles": [
+        "Triceps"
+      ],
+      "secondaryMuscles": [
+        "Chest",
+        "Front Delts"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 6,
+        "max": 12
+      }
+    },
+    {
+      "name": "Overhead Cable Triceps Extension",
+      "movementPatterns": [
+        "extension"
+      ],
+      "splitTag": "push",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Cable"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 5,
+      "lengthPositionScore": 5,
+      "stimulusBias": [
+        "stretch",
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Triceps"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 15
+      }
+    },
+    {
+      "name": "Overhead Dumbbell Extension",
+      "movementPatterns": [
+        "extension"
+      ],
+      "splitTag": "push",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "medium",
+      "equipment": [
+        "Dumbbell"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 4,
+      "lengthPositionScore": 5,
+      "stimulusBias": [
+        "stretch",
+        "metabolic"
+      ],
+      "contraindications": {
+        "elbow": true,
+        "shoulder": true
+      },
+      "primaryMuscles": [
+        "Triceps"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 15
+      }
+    },
+    {
+      "name": "Lying Triceps Extension (Skull Crusher)",
+      "movementPatterns": [
+        "extension"
+      ],
+      "splitTag": "push",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "medium",
+      "equipment": [
+        "Barbell",
+        "EZ_Bar",
+        "Dumbbell",
+        "Bench"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 4,
+      "lengthPositionScore": 4,
+      "stimulusBias": [
+        "mechanical",
+        "stretch"
+      ],
+      "contraindications": {
+        "elbow": true
+      },
+      "primaryMuscles": [
+        "Triceps"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 15
+      }
+    },
+    {
+      "name": "Cable Triceps Pushdown",
+      "movementPatterns": [
+        "extension"
+      ],
+      "splitTag": "push",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Cable"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 5,
+      "lengthPositionScore": 2,
+      "stimulusBias": [
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Triceps"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 15
+      }
+    },
+    {
+      "name": "Rope Triceps Pushdown",
+      "movementPatterns": [
+        "extension"
+      ],
+      "splitTag": "push",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Cable"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 5,
+      "lengthPositionScore": 2,
+      "stimulusBias": [
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Triceps"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 15
+      }
+    },
+    {
+      "name": "Diamond Push-Up",
+      "movementPatterns": [
+        "horizontal_push"
+      ],
+      "splitTag": "push",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "medium",
+      "equipment": [
+        "Bodyweight"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 4,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "mechanical",
+        "stability"
+      ],
+      "contraindications": {
+        "elbow": true
+      },
+      "primaryMuscles": [
+        "Triceps"
+      ],
+      "secondaryMuscles": [
+        "Chest",
+        "Front Delts",
+        "Core"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 6,
+        "max": 12
+      }
+    },
+    {
+      "name": "Pull-Up",
+      "movementPatterns": [
+        "vertical_pull"
+      ],
+      "splitTag": "pull",
+      "isCompound": true,
+      "isMainLiftEligible": true,
+      "jointStress": "medium",
+      "equipment": [
+        "Bodyweight"
+      ],
+      "fatigueCost": 3,
+      "sfrScore": 4,
+      "lengthPositionScore": 4,
+      "stimulusBias": [
+        "mechanical",
+        "stretch"
+      ],
+      "contraindications": {
+        "shoulder": true
+      },
+      "primaryMuscles": [
+        "Lats",
+        "Biceps"
+      ],
+      "secondaryMuscles": [
+        "Upper Back",
+        "Forearms"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 3,
+        "max": 10
+      }
+    },
+    {
+      "name": "Chin-Up",
+      "movementPatterns": [
+        "vertical_pull"
+      ],
+      "splitTag": "pull",
+      "isCompound": true,
+      "isMainLiftEligible": true,
+      "jointStress": "medium",
+      "equipment": [
+        "Bodyweight"
+      ],
+      "fatigueCost": 3,
+      "sfrScore": 4,
+      "lengthPositionScore": 4,
+      "stimulusBias": [
+        "mechanical",
+        "stretch"
+      ],
+      "contraindications": {
+        "shoulder": true,
+        "elbow": true
+      },
+      "primaryMuscles": [
+        "Lats",
+        "Biceps"
+      ],
+      "secondaryMuscles": [
+        "Upper Back",
+        "Forearms"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 3,
+        "max": 10
+      }
+    },
+    {
+      "name": "Weighted Pull-Up",
+      "movementPatterns": [
+        "vertical_pull"
+      ],
+      "splitTag": "pull",
+      "isCompound": true,
+      "isMainLiftEligible": true,
+      "jointStress": "medium",
+      "equipment": [
+        "Bodyweight",
+        "Dumbbell",
+        "Kettlebell"
+      ],
+      "fatigueCost": 4,
+      "sfrScore": 3,
+      "lengthPositionScore": 4,
+      "stimulusBias": [
+        "mechanical",
+        "stretch"
+      ],
+      "contraindications": {
+        "shoulder": true
+      },
+      "primaryMuscles": [
+        "Lats",
+        "Biceps"
+      ],
+      "secondaryMuscles": [
+        "Upper Back",
+        "Forearms"
+      ],
+      "difficulty": "intermediate",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 3,
+        "max": 10
+      }
+    },
+    {
+      "name": "Lat Pulldown",
+      "movementPatterns": [
+        "vertical_pull"
+      ],
+      "splitTag": "pull",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Cable",
+        "Machine"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 5,
+      "lengthPositionScore": 4,
+      "stimulusBias": [
+        "mechanical",
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Lats"
+      ],
+      "secondaryMuscles": [
+        "Biceps",
+        "Upper Back",
+        "Forearms"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 6,
+        "max": 12
+      }
+    },
+    {
+      "name": "Close-Grip Lat Pulldown",
+      "movementPatterns": [
+        "vertical_pull"
+      ],
+      "splitTag": "pull",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Cable",
+        "Machine"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 5,
+      "lengthPositionScore": 4,
+      "stimulusBias": [
+        "mechanical",
+        "stretch"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Lats"
+      ],
+      "secondaryMuscles": [
+        "Biceps",
+        "Upper Back"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 6,
+        "max": 12
+      }
+    },
+    {
+      "name": "Straight-Arm Pulldown",
+      "movementPatterns": [
+        "vertical_pull"
+      ],
+      "splitTag": "pull",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Cable"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 5,
+      "lengthPositionScore": 5,
+      "stimulusBias": [
+        "stretch",
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Lats"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 15
+      }
+    },
+    {
+      "name": "Dumbbell Pullover",
+      "movementPatterns": [
+        "vertical_pull"
+      ],
+      "splitTag": "pull",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "medium",
+      "equipment": [
+        "Dumbbell",
+        "Bench"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 4,
+      "lengthPositionScore": 5,
+      "stimulusBias": [
+        "stretch",
+        "mechanical"
+      ],
+      "contraindications": {
+        "shoulder": true
+      },
+      "primaryMuscles": [
+        "Lats"
+      ],
+      "secondaryMuscles": [
+        "Chest"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 15
+      }
+    },
+    {
+      "name": "Cable Pullover",
+      "movementPatterns": [
+        "vertical_pull"
+      ],
+      "splitTag": "pull",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Cable"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 5,
+      "lengthPositionScore": 5,
+      "stimulusBias": [
+        "stretch",
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Lats"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 15
+      }
+    },
+    {
+      "name": "Barbell Row",
+      "movementPatterns": [
+        "horizontal_pull"
+      ],
+      "splitTag": "pull",
+      "isCompound": true,
+      "isMainLiftEligible": true,
+      "jointStress": "high",
+      "equipment": [
+        "Barbell"
+      ],
+      "fatigueCost": 4,
+      "sfrScore": 3,
+      "lengthPositionScore": 4,
+      "stimulusBias": [
+        "mechanical",
+        "stretch"
+      ],
+      "contraindications": {
+        "low_back": true
+      },
+      "primaryMuscles": [
+        "Lats",
+        "Upper Back"
+      ],
+      "secondaryMuscles": [
+        "Biceps",
+        "Lower Back",
+        "Forearms"
+      ],
+      "difficulty": "intermediate",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 3,
+        "max": 10
+      }
+    },
+    {
+      "name": "Pendlay Row",
+      "movementPatterns": [
+        "horizontal_pull"
+      ],
+      "splitTag": "pull",
+      "isCompound": true,
+      "isMainLiftEligible": true,
+      "jointStress": "high",
+      "equipment": [
+        "Barbell"
+      ],
+      "fatigueCost": 4,
+      "sfrScore": 3,
+      "lengthPositionScore": 4,
+      "stimulusBias": [
+        "mechanical",
+        "stretch"
+      ],
+      "contraindications": {
+        "low_back": true
+      },
+      "primaryMuscles": [
+        "Lats",
+        "Upper Back"
+      ],
+      "secondaryMuscles": [
+        "Biceps",
+        "Lower Back",
+        "Forearms"
+      ],
+      "difficulty": "intermediate",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 3,
+        "max": 10
+      }
+    },
+    {
+      "name": "T-Bar Row",
+      "movementPatterns": [
+        "horizontal_pull"
+      ],
+      "splitTag": "pull",
+      "isCompound": true,
+      "isMainLiftEligible": true,
+      "jointStress": "medium",
+      "equipment": [
+        "Barbell",
+        "Machine"
+      ],
+      "fatigueCost": 3,
+      "sfrScore": 4,
+      "lengthPositionScore": 4,
+      "stimulusBias": [
+        "mechanical",
+        "stretch"
+      ],
+      "contraindications": {
+        "low_back": true
+      },
+      "primaryMuscles": [
+        "Lats",
+        "Upper Back"
+      ],
+      "secondaryMuscles": [
+        "Biceps",
+        "Lower Back",
+        "Forearms"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 3,
+        "max": 10
+      }
+    },
+    {
+      "name": "Chest-Supported T-Bar Row",
+      "movementPatterns": [
+        "horizontal_pull"
+      ],
+      "splitTag": "pull",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Machine"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 5,
+      "lengthPositionScore": 4,
+      "stimulusBias": [
+        "mechanical",
+        "stretch"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Lats",
+        "Upper Back"
+      ],
+      "secondaryMuscles": [
+        "Biceps",
+        "Forearms"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 6,
+        "max": 12
+      }
+    },
+    {
+      "name": "One-Arm Dumbbell Row",
+      "movementPatterns": [
+        "horizontal_pull"
+      ],
+      "splitTag": "pull",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Dumbbell",
+        "Bench"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 5,
+      "lengthPositionScore": 4,
+      "stimulusBias": [
+        "mechanical",
+        "stretch"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Lats",
+        "Upper Back"
+      ],
+      "secondaryMuscles": [
+        "Biceps",
+        "Forearms"
+      ],
+      "difficulty": "beginner",
+      "unilateral": true,
+      "repRangeRecommendation": {
+        "min": 6,
+        "max": 12
+      }
+    },
+    {
+      "name": "Dumbbell Row",
+      "movementPatterns": [
+        "horizontal_pull"
+      ],
+      "splitTag": "pull",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "medium",
+      "equipment": [
+        "Dumbbell",
+        "Bench"
+      ],
+      "fatigueCost": 3,
+      "sfrScore": 4,
+      "lengthPositionScore": 4,
+      "stimulusBias": [
+        "mechanical",
+        "stretch"
+      ],
+      "contraindications": {
+        "low_back": true
+      },
+      "primaryMuscles": [
+        "Lats",
+        "Upper Back"
+      ],
+      "secondaryMuscles": [
+        "Biceps",
+        "Lower Back",
+        "Forearms"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 6,
+        "max": 12
+      }
+    },
+    {
+      "name": "Chest-Supported Dumbbell Row",
+      "movementPatterns": [
+        "horizontal_pull"
+      ],
+      "splitTag": "pull",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Dumbbell",
+        "Bench"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 5,
+      "lengthPositionScore": 4,
+      "stimulusBias": [
+        "mechanical",
+        "stretch"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Lats",
+        "Upper Back"
+      ],
+      "secondaryMuscles": [
+        "Biceps",
+        "Forearms"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 6,
+        "max": 12
+      }
+    },
+    {
+      "name": "Seated Cable Row",
+      "movementPatterns": [
+        "horizontal_pull"
+      ],
+      "splitTag": "pull",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Cable"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 5,
+      "lengthPositionScore": 4,
+      "stimulusBias": [
+        "mechanical",
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Lats",
+        "Upper Back"
+      ],
+      "secondaryMuscles": [
+        "Biceps",
+        "Forearms"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 6,
+        "max": 12
+      }
+    },
+    {
+      "name": "Close-Grip Seated Cable Row",
+      "movementPatterns": [
+        "horizontal_pull"
+      ],
+      "splitTag": "pull",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Cable"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 5,
+      "lengthPositionScore": 4,
+      "stimulusBias": [
+        "mechanical",
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Lats",
+        "Upper Back"
+      ],
+      "secondaryMuscles": [
+        "Biceps",
+        "Forearms"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 6,
+        "max": 12
+      }
+    },
+    {
+      "name": "Meadows Row",
+      "movementPatterns": [
+        "horizontal_pull"
+      ],
+      "splitTag": "pull",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Barbell"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 4,
+      "lengthPositionScore": 4,
+      "stimulusBias": [
+        "mechanical",
+        "stretch"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Lats",
+        "Upper Back"
+      ],
+      "secondaryMuscles": [
+        "Biceps",
+        "Forearms"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 6,
+        "max": 12
+      }
+    },
+    {
+      "name": "Inverted Row",
+      "movementPatterns": [
+        "horizontal_pull"
+      ],
+      "splitTag": "pull",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Bodyweight"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 4,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "mechanical",
+        "stability"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Lats",
+        "Upper Back"
+      ],
+      "secondaryMuscles": [
+        "Biceps",
+        "Core"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 6,
+        "max": 12
+      }
+    },
+    {
+      "name": "Barbell Shrug",
+      "movementPatterns": [
+        "isolation"
+      ],
+      "splitTag": "pull",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Barbell"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 4,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "mechanical"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Upper Back"
+      ],
+      "secondaryMuscles": [
+        "Forearms"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 15
+      }
+    },
+    {
+      "name": "Dumbbell Shrug",
+      "movementPatterns": [
+        "isolation"
+      ],
+      "splitTag": "pull",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Dumbbell"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 4,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "mechanical"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Upper Back"
+      ],
+      "secondaryMuscles": [
+        "Forearms"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 15
+      }
+    },
+    {
+      "name": "Barbell Curl",
+      "movementPatterns": [
+        "flexion"
+      ],
+      "splitTag": "pull",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Barbell",
+        "EZ_Bar"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 4,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "mechanical"
+      ],
+      "contraindications": {
+        "elbow": true
+      },
+      "primaryMuscles": [
+        "Biceps"
+      ],
+      "secondaryMuscles": [
+        "Forearms"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 15
+      }
+    },
+    {
+      "name": "EZ-Bar Curl",
+      "movementPatterns": [
+        "flexion"
+      ],
+      "splitTag": "pull",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "EZ_Bar"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 4,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "mechanical"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Biceps"
+      ],
+      "secondaryMuscles": [
+        "Forearms"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 15
+      }
+    },
+    {
+      "name": "Dumbbell Curl",
+      "movementPatterns": [
+        "flexion"
+      ],
+      "splitTag": "pull",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Dumbbell"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 4,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "mechanical"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Biceps"
+      ],
+      "secondaryMuscles": [
+        "Forearms"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 15
+      }
+    },
+    {
+      "name": "Alternating Dumbbell Curl",
+      "movementPatterns": [
+        "flexion"
+      ],
+      "splitTag": "pull",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Dumbbell"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 4,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "mechanical"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Biceps"
+      ],
+      "secondaryMuscles": [
+        "Forearms"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 15
+      }
+    },
+    {
+      "name": "Incline Dumbbell Curl",
+      "movementPatterns": [
+        "flexion"
+      ],
+      "splitTag": "pull",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Dumbbell",
+        "Bench"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 5,
+      "lengthPositionScore": 5,
+      "stimulusBias": [
+        "stretch",
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Biceps"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 15
+      }
+    },
+    {
+      "name": "Hammer Curl",
+      "movementPatterns": [
+        "flexion"
+      ],
+      "splitTag": "pull",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Dumbbell"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 4,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "mechanical"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Biceps",
+        "Forearms"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 15
+      }
+    },
+    {
+      "name": "Cross-Body Hammer Curl",
+      "movementPatterns": [
+        "flexion"
+      ],
+      "splitTag": "pull",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Dumbbell"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 4,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "mechanical"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Biceps"
+      ],
+      "secondaryMuscles": [
+        "Forearms"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 15
+      }
+    },
+    {
+      "name": "Cable Curl",
+      "movementPatterns": [
+        "flexion"
+      ],
+      "splitTag": "pull",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Cable"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 5,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Biceps"
+      ],
+      "secondaryMuscles": [
+        "Forearms"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 15
+      }
+    },
+    {
+      "name": "Bayesian Curl",
+      "movementPatterns": [
+        "flexion"
+      ],
+      "splitTag": "pull",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Cable"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 5,
+      "lengthPositionScore": 5,
+      "stimulusBias": [
+        "stretch",
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Biceps"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 15
+      }
+    },
+    {
+      "name": "Preacher Curl",
+      "movementPatterns": [
+        "flexion"
+      ],
+      "splitTag": "pull",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Barbell",
+        "EZ_Bar",
+        "Dumbbell",
+        "Machine"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 4,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "metabolic"
+      ],
+      "contraindications": {
+        "elbow": true
+      },
+      "primaryMuscles": [
+        "Biceps"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 15
+      }
+    },
+    {
+      "name": "Spider Curl",
+      "movementPatterns": [
+        "flexion"
+      ],
+      "splitTag": "pull",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Barbell",
+        "EZ_Bar",
+        "Dumbbell",
+        "Bench"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 4,
+      "lengthPositionScore": 2,
+      "stimulusBias": [
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Biceps"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 15
+      }
+    },
+    {
+      "name": "Concentration Curl",
+      "movementPatterns": [
+        "flexion"
+      ],
+      "splitTag": "pull",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Dumbbell"
+      ],
+      "fatigueCost": 1,
+      "sfrScore": 4,
+      "lengthPositionScore": 2,
+      "stimulusBias": [
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Biceps"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 15
+      }
+    },
+    {
+      "name": "Reverse Curl",
+      "movementPatterns": [
+        "flexion"
+      ],
+      "splitTag": "pull",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Barbell",
+        "EZ_Bar"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 4,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "mechanical"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Forearms",
+        "Biceps"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 15
+      }
+    },
+    {
+      "name": "Wrist Curl",
+      "movementPatterns": [
+        "flexion"
+      ],
+      "splitTag": "pull",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Barbell",
+        "Dumbbell"
+      ],
+      "fatigueCost": 1,
+      "sfrScore": 3,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Forearms"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 15
+      }
+    },
+    {
+      "name": "Reverse Wrist Curl",
+      "movementPatterns": [
+        "extension"
+      ],
+      "splitTag": "pull",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Barbell",
+        "Dumbbell"
+      ],
+      "fatigueCost": 1,
+      "sfrScore": 3,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Forearms"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 15
+      }
+    },
+    {
+      "name": "Farmer's Walk",
+      "movementPatterns": [
+        "carry"
+      ],
+      "splitTag": "conditioning",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Dumbbell",
+        "Kettlebell"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 3,
+      "lengthPositionScore": 1,
+      "stimulusBias": [
+        "stability",
+        "mechanical"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Forearms",
+        "Upper Back"
+      ],
+      "secondaryMuscles": [
+        "Core",
+        "Calves"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 6,
+        "max": 12
+      }
+    },
+    {
+      "name": "Dead Hang",
+      "movementPatterns": [
+        "carry"
+      ],
+      "splitTag": "pull",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Bodyweight"
+      ],
+      "fatigueCost": 1,
+      "sfrScore": 3,
+      "lengthPositionScore": 4,
+      "stimulusBias": [
+        "mechanical",
+        "stretch"
+      ],
+      "contraindications": {
+        "shoulder": true
+      },
+      "primaryMuscles": [
+        "Forearms"
+      ],
+      "secondaryMuscles": [
+        "Lats",
+        "Upper Back"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 15
+      }
+    },
+    {
+      "name": "Plank",
+      "movementPatterns": [
+        "anti_rotation"
+      ],
+      "splitTag": "core",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Bodyweight"
+      ],
+      "fatigueCost": 1,
+      "sfrScore": 3,
+      "lengthPositionScore": 1,
+      "stimulusBias": [
+        "stability"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Core"
+      ],
+      "secondaryMuscles": [
+        "Front Delts"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 20
+      }
+    },
+    {
+      "name": "RKC Plank",
+      "movementPatterns": [
+        "anti_rotation"
+      ],
+      "splitTag": "core",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Bodyweight"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 4,
+      "lengthPositionScore": 1,
+      "stimulusBias": [
+        "stability"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Core"
+      ],
+      "secondaryMuscles": [
+        "Glutes",
+        "Front Delts"
+      ],
+      "difficulty": "intermediate",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 20
+      }
+    },
+    {
+      "name": "Side Plank",
+      "movementPatterns": [
+        "anti_rotation"
+      ],
+      "splitTag": "core",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Bodyweight"
+      ],
+      "fatigueCost": 1,
+      "sfrScore": 3,
+      "lengthPositionScore": 1,
+      "stimulusBias": [
+        "stability"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Core"
+      ],
+      "secondaryMuscles": [
+        "Abductors"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 20
+      }
+    },
+    {
+      "name": "Ab Wheel Rollout",
+      "movementPatterns": [
+        "anti_rotation"
+      ],
+      "splitTag": "core",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "medium",
+      "equipment": [
+        "Bodyweight"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 4,
+      "lengthPositionScore": 4,
+      "stimulusBias": [
+        "stretch",
+        "stability"
+      ],
+      "contraindications": {
+        "low_back": true
+      },
+      "primaryMuscles": [
+        "Abs",
+        "Core"
+      ],
+      "secondaryMuscles": [
+        "Lats"
+      ],
+      "difficulty": "advanced",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 20
+      }
+    },
+    {
+      "name": "Pallof Press",
+      "movementPatterns": [
+        "anti_rotation"
+      ],
+      "splitTag": "core",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Cable",
+        "Band"
+      ],
+      "fatigueCost": 1,
+      "sfrScore": 4,
+      "lengthPositionScore": 1,
+      "stimulusBias": [
+        "stability"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Core"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 20
+      }
+    },
+    {
+      "name": "Cable Crunch",
+      "movementPatterns": [
+        "flexion"
+      ],
+      "splitTag": "core",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Cable"
+      ],
+      "fatigueCost": 1,
+      "sfrScore": 5,
+      "lengthPositionScore": 4,
+      "stimulusBias": [
+        "metabolic",
+        "stretch"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Abs"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 20
+      }
+    },
+    {
+      "name": "Machine Crunch",
+      "movementPatterns": [
+        "flexion"
+      ],
+      "splitTag": "core",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Machine"
+      ],
+      "fatigueCost": 1,
+      "sfrScore": 5,
+      "lengthPositionScore": 4,
+      "stimulusBias": [
+        "metabolic",
+        "stretch"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Abs"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 20
+      }
+    },
+    {
+      "name": "Hanging Leg Raise",
+      "movementPatterns": [
+        "flexion"
+      ],
+      "splitTag": "core",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Bodyweight"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 4,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Abs"
+      ],
+      "secondaryMuscles": [
+        "Forearms"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 20
+      }
+    },
+    {
+      "name": "Hanging Knee Raise",
+      "movementPatterns": [
+        "flexion"
+      ],
+      "splitTag": "core",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Bodyweight"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 4,
+      "lengthPositionScore": 2,
+      "stimulusBias": [
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Abs"
+      ],
+      "secondaryMuscles": [
+        "Forearms"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 20
+      }
+    },
+    {
+      "name": "Dragon Flag",
+      "movementPatterns": [
+        "anti_rotation"
+      ],
+      "splitTag": "core",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "medium",
+      "equipment": [
+        "Bodyweight",
+        "Bench"
+      ],
+      "fatigueCost": 3,
+      "sfrScore": 4,
+      "lengthPositionScore": 4,
+      "stimulusBias": [
+        "mechanical",
+        "stretch"
+      ],
+      "contraindications": {
+        "low_back": true
+      },
+      "primaryMuscles": [
+        "Abs",
+        "Core"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "advanced",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 20
+      }
+    },
+    {
+      "name": "Decline Sit-Up",
+      "movementPatterns": [
+        "flexion"
+      ],
+      "splitTag": "core",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Bodyweight",
+        "Bench"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 3,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Abs"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 20
+      }
+    },
+    {
+      "name": "Reverse Crunch",
+      "movementPatterns": [
+        "flexion"
+      ],
+      "splitTag": "core",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Bodyweight"
+      ],
+      "fatigueCost": 1,
+      "sfrScore": 4,
+      "lengthPositionScore": 2,
+      "stimulusBias": [
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Abs"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 20
+      }
+    },
+    {
+      "name": "Bicycle Crunch",
+      "movementPatterns": [
+        "rotation"
+      ],
+      "splitTag": "core",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Bodyweight"
+      ],
+      "fatigueCost": 1,
+      "sfrScore": 3,
+      "lengthPositionScore": 2,
+      "stimulusBias": [
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Abs"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 20
+      }
+    },
+    {
+      "name": "Russian Twist",
+      "movementPatterns": [
+        "rotation"
+      ],
+      "splitTag": "core",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Bodyweight",
+        "Dumbbell"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 3,
+      "lengthPositionScore": 2,
+      "stimulusBias": [
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Abs"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 20
+      }
+    },
+    {
+      "name": "Wood Chop",
+      "movementPatterns": [
+        "rotation"
+      ],
+      "splitTag": "core",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Cable"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 4,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Abs",
+        "Core"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 20
+      }
+    },
+    {
+      "name": "Landmine Rotation",
+      "movementPatterns": [
+        "rotation"
+      ],
+      "splitTag": "core",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Barbell"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 4,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "mechanical",
+        "stability"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Abs",
+        "Core"
+      ],
+      "secondaryMuscles": [
+        "Front Delts"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 20
+      }
+    },
+    {
+      "name": "Suitcase Carry",
+      "movementPatterns": [
+        "carry"
+      ],
+      "splitTag": "conditioning",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Dumbbell",
+        "Kettlebell"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 4,
+      "lengthPositionScore": 1,
+      "stimulusBias": [
+        "stability"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Core",
+        "Forearms"
+      ],
+      "secondaryMuscles": [
+        "Upper Back"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 6,
+        "max": 12
+      }
+    },
+    {
+      "name": "Overhead Carry",
+      "movementPatterns": [
+        "carry"
+      ],
+      "splitTag": "conditioning",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "medium",
+      "equipment": [
+        "Dumbbell",
+        "Kettlebell"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 3,
+      "lengthPositionScore": 1,
+      "stimulusBias": [
+        "stability"
+      ],
+      "contraindications": {
+        "shoulder": true
+      },
+      "primaryMuscles": [
+        "Core",
+        "Front Delts"
+      ],
+      "secondaryMuscles": [
+        "Upper Back"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 6,
+        "max": 12
+      }
+    },
+    {
+      "name": "Sled Push",
+      "movementPatterns": [
+        "horizontal_push"
+      ],
+      "splitTag": "conditioning",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Sled"
+      ],
+      "fatigueCost": 3,
+      "sfrScore": 3,
+      "lengthPositionScore": 2,
+      "stimulusBias": [
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Quads",
+        "Glutes"
+      ],
+      "secondaryMuscles": [
+        "Calves",
+        "Core"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 6,
+        "max": 12
+      }
+    },
+    {
+      "name": "Sled Pull",
+      "movementPatterns": [
+        "horizontal_pull"
+      ],
+      "splitTag": "conditioning",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Sled"
+      ],
+      "fatigueCost": 3,
+      "sfrScore": 3,
+      "lengthPositionScore": 2,
+      "stimulusBias": [
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Hamstrings",
+        "Glutes"
+      ],
+      "secondaryMuscles": [
+        "Upper Back",
+        "Core"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 6,
+        "max": 12
+      }
+    },
+    {
+      "name": "Sled Drag",
+      "movementPatterns": [
+        "carry"
+      ],
+      "splitTag": "conditioning",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Sled"
+      ],
+      "fatigueCost": 3,
+      "sfrScore": 3,
+      "lengthPositionScore": 2,
+      "stimulusBias": [
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Hamstrings",
+        "Glutes"
+      ],
+      "secondaryMuscles": [
+        "Calves",
+        "Core"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 6,
+        "max": 12
+      }
+    },
+    {
+      "name": "Cable Crossover",
+      "movementPatterns": [
+        "horizontal_push"
+      ],
+      "splitTag": "push",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 10,
+        "max": 15
+      },
+      "jointStress": "low",
+      "equipment": [
+        "Cable"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 5,
+      "lengthPositionScore": 5,
+      "stimulusBias": [
+        "stretch",
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Chest"
+      ],
+      "secondaryMuscles": []
+    },
+    {
+      "name": "Neutral Grip Pull-Up",
+      "movementPatterns": [
+        "vertical_pull"
+      ],
+      "splitTag": "pull",
+      "isCompound": true,
+      "isMainLiftEligible": true,
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 5,
+        "max": 12
+      },
+      "jointStress": "low",
+      "equipment": [
+        "Bodyweight"
+      ],
+      "fatigueCost": 3,
+      "sfrScore": 4,
+      "lengthPositionScore": 4,
+      "stimulusBias": [
+        "mechanical",
+        "stretch"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Lats",
+        "Biceps"
+      ],
+      "secondaryMuscles": [
+        "Upper Back",
+        "Forearms"
+      ]
+    }
+  ]
+}

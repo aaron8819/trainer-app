@@ -46,7 +46,7 @@ function buildTestPool(): SmartBuildExercise[] {
       movementPatterns: ["horizontal_pull"],
       splitTags: ["pull"],
       equipment: ["barbell"],
-      primaryMuscles: ["Back", "Upper Back"],
+      primaryMuscles: ["Lats", "Upper Back"],
       secondaryMuscles: ["Biceps", "Rear Delts", "Forearms"],
     }),
     makeExercise({
@@ -77,7 +77,7 @@ function buildTestPool(): SmartBuildExercise[] {
       movementPatterns: ["vertical_pull"],
       splitTags: ["pull"],
       equipment: ["cable", "machine"],
-      primaryMuscles: ["Back"],
+      primaryMuscles: ["Lats"],
       secondaryMuscles: ["Biceps", "Forearms"],
     }),
     makeExercise({
@@ -203,7 +203,7 @@ describe("resolveTargetMuscles", () => {
   it("expands legs to all leg muscles", () => {
     const result = resolveTargetMuscles(["legs"]);
     expect(result).toEqual(
-      expect.arrayContaining(["Quads", "Hamstrings", "Glutes", "Adductors", "Calves", "Hip Flexors"])
+      expect.arrayContaining(["Quads", "Hamstrings", "Glutes", "Adductors", "Abductors", "Calves"])
     );
   });
 });

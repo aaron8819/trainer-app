@@ -15,7 +15,7 @@ const makeExercise = (id: string, primaryMuscles: string[]): Exercise => ({
 const library: Exercise[] = [
   makeExercise("bench", ["Chest", "Triceps"]),
   makeExercise("ohp", ["Front Delts", "Triceps"]),
-  makeExercise("row", ["Back", "Upper Back"]),
+  makeExercise("row", ["Lats", "Upper Back"]),
   makeExercise("curl", ["Biceps"]),
   makeExercise("squat", ["Quads", "Glutes"]),
   makeExercise("rdl", ["Hamstrings", "Glutes"]),

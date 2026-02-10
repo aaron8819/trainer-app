@@ -177,7 +177,7 @@ const seededExerciseLibrary: Exercise[] = [
     jointStress: "medium",
     isMainLift: true,
     equipment: ["cable", "machine"],
-    primaryMuscles: ["Back"],
+    primaryMuscles: ["Lats"],
     stimulusBias: ["mechanical"],
   }),
   createExercise({
@@ -188,7 +188,7 @@ const seededExerciseLibrary: Exercise[] = [
     jointStress: "medium",
     isMainLift: true,
     equipment: ["barbell"],
-    primaryMuscles: ["Back"],
+    primaryMuscles: ["Lats"],
     stimulusBias: ["mechanical"],
   }),
   createExercise({
@@ -257,7 +257,7 @@ const seededExerciseLibrary: Exercise[] = [
     isCompound: true,
     fatigueCost: 3,
     equipment: ["cable"],
-    primaryMuscles: ["Back"],
+    primaryMuscles: ["Lats"],
   }),
   createExercise({
     id: "chest-supported-row",
@@ -283,7 +283,7 @@ const seededExerciseLibrary: Exercise[] = [
     isCompound: false,
     fatigueCost: 2,
     equipment: ["cable"],
-    primaryMuscles: ["Back"],
+    primaryMuscles: ["Lats"],
   }),
   createExercise({
     id: "one-arm-dumbbell-row",
@@ -296,7 +296,7 @@ const seededExerciseLibrary: Exercise[] = [
     isCompound: true,
     fatigueCost: 3,
     equipment: ["dumbbell", "bench"],
-    primaryMuscles: ["Back"],
+    primaryMuscles: ["Lats"],
   }),
   createExercise({
     id: "reverse-fly",

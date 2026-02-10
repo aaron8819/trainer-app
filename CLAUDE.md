@@ -62,6 +62,7 @@ Next.js 16 (App Router) · React 19 · TypeScript (strict mode) · Prisma 7 + Po
 - **Don't put business logic in route files** (`src/app/api/`). Route files should be thin — delegate to `src/lib/api/` or `src/lib/engine/`.
 - **Don't weaken volume spike caps or load progression guardrails** without explicit instruction.
 - **Don't select CORE/MOBILITY/PREHAB/CONDITIONING as general accessories**. They only appear in explicit warmup/finisher blocks.
+- **Don't derive structured data from exercise names** (e.g., regex on name to infer movement patterns). Use explicit fields on each exercise definition.
 
 ## Conventions
 
@@ -124,44 +125,65 @@ Prisma with PostgreSQL via Supabase. Env vars in `.env` (see `.env.example`). Pa
 
 Profile stores height in inches (`heightIn`) and weight in pounds (`weightLb`). The engine receives these converted to metric (`heightCm`, `weightKg`) via `mapProfile()`.
 
-### Migration Rules
+### Prisma Command Reference
 
-**CRITICAL: Migrations must be applied before running the app.** A stale database causes cryptic runtime errors like "The column `(not available)` does not exist in the current database."
-
-**When to check for pending migrations:**
-- After pulling new code or switching branches
-- After any schema change (`schema.prisma` modified)
-- When you see Prisma runtime errors about missing columns/tables
-- Before running `npm run dev` or `npm run build` after schema work
-
-**Standard workflow when schema changes:**
+**Everyday commands:**
 ```bash
-# 1. Update schema.prisma
-# 2. Create migration (dev only — generates SQL + applies it)
-npx prisma migrate dev --name descriptive_name
-# 3. Regenerate client
-npm run prisma:generate
-# 4. Commit both schema and migration files
+npm run prisma:generate          # Regenerate client after schema changes
+npx prisma migrate status        # Check for pending migrations
+npx prisma migrate deploy        # Apply all pending migrations
+npx prisma migrate dev --name x  # Create + apply new migration (dev only)
+npm run prisma:studio            # Visual DB browser (opens in browser)
+npm run db:seed                  # Seed exercises, equipment, muscles, aliases
 ```
 
-**Apply existing migrations (after pulling code with new migrations):**
+**Inspecting the actual database:**
 ```bash
-# Preferred — applies all pending migrations:
-npx prisma migrate deploy
-
-# Check status first if unsure:
-npx prisma migrate status
+npx prisma db pull --print                       # Introspect DB → print schema (best way to check actual DB state)
+npx prisma db pull --print | grep -A 20 'model Exercise'  # Check a specific table
 ```
 
-**Manual apply (if `migrate deploy` fails):**
+**Manual SQL execution:**
 ```bash
-npx prisma db execute --file prisma/migrations/<migration_dir>/migration.sql
-npx prisma migrate resolve --applied <migration_dir>
+# Run a SQL file (DDL/DML only — no query results returned):
+npx prisma db execute --file path/to/file.sql
+
+# Run inline SQL (DDL/DML only — no query results returned):
+echo "ALTER TABLE ..." | npx prisma db execute --stdin
 ```
 
-**After applying any migration, always regenerate the client:**
+**Recovery commands (when things go wrong):**
 ```bash
-npm run prisma:generate
+# Manually apply a migration file then mark it as applied:
+npx prisma db execute --file prisma/migrations/<dir>/migration.sql
+npx prisma migrate resolve --applied <dir>
+
+# Mark a failed migration as rolled back (to retry):
+npx prisma migrate resolve --rolled-back <dir>
+```
+
+### Prisma Gotchas
+
+- **`db execute` is write-only.** It runs DDL/DML but does NOT return query results. SELECT statements execute silently with no output. Use `db pull --print` to inspect DB state instead.
+- **`migrate status` checks the tracking table, not actual DB state.** A migration can be marked "applied" even if individual SQL statements within it failed (e.g., `ADD CONSTRAINT` fails on duplicate rows). If something seems wrong, use `db pull --print` to see what columns/constraints actually exist.
+- **`predev` auto-generates.** `npm run dev` runs `prisma generate` automatically, so the Prisma client is always fresh on dev server start. If you get stale column errors mid-session, restart the dev server.
+- **Stale client → cryptic errors.** "The column `(not available)` does not exist" means the Prisma client doesn't match the DB. Fix: `npm run prisma:generate` then restart the dev server.
+- **Upsert requires DB-level constraints.** `prisma.x.upsert()` uses ON CONFLICT, which requires the unique constraint to actually exist in the DB — not just in `schema.prisma`.
+
+### Migration Workflow
+
+**After schema changes (creating new migrations):**
+```bash
+# 1. Edit prisma/schema.prisma
+npx prisma migrate dev --name descriptive_name  # 2. Create + apply
+npm run prisma:generate                          # 3. Regenerate client
+# 4. Commit both schema.prisma AND the migration SQL file
+```
+
+**After pulling code with new migrations:**
+```bash
+npx prisma migrate deploy    # Apply pending migrations
+npm run prisma:generate      # Regenerate client
 ```
 
 See `.claude/patterns.md` for learned workflow patterns and preferences.

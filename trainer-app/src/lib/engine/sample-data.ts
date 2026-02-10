@@ -47,7 +47,7 @@ export const exampleExerciseLibrary: Exercise[] = [
     sfrScore: 2,
     lengthPositionScore: 3,
     equipment: ["barbell"],
-    primaryMuscles: ["Back", "Upper Back"],
+    primaryMuscles: ["Lats", "Upper Back"],
     secondaryMuscles: ["Biceps", "Rear Delts", "Forearms"],
   },
   {
@@ -88,7 +88,7 @@ export const exampleExerciseLibrary: Exercise[] = [
     sfrScore: 4,
     lengthPositionScore: 3,
     equipment: ["cable", "machine"],
-    primaryMuscles: ["Back"],
+    primaryMuscles: ["Lats"],
     secondaryMuscles: ["Biceps", "Forearms"],
   },
   {

@@ -147,6 +147,14 @@ enum VariationType {
   OTHER
 }
 
+enum TemplateIntent {
+  FULL_BODY
+  UPPER_LOWER
+  PUSH_PULL_LEGS
+  BODY_PART
+  CUSTOM
+}
+
 model User {
   id        String   @id @default(uuid())
   email     String   @unique
@@ -387,6 +395,8 @@ model WorkoutSet {
   workoutExercise   WorkoutExercise @relation(fields: [workoutExerciseId], references: [id])
   setIndex          Int
   targetReps        Int
+  targetRepMin      Int?
+  targetRepMax      Int?
   targetRpe         Float?
   targetLoad        Float?
   restSeconds       Int?
@@ -455,6 +465,7 @@ model WorkoutTemplate {
   name           String
   targetMuscles  String[] @default([])
   isStrict       Boolean  @default(false)
+  intent         TemplateIntent @default(CUSTOM)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -469,6 +480,7 @@ model WorkoutTemplateExercise {
   exerciseId String
   exercise   Exercise        @relation(fields: [exerciseId], references: [id])
   orderIndex Int
+  supersetGroup Int?
 
   @@unique([templateId, orderIndex])
 }

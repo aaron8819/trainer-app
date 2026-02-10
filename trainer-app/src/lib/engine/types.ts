@@ -134,6 +134,10 @@ export type Exercise = {
 export type WorkoutSet = {
   setIndex: number;
   targetReps: number;
+  targetRepRange?: {
+    min: number;
+    max: number;
+  };
   targetRpe?: number;
   targetLoad?: number;
   restSeconds?: number;
@@ -145,6 +149,7 @@ export type WorkoutExercise = {
   orderIndex: number;
   isMainLift: boolean;
   notes?: string;
+  supersetGroup?: number;
   sets: WorkoutSet[];
   warmupSets?: WorkoutSet[];
 };

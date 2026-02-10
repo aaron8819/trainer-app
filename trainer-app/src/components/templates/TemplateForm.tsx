@@ -12,24 +12,43 @@ type SelectedExercise = {
   exerciseId: string;
   name: string;
   orderIndex: number;
+  supersetGroup?: number;
 };
+
+type TemplateIntent =
+  | "FULL_BODY"
+  | "UPPER_LOWER"
+  | "PUSH_PULL_LEGS"
+  | "BODY_PART"
+  | "CUSTOM";
 
 type TemplateFormProps = {
   mode: "create" | "edit";
   templateId?: string;
   initialName?: string;
   initialTargetMuscles?: string[];
+  initialIntent?: TemplateIntent;
+  initialIsStrict?: boolean;
   initialExercises?: SelectedExercise[];
   exercises: ExerciseListItem[];
 };
 
 const MUSCLE_GROUPS = Object.keys(MUSCLE_GROUP_LABELS) as MuscleGroup[];
+const TEMPLATE_INTENT_OPTIONS: { value: TemplateIntent; label: string }[] = [
+  { value: "CUSTOM", label: "Custom" },
+  { value: "FULL_BODY", label: "Full Body" },
+  { value: "UPPER_LOWER", label: "Upper/Lower" },
+  { value: "PUSH_PULL_LEGS", label: "Push/Pull/Legs" },
+  { value: "BODY_PART", label: "Body Part" },
+];
 
 export function TemplateForm({
   mode,
   templateId,
   initialName = "",
   initialTargetMuscles = [],
+  initialIntent = "CUSTOM",
+  initialIsStrict = false,
   initialExercises = [],
   exercises,
 }: TemplateFormProps) {
@@ -42,7 +61,8 @@ export function TemplateForm({
   const [error, setError] = useState<string | null>(null);
   const [trainingGoal, setTrainingGoal] = useState<string | undefined>(undefined);
   const [timeBudgetMinutes, setTimeBudgetMinutes] = useState<number | undefined>(undefined);
-  const [isStrict, setIsStrict] = useState(false);
+  const [isStrict, setIsStrict] = useState(initialIsStrict);
+  const [intent, setIntent] = useState<TemplateIntent>(initialIntent);
 
   const exerciseByName = useMemo(
     () => new Map(exercises.map((e) => [e.name, e])),
@@ -65,6 +85,7 @@ export function TemplateForm({
         exerciseId: ex?.id ?? "",
         name: n,
         orderIndex: 0,
+        supersetGroup: undefined,
       };
     });
     const merged = [...existing, ...newExercises].map((e, i) => ({
@@ -85,6 +106,20 @@ export function TemplateForm({
   const removeExercise = (index: number) => {
     setSelectedExercises((prev) =>
       prev.filter((_, i) => i !== index).map((e, i) => ({ ...e, orderIndex: i }))
+    );
+  };
+
+  const updateSupersetGroup = (index: number, value: string) => {
+    const next = value.trim() === "" ? undefined : Number.parseInt(value, 10);
+    setSelectedExercises((prev) =>
+      prev.map((exercise, i) =>
+        i !== index
+          ? exercise
+          : {
+              ...exercise,
+              supersetGroup: Number.isFinite(next) && (next ?? 0) > 0 ? next : undefined,
+            }
+      )
     );
   };
 
@@ -145,9 +180,11 @@ export function TemplateForm({
       name: name.trim(),
       targetMuscles,
       isStrict,
+      intent,
       exercises: selectedExercises.map((e) => ({
         exerciseId: e.exerciseId,
         orderIndex: e.orderIndex,
+        supersetGroup: e.supersetGroup,
       })),
     };
 
@@ -259,6 +296,23 @@ export function TemplateForm({
         </span>
       </div>
 
+      <div>
+        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
+          Template Intent
+        </label>
+        <select
+          value={intent}
+          onChange={(e) => setIntent(e.target.value as TemplateIntent)}
+          className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+        >
+          {TEMPLATE_INTENT_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
       {targetMuscles.length > 0 && (
         <div className="flex items-center gap-3">
           <button
@@ -308,6 +362,16 @@ export function TemplateForm({
                 <span className="flex-1 truncate text-sm font-medium text-slate-800">
                   {exercise.name}
                 </span>
+                <input
+                  type="number"
+                  min={1}
+                  max={99}
+                  value={exercise.supersetGroup ?? ""}
+                  onChange={(e) => updateSupersetGroup(index, e.target.value)}
+                  placeholder="SS"
+                  aria-label="Superset group"
+                  className="w-14 rounded-md border border-slate-200 px-2 py-1 text-xs"
+                />
                 <div className="flex gap-1">
                   <button
                     onClick={() => moveExercise(index, "up")}
@@ -349,6 +413,7 @@ export function TemplateForm({
       <TemplateAnalysisPanel
         selectedExerciseIds={selectedExercises.map((e) => e.exerciseId)}
         exerciseLibrary={exercises}
+        intent={intent}
       />
 
       {error && <p className="text-sm text-rose-600">{error}</p>}

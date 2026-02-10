@@ -36,7 +36,7 @@ Flow: Select a saved template → Engine applies fresh loads/reps/RPE → Previe
 - Templates store exercises and order only. The engine prescribes sets, reps, load, RPE, and rest fresh each time based on current training state.
 - Session check-in (readiness/pain) still applies in template mode.
 - Template sessions are logged to the same `Workout`/`SetLog` tables as PPL sessions.
-- Template sessions do NOT advance the PPL split queue, but their muscle history IS visible to the PPL engine for volume tracking, load progression, and split queue decisions.
+- Template sessions do NOT advance the PPL split queue. Their completed-session history is still visible to the PPL engine for volume tracking and load progression.
 
 ---
 
@@ -435,7 +435,7 @@ The PPL split queue should be **history-based** rather than position-based.
 **Edge cases:**
 - If a template session mixes push and pull muscles, classify it by which split has more primary sets
 - If no history exists, default to Push (start of rotation)
-- Template sessions set `Workout.advancesSplit = false` but ARE considered in the history-based queue lookup
+- Template sessions set `Workout.advancesSplit = false` and are excluded from split advancement/lookup
 
 **SRA warning integration:**
 When generating a PPL workout, if the selected split would hit muscles that haven't recovered (based on SRA windows from last session targeting those muscles), surface a warning: "Your chest was trained 24 hours ago and typically needs 48-72 hours to recover. Generate anyway?"
@@ -515,8 +515,8 @@ Status legend: [x] done, [~] partial/deferred, [ ] not started
 | D1 | Path A: retrofit PPL engine first, then build template mode on shared foundation | Avoid maintaining two divergent engines; knowledgebase improvements benefit all modes |
 | D2 | Template mode stores exercises + order only; engine handles load/reps fresh each time | Allows workouts to evolve with the user's progression |
 | D3 | All session history (PPL + template) feeds into load progression and volume tracking | A bench press is a bench press regardless of mode |
-| D4 | Template sessions do not advance PPL split queue, but ARE considered for history-based queue decisions | Muscle fatigue doesn't care about mode, but the PPL rotation should be driven by PPL intent |
-| D5 | PPL split queue redesign: history-based (look at last 3 sessions) rather than position-based | More intelligent scheduling that accounts for template sessions |
+| D4 | Template sessions do not advance PPL split queue and are excluded from split advancement decisions via `advancesSplit: false` | PPL rotation should reflect advancing sessions only, while template sessions still contribute to recovery/progression history when completed |
+| D5 | PPL split queue redesign: history-based (look at last 3 advancing completed sessions) rather than position-based | More intelligent scheduling with explicit completion and advancement semantics |
 | D6 | Deprecate `movementPattern` in favor of `movementPatternsV2` (renamed `movementPatterns`) | Reduce field duplication; V2 is strictly more expressive |
 | D7 | Collapse `isMainLift` + `isMainLiftEligible` into single `isMainLiftEligible` | Simpler model; the distinction was never exercised in practice |
 | D8 | Exercise library is both standalone page and inline picker in template builder | Maximum reuse; users need it in both contexts |

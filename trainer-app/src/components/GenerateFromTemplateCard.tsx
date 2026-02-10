@@ -8,6 +8,7 @@ import { TemplateScoreBadge } from "@/components/templates/TemplateScoreBadge";
 type WorkoutSet = {
   setIndex: number;
   targetReps: number;
+  targetRepRange?: { min: number; max: number };
   targetRpe?: number;
   targetLoad?: number;
   restSeconds?: number;
@@ -53,6 +54,16 @@ type SessionCheckInPayload = {
 type GenerateFromTemplateCardProps = {
   templates: TemplateSummary[];
 };
+
+function formatTargetReps(set?: WorkoutSet): string {
+  if (!set) {
+    return "";
+  }
+  if (set.targetRepRange && set.targetRepRange.min !== set.targetRepRange.max) {
+    return `${set.targetRepRange.min}-${set.targetRepRange.max} reps`;
+  }
+  return `${set.targetReps} reps`;
+}
 
 export function GenerateFromTemplateCard({ templates }: GenerateFromTemplateCardProps) {
   const [selectedTemplateId, setSelectedTemplateId] = useState(templates[0]?.id ?? "");
@@ -153,6 +164,7 @@ export function GenerateFromTemplateCard({ templates }: GenerateFromTemplateCard
         sets: exercise.sets.map((set) => ({
           setIndex: set.setIndex,
           targetReps: set.targetReps,
+          targetRepRange: set.targetRepRange,
           targetRpe: set.targetRpe,
           targetLoad: set.targetLoad,
           restSeconds: set.restSeconds,
@@ -302,7 +314,7 @@ export function GenerateFromTemplateCard({ templates }: GenerateFromTemplateCard
                     <div key={exercise.id} className="rounded-lg border border-slate-100 p-3">
                       <p className="text-sm font-semibold">{exercise.exercise.name}</p>
                       <p className="text-xs text-slate-500">
-                        {exercise.sets.length} sets · {exercise.sets[0]?.targetReps ?? ""} reps
+                        {exercise.sets.length} sets - {formatTargetReps(exercise.sets[0])}
                         {exercise.sets[0]?.targetLoad ? ` · ${exercise.sets[0].targetLoad} lbs` : ""}
                         {exercise.sets[0]?.targetRpe ? ` · RPE ${exercise.sets[0].targetRpe}` : ""}
                       </p>
@@ -317,3 +329,4 @@ export function GenerateFromTemplateCard({ templates }: GenerateFromTemplateCard
     </div>
   );
 }
+

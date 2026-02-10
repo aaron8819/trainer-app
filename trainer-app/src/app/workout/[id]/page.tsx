@@ -101,6 +101,16 @@ const formatPainFlags = (painFlags?: unknown) => {
     .map(([key]) => key.replace(/_/g, " "));
 };
 
+const formatTargetRepDisplay = (set?: { targetReps: number; targetRepMin: number | null; targetRepMax: number | null }) => {
+  if (!set) {
+    return "-- reps";
+  }
+  if (set.targetRepMin != null && set.targetRepMax != null && set.targetRepMin !== set.targetRepMax) {
+    return `${set.targetRepMin}-${set.targetRepMax} reps`;
+  }
+  return `${set.targetReps} reps`;
+};
+
 
 function buildBaselineSummary({
   workout,
@@ -512,7 +522,7 @@ export default async function WorkoutDetailPage({
                         <div>
                           <h3 className="text-lg font-semibold">{exercise.exercise.name}</h3>
                           <p className="mt-1 text-sm text-slate-600">
-                            {exercise.sets.length} sets � {exercise.sets[0]?.targetReps ?? "--"} reps
+                            {exercise.sets.length} sets - {formatTargetRepDisplay(exercise.sets[0])}
                             {targetLoad ? ` � ${targetLoad} lbs` : ""}
                             {exercise.sets[0]?.targetRpe ? ` � RPE ${exercise.sets[0].targetRpe}` : ""}
                           </p>
@@ -529,7 +539,7 @@ export default async function WorkoutDetailPage({
                           <div key={set.id} className="flex items-center justify-between">
                             <span>Set {set.setIndex}</span>
                             <span>
-                              {set.targetReps} reps
+                              {formatTargetRepDisplay(set)}
                               {set.targetLoad ? ` � ${set.targetLoad} lbs` : ""}
                               {set.targetRpe ? ` � RPE ${set.targetRpe}` : ""}
                             </span>

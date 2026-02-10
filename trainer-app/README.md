@@ -56,6 +56,7 @@ npx tsx scripts/migrate-exercises.ts
 ## Environment
 
 The app expects a `DATABASE_URL` in `trainer-app/.env`. See `trainer-app/.env.example` for a template.
+For single-user deployments, set `OWNER_EMAIL` to your email so all runtime data and seed data resolve to one deterministic account.
 
 ## Learn More
 

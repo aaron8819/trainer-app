@@ -50,6 +50,15 @@ export const saveWorkoutSchema = z.object({
             z.object({
               setIndex: z.number(),
               targetReps: z.number(),
+              targetRepRange: z
+                .object({
+                  min: z.number().int().min(1),
+                  max: z.number().int().min(1),
+                })
+                .refine((range) => range.min <= range.max, {
+                  message: "targetRepRange.min must be <= max",
+                })
+                .optional(),
               targetRpe: z.number().optional(),
               targetLoad: z.number().optional(),
               restSeconds: z.number().optional(),
@@ -121,12 +130,22 @@ export const upsertBaselineSchema = z.object({
 const templateExerciseSchema = z.object({
   exerciseId: z.string(),
   orderIndex: z.number().int().min(0),
+  supersetGroup: z.number().int().min(1).max(99).optional(),
 });
+
+export const templateIntentSchema = z.enum([
+  "FULL_BODY",
+  "UPPER_LOWER",
+  "PUSH_PULL_LEGS",
+  "BODY_PART",
+  "CUSTOM",
+]);
 
 export const createTemplateSchema = z.object({
   name: z.string().min(1).max(100),
   targetMuscles: z.array(z.string()).default([]),
   isStrict: z.boolean().default(false),
+  intent: templateIntentSchema.default("CUSTOM"),
   exercises: z.array(templateExerciseSchema).default([]),
 });
 
@@ -134,6 +153,7 @@ export const updateTemplateSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   targetMuscles: z.array(z.string()).optional(),
   isStrict: z.boolean().optional(),
+  intent: templateIntentSchema.optional(),
   exercises: z.array(templateExerciseSchema).optional(),
 });
 

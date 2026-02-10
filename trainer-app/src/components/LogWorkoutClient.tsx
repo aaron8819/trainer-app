@@ -7,6 +7,7 @@ export type LogSetInput = {
   setId: string;
   setIndex: number;
   targetReps: number;
+  targetRepRange?: { min: number; max: number };
   targetLoad?: number | null;
   targetRpe?: number | null;
   actualReps?: number | null;
@@ -50,6 +51,13 @@ type BaselineUpdateSummary = {
     reason: string;
   }[];
 };
+
+function formatTargetReps(set: LogSetInput): string {
+  if (set.targetRepRange && set.targetRepRange.min !== set.targetRepRange.max) {
+    return `${set.targetRepRange.min}-${set.targetRepRange.max} reps`;
+  }
+  return `${set.targetReps} reps`;
+}
 
 function normalizeExercises(exercises: LogExerciseInput[] | SectionedExercises): NormalizedExercises {
   if (Array.isArray(exercises)) {
@@ -274,6 +282,7 @@ export default function LogWorkoutClient({
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-semibold">Set {set.setIndex}</p>
+                      <span className="text-xs text-slate-500">Target {formatTargetReps(set)}</span>
                       {isBaselineEligible(set) ? (
                         <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
                           Baseline +

@@ -230,6 +230,17 @@ When the seed runs, 19 exercise renames are applied to migrate old names to cano
 
 Baselines are seeded for the owner user (`owner@local`) and include 31 baselines covering main lifts and accessories.
 
+## Workout Templates
+
+20 workout templates are seeded for the owner user (`owner@local`) from `docs/workouts/workouts.md`.
+
+Each template stores:
+- Template name
+- Target muscles
+- Ordered exercise list (`WorkoutTemplateExercise.orderIndex`)
+
+Note: sets/reps/rest are not persisted on template rows. They are prescribed at generation time by the template engine using each user's profile/goals/fatigue context.
+
 ## Stale Exercise Pruning
 
 After seeding, exercises not in `exercises_comprehensive.json` are pruned (5 removed):

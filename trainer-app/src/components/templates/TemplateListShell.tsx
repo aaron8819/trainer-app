@@ -11,6 +11,7 @@ type TemplateItem = {
   name: string;
   exerciseCount: number;
   targetMuscles: string[];
+  intent: string;
   score?: number;
   scoreLabel?: string;
 };
@@ -76,6 +77,7 @@ export function TemplateListShell({ templates: initialTemplates }: TemplateListS
               name={template.name}
               exerciseCount={template.exerciseCount}
               targetMuscles={template.targetMuscles}
+              intent={template.intent}
               score={template.score}
               scoreLabel={template.scoreLabel}
               onDeleteClick={setDeleteTarget}

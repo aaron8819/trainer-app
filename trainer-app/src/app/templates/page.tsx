@@ -25,6 +25,7 @@ export default async function TemplatesPage() {
             name: t.name,
             exerciseCount: t.exerciseCount,
             targetMuscles: t.targetMuscles,
+            intent: t.intent,
             score: t.score,
             scoreLabel: t.scoreLabel,
           }))}

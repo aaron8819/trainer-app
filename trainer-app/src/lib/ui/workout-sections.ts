@@ -5,7 +5,15 @@ type WorkoutExercise = {
   isMainLift: boolean;
   orderIndex: number;
   exercise: { name: string };
-  sets: { id: string; setIndex: number; targetReps: number; targetLoad?: number | null; targetRpe?: number | null }[];
+  sets: {
+    id: string;
+    setIndex: number;
+    targetReps: number;
+    targetRepMin?: number | null;
+    targetRepMax?: number | null;
+    targetLoad?: number | null;
+    targetRpe?: number | null;
+  }[];
 };
 
 type SectionedExercises = {
@@ -30,6 +38,10 @@ export function splitExercises(exercises: WorkoutExercise[]): SectionedExercises
         setId: set.id,
         setIndex: set.setIndex,
         targetReps: set.targetReps,
+        targetRepRange:
+          set.targetRepMin != null && set.targetRepMax != null
+            ? { min: set.targetRepMin, max: set.targetRepMax }
+            : undefined,
         targetLoad: set.targetLoad,
         targetRpe: set.targetRpe,
       })),

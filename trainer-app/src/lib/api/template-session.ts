@@ -1,11 +1,17 @@
-import { generateWorkoutFromTemplate, type TemplateExerciseInput } from "@/lib/engine";
+import {
+  generateWorkoutFromTemplate,
+  getPeriodizationModifiers,
+  type TemplateExerciseInput,
+} from "@/lib/engine";
 import type { WorkoutPlan } from "@/lib/engine/types";
 import type { SraWarning } from "@/lib/engine/sra";
 import { loadTemplateDetail } from "./templates";
 import {
   applyLoads,
+  deriveWeekInBlock,
   loadWorkoutContext,
   mapCheckIn,
+  mapConstraints,
   mapExercises,
   mapGoals,
   mapHistory,
@@ -43,10 +49,14 @@ export async function generateSessionFromTemplate(
 
   const mappedProfile = mapProfile(userId, profile, injuries);
   const mappedGoals = mapGoals(goals.primaryGoal, goals.secondaryGoal);
+  const mappedConstraints = mapConstraints(constraints);
   const exerciseLibrary = mapExercises(exercises);
   const history = mapHistory(workouts);
   const mappedPreferences = mapPreferences(preferences);
   const mappedCheckIn = mapCheckIn(checkIns);
+  const activeProgramBlock = workouts.find((entry) => entry.programBlockId)?.programBlock ?? null;
+  const weekInBlock = deriveWeekInBlock(new Date(), activeProgramBlock, workouts);
+  const periodization = getPeriodizationModifiers(weekInBlock, mappedGoals.primary);
 
   // Build exercise lookup from mapped library
   const exerciseById = new Map(exerciseLibrary.map((e) => [e.id, e]));
@@ -59,6 +69,7 @@ export async function generateSessionFromTemplate(
     templateExercises.push({
       exercise,
       orderIndex: te.orderIndex,
+      supersetGroup: te.supersetGroup ?? undefined,
     });
   }
 
@@ -69,9 +80,11 @@ export async function generateSessionFromTemplate(
     exerciseLibrary,
     preferences: mappedPreferences,
     checkIn: mappedCheckIn,
+    periodization,
+    isStrict: template.isStrict,
   });
 
-  // Apply loads (no sessionMinutes — don't trim template workouts)
+  // Apply loads and enforce session budget using user constraints.
   const withLoads = applyLoads(
     workout,
     baselines,
@@ -79,9 +92,10 @@ export async function generateSessionFromTemplate(
     history,
     mappedProfile,
     mappedGoals.primary,
-    undefined,
-    undefined
+    mappedConstraints.sessionMinutes,
+    periodization
   );
 
   return { workout: withLoads, templateId, sraWarnings };
 }
+

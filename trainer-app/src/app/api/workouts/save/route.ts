@@ -106,6 +106,8 @@ export async function POST(request: Request) {
                 create: exercise.sets.map((set) => ({
                   setIndex: set.setIndex,
                   targetReps: set.targetReps,
+                  targetRepMin: set.targetRepRange?.min ?? undefined,
+                  targetRepMax: set.targetRepRange?.max ?? undefined,
                   targetRpe: set.targetRpe ?? undefined,
                   targetLoad: set.targetLoad ?? undefined,
                   restSeconds: set.restSeconds ?? undefined,

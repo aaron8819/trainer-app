@@ -2,9 +2,9 @@ import { computeNextLoad } from "./progression";
 import { estimateWorkoutMinutes, trimAccessoriesByPriority } from "./timeboxing";
 import { filterCompletedHistory, sortHistoryByDateDesc } from "./history";
 import {
+  getBaseTargetRpe,
   getBackOffMultiplier,
   REP_RANGES_BY_GOAL,
-  TARGET_RPE_BY_GOAL,
   type PeriodizationModifiers,
 } from "./rules";
 import { getPrimaryMuscles } from "./utils";
@@ -88,7 +88,6 @@ export function applyLoads(workout: WorkoutPlan, options: ApplyLoadsOptions): Wo
   const historyIndex = buildHistoryIndex(options.history ?? []);
   const baselineIndex = buildBaselineIndex(options.baselines ?? [], options.primaryGoal);
   const repRanges = REP_RANGES_BY_GOAL[options.primaryGoal];
-  const defaultTargetRpe = TARGET_RPE_BY_GOAL[options.primaryGoal];
   const trainingAge = options.profile?.trainingAge ?? "intermediate";
   const periodization = options.periodization;
   const backOffMultiplier =
@@ -96,6 +95,13 @@ export function applyLoads(workout: WorkoutPlan, options: ApplyLoadsOptions): Wo
 
   const applyToExercise = (exerciseEntry: WorkoutPlan["mainLifts"][number]) => {
     const exercise = exerciseEntry.exercise;
+    const defaultTargetRpe =
+      getBaseTargetRpe(options.primaryGoal, trainingAge) +
+      (options.primaryGoal === "hypertrophy" &&
+      !exerciseEntry.isMainLift &&
+      !(exercise.isCompound ?? false)
+        ? 0.5
+        : 0);
     const repRange = exerciseEntry.isMainLift ? repRanges.main : repRanges.accessory;
     const existingTopSetLoad = exerciseEntry.sets.find((set) => set.setIndex === 1)?.targetLoad;
     const targetRpe =

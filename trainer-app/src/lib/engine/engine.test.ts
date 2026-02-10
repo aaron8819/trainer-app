@@ -529,7 +529,7 @@ describe("engine core", () => {
     expect(dbPress?.sets[0].restSeconds).toBe(120);
 
     const lateralRaise = workout.accessories.find((item) => item.exercise.name === "Lateral Raise");
-    expect(lateralRaise?.sets[0].restSeconds).toBe(60);
+    expect(lateralRaise?.sets[0].restSeconds).toBe(75);
 
     const pushdown = workout.accessories.find((item) => item.exercise.name === "Triceps Pushdown");
     expect(pushdown?.sets[0].restSeconds).toBe(90);

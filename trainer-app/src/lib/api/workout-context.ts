@@ -90,12 +90,11 @@ export async function resolveUser(userId?: string | null) {
 export async function resolveOwner() {
   const configuredOwnerEmail = process.env.OWNER_EMAIL?.trim().toLowerCase();
   if (configuredOwnerEmail) {
-    const configuredOwner = await prisma.user.findUnique({
+    return prisma.user.upsert({
       where: { email: configuredOwnerEmail },
+      update: {},
+      create: { email: configuredOwnerEmail },
     });
-    if (configuredOwner) {
-      return configuredOwner;
-    }
   }
 
   const withProfile = await prisma.user.findFirst({

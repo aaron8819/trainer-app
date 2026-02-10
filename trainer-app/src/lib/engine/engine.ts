@@ -24,7 +24,13 @@ import {
   resolveTargetPatterns,
 } from "./split-queue";
 import { selectExercises } from "./filtering";
-import { prescribeSetsReps, getRestSeconds, REST_SECONDS, type ExerciseRepRange } from "./prescription";
+import {
+  prescribeSetsReps,
+  getRestSeconds,
+  REST_SECONDS,
+  resolveSetTargetReps,
+  type ExerciseRepRange,
+} from "./prescription";
 import { buildVolumeContext, deriveFatigueState, enforceVolumeCaps } from "./volume";
 import { estimateWorkoutMinutes, trimAccessoriesByPriority } from "./timeboxing";
 import { buildMuscleRecoveryMap, generateSraWarnings } from "./sra";
@@ -189,9 +195,11 @@ function buildWorkoutExercise(
     fatigueState,
     preferences,
     periodization,
-    exerciseRepRange
+    exerciseRepRange,
+    !isMainLift && !(exercise.isCompound ?? false)
   );
-  const topSetReps = prescribedSets[0]?.targetReps;
+  const topSetReps =
+    prescribedSets.length > 0 ? resolveSetTargetReps(prescribedSets[0]) : undefined;
   const restSeconds = getRestSeconds(exercise, isMainLift, topSetReps);
   const sets = prescribedSets.map((set) => ({
     ...set,

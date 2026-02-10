@@ -32,9 +32,9 @@ The engine pairs main lifts by `movementPatterns`:
 
 Main lifts use recency weighting and seeded randomness for variety. Recent main lifts are deprioritized.
 
-### 4. Timeboxing (PPL Auto Only)
+### 4. Timeboxing (Budget-Aware In All Modes)
 
-The session time budget (`sessionMinutes`) is enforced by dropping accessories first. Accessories are trimmed by lowest priority (scored by fatigue cost and unique muscle contribution), not by position order. **Template mode skips timeboxing** — all template exercises are preserved regardless of estimated duration.
+The session time budget (`sessionMinutes`) is enforced by dropping accessories first. Accessories are trimmed by lowest priority (scored by fatigue cost and unique muscle contribution), not by position order. Template mode uses the same budget-aware trimming during load application.
 
 ### 5. Load Progression Guardrails
 
@@ -60,6 +60,16 @@ The engine tracks Stimulus-Recovery-Adaptation windows per muscle group. Each mu
 
 The most recent `SessionCheckIn` drives readiness and pain filtering. Injuries reduce high joint-stress exercises. Pain filtering uses exercise `contraindications` as the primary filter. One accepted exception: `main-lift-picker.ts` uses a regex to prefer chest-supported rows when low-back pain is flagged (positive selection for ~3 exercises, documented in code).
 
+### 7a. Completion-Aware History Semantics
+
+History-derived progression and planning logic only use completed sessions. Specifically:
+
+- Load progression history (`apply-loads.ts`) is completed-only.
+- Volume context and stall detection are completed-only.
+- Recency weighting is completed-only.
+- Fatigue derivation resolves the most recent history entry by date (not array position).
+- Split advancement uses `status === COMPLETED` OR legacy `completed === true`, with `advancesSplit !== false`.
+
 ### 8. Deterministic Randomization
 
 All randomized selection uses a seeded PRNG (`createRng` from `random.ts`). Tests always provide `randomSeed` for reproducibility. Production uses `Math.random` when no seed is provided.
@@ -81,8 +91,8 @@ POST /api/workouts/generate
   3. Generate workout (pure engine)
      generateWorkout()
        -> select split day (history-based for PPL, position-based for others)
-       -> derive fatigue state from history + check-in
-       -> build volume context (per-muscle weekly sets from history)
+       -> derive fatigue state from the most recent history entry by date + check-in
+       -> build volume context (per-muscle weekly sets from completed history)
        -> choose main lifts (movement pairing + recency weighting)
        -> choose accessories (slot-based selection with SFR/length scoring)
        -> timebox the plan
@@ -91,7 +101,7 @@ POST /api/workouts/generate
 
   4. Apply loads (pure engine)
      applyLoads()
-       -> Tier 1: history via computeNextLoad
+       -> Tier 1: completed history via computeNextLoad
        -> Tier 2: baselines by exerciseId
        -> Tier 3: estimation (muscle donor -> bodyweight ratios -> equipment defaults)
        -> Apply periodization modifiers
@@ -121,22 +131,22 @@ POST /api/workouts/generate-from-template
        -> assign rest periods (getRestSeconds)
        -> estimate session duration
        -> build muscle recovery map, generate SRA warnings
-       -> NO timeboxing — full template structure preserved
+       -> estimate session duration (pre-load)
        -> NO split selection — user chose the template
 
   4. Apply loads (pure engine)
      applyLoads()
        -> Same three-tier strategy as PPL Auto
-       -> No sessionMinutes trimming (template preserves all exercises)
+       -> sessionMinutes-aware accessory trimming, preserving main lifts
 
   5. Return { workout, templateId, sraWarnings }
 ```
 
 **Key differences from PPL Auto:**
 - Exercise selection is user-defined (template), not engine-generated
-- Timeboxing is skipped — the full template is always preserved
+- Timeboxing still applies by budget; accessory trimming can occur, main lifts are preserved
 - Saved workouts set `advancesSplit: false` — template sessions don't rotate the PPL queue
-- SRA warnings are advisory (the template is preserved even if muscles are under-recovered)
+- SRA warnings are advisory (no hard filtering for under-recovered muscles)
 
 **Flexible mode** (`isStrict: false`): When pain flags conflict with template exercises (via `contraindications`), the engine returns `substitutions: SubstitutionSuggestion[]` alongside the workout. Each suggestion lists the original exercise, the conflict reason, and up to 3 scored alternatives from `suggestSubstitutes()`.
 
@@ -260,6 +270,7 @@ When an exercise defines `repRangeMin`/`repRangeMax`, the goal-based rep range i
 1. **Intersection**: The effective range is `[max(goalMin, exerciseMin), min(goalMax, exerciseMax)]`
 2. **No overlap fallback**: If the intersection is invalid (min > max), the exercise's range is used instead (the exercise knows its biomechanics better than goal defaults)
 3. **No exercise range**: Goal-based range is used unchanged (backward compatible)
+4. **Main-lift non-overlap demotion (template mode)**: if an exercise is `isMainLiftEligible` but its rep range does not overlap the goal main-lift range, it is prescribed as an accessory for that session.
 
 This prevents prescribing rep ranges that are biomechanically inappropriate — e.g., a calf raise exercise with `repRangeMin: 10` won't be prescribed 3-rep heavy singles even on a strength program.
 
@@ -274,7 +285,7 @@ Rest scales by exercise type and rep range via `getRestSeconds()`. Accepts optio
 | Compound accessory | ≤8 reps | 150s |
 | Compound accessory | 9+ reps | 120s |
 | Isolation (high fatigue) | any | 90s |
-| Isolation (low fatigue) | any | 60s |
+| Isolation (low fatigue) | any | 75s |
 
 Defined in `prescription.ts`.
 
@@ -288,6 +299,7 @@ Defined in `prescription.ts`.
 | `template-session.ts` | Template mode: `generateWorkoutFromTemplate` (prescribe sets/reps/rest for user-defined exercises) |
 | `apply-loads.ts` | Load assignment: history -> baseline -> estimation; periodization modifiers |
 | `split-queue.ts` | Split patterns, day index, history-based PPL split, target pattern resolution |
+| `history.ts` | Shared history helpers (completion checks, date sorting, most-recent resolution) |
 | `filtering.ts` | Exercise filtering (equipment, pain, injury, stall), `selectExercises` |
 | `main-lift-picker.ts` | PPL main lift pairing with recency weighting |
 | `pick-accessories-by-slot.ts` | Slot-based accessory selection (PPL, upper_lower, full_body) |
@@ -341,6 +353,8 @@ Defined in `prescription.ts`.
 **Constraints**: `availableEquipment` (EquipmentType[]), `sessionMinutes`
 
 **SessionCheckIn**: `readiness` (1-5), `painFlags` (jsonb)
+
+**WorkoutSet**: `targetReps`, `targetRepMin`, `targetRepMax`, `targetRpe`, `targetLoad`, `restSeconds`
 
 **Profile**: `trainingAge` (non-nullable, default INTERMEDIATE), `heightIn`, `weightLb` (converted to metric via `mapProfile`)
 

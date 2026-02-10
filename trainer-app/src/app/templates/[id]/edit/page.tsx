@@ -23,6 +23,7 @@ export default async function EditTemplatePage({ params }: { params: Params }) {
     exerciseId: te.exerciseId,
     name: te.name,
     orderIndex: te.orderIndex,
+    supersetGroup: te.supersetGroup ?? undefined,
   }));
 
   return (
@@ -34,6 +35,8 @@ export default async function EditTemplatePage({ params }: { params: Params }) {
           templateId={id}
           initialName={template.name}
           initialTargetMuscles={template.targetMuscles}
+          initialIntent={template.intent}
+          initialIsStrict={template.isStrict}
           initialExercises={initialExercises}
           exercises={exercises}
         />

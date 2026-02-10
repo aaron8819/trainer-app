@@ -4,6 +4,24 @@ Record of significant design decisions and their rationale. Newest first.
 
 ---
 
+## ADR-030: Completion-aware history semantics in engine planning/progression (2026-02-10)
+
+**Decision**:
+- Added shared history helpers in `src/lib/engine/history.ts` for completion checks and date-stable ordering.
+- Standardized progression/planning consumers to use completion-aware history:
+  - `apply-loads.ts` history index
+  - `volume.ts` volume context
+  - `filtering.ts` stall detection
+  - `utils.ts` recency index
+- Updated fatigue derivation to resolve the most recent history entry by date, not by input array position.
+- Updated split advancement compatibility to count completed legacy entries (`completed: true`) even when `status` is missing, while still honoring `advancesSplit !== false`.
+
+**Rationale**: Planned/in-progress sessions were contaminating progression and volume logic, and fatigue derivation could regress when history ordering was inconsistent. A shared completion/date contract removes ambiguity across modules, preserves backward compatibility for legacy history records, and keeps split/progression behavior consistent with persisted workout state semantics.
+
+**Reference**: `docs/engine-audit-remediation-2026-02-10.md`.
+
+---
+
 ## ADR-029: Canonical exercise preferences by ID + transactional toggles (2026-02-10)
 
 **Decision**:

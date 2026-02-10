@@ -561,6 +561,274 @@ const baselineSeed = [
 // Seed functions
 // ═══════════════════════════════════════════════════════════════════════════
 
+
+type WorkoutTemplateSeed = {
+  name: string;
+  targetMuscles: string[];
+  isStrict: boolean;
+  exercises: string[];
+};
+
+const workoutTemplateSeed: WorkoutTemplateSeed[] = [
+  {
+    name: "Workout 1 - Push A: Chest Emphasis",
+    targetMuscles: ["Chest", "Triceps", "Side Delts"],
+    isStrict: false,
+    exercises: [
+      "Barbell Bench Press",
+      "Incline Dumbbell Bench Press",
+      "Cable Fly",
+      "Overhead Cable Triceps Extension",
+      "Cable Lateral Raise",
+    ],
+  },
+  {
+    name: "Workout 2 - Push B: Shoulder Emphasis",
+    targetMuscles: ["Front Delts", "Side Delts", "Chest", "Triceps"],
+    isStrict: false,
+    exercises: [
+      "Barbell Overhead Press",
+      "Machine Chest Press",
+      "Dumbbell Lateral Raise",
+      "Incline Dumbbell Fly",
+      "Rope Triceps Pushdown",
+    ],
+  },
+  {
+    name: "Workout 3 - Pull A: Back Width (Vertical Focus)",
+    targetMuscles: ["Lats", "Biceps", "Rear Delts"],
+    isStrict: false,
+    exercises: [
+      "Weighted Pull-Up",
+      "Lat Pulldown",
+      "Cable Pullover",
+      "Incline Dumbbell Curl",
+      "Face Pull",
+    ],
+  },
+  {
+    name: "Workout 4 - Pull B: Back Thickness (Horizontal Focus)",
+    targetMuscles: ["Upper Back", "Lats", "Biceps", "Rear Delts"],
+    isStrict: false,
+    exercises: [
+      "Barbell Row",
+      "Chest-Supported Dumbbell Row",
+      "Seated Cable Row",
+      "Bayesian Curl",
+      "Reverse Pec Deck",
+    ],
+  },
+  {
+    name: "Workout 5 - Legs A: Quad Dominant",
+    targetMuscles: ["Quads", "Hamstrings", "Calves", "Glutes"],
+    isStrict: false,
+    exercises: [
+      "Barbell Back Squat",
+      "Hack Squat",
+      "Leg Extension",
+      "Seated Leg Curl",
+      "Standing Calf Raise",
+    ],
+  },
+  {
+    name: "Workout 6 - Legs B: Posterior Chain Dominant",
+    targetMuscles: ["Hamstrings", "Glutes", "Quads", "Calves"],
+    isStrict: false,
+    exercises: [
+      "Romanian Deadlift",
+      "Bulgarian Split Squat",
+      "Seated Leg Curl",
+      "Barbell Hip Thrust",
+      "Seated Calf Raise",
+    ],
+  },
+  {
+    name: "Workout 7 - Upper Body A: Horizontal Push/Pull",
+    targetMuscles: ["Chest", "Upper Back", "Rear Delts", "Biceps", "Triceps"],
+    isStrict: false,
+    exercises: [
+      "Dumbbell Bench Press",
+      "Chest-Supported T-Bar Row",
+      "Cable Fly",
+      "Cable Rear Delt Fly",
+      "Overhead Cable Triceps Extension",
+      "Incline Dumbbell Curl",
+    ],
+  },
+  {
+    name: "Workout 8 - Upper Body B: Vertical Push/Pull",
+    targetMuscles: ["Lats", "Front Delts", "Side Delts", "Biceps", "Triceps"],
+    isStrict: false,
+    exercises: [
+      "Chin-Up",
+      "Dumbbell Overhead Press",
+      "Straight-Arm Pulldown",
+      "Dumbbell Lateral Raise",
+      "Lying Triceps Extension (Skull Crusher)",
+      "Cable Curl",
+    ],
+  },
+  {
+    name: "Workout 9 - Full Body A",
+    targetMuscles: ["Quads", "Chest", "Lats", "Hamstrings", "Side Delts", "Calves"],
+    isStrict: false,
+    exercises: [
+      "Barbell Back Squat",
+      "Incline Dumbbell Bench Press",
+      "Seated Cable Row",
+      "Seated Leg Curl",
+      "Cable Lateral Raise",
+      "Standing Calf Raise",
+    ],
+  },
+  {
+    name: "Workout 10 - Full Body B",
+    targetMuscles: ["Hamstrings", "Quads", "Chest", "Lats", "Triceps", "Biceps"],
+    isStrict: false,
+    exercises: [
+      "Trap Bar Deadlift",
+      "Dumbbell Bench Press",
+      "Lat Pulldown",
+      "Leg Extension",
+      "Overhead Dumbbell Extension",
+      "Dumbbell Curl",
+    ],
+  },
+  {
+    name: "Workout 11 - Full Body C",
+    targetMuscles: ["Hamstrings", "Chest", "Lats", "Quads", "Rear Delts", "Calves"],
+    isStrict: false,
+    exercises: [
+      "Romanian Deadlift",
+      "Machine Chest Press",
+      "Pull-Up",
+      "Bulgarian Split Squat",
+      "Face Pull",
+      "Seated Calf Raise",
+    ],
+  },
+  {
+    name: "Workout 12 - Chest + Back (Antagonist Supersets)",
+    targetMuscles: ["Chest", "Upper Back", "Lats"],
+    isStrict: false,
+    exercises: [
+      "Barbell Bench Press",
+      "Barbell Row",
+      "Incline Dumbbell Bench Press",
+      "One-Arm Dumbbell Row",
+      "Cable Fly",
+      "Straight-Arm Pulldown",
+    ],
+  },
+  {
+    name: "Workout 13 - Arms: Biceps + Triceps",
+    targetMuscles: ["Biceps", "Triceps", "Forearms"],
+    isStrict: false,
+    exercises: [
+      "Close-Grip Bench Press",
+      "EZ-Bar Curl",
+      "Overhead Cable Triceps Extension",
+      "Incline Dumbbell Curl",
+      "Rope Triceps Pushdown",
+      "Hammer Curl",
+      "Cable Curl",
+    ],
+  },
+  {
+    name: "Workout 14 - Shoulders + Arms",
+    targetMuscles: ["Front Delts", "Side Delts", "Rear Delts", "Biceps", "Triceps"],
+    isStrict: false,
+    exercises: [
+      "Seated Barbell Overhead Press",
+      "Machine Lateral Raise",
+      "Overhead Dumbbell Extension",
+      "Bayesian Curl",
+      "Cable Triceps Pushdown",
+      "Preacher Curl",
+      "Reverse Pec Deck",
+    ],
+  },
+  {
+    name: "Workout 15 - Posterior Chain (Hamstrings + Glutes + Back)",
+    targetMuscles: ["Hamstrings", "Glutes", "Lower Back", "Lats"],
+    isStrict: false,
+    exercises: [
+      "Conventional Deadlift",
+      "Good Morning",
+      "Seated Leg Curl",
+      "Back Extension (45 Degree)",
+      "Reverse Hyperextension",
+    ],
+  },
+  {
+    name: "Workout 16 - Quads + Calves",
+    targetMuscles: ["Quads", "Calves"],
+    isStrict: false,
+    exercises: [
+      "Front Squat",
+      "Leg Press",
+      "Leg Extension",
+      "Sissy Squat",
+      "Standing Calf Raise",
+      "Seated Calf Raise",
+    ],
+  },
+  {
+    name: "Workout 17 - Push + Pull Supersets (Time-Efficient Upper)",
+    targetMuscles: ["Chest", "Upper Back", "Lats", "Front Delts", "Rear Delts", "Biceps", "Triceps"],
+    isStrict: false,
+    exercises: [
+      "Machine Chest Press",
+      "Chest-Supported Dumbbell Row",
+      "Machine Shoulder Press",
+      "Close-Grip Lat Pulldown",
+      "Pec Deck Machine",
+      "Reverse Pec Deck",
+      "Cable Triceps Pushdown",
+      "Cable Curl",
+    ],
+  },
+  {
+    name: "Workout 18 - Glute Specialization",
+    targetMuscles: ["Glutes", "Hamstrings", "Quads", "Abductors", "Adductors"],
+    isStrict: false,
+    exercises: [
+      "Barbell Hip Thrust",
+      "Bulgarian Split Squat",
+      "Romanian Deadlift",
+      "Cable Pull-Through",
+      "Hip Abduction Machine",
+      "Walking Lunge",
+    ],
+  },
+  {
+    name: "Workout 19 - Back + Biceps",
+    targetMuscles: ["Upper Back", "Lats", "Biceps", "Forearms"],
+    isStrict: false,
+    exercises: [
+      "T-Bar Row",
+      "Lat Pulldown",
+      "Meadows Row",
+      "Dumbbell Pullover",
+      "Incline Dumbbell Curl",
+      "Hammer Curl",
+    ],
+  },
+  {
+    name: "Workout 20 - Chest + Shoulders + Triceps (Push Volume Day)",
+    targetMuscles: ["Chest", "Front Delts", "Side Delts", "Triceps"],
+    isStrict: false,
+    exercises: [
+      "Incline Barbell Bench Press",
+      "Dip (Chest Emphasis)",
+      "Low-to-High Cable Fly",
+      "Arnold Press",
+      "Machine Lateral Raise",
+      "Overhead Cable Triceps Extension",
+    ],
+  },
+];
+
 async function renameExercises() {
   console.log("Renaming exercises...");
 
@@ -848,18 +1116,42 @@ async function seedExerciseAliases() {
 }
 
 async function seedOwner() {
-  return prisma.user.upsert({
-    where: { email: "owner@local" },
-    update: {},
-    create: { email: "owner@local" },
+  const configuredOwnerEmail = process.env.OWNER_EMAIL?.trim().toLowerCase();
+  if (configuredOwnerEmail) {
+    return prisma.user.upsert({
+      where: { email: configuredOwnerEmail },
+      update: {},
+      create: { email: configuredOwnerEmail },
+    });
+  }
+
+  const withProfile = await prisma.user.findFirst({
+    orderBy: { createdAt: "asc" },
+    where: {
+      profile: { isNot: null },
+      goals: { isNot: null },
+      constraints: { isNot: null },
+    },
+  });
+  if (withProfile) {
+    return withProfile;
+  }
+
+  const firstUser = await prisma.user.findFirst({ orderBy: { createdAt: "asc" } });
+  if (firstUser) {
+    return firstUser;
+  }
+
+  return prisma.user.create({
+    data: { email: "owner@local" },
   });
 }
 
-async function seedBaselines(userId: string) {
-  // Build name → exercise ID lookup (includes aliases)
+async function buildExerciseNameLookup(): Promise<Map<string, string>> {
   const exercises = await prisma.exercise.findMany({
     include: { aliases: true },
   });
+
   const nameToId = new Map<string, string>();
   for (const exercise of exercises) {
     nameToId.set(exercise.name.toLowerCase(), exercise.id);
@@ -867,6 +1159,12 @@ async function seedBaselines(userId: string) {
       nameToId.set(alias.alias.toLowerCase(), exercise.id);
     }
   }
+
+  return nameToId;
+}
+
+async function seedBaselines(userId: string) {
+  const nameToId = await buildExerciseNameLookup();
 
   let seeded = 0;
   let skipped = 0;
@@ -902,6 +1200,72 @@ async function seedBaselines(userId: string) {
     seeded++;
   }
   console.log(`  ${seeded} baselines seeded, ${skipped} skipped (no matching exercise).`);
+}
+
+async function seedWorkoutTemplates(userId: string) {
+  console.log("Seeding workout templates...");
+  const nameToId = await buildExerciseNameLookup();
+
+  let created = 0;
+  let updated = 0;
+
+  for (const template of workoutTemplateSeed) {
+    const exerciseIds = template.exercises.map((exerciseName) => {
+      const exerciseId = nameToId.get(exerciseName.toLowerCase());
+      if (!exerciseId) {
+        throw new Error(
+          `Missing exercise mapping for template "${template.name}": "${exerciseName}"`
+        );
+      }
+      return exerciseId;
+    });
+
+    await prisma.$transaction(async (tx) => {
+      const existing = await tx.workoutTemplate.findFirst({
+        where: { userId, name: template.name },
+        select: { id: true },
+      });
+
+      let templateId: string;
+
+      if (existing) {
+        templateId = existing.id;
+        await tx.workoutTemplate.update({
+          where: { id: templateId },
+          data: {
+            targetMuscles: template.targetMuscles,
+            isStrict: template.isStrict,
+          },
+        });
+        await tx.workoutTemplateExercise.deleteMany({
+          where: { templateId },
+        });
+        updated++;
+      } else {
+        const createdTemplate = await tx.workoutTemplate.create({
+          data: {
+            userId,
+            name: template.name,
+            targetMuscles: template.targetMuscles,
+            isStrict: template.isStrict,
+          },
+          select: { id: true },
+        });
+        templateId = createdTemplate.id;
+        created++;
+      }
+
+      await tx.workoutTemplateExercise.createMany({
+        data: exerciseIds.map((exerciseId, orderIndex) => ({
+          templateId,
+          exerciseId,
+          orderIndex,
+        })),
+      });
+    });
+  }
+
+  console.log(`  ${created} templates created, ${updated} updated.`);
 }
 
 async function pruneStaleExercises() {
@@ -973,6 +1337,7 @@ async function main() {
   await seedExerciseEquipmentFromJson();
   const user = await seedOwner();
   await seedBaselines(user.id);
+  await seedWorkoutTemplates(user.id);
   console.log("Pruning stale exercises...");
   await pruneStaleExercises();
   console.log("✅ Seed complete.");

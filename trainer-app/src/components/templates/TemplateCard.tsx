@@ -8,6 +8,7 @@ type TemplateCardProps = {
   name: string;
   exerciseCount: number;
   targetMuscles: string[];
+  intent: string;
   score?: number;
   scoreLabel?: string;
   onDeleteClick: (id: string) => void;
@@ -18,10 +19,13 @@ export function TemplateCard({
   name,
   exerciseCount,
   targetMuscles,
+  intent,
   score,
   scoreLabel,
   onDeleteClick,
 }: TemplateCardProps) {
+  const intentLabel = intent.replaceAll("_", " ").toLowerCase();
+
   return (
     <div className="rounded-xl border border-slate-200 p-4 shadow-sm">
       <div className="flex items-start justify-between gap-3">
@@ -34,6 +38,9 @@ export function TemplateCard({
             {score !== undefined && scoreLabel && (
               <TemplateScoreBadge score={score} label={scoreLabel} size="sm" />
             )}
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">
+              {intentLabel}
+            </span>
           </div>
           {targetMuscles.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-1">

@@ -4,6 +4,7 @@ type WorkoutExercise = {
   id: string;
   isMainLift: boolean;
   orderIndex: number;
+  section?: "WARMUP" | "MAIN" | "ACCESSORY" | null;
   exercise: { name: string };
   sets: {
     id: string;
@@ -47,12 +48,18 @@ export function splitExercises(exercises: WorkoutExercise[]): SectionedExercises
       })),
     };
 
-    if (exercise.isMainLift) {
-      main.push(entry);
+    if (exercise.section === "WARMUP") {
+      warmup.push({ ...entry, section: "WARMUP" });
+    } else if (exercise.section === "MAIN") {
+      main.push({ ...entry, section: "MAIN" });
+    } else if (exercise.section === "ACCESSORY") {
+      accessory.push({ ...entry, section: "ACCESSORY" });
+    } else if (exercise.isMainLift) {
+      main.push({ ...entry, section: "MAIN" });
     } else if (warmup.length < 2) {
-      warmup.push(entry);
+      warmup.push({ ...entry, section: "WARMUP" });
     } else {
-      accessory.push(entry);
+      accessory.push({ ...entry, section: "ACCESSORY" });
     }
   }
 

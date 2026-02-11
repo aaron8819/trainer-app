@@ -91,6 +91,48 @@ describe("enforceVolumeCaps", () => {
     const result = enforceVolumeCaps(accessories, mainLifts, volumeContext);
     expect(result).toHaveLength(0);
   });
+
+  it("enforces hard MRV caps in enhanced mode", () => {
+    const mainLifts: WorkoutExercise[] = [
+      makeWorkoutExercise("bench", ["Chest"], 4, 4),
+    ];
+    const accessories: WorkoutExercise[] = [
+      makeWorkoutExercise("fly", ["Chest"], 2, 3),
+    ];
+    const enhancedBase = buildVolumeContext([], [], { week: 0, length: 4 });
+    if (!("muscleVolume" in enhancedBase)) {
+      throw new Error("Expected enhanced volume context");
+    }
+    const volumeContext = {
+      ...enhancedBase,
+      recent: { Chest: 18 },
+      previous: { Chest: 40 },
+    };
+
+    const result = enforceVolumeCaps(accessories, mainLifts, volumeContext);
+    expect(result).toHaveLength(0);
+  });
+
+  it("keeps spike cap as a secondary safety net in enhanced mode", () => {
+    const mainLifts: WorkoutExercise[] = [
+      makeWorkoutExercise("bench", ["Chest"], 4, 4),
+    ];
+    const accessories: WorkoutExercise[] = [
+      makeWorkoutExercise("fly", ["Chest"], 2, 3),
+    ];
+    const enhancedBase = buildVolumeContext([], [], { week: 0, length: 4 });
+    if (!("muscleVolume" in enhancedBase)) {
+      throw new Error("Expected enhanced volume context");
+    }
+    const volumeContext = {
+      ...enhancedBase,
+      recent: { Chest: 6 },
+      previous: { Chest: 5 },
+    };
+
+    const result = enforceVolumeCaps(accessories, mainLifts, volumeContext);
+    expect(result).toHaveLength(0);
+  });
 });
 
 describe("buildVolumeContext", () => {

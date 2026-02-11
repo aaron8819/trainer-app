@@ -96,9 +96,16 @@ describe("filterQualifyingSets", () => {
     expect(filterQualifyingSets(sets)).toHaveLength(0);
   });
 
-  it("rejects sets where actual RPE exceeds target RPE", () => {
+  it("passes sets where actual RPE is within tolerance above target RPE", () => {
     const sets: SetData[] = [
       { targetReps: 8, targetRpe: 8, actualReps: 8, actualLoad: 175, actualRpe: 9, wasSkipped: false, hasLog: true },
+    ];
+    expect(filterQualifyingSets(sets)).toHaveLength(1);
+  });
+
+  it("rejects sets where actual RPE exceeds tolerance above target RPE", () => {
+    const sets: SetData[] = [
+      { targetReps: 8, targetRpe: 8, actualReps: 8, actualLoad: 175, actualRpe: 9.5, wasSkipped: false, hasLog: true },
     ];
     expect(filterQualifyingSets(sets)).toHaveLength(0);
   });

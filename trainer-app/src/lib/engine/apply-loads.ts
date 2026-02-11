@@ -8,6 +8,10 @@ import {
   type PeriodizationModifiers,
 } from "./rules";
 import { getPrimaryMuscles } from "./utils";
+import {
+  buildWarmupSetsFromTopSet,
+  canResolveLoadForWarmupRamp,
+} from "./warmup-ramp";
 import type {
   Exercise,
   Goals,
@@ -47,7 +51,6 @@ type LoadEquipment =
   | "bodyweight"
   | "other";
 
-const BODYWEIGHT_ONLY_EQUIPMENT = new Set(["bodyweight", "bench", "rack"]);
 const DEFAULT_FATIGUE_COST = 3;
 const FATIGUE_SCALE_MIN = 0.45;
 const FATIGUE_SCALE_MAX = 0.9;
@@ -96,6 +99,11 @@ export function applyLoads(workout: WorkoutPlan, options: ApplyLoadsOptions): Wo
 
   const applyToExercise = (exerciseEntry: WorkoutPlan["mainLifts"][number]) => {
     const exercise = exerciseEntry.exercise;
+    const workingRole = exerciseEntry.isMainLift ? "main" : "accessory";
+    const setsWithRole = exerciseEntry.sets.map((set) => ({
+      ...set,
+      role: set.role ?? workingRole,
+    }));
     const defaultTargetRpe =
       getBaseTargetRpe(options.primaryGoal, trainingAge) +
       (options.primaryGoal === "hypertrophy" &&
@@ -104,9 +112,9 @@ export function applyLoads(workout: WorkoutPlan, options: ApplyLoadsOptions): Wo
         ? 0.5
         : 0);
     const repRange = exerciseEntry.isMainLift ? repRanges.main : repRanges.accessory;
-    const existingTopSetLoad = exerciseEntry.sets.find((set) => set.setIndex === 1)?.targetLoad;
+    const existingTopSetLoad = setsWithRole.find((set) => set.setIndex === 1)?.targetLoad;
     const targetRpe =
-      exerciseEntry.sets.find((set) => set.setIndex === 1)?.targetRpe ?? defaultTargetRpe;
+      setsWithRole.find((set) => set.setIndex === 1)?.targetRpe ?? defaultTargetRpe;
     const load =
       existingTopSetLoad ??
       resolveLoadForExercise(
@@ -126,8 +134,8 @@ export function applyLoads(workout: WorkoutPlan, options: ApplyLoadsOptions): Wo
 
     if (load === undefined) {
       return exerciseEntry.isMainLift
-        ? { ...exerciseEntry, warmupSets: undefined }
-        : exerciseEntry;
+        ? { ...exerciseEntry, role: exerciseEntry.role ?? workingRole, sets: setsWithRole, warmupSets: undefined }
+        : { ...exerciseEntry, role: exerciseEntry.role ?? workingRole, sets: setsWithRole };
     }
 
     if (exerciseEntry.isMainLift) {
@@ -135,14 +143,15 @@ export function applyLoads(workout: WorkoutPlan, options: ApplyLoadsOptions): Wo
         const deloadLoad = roundToHalf(load * backOffMultiplier);
         return {
           ...exerciseEntry,
-          sets: exerciseEntry.sets.map((set) =>
+          role: exerciseEntry.role ?? workingRole,
+          sets: setsWithRole.map((set) =>
             set.targetLoad !== undefined ? set : { ...set, targetLoad: deloadLoad }
           ),
           warmupSets: buildWarmupSets(deloadLoad, trainingAge),
         };
       }
 
-      const updatedSets = exerciseEntry.sets.map((set) => {
+      const updatedSets = setsWithRole.map((set) => {
         if (set.targetLoad !== undefined) {
           return set;
         }
@@ -153,6 +162,7 @@ export function applyLoads(workout: WorkoutPlan, options: ApplyLoadsOptions): Wo
       });
       return {
         ...exerciseEntry,
+        role: exerciseEntry.role ?? workingRole,
         sets: updatedSets,
         warmupSets: buildWarmupSets(load, trainingAge),
       };
@@ -160,18 +170,27 @@ export function applyLoads(workout: WorkoutPlan, options: ApplyLoadsOptions): Wo
 
     return {
       ...exerciseEntry,
-      sets: exerciseEntry.sets.map((set) =>
+      role: exerciseEntry.role ?? workingRole,
+      sets: setsWithRole.map((set) =>
         set.targetLoad !== undefined ? set : { ...set, targetLoad: load }
       ),
       warmupSets: undefined,
     };
   };
 
+  const warmup = workout.warmup.map((exercise) => ({
+    ...exercise,
+    role: exercise.role ?? "warmup",
+    sets: exercise.sets.map((set) => ({
+      ...set,
+      role: set.role ?? "warmup",
+    })),
+  }));
   const mainLifts = workout.mainLifts.map(applyToExercise);
   let accessories = workout.accessories.map(applyToExercise);
   const budgetMinutes = options.sessionMinutes;
   let estimatedMinutes = estimateWorkoutMinutes([
-    ...workout.warmup,
+    ...warmup,
     ...mainLifts,
     ...accessories,
   ]);
@@ -181,7 +200,7 @@ export function applyLoads(workout: WorkoutPlan, options: ApplyLoadsOptions): Wo
     while (trimmedAccessories.length > 0) {
       trimmedAccessories = trimAccessoriesByPriority(trimmedAccessories, mainLifts, 1);
       estimatedMinutes = estimateWorkoutMinutes([
-        ...workout.warmup,
+        ...warmup,
         ...mainLifts,
         ...trimmedAccessories,
       ]);
@@ -194,6 +213,7 @@ export function applyLoads(workout: WorkoutPlan, options: ApplyLoadsOptions): Wo
 
   return {
     ...workout,
+    warmup,
     mainLifts,
     accessories,
     estimatedMinutes,
@@ -397,10 +417,7 @@ function countOverlap(a: string[], b: string[]) {
 }
 
 function isBodyweightOnly(exercise: Exercise) {
-  if (!exercise.equipment || exercise.equipment.length === 0) {
-    return false;
-  }
-  return exercise.equipment.every((item) => BODYWEIGHT_ONLY_EQUIPMENT.has(item));
+  return !canResolveLoadForWarmupRamp(exercise);
 }
 
 function isUpperBodyExercise(exercise: Exercise) {
@@ -498,24 +515,7 @@ function buildWarmupSets(
   topSetLoad: number,
   trainingAge: UserProfile["trainingAge"]
 ): WorkoutPlan["mainLifts"][number]["warmupSets"] {
-  const scheme =
-    trainingAge === "beginner"
-      ? [
-          { percent: 0.6, reps: 8, restSeconds: 60 },
-          { percent: 0.8, reps: 3, restSeconds: 90 },
-        ]
-      : [
-          { percent: 0.5, reps: 8, restSeconds: 60 },
-          { percent: 0.7, reps: 5, restSeconds: 60 },
-          { percent: 0.85, reps: 3, restSeconds: 90 },
-        ];
-
-  return scheme.map((step, index) => ({
-    setIndex: index + 1,
-    targetReps: step.reps,
-    targetLoad: roundToHalf(topSetLoad * step.percent),
-    restSeconds: step.restSeconds,
-  }));
+  return buildWarmupSetsFromTopSet(topSetLoad, trainingAge, roundToHalf);
 }
 
 function clamp(value: number, min: number, max: number) {

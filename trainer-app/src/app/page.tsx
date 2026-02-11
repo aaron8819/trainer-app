@@ -1,13 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
-import {
-  loadWorkoutContext,
-  mapConstraints,
-  mapExercises,
-  mapHistory,
-  resolveOwner,
-} from "@/lib/api/workout-context";
-import { getSplitPreview } from "@/lib/api/split-preview";
+import { resolveOwner } from "@/lib/api/workout-context";
 import { DashboardGenerateSection } from "@/components/DashboardGenerateSection";
 import RecentWorkouts from "@/components/RecentWorkouts";
 import { loadTemplatesWithScores } from "@/lib/api/templates";
@@ -32,7 +25,7 @@ const STATUS_CLASSES: Record<string, string> = {
 
 export default async function Home() {
   const owner = await resolveOwner();
-  const [latestWorkout, latestCompleted, latestIncomplete, recentWorkouts, templates, context] =
+  const [latestWorkout, latestCompleted, latestIncomplete, recentWorkouts, templates] =
     await Promise.all([
       prisma.workout.findFirst({
         where: { userId: owner.id },
@@ -64,16 +57,7 @@ export default async function Home() {
         },
       }),
       loadTemplatesWithScores(owner.id),
-      loadWorkoutContext(owner.id),
     ]);
-
-  const splitPreview = context.constraints
-    ? getSplitPreview(
-        mapConstraints(context.constraints),
-        mapHistory(context.workouts),
-        mapExercises(context.exercises)
-      )
-    : undefined;
 
   const nextSessionName = latestWorkout
     ? latestWorkout.exercises
@@ -102,8 +86,6 @@ export default async function Home() {
 
         <section className="grid gap-6 md:grid-cols-2">
           <DashboardGenerateSection
-            nextAutoLabel={splitPreview?.nextAutoLabel}
-            queuePreview={splitPreview?.queuePreview}
             templates={templates.map((t) => ({
               id: t.id,
               name: t.name,

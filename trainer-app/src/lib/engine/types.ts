@@ -123,6 +123,7 @@ export type Exercise = {
   equipment: EquipmentType[];
   primaryMuscles?: string[];
   secondaryMuscles?: string[];
+  muscleSraHours?: Record<string, number>;
 };
 
 export type WorkoutSet = {
@@ -132,16 +133,20 @@ export type WorkoutSet = {
     min: number;
     max: number;
   };
+  role?: WorkoutExerciseRole;
   targetRpe?: number;
   targetLoad?: number;
   restSeconds?: number;
 };
+
+export type WorkoutExerciseRole = "warmup" | "main" | "accessory";
 
 export type WorkoutExercise = {
   id: string;
   exercise: Exercise;
   orderIndex: number;
   isMainLift: boolean;
+  role?: WorkoutExerciseRole;
   notes?: string;
   supersetGroup?: number;
   sets: WorkoutSet[];

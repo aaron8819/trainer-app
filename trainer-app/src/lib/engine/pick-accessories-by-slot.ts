@@ -8,7 +8,8 @@ import {
   normalizeName,
   weightedPick,
 } from "./utils";
-import type { VolumeContext } from "./volume";
+import type { EnhancedVolumeContext, VolumeContext } from "./volume";
+import type { MuscleRecoveryState } from "./sra";
 
 export type AccessorySlotOptions = {
   dayTag: SplitTag | "upper" | "lower" | "full_body";
@@ -18,10 +19,13 @@ export type AccessorySlotOptions = {
   maxAccessories: number;
   history?: WorkoutHistoryEntry[];
   randomSeed?: number;
-  volumeContext?: VolumeContext;
+  volumeContext?: VolumeContext | EnhancedVolumeContext;
+  recoveryMap?: Map<string, MuscleRecoveryState>;
   mainLiftSetCount?: number;
   accessorySetCount?: number;
 };
+
+const SRA_UNDER_RECOVERY_MULTIPLIER = 0.6;
 
 type SlotType =
   | "chest_isolation"
@@ -47,6 +51,7 @@ export function pickAccessoriesBySlot(options: AccessorySlotOptions): Exercise[]
     history,
     randomSeed,
     volumeContext,
+    recoveryMap,
     mainLiftSetCount,
     accessorySetCount,
   } = options;
@@ -66,6 +71,7 @@ export function pickAccessoriesBySlot(options: AccessorySlotOptions): Exercise[]
   const recencyIndex = buildRecencyIndex(history ?? []);
   const rng = createRng(randomSeed);
   const accessorySets = accessorySetCount ?? 3;
+  const recoveryLookup = buildRecoveryLookup(recoveryMap);
 
   const slots = buildSlots(dayTag, maxAccessories);
 
@@ -84,8 +90,9 @@ export function pickAccessoriesBySlot(options: AccessorySlotOptions): Exercise[]
       recencyIndex,
       rng,
       plannedVolume,
-      volumeContext?.previous,
-      accessorySets
+      volumeContext,
+      accessorySets,
+      recoveryLookup
     );
     if (!pick) {
       continue;
@@ -146,8 +153,9 @@ function pickForSlot(
   recencyIndex: Map<string, number>,
   rng: () => number,
   plannedVolume: Record<string, number>,
-  previousVolume: Record<string, number> | undefined,
-  accessorySetCount: number
+  volumeContext: VolumeContext | EnhancedVolumeContext | undefined,
+  accessorySetCount: number,
+  recoveryLookup: Map<string, boolean>
 ): Exercise | undefined {
   let candidates = remaining.filter((exercise) => matchesSlot(slot, exercise));
   if ((slot === "quad_isolation" || slot === "hamstring_isolation") && candidates.length > 0) {
@@ -171,15 +179,21 @@ function pickForSlot(
     const volumeMultiplier = getVolumeMultiplier(
       exercise,
       plannedVolume,
-      previousVolume,
+      volumeContext,
       accessorySetCount
     );
     // Indirect volume penalty: if exercise's primary muscles overlap with main lifts' secondary
     const primaryMuscles = getPrimaryMuscles(exercise).map((m) => m.toLowerCase());
     const indirectOverlap = primaryMuscles.some((m) => mainSecondaryMuscles.has(m));
     const indirectPenalty = indirectOverlap ? 0.7 : 1;
+    const sraRecoveryMultiplier = getSraRecoveryMultiplier(primaryMuscles, recoveryLookup);
     const weight =
-      Math.max(0.1, score) * recencyMultiplier * noveltyMultiplier * volumeMultiplier * indirectPenalty;
+      Math.max(0.1, score) *
+      recencyMultiplier *
+      noveltyMultiplier *
+      volumeMultiplier *
+      indirectPenalty *
+      sraRecoveryMultiplier;
     return { exercise, score, weight };
   });
 
@@ -336,7 +350,7 @@ function scoreSlot(
 }
 
 function buildPlannedVolume(
-  volumeContext: VolumeContext | undefined,
+  volumeContext: VolumeContext | EnhancedVolumeContext | undefined,
   mainLifts: Exercise[],
   mainLiftSetCount: number
 ) {
@@ -365,23 +379,94 @@ function applyExerciseToVolume(
 function getVolumeMultiplier(
   exercise: Exercise,
   plannedVolume: Record<string, number>,
-  previousVolume: Record<string, number> | undefined,
+  volumeContext: VolumeContext | EnhancedVolumeContext | undefined,
   accessorySetCount: number
 ) {
-  if (!previousVolume) {
-    return 1;
-  }
   const muscles = getPrimaryMuscles(exercise);
   if (muscles.length === 0) {
     return 1;
   }
-  const exceeds = muscles.some((muscle) => {
+
+  const projected = muscles.map((muscle) => ({
+    muscle,
+    projectedSets: (plannedVolume[muscle] ?? 0) + accessorySetCount,
+  }));
+  const landmarkMultiplier = getLandmarkVolumeMultiplier(projected, volumeContext);
+  const spikeMultiplier = getSpikeVolumeMultiplier(projected, volumeContext?.previous);
+  return Math.min(landmarkMultiplier, spikeMultiplier);
+}
+
+function getLandmarkVolumeMultiplier(
+  projected: { muscle: string; projectedSets: number }[],
+  volumeContext: VolumeContext | EnhancedVolumeContext | undefined
+) {
+  if (!isEnhancedVolumeContext(volumeContext)) {
+    return 1;
+  }
+
+  let multiplier = 1;
+  for (const { muscle, projectedSets } of projected) {
+    const landmark = volumeContext.muscleVolume[muscle]?.landmark;
+    if (!landmark) {
+      continue;
+    }
+    if (projectedSets >= landmark.mrv) {
+      multiplier = Math.min(multiplier, 0.3);
+    } else if (projectedSets >= landmark.mav) {
+      multiplier = Math.min(multiplier, 0.6);
+    }
+  }
+  return multiplier;
+}
+
+function getSpikeVolumeMultiplier(
+  projected: { muscle: string; projectedSets: number }[],
+  previousVolume: Record<string, number> | undefined
+) {
+  if (!previousVolume) {
+    return 1;
+  }
+
+  const exceeds = projected.some(({ muscle, projectedSets }) => {
     const baseline = previousVolume[muscle];
     if (!baseline || baseline <= 0) {
       return false;
     }
-    const current = plannedVolume[muscle] ?? 0;
-    return current + accessorySetCount > baseline * 1.2;
+    return projectedSets > baseline * 1.2;
   });
   return exceeds ? 0.2 : 1;
+}
+
+function isEnhancedVolumeContext(
+  volumeContext: VolumeContext | EnhancedVolumeContext | undefined
+): volumeContext is EnhancedVolumeContext {
+  return Boolean(volumeContext && "muscleVolume" in volumeContext);
+}
+
+function buildRecoveryLookup(
+  recoveryMap: Map<string, MuscleRecoveryState> | undefined
+): Map<string, boolean> {
+  if (!recoveryMap || recoveryMap.size === 0) {
+    return new Map<string, boolean>();
+  }
+  return new Map<string, boolean>(
+    Array.from(recoveryMap.entries()).map(([muscle, state]) => [
+      muscle.toLowerCase(),
+      state.isRecovered,
+    ])
+  );
+}
+
+function getSraRecoveryMultiplier(
+  primaryMuscles: string[],
+  recoveryLookup: Map<string, boolean>
+): number {
+  if (recoveryLookup.size === 0 || primaryMuscles.length === 0) {
+    return 1;
+  }
+  const hasUnderRecoveredMuscle = primaryMuscles.some((muscle) => {
+    const isRecovered = recoveryLookup.get(muscle);
+    return isRecovered === false;
+  });
+  return hasUnderRecoveredMuscle ? SRA_UNDER_RECOVERY_MULTIPLIER : 1;
 }

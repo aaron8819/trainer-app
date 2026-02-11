@@ -106,6 +106,12 @@ enum WorkoutSelectionMode {
   BONUS
 }
 
+enum WorkoutExerciseSection {
+  WARMUP
+  MAIN
+  ACCESSORY
+}
+
 enum StimulusBias {
   MECHANICAL
   METABOLIC
@@ -382,6 +388,7 @@ model WorkoutExercise {
   exerciseId      String
   exercise        Exercise            @relation(fields: [exerciseId], references: [id])
   orderIndex      Int
+  section         WorkoutExerciseSection?
   isMainLift      Boolean
   movementPatterns MovementPatternV2[] @default([])
   notes           String?

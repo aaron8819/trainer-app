@@ -19,13 +19,6 @@ const optionalString = (schema: z.ZodString) =>
     return value;
   }, schema.optional());
 
-export const generateWorkoutSchema = z.object({
-  date: z.string().optional(),
-  selectionMode: z.enum(["AUTO", "MANUAL", "BONUS"]).optional(),
-  forcedSplit: z.enum(["PUSH", "PULL", "LEGS", "UPPER", "LOWER", "FULL_BODY"]).optional(),
-  advancesSplit: z.boolean().optional(),
-});
-
 export const generateFromTemplateSchema = z.object({
   templateId: z.string(),
 });
@@ -96,7 +89,7 @@ export const profileSetupSchema = z.object({
   secondaryGoal: z.enum(["POSTURE", "CONDITIONING", "INJURY_PREVENTION", "NONE"]),
   daysPerWeek: z.number().int().min(1).max(7),
   sessionMinutes: z.number().int().min(20).max(180),
-  splitType: z.enum(["PPL", "UPPER_LOWER", "FULL_BODY", "CUSTOM"]),
+  splitType: z.enum(["PPL", "UPPER_LOWER", "FULL_BODY", "CUSTOM"]).optional(),
   injuryBodyPart: optionalString(z.string().max(80)),
   injurySeverity: optionalNumber(z.number().int().min(1).max(5)),
   injuryDescription: optionalString(z.string().max(200)),

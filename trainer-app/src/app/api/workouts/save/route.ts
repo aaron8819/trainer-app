@@ -93,13 +93,16 @@ export async function POST(request: Request) {
             where: { id: exercise.exerciseId },
           });
 
-          const section = exercise.section ?? (exerciseIndex < 2 ? "WARMUP" : exerciseIndex < 5 ? "MAIN" : "ACCESSORY");
+          const section =
+            exercise.section ??
+            (exerciseIndex < 2 ? "WARMUP" : exerciseIndex < 5 ? "MAIN" : "ACCESSORY");
 
           const createdExercise = await tx.workoutExercise.create({
             data: {
               workoutId: workout.id,
               exerciseId: exercise.exerciseId,
               orderIndex: exerciseIndex,
+              section,
               isMainLift: section === "MAIN" ? true : false,
               movementPatterns: exerciseRecord?.movementPatterns ?? [],
               sets: {

@@ -18,6 +18,7 @@ import { pickMainLiftsForPpl } from "./main-lift-picker";
 import { pickAccessoriesBySlot, type AccessorySlotOptions } from "./pick-accessories-by-slot";
 import { resolveSetCount } from "./prescription";
 import type { VolumeContext } from "./volume";
+import { buildMuscleRecoveryMap } from "./sra";
 
 const V1_TO_V2_MAP: Record<string, MovementPatternV2[]> = {
   push: ["horizontal_push", "vertical_push"],
@@ -74,6 +75,7 @@ export function selectExercises(
   }
 
   const rng = createRng(randomSeed);
+  const recoveryMap = buildMuscleRecoveryMap(history, exerciseLibrary);
 
   const available = exerciseLibrary.filter((exercise) =>
     exercise.equipment.some((item) => constraints.availableEquipment.includes(item))
@@ -169,6 +171,7 @@ export function selectExercises(
       history,
       randomSeed,
       volumeContext,
+      recoveryMap,
       mainLiftSetCount,
       accessorySetCount,
     });
@@ -271,6 +274,7 @@ export function selectExercises(
       history,
       randomSeed,
       volumeContext,
+      recoveryMap,
       mainLiftSetCount,
       accessorySetCount,
     });

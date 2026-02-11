@@ -60,13 +60,13 @@ export async function POST(request: Request) {
       update: {
         daysPerWeek: parsed.data.daysPerWeek,
         sessionMinutes: parsed.data.sessionMinutes,
-        splitType: parsed.data.splitType,
+        ...(parsed.data.splitType ? { splitType: parsed.data.splitType } : {}),
       },
       create: {
         userId: user.id,
         daysPerWeek: parsed.data.daysPerWeek,
         sessionMinutes: parsed.data.sessionMinutes,
-        splitType: parsed.data.splitType,
+        splitType: parsed.data.splitType ?? "CUSTOM",
       },
     });
 

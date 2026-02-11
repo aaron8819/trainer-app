@@ -1,8 +1,10 @@
 import {
   generateWorkoutFromTemplate,
-  getPeriodizationModifiers,
+  type SubstitutionSuggestion,
   type TemplateExerciseInput,
-} from "@/lib/engine";
+} from "@/lib/engine/template-session";
+import { getPeriodizationModifiers } from "@/lib/engine/rules";
+import { shouldDeload } from "@/lib/engine/progression";
 import type { WorkoutPlan } from "@/lib/engine/types";
 import type { SraWarning } from "@/lib/engine/sra";
 import { loadTemplateDetail } from "./templates";
@@ -20,7 +22,12 @@ import {
 } from "./workout-context";
 
 type GenerateSessionResult =
-  | { workout: WorkoutPlan; templateId: string; sraWarnings: SraWarning[] }
+  | {
+      workout: WorkoutPlan;
+      templateId: string;
+      sraWarnings: SraWarning[];
+      substitutions: SubstitutionSuggestion[];
+    }
   | { error: string };
 
 export async function generateSessionFromTemplate(
@@ -56,7 +63,18 @@ export async function generateSessionFromTemplate(
   const mappedCheckIn = mapCheckIn(checkIns);
   const activeProgramBlock = workouts.find((entry) => entry.programBlockId)?.programBlock ?? null;
   const weekInBlock = deriveWeekInBlock(new Date(), activeProgramBlock, workouts);
+  const mesocycleLength = Math.max(1, activeProgramBlock?.weeks ?? 4);
   const periodization = getPeriodizationModifiers(weekInBlock, mappedGoals.primary);
+  const adaptiveDeload = !periodization.isDeload && shouldDeload(history);
+  const effectivePeriodization = adaptiveDeload
+    ? {
+        ...periodization,
+        isDeload: true,
+        setMultiplier: 0.5,
+        rpeOffset: -2.0,
+        backOffMultiplier: 0.75,
+      }
+    : periodization;
 
   // Build exercise lookup from mapped library
   const exerciseById = new Map(exerciseLibrary.map((e) => [e.id, e]));
@@ -73,14 +91,17 @@ export async function generateSessionFromTemplate(
     });
   }
 
-  const { workout, sraWarnings } = generateWorkoutFromTemplate(templateExercises, {
+  const { workout, sraWarnings, substitutions } = generateWorkoutFromTemplate(templateExercises, {
     profile: mappedProfile,
     goals: mappedGoals,
     history,
     exerciseLibrary,
+    sessionMinutes: mappedConstraints.sessionMinutes,
     preferences: mappedPreferences,
     checkIn: mappedCheckIn,
-    periodization,
+    weekInBlock,
+    mesocycleLength,
+    periodization: effectivePeriodization,
     isStrict: template.isStrict,
   });
 
@@ -93,10 +114,23 @@ export async function generateSessionFromTemplate(
     mappedProfile,
     mappedGoals.primary,
     mappedConstraints.sessionMinutes,
-    periodization,
+    effectivePeriodization,
     weekInBlock
   );
 
-  return { workout: withLoads, templateId, sraWarnings };
+  if (adaptiveDeload) {
+    const note = "Adjusted to recovery session based on recent fatigue signals.";
+    return {
+      workout: {
+        ...withLoads,
+        notes: withLoads.notes ? `${withLoads.notes}. ${note}` : note,
+      },
+      templateId,
+      sraWarnings,
+      substitutions,
+    };
+  }
+
+  return { workout: withLoads, templateId, sraWarnings, substitutions };
 }
 

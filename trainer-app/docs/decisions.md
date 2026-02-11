@@ -4,6 +4,19 @@ Record of significant design decisions and their rationale. Newest first.
 
 ---
 
+## ADR-031: SRA windows read from DB muscle metadata with constant fallback (2026-02-11)
+
+**Decision**:
+- `buildMuscleRecoveryMap()` now prefers per-muscle SRA windows from mapped exercise metadata (`Exercise.muscleSraHours`, sourced from `Muscle.sraHours`).
+- Falls back to `volume-landmarks.ts` `sraHours` constants when DB-derived values are unavailable.
+- Supports a runtime kill switch: `USE_DB_SRA_WINDOWS=false` forces constants-only behavior.
+
+**Rationale**: `Muscle.sraHours` is already seeded and aligned with current constants. Reading it at runtime removes duplicated source-of-truth drift risk while preserving deterministic fallback behavior and a safe operational rollback path.
+
+**Note**: This supersedes the "constants-only" part of ADR-012 for SRA windows.
+
+---
+
 ## ADR-030: Completion-aware history semantics in engine planning/progression (2026-02-10)
 
 **Decision**:
@@ -152,13 +165,13 @@ Record of significant design decisions and their rationale. Newest first.
 
 ---
 
-## ADR-016: Template session generation — skip timeboxing, don't advance split (2026-02-09)
+## ADR-016: Template session generation - enforce budget with pre/post timeboxing, don't advance split (2026-02-09; updated 2026-02-11)
 
-**Decision**: Template-based workout generation (`generateWorkoutFromTemplate`) preserves the full template exercise list without timeboxing. Saved template workouts set `advancesSplit: false` so they don't rotate the PPL split queue.
+**Decision**: Template-based workout generation (`generateWorkoutFromTemplate`) enforces `sessionMinutes` with pre-load accessory trimming (projected warmup ramps included for load-resolvable main lifts) and keeps post-load trimming in `applyLoads(...)` as a safety net. Saved template workouts set `advancesSplit: false` so they don't rotate the PPL split queue.
 
-**Rationale**: When a user defines a template, they've intentionally chosen their exercises — trimming exercises to fit a time budget would undermine the template's purpose. Template workouts also shouldn't advance the PPL rotation because they operate outside the PPL system; a user doing a custom arm day shouldn't cause their next auto-generated session to skip a push/pull/legs day.
+**Rationale**: Template sessions must honor user time constraints and stay behaviorally consistent with auto-generation while template-only mode deprecates the auto path. Pre-load trimming removes most avoidable second-pass trims; post-load trimming remains necessary when projected and assigned warmups diverge (for example, unresolved-load main lifts producing no ramp sets). Template workouts still should not advance the PPL rotation because they operate outside that queue.
 
-**Implementation**: `generateWorkoutFromTemplate()` is a pure engine module in `template-session.ts` that accepts template exercises and prescribes sets/reps/rest using the same `prescribeSetsReps()` and `getRestSeconds()` functions as PPL auto mode. The API layer (`src/lib/api/template-session.ts`) loads template + workout context in parallel, maps to engine types, calls the pure function, then applies loads via `applyLoads()`. SRA warnings are generated but advisory — under-recovered muscles don't cause exercise removal. The dashboard uses a `DashboardGenerateSection` mode selector to toggle between PPL Auto and Template generation.
+**Implementation**: `generateWorkoutFromTemplate()` is a pure engine module in `template-session.ts` that accepts template exercises, prescribes sets/reps/rest, applies pre-load timeboxing using projected warmup ramps, and enforces volume caps. The API layer (`src/lib/api/template-session.ts`) loads template + workout context in parallel, derives `weekInBlock` and `mesocycleLength`, maps to engine types, passes `sessionMinutes`, then applies loads via `applyLoads()` for final load assignment and post-load safety-net trimming. Template generation keeps the same volume cap model as auto mode (enhanced per-muscle MRV primary cap + 20% spike secondary cap when mesocycle context is present), while SRA warnings remain advisory (under-recovered muscles are penalized in scoring, not hard-filtered). Current cap limitation is direct primary-set checks (effective-volume enforcement is a follow-up). As of PR5 in the template-only deprecation plan (2026-02-11), template generation is the only active generation path, `/api/workouts/generate` and `engine.ts` are removed, and split-queue UI artifacts are removed from active pages.
 
 ---
 
@@ -279,3 +292,4 @@ Record of significant design decisions and their rationale. Newest first.
 **Decision**: `src/lib/engine/` contains no database access, no I/O, and produces deterministic output given the same inputs + seed.
 
 **Rationale**: Pure computation is testable without mocking, predictable, and portable. The engine can be tested with fixture data (`sample-data.ts`) and seeded PRNG without standing up a database.
+

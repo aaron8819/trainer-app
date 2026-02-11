@@ -1,15 +1,9 @@
 ﻿import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
-import {
-  loadWorkoutContext,
-  mapConstraints,
-  mapExercises,
-  mapHistory,
-  resolveOwner,
-} from "@/lib/api/workout-context";
-import { getSplitPreview } from "@/lib/api/split-preview";
-import { SPLIT_PATTERNS } from "@/lib/engine";
-import { PrimaryGoal, SplitDay, SplitType, TrainingAge, WorkoutSelectionMode } from "@prisma/client";
+import { resolveOwner } from "@/lib/api/workout-context";
+import { mapLatestCheckIn } from "@/lib/api/checkin-staleness";
+import { isSetQualifiedForBaseline } from "@/lib/baseline-qualification";
+import { PrimaryGoal, TrainingAge } from "@prisma/client";
 import type { Prisma } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
@@ -53,44 +47,8 @@ const normalizeName = (name: string) =>
     .replace(/[^\w\s()-]/g, "")
     .trim();
 
-const formatSplitType = (splitType: SplitType) =>
-  splitType
-    .toLowerCase()
-    .replace("_", " ")
-    .replace(/\b\w/g, (char) => char.toUpperCase());
-
 const formatTrainingAge = (trainingAge?: TrainingAge | null) =>
   trainingAge ? trainingAge.toLowerCase() : "intermediate";
-
-const splitDayLabel = (forcedSplit?: SplitDay | null) => {
-  if (!forcedSplit) {
-    return null;
-  }
-  return forcedSplit.toLowerCase().replace("_", " ");
-};
-
-const resolveForcedPatterns = (forcedSplit?: SplitDay | null) => {
-  if (!forcedSplit) {
-    return null;
-  }
-  const value = forcedSplit.toLowerCase();
-  if (value === "push") {
-    return ["push"];
-  }
-  if (value === "pull") {
-    return ["pull"];
-  }
-  if (value === "legs" || value === "lower") {
-    return ["squat", "hinge"];
-  }
-  if (value === "upper") {
-    return ["push", "pull"];
-  }
-  if (value === "full_body") {
-    return ["push", "pull", "squat", "hinge", "rotate"];
-  }
-  return null;
-};
 
 const formatPainFlags = (painFlags?: unknown) => {
   if (!painFlags || typeof painFlags !== "object") {
@@ -193,15 +151,7 @@ function buildBaselineSummary({
       continue;
     }
 
-    const qualifyingSets = withPerformance.filter((set) => {
-      if (set.targetReps !== undefined && set.actualReps! < set.targetReps) {
-        return false;
-      }
-      if (set.targetRpe !== undefined && set.actualRpe !== undefined) {
-        return set.actualRpe <= set.targetRpe;
-      }
-      return true;
-    });
+    const qualifyingSets = withPerformance.filter((set) => isSetQualifiedForBaseline(set));
 
     if (qualifyingSets.length === 0) {
       skippedItems.push({
@@ -301,10 +251,9 @@ export default async function WorkoutDetailPage({
     );
   }
 
-  const [goals, profile, constraints, injuries, latestCheckIn] = await Promise.all([
+  const [goals, profile, injuries, latestCheckIn] = await Promise.all([
     prisma.goals.findUnique({ where: { userId: workout.userId } }),
     prisma.profile.findUnique({ where: { userId: workout.userId } }),
-    prisma.constraints.findUnique({ where: { userId: workout.userId } }),
     prisma.injury.findMany({ where: { userId: workout.userId, isActive: true } }),
     prisma.sessionCheckIn.findFirst({
       where: { userId: workout.userId },
@@ -324,45 +273,19 @@ export default async function WorkoutDetailPage({
   });
   const baselineSummary = buildBaselineSummary({ workout, baselines, context });
 
-  const workoutsBefore = await prisma.workout.count({
-    where: {
-      userId: workout.userId,
-      scheduledDate: { lt: workout.scheduledDate },
-      status: "COMPLETED",
-      advancesSplit: true,
-    },
-  });
-    const previewContext = await loadWorkoutContext(owner.id);
-  const splitPreview = previewContext.constraints
-    ? getSplitPreview(
-        mapConstraints(previewContext.constraints),
-        mapHistory(previewContext.workouts),
-        mapExercises(previewContext.exercises)
-      )
-    : undefined;
-  const daysPerWeek = Math.max(1, constraints?.daysPerWeek ?? 3);
-  const splitKey = (constraints?.splitType?.toLowerCase() ??
-    "full_body") as keyof typeof SPLIT_PATTERNS;
-  const splitOptions = SPLIT_PATTERNS[splitKey] ?? SPLIT_PATTERNS.full_body;
-  const dayIndex = workoutsBefore % daysPerWeek;
-  const forcedPatterns = resolveForcedPatterns(workout.forcedSplit);
-  const targetPatterns = forcedPatterns ?? splitOptions[dayIndex % splitOptions.length];
-  const nextAutoLabel = splitPreview?.nextAutoLabel ?? "Not available";
-  const queuePreview = splitPreview?.queuePreview ?? "Not available";
   const hasHighSeverityInjury = injuries.some((injury) => injury.severity >= 3);
   const primaryGoal = goals?.primaryGoal?.toLowerCase() ?? "general_health";
   const secondaryGoal = goals?.secondaryGoal?.toLowerCase() ?? "none";
-  const splitLabel = constraints?.splitType
-    ? formatSplitType(constraints.splitType)
-    : "Full Body";
+  const sourceLabel = workout.templateId ? "template" : "legacy";
   const trainingAge = formatTrainingAge(profile?.trainingAge ?? TrainingAge.INTERMEDIATE);
-  const selectionMode = workout.selectionMode ?? WorkoutSelectionMode.AUTO;
-  const forcedSplitLabel = splitDayLabel(workout.forcedSplit);
-  const painLabels = formatPainFlags(latestCheckIn?.painFlags);
-  const readinessLine = latestCheckIn
-    ? `Readiness: ${latestCheckIn.readiness}/5${
+  const freshCheckIn = mapLatestCheckIn(latestCheckIn ? [latestCheckIn] : undefined);
+  const painLabels = formatPainFlags(freshCheckIn?.painFlags);
+  const readinessLine = freshCheckIn
+    ? `Readiness: ${freshCheckIn.readiness}/5${
         painLabels.length > 0 ? ` - Pain: ${painLabels.join(", ")}` : ""
       }.`
+    : latestCheckIn
+      ? "Readiness: defaulted to 3 (latest check-in is older than 48 hours)."
     : "Readiness: defaulted to 3 (no readiness logs currently stored).";
 
   const findBaseline = (exerciseName: string) => {
@@ -391,6 +314,35 @@ export default async function WorkoutDetailPage({
     );
   };
 
+  const sectionedExercises = (() => {
+    const warmup: typeof workout.exercises = [];
+    const main: typeof workout.exercises = [];
+    const accessory: typeof workout.exercises = [];
+    const ordered = [...workout.exercises].sort((a, b) => a.orderIndex - b.orderIndex);
+
+    for (const exercise of ordered) {
+      if (exercise.section === "WARMUP") {
+        warmup.push(exercise);
+      } else if (exercise.section === "MAIN") {
+        main.push(exercise);
+      } else if (exercise.section === "ACCESSORY") {
+        accessory.push(exercise);
+      } else if (exercise.isMainLift) {
+        main.push(exercise);
+      } else if (warmup.length < 2) {
+        warmup.push(exercise);
+      } else {
+        accessory.push(exercise);
+      }
+    }
+
+    return [
+      { label: "Warmup", items: warmup },
+      { label: "Main Lifts", items: main },
+      { label: "Accessories", items: accessory },
+    ];
+  })();
+
   return (
     <main className="min-h-screen bg-white text-slate-900">
       <div className="mx-auto max-w-4xl px-6 py-10">
@@ -418,16 +370,7 @@ export default async function WorkoutDetailPage({
                 Goal focus: {primaryGoal.replace("_", " ")} (secondary: {secondaryGoal.replace("_", " ")}).
               </p>
               <p>
-                Split: {splitLabel} - Day {dayIndex + 1} of {daysPerWeek} - Target patterns:{" "}
-                {targetPatterns.join(", ")}.
-              </p>
-              <p>
-                Selection mode: {selectionMode.toLowerCase()}
-                {forcedSplitLabel ? ` (forced ${forcedSplitLabel})` : ""} - Advances split:{" "}
-                {workout.advancesSplit ?? true ? "yes" : "no"}.
-              </p>
-              <p>
-                Next auto day: {nextAutoLabel}. Queue: {queuePreview}.
+                Source: {sourceLabel} generation.
               </p>
               <p>
                 Training age: {trainingAge}. Main lifts default to 4 sets; accessories default to 3 sets.
@@ -483,16 +426,7 @@ export default async function WorkoutDetailPage({
               ) : null}
             </div>
           ) : null}
-          {[{
-            label: "Warmup",
-            items: workout.exercises.filter((exercise) => !exercise.isMainLift).slice(0, 2),
-          }, {
-            label: "Main Lifts",
-            items: workout.exercises.filter((exercise) => exercise.isMainLift),
-          }, {
-            label: "Accessories",
-            items: workout.exercises.filter((exercise) => !exercise.isMainLift).slice(2),
-          }].map((section) => (
+          {sectionedExercises.map((section) => (
             <div key={section.label} className="space-y-4">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">{section.label}</h2>
               {section.items.length === 0 ? (
@@ -515,6 +449,12 @@ export default async function WorkoutDetailPage({
                   const stressNote = hasHighSeverityInjury
                     ? `Joint stress: ${exercise.exercise.jointStress.toLowerCase()} (high stress filtered).`
                     : `Joint stress: ${exercise.exercise.jointStress.toLowerCase()}.`;
+                  const roleLabel =
+                    exercise.section === "WARMUP"
+                      ? "Warmup"
+                      : exercise.section === "MAIN" || exercise.isMainLift
+                      ? "Main lift"
+                      : "Accessory";
 
                   return (
                     <div key={exercise.id} className="rounded-2xl border border-slate-200 p-5">
@@ -523,12 +463,12 @@ export default async function WorkoutDetailPage({
                           <h3 className="text-lg font-semibold">{exercise.exercise.name}</h3>
                           <p className="mt-1 text-sm text-slate-600">
                             {exercise.sets.length} sets - {formatTargetRepDisplay(exercise.sets[0])}
-                            {targetLoad ? ` � ${targetLoad} lbs` : ""}
-                            {exercise.sets[0]?.targetRpe ? ` � RPE ${exercise.sets[0].targetRpe}` : ""}
+                            {targetLoad ? ` | ${targetLoad} lbs` : ""}
+                            {exercise.sets[0]?.targetRpe ? ` | RPE ${exercise.sets[0].targetRpe}` : ""}
                           </p>
                         </div>
                         <span className="text-xs uppercase tracking-wide text-slate-500">
-                          {exercise.isMainLift ? "Main lift" : "Accessory"}
+                          {roleLabel}
                         </span>
                       </div>
                       <p className="mt-2 text-xs text-slate-500">
@@ -540,8 +480,8 @@ export default async function WorkoutDetailPage({
                             <span>Set {set.setIndex}</span>
                             <span>
                               {formatTargetRepDisplay(set)}
-                              {set.targetLoad ? ` � ${set.targetLoad} lbs` : ""}
-                              {set.targetRpe ? ` � RPE ${set.targetRpe}` : ""}
+                              {set.targetLoad ? ` | ${set.targetLoad} lbs` : ""}
+                              {set.targetRpe ? ` | RPE ${set.targetRpe}` : ""}
                             </span>
                           </div>
                         ))}

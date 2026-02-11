@@ -4,11 +4,13 @@ import {
   type TemplateExerciseInput,
   type GenerateFromTemplateOptions,
 } from "./template-session";
+import { estimateWorkoutMinutes } from "./timeboxing";
 import {
   exampleUser,
   exampleGoals,
   exampleExerciseLibrary,
 } from "./sample-data";
+import type { Exercise } from "./types";
 
 function makeOptions(
   overrides?: Partial<GenerateFromTemplateOptions>
@@ -52,6 +54,8 @@ describe("generateWorkoutFromTemplate", () => {
     const totalExercises = workout.mainLifts.length + workout.accessories.length;
     expect(totalExercises).toBe(3);
     expect(workout.warmup).toHaveLength(0);
+    expect(workout.mainLifts.every((exercise) => exercise.role === "main")).toBe(true);
+    expect(workout.accessories.every((exercise) => exercise.role === "accessory")).toBe(true);
   });
 
   it("partitions main lifts vs accessories by isMainLiftEligible", () => {
@@ -140,6 +144,94 @@ describe("generateWorkoutFromTemplate", () => {
     expect(workout.estimatedMinutes).toBeLessThan(180);
   });
 
+  it("includes projected warmup ramp time for load-resolvable template main lifts", () => {
+    const templateExercises = makeTemplateExercises(["bench", "row", "db-press", "lateral-raise"]);
+    const { workout } = generateWorkoutFromTemplate(
+      templateExercises,
+      makeOptions({ sessionMinutes: 0 })
+    );
+
+    const withoutProjectedRamps = estimateWorkoutMinutes([
+      ...workout.mainLifts,
+      ...workout.accessories,
+    ]);
+
+    expect(workout.estimatedMinutes).toBeGreaterThan(withoutProjectedRamps);
+  });
+
+  it("skips projected warmup ramp time for bodyweight-only template main lifts", () => {
+    const pullupMain: Exercise = {
+      id: "pullup-main",
+      name: "Pull-Up",
+      movementPatterns: ["vertical_pull"],
+      splitTags: ["pull"],
+      jointStress: "medium",
+      isMainLiftEligible: true,
+      isCompound: true,
+      equipment: ["bodyweight"],
+      primaryMuscles: ["Lats"],
+    };
+    const bodyweightAccessory: Exercise = {
+      id: "bw-row",
+      name: "Inverted Row",
+      movementPatterns: ["horizontal_pull"],
+      splitTags: ["pull"],
+      jointStress: "low",
+      isMainLiftEligible: false,
+      isCompound: true,
+      equipment: ["bodyweight", "rack"],
+      primaryMuscles: ["Upper Back"],
+    };
+
+    const { workout } = generateWorkoutFromTemplate(
+      [
+        { exercise: pullupMain, orderIndex: 0 },
+        { exercise: bodyweightAccessory, orderIndex: 1 },
+      ],
+      makeOptions({
+        sessionMinutes: 0,
+        exerciseLibrary: [pullupMain, bodyweightAccessory],
+      })
+    );
+
+    const withoutProjectedRamps = estimateWorkoutMinutes([
+      ...workout.mainLifts,
+      ...workout.accessories,
+    ]);
+
+    expect(workout.mainLifts[0]?.exercise.id).toBe("pullup-main");
+    expect(workout.estimatedMinutes).toBe(withoutProjectedRamps);
+  });
+
+  it("timeboxes template accessories pre-load using projected warmup ramps", () => {
+    const templateExercises = makeTemplateExercises([
+      "bench",
+      "row",
+      "db-press",
+      "lateral-raise",
+      "face-pull",
+    ]);
+    const unrestricted = generateWorkoutFromTemplate(
+      templateExercises,
+      makeOptions({ sessionMinutes: 0 })
+    );
+    const noProjectedWarmupEstimate = estimateWorkoutMinutes([
+      ...unrestricted.workout.mainLifts,
+      ...unrestricted.workout.accessories,
+    ]);
+
+    const timeboxed = generateWorkoutFromTemplate(
+      templateExercises,
+      makeOptions({ sessionMinutes: noProjectedWarmupEstimate })
+    );
+
+    expect(unrestricted.workout.estimatedMinutes).toBeGreaterThan(noProjectedWarmupEstimate);
+    expect(timeboxed.workout.accessories.length).toBeLessThan(
+      unrestricted.workout.accessories.length
+    );
+    expect(timeboxed.workout.estimatedMinutes).toBeLessThanOrEqual(noProjectedWarmupEstimate);
+  });
+
   it("returns a valid empty plan for empty template", () => {
     const { workout } = generateWorkoutFromTemplate([], makeOptions());
 
@@ -198,7 +290,10 @@ describe("generateWorkoutFromTemplate", () => {
         checkIn: { date: new Date().toISOString(), readiness: 3, painFlags: { knee: 2 } },
       })
     );
-    expect(result.substitutions.length).toBeGreaterThanOrEqual(0);
+    expect(result.substitutions.length).toBeGreaterThan(0);
+    expect(result.substitutions[0]?.originalExerciseId).toBe(exWithContra.id);
+    expect(result.substitutions[0]?.reason).toBe("Knee pain flagged");
+    expect(result.substitutions[0]?.alternatives.length).toBeGreaterThan(0);
   });
 
   it("applies hypertrophy isolation RPE bump for template accessories", () => {
@@ -286,5 +381,55 @@ describe("generateWorkoutFromTemplate", () => {
     expect(workout.accessories[0].sets).toHaveLength(3);
     expect(workout.accessories[0].sets[0].targetRepRange).toEqual({ min: 10, max: 12 });
     expect(workout.accessories[0].sets[0].targetReps).toBe(10);
+  });
+
+  it("enforces enhanced volume caps when mesocycle context is provided", () => {
+    const templateExercises = makeTemplateExercises(["bench", "db-press"]);
+    const makeSets = (count: number) =>
+      Array.from({ length: count }, (_, idx) => ({
+        exerciseId: "bench",
+        setIndex: idx + 1,
+        reps: 8,
+      }));
+    const history = [
+      {
+        date: new Date(Date.now() - 1 * 86400000).toISOString(),
+        completed: true,
+        status: "COMPLETED" as const,
+        exercises: [
+          {
+            exerciseId: "bench",
+            movementPattern: "push" as const,
+            primaryMuscles: ["Chest", "Triceps"],
+            sets: makeSets(20),
+          },
+        ],
+      },
+      {
+        date: new Date(Date.now() - 8 * 86400000).toISOString(),
+        completed: true,
+        status: "COMPLETED" as const,
+        exercises: [
+          {
+            exerciseId: "bench",
+            movementPattern: "push" as const,
+            primaryMuscles: ["Chest", "Triceps"],
+            sets: makeSets(30),
+          },
+        ],
+      },
+    ];
+
+    const standard = generateWorkoutFromTemplate(
+      templateExercises,
+      makeOptions({ history })
+    );
+    const enhanced = generateWorkoutFromTemplate(
+      templateExercises,
+      makeOptions({ history, weekInBlock: 0, mesocycleLength: 4 })
+    );
+
+    expect(standard.workout.accessories.map((e) => e.exercise.id)).toContain("db-press");
+    expect(enhanced.workout.accessories.map((e) => e.exercise.id)).not.toContain("db-press");
   });
 });

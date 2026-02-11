@@ -1,8 +1,5 @@
-import {
-  applyLoads as applyLoadsEngine,
-  type BaselineInput,
-  type PeriodizationModifiers,
-} from "@/lib/engine";
+import { applyLoads as applyLoadsEngine, type BaselineInput } from "@/lib/engine/apply-loads";
+import type { PeriodizationModifiers } from "@/lib/engine/rules";
 import { prisma } from "@/lib/db/prisma";
 import type {
   Baseline,
@@ -22,6 +19,7 @@ import {
   SecondaryGoal,
   WorkoutStatus,
 } from "@prisma/client";
+import { mapLatestCheckIn, type CheckInRow } from "./checkin-staleness";
 import type {
   Constraints,
   EquipmentType,
@@ -210,7 +208,7 @@ export function mapConstraints(constraints: ConstraintsRecord): Constraints {
 export function mapExercises(
   exercises: (Exercise & {
     exerciseEquipment: { equipment: { type: PrismaEquipmentType } }[];
-    exerciseMuscles: { role: string; muscle: { name: string } }[];
+    exerciseMuscles: { role: string; muscle: { name: string; sraHours: number } }[];
   })[]
 ) {
   return exercises.map((exercise) => ({
@@ -243,6 +241,9 @@ export function mapExercises(
     secondaryMuscles: exercise.exerciseMuscles
       .filter((item) => item.role === "SECONDARY")
       .map((item) => item.muscle.name),
+    muscleSraHours: Object.fromEntries(
+      exercise.exerciseMuscles.map((item) => [item.muscle.name, item.muscle.sraHours])
+    ),
   }));
 }
 
@@ -295,24 +296,16 @@ export function mapPreferences(preferences: {
   };
 }
 
-export function mapCheckIn(checkIns: { date: Date; readiness: number; painFlags: unknown; notes: string | null }[] | null | undefined)
-  : EngineSessionCheckIn | undefined {
-  if (!checkIns || checkIns.length === 0) {
-    return undefined;
-  }
-  const latest = checkIns[0];
-  return {
-    date: latest.date.toISOString(),
-    readiness: latest.readiness as 1 | 2 | 3 | 4 | 5,
-    painFlags: (latest.painFlags as Record<string, 0 | 1 | 2 | 3>) ?? undefined,
-    notes: latest.notes ?? undefined,
-  };
+export function mapCheckIn(
+  checkIns: CheckInRow[] | null | undefined
+): EngineSessionCheckIn | undefined {
+  return mapLatestCheckIn(checkIns);
 }
 
 type ExerciseWithAliases = Exercise & {
   aliases?: { alias: string }[];
   exerciseEquipment: { equipment: { type: PrismaEquipmentType } }[];
-  exerciseMuscles: { role: string; muscle: { name: string } }[];
+  exerciseMuscles: { role: string; muscle: { name: string; sraHours: number } }[];
 };
 
 export function mapBaselinesToExerciseIds(

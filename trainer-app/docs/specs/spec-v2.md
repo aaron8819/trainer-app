@@ -4,6 +4,10 @@ Master spec for three interconnected features: engine knowledgebase alignment, e
 
 Reference: `docs/knowledgebase/hypertrophyandstrengthtraining_researchreport.md` is the scientific foundation for all engine behavior.
 
+Status note (2026-02-11): this document includes historical planning content for the deprecated auto/PPL path.
+Current runtime is template-only (`/api/workouts/generate-from-template`), with `/api/workouts/generate` and `engine.ts` removed.
+Use `docs/plans/template-only-deprecation-plan.md`, `docs/architecture.md`, and `docs/workout-data-flow-traceability.md` as source of truth for active behavior.
+
 ---
 
 ## Table of Contents
@@ -21,9 +25,9 @@ Reference: `docs/knowledgebase/hypertrophyandstrengthtraining_researchreport.md`
 
 ## 1. Session Modes
 
-The app supports two persistent session modes. The user sets their preferred mode and it stays until changed.
+The active runtime supports a single session-generation path (template mode). PPL mode content below is historical and retained for traceability.
 
-### PPL Mode (existing)
+### PPL Mode (historical; deprecated and removed)
 
 Current flow: Check-in → Engine generates PPL workout → Preview → Save → Log.
 
@@ -192,9 +196,11 @@ Retrofit both PPL and template engines to align with the hypertrophy/strength kn
 
 ### 4.1 Volume Model
 
-**Current**: Generic 20% spike cap over rolling 7-day window.
+**Current (implemented)**: Enhanced per-muscle MRV caps are active in workout generation when mesocycle context is present (auto and template paths), with the 20% spike cap retained as a secondary safety net.
 
-**New**: Muscle-specific volume landmarks from knowledgebase.
+**Current limitation**: Cap enforcement currently uses direct primary-set counts. Indirect/effective-volume cap enforcement is a follow-up.
+
+**Target model**: Muscle-specific volume landmarks from knowledgebase.
 
 | Muscle Group | MV | MEV | MAV | MRV |
 |---|---|---|---|---|
@@ -486,7 +492,7 @@ Status legend: [x] done, [~] partial/deferred, [ ] not started
 - [x] Smart Build creation (engine-assisted) — core algorithm works (`smart-build.ts`); optional training goal + time budget inputs deferred to Phase 4
 - [x] Template analysis scoring — all 6 dimensions implemented: muscle coverage, push/pull balance, compound/isolation ratio, movement diversity, lengthened-position coverage (`scoreLengthPosition`), SFR efficiency (`scoreSfrEfficiency`)
 - [x] Session generation from template (engine prescribes loads/reps/RPE) — `generateWorkoutFromTemplate()` + `applyLoads()`
-- [x] Session mode selector (PPL vs Template) on dashboard — `DashboardGenerateSection` with toggle
+- [x] Template-only generation entry point on dashboard — `DashboardGenerateSection` renders `GenerateFromTemplateCard` only (PR1 deprecation cutover)
 - [x] SRA warnings when generating sessions — warnings generated, returned in API, displayed in UI
 
 ### Phase 4 — Polish — COMPLETE

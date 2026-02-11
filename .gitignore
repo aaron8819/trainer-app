@@ -9,7 +9,6 @@
 
 # Local docs (plans, knowledgebase)
 trainer-app/docs/knowledgebase/
-trainer-app/docs/plans/
 
 # OS/editor noise
 .DS_Store

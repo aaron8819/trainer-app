@@ -1,179 +1,197 @@
-# Data Model (Comprehensive)
+# Data Model (Current)
 
-This document describes the current data model for the Trainer App, with emphasis on workout generation, exercise definitions, and the engine’s decision inputs.
+Last verified against schema: 2026-02-11 (`prisma/schema.prisma`)
 
-## Core Entities
+This document summarizes the persisted model used by workout generation, logging, and adaptation loops.
 
-### User
-- `id`, `email`, `createdAt`
-- Relations: `profile`, `constraints`, `goals`, `injuries`, `preferences`, `programs`, `workouts`, `sessionCheckIns`, `baselines`
+## Core user models
 
-### Profile
-- `userId`, `age`, `sex`, `heightIn`, `weightLb`, `trainingAge` (non-nullable, default `INTERMEDIATE`)
-- Purpose: drives set scaling and general defaults.
-- Note: height is stored in inches, weight in pounds. The engine receives these converted to metric (cm, kg) via `mapProfile()`.
+### `User`
 
-### Goals
-- `userId`, `primaryGoal`, `secondaryGoal`, `proteinTarget`
-- Purpose: sets rep ranges and target RPE by goal.
+- Fields: `id`, `email`, `createdAt`
+- Key relations: `profile`, `constraints`, `goals`, `injuries`, `preferences`, `programs`, `workouts`, `sessionCheckIns`, `baselines`, `templates`
 
-### Constraints
-- `userId`, `daysPerWeek`, `sessionMinutes`, `splitType`, `equipmentNotes`, `availableEquipment`
-- Purpose: drives split queue, timeboxing, and equipment filtering.
+### `Profile`
 
-### UserPreference
-- `favoriteExercises`, `avoidExercises` (legacy name-based arrays for compatibility/UI)
-- `favoriteExerciseIds`, `avoidExerciseIds` (canonical ID-based arrays)
-- `rpeTargets`, `progressionStyle`
-- `optionalConditioning`, `benchFrequency`, `squatFrequency`, `deadliftFrequency`
-- Purpose: biases selection and targets.
+- Fields: `userId`, `age`, `sex`, `heightIn`, `weightLb`, `trainingAge`
+- `trainingAge` default: `INTERMEDIATE`
+- Runtime note: engine mapping converts `heightIn` and `weightLb` to metric values.
 
-### Injury
-- `userId`, `bodyPart`, `severity`, `isActive`
-- Purpose: injury filter and risk reduction.
+### `Goals`
 
-### SessionCheckIn
-- `userId`, `workoutId?`, `date`, `readiness`, `painFlags`, `notes`, `createdAt`
-- Purpose: dynamic readiness and pain signals for session-level adaptation.
+- Fields: `userId`, `primaryGoal`, `secondaryGoal`, `proteinTarget`
+- Runtime-critical fields: `primaryGoal`, `secondaryGoal`
 
-## Exercise Catalog
+### `Constraints`
 
-### Exercise
-Canonical exercise definition used by the engine.
+- Fields: `userId`, `daysPerWeek`, `sessionMinutes`, `splitType`, `equipmentNotes`, `availableEquipment`
+- Runtime-critical fields: split type, session minutes, equipment availability
 
-Key fields:
-- `name` (unique)
-- `movementPatterns` (MovementPatternV2[], programming intelligence)
-- `splitTags` (strict split eligibility)
-- `isMainLiftEligible`, `isCompound`
-- `fatigueCost`
-- `sfrScore` (stimulus-to-fatigue ratio, 1-5, default 3)
-- `lengthPositionScore` (lengthened-position loading, 1-5, default 3)
-- `stimulusBias`
-- `contraindications`
-- `timePerSetSec`
-- `difficulty` (Difficulty enum: BEGINNER/INTERMEDIATE/ADVANCED, default BEGINNER)
-- `isUnilateral` (boolean, default false)
-- `repRangeMin`, `repRangeMax` (recommended rep range, defaults 1-20)
+### `UserPreference`
+
+- Fields:
+  - name-based: `favoriteExercises`, `avoidExercises`
+  - id-based: `favoriteExerciseIds`, `avoidExerciseIds`
+  - optional knobs: `optionalConditioning`, `rpeTargets`, `progressionStyle`, `benchFrequency`, `squatFrequency`, `deadliftFrequency`
+- Runtime-critical fields today: favorite/avoid arrays and `optionalConditioning`
+
+### `Injury`
+
+- Fields: `id`, `userId`, `bodyPart`, `description`, `severity`, `isActive`, `createdAt`
+- Index: `@@index([userId, isActive])`
+
+### `SessionCheckIn`
+
+- Fields: `id`, `userId`, `workoutId?`, `date`, `readiness`, `painFlags`, `notes`, `createdAt`
+- Index: `@@index([userId, date])`
+- Runtime use: latest check-in (readiness and pain flags) influences generation.
+
+## Exercise catalog models
+
+### `Exercise`
+
+Core fields:
+
+- identity: `id`, `name` (unique)
+- programming metadata: `movementPatterns`, `splitTags`, `jointStress`
+- lift characteristics: `isMainLiftEligible`, `isCompound`, `fatigueCost`, `stimulusBias`
+- safety and execution: `contraindications`, `timePerSetSec`
+- quality scores: `sfrScore`, `lengthPositionScore`
+- prescription bounds: `repRangeMin`, `repRangeMax`
+- metadata: `difficulty`, `isUnilateral`
 
 Relations:
-- `exerciseMuscles` (primary/secondary muscle groups)
-- `exerciseEquipment` (required equipment)
-- `variations`
-- `aliases`
+
+- `exerciseMuscles`, `exerciseEquipment`
+- `aliases`, `variations`
 - `substitutionsFrom`, `substitutionsTo`
+- `workoutExercises`, `baselines`, `templateExercises`
 
-### ExerciseAlias
-- `exerciseId`, `alias`
-- Purpose: dedupe legacy names and preserve historical references.
+### `Muscle`
 
-### ExerciseVariation
-- `exerciseId`, `name`, `description`, `variationType`, `metadata`
-- Purpose: tempo/paused/grip/angle variants without duplicating canonical exercises.
+- Fields: `id`, `name` (unique), `mv`, `mev`, `mav`, `mrv`, `sraHours`
+- Relation: `exerciseMuscles`
 
-### ExerciseMuscle
-- `exerciseId`, `muscleId`, `role` (PRIMARY/SECONDARY)
-- Purpose: muscle volume accounting and weekly cap enforcement.
+### `Equipment`
 
-### ExerciseEquipment
-- `exerciseId`, `equipmentId`
-- Purpose: equipment-aware filtering.
+- Fields: `id`, `name` (unique), `type`
+- Relation: `exerciseEquipment`
 
-### Muscle
-- `name`
-- `mv` (Maintenance Volume, sets/week, default 0)
-- `mev` (Minimum Effective Volume, default 0)
-- `mav` (Maximum Adaptive Volume, default 0)
-- `mrv` (Maximum Recoverable Volume, default 0)
-- `sraHours` (SRA recovery window in hours, default 48)
-- Purpose: muscle definitions for volume accounting, per-muscle volume caps, and SRA tracking.
+### `ExerciseMuscle`
 
-### Equipment
-- `name`, `type`
-- Purpose: equipment availability and filtering.
+- Fields: `exerciseId`, `muscleId`, `role`
+- PK: `@@id([exerciseId, muscleId])`
 
-## Substitution System
+### `ExerciseEquipment`
 
-### SubstitutionRule
-- `fromExerciseId`, `toExerciseId`
-- `priority` (non-nullable, default 50), `constraints`, `preserves`
-- Purpose: deterministic substitution ranking and constraint-aware swaps.
+- Fields: `exerciseId`, `equipmentId`
+- PK: `@@id([exerciseId, equipmentId])`
 
-## Programs and Workouts
+### `ExerciseAlias`
 
-### Program
-- `userId`, `name`, `isActive`, `createdAt`
-- Relations: `blocks`
+- Fields: `id`, `exerciseId`, `alias`
+- Unique: `alias`
 
-### ProgramBlock
-- `programId`, `blockIndex`, `weeks`, `deloadWeek`
-- Relations: `workouts`
+### `ExerciseVariation`
 
-### Workout
-- `userId`, `programBlockId?`, `templateId?`
-- `scheduledDate`, `completedAt`, `status`
-- `estimatedMinutes`, `notes`
-- `selectionMode`, `forcedSplit`, `advancesSplit`
-- Relations: `exercises`, `template?`
+- Fields: `id`, `exerciseId`, `name`, `description`, `variationType`, `metadata`
 
-### WorkoutTemplate
-- `id`, `userId`, `name`, `targetMuscles`, `isStrict`, `intent`, `createdAt`, `updatedAt`
-- Relations: `exercises` (WorkoutTemplateExercise[]), `workouts` (Workout[])
-- Purpose: user-defined workout templates for template mode sessions.
-- API: CRUD via `/api/templates` (list, create) and `/api/templates/[id]` (detail, update, delete).
-- API layer: `src/lib/api/templates.ts` — `loadTemplates`, `loadTemplateDetail`, `createTemplate`, `updateTemplate`, `deleteTemplate`.
-- On delete: associated `Workout.templateId` is set to null (preserves workout history).
+### `SubstitutionRule`
 
-### WorkoutTemplateExercise
-- `id`, `templateId`, `exerciseId`, `orderIndex`, `supersetGroup?`
-- Unique constraint: `(templateId, orderIndex)`
-- Purpose: ordered exercise list within a template.
-- On template update: exercises are fully replaced (delete all + insert new) in a transaction.
+- Fields: `id`, `fromExerciseId`, `toExerciseId`, `reason`, `priority`, `constraints`, `preserves`
+- Default priority: `50`
 
-### WorkoutExercise
-- `workoutId`, `exerciseId`, `orderIndex`, `isMainLift`
-- `movementPatterns` (MovementPatternV2[], default `{}`)
-- `notes`
-- Relations: `sets`
+## Program and workout execution models
 
-### WorkoutSet
-- `workoutExerciseId`, `setIndex`, `targetReps`, `targetRepMin?`, `targetRepMax?`, `targetRpe`, `targetLoad`, `restSeconds`
-- Relations: `logs` (at most one current log record)
+### `Program`
 
-### SetLog
-- `workoutSetId`, `actualReps`, `actualRpe`, `actualLoad`, `completedAt`, `notes`, `wasSkipped`
-- Unique constraint: `(workoutSetId)` — set logging is upserted, not append-only.
+- Fields: `id`, `userId`, `name`, `isActive`, `createdAt`
+- Relation: `blocks`
 
-## Baselines
+### `ProgramBlock`
 
-### Baseline
-- `userId`, `exerciseId` (non-nullable FK), `exerciseName` (denormalized display field), `context`, `category`, `unit`
-- `workingWeightMin`, `workingWeightMax`, `workingRepsMin`, `workingRepsMax`
-- `topSetWeight`, `topSetReps`
-- `projected1RMMin`, `projected1RMMax`, `notes`
-- Unique constraint: `(userId, exerciseId, context)`
-- Purpose: seed loads for newly generated workouts.
+- Fields: `id`, `programId`, `blockIndex`, `weeks`, `deloadWeek`
+- Relation: `workouts`
 
-## Removed Tables
+### `Workout`
 
-The following tables were removed in Phase 6 (2026-02-06) as they were unused:
-- **ReadinessLog** — superseded by `SessionCheckIn`
-- **FatigueLog** — superseded by `SessionCheckIn`
-- **ProgressionRule** — engine uses hardcoded constants from `rules.ts`; the engine `ProgressionRule` type remains for future extensibility
+- Fields:
+  - ownership/scheduling: `id`, `userId`, `programBlockId?`, `templateId?`, `scheduledDate`, `completedAt`
+  - status/selection: `status`, `selectionMode`, `forcedSplit`, `advancesSplit`
+  - display/meta: `estimatedMinutes`, `notes`
+- Defaults:
+  - `status = PLANNED`
+  - `selectionMode = AUTO`
+  - `advancesSplit = true`
+- Index: `@@index([userId, scheduledDate])`
+- Relations: `exercises`, `sessionCheckIns`, optional `template`, optional `programBlock`
 
-## Enum Reference (Highlights)
+### `WorkoutExercise`
 
+- Fields: `id`, `workoutId`, `exerciseId`, `orderIndex`, `section?`, `isMainLift`, `movementPatterns`, `notes`
+- `section` enum: `WARMUP | MAIN | ACCESSORY` (nullable for legacy rows created before section persistence)
+- Relation: `sets`
+
+### `WorkoutSet`
+
+- Fields:
+  - `id`, `workoutExerciseId`, `setIndex`
+  - prescription: `targetReps`, `targetRepMin?`, `targetRepMax?`, `targetRpe?`, `targetLoad?`, `restSeconds?`
+- Relation: `logs`
+
+### `SetLog`
+
+- Fields: `id`, `workoutSetId`, `actualReps?`, `actualRpe?`, `actualLoad?`, `completedAt`, `notes?`, `wasSkipped`
+- Uniqueness: `workoutSetId @unique`
+- Implication: set logging is upserted per set, not append-only.
+
+## Baseline and template models
+
+### `Baseline`
+
+- Fields:
+  - identity: `id`, `userId`, `exerciseId`, `exerciseName`, `context`, `category`, `unit`
+  - load and reps: `workingWeightMin?`, `workingWeightMax?`, `workingRepsMin?`, `workingRepsMax?`, `topSetWeight?`, `topSetReps?`
+  - estimates/meta: `projected1RMMin?`, `projected1RMMax?`, `notes?`, `createdAt`
+- Constraints:
+  - unique: `@@unique([userId, exerciseId, context])`
+  - index: `@@index([exerciseId])`
+- Runtime purpose: load fallback/seed data for future generation.
+
+### `WorkoutTemplate`
+
+- Fields: `id`, `userId`, `name`, `targetMuscles`, `isStrict`, `intent`, `createdAt`, `updatedAt`
+- Defaults: `targetMuscles = []`, `isStrict = false`, `intent = CUSTOM`
+- Relations: `exercises`, `workouts`
+
+### `WorkoutTemplateExercise`
+
+- Fields: `id`, `templateId`, `exerciseId`, `orderIndex`, `supersetGroup?`
+- Unique constraint: `@@unique([templateId, orderIndex])`
+- Purpose: ordered template exercise list with optional superset metadata.
+
+## Enum highlights
+
+- `TrainingAge`: `BEGINNER`, `INTERMEDIATE`, `ADVANCED`
+- `PrimaryGoal`: `HYPERTROPHY`, `STRENGTH`, `FAT_LOSS`, `ATHLETICISM`, `GENERAL_HEALTH`
+- `SecondaryGoal`: `POSTURE`, `CONDITIONING`, `INJURY_PREVENTION`, `NONE`
 - `SplitType`: `PPL`, `UPPER_LOWER`, `FULL_BODY`, `CUSTOM`
+- `SplitDay`: `PUSH`, `PULL`, `LEGS`, `UPPER`, `LOWER`, `FULL_BODY`
+- `WorkoutStatus`: `PLANNED`, `IN_PROGRESS`, `COMPLETED`, `SKIPPED`
+- `WorkoutSelectionMode`: `AUTO`, `MANUAL`, `BONUS`
+- `WorkoutExerciseSection`: `WARMUP`, `MAIN`, `ACCESSORY`
+- `MovementPatternV2`: push/pull/squat/hinge/lunge/carry/rotation and accessory pattern enums
 - `SplitTag`: `PUSH`, `PULL`, `LEGS`, `CORE`, `MOBILITY`, `PREHAB`, `CONDITIONING`
-- `MovementPatternV2`: `HORIZONTAL_PUSH`, `VERTICAL_PUSH`, `HORIZONTAL_PULL`, `VERTICAL_PULL`, `SQUAT`, `HINGE`, `LUNGE`, `CARRY`, `ROTATION`, `ANTI_ROTATION`, `FLEXION`, `EXTENSION`, `ABDUCTION`, `ADDUCTION`, `ISOLATION`
-- `Difficulty`: `BEGINNER`, `INTERMEDIATE`, `ADVANCED`
-- `StimulusBias`: `MECHANICAL`, `METABOLIC`, `STRETCH`, `STABILITY`
+- `EquipmentType`: includes `BARBELL`, `DUMBBELL`, `MACHINE`, `CABLE`, `BODYWEIGHT`, `KETTLEBELL`, `BAND`, `CARDIO`, `SLED`, `BENCH`, `RACK`, `EZ_BAR`, `TRAP_BAR`, `OTHER`
+- `MuscleRole`: `PRIMARY`, `SECONDARY`
+- `TemplateIntent`: `FULL_BODY`, `UPPER_LOWER`, `PUSH_PULL_LEGS`, `BODY_PART`, `CUSTOM`
 
-## Engine-Relevant Notes
+## Runtime invariants and notes
 
-- Split purity is enforced via `Exercise.splitTags`.
-- `movementPatterns` powers main lift pairing and substitution logic.
-- `SessionCheckIn` is the primary source for readiness and pain adjustments.
-- Weekly volume caps use `ExerciseMuscle` primary roles.
-- `prisma/seed.ts` imports exercise data from `prisma/exercises_comprehensive.json` (133 exercises). All exercise fields, muscle mappings, and equipment mappings are driven by this single JSON source of truth.
-- Exercise renames and muscle renames are applied before seeding. Stale exercises (not in JSON) are pruned automatically.
+- Workout generation context currently loads the latest 12 workouts per user.
+- Split advancement logic reads `Workout.status` and `Workout.advancesSplit`.
+- Workout sectioning for log/detail UI should use `WorkoutExercise.section` when present, with legacy fallback only for rows where it is null.
+- `SetLog` values override target set values in mapped history when present.
+- Baselines are updated only when workouts are marked `COMPLETED` and logged performance qualifies.
+- Template deletion preserves workout history by nulling `Workout.templateId` before deleting template rows.
+- Seed process hydrates exercise metadata from `prisma/exercises_comprehensive.json`.

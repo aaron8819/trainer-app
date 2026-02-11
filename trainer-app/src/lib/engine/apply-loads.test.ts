@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyLoads, type BaselineInput } from "./apply-loads";
+import { estimateWorkoutMinutes } from "./timeboxing";
 import type { Exercise, WorkoutHistoryEntry, WorkoutPlan } from "./types";
 
 const exercises: Record<string, Exercise> = {
@@ -145,6 +146,9 @@ describe("applyLoads", () => {
 
     expect(result.mainLifts[0].sets[0].targetLoad).toBe(102.5);
     expect(result.mainLifts[0].sets[1].targetLoad).toBe(90);
+    expect(result.mainLifts[0].sets.every((set) => set.role === "main")).toBe(true);
+    expect(result.accessories.every((exercise) => exercise.role === "accessory")).toBe(true);
+    expect(result.accessories.every((exercise) => exercise.sets.every((set) => set.role === "accessory"))).toBe(true);
   });
 
   it("ignores non-completed history entries when deriving next load", () => {
@@ -354,14 +358,36 @@ describe("applyLoads", () => {
     const warmupSets = result.mainLifts[0].warmupSets;
     expect(warmupSets).toHaveLength(2);
     expect(warmupSets?.[0]).toMatchObject({
+      role: "warmup",
       targetReps: 8,
       targetLoad: 120,
       restSeconds: 60,
     });
     expect(warmupSets?.[1]).toMatchObject({
+      role: "warmup",
       targetReps: 3,
       targetLoad: 160,
       restSeconds: 90,
     });
+  });
+
+  it("uses post-load trim as a safety net when warmup ramps push duration over budget", () => {
+    const preLoadMinutes = estimateWorkoutMinutes([
+      ...baseWorkout.warmup,
+      ...baseWorkout.mainLifts,
+      ...baseWorkout.accessories,
+    ]);
+
+    const result = applyLoads(baseWorkout, {
+      history: [],
+      baselines: [{ exerciseId: "bench", context: "default", topSetWeight: 200 }],
+      exerciseById: exercises,
+      primaryGoal: "hypertrophy",
+      profile: { weightKg: 80, trainingAge: "intermediate" },
+      sessionMinutes: preLoadMinutes,
+    });
+
+    expect(result.accessories.length).toBeLessThan(baseWorkout.accessories.length);
+    expect(result.estimatedMinutes).toBeLessThanOrEqual(preLoadMinutes);
   });
 });

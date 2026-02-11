@@ -4,16 +4,17 @@
 
 | Document | Purpose | Audience |
 |----------|---------|----------|
-| [spec-v2.md](spec-v2.md) | **v2 spec** (COMPLETE): engine KB alignment, exercise library, template mode, polish | Claude + developers |
-| [spec-v3.md](spec-v3.md) | **v3 ideas**: training phases, indirect volume, exercise rotation, supersets | Claude + developers |
+| [specs/spec-v2.md](specs/spec-v2.md) | **v2 spec** (COMPLETE): engine KB alignment, exercise library, template mode, polish | Claude + developers |
+| [specs/spec-v3.md](specs/spec-v3.md) | **v3 ideas**: training phases, indirect volume, exercise rotation, supersets | Claude + developers |
 | [knowledgebase/](knowledgebase/) | Scientific foundations (hypertrophy & strength research) | Claude + developers |
 | [architecture.md](architecture.md) | Engine behavior, guarantees, generation flow, module map (v1) | Claude + developers |
-| [template-generation.md](template-generation.md) | Exact runtime template generation behavior (sets/reps/rest/loads/supersets) | Claude + developers |
-| [template-prescription-assignment.md](template-prescription-assignment.md) | Exact assignment logic for sets, rep ranges, RPE, rest, and loads in template-generated workouts | Claude + developers |
-| [user-settings-downstream.md](user-settings-downstream.md) | How settings flow into engine and UI with owner example | Claude + developers |
-| [analysis/template-follow-up-plan.md](analysis/template-follow-up-plan.md) | Post-remediation follow-up implementation plan from post-refactor analysis | Claude + developers |
+| [src-lib-reference.md](src-lib-reference.md) | Complete `src/lib` reference: module boundaries, contracts, and integration points across api/data/db/engine/exercise-library/settings/supabase/ui/validation | Claude + developers |
+| [templatedocs/template-generation.md](templatedocs/template-generation.md) | Exact runtime template generation behavior (sets/reps/rest/loads/supersets) | Claude + developers |
+| [templatedocs/template-prescription-assignment.md](templatedocs/template-prescription-assignment.md) | Exact assignment logic for sets, rep ranges, RPE, rest, and loads in template-generated workouts | Claude + developers |
+| [templatedocs/template-score-report.md](templatedocs/template-score-report.md) | Current template scoring report and quality distribution | Claude + developers |
+| [workout-data-flow-traceability.md](workout-data-flow-traceability.md) | End-to-end traceability for how settings, logs, baselines, and engine modules generate and adjust workouts | Claude + developers |
+| [analysis/user-settings-downstream.md](analysis/user-settings-downstream.md) | How settings flow into engine and UI with owner example | Claude + developers |
 | [decisions.md](decisions.md) | Architectural Decision Records (ADRs) | Claude + developers |
-| [engine-audit-remediation-2026-02-10.md](engine-audit-remediation-2026-02-10.md) | Targeted remediation log for completion-aware history semantics in engine modules | Claude + developers |
 | [data-model.md](data-model.md) | Complete database schema reference | Claude + developers |
 | [seeded-data.md](seeded-data.md) | Exercise catalog, equipment, muscles, aliases | Claude + developers |
 
@@ -21,7 +22,7 @@
 
 | Document | Purpose |
 |----------|---------|
-| [`CLAUDE.md`](../CLAUDE.md) | Claude Code instructions: commands, conventions, anti-patterns, testing |
+| [`CLAUDE.md`](../../CLAUDE.md) | Claude Code instructions: commands, conventions, anti-patterns, testing |
 | [`prisma/schema.prisma`](../prisma/schema.prisma) | Database schema (source of truth for DB structure) |
 
 ## Archive
@@ -31,10 +32,13 @@ Completed project documents. Preserved for historical reference.
 | Document | What it was |
 |----------|------------|
 | [archive/comprehensive-exercise-db.md](archive/comprehensive-exercise-db.md) | 133-exercise JSON-driven DB replacement (2026-02-09) |
+| [archive/engine-audit-remediation-2026-02-10.md](archive/engine-audit-remediation-2026-02-10.md) | Completion-aware history semantics remediation log (2026-02-10) |
 | [archive/phase-3-template-mode-core.md](archive/phase-3-template-mode-core.md) | Template mode implementation plan (2026-02-08) |
-| [archive/engine_refactor_2.5.md](archive/engine_refactor_2.5.md) | Original refactor spec with implementation status |
-| [archive/engine-and-data-model-analysis.md](archive/engine-and-data-model-analysis.md) | Audit with 22 recommendations (all resolved) |
-| [archive/implementation-plan.md](archive/implementation-plan.md) | 8-phase execution plan (all phases complete) |
+| [archive/post-refactor-analysis.md](archive/post-refactor-analysis.md) | Post-refactor gap analysis and recommendations |
+| [archive/template-follow-up-plan.md](archive/template-follow-up-plan.md) | Post-remediation follow-up implementation plan |
+| [archive/template-generation-analysis.md](archive/template-generation-analysis.md) | Deep-dive analysis of template-generation behavior |
+| [archive/template-remediation-plan.md](archive/template-remediation-plan.md) | Template remediation planning document |
+| [archive/template-score-adjustments.md](archive/template-score-adjustments.md) | Historical score-weight and scoring adjustments |
 
 ## Multi-Step Work Pattern
 

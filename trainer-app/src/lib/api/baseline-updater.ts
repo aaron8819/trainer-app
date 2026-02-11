@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { BaselineCategory, PrimaryGoal } from "@prisma/client";
+import { isSetQualifiedForBaseline } from "../baseline-qualification";
 
 export type SetData = {
   targetReps?: number;
@@ -81,15 +82,7 @@ export function evaluateExerciseForBaseline(sets: SetData[]): EvaluationResult {
 }
 
 export function filterQualifyingSets(sets: SetData[]): SetData[] {
-  return sets.filter((set) => {
-    if (set.targetReps !== undefined && set.actualReps! < set.targetReps) {
-      return false;
-    }
-    if (set.targetRpe !== undefined && set.actualRpe !== undefined) {
-      return set.actualRpe <= set.targetRpe;
-    }
-    return true;
-  });
+  return sets.filter((set) => isSetQualifiedForBaseline(set));
 }
 
 export function selectTopSet(qualifyingSets: SetData[]): SetData {

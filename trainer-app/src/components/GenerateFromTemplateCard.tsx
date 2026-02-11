@@ -37,6 +37,19 @@ type SraWarning = {
   recoveryPercent: number;
 };
 
+type SubstitutionAlternative = {
+  id: string;
+  name: string;
+  score: number;
+};
+
+type SubstitutionSuggestion = {
+  originalExerciseId: string;
+  originalName: string;
+  reason: string;
+  alternatives: SubstitutionAlternative[];
+};
+
 type TemplateSummary = {
   id: string;
   name: string;
@@ -64,11 +77,38 @@ function formatTargetReps(set?: WorkoutSet): string {
   }
   return `${set.targetReps} reps`;
 }
+function applyExerciseSwap(
+  workout: WorkoutPlan,
+  originalExerciseId: string,
+  replacement: SubstitutionAlternative
+): WorkoutPlan {
+  const swapExercises = (exercises: WorkoutExercise[]) =>
+    exercises.map((exercise) =>
+      exercise.exercise.id === originalExerciseId
+        ? {
+            ...exercise,
+            exercise: {
+              id: replacement.id,
+              name: replacement.name,
+            },
+          }
+        : exercise
+    );
+
+  return {
+    ...workout,
+    mainLifts: swapExercises(workout.mainLifts),
+    accessories: swapExercises(workout.accessories),
+  };
+}
 
 export function GenerateFromTemplateCard({ templates }: GenerateFromTemplateCardProps) {
   const [selectedTemplateId, setSelectedTemplateId] = useState(templates[0]?.id ?? "");
   const [workout, setWorkout] = useState<WorkoutPlan | null>(null);
   const [sraWarnings, setSraWarnings] = useState<SraWarning[]>([]);
+  const [substitutions, setSubstitutions] = useState<SubstitutionSuggestion[]>([]);
+  const [dismissedSubstitutions, setDismissedSubstitutions] = useState<Set<string>>(new Set());
+  const [appliedSubstitutions, setAppliedSubstitutions] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -91,6 +131,9 @@ export function GenerateFromTemplateCard({ templates }: GenerateFromTemplateCard
     const body = await response.json();
     setWorkout(body.workout as WorkoutPlan);
     setSraWarnings(body.sraWarnings ?? []);
+    setSubstitutions((body.substitutions ?? []) as SubstitutionSuggestion[]);
+    setDismissedSubstitutions(new Set());
+    setAppliedSubstitutions(new Set());
     return true;
   };
 
@@ -103,7 +146,35 @@ export function GenerateFromTemplateCard({ templates }: GenerateFromTemplateCard
     setSavedId(null);
     setWorkout(null);
     setSraWarnings([]);
+    setSubstitutions([]);
+    setDismissedSubstitutions(new Set());
+    setAppliedSubstitutions(new Set());
     setShowCheckIn(true);
+  };
+
+  const handleDismissSubstitution = (exerciseId: string) => {
+    setDismissedSubstitutions((prev) => {
+      const next = new Set(prev);
+      next.add(exerciseId);
+      return next;
+    });
+  };
+
+  const handleApplySubstitution = (
+    suggestion: SubstitutionSuggestion,
+    replacement: SubstitutionAlternative
+  ) => {
+    if (!workout) {
+      return;
+    }
+    setWorkout((prev) =>
+      prev ? applyExerciseSwap(prev, suggestion.originalExerciseId, replacement) : prev
+    );
+    setAppliedSubstitutions((prev) => {
+      const next = new Set(prev);
+      next.add(suggestion.originalExerciseId);
+      return next;
+    });
   };
 
   const handleCheckInSubmit = async (payload: SessionCheckInPayload) => {
@@ -205,6 +276,13 @@ export function GenerateFromTemplateCard({ templates }: GenerateFromTemplateCard
     );
   }
 
+  const activeSubstitutions = substitutions.filter(
+    (suggestion) =>
+      suggestion.alternatives.length > 0 &&
+      !dismissedSubstitutions.has(suggestion.originalExerciseId) &&
+      !appliedSubstitutions.has(suggestion.originalExerciseId)
+  );
+
   return (
     <div className="rounded-2xl border border-slate-200 p-6 shadow-sm">
       <h2 className="text-xl font-semibold">Template Workout</h2>
@@ -291,6 +369,54 @@ export function GenerateFromTemplateCard({ templates }: GenerateFromTemplateCard
         </div>
       )}
 
+      {activeSubstitutions.length > 0 && !savedId && (
+        <div className="mt-3 space-y-2">
+          {activeSubstitutions.map((suggestion) => {
+            const primaryAlternative = suggestion.alternatives[0];
+            if (!primaryAlternative) {
+              return null;
+            }
+
+            return (
+              <div
+                key={suggestion.originalExerciseId}
+                className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900"
+              >
+                <p>
+                  <span className="font-semibold">{suggestion.reason}:</span>{" "}
+                  consider swapping {suggestion.originalName} for {primaryAlternative.name}.
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    className="rounded-full bg-sky-900 px-3 py-1 text-xs font-semibold text-white"
+                    onClick={() => handleApplySubstitution(suggestion, primaryAlternative)}
+                  >
+                    Apply
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-full border border-sky-300 px-3 py-1 text-xs font-semibold text-sky-900"
+                    onClick={() => handleDismissSubstitution(suggestion.originalExerciseId)}
+                  >
+                    Dismiss
+                  </button>
+                  {suggestion.alternatives.length > 1 && (
+                    <span className="text-sky-800">
+                      Other options:{" "}
+                      {suggestion.alternatives
+                        .slice(1)
+                        .map((alt) => alt.name)
+                        .join(", ")}
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {workout && (
         <div className="mt-6 space-y-4">
           <div className="rounded-xl border border-slate-200 p-4">
@@ -315,8 +441,8 @@ export function GenerateFromTemplateCard({ templates }: GenerateFromTemplateCard
                       <p className="text-sm font-semibold">{exercise.exercise.name}</p>
                       <p className="text-xs text-slate-500">
                         {exercise.sets.length} sets - {formatTargetReps(exercise.sets[0])}
-                        {exercise.sets[0]?.targetLoad ? ` · ${exercise.sets[0].targetLoad} lbs` : ""}
-                        {exercise.sets[0]?.targetRpe ? ` · RPE ${exercise.sets[0].targetRpe}` : ""}
+                        {exercise.sets[0]?.targetLoad ? ` - ${exercise.sets[0].targetLoad} lbs` : ""}
+                        {exercise.sets[0]?.targetRpe ? ` - RPE ${exercise.sets[0].targetRpe}` : ""}
                       </p>
                     </div>
                   ))}
@@ -329,4 +455,5 @@ export function GenerateFromTemplateCard({ templates }: GenerateFromTemplateCard
     </div>
   );
 }
+
 

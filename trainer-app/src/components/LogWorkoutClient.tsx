@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { isSetQualifiedForBaseline } from "@/lib/baseline-qualification";
 
 export type LogSetInput = {
   setId: string;
@@ -20,6 +21,7 @@ export type LogExerciseInput = {
   workoutExerciseId: string;
   name: string;
   isMainLift: boolean;
+  section?: "WARMUP" | "MAIN" | "ACCESSORY";
   sets: LogSetInput[];
 };
 
@@ -245,13 +247,7 @@ export default function LogWorkoutClient({
     if (set.targetReps !== undefined && set.actualReps < set.targetReps) {
       return false;
     }
-    if (
-      set.targetRpe !== undefined &&
-      set.targetRpe !== null &&
-      set.actualRpe !== null &&
-      set.actualRpe !== undefined &&
-      set.actualRpe > set.targetRpe
-    ) {
+    if (!isSetQualifiedForBaseline(set)) {
       return false;
     }
     return true;
@@ -271,7 +267,11 @@ export default function LogWorkoutClient({
               <div>
                 <h3 className="text-lg font-semibold">{exercise.name}</h3>
                 <p className="mt-1 text-sm text-slate-500">
-                  {exercise.isMainLift ? "Main lift" : "Accessory"}
+                  {exercise.section === "WARMUP"
+                    ? "Warmup"
+                    : exercise.isMainLift || exercise.section === "MAIN"
+                    ? "Main lift"
+                    : "Accessory"}
                 </p>
               </div>
             </div>

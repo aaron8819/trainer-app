@@ -1,5 +1,6 @@
-import type { Constraints, Exercise } from "./types";
-import { applyPainConstraints, hasBlockedTag } from "./filtering";
+import type { Constraints, Exercise, SplitTag } from "./types";
+
+const BLOCKED_TAGS: SplitTag[] = ["core", "mobility", "prehab", "conditioning"];
 
 export function suggestSubstitutes(
   target: Exercise,
@@ -43,4 +44,41 @@ export function suggestSubstitutes(
     .sort((a, b) => b.score - a.score)
     .slice(0, 3)
     .map((item) => item.exercise);
+}
+
+function hasBlockedTag(exercise: Exercise) {
+  return (exercise.splitTags ?? []).some((tag) => BLOCKED_TAGS.includes(tag));
+}
+
+function applyPainConstraints(
+  exercises: Exercise[],
+  painFlags?: Record<string, 0 | 1 | 2 | 3>
+) {
+  if (!painFlags) {
+    return exercises;
+  }
+
+  return exercises.filter((exercise) => {
+    const contraindications = exercise.contraindications ?? {};
+    const elbowPain = painFlags.elbow !== undefined && painFlags.elbow >= 2;
+    const shoulderPain = painFlags.shoulder !== undefined && painFlags.shoulder >= 2;
+    const lowBackPain = painFlags.low_back !== undefined && painFlags.low_back >= 2;
+
+    if (elbowPain && contraindications["elbow"]) {
+      return false;
+    }
+    if (shoulderPain && contraindications["shoulder"]) {
+      return false;
+    }
+    if (lowBackPain) {
+      if (contraindications["low_back"]) {
+        return false;
+      }
+      if (exercise.movementPatterns?.includes("hinge")) {
+        return false;
+      }
+    }
+
+    return true;
+  });
 }

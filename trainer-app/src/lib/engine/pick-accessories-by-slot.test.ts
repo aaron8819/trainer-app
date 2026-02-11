@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { pickAccessoriesBySlot } from "./pick-accessories-by-slot";
 import type { Exercise, MovementPattern, WorkoutHistoryEntry } from "./types";
+import type { MuscleRecoveryState } from "./sra";
+import { buildVolumeContext } from "./volume";
 
 const pushMainLifts: Exercise[] = [
   {
@@ -443,5 +445,175 @@ describe("pickAccessoriesBySlot", () => {
     });
 
     expect(picks[picks.length - 1].name).toBe("Dumbbell Curl");
+  });
+
+  it("applies graduated landmark penalties across MAV and MRV tiers", () => {
+    const accessoryPool: Exercise[] = [
+      {
+        id: "safe-fly",
+        name: "Safe Fly",
+        movementPatterns: ["horizontal_push"],
+        splitTags: ["push"],
+        jointStress: "low",
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 2,
+        stimulusBias: ["stretch"],
+        equipment: ["cable"],
+        primaryMuscles: ["Chest"],
+      },
+      {
+        id: "triceps-heavy-fly",
+        name: "Triceps-Heavy Fly",
+        movementPatterns: ["horizontal_push"],
+        splitTags: ["push"],
+        jointStress: "low",
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 2,
+        stimulusBias: ["stretch"],
+        equipment: ["cable"],
+        primaryMuscles: ["Chest", "Triceps"],
+      },
+    ];
+
+    const enhancedBase = buildVolumeContext([], [], { week: 0, length: 4 });
+    if (!("muscleVolume" in enhancedBase)) {
+      throw new Error("Expected enhanced volume context");
+    }
+
+    const countRiskySelections = (recentTricepsSets: number) => {
+      let picks = 0;
+      for (let seed = 1; seed <= 150; seed += 1) {
+        const selected = pickAccessoriesBySlot({
+          dayTag: "push",
+          accessoryPool,
+          mainLifts: pushMainLifts,
+          maxAccessories: 1,
+          randomSeed: seed,
+          mainLiftSetCount: 1,
+          accessorySetCount: 3,
+          volumeContext: {
+            ...enhancedBase,
+            recent: { Chest: 2, Triceps: recentTricepsSets },
+            previous: {},
+          },
+        });
+        if (selected[0]?.id === "triceps-heavy-fly") {
+          picks += 1;
+        }
+      }
+      return picks;
+    };
+
+    const belowMav = countRiskySelections(3);
+    const betweenMavAndMrv = countRiskySelections(9);
+    const atMrv = countRiskySelections(14);
+
+    expect(betweenMavAndMrv).toBeLessThan(belowMav);
+    expect(atMrv).toBeLessThan(betweenMavAndMrv);
+  });
+
+  it("applies an SRA penalty to under-recovered accessory candidates", () => {
+    const accessoryPool: Exercise[] = [
+      {
+        id: "cable-fly",
+        name: "Cable Fly",
+        movementPatterns: ["horizontal_push"],
+        splitTags: ["push"],
+        jointStress: "low",
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 2,
+        equipment: ["cable"],
+        primaryMuscles: ["Chest"],
+      },
+      {
+        id: "lateral-raise",
+        name: "Lateral Raise",
+        movementPatterns: ["vertical_push"],
+        splitTags: ["push"],
+        jointStress: "low",
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 2,
+        equipment: ["dumbbell"],
+        primaryMuscles: ["Side Delts"],
+      },
+      {
+        id: "pushdown",
+        name: "Triceps Pushdown",
+        movementPatterns: ["horizontal_push"],
+        splitTags: ["push"],
+        jointStress: "low",
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 2,
+        equipment: ["cable"],
+        primaryMuscles: ["Triceps"],
+      },
+      {
+        id: "upper-back-under-recovered",
+        name: "Chest-Supported Row",
+        movementPatterns: ["horizontal_pull"],
+        splitTags: ["push"],
+        jointStress: "low",
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 2,
+        sfrScore: 5,
+        lengthPositionScore: 5,
+        equipment: ["machine"],
+        primaryMuscles: ["Upper Back"],
+      },
+      {
+        id: "biceps-recovered",
+        name: "Incline Dumbbell Curl",
+        movementPatterns: ["horizontal_pull"],
+        splitTags: ["push"],
+        jointStress: "low",
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 2,
+        sfrScore: 4,
+        lengthPositionScore: 4,
+        equipment: ["dumbbell"],
+        primaryMuscles: ["Biceps"],
+      },
+    ];
+
+    const recoveryMap = new Map<string, MuscleRecoveryState>([
+      [
+        "Upper Back",
+        {
+          muscle: "Upper Back",
+          lastTrainedHoursAgo: 24,
+          sraWindowHours: 48,
+          isRecovered: false,
+          recoveryPercent: 50,
+        },
+      ],
+      [
+        "Biceps",
+        {
+          muscle: "Biceps",
+          lastTrainedHoursAgo: 60,
+          sraWindowHours: 36,
+          isRecovered: true,
+          recoveryPercent: 100,
+        },
+      ],
+    ]);
+
+    const picks = pickAccessoriesBySlot({
+      dayTag: "push",
+      accessoryPool,
+      mainLifts: pushMainLifts,
+      maxAccessories: 4,
+      randomSeed: 42,
+      recoveryMap,
+    });
+
+    expect(picks[picks.length - 1].name).toBe("Incline Dumbbell Curl");
   });
 });

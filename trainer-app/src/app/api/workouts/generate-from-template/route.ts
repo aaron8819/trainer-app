@@ -26,5 +26,6 @@ export async function POST(request: Request) {
     workout: result.workout,
     templateId: result.templateId,
     sraWarnings: result.sraWarnings,
+    substitutions: result.substitutions,
   });
 }

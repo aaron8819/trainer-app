@@ -251,4 +251,4 @@ After seeding, exercises not in `exercises_comprehensive.json` are pruned (5 rem
 - All exercise metadata is explicit in JSON — no regex or name-based derivation.
 - The JSON file is the single source of truth for the exercise catalog.
 - `splitTag`, `movementPatterns`, `isCompound`, `isMainLiftEligible` are directly defined per exercise.
-- Volume landmarks and SRA hours remain in `volume-landmarks.ts` (engine constants, not DB-driven).
+- Runtime SRA windows are DB-driven from `Muscle.sraHours` via mapped exercise metadata, with fallback to `volume-landmarks.ts` constants.

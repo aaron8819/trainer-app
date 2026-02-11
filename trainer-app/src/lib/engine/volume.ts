@@ -138,14 +138,13 @@ export function enforceVolumeCaps(
     if (enhanced) {
       return Object.entries(planned).some(([muscle, sets]) => {
         const landmark = VOLUME_LANDMARKS[muscle];
-        if (!landmark) return false;
-        return sets > landmark.mrv;
+        const exceedsLandmark = landmark ? sets > landmark.mrv : false;
+        const exceedsSpike = exceedsSpikeCap(sets, volumeContext.previous[muscle]);
+        return exceedsLandmark || exceedsSpike;
       });
     }
     return Object.entries(planned).some(([muscle, sets]) => {
-      const baseline = volumeContext.previous[muscle];
-      if (!baseline || baseline <= 0) return false;
-      return sets > baseline * 1.2;
+      return exceedsSpikeCap(sets, volumeContext.previous[muscle]);
     });
   };
 
@@ -191,4 +190,11 @@ function isEnhancedVolumeContext(
   ctx: VolumeContext | EnhancedVolumeContext
 ): ctx is EnhancedVolumeContext {
   return "muscleVolume" in ctx;
+}
+
+function exceedsSpikeCap(sets: number, baseline: number | undefined) {
+  if (!baseline || baseline <= 0) {
+    return false;
+  }
+  return sets > baseline * 1.2;
 }

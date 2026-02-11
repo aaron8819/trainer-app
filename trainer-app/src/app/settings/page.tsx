@@ -33,7 +33,6 @@ export default async function SettingsPage() {
         secondaryGoal: goals?.secondaryGoal ?? "CONDITIONING",
         daysPerWeek: constraints?.daysPerWeek ?? 4,
         sessionMinutes: constraints?.sessionMinutes ?? 55,
-        splitType: constraints?.splitType ?? "UPPER_LOWER",
         injuryBodyPart: injury?.bodyPart ?? undefined,
         injurySeverity: injury?.severity ?? undefined,
         injuryDescription: injury?.description ?? undefined,
@@ -54,7 +53,7 @@ export default async function SettingsPage() {
     <main className="min-h-screen bg-white text-slate-900">
       <div className="mx-auto max-w-3xl px-6 py-10">
         <h1 className="text-3xl font-semibold">Settings</h1>
-        <p className="mt-2 text-slate-600">Manage goals, split, equipment, and preferences.</p>
+        <p className="mt-2 text-slate-600">Manage goals, schedule, equipment, and preferences.</p>
 
         <ProfileForm initialValues={initialValues} />
         <UserPreferencesForm initialValues={preferenceValues} exercises={exercises} />

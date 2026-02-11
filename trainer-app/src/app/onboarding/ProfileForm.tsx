@@ -1,8 +1,7 @@
 ﻿"use client";
 
 import { useState } from "react";
-import { useForm, useWatch } from "react-hook-form";
-import { getSplitMismatchWarning } from "@/lib/settings/split-recommendation";
+import { useForm } from "react-hook-form";
 
 type ProfileFormValues = {
   userId?: string;
@@ -16,7 +15,6 @@ type ProfileFormValues = {
   secondaryGoal: "POSTURE" | "CONDITIONING" | "INJURY_PREVENTION" | "NONE";
   daysPerWeek: number;
   sessionMinutes: number;
-  splitType: "PPL" | "UPPER_LOWER" | "FULL_BODY" | "CUSTOM";
   injuryBodyPart?: string;
   injurySeverity?: number;
   injuryDescription?: string;
@@ -29,7 +27,6 @@ const defaultValues: ProfileFormValues = {
   secondaryGoal: "CONDITIONING",
   daysPerWeek: 4,
   sessionMinutes: 55,
-  splitType: "UPPER_LOWER",
   injuryActive: true,
 };
 
@@ -44,9 +41,6 @@ export default function ProfileForm({
   const form = useForm<ProfileFormValues>({
     defaultValues: { ...defaultValues, ...initialValues },
   });
-  const daysPerWeek = useWatch({ control: form.control, name: "daysPerWeek" });
-  const splitType = useWatch({ control: form.control, name: "splitType" });
-  const splitWarning = getSplitMismatchWarning(daysPerWeek, splitType);
 
   const onSubmit = form.handleSubmit(async (values) => {
     setStatus(null);
@@ -183,7 +177,7 @@ export default function ProfileForm({
       </section>
 
       <section className="rounded-2xl border border-slate-200 p-6">
-        <h2 className="text-lg font-semibold">Schedule & Split</h2>
+        <h2 className="text-lg font-semibold">Schedule</h2>
         <div className="mt-4 grid gap-4 md:grid-cols-2">
           <label className="text-sm">
             Days per week
@@ -201,20 +195,6 @@ export default function ProfileForm({
               {...form.register("sessionMinutes", { valueAsNumber: true })}
             />
           </label>
-          <label className="text-sm">
-            Split Type
-            <select className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" {...form.register("splitType")}>
-              <option value="PPL">Push / Pull / Legs</option>
-              <option value="UPPER_LOWER">Upper / Lower</option>
-              <option value="FULL_BODY">Full Body</option>
-              <option value="CUSTOM">Custom</option>
-            </select>
-          </label>
-          {splitWarning ? (
-            <p className="md:col-span-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-              {splitWarning}
-            </p>
-          ) : null}
         </div>
       </section>
 

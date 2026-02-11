@@ -13,11 +13,12 @@ import type {
 } from "./types";
 import { createId } from "./utils";
 import { prescribeSetsReps, getRestSeconds, resolveSetTargetReps } from "./prescription";
-import { deriveFatigueState } from "./volume";
-import { estimateWorkoutMinutes } from "./timeboxing";
+import { buildVolumeContext, deriveFatigueState, enforceVolumeCaps } from "./volume";
+import { estimateWorkoutMinutes, trimAccessoriesByPriority } from "./timeboxing";
 import { buildMuscleRecoveryMap, generateSraWarnings, type SraWarning } from "./sra";
 import { REP_RANGES_BY_GOAL, type PeriodizationModifiers } from "./rules";
 import { suggestSubstitutes } from "./substitution";
+import { buildProjectedWarmupSets, canResolveLoadForWarmupRamp } from "./warmup-ramp";
 
 export type TemplateExerciseInput = {
   exercise: Exercise;
@@ -37,8 +38,11 @@ export type GenerateFromTemplateOptions = {
   goals: Goals;
   history: WorkoutHistoryEntry[];
   exerciseLibrary: Exercise[];
+  sessionMinutes?: number;
   preferences?: UserPreferences;
   checkIn?: SessionCheckIn;
+  weekInBlock?: number;
+  mesocycleLength?: number;
   periodization?: PeriodizationModifiers;
   isStrict?: boolean;
 };
@@ -55,9 +59,27 @@ export function generateWorkoutFromTemplate(
   templateExercises: TemplateExerciseInput[],
   options: GenerateFromTemplateOptions
 ): TemplateWorkoutResult {
-  const { profile, goals, history, exerciseLibrary, preferences, checkIn, periodization } =
+  const {
+    profile,
+    goals,
+    history,
+    exerciseLibrary,
+    preferences,
+    checkIn,
+    weekInBlock,
+    mesocycleLength,
+    periodization,
+  } =
     options;
   const fatigueState = deriveFatigueState(history, checkIn);
+  const normalizedMesocycleLength = Math.max(1, mesocycleLength ?? 4);
+  const volumeContext =
+    weekInBlock !== undefined
+      ? buildVolumeContext(history, exerciseLibrary, {
+          week: weekInBlock,
+          length: normalizedMesocycleLength,
+        })
+      : buildVolumeContext(history, exerciseLibrary);
   const mainLiftSlots = resolveMainLiftSlots(templateExercises, goals);
 
   const workoutExercises = templateExercises.map((input, index) =>
@@ -88,9 +110,10 @@ export function generateWorkoutFromTemplate(
       const contra = we.exercise.contraindications as Record<string, unknown> | undefined;
       if (!contra) continue;
 
-      const hasPainConflict = Object.keys(checkIn.painFlags).some(
+      const conflictingBodyParts = Object.keys(checkIn.painFlags).filter(
         (bodyPart) => contra[bodyPart] && (checkIn.painFlags![bodyPart] ?? 0) >= 1
       );
+      const hasPainConflict = conflictingBodyParts.length > 0;
 
       if (hasPainConflict) {
         const subs = suggestSubstitutes(
@@ -103,7 +126,7 @@ export function generateWorkoutFromTemplate(
           substitutions.push({
             originalExerciseId: we.exercise.id,
             originalName: we.exercise.name,
-            reason: "Pain conflict detected",
+            reason: `${formatPainFlag(conflictingBodyParts[0])} pain flagged`,
             alternatives: subs.map((s) => ({
               id: s.id,
               name: s.name,
@@ -116,11 +139,41 @@ export function generateWorkoutFromTemplate(
   }
 
   const mainLifts = workoutExercises.filter((e) => e.isMainLift);
-  const accessories = applyAccessorySupersetMetadata(
-    workoutExercises.filter((e) => !e.isMainLift)
+  const projectedMainLifts = mainLifts.map((exerciseEntry) =>
+    canResolveLoadForWarmupRamp(exerciseEntry.exercise)
+      ? {
+          ...exerciseEntry,
+          warmupSets: buildProjectedWarmupSets(profile.trainingAge),
+        }
+      : exerciseEntry
   );
-  const allExercises = [...mainLifts, ...accessories];
-  const estimatedMinutes = estimateWorkoutMinutes(allExercises);
+
+  const budgetMinutes = options.sessionMinutes;
+  let finalAccessories = workoutExercises.filter((e) => !e.isMainLift);
+  let allExercises = [...projectedMainLifts, ...finalAccessories];
+  let estimatedMinutes = estimateWorkoutMinutes(allExercises);
+
+  if (budgetMinutes && budgetMinutes > 0 && estimatedMinutes > budgetMinutes) {
+    let trimmedAccessories = [...finalAccessories];
+    while (trimmedAccessories.length > 0) {
+      trimmedAccessories = trimAccessoriesByPriority(trimmedAccessories, mainLifts, 1);
+      allExercises = [...projectedMainLifts, ...trimmedAccessories];
+      estimatedMinutes = estimateWorkoutMinutes(allExercises);
+      if (estimatedMinutes <= budgetMinutes) {
+        break;
+      }
+    }
+    finalAccessories = trimmedAccessories;
+  }
+
+  finalAccessories = enforceVolumeCaps(
+    finalAccessories,
+    mainLifts,
+    volumeContext
+  );
+  const accessories = applyAccessorySupersetMetadata(finalAccessories);
+  allExercises = [...projectedMainLifts, ...accessories];
+  estimatedMinutes = estimateWorkoutMinutes(allExercises);
 
   // SRA warnings
   const recoveryMap = buildMuscleRecoveryMap(history, exerciseLibrary);
@@ -162,6 +215,7 @@ function buildTemplateExercise(
   periodization?: PeriodizationModifiers
 ): WorkoutExercise {
   const { exercise, orderIndex } = input;
+  const role = isMainLift ? "main" : "accessory";
   const exerciseRepRange = resolveExerciseRepRange(exercise);
   const supersetGroup = !isMainLift ? input.supersetGroup : undefined;
 
@@ -180,6 +234,7 @@ function buildTemplateExercise(
   const restSeconds = getRestSeconds(exercise, isMainLift, topSetReps);
   const sets = prescribedSets.map((set) => ({
     ...set,
+    role,
     restSeconds,
   }));
 
@@ -188,6 +243,7 @@ function buildTemplateExercise(
     exercise,
     orderIndex,
     isMainLift,
+    role,
     notes: isMainLift ? "Primary movement" : undefined,
     supersetGroup,
     sets,
@@ -282,4 +338,15 @@ function applyAccessorySupersetMetadata(accessories: WorkoutExercise[]): Workout
     const notes = exercise.notes ? `${exercise.notes}. ${label}` : label;
     return { ...exercise, notes };
   });
+}
+
+function formatPainFlag(bodyPart?: string): string {
+  if (!bodyPart) {
+    return "Pain";
+  }
+  return bodyPart
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part[0]?.toUpperCase() + part.slice(1))
+    .join(" ");
 }

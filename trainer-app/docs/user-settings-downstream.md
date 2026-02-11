@@ -1,206 +1,88 @@
-# User Settings Downstream Usage
+ï»¿# User Settings Downstream Usage
 
-This doc explains how user settings flow from the Settings UI into the engine, templates, and exercise library. It includes a real snapshot of your current settings (owner account) and concrete examples of how those values are applied downstream.
+Last updated: 2026-02-10
 
-## Data Sources (Settings UI + APIs)
+This document describes how user settings flow into runtime generation after the settings simplification implementation.
 
-Settings are captured in two forms on the Settings page and persisted through API routes:
-- Profile + goals + constraints + injury: `src/app/onboarding/ProfileForm.tsx`, saved via `src/app/api/profile/setup/route.ts`.
-- Preferences (favorites, avoid list, RPE targets, etc.): `src/components/UserPreferencesForm.tsx`, saved via `src/app/api/preferences/route.ts`.
+## Settings Capture Surface
 
-Data is stored in Prisma models: `Profile`, `Goals`, `Constraints`, `Injury`, `UserPreference` in `prisma/schema.prisma`.
+Settings are captured in two forms:
 
-## Runtime Assembly (DB -> Engine Context)
+- Profile, goals, constraints, injuries: `src/app/onboarding/ProfileForm.tsx` -> `src/app/api/profile/setup/route.ts`
+- Preferences: `src/components/UserPreferencesForm.tsx` -> `src/app/api/preferences/route.ts`
 
-When generating workouts or templates, the app loads all relevant records and maps them into the engine’s types:
-- Loader: `loadWorkoutContext` in `src/lib/api/workout-context.ts`.
-- Mapping helpers:
-  - `mapProfile` converts inches/lbs to cm/kg and normalizes training age.
-  - `mapGoals` and `mapConstraints` normalize enums and equipment.
-  - `mapPreferences` normalizes favorites/avoid lists, RPE targets, and optional conditioning.
+Active settings surface:
 
-These mapped objects are passed into the engine in:
-- `src/app/api/workouts/generate/route.ts` (on-demand generation).
-- `src/lib/api/template-session.ts` (template-based sessions).
+- Profile: `age`, `sex`, `heightIn`, `weightLb`, `trainingAge`
+- Goals and constraints: `primaryGoal`, `secondaryGoal`, `daysPerWeek`, `sessionMinutes`, `splitType`
+- Preferences: `favoriteExercises`, `avoidExercises`, `optionalConditioning`
+- Injuries: `injuryBodyPart`, `injurySeverity`, `injuryDescription`, `injuryActive`
 
-## Downstream Usage by Feature
+Removed from UI/API writes:
 
-### Workout Generation (Auto)
-- **Split selection** uses `constraints.splitType` and history to pick the next day (PPL history-based rotation). `src/lib/engine/engine.ts`.
-- **Exercise eligibility** filters by `constraints.availableEquipment` and preference filters. `src/lib/engine/filtering.ts`.
-- **Favorites vs avoid** lists bias selection toward favorites and remove avoids. `src/lib/engine/filtering.ts`.
-- **Optional conditioning** uses `preferences.optionalConditioning` to add core/conditioning finishers. `src/lib/engine/filtering.ts`.
-- **Session time budget** uses `constraints.sessionMinutes` to trim accessories. `src/lib/engine/engine.ts` and `src/lib/engine/apply-loads.ts`.
-- **Set/rep prescriptions** use `goals.primary` and `profile.trainingAge`. `src/lib/engine/prescription.ts`.
-- **RPE targets** override defaults based on `preferences.rpeTargets`. `src/lib/engine/prescription.ts`.
-- **Load estimation** uses `profile.weightKg` + training age + baselines/history. `src/lib/engine/apply-loads.ts`.
+- `rpeTargets`
+- `progressionStyle`
+- `benchFrequency`, `squatFrequency`, `deadliftFrequency`
+- `proteinTarget`
+- `equipmentNotes`
 
-### Template Sessions
-Template-based sessions re-use the same mapped profile/goals/constraints/preferences, then apply loads and timeboxing:
-- `src/lib/api/template-session.ts` uses `applyLoads(...)` with `mappedConstraints.sessionMinutes` and `mappedProfile`.
+## Runtime Assembly (DB -> Engine)
 
-### Exercise Library UI
-Preferences are also used to mark favorite/avoid status in the exercise list and detail views:
-- `loadExerciseLibrary` and `loadExerciseDetail` in `src/lib/api/exercise-library.ts`.
-- Preference state resolution in `src/lib/api/exercise-preferences.ts`.
+Workout generation and template session generation load and map context through `src/lib/api/workout-context.ts`:
 
-### Weekly Program / Template Selection
-`constraints.daysPerWeek` and `profile.trainingAge` are used to limit how many templates appear in the weekly program analysis and to compute set counts:
-- `src/lib/api/weekly-program.ts`.
+- `mapProfile`
+- `mapGoals`
+- `mapConstraints`
+- `mapPreferences`
+- `mapHistory`
+- `mapCheckIn`
 
-## Settings Snapshot (Owner)
+Legacy preference columns still present in DB are intentionally ignored by mapping and engine logic.
 
-Snapshot from the owner account (`aaron8819@gmail.com`) as of 2026-02-10, with preferences last updated at `2026-02-10T15:17:37.186Z`:
+## Downstream Usage
 
-```json
-{
-  "profile": {
-    "age": 31,
-    "sex": "Male",
-    "heightIn": 72,
-    "weightLb": 195,
-    "trainingAge": "INTERMEDIATE"
-  },
-  "goals": {
-    "primaryGoal": "HYPERTROPHY",
-    "secondaryGoal": "CONDITIONING",
-    "proteinTarget": 180
-  },
-  "constraints": {
-    "daysPerWeek": 3,
-    "sessionMinutes": 55,
-    "splitType": "PPL",
-    "equipmentNotes": "LA fitness style full gym, cables, machines, benches, DB, KB, BB, cardio etc.",
-    "availableEquipment": [
-      "BARBELL",
-      "DUMBBELL",
-      "MACHINE",
-      "CABLE",
-      "BODYWEIGHT",
-      "KETTLEBELL",
-      "BAND",
-      "CARDIO",
-      "SLED",
-      "BENCH",
-      "RACK",
-      "OTHER"
-    ]
-  },
-  "preferences": {
-    "favoriteExercises": [
-      "Barbell Bench Press",
-      "Barbell Back Squat",
-      "Barbell Deadlift",
-      "Incline Dumbbell Bench Press"
-    ],
-    "avoidExercises": ["Incline Dumbbell Curl"],
-    "rpeTargets": [
-      { "min": 5, "max": 8, "targetRpe": 8 },
-      { "min": 8, "max": 12, "targetRpe": 7.5 },
-      { "min": 12, "max": 20, "targetRpe": 7.5 }
-    ],
-    "progressionStyle": "double_progression",
-    "optionalConditioning": true,
-    "benchFrequency": 2,
-    "squatFrequency": 1,
-    "deadliftFrequency": 1
-  },
-  "injuries": []
-}
-```
+### Engine Prescription
 
-### Engine-Mapped Snapshot (Derived)
-Based on `mapProfile`/`mapConstraints`/`mapPreferences` in `src/lib/api/workout-context.ts`:
+- Set and rep prescriptions are driven by `trainingAge`, `primaryGoal`, fatigue/readiness, and periodization.
+- Target RPE is engine-computed only in `src/lib/engine/prescription.ts`.
+- Stored `rpeTargets` are ignored.
 
-```json
-{
-  "profile": {
-    "heightCm": 183,
-    "weightKg": 88.5,
-    "trainingAge": "intermediate",
-    "injuries": []
-  },
-  "goals": {
-    "primary": "hypertrophy",
-    "secondary": "conditioning"
-  },
-  "constraints": {
-    "daysPerWeek": 3,
-    "sessionMinutes": 55,
-    "splitType": "ppl",
-    "availableEquipment": [
-      "barbell",
-      "dumbbell",
-      "machine",
-      "cable",
-      "bodyweight",
-      "kettlebell",
-      "band",
-      "cardio",
-      "sled",
-      "bench",
-      "rack",
-      "other"
-    ]
-  },
-  "preferences": {
-    "favoriteExercises": [
-      "Barbell Bench Press",
-      "Barbell Back Squat",
-      "Barbell Deadlift",
-      "Incline Dumbbell Bench Press"
-    ],
-    "avoidExercises": ["Incline Dumbbell Curl"],
-    "rpeTargets": [
-      { "min": 5, "max": 8, "targetRpe": 8 },
-      { "min": 8, "max": 12, "targetRpe": 7.5 },
-      { "min": 12, "max": 20, "targetRpe": 7.5 }
-    ],
-    "optionalConditioning": true,
-    "progressionStyle": "double_progression",
-    "benchFrequency": 2,
-    "squatFrequency": 1,
-    "deadliftFrequency": 1
-  }
-}
-```
+### Engine Progression
 
-## What This Means in Practice (With Your Settings)
+`computeNextLoad` in `src/lib/engine/progression.ts` selects progression model by training age:
 
-### Profile
-- `heightIn: 72` and `weightLb: 195` are converted to `heightCm: 183` and `weightKg: 88.5` in `mapProfile`. These values feed load estimation in `applyLoads` (if no baselines/history exist).
-- `trainingAge: INTERMEDIATE` affects set counts (main lift base 4 sets, accessories 3 sets) and base RPE for hypertrophy (8.0 before RPE overrides). See `src/lib/engine/prescription.ts` and `src/lib/engine/rules.ts`.
+- Beginner: linear increments by region (`+2.5-5` lbs upper, `+5-10` lbs lower), with stall fallback to double progression.
+- Intermediate: double progression, with regression-triggered deload reduction.
+- Advanced: week-based periodized loading and deload handling.
 
-### Goals
-- `primaryGoal: HYPERTROPHY` drives rep ranges (main 6-10, accessory 10-15) and base RPE selection. `src/lib/engine/rules.ts`.
-- `secondaryGoal: CONDITIONING` is mapped and stored, but is not currently referenced by engine selection logic.
-- `proteinTarget: 180` is stored in `Goals` but is not currently used downstream.
+### Exercise Selection and Secondary Goal
 
-### Constraints
-- `splitType: PPL` triggers the PPL logic that picks the least-recently-trained split day. `src/lib/engine/engine.ts`.
-- `daysPerWeek: 3` is used in weekly program/template selection limits. `src/lib/api/weekly-program.ts`.
-- `sessionMinutes: 55` enforces timeboxing that trims accessory volume when needed. `src/lib/engine/engine.ts` and `src/lib/engine/apply-loads.ts`.
-- `availableEquipment` includes a full gym, so the equipment filter is effectively permissive for most exercises. `src/lib/engine/filtering.ts`.
-- `equipmentNotes` is stored but not currently used downstream.
+`selectExercises` in `src/lib/engine/filtering.ts` consumes:
 
-### Preferences
-- **Favorites**: The engine sorts candidates to prefer your favorites when selecting main/accessory lifts. Favorites also surface in the exercise library UI (`isFavorite`).
-- **Avoid list**: `Incline Dumbbell Curl` is removed from candidate pools and marked as avoided in the library (`isAvoided`).
-- **RPE targets** override defaults:
-  - Main lifts (hypertrophy, 6 reps target) fall into the 5-8 range ? target RPE becomes **8**.
-  - Accessory sets (10 reps target) fall into 8-12 ? target RPE becomes **7.5**.
-- **Optional conditioning** is `true`, so the engine will add core/conditioning extras on PPL days when available (core always, conditioning on leg days). `src/lib/engine/filtering.ts`.
-- **Progression style + big-three frequency** are stored but not currently consumed by the engine.
+- `availableEquipment`
+- `favoriteExercises` / `avoidExercises`
+- `optionalConditioning`
+- `secondaryGoal`
 
-### Injuries
-- No active injuries, so the joint stress filter (severity >= 3) does not apply. If injuries are present, high-stress exercises are removed from the pool. `src/lib/engine/filtering.ts`.
+Secondary-goal behavior:
 
-## Fields Captured But Not Yet Used Downstream
+- `conditioning`: conditioning-tagged movements are biased up; carry variants are injected into the conditioning pool when equipment allows.
+- `strength`: main-lift selection is biased toward compound `isMainLiftEligible` exercises.
 
-These settings are saved but not referenced by the current generation logic:
-- `proteinTarget` (Goals)
-- `equipmentNotes` (Constraints)
-- `secondaryGoal` (Goals)
-- `progressionStyle`, `benchFrequency`, `squatFrequency`, `deadliftFrequency` (Preferences)
+### Split Warning (UI)
 
-If you want any of these to influence generation (e.g., frequency-based push/pull/legs weighting), we can wire that into `selectExercises` or template assignment logic.
+`getSplitMismatchWarning` in `src/lib/settings/split-recommendation.ts` derives a non-blocking warning from `daysPerWeek` and `splitType`.
+
+- Example: `PPL with 3 days/week trains each muscle once per week. Consider Full Body or Upper/Lower for better weekly frequency.`
+
+The warning is rendered next to split selection in `src/app/onboarding/ProfileForm.tsx` (used by onboarding and settings page).
+
+## Persistence Strategy
+
+No destructive schema change was applied in this pass.
+
+- Deprecated columns remain in `prisma/schema.prisma`.
+- Write paths stop populating deprecated fields.
+- Read paths no longer map deprecated programming-control fields into engine behavior.
+
+This preserves backward compatibility while moving programming ownership into engine rules.

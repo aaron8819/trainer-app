@@ -6,6 +6,15 @@
 ## Goal
 Simplify user settings to capture only hard constraints and identity while moving programming decisions into the engine.
 
+## Implementation Status (2026-02-10)
+
+- Phase 1: Completed
+- Phase 2: Completed
+- Phase 3: Completed
+- Phase 4: Completed for soft-deprecation (columns retained, no writes, legacy reads ignored)
+- Phase 5: Completed (`npm run test`, `npm run lint`)
+- Phase 6: Completed
+
 ## Scope
 - Remove unused or conflicting settings from UI, validation, and APIs.
 - Update engine logic to own RPE assignment and progression model selection.

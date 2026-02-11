@@ -5,7 +5,12 @@ export type PrimaryGoal =
   | "fat_loss"
   | "athleticism"
   | "general_health";
-export type SecondaryGoal = "posture" | "conditioning" | "injury_prevention" | "none";
+export type SecondaryGoal =
+  | "posture"
+  | "conditioning"
+  | "injury_prevention"
+  | "strength"
+  | "none";
 export type SplitType = "ppl" | "upper_lower" | "full_body" | "custom";
 export type SplitDay = "push" | "pull" | "legs" | "upper" | "lower" | "full_body";
 export type MovementPatternV2 =
@@ -89,23 +94,12 @@ export type Constraints = {
   availableEquipment: EquipmentType[];
 };
 
-export type RpeTargetRange = {
-  min: number;
-  max: number;
-  targetRpe: number;
-};
-
 export type UserPreferences = {
   favoriteExercises?: string[];
   avoidExercises?: string[];
   favoriteExerciseIds?: string[];
   avoidExerciseIds?: string[];
-  rpeTargets?: RpeTargetRange[];
-  progressionStyle?: string;
   optionalConditioning?: boolean;
-  benchFrequency?: number;
-  squatFrequency?: number;
-  deadliftFrequency?: number;
 };
 
 export type Exercise = {

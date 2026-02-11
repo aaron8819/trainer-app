@@ -20,20 +20,6 @@ export default async function SettingsPage() {
       ])
     : [null, null, null, null, null, []];
 
-  type RpeTarget = { min: number; max: number; targetRpe?: number };
-  const rpeTargets = Array.isArray(preferences?.rpeTargets) ? preferences.rpeTargets : [];
-  const getRpeTarget = (min: number, fallback: number) => {
-    const match = rpeTargets.find((entry): entry is RpeTarget => {
-      if (!entry || typeof entry !== "object") {
-        return false;
-      }
-      const candidate = entry as { min?: unknown; max?: unknown };
-      return typeof candidate.min === "number" && typeof candidate.max === "number" && candidate.min === min;
-    });
-    const value = match?.targetRpe;
-    return typeof value === "number" ? value : fallback;
-  };
-
   const initialValues = user
     ? {
         userId: user.id,
@@ -48,8 +34,6 @@ export default async function SettingsPage() {
         daysPerWeek: constraints?.daysPerWeek ?? 4,
         sessionMinutes: constraints?.sessionMinutes ?? 55,
         splitType: constraints?.splitType ?? "UPPER_LOWER",
-        equipmentNotes: constraints?.equipmentNotes ?? undefined,
-        proteinTarget: goals?.proteinTarget ?? undefined,
         injuryBodyPart: injury?.bodyPart ?? undefined,
         injurySeverity: injury?.severity ?? undefined,
         injuryDescription: injury?.description ?? undefined,
@@ -62,17 +46,7 @@ export default async function SettingsPage() {
         userId: user.id,
         favoriteExercises: preferences?.favoriteExercises ?? [],
         avoidExercises: preferences?.avoidExercises ?? [],
-        rpe5to8:
-          getRpeTarget(5, 8.5),
-        rpe8to12:
-          getRpeTarget(8, 7.75),
-        rpe12to20:
-          getRpeTarget(12, 7.5),
-        progressionStyle: preferences?.progressionStyle ?? "double_progression",
         optionalConditioning: preferences?.optionalConditioning ?? true,
-        benchFrequency: preferences?.benchFrequency ?? 2,
-        squatFrequency: preferences?.squatFrequency ?? 1,
-        deadliftFrequency: preferences?.deadliftFrequency ?? 1,
       }
     : undefined;
 

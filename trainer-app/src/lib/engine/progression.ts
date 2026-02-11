@@ -2,13 +2,19 @@ import { DELOAD_THRESHOLDS, PLATEAU_CRITERIA } from "./rules";
 import type { TrainingAge, WorkoutHistoryEntry } from "./types";
 import { roundLoad } from "./utils";
 
+export type ProgressionSet = { reps: number; rpe?: number; load?: number };
+
 export type ComputeNextLoadOptions = {
   trainingAge?: TrainingAge;
   isUpperBody?: boolean;
+  weekInBlock?: number;
+  backOffMultiplier?: number;
+  isDeloadWeek?: boolean;
+  recentSessions?: ProgressionSet[][];
 };
 
 export function computeNextLoad(
-  lastSets: { reps: number; rpe?: number; load?: number }[],
+  lastSets: ProgressionSet[],
   repRange: [number, number],
   targetRpe: number,
   maxLoadIncreasePct = 0.07,
@@ -19,6 +25,8 @@ export function computeNextLoad(
 
   const trainingAge = options?.trainingAge ?? "intermediate";
   const isUpperBody = options?.isUpperBody ?? true;
+  const recentSessions = options?.recentSessions ?? [];
+  const sessionHistory = [lastSets, ...recentSessions];
 
   const clampPct = (pct: number) => {
     const abs = Math.min(Math.abs(pct), maxLoadIncreasePct);
@@ -27,27 +35,71 @@ export function computeNextLoad(
 
   const applyChange = (pct: number) => roundLoad(lastLoad * (1 + clampPct(pct)));
 
-  // Beginner: linear progression — always increase
   if (trainingAge === "beginner") {
-    const increment = isUpperBody
-      ? Math.max(2.5, lastLoad * 0.02)
-      : Math.max(5, lastLoad * 0.03);
+    const shouldSwitchToDouble = hasBeginnerStall(sessionHistory);
+    if (shouldSwitchToDouble) {
+      return computeDoubleProgressionLoad(lastLoad, lastSets, repRange, targetRpe, applyChange);
+    }
+    const increment = resolveLinearIncrement(lastLoad, isUpperBody);
     return roundLoad(lastLoad + increment);
   }
 
-  // RPE-based adjustments (intermediate + advanced)
-  const earlySets = lastSets.slice(0, 2);
-  const rpeHighEarly = earlySets.some((set) => set.rpe !== undefined && set.rpe >= targetRpe + 1);
-  if (rpeHighEarly) {
-    return applyChange(-0.04);
+  if (trainingAge === "advanced") {
+    if (options?.isDeloadWeek) {
+      const deloadMultiplier = options.backOffMultiplier ?? 0.75;
+      return roundLoad(lastLoad * deloadMultiplier);
+    }
+    return computePeriodizedLoad(lastLoad, options?.weekInBlock, applyChange);
   }
 
-  const rpeLowAll = lastSets.every((set) => set.rpe !== undefined && set.rpe <= targetRpe - 2);
-  if (rpeLowAll) {
-    return applyChange(0.04);
+  const shouldDeloadFromRegression = hasConsecutiveRepRegression(sessionHistory);
+  if (shouldDeloadFromRegression) {
+    return applyChange(-0.06);
   }
 
-  // Double progression: hit top of rep range at target RIR → increase
+  return computeDoubleProgressionLoad(lastLoad, lastSets, repRange, targetRpe, applyChange);
+}
+
+function resolveLinearIncrement(lastLoad: number, isUpperBody: boolean): number {
+  if (isUpperBody) {
+    return lastLoad >= 185 ? 5 : 2.5;
+  }
+  return lastLoad >= 275 ? 10 : 5;
+}
+
+function hasBeginnerStall(sessionHistory: ProgressionSet[][]): boolean {
+  if (sessionHistory.length < 3) {
+    return false;
+  }
+  const recentLoads = sessionHistory.slice(0, 3).map(sessionLoad);
+  if (recentLoads.some((load) => load === undefined)) {
+    return false;
+  }
+  const allSameLoad =
+    recentLoads[0] === recentLoads[1] &&
+    recentLoads[1] === recentLoads[2];
+  if (!allSameLoad) {
+    return false;
+  }
+  const totals = sessionHistory.slice(0, 3).map(totalReps);
+  return totals[0] <= totals[1] && totals[1] <= totals[2];
+}
+
+function hasConsecutiveRepRegression(sessionHistory: ProgressionSet[][]): boolean {
+  if (sessionHistory.length < 3) {
+    return false;
+  }
+  const totals = sessionHistory.slice(0, 3).map(totalReps);
+  return totals[0] < totals[1] && totals[1] < totals[2];
+}
+
+function computeDoubleProgressionLoad(
+  lastLoad: number,
+  lastSets: ProgressionSet[],
+  repRange: [number, number],
+  targetRpe: number,
+  applyChange: (pct: number) => number
+) {
   const allAtTop = lastSets.every((set) => set.reps >= repRange[1]);
   const rpeOk = lastSets.every((set) => set.rpe === undefined || set.rpe <= targetRpe);
 
@@ -55,12 +107,30 @@ export function computeNextLoad(
     return applyChange(0.025);
   }
 
-  const anyLow = lastSets.some((set) => set.reps < repRange[0]);
-  if (anyLow) {
-    return applyChange(-0.04);
-  }
-
   return roundLoad(lastLoad);
+}
+
+function computePeriodizedLoad(
+  lastLoad: number,
+  weekInBlock: number | undefined,
+  applyChange: (pct: number) => number
+) {
+  const weekIndex = ((weekInBlock ?? 0) % 4 + 4) % 4;
+  const weeklyPct: Record<number, number> = {
+    0: -0.02,
+    1: 0.0,
+    2: 0.02,
+    3: 0.03,
+  };
+  return applyChange(weeklyPct[weekIndex] ?? 0);
+}
+
+function totalReps(sets: ProgressionSet[]): number {
+  return sets.reduce((sum, set) => sum + set.reps, 0);
+}
+
+function sessionLoad(sets: ProgressionSet[]): number | undefined {
+  return sets.find((set) => set.load !== undefined)?.load;
 }
 
 export function shouldDeload(history: WorkoutHistoryEntry[]): boolean {

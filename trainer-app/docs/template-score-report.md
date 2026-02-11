@@ -11,6 +11,11 @@ There are now two scoring layers:
 1. Template-level scorer (single session quality)
 2. Weekly program scorer (rotation-level coverage/balance/diversity/volume)
 
+Settings simplification note (2026-02-10):
+
+- Scoring does not consume deprecated user settings (`rpeTargets`, `progressionStyle`, big-three frequency fields, `proteinTarget`, `equipmentNotes`).
+- Scoring inputs remain template content, profile/goals/constraints, and exercise metadata.
+
 ## Source of Truth
 
 - Template scorer:

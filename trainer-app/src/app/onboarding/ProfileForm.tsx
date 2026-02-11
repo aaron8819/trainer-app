@@ -1,7 +1,8 @@
 ﻿"use client";
 
 import { useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
+import { getSplitMismatchWarning } from "@/lib/settings/split-recommendation";
 
 type ProfileFormValues = {
   userId?: string;
@@ -16,8 +17,6 @@ type ProfileFormValues = {
   daysPerWeek: number;
   sessionMinutes: number;
   splitType: "PPL" | "UPPER_LOWER" | "FULL_BODY" | "CUSTOM";
-  equipmentNotes?: string;
-  proteinTarget?: number;
   injuryBodyPart?: string;
   injurySeverity?: number;
   injuryDescription?: string;
@@ -45,6 +44,9 @@ export default function ProfileForm({
   const form = useForm<ProfileFormValues>({
     defaultValues: { ...defaultValues, ...initialValues },
   });
+  const daysPerWeek = useWatch({ control: form.control, name: "daysPerWeek" });
+  const splitType = useWatch({ control: form.control, name: "splitType" });
+  const splitWarning = getSplitMismatchWarning(daysPerWeek, splitType);
 
   const onSubmit = form.handleSubmit(async (values) => {
     setStatus(null);
@@ -177,14 +179,6 @@ export default function ProfileForm({
               <option value="NONE">None</option>
             </select>
           </label>
-          <label className="text-sm">
-            Protein Target (g/day)
-            <input
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
-              type="number"
-              {...form.register("proteinTarget", { valueAsNumber: true })}
-            />
-          </label>
         </div>
       </section>
 
@@ -216,15 +210,11 @@ export default function ProfileForm({
               <option value="CUSTOM">Custom</option>
             </select>
           </label>
-          <label className="text-sm md:col-span-2">
-            Equipment notes
-            <textarea
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
-              rows={3}
-              placeholder="LA Fitness style full gym, cables, machines"
-              {...form.register("equipmentNotes")}
-            />
-          </label>
+          {splitWarning ? (
+            <p className="md:col-span-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              {splitWarning}
+            </p>
+          ) : null}
         </div>
       </section>
 

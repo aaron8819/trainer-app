@@ -7,7 +7,7 @@ describe("getPeriodizationModifiers", () => {
     expect(getPeriodizationModifiers(0, "hypertrophy")).toEqual({
       rpeOffset: -1.5,
       setMultiplier: 1,
-      backOffMultiplier: 0.85,
+      backOffMultiplier: 0.88,
       isDeload: false,
     });
 
@@ -15,7 +15,7 @@ describe("getPeriodizationModifiers", () => {
     expect(getPeriodizationModifiers(1, "hypertrophy")).toEqual({
       rpeOffset: -0.5,
       setMultiplier: 1.15,
-      backOffMultiplier: 0.85,
+      backOffMultiplier: 0.88,
       isDeload: false,
     });
 
@@ -23,7 +23,7 @@ describe("getPeriodizationModifiers", () => {
     expect(getPeriodizationModifiers(2, "hypertrophy")).toEqual({
       rpeOffset: 1.0,
       setMultiplier: 1.3,
-      backOffMultiplier: 0.85,
+      backOffMultiplier: 0.88,
       isDeload: false,
     });
 

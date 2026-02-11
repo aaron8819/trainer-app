@@ -33,6 +33,7 @@ export type ApplyLoadsOptions = {
   profile?: Pick<UserProfile, "weightKg" | "trainingAge">;
   sessionMinutes?: number;
   periodization?: PeriodizationModifiers;
+  weekInBlock?: number;
 };
 
 type LoadEquipment =
@@ -116,7 +117,11 @@ export function applyLoads(workout: WorkoutPlan, options: ApplyLoadsOptions): Wo
         options.exerciseById,
         options.profile?.weightKg,
         repRange,
-        targetRpe
+        targetRpe,
+        trainingAge,
+        isUpperBodyExercise(exercise),
+        periodization,
+        options.weekInBlock
       );
 
     if (load === undefined) {
@@ -197,12 +202,16 @@ export function applyLoads(workout: WorkoutPlan, options: ApplyLoadsOptions): Wo
 
 function buildHistoryIndex(history: WorkoutHistoryEntry[]) {
   const sorted = sortHistoryByDateDesc(filterCompletedHistory(history));
-  const index = new Map<string, WorkoutSetHistory>();
+  const index = new Map<string, WorkoutSetHistory[]>();
   for (const entry of sorted) {
     for (const exercise of entry.exercises) {
-      if (!index.has(exercise.exerciseId) && exercise.sets.length > 0) {
-        index.set(exercise.exerciseId, exercise.sets);
+      if (exercise.sets.length === 0) {
+        continue;
       }
+      if (!index.has(exercise.exerciseId)) {
+        index.set(exercise.exerciseId, []);
+      }
+      index.get(exercise.exerciseId)?.push(exercise.sets);
     }
   }
   return index;
@@ -255,16 +264,28 @@ function resolveBaselineLoad(baseline: BaselineInput): number | undefined {
 
 function resolveLoadForExercise(
   exercise: Exercise,
-  historySets: WorkoutSetHistory | undefined,
+  historySets: WorkoutSetHistory[] | undefined,
   baselineLoad: number | undefined,
   baselineIndex: Map<string, number>,
   exerciseById: Record<string, Exercise>,
   weightKg: number | undefined,
   repRange: [number, number],
-  targetRpe: number
+  targetRpe: number,
+  trainingAge: UserProfile["trainingAge"],
+  isUpperBody: boolean,
+  periodization: PeriodizationModifiers | undefined,
+  weekInBlock: number | undefined
 ): number | undefined {
-  if (historySets && historySets.length > 0) {
-    const computed = computeNextLoad(historySets, repRange, targetRpe);
+  const latestSets = historySets?.[0];
+  if (latestSets && latestSets.length > 0) {
+    const computed = computeNextLoad(latestSets, repRange, targetRpe, undefined, {
+      trainingAge,
+      isUpperBody,
+      weekInBlock,
+      backOffMultiplier: periodization?.backOffMultiplier,
+      isDeloadWeek: periodization?.isDeload,
+      recentSessions: historySets?.slice(1),
+    });
     if (computed !== undefined) {
       return computed;
     }
@@ -380,6 +401,13 @@ function isBodyweightOnly(exercise: Exercise) {
     return false;
   }
   return exercise.equipment.every((item) => BODYWEIGHT_ONLY_EQUIPMENT.has(item));
+}
+
+function isUpperBodyExercise(exercise: Exercise) {
+  const lowerBodyPatterns: MovementPatternV2[] = ["squat", "hinge", "lunge"];
+  return !(exercise.movementPatterns ?? []).some((pattern) =>
+    lowerBodyPatterns.includes(pattern)
+  );
 }
 
 function isCompound(exercise: Exercise) {

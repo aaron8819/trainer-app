@@ -81,6 +81,7 @@ export function generateWorkout(
     targetPatterns,
     fatigueState,
     profile.trainingAge,
+    goals.secondary,
     profile.injuries,
     options?.preferences,
     history,

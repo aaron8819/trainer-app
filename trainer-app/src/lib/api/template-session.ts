@@ -93,7 +93,8 @@ export async function generateSessionFromTemplate(
     mappedProfile,
     mappedGoals.primary,
     mappedConstraints.sessionMinutes,
-    periodization
+    periodization,
+    weekInBlock
   );
 
   return { workout: withLoads, templateId, sraWarnings };

@@ -195,11 +195,11 @@ export function resolveSetCount(
 }
 
 function resolveTargetRpe(
-  targetReps: number,
+  _targetReps: number,
   trainingAge: UserProfile["trainingAge"],
   goals: Goals,
   fatigueState: FatigueState,
-  preferences?: UserPreferences,
+  _preferences?: UserPreferences,
   periodization?: PeriodizationModifiers,
   isIsolationAccessory = false
 ) {
@@ -208,12 +208,6 @@ function resolveTargetRpe(
     (fatigueState.readinessScore <= 2 ? 0.5 : 0);
   if (goals.primary === "hypertrophy" && isIsolationAccessory) {
     targetRpe += 0.5;
-  }
-  const preferredRpe = preferences?.rpeTargets?.find(
-    (range) => targetReps >= range.min && targetReps <= range.max
-  );
-  if (preferredRpe) {
-    targetRpe = preferredRpe.targetRpe;
   }
   if (periodization?.rpeOffset) {
     targetRpe += periodization.rpeOffset;

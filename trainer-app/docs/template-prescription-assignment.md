@@ -115,9 +115,8 @@ Adjustments are applied in this order:
 
 1. Readiness penalty: `-0.5` if readiness `<=2`
 2. Hypertrophy isolation accessory bump: `+0.5`
-3. Preference override from `preferences.rpeTargets` (matched by target reps)
-4. Periodization `rpeOffset`
-5. Deload cap: `targetRpe = min(targetRpe, 6.0)` when `isDeload`
+3. Periodization `rpeOffset`
+4. Deload cap: `targetRpe = min(targetRpe, 6.0)` when `isDeload`
 
 ## 6) Rest Assignment
 
@@ -155,6 +154,12 @@ Main lifts:
 Accessories:
 
 - Uniform load across working sets unless pre-filled
+
+Progression model selection is engine-owned from `trainingAge`:
+
+- Beginner: linear progression with fixed jump ranges and stall fallback to double progression.
+- Intermediate: double progression (hold until rep ceiling at target RPE).
+- Advanced: periodized top-set adjustments with explicit deload weeks.
 
 ## 8) Timeboxing Interaction
 

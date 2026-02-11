@@ -65,12 +65,7 @@ export async function POST(request: Request) {
     avoidExercises,
     favoriteExerciseIds,
     avoidExerciseIds,
-    rpeTargets: parsed.data.rpeTargets ?? [],
-    progressionStyle: parsed.data.progressionStyle ?? null,
     optionalConditioning: parsed.data.optionalConditioning ?? true,
-    benchFrequency: parsed.data.benchFrequency ?? null,
-    squatFrequency: parsed.data.squatFrequency ?? null,
-    deadliftFrequency: parsed.data.deadliftFrequency ?? null,
   };
 
   const record = await prisma.userPreference.upsert({

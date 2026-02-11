@@ -223,7 +223,11 @@ describe("engine core", () => {
     expect(workout.mainLifts[0].exercise.name).toBe("Push Main Favorite");
   });
 
-  it("uses RPE targets from preferences when rep range matches", () => {
+  it("ignores legacy RPE target overrides and keeps engine-computed RPE", () => {
+    const legacyPreferences = {
+      rpeTargets: [{ min: 6, max: 10, targetRpe: 8.25 }],
+    } as unknown as Record<string, unknown>;
+
     const workout = generateWorkout(
       exampleUser,
       baseGoals,
@@ -232,15 +236,11 @@ describe("engine core", () => {
       exampleExerciseLibrary,
       undefined,
       {
-        preferences: {
-          rpeTargets: [
-            { min: 6, max: 10, targetRpe: 8.25 },
-          ],
-        },
+        preferences: legacyPreferences as never,
       }
     );
 
-    expect(workout.mainLifts[0].sets[0].targetRpe).toBe(8.25);
+    expect(workout.mainLifts[0].sets[0].targetRpe).toBe(8);
   });
 
   it("uses completed advancing workouts to determine split day", () => {
@@ -873,5 +873,130 @@ describe("engine core", () => {
 
     const mainNames = workout.mainLifts.map((exercise) => exercise.exercise.name);
     expect(mainNames).not.toContain("Stalled Bench");
+  });
+
+  it("adds a carry variant when conditioning is selected and equipment allows", () => {
+    const library: Exercise[] = [
+      {
+        id: "push-main",
+        name: "Barbell Bench Press",
+        movementPatterns: ["horizontal_push"],
+        splitTags: ["push"],
+        jointStress: "medium",
+        isMainLiftEligible: true,
+        equipment: ["barbell"],
+      },
+      {
+        id: "push-main-2",
+        name: "Overhead Press",
+        movementPatterns: ["vertical_push"],
+        splitTags: ["push"],
+        jointStress: "medium",
+        isMainLiftEligible: true,
+        equipment: ["barbell"],
+      },
+      {
+        id: "push-accessory",
+        name: "Cable Fly",
+        movementPatterns: ["horizontal_push"],
+        splitTags: ["push"],
+        jointStress: "low",
+        equipment: ["cable"],
+      },
+      {
+        id: "condition-bike",
+        name: "Bike Sprint Intervals",
+        movementPatterns: ["lunge"],
+        splitTags: ["conditioning"],
+        jointStress: "low",
+        equipment: ["machine"],
+      },
+      {
+        id: "carry-suitcase",
+        name: "Suitcase Carry",
+        movementPatterns: ["carry"],
+        splitTags: ["legs"],
+        jointStress: "low",
+        equipment: ["dumbbell"],
+      },
+    ];
+
+    const workout = generateWorkout(
+      exampleUser,
+      { ...baseGoals, secondary: "conditioning" },
+      {
+        ...exampleConstraints,
+        splitType: "ppl",
+        daysPerWeek: 3,
+        availableEquipment: ["barbell", "cable", "dumbbell", "machine"],
+      },
+      [],
+      library,
+      undefined,
+      { preferences: { optionalConditioning: true } }
+    );
+
+    const warmupNames = workout.warmup.map((exercise) => exercise.exercise.name);
+    expect(warmupNames).toContain("Suitcase Carry");
+  });
+
+  it("biases main-lift selection toward compounds for a strength secondary goal", () => {
+    const library: Exercise[] = [
+      {
+        id: "push-main-noncompound",
+        name: "Machine Chest Press",
+        movementPatterns: ["horizontal_push"],
+        splitTags: ["push"],
+        jointStress: "medium",
+        isMainLiftEligible: true,
+        isCompound: false,
+        equipment: ["machine"],
+      },
+      {
+        id: "push-main-compound",
+        name: "Barbell Bench Press",
+        movementPatterns: ["horizontal_push"],
+        splitTags: ["push"],
+        jointStress: "medium",
+        isMainLiftEligible: true,
+        isCompound: true,
+        equipment: ["barbell"],
+      },
+      {
+        id: "pull-main",
+        name: "Barbell Row",
+        movementPatterns: ["horizontal_pull"],
+        splitTags: ["pull"],
+        jointStress: "medium",
+        isMainLiftEligible: true,
+        isCompound: true,
+        equipment: ["barbell"],
+      },
+      {
+        id: "legs-main",
+        name: "Back Squat",
+        movementPatterns: ["squat"],
+        splitTags: ["legs"],
+        jointStress: "medium",
+        isMainLiftEligible: true,
+        isCompound: true,
+        equipment: ["barbell"],
+      },
+    ];
+
+    const biasedWorkout = generateWorkout(
+      exampleUser,
+      { ...baseGoals, secondary: "strength" as const },
+      {
+        ...exampleConstraints,
+        splitType: "full_body",
+        daysPerWeek: 3,
+        availableEquipment: ["barbell", "machine"],
+      },
+      [],
+      library
+    );
+
+    expect(biasedWorkout.mainLifts[0].exercise.name).toBe("Barbell Bench Press");
   });
 });

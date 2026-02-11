@@ -77,7 +77,8 @@ export async function POST(request: Request) {
     mappedProfile,
     mappedGoals.primary,
     mappedConstraints.sessionMinutes,
-    periodization
+    periodization,
+    weekInBlock
   );
 
   return NextResponse.json({

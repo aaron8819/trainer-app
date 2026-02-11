@@ -280,32 +280,18 @@ export function mapPreferences(preferences: {
   avoidExercises: string[];
   favoriteExerciseIds?: string[];
   avoidExerciseIds?: string[];
-  rpeTargets: unknown;
-  progressionStyle: string | null;
   optionalConditioning: boolean;
-  benchFrequency: number | null;
-  squatFrequency: number | null;
-  deadliftFrequency: number | null;
 } | null): UserPreferences | undefined {
   if (!preferences) {
     return undefined;
   }
-
-  const parsedRpe = Array.isArray(preferences.rpeTargets)
-    ? (preferences.rpeTargets as UserPreferences["rpeTargets"])
-    : undefined;
 
   return {
     favoriteExercises: preferences.favoriteExercises ?? [],
     avoidExercises: preferences.avoidExercises ?? [],
     favoriteExerciseIds: preferences.favoriteExerciseIds ?? [],
     avoidExerciseIds: preferences.avoidExerciseIds ?? [],
-    rpeTargets: parsedRpe,
-    progressionStyle: preferences.progressionStyle ?? undefined,
     optionalConditioning: preferences.optionalConditioning ?? undefined,
-    benchFrequency: preferences.benchFrequency ?? undefined,
-    squatFrequency: preferences.squatFrequency ?? undefined,
-    deadliftFrequency: preferences.deadliftFrequency ?? undefined,
   };
 }
 
@@ -349,7 +335,8 @@ export function applyLoads(
   profile: UserProfile,
   primaryGoal: Goals["primary"],
   sessionMinutes?: number,
-  periodization?: PeriodizationModifiers
+  periodization?: PeriodizationModifiers,
+  weekInBlock?: number
 ): WorkoutPlan {
   const baselineInputs = mapBaselinesToExerciseIds(baselines);
   const exerciseById = Object.fromEntries(
@@ -364,6 +351,7 @@ export function applyLoads(
     profile,
     sessionMinutes,
     periodization,
+    weekInBlock,
   });
 }
 

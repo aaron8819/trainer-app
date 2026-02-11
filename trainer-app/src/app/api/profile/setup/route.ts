@@ -47,13 +47,11 @@ export async function POST(request: Request) {
       update: {
         primaryGoal: parsed.data.primaryGoal,
         secondaryGoal: parsed.data.secondaryGoal,
-        proteinTarget: parsed.data.proteinTarget ?? null,
       },
       create: {
         userId: user.id,
         primaryGoal: parsed.data.primaryGoal,
         secondaryGoal: parsed.data.secondaryGoal,
-        proteinTarget: parsed.data.proteinTarget ?? null,
       },
     });
 
@@ -63,14 +61,12 @@ export async function POST(request: Request) {
         daysPerWeek: parsed.data.daysPerWeek,
         sessionMinutes: parsed.data.sessionMinutes,
         splitType: parsed.data.splitType,
-        equipmentNotes: parsed.data.equipmentNotes ?? null,
       },
       create: {
         userId: user.id,
         daysPerWeek: parsed.data.daysPerWeek,
         sessionMinutes: parsed.data.sessionMinutes,
         splitType: parsed.data.splitType,
-        equipmentNotes: parsed.data.equipmentNotes ?? null,
       },
     });
 

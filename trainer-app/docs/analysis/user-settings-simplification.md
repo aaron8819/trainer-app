@@ -3,6 +3,17 @@
 **Date:** 2026-02-10
 **Principle:** Settings capture constraints and identity. The engine handles programming decisions.
 
+## Implementation Status (2026-02-10)
+
+Implemented in code:
+
+- Removed UI/API/validation support for `rpeTargets`, `progressionStyle`, `benchFrequency`, `squatFrequency`, `deadliftFrequency`, `proteinTarget`, and `equipmentNotes`.
+- Added split mismatch warning logic (`daysPerWeek` x `splitType`) and surfaced warning beside split selection.
+- Removed RPE preference override in prescription.
+- Progression is now selected by `trainingAge` in `computeNextLoad`.
+- Wired `secondaryGoal` bias into selection with conditioning and strength behaviors.
+- Added regression/unit tests for split warnings, progression models, secondary-goal behavior, and legacy-RPE-ignore behavior.
+
 ---
 
 ## Current State

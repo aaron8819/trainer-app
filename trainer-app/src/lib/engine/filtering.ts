@@ -2,6 +2,7 @@ import type {
   Constraints,
   Exercise,
   FatigueState,
+  Goals,
   MovementPattern,
   MovementPatternV2,
   SplitTag,
@@ -48,6 +49,7 @@ export function selectExercises(
   targetPatterns: MovementPattern[],
   fatigueState: FatigueState,
   trainingAge: UserProfile["trainingAge"],
+  secondaryGoal: Goals["secondary"] = "none",
   injuries: UserProfile["injuries"] = [],
   preferences?: UserPreferences,
   history: WorkoutHistoryEntry[] = [],
@@ -60,6 +62,7 @@ export function selectExercises(
   const favoriteSet = buildNameSet(preferences?.favoriteExercises);
   const avoidIdSet = new Set(preferences?.avoidExerciseIds ?? []);
   const favoriteIdSet = new Set(preferences?.favoriteExerciseIds ?? []);
+  const includeExtras = preferences?.optionalConditioning ?? true;
 
   for (const exercise of exerciseLibrary) {
     if (avoidIdSet.has(exercise.id)) {
@@ -94,12 +97,18 @@ export function selectExercises(
       ? painFiltered.filter((exercise) => exercise.jointStress !== "high")
       : painFiltered;
 
+  const preferenceSet = buildSecondaryGoalPreferenceSet(
+    fatigueFiltered,
+    favoriteSet,
+    secondaryGoal
+  );
+
   const pickFavoriteFirst = (items: Exercise[]) =>
     items.sort((a, b) => {
       const aFav =
-        favoriteSet.has(normalizeName(a.name)) || favoriteIdSet.has(a.id) ? 1 : 0;
+        preferenceSet.has(normalizeName(a.name)) || favoriteIdSet.has(a.id) ? 1 : 0;
       const bFav =
-        favoriteSet.has(normalizeName(b.name)) || favoriteIdSet.has(b.id) ? 1 : 0;
+        preferenceSet.has(normalizeName(b.name)) || favoriteIdSet.has(b.id) ? 1 : 0;
       return bFav - aFav;
     });
 
@@ -136,7 +145,7 @@ export function selectExercises(
     const dayMain = pickMainLiftsForPpl(
       dayTag,
       mainPool,
-      favoriteSet,
+      preferenceSet,
       fatigueState.painFlags,
       accessoryPool,
       history,
@@ -155,7 +164,7 @@ export function selectExercises(
       dayTag,
       accessoryPool,
       mainLifts,
-      favoriteSet,
+      favoriteSet: preferenceSet,
       maxAccessories,
       history,
       randomSeed,
@@ -191,7 +200,6 @@ export function selectExercises(
     );
     warmup.push(...pickFavoriteFirst(warmupPool).slice(0, 2));
 
-    const includeExtras = preferences?.optionalConditioning ?? true;
     if (includeExtras) {
       const corePool = sanitized.filter((exercise) =>
         exercise.splitTags?.some((tag) => CORE_TAGS.includes(tag))
@@ -201,9 +209,11 @@ export function selectExercises(
       }
     }
 
-    if (includeExtras && dayTag === "legs") {
-      const conditioningPool = sanitized.filter((exercise) =>
-        exercise.splitTags?.some((tag) => CONDITIONING_TAGS.includes(tag))
+    if (includeExtras && (dayTag === "legs" || secondaryGoal === "conditioning")) {
+      const conditioningPool = buildConditioningPool(
+        sanitized,
+        constraints,
+        secondaryGoal
       );
       if (conditioningPool[0]) {
         warmup.push(conditioningPool[0]);
@@ -219,9 +229,9 @@ export function selectExercises(
       const matches = patternFiltered.filter((exercise) => matchesV1Pattern(exercise, pattern));
       return matches.sort((a, b) => {
         const aFav =
-          favoriteSet.has(normalizeName(a.name)) || favoriteIdSet.has(a.id) ? 1 : 0;
+          preferenceSet.has(normalizeName(a.name)) || favoriteIdSet.has(a.id) ? 1 : 0;
         const bFav =
-          favoriteSet.has(normalizeName(b.name)) || favoriteIdSet.has(b.id) ? 1 : 0;
+          preferenceSet.has(normalizeName(b.name)) || favoriteIdSet.has(b.id) ? 1 : 0;
         return bFav - aFav;
       });
     };
@@ -240,9 +250,9 @@ export function selectExercises(
         .filter((exercise) => isMainLiftEligible(exercise))
         .sort((a, b) => {
           const aFav =
-            favoriteSet.has(normalizeName(a.name)) || favoriteIdSet.has(a.id) ? 1 : 0;
+            preferenceSet.has(normalizeName(a.name)) || favoriteIdSet.has(a.id) ? 1 : 0;
           const bFav =
-            favoriteSet.has(normalizeName(b.name)) || favoriteIdSet.has(b.id) ? 1 : 0;
+            preferenceSet.has(normalizeName(b.name)) || favoriteIdSet.has(b.id) ? 1 : 0;
           return bFav - aFav;
         });
       mainLifts.push(...candidates.slice(0, minMainLifts - mainLifts.length));
@@ -256,7 +266,7 @@ export function selectExercises(
       dayTag: nonPplDayTag,
       accessoryPool,
       mainLifts,
-      favoriteSet,
+      favoriteSet: preferenceSet,
       maxAccessories,
       history,
       randomSeed,
@@ -282,9 +292,80 @@ export function selectExercises(
         )
       ).slice(0, 2)
     );
+
+    if (includeExtras && secondaryGoal === "conditioning") {
+      const conditioningPool = buildConditioningPool(
+        sanitized,
+        constraints,
+        secondaryGoal
+      );
+      if (conditioningPool[0] && !warmup.includes(conditioningPool[0])) {
+        warmup.push(conditioningPool[0]);
+      }
+    }
   }
 
   return { mainLifts, accessories, warmup };
+}
+
+function buildSecondaryGoalPreferenceSet(
+  exercises: Exercise[],
+  favoriteSet: Set<string>,
+  secondaryGoal: Goals["secondary"]
+) {
+  const biasedSet = new Set(favoriteSet);
+
+  if (secondaryGoal === "conditioning") {
+    for (const exercise of exercises) {
+      if (exercise.splitTags?.some((tag) => CONDITIONING_TAGS.includes(tag))) {
+        biasedSet.add(normalizeName(exercise.name));
+      }
+    }
+  }
+
+  if (secondaryGoal === "strength") {
+    for (const exercise of exercises) {
+      if ((exercise.isMainLiftEligible ?? false) && (exercise.isCompound ?? false)) {
+        biasedSet.add(normalizeName(exercise.name));
+      }
+    }
+  }
+
+  return biasedSet;
+}
+
+function buildConditioningPool(
+  exercises: Exercise[],
+  constraints: Constraints,
+  secondaryGoal: Goals["secondary"]
+) {
+  const conditioningPool = exercises.filter((exercise) =>
+    exercise.splitTags?.some((tag) => CONDITIONING_TAGS.includes(tag))
+  );
+
+  if (secondaryGoal !== "conditioning") {
+    return conditioningPool;
+  }
+
+  const carryVariants = exercises.filter((exercise) => {
+    const hasCarryPattern = exercise.movementPatterns?.includes("carry");
+    const isCarryVariant = /farmer|suitcase/i.test(exercise.name);
+    const hasAvailableEquipment = exercise.equipment.some((item) =>
+      constraints.availableEquipment.includes(item)
+    );
+    return hasCarryPattern && isCarryVariant && hasAvailableEquipment;
+  });
+
+  if (carryVariants.length === 0) {
+    return conditioningPool;
+  }
+
+  const carry = carryVariants[0];
+  if (conditioningPool.some((exercise) => exercise.id === carry.id)) {
+    return conditioningPool;
+  }
+
+  return [carry, ...conditioningPool];
 }
 
 export function isMainLiftEligible(exercise: Exercise) {

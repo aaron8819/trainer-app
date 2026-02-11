@@ -97,8 +97,6 @@ export const profileSetupSchema = z.object({
   daysPerWeek: z.number().int().min(1).max(7),
   sessionMinutes: z.number().int().min(20).max(180),
   splitType: z.enum(["PPL", "UPPER_LOWER", "FULL_BODY", "CUSTOM"]),
-  equipmentNotes: optionalString(z.string().max(500)),
-  proteinTarget: optionalNumber(z.number().int().min(0).max(400)),
   injuryBodyPart: optionalString(z.string().max(80)),
   injurySeverity: optionalNumber(z.number().int().min(1).max(5)),
   injuryDescription: optionalString(z.string().max(200)),
@@ -166,18 +164,5 @@ export const preferencesSchema = z.object({
   avoidExercises: z.array(z.string()).optional(),
   favoriteExerciseIds: z.array(z.string()).optional(),
   avoidExerciseIds: z.array(z.string()).optional(),
-  rpeTargets: z
-    .array(
-      z.object({
-        min: z.number(),
-        max: z.number(),
-        targetRpe: z.number(),
-      })
-    )
-    .optional(),
-  progressionStyle: z.string().optional(),
   optionalConditioning: z.boolean().optional(),
-  benchFrequency: z.number().int().min(0).max(7).optional(),
-  squatFrequency: z.number().int().min(0).max(7).optional(),
-  deadliftFrequency: z.number().int().min(0).max(7).optional(),
 });

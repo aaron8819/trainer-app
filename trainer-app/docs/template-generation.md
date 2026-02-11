@@ -99,7 +99,6 @@ Adjustments:
 
 - Readiness `<=2`: `-0.5`
 - Hypertrophy isolation accessories: `+0.5`
-- User `rpeTargets` override by rep range
 - Periodization `rpeOffset`
 - Deload cap: `min(targetRpe, 6.0)`
 
@@ -141,6 +140,12 @@ Main lifts:
 Accessories:
 
 - Working sets receive uniform target load unless already set
+
+Progression model ownership:
+
+- Beginner: linear load progression (`+2.5-5` lbs upper, `+5-10` lbs lower), with auto-fallback to double progression after repeated stalls.
+- Intermediate: double progression (increase load only after all sets reach rep ceiling at target RPE).
+- Advanced: periodized loading driven by `weekInBlock` and deload modifiers.
 
 ## Timeboxing And Trimming
 

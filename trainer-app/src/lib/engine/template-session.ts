@@ -215,7 +215,7 @@ function buildTemplateExercise(
   periodization?: PeriodizationModifiers
 ): WorkoutExercise {
   const { exercise, orderIndex } = input;
-  const role = isMainLift ? "main" : "accessory";
+  const role: NonNullable<WorkoutExercise["role"]> = isMainLift ? "main" : "accessory";
   const exerciseRepRange = resolveExerciseRepRange(exercise);
   const supersetGroup = !isMainLift ? input.supersetGroup : undefined;
 

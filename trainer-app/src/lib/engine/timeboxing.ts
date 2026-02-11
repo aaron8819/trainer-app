@@ -125,11 +125,11 @@ export function estimateWorkoutMinutes(exercises: WorkoutExercise[]): number {
   return Math.round(totalSeconds / 60);
 }
 
-export function trimAccessoriesByPriority(
-  accessories: WorkoutExercise[],
+export function trimAccessoriesByPriority<T extends WorkoutExercise>(
+  accessories: T[],
   mainLifts: WorkoutExercise[],
   count: number
-) {
+): T[] {
   if (accessories.length === 0 || count <= 0) {
     return accessories;
   }

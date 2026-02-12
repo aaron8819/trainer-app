@@ -53,7 +53,7 @@
         "Rack"
       ],
       "fatigueCost": 5,
-      "sfrScore": 2,
+      "sfrScore": 3,
       "lengthPositionScore": 3,
       "stimulusBias": [
         "mechanical",
@@ -78,7 +78,8 @@
       "repRangeRecommendation": {
         "min": 3,
         "max": 8
-      }
+      },
+      "timePerSetSec": 75
     },
     {
       "name": "Front Squat",
@@ -94,7 +95,7 @@
         "Rack"
       ],
       "fatigueCost": 4,
-      "sfrScore": 2,
+      "sfrScore": 3,
       "lengthPositionScore": 3,
       "stimulusBias": [
         "mechanical"
@@ -116,7 +117,8 @@
       "repRangeRecommendation": {
         "min": 3,
         "max": 8
-      }
+      },
+      "timePerSetSec": 75
     },
     {
       "name": "Goblet Squat",
@@ -151,7 +153,8 @@
       "repRangeRecommendation": {
         "min": 6,
         "max": 12
-      }
+      },
+      "timePerSetSec": 50
     },
     {
       "name": "Hack Squat",
@@ -160,14 +163,14 @@
       ],
       "splitTag": "legs",
       "isCompound": true,
-      "isMainLiftEligible": false,
+      "isMainLiftEligible": true,
       "jointStress": "medium",
       "equipment": [
         "Machine"
       ],
       "fatigueCost": 3,
       "sfrScore": 4,
-      "lengthPositionScore": 3,
+      "lengthPositionScore": 4,
       "stimulusBias": [
         "mechanical"
       ],
@@ -185,7 +188,8 @@
       "repRangeRecommendation": {
         "min": 6,
         "max": 12
-      }
+      },
+      "timePerSetSec": 50
     },
     {
       "name": "Leg Press",
@@ -194,14 +198,14 @@
       ],
       "splitTag": "legs",
       "isCompound": true,
-      "isMainLiftEligible": false,
+      "isMainLiftEligible": true,
       "jointStress": "medium",
       "equipment": [
         "Machine"
       ],
       "fatigueCost": 3,
       "sfrScore": 4,
-      "lengthPositionScore": 3,
+      "lengthPositionScore": 4,
       "stimulusBias": [
         "mechanical"
       ],
@@ -222,7 +226,8 @@
       "repRangeRecommendation": {
         "min": 6,
         "max": 12
-      }
+      },
+      "timePerSetSec": 50
     },
     {
       "name": "Belt Squat",
@@ -256,7 +261,8 @@
       "repRangeRecommendation": {
         "min": 3,
         "max": 10
-      }
+      },
+      "timePerSetSec": 50
     },
     {
       "name": "Bulgarian Split Squat",
@@ -271,7 +277,7 @@
         "Dumbbell",
         "Bench"
       ],
-      "fatigueCost": 3,
+      "fatigueCost": 4,
       "sfrScore": 4,
       "lengthPositionScore": 5,
       "stimulusBias": [
@@ -295,7 +301,8 @@
       "repRangeRecommendation": {
         "min": 6,
         "max": 12
-      }
+      },
+      "timePerSetSec": 65
     },
     {
       "name": "Walking Lunge",
@@ -334,7 +341,8 @@
       "repRangeRecommendation": {
         "min": 6,
         "max": 12
-      }
+      },
+      "timePerSetSec": 60
     },
     {
       "name": "Reverse Lunge",
@@ -371,7 +379,8 @@
       "repRangeRecommendation": {
         "min": 6,
         "max": 12
-      }
+      },
+      "timePerSetSec": 55
     },
     {
       "name": "Leg Extension",
@@ -404,7 +413,8 @@
       "repRangeRecommendation": {
         "min": 10,
         "max": 20
-      }
+      },
+      "timePerSetSec": 35
     },
     {
       "name": "Sissy Squat",
@@ -419,7 +429,7 @@
         "Bodyweight",
         "Machine"
       ],
-      "fatigueCost": 3,
+      "fatigueCost": 2,
       "sfrScore": 4,
       "lengthPositionScore": 5,
       "stimulusBias": [
@@ -438,7 +448,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 15
-      }
+      },
+      "timePerSetSec": 35
     },
     {
       "name": "Conventional Deadlift",
@@ -478,7 +489,8 @@
       "repRangeRecommendation": {
         "min": 1,
         "max": 6
-      }
+      },
+      "timePerSetSec": 85
     },
     {
       "name": "Sumo Deadlift",
@@ -518,7 +530,8 @@
       "repRangeRecommendation": {
         "min": 1,
         "max": 6
-      }
+      },
+      "timePerSetSec": 85
     },
     {
       "name": "Trap Bar Deadlift",
@@ -554,7 +567,8 @@
       "repRangeRecommendation": {
         "min": 1,
         "max": 6
-      }
+      },
+      "timePerSetSec": 75
     },
     {
       "name": "Romanian Deadlift",
@@ -570,7 +584,7 @@
         "Dumbbell"
       ],
       "fatigueCost": 3,
-      "sfrScore": 3,
+      "sfrScore": 4,
       "lengthPositionScore": 5,
       "stimulusBias": [
         "stretch",
@@ -592,7 +606,8 @@
       "repRangeRecommendation": {
         "min": 3,
         "max": 10
-      }
+      },
+      "timePerSetSec": 75
     },
     {
       "name": "Stiff-Legged Deadlift",
@@ -628,7 +643,8 @@
       "repRangeRecommendation": {
         "min": 6,
         "max": 12
-      }
+      },
+      "timePerSetSec": 60
     },
     {
       "name": "Good Morning",
@@ -659,12 +675,13 @@
       "secondaryMuscles": [
         "Glutes"
       ],
-      "difficulty": "beginner",
+      "difficulty": "intermediate",
       "unilateral": false,
       "repRangeRecommendation": {
         "min": 6,
         "max": 12
-      }
+      },
+      "timePerSetSec": 55
     },
     {
       "name": "Lying Leg Curl",
@@ -694,7 +711,8 @@
       "repRangeRecommendation": {
         "min": 10,
         "max": 20
-      }
+      },
+      "timePerSetSec": 40
     },
     {
       "name": "Seated Leg Curl",
@@ -725,7 +743,8 @@
       "repRangeRecommendation": {
         "min": 10,
         "max": 20
-      }
+      },
+      "timePerSetSec": 40
     },
     {
       "name": "Nordic Hamstring Curl",
@@ -740,7 +759,7 @@
         "Bodyweight",
         "Band"
       ],
-      "fatigueCost": 3,
+      "fatigueCost": 4,
       "sfrScore": 4,
       "lengthPositionScore": 5,
       "stimulusBias": [
@@ -761,7 +780,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 15
-      }
+      },
+      "timePerSetSec": 25
     },
     {
       "name": "Barbell Hip Thrust",
@@ -770,7 +790,7 @@
       ],
       "splitTag": "legs",
       "isCompound": true,
-      "isMainLiftEligible": false,
+      "isMainLiftEligible": true,
       "jointStress": "low",
       "equipment": [
         "Barbell",
@@ -778,7 +798,7 @@
       ],
       "fatigueCost": 3,
       "sfrScore": 4,
-      "lengthPositionScore": 2,
+      "lengthPositionScore": 1,
       "stimulusBias": [
         "mechanical",
         "metabolic"
@@ -796,7 +816,8 @@
       "repRangeRecommendation": {
         "min": 6,
         "max": 12
-      }
+      },
+      "timePerSetSec": 75
     },
     {
       "name": "Single-Leg Hip Thrust",
@@ -831,7 +852,8 @@
       "repRangeRecommendation": {
         "min": 6,
         "max": 12
-      }
+      },
+      "timePerSetSec": 55
     },
     {
       "name": "Glute Bridge",
@@ -849,7 +871,7 @@
       ],
       "fatigueCost": 2,
       "sfrScore": 4,
-      "lengthPositionScore": 2,
+      "lengthPositionScore": 1,
       "stimulusBias": [
         "metabolic",
         "stability"
@@ -866,7 +888,8 @@
       "repRangeRecommendation": {
         "min": 6,
         "max": 12
-      }
+      },
+      "timePerSetSec": 50
     },
     {
       "name": "Back Extension (45 Degree)",
@@ -902,7 +925,8 @@
       "repRangeRecommendation": {
         "min": 6,
         "max": 12
-      }
+      },
+      "timePerSetSec": 35
     },
     {
       "name": "Reverse Hyperextension",
@@ -936,7 +960,8 @@
       "repRangeRecommendation": {
         "min": 6,
         "max": 12
-      }
+      },
+      "timePerSetSec": 50
     },
     {
       "name": "Cable Pull-Through",
@@ -968,7 +993,8 @@
       "repRangeRecommendation": {
         "min": 6,
         "max": 12
-      }
+      },
+      "timePerSetSec": 45
     },
     {
       "name": "Hip Abduction Machine",
@@ -1000,7 +1026,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 15
-      }
+      },
+      "timePerSetSec": 35
     },
     {
       "name": "Cable Hip Abduction",
@@ -1029,11 +1056,12 @@
         "Glutes"
       ],
       "difficulty": "beginner",
-      "unilateral": false,
+      "unilateral": true,
       "repRangeRecommendation": {
         "min": 8,
         "max": 15
-      }
+      },
+      "timePerSetSec": 35
     },
     {
       "name": "Hip Adduction Machine",
@@ -1063,7 +1091,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 15
-      }
+      },
+      "timePerSetSec": 35
     },
     {
       "name": "Copenhagen Plank",
@@ -1093,11 +1122,12 @@
         "Core"
       ],
       "difficulty": "beginner",
-      "unilateral": false,
+      "unilateral": true,
       "repRangeRecommendation": {
         "min": 8,
         "max": 15
-      }
+      },
+      "timePerSetSec": 25
     },
     {
       "name": "Standing Calf Raise",
@@ -1129,7 +1159,8 @@
       "repRangeRecommendation": {
         "min": 10,
         "max": 20
-      }
+      },
+      "timePerSetSec": 35
     },
     {
       "name": "Seated Calf Raise",
@@ -1160,7 +1191,8 @@
       "repRangeRecommendation": {
         "min": 10,
         "max": 20
-      }
+      },
+      "timePerSetSec": 40
     },
     {
       "name": "Leg Press Calf Raise",
@@ -1191,7 +1223,8 @@
       "repRangeRecommendation": {
         "min": 10,
         "max": 20
-      }
+      },
+      "timePerSetSec": 35
     },
     {
       "name": "Barbell Bench Press",
@@ -1227,7 +1260,8 @@
       "repRangeRecommendation": {
         "min": 3,
         "max": 10
-      }
+      },
+      "timePerSetSec": 75
     },
     {
       "name": "Incline Barbell Bench Press",
@@ -1263,7 +1297,8 @@
       "repRangeRecommendation": {
         "min": 3,
         "max": 10
-      }
+      },
+      "timePerSetSec": 80
     },
     {
       "name": "Decline Barbell Bench Press",
@@ -1299,7 +1334,8 @@
       "repRangeRecommendation": {
         "min": 3,
         "max": 10
-      }
+      },
+      "timePerSetSec": 80
     },
     {
       "name": "Dumbbell Bench Press",
@@ -1336,7 +1372,8 @@
       "repRangeRecommendation": {
         "min": 3,
         "max": 10
-      }
+      },
+      "timePerSetSec": 50
     },
     {
       "name": "Incline Dumbbell Bench Press",
@@ -1373,7 +1410,8 @@
       "repRangeRecommendation": {
         "min": 3,
         "max": 10
-      }
+      },
+      "timePerSetSec": 55
     },
     {
       "name": "Decline Dumbbell Bench Press",
@@ -1410,7 +1448,8 @@
       "repRangeRecommendation": {
         "min": 6,
         "max": 12
-      }
+      },
+      "timePerSetSec": 55
     },
     {
       "name": "Machine Chest Press",
@@ -1444,7 +1483,8 @@
       "repRangeRecommendation": {
         "min": 6,
         "max": 12
-      }
+      },
+      "timePerSetSec": 50
     },
     {
       "name": "Incline Machine Press",
@@ -1478,7 +1518,8 @@
       "repRangeRecommendation": {
         "min": 6,
         "max": 12
-      }
+      },
+      "timePerSetSec": 55
     },
     {
       "name": "Dumbbell Fly",
@@ -1512,7 +1553,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 15
-      }
+      },
+      "timePerSetSec": 30
     },
     {
       "name": "Incline Dumbbell Fly",
@@ -1546,7 +1588,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 15
-      }
+      },
+      "timePerSetSec": 35
     },
     {
       "name": "Cable Fly",
@@ -1577,7 +1620,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 15
-      }
+      },
+      "timePerSetSec": 35
     },
     {
       "name": "Low-to-High Cable Fly",
@@ -1608,7 +1652,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 15
-      }
+      },
+      "timePerSetSec": 35
     },
     {
       "name": "Pec Deck Machine",
@@ -1639,7 +1684,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 15
-      }
+      },
+      "timePerSetSec": 35
     },
     {
       "name": "Push-Up",
@@ -1674,7 +1720,8 @@
       "repRangeRecommendation": {
         "min": 6,
         "max": 12
-      }
+      },
+      "timePerSetSec": 35
     },
     {
       "name": "Deficit Push-Up",
@@ -1711,7 +1758,8 @@
       "repRangeRecommendation": {
         "min": 6,
         "max": 12
-      }
+      },
+      "timePerSetSec": 35
     },
     {
       "name": "Dip (Chest Emphasis)",
@@ -1743,12 +1791,13 @@
       "secondaryMuscles": [
         "Front Delts"
       ],
-      "difficulty": "beginner",
+      "difficulty": "intermediate",
       "unilateral": false,
       "repRangeRecommendation": {
         "min": 6,
         "max": 12
-      }
+      },
+      "timePerSetSec": 35
     },
     {
       "name": "Barbell Overhead Press",
@@ -1787,7 +1836,8 @@
       "repRangeRecommendation": {
         "min": 3,
         "max": 10
-      }
+      },
+      "timePerSetSec": 75
     },
     {
       "name": "Seated Barbell Overhead Press",
@@ -1824,7 +1874,8 @@
       "repRangeRecommendation": {
         "min": 3,
         "max": 10
-      }
+      },
+      "timePerSetSec": 70
     },
     {
       "name": "Dumbbell Overhead Press",
@@ -1862,7 +1913,8 @@
       "repRangeRecommendation": {
         "min": 3,
         "max": 10
-      }
+      },
+      "timePerSetSec": 50
     },
     {
       "name": "Arnold Press",
@@ -1899,7 +1951,8 @@
       "repRangeRecommendation": {
         "min": 6,
         "max": 12
-      }
+      },
+      "timePerSetSec": 50
     },
     {
       "name": "Machine Shoulder Press",
@@ -1933,7 +1986,8 @@
       "repRangeRecommendation": {
         "min": 6,
         "max": 12
-      }
+      },
+      "timePerSetSec": 50
     },
     {
       "name": "Landmine Press",
@@ -1968,7 +2022,8 @@
       "repRangeRecommendation": {
         "min": 6,
         "max": 12
-      }
+      },
+      "timePerSetSec": 30
     },
     {
       "name": "Dumbbell Lateral Raise",
@@ -1984,7 +2039,7 @@
       ],
       "fatigueCost": 2,
       "sfrScore": 5,
-      "lengthPositionScore": 3,
+      "lengthPositionScore": 2,
       "stimulusBias": [
         "metabolic"
       ],
@@ -1998,7 +2053,8 @@
       "repRangeRecommendation": {
         "min": 10,
         "max": 20
-      }
+      },
+      "timePerSetSec": 30
     },
     {
       "name": "Cable Lateral Raise",
@@ -2014,7 +2070,7 @@
       ],
       "fatigueCost": 2,
       "sfrScore": 5,
-      "lengthPositionScore": 4,
+      "lengthPositionScore": 3,
       "stimulusBias": [
         "metabolic",
         "stretch"
@@ -2029,7 +2085,8 @@
       "repRangeRecommendation": {
         "min": 10,
         "max": 20
-      }
+      },
+      "timePerSetSec": 35
     },
     {
       "name": "Machine Lateral Raise",
@@ -2045,7 +2102,7 @@
       ],
       "fatigueCost": 1,
       "sfrScore": 5,
-      "lengthPositionScore": 3,
+      "lengthPositionScore": 2,
       "stimulusBias": [
         "metabolic"
       ],
@@ -2059,7 +2116,8 @@
       "repRangeRecommendation": {
         "min": 10,
         "max": 20
-      }
+      },
+      "timePerSetSec": 35
     },
     {
       "name": "Dumbbell Front Raise",
@@ -2075,7 +2133,7 @@
       ],
       "fatigueCost": 2,
       "sfrScore": 4,
-      "lengthPositionScore": 3,
+      "lengthPositionScore": 2,
       "stimulusBias": [
         "metabolic"
       ],
@@ -2089,7 +2147,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 15
-      }
+      },
+      "timePerSetSec": 30
     },
     {
       "name": "Cable Front Raise",
@@ -2120,7 +2179,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 15
-      }
+      },
+      "timePerSetSec": 35
     },
     {
       "name": "Dumbbell Rear Delt Fly",
@@ -2137,7 +2197,7 @@
       ],
       "fatigueCost": 2,
       "sfrScore": 4,
-      "lengthPositionScore": 3,
+      "lengthPositionScore": 2,
       "stimulusBias": [
         "metabolic"
       ],
@@ -2153,7 +2213,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 15
-      }
+      },
+      "timePerSetSec": 30
     },
     {
       "name": "Cable Rear Delt Fly",
@@ -2186,7 +2247,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 15
-      }
+      },
+      "timePerSetSec": 35
     },
     {
       "name": "Reverse Pec Deck",
@@ -2219,7 +2281,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 15
-      }
+      },
+      "timePerSetSec": 35
     },
     {
       "name": "Face Pull",
@@ -2250,7 +2313,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 15
-      }
+      },
+      "timePerSetSec": 35
     },
     {
       "name": "Close-Grip Bench Press",
@@ -2287,7 +2351,8 @@
       "repRangeRecommendation": {
         "min": 6,
         "max": 12
-      }
+      },
+      "timePerSetSec": 75
     },
     {
       "name": "Dip (Triceps Emphasis)",
@@ -2304,7 +2369,7 @@
       ],
       "fatigueCost": 3,
       "sfrScore": 3,
-      "lengthPositionScore": 3,
+      "lengthPositionScore": 4,
       "stimulusBias": [
         "mechanical"
       ],
@@ -2319,12 +2384,13 @@
         "Chest",
         "Front Delts"
       ],
-      "difficulty": "beginner",
+      "difficulty": "intermediate",
       "unilateral": false,
       "repRangeRecommendation": {
         "min": 6,
         "max": 12
-      }
+      },
+      "timePerSetSec": 35
     },
     {
       "name": "Overhead Cable Triceps Extension",
@@ -2355,7 +2421,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 15
-      }
+      },
+      "timePerSetSec": 35
     },
     {
       "name": "Overhead Dumbbell Extension",
@@ -2389,7 +2456,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 15
-      }
+      },
+      "timePerSetSec": 30
     },
     {
       "name": "Lying Triceps Extension (Skull Crusher)",
@@ -2425,7 +2493,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 15
-      }
+      },
+      "timePerSetSec": 35
     },
     {
       "name": "Cable Triceps Pushdown",
@@ -2441,7 +2510,7 @@
       ],
       "fatigueCost": 2,
       "sfrScore": 5,
-      "lengthPositionScore": 2,
+      "lengthPositionScore": 1,
       "stimulusBias": [
         "metabolic"
       ],
@@ -2455,7 +2524,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 15
-      }
+      },
+      "timePerSetSec": 35
     },
     {
       "name": "Rope Triceps Pushdown",
@@ -2471,7 +2541,7 @@
       ],
       "fatigueCost": 2,
       "sfrScore": 5,
-      "lengthPositionScore": 2,
+      "lengthPositionScore": 1,
       "stimulusBias": [
         "metabolic"
       ],
@@ -2485,7 +2555,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 15
-      }
+      },
+      "timePerSetSec": 35
     },
     {
       "name": "Diamond Push-Up",
@@ -2522,7 +2593,8 @@
       "repRangeRecommendation": {
         "min": 6,
         "max": 12
-      }
+      },
+      "timePerSetSec": 35
     },
     {
       "name": "Pull-Up",
@@ -2554,12 +2626,13 @@
         "Upper Back",
         "Forearms"
       ],
-      "difficulty": "beginner",
+      "difficulty": "intermediate",
       "unilateral": false,
       "repRangeRecommendation": {
         "min": 3,
         "max": 10
-      }
+      },
+      "timePerSetSec": 35
     },
     {
       "name": "Chin-Up",
@@ -2592,12 +2665,13 @@
         "Upper Back",
         "Forearms"
       ],
-      "difficulty": "beginner",
+      "difficulty": "intermediate",
       "unilateral": false,
       "repRangeRecommendation": {
         "min": 3,
         "max": 10
-      }
+      },
+      "timePerSetSec": 35
     },
     {
       "name": "Weighted Pull-Up",
@@ -2636,7 +2710,8 @@
       "repRangeRecommendation": {
         "min": 3,
         "max": 10
-      }
+      },
+      "timePerSetSec": 55
     },
     {
       "name": "Lat Pulldown",
@@ -2672,7 +2747,8 @@
       "repRangeRecommendation": {
         "min": 6,
         "max": 12
-      }
+      },
+      "timePerSetSec": 50
     },
     {
       "name": "Close-Grip Lat Pulldown",
@@ -2707,7 +2783,8 @@
       "repRangeRecommendation": {
         "min": 6,
         "max": 12
-      }
+      },
+      "timePerSetSec": 50
     },
     {
       "name": "Straight-Arm Pulldown",
@@ -2738,7 +2815,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 15
-      }
+      },
+      "timePerSetSec": 35
     },
     {
       "name": "Dumbbell Pullover",
@@ -2774,7 +2852,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 15
-      }
+      },
+      "timePerSetSec": 30
     },
     {
       "name": "Cable Pullover",
@@ -2805,7 +2884,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 15
-      }
+      },
+      "timePerSetSec": 35
     },
     {
       "name": "Barbell Row",
@@ -2843,7 +2923,8 @@
       "repRangeRecommendation": {
         "min": 3,
         "max": 10
-      }
+      },
+      "timePerSetSec": 75
     },
     {
       "name": "Pendlay Row",
@@ -2881,7 +2962,8 @@
       "repRangeRecommendation": {
         "min": 3,
         "max": 10
-      }
+      },
+      "timePerSetSec": 75
     },
     {
       "name": "T-Bar Row",
@@ -2896,7 +2978,7 @@
         "Barbell",
         "Machine"
       ],
-      "fatigueCost": 3,
+      "fatigueCost": 4,
       "sfrScore": 4,
       "lengthPositionScore": 4,
       "stimulusBias": [
@@ -2920,7 +3002,8 @@
       "repRangeRecommendation": {
         "min": 3,
         "max": 10
-      }
+      },
+      "timePerSetSec": 75
     },
     {
       "name": "Chest-Supported T-Bar Row",
@@ -2955,7 +3038,8 @@
       "repRangeRecommendation": {
         "min": 6,
         "max": 12
-      }
+      },
+      "timePerSetSec": 55
     },
     {
       "name": "One-Arm Dumbbell Row",
@@ -2970,7 +3054,7 @@
         "Dumbbell",
         "Bench"
       ],
-      "fatigueCost": 2,
+      "fatigueCost": 3,
       "sfrScore": 5,
       "lengthPositionScore": 4,
       "stimulusBias": [
@@ -2991,7 +3075,8 @@
       "repRangeRecommendation": {
         "min": 6,
         "max": 12
-      }
+      },
+      "timePerSetSec": 60
     },
     {
       "name": "Dumbbell Row",
@@ -3030,7 +3115,8 @@
       "repRangeRecommendation": {
         "min": 6,
         "max": 12
-      }
+      },
+      "timePerSetSec": 50
     },
     {
       "name": "Chest-Supported Dumbbell Row",
@@ -3066,7 +3152,8 @@
       "repRangeRecommendation": {
         "min": 6,
         "max": 12
-      }
+      },
+      "timePerSetSec": 55
     },
     {
       "name": "Seated Cable Row",
@@ -3101,7 +3188,8 @@
       "repRangeRecommendation": {
         "min": 6,
         "max": 12
-      }
+      },
+      "timePerSetSec": 50
     },
     {
       "name": "Close-Grip Seated Cable Row",
@@ -3136,7 +3224,8 @@
       "repRangeRecommendation": {
         "min": 6,
         "max": 12
-      }
+      },
+      "timePerSetSec": 50
     },
     {
       "name": "Meadows Row",
@@ -3150,7 +3239,7 @@
       "equipment": [
         "Barbell"
       ],
-      "fatigueCost": 2,
+      "fatigueCost": 3,
       "sfrScore": 4,
       "lengthPositionScore": 4,
       "stimulusBias": [
@@ -3167,11 +3256,12 @@
         "Forearms"
       ],
       "difficulty": "beginner",
-      "unilateral": false,
+      "unilateral": true,
       "repRangeRecommendation": {
         "min": 6,
         "max": 12
-      }
+      },
+      "timePerSetSec": 45
     },
     {
       "name": "Inverted Row",
@@ -3206,7 +3296,8 @@
       "repRangeRecommendation": {
         "min": 6,
         "max": 12
-      }
+      },
+      "timePerSetSec": 35
     },
     {
       "name": "Barbell Shrug",
@@ -3222,7 +3313,7 @@
       ],
       "fatigueCost": 2,
       "sfrScore": 4,
-      "lengthPositionScore": 3,
+      "lengthPositionScore": 2,
       "stimulusBias": [
         "mechanical"
       ],
@@ -3238,7 +3329,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 15
-      }
+      },
+      "timePerSetSec": 30
     },
     {
       "name": "Dumbbell Shrug",
@@ -3254,7 +3346,7 @@
       ],
       "fatigueCost": 2,
       "sfrScore": 4,
-      "lengthPositionScore": 3,
+      "lengthPositionScore": 2,
       "stimulusBias": [
         "mechanical"
       ],
@@ -3270,7 +3362,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 15
-      }
+      },
+      "timePerSetSec": 25
     },
     {
       "name": "Barbell Curl",
@@ -3285,7 +3378,7 @@
         "Barbell",
         "EZ_Bar"
       ],
-      "fatigueCost": 2,
+      "fatigueCost": 1,
       "sfrScore": 4,
       "lengthPositionScore": 3,
       "stimulusBias": [
@@ -3305,7 +3398,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 15
-      }
+      },
+      "timePerSetSec": 30
     },
     {
       "name": "EZ-Bar Curl",
@@ -3319,7 +3413,7 @@
       "equipment": [
         "EZ_Bar"
       ],
-      "fatigueCost": 2,
+      "fatigueCost": 1,
       "sfrScore": 4,
       "lengthPositionScore": 3,
       "stimulusBias": [
@@ -3337,7 +3431,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 15
-      }
+      },
+      "timePerSetSec": 30
     },
     {
       "name": "Dumbbell Curl",
@@ -3369,7 +3464,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 15
-      }
+      },
+      "timePerSetSec": 30
     },
     {
       "name": "Alternating Dumbbell Curl",
@@ -3397,11 +3493,12 @@
         "Forearms"
       ],
       "difficulty": "beginner",
-      "unilateral": false,
+      "unilateral": true,
       "repRangeRecommendation": {
         "min": 8,
         "max": 15
-      }
+      },
+      "timePerSetSec": 30
     },
     {
       "name": "Incline Dumbbell Curl",
@@ -3433,7 +3530,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 15
-      }
+      },
+      "timePerSetSec": 35
     },
     {
       "name": "Hammer Curl",
@@ -3464,7 +3562,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 15
-      }
+      },
+      "timePerSetSec": 30
     },
     {
       "name": "Cross-Body Hammer Curl",
@@ -3492,11 +3591,12 @@
         "Forearms"
       ],
       "difficulty": "beginner",
-      "unilateral": false,
+      "unilateral": true,
       "repRangeRecommendation": {
         "min": 8,
         "max": 15
-      }
+      },
+      "timePerSetSec": 30
     },
     {
       "name": "Cable Curl",
@@ -3528,7 +3628,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 15
-      }
+      },
+      "timePerSetSec": 35
     },
     {
       "name": "Bayesian Curl",
@@ -3559,7 +3660,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 15
-      }
+      },
+      "timePerSetSec": 35
     },
     {
       "name": "Preacher Curl",
@@ -3594,7 +3696,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 15
-      }
+      },
+      "timePerSetSec": 35
     },
     {
       "name": "Spider Curl",
@@ -3613,7 +3716,7 @@
       ],
       "fatigueCost": 2,
       "sfrScore": 4,
-      "lengthPositionScore": 2,
+      "lengthPositionScore": 1,
       "stimulusBias": [
         "metabolic"
       ],
@@ -3627,7 +3730,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 15
-      }
+      },
+      "timePerSetSec": 35
     },
     {
       "name": "Concentration Curl",
@@ -3643,7 +3747,7 @@
       ],
       "fatigueCost": 1,
       "sfrScore": 4,
-      "lengthPositionScore": 2,
+      "lengthPositionScore": 1,
       "stimulusBias": [
         "metabolic"
       ],
@@ -3653,11 +3757,12 @@
       ],
       "secondaryMuscles": [],
       "difficulty": "beginner",
-      "unilateral": false,
+      "unilateral": true,
       "repRangeRecommendation": {
         "min": 8,
         "max": 15
-      }
+      },
+      "timePerSetSec": 30
     },
     {
       "name": "Reverse Curl",
@@ -3672,7 +3777,7 @@
         "Barbell",
         "EZ_Bar"
       ],
-      "fatigueCost": 2,
+      "fatigueCost": 1,
       "sfrScore": 4,
       "lengthPositionScore": 3,
       "stimulusBias": [
@@ -3689,7 +3794,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 15
-      }
+      },
+      "timePerSetSec": 30
     },
     {
       "name": "Wrist Curl",
@@ -3705,7 +3811,7 @@
         "Dumbbell"
       ],
       "fatigueCost": 1,
-      "sfrScore": 3,
+      "sfrScore": 2,
       "lengthPositionScore": 3,
       "stimulusBias": [
         "metabolic"
@@ -3720,7 +3826,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 15
-      }
+      },
+      "timePerSetSec": 30
     },
     {
       "name": "Reverse Wrist Curl",
@@ -3736,7 +3843,7 @@
         "Dumbbell"
       ],
       "fatigueCost": 1,
-      "sfrScore": 3,
+      "sfrScore": 2,
       "lengthPositionScore": 3,
       "stimulusBias": [
         "metabolic"
@@ -3751,7 +3858,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 15
-      }
+      },
+      "timePerSetSec": 30
     },
     {
       "name": "Farmer's Walk",
@@ -3767,7 +3875,7 @@
         "Kettlebell"
       ],
       "fatigueCost": 2,
-      "sfrScore": 3,
+      "sfrScore": 2,
       "lengthPositionScore": 1,
       "stimulusBias": [
         "stability",
@@ -3787,7 +3895,8 @@
       "repRangeRecommendation": {
         "min": 6,
         "max": 12
-      }
+      },
+      "timePerSetSec": 40
     },
     {
       "name": "Dead Hang",
@@ -3802,7 +3911,7 @@
         "Bodyweight"
       ],
       "fatigueCost": 1,
-      "sfrScore": 3,
+      "sfrScore": 1,
       "lengthPositionScore": 4,
       "stimulusBias": [
         "mechanical",
@@ -3823,7 +3932,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 15
-      }
+      },
+      "timePerSetSec": 25
     },
     {
       "name": "Plank",
@@ -3838,7 +3948,7 @@
         "Bodyweight"
       ],
       "fatigueCost": 1,
-      "sfrScore": 3,
+      "sfrScore": 1,
       "lengthPositionScore": 1,
       "stimulusBias": [
         "stability"
@@ -3855,7 +3965,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 20
-      }
+      },
+      "timePerSetSec": 25
     },
     {
       "name": "RKC Plank",
@@ -3888,7 +3999,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 20
-      }
+      },
+      "timePerSetSec": 25
     },
     {
       "name": "Side Plank",
@@ -3903,7 +4015,7 @@
         "Bodyweight"
       ],
       "fatigueCost": 1,
-      "sfrScore": 3,
+      "sfrScore": 1,
       "lengthPositionScore": 1,
       "stimulusBias": [
         "stability"
@@ -3920,7 +4032,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 20
-      }
+      },
+      "timePerSetSec": 25
     },
     {
       "name": "Ab Wheel Rollout",
@@ -3928,7 +4041,7 @@
         "anti_rotation"
       ],
       "splitTag": "core",
-      "isCompound": false,
+      "isCompound": true,
       "isMainLiftEligible": false,
       "jointStress": "medium",
       "equipment": [
@@ -3956,7 +4069,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 20
-      }
+      },
+      "timePerSetSec": 30
     },
     {
       "name": "Pallof Press",
@@ -3987,7 +4101,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 20
-      }
+      },
+      "timePerSetSec": 35
     },
     {
       "name": "Cable Crunch",
@@ -4018,7 +4133,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 20
-      }
+      },
+      "timePerSetSec": 35
     },
     {
       "name": "Machine Crunch",
@@ -4049,7 +4165,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 20
-      }
+      },
+      "timePerSetSec": 35
     },
     {
       "name": "Hanging Leg Raise",
@@ -4081,7 +4198,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 20
-      }
+      },
+      "timePerSetSec": 30
     },
     {
       "name": "Hanging Knee Raise",
@@ -4097,7 +4215,7 @@
       ],
       "fatigueCost": 2,
       "sfrScore": 4,
-      "lengthPositionScore": 2,
+      "lengthPositionScore": 1,
       "stimulusBias": [
         "metabolic"
       ],
@@ -4113,7 +4231,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 20
-      }
+      },
+      "timePerSetSec": 30
     },
     {
       "name": "Dragon Flag",
@@ -4148,7 +4267,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 20
-      }
+      },
+      "timePerSetSec": 30
     },
     {
       "name": "Decline Sit-Up",
@@ -4164,7 +4284,7 @@
         "Bench"
       ],
       "fatigueCost": 2,
-      "sfrScore": 3,
+      "sfrScore": 2,
       "lengthPositionScore": 3,
       "stimulusBias": [
         "metabolic"
@@ -4179,42 +4299,13 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 20
-      }
+      },
+      "timePerSetSec": 30
     },
     {
       "name": "Reverse Crunch",
       "movementPatterns": [
         "flexion"
-      ],
-      "splitTag": "core",
-      "isCompound": false,
-      "isMainLiftEligible": false,
-      "jointStress": "low",
-      "equipment": [
-        "Bodyweight"
-      ],
-      "fatigueCost": 1,
-      "sfrScore": 4,
-      "lengthPositionScore": 2,
-      "stimulusBias": [
-        "metabolic"
-      ],
-      "contraindications": null,
-      "primaryMuscles": [
-        "Abs"
-      ],
-      "secondaryMuscles": [],
-      "difficulty": "beginner",
-      "unilateral": false,
-      "repRangeRecommendation": {
-        "min": 8,
-        "max": 20
-      }
-    },
-    {
-      "name": "Bicycle Crunch",
-      "movementPatterns": [
-        "rotation"
       ],
       "splitTag": "core",
       "isCompound": false,
@@ -4239,7 +4330,39 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 20
-      }
+      },
+      "timePerSetSec": 25
+    },
+    {
+      "name": "Bicycle Crunch",
+      "movementPatterns": [
+        "rotation"
+      ],
+      "splitTag": "core",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Bodyweight"
+      ],
+      "fatigueCost": 1,
+      "sfrScore": 2,
+      "lengthPositionScore": 2,
+      "stimulusBias": [
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Abs"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 20
+      },
+      "timePerSetSec": 25
     },
     {
       "name": "Russian Twist",
@@ -4255,7 +4378,7 @@
         "Dumbbell"
       ],
       "fatigueCost": 2,
-      "sfrScore": 3,
+      "sfrScore": 2,
       "lengthPositionScore": 2,
       "stimulusBias": [
         "metabolic"
@@ -4270,7 +4393,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 20
-      }
+      },
+      "timePerSetSec": 30
     },
     {
       "name": "Wood Chop",
@@ -4301,7 +4425,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 20
-      }
+      },
+      "timePerSetSec": 35
     },
     {
       "name": "Landmine Rotation",
@@ -4335,7 +4460,8 @@
       "repRangeRecommendation": {
         "min": 8,
         "max": 20
-      }
+      },
+      "timePerSetSec": 30
     },
     {
       "name": "Suitcase Carry",
@@ -4365,11 +4491,12 @@
         "Upper Back"
       ],
       "difficulty": "beginner",
-      "unilateral": false,
+      "unilateral": true,
       "repRangeRecommendation": {
         "min": 6,
         "max": 12
-      }
+      },
+      "timePerSetSec": 40
     },
     {
       "name": "Overhead Carry",
@@ -4385,7 +4512,7 @@
         "Kettlebell"
       ],
       "fatigueCost": 2,
-      "sfrScore": 3,
+      "sfrScore": 2,
       "lengthPositionScore": 1,
       "stimulusBias": [
         "stability"
@@ -4405,7 +4532,8 @@
       "repRangeRecommendation": {
         "min": 6,
         "max": 12
-      }
+      },
+      "timePerSetSec": 40
     },
     {
       "name": "Sled Push",
@@ -4420,7 +4548,7 @@
         "Sled"
       ],
       "fatigueCost": 3,
-      "sfrScore": 3,
+      "sfrScore": 2,
       "lengthPositionScore": 2,
       "stimulusBias": [
         "metabolic"
@@ -4439,7 +4567,8 @@
       "repRangeRecommendation": {
         "min": 6,
         "max": 12
-      }
+      },
+      "timePerSetSec": 45
     },
     {
       "name": "Sled Pull",
@@ -4454,7 +4583,7 @@
         "Sled"
       ],
       "fatigueCost": 3,
-      "sfrScore": 3,
+      "sfrScore": 2,
       "lengthPositionScore": 2,
       "stimulusBias": [
         "metabolic"
@@ -4473,7 +4602,8 @@
       "repRangeRecommendation": {
         "min": 6,
         "max": 12
-      }
+      },
+      "timePerSetSec": 45
     },
     {
       "name": "Sled Drag",
@@ -4488,7 +4618,7 @@
         "Sled"
       ],
       "fatigueCost": 3,
-      "sfrScore": 3,
+      "sfrScore": 2,
       "lengthPositionScore": 2,
       "stimulusBias": [
         "metabolic"
@@ -4507,7 +4637,8 @@
       "repRangeRecommendation": {
         "min": 6,
         "max": 12
-      }
+      },
+      "timePerSetSec": 45
     },
     {
       "name": "Cable Crossover",
@@ -4538,7 +4669,8 @@
       "primaryMuscles": [
         "Chest"
       ],
-      "secondaryMuscles": []
+      "secondaryMuscles": [],
+      "timePerSetSec": 35
     },
     {
       "name": "Neutral Grip Pull-Up",
@@ -4548,7 +4680,7 @@
       "splitTag": "pull",
       "isCompound": true,
       "isMainLiftEligible": true,
-      "difficulty": "beginner",
+      "difficulty": "intermediate",
       "unilateral": false,
       "repRangeRecommendation": {
         "min": 5,
@@ -4573,7 +4705,8 @@
       "secondaryMuscles": [
         "Upper Back",
         "Forearms"
-      ]
+      ],
+      "timePerSetSec": 35
     }
   ]
 }

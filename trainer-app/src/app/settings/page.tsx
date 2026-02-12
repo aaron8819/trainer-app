@@ -1,6 +1,7 @@
 import ProfileForm from "../onboarding/ProfileForm";
 import { prisma } from "@/lib/db/prisma";
 import UserPreferencesForm from "@/components/UserPreferencesForm";
+import BaselineSetupCard from "@/components/BaselineSetupCard";
 import { loadExerciseLibrary } from "@/lib/api/exercise-library";
 import { resolveOwner } from "@/lib/api/workout-context";
 
@@ -9,7 +10,7 @@ export const revalidate = 0;
 
 export default async function SettingsPage() {
   const user = await resolveOwner();
-  const [profile, goals, constraints, injury, preferences, exercises] = user
+  const [profile, goals, constraints, injury, preferences, exercises, activeProgram, baselines] = user
     ? await Promise.all([
         prisma.profile.findUnique({ where: { userId: user.id } }),
         prisma.goals.findUnique({ where: { userId: user.id } }),
@@ -17,8 +18,14 @@ export default async function SettingsPage() {
         prisma.injury.findFirst({ where: { userId: user.id, isActive: true } }),
         prisma.userPreference.findUnique({ where: { userId: user.id } }),
         loadExerciseLibrary(user.id),
+        prisma.program.findFirst({
+          where: { userId: user.id, isActive: true },
+          orderBy: { createdAt: "desc" },
+          select: { weeklySchedule: true },
+        }),
+        prisma.baseline.findMany({ where: { userId: user.id } }),
       ])
-    : [null, null, null, null, null, []];
+    : [null, null, null, null, null, [], null, []];
 
   const initialValues = user
     ? {
@@ -33,6 +40,8 @@ export default async function SettingsPage() {
         secondaryGoal: goals?.secondaryGoal ?? "CONDITIONING",
         daysPerWeek: constraints?.daysPerWeek ?? 4,
         sessionMinutes: constraints?.sessionMinutes ?? 55,
+        splitType: constraints?.splitType ?? "PPL",
+        weeklySchedule: activeProgram?.weeklySchedule ?? [],
         injuryBodyPart: injury?.bodyPart ?? undefined,
         injurySeverity: injury?.severity ?? undefined,
         injuryDescription: injury?.description ?? undefined,
@@ -58,6 +67,27 @@ export default async function SettingsPage() {
         </p>
 
         <ProfileForm initialValues={initialValues} />
+        <BaselineSetupCard
+          title="Set Your Starting Weights"
+          description="Update your baseline loads to improve first-pass load assignment when history is sparse."
+          splitType={initialValues?.splitType}
+          primaryGoal={initialValues?.primaryGoal}
+          exercisePool={exercises.map((exercise) => ({
+            id: exercise.id,
+            name: exercise.name,
+            isMainLiftEligible: exercise.isMainLiftEligible,
+            equipment: exercise.equipment,
+            primaryMuscles: exercise.primaryMuscles,
+          }))}
+          existingBaselines={baselines.map((baseline) => ({
+            exerciseId: baseline.exerciseId,
+            context: baseline.context,
+            workingWeightMin: baseline.workingWeightMin,
+            workingWeightMax: baseline.workingWeightMax,
+            topSetWeight: baseline.topSetWeight,
+            topSetReps: baseline.topSetReps,
+          }))}
+        />
         <UserPreferencesForm initialValues={preferenceValues} exercises={exercises} />
       </div>
     </main>

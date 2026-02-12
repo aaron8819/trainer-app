@@ -922,6 +922,9 @@ async function seedMuscles() {
 }
 
 function resolveTimePerSet(ex: JsonExercise): number {
+  if ("timePerSetSec" in ex && typeof ex.timePerSetSec === "number") {
+    return ex.timePerSetSec;
+  }
   const override = TIME_PER_SET_OVERRIDES[ex.name];
   if (override) return override;
   if (ex.isMainLiftEligible) return 210;

@@ -385,6 +385,22 @@ describe("generateWorkoutFromTemplate", () => {
     expect(workout.mainLifts[0].sets[0].targetRpe).toBe(7);
   });
 
+  it("applies set-count overrides when provided", () => {
+    const templateExercises = makeTemplateExercises(["bench", "lateral-raise"]);
+    const { workout } = generateWorkoutFromTemplate(
+      templateExercises,
+      makeOptions({
+        setCountOverrides: {
+          bench: 2,
+          "lateral-raise": 5,
+        },
+      })
+    );
+
+    expect(workout.mainLifts[0].sets).toHaveLength(2);
+    expect(workout.accessories[0].sets).toHaveLength(5);
+  });
+
   it("carries superset groups for accessory pairs only", () => {
     const templateExercises = makeTemplateExercisesWithSuperset([
       { id: "bench", supersetGroup: 1 },
@@ -496,5 +512,24 @@ describe("generateWorkoutFromTemplate", () => {
 
     expect(standard.workout.accessories.map((e) => e.exercise.id)).toContain("db-press");
     expect(enhanced.workout.accessories.map((e) => e.exercise.id)).not.toContain("db-press");
+  });
+
+  it("returns advisory volumePlanByMuscle for template generation", () => {
+    const templateExercises = makeTemplateExercises(["bench"]);
+    const { volumePlanByMuscle } = generateWorkoutFromTemplate(
+      templateExercises,
+      makeOptions({ weekInBlock: 0, mesocycleLength: 4 })
+    );
+
+    expect(volumePlanByMuscle.Chest).toEqual({
+      target: 10,
+      planned: 4,
+      delta: 6,
+    });
+    expect(volumePlanByMuscle["Front Delts"]).toEqual({
+      target: 0,
+      planned: 1.2,
+      delta: -1.2,
+    });
   });
 });

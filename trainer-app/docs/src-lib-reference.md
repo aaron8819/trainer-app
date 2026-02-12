@@ -1,6 +1,6 @@
 # `src/lib` Reference
 
-Last verified against code: 2026-02-11
+Last verified against code: 2026-02-12
 
 Comprehensive implementation reference for shared library code in `src/lib`.
 
@@ -41,6 +41,8 @@ src/lib/api
 |---|---|---|
 | `src/lib/api/workout-context.ts` | Context loading, owner resolution, Prisma-to-engine mapping, load application wrapper | `resolveOwner`, `resolveUser`, `loadWorkoutContext`, `mapProfile`, `mapGoals`, `mapConstraints`, `mapExercises`, `mapHistory`, `mapPreferences`, `mapCheckIn`, `applyLoads`, `deriveWeekInBlock` |
 | `src/lib/api/template-session.ts` | End-to-end template session generation | `generateSessionFromTemplate` |
+| `src/lib/api/weekly-program-selection.ts` | Template selection helpers for weekly analysis (schedule-aware template picking + intent fallback order) | `selectTemplatesForWeeklyProgram`, `pickTemplateForSessionIntent` |
+| `src/lib/api/intent-rollout.ts` | New-user default mode gating helpers controlled by rollout flag | `isIntentDefaultForNewUsersEnabled`, `shouldDefaultNewUserToIntent` |
 | `src/lib/api/templates.ts` | Template CRUD + template scoring list | `loadTemplates`, `loadTemplateDetail`, `createTemplate`, `updateTemplate`, `loadTemplatesWithScores`, `deleteTemplate` |
 | `src/lib/api/exercise-library.ts` | Exercise list/detail loading + substitute resolution | `loadExerciseLibrary`, `loadExerciseDetail` |
 | `src/lib/api/baseline-updater.ts` | Baseline candidate evaluation and transactional upsert | `updateBaselinesFromWorkout` and helpers |
@@ -49,16 +51,19 @@ src/lib/api
 | `src/lib/api/weekly-program.ts` | Inputs for weekly program analysis | `loadWeeklyProgramInputs` |
 
 Notes:
-- Active generation path is template-only (`generateSessionFromTemplate`).
+- Active generation paths include template mode (`generateSessionFromTemplate`) and intent mode (`/api/workouts/generate-from-intent`).
+- Template generation response now includes advisory `volumePlanByMuscle` in addition to workout payload and warnings/suggestions.
+- Intent generation uses shared deterministic selection with selector-owned set overrides and metadata persistence.
 - `src/lib/api/split-preview.ts` is legacy helper code and not used by active routes/pages.
 
 ## `engine` (`src/lib/engine`)
 
 Purpose:
-- Pure training logic for template generation, prescription, volume/time enforcement, and load progression.
+- Pure training logic for template and intent generation, shared selection, prescription, volume/time enforcement, and load progression.
 
 Active generator entrypoints:
 - `generateWorkoutFromTemplate` in `src/lib/engine/template-session.ts`
+- `selectExercises` in `src/lib/engine/exercise-selection.ts`
 - `applyLoads` in `src/lib/engine/apply-loads.ts`
 
 Removed/deprecated:
@@ -69,7 +74,7 @@ Core modules:
 
 | Area | Files |
 |---|---|
-| Generation/runtime | `template-session.ts`, `apply-loads.ts`, `rules.ts`, `progression.ts` |
+| Generation/runtime | `template-session.ts`, `exercise-selection.ts`, `apply-loads.ts`, `rules.ts`, `progression.ts` |
 | Volume/recovery/time | `volume.ts`, `volume-landmarks.ts`, `sra.ts`, `timeboxing.ts`, `warmup-ramp.ts`, `history.ts` |
 | Analysis/planning | `template-analysis.ts`, `weekly-program-analysis.ts`, `smart-build.ts` |
 | Utilities/contracts | `types.ts`, `utils.ts`, `random.ts`, `sample-data.ts` |

@@ -1,16 +1,20 @@
 # Template System: Generation, Prescription, And Scoring (Consolidated)
 
-Last updated: 2026-02-11
+Last updated: 2026-02-12
 
 This document consolidates template session generation, prescription assignment, and scoring behavior into one reference.
+
+Selection formula details, calibration protocol, and rollout contracts are specified in `docs/template/exercise-selection-algorithm-spec.md`.
 
 ## Source Of Truth
 
 - `src/app/api/workouts/generate-from-template/route.ts`
+- `src/app/api/workouts/generate-from-intent/route.ts`
 - `src/app/api/analytics/program-weekly/route.ts`
 - `src/lib/api/template-session.ts`
 - `src/lib/api/weekly-program.ts`
 - `src/lib/engine/template-session.ts`
+- `src/lib/engine/exercise-selection.ts`
 - `src/lib/engine/prescription.ts`
 - `src/lib/engine/rules.ts`
 - `src/lib/engine/apply-loads.ts`
@@ -41,16 +45,44 @@ Templates do not store fixed set-by-set prescriptions. Sets, reps, rest, RPE, an
 `POST /api/workouts/generate-from-template`:
 
 1. Validate `templateId`.
+2. Parse optional `pinnedExerciseIds` and `autoFillUnpinned`.
 2. Load template and workout context (profile, goals, constraints, history, preferences, check-in, exercise library, baselines).
 3. Ignore check-ins older than 48 hours.
 4. Derive `weekInBlock` and periodization modifiers via `getPeriodizationModifiers(...)`.
 5. If `shouldDeload(history, mainLiftExerciseIds)` is true and the week is not already a deload, override to deload modifiers.
-6. Map template rows into engine inputs, including `orderIndex` and `supersetGroup`.
+6. If `autoFillUnpinned` is enabled, run shared deterministic selection (`selectExercises`) in template mode and replace non-pinned template slots.
+7. Map template rows into engine inputs, including `orderIndex` and `supersetGroup`.
 7. Generate the prescription in `generateWorkoutFromTemplate(...)`.
 8. Pre-load timebox using projected warmup ramps for load-resolvable main lifts.
 9. Apply loads via `applyLoads(...)`.
 10. Post-load timebox as a safety net if still over budget.
-11. Return `{ workout, templateId, sraWarnings, substitutions }`.
+11. Return `{ workout, templateId, sraWarnings, substitutions, volumePlanByMuscle, sessionIntent, selection }`.
+
+`POST /api/workouts/generate-from-intent`:
+
+1. Validate `intent` and optional `targetMuscles` and `pinnedExerciseIds`.
+2. Enforce `targetMuscles` when `intent = body_part`.
+3. Load workout context (profile, goals, constraints, history, preferences, check-in, exercise library, baselines).
+4. Run shared deterministic selection (`selectExercises`) in intent mode.
+5. Generate the prescription through `generateWorkoutFromTemplate(...)` using `setCountOverrides` from selector `perExerciseSetTargets`.
+6. Apply loads and post-load safety checks.
+7. Return `{ workout, sraWarnings, substitutions, volumePlanByMuscle, sessionIntent, selection }`.
+
+## Shared Selection Engine
+
+Phase 2 introduced `selectExercises(...)` as a shared core for:
+
+- template auto-fill (pins + non-pinned replacement)
+- full intent-driven exercise selection
+
+Current behavior:
+
+- hard filters: equipment (bodyweight bypass), avoid list, pain contraindications, role eligibility, intent-muscle compatibility.
+- weighted deterministic scoring: muscle deficit closure, targetedness, SFR, lengthened bias, preferences, diversity, continuity, time-fit, recency, redundancy, and fatigue-cost penalties.
+- deterministic tie-breaks: higher score, then lower fatigue, then alphabetical exercise name.
+- post-fill safety: `enforceVolumeCaps` and time-budget trimming via `trimAccessoriesByPriority`.
+- intent-mode set allocation: starts at `2` sets/exercise and iteratively adds sets by marginal deficit closure, capped by training age (`4/5/6` beginner/intermediate/advanced).
+- weights and tie-break behavior follow the deterministic hybrid selection spec (`docs/template/exercise-selection-algorithm-spec.md`).
 
 ## Main Vs Accessory Classification
 
@@ -82,6 +114,12 @@ This classification controls set-count base, rep logic, rest logic, and load and
 - Step 1: `baselineSets = round(baseSets * ageModifier)`, floor `2`.
 - Step 2: if readiness `<=2` or `missedLastSession`, subtract `1` once, floor `2`.
 - Step 3: apply periodization `round(recoveryAdjusted * setMultiplier)`, floor `2`.
+
+Intent-mode override path:
+
+- `prescribeSetsReps(...)` now accepts optional `overrideSetCount`.
+- When provided, set count is taken from selector allocation and `resolveSetCount(...)` is skipped.
+- Template mode omits override and preserves legacy set-count behavior.
 
 ## Rep Ranges And Rep Targets
 
@@ -199,6 +237,13 @@ Post-load safety net (`applyLoads(...)`):
 - For valid accessory supersets, shared rest is reduced to `max(60, round(max(restA, restB) * 0.6))` before trimming decisions.
 
 Priority prefers retaining exercises that cover uncovered muscles and reducing redundant or high-cost accessories first.
+Retention scoring uses a deterministic weighted blend of:
+- uncovered muscle coverage (primary + secondary contribution)
+- normalized `sfrScore`
+- normalized `lengthPositionScore`
+- redundancy penalty
+- fatigue-cost penalty
+Tie-breakers for equal scores remove higher-fatigue accessories first, then alphabetical by exercise name.
 
 ## Strict Vs Flexible Template Behavior
 
@@ -215,6 +260,16 @@ SRA warnings are generated from recent history and target muscles:
 - Returned as `sraWarnings`.
 - Also summarized into workout `notes` when applicable.
 
+## Volume Plan Feedback
+
+Template generation returns advisory per-muscle weekly adequacy feedback:
+
+- `volumePlanByMuscle[muscle].target`: mesocycle-adjusted target sets from landmarks.
+- `volumePlanByMuscle[muscle].planned`: effective planned weekly sets (`direct + 0.3 * indirect`) from recent history plus the generated session draft.
+- `volumePlanByMuscle[muscle].delta`: `target - planned` (positive means deficit, negative means overshoot).
+
+Template mode does not force deficit closure; this is informational feedback for users and future intent-mode automation.
+
 ## Output And Persistence Notes
 
 Generation response includes set-level `targetReps`, optional `targetRepRange`, `targetRpe`, `targetLoad`, and `restSeconds`.
@@ -222,6 +277,13 @@ For bodyweight movements with undefined `targetLoad`, generation and detail surf
 
 Save path (`POST /api/workouts/save`) persists `targetRepRange` via `WorkoutSet.targetRepMin` / `WorkoutSet.targetRepMax` (nullable). Read paths map those columns back to `targetRepRange` when both are present, and fall back to `targetReps` when null for backward compatibility.
 Save path also persists `WorkoutExercise.section` (`WARMUP | MAIN | ACCESSORY`) when provided, so log/detail rendering can use persisted sectioning instead of warmup-count heuristics.
+
+Intent metadata persistence:
+
+- Save API accepts `selectionMode` (`AUTO | MANUAL | BONUS | INTENT`), optional `sessionIntent` (`PUSH | PULL | LEGS | UPPER | LOWER | FULL_BODY | BODY_PART`), and optional `selectionMetadata` JSON.
+- Intent-generated sessions should be saved with `selectionMode = INTENT`.
+- If `sessionIntent` is provided and `selectionMode` is omitted, save path defaults `selectionMode` to `INTENT`.
+- `mapHistory(...)` now maps persisted `sessionIntent` and `selectionMode` into engine history entries; selector continuity logic can match same-intent history using `sessionIntent` when present.
 
 ## Template Scoring (Single Session)
 

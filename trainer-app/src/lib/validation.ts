@@ -21,7 +21,45 @@ const optionalString = (schema: z.ZodString) =>
 
 export const generateFromTemplateSchema = z.object({
   templateId: z.string(),
+  pinnedExerciseIds: z.array(z.string()).optional(),
+  autoFillUnpinned: z.boolean().optional(),
 });
+
+export const sessionIntentSchema = z.enum([
+  "push",
+  "pull",
+  "legs",
+  "upper",
+  "lower",
+  "full_body",
+  "body_part",
+]);
+
+export const workoutSessionIntentDbSchema = z.enum([
+  "PUSH",
+  "PULL",
+  "LEGS",
+  "UPPER",
+  "LOWER",
+  "FULL_BODY",
+  "BODY_PART",
+]);
+
+export const generateFromIntentSchema = z
+  .object({
+    intent: sessionIntentSchema,
+    targetMuscles: z.array(z.string()).optional(),
+    pinnedExerciseIds: z.array(z.string()).optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.intent === "body_part" && (!value.targetMuscles || value.targetMuscles.length === 0)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "targetMuscles is required when intent is body_part",
+        path: ["targetMuscles"],
+      });
+    }
+  });
 
 export const saveWorkoutSchema = z.object({
   workoutId: z.string(),
@@ -30,7 +68,9 @@ export const saveWorkoutSchema = z.object({
   status: z.enum(["PLANNED", "IN_PROGRESS", "COMPLETED", "SKIPPED"]).optional(),
   estimatedMinutes: z.number().optional(),
   notes: z.string().optional(),
-  selectionMode: z.enum(["AUTO", "MANUAL", "BONUS"]).optional(),
+  selectionMode: z.enum(["AUTO", "MANUAL", "BONUS", "INTENT"]).optional(),
+  sessionIntent: workoutSessionIntentDbSchema.optional(),
+  selectionMetadata: z.unknown().optional(),
   forcedSplit: z.enum(["PUSH", "PULL", "LEGS", "UPPER", "LOWER", "FULL_BODY"]).optional(),
   advancesSplit: z.boolean().optional(),
   exercises: z
@@ -89,6 +129,7 @@ export const profileSetupSchema = z.object({
   secondaryGoal: z.enum(["POSTURE", "CONDITIONING", "INJURY_PREVENTION", "NONE"]),
   daysPerWeek: z.number().int().min(1).max(7),
   sessionMinutes: z.number().int().min(20).max(180),
+  weeklySchedule: z.array(workoutSessionIntentDbSchema).max(7).optional(),
   splitType: z.enum(["PPL", "UPPER_LOWER", "FULL_BODY", "CUSTOM"]).optional(),
   injuryBodyPart: optionalString(z.string().max(80)),
   injurySeverity: optionalNumber(z.number().int().min(1).max(5)),

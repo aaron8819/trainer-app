@@ -23,6 +23,8 @@ export async function POST(request: Request) {
 
   const scheduledDate = parsed.data.scheduledDate ? new Date(parsed.data.scheduledDate) : new Date();
   const status = parsed.data.status ?? WorkoutStatus.PLANNED;
+  const selectionMode =
+    parsed.data.selectionMode ?? (parsed.data.sessionIntent ? "INTENT" : undefined);
   const completedAt =
     status === WorkoutStatus.COMPLETED ? new Date() : undefined;
 
@@ -56,7 +58,9 @@ export async function POST(request: Request) {
         completedAt,
         estimatedMinutes: parsed.data.estimatedMinutes ?? undefined,
         notes: parsed.data.notes ?? undefined,
-        selectionMode: parsed.data.selectionMode ?? undefined,
+        selectionMode,
+        sessionIntent: parsed.data.sessionIntent ?? undefined,
+        selectionMetadata: parsed.data.selectionMetadata ?? undefined,
         forcedSplit: parsed.data.forcedSplit ?? undefined,
         advancesSplit: parsed.data.advancesSplit ?? undefined,
         templateId: parsed.data.templateId ?? undefined,
@@ -69,7 +73,9 @@ export async function POST(request: Request) {
         completedAt,
         estimatedMinutes: parsed.data.estimatedMinutes ?? undefined,
         notes: parsed.data.notes ?? undefined,
-        selectionMode: parsed.data.selectionMode ?? undefined,
+        selectionMode,
+        sessionIntent: parsed.data.sessionIntent ?? undefined,
+        selectionMetadata: parsed.data.selectionMetadata ?? undefined,
         forcedSplit: parsed.data.forcedSplit ?? undefined,
         advancesSplit: parsed.data.advancesSplit ?? undefined,
         templateId: parsed.data.templateId ?? undefined,

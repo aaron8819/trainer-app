@@ -15,6 +15,9 @@
 | [templatedocs/template-prescription-assignment.md](templatedocs/template-prescription-assignment.md) | Exact assignment logic for sets, rep ranges, RPE, rest, and loads in template-generated workouts | Claude + developers |
 | [templatedocs/template-score-report.md](templatedocs/template-score-report.md) | Current template scoring report and quality distribution | Claude + developers |
 | [workout-data-flow-traceability.md](workout-data-flow-traceability.md) | End-to-end traceability for how settings, logs, baselines, and engine modules generate and adjust workouts | Claude + developers |
+| [phase5-intent-rollout-runbook.md](phase5-intent-rollout-runbook.md) | Controlled rollout steps and KPI checkpoints for Phase 5 intent-default launch | Claude + developers |
+| [template/exercise-selection-algorithm-spec.md](template/exercise-selection-algorithm-spec.md) | Deterministic hybrid selection spec for template auto-fill and intent generation (weights, calibration, rollout contracts) | Claude + developers |
+| [template/phase5-intent-session-manual-review.md](template/phase5-intent-session-manual-review.md) | Full-session manual review artifact used for Phase 5 readiness sign-off | Claude + developers |
 | [analysis/user-settings-downstream.md](analysis/user-settings-downstream.md) | How settings flow into engine and UI with owner example | Claude + developers |
 | [decisions.md](decisions.md) | Architectural Decision Records (ADRs) | Claude + developers |
 | [data-model.md](data-model.md) | Complete database schema reference | Claude + developers |

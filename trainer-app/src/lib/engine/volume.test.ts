@@ -189,8 +189,8 @@ describe("enforceVolumeCaps", () => {
     withEffectiveVolumeCapsFlag("true", () => {
       const mainLifts: WorkoutExercise[] = [];
       const accessories: WorkoutExercise[] = [
-        makeWorkoutExercise("ham-overlap", ["Quads"], 2, 20, ["Hamstrings"]),
-        makeWorkoutExercise("keep-this", ["Upper Back"], 4, 3),
+        makeWorkoutExercise("ham-overlap", ["Quads"], 4, 20, ["Hamstrings"]),
+        makeWorkoutExercise("keep-this", ["Upper Back", "Rear Delts"], 2, 3),
       ];
       const enhancedBase = buildVolumeContext([], [], { week: 0, length: 4 });
       if (!("muscleVolume" in enhancedBase)) {
@@ -213,8 +213,8 @@ describe("enforceVolumeCaps", () => {
     withEffectiveVolumeCapsFlag("false", () => {
       const mainLifts: WorkoutExercise[] = [];
       const accessories: WorkoutExercise[] = [
-        makeWorkoutExercise("ham-overlap", ["Quads"], 2, 20, ["Hamstrings"]),
-        makeWorkoutExercise("keep-this", ["Upper Back"], 4, 3),
+        makeWorkoutExercise("ham-overlap", ["Quads"], 4, 20, ["Hamstrings"]),
+        makeWorkoutExercise("keep-this", ["Upper Back", "Rear Delts"], 2, 3),
       ];
       const enhancedBase = buildVolumeContext([], [], { week: 0, length: 4 });
       if (!("muscleVolume" in enhancedBase)) {

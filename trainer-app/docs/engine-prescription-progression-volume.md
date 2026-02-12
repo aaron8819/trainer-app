@@ -1,6 +1,6 @@
 # Engine Training Logic Reference
 
-Last verified against code: 2026-02-11
+Last verified against code: 2026-02-12
 
 Sources:
 - `src/lib/engine/rules.ts`
@@ -486,6 +486,7 @@ Even if template generation already timeboxed accessories, `applyLoads(...)` rep
   - `workout`
   - `sraWarnings`
   - `substitutions`
+  - `volumePlanByMuscle`
 
 ### End-to-end generation flow
 
@@ -506,7 +507,7 @@ Even if template generation already timeboxed accessories, `applyLoads(...)` rep
 9. Apply superset metadata to valid accessory pairs.
 10. Build SRA recovery map and warnings.
 11. Assemble workout notes (autoregulation and under-recovery summary).
-12. Return workout and diagnostics (`sraWarnings`, `substitutions`).
+12. Return workout and diagnostics (`sraWarnings`, `substitutions`, `volumePlanByMuscle`).
 
 ### Main-lift slot resolution
 
@@ -682,6 +683,7 @@ Window precedence:
 ### Public exports
 
 - `buildVolumeContext(history, exerciseLibrary, mesocycleOptions?)`
+- `buildVolumePlanByMuscle(mainLifts, accessories, volumeContext, options?)`
 - `getTargetVolume(landmark, mesocycleWeek, mesocycleLength)`
 - `enforceVolumeCaps(accessories, mainLifts, volumeContext)`
 - `deriveFatigueState(history, checkIn?)`
@@ -743,6 +745,16 @@ Cap predicates:
 - Missing/empty env var uses default `false`.
 - Truthy values: `1`, `true`, `yes`, `on`.
 - Any other explicit value is treated as disabled.
+
+Accessory-removal ordering in cap enforcement uses deterministic tie-breakers:
+- lower retention score first
+- then higher fatigue cost
+- then alphabetical exercise name
+
+`buildVolumePlanByMuscle(...)` output semantics:
+- `target`: mesocycle-adjusted landmark target from `getTargetVolume(...)`
+- `planned`: effective weekly sets (`direct + 0.3 * indirect`) from recent history plus current planned session
+- `delta`: `target - planned`
 
 ### Fatigue derivation
 

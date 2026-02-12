@@ -1,6 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { GenerateFromTemplateCard } from "./GenerateFromTemplateCard";
+import { IntentRoundTripValidatorCard } from "./IntentRoundTripValidatorCard";
 
 type TemplateSummary = {
   id: string;
@@ -12,10 +14,46 @@ type TemplateSummary = {
 
 type DashboardGenerateSectionProps = {
   templates: TemplateSummary[];
+  defaultMode?: "template" | "intent";
 };
 
-export function DashboardGenerateSection({ templates }: DashboardGenerateSectionProps) {
+export function DashboardGenerateSection({
+  templates,
+  defaultMode = "template",
+}: DashboardGenerateSectionProps) {
+  const [mode, setMode] = useState<"template" | "intent">(defaultMode);
+
   return (
-    <GenerateFromTemplateCard templates={templates} />
+    <section className="space-y-3">
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          className={`rounded-full px-4 py-2 text-sm font-semibold ${
+            mode === "template"
+              ? "bg-slate-900 text-white"
+              : "border border-slate-300 text-slate-700"
+          }`}
+          onClick={() => setMode("template")}
+        >
+          Template Workout
+        </button>
+        <button
+          type="button"
+          className={`rounded-full px-4 py-2 text-sm font-semibold ${
+            mode === "intent"
+              ? "bg-slate-900 text-white"
+              : "border border-slate-300 text-slate-700"
+          }`}
+          onClick={() => setMode("intent")}
+        >
+          Intent Workout
+        </button>
+      </div>
+      {mode === "template" ? (
+        <GenerateFromTemplateCard templates={templates} />
+      ) : (
+        <IntentRoundTripValidatorCard />
+      )}
+    </section>
   );
 }

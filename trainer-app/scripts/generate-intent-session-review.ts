@@ -1,0 +1,277 @@
+import fs from "node:fs";
+import path from "node:path";
+
+import {
+  rankCandidatesForCalibration,
+  selectExercises,
+  type SelectionInput,
+  type SessionIntent,
+} from "../src/lib/engine/exercise-selection";
+import type { Exercise } from "../src/lib/engine/types";
+
+type JsonExercise = {
+  name: string;
+  movementPatterns: string[];
+  splitTag: string;
+  isCompound: boolean;
+  isMainLiftEligible: boolean;
+  jointStress: "low" | "medium" | "high";
+  equipment: string[];
+  fatigueCost: number;
+  sfrScore: number;
+  lengthPositionScore: number;
+  stimulusBias: string[];
+  contraindications: Record<string, unknown> | null;
+  primaryMuscles: string[];
+  secondaryMuscles: string[];
+  difficulty?: "beginner" | "intermediate" | "advanced";
+  unilateral?: boolean;
+  repRangeRecommendation?: { min: number; max: number };
+};
+
+type JsonExerciseLibrary = {
+  exercises: JsonExercise[];
+};
+
+type ReviewScenario = {
+  id: string;
+  intent: SessionIntent;
+  trainingAge: SelectionInput["trainingAge"];
+  sessionMinutes: number;
+  daysPerWeek: number;
+  weekInBlock: number;
+  targetMuscles?: string[];
+};
+
+const EQUIPMENT = [
+  "barbell",
+  "dumbbell",
+  "machine",
+  "cable",
+  "bodyweight",
+  "bench",
+  "rack",
+  "ez_bar",
+  "trap_bar",
+  "kettlebell",
+  "band",
+  "sled",
+] as const;
+
+function normalize(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, "_");
+}
+
+function makeId(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+}
+
+function toEngineExercise(raw: JsonExercise): Exercise {
+  return {
+    id: makeId(raw.name),
+    name: raw.name,
+    movementPatterns: raw.movementPatterns.map((pattern) => normalize(pattern)) as Exercise["movementPatterns"],
+    splitTags: [normalize(raw.splitTag)] as Exercise["splitTags"],
+    isCompound: raw.isCompound,
+    isMainLiftEligible: raw.isMainLiftEligible,
+    jointStress: raw.jointStress,
+    equipment: raw.equipment.map((item) => normalize(item)) as Exercise["equipment"],
+    fatigueCost: raw.fatigueCost,
+    sfrScore: raw.sfrScore,
+    lengthPositionScore: raw.lengthPositionScore,
+    stimulusBias: raw.stimulusBias.map((item) => normalize(item)) as Exercise["stimulusBias"],
+    contraindications: raw.contraindications ?? undefined,
+    primaryMuscles: raw.primaryMuscles,
+    secondaryMuscles: raw.secondaryMuscles,
+    difficulty: raw.difficulty ?? "beginner",
+    isUnilateral: raw.unilateral ?? false,
+    repRangeMin: raw.repRangeRecommendation?.min,
+    repRangeMax: raw.repRangeRecommendation?.max,
+  };
+}
+
+function buildInput(exerciseLibrary: Exercise[], scenario: ReviewScenario): SelectionInput {
+  return {
+    mode: "intent",
+    intent: scenario.intent,
+    targetMuscles: scenario.targetMuscles,
+    pinnedExerciseIds: [],
+    weekInBlock: scenario.weekInBlock,
+    mesocycleLength: 4,
+    sessionMinutes: scenario.sessionMinutes,
+    trainingAge: scenario.trainingAge,
+    goals: { primary: "hypertrophy", secondary: "conditioning" },
+    constraints: {
+      availableEquipment: [...EQUIPMENT],
+      daysPerWeek: scenario.daysPerWeek,
+    },
+    preferences: undefined,
+    fatigueState: { readinessScore: 3 },
+    history: [],
+    exerciseLibrary,
+  };
+}
+
+function formatIntent(intent: SessionIntent): string {
+  return intent.replaceAll("_", " ");
+}
+
+function main() {
+  const libraryPath = path.resolve(process.cwd(), "prisma/exercises_comprehensive.json");
+  const parsed = JSON.parse(fs.readFileSync(libraryPath, "utf8")) as JsonExerciseLibrary;
+  const exerciseLibrary = parsed.exercises.map(toEngineExercise);
+  const byId = new Map(exerciseLibrary.map((exercise) => [exercise.id, exercise]));
+
+  const scenarios: ReviewScenario[] = [
+    { id: "R1", intent: "push", trainingAge: "beginner", sessionMinutes: 45, daysPerWeek: 3, weekInBlock: 0 },
+    { id: "R2", intent: "pull", trainingAge: "beginner", sessionMinutes: 50, daysPerWeek: 3, weekInBlock: 1 },
+    { id: "R3", intent: "legs", trainingAge: "intermediate", sessionMinutes: 55, daysPerWeek: 4, weekInBlock: 1 },
+    { id: "R4", intent: "upper", trainingAge: "intermediate", sessionMinutes: 60, daysPerWeek: 4, weekInBlock: 2 },
+    { id: "R5", intent: "lower", trainingAge: "intermediate", sessionMinutes: 60, daysPerWeek: 4, weekInBlock: 2 },
+    { id: "R6", intent: "full_body", trainingAge: "advanced", sessionMinutes: 50, daysPerWeek: 5, weekInBlock: 2 },
+    {
+      id: "R7",
+      intent: "body_part",
+      trainingAge: "advanced",
+      sessionMinutes: 55,
+      daysPerWeek: 5,
+      weekInBlock: 3,
+      targetMuscles: ["chest", "triceps"],
+    },
+    {
+      id: "R8",
+      intent: "body_part",
+      trainingAge: "intermediate",
+      sessionMinutes: 50,
+      daysPerWeek: 4,
+      weekInBlock: 3,
+      targetMuscles: ["lats", "biceps"],
+    },
+  ];
+
+  const lines: string[] = [];
+  lines.push("# Intent Session Manual Review (Phase 5)");
+  lines.push("");
+  lines.push("Generated by `scripts/generate-intent-session-review.ts`.");
+  lines.push("");
+  lines.push(`Date: ${new Date().toISOString().slice(0, 10)}`);
+  lines.push("");
+  lines.push("## Scenarios");
+  lines.push("");
+
+  for (const scenario of scenarios) {
+    const input = buildInput(exerciseLibrary, scenario);
+    const selection = selectExercises(input);
+    const selected = selection.selectedExerciseIds
+      .map((id, index) => {
+        const exercise = byId.get(id);
+        if (!exercise) {
+          return null;
+        }
+        const setTarget = selection.perExerciseSetTargets[id];
+        const slot =
+          selection.mainLiftIds.includes(id)
+            ? "main"
+            : selection.accessoryIds.includes(id)
+              ? "accessory"
+              : "other";
+        return {
+          index: index + 1,
+          name: exercise.name,
+          slot,
+          setTarget: setTarget ?? null,
+          primaryMuscles: (exercise.primaryMuscles ?? []).join(", "),
+        };
+      })
+      .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
+
+    lines.push(`### ${scenario.id} - ${formatIntent(scenario.intent)} (${scenario.trainingAge})`);
+    lines.push("");
+    lines.push(
+      `- Inputs: ${scenario.sessionMinutes} min, ${scenario.daysPerWeek} days/week, week ${scenario.weekInBlock + 1}/4${
+        scenario.targetMuscles ? `, target muscles: ${scenario.targetMuscles.join(", ")}` : ""
+      }`
+    );
+    lines.push(`- Selected: ${selected.length} exercises`);
+    lines.push("");
+    for (const exercise of selected) {
+      lines.push(
+        `- ${exercise.index}. ${exercise.name} [${exercise.slot}]${
+          exercise.setTarget ? ` - ${exercise.setTarget} sets` : ""
+        }`
+      );
+      lines.push(`  - Primary muscles: ${exercise.primaryMuscles || "n/a"}`);
+    }
+    lines.push("");
+  }
+
+  lines.push("## Reviewer Checklist");
+  lines.push("");
+  lines.push("- Session flow feels coherent (main lifts first, accessories complement, no awkward sequencing).");
+  lines.push("- Intent-target muscles are clearly emphasized.");
+  lines.push("- Exercise redundancy is reasonable within each session.");
+  lines.push("- Set-target overrides look plausible for the selected slot roles.");
+  lines.push("");
+  lines.push("## Diagnostic Audits");
+  lines.push("");
+
+  const r2Scenario = scenarios.find((scenario) => scenario.id === "R2");
+  if (r2Scenario) {
+    const r2Input = buildInput(exerciseLibrary, r2Scenario);
+    const dbRow = exerciseLibrary.find(
+      (exercise) => exercise.name === "Chest-Supported Dumbbell Row"
+    );
+    const tbarRow = exerciseLibrary.find(
+      (exercise) => exercise.name === "Chest-Supported T-Bar Row"
+    );
+    if (dbRow && tbarRow) {
+      const ranked = rankCandidatesForCalibration(r2Input, "accessory", [
+        { exerciseId: dbRow.id, role: "accessory" },
+      ]);
+      const tbar = ranked.find((entry) => entry.exerciseId === tbarRow.id);
+      lines.push("### R2 redundancy audit");
+      lines.push("");
+      lines.push(
+        `- ${tbarRow.name} redundancyPenalty with ${dbRow.name} pre-selected: ${
+          tbar?.components.redundancyPenalty ??
+          "excluded by duplicate same-primary-pattern hard filter"
+        }`
+      );
+      lines.push("");
+    }
+  }
+
+  const r6Scenario = scenarios.find((scenario) => scenario.id === "R6");
+  if (r6Scenario) {
+    const r6Input = buildInput(exerciseLibrary, r6Scenario);
+    const rankedMain = rankCandidatesForCalibration(r6Input, "main");
+    const beltSquat = exerciseLibrary.find((exercise) => exercise.name === "Belt Squat");
+    const rdl = exerciseLibrary.find((exercise) => exercise.name === "Romanian Deadlift");
+    const beltScore = beltSquat
+      ? rankedMain.find((entry) => entry.exerciseId === beltSquat.id)?.score
+      : undefined;
+    const rdlScore = rdl
+      ? rankedMain.find((entry) => entry.exerciseId === rdl.id)?.score
+      : undefined;
+    lines.push("### R6 lower-body main candidate audit");
+    lines.push("");
+    lines.push(`- Belt Squat main-phase score: ${beltScore ?? "n/a"}`);
+    lines.push(`- Romanian Deadlift main-phase score: ${rdlScore ?? "n/a"}`);
+    lines.push(
+      `- Top 5 main candidates: ${rankedMain
+        .slice(0, 5)
+        .map((entry) => `${entry.name}(${entry.score})`)
+        .join(" -> ")}`
+    );
+    lines.push("");
+  }
+
+  const outputPath = path.resolve(
+    process.cwd(),
+    "docs/template/phase5-intent-session-manual-review.md"
+  );
+  fs.writeFileSync(outputPath, `${lines.join("\n")}\n`, "utf8");
+  console.log(`Wrote ${outputPath}`);
+}
+
+main();

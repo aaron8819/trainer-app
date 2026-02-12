@@ -42,10 +42,19 @@ export function prescribeSetsReps(
   preferences?: UserPreferences,
   periodization?: PeriodizationModifiers,
   exerciseRepRange?: ExerciseRepRange,
-  isIsolationAccessory = false
+  isIsolationAccessory = false,
+  overrideSetCount?: number
 ): WorkoutSet[] {
   if (isMainLift) {
-    return prescribeMainLiftSets(trainingAge, goals, fatigueState, preferences, periodization, exerciseRepRange);
+    return prescribeMainLiftSets(
+      trainingAge,
+      goals,
+      fatigueState,
+      preferences,
+      periodization,
+      exerciseRepRange,
+      overrideSetCount
+    );
   }
   return prescribeAccessorySets(
     trainingAge,
@@ -54,7 +63,8 @@ export function prescribeSetsReps(
     preferences,
     periodization,
     exerciseRepRange,
-    isIsolationAccessory
+    isIsolationAccessory,
+    overrideSetCount
   );
 }
 
@@ -99,17 +109,21 @@ function prescribeMainLiftSets(
   fatigueState: FatigueState,
   preferences?: UserPreferences,
   periodization?: PeriodizationModifiers,
-  exerciseRepRange?: ExerciseRepRange
+  exerciseRepRange?: ExerciseRepRange,
+  overrideSetCount?: number
 ): WorkoutSet[] {
   const goalRepRange = getGoalRepRanges(goals.primary);
   const effectiveMain = clampRepRange(goalRepRange.main, exerciseRepRange);
-  const setCount = resolveSetCount(
-    true,
-    trainingAge,
-    fatigueState,
-    periodization?.setMultiplier,
-    goals.primary
-  );
+  const setCount =
+    overrideSetCount !== undefined
+      ? Math.max(1, Math.round(overrideSetCount))
+      : resolveSetCount(
+          true,
+          trainingAge,
+          fatigueState,
+          periodization?.setMultiplier,
+          goals.primary
+        );
   const topSetReps = effectiveMain[0];
   const backOffReps = Math.min(
     effectiveMain[1],
@@ -149,7 +163,8 @@ function prescribeAccessorySets(
   preferences?: UserPreferences,
   periodization?: PeriodizationModifiers,
   exerciseRepRange?: ExerciseRepRange,
-  isIsolationAccessory = false
+  isIsolationAccessory = false,
+  overrideSetCount?: number
 ): WorkoutSet[] {
   const goalRepRange = getGoalRepRanges(goals.primary);
   const clampedAccessory = clampRepRange(goalRepRange.accessory, exerciseRepRange);
@@ -157,13 +172,16 @@ function prescribeAccessorySets(
     clampedAccessory,
     exerciseRepRange
   );
-  const setCount = resolveSetCount(
-    false,
-    trainingAge,
-    fatigueState,
-    periodization?.setMultiplier,
-    goals.primary
-  );
+  const setCount =
+    overrideSetCount !== undefined
+      ? Math.max(1, Math.round(overrideSetCount))
+      : resolveSetCount(
+          false,
+          trainingAge,
+          fatigueState,
+          periodization?.setMultiplier,
+          goals.primary
+        );
   const targetReps = effectiveAccessory[0];
   const targetRepRange = {
     min: effectiveAccessory[0],

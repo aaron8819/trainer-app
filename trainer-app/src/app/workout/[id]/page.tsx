@@ -301,7 +301,15 @@ export default async function WorkoutDetailPage({
   const hasHighSeverityInjury = injuries.some((injury) => injury.severity >= 3);
   const primaryGoal = goals?.primaryGoal?.toLowerCase() ?? "general_health";
   const secondaryGoal = goals?.secondaryGoal?.toLowerCase() ?? "none";
-  const sourceLabel = workout.templateId ? "template" : "legacy";
+  const sourceLabel =
+    workout.selectionMode === "INTENT"
+      ? "intent"
+      : workout.templateId
+        ? "template"
+        : "legacy";
+  const intentLabel = workout.sessionIntent
+    ? workout.sessionIntent.toLowerCase().replaceAll("_", " ")
+    : undefined;
   const trainingAge = formatTrainingAge(profile?.trainingAge ?? TrainingAge.INTERMEDIATE);
   const freshCheckIn = mapLatestCheckIn(latestCheckIn ? [latestCheckIn] : undefined);
   const painLabels = formatPainFlags(freshCheckIn?.painFlags);
@@ -397,6 +405,11 @@ export default async function WorkoutDetailPage({
               <p>
                 Source: {sourceLabel} generation.
               </p>
+              {intentLabel ? (
+                <p>
+                  Session intent: {intentLabel}.
+                </p>
+              ) : null}
               <p>
                 Training age: {trainingAge}. Main lifts default to 4 sets; accessories default to 3 sets.
               </p>

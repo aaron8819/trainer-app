@@ -104,6 +104,17 @@ enum WorkoutSelectionMode {
   AUTO
   MANUAL
   BONUS
+  INTENT
+}
+
+enum WorkoutSessionIntent {
+  PUSH
+  PULL
+  LEGS
+  UPPER
+  LOWER
+  FULL_BODY
+  BODY_PART
 }
 
 enum WorkoutExerciseSection {
@@ -342,6 +353,7 @@ model Program {
   user      User     @relation(fields: [userId], references: [id])
   name      String
   isActive  Boolean  @default(true)
+  weeklySchedule WorkoutSessionIntent[] @default([])
   createdAt DateTime @default(now())
 
   blocks ProgramBlock[]
@@ -372,6 +384,8 @@ model Workout {
   estimatedMinutes Int?
   notes           String?
   selectionMode   WorkoutSelectionMode @default(AUTO)
+  sessionIntent   WorkoutSessionIntent?
+  selectionMetadata Json?
   forcedSplit     SplitDay?
   advancesSplit   Boolean @default(true)
 

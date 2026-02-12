@@ -1,6 +1,6 @@
 # Engine Architecture
 
-Last verified against code: 2026-02-11
+Last verified against code: 2026-02-12
 
 This document describes current runtime behavior for workout generation and load assignment.
 
@@ -9,8 +9,10 @@ For full end-to-end traceability, see `docs/workout-data-flow-traceability.md`.
 
 ## Current runtime scope
 
-- Template generation is the only active generation path.
-- Active generation endpoint: `POST /api/workouts/generate-from-template`.
+- Active generation endpoints:
+  - `POST /api/workouts/generate-from-template`
+  - `POST /api/workouts/generate-from-intent`
+- Selection is now shared across template auto-fill and intent generation via `selectExercises(...)`.
 - Deprecated auto endpoint `POST /api/workouts/generate` is removed.
 - `src/lib/engine/engine.ts` is removed.
 
@@ -83,13 +85,32 @@ resolveOwner()
    -> if shouldDeload(history) and not already deload, override periodization to deload
    -> generateWorkoutFromTemplate(..., { sessionMinutes, weekInBlock, mesocycleLength, periodization, ... })
    -> applyLoads(...)
--> return { workout, templateId, sraWarnings, substitutions }
+-> return { workout, templateId, sraWarnings, substitutions, volumePlanByMuscle }
 ```
 
 Notes:
 
-- Template generation is user-directed and does not auto-select exercises.
+- Template generation is user-directed by default and can auto-fill non-pinned slots when requested.
 - Template saves set `advancesSplit: false` for historical split queue isolation.
+
+### Intent mode (`POST /api/workouts/generate-from-intent`)
+
+```text
+resolveOwner()
+-> loadWorkoutContext(userId)
+   -> mapProfile/mapGoals/mapConstraints/mapExercises/mapHistory/mapPreferences/mapCheckIn
+-> selectExercises({ mode: "intent", ... })
+   -> deterministic scoring + tie-breaks
+   -> returns selected exercises + perExerciseSetTargets + metadata
+-> generateWorkoutFromTemplate(..., { setCountOverrides, sessionIntent, ... })
+-> applyLoads(...)
+-> return { workout, sraWarnings, substitutions, volumePlanByMuscle, sessionIntent, selection }
+```
+
+Notes:
+
+- Intent generation uses prescriptive set allocation from selector output (`perExerciseSetTargets`).
+- Cold-start staged unlock metadata is persisted through save in `Workout.selectionMetadata`.
 
 ## Persistence and feedback flow
 
@@ -110,6 +131,7 @@ Notes:
 | Module | Responsibility |
 |---|---|
 | `template-session.ts` | Template workout orchestration |
+| `exercise-selection.ts` | Shared deterministic selector for template auto-fill and intent mode |
 | `apply-loads.ts` | Load assignment, warmup sets, post-load time trim |
 | `volume.ts` | Volume context and cap enforcement |
 | `timeboxing.ts` | Duration estimate and accessory trim priority |
@@ -131,3 +153,4 @@ These remain in-repo for historical/tests/support code but are not referenced by
 ## Known gaps
 
 - Finding 16 only: stall escalation system beyond deload remains backlog scope and is tracked in `docs/plans/engine-audit-remediation-plan.md`.
+- Weekly program analysis now supports mixed template + intent rotations by using history-backed intent-session estimation when a scheduled intent has no matching template.

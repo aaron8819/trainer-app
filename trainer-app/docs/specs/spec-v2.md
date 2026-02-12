@@ -4,9 +4,9 @@ Master spec for three interconnected features: engine knowledgebase alignment, e
 
 Reference: `docs/knowledgebase/hypertrophyandstrengthtraining_researchreport.md` is the scientific foundation for all engine behavior.
 
-Status note (2026-02-11): this document includes historical planning content for the deprecated auto/PPL path.
-Current runtime is template-only (`/api/workouts/generate-from-template`), with `/api/workouts/generate` and `engine.ts` removed.
-Use `docs/plans/template-only-deprecation-plan.md`, `docs/architecture.md`, and `docs/workout-data-flow-traceability.md` as source of truth for active behavior.
+Status note (updated 2026-02-12): this document includes historical planning content for deprecated auto/PPL runtime behavior.
+Current runtime supports template and intent generation (`/api/workouts/generate-from-template`, `/api/workouts/generate-from-intent`), while legacy `/api/workouts/generate` and `engine.ts` remain removed.
+Use `docs/architecture.md`, `docs/workout-data-flow-traceability.md`, and `docs/template/exercise-selection-algorithm-spec.md` as source of truth for active behavior.
 
 ---
 
@@ -25,7 +25,7 @@ Use `docs/plans/template-only-deprecation-plan.md`, `docs/architecture.md`, and 
 
 ## 1. Session Modes
 
-The active runtime supports a single session-generation path (template mode). PPL mode content below is historical and retained for traceability.
+The active runtime supports template and intent session-generation paths. PPL mode content below is historical and retained for traceability.
 
 ### PPL Mode (historical; deprecated and removed)
 

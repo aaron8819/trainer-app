@@ -125,7 +125,7 @@ export async function resolveOwner() {
 }
 
 export async function loadWorkoutContext(userId: string) {
-  const [profile, goals, constraints, injuries, baselines, exercises, workouts, preferences, checkIns] = await Promise.all([
+  const [profile, goals, constraints, injuries, baselines, exercises, workouts, preferences, checkIns, checkInCount] = await Promise.all([
     prisma.profile.findUnique({ where: { userId } }),
     prisma.goals.findUnique({ where: { userId } }),
     prisma.constraints.findUnique({ where: { userId } }),
@@ -158,9 +158,10 @@ export async function loadWorkoutContext(userId: string) {
     }),
     prisma.userPreference.findUnique({ where: { userId } }),
     prisma.sessionCheckIn.findMany({ where: { userId }, orderBy: { date: "desc" }, take: 1 }),
+    prisma.sessionCheckIn.count({ where: { userId } }),
   ]);
 
-  return { profile, goals, constraints, injuries, baselines, exercises, workouts, preferences, checkIns };
+  return { profile, goals, constraints, injuries, baselines, exercises, workouts, preferences, checkIns, checkInCount };
 }
 
 export function mapProfile(userId: string, profile: Profile, injuries: Injury[]): UserProfile {
@@ -253,6 +254,10 @@ export function mapHistory(workouts: WorkoutWithRelations[]): WorkoutHistoryEntr
     completed: workout.status === WorkoutStatus.COMPLETED,
     status: workout.status,
     advancesSplit: workout.advancesSplit ?? true,
+    selectionMode: workout.selectionMode,
+    sessionIntent: workout.sessionIntent
+      ? (workout.sessionIntent.toLowerCase() as EngineSplitDay)
+      : undefined,
     forcedSplit: workout.forcedSplit
       ? (workout.forcedSplit.toLowerCase() as EngineSplitDay)
       : undefined,

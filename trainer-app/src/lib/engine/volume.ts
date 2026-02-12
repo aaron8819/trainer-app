@@ -31,6 +31,14 @@ export type EnhancedVolumeContext = VolumeContext & {
   mesocycleLength: number;
 };
 
+export type VolumePlanByMuscleEntry = {
+  target: number;
+  planned: number;
+  delta: number;
+};
+
+export type VolumePlanByMuscle = Record<string, VolumePlanByMuscleEntry>;
+
 const USE_EFFECTIVE_VOLUME_CAPS_ENV = "USE_EFFECTIVE_VOLUME_CAPS";
 
 export function buildVolumeContext(
@@ -195,9 +203,24 @@ export function enforceVolumeCaps(
     const scored = adjusted
       .map((exercise, idx) => ({
         idx,
+        exercise,
         score: scoreAccessoryRetention(exercise, coveredMuscles, muscleCounts),
       }))
-      .sort((a, b) => a.score - b.score);
+      .sort((a, b) => {
+        if (a.score !== b.score) {
+          return a.score - b.score;
+        }
+        const fatigueA = a.exercise.exercise.fatigueCost ?? 3;
+        const fatigueB = b.exercise.exercise.fatigueCost ?? 3;
+        if (fatigueA !== fatigueB) {
+          return fatigueB - fatigueA;
+        }
+        const nameCompare = a.exercise.exercise.name.localeCompare(b.exercise.exercise.name);
+        if (nameCompare !== 0) {
+          return nameCompare;
+        }
+        return a.idx - b.idx;
+      });
     adjusted.splice(scored[0].idx, 1);
   }
 
@@ -221,10 +244,69 @@ export function effectiveWeeklySets(state: MuscleVolumeState): number {
   return state.weeklyDirectSets + state.weeklyIndirectSets * INDIRECT_SET_MULTIPLIER;
 }
 
+export function buildVolumePlanByMuscle(
+  mainLifts: WorkoutExercise[],
+  accessories: WorkoutExercise[],
+  volumeContext: VolumeContext | EnhancedVolumeContext,
+  options?: {
+    mesocycleWeek?: number;
+    mesocycleLength?: number;
+  }
+): VolumePlanByMuscle {
+  const enhanced = isEnhancedVolumeContext(volumeContext);
+  const directSets: Record<string, number> = { ...volumeContext.recent };
+  const indirectSets: Record<string, number> = enhanced
+    ? Object.fromEntries(
+        Object.entries(volumeContext.muscleVolume)
+          .filter(([, state]) => state.weeklyIndirectSets > 0)
+          .map(([muscle, state]) => [muscle, state.weeklyIndirectSets])
+      )
+    : {};
+
+  const allExercises = [...mainLifts, ...accessories];
+  for (const exercise of allExercises) {
+    const sets = exercise.sets.length;
+    for (const muscle of exercise.exercise.primaryMuscles ?? []) {
+      directSets[muscle] = (directSets[muscle] ?? 0) + sets;
+    }
+    for (const muscle of exercise.exercise.secondaryMuscles ?? []) {
+      indirectSets[muscle] = (indirectSets[muscle] ?? 0) + sets;
+    }
+  }
+
+  const mesocycleWeek = Math.max(
+    0,
+    options?.mesocycleWeek ?? (enhanced ? volumeContext.mesocycleWeek : 0)
+  );
+  const mesocycleLength = Math.max(
+    1,
+    options?.mesocycleLength ?? (enhanced ? volumeContext.mesocycleLength : 4)
+  );
+
+  const plan: VolumePlanByMuscle = {};
+  for (const [muscle, landmark] of Object.entries(VOLUME_LANDMARKS)) {
+    const target = getTargetVolume(landmark, mesocycleWeek, mesocycleLength);
+    const planned =
+      (directSets[muscle] ?? 0) + (indirectSets[muscle] ?? 0) * INDIRECT_SET_MULTIPLIER;
+    const delta = target - planned;
+    plan[muscle] = {
+      target: roundVolumeValue(target),
+      planned: roundVolumeValue(planned),
+      delta: roundVolumeValue(delta),
+    };
+  }
+
+  return plan;
+}
+
 function isEnhancedVolumeContext(
   ctx: VolumeContext | EnhancedVolumeContext
 ): ctx is EnhancedVolumeContext {
   return "muscleVolume" in ctx;
+}
+
+function roundVolumeValue(value: number): number {
+  return Math.round(value * 10) / 10;
 }
 
 function exceedsSpikeCap(sets: number, baseline: number | undefined) {

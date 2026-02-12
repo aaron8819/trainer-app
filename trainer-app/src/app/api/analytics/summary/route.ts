@@ -4,6 +4,8 @@ import { prisma } from "@/lib/db/prisma";
 import { WorkoutStatus } from "@prisma/client";
 import { resolveOwner } from "@/lib/api/workout-context";
 
+const TRACKED_SELECTION_MODES = ["AUTO", "MANUAL", "BONUS", "INTENT"] as const;
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const parsed = analyticsSummarySchema.safeParse({
@@ -45,6 +47,54 @@ export async function GET(request: Request) {
           },
         }
       : {};
+
+  const workouts = await prisma.workout.findMany({
+    where: {
+      userId: owner.id,
+      ...workoutDateFilter,
+    },
+    select: {
+      status: true,
+      selectionMode: true,
+      sessionIntent: true,
+    },
+  });
+
+  const modeCounts = new Map<
+    (typeof TRACKED_SELECTION_MODES)[number],
+    { generated: number; completed: number }
+  >(
+    TRACKED_SELECTION_MODES.map((mode) => [
+      mode,
+      { generated: 0, completed: 0 },
+    ])
+  );
+  const intentCounts = new Map<string, { generated: number; completed: number }>();
+
+  for (const workout of workouts) {
+    const mode = TRACKED_SELECTION_MODES.includes(
+      workout.selectionMode as (typeof TRACKED_SELECTION_MODES)[number]
+    )
+      ? (workout.selectionMode as (typeof TRACKED_SELECTION_MODES)[number])
+      : "AUTO";
+    const modeBucket = modeCounts.get(mode);
+    if (modeBucket) {
+      modeBucket.generated += 1;
+      if (workout.status === WorkoutStatus.COMPLETED) {
+        modeBucket.completed += 1;
+      }
+    }
+
+    if (workout.sessionIntent) {
+      const intent = workout.sessionIntent;
+      const bucket = intentCounts.get(intent) ?? { generated: 0, completed: 0 };
+      bucket.generated += 1;
+      if (workout.status === WorkoutStatus.COMPLETED) {
+        bucket.completed += 1;
+      }
+      intentCounts.set(intent, bucket);
+    }
+  }
 
   const setLogs = await prisma.setLog.findMany({
     where: {
@@ -90,6 +140,30 @@ export async function GET(request: Request) {
       workoutsCompleted,
       totalSets,
       volumeByExercise: volumeByExerciseArray,
+    },
+    kpis: {
+      selectionModes: TRACKED_SELECTION_MODES.map((mode) => {
+        const bucket = modeCounts.get(mode) ?? { generated: 0, completed: 0 };
+        const completionRate =
+          bucket.generated > 0 ? Number((bucket.completed / bucket.generated).toFixed(3)) : null;
+        return {
+          mode,
+          generated: bucket.generated,
+          completed: bucket.completed,
+          completionRate,
+        };
+      }),
+      intents: Array.from(intentCounts.entries())
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([intent, bucket]) => ({
+          intent,
+          generated: bucket.generated,
+          completed: bucket.completed,
+          completionRate:
+            bucket.generated > 0
+              ? Number((bucket.completed / bucket.generated).toFixed(3))
+              : null,
+        })),
     },
   });
 }

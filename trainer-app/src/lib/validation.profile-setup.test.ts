@@ -22,4 +22,12 @@ describe("profileSetupSchema", () => {
     });
     expect(parsed.success).toBe(true);
   });
+
+  it("accepts weekly schedule intent arrays", () => {
+    const parsed = profileSetupSchema.safeParse({
+      ...baseProfilePayload,
+      weeklySchedule: ["PUSH", "PULL", "LEGS", "UPPER"],
+    });
+    expect(parsed.success).toBe(true);
+  });
 });

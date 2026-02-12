@@ -16,7 +16,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
 
-  const result = await generateSessionFromTemplate(user.id, parsed.data.templateId);
+  const result = await generateSessionFromTemplate(user.id, parsed.data.templateId, {
+    pinnedExerciseIds: parsed.data.pinnedExerciseIds,
+    autoFillUnpinned: parsed.data.autoFillUnpinned,
+  });
 
   if ("error" in result) {
     return NextResponse.json({ error: result.error }, { status: 400 });
@@ -27,5 +30,9 @@ export async function POST(request: Request) {
     templateId: result.templateId,
     sraWarnings: result.sraWarnings,
     substitutions: result.substitutions,
+    volumePlanByMuscle: result.volumePlanByMuscle,
+    selectionMode: result.selectionMode,
+    sessionIntent: result.sessionIntent,
+    selection: result.selection,
   });
 }

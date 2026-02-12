@@ -12,7 +12,8 @@ export type SecondaryGoal =
   | "strength"
   | "none";
 export type SplitType = "ppl" | "upper_lower" | "full_body" | "custom";
-export type SplitDay = "push" | "pull" | "legs" | "upper" | "lower" | "full_body";
+export type SplitDay = "push" | "pull" | "legs" | "upper" | "lower" | "full_body" | "body_part";
+export type WorkoutSelectionMode = "AUTO" | "MANUAL" | "BONUS" | "INTENT";
 export type MovementPatternV2 =
   | "horizontal_push"
   | "vertical_push"
@@ -177,6 +178,8 @@ export type WorkoutHistoryEntry = {
   status?: "PLANNED" | "IN_PROGRESS" | "COMPLETED" | "SKIPPED";
   advancesSplit?: boolean;
   forcedSplit?: SplitDay;
+  sessionIntent?: SplitDay;
+  selectionMode?: WorkoutSelectionMode;
   exercises: {
     exerciseId: string;
     movementPattern: MovementPattern;

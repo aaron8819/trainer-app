@@ -41,4 +41,18 @@ describe("saveWorkoutSchema", () => {
 
     expect(parsed.success).toBe(false);
   });
+
+  it("accepts intent persistence metadata", () => {
+    const parsed = saveWorkoutSchema.parse({
+      workoutId: "workout-1",
+      selectionMode: "INTENT",
+      sessionIntent: "BODY_PART",
+      selectionMetadata: {
+        selectedExerciseIds: ["curl", "preacher"],
+      },
+    });
+
+    expect(parsed.selectionMode).toBe("INTENT");
+    expect(parsed.sessionIntent).toBe("BODY_PART");
+  });
 });

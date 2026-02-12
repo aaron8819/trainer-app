@@ -13,7 +13,13 @@ import type {
 } from "./types";
 import { createId } from "./utils";
 import { prescribeSetsReps, getRestSeconds, resolveSetTargetReps } from "./prescription";
-import { buildVolumeContext, deriveFatigueState, enforceVolumeCaps } from "./volume";
+import {
+  buildVolumeContext,
+  buildVolumePlanByMuscle,
+  deriveFatigueState,
+  enforceVolumeCaps,
+  type VolumePlanByMuscle,
+} from "./volume";
 import { estimateWorkoutMinutes, trimAccessoriesByPriority } from "./timeboxing";
 import { buildMuscleRecoveryMap, generateSraWarnings, type SraWarning } from "./sra";
 import { getGoalRepRanges, type PeriodizationModifiers } from "./rules";
@@ -25,6 +31,8 @@ export type TemplateExerciseInput = {
   orderIndex: number;
   supersetGroup?: number;
 };
+
+export type { VolumePlanByMuscle } from "./volume";
 
 export type SubstitutionSuggestion = {
   originalExerciseId: string;
@@ -45,6 +53,7 @@ export type GenerateFromTemplateOptions = {
   mesocycleLength?: number;
   periodization?: PeriodizationModifiers;
   isStrict?: boolean;
+  setCountOverrides?: Record<string, number>;
 };
 
 const DEFAULT_MAIN_LIFT_SLOT_CAP = 2;
@@ -53,6 +62,7 @@ export type TemplateWorkoutResult = {
   workout: WorkoutPlan;
   sraWarnings: SraWarning[];
   substitutions: SubstitutionSuggestion[];
+  volumePlanByMuscle: VolumePlanByMuscle;
 };
 
 export function generateWorkoutFromTemplate(
@@ -90,7 +100,8 @@ export function generateWorkoutFromTemplate(
       fatigueState,
       mainLiftSlots.has(index),
       preferences,
-      periodization
+      periodization,
+      options.setCountOverrides?.[input.exercise.id]
     )
   );
 
@@ -172,6 +183,10 @@ export function generateWorkoutFromTemplate(
     volumeContext
   );
   const accessories = applyAccessorySupersetMetadata(finalAccessories);
+  const volumePlanByMuscle = buildVolumePlanByMuscle(mainLifts, accessories, volumeContext, {
+    mesocycleWeek: weekInBlock,
+    mesocycleLength: normalizedMesocycleLength,
+  });
   allExercises = [...projectedMainLifts, ...accessories];
   estimatedMinutes = estimateWorkoutMinutes(allExercises);
 
@@ -209,7 +224,12 @@ export function generateWorkoutFromTemplate(
     finalExerciseIds.has(suggestion.originalExerciseId)
   );
 
-  return { workout, sraWarnings, substitutions: filteredSubstitutions };
+  return {
+    workout,
+    sraWarnings,
+    substitutions: filteredSubstitutions,
+    volumePlanByMuscle,
+  };
 }
 
 function buildTemplateExercise(
@@ -219,7 +239,8 @@ function buildTemplateExercise(
   fatigueState: FatigueState,
   isMainLift: boolean,
   preferences?: UserPreferences,
-  periodization?: PeriodizationModifiers
+  periodization?: PeriodizationModifiers,
+  overrideSetCount?: number
 ): WorkoutExercise {
   const { exercise, orderIndex } = input;
   const role: NonNullable<WorkoutExercise["role"]> = isMainLift ? "main" : "accessory";
@@ -234,7 +255,8 @@ function buildTemplateExercise(
     preferences,
     periodization,
     exerciseRepRange,
-    !isMainLift && !(exercise.isCompound ?? false)
+    !isMainLift && !(exercise.isCompound ?? false),
+    overrideSetCount
   );
   const topSetReps =
     prescribedSets.length > 0 ? resolveSetTargetReps(prescribedSets[0]) : undefined;

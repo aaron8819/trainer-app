@@ -1,14 +1,15 @@
 # Workout Data Flow and Traceability
 
-Last verified against code: 2026-02-11
+Last verified against code: 2026-02-12
 Audience: engineers and system designers.
 
 ## 1) Purpose and scope
 
-This document describes the runtime data flow for template-only workout generation and adaptation.
+This document describes the runtime data flow for template and intent workout generation and adaptation.
 
 It covers:
 - Template generation (`/api/workouts/generate-from-template`)
+- Intent generation (`/api/workouts/generate-from-intent`)
 - Workout persistence (`/api/workouts/save`)
 - Set logging (`/api/logs/set`)
 - Baseline adaptation and progression loops
@@ -17,7 +18,9 @@ It does not cover deprecated auto-generation behavior except where explicitly ma
 
 ## 2) Runtime status
 
-- Active generation endpoint: `POST /api/workouts/generate-from-template`
+- Active generation endpoints:
+  - `POST /api/workouts/generate-from-template`
+  - `POST /api/workouts/generate-from-intent`
 - Deprecated endpoint `POST /api/workouts/generate` is removed.
 - `src/lib/engine/engine.ts` is removed.
 
@@ -26,7 +29,8 @@ It does not cover deprecated auto-generation behavior except where explicitly ma
 ```text
 Settings + Preferences + History + CheckIn + Exercise Catalog + Template
   -> Context Mapping (src/lib/api/workout-context.ts)
-  -> Template Engine (src/lib/engine/template-session.ts)
+  -> Selection (optional in template mode, required in intent mode; src/lib/engine/exercise-selection.ts)
+  -> Template Engine + Prescription (src/lib/engine/template-session.ts)
   -> Load Assignment (src/lib/engine/apply-loads.ts)
   -> Save Workout (/api/workouts/save)
   -> Log Sets (/api/logs/set)
@@ -65,14 +69,28 @@ POST /api/workouts/generate-from-template
      -> if shouldDeload(history) and not already deload, override periodization to deload
      -> generateWorkoutFromTemplate(..., { sessionMinutes, weekInBlock, mesocycleLength, periodization, ... })
      -> applyLoads(...)
-  -> return { workout, templateId, sraWarnings, substitutions }
+  -> return { workout, templateId, sraWarnings, substitutions, volumePlanByMuscle }
+```
+
+Source: `src/app/api/workouts/generate-from-intent/route.ts`, `src/lib/engine/exercise-selection.ts`
+
+```text
+POST /api/workouts/generate-from-intent
+  -> resolveOwner()
+  -> loadWorkoutContext(userId)
+  -> mapProfile/mapGoals/mapConstraints/mapExercises/mapHistory/mapPreferences/mapCheckIn
+  -> selectExercises({ mode: "intent", ... })
+  -> generateWorkoutFromTemplate(..., { setCountOverrides, sessionIntent, ... })
+  -> applyLoads(...)
+  -> return { workout, sraWarnings, substitutions, volumePlanByMuscle, sessionIntent, selection }
 ```
 
 ## 6) Behavior checkpoints
 
-### 6.1 Template intent and exercise source
+### 6.1 Session intent and exercise source
 
-- Exercises come from the selected template in saved order.
+- Template mode: exercises come from the selected template in saved order, with optional non-pinned auto-fill replacement.
+- Intent mode: exercises are selected by deterministic weighted scoring with hard filters and tie-breaks.
 - No auto split-day queue is consulted in active generation.
 
 ### 6.2 Volume/time controls
@@ -82,6 +100,7 @@ POST /api/workouts/generate-from-template
 - Enhanced volume caps are active in template API path when mesocycle context is present:
   - MRV primary cap
   - 20% spike cap secondary safety net
+- Generation response includes advisory `volumePlanByMuscle` (`target`, `planned`, `delta`) for per-muscle weekly adequacy feedback.
 
 ### 6.3 Recovery and substitutions
 
@@ -91,6 +110,7 @@ POST /api/workouts/generate-from-template
 ### 6.4 Save/log feedback loop
 
 - `POST /api/workouts/save` persists workout/exercises/sets and sections.
+- Save path also persists selection context (`selectionMode`, optional `sessionIntent`, optional `selectionMetadata`).
 - Completed saves trigger baseline update transactionally.
 - `POST /api/logs/set` upserts per-set performance logs.
 

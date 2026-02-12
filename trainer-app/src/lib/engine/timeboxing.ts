@@ -9,28 +9,25 @@ function isSupersetTimingEligible(exercise: WorkoutExercise) {
 }
 
 export function estimateWorkoutMinutes(exercises: WorkoutExercise[]): number {
-  const estimateWorkSeconds = (reps?: number, fallback?: number) => {
-    if (reps === undefined || Number.isNaN(reps)) {
-      return fallback ?? 30;
-    }
-    const seconds = reps * 2 + 10;
-    return Math.max(20, Math.min(90, seconds));
-  };
-
   const resolveSetTiming = (
     set: WorkoutSet,
     exercise: WorkoutExercise,
     isWarmupSet: boolean
   ) => {
+    const targetReps = resolveSetTargetReps(set);
     const restSeconds =
       set.restSeconds ??
       (isWarmupSet
         ? REST_SECONDS.warmup
-        : getRestSeconds(exercise.exercise, exercise.isMainLift));
+        : getRestSeconds(exercise.exercise, exercise.isMainLift, targetReps));
     const fallbackWork =
       exercise.exercise.timePerSetSec ??
       (exercise.isMainLift ? 60 : 40);
-    const workSeconds = estimateWorkSeconds(resolveSetTargetReps(set), fallbackWork);
+    const repAwareFallbackWork =
+      targetReps !== undefined
+        ? Math.max(20, Math.min(90, targetReps * 2 + 10))
+        : undefined;
+    const workSeconds = fallbackWork ?? repAwareFallbackWork ?? 30;
     const cappedWorkSeconds = isWarmupSet ? Math.min(30, workSeconds) : workSeconds;
     return { workSeconds: cappedWorkSeconds, restSeconds };
   };
@@ -151,7 +148,17 @@ export function trimAccessoriesByPriority<T extends WorkoutExercise>(
       exercise,
       score: scoreAccessoryRetention(exercise, coveredMuscles, muscleCounts),
     }))
-    .sort((a, b) => a.score - b.score);
+    .sort((a, b) => {
+      if (a.score !== b.score) {
+        return a.score - b.score;
+      }
+      const fatigueA = a.exercise.exercise.fatigueCost ?? 3;
+      const fatigueB = b.exercise.exercise.fatigueCost ?? 3;
+      if (fatigueA !== fatigueB) {
+        return fatigueB - fatigueA;
+      }
+      return a.exercise.exercise.name.localeCompare(b.exercise.exercise.name);
+    });
 
   for (let i = 0; i < count && scored.length > 0; i += 1) {
     const remove = scored.shift();
@@ -172,15 +179,26 @@ export function scoreAccessoryRetention(
   coveredMuscles: Set<string>,
   muscleCounts: Record<string, number>
 ) {
-  const fatigueCost = accessory.exercise.fatigueCost ?? 3;
   const primary = accessory.exercise.primaryMuscles ?? [];
-  const uncovered = primary.filter((muscle) => !coveredMuscles.has(muscle));
-  const noveltyBonus = uncovered.length * 2;
+  const secondary = accessory.exercise.secondaryMuscles ?? [];
+  const uncoveredPrimary = primary.filter((muscle) => !coveredMuscles.has(muscle));
+  const uncoveredSecondary = secondary.filter((muscle) => !coveredMuscles.has(muscle));
+  const muscleCoverageScore = uncoveredPrimary.length + uncoveredSecondary.length * 0.3;
   const redundancyPenalty = primary.reduce((sum, muscle) => {
     const count = muscleCounts[muscle] ?? 0;
     return sum + Math.max(0, count - 1);
   }, 0);
-  return fatigueCost + noveltyBonus - redundancyPenalty;
+  const fatigueCostPenalty = normalizePositive((accessory.exercise.fatigueCost ?? 3) - 3, 2);
+  const sfrScore = normalizeCentered(accessory.exercise.sfrScore ?? 3, 3, 2);
+  const lengthenedScore = normalizeCentered(accessory.exercise.lengthPositionScore ?? 3, 3, 2);
+
+  return (
+    3.0 * muscleCoverageScore +
+    1.2 * sfrScore +
+    0.8 * lengthenedScore -
+    1.0 * redundancyPenalty -
+    1.3 * fatigueCostPenalty
+  );
 }
 
 export function buildAccessoryMuscleCounts(accessories: WorkoutExercise[]) {
@@ -192,4 +210,22 @@ export function buildAccessoryMuscleCounts(accessories: WorkoutExercise[]) {
     }
   }
   return counts;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function normalizeCentered(value: number, center: number, range: number): number {
+  if (range <= 0) {
+    return 0;
+  }
+  return clamp((value - center) / range, -1, 1);
+}
+
+function normalizePositive(value: number, range: number): number {
+  if (range <= 0) {
+    return 0;
+  }
+  return clamp(value / range, 0, 1);
 }

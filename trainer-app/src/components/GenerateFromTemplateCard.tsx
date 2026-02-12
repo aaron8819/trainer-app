@@ -68,6 +68,12 @@ type GenerateFromTemplateCardProps = {
   templates: TemplateSummary[];
 };
 
+type GeneratedMetadata = {
+  selectionMode?: "AUTO" | "INTENT";
+  sessionIntent?: "push" | "pull" | "legs" | "upper" | "lower" | "full_body" | "body_part";
+  selection?: unknown;
+};
+
 function formatTargetReps(set?: WorkoutSet): string {
   if (!set) {
     return "";
@@ -103,6 +109,30 @@ function formatTemplateOptionLabel(template: TemplateSummary): string {
       : template.name;
   const exerciseLabel = template.exerciseCount === 1 ? "exercise" : "exercises";
   return `${trimmedName} (${template.exerciseCount} ${exerciseLabel})`;
+}
+
+function toDbSessionIntent(
+  intent?: GeneratedMetadata["sessionIntent"]
+):
+  | "PUSH"
+  | "PULL"
+  | "LEGS"
+  | "UPPER"
+  | "LOWER"
+  | "FULL_BODY"
+  | "BODY_PART"
+  | undefined {
+  if (!intent) {
+    return undefined;
+  }
+  return intent.toUpperCase() as
+    | "PUSH"
+    | "PULL"
+    | "LEGS"
+    | "UPPER"
+    | "LOWER"
+    | "FULL_BODY"
+    | "BODY_PART";
 }
 
 function applyExerciseSwap(
@@ -142,6 +172,7 @@ export function GenerateFromTemplateCard({ templates }: GenerateFromTemplateCard
   const [error, setError] = useState<string | null>(null);
   const [savedId, setSavedId] = useState<string | null>(null);
   const [showCheckIn, setShowCheckIn] = useState(false);
+  const [generatedMetadata, setGeneratedMetadata] = useState<GeneratedMetadata | null>(null);
 
   const generateWorkout = async () => {
     const response = await fetch("/api/workouts/generate-from-template", {
@@ -160,6 +191,11 @@ export function GenerateFromTemplateCard({ templates }: GenerateFromTemplateCard
     setWorkout(body.workout as WorkoutPlan);
     setSraWarnings(body.sraWarnings ?? []);
     setSubstitutions((body.substitutions ?? []) as SubstitutionSuggestion[]);
+    setGeneratedMetadata({
+      selectionMode: body.selectionMode,
+      sessionIntent: body.sessionIntent,
+      selection: body.selection,
+    });
     setDismissedSubstitutions(new Set());
     setAppliedSubstitutions(new Set());
     return true;
@@ -175,6 +211,7 @@ export function GenerateFromTemplateCard({ templates }: GenerateFromTemplateCard
     setWorkout(null);
     setSraWarnings([]);
     setSubstitutions([]);
+    setGeneratedMetadata(null);
     setDismissedSubstitutions(new Set());
     setAppliedSubstitutions(new Set());
     setShowCheckIn(true);
@@ -253,6 +290,12 @@ export function GenerateFromTemplateCard({ templates }: GenerateFromTemplateCard
       templateId: selectedTemplateId,
       scheduledDate: workout.scheduledDate,
       estimatedMinutes: workout.estimatedMinutes,
+      selectionMode: generatedMetadata?.selectionMode ?? "AUTO",
+      sessionIntent:
+        generatedMetadata?.selectionMode === "INTENT"
+          ? toDbSessionIntent(generatedMetadata.sessionIntent)
+          : undefined,
+      selectionMetadata: generatedMetadata?.selection,
       advancesSplit: false,
       exercises: [
         ...workout.mainLifts.map((e) => ({ ...e, section: "MAIN" as const })),
@@ -498,5 +541,3 @@ export function GenerateFromTemplateCard({ templates }: GenerateFromTemplateCard
     </div>
   );
 }
-
-

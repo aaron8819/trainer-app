@@ -17,3 +17,4 @@ export * from "./template-session";
 export * from "./template-analysis";
 export * from "./smart-build";
 export * from "./warmup-ramp";
+export * from "./exercise-selection";

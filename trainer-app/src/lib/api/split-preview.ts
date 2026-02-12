@@ -19,6 +19,7 @@ const DAY_TO_LABEL: Record<SplitDay, string> = {
   upper: "Upper",
   lower: "Lower",
   full_body: "Full Body",
+  body_part: "Body Part",
 };
 
 function patternsToLabel(patterns: MovementPattern[]): string {
@@ -32,11 +33,13 @@ function patternsToLabel(patterns: MovementPattern[]): string {
 }
 
 function buildSyntheticEntry(split: SplitDay, offset: number): WorkoutHistoryEntry {
+  const splitKey: "push" | "pull" | "legs" =
+    split === "pull" ? "pull" : split === "push" ? "push" : "legs";
   const exerciseBySplit = {
     push: { movementPattern: "push" as const, primaryMuscles: ["Chest"] },
     pull: { movementPattern: "pull" as const, primaryMuscles: ["Lats"] },
     legs: { movementPattern: "squat" as const, primaryMuscles: ["Quads"] },
-  }[split === "upper" ? "push" : split === "lower" || split === "full_body" ? "legs" : split];
+  }[splitKey];
 
   return {
     date: new Date(Date.now() + offset * 60_000).toISOString(),

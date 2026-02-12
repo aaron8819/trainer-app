@@ -4,6 +4,7 @@ import { resolveOwner } from "@/lib/api/workout-context";
 import { DashboardGenerateSection } from "@/components/DashboardGenerateSection";
 import RecentWorkouts from "@/components/RecentWorkouts";
 import { loadTemplatesWithScores } from "@/lib/api/templates";
+import { shouldDefaultNewUserToIntent } from "@/lib/api/intent-rollout";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -25,7 +26,7 @@ const STATUS_CLASSES: Record<string, string> = {
 
 export default async function Home() {
   const owner = await resolveOwner();
-  const [latestWorkout, latestCompleted, latestIncomplete, recentWorkouts, templates] =
+  const [latestWorkout, latestCompleted, latestIncomplete, recentWorkouts, templates, workoutCount] =
     await Promise.all([
       prisma.workout.findFirst({
         where: { userId: owner.id },
@@ -57,6 +58,9 @@ export default async function Home() {
         },
       }),
       loadTemplatesWithScores(owner.id),
+      prisma.workout.count({
+        where: { userId: owner.id },
+      }),
     ]);
 
   const nextSessionName = latestWorkout
@@ -73,6 +77,12 @@ export default async function Home() {
     exercisesCount: workout.exercises.length,
   }));
 
+  const defaultGenerateMode = shouldDefaultNewUserToIntent({
+    hasExistingWorkouts: workoutCount > 0,
+  })
+    ? "intent"
+    : "template";
+
   return (
     <main className="min-h-screen bg-white text-slate-900">
       <div className="page-shell max-w-5xl">
@@ -87,6 +97,7 @@ export default async function Home() {
         <section className="grid gap-6 md:grid-cols-2">
           <div className="min-w-0">
             <DashboardGenerateSection
+              defaultMode={defaultGenerateMode}
               templates={templates.map((t) => ({
                 id: t.id,
                 name: t.name,

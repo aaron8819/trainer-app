@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { profileSetupSchema } from "@/lib/validation";
 import { resolveOwner } from "@/lib/api/workout-context";
+import { loadWeeklyProgramInputs } from "@/lib/api/weekly-program";
+import { analyzeWeeklyProgram } from "@/lib/engine/weekly-program-analysis";
+import { ALL_EQUIPMENT_TYPES } from "@/lib/api/default-equipment";
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
@@ -61,14 +64,41 @@ export async function POST(request: Request) {
         daysPerWeek: parsed.data.daysPerWeek,
         sessionMinutes: parsed.data.sessionMinutes,
         ...(parsed.data.splitType ? { splitType: parsed.data.splitType } : {}),
+        availableEquipment: ALL_EQUIPMENT_TYPES,
       },
       create: {
         userId: user.id,
         daysPerWeek: parsed.data.daysPerWeek,
         sessionMinutes: parsed.data.sessionMinutes,
         splitType: parsed.data.splitType ?? "CUSTOM",
+        availableEquipment: ALL_EQUIPMENT_TYPES,
       },
     });
+
+    if (parsed.data.weeklySchedule) {
+      const activeProgram = await tx.program.findFirst({
+        where: { userId: user.id, isActive: true },
+        orderBy: { createdAt: "desc" },
+        select: { id: true },
+      });
+      if (activeProgram) {
+        await tx.program.update({
+          where: { id: activeProgram.id },
+          data: {
+            weeklySchedule: parsed.data.weeklySchedule,
+          },
+        });
+      } else {
+        await tx.program.create({
+          data: {
+            userId: user.id,
+            name: "Primary Program",
+            isActive: true,
+            weeklySchedule: parsed.data.weeklySchedule,
+          },
+        });
+      }
+    }
 
     if (parsed.data.injuryBodyPart) {
       const existing = await tx.injury.findFirst({
@@ -103,5 +133,15 @@ export async function POST(request: Request) {
     }
   });
 
-  return NextResponse.json({ status: "saved", userId: user.id });
+  const weeklyProgramInputs = await loadWeeklyProgramInputs(user.id, {
+    weeklySchedule: parsed.data.weeklySchedule,
+  });
+  const weeklyAnalysis = analyzeWeeklyProgram(weeklyProgramInputs.sessions);
+
+  return NextResponse.json({
+    status: "saved",
+    userId: user.id,
+    weeklySchedule: parsed.data.weeklySchedule ?? [],
+    weeklyAnalysis,
+  });
 }

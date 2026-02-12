@@ -1,9 +1,9 @@
-﻿"use client";
+"use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 
-type ProfileFormValues = {
+export type ProfileFormValues = {
   userId?: string;
   email?: string;
   age?: number;
@@ -15,6 +15,8 @@ type ProfileFormValues = {
   secondaryGoal: "POSTURE" | "CONDITIONING" | "INJURY_PREVENTION" | "NONE";
   daysPerWeek: number;
   sessionMinutes: number;
+  splitType: "PPL" | "UPPER_LOWER" | "FULL_BODY" | "CUSTOM";
+  weeklySchedule?: ("PUSH" | "PULL" | "LEGS" | "UPPER" | "LOWER" | "FULL_BODY" | "BODY_PART")[];
   injuryBodyPart?: string;
   injurySeverity?: number;
   injuryDescription?: string;
@@ -27,16 +29,46 @@ const defaultValues: ProfileFormValues = {
   secondaryGoal: "CONDITIONING",
   daysPerWeek: 4,
   sessionMinutes: 55,
+  splitType: "PPL",
+  weeklySchedule: ["PUSH", "PULL", "LEGS", "UPPER"],
   injuryActive: true,
 };
 
+const SESSION_INTENT_OPTIONS: {
+  value: "PUSH" | "PULL" | "LEGS" | "UPPER" | "LOWER" | "FULL_BODY" | "BODY_PART";
+  label: string;
+}[] = [
+  { value: "PUSH", label: "Push" },
+  { value: "PULL", label: "Pull" },
+  { value: "LEGS", label: "Legs" },
+  { value: "UPPER", label: "Upper" },
+  { value: "LOWER", label: "Lower" },
+  { value: "FULL_BODY", label: "Full Body" },
+  { value: "BODY_PART", label: "Body Part" },
+];
+
+const SPLIT_TYPE_OPTIONS: { value: ProfileFormValues["splitType"]; label: string }[] = [
+  { value: "PPL", label: "Push / Pull / Legs" },
+  { value: "UPPER_LOWER", label: "Upper / Lower" },
+  { value: "FULL_BODY", label: "Full Body" },
+  { value: "CUSTOM", label: "Custom" },
+];
+
 export default function ProfileForm({
   initialValues,
+  submitLabel = "Save profile",
+  onSaved,
 }: {
   initialValues?: Partial<ProfileFormValues>;
+  submitLabel?: string;
+  onSaved?: (values: {
+    primaryGoal: ProfileFormValues["primaryGoal"];
+    splitType: ProfileFormValues["splitType"];
+  }) => void;
 }) {
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [weeklyAnalysisSummary, setWeeklyAnalysisSummary] = useState<string | null>(null);
 
   const form = useForm<ProfileFormValues>({
     defaultValues: { ...defaultValues, ...initialValues },
@@ -45,15 +77,36 @@ export default function ProfileForm({
   const sectionClassName = "rounded-2xl border border-slate-200 p-4 sm:p-6";
   const fieldClassName = "h-11 w-full rounded-xl border border-slate-300 px-3 text-sm";
   const labelClassName = "space-y-1 text-sm font-medium text-slate-700";
+  const watchedDaysPerWeek = form.watch("daysPerWeek");
+  const watchedWeeklySchedule = form.watch("weeklySchedule");
+
+  useEffect(() => {
+    const dayCount = Number.isFinite(watchedDaysPerWeek) ? Math.max(1, Math.min(7, watchedDaysPerWeek)) : 4;
+    const current = Array.isArray(watchedWeeklySchedule) ? watchedWeeklySchedule : [];
+    const next = Array.from({ length: dayCount }, (_, index) => current[index] ?? "PUSH");
+    const changed = next.length !== current.length || next.some((value, index) => current[index] !== value);
+    if (changed) {
+      form.setValue("weeklySchedule", next, { shouldDirty: false });
+    }
+  }, [form, watchedDaysPerWeek, watchedWeeklySchedule]);
 
   const onSubmit = form.handleSubmit(async (values) => {
     setStatus(null);
     setError(null);
 
+    setWeeklyAnalysisSummary(null);
+    const dayCount = Math.max(1, Math.min(7, values.daysPerWeek));
+    const normalizedWeeklySchedule = (values.weeklySchedule ?? [])
+      .slice(0, dayCount)
+      .map((entry) => entry ?? "PUSH");
+
     const response = await fetch("/api/profile/setup", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(values),
+      body: JSON.stringify({
+        ...values,
+        weeklySchedule: normalizedWeeklySchedule,
+      }),
     });
 
     if (!response.ok) {
@@ -95,6 +148,22 @@ export default function ProfileForm({
 
     const body = await response.json().catch(() => ({}));
     setStatus("Saved" + (body.userId ? ` · User ${body.userId}` : ""));
+    onSaved?.({
+      primaryGoal: values.primaryGoal,
+      splitType: values.splitType,
+    });
+    const summary = body.weeklyAnalysis as
+      | { overallScore?: number; overallLabel?: string; suggestions?: string[] }
+      | undefined;
+    if (summary?.overallScore !== undefined && summary?.overallLabel) {
+      const firstSuggestion =
+        Array.isArray(summary.suggestions) && summary.suggestions.length > 0
+          ? ` ${summary.suggestions[0]}`
+          : "";
+      setWeeklyAnalysisSummary(
+        `Weekly program score ${summary.overallScore}/100 (${summary.overallLabel}).${firstSuggestion}`
+      );
+    }
   });
 
   return (
@@ -204,6 +273,38 @@ export default function ProfileForm({
               {...form.register("sessionMinutes", { valueAsNumber: true })}
             />
           </label>
+          <label className={labelClassName}>
+            Split type
+            <select className={fieldClassName} {...form.register("splitType")}>
+              {SPLIT_TYPE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <div className="mt-4 space-y-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Weekly intent schedule (ordered)
+          </p>
+          <div className="grid gap-3.5 sm:gap-4 md:grid-cols-2">
+            {Array.from(
+              { length: Math.max(1, Math.min(7, Number.isFinite(watchedDaysPerWeek) ? watchedDaysPerWeek : 4)) },
+              (_, index) => index
+            ).map((dayIndex) => (
+              <label key={dayIndex} className={labelClassName}>
+                Day {dayIndex + 1}
+                <select className={fieldClassName} {...form.register(`weeklySchedule.${dayIndex}` as const)}>
+                  {SESSION_INTENT_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -247,9 +348,10 @@ export default function ProfileForm({
           className="h-11 w-full rounded-full bg-slate-900 px-6 text-sm font-semibold text-white sm:w-auto"
           type="submit"
         >
-          Save profile
+          {submitLabel}
         </button>
         {status ? <span className="text-sm text-emerald-600">{status}</span> : null}
+        {weeklyAnalysisSummary ? <span className="text-sm text-slate-600">{weeklyAnalysisSummary}</span> : null}
         {error ? <span className="text-sm text-rose-600">{error}</span> : null}
       </div>
     </form>

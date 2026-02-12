@@ -143,6 +143,7 @@ export function resolveTargetPatterns(
     if (forced === "upper") return ["push", "pull"];
     if (forced === "lower") return ["squat", "hinge"];
     if (forced === "full_body") return ["push", "pull", "squat", "hinge", "rotate"];
+    if (forced === "body_part") return ["push", "pull", "squat", "hinge", "rotate"];
   }
 
   const patternOptions = SPLIT_PATTERNS[splitType] ?? SPLIT_PATTERNS.full_body;

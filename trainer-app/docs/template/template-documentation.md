@@ -44,7 +44,7 @@ Templates do not store fixed set-by-set prescriptions. Sets, reps, rest, RPE, an
 2. Load template and workout context (profile, goals, constraints, history, preferences, check-in, exercise library, baselines).
 3. Ignore check-ins older than 48 hours.
 4. Derive `weekInBlock` and periodization modifiers via `getPeriodizationModifiers(...)`.
-5. If `shouldDeload(history)` is true and the week is not already a deload, override to deload modifiers.
+5. If `shouldDeload(history, mainLiftExerciseIds)` is true and the week is not already a deload, override to deload modifiers.
 6. Map template rows into engine inputs, including `orderIndex` and `supersetGroup`.
 7. Generate the prescription in `generateWorkoutFromTemplate(...)`.
 8. Pre-load timebox using projected warmup ramps for load-resolvable main lifts.
@@ -146,6 +146,7 @@ Superset behavior is accessory-only and metadata-driven:
 
 - `supersetGroup` is carried from template row to workout exercise.
 - Timing optimization applies only when exactly two accessory exercises share a group.
+- Both compound and isolation accessories are eligible for this shared-rest timing path.
 - Pair round timing is work(A) + work(B) + reduced shared rest.
 - Shared rest = `max(60, round(max(restA, restB) * 0.6))`.
 - Non-pair or malformed groups fall back to normal timing.
@@ -205,6 +206,7 @@ Priority prefers retaining exercises that cover uncovered muscles and reducing r
 
 - `isStrict === false` enables substitution suggestion logic when check-in pain flags conflict with contraindications.
 - API response includes substitution suggestions as non-blocking recommendations (`substitutions`).
+- Suggestions are filtered against final kept exercise IDs after timebox and volume-cap passes.
 
 ## SRA Warnings
 
@@ -216,6 +218,7 @@ SRA warnings are generated from recent history and target muscles:
 ## Output And Persistence Notes
 
 Generation response includes set-level `targetReps`, optional `targetRepRange`, `targetRpe`, `targetLoad`, and `restSeconds`.
+For bodyweight movements with undefined `targetLoad`, generation and detail surfaces render a non-numeric `BW` label while logging still permits optional numeric load entry for weighted variants.
 
 Save path (`POST /api/workouts/save`) persists `targetRepRange` via `WorkoutSet.targetRepMin` / `WorkoutSet.targetRepMax` (nullable). Read paths map those columns back to `targetRepRange` when both are present, and fall back to `targetReps` when null for backward compatibility.
 Save path also persists `WorkoutExercise.section` (`WARMUP | MAIN | ACCESSORY`) when provided, so log/detail rendering can use persisted sectioning instead of warmup-count heuristics.
@@ -240,9 +243,9 @@ Overall score:
 - Weighted average, rounded and clamped to `0-100`.
 - Base weights:
 - Muscle Coverage `0.24`.
-- Push/Pull Balance `0.12`.
+- Push/Pull Balance `0.15`.
 - Compound/Isolation `0.12`.
-- Movement Diversity `0.12`.
+- Movement Diversity `0.09`.
 - Lengthened Position `0.14`.
 - SFR Efficiency `0.14`.
 - Exercise Order is intent-adjusted:

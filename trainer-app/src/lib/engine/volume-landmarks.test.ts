@@ -33,6 +33,11 @@ describe("VOLUME_LANDMARKS", () => {
       expect(lm.sraHours, `${muscle} sraHours`).toBeGreaterThan(0);
     }
   });
+
+  it("uses corrected landmark values for biceps mrv and hamstrings mev", () => {
+    expect(VOLUME_LANDMARKS["Biceps"]?.mrv).toBe(26);
+    expect(VOLUME_LANDMARKS["Hamstrings"]?.mev).toBe(6);
+  });
 });
 
 describe("MUSCLE_SPLIT_MAP", () => {

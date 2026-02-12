@@ -36,6 +36,8 @@ export default function UserPreferencesForm({
     defaultValues: { ...defaults, ...initialValues },
   });
 
+  const sectionClassName = "rounded-2xl border border-slate-200 p-4 sm:p-6";
+
   const favorites = form.watch("favoriteExercises");
   const avoids = form.watch("avoidExercises");
 
@@ -64,17 +66,17 @@ export default function UserPreferencesForm({
   });
 
   return (
-    <form className="mt-8 space-y-8" onSubmit={onSubmit}>
+    <form className="mt-5 space-y-5 sm:mt-6 sm:space-y-6" onSubmit={onSubmit}>
       <input type="hidden" {...form.register("userId")} />
 
-      <section className="rounded-2xl border border-slate-200 p-6">
-        <h2 className="text-lg font-semibold">Training Preferences</h2>
+      <section className={sectionClassName}>
+        <h2 className="text-base font-semibold sm:text-lg">Training Preferences</h2>
         <p className="mt-1 text-sm text-slate-600">
           These influence exercise selection.
         </p>
-        <div className="mt-4 grid gap-4">
+        <div className="mt-3 grid gap-3.5 sm:mt-4 sm:gap-4">
           <div>
-            <label className="text-sm font-medium">Favorite exercises</label>
+            <label className="text-sm font-medium text-slate-700">Favorite exercises</label>
             <div className="mt-1">
               <ExercisePickerTrigger
                 selectedNames={favorites}
@@ -90,7 +92,7 @@ export default function UserPreferencesForm({
             </div>
           </div>
           <div>
-            <label className="text-sm font-medium">Avoid exercises</label>
+            <label className="text-sm font-medium text-slate-700">Avoid exercises</label>
             <div className="mt-1">
               <ExercisePickerTrigger
                 selectedNames={avoids}
@@ -105,16 +107,16 @@ export default function UserPreferencesForm({
               />
             </div>
           </div>
-          <label className="text-sm flex items-center gap-2">
+          <label className="flex min-h-11 items-center gap-2 text-sm font-medium text-slate-700">
             <input type="checkbox" {...form.register("optionalConditioning")} />
             Suggest conditioning finishers if time remains
           </label>
         </div>
       </section>
 
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
         <button
-          className="rounded-full bg-slate-900 px-6 py-2 text-sm font-semibold text-white"
+          className="h-11 w-full rounded-full bg-slate-900 px-6 text-sm font-semibold text-white sm:w-auto"
           type="submit"
         >
           Save preferences

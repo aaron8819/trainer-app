@@ -51,9 +51,11 @@ export default async function SettingsPage() {
 
   return (
     <main className="min-h-screen bg-white text-slate-900">
-      <div className="mx-auto max-w-3xl px-6 py-10">
-        <h1 className="text-3xl font-semibold">Settings</h1>
-        <p className="mt-2 text-slate-600">Manage goals, schedule, equipment, and preferences.</p>
+      <div className="page-shell max-w-3xl">
+        <h1 className="page-title">Settings</h1>
+        <p className="mt-1.5 text-sm text-slate-600">
+          Manage goals, schedule, equipment, and preferences.
+        </p>
 
         <ProfileForm initialValues={initialValues} />
         <UserPreferencesForm initialValues={preferenceValues} exercises={exercises} />

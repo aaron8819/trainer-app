@@ -98,7 +98,19 @@ describe("estimateWorkoutMinutes", () => {
     expect(estimateWorkoutMinutes([first, second])).toBe(6);
   });
 
-  it("ignores superset groups on main lifts", () => {
+  it("applies superset timing to compound accessories", () => {
+    const first = makeAccessory("bench", { supersetGroup: 1 });
+    const second = makeAccessory("row", { supersetGroup: 1 });
+    const supersetMinutes = estimateWorkoutMinutes([first, second]);
+    const normalMinutes = estimateWorkoutMinutes([
+      { ...first, supersetGroup: undefined },
+      { ...second, supersetGroup: undefined },
+    ]);
+
+    expect(supersetMinutes).toBeLessThan(normalMinutes);
+  });
+
+  it("keeps main-lift exercises excluded from superset timing", () => {
     const first = makeMainLift("bench", { supersetGroup: 1 });
     const second = makeMainLift("squat", { supersetGroup: 1 });
     const supersetMinutes = estimateWorkoutMinutes([first, second]);

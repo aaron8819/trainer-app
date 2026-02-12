@@ -63,4 +63,10 @@ describe("getPeriodizationModifiers", () => {
     expect(getPeriodizationModifiers(4, "hypertrophy").rpeOffset).toBe(-1.5);
     expect(getPeriodizationModifiers(7, "hypertrophy").isDeload).toBe(true);
   });
+
+  it("uses training-age-scaled offsets when trainingAge is provided", () => {
+    expect(getPeriodizationModifiers(0, "hypertrophy", "beginner").rpeOffset).toBe(-0.5);
+    expect(getPeriodizationModifiers(1, "hypertrophy", "intermediate").rpeOffset).toBe(-0.5);
+    expect(getPeriodizationModifiers(2, "hypertrophy", "advanced").rpeOffset).toBe(1.0);
+  });
 });

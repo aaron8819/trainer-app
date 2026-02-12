@@ -4,6 +4,10 @@ import { getRestSeconds, REST_SECONDS, resolveSetTargetReps } from "./prescripti
 const SUPERSET_SHARED_REST_MULTIPLIER = 0.6;
 const SUPERSET_SHARED_REST_FLOOR_SECONDS = 60;
 
+function isSupersetTimingEligible(exercise: WorkoutExercise) {
+  return Boolean(exercise.supersetGroup) && !exercise.isMainLift;
+}
+
 export function estimateWorkoutMinutes(exercises: WorkoutExercise[]): number {
   const estimateWorkSeconds = (reps?: number, fallback?: number) => {
     if (reps === undefined || Number.isNaN(reps)) {
@@ -45,12 +49,16 @@ export function estimateWorkoutMinutes(exercises: WorkoutExercise[]): number {
 
   const supersetGroups = new Map<number, WorkoutExercise[]>();
   for (const exercise of exercises) {
-    if (!exercise.supersetGroup || exercise.isMainLift) {
+    if (!isSupersetTimingEligible(exercise)) {
       continue;
     }
-    const group = supersetGroups.get(exercise.supersetGroup) ?? [];
+    const groupId = exercise.supersetGroup;
+    if (!groupId) {
+      continue;
+    }
+    const group = supersetGroups.get(groupId) ?? [];
     group.push(exercise);
-    supersetGroups.set(exercise.supersetGroup, group);
+    supersetGroups.set(groupId, group);
   }
 
   const pairedIds = new Set<string>();

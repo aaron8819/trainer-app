@@ -1,8 +1,9 @@
 import {
   DELOAD_RPE_CAP,
   getBaseTargetRpe,
+  getGoalRepRanges,
+  getGoalSetMultiplier,
   type PeriodizationModifiers,
-  REP_RANGES_BY_GOAL,
 } from "./rules";
 import type {
   Exercise,
@@ -15,8 +16,14 @@ import type {
 
 export const REST_SECONDS = {
   main: 150,
-  accessory: 75,
+  accessory: 90,
   warmup: 45,
+};
+
+const BACK_OFF_REP_BUMP_BY_TRAINING_AGE: Record<UserProfile["trainingAge"], number> = {
+  beginner: 0,
+  intermediate: 1,
+  advanced: 2,
 };
 
 export type ExerciseRepRange = { min: number; max: number };
@@ -94,17 +101,20 @@ function prescribeMainLiftSets(
   periodization?: PeriodizationModifiers,
   exerciseRepRange?: ExerciseRepRange
 ): WorkoutSet[] {
-  const goalRepRange = REP_RANGES_BY_GOAL[goals.primary];
+  const goalRepRange = getGoalRepRanges(goals.primary);
   const effectiveMain = clampRepRange(goalRepRange.main, exerciseRepRange);
   const setCount = resolveSetCount(
     true,
     trainingAge,
     fatigueState,
-    periodization?.setMultiplier
+    periodization?.setMultiplier,
+    goals.primary
   );
   const topSetReps = effectiveMain[0];
-  // Keep back-off reps aligned with the top set to avoid rep cliffs between nearby multipliers.
-  const backOffReps = topSetReps;
+  const backOffReps = Math.min(
+    effectiveMain[1],
+    topSetReps + (BACK_OFF_REP_BUMP_BY_TRAINING_AGE[trainingAge] ?? 0)
+  );
   const targetRpe = resolveTargetRpe(
     topSetReps,
     trainingAge,
@@ -141,7 +151,7 @@ function prescribeAccessorySets(
   exerciseRepRange?: ExerciseRepRange,
   isIsolationAccessory = false
 ): WorkoutSet[] {
-  const goalRepRange = REP_RANGES_BY_GOAL[goals.primary];
+  const goalRepRange = getGoalRepRanges(goals.primary);
   const clampedAccessory = clampRepRange(goalRepRange.accessory, exerciseRepRange);
   const effectiveAccessory = widenAccessoryRangeForProgression(
     clampedAccessory,
@@ -151,7 +161,8 @@ function prescribeAccessorySets(
     false,
     trainingAge,
     fatigueState,
-    periodization?.setMultiplier
+    periodization?.setMultiplier,
+    goals.primary
   );
   const targetReps = effectiveAccessory[0];
   const targetRepRange = {
@@ -181,7 +192,8 @@ export function resolveSetCount(
   isMainLift: boolean,
   trainingAge: UserProfile["trainingAge"],
   fatigueState: FatigueState,
-  setMultiplier = 1
+  periodizationSetMultiplier = 1,
+  primaryGoal?: Goals["primary"]
 ) {
   const baseSets = isMainLift ? 4 : 3;
   const ageModifier = trainingAge === "advanced" ? 1.15 : trainingAge === "beginner" ? 0.85 : 1;
@@ -191,7 +203,9 @@ export function resolveSetCount(
   const recoveryAdjusted = hasRecoveryPenalty
     ? Math.max(2, baselineSets - 1)
     : baselineSets;
-  return Math.max(2, Math.round(recoveryAdjusted * setMultiplier));
+  const goalMultiplier = primaryGoal ? getGoalSetMultiplier(primaryGoal) : 1;
+  const combinedMultiplier = goalMultiplier * periodizationSetMultiplier;
+  return Math.max(2, Math.round(recoveryAdjusted * combinedMultiplier));
 }
 
 function resolveTargetRpe(
@@ -244,5 +258,5 @@ export function getRestSeconds(
 
   // Isolation exercises
   if (fatigueCost >= 3) return 90;
-  return 75;
+  return 90;
 }

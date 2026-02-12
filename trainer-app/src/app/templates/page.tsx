@@ -8,7 +8,7 @@ export default async function TemplatesPage() {
   const user = await resolveOwner();
   if (!user) {
     return (
-      <main className="min-h-screen bg-white px-6 py-10">
+      <main className="min-h-screen bg-white page-shell">
         <p className="text-slate-500">Set up your profile first.</p>
       </main>
     );
@@ -18,7 +18,7 @@ export default async function TemplatesPage() {
 
   return (
     <main className="min-h-screen bg-white">
-      <div className="mx-auto max-w-5xl px-6 py-10">
+      <div className="page-shell max-w-5xl">
         <TemplateListShell
           templates={templates.map((t) => ({
             id: t.id,

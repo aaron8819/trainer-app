@@ -4,7 +4,7 @@ import { filterCompletedHistory, sortHistoryByDateDesc } from "./history";
 import {
   getBaseTargetRpe,
   getBackOffMultiplier,
-  REP_RANGES_BY_GOAL,
+  getGoalRepRanges,
   type PeriodizationModifiers,
 } from "./rules";
 import { getPrimaryMuscles } from "./utils";
@@ -54,6 +54,8 @@ type LoadEquipment =
 const DEFAULT_FATIGUE_COST = 3;
 const FATIGUE_SCALE_MIN = 0.45;
 const FATIGUE_SCALE_MAX = 0.9;
+const BASELINE_SCALE_STRENGTH_TO_VOLUME = 0.78;
+const BASELINE_SCALE_VOLUME_TO_STRENGTH = 1.12;
 
 const BASE_BODYWEIGHT_RATIO: Record<LoadEquipment, { compound: number; isolation: number }> = {
   barbell: { compound: 0.65, isolation: 0.35 },
@@ -90,8 +92,10 @@ const EQUIPMENT_DEFAULTS: Record<LoadEquipment, number> = {
 
 export function applyLoads(workout: WorkoutPlan, options: ApplyLoadsOptions): WorkoutPlan {
   const historyIndex = buildHistoryIndex(options.history ?? []);
-  const baselineIndex = buildBaselineIndex(options.baselines ?? [], options.primaryGoal);
-  const repRanges = REP_RANGES_BY_GOAL[options.primaryGoal];
+  const preferredContext = getPreferredBaselineContext(options.primaryGoal);
+  const baselineIndex = buildBaselineIndex(options.baselines ?? [], preferredContext);
+  const baselineLoadIndex = buildBaselineLoadIndex(baselineIndex);
+  const repRanges = getGoalRepRanges(options.primaryGoal);
   const trainingAge = options.profile?.trainingAge ?? "intermediate";
   const periodization = options.periodization;
   const backOffMultiplier =
@@ -121,7 +125,7 @@ export function applyLoads(workout: WorkoutPlan, options: ApplyLoadsOptions): Wo
         exercise,
         historyIndex.get(exercise.id),
         baselineIndex.get(exercise.id),
-        baselineIndex,
+        baselineLoadIndex,
         options.exerciseById,
         options.profile?.weightKg,
         repRange,
@@ -129,7 +133,8 @@ export function applyLoads(workout: WorkoutPlan, options: ApplyLoadsOptions): Wo
         trainingAge,
         isUpperBodyExercise(exercise),
         periodization,
-        options.weekInBlock
+        options.weekInBlock,
+        preferredContext
       );
 
     if (load === undefined) {
@@ -239,8 +244,12 @@ function buildHistoryIndex(history: WorkoutHistoryEntry[]) {
 
 type WorkoutSetHistory = { reps: number; rpe?: number; load?: number }[];
 
-function buildBaselineIndex(baselines: BaselineInput[], primaryGoal: Goals["primary"]) {
-  const preferredContext = primaryGoal === "strength" ? "strength" : "volume";
+type BaselineSelection = {
+  load: number;
+  selectedContext?: string | null;
+};
+
+function buildBaselineIndex(baselines: BaselineInput[], preferredContext: string) {
   const grouped = new Map<string, BaselineInput[]>();
   for (const baseline of baselines) {
     if (!baseline.exerciseId) {
@@ -252,7 +261,7 @@ function buildBaselineIndex(baselines: BaselineInput[], primaryGoal: Goals["prim
     grouped.get(baseline.exerciseId)?.push(baseline);
   }
 
-  const index = new Map<string, number>();
+  const index = new Map<string, BaselineSelection>();
   for (const [exerciseId, group] of grouped.entries()) {
     const pick =
       group.find((item) => item.context === preferredContext) ??
@@ -260,10 +269,18 @@ function buildBaselineIndex(baselines: BaselineInput[], primaryGoal: Goals["prim
       group[0];
     const load = resolveBaselineLoad(pick);
     if (load !== undefined) {
-      index.set(exerciseId, load);
+      index.set(exerciseId, { load, selectedContext: pick.context ?? undefined });
     }
   }
   return index;
+}
+
+function buildBaselineLoadIndex(baselineIndex: Map<string, BaselineSelection>) {
+  const loadIndex = new Map<string, number>();
+  for (const [exerciseId, entry] of baselineIndex.entries()) {
+    loadIndex.set(exerciseId, entry.load);
+  }
+  return loadIndex;
 }
 
 function resolveBaselineLoad(baseline: BaselineInput): number | undefined {
@@ -285,8 +302,8 @@ function resolveBaselineLoad(baseline: BaselineInput): number | undefined {
 function resolveLoadForExercise(
   exercise: Exercise,
   historySets: WorkoutSetHistory[] | undefined,
-  baselineLoad: number | undefined,
-  baselineIndex: Map<string, number>,
+  baselineSelection: BaselineSelection | undefined,
+  baselineLoadIndex: Map<string, number>,
   exerciseById: Record<string, Exercise>,
   weightKg: number | undefined,
   repRange: [number, number],
@@ -294,7 +311,8 @@ function resolveLoadForExercise(
   trainingAge: UserProfile["trainingAge"],
   isUpperBody: boolean,
   periodization: PeriodizationModifiers | undefined,
-  weekInBlock: number | undefined
+  weekInBlock: number | undefined,
+  preferredContext: string
 ): number | undefined {
   const latestSets = historySets?.[0];
   if (latestSets && latestSets.length > 0) {
@@ -311,11 +329,15 @@ function resolveLoadForExercise(
     }
   }
 
-  if (baselineLoad !== undefined) {
-    return baselineLoad;
+  if (baselineSelection !== undefined) {
+    return applyBaselineContextScaling(
+      baselineSelection.load,
+      baselineSelection.selectedContext,
+      preferredContext
+    );
   }
 
-  return estimateLoad(exercise, baselineIndex, exerciseById, weightKg);
+  return estimateLoad(exercise, baselineLoadIndex, exerciseById, weightKg);
 }
 
 function estimateLoad(
@@ -381,6 +403,9 @@ function estimateFromDonors(
     const equipmentScale = getEquipmentScale(donorEquipment, targetEquipment);
     const compoundScale = getCompoundScale(donorCompound, targetCompound);
     const isolationPenalty = donorCompound && !targetCompound ? 0.5 : 1.0;
+    // Intentionally conservative: estimation always scales down from donor load.
+    // Higher target fatigue can push ratio > 1, but clamp caps at 0.9 to avoid
+    // overloading unfamiliar exercises when no direct history/baseline exists.
     const fatigueScale = clamp(
       targetFatigue / donorFatigue,
       FATIGUE_SCALE_MIN,
@@ -520,4 +545,28 @@ function buildWarmupSets(
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
+}
+
+function getPreferredBaselineContext(primaryGoal: Goals["primary"]) {
+  return primaryGoal === "strength" ? "strength" : "volume";
+}
+
+function applyBaselineContextScaling(
+  load: number,
+  selectedContext: string | null | undefined,
+  preferredContext: string
+) {
+  if (!selectedContext || selectedContext === "default" || selectedContext === preferredContext) {
+    return load;
+  }
+
+  if (selectedContext === "strength" && preferredContext !== "strength") {
+    return roundToHalf(load * BASELINE_SCALE_STRENGTH_TO_VOLUME);
+  }
+
+  if (selectedContext === "volume" && preferredContext === "strength") {
+    return roundToHalf(load * BASELINE_SCALE_VOLUME_TO_STRENGTH);
+  }
+
+  return load;
 }

@@ -12,10 +12,10 @@ export function ExerciseCard({ exercise, onClick }: ExerciseCardProps) {
   return (
     <button
       onClick={onClick}
-      className="w-full rounded-xl border border-slate-200 bg-white p-4 text-left transition-shadow hover:shadow-md"
+      className="w-full rounded-xl border border-slate-200 bg-white p-3.5 text-left transition-shadow hover:shadow-md sm:p-4"
     >
       <div className="flex items-start justify-between gap-2">
-        <h3 className="font-medium text-slate-900">{exercise.name}</h3>
+        <h3 className="text-sm font-semibold leading-5 text-slate-900 sm:text-base">{exercise.name}</h3>
         <div className="flex shrink-0 gap-1">
           {exercise.isFavorite && (
             <span className="text-amber-500" title="Favorite">
@@ -36,23 +36,23 @@ export function ExerciseCard({ exercise, onClick }: ExerciseCardProps) {
       </div>
 
       {/* Muscles */}
-      <div className="mt-1.5 flex flex-wrap gap-1">
+      <div className="mt-2 flex flex-wrap gap-1.5">
         {exercise.primaryMuscles.map((m) => (
-          <span key={m} className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
+          <span key={m} className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
             {m}
           </span>
         ))}
         {exercise.secondaryMuscles.map((m) => (
-          <span key={m} className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-500">
+          <span key={m} className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500">
             {m}
           </span>
         ))}
       </div>
 
       {/* Tags row */}
-      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+      <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
         <span
-          className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+          className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
             exercise.isCompound
               ? "bg-blue-50 text-blue-700"
               : "bg-slate-100 text-slate-600"
@@ -61,7 +61,7 @@ export function ExerciseCard({ exercise, onClick }: ExerciseCardProps) {
           {exercise.isCompound ? "Compound" : "Isolation"}
         </span>
         {exercise.movementPatterns.slice(0, 2).map((p) => (
-          <span key={p} className="rounded-full bg-violet-50 px-2 py-0.5 text-[10px] text-violet-600">
+          <span key={p} className="rounded-full bg-violet-50 px-2 py-0.5 text-[11px] text-violet-600">
             {MOVEMENT_PATTERN_LABELS[p]}
           </span>
         ))}

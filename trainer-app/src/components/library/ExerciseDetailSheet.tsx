@@ -109,7 +109,7 @@ export function ExerciseDetailSheet({ exerciseId, onClose, onNavigate }: Exercis
       {!loading && detail && (
         <div className="space-y-5">
           {/* Compound/Isolation badge */}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span
               className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
                 detail.isCompound ? "bg-blue-50 text-blue-700" : "bg-slate-100 text-slate-600"
@@ -126,7 +126,7 @@ export function ExerciseDetailSheet({ exerciseId, onClose, onNavigate }: Exercis
 
           {/* Muscles */}
           <section>
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Muscles</h3>
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Muscles</h3>
             <div className="mt-1.5 flex flex-wrap gap-1.5">
               {detail.primaryMuscles.map((m) => (
                 <span key={m} className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700">{m}</span>
@@ -140,7 +140,7 @@ export function ExerciseDetailSheet({ exerciseId, onClose, onNavigate }: Exercis
           {/* Movement Patterns */}
           {detail.movementPatterns.length > 0 && (
             <section>
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Movement Patterns</h3>
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Movement Patterns</h3>
               <div className="mt-1.5 flex flex-wrap gap-1.5">
                 {detail.movementPatterns.map((p) => (
                   <span key={p} className="rounded-full bg-violet-50 px-2.5 py-0.5 text-xs text-violet-600">
@@ -153,24 +153,24 @@ export function ExerciseDetailSheet({ exerciseId, onClose, onNavigate }: Exercis
 
           {/* Attributes Grid */}
           <section>
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Attributes</h3>
-            <div className="mt-2 grid grid-cols-2 gap-3">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Attributes</h3>
+            <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <div className="flex items-center justify-between text-xs text-slate-600">
+                <div className="mb-1 flex items-center justify-between gap-3 text-xs text-slate-600">
                   <span>SFR Score</span>
                   <span className="font-medium">{detail.sfrScore}/5</span>
                 </div>
                 <ScoreBar value={detail.sfrScore} color="bg-emerald-500" />
               </div>
               <div>
-                <div className="flex items-center justify-between text-xs text-slate-600">
+                <div className="mb-1 flex items-center justify-between gap-3 text-xs text-slate-600">
                   <span>Lengthened Position</span>
                   <span className="font-medium">{detail.lengthPositionScore}/5</span>
                 </div>
                 <ScoreBar value={detail.lengthPositionScore} color="bg-sky-500" />
               </div>
               <div>
-                <div className="flex items-center justify-between text-xs text-slate-600">
+                <div className="mb-1 flex items-center justify-between gap-3 text-xs text-slate-600">
                   <span>Joint Stress</span>
                   <span className="font-medium capitalize">{detail.jointStress}</span>
                 </div>
@@ -180,7 +180,7 @@ export function ExerciseDetailSheet({ exerciseId, onClose, onNavigate }: Exercis
                 />
               </div>
               <div>
-                <div className="flex items-center justify-between text-xs text-slate-600">
+                <div className="mb-1 flex items-center justify-between gap-3 text-xs text-slate-600">
                   <span>Fatigue Cost</span>
                   <span className="font-medium">{detail.fatigueCost}/5</span>
                 </div>
@@ -192,7 +192,7 @@ export function ExerciseDetailSheet({ exerciseId, onClose, onNavigate }: Exercis
           {/* Stimulus Bias */}
           {detail.stimulusBias.length > 0 && (
             <section>
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Stimulus Bias</h3>
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Stimulus Bias</h3>
               <div className="mt-1.5 flex flex-wrap gap-1.5">
                 {detail.stimulusBias.map((b) => (
                   <span key={b} className="rounded-full bg-pink-50 px-2.5 py-0.5 text-xs text-pink-600">
@@ -205,7 +205,7 @@ export function ExerciseDetailSheet({ exerciseId, onClose, onNavigate }: Exercis
 
           {/* Equipment */}
           <section>
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Equipment</h3>
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Equipment</h3>
             <div className="mt-1.5 flex flex-wrap gap-1.5">
               {detail.equipment.map((e) => (
                 <span key={e} className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs capitalize text-slate-600">{e}</span>
@@ -215,34 +215,34 @@ export function ExerciseDetailSheet({ exerciseId, onClose, onNavigate }: Exercis
 
           {/* Variations */}
           <section>
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Variations</h3>
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Variations</h3>
             {detail.variations.length > 0 ? (
               <ul className="mt-1.5 space-y-1">
                 {detail.variations.map((v) => (
-                  <li key={v.id} className="text-sm text-slate-700">
+                  <li key={v.id} className="break-words text-sm text-slate-700">
                     {v.name}
-                    {v.description && <span className="ml-1 text-xs text-slate-400"> — {v.description}</span>}
+                    {v.description && <span className="ml-1 text-xs text-slate-500"> - {v.description}</span>}
                   </li>
                 ))}
               </ul>
             ) : (
-              <p className="mt-1.5 text-xs text-slate-400">No variations yet</p>
+              <p className="mt-1.5 text-xs text-slate-500">No variations yet</p>
             )}
           </section>
 
           {/* Substitutions */}
           <section>
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Substitutions</h3>
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Substitutions</h3>
             {detail.substitutes.length > 0 ? (
               <div className="mt-1.5 space-y-1.5">
                 {detail.substitutes.map((sub) => (
                   <button
                     key={sub.id}
                     onClick={() => onNavigate(sub.id)}
-                    className="flex w-full items-center justify-between rounded-lg border border-slate-100 px-3 py-2 text-left transition-colors hover:bg-slate-50"
+                    className="flex w-full flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-100 px-3 py-2.5 text-left transition-colors hover:bg-slate-50"
                   >
                     <span className="text-sm font-medium text-slate-800">{sub.name}</span>
-                    <div className="flex gap-1">
+                    <div className="flex flex-wrap gap-1">
                       {sub.primaryMuscles.slice(0, 2).map((m) => (
                         <span key={m} className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] text-emerald-600">{m}</span>
                       ))}
@@ -251,13 +251,13 @@ export function ExerciseDetailSheet({ exerciseId, onClose, onNavigate }: Exercis
                 ))}
               </div>
             ) : (
-              <p className="mt-1.5 text-xs text-slate-400">No substitutions found</p>
+              <p className="mt-1.5 text-xs text-slate-500">No substitutions found</p>
             )}
           </section>
 
           {/* Personal History */}
           <section>
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Personal History</h3>
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Personal History</h3>
             <div className="mt-1.5">
               <PersonalHistorySection exerciseId={detail.id} />
             </div>
@@ -266,7 +266,7 @@ export function ExerciseDetailSheet({ exerciseId, onClose, onNavigate }: Exercis
           {/* Baseline Editor */}
           {showBaseline && (
             <section className="rounded-xl border border-slate-200 p-4">
-              <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Set Baseline</h3>
+              <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Set Baseline</h3>
               <BaselineEditor
                 exerciseId={detail.id}
                 initial={detail.baseline}
@@ -279,10 +279,11 @@ export function ExerciseDetailSheet({ exerciseId, onClose, onNavigate }: Exercis
           )}
 
           {/* Action Bar */}
-          <div className="sticky bottom-0 -mx-5 -mb-5 flex items-center gap-2 border-t border-slate-100 bg-white px-5 py-3">
+          <div className="sticky bottom-0 -mx-4 -mb-[calc(1rem+env(safe-area-inset-bottom))] border-t border-slate-100 bg-white/95 px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 backdrop-blur supports-[backdrop-filter]:bg-white/85 sm:-mx-5 sm:-mb-5 sm:px-5 sm:pb-3">
+            <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:flex-wrap">
             <button
               onClick={toggleFavorite}
-              className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+              className={`flex min-h-11 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                 favoriteState
                   ? "bg-amber-100 text-amber-700"
                   : "bg-slate-100 text-slate-700 hover:bg-slate-200"
@@ -295,7 +296,7 @@ export function ExerciseDetailSheet({ exerciseId, onClose, onNavigate }: Exercis
             </button>
             <button
               onClick={toggleAvoid}
-              className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+              className={`flex min-h-11 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                 avoidState
                   ? "bg-rose-100 text-rose-700"
                   : "bg-slate-100 text-slate-700 hover:bg-slate-200"
@@ -309,7 +310,7 @@ export function ExerciseDetailSheet({ exerciseId, onClose, onNavigate }: Exercis
             </button>
             <button
               onClick={() => setShowBaseline(!showBaseline)}
-              className="flex items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200"
+              className="flex min-h-11 items-center justify-center gap-1.5 rounded-lg bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200"
             >
               <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                 <path d="M12 20V10" />
@@ -320,7 +321,7 @@ export function ExerciseDetailSheet({ exerciseId, onClose, onNavigate }: Exercis
             </button>
             <button
               onClick={() => setTemplateSheetOpen(true)}
-              className="flex items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200"
+              className="flex min-h-11 items-center justify-center gap-1.5 rounded-lg bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200"
             >
               <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                 <line x1="12" y1="5" x2="12" y2="19" />
@@ -328,6 +329,7 @@ export function ExerciseDetailSheet({ exerciseId, onClose, onNavigate }: Exercis
               </svg>
               Template
             </button>
+            </div>
           </div>
         </div>
       )}
@@ -342,3 +344,5 @@ export function ExerciseDetailSheet({ exerciseId, onClose, onNavigate }: Exercis
     </SlideUpSheet>
   );
 }
+
+

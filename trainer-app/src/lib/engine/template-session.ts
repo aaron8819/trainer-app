@@ -16,7 +16,7 @@ import { prescribeSetsReps, getRestSeconds, resolveSetTargetReps } from "./presc
 import { buildVolumeContext, deriveFatigueState, enforceVolumeCaps } from "./volume";
 import { estimateWorkoutMinutes, trimAccessoriesByPriority } from "./timeboxing";
 import { buildMuscleRecoveryMap, generateSraWarnings, type SraWarning } from "./sra";
-import { REP_RANGES_BY_GOAL, type PeriodizationModifiers } from "./rules";
+import { getGoalRepRanges, type PeriodizationModifiers } from "./rules";
 import { suggestSubstitutes } from "./substitution";
 import { buildProjectedWarmupSets, canResolveLoadForWarmupRamp } from "./warmup-ramp";
 
@@ -202,7 +202,14 @@ export function generateWorkoutFromTemplate(
     notes: notesParts.length > 0 ? notesParts.join(". ") : undefined,
   };
 
-  return { workout, sraWarnings, substitutions };
+  const finalExerciseIds = new Set(
+    [...workout.mainLifts, ...workout.accessories].map((exercise) => exercise.exercise.id)
+  );
+  const filteredSubstitutions = substitutions.filter((suggestion) =>
+    finalExerciseIds.has(suggestion.originalExerciseId)
+  );
+
+  return { workout, sraWarnings, substitutions: filteredSubstitutions };
 }
 
 function buildTemplateExercise(
@@ -294,7 +301,7 @@ function shouldDemoteMainLiftForRepRange(
   if (!exerciseRepRange) {
     return false;
   }
-  const goalMainRange = REP_RANGES_BY_GOAL[goals.primary].main;
+  const goalMainRange = getGoalRepRanges(goals.primary).main;
   return !hasRepRangeOverlap(goalMainRange, exerciseRepRange);
 }
 

@@ -3,6 +3,7 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --mobile-nav-height: 4.5rem;
 }
 
 @theme inline {
@@ -22,7 +23,63 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  min-height: 100dvh;
+  max-width: 100%;
+}
+
+html {
+  scroll-padding-bottom: calc(var(--mobile-nav-height) + env(safe-area-inset-bottom) + 0.75rem);
+}
+
+.app-root {
+  padding-bottom: calc(var(--mobile-nav-height) + env(safe-area-inset-bottom));
+}
+
+.page-shell {
+  margin-inline: auto;
+  width: 100%;
+  padding-inline: 1rem;
+  padding-block: 1.75rem;
+  overflow-x: clip;
+}
+
+.page-title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 2rem;
+}
+
+@media (min-width: 640px) {
+  .page-shell {
+    padding-inline: 1.25rem;
+    padding-block: 2rem;
+  }
+}
+
+@media (min-width: 768px) {
+  .app-root {
+    padding-bottom: 0;
+  }
+
+  .page-shell {
+    padding-inline: 1.5rem;
+    padding-block: 2.5rem;
+  }
+
+  .page-title {
+    font-size: 1.875rem;
+    line-height: 2.25rem;
+  }
+}
+
+:where(a, button, input, select, textarea, [role="button"], [tabindex]):focus-visible {
+  outline: 2px solid #0f172a;
+  outline-offset: 2px;
+}
+
+:where(a, button, input, select, textarea, [role="button"], [tabindex]):focus:not(:focus-visible) {
+  outline: none;
 }
 
 @keyframes slideUp {

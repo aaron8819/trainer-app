@@ -1,5 +1,70 @@
 import { describe, expect, it } from "vitest";
-import { computeNextLoad } from "./progression";
+import { computeNextLoad, shouldDeload } from "./progression";
+import type { MovementPattern, WorkoutHistoryEntry } from "./types";
+
+const USE_MAIN_LIFT_PLATEAU_DETECTION_ENV = "USE_MAIN_LIFT_PLATEAU_DETECTION";
+
+const withMainLiftFlag = (value: string | undefined, run: () => void) => {
+  const previous = process.env[USE_MAIN_LIFT_PLATEAU_DETECTION_ENV];
+  if (value === undefined) {
+    delete process.env[USE_MAIN_LIFT_PLATEAU_DETECTION_ENV];
+  } else {
+    process.env[USE_MAIN_LIFT_PLATEAU_DETECTION_ENV] = value;
+  }
+
+  try {
+    run();
+  } finally {
+    if (previous === undefined) {
+      delete process.env[USE_MAIN_LIFT_PLATEAU_DETECTION_ENV];
+    } else {
+      process.env[USE_MAIN_LIFT_PLATEAU_DETECTION_ENV] = previous;
+    }
+  }
+};
+
+const buildEntry = (
+  date: string,
+  bench: { load: number; reps: number } | null,
+  lateralRaiseReps: number | null
+): WorkoutHistoryEntry => ({
+  date,
+  completed: true,
+  exercises: [
+    ...(bench
+      ? [
+          {
+            exerciseId: "bench",
+            movementPattern: "push" as MovementPattern,
+            sets: [
+              {
+                exerciseId: "bench",
+                setIndex: 1,
+                reps: bench.reps,
+                load: bench.load,
+              },
+            ],
+          },
+        ]
+      : []),
+    ...(lateralRaiseReps !== null
+      ? [
+          {
+            exerciseId: "lateral-raise",
+            movementPattern: "push" as MovementPattern,
+            sets: [
+              {
+                exerciseId: "lateral-raise",
+                setIndex: 1,
+                reps: lateralRaiseReps,
+                load: 20,
+              },
+            ],
+          },
+        ]
+      : []),
+  ],
+});
 
 describe("computeNextLoad progression models", () => {
   it("uses linear progression for beginners", () => {
@@ -117,5 +182,63 @@ describe("computeNextLoad progression models", () => {
 
     expect(weekThree).toBe(204);
     expect(deload).toBe(150);
+  });
+});
+
+describe("shouldDeload plateau detection", () => {
+  it("triggers when main-lift e1RM stalls even if accessories improve", () => {
+    withMainLiftFlag("true", () => {
+      const history: WorkoutHistoryEntry[] = [
+        buildEntry("2026-01-01T00:00:00Z", { load: 200, reps: 5 }, 12),
+        buildEntry("2026-01-03T00:00:00Z", { load: 200, reps: 5 }, 13),
+        buildEntry("2026-01-05T00:00:00Z", { load: 200, reps: 5 }, 14),
+        buildEntry("2026-01-07T00:00:00Z", { load: 200, reps: 5 }, 15),
+        buildEntry("2026-01-09T00:00:00Z", { load: 200, reps: 5 }, 16),
+      ];
+
+      expect(shouldDeload(history, new Set(["bench"]))).toBe(true);
+    });
+  });
+
+  it("does not trigger when a main lift improves within the window", () => {
+    withMainLiftFlag("true", () => {
+      const history: WorkoutHistoryEntry[] = [
+        buildEntry("2026-01-01T00:00:00Z", { load: 200, reps: 5 }, 12),
+        buildEntry("2026-01-03T00:00:00Z", { load: 200, reps: 5 }, 12),
+        buildEntry("2026-01-05T00:00:00Z", { load: 200, reps: 5 }, 12),
+        buildEntry("2026-01-07T00:00:00Z", { load: 210, reps: 5 }, 12),
+        buildEntry("2026-01-09T00:00:00Z", { load: 210, reps: 5 }, 12),
+      ];
+
+      expect(shouldDeload(history, new Set(["bench"]))).toBe(false);
+    });
+  });
+
+  it("falls back to total reps when no main lifts appear in the window", () => {
+    withMainLiftFlag("true", () => {
+      const history: WorkoutHistoryEntry[] = [
+        buildEntry("2026-01-01T00:00:00Z", null, 12),
+        buildEntry("2026-01-03T00:00:00Z", null, 13),
+        buildEntry("2026-01-05T00:00:00Z", null, 14),
+        buildEntry("2026-01-07T00:00:00Z", null, 15),
+        buildEntry("2026-01-09T00:00:00Z", null, 16),
+      ];
+
+      expect(shouldDeload(history, new Set(["bench"]))).toBe(false);
+    });
+  });
+
+  it("keeps the legacy plateau behavior when the flag is off", () => {
+    withMainLiftFlag("false", () => {
+      const history: WorkoutHistoryEntry[] = [
+        buildEntry("2026-01-01T00:00:00Z", { load: 200, reps: 5 }, 12),
+        buildEntry("2026-01-03T00:00:00Z", { load: 200, reps: 5 }, 13),
+        buildEntry("2026-01-05T00:00:00Z", { load: 200, reps: 5 }, 14),
+        buildEntry("2026-01-07T00:00:00Z", { load: 200, reps: 5 }, 15),
+        buildEntry("2026-01-09T00:00:00Z", { load: 200, reps: 5 }, 16),
+      ];
+
+      expect(shouldDeload(history, new Set(["bench"]))).toBe(false);
+    });
   });
 });

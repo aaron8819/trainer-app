@@ -119,6 +119,13 @@ const baseWorkout: WorkoutPlan = {
 
 describe("applyLoads", () => {
   it("uses history-derived load when available and applies back-off multiplier", () => {
+    const baselines: BaselineInput[] = [
+      {
+        exerciseId: "bench",
+        topSetWeight: 250,
+        context: "strength",
+      },
+    ];
     const history: WorkoutHistoryEntry[] = [
       {
         date: new Date("2026-02-04T10:00:00Z").toISOString(),
@@ -138,7 +145,7 @@ describe("applyLoads", () => {
 
     const result = applyLoads(baseWorkout, {
       history,
-      baselines: [],
+      baselines,
       exerciseById: exercises,
       primaryGoal: "hypertrophy",
       profile: { weightKg: 80, trainingAge: "intermediate" },
@@ -226,7 +233,7 @@ describe("applyLoads", () => {
     expect(result.mainLifts[0].sets[1].targetLoad).toBe(180);
   });
 
-  it("falls back to baseline load when history is missing", () => {
+  it("uses preferred-context baselines without scaling when history is missing", () => {
     const baselines: BaselineInput[] = [
       {
         exerciseId: "leg-press",
@@ -246,6 +253,66 @@ describe("applyLoads", () => {
 
     const legPress = result.accessories.find((item) => item.exercise.id === "leg-press");
     expect(legPress?.sets[0].targetLoad).toBe(190);
+  });
+
+  it("scales strength baselines down for volume-preferred goals", () => {
+    const baselines: BaselineInput[] = [
+      {
+        exerciseId: "bench",
+        topSetWeight: 200,
+        context: "strength",
+      },
+    ];
+
+    const result = applyLoads(baseWorkout, {
+      history: [],
+      baselines,
+      exerciseById: exercises,
+      primaryGoal: "hypertrophy",
+      profile: { weightKg: 80, trainingAge: "intermediate" },
+    });
+
+    expect(result.mainLifts[0].sets[0].targetLoad).toBe(156);
+  });
+
+  it("scales volume baselines up for strength-preferred goals", () => {
+    const baselines: BaselineInput[] = [
+      {
+        exerciseId: "bench",
+        topSetWeight: 200,
+        context: "volume",
+      },
+    ];
+
+    const result = applyLoads(baseWorkout, {
+      history: [],
+      baselines,
+      exerciseById: exercises,
+      primaryGoal: "strength",
+      profile: { weightKg: 80, trainingAge: "intermediate" },
+    });
+
+    expect(result.mainLifts[0].sets[0].targetLoad).toBe(224);
+  });
+
+  it("does not scale default-context baselines", () => {
+    const baselines: BaselineInput[] = [
+      {
+        exerciseId: "bench",
+        topSetWeight: 200,
+        context: "default",
+      },
+    ];
+
+    const result = applyLoads(baseWorkout, {
+      history: [],
+      baselines,
+      exerciseById: exercises,
+      primaryGoal: "strength",
+      profile: { weightKg: 80, trainingAge: "intermediate" },
+    });
+
+    expect(result.mainLifts[0].sets[0].targetLoad).toBe(200);
   });
 
   it("estimates from same-muscle donor with fatigue scaling", () => {

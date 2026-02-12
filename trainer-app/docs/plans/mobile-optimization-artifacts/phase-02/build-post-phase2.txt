@@ -1,0 +1,56 @@
+
+> trainer-app@0.1.0 build
+> next build
+
+▲ Next.js 16.1.6 (Turbopack)
+- Environments: .env.local, .env.production, .env
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 2.9s
+  Running TypeScript ...
+  Collecting page data using 11 workers ...
+  Generating static pages using 11 workers (0/19) ...
+  Generating static pages using 11 workers (4/19) 
+  Generating static pages using 11 workers (9/19) 
+  Generating static pages using 11 workers (14/19) 
+✓ Generating static pages using 11 workers (19/19) in 220.9ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ƒ /
+├ ○ /_not-found
+├ ○ /analytics
+├ ƒ /api/analytics/program-weekly
+├ ƒ /api/analytics/recovery
+├ ƒ /api/analytics/summary
+├ ƒ /api/analytics/templates
+├ ƒ /api/analytics/volume
+├ ƒ /api/baselines
+├ ƒ /api/exercises
+├ ƒ /api/exercises/[id]
+├ ƒ /api/exercises/[id]/avoid
+├ ƒ /api/exercises/[id]/favorite
+├ ƒ /api/exercises/[id]/history
+├ ƒ /api/logs/set
+├ ƒ /api/preferences
+├ ƒ /api/profile/setup
+├ ƒ /api/session-checkins
+├ ƒ /api/templates
+├ ƒ /api/templates/[id]
+├ ƒ /api/templates/[id]/exercises
+├ ƒ /api/workouts/delete
+├ ƒ /api/workouts/generate-from-template
+├ ƒ /api/workouts/save
+├ ƒ /library
+├ ƒ /log/[id]
+├ ○ /onboarding
+├ ƒ /settings
+├ ƒ /templates
+├ ƒ /templates/[id]/edit
+├ ƒ /templates/new
+└ ƒ /workout/[id]
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

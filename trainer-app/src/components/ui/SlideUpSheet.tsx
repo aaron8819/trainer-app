@@ -67,17 +67,17 @@ export function SlideUpSheet({ isOpen, onClose, title, children }: SlideUpSheetP
       <div className="flex h-full items-end md:items-center md:justify-center">
         <div
           className={
-            "w-full max-h-[85vh] overflow-y-auto rounded-t-2xl bg-white shadow-xl " +
+            "w-full max-h-[90vh] overflow-y-auto rounded-t-2xl bg-white shadow-xl sm:max-h-[85vh] " +
             "md:max-w-lg md:rounded-2xl md:max-h-[80vh] " +
             "animate-[slideUp_200ms_ease-out] md:animate-[fadeIn_150ms_ease-out]"
           }
         >
           {title && (
-            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-100 bg-white px-5 py-4 rounded-t-2xl">
-              <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
+            <div className="sticky top-0 z-10 flex items-center justify-between gap-3 rounded-t-2xl border-b border-slate-100 bg-white px-4 py-3 sm:px-5 sm:py-4">
+              <h2 className="min-w-0 text-base font-semibold text-slate-900 sm:text-lg">{title}</h2>
               <button
                 onClick={handleClose}
-                className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600"
                 aria-label="Close"
               >
                 <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
@@ -87,7 +87,7 @@ export function SlideUpSheet({ isOpen, onClose, title, children }: SlideUpSheetP
               </button>
             </div>
           )}
-          <div className="p-5">{children}</div>
+          <div className="px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4 sm:p-5">{children}</div>
         </div>
       </div>
     </dialog>

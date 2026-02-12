@@ -23,7 +23,7 @@ For full end-to-end traceability, see `docs/workout-data-flow-traceability.md`.
 1. Loads template and workout context in parallel.
 2. Maps Prisma records to engine types.
 3. Derives `weekInBlock` and `mesocycleLength`.
-4. Applies periodization with adaptive deload override (`shouldDeload`).
+4. Applies periodization (training-age-aware RPE offsets when profile age is present) with adaptive deload override (`shouldDeload`).
 5. Calls `generateWorkoutFromTemplate(...)` in `template-session.ts`.
 6. Calls `applyLoads(...)` for final load assignment and post-load budget safety trim.
 
@@ -40,11 +40,12 @@ Main lifts are preserved during trimming.
 
 `enforceVolumeCaps(...)` supports:
 
-- Enhanced context: per-muscle MRV cap.
+- Enhanced context: per-muscle MRV cap (direct-only by default, effective direct+indirect when `USE_EFFECTIVE_VOLUME_CAPS=true`).
 - Standard context: 20% spike cap versus previous week baseline.
 
 Template API path passes mesocycle context, so enhanced mode is active in production template generation.
-Current cap limitation remains direct primary-set enforcement (effective-volume caps are a follow-up).
+`USE_EFFECTIVE_VOLUME_CAPS` defaults to off; when enabled it compares effective sets (`direct + indirect * INDIRECT_SET_MULTIPLIER`) against MRV while preserving spike-cap safety.
+Indirect set weighting is now centralized in `src/lib/engine/volume-constants.ts` (`INDIRECT_SET_MULTIPLIER = 0.3`) and shared by runtime effective-set helpers and weekly scoring.
 
 ### 4. SRA behavior
 
@@ -129,5 +130,4 @@ These remain in-repo for historical/tests/support code but are not referenced by
 
 ## Known gaps
 
-- Effective-volume cap enforcement is still a follow-up; current cap checks use direct primary-set counts.
-- Pre-load and post-load timeboxing both remain by design for projection-versus-assignment drift safety.
+- Finding 16 only: stall escalation system beyond deload remains backlog scope and is tracked in `docs/plans/engine-audit-remediation-plan.md`.

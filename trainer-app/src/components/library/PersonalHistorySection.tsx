@@ -23,7 +23,7 @@ const TREND_LABELS: Record<string, { label: string; color: string }> = {
   improving: { label: "Improving", color: "text-emerald-600" },
   stable: { label: "Stable", color: "text-blue-600" },
   declining: { label: "Declining", color: "text-amber-600" },
-  insufficient_data: { label: "Not enough data", color: "text-slate-400" },
+  insufficient_data: { label: "Not enough data", color: "text-slate-500" },
 };
 
 export function PersonalHistorySection({ exerciseId }: { exerciseId: string }) {
@@ -45,11 +45,11 @@ export function PersonalHistorySection({ exerciseId }: { exerciseId: string }) {
   }, [exerciseId]);
 
   if (loading) {
-    return <p className="text-xs text-slate-400 animate-pulse">Loading history...</p>;
+    return <p className="animate-pulse text-xs text-slate-500">Loading history...</p>;
   }
 
   if (!data || data.sessions.length === 0) {
-    return <p className="text-xs text-slate-400">No workout history yet.</p>;
+    return <p className="text-xs text-slate-500">No workout history yet.</p>;
   }
 
   const trend = TREND_LABELS[data.trend] ?? TREND_LABELS.insufficient_data;
@@ -74,16 +74,16 @@ export function PersonalHistorySection({ exerciseId }: { exerciseId: string }) {
       {/* Recent Sessions */}
       {data.sessions.map((session, si) => (
         <div key={si} className="rounded-lg border border-slate-100 p-2.5">
-          <p className="text-[10px] font-medium text-slate-400 mb-1.5">
+          <p className="mb-1.5 text-[10px] font-medium text-slate-500">
             {new Date(session.date).toLocaleDateString()}
           </p>
           <div className="space-y-0.5">
             {session.sets.map((set) => (
               <div key={set.setIndex} className="flex gap-3 text-xs text-slate-600">
-                <span className="w-8 text-slate-400">Set {set.setIndex + 1}</span>
+                <span className="w-8 text-slate-500">Set {set.setIndex + 1}</span>
                 <span>{set.reps} reps</span>
                 {set.load !== null && <span>{set.load}lb</span>}
-                {set.rpe !== null && <span className="text-slate-400">@{set.rpe}</span>}
+                {set.rpe !== null && <span className="text-slate-500">@{set.rpe}</span>}
               </div>
             ))}
           </div>

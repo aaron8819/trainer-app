@@ -1,4 +1,5 @@
 import { MUSCLE_SPLIT_MAP, VOLUME_LANDMARKS } from "./volume-landmarks";
+import { INDIRECT_SET_MULTIPLIER } from "./volume-constants";
 
 type SplitBucket = "push" | "pull" | "legs";
 type MuscleRole = "primary" | "secondary";
@@ -108,7 +109,6 @@ const CORE_PATTERNS: string[] = [
 
 const BONUS_PATTERNS: string[] = ["rotation", "anti_rotation"];
 const TARGET_WEEKLY_HITS = 2;
-const INDIRECT_SET_MULTIPLIER = 0.3;
 const TARGET_PULL_TO_PUSH_RANGE: [number, number] = [1, 2];
 const TARGET_WEEKLY_HIT_PROFILES: Record<
   WeeklyMuscleFrequencyClass,

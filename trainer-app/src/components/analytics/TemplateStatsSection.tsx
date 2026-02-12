@@ -24,7 +24,7 @@ export function TemplateStatsSection() {
   }, []);
 
   if (loading) {
-    return <div className="animate-pulse rounded-2xl border border-slate-200 p-6 text-sm text-slate-400">Loading template stats...</div>;
+    return <div className="animate-pulse rounded-2xl border border-slate-200 p-6 text-sm text-slate-500">Loading template stats...</div>;
   }
 
   if (templates.length === 0) {
@@ -41,19 +41,19 @@ export function TemplateStatsSection() {
               {t.completionRate}% completion
             </span>
           </div>
-          <div className="mt-2 grid grid-cols-3 gap-3 text-xs text-slate-500">
+          <div className="mt-2 grid grid-cols-1 gap-2 text-xs text-slate-500 sm:grid-cols-3 sm:gap-3">
             <div>
-              <span className="block text-slate-400">Workouts</span>
+              <span className="block text-slate-500">Workouts</span>
               <span className="font-medium text-slate-700">{t.completedWorkouts}/{t.totalWorkouts}</span>
             </div>
             <div>
-              <span className="block text-slate-400">Last used</span>
+              <span className="block text-slate-500">Last used</span>
               <span className="font-medium text-slate-700">
                 {t.lastUsed ? new Date(t.lastUsed).toLocaleDateString() : "Never"}
               </span>
             </div>
             <div>
-              <span className="block text-slate-400">Avg frequency</span>
+              <span className="block text-slate-500">Avg frequency</span>
               <span className="font-medium text-slate-700">
                 {t.avgFrequencyDays !== null ? `${t.avgFrequencyDays}d` : "N/A"}
               </span>

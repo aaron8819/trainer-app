@@ -42,6 +42,10 @@ export default function ProfileForm({
     defaultValues: { ...defaultValues, ...initialValues },
   });
 
+  const sectionClassName = "rounded-2xl border border-slate-200 p-4 sm:p-6";
+  const fieldClassName = "h-11 w-full rounded-xl border border-slate-300 px-3 text-sm";
+  const labelClassName = "space-y-1 text-sm font-medium text-slate-700";
+
   const onSubmit = form.handleSubmit(async (values) => {
     setStatus(null);
     setError(null);
@@ -94,69 +98,72 @@ export default function ProfileForm({
   });
 
   return (
-    <form className="mt-6 space-y-8" onSubmit={onSubmit}>
+    <form className="mt-5 space-y-5 sm:mt-6 sm:space-y-6" onSubmit={onSubmit}>
       <input type="hidden" {...form.register("userId")} />
-      <section className="rounded-2xl border border-slate-200 p-6">
-        <h2 className="text-lg font-semibold">Basics</h2>
-        <div className="mt-4 grid gap-4 md:grid-cols-2">
-          <label className="text-sm">
+      <section className={sectionClassName}>
+        <h2 className="text-base font-semibold sm:text-lg">Basics</h2>
+        <div className="mt-3 grid gap-3.5 sm:mt-4 sm:gap-4 md:grid-cols-2">
+          <label className={labelClassName}>
             Email
             <input
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+              className={fieldClassName}
               type="email"
               placeholder="you@example.com"
               {...form.register("email")}
             />
           </label>
-          <label className="text-sm">
+          <label className={labelClassName}>
             Sex
             <input
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+              className={fieldClassName}
               placeholder="Optional"
               {...form.register("sex")}
             />
           </label>
-          <label className="text-sm">
+          <label className={labelClassName}>
             Age
             <input
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+              className={fieldClassName}
               type="number"
+              inputMode="numeric"
               {...form.register("age", { valueAsNumber: true })}
             />
           </label>
-          <label className="text-sm">
+          <label className={labelClassName}>
             Training Age
-            <select className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" {...form.register("trainingAge")}>
+            <select className={fieldClassName} {...form.register("trainingAge")}>
               <option value="BEGINNER">Beginner</option>
               <option value="INTERMEDIATE">Intermediate</option>
               <option value="ADVANCED">Advanced</option>
             </select>
           </label>
-          <label className="text-sm">
+          <label className={labelClassName}>
             Height (inches)
             <input
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+              className={fieldClassName}
               type="number"
+              inputMode="numeric"
               {...form.register("heightIn", { valueAsNumber: true })}
             />
           </label>
-          <label className="text-sm">
+          <label className={labelClassName}>
             Weight (lbs)
             <input
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+              className={fieldClassName}
               type="number"
+              inputMode="numeric"
               {...form.register("weightLb", { valueAsNumber: true })}
             />
           </label>
         </div>
       </section>
 
-      <section className="rounded-2xl border border-slate-200 p-6">
-        <h2 className="text-lg font-semibold">Goals</h2>
-        <div className="mt-4 grid gap-4 md:grid-cols-2">
-          <label className="text-sm">
+      <section className={sectionClassName}>
+        <h2 className="text-base font-semibold sm:text-lg">Goals</h2>
+        <div className="mt-3 grid gap-3.5 sm:mt-4 sm:gap-4 md:grid-cols-2">
+          <label className={labelClassName}>
             Primary Goal
-            <select className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" {...form.register("primaryGoal")}>
+            <select className={fieldClassName} {...form.register("primaryGoal")}>
               <option value="HYPERTROPHY">Hypertrophy</option>
               <option value="STRENGTH">Strength</option>
               <option value="FAT_LOSS">Fat Loss</option>
@@ -164,9 +171,9 @@ export default function ProfileForm({
               <option value="GENERAL_HEALTH">General Health</option>
             </select>
           </label>
-          <label className="text-sm">
+          <label className={labelClassName}>
             Secondary Goal
-            <select className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" {...form.register("secondaryGoal")}>
+            <select className={fieldClassName} {...form.register("secondaryGoal")}>
               <option value="POSTURE">Posture</option>
               <option value="CONDITIONING">Conditioning</option>
               <option value="INJURY_PREVENTION">Injury Prevention</option>
@@ -176,65 +183,68 @@ export default function ProfileForm({
         </div>
       </section>
 
-      <section className="rounded-2xl border border-slate-200 p-6">
-        <h2 className="text-lg font-semibold">Schedule</h2>
-        <div className="mt-4 grid gap-4 md:grid-cols-2">
-          <label className="text-sm">
+      <section className={sectionClassName}>
+        <h2 className="text-base font-semibold sm:text-lg">Schedule</h2>
+        <div className="mt-3 grid gap-3.5 sm:mt-4 sm:gap-4 md:grid-cols-2">
+          <label className={labelClassName}>
             Days per week
             <input
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+              className={fieldClassName}
               type="number"
+              inputMode="numeric"
               {...form.register("daysPerWeek", { valueAsNumber: true })}
             />
           </label>
-          <label className="text-sm">
+          <label className={labelClassName}>
             Session minutes
             <input
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+              className={fieldClassName}
               type="number"
+              inputMode="numeric"
               {...form.register("sessionMinutes", { valueAsNumber: true })}
             />
           </label>
         </div>
       </section>
 
-      <section className="rounded-2xl border border-slate-200 p-6">
-        <h2 className="text-lg font-semibold">Injury / Irritation</h2>
-        <div className="mt-4 grid gap-4 md:grid-cols-2">
-          <label className="text-sm">
+      <section className={sectionClassName}>
+        <h2 className="text-base font-semibold sm:text-lg">Injury / Irritation</h2>
+        <div className="mt-3 grid gap-3.5 sm:mt-4 sm:gap-4 md:grid-cols-2">
+          <label className={labelClassName}>
             Body part
             <input
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+              className={fieldClassName}
               placeholder="Elbow, shoulder, knee"
               {...form.register("injuryBodyPart")}
             />
           </label>
-          <label className="text-sm">
+          <label className={labelClassName}>
             Severity (1-5)
             <input
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+              className={fieldClassName}
               type="number"
+              inputMode="numeric"
               {...form.register("injurySeverity", { valueAsNumber: true })}
             />
           </label>
-          <label className="text-sm md:col-span-2">
+          <label className={`${labelClassName} md:col-span-2`}>
             Notes
             <textarea
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
               rows={3}
               {...form.register("injuryDescription")}
             />
           </label>
-          <label className="text-sm md:col-span-2 flex items-center gap-2">
+          <label className="flex min-h-11 items-center gap-2 text-sm font-medium text-slate-700 md:col-span-2">
             <input type="checkbox" {...form.register("injuryActive")} />
             Injury is active
           </label>
         </div>
       </section>
 
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
         <button
-          className="rounded-full bg-slate-900 px-6 py-2 text-sm font-semibold text-white"
+          className="h-11 w-full rounded-full bg-slate-900 px-6 text-sm font-semibold text-white sm:w-auto"
           type="submit"
         >
           Save profile

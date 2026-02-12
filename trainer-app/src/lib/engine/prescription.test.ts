@@ -15,6 +15,26 @@ const defaultFatigue: FatigueState = {
 
 const hypertrophyGoals: Goals = { primary: "hypertrophy", secondary: "none" };
 const strengthGoals: Goals = { primary: "strength", secondary: "none" };
+const fatLossGoals: Goals = { primary: "fat_loss", secondary: "none" };
+const USE_REVISED_FAT_LOSS_POLICY_ENV = "USE_REVISED_FAT_LOSS_POLICY";
+
+function withRevisedFatLossPolicy(value: string | undefined, run: () => void) {
+  const previous = process.env[USE_REVISED_FAT_LOSS_POLICY_ENV];
+  if (value === undefined) {
+    delete process.env[USE_REVISED_FAT_LOSS_POLICY_ENV];
+  } else {
+    process.env[USE_REVISED_FAT_LOSS_POLICY_ENV] = value;
+  }
+  try {
+    run();
+  } finally {
+    if (previous === undefined) {
+      delete process.env[USE_REVISED_FAT_LOSS_POLICY_ENV];
+    } else {
+      process.env[USE_REVISED_FAT_LOSS_POLICY_ENV] = previous;
+    }
+  }
+}
 
 describe("clampRepRange", () => {
   it("returns goal range when no exercise range provided", () => {
@@ -136,16 +156,49 @@ describe("prescribeSetsReps with exerciseRepRange", () => {
     expect(sets[0].targetRepRange).toEqual({ min: 8, max: 10 });
   });
 
-  it("keeps main-lift back-off reps equal to top-set reps", () => {
+  it("keeps beginner main-lift back-off reps equal to top-set reps", () => {
     const sets = prescribeSetsReps(
       true,
-      "intermediate",
+      "beginner",
       hypertrophyGoals,
       defaultFatigue
     );
 
     expect(sets.length).toBeGreaterThan(1);
     expect(sets[1].targetReps).toBe(sets[0].targetReps);
+  });
+
+  it("applies training-age back-off rep bumps for non-top main sets", () => {
+    const intermediateSets = prescribeSetsReps(
+      true,
+      "intermediate",
+      hypertrophyGoals,
+      defaultFatigue
+    );
+    const advancedSets = prescribeSetsReps(
+      true,
+      "advanced",
+      hypertrophyGoals,
+      defaultFatigue
+    );
+
+    expect(intermediateSets[1].targetReps).toBe(intermediateSets[0].targetReps! + 1);
+    expect(advancedSets[1].targetReps).toBe(advancedSets[0].targetReps! + 2);
+  });
+
+  it("clamps back-off rep bumps to exercise rep-range max", () => {
+    const sets = prescribeSetsReps(
+      true,
+      "advanced",
+      hypertrophyGoals,
+      defaultFatigue,
+      undefined,
+      undefined,
+      { min: 9, max: 10 }
+    );
+
+    expect(sets[0].targetReps).toBe(9);
+    expect(sets[1].targetReps).toBe(10);
   });
 });
 
@@ -208,8 +261,8 @@ describe("getRestSeconds", () => {
     equipment: ["dumbbell"],
   };
 
-  it("uses 75 seconds as the isolation rest floor", () => {
-    expect(getRestSeconds(isolationExercise, false, 15)).toBe(75);
+  it("uses 90 seconds as the isolation rest floor", () => {
+    expect(getRestSeconds(isolationExercise, false, 15)).toBe(90);
   });
 
   it("keeps higher-fatigue isolations at 90 seconds", () => {
@@ -228,5 +281,45 @@ describe("resolveSetCount", () => {
 
     const sets = resolveSetCount(true, "advanced", stackedPenaltyState);
     expect(sets).toBe(4);
+  });
+
+  it("fat-loss-set-reduction", () => {
+    withRevisedFatLossPolicy("true", () => {
+      const hypertrophySets = prescribeSetsReps(
+        true,
+        "intermediate",
+        hypertrophyGoals,
+        defaultFatigue
+      );
+      const fatLossSets = prescribeSetsReps(
+        true,
+        "intermediate",
+        fatLossGoals,
+        defaultFatigue
+      );
+
+      expect(hypertrophySets).toHaveLength(4);
+      expect(fatLossSets).toHaveLength(3);
+    });
+  });
+
+  it("applies fat-loss goal multiplier before periodization multiplier", () => {
+    withRevisedFatLossPolicy("true", () => {
+      const sets = prescribeSetsReps(
+        true,
+        "intermediate",
+        fatLossGoals,
+        defaultFatigue,
+        undefined,
+        {
+          rpeOffset: 0,
+          setMultiplier: 1.3,
+          backOffMultiplier: 0.85,
+          isDeload: false,
+        }
+      );
+
+      expect(sets).toHaveLength(4);
+    });
   });
 });

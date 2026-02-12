@@ -58,14 +58,21 @@ export async function generateSessionFromTemplate(
   const mappedGoals = mapGoals(goals.primaryGoal, goals.secondaryGoal);
   const mappedConstraints = mapConstraints(constraints);
   const exerciseLibrary = mapExercises(exercises);
+  const mainLiftExerciseIds = new Set(
+    exerciseLibrary.filter((exercise) => exercise.isMainLiftEligible).map((exercise) => exercise.id)
+  );
   const history = mapHistory(workouts);
   const mappedPreferences = mapPreferences(preferences);
   const mappedCheckIn = mapCheckIn(checkIns);
   const activeProgramBlock = workouts.find((entry) => entry.programBlockId)?.programBlock ?? null;
   const weekInBlock = deriveWeekInBlock(new Date(), activeProgramBlock, workouts);
   const mesocycleLength = Math.max(1, activeProgramBlock?.weeks ?? 4);
-  const periodization = getPeriodizationModifiers(weekInBlock, mappedGoals.primary);
-  const adaptiveDeload = !periodization.isDeload && shouldDeload(history);
+  const periodization = getPeriodizationModifiers(
+    weekInBlock,
+    mappedGoals.primary,
+    mappedProfile.trainingAge
+  );
+  const adaptiveDeload = !periodization.isDeload && shouldDeload(history, mainLiftExerciseIds);
   const effectivePeriodization = adaptiveDeload
     ? {
         ...periodization,

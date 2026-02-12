@@ -28,8 +28,9 @@ export default async function EditTemplatePage({ params }: { params: Params }) {
 
   return (
     <main className="min-h-screen bg-white">
-      <div className="mx-auto max-w-2xl px-6 py-10">
-        <h1 className="mb-6 text-2xl font-semibold text-slate-900">Edit Template</h1>
+      <div className="page-shell max-w-2xl">
+        <h1 className="page-title mb-2 text-slate-900">Edit Template</h1>
+        <p className="mb-5 text-sm text-slate-600 sm:mb-6">Adjust ordering, supersets, and intent with mobile-safe controls.</p>
         <TemplateForm
           mode="edit"
           templateId={id}

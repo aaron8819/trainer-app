@@ -1,12 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { buildVolumeContext, deriveFatigueState, enforceVolumeCaps } from "./volume";
+import {
+  buildVolumeContext,
+  deriveFatigueState,
+  effectiveWeeklySets,
+  enforceVolumeCaps,
+} from "./volume";
 import type { Exercise, WorkoutExercise, WorkoutHistoryEntry } from "./types";
+import { INDIRECT_SET_MULTIPLIER } from "./volume-constants";
 
 function makeWorkoutExercise(
   id: string,
   primaryMuscles: string[],
   fatigueCost: number,
-  sets: number
+  sets: number,
+  secondaryMuscles: string[] = []
 ): WorkoutExercise {
   return {
     id,
@@ -20,6 +27,7 @@ function makeWorkoutExercise(
       fatigueCost,
       equipment: ["cable"],
       primaryMuscles,
+      secondaryMuscles,
     },
     orderIndex: 0,
     isMainLift: false,
@@ -28,6 +36,26 @@ function makeWorkoutExercise(
       targetReps: 10,
     })),
   };
+}
+
+const USE_EFFECTIVE_VOLUME_CAPS_ENV = "USE_EFFECTIVE_VOLUME_CAPS";
+
+function withEffectiveVolumeCapsFlag(value: string | undefined, run: () => void) {
+  const previous = process.env[USE_EFFECTIVE_VOLUME_CAPS_ENV];
+  if (value === undefined) {
+    delete process.env[USE_EFFECTIVE_VOLUME_CAPS_ENV];
+  } else {
+    process.env[USE_EFFECTIVE_VOLUME_CAPS_ENV] = value;
+  }
+  try {
+    run();
+  } finally {
+    if (previous === undefined) {
+      delete process.env[USE_EFFECTIVE_VOLUME_CAPS_ENV];
+    } else {
+      process.env[USE_EFFECTIVE_VOLUME_CAPS_ENV] = previous;
+    }
+  }
 }
 
 describe("enforceVolumeCaps", () => {
@@ -133,6 +161,77 @@ describe("enforceVolumeCaps", () => {
     const result = enforceVolumeCaps(accessories, mainLifts, volumeContext);
     expect(result).toHaveLength(0);
   });
+
+  it("effective-cap-under-mrv", () => {
+    withEffectiveVolumeCapsFlag("true", () => {
+      const mainLifts: WorkoutExercise[] = [];
+      const accessories: WorkoutExercise[] = [
+        makeWorkoutExercise("good-morning", ["Quads"], 3, 12, ["Hamstrings"]),
+      ];
+      const enhancedBase = buildVolumeContext([], [], { week: 0, length: 4 });
+      if (!("muscleVolume" in enhancedBase)) {
+        throw new Error("Expected enhanced volume context");
+      }
+      const volumeContext = {
+        ...enhancedBase,
+        recent: { Hamstrings: 6 },
+        previous: { Hamstrings: 50, Quads: 50 },
+      };
+
+      const result = enforceVolumeCaps(accessories, mainLifts, volumeContext);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe("good-morning");
+    });
+  });
+
+  it("effective-cap-over-mrv", () => {
+    withEffectiveVolumeCapsFlag("true", () => {
+      const mainLifts: WorkoutExercise[] = [];
+      const accessories: WorkoutExercise[] = [
+        makeWorkoutExercise("ham-overlap", ["Quads"], 2, 20, ["Hamstrings"]),
+        makeWorkoutExercise("keep-this", ["Upper Back"], 4, 3),
+      ];
+      const enhancedBase = buildVolumeContext([], [], { week: 0, length: 4 });
+      if (!("muscleVolume" in enhancedBase)) {
+        throw new Error("Expected enhanced volume context");
+      }
+      const volumeContext = {
+        ...enhancedBase,
+        recent: { Hamstrings: 16 },
+        previous: { Hamstrings: 50, Quads: 50, "Upper Back": 50 },
+      };
+
+      const result = enforceVolumeCaps(accessories, mainLifts, volumeContext);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe("keep-this");
+    });
+  });
+
+  it("effective-cap-flag-off", () => {
+    withEffectiveVolumeCapsFlag("false", () => {
+      const mainLifts: WorkoutExercise[] = [];
+      const accessories: WorkoutExercise[] = [
+        makeWorkoutExercise("ham-overlap", ["Quads"], 2, 20, ["Hamstrings"]),
+        makeWorkoutExercise("keep-this", ["Upper Back"], 4, 3),
+      ];
+      const enhancedBase = buildVolumeContext([], [], { week: 0, length: 4 });
+      if (!("muscleVolume" in enhancedBase)) {
+        throw new Error("Expected enhanced volume context");
+      }
+      const volumeContext = {
+        ...enhancedBase,
+        recent: { Hamstrings: 16 },
+        previous: { Hamstrings: 50, Quads: 50, "Upper Back": 50 },
+      };
+
+      const result = enforceVolumeCaps(accessories, mainLifts, volumeContext);
+
+      expect(result).toHaveLength(2);
+      expect(result.map((exercise) => exercise.id)).toEqual(["ham-overlap", "keep-this"]);
+    });
+  });
 });
 
 describe("buildVolumeContext", () => {
@@ -211,5 +310,18 @@ describe("deriveFatigueState", () => {
 
     expect(state.readinessScore).toBe(1);
     expect(state.missedLastSession).toBe(false);
+  });
+});
+
+describe("effectiveWeeklySets", () => {
+  it("uses the shared indirect multiplier constant", () => {
+    const state = {
+      weeklyDirectSets: 10,
+      weeklyIndirectSets: 10,
+      plannedSets: 0,
+      landmark: { mv: 0, mev: 0, mav: 0, mrv: 99, sraHours: 48 },
+    };
+
+    expect(effectiveWeeklySets(state)).toBe(10 + 10 * INDIRECT_SET_MULTIPLIER);
   });
 });

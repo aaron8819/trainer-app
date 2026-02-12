@@ -72,7 +72,7 @@ export default function SessionCheckInForm({
                 disabled={isSubmitting}
               />
               <span
-                className={`inline-flex h-9 w-9 items-center justify-center rounded-full border text-sm font-semibold transition ${
+                className={`inline-flex h-11 w-11 items-center justify-center rounded-full border text-sm font-semibold transition ${
                   readiness === value
                     ? "border-slate-900 bg-slate-900 text-white"
                     : "border-slate-200 text-slate-700"
@@ -122,14 +122,14 @@ export default function SessionCheckInForm({
       <div className="mt-4 flex flex-wrap gap-3">
         <button
           type="submit"
-          className="rounded-full bg-slate-900 px-5 py-2 text-sm font-semibold text-white disabled:opacity-60"
+          className="inline-flex min-h-11 items-center justify-center rounded-full bg-slate-900 px-5 py-2 text-sm font-semibold text-white disabled:opacity-60"
           disabled={isSubmitting}
         >
           {isSubmitting ? "Generating..." : "Generate Workout"}
         </button>
         <button
           type="button"
-          className="rounded-full border border-slate-300 px-5 py-2 text-sm font-semibold disabled:opacity-60"
+          className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 px-5 py-2 text-sm font-semibold disabled:opacity-60"
           onClick={onSkip}
           disabled={isSubmitting}
         >

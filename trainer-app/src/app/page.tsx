@@ -75,10 +75,10 @@ export default async function Home() {
 
   return (
     <main className="min-h-screen bg-white text-slate-900">
-      <div className="mx-auto max-w-5xl px-6 py-10">
-        <header className="mb-10">
+      <div className="page-shell max-w-5xl">
+        <header className="mb-8 md:mb-10">
           <p className="text-sm uppercase tracking-wide text-slate-500">Personal AI Trainer</p>
-          <h1 className="mt-2 text-3xl font-semibold">Today&apos;s Training</h1>
+          <h1 className="page-title mt-2">Today&apos;s Training</h1>
           <p className="mt-2 text-slate-600">
             Generate, log, and adapt your plan with minimal friction.
           </p>
@@ -101,13 +101,13 @@ export default async function Home() {
                 <p className="mt-2 text-slate-600">Continue your latest in-progress session.</p>
                 <div className="mt-4 flex flex-wrap items-center gap-3">
                   <Link
-                    className="rounded-full bg-slate-900 px-5 py-2 text-sm font-semibold text-white"
+                    className="inline-flex min-h-11 items-center justify-center rounded-full bg-slate-900 px-5 py-2 text-sm font-semibold text-white"
                     href={`/log/${latestIncomplete.id}`}
                   >
                     Resume logging
                   </Link>
                   <Link
-                    className="rounded-full border border-slate-300 px-5 py-2 text-sm font-semibold"
+                    className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 px-5 py-2 text-sm font-semibold"
                     href={`/workout/${latestIncomplete.id}`}
                   >
                     View workout
@@ -130,7 +130,7 @@ export default async function Home() {
           </div>
         </section>
 
-        <section className="mt-10 grid gap-6 md:grid-cols-3">
+        <section className="mt-8 grid gap-6 md:mt-10 md:grid-cols-3">
           <div className="rounded-2xl border border-slate-200 p-5">
             <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Next Session</h3>
             <p className="mt-3 text-lg font-semibold">{latestWorkout ? "Upcoming Workout" : "No workout"}</p>
@@ -143,7 +143,7 @@ export default async function Home() {
                 View workout
               </Link>
             ) : (
-              <span className="mt-3 inline-block text-sm text-slate-400">Generate a workout first</span>
+              <span className="mt-3 inline-block text-sm text-slate-500">Generate a workout first</span>
             )}
           </div>
           <div className="rounded-2xl border border-slate-200 p-5">
@@ -164,7 +164,7 @@ export default async function Home() {
                 Review log
               </Link>
             ) : (
-              <span className="mt-3 inline-block text-sm text-slate-400">No logs yet</span>
+              <span className="mt-3 inline-block text-sm text-slate-500">No logs yet</span>
             )}
           </div>
           <div className="rounded-2xl border border-slate-200 p-5">

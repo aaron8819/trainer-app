@@ -1,0 +1,1 @@
+export const INDIRECT_SET_MULTIPLIER = 0.3;

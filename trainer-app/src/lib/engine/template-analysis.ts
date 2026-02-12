@@ -134,9 +134,9 @@ const PATTERNS_BY_BUCKET: Record<SplitBucket, string[]> = {
 
 const BASE_WEIGHTS = {
   muscleCoverage: 0.24,
-  pushPullBalance: 0.12,
+  pushPullBalance: 0.15,
   compoundIsolation: 0.12,
-  movementDiversity: 0.12,
+  movementDiversity: 0.09,
   lengthPosition: 0.14,
   sfrEfficiency: 0.14,
   exerciseOrder: 0.12,

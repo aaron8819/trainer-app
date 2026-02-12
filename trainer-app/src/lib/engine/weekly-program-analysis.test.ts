@@ -5,6 +5,7 @@ import {
   type WeeklyProgramExerciseInput,
   type WeeklyProgramSessionInput,
 } from "./weekly-program-analysis";
+import { INDIRECT_SET_MULTIPLIER } from "./volume-constants";
 
 function ex(
   setCount: number,
@@ -120,6 +121,28 @@ describe("analyzeWeeklyProgram", () => {
     expect(bicepsCheck?.zone).toBe("above_mrv");
     expect(result.weeklyVolumeChecks.belowMevCritical).toContain("Chest");
     expect(result.weeklyVolumeChecks.aboveMrvCritical).toContain("Biceps");
+  });
+
+  it("uses updated biceps and hamstrings landmark boundaries", () => {
+    const result = analyzeWeeklyProgram([
+      {
+        sessionId: "boundary-check",
+        exercises: [
+          ex(24, ["horizontal_pull"], ["Biceps"]),
+          ex(6, ["hinge"], ["Hamstrings"]),
+        ],
+      },
+    ]);
+
+    const bicepsCheck = result.weeklyVolumeChecks.checks.find(
+      (check) => check.muscle === "Biceps"
+    );
+    const hamstringsCheck = result.weeklyVolumeChecks.checks.find(
+      (check) => check.muscle === "Hamstrings"
+    );
+
+    expect(bicepsCheck?.zone).toBe("mav_to_mrv");
+    expect(hamstringsCheck?.zone).toBe("mev_to_mav");
   });
 
   it("handles empty weekly programs", () => {
@@ -370,5 +393,22 @@ describe("analyzeWeeklyProgram", () => {
     expect(frequencySuggestion).toContain("x/week");
     expect(frequencySuggestion).toContain("3-4x/week");
     expect(frequencySuggestion).toContain("1.5-2x/week");
+  });
+
+  it("reports shared indirect multiplier across volume checks", () => {
+    const result = analyzeWeeklyProgram([
+      {
+        sessionId: "shared-multiplier",
+        exercises: [
+          ex(4, ["horizontal_push"], ["Chest"], ["Triceps"]),
+          ex(4, ["horizontal_pull"], ["Lats"], ["Biceps"]),
+        ],
+      },
+    ]);
+
+    expect(result.weeklyVolumeChecks.checks.length).toBeGreaterThan(0);
+    for (const check of result.weeklyVolumeChecks.checks) {
+      expect(check.indirectSetMultiplier).toBe(INDIRECT_SET_MULTIPLIER);
+    }
   });
 });

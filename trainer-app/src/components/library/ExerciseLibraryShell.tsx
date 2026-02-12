@@ -29,15 +29,15 @@ export function ExerciseLibraryShell({ exercises }: ExerciseLibraryShellProps) {
           onFiltersChange={setFilters}
           resultCount={filteredExercises.length}
         />
-        <div className="flex items-center gap-2">
-          <label className="text-xs text-slate-500">Sort:</label>
+        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
+          <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Sort</label>
           <select
             value={`${sort.field}:${sort.direction}`}
             onChange={(e) => {
               const [field, direction] = e.target.value.split(":") as [ExerciseSort["field"], ExerciseSort["direction"]];
               setSort({ field, direction });
             }}
-            className="rounded-lg border border-slate-200 px-2 py-1 text-xs"
+            className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm sm:w-auto sm:min-w-52"
           >
             <option value="name:asc">Name A-Z</option>
             <option value="name:desc">Name Z-A</option>

@@ -26,13 +26,13 @@ export function MuscleGroupChips({
   const showFineMuscles = selectedGroups.length > 0;
 
   return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap gap-1.5">
+    <div className="space-y-2.5">
+      <div className="flex flex-wrap gap-2">
         {groups.map((group) => (
           <button
             key={group}
             onClick={() => onToggleGroup(group)}
-            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+            className={`min-h-10 rounded-full px-3.5 text-xs font-medium transition-colors ${
               selectedGroups.includes(group)
                 ? "bg-slate-900 text-white"
                 : "bg-slate-100 text-slate-700 hover:bg-slate-200"
@@ -44,12 +44,12 @@ export function MuscleGroupChips({
       </div>
 
       {showFineMuscles && (
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap gap-2">
           {fineMuscles.map((muscle) => (
             <button
               key={muscle}
               onClick={() => onToggleMuscle(muscle)}
-              className={`rounded-full px-2.5 py-0.5 text-xs transition-colors ${
+              className={`min-h-9 rounded-full px-3 text-xs transition-colors ${
                 selectedMuscles.includes(muscle)
                   ? "bg-emerald-600 text-white"
                   : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"

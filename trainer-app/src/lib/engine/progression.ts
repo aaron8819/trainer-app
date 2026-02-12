@@ -3,6 +3,9 @@ import type { TrainingAge, WorkoutHistoryEntry } from "./types";
 import { roundLoad } from "./utils";
 
 export type ProgressionSet = { reps: number; rpe?: number; load?: number };
+type HistorySet = WorkoutHistoryEntry["exercises"][number]["sets"][number];
+
+const USE_MAIN_LIFT_PLATEAU_DETECTION_ENV = "USE_MAIN_LIFT_PLATEAU_DETECTION";
 
 export type ComputeNextLoadOptions = {
   trainingAge?: TrainingAge;
@@ -133,7 +136,10 @@ function sessionLoad(sets: ProgressionSet[]): number | undefined {
   return sets.find((set) => set.load !== undefined)?.load;
 }
 
-export function shouldDeload(history: WorkoutHistoryEntry[]): boolean {
+export function shouldDeload(
+  history: WorkoutHistoryEntry[],
+  mainLiftExerciseIds?: Set<string>
+): boolean {
   if (history.length < 2) return false;
 
   // Check for consecutive low readiness
@@ -153,7 +159,29 @@ export function shouldDeload(history: WorkoutHistoryEntry[]): boolean {
   const allCompleted = recent.every((entry) => entry.completed);
   if (!allCompleted) return false;
 
-  const totalVolume = recent.map((entry) =>
+  if (!shouldUseMainLiftPlateauDetection() || !mainLiftExerciseIds?.size) {
+    return hasPlateauByTotalReps(recent);
+  }
+
+  const mainLiftPlateau = hasMainLiftPlateau(recent, mainLiftExerciseIds);
+  if (mainLiftPlateau === null) {
+    return hasPlateauByTotalReps(recent);
+  }
+
+  return mainLiftPlateau;
+}
+
+function shouldUseMainLiftPlateauDetection(): boolean {
+  const rawValue = process.env[USE_MAIN_LIFT_PLATEAU_DETECTION_ENV];
+  if (!rawValue) {
+    return false;
+  }
+  const normalized = rawValue.trim().toLowerCase();
+  return ["1", "true", "yes", "on"].includes(normalized);
+}
+
+function hasPlateauByTotalReps(history: WorkoutHistoryEntry[]): boolean {
+  const totalVolume = history.map((entry) =>
     entry.exercises.reduce(
       (sum, exercise) => sum + exercise.sets.reduce((setSum, set) => setSum + set.reps, 0),
       0
@@ -164,4 +192,55 @@ export function shouldDeload(history: WorkoutHistoryEntry[]): boolean {
     (volume, index) => index > 0 && volume > totalVolume[index - 1]
   );
   return !hasImprovement;
+}
+
+function hasMainLiftPlateau(
+  history: WorkoutHistoryEntry[],
+  mainLiftExerciseIds: Set<string>
+): boolean | null {
+  const sortedByDate = [...history].sort(
+    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+  );
+  const e1rmByExercise = new Map<string, number[]>();
+
+  for (const entry of sortedByDate) {
+    for (const exercise of entry.exercises) {
+      if (!mainLiftExerciseIds.has(exercise.exerciseId)) {
+        continue;
+      }
+      const topSet = resolveTopSet(exercise.sets);
+      if (!topSet) {
+        continue;
+      }
+      const e1rm = topSet.load * (1 + topSet.reps / 30);
+      if (!e1rmByExercise.has(exercise.exerciseId)) {
+        e1rmByExercise.set(exercise.exerciseId, []);
+      }
+      e1rmByExercise.get(exercise.exerciseId)?.push(e1rm);
+    }
+  }
+
+  const tracked = Array.from(e1rmByExercise.entries()).filter(([, values]) => values.length >= 2);
+  if (tracked.length === 0) {
+    return null;
+  }
+
+  return tracked.every(([, values]) => {
+    const oldest = values[0];
+    const max = Math.max(...values);
+    return max <= oldest;
+  });
+}
+
+function resolveTopSet(sets: HistorySet[]) {
+  let topSet: { reps: number; load: number; setIndex: number } | null = null;
+  for (const set of sets) {
+    if (!Number.isFinite(set.load) || !Number.isFinite(set.reps) || set.reps <= 0) {
+      continue;
+    }
+    if (!topSet || set.setIndex < topSet.setIndex) {
+      topSet = { reps: set.reps, load: set.load as number, setIndex: set.setIndex };
+    }
+  }
+  return topSet;
 }

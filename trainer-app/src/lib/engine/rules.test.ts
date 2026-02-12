@@ -1,10 +1,32 @@
 import { describe, expect, it } from "vitest";
 import {
+  getGoalRepRanges,
+  getGoalSetMultiplier,
   getBaseTargetRpe,
   getMesocyclePeriodization,
   getPeriodizationModifiers,
   type MesocycleConfig,
 } from "./rules";
+
+const USE_REVISED_FAT_LOSS_POLICY_ENV = "USE_REVISED_FAT_LOSS_POLICY";
+
+function withRevisedFatLossPolicy(value: string | undefined, run: () => void) {
+  const previous = process.env[USE_REVISED_FAT_LOSS_POLICY_ENV];
+  if (value === undefined) {
+    delete process.env[USE_REVISED_FAT_LOSS_POLICY_ENV];
+  } else {
+    process.env[USE_REVISED_FAT_LOSS_POLICY_ENV] = value;
+  }
+  try {
+    run();
+  } finally {
+    if (previous === undefined) {
+      delete process.env[USE_REVISED_FAT_LOSS_POLICY_ENV];
+    } else {
+      process.env[USE_REVISED_FAT_LOSS_POLICY_ENV] = previous;
+    }
+  }
+}
 
 describe("getMesocyclePeriodization", () => {
   it("returns deload modifiers when isDeload is true", () => {
@@ -47,6 +69,70 @@ describe("getMesocyclePeriodization", () => {
     expect(hyp.backOffMultiplier).toBe(0.88);
     expect(str.backOffMultiplier).toBe(0.9);
   });
+
+  it("uses age-scaled offsets for beginners", () => {
+    const week0 = getMesocyclePeriodization(
+      { totalWeeks: 3, currentWeek: 0, isDeload: false },
+      "hypertrophy",
+      "beginner"
+    );
+    const week1 = getMesocyclePeriodization(
+      { totalWeeks: 3, currentWeek: 1, isDeload: false },
+      "hypertrophy",
+      "beginner"
+    );
+    const week2 = getMesocyclePeriodization(
+      { totalWeeks: 3, currentWeek: 2, isDeload: false },
+      "hypertrophy",
+      "beginner"
+    );
+
+    expect(week0.rpeOffset).toBe(-0.5);
+    expect(week1.rpeOffset).toBe(0.0);
+    expect(week2.rpeOffset).toBe(0.5);
+  });
+
+  it("uses age-scaled offsets for intermediate and advanced lifters", () => {
+    const intermediateWeek0 = getMesocyclePeriodization(
+      { totalWeeks: 3, currentWeek: 0, isDeload: false },
+      "hypertrophy",
+      "intermediate"
+    );
+    const intermediateWeek1 = getMesocyclePeriodization(
+      { totalWeeks: 3, currentWeek: 1, isDeload: false },
+      "hypertrophy",
+      "intermediate"
+    );
+    const intermediateWeek2 = getMesocyclePeriodization(
+      { totalWeeks: 3, currentWeek: 2, isDeload: false },
+      "hypertrophy",
+      "intermediate"
+    );
+
+    const advancedWeek0 = getMesocyclePeriodization(
+      { totalWeeks: 3, currentWeek: 0, isDeload: false },
+      "hypertrophy",
+      "advanced"
+    );
+    const advancedWeek1 = getMesocyclePeriodization(
+      { totalWeeks: 3, currentWeek: 1, isDeload: false },
+      "hypertrophy",
+      "advanced"
+    );
+    const advancedWeek2 = getMesocyclePeriodization(
+      { totalWeeks: 3, currentWeek: 2, isDeload: false },
+      "hypertrophy",
+      "advanced"
+    );
+
+    expect(intermediateWeek0.rpeOffset).toBe(-1.0);
+    expect(intermediateWeek1.rpeOffset).toBe(-0.5);
+    expect(intermediateWeek2.rpeOffset).toBe(0.5);
+
+    expect(advancedWeek0.rpeOffset).toBe(-1.5);
+    expect(advancedWeek1.rpeOffset).toBe(-0.5);
+    expect(advancedWeek2.rpeOffset).toBe(1.0);
+  });
 });
 
 describe("getPeriodizationModifiers (backward compat)", () => {
@@ -79,5 +165,23 @@ describe("getBaseTargetRpe", () => {
   it("keeps non-hypertrophy goals unchanged", () => {
     expect(getBaseTargetRpe("strength", "beginner")).toBe(8);
     expect(getBaseTargetRpe("fat_loss", "advanced")).toBe(7);
+  });
+});
+
+describe("revised fat-loss policy flag", () => {
+  it("fat-loss-policy-flag-on", () => {
+    withRevisedFatLossPolicy("true", () => {
+      expect(getGoalRepRanges("fat_loss").main).toEqual([6, 10]);
+      expect(getBaseTargetRpe("fat_loss", "intermediate")).toBe(7.5);
+      expect(getGoalSetMultiplier("fat_loss")).toBe(0.75);
+    });
+  });
+
+  it("fat-loss-policy-flag-off", () => {
+    withRevisedFatLossPolicy("false", () => {
+      expect(getGoalRepRanges("fat_loss").main).toEqual([8, 12]);
+      expect(getBaseTargetRpe("fat_loss", "intermediate")).toBe(7.0);
+      expect(getGoalSetMultiplier("fat_loss")).toBe(1);
+    });
   });
 });

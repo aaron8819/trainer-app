@@ -61,10 +61,16 @@ export default function RecentWorkouts({
                 >
                   {statusLabels[workout.status] ?? workout.status}
                 </span>
-                <Link className="text-sm font-semibold text-slate-900" href={`/workout/${workout.id}`}>
+                <Link
+                  className="inline-flex min-h-10 items-center rounded-full px-2 text-sm font-semibold text-slate-900"
+                  href={`/workout/${workout.id}`}
+                >
                   View
                 </Link>
-                <Link className="text-sm font-semibold text-slate-900" href={`/log/${workout.id}`}>
+                <Link
+                  className="inline-flex min-h-10 items-center rounded-full px-2 text-sm font-semibold text-slate-900"
+                  href={`/log/${workout.id}`}
+                >
                   Log
                 </Link>
                 <DeleteWorkoutButton workoutId={workout.id} onDeleted={handleDeleted} />

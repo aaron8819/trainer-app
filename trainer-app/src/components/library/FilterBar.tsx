@@ -104,7 +104,7 @@ export function FilterBar({ filters, onFiltersChange, resultCount, compact }: Fi
   const filtersVisible = compact ? showFilters : true;
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3.5">
       <div className="relative">
         <svg
           className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
@@ -124,14 +124,14 @@ export function FilterBar({ filters, onFiltersChange, resultCount, compact }: Fi
             const value = e.target.value;
             onFiltersChange({ ...filters, search: value || undefined });
           }}
-          className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-400"
+          className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-400"
         />
       </div>
 
       {compact && (
         <button
           onClick={() => setShowFilters((open) => !open)}
-          className="inline-flex items-center rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+          className="inline-flex min-h-11 items-center rounded-full border border-slate-200 px-4 text-sm font-medium text-slate-700 hover:bg-slate-50"
         >
           {showFilters ? "Hide filters" : "Show filters"}
           {activeCategoryCount > 0 ? ` (${activeCategoryCount})` : ""}
@@ -147,10 +147,10 @@ export function FilterBar({ filters, onFiltersChange, resultCount, compact }: Fi
             onToggleMuscle={toggleMuscle}
           />
 
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap gap-2">
             <button
               onClick={() => toggleExerciseType("compound")}
-              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+              className={`min-h-10 rounded-full px-3.5 text-xs font-medium transition-colors ${
                 selectedExerciseTypes.includes("compound")
                   ? "bg-blue-600 text-white"
                   : "bg-blue-50 text-blue-700 hover:bg-blue-100"
@@ -160,7 +160,7 @@ export function FilterBar({ filters, onFiltersChange, resultCount, compact }: Fi
             </button>
             <button
               onClick={() => toggleExerciseType("isolation")}
-              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+              className={`min-h-10 rounded-full px-3.5 text-xs font-medium transition-colors ${
                 selectedExerciseTypes.includes("isolation")
                   ? "bg-blue-600 text-white"
                   : "bg-blue-50 text-blue-700 hover:bg-blue-100"
@@ -175,7 +175,7 @@ export function FilterBar({ filters, onFiltersChange, resultCount, compact }: Fi
                   favoritesOnly: filters.favoritesOnly ? undefined : true,
                 })
               }
-              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+              className={`min-h-10 rounded-full px-3.5 text-xs font-medium transition-colors ${
                 filters.favoritesOnly
                   ? "bg-amber-500 text-white"
                   : "bg-amber-50 text-amber-700 hover:bg-amber-100"
@@ -185,12 +185,12 @@ export function FilterBar({ filters, onFiltersChange, resultCount, compact }: Fi
             </button>
           </div>
 
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap gap-2">
             {ALL_MOVEMENT_PATTERNS.map((pattern) => (
               <button
                 key={pattern}
                 onClick={() => toggleMovementPattern(pattern)}
-                className={`rounded-full px-2.5 py-0.5 text-xs transition-colors ${
+                className={`min-h-9 rounded-full px-3 text-xs transition-colors ${
                   selectedMovementPatterns.includes(pattern)
                     ? "bg-violet-600 text-white"
                     : "bg-violet-50 text-violet-700 hover:bg-violet-100"
@@ -203,10 +203,13 @@ export function FilterBar({ filters, onFiltersChange, resultCount, compact }: Fi
         </>
       )}
 
-      <div className="flex items-center justify-between text-xs text-slate-500">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
         <span>{resultCount} exercise{resultCount !== 1 ? "s" : ""}</span>
         {hasFilters && (
-          <button onClick={clearAll} className="text-slate-600 underline hover:text-slate-800">
+          <button
+            onClick={clearAll}
+            className="min-h-10 rounded-full px-2 text-slate-600 underline hover:text-slate-800"
+          >
             Clear all
           </button>
         )}

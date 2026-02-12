@@ -1,5 +1,10 @@
 import type { PrimaryGoal, TrainingAge } from "./types";
 
+const USE_REVISED_FAT_LOSS_POLICY_ENV = "USE_REVISED_FAT_LOSS_POLICY";
+const REVISED_FAT_LOSS_MAIN_REP_RANGE: [number, number] = [6, 10];
+const REVISED_FAT_LOSS_TARGET_RPE = 7.5;
+export const FAT_LOSS_SET_MULTIPLIER = 0.75;
+
 export const REP_RANGES_BY_GOAL: Record<
   PrimaryGoal,
   { main: [number, number]; accessory: [number, number] }
@@ -23,6 +28,15 @@ const HYPERTROPHY_TARGET_RPE_BY_TRAINING_AGE: Record<TrainingAge, number> = {
   beginner: 7.0,
   intermediate: 8.0,
   advanced: 8.5,
+};
+
+const TRAINING_AGE_RPE_OFFSETS: Record<
+  TrainingAge,
+  { early: number; middle: number; late: number }
+> = {
+  beginner: { early: -0.5, middle: 0.0, late: 0.5 },
+  intermediate: { early: -1.0, middle: -0.5, late: 0.5 },
+  advanced: { early: -1.5, middle: -0.5, late: 1.0 },
 };
 
 export const DELOAD_RPE_CAP = 6.0;
@@ -52,16 +66,47 @@ export function getBackOffMultiplier(primaryGoal: PrimaryGoal): number {
   return DEFAULT_BACKOFF_MULTIPLIER_BY_GOAL[primaryGoal] ?? 0.85;
 }
 
+export function shouldUseRevisedFatLossPolicy(): boolean {
+  const rawValue = process.env[USE_REVISED_FAT_LOSS_POLICY_ENV];
+  if (!rawValue) {
+    return false;
+  }
+  const normalized = rawValue.trim().toLowerCase();
+  return ["1", "true", "yes", "on"].includes(normalized);
+}
+
+export function getGoalRepRanges(primaryGoal: PrimaryGoal) {
+  const base = REP_RANGES_BY_GOAL[primaryGoal];
+  if (primaryGoal !== "fat_loss" || !shouldUseRevisedFatLossPolicy()) {
+    return base;
+  }
+  return {
+    ...base,
+    main: REVISED_FAT_LOSS_MAIN_REP_RANGE,
+  };
+}
+
+export function getGoalSetMultiplier(primaryGoal: PrimaryGoal): number {
+  if (primaryGoal === "fat_loss" && shouldUseRevisedFatLossPolicy()) {
+    return FAT_LOSS_SET_MULTIPLIER;
+  }
+  return 1;
+}
+
 export function getBaseTargetRpe(primaryGoal: PrimaryGoal, trainingAge: TrainingAge): number {
   if (primaryGoal === "hypertrophy") {
     return HYPERTROPHY_TARGET_RPE_BY_TRAINING_AGE[trainingAge] ?? 8.0;
+  }
+  if (primaryGoal === "fat_loss" && shouldUseRevisedFatLossPolicy()) {
+    return REVISED_FAT_LOSS_TARGET_RPE;
   }
   return TARGET_RPE_BY_GOAL[primaryGoal];
 }
 
 export function getMesocyclePeriodization(
   config: MesocycleConfig,
-  goal: PrimaryGoal
+  goal: PrimaryGoal,
+  trainingAge?: TrainingAge
 ): PeriodizationModifiers {
   const standardBackOff = DEFAULT_BACKOFF_MULTIPLIER_BY_GOAL[goal] ?? 0.85;
 
@@ -76,18 +121,10 @@ export function getMesocyclePeriodization(
 
   const totalWeeks = Math.max(1, config.totalWeeks);
   const t = totalWeeks <= 1 ? 0.5 : config.currentWeek / (totalWeeks - 1);
-
-  // RIR ramp: early weeks 3-4 RIR (low RPE), late weeks 0-1 RIR (high RPE)
-  let rpeOffset: number;
-  if (t <= 0.25) {
-    rpeOffset = -1.5; // early: 3-4 RIR
-  } else if (t <= 0.5) {
-    rpeOffset = -0.5; // middle: 2-3 RIR
-  } else if (t <= 0.75) {
-    rpeOffset = 0.5;  // late: 1-2 RIR
-  } else {
-    rpeOffset = 1.0;  // final: 0-1 RIR
-  }
+  const rpeOffset =
+    trainingAge === undefined
+      ? resolveLegacyRpeOffset(t)
+      : resolveTrainingAgeRpeOffset(trainingAge, t);
 
   // Set multiplier ramps from 1.0 to 1.3
   const setMultiplier = 1.0 + 0.3 * t;
@@ -102,7 +139,8 @@ export function getMesocyclePeriodization(
 
 export function getPeriodizationModifiers(
   weekInBlock: number,
-  goal: PrimaryGoal
+  goal: PrimaryGoal,
+  trainingAge?: TrainingAge
 ): PeriodizationModifiers {
   const totalWeeks = 4;
   const weekIndex = ((weekInBlock % totalWeeks) + totalWeeks) % totalWeeks;
@@ -110,7 +148,8 @@ export function getPeriodizationModifiers(
 
   return getMesocyclePeriodization(
     { totalWeeks: totalWeeks - 1, currentWeek: Math.min(weekIndex, totalWeeks - 2), isDeload },
-    goal
+    goal,
+    trainingAge
   );
 }
 
@@ -118,9 +157,32 @@ export const DELOAD_THRESHOLDS = {
   lowReadinessScore: 2 as const,
   consecutiveLowReadiness: 4,
   plateauSessions: 5,
-  proactiveMaxWeeks: 6,
 };
 
 export const PLATEAU_CRITERIA = {
   noProgressSessions: 5,
 };
+
+function resolveLegacyRpeOffset(t: number): number {
+  if (t <= 0.25) {
+    return -1.5;
+  }
+  if (t <= 0.5) {
+    return -0.5;
+  }
+  if (t <= 0.75) {
+    return 0.5;
+  }
+  return 1.0;
+}
+
+function resolveTrainingAgeRpeOffset(trainingAge: TrainingAge, t: number): number {
+  const offsets = TRAINING_AGE_RPE_OFFSETS[trainingAge];
+  if (t <= 0.25) {
+    return offsets.early;
+  }
+  if (t <= 0.75) {
+    return offsets.middle;
+  }
+  return offsets.late;
+}

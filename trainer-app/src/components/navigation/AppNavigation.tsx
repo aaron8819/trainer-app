@@ -60,8 +60,8 @@ export function AppNavigation() {
   return (
     <>
       {/* Mobile: Fixed bottom bar */}
-      <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-slate-200 bg-white md:hidden">
-        <div className="flex items-center justify-around py-1">
+      <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] md:hidden">
+        <div className="mx-auto flex h-[var(--mobile-nav-height)] max-w-5xl items-stretch justify-between px-1">
           {NAV_ITEMS.map((item) => (
             <NavLink
               key={item.href}
@@ -76,7 +76,7 @@ export function AppNavigation() {
 
       {/* Desktop: Sticky top bar */}
       <nav className="sticky top-0 z-50 hidden border-b border-slate-200 bg-white md:block">
-        <div className="mx-auto flex max-w-5xl items-center gap-1 px-6 py-2">
+        <div className="mx-auto flex max-w-5xl items-center gap-1 px-4 py-2 sm:px-5 md:px-6">
           <span className="mr-6 text-lg font-bold text-slate-900">Trainer</span>
           {NAV_ITEMS.map((item) => (
             <NavLink

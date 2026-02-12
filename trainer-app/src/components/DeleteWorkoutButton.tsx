@@ -41,7 +41,7 @@ export default function DeleteWorkoutButton({
   return (
     <div className="flex flex-col items-start gap-2">
       <button
-        className="rounded-full border border-rose-300 px-4 py-1 text-xs font-semibold text-rose-600 disabled:opacity-60"
+        className="inline-flex min-h-10 items-center justify-center rounded-full border border-rose-300 px-4 py-1 text-xs font-semibold text-rose-600 disabled:opacity-60"
         onClick={handleDelete}
         disabled={deleting}
       >

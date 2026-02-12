@@ -296,6 +296,71 @@ describe("generateWorkoutFromTemplate", () => {
     expect(result.substitutions[0]?.alternatives.length).toBeGreaterThan(0);
   });
 
+  it("removes substitutions for exercises trimmed from the final workout", () => {
+    const contraindicatedPress: Exercise = {
+      ...exampleExerciseLibrary.find((e) => e.id === "db-press")!,
+      contraindications: { knee: { avoidAbove: 1 } },
+    };
+    const templateExercises: TemplateExerciseInput[] = [
+      { exercise: exampleExerciseLibrary.find((e) => e.id === "bench")!, orderIndex: 0 },
+      { exercise: contraindicatedPress, orderIndex: 1 },
+    ];
+    const makeSets = (count: number) =>
+      Array.from({ length: count }, (_, idx) => ({
+        exerciseId: "bench",
+        setIndex: idx + 1,
+        reps: 8,
+      }));
+    const history = [
+      {
+        date: new Date(Date.now() - 1 * 86400000).toISOString(),
+        completed: true,
+        status: "COMPLETED" as const,
+        exercises: [
+          {
+            exerciseId: "bench",
+            movementPattern: "push" as const,
+            primaryMuscles: ["Chest", "Triceps"],
+            sets: makeSets(20),
+          },
+        ],
+      },
+      {
+        date: new Date(Date.now() - 8 * 86400000).toISOString(),
+        completed: true,
+        status: "COMPLETED" as const,
+        exercises: [
+          {
+            exerciseId: "bench",
+            movementPattern: "push" as const,
+            primaryMuscles: ["Chest", "Triceps"],
+            sets: makeSets(30),
+          },
+        ],
+      },
+    ];
+
+    const result = generateWorkoutFromTemplate(
+      templateExercises,
+      makeOptions({
+        history,
+        weekInBlock: 0,
+        mesocycleLength: 4,
+        isStrict: false,
+        checkIn: { date: new Date().toISOString(), readiness: 3, painFlags: { knee: 2 } },
+      })
+    );
+
+    expect(result.workout.accessories.map((exercise) => exercise.exercise.id)).not.toContain(
+      contraindicatedPress.id
+    );
+    expect(
+      result.substitutions.find(
+        (suggestion) => suggestion.originalExerciseId === contraindicatedPress.id
+      )
+    ).toBeUndefined();
+  });
+
   it("applies hypertrophy isolation RPE bump for template accessories", () => {
     const templateExercises = makeTemplateExercises(["lateral-raise"]);
     const { workout } = generateWorkoutFromTemplate(templateExercises, makeOptions());

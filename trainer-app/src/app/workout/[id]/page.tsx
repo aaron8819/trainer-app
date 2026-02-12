@@ -69,6 +69,23 @@ const formatTargetRepDisplay = (set?: { targetReps: number; targetRepMin: number
   return `${set.targetReps} reps`;
 };
 
+const hasBodyweightEquipment = (exercise: {
+  exerciseEquipment?: { equipment: { type: string } }[];
+}) =>
+  (exercise.exerciseEquipment ?? []).some(
+    (item) => item.equipment.type.toLowerCase() === "bodyweight"
+  );
+
+const formatLoadDisplay = (targetLoad: number | null | undefined, isBodyweight: boolean) => {
+  if (targetLoad !== null && targetLoad !== undefined) {
+    return `${targetLoad} lbs`;
+  }
+  if (isBodyweight) {
+    return "BW";
+  }
+  return undefined;
+};
+
 
 function buildBaselineSummary({
   workout,
@@ -214,7 +231,7 @@ export default async function WorkoutDetailPage({
   if (!resolvedParams?.id) {
     return (
       <main className="min-h-screen bg-white text-slate-900">
-        <div className="mx-auto max-w-4xl px-6 py-10">
+        <div className="page-shell max-w-4xl">
           <h1 className="text-2xl font-semibold">Missing workout id</h1>
           <Link className="mt-4 inline-block text-sm font-semibold text-slate-900" href="/">
             Back to dashboard
@@ -231,7 +248,15 @@ export default async function WorkoutDetailPage({
       exercises: {
         orderBy: { orderIndex: "asc" },
         include: {
-          exercise: true,
+          exercise: {
+            include: {
+              exerciseEquipment: {
+                include: {
+                  equipment: true,
+                },
+              },
+            },
+          },
           sets: { orderBy: { setIndex: "asc" }, include: { logs: { orderBy: { completedAt: "desc" }, take: 1 } } },
         },
       },
@@ -241,7 +266,7 @@ export default async function WorkoutDetailPage({
   if (!workout) {
     return (
       <main className="min-h-screen bg-white text-slate-900">
-        <div className="mx-auto max-w-4xl px-6 py-10">
+        <div className="page-shell max-w-4xl">
           <h1 className="text-2xl font-semibold">Workout not found</h1>
           <Link className="mt-4 inline-block text-sm font-semibold text-slate-900" href="/">
             Back to dashboard
@@ -345,25 +370,25 @@ export default async function WorkoutDetailPage({
 
   return (
     <main className="min-h-screen bg-white text-slate-900">
-      <div className="mx-auto max-w-4xl px-6 py-10">
-        <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="page-shell max-w-4xl">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-sm uppercase tracking-wide text-slate-500">Workout</p>
-            <h1 className="mt-2 text-3xl font-semibold">Session Overview</h1>
-            <p className="mt-2 text-slate-600">
+            <h1 className="page-title mt-1.5">Session Overview</h1>
+            <p className="mt-1.5 text-sm text-slate-600">
               Estimated {workout.estimatedMinutes ?? "--"} minutes
             </p>
           </div>
           <Link
-            className="rounded-full border border-slate-300 px-5 py-2 text-sm font-semibold"
+            className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-slate-300 px-5 py-2 text-sm font-semibold sm:w-auto"
             href={`/log/${workout.id}`}
           >
             Start logging
           </Link>
         </div>
 
-        <section className="mt-8 space-y-8">
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 text-sm">
+        <section className="mt-6 space-y-6 sm:mt-8 sm:space-y-8">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm sm:p-5">
             <p className="font-semibold text-slate-900">Why this workout was generated</p>
             <div className="mt-3 space-y-2 text-slate-600">
               <p>
@@ -392,7 +417,7 @@ export default async function WorkoutDetailPage({
             </div>
           </div>
           {baselineSummary.evaluatedExercises > 0 ? (
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5 text-sm">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm sm:p-5">
               <p className="font-semibold text-slate-900">Baseline updates</p>
               <p className="mt-1 text-slate-600">
                 Context: {baselineSummary.context} · Evaluated: {baselineSummary.evaluatedExercises} · Updated:{" "}
@@ -427,13 +452,14 @@ export default async function WorkoutDetailPage({
             </div>
           ) : null}
           {sectionedExercises.map((section) => (
-            <div key={section.label} className="space-y-4">
+            <div key={section.label} className="space-y-3 sm:space-y-4">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">{section.label}</h2>
               {section.items.length === 0 ? (
                 <p className="text-sm text-slate-500">No exercises in this section.</p>
               ) : (
                 section.items.map((exercise) => {
                   const baseline = findBaseline(exercise.exercise.name);
+                  const isBodyweightExercise = hasBodyweightEquipment(exercise.exercise);
                   const baselineRange =
                     baseline &&
                     baseline.workingWeightMin !== null &&
@@ -443,8 +469,11 @@ export default async function WorkoutDetailPage({
                       ? `${baseline.topSetWeight} lbs`
                       : undefined;
                   const targetLoad = exercise.sets[0]?.targetLoad;
-                  const loadNote = targetLoad
+                  const topSetLoadDisplay = formatLoadDisplay(targetLoad, isBodyweightExercise);
+                  const loadNote = targetLoad !== null && targetLoad !== undefined
                     ? `Load seeded from baseline${baselineRange ? ` (${baselineRange})` : ""}.`
+                    : isBodyweightExercise
+                    ? "Bodyweight movement (BW). Add load during logging only for weighted variations."
                     : "Load to be chosen during logging (no baseline match).";
                   const stressNote = hasHighSeverityInjury
                     ? `Joint stress: ${exercise.exercise.jointStress.toLowerCase()} (high stress filtered).`
@@ -457,13 +486,13 @@ export default async function WorkoutDetailPage({
                       : "Accessory";
 
                   return (
-                    <div key={exercise.id} className="rounded-2xl border border-slate-200 p-5">
-                      <div className="flex items-start justify-between">
+                    <div key={exercise.id} className="rounded-2xl border border-slate-200 p-4 sm:p-5">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                         <div>
                           <h3 className="text-lg font-semibold">{exercise.exercise.name}</h3>
-                          <p className="mt-1 text-sm text-slate-600">
+                          <p className="mt-1 text-sm leading-6 text-slate-600">
                             {exercise.sets.length} sets - {formatTargetRepDisplay(exercise.sets[0])}
-                            {targetLoad ? ` | ${targetLoad} lbs` : ""}
+                            {topSetLoadDisplay ? ` | ${topSetLoadDisplay}` : ""}
                             {exercise.sets[0]?.targetRpe ? ` | RPE ${exercise.sets[0].targetRpe}` : ""}
                           </p>
                         </div>
@@ -476,11 +505,16 @@ export default async function WorkoutDetailPage({
                       </p>
                       <div className="mt-3 grid gap-2 text-sm text-slate-600">
                         {exercise.sets.map((set) => (
-                          <div key={set.id} className="flex items-center justify-between">
+                          <div
+                            key={set.id}
+                            className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 rounded-lg bg-slate-50 px-3 py-2"
+                          >
                             <span>Set {set.setIndex}</span>
-                            <span>
+                            <span className="text-slate-700">
                               {formatTargetRepDisplay(set)}
-                              {set.targetLoad ? ` | ${set.targetLoad} lbs` : ""}
+                              {formatLoadDisplay(set.targetLoad, isBodyweightExercise)
+                                ? ` | ${formatLoadDisplay(set.targetLoad, isBodyweightExercise)}`
+                                : ""}
                               {set.targetRpe ? ` | RPE ${set.targetRpe}` : ""}
                             </span>
                           </div>

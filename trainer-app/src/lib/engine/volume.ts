@@ -11,6 +11,7 @@ import {
   getMostRecentHistoryEntry,
   isCompletedHistoryEntry,
 } from "./history";
+import { INDIRECT_SET_MULTIPLIER } from "./volume-constants";
 
 export type VolumeContext = {
   recent: Record<string, number>;
@@ -30,7 +31,7 @@ export type EnhancedVolumeContext = VolumeContext & {
   mesocycleLength: number;
 };
 
-const INDIRECT_VOLUME_WEIGHT = 0.5;
+const USE_EFFECTIVE_VOLUME_CAPS_ENV = "USE_EFFECTIVE_VOLUME_CAPS";
 
 export function buildVolumeContext(
   history: WorkoutHistoryEntry[],
@@ -120,30 +121,64 @@ export function enforceVolumeCaps(
   if (accessories.length === 0) return accessories;
 
   const enhanced = isEnhancedVolumeContext(volumeContext);
+  const useEffectiveVolumeCaps = shouldUseEffectiveVolumeCaps();
+
+  type PlannedVolume = {
+    directSets: Record<string, number>;
+    indirectSets: Record<string, number>;
+  };
 
   const buildPlannedVolume = (currentAccessories: WorkoutExercise[]) => {
-    const planned: Record<string, number> = { ...volumeContext.recent };
+    const directSets: Record<string, number> = { ...volumeContext.recent };
+    const indirectSets: Record<string, number> = enhanced
+      ? Object.fromEntries(
+          Object.entries(volumeContext.muscleVolume)
+            .filter(([, state]) => state.weeklyIndirectSets > 0)
+            .map(([muscle, state]) => [muscle, state.weeklyIndirectSets])
+        )
+      : {};
+
     const addExercise = (exercise: WorkoutExercise) => {
-      const muscles = exercise.exercise.primaryMuscles ?? [];
-      if (muscles.length === 0) return;
-      for (const muscle of muscles) {
-        planned[muscle] = (planned[muscle] ?? 0) + exercise.sets.length;
+      const primaryMuscles = exercise.exercise.primaryMuscles ?? [];
+      const secondaryMuscles = exercise.exercise.secondaryMuscles ?? [];
+      const sets = exercise.sets.length;
+      for (const muscle of primaryMuscles) {
+        directSets[muscle] = (directSets[muscle] ?? 0) + sets;
+      }
+      for (const muscle of secondaryMuscles) {
+        indirectSets[muscle] = (indirectSets[muscle] ?? 0) + sets;
       }
     };
     [...mainLifts, ...currentAccessories].forEach(addExercise);
-    return planned;
+    return { directSets, indirectSets } satisfies PlannedVolume;
   };
 
-  const exceedsCap = (planned: Record<string, number>) => {
+  const exceedsCap = (planned: PlannedVolume) => {
     if (enhanced) {
-      return Object.entries(planned).some(([muscle, sets]) => {
+      if (useEffectiveVolumeCaps) {
+        const muscles = new Set<string>([
+          ...Object.keys(planned.directSets),
+          ...Object.keys(planned.indirectSets),
+        ]);
+        return Array.from(muscles).some((muscle) => {
+          const directSets = planned.directSets[muscle] ?? 0;
+          const indirectSets = planned.indirectSets[muscle] ?? 0;
+          const landmark = VOLUME_LANDMARKS[muscle];
+          const effectiveSets = directSets + indirectSets * INDIRECT_SET_MULTIPLIER;
+          const exceedsLandmark = landmark ? effectiveSets > landmark.mrv : false;
+          const exceedsSpike = exceedsSpikeCap(directSets, volumeContext.previous[muscle]);
+          return exceedsLandmark || exceedsSpike;
+        });
+      }
+
+      return Object.entries(planned.directSets).some(([muscle, sets]) => {
         const landmark = VOLUME_LANDMARKS[muscle];
         const exceedsLandmark = landmark ? sets > landmark.mrv : false;
         const exceedsSpike = exceedsSpikeCap(sets, volumeContext.previous[muscle]);
         return exceedsLandmark || exceedsSpike;
       });
     }
-    return Object.entries(planned).some(([muscle, sets]) => {
+    return Object.entries(planned.directSets).some(([muscle, sets]) => {
       return exceedsSpikeCap(sets, volumeContext.previous[muscle]);
     });
   };
@@ -183,7 +218,7 @@ export function deriveFatigueState(
 }
 
 export function effectiveWeeklySets(state: MuscleVolumeState): number {
-  return state.weeklyDirectSets + state.weeklyIndirectSets * INDIRECT_VOLUME_WEIGHT;
+  return state.weeklyDirectSets + state.weeklyIndirectSets * INDIRECT_SET_MULTIPLIER;
 }
 
 function isEnhancedVolumeContext(
@@ -197,4 +232,13 @@ function exceedsSpikeCap(sets: number, baseline: number | undefined) {
     return false;
   }
   return sets > baseline * 1.2;
+}
+
+function shouldUseEffectiveVolumeCaps(): boolean {
+  const rawValue = process.env[USE_EFFECTIVE_VOLUME_CAPS_ENV];
+  if (!rawValue) {
+    return false;
+  }
+  const normalized = rawValue.trim().toLowerCase();
+  return ["1", "true", "yes", "on"].includes(normalized);
 }

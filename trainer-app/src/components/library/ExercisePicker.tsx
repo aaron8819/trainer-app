@@ -89,14 +89,14 @@ export function ExercisePicker({
             ))}
           </div>
         ) : (
-          <div className="max-h-[50vh] space-y-1 overflow-y-auto">
+          <div className="max-h-[52vh] space-y-1 overflow-y-auto">
             {filtered.map((exercise) => {
               const isSelected = selectedNames.includes(exercise.name);
               return (
                 <button
                   key={exercise.id}
                   onClick={() => toggleExercise(exercise.name)}
-                  className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors ${
+                  className={`flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors ${
                     isSelected ? "bg-emerald-50" : "hover:bg-slate-50"
                   }`}
                 >
@@ -116,8 +116,8 @@ export function ExercisePicker({
                     )}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium text-slate-800 truncate">{exercise.name}</div>
-                    <div className="flex gap-1 mt-0.5">
+                    <div className="truncate text-sm font-medium text-slate-800">{exercise.name}</div>
+                    <div className="mt-0.5 flex flex-wrap gap-1">
                       {exercise.primaryMuscles.slice(0, 3).map((m) => (
                         <span key={m} className="text-[10px] text-slate-400">{m}</span>
                       ))}
@@ -134,7 +134,7 @@ export function ExercisePicker({
             <span className="text-xs text-slate-500">{selectedNames.length} selected</span>
             <button
               onClick={onClose}
-              className="rounded-lg bg-slate-900 px-4 py-1.5 text-sm font-medium text-white"
+              className="h-11 rounded-lg bg-slate-900 px-4 text-sm font-medium text-white"
             >
               Done
             </button>

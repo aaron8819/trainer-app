@@ -42,11 +42,19 @@ export function MuscleRecoveryPanel() {
   }, []);
 
   if (loading) {
-    return <div className="animate-pulse rounded-2xl border border-slate-200 p-6 text-sm text-slate-400">Loading recovery data...</div>;
+    return (
+      <div className="animate-pulse rounded-2xl border border-slate-200 p-4 text-sm text-slate-500 sm:p-6">
+        Loading recovery data...
+      </div>
+    );
   }
 
   if (muscles.length === 0) {
-    return <div className="rounded-2xl border border-slate-200 p-6 text-sm text-slate-500">No recovery data. Complete a workout to see muscle recovery status.</div>;
+    return (
+      <div className="rounded-2xl border border-slate-200 p-4 text-sm text-slate-500 sm:p-6">
+        No recovery data. Complete a workout to see muscle recovery status.
+      </div>
+    );
   }
 
   const muscleMap = new Map(muscles.map((m) => [m.name, m]));
@@ -61,19 +69,19 @@ export function MuscleRecoveryPanel() {
         if (groupMuscles.length === 0) return null;
 
         return (
-          <div key={group} className="rounded-xl border border-slate-200 p-4">
-            <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">{group}</h4>
+          <div key={group} className="rounded-xl border border-slate-200 p-3.5 sm:p-4">
+            <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">{group}</h4>
             <div className="space-y-2">
               {groupMuscles.map((muscle) => (
                 <div key={muscle.name} className="flex items-center gap-3">
-                  <span className="w-24 text-xs text-slate-600 truncate">{muscle.name}</span>
+                  <span className="w-20 truncate text-xs text-slate-600 sm:w-24">{muscle.name}</span>
                   <div className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden">
                     <div
                       className={`h-full rounded-full transition-all ${recoveryColor(muscle.recoveryPercent)}`}
                       style={{ width: `${Math.min(muscle.recoveryPercent, 100)}%` }}
                     />
                   </div>
-                  <span className={`w-10 text-right text-xs font-medium ${recoveryTextColor(muscle.recoveryPercent)}`}>
+                  <span className={`w-11 text-right text-xs font-medium ${recoveryTextColor(muscle.recoveryPercent)}`}>
                     {muscle.recoveryPercent}%
                   </span>
                 </div>

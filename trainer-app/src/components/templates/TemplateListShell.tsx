@@ -45,25 +45,25 @@ export function TemplateListShell({ templates: initialTemplates }: TemplateListS
 
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-5 flex flex-col gap-3 sm:mb-6 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-semibold text-slate-900">Templates</h1>
         <Link
           href="/templates/new"
-          className="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
+          className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white sm:w-auto"
         >
           Create Template
         </Link>
       </div>
 
       {templates.length === 0 ? (
-        <div className="rounded-2xl border-2 border-dashed border-slate-200 p-10 text-center">
+        <div className="rounded-2xl border-2 border-dashed border-slate-200 p-6 text-center sm:p-10">
           <p className="text-sm text-slate-500">No templates yet</p>
           <p className="mt-1 text-xs text-slate-400">
             Create a template to save your favorite exercise combos
           </p>
           <Link
             href="/templates/new"
-            className="mt-4 inline-block rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
+            className="mt-4 inline-flex min-h-11 items-center justify-center rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
           >
             Create your first template
           </Link>
@@ -95,17 +95,17 @@ export function TemplateListShell({ templates: initialTemplates }: TemplateListS
           Are you sure you want to delete <span className="font-semibold">{deleteTargetName}</span>?
           Existing workouts generated from this template will be preserved.
         </p>
-        <div className="mt-4 flex gap-3">
+        <div className="mt-4 grid gap-2 sm:flex sm:gap-3">
           <button
             onClick={handleDelete}
             disabled={deleting}
-            className="rounded-full bg-rose-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+            className="inline-flex min-h-11 items-center justify-center rounded-full bg-rose-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
           >
             {deleting ? "Deleting..." : "Delete"}
           </button>
           <button
             onClick={() => setDeleteTarget(null)}
-            className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
+            className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
           >
             Cancel
           </button>

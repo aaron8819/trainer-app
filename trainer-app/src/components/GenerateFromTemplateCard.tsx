@@ -18,7 +18,7 @@ type WorkoutExercise = {
   id: string;
   orderIndex: number;
   isMainLift: boolean;
-  exercise: { id: string; name: string };
+  exercise: { id: string; name: string; equipment?: string[] };
   sets: WorkoutSet[];
 };
 
@@ -77,6 +77,24 @@ function formatTargetReps(set?: WorkoutSet): string {
   }
   return `${set.targetReps} reps`;
 }
+
+function hasBodyweightEquipment(equipment?: string[]): boolean {
+  return (equipment ?? []).some((item) => item.toLowerCase() === "bodyweight");
+}
+
+function formatTargetLoadLabel(exercise: WorkoutExercise, set?: WorkoutSet): string | null {
+  if (!set) {
+    return null;
+  }
+  if (set.targetLoad !== undefined && set.targetLoad !== null) {
+    return `${set.targetLoad} lbs`;
+  }
+  if (hasBodyweightEquipment(exercise.exercise.equipment)) {
+    return "BW";
+  }
+  return null;
+}
+
 function applyExerciseSwap(
   workout: WorkoutPlan,
   originalExerciseId: string,
@@ -263,12 +281,12 @@ export function GenerateFromTemplateCard({ templates }: GenerateFromTemplateCard
 
   if (templates.length === 0) {
     return (
-      <div className="rounded-2xl border border-slate-200 p-6 shadow-sm">
+      <div className="rounded-2xl border border-slate-200 p-5 shadow-sm sm:p-6">
         <h2 className="text-xl font-semibold">Template Workout</h2>
         <p className="mt-2 text-slate-600">No templates yet. Create one to get started.</p>
         <Link
           href="/templates/new"
-          className="mt-4 inline-block rounded-full bg-slate-900 px-5 py-2 text-sm font-semibold text-white"
+          className="mt-4 inline-flex min-h-11 items-center justify-center rounded-full bg-slate-900 px-5 py-2 text-sm font-semibold text-white"
         >
           Create Template
         </Link>
@@ -284,7 +302,7 @@ export function GenerateFromTemplateCard({ templates }: GenerateFromTemplateCard
   );
 
   return (
-    <div className="rounded-2xl border border-slate-200 p-6 shadow-sm">
+    <div className="rounded-2xl border border-slate-200 p-5 shadow-sm sm:p-6">
       <h2 className="text-xl font-semibold">Template Workout</h2>
       <p className="mt-2 text-slate-600">
         Generate a workout from one of your saved templates.
@@ -296,7 +314,7 @@ export function GenerateFromTemplateCard({ templates }: GenerateFromTemplateCard
             Template
           </span>
           <select
-            className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
+            className="min-h-11 rounded-xl border border-slate-200 px-3 py-2 text-sm"
             value={selectedTemplateId}
             onChange={(e) => setSelectedTemplateId(e.target.value)}
           >
@@ -328,9 +346,9 @@ export function GenerateFromTemplateCard({ templates }: GenerateFromTemplateCard
           isSubmitting={loading}
         />
       ) : (
-        <div className="mt-4 flex flex-wrap gap-3">
+        <div className="mt-4 grid gap-2 sm:flex sm:flex-wrap sm:gap-3">
           <button
-            className="rounded-full bg-slate-900 px-5 py-2 text-sm font-semibold text-white disabled:opacity-60"
+            className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-slate-900 px-5 py-2 text-sm font-semibold text-white disabled:opacity-60 sm:w-auto"
             onClick={handleGenerateClick}
             disabled={loading}
           >
@@ -338,7 +356,7 @@ export function GenerateFromTemplateCard({ templates }: GenerateFromTemplateCard
           </button>
           {workout && (
             <button
-              className="rounded-full border border-slate-900 px-5 py-2 text-sm font-semibold disabled:opacity-60"
+              className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-slate-900 px-5 py-2 text-sm font-semibold disabled:opacity-60 sm:w-auto"
               onClick={handleSave}
               disabled={saving}
             >
@@ -351,7 +369,7 @@ export function GenerateFromTemplateCard({ templates }: GenerateFromTemplateCard
       {error && <p className="mt-3 text-sm text-rose-600">{error}</p>}
 
       {savedId && (
-        <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
+        <div className="mt-3 flex flex-col gap-2 text-sm sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
           <span className="text-emerald-600">Saved!</span>
           <Link className="font-semibold text-slate-900" href={`/workout/${savedId}`}>
             View workout
@@ -386,17 +404,17 @@ export function GenerateFromTemplateCard({ templates }: GenerateFromTemplateCard
                   <span className="font-semibold">{suggestion.reason}:</span>{" "}
                   consider swapping {suggestion.originalName} for {primaryAlternative.name}.
                 </p>
-                <div className="mt-2 flex flex-wrap items-center gap-2">
+                <div className="mt-2 grid gap-2 sm:flex sm:flex-wrap sm:items-center">
                   <button
                     type="button"
-                    className="rounded-full bg-sky-900 px-3 py-1 text-xs font-semibold text-white"
+                    className="inline-flex min-h-10 items-center justify-center rounded-full bg-sky-900 px-3 py-1 text-xs font-semibold text-white"
                     onClick={() => handleApplySubstitution(suggestion, primaryAlternative)}
                   >
                     Apply
                   </button>
                   <button
                     type="button"
-                    className="rounded-full border border-sky-300 px-3 py-1 text-xs font-semibold text-sky-900"
+                    className="inline-flex min-h-10 items-center justify-center rounded-full border border-sky-300 px-3 py-1 text-xs font-semibold text-sky-900"
                     onClick={() => handleDismissSubstitution(suggestion.originalExerciseId)}
                   >
                     Dismiss
@@ -436,16 +454,19 @@ export function GenerateFromTemplateCard({ templates }: GenerateFromTemplateCard
                   {section.label}
                 </h3>
                 <div className="mt-3 space-y-3">
-                  {section.items.map((exercise) => (
-                    <div key={exercise.id} className="rounded-lg border border-slate-100 p-3">
-                      <p className="text-sm font-semibold">{exercise.exercise.name}</p>
-                      <p className="text-xs text-slate-500">
-                        {exercise.sets.length} sets - {formatTargetReps(exercise.sets[0])}
-                        {exercise.sets[0]?.targetLoad ? ` - ${exercise.sets[0].targetLoad} lbs` : ""}
-                        {exercise.sets[0]?.targetRpe ? ` - RPE ${exercise.sets[0].targetRpe}` : ""}
-                      </p>
-                    </div>
-                  ))}
+                  {section.items.map((exercise) => {
+                    const loadLabel = formatTargetLoadLabel(exercise, exercise.sets[0]);
+                    return (
+                      <div key={exercise.id} className="rounded-lg border border-slate-100 p-3">
+                        <p className="text-sm font-semibold">{exercise.exercise.name}</p>
+                        <p className="text-xs text-slate-500">
+                          {exercise.sets.length} sets - {formatTargetReps(exercise.sets[0])}
+                          {loadLabel ? ` - ${loadLabel}` : ""}
+                          {exercise.sets[0]?.targetRpe ? ` - RPE ${exercise.sets[0].targetRpe}` : ""}
+                        </p>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             ) : null

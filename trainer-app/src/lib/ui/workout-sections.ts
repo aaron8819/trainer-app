@@ -5,7 +5,10 @@ type WorkoutExercise = {
   isMainLift: boolean;
   orderIndex: number;
   section?: "WARMUP" | "MAIN" | "ACCESSORY" | null;
-  exercise: { name: string };
+  exercise: {
+    name: string;
+    exerciseEquipment?: { equipment: { type: string } }[];
+  };
   sets: {
     id: string;
     setIndex: number;
@@ -34,6 +37,7 @@ export function splitExercises(exercises: WorkoutExercise[]): SectionedExercises
     const entry: LogExerciseInput = {
       workoutExerciseId: exercise.id,
       name: exercise.exercise.name,
+      equipment: (exercise.exercise.exerciseEquipment ?? []).map((item) => item.equipment.type),
       isMainLift: exercise.isMainLift,
       sets: exercise.sets.map((set) => ({
         setId: set.id,

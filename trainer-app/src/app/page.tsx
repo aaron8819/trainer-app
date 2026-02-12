@@ -85,16 +85,18 @@ export default async function Home() {
         </header>
 
         <section className="grid gap-6 md:grid-cols-2">
-          <DashboardGenerateSection
-            templates={templates.map((t) => ({
-              id: t.id,
-              name: t.name,
-              exerciseCount: t.exerciseCount,
-              score: t.score,
-              scoreLabel: t.scoreLabel,
-            }))}
-          />
-          <div className="space-y-6">
+          <div className="min-w-0">
+            <DashboardGenerateSection
+              templates={templates.map((t) => ({
+                id: t.id,
+                name: t.name,
+                exerciseCount: t.exerciseCount,
+                score: t.score,
+                scoreLabel: t.scoreLabel,
+              }))}
+            />
+          </div>
+          <div className="min-w-0 space-y-6">
             {latestIncomplete ? (
               <div className="rounded-2xl border border-slate-200 p-6 shadow-sm">
                 <h2 className="text-xl font-semibold">Resume Workout</h2>

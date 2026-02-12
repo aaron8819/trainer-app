@@ -95,6 +95,16 @@ function formatTargetLoadLabel(exercise: WorkoutExercise, set?: WorkoutSet): str
   return null;
 }
 
+function formatTemplateOptionLabel(template: TemplateSummary): string {
+  const maxNameLength = 44;
+  const trimmedName =
+    template.name.length > maxNameLength
+      ? `${template.name.slice(0, maxNameLength - 1).trimEnd()}...`
+      : template.name;
+  const exerciseLabel = template.exerciseCount === 1 ? "exercise" : "exercises";
+  return `${trimmedName} (${template.exerciseCount} ${exerciseLabel})`;
+}
+
 function applyExerciseSwap(
   workout: WorkoutPlan,
   originalExerciseId: string,
@@ -281,7 +291,7 @@ export function GenerateFromTemplateCard({ templates }: GenerateFromTemplateCard
 
   if (templates.length === 0) {
     return (
-      <div className="rounded-2xl border border-slate-200 p-5 shadow-sm sm:p-6">
+      <div className="w-full min-w-0 rounded-2xl border border-slate-200 p-5 shadow-sm sm:p-6">
         <h2 className="text-xl font-semibold">Template Workout</h2>
         <p className="mt-2 text-slate-600">No templates yet. Create one to get started.</p>
         <Link
@@ -300,9 +310,10 @@ export function GenerateFromTemplateCard({ templates }: GenerateFromTemplateCard
       !dismissedSubstitutions.has(suggestion.originalExerciseId) &&
       !appliedSubstitutions.has(suggestion.originalExerciseId)
   );
+  const selectedTemplate = templates.find((template) => template.id === selectedTemplateId);
 
   return (
-    <div className="rounded-2xl border border-slate-200 p-5 shadow-sm sm:p-6">
+    <div className="w-full min-w-0 rounded-2xl border border-slate-200 p-5 shadow-sm sm:p-6">
       <h2 className="text-xl font-semibold">Template Workout</h2>
       <p className="mt-2 text-slate-600">
         Generate a workout from one of your saved templates.
@@ -313,30 +324,41 @@ export function GenerateFromTemplateCard({ templates }: GenerateFromTemplateCard
           <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
             Template
           </span>
-          <select
-            className="min-h-11 rounded-xl border border-slate-200 px-3 py-2 text-sm"
-            value={selectedTemplateId}
-            onChange={(e) => setSelectedTemplateId(e.target.value)}
-          >
-            {templates.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name} ({t.exerciseCount} exercises)
-              </option>
-            ))}
-          </select>
+          <div className="relative">
+            <select
+              className="min-h-11 w-full min-w-0 max-w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 py-2 pr-9 text-sm"
+              value={selectedTemplateId}
+              onChange={(e) => setSelectedTemplateId(e.target.value)}
+            >
+              {templates.map((template) => (
+                <option key={template.id} value={template.id}>
+                  {formatTemplateOptionLabel(template)}
+                </option>
+              ))}
+            </select>
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-500"
+            >
+              v
+            </span>
+          </div>
         </label>
-        {(() => {
-          const selected = templates.find((t) => t.id === selectedTemplateId);
-          return selected?.score !== undefined && selected.scoreLabel ? (
-            <div className="mt-2">
+        {selectedTemplate ? (
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+            <span>
+              {selectedTemplate.exerciseCount}{" "}
+              {selectedTemplate.exerciseCount === 1 ? "exercise" : "exercises"}
+            </span>
+            {selectedTemplate.score !== undefined && selectedTemplate.scoreLabel ? (
               <TemplateScoreBadge
-                score={selected.score}
-                label={selected.scoreLabel}
+                score={selectedTemplate.score}
+                label={selectedTemplate.scoreLabel}
                 size="sm"
               />
-            </div>
-          ) : null;
-        })()}
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       {showCheckIn ? (

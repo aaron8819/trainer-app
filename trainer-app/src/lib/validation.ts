@@ -200,3 +200,40 @@ export const preferencesSchema = z.object({
   avoidExerciseIds: z.array(z.string()).optional(),
   optionalConditioning: z.boolean().optional(),
 });
+
+// Periodization schemas
+export const trainingAgeSchema = z.enum(["BEGINNER", "INTERMEDIATE", "ADVANCED"]);
+
+export const primaryGoalSchema = z.enum([
+  "HYPERTROPHY",
+  "STRENGTH",
+  "FAT_LOSS",
+  "ATHLETICISM",
+  "GENERAL_HEALTH",
+]);
+
+export const blockTypeSchema = z.enum([
+  "ACCUMULATION",
+  "INTENSIFICATION",
+  "REALIZATION",
+  "DELOAD",
+]);
+
+export const volumeTargetSchema = z.enum(["LOW", "MODERATE", "HIGH", "PEAK"]);
+
+export const intensityBiasSchema = z.enum(["STRENGTH", "HYPERTROPHY", "ENDURANCE"]);
+
+export const adaptationTypeSchema = z.enum([
+  "NEURAL_ADAPTATION",
+  "MYOFIBRILLAR_HYPERTROPHY",
+  "SARCOPLASMIC_HYPERTROPHY",
+  "WORK_CAPACITY",
+  "RECOVERY",
+]);
+
+export const generateMacroSchema = z.object({
+  startDate: z.coerce.date(),
+  durationWeeks: z.number().int().min(4).max(52),
+  trainingAge: trainingAgeSchema.optional(),
+  primaryGoal: primaryGoalSchema.optional(),
+});

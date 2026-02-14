@@ -7,6 +7,7 @@ import {
   updateBaselinesFromWorkout,
   type BaselineUpdateSummary,
 } from "@/lib/api/baseline-updater";
+import { updateExerciseExposure } from "@/lib/api/exercise-exposure";
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
@@ -29,6 +30,7 @@ export async function POST(request: Request) {
     status === WorkoutStatus.COMPLETED ? new Date() : undefined;
 
   let baselineSummary: BaselineUpdateSummary | null = null;
+  let workoutId = parsed.data.workoutId;
 
   try {
     await prisma.$transaction(async (tx) => {
@@ -135,6 +137,16 @@ export async function POST(request: Request) {
         baselineSummary = await updateBaselinesFromWorkout(tx, workout.id, user.id);
       }
     });
+
+    // Update exercise exposure for rotation tracking (outside transaction)
+    if (status === WorkoutStatus.COMPLETED) {
+      try {
+        await updateExerciseExposure(user.id, workoutId);
+      } catch (exposureError) {
+        // Log error but don't fail the request
+        console.error("Failed to update exercise exposure:", exposureError);
+      }
+    }
   } catch (error) {
     if (error instanceof Error && error.message === "WORKOUT_NOT_FOUND") {
       return NextResponse.json({ error: "Workout not found" }, { status: 404 });

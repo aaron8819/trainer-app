@@ -14,6 +14,12 @@ export type SecondaryGoal =
 export type SplitType = "ppl" | "upper_lower" | "full_body" | "custom";
 export type SplitDay = "push" | "pull" | "legs" | "upper" | "lower" | "full_body" | "body_part";
 export type WorkoutSelectionMode = "AUTO" | "MANUAL" | "BONUS" | "INTENT";
+
+/**
+ * Muscle name type alias for selection-v2
+ * Represents muscle group names (e.g., "Chest", "Front Delts", "Quads")
+ */
+export type Muscle = string;
 export type MovementPatternV2 =
   | "horizontal_push"
   | "vertical_push"

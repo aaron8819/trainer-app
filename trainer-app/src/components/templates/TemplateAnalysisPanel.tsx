@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   analyzeTemplate,
   type AnalysisExerciseInput,
@@ -8,6 +8,7 @@ import {
 } from "@/lib/engine/template-analysis";
 import { TemplateScoreBadge } from "./TemplateScoreBadge";
 import type { ExerciseListItem } from "@/lib/exercise-library/types";
+import { TEMPLATE_METRIC_HELP } from "@/lib/ui/explainability";
 
 type TemplateAnalysisPanelProps = {
   selectedExerciseIds: string[];
@@ -46,9 +47,14 @@ function ScoreBar({ label, score }: { label: string; score: number }) {
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between">
-        <span className="text-xs text-slate-600">{label}</span>
+        <span className="text-xs text-slate-600" title={TEMPLATE_METRIC_HELP[label] ?? undefined}>
+          {label}
+        </span>
         <span className="text-xs font-semibold text-slate-700">{score}</span>
       </div>
+      {TEMPLATE_METRIC_HELP[label] ? (
+        <p className="text-[11px] text-slate-500">{TEMPLATE_METRIC_HELP[label]}</p>
+      ) : null}
       <div className="h-1.5 rounded-full bg-slate-100">
         <div
           className={`h-1.5 rounded-full transition-all ${barColor}`}
@@ -64,6 +70,7 @@ export function TemplateAnalysisPanel({
   exerciseLibrary,
   intent,
 }: TemplateAnalysisPanelProps) {
+  const [showAllSuggestions, setShowAllSuggestions] = useState(false);
   const exerciseMap = useMemo(
     () => new Map(exerciseLibrary.map((e) => [e.id, e])),
     [exerciseLibrary]
@@ -80,6 +87,9 @@ export function TemplateAnalysisPanel({
     }
     return analyzeTemplate(inputs, { intent });
   }, [selectedExerciseIds, exerciseMap, intent]);
+  const visibleSuggestions = showAllSuggestions
+    ? analysis.suggestions
+    : analysis.suggestions.slice(0, 2);
 
   if (selectedExerciseIds.length === 0) {
     return null;
@@ -126,11 +136,20 @@ export function TemplateAnalysisPanel({
 
       {analysis.suggestions.length > 0 && (
         <div className="mt-3 space-y-1">
-          {analysis.suggestions.map((suggestion, i) => (
+          {visibleSuggestions.map((suggestion, i) => (
             <p key={i} className="text-[11px] leading-tight text-slate-500">
               {suggestion}
             </p>
           ))}
+          {analysis.suggestions.length > 2 ? (
+            <button
+              type="button"
+              className="text-[11px] font-semibold text-slate-700"
+              onClick={() => setShowAllSuggestions((prev) => !prev)}
+            >
+              {showAllSuggestions ? "Show less" : `Show ${analysis.suggestions.length - 2} more`}
+            </button>
+          ) : null}
         </div>
       )}
     </div>

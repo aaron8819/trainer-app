@@ -10,6 +10,7 @@ import {
   MOVEMENT_PATTERN_LABELS,
   STIMULUS_BIAS_LABELS,
 } from "@/lib/exercise-library/constants";
+import { EXERCISE_ATTRIBUTE_HELP } from "@/lib/ui/explainability";
 
 type ExerciseDetailSheetProps = {
   exerciseId: string | null;
@@ -157,21 +158,21 @@ export function ExerciseDetailSheet({ exerciseId, onClose, onNavigate }: Exercis
             <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <div className="mb-1 flex items-center justify-between gap-3 text-xs text-slate-600">
-                  <span>SFR Score</span>
+                  <span title={EXERCISE_ATTRIBUTE_HELP["SFR Score"]}>SFR Score</span>
                   <span className="font-medium">{detail.sfrScore}/5</span>
                 </div>
                 <ScoreBar value={detail.sfrScore} color="bg-emerald-500" />
               </div>
               <div>
                 <div className="mb-1 flex items-center justify-between gap-3 text-xs text-slate-600">
-                  <span>Lengthened Position</span>
+                  <span title={EXERCISE_ATTRIBUTE_HELP["Lengthened Position"]}>Lengthened Position</span>
                   <span className="font-medium">{detail.lengthPositionScore}/5</span>
                 </div>
                 <ScoreBar value={detail.lengthPositionScore} color="bg-sky-500" />
               </div>
               <div>
                 <div className="mb-1 flex items-center justify-between gap-3 text-xs text-slate-600">
-                  <span>Joint Stress</span>
+                  <span title={EXERCISE_ATTRIBUTE_HELP["Joint Stress"]}>Joint Stress</span>
                   <span className="font-medium capitalize">{detail.jointStress}</span>
                 </div>
                 <ScoreBar
@@ -181,12 +182,15 @@ export function ExerciseDetailSheet({ exerciseId, onClose, onNavigate }: Exercis
               </div>
               <div>
                 <div className="mb-1 flex items-center justify-between gap-3 text-xs text-slate-600">
-                  <span>Fatigue Cost</span>
+                  <span title={EXERCISE_ATTRIBUTE_HELP["Fatigue Cost"]}>Fatigue Cost</span>
                   <span className="font-medium">{detail.fatigueCost}/5</span>
                 </div>
                 <ScoreBar value={detail.fatigueCost} color="bg-rose-500" />
               </div>
             </div>
+            <p className="mt-2 text-[11px] text-slate-500">
+              Tip: tap or hover metric labels for definitions.
+            </p>
           </section>
 
           {/* Stimulus Bias */}

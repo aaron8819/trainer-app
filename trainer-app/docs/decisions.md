@@ -4,6 +4,207 @@ Record of significant design decisions and their rationale. Newest first.
 
 ---
 
+## ADR-035: Block-aware prescription modifiers (2026-02-14)
+
+**Decision**:
+- Added `prescribeWithBlock()` in `src/lib/engine/periodization/prescribe-with-block.ts` to apply block-specific modifiers to exercise prescriptions.
+- Modifiers adjust volume (via `volumeMultiplier`), intensity (via `rirAdjustment`), and rest periods (via `restMultiplier`) based on training block type and week within block.
+- Accumulation blocks: Higher volume (1.0 → 1.2), reduced intensity (RIR +2), shorter rest (0.9x).
+- Intensification blocks: Moderate volume (1.0 → 0.8), higher intensity (RIR +1), normal rest (1.0x).
+- Realization blocks: Low volume (0.6 → 0.7), max intensity (RIR +0), longer rest (1.2x).
+- Deload blocks: 50% volume, low intensity (RIR +3), short rest (0.8x for active recovery).
+- `blockContext` parameter is optional in session generation for backward compatibility.
+
+**Rationale**: Evidence-based periodization requires systematic variation of volume and intensity across training phases. Block-specific modifiers allow the engine to adapt prescriptions to match periodization goals (accumulation for volume tolerance, intensification for adaptation, realization for peak performance, deload for recovery). Progressive modifiers within each block (based on `weekInBlock / durationWeeks`) provide smooth training stimulus progression.
+
+**Reference**: `src/lib/engine/periodization/prescribe-with-block.ts`, `src/lib/engine/periodization/prescribe-with-block.test.ts` (18 tests).
+
+---
+
+## ADR-039: Deficit-driven session variation (2026-02-14)
+
+**Status:** Accepted
+
+**Context:**
+Deficit-driven selection produces focused sessions based on remaining volume gaps:
+- Push workout 1: Chest/triceps filled → 15 chest sets, 7.5 effective triceps sets
+- Push workout 2: Side delt deficit remains → all shoulder exercises selected
+
+User feedback: "all shoulders, no chest/triceps" breaks PPL expectations.
+
+**Analysis:**
+
+*Evidence-based validity:*
+- Volume landmarks are weekly per-muscle (Renaissance Periodization framework)
+- Frequency is the vehicle for distributing volume, not a goal itself
+- Focusing shoulders after chest/triceps are filled is scientifically correct
+
+*UX/semantic issue:*
+- PPL split implies balanced coverage per session type
+- Users expect "push" = chest + shoulders + triceps in every session
+- Current behavior is algorithmically correct but semantically confusing
+
+*Rejected alternatives:*
+
+1. **Muscle group balance constraint** (maxExercisesPerMuscleGroup)
+   - Violates deficit-driven optimization (core benefit of selection-v2)
+   - Forces unnecessary exercises when volume already met
+   - Band-aid fix that doesn't address root cause
+   - Reduces training efficiency
+
+2. **Weight tuning** (increase movementDiversity, reduce volumeDeficitFill)
+   - Attempted but reverted: movementDiversity 0.15, volumeDeficitFill 0.30
+   - Result: FAILED - identical focused sessions regardless of weights
+   - Root cause: Candidates scored once at initialization, beam can't adapt based on beam state
+   - **Decision:** Reverted to original weights (0.40 deficit, 0.05 diversity) because deficit-driven optimization is evidence-based and movement diversity is architecturally ineffective until Phase 3
+
+3. **Defer to Phase 3** (beam state tracking)
+   - Phase 3 won't change this behavior - deficit-driven selection is the goal
+   - Beam state tracking enables movement diversity WITHIN deficit-driven framework
+   - Doesn't solve the semantic labeling issue
+
+**Decision:**
+Accept deficit-driven session variation as correct behavior. Document as expected in architecture.md.
+
+Future enhancement (Phase 4): Add session focus labels ("Push - Chest Focus", "Push - Shoulder Focus") to clarify intent.
+
+**Consequences:**
+- ✅ Maintains deficit-driven optimization (evidence-based)
+- ✅ Maximizes training efficiency (no redundant volume)
+- ✅ Enables focused sessions based on individual recovery/volume needs
+- ⚠️ May confuse users expecting balanced sessions
+- ⚠️ Requires clear documentation of session focus semantics
+
+---
+
+## ADR-038: Exercise rotation name-based lookup (2026-02-14)
+
+**Status:** Implemented
+
+**Context:**
+ExerciseExposure table tracks usage by exercise NAME (not ID). Initial implementation used exercise.id as rotation context key, causing 100% accessory repeat (rotation system completely non-functional).
+
+**Decision:**
+Rotation context keyed by exercise.name to match ExerciseExposure schema:
+- `RotationContext = Map<string, ExposureData>` where key is exercise NAME
+- `scoreRotationNovelty()` looks up by `exercise.name`
+- Test helpers use `createMockExercise(id)` with `name === id` for simplicity
+
+**Consequences:**
+- ✅ Rotation system functional (0% → 100% rotation rate)
+- ✅ Matches DB schema (ExerciseExposure.exerciseName primary key)
+- ✅ Prevents accessory staleness
+- ⚠️ Name-based lookup fragile (renames break tracking)
+
+---
+
+## ADR-037: Structural constraints for workout balance (2026-02-14)
+
+**Status:** Implemented
+
+**Context:**
+Initial beam search implementation produced structurally invalid workouts:
+- Workout 1: 8 accessories, 0 main lifts
+- Workout 2: 1 main lift, 0 accessories
+
+Root cause: No constraints enforcing balance between main lifts and accessories.
+
+**Decision:**
+Add structural constraints to SelectionObjective:
+- `minMainLifts`: 1 for PPL splits, 0 for body_part splits
+- `maxMainLifts`: 3 (prevent over-fatigue)
+- `minAccessories`: 2 (ensure variety)
+
+Enforcement via `wouldSatisfyStructure()` in beam expansion phase.
+
+**Consequences:**
+- ✅ Guarantees balanced workouts (main lifts + accessories)
+- ✅ Prevents degenerate cases (all accessories OR only main lift)
+- ✅ Maintains flexibility (different minimums for PPL vs body_part)
+- ⚠️ Adds complexity to beam search validation
+
+---
+
+## ADR-036: Multi-objective selection with beam search (2026-02-14)
+
+**Status:** Implemented
+
+**Context:**
+Greedy selection (v1) optimizes individual picks but produces suboptimal combinations:
+- Front delts receive direct work (OHP) after heavy indirect volume from bench
+- Accessories repeat too frequently without rotation policy
+- No consideration of exercise exposure patterns
+
+**Decision:**
+Replace greedy selection with multi-objective beam search optimizer (selection-v2):
+- Beam width = 5, max depth = 8
+- 7 weighted objectives: volume deficit fill (0.40), rotation novelty (0.25), SFR efficiency (0.15), movement diversity (0.05), lengthened bias (0.10), SRA readiness (0.03), user preference (0.02)
+- Hard constraints: equipment, contraindications, volume ceiling, time budget, structural balance
+- Indirect volume accounting: effective = direct + (indirect × 0.3)
+- Integration with ExerciseExposure rotation tracking
+
+**Consequences:**
+- ✅ Prevents redundant selections (indirect volume properly accounted)
+- ✅ Enforces rotation (accessories change every 3-4 weeks)
+- ✅ Multi-objective optimization finds better combinations
+- ✅ Structural constraints ensure balanced workouts (1-3 main lifts, 2+ accessories)
+- ⚠️ Increased complexity vs greedy (beam search logic)
+- ⚠️ Performance overhead (2000 state evaluations typical)
+- ⚠️ Candidates scored once at initialization, beam can't adapt to beam state
+
+---
+
+## ADR-034: Macro cycle generation with nested structures (2026-02-14)
+
+**Decision**:
+- Added `generateMacroCycle()` in `src/lib/engine/periodization/generate-macro.ts` to generate complete MacroCycle → Mesocycle → TrainingBlock hierarchies.
+- Block templates vary by training age:
+  - Beginner: 3-week accumulation + 1-week deload (4-week meso).
+  - Intermediate: 2-week accumulation + 2-week intensification + 1-week deload (5-week meso).
+  - Advanced: 2-week accumulation + 2-week intensification + 1-week realization + 1-week deload (6-week meso).
+- Macro cycles fill available duration with complete mesocycles (e.g., 12-week macro = 3× beginner mesos).
+- Mesocycle focus rotates between "Upper Body Hypertrophy", "Lower Body Strength", "Full Body Power", etc.
+- All IDs assigned deterministically via `createId()` for reproducibility.
+
+**Rationale**: Evidence-based periodization structures training into distinct phases with specific adaptation goals. Beginner templates use simpler structures (accumulation/deload only) while advanced templates include all block types for maximal adaptation. Rotating mesocycle focus ensures balanced development across muscle groups and qualities. Nested creation in a single transaction ensures data integrity.
+
+**Reference**: `src/lib/engine/periodization/generate-macro.ts`, `src/lib/engine/periodization/generate-macro.test.ts` (34 tests).
+
+---
+
+## ADR-033: Periodization-first training system foundation (2026-02-14)
+
+**Decision**:
+- Added periodization schema: `MacroCycle`, `Mesocycle`, `TrainingBlock`, `ExerciseExposure` models.
+- Added `Workout.trainingBlockId`, `Workout.weekInBlock`, `Workout.blockPhase` for block context tracking.
+- Created engine types (`BlockType`, `VolumeTarget`, `IntensityBias`, `AdaptationType`, `BlockContext`, `PrescriptionModifiers`) with lowercase string unions.
+- Created Prisma ↔ engine type mappers following existing patterns (UPPER_CASE ↔ lowercase).
+- Block context derivation (`deriveBlockContext()`) resolves current training block from macro cycle + workout date.
+- API helper (`loadCurrentBlockContext()`) loads user's active macro cycle and derives block context.
+- Integrated block context into workout generation: `loadMappedGenerationContext()` → `generateWorkoutFromTemplate()` → `prescribeWithBlock()` → `applyLoads()`.
+
+**Rationale**: The previous system used simple 4-week periodization blocks without structured progression. True periodization requires hierarchical training structures (macro → meso → block) with systematic variation of volume/intensity/rest. The new system provides a foundation for evidence-based training progression while maintaining backward compatibility (all new fields nullable, blockContext optional). Engine purity is preserved by keeping all periodization logic in `src/lib/engine/periodization/` with no DB access.
+
+**Impact**: This is a foundational change that enables future enhancements (multi-objective selection, autoregulation, exercise rotation tracking). The system gracefully degrades when no macro cycle exists (returns null block context, uses base prescriptions).
+
+**Reference**: Phase 1 implementation plan, `src/lib/engine/periodization/` modules, backfill scripts.
+
+---
+
+## ADR-032: Exercise exposure tracking for rotation management (2026-02-14)
+
+**Decision**:
+- Added `ExerciseExposure` model to track per-user exercise usage patterns.
+- Fields track usage in L4W/L8W/L12W windows, last usage date, and average sets/volume per week.
+- Backfill script (`backfill-exercise-exposure.ts`) aggregates from completed workout history.
+- Uses `WorkoutSet.logs[0]` for actual performance data, falls back to target data if no logs exist.
+
+**Rationale**: Intelligent exercise rotation requires tracking historical exposure across multiple time windows. L4W/L8W/L12W granularity matches evidence-based exercise variation recommendations (rotate exercises every 4-12 weeks). Tracking average volume per week enables future auto-regulation features. Using SetLog data (when available) provides more accurate exposure metrics than targets alone.
+
+**Reference**: `scripts/backfill-exercise-exposure.ts`.
+
+---
+
 ## ADR-031: SRA windows read from DB muscle metadata with constant fallback (2026-02-11)
 
 **Decision**:

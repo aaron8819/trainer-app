@@ -20,6 +20,7 @@ import type {
   WorkoutHistoryEntry,
   WorkoutPlan,
 } from "./types";
+import type { PrescriptionModifiers } from "./periodization/types";
 
 export type BaselineInput = {
   exerciseId: string;
@@ -37,6 +38,7 @@ export type ApplyLoadsOptions = {
   profile?: Pick<UserProfile, "weightKg" | "trainingAge">;
   sessionMinutes?: number;
   periodization?: PeriodizationModifiers;
+  prescriptionModifiers?: PrescriptionModifiers | null;
   weekInBlock?: number;
 };
 
@@ -101,6 +103,9 @@ export function applyLoads(workout: WorkoutPlan, options: ApplyLoadsOptions): Wo
   const backOffMultiplier =
     periodization?.backOffMultiplier ?? getBackOffMultiplier(options.primaryGoal);
 
+  // Block-aware intensity multiplier (from periodization system v2)
+  const intensityMultiplier = options.prescriptionModifiers?.intensityMultiplier ?? 1.0;
+
   const applyToExercise = (exerciseEntry: WorkoutPlan["mainLifts"][number]) => {
     const exercise = exerciseEntry.exercise;
     const workingRole = exerciseEntry.isMainLift ? "main" : "accessory";
@@ -145,7 +150,7 @@ export function applyLoads(workout: WorkoutPlan, options: ApplyLoadsOptions): Wo
 
     if (exerciseEntry.isMainLift) {
       if (periodization?.isDeload) {
-        const deloadLoad = roundToHalf(load * backOffMultiplier);
+        const deloadLoad = roundToHalf(load * backOffMultiplier * intensityMultiplier);
         return {
           ...exerciseEntry,
           role: exerciseEntry.role ?? workingRole,
@@ -156,28 +161,30 @@ export function applyLoads(workout: WorkoutPlan, options: ApplyLoadsOptions): Wo
         };
       }
 
+      const adjustedTopSetLoad = roundToHalf(load * intensityMultiplier);
       const updatedSets = setsWithRole.map((set) => {
         if (set.targetLoad !== undefined) {
           return set;
         }
         if (set.setIndex === 1) {
-          return { ...set, targetLoad: load };
+          return { ...set, targetLoad: adjustedTopSetLoad };
         }
-        return { ...set, targetLoad: roundToHalf(load * backOffMultiplier) };
+        return { ...set, targetLoad: roundToHalf(adjustedTopSetLoad * backOffMultiplier) };
       });
       return {
         ...exerciseEntry,
         role: exerciseEntry.role ?? workingRole,
         sets: updatedSets,
-        warmupSets: buildWarmupSets(load, trainingAge),
+        warmupSets: buildWarmupSets(adjustedTopSetLoad, trainingAge),
       };
     }
 
+    const adjustedAccessoryLoad = roundToHalf(load * intensityMultiplier);
     return {
       ...exerciseEntry,
       role: exerciseEntry.role ?? workingRole,
       sets: setsWithRole.map((set) =>
-        set.targetLoad !== undefined ? set : { ...set, targetLoad: load }
+        set.targetLoad !== undefined ? set : { ...set, targetLoad: adjustedAccessoryLoad }
       ),
       warmupSets: undefined,
     };

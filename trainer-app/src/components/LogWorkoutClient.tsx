@@ -1,7 +1,7 @@
-﻿﻿"use client";
+"use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { isSetQualifiedForBaseline } from "@/lib/baseline-qualification";
 
 export type LogSetInput = {
@@ -38,6 +38,24 @@ type NormalizedExercises = {
   accessory: LogExerciseInput[];
 };
 
+type ExerciseSection = keyof NormalizedExercises;
+
+type FlatSetItem = {
+  section: ExerciseSection;
+  sectionLabel: string;
+  exerciseIndex: number;
+  setIndex: number;
+  exercise: LogExerciseInput;
+  set: LogSetInput;
+};
+
+type UndoSnapshot = {
+  setId: string;
+  previousSet: LogSetInput;
+  wasLoggedBefore: boolean;
+  expiresAt: number;
+};
+
 type BaselineUpdateSummary = {
   context: string;
   evaluatedExercises: number;
@@ -54,6 +72,8 @@ type BaselineUpdateSummary = {
     reason: string;
   }[];
 };
+
+const SECTION_ORDER: ExerciseSection[] = ["warmup", "main", "accessory"];
 
 function formatTargetReps(set: LogSetInput): string {
   if (set.targetRepRange && set.targetRepRange.min !== set.targetRepRange.max) {
@@ -77,6 +97,54 @@ function isBodyweightExercise(exercise: LogExerciseInput): boolean {
 
 function shouldUseBodyweightLoadLabel(exercise: LogExerciseInput, set: LogSetInput): boolean {
   return isBodyweightExercise(exercise) && (set.targetLoad === null || set.targetLoad === undefined);
+}
+
+function formatSectionLabel(section: ExerciseSection): string {
+  if (section === "warmup") {
+    return "Warmup";
+  }
+  if (section === "main") {
+    return "Main Lifts";
+  }
+  return "Accessories";
+}
+
+function normalizeStepValue(value: number | null | undefined, fallback: number | null | undefined, delta: number) {
+  const base = value ?? fallback ?? 0;
+  const next = Math.round((base + delta) * 100) / 100;
+  return Math.max(0, next);
+}
+
+function clampReps(value: number | null | undefined, delta: number) {
+  const base = value ?? 0;
+  return Math.max(0, Math.round(base + delta));
+}
+
+function getNextUnloggedSetId(
+  flatSets: FlatSetItem[],
+  loggedSetIds: Set<string>,
+  currentSetId: string
+): string | null {
+  if (flatSets.length === 0) {
+    return null;
+  }
+  const currentIndex = flatSets.findIndex((item) => item.set.setId === currentSetId);
+  if (currentIndex === -1) {
+    return flatSets[0]?.set.setId ?? null;
+  }
+  for (let index = currentIndex + 1; index < flatSets.length; index += 1) {
+    const candidate = flatSets[index];
+    if (!loggedSetIds.has(candidate.set.setId)) {
+      return candidate.set.setId;
+    }
+  }
+  for (let index = 0; index < currentIndex; index += 1) {
+    const candidate = flatSets[index];
+    if (!loggedSetIds.has(candidate.set.setId)) {
+      return candidate.set.setId;
+    }
+  }
+  return null;
 }
 
 function normalizeExercises(exercises: LogExerciseInput[] | SectionedExercises): NormalizedExercises {
@@ -126,57 +194,114 @@ export default function LogWorkoutClient({
   const [baselineSummary, setBaselineSummary] = useState<BaselineUpdateSummary | null>(null);
   const [loggedSetIds, setLoggedSetIds] = useState<Set<string>>(new Set());
   const [skipReason, setSkipReason] = useState("");
+  const [activeSetId, setActiveSetId] = useState<string | null>(null);
+  const [showSkipOptions, setShowSkipOptions] = useState(false);
+  const [footerExpanded, setFooterExpanded] = useState(false);
+  const [expandedSections, setExpandedSections] = useState<Record<ExerciseSection, boolean>>({
+    warmup: false,
+    main: true,
+    accessory: false,
+  });
+  const [expandedExerciseId, setExpandedExerciseId] = useState<string | null>(null);
+  const [undoSnapshot, setUndoSnapshot] = useState<UndoSnapshot | null>(null);
 
-  const allExercises = [...data.warmup, ...data.main, ...data.accessory];
+  const flatSets = useMemo<FlatSetItem[]>(() => {
+    const output: FlatSetItem[] = [];
+    for (const section of SECTION_ORDER) {
+      const exercisesInSection = data[section];
+      exercisesInSection.forEach((exercise, exerciseIndex) => {
+        exercise.sets.forEach((set, setIndex) => {
+          output.push({
+            section,
+            sectionLabel: formatSectionLabel(section),
+            exerciseIndex,
+            setIndex,
+            exercise,
+            set,
+          });
+        });
+      });
+    }
+    return output;
+  }, [data]);
 
-  const updateSet = (
-    exerciseIndex: number,
-    setIndex: number,
-    field: keyof LogSetInput,
-    value: number | boolean | null
+  const totalSets = flatSets.length;
+  const loggedCount = loggedSetIds.size;
+  const remainingCount = Math.max(0, totalSets - loggedCount);
+
+  const fallbackActiveSet = useMemo(
+    () => flatSets.find((item) => !loggedSetIds.has(item.set.setId)) ?? flatSets[0] ?? null,
+    [flatSets, loggedSetIds]
+  );
+  const activeSet = useMemo(
+    () => flatSets.find((item) => item.set.setId === activeSetId) ?? fallbackActiveSet,
+    [activeSetId, fallbackActiveSet, flatSets]
+  );
+  const resolvedActiveSetId = activeSet?.set.setId ?? null;
+
+  useEffect(() => {
+    if (!undoSnapshot) {
+      return;
+    }
+    const remaining = Math.max(0, undoSnapshot.expiresAt - Date.now());
+    const timeout = setTimeout(() => {
+      setUndoSnapshot(null);
+    }, remaining);
+    return () => clearTimeout(timeout);
+  }, [undoSnapshot]);
+
+  const updateSetFields = (
+    setId: string,
+    updater: (set: LogSetInput) => LogSetInput
   ) => {
     setData((prev) => {
-      const updated = { ...prev } as NormalizedExercises;
-      const flat = [...updated.warmup, ...updated.main, ...updated.accessory];
-      const targetExercise = flat[exerciseIndex];
-      if (!targetExercise) {
-        return prev;
-      }
-      const updatedSets = targetExercise.sets.map((set, index) =>
-        index === setIndex ? { ...set, [field]: value } : set
-      );
-
-      const rebuild = (list: LogExerciseInput[]) =>
-        list.map((exercise) =>
-          exercise.workoutExerciseId === targetExercise.workoutExerciseId
-            ? { ...exercise, sets: updatedSets }
-            : exercise
-        );
-
-      updated.warmup = rebuild(updated.warmup);
-      updated.main = rebuild(updated.main);
-      updated.accessory = rebuild(updated.accessory);
-      return updated;
+      const next: NormalizedExercises = {
+        warmup: prev.warmup.map((exercise) => ({
+          ...exercise,
+          sets: exercise.sets.map((set) => (set.setId === setId ? updater(set) : set)),
+        })),
+        main: prev.main.map((exercise) => ({
+          ...exercise,
+          sets: exercise.sets.map((set) => (set.setId === setId ? updater(set) : set)),
+        })),
+        accessory: prev.accessory.map((exercise) => ({
+          ...exercise,
+          sets: exercise.sets.map((set) => (set.setId === setId ? updater(set) : set)),
+        })),
+      };
+      return next;
     });
   };
 
-  const handleLogSet = async (exerciseIndex: number, setIndex: number) => {
+  const setSingleField = (
+    setId: string,
+    field: keyof LogSetInput,
+    value: number | boolean | null
+  ) => {
+    updateSetFields(setId, (set) => ({ ...set, [field]: value }));
+  };
+
+  const handleLogSet = async (setId: string, overrides?: Partial<LogSetInput>) => {
     setStatus(null);
     setError(null);
-
-    const set = allExercises[exerciseIndex].sets[setIndex];
-    setSavingSetId(set.setId);
+    const targetSet = flatSets.find((item) => item.set.setId === setId);
+    if (!targetSet) {
+      setError("Unable to find set");
+      return;
+    }
+    const mergedSet = { ...targetSet.set, ...overrides };
+    setSavingSetId(setId);
 
     const response = await fetch("/api/logs/set", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        workoutSetId: set.setId,
-        workoutExerciseId: allExercises[exerciseIndex].workoutExerciseId,
-        actualReps: set.actualReps ?? undefined,
-        actualLoad: set.actualLoad ?? undefined,
-        actualRpe: set.actualRpe ?? undefined,
-        wasSkipped: set.wasSkipped ?? false,
+        workoutSetId: targetSet.set.setId,
+        workoutExerciseId: targetSet.exercise.workoutExerciseId,
+        actualReps: mergedSet.actualReps ?? undefined,
+        actualLoad: mergedSet.actualLoad ?? undefined,
+        actualRpe: mergedSet.actualRpe ?? undefined,
+        wasSkipped: mergedSet.wasSkipped ?? false,
       }),
     });
 
@@ -187,13 +312,43 @@ export default function LogWorkoutClient({
       return;
     }
 
-    setLoggedSetIds((prev) => {
-      const next = new Set(prev);
-      next.add(set.setId);
-      return next;
+    if (overrides) {
+      updateSetFields(setId, (set) => ({ ...set, ...overrides }));
+    }
+    const wasLoggedBefore = loggedSetIds.has(setId);
+    const nextLogged = new Set(loggedSetIds);
+    nextLogged.add(setId);
+    setLoggedSetIds(nextLogged);
+    setUndoSnapshot({
+      setId,
+      previousSet: targetSet.set,
+      wasLoggedBefore,
+      expiresAt: Date.now() + 5000,
     });
+    const nextSetId = getNextUnloggedSetId(flatSets, nextLogged, setId);
+    if (nextSetId) {
+      setActiveSetId(nextSetId);
+    }
     setStatus("Set logged");
     setSavingSetId(null);
+  };
+
+  const handleUndo = () => {
+    if (!undoSnapshot) {
+      return;
+    }
+    updateSetFields(undoSnapshot.setId, () => ({ ...undoSnapshot.previousSet }));
+    if (!undoSnapshot.wasLoggedBefore) {
+      setLoggedSetIds((prev) => {
+        const next = new Set(prev);
+        next.delete(undoSnapshot.setId);
+        return next;
+      });
+    }
+    setActiveSetId(undoSnapshot.setId);
+    setUndoSnapshot(null);
+    setStatus("Last set log reverted locally");
+    setError(null);
   };
 
   const handleCompleteWorkout = async () => {
@@ -271,155 +426,278 @@ export default function LogWorkoutClient({
     return true;
   };
 
-  const renderSection = (label: string, items: LogExerciseInput[], offset: number) => {
-    if (!items || items.length === 0) {
-      return null;
-    }
+  return (
+    <div className="mt-5 space-y-5 pb-28 sm:mt-6 sm:space-y-6 sm:pb-32 md:pb-0">
+      {!completed && !skipped && activeSet ? (
+        <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Active set</p>
+            <p className="text-xs text-slate-500">
+              {loggedCount}/{totalSets} logged
+            </p>
+          </div>
+          <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-slate-100">
+            <div
+              className="h-full rounded-full bg-slate-900 transition-all"
+              style={{ width: `${totalSets === 0 ? 0 : (loggedCount / totalSets) * 100}%` }}
+            />
+          </div>
+          <div className="mt-4">
+            <h2 className="text-lg font-semibold">{activeSet.exercise.name}</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              {activeSet.sectionLabel} · Set {activeSet.set.setIndex} of {activeSet.exercise.sets.length} · Target{" "}
+              {formatTargetReps(activeSet.set)}
+            </p>
+          </div>
+          {shouldUseBodyweightLoadLabel(activeSet.exercise, activeSet.set) ? (
+            <p className="mt-2 text-xs text-slate-500">Bodyweight movement (load optional for weighted variation).</p>
+          ) : null}
+          {isBaselineEligible(activeSet.set) ? (
+            <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-emerald-700">Baseline eligible</p>
+          ) : null}
 
-    return (
-      <section className="space-y-3 sm:space-y-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">{label}</h2>
-        {items.map((exercise, exerciseIndex) => (
-          <div key={exercise.workoutExerciseId} className="rounded-2xl border border-slate-200 p-4 sm:p-5">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <h3 className="text-lg font-semibold">{exercise.name}</h3>
-                <p className="mt-1 text-sm text-slate-500">
-                  {exercise.section === "WARMUP"
-                    ? "Warmup"
-                    : exercise.isMainLift || exercise.section === "MAIN"
-                    ? "Main lift"
-                    : "Accessory"}
-                </p>
+          <div className="mt-4 space-y-3">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Reps</p>
+              <div className="mt-1 flex items-center gap-2">
+                <button
+                  className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border border-slate-300 px-3 text-sm font-semibold text-slate-700"
+                  onClick={() =>
+                    setSingleField(
+                      activeSet.set.setId,
+                      "actualReps",
+                      clampReps(activeSet.set.actualReps, -1)
+                    )
+                  }
+                  type="button"
+                >
+                  -1
+                </button>
+                <input
+                  className="min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  type="number"
+                  inputMode="numeric"
+                  value={activeSet.set.actualReps ?? ""}
+                  onChange={(event) =>
+                    setSingleField(activeSet.set.setId, "actualReps", parseNullableNumber(event.target.value))
+                  }
+                />
+                <button
+                  className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border border-slate-300 px-3 text-sm font-semibold text-slate-700"
+                  onClick={() =>
+                    setSingleField(
+                      activeSet.set.setId,
+                      "actualReps",
+                      clampReps(activeSet.set.actualReps, 1)
+                    )
+                  }
+                  type="button"
+                >
+                  +1
+                </button>
               </div>
             </div>
 
-            <div className="mt-4 space-y-3">
-              {exercise.sets.map((set, setIndex) => (
-                <div key={set.setId} className="rounded-xl border border-slate-100 p-4">
-                  {(() => {
-                    const bodyweightLabel = shouldUseBodyweightLoadLabel(exercise, set);
-                    return (
-                  <>
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-sm font-semibold">Set {set.setIndex}</p>
-                      <span className="text-xs text-slate-500">Target {formatTargetReps(set)}</span>
-                      {bodyweightLabel ? (
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-700">
-                          Target BW
-                        </span>
-                      ) : null}
-                      {isBaselineEligible(set) ? (
-                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
-                          Baseline +
-                        </span>
-                      ) : null}
-                    </div>
-                    <button
-                      className="inline-flex min-h-11 w-full items-center justify-center rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50 sm:w-auto"
-                      onClick={() => handleLogSet(offset + exerciseIndex, setIndex)}
-                      disabled={savingSetId === set.setId}
-                    >
-                      {savingSetId === set.setId ? "Saving..." : "Log set"}
-                    </button>
-                  </div>
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                {shouldUseBodyweightLoadLabel(activeSet.exercise, activeSet.set)
+                  ? "Load (lbs, optional)"
+                  : "Load (lbs)"}
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {[-5, -2.5, 2.5, 5].map((delta) => (
+                  <button
+                    key={`${activeSet.set.setId}-delta-${delta}`}
+                    className="inline-flex min-h-10 items-center justify-center rounded-full border border-slate-300 px-3 text-xs font-semibold text-slate-700"
+                    onClick={() =>
+                      setSingleField(
+                        activeSet.set.setId,
+                        "actualLoad",
+                        normalizeStepValue(activeSet.set.actualLoad, activeSet.set.targetLoad, delta)
+                      )
+                    }
+                    type="button"
+                  >
+                    {delta > 0 ? `+${delta}` : delta}
+                  </button>
+                ))}
+                <button
+                  className="inline-flex min-h-10 items-center justify-center rounded-full border border-slate-300 px-3 text-xs font-semibold text-slate-700"
+                  onClick={() => setSingleField(activeSet.set.setId, "actualLoad", null)}
+                  type="button"
+                >
+                  Clear
+                </button>
+              </div>
+              <input
+                className="mt-2 min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                type="number"
+                inputMode="decimal"
+                value={activeSet.set.actualLoad ?? ""}
+                onChange={(event) =>
+                  setSingleField(activeSet.set.setId, "actualLoad", parseNullableNumber(event.target.value))
+                }
+              />
+            </div>
 
-                  <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                    <label className="text-xs font-medium text-slate-500">
-                      Reps
-                      <input
-                        className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                        type="number"
-                        inputMode="numeric"
-                        value={set.actualReps ?? ""}
-                        onChange={(event) =>
-                          updateSet(
-                            offset + exerciseIndex,
-                            setIndex,
-                            "actualReps",
-                            parseNullableNumber(event.target.value)
-                          )
-                        }
-                      />
-                    </label>
-                    <label className="text-xs font-medium text-slate-500">
-                      {bodyweightLabel ? "Load (lbs, optional)" : "Load (lbs)"}
-                      <input
-                        className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                        type="number"
-                        inputMode="decimal"
-                        placeholder={bodyweightLabel ? "Optional for weighted variation" : undefined}
-                        value={set.actualLoad ?? ""}
-                        onChange={(event) =>
-                          updateSet(
-                            offset + exerciseIndex,
-                            setIndex,
-                            "actualLoad",
-                            parseNullableNumber(event.target.value)
-                          )
-                        }
-                      />
-                      {bodyweightLabel ? (
-                        <p className="mt-1 text-[11px] text-slate-500">BW if left blank.</p>
-                      ) : null}
-                    </label>
-                    <label className="text-xs font-medium text-slate-500">
-                      RPE
-                      <input
-                        className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                        type="number"
-                        step="0.5"
-                        inputMode="decimal"
-                        value={set.actualRpe ?? ""}
-                        onChange={(event) =>
-                          updateSet(
-                            offset + exerciseIndex,
-                            setIndex,
-                            "actualRpe",
-                            parseNullableNumber(event.target.value)
-                          )
-                        }
-                      />
-                    </label>
-                  </div>
-                  <div className="mt-3 text-xs text-slate-500">
-                    <label className="inline-flex min-h-11 cursor-pointer items-center gap-2">
-                      <input
-                        className="h-4 w-4 rounded border-slate-300"
-                        type="checkbox"
-                        checked={set.wasSkipped ?? false}
-                        onChange={(event) =>
-                          updateSet(offset + exerciseIndex, setIndex, "wasSkipped", event.target.checked)
-                        }
-                      />
-                      Mark as skipped
-                    </label>
-                  </div>
-                  </>
-                    );
-                  })()}
-                </div>
-              ))}
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">RPE</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {[7, 8, 9, 10].map((preset) => (
+                  <button
+                    key={`${activeSet.set.setId}-rpe-${preset}`}
+                    className={`inline-flex min-h-10 min-w-10 items-center justify-center rounded-full border px-3 text-xs font-semibold ${
+                      activeSet.set.actualRpe === preset
+                        ? "border-slate-900 bg-slate-900 text-white"
+                        : "border-slate-300 text-slate-700"
+                    }`}
+                    onClick={() => setSingleField(activeSet.set.setId, "actualRpe", preset)}
+                    type="button"
+                  >
+                    {preset}
+                  </button>
+                ))}
+              </div>
+              <input
+                className="mt-2 min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                type="number"
+                step="0.5"
+                inputMode="decimal"
+                value={activeSet.set.actualRpe ?? ""}
+                onChange={(event) =>
+                  setSingleField(activeSet.set.setId, "actualRpe", parseNullableNumber(event.target.value))
+                }
+              />
             </div>
           </div>
-        ))}
-      </section>
-    );
-  };
 
-  const warmupOffset = 0;
-  const mainOffset = data.warmup.length;
-  const accessoryOffset = data.warmup.length + data.main.length;
+          <div className="mt-4 grid gap-2 sm:grid-cols-3">
+            <button
+              className="inline-flex min-h-11 items-center justify-center rounded-full bg-slate-900 px-6 py-2 text-sm font-semibold text-white disabled:opacity-60"
+              onClick={() => handleLogSet(activeSet.set.setId)}
+              disabled={savingSetId === activeSet.set.setId}
+              type="button"
+            >
+              {savingSetId === activeSet.set.setId ? "Saving..." : "Log set"}
+            </button>
+            <button
+              className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 px-6 py-2 text-sm font-semibold text-slate-700 disabled:opacity-60"
+              type="button"
+              onClick={() => {
+                if (activeSet.setIndex === 0) {
+                  return;
+                }
+                const previousSet = activeSet.exercise.sets[activeSet.setIndex - 1];
+                setSingleField(activeSet.set.setId, "actualReps", previousSet.actualReps ?? null);
+                setSingleField(activeSet.set.setId, "actualLoad", previousSet.actualLoad ?? null);
+                setSingleField(activeSet.set.setId, "actualRpe", previousSet.actualRpe ?? null);
+                setSingleField(activeSet.set.setId, "wasSkipped", false);
+              }}
+              disabled={activeSet.setIndex === 0}
+            >
+              Same as last
+            </button>
+            <button
+              className="inline-flex min-h-11 items-center justify-center rounded-full border border-rose-300 px-6 py-2 text-sm font-semibold text-rose-700 disabled:opacity-60"
+              onClick={() => handleLogSet(activeSet.set.setId, { wasSkipped: true })}
+              disabled={savingSetId === activeSet.set.setId}
+              type="button"
+            >
+              Skip set
+            </button>
+          </div>
 
-  return (
-    <div className="mt-5 space-y-5 pb-28 sm:mt-6 sm:space-y-6 sm:pb-32 md:pb-0">
-      {renderSection("Warmup", data.warmup, warmupOffset)}
-      {renderSection("Main Lifts", data.main, mainOffset)}
-      {renderSection("Accessories", data.accessory, accessoryOffset)}
+          {status ? <p className="mt-3 text-sm text-emerald-600">{status}</p> : null}
+          {error ? <p className="mt-3 text-sm text-rose-600">{error}</p> : null}
+        </section>
+      ) : null}
 
-      {status ? <p className="text-sm text-emerald-600">{status}</p> : null}
-      {error ? <p className="text-sm text-rose-600">{error}</p> : null}
+      {!completed && !skipped ? (
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Exercise queue</h2>
+            <p className="text-xs text-slate-500">{remainingCount} sets remaining</p>
+          </div>
+          {SECTION_ORDER.map((section) => {
+            const sectionItems = data[section];
+            if (sectionItems.length === 0) {
+              return null;
+            }
+            const isExpanded = expandedSections[section];
+            return (
+              <div key={section} className="rounded-2xl border border-slate-200 bg-white">
+                <button
+                  className="flex min-h-11 w-full items-center justify-between px-4 py-3 text-left"
+                  onClick={() =>
+                    setExpandedSections((prev) => ({ ...prev, [section]: !prev[section] }))
+                  }
+                  type="button"
+                >
+                  <span className="text-sm font-semibold">{formatSectionLabel(section)}</span>
+                  <span className="text-xs text-slate-500">{isExpanded ? "Hide" : "Show"}</span>
+                </button>
+                {isExpanded ? (
+                  <div className="space-y-2 border-t border-slate-100 p-3">
+                    {sectionItems.map((exercise) => {
+                      const exerciseLogged = exercise.sets.filter((set) => loggedSetIds.has(set.setId)).length;
+                      const nextSet =
+                        exercise.sets.find((set) => !loggedSetIds.has(set.setId)) ?? exercise.sets[0];
+                      const isExerciseExpanded = expandedExerciseId === exercise.workoutExerciseId;
+                      return (
+                        <div key={exercise.workoutExerciseId} className="rounded-xl border border-slate-100">
+                          <button
+                            className="flex min-h-11 w-full items-center justify-between px-3 py-2 text-left"
+                            onClick={() => {
+                              if (nextSet) {
+                                setActiveSetId(nextSet.setId);
+                              }
+                              setExpandedExerciseId((prev) =>
+                                prev === exercise.workoutExerciseId ? null : exercise.workoutExerciseId
+                              );
+                            }}
+                            type="button"
+                          >
+                            <span className="text-sm font-medium">{exercise.name}</span>
+                            <span className="text-xs text-slate-500">
+                              {exerciseLogged}/{exercise.sets.length}
+                            </span>
+                          </button>
+                          {isExerciseExpanded ? (
+                            <div className="flex flex-wrap gap-2 border-t border-slate-100 p-3">
+                              {exercise.sets.map((set) => {
+                                const isLogged = loggedSetIds.has(set.setId);
+                                const isActive = resolvedActiveSetId === set.setId;
+                                return (
+                                  <button
+                                    key={set.setId}
+                                    className={`inline-flex min-h-9 items-center justify-center rounded-full border px-3 text-xs font-semibold ${
+                                      isActive
+                                        ? "border-slate-900 bg-slate-900 text-white"
+                                        : isLogged
+                                        ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                                        : "border-slate-300 text-slate-700"
+                                    }`}
+                                    onClick={() => setActiveSetId(set.setId)}
+                                    type="button"
+                                  >
+                                    Set {set.setIndex}
+                                    {set.wasSkipped ? " · Skipped" : ""}
+                                    {isBaselineEligible(set) ? " · Baseline +" : ""}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </section>
+      ) : null}
 
       {baselineSummary ? (
         <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm sm:p-5">
@@ -456,20 +734,37 @@ export default function LogWorkoutClient({
           ) : null}
         </div>
       ) : null}
+
+      {undoSnapshot ? (
+        <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-slate-600">Set logged. Undo available for a few seconds.</p>
+            <button
+              className="inline-flex min-h-9 items-center justify-center rounded-full border border-slate-300 px-3 text-xs font-semibold text-slate-700"
+              onClick={handleUndo}
+              type="button"
+            >
+              Undo
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       <div className="space-y-3">
-        {!completed && !skipped ? (
-          <label className="text-xs font-medium text-slate-500">
-            Skip reason (optional)
-            <input
-              className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-              placeholder="Travel, low energy, time constraints"
-              value={skipReason}
-              onChange={(event) => setSkipReason(event.target.value)}
-            />
-          </label>
-        ) : null}
         <div className="fixed inset-x-4 bottom-[calc(4.5rem+env(safe-area-inset-bottom)+0.75rem)] z-20 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:inset-x-5 md:static md:inset-auto md:bottom-auto md:rounded-none md:border-0 md:bg-transparent md:p-0 md:shadow-none">
-          <div className="grid gap-2 sm:grid-cols-2 md:flex md:flex-wrap md:items-center md:gap-3">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <div className="text-xs text-slate-500">{loggedCount}/{totalSets} sets logged</div>
+            {!completed && !skipped ? (
+              <button
+                className="inline-flex min-h-9 items-center justify-center rounded-full border border-slate-300 px-3 text-xs font-semibold text-slate-700"
+                onClick={() => setFooterExpanded((prev) => !prev)}
+                type="button"
+              >
+                {footerExpanded ? "Hide actions" : "More actions"}
+              </button>
+            ) : null}
+          </div>
+          <div className="grid gap-2 md:flex md:flex-wrap md:items-center md:gap-3">
             <button
               className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-slate-900 px-6 py-2 text-sm font-semibold text-white disabled:opacity-60 sm:w-auto"
               onClick={handleCompleteWorkout}
@@ -477,14 +772,45 @@ export default function LogWorkoutClient({
             >
               {completed ? "Workout completed" : "Mark workout completed"}
             </button>
-            <button
-              className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-slate-300 px-6 py-2 text-sm font-semibold text-slate-700 disabled:opacity-60 sm:w-auto"
-              onClick={handleSkipWorkout}
-              disabled={completed || skipped}
-            >
-              {skipped ? "Workout skipped" : "Mark workout skipped"}
-            </button>
+            {footerExpanded || completed || skipped ? (
+              <button
+                className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-slate-300 px-6 py-2 text-sm font-semibold text-slate-700 disabled:opacity-60 sm:w-auto"
+                onClick={handleSkipWorkout}
+                disabled={completed || skipped}
+              >
+                {skipped ? "Workout skipped" : "Mark workout skipped"}
+              </button>
+            ) : null}
           </div>
+          {!completed && !skipped && footerExpanded ? (
+            <div className="mt-2">
+              <button
+                className="inline-flex min-h-9 items-center justify-center rounded-full border border-slate-300 px-3 text-xs font-semibold text-slate-700"
+                onClick={() => setShowSkipOptions((prev) => !prev)}
+                type="button"
+              >
+                {showSkipOptions ? "Hide skip reason" : "Add skip reason"}
+              </button>
+              {showSkipOptions ? (
+                <label className="mt-2 block text-xs font-medium text-slate-500">
+                  Skip reason (optional)
+                  <input
+                    className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    placeholder="Travel, low energy, time constraints"
+                    value={skipReason}
+                    onChange={(event) => setSkipReason(event.target.value)}
+                  />
+                </label>
+              ) : null}
+            </div>
+          ) : null}
+          {!completed && !skipped ? (
+            <div className="mt-2 text-[11px] text-slate-500">
+              {footerExpanded
+                ? "Tip: collapse actions to reclaim screen space."
+                : "Use “More actions” to reveal skip controls."}
+            </div>
+          ) : null}
         </div>
         {skipped ? (
           <div className="text-sm text-slate-600">

@@ -4,6 +4,11 @@ import { useState } from "react";
 import Link from "next/link";
 import SessionCheckInForm from "@/components/SessionCheckInForm";
 import { TemplateScoreBadge } from "@/components/templates/TemplateScoreBadge";
+import {
+  getSelectionStepLabel,
+  getTopComponentLabels,
+  parseExplainabilitySelectionMetadata,
+} from "@/lib/ui/explainability";
 
 type WorkoutSet = {
   setIndex: number;
@@ -354,6 +359,31 @@ export function GenerateFromTemplateCard({ templates }: GenerateFromTemplateCard
       !appliedSubstitutions.has(suggestion.originalExerciseId)
   );
   const selectedTemplate = templates.find((template) => template.id === selectedTemplateId);
+  const selectionMetadata = parseExplainabilitySelectionMetadata(generatedMetadata?.selection);
+  const selectedCount =
+    selectionMetadata.selectedExerciseIds?.length ??
+    Object.keys(selectionMetadata.rationale ?? {}).length;
+  const pinCount = Object.values(selectionMetadata.rationale ?? {}).filter(
+    (entry) => entry.selectedStep === "pin"
+  ).length;
+  const topRationaleRows = Object.entries(selectionMetadata.rationale ?? {})
+    .slice(0, 3)
+    .map(([exerciseId, entry]) => {
+      const allExercises = [...(workout?.mainLifts ?? []), ...(workout?.accessories ?? [])];
+      const exerciseName =
+        allExercises.find((exercise) => exercise.exercise.id === exerciseId)?.exercise.name ??
+        "Exercise";
+      const topReasons = getTopComponentLabels(entry.components, 2);
+      return {
+        exerciseId,
+        exerciseName,
+        stepLabel: getSelectionStepLabel(entry.selectedStep),
+        reasonLine:
+          topReasons.length > 0
+            ? topReasons.join(" • ")
+            : "Selected for overall fit against session constraints.",
+      };
+    });
 
   return (
     <div className="w-full min-w-0 rounded-2xl border border-slate-200 p-5 shadow-sm sm:p-6">
@@ -432,6 +462,23 @@ export function GenerateFromTemplateCard({ templates }: GenerateFromTemplateCard
       )}
 
       {error && <p className="mt-3 text-sm text-rose-600">{error}</p>}
+      {selectedCount > 0 && !savedId ? (
+        <details className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+          <summary className="cursor-pointer font-semibold text-slate-900">Why this selection</summary>
+          <p className="mt-1">
+            {selectedCount} selected, {pinCount} pinned, {Math.max(0, selectedCount - pinCount)} auto-selected.
+          </p>
+          {topRationaleRows.length > 0 ? (
+            <div className="mt-2 space-y-1">
+              {topRationaleRows.map((row) => (
+                <p key={row.exerciseId}>
+                  <span className="font-semibold">{row.exerciseName}</span> ({row.stepLabel}): {row.reasonLine}
+                </p>
+              ))}
+            </div>
+          ) : null}
+        </details>
+      ) : null}
 
       {savedId && (
         <div className="mt-3 flex flex-col gap-2 text-sm sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">

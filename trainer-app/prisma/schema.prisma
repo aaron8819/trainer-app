@@ -172,21 +172,51 @@ enum TemplateIntent {
   CUSTOM
 }
 
+enum BlockType {
+  ACCUMULATION      // High volume, moderate intensity
+  INTENSIFICATION   // Moderate volume, high intensity
+  REALIZATION       // Low volume, peak intensity (testing)
+  DELOAD           // Low volume, low intensity (recovery)
+}
+
+enum VolumeTarget {
+  LOW              // ~50% of normal
+  MODERATE         // ~70-80% of normal
+  HIGH             // ~90-100% of normal
+  PEAK             // ~100-110% of normal (approaching MRV)
+}
+
+enum IntensityBias {
+  STRENGTH         // 1-6 reps, heavy loads
+  HYPERTROPHY      // 6-12 reps, moderate loads
+  ENDURANCE        // 12-20+ reps, lighter loads
+}
+
+enum AdaptationType {
+  NEURAL_ADAPTATION           // Strength gains via CNS efficiency
+  MYOFIBRILLAR_HYPERTROPHY   // Muscle fiber growth
+  SARCOPLASMIC_HYPERTROPHY   // Metabolic adaptations
+  WORK_CAPACITY              // Conditioning
+  RECOVERY                   // Active recovery
+}
+
 model User {
   id        String   @id @default(uuid())
   email     String   @unique
   createdAt DateTime @default(now())
 
-  profile        Profile?
-  constraints    Constraints?
-  goals          Goals?
-  injuries       Injury[]
-  programs       Program[]
-  workouts       Workout[]
-  sessionCheckIns SessionCheckIn[]
-  baselines      Baseline[]
-  preferences    UserPreference?
-  templates      WorkoutTemplate[]
+  profile          Profile?
+  constraints      Constraints?
+  goals            Goals?
+  injuries         Injury[]
+  programs         Program[]
+  workouts         Workout[]
+  sessionCheckIns  SessionCheckIn[]
+  baselines        Baseline[]
+  preferences      UserPreference?
+  templates        WorkoutTemplate[]
+  macroCycles      MacroCycle[]
+  exerciseExposures ExerciseExposure[]
 }
 
 model UserPreference {
@@ -389,10 +419,17 @@ model Workout {
   forcedSplit     SplitDay?
   advancesSplit   Boolean @default(true)
 
+  // Periodization context (nullable for backward compat)
+  trainingBlockId    String?
+  trainingBlock      TrainingBlock? @relation(fields: [trainingBlockId], references: [id])
+  weekInBlock        Int?           // 1, 2, 3 within block
+  blockPhase         BlockType?     // Denormalized for display
+
   exercises WorkoutExercise[]
   sessionCheckIns SessionCheckIn[]
 
   @@index([userId, scheduledDate])
+  @@index([trainingBlockId])
 }
 
 model WorkoutExercise {
@@ -504,4 +541,84 @@ model WorkoutTemplateExercise {
   supersetGroup Int?
 
   @@unique([templateId, orderIndex])
+}
+
+model MacroCycle {
+  id              String      @id @default(uuid())
+  userId          String
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  startDate       DateTime
+  endDate         DateTime
+  durationWeeks   Int
+
+  trainingAge     TrainingAge
+  primaryGoal     PrimaryGoal
+
+  mesocycles      Mesocycle[]
+
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([userId, startDate])
+}
+
+model Mesocycle {
+  id              String        @id @default(uuid())
+  macroCycleId    String
+  macroCycle      MacroCycle    @relation(fields: [macroCycleId], references: [id], onDelete: Cascade)
+
+  mesoNumber      Int           // 1, 2, 3... within macro
+  startWeek       Int           // Week offset from macro start (0-indexed)
+  durationWeeks   Int
+
+  focus           String        // "Upper Body Hypertrophy", "Lower Strength", etc.
+  volumeTarget    VolumeTarget
+  intensityBias   IntensityBias
+
+  blocks          TrainingBlock[]
+
+  @@unique([macroCycleId, mesoNumber])
+  @@index([macroCycleId])
+}
+
+model TrainingBlock {
+  id              String          @id @default(uuid())
+  mesocycleId     String
+  mesocycle       Mesocycle       @relation(fields: [mesocycleId], references: [id], onDelete: Cascade)
+
+  blockNumber     Int             // 1, 2, 3... within meso
+  blockType       BlockType
+
+  startWeek       Int             // Week offset from macro start
+  durationWeeks   Int
+
+  volumeTarget    VolumeTarget
+  intensityBias   IntensityBias
+  adaptationType  AdaptationType
+
+  workouts        Workout[]
+
+  @@unique([mesocycleId, blockNumber])
+  @@index([mesocycleId])
+}
+
+model ExerciseExposure {
+  id              String      @id @default(uuid())
+  userId          String
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  exerciseName    String
+  lastUsedAt      DateTime
+  timesUsedL4W    Int         @default(0)  // Last 4 weeks
+  timesUsedL8W    Int         @default(0)  // Last 8 weeks
+  timesUsedL12W   Int         @default(0)  // Last 12 weeks
+
+  avgSetsPerWeek  Float       @default(0)
+  avgVolumePerWeek Float      @default(0)
+
+  updatedAt       DateTime    @updatedAt
+
+  @@unique([userId, exerciseName])
+  @@index([userId, lastUsedAt])
 }

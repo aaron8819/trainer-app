@@ -25,6 +25,7 @@ import { buildMuscleRecoveryMap, generateSraWarnings, type SraWarning } from "./
 import { getGoalRepRanges, type PeriodizationModifiers } from "./rules";
 import { suggestSubstitutes } from "./substitution";
 import { buildProjectedWarmupSets, canResolveLoadForWarmupRamp } from "./warmup-ramp";
+import type { BlockContext } from "./periodization/types";
 
 export type TemplateExerciseInput = {
   exercise: Exercise;
@@ -52,6 +53,7 @@ export type GenerateFromTemplateOptions = {
   weekInBlock?: number;
   mesocycleLength?: number;
   periodization?: PeriodizationModifiers;
+  blockContext?: BlockContext | null;
   isStrict?: boolean;
   setCountOverrides?: Record<string, number>;
 };

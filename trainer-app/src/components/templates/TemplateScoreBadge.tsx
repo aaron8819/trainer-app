@@ -24,6 +24,8 @@ export function TemplateScoreBadge({
   return (
     <span
       className={`inline-flex items-center gap-1 rounded-full font-semibold ${colorClass} ${sizeClass}`}
+      title="Template quality score based on coverage, balance, movement order, and fatigue efficiency."
+      aria-label={`Template score ${score}, ${label}. Based on coverage, balance, order, and fatigue efficiency.`}
     >
       <span>{score}</span>
       <span className="font-medium">{label}</span>

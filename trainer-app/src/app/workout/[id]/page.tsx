@@ -1,8 +1,15 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
 import { resolveOwner } from "@/lib/api/workout-context";
 import { mapLatestCheckIn } from "@/lib/api/checkin-staleness";
 import { isSetQualifiedForBaseline } from "@/lib/baseline-qualification";
+import {
+  describePrimaryDriver,
+  getSelectionStepLabel,
+  getTopComponentLabels,
+  parseExplainabilitySelectionMetadata,
+  summarizeSelectionDrivers,
+} from "@/lib/ui/explainability";
 import { PrimaryGoal, TrainingAge } from "@prisma/client";
 import type { Prisma } from "@prisma/client";
 
@@ -320,6 +327,15 @@ export default async function WorkoutDetailPage({
     : latestCheckIn
       ? "Readiness: defaulted to 3 (latest check-in is older than 48 hours)."
     : "Readiness: defaulted to 3 (no readiness logs currently stored).";
+  const selectionMetadata = parseExplainabilitySelectionMetadata(workout.selectionMetadata);
+  const selectionSummary = summarizeSelectionDrivers(selectionMetadata.rationale);
+  const selectedCount =
+    selectionMetadata.selectedExerciseIds?.length ??
+    Object.keys(selectionMetadata.rationale ?? {}).length;
+  const autoSelectedCount = Math.max(
+    0,
+    selectedCount - selectionSummary.countsByStep.pin
+  );
 
   const findBaseline = (exerciseName: string) => {
     const normalized = normalizeName(exerciseName);
@@ -427,6 +443,27 @@ export default async function WorkoutDetailPage({
               <p>
                 Baseline context: {context}. Loads are seeded when a baseline matches the exercise name.
               </p>
+              {selectedCount > 0 ? (
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+                  <p className="font-semibold text-slate-900">Decision summary</p>
+                  <ul className="mt-1 space-y-1">
+                    <li>
+                      Session focus: {intentLabel ?? "general"} ({sourceLabel} generation).
+                    </li>
+                    <li>{describePrimaryDriver(selectionSummary.primaryDriver)}</li>
+                    <li>
+                      Selection mix: {selectedCount} selected, {selectionSummary.countsByStep.pin} pinned,
+                      {" "}{autoSelectedCount} auto-selected.
+                    </li>
+                    {selectionMetadata.adaptiveDeloadApplied ? (
+                      <li>Recovery mode applied from recent fatigue/readiness signals.</li>
+                    ) : null}
+                    {selectionMetadata.periodizationWeek ? (
+                      <li>Program week context: Week {selectionMetadata.periodizationWeek}.</li>
+                    ) : null}
+                  </ul>
+                </div>
+              ) : null}
             </div>
           </div>
           {baselineSummary.evaluatedExercises > 0 ? (
@@ -497,6 +534,13 @@ export default async function WorkoutDetailPage({
                       : exercise.section === "MAIN" || exercise.isMainLift
                       ? "Main lift"
                       : "Accessory";
+                  const rationaleEntry = selectionMetadata.rationale?.[exercise.exercise.id];
+                  const reasonChip = getSelectionStepLabel(rationaleEntry?.selectedStep);
+                  const topReasons = getTopComponentLabels(rationaleEntry?.components, 2);
+                  const detailComponents = Object.entries(rationaleEntry?.components ?? {})
+                    .filter(([, value]) => Number.isFinite(value))
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 4);
 
                   return (
                     <div key={exercise.id} className="rounded-2xl border border-slate-200 p-4 sm:p-5">
@@ -509,13 +553,42 @@ export default async function WorkoutDetailPage({
                             {exercise.sets[0]?.targetRpe ? ` | RPE ${exercise.sets[0].targetRpe}` : ""}
                           </p>
                         </div>
-                        <span className="text-xs uppercase tracking-wide text-slate-500">
-                          {roleLabel}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs uppercase tracking-wide text-slate-500">
+                            {roleLabel}
+                          </span>
+                          {rationaleEntry ? (
+                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+                              {reasonChip}
+                            </span>
+                          ) : null}
+                        </div>
                       </div>
                       <p className="mt-2 text-xs text-slate-500">
                         Why: {(exercise.movementPatterns?.length ? exercise.movementPatterns.map((p: string) => p.toLowerCase().replace(/_/g, " ")).join(", ") : "unknown")} pattern. {stressNote} {loadNote}
                       </p>
+                      {rationaleEntry ? (
+                        <div className="mt-2 space-y-1 text-xs text-slate-600">
+                          <p>
+                            Why included:{" "}
+                            {topReasons.length > 0
+                              ? topReasons.join(" • ")
+                              : "Balanced fit for session goals and constraints."}
+                          </p>
+                          {detailComponents.length > 0 ? (
+                            <details>
+                              <summary className="cursor-pointer text-slate-500">
+                                Details
+                              </summary>
+                              <p className="mt-1 text-slate-500">
+                                {detailComponents
+                                  .map(([name, value]) => `${name}: ${value.toFixed(2)}`)
+                                  .join(" • ")}
+                              </p>
+                            </details>
+                          ) : null}
+                        </div>
+                      ) : null}
                       <div className="mt-3 grid gap-2 text-sm text-slate-600">
                         {exercise.sets.map((set) => (
                           <div

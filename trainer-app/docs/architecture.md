@@ -1,6 +1,6 @@
 # Engine Architecture
 
-Last verified against code: 2026-02-12
+Last verified against code: 2026-02-14
 
 This document describes current runtime behavior for workout generation and load assignment.
 
@@ -126,6 +126,55 @@ Notes:
 - Upserts one `SetLog` per `WorkoutSet` (`workoutSetId` unique).
 - Logged values feed future generation via `mapHistory(...)`.
 
+## Periodization system (Phase 1 - 2026-02-14)
+
+### Hierarchy
+
+```text
+MacroCycle (12-52 weeks)
+├── Mesocycle 1 (4-6 weeks)
+│   ├── Block 1: Accumulation (2-3 weeks)
+│   ├── Block 2: Intensification (2 weeks)
+│   ├── Block 3: Realization (1 week) [advanced only]
+│   └── Block 4: Deload (1 week)
+├── Mesocycle 2 (4-6 weeks)
+│   └── ...
+└── Mesocycle N
+```
+
+### Block types and modifiers
+
+| Block Type | Volume | Intensity (RIR) | Rest | Adaptation |
+|------------|--------|-----------------|------|------------|
+| **Accumulation** | 1.0 → 1.2 | +2 (easier) | 0.9x | Myofibrillar hypertrophy |
+| **Intensification** | 1.0 → 0.8 | +1 | 1.0x | Neural adaptation |
+| **Realization** | 0.6 → 0.7 | +0 (max effort) | 1.2x | Peak performance |
+| **Deload** | 0.5 | +3 (very easy) | 0.8x | Active recovery |
+
+### Training age templates
+
+- **Beginner**: 3-week accumulation + 1-week deload (4-week meso)
+- **Intermediate**: 2-week accumulation + 2-week intensification + 1-week deload (5-week meso)
+- **Advanced**: 2-week accumulation + 2-week intensification + 1-week realization + 1-week deload (6-week meso)
+
+### Integration
+
+1. **Macro generation**: `POST /api/periodization/macro` → `generateMacroCycle()` → Nested Prisma create
+2. **Context loading**: `loadCurrentBlockContext(userId, date)` → Finds active macro → Derives block context
+3. **Prescription**: `prescribeWithBlock({ basePrescription, blockContext })` → Applies modifiers
+4. **Load assignment**: `applyLoads({ prescriptionModifiers })` → Applies intensity multiplier
+
+### Backward compatibility
+
+- All new fields nullable (`Workout.trainingBlockId`, `Workout.weekInBlock`, `Workout.blockPhase`)
+- `blockContext` parameter optional in session generation
+- When no macro cycle exists, system uses base prescriptions (no modifiers)
+- Existing periodization logic (`getPeriodizationModifiers()`) continues to work alongside new system
+
+**Reference**: ADR-033, ADR-034, ADR-035. See `src/lib/engine/periodization/` for implementation.
+
+---
+
 ## Module map (active runtime)
 
 | Module | Responsibility |
@@ -141,6 +190,7 @@ Notes:
 | `rules.ts` | Rep ranges and periodization helpers |
 | `progression.ts` | Next-load math and adaptive deload signal |
 | `types.ts` | Engine contracts |
+| **`periodization/`** | **Macro/meso/block generation, context derivation, block-aware prescription** |
 
 ## Legacy modules retained but not on active generation path
 

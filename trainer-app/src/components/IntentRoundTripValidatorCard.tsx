@@ -2,6 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import {
+  getSelectionStepLabel,
+  getTopComponentLabels,
+  parseExplainabilitySelectionMetadata,
+} from "@/lib/ui/explainability";
 
 type SessionIntent = "push" | "pull" | "legs" | "upper" | "lower" | "full_body" | "body_part";
 
@@ -40,6 +45,10 @@ type GeneratedMetadata = {
 type ExerciseOption = {
   id: string;
   name: string;
+  splitTags: string[];
+  primaryMuscles: string[];
+  secondaryMuscles: string[];
+  isFavorite: boolean;
 };
 
 const INTENT_OPTIONS: { value: SessionIntent; label: string }[] = [
@@ -110,44 +119,76 @@ function parseTargetMuscles(input: string): string[] {
     .filter((entry) => entry.length > 0);
 }
 
-function describeSelection(selection: unknown): {
-  selectedCount?: number;
-  pinCount?: number;
-  targetCount?: number;
-} {
-  if (!selection || typeof selection !== "object") {
-    return {};
+const UPPER_INTENT_MUSCLES = new Set([
+  "chest",
+  "front delts",
+  "side delts",
+  "triceps",
+  "lats",
+  "upper back",
+  "rear delts",
+  "biceps",
+  "forearms",
+]);
+
+const LOWER_INTENT_MUSCLES = new Set([
+  "quads",
+  "hamstrings",
+  "glutes",
+  "calves",
+  "adductors",
+  "abductors",
+  "core",
+  "lower back",
+]);
+
+function normalizeMuscleKey(muscle: string): string {
+  return muscle.trim().toLowerCase();
+}
+
+function getIntentFilteredExerciseOptions(
+  options: ExerciseOption[],
+  intent: SessionIntent,
+  targetMusclesInput: string
+): ExerciseOption[] {
+  if (intent === "full_body") {
+    return options;
   }
 
-  const parsed = selection as {
-    selectedExerciseIds?: unknown;
-    rationale?: unknown;
-    perExerciseSetTargets?: unknown;
-  };
-
-  const selectedCount = Array.isArray(parsed.selectedExerciseIds)
-    ? parsed.selectedExerciseIds.length
-    : undefined;
-  const targetCount =
-    parsed.perExerciseSetTargets &&
-    typeof parsed.perExerciseSetTargets === "object" &&
-    !Array.isArray(parsed.perExerciseSetTargets)
-      ? Object.keys(parsed.perExerciseSetTargets).length
-      : undefined;
-
-  let pinCount: number | undefined;
-  if (parsed.rationale && typeof parsed.rationale === "object" && !Array.isArray(parsed.rationale)) {
-    const values = Object.values(parsed.rationale as Record<string, unknown>);
-    pinCount = values.filter((value) => {
-      if (!value || typeof value !== "object" || Array.isArray(value)) {
-        return false;
-      }
-      const step = (value as { selectedStep?: unknown }).selectedStep;
-      return step === "pin";
-    }).length;
+  if (intent === "push" || intent === "pull" || intent === "legs") {
+    return options.filter((exercise) => exercise.splitTags.includes(intent));
   }
 
-  return { selectedCount, pinCount, targetCount };
+  const resolveExerciseMuscles = (exercise: ExerciseOption) =>
+    new Set(
+      [...exercise.primaryMuscles, ...exercise.secondaryMuscles].map((muscle) =>
+        normalizeMuscleKey(muscle)
+      )
+    );
+
+  if (intent === "upper") {
+    return options.filter((exercise) => {
+      const muscles = resolveExerciseMuscles(exercise);
+      return Array.from(UPPER_INTENT_MUSCLES).some((muscle) => muscles.has(muscle));
+    });
+  }
+
+  if (intent === "lower") {
+    return options.filter((exercise) => {
+      const muscles = resolveExerciseMuscles(exercise);
+      return Array.from(LOWER_INTENT_MUSCLES).some((muscle) => muscles.has(muscle));
+    });
+  }
+
+  const targetMuscles = new Set(parseTargetMuscles(targetMusclesInput).map(normalizeMuscleKey));
+  if (targetMuscles.size === 0) {
+    return options;
+  }
+
+  return options.filter((exercise) => {
+    const muscles = resolveExerciseMuscles(exercise);
+    return Array.from(targetMuscles).some((muscle) => muscles.has(muscle));
+  });
 }
 
 export function IntentRoundTripValidatorCard() {
@@ -178,12 +219,41 @@ export function IntentRoundTripValidatorCard() {
       }
       const body = await response.json().catch(() => ({}));
       const options = Array.isArray(body.exercises)
-        ? (body.exercises as { id?: unknown; name?: unknown }[])
+        ? (body.exercises as {
+            id?: unknown;
+            name?: unknown;
+            splitTags?: unknown;
+            primaryMuscles?: unknown;
+            secondaryMuscles?: unknown;
+            isFavorite?: unknown;
+          }[])
             .filter(
-              (exercise): exercise is { id: string; name: string } =>
+              (
+                exercise
+              ): exercise is {
+                id: string;
+                name: string;
+                splitTags: string[];
+                primaryMuscles: string[];
+                secondaryMuscles: string[];
+                isFavorite: boolean;
+              } =>
                 typeof exercise.id === "string" && typeof exercise.name === "string"
             )
-            .map((exercise) => ({ id: exercise.id, name: exercise.name }))
+            .map((exercise) => ({
+              id: exercise.id,
+              name: exercise.name,
+              splitTags: Array.isArray(exercise.splitTags)
+                ? exercise.splitTags.filter((tag): tag is string => typeof tag === "string")
+                : [],
+              primaryMuscles: Array.isArray(exercise.primaryMuscles)
+                ? exercise.primaryMuscles.filter((muscle): muscle is string => typeof muscle === "string")
+                : [],
+              secondaryMuscles: Array.isArray(exercise.secondaryMuscles)
+                ? exercise.secondaryMuscles.filter((muscle): muscle is string => typeof muscle === "string")
+                : [],
+              isFavorite: exercise.isFavorite === true,
+            }))
         : [];
 
       if (!ignore) {
@@ -203,10 +273,44 @@ export function IntentRoundTripValidatorCard() {
     };
   }, []);
 
-  const selectionSummary = useMemo(
-    () => describeSelection(generatedMetadata?.selection),
+  const selectionMetadata = useMemo(
+    () => parseExplainabilitySelectionMetadata(generatedMetadata?.selection),
     [generatedMetadata?.selection]
   );
+  const selectedCount =
+    selectionMetadata.selectedExerciseIds?.length ??
+    Object.keys(selectionMetadata.rationale ?? {}).length;
+  const pinCount = Object.values(selectionMetadata.rationale ?? {}).filter(
+    (entry) => entry.selectedStep === "pin"
+  ).length;
+  const targetCount = Object.keys(selectionMetadata.perExerciseSetTargets ?? {}).length;
+  const topRationaleRows = Object.entries(selectionMetadata.rationale ?? {})
+    .slice(0, 3)
+    .map(([exerciseId, entry]) => {
+      const allExercises = [...(workout?.mainLifts ?? []), ...(workout?.accessories ?? [])];
+      const exerciseName =
+        allExercises.find((exercise) => exercise.exercise.id === exerciseId)?.exercise.name ??
+        "Exercise";
+      const topReasons = getTopComponentLabels(entry.components, 2);
+      return {
+        exerciseId,
+        exerciseName,
+        stepLabel: getSelectionStepLabel(entry.selectedStep),
+        reasonLine:
+          topReasons.length > 0
+            ? topReasons.join(" • ")
+            : "Selected for overall fit against session constraints.",
+      };
+    });
+
+  const filteredExerciseOptions = useMemo(
+    () => getIntentFilteredExerciseOptions(exerciseOptions, intent, targetMusclesInput),
+    [exerciseOptions, intent, targetMusclesInput]
+  );
+  const filteredPinnedExerciseIds = useMemo(() => {
+    const allowedIds = new Set(filteredExerciseOptions.map((exercise) => exercise.id));
+    return pinnedExerciseIds.filter((id) => allowedIds.has(id));
+  }, [filteredExerciseOptions, pinnedExerciseIds]);
 
   const handlePinSelectionChange = (value: string[]) => {
     setPinnedExerciseIds(value);
@@ -225,7 +329,8 @@ export function IntentRoundTripValidatorCard() {
       body: JSON.stringify({
         intent,
         targetMuscles: intent === "body_part" ? targetMuscles : undefined,
-        pinnedExerciseIds: pinnedExerciseIds.length > 0 ? pinnedExerciseIds : undefined,
+        pinnedExerciseIds:
+          filteredPinnedExerciseIds.length > 0 ? filteredPinnedExerciseIds : undefined,
       }),
     });
 
@@ -343,23 +448,23 @@ export function IntentRoundTripValidatorCard() {
           <select
             multiple
             className="min-h-28 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
-            value={pinnedExerciseIds}
+            value={filteredPinnedExerciseIds}
             onChange={(event) =>
               handlePinSelectionChange(
                 Array.from(event.target.selectedOptions).map((option) => option.value)
               )
             }
           >
-            {exerciseOptions.map((exercise) => (
+            {filteredExerciseOptions.map((exercise) => (
               <option key={exercise.id} value={exercise.id}>
-                {exercise.name}
+                {exercise.isFavorite ? `* ${exercise.name}` : exercise.name}
               </option>
             ))}
           </select>
           <span className="text-xs text-slate-500">
             {exerciseLoading
               ? "Loading exercises..."
-              : `${pinnedExerciseIds.length} pinned`}
+              : `${filteredPinnedExerciseIds.length} pinned`}
           </span>
         </label>
       </div>
@@ -394,11 +499,26 @@ export function IntentRoundTripValidatorCard() {
             intent {(generatedMetadata.sessionIntent ?? intent).replaceAll("_", " ")}.
           </p>
           <p className="mt-1">
-            Selection snapshot: {selectionSummary.selectedCount ?? 0} selected,{" "}
-            {selectionSummary.pinCount ?? 0} pinned picks,{" "}
-            {selectionSummary.targetCount ?? 0} set-target overrides.
+            Selection snapshot: {selectedCount} selected, {pinCount} pinned picks, {targetCount} set-target overrides.
           </p>
         </div>
+      ) : null}
+      {selectedCount > 0 ? (
+        <details className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+          <summary className="cursor-pointer font-semibold text-slate-900">Why this selection</summary>
+          <p className="mt-1">
+            {selectedCount} selected, {pinCount} pinned, {Math.max(0, selectedCount - pinCount)} auto-selected.
+          </p>
+          {topRationaleRows.length > 0 ? (
+            <div className="mt-2 space-y-1">
+              {topRationaleRows.map((row) => (
+                <p key={row.exerciseId}>
+                  <span className="font-semibold">{row.exerciseName}</span> ({row.stepLabel}): {row.reasonLine}
+                </p>
+              ))}
+            </div>
+          ) : null}
+        </details>
       ) : null}
 
       {savedId ? (

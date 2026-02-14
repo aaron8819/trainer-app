@@ -17,8 +17,17 @@ import {
   type SelectionOutput,
   type SessionIntent,
 } from "@/lib/engine/exercise-selection";
-import type { WorkoutPlan } from "@/lib/engine/types";
+import type { WorkoutPlan, Muscle } from "@/lib/engine/types";
+import type { BlockContext } from "@/lib/engine/periodization/types";
 import type { SraWarning } from "@/lib/engine/sra";
+import {
+  selectExercisesOptimized,
+  type SelectionObjective,
+  type SelectionResult,
+  DEFAULT_SELECTION_WEIGHTS,
+} from "@/lib/engine/selection-v2";
+import { VOLUME_LANDMARKS, MUSCLE_SPLIT_MAP } from "@/lib/engine/volume-landmarks";
+import { INDIRECT_SET_MULTIPLIER } from "@/lib/engine/volume-constants";
 import { loadTemplateDetail, type TemplateIntent } from "./templates";
 import {
   applyLoads,
@@ -32,6 +41,8 @@ import {
   mapPreferences,
   mapProfile,
 } from "./workout-context";
+import { loadCurrentBlockContext } from "./periodization";
+import { loadExerciseExposure } from "./exercise-exposure";
 
 type GenerateTemplateSessionParams = {
   pinnedExerciseIds?: string[];
@@ -60,6 +71,8 @@ type SessionGenerationResult =
         coldStartBypass?: ColdStartBypass;
         coldStartProtocolEnabled?: boolean;
         effectiveColdStartStage?: ColdStartStage;
+        adaptiveDeloadApplied?: boolean;
+        periodizationWeek?: number;
       };
     }
   | { error: string };
@@ -84,7 +97,193 @@ type MappedGenerationContext = {
   mesocycleLength: number;
   effectivePeriodization: ReturnType<typeof getPeriodizationModifiers>;
   adaptiveDeload: boolean;
+  blockContext: BlockContext | null;
+  rotationContext: Awaited<ReturnType<typeof loadExerciseExposure>>;
 };
+
+/**
+ * Build SelectionObjective from mapped generation context
+ *
+ * Translates workout context into the format expected by selectExercisesOptimized
+ */
+function buildSelectionObjective(
+  mapped: MappedGenerationContext,
+  sessionIntent: SessionIntent,
+  targetMuscles?: string[]
+): SelectionObjective {
+  const fatigueState = deriveFatigueState(mapped.history, mapped.mappedCheckIn);
+  const volumeContext = buildVolumeContext(mapped.history, mapped.exerciseLibrary, {
+    week: mapped.weekInBlock,
+    length: mapped.mesocycleLength,
+  });
+
+  // Build constraints
+  const painFlagExerciseIds = fatigueState.painFlags
+    ? Object.keys(fatigueState.painFlags).filter((id) => (fatigueState.painFlags?.[id] ?? 0) >= 2)
+    : [];
+
+  // Build volume ceiling (MRV) for muscles in this session's split
+  const volumeCeiling = new Map<Muscle, number>();
+  for (const [muscle, split] of Object.entries(MUSCLE_SPLIT_MAP)) {
+    if (split === sessionIntent) {
+      const landmarks = VOLUME_LANDMARKS[muscle];
+      if (landmarks) {
+        volumeCeiling.set(muscle as Muscle, landmarks.mrv);
+      }
+    }
+  }
+
+  const constraints: SelectionObjective["constraints"] = {
+    volumeFloor: new Map(),
+    volumeCeiling,
+    timeBudget: mapped.mappedConstraints.sessionMinutes,
+    equipment: new Set(mapped.mappedConstraints.availableEquipment),
+    contraindications: new Set(painFlagExerciseIds),
+    minExercises: 2,
+    maxExercises: 8,
+    // Structural constraints to ensure balanced workouts
+    minMainLifts: sessionIntent === "body_part" ? 0 : 1, // 1 for PPL, 0 for custom
+    maxMainLifts: 3, // Prevent over-fatigue with too many heavy compounds
+    minAccessories: 2, // Ensure variety and volume filling
+  };
+
+  // Build weights (use defaults)
+  const weights = { ...DEFAULT_SELECTION_WEIGHTS };
+
+  // Build volume context
+  const weeklyTarget = new Map<Muscle, number>();
+  const weeklyActual = new Map<Muscle, number>();
+  const effectiveActual = new Map<Muscle, number>();
+
+  // Populate volume targets and actuals from volume context
+  // Determine which muscles belong to this session's split
+  const sessionSplit = sessionIntent; // "push" | "pull" | "legs"
+
+  // For enhanced volume context, extract muscle-specific data
+  if ("muscleVolume" in volumeContext) {
+    for (const [muscle, state] of Object.entries(volumeContext.muscleVolume)) {
+      const muscleSplit = MUSCLE_SPLIT_MAP[muscle];
+
+      // Set target for muscles in this session's split
+      if (muscleSplit === sessionSplit) {
+        const landmarks = VOLUME_LANDMARKS[muscle];
+        if (landmarks) {
+          weeklyTarget.set(muscle as Muscle, landmarks.mev);
+        }
+      }
+
+      // Set actual volumes (all muscles, to account for indirect volume)
+      weeklyActual.set(muscle as Muscle, state.weeklyDirectSets);
+
+      // Effective volume = direct + (indirect × 0.3)
+      const effectiveVolume =
+        state.weeklyDirectSets + (state.weeklyIndirectSets * INDIRECT_SET_MULTIPLIER);
+      effectiveActual.set(muscle as Muscle, effectiveVolume);
+    }
+  } else {
+    // Fallback for basic VolumeContext (shouldn't happen with mesocycle options)
+    // Set targets for muscles in this session's split
+    for (const [muscle, split] of Object.entries(MUSCLE_SPLIT_MAP)) {
+      if (split === sessionSplit) {
+        const landmarks = VOLUME_LANDMARKS[muscle];
+        if (landmarks) {
+          weeklyTarget.set(muscle as Muscle, landmarks.mev);
+        }
+      }
+    }
+
+    // Use recent volume as actuals
+    for (const [muscle, sets] of Object.entries(volumeContext.recent)) {
+      weeklyActual.set(muscle as Muscle, sets);
+      effectiveActual.set(muscle as Muscle, sets); // No indirect data available
+    }
+  }
+
+  // Build SRA context
+  const sraContext = new Map<Muscle, number>();
+  // TODO: Populate from SRA module (currently not used in scoring weights)
+
+  return {
+    constraints,
+    weights,
+    volumeContext: {
+      weeklyTarget,
+      weeklyActual,
+      effectiveActual,
+    },
+    rotationContext: mapped.rotationContext,
+    sraContext,
+    preferences: {
+      favoriteExerciseIds: new Set(mapped.mappedPreferences?.favoriteExerciseIds ?? []),
+      avoidExerciseIds: new Set(mapped.mappedPreferences?.avoidExerciseIds ?? []),
+    },
+    blockContext: mapped.blockContext ?? undefined,
+  };
+}
+
+/**
+ * Map SelectionResult to SelectionOutput format
+ *
+ * Translates new optimizer output back to legacy format for compatibility
+ */
+function mapSelectionResult(result: SelectionResult): SelectionOutput {
+  const selectedExerciseIds = result.selected.map((c) => c.exercise.id);
+  const mainLiftIds = result.selected
+    .filter((c) => c.exercise.isMainLiftEligible)
+    .map((c) => c.exercise.id);
+  const accessoryIds = result.selected
+    .filter((c) => !c.exercise.isMainLiftEligible)
+    .map((c) => c.exercise.id);
+
+  // Map per-exercise set targets
+  const perExerciseSetTargets: Record<string, number> = {};
+  for (const candidate of result.selected) {
+    perExerciseSetTargets[candidate.exercise.id] = candidate.proposedSets;
+  }
+
+  // Map rationale - convert new string format to legacy structured format
+  const rationale: SelectionOutput["rationale"] = {};
+  for (const [exerciseId, rationaleText] of result.rationale.perExercise) {
+    const candidate = result.selected.find((c) => c.exercise.id === exerciseId);
+    if (candidate) {
+      rationale[exerciseId] = {
+        score: candidate.totalScore,
+        components: {
+          deficitFill: candidate.scores.deficitFill,
+          rotationNovelty: candidate.scores.rotationNovelty,
+          sfrScore: candidate.scores.sfrScore,
+          lengthenedScore: candidate.scores.lengthenedScore,
+          movementNovelty: candidate.scores.movementNovelty,
+          sraAlignment: candidate.scores.sraAlignment,
+          userPreference: candidate.scores.userPreference,
+        },
+        hardFilterPass: true,
+        selectedStep: "beam_search" as any, // Legacy field not used in new system
+      };
+    }
+  }
+
+  // Map volume plan by muscle - convert to legacy VolumePlanByMuscle format
+  const volumePlanByMuscle: VolumePlanByMuscle = {};
+  for (const [muscle, volume] of result.volumeFilled) {
+    const deficit = result.volumeDeficit.get(muscle) ?? 0;
+    const target = volume + deficit;
+    volumePlanByMuscle[muscle] = {
+      target,
+      planned: volume,
+      delta: deficit,
+    };
+  }
+
+  return {
+    selectedExerciseIds,
+    mainLiftIds,
+    accessoryIds,
+    perExerciseSetTargets,
+    rationale,
+    volumePlanByMuscle,
+  };
+}
 
 export async function generateSessionFromTemplate(
   userId: string,
@@ -167,33 +366,26 @@ export async function generateSessionFromIntent(
     }
     return { error: "Failed to load generation context" };
   }
-  const fatigueState = deriveFatigueState(mapped.history, mapped.mappedCheckIn);
   const coldStartProtocolEnabled = isIntentColdStartProtocolEnabled();
   const effectiveColdStartStage: ColdStartStage = coldStartProtocolEnabled ? mapped.coldStartStage : 2;
 
-  const selection = selectExercises({
-    mode: "intent",
-    intent: input.intent,
-    targetMuscles: input.targetMuscles,
-    pinnedExerciseIds: input.pinnedExerciseIds,
-    weekInBlock: mapped.weekInBlock,
-    mesocycleLength: mapped.mesocycleLength,
-    sessionMinutes: mapped.mappedConstraints.sessionMinutes,
-    trainingAge: mapped.mappedProfile.trainingAge,
-    goals: mapped.mappedGoals,
-    constraints: {
-      availableEquipment: mapped.mappedConstraints.availableEquipment,
-      daysPerWeek: mapped.mappedConstraints.daysPerWeek,
-    },
-    preferences: mapped.mappedPreferences,
-    fatigueState: {
-      readinessScore: fatigueState.readinessScore,
-      painFlags: fatigueState.painFlags,
-    },
-    history: mapped.history,
-    exerciseLibrary: mapped.exerciseLibrary,
-    coldStart: { stage: effectiveColdStartStage },
-  });
+  // Build selection objective
+  const objective = buildSelectionObjective(mapped, input.intent, input.targetMuscles);
+
+  // Filter exercise pool by session intent (split tag)
+  // This prevents exercises from wrong splits (e.g., legs exercises in push workouts)
+  // Only filter for PPL splits; full_body and body_part get all exercises
+  const validSplitTags = ["push", "pull", "legs"] as const;
+  const filteredPool =
+    validSplitTags.includes(input.intent as any)
+      ? mapped.exerciseLibrary.filter((ex) => ex.splitTags.includes(input.intent as any))
+      : mapped.exerciseLibrary; // full_body and body_part: no filtering
+
+  // Run new beam search optimizer
+  const selectionResult = selectExercisesOptimized(filteredPool, objective);
+
+  // Map back to legacy SelectionOutput format
+  const selection = mapSelectionResult(selectionResult);
 
   const templateExercises: TemplateExerciseInput[] = selection.selectedExerciseIds.flatMap(
     (exerciseId, index) => {
@@ -237,7 +429,6 @@ function buildTemplateSelection(
   targetMuscles: string[],
   params: GenerateTemplateSessionParams
 ): SelectionOutput {
-  const fatigueState = deriveFatigueState(mapped.history, mapped.mappedCheckIn);
   const templateExerciseIds = templateExercises.map((entry) => entry.exercise.id);
   if (!params.autoFillUnpinned) {
     return {
@@ -250,29 +441,28 @@ function buildTemplateSelection(
     };
   }
 
-  return selectExercises({
-    mode: "template",
-    intent: sessionIntent,
-    targetMuscles: sessionIntent === "body_part" ? targetMuscles : undefined,
-    pinnedExerciseIds: params.pinnedExerciseIds,
-    templateExerciseIds,
-    weekInBlock: mapped.weekInBlock,
-    mesocycleLength: mapped.mesocycleLength,
-    sessionMinutes: mapped.mappedConstraints.sessionMinutes,
-    trainingAge: mapped.mappedProfile.trainingAge,
-    goals: mapped.mappedGoals,
-    constraints: {
-      availableEquipment: mapped.mappedConstraints.availableEquipment,
-      daysPerWeek: mapped.mappedConstraints.daysPerWeek,
-    },
-    preferences: mapped.mappedPreferences,
-    fatigueState: {
-      readinessScore: fatigueState.readinessScore,
-      painFlags: fatigueState.painFlags,
-    },
-    history: mapped.history,
-    exerciseLibrary: mapped.exerciseLibrary,
+  // Build selection objective for template auto-fill
+  const objective = buildSelectionObjective(
+    mapped,
+    sessionIntent,
+    sessionIntent === "body_part" ? targetMuscles : undefined
+  );
+
+  // Filter exercise pool to include pinned exercises + eligible candidates
+  const pinnedSet = new Set(params.pinnedExerciseIds ?? []);
+  const pool = mapped.exerciseLibrary.filter((ex) => {
+    // Always include pinned exercises
+    if (pinnedSet.has(ex.id)) return true;
+    // Exclude template exercises that aren't pinned (we're auto-filling their slots)
+    if (templateExerciseIds.includes(ex.id) && !pinnedSet.has(ex.id)) return false;
+    return true;
   });
+
+  // Run new beam search optimizer
+  const selectionResult = selectExercisesOptimized(pool, objective);
+
+  // Map back to legacy SelectionOutput format
+  return mapSelectionResult(selectionResult);
 }
 
 function applyTemplateAutoFillSelection(
@@ -358,6 +548,8 @@ function runSessionGeneration(
         coldStartBypass?: ColdStartBypass;
         coldStartProtocolEnabled?: boolean;
         effectiveColdStartStage?: ColdStartStage;
+        adaptiveDeloadApplied?: boolean;
+        periodizationWeek?: number;
       };
     }
   | { error: string } {
@@ -372,6 +564,7 @@ function runSessionGeneration(
     weekInBlock: mapped.weekInBlock,
     mesocycleLength: mapped.mesocycleLength,
     periodization: mapped.effectivePeriodization,
+    blockContext: mapped.blockContext,
     isStrict: options.isStrict,
     setCountOverrides: options.setCountOverrides,
   });
@@ -409,6 +602,8 @@ function finalizePostLoadResult(
       coldStartBypass?: ColdStartBypass;
       coldStartProtocolEnabled?: boolean;
       effectiveColdStartStage?: ColdStartStage;
+      adaptiveDeloadApplied?: boolean;
+      periodizationWeek?: number;
     };
   },
   mapped: MappedGenerationContext
@@ -455,6 +650,8 @@ function finalizePostLoadResult(
     selection: {
       ...result.selection,
       volumePlanByMuscle,
+      adaptiveDeloadApplied: mapped.adaptiveDeload,
+      periodizationWeek: mapped.weekInBlock,
     },
   };
 }
@@ -525,6 +722,12 @@ async function loadMappedGenerationContext(userId: string): Promise<MappedGenera
       }
     : periodization;
 
+  // Load block context for periodization
+  const blockContext = await loadCurrentBlockContext(userId);
+
+  // Load exercise exposure for rotation tracking
+  const rotationContext = await loadExerciseExposure(userId);
+
   return {
     mappedProfile,
     mappedGoals,
@@ -545,6 +748,8 @@ async function loadMappedGenerationContext(userId: string): Promise<MappedGenera
     mesocycleLength,
     effectivePeriodization,
     adaptiveDeload,
+    blockContext,
+    rotationContext,
   };
 }
 

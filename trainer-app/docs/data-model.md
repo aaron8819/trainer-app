@@ -145,6 +145,70 @@ Relations:
 - Uniqueness: `workoutSetId @unique`
 - Implication: set logging is upserted per set, not append-only.
 
+## Periodization models (Phase 1 - 2026-02-14)
+
+### `MacroCycle`
+
+- Fields:
+  - identity: `id`, `userId`
+  - scheduling: `startDate`, `endDate`, `durationWeeks`
+  - programming: `trainingAge`, `primaryGoal`
+  - timestamps: `createdAt`, `updatedAt`
+- Relations: `mesocycles`
+- Index: `@@index([userId, startDate])`
+- Purpose: Top-level periodization structure spanning multiple mesocycles (typically 12-52 weeks)
+
+### `Mesocycle`
+
+- Fields:
+  - identity: `id`, `macroCycleId`
+  - sequencing: `mesoNumber` (1, 2, 3...)
+  - scheduling: `startWeek` (offset from macro start, 0-indexed), `durationWeeks`
+  - programming: `focus` (e.g., "Upper Body Hypertrophy"), `volumeTarget`, `intensityBias`
+- Relations: `blocks`
+- Constraints:
+  - unique: `@@unique([macroCycleId, mesoNumber])`
+  - index: `@@index([macroCycleId])`
+- Purpose: Training phase within macro cycle (typically 4-6 weeks)
+
+### `TrainingBlock`
+
+- Fields:
+  - identity: `id`, `mesocycleId`
+  - sequencing: `blockNumber` (1, 2, 3... within meso)
+  - type: `blockType` (ACCUMULATION | INTENSIFICATION | REALIZATION | DELOAD)
+  - scheduling: `startWeek` (offset from macro start), `durationWeeks`
+  - programming: `volumeTarget`, `intensityBias`, `adaptationType`
+- Relations: `workouts`
+- Constraints:
+  - unique: `@@unique([mesocycleId, blockNumber])`
+  - index: `@@index([mesocycleId])`
+- Purpose: Distinct training phase with specific volume/intensity characteristics (typically 1-3 weeks)
+- Block modifiers:
+  - **Accumulation**: High volume (1.0 → 1.2), moderate intensity (RIR +2), myofibrillar hypertrophy
+  - **Intensification**: Moderate volume (1.0 → 0.8), high intensity (RIR +1), neural adaptation
+  - **Realization**: Low volume (0.6 → 0.7), max intensity (RIR +0), peak performance
+  - **Deload**: 50% volume, low intensity (RIR +3), active recovery
+
+### `ExerciseExposure`
+
+- Fields:
+  - identity: `id`, `userId`, `exerciseName`
+  - timing: `lastUsedAt`, `updatedAt`
+  - usage windows: `timesUsedL4W`, `timesUsedL8W`, `timesUsedL12W`
+  - averages: `avgSetsPerWeek`, `avgVolumePerWeek`
+- Constraints:
+  - unique: `@@unique([userId, exerciseName])`
+  - index: `@@index([userId, lastUsedAt])`
+- Purpose: Track exercise exposure for intelligent rotation management
+
+### `Workout` extensions for periodization
+
+New optional fields (backward compatible):
+- `trainingBlockId?`: FK to `TrainingBlock`
+- `weekInBlock?`: 1-indexed week number within block
+- `blockPhase?`: Denormalized `BlockType` for display
+
 ## Baseline and template models
 
 ### `Baseline`

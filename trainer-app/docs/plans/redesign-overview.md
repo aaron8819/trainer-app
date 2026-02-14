@@ -217,11 +217,29 @@ This overview references detailed specs in:
 
 ## Migration Strategy
 
-### Backward Compatibility
+### Clean Cutover Decision (2026-02-15)
 
-**Principle:** Existing users continue uninterrupted; new features opt-in initially.
+**Status Change:** No production users exist, so backward compatibility is **not required**.
 
-**Approach:**
+**New Approach:** Clean cutover with immediate legacy code removal after each phase.
+
+**Principle:** Remove legacy code immediately after new system is validated. No dual-mode operation.
+
+**Phase Execution Pattern:**
+
+1. **Implement new system** (selection-v2, periodization, etc.)
+2. **Validate thoroughly** (tests, build, integration verification)
+3. **Remove ALL legacy code immediately** (no archiving, no dual-mode)
+4. **Update documentation** (ADRs, architecture.md, anti-patterns)
+5. **Commit clean codebase** (single source of truth)
+
+**✅ Completed Clean Cutovers:**
+- **Phase 1:** Periodization foundation implemented (ADR-032 through ADR-035)
+- **Phase 2:** Selection-v2 deployed, legacy selection removed (ADR-036, ADR-040, ADR-041)
+  - Deleted: `exercise-selection.ts`, `filtering.ts`, `pick-accessories-by-slot.ts`, `split-preview.ts`
+  - Result: 8,037 lines removed, 538 tests passing, build clean
+
+**If Production Users Existed (Original Plan):**
 
 1. **Dual-mode operation** (Phases 1-3)
    - Legacy path: Current template/intent generation (frozen)
@@ -417,14 +435,16 @@ npm run migrate:redesign
 1. ✅ ~~Review this spec with team + stakeholders~~
 2. ✅ ~~Begin Phase 1 (schema design + migration script)~~ **COMPLETE**
 3. ✅ ~~Phase 2: Selection Intelligence~~ **COMPLETE**
-4. **Phase 3: Begin Autoregulation** (3 weeks)
+4. ✅ ~~Clean cutover: Remove all legacy code~~ **COMPLETE (ADR-041)**
+5. **Phase 3: Begin Autoregulation** (3 weeks)
    - Whoop API integration (daily recovery/strain)
    - Subjective readiness prompts
    - Fatigue-based intensity scaling
    - Stall detection + intervention ladder
-5. **Deploy Phase 2 to production**
+   - **CRITICAL:** Remove any legacy autoregulation code after new system validated
+6. **Deploy Phase 3 to production**
    - Build and deploy to Vercel
-   - Monitor selection quality (first 10-20 workouts)
+   - Monitor readiness scaling (first 10-20 workouts)
    - Verify no performance regressions
    - Document any edge cases discovered
 
@@ -444,11 +464,19 @@ npm run migrate:redesign
 - [x] QA: 560 tests passing, structural constraints verified
 - [x] Stakeholder: Phase 2 delivered on schedule (same day as Phase 1)
 
+**Legacy Code Removal (2026-02-15):**
+
+- [x] Technical lead: Zero active imports verified
+- [x] Product: Clean cutover decision approved (no production users)
+- [x] QA: 538 tests passing, build clean, 8,037 lines removed
+- [x] Stakeholder: ADR-041 documented, codebase ready for Phase 3
+
 **Phase 3 Kickoff Required:**
 
 - [ ] Technical lead: Review autoregulation-readiness.md
 - [ ] Product: Validate Whoop integration approach
 - [ ] QA: Define readiness scaling test scenarios
 - [ ] Stakeholder: Confirm 3-week timeline
+- [ ] **CRITICAL:** Plan legacy code removal as part of Phase 3 delivery
 
-**Questions/Feedback:** Phase 2 complete. Selection-v2 with beam search deployed. Ready to begin Phase 3 (autoregulation) in next session.
+**Questions/Feedback:** Phase 2 complete. Legacy code removed (ADR-041). Clean codebase with single source of truth (selection-v2). Ready to begin Phase 3 (autoregulation) in next session.

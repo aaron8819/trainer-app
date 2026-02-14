@@ -46,7 +46,12 @@ function wouldSatisfyStructure(
   const accessoryCount = newSelected.filter((c) => !c.exercise.isMainLiftEligible).length;
 
   // Always enforce maximum constraints
-  if (mainLiftCount > maxMainLifts) return false;
+  if (mainLiftCount > maxMainLifts) {
+    // DEBUG: Log rejections for troubleshooting
+    if (state.selected.length < 2 && newCandidate.exercise.isMainLiftEligible) {
+    }
+    return false;
+  }
 
   // For minimum constraints, only enforce if we're at a reasonable depth
   // (allow exploration at shallow depths)
@@ -58,13 +63,23 @@ function wouldSatisfyStructure(
     // If we're short on main lifts and can't add more, reject
     if (mainLiftCount < minMainLifts) {
       const needMore = minMainLifts - mainLiftCount;
-      if (remainingSlots < needMore) return false;
+      if (remainingSlots < needMore) {
+        // DEBUG
+        if (state.selected.length < 4) {
+        }
+        return false;
+      }
     }
 
     // If we're short on accessories and can't add more, reject
     if (accessoryCount < minAccessories) {
       const needMore = minAccessories - accessoryCount;
-      if (remainingSlots < needMore) return false;
+      if (remainingSlots < needMore) {
+        // DEBUG
+        if (state.selected.length < 4 && !newCandidate.exercise.isMainLiftEligible) {
+        }
+        return false;
+      }
     }
   }
 
@@ -165,7 +180,10 @@ export function beamSearch(
   };
 
   // Enforce minimum exercise constraint if needed
-  const finalBeam = enforceMinExercises(bestBeam, candidates, objective, rejectedMap);
+  let finalBeam = enforceMinExercises(bestBeam, candidates, objective, rejectedMap);
+
+  // Enforce structural constraints (main lifts + accessories balance)
+  finalBeam = enforceStructuralConstraints(finalBeam, candidates, objective, rejectedMap);
 
   // Build final result
   return buildResult(finalBeam, candidates, objective, rejectedMap);
@@ -259,6 +277,217 @@ function enforceMinExercises(
 }
 
 /**
+ * Enforce structural constraints (main lifts + accessories balance)
+ *
+ * If beam doesn't satisfy minMainLifts/minAccessories, greedily add required exercises.
+ * Prioritizes main lifts first, then accessories.
+ *
+ * @param beam - Best beam state
+ * @param candidates - Full candidate pool
+ * @param objective - Selection objective
+ * @param rejectedMap - Rejection tracking
+ * @returns Beam state satisfying structural constraints
+ */
+function enforceStructuralConstraints(
+  beam: BeamState,
+  candidates: SelectionCandidate[],
+  objective: SelectionObjective,
+  rejectedMap: Map<string, RejectionReason>
+): BeamState {
+  const { minMainLifts = 0, minAccessories = 0 } = objective.constraints;
+
+  // Count current main lifts and accessories
+  const mainLiftCount = beam.selected.filter((c) => c.exercise.isMainLiftEligible).length;
+  const accessoryCount = beam.selected.filter((c) => !c.exercise.isMainLiftEligible).length;
+
+  // Check if already satisfies structural constraints
+  if (mainLiftCount >= minMainLifts && accessoryCount >= minAccessories) {
+    return beam;
+  }
+
+
+  // Clone beam for modification
+  const augmentedBeam: BeamState = {
+    selected: [...beam.selected],
+    volumeFilled: new Map(beam.volumeFilled),
+    timeUsed: beam.timeUsed,
+    score: beam.score,
+  };
+
+  // Get remaining candidates (not already selected)
+  const selectedIds = new Set(augmentedBeam.selected.map((s) => s.exercise.id));
+  const remainingCandidates = candidates.filter((c) => !selectedIds.has(c.exercise.id));
+
+  // Step 1: Add main lifts if needed
+  if (mainLiftCount < minMainLifts) {
+    const mainLiftCandidates = remainingCandidates
+      .filter((c) => c.exercise.isMainLiftEligible)
+      .sort((a, b) => b.totalScore - a.totalScore);
+
+
+    for (const candidate of mainLiftCandidates) {
+      const currentMainLifts = augmentedBeam.selected.filter((c) => c.exercise.isMainLiftEligible).length;
+      if (currentMainLifts >= minMainLifts) break;
+
+      const canAdd = canAddCandidate(augmentedBeam, candidate, objective, rejectedMap, true); // Enable debug
+      if (canAdd) {
+        addCandidateToBeam(augmentedBeam, candidate);
+      } else {
+        // Try swapping out lowest-scoring accessories to make room
+        const swapped = trySwapForMainLift(augmentedBeam, candidate, objective, rejectedMap);
+        if (swapped) {
+          break; // Successfully added a main lift, check if we need more
+        }
+      }
+    }
+  }
+
+  // Step 2: Add accessories if needed
+  const currentAccessories = augmentedBeam.selected.filter((c) => !c.exercise.isMainLiftEligible).length;
+  if (currentAccessories < minAccessories) {
+    const accessoryCandidates = remainingCandidates
+      .filter((c) => !c.exercise.isMainLiftEligible)
+      .filter((c) => !augmentedBeam.selected.some((s) => s.exercise.id === c.exercise.id))
+      .sort((a, b) => b.totalScore - a.totalScore);
+
+    for (const candidate of accessoryCandidates) {
+      const currentAccessoryCount = augmentedBeam.selected.filter((c) => !c.exercise.isMainLiftEligible).length;
+      if (currentAccessoryCount >= minAccessories) break;
+
+      if (!canAddCandidate(augmentedBeam, candidate, objective, rejectedMap)) {
+        continue;
+      }
+
+      addCandidateToBeam(augmentedBeam, candidate);
+    }
+  }
+
+  return augmentedBeam;
+}
+
+/**
+ * Check if a candidate can be added to beam without violating constraints
+ */
+function canAddCandidate(
+  beam: BeamState,
+  candidate: SelectionCandidate,
+  objective: SelectionObjective,
+  rejectedMap: Map<string, RejectionReason>,
+  debug = false
+): boolean {
+  // Check time budget
+  const newTimeUsed = beam.timeUsed + candidate.timeContribution;
+  if (newTimeUsed > objective.constraints.timeBudget) {
+    rejectedMap.set(candidate.exercise.id, "time_budget_exceeded");
+    if (debug) {
+    }
+    return false;
+  }
+
+  // Merge volume
+  const newVolumeFilled = mergeVolume(beam.volumeFilled, candidate.volumeContribution);
+
+  // Check volume ceiling
+  if (exceedsCeiling(newVolumeFilled, objective.constraints.volumeCeiling)) {
+    rejectedMap.set(candidate.exercise.id, "volume_ceiling_reached");
+    if (debug) {
+    }
+    return false;
+  }
+
+  // Check max exercises
+  if (beam.selected.length >= objective.constraints.maxExercises) {
+    if (debug) {
+    }
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Add a candidate to beam state (mutates beam)
+ */
+function addCandidateToBeam(beam: BeamState, candidate: SelectionCandidate): void {
+  const newVolumeFilled = mergeVolume(beam.volumeFilled, candidate.volumeContribution);
+  beam.selected.push(candidate);
+  beam.volumeFilled = newVolumeFilled;
+  beam.timeUsed += candidate.timeContribution;
+  beam.score += candidate.totalScore;
+}
+
+/**
+ * Try swapping out accessories to make room for a main lift
+ *
+ * Removes the lowest-scoring accessories until the main lift fits within constraints.
+ * Only swaps accessories (never removes existing main lifts).
+ *
+ * @param beam - Beam state to modify
+ * @param mainLift - Main lift candidate to add
+ * @param objective - Selection objective
+ * @param rejectedMap - Rejection tracking
+ * @returns True if swap succeeded
+ */
+function trySwapForMainLift(
+  beam: BeamState,
+  mainLift: SelectionCandidate,
+  objective: SelectionObjective,
+  rejectedMap: Map<string, RejectionReason>
+): boolean {
+  // Get accessories sorted by score (lowest first - candidates for removal)
+  const accessories = beam.selected
+    .filter((c) => !c.exercise.isMainLiftEligible)
+    .sort((a, b) => a.totalScore - b.totalScore);
+
+  if (accessories.length === 0) {
+    return false; // No accessories to swap
+  }
+
+  // Try removing accessories one by one until main lift fits
+  const tempBeam: BeamState = {
+    selected: [...beam.selected],
+    volumeFilled: new Map(beam.volumeFilled),
+    timeUsed: beam.timeUsed,
+    score: beam.score,
+  };
+
+  const removedAccessories: SelectionCandidate[] = [];
+
+  for (const accessory of accessories) {
+    // Remove the accessory
+    const index = tempBeam.selected.findIndex((c) => c.exercise.id === accessory.exercise.id);
+    if (index === -1) continue;
+
+    tempBeam.selected.splice(index, 1);
+    tempBeam.timeUsed -= accessory.timeContribution;
+    tempBeam.score -= accessory.totalScore;
+    removedAccessories.push(accessory);
+
+    // Recalculate volume (conservative: just rebuild from scratch)
+    tempBeam.volumeFilled = new Map();
+    for (const candidate of tempBeam.selected) {
+      tempBeam.volumeFilled = mergeVolume(tempBeam.volumeFilled, candidate.volumeContribution);
+    }
+
+    // Check if main lift now fits
+    if (canAddCandidate(tempBeam, mainLift, objective, rejectedMap, false)) {
+      // Success! Apply swap to original beam
+      addCandidateToBeam(tempBeam, mainLift);
+      beam.selected = tempBeam.selected;
+      beam.volumeFilled = tempBeam.volumeFilled;
+      beam.timeUsed = tempBeam.timeUsed;
+      beam.score = tempBeam.score;
+
+      return true;
+    }
+
+    // Not enough room yet, continue removing accessories
+  }
+
+  return false; // Couldn't make room even after removing all accessories
+}
+
+/**
  * Build final selection result from best beam state
  *
  * @param beam - Best beam state
@@ -301,7 +530,16 @@ function buildResult(
   );
   const withinTimeBudget = beam.timeUsed <= objective.constraints.timeBudget;
 
-  const constraintsSatisfied = meetsMinExercises && meetsVolumeFloor && withinTimeBudget;
+  // Check structural constraints (main lifts + accessories balance)
+  const mainLiftCount = selected.filter((c) => c.exercise.isMainLiftEligible).length;
+  const accessoryCount = selected.filter((c) => !c.exercise.isMainLiftEligible).length;
+  const { minMainLifts = 0, maxMainLifts = 99, minAccessories = 0 } = objective.constraints;
+  const meetsStructuralConstraints =
+    mainLiftCount >= minMainLifts &&
+    mainLiftCount <= maxMainLifts &&
+    accessoryCount >= minAccessories;
+
+  const constraintsSatisfied = meetsMinExercises && meetsVolumeFloor && withinTimeBudget && meetsStructuralConstraints;
 
   // Generate rationale
   const rationale = generateRationale(selected, rejected, objective);

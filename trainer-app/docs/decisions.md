@@ -586,3 +586,32 @@ Replace greedy selection with multi-objective beam search optimizer (selection-v
 
 **Rationale**: Pure computation is testable without mocking, predictable, and portable. The engine can be tested with fixture data (`sample-data.ts`) and seeded PRNG without standing up a database.
 
+
+## ADR-042: Fix structural constraint enforcement in beam search (2026-02-14)
+
+**Context:** Beam search was selecting 0 main lifts for pull workouts despite `minMainLifts: 1` constraint. Investigation revealed two issues: (1) structural constraints weren't validated in `buildResult()`, allowing `constraintsSatisfied: true` with 0 main lifts; (2) time budget exhaustion prevented main lift addition during enforcement phase.
+
+**Problem:** High-scoring accessories filled time budget before enforcement step ran. When `enforceStructuralConstraints()` tried to add main lifts, all candidates exceeded the 65min budget (~72-75min each). Main lifts require longer rest periods (3-5min vs 1-2min for accessories), consuming more time per set.
+
+**Decision:**
+1. **Added structural constraint validation** in `buildResult()` - now checks `minMainLifts`, `maxMainLifts`, `minAccessories` alongside existing exercise count / volume / time checks
+2. **Implemented swap mechanism** in `enforceStructuralConstraints()` - when a main lift can't be added due to constraints, iteratively removes lowest-scoring accessories until it fits
+3. **Aligned 5 exercise classifications with knowledgebase**:
+   - Low-Incline Dumbbell Press (push) → main lift
+   - Chest-Supported Row (pull) → main lift
+   - Seated Cable Row (pull) → main lift
+   - Hack Squat (legs) → main lift
+   - Leg Press (legs) → main lift
+
+**Implementation:**
+- `buildResult()`: Added `meetsStructuralConstraints` check combining main lift and accessory counts
+- `enforceStructuralConstraints()`: Greedily adds required main lifts/accessories; calls `trySwapForMainLift()` when direct addition fails
+- `trySwapForMainLift()`: Removes accessories (lowest-score-first) until main lift fits within time/volume budgets
+- `canAddCandidate()`: Unified constraint checking for both direct adds and swaps
+
+**Rationale:** Knowledgebase recommends compounds (weighted pull-ups, barbell rows, squats, leg press) as foundation exercises. Allowing beam search to skip all main lifts violates evidence-based programming principles. Swap mechanism preserves scoring optimization while enforcing minimum structural requirements.
+
+**Evidence alignment:** Verified against `docs/knowledgebase/hypertrophyandstrengthtraining_researchreport.md` sections on exercise selection. KB explicitly lists chest-supported rows, seated cable rows, hack squats, and leg press as "top exercises" for their muscle groups.
+
+**Result:** Pull workouts now include 1-3 main lifts (T-Bar Row, Pull-Up, Barbell Row, etc.). Push/legs verified working. All 14 beam-search tests pass. Main lift totals: push (9), pull (7), legs (8).
+

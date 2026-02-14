@@ -29,7 +29,7 @@ export interface SelectionObjective {
   /**
    * Volume context (target, actual, deficits)
    */
-  volumeContext: VolumeContext;
+  volumeContext: SelectionVolumeContext;
 
   /**
    * Exercise rotation context (exposure history)
@@ -49,7 +49,7 @@ export interface SelectionObjective {
   /**
    * User preferences
    */
-  preferences: UserPreferences;
+  preferences: SelectionPreferences;
 }
 
 /**
@@ -123,9 +123,10 @@ export interface SelectionWeights {
 }
 
 /**
- * Volume context: targets, actuals, deficits
+ * Selection-specific volume context (Map-based for performance)
+ * Different from engine VolumeContext type (Record-based for compatibility)
  */
-export interface VolumeContext {
+export interface SelectionVolumeContext {
   /** Target sets per muscle this week */
   weeklyTarget: Map<Muscle, number>;
 
@@ -178,9 +179,10 @@ export type PerformanceTrend = "improving" | "stalled" | "declining";
 export type SRAContext = Map<Muscle, number>; // 0-1, where 1.0 = fully recovered
 
 /**
- * User preferences
+ * Selection-specific user preferences (Set-based for performance)
+ * Different from engine UserPreferences type (array-based for serialization)
  */
-export interface UserPreferences {
+export interface SelectionPreferences {
   /** Favorite exercise IDs */
   favoriteExerciseIds: Set<string>;
 

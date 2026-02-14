@@ -192,13 +192,18 @@ MacroCycle (12-52 weeks)
 | `types.ts` | Engine contracts |
 | **`periodization/`** | **Macro/meso/block generation, context derivation, block-aware prescription** |
 
-## Legacy modules retained but not on active generation path
+## Module Cleanup History
 
-- `split-queue.ts`
-- `filtering.ts`
-- `src/lib/api/split-preview.ts`
+**Removed 2026-02-15 (ADR-041):**
+- `filtering.ts` - Greedy selection algorithm (replaced by selection-v2)
+- `pick-accessories-by-slot.ts` - Slot-based accessory selection (replaced by beam search)
+- `src/lib/api/split-preview.ts` - Split preview utility (no longer needed)
+- `src/lib/engine/legacy/` - Archived legacy selection code (replaced by selection-v2)
 
-These remain in-repo for historical/tests/support code but are not referenced by active page/route generation flows.
+All generation flows now use `selection-v2` (multi-objective beam search).
+
+**Still active:**
+- `split-queue.ts` - History classification and split day calculation (used by history analysis)
 
 ## Known gaps
 

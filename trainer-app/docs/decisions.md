@@ -4,6 +4,98 @@ Record of significant design decisions and their rationale. Newest first.
 
 ---
 
+## ADR-041: Remove all legacy selection code (2026-02-15)
+
+**Status:** Implemented
+
+**Context:**
+Phase 2 (ADR-040) archived legacy selection to `src/lib/engine/legacy/`. After production validation with zero issues, all legacy code can be safely deleted. No production users exist, so backward compatibility is not required.
+
+**Decision:**
+Delete all legacy selection code:
+1. `src/lib/engine/legacy/` - Entire directory (2,182 lines)
+   - `exercise-selection.ts` - Greedy algorithm
+   - `exercise-selection.test.ts` - 11 tests
+   - `README.md` - Archive documentation
+2. Secondary legacy modules (966 lines):
+   - `filtering.ts` - Old selection entry point
+   - `pick-accessories-by-slot.ts` - Slot-based selection
+   - `pick-accessories-by-slot.test.ts` - 7 tests
+3. Unused utilities:
+   - `src/lib/api/split-preview.ts` - Split preview utility
+   - `src/lib/api/split-preview.test.ts` - 2 tests
+4. Deprecated calibration scripts (3 files):
+   - `scripts/audit-intent-selection.ts`
+   - `scripts/calibrate-selection-weights.ts`
+   - `scripts/generate-intent-session-review.ts`
+
+**Total deleted:** 10 files, 3,100+ lines of dead code
+
+**Verification:**
+- Zero active imports confirmed via grep
+- Tests passing after deletion (20 legacy tests removed)
+- Build succeeds, lint passes
+- No API routes reference deleted code
+
+**Consequences:**
+- ✅ Single source of truth (selection-v2 only)
+- ✅ 3,100 fewer lines to maintain
+- ✅ Reduced cognitive load for future development
+- ✅ Git history preserves code for reference if needed
+- ✅ Clean production codebase ready for Phase 3 (autoregulation)
+
+**References:** ADR-036, ADR-040, redesign-overview.md Phase 2
+
+---
+
+## ADR-040: Clean cut-over to selection-v2 (2026-02-14)
+
+**Status:** Implemented
+
+**Context:**
+After deploying selection-v2 to production, post-deployment issue revealed architectural problem: legacy timeboxing logic in `applyLoads()` was trimming exercises AFTER beam search selection, causing metadata mismatch (7 selected → 5 shown).
+
+**Problem:**
+- Beam search selected 7 exercises optimally
+- Legacy timeboxing trimmed to 5 post-hoc to fit time budget
+- Metadata showed "7 selected" but only 5 exercises displayed
+- Dual-mode complexity (new selection + legacy trimming) caused confusion
+- No production users yet, so safe to make breaking changes
+
+**Decision:**
+Execute clean cut-over to selection-v2 architecture:
+1. Remove legacy timeboxing trimming from `applyLoads()` (lines 203-224)
+2. Archive legacy selection code to `src/lib/engine/legacy/`
+3. Remove `selectExercises()` export from engine barrel
+4. Extract shared types (`SessionIntent`, `ColdStartStage`, `SelectionOutput`) to `session-types.ts`
+5. Update API imports to use selection-v2 exclusively
+
+**Consequences:**
+- ✅ Single source of truth (selection-v2 is the only path)
+- ✅ No metadata mismatch (selected count matches displayed)
+- ✅ Cleaner architecture (no dual-mode complexity)
+- ✅ 559 engine tests passing
+- ⚠️ Timeboxing enforcement temporarily removed (will be added to beam search later)
+- ⚠️ Template mode still has legacy timeboxing in `generateWorkoutFromTemplate()` (technical debt)
+
+**Deferred Work:**
+- Timeboxing architecture design (where and how it should work)
+- Move timeboxing into beam search as hard constraint (not post-processing)
+- Remove legacy timeboxing from template generation
+
+**Files Changed:**
+- `src/lib/engine/apply-loads.ts`: Removed trimming loop, kept `estimateWorkoutMinutes()` for metadata only
+- `src/lib/engine/legacy/exercise-selection.ts`: Archived with deprecation notice
+- `src/lib/engine/legacy/exercise-selection.test.ts`: Archived
+- `src/lib/engine/session-types.ts`: New file for shared session types
+- `src/lib/engine/index.ts`: Export `session-types` and `selection-v2`, removed `exercise-selection`
+- `src/lib/api/template-session.ts`: Import types from `session-types.ts`
+- `src/lib/engine/apply-loads.test.ts`: Removed legacy timeboxing test
+
+**Reference:** See `src/lib/engine/legacy/README.md` for archival rationale.
+
+---
+
 ## ADR-035: Block-aware prescription modifiers (2026-02-14)
 
 **Decision**:

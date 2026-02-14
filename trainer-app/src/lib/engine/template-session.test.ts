@@ -203,34 +203,9 @@ describe("generateWorkoutFromTemplate", () => {
     expect(workout.estimatedMinutes).toBe(withoutProjectedRamps);
   });
 
-  it("timeboxes template accessories pre-load using projected warmup ramps", () => {
-    const templateExercises = makeTemplateExercises([
-      "bench",
-      "row",
-      "db-press",
-      "lateral-raise",
-      "face-pull",
-    ]);
-    const unrestricted = generateWorkoutFromTemplate(
-      templateExercises,
-      makeOptions({ sessionMinutes: 0 })
-    );
-    const noProjectedWarmupEstimate = estimateWorkoutMinutes([
-      ...unrestricted.workout.mainLifts,
-      ...unrestricted.workout.accessories,
-    ]);
-
-    const timeboxed = generateWorkoutFromTemplate(
-      templateExercises,
-      makeOptions({ sessionMinutes: noProjectedWarmupEstimate })
-    );
-
-    expect(unrestricted.workout.estimatedMinutes).toBeGreaterThan(noProjectedWarmupEstimate);
-    expect(timeboxed.workout.accessories.length).toBeLessThan(
-      unrestricted.workout.accessories.length
-    );
-    expect(timeboxed.workout.estimatedMinutes).toBeLessThanOrEqual(noProjectedWarmupEstimate);
-  });
+  // Removed: "timeboxes template accessories pre-load using projected warmup ramps"
+  // Reason: Legacy timeboxing removed in ADR-040 clean cut-over to selection-v2
+  // Timeboxing enforcement will be redesigned and moved to beam search constraints
 
   it("returns a valid empty plan for empty template", () => {
     const { workout } = generateWorkoutFromTemplate([], makeOptions());

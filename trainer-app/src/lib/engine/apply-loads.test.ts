@@ -438,23 +438,8 @@ describe("applyLoads", () => {
     });
   });
 
-  it("uses post-load trim as a safety net when warmup ramps push duration over budget", () => {
-    const preLoadMinutes = estimateWorkoutMinutes([
-      ...baseWorkout.warmup,
-      ...baseWorkout.mainLifts,
-      ...baseWorkout.accessories,
-    ]);
-
-    const result = applyLoads(baseWorkout, {
-      history: [],
-      baselines: [{ exerciseId: "bench", context: "default", topSetWeight: 200 }],
-      exerciseById: exercises,
-      primaryGoal: "hypertrophy",
-      profile: { weightKg: 80, trainingAge: "intermediate" },
-      sessionMinutes: preLoadMinutes,
-    });
-
-    expect(result.accessories.length).toBeLessThan(baseWorkout.accessories.length);
-    expect(result.estimatedMinutes).toBeLessThanOrEqual(preLoadMinutes);
-  });
+  // Test removed: Legacy timeboxing trimming was removed as part of Phase 2 clean cut-over
+  // Timeboxing enforcement will be moved to beam search constraints in future iteration
+  // See ADR-040 for rationale
 });
+

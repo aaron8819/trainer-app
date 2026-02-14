@@ -11,14 +11,13 @@ import {
   buildVolumePlanByMuscle,
   type VolumePlanByMuscle,
 } from "@/lib/engine/volume";
-import {
-  selectExercises,
-  type ColdStartStage,
-  type SelectionOutput,
-  type SessionIntent,
-} from "@/lib/engine/exercise-selection";
 import type { WorkoutPlan, Muscle } from "@/lib/engine/types";
 import type { BlockContext } from "@/lib/engine/periodization/types";
+import type {
+  ColdStartStage,
+  SelectionOutput,
+  SessionIntent,
+} from "@/lib/engine/session-types";
 import type { SraWarning } from "@/lib/engine/sra";
 import {
   selectExercisesOptimized,

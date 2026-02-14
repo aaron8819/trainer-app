@@ -20,7 +20,7 @@ import {
   enforceVolumeCaps,
   type VolumePlanByMuscle,
 } from "./volume";
-import { estimateWorkoutMinutes, trimAccessoriesByPriority } from "./timeboxing";
+import { estimateWorkoutMinutes } from "./timeboxing";
 import { buildMuscleRecoveryMap, generateSraWarnings, type SraWarning } from "./sra";
 import { getGoalRepRanges, type PeriodizationModifiers } from "./rules";
 import { suggestSubstitutes } from "./substitution";
@@ -161,36 +161,21 @@ export function generateWorkoutFromTemplate(
       : exerciseEntry
   );
 
-  const budgetMinutes = options.sessionMinutes;
-  let finalAccessories = workoutExercises.filter((e) => !e.isMainLift);
-  let allExercises = [...projectedMainLifts, ...finalAccessories];
-  let estimatedMinutes = estimateWorkoutMinutes(allExercises);
-
-  if (budgetMinutes && budgetMinutes > 0 && estimatedMinutes > budgetMinutes) {
-    let trimmedAccessories = [...finalAccessories];
-    while (trimmedAccessories.length > 0) {
-      trimmedAccessories = trimAccessoriesByPriority(trimmedAccessories, mainLifts, 1);
-      allExercises = [...projectedMainLifts, ...trimmedAccessories];
-      estimatedMinutes = estimateWorkoutMinutes(allExercises);
-      if (estimatedMinutes <= budgetMinutes) {
-        break;
-      }
-    }
-    finalAccessories = trimmedAccessories;
-  }
-
-  finalAccessories = enforceVolumeCaps(
-    finalAccessories,
+  // Remove legacy timeboxing - selection-v2 handles this (ADR-040)
+  const finalAccessories = enforceVolumeCaps(
+    workoutExercises.filter((e) => !e.isMainLift),
     mainLifts,
     volumeContext
   );
   const accessories = applyAccessorySupersetMetadata(finalAccessories);
+
+  // Calculate estimated time (metadata only - no trimming)
+  const allExercises = [...projectedMainLifts, ...accessories];
+  const estimatedMinutes = estimateWorkoutMinutes(allExercises);
   const volumePlanByMuscle = buildVolumePlanByMuscle(mainLifts, accessories, volumeContext, {
     mesocycleWeek: weekInBlock,
     mesocycleLength: normalizedMesocycleLength,
   });
-  allExercises = [...projectedMainLifts, ...accessories];
-  estimatedMinutes = estimateWorkoutMinutes(allExercises);
 
   // SRA warnings
   const recoveryMap = buildMuscleRecoveryMap(history, exerciseLibrary);

@@ -1,5 +1,4 @@
 export * from "./apply-loads";
-export * from "./pick-accessories-by-slot";
 export * from "./random";
 export * from "./history";
 export * from "./rules";
@@ -17,7 +16,10 @@ export * from "./template-session";
 export * from "./template-analysis";
 export * from "./smart-build";
 export * from "./warmup-ramp";
-export * from "./exercise-selection";
+export * from "./session-types";
+
+// Selection v2 (multi-objective beam search)
+export * from "./selection-v2";
 
 // Periodization
 export type {

@@ -10,10 +10,10 @@ import type { Exercise, Muscle } from "../types";
 import { INDIRECT_SET_MULTIPLIER } from "../volume-constants";
 import type {
   VolumeContribution,
-  VolumeContext,
+  SelectionVolumeContext,
   RotationContext,
   SRAContext,
-  UserPreferences,
+  SelectionPreferences,
   SelectionObjective,
 } from "./types";
 
@@ -42,7 +42,7 @@ import type {
  */
 export function scoreDeficitFill(
   contribution: VolumeContribution,
-  volumeContext: VolumeContext
+  volumeContext: SelectionVolumeContext
 ): number {
   let totalFilled = 0;
   let totalDeficit = 0;
@@ -219,7 +219,7 @@ export function scoreSRAAlignment(
  */
 export function scoreUserPreference(
   exercise: Exercise,
-  preferences: UserPreferences
+  preferences: SelectionPreferences
 ): number {
   // Avoided exercises should be filtered out by hard constraints
   // But if somehow they reach here, score 0

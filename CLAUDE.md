@@ -63,6 +63,7 @@ Next.js 16 (App Router) · React 19 · TypeScript (strict mode) · Prisma 7 + Po
 - **Don't weaken volume spike caps or load progression guardrails** without explicit instruction.
 - **Don't select CORE/MOBILITY/PREHAB/CONDITIONING as general accessories**. They only appear in explicit warmup/finisher blocks.
 - **Don't derive structured data from exercise names** (e.g., regex on name to infer movement patterns). Use explicit fields on each exercise definition.
+- **Don't use `filtering.ts` or `pick-accessories-by-slot.ts`** - Deleted in ADR-041. Use `selection-v2` for all exercise selection.
 
 ## Conventions
 

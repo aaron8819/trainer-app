@@ -1,5 +1,5 @@
 import { computeNextLoad } from "./progression";
-import { estimateWorkoutMinutes, trimAccessoriesByPriority } from "./timeboxing";
+import { estimateWorkoutMinutes } from "./timeboxing";
 import { filterCompletedHistory, sortHistoryByDateDesc } from "./history";
 import {
   getBaseTargetRpe,
@@ -199,29 +199,15 @@ export function applyLoads(workout: WorkoutPlan, options: ApplyLoadsOptions): Wo
     })),
   }));
   const mainLifts = workout.mainLifts.map(applyToExercise);
-  let accessories = workout.accessories.map(applyToExercise);
-  const budgetMinutes = options.sessionMinutes;
-  let estimatedMinutes = estimateWorkoutMinutes([
+  const accessories = workout.accessories.map(applyToExercise);
+
+  // Calculate estimated time (metadata only - no trimming)
+  // Timeboxing enforcement moved to beam search constraints (future)
+  const estimatedMinutes = estimateWorkoutMinutes([
     ...warmup,
     ...mainLifts,
     ...accessories,
   ]);
-
-  if (budgetMinutes && budgetMinutes > 0 && estimatedMinutes > budgetMinutes) {
-    let trimmedAccessories = [...accessories];
-    while (trimmedAccessories.length > 0) {
-      trimmedAccessories = trimAccessoriesByPriority(trimmedAccessories, mainLifts, 1);
-      estimatedMinutes = estimateWorkoutMinutes([
-        ...warmup,
-        ...mainLifts,
-        ...trimmedAccessories,
-      ]);
-      if (estimatedMinutes <= budgetMinutes) {
-        break;
-      }
-    }
-    accessories = trimmedAccessories;
-  }
 
   return {
     ...workout,

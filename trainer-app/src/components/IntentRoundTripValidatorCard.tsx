@@ -7,6 +7,7 @@ import {
   getTopComponentLabels,
   parseExplainabilitySelectionMetadata,
 } from "@/lib/ui/explainability";
+import { AutoregulationDisplay } from "./AutoregulationDisplay";
 
 type SessionIntent = "push" | "pull" | "legs" | "upper" | "lower" | "full_body" | "body_part";
 
@@ -40,6 +41,13 @@ type GeneratedMetadata = {
   selectionMode?: "AUTO" | "INTENT";
   sessionIntent?: SessionIntent;
   selection?: unknown;
+};
+
+type AutoregulationData = {
+  wasAutoregulated: boolean;
+  fatigueScore: number | null;
+  modifications: Array<{ type: string; detail: string }>;
+  rationale: string;
 };
 
 type ExerciseOption = {
@@ -200,6 +208,7 @@ export function IntentRoundTripValidatorCard() {
 
   const [workout, setWorkout] = useState<WorkoutPlan | null>(null);
   const [generatedMetadata, setGeneratedMetadata] = useState<GeneratedMetadata | null>(null);
+  const [autoregulation, setAutoregulation] = useState<AutoregulationData | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -348,6 +357,7 @@ export function IntentRoundTripValidatorCard() {
       sessionIntent: body.sessionIntent,
       selection: body.selection,
     });
+    setAutoregulation(body.autoregulation ?? null);
     setLoading(false);
   };
 
@@ -539,6 +549,34 @@ export function IntentRoundTripValidatorCard() {
             <p className="text-sm text-slate-500">Estimated time</p>
             <p className="text-lg font-semibold">{workout.estimatedMinutes} minutes</p>
           </div>
+
+          {/* Phase 3: Autoregulation Display */}
+          {autoregulation && autoregulation.fatigueScore !== null ? (
+            <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-blue-900 mb-3">
+                Autoregulation Applied
+              </h3>
+              <AutoregulationDisplay
+                fatigueScore={{
+                  overall: autoregulation.fatigueScore,
+                  perMuscle: {},
+                  weights: { whoop: 0, subjective: 0.6, performance: 0.4 },
+                  components: {
+                    whoopContribution: 0,
+                    subjectiveContribution: autoregulation.fatigueScore * 0.6,
+                    performanceContribution: autoregulation.fatigueScore * 0.4,
+                  },
+                }}
+                modifications={autoregulation.modifications.map(m => ({
+                  type: m.type as "intensity_scale" | "volume_reduction" | "deload_trigger",
+                  reason: m.detail,
+                }))}
+                rationale={autoregulation.rationale}
+                wasAutoregulated={autoregulation.wasAutoregulated}
+              />
+            </div>
+          ) : null}
+
           {[
             { label: "Main Lifts", items: workout.mainLifts },
             { label: "Accessories", items: workout.accessories },

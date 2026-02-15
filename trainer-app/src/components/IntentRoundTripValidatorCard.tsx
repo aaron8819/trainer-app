@@ -43,10 +43,37 @@ type GeneratedMetadata = {
   selection?: unknown;
 };
 
+type FatigueScore = {
+  overall: number;
+  perMuscle: Record<string, number>;
+  weights: { whoop: number; subjective: number; performance: number };
+  components: {
+    whoopContribution: number;
+    subjectiveContribution: number;
+    performanceContribution: number;
+  };
+};
+
+type AutoregulationModification = {
+  type: "intensity_scale" | "volume_reduction" | "deload_trigger";
+  exerciseId?: string;
+  exerciseName?: string;
+  direction?: "up" | "down";
+  scalar?: number;
+  originalLoad?: number;
+  adjustedLoad?: number;
+  originalRpe?: number;
+  adjustedRpe?: number;
+  setsCut?: number;
+  originalSetCount?: number;
+  adjustedSetCount?: number;
+  reason: string;
+};
+
 type AutoregulationData = {
   wasAutoregulated: boolean;
-  fatigueScore: number | null;
-  modifications: Array<{ type: string; detail: string }>;
+  fatigueScore: FatigueScore | null;
+  modifications: AutoregulationModification[];
   rationale: string;
 };
 
@@ -557,20 +584,8 @@ export function IntentRoundTripValidatorCard() {
                 Autoregulation Applied
               </h3>
               <AutoregulationDisplay
-                fatigueScore={{
-                  overall: autoregulation.fatigueScore,
-                  perMuscle: {},
-                  weights: { whoop: 0, subjective: 0.6, performance: 0.4 },
-                  components: {
-                    whoopContribution: 0,
-                    subjectiveContribution: autoregulation.fatigueScore * 0.6,
-                    performanceContribution: autoregulation.fatigueScore * 0.4,
-                  },
-                }}
-                modifications={autoregulation.modifications.map(m => ({
-                  type: m.type as "intensity_scale" | "volume_reduction" | "deload_trigger",
-                  reason: m.detail,
-                }))}
+                fatigueScore={autoregulation.fatigueScore}
+                modifications={autoregulation.modifications}
                 rationale={autoregulation.rationale}
                 wasAutoregulated={autoregulation.wasAutoregulated}
               />

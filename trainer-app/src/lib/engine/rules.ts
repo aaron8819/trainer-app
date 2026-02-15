@@ -123,7 +123,7 @@ export function getMesocyclePeriodization(
   const t = totalWeeks <= 1 ? 0.5 : config.currentWeek / (totalWeeks - 1);
   const rpeOffset =
     trainingAge === undefined
-      ? resolveLegacyRpeOffset(t)
+      ? resolveGenericRpeOffset(t)
       : resolveTrainingAgeRpeOffset(trainingAge, t);
 
   // Set multiplier ramps from 1.0 to 1.3
@@ -163,7 +163,13 @@ export const PLATEAU_CRITERIA = {
   noProgressSessions: 5,
 };
 
-function resolveLegacyRpeOffset(t: number): number {
+/**
+ * Generic RPE offset for workouts without training age specified
+ *
+ * Used as fallback for older workouts or users who haven't set training age.
+ * Provides conservative progression similar to intermediate template.
+ */
+function resolveGenericRpeOffset(t: number): number {
   if (t <= 0.25) {
     return -1.5;
   }

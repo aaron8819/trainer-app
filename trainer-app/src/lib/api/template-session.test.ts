@@ -2,6 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { exampleExerciseLibrary, exampleGoals, exampleUser } from "../engine/sample-data";
 import type { WorkoutHistoryEntry } from "../engine/types";
 
+// Mock Prisma client to avoid DATABASE_URL requirement
+vi.mock("@/lib/db/prisma", () => ({
+  prisma: {},
+}));
+
 const loadTemplateDetailMock = vi.fn();
 const loadWorkoutContextMock = vi.fn();
 const mapProfileMock = vi.fn();
@@ -13,6 +18,8 @@ const mapPreferencesMock = vi.fn();
 const mapCheckInMock = vi.fn();
 const deriveWeekInBlockMock = vi.fn();
 const applyLoadsMock = vi.fn();
+const loadCurrentBlockContextMock = vi.fn();
+const loadExerciseExposureMock = vi.fn();
 
 vi.mock("./templates", () => ({
   loadTemplateDetail: (...args: unknown[]) => loadTemplateDetailMock(...args),
@@ -29,6 +36,15 @@ vi.mock("./workout-context", () => ({
   mapCheckIn: (...args: unknown[]) => mapCheckInMock(...args),
   deriveWeekInBlock: (...args: unknown[]) => deriveWeekInBlockMock(...args),
   applyLoads: (...args: unknown[]) => applyLoadsMock(...args),
+}));
+
+vi.mock("./periodization", () => ({
+  loadCurrentBlockContext: (...args: unknown[]) => loadCurrentBlockContextMock(...args),
+  deriveWeekInBlock: (...args: unknown[]) => deriveWeekInBlockMock(...args),
+}));
+
+vi.mock("./exercise-exposure", () => ({
+  loadExerciseExposure: (...args: unknown[]) => loadExerciseExposureMock(...args),
 }));
 
 import { generateSessionFromIntent, generateSessionFromTemplate } from "./template-session";
@@ -111,6 +127,8 @@ describe("generateSessionFromTemplate", () => {
     mapCheckInMock.mockReturnValue(undefined);
     deriveWeekInBlockMock.mockReturnValue(0);
     applyLoadsMock.mockImplementation((workout) => workout);
+    loadCurrentBlockContextMock.mockResolvedValue(null);
+    loadExerciseExposureMock.mockResolvedValue(new Map());
   });
 
   it("enforces enhanced MRV caps in the API template-generation path", async () => {

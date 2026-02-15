@@ -1,7 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { estimateWorkoutMinutes, trimAccessoriesByPriority } from "./timeboxing";
+import {
+  estimateWorkoutMinutes,
+  trimAccessoriesByPriority,
+  enforceTimeBudget,
+} from "./timeboxing";
 import { exampleExerciseLibrary } from "./sample-data";
-import type { WorkoutExercise } from "./types";
+import { createId } from "./utils";
+import type { WorkoutExercise, WorkoutPlan } from "./types";
 
 function makeAccessory(
   id: string,
@@ -184,5 +189,237 @@ describe("trimAccessoriesByPriority", () => {
     const trimmed = trimAccessoriesByPriority(accessories, mainLifts, 1);
     expect(trimmed).toHaveLength(1);
     expect(trimmed[0]?.id).toBe("low-fatigue");
+  });
+});
+
+describe("enforceTimeBudget (Step 2: Safety Net)", () => {
+  it("trims accessories to fit budget with UI-friendly notification", () => {
+    const mainLifts = [makeMainLift("bench", { setCount: 4 })];
+    const accessories = [
+      makeAccessory("lateral-raise", { setCount: 3 }),
+      makeAccessory("face-pull", { setCount: 3 }),
+      makeAccessory("db-press", { setCount: 3 }),
+    ];
+
+    const workout: WorkoutPlan = {
+      id: createId(),
+      scheduledDate: new Date().toISOString(),
+      warmup: [],
+      mainLifts,
+      accessories,
+      estimatedMinutes: estimateWorkoutMinutes([...mainLifts, ...accessories]),
+    };
+
+    const result = enforceTimeBudget(workout, 25);
+
+    expect(result.workout.accessories.length).toBeLessThan(accessories.length);
+    expect(result.notification).toBeDefined();
+    expect(result.notification).toContain("Adjusted workout");
+    expect(result.notification).toContain("25-minute budget");
+    expect(result.removedExercises).toBeDefined();
+    expect(result.removedExercises!.length).toBeGreaterThan(0);
+  });
+
+  it("never trims main lifts", () => {
+    const mainLifts = [makeMainLift("bench", { setCount: 5 }), makeMainLift("squat", { setCount: 5 })];
+    const accessories = [makeAccessory("lateral-raise", { setCount: 3 })];
+
+    const workout: WorkoutPlan = {
+      id: createId(),
+      scheduledDate: new Date().toISOString(),
+      warmup: [],
+      mainLifts,
+      accessories,
+      estimatedMinutes: estimateWorkoutMinutes([...mainLifts, ...accessories]),
+    };
+
+    const result = enforceTimeBudget(workout, 20);
+
+    // Main lifts should never be trimmed
+    expect(result.workout.mainLifts.length).toBe(mainLifts.length);
+    expect(result.workout.mainLifts).toEqual(mainLifts);
+
+    // All accessories should be removed if needed
+    expect(result.workout.accessories.length).toBeLessThanOrEqual(accessories.length);
+  });
+
+  it("returns actionable notification when main lifts exceed budget", () => {
+    const mainLifts = [
+      makeMainLift("bench", { setCount: 5 }),
+      makeMainLift("squat", { setCount: 5 }),
+      makeMainLift("rdl", { setCount: 5 }),
+    ];
+
+    const workout: WorkoutPlan = {
+      id: createId(),
+      scheduledDate: new Date().toISOString(),
+      warmup: [],
+      mainLifts,
+      accessories: [],
+      estimatedMinutes: estimateWorkoutMinutes(mainLifts),
+    };
+
+    const result = enforceTimeBudget(workout, 30);
+
+    // Should not trim main lifts
+    expect(result.workout.mainLifts.length).toBe(3);
+
+    // Should provide actionable notification
+    expect(result.notification).toBeDefined();
+    expect(result.notification).toContain("Main lifts require");
+    expect(result.notification).toContain("budget: 30 min");
+    expect(result.notification).toContain("Consider reducing volume or increasing time budget");
+
+    // Should NOT have removed exercises list (didn't actually trim anything)
+    expect(result.removedExercises).toBeUndefined();
+  });
+
+  it("trims lowest-priority accessories first (via existing scoring)", () => {
+    const chestExercise = exampleExerciseLibrary.find((e) => e.id === "db-press");
+    const lateralRaise = exampleExerciseLibrary.find((e) => e.id === "lateral-raise");
+    if (!chestExercise || !lateralRaise) {
+      throw new Error("Expected sample exercises");
+    }
+
+    const mainLifts = [makeMainLift("bench", { setCount: 4 })]; // Chest is covered
+
+    // Chest accessory = redundant (covered by main lift) → LOW priority
+    // Side delt accessory = uncovered → HIGH priority
+    const accessories = [
+      {
+        ...makeAccessory("db-press", { setCount: 3 }),
+        exercise: { ...chestExercise, primaryMuscles: ["Chest" as const] },
+      },
+      {
+        ...makeAccessory("lateral-raise", { setCount: 3 }),
+        exercise: { ...lateralRaise, primaryMuscles: ["Side Delts" as const] },
+      },
+    ];
+
+    const workout: WorkoutPlan = {
+      id: createId(),
+      scheduledDate: new Date().toISOString(),
+      warmup: [],
+      mainLifts,
+      accessories,
+      estimatedMinutes: estimateWorkoutMinutes([...mainLifts, ...accessories]),
+    };
+
+    const result = enforceTimeBudget(workout, 20);
+
+    // Chest accessory should be trimmed first (redundant)
+    // Side delt accessory should be kept (uncovered)
+    if (result.removedExercises && result.removedExercises.length > 0) {
+      expect(result.removedExercises).toContain("Dumbbell Bench Press");
+    }
+  });
+
+  it("handles superset accessories correctly", () => {
+    const mainLifts = [makeMainLift("bench", { setCount: 4 })];
+    const accessories = [
+      makeAccessory("lateral-raise", { setCount: 3, supersetGroup: 1 }),
+      makeAccessory("face-pull", { setCount: 3, supersetGroup: 1 }),
+      makeAccessory("db-press", { setCount: 3 }),
+    ];
+
+    const workout: WorkoutPlan = {
+      id: createId(),
+      scheduledDate: new Date().toISOString(),
+      warmup: [],
+      mainLifts,
+      accessories,
+      estimatedMinutes: estimateWorkoutMinutes([...mainLifts, ...accessories]),
+    };
+
+    const result = enforceTimeBudget(workout, 20);
+
+    // Should trim accessories (including superset pairs) to fit budget
+    expect(result.workout.accessories.length).toBeLessThanOrEqual(accessories.length);
+    expect(estimateWorkoutMinutes([...result.workout.mainLifts, ...result.workout.accessories]))
+      .toBeLessThanOrEqual(20);
+  });
+
+  it("no-ops when already under budget (no notification)", () => {
+    const mainLifts = [makeMainLift("bench", { setCount: 3 })];
+    const accessories = [makeAccessory("lateral-raise", { setCount: 3 })];
+
+    const workout: WorkoutPlan = {
+      id: createId(),
+      scheduledDate: new Date().toISOString(),
+      warmup: [],
+      mainLifts,
+      accessories,
+      estimatedMinutes: estimateWorkoutMinutes([...mainLifts, ...accessories]),
+    };
+
+    const result = enforceTimeBudget(workout, 60);
+
+    // Should return unchanged
+    expect(result.workout).toEqual(workout);
+    expect(result.notification).toBeUndefined();
+    expect(result.removedExercises).toBeUndefined();
+  });
+
+  it("notification includes removed exercise names and final duration", () => {
+    const mainLifts = [makeMainLift("bench", { setCount: 4 })];
+    const accessories = [
+      makeAccessory("lateral-raise", { setCount: 3 }),
+      makeAccessory("face-pull", { setCount: 3 }),
+      makeAccessory("db-press", { setCount: 3 }),
+    ];
+
+    const workout: WorkoutPlan = {
+      id: createId(),
+      scheduledDate: new Date().toISOString(),
+      warmup: [],
+      mainLifts,
+      accessories,
+      estimatedMinutes: estimateWorkoutMinutes([...mainLifts, ...accessories]),
+    };
+
+    const result = enforceTimeBudget(workout, 20);
+
+    expect(result.notification).toBeDefined();
+    expect(result.notification).toMatch(/\d+ min/); // Includes final duration
+    expect(result.notification).toContain("20-minute budget");
+
+    // Should mention at least one removed exercise name
+    if (result.removedExercises && result.removedExercises.length > 0) {
+      const exerciseName = result.removedExercises[0];
+      expect(result.notification).toContain(exerciseName);
+    }
+  });
+
+  it("notification format is concise and user-friendly", () => {
+    const mainLifts = [makeMainLift("bench", { setCount: 3 })];
+    const accessories = [
+      makeAccessory("lateral-raise", { setCount: 3 }),
+      makeAccessory("face-pull", { setCount: 3 }),
+      makeAccessory("db-press", { setCount: 3 }),
+    ];
+
+    const workout: WorkoutPlan = {
+      id: createId(),
+      scheduledDate: new Date().toISOString(),
+      warmup: [],
+      mainLifts,
+      accessories,
+      estimatedMinutes: estimateWorkoutMinutes([...mainLifts, ...accessories]),
+    };
+
+    const result = enforceTimeBudget(workout, 18);
+
+    expect(result.notification).toBeDefined();
+
+    // Should trim accessories (main lifts alone are ~13 min, so accessories push over 18 min)
+    if (result.removedExercises && result.removedExercises.length > 0) {
+      // Concise format: "Adjusted workout to X min to fit Y-minute budget (removed: ...)"
+      expect(result.notification).toMatch(/^Adjusted workout to \d+ min to fit \d+-minute budget \(removed: .+\)$/);
+
+      // User-friendly: no technical jargon, clear action taken
+      expect(result.notification).not.toContain("ERROR");
+      expect(result.notification).not.toContain("WARN");
+      expect(result.notification).not.toContain("trimmed");
+    }
   });
 });

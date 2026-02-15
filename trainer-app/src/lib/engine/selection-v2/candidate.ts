@@ -21,6 +21,8 @@ import {
   scoreSRAAlignment,
   scoreUserPreference,
 } from "./scoring";
+import { estimateExerciseMinutes } from "../timeboxing";
+import { getGoalRepRanges } from "../rules";
 
 /**
  * Build a scored candidate from an exercise
@@ -140,15 +142,17 @@ export function mergeVolume(
 }
 
 /**
- * Estimate time contribution for an exercise
+ * Estimate time contribution for an exercise (used in beam search)
  *
- * Time = (work seconds + rest seconds) × sets / 60
- *
- * Rest periods based on block context intensity (if available)
+ * Uses the same estimation logic as estimateWorkoutMinutes() for accuracy.
+ * Accounts for:
+ * - Warmup sets (if main lift)
+ * - Rep-aware rest periods
+ * - Exercise-specific work time
  *
  * @param exercise - Exercise to evaluate
  * @param sets - Number of sets
- * @param objective - Selection objective (for block context)
+ * @param objective - Selection objective (for determining rep ranges and main lift status)
  * @returns Estimated time in minutes
  */
 function estimateTimeContribution(
@@ -158,57 +162,25 @@ function estimateTimeContribution(
 ): number {
   if (sets <= 0) return 0;
 
-  // Work time per set
-  const workSeconds = exercise.timePerSetSec ?? 40;
+  // Determine if this would be a main lift based on exercise metadata
+  const isMainLift = exercise.isMainLiftEligible ?? false;
 
-  // Rest time depends on block intensity
-  const restSeconds = getRestSeconds(exercise, objective);
+  // Estimate target reps based on training goal (for rep-aware rest)
+  const goalRepRanges = objective.goals ? getGoalRepRanges(objective.goals.primary) : undefined;
+  const targetReps = goalRepRanges
+    ? isMainLift
+      ? Math.floor((goalRepRanges.main[0] + goalRepRanges.main[1]) / 2)
+      : Math.floor((goalRepRanges.accessory[0] + goalRepRanges.accessory[1]) / 2)
+    : undefined;
 
-  // Total time
-  return ((workSeconds + restSeconds) * sets) / 60;
-}
-
-/**
- * Get rest seconds based on exercise and block context
- *
- * Default rest periods:
- * - Strength (high intensity): 180-240s
- * - Hypertrophy (moderate): 90-120s
- * - Endurance (low): 60s
- *
- * @param exercise - Exercise to evaluate
- * @param objective - Selection objective (for block context)
- * @returns Rest seconds
- */
-function getRestSeconds(exercise: Exercise, objective: SelectionObjective): number {
-  // If block context available, use block-specific rest periods
-  if (objective.blockContext) {
-    const blockType = objective.blockContext.block.blockType;
-
-    // Accumulation/Intensification: moderate-high rest
-    if (blockType === "accumulation" || blockType === "intensification") {
-      return 120; // 2 minutes
-    }
-
-    // Realization: high rest (peaking)
-    if (blockType === "realization") {
-      return 180; // 3 minutes
-    }
-
-    // Deload: low rest
-    if (blockType === "deload") {
-      return 60; // 1 minute
-    }
-  }
-
-  // Default: moderate rest
-  return 90; // 1.5 minutes
+  return estimateExerciseMinutes(exercise, sets, isMainLift, targetReps);
 }
 
 /**
  * Compute proposed sets for an exercise based on volume deficit
  *
  * Heuristic: Propose sets proportional to largest deficit among primary muscles
+ * With tight time budgets, propose fewer sets for accessories to fit more exercises
  *
  * @param exercise - Exercise to evaluate
  * @param objective - Selection objective
@@ -221,6 +193,8 @@ export function computeProposedSets(
   const MIN_SETS = 2;
   const MAX_SETS = 5;
   const DEFAULT_SETS = 3;
+  const TIGHT_BUDGET_THRESHOLD = 40; // Minutes
+  const TIGHT_BUDGET_ACCESSORY_CAP = 3; // Cap accessories at 3 sets when time is tight
 
   // Find largest deficit among primary muscles
   let maxDeficit = 0;
@@ -235,6 +209,18 @@ export function computeProposedSets(
   if (maxDeficit === 0) return DEFAULT_SETS;
 
   // Propose sets proportional to deficit (but clamped 2-5)
-  const proposedSets = Math.ceil(maxDeficit / 2); // Heuristic: deficit / 2
-  return Math.max(MIN_SETS, Math.min(MAX_SETS, proposedSets));
+  let proposedSets = Math.ceil(maxDeficit / 2); // Heuristic: deficit / 2
+  proposedSets = Math.max(MIN_SETS, Math.min(MAX_SETS, proposedSets));
+
+  // Time-aware adjustment: With tight budgets, cap accessory sets to fit more exercises
+  const timeBudget = objective.constraints.timeBudget;
+  const isTightBudget = timeBudget < TIGHT_BUDGET_THRESHOLD;
+  const isMainLift = exercise.isMainLiftEligible ?? false;
+
+  if (isTightBudget && !isMainLift) {
+    // Cap accessories at 3 sets to leave room for more exercises
+    proposedSets = Math.min(proposedSets, TIGHT_BUDGET_ACCESSORY_CAP);
+  }
+
+  return proposedSets;
 }

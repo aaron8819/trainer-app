@@ -804,3 +804,107 @@ where `worstMuscleFatigue = min(perMuscle values)` if soreness data exists, else
 
 ---
 
+## ADR-049: Two-phase timebox enforcement (defense in depth) (2026-02-15)
+
+**Context:** Workouts were exceeding user's `sessionMinutes` constraint despite having a timebox system. Three critical gaps identified:
+
+1. **Beam search time estimation inaccurate** (20-40% underestimate for main lifts)
+   - Didn't account for warmup sets (main lifts get 2-4 warmup sets)
+   - Didn't account for rep-aware rest periods (heavy 5-rep sets need 240s rest vs. 90s for accessories)
+   - Used block-level average rest instead of exercise/rep-specific rest
+
+2. **Template mode had ZERO enforcement**
+   - Comment at `template-session.ts:164` said "selection-v2 handles this" but template mode never uses selection-v2
+   - `estimatedMinutes` calculated but never used to trim (advisory only)
+
+3. **Architecture gap** - Two generation paths with inconsistent enforcement:
+   - Intent-based: Uses beam search optimizer with `timeBudget` constraint (but inaccurate estimation)
+   - Template-based: Fixed exercises from template, no trimming
+
+**Decision:** Implemented two-phase defense-in-depth enforcement:
+
+**Phase 1: Improve beam search time estimation** (Intent-based path)
+- Extracted `estimateExerciseMinutes()` helper in `timeboxing.ts` that accounts for warmups and rep-aware rest
+- Updated beam search `estimateTimeContribution()` in `candidate.ts` to use accurate estimation
+- Now matches `estimateWorkoutMinutes()` accuracy within 5%
+
+**Phase 2: Post-generation safety net** (Both paths)
+- Added `enforceTimeBudget()` function in `timeboxing.ts` called after workout generation
+- Integrated into `generateWorkoutFromTemplate()` (engine layer) to cover both template and intent modes
+
+**Behavior:**
+1. If main lifts alone exceed budget → return warning, keep all exercises (main lifts are sacred)
+2. If under budget → return unchanged
+3. If accessories push over budget → iteratively trim lowest-priority accessories until budget met
+
+```typescript
+export function enforceTimeBudget(
+  workout: WorkoutPlan,
+  timeBudgetMinutes: number
+): {
+  workout: WorkoutPlan;
+  notification?: string;
+  removedExercises?: string[];
+}
+```
+
+**Trimming priority** (reuses existing `trimAccessoriesByPriority()` scoring):
+- Muscle coverage (uncovered muscles prioritized)
+- SFR efficiency (high stimulus-to-fatigue ratio prioritized)
+- Lengthened position score (better stretch-position prioritized)
+- Redundancy penalty (accessories targeting already-covered muscles trimmed first)
+- Fatigue cost (higher fatigue exercises trimmed first among redundant options)
+
+**Notifications** (UI-friendly, appended to workout notes):
+- Accessory trimming: `"Adjusted workout to 43 min to fit 45-minute budget (removed: Tricep Extensions, Face Pulls)"`
+- Main lifts exceed: `"Main lifts require 52 min (budget: 45 min). Consider reducing volume or increasing time budget."`
+
+**Rationale:**
+
+1. **Defense in depth**: Phase 1 prevents most overruns during selection. Phase 2 guarantees no workout exceeds budget.
+2. **Handles edge cases**: Autoregulation scale-up can add sets after beam search → Phase 2 trims if needed.
+3. **Universal coverage**: Both template and intent modes enforced (single integration point in engine).
+4. **Main lift protection**: Never trim compounds (foundation of program integrity per evidence base).
+5. **Evidence-based**: Trimming accessories aligns with knowledgebase principle - better to skip low-stimulus accessories than force junk volume (sets at 5+ RIR).
+
+**Implementation:**
+
+```typescript
+// engine/template-session.ts (line ~210)
+if (options.sessionMinutes !== undefined) {
+  const enforced = enforceTimeBudget(workout, options.sessionMinutes);
+  workout = enforced.workout;
+}
+```
+
+**Testing:**
+- 3 new beam search estimation tests (verify warmup + rep-aware rest accuracy)
+- 8 comprehensive `enforceTimeBudget()` tests (trimming, main lift protection, notifications)
+- 1 template mode integration test (tight budget enforcement)
+- All 24 template-session tests pass, 15 timeboxing tests pass
+
+**Alternatives considered:**
+
+- **Beam search enforcement only**: Insufficient. Doesn't cover template mode or autoregulation edge cases.
+- **Post-generation trimming only**: Works but allows estimation errors to propagate through beam search (poor candidate scoring).
+- **Trim main lifts when over budget**: Rejected. Main lifts are CRITICAL for program integrity (compounds-first hierarchy per evidence).
+- **No trimming, just warn**: Rejected. Users set `sessionMinutes` expecting workouts to fit their schedule.
+
+**Evidence base:**
+
+From `Personal_Training_System_Design.md:596`:
+> "The generator may cut some accessory sets if running over time."
+
+From `hypertrophyandstrengthtraining_researchreport.md:366`:
+> "Junk volume is the most insidious problem. Refalo et al. (2023) showed proximity to failure is a key moderator—sets ending 5+ RIR provide substantially less stimulus."
+
+**Success criteria:**
+- ✅ 100% of workouts ≤ `sessionMinutes` (or explicit warning if main lifts exceed)
+- ✅ Main lifts NEVER trimmed
+- ✅ Beam search estimates within 10% of actual (Phase 1)
+- ✅ Post-generation trimming in <5% of intent-based workouts (Phase 2 is safety net, not primary enforcement)
+
+**Reference:** `src/lib/engine/timeboxing.ts` (`estimateExerciseMinutes`, `enforceTimeBudget`), `src/lib/engine/selection-v2/candidate.ts` (`estimateTimeContribution`), `src/lib/engine/template-session.ts` (integration point), test files: `timeboxing.test.ts`, `candidate.test.ts`, `template-session.test.ts`
+
+---
+

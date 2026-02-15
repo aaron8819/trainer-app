@@ -19,6 +19,9 @@ describe("beamSearch", () => {
     primaryMuscles,
     secondaryMuscles,
     equipment: ["barbell"],
+    movementPatterns: [],
+    splitTags: [],
+    jointStress: "medium",
     repRangeMin: 5,
     repRangeMax: 8,
     timePerSetSec: 60,
@@ -67,6 +70,10 @@ describe("beamSearch", () => {
     preferences: {
       favoriteExerciseIds: new Set(),
       avoidExerciseIds: new Set(),
+    },
+    goals: {
+      primary: "hypertrophy",
+      secondary: "conditioning",
     },
   });
 
@@ -509,5 +516,95 @@ describe("beamSearch", () => {
     );
     // It's OK if some were rejected for structure (too many main lifts, etc.)
     expect(structureViolations.length).toBeGreaterThanOrEqual(0);
+  });
+
+  it("should select 3+ exercises with tight time budget (30 min)", () => {
+    // Bug fix test: Verify beam search doesn't collapse to 1-2 exercises with tight budgets
+    const exercises = [
+      { ...createMockExercise("bench_press", ["Chest" as Muscle]), isMainLiftEligible: true, timePerSetSec: 60, isCompound: true },
+      { ...createMockExercise("lateral_raise", ["Side Delts" as Muscle]), isMainLiftEligible: false, timePerSetSec: 35, isCompound: false },
+      { ...createMockExercise("tricep_pushdown", ["Triceps" as Muscle]), isMainLiftEligible: false, timePerSetSec: 30, isCompound: false },
+      { ...createMockExercise("cable_fly", ["Chest" as Muscle]), isMainLiftEligible: false, timePerSetSec: 35, isCompound: false },
+      { ...createMockExercise("face_pull", ["Rear Delts" as Muscle]), isMainLiftEligible: false, timePerSetSec: 30, isCompound: false },
+    ];
+
+    const objective = createMockObjective(
+      new Map([
+        ["Chest" as Muscle, 10],
+        ["Side Delts" as Muscle, 8],
+        ["Triceps" as Muscle, 6],
+        ["Rear Delts" as Muscle, 4],
+      ]),
+      30 // Tight 30-minute budget
+    );
+
+    // Set minimum 3 exercises to enforce floor
+    objective.constraints.minExercises = 3;
+    objective.constraints.minMainLifts = 1;
+    objective.constraints.minAccessories = 2;
+
+    const candidates = exercises.map((ex) =>
+      buildCandidate(ex, objective, computeProposedSets(ex, objective))
+    );
+
+    const result = beamSearch(candidates, objective, {
+      beamWidth: 5,
+      maxDepth: 8,
+    });
+
+    // CRITICAL: Should select at least 3 exercises even with tight budget
+    expect(result.selected.length).toBeGreaterThanOrEqual(3);
+
+    // Should stay within time budget
+    expect(result.timeUsed).toBeLessThanOrEqual(30);
+
+    // Should have at least 1 main lift
+    const mainLiftCount = result.selected.filter((c) => c.exercise.isMainLiftEligible).length;
+    expect(mainLiftCount).toBeGreaterThanOrEqual(1);
+
+    // Should have at least 2 accessories
+    const accessoryCount = result.selected.filter((c) => !c.exercise.isMainLiftEligible).length;
+    expect(accessoryCount).toBeGreaterThanOrEqual(2);
+  });
+
+  it("should reduce sets per exercise to fit tight time budget", () => {
+    // Verify that with tight budget, exercises have fewer sets
+    const exercises = [
+      { ...createMockExercise("bench_press", ["Chest" as Muscle]), isMainLiftEligible: true, timePerSetSec: 60 },
+      { ...createMockExercise("lateral_raise", ["Side Delts" as Muscle]), isMainLiftEligible: false, timePerSetSec: 40 },
+      { ...createMockExercise("tricep_extension", ["Triceps" as Muscle]), isMainLiftEligible: false, timePerSetSec: 40 },
+    ];
+
+    const objective = createMockObjective(
+      new Map([
+        ["Chest" as Muscle, 12],
+        ["Side Delts" as Muscle, 10],
+        ["Triceps" as Muscle, 8],
+      ]),
+      30 // Tight budget
+    );
+
+    objective.constraints.minExercises = 3;
+
+    const candidates = exercises.map((ex) =>
+      buildCandidate(ex, objective, computeProposedSets(ex, objective))
+    );
+
+    const result = beamSearch(candidates, objective, {
+      beamWidth: 5,
+      maxDepth: 8,
+    });
+
+    // Should select all 3 exercises
+    expect(result.selected.length).toBe(3);
+
+    // Accessories should have reduced sets (3-4 instead of 5)
+    const accessories = result.selected.filter((c) => !c.exercise.isMainLiftEligible);
+    for (const acc of accessories) {
+      expect(acc.proposedSets).toBeLessThanOrEqual(4);
+    }
+
+    // Should fit within budget
+    expect(result.timeUsed).toBeLessThanOrEqual(30);
   });
 });

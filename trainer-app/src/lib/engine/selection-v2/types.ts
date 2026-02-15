@@ -50,6 +50,11 @@ export interface SelectionObjective {
    * User preferences
    */
   preferences: SelectionPreferences;
+
+  /**
+   * Training goals (for rep range estimation)
+   */
+  goals?: Goals;
 }
 
 /**

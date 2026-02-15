@@ -473,3 +473,199 @@ describe("buildCandidate", () => {
     expect(candidate.scores.rotationNovelty).toBeCloseTo(0.33, 2);
   });
 });
+
+describe("timeContribution accuracy (Step 1: Improved Estimation)", () => {
+  it("should account for warmup sets in time estimation for main lifts", () => {
+    const mainLiftExercise: Exercise = {
+      id: "squat",
+      name: "Squat",
+      primaryMuscles: ["Quads" as Muscle],
+      secondaryMuscles: ["Glutes" as Muscle],
+      equipment: ["barbell"],
+      repRangeMin: 3,
+      repRangeMax: 6,
+      timePerSetSec: 60,
+      fatigueCost: 5,
+      sfrScore: 5,
+      lengthPositionScore: 4,
+      isMainLiftEligible: true,
+    };
+
+    const objective: SelectionObjective = {
+      constraints: {
+        volumeFloor: new Map(),
+        volumeCeiling: new Map(),
+        timeBudget: 60,
+        equipment: new Set(["barbell"]),
+        contraindications: new Set(),
+        minExercises: 1,
+        maxExercises: 8,
+      },
+      weights: {
+        volumeDeficitFill: 0.4,
+        rotationNovelty: 0.25,
+        sfrEfficiency: 0.15,
+        lengthenedBias: 0.1,
+        movementDiversity: 0.05,
+        sraReadiness: 0.03,
+        userPreference: 0.02,
+      },
+      volumeContext: {
+        weeklyTarget: new Map([["Quads" as Muscle, 12]]),
+        weeklyActual: new Map([["Quads" as Muscle, 0]]),
+        effectiveActual: new Map([["Quads" as Muscle, 0]]),
+      },
+      rotationContext: new Map(),
+      sraContext: new Map(),
+      preferences: {
+        favoriteExerciseIds: new Set(),
+        avoidExerciseIds: new Set(),
+      },
+      goals: {
+        primary: "hypertrophy",
+      },
+    };
+
+    const candidate = buildCandidate(mainLiftExercise, objective, 4);
+
+    // Main lifts should have significantly higher time contribution due to warmup sets
+    // 4 working sets + ~3 warmup sets = ~7 sets total
+    // Working: 4 × (60s work + 240s rest heavy) = ~20 min
+    // Warmup: 3 × (30s work + 45s rest) = ~4 min
+    // Total: ~24 min
+    expect(candidate.timeContribution).toBeGreaterThan(15); // At least 15 min
+    expect(candidate.timeContribution).toBeLessThan(30); // Less than 30 min
+  });
+
+  it("should use rep-aware rest periods for accurate time estimation", () => {
+    const lowRepExercise: Exercise = {
+      id: "bench",
+      name: "Bench Press",
+      primaryMuscles: ["Chest" as Muscle],
+      secondaryMuscles: [],
+      equipment: ["barbell"],
+      repRangeMin: 3,
+      repRangeMax: 6,
+      timePerSetSec: 60,
+      fatigueCost: 4,
+      sfrScore: 5,
+      lengthPositionScore: 3,
+      isMainLiftEligible: true,
+    };
+
+    const highRepExercise: Exercise = {
+      id: "lateral_raise",
+      name: "Lateral Raise",
+      primaryMuscles: ["Side Delts" as Muscle],
+      secondaryMuscles: [],
+      equipment: ["dumbbell"],
+      repRangeMin: 12,
+      repRangeMax: 20,
+      timePerSetSec: 40,
+      fatigueCost: 2,
+      sfrScore: 4,
+      lengthPositionScore: 3,
+      isMainLiftEligible: false,
+    };
+
+    const objective: SelectionObjective = {
+      constraints: {
+        volumeFloor: new Map(),
+        volumeCeiling: new Map(),
+        timeBudget: 60,
+        equipment: new Set(["barbell", "dumbbell"]),
+        contraindications: new Set(),
+        minExercises: 1,
+        maxExercises: 8,
+      },
+      weights: {
+        volumeDeficitFill: 0.4,
+        rotationNovelty: 0.25,
+        sfrEfficiency: 0.15,
+        lengthenedBias: 0.1,
+        movementDiversity: 0.05,
+        sraReadiness: 0.03,
+        userPreference: 0.02,
+      },
+      volumeContext: {
+        weeklyTarget: new Map(),
+        weeklyActual: new Map(),
+        effectiveActual: new Map(),
+      },
+      rotationContext: new Map(),
+      sraContext: new Map(),
+      preferences: {
+        favoriteExerciseIds: new Set(),
+        avoidExerciseIds: new Set(),
+      },
+      goals: {
+        primary: "hypertrophy",
+      },
+    };
+
+    const lowRepCandidate = buildCandidate(lowRepExercise, objective, 3);
+    const highRepCandidate = buildCandidate(highRepExercise, objective, 3);
+
+    // Low-rep main lifts should take longer (longer rest periods + warmups)
+    // High-rep accessories should be faster (shorter rest, no warmups)
+    expect(lowRepCandidate.timeContribution).toBeGreaterThan(highRepCandidate.timeContribution);
+  });
+
+  it("should match estimateExerciseMinutes accuracy for accessories", () => {
+    const accessoryExercise: Exercise = {
+      id: "cable_fly",
+      name: "Cable Fly",
+      primaryMuscles: ["Chest" as Muscle],
+      secondaryMuscles: [],
+      equipment: ["cable"],
+      repRangeMin: 10,
+      repRangeMax: 15,
+      timePerSetSec: 40,
+      fatigueCost: 2,
+      sfrScore: 4,
+      lengthPositionScore: 5,
+      isMainLiftEligible: false,
+    };
+
+    const objective: SelectionObjective = {
+      constraints: {
+        volumeFloor: new Map(),
+        volumeCeiling: new Map(),
+        timeBudget: 60,
+        equipment: new Set(["cable"]),
+        contraindications: new Set(),
+        minExercises: 1,
+        maxExercises: 8,
+      },
+      weights: {
+        volumeDeficitFill: 0.4,
+        rotationNovelty: 0.25,
+        sfrEfficiency: 0.15,
+        lengthenedBias: 0.1,
+        movementDiversity: 0.05,
+        sraReadiness: 0.03,
+        userPreference: 0.02,
+      },
+      volumeContext: {
+        weeklyTarget: new Map([["Chest" as Muscle, 12]]),
+        weeklyActual: new Map([["Chest" as Muscle, 0]]),
+        effectiveActual: new Map([["Chest" as Muscle, 0]]),
+      },
+      rotationContext: new Map(),
+      sraContext: new Map(),
+      preferences: {
+        favoriteExerciseIds: new Set(),
+        avoidExerciseIds: new Set(),
+      },
+      goals: {
+        primary: "hypertrophy",
+      },
+    };
+
+    const candidate = buildCandidate(accessoryExercise, objective, 3);
+
+    // Accessories: 3 sets × (40s work + 90s rest) = ~6.5 min
+    expect(candidate.timeContribution).toBeGreaterThan(5);
+    expect(candidate.timeContribution).toBeLessThan(10);
+  });
+});

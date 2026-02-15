@@ -507,4 +507,38 @@ describe("generateWorkoutFromTemplate", () => {
       delta: -1.2,
     });
   });
+
+  it("enforces time budget when sessionMinutes is provided", () => {
+    const templateExercises = makeTemplateExercises([
+      "bench",
+      "squat",
+      "lateral-raise",
+      "face-pull",
+      "db-press",
+      "leg-press",
+    ]);
+
+    const tightBudget = 15; // Very tight budget to force trimming
+    const { workout } = generateWorkoutFromTemplate(
+      templateExercises,
+      makeOptions({ sessionMinutes: tightBudget })
+    );
+
+    const boundedMinutes = estimateWorkoutMinutes([...workout.mainLifts, ...workout.accessories]);
+
+    // Main lifts should never be trimmed
+    expect(workout.mainLifts.length).toBeGreaterThanOrEqual(1);
+
+    // Final workout should respect budget (or warn if main lifts exceed)
+    // If main lifts alone exceed budget, we get a warning but keep all main lifts
+    const mainLiftMinutes = estimateWorkoutMinutes(workout.mainLifts);
+    if (mainLiftMinutes <= tightBudget) {
+      // If main lifts fit, total should fit too
+      expect(boundedMinutes).toBeLessThanOrEqual(tightBudget);
+    } else {
+      // If main lifts exceed budget, we should have a warning
+      expect(workout.notes).toBeDefined();
+      expect(workout.notes).toContain("Main lifts require");
+    }
+  });
 });

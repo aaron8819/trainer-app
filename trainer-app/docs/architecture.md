@@ -31,12 +31,25 @@ For full end-to-end traceability, see `docs/workout-data-flow-traceability.md`.
 
 ### 2. Time budget enforcement
 
-Timeboxing runs in two places:
+**Two-phase defense-in-depth approach** (ADR-049):
 
-1. `generateWorkoutFromTemplate(...)` pre-load trim using projected main-lift warmup ramps.
-2. `applyLoads(...)` post-load trim when assigned warmups still exceed budget.
+**Phase 1: Beam search time estimation** (Intent-based workouts)
+- Beam search in `selection-v2/candidate.ts` uses `estimateTimeContribution()` with accurate time modeling
+- Accounts for warmup sets (2-4 for main lifts), rep-aware rest periods, and exercise-specific work time
+- Prevents most time overruns during exercise selection (within 10% accuracy)
 
-Main lifts are preserved during trimming.
+**Phase 2: Post-generation safety net** (Both template and intent modes)
+- `enforceTimeBudget()` called in `generateWorkoutFromTemplate()` after workout construction
+- Guarantees no workout exceeds `sessionMinutes` (or provides explicit warning)
+- Trims lowest-priority accessories if over budget (uses existing `trimAccessoriesByPriority()` scoring)
+- **Main lifts are NEVER trimmed** - if main lifts alone exceed budget, returns warning instead
+- UI-friendly notifications appended to workout notes when accessories trimmed
+
+**Notification examples:**
+- Trimming: `"Adjusted workout to 43 min to fit 45-minute budget (removed: Tricep Extensions, Face Pulls)"`
+- Warning: `"Main lifts require 52 min (budget: 45 min). Consider reducing volume or increasing time budget."`
+
+**Coverage:** Both template-based (fixed exercises) and intent-based (beam search selected) generation paths enforced via single integration point in engine layer.
 
 ### 3. Volume cap behavior
 

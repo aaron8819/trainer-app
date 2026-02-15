@@ -270,6 +270,9 @@ describe("Selection-v2 Integration Tests", () => {
 
       const objective = createMockObjective(new Map([["Chest", 15]]));
       objective.constraints.volumeCeiling = new Map([["Chest", 18]]); // MRV = 18
+      // Override structural constraints - this test is about MRV ceiling, not main lift requirements
+      objective.constraints.minMainLifts = 0;
+      objective.constraints.minAccessories = 0;
 
       const result = selectExercisesOptimized(exercises, objective);
 

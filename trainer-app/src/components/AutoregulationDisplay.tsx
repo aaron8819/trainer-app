@@ -1,5 +1,70 @@
 "use client";
 
+/**
+ * Group modifications by exercise name
+ * Returns array of { exerciseName, setCount, representative, modifications }
+ */
+function groupModificationsByExercise(
+  modifications: AutoregulationDisplayProps["modifications"]
+) {
+  const groups = new Map<
+    string,
+    AutoregulationDisplayProps["modifications"]
+  >();
+
+  modifications.forEach((mod) => {
+    const key = mod.exerciseName || "unknown";
+    if (!groups.has(key)) {
+      groups.set(key, []);
+    }
+    groups.get(key)!.push(mod);
+  });
+
+  return Array.from(groups.entries()).map(([exerciseName, mods]) => ({
+    exerciseName,
+    setCount: mods.length,
+    representative: mods[0], // Use first mod for display (all sets have same % change)
+    modifications: mods,
+  }));
+}
+
+/**
+ * Count unique exercises affected (not total modifications)
+ */
+function getUniqueExerciseCount(
+  modifications: AutoregulationDisplayProps["modifications"]
+): number {
+  const uniqueExercises = new Set(
+    modifications.map((mod) => mod.exerciseName || "unknown")
+  );
+  return uniqueExercises.size;
+}
+
+/**
+ * Extract action description from reason string
+ * e.g., "Scaled up T-Bar Row from 115.5 lbs to 121.5 lbs (+5%), RPE 7 → 7.5"
+ *      → "from 115.5 lbs to 121.5 lbs (+5%), RPE 7 → 7.5"
+ */
+function extractActionFromReason(reason: string): string {
+  // Remove the exercise name prefix (it's already in the header)
+  const patterns = [
+    /^Scaled up .+ (from .+)$/,
+    /^Scaled down .+ (from .+)$/,
+    /^Reduced .+ (from .+)$/,
+    /^Deload: (.+)$/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = reason.match(pattern);
+    if (match) {
+      return match[1];
+    }
+  }
+
+  // Fallback: return as-is if no pattern matches
+  return reason;
+}
+
 type AutoregulationDisplayProps = {
   fatigueScore: {
     overall: number;
@@ -152,56 +217,67 @@ export function AutoregulationDisplay({
       {modifications.length > 0 && (
         <div className="mt-4">
           <p className="text-sm font-semibold text-slate-700">
-            Modifications ({modifications.length})
+            Modifications ({getUniqueExerciseCount(modifications)})
           </p>
           <div className="mt-2 space-y-2">
-            {modifications.map((mod, index) => (
+            {groupModificationsByExercise(modifications).map((group, index) => (
               <div
                 key={index}
                 className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs"
               >
                 {/* Exercise Name */}
-                {mod.exerciseName && (
-                  <p className="font-semibold text-slate-900">{mod.exerciseName}</p>
-                )}
+                <p className="font-semibold text-slate-900">
+                  {group.exerciseName}
+                  {group.setCount > 1 && (
+                    <span className="ml-1 text-slate-500">({group.setCount} sets)</span>
+                  )}
+                </p>
 
                 {/* Intensity Scale */}
-                {mod.type === "intensity_scale" && (
+                {group.representative.type === "intensity_scale" && (
                   <div className="mt-1 space-y-0.5 text-slate-600">
-                    {mod.originalLoad !== undefined && mod.adjustedLoad !== undefined && (
-                      <p>
-                        Load: {mod.originalLoad} lbs → {mod.adjustedLoad} lbs (
-                        {mod.direction === "up" ? "+" : ""}
-                        {((mod.scalar || 1) - 1) * 100 > 0 ? "+" : ""}
-                        {(((mod.scalar || 1) - 1) * 100).toFixed(0)}%)
-                      </p>
-                    )}
-                    {mod.originalRir !== undefined && mod.adjustedRir !== undefined && (
-                      <p>
-                        RIR: {mod.originalRir} → {mod.adjustedRir}
-                      </p>
-                    )}
+                    {group.representative.originalLoad !== undefined &&
+                      group.representative.adjustedLoad !== undefined && (
+                        <p>
+                          Load: {group.representative.originalLoad} lbs →{" "}
+                          {group.representative.adjustedLoad} lbs (
+                          {group.representative.direction === "up" ? "+" : ""}
+                          {((group.representative.scalar || 1) - 1) * 100 > 0 ? "+" : ""}
+                          {(((group.representative.scalar || 1) - 1) * 100).toFixed(0)}%)
+                        </p>
+                      )}
+                    {group.representative.originalRir !== undefined &&
+                      group.representative.adjustedRir !== undefined && (
+                        <p>
+                          RIR: {group.representative.originalRir} →{" "}
+                          {group.representative.adjustedRir}
+                        </p>
+                      )}
                   </div>
                 )}
 
                 {/* Volume Reduction */}
-                {mod.type === "volume_reduction" && (
+                {group.representative.type === "volume_reduction" && (
                   <div className="mt-1 text-slate-600">
                     <p>
-                      Sets: {mod.originalSetCount} → {mod.adjustedSetCount} (-{mod.setsCut} sets)
+                      Sets: {group.representative.originalSetCount} →{" "}
+                      {group.representative.adjustedSetCount} (-
+                      {group.representative.setsCut} sets)
                     </p>
                   </div>
                 )}
 
                 {/* Deload Trigger */}
-                {mod.type === "deload_trigger" && (
+                {group.representative.type === "deload_trigger" && (
                   <div className="mt-1 text-orange-700">
                     <p className="font-semibold">⚠️ Deload recommended</p>
                   </div>
                 )}
 
-                {/* Reason */}
-                <p className="mt-1.5 text-slate-500">{mod.reason}</p>
+                {/* Reason - Extract action from first modification's reason */}
+                <p className="mt-1.5 text-slate-500">
+                  {extractActionFromReason(group.representative.reason)}
+                </p>
               </div>
             ))}
           </div>

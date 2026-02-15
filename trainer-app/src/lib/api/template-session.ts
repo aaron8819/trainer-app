@@ -138,7 +138,7 @@ function buildSelectionObjective(
     timeBudget: mapped.mappedConstraints.sessionMinutes,
     equipment: new Set(mapped.mappedConstraints.availableEquipment),
     contraindications: new Set(painFlagExerciseIds),
-    minExercises: 2,
+    minExercises: 3, // Minimum 3 exercises to ensure MEV coverage
     maxExercises: 8,
     // Structural constraints to ensure balanced workouts
     minMainLifts: sessionIntent === "body_part" ? 0 : 1, // 1 for PPL, 0 for custom
@@ -199,8 +199,9 @@ function buildSelectionObjective(
   }
 
   // Build SRA context
+  // Note: SRA scoring has low weight (0.03) and defaults to 1.0 (recovered)
+  // Future: Populate from actual SRA tracking for enhanced recovery-based selection
   const sraContext = new Map<Muscle, number>();
-  // TODO: Populate from SRA module (currently not used in scoring weights)
 
   return {
     constraints,
@@ -223,7 +224,8 @@ function buildSelectionObjective(
 /**
  * Map SelectionResult to SelectionOutput format
  *
- * Translates new optimizer output back to legacy format for compatibility
+ * Translates internal selection-v2 format to the stable session API format
+ * used by both template and intent-based generation.
  */
 function mapSelectionResult(result: SelectionResult): SelectionOutput {
   const selectedExerciseIds = result.selected.map((c) => c.exercise.id);
@@ -257,12 +259,12 @@ function mapSelectionResult(result: SelectionResult): SelectionOutput {
           userPreference: candidate.scores.userPreference,
         },
         hardFilterPass: true,
-        selectedStep: "beam_search" as any, // Legacy field not used in new system
+        selectedStep: "beam_search" as any, // Historical field for API compatibility
       };
     }
   }
 
-  // Map volume plan by muscle - convert to legacy VolumePlanByMuscle format
+  // Map volume plan by muscle to session API format
   const volumePlanByMuscle: VolumePlanByMuscle = {};
   for (const [muscle, volume] of result.volumeFilled) {
     const deficit = result.volumeDeficit.get(muscle) ?? 0;
@@ -383,7 +385,7 @@ export async function generateSessionFromIntent(
   // Run new beam search optimizer
   const selectionResult = selectExercisesOptimized(filteredPool, objective);
 
-  // Map back to legacy SelectionOutput format
+  // Map to session output format
   const selection = mapSelectionResult(selectionResult);
 
   const templateExercises: TemplateExerciseInput[] = selection.selectedExerciseIds.flatMap(
@@ -460,7 +462,7 @@ function buildTemplateSelection(
   // Run new beam search optimizer
   const selectionResult = selectExercisesOptimized(pool, objective);
 
-  // Map back to legacy SelectionOutput format
+  // Map to session output format
   return mapSelectionResult(selectionResult);
 }
 

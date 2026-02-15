@@ -65,8 +65,8 @@ export async function computePerformanceSignals(
       : 0;
 
   // Compute stall count
-  // For now, stub with 0 (detailed stall detection done in stall-intervention.ts)
-  // TODO: Integrate detectStalls() here if needed per-session
+  // Note: Detailed stall detection is handled separately via /api/stalls route
+  // using stall-intervention.ts. Stubbed here as it's not used in fatigue scoring.
   const stallCount = 0;
 
   // Compute volume compliance rate

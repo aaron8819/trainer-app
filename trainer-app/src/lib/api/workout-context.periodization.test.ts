@@ -1,5 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { ProgramBlock } from "@prisma/client";
+
+// Mock Prisma client to avoid DATABASE_URL requirement
+vi.mock("@/lib/db/prisma", () => ({
+  prisma: {},
+}));
+
 import { deriveWeekInBlock } from "./periodization";
 
 const date = (value: string) => new Date(value);

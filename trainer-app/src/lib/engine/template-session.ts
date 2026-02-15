@@ -20,7 +20,7 @@ import {
   enforceVolumeCaps,
   type VolumePlanByMuscle,
 } from "./volume";
-import { estimateWorkoutMinutes } from "./timeboxing";
+import { estimateWorkoutMinutes, enforceTimeBudget } from "./timeboxing";
 import { buildMuscleRecoveryMap, generateSraWarnings, type SraWarning } from "./sra";
 import { getGoalRepRanges, type PeriodizationModifiers } from "./rules";
 import { suggestSubstitutes } from "./substitution";
@@ -194,7 +194,7 @@ export function generateWorkoutFromTemplate(
     notesParts.push(`Under-recovered: ${muscleList}`);
   }
 
-  const workout: WorkoutPlan = {
+  let workout: WorkoutPlan = {
     id: createId(),
     scheduledDate: new Date().toISOString(),
     warmup: [],
@@ -203,6 +203,12 @@ export function generateWorkoutFromTemplate(
     estimatedMinutes,
     notes: notesParts.length > 0 ? notesParts.join(". ") : undefined,
   };
+
+  // Enforce time budget (Phase 2 safety net)
+  if (options.sessionMinutes !== undefined) {
+    const enforced = enforceTimeBudget(workout, options.sessionMinutes);
+    workout = enforced.workout;
+  }
 
   const finalExerciseIds = new Set(
     [...workout.mainLifts, ...workout.accessories].map((exercise) => exercise.exercise.id)

@@ -22,8 +22,10 @@ import type {
   RejectedExercise,
   RejectionReason,
 } from "./types";
-import { mergeVolume } from "./candidate";
+import { mergeVolume, computeVolumeContribution } from "./candidate";
 import { generateRationale } from "./rationale";
+import { estimateExerciseMinutes } from "../timeboxing";
+import { getGoalRepRanges } from "../rules";
 
 /**
  * Check if beam state satisfies structural constraints (main lifts + accessories)
@@ -210,9 +212,86 @@ function exceedsCeiling(
 }
 
 /**
+ * Try reducing sets on accessories to make room for another exercise
+ *
+ * Reduces sets on lowest-scoring accessories (but keeps minimum 2 sets) until
+ * the new candidate fits within time budget.
+ *
+ * @param beam - Current beam state (will be mutated if successful)
+ * @param newCandidate - Candidate we want to add
+ * @param objective - Selection objective
+ * @returns True if reduction succeeded and candidate now fits
+ */
+function tryReduceSetsToFitMore(
+  beam: BeamState,
+  newCandidate: SelectionCandidate,
+  objective: SelectionObjective
+): boolean {
+  const MIN_SETS = 2;
+
+  // Find accessories that could have sets reduced (currently > MIN_SETS)
+  const reducibleAccessories = beam.selected
+    .filter((c) => !c.exercise.isMainLiftEligible && c.proposedSets > MIN_SETS)
+    .sort((a, b) => a.totalScore - b.totalScore); // Lowest score first
+
+  if (reducibleAccessories.length === 0) {
+    return false; // Nothing to reduce
+  }
+
+  // Try reducing sets one at a time until new candidate fits
+  for (const accessory of reducibleAccessories) {
+    // Reduce this accessory by 1 set
+    accessory.proposedSets -= 1;
+
+    // Recalculate time for this accessory
+    const isMainLift = accessory.exercise.isMainLiftEligible ?? false;
+    const goalRepRanges = objective.goals ? getGoalRepRanges(objective.goals.primary) : undefined;
+    const targetReps = goalRepRanges
+      ? isMainLift
+        ? Math.floor((goalRepRanges.main[0] + goalRepRanges.main[1]) / 2)
+        : Math.floor((goalRepRanges.accessory[0] + goalRepRanges.accessory[1]) / 2)
+      : undefined;
+
+    const newTime = estimateExerciseMinutes(
+      accessory.exercise,
+      accessory.proposedSets,
+      isMainLift,
+      targetReps
+    );
+    const timeSaved = accessory.timeContribution - newTime;
+    accessory.timeContribution = newTime;
+
+    // Update beam time
+    beam.timeUsed -= timeSaved;
+
+    // Recalculate volume contribution
+    accessory.volumeContribution = computeVolumeContribution(
+      accessory.exercise,
+      accessory.proposedSets
+    );
+
+    // Check if new candidate now fits
+    const newTimeUsed = beam.timeUsed + newCandidate.timeContribution;
+    if (newTimeUsed <= objective.constraints.timeBudget) {
+      // Success! Rebuild volume map to be accurate
+      beam.volumeFilled = new Map();
+      for (const candidate of beam.selected) {
+        beam.volumeFilled = mergeVolume(beam.volumeFilled, candidate.volumeContribution);
+      }
+      return true;
+    }
+
+    // Not enough yet, continue reducing
+  }
+
+  return false; // Couldn't make room even after reducing all accessories
+}
+
+/**
  * Enforce minimum exercise constraint
  *
  * If beam has fewer than minExercises, greedily add more candidates.
+ * If blocked by time budget, reduce sets on selected exercises to make room.
  *
  * @param beam - Best beam state
  * @param candidates - Full candidate pool
@@ -251,10 +330,30 @@ function enforceMinExercises(
     }
 
     // Check time budget
-    const newTimeUsed = augmentedBeam.timeUsed + candidate.timeContribution;
+    let newTimeUsed = augmentedBeam.timeUsed + candidate.timeContribution;
     if (newTimeUsed > objective.constraints.timeBudget) {
-      rejectedMap.set(candidate.exercise.id, "time_budget_exceeded");
-      continue;
+      // If we're still below minimum and blocked by time, try reducing sets on accessories
+      if (augmentedBeam.selected.length < objective.constraints.minExercises) {
+        const reduced = tryReduceSetsToFitMore(augmentedBeam, candidate, objective);
+        if (reduced) {
+          // Recalculate time after reduction
+          newTimeUsed = augmentedBeam.timeUsed + candidate.timeContribution;
+          if (newTimeUsed <= objective.constraints.timeBudget) {
+            // Now it fits! Continue to add it below
+          } else {
+            // Still doesn't fit even after reduction
+            rejectedMap.set(candidate.exercise.id, "time_budget_exceeded");
+            continue;
+          }
+        } else {
+          // Couldn't reduce enough
+          rejectedMap.set(candidate.exercise.id, "time_budget_exceeded");
+          continue;
+        }
+      } else {
+        rejectedMap.set(candidate.exercise.id, "time_budget_exceeded");
+        continue;
+      }
     }
 
     // Merge volume

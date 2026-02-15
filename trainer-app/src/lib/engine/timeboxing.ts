@@ -1,8 +1,60 @@
-import type { WorkoutExercise, WorkoutSet } from "./types";
+import type { WorkoutExercise, WorkoutSet, Exercise, WorkoutPlan } from "./types";
 import { getRestSeconds, REST_SECONDS, resolveSetTargetReps } from "./prescription";
 
 const SUPERSET_SHARED_REST_MULTIPLIER = 0.6;
 const SUPERSET_SHARED_REST_FLOOR_SECONDS = 60;
+
+/**
+ * Estimate time for a single exercise (for beam search candidate evaluation)
+ *
+ * This matches the accuracy of estimateWorkoutMinutes() for a single exercise.
+ * Accounts for:
+ * - Warmup sets (if main lift)
+ * - Rep-aware rest periods
+ * - Exercise-specific work time
+ *
+ * @param exercise - Exercise metadata
+ * @param sets - Number of working sets
+ * @param isMainLift - Whether this is a main lift (gets warmup sets)
+ * @param targetReps - Target reps per set (for rep-aware rest)
+ * @returns Estimated minutes
+ */
+export function estimateExerciseMinutes(
+  exercise: Exercise,
+  sets: number,
+  isMainLift: boolean,
+  targetReps?: number
+): number {
+  if (sets <= 0) return 0;
+
+  // Work time per set
+  const workSeconds = exercise.timePerSetSec ?? (isMainLift ? 60 : 40);
+
+  // Rep-aware work time if we have target reps
+  const repAwareWorkSeconds =
+    targetReps !== undefined
+      ? Math.max(20, Math.min(90, targetReps * 2 + 10))
+      : undefined;
+  const finalWorkSeconds = repAwareWorkSeconds ?? workSeconds;
+
+  // Rest time (rep-aware via getRestSeconds)
+  const restSeconds = getRestSeconds(exercise, isMainLift, targetReps);
+
+  // Working sets time
+  const workingSeconds = (finalWorkSeconds + restSeconds) * sets;
+
+  // Warmup sets time (main lifts get 2-4 warmup sets)
+  let warmupSeconds = 0;
+  if (isMainLift) {
+    // Conservative estimate: 3 warmup sets @ 30s work + 45s rest
+    const warmupSetCount = 3;
+    const warmupWorkSeconds = 30;
+    const warmupRestSeconds = REST_SECONDS.warmup;
+    warmupSeconds = warmupSetCount * (warmupWorkSeconds + warmupRestSeconds);
+  }
+
+  return Math.round((workingSeconds + warmupSeconds) / 60);
+}
 
 function isSupersetTimingEligible(exercise: WorkoutExercise) {
   return Boolean(exercise.supersetGroup) && !exercise.isMainLift;
@@ -228,4 +280,122 @@ function normalizePositive(value: number, range: number): number {
     return 0;
   }
   return clamp(value / range, 0, 1);
+}
+
+/**
+ * Enforce time budget by trimming accessories if needed
+ *
+ * This is the Phase 2 safety net that guarantees no workout exceeds the time budget.
+ * Works for both template and intent-based generation paths.
+ *
+ * Behavior:
+ * 1. If main lifts alone exceed budget → return warning (main lifts are sacred)
+ * 2. If under budget → return unchanged
+ * 3. If accessories push over budget → trim lowest-priority accessories until under budget
+ *
+ * @param workout - The workout to enforce time budget on
+ * @param timeBudgetMinutes - Maximum session duration
+ * @returns Adjusted workout with optional notification
+ */
+export function enforceTimeBudget(
+  workout: WorkoutPlan,
+  timeBudgetMinutes: number
+): {
+  workout: WorkoutPlan;
+  notification?: string;
+  removedExercises?: string[];
+} {
+  const currentMinutes = estimateWorkoutMinutes([
+    ...workout.mainLifts,
+    ...workout.accessories,
+  ]);
+
+  // Already under budget - no action needed
+  if (currentMinutes <= timeBudgetMinutes) {
+    return { workout };
+  }
+
+  // Check if main lifts alone exceed budget
+  const mainLiftMinutes = estimateWorkoutMinutes(workout.mainLifts);
+  if (mainLiftMinutes > timeBudgetMinutes) {
+    // Main lifts are sacred - don't trim, just warn
+    const notification = `Main lifts require ${mainLiftMinutes} min (budget: ${timeBudgetMinutes} min). Consider reducing volume or increasing time budget.`;
+    return {
+      workout: {
+        ...workout,
+        notes: workout.notes ? `${workout.notes}. ${notification}` : notification,
+      },
+      notification,
+    };
+  }
+
+  // Accessories push us over budget - trim them
+  const remainingBudget = timeBudgetMinutes - mainLiftMinutes;
+  const { trimmed, removed } = trimAccessoriesToFitBudget(
+    workout.accessories,
+    workout.mainLifts,
+    remainingBudget
+  );
+
+  const finalMinutes = estimateWorkoutMinutes([...workout.mainLifts, ...trimmed]);
+  const removedNames = removed.map((e) => e.exercise.name);
+  const notification = `Adjusted workout to ${finalMinutes} min to fit ${timeBudgetMinutes}-minute budget (removed: ${removedNames.join(", ")})`;
+
+  return {
+    workout: {
+      ...workout,
+      accessories: trimmed,
+      estimatedMinutes: finalMinutes,
+      notes: workout.notes ? `${workout.notes}. ${notification}` : notification,
+    },
+    notification,
+    removedExercises: removedNames,
+  };
+}
+
+/**
+ * Trim accessories to fit within time budget
+ *
+ * Iteratively removes lowest-priority accessories until time budget is met.
+ * Uses existing trimAccessoriesByPriority scoring (muscle coverage, SFR, fatigue).
+ *
+ * @param accessories - All accessories
+ * @param mainLifts - Main lifts (for muscle coverage scoring)
+ * @param budgetMinutes - Remaining time budget for accessories
+ * @returns Trimmed accessories + removed accessories
+ */
+function trimAccessoriesToFitBudget(
+  accessories: WorkoutExercise[],
+  mainLifts: WorkoutExercise[],
+  budgetMinutes: number
+): {
+  trimmed: WorkoutExercise[];
+  removed: WorkoutExercise[];
+} {
+  if (accessories.length === 0) {
+    return { trimmed: [], removed: [] };
+  }
+
+  let current = [...accessories];
+  const removed: WorkoutExercise[] = [];
+
+  // Iteratively trim until we fit the budget
+  while (current.length > 0) {
+    const currentMinutes = estimateWorkoutMinutes(current);
+    if (currentMinutes <= budgetMinutes) {
+      break; // Success - we fit the budget
+    }
+
+    // Trim the lowest-priority accessory
+    const trimmed = trimAccessoriesByPriority(current, mainLifts, 1);
+    const removedExercise = current.find((e) => !trimmed.includes(e));
+    if (!removedExercise) {
+      break; // Safety - shouldn't happen
+    }
+
+    removed.push(removedExercise);
+    current = trimmed;
+  }
+
+  return { trimmed: current, removed };
 }

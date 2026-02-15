@@ -5,6 +5,7 @@ import { DashboardGenerateSection } from "@/components/DashboardGenerateSection"
 import RecentWorkouts from "@/components/RecentWorkouts";
 import { loadTemplatesWithScores } from "@/lib/api/templates";
 import { shouldDefaultNewUserToIntent } from "@/lib/api/intent-rollout";
+import ReadinessCheckInForm from "@/components/ReadinessCheckInForm";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -108,6 +109,17 @@ export default async function Home() {
             />
           </div>
           <div className="min-w-0 space-y-6">
+            {/* Phase 3: Daily Readiness Check-In */}
+            <div className="rounded-2xl border border-blue-200 bg-blue-50 p-6 shadow-sm">
+              <h2 className="text-xl font-semibold">Daily Readiness Check-In</h2>
+              <p className="mt-2 text-sm text-slate-600">
+                Submit your readiness to enable workout autoregulation
+              </p>
+              <div className="mt-4">
+                <ReadinessCheckInForm />
+              </div>
+            </div>
+
             {latestIncomplete ? (
               <div className="rounded-2xl border border-slate-200 p-6 shadow-sm">
                 <h2 className="text-xl font-semibold">Resume Workout</h2>

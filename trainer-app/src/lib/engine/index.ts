@@ -44,3 +44,9 @@ export { generateMacroCycle } from "./periodization/generate-macro";
 export { deriveBlockContext } from "./periodization/block-context";
 export { getPrescriptionModifiers, getMesoTemplateForAge, getMesoFocus } from "./periodization/block-config";
 export { prescribeWithBlock } from "./periodization/prescribe-with-block";
+
+// Readiness & Autoregulation (Phase 3)
+export * from "./readiness/types";
+export * from "./readiness/compute-fatigue";
+export * from "./readiness/autoregulate";
+export * from "./readiness/stall-intervention";

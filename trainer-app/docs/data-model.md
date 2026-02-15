@@ -1,6 +1,6 @@
 # Data Model (Current)
 
-Last verified against schema: 2026-02-11 (`prisma/schema.prisma`)
+Last verified against schema: 2026-02-15 (`prisma/schema.prisma`)
 
 This document summarizes the persisted model used by workout generation, logging, and adaptation loops.
 
@@ -45,6 +45,26 @@ This document summarizes the persisted model used by workout generation, logging
 - Fields: `id`, `userId`, `workoutId?`, `date`, `readiness`, `painFlags`, `notes`, `createdAt`
 - Index: `@@index([userId, date])`
 - Runtime use: latest check-in (readiness and pain flags) influences generation.
+
+### `ReadinessSignal` (Phase 3)
+
+- Fields:
+  - identity: `id`, `userId`, `timestamp`
+  - Whoop data (stubbed): `whoopRecovery`, `whoopStrain`, `whoopHrv`, `whoopSleepQuality`, `whoopSleepHours`
+  - Subjective: `subjectiveReadiness`, `subjectiveMotivation`, `subjectiveSoreness` (JSON), `subjectiveStress`
+  - Performance: `performanceRpeDeviation`, `performanceStalls`, `performanceCompliance`
+  - Computed: `fatigueScoreOverall`, `fatigueScoreBreakdown` (JSON)
+- Index: `@@index([userId, timestamp])`
+- Runtime use: Latest signal drives autoregulation decisions in workout generation.
+- See `POST /api/readiness/submit` and `src/lib/engine/readiness/compute-fatigue.ts`
+
+### `UserIntegration` (Phase 3 - Stubbed)
+
+- Fields: `id`, `userId`, `provider`, `accessToken`, `refreshToken`, `expiresAt`, `metadata` (JSON), `createdAt`, `updatedAt`
+- Unique: `@@unique([userId, provider])`
+- Index: `@@index([userId])`
+- Runtime use: Future OAuth integration for Whoop, Garmin, etc. (stubbed in Phase 3).
+- See `src/lib/api/readiness.ts` (`fetchWhoopRecovery`, `refreshWhoopToken`)
 
 ## Exercise catalog models
 
@@ -119,12 +139,15 @@ Relations:
   - ownership/scheduling: `id`, `userId`, `programBlockId?`, `templateId?`, `scheduledDate`, `completedAt`
   - status/selection: `status`, `selectionMode`, `forcedSplit`, `advancesSplit`
   - display/meta: `estimatedMinutes`, `notes`
+  - autoregulation (Phase 3): `wasAutoregulated`, `autoregulationLog` (JSON)
 - Defaults:
   - `status = PLANNED`
   - `selectionMode = AUTO`
   - `advancesSplit = true`
+  - `wasAutoregulated = false`
 - Index: `@@index([userId, scheduledDate])`
 - Relations: `exercises`, `sessionCheckIns`, optional `template`, optional `programBlock`
+- Runtime use: `wasAutoregulated` + `autoregulationLog` track intensity/volume adjustments based on fatigue score
 
 ### `WorkoutExercise`
 

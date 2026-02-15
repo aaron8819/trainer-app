@@ -237,3 +237,19 @@ export const generateMacroSchema = z.object({
   trainingAge: trainingAgeSchema.optional(),
   primaryGoal: primaryGoalSchema.optional(),
 });
+
+// Phase 3: Readiness & Autoregulation schemas
+export const readinessSignalSchema = z.object({
+  subjective: z.object({
+    readiness: z.number().int().min(1).max(5),
+    motivation: z.number().int().min(1).max(5),
+    soreness: z.record(z.string(), z.number().int().min(1).max(3)),
+    stress: z.number().int().min(1).max(5).optional(),
+  }),
+});
+
+export const autoregulationPolicySchema = z.object({
+  aggressiveness: z.enum(["conservative", "moderate", "aggressive"]),
+  allowUpRegulation: z.boolean(),
+  allowDownRegulation: z.boolean(),
+});

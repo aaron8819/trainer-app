@@ -615,3 +615,134 @@ Replace greedy selection with multi-objective beam search optimizer (selection-v
 
 **Result:** Pull workouts now include 1-3 main lifts (T-Bar Row, Pull-Up, Barbell Row, etc.). Push/legs verified working. All 14 beam-search tests pass. Main lift totals: push (9), pull (7), legs (8).
 
+---
+
+## ADR-043: New ReadinessSignal model for multi-source fatigue tracking (2026-02-15)
+
+**Context:** Existing `SessionCheckIn` captures basic readiness (1-5 scale) and pain flags but lacks granularity for evidence-based autoregulation. Research shows fatigue is multi-dimensional (physiological, psychological, performance-based) and requires composite scoring.
+
+**Decision:** Created standalone `ReadinessSignal` model instead of enhancing `SessionCheckIn`. New model includes:
+- Whoop data fields (recovery, strain, HRV, sleep quality/duration)
+- Subjective signals (readiness, motivation, stress, per-muscle soreness)
+- Performance signals (RPE deviation, stall count, volume compliance)
+- Computed fatigue score (overall + per-muscle breakdown)
+
+**Rationale:**
+1. **Separation of concerns**: `SessionCheckIn` is tightly coupled to workout generation (pain flags influence exercise selection). `ReadinessSignal` serves autoregulation, a distinct use case.
+2. **Schema evolution**: Adding 10+ fields to `SessionCheckIn` would bloat its interface and break backward compatibility.
+3. **Composite scoring**: Fatigue score requires weighted aggregation of multiple signals (Whoop 50%, subjective 30%, performance 20%). This is better computed once and stored rather than derived on-the-fly.
+4. **Historical tracking**: Separate table enables time-series analysis of fatigue patterns without joining workout history.
+
+**Alternative considered:** Enhance `SessionCheckIn` with new fields. Rejected because:
+- Creates dependency between check-in UI and autoregulation logic
+- Pain flags and readiness serve different purposes (safety vs intensity modulation)
+- Whoop integration would add OAuth complexity to existing check-in flow
+
+**Reference:** Phase 3 implementation in `src/lib/engine/readiness/`, `POST /api/readiness/submit`
+
+---
+
+## ADR-044: Stub Whoop integration with graceful degradation (2026-02-15)
+
+**Context:** Whoop recovery data is a valuable fatigue signal (HRV, sleep, strain) but requires OAuth integration, API credentials, and external service reliability. Phase 3 focuses on proving autoregulation value before investing in integration complexity.
+
+**Decision:** Implemented Whoop interface with stubbed returns (`fetchWhoopRecovery()` → `null`, `refreshWhoopToken()` → throws). System gracefully degrades when Whoop is unavailable:
+- Fatigue score weights auto-adjust: Whoop 0% → Subjective 60% (+30%), Performance 40% (+20%)
+- All autoregulation logic remains functional using subjective + performance signals only
+- `UserIntegration` schema exists for future OAuth (provider, tokens, expiresAt)
+
+**Rationale:**
+1. **De-risk rollout**: Prove autoregulation works with subjective signals before adding external dependencies
+2. **User value first**: Users can benefit from fatigue-aware programming immediately without Whoop devices
+3. **Future-proof schema**: `UserIntegration` table supports multiple providers (Whoop, Garmin, Apple Health)
+4. **Testability**: Stubbed integration enables deterministic testing without API mocking
+
+**Implementation path:**
+- Phase 3: Stub (current)
+- Phase 4: Whoop OAuth + real API calls
+- Phase 5: Additional providers (Garmin, Apple Health)
+
+**Reference:** `src/lib/api/readiness.ts` (`fetchWhoopRecovery`, `refreshWhoopToken`), ADR-043
+
+---
+
+## ADR-045: Progressive stall intervention ladder (2026-02-15)
+
+**Context:** Previous stall detection was binary (stalled / not stalled) with generic "deload or vary" advice. Research on plateau breaking shows escalating interventions are more effective than immediate drastic changes.
+
+**Decision:** Implemented 5-level intervention ladder based on weeks without progress:
+1. **2 weeks** → `microload`: +1-2 lbs increments instead of +5 lbs (linear progression fatigue)
+2. **3 weeks** → `deload`: -10% load, rebuild over 2-3 weeks (accumulated fatigue)
+3. **5 weeks** → `variation`: Swap exercise (e.g., flat bench → incline) (adaptation plateau)
+4. **8 weeks** → `volume_reset`: Drop to MEV, rebuild over 4 weeks (chronic overreaching)
+5. **12+ weeks** → `goal_reassess`: Re-evaluate training goals (structural limitation)
+
+**Rationale:**
+1. **Graduated response**: Matches intervention intensity to problem severity. Microloading addresses early plateaus without disrupting training; volume reset addresses chronic overreaching.
+2. **Evidence alignment**: Knowledgebase references progressive overload, deloads, and variation as standard plateau-breaking strategies. Ladder formalizes this progression.
+3. **Actionable guidance**: Each level provides specific instructions ("use +1-2 lbs" vs vague "change something")
+4. **Timing transparency**: User sees weeks without progress, understands why intervention is suggested
+
+**Alternative considered:** Fixed 3-week threshold with user-selected intervention. Rejected because:
+- Places decision burden on user who may not know best strategy
+- Doesn't account for severity differences (2 weeks vs 12 weeks)
+- Lacks progressive escalation built into training science
+
+**Reference:** `src/lib/engine/readiness/stall-intervention.ts`, `GET /api/stalls`, knowledgebase plateau section
+
+---
+
+## ADR-046: Continuous 0-1 fatigue score vs discrete 1-5 scale (2026-02-15)
+
+**Context:** User input uses discrete 1-5 scales (readiness, motivation, stress, soreness 1-3) for simplicity. Autoregulation needs precise scaling decisions (e.g., -7% load vs -10%).
+
+**Decision:** Normalize all inputs to 0-1 continuous scale, compute weighted fatigue score (0-1), use for autoregulation decisions. UI displays percentage (0-100%) with color coding.
+
+**Rationale:**
+1. **Precision**: Continuous scale supports fine-grained adjustments. Fatigue 0.35 (35%) can trigger -10% load; 0.32 (32%) might trigger -5%. Discrete 1-5 loses this granularity.
+2. **Weighted aggregation**: Multi-signal scoring (Whoop 50%, subjective 30%, performance 20%) requires normalized inputs. Can't meaningfully weight "3 out of 5" + "72% HRV" + "0.2 stall rate".
+3. **Algorithmic flexibility**: Decision thresholds (0.3, 0.5, 0.85) are easily tuned. Discrete scales require remapping logic ("3 out of 5" → which action?).
+4. **Physiological grounding**: Research-based fatigue markers (HRV, RPE deviation) are inherently continuous, not categorical.
+
+**Normalization formulas** (from `computeFatigueScore()`):
+- Readiness: `(readiness - 1) / 4` → maps 1-5 to 0-1
+- Soreness: `1 - ((soreness - 1) / 2)` → maps 1-3 to 1.0-0.0 (inverted, higher soreness = lower score)
+- Whoop recovery: `recovery / 100` → maps 0-100% to 0-1
+- RPE deviation: `max(0, 1 - abs(deviation) / 2)` → caps at 0 for ±2 RPE miss
+
+**UI presentation**: Displays as percentage with color bands (0-30% red, 30-50% orange, 50-80% yellow, 80-100% green) for interpretability.
+
+**Reference:** `src/lib/engine/readiness/compute-fatigue.ts`, `ReadinessCheckInForm.tsx`
+
+---
+
+## ADR-047: Autoregulation at route level vs deep in generation logic (2026-02-15)
+
+**Context:** Autoregulation modifies workout intensity/volume based on fatigue. Two integration points considered: (1) deep in engine during exercise selection/prescription, (2) post-generation at route level before returning to client.
+
+**Decision:** Applied autoregulation at route level (`POST /api/workouts/generate-from-template`, `POST /api/workouts/generate-from-intent`) via `applyAutoregulation()` wrapper after `generateSessionFromTemplate()` / intent generation completes.
+
+**Rationale:**
+1. **Separation of concerns**: Engine generates ideal workout assuming recovered state. Autoregulation is a modulation layer based on readiness context. Clean boundary.
+2. **Testability**: Engine tests validate generation logic independently. Autoregulation tests validate adjustment logic independently. No coupling.
+3. **Auditability**: `autoregulationLog` in DB clearly shows what changed and why. Deep integration would lose this transparency.
+4. **Flexibility**: Easy to disable autoregulation (skip `applyAutoregulation()` call) or apply different policies per user without touching engine.
+5. **Template preservation**: Templates store ideal prescriptions. Autoregulation adjusts instance execution without mutating template definition.
+
+**Implementation:**
+```typescript
+// Route level (src/app/api/workouts/generate-from-template/route.ts)
+const result = await generateSessionFromTemplate(userId, templateId);
+const autoregulated = await applyAutoregulation(userId, result.workout);
+return { workout: autoregulated.adjusted, autoregulation: { ... } };
+```
+
+**Alternative considered:** Pass `fatigueScore` to engine, apply adjustments during prescription. Rejected because:
+- Mixes generation logic (what to select) with modulation logic (how to adjust)
+- Complicates testing (need to inject fatigue score into all engine tests)
+- Harder to trace what changed (no clear before/after diff)
+
+**Reference:** `src/lib/api/autoregulation.ts`, `src/app/api/workouts/*/route.ts`, ADR-001 (engine purity)
+
+---
+

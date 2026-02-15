@@ -175,6 +175,132 @@ MacroCycle (12-52 weeks)
 
 ---
 
+## Autoregulation & Readiness System (Phase 3 - 2026-02-15)
+
+### Overview
+
+Phase 3 adds real-time autoregulation that adjusts workout intensity and volume based on multi-signal fatigue tracking. The system integrates Whoop recovery data (stubbed), subjective readiness, and performance history to compute a continuous fatigue score (0-1 scale) and automatically modulate workouts.
+
+### Readiness Signal Collection
+
+**Endpoint**: `POST /api/readiness/submit`
+
+**Input**:
+- `subjective.readiness`: 1-5 (rough → great)
+- `subjective.motivation`: 1-5 (low → high)
+- `subjective.soreness`: Per-muscle (chest, back, shoulders, legs, arms) → 1-3 (none, moderate, very sore)
+- `subjective.stress`: 1-5 (optional)
+
+**Output**:
+- Stored in `ReadinessSignal` table
+- Computes `FatigueScore` with weighted components:
+  - Whoop: 50% (stubbed, returns null in Phase 3)
+  - Subjective: 30% (readiness, motivation, soreness, stress)
+  - Performance: 20% (RPE deviation, stall count, volume compliance from last 3 sessions)
+
+**Formula** (from `computeFatigueScore` in `src/lib/engine/readiness/compute-fatigue.ts`):
+```
+fatigueScore.overall =
+  (weights.whoop * components.whoop) +
+  (weights.subjective * components.subjective) +
+  (weights.performance * components.performance)
+```
+
+### Autoregulation Decision Matrix
+
+**Implemented in**: `autoregulateWorkout()` in `src/lib/engine/readiness/autoregulate.ts`
+
+| Fatigue Score | Action | Effect |
+|---|---|---|
+| < 0.3 | `trigger_deload` | Cut volume 20%, reduce load 10%, signal critical fatigue |
+| 0.3-0.5 | `scale_down` (conservative/moderate) | -10% load, +1 RIR |
+| 0.3-0.5 | `reduce_volume` (aggressive policy) | -2 accessory sets |
+| 0.5-0.85 | `maintain` | No changes |
+| > 0.85 | `scale_up` (if allowed) | +5% load, -1 RIR (capped at 0) |
+
+**Policy Parameters** (`AutoregulationPolicy`):
+- `aggressiveness`: conservative / moderate / aggressive
+- `allowUpRegulation`: boolean (permit intensity increases when fresh)
+- `allowDownRegulation`: boolean (permit intensity decreases when fatigued)
+
+### Stall Detection & Intervention Ladder
+
+**Endpoint**: `GET /api/stalls`
+
+**Detection** (`detectStalls()` in `src/lib/engine/readiness/stall-intervention.ts`):
+- Analyzes last 12 weeks of completed workout history
+- Groups by exercise, counts sessions without PR (personal record)
+- Flags exercises with ≥2 weeks without progress
+
+**Intervention Ladder** (`suggestIntervention()`):
+
+| Weeks Stalled | Intervention | Action |
+|---|---|---|
+| 2 | `microload` | Use +1-2 lbs increments instead of +5 lbs |
+| 3 | `deload` | Drop 10%, rebuild over 2-3 weeks |
+| 5 | `variation` | Swap exercise variation (e.g., incline → flat bench) |
+| 8 | `volume_reset` | Drop to MEV, rebuild over 4 weeks |
+| 12+ | `goal_reassess` | Re-evaluate training goals and approach |
+
+### Integration with Workout Generation
+
+**Both template and intent routes** (`POST /api/workouts/generate-from-template`, `POST /api/workouts/generate-from-intent`) now call `applyAutoregulation()` after workout generation:
+
+```typescript
+const autoregulated = await applyAutoregulation(userId, workout);
+
+return {
+  workout: autoregulated.adjusted,  // Modified workout
+  autoregulation: {
+    wasAutoregulated: autoregulated.wasAutoregulated,
+    fatigueScore: autoregulated.fatigueScore,
+    modifications: autoregulated.modifications,
+    rationale: autoregulated.rationale,
+  },
+};
+```
+
+**Stored in DB**:
+- `Workout.wasAutoregulated`: boolean
+- `Workout.autoregulationLog`: JSON with modifications and rationale
+
+### UI Components
+
+**Phase 3 introduces 3 new components**:
+
+1. **ReadinessCheckInForm** (`src/components/ReadinessCheckInForm.tsx`)
+   - Collects readiness, motivation, stress, per-muscle soreness
+   - Submits to `/api/readiness/submit`
+   - Displays fatigue score result with gauge visualization
+
+2. **AutoregulationDisplay** (`src/components/AutoregulationDisplay.tsx`)
+   - Shows fatigue score gauge (0-100%, color-coded)
+   - Signal breakdown (stacked bar: Whoop/Subjective/Performance)
+   - Modifications list (intensity scale, volume reduction, deload triggers)
+   - Rationale text
+
+3. **StallInterventionCard** (`src/components/StallInterventionCard.tsx`)
+   - Exercise name, weeks without progress
+   - Intervention level badge (microload/deload/variation/volume_reset)
+   - Suggested action + rationale
+   - Apply/Dismiss buttons
+
+### Whoop Integration (Stubbed)
+
+**Phase 3 Interface** (implementation deferred to future phase):
+
+- `fetchWhoopRecovery(userId, date)` → returns `null` (stubbed)
+- `refreshWhoopToken(userId)` → throws error (stubbed)
+- `UserIntegration` model exists in schema for future OAuth flow
+- When Whoop is unavailable, weights auto-adjust:
+  - Whoop: 0%
+  - Subjective: 60% (increased from 30%)
+  - Performance: 40% (increased from 20%)
+
+**Reference**: ADR-047, ADR-048, ADR-049, ADR-050, ADR-051. See `src/lib/engine/readiness/` for implementation.
+
+---
+
 ## Module map (active runtime)
 
 | Module | Responsibility |
@@ -191,6 +317,7 @@ MacroCycle (12-52 weeks)
 | `progression.ts` | Next-load math and adaptive deload signal |
 | `types.ts` | Engine contracts |
 | **`periodization/`** | **Macro/meso/block generation, context derivation, block-aware prescription** |
+| **`readiness/`** | **Fatigue scoring, autoregulation, stall detection and intervention ladder** |
 
 ## Module Cleanup History
 

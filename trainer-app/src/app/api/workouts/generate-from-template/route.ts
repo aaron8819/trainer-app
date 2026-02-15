@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { generateFromTemplateSchema } from "@/lib/validation";
 import { resolveOwner } from "@/lib/api/workout-context";
 import { generateSessionFromTemplate } from "@/lib/api/template-session";
+import { applyAutoregulation } from "@/lib/api/autoregulation";
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
@@ -25,8 +26,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: result.error }, { status: 400 });
   }
 
+  // Phase 3: Apply autoregulation
+  const autoregulated = await applyAutoregulation(user.id, result.workout);
+
   return NextResponse.json({
-    workout: result.workout,
+    workout: autoregulated.adjusted,
     templateId: result.templateId,
     sraWarnings: result.sraWarnings,
     substitutions: result.substitutions,
@@ -34,5 +38,12 @@ export async function POST(request: Request) {
     selectionMode: result.selectionMode,
     sessionIntent: result.sessionIntent,
     selection: result.selection,
+    // Phase 3: Include autoregulation metadata
+    autoregulation: {
+      wasAutoregulated: autoregulated.wasAutoregulated,
+      fatigueScore: autoregulated.fatigueScore,
+      modifications: autoregulated.modifications,
+      rationale: autoregulated.rationale,
+    },
   });
 }

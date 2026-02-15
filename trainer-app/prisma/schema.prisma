@@ -217,6 +217,8 @@ model User {
   templates        WorkoutTemplate[]
   macroCycles      MacroCycle[]
   exerciseExposures ExerciseExposure[]
+  readinessSignals ReadinessSignal[]
+  integrations     UserIntegration[]
 }
 
 model UserPreference {
@@ -425,6 +427,10 @@ model Workout {
   weekInBlock        Int?           // 1, 2, 3 within block
   blockPhase         BlockType?     // Denormalized for display
 
+  // Autoregulation tracking (Phase 3)
+  wasAutoregulated Boolean @default(false)
+  autoregulationLog Json?  // { modifications: [...], fatigueScore: 0.45, rationale: "..." }
+
   exercises WorkoutExercise[]
   sessionCheckIns SessionCheckIn[]
 
@@ -488,6 +494,58 @@ model SessionCheckIn {
   createdAt  DateTime @default(now())
 
   @@index([userId, date])
+}
+
+// Phase 3: Autoregulation & Readiness Integration
+model ReadinessSignal {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  timestamp  DateTime @default(now())
+
+  // Whoop data (stubbed, nullable until Phase 3.5)
+  whoopRecovery     Float?  // 0-100
+  whoopStrain       Float?  // 0-21
+  whoopHrv          Float?  // ms (RMSSD)
+  whoopSleepQuality Float?  // 0-100
+  whoopSleepHours   Float?  // hours
+
+  // Subjective (always present)
+  subjectiveReadiness  Int  // 1-5
+  subjectiveMotivation Int  // 1-5
+  subjectiveSoreness   Json // Map<MuscleGroup, 1-3>
+  subjectiveStress     Int? // 1-5 (optional)
+
+  // Performance (computed from history)
+  performanceRpeDeviation  Float  // Avg(actual - expected RPE) last 3 sessions
+  performanceStalls        Int    // Count of stalled exercises
+  performanceCompliance    Float  // % sets completed (0-1)
+
+  // Computed fatigue score (stored for analytics)
+  fatigueScoreOverall      Float  // 0-1 (0=exhausted, 1=fresh)
+  fatigueScoreBreakdown    Json   // { whoop: 0.35, subjective: 0.2, performance: 0.1 }
+
+  @@index([userId, timestamp(sort: Desc)])
+}
+
+model UserIntegration {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  provider     String   // "whoop", "oura", "garmin" (future)
+  accessToken  String?  @db.Text
+  refreshToken String?  @db.Text
+  expiresAt    DateTime?
+
+  isActive     Boolean  @default(true)
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([userId, provider])
+  @@index([userId, isActive])
 }
 
 

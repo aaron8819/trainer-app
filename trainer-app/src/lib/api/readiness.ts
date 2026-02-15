@@ -92,8 +92,9 @@ export async function computePerformanceSignals(
 
 /**
  * Get latest readiness signal for user
+ * Phase 3.5: Added staleness check (48-hour expiry)
  * @param userId - User ID
- * @returns Most recent ReadinessSignal or null if none exists
+ * @returns Most recent ReadinessSignal or null if none exists or expired
  */
 export async function getLatestReadinessSignal(
   userId: string
@@ -104,6 +105,12 @@ export async function getLatestReadinessSignal(
   });
 
   if (!signal) return null;
+
+  // Check staleness (Phase 3.5): signals > 48 hours old are expired
+  const ageMs = new Date().getTime() - signal.timestamp.getTime();
+  if (ageMs > SIGNAL_STALENESS_THRESHOLD_MS) {
+    return null; // Expired - caller will fall back to default fatigue score
+  }
 
   // Map DB model to engine type
   return {
@@ -177,4 +184,35 @@ export async function refreshWhoopToken(userId: string): Promise<void> {
   // 1. Fetch UserIntegration record for provider="whoop"
   // 2. Use refreshToken to get new accessToken from Whoop OAuth
   // 3. Update UserIntegration record with new tokens + expiration
+}
+
+/**
+ * Signal staleness threshold (Phase 3.5)
+ * Signals older than 48 hours are considered expired and not used for autoregulation
+ */
+export const SIGNAL_STALENESS_THRESHOLD_MS = 48 * 60 * 60 * 1000; // 48 hours
+
+/**
+ * Get age of readiness signal in hours
+ * @param signal - Readiness signal with timestamp
+ * @returns Age in hours (e.g., 2.5 = 2 hours 30 minutes)
+ */
+export function getSignalAgeHours(signal: { timestamp: Date }): number {
+  const now = new Date();
+  const ageMs = now.getTime() - signal.timestamp.getTime();
+  return ageMs / (1000 * 60 * 60);
+}
+
+/**
+ * Format signal age for display
+ * @param ageHours - Age in hours
+ * @returns Human-readable string (e.g., "2 hours ago", "just now", "1 day ago")
+ */
+export function formatSignalAge(ageHours: number): string {
+  if (ageHours < 0.1) return "just now"; // < 6 minutes
+  if (ageHours < 1) return "less than 1 hour ago";
+  if (ageHours < 2) return "1 hour ago";
+  if (ageHours < 24) return `${Math.floor(ageHours)} hours ago`;
+  const days = Math.floor(ageHours / 24);
+  return days === 1 ? "1 day ago" : `${days} days ago`;
 }

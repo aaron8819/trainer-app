@@ -746,3 +746,61 @@ return { workout: autoregulated.adjusted, autoregulation: { ... } };
 
 ---
 
+## ADR-048: Per-muscle fatigue penalty in overall score (2026-02-15)
+
+**Context:** Phase 3 computes per-muscle fatigue scores from soreness input (1-3 scale) but only used them for tracking. The overall fatigue score (0-1) was computed purely from multi-signal integration (Whoop + subjective + performance) without considering localized muscle soreness. This created a mismatch: a user with very sore quads (3/3) but otherwise good readiness (5/5) would receive 90% fatigue score and minimal autoregulation, despite needing aggressive scale-down on quad-dominant exercises.
+
+**Decision:** Apply 20% worst-muscle penalty to overall fatigue score. Formula changed from:
+
+```
+overall = baseScore
+```
+
+to:
+
+```
+overall = baseScore * 0.8 + worstMuscleFatigue * 0.2
+```
+
+where `worstMuscleFatigue = min(perMuscle values)` if soreness data exists, else 1.0 (fresh).
+
+**Rationale:**
+
+1. **Localized damage matters**: DOMS (delayed onset muscle soreness) in one muscle group (e.g., quads after heavy squats) should reduce training readiness more than global subjective scores capture. A user might feel mentally ready (high motivation) but physically compromised in specific muscles.
+
+2. **20% weight balances sensitivity**:
+   - Very sore muscle (fatigue 0.0) pulls down overall score by 20% max (e.g., 90% → 72%)
+   - Fresh muscles (fatigue 1.0) add 20% boost to low base scores (e.g., 40% → 52%)
+   - Moderate soreness (fatigue 0.5) has neutral impact (e.g., 90% → 82%)
+
+3. **Triggers autoregulation appropriately**: Example scenario:
+   - User: Readiness 5/5, Motivation 5/5 → base score 90% (maintain)
+   - Quads: Very sore (3/3) → fatigue 0.0
+   - Overall: 90% * 0.8 + 0% * 0.2 = 72% → scale-down action
+   - **Result**: Workout gets -10% load, +1 RIR on all exercises (uniform, not per-muscle)
+
+4. **Simpler than per-exercise penalties**: Alternative considered was applying differential penalties per exercise based on muscle targets (e.g., scale squats more than RDLs when quads sore). Rejected because:
+   - More complex logic (muscle-exercise mapping, partial overlap handling)
+   - Harder to test and validate
+   - Uniform workout scaling already achieves goal of preventing overload when any muscle is very sore
+   - Can revisit per-exercise approach in Phase 4 if needed
+
+**Alternatives considered:**
+
+- **No penalty (status quo)**: Rejected. Localized soreness doesn't influence autoregulation, leading to overtraining scenarios.
+- **50% worst-muscle weight**: Too aggressive. Base score 90% + sore muscle (0%) → 45% overall, triggering deload unnecessarily.
+- **Per-exercise differential scaling**: More complex, harder to implement/test. Uniform scaling via overall score is simpler and achieves 80% of the value.
+
+**Example outcomes:**
+
+| Base Score | Soreness | Worst Muscle Fatigue | Overall Score | Action |
+|---|---|---|---|---|
+| 90% | None | 1.0 (fresh) | 90% * 0.8 + 1.0 * 0.2 = 92% | Maintain |
+| 90% | Quads 3/3 | 0.0 (exhausted) | 90% * 0.8 + 0.0 * 0.2 = 72% | Scale down |
+| 90% | Legs 2/3 | 0.5 (moderate) | 90% * 0.8 + 0.5 * 0.2 = 82% | Maintain |
+| 40% | Quads 3/3 | 0.0 (exhausted) | 40% * 0.8 + 0.0 * 0.2 = 32% | Deload |
+
+**Reference:** `src/lib/engine/readiness/compute-fatigue.ts` (lines 42-62), `compute-fatigue.test.ts` (tests: "should apply per-muscle penalty when one muscle is very sore", "should not apply significant penalty when all muscles are fresh")
+
+---
+

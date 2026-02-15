@@ -39,13 +39,23 @@ export function computeFatigueScore(
     performanceContribution: performanceScore * weights.performance,
   };
 
-  const overall =
+  // Per-muscle fatigue from soreness data (computed first for penalty calculation)
+  const perMuscle = computePerMuscleFatigue(signal.subjective.soreness);
+
+  // Base score from multi-signal integration
+  const baseScore =
     components.whoopContribution +
     components.subjectiveContribution +
     components.performanceContribution;
 
-  // Per-muscle fatigue from soreness data
-  const perMuscle = computePerMuscleFatigue(signal.subjective.soreness);
+  // Apply per-muscle penalty (20% weight for worst affected muscle)
+  // This prevents overloading workouts when specific muscles are very sore,
+  // even if overall readiness is moderate (e.g., quads 3/3 pulls down score)
+  const perMuscleFatigueValues = Object.values(perMuscle);
+  const worstMuscleFatigue =
+    perMuscleFatigueValues.length > 0 ? Math.min(...perMuscleFatigueValues) : 1.0;
+
+  const overall = baseScore * 0.8 + worstMuscleFatigue * 0.2;
 
   return {
     overall,

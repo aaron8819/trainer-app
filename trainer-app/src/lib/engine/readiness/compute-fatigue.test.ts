@@ -39,7 +39,7 @@ describe('computeFatigueScore', () => {
       expect(result.weights.performance).toBe(0.2);
     });
 
-    it('should return low fatigue score (<0.4) for poor Whoop recovery', () => {
+    it('should return low fatigue score (<0.5) for poor Whoop recovery', () => {
       const signal: ReadinessSignal = {
         timestamp: new Date(),
         userId: 'user-1',
@@ -53,7 +53,7 @@ describe('computeFatigueScore', () => {
         subjective: {
           readiness: 2,
           motivation: 2,
-          soreness: {},
+          soreness: {}, // Empty soreness → worst muscle = 1.0 (fresh)
         },
         performance: {
           rpeDeviation: 2, // Sessions felt harder
@@ -64,7 +64,9 @@ describe('computeFatigueScore', () => {
 
       const result = computeFatigueScore(signal);
 
-      expect(result.overall).toBeLessThan(0.4);
+      // With per-muscle penalty: baseScore * 0.8 + 1.0 * 0.2
+      // Empty soreness defaults to fresh (1.0), so adds 20% boost
+      expect(result.overall).toBeLessThan(0.5);
     });
 
     it('should penalize high strain (>18)', () => {
@@ -161,7 +163,7 @@ describe('computeFatigueScore', () => {
         subjective: {
           readiness: 5, // Max readiness
           motivation: 5, // Max motivation
-          soreness: {},
+          soreness: {}, // Empty → worst muscle = 1.0 (fresh)
         },
         performance: {
           rpeDeviation: 0,
@@ -175,8 +177,9 @@ describe('computeFatigueScore', () => {
       // With max readiness (5) and max motivation (5), subjective score should be 1.0
       // Subjective: (5-1)/4 * 0.6 + (5-1)/4 * 0.4 = 1.0 * 0.6 + 1.0 * 0.4 = 1.0
       // Performance: 0.75 (neutral)
-      // Overall: 1.0 * 0.6 + 0.75 * 0.4 = 0.9
-      expect(result.overall).toBeCloseTo(0.9, 2);
+      // Base score: 1.0 * 0.6 + 0.75 * 0.4 = 0.9
+      // With per-muscle penalty: 0.9 * 0.8 + 1.0 * 0.2 = 0.72 + 0.2 = 0.92
+      expect(result.overall).toBeCloseTo(0.92, 2);
     });
   });
 
@@ -355,10 +358,64 @@ describe('computeFatigueScore', () => {
 
       expect(Object.keys(result.perMuscle).length).toBe(0);
     });
+
+    it('should apply per-muscle penalty when one muscle is very sore', () => {
+      const signal: ReadinessSignal = {
+        timestamp: new Date(),
+        userId: 'test-user',
+        subjective: {
+          readiness: 5, // Max readiness
+          motivation: 5, // Max motivation
+          soreness: { quads: 3, hamstrings: 1 }, // Quads very sore, hamstrings fresh
+        },
+        performance: {
+          rpeDeviation: 0,
+          stallCount: 0,
+          volumeComplianceRate: 1.0,
+        },
+      };
+
+      const result = computeFatigueScore(signal);
+
+      // Without penalty: subjective score = 1.0 (readiness 5, motivation 5)
+      // Subjective: (5-1)/4 * 0.6 + (5-1)/4 * 0.4 = 1.0
+      // Performance: 0.75 (neutral)
+      // Base score: 1.0 * 0.6 + 0.75 * 0.4 = 0.9
+      // With penalty: 0.9 * 0.8 + 0.0 (quads fatigue) * 0.2 = 0.72
+      expect(result.overall).toBeCloseTo(0.72, 2);
+      expect(result.perMuscle.quads).toBe(0.0); // Very sore
+      expect(result.perMuscle.hamstrings).toBe(1.0); // Fresh
+    });
+
+    it('should not apply significant penalty when all muscles are fresh', () => {
+      const signal: ReadinessSignal = {
+        timestamp: new Date(),
+        userId: 'test-user',
+        subjective: {
+          readiness: 5, // Max readiness
+          motivation: 5, // Max motivation
+          soreness: { quads: 1, hamstrings: 1 }, // All fresh
+        },
+        performance: {
+          rpeDeviation: 0,
+          stallCount: 0,
+          volumeComplianceRate: 1.0,
+        },
+      };
+
+      const result = computeFatigueScore(signal);
+
+      // Base score: 0.9 (same as above)
+      // Worst muscle fatigue: 1.0 (all fresh)
+      // With penalty: 0.9 * 0.8 + 1.0 * 0.2 = 0.72 + 0.2 = 0.92
+      expect(result.overall).toBeCloseTo(0.92, 2);
+      expect(result.perMuscle.quads).toBe(1.0); // Fresh
+      expect(result.perMuscle.hamstrings).toBe(1.0); // Fresh
+    });
   });
 
   describe('Component breakdown', () => {
-    it('should ensure components sum to overall score', () => {
+    it('should apply per-muscle penalty after component integration', () => {
       const signal: ReadinessSignal = {
         timestamp: new Date(),
         userId: 'user-1',
@@ -372,7 +429,7 @@ describe('computeFatigueScore', () => {
         subjective: {
           readiness: 4,
           motivation: 4,
-          soreness: {},
+          soreness: {}, // Empty → worst muscle = 1.0 (fresh)
         },
         performance: {
           rpeDeviation: 0,
@@ -388,8 +445,11 @@ describe('computeFatigueScore', () => {
         result.components.subjectiveContribution +
         result.components.performanceContribution;
 
-      // Should sum to overall (within floating point precision)
-      expect(Math.abs(componentSum - result.overall)).toBeLessThan(0.001);
+      // Component sum is the base score (before per-muscle penalty)
+      // Overall = baseScore * 0.8 + worstMuscleFatigue * 0.2
+      // With empty soreness: overall = baseScore * 0.8 + 1.0 * 0.2
+      const expectedOverall = componentSum * 0.8 + 1.0 * 0.2;
+      expect(result.overall).toBeCloseTo(expectedOverall, 3);
     });
 
     it('should return zero whoop contribution when Whoop unavailable', () => {

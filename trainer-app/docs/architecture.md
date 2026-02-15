@@ -200,11 +200,24 @@ Phase 3 adds real-time autoregulation that adjusts workout intensity and volume 
 
 **Formula** (from `computeFatigueScore` in `src/lib/engine/readiness/compute-fatigue.ts`):
 ```
-fatigueScore.overall =
+baseScore =
   (weights.whoop * components.whoop) +
   (weights.subjective * components.subjective) +
   (weights.performance * components.performance)
+
+fatigueScore.overall = baseScore * 0.8 + worstMuscleFatigue * 0.2
 ```
+
+**Per-Muscle Fatigue Integration** (Phase 3.5 - 2026-02-15):
+
+The overall fatigue score applies a 20% penalty based on the worst affected muscle group. This prevents overloading workouts when specific muscles are very sore, even if overall readiness is moderate.
+
+- **Soreness → Fatigue Mapping**: 1 (none) → 1.0 (fresh), 2 (moderate) → 0.5, 3 (very sore) → 0.0 (exhausted)
+- **Worst Muscle Penalty**: `worstMuscleFatigue = min(perMuscle values)` if soreness data exists, else 1.0 (fresh)
+- **Example**: User with readiness 5/5, motivation 5/5 (base score 90%), but quads very sore (3/3):
+  - Without penalty: 90%
+  - With penalty: 90% * 0.8 + 0% * 0.2 = **72%** → triggers scale-down autoregulation
+- **Rationale**: Localized muscle damage (e.g., quad DOMS from heavy squats) should reduce training readiness more than global subjective scores alone capture
 
 ### Autoregulation Decision Matrix
 

@@ -8,7 +8,11 @@ import type {
   AutoregulationModification,
 } from "@/lib/engine/readiness/types";
 import { DEFAULT_AUTOREGULATION_POLICY } from "@/lib/engine/readiness/types";
-import { getLatestReadinessSignal } from "./readiness";
+import {
+  getLatestReadinessSignal,
+  getSignalAgeHours,
+  formatSignalAge,
+} from "./readiness";
 
 export type AutoregulationResult = {
   original: EngineWorkoutPlan;
@@ -39,20 +43,20 @@ export async function applyAutoregulation(
   // 1. Get latest readiness signal
   const signal = await getLatestReadinessSignal(userId);
 
-  // If no signal available, return workout unchanged
-  if (!signal) {
-    return {
-      original: workout,
-      adjusted: workout,
-      modifications: [],
-      fatigueScore: null,
-      rationale: "No readiness signal available. Workout unchanged.",
-      wasAutoregulated: false,
-    };
-  }
-
-  // 2. Compute fatigue score from readiness signal
-  const fatigueScore = computeFatigueScore(signal);
+  // 2. Compute fatigue score from readiness signal (or use defaults if expired/missing)
+  // Phase 3.5: Expired signals (> 48 hours) return null, triggering default 0.7 fatigue
+  const fatigueScore: FatigueScore = signal
+    ? computeFatigueScore(signal)
+    : {
+        overall: 0.7, // Default "recovered" score when no signal available
+        perMuscle: {},
+        weights: { whoop: 0, subjective: 0, performance: 0 },
+        components: {
+          whoopContribution: 0,
+          subjectiveContribution: 0,
+          performanceContribution: 0,
+        },
+      };
 
   // 3. Flatten workout to single exercises array for autoregulation
   const flatExercises = [...workout.warmup, ...workout.mainLifts, ...workout.accessories];
@@ -68,11 +72,28 @@ export async function applyAutoregulation(
   };
 
   // 4. Apply autoregulation
-  const { adjustedWorkout, modifications, rationale } = autoregulateWorkout(
+  const { adjustedWorkout, modifications, rationale: baseRationale } = autoregulateWorkout(
     flatPlan as any, // Type cast: flatPlan matches the local WorkoutPlan type in autoregulate.ts
     fatigueScore,
     policy
   );
+
+  // 4.5. Add signal age indicator to rationale (Phase 3.5)
+  let rationale = baseRationale;
+  if (signal) {
+    const signalAge = getSignalAgeHours(signal);
+    if (signalAge > 24) {
+      // Stale: 24-48 hours old
+      rationale += ` (⚠️ using ${formatSignalAge(signalAge)} data - consider fresh check-in)`;
+    } else if (signalAge > 4) {
+      // Aging: 4-24 hours old
+      rationale += ` (using ${formatSignalAge(signalAge)} data)`;
+    }
+    // Fresh: < 4 hours old - no note needed
+  } else {
+    // No signal or expired (> 48 hours)
+    rationale += " (using default readiness score - no recent check-in available)";
+  }
 
   // 5. Map adjusted exercises back to original structure
   const warmupCount = workout.warmup.length;

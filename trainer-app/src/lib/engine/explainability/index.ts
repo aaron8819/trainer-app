@@ -70,3 +70,14 @@ export {
   buildSelectionFactorBreakdown,
   suggestAlternatives,
 } from "./exercise-rationale";
+
+// Prescription Rationale
+export type { PrescriptionRationaleContext } from "./prescription-rationale";
+export {
+  explainPrescriptionRationale,
+  explainSetCount,
+  explainRepTarget,
+  explainLoadChoice,
+  explainRirTarget,
+  explainRestPeriod,
+} from "./prescription-rationale";

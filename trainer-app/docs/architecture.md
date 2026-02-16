@@ -497,12 +497,21 @@ Citations are automatically matched to exercises via `getCitationsByExercise(exe
 
 Total: 16 curated research citations sourced from `docs/knowledgebase/hypertrophyandstrengthtraining_researchreport.md`
 
+**Phase 4.4 Deliverables (✅ Complete):**
+- `explainPrescriptionRationale()` - Main entry point, generates complete prescription rationale with KB citations
+- `explainSetCount()` - Block phase (accumulation/intensification/deload), training age modifiers (+15% advanced, -15% beginner)
+- `explainRepTarget()` - Goal-specific rep ranges (hypertrophy 6-10, strength 3-6, etc.), exercise constraints
+- `explainLoadChoice()` - Progression type (linear/double/autoregulated), % change, deload context
+- `explainRirTarget()` - Mesocycle week (early conservative → late peak), training age RIR accuracy
+- `explainRestPeriod()` - Exercise classification (heavy compound/moderate compound/isolation), rep-aware rest
+- 41 comprehensive tests (148 cumulative for explainability system)
+- Edge cases: deload, exercise constraints, bodyweight exercises, progression types, block phases
+
 **Upcoming Phases:**
-- Phase 4.4: Prescription rationale (explain sets/reps/load/RIR/rest decisions)
 - Phase 4.5: Coach messages + API orchestration (`GET /api/workouts/[id]/explanation`)
 - Phase 4.6: React UI components + workout page migration (replace legacy "Why" section) + deprecate `selection-v2/rationale.ts`
 
-**References:** ADR-049, ADR-050, ADR-051, docs/plans/phase4-explainability-execution.md, docs/knowledgebase/hypertrophyandstrengthtraining_researchreport.md
+**References:** ADR-049, ADR-050, ADR-051, ADR-053, docs/plans/phase4-explainability-execution.md, docs/knowledgebase/hypertrophyandstrengthtraining_researchreport.md
 
 ---
 

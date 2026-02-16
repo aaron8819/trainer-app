@@ -1287,3 +1287,56 @@ From `hypertrophyandstrengthtraining_researchreport.md:366`:
 
 ---
 
+
+## ADR-053: Phase 4.4 — Prescription Rationale (2026-02-16)
+
+**Status:** ✅ Accepted
+
+**Context:**
+Phase 4.3 explained *why exercises were selected*. Phase 4.4 completes the explanation system by explaining *why specific sets/reps/load/RIR/rest were prescribed*.
+
+Users see:
+- "3×8 @ 100kg, 2 RIR, 3 min rest"
+
+But don't understand:
+- Why 3 sets? (block phase, training age)
+- Why 8 reps? (training goal, exercise constraints)
+- Why 100kg? (progression type, % change from last session)
+- Why 2 RIR? (week in mesocycle, training age)
+- Why 3 min rest? (exercise type, rep range, fatigue cost)
+
+**Decision:**
+Created `src/lib/engine/explainability/prescription-rationale.ts` with:
+- `explainPrescriptionRationale()` — Main entry point, generates complete prescription rationale
+- `explainSetCount()` — Block phase (accumulation/intensification/deload), training age modifiers
+- `explainRepTarget()` — Goal-specific rep ranges (hypertrophy 6-10, strength 3-6, etc.), exercise constraints
+- `explainLoadChoice()` — Progression type (linear/double/autoregulated), % change, deload context
+- `explainRirTarget()` — Mesocycle week (early conservative → late peak), training age RIR accuracy
+- `explainRestPeriod()` — Exercise classification (heavy compound/moderate compound/isolation), rep-aware rest
+
+**Implementation:**
+- Pure functions, all context passed as parameters (engine purity maintained)
+- KB citations available via `getCitationsByTopic("volume")`, `getCitationsByTopic("rir")`, `getCitationsByTopic("rest")`
+- Block phase detection from `PeriodizationModifiers` (accumulation: high volume + low intensity, intensification: peak intensity)
+- Progression type inferred from training age + rep changes (beginner → linear, intermediate/advanced → double/autoregulated)
+- Rep-aware rest periods: heavy compounds (5 reps) get 4-5 min, moderate compounds get 2-3 min, isolation gets 1.5 min
+
+**Consequences:**
+✅ **Complete prescription transparency** — Users understand every parameter in their workout
+✅ **Research-backed rationale** — KB citations for volume, RIR, rest justify prescription decisions
+✅ **Block-aware explanations** — Accumulation/intensification/deload context explained naturally
+✅ **Training age context** — Explains why beginners get linear progression, advanced get autoregulation
+✅ **41 comprehensive tests** — Full coverage of all prescription parameters and edge cases
+✅ **Coexists with legacy code** — No breaking changes, ready for Phase 4.5 API integration
+
+**Test Coverage:**
+- 41 tests (148 cumulative for explainability system)
+- Coverage: set count (7 tests), rep target (6 tests), load choice (9 tests), RIR target (8 tests), rest period (7 tests), integration (4 tests)
+- Edge cases: deload, exercise constraints, bodyweight exercises, progression types, block phases
+
+**Related:**
+- Completes Phase 4.4 of explainability roadmap
+- Depends on: Phase 4.1 (types, KB), Phase 4.3 (exercise rationale pattern)
+- Next: Phase 4.5 (coach messages, API integration)
+
+---

@@ -50,3 +50,6 @@ export * from "./readiness/types";
 export * from "./readiness/compute-fatigue";
 export * from "./readiness/autoregulate";
 export * from "./readiness/stall-intervention";
+
+// Explainability (Phase 4)
+export * from "./explainability";

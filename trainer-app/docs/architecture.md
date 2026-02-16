@@ -327,6 +327,66 @@ return {
 
 ---
 
+## Explainability System (Phase 4.1+)
+
+**Status:** Foundation implemented (Phase 4.1), full system in progress
+
+**Goal:** Transform the workout generation "black box" into a transparent, coach-like experience with research-backed explanations at three levels:
+
+1. **Session context** - "Why this workout today?" (block phase, volume status, readiness, progression)
+2. **Exercise rationale** - "Why these exercises?" (selection factors, KB citations, alternatives)
+3. **Prescription rationale** - "Why these sets/reps/loads?" (periodization, progression, training age)
+
+**Architecture:**
+
+```text
+src/lib/engine/explainability/     # Pure engine layer (no DB/I/O)
+├── types.ts                        # WorkoutExplanation, ExerciseRationale, Citation types
+├── knowledge-base.ts               # 16 research citations (Maeo, Pedrosa, Schoenfeld, etc.)
+├── session-context.ts              # Block phase, volume, readiness explanation [Phase 4.2]
+├── exercise-rationale.ts           # Per-exercise selection factors + KB citations [Phase 4.3]
+├── prescription-rationale.ts       # Sets/reps/load/RIR/rest explanation [Phase 4.4]
+├── coach-messages.ts               # Encouragement, warnings, milestones [Phase 4.5]
+└── utils.ts                        # Formatting helpers (formatBlockPhase, formatCitation, etc.)
+
+src/lib/api/explainability.ts      # API orchestration (DB → engine types) [Phase 4.5]
+src/app/api/workouts/[id]/explanation/route.ts  # GET endpoint [Phase 4.5]
+src/components/explainability/      # React UI components [Phase 4.6]
+```
+
+**Phase 4.1 Deliverables (✅ Complete):**
+- Type system: `WorkoutExplanation`, `SessionContext`, `ExerciseRationale`, `PrescriptionRationale`, `Citation`
+- Knowledge base: 16 core research citations organized by topic (lengthened, volume, RIR, rest, periodization, modality)
+- Citation matching: `getCitationsByExercise()` matches citations to exercises by name + `lengthPositionScore`
+- Utilities: 12 formatting functions (`formatBlockPhase`, `formatCitation`, `pluralize`, `formatLoadChange`, etc.)
+- 59 tests passing
+
+**Key Research Citations:**
+- Maeo et al. 2023 - Overhead triceps extensions (+40% growth vs pushdowns)
+- Pedrosa et al. 2022 - Lengthened leg extensions (~2× quad hypertrophy vs shortened)
+- Wolf et al. 2023 - Lengthened-position meta-analysis (SME = −0.28 advantage)
+- Schoenfeld et al. 2017 - Volume dose-response (0.37%/set)
+- Robinson et al. 2024 - Proximity to failure dose-response
+- Refalo et al. 2023/2024 - 0 RIR vs 1-2 RIR equivalence
+- Schoenfeld et al. 2016 - Rest periods (3 min > 1 min for strength/hypertrophy)
+- Rhea & Alderman 2004 - Periodization superiority (ES = 0.84)
+
+**Example Citation Matching:**
+- "Overhead Triceps Extension" + `lengthPositionScore: 5` → Maeo 2023 citation
+- "Incline Dumbbell Curl" + `lengthPositionScore: 5` → Pedrosa 2023 citation
+- "Standing Calf Raise" + `lengthPositionScore: 5` → Kassiano 2023 + Kinoshita 2023 citations
+
+**Upcoming Phases:**
+- Phase 4.2: Session context explanation (block goal, volume progress, readiness)
+- Phase 4.3: Exercise rationale with KB citations (integrate with `selection-v2/rationale.ts`)
+- Phase 4.4: Prescription rationale (explain sets/reps/load/RIR/rest decisions)
+- Phase 4.5: Coach messages + API orchestration (`GET /api/workouts/[id]/explanation`)
+- Phase 4.6: React UI components + workout page migration (replace legacy "Why" section)
+
+**References:** ADR-049, docs/plans/phase4-explainability-execution.md, docs/knowledgebase/hypertrophyandstrengthtraining_researchreport.md
+
+---
+
 ## Module map (active runtime)
 
 | Module | Responsibility |
@@ -344,6 +404,7 @@ return {
 | `types.ts` | Engine contracts |
 | **`periodization/`** | **Macro/meso/block generation, context derivation, block-aware prescription** |
 | **`readiness/`** | **Fatigue scoring, autoregulation, stall detection and intervention ladder** |
+| **`explainability/`** | **KB citations, session context, exercise/prescription rationale (Phase 4.1+)** |
 
 ## Module Cleanup History
 

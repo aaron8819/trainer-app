@@ -8,6 +8,7 @@
 | [specs/spec-v3.md](specs/spec-v3.md) | **v3 ideas**: training phases, indirect volume, exercise rotation, supersets | Claude + developers |
 | [knowledgebase/](knowledgebase/) | Scientific foundations (hypertrophy & strength research) | Claude + developers |
 | [architecture.md](architecture.md) | Engine behavior, guarantees, generation flow, module map, **periodization system** | Claude + developers |
+| [plans/phase4-explainability-execution.md](plans/phase4-explainability-execution.md) | **Phase 4 (IN PROGRESS)**: Explainability system - KB citations, session context, exercise/prescription rationale (6 sub-phases) | Claude + developers |
 | [plans/mobile-optimization.md](plans/mobile-optimization.md) | Phase-based mobile UX optimization plan with implementation/status tracking and artifact links | Claude + developers |
 | [src-lib-reference.md](src-lib-reference.md) | Complete `src/lib` reference: module boundaries, contracts, and integration points across api/data/db/engine/exercise-library/settings/supabase/ui/validation | Claude + developers |
 | [engine-prescription-progression-volume.md](engine-prescription-progression-volume.md) | Consolidated engine reference for `rules.ts`, `prescription.ts`, `progression.ts`, `apply-loads.ts`, `template-session.ts`, `sra.ts`, `volume.ts`, and `volume-landmarks.ts` | Claude + developers |

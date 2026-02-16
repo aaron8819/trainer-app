@@ -4,6 +4,72 @@ Record of significant design decisions and their rationale. Newest first.
 
 ---
 
+## ADR-049: Phase 4.1 - Explainability foundation and KB citation database (2026-02-16)
+
+**Status:** Implemented
+
+**Context:**
+The Trainer app generates intelligent workouts using periodization, multi-objective selection, and autoregulation—but users don't understand *why* specific exercises, sets, reps, or loads were chosen. This "black box" experience limits trust and educational value. Phase 4 adds transparent, coach-like explanations at three levels: session context, exercise rationale, and prescription rationale.
+
+Phase 4.1 establishes the foundation: type system, knowledge base citations, and formatting utilities.
+
+**Decision:**
+Created new module `src/lib/engine/explainability/` with:
+
+1. **Type system** (`types.ts`):
+   - `WorkoutExplanation` - Complete workout explanation
+   - `SessionContext` - Block phase, volume status, readiness, progression
+   - `ExerciseRationale` - Selection factors, KB citations, alternatives
+   - `PrescriptionRationale` - Sets/reps/load/RIR/rest explanation
+   - `CoachMessage` - Encouragement, warnings, milestones
+
+2. **Knowledge base** (`knowledge-base.ts`):
+   - 16 core research citations from KB report
+   - Organized by topic: lengthened, volume, RIR, rest, periodization, modality
+   - `getCitationsByExercise()` - Match citations to exercises by name + lengthPositionScore
+   - `getCitationsByTopic()` - Retrieve all citations for a topic
+   - `getCitationById()` - Lookup citation by ID
+
+3. **Utilities** (`utils.ts`):
+   - Format functions: `formatBlockPhase()`, `formatVolumeStatus()`, `formatReadinessLevel()`
+   - Citation formatting: `formatCitation()`, `formatCitationWithLink()`
+   - Score helpers: `formatPercentage()`, `formatScoreTier()`
+   - Misc: `pluralize()`, `formatLoadChange()`, `formatRestPeriod()`
+
+4. **Barrel export** (`index.ts`) - Re-exports all types and functions
+
+**Key Citations Added:**
+- Maeo et al. 2023 - Overhead triceps extensions (+40% growth)
+- Pedrosa et al. 2022 - Lengthened leg extensions (~2× quad hypertrophy)
+- Wolf et al. 2023 - Lengthened-position meta-analysis
+- Schoenfeld et al. 2017 - Volume dose-response (0.37%/set)
+- Robinson et al. 2024 - Proximity to failure dose-response
+- Refalo et al. 2023/2024 - 0 RIR vs 1-2 RIR equivalence
+- Schoenfeld et al. 2016 - Rest period advantage (3 min > 1 min)
+- Rhea & Alderman 2004 - Periodization superiority (ES = 0.84)
+
+**Testing:**
+- 59 tests created (23 for knowledge-base, 36 for utils)
+- All tests passing
+- Build/lint/tsc clean (pre-existing errors unrelated to Phase 4.1)
+
+**Consequences:**
+- ✅ Establishes type-safe foundation for Phase 4.2-4.6
+- ✅ Research-backed citations ready for exercise rationale
+- ✅ Maintains engine purity (no Prisma imports)
+- ✅ Formatting utilities reusable across UI and API layers
+
+**Next Steps:**
+- Phase 4.2: Session context explanation (block phase, volume, readiness)
+- Phase 4.3: Exercise rationale with KB citations
+- Phase 4.4: Prescription rationale
+- Phase 4.5: Coach messages and API integration
+- Phase 4.6: UI components and legacy cleanup
+
+**References:** docs/plans/phase4-explainability-execution.md, docs/knowledgebase/hypertrophyandstrengthtraining_researchreport.md
+
+---
+
 ## ADR-041: Remove all legacy selection code (2026-02-15)
 
 **Status:** Implemented

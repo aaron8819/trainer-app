@@ -3,15 +3,11 @@ import { prisma } from "@/lib/db/prisma";
 import { resolveOwner } from "@/lib/api/workout-context";
 import { mapLatestCheckIn } from "@/lib/api/checkin-staleness";
 import { isSetQualifiedForBaseline } from "@/lib/baseline-qualification";
-import {
-  describePrimaryDriver,
-  getSelectionStepLabel,
-  getTopComponentLabels,
-  parseExplainabilitySelectionMetadata,
-  summarizeSelectionDrivers,
-} from "@/lib/ui/explainability";
+import { generateWorkoutExplanation } from "@/lib/api/explainability";
+import type { WorkoutExplanation as WorkoutExplanationType } from "@/lib/engine/explainability";
 import { PrimaryGoal, TrainingAge } from "@prisma/client";
 import type { Prisma } from "@prisma/client";
+import { WorkoutExplanation } from "@/components/WorkoutExplanation";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -305,6 +301,10 @@ export default async function WorkoutDetailPage({
   });
   const baselineSummary = buildBaselineSummary({ workout, baselines, context });
 
+  // Load workout explanation (unified data source for inline badges + detail panel)
+  const explanationResult = await generateWorkoutExplanation(workout.id);
+  const explanation = "error" in explanationResult ? null : explanationResult;
+
   const hasHighSeverityInjury = injuries.some((injury) => injury.severity >= 3);
   const primaryGoal = goals?.primaryGoal?.toLowerCase() ?? "general_health";
   const secondaryGoal = goals?.secondaryGoal?.toLowerCase() ?? "none";
@@ -327,15 +327,6 @@ export default async function WorkoutDetailPage({
     : latestCheckIn
       ? "Readiness: defaulted to 3 (latest check-in is older than 48 hours)."
     : "Readiness: defaulted to 3 (no readiness logs currently stored).";
-  const selectionMetadata = parseExplainabilitySelectionMetadata(workout.selectionMetadata);
-  const selectionSummary = summarizeSelectionDrivers(selectionMetadata.rationale);
-  const selectedCount =
-    selectionMetadata.selectedExerciseIds?.length ??
-    Object.keys(selectionMetadata.rationale ?? {}).length;
-  const autoSelectedCount = Math.max(
-    0,
-    selectedCount - selectionSummary.countsByStep.pin
-  );
 
   const findBaseline = (exerciseName: string) => {
     const normalized = normalizeName(exerciseName);
@@ -412,60 +403,7 @@ export default async function WorkoutDetailPage({
         </div>
 
         <section className="mt-6 space-y-6 sm:mt-8 sm:space-y-8">
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm sm:p-5">
-            <p className="font-semibold text-slate-900">Why this workout was generated</p>
-            <div className="mt-3 space-y-2 text-slate-600">
-              <p>
-                Goal focus: {primaryGoal.replace("_", " ")} (secondary: {secondaryGoal.replace("_", " ")}).
-              </p>
-              <p>
-                Source: {sourceLabel} generation.
-              </p>
-              {intentLabel ? (
-                <p>
-                  Session intent: {intentLabel}.
-                </p>
-              ) : null}
-              <p>
-                Training age: {trainingAge}. Main lifts default to 4 sets; accessories default to 3 sets.
-              </p>
-              <p>
-                Injury filter: {injuries.length > 0 ? (
-                  <>
-                    {injuries.map((injury) => injury.bodyPart).join(", ")} (severity 3+ filter{" "}
-                    {hasHighSeverityInjury ? "active" : "inactive"}).
-                  </>
-                ) : (
-                  "No active injuries on file."
-                )}
-              </p>
-              <p>{readinessLine}</p>
-              <p>
-                Baseline context: {context}. Loads are seeded when a baseline matches the exercise name.
-              </p>
-              {selectedCount > 0 ? (
-                <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
-                  <p className="font-semibold text-slate-900">Decision summary</p>
-                  <ul className="mt-1 space-y-1">
-                    <li>
-                      Session focus: {intentLabel ?? "general"} ({sourceLabel} generation).
-                    </li>
-                    <li>{describePrimaryDriver(selectionSummary.primaryDriver)}</li>
-                    <li>
-                      Selection mix: {selectedCount} selected, {selectionSummary.countsByStep.pin} pinned,
-                      {" "}{autoSelectedCount} auto-selected.
-                    </li>
-                    {selectionMetadata.adaptiveDeloadApplied ? (
-                      <li>Recovery mode applied from recent fatigue/readiness signals.</li>
-                    ) : null}
-                    {selectionMetadata.periodizationWeek ? (
-                      <li>Program week context: Week {selectionMetadata.periodizationWeek}.</li>
-                    ) : null}
-                  </ul>
-                </div>
-              ) : null}
-            </div>
-          </div>
+          <WorkoutExplanation workoutId={workout.id} explanation={explanation} />
           {baselineSummary.evaluatedExercises > 0 ? (
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm sm:p-5">
               <p className="font-semibold text-slate-900">Baseline updates</p>
@@ -534,13 +472,10 @@ export default async function WorkoutDetailPage({
                       : exercise.section === "MAIN" || exercise.isMainLift
                       ? "Main lift"
                       : "Accessory";
-                  const rationaleEntry = selectionMetadata.rationale?.[exercise.exercise.id];
-                  const reasonChip = getSelectionStepLabel(rationaleEntry?.selectedStep);
-                  const topReasons = getTopComponentLabels(rationaleEntry?.components, 2);
-                  const detailComponents = Object.entries(rationaleEntry?.components ?? {})
-                    .filter(([, value]) => Number.isFinite(value))
-                    .sort((a, b) => b[1] - a[1])
-                    .slice(0, 4);
+                  // Get exercise rationale from new explainability system
+                  const exerciseRationale = explanation?.exerciseRationales.get(exercise.exercise.id);
+                  const primaryReason = exerciseRationale?.primaryReasons[0]; // Top reason from KB-backed system
+                  const topReasons = exerciseRationale?.primaryReasons.slice(0, 2) ?? [];
 
                   return (
                     <div key={exercise.id} className="rounded-2xl border border-slate-200 p-4 sm:p-5">
@@ -557,9 +492,9 @@ export default async function WorkoutDetailPage({
                           <span className="text-xs uppercase tracking-wide text-slate-500">
                             {roleLabel}
                           </span>
-                          {rationaleEntry ? (
-                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
-                              {reasonChip}
+                          {primaryReason ? (
+                            <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
+                              KB-backed
                             </span>
                           ) : null}
                         </div>
@@ -567,26 +502,11 @@ export default async function WorkoutDetailPage({
                       <p className="mt-2 text-xs text-slate-500">
                         Why: {(exercise.movementPatterns?.length ? exercise.movementPatterns.map((p: string) => p.toLowerCase().replace(/_/g, " ")).join(", ") : "unknown")} pattern. {stressNote} {loadNote}
                       </p>
-                      {rationaleEntry ? (
-                        <div className="mt-2 space-y-1 text-xs text-slate-600">
+                      {topReasons.length > 0 ? (
+                        <div className="mt-2 text-xs text-slate-600">
                           <p>
-                            Why included:{" "}
-                            {topReasons.length > 0
-                              ? topReasons.join(" • ")
-                              : "Balanced fit for session goals and constraints."}
+                            Why included: {topReasons.join(" • ")}
                           </p>
-                          {detailComponents.length > 0 ? (
-                            <details>
-                              <summary className="cursor-pointer text-slate-500">
-                                Details
-                              </summary>
-                              <p className="mt-1 text-slate-500">
-                                {detailComponents
-                                  .map(([name, value]) => `${name}: ${value.toFixed(2)}`)
-                                  .join(" • ")}
-                              </p>
-                            </details>
-                          ) : null}
                         </div>
                       ) : null}
                       <div className="mt-3 grid gap-2 text-sm text-slate-600">

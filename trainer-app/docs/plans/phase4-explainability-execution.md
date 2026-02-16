@@ -113,16 +113,16 @@ src/components/explainability/         # React UI components
 **Tests:** 25+ tests
 
 **Phase 4.3 Completion Checklist:**
-- [ ] All tests passing (60+ cumulative)
-- [ ] Build/lint/tsc clean
-- [ ] Documentation updated:
-  - [ ] ADR-051: "Phase 4.3: Exercise rationale with KB citations and alternatives"
-  - [ ] `docs/architecture.md`: Add exercise rationale flow
-  - [ ] `docs/seeded-data.md`: Add KB citation mapping table
-- [ ] Legacy cleanup:
-  - [ ] Evaluate if `selection-v2/rationale.ts` can delegate to new module
-  - [ ] Keep backward compatibility (clean cutover in 4.6)
-- [ ] Commit: `feat(phase4.3): exercise rationale with KB citations - Maeo, Pedrosa, Kassiano`
+- [x] All tests passing (741 cumulative, 23 new for exercise-rationale)
+- [x] Build/lint/tsc clean
+- [x] Documentation updated:
+  - [x] ADR-051: "Phase 4.3: Exercise rationale with KB citations and alternatives"
+  - [x] `docs/architecture.md`: Add exercise rationale flow + KB citation mapping table
+  - [x] ~~`docs/seeded-data.md`~~: KB citation mapping table added to architecture.md instead (seeded-data.md doesn't exist yet)
+- [x] Legacy cleanup:
+  - [x] Evaluated: `selection-v2/rationale.ts` coexists for backward compatibility
+  - [x] Clean cutover deferred to Phase 4.6 (no breaking changes now)
+- [x] Commit: `feat(phase4.3): exercise rationale with KB citations - Maeo, Pedrosa, Kassiano`
 
 ---
 

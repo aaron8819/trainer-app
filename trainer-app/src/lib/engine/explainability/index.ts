@@ -63,3 +63,10 @@ export {
   describeReadinessStatus,
   describeProgressionContext,
 } from "./session-context";
+
+// Exercise Rationale
+export {
+  explainExerciseRationale,
+  buildSelectionFactorBreakdown,
+  suggestAlternatives,
+} from "./exercise-rationale";

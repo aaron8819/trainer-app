@@ -369,6 +369,14 @@ src/components/explainability/      # React UI components [Phase 4.6]
 - Progression context: `describeProgressionContext()` - volume/intensity trends + next milestones
 - 25 new tests (84 total)
 
+**Phase 4.3 Deliverables (✅ Complete):**
+- Exercise rationale module: `explainExerciseRationale()` - per-exercise selection factor breakdown
+- Selection factor breakdown: `buildSelectionFactorBreakdown()` - explains all 7 scoring dimensions
+- Alternative suggestions: `suggestAlternatives()` - finds similar exercises with similarity ranking
+- KB citation integration: Automatic citation matching for lengthened exercises (score ≥ 4)
+- Volume contribution summary: Human-readable breakdown of direct + indirect muscle volume
+- 23 new tests (741 total across all modules)
+
 **Session Context Flow:**
 ```text
 Input:
@@ -404,6 +412,56 @@ Output:
 - SessionContext with narrative: "Accumulation Week 2 of 4: Build work capacity..."
 ```
 
+**Exercise Rationale Flow:**
+```text
+Input:
+- SelectionCandidate (exercise + scores from beam search)
+- SelectionObjective (weights, volume context, rotation context, SRA context)
+- Exercise[] (full library for alternative suggestions)
+
+Process:
+1. buildSelectionFactorBreakdown() → SelectionFactorBreakdown
+   - Deficit fill: "Fills 50% of chest volume deficit"
+   - Rotation novelty: "Last used 2 weeks ago" | "Never used before"
+   - SFR efficiency: "High stimulus-to-fatigue ratio (4/5)"
+   - Lengthened position: "Loads muscle at long length (5/5)"
+   - SRA alignment: "Targets fully recovered muscle groups"
+   - User preference: "Marked as favorite" | "Neutral"
+   - Movement novelty: "Novel movement pattern" | "Similar to others"
+
+2. Extract primary reasons (top 2-3 factors with score > 0.6)
+   - Sort factors by score descending
+   - Filter for significant scores (> 0.6)
+   - Take top 3 explanations
+
+3. Get KB citations via getCitationsByExercise()
+   - Match by exercise name + lengthPositionScore
+   - Return relevant research citations with findings
+
+4. suggestAlternatives() → AlternativeExercise[]
+   - Calculate similarity for each library exercise:
+     * Shared primary muscles (0.5 weight)
+     * Similar movement patterns (0.2 weight)
+     * Similar equipment (0.1 weight)
+     * Lower fatigue cost (0.2 weight)
+   - Filter for similarity > 0.3
+   - Sort by similarity descending
+   - Take top 3 alternatives
+   - Generate reason string per alternative
+
+5. Build volume contribution summary
+   - Format: "3 sets chest, 0.9 indirect front delts, 0.6 indirect triceps"
+
+Output:
+- ExerciseRationale with:
+  * exerciseName: "Bench Press"
+  * primaryReasons: ["Fills 50% of chest deficit", "High SFR (4/5)", "Last used 3 weeks ago"]
+  * selectionFactors: Complete 7-factor breakdown with scores + explanations
+  * citations: Research backing (Maeo, Pedrosa, etc.)
+  * alternatives: ["Dumbbell Bench Press", "Incline Bench Press"]
+  * volumeContribution: Human-readable muscle breakdown
+```
+
 **Key Research Citations:**
 - Maeo et al. 2023 - Overhead triceps extensions (+40% growth vs pushdowns)
 - Pedrosa et al. 2022 - Lengthened leg extensions (~2× quad hypertrophy vs shortened)
@@ -414,18 +472,37 @@ Output:
 - Schoenfeld et al. 2016 - Rest periods (3 min > 1 min for strength/hypertrophy)
 - Rhea & Alderman 2004 - Periodization superiority (ES = 0.84)
 
-**Example Citation Matching:**
-- "Overhead Triceps Extension" + `lengthPositionScore: 5` → Maeo 2023 citation
-- "Incline Dumbbell Curl" + `lengthPositionScore: 5` → Pedrosa 2023 citation
-- "Standing Calf Raise" + `lengthPositionScore: 5` → Kassiano 2023 + Kinoshita 2023 citations
+**KB Citation Mapping (Phase 4.3):**
+
+Citations are automatically matched to exercises via `getCitationsByExercise(exerciseName, lengthPositionScore)`. Matching logic:
+
+| Exercise Pattern | Length Score | Citations Matched |
+|-----------------|--------------|-------------------|
+| Overhead extension/triceps | ≥4 | Maeo et al. 2023 (overhead triceps) |
+| Incline curl | ≥4 | Pedrosa et al. 2023 (incline curls) |
+| Leg extension / Quad extension | ≥4 | Pedrosa et al. 2022 (leg extension) |
+| Seated leg curl | ≥4 | Maeo et al. 2021 (seated curls) |
+| Calf raise (standing) | ≥4 | Kassiano et al. 2023 + Kinoshita et al. 2023 |
+| Calf raise (any) | ≥4 | Kassiano et al. 2023 (lengthened calves) |
+| Squat (non-leg) | ≥4 | Plotkin et al. 2023 (squat vs thrust) |
+| Any lengthened exercise | ≥4 | Wolf et al. 2023 (meta-analysis fallback) |
+
+**Citation Organization by Topic:**
+- **Lengthened position** (7 citations): Maeo 2023, Pedrosa 2022/2023, Wolf 2023, Kassiano 2023, Maeo 2021, Kinoshita 2023
+- **Volume dose-response** (2 citations): Schoenfeld 2017, Pelland 2024
+- **Proximity to failure** (3 citations): Robinson 2024, Refalo 2023/2024
+- **Rest periods** (1 citation): Schoenfeld 2016
+- **Periodization** (1 citation): Rhea 2004
+- **Exercise modality** (2 citations): Haugen 2023, Plotkin 2023
+
+Total: 16 curated research citations sourced from `docs/knowledgebase/hypertrophyandstrengthtraining_researchreport.md`
 
 **Upcoming Phases:**
-- Phase 4.3: Exercise rationale with KB citations (integrate with `selection-v2/rationale.ts`)
 - Phase 4.4: Prescription rationale (explain sets/reps/load/RIR/rest decisions)
 - Phase 4.5: Coach messages + API orchestration (`GET /api/workouts/[id]/explanation`)
-- Phase 4.6: React UI components + workout page migration (replace legacy "Why" section)
+- Phase 4.6: React UI components + workout page migration (replace legacy "Why" section) + deprecate `selection-v2/rationale.ts`
 
-**References:** ADR-049, ADR-050, docs/plans/phase4-explainability-execution.md, docs/knowledgebase/hypertrophyandstrengthtraining_researchreport.md
+**References:** ADR-049, ADR-050, ADR-051, docs/plans/phase4-explainability-execution.md, docs/knowledgebase/hypertrophyandstrengthtraining_researchreport.md
 
 ---
 

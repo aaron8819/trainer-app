@@ -29,6 +29,7 @@ export type {
   LoadRationale,
   RirRationale,
   RestRationale,
+  FilteredExerciseSummary,
 } from "./types";
 
 // Knowledge Base
@@ -62,6 +63,7 @@ export {
   describeVolumeProgress,
   describeReadinessStatus,
   describeProgressionContext,
+  summarizeFilteredExercises,
 } from "./session-context";
 
 // Exercise Rationale

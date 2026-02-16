@@ -42,6 +42,11 @@ describe("selectExercisesOptimized", () => {
       ),
       timeBudget: 60,
       equipment,
+      // Phase 2: New specific constraint sets (ADR-063)
+      painConflicts: new Set(),
+      userAvoids: new Set(),
+      equipmentUnavailable: new Set(),
+      // Backward compatibility: deprecated contraindications field
       contraindications,
       minExercises: 1,
       maxExercises: 8,
@@ -159,6 +164,105 @@ describe("selectExercisesOptimized", () => {
       // Exercise with no equipment should pass
       const selectedIds = result.selected.map((s) => s.exercise.id);
       expect(selectedIds).toContain("plank");
+    });
+
+    // Phase 2: Specific rejection reasons (ADR-063)
+    it("should return 'pain_conflict' rejection reason for exercises in painConflicts set", () => {
+      const pool = [
+        createMockExercise("bench_press", ["Chest" as Muscle]),
+        createMockExercise("incline_press", ["Chest" as Muscle]),
+      ];
+
+      const objective: SelectionObjective = {
+        ...createMockObjective(new Map([["Chest" as Muscle, 12]])),
+        constraints: {
+          ...createMockObjective(new Map([["Chest" as Muscle, 12]])).constraints,
+          painConflicts: new Set(["bench_press"]),
+          userAvoids: new Set(),
+          equipmentUnavailable: new Set(),
+        },
+      };
+
+      const result = selectExercisesOptimized(pool, objective);
+
+      const rejectedBench = result.rejected.find((r) => r.exercise.id === "bench_press");
+      expect(rejectedBench).toBeDefined();
+      expect(rejectedBench?.reason).toBe("pain_conflict");
+    });
+
+    it("should return 'user_avoided' rejection reason for exercises in userAvoids set", () => {
+      const pool = [
+        createMockExercise("bench_press", ["Chest" as Muscle]),
+        createMockExercise("incline_press", ["Chest" as Muscle]),
+      ];
+
+      const objective: SelectionObjective = {
+        ...createMockObjective(new Map([["Chest" as Muscle, 12]])),
+        constraints: {
+          ...createMockObjective(new Map([["Chest" as Muscle, 12]])).constraints,
+          painConflicts: new Set(),
+          userAvoids: new Set(["incline_press"]),
+          equipmentUnavailable: new Set(),
+        },
+      };
+
+      const result = selectExercisesOptimized(pool, objective);
+
+      const rejectedIncline = result.rejected.find((r) => r.exercise.id === "incline_press");
+      expect(rejectedIncline).toBeDefined();
+      expect(rejectedIncline?.reason).toBe("user_avoided");
+    });
+
+    it("should prioritize painConflicts over userAvoids when exercise is in both sets", () => {
+      const pool = [
+        createMockExercise("bench_press", ["Chest" as Muscle]),
+        createMockExercise("incline_press", ["Chest" as Muscle]),
+      ];
+
+      const objective: SelectionObjective = {
+        ...createMockObjective(new Map([["Chest" as Muscle, 12]])),
+        constraints: {
+          ...createMockObjective(new Map([["Chest" as Muscle, 12]])).constraints,
+          painConflicts: new Set(["bench_press"]),
+          userAvoids: new Set(["bench_press"]),
+          equipmentUnavailable: new Set(),
+        },
+      };
+
+      const result = selectExercisesOptimized(pool, objective);
+
+      const rejectedBench = result.rejected.find((r) => r.exercise.id === "bench_press");
+      expect(rejectedBench).toBeDefined();
+      expect(rejectedBench?.reason).toBe("pain_conflict"); // pain_conflict takes precedence
+    });
+
+    it("should handle multiple rejection reasons for different exercises", () => {
+      const pool = [
+        createMockExercise("bench_press", ["Chest" as Muscle]),
+        createMockExercise("incline_press", ["Chest" as Muscle]),
+        createMockExercise("dips", ["Chest" as Muscle]),
+      ];
+
+      const objective: SelectionObjective = {
+        ...createMockObjective(new Map([["Chest" as Muscle, 12]])),
+        constraints: {
+          ...createMockObjective(new Map([["Chest" as Muscle, 12]])).constraints,
+          painConflicts: new Set(["bench_press"]),
+          userAvoids: new Set(["incline_press"]),
+          equipmentUnavailable: new Set(["dips"]),
+        },
+      };
+
+      const result = selectExercisesOptimized(pool, objective);
+
+      const rejectedBench = result.rejected.find((r) => r.exercise.id === "bench_press");
+      expect(rejectedBench?.reason).toBe("pain_conflict");
+
+      const rejectedIncline = result.rejected.find((r) => r.exercise.id === "incline_press");
+      expect(rejectedIncline?.reason).toBe("user_avoided");
+
+      const rejectedDips = result.rejected.find((r) => r.exercise.id === "dips");
+      expect(rejectedDips?.reason).toBe("equipment_unavailable");
     });
   });
 

@@ -181,76 +181,156 @@ describe("scoreRotationNovelty", () => {
   // (RotationContext is keyed by name, not id)
   const createExercise = (id: string): any => ({ id, name: id });
 
-  it("should return 1.0 for never-used exercises", () => {
-    const rotationContext: RotationContext = new Map();
-    const exercise = createExercise("exercise_id");
+  /**
+   * Research-based validation of 3-week target cadence
+   *
+   * Evidence from hypertrophyandstrengthtraining_researchreport.md:
+   * - Section 2.6: "Rotate 2-4 exercises per muscle group per mesocycle"
+   * - Section 3.5: "Standard mesocycle: 3-6 weeks... rotate accessories each mesocycle"
+   *
+   * Engine design: TARGET_CADENCE = 3 weeks aligns with research recommendation
+   * to rotate accessories every mesocycle (~3-6 weeks for novel stimuli while
+   * allowing sufficient progressive overload tracking).
+   */
+  describe("research-aligned 3-week target cadence", () => {
+    it("should return 1.0 for never-used exercises (maximum novelty)", () => {
+      const rotationContext: RotationContext = new Map();
+      const exercise = createExercise("exercise_id");
 
-    const score = scoreRotationNovelty(exercise, rotationContext);
+      const score = scoreRotationNovelty(exercise, rotationContext);
 
-    expect(score).toBe(1.0);
+      expect(score).toBe(1.0);
+    });
+
+    it("should penalize exercises used 1 week ago (0.33 score)", () => {
+      const exercise = createExercise("exercise_id");
+      const rotationContext: RotationContext = new Map([
+        [
+          "exercise_id",
+          {
+            lastUsed: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+            weeksAgo: 1,
+            usageCount: 5,
+            trend: "improving",
+          },
+        ],
+      ]);
+
+      const score = scoreRotationNovelty(exercise, rotationContext);
+
+      // weeksAgo = 1, targetCadence = 3
+      // Score = min(1.0, 1 / 3) = 0.33
+      // Interpretation: Strong penalty — exercise should not repeat within 1 week
+      expect(score).toBeCloseTo(0.33, 2);
+    });
+
+    it("should moderately penalize exercises used 2 weeks ago (0.67 score)", () => {
+      const exercise = createExercise("exercise_id");
+      const rotationContext: RotationContext = new Map([
+        [
+          "exercise_id",
+          {
+            lastUsed: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000),
+            weeksAgo: 2,
+            usageCount: 5,
+            trend: "improving",
+          },
+        ],
+      ]);
+
+      const score = scoreRotationNovelty(exercise, rotationContext);
+
+      // weeksAgo = 2, targetCadence = 3
+      // Score = min(1.0, 2 / 3) = 0.67
+      // Interpretation: Moderate penalty — exercise can repeat if pool is limited
+      expect(score).toBeCloseTo(0.67, 2);
+    });
+
+    it("should give full novelty to exercises used 3+ weeks ago (1.0 score)", () => {
+      const exercise = createExercise("exercise_id");
+      const rotationContext: RotationContext = new Map([
+        [
+          "exercise_id",
+          {
+            lastUsed: new Date(Date.now() - 21 * 24 * 60 * 60 * 1000),
+            weeksAgo: 3,
+            usageCount: 5,
+            trend: "improving",
+          },
+        ],
+      ]);
+
+      const score = scoreRotationNovelty(exercise, rotationContext);
+
+      // weeksAgo = 3, targetCadence = 3
+      // Score = min(1.0, 3 / 3) = 1.0
+      // Interpretation: Full novelty — aligns with mesocycle rotation (3-6 weeks)
+      expect(score).toBe(1.0);
+    });
+
+    it("should cap at 1.0 for exercises used 4+ weeks ago", () => {
+      const exercise = createExercise("exercise_id");
+      const rotationContext: RotationContext = new Map([
+        [
+          "exercise_id",
+          {
+            lastUsed: new Date(Date.now() - 28 * 24 * 60 * 60 * 1000),
+            weeksAgo: 4,
+            usageCount: 5,
+            trend: "improving",
+          },
+        ],
+      ]);
+
+      const score = scoreRotationNovelty(exercise, rotationContext);
+
+      // weeksAgo = 4, targetCadence = 3
+      // Score = min(1.0, 4 / 3) = 1.0 (capped)
+      expect(score).toBe(1.0);
+    });
   });
 
-  it("should return ~0.33 for exercises used 1 week ago", () => {
-    const exercise = createExercise("exercise_id");
-    const rotationContext: RotationContext = new Map([
-      [
-        "exercise_id",
-        {
-          lastUsed: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
-          weeksAgo: 1,
-          usageCount: 5,
-          trend: "improving",
-        },
-      ],
-    ]);
+  describe("edge cases", () => {
+    it("should handle exercises used exactly at target cadence boundary", () => {
+      const exercise = createExercise("boundary_test");
+      const rotationContext: RotationContext = new Map([
+        [
+          "boundary_test",
+          {
+            lastUsed: new Date(Date.now() - 21 * 24 * 60 * 60 * 1000),
+            weeksAgo: 3,
+            usageCount: 2,
+            trend: "stable",
+          },
+        ],
+      ]);
 
-    const score = scoreRotationNovelty(exercise, rotationContext);
+      const score = scoreRotationNovelty(exercise, rotationContext);
 
-    // weeksAgo = 1, targetCadence = 3
-    // Score = min(1.0, 1 / 3) = 0.33
-    expect(score).toBeCloseTo(0.33, 2);
-  });
+      // Exactly 3 weeks → full novelty
+      expect(score).toBe(1.0);
+    });
 
-  it("should return ~0.67 for exercises used 2 weeks ago", () => {
-    const exercise = createExercise("exercise_id");
-    const rotationContext: RotationContext = new Map([
-      [
-        "exercise_id",
-        {
-          lastUsed: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000),
-          weeksAgo: 2,
-          usageCount: 5,
-          trend: "improving",
-        },
-      ],
-    ]);
+    it("should handle fractional weeks (e.g., 2.5 weeks)", () => {
+      const exercise = createExercise("fractional_test");
+      const rotationContext: RotationContext = new Map([
+        [
+          "fractional_test",
+          {
+            lastUsed: new Date(Date.now() - 17.5 * 24 * 60 * 60 * 1000),
+            weeksAgo: 2.5,
+            usageCount: 3,
+            trend: "improving",
+          },
+        ],
+      ]);
 
-    const score = scoreRotationNovelty(exercise, rotationContext);
+      const score = scoreRotationNovelty(exercise, rotationContext);
 
-    // weeksAgo = 2, targetCadence = 3
-    // Score = min(1.0, 2 / 3) = 0.67
-    expect(score).toBeCloseTo(0.67, 2);
-  });
-
-  it("should cap at 1.0 for exercises used 3+ weeks ago", () => {
-    const exercise = createExercise("exercise_id");
-    const rotationContext: RotationContext = new Map([
-      [
-        "exercise_id",
-        {
-          lastUsed: new Date(Date.now() - 28 * 24 * 60 * 60 * 1000),
-          weeksAgo: 4,
-          usageCount: 5,
-          trend: "improving",
-        },
-      ],
-    ]);
-
-    const score = scoreRotationNovelty(exercise, rotationContext);
-
-    // weeksAgo = 4, targetCadence = 3
-    // Score = min(1.0, 4 / 3) = 1.0
-    expect(score).toBe(1.0);
+      // weeksAgo = 2.5, targetCadence = 3
+      // Score = min(1.0, 2.5 / 3) = 0.833...
+      expect(score).toBeCloseTo(0.833, 2);
+    });
   });
 });
 

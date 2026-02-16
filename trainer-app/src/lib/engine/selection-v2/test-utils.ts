@@ -55,6 +55,11 @@ export function createMockObjective(
       ),
       timeBudget,
       equipment: new Set(["barbell", "dumbbell"]),
+      // Phase 2: New specific constraint sets (ADR-063)
+      painConflicts: new Set(),
+      userAvoids: new Set(),
+      equipmentUnavailable: new Set(),
+      // Backward compatibility: deprecated contraindications field
       contraindications: new Set(),
       minExercises: 1,
       maxExercises: 8,

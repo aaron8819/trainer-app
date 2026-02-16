@@ -135,16 +135,27 @@ function checkHardConstraints(
     return "equipment_unavailable";
   }
 
-  // 2. User avoids
-  if (objective.constraints.contraindications.has(exercise.id)) {
-    return "contraindicated";
+  // 2. Pain conflicts (check first to distinguish from user avoids)
+  if (objective.constraints.painConflicts.has(exercise.id)) {
+    return "pain_conflict";
   }
 
-  // 3. Pain conflicts (check exercise contraindications)
-  // Note: painFlags would need to be passed in objective if implemented
-  // For now, rely on contraindications set
+  // 3. User avoids (explicit user preferences)
+  if (objective.constraints.userAvoids.has(exercise.id)) {
+    return "user_avoided";
+  }
 
-  // 4. SFR threshold (hypertrophy/fat_loss accessories)
+  // 4. Equipment unavailable (explicitly marked exercises)
+  if (objective.constraints.equipmentUnavailable.has(exercise.id)) {
+    return "equipment_unavailable";
+  }
+
+  // 5. Backward compatibility: check deprecated contraindications set
+  if (objective.constraints.contraindications?.has(exercise.id)) {
+    return "contraindicated"; // Generic fallback
+  }
+
+  // 6. SFR threshold (hypertrophy/fat_loss accessories)
   // Defer to full implementation - would need goal context
 
   return undefined; // Passed all constraints

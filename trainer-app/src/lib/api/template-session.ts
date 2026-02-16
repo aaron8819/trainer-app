@@ -25,6 +25,10 @@ import {
   type SelectionResult,
   DEFAULT_SELECTION_WEIGHTS,
 } from "@/lib/engine/selection-v2";
+import {
+  summarizeFilteredExercises,
+  type FilteredExerciseSummary,
+} from "@/lib/engine/explainability";
 import { VOLUME_LANDMARKS, MUSCLE_SPLIT_MAP } from "@/lib/engine/volume-landmarks";
 import { INDIRECT_SET_MULTIPLIER } from "@/lib/engine/volume-constants";
 import { loadTemplateDetail, type TemplateIntent } from "./templates";
@@ -73,6 +77,7 @@ type SessionGenerationResult =
         adaptiveDeloadApplied?: boolean;
         periodizationWeek?: number;
       };
+      filteredExercises?: FilteredExerciseSummary[];
     }
   | { error: string };
 
@@ -137,7 +142,15 @@ function buildSelectionObjective(
     volumeCeiling,
     timeBudget: mapped.mappedConstraints.sessionMinutes,
     equipment: new Set(mapped.mappedConstraints.availableEquipment),
-    contraindications: new Set(painFlagExerciseIds),
+    // Phase 2: Separate constraint sets for explainability (ADR-063)
+    painConflicts: new Set(painFlagExerciseIds),
+    userAvoids: new Set(mapped.mappedPreferences?.avoidExerciseIds ?? []),
+    equipmentUnavailable: new Set(), // Populated by optimizer pre-filter
+    // Backward compatibility: Union of all contraindications (deprecated)
+    contraindications: new Set([
+      ...painFlagExerciseIds,
+      ...(mapped.mappedPreferences?.avoidExerciseIds ?? []),
+    ]),
     minExercises: 3, // Minimum 3 exercises to ensure MEV coverage
     maxExercises: 8,
     // Structural constraints to ensure balanced workouts
@@ -385,6 +398,9 @@ export async function generateSessionFromIntent(
   // Run new beam search optimizer
   const selectionResult = selectExercisesOptimized(filteredPool, objective);
 
+  // Phase 2: Extract filtered exercises for explainability
+  const filteredExercises = summarizeFilteredExercises(selectionResult.rejected);
+
   // Map to session output format
   const selection = mapSelectionResult(selectionResult);
 
@@ -420,7 +436,7 @@ export async function generateSessionFromIntent(
     return result;
   }
 
-  return finalizePostLoadResult(result, mapped);
+  return finalizePostLoadResult(result, mapped, filteredExercises);
 }
 
 function buildTemplateSelection(
@@ -607,7 +623,8 @@ function finalizePostLoadResult(
       periodizationWeek?: number;
     };
   },
-  mapped: MappedGenerationContext
+  mapped: MappedGenerationContext,
+  filteredExercises?: FilteredExerciseSummary[]
 ): SessionGenerationResult {
   const withLoads = applyLoads(
     result.workout,
@@ -654,6 +671,7 @@ function finalizePostLoadResult(
       adaptiveDeloadApplied: mapped.adaptiveDeload,
       periodizationWeek: mapped.weekInBlock,
     },
+    filteredExercises,
   };
 }
 

@@ -23,6 +23,7 @@
 | [decisions.md](decisions.md) | Architectural Decision Records (ADRs) | Claude + developers |
 | [data-model.md](data-model.md) | Complete database schema reference | Claude + developers |
 | [seeded-data.md](seeded-data.md) | Exercise catalog, equipment, muscles, aliases | Claude + developers |
+| [tests/](tests/) | **Test suite documentation**: 805 tests across 54 files, E2E simulation, unit test catalog, patterns, debugging | Claude + developers |
 
 ## Project Configuration
 

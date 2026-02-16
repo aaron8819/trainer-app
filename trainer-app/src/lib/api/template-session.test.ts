@@ -414,4 +414,213 @@ describe("generateSessionFromTemplate", () => {
       }
     }
   });
+
+  describe("avoid exercises enforcement", () => {
+    it("enforces user avoid preferences as hard constraints (never selects avoided exercises)", async () => {
+      // Setup: User has explicitly avoided dumbbell press
+      mapPreferencesMock.mockReturnValue({
+        favoriteExerciseIds: [],
+        avoidExerciseIds: [dumbbellPress.id],
+      });
+
+      const result = await generateSessionFromIntent("user-1", {
+        intent: "push",
+      });
+
+      expect("error" in result).toBe(false);
+      if ("error" in result) {
+        return;
+      }
+
+      // Verify avoided exercise is NOT in the selected exercises
+      expect(result.selection.selectedExerciseIds).not.toContain(dumbbellPress.id);
+      expect(result.workout.mainLifts.map((ex) => ex.exercise.id)).not.toContain(dumbbellPress.id);
+      expect(result.workout.accessories.map((ex) => ex.exercise.id)).not.toContain(dumbbellPress.id);
+    });
+
+    it("combines pain flags and user avoids into contraindications", async () => {
+      // Setup: Expand exercise library to ensure enough alternatives exist
+      const allPushExercises = exampleExerciseLibrary.filter((ex) =>
+        ex.splitTags.includes("push")
+      );
+      mapExercisesMock.mockReturnValue(allPushExercises);
+
+      // User has pain flag on bench AND explicitly avoids dumbbell press
+      const historyWithPain: WorkoutHistoryEntry[] = [
+        {
+          date: new Date(Date.now() - 1 * 86400000).toISOString(),
+          completed: true,
+          status: "COMPLETED",
+          exercises: [
+            {
+              exerciseId: bench.id,
+              movementPattern: "push",
+              primaryMuscles: ["Chest", "Triceps"],
+              sets: Array.from({ length: 3 }, (_, index) => ({
+                exerciseId: bench.id,
+                setIndex: index + 1,
+                reps: 8,
+              })),
+            },
+          ],
+        },
+      ];
+
+      mapHistoryMock.mockReturnValue(historyWithPain);
+      mapPreferencesMock.mockReturnValue({
+        favoriteExerciseIds: [],
+        avoidExerciseIds: [dumbbellPress.id],
+      });
+
+      // Mock check-in with pain flag for bench
+      mapCheckInMock.mockReturnValue({
+        date: new Date().toISOString(),
+        painFlags: {
+          [bench.id]: 3, // High pain flag (>= 2 triggers contraindication)
+        },
+      });
+
+      const result = await generateSessionFromIntent("user-1", {
+        intent: "push",
+      });
+
+      expect("error" in result).toBe(false);
+      if ("error" in result) {
+        return;
+      }
+
+      // Verify BOTH bench (pain flag) AND dumbbell press (user avoid) are excluded
+      expect(result.selection.selectedExerciseIds).not.toContain(bench.id);
+      expect(result.selection.selectedExerciseIds).not.toContain(dumbbellPress.id);
+      expect(result.workout.mainLifts.map((ex) => ex.exercise.id)).not.toContain(bench.id);
+      expect(result.workout.mainLifts.map((ex) => ex.exercise.id)).not.toContain(dumbbellPress.id);
+      expect(result.workout.accessories.map((ex) => ex.exercise.id)).not.toContain(bench.id);
+      expect(result.workout.accessories.map((ex) => ex.exercise.id)).not.toContain(dumbbellPress.id);
+
+      // Restore original mock for other tests
+      mapExercisesMock.mockReturnValue([bench, dumbbellPress, thirdMainLift]);
+    });
+
+    it("handles undefined or null preferences gracefully", async () => {
+      // Setup: No preferences object (null/undefined)
+      mapPreferencesMock.mockReturnValue(undefined);
+
+      const result = await generateSessionFromIntent("user-1", {
+        intent: "push",
+      });
+
+      expect("error" in result).toBe(false);
+      if ("error" in result) {
+        return;
+      }
+
+      // Should still generate workout without errors
+      expect(result.selection.selectedExerciseIds.length).toBeGreaterThan(0);
+      expect(result.workout.mainLifts.length).toBeGreaterThan(0);
+    });
+
+    it("handles empty avoid list gracefully", async () => {
+      // Setup: Preferences exist but avoidExerciseIds is empty
+      mapPreferencesMock.mockReturnValue({
+        favoriteExerciseIds: [bench.id],
+        avoidExerciseIds: [],
+      });
+
+      const result = await generateSessionFromIntent("user-1", {
+        intent: "push",
+      });
+
+      expect("error" in result).toBe(false);
+      if ("error" in result) {
+        return;
+      }
+
+      // Should still generate workout without errors
+      expect(result.selection.selectedExerciseIds.length).toBeGreaterThan(0);
+      expect(result.workout.mainLifts.length).toBeGreaterThan(0);
+    });
+
+    it("enforces avoid preferences in template mode with auto-fill", async () => {
+      // Setup: User has avoided dumbbell press
+      mapPreferencesMock.mockReturnValue({
+        favoriteExerciseIds: [],
+        avoidExerciseIds: [dumbbellPress.id],
+      });
+
+      const result = await generateSessionFromTemplate("user-1", "template-1", {
+        autoFillUnpinned: true,
+        pinnedExerciseIds: [bench.id],
+      });
+
+      expect("error" in result).toBe(false);
+      if ("error" in result) {
+        return;
+      }
+
+      // Verify avoided exercise is NOT selected during auto-fill
+      expect(result.selection.selectedExerciseIds).not.toContain(dumbbellPress.id);
+      expect(result.workout.mainLifts.map((ex) => ex.exercise.id)).not.toContain(dumbbellPress.id);
+      expect(result.workout.accessories.map((ex) => ex.exercise.id)).not.toContain(dumbbellPress.id);
+    });
+
+    it("automatically substitutes avoided exercises with alternatives targeting same muscles", async () => {
+      // Setup: Full push exercise library for substitution
+      const allPushExercises = exampleExerciseLibrary.filter((ex) =>
+        ex.splitTags.includes("push")
+      );
+      mapExercisesMock.mockReturnValue(allPushExercises);
+
+      // Find a chest exercise to avoid (not bench, since bench is likely a main lift)
+      const chestAccessories = allPushExercises.filter(
+        (ex) =>
+          ex.primaryMuscles.includes("Chest") &&
+          ex.id !== bench.id &&
+          !ex.isMainLiftEligible
+      );
+
+      if (chestAccessories.length === 0) {
+        throw new Error("Test setup error: need a chest accessory to avoid");
+      }
+
+      const chestExerciseToAvoid = chestAccessories[0];
+
+      // User avoids a specific chest accessory
+      mapPreferencesMock.mockReturnValue({
+        favoriteExerciseIds: [],
+        avoidExerciseIds: [chestExerciseToAvoid.id],
+      });
+
+      const result = await generateSessionFromIntent("user-1", {
+        intent: "push",
+      });
+
+      expect("error" in result).toBe(false);
+      if ("error" in result) {
+        return;
+      }
+
+      // Core assertion: Avoided exercise is NOT selected
+      expect(result.selection.selectedExerciseIds).not.toContain(chestExerciseToAvoid.id);
+
+      // Verify workout still includes OTHER chest exercises (substitution occurred)
+      const selectedExercises = result.selection.selectedExerciseIds
+        .map((id) => allPushExercises.find((ex) => ex.id === id))
+        .filter((ex): ex is NonNullable<typeof ex> => ex !== undefined);
+
+      const chestExercisesSelected = selectedExercises.filter((ex) =>
+        ex.primaryMuscles.includes("Chest")
+      );
+
+      // Should have at least one chest exercise (even though we avoided one)
+      expect(chestExercisesSelected.length).toBeGreaterThan(0);
+      // Should have generated a valid workout
+      expect(selectedExercises.length).toBeGreaterThan(0);
+
+      // Verify the avoided exercise is NOT among the chest exercises selected
+      expect(chestExercisesSelected.find((ex) => ex.id === chestExerciseToAvoid.id)).toBeUndefined();
+
+      // Restore original mock
+      mapExercisesMock.mockReturnValue([bench, dumbbellPress, thirdMainLift]);
+    });
+  });
 });

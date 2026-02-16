@@ -40,5 +40,7 @@ export async function POST(request: Request) {
       modifications: autoregulated.modifications,
       rationale: autoregulated.rationale,
     },
+    // Phase 2: Include filtered exercises for explainability
+    filteredExercises: result.filteredExercises,
   });
 }

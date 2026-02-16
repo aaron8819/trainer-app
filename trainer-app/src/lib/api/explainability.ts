@@ -309,6 +309,11 @@ function buildSelectionObjective(workout: Workout): SelectionObjective {
       volumeCeiling: new Map(),
       timeBudget: 60,
       equipment: new Set(),
+      // Phase 2: Required specific constraint sets (ADR-063)
+      painConflicts: new Set(),
+      userAvoids: new Set(),
+      equipmentUnavailable: new Set(),
+      // Backward compatibility: deprecated contraindications field
       contraindications: new Set(),
       minExercises: 1,
       maxExercises: 10,
@@ -318,25 +323,20 @@ function buildSelectionObjective(workout: Workout): SelectionObjective {
       rotationNovelty: 0.25,
       sfrEfficiency: 0.15,
       lengthenedBias: 0.1,
-      movementNovelty: 0.05,
+      movementDiversity: 0.05,
       sraReadiness: 0.025,
       userPreference: 0.025,
     },
     volumeContext: {
-      targetVolume: new Map(),
-      actualVolume: new Map(),
-      deficits: new Map(),
+      weeklyTarget: new Map(),
+      weeklyActual: new Map(),
+      effectiveActual: new Map(),
     },
-    rotationContext: {
-      lastUsed: new Map(),
-      exposureHistory: new Map(),
-    },
-    sraContext: {
-      muscleReadiness: new Map(),
-    },
+    rotationContext: new Map(),
+    sraContext: new Map(),
     preferences: {
-      favoriteExercises: new Set(),
-      avoidExercises: new Set(),
+      favoriteExerciseIds: new Set(),
+      avoidExerciseIds: new Set(),
     },
   };
 }
@@ -362,6 +362,7 @@ function buildSelectionCandidate(
         muscle: { name: string };
       }[];
     };
+    sets: { id: string }[];
   },
   exerciseLibrary: EngineExercise[]
 ): SelectionCandidate | null {
@@ -400,7 +401,7 @@ function buildSelectionCandidate(
     sfrScore: (exercise.sfrScore ?? 3) / 5,
     lengthenedScore: (exercise.lengthPositionScore ?? 3) / 5,
     movementNovelty: 0.6,
-    sraReadiness: 0.8,
+    sraAlignment: 0.8,
     userPreference: 0.5,
   };
 

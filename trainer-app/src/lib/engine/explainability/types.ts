@@ -17,6 +17,7 @@ export type WorkoutExplanation = {
   coachMessages: CoachMessage[];
   exerciseRationales: Map<string, ExerciseRationale>; // exerciseId -> rationale
   prescriptionRationales: Map<string, PrescriptionRationale>; // exerciseId -> rationale
+  filteredExercises?: FilteredExerciseSummary[]; // Exercises filtered due to constraints (Phase 2)
 };
 
 /**
@@ -196,4 +197,22 @@ export type RestRationale = {
   seconds: number;
   reason: string; // "2 min for moderate compound (balance recovery and efficiency)"
   exerciseType: "heavy_compound" | "moderate_compound" | "isolation";
+};
+
+/**
+ * Filtered exercise summary
+ *
+ * Explains why an exercise was filtered out during selection.
+ * Used for explainability: "Why didn't I get this exercise?"
+ */
+export type FilteredExerciseSummary = {
+  exerciseId: string;
+  exerciseName: string;
+  reason:
+    | "user_avoided"
+    | "pain_conflict"
+    | "equipment_unavailable"
+    | "contraindicated"
+    | string; // Other rejection reasons
+  userFriendlyMessage: string; // "Avoided per your preferences", "Equipment not available", etc.
 };

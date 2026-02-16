@@ -23,6 +23,7 @@ import type {
 import { SessionContextCard } from "./SessionContextCard";
 import { CoachMessageCard } from "./CoachMessageCard";
 import { ExerciseRationaleCard } from "./ExerciseRationaleCard";
+import { FilteredExercisesCard } from "./FilteredExercisesCard";
 
 type Props = {
   explanation: WorkoutExplanation;
@@ -53,6 +54,11 @@ export function ExplainabilityPanel({ explanation }: Props) {
     <div className="space-y-4 sm:space-y-6">
       {/* Session Context */}
       <SessionContextCard context={explanation.sessionContext} />
+
+      {/* Filtered Exercises */}
+      {explanation.filteredExercises && explanation.filteredExercises.length > 0 && (
+        <FilteredExercisesCard filteredExercises={explanation.filteredExercises} />
+      )}
 
       {/* Coach Messages */}
       {explanation.coachMessages.length > 0 && (

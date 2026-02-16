@@ -30,7 +30,7 @@ export async function POST(request: Request) {
     status === WorkoutStatus.COMPLETED ? new Date() : undefined;
 
   let baselineSummary: BaselineUpdateSummary | null = null;
-  let workoutId = parsed.data.workoutId;
+  const workoutId = parsed.data.workoutId;
 
   try {
     await prisma.$transaction(async (tx) => {

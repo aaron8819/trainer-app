@@ -11,9 +11,12 @@ import {
   describeVolumeProgress,
   describeReadinessStatus,
   describeProgressionContext,
+  summarizeFilteredExercises,
 } from "./session-context";
 import type { BlockContext } from "../periodization/types";
 import type { FatigueScore, AutoregulationModification } from "../readiness/types";
+import type { RejectedExercise } from "../selection-v2/types";
+import type { Exercise } from "../types";
 
 describe("session-context", () => {
   describe("describeBlockGoal", () => {
@@ -647,6 +650,129 @@ describe("session-context", () => {
       });
 
       expect(result.narrative).toContain("Reduced volume by 2 sets");
+    });
+  });
+
+  // Phase 2: Filtered Exercise Summaries (ADR-063)
+  describe("summarizeFilteredExercises", () => {
+    const createMockExercise = (id: string, name: string): Exercise => ({
+      id,
+      name,
+      primaryMuscles: ["Chest"],
+      secondaryMuscles: [],
+      equipment: ["barbell"],
+      repRangeMin: 5,
+      repRangeMax: 8,
+      timePerSetSec: 60,
+      fatigueCost: 3,
+      sfrScore: 4,
+      lengthPositionScore: 3,
+    });
+
+    it("should summarize user_avoided exercises with correct message", () => {
+      const rejected: RejectedExercise[] = [
+        {
+          exercise: createMockExercise("ex1", "Incline Dumbbell Curl"),
+          reason: "user_avoided",
+        },
+      ];
+
+      const result = summarizeFilteredExercises(rejected);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].exerciseId).toBe("ex1");
+      expect(result[0].exerciseName).toBe("Incline Dumbbell Curl");
+      expect(result[0].reason).toBe("user_avoided");
+      expect(result[0].userFriendlyMessage).toBe("Avoided per your preferences");
+    });
+
+    it("should summarize pain_conflict exercises with correct message", () => {
+      const rejected: RejectedExercise[] = [
+        {
+          exercise: createMockExercise("ex1", "Bench Press"),
+          reason: "pain_conflict",
+        },
+      ];
+
+      const result = summarizeFilteredExercises(rejected);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].reason).toBe("pain_conflict");
+      expect(result[0].userFriendlyMessage).toBe("Excluded due to recent pain signals");
+    });
+
+    it("should summarize equipment_unavailable exercises with correct message", () => {
+      const rejected: RejectedExercise[] = [
+        {
+          exercise: createMockExercise("ex1", "Cable Fly"),
+          reason: "equipment_unavailable",
+        },
+      ];
+
+      const result = summarizeFilteredExercises(rejected);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].reason).toBe("equipment_unavailable");
+      expect(result[0].userFriendlyMessage).toBe("Equipment not available");
+    });
+
+    it("should handle contraindicated exercises with generic message", () => {
+      const rejected: RejectedExercise[] = [
+        {
+          exercise: createMockExercise("ex1", "Deadlift"),
+          reason: "contraindicated",
+        },
+      ];
+
+      const result = summarizeFilteredExercises(rejected);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].reason).toBe("contraindicated");
+      expect(result[0].userFriendlyMessage).toBe("Contraindicated");
+    });
+
+    it("should handle mixed rejection reasons correctly", () => {
+      const rejected: RejectedExercise[] = [
+        {
+          exercise: createMockExercise("ex1", "Bench Press"),
+          reason: "pain_conflict",
+        },
+        {
+          exercise: createMockExercise("ex2", "Incline Curl"),
+          reason: "user_avoided",
+        },
+        {
+          exercise: createMockExercise("ex3", "Cable Fly"),
+          reason: "equipment_unavailable",
+        },
+      ];
+
+      const result = summarizeFilteredExercises(rejected);
+
+      expect(result).toHaveLength(3);
+      expect(result[0].userFriendlyMessage).toBe("Excluded due to recent pain signals");
+      expect(result[1].userFriendlyMessage).toBe("Avoided per your preferences");
+      expect(result[2].userFriendlyMessage).toBe("Equipment not available");
+    });
+
+    it("should handle empty rejected array", () => {
+      const result = summarizeFilteredExercises([]);
+
+      expect(result).toEqual([]);
+    });
+
+    it("should handle other rejection reasons with generic fallback", () => {
+      const rejected: RejectedExercise[] = [
+        {
+          exercise: createMockExercise("ex1", "Exercise"),
+          reason: "sra_not_ready",
+        },
+      ];
+
+      const result = summarizeFilteredExercises(rejected);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].userFriendlyMessage).toBe("Filtered (sra_not_ready)");
     });
   });
 });

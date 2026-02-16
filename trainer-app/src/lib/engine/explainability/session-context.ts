@@ -15,10 +15,12 @@ import type {
   VolumeStatus,
   ReadinessStatus,
   ProgressionContext,
+  FilteredExerciseSummary,
 } from "./types";
 import type { BlockContext } from "../periodization/types";
 import type { FatigueScore, AutoregulationModification } from "../readiness/types";
 import type { WorkoutPlan } from "../types";
+import type { RejectedExercise } from "../selection-v2/types";
 import { VOLUME_LANDMARKS, type VolumeLandmarks } from "../volume-landmarks";
 import { formatBlockPhase, formatWeekInMesocycle, pluralize } from "./utils";
 
@@ -388,4 +390,59 @@ function getNextMilestone(
   }
 
   return `Continue ${blockType} phase for ${pluralize(weeksRemaining, "more week")}`;
+}
+
+/**
+ * Summarize filtered exercises for explainability
+ *
+ * Converts rejected exercises into user-friendly summaries grouped by rejection reason.
+ * Used to show users why exercises were filtered (pain conflicts, user avoids, equipment).
+ *
+ * @param rejected - Array of rejected exercises from SelectionResult
+ * @returns Array of filtered exercise summaries with user-friendly messages
+ *
+ * @example
+ * ```typescript
+ * const filtered = summarizeFilteredExercises(result.rejected);
+ * // [
+ * //   { exerciseId: "123", exerciseName: "Incline Dumbbell Curl",
+ * //     reason: "user_avoided", userFriendlyMessage: "Avoided per your preferences" },
+ * //   { exerciseId: "456", exerciseName: "Bench Press",
+ * //     reason: "pain_conflict", userFriendlyMessage: "Excluded due to recent pain signals" }
+ * // ]
+ * ```
+ */
+export function summarizeFilteredExercises(
+  rejected: RejectedExercise[]
+): FilteredExerciseSummary[] {
+  return rejected.map((item) => {
+    const exerciseName = item.exercise.name;
+    const exerciseId = item.exercise.id;
+
+    let userFriendlyMessage: string;
+    switch (item.reason) {
+      case "user_avoided":
+        userFriendlyMessage = "Avoided per your preferences";
+        break;
+      case "pain_conflict":
+        userFriendlyMessage = "Excluded due to recent pain signals";
+        break;
+      case "equipment_unavailable":
+        userFriendlyMessage = "Equipment not available";
+        break;
+      case "contraindicated":
+        userFriendlyMessage = "Contraindicated"; // Generic fallback
+        break;
+      default:
+        // Other rejection reasons (SRA, volume ceiling, etc.) - not surfaced in UI
+        userFriendlyMessage = `Filtered (${item.reason})`;
+    }
+
+    return {
+      exerciseId,
+      exerciseName,
+      reason: item.reason,
+      userFriendlyMessage,
+    };
+  });
 }

@@ -73,8 +73,31 @@ export interface SelectionConstraints {
   /** Available equipment */
   equipment: Set<EquipmentType>;
 
-  /** Contraindicated exercises (pain conflicts, user avoids) */
-  contraindications: Set<string>; // Exercise IDs
+  /**
+   * Exercise IDs excluded due to pain flags or recent pain signals
+   * @see RejectionReason "pain_conflict"
+   */
+  painConflicts: Set<string>;
+
+  /**
+   * Exercise IDs explicitly avoided by user (via preferences)
+   * @see RejectionReason "user_avoided"
+   */
+  userAvoids: Set<string>;
+
+  /**
+   * Exercise IDs excluded due to equipment unavailability
+   * @see RejectionReason "equipment_unavailable"
+   * Note: Currently pre-filtered by equipment check, but included for explainability
+   */
+  equipmentUnavailable: Set<string>;
+
+  /**
+   * @deprecated Use specific constraint sets (painConflicts, userAvoids, equipmentUnavailable) instead.
+   * Maintained for backward compatibility during migration.
+   * Will be removed in Phase 3.
+   */
+  contraindications?: Set<string>;
 
   /** Minimum number of exercises */
   minExercises: number;

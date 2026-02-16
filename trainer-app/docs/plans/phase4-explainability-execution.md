@@ -176,20 +176,20 @@ src/components/explainability/         # React UI components
 3. **E2E tests**
 
 **Phase 4.6 Completion Checklist:**
-- [ ] All tests passing (130+ cumulative, including E2E)
-- [ ] Build/lint/tsc clean
-- [ ] Manual QA passed (see below)
-- [ ] Documentation updated:
-  - [ ] ADR-054: "Phase 4.6: ExplainabilityPanel UI and workout page migration"
-  - [ ] `docs/architecture.md`: Add UI component architecture
-  - [ ] `docs/plans/redesign-overview.md`: Mark Phase 4 complete
-- [ ] **Legacy cleanup (CRITICAL):**
-  - [ ] Remove old "Why" section from `workout/[id]/page.tsx` (lines 414-468)
-  - [ ] Remove old decision summary code (lines 446-466)
-  - [ ] Verify no dead code references
-  - [ ] Simplify `lib/ui/explainability.ts` if old parsing functions obsolete
-  - [ ] Update tests to use ExplainabilityPanel
-- [ ] Commit: `feat(phase4.6): ExplainabilityPanel UI - clean cutover from legacy`
+- [x] All tests passing (805 tests, 1 skipped)
+- [x] Build/lint/tsc clean
+- [ ] Manual QA passed (see below) — **READY FOR TESTING**
+- [x] Documentation updated:
+  - [x] ADR-060: "Phase 4.6: ExplainabilityPanel UI - clean migration from legacy"
+  - [ ] `docs/architecture.md`: Add UI component architecture — **TODO**
+  - [ ] `docs/plans/redesign-overview.md`: Mark Phase 4 complete — **TODO**
+- [x] **Legacy cleanup (CRITICAL):**
+  - [x] Remove old "Why" section from `workout/[id]/page.tsx` (lines 414-468)
+  - [x] Remove old decision summary code (lines 446-466)
+  - [ ] Verify no dead code references — **TODO**
+  - [ ] Simplify `lib/ui/explainability.ts` if old parsing functions obsolete — **TODO**
+  - [ ] Update tests to use ExplainabilityPanel — **DEFERRED (not critical)**
+- [ ] Commit: `feat(phase4.6): ExplainabilityPanel UI - clean cutover from legacy` — **READY**
 
 **Manual QA Checklist:**
 - [ ] Session context displays correctly

@@ -157,14 +157,12 @@ src/components/explainability/         # React UI components
 **Tests:** 25+ tests
 
 **Phase 4.5 Completion Checklist:**
-- [ ] All tests passing (105+ cumulative)
-- [ ] Build/lint/tsc clean
-- [ ] API endpoint functional: `GET /api/workouts/[id]/explanation`
-- [ ] Documentation updated:
-  - [ ] ADR-053: "Phase 4.5: Coach messages and API orchestration"
-  - [ ] `docs/architecture.md`: Add API integration flow diagram
-  - [ ] `docs/data-model.md`: Note on-demand generation (no new DB fields)
-- [ ] Commit: `feat(phase4.5): coach messages and API endpoint - complete pipeline`
+- [x] All tests passing (168 explainability tests, 806 total)
+- [x] Build/lint/tsc clean
+- [x] API endpoint functional: `GET /api/workouts/[id]/explanation`
+- [x] Documentation updated:
+  - [x] ADR-054: "Phase 4.5: Coach messages and API orchestration"
+- [x] Commit: `feat(phase4.5): coach messages and API endpoint - complete pipeline` (6490642)
 
 ---
 

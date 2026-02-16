@@ -327,9 +327,9 @@ return {
 
 ---
 
-## Explainability System (Phase 4.1+)
+## Explainability System (Phase 4.1–4.6)
 
-**Status:** Foundation implemented (Phase 4.1), full system in progress
+**Status:** ✅ Complete (Phase 4.1–4.6 shipped 2026-02-16)
 
 **Goal:** Transform the workout generation "black box" into a transparent, coach-like experience with research-backed explanations at three levels:
 
@@ -351,7 +351,13 @@ src/lib/engine/explainability/     # Pure engine layer (no DB/I/O)
 
 src/lib/api/explainability.ts      # API orchestration (DB → engine types) [Phase 4.5]
 src/app/api/workouts/[id]/explanation/route.ts  # GET endpoint [Phase 4.5]
-src/components/explainability/      # React UI components [Phase 4.6]
+src/components/WorkoutExplanation.tsx           # Client wrapper [Phase 4.6]
+src/components/explainability/                  # 5 React UI components [Phase 4.6]
+├── ExplainabilityPanel.tsx         # Main container with collapsible exercise cards
+├── SessionContextCard.tsx          # Block phase, volume, readiness, progression display
+├── CoachMessageCard.tsx            # Warning/encouragement/milestone/tip messages
+├── ExerciseRationaleCard.tsx       # Per-exercise selection factors + KB citations + alternatives
+└── PrescriptionDetails.tsx         # Sets/reps/load/RIR/rest explanation cards
 ```
 
 **Phase 4.1 Deliverables (✅ Complete):**
@@ -507,11 +513,41 @@ Total: 16 curated research citations sourced from `docs/knowledgebase/hypertroph
 - 41 comprehensive tests (148 cumulative for explainability system)
 - Edge cases: deload, exercise constraints, bodyweight exercises, progression types, block phases
 
-**Upcoming Phases:**
-- Phase 4.5: Coach messages + API orchestration (`GET /api/workouts/[id]/explanation`)
-- Phase 4.6: React UI components + workout page migration (replace legacy "Why" section) + deprecate `selection-v2/rationale.ts`
+**Phase 4.5 Deliverables (✅ Complete):**
+- `coach-messages.ts` - 4 message types (warning/encouragement/milestone/tip) with priority levels
+- `generateCoachMessages()` - Detects 8 conditions: high fatigue, overreaching, deload trigger, milestone progression, volume caps, SRA warnings, block transitions, training age guidance
+- `src/lib/api/explainability.ts` - Orchestration layer, loads DB context + calls all 4 engine explainability modules
+- `GET /api/workouts/[id]/explanation` - REST endpoint, returns complete `WorkoutExplanation` JSON
+- 20 new tests (168 cumulative for explainability system)
 
-**References:** ADR-049, ADR-050, ADR-051, ADR-053, docs/plans/phase4-explainability-execution.md, docs/knowledgebase/hypertrophyandstrengthtraining_researchreport.md
+**Phase 4.6 Deliverables (✅ Complete):**
+- 5 React components in `src/components/explainability/`:
+  - `ExplainabilityPanel.tsx` - Main container, collapsible exercise cards, state management
+  - `SessionContextCard.tsx` - Block phase badge, volume grid, readiness color coding, progression timeline
+  - `CoachMessageCard.tsx` - Icon + color theming by message type, high-priority badge
+  - `ExerciseRationaleCard.tsx` - Selection factor breakdown, KB citation cards with links, alternative exercises
+  - `PrescriptionDetails.tsx` - 2×2 grid (sets/reps/load/RIR) + rest period, block/progression context
+- `WorkoutExplanation.tsx` - Client wrapper, fetches explanation API, loading/error states, Map ↔ Record conversion
+- Workout page migration: Replaced legacy "Why this workout" section with `<WorkoutExplanation />` component
+- 29 component tests (co-located `.test.tsx` files), 834 total tests passing
+- Legacy `src/lib/ui/explainability.ts` retained - still used for inline selection badges on workout page
+
+**Data Flow (Phase 4.5–4.6):**
+```text
+Workout page → WorkoutExplanation.tsx (client)
+             → GET /api/workouts/[id]/explanation
+             → src/lib/api/explainability.ts (loadExplanation)
+                → Parallel DB queries: workout, exercises, history, baselines, profile
+                → mapProfile/mapGoals/mapHistory → engine types
+                → explainSessionContext() [engine]
+                → generateCoachMessages() [engine]
+                → explainExerciseRationale() per exercise [engine]
+                → explainPrescriptionRationale() per exercise [engine]
+             ← JSON: WorkoutExplanation (Maps converted to Records)
+             → ExplainabilityPanel renders 4 card types
+```
+
+**References:** ADR-049, ADR-050, ADR-051, ADR-053, ADR-060, docs/plans/phase4-explainability-execution.md, docs/knowledgebase/hypertrophyandstrengthtraining_researchreport.md
 
 ---
 

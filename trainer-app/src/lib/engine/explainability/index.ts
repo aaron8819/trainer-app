@@ -81,3 +81,6 @@ export {
   explainRirTarget,
   explainRestPeriod,
 } from "./prescription-rationale";
+
+// Coach Messages
+export { generateCoachMessages } from "./coach-messages";

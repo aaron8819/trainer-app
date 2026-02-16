@@ -26,29 +26,42 @@ export function deriveBlockContext(
     return null;
   }
 
+  // Convert weekInMacro (1-indexed) to 0-indexed for comparison with block/meso startWeek
+  const weekIndex = weekInMacro - 1; // 0-indexed
+
+  console.log(`DEBUG deriveBlockContext: weekInMacro=${weekInMacro}, weekIndex=${weekIndex}`);
+
   // Find the mesocycle containing this week
   const meso = macro.mesocycles.find((m) => {
     const mesoEndWeek = m.startWeek + m.durationWeeks;
-    return weekInMacro > m.startWeek && weekInMacro <= mesoEndWeek;
+    const match = weekIndex >= m.startWeek && weekIndex < mesoEndWeek;
+    console.log(`  Checking meso startWeek=${m.startWeek}, endWeek=${mesoEndWeek}: ${weekIndex} >= ${m.startWeek} && ${weekIndex} < ${mesoEndWeek} = ${match}`);
+    return match;
   });
 
   if (!meso) {
+    console.log(`  No matching meso found!`);
     return null; // No matching mesocycle (shouldn't happen if macro is well-formed)
   }
 
-  const weekInMeso = weekInMacro - meso.startWeek; // 1-indexed
+  const weekInMeso = weekIndex - meso.startWeek + 1; // 1-indexed
+  console.log(`  Found meso: weekInMeso=${weekInMeso}`);
 
   // Find the training block containing this week
   const block = meso.blocks.find((b) => {
     const blockEndWeek = b.startWeek + b.durationWeeks;
-    return weekInMacro > b.startWeek && weekInMacro <= blockEndWeek;
+    const match = weekIndex >= b.startWeek && weekIndex < blockEndWeek;
+    console.log(`    Checking block ${b.blockType} startWeek=${b.startWeek}, endWeek=${blockEndWeek}: ${weekIndex} >= ${b.startWeek} && ${weekIndex} < ${blockEndWeek} = ${match}`);
+    return match;
   });
 
   if (!block) {
+    console.log(`  No matching block found!`);
     return null; // No matching block (shouldn't happen if meso is well-formed)
   }
 
-  const weekInBlock = weekInMacro - block.startWeek; // 1-indexed
+  const weekInBlock = weekIndex - block.startWeek + 1; // 1-indexed
+  console.log(`  Found block: ${block.blockType}, weekInBlock=${weekInBlock}\n`);
 
   return {
     block,

@@ -98,7 +98,7 @@ src/components/explainability/         # React UI components
 - [x] Documentation updated:
   - [x] ADR-050: "Phase 4.2: Session context explanation with block-aware narrative"
   - [x] `docs/architecture.md`: Add session context flow diagram
-- [ ] Commit: `feat(phase4.2): session context explanation - block phase, volume, readiness`
+- [x] Commit: `feat(phase4.2): session context explanation - block phase, volume, readiness`
 
 ---
 

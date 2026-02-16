@@ -4,6 +4,132 @@ Record of significant design decisions and their rationale. Newest first.
 
 ---
 
+## ADR-050: Phase 4.2 - Session context explanation with block-aware narrative (2026-02-16)
+
+**Status:** Implemented
+
+**Context:**
+Phase 4.1 established the explainability foundation. Phase 4.2 implements session-level context explanation—the macro "Why this workout today?" narrative that explains:
+1. Block phase and periodization goal
+2. Volume status across muscle groups (MEV/MAV/MRV positioning)
+3. Readiness overlay and autoregulation adaptations
+4. Progression context and next milestones
+
+This provides users with high-level understanding of where they are in their training cycle before diving into exercise-specific rationale.
+
+**Decision:**
+Created `src/lib/engine/explainability/session-context.ts` with five core functions:
+
+1. **`explainSessionContext()`** - Main entry point that orchestrates all session context generation:
+   - Accepts: `BlockContext | null`, `volumeByMuscle`, optional `FatigueScore`, `AutoregulationModification[]`, `signalAge`
+   - Returns: Complete `SessionContext` with block phase, volume status, readiness, progression, and narrative
+
+2. **`describeBlockGoal()`** - Explains current block phase:
+   - Maps block type → primary goal (accumulation = "Build work capacity", etc.)
+   - Handles null block context with sensible defaults (accumulation week 1)
+   - Returns: `BlockPhaseContext` with block type, week numbers, and goal description
+
+3. **`describeVolumeProgress()`** - Analyzes volume status across muscle groups:
+   - Uses `VOLUME_LANDMARKS` (MEV/MAV/MRV) to classify each muscle's status
+   - Status levels: `below_mev`, `at_mev`, `optimal`, `approaching_mrv`, `at_mrv`
+   - Generates overall summary (e.g., "3 of 6 muscle groups near target volume")
+   - Returns: `VolumeStatus` with per-muscle breakdown and summary
+
+4. **`describeReadinessStatus()`** - Summarizes readiness and autoregulation:
+   - Classifies overall readiness: `fresh` (≥0.75), `moderate` (≥0.5), `fatigued` (<0.5)
+   - Converts per-muscle fatigue scores to 0-10 scale for explainability
+   - Summarizes autoregulation modifications (volume cuts, intensity scaling, deload triggers)
+   - Includes signal age (days since last check-in) for staleness awareness
+   - Returns: `ReadinessStatus` with overall level, per-muscle fatigue, adaptations, signal age
+
+5. **`describeProgressionContext()`** - Explains current progression state:
+   - Volume progression: `building` (accumulation), `maintaining` (intensification/realization), `deloading`
+   - Intensity progression: `ramping` (accumulation/intensification), `peak` (realization), `reduced` (deload)
+   - Next milestone: Dynamic based on block type and weeks remaining
+   - Returns: `ProgressionContext` with week in meso, progression states, milestone
+
+**Implementation Details:**
+
+**Volume Status Classification:**
+```typescript
+// Uses VOLUME_LANDMARKS from volume-landmarks.ts
+below_mev:         sets < MEV
+at_mev:            sets === MEV
+optimal:           MEV < sets < MAV
+approaching_mrv:   MAV ≤ sets < MRV
+at_mrv:            sets ≥ MRV
+```
+
+**Readiness Classification:**
+```typescript
+fresh:     fatigueScore ≥ 0.75
+moderate:  0.5 ≤ fatigueScore < 0.75
+fatigued:  fatigueScore < 0.5
+```
+
+**Autoregulation Adaptation Summarization:**
+- Volume reductions: "Reduced volume by N sets"
+- Intensity scaling down: "Scaled down N exercises"
+- Intensity scaling up: "Scaled up N exercises"
+- Deload trigger: "Triggered deload due to elevated fatigue"
+- No adaptations: "No adaptations needed - proceeding as planned"
+
+**Narrative Generation:**
+Combines all context into a single paragraph:
+```
+Accumulation Week 2 of 4: Build work capacity and muscle mass with progressive volume.
+3 of 6 muscle groups near target volume. Reduced volume by 2 sets. Continue accumulation
+phase for 2 more weeks.
+```
+
+**Testing:**
+25 new tests covering:
+- Block goal description for all block types (accumulation, intensification, realization, deload)
+- Null block context handling (defaults to accumulation week 1)
+- Volume status classification across all levels (below MEV, at MEV, optimal, approaching MRV, at MRV)
+- Empty volume map handling
+- Unknown muscle filtering
+- Readiness classification (fresh/moderate/fatigued)
+- Autoregulation modification summarization (volume cuts, intensity scaling, deload triggers)
+- Signal age tracking
+- Progression context for different block types
+- Integration test for complete session context generation
+
+**Consequences:**
+
+✅ **Benefits:**
+- **Block-aware narrative**: Users understand where they are in periodization cycle
+- **Volume transparency**: Clear visibility into each muscle's volume status (MEV/MAV/MRV)
+- **Readiness overlay**: Autoregulation adaptations explained with rationale
+- **Progression clarity**: Next milestones keep users oriented in training plan
+- **Graceful defaults**: Handles missing macro cycle with sensible accumulation defaults
+- **Pure engine**: No Prisma imports, maintains engine testability
+
+⚠️ **Trade-offs:**
+- **Volume landmarks dependency**: Requires accurate MEV/MAV/MRV values per muscle (validated in volume-landmarks.ts)
+- **Narrative templating**: Static templates may feel repetitive; future phases could add variety
+- **Signal staleness**: Signal age is included but not yet used to adjust narrative tone
+
+**Related ADRs:**
+- ADR-049: Explainability foundation (types, KB, utils)
+- ADR-013: Multi-phase periodization (block context derivation)
+- ADR-016: Volume landmarks with MEV/MAV/MRV per muscle
+- ADR-023: Readiness tracking and autoregulation (fatigue scoring)
+
+**Files Added:**
+- `src/lib/engine/explainability/session-context.ts` (358 lines)
+- `src/lib/engine/explainability/session-context.test.ts` (25 tests)
+
+**Files Modified:**
+- `src/lib/engine/explainability/index.ts` (added session-context exports)
+
+**Test Results:**
+- 84 tests passing (59 existing + 25 new)
+- 100% coverage for session-context module
+- Build/lint/tsc clean
+
+---
+
 ## ADR-049: Phase 4.1 - Explainability foundation and KB citation database (2026-02-16)
 
 **Status:** Implemented

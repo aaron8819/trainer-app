@@ -93,11 +93,11 @@ src/components/explainability/         # React UI components
 **Tests:** 20+ tests
 
 **Phase 4.2 Completion Checklist:**
-- [ ] All tests passing (35+ cumulative)
-- [ ] Build/lint/tsc clean
-- [ ] Documentation updated:
-  - [ ] ADR-050: "Phase 4.2: Session context explanation with block-aware narrative"
-  - [ ] `docs/architecture.md`: Add session context flow diagram
+- [x] All tests passing (84 cumulative: 59 existing + 25 new)
+- [x] Build/lint/tsc clean
+- [x] Documentation updated:
+  - [x] ADR-050: "Phase 4.2: Session context explanation with block-aware narrative"
+  - [x] `docs/architecture.md`: Add session context flow diagram
 - [ ] Commit: `feat(phase4.2): session context explanation - block phase, volume, readiness`
 
 ---

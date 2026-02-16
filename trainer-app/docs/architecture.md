@@ -361,6 +361,49 @@ src/components/explainability/      # React UI components [Phase 4.6]
 - Utilities: 12 formatting functions (`formatBlockPhase`, `formatCitation`, `pluralize`, `formatLoadChange`, etc.)
 - 59 tests passing
 
+**Phase 4.2 Deliverables (✅ Complete):**
+- Session context module: `explainSessionContext()` - macro-level "Why this workout today?"
+- Block phase description: `describeBlockGoal()` - maps block type to primary training goal
+- Volume progress analysis: `describeVolumeProgress()` - MEV/MAV/MRV status across muscles
+- Readiness status: `describeReadinessStatus()` - fatigue level + autoregulation adaptations
+- Progression context: `describeProgressionContext()` - volume/intensity trends + next milestones
+- 25 new tests (84 total)
+
+**Session Context Flow:**
+```text
+Input:
+- BlockContext (periodization state)
+- volumeByMuscle (Map<string, number>)
+- FatigueScore (optional, from autoregulation)
+- AutoregulationModification[] (optional)
+- signalAge (optional, days since last check-in)
+
+Process:
+1. describeBlockGoal() → BlockPhaseContext
+   - Block type (accumulation/intensification/realization/deload)
+   - Week position (e.g., "Week 2 of 4")
+   - Primary goal (e.g., "Build work capacity and muscle mass")
+
+2. describeVolumeProgress() → VolumeStatus
+   - Classify each muscle: below_mev | at_mev | optimal | approaching_mrv | at_mrv
+   - Generate summary (e.g., "3 of 6 muscle groups near target volume")
+
+3. describeReadinessStatus() → ReadinessStatus
+   - Overall readiness: fresh (≥0.75) | moderate (≥0.5) | fatigued (<0.5)
+   - Per-muscle fatigue map (0-10 scale for explainability)
+   - Summarize adaptations: volume cuts, intensity scaling, deload triggers
+
+4. describeProgressionContext() → ProgressionContext
+   - Volume progression: building | maintaining | deloading
+   - Intensity progression: ramping | peak | reduced
+   - Next milestone (e.g., "Continue accumulation for 2 more weeks")
+
+5. Generate narrative summary (combines all context)
+
+Output:
+- SessionContext with narrative: "Accumulation Week 2 of 4: Build work capacity..."
+```
+
 **Key Research Citations:**
 - Maeo et al. 2023 - Overhead triceps extensions (+40% growth vs pushdowns)
 - Pedrosa et al. 2022 - Lengthened leg extensions (~2× quad hypertrophy vs shortened)
@@ -377,13 +420,12 @@ src/components/explainability/      # React UI components [Phase 4.6]
 - "Standing Calf Raise" + `lengthPositionScore: 5` → Kassiano 2023 + Kinoshita 2023 citations
 
 **Upcoming Phases:**
-- Phase 4.2: Session context explanation (block goal, volume progress, readiness)
 - Phase 4.3: Exercise rationale with KB citations (integrate with `selection-v2/rationale.ts`)
 - Phase 4.4: Prescription rationale (explain sets/reps/load/RIR/rest decisions)
 - Phase 4.5: Coach messages + API orchestration (`GET /api/workouts/[id]/explanation`)
 - Phase 4.6: React UI components + workout page migration (replace legacy "Why" section)
 
-**References:** ADR-049, docs/plans/phase4-explainability-execution.md, docs/knowledgebase/hypertrophyandstrengthtraining_researchreport.md
+**References:** ADR-049, ADR-050, docs/plans/phase4-explainability-execution.md, docs/knowledgebase/hypertrophyandstrengthtraining_researchreport.md
 
 ---
 

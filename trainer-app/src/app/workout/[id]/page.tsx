@@ -510,21 +510,52 @@ export default async function WorkoutDetailPage({
                         </div>
                       ) : null}
                       <div className="mt-3 grid gap-2 text-sm text-slate-600">
-                        {exercise.sets.map((set) => (
-                          <div
-                            key={set.id}
-                            className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 rounded-lg bg-slate-50 px-3 py-2"
-                          >
-                            <span>Set {set.setIndex}</span>
-                            <span className="text-slate-700">
-                              {formatTargetRepDisplay(set)}
-                              {formatLoadDisplay(set.targetLoad, isBodyweightExercise)
-                                ? ` | ${formatLoadDisplay(set.targetLoad, isBodyweightExercise)}`
-                                : ""}
-                              {set.targetRpe ? ` | RPE ${set.targetRpe}` : ""}
-                            </span>
-                          </div>
-                        ))}
+                        {exercise.sets.map((set) => {
+                          const log = set.logs[0];
+                          const isCompleted = workout.status === "COMPLETED";
+                          const repDiff = isCompleted && log && !log.wasSkipped
+                            ? (log.actualReps ?? 0) - (set.targetReps ?? 0)
+                            : null;
+                          const actualColor =
+                            repDiff === null
+                              ? "text-slate-500"
+                              : repDiff >= 0
+                              ? "text-emerald-700"
+                              : repDiff === -1
+                              ? "text-amber-700"
+                              : "text-rose-700";
+                          return (
+                            <div
+                              key={set.id}
+                              className="rounded-lg bg-slate-50 px-3 py-2"
+                            >
+                              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                                <span>Set {set.setIndex}</span>
+                                <span className="text-slate-700">
+                                  {formatTargetRepDisplay(set)}
+                                  {formatLoadDisplay(set.targetLoad, isBodyweightExercise)
+                                    ? ` | ${formatLoadDisplay(set.targetLoad, isBodyweightExercise)}`
+                                    : ""}
+                                  {set.targetRpe ? ` | RPE ${set.targetRpe}` : ""}
+                                </span>
+                              </div>
+                              {isCompleted && log ? (
+                                <div className={`mt-0.5 text-xs font-medium ${actualColor}`}>
+                                  {log.wasSkipped
+                                    ? "Actual: Skipped"
+                                    : [
+                                        `Actual: ${log.actualReps ?? "?"} reps`,
+                                        log.actualLoad != null ? `${log.actualLoad} lbs` : null,
+                                        log.actualRpe != null ? `RPE ${log.actualRpe}` : null,
+                                      ]
+                                        .filter(Boolean)
+                                        .join(" | ")}
+                                  {!log.wasSkipped && repDiff !== null && repDiff >= 0 ? " ✓" : ""}
+                                </div>
+                              ) : null}
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   );

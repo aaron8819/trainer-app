@@ -73,6 +73,11 @@ type BaselineUpdateSummary = {
   }[];
 };
 
+type AutoregHint = {
+  exerciseId: string;
+  message: string;
+};
+
 const SECTION_ORDER: ExerciseSection[] = ["warmup", "main", "accessory"];
 
 function formatTargetReps(set: LogSetInput): string {
@@ -177,6 +182,25 @@ function withDefaults(exercises: NormalizedExercises): NormalizedExercises {
   };
 }
 
+function buildSetChipLabel(set: LogSetInput, isLogged: boolean): string {
+  if (!isLogged) {
+    return `Set ${set.setIndex}`;
+  }
+  if (set.wasSkipped) {
+    return `Set ${set.setIndex} · Skipped`;
+  }
+  const parts: string[] = [`Set ${set.setIndex}`];
+  if (set.actualLoad != null) {
+    parts.push(`${set.actualLoad}×${set.actualReps ?? "?"}`);
+  } else if (set.actualReps != null) {
+    parts.push(`${set.actualReps} reps`);
+  }
+  if (set.actualRpe != null) {
+    parts.push(`RPE ${set.actualRpe}`);
+  }
+  return parts.join(" · ");
+}
+
 export default function LogWorkoutClient({
   workoutId,
   exercises,
@@ -204,6 +228,7 @@ export default function LogWorkoutClient({
   });
   const [expandedExerciseId, setExpandedExerciseId] = useState<string | null>(null);
   const [undoSnapshot, setUndoSnapshot] = useState<UndoSnapshot | null>(null);
+  const [autoregHint, setAutoregHint] = useState<AutoregHint | null>(null);
 
   const flatSets = useMemo<FlatSetItem[]>(() => {
     const output: FlatSetItem[] = [];
@@ -228,6 +253,7 @@ export default function LogWorkoutClient({
   const totalSets = flatSets.length;
   const loggedCount = loggedSetIds.size;
   const remainingCount = Math.max(0, totalSets - loggedCount);
+  const allSetsLogged = loggedCount === totalSets && totalSets > 0;
 
   const fallbackActiveSet = useMemo(
     () => flatSets.find((item) => !loggedSetIds.has(item.set.setId)) ?? flatSets[0] ?? null,
@@ -238,6 +264,50 @@ export default function LogWorkoutClient({
     [activeSetId, fallbackActiveSet, flatSets]
   );
   const resolvedActiveSetId = activeSet?.set.setId ?? null;
+
+  const showAutoregHint =
+    autoregHint !== null &&
+    activeSet !== null &&
+    autoregHint.exerciseId === activeSet.exercise.workoutExerciseId;
+
+  // Performance summary for completion view
+  const performanceSummary = useMemo(() => {
+    return SECTION_ORDER.flatMap((section) =>
+      data[section]
+        .filter((exercise) => exercise.sets.some((s) => loggedSetIds.has(s.setId)))
+        .map((exercise) => ({
+          name: exercise.name,
+          section,
+          sets: exercise.sets.map((set) => ({
+            setIndex: set.setIndex,
+            targetReps: set.targetReps,
+            targetRepRange: set.targetRepRange,
+            targetLoad: set.targetLoad,
+            targetRpe: set.targetRpe,
+            actualReps: set.actualReps,
+            actualLoad: set.actualLoad,
+            actualRpe: set.actualRpe,
+            wasLogged: loggedSetIds.has(set.setId),
+            wasSkipped: set.wasSkipped ?? false,
+          })),
+        }))
+    );
+  }, [data, loggedSetIds]);
+
+  const rpeAdherence = useMemo(() => {
+    const setsWithBothRpe = flatSets.filter(
+      (item) =>
+        loggedSetIds.has(item.set.setId) &&
+        !(item.set.wasSkipped ?? false) &&
+        item.set.actualRpe != null &&
+        item.set.targetRpe != null
+    );
+    if (setsWithBothRpe.length === 0) return null;
+    const adherent = setsWithBothRpe.filter(
+      (item) => Math.abs((item.set.actualRpe ?? 0) - (item.set.targetRpe ?? 0)) <= 1.0
+    ).length;
+    return { adherent, total: setsWithBothRpe.length };
+  }, [flatSets, loggedSetIds]);
 
   useEffect(() => {
     if (!undoSnapshot) {
@@ -325,11 +395,42 @@ export default function LogWorkoutClient({
       wasLoggedBefore,
       expiresAt: Date.now() + 5000,
     });
-    const nextSetId = getNextUnloggedSetId(flatSets, nextLogged, setId);
-    if (nextSetId) {
-      setActiveSetId(nextSetId);
+
+    // Only auto-advance on first log (not re-log of existing set)
+    if (!wasLoggedBefore) {
+      const nextSetId = getNextUnloggedSetId(flatSets, nextLogged, setId);
+      if (nextSetId) {
+        setActiveSetId(nextSetId);
+      }
     }
-    setStatus("Set logged");
+
+    // Advisory autoregulation hint for next set in same exercise
+    const nextExerciseSet = flatSets.find(
+      (item) =>
+        item.exercise.workoutExerciseId === targetSet.exercise.workoutExerciseId &&
+        !nextLogged.has(item.set.setId) &&
+        item.set.targetRpe != null
+    );
+    if (nextExerciseSet && mergedSet.actualRpe != null && nextExerciseSet.set.targetRpe != null) {
+      const diff = mergedSet.actualRpe - nextExerciseSet.set.targetRpe;
+      if (diff <= -1.5) {
+        setAutoregHint({
+          exerciseId: targetSet.exercise.workoutExerciseId,
+          message: "Set felt easier than target. Consider +2.5–5 lbs for next set.",
+        });
+      } else if (diff >= 1.0) {
+        setAutoregHint({
+          exerciseId: targetSet.exercise.workoutExerciseId,
+          message: "Set was harder than target. Consider -2.5 lbs or -1 rep.",
+        });
+      } else {
+        setAutoregHint(null);
+      }
+    } else {
+      setAutoregHint(null);
+    }
+
+    setStatus(wasLoggedBefore ? "Set updated" : "Set logged");
     setSavingSetId(null);
   };
 
@@ -427,8 +528,28 @@ export default function LogWorkoutClient({
   };
 
   return (
-    <div className="mt-5 space-y-5 pb-28 sm:mt-6 sm:space-y-6 sm:pb-32 md:pb-0">
-      {!completed && !skipped && activeSet ? (
+    <div className="mt-5 space-y-5 pb-8 sm:mt-6 sm:space-y-6">
+      {/* 1A: Green completion banner when all sets logged */}
+      {!completed && !skipped && allSetsLogged ? (
+        <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 sm:p-5">
+          <p className="font-semibold text-emerald-900">All sets logged — great work!</p>
+          <p className="mt-1 text-sm text-emerald-700">
+            {loggedCount}/{totalSets} sets completed. Tap below to save your session.
+          </p>
+          <div className="mt-4">
+            <button
+              className="inline-flex min-h-11 items-center justify-center rounded-full bg-emerald-700 px-6 py-2 text-sm font-semibold text-white disabled:opacity-60"
+              onClick={handleCompleteWorkout}
+              disabled={completed || skipped}
+              type="button"
+            >
+              Complete Workout
+            </button>
+          </div>
+          {error ? <p className="mt-3 text-sm text-rose-600">{error}</p> : null}
+        </section>
+      ) : !completed && !skipped && activeSet ? (
+        /* Active set card */
         <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
           <div className="flex items-center justify-between gap-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Active set</p>
@@ -444,10 +565,22 @@ export default function LogWorkoutClient({
           </div>
           <div className="mt-4">
             <h2 className="text-lg font-semibold">{activeSet.exercise.name}</h2>
+            {/* 1B: Editing label */}
+            {resolvedActiveSetId && loggedSetIds.has(resolvedActiveSetId) ? (
+              <p className="mt-0.5 text-xs font-semibold text-amber-700">Editing set (previously logged)</p>
+            ) : null}
             <p className="mt-1 text-sm text-slate-500">
               {activeSet.sectionLabel} · Set {activeSet.set.setIndex} of {activeSet.exercise.sets.length} · Target{" "}
               {formatTargetReps(activeSet.set)}
+              {activeSet.set.targetLoad ? ` | ${activeSet.set.targetLoad} lbs` : ""}
+              {activeSet.set.targetRpe ? ` | RPE ${activeSet.set.targetRpe}` : ""}
             </p>
+            {/* 1D: Advisory autoregulation hint */}
+            {showAutoregHint ? (
+              <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                {autoregHint!.message}
+              </p>
+            ) : null}
           </div>
           {shouldUseBodyweightLoadLabel(activeSet.exercise, activeSet.set) ? (
             <p className="mt-2 text-xs text-slate-500">Bodyweight movement (load optional for weighted variation).</p>
@@ -578,7 +711,11 @@ export default function LogWorkoutClient({
               disabled={savingSetId === activeSet.set.setId}
               type="button"
             >
-              {savingSetId === activeSet.set.setId ? "Saving..." : "Log set"}
+              {savingSetId === activeSet.set.setId
+                ? "Saving..."
+                : resolvedActiveSetId && loggedSetIds.has(resolvedActiveSetId)
+                ? "Update set"
+                : "Log set"}
             </button>
             <button
               className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 px-6 py-2 text-sm font-semibold text-slate-700 disabled:opacity-60"
@@ -640,6 +777,8 @@ export default function LogWorkoutClient({
                   <div className="space-y-2 border-t border-slate-100 p-3">
                     {sectionItems.map((exercise) => {
                       const exerciseLogged = exercise.sets.filter((set) => loggedSetIds.has(set.setId)).length;
+                      const allExerciseSetsLogged =
+                        exerciseLogged === exercise.sets.length && exercise.sets.length > 0;
                       const nextSet =
                         exercise.sets.find((set) => !loggedSetIds.has(set.setId)) ?? exercise.sets[0];
                       const isExerciseExpanded = expandedExerciseId === exercise.workoutExerciseId;
@@ -658,7 +797,11 @@ export default function LogWorkoutClient({
                             type="button"
                           >
                             <span className="text-sm font-medium">{exercise.name}</span>
-                            <span className="text-xs text-slate-500">
+                            {/* 1C: ✓ when all sets logged */}
+                            <span
+                              className={`text-xs ${allExerciseSetsLogged ? "font-semibold text-emerald-700" : "text-slate-500"}`}
+                            >
+                              {allExerciseSetsLogged ? "✓ " : ""}
                               {exerciseLogged}/{exercise.sets.length}
                             </span>
                           </button>
@@ -680,9 +823,9 @@ export default function LogWorkoutClient({
                                     onClick={() => setActiveSetId(set.setId)}
                                     type="button"
                                   >
-                                    Set {set.setIndex}
-                                    {set.wasSkipped ? " · Skipped" : ""}
-                                    {isBaselineEligible(set) ? " · Baseline +" : ""}
+                                    {/* 1C: actual values in logged chips */}
+                                    {buildSetChipLabel(set, isLogged)}
+                                    {isLogged && isBaselineEligible(set) ? " · Baseline +" : ""}
                                   </button>
                                 );
                               })}
@@ -699,39 +842,156 @@ export default function LogWorkoutClient({
         </section>
       ) : null}
 
-      {baselineSummary ? (
-        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm sm:p-5">
-          <p className="font-semibold text-slate-900">Baseline updates</p>
-          <p className="mt-1 text-slate-600">
-            Context: {baselineSummary.context} · Evaluated: {baselineSummary.evaluatedExercises} · Updated:{" "}
-            {baselineSummary.updated} · Skipped: {baselineSummary.skipped}
-          </p>
-          {baselineSummary.items.length > 0 ? (
-            <div className="mt-3 space-y-2">
-              {baselineSummary.items.map((item) => (
-                <div key={`${item.exerciseName}-${item.newTopSetWeight}`} className="flex flex-wrap gap-2">
-                  <span className="font-medium text-slate-900">{item.exerciseName}</span>
-                  <span className="text-slate-600">
-                    {item.previousTopSetWeight ? `${item.previousTopSetWeight} -> ` : ""}
-                    {item.newTopSetWeight} lbs × {item.reps}
-                  </span>
+      {/* Phase 2: Inline post-workout analysis */}
+      {completed ? (
+        <div className="space-y-5 sm:space-y-6">
+          {/* Session Score */}
+          <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 sm:p-5">
+            <p className="font-semibold text-emerald-900">Session complete!</p>
+            <div className="mt-3 grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-xs text-emerald-700">Sets logged</p>
+                <p className="text-2xl font-bold text-emerald-900">
+                  {totalSets > 0 ? Math.round((loggedCount / totalSets) * 100) : 0}%
+                </p>
+                <p className="text-xs text-emerald-600">
+                  {loggedCount}/{totalSets} sets
+                </p>
+              </div>
+              {rpeAdherence ? (
+                <div>
+                  <p className="text-xs text-emerald-700">RPE adherence</p>
+                  <p className="text-2xl font-bold text-emerald-900">
+                    {Math.round((rpeAdherence.adherent / rpeAdherence.total) * 100)}%
+                  </p>
+                  <p className="text-xs text-emerald-600">
+                    {rpeAdherence.adherent}/{rpeAdherence.total} on target
+                  </p>
                 </div>
-              ))}
+              ) : null}
             </div>
-          ) : (
-            <p className="mt-2 text-slate-600">No baseline increases detected for this session.</p>
-          )}
-          {baselineSummary.skippedItems.length > 0 ? (
-            <div className="mt-4 space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Why skipped</p>
-              {baselineSummary.skippedItems.map((item) => (
-                <div key={`${item.exerciseName}-${item.reason}`} className="flex flex-wrap gap-2">
-                  <span className="font-medium text-slate-900">{item.exerciseName}</span>
-                  <span className="text-slate-600">{item.reason}</span>
+          </section>
+
+          {/* Performance Comparison */}
+          {performanceSummary.length > 0 ? (
+            <section className="space-y-3">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Performance</h2>
+              {performanceSummary.map((exercise) => (
+                <div key={exercise.name} className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <p className="font-medium text-slate-900">{exercise.name}</p>
+                  <div className="mt-3 space-y-2">
+                    {exercise.sets.map((set) => {
+                      const repDiff = (set.actualReps ?? 0) - (set.targetReps ?? 0);
+                      const actualColor = !set.wasLogged
+                        ? "text-slate-400"
+                        : set.wasSkipped
+                        ? "text-slate-500"
+                        : repDiff >= 0
+                        ? "text-emerald-700"
+                        : repDiff === -1
+                        ? "text-amber-700"
+                        : "text-rose-700";
+                      const targetLabel = [
+                        set.targetRepRange && set.targetRepRange.min !== set.targetRepRange.max
+                          ? `${set.targetRepRange.min}–${set.targetRepRange.max} reps`
+                          : `${set.targetReps} reps`,
+                        set.targetLoad ? `${set.targetLoad} lbs` : null,
+                        set.targetRpe ? `RPE ${set.targetRpe}` : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" | ");
+                      const actualLabel = !set.wasLogged
+                        ? "—"
+                        : set.wasSkipped
+                        ? "Skipped"
+                        : [
+                            set.actualReps != null ? `${set.actualReps} reps` : null,
+                            set.actualLoad != null ? `${set.actualLoad} lbs` : null,
+                            set.actualRpe != null ? `RPE ${set.actualRpe}` : null,
+                          ]
+                            .filter(Boolean)
+                            .join(" | ");
+                      return (
+                        <div key={set.setIndex} className="rounded-lg bg-slate-50 px-3 py-2">
+                          <div className="flex items-center justify-between gap-2 text-xs">
+                            <span className="shrink-0 font-medium text-slate-700">Set {set.setIndex}</span>
+                            <span className="text-slate-500">{targetLabel}</span>
+                          </div>
+                          <div className={`mt-0.5 text-xs font-medium ${actualColor}`}>
+                            {actualLabel}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               ))}
+            </section>
+          ) : null}
+
+          {/* Enhanced Baseline Summary */}
+          {baselineSummary ? (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5">
+              <p className="font-semibold text-slate-900">Strength updates</p>
+              <p className="mt-1 text-sm text-slate-600">
+                {baselineSummary.updated > 0
+                  ? `${baselineSummary.updated} personal record${baselineSummary.updated === 1 ? "" : "s"} set this session.`
+                  : "No new personal records this session."}
+              </p>
+              {baselineSummary.items.length > 0 ? (
+                <div className="mt-3 space-y-2">
+                  {baselineSummary.items.map((item) => (
+                    <div
+                      key={`${item.exerciseName}-${item.newTopSetWeight}`}
+                      className="flex flex-wrap items-center gap-2"
+                    >
+                      <span className="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">
+                        PR
+                      </span>
+                      <span className="font-medium text-slate-900">{item.exerciseName}</span>
+                      <span className="text-slate-600">
+                        {item.previousTopSetWeight ? `${item.previousTopSetWeight} → ` : ""}
+                        {item.newTopSetWeight} lbs × {item.reps}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              {baselineSummary.skippedItems.length > 0 ? (
+                <details className="mt-3">
+                  <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    {baselineSummary.skipped} exercise{baselineSummary.skipped === 1 ? "" : "s"} evaluated,
+                    no update
+                  </summary>
+                  <div className="mt-2 space-y-1">
+                    {baselineSummary.skippedItems.map((item) => (
+                      <div
+                        key={`${item.exerciseName}-${item.reason}`}
+                        className="text-xs text-slate-500"
+                      >
+                        {item.exerciseName}: {item.reason}
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              ) : null}
             </div>
           ) : null}
+
+          {/* What's Next */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
+            <p className="font-semibold text-slate-900">What&apos;s next</p>
+            <p className="mt-2 text-sm text-slate-600">
+              Allow 48–72h before training these muscles again. Log a readiness check-in before your next
+              session.
+            </p>
+            <Link
+              className="mt-4 inline-flex min-h-10 items-center justify-center rounded-full bg-slate-900 px-5 text-sm font-semibold text-white"
+              href="/"
+            >
+              Generate next workout
+            </Link>
+          </div>
         </div>
       ) : null}
 
@@ -750,8 +1010,9 @@ export default function LogWorkoutClient({
         </div>
       ) : null}
 
+      {/* 1A: Footer made always inline (no fixed positioning) */}
       <div className="space-y-3">
-        <div className="fixed inset-x-4 bottom-[calc(4.5rem+env(safe-area-inset-bottom)+0.75rem)] z-20 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:inset-x-5 md:static md:inset-auto md:bottom-auto md:rounded-none md:border-0 md:bg-transparent md:p-0 md:shadow-none">
+        <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm md:rounded-none md:border-0 md:bg-transparent md:p-0 md:shadow-none">
           <div className="mb-2 flex items-center justify-between gap-2">
             <div className="text-xs text-slate-500">{loggedCount}/{totalSets} sets logged</div>
             {!completed && !skipped ? (
@@ -808,7 +1069,7 @@ export default function LogWorkoutClient({
             <div className="mt-2 text-[11px] text-slate-500">
               {footerExpanded
                 ? "Tip: collapse actions to reclaim screen space."
-                : "Use “More actions” to reveal skip controls."}
+                : "Use \u201cMore actions\u201d to reveal skip controls."}
             </div>
           ) : null}
         </div>
@@ -823,8 +1084,3 @@ export default function LogWorkoutClient({
     </div>
   );
 }
-
-
-
-
-

@@ -4,6 +4,83 @@ Record of significant design decisions and their rationale. Newest first.
 
 ---
 
+## ADR-066: Bonus Exercise Flow — Volume-Landmark Suggestions + Add-Exercise API (2026-02-17)
+
+**Status:** Accepted
+
+**Context:** Users sometimes finish the programmed exercises and want to add more work without leaving the logging UI. The engine already has volume landmark data (MEV/MAV per muscle) and exercise SFR scores. We wanted to surface this intelligence as in-session suggestions.
+
+**Decision:**
+- `GET /api/workouts/[id]/bonus-suggestions`: computes undertrained muscles (vs MEV/MAV) for the current split, filters by split compatibility and 48h recent exposure, ranks by SFR score, returns top 5 with rationale and baseline-seeded load.
+- `POST /api/workouts/[id]/add-exercise`: creates `WorkoutExercise` (section: ACCESSORY) + 3 `WorkoutSet` records using `exercise.repRangeMin/Max` for reps and baseline for load; returns a `LogExerciseInput` ready for immediate logging.
+- `BonusExerciseSheet`: `SlideUpSheet` with recommended + search sections. Search uses `useMemo`-derived filtering (no setState in render per React Compiler rules).
+- On add: new exercise appended to `data.accessory` client-side; accessory section auto-expanded; first set activated.
+
+**Consequences:** Suggestions are advisory only (user taps "Add" explicitly). The `allSetsLogged` banner recomputes automatically when new sets are added.
+
+---
+
+## ADR-065: Inline Post-Workout Analysis (Phase 2) — Client-Side from Logged Data (2026-02-17)
+
+**Status:** Accepted
+
+**Context:** After workout completion, users needed a summary without a page redirect.
+
+**Decision:** Compute all post-workout analysis client-side from `data` (NormalizedExercises state) and `loggedSetIds`. No additional API calls needed — the actual values were already in client state from logging.
+- Session Score: `loggedSetIds.size / totalSets` + RPE adherence (sets where `|actual - target| ≤ 1.0`)
+- Performance table: per-set target vs actual, color-coded emerald/amber/rose by rep diff (≥0 / -1 / ≤-2)
+- Enhanced baseline summary: PR badges, arrow notation (`220 → 225 lbs × 5`), collapsible skipped list
+- What's Next: static 48-72h rest guidance + generate-next-workout link
+
+**Consequences:** Zero latency for the completion summary. The `baselineSummary` from the completion API is reused; standalone baseline block is removed (absorbed into completion summary).
+
+---
+
+## ADR-064: Logging UX Phase 1 — Inline Footer, Completion Banner, Autoreg Hints (2026-02-17)
+
+**Status:** Accepted
+
+**Context:** The fixed-position floating footer caused layout issues on small screens and obscured content. Users needed feedback when all sets were done. Editing previously logged sets caused confusing auto-advance behavior.
+
+**Decisions:**
+- **Footer**: Remove `fixed` positioning — footer flows inline after scroll content. `pb-28` → `pb-8`.
+- **Completion banner**: When `allSetsLogged`, replace active set card with an emerald "All sets logged" banner containing the primary "Complete Workout" CTA. Keeps footer's secondary button for safety.
+- **Edit mode**: When re-logging a set (`wasLoggedBefore === true`), do NOT auto-advance to next set; show "Editing set (previously logged)" label and "Update set" button text.
+- **Advisory autoreg hints**: After `handleLogSet`, compare `actualRpe` to next set's `targetRpe` in same exercise. `diff ≤ -1.5` → suggest adding load; `diff ≥ 1.0` → suggest reducing load/reps. Hints are advisory only (not auto-applied). Stored as `{ exerciseId, message }` and shown only when exercise matches.
+- **Set chip visibility**: Logged chips display actual values (`185×8 · RPE 8`). Exercise counter shows `✓` when all sets done.
+- **Actual vs prescribed on workout detail**: `/workout/[id]` shows actual row below target for completed workouts with same color coding.
+
+**Consequences:** Footer no longer covers content. Users get clear actionable feedback without the engine making decisions for them.
+
+---
+
+## ADR-063: Persist FilteredExercises to DB for Durable Explainability (2026-02-17)
+
+**Status:** Accepted
+
+**Context:**
+
+Phase 4.6 added `FilteredExercisesCard` to display exercises rejected by hard constraints ("Why didn't I get this exercise?"). The engine produces `SelectionResult.rejected[]` → `FilteredExerciseSummary[]`, and the generation API returned them in the response. However, the workout detail page loads explainability data from DB via `generateWorkoutExplanation()` — which had no record of filtered exercises. The card only appeared immediately after generation, not on subsequent page views.
+
+**Options Considered:**
+
+1. **Re-derive at load time** — Re-run the selection logic against the saved workout to infer what was filtered. Complex, potentially inconsistent with original generation (e.g., if user preferences changed).
+2. **Store in `Workout.selectionMetadata` JSON** — Piggyback on existing JSON column. No schema migration, but untyped, hard to index or query, and mixes concerns.
+3. **Dedicated `FilteredExercise` table** ← Chosen. Explicit schema, cascade delete with workout, easy to query per workout, strongly typed.
+
+**Decision:**
+
+Add a `FilteredExercise` model with fields: `workoutId`, `exerciseId?`, `exerciseName`, `reason`, `userFriendlyMessage`. Persist via the save route inside the existing `prisma.$transaction()`. Load via `filteredExercises: true` include in `generateWorkoutExplanation()`.
+
+**Consequences:**
+
+- `FilteredExercisesCard` is now durable — persists across page refreshes.
+- Save payload grows slightly (array of filtered summaries forwarded from client).
+- `exerciseId` is nullable since some exercises may be identified by name only at rejection time.
+- Scope intentionally limited to intent mode; template mode has no rejection step.
+
+---
+
 ## ADR-062: Enforce User Avoid Preferences as Hard Constraints (2026-02-16)
 
 **Status:** Accepted

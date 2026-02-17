@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { isSetQualifiedForBaseline } from "@/lib/baseline-qualification";
+import { BonusExerciseSheet } from "@/components/BonusExerciseSheet";
 
 export type LogSetInput = {
   setId: string;
@@ -229,6 +230,7 @@ export default function LogWorkoutClient({
   const [expandedExerciseId, setExpandedExerciseId] = useState<string | null>(null);
   const [undoSnapshot, setUndoSnapshot] = useState<UndoSnapshot | null>(null);
   const [autoregHint, setAutoregHint] = useState<AutoregHint | null>(null);
+  const [showBonusSheet, setShowBonusSheet] = useState(false);
 
   const flatSets = useMemo<FlatSetItem[]>(() => {
     const output: FlatSetItem[] = [];
@@ -503,6 +505,28 @@ export default function LogWorkoutClient({
 
     setSkipped(true);
     setStatus("Workout marked as skipped");
+  };
+
+  const handleAddExercise = (exercise: LogExerciseInput) => {
+    // Apply defaults (prefill actual from target)
+    const exerciseWithDefaults: LogExerciseInput = {
+      ...exercise,
+      sets: exercise.sets.map((set) => ({
+        ...set,
+        actualReps: set.actualReps ?? set.targetReps ?? null,
+        actualLoad: set.actualLoad ?? set.targetLoad ?? null,
+        actualRpe: set.actualRpe ?? set.targetRpe ?? null,
+      })),
+    };
+    setData((prev) => ({
+      ...prev,
+      accessory: [...prev.accessory, exerciseWithDefaults],
+    }));
+    // Open the accessory section and activate the first set of the new exercise
+    setExpandedSections((prev) => ({ ...prev, accessory: true }));
+    if (exercise.sets[0]) {
+      setActiveSetId(exercise.sets[0].setId);
+    }
   };
 
   const isBaselineEligible = (set: LogSetInput) => {
@@ -842,6 +866,19 @@ export default function LogWorkoutClient({
         </section>
       ) : null}
 
+      {/* Phase 3: Add Exercise button */}
+      {!completed && !skipped ? (
+        <div className="flex justify-center">
+          <button
+            className="inline-flex min-h-10 items-center justify-center rounded-full border border-slate-300 px-5 text-sm font-semibold text-slate-700"
+            onClick={() => setShowBonusSheet(true)}
+            type="button"
+          >
+            + Add Exercise
+          </button>
+        </div>
+      ) : null}
+
       {/* Phase 2: Inline post-workout analysis */}
       {completed ? (
         <div className="space-y-5 sm:space-y-6">
@@ -1009,6 +1046,14 @@ export default function LogWorkoutClient({
           </div>
         </div>
       ) : null}
+
+      {/* Phase 3: Bonus exercise sheet */}
+      <BonusExerciseSheet
+        isOpen={showBonusSheet}
+        onClose={() => setShowBonusSheet(false)}
+        workoutId={workoutId}
+        onAdd={handleAddExercise}
+      />
 
       {/* 1A: Footer made always inline (no fixed positioning) */}
       <div className="space-y-3">

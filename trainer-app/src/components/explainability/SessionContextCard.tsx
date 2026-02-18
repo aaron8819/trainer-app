@@ -15,15 +15,7 @@ type Props = {
 };
 
 export function SessionContextCard({ context }: Props) {
-  const { blockPhase, volumeStatus, readinessStatus, progressionContext, narrative } = context;
-
-  // Map block type to color
-  const blockTypeColor = {
-    accumulation: "bg-blue-50 text-blue-900 border-blue-200",
-    intensification: "bg-purple-50 text-purple-900 border-purple-200",
-    realization: "bg-orange-50 text-orange-900 border-orange-200",
-    deload: "bg-green-50 text-green-900 border-green-200",
-  }[blockPhase.blockType];
+  const { volumeStatus, readinessStatus, progressionContext, narrative } = context;
 
   // Map readiness to color
   const readinessColor = {
@@ -40,19 +32,7 @@ export function SessionContextCard({ context }: Props) {
       <h3 className="text-base font-semibold text-slate-900">Session Context</h3>
       <p className="mt-2 text-slate-700">{narrative}</p>
 
-      {/* Block Phase */}
       <div className="mt-4 space-y-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Block Phase
-          </p>
-          <div className={`mt-1 inline-block rounded-lg border px-3 py-1 text-sm font-medium ${blockTypeColor}`}>
-            {blockPhase.blockType.charAt(0).toUpperCase() + blockPhase.blockType.slice(1)} — Week{" "}
-            {blockPhase.weekInBlock} of {blockPhase.totalWeeksInBlock}
-          </div>
-          <p className="mt-1 text-xs text-slate-600">{blockPhase.primaryGoal}</p>
-        </div>
-
         {/* Progression Context */}
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">

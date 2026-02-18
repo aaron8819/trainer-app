@@ -70,14 +70,31 @@ SRA warnings are advisory:
 - under-recovered muscles are soft-penalized in scoring.
 - no hard SRA exclusion is applied.
 
-### 5. Load assignment precedence
+**Volume landmarks calibration (2026-02-18):**
+- Triceps `sraHours` corrected from 36h → 48h. The general small-muscle SRA table (24-48h) is overridden by the KB's triceps-specific section ("SRA ~48-72h") because pressing compounds provide substantial indirect stimulus on push days, extending effective recovery time beyond size alone. `src/lib/engine/volume-landmarks.ts:20`.
+- `lengthenedBias` weight in `DEFAULT_SELECTION_WEIGHTS` raised from 0.10 → 0.20. KB-confirmed per Maeo et al. 2023: overhead extensions produced +40% more total triceps growth vs pushdowns over 12 weeks. At 0.10 the 0.6 score gap between overhead extension (4/5) and pushdown (1/5) was buried by SFR differences; at 0.20 it becomes a meaningfully distinct selection factor. `src/lib/engine/selection-v2/types.ts`.
+
+### 5. Movement diversity guarantees
+
+**Beam state-aware scoring** (`selection-v2/scoring.ts`, `selection-v2/beam-search.ts`):
+
+`scoreMovementNovelty()` receives the exercises already selected in the current beam state and penalizes candidates whose movement patterns are already covered. The score is computed dynamically during beam expansion (not pre-computed), so later picks in the beam are increasingly penalized for repeating patterns.
+
+- Weight: `movementDiversity = 0.15` (up from the original 0.05 stub)
+- Score: `novelPatterns / totalPatterns` — 1.0 if all patterns are new, taper toward 0 as overlap grows
+
+**Hard cap guardrail** (enforced in beam expansion):
+
+A structural cap of 2 exercises per movement pattern is enforced as a hard constraint independent of scoring. If any movement pattern would appear 3+ times (e.g. three horizontal-push exercises in one Push session), the candidate is rejected during beam expansion. This ensures correct output even if scoring weights drift.
+
+### 6. Load assignment precedence
 
 `applyLoads(...)` resolves load in this order:
 
 1. progression from completed history (`computeNextLoad`)
 2. baseline lookup
 3. donor-based baseline estimation
-4. bodyweight-ratio estimation
+4. bodyweight-ratio estimation (machine exercises: floor at 10 lbs)
 5. equipment default fallback
 
 ### 6. Completion-aware history
@@ -521,33 +538,48 @@ Total: 16 curated research citations sourced from `docs/knowledgebase/hypertroph
 - 20 new tests (168 cumulative for explainability system)
 
 **Phase 4.6 Deliverables (✅ Complete):**
-- 5 React components in `src/components/explainability/`:
+- 6 React components in `src/components/explainability/`:
   - `ExplainabilityPanel.tsx` - Main container, collapsible exercise cards, state management
   - `SessionContextCard.tsx` - Block phase badge, volume grid, readiness color coding, progression timeline
   - `CoachMessageCard.tsx` - Icon + color theming by message type, high-priority badge
   - `ExerciseRationaleCard.tsx` - Selection factor breakdown, KB citation cards with links, alternative exercises
   - `PrescriptionDetails.tsx` - 2×2 grid (sets/reps/load/RIR) + rest period, block/progression context
+  - `FilteredExercisesCard.tsx` - Rejected exercise list grouped by hard constraint (avoided / pain / equipment)
 - `WorkoutExplanation.tsx` - Client wrapper, fetches explanation API, loading/error states, Map ↔ Record conversion
 - Workout page migration: Replaced legacy "Why this workout" section with `<WorkoutExplanation />` component
-- 29 component tests (co-located `.test.tsx` files), 834 total tests passing
+- 29 component tests (co-located `.test.tsx` files), 863 total tests passing
 - Legacy `src/lib/ui/explainability.ts` retained - still used for inline selection badges on workout page
 
-**Data Flow (Phase 4.5–4.6):**
+**Phase 4.7 Deliverables (✅ Complete, 2026-02-17): FilteredExercise DB Persistence**
+- New `FilteredExercise` DB table (`prisma/migrations/20260217_add_filtered_exercises/`)
+- Save route (`/api/workouts/save`) now persists filtered exercises inside the workout transaction
+- `generateWorkoutExplanation()` loads `filteredExercises` from DB and maps to `FilteredExerciseSummary[]`
+- Explanation route and `WorkoutExplanation` client both thread the data through to `ExplainabilityPanel`
+- Result: `FilteredExercisesCard` is now durable — persists across page refreshes and future visits
+
+**Data Flow (Phase 4.5–4.7):**
 ```text
+Generate intent → /api/workouts/generate-from-intent → filteredExercises[] in response
+                → IntentRoundTripValidatorCard captures filteredExercises in generatedMetadata
+
+Save workout → /api/workouts/save
+             → tx.filteredExercise.deleteMany + createMany (inside transaction)
+
 Workout page → WorkoutExplanation.tsx (client)
              → GET /api/workouts/[id]/explanation
-             → src/lib/api/explainability.ts (loadExplanation)
-                → Parallel DB queries: workout, exercises, history, baselines, profile
+             → src/lib/api/explainability.ts (generateWorkoutExplanation)
+                → workout.findUnique (includes filteredExercises: true)
                 → mapProfile/mapGoals/mapHistory → engine types
                 → explainSessionContext() [engine]
                 → generateCoachMessages() [engine]
                 → explainExerciseRationale() per exercise [engine]
                 → explainPrescriptionRationale() per exercise [engine]
-             ← JSON: WorkoutExplanation (Maps converted to Records)
-             → ExplainabilityPanel renders 4 card types
+                → map filteredExercises DB records → FilteredExerciseSummary[]
+             ← JSON: WorkoutExplanation (Maps converted to Records, filteredExercises as array)
+             → ExplainabilityPanel renders 5 card types (incl. FilteredExercisesCard)
 ```
 
-**References:** ADR-049, ADR-050, ADR-051, ADR-053, ADR-060, docs/plans/phase4-explainability-execution.md, docs/knowledgebase/hypertrophyandstrengthtraining_researchreport.md
+**References:** ADR-049, ADR-050, ADR-051, ADR-053, ADR-060, ADR-063, docs/plans/phase4-explainability-execution.md, docs/knowledgebase/hypertrophyandstrengthtraining_researchreport.md
 
 ---
 
@@ -580,8 +612,8 @@ Workout page → WorkoutExplanation.tsx (client)
 
 All generation flows now use `selection-v2` (multi-objective beam search).
 
-**Still active:**
-- `split-queue.ts` - History classification and split day calculation (used by history analysis)
+**Removed 2026-02-17:**
+- `split-queue.ts` - History classification and split day calculation (ADR-072). Confirmed dead code: no active imports. `MUSCLE_SPLIT_MAP` lives in `volume-landmarks.ts`.
 
 ## Known gaps
 

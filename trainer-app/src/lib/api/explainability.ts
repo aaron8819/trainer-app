@@ -11,20 +11,21 @@
  */
 
 import { prisma } from "@/lib/db/prisma";
-import type { WorkoutExplanation, CoachMessage } from "@/lib/engine/explainability";
+import type { WorkoutExplanation, FilteredExerciseSummary } from "@/lib/engine/explainability";
 import {
   explainSessionContext,
   explainExerciseRationale,
   explainPrescriptionRationale,
   generateCoachMessages,
 } from "@/lib/engine/explainability";
-import type { Exercise as EngineExercise } from "@/lib/engine/types";
+import type { Exercise as EngineExercise, PrimaryGoal } from "@/lib/engine/types";
 import type { SelectionObjective, SelectionCandidate } from "@/lib/engine/selection-v2/types";
 import { loadCurrentBlockContext } from "./periodization";
+import { getRestSeconds } from "@/lib/engine/prescription";
 import { mapLatestCheckIn } from "./checkin-staleness";
 import { mapExercises } from "./workout-context";
 import { getPeriodizationModifiers } from "@/lib/engine/rules";
-import type { Workout, WorkoutExercise } from "@prisma/client";
+import type { Workout, WorkoutExercise, WorkoutSet } from "@prisma/client";
 
 /**
  * Generate complete workout explanation
@@ -46,6 +47,7 @@ export async function generateWorkoutExplanation(
     where: { id: workoutId },
     include: {
       programBlock: true,
+      filteredExercises: true,
       exercises: {
         include: {
           exercise: {
@@ -104,6 +106,7 @@ export async function generateWorkoutExplanation(
     signalAge: readiness
       ? Math.floor((workout.scheduledDate.getTime() - new Date(readiness.date).getTime()) / (24 * 60 * 60 * 1000))
       : undefined,
+    sessionIntent: workout.sessionIntent?.toLowerCase() as "push" | "pull" | "legs" | undefined,
   });
 
   // 6. Load exercise library (for alternatives)
@@ -145,6 +148,8 @@ export async function generateWorkoutExplanation(
   }
 
   // 9. Generate prescription rationales
+  const rawMacroGoal = blockContext?.macroCycle.primaryGoal ?? "hypertrophy";
+  const mappedPrimaryGoal: PrimaryGoal = rawMacroGoal === "general_fitness" ? "hypertrophy" : rawMacroGoal;
   const prescriptionRationales = new Map();
 
   for (const workoutExercise of workout.exercises) {
@@ -168,7 +173,7 @@ export async function generateWorkoutExplanation(
       sets: engineSets,
       isMainLift: workoutExercise.isMainLift,
       goals: {
-        primary: (blockContext?.macroCycle.primaryGoal ?? "hypertrophy") as any,
+        primary: mappedPrimaryGoal,
         secondary: "none",
       },
       profile: {
@@ -177,14 +182,17 @@ export async function generateWorkoutExplanation(
       periodization: blockContext
         ? getPeriodizationModifiers(
             blockContext.weekInBlock,
-            (blockContext.macroCycle.primaryGoal === "general_fitness"
+            blockContext.macroCycle.primaryGoal === "general_fitness"
               ? "hypertrophy"
-              : blockContext.macroCycle.primaryGoal) as any,
+              : blockContext.macroCycle.primaryGoal,
             blockContext.macroCycle.trainingAge
           )
         : undefined,
+      blockType: blockContext?.block.blockType,
       weekInMesocycle: blockContext?.weekInMeso,
-      restSeconds: engineSets[0]?.restSeconds,
+      restSeconds:
+        engineSets[0]?.restSeconds ??
+        getRestSeconds(exercise, workoutExercise.isMainLift, engineSets[0]?.targetReps ?? 10),
       exerciseRepRange:
         exercise.repRangeMin && exercise.repRangeMax
           ? { min: exercise.repRangeMin, max: exercise.repRangeMax }
@@ -194,12 +202,21 @@ export async function generateWorkoutExplanation(
     prescriptionRationales.set(workoutExercise.exerciseId, rationale);
   }
 
-  // 10. Return complete explanation
+  // 10. Map filtered exercises from DB
+  const filteredExercises: FilteredExerciseSummary[] = (workout.filteredExercises ?? []).map((fe) => ({
+    exerciseId: fe.exerciseId ?? fe.id,
+    exerciseName: fe.exerciseName,
+    reason: fe.reason,
+    userFriendlyMessage: fe.userFriendlyMessage,
+  }));
+
+  // 11. Return complete explanation
   return {
     sessionContext,
     coachMessages,
     exerciseRationales,
     prescriptionRationales,
+    filteredExercises,
   };
 }
 
@@ -274,7 +291,7 @@ function deriveWorkoutStats(
   workout: Workout & {
     exercises: Array<
       WorkoutExercise & {
-        sets: any[];
+        sets: WorkoutSet[];
       }
     >;
   }
@@ -302,19 +319,14 @@ function deriveWorkoutStats(
  * @param workout - Workout record
  * @returns Minimal SelectionObjective for rationale generation
  */
-function buildSelectionObjective(workout: Workout): SelectionObjective {
+function buildSelectionObjective(_workout: Workout): SelectionObjective {
   return {
     constraints: {
       volumeFloor: new Map(),
       volumeCeiling: new Map(),
       timeBudget: 60,
-      equipment: new Set(),
-      // Phase 2: Required specific constraint sets (ADR-063)
       painConflicts: new Set(),
       userAvoids: new Set(),
-      equipmentUnavailable: new Set(),
-      // Backward compatibility: deprecated contraindications field
-      contraindications: new Set(),
       minExercises: 1,
       maxExercises: 10,
     },

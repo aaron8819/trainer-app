@@ -27,6 +27,7 @@ type ExplanationResponse = {
   coachMessages: WorkoutExplanation["coachMessages"];
   exerciseRationales: Record<string, WorkoutExplanation["exerciseRationales"] extends Map<string, infer T> ? T : never>;
   prescriptionRationales: Record<string, WorkoutExplanation["prescriptionRationales"] extends Map<string, infer T> ? T : never>;
+  filteredExercises?: WorkoutExplanation["filteredExercises"];
 };
 
 export function WorkoutExplanation({ workoutId, explanation: serverExplanation }: Props) {
@@ -61,6 +62,7 @@ export function WorkoutExplanation({ workoutId, explanation: serverExplanation }
           coachMessages: data.coachMessages,
           exerciseRationales: new Map(Object.entries(data.exerciseRationales)),
           prescriptionRationales: new Map(Object.entries(data.prescriptionRationales)),
+          filteredExercises: data.filteredExercises,
         };
 
         if (mounted) {

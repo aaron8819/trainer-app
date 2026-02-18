@@ -21,7 +21,7 @@ import type { BlockContext } from "../periodization/types";
 import type { FatigueScore, AutoregulationModification } from "../readiness/types";
 import type { WorkoutPlan } from "../types";
 import type { RejectedExercise } from "../selection-v2/types";
-import { VOLUME_LANDMARKS, type VolumeLandmarks } from "../volume-landmarks";
+import { VOLUME_LANDMARKS, MUSCLE_SPLIT_MAP, type VolumeLandmarks } from "../volume-landmarks";
 import { formatBlockPhase, formatWeekInMesocycle, pluralize } from "./utils";
 
 /**
@@ -40,14 +40,16 @@ export function explainSessionContext(params: {
   fatigueScore?: FatigueScore;
   modifications?: AutoregulationModification[];
   signalAge?: number;
+  sessionIntent?: "push" | "pull" | "legs";
 }): SessionContext {
-  const { blockContext, volumeByMuscle, fatigueScore, modifications, signalAge } = params;
+  const { blockContext, volumeByMuscle, fatigueScore, modifications, signalAge, sessionIntent } =
+    params;
 
   // Build block phase context
   const blockPhase = describeBlockGoal(blockContext);
 
-  // Build volume status
-  const volumeStatus = describeVolumeProgress(volumeByMuscle);
+  // Build volume status (today's target muscles shown first)
+  const volumeStatus = describeVolumeProgress(volumeByMuscle, sessionIntent);
 
   // Build readiness status
   const readinessStatus = describeReadinessStatus({
@@ -117,41 +119,72 @@ export function describeBlockGoal(blockContext: BlockContext | null): BlockPhase
  * @param volumeByMuscle - Current weekly volume by muscle group (sets/week)
  * @returns Volume status with muscle-level breakdown
  */
-export function describeVolumeProgress(volumeByMuscle: Map<string, number>): VolumeStatus {
-  const muscleStatuses = new Map<
-    string,
-    {
-      currentSets: number;
-      targetRange: { min: number; max: number };
-      status: "below_mev" | "at_mev" | "optimal" | "approaching_mrv" | "at_mrv";
-    }
-  >();
+export function describeVolumeProgress(
+  volumeByMuscle: Map<string, number>,
+  sessionIntent?: "push" | "pull" | "legs"
+): VolumeStatus {
+  type MuscleStatus = {
+    currentSets: number;
+    targetRange: { min: number; max: number };
+    status: "below_mev" | "at_mev" | "optimal" | "approaching_mrv" | "at_mrv";
+  };
 
+  // Build status entries for muscles with accumulated volume
+  const statusByMuscle = new Map<string, MuscleStatus>();
   let atTargetCount = 0;
-  let totalMuscles = 0;
 
   for (const [muscle, sets] of volumeByMuscle.entries()) {
     const landmarks = VOLUME_LANDMARKS[muscle];
-    if (!landmarks) continue; // Skip unknown muscles
-
-    totalMuscles++;
+    if (!landmarks) continue;
 
     const status = determineVolumeStatus(sets, landmarks);
-    const targetRange = { min: landmarks.mev, max: landmarks.mav };
-
-    muscleStatuses.set(muscle, {
+    statusByMuscle.set(muscle, {
       currentSets: sets,
-      targetRange,
+      targetRange: { min: landmarks.mev, max: landmarks.mav },
       status,
     });
 
-    // Count muscles in optimal range
     if (status === "optimal" || status === "at_mev") {
       atTargetCount++;
     }
   }
 
-  // Generate overall summary
+  // If session intent is known, prepend today's targeted muscles (even if 0 sets)
+  // so the grid reads as a preview of what this session is working on.
+  const muscleStatuses = new Map<string, MuscleStatus>();
+
+  if (sessionIntent) {
+    for (const [muscle, split] of Object.entries(MUSCLE_SPLIT_MAP)) {
+      if (split !== sessionIntent) continue;
+      const landmarks = VOLUME_LANDMARKS[muscle];
+      if (!landmarks) continue;
+
+      if (statusByMuscle.has(muscle)) {
+        muscleStatuses.set(muscle, statusByMuscle.get(muscle)!);
+      } else {
+        // Include 0-set entry for muscles targeted today but not yet trained
+        const status = determineVolumeStatus(0, landmarks);
+        muscleStatuses.set(muscle, {
+          currentSets: 0,
+          targetRange: { min: landmarks.mev, max: landmarks.mav },
+          status,
+        });
+        // Count 0-set muscles against totals for accurate summary
+        if (status === "optimal" || status === "at_mev") {
+          atTargetCount++;
+        }
+      }
+    }
+  }
+
+  // Append remaining muscles (not already added)
+  for (const [muscle, entry] of statusByMuscle.entries()) {
+    if (!muscleStatuses.has(muscle)) {
+      muscleStatuses.set(muscle, entry);
+    }
+  }
+
+  const totalMuscles = muscleStatuses.size;
   const overallSummary =
     totalMuscles === 0
       ? "No volume data available"
@@ -427,15 +460,23 @@ export function summarizeFilteredExercises(
       case "pain_conflict":
         userFriendlyMessage = "Excluded due to recent pain signals";
         break;
-      case "equipment_unavailable":
-        userFriendlyMessage = "Equipment not available";
-        break;
       case "contraindicated":
         userFriendlyMessage = "Contraindicated"; // Generic fallback
         break;
-      default:
-        // Other rejection reasons (SRA, volume ceiling, etc.) - not surfaced in UI
-        userFriendlyMessage = `Filtered (${item.reason})`;
+      case "time_budget_exceeded":
+        userFriendlyMessage = "Session time limit reached";
+        break;
+      default: {
+        // Handle string reasons not in the current RejectionReason union
+        // (equipment_unavailable removed in ADR-067 but still appears in DB records)
+        const reasonStr: string = item.reason;
+        if (reasonStr === "equipment_unavailable") {
+          userFriendlyMessage = "Equipment not available";
+        } else {
+          // Other rejection reasons (SRA, volume ceiling, etc.) - not surfaced in UI
+          userFriendlyMessage = `Filtered (${item.reason})`;
+        }
+      }
     }
 
     return {

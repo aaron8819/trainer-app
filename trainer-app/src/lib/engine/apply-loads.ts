@@ -343,20 +343,28 @@ function estimateLoad(
     return undefined;
   }
 
+  let estimate: number;
+
   const donorEstimate = estimateFromDonors(exercise, baselineIndex, exerciseById);
   if (donorEstimate !== undefined) {
-    return roundToHalf(donorEstimate);
-  }
-
-  if (weightKg !== undefined) {
+    estimate = roundToHalf(donorEstimate);
+  } else if (weightKg !== undefined) {
     const ratio = getBodyweightRatio(exercise);
     if (ratio && ratio > 0) {
-      const weightLbs = weightKg * 2.20462;
-      return roundToHalf(weightLbs * ratio);
+      estimate = roundToHalf(weightKg * 2.20462 * ratio);
+    } else {
+      estimate = roundToHalf(getEquipmentDefault(exercise));
     }
+  } else {
+    estimate = roundToHalf(getEquipmentDefault(exercise));
   }
 
-  return roundToHalf(getEquipmentDefault(exercise));
+  // Machine selectorized equipment has a minimum practical load (10 lbs)
+  // regardless of bodyweight ratios, which were calibrated for barbell/cable.
+  if (getLoadEquipment(exercise) === "machine") {
+    return Math.max(estimate, 10);
+  }
+  return estimate;
 }
 
 function estimateFromDonors(

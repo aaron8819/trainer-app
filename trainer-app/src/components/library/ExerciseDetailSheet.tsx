@@ -274,6 +274,7 @@ export function ExerciseDetailSheet({ exerciseId, onClose, onNavigate }: Exercis
               <BaselineEditor
                 exerciseId={detail.id}
                 initial={detail.baseline}
+                isDumbbell={detail.equipment.includes("dumbbell")}
                 onSaved={() => {
                   setShowBaseline(false);
                   setRefreshCounter((c) => c + 1);

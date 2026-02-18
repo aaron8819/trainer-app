@@ -1,272 +1,168 @@
-# Avoid Preferences Implementation Summary
+# Phase 2: Avoid Preferences Explainability - Implementation Complete
 
+**Status:** ✅ READY FOR TESTING
 **Date:** 2026-02-16
-**Status:** Phase 1 Complete ✅ | Phase 2 Planned 📋
 
 ---
 
-## What Was Implemented (Phase 1)
+## What Was Implemented (Option B: API Response)
 
-### Critical User Trust Issue: RESOLVED ✅
+The filtered exercises feature is now **live in the generation API response**. When you generate a workout via the `/api/workouts/generate-from-intent` endpoint, the response now includes a `filteredExercises` array showing which exercises were filtered during selection and why.
 
-**Problem:** Users could explicitly avoid exercises but still receive them in workouts (2% soft penalty allowed avoided exercises to score 98th percentile).
+---
 
-**Solution:** User avoid preferences are now enforced as **hard constraints** (like equipment availability and pain conflicts).
+## Changes Made
 
-### Changes Made
+### 1. Backend Integration
 
-#### 1. Core Fix
-**File:** [src/lib/api/template-session.ts:140](../../src/lib/api/template-session.ts#L140)
+**File:** `src/lib/api/template-session.ts`
 
-```typescript
-// BEFORE:
-contraindications: new Set(painFlagExerciseIds),
+- Added import for `summarizeFilteredExercises` and `FilteredExerciseSummary`
+- Updated `SessionGenerationResult` type to include optional `filteredExercises` field
+- Modified `generateSessionFromIntent` to:
+  - Extract rejected exercises from `SelectionResult`
+  - Pass them through `summarizeFilteredExercises()` to get user-friendly summaries
+  - Include them in the result passed to `finalizePostLoadResult`
+- Updated `finalizePostLoadResult` signature to accept optional `filteredExercises` parameter
+- Returns `filteredExercises` in final result
 
-// AFTER:
-contraindications: new Set([
-  ...painFlagExerciseIds,
-  ...(mapped.mappedPreferences?.avoidExerciseIds ?? []),
-]),
+**File:** `src/app/api/workouts/generate-from-intent/route.ts`
+
+- Added `filteredExercises` to the JSON response returned to client
+
+---
+
+## How to Test
+
+### 1. Generate a Workout via API
+
+Make a POST request to `/api/workouts/generate-from-intent`:
+
+```json
+{
+  "intent": "push",
+  "pinnedExerciseIds": []
+}
 ```
 
-**Impact:**
-- Avoided exercises are now **impossible to select** (filtered before scoring)
-- Works for both intent-based and template auto-fill generation
-- No breaking changes
+### 2. Check the Response
 
-#### 2. Comprehensive Test Coverage
-**File:** [src/lib/api/template-session.test.ts](../../src/lib/api/template-session.test.ts)
+The response will now include a `filteredExercises` array:
 
-Added 6 new tests:
-1. ✅ Enforces user avoid preferences as hard constraints
-2. ✅ Combines pain flags and user avoids into contraindications
-3. ✅ Handles undefined/null preferences gracefully
-4. ✅ Handles empty avoid lists gracefully
-5. ✅ Enforces avoid preferences in template mode with auto-fill
-6. ✅ **Automatically substitutes avoided exercises with alternatives** (NEW)
-
-**Substitution Test Validates:**
-- When a chest exercise is avoided, another chest exercise is selected
-- Beam search volume deficit scoring (40% weight) drives substitution
-- Workout maintains adequate muscle coverage despite filtering
-
-#### 3. Documentation
-**File:** [docs/decisions.md](../decisions.md#adr-062)
-
-**ADR-062:** Enforce User Avoid Preferences as Hard Constraints
-- Research alignment (autoregulation & individualization principles)
-- Implementation details
-- Test coverage summary
-- Trade-offs and future considerations
-
-### Validation Results
-
-| Check | Status | Details |
-|-------|--------|---------|
-| **Tests** | ✅ **PASS** | All 843 tests passing (including 6 new tests) |
-| **Build** | ✅ **PASS** | Production build completes successfully |
-| **TypeScript** | ⚠️ Pre-existing issues | Errors in unrelated explainability component tests |
-
----
-
-## What's NOT Implemented (Phase 2)
-
-### User Experience Gaps
-
-While avoided exercises are now **correctly filtered**, users don't see:
-1. **What was filtered:** "Which exercises did the app avoid for me?"
-2. **Why it was filtered:** "Was this avoided due to my preferences or pain flags?"
-3. **What was substituted:** "What exercise replaced the avoided one?"
-
-### Example Scenario
-
-**Current UX:**
-- User avoids "Incline Dumbbell Curl" due to elbow discomfort
-- Workout includes "Hammer Curl" (substitute)
-- ❌ User doesn't see that their preference was honored
-
-**Desired UX (Phase 2):**
-- User sees: "✓ Avoided: Incline Dumbbell Curl (per your preferences)"
-- User sees: "Selected: Hammer Curl (substitute for biceps volume)"
-- ✅ User trusts the app is respecting their input
-
----
-
-## Your Three Questions: Answered
-
-### ✅ 1. Explainability - User should know if exercise was filtered
-
-**Phase 1 Status:** Data is available but not surfaced to user
-- `SelectionResult.rejected` array captures all filtered exercises with reasons
-- But reason is generic: `"contraindicated"` (doesn't distinguish pain vs user avoid)
-
-**Phase 2 Plan:** Surface filtered exercises in UI
-- Split contraindications into `painConflicts`, `userAvoids`, `equipmentUnavailable`
-- Update optimizer to return specific rejection reasons
-- Create `FilteredExercisesCard` component showing filtered exercises grouped by reason
-- **See:** [Phase 2 Plan](./phase2-avoid-preferences-explainability.md)
-
-### ✅ 2. Substitution - Ensure similar exercise is selected
-
-**Phase 1 Status:** Verified and working ✅
-- Beam search volume deficit scoring (40% weight) automatically drives substitution
-- When an exercise is filtered, the next-best candidate for that muscle group scores higher
-- New test validates: "automatically substitutes avoided exercises with alternatives targeting same muscles"
-
-**How it works:**
-1. User avoids "Incline Dumbbell Curl" (bicep exercise)
-2. Optimizer filters it before scoring (hard constraint)
-3. Beam search runs on remaining exercises
-4. Volume deficit for biceps is still high → other bicep exercises score well
-5. "Hammer Curl" is selected as substitute
-
-**No additional code needed** - substitution is inherent to the beam search algorithm.
-
-### ✅ 3. Intent-based workouts - Is this working?
-
-**Phase 1 Status:** Yes, already working ✅
-- Both `generateSessionFromIntent()` and `generateSessionFromTemplate()` use the same constraint builder: `buildSelectionObjective()`
-- User avoids are enforced in both paths
-- Test coverage includes intent-based generation: "enforces user avoid preferences as hard constraints"
-
-**Validation:**
-```typescript
-// template-session.test.ts:419-438
-it("enforces user avoid preferences as hard constraints", async () => {
-  mapPreferencesMock.mockReturnValue({
-    avoidExerciseIds: [dumbbellPress.id],
-  });
-
-  const result = await generateSessionFromIntent("user-1", {
-    intent: "push",
-  });
-
-  expect(result.selection.selectedExerciseIds).not.toContain(dumbbellPress.id);
-  // ✅ Test passes
-});
+```json
+{
+  "workout": { ... },
+  "sraWarnings": [ ... ],
+  "substitutions": [ ... ],
+  "volumePlanByMuscle": { ... },
+  "selectionMode": "INTENT",
+  "sessionIntent": "push",
+  "selection": { ... },
+  "autoregulation": { ... },
+  "filteredExercises": [
+    {
+      "exerciseId": "ex_123",
+      "exerciseName": "Incline Dumbbell Press",
+      "reason": "user_avoided",
+      "userFriendlyMessage": "Avoided per your preferences"
+    },
+    {
+      "exerciseId": "ex_456",
+      "exerciseName": "Cable Flyes",
+      "reason": "pain_conflict",
+      "userFriendlyMessage": "Excluded due to recent pain signals"
+    }
+  ]
+}
 ```
 
----
+### 3. Expected Behavior
 
-## Phase 2: Next Steps (Optional)
+**If you have avoided exercises:**
+- You should see entries with `reason: "user_avoided"` in the `filteredExercises` array
+- Each entry shows the exercise name and a user-friendly explanation
 
-**When to implement:** When you want to enhance UX transparency (not blocking)
+**If you have pain flags:**
+- You should see entries with `reason: "pain_conflict"` for exercises excluded due to pain
 
-**Estimated effort:** 4-6 hours
-
-**Priority:** P2 (User Experience Enhancement)
-
-**See full plan:** [Phase 2 Implementation Plan](./phase2-avoid-preferences-explainability.md)
-
-### Quick Summary
-
-#### Backend Changes (2-3 hours)
-1. Split `contraindications` into `painConflicts`, `userAvoids`, `equipmentUnavailable`
-2. Update optimizer to return specific rejection reasons
-3. Add `filteredExercises` to `WorkoutExplanation` API
-
-#### Frontend Changes (2-3 hours)
-4. Create `FilteredExercisesCard` component
-5. Show grouped filtered exercises with user-friendly messages
-6. Add to `ExplainabilityPanel`
-
-#### Testing (30 min)
-7. Unit tests for specific rejection reasons
-8. Component tests for filtered exercises card
-9. E2E test for full flow
-
-### UI Mockup
-
-```
-┌─────────────────────────────────────────┐
-│ Filtered Exercises                      │
-├─────────────────────────────────────────┤
-│ ✓ Your Preferences Honored:             │
-│   • Incline Dumbbell Curl               │
-│     (Avoided per your preferences)      │
-│                                          │
-│ ⚠️ Pain Conflicts:                       │
-│   • Bench Press                         │
-│     (Excluded due to recent pain)       │
-└─────────────────────────────────────────┘
-```
+**If no exercises were filtered:**
+- `filteredExercises` will be an empty array `[]`
 
 ---
 
-## Trade-offs & Decisions
+## Current Limitation
 
-### Why Split Phase 1 and Phase 2?
+⚠️ **Filtered exercises are NOT persisted to the database.**
 
-**Phase 1 (Critical):**
-- Fixes user trust issue: avoided exercises are now impossible to select
-- Low risk: 2-line code change, additive only
-- High impact: Resolves critical bug
+This means:
+- ✅ You can see them immediately in the generation API response
+- ❌ They do NOT appear when viewing a saved workout detail page
+- ❌ They are lost if you refresh the page after generating
 
-**Phase 2 (Enhancement):**
-- Improves UX transparency: users see what was filtered and why
-- Higher complexity: schema changes, UI components
-- Lower urgency: Feature works correctly, just lacks visibility
+**Why?** This is "Option B" (quick fix). The filtered exercises exist during generation but are never saved to the database. When you navigate to the workout detail page (`/workout/[id]`), the page loads the workout from the database via `generateWorkoutExplanation()`, which doesn't have access to the rejected exercises.
 
-**Decision:** Ship Phase 1 immediately, plan Phase 2 as UX enhancement.
+---
 
-### Why Not Use Separate API Fields Initially?
+## Next Step: Full Persistence (Option A)
 
-**Current approach:** Combine pain flags + user avoids into single `contraindications` set
+To show filtered exercises on saved workout detail pages, we need to:
 
-**Alternative:** Pass as separate fields (`painConflicts`, `userAvoids`)
+1. **Add DB Schema:**
+   - Create `FilteredExercise` model
+   - Fields: `id`, `workoutId`, `exerciseId`, `exerciseName`, `reason`, `userFriendlyMessage`
+   - Relation: `FilteredExercise` belongs to `Workout`
 
-**Rationale for current approach:**
-- Faster to implement (2 lines of code)
-- Lower risk of breaking changes
-- Can refactor in Phase 2 without affecting existing functionality
-- Maintains backward compatibility
+2. **Persist on Save:**
+   - When saving workout via `/api/workouts/save`, include filtered exercises
+   - Store them in the database alongside the workout
 
-**Phase 2 will refactor:** See [Phase 2 Plan Section 1](./phase2-avoid-preferences-explainability.md#1-schema-changes-split-contraindications)
+3. **Load on Detail Page:**
+   - Update `generateWorkoutExplanation()` to load filtered exercises from DB
+   - Include them in the `WorkoutExplanation` returned to the UI
+
+4. **Migration:**
+   - Run `npx prisma migrate dev --name add_filtered_exercises`
+   - Commit schema and migration file
+
+---
+
+## Validation
+
+✅ **Tests:** All 863 tests passing
+✅ **Build:** Production build succeeds
+✅ **TypeScript:** No type errors
+✅ **Lint:** 1 error fixed (`prefer-const` in save/route.ts)
+
+---
+
+## Files Modified
+
+**Backend (3 files):**
+- `src/lib/api/template-session.ts` - Extract and summarize filtered exercises
+- `src/app/api/workouts/generate-from-intent/route.ts` - Return filtered exercises in response
+- `src/app/api/workouts/save/route.ts` - Lint fix (`let` → `const`)
+
+**Total:** 3 files modified
+
+---
+
+## Testing Checklist
+
+- [ ] Generate workout with avoided exercises → check API response includes `filteredExercises`
+- [ ] Generate workout with pain flags → check `pain_conflict` entries appear
+- [ ] Generate workout with no filters → check `filteredExercises` is empty array
+- [ ] Verify UI displays filtered exercises (if WorkoutExplanation component consumes them)
+- [ ] Confirm filtered exercises disappear when viewing saved workout detail page (expected limitation)
 
 ---
 
 ## Related Documents
 
-| Document | Purpose |
-|----------|---------|
-| [ADR-062](../decisions.md#adr-062) | Architectural decision record for Phase 1 |
-| [Phase 2 Plan](./phase2-avoid-preferences-explainability.md) | Detailed implementation plan for explainability |
-| [User Settings Analysis](../analysis/user-settings-integration-analysis.md) | Original gap analysis that identified this issue |
-| [Architecture Docs](../architecture.md) | Engine behavior and selection flow |
+- [Phase 2 Completion Summary](./phase2-completion-summary.md) - Full backend/UI implementation
+- [ADR-063: Split Contraindications for Enhanced Explainability](../decisions.md#adr-063)
+- [User Settings Integration Analysis](../analysis/user-settings-integration-analysis.md)
 
 ---
 
-## Success Metrics
-
-### Phase 1 (Complete ✅)
-
-| Metric | Status |
-|--------|--------|
-| Avoided exercises never selected | ✅ Verified by tests |
-| No breaking changes | ✅ All 843 tests passing |
-| Substitution works automatically | ✅ Verified by test |
-| Build passes | ✅ Production build clean |
-| Documentation complete | ✅ ADR-062 logged |
-
-### Phase 2 (Planned 📋)
-
-| Metric | Target |
-|--------|--------|
-| User sees filtered exercises in UI | Yes |
-| Rejection reasons are specific | Yes (pain vs user avoid vs equipment) |
-| No performance regression | <5ms overhead |
-| User feedback positive | "I see the app respected my preferences" |
-
----
-
-## Questions & Feedback
-
-Have questions about Phase 1 or Phase 2? See:
-- [Phase 2 Open Questions](./phase2-avoid-preferences-explainability.md#open-questions)
-- [Phase 2 Risk Assessment](./phase2-avoid-preferences-explainability.md#risk-assessment)
-
-**Ready to start Phase 2?** See the [implementation checklist](./phase2-avoid-preferences-explainability.md#implementation-checklist).
-
----
-
-**End of Summary**
+**Implementation Status:** Option B (API Response) complete ✅
+**Next Milestone:** Option A (Full Persistence) - requires schema migration + save/load logic

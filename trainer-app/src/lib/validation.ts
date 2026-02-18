@@ -73,6 +73,16 @@ export const saveWorkoutSchema = z.object({
   selectionMetadata: z.unknown().optional(),
   forcedSplit: z.enum(["PUSH", "PULL", "LEGS", "UPPER", "LOWER", "FULL_BODY"]).optional(),
   advancesSplit: z.boolean().optional(),
+  filteredExercises: z
+    .array(
+      z.object({
+        exerciseId: z.string().optional(),
+        exerciseName: z.string(),
+        reason: z.string(),
+        userFriendlyMessage: z.string(),
+      })
+    )
+    .optional(),
   exercises: z
     .array(
       z.object({
@@ -194,11 +204,8 @@ export const addExerciseToTemplateSchema = z.object({
 });
 
 export const preferencesSchema = z.object({
-  favoriteExercises: z.array(z.string()).optional(),
-  avoidExercises: z.array(z.string()).optional(),
   favoriteExerciseIds: z.array(z.string()).optional(),
   avoidExerciseIds: z.array(z.string()).optional(),
-  optionalConditioning: z.boolean().optional(),
 });
 
 // Periodization schemas

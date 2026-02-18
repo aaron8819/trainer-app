@@ -28,9 +28,7 @@ describe("selectExercisesOptimized", () => {
   });
 
   const createMockObjective = (
-    weeklyTarget: Map<Muscle, number>,
-    equipment: Set<EquipmentType> = new Set(["barbell", "dumbbell"]),
-    contraindications: Set<string> = new Set()
+    weeklyTarget: Map<Muscle, number>
   ): SelectionObjective => ({
     constraints: {
       volumeFloor: new Map(),
@@ -41,13 +39,8 @@ describe("selectExercisesOptimized", () => {
         ])
       ),
       timeBudget: 60,
-      equipment,
-      // Phase 2: New specific constraint sets (ADR-063)
       painConflicts: new Set(),
       userAvoids: new Set(),
-      equipmentUnavailable: new Set(),
-      // Backward compatibility: deprecated contraindications field
-      contraindications,
       minExercises: 1,
       maxExercises: 8,
     },
@@ -74,43 +67,15 @@ describe("selectExercisesOptimized", () => {
   });
 
   describe("Hard Constraint Filtering", () => {
-    it("should filter out exercises with unavailable equipment", () => {
-      const pool = [
-        createMockExercise("bench_press", ["Chest" as Muscle], ["barbell"]),
-        createMockExercise("dumbbell_press", ["Chest" as Muscle], ["dumbbell"]),
-        createMockExercise("cable_fly", ["Chest" as Muscle], ["cable"]),
-      ];
-
-      const objective = createMockObjective(
-        new Map([["Chest" as Muscle, 12]]),
-        new Set(["barbell", "dumbbell"]) // No cable
-      );
-
-      const result = selectExercisesOptimized(pool, objective);
-
-      // Cable fly should be rejected
-      const rejectedIds = result.rejected.map((r) => r.exercise.id);
-      expect(rejectedIds).toContain("cable_fly");
-
-      // Bench and dumbbell should be considered
-      const selectedIds = result.selected.map((s) => s.exercise.id);
-      expect(selectedIds.some((id) => ["bench_press", "dumbbell_press"].includes(id))).toBe(
-        true
-      );
-    });
-
-    it("should filter out contraindicated exercises", () => {
+    it("should filter out exercises with pain conflicts", () => {
       const pool = [
         createMockExercise("bench_press", ["Chest" as Muscle]),
         createMockExercise("incline_press", ["Chest" as Muscle]),
         createMockExercise("dips", ["Chest" as Muscle]),
       ];
 
-      const objective = createMockObjective(
-        new Map([["Chest" as Muscle, 12]]),
-        new Set(["barbell", "dumbbell", "bodyweight"]),
-        new Set(["dips"]) // User avoids dips
-      );
+      const objective = createMockObjective(new Map([["Chest" as Muscle, 12]]));
+      objective.constraints.painConflicts = new Set(["dips"]); // Dips flagged for pain
 
       const result = selectExercisesOptimized(pool, objective);
 
@@ -119,51 +84,12 @@ describe("selectExercisesOptimized", () => {
       expect(rejectedIds).toContain("dips");
 
       const rejectedDips = result.rejected.find((r) => r.exercise.id === "dips");
-      expect(rejectedDips?.reason).toBe("contraindicated");
+      expect(rejectedDips?.reason).toBe("pain_conflict");
 
       // Bench and incline should be considered
       const selectedIds = result.selected.map((s) => s.exercise.id);
       expect(selectedIds.length).toBeGreaterThan(0);
       expect(selectedIds).not.toContain("dips");
-    });
-
-    it("should allow bodyweight exercises even without explicit equipment", () => {
-      const pool = [
-        createMockExercise("pushup", ["Chest" as Muscle], ["bodyweight"]),
-        createMockExercise("bench_press", ["Chest" as Muscle], ["barbell"]),
-      ];
-
-      const objective = createMockObjective(
-        new Map([["Chest" as Muscle, 12]]),
-        new Set(["dumbbell"]) // No barbell or bodyweight listed
-      );
-
-      const result = selectExercisesOptimized(pool, objective);
-
-      // Pushup should pass (bodyweight always available)
-      const selectedIds = result.selected.map((s) => s.exercise.id);
-      expect(selectedIds).toContain("pushup");
-
-      // Bench should be rejected (no barbell)
-      const rejectedIds = result.rejected.map((r) => r.exercise.id);
-      expect(rejectedIds).toContain("bench_press");
-    });
-
-    it("should handle exercises with no equipment required", () => {
-      const pool = [
-        createMockExercise("plank", ["Abs" as Muscle], []),
-      ];
-
-      const objective = createMockObjective(
-        new Map([["Abs" as Muscle, 6]]),
-        new Set() // No equipment available
-      );
-
-      const result = selectExercisesOptimized(pool, objective);
-
-      // Exercise with no equipment should pass
-      const selectedIds = result.selected.map((s) => s.exercise.id);
-      expect(selectedIds).toContain("plank");
     });
 
     // Phase 2: Specific rejection reasons (ADR-063)
@@ -179,7 +105,6 @@ describe("selectExercisesOptimized", () => {
           ...createMockObjective(new Map([["Chest" as Muscle, 12]])).constraints,
           painConflicts: new Set(["bench_press"]),
           userAvoids: new Set(),
-          equipmentUnavailable: new Set(),
         },
       };
 
@@ -202,7 +127,6 @@ describe("selectExercisesOptimized", () => {
           ...createMockObjective(new Map([["Chest" as Muscle, 12]])).constraints,
           painConflicts: new Set(),
           userAvoids: new Set(["incline_press"]),
-          equipmentUnavailable: new Set(),
         },
       };
 
@@ -225,7 +149,6 @@ describe("selectExercisesOptimized", () => {
           ...createMockObjective(new Map([["Chest" as Muscle, 12]])).constraints,
           painConflicts: new Set(["bench_press"]),
           userAvoids: new Set(["bench_press"]),
-          equipmentUnavailable: new Set(),
         },
       };
 
@@ -236,7 +159,7 @@ describe("selectExercisesOptimized", () => {
       expect(rejectedBench?.reason).toBe("pain_conflict"); // pain_conflict takes precedence
     });
 
-    it("should handle multiple rejection reasons for different exercises", () => {
+    it("should handle multiple hard-filter rejection reasons", () => {
       const pool = [
         createMockExercise("bench_press", ["Chest" as Muscle]),
         createMockExercise("incline_press", ["Chest" as Muscle]),
@@ -249,7 +172,6 @@ describe("selectExercisesOptimized", () => {
           ...createMockObjective(new Map([["Chest" as Muscle, 12]])).constraints,
           painConflicts: new Set(["bench_press"]),
           userAvoids: new Set(["incline_press"]),
-          equipmentUnavailable: new Set(["dips"]),
         },
       };
 
@@ -260,9 +182,6 @@ describe("selectExercisesOptimized", () => {
 
       const rejectedIncline = result.rejected.find((r) => r.exercise.id === "incline_press");
       expect(rejectedIncline?.reason).toBe("user_avoided");
-
-      const rejectedDips = result.rejected.find((r) => r.exercise.id === "dips");
-      expect(rejectedDips?.reason).toBe("equipment_unavailable");
     });
   });
 
@@ -301,33 +220,20 @@ describe("selectExercisesOptimized", () => {
     it("should merge hard filter rejections with beam search rejections", () => {
       const pool = [
         createMockExercise("bench_press", ["Chest" as Muscle], ["barbell"]),
-        createMockExercise("cable_fly", ["Chest" as Muscle], ["cable"]), // No cable
         createMockExercise("dips", ["Chest" as Muscle], ["bodyweight"]),
       ];
 
-      const objective = createMockObjective(
-        new Map([["Chest" as Muscle, 12]]),
-        new Set(["barbell", "bodyweight"]), // No cable
-        new Set(["dips"]) // Contraindicated
-      );
+      const objective = createMockObjective(new Map([["Chest" as Muscle, 12]]));
+      objective.constraints.painConflicts = new Set(["dips"]); // Dips flagged for pain
 
       const result = selectExercisesOptimized(pool, objective);
 
-      // Should have rejections from both hard filter and beam search
+      // Dips rejected by pain conflict filter
       const rejectedIds = result.rejected.map((r) => r.exercise.id);
-
-      // Cable fly rejected by equipment filter
-      expect(rejectedIds).toContain("cable_fly");
-
-      // Dips rejected by contraindication filter
       expect(rejectedIds).toContain("dips");
 
-      // Should have rejection reasons
-      const cableFlyRejection = result.rejected.find((r) => r.exercise.id === "cable_fly");
-      expect(cableFlyRejection?.reason).toBe("equipment_unavailable");
-
       const dipsRejection = result.rejected.find((r) => r.exercise.id === "dips");
-      expect(dipsRejection?.reason).toBe("contraindicated");
+      expect(dipsRejection?.reason).toBe("pain_conflict");
     });
 
     it("should handle empty pool gracefully", () => {
@@ -340,24 +246,6 @@ describe("selectExercisesOptimized", () => {
       expect(result.volumeFilled.size).toBe(0);
       expect(result.constraintsSatisfied).toBe(false);
       expect(result.rationale.overallStrategy).toContain("No feasible exercises");
-    });
-
-    it("should handle all exercises filtered out", () => {
-      const pool = [
-        createMockExercise("cable_fly", ["Chest" as Muscle], ["cable"]),
-        createMockExercise("machine_press", ["Chest" as Muscle], ["machine"]),
-      ];
-
-      const objective = createMockObjective(
-        new Map([["Chest" as Muscle, 12]]),
-        new Set(["barbell", "dumbbell"]) // No cable or machine
-      );
-
-      const result = selectExercisesOptimized(pool, objective);
-
-      expect(result.selected).toEqual([]);
-      expect(result.rejected.length).toBe(2);
-      expect(result.constraintsSatisfied).toBe(false);
     });
 
     it("should respect custom beam config", () => {
@@ -469,6 +357,70 @@ describe("selectExercisesOptimized", () => {
         expect(typeof rationale).toBe("string");
         expect(rationale!.length).toBeGreaterThan(0);
       }
+    });
+  });
+
+  describe("Candidate ordering — stretch quality priority", () => {
+    // Overhead Cable Triceps Extension (5/5 lengthened) vs Skull Crusher (3/5).
+    // Both are Triceps isolations with the same "extension" movement pattern.
+    // The pre-sort ensures overhead cable is evaluated first in each beam state;
+    // the isolation-duplicate filter then blocks skull crusher as dominated.
+    it("selects higher-stretch isolation over lower-stretch isolation for the same muscle slot", () => {
+      const base: Exercise = {
+        id: "",
+        name: "",
+        primaryMuscles: ["Triceps" as Muscle],
+        secondaryMuscles: [],
+        equipment: ["cable" as EquipmentType],
+        movementPatterns: ["extension"],
+        splitTags: ["push"],
+        jointStress: "low" as const,
+        repRangeMin: 8,
+        repRangeMax: 15,
+        timePerSetSec: 40,
+        fatigueCost: 2,
+        isMainLiftEligible: false,
+        isCompound: false,
+      };
+
+      const overheadCable: Exercise = {
+        ...base,
+        id: "overhead_cable_extension",
+        name: "Overhead Cable Triceps Extension",
+        sfrScore: 5,
+        lengthPositionScore: 5,
+      };
+
+      const skullCrusher: Exercise = {
+        ...base,
+        id: "skull_crusher",
+        name: "Lying Triceps Extension (Skull Crusher)",
+        equipment: ["barbell" as EquipmentType],
+        sfrScore: 4,
+        lengthPositionScore: 3,
+      };
+
+      // Pool with skull crusher listed first (inverse of desired selection order)
+      // to confirm the sort in optimizer.ts overrides input order.
+      const pool: Exercise[] = [skullCrusher, overheadCable];
+
+      const objective = createMockObjective(
+        new Map([["Triceps" as Muscle, 9]]),
+        120 // generous time budget
+      );
+      // No main lift required — purely testing isolation slot resolution
+      const result = selectExercisesOptimized(pool, objective);
+
+      const selectedIds = result.selected.map((c) => c.exercise.id);
+      const rejectedIds = result.rejected.map((r) => r.exercise.id);
+
+      expect(selectedIds).toContain("overhead_cable_extension");
+      expect(rejectedIds).toContain("skull_crusher");
+
+      const skullCrusherRejection = result.rejected.find(
+        (r) => r.exercise.id === "skull_crusher"
+      );
+      expect(skullCrusherRejection?.reason).toBe("dominated_by_better_option");
     });
   });
 });

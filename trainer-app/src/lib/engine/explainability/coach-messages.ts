@@ -280,7 +280,8 @@ function generateTips(
     });
   }
 
-  return tips;
+  // Cap at 1 tip — block-specific tip is most actionable; additional tips read as noise
+  return tips.slice(0, 1);
 }
 
 /**

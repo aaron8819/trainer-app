@@ -749,7 +749,7 @@
     {
       "name": "Nordic Hamstring Curl",
       "movementPatterns": [
-        "isolation"
+        "flexion"
       ],
       "splitTag": "legs",
       "isCompound": false,
@@ -1286,11 +1286,11 @@
         "shoulder": true
       },
       "primaryMuscles": [
-        "Chest",
-        "Front Delts"
+        "Chest"
       ],
       "secondaryMuscles": [
-        "Triceps"
+        "Triceps",
+        "Front Delts"
       ],
       "difficulty": "beginner",
       "unilateral": false,
@@ -1399,11 +1399,11 @@
         "shoulder": true
       },
       "primaryMuscles": [
-        "Chest",
-        "Front Delts"
+        "Chest"
       ],
       "secondaryMuscles": [
-        "Triceps"
+        "Triceps",
+        "Front Delts"
       ],
       "difficulty": "beginner",
       "unilateral": false,
@@ -1507,11 +1507,11 @@
       ],
       "contraindications": null,
       "primaryMuscles": [
-        "Chest",
-        "Front Delts"
+        "Chest"
       ],
       "secondaryMuscles": [
-        "Triceps"
+        "Triceps",
+        "Front Delts"
       ],
       "difficulty": "beginner",
       "unilateral": false,
@@ -2476,10 +2476,9 @@
       ],
       "fatigueCost": 2,
       "sfrScore": 4,
-      "lengthPositionScore": 4,
+      "lengthPositionScore": 3,
       "stimulusBias": [
-        "mechanical",
-        "stretch"
+        "mechanical"
       ],
       "contraindications": {
         "elbow": true

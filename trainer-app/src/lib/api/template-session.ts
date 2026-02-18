@@ -121,10 +121,20 @@ function buildSelectionObjective(
     length: mapped.mesocycleLength,
   });
 
-  // Build constraints
-  const painFlagExerciseIds = fatigueState.painFlags
-    ? Object.keys(fatigueState.painFlags).filter((id) => (fatigueState.painFlags?.[id] ?? 0) >= 2)
+  // Build constraints — resolve active pain body parts to exercise IDs via contraindications.
+  // painFlags keys are body-part strings ("knee", "low_back"), NOT exercise IDs.
+  const activePainBodyParts = fatigueState.painFlags
+    ? Object.entries(fatigueState.painFlags)
+        .filter(([, severity]) => severity >= 2)
+        .map(([bodyPart]) => bodyPart)
     : [];
+  const painConflictIds = new Set<string>(
+    activePainBodyParts.length > 0
+      ? mapped.exerciseLibrary
+          .filter((ex) => activePainBodyParts.some((part) => Boolean(ex.contraindications?.[part])))
+          .map((ex) => ex.id)
+      : []
+  );
 
   // Build volume ceiling (MRV) for muscles in this session's split
   const volumeCeiling = new Map<Muscle, number>();
@@ -141,16 +151,8 @@ function buildSelectionObjective(
     volumeFloor: new Map(),
     volumeCeiling,
     timeBudget: mapped.mappedConstraints.sessionMinutes,
-    equipment: new Set(mapped.mappedConstraints.availableEquipment),
-    // Phase 2: Separate constraint sets for explainability (ADR-063)
-    painConflicts: new Set(painFlagExerciseIds),
+    painConflicts: painConflictIds,
     userAvoids: new Set(mapped.mappedPreferences?.avoidExerciseIds ?? []),
-    equipmentUnavailable: new Set(), // Populated by optimizer pre-filter
-    // Backward compatibility: Union of all contraindications (deprecated)
-    contraindications: new Set([
-      ...painFlagExerciseIds,
-      ...(mapped.mappedPreferences?.avoidExerciseIds ?? []),
-    ]),
     minExercises: 3, // Minimum 3 exercises to ensure MEV coverage
     maxExercises: 8,
     // Structural constraints to ensure balanced workouts

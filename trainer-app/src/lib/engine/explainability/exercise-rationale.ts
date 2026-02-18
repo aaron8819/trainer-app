@@ -386,7 +386,10 @@ function extractPrimaryReasons(breakdown: SelectionFactorBreakdown): string[] {
   ];
 
   // Sort by score (descending) and filter for significant factors (score > 0.6)
-  const significant = factors.filter((f) => f.score > 0.6).sort((a, b) => b.score - a.score);
+  // Exclude "No active volume deficits targeted" — omitting it lets positive reasons speak for themselves
+  const significant = factors
+    .filter((f) => f.score > 0.6 && f.text !== "No active volume deficits targeted")
+    .sort((a, b) => b.score - a.score);
 
   // Take top 3 (or fewer if < 3 significant factors)
   return significant.slice(0, 3).map((f) => f.text);

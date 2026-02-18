@@ -305,34 +305,8 @@ describe("Selection-v2 Integration Tests", () => {
       expect(result.selected.length).toBeGreaterThan(0);
     });
 
-    it("should respect equipment constraints", () => {
-      // Test with limited equipment
-      // Expected: Only exercises with available equipment selected
-
-      const exercises = [
-        createMockExercise("bench_press", ["Chest"], [], { equipment: ["barbell"] }),
-        createMockExercise("dumbbell_press", ["Chest"], [], { equipment: ["dumbbell"] }),
-        createMockExercise("machine_press", ["Chest"], [], { equipment: ["machine"] }),
-      ];
-
-      const objective = createMockObjective(new Map([["Chest", 12]]));
-      objective.constraints.equipment = new Set(["barbell", "dumbbell"]); // No machines
-
-      const result = selectExercisesOptimized(exercises, objective);
-
-      // Should not select machine press
-      expect(result.selected.every((c) => c.exercise.id !== "machine_press")).toBe(true);
-
-      // Should select from available pool
-      expect(
-        result.selected.every((c) =>
-          c.exercise.equipment.some((eq) => objective.constraints.equipment.has(eq))
-        )
-      ).toBe(true);
-    });
-
-    it("should respect contraindications (pain flags)", () => {
-      // Test with pain contraindications
+    it("should respect pain conflicts", () => {
+      // Test with pain flags
       // Expected: Flagged exercises excluded
 
       const exercises = [
@@ -342,7 +316,7 @@ describe("Selection-v2 Integration Tests", () => {
       ];
 
       const objective = createMockObjective(new Map([["Chest", 12]]));
-      objective.constraints.contraindications = new Set(["bench_id"]); // Bench flagged for pain
+      objective.constraints.painConflicts = new Set(["bench_id"]); // Bench flagged for pain
 
       const result = selectExercisesOptimized(exercises, objective);
 

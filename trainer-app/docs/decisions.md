@@ -4,6 +4,131 @@ Record of significant design decisions and their rationale. Newest first.
 
 ---
 
+## ADR-074: Slow Test Opt-In via `RUN_SLOW_TESTS` Environment Variable (2026-02-18)
+
+**Status:** Accepted
+
+**Context:** `src/lib/engine/__tests__/end-to-end-simulation.test.ts` runs multi-week DB-backed workout simulations through the API layer (`generateSessionFromIntent`). Each call hits `loadWorkoutContext()` which queries exercises, workout history, and baselines — ~12–14s per call. With 9+ sequential calls in the rotation test alone, the suite consistently ran 90–120s, making it a bottleneck in per-phase verification runs.
+
+**Decision:**
+
+1. **Opt-in guard**: The outer `describe` is wrapped with `describe.skipIf(!process.env.RUN_SLOW_TESTS)`. `npm test` skips the suite by default; `npm run test:slow` (or `RUN_SLOW_TESTS=1 npm test`) runs it.
+
+2. **Reduced iteration counts**: The 12-week volume progression simulation was reduced to 6 weeks (18 sessions), and the 10-week block-transitions simulation was reduced to 6 weeks. Both still cover their core assertions: accumulation, intensification, and deload blocks are all exercised within a 6-week window.
+
+3. **`reporters: ["dot"]`**: Added to `vitest.config.ts` as the default reporter. Reduces per-test output overhead on large suites (~20–30% faster render).
+
+4. **New npm scripts**:
+   - `test:fast` — targeted run of selection-v2, explainability, and key API tests (~5–10s)
+   - `test:slow` — simulation suite only, with `RUN_SLOW_TESTS=1`
+   - `test` changed from `vitest` (watch mode) to `vitest run` (single run)
+
+**Tradeoffs:** The simulation suite is no longer run automatically on `npm test`. Engine changes that affect multi-week behavior require a deliberate `npm run test:slow` invocation before merging.
+
+---
+
+## ADR-073: Beam Search Behavioral Constraints — Triceps Cap, Isolation Dedup, Front Delt Suppress (2026-02-18)
+
+**Status:** Accepted
+
+**Context:** A workout audit of push session `a34102df` identified three selection quality issues:
+- (C1) Bench + Dip + Push-Up each list Triceps as PRIMARY, so a pushdown on top exhausted weekly MRV in a single session. Root cause: the MRV of 18 is defined as DIRECT sets only; pressing is the background against which it's calibrated.
+- (W2) Machine Lateral Raise and DB Lateral Raise were both selected — same pattern (`shoulder_abduction`) + same primary muscle (Side Delts). Zero additional stimulus variety.
+- (W3) Front Raises were selected even after 3 pressing compounds provided ~4.5 effective front delt sets, past MEV=0.
+
+**Decision:** Three hard-filter rules added in the main beam expansion loop (after the movement-pattern cap check), in `src/lib/engine/selection-v2/beam-search.ts`:
+
+1. **C1 — Triceps isolation cap**: When ≥2 pressing compounds (isCompound, Triceps primary) are in the beam state, allow at most 1 direct triceps isolation per session.
+2. **W2 — Isolation duplicate block**: Block isolation exercises that share both a movement pattern AND a primary muscle with any already-selected isolation. Compounds are unaffected.
+3. **W3 — Front delt suppression**: Suppress direct front delt isolation when effective front delt volume in beam state ≥ 3.5 sets (MAV/2 = 7/2). KB: "Front delts often need zero direct work due to heavy indirect stimulus from pressing."
+
+**Note:** C1 is a pragmatic safeguard. The correct long-term fix is to reclassify pressing compounds so Triceps is SECONDARY (0.3× multiplier), not PRIMARY — but that is a data migration (out of scope here).
+
+---
+
+## ADR-072: Remove `split-queue.ts` Dead Code (2026-02-17)
+
+**Status:** Accepted
+
+**Context:** `split-queue.ts` implemented history-based PPL split day resolution (`getHistoryBasedSplitDay`, `classifySessionBySplit`, `getSplitDayIndex`, `resolveTargetPatterns`, `resolveAllowedPatterns`). Per ADR-014, the app moved to user-provided session intent (`sessionIntent` param on workout generation). The split-queue functions were never called after that change — grep across the full codebase confirmed only the test file imported them.
+
+`MUSCLE_SPLIT_MAP` was also re-exported by `split-queue.ts` via an import from `volume-landmarks.ts`, but all active callers (`template-session.ts`, `bonus-suggestions.ts`, `template-analysis.ts`, `weekly-program-analysis.ts`, `session-context.ts`) already imported directly from `volume-landmarks.ts`.
+
+**Decision:** Delete `split-queue.ts` and `split-queue.test.ts`. No migration needed.
+
+**Result:** Build and tests pass. Module map updated in `architecture.md`.
+
+---
+
+## ADR-071: Hard Cap — Max 2 Exercises Per Movement Pattern (2026-02-17)
+
+**Status:** Accepted
+
+**Context:** Beam search scoring improvements (ADR-070) reduce the probability of three exercises sharing the same movement pattern, but soft scoring can still be overridden by large volume deficit signals. A structural guardrail independent of weights is needed to guarantee correct output.
+
+**Decision:** During beam expansion in `beam-search.ts`, enforce `MOVEMENT_PATTERN_CAP = 2`: if any movement pattern of the candidate already appears in ≥ 2 already-selected exercises, skip the candidate. This is a hard constraint analogous to the existing time-budget and volume-ceiling checks. Rejected exercises are not added to the `rejectedMap` (no user-visible reason needed).
+
+**Result:** Push sessions cannot have 3+ horizontal-push exercises regardless of scoring weights. Adds O(patterns × selected) work per expansion step — negligible at typical beam widths (5) and exercise counts (8).
+
+---
+
+## ADR-070: Beam State-Aware Movement Diversity Scoring (2026-02-17)
+
+**Status:** Accepted
+
+**Context:** `scoreMovementNovelty` in `selection-v2/scoring.ts` was documented as a stub. It scored based only on how many movement patterns an exercise had (versatility proxy), with no knowledge of what the beam had already selected. Combined with a 0.05 weight, it was effectively inert — three chest exercises would score identically on movement diversity. First Push workout showed this: Barbell Bench Press, Incline DB Bench, and Push-Up all scored equally, leaving no overhead compound.
+
+**Decision:**
+
+1. Rewrite `scoreMovementNovelty(exercise, objective, alreadySelected: Exercise[])` — computes `novelPatterns / totalPatterns` against the current beam state's selected exercises.
+2. Pre-computation in `candidate.ts` passes `[]` (no selections yet). Score stored in `candidate.scores.movementNovelty` remains static.
+3. During beam expansion in `beam-search.ts`, dynamically adjust: `adjustedScore = totalScore + movementDiversity × (dynamicNovelty - staticNovelty)`. This correctly captures that the 2nd horizontal-push exercise is neutral, the 3rd is penalized.
+4. Increase `movementDiversity` weight from `0.05` → `0.15` now that the signal is meaningful.
+
+**Alternatives considered:** Re-scoring all candidates at each beam step — rejected as O(candidates × beam × depth) and architecturally complex. The delta-adjustment approach reuses the pre-computed static score and only adds the novelty delta.
+
+**Result:** Push days now favor overhead compounds over redundant chest accessories when the chest pattern is already covered.
+
+---
+
+## ADR-069: Machine Exercise Load Floor — 10 lbs Minimum (2026-02-17)
+
+**Status:** Accepted
+
+**Context:** The bodyweight-ratio estimator in `apply-loads.ts` uses coefficients tuned primarily for cable and barbell exercises. Machine selectorized exercises have different weight conventions: stack weight does not map to resistance the same way, and minimums are typically 10–20 lbs regardless of the user's bodyweight. The estimator could produce sub-10 lb estimates (e.g. 4.5 lbs for Machine Lateral Raise) which are physically impossible on real equipment.
+
+**Decision:** Add a 10 lb floor in `estimateLoad()` for any exercise where `getLoadEquipment()` returns `"machine"`. Applied after all estimation paths (donor, bodyweight ratio, equipment default). Storage remains total lbs; no schema changes.
+
+**Result:** Machine exercises always display at least 10 lbs. Future calibration with real logged machine data can raise the floor or add per-category ratios (Option B from the findings doc).
+
+---
+
+## ADR-068: Dumbbell Load Snapping to Canonical Weight Set (2026-02-17)
+
+**Status:** Accepted
+
+**Context:** Stored loads are total bilateral weight in lbs. Dumbbell display divides by 2 to show per-dumbbell weight, but `roundLoad` snaps to 0.5 lb increments before the divide. The resulting per-dumbbell value (e.g. 24.25 lbs) is not a real dumbbell weight and confuses users.
+
+**Decision:** Add a `snapToDumbbell()` helper in `src/lib/ui/load-display.ts` that snaps a per-dumbbell value to the nearest weight in the canonical dumbbell set (2.5 → 110 lbs, standard commercial gym increments). Applied in `formatLoad()` and `formatBaselineRange()` at display time only. `toDisplayLoad()` is unchanged because it feeds editable input fields that need the exact stored value.
+
+**Result:** Dumbbell prescriptions and baseline ranges always display realistic, pickable weights. Storage format unchanged; no migration.
+
+---
+
+## ADR-067: Remove Equipment Filtering Entirely (2026-02-17)
+
+**Status:** Accepted
+
+**Context:** `Constraints.availableEquipment` was wired end-to-end (DB → engine type → `SelectionConstraints.equipment` → optimizer `hasAvailableEquipment()`) but always defaulted to `ALL_EQUIPMENT_TYPES`. There was no UI for per-user filtering, so the filter was a permanent no-op.
+
+**Decision:** Full removal. Deleted: DB column (migration `20260217_drop_equipment_constraint`), engine `Constraints.availableEquipment`, `SelectionConstraints.equipment` and `equipmentUnavailable`, `RejectionReason "equipment_unavailable"`, optimizer `hasAvailableEquipment()`, all downstream mappings and test fixtures. `suggestSubstitutes()` signature simplified (removed `constraints` param). 5 equipment-specific tests removed.
+
+**Result:** 862/862 tests passing, build clean, no new lint errors.
+
+**Note:** `smart-build.ts` and `starter-exercises.ts` retain their own caller-provided `availableEquipment` parameter — these are separate features not connected to `Constraints`.
+
+---
+
 ## ADR-066: Bonus Exercise Flow — Volume-Landmark Suggestions + Add-Exercise API (2026-02-17)
 
 **Status:** Accepted

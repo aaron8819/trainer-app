@@ -222,19 +222,11 @@ model User {
 }
 
 model UserPreference {
-  userId               String   @id
-  user                 User     @relation(fields: [userId], references: [id])
-  favoriteExercises    String[] @default([])
-  avoidExercises       String[] @default([])
-  favoriteExerciseIds  String[] @default([])
-  avoidExerciseIds     String[] @default([])
-  rpeTargets           Json?
-  progressionStyle     String?
-  optionalConditioning Boolean  @default(true)
-  benchFrequency       Int?
-  squatFrequency       Int?
-  deadliftFrequency    Int?
-  updatedAt            DateTime @updatedAt
+  userId              String   @id
+  user                User     @relation(fields: [userId], references: [id])
+  favoriteExerciseIds String[] @default([])
+  avoidExerciseIds    String[] @default([])
+  updatedAt           DateTime @updatedAt
 }
 
 model Profile {
@@ -253,8 +245,6 @@ model Constraints {
   daysPerWeek    Int
   sessionMinutes Int
   splitType      SplitType
-  equipmentNotes String?
-  availableEquipment EquipmentType[] @default([])
 }
 
 model Goals {
@@ -262,7 +252,6 @@ model Goals {
   user          User           @relation(fields: [userId], references: [id])
   primaryGoal   PrimaryGoal
   secondaryGoal SecondaryGoal
-  proteinTarget Int?
 }
 
 model Injury {
@@ -433,6 +422,7 @@ model Workout {
 
   exercises WorkoutExercise[]
   sessionCheckIns SessionCheckIn[]
+  filteredExercises FilteredExercise[]
 
   @@index([userId, scheduledDate])
   @@index([trainingBlockId])
@@ -466,6 +456,18 @@ model WorkoutSet {
   restSeconds       Int?
 
   logs SetLog[]
+}
+
+model FilteredExercise {
+  id                  String  @id @default(uuid())
+  workoutId           String
+  workout             Workout @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+  exerciseId          String?
+  exerciseName        String
+  reason              String
+  userFriendlyMessage String
+
+  @@index([workoutId])
 }
 
 model SetLog {

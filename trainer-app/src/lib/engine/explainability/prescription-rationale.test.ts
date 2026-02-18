@@ -105,7 +105,7 @@ describe("explainPrescriptionRationale", () => {
     expect(rationale.load.load).toBe(100);
     expect(rationale.rir.target).toBe(2); // 10 - 8.0 RPE
     expect(rationale.rest.seconds).toBe(180);
-    expect(rationale.overallNarrative).toContain("3×8 @ 100kg");
+    expect(rationale.overallNarrative).toContain("3×8 @ 100lbs");
   });
 
   it("generates rationale for accessory exercise", () => {
@@ -225,6 +225,20 @@ describe("explainSetCount", () => {
 
     expect(rationale.reason).toContain("accessory");
     expect(rationale.reason).toContain("3-set protocol");
+  });
+
+  it("uses explicit blockType over multiplier-inferred phase (accumulation week 1 fix)", () => {
+    // Week 0 periodization: setMultiplier=1.0 fails the >1.1 accumulation check —
+    // without blockType it would fall through to "Standard progression".
+    const weekZeroPeriodization: PeriodizationModifiers = {
+      rpeOffset: -1.5,
+      setMultiplier: 1.0,
+      backOffMultiplier: 0.88,
+      isDeload: false,
+    };
+    const rationale = explainSetCount(4, true, "intermediate", weekZeroPeriodization, "accumulation");
+    expect(rationale.blockContext).toContain("Accumulation");
+    expect(rationale.reason).toContain("accumulation phase");
   });
 });
 
@@ -500,15 +514,16 @@ describe("explainRestPeriod", () => {
     expect(rationale.seconds).toBe(150);
     expect(rationale.exerciseType).toBe("moderate_compound");
     expect(rationale.reason).toContain("compound accessory");
-    expect(rationale.reason).toContain("strength focus");
+    expect(rationale.reason).toContain("2–3 min recovery");
   });
 
   it("explains compound accessory high reps", () => {
-    const rationale = explainRestPeriod(120, exampleExercise, false, 12);
+    const rationale = explainRestPeriod(150, exampleExercise, false, 12);
 
-    expect(rationale.seconds).toBe(120);
+    expect(rationale.seconds).toBe(150);
     expect(rationale.exerciseType).toBe("moderate_compound");
-    expect(rationale.reason).toContain("higher reps");
+    expect(rationale.reason).toContain("compound accessory");
+    expect(rationale.reason).toContain("2–3 min recovery");
   });
 
   it("explains isolation rest", () => {
@@ -518,6 +533,7 @@ describe("explainRestPeriod", () => {
     expect(rationale.exerciseType).toBe("isolation");
     expect(rationale.reason).toContain("isolation");
     expect(rationale.reason).toContain("local fatigue");
+    expect(rationale.reason).toContain("90s"); // sub-2-min shown in seconds, not "2 min"
   });
 
   it("uses default rest when not provided", () => {

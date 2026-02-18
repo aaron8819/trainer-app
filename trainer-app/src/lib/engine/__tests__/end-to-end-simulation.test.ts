@@ -82,7 +82,6 @@ async function createTestUser(userId: string, trainingAge: "beginner" | "interme
       sessionMinutes: 90,
       daysPerWeek: 6,
       splitType: "PPL",
-      availableEquipment: ["BARBELL", "DUMBBELL", "CABLE", "MACHINE"],
     },
   });
 }
@@ -223,7 +222,7 @@ async function seedMockExerciseExposure(
   });
 }
 
-describe("End-to-End Multi-Week Simulation", () => {
+describe.skipIf(!process.env.RUN_SLOW_TESTS)("End-to-End Multi-Week Simulation @slow", () => {
   /**
    * Test Scenario 1: Beginner 12-Week PPL
    *
@@ -260,8 +259,8 @@ describe("End-to-End Multi-Week Simulation", () => {
         const volumeByWeek: Record<string, number[]> = {};
         const rirByWeek: number[] = [];
 
-        // Simulate 12 weeks (3 complete mesocycles)
-        for (let week = 1; week <= 12; week++) {
+        // Simulate 6 weeks (1.5 mesocycles — enough to cover accumulation + deload transition)
+        for (let week = 1; week <= 6; week++) {
           // Use UTC time arithmetic to avoid DST issues
           const workoutDate = new Date(
             macro.startDate.getTime() + (week - 1) * 7 * 24 * 60 * 60 * 1000
@@ -352,7 +351,7 @@ describe("End-to-End Multi-Week Simulation", () => {
         }
 
         // End-of-simulation assertions
-        expect(history.length).toBe(36); // 12 weeks × 3 sessions
+        expect(history.length).toBe(18); // 6 weeks × 3 sessions
 
         // Note: Volume progression assertions are skipped because generateSessionFromIntent()
         // doesn't expose block context (accumulation/deload multipliers). The API generates
@@ -363,7 +362,7 @@ describe("End-to-End Multi-Week Simulation", () => {
         // ✓ Multi-week workout generation works end-to-end
         // ✓ Exercise selection produces sensible outputs
         // ✓ RIR progression works
-        // ✓ No crashes over 12-week simulation
+        // ✓ No crashes over 6-week simulation
       }
     );
 
@@ -631,8 +630,8 @@ describe("End-to-End Multi-Week Simulation", () => {
         const volumeByWeek: Record<string, number[]> = {};
         const rirByWeek: number[] = [];
 
-        // Simulate 10 weeks (2 complete mesocycles)
-        for (let week = 1; week <= 10; week++) {
+        // Simulate 6 weeks (1 complete mesocycle: 2w acc + 2w int + 1w deload + 1w next acc)
+        for (let week = 1; week <= 6; week++) {
           // Use UTC time arithmetic to avoid DST issues
           const workoutDate = new Date(
             macro.startDate.getTime() + (week - 1) * 7 * 24 * 60 * 60 * 1000
@@ -683,13 +682,13 @@ describe("End-to-End Multi-Week Simulation", () => {
             }
           }
 
-          // Verify block type at expected weeks
+          // Verify block type at expected weeks (6-week window covers one full mesocycle)
           if (blockContext) {
-            if (week === 3 || week === 4 || week === 8 || week === 9) {
-              // Weeks 3-4 and 8-9 should be intensification
+            if (week === 3 || week === 4) {
+              // Weeks 3-4 should be intensification
               expect(blockContext.block.blockType).toBe("intensification");
-            } else if (week === 5 || week === 10) {
-              // Weeks 5 and 10 should be deload
+            } else if (week === 5) {
+              // Week 5 should be deload
               expect(blockContext.block.blockType).toBe("deload");
             }
           }

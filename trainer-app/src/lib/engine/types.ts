@@ -98,15 +98,11 @@ export type Constraints = {
   daysPerWeek: number;
   sessionMinutes: number;
   splitType: SplitType;
-  availableEquipment: EquipmentType[];
 };
 
 export type UserPreferences = {
-  favoriteExercises?: string[];
-  avoidExercises?: string[];
   favoriteExerciseIds?: string[];
   avoidExerciseIds?: string[];
-  optionalConditioning?: boolean;
 };
 
 export type Exercise = {

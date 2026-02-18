@@ -2,25 +2,7 @@ import { prisma } from "@/lib/db/prisma";
 import { mapExercises } from "./workout-context";
 import { suggestSubstitutes } from "@/lib/engine/substitution";
 import type { ExerciseDetail, ExerciseListItem } from "@/lib/exercise-library/types";
-import type { Constraints } from "@/lib/engine/types";
 import { resolveExercisePreferenceState } from "./exercise-preferences";
-
-const DEFAULT_SUBSTITUTE_CONSTRAINTS: Constraints = {
-  daysPerWeek: 4,
-  sessionMinutes: 60,
-  splitType: "ppl",
-  availableEquipment: [
-    "barbell",
-    "dumbbell",
-    "machine",
-    "cable",
-    "bodyweight",
-    "kettlebell",
-    "band",
-    "bench",
-    "rack",
-  ],
-};
 
 const SUBSTITUTION_POOL_TTL_MS = 5 * 60 * 1000;
 
@@ -47,34 +29,6 @@ function splitAndSortMuscles(exercise: {
   return { primaryMuscles, secondaryMuscles };
 }
 
-function mapUserConstraintsToEngine(
-  record:
-    | {
-        daysPerWeek: number;
-        sessionMinutes: number;
-        splitType: string;
-        availableEquipment: string[];
-      }
-    | null
-): Constraints {
-  if (!record) {
-    return DEFAULT_SUBSTITUTE_CONSTRAINTS;
-  }
-
-  const availableEquipment = (record.availableEquipment ?? []).map((item) =>
-    item.toLowerCase()
-  ) as Constraints["availableEquipment"];
-
-  return {
-    daysPerWeek: record.daysPerWeek,
-    sessionMinutes: record.sessionMinutes,
-    splitType: record.splitType.toLowerCase() as Constraints["splitType"],
-    availableEquipment:
-      availableEquipment.length > 0
-        ? availableEquipment
-        : DEFAULT_SUBSTITUTE_CONSTRAINTS.availableEquipment,
-  };
-}
 
 async function loadSubstitutionPoolFresh() {
   return prisma.exercise.findMany({
@@ -165,22 +119,11 @@ export async function loadExerciseDetail(
 
   if (!exercise) return null;
 
-  const [preferences, baseline, userConstraints, allExercises] = await Promise.all([
+  const [preferences, baseline, allExercises] = await Promise.all([
     userId ? prisma.userPreference.findUnique({ where: { userId } }) : null,
     userId
       ? prisma.baseline.findFirst({
           where: { userId, exerciseId, context: "default" },
-        })
-      : null,
-    userId
-      ? prisma.constraints.findUnique({
-          where: { userId },
-          select: {
-            daysPerWeek: true,
-            sessionMinutes: true,
-            splitType: true,
-            availableEquipment: true,
-          },
         })
       : null,
     loadSubstitutionPool(),
@@ -195,15 +138,10 @@ export async function loadExerciseDetail(
   // Compute substitutes via engine
   const engineExercises = mapExercises(allExercises);
   const targetEngine = engineExercises.find((e) => e.id === exerciseId);
-  const substituteConstraints = mapUserConstraintsToEngine(userConstraints);
 
   let substitutes: { id: string; name: string; primaryMuscles: string[] }[] = [];
   if (targetEngine) {
-    const subs = suggestSubstitutes(
-      targetEngine,
-      engineExercises,
-      substituteConstraints
-    );
+    const subs = suggestSubstitutes(targetEngine, engineExercises);
     substitutes = subs.map((s) => ({
       id: s.id,
       name: s.name,

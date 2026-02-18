@@ -9,7 +9,6 @@ import type {
   Exercise,
   FatigueState,
   Goals,
-  UserPreferences,
   UserProfile,
   WorkoutSet,
 } from "./types";
@@ -39,7 +38,6 @@ export function prescribeSetsReps(
   trainingAge: UserProfile["trainingAge"],
   goals: Goals,
   fatigueState: FatigueState,
-  preferences?: UserPreferences,
   periodization?: PeriodizationModifiers,
   exerciseRepRange?: ExerciseRepRange,
   isIsolationAccessory = false,
@@ -50,7 +48,6 @@ export function prescribeSetsReps(
       trainingAge,
       goals,
       fatigueState,
-      preferences,
       periodization,
       exerciseRepRange,
       overrideSetCount
@@ -60,7 +57,6 @@ export function prescribeSetsReps(
     trainingAge,
     goals,
     fatigueState,
-    preferences,
     periodization,
     exerciseRepRange,
     isIsolationAccessory,
@@ -107,7 +103,6 @@ function prescribeMainLiftSets(
   trainingAge: UserProfile["trainingAge"],
   goals: Goals,
   fatigueState: FatigueState,
-  preferences?: UserPreferences,
   periodization?: PeriodizationModifiers,
   exerciseRepRange?: ExerciseRepRange,
   overrideSetCount?: number
@@ -134,7 +129,6 @@ function prescribeMainLiftSets(
     trainingAge,
     goals,
     fatigueState,
-    preferences,
     periodization,
     false
   );
@@ -160,7 +154,6 @@ function prescribeAccessorySets(
   trainingAge: UserProfile["trainingAge"],
   goals: Goals,
   fatigueState: FatigueState,
-  preferences?: UserPreferences,
   periodization?: PeriodizationModifiers,
   exerciseRepRange?: ExerciseRepRange,
   isIsolationAccessory = false,
@@ -192,7 +185,6 @@ function prescribeAccessorySets(
     trainingAge,
     goals,
     fatigueState,
-    preferences,
     periodization,
     isIsolationAccessory
   );
@@ -231,7 +223,6 @@ function resolveTargetRpe(
   trainingAge: UserProfile["trainingAge"],
   goals: Goals,
   fatigueState: FatigueState,
-  _preferences?: UserPreferences,
   periodization?: PeriodizationModifiers,
   isIsolationAccessory = false
 ) {
@@ -269,9 +260,9 @@ export function getRestSeconds(
     return fatigueCost >= 4 ? 180 : 150;
   }
 
-  // Compound accessories
+  // Compound accessories — KB: 2–3 min at all rep ranges; 150s is the floor
   if (isCompound) {
-    return reps <= 8 ? 150 : 120;
+    return 150;
   }
 
   // Isolation exercises

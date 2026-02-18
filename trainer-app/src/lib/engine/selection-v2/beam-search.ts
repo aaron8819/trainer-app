@@ -22,9 +22,11 @@ import type {
   RejectedExercise,
   RejectionReason,
 } from "./types";
+import { BEAM_TIEBREAKER_EPSILON } from "./types";
 import { mergeVolume, computeVolumeContribution } from "./candidate";
 import { generateRationale } from "./rationale";
 import { estimateExerciseMinutes } from "../timeboxing";
+import { scoreMovementNovelty } from "./scoring";
 import { getGoalRepRanges } from "../rules";
 
 /**
@@ -108,6 +110,7 @@ export function beamSearch(
       volumeFilled: new Map(),
       timeUsed: 0,
       score: 0,
+      favoritesCount: 0,
     },
   ];
 
@@ -154,12 +157,131 @@ export function beamSearch(
           continue;
         }
 
+        // Hard cap: max 2 exercises per movement pattern
+        const MOVEMENT_PATTERN_CAP = 2;
+        const candidatePatterns = candidate.exercise.movementPatterns ?? [];
+        const patternViolation = candidatePatterns.some((pattern) => {
+          const count = state.selected.filter((s) =>
+            (s.exercise.movementPatterns ?? []).includes(pattern)
+          ).length;
+          return count >= MOVEMENT_PATTERN_CAP;
+        });
+        if (patternViolation) {
+          continue;
+        }
+
+        // C1: Per-session triceps isolation cap
+        // KB: MRV=18 for triceps accounts for full pressing stimulus. When ≥2 pressing
+        // compounds have Triceps as primary, allow only 1 isolation to stay within per-session
+        // safe zone (~half of weekly MRV per push session).
+        const isDirectTricepsIsolation =
+          !candidate.exercise.isMainLiftEligible &&
+          !(candidate.exercise.isCompound ?? false) &&
+          (candidate.exercise.primaryMuscles ?? []).includes("Triceps");
+
+        if (isDirectTricepsIsolation) {
+          const pressingCompoundsInState = state.selected.filter(
+            (c) =>
+              (c.exercise.isCompound ?? false) &&
+              (c.exercise.primaryMuscles ?? []).includes("Triceps")
+          ).length;
+
+          if (pressingCompoundsInState >= 2) {
+            const tricepsIsolationsInState = state.selected.filter(
+              (c) =>
+                !c.exercise.isMainLiftEligible &&
+                !(c.exercise.isCompound ?? false) &&
+                (c.exercise.primaryMuscles ?? []).includes("Triceps")
+            ).length;
+
+            if (tricepsIsolationsInState >= 1) {
+              // Already have 1 triceps isolation with 2+ pressing compounds — block more
+              continue;
+            }
+          }
+        }
+
+        // C1b: Per-session per-muscle direct-set ceiling
+        // KB: ~10–12 hard sets per muscle per session before diminishing returns dominate.
+        // Applies to all muscles — prevents chest/front-delt/triceps over-accumulation on push days.
+        const SESSION_DIRECT_SET_CEILING = 12;
+        let exceedsSessionMuscle = false;
+        for (const [muscle, { direct }] of candidate.volumeContribution) {
+          if (direct > 0) {
+            const currentDirect = state.selected.reduce(
+              (sum, c) => sum + (c.volumeContribution.get(muscle)?.direct ?? 0),
+              0
+            );
+            if (currentDirect + direct > SESSION_DIRECT_SET_CEILING) {
+              exceedsSessionMuscle = true;
+              break;
+            }
+          }
+        }
+        if (exceedsSessionMuscle) {
+          rejectedMap.set(candidate.exercise.id, "volume_ceiling_reached");
+          continue;
+        }
+
+        // W2: Hard-block isolation exercises that duplicate pattern AND primary muscle
+        // Engine quality rule: same isolation pattern + same primary muscle = redundant stimulus
+        const candidateIsIsolation =
+          !candidate.exercise.isMainLiftEligible &&
+          !(candidate.exercise.isCompound ?? false);
+
+        if (candidateIsIsolation && candidatePatterns.length > 0) {
+          const isolationDuplicate = candidatePatterns.some((pattern) =>
+            state.selected.some((s) => {
+              const sIsIsolation =
+                !s.exercise.isMainLiftEligible && !(s.exercise.isCompound ?? false);
+              if (!sIsIsolation) return false;
+              const samePattern = (s.exercise.movementPatterns ?? []).includes(pattern);
+              const sharedPrimary = (candidate.exercise.primaryMuscles ?? []).some((m) =>
+                (s.exercise.primaryMuscles ?? []).includes(m)
+              );
+              return samePattern && sharedPrimary;
+            })
+          );
+          if (isolationDuplicate) {
+            rejectedMap.set(candidate.exercise.id, "dominated_by_better_option");
+            continue;
+          }
+        }
+
+        // W3: Suppress direct front delt work when any direct pressing compound already covers them
+        // KB: "Front delts: MEV=0, most lifters need zero direct isolation" (KB Section 4 Shoulders)
+        // OHP contributes 3.0 direct effective sets → threshold 1.0 catches any session with OHP.
+        // Indirect-only sessions (e.g., bench-only with no OHP) reach ~0.45 effective — not blocked.
+        const FRONT_DELT_SUPPRESS_THRESHOLD = 1.0;
+        const isDirectFrontDelt =
+          !candidate.exercise.isMainLiftEligible &&
+          (candidate.exercise.primaryMuscles ?? []).includes("Front Delts");
+
+        if (isDirectFrontDelt) {
+          const currentFrontDeltVolume = state.volumeFilled.get("Front Delts") ?? 0;
+          if (currentFrontDeltVolume >= FRONT_DELT_SUPPRESS_THRESHOLD) {
+            rejectedMap.set(candidate.exercise.id, "volume_ceiling_reached");
+            continue;
+          }
+        }
+
+        // Dynamic movement novelty: re-score based on already-selected exercises
+        // so the beam search favors exercises that add new movement patterns.
+        const alreadySelected = state.selected.map((c) => c.exercise);
+        const dynamicNovelty = scoreMovementNovelty(candidate.exercise, objective, alreadySelected);
+        const noveltyAdjustment =
+          objective.weights.movementDiversity *
+          (dynamicNovelty - candidate.scores.movementNovelty);
+        const adjustedScore = candidate.totalScore + noveltyAdjustment;
+
         // Valid expansion - create new beam state
+        const isFavorite = objective.preferences.favoriteExerciseIds.has(candidate.exercise.id);
         nextBeam.push({
           selected: [...state.selected, candidate],
           volumeFilled: newVolumeFilled,
           timeUsed: newTimeUsed,
-          score: state.score + candidate.totalScore,
+          score: state.score + adjustedScore,
+          favoritesCount: state.favoritesCount + (isFavorite ? 1 : 0),
         });
       }
     }
@@ -169,8 +291,18 @@ export function beamSearch(
       break; // Keep previous beam
     }
 
-    // Prune beam: keep top beamWidth states by score
-    beam = nextBeam.sort((a, b) => b.score - a.score).slice(0, config.beamWidth);
+    // Prune beam: keep top beamWidth states by score.
+    // Tiebreaker: when states are within BEAM_TIEBREAKER_EPSILON of each other,
+    // prefer the state containing more user-favorite exercises.
+    beam = nextBeam
+      .sort((a, b) => {
+        const scoreDiff = b.score - a.score;
+        if (Math.abs(scoreDiff) < BEAM_TIEBREAKER_EPSILON) {
+          return b.favoritesCount - a.favoritesCount;
+        }
+        return scoreDiff;
+      })
+      .slice(0, config.beamWidth);
   }
 
   // Select best beam state
@@ -179,6 +311,7 @@ export function beamSearch(
     volumeFilled: new Map(),
     timeUsed: 0,
     score: 0,
+    favoritesCount: 0,
   };
 
   // Enforce minimum exercise constraint if needed
@@ -316,6 +449,7 @@ function enforceMinExercises(
     volumeFilled: new Map(beam.volumeFilled),
     timeUsed: beam.timeUsed,
     score: beam.score,
+    favoritesCount: beam.favoritesCount,
   };
 
   // Greedily add candidates until min constraint satisfied
@@ -411,6 +545,7 @@ function enforceStructuralConstraints(
     volumeFilled: new Map(beam.volumeFilled),
     timeUsed: beam.timeUsed,
     score: beam.score,
+    favoritesCount: beam.favoritesCount,
   };
 
   // Get remaining candidates (not already selected)
@@ -548,6 +683,7 @@ function trySwapForMainLift(
     volumeFilled: new Map(beam.volumeFilled),
     timeUsed: beam.timeUsed,
     score: beam.score,
+    favoritesCount: beam.favoritesCount,
   };
 
   const removedAccessories: SelectionCandidate[] = [];

@@ -109,7 +109,9 @@ export function FilteredExercisesCard({ filteredExercises }: Props) {
             <div className="flex items-center gap-2">
               <span className="text-lg">ℹ️</span>
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Other Filters
+                {other.every((ex) => ex.reason === "time_budget_exceeded")
+                  ? "Time Limit"
+                  : "Other Filters"}
               </p>
             </div>
             <ul className="mt-2 space-y-1 pl-7">

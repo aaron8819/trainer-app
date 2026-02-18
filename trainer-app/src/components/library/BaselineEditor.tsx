@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { toDisplayLoad, toStoredLoad } from "@/lib/ui/load-display";
 
 type BaselineData = {
   context: string;
@@ -16,6 +17,7 @@ type BaselineData = {
 type BaselineEditorProps = {
   exerciseId: string;
   initial?: BaselineData;
+  isDumbbell?: boolean;
   onSaved: () => void;
 };
 
@@ -26,13 +28,21 @@ const CONTEXTS = [
   { value: "strength", label: "Strength" },
 ];
 
-export function BaselineEditor({ exerciseId, initial, onSaved }: BaselineEditorProps) {
+export function BaselineEditor({ exerciseId, initial, isDumbbell = false, onSaved }: BaselineEditorProps) {
+  // Weight state stores display values (per-dumbbell for DB exercises, total otherwise).
+  // On save, we convert back to total via toStoredLoad.
   const [context, setContext] = useState(initial?.context ?? "default");
-  const [workingWeightMin, setWorkingWeightMin] = useState(initial?.workingWeightMin?.toString() ?? "");
-  const [workingWeightMax, setWorkingWeightMax] = useState(initial?.workingWeightMax?.toString() ?? "");
+  const [workingWeightMin, setWorkingWeightMin] = useState(
+    (toDisplayLoad(initial?.workingWeightMin, isDumbbell) ?? "").toString()
+  );
+  const [workingWeightMax, setWorkingWeightMax] = useState(
+    (toDisplayLoad(initial?.workingWeightMax, isDumbbell) ?? "").toString()
+  );
   const [workingRepsMin, setWorkingRepsMin] = useState(initial?.workingRepsMin?.toString() ?? "");
   const [workingRepsMax, setWorkingRepsMax] = useState(initial?.workingRepsMax?.toString() ?? "");
-  const [topSetWeight, setTopSetWeight] = useState(initial?.topSetWeight?.toString() ?? "");
+  const [topSetWeight, setTopSetWeight] = useState(
+    (toDisplayLoad(initial?.topSetWeight, isDumbbell) ?? "").toString()
+  );
   const [topSetReps, setTopSetReps] = useState(initial?.topSetReps?.toString() ?? "");
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const [saving, setSaving] = useState(false);
@@ -51,11 +61,11 @@ export function BaselineEditor({ exerciseId, initial, onSaved }: BaselineEditorP
       body: JSON.stringify({
         exerciseId,
         context,
-        workingWeightMin: toNum(workingWeightMin),
-        workingWeightMax: toNum(workingWeightMax),
+        workingWeightMin: toStoredLoad(toNum(workingWeightMin), isDumbbell),
+        workingWeightMax: toStoredLoad(toNum(workingWeightMax), isDumbbell),
         workingRepsMin: toInt(workingRepsMin),
         workingRepsMax: toInt(workingRepsMax),
-        topSetWeight: toNum(topSetWeight),
+        topSetWeight: toStoredLoad(toNum(topSetWeight), isDumbbell),
         topSetReps: toInt(topSetReps),
         notes: notes || undefined,
       }),
@@ -91,7 +101,9 @@ export function BaselineEditor({ exerciseId, initial, onSaved }: BaselineEditorP
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="text-xs font-medium text-slate-600">Working Weight Min</label>
+          <label className="text-xs font-medium text-slate-600">
+            {isDumbbell ? "Working Weight Min (per DB)" : "Working Weight Min"}
+          </label>
           <input
             type="number"
             value={workingWeightMin}
@@ -101,7 +113,9 @@ export function BaselineEditor({ exerciseId, initial, onSaved }: BaselineEditorP
           />
         </div>
         <div>
-          <label className="text-xs font-medium text-slate-600">Working Weight Max</label>
+          <label className="text-xs font-medium text-slate-600">
+            {isDumbbell ? "Working Weight Max (per DB)" : "Working Weight Max"}
+          </label>
           <input
             type="number"
             value={workingWeightMax}
@@ -129,7 +143,9 @@ export function BaselineEditor({ exerciseId, initial, onSaved }: BaselineEditorP
           />
         </div>
         <div>
-          <label className="text-xs font-medium text-slate-600">Top Set Weight</label>
+          <label className="text-xs font-medium text-slate-600">
+            {isDumbbell ? "Top Set Weight (per DB)" : "Top Set Weight"}
+          </label>
           <input
             type="number"
             value={topSetWeight}

@@ -5,7 +5,7 @@
  * Supports indirect volume accounting, rotation memory, and Pareto optimization.
  */
 
-import type { Exercise, Muscle, EquipmentType, TrainingAge, Goals } from "../types";
+import type { Exercise, Muscle, Goals } from "../types";
 import type { BlockContext } from "../periodization/types";
 
 // ============================================================================
@@ -70,9 +70,6 @@ export interface SelectionConstraints {
   /** Maximum session duration in minutes */
   timeBudget: number;
 
-  /** Available equipment */
-  equipment: Set<EquipmentType>;
-
   /**
    * Exercise IDs excluded due to pain flags or recent pain signals
    * @see RejectionReason "pain_conflict"
@@ -84,20 +81,6 @@ export interface SelectionConstraints {
    * @see RejectionReason "user_avoided"
    */
   userAvoids: Set<string>;
-
-  /**
-   * Exercise IDs excluded due to equipment unavailability
-   * @see RejectionReason "equipment_unavailable"
-   * Note: Currently pre-filtered by equipment check, but included for explainability
-   */
-  equipmentUnavailable: Set<string>;
-
-  /**
-   * @deprecated Use specific constraint sets (painConflicts, userAvoids, equipmentUnavailable) instead.
-   * Maintained for backward compatibility during migration.
-   * Will be removed in Phase 3.
-   */
-  contraindications?: Set<string>;
 
   /** Minimum number of exercises */
   minExercises: number;
@@ -122,8 +105,8 @@ export interface SelectionConstraints {
  * - volumeDeficitFill: 0.40 (primary objective)
  * - rotationNovelty: 0.25 (force variety)
  * - sfrEfficiency: 0.15 (moderate)
- * - lengthenedBias: 0.10 (defer to Phase 4)
- * - movementDiversity: 0.05 (defer to Phase 4)
+ * - lengthenedBias: 0.20 (Phase 4: KB-confirmed per Maeo 2023)
+ * - movementDiversity: 0.15 (beam state-aware; dynamically re-scored during expansion)
  * - sraReadiness: 0.03 (advisory)
  * - userPreference: 0.02 (tiebreaker)
  */
@@ -325,7 +308,6 @@ export interface RejectedExercise {
  */
 export type RejectionReason =
   | "already_selected"
-  | "equipment_unavailable"
   | "contraindicated"
   | "time_budget_exceeded"
   | "volume_ceiling_reached"
@@ -369,7 +351,20 @@ export interface BeamState {
 
   /** Cumulative score */
   score: number;
+
+  /** Number of user-favorite exercises in this state (for tiebreaker) */
+  favoritesCount: number;
 }
+
+/**
+ * Score difference threshold for applying the favorites tiebreaker during
+ * beam pruning. When two beam states differ by less than this amount,
+ * the state containing more user-favorite exercises is preferred.
+ *
+ * 0.05 ≈ 5% of a single exercise's maximum contribution, so the tiebreaker
+ * fires only when states are genuinely equivalent in quality.
+ */
+export const BEAM_TIEBREAKER_EPSILON = 0.05;
 
 /**
  * Beam search configuration
@@ -398,8 +393,8 @@ export const DEFAULT_SELECTION_WEIGHTS: SelectionWeights = {
   volumeDeficitFill: 0.4, // Primary objective - fill volume deficits efficiently
   rotationNovelty: 0.25, // High weight - force variety across sessions
   sfrEfficiency: 0.15, // Moderate - efficiency matters
-  movementDiversity: 0.05, // Low - ineffective without beam state tracking (Phase 3)
-  lengthenedBias: 0.1, // Moderate - lengthened position bias
+  movementDiversity: 0.15, // Beam state-aware - dynamically re-scored during beam expansion
+  lengthenedBias: 0.20, // Phase 4: KB-confirmed per Maeo 2023 (+40% triceps growth overhead vs pushdown)
   sraReadiness: 0.03, // Advisory only
   userPreference: 0.02, // Tiebreaker
 };

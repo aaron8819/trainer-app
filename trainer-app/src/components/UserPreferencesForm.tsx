@@ -9,22 +9,27 @@ import type { ExerciseListItem } from "@/lib/exercise-library/types";
 
 type PreferenceFormValues = {
   userId?: string;
+  // Internal: names for display in the picker. Converted to IDs on submit.
   favoriteExercises: string[];
   avoidExercises: string[];
-  optionalConditioning: boolean;
+};
+
+type PreferenceInitialValues = {
+  userId?: string;
+  favoriteExerciseIds?: string[];
+  avoidExerciseIds?: string[];
 };
 
 const defaults: PreferenceFormValues = {
   favoriteExercises: [],
   avoidExercises: [],
-  optionalConditioning: true,
 };
 
 export default function UserPreferencesForm({
   initialValues,
   exercises,
 }: {
-  initialValues?: Partial<PreferenceFormValues>;
+  initialValues?: PreferenceInitialValues;
   exercises?: ExerciseListItem[];
 }) {
   const [status, setStatus] = useState<string | null>(null);
@@ -32,8 +37,22 @@ export default function UserPreferencesForm({
   const [favPickerOpen, setFavPickerOpen] = useState(false);
   const [avoidPickerOpen, setAvoidPickerOpen] = useState(false);
 
+  // Derive initial display names from stored IDs
+  const idToName = (id: string) => exercises?.find((e) => e.id === id)?.name;
+  const initialFavoriteNames = (initialValues?.favoriteExerciseIds ?? [])
+    .map(idToName)
+    .filter((n): n is string => Boolean(n));
+  const initialAvoidNames = (initialValues?.avoidExerciseIds ?? [])
+    .map(idToName)
+    .filter((n): n is string => Boolean(n));
+
   const form = useForm<PreferenceFormValues>({
-    defaultValues: { ...defaults, ...initialValues },
+    defaultValues: {
+      ...defaults,
+      userId: initialValues?.userId,
+      favoriteExercises: initialFavoriteNames,
+      avoidExercises: initialAvoidNames,
+    },
   });
 
   const sectionClassName = "rounded-2xl border border-slate-200 p-4 sm:p-6";
@@ -41,19 +60,23 @@ export default function UserPreferencesForm({
   const favorites = form.watch("favoriteExercises");
   const avoids = form.watch("avoidExercises");
 
+  const nameToId = (name: string) => exercises?.find((e) => e.name === name)?.id;
+
   const onSubmit = form.handleSubmit(async (values) => {
     setStatus(null);
     setError(null);
 
+    const favoriteExerciseIds = values.favoriteExercises
+      .map(nameToId)
+      .filter((id): id is string => Boolean(id));
+    const avoidExerciseIds = values.avoidExercises
+      .map(nameToId)
+      .filter((id): id is string => Boolean(id));
+
     const response = await fetch("/api/preferences", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        userId: values.userId,
-        favoriteExercises: values.favoriteExercises,
-        avoidExercises: values.avoidExercises,
-        optionalConditioning: values.optionalConditioning,
-      }),
+      body: JSON.stringify({ favoriteExerciseIds, avoidExerciseIds }),
     });
 
     if (!response.ok) {
@@ -107,10 +130,6 @@ export default function UserPreferencesForm({
               />
             </div>
           </div>
-          <label className="flex min-h-11 items-center gap-2 text-sm font-medium text-slate-700">
-            <input type="checkbox" {...form.register("optionalConditioning")} />
-            Suggest conditioning finishers if time remains
-          </label>
         </div>
       </section>
 

@@ -133,6 +133,20 @@ export async function POST(request: Request) {
         }
       }
 
+      // Persist filtered exercises (intent mode explainability)
+      await tx.filteredExercise.deleteMany({ where: { workoutId } });
+      if (parsed.data.filteredExercises?.length) {
+        await tx.filteredExercise.createMany({
+          data: parsed.data.filteredExercises.map((fe) => ({
+            workoutId,
+            exerciseId: fe.exerciseId ?? null,
+            exerciseName: fe.exerciseName,
+            reason: fe.reason,
+            userFriendlyMessage: fe.userFriendlyMessage,
+          })),
+        });
+      }
+
       if (status === WorkoutStatus.COMPLETED) {
         baselineSummary = await updateBaselinesFromWorkout(tx, workout.id, user.id);
       }

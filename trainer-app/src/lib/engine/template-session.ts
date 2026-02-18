@@ -1,7 +1,5 @@
 import type {
-  Constraints,
   Exercise,
-  EquipmentType,
   FatigueState,
   Goals,
   SessionCheckIn,
@@ -76,7 +74,6 @@ export function generateWorkoutFromTemplate(
     goals,
     history,
     exerciseLibrary,
-    preferences,
     checkIn,
     weekInBlock,
     mesocycleLength,
@@ -101,7 +98,6 @@ export function generateWorkoutFromTemplate(
       goals,
       fatigueState,
       mainLiftSlots.has(index),
-      preferences,
       periodization,
       options.setCountOverrides?.[input.exercise.id]
     )
@@ -110,15 +106,6 @@ export function generateWorkoutFromTemplate(
   // Flexible mode: suggest substitutions for exercises with pain flags
   const substitutions: SubstitutionSuggestion[] = [];
   if (options.isStrict === false && checkIn?.painFlags) {
-    const defaultConstraints: Constraints = {
-      daysPerWeek: 4,
-      sessionMinutes: 60,
-      splitType: "ppl",
-      availableEquipment: exerciseLibrary.length > 0
-        ? [...new Set(exerciseLibrary.flatMap((e) => e.equipment))]
-        : ["barbell", "dumbbell", "machine", "cable", "bodyweight"] as EquipmentType[],
-    };
-
     for (const we of workoutExercises) {
       const contra = we.exercise.contraindications as Record<string, unknown> | undefined;
       if (!contra) continue;
@@ -132,7 +119,6 @@ export function generateWorkoutFromTemplate(
         const subs = suggestSubstitutes(
           we.exercise,
           exerciseLibrary,
-          defaultConstraints,
           checkIn.painFlags
         );
         if (subs.length > 0) {
@@ -166,7 +152,14 @@ export function generateWorkoutFromTemplate(
     workoutExercises.filter((e) => !e.isMainLift),
     mainLifts,
     volumeContext
-  );
+  ).sort((a, b) => {
+    // W5: KB line 110 — order affects strength gains (ES=0.32); compound accessories first
+    const aIsCompound = a.exercise.isCompound ?? false;
+    const bIsCompound = b.exercise.isCompound ?? false;
+    if (aIsCompound && !bIsCompound) return -1;
+    if (!aIsCompound && bIsCompound) return 1;
+    return 0;
+  });
   const accessories = applyAccessorySupersetMetadata(finalAccessories);
 
   // Calculate estimated time (metadata only - no trimming)
@@ -231,7 +224,6 @@ function buildTemplateExercise(
   goals: Goals,
   fatigueState: FatigueState,
   isMainLift: boolean,
-  preferences?: UserPreferences,
   periodization?: PeriodizationModifiers,
   overrideSetCount?: number
 ): WorkoutExercise {
@@ -245,7 +237,6 @@ function buildTemplateExercise(
     profile.trainingAge,
     goals,
     fatigueState,
-    preferences,
     periodization,
     exerciseRepRange,
     !isMainLift && !(exercise.isCompound ?? false),

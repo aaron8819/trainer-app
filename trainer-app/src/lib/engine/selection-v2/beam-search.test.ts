@@ -43,8 +43,8 @@ describe("beamSearch", () => {
         ])
       ),
       timeBudget,
-      equipment: new Set(["barbell", "dumbbell"]),
-      contraindications: new Set(),
+      painConflicts: new Set(),
+      userAvoids: new Set(),
       minExercises: 1,
       maxExercises: 8,
       minMainLifts: 1, // Default to requiring at least 1 main lift
@@ -606,5 +606,168 @@ describe("beamSearch", () => {
 
     // Should fit within budget
     expect(result.timeUsed).toBeLessThanOrEqual(30);
+  });
+
+  it("should prefer favorite exercises as tiebreaker when scores are within epsilon", () => {
+    const muscle = "Chest" as Muscle;
+    const cableFly = createMockExercise("cable_fly", [muscle]);
+    const inclinePress = createMockExercise("incline_press", [muscle]);
+
+    const objective = createMockObjective(new Map([[muscle, 3]]), 60);
+    // cable_fly is a favorite; incline_press is neutral
+    objective.preferences.favoriteExerciseIds = new Set(["cable_fly"]);
+    // Ceiling: 5 sets — selecting either exercise (3 sets) fills the slot;
+    // adding both would exceed ceiling, so beam picks exactly one.
+    objective.constraints.volumeCeiling = new Map([[muscle, 5]]);
+    objective.constraints.minMainLifts = 0;
+    objective.constraints.minAccessories = 0;
+    objective.constraints.minExercises = 1;
+    objective.constraints.maxExercises = 2;
+
+    // Build candidates with preset totalScores:
+    // incline_press (neutral) scores slightly higher (0.82) than cable_fly (favorite, 0.80).
+    // Difference = 0.02 < BEAM_TIEBREAKER_EPSILON (0.05) → tiebreaker fires → favorite wins.
+    const makeCandidateWithScore = (exercise: Exercise, totalScore: number): SelectionCandidate => ({
+      exercise,
+      proposedSets: 3,
+      volumeContribution: new Map([[muscle, { direct: 3, indirect: 0 }]]),
+      timeContribution: 5,
+      scores: {
+        deficitFill: 0.5,
+        rotationNovelty: 0.5,
+        sfrScore: 0.5,
+        lengthenedScore: 0.5,
+        movementNovelty: 0.5,
+        sraAlignment: 0.5,
+        userPreference: totalScore,
+      },
+      totalScore,
+    });
+
+    const favoriteCand = makeCandidateWithScore(cableFly, 0.80);
+    const neutralCand = makeCandidateWithScore(inclinePress, 0.82);
+
+    const result = beamSearch([favoriteCand, neutralCand], objective, {
+      beamWidth: 2,
+      maxDepth: 2,
+    });
+
+    // After depth-1, two beam states exist:
+    //   State A: [cable_fly],    score=0.80, favoritesCount=1
+    //   State B: [incline_press], score=0.82, favoritesCount=0
+    // |0.82 - 0.80| = 0.02 < 0.05 (epsilon) → secondary sort by favoritesCount
+    // State A survives pruning at beamWidth=2 (both survive) but State A is ranked first.
+    // At depth-2, both states try to add the other exercise but ceiling prevents it.
+    // Final best beam = State A → cable_fly is the result.
+    expect(result.selected.length).toBe(1);
+    expect(result.selected[0].exercise.id).toBe("cable_fly");
+  });
+
+  it("should NOT apply tiebreaker when score difference exceeds epsilon", () => {
+    const muscle = "Chest" as Muscle;
+    const cableFly = createMockExercise("cable_fly", [muscle]);
+    const inclinePress = createMockExercise("incline_press", [muscle]);
+
+    const objective = createMockObjective(new Map([[muscle, 3]]), 60);
+    objective.preferences.favoriteExerciseIds = new Set(["cable_fly"]);
+    objective.constraints.volumeCeiling = new Map([[muscle, 5]]);
+    objective.constraints.minMainLifts = 0;
+    objective.constraints.minAccessories = 0;
+    objective.constraints.minExercises = 1;
+    objective.constraints.maxExercises = 2;
+
+    const makeCandidateWithScore = (exercise: Exercise, totalScore: number): SelectionCandidate => ({
+      exercise,
+      proposedSets: 3,
+      volumeContribution: new Map([[muscle, { direct: 3, indirect: 0 }]]),
+      timeContribution: 5,
+      scores: {
+        deficitFill: 0.5,
+        rotationNovelty: 0.5,
+        sfrScore: 0.5,
+        lengthenedScore: 0.5,
+        movementNovelty: 0.5,
+        sraAlignment: 0.5,
+        userPreference: totalScore,
+      },
+      totalScore,
+    });
+
+    // incline_press (neutral) is clearly better: 0.92 vs 0.80 (gap = 0.12 > epsilon 0.05)
+    const favoriteCand = makeCandidateWithScore(cableFly, 0.80);
+    const neutralCand = makeCandidateWithScore(inclinePress, 0.92);
+
+    const result = beamSearch([favoriteCand, neutralCand], objective, {
+      beamWidth: 2,
+      maxDepth: 2,
+    });
+
+    // Score gap (0.12) exceeds epsilon (0.05) → tiebreaker does NOT fire → neutral wins
+    expect(result.selected.length).toBe(1);
+    expect(result.selected[0].exercise.id).toBe("incline_press");
+  });
+
+  it("C1b: blocks triceps isolation when 2 pressing compounds already provide 10 direct sets (ceiling 12)", () => {
+    // Scenario mirrors the acc53ddb audit finding:
+    // BBP (5 direct) + Dip (5 direct) = 10 direct triceps sets.
+    // A 3-set isolation would reach 13 > 12 → blocked.
+    // A 2-set isolation would reach 12 ≤ 12 → allowed.
+
+    const makeTricepsCandidate = (
+      id: string,
+      directSets: number,
+      isCompound: boolean
+    ): SelectionCandidate => ({
+      exercise: {
+        ...createMockExercise(id, ["Triceps" as Muscle]),
+        isCompound,
+        isMainLiftEligible: false,
+      },
+      proposedSets: directSets,
+      volumeContribution: new Map([["Triceps" as Muscle, { direct: directSets, indirect: 0 }]]),
+      timeContribution: directSets * 1.5,
+      scores: {
+        deficitFill: 0.8,
+        rotationNovelty: 0.8,
+        sfrScore: 0.8,
+        lengthenedScore: 0.8,
+        movementNovelty: 0.5,
+        sraAlignment: 0.8,
+        userPreference: 0.5,
+      },
+      totalScore: 0.8,
+    });
+
+    const compound1 = makeTricepsCandidate("bench_press", 5, true);
+    const compound2 = makeTricepsCandidate("dip", 5, true);
+    const isolation3 = makeTricepsCandidate("skull_crusher_3", 3, false);
+    const isolation2 = makeTricepsCandidate("skull_crusher_2", 2, false);
+
+    const tricepsTarget = new Map([["Triceps" as Muscle, 20]]);
+    const baseObjective = (): ReturnType<typeof createMockObjective> => {
+      const obj = createMockObjective(tricepsTarget, 120);
+      obj.constraints.volumeCeiling = new Map([["Triceps" as Muscle, 50]]); // no weekly ceiling interference
+      obj.constraints.minMainLifts = 0;
+      obj.constraints.minAccessories = 0;
+      obj.constraints.minExercises = 1;
+      obj.constraints.maxExercises = 5;
+      return obj;
+    };
+
+    // Case A: 5+5+3=13 > 12 — 3-set isolation must be blocked
+    const resultBlocked = beamSearch(
+      [compound1, compound2, isolation3],
+      baseObjective(),
+      { beamWidth: 5, maxDepth: 5 }
+    );
+    expect(resultBlocked.selected.map((c) => c.exercise.id)).not.toContain("skull_crusher_3");
+
+    // Case B: 5+5+2=12 ≤ 12 — 2-set isolation must be allowed
+    const resultAllowed = beamSearch(
+      [compound1, compound2, isolation2],
+      baseObjective(),
+      { beamWidth: 5, maxDepth: 5 }
+    );
+    expect(resultAllowed.selected.map((c) => c.exercise.id)).toContain("skull_crusher_2");
   });
 });

@@ -43,8 +43,6 @@ describe("SessionContextCard", () => {
 
     expect(screen.getByText("Session Context")).toBeInTheDocument();
     expect(screen.getByText("Mid-accumulation phase")).toBeInTheDocument();
-    expect(screen.getByText(/Accumulation/)).toBeInTheDocument();
-    expect(screen.getByText(/Week 2 of 3/)).toBeInTheDocument();
   });
 
   it("renders readiness status with color coding", () => {

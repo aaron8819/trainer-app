@@ -200,9 +200,6 @@ export function mapConstraints(constraints: ConstraintsRecord): Constraints {
     daysPerWeek: constraints.daysPerWeek,
     sessionMinutes: constraints.sessionMinutes,
     splitType: constraints.splitType.toLowerCase() as Constraints["splitType"],
-    availableEquipment: (constraints.availableEquipment ?? []).map((value) =>
-      value.toLowerCase()
-    ) as Constraints["availableEquipment"],
   };
 }
 
@@ -282,22 +279,16 @@ export function mapHistory(workouts: WorkoutWithRelations[]): WorkoutHistoryEntr
 }
 
 export function mapPreferences(preferences: {
-  favoriteExercises: string[];
-  avoidExercises: string[];
   favoriteExerciseIds?: string[];
   avoidExerciseIds?: string[];
-  optionalConditioning: boolean;
 } | null): UserPreferences | undefined {
   if (!preferences) {
     return undefined;
   }
 
   return {
-    favoriteExercises: preferences.favoriteExercises ?? [],
-    avoidExercises: preferences.avoidExercises ?? [],
     favoriteExerciseIds: preferences.favoriteExerciseIds ?? [],
     avoidExerciseIds: preferences.avoidExerciseIds ?? [],
-    optionalConditioning: preferences.optionalConditioning ?? undefined,
   };
 }
 

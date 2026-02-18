@@ -146,10 +146,9 @@ export function scoreLengthened(exercise: Exercise): number {
  * Penalizes exercises with movement patterns already selected.
  * This prevents redundant patterns (e.g., 3 OHP variations in one workout).
  *
- * Note: This is a simplified version that doesn't track beam state.
- * For now, we rely on the beam search to naturally diversify patterns
- * through the weighted total score. A full implementation would require
- * passing selected exercises into this function.
+ * When called with `alreadySelected`, computes overlap with the current
+ * beam state and returns lower scores for exercises that repeat patterns
+ * already covered.
  *
  * Example:
  * - Already selected: Bench Press (horizontal push)
@@ -159,20 +158,21 @@ export function scoreLengthened(exercise: Exercise): number {
  *
  * @param exercise - Exercise to score
  * @param objective - Selection objective
- * @returns Score 0-1 (1.0 = all patterns novel)
+ * @param alreadySelected - Exercises already selected in current beam state
+ * @returns Score 0-1 (1.0 = all patterns novel, 0.0 = all patterns already covered)
  */
 export function scoreMovementNovelty(
   exercise: Exercise,
-  objective: SelectionObjective
+  objective: SelectionObjective,
+  alreadySelected: Exercise[] = []
 ): number {
-  // Simplified scoring: exercises with more movement patterns score higher
-  // (more versatile exercises get bonus)
-  const patternCount = exercise.movementPatterns?.length ?? 1;
+  const myPatterns = new Set(exercise.movementPatterns ?? []);
+  if (myPatterns.size === 0) return 0.5;
 
-  // Normalize: 1 pattern = 0.5, 2+ patterns = 0.8, 3+ patterns = 1.0
-  if (patternCount >= 3) return 1.0;
-  if (patternCount === 2) return 0.8;
-  return 0.5;
+  const usedPatterns = new Set(alreadySelected.flatMap((e) => e.movementPatterns ?? []));
+  const overlap = [...myPatterns].filter((p) => usedPatterns.has(p)).length;
+  const novelPatterns = myPatterns.size - overlap;
+  return novelPatterns / myPatterns.size;
 }
 
 /**

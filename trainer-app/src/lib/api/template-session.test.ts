@@ -119,7 +119,6 @@ describe("generateSessionFromTemplate", () => {
       daysPerWeek: 4,
       sessionMinutes: 90,
       splitType: "upper_lower",
-      availableEquipment: ["barbell", "dumbbell"],
     });
     mapExercisesMock.mockReturnValue([bench, dumbbellPress, thirdMainLift]);
     mapHistoryMock.mockReturnValue(history);
@@ -472,11 +471,11 @@ describe("generateSessionFromTemplate", () => {
         avoidExerciseIds: [dumbbellPress.id],
       });
 
-      // Mock check-in with pain flag for bench
+      // Mock check-in with shoulder pain (bench has contraindications: { shoulder: true })
       mapCheckInMock.mockReturnValue({
         date: new Date().toISOString(),
         painFlags: {
-          [bench.id]: 3, // High pain flag (>= 2 triggers contraindication)
+          shoulder: 3, // Body-part key (>= 2) → resolves to exercises with contraindications.shoulder
         },
       });
 

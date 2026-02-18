@@ -75,7 +75,7 @@ describe("prescribeSetsReps with exerciseRepRange", () => {
     const exerciseRange: ExerciseRepRange = { min: 8, max: 12 };
     const sets = prescribeSetsReps(
       true, "intermediate", hypertrophyGoals, defaultFatigue,
-      undefined, undefined, exerciseRange
+      undefined, exerciseRange
     );
     expect(sets[0].targetReps).toBe(8);
   });
@@ -85,7 +85,7 @@ describe("prescribeSetsReps with exerciseRepRange", () => {
     const exerciseRange: ExerciseRepRange = { min: 10, max: 15 };
     const sets = prescribeSetsReps(
       true, "intermediate", strengthGoals, defaultFatigue,
-      undefined, undefined, exerciseRange
+      undefined, exerciseRange
     );
     expect(sets[0].targetReps).toBe(10);
   });
@@ -95,7 +95,7 @@ describe("prescribeSetsReps with exerciseRepRange", () => {
     const exerciseRange: ExerciseRepRange = { min: 12, max: 20 };
     const sets = prescribeSetsReps(
       false, "intermediate", hypertrophyGoals, defaultFatigue,
-      undefined, undefined, exerciseRange
+      undefined, exerciseRange
     );
     expect(sets[0].targetReps).toBe(12);
     expect(sets[0].targetRepRange).toEqual({ min: 12, max: 15 });
@@ -106,7 +106,7 @@ describe("prescribeSetsReps with exerciseRepRange", () => {
     const exerciseRange: ExerciseRepRange = { min: 1, max: 30 };
     const sets = prescribeSetsReps(
       true, "intermediate", hypertrophyGoals, defaultFatigue,
-      undefined, undefined, exerciseRange
+      undefined, exerciseRange
     );
     expect(sets[0].targetReps).toBe(6);
     expect(sets[0].targetRepRange).toBeUndefined();
@@ -132,7 +132,6 @@ describe("prescribeSetsReps with exerciseRepRange", () => {
       strengthGoals,
       defaultFatigue,
       undefined,
-      undefined,
       exerciseRange
     );
 
@@ -147,7 +146,6 @@ describe("prescribeSetsReps with exerciseRepRange", () => {
       "intermediate",
       hypertrophyGoals,
       defaultFatigue,
-      undefined,
       undefined,
       exerciseRange
     );
@@ -193,7 +191,6 @@ describe("prescribeSetsReps with exerciseRepRange", () => {
       hypertrophyGoals,
       defaultFatigue,
       undefined,
-      undefined,
       { min: 9, max: 10 }
     );
 
@@ -229,7 +226,6 @@ describe("prescribeSetsReps target RPE", () => {
       defaultFatigue,
       undefined,
       undefined,
-      undefined,
       true
     );
 
@@ -261,6 +257,18 @@ describe("getRestSeconds", () => {
     equipment: ["dumbbell"],
   };
 
+  const compoundAccessory: Exercise = {
+    id: "dip",
+    name: "Dip",
+    movementPatterns: ["horizontal_push"],
+    splitTags: ["push"],
+    jointStress: "medium",
+    isMainLiftEligible: false,
+    isCompound: true,
+    fatigueCost: 3,
+    equipment: ["bodyweight"],
+  };
+
   it("uses 90 seconds as the isolation rest floor", () => {
     expect(getRestSeconds(isolationExercise, false, 15)).toBe(90);
   });
@@ -269,6 +277,14 @@ describe("getRestSeconds", () => {
     expect(
       getRestSeconds({ ...isolationExercise, fatigueCost: 3 }, false, 15)
     ).toBe(90);
+  });
+
+  it("uses 150 seconds for compound accessories regardless of rep count", () => {
+    // KB: compound accessories require 2–3 min at all rep ranges (W5 audit fix)
+    expect(getRestSeconds(compoundAccessory, false, 6)).toBe(150);
+    expect(getRestSeconds(compoundAccessory, false, 8)).toBe(150);
+    expect(getRestSeconds(compoundAccessory, false, 10)).toBe(150);
+    expect(getRestSeconds(compoundAccessory, false, 12)).toBe(150);
   });
 });
 
@@ -310,7 +326,6 @@ describe("resolveSetCount", () => {
         "intermediate",
         fatLossGoals,
         defaultFatigue,
-        undefined,
         {
           rpeOffset: 0,
           setMultiplier: 1.3,

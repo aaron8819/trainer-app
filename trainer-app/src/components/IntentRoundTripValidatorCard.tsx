@@ -8,6 +8,7 @@ import {
   parseExplainabilitySelectionMetadata,
 } from "@/lib/ui/explainability";
 import { AutoregulationDisplay } from "./AutoregulationDisplay";
+import type { FilteredExerciseSummary } from "@/lib/engine/explainability";
 
 type SessionIntent = "push" | "pull" | "legs" | "upper" | "lower" | "full_body" | "body_part";
 
@@ -41,6 +42,7 @@ type GeneratedMetadata = {
   selectionMode?: "AUTO" | "INTENT";
   sessionIntent?: SessionIntent;
   selection?: unknown;
+  filteredExercises?: FilteredExerciseSummary[];
 };
 
 type FatigueScore = {
@@ -383,6 +385,7 @@ export function IntentRoundTripValidatorCard() {
       selectionMode: body.selectionMode,
       sessionIntent: body.sessionIntent,
       selection: body.selection,
+      filteredExercises: body.filteredExercises ?? [],
     });
     setAutoregulation(body.autoregulation ?? null);
     setLoading(false);
@@ -403,6 +406,7 @@ export function IntentRoundTripValidatorCard() {
       selectionMode: generatedMetadata?.selectionMode ?? "INTENT",
       sessionIntent: toDbSessionIntent(generatedMetadata?.sessionIntent ?? intent),
       selectionMetadata: generatedMetadata?.selection,
+      filteredExercises: generatedMetadata?.filteredExercises,
       advancesSplit: true,
       exercises: [
         ...workout.mainLifts.map((exercise) => ({ ...exercise, section: "MAIN" as const })),

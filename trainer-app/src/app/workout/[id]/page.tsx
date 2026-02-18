@@ -8,6 +8,7 @@ import type { WorkoutExplanation as WorkoutExplanationType } from "@/lib/engine/
 import { PrimaryGoal, TrainingAge } from "@prisma/client";
 import type { Prisma } from "@prisma/client";
 import { WorkoutExplanation } from "@/components/WorkoutExplanation";
+import { isDumbbellEquipment, formatLoad, formatBaselineRange } from "@/lib/ui/load-display";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -79,15 +80,12 @@ const hasBodyweightEquipment = (exercise: {
     (item) => item.equipment.type.toLowerCase() === "bodyweight"
   );
 
-const formatLoadDisplay = (targetLoad: number | null | undefined, isBodyweight: boolean) => {
-  if (targetLoad !== null && targetLoad !== undefined) {
-    return `${targetLoad} lbs`;
-  }
-  if (isBodyweight) {
-    return "BW";
-  }
-  return undefined;
-};
+const hasDumbbellEquipment = (exercise: {
+  exerciseEquipment?: { equipment: { type: string } }[];
+}) =>
+  isDumbbellEquipment(
+    (exercise.exerciseEquipment ?? []).map((item) => item.equipment.type)
+  );
 
 
 function buildBaselineSummary({
@@ -199,7 +197,7 @@ function buildBaselineSummary({
     if (baseline?.topSetWeight && bestSet.actualLoad <= baseline.topSetWeight) {
       skippedItems.push({
         exerciseName: exercise.exercise.name,
-        reason: "Not above current baseline top set.",
+        reason: `Best set: ${bestSet.actualLoad} lbs × ${bestSet.actualReps} reps. Baseline top set: ${baseline.topSetWeight} lbs. No improvement.`,
       });
       skipped += 1;
       continue;
@@ -389,22 +387,26 @@ export default async function WorkoutDetailPage({
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-sm uppercase tracking-wide text-slate-500">Workout</p>
-            <h1 className="page-title mt-1.5">Session Overview</h1>
+            <h1 className="page-title mt-1.5">
+              {workout.status === "COMPLETED" ? "Session Review" : "Session Overview"}
+            </h1>
             <p className="mt-1.5 text-sm text-slate-600">
               Estimated {workout.estimatedMinutes ?? "--"} minutes
             </p>
           </div>
-          <Link
-            className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-slate-300 px-5 py-2 text-sm font-semibold sm:w-auto"
-            href={`/log/${workout.id}`}
-          >
-            Start logging
-          </Link>
+          {workout.status !== "COMPLETED" && workout.status !== "SKIPPED" && (
+            <Link
+              className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-slate-300 px-5 py-2 text-sm font-semibold sm:w-auto"
+              href={`/log/${workout.id}`}
+            >
+              Start logging
+            </Link>
+          )}
         </div>
 
         <section className="mt-6 space-y-6 sm:mt-8 sm:space-y-8">
           <WorkoutExplanation workoutId={workout.id} explanation={explanation} />
-          {baselineSummary.evaluatedExercises > 0 ? (
+          {workout.status === "COMPLETED" && baselineSummary.evaluatedExercises > 0 ? (
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm sm:p-5">
               <p className="font-semibold text-slate-900">Baseline updates</p>
               <p className="mt-1 text-slate-600">
@@ -439,27 +441,36 @@ export default async function WorkoutDetailPage({
               ) : null}
             </div>
           ) : null}
-          {sectionedExercises.map((section) => (
+          {sectionedExercises.filter((section) => section.items.length > 0).map((section) => (
             <div key={section.label} className="space-y-3 sm:space-y-4">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">{section.label}</h2>
-              {section.items.length === 0 ? (
-                <p className="text-sm text-slate-500">No exercises in this section.</p>
-              ) : (
+              {(
                 section.items.map((exercise) => {
                   const baseline = findBaseline(exercise.exercise.name);
                   const isBodyweightExercise = hasBodyweightEquipment(exercise.exercise);
+                  const isDumbbellExercise = hasDumbbellEquipment(exercise.exercise);
                   const baselineRange =
                     baseline &&
                     baseline.workingWeightMin !== null &&
                     baseline.workingWeightMax !== null
-                      ? `${baseline.workingWeightMin}-${baseline.workingWeightMax} lbs`
+                      ? formatBaselineRange(baseline.workingWeightMin, baseline.workingWeightMax, isDumbbellExercise)
                       : baseline?.topSetWeight
-                      ? `${baseline.topSetWeight} lbs`
+                      ? formatLoad(baseline.topSetWeight, isDumbbellExercise, false)
                       : undefined;
                   const targetLoad = exercise.sets[0]?.targetLoad;
-                  const topSetLoadDisplay = formatLoadDisplay(targetLoad, isBodyweightExercise);
+                  const topSetLoadDisplay = formatLoad(targetLoad, isDumbbellExercise, isBodyweightExercise);
+                  const backOffSets = exercise.sets.slice(1);
+                  const hasBackOff =
+                    backOffSets.length > 0 &&
+                    (backOffSets[0]?.targetReps !== exercise.sets[0]?.targetReps ||
+                      backOffSets[0]?.targetLoad !== exercise.sets[0]?.targetLoad);
+                  const backOffLoadDisplay = hasBackOff
+                    ? formatLoad(backOffSets[0]?.targetLoad, isDumbbellExercise, isBodyweightExercise)
+                    : null;
                   const loadNote = targetLoad !== null && targetLoad !== undefined
-                    ? `Load seeded from baseline${baselineRange ? ` (${baselineRange})` : ""}.`
+                    ? baseline
+                      ? `Your baseline: ${baselineRange ?? "on file"}.`
+                      : "Estimated load (no baseline on file)."
                     : isBodyweightExercise
                     ? "Bodyweight movement (BW). Add load during logging only for weighted variations."
                     : "Load to be chosen during logging (no baseline match).";
@@ -483,20 +494,27 @@ export default async function WorkoutDetailPage({
                         <div>
                           <h3 className="text-lg font-semibold">{exercise.exercise.name}</h3>
                           <p className="mt-1 text-sm leading-6 text-slate-600">
-                            {exercise.sets.length} sets - {formatTargetRepDisplay(exercise.sets[0])}
-                            {topSetLoadDisplay ? ` | ${topSetLoadDisplay}` : ""}
-                            {exercise.sets[0]?.targetRpe ? ` | RPE ${exercise.sets[0].targetRpe}` : ""}
+                            {hasBackOff ? (
+                              <>
+                                {`Top set: ${formatTargetRepDisplay(exercise.sets[0])}`}
+                                {topSetLoadDisplay ? ` | ${topSetLoadDisplay}` : ""}
+                                {exercise.sets[0]?.targetRpe ? ` | RPE ${exercise.sets[0].targetRpe}` : ""}
+                                {` + ${backOffSets.length}× back-off`}
+                                {backOffLoadDisplay ? `: ${formatTargetRepDisplay(backOffSets[0])} | ${backOffLoadDisplay}` : ""}
+                              </>
+                            ) : (
+                              <>
+                                {`${exercise.sets.length} sets – ${formatTargetRepDisplay(exercise.sets[0])}`}
+                                {topSetLoadDisplay ? ` | ${topSetLoadDisplay}` : ""}
+                                {exercise.sets[0]?.targetRpe ? ` | RPE ${exercise.sets[0].targetRpe}` : ""}
+                              </>
+                            )}
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
                           <span className="text-xs uppercase tracking-wide text-slate-500">
                             {roleLabel}
                           </span>
-                          {primaryReason ? (
-                            <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
-                              KB-backed
-                            </span>
-                          ) : null}
                         </div>
                       </div>
                       <p className="mt-2 text-xs text-slate-500">
@@ -516,11 +534,17 @@ export default async function WorkoutDetailPage({
                           const repDiff = isCompleted && log && !log.wasSkipped
                             ? (log.actualReps ?? 0) - (set.targetReps ?? 0)
                             : null;
+                          const loadMiss =
+                            log?.actualLoad != null && set.targetLoad != null
+                              ? log.actualLoad < set.targetLoad * 0.9
+                              : false;
                           const actualColor =
                             repDiff === null
                               ? "text-slate-500"
-                              : repDiff >= 0
+                              : repDiff >= 0 && !loadMiss
                               ? "text-emerald-700"
+                              : repDiff >= 0 && loadMiss
+                              ? "text-amber-700"
                               : repDiff === -1
                               ? "text-amber-700"
                               : "text-rose-700";
@@ -530,28 +554,35 @@ export default async function WorkoutDetailPage({
                               className="rounded-lg bg-slate-50 px-3 py-2"
                             >
                               <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                                <span>Set {set.setIndex}</span>
+                                <span>{set.setIndex === 1 ? "Top set" : `Set ${set.setIndex}`}</span>
                                 <span className="text-slate-700">
                                   {formatTargetRepDisplay(set)}
-                                  {formatLoadDisplay(set.targetLoad, isBodyweightExercise)
-                                    ? ` | ${formatLoadDisplay(set.targetLoad, isBodyweightExercise)}`
+                                  {formatLoad(set.targetLoad, isDumbbellExercise, isBodyweightExercise)
+                                    ? ` | ${formatLoad(set.targetLoad, isDumbbellExercise, isBodyweightExercise)}`
                                     : ""}
                                   {set.targetRpe ? ` | RPE ${set.targetRpe}` : ""}
                                 </span>
                               </div>
                               {isCompleted && log ? (
-                                <div className={`mt-0.5 text-xs font-medium ${actualColor}`}>
-                                  {log.wasSkipped
-                                    ? "Actual: Skipped"
-                                    : [
-                                        `Actual: ${log.actualReps ?? "?"} reps`,
-                                        log.actualLoad != null ? `${log.actualLoad} lbs` : null,
-                                        log.actualRpe != null ? `RPE ${log.actualRpe}` : null,
-                                      ]
-                                        .filter(Boolean)
-                                        .join(" | ")}
-                                  {!log.wasSkipped && repDiff !== null && repDiff >= 0 ? " ✓" : ""}
-                                </div>
+                                <>
+                                  <div className={`mt-0.5 text-xs font-medium ${actualColor}`}>
+                                    {log.wasSkipped
+                                      ? "Actual: Skipped"
+                                      : [
+                                          `Actual: ${log.actualReps ?? "?"} reps`,
+                                          log.actualLoad != null ? formatLoad(log.actualLoad, isDumbbellExercise, false) : null,
+                                          log.actualRpe != null ? `RPE ${log.actualRpe}` : null,
+                                        ]
+                                          .filter(Boolean)
+                                          .join(" | ")}
+                                    {!log.wasSkipped && repDiff !== null && repDiff >= 0 && !loadMiss ? " ✓" : ""}
+                                  </div>
+                                  {loadMiss && !log.wasSkipped && log.actualLoad != null && set.targetLoad != null ? (
+                                    <div className="mt-0.5 text-xs text-slate-500">
+                                      {`Load: ${log.actualLoad} / ${set.targetLoad} lbs (${Math.round(((log.actualLoad - set.targetLoad) / set.targetLoad) * 100)}%)`}
+                                    </div>
+                                  ) : null}
+                                </>
                               ) : null}
                             </div>
                           );

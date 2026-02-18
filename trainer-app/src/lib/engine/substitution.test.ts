@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { suggestSubstitutes } from "./substitution";
-import type { Constraints, Exercise } from "./types";
+import type { Exercise } from "./types";
 
 const baseExercise: Exercise = {
   id: "target",
@@ -14,13 +14,6 @@ const baseExercise: Exercise = {
   equipment: ["barbell"],
   primaryMuscles: ["chest", "triceps"],
   stimulusBias: ["mechanical"],
-};
-
-const constraints: Constraints = {
-  daysPerWeek: 4,
-  sessionMinutes: 60,
-  splitType: "ppl",
-  availableEquipment: ["barbell", "dumbbell", "cable", "machine"],
 };
 
 function makeExercise(overrides: Partial<Exercise> & { id: string; name: string }): Exercise {
@@ -52,7 +45,7 @@ describe("suggestSubstitutes", () => {
       }),
     ];
 
-    const result = suggestSubstitutes(baseExercise, library, constraints);
+    const result = suggestSubstitutes(baseExercise, library);
     expect(result[0].id).toBe("pattern-match");
   });
 
@@ -72,7 +65,7 @@ describe("suggestSubstitutes", () => {
       }),
     ];
 
-    const result = suggestSubstitutes(baseExercise, library, constraints);
+    const result = suggestSubstitutes(baseExercise, library);
     expect(result[0].id).toBe("muscle-match");
   });
 
@@ -94,7 +87,7 @@ describe("suggestSubstitutes", () => {
       }),
     ];
 
-    const result = suggestSubstitutes(baseExercise, library, constraints);
+    const result = suggestSubstitutes(baseExercise, library);
     expect(result[0].id).toBe("stim-match");
   });
 
@@ -108,20 +101,20 @@ describe("suggestSubstitutes", () => {
       })
     );
 
-    const result = suggestSubstitutes(baseExercise, library, constraints);
+    const result = suggestSubstitutes(baseExercise, library);
     expect(result).toHaveLength(3);
   });
 
-  it("returns empty array when no candidates match", () => {
+  it("returns empty array when no candidates match split tag", () => {
     const library: Exercise[] = [
       makeExercise({
-        id: "wrong-equip",
-        name: "Sled Press",
-        equipment: ["sled"],
+        id: "wrong-split",
+        name: "Leg Press",
+        splitTags: ["legs"], // doesn't match "push"
       }),
     ];
 
-    const result = suggestSubstitutes(baseExercise, library, constraints);
+    const result = suggestSubstitutes(baseExercise, library);
     expect(result).toHaveLength(0);
   });
 
@@ -143,7 +136,7 @@ describe("suggestSubstitutes", () => {
       }),
     ];
 
-    const result = suggestSubstitutes(baseExercise, library, constraints);
+    const result = suggestSubstitutes(baseExercise, library);
     expect(result.map((e) => e.id)).not.toContain("blocked");
     expect(result.map((e) => e.id)).toContain("allowed");
   });
@@ -159,7 +152,7 @@ describe("suggestSubstitutes", () => {
       }),
     ];
 
-    const result = suggestSubstitutes(baseExercise, library, constraints);
+    const result = suggestSubstitutes(baseExercise, library);
     expect(result.map((e) => e.id)).not.toContain("target");
   });
 
@@ -180,8 +173,94 @@ describe("suggestSubstitutes", () => {
       }),
     ];
 
-    const result = suggestSubstitutes(baseExercise, library, constraints, { elbow: 2 });
+    const result = suggestSubstitutes(baseExercise, library, { elbow: 2 });
     expect(result.map((e) => e.id)).not.toContain("contra");
     expect(result.map((e) => e.id)).toContain("safe");
+  });
+
+  it("filters knee-contraindicated exercises when knee pain >= 2", () => {
+    const library: Exercise[] = [
+      makeExercise({
+        id: "knee-contra",
+        name: "Leg Extension",
+        splitTags: ["push"],
+        movementPatterns: ["horizontal_push"],
+        primaryMuscles: ["chest"],
+        contraindications: { knee: true },
+      }),
+      makeExercise({
+        id: "safe",
+        name: "Dumbbell Press",
+        movementPatterns: ["horizontal_push"],
+        primaryMuscles: ["chest"],
+      }),
+    ];
+
+    const result = suggestSubstitutes(baseExercise, library, { knee: 2 });
+    expect(result.map((e) => e.id)).not.toContain("knee-contra");
+    expect(result.map((e) => e.id)).toContain("safe");
+  });
+
+  it("filters wrist-contraindicated exercises when wrist pain >= 2", () => {
+    const library: Exercise[] = [
+      makeExercise({
+        id: "wrist-contra",
+        name: "Front Squat",
+        splitTags: ["push"],
+        movementPatterns: ["horizontal_push"],
+        primaryMuscles: ["chest"],
+        contraindications: { wrist: true },
+      }),
+      makeExercise({
+        id: "safe",
+        name: "Dumbbell Press",
+        movementPatterns: ["horizontal_push"],
+        primaryMuscles: ["chest"],
+      }),
+    ];
+
+    const result = suggestSubstitutes(baseExercise, library, { wrist: 2 });
+    expect(result.map((e) => e.id)).not.toContain("wrist-contra");
+    expect(result.map((e) => e.id)).toContain("safe");
+  });
+
+  it("filters hip-contraindicated exercises when hip pain >= 2", () => {
+    const library: Exercise[] = [
+      makeExercise({
+        id: "hip-contra",
+        name: "Hip Thrust",
+        splitTags: ["push"],
+        movementPatterns: ["horizontal_push"],
+        primaryMuscles: ["chest"],
+        contraindications: { hip: true },
+      }),
+      makeExercise({
+        id: "safe",
+        name: "Dumbbell Press",
+        movementPatterns: ["horizontal_push"],
+        primaryMuscles: ["chest"],
+      }),
+    ];
+
+    const result = suggestSubstitutes(baseExercise, library, { hip: 2 });
+    expect(result.map((e) => e.id)).not.toContain("hip-contra");
+    expect(result.map((e) => e.id)).toContain("safe");
+  });
+
+  it("does not filter contraindicated exercises when pain severity < 2", () => {
+    const library: Exercise[] = [
+      makeExercise({
+        id: "knee-contra",
+        name: "Leg Extension",
+        splitTags: ["push"],
+        movementPatterns: ["horizontal_push"],
+        primaryMuscles: ["chest"],
+        contraindications: { knee: true },
+      }),
+    ];
+
+    // severity 1 — should NOT be filtered
+    const result = suggestSubstitutes(baseExercise, library, { knee: 1 });
+    expect(result.map((e) => e.id)).toContain("knee-contra");
   });
 });

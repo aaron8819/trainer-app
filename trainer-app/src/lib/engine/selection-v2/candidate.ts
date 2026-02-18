@@ -49,7 +49,7 @@ export function buildCandidate(
     rotationNovelty: scoreRotationNovelty(exercise, objective.rotationContext),
     sfrScore: scoreSFR(exercise),
     lengthenedScore: scoreLengthened(exercise),
-    movementNovelty: scoreMovementNovelty(exercise, objective),
+    movementNovelty: scoreMovementNovelty(exercise, objective, []),
     sraAlignment: scoreSRAAlignment(exercise, objective.sraContext),
     userPreference: scoreUserPreference(exercise, objective.preferences),
   };

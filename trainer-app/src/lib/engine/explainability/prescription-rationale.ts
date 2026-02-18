@@ -21,7 +21,7 @@ import type {
 } from "./types";
 import type { Exercise, WorkoutSet, Goals, UserProfile } from "../types";
 import type { PeriodizationModifiers } from "../rules";
-import { getCitationsByTopic } from "./knowledge-base";
+import type { BlockType } from "../periodization/types";
 
 /**
  * Input context for prescription rationale
@@ -38,6 +38,10 @@ export type PrescriptionRationaleContext = {
   lastSessionReps?: number;
   restSeconds?: number;
   exerciseRepRange?: { min: number; max: number };
+  /** Weight unit for display in narratives. Defaults to "lbs" (app stores loads in user's native units). */
+  weightUnit?: "kg" | "lbs";
+  /** Block type from the active program block — bypasses re-inference from periodization multipliers. */
+  blockType?: BlockType;
 };
 
 /**
@@ -62,7 +66,8 @@ export function explainPrescriptionRationale(
     sets.length,
     isMainLift,
     profile.trainingAge,
-    periodization
+    periodization,
+    context.blockType
   );
 
   const repRationale = explainRepTarget(
@@ -99,9 +104,10 @@ export function explainPrescriptionRationale(
 
   // Build overall narrative
   const reps = topSet.targetReps ?? topSet.targetRepRange?.min ?? 8;
-  const load = topSet.targetLoad ? `${topSet.targetLoad}kg` : "BW";
+  const unit = context.weightUnit ?? "lbs";
+  const load = topSet.targetLoad ? `${topSet.targetLoad}${unit}` : "BW";
   const rir = topSet.targetRpe ? 10 - topSet.targetRpe : 2;
-  const rest = context.restSeconds ? `${Math.round(context.restSeconds / 60)} min` : "2 min";
+  const rest = context.restSeconds ? formatRestDuration(context.restSeconds) : "2 min";
 
   const overallNarrative = `${sets.length}×${reps} @ ${load}, ${rir} RIR, ${rest} rest — ${setRationale.blockContext.toLowerCase()}`;
 
@@ -129,12 +135,20 @@ export function explainSetCount(
   count: number,
   isMainLift: boolean,
   trainingAge: UserProfile["trainingAge"],
-  periodization?: PeriodizationModifiers
+  periodization?: PeriodizationModifiers,
+  blockType?: BlockType
 ): SetRationale {
   const exerciseType = isMainLift ? "main lift" : "accessory";
 
-  // Block context
-  const blockPhase = determineBlockPhase(periodization);
+  // Block context — use explicit blockType from session context when available,
+  // otherwise fall back to inferring from periodization multipliers.
+  // "realization" has no distinct prescription narrative, so it maps to "standard".
+  const blockPhase: "accumulation" | "intensification" | "deload" | "standard" =
+    blockType == null
+      ? determineBlockPhase(periodization)
+      : blockType === "realization"
+        ? "standard"
+        : blockType;
   const blockContext = formatBlockContext(blockPhase, periodization);
 
   // Build reason string
@@ -155,7 +169,13 @@ export function explainSetCount(
     if (ageModifier) {
       reason += ` (${ageModifier} trainee: ${ageModifier === "advanced" ? "+15%" : "-15%"} base volume)`;
     } else {
-      reason += ` (standard ${baseSetCount}-set protocol for ${exerciseType})`;
+      if (count === baseSetCount) {
+        reason += ` (standard ${count}-set protocol for ${exerciseType})`;
+      } else {
+        const pct = Math.round(((count / baseSetCount) - 1) * 100);
+        const sign = pct >= 0 ? `+${pct}` : `${pct}`;
+        reason += ` (base ${baseSetCount}, ${sign}% for ${trainingAge} ${exerciseType})`;
+      }
     }
   }
 
@@ -181,8 +201,6 @@ export function explainRepTarget(
   isMainLift: boolean,
   exerciseConstraints?: { min: number; max: number }
 ): RepRationale {
-  const exerciseType = isMainLift ? "main lift" : "accessory";
-
   // Goal-specific rep ranges
   const goalRanges: Record<
     Goals["primary"],
@@ -382,7 +400,7 @@ export function explainRestPeriod(
   targetReps: number | undefined
 ): RestRationale {
   const restSec = seconds ?? 120;
-  const restMin = Math.round(restSec / 60);
+  const restDisplay = formatRestDuration(restSec);
 
   const fatigueCost = exercise.fatigueCost ?? 3;
   const isCompound = exercise.isCompound ?? false;
@@ -397,29 +415,26 @@ export function explainRestPeriod(
     exerciseType = "heavy_compound";
     reason =
       fatigueCost >= 4
-        ? `${restMin} min for heavy compound (high CNS demand, full recovery needed)`
-        : `${restMin} min for heavy compound (neurological recovery)`;
+        ? `${restDisplay} for heavy compound (high CNS demand, full recovery needed)`
+        : `${restDisplay} for heavy compound (neurological recovery)`;
   }
   // Main lifts moderate rep range
   else if (isMainLift) {
     exerciseType = "heavy_compound";
     reason =
       fatigueCost >= 4
-        ? `${restMin} min for compound (high systemic fatigue)`
-        : `${restMin} min for compound (balance recovery and efficiency)`;
+        ? `${restDisplay} for compound (high systemic fatigue)`
+        : `${restDisplay} for compound (balance recovery and efficiency)`;
   }
   // Compound accessories
   else if (isCompound) {
     exerciseType = "moderate_compound";
-    reason =
-      reps <= 8
-        ? `${restMin} min for compound accessory (moderate fatigue, strength focus)`
-        : `${restMin} min for compound accessory (higher reps, less rest needed)`;
+    reason = `${restDisplay} for compound accessory (compounds require full 2–3 min recovery)`;
   }
   // Isolation
   else {
     exerciseType = "isolation";
-    reason = `${restMin} min for isolation (local fatigue, faster recovery)`;
+    reason = `${restDisplay} for isolation (local fatigue, faster recovery)`;
   }
 
   return {
@@ -430,6 +445,15 @@ export function explainRestPeriod(
 }
 
 // --- Helper Functions ---
+
+/**
+ * Format rest duration for human-readable display.
+ * Values under 2 minutes are shown in seconds (e.g. "90s") to avoid
+ * the Math.round(90/60)=2 rounding issue that implies "2 min".
+ */
+function formatRestDuration(seconds: number): string {
+  return seconds < 120 ? `${seconds}s` : `${Math.round(seconds / 60)} min`;
+}
 
 /**
  * Determine block phase from periodization modifiers

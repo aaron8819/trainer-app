@@ -54,13 +54,8 @@ export function createMockObjective(
         ])
       ),
       timeBudget,
-      equipment: new Set(["barbell", "dumbbell"]),
-      // Phase 2: New specific constraint sets (ADR-063)
       painConflicts: new Set(),
       userAvoids: new Set(),
-      equipmentUnavailable: new Set(),
-      // Backward compatibility: deprecated contraindications field
-      contraindications: new Set(),
       minExercises: 1,
       maxExercises: 8,
       minMainLifts: 1, // Default to requiring at least 1 main lift
@@ -71,7 +66,7 @@ export function createMockObjective(
       volumeDeficitFill: 0.4,
       rotationNovelty: 0.25,
       sfrEfficiency: 0.15,
-      movementDiversity: 0.05,
+      movementDiversity: 0.15,
       lengthenedBias: 0.1,
       sraReadiness: 0.03,
       userPreference: 0.02,

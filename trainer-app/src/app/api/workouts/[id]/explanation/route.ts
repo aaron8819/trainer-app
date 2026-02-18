@@ -31,9 +31,18 @@ export async function GET(
 
   // Serialize Maps to objects for JSON response
   return NextResponse.json({
-    sessionContext: result.sessionContext,
+    sessionContext: {
+      ...result.sessionContext,
+      volumeStatus: {
+        ...result.sessionContext.volumeStatus,
+        muscleStatuses: Object.fromEntries(
+          result.sessionContext.volumeStatus.muscleStatuses ?? []
+        ),
+      },
+    },
     coachMessages: result.coachMessages,
     exerciseRationales: Object.fromEntries(result.exerciseRationales),
     prescriptionRationales: Object.fromEntries(result.prescriptionRationales),
+    filteredExercises: result.filteredExercises ?? [],
   });
 }

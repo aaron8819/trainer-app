@@ -4,7 +4,6 @@ import { profileSetupSchema } from "@/lib/validation";
 import { resolveOwner } from "@/lib/api/workout-context";
 import { loadWeeklyProgramInputs } from "@/lib/api/weekly-program";
 import { analyzeWeeklyProgram } from "@/lib/engine/weekly-program-analysis";
-import { ALL_EQUIPMENT_TYPES } from "@/lib/api/default-equipment";
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
@@ -64,14 +63,12 @@ export async function POST(request: Request) {
         daysPerWeek: parsed.data.daysPerWeek,
         sessionMinutes: parsed.data.sessionMinutes,
         ...(parsed.data.splitType ? { splitType: parsed.data.splitType } : {}),
-        availableEquipment: ALL_EQUIPMENT_TYPES,
       },
       create: {
         userId: user.id,
         daysPerWeek: parsed.data.daysPerWeek,
         sessionMinutes: parsed.data.sessionMinutes,
         splitType: parsed.data.splitType ?? "CUSTOM",
-        availableEquipment: ALL_EQUIPMENT_TYPES,
       },
     });
 

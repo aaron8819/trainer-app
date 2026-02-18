@@ -1,6 +1,6 @@
 # Data Model (Current)
 
-Last verified against schema: 2026-02-15 (`prisma/schema.prisma`)
+Last verified against schema: 2026-02-17 (`prisma/schema.prisma`)
 
 This document summarizes the persisted model used by workout generation, logging, and adaptation loops.
 
@@ -19,13 +19,14 @@ This document summarizes the persisted model used by workout generation, logging
 
 ### `Goals`
 
-- Fields: `userId`, `primaryGoal`, `secondaryGoal`, `proteinTarget`
+- Fields: `userId`, `primaryGoal`, `secondaryGoal`
 - Runtime-critical fields: `primaryGoal`, `secondaryGoal`
 
 ### `Constraints`
 
-- Fields: `userId`, `daysPerWeek`, `sessionMinutes`, `splitType`, `equipmentNotes`, `availableEquipment`
-- Runtime-critical fields: split type, session minutes, equipment availability
+- Fields: `userId`, `daysPerWeek`, `sessionMinutes`, `splitType`
+- Runtime-critical fields: split type, session minutes
+- Note: `availableEquipment` was removed (ADR-067) — always defaulted to ALL_EQUIPMENT_TYPES with no UI for per-user filtering.
 
 ### `UserPreference`
 
@@ -167,6 +168,15 @@ Relations:
 - Fields: `id`, `workoutSetId`, `actualReps?`, `actualRpe?`, `actualLoad?`, `completedAt`, `notes?`, `wasSkipped`
 - Uniqueness: `workoutSetId @unique`
 - Implication: set logging is upserted per set, not append-only.
+
+### `FilteredExercise`
+
+- Fields: `id`, `workoutId`, `exerciseId?`, `exerciseName`, `reason`, `userFriendlyMessage`
+- Index: `workoutId`
+- Relation: belongs to `Workout` (`onDelete: Cascade`)
+- Purpose: Persists the hard-constraint rejection list from intent-mode selection for explainability — "Why didn't I get this exercise?" Written by the save route; loaded by `generateWorkoutExplanation()` so `FilteredExercisesCard` displays on every workout detail view (not just immediately after generation).
+- `exerciseId` is nullable (exercise may have been identified by name only at rejection time).
+- Scope: Intent mode only (PPL / full_body / body_part). Template mode has no rejected exercises.
 
 ## Periodization models (Phase 1 - 2026-02-14)
 

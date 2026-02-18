@@ -18,7 +18,6 @@ export const exampleConstraints: Constraints = {
   daysPerWeek: 4,
   sessionMinutes: 55,
   splitType: "upper_lower",
-  availableEquipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight", "bench", "rack"],
 };
 
 export const exampleExerciseLibrary: Exercise[] = [
@@ -35,6 +34,7 @@ export const exampleExerciseLibrary: Exercise[] = [
     equipment: ["barbell", "bench", "rack"],
     primaryMuscles: ["Chest", "Triceps"],
     secondaryMuscles: ["Front Delts"],
+    contraindications: { shoulder: true },
   },
   {
     id: "row",

@@ -66,6 +66,22 @@ export function selectExercisesOptimized(
     return buildCandidate(exercise, objective, proposedSets);
   });
 
+  // Sort so higher-stretch exercises are evaluated first within each tier.
+  // Main lifts first (structural priority), then within non-main-lifts sort by
+  // lengthPositionScore DESC. This ensures that when two isolations compete for
+  // the same slot (same movementPattern + primaryMuscle), the one with superior
+  // stretch stimulus wins — e.g. overhead cable extension (5/5) beats skull
+  // crusher (3/5) and the isolation-duplicate filter then correctly blocks the
+  // lower-quality option as "dominated_by_better_option".
+  candidates.sort((a, b) => {
+    const aIsMain = a.exercise.isMainLiftEligible ? 1 : 0;
+    const bIsMain = b.exercise.isMainLiftEligible ? 1 : 0;
+    if (aIsMain !== bIsMain) return bIsMain - aIsMain;
+    const aLen = a.exercise.lengthPositionScore ?? 3;
+    const bLen = b.exercise.lengthPositionScore ?? 3;
+    return bLen - aLen;
+  });
+
   // Phase 3: Beam search optimization
   const result = beamSearch(candidates, objective, beamConfig);
 
@@ -87,10 +103,8 @@ export function selectExercisesOptimized(
  * Returns { feasible, rejected } where rejected includes reason
  *
  * Hard constraints:
- * 1. Equipment availability
- * 2. User avoids / contraindications
- * 3. Pain conflicts
- * 4. SFR threshold (hypertrophy/fat_loss only)
+ * 1. Pain conflicts
+ * 2. User avoids
  *
  * @param pool - Full exercise pool
  * @param objective - Selection objective
@@ -130,58 +144,17 @@ function checkHardConstraints(
   exercise: Exercise,
   objective: SelectionObjective
 ): RejectionReason | undefined {
-  // 1. Equipment availability
-  if (!hasAvailableEquipment(exercise, objective.constraints.equipment)) {
-    return "equipment_unavailable";
-  }
-
-  // 2. Pain conflicts (check first to distinguish from user avoids)
+  // 1. Pain conflicts (check first to distinguish from user avoids)
   if (objective.constraints.painConflicts.has(exercise.id)) {
     return "pain_conflict";
   }
 
-  // 3. User avoids (explicit user preferences)
+  // 2. User avoids (explicit user preferences)
   if (objective.constraints.userAvoids.has(exercise.id)) {
     return "user_avoided";
   }
 
-  // 4. Equipment unavailable (explicitly marked exercises)
-  if (objective.constraints.equipmentUnavailable.has(exercise.id)) {
-    return "equipment_unavailable";
-  }
-
-  // 5. Backward compatibility: check deprecated contraindications set
-  if (objective.constraints.contraindications?.has(exercise.id)) {
-    return "contraindicated"; // Generic fallback
-  }
-
-  // 6. SFR threshold (hypertrophy/fat_loss accessories)
-  // Defer to full implementation - would need goal context
-
   return undefined; // Passed all constraints
-}
-
-/**
- * Check if exercise has available equipment
- *
- * @param exercise - Exercise to check
- * @param availableEquipment - Set of available equipment types
- * @returns True if equipment is available
- */
-function hasAvailableEquipment(
-  exercise: Exercise,
-  availableEquipment: Set<string>
-): boolean {
-  const requiredEquipment = exercise.equipment ?? [];
-
-  // No equipment required → always available
-  if (requiredEquipment.length === 0) return true;
-
-  // Bodyweight → always available
-  if (requiredEquipment.includes("bodyweight")) return true;
-
-  // Check if at least one required equipment type is available
-  return requiredEquipment.some((eq) => availableEquipment.has(eq));
 }
 
 /**

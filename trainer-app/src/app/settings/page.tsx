@@ -52,9 +52,8 @@ export default async function SettingsPage() {
   const preferenceValues = user
     ? {
         userId: user.id,
-        favoriteExercises: preferences?.favoriteExercises ?? [],
-        avoidExercises: preferences?.avoidExercises ?? [],
-        optionalConditioning: preferences?.optionalConditioning ?? true,
+        favoriteExerciseIds: preferences?.favoriteExerciseIds ?? [],
+        avoidExerciseIds: preferences?.avoidExerciseIds ?? [],
       }
     : undefined;
 

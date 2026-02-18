@@ -1,21 +1,16 @@
-import type { Constraints, Exercise, SplitTag } from "./types";
+import type { Exercise, SplitTag } from "./types";
 
 const BLOCKED_TAGS: SplitTag[] = ["core", "mobility", "prehab", "conditioning"];
 
 export function suggestSubstitutes(
   target: Exercise,
   exerciseLibrary: Exercise[],
-  constraints: Constraints,
   painFlags?: Record<string, 0 | 1 | 2 | 3>
 ) {
-  const allowedEquipment = constraints.availableEquipment;
   const candidates = applyPainConstraints(
     exerciseLibrary.filter((exercise) => exercise.id !== target.id),
     painFlags
   )
-    .filter((exercise) =>
-      exercise.equipment.some((item) => allowedEquipment.includes(item))
-    )
     .filter((exercise) =>
       exercise.splitTags?.some((tag) => target.splitTags?.includes(tag))
     )
@@ -77,6 +72,20 @@ function applyPainConstraints(
       if (exercise.movementPatterns?.includes("hinge")) {
         return false;
       }
+    }
+
+    const kneePain = painFlags.knee !== undefined && painFlags.knee >= 2;
+    const wristPain = painFlags.wrist !== undefined && painFlags.wrist >= 2;
+    const hipPain = painFlags.hip !== undefined && painFlags.hip >= 2;
+
+    if (kneePain && contraindications["knee"]) {
+      return false;
+    }
+    if (wristPain && contraindications["wrist"]) {
+      return false;
+    }
+    if (hipPain && contraindications["hip"]) {
+      return false;
     }
 
     return true;

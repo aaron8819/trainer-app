@@ -46,8 +46,6 @@ export async function POST(
           const prefs = await tx.userPreference.findUnique({
             where: { userId: user.id },
             select: {
-              favoriteExercises: true,
-              avoidExercises: true,
               favoriteExerciseIds: true,
               avoidExerciseIds: true,
             },
@@ -58,8 +56,6 @@ export async function POST(
           await tx.userPreference.update({
             where: { userId: user.id },
             data: {
-              favoriteExercises: next.favoriteExercises,
-              avoidExercises: next.avoidExercises,
               favoriteExerciseIds: next.favoriteExerciseIds,
               avoidExerciseIds: next.avoidExerciseIds,
             },

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { isSetQualifiedForBaseline } from "@/lib/baseline-qualification";
 import { BonusExerciseSheet } from "@/components/BonusExerciseSheet";
+import { isDumbbellEquipment, toDisplayLoad, toStoredLoad } from "@/lib/ui/load-display";
 
 export type LogSetInput = {
   setId: string;
@@ -101,6 +102,10 @@ function isBodyweightExercise(exercise: LogExerciseInput): boolean {
   return (exercise.equipment ?? []).some((item) => item.toLowerCase() === "bodyweight");
 }
 
+function isDumbbellExercise(exercise: LogExerciseInput): boolean {
+  return isDumbbellEquipment(exercise.equipment);
+}
+
 function shouldUseBodyweightLoadLabel(exercise: LogExerciseInput, set: LogSetInput): boolean {
   return isBodyweightExercise(exercise) && (set.targetLoad === null || set.targetLoad === undefined);
 }
@@ -183,7 +188,7 @@ function withDefaults(exercises: NormalizedExercises): NormalizedExercises {
   };
 }
 
-function buildSetChipLabel(set: LogSetInput, isLogged: boolean): string {
+function buildSetChipLabel(set: LogSetInput, isLogged: boolean, isDumbbell = false): string {
   if (!isLogged) {
     return `Set ${set.setIndex}`;
   }
@@ -192,7 +197,9 @@ function buildSetChipLabel(set: LogSetInput, isLogged: boolean): string {
   }
   const parts: string[] = [`Set ${set.setIndex}`];
   if (set.actualLoad != null) {
-    parts.push(`${set.actualLoad}×${set.actualReps ?? "?"}`);
+    const displayLoad = toDisplayLoad(set.actualLoad, isDumbbell);
+    const loadSuffix = isDumbbell ? " ea" : "";
+    parts.push(`${displayLoad}${loadSuffix}×${set.actualReps ?? "?"}`);
   } else if (set.actualReps != null) {
     parts.push(`${set.actualReps} reps`);
   }
@@ -279,6 +286,7 @@ export default function LogWorkoutClient({
         .filter((exercise) => exercise.sets.some((s) => loggedSetIds.has(s.setId)))
         .map((exercise) => ({
           name: exercise.name,
+          equipment: exercise.equipment,
           section,
           sets: exercise.sets.map((set) => ({
             setIndex: set.setIndex,
@@ -596,7 +604,9 @@ export default function LogWorkoutClient({
             <p className="mt-1 text-sm text-slate-500">
               {activeSet.sectionLabel} · Set {activeSet.set.setIndex} of {activeSet.exercise.sets.length} · Target{" "}
               {formatTargetReps(activeSet.set)}
-              {activeSet.set.targetLoad ? ` | ${activeSet.set.targetLoad} lbs` : ""}
+              {activeSet.set.targetLoad != null
+                ? ` | ${isDumbbellExercise(activeSet.exercise) ? `${toDisplayLoad(activeSet.set.targetLoad, true)} lbs each` : `${activeSet.set.targetLoad} lbs`}`
+                : ""}
               {activeSet.set.targetRpe ? ` | RPE ${activeSet.set.targetRpe}` : ""}
             </p>
             {/* 1D: Advisory autoregulation hint */}
@@ -659,25 +669,37 @@ export default function LogWorkoutClient({
               <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
                 {shouldUseBodyweightLoadLabel(activeSet.exercise, activeSet.set)
                   ? "Load (lbs, optional)"
+                  : isDumbbellExercise(activeSet.exercise)
+                  ? "Load per dumbbell (lbs)"
                   : "Load (lbs)"}
               </p>
               <div className="mt-2 flex flex-wrap gap-2">
-                {[-5, -2.5, 2.5, 5].map((delta) => (
-                  <button
-                    key={`${activeSet.set.setId}-delta-${delta}`}
-                    className="inline-flex min-h-10 items-center justify-center rounded-full border border-slate-300 px-3 text-xs font-semibold text-slate-700"
-                    onClick={() =>
-                      setSingleField(
-                        activeSet.set.setId,
-                        "actualLoad",
-                        normalizeStepValue(activeSet.set.actualLoad, activeSet.set.targetLoad, delta)
-                      )
-                    }
-                    type="button"
-                  >
-                    {delta > 0 ? `+${delta}` : delta}
-                  </button>
-                ))}
+                {[-5, -2.5, 2.5, 5].map((delta) => {
+                  const isDB = isDumbbellExercise(activeSet.exercise);
+                  return (
+                    <button
+                      key={`${activeSet.set.setId}-delta-${delta}`}
+                      className="inline-flex min-h-10 items-center justify-center rounded-full border border-slate-300 px-3 text-xs font-semibold text-slate-700"
+                      onClick={() =>
+                        setSingleField(
+                          activeSet.set.setId,
+                          "actualLoad",
+                          toStoredLoad(
+                            normalizeStepValue(
+                              toDisplayLoad(activeSet.set.actualLoad, isDB),
+                              toDisplayLoad(activeSet.set.targetLoad, isDB),
+                              delta
+                            ),
+                            isDB
+                          )
+                        )
+                      }
+                      type="button"
+                    >
+                      {delta > 0 ? `+${delta}` : delta}
+                    </button>
+                  );
+                })}
                 <button
                   className="inline-flex min-h-10 items-center justify-center rounded-full border border-slate-300 px-3 text-xs font-semibold text-slate-700"
                   onClick={() => setSingleField(activeSet.set.setId, "actualLoad", null)}
@@ -690,9 +712,13 @@ export default function LogWorkoutClient({
                 className="mt-2 min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                 type="number"
                 inputMode="decimal"
-                value={activeSet.set.actualLoad ?? ""}
+                value={toDisplayLoad(activeSet.set.actualLoad, isDumbbellExercise(activeSet.exercise)) ?? ""}
                 onChange={(event) =>
-                  setSingleField(activeSet.set.setId, "actualLoad", parseNullableNumber(event.target.value))
+                  setSingleField(
+                    activeSet.set.setId,
+                    "actualLoad",
+                    toStoredLoad(parseNullableNumber(event.target.value), isDumbbellExercise(activeSet.exercise))
+                  )
                 }
               />
             </div>
@@ -848,7 +874,7 @@ export default function LogWorkoutClient({
                                     type="button"
                                   >
                                     {/* 1C: actual values in logged chips */}
-                                    {buildSetChipLabel(set, isLogged)}
+                                    {buildSetChipLabel(set, isLogged, isDumbbellExercise(exercise))}
                                     {isLogged && isBaselineEligible(set) ? " · Baseline +" : ""}
                                   </button>
                                 );
@@ -913,7 +939,9 @@ export default function LogWorkoutClient({
           {performanceSummary.length > 0 ? (
             <section className="space-y-3">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Performance</h2>
-              {performanceSummary.map((exercise) => (
+              {performanceSummary.map((exercise) => {
+                const isDB = isDumbbellEquipment(exercise.equipment);
+                return (
                 <div key={exercise.name} className="rounded-2xl border border-slate-200 bg-white p-4">
                   <p className="font-medium text-slate-900">{exercise.name}</p>
                   <div className="mt-3 space-y-2">
@@ -932,7 +960,9 @@ export default function LogWorkoutClient({
                         set.targetRepRange && set.targetRepRange.min !== set.targetRepRange.max
                           ? `${set.targetRepRange.min}–${set.targetRepRange.max} reps`
                           : `${set.targetReps} reps`,
-                        set.targetLoad ? `${set.targetLoad} lbs` : null,
+                        set.targetLoad != null
+                          ? (isDB ? `${toDisplayLoad(set.targetLoad, true)} lbs each` : `${set.targetLoad} lbs`)
+                          : null,
                         set.targetRpe ? `RPE ${set.targetRpe}` : null,
                       ]
                         .filter(Boolean)
@@ -943,7 +973,9 @@ export default function LogWorkoutClient({
                         ? "Skipped"
                         : [
                             set.actualReps != null ? `${set.actualReps} reps` : null,
-                            set.actualLoad != null ? `${set.actualLoad} lbs` : null,
+                            set.actualLoad != null
+                              ? (isDB ? `${toDisplayLoad(set.actualLoad, true)} lbs each` : `${set.actualLoad} lbs`)
+                              : null,
                             set.actualRpe != null ? `RPE ${set.actualRpe}` : null,
                           ]
                             .filter(Boolean)
@@ -962,7 +994,8 @@ export default function LogWorkoutClient({
                     })}
                   </div>
                 </div>
-              ))}
+              );
+              })}
             </section>
           ) : null}
 

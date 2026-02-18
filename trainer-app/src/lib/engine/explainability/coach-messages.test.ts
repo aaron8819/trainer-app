@@ -378,6 +378,7 @@ describe("coach-messages", () => {
 
     it("should generate tip for moderate fatigue with fresh signal", () => {
       const sessionContext = buildSessionContext({
+        blockType: "deload", // deload has no block-type tip — isolates the fatigue trigger
         readinessOverall: "moderate",
         signalAge: 2,
       });
@@ -397,6 +398,8 @@ describe("coach-messages", () => {
 
     it("should generate tip for volume building progression", () => {
       const sessionContext = buildSessionContext({
+        blockType: "deload", // deload has no block-type tip
+        readinessOverall: "fresh", // "fresh" doesn't trigger fatigue tip — isolates volume trigger
         volumeProgression: "building",
       });
 

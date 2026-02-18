@@ -463,9 +463,6 @@ export function summarizeFilteredExercises(
       case "contraindicated":
         userFriendlyMessage = "Contraindicated"; // Generic fallback
         break;
-      case "time_budget_exceeded":
-        userFriendlyMessage = "Session time limit reached";
-        break;
       default: {
         // Handle string reasons not in the current RejectionReason union
         // (equipment_unavailable removed in ADR-067 but still appears in DB records)

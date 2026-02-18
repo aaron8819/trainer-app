@@ -150,7 +150,6 @@ function buildSelectionObjective(
   const constraints: SelectionObjective["constraints"] = {
     volumeFloor: new Map(),
     volumeCeiling,
-    timeBudget: mapped.mappedConstraints.sessionMinutes,
     painConflicts: painConflictIds,
     userAvoids: new Set(mapped.mappedPreferences?.avoidExerciseIds ?? []),
     minExercises: 3, // Minimum 3 exercises to ensure MEV coverage

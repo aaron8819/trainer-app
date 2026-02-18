@@ -67,9 +67,6 @@ export interface SelectionConstraints {
   /** Maximum effective volume per muscle (MRV ceiling) */
   volumeCeiling: Map<Muscle, number>;
 
-  /** Maximum session duration in minutes */
-  timeBudget: number;
-
   /**
    * Exercise IDs excluded due to pain flags or recent pain signals
    * @see RejectionReason "pain_conflict"
@@ -101,14 +98,7 @@ export interface SelectionConstraints {
 /**
  * Soft objective weights (sum to 1.0)
  *
- * Default weights (Phase 2 focus):
- * - volumeDeficitFill: 0.40 (primary objective)
- * - rotationNovelty: 0.25 (force variety)
- * - sfrEfficiency: 0.15 (moderate)
- * - lengthenedBias: 0.20 (Phase 4: KB-confirmed per Maeo 2023)
- * - movementDiversity: 0.15 (beam state-aware; dynamically re-scored during expansion)
- * - sraReadiness: 0.03 (advisory)
- * - userPreference: 0.02 (tiebreaker)
+ * See DEFAULT_SELECTION_WEIGHTS for values and KB citations.
  */
 export interface SelectionWeights {
   /** Prioritize filling volume deficits */
@@ -309,7 +299,6 @@ export interface RejectedExercise {
 export type RejectionReason =
   | "already_selected"
   | "contraindicated"
-  | "time_budget_exceeded"
   | "volume_ceiling_reached"
   | "sra_not_ready"
   | "dominated_by_better_option" // Pareto-dominated
@@ -382,28 +371,37 @@ export interface BeamSearchConfig {
 // ============================================================================
 
 /**
- * Default selection weights (Phase 2 focus: indirect volume + rotation)
+ * Default selection weights (sum to 1.0)
  *
- * Note: movementDiversity weight is low because candidates are scored once at initialization.
- * Beam search cannot adapt scores based on beam state, making diversity weight ineffective
- * at preventing movement pattern clustering. This will be addressed in Phase 3 with beam
- * state tracking.
+ * Priority order: volume deficit → rotation novelty → lengthened bias → SFR efficiency
+ * → movement diversity (beam state-aware) → SRA readiness (advisory) → user preference (tiebreaker)
+ *
+ * KB grounding:
+ * - volumeDeficitFill: primary hypertrophy variable (Pelland 2024, Schoenfeld 2017)
+ * - rotationNovelty: rotate 2–4 exercises per mesocycle (KB §2)
+ * - lengthenedBias: +40% growth from lengthened position (Maeo 2023, Kassiano 2023, Pedrosa 2022)
+ * - sfrEfficiency: maximize stimulus per unit fatigue (Israetel SFR framework, KB §3)
+ * - movementDiversity: dynamically re-scored per beam state during expansion
  */
 export const DEFAULT_SELECTION_WEIGHTS: SelectionWeights = {
-  volumeDeficitFill: 0.4, // Primary objective - fill volume deficits efficiently
-  rotationNovelty: 0.25, // High weight - force variety across sessions
-  sfrEfficiency: 0.15, // Moderate - efficiency matters
-  movementDiversity: 0.15, // Beam state-aware - dynamically re-scored during beam expansion
-  lengthenedBias: 0.20, // Phase 4: KB-confirmed per Maeo 2023 (+40% triceps growth overhead vs pushdown)
-  sraReadiness: 0.03, // Advisory only
-  userPreference: 0.02, // Tiebreaker
+  volumeDeficitFill: 0.35, // Primary — fill volume deficits efficiently
+  rotationNovelty: 0.22,   // High — force variety across sessions
+  lengthenedBias: 0.20,    // KB-confirmed (Maeo 2023: +40% triceps growth overhead vs pushdown)
+  sfrEfficiency: 0.12,     // Moderate — efficiency matters
+  movementDiversity: 0.07, // Beam state-aware — dynamically re-scored during expansion
+  sraReadiness: 0.03,      // Advisory only
+  userPreference: 0.01,    // Tiebreaker
+  // Sum: 1.00
 };
 
 /**
  * Default beam search config
+ *
+ * Beam width 7 (was 5): wider search is appropriate now that time budget no longer
+ * hard-rejects exercises mid-search, so the feasible candidate set per depth is larger.
  */
 export const DEFAULT_BEAM_CONFIG: BeamSearchConfig = {
-  beamWidth: 5,
+  beamWidth: 7,
   maxDepth: 8,
 };
 

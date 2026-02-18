@@ -216,7 +216,7 @@ describe("computeProposedSets", () => {
     constraints: {
       volumeFloor: new Map(),
       volumeCeiling: new Map(),
-      timeBudget: 60,
+
       painConflicts: new Set(),
       userAvoids: new Set(),
       minExercises: 1,
@@ -321,7 +321,7 @@ describe("buildCandidate", () => {
     constraints: {
       volumeFloor: new Map(),
       volumeCeiling: new Map(),
-      timeBudget: 60,
+
       painConflicts: new Set(),
       userAvoids: new Set(),
       minExercises: 1,
@@ -495,7 +495,7 @@ describe("timeContribution accuracy (Step 1: Improved Estimation)", () => {
       constraints: {
         volumeFloor: new Map(),
         volumeCeiling: new Map(),
-        timeBudget: 60,
+  
         painConflicts: new Set(),
         userAvoids: new Set(),
         minExercises: 1,
@@ -572,7 +572,7 @@ describe("timeContribution accuracy (Step 1: Improved Estimation)", () => {
       constraints: {
         volumeFloor: new Map(),
         volumeCeiling: new Map(),
-        timeBudget: 60,
+  
         painConflicts: new Set(),
         userAvoids: new Set(),
         minExercises: 1,
@@ -631,7 +631,7 @@ describe("timeContribution accuracy (Step 1: Improved Estimation)", () => {
       constraints: {
         volumeFloor: new Map(),
         volumeCeiling: new Map(),
-        timeBudget: 60,
+  
         painConflicts: new Set(),
         userAvoids: new Set(),
         minExercises: 1,

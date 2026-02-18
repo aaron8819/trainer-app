@@ -26,7 +26,6 @@ export type SmartBuildInput = {
   availableEquipment?: string[];
   exerciseCount?: number;
   trainingGoal?: string;
-  timeBudgetMinutes?: number;
   seed?: number;
 };
 
@@ -231,7 +230,6 @@ export function smartBuild(input: SmartBuildInput): SmartBuildResult {
     availableEquipment,
     exerciseCount = 7,
     trainingGoal,
-    timeBudgetMinutes,
     seed,
   } = input;
 
@@ -318,23 +316,6 @@ export function smartBuild(input: SmartBuildInput): SmartBuildResult {
     });
 
   const ordered = [...compoundSelected, ...isolationSelected];
-
-  // Trim to time budget
-  if (timeBudgetMinutes) {
-    const budgetSec = timeBudgetMinutes * 60;
-    let cumSec = 0;
-    const trimmed: SmartBuildExercise[] = [];
-    for (const ex of ordered) {
-      const sets = ex.isCompound ? 4 : 3;
-      const perSet = (ex.timePerSetSec ?? 120) + (ex.isCompound ? 120 : 75);
-      const exTime = sets * perSet;
-      if (cumSec + exTime > budgetSec && trimmed.length > 0) break;
-      cumSec += exTime;
-      trimmed.push(ex);
-    }
-    ordered.length = 0;
-    ordered.push(...trimmed);
-  }
 
   // 7. Score and attempt improvement
   let analysis = analyzeTemplate(ordered.map(toAnalysisInput));

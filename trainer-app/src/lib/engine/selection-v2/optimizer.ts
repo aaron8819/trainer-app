@@ -19,6 +19,7 @@ import type {
 import { DEFAULT_BEAM_CONFIG, COLD_START_BEAM_CONFIGS } from "./types";
 import { buildCandidate, computeProposedSets } from "./candidate";
 import { beamSearch } from "./beam-search";
+import { generateRationale } from "./rationale";
 
 /**
  * Select exercises using multi-objective beam search optimization
@@ -85,14 +86,20 @@ export function selectExercisesOptimized(
   // Phase 3: Beam search optimization
   const result = beamSearch(candidates, objective, beamConfig);
 
+  // Phase 3.5: Post-beam stretch upgrade
+  // Swap any selected isolation that is strictly dominated by an available
+  // alternative (same muscle + pattern, higher lengthPositionScore, equal or
+  // better sfrScore, passes hard constraints, fits time budget).
+  const upgraded = applyStretchUpgrades(result, candidates, objective);
+
   // Phase 4: Merge rejected exercises
   const allRejected = [
     ...rejected.map((ex) => ({ exercise: ex.exercise, reason: ex.reason })),
-    ...result.rejected,
+    ...upgraded.rejected,
   ];
 
   return {
-    ...result,
+    ...upgraded,
     rejected: allRejected,
   };
 }
@@ -178,5 +185,129 @@ function resolveBeamConfig(
   return {
     beamWidth: configOverride?.beamWidth ?? baseConfig.beamWidth,
     maxDepth: configOverride?.maxDepth ?? baseConfig.maxDepth,
+  };
+}
+
+/**
+ * Post-beam stretch upgrade pass
+ *
+ * After beam search selects exercises, scan selected isolations for strictly
+ * dominated alternatives. If a better-stretch isolation exists for the same
+ * muscle + movement slot (higher lengthPositionScore, equal/better sfrScore,
+ * passes hard constraints, not already selected), swap it in.
+ *
+ * This corrects beam path-competition artifacts where a lower-quality isolation
+ * wins a beam state due to multi-exercise cumulative scoring dynamics, not
+ * individual merit.
+ */
+function applyStretchUpgrades(
+  result: SelectionResult,
+  candidates: SelectionCandidate[],
+  objective: SelectionObjective
+): SelectionResult {
+  const selectedIds = new Set(result.selected.map((c) => c.exercise.id));
+  const newSelected = [...result.selected];
+  let newRejected = [...result.rejected];
+  let newTimeUsed = result.timeUsed;
+  const newVolumeFilled = new Map(result.volumeFilled);
+
+  let modified = false;
+
+  for (let i = 0; i < newSelected.length; i++) {
+    const current = newSelected[i];
+    const ex = current.exercise;
+
+    // Only upgrade isolation accessories (not main lifts, not compounds)
+    if (ex.isMainLiftEligible || ex.isCompound) continue;
+
+    const currentLen = ex.lengthPositionScore ?? 3;
+    const currentSfr = ex.sfrScore ?? 3;
+
+    let bestAlt: SelectionCandidate | null = null;
+    let bestLen = currentLen;
+    let bestSfr = currentSfr;
+
+    for (const candidate of candidates) {
+      const alt = candidate.exercise;
+
+      // Skip if already in the (evolving) selected set
+      if (selectedIds.has(alt.id)) continue;
+      if (alt.id === ex.id) continue;
+
+      // Must also be an isolation
+      if (alt.isMainLiftEligible || alt.isCompound) continue;
+
+      // Must be strictly better in lengthPositionScore
+      const altLen = alt.lengthPositionScore ?? 3;
+      if (altLen <= currentLen) continue;
+
+      // Must be equal or better in sfrScore
+      const altSfr = alt.sfrScore ?? 3;
+      if (altSfr < currentSfr) continue;
+
+      // Must share at least one movement pattern (same slot)
+      const sharedPattern = (ex.movementPatterns ?? []).some((p) =>
+        (alt.movementPatterns ?? []).includes(p)
+      );
+      if (!sharedPattern) continue;
+
+      // Must share at least one primary muscle (same slot)
+      const sharedMuscle = (ex.primaryMuscles ?? []).some((m) =>
+        (alt.primaryMuscles ?? []).includes(m)
+      );
+      if (!sharedMuscle) continue;
+
+      // Must pass hard constraints
+      if (objective.constraints.painConflicts.has(alt.id)) continue;
+      if (objective.constraints.userAvoids.has(alt.id)) continue;
+
+      // Best upgrade = highest lengthPositionScore, then highest sfrScore
+      if (altLen > bestLen || (altLen === bestLen && altSfr > bestSfr)) {
+        bestAlt = candidate;
+        bestLen = altLen;
+        bestSfr = altSfr;
+      }
+    }
+
+    if (bestAlt) {
+      modified = true;
+
+      // Swap in the better exercise
+      newSelected[i] = bestAlt;
+      selectedIds.delete(ex.id);
+      selectedIds.add(bestAlt.exercise.id);
+
+      // Update time used
+      newTimeUsed =
+        newTimeUsed - current.timeContribution + bestAlt.timeContribution;
+
+      // Update volumeFilled: subtract displaced contribution, add replacement
+      for (const [muscle, { direct, indirect }] of current.volumeContribution) {
+        const prev = newVolumeFilled.get(muscle) ?? 0;
+        newVolumeFilled.set(muscle, Math.max(0, prev - (direct + indirect)));
+      }
+      for (const [muscle, { direct, indirect }] of bestAlt.volumeContribution) {
+        const prev = newVolumeFilled.get(muscle) ?? 0;
+        newVolumeFilled.set(muscle, prev + direct + indirect);
+      }
+
+      // Update rejected: remove alt (no longer rejected), add displaced exercise
+      newRejected = newRejected.filter((r) => r.exercise.id !== bestAlt!.exercise.id);
+      newRejected.push({ exercise: ex, reason: "dominated_by_better_option" });
+    }
+  }
+
+  if (!modified) return result;
+
+  // Regenerate rationale to reflect the updated selection
+  const newRationale = generateRationale(newSelected, newRejected, objective);
+
+  return {
+    ...result,
+    selected: newSelected,
+    rejected: newRejected,
+    timeUsed: newTimeUsed,
+    volumeFilled: newVolumeFilled,
+    rationale: newRationale,
   };
 }

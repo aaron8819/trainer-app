@@ -4,6 +4,52 @@ Record of significant design decisions and their rationale. Newest first.
 
 ---
 
+## ADR-075: Remove `timeBudget` from Beam Search; Promote C1b; Renormalize Weights (2026-02-18)
+
+**Status:** Accepted
+
+**Context:**
+
+The beam search in `selection-v2` used `timeBudget` as a hard constraint that permanently rejected exercises mid-search when their estimated `timeContribution` would exceed the session time limit. Three problems:
+
+1. **Noisy estimation**: Time estimates are inherently ±10–20 min (fixed rest assumptions, no transition time, mid-range rep targets). Permanent rejection on noisy data eliminates high-quality exercises before scoring can weigh them.
+2. **C1b already covers the real constraint**: `SESSION_DIRECT_SET_CEILING = 12` direct sets per muscle per session (KB Section 2: ~10–12 hard sets before diminishing returns) is the evidence-backed per-session limiter. The time budget was a proxy for this that was less precise.
+3. **Weight drift**: `DEFAULT_SELECTION_WEIGHTS` summed to 1.20, not 1.00. `lengthenedBias: 0.20` was added in Phase 4 (ADR-04x) without renormalizing, causing `BEAM_TIEBREAKER_EPSILON = 0.05` to fire ~17% less often than intended and making relative weight ratios misleading.
+
+**Decision:**
+
+1. **Remove `timeBudget` from `SelectionConstraints`** — field deleted from the type; all enforcement branches in beam search removed.
+   - `"time_budget_exceeded"` removed from `RejectionReason` union.
+   - `tryReduceSetsToFitMore()` function deleted from `beam-search.ts` (existed only to compensate for time budget rejections).
+   - Tight-budget heuristics (`TIGHT_BUDGET_THRESHOLD`, `TIGHT_BUDGET_ACCESSORY_CAP`) removed from `candidate.ts`.
+   - `timeBudget` check removed from `applyStretchUpgrades()` in `optimizer.ts`.
+   - `timeBudgetMinutes` removed from `SmartBuildInput` and `TemplateForm` UI.
+
+2. **`BeamState.timeUsed` and `SelectionResult.timeUsed` preserved** — still accumulate for display; no enforcement.
+
+3. **Renormalize `DEFAULT_SELECTION_WEIGHTS` to sum to 1.00:**
+   ```
+   volumeDeficitFill: 0.35  (was 0.40)
+   rotationNovelty:   0.22  (was 0.25)
+   lengthenedBias:    0.20  (unchanged)
+   sfrEfficiency:     0.12  (was 0.15)
+   movementDiversity: 0.07  (was 0.15)
+   sraReadiness:      0.03  (unchanged)
+   userPreference:    0.01  (was 0.02)
+   ```
+
+4. **Widen default beam to 7** (was 5) — fewer exercises are hard-rejected now, so a wider search better explores the candidate pool.
+
+**Post-generation safety net unchanged:** `enforceTimeBudget()` in `generateWorkoutFromTemplate()` (ADR-049 Phase 2) is still active and provides the actual time guarantee.
+
+**Files changed (15):** `types.ts`, `beam-search.ts`, `optimizer.ts`, `candidate.ts`, `template-session.ts` (API), `smart-build.ts`, `TemplateForm.tsx`, `session-context.ts`, `FilteredExercisesCard.tsx`, `explainability.ts`, `test-utils.ts`, `beam-search.test.ts`, `optimizer.test.ts`, `integration.test.ts`, `candidate.test.ts`.
+
+**Verification:** 848 tests pass, 0 failures. `npx tsc --noEmit` clean of new errors.
+
+**Supersedes:** ADR-049 Phase 1 (beam search `timeBudget` enforcement). ADR-049 Phase 2 (`enforceTimeBudget()` post-generation) is unaffected.
+
+---
+
 ## ADR-074: Slow Test Opt-In via `RUN_SLOW_TESTS` Environment Variable (2026-02-18)
 
 **Status:** Accepted
@@ -1253,9 +1299,9 @@ Greedy selection (v1) optimizes individual picks but produces suboptimal combina
 
 **Decision:**
 Replace greedy selection with multi-objective beam search optimizer (selection-v2):
-- Beam width = 5, max depth = 8
-- 7 weighted objectives: volume deficit fill (0.40), rotation novelty (0.25), SFR efficiency (0.15), movement diversity (0.05), lengthened bias (0.10), SRA readiness (0.03), user preference (0.02)
-- Hard constraints: equipment, contraindications, volume ceiling, time budget, structural balance
+- Beam width = 7, max depth = 8 *(width increased from 5 in ADR-075)*
+- 7 weighted objectives (renormalized to sum to 1.00 in ADR-075): volume deficit fill (0.35), rotation novelty (0.22), lengthened bias (0.20), SFR efficiency (0.12), movement diversity (0.07), SRA readiness (0.03), user preference (0.01)
+- Hard constraints: equipment, contraindications, volume ceiling, structural balance, per-session direct-set ceiling (C1b = 12) *(time budget removed in ADR-075)*
 - Indirect volume accounting: effective = direct + (indirect × 0.3)
 - Integration with ExerciseExposure rotation tracking
 
@@ -1829,6 +1875,12 @@ where `worstMuscleFatigue = min(perMuscle values)` if soreness data exists, else
 ---
 
 ## ADR-049: Two-phase timebox enforcement (defense in depth) (2026-02-15)
+
+**Status:** Phase 1 superseded by ADR-075. Phase 2 active.
+
+> **Phase 1** (beam search `timeBudget` enforcement) was removed in ADR-075. The beam search no longer hard-rejects exercises that exceed a time estimate. `estimateTimeContribution()` still runs but only accumulates `BeamState.timeUsed` for display. C1b (`SESSION_DIRECT_SET_CEILING = 12`) is the primary per-session hard constraint.
+>
+> **Phase 2** (`enforceTimeBudget()` post-generation safety net) is unchanged and still active.
 
 **Context:** Workouts were exceeding user's `sessionMinutes` constraint despite having a timebox system. Three critical gaps identified:
 

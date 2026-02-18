@@ -60,7 +60,6 @@ export function TemplateForm({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [trainingGoal, setTrainingGoal] = useState<string | undefined>(undefined);
-  const [timeBudgetMinutes, setTimeBudgetMinutes] = useState<number | undefined>(undefined);
   const [isStrict, setIsStrict] = useState(initialIsStrict);
   const [intent, setIntent] = useState<TemplateIntent>(initialIntent);
 
@@ -151,7 +150,6 @@ export function TemplateForm({
       exercisePool,
       seed: Date.now(),
       trainingGoal,
-      timeBudgetMinutes,
     });
 
     const newExercises: SelectedExercise[] = result.exercises.map((ex, i) => ({
@@ -161,7 +159,7 @@ export function TemplateForm({
     }));
 
     setSelectedExercises(newExercises);
-  }, [exercises, targetMuscles, trainingGoal, timeBudgetMinutes]);
+  }, [exercises, targetMuscles, trainingGoal]);
 
   const handleSubmit = async () => {
     if (!name.trim()) {
@@ -262,22 +260,6 @@ export function TemplateForm({
             <option value="fat_loss">Fat Loss</option>
             <option value="general_health">General Health</option>
           </select>
-        </div>
-        <div>
-          <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Time Budget (min)
-          </label>
-          <input
-            type="number"
-            value={timeBudgetMinutes ?? ""}
-            onChange={(e) =>
-              setTimeBudgetMinutes(e.target.value ? parseInt(e.target.value, 10) : undefined)
-            }
-            placeholder="No limit"
-            min={15}
-            max={180}
-            className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
-          />
         </div>
       </div>
 

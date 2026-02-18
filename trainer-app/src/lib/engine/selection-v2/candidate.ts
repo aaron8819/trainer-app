@@ -193,8 +193,6 @@ export function computeProposedSets(
   const MIN_SETS = 2;
   const MAX_SETS = 5;
   const DEFAULT_SETS = 3;
-  const TIGHT_BUDGET_THRESHOLD = 40; // Minutes
-  const TIGHT_BUDGET_ACCESSORY_CAP = 3; // Cap accessories at 3 sets when time is tight
 
   // Find largest deficit among primary muscles
   let maxDeficit = 0;
@@ -208,19 +206,10 @@ export function computeProposedSets(
   // If no deficit, default to 3 sets
   if (maxDeficit === 0) return DEFAULT_SETS;
 
-  // Propose sets proportional to deficit (but clamped 2-5)
-  let proposedSets = Math.ceil(maxDeficit / 2); // Heuristic: deficit / 2
-  proposedSets = Math.max(MIN_SETS, Math.min(MAX_SETS, proposedSets));
-
-  // Time-aware adjustment: With tight budgets, cap accessory sets to fit more exercises
-  const timeBudget = objective.constraints.timeBudget;
-  const isTightBudget = timeBudget < TIGHT_BUDGET_THRESHOLD;
-  const isMainLift = exercise.isMainLiftEligible ?? false;
-
-  if (isTightBudget && !isMainLift) {
-    // Cap accessories at 3 sets to leave room for more exercises
-    proposedSets = Math.min(proposedSets, TIGHT_BUDGET_ACCESSORY_CAP);
-  }
+  // Propose sets proportional to deficit (clamped 2–5)
+  // The C1b per-session per-muscle direct-set ceiling (SESSION_DIRECT_SET_CEILING = 12)
+  // in beam-search.ts acts as the natural per-session cap.
+  const proposedSets = Math.max(MIN_SETS, Math.min(MAX_SETS, Math.ceil(maxDeficit / 2)));
 
   return proposedSets;
 }

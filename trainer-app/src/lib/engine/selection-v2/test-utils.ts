@@ -41,7 +41,6 @@ export function createMockExercise(
  */
 export function createMockObjective(
   weeklyTarget: Map<string, number>,
-  timeBudget: number = 60,
   overrides?: Partial<SelectionObjective>
 ): SelectionObjective {
   return {
@@ -53,7 +52,6 @@ export function createMockObjective(
           target * 1.5, // MRV = 1.5 × MEV
         ])
       ),
-      timeBudget,
       painConflicts: new Set(),
       userAvoids: new Set(),
       minExercises: 1,
@@ -63,13 +61,13 @@ export function createMockObjective(
       minAccessories: 2, // Ensure variety
     },
     weights: {
-      volumeDeficitFill: 0.4,
-      rotationNovelty: 0.25,
-      sfrEfficiency: 0.15,
-      movementDiversity: 0.15,
-      lengthenedBias: 0.1,
+      volumeDeficitFill: 0.35,
+      rotationNovelty: 0.22,
+      lengthenedBias: 0.20,
+      sfrEfficiency: 0.12,
+      movementDiversity: 0.07,
       sraReadiness: 0.03,
-      userPreference: 0.02,
+      userPreference: 0.01,
     },
     volumeContext: {
       weeklyTarget,

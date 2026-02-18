@@ -87,7 +87,6 @@ const createObjective = (): SelectionObjective => {
     constraints: {
       volumeFloor: new Map(),
       volumeCeiling: new Map(),
-      timeBudget: 60,
       painConflicts: new Set(),
       userAvoids: new Set(),
       minExercises: 3,

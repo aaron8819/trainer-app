@@ -1,6 +1,6 @@
 # Engine Architecture
 
-Last verified against code: 2026-02-14
+Last verified against code: 2026-02-18
 
 This document describes current runtime behavior for workout generation and load assignment.
 
@@ -31,18 +31,17 @@ For full end-to-end traceability, see `docs/workout-data-flow-traceability.md`.
 
 ### 2. Time budget enforcement
 
-**Two-phase defense-in-depth approach** (ADR-049):
+**Primary per-session constraint: C1b** (ADR-073, ADR-075):
 
-**Phase 1: Beam search time estimation** (Intent-based workouts)
-- Beam search in `selection-v2/candidate.ts` uses `estimateTimeContribution()` with accurate time modeling
-- Accounts for warmup sets (2-4 for main lifts), rep-aware rest periods, and exercise-specific work time
-- Prevents most time overruns during exercise selection (within 10% accuracy)
+`SESSION_DIRECT_SET_CEILING = 12` direct sets per muscle per session (C1b) is the primary hard constraint limiting session volume. This is evidence-backed (KB Section 2: ~10–12 hard sets per muscle per session before diminishing returns). It replaces `timeBudget` as the hard filter inside the beam search — time estimation proved too noisy (±10–20 min) to justify permanent exercise rejection.
 
-**Phase 2: Post-generation safety net** (Both template and intent modes)
+`estimateTimeContribution()` in `candidate.ts` still runs during beam search to accumulate `BeamState.timeUsed` and populate `SelectionResult.timeUsed` for display, but does **not** reject or filter candidates.
+
+**Post-generation safety net** (Both template and intent modes, ADR-049):
 - `enforceTimeBudget()` called in `generateWorkoutFromTemplate()` after workout construction
 - Guarantees no workout exceeds `sessionMinutes` (or provides explicit warning)
 - Trims lowest-priority accessories if over budget (uses existing `trimAccessoriesByPriority()` scoring)
-- **Main lifts are NEVER trimmed** - if main lifts alone exceed budget, returns warning instead
+- **Main lifts are NEVER trimmed** — if main lifts alone exceed budget, returns warning instead
 - UI-friendly notifications appended to workout notes when accessories trimmed
 
 **Notification examples:**
@@ -73,6 +72,7 @@ SRA warnings are advisory:
 **Volume landmarks calibration (2026-02-18):**
 - Triceps `sraHours` corrected from 36h → 48h. The general small-muscle SRA table (24-48h) is overridden by the KB's triceps-specific section ("SRA ~48-72h") because pressing compounds provide substantial indirect stimulus on push days, extending effective recovery time beyond size alone. `src/lib/engine/volume-landmarks.ts:20`.
 - `lengthenedBias` weight in `DEFAULT_SELECTION_WEIGHTS` raised from 0.10 → 0.20. KB-confirmed per Maeo et al. 2023: overhead extensions produced +40% more total triceps growth vs pushdowns over 12 weeks. At 0.10 the 0.6 score gap between overhead extension (4/5) and pushdown (1/5) was buried by SFR differences; at 0.20 it becomes a meaningfully distinct selection factor. `src/lib/engine/selection-v2/types.ts`.
+- `DEFAULT_SELECTION_WEIGHTS` renormalized to sum to 1.00 (ADR-075). Adding `lengthenedBias: 0.20` in Phase 4 caused the total to drift to 1.20. Final weights: `volumeDeficitFill: 0.35, rotationNovelty: 0.22, lengthenedBias: 0.20, sfrEfficiency: 0.12, movementDiversity: 0.07, sraReadiness: 0.03, userPreference: 0.01`.
 
 ### 5. Movement diversity guarantees
 
@@ -80,7 +80,7 @@ SRA warnings are advisory:
 
 `scoreMovementNovelty()` receives the exercises already selected in the current beam state and penalizes candidates whose movement patterns are already covered. The score is computed dynamically during beam expansion (not pre-computed), so later picks in the beam are increasingly penalized for repeating patterns.
 
-- Weight: `movementDiversity = 0.15` (up from the original 0.05 stub)
+- Weight: `movementDiversity = 0.07` (renormalized from 0.15 when `DEFAULT_SELECTION_WEIGHTS` was corrected to sum to 1.00 in ADR-075)
 - Score: `novelPatterns / totalPatterns` — 1.0 if all patterns are new, taper toward 0 as overlap grows
 
 **Hard cap guardrail** (enforced in beam expansion):

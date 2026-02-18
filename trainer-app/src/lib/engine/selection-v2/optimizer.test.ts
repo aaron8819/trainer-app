@@ -19,6 +19,9 @@ describe("selectExercisesOptimized", () => {
     primaryMuscles,
     secondaryMuscles: [],
     equipment,
+    movementPatterns: ["horizontal_push"],
+    splitTags: ["push"],
+    jointStress: "low",
     repRangeMin: 5,
     repRangeMax: 8,
     timePerSetSec: 60,
@@ -38,7 +41,6 @@ describe("selectExercisesOptimized", () => {
           target * 1.5,
         ])
       ),
-      timeBudget: 60,
       painConflicts: new Set(),
       userAvoids: new Set(),
       minExercises: 1,
@@ -405,8 +407,7 @@ describe("selectExercisesOptimized", () => {
       const pool: Exercise[] = [skullCrusher, overheadCable];
 
       const objective = createMockObjective(
-        new Map([["Triceps" as Muscle, 9]]),
-        120 // generous time budget
+        new Map([["Triceps" as Muscle, 9]])
       );
       // No main lift required — purely testing isolation slot resolution
       const result = selectExercisesOptimized(pool, objective);

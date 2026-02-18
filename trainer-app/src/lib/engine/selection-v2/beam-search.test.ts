@@ -31,8 +31,7 @@ describe("beamSearch", () => {
   });
 
   const createMockObjective = (
-    weeklyTarget: Map<Muscle, number>,
-    timeBudget: number = 60
+    weeklyTarget: Map<Muscle, number>
   ): SelectionObjective => ({
     constraints: {
       volumeFloor: new Map(),
@@ -42,7 +41,6 @@ describe("beamSearch", () => {
           target * 1.5, // MRV = 1.5 × MEV
         ])
       ),
-      timeBudget,
       painConflicts: new Set(),
       userAvoids: new Set(),
       minExercises: 1,
@@ -111,31 +109,6 @@ describe("beamSearch", () => {
 
     expect(hasChestExercise).toBe(true);
     expect(hasSideDeltExercise).toBe(true);
-  });
-
-  it("should respect time budget constraint", () => {
-    const exercises = [
-      createMockExercise("bench_press", ["Chest" as Muscle]),
-      createMockExercise("incline_press", ["Chest" as Muscle]),
-      createMockExercise("cable_fly", ["Chest" as Muscle]),
-    ];
-
-    const objective = createMockObjective(
-      new Map([["Chest" as Muscle, 12]]),
-      20 // Only 20 minutes
-    );
-
-    const candidates = exercises.map((ex) =>
-      buildCandidate(ex, objective, computeProposedSets(ex, objective))
-    );
-
-    const result = beamSearch(candidates, objective, {
-      beamWidth: 3,
-      maxDepth: 5,
-    });
-
-    // Should not exceed time budget
-    expect(result.timeUsed).toBeLessThanOrEqual(20);
   });
 
   it("should respect volume ceiling constraint", () => {
@@ -391,10 +364,8 @@ describe("beamSearch", () => {
 
     // Should satisfy:
     // - minExercises (>= 2)
-    // - timeBudget (not exceeded)
     // - volumeCeiling (not exceeded)
     expect(result.selected.length).toBeGreaterThanOrEqual(2);
-    expect(result.timeUsed).toBeLessThanOrEqual(objective.constraints.timeBudget);
 
     // Check volume ceiling
     for (const [muscle, ceiling] of objective.constraints.volumeCeiling) {
@@ -424,8 +395,7 @@ describe("beamSearch", () => {
     ];
 
     const objective = createMockObjective(
-      new Map([["Chest" as Muscle, 12]]),
-      15 // Tight time budget
+      new Map([["Chest" as Muscle, 12]])
     );
 
     const candidates = exercises.map((ex) =>
@@ -437,7 +407,7 @@ describe("beamSearch", () => {
       maxDepth: 5,
     });
 
-    // Some exercises should be rejected due to time budget
+    // Some exercises may be rejected (volume ceiling, etc.)
     const totalExercises = result.selected.length + result.rejected.length;
     expect(totalExercises).toBeLessThanOrEqual(exercises.length);
   });
@@ -518,102 +488,12 @@ describe("beamSearch", () => {
     expect(structureViolations.length).toBeGreaterThanOrEqual(0);
   });
 
-  it("should select 3+ exercises with tight time budget (30 min)", () => {
-    // Bug fix test: Verify beam search doesn't collapse to 1-2 exercises with tight budgets
-    const exercises = [
-      { ...createMockExercise("bench_press", ["Chest" as Muscle]), isMainLiftEligible: true, timePerSetSec: 60, isCompound: true },
-      { ...createMockExercise("lateral_raise", ["Side Delts" as Muscle]), isMainLiftEligible: false, timePerSetSec: 35, isCompound: false },
-      { ...createMockExercise("tricep_pushdown", ["Triceps" as Muscle]), isMainLiftEligible: false, timePerSetSec: 30, isCompound: false },
-      { ...createMockExercise("cable_fly", ["Chest" as Muscle]), isMainLiftEligible: false, timePerSetSec: 35, isCompound: false },
-      { ...createMockExercise("face_pull", ["Rear Delts" as Muscle]), isMainLiftEligible: false, timePerSetSec: 30, isCompound: false },
-    ];
-
-    const objective = createMockObjective(
-      new Map([
-        ["Chest" as Muscle, 10],
-        ["Side Delts" as Muscle, 8],
-        ["Triceps" as Muscle, 6],
-        ["Rear Delts" as Muscle, 4],
-      ]),
-      30 // Tight 30-minute budget
-    );
-
-    // Set minimum 3 exercises to enforce floor
-    objective.constraints.minExercises = 3;
-    objective.constraints.minMainLifts = 1;
-    objective.constraints.minAccessories = 2;
-
-    const candidates = exercises.map((ex) =>
-      buildCandidate(ex, objective, computeProposedSets(ex, objective))
-    );
-
-    const result = beamSearch(candidates, objective, {
-      beamWidth: 5,
-      maxDepth: 8,
-    });
-
-    // CRITICAL: Should select at least 3 exercises even with tight budget
-    expect(result.selected.length).toBeGreaterThanOrEqual(3);
-
-    // Should stay within time budget
-    expect(result.timeUsed).toBeLessThanOrEqual(30);
-
-    // Should have at least 1 main lift
-    const mainLiftCount = result.selected.filter((c) => c.exercise.isMainLiftEligible).length;
-    expect(mainLiftCount).toBeGreaterThanOrEqual(1);
-
-    // Should have at least 2 accessories
-    const accessoryCount = result.selected.filter((c) => !c.exercise.isMainLiftEligible).length;
-    expect(accessoryCount).toBeGreaterThanOrEqual(2);
-  });
-
-  it("should reduce sets per exercise to fit tight time budget", () => {
-    // Verify that with tight budget, exercises have fewer sets
-    const exercises = [
-      { ...createMockExercise("bench_press", ["Chest" as Muscle]), isMainLiftEligible: true, timePerSetSec: 60 },
-      { ...createMockExercise("lateral_raise", ["Side Delts" as Muscle]), isMainLiftEligible: false, timePerSetSec: 40 },
-      { ...createMockExercise("tricep_extension", ["Triceps" as Muscle]), isMainLiftEligible: false, timePerSetSec: 40 },
-    ];
-
-    const objective = createMockObjective(
-      new Map([
-        ["Chest" as Muscle, 12],
-        ["Side Delts" as Muscle, 10],
-        ["Triceps" as Muscle, 8],
-      ]),
-      30 // Tight budget
-    );
-
-    objective.constraints.minExercises = 3;
-
-    const candidates = exercises.map((ex) =>
-      buildCandidate(ex, objective, computeProposedSets(ex, objective))
-    );
-
-    const result = beamSearch(candidates, objective, {
-      beamWidth: 5,
-      maxDepth: 8,
-    });
-
-    // Should select all 3 exercises
-    expect(result.selected.length).toBe(3);
-
-    // Accessories should have reduced sets (3-4 instead of 5)
-    const accessories = result.selected.filter((c) => !c.exercise.isMainLiftEligible);
-    for (const acc of accessories) {
-      expect(acc.proposedSets).toBeLessThanOrEqual(4);
-    }
-
-    // Should fit within budget
-    expect(result.timeUsed).toBeLessThanOrEqual(30);
-  });
-
   it("should prefer favorite exercises as tiebreaker when scores are within epsilon", () => {
     const muscle = "Chest" as Muscle;
     const cableFly = createMockExercise("cable_fly", [muscle]);
     const inclinePress = createMockExercise("incline_press", [muscle]);
 
-    const objective = createMockObjective(new Map([[muscle, 3]]), 60);
+    const objective = createMockObjective(new Map([[muscle, 3]]));
     // cable_fly is a favorite; incline_press is neutral
     objective.preferences.favoriteExerciseIds = new Set(["cable_fly"]);
     // Ceiling: 5 sets — selecting either exercise (3 sets) fills the slot;
@@ -668,7 +548,7 @@ describe("beamSearch", () => {
     const cableFly = createMockExercise("cable_fly", [muscle]);
     const inclinePress = createMockExercise("incline_press", [muscle]);
 
-    const objective = createMockObjective(new Map([[muscle, 3]]), 60);
+    const objective = createMockObjective(new Map([[muscle, 3]]));
     objective.preferences.favoriteExerciseIds = new Set(["cable_fly"]);
     objective.constraints.volumeCeiling = new Map([[muscle, 5]]);
     objective.constraints.minMainLifts = 0;
@@ -745,7 +625,7 @@ describe("beamSearch", () => {
 
     const tricepsTarget = new Map([["Triceps" as Muscle, 20]]);
     const baseObjective = (): ReturnType<typeof createMockObjective> => {
-      const obj = createMockObjective(tricepsTarget, 120);
+      const obj = createMockObjective(tricepsTarget);
       obj.constraints.volumeCeiling = new Map([["Triceps" as Muscle, 50]]); // no weekly ceiling interference
       obj.constraints.minMainLifts = 0;
       obj.constraints.minAccessories = 0;

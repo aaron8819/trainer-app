@@ -340,39 +340,6 @@ describe("training goal bias", () => {
   });
 });
 
-describe("time budget", () => {
-  const pool = buildTestPool();
-
-  it("trims exercises to fit time budget", () => {
-    const unlimited = smartBuild({
-      targetMuscleGroups: ["chest", "back", "legs"],
-      exercisePool: pool,
-      exerciseCount: 8,
-      seed: 42,
-    });
-    const limited = smartBuild({
-      targetMuscleGroups: ["chest", "back", "legs"],
-      exercisePool: pool,
-      exerciseCount: 8,
-      timeBudgetMinutes: 30,
-      seed: 42,
-    });
-    expect(limited.exercises.length).toBeLessThan(unlimited.exercises.length);
-    expect(limited.exercises.length).toBeGreaterThan(0);
-  });
-
-  it("keeps all exercises when budget is generous", () => {
-    const result = smartBuild({
-      targetMuscleGroups: ["chest"],
-      exercisePool: pool,
-      exerciseCount: 3,
-      timeBudgetMinutes: 120,
-      seed: 42,
-    });
-    expect(result.exercises.length).toBe(3);
-  });
-});
-
 describe("smartBuild", () => {
   const pool = buildTestPool();
 

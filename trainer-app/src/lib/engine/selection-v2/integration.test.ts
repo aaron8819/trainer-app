@@ -11,7 +11,7 @@
 import { describe, it, expect } from "vitest";
 import { selectExercisesOptimized } from "./optimizer";
 import { createMockExercise, createMockObjective } from "./test-utils";
-import type { SelectionObjective, RotationContext } from "./types";
+import type { RotationContext } from "./types";
 
 describe("Selection-v2 Integration Tests", () => {
   describe("Indirect Volume Accounting", () => {
@@ -284,27 +284,6 @@ describe("Selection-v2 Integration Tests", () => {
       expect(result.constraintsSatisfied).toBe(true);
     });
 
-    it("should respect time budget constraint", () => {
-      // Test with tight time budget
-      // Expected: Selection stops when time budget reached
-
-      const exercises = Array.from({ length: 10 }, (_, i) =>
-        createMockExercise(`ex_${i}`, ["Chest"], [], {
-          timePerSetSec: 120, // 2 min per set
-        })
-      );
-
-      const objective = createMockObjective(new Map([["Chest", 20]]), 30); // Only 30 min
-
-      const result = selectExercisesOptimized(exercises, objective);
-
-      // Should not exceed 30 minutes
-      expect(result.timeUsed).toBeLessThanOrEqual(30);
-
-      // Should have selected at least something
-      expect(result.selected.length).toBeGreaterThan(0);
-    });
-
     it("should respect pain conflicts", () => {
       // Test with pain flags
       // Expected: Flagged exercises excluded
@@ -347,7 +326,7 @@ describe("Selection-v2 Integration Tests", () => {
         weeklyTarget.set(`Muscle_${i}`, 8);
       }
 
-      const objective = createMockObjective(weeklyTarget, 60);
+      const objective = createMockObjective(weeklyTarget);
 
       const startTime = performance.now();
       const result = selectExercisesOptimized(exercises, objective);

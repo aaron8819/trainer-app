@@ -902,7 +902,7 @@ export default function LogWorkoutClient({
         <RestTimer
           durationSeconds={restTimerSeconds}
           onDismiss={() => setRestTimerSeconds(null)}
-          onAdjust={(deltaSeconds) =>
+          onAdjust={(deltaSeconds: number) =>
             setRestTimerSeconds((prev) => {
               if (prev === null) return null;
               return Math.max(0, prev + deltaSeconds);

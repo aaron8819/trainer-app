@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { applyLoads, type BaselineInput } from "./apply-loads";
-import { estimateWorkoutMinutes } from "./timeboxing";
 import type { Exercise, WorkoutHistoryEntry, WorkoutPlan } from "./types";
 
 const exercises: Record<string, Exercise> = {
@@ -133,7 +132,6 @@ describe("applyLoads", () => {
         exercises: [
           {
             exerciseId: "bench",
-            movementPattern: "push",
             sets: [
               { exerciseId: "bench", setIndex: 1, reps: 12, rpe: 7, load: 100 },
               { exerciseId: "bench", setIndex: 2, reps: 12, rpe: 7, load: 100 },
@@ -167,7 +165,7 @@ describe("applyLoads", () => {
         exercises: [
           {
             exerciseId: "bench",
-            movementPattern: "push",
+
             sets: [
               { exerciseId: "bench", setIndex: 1, reps: 12, rpe: 10, load: 300 },
             ],
@@ -181,7 +179,7 @@ describe("applyLoads", () => {
         exercises: [
           {
             exerciseId: "bench",
-            movementPattern: "push",
+
             sets: [
               { exerciseId: "bench", setIndex: 1, reps: 12, rpe: 7, load: 100 },
               { exerciseId: "bench", setIndex: 2, reps: 12, rpe: 7, load: 100 },
@@ -211,7 +209,7 @@ describe("applyLoads", () => {
         exercises: [
           {
             exerciseId: "bench",
-            movementPattern: "push",
+
             sets: [
               { exerciseId: "bench", setIndex: 1, reps: 4, rpe: 8, load: 200 },
               { exerciseId: "bench", setIndex: 2, reps: 4, rpe: 8, load: 200 },

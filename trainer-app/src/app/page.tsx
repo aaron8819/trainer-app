@@ -113,7 +113,8 @@ export default async function Home() {
             <div className="rounded-2xl border border-blue-200 bg-blue-50 p-6 shadow-sm">
               <h2 className="text-xl font-semibold">Daily Readiness Check-In</h2>
               <p className="mt-2 text-sm text-slate-600">
-                Submit your readiness to enable workout autoregulation
+                Submit readiness to drive autoregulation. Current mode uses subjective and performance signals
+                unless Whoop data is connected.
               </p>
               <div className="mt-4">
                 <ReadinessCheckInForm />

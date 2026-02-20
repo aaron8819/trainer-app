@@ -41,6 +41,8 @@ export const MOVEMENT_PATTERN_LABELS: Record<MovementPatternV2, string> = {
   abduction: "Abduction",
   adduction: "Adduction",
   isolation: "Isolation",
+  calf_raise_extended: "Calf Raise (Knee Extended)",
+  calf_raise_flexed: "Calf Raise (Knee Flexed)",
 };
 
 export const COMMON_MOVEMENT_PATTERNS: MovementPatternV2[] = [
@@ -63,6 +65,8 @@ export const ALL_MOVEMENT_PATTERNS: MovementPatternV2[] = [
   "abduction",
   "adduction",
   "isolation",
+  "calf_raise_extended",
+  "calf_raise_flexed",
 ];
 
 export const STIMULUS_BIAS_LABELS: Record<StimulusBias, string> = {

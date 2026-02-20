@@ -62,32 +62,32 @@ describe("clampRepRange", () => {
 
 describe("prescribeSetsReps with exerciseRepRange", () => {
   it("uses goal-based reps when no exercise range is provided", () => {
-    // Hypertrophy main: [6, 10]
+    // Hypertrophy main: [6, 10]. No periodization → blockProgress=0 → topSetReps=upper end (10).
     const sets = prescribeSetsReps(
       true, "intermediate", hypertrophyGoals, defaultFatigue,
       undefined, undefined, undefined
     );
-    expect(sets[0].targetReps).toBe(6);
+    expect(sets[0].targetReps).toBe(10);
   });
 
   it("clamps main lift reps to exercise range when narrower", () => {
-    // Hypertrophy main: [6, 10], exercise: [8, 12] → effective [8, 10]
+    // Hypertrophy main: [6, 10], exercise: [8, 12] → effective [8, 10]. No periodization → upper end (10).
     const exerciseRange: ExerciseRepRange = { min: 8, max: 12 };
     const sets = prescribeSetsReps(
       true, "intermediate", hypertrophyGoals, defaultFatigue,
       undefined, exerciseRange
     );
-    expect(sets[0].targetReps).toBe(8);
+    expect(sets[0].targetReps).toBe(10);
   });
 
   it("falls back to exercise range when no overlap with goal", () => {
-    // Strength main: [3, 6], exercise: [10, 15] → effective [10, 15]
+    // Strength main: [3, 6], exercise: [10, 15] → effective [10, 15]. No periodization → upper end (15).
     const exerciseRange: ExerciseRepRange = { min: 10, max: 15 };
     const sets = prescribeSetsReps(
       true, "intermediate", strengthGoals, defaultFatigue,
       undefined, exerciseRange
     );
-    expect(sets[0].targetReps).toBe(10);
+    expect(sets[0].targetReps).toBe(15);
   });
 
   it("clamps accessory reps to exercise range when narrower", () => {
@@ -102,13 +102,13 @@ describe("prescribeSetsReps with exerciseRepRange", () => {
   });
 
   it("does not affect reps when exercise range is wider than goal", () => {
-    // Hypertrophy main: [6, 10], exercise: [1, 30] → effective [6, 10]
+    // Hypertrophy main: [6, 10], exercise: [1, 30] → effective [6, 10]. No periodization → upper end (10).
     const exerciseRange: ExerciseRepRange = { min: 1, max: 30 };
     const sets = prescribeSetsReps(
       true, "intermediate", hypertrophyGoals, defaultFatigue,
       undefined, exerciseRange
     );
-    expect(sets[0].targetReps).toBe(6);
+    expect(sets[0].targetReps).toBe(10);
     expect(sets[0].targetRepRange).toBeUndefined();
   });
 
@@ -154,6 +154,20 @@ describe("prescribeSetsReps with exerciseRepRange", () => {
     expect(sets[0].targetRepRange).toEqual({ min: 8, max: 10 });
   });
 
+  it("interpolates main lift top-set reps from upper to lower range across block weeks", () => {
+    // Hypertrophy [6, 10]: week 1 → 10 reps, week 2 → 8 reps, week 3 → 6 reps
+    const week1 = prescribeSetsReps(true, "intermediate", hypertrophyGoals, defaultFatigue,
+      { rpeOffset: -1.0, setMultiplier: 1.0, backOffMultiplier: 0.88, isDeload: false, weekInBlock: 1 });
+    const week2 = prescribeSetsReps(true, "intermediate", hypertrophyGoals, defaultFatigue,
+      { rpeOffset: -0.5, setMultiplier: 1.15, backOffMultiplier: 0.88, isDeload: false, weekInBlock: 2 });
+    const week3 = prescribeSetsReps(true, "intermediate", hypertrophyGoals, defaultFatigue,
+      { rpeOffset: 1.0, setMultiplier: 1.3, backOffMultiplier: 0.88, isDeload: false, weekInBlock: 3 });
+
+    expect(week1[0].targetReps).toBe(10); // Early: upper range
+    expect(week2[0].targetReps).toBe(8);  // Middle: interpolated
+    expect(week3[0].targetReps).toBe(6);  // Late: lower range
+  });
+
   it("keeps beginner main-lift back-off reps equal to top-set reps", () => {
     const sets = prescribeSetsReps(
       true,
@@ -167,17 +181,21 @@ describe("prescribeSetsReps with exerciseRepRange", () => {
   });
 
   it("applies training-age back-off rep bumps for non-top main sets", () => {
+    // Use late-block periodization (week 3) so topSetReps lands at floor (6), leaving room for bumps.
+    const latePeriodization = { rpeOffset: 1.0, setMultiplier: 1.3, backOffMultiplier: 0.88, isDeload: false, weekInBlock: 3 };
     const intermediateSets = prescribeSetsReps(
       true,
       "intermediate",
       hypertrophyGoals,
-      defaultFatigue
+      defaultFatigue,
+      latePeriodization
     );
     const advancedSets = prescribeSetsReps(
       true,
       "advanced",
       hypertrophyGoals,
-      defaultFatigue
+      defaultFatigue,
+      latePeriodization
     );
 
     expect(intermediateSets[1].targetReps).toBe(intermediateSets[0].targetReps! + 1);
@@ -185,12 +203,14 @@ describe("prescribeSetsReps with exerciseRepRange", () => {
   });
 
   it("clamps back-off rep bumps to exercise rep-range max", () => {
+    // Late-block (week 3): effectiveMain=[9,10], topSetReps=9, advanced bump=2 → backOff=min(10,11)=10
+    const latePeriodization = { rpeOffset: 1.0, setMultiplier: 1.3, backOffMultiplier: 0.88, isDeload: false, weekInBlock: 3 };
     const sets = prescribeSetsReps(
       true,
       "advanced",
       hypertrophyGoals,
       defaultFatigue,
-      undefined,
+      latePeriodization,
       { min: 9, max: 10 }
     );
 

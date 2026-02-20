@@ -1,27 +1,30 @@
-export const BASELINE_RPE_TOLERANCE = 1.0;
-
-export type BaselineQualificationSet = {
+type BaselineCandidateSet = {
   targetReps?: number | null;
-  targetRpe?: number | null;
   actualReps?: number | null;
+  actualLoad?: number | null;
   actualRpe?: number | null;
+  wasSkipped?: boolean | null;
 };
 
-export function isSetQualifiedForBaseline(set: BaselineQualificationSet): boolean {
-  if (set.targetReps !== undefined && set.targetReps !== null) {
-    if (set.actualReps === undefined || set.actualReps === null || set.actualReps < set.targetReps) {
-      return false;
-    }
+/**
+ * Lightweight guard for whether a set should count toward baseline updates.
+ * Keeps qualification strict enough to avoid noisy/partial logs.
+ */
+export function isSetQualifiedForBaseline(set: BaselineCandidateSet): boolean {
+  if (set.wasSkipped) {
+    return false;
   }
-
-  if (
-    set.targetRpe !== undefined &&
-    set.targetRpe !== null &&
-    set.actualRpe !== undefined &&
-    set.actualRpe !== null
-  ) {
-    return set.actualRpe <= set.targetRpe + BASELINE_RPE_TOLERANCE;
+  if (set.actualReps == null || set.actualLoad == null) {
+    return false;
   }
-
+  if (set.actualReps <= 0 || set.actualLoad < 0) {
+    return false;
+  }
+  if (set.targetReps != null && set.actualReps < set.targetReps) {
+    return false;
+  }
+  if (set.actualRpe != null && (set.actualRpe < 1 || set.actualRpe > 10)) {
+    return false;
+  }
   return true;
 }

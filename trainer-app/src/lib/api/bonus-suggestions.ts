@@ -135,12 +135,7 @@ export async function getBonusSuggestions(
     if (!matchingMuscle) continue;
     const muscleInfo = undertrainedMuscles.find((m) => m.muscle === matchingMuscle);
 
-    const baseline = await prisma.baseline.findFirst({
-      where: { userId, exerciseId: exercise.id },
-      orderBy: { createdAt: "desc" },
-      select: { workingWeightMin: true, topSetWeight: true },
-    });
-    const suggestedLoad = baseline?.workingWeightMin ?? baseline?.topSetWeight ?? null;
+    const suggestedLoad = null;
 
     suggestions.push({
       exerciseId: exercise.id,

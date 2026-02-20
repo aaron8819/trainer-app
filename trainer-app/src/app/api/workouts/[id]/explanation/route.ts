@@ -31,6 +31,7 @@ export async function GET(
 
   // Serialize Maps to objects for JSON response
   return NextResponse.json({
+    confidence: result.confidence,
     sessionContext: {
       ...result.sessionContext,
       volumeStatus: {

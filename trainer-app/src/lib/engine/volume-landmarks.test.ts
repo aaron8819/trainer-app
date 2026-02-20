@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { VOLUME_LANDMARKS, MUSCLE_SPLIT_MAP } from "./volume-landmarks";
+import { VOLUME_LANDMARKS, MUSCLE_SPLIT_MAP, computeWeeklyVolumeTarget } from "./volume-landmarks";
 
 describe("VOLUME_LANDMARKS", () => {
   const muscles = Object.keys(VOLUME_LANDMARKS);
@@ -37,6 +37,37 @@ describe("VOLUME_LANDMARKS", () => {
   it("uses corrected landmark values for biceps mrv and hamstrings mev", () => {
     expect(VOLUME_LANDMARKS["Biceps"]?.mrv).toBe(26);
     expect(VOLUME_LANDMARKS["Hamstrings"]?.mev).toBe(6);
+  });
+});
+
+describe("computeWeeklyVolumeTarget (G1: volume progression)", () => {
+  // Chest: MEV=10, MAV=16, MV=6
+  const chest = VOLUME_LANDMARKS["Chest"]!;
+
+  it("returns MEV at week 1 of accumulation", () => {
+    expect(computeWeeklyVolumeTarget(chest, 1, 4, false)).toBe(10);
+  });
+
+  it("ramps to midpoint at week 2 of a 4-week block", () => {
+    // week 2, accumWeeks=3, progress=(2-1)/(3-1)=0.5 → MEV + 0.5*(MAV-MEV)=13
+    expect(computeWeeklyVolumeTarget(chest, 2, 4, false)).toBe(13);
+  });
+
+  it("reaches MAV at the final accumulation week", () => {
+    // week 3, accumWeeks=3, progress=1.0 → MAV=16
+    expect(computeWeeklyVolumeTarget(chest, 3, 4, false)).toBe(16);
+  });
+
+  it("returns MV during deload regardless of week", () => {
+    expect(computeWeeklyVolumeTarget(chest, 4, 4, true)).toBe(6);
+    expect(computeWeeklyVolumeTarget(chest, 1, 4, true)).toBe(6);
+  });
+
+  it("returns at least MEV for muscles with MEV=0 (e.g. Glutes)", () => {
+    const glutes = VOLUME_LANDMARKS["Glutes"]!;
+    // MEV=0, MAV=8 — week 1 should be 0 (MEV), week 3 should be 8 (MAV)
+    expect(computeWeeklyVolumeTarget(glutes, 1, 4, false)).toBe(0);
+    expect(computeWeeklyVolumeTarget(glutes, 3, 4, false)).toBe(8);
   });
 });
 

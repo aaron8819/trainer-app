@@ -119,7 +119,15 @@ function prescribeMainLiftSets(
           periodization?.setMultiplier,
           goals.primary
         );
-  const topSetReps = effectiveMain[0];
+  // Accumulation: start at upper rep range (early block = more reps, less load),
+  // progress toward lower rep range as block peaks (late block = fewer reps, heavier).
+  // blockProgress: 0.0 at week 1 (upper end) → 1.0 at week 3 (lower end).
+  const blockProgress = periodization
+    ? Math.min(1, Math.max(0, ((periodization.weekInBlock ?? 1) - 1) / 2))
+    : 0;
+  const topSetReps = Math.round(
+    effectiveMain[1] - blockProgress * (effectiveMain[1] - effectiveMain[0])
+  );
   const backOffReps = Math.min(
     effectiveMain[1],
     topSetReps + (BACK_OFF_REP_BUMP_BY_TRAINING_AGE[trainingAge] ?? 0)

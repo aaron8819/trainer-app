@@ -1,8 +1,5 @@
 import type { PrimaryGoal, TrainingAge } from "./types";
 
-const USE_REVISED_FAT_LOSS_POLICY_ENV = "USE_REVISED_FAT_LOSS_POLICY";
-const REVISED_FAT_LOSS_MAIN_REP_RANGE: [number, number] = [6, 10];
-const REVISED_FAT_LOSS_TARGET_RPE = 7.5;
 export const FAT_LOSS_SET_MULTIPLIER = 0.75;
 
 export const REP_RANGES_BY_GOAL: Record<
@@ -11,7 +8,8 @@ export const REP_RANGES_BY_GOAL: Record<
 > = {
   hypertrophy: { main: [6, 10], accessory: [10, 15] },
   strength: { main: [3, 6], accessory: [6, 10] },
-  fat_loss: { main: [8, 12], accessory: [12, 20] },
+  // KB: 6-10 reps with maintained load is optimal for muscle preservation during deficit (Helms 2014)
+  fat_loss: { main: [6, 10], accessory: [12, 20] },
   athleticism: { main: [4, 8], accessory: [8, 12] },
   general_health: { main: [8, 12], accessory: [10, 15] },
 };
@@ -19,7 +17,8 @@ export const REP_RANGES_BY_GOAL: Record<
 export const TARGET_RPE_BY_GOAL: Record<PrimaryGoal, number> = {
   hypertrophy: 7.5,
   strength: 8.0,
-  fat_loss: 7.0,
+  // KB: stop 1-2 RIR during deficit; 7.5 RPE reflects this conservative but effective approach
+  fat_loss: 7.5,
   athleticism: 7.5,
   general_health: 7.0,
 };
@@ -46,6 +45,7 @@ export type PeriodizationModifiers = {
   setMultiplier: number;
   backOffMultiplier: number;
   isDeload: boolean;
+  weekInBlock?: number;
 };
 
 export type MesocycleConfig = {
@@ -66,28 +66,13 @@ export function getBackOffMultiplier(primaryGoal: PrimaryGoal): number {
   return DEFAULT_BACKOFF_MULTIPLIER_BY_GOAL[primaryGoal] ?? 0.85;
 }
 
-export function shouldUseRevisedFatLossPolicy(): boolean {
-  const rawValue = process.env[USE_REVISED_FAT_LOSS_POLICY_ENV];
-  if (!rawValue) {
-    return false;
-  }
-  const normalized = rawValue.trim().toLowerCase();
-  return ["1", "true", "yes", "on"].includes(normalized);
-}
-
 export function getGoalRepRanges(primaryGoal: PrimaryGoal) {
-  const base = REP_RANGES_BY_GOAL[primaryGoal];
-  if (primaryGoal !== "fat_loss" || !shouldUseRevisedFatLossPolicy()) {
-    return base;
-  }
-  return {
-    ...base,
-    main: REVISED_FAT_LOSS_MAIN_REP_RANGE,
-  };
+  return REP_RANGES_BY_GOAL[primaryGoal];
 }
 
 export function getGoalSetMultiplier(primaryGoal: PrimaryGoal): number {
-  if (primaryGoal === "fat_loss" && shouldUseRevisedFatLossPolicy()) {
+  // KB: reduce volume 20-33% during caloric deficit (Roth 2022: 6-10 sets/muscle/week sufficient)
+  if (primaryGoal === "fat_loss") {
     return FAT_LOSS_SET_MULTIPLIER;
   }
   return 1;
@@ -96,9 +81,6 @@ export function getGoalSetMultiplier(primaryGoal: PrimaryGoal): number {
 export function getBaseTargetRpe(primaryGoal: PrimaryGoal, trainingAge: TrainingAge): number {
   if (primaryGoal === "hypertrophy") {
     return HYPERTROPHY_TARGET_RPE_BY_TRAINING_AGE[trainingAge] ?? 8.0;
-  }
-  if (primaryGoal === "fat_loss" && shouldUseRevisedFatLossPolicy()) {
-    return REVISED_FAT_LOSS_TARGET_RPE;
   }
   return TARGET_RPE_BY_GOAL[primaryGoal];
 }
@@ -143,14 +125,18 @@ export function getPeriodizationModifiers(
   trainingAge?: TrainingAge
 ): PeriodizationModifiers {
   const totalWeeks = 4;
-  const weekIndex = ((weekInBlock % totalWeeks) + totalWeeks) % totalWeeks;
-  const isDeload = weekIndex === totalWeeks - 1;
+  // weekInBlock is 1-based (week 1 = first week, week 4 = deload)
+  const weekIndex = Math.min(weekInBlock - 1, totalWeeks - 1);
+  const isDeload = weekIndex >= totalWeeks - 1;
 
-  return getMesocyclePeriodization(
-    { totalWeeks: totalWeeks - 1, currentWeek: Math.min(weekIndex, totalWeeks - 2), isDeload },
-    goal,
-    trainingAge
-  );
+  return {
+    ...getMesocyclePeriodization(
+      { totalWeeks: totalWeeks - 1, currentWeek: Math.min(weekIndex, totalWeeks - 2), isDeload },
+      goal,
+      trainingAge
+    ),
+    weekInBlock,
+  };
 }
 
 export const DELOAD_THRESHOLDS = {

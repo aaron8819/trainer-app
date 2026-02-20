@@ -21,8 +21,8 @@ import {
   scoreSRAAlignment,
   scoreUserPreference,
 } from "./scoring";
-import { estimateExerciseMinutes } from "../timeboxing";
-import { getGoalRepRanges } from "../rules";
+import { getGoalRepRanges, getGoalSetMultiplier } from "../rules";
+import { getRestSeconds, REST_SECONDS } from "../prescription";
 
 /**
  * Build a scored candidate from an exercise
@@ -191,8 +191,17 @@ export function computeProposedSets(
   objective: SelectionObjective
 ): number {
   const MIN_SETS = 2;
-  const MAX_SETS = 5;
   const DEFAULT_SETS = 3;
+
+  // G2: Training-age-aware set cap (KB §8)
+  // Beginner 6-10 sets/week → smaller per-exercise cap; Advanced 16-25+ → larger cap
+  const MAX_SETS_BY_AGE: Record<string, number> = { beginner: 4, intermediate: 5, advanced: 6 };
+  const MAX_SETS = MAX_SETS_BY_AGE[objective.trainingAge ?? "intermediate"] ?? 5;
+
+  // G3: Fat-loss goal multiplier (KB §8: reduce volume ~20-33% during caloric deficit)
+  const goalMultiplier = objective.goals?.primary
+    ? getGoalSetMultiplier(objective.goals.primary)
+    : 1;
 
   // Find largest deficit among primary muscles
   let maxDeficit = 0;
@@ -203,13 +212,39 @@ export function computeProposedSets(
     maxDeficit = Math.max(maxDeficit, deficit);
   }
 
-  // If no deficit, default to 3 sets
-  if (maxDeficit === 0) return DEFAULT_SETS;
+  // If no deficit, default to 3 sets (with goal multiplier)
+  if (maxDeficit === 0) return Math.max(MIN_SETS, Math.round(DEFAULT_SETS * goalMultiplier));
 
-  // Propose sets proportional to deficit (clamped 2–5)
+  // Propose sets proportional to deficit, apply goal multiplier, clamp to [MIN_SETS, MAX_SETS]
   // The C1b per-session per-muscle direct-set ceiling (SESSION_DIRECT_SET_CEILING = 12)
   // in beam-search.ts acts as the natural per-session cap.
-  const proposedSets = Math.max(MIN_SETS, Math.min(MAX_SETS, Math.ceil(maxDeficit / 2)));
+  const rawSets = Math.max(MIN_SETS, Math.min(MAX_SETS, Math.ceil(maxDeficit / 2)));
+  return Math.max(MIN_SETS, Math.round(rawSets * goalMultiplier));
+}
 
-  return proposedSets;
+/**
+ * Estimate time contribution for a single exercise.
+ * Accounts for warmup sets (main lifts), rep-aware rest periods, and work time.
+ */
+function estimateExerciseMinutes(
+  exercise: Exercise,
+  sets: number,
+  isMainLift: boolean,
+  targetReps?: number
+): number {
+  if (sets <= 0) return 0;
+
+  const workSeconds = exercise.timePerSetSec ?? (isMainLift ? 60 : 40);
+  const repAwareWorkSeconds =
+    targetReps !== undefined ? Math.max(20, Math.min(90, targetReps * 2 + 10)) : undefined;
+  const finalWorkSeconds = repAwareWorkSeconds ?? workSeconds;
+  const restSeconds = getRestSeconds(exercise, isMainLift, targetReps);
+  const workingSeconds = (finalWorkSeconds + restSeconds) * sets;
+
+  let warmupSeconds = 0;
+  if (isMainLift) {
+    warmupSeconds = 3 * (30 + REST_SECONDS.warmup);
+  }
+
+  return Math.round((workingSeconds + warmupSeconds) / 60);
 }

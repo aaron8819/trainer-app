@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { isSetQualifiedForBaseline } from "@/lib/baseline-qualification";
 import { BonusExerciseSheet } from "@/components/BonusExerciseSheet";
+import { RestTimer } from "@/components/RestTimer";
 import { isDumbbellEquipment, toDisplayLoad, toStoredLoad } from "@/lib/ui/load-display";
 
 export type LogSetInput = {
@@ -13,6 +14,7 @@ export type LogSetInput = {
   targetRepRange?: { min: number; max: number };
   targetLoad?: number | null;
   targetRpe?: number | null;
+  restSeconds?: number | null;
   actualReps?: number | null;
   actualLoad?: number | null;
   actualRpe?: number | null;
@@ -53,8 +55,15 @@ type FlatSetItem = {
 
 type UndoSnapshot = {
   setId: string;
-  previousSet: LogSetInput;
-  wasLoggedBefore: boolean;
+  previousSet: LogSetInput | null;
+  previousLog: {
+    actualReps?: number | null;
+    actualRpe?: number | null;
+    actualLoad?: number | null;
+    wasSkipped?: boolean | null;
+    notes?: string | null;
+  } | null;
+  wasCreated: boolean;
   expiresAt: number;
 };
 
@@ -131,6 +140,19 @@ function clampReps(value: number | null | undefined, delta: number) {
   return Math.max(0, Math.round(base + delta));
 }
 
+function resolveRestSeconds(item: FlatSetItem): number {
+  if (item.set.restSeconds != null && item.set.restSeconds > 0) {
+    return item.set.restSeconds;
+  }
+  if (item.section === "warmup") {
+    return 60;
+  }
+  if (item.section === "main") {
+    return 180;
+  }
+  return 90;
+}
+
 function getNextUnloggedSetId(
   flatSets: FlatSetItem[],
   loggedSetIds: Set<string>,
@@ -169,25 +191,6 @@ function normalizeExercises(exercises: LogExerciseInput[] | SectionedExercises):
   };
 }
 
-function withDefaults(exercises: NormalizedExercises): NormalizedExercises {
-  const applyDefaults = (items: LogExerciseInput[]) =>
-    items.map((exercise) => ({
-      ...exercise,
-      sets: exercise.sets.map((set) => ({
-        ...set,
-        actualReps: set.actualReps ?? set.targetReps ?? null,
-        actualLoad: set.actualLoad ?? set.targetLoad ?? null,
-        actualRpe: set.actualRpe ?? set.targetRpe ?? null,
-      })),
-    }));
-
-  return {
-    warmup: applyDefaults(exercises.warmup),
-    main: applyDefaults(exercises.main),
-    accessory: applyDefaults(exercises.accessory),
-  };
-}
-
 function buildSetChipLabel(set: LogSetInput, isLogged: boolean, isDumbbell = false): string {
   if (!isLogged) {
     return `Set ${set.setIndex}`;
@@ -216,13 +219,15 @@ export default function LogWorkoutClient({
   workoutId: string;
   exercises: LogExerciseInput[] | SectionedExercises;
 }) {
-  const initial = useMemo(() => withDefaults(normalizeExercises(exercises)), [exercises]);
+  const initial = useMemo(() => normalizeExercises(exercises), [exercises]);
   const [data, setData] = useState<NormalizedExercises>(initial);
   const [savingSetId, setSavingSetId] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [completed, setCompleted] = useState(false);
   const [skipped, setSkipped] = useState(false);
+  const [completing, setCompleting] = useState(false);
+  const [skipping, setSkipping] = useState(false);
   const [baselineSummary, setBaselineSummary] = useState<BaselineUpdateSummary | null>(null);
   const [loggedSetIds, setLoggedSetIds] = useState<Set<string>>(new Set());
   const [skipReason, setSkipReason] = useState("");
@@ -238,6 +243,7 @@ export default function LogWorkoutClient({
   const [undoSnapshot, setUndoSnapshot] = useState<UndoSnapshot | null>(null);
   const [autoregHint, setAutoregHint] = useState<AutoregHint | null>(null);
   const [showBonusSheet, setShowBonusSheet] = useState(false);
+  const [restTimerSeconds, setRestTimerSeconds] = useState<number | null>(null);
 
   const flatSets = useMemo<FlatSetItem[]>(() => {
     const output: FlatSetItem[] = [];
@@ -361,6 +367,17 @@ export default function LogWorkoutClient({
     updateSetFields(setId, (set) => ({ ...set, [field]: value }));
   };
 
+  const findPreviousLoggedSet = (exercise: LogExerciseInput, currentSetIndex: number) => {
+    for (let index = currentSetIndex - 1; index >= 0; index -= 1) {
+      const candidate = exercise.sets[index];
+      if (!candidate) continue;
+      if (!loggedSetIds.has(candidate.setId)) continue;
+      if (candidate.wasSkipped) continue;
+      return candidate;
+    }
+    return null;
+  };
+
   const handleLogSet = async (setId: string, overrides?: Partial<LogSetInput>) => {
     setStatus(null);
     setError(null);
@@ -392,26 +409,39 @@ export default function LogWorkoutClient({
       return;
     }
 
-    if (overrides) {
-      updateSetFields(setId, (set) => ({ ...set, ...overrides }));
-    }
-    const wasLoggedBefore = loggedSetIds.has(setId);
+    const body = (await response.json().catch(() => ({}))) as {
+      wasCreated?: boolean;
+      previousLog?: {
+        actualReps?: number | null;
+        actualRpe?: number | null;
+        actualLoad?: number | null;
+        wasSkipped?: boolean | null;
+      } | null;
+    };
+
+    updateSetFields(setId, (set) => ({ ...set, ...mergedSet }));
+
     const nextLogged = new Set(loggedSetIds);
     nextLogged.add(setId);
     setLoggedSetIds(nextLogged);
     setUndoSnapshot({
       setId,
       previousSet: targetSet.set,
-      wasLoggedBefore,
+      previousLog: body.previousLog ?? null,
+      wasCreated: body.wasCreated ?? !loggedSetIds.has(setId),
       expiresAt: Date.now() + 5000,
     });
 
     // Only auto-advance on first log (not re-log of existing set)
-    if (!wasLoggedBefore) {
+    if (!loggedSetIds.has(setId)) {
       const nextSetId = getNextUnloggedSetId(flatSets, nextLogged, setId);
       if (nextSetId) {
         setActiveSetId(nextSetId);
       }
+    }
+
+    if (!(mergedSet.wasSkipped ?? false)) {
+      setRestTimerSeconds(resolveRestSeconds(targetSet));
     }
 
     // Advisory autoregulation hint for next set in same exercise
@@ -440,95 +470,164 @@ export default function LogWorkoutClient({
       setAutoregHint(null);
     }
 
-    setStatus(wasLoggedBefore ? "Set updated" : "Set logged");
+    setStatus(loggedSetIds.has(setId) ? "Set updated" : "Set logged");
     setSavingSetId(null);
   };
 
-  const handleUndo = () => {
+  const handleUndo = async () => {
     if (!undoSnapshot) {
       return;
     }
-    updateSetFields(undoSnapshot.setId, () => ({ ...undoSnapshot.previousSet }));
-    if (!undoSnapshot.wasLoggedBefore) {
-      setLoggedSetIds((prev) => {
-        const next = new Set(prev);
-        next.delete(undoSnapshot.setId);
-        return next;
-      });
-    }
-    setActiveSetId(undoSnapshot.setId);
-    setUndoSnapshot(null);
-    setStatus("Last set log reverted locally");
+    setStatus(null);
     setError(null);
+    setSavingSetId(undoSnapshot.setId);
+
+    try {
+      if (undoSnapshot.wasCreated) {
+        const response = await fetch("/api/logs/set", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ workoutSetId: undoSnapshot.setId }),
+        });
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}));
+          setError(body.error ?? "Failed to undo set log");
+          setSavingSetId(null);
+          return;
+        }
+        if (undoSnapshot.previousSet) {
+          updateSetFields(undoSnapshot.setId, () => undoSnapshot.previousSet as LogSetInput);
+        }
+        setLoggedSetIds((prev) => {
+          const next = new Set(prev);
+          next.delete(undoSnapshot.setId);
+          return next;
+        });
+      } else {
+        const deleteResponse = await fetch("/api/logs/set", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            workoutSetId: undoSnapshot.setId,
+          }),
+        });
+        if (!deleteResponse.ok) {
+          const body = await deleteResponse.json().catch(() => ({}));
+          setError(body.error ?? "Failed to restore previous set log");
+          setSavingSetId(null);
+          return;
+        }
+
+        const restoreResponse = await fetch("/api/logs/set", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            workoutSetId: undoSnapshot.setId,
+            actualReps: undoSnapshot.previousLog?.actualReps ?? undefined,
+            actualLoad: undoSnapshot.previousLog?.actualLoad ?? undefined,
+            actualRpe: undoSnapshot.previousLog?.actualRpe ?? undefined,
+            wasSkipped: undoSnapshot.previousLog?.wasSkipped ?? false,
+            notes: undoSnapshot.previousLog?.notes ?? undefined,
+          }),
+        });
+        if (!restoreResponse.ok) {
+          const body = await restoreResponse.json().catch(() => ({}));
+          setError(body.error ?? "Failed to restore previous set log");
+          setSavingSetId(null);
+          return;
+        }
+        if (undoSnapshot.previousSet) {
+          updateSetFields(undoSnapshot.setId, () => undoSnapshot.previousSet as LogSetInput);
+        }
+      }
+
+      setActiveSetId(undoSnapshot.setId);
+      setUndoSnapshot(null);
+      setStatus("Last set log reverted");
+    } catch {
+      setError("Failed to undo set log");
+    } finally {
+      setSavingSetId(null);
+    }
   };
 
   const handleCompleteWorkout = async () => {
+    if (completing || skipping) {
+      return;
+    }
+    setCompleting(true);
     setStatus(null);
     setError(null);
     setBaselineSummary(null);
 
-    const response = await fetch("/api/workouts/save", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        workoutId,
-        status: "COMPLETED",
-        exercises: [],
-      }),
-    });
+    try {
+      const response = await fetch("/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutId,
+          status: "COMPLETED",
+          exercises: [],
+        }),
+      });
 
-    if (!response.ok) {
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        setError(body.error ?? "Failed to mark workout completed");
+        return;
+      }
+
       const body = await response.json().catch(() => ({}));
-      setError(body.error ?? "Failed to mark workout completed");
-      return;
+      setBaselineSummary(body.baselineSummary ?? null);
+      setCompleted(true);
+      setStatus("Workout marked as completed");
+    } catch {
+      setError("Failed to mark workout completed");
+    } finally {
+      setCompleting(false);
     }
-
-    const body = await response.json().catch(() => ({}));
-    setBaselineSummary(body.baselineSummary ?? null);
-    setCompleted(true);
-    setStatus("Workout marked as completed");
   };
 
   const handleSkipWorkout = async () => {
+    if (skipping || completing) {
+      return;
+    }
+    setSkipping(true);
     setStatus(null);
     setError(null);
     setBaselineSummary(null);
 
-    const response = await fetch("/api/workouts/save", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        workoutId,
-        status: "SKIPPED",
-        notes: skipReason ? `Skipped: ${skipReason}` : "Skipped",
-        exercises: [],
-      }),
-    });
+    try {
+      const response = await fetch("/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutId,
+          status: "SKIPPED",
+          notes: skipReason ? `Skipped: ${skipReason}` : "Skipped",
+          exercises: [],
+        }),
+      });
 
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}));
-      setError(body.error ?? "Failed to mark workout skipped");
-      return;
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        setError(body.error ?? "Failed to mark workout skipped");
+        return;
+      }
+
+      setSkipped(true);
+      setStatus("Workout marked as skipped");
+    } catch {
+      setError("Failed to mark workout skipped");
+    } finally {
+      setSkipping(false);
     }
-
-    setSkipped(true);
-    setStatus("Workout marked as skipped");
   };
 
   const handleAddExercise = (exercise: LogExerciseInput) => {
-    // Apply defaults (prefill actual from target)
-    const exerciseWithDefaults: LogExerciseInput = {
-      ...exercise,
-      sets: exercise.sets.map((set) => ({
-        ...set,
-        actualReps: set.actualReps ?? set.targetReps ?? null,
-        actualLoad: set.actualLoad ?? set.targetLoad ?? null,
-        actualRpe: set.actualRpe ?? set.targetRpe ?? null,
-      })),
-    };
     setData((prev) => ({
       ...prev,
-      accessory: [...prev.accessory, exerciseWithDefaults],
+      accessory: [...prev.accessory, exercise],
     }));
     // Open the accessory section and activate the first set of the new exercise
     setExpandedSections((prev) => ({ ...prev, accessory: true }));
@@ -572,7 +671,7 @@ export default function LogWorkoutClient({
             <button
               className="inline-flex min-h-11 items-center justify-center rounded-full bg-emerald-700 px-6 py-2 text-sm font-semibold text-white disabled:opacity-60"
               onClick={handleCompleteWorkout}
-              disabled={completed || skipped}
+              disabled={completed || skipped || completing || skipping}
               type="button"
             >
               Complete Workout
@@ -771,16 +870,16 @@ export default function LogWorkoutClient({
               className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 px-6 py-2 text-sm font-semibold text-slate-700 disabled:opacity-60"
               type="button"
               onClick={() => {
-                if (activeSet.setIndex === 0) {
+                const previousSet = findPreviousLoggedSet(activeSet.exercise, activeSet.setIndex);
+                if (!previousSet) {
                   return;
                 }
-                const previousSet = activeSet.exercise.sets[activeSet.setIndex - 1];
                 setSingleField(activeSet.set.setId, "actualReps", previousSet.actualReps ?? null);
                 setSingleField(activeSet.set.setId, "actualLoad", previousSet.actualLoad ?? null);
                 setSingleField(activeSet.set.setId, "actualRpe", previousSet.actualRpe ?? null);
                 setSingleField(activeSet.set.setId, "wasSkipped", false);
               }}
-              disabled={activeSet.setIndex === 0}
+              disabled={findPreviousLoggedSet(activeSet.exercise, activeSet.setIndex) === null}
             >
               Same as last
             </button>
@@ -797,6 +896,19 @@ export default function LogWorkoutClient({
           {status ? <p className="mt-3 text-sm text-emerald-600">{status}</p> : null}
           {error ? <p className="mt-3 text-sm text-rose-600">{error}</p> : null}
         </section>
+      ) : null}
+
+      {!completed && !skipped && restTimerSeconds !== null ? (
+        <RestTimer
+          durationSeconds={restTimerSeconds}
+          onDismiss={() => setRestTimerSeconds(null)}
+          onAdjust={(deltaSeconds) =>
+            setRestTimerSeconds((prev) => {
+              if (prev === null) return null;
+              return Math.max(0, prev + deltaSeconds);
+            })
+          }
+        />
       ) : null}
 
       {!completed && !skipped ? (
@@ -1072,6 +1184,7 @@ export default function LogWorkoutClient({
             <button
               className="inline-flex min-h-9 items-center justify-center rounded-full border border-slate-300 px-3 text-xs font-semibold text-slate-700"
               onClick={handleUndo}
+              disabled={savingSetId !== null}
               type="button"
             >
               Undo
@@ -1107,7 +1220,7 @@ export default function LogWorkoutClient({
             <button
               className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-slate-900 px-6 py-2 text-sm font-semibold text-white disabled:opacity-60 sm:w-auto"
               onClick={handleCompleteWorkout}
-              disabled={completed || skipped}
+              disabled={completed || skipped || completing || skipping}
             >
               {completed ? "Workout completed" : "Mark workout completed"}
             </button>
@@ -1115,7 +1228,7 @@ export default function LogWorkoutClient({
               <button
                 className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-slate-300 px-6 py-2 text-sm font-semibold text-slate-700 disabled:opacity-60 sm:w-auto"
                 onClick={handleSkipWorkout}
-                disabled={completed || skipped}
+                disabled={completed || skipped || completing || skipping}
               >
                 {skipped ? "Workout skipped" : "Mark workout skipped"}
               </button>

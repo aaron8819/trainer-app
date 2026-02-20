@@ -13,11 +13,18 @@
  * Complete workout explanation
  */
 export type WorkoutExplanation = {
+  confidence: ExplainabilityConfidence;
   sessionContext: SessionContext;
   coachMessages: CoachMessage[];
   exerciseRationales: Map<string, ExerciseRationale>; // exerciseId -> rationale
   prescriptionRationales: Map<string, PrescriptionRationale>; // exerciseId -> rationale
   filteredExercises?: FilteredExerciseSummary[]; // Exercises filtered due to constraints (Phase 2)
+};
+
+export type ExplainabilityConfidence = {
+  level: "high" | "medium" | "low";
+  summary: string;
+  missingSignals: string[];
 };
 
 /**

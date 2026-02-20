@@ -78,7 +78,6 @@ enum EquipmentType {
   BODYWEIGHT
   KETTLEBELL
   BAND
-  CARDIO
   SLED
   BENCH
   RACK
@@ -144,14 +143,6 @@ enum MuscleRole {
   SECONDARY
 }
 
-enum BaselineCategory {
-  MAIN_LIFT
-  BARBELL_ACCESSORY
-  DUMBBELL
-  MACHINE_CABLE
-  BENCH_VARIATION
-  OTHER
-}
 
 enum VariationType {
   TEMPO
@@ -209,10 +200,8 @@ model User {
   constraints      Constraints?
   goals            Goals?
   injuries         Injury[]
-  programs         Program[]
   workouts         Workout[]
   sessionCheckIns  SessionCheckIn[]
-  baselines        Baseline[]
   preferences      UserPreference?
   templates        WorkoutTemplate[]
   macroCycles      MacroCycle[]
@@ -313,7 +302,6 @@ model Exercise {
   workoutExercises      WorkoutExercise[]
   substitutionsFrom     SubstitutionRule[] @relation("SubstitutionFrom")
   substitutionsTo       SubstitutionRule[] @relation("SubstitutionTo")
-  baselines             Baseline[]
   templateExercises     WorkoutTemplateExercise[]
 }
 
@@ -343,6 +331,7 @@ model ExerciseMuscle {
   muscle   Muscle   @relation(fields: [muscleId], references: [id])
 
   @@id([exerciseId, muscleId])
+  @@index([muscleId])
 }
 
 model ExerciseEquipment {
@@ -366,37 +355,15 @@ model SubstitutionRule {
 
   fromExercise Exercise @relation("SubstitutionFrom", fields: [fromExerciseId], references: [id])
   toExercise   Exercise @relation("SubstitutionTo", fields: [toExerciseId], references: [id])
-}
 
-model Program {
-  id        String   @id @default(uuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id])
-  name      String
-  isActive  Boolean  @default(true)
-  weeklySchedule WorkoutSessionIntent[] @default([])
-  createdAt DateTime @default(now())
-
-  blocks ProgramBlock[]
-}
-
-model ProgramBlock {
-  id         String   @id @default(uuid())
-  programId  String
-  program    Program  @relation(fields: [programId], references: [id])
-  blockIndex Int
-  weeks      Int
-  deloadWeek Int?
-
-  workouts Workout[]
+  @@index([fromExerciseId])
+  @@index([toExerciseId])
 }
 
 model Workout {
   id              String        @id @default(uuid())
   userId          String
   user            User          @relation(fields: [userId], references: [id])
-  programBlockId  String?
-  programBlock    ProgramBlock? @relation(fields: [programBlockId], references: [id])
   templateId      String?
   template        WorkoutTemplate? @relation(fields: [templateId], references: [id])
   scheduledDate   DateTime
@@ -414,7 +381,6 @@ model Workout {
   trainingBlockId    String?
   trainingBlock      TrainingBlock? @relation(fields: [trainingBlockId], references: [id])
   weekInBlock        Int?           // 1, 2, 3 within block
-  blockPhase         BlockType?     // Denormalized for display
 
   // Autoregulation tracking (Phase 3)
   wasAutoregulated Boolean @default(false)
@@ -551,31 +517,6 @@ model UserIntegration {
 }
 
 
-model Baseline {
-  id               String           @id @default(uuid())
-  userId           String
-  user             User             @relation(fields: [userId], references: [id])
-  exerciseId       String
-  exercise         Exercise         @relation(fields: [exerciseId], references: [id])
-  exerciseName     String           // denormalized display field
-  context          String           @default("default")
-  category         BaselineCategory
-  unit             String           @default("lbs")
-  workingWeightMin Float?
-  workingWeightMax Float?
-  workingRepsMin   Int?
-  workingRepsMax   Int?
-  topSetWeight     Float?
-  topSetReps       Int?
-  projected1RMMin  Float?
-  projected1RMMax  Float?
-  notes            String?
-  createdAt        DateTime         @default(now())
-
-  @@unique([userId, exerciseId, context])
-  @@index([exerciseId])
-}
-
 model WorkoutTemplate {
   id             String   @id @default(uuid())
   userId         String
@@ -628,18 +569,23 @@ model Mesocycle {
   macroCycleId    String
   macroCycle      MacroCycle    @relation(fields: [macroCycleId], references: [id], onDelete: Cascade)
 
-  mesoNumber      Int           // 1, 2, 3... within macro
-  startWeek       Int           // Week offset from macro start (0-indexed)
-  durationWeeks   Int
+  mesoNumber         Int           // 1, 2, 3... within macro
+  startWeek          Int           // Week offset from macro start (0-indexed)
+  durationWeeks      Int
 
-  focus           String        // "Upper Body Hypertrophy", "Lower Strength", etc.
-  volumeTarget    VolumeTarget
-  intensityBias   IntensityBias
+  focus              String        // "Upper Body Hypertrophy", "Lower Strength", etc.
+  volumeTarget       VolumeTarget
+  intensityBias      IntensityBias
 
-  blocks          TrainingBlock[]
+  // ADR-080: Session-count-based week tracking
+  completedSessions  Int           @default(0) // incremented on each logged workout
+  isActive           Boolean       @default(false) // true for the current meso
+
+  blocks             TrainingBlock[]
 
   @@unique([macroCycleId, mesoNumber])
   @@index([macroCycleId])
+  @@index([macroCycleId, isActive])
 }
 
 model TrainingBlock {

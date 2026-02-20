@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
   generateWorkoutFromTemplate,
+  estimateWorkoutMinutes,
   type TemplateExerciseInput,
   type GenerateFromTemplateOptions,
 } from "./template-session";
-import { estimateWorkoutMinutes } from "./timeboxing";
 import {
   exampleUser,
   exampleGoals,
@@ -110,7 +110,7 @@ describe("generateWorkoutFromTemplate", () => {
         exercises: [
           {
             exerciseId: "bench",
-            movementPattern: "push" as const,
+
             primaryMuscles: ["Chest", "Triceps"],
             sets: [{ exerciseId: "bench", setIndex: 1, reps: 8, load: 175 }],
           },
@@ -294,7 +294,7 @@ describe("generateWorkoutFromTemplate", () => {
         exercises: [
           {
             exerciseId: "bench",
-            movementPattern: "push" as const,
+
             primaryMuscles: ["Chest", "Triceps"],
             sets: makeSets(20),
           },
@@ -307,7 +307,7 @@ describe("generateWorkoutFromTemplate", () => {
         exercises: [
           {
             exerciseId: "bench",
-            movementPattern: "push" as const,
+
             primaryMuscles: ["Chest", "Triceps"],
             sets: makeSets(30),
           },
@@ -410,7 +410,9 @@ describe("generateWorkoutFromTemplate", () => {
     ];
 
     const { workout } = generateWorkoutFromTemplate(templateExercises, makeOptions());
-    expect(workout.mainLifts[0].sets[0].targetReps).toBe(8);
+    // Week 1 (no periodization → blockProgress=0): topSetReps = effectiveMain[1] = 10
+    // effectiveMain = clampRepRange([6,10], {min:8,max:12}) = [8,10]; upper bound at week 1
+    expect(workout.mainLifts[0].sets[0].targetReps).toBe(10);
     expect(workout.accessories[0].sets[0].targetRepRange).toEqual({ min: 12, max: 15 });
   });
 
@@ -455,7 +457,7 @@ describe("generateWorkoutFromTemplate", () => {
         exercises: [
           {
             exerciseId: "bench",
-            movementPattern: "push" as const,
+
             primaryMuscles: ["Chest", "Triceps"],
             sets: makeSets(20),
           },
@@ -468,7 +470,7 @@ describe("generateWorkoutFromTemplate", () => {
         exercises: [
           {
             exerciseId: "bench",
-            movementPattern: "push" as const,
+
             primaryMuscles: ["Chest", "Triceps"],
             sets: makeSets(30),
           },
@@ -482,7 +484,7 @@ describe("generateWorkoutFromTemplate", () => {
     );
     const enhanced = generateWorkoutFromTemplate(
       templateExercises,
-      makeOptions({ history, weekInBlock: 0, mesocycleLength: 4 })
+      makeOptions({ history, weekInBlock: 1, mesocycleLength: 4 })
     );
 
     expect(standard.workout.accessories.map((e) => e.exercise.id)).toContain("db-press");
@@ -493,52 +495,19 @@ describe("generateWorkoutFromTemplate", () => {
     const templateExercises = makeTemplateExercises(["bench"]);
     const { volumePlanByMuscle } = generateWorkoutFromTemplate(
       templateExercises,
-      makeOptions({ weekInBlock: 0, mesocycleLength: 4 })
+      makeOptions({ weekInBlock: 1, mesocycleLength: 4 })
     );
 
     expect(volumePlanByMuscle.Chest).toEqual({
-      target: 10,
+      target: 12,
       planned: 4,
-      delta: 6,
+      delta: 8,
     });
     expect(volumePlanByMuscle["Front Delts"]).toEqual({
-      target: 0,
+      target: 2.3,
       planned: 1.2,
-      delta: -1.2,
+      delta: 1.1,
     });
   });
 
-  it("enforces time budget when sessionMinutes is provided", () => {
-    const templateExercises = makeTemplateExercises([
-      "bench",
-      "squat",
-      "lateral-raise",
-      "face-pull",
-      "db-press",
-      "leg-press",
-    ]);
-
-    const tightBudget = 15; // Very tight budget to force trimming
-    const { workout } = generateWorkoutFromTemplate(
-      templateExercises,
-      makeOptions({ sessionMinutes: tightBudget })
-    );
-
-    const boundedMinutes = estimateWorkoutMinutes([...workout.mainLifts, ...workout.accessories]);
-
-    // Main lifts should never be trimmed
-    expect(workout.mainLifts.length).toBeGreaterThanOrEqual(1);
-
-    // Final workout should respect budget (or warn if main lifts exceed)
-    // If main lifts alone exceed budget, we get a warning but keep all main lifts
-    const mainLiftMinutes = estimateWorkoutMinutes(workout.mainLifts);
-    if (mainLiftMinutes <= tightBudget) {
-      // If main lifts fit, total should fit too
-      expect(boundedMinutes).toBeLessThanOrEqual(tightBudget);
-    } else {
-      // If main lifts exceed budget, we should have a warning
-      expect(workout.notes).toBeDefined();
-      expect(workout.notes).toContain("Main lifts require");
-    }
-  });
 });

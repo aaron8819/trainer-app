@@ -49,7 +49,7 @@ export function BonusExerciseSheet({ isOpen, onClose, workoutId, onAdd }: Props)
         .then((data: { exercises?: ExerciseSearchResult[] }) => {
           setAllExercises(data.exercises ?? []);
         })
-        .catch(() => {})
+        .catch(() => setError("Could not load exercise library"))
         .finally(() => setLoadingAll(false));
     }
   }, [isOpen, workoutId, allExercises.length]);

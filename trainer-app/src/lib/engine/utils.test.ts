@@ -59,15 +59,15 @@ describe("buildRecencyIndex", () => {
         date: new Date("2024-01-03").toISOString(),
         completed: true,
         exercises: [
-          { exerciseId: "bench", movementPattern: "push", sets: [] },
+          { exerciseId: "bench", sets: [] },
         ],
       },
       {
         date: new Date("2024-01-01").toISOString(),
         completed: true,
         exercises: [
-          { exerciseId: "squat", movementPattern: "squat", sets: [] },
-          { exerciseId: "bench", movementPattern: "push", sets: [] },
+          { exerciseId: "squat", sets: [] },
+          { exerciseId: "bench", sets: [] },
         ],
       },
     ];
@@ -84,7 +84,7 @@ describe("buildRecencyIndex", () => {
         completed: false,
         status: "PLANNED",
         exercises: [
-          { exerciseId: "bench", movementPattern: "push", sets: [] },
+          { exerciseId: "bench", sets: [] },
         ],
       },
       {
@@ -92,7 +92,7 @@ describe("buildRecencyIndex", () => {
         completed: true,
         status: "COMPLETED",
         exercises: [
-          { exerciseId: "squat", movementPattern: "squat", sets: [] },
+          { exerciseId: "squat", sets: [] },
         ],
       },
     ];

@@ -27,6 +27,24 @@ export const VOLUME_LANDMARKS: Record<string, VolumeLandmarks> = {
   "Abs":         { mv: 0,  mev: 0,  mav: 10, mrv: 16, sraHours: 36 },
 };
 
+/**
+ * Compute the weekly volume target (sets) for a muscle based on mesocycle position.
+ *
+ * Linearly ramps from MEV at week 1 to MAV at the last accumulation week.
+ * Returns MV during deload weeks. Accumulation weeks = mesoLength - 1.
+ */
+export function computeWeeklyVolumeTarget(
+  landmarks: VolumeLandmarks,
+  currentWeek: number,
+  mesoLength: number,
+  isDeload: boolean
+): number {
+  if (isDeload) return landmarks.mv;
+  const accumWeeks = Math.max(1, mesoLength - 1);
+  const progress = Math.min(1, Math.max(0, (currentWeek - 1) / (accumWeeks - 1 || 1)));
+  return Math.round(landmarks.mev + progress * (landmarks.mav - landmarks.mev));
+}
+
 export const MUSCLE_SPLIT_MAP: Record<string, "push" | "pull" | "legs"> = {
   "Chest": "push",
   "Front Delts": "push",

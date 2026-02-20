@@ -72,8 +72,9 @@ export async function applyAutoregulation(
   };
 
   // 4. Apply autoregulation
+  const autoregPlan: Parameters<typeof autoregulateWorkout>[0] = flatPlan;
   const { adjustedWorkout, modifications, rationale: baseRationale } = autoregulateWorkout(
-    flatPlan as any, // Type cast: flatPlan matches the local WorkoutPlan type in autoregulate.ts
+    autoregPlan,
     fatigueScore,
     policy
   );

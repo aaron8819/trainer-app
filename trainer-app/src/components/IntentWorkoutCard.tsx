@@ -1,0 +1,1 @@
+export { IntentWorkoutCard } from "./IntentRoundTripValidatorCard";

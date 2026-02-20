@@ -1,12 +1,10 @@
-import { applyLoads as applyLoadsEngine, type BaselineInput } from "@/lib/engine/apply-loads";
+import { applyLoads as applyLoadsEngine } from "@/lib/engine/apply-loads";
 import type { PeriodizationModifiers } from "@/lib/engine/rules";
 import { prisma } from "@/lib/db/prisma";
 import type {
-  Baseline,
   Exercise,
   Injury,
   Profile,
-  ProgramBlock,
   Constraints as ConstraintsRecord,
   Workout,
   WorkoutExercise,
@@ -25,7 +23,6 @@ import type {
   EquipmentType,
   Goals,
   JointStress,
-  MovementPattern,
   MovementPatternV2,
   SplitDay as EngineSplitDay,
   SplitTag,
@@ -37,31 +34,6 @@ import type {
   WorkoutPlan,
 } from "@/lib/engine/types";
 
-const V2_TO_V1: Record<string, MovementPattern> = {
-  horizontal_push: "push",
-  vertical_push: "push",
-  horizontal_pull: "pull",
-  vertical_pull: "pull",
-  squat: "squat",
-  hinge: "hinge",
-  lunge: "lunge",
-  carry: "carry",
-  rotation: "rotate",
-  anti_rotation: "rotate",
-  flexion: "push",
-  extension: "push",
-  abduction: "push",
-  adduction: "push",
-  isolation: "push",
-};
-
-function deriveV1Pattern(v2Patterns: string[]): MovementPattern {
-  for (const p of v2Patterns) {
-    const v1 = V2_TO_V1[p.toLowerCase()];
-    if (v1) return v1;
-  }
-  return "push";
-}
 import { deriveWeekInBlock, type WeekInBlockHistoryEntry } from "./periodization";
 
 type ExerciseWithMuscles = Exercise & {
@@ -69,21 +41,11 @@ type ExerciseWithMuscles = Exercise & {
 };
 
 type WorkoutWithRelations = Workout & {
-  programBlock?: ProgramBlock | null;
   exercises: (WorkoutExercise & {
     exercise: ExerciseWithMuscles;
     sets: (WorkoutSet & { logs: SetLog[] })[];
   })[];
 };
-
-export async function resolveUser(userId?: string | null) {
-  if (userId) {
-    const owner = await resolveOwner();
-    return owner.id === userId ? owner : null;
-  }
-
-  return resolveOwner();
-}
 
 export async function resolveOwner() {
   const configuredOwnerEmail = process.env.OWNER_EMAIL?.trim().toLowerCase();
@@ -125,12 +87,11 @@ export async function resolveOwner() {
 }
 
 export async function loadWorkoutContext(userId: string) {
-  const [profile, goals, constraints, injuries, baselines, exercises, workouts, preferences, checkIns, checkInCount] = await Promise.all([
+  const [profile, goals, constraints, injuries, exercises, workouts, preferences, checkIns] = await Promise.all([
     prisma.profile.findUnique({ where: { userId } }),
     prisma.goals.findUnique({ where: { userId } }),
     prisma.constraints.findUnique({ where: { userId } }),
     prisma.injury.findMany({ where: { userId, isActive: true } }),
-    prisma.baseline.findMany({ where: { userId } }),
     prisma.exercise.findMany({
       include: {
         exerciseEquipment: { include: { equipment: true } },
@@ -143,7 +104,6 @@ export async function loadWorkoutContext(userId: string) {
       orderBy: { scheduledDate: "desc" },
       take: 12,
       include: {
-        programBlock: true,
         exercises: {
           include: {
             exercise: {
@@ -158,10 +118,9 @@ export async function loadWorkoutContext(userId: string) {
     }),
     prisma.userPreference.findUnique({ where: { userId } }),
     prisma.sessionCheckIn.findMany({ where: { userId }, orderBy: { date: "desc" }, take: 1 }),
-    prisma.sessionCheckIn.count({ where: { userId } }),
   ]);
 
-  return { profile, goals, constraints, injuries, baselines, exercises, workouts, preferences, checkIns, checkInCount };
+  return { profile, goals, constraints, injuries, exercises, workouts, preferences, checkIns };
 }
 
 export function mapProfile(userId: string, profile: Profile, injuries: Injury[]): UserProfile {
@@ -260,7 +219,6 @@ export function mapHistory(workouts: WorkoutWithRelations[]): WorkoutHistoryEntr
       : undefined,
     exercises: workout.exercises.map((exercise) => ({
       exerciseId: exercise.exerciseId,
-      movementPattern: deriveV1Pattern(exercise.exercise.movementPatterns ?? []),
       primaryMuscles: exercise.exercise.exerciseMuscles
         ?.filter((m) => m.role === "PRIMARY")
         .map((m) => m.muscle.name) ?? [],
@@ -304,21 +262,8 @@ type ExerciseWithAliases = Exercise & {
   exerciseMuscles: { role: string; muscle: { name: string; sraHours: number } }[];
 };
 
-export function mapBaselinesToExerciseIds(
-  baselines: Baseline[]
-): BaselineInput[] {
-  return baselines.map((baseline) => ({
-    exerciseId: baseline.exerciseId,
-    context: baseline.context ?? undefined,
-    workingWeightMin: baseline.workingWeightMin ?? undefined,
-    workingWeightMax: baseline.workingWeightMax ?? undefined,
-    topSetWeight: baseline.topSetWeight ?? undefined,
-  }));
-}
-
 export function applyLoads(
   workout: WorkoutPlan,
-  baselines: Baseline[],
   exercises: ExerciseWithAliases[],
   history: WorkoutHistoryEntry[],
   profile: UserProfile,
@@ -327,14 +272,13 @@ export function applyLoads(
   periodization?: PeriodizationModifiers,
   weekInBlock?: number
 ): WorkoutPlan {
-  const baselineInputs = mapBaselinesToExerciseIds(baselines);
   const exerciseById = Object.fromEntries(
     mapExercises(exercises).map((exercise) => [exercise.id, exercise])
   );
 
   return applyLoadsEngine(workout, {
     history,
-    baselines: baselineInputs,
+    baselines: [],
     exerciseById,
     primaryGoal,
     profile,

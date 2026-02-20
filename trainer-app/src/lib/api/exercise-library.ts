@@ -4,15 +4,6 @@ import { suggestSubstitutes } from "@/lib/engine/substitution";
 import type { ExerciseDetail, ExerciseListItem } from "@/lib/exercise-library/types";
 import { resolveExercisePreferenceState } from "./exercise-preferences";
 
-const SUBSTITUTION_POOL_TTL_MS = 5 * 60 * 1000;
-
-let substitutionPoolCache:
-  | {
-      expiresAt: number;
-      data: Awaited<ReturnType<typeof loadSubstitutionPoolFresh>>;
-    }
-  | null = null;
-
 function splitAndSortMuscles(exercise: {
   exerciseMuscles: { role: string; muscle: { name: string } }[];
 }) {
@@ -30,7 +21,7 @@ function splitAndSortMuscles(exercise: {
 }
 
 
-async function loadSubstitutionPoolFresh() {
+async function loadSubstitutionPool() {
   return prisma.exercise.findMany({
     include: {
       exerciseEquipment: { include: { equipment: true } },
@@ -38,20 +29,6 @@ async function loadSubstitutionPoolFresh() {
     },
     orderBy: { name: "asc" },
   });
-}
-
-async function loadSubstitutionPool() {
-  if (substitutionPoolCache && Date.now() < substitutionPoolCache.expiresAt) {
-    return substitutionPoolCache.data;
-  }
-
-  const data = await loadSubstitutionPoolFresh();
-  substitutionPoolCache = {
-    expiresAt: Date.now() + SUBSTITUTION_POOL_TTL_MS,
-    data,
-  };
-
-  return data;
 }
 
 export async function loadExerciseLibrary(userId?: string): Promise<ExerciseListItem[]> {
@@ -119,13 +96,8 @@ export async function loadExerciseDetail(
 
   if (!exercise) return null;
 
-  const [preferences, baseline, allExercises] = await Promise.all([
+  const [preferences, allExercises] = await Promise.all([
     userId ? prisma.userPreference.findUnique({ where: { userId } }) : null,
-    userId
-      ? prisma.baseline.findFirst({
-          where: { userId, exerciseId, context: "default" },
-        })
-      : null,
     loadSubstitutionPool(),
   ]);
 
@@ -187,18 +159,5 @@ export async function loadExerciseDetail(
     substitutes,
     isFavorite: preferenceState.isFavorite,
     isAvoided: preferenceState.isAvoided,
-    baseline: baseline
-      ? {
-          id: baseline.id,
-          context: baseline.context,
-          workingWeightMin: baseline.workingWeightMin ?? undefined,
-          workingWeightMax: baseline.workingWeightMax ?? undefined,
-          workingRepsMin: baseline.workingRepsMin ?? undefined,
-          workingRepsMax: baseline.workingRepsMax ?? undefined,
-          topSetWeight: baseline.topSetWeight ?? undefined,
-          topSetReps: baseline.topSetReps ?? undefined,
-          notes: baseline.notes ?? undefined,
-        }
-      : undefined,
   };
 }

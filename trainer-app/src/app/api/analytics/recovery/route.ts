@@ -22,7 +22,6 @@ export async function GET() {
       },
       orderBy: { scheduledDate: "desc" },
       include: {
-        programBlock: true,
         exercises: {
           include: {
             exercise: {

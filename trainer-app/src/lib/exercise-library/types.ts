@@ -39,17 +39,6 @@ export type ExerciseDetail = ExerciseListItem & {
   aliases: string[];
   variations: { id: string; name: string; description?: string }[];
   substitutes: { id: string; name: string; primaryMuscles: string[] }[];
-  baseline?: {
-    id: string;
-    context: string;
-    workingWeightMin?: number;
-    workingWeightMax?: number;
-    workingRepsMin?: number;
-    workingRepsMax?: number;
-    topSetWeight?: number;
-    topSetReps?: number;
-    notes?: string;
-  };
 };
 
 export type SortField = "name" | "fatigueCost" | "sfrScore" | "lengthPositionScore" | "muscleGroup";

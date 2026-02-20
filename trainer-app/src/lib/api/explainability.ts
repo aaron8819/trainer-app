@@ -25,7 +25,24 @@ import { getRestSeconds } from "@/lib/engine/prescription";
 import { mapLatestCheckIn } from "./checkin-staleness";
 import { mapExercises } from "./workout-context";
 import { getPeriodizationModifiers } from "@/lib/engine/rules";
-import type { Workout, WorkoutExercise, WorkoutSet } from "@prisma/client";
+import type { Prisma, Workout, WorkoutExercise, WorkoutSet } from "@prisma/client";
+
+type WorkoutWithExplainabilityRelations = Prisma.WorkoutGetPayload<{
+  include: {
+    filteredExercises: true;
+    exercises: {
+      include: {
+        exercise: {
+          include: {
+            exerciseEquipment: { include: { equipment: true } };
+            exerciseMuscles: { include: { muscle: true } };
+          };
+        };
+        sets: true;
+      };
+    };
+  };
+}>;
 
 /**
  * Generate complete workout explanation
@@ -43,10 +60,9 @@ export async function generateWorkoutExplanation(
   workoutId: string
 ): Promise<WorkoutExplanation | { error: string }> {
   // 1. Load workout with relations
-  const workout = await prisma.workout.findUnique({
+  const workout: WorkoutWithExplainabilityRelations | null = await prisma.workout.findUnique({
     where: { id: workoutId },
     include: {
-      programBlock: true,
       filteredExercises: true,
       exercises: {
         include: {
@@ -75,7 +91,10 @@ export async function generateWorkoutExplanation(
   }
 
   // 2. Load block context
-  const blockContext = await loadCurrentBlockContext(workout.userId, workout.scheduledDate);
+  const { blockContext, weekInMeso } = await loadCurrentBlockContext(
+    workout.userId,
+    workout.scheduledDate
+  );
 
   // 3. Load volume by muscle group (from weekly history)
   const volumeByMuscle = await loadVolumeByMuscle(workout.userId, workout.scheduledDate);
@@ -137,7 +156,7 @@ export async function generateWorkoutExplanation(
 
   // 8. Generate exercise rationales
   const exerciseRationales = new Map();
-  const selectionObjective = buildSelectionObjective(workout);
+  const selectionObjective = buildSelectionObjective();
 
   for (const workoutExercise of workout.exercises) {
     const candidate = buildSelectionCandidate(workoutExercise, mappedExercises);
@@ -157,7 +176,7 @@ export async function generateWorkoutExplanation(
     if (!exercise) continue;
 
     // Map DB sets to engine WorkoutSet type
-    const engineSets = workoutExercise.sets.map((dbSet) => ({
+    const engineSets = workoutExercise.sets.map((dbSet: WorkoutSet) => ({
       setIndex: dbSet.setIndex,
       targetReps: dbSet.targetReps ?? 10,
       targetRepRange: dbSet.targetRepMin && dbSet.targetRepMax
@@ -189,7 +208,7 @@ export async function generateWorkoutExplanation(
           )
         : undefined,
       blockType: blockContext?.block.blockType,
-      weekInMesocycle: blockContext?.weekInMeso,
+      weekInMesocycle: weekInMeso,
       restSeconds:
         engineSets[0]?.restSeconds ??
         getRestSeconds(exercise, workoutExercise.isMainLift, engineSets[0]?.targetReps ?? 10),
@@ -211,13 +230,51 @@ export async function generateWorkoutExplanation(
   }));
 
   // 11. Return complete explanation
+  const confidence = deriveExplainabilityConfidence({
+    hasReadinessSignal: Boolean(readiness),
+    hasBlockContext: Boolean(blockContext),
+    hasDerivedWorkoutStats:
+      workoutStats.volumeSpikePercent !== undefined ||
+      workoutStats.hasPRPotential !== undefined ||
+      (workoutStats.musclesApproachingMRV?.length ?? 0) > 0,
+  });
+
   return {
+    confidence,
     sessionContext,
     coachMessages,
     exerciseRationales,
     prescriptionRationales,
     filteredExercises,
   };
+}
+
+function deriveExplainabilityConfidence(input: {
+  hasReadinessSignal: boolean;
+  hasBlockContext: boolean;
+  hasDerivedWorkoutStats: boolean;
+}): WorkoutExplanation["confidence"] {
+  const missingSignals: string[] = [];
+  if (!input.hasReadinessSignal) {
+    missingSignals.push("fresh readiness signal");
+  }
+  if (!input.hasBlockContext) {
+    missingSignals.push("active block context");
+  }
+  if (!input.hasDerivedWorkoutStats) {
+    missingSignals.push("history-derived workout stats");
+  }
+
+  const level: WorkoutExplanation["confidence"]["level"] =
+    missingSignals.length === 0 ? "high" : missingSignals.length === 1 ? "medium" : "low";
+  const summary =
+    level === "high"
+      ? "Explanations are grounded in full session context."
+      : level === "medium"
+      ? "Explanations are mostly grounded in context with minor approximations."
+      : "Explanations include approximations due to missing context signals.";
+
+  return { level, summary, missingSignals };
 }
 
 /**
@@ -319,7 +376,7 @@ function deriveWorkoutStats(
  * @param workout - Workout record
  * @returns Minimal SelectionObjective for rationale generation
  */
-function buildSelectionObjective(_workout: Workout): SelectionObjective {
+function buildSelectionObjective(): SelectionObjective {
   return {
     constraints: {
       volumeFloor: new Map(),

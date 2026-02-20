@@ -96,6 +96,7 @@ describe("seed data consistency", () => {
       "horizontal_push", "vertical_push", "horizontal_pull", "vertical_pull",
       "squat", "hinge", "lunge", "carry", "rotation", "anti_rotation",
       "flexion", "extension", "abduction", "adduction", "isolation",
+      "calf_raise_extended", "calf_raise_flexed",
     ]);
     for (const ex of exercises) {
       for (const p of ex.movementPatterns) {

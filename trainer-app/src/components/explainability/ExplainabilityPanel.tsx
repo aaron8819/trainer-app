@@ -13,13 +13,7 @@
 "use client";
 
 import { useState } from "react";
-import type {
-  WorkoutExplanation,
-  SessionContext,
-  CoachMessage,
-  ExerciseRationale,
-  PrescriptionRationale,
-} from "@/lib/engine/explainability";
+import type { WorkoutExplanation } from "@/lib/engine/explainability";
 import { SessionContextCard } from "./SessionContextCard";
 import { CoachMessageCard } from "./CoachMessageCard";
 import { ExerciseRationaleCard } from "./ExerciseRationaleCard";
@@ -46,12 +40,28 @@ export function ExplainabilityPanel({ explanation }: Props) {
 
   // Convert Map to array for rendering
   const exerciseRationales = Array.from(explanation.exerciseRationales.entries());
-  const prescriptionRationales = new Map(
-    Object.entries(explanation.prescriptionRationales)
-  ) as Map<string, PrescriptionRationale>;
+  const prescriptionRationales = explanation.prescriptionRationales;
 
   return (
     <div className="space-y-4 sm:space-y-6">
+      <div
+        className={`rounded-xl border px-3 py-2 text-xs ${
+          explanation.confidence.level === "high"
+            ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+            : explanation.confidence.level === "medium"
+            ? "border-amber-200 bg-amber-50 text-amber-800"
+            : "border-slate-200 bg-slate-50 text-slate-700"
+        }`}
+      >
+        <p className="font-semibold">Explainability confidence: {explanation.confidence.level}</p>
+        <p className="mt-1">{explanation.confidence.summary}</p>
+        {explanation.confidence.missingSignals.length > 0 ? (
+          <p className="mt-1">
+            Missing: {explanation.confidence.missingSignals.join(", ")}.
+          </p>
+        ) : null}
+      </div>
+
       {/* Session Context */}
       <SessionContextCard context={explanation.sessionContext} />
 

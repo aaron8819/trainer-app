@@ -5,7 +5,7 @@
  * Supports indirect volume accounting, rotation memory, and Pareto optimization.
  */
 
-import type { Exercise, Muscle, Goals } from "../types";
+import type { Exercise, Muscle, Goals, TrainingAge } from "../types";
 import type { BlockContext } from "../periodization/types";
 
 // ============================================================================
@@ -52,9 +52,15 @@ export interface SelectionObjective {
   preferences: SelectionPreferences;
 
   /**
-   * Training goals (for rep range estimation)
+   * Training goals (for rep range estimation and set-count multiplier)
    */
   goals?: Goals;
+
+  /**
+   * Training age (beginner/intermediate/advanced) — controls MAX_SETS cap
+   * KB §8: Beginner 6-10 sets/week, Intermediate 10-16, Advanced 16-25+
+   */
+  trainingAge?: TrainingAge;
 }
 
 /**
@@ -384,12 +390,12 @@ export interface BeamSearchConfig {
  * - movementDiversity: dynamically re-scored per beam state during expansion
  */
 export const DEFAULT_SELECTION_WEIGHTS: SelectionWeights = {
-  volumeDeficitFill: 0.35, // Primary — fill volume deficits efficiently
+  volumeDeficitFill: 0.33, // Primary — fill volume deficits efficiently (-0.02 to fund SRA)
   rotationNovelty: 0.22,   // High — force variety across sessions
   lengthenedBias: 0.20,    // KB-confirmed (Maeo 2023: +40% triceps growth overhead vs pushdown)
   sfrEfficiency: 0.12,     // Moderate — efficiency matters
   movementDiversity: 0.07, // Beam state-aware — dynamically re-scored during expansion
-  sraReadiness: 0.03,      // Advisory only
+  sraReadiness: 0.05,      // Now active — SRAContext populated from ExerciseExposure history
   userPreference: 0.01,    // Tiebreaker
   // Sum: 1.00
 };

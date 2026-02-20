@@ -72,31 +72,6 @@ export async function POST(request: Request) {
       },
     });
 
-    if (parsed.data.weeklySchedule) {
-      const activeProgram = await tx.program.findFirst({
-        where: { userId: user.id, isActive: true },
-        orderBy: { createdAt: "desc" },
-        select: { id: true },
-      });
-      if (activeProgram) {
-        await tx.program.update({
-          where: { id: activeProgram.id },
-          data: {
-            weeklySchedule: parsed.data.weeklySchedule,
-          },
-        });
-      } else {
-        await tx.program.create({
-          data: {
-            userId: user.id,
-            name: "Primary Program",
-            isActive: true,
-            weeklySchedule: parsed.data.weeklySchedule,
-          },
-        });
-      }
-    }
-
     if (parsed.data.injuryBodyPart) {
       const existing = await tx.injury.findFirst({
         where: { userId: user.id, bodyPart: parsed.data.injuryBodyPart },

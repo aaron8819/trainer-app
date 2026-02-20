@@ -17,6 +17,7 @@ type WorkoutExercise = {
     targetRepMax?: number | null;
     targetLoad?: number | null;
     targetRpe?: number | null;
+    restSeconds?: number | null;
   }[];
 };
 
@@ -49,6 +50,7 @@ export function splitExercises(exercises: WorkoutExercise[]): SectionedExercises
             : undefined,
         targetLoad: set.targetLoad,
         targetRpe: set.targetRpe,
+        restSeconds: set.restSeconds,
       })),
     };
 

@@ -11,10 +11,9 @@ import {
   buildVolumePlanByMuscle,
   type VolumePlanByMuscle,
 } from "@/lib/engine/volume";
-import type { WorkoutPlan, Muscle } from "@/lib/engine/types";
+import type { WorkoutPlan, Muscle, Exercise } from "@/lib/engine/types";
 import type { BlockContext } from "@/lib/engine/periodization/types";
 import type {
-  ColdStartStage,
   SelectionOutput,
   SessionIntent,
 } from "@/lib/engine/session-types";
@@ -23,18 +22,18 @@ import {
   selectExercisesOptimized,
   type SelectionObjective,
   type SelectionResult,
+  type RotationContext,
   DEFAULT_SELECTION_WEIGHTS,
 } from "@/lib/engine/selection-v2";
 import {
   summarizeFilteredExercises,
   type FilteredExerciseSummary,
 } from "@/lib/engine/explainability";
-import { VOLUME_LANDMARKS, MUSCLE_SPLIT_MAP } from "@/lib/engine/volume-landmarks";
+import { VOLUME_LANDMARKS, MUSCLE_SPLIT_MAP, computeWeeklyVolumeTarget } from "@/lib/engine/volume-landmarks";
 import { INDIRECT_SET_MULTIPLIER } from "@/lib/engine/volume-constants";
 import { loadTemplateDetail, type TemplateIntent } from "./templates";
 import {
   applyLoads,
-  deriveWeekInBlock,
   loadWorkoutContext,
   mapCheckIn,
   mapConstraints,
@@ -52,8 +51,6 @@ type GenerateTemplateSessionParams = {
   autoFillUnpinned?: boolean;
 };
 
-type ColdStartBypass = "baseline_experienced";
-
 export type GenerateIntentSessionInput = {
   intent: SessionIntent;
   targetMuscles?: string[];
@@ -70,10 +67,6 @@ type SessionGenerationResult =
       substitutions: SubstitutionSuggestion[];
       volumePlanByMuscle: VolumePlanByMuscle;
       selection: SelectionOutput & {
-        coldStartStage?: ColdStartStage;
-        coldStartBypass?: ColdStartBypass;
-        coldStartProtocolEnabled?: boolean;
-        effectiveColdStartStage?: ColdStartStage;
         adaptiveDeloadApplied?: boolean;
         periodizationWeek?: number;
       };
@@ -89,14 +82,8 @@ type MappedGenerationContext = {
   mappedPreferences: ReturnType<typeof mapPreferences>;
   exerciseLibrary: ReturnType<typeof mapExercises>;
   history: ReturnType<typeof mapHistory>;
-  baselines: Awaited<ReturnType<typeof loadWorkoutContext>>["baselines"];
   rawExercises: Awaited<ReturnType<typeof loadWorkoutContext>>["exercises"];
   rawWorkouts: Awaited<ReturnType<typeof loadWorkoutContext>>["workouts"];
-  completedSessionCount: number;
-  checkInCount: number;
-  hasStableCoreBaselines: boolean;
-  coldStartStage: ColdStartStage;
-  coldStartBypass?: ColdStartBypass;
   weekInBlock: number;
   mesocycleLength: number;
   effectivePeriodization: ReturnType<typeof getPeriodizationModifiers>;
@@ -104,6 +91,45 @@ type MappedGenerationContext = {
   blockContext: BlockContext | null;
   rotationContext: Awaited<ReturnType<typeof loadExerciseExposure>>;
 };
+
+/**
+ * Build SRA (Stimulus-Recovery-Adaptation) context from exercise exposure history.
+ *
+ * Computes per-muscle recovery score (0–1) based on how long ago each muscle was
+ * last trained, relative to that muscle's SRA window (sraHours from VOLUME_LANDMARKS).
+ *
+ * - Score 0.0 = trained recently, not recovered
+ * - Score 1.0 = fully recovered (or never trained)
+ *
+ * Uses the rotationContext (keyed by exercise name) as a proxy for training recency.
+ */
+function buildSraContext(
+  rotationContext: RotationContext,
+  exercisePool: Exercise[],
+  now: Date
+): Map<Muscle, number> {
+  // Build muscle → most recent lastUsed map from exposure history
+  const muscleLastTrained = new Map<Muscle, Date>();
+  for (const exercise of exercisePool) {
+    const exposure = rotationContext.get(exercise.name);
+    if (!exposure) continue;
+    for (const muscle of exercise.primaryMuscles ?? []) {
+      const current = muscleLastTrained.get(muscle as Muscle);
+      if (!current || exposure.lastUsed > current) {
+        muscleLastTrained.set(muscle as Muscle, exposure.lastUsed);
+      }
+    }
+  }
+
+  // Compute recovery score per muscle (0–1, clamped)
+  const sraContext = new Map<Muscle, number>();
+  for (const [muscle, lastTrained] of muscleLastTrained) {
+    const hoursElapsed = (now.getTime() - lastTrained.getTime()) / 3_600_000;
+    const sraHours = VOLUME_LANDMARKS[muscle as string]?.sraHours ?? 48;
+    sraContext.set(muscle, Math.min(1.0, hoursElapsed / sraHours));
+  }
+  return sraContext;
+}
 
 /**
  * Build SelectionObjective from mapped generation context
@@ -181,7 +207,15 @@ function buildSelectionObjective(
       if (muscleSplit === sessionSplit) {
         const landmarks = VOLUME_LANDMARKS[muscle];
         if (landmarks) {
-          weeklyTarget.set(muscle as Muscle, landmarks.mev);
+          weeklyTarget.set(
+            muscle as Muscle,
+            computeWeeklyVolumeTarget(
+              landmarks,
+              mapped.weekInBlock,
+              mapped.mesocycleLength,
+              mapped.effectivePeriodization.isDeload
+            )
+          );
         }
       }
 
@@ -200,7 +234,15 @@ function buildSelectionObjective(
       if (split === sessionSplit) {
         const landmarks = VOLUME_LANDMARKS[muscle];
         if (landmarks) {
-          weeklyTarget.set(muscle as Muscle, landmarks.mev);
+          weeklyTarget.set(
+            muscle as Muscle,
+            computeWeeklyVolumeTarget(
+              landmarks,
+              mapped.weekInBlock,
+              mapped.mesocycleLength,
+              mapped.effectivePeriodization.isDeload
+            )
+          );
         }
       }
     }
@@ -212,10 +254,8 @@ function buildSelectionObjective(
     }
   }
 
-  // Build SRA context
-  // Note: SRA scoring has low weight (0.03) and defaults to 1.0 (recovered)
-  // Future: Populate from actual SRA tracking for enhanced recovery-based selection
-  const sraContext = new Map<Muscle, number>();
+  // Build SRA context from exercise exposure history
+  const sraContext = buildSraContext(mapped.rotationContext, mapped.exerciseLibrary, new Date());
 
   return {
     constraints,
@@ -232,6 +272,8 @@ function buildSelectionObjective(
       avoidExerciseIds: new Set(mapped.mappedPreferences?.avoidExerciseIds ?? []),
     },
     blockContext: mapped.blockContext ?? undefined,
+    goals: mapped.mappedGoals,
+    trainingAge: mapped.mappedProfile.trainingAge,
   };
 }
 
@@ -273,7 +315,7 @@ function mapSelectionResult(result: SelectionResult): SelectionOutput {
           userPreference: candidate.scores.userPreference,
         },
         hardFilterPass: true,
-        selectedStep: "beam_search" as any, // Historical field for API compatibility
+        selectedStep: "accessory_pick", // Historical field for API compatibility
       };
     }
   }
@@ -354,8 +396,6 @@ export async function generateSessionFromTemplate(
     isStrict: template.isStrict,
     setCountOverrides: undefined,
     selection,
-    coldStartProtocolEnabled: undefined,
-    effectiveColdStartStage: undefined,
   });
   if ("error" in result) {
     return result;
@@ -381,20 +421,18 @@ export async function generateSessionFromIntent(
     }
     return { error: "Failed to load generation context" };
   }
-  const coldStartProtocolEnabled = isIntentColdStartProtocolEnabled();
-  const effectiveColdStartStage: ColdStartStage = coldStartProtocolEnabled ? mapped.coldStartStage : 2;
-
   // Build selection objective
   const objective = buildSelectionObjective(mapped, input.intent, input.targetMuscles);
 
   // Filter exercise pool by session intent (split tag)
   // This prevents exercises from wrong splits (e.g., legs exercises in push workouts)
   // Only filter for PPL splits; full_body and body_part get all exercises
-  const validSplitTags = ["push", "pull", "legs"] as const;
-  const filteredPool =
-    validSplitTags.includes(input.intent as any)
-      ? mapped.exerciseLibrary.filter((ex) => ex.splitTags.includes(input.intent as any))
-      : mapped.exerciseLibrary; // full_body and body_part: no filtering
+  const isSplitTagIntent = (intent: SessionIntent): intent is "push" | "pull" | "legs" =>
+    intent === "push" || intent === "pull" || intent === "legs";
+  const splitIntent = isSplitTagIntent(input.intent) ? input.intent : null;
+  const filteredPool = splitIntent
+    ? mapped.exerciseLibrary.filter((ex) => ex.splitTags.includes(splitIntent))
+    : mapped.exerciseLibrary; // full_body/body_part/upper/lower: no split-tag filtering
 
   // Run new beam search optimizer
   const selectionResult = selectExercisesOptimized(filteredPool, objective);
@@ -430,8 +468,6 @@ export async function generateSessionFromIntent(
     setCountOverrides: selection.perExerciseSetTargets,
     selection,
     isStrict: false,
-    coldStartProtocolEnabled,
-    effectiveColdStartStage,
   });
   if ("error" in result) {
     return result;
@@ -550,8 +586,6 @@ function runSessionGeneration(
     isStrict: boolean;
     setCountOverrides?: Record<string, number>;
     selection: SelectionOutput;
-    coldStartProtocolEnabled?: boolean;
-    effectiveColdStartStage?: ColdStartStage;
   }
 ):
   | {
@@ -561,14 +595,7 @@ function runSessionGeneration(
       sessionIntent: SessionIntent;
       sraWarnings: SraWarning[];
       substitutions: SubstitutionSuggestion[];
-      selection: SelectionOutput & {
-        coldStartStage?: ColdStartStage;
-        coldStartBypass?: ColdStartBypass;
-        coldStartProtocolEnabled?: boolean;
-        effectiveColdStartStage?: ColdStartStage;
-        adaptiveDeloadApplied?: boolean;
-        periodizationWeek?: number;
-      };
+      selection: SelectionOutput;
     }
   | { error: string } {
   const { workout, sraWarnings, substitutions } = generateWorkoutFromTemplate(templateExercises, {
@@ -594,16 +621,7 @@ function runSessionGeneration(
     sessionIntent: options.sessionIntent,
     sraWarnings,
     substitutions,
-    selection:
-      options.selectionMode === "INTENT"
-        ? {
-            ...options.selection,
-            coldStartStage: mapped.coldStartStage,
-            coldStartBypass: mapped.coldStartBypass,
-            coldStartProtocolEnabled: options.coldStartProtocolEnabled,
-            effectiveColdStartStage: options.effectiveColdStartStage,
-          }
-        : options.selection,
+    selection: options.selection,
   };
 }
 
@@ -615,21 +633,13 @@ function finalizePostLoadResult(
     sessionIntent: SessionIntent;
     sraWarnings: SraWarning[];
     substitutions: SubstitutionSuggestion[];
-    selection: SelectionOutput & {
-      coldStartStage?: ColdStartStage;
-      coldStartBypass?: ColdStartBypass;
-      coldStartProtocolEnabled?: boolean;
-      effectiveColdStartStage?: ColdStartStage;
-      adaptiveDeloadApplied?: boolean;
-      periodizationWeek?: number;
-    };
+    selection: SelectionOutput;
   },
   mapped: MappedGenerationContext,
   filteredExercises?: FilteredExerciseSummary[]
 ): SessionGenerationResult {
   const withLoads = applyLoads(
     result.workout,
-    mapped.baselines,
     mapped.rawExercises,
     mapped.history,
     mapped.mappedProfile,
@@ -678,19 +688,7 @@ function finalizePostLoadResult(
 
 async function loadMappedGenerationContext(userId: string): Promise<MappedGenerationContext> {
   const context = await loadWorkoutContext(userId);
-  const {
-    profile,
-    goals,
-    constraints,
-    injuries,
-    baselines,
-    exercises,
-    workouts,
-    preferences,
-    checkIns,
-    checkInCount,
-  } =
-    context;
+  const { profile, goals, constraints, injuries, exercises, workouts, preferences, checkIns } = context;
 
   if (!goals || !constraints || !profile) {
     throw new Error("Profile, goals, or constraints missing");
@@ -703,47 +701,21 @@ async function loadMappedGenerationContext(userId: string): Promise<MappedGenera
   const history = mapHistory(workouts);
   const mappedPreferences = mapPreferences(preferences);
   const mappedCheckIn = mapCheckIn(checkIns);
-  const completedSessionCount = workouts.filter((entry) => entry.status === "COMPLETED").length;
-  const hasStableCoreBaselines = resolveHasStableCoreBaselines(baselines, exercises, workouts);
-  const hasExperiencedBaselineBypass = resolveHasExperiencedBaselineBypass(
-    mappedProfile.trainingAge,
-    baselines,
-    exercises
-  );
-  const coldStartStage = resolveColdStartStage({
-    completedSessionCount,
-    checkInCount,
-    hasStableCoreBaselines,
-    hasExperiencedBaselineBypass,
-  });
-  const coldStartBypass =
-    coldStartStage === 1 && (completedSessionCount < 4 || checkInCount < 2) && hasExperiencedBaselineBypass
-      ? "baseline_experienced"
-      : undefined;
+
+  // Load block context — this is the canonical source for weekInBlock and mesocycle length.
+  // Falls back to 1 (first week) when no active MacroCycle exists.
+  const { blockContext, weekInMeso } = await loadCurrentBlockContext(userId);
+  const weekInBlock = weekInMeso;
+  const mesocycleLength = blockContext?.mesocycle.durationWeeks ?? 4;
+
   const mainLiftExerciseIds = new Set(
     exerciseLibrary.filter((exercise) => exercise.isMainLiftEligible).map((exercise) => exercise.id)
   );
-  const activeProgramBlock = workouts.find((entry) => entry.programBlockId)?.programBlock ?? null;
-  const weekInBlock = deriveWeekInBlock(new Date(), activeProgramBlock, workouts);
-  const mesocycleLength = Math.max(1, activeProgramBlock?.weeks ?? 4);
-  const periodization = getPeriodizationModifiers(
-    weekInBlock,
-    mappedGoals.primary,
-    mappedProfile.trainingAge
-  );
+  const periodization = getPeriodizationModifiers(weekInBlock, mappedGoals.primary, mappedProfile.trainingAge);
   const adaptiveDeload = !periodization.isDeload && shouldDeload(history, mainLiftExerciseIds);
   const effectivePeriodization = adaptiveDeload
-    ? {
-        ...periodization,
-        isDeload: true,
-        setMultiplier: 0.5,
-        rpeOffset: -2.0,
-        backOffMultiplier: 0.75,
-      }
+    ? { ...periodization, isDeload: true, setMultiplier: 0.5, rpeOffset: -2.0, backOffMultiplier: 0.75 }
     : periodization;
-
-  // Load block context for periodization
-  const blockContext = await loadCurrentBlockContext(userId);
 
   // Load exercise exposure for rotation tracking
   const rotationContext = await loadExerciseExposure(userId);
@@ -756,14 +728,8 @@ async function loadMappedGenerationContext(userId: string): Promise<MappedGenera
     mappedPreferences,
     exerciseLibrary,
     history,
-    baselines,
     rawExercises: exercises,
     rawWorkouts: workouts,
-    completedSessionCount,
-    checkInCount,
-    hasStableCoreBaselines,
-    coldStartStage,
-    coldStartBypass,
     weekInBlock,
     mesocycleLength,
     effectivePeriodization,
@@ -771,112 +737,6 @@ async function loadMappedGenerationContext(userId: string): Promise<MappedGenera
     blockContext,
     rotationContext,
   };
-}
-
-function isIntentColdStartProtocolEnabled(): boolean {
-  const raw = process.env.USE_INTENT_COLD_START_PROTOCOL;
-  if (!raw) {
-    return false;
-  }
-  const normalized = raw.trim().toLowerCase();
-  return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
-}
-
-function resolveColdStartStage(input: {
-  completedSessionCount: number;
-  checkInCount: number;
-  hasStableCoreBaselines: boolean;
-  hasExperiencedBaselineBypass: boolean;
-}): ColdStartStage {
-  if (input.completedSessionCount < 4 || input.checkInCount < 2) {
-    if (input.hasExperiencedBaselineBypass) {
-      return 1;
-    }
-    return 0;
-  }
-  if (input.completedSessionCount < 12 || !input.hasStableCoreBaselines) {
-    return 1;
-  }
-  return 2;
-}
-
-function resolveHasExperiencedBaselineBypass(
-  trainingAge: MappedGenerationContext["mappedProfile"]["trainingAge"],
-  baselines: MappedGenerationContext["baselines"],
-  exercises: MappedGenerationContext["rawExercises"]
-): boolean {
-  if (trainingAge !== "intermediate" && trainingAge !== "advanced") {
-    return false;
-  }
-
-  const mainLiftExerciseIds = new Set(
-    exercises.filter((exercise) => exercise.isMainLiftEligible).map((exercise) => exercise.id)
-  );
-  const qualifiedBaselineExerciseIds = new Set<string>();
-
-  for (const baseline of baselines) {
-    if (!mainLiftExerciseIds.has(baseline.exerciseId)) {
-      continue;
-    }
-    const hasRealBaselineWeight =
-      baseline.workingWeightMin !== null || baseline.topSetWeight !== null;
-    if (!hasRealBaselineWeight) {
-      continue;
-    }
-    qualifiedBaselineExerciseIds.add(baseline.exerciseId);
-  }
-
-  return qualifiedBaselineExerciseIds.size >= 3;
-}
-
-function resolveHasStableCoreBaselines(
-  baselines: MappedGenerationContext["baselines"],
-  exercises: MappedGenerationContext["rawExercises"],
-  workouts: MappedGenerationContext["rawWorkouts"]
-): boolean {
-  const mainLiftExerciseIds = new Set(
-    exercises.filter((exercise) => exercise.isMainLiftEligible).map((exercise) => exercise.id)
-  );
-  const completedWorkoutIdsByExercise = new Map<string, Set<string>>();
-
-  for (const workout of workouts) {
-    if (workout.status !== "COMPLETED") {
-      continue;
-    }
-    for (const exercise of workout.exercises) {
-      if (!mainLiftExerciseIds.has(exercise.exerciseId)) {
-        continue;
-      }
-      const hasQualifiedLog = exercise.sets.some((set) => {
-        const log = set.logs[0];
-        return (
-          typeof log?.actualLoad === "number" &&
-          Number.isFinite(log.actualLoad) &&
-          typeof log?.actualReps === "number" &&
-          Number.isFinite(log.actualReps)
-        );
-      });
-      if (!hasQualifiedLog) {
-        continue;
-      }
-      const completedIds = completedWorkoutIdsByExercise.get(exercise.exerciseId) ?? new Set<string>();
-      completedIds.add(workout.id);
-      completedWorkoutIdsByExercise.set(exercise.exerciseId, completedIds);
-    }
-  }
-
-  const stableExerciseIds = new Set<string>();
-  for (const baseline of baselines) {
-    if (!mainLiftExerciseIds.has(baseline.exerciseId)) {
-      continue;
-    }
-    const completedCount = completedWorkoutIdsByExercise.get(baseline.exerciseId)?.size ?? 0;
-    if (completedCount >= 2) {
-      stableExerciseIds.add(baseline.exerciseId);
-    }
-  }
-
-  return stableExerciseIds.size >= 3;
 }
 
 function mapTemplateExercises(

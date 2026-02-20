@@ -25,7 +25,7 @@ import type {
 import { BEAM_TIEBREAKER_EPSILON } from "./types";
 import { mergeVolume } from "./candidate";
 import { generateRationale } from "./rationale";
-import { scoreMovementNovelty } from "./scoring";
+import { scoreMovementNovelty, scoreDeficitFillDynamic } from "./scoring";
 
 /**
  * Check if beam state satisfies structural constraints (main lifts + accessories)
@@ -49,9 +49,6 @@ function wouldSatisfyStructure(
 
   // Always enforce maximum constraints
   if (mainLiftCount > maxMainLifts) {
-    // DEBUG: Log rejections for troubleshooting
-    if (state.selected.length < 2 && newCandidate.exercise.isMainLiftEligible) {
-    }
     return false;
   }
 
@@ -66,9 +63,6 @@ function wouldSatisfyStructure(
     if (mainLiftCount < minMainLifts) {
       const needMore = minMainLifts - mainLiftCount;
       if (remainingSlots < needMore) {
-        // DEBUG
-        if (state.selected.length < 4) {
-        }
         return false;
       }
     }
@@ -77,9 +71,6 @@ function wouldSatisfyStructure(
     if (accessoryCount < minAccessories) {
       const needMore = minAccessories - accessoryCount;
       if (remainingSlots < needMore) {
-        // DEBUG
-        if (state.selected.length < 4 && !newCandidate.exercise.isMainLiftEligible) {
-        }
         return false;
       }
     }
@@ -266,7 +257,20 @@ export function beamSearch(
         const noveltyAdjustment =
           objective.weights.movementDiversity *
           (dynamicNovelty - candidate.scores.movementNovelty);
-        const adjustedScore = candidate.totalScore + noveltyAdjustment;
+
+        // Dynamic deficit fill: re-score against current beam's volume state so that
+        // exercises filling *remaining* deficits score higher than those targeting
+        // muscles already covered earlier in this beam path.
+        const dynamicDeficitFill = scoreDeficitFillDynamic(
+          candidate.volumeContribution,
+          objective.volumeContext,
+          state.volumeFilled
+        );
+        const deficitFillAdjustment =
+          objective.weights.volumeDeficitFill *
+          (dynamicDeficitFill - candidate.scores.deficitFill);
+
+        const adjustedScore = candidate.totalScore + noveltyAdjustment + deficitFillAdjustment;
 
         // Valid expansion - create new beam state
         const isFavorite = objective.preferences.favoriteExerciseIds.has(candidate.exercise.id);
@@ -454,7 +458,7 @@ function enforceStructuralConstraints(
       const currentMainLifts = augmentedBeam.selected.filter((c) => c.exercise.isMainLiftEligible).length;
       if (currentMainLifts >= minMainLifts) break;
 
-      const canAdd = canAddCandidate(augmentedBeam, candidate, objective, rejectedMap, true); // Enable debug
+      const canAdd = canAddCandidate(augmentedBeam, candidate, objective, rejectedMap);
       if (canAdd) {
         addCandidateToBeam(augmentedBeam, candidate);
       } else {
@@ -497,8 +501,7 @@ function canAddCandidate(
   beam: BeamState,
   candidate: SelectionCandidate,
   objective: SelectionObjective,
-  rejectedMap: Map<string, RejectionReason>,
-  debug = false
+  rejectedMap: Map<string, RejectionReason>
 ): boolean {
   // Merge volume
   const newVolumeFilled = mergeVolume(beam.volumeFilled, candidate.volumeContribution);
@@ -506,15 +509,11 @@ function canAddCandidate(
   // Check volume ceiling
   if (exceedsCeiling(newVolumeFilled, objective.constraints.volumeCeiling)) {
     rejectedMap.set(candidate.exercise.id, "volume_ceiling_reached");
-    if (debug) {
-    }
     return false;
   }
 
   // Check max exercises
   if (beam.selected.length >= objective.constraints.maxExercises) {
-    if (debug) {
-    }
     return false;
   }
 
@@ -587,7 +586,7 @@ function trySwapForMainLift(
     }
 
     // Check if main lift now fits
-    if (canAddCandidate(tempBeam, mainLift, objective, rejectedMap, false)) {
+    if (canAddCandidate(tempBeam, mainLift, objective, rejectedMap)) {
       // Success! Apply swap to original beam
       addCandidateToBeam(tempBeam, mainLift);
       beam.selected = tempBeam.selected;
@@ -657,8 +656,25 @@ function buildResult(
 
   const constraintsSatisfied = meetsMinExercises && meetsVolumeFloor && meetsStructuralConstraints;
 
+  // Annotate selected candidates with marginal deficitFill for rationale.
+  // Simulate sequential selection so each exercise shows what it contributed
+  // given what was already selected before it in the final beam path.
+  let runningVolume = new Map<Muscle, number>();
+  const annotatedSelected = selected.map((candidate) => {
+    const marginalFill = scoreDeficitFillDynamic(
+      candidate.volumeContribution,
+      objective.volumeContext,
+      runningVolume
+    );
+    runningVolume = mergeVolume(runningVolume, candidate.volumeContribution);
+    return {
+      ...candidate,
+      scores: { ...candidate.scores, deficitFill: marginalFill },
+    };
+  });
+
   // Generate rationale
-  const rationale = generateRationale(selected, rejected, objective);
+  const rationale = generateRationale(annotatedSelected, rejected, objective);
 
   return {
     selected,

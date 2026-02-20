@@ -1,6 +1,6 @@
 # Data Model (Current)
 
-Last verified against schema: 2026-02-17 (`prisma/schema.prisma`)
+Last verified against schema: 2026-02-20 (`prisma/schema.prisma`)
 
 This document summarizes the persisted model used by workout generation, logging, and adaptation loops.
 
@@ -9,7 +9,7 @@ This document summarizes the persisted model used by workout generation, logging
 ### `User`
 
 - Fields: `id`, `email`, `createdAt`
-- Key relations: `profile`, `constraints`, `goals`, `injuries`, `preferences`, `programs`, `workouts`, `sessionCheckIns`, `baselines`, `templates`
+- Key relations: `profile`, `constraints`, `goals`, `injuries`, `preferences`, `workouts`, `sessionCheckIns`, `templates`
 
 ### `Profile`
 
@@ -30,11 +30,9 @@ This document summarizes the persisted model used by workout generation, logging
 
 ### `UserPreference`
 
-- Fields:
-  - name-based: `favoriteExercises`, `avoidExercises`
-  - id-based: `favoriteExerciseIds`, `avoidExerciseIds`
-  - optional knobs: `optionalConditioning`, `rpeTargets`, `progressionStyle`, `benchFrequency`, `squatFrequency`, `deadliftFrequency`
-- Runtime-critical fields today: favorite/avoid arrays and `optionalConditioning`
+- Fields: `favoriteExerciseIds` (String[]), `avoidExerciseIds` (String[])
+- Both default to `[]`
+- Runtime use: drives `userPreference` scoring in beam search
 
 ### `Injury`
 
@@ -61,7 +59,7 @@ This document summarizes the persisted model used by workout generation, logging
 
 ### `UserIntegration` (Phase 3 - Stubbed)
 
-- Fields: `id`, `userId`, `provider`, `accessToken`, `refreshToken`, `expiresAt`, `metadata` (JSON), `createdAt`, `updatedAt`
+- Fields: `id`, `userId`, `provider`, `accessToken`, `refreshToken`, `expiresAt`, `isActive`, `createdAt`, `updatedAt`
 - Unique: `@@unique([userId, provider])`
 - Index: `@@index([userId])`
 - Runtime use: Future OAuth integration for Whoop, Garmin, etc. (stubbed in Phase 3).
@@ -86,7 +84,7 @@ Relations:
 - `exerciseMuscles`, `exerciseEquipment`
 - `aliases`, `variations`
 - `substitutionsFrom`, `substitutionsTo`
-- `workoutExercises`, `baselines`, `templateExercises`
+- `workoutExercises`, `templateExercises`
 
 ### `Muscle`
 
@@ -122,22 +120,12 @@ Relations:
 - Fields: `id`, `fromExerciseId`, `toExerciseId`, `reason`, `priority`, `constraints`, `preserves`
 - Default priority: `50`
 
-## Program and workout execution models
-
-### `Program`
-
-- Fields: `id`, `userId`, `name`, `isActive`, `createdAt`
-- Relation: `blocks`
-
-### `ProgramBlock`
-
-- Fields: `id`, `programId`, `blockIndex`, `weeks`, `deloadWeek`
-- Relation: `workouts`
+## Workout execution models
 
 ### `Workout`
 
 - Fields:
-  - ownership/scheduling: `id`, `userId`, `programBlockId?`, `templateId?`, `scheduledDate`, `completedAt`
+  - ownership/scheduling: `id`, `userId`, `templateId?`, `scheduledDate`, `completedAt`
   - status/selection: `status`, `selectionMode`, `forcedSplit`, `advancesSplit`
   - display/meta: `estimatedMinutes`, `notes`
   - autoregulation (Phase 3): `wasAutoregulated`, `autoregulationLog` (JSON)
@@ -147,7 +135,7 @@ Relations:
   - `advancesSplit = true`
   - `wasAutoregulated = false`
 - Index: `@@index([userId, scheduledDate])`
-- Relations: `exercises`, `sessionCheckIns`, optional `template`, optional `programBlock`
+- Relations: `exercises`, `sessionCheckIns`, optional `template`
 - Runtime use: `wasAutoregulated` + `autoregulationLog` track intensity/volume adjustments based on fatigue score
 
 ### `WorkoutExercise`
@@ -237,23 +225,11 @@ Relations:
 
 ### `Workout` extensions for periodization
 
-New optional fields (backward compatible):
+Optional fields wired to periodization:
 - `trainingBlockId?`: FK to `TrainingBlock`
 - `weekInBlock?`: 1-indexed week number within block
-- `blockPhase?`: Denormalized `BlockType` for display
 
-## Baseline and template models
-
-### `Baseline`
-
-- Fields:
-  - identity: `id`, `userId`, `exerciseId`, `exerciseName`, `context`, `category`, `unit`
-  - load and reps: `workingWeightMin?`, `workingWeightMax?`, `workingRepsMin?`, `workingRepsMax?`, `topSetWeight?`, `topSetReps?`
-  - estimates/meta: `projected1RMMin?`, `projected1RMMax?`, `notes?`, `createdAt`
-- Constraints:
-  - unique: `@@unique([userId, exerciseId, context])`
-  - index: `@@index([exerciseId])`
-- Runtime purpose: load fallback/seed data for future generation.
+## Template models
 
 ### `WorkoutTemplate`
 
@@ -279,7 +255,7 @@ New optional fields (backward compatible):
 - `WorkoutExerciseSection`: `WARMUP`, `MAIN`, `ACCESSORY`
 - `MovementPatternV2`: push/pull/squat/hinge/lunge/carry/rotation and accessory pattern enums
 - `SplitTag`: `PUSH`, `PULL`, `LEGS`, `CORE`, `MOBILITY`, `PREHAB`, `CONDITIONING`
-- `EquipmentType`: includes `BARBELL`, `DUMBBELL`, `MACHINE`, `CABLE`, `BODYWEIGHT`, `KETTLEBELL`, `BAND`, `CARDIO`, `SLED`, `BENCH`, `RACK`, `EZ_BAR`, `TRAP_BAR`, `OTHER`
+- `EquipmentType`: includes `BARBELL`, `DUMBBELL`, `MACHINE`, `CABLE`, `BODYWEIGHT`, `KETTLEBELL`, `BAND`, `SLED`, `BENCH`, `RACK`, `EZ_BAR`, `TRAP_BAR`, `OTHER`
 - `MuscleRole`: `PRIMARY`, `SECONDARY`
 - `TemplateIntent`: `FULL_BODY`, `UPPER_LOWER`, `PUSH_PULL_LEGS`, `BODY_PART`, `CUSTOM`
 
@@ -289,6 +265,5 @@ New optional fields (backward compatible):
 - Split advancement logic reads `Workout.status` and `Workout.advancesSplit`.
 - Workout sectioning for log/detail UI should use `WorkoutExercise.section` when present, with legacy fallback only for rows where it is null.
 - `SetLog` values override target set values in mapped history when present.
-- Baselines are updated only when workouts are marked `COMPLETED` and logged performance qualifies.
 - Template deletion preserves workout history by nulling `Workout.templateId` before deleting template rows.
 - Seed process hydrates exercise metadata from `prisma/exercises_comprehensive.json`.

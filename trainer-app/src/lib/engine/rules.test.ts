@@ -8,26 +8,6 @@ import {
   type MesocycleConfig,
 } from "./rules";
 
-const USE_REVISED_FAT_LOSS_POLICY_ENV = "USE_REVISED_FAT_LOSS_POLICY";
-
-function withRevisedFatLossPolicy(value: string | undefined, run: () => void) {
-  const previous = process.env[USE_REVISED_FAT_LOSS_POLICY_ENV];
-  if (value === undefined) {
-    delete process.env[USE_REVISED_FAT_LOSS_POLICY_ENV];
-  } else {
-    process.env[USE_REVISED_FAT_LOSS_POLICY_ENV] = value;
-  }
-  try {
-    run();
-  } finally {
-    if (previous === undefined) {
-      delete process.env[USE_REVISED_FAT_LOSS_POLICY_ENV];
-    } else {
-      process.env[USE_REVISED_FAT_LOSS_POLICY_ENV] = previous;
-    }
-  }
-}
-
 describe("getMesocyclePeriodization", () => {
   it("returns deload modifiers when isDeload is true", () => {
     const config: MesocycleConfig = { totalWeeks: 4, currentWeek: 0, isDeload: true };
@@ -136,22 +116,21 @@ describe("getMesocyclePeriodization", () => {
 });
 
 describe("getPeriodizationModifiers (backward compat)", () => {
-  it("returns deload on week 3 of a 4-week block", () => {
-    const result = getPeriodizationModifiers(3, "hypertrophy");
+  it("returns deload on week 4 of a 4-week block", () => {
+    const result = getPeriodizationModifiers(4, "hypertrophy");
     expect(result.isDeload).toBe(true);
     expect(result.setMultiplier).toBe(0.5);
   });
 
-  it("returns non-deload on week 0", () => {
-    const result = getPeriodizationModifiers(0, "hypertrophy");
+  it("returns non-deload on week 1", () => {
+    const result = getPeriodizationModifiers(1, "hypertrophy");
     expect(result.isDeload).toBe(false);
     expect(result.rpeOffset).toBeLessThan(0);
   });
 
-  it("wraps around for week indices > 3", () => {
-    const week4 = getPeriodizationModifiers(4, "hypertrophy");
-    const week0 = getPeriodizationModifiers(0, "hypertrophy");
-    expect(week4.rpeOffset).toBe(week0.rpeOffset);
+  it("clamps week indices beyond block length to deload", () => {
+    const week5 = getPeriodizationModifiers(5, "hypertrophy");
+    expect(week5.isDeload).toBe(true);
   });
 });
 
@@ -164,24 +143,18 @@ describe("getBaseTargetRpe", () => {
 
   it("keeps non-hypertrophy goals unchanged", () => {
     expect(getBaseTargetRpe("strength", "beginner")).toBe(8);
-    expect(getBaseTargetRpe("fat_loss", "advanced")).toBe(7);
+    // KB: fat_loss stops 1-2 RIR; 7.5 RPE for muscle preservation during deficit
+    expect(getBaseTargetRpe("fat_loss", "advanced")).toBe(7.5);
   });
 });
 
-describe("revised fat-loss policy flag", () => {
-  it("fat-loss-policy-flag-on", () => {
-    withRevisedFatLossPolicy("true", () => {
-      expect(getGoalRepRanges("fat_loss").main).toEqual([6, 10]);
-      expect(getBaseTargetRpe("fat_loss", "intermediate")).toBe(7.5);
-      expect(getGoalSetMultiplier("fat_loss")).toBe(0.75);
-    });
-  });
-
-  it("fat-loss-policy-flag-off", () => {
-    withRevisedFatLossPolicy("false", () => {
-      expect(getGoalRepRanges("fat_loss").main).toEqual([8, 12]);
-      expect(getBaseTargetRpe("fat_loss", "intermediate")).toBe(7.0);
-      expect(getGoalSetMultiplier("fat_loss")).toBe(1);
-    });
+describe("fat-loss goal policy", () => {
+  it("applies KB-aligned rep range, RPE, and set reduction for fat loss", () => {
+    // KB: 6-10 reps preserves load on bar (critical for muscle retention in deficit)
+    expect(getGoalRepRanges("fat_loss").main).toEqual([6, 10]);
+    // KB: 7.5 RPE / 2 RIR — conservative but effective during caloric deficit
+    expect(getBaseTargetRpe("fat_loss", "intermediate")).toBe(7.5);
+    // KB: reduce volume 20-33% during deficit (Roth 2022)
+    expect(getGoalSetMultiplier("fat_loss")).toBe(0.75);
   });
 });

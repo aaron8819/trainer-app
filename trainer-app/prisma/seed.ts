@@ -1,6 +1,5 @@
 import "dotenv/config";
 import {
-  BaselineCategory,
   Difficulty,
   EquipmentType,
   JointStress,
@@ -320,14 +319,12 @@ const exerciseAliases: ExerciseAliasSeed[] = [
   { exerciseName: "Bulgarian Split Squat", alias: "Front-Foot Elevated Split Squat" },
 ];
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Seed data — Baselines
-// ═══════════════════════════════════════════════════════════════════════════
+// baselineSeed removed — Baseline model dropped in migration 20260218000000_remove_baseline
 
-const baselineSeed = [
+const _baselineSeedPlaceholder = [
   {
     exerciseName: "Barbell Back Squat",
-    category: BaselineCategory.MAIN_LIFT,
+    category: "MAIN_LIFT",
     context: "heavy",
     topSetWeight: 185,
     topSetReps: 5,
@@ -341,7 +338,7 @@ const baselineSeed = [
   },
   {
     exerciseName: "Barbell Back Squat",
-    category: BaselineCategory.MAIN_LIFT,
+    category: "MAIN_LIFT",
     context: "volume",
     workingWeightMin: 165,
     workingWeightMax: 175,
@@ -351,7 +348,7 @@ const baselineSeed = [
   },
   {
     exerciseName: "Flat Barbell Bench Press",
-    category: BaselineCategory.MAIN_LIFT,
+    category: "MAIN_LIFT",
     context: "strength",
     topSetWeight: 175,
     topSetReps: 5,
@@ -365,7 +362,7 @@ const baselineSeed = [
   },
   {
     exerciseName: "Flat Barbell Bench Press",
-    category: BaselineCategory.MAIN_LIFT,
+    category: "MAIN_LIFT",
     context: "volume",
     workingWeightMin: 155,
     workingWeightMax: 165,
@@ -375,7 +372,7 @@ const baselineSeed = [
   },
   {
     exerciseName: "Conventional Deadlift",
-    category: BaselineCategory.MAIN_LIFT,
+    category: "MAIN_LIFT",
     context: "strength",
     topSetWeight: 185,
     topSetReps: 5,
@@ -389,7 +386,7 @@ const baselineSeed = [
   },
   {
     exerciseName: "Conventional Deadlift",
-    category: BaselineCategory.MAIN_LIFT,
+    category: "MAIN_LIFT",
     context: "volume",
     workingWeightMin: 155,
     workingWeightMax: 170,
@@ -399,98 +396,98 @@ const baselineSeed = [
   },
   {
     exerciseName: "Overhead Press",
-    category: BaselineCategory.MAIN_LIFT,
+    category: "MAIN_LIFT",
     topSetWeight: 85,
     topSetReps: 5,
   },
   {
     exerciseName: "DB Shoulder Press",
-    category: BaselineCategory.DUMBBELL,
+    category: "DUMBBELL",
     workingWeightMin: 45,
     workingWeightMax: 45,
   },
   {
     exerciseName: "Incline Barbell Bench",
-    category: BaselineCategory.BARBELL_ACCESSORY,
+    category: "BARBELL_ACCESSORY",
     topSetWeight: 155,
     topSetReps: 3,
   },
   {
     exerciseName: "Romanian Deadlift (BB)",
-    category: BaselineCategory.BARBELL_ACCESSORY,
+    category: "BARBELL_ACCESSORY",
     topSetWeight: 165,
     topSetReps: 4,
   },
   {
     exerciseName: "Incline DB Press",
-    category: BaselineCategory.DUMBBELL,
+    category: "DUMBBELL",
     workingWeightMin: 55,
     workingWeightMax: 55,
   },
   {
     exerciseName: "Flat DB Press",
-    category: BaselineCategory.DUMBBELL,
+    category: "DUMBBELL",
     workingWeightMin: 50,
     workingWeightMax: 50,
   },
   {
     exerciseName: "One-Arm DB Row",
-    category: BaselineCategory.DUMBBELL,
+    category: "DUMBBELL",
     workingWeightMin: 60,
     workingWeightMax: 60,
   },
   {
     exerciseName: "DB Romanian Deadlift",
-    category: BaselineCategory.DUMBBELL,
+    category: "DUMBBELL",
     workingWeightMin: 35,
     workingWeightMax: 45,
   },
   {
     exerciseName: "Incline DB Curls",
-    category: BaselineCategory.DUMBBELL,
+    category: "DUMBBELL",
     workingWeightMin: 20,
     workingWeightMax: 20,
   },
   {
     exerciseName: "DB Skull Crushers",
-    category: BaselineCategory.DUMBBELL,
+    category: "DUMBBELL",
     workingWeightMin: 17.5,
     workingWeightMax: 17.5,
   },
   {
     exerciseName: "DB Lateral Raise",
-    category: BaselineCategory.DUMBBELL,
+    category: "DUMBBELL",
     workingWeightMin: 12.5,
     workingWeightMax: 12.5,
   },
   {
     exerciseName: "Front-Foot Elevated Split Squat",
-    category: BaselineCategory.DUMBBELL,
+    category: "DUMBBELL",
     workingWeightMin: 20,
     workingWeightMax: 20,
   },
   {
     exerciseName: "Chest-Supported Row",
-    category: BaselineCategory.MACHINE_CABLE,
+    category: "MACHINE_CABLE",
     workingWeightMin: 100,
     workingWeightMax: 125,
   },
   {
     exerciseName: "Seated Cable Row",
-    category: BaselineCategory.MACHINE_CABLE,
+    category: "MACHINE_CABLE",
     workingWeightMin: 50,
     workingWeightMax: 60,
     notes: "Per side",
   },
   {
     exerciseName: "Lat Pulldown",
-    category: BaselineCategory.MACHINE_CABLE,
+    category: "MACHINE_CABLE",
     workingWeightMin: 115,
     workingWeightMax: 130,
   },
   {
     exerciseName: "Lat Pulldown",
-    category: BaselineCategory.MACHINE_CABLE,
+    category: "MACHINE_CABLE",
     context: "light",
     workingWeightMin: 45,
     workingWeightMax: 50,
@@ -498,13 +495,13 @@ const baselineSeed = [
   },
   {
     exerciseName: "Face Pulls (Rope)",
-    category: BaselineCategory.MACHINE_CABLE,
+    category: "MACHINE_CABLE",
     workingWeightMin: 40,
     workingWeightMax: 40,
   },
   {
     exerciseName: "Barbell Row",
-    category: BaselineCategory.MACHINE_CABLE,
+    category: "MACHINE_CABLE",
     context: "shrug",
     workingWeightMin: 160,
     workingWeightMax: 160,
@@ -512,46 +509,46 @@ const baselineSeed = [
   },
   {
     exerciseName: "Machine Shoulder Press",
-    category: BaselineCategory.MACHINE_CABLE,
+    category: "MACHINE_CABLE",
     workingWeightMin: 55,
     workingWeightMax: 55,
   },
   {
     exerciseName: "Hammer Curl",
-    category: BaselineCategory.MACHINE_CABLE,
+    category: "MACHINE_CABLE",
     workingWeightMin: 35,
     workingWeightMax: 40,
     notes: "Rope variation",
   },
   {
     exerciseName: "Tricep Rope Pushdown",
-    category: BaselineCategory.MACHINE_CABLE,
+    category: "MACHINE_CABLE",
     workingWeightMin: 35,
     workingWeightMax: 35,
   },
   {
     exerciseName: "Machine Rear Delt Fly",
-    category: BaselineCategory.MACHINE_CABLE,
+    category: "MACHINE_CABLE",
     workingWeightMin: 80,
     workingWeightMax: 80,
   },
   {
     exerciseName: "Dips",
-    category: BaselineCategory.MACHINE_CABLE,
+    category: "MACHINE_CABLE",
     workingWeightMin: 105.5,
     workingWeightMax: 105.5,
     notes: "Assisted — weight is assistance level",
   },
   {
     exerciseName: "Leg Press",
-    category: BaselineCategory.MACHINE_CABLE,
+    category: "MACHINE_CABLE",
     workingWeightMin: 180,
     workingWeightMax: 180,
     notes: "Total weight",
   },
   {
     exerciseName: "Decline Barbell Bench",
-    category: BaselineCategory.BENCH_VARIATION,
+    category: "BENCH_VARIATION",
     workingWeightMin: 155,
     workingWeightMax: 160,
   },
@@ -841,7 +838,6 @@ async function renameExercises() {
       await prisma.exerciseEquipment.deleteMany({ where: { exerciseId: existing.id } });
       await prisma.exerciseAlias.deleteMany({ where: { exerciseId: existing.id } });
       await prisma.exerciseVariation.deleteMany({ where: { exerciseId: existing.id } });
-      await prisma.baseline.deleteMany({ where: { exerciseId: existing.id } });
       await prisma.substitutionRule.deleteMany({
         where: { OR: [{ fromExerciseId: existing.id }, { toExerciseId: existing.id }] },
       });
@@ -868,11 +864,6 @@ async function renameExercises() {
         continue;
       }
       await prisma.exercise.update({ where: { id: existing.id }, data: { name: newName } });
-      // Also update baseline denormalized name
-      await prisma.baseline.updateMany({
-        where: { exerciseId: existing.id },
-        data: { exerciseName: newName },
-      });
       renamed++;
     }
   }
@@ -1166,45 +1157,6 @@ async function buildExerciseNameLookup(): Promise<Map<string, string>> {
   return nameToId;
 }
 
-async function seedBaselines(userId: string) {
-  const nameToId = await buildExerciseNameLookup();
-
-  let seeded = 0;
-  let skipped = 0;
-  for (const baseline of baselineSeed) {
-    const exerciseId = nameToId.get(baseline.exerciseName.toLowerCase());
-    if (!exerciseId) {
-      skipped++;
-      continue;
-    }
-
-    const context = baseline.context ?? "default";
-    await prisma.baseline.upsert({
-      where: {
-        userId_exerciseId_context: {
-          userId,
-          exerciseId,
-          context,
-        },
-      },
-      update: {
-        ...baseline,
-        exerciseId,
-        context,
-        userId,
-      },
-      create: {
-        ...baseline,
-        exerciseId,
-        context,
-        userId,
-      },
-    });
-    seeded++;
-  }
-  console.log(`  ${seeded} baselines seeded, ${skipped} skipped (no matching exercise).`);
-}
-
 async function seedWorkoutTemplates(userId: string) {
   console.log("Seeding workout templates...");
   const nameToId = await buildExerciseNameLookup();
@@ -1277,7 +1229,6 @@ async function pruneStaleExercises() {
     include: {
       workoutExercises: { select: { id: true }, take: 1 },
       templateExercises: { select: { id: true }, take: 1 },
-      baselines: { select: { id: true }, take: 1 },
     },
   });
 
@@ -1304,7 +1255,6 @@ async function pruneStaleExercises() {
     }
 
     // Safe to delete — remove related records first (no cascade)
-    await prisma.baseline.deleteMany({ where: { exerciseId: exercise.id } });
     await prisma.exerciseMuscle.deleteMany({ where: { exerciseId: exercise.id } });
     await prisma.exerciseEquipment.deleteMany({ where: { exerciseId: exercise.id } });
     await prisma.exerciseAlias.deleteMany({ where: { exerciseId: exercise.id } });
@@ -1339,7 +1289,6 @@ async function main() {
   await seedExerciseMusclesFromJson();
   await seedExerciseEquipmentFromJson();
   const user = await seedOwner();
-  await seedBaselines(user.id);
   await seedWorkoutTemplates(user.id);
   console.log("Pruning stale exercises...");
   await pruneStaleExercises();

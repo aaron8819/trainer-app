@@ -75,12 +75,17 @@ export async function POST(request: Request) {
   });
 
   // 6. Return signal + fatigue score
+  const sourceMode = signal.whoop ? "whoop+subjective+performance" : "subjective+performance";
   return NextResponse.json({
     signal: {
       timestamp: signal.timestamp.toISOString(),
       hasWhoop: signal.whoop !== undefined,
       subjective: signal.subjective,
       performance: signal.performance,
+    },
+    source: {
+      whoopAvailable: signal.whoop !== undefined,
+      sourceMode,
     },
     fatigueScore: {
       overall: fatigueScore.overall,

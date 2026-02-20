@@ -35,17 +35,9 @@ export type MovementPatternV2 =
   | "extension"
   | "abduction"
   | "adduction"
-  | "isolation";
-/** V1 movement pattern — kept for WorkoutHistoryEntry backward compat */
-export type MovementPattern =
-  | "squat"
-  | "hinge"
-  | "push"
-  | "pull"
-  | "push_pull"
-  | "carry"
-  | "rotate"
-  | "lunge";
+  | "isolation"
+  | "calf_raise_extended"
+  | "calf_raise_flexed";
 
 export type SplitTag =
   | "push"
@@ -184,7 +176,6 @@ export type WorkoutHistoryEntry = {
   selectionMode?: WorkoutSelectionMode;
   exercises: {
     exerciseId: string;
-    movementPattern: MovementPattern;
     primaryMuscles?: string[];
     sets: SetLog[];
   }[];

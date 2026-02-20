@@ -46,7 +46,7 @@ export async function computePerformanceSignals(
   });
 
   // Compute RPE deviation
-  let rpeDeviations: number[] = [];
+  const rpeDeviations: number[] = [];
   for (const workout of recentWorkouts) {
     for (const exercise of workout.exercises) {
       for (const set of exercise.sets) {

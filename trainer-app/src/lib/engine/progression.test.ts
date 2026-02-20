@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { computeNextLoad, shouldDeload } from "./progression";
-import type { MovementPattern, WorkoutHistoryEntry } from "./types";
+import type { WorkoutHistoryEntry } from "./types";
 
 const USE_MAIN_LIFT_PLATEAU_DETECTION_ENV = "USE_MAIN_LIFT_PLATEAU_DETECTION";
 
@@ -35,7 +35,7 @@ const buildEntry = (
       ? [
           {
             exerciseId: "bench",
-            movementPattern: "push" as MovementPattern,
+
             sets: [
               {
                 exerciseId: "bench",
@@ -51,7 +51,7 @@ const buildEntry = (
       ? [
           {
             exerciseId: "lateral-raise",
-            movementPattern: "push" as MovementPattern,
+
             sets: [
               {
                 exerciseId: "lateral-raise",

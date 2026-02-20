@@ -116,9 +116,16 @@ export const saveWorkoutSchema = z.object({
 export const setLogSchema = z.object({
   workoutSetId: z.string(),
   workoutExerciseId: z.string().optional(),
-  actualReps: z.number().optional(),
-  actualRpe: z.number().optional(),
-  actualLoad: z.number().optional(),
+  actualReps: z.number().int().min(0).optional(),
+  actualRpe: z
+    .number()
+    .min(1)
+    .max(10)
+    .refine((value) => Number.isInteger(value * 2), {
+      message: "actualRpe must use 0.5 increments",
+    })
+    .optional(),
+  actualLoad: z.number().min(0).optional(),
   wasSkipped: z.boolean().optional(),
   notes: z.string().optional(),
 });

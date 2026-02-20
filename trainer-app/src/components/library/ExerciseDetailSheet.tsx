@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { SlideUpSheet } from "@/components/ui/SlideUpSheet";
-import { BaselineEditor } from "./BaselineEditor";
 import { AddToTemplateSheet } from "./AddToTemplateSheet";
 import { PersonalHistorySection } from "./PersonalHistorySection";
 import type { ExerciseDetail } from "@/lib/exercise-library/types";
@@ -30,7 +29,6 @@ function ScoreBar({ value, max = 5, color }: { value: number; max?: number; colo
 export function ExerciseDetailSheet({ exerciseId, onClose, onNavigate }: ExerciseDetailSheetProps) {
   const [detail, setDetail] = useState<ExerciseDetail | null>(null);
   const [loading, setLoading] = useState(false);
-  const [showBaseline, setShowBaseline] = useState(false);
   const [favoriteState, setFavoriteState] = useState(false);
   const [avoidState, setAvoidState] = useState(false);
   const [prevId, setPrevId] = useState<string | null>(null);
@@ -46,7 +44,6 @@ export function ExerciseDetailSheet({ exerciseId, onClose, onNavigate }: Exercis
     } else {
       setDetail(null);
       setLoading(true);
-      setShowBaseline(false);
     }
   }
 
@@ -267,22 +264,6 @@ export function ExerciseDetailSheet({ exerciseId, onClose, onNavigate }: Exercis
             </div>
           </section>
 
-          {/* Baseline Editor */}
-          {showBaseline && (
-            <section className="rounded-xl border border-slate-200 p-4">
-              <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Set Baseline</h3>
-              <BaselineEditor
-                exerciseId={detail.id}
-                initial={detail.baseline}
-                isDumbbell={detail.equipment.includes("dumbbell")}
-                onSaved={() => {
-                  setShowBaseline(false);
-                  setRefreshCounter((c) => c + 1);
-                }}
-              />
-            </section>
-          )}
-
           {/* Action Bar */}
           <div className="sticky bottom-0 -mx-4 -mb-[calc(1rem+env(safe-area-inset-bottom))] border-t border-slate-100 bg-white/95 px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 backdrop-blur supports-[backdrop-filter]:bg-white/85 sm:-mx-5 sm:-mb-5 sm:px-5 sm:pb-3">
             <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:flex-wrap">
@@ -312,17 +293,6 @@ export function ExerciseDetailSheet({ exerciseId, onClose, onNavigate }: Exercis
                 <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
               </svg>
               {avoidState ? "Avoided" : "Avoid"}
-            </button>
-            <button
-              onClick={() => setShowBaseline(!showBaseline)}
-              className="flex min-h-11 items-center justify-center gap-1.5 rounded-lg bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200"
-            >
-              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                <path d="M12 20V10" />
-                <path d="M18 20V4" />
-                <path d="M6 20v-4" />
-              </svg>
-              Baseline
             </button>
             <button
               onClick={() => setTemplateSheetOpen(true)}

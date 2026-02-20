@@ -1,5 +1,4 @@
 import { computeNextLoad } from "./progression";
-import { estimateWorkoutMinutes } from "./timeboxing";
 import { filterCompletedHistory, sortHistoryByDateDesc } from "./history";
 import {
   getBaseTargetRpe,
@@ -201,20 +200,11 @@ export function applyLoads(workout: WorkoutPlan, options: ApplyLoadsOptions): Wo
   const mainLifts = workout.mainLifts.map(applyToExercise);
   const accessories = workout.accessories.map(applyToExercise);
 
-  // Calculate estimated time (metadata only - no trimming)
-  // Timeboxing enforcement moved to beam search constraints (future)
-  const estimatedMinutes = estimateWorkoutMinutes([
-    ...warmup,
-    ...mainLifts,
-    ...accessories,
-  ]);
-
   return {
     ...workout,
     warmup,
     mainLifts,
     accessories,
-    estimatedMinutes,
   };
 }
 

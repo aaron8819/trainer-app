@@ -9,6 +9,7 @@ import {
   getTopComponentLabels,
   parseExplainabilitySelectionMetadata,
 } from "@/lib/ui/explainability";
+import type { ActiveBlockPhase } from "@/lib/api/program";
 
 type WorkoutSet = {
   setIndex: number;
@@ -71,6 +72,7 @@ type SessionCheckInPayload = {
 
 type GenerateFromTemplateCardProps = {
   templates: TemplateSummary[];
+  blockPhase?: ActiveBlockPhase;
 };
 
 type GeneratedMetadata = {
@@ -165,7 +167,14 @@ function applyExerciseSwap(
   };
 }
 
-export function GenerateFromTemplateCard({ templates }: GenerateFromTemplateCardProps) {
+const BLOCK_PHASE_STYLE: Record<string, string> = {
+  accumulation: "border-blue-200 bg-blue-50 text-blue-800",
+  intensification: "border-purple-200 bg-purple-50 text-purple-800",
+  realization: "border-orange-200 bg-orange-50 text-orange-800",
+  deload: "border-slate-200 bg-slate-50 text-slate-700",
+};
+
+export function GenerateFromTemplateCard({ templates, blockPhase }: GenerateFromTemplateCardProps) {
   const [selectedTemplateId, setSelectedTemplateId] = useState(templates[0]?.id ?? "");
   const [workout, setWorkout] = useState<WorkoutPlan | null>(null);
   const [sraWarnings, setSraWarnings] = useState<SraWarning[]>([]);
@@ -391,6 +400,23 @@ export function GenerateFromTemplateCard({ templates }: GenerateFromTemplateCard
       <p className="mt-2 text-slate-600">
         Generate a workout from one of your saved templates.
       </p>
+
+      {blockPhase && (
+        <div className={`mt-3 rounded-xl border px-3 py-2.5 text-xs ${BLOCK_PHASE_STYLE[blockPhase.blockType] ?? BLOCK_PHASE_STYLE.accumulation}`}>
+          <p className="font-semibold">
+            Week {blockPhase.weekInMeso} of {blockPhase.mesoDurationWeeks}
+            {" · "}{blockPhase.blockType.charAt(0).toUpperCase() + blockPhase.blockType.slice(1)}
+          </p>
+          <p className="mt-0.5 opacity-90">{blockPhase.coachingCue}</p>
+          {blockPhase.sessionsUntilDeload > 0 ? (
+            <p className="mt-0.5 opacity-75">
+              {blockPhase.sessionsUntilDeload} session{blockPhase.sessionsUntilDeload === 1 ? "" : "s"} until deload.
+            </p>
+          ) : (
+            <p className="mt-0.5 font-medium">This is your deload session.</p>
+          )}
+        </div>
+      )}
 
       <div className="mt-4">
         <label className="flex flex-col gap-2">

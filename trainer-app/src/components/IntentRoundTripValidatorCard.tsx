@@ -228,7 +228,7 @@ function getIntentFilteredExerciseOptions(
   });
 }
 
-export function IntentRoundTripValidatorCard() {
+export function IntentWorkoutCard() {
   const [intent, setIntent] = useState<SessionIntent>("push");
   const [targetMusclesInput, setTargetMusclesInput] = useState("");
   const [exerciseOptions, setExerciseOptions] = useState<ExerciseOption[]>([]);
@@ -444,12 +444,9 @@ export function IntentRoundTripValidatorCard() {
 
   return (
     <div className="w-full min-w-0 rounded-2xl border border-slate-200 p-5 shadow-sm sm:p-6">
-      <h2 className="text-xl font-semibold">Intent Pipeline Validator</h2>
+      <h2 className="text-xl font-semibold">Intent Workout</h2>
       <p className="mt-2 text-slate-600">
-        Explicit scope: intent pick, optional pins, generate, save, and workout metadata visibility.
-      </p>
-      <p className="mt-1 text-xs text-slate-500">
-        Out of scope: weekly schedule setup, cold-start gating, and automation policies.
+        Build a session from intent with optional target-muscle focus and pinned exercise control.
       </p>
 
       <div className="mt-4 grid gap-3">
@@ -628,4 +625,7 @@ export function IntentRoundTripValidatorCard() {
     </div>
   );
 }
+
+// Backward-compatible alias for older imports.
+export const IntentRoundTripValidatorCard = IntentWorkoutCard;
 

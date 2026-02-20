@@ -17,6 +17,7 @@ import type {
   SelectionObjective,
 } from "./types";
 
+
 /**
  * Score how well this exercise fills volume deficits
  *
@@ -65,6 +66,46 @@ export function scoreDeficitFill(
   }
 
   // Return proportion of total deficit filled
+  return totalDeficit > 0 ? totalFilled / totalDeficit : 0;
+}
+
+/**
+ * Score deficit fill dynamically, accounting for volume already added in the current beam path.
+ *
+ * Used during beam expansion to compute the MARGINAL deficit each candidate fills
+ * given what has already been selected in this beam branch. This prevents later
+ * exercises from receiving inflated deficitFill scores for muscles that earlier
+ * exercises have already substantially covered.
+ *
+ * @param contribution - Volume contribution (direct + indirect per muscle)
+ * @param volumeContext - Historical weekly volume context (targets, actuals before this session)
+ * @param beamVolumeFilled - Effective volume already added by exercises in the current beam path
+ * @returns Score 0-1 (proportion of remaining deficit filled by this candidate)
+ */
+export function scoreDeficitFillDynamic(
+  contribution: VolumeContribution,
+  volumeContext: SelectionVolumeContext,
+  beamVolumeFilled: Map<Muscle, number>
+): number {
+  let totalFilled = 0;
+  let totalDeficit = 0;
+
+  for (const [muscle, { direct, indirect }] of contribution) {
+    const target = volumeContext.weeklyTarget.get(muscle) ?? 0;
+    const historicalActual = volumeContext.effectiveActual.get(muscle) ?? 0;
+    const beamActual = beamVolumeFilled.get(muscle) ?? 0;
+    const actual = historicalActual + beamActual;
+    const deficit = Math.max(0, target - actual);
+
+    if (deficit === 0) continue; // Already at target in this beam path
+
+    const effectiveContribution = direct + indirect * INDIRECT_SET_MULTIPLIER;
+    const filled = Math.min(effectiveContribution, deficit);
+
+    totalFilled += filled;
+    totalDeficit += deficit;
+  }
+
   return totalDeficit > 0 ? totalFilled / totalDeficit : 0;
 }
 

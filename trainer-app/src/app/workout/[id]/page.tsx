@@ -2,54 +2,17 @@ import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
 import { resolveOwner } from "@/lib/api/workout-context";
 import { mapLatestCheckIn } from "@/lib/api/checkin-staleness";
-import { isSetQualifiedForBaseline } from "@/lib/baseline-qualification";
 import { generateWorkoutExplanation } from "@/lib/api/explainability";
 import type { WorkoutExplanation as WorkoutExplanationType } from "@/lib/engine/explainability";
 import { PrimaryGoal, TrainingAge } from "@prisma/client";
 import type { Prisma } from "@prisma/client";
 import { WorkoutExplanation } from "@/components/WorkoutExplanation";
-import { isDumbbellEquipment, formatLoad, formatBaselineRange } from "@/lib/ui/load-display";
+import { isDumbbellEquipment, formatLoad } from "@/lib/ui/load-display";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const runtime = "nodejs";
 
-type BaselineSummary = {
-  context: string;
-  evaluatedExercises: number;
-  updated: number;
-  skipped: number;
-  items: {
-    exerciseName: string;
-    previousTopSetWeight?: number;
-    newTopSetWeight: number;
-    reps: number;
-  }[];
-  skippedItems: {
-    exerciseName: string;
-    reason: string;
-  }[];
-};
-
-const BASELINE_ALIAS_MAP: Record<string, string> = {
-  "barbell bench press": "flat barbell bench press",
-  "bench press": "flat barbell bench press",
-  "overhead press": "overhead press",
-  "romanian deadlift": "romanian deadlift (bb)",
-  rdl: "romanian deadlift (bb)",
-  "face pull": "face pulls (rope)",
-  "chest-supported row": "chest-supported machine row",
-  "machine row": "chest-supported machine row",
-  "db shoulder press": "db shoulder press",
-  "dumbbell shoulder press": "db shoulder press",
-};
-
-const normalizeName = (name: string) =>
-  name
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .replace(/[^\w\s()-]/g, "")
-    .trim();
 
 const formatTrainingAge = (trainingAge?: TrainingAge | null) =>
   trainingAge ? trainingAge.toLowerCase() : "intermediate";
@@ -88,139 +51,6 @@ const hasDumbbellEquipment = (exercise: {
   );
 
 
-function buildBaselineSummary({
-  workout,
-  baselines,
-  context,
-}: {
-  workout: Prisma.WorkoutGetPayload<{
-    include: {
-      exercises: {
-        include: {
-          exercise: true;
-          sets: { include: { logs: { orderBy: { completedAt: "desc" }, take: 1 } } };
-        };
-      };
-    };
-  }>;
-  baselines: { exerciseName: string; context: string; topSetWeight: number | null }[];
-  context: string;
-}): BaselineSummary {
-  const evaluatedExercises = workout.exercises.filter((exercise) => exercise.sets.length >= 2);
-  const items: BaselineSummary["items"] = [];
-  const skippedItems: BaselineSummary["skippedItems"] = [];
-  let updated = 0;
-  let skipped = 0;
-
-  const findBaseline = (exerciseName: string) => {
-    const normalized = normalizeName(exerciseName);
-    const alias = BASELINE_ALIAS_MAP[normalized];
-    const matches = baselines.filter((baseline) => {
-      if (baseline.context !== context && baseline.context !== "default") {
-        return false;
-      }
-      const baselineNormalized = normalizeName(baseline.exerciseName);
-      if (baselineNormalized === normalized) {
-        return true;
-      }
-      if (alias && baselineNormalized === alias) {
-        return true;
-      }
-      return false;
-    });
-    if (matches.length === 0) {
-      return undefined;
-    }
-    return (
-      matches.find((baseline) => baseline.context === context) ??
-      matches.find((baseline) => baseline.context === "default") ??
-      matches[0]
-    );
-  };
-
-  for (const exercise of evaluatedExercises) {
-    const sets = exercise.sets.map((set) => ({
-      targetReps: set.targetReps ?? undefined,
-      targetRpe: set.targetRpe ?? undefined,
-      actualReps: set.logs[0]?.actualReps ?? undefined,
-      actualLoad: set.logs[0]?.actualLoad ?? undefined,
-      actualRpe: set.logs[0]?.actualRpe ?? undefined,
-      wasSkipped: set.logs[0]?.wasSkipped ?? false,
-      hasLog: Boolean(set.logs[0]),
-    }));
-
-    const unskipped = sets.filter((set) => !set.wasSkipped);
-    if (unskipped.length === 0) {
-      skippedItems.push({ exerciseName: exercise.exercise.name, reason: "All sets marked skipped." });
-      skipped += 1;
-      continue;
-    }
-
-    const withPerformance = unskipped.filter(
-      (set) => set.actualReps !== undefined && set.actualLoad !== undefined
-    );
-    if (withPerformance.length === 0) {
-      const hasAnyLog = sets.some((set) => set.hasLog);
-      skippedItems.push({
-        exerciseName: exercise.exercise.name,
-        reason: hasAnyLog ? "Missing logged reps or load." : "No logged sets.",
-      });
-      skipped += 1;
-      continue;
-    }
-
-    const qualifyingSets = withPerformance.filter((set) => isSetQualifiedForBaseline(set));
-
-    if (qualifyingSets.length === 0) {
-      skippedItems.push({
-        exerciseName: exercise.exercise.name,
-        reason: "Targets not met (reps or RPE).",
-      });
-      skipped += 1;
-      continue;
-    }
-
-    const bestSet = qualifyingSets.reduce((best, current) =>
-      (current.actualLoad ?? 0) > (best.actualLoad ?? 0) ? current : best
-    );
-
-    if (bestSet.actualLoad === undefined || bestSet.actualReps === undefined) {
-      skippedItems.push({
-        exerciseName: exercise.exercise.name,
-        reason: "Missing logged reps or load.",
-      });
-      skipped += 1;
-      continue;
-    }
-
-    const baseline = findBaseline(exercise.exercise.name);
-    if (baseline?.topSetWeight && bestSet.actualLoad <= baseline.topSetWeight) {
-      skippedItems.push({
-        exerciseName: exercise.exercise.name,
-        reason: `Best set: ${bestSet.actualLoad} lbs × ${bestSet.actualReps} reps. Baseline top set: ${baseline.topSetWeight} lbs. No improvement.`,
-      });
-      skipped += 1;
-      continue;
-    }
-
-    items.push({
-      exerciseName: exercise.exercise.name,
-      previousTopSetWeight: baseline?.topSetWeight ?? undefined,
-      newTopSetWeight: bestSet.actualLoad,
-      reps: bestSet.actualReps,
-    });
-    updated += 1;
-  }
-
-  return {
-    context,
-    evaluatedExercises: evaluatedExercises.length,
-    updated,
-    skipped,
-    items,
-    skippedItems,
-  };
-}
 
 export default async function WorkoutDetailPage({
   params,
@@ -286,19 +116,6 @@ export default async function WorkoutDetailPage({
       orderBy: { date: "desc" },
     }),
   ]);
-  const context = goals?.primaryGoal === PrimaryGoal.STRENGTH ? "strength" : "volume";
-  const baselines = await prisma.baseline.findMany({
-    where: { userId: workout.userId },
-    select: {
-      exerciseName: true,
-      context: true,
-      topSetWeight: true,
-      workingWeightMin: true,
-      workingWeightMax: true,
-    },
-  });
-  const baselineSummary = buildBaselineSummary({ workout, baselines, context });
-
   // Load workout explanation (unified data source for inline badges + detail panel)
   const explanationResult = await generateWorkoutExplanation(workout.id);
   const explanation = "error" in explanationResult ? null : explanationResult;
@@ -325,32 +142,6 @@ export default async function WorkoutDetailPage({
     : latestCheckIn
       ? "Readiness: defaulted to 3 (latest check-in is older than 48 hours)."
     : "Readiness: defaulted to 3 (no readiness logs currently stored).";
-
-  const findBaseline = (exerciseName: string) => {
-    const normalized = normalizeName(exerciseName);
-    const alias = BASELINE_ALIAS_MAP[normalized];
-    const matches = baselines.filter((baseline) => {
-      if (baseline.context !== context && baseline.context !== "default") {
-        return false;
-      }
-      const baselineNormalized = normalizeName(baseline.exerciseName);
-      if (baselineNormalized === normalized) {
-        return true;
-      }
-      if (alias && baselineNormalized === alias) {
-        return true;
-      }
-      return false;
-    });
-    if (matches.length === 0) {
-      return undefined;
-    }
-    return (
-      matches.find((baseline) => baseline.context === context) ??
-      matches.find((baseline) => baseline.context === "default") ??
-      matches[0]
-    );
-  };
 
   const sectionedExercises = (() => {
     const warmup: typeof workout.exercises = [];
@@ -406,57 +197,13 @@ export default async function WorkoutDetailPage({
 
         <section className="mt-6 space-y-6 sm:mt-8 sm:space-y-8">
           <WorkoutExplanation workoutId={workout.id} explanation={explanation} />
-          {workout.status === "COMPLETED" && baselineSummary.evaluatedExercises > 0 ? (
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm sm:p-5">
-              <p className="font-semibold text-slate-900">Baseline updates</p>
-              <p className="mt-1 text-slate-600">
-                Context: {baselineSummary.context} · Evaluated: {baselineSummary.evaluatedExercises} · Updated:{" "}
-                {baselineSummary.updated} · Skipped: {baselineSummary.skipped}
-              </p>
-              {baselineSummary.items.length > 0 ? (
-                <div className="mt-3 space-y-2">
-                  {baselineSummary.items.map((item) => (
-                    <div key={`${item.exerciseName}-${item.newTopSetWeight}`} className="flex flex-wrap gap-2">
-                      <span className="font-medium text-slate-900">{item.exerciseName}</span>
-                      <span className="text-slate-600">
-                        {item.previousTopSetWeight ? `${item.previousTopSetWeight} → ` : ""}
-                        {item.newTopSetWeight} lbs × {item.reps}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="mt-2 text-slate-600">No baseline increases detected for this session.</p>
-              )}
-              {baselineSummary.skippedItems.length > 0 ? (
-                <div className="mt-4 space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Why skipped</p>
-                  {baselineSummary.skippedItems.map((item) => (
-                    <div key={`${item.exerciseName}-${item.reason}`} className="flex flex-wrap gap-2">
-                      <span className="font-medium text-slate-900">{item.exerciseName}</span>
-                      <span className="text-slate-600">{item.reason}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          ) : null}
           {sectionedExercises.filter((section) => section.items.length > 0).map((section) => (
             <div key={section.label} className="space-y-3 sm:space-y-4">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">{section.label}</h2>
               {(
                 section.items.map((exercise) => {
-                  const baseline = findBaseline(exercise.exercise.name);
                   const isBodyweightExercise = hasBodyweightEquipment(exercise.exercise);
                   const isDumbbellExercise = hasDumbbellEquipment(exercise.exercise);
-                  const baselineRange =
-                    baseline &&
-                    baseline.workingWeightMin !== null &&
-                    baseline.workingWeightMax !== null
-                      ? formatBaselineRange(baseline.workingWeightMin, baseline.workingWeightMax, isDumbbellExercise)
-                      : baseline?.topSetWeight
-                      ? formatLoad(baseline.topSetWeight, isDumbbellExercise, false)
-                      : undefined;
                   const targetLoad = exercise.sets[0]?.targetLoad;
                   const topSetLoadDisplay = formatLoad(targetLoad, isDumbbellExercise, isBodyweightExercise);
                   const backOffSets = exercise.sets.slice(1);
@@ -468,12 +215,10 @@ export default async function WorkoutDetailPage({
                     ? formatLoad(backOffSets[0]?.targetLoad, isDumbbellExercise, isBodyweightExercise)
                     : null;
                   const loadNote = targetLoad !== null && targetLoad !== undefined
-                    ? baseline
-                      ? `Your baseline: ${baselineRange ?? "on file"}.`
-                      : "Estimated load (no baseline on file)."
+                    ? "Estimated load (from workout history)."
                     : isBodyweightExercise
                     ? "Bodyweight movement (BW). Add load during logging only for weighted variations."
-                    : "Load to be chosen during logging (no baseline match).";
+                    : "Load to be chosen during logging.";
                   const stressNote = hasHighSeverityInjury
                     ? `Joint stress: ${exercise.exercise.jointStress.toLowerCase()} (high stress filtered).`
                     : `Joint stress: ${exercise.exercise.jointStress.toLowerCase()}.`;

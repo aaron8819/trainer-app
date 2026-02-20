@@ -84,41 +84,81 @@ export async function updateExerciseExposure(
   }
 
   const now = new Date();
+  const window4w = new Date(now);
+  window4w.setDate(window4w.getDate() - 28);
+  const window8w = new Date(now);
+  window8w.setDate(window8w.getDate() - 56);
+  const window12w = new Date(now);
+  window12w.setDate(window12w.getDate() - 84);
 
-  // Update exposure for each exercise in the workout
-  for (const workoutExercise of workout.exercises) {
-    const setsCompleted = workoutExercise.sets.length;
+  const touchedExerciseNames = [...new Set(workout.exercises.map((exercise) => exercise.exercise.name))];
+
+  // Recompute true rolling-window usage for every touched exercise.
+  for (const exerciseName of touchedExerciseNames) {
+    const [timesUsedL4W, timesUsedL8W, timesUsedL12W] = await Promise.all([
+      prisma.workoutExercise.count({
+        where: {
+          exercise: { name: exerciseName },
+          workout: {
+            userId,
+            status: "COMPLETED",
+            completedAt: { gte: window4w },
+          },
+        },
+      }),
+      prisma.workoutExercise.count({
+        where: {
+          exercise: { name: exerciseName },
+          workout: {
+            userId,
+            status: "COMPLETED",
+            completedAt: { gte: window8w },
+          },
+        },
+      }),
+      prisma.workoutExercise.count({
+        where: {
+          exercise: { name: exerciseName },
+          workout: {
+            userId,
+            status: "COMPLETED",
+            completedAt: { gte: window12w },
+          },
+        },
+      }),
+    ]);
+
+    const touchedSetCount = workout.exercises
+      .filter((exercise) => exercise.exercise.name === exerciseName)
+      .reduce((sum, exercise) => sum + exercise.sets.length, 0);
+    const avgSetsPerWeek = Number((timesUsedL4W > 0 ? touchedSetCount / 4 : 0).toFixed(2));
+
     await prisma.exerciseExposure.upsert({
       where: {
         userId_exerciseName: {
           userId,
-          exerciseName: workoutExercise.exercise.name,
+          exerciseName,
         },
       },
       create: {
         userId,
-        exerciseName: workoutExercise.exercise.name,
+        exerciseName,
         lastUsedAt: now,
-        timesUsedL4W: 1,
-        timesUsedL8W: 1,
-        timesUsedL12W: 1,
-        avgSetsPerWeek: setsCompleted,
-        avgVolumePerWeek: 0, // Will be calculated with actual load data
+        timesUsedL4W,
+        timesUsedL8W,
+        timesUsedL12W,
+        avgSetsPerWeek,
+        avgVolumePerWeek: 0,
       },
       update: {
         lastUsedAt: now,
-        // Increment rolling window counters
-        // (Exact logic will be refined with time-window queries)
-        timesUsedL4W: { increment: 1 },
-        timesUsedL8W: { increment: 1 },
-        timesUsedL12W: { increment: 1 },
+        timesUsedL4W,
+        timesUsedL8W,
+        timesUsedL12W,
+        avgSetsPerWeek,
       },
     });
   }
-
-  // TODO: Recalculate rolling windows (prune counts older than 4/8/12 weeks)
-  // This requires querying workout history and counting exercises per window.
-  // For now, simple increment works (will be refined in Week 3).
 }
 
 /**

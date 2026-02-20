@@ -4,6 +4,69 @@ Record of significant design decisions and their rationale. Newest first.
 
 ---
 
+## ADR-079: DB Indexes + Remove CARDIO Enum (2026-02-20)
+
+**Status:** Accepted
+
+**Context:** Three performance gaps and one dead enum identified during first-principles audit:
+1. `ExerciseMuscle` had no index on `muscleId`. Every workout generation queries exercises by muscle — a full-table join on ~133×N rows.
+2. `SubstitutionRule` had no indexes on `fromExerciseId`/`toExerciseId`. Substitution lookups scanned the whole table.
+3. `CARDIO` in `EquipmentType` enum — zero exercises use it; zero application code references it. Dead value that could confuse future contributors.
+
+**Decision:** Migration `20260220_indexes_and_remove_cardio`:
+- `@@index([muscleId])` added to `ExerciseMuscle`
+- `@@index([fromExerciseId])` and `@@index([toExerciseId])` added to `SubstitutionRule`
+- `CARDIO` removed from `EquipmentType` via `ALTER TYPE … RENAME / CREATE / ALTER / DROP` pattern
+
+**Files changed:** `prisma/schema.prisma`, `docs/data-model.md`, migration SQL.
+
+---
+
+## ADR-078: Fix Explainability — Read Real Selection Scores from selectionMetadata (2026-02-20)
+
+**Status:** Accepted
+
+**Context:** `buildSelectionCandidate()` in `explainability.ts` returned hardcoded scores (`deficitFill: 0.8`, `rotationNovelty: 0.7`, `totalScore: 0.7`). The "why was this exercise chosen" panel showed fabricated data. The real scores were already stored — `Workout.selectionMetadata` (a JSON field) contains a `SelectionOutput` blob with per-exercise `rationale[exerciseId].{score, components}` written at generation time.
+
+**Decision:** Add `parseStoredRationale(metadata: unknown)` helper that safely extracts per-exercise scores from `selectionMetadata`. Pass the stored scores to `buildSelectionCandidate()` as an optional third parameter. Falls back to the previous static approximations for manual workouts or legacy workouts that predate score storage.
+
+**Result:** The explanation panel now shows real beam-search deficit fill %, rotation novelty, SFR, and lengthened-position scores for any workout generated after this change. No schema migration required — the scores were already stored.
+
+**Files changed:** `src/lib/api/explainability.ts`.
+
+---
+
+## ADR-077: Fix add-exercise Route Prescription (2026-02-20)
+
+**Status:** Accepted
+
+**Context:** `POST /api/workouts/[id]/add-exercise` hardcoded `targetRpe: 8` and set `targetLoad: null` for every mid-session added exercise. This gave users no guidance on what weight to start with and applied a one-size-fits-all RPE regardless of training goal or age.
+
+**Decision:**
+1. Compute `targetRpe` via `getBaseTargetRpe(primaryGoal, trainingAge)` — same function used by the main generation path. Beginner hypertrophy gets 7.0, intermediate 8.0, strength 8.0, fat_loss 7.5, etc.
+2. Seed `targetLoad` from the most recent `SetLog.actualLoad` for the same exercise and user (completed workouts only). Provides a realistic starting weight without running the full `applyLoads()` pipeline mid-session.
+
+**Files changed:** `src/app/api/workouts/[id]/add-exercise/route.ts`.
+
+**Note:** The Prisma model for set logs is `SetLog` (accessor: `prisma.setLog`), not `WorkoutSetLog`.
+
+---
+
+## ADR-076: Remove Fat Loss Policy Feature Flag (2026-02-20)
+
+**Status:** Accepted
+
+**Context:** `shouldUseRevisedFatLossPolicy()` gated KB-aligned fat loss behavior behind a `USE_REVISED_FAT_LOSS_POLICY` env var. The env var was never set in production or development. The old code path (main range `[8,12]`, RPE `7.0`) was always active despite the KB clearly calling for `[6,10]` rep range (preserves load on bar during caloric deficit — Helms 2014) and RPE 7.5 (1–2 RIR). The flag was added during development for A/B testing; the test is over.
+
+**Decision:** Remove the env var check and `shouldUseRevisedFatLossPolicy()` function entirely. Hardcode KB-aligned values:
+- `fat_loss` main rep range: `[6, 10]`
+- `TARGET_RPE_BY_GOAL.fat_loss`: `7.5`
+- `getGoalSetMultiplier("fat_loss")`: always returns `FAT_LOSS_SET_MULTIPLIER` (0.75)
+
+**Files changed:** `src/lib/engine/rules.ts`, `src/lib/engine/rules.test.ts`.
+
+---
+
 ## ADR-075: Remove `timeBudget` from Beam Search; Promote C1b; Renormalize Weights (2026-02-18)
 
 **Status:** Accepted

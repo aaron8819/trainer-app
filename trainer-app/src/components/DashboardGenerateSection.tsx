@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { GenerateFromTemplateCard } from "./GenerateFromTemplateCard";
-import { IntentRoundTripValidatorCard } from "./IntentRoundTripValidatorCard";
+import { IntentWorkoutCard } from "./IntentWorkoutCard";
 
 type TemplateSummary = {
   id: string;
@@ -52,7 +52,7 @@ export function DashboardGenerateSection({
       {mode === "template" ? (
         <GenerateFromTemplateCard templates={templates} />
       ) : (
-        <IntentRoundTripValidatorCard />
+        <IntentWorkoutCard />
       )}
     </section>
   );

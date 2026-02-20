@@ -190,7 +190,6 @@ export const exampleHistory: WorkoutHistoryEntry[] = [
     exercises: [
       {
         exerciseId: "bench",
-        movementPattern: "push",
         primaryMuscles: ["Chest", "Triceps"],
         sets: [
           { exerciseId: "bench", setIndex: 1, reps: 8, rpe: 7, load: 175 },

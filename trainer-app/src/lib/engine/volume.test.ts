@@ -255,7 +255,7 @@ describe("buildVolumeContext", () => {
         exercises: [
           {
             exerciseId: "bench",
-            movementPattern: "push",
+
             sets: [
               { exerciseId: "bench", setIndex: 1, reps: 8 },
               { exerciseId: "bench", setIndex: 2, reps: 8 },
@@ -270,7 +270,7 @@ describe("buildVolumeContext", () => {
         exercises: [
           {
             exerciseId: "bench",
-            movementPattern: "push",
+
             sets: [
               { exerciseId: "bench", setIndex: 1, reps: 8 },
               { exerciseId: "bench", setIndex: 2, reps: 8 },

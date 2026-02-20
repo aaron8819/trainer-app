@@ -5,7 +5,6 @@ import type {
   WorkoutExercise,
   WorkoutHistoryEntry,
 } from "./types";
-import { buildAccessoryMuscleCounts, scoreAccessoryRetention } from "./timeboxing";
 import { VOLUME_LANDMARKS, type VolumeLandmarks } from "./volume-landmarks";
 import {
   getMostRecentHistoryEntry,
@@ -323,4 +322,57 @@ function shouldUseEffectiveVolumeCaps(): boolean {
   }
   const normalized = rawValue.trim().toLowerCase();
   return ["1", "true", "yes", "on"].includes(normalized);
+}
+
+// ---------------------------------------------------------------------------
+// Accessory scoring helpers (moved from timeboxing.ts)
+// ---------------------------------------------------------------------------
+
+export function buildAccessoryMuscleCounts(accessories: WorkoutExercise[]) {
+  const counts: Record<string, number> = {};
+  for (const accessory of accessories) {
+    const primary = accessory.exercise.primaryMuscles ?? [];
+    for (const muscle of primary) {
+      counts[muscle] = (counts[muscle] ?? 0) + 1;
+    }
+  }
+  return counts;
+}
+
+export function scoreAccessoryRetention(
+  accessory: WorkoutExercise,
+  coveredMuscles: Set<string>,
+  muscleCounts: Record<string, number>
+) {
+  const primary = accessory.exercise.primaryMuscles ?? [];
+  const secondary = accessory.exercise.secondaryMuscles ?? [];
+  const uncoveredPrimary = primary.filter((muscle) => !coveredMuscles.has(muscle));
+  const uncoveredSecondary = secondary.filter((muscle) => !coveredMuscles.has(muscle));
+  const muscleCoverageScore = uncoveredPrimary.length + uncoveredSecondary.length * 0.3;
+  const redundancyPenalty = primary.reduce((sum, muscle) => {
+    const count = muscleCounts[muscle] ?? 0;
+    return sum + Math.max(0, count - 1);
+  }, 0);
+  const fatigueCostPenalty = scoreNormalizePositive((accessory.exercise.fatigueCost ?? 3) - 3, 2);
+  const sfrScore = scoreNormalizeCentered(accessory.exercise.sfrScore ?? 3, 3, 2);
+  const lengthenedScore = scoreNormalizeCentered(accessory.exercise.lengthPositionScore ?? 3, 3, 2);
+
+  return (
+    3.0 * muscleCoverageScore +
+    1.2 * sfrScore +
+    0.8 * lengthenedScore -
+    1.0 * redundancyPenalty -
+    1.3 * fatigueCostPenalty
+  );
+}
+
+function scoreNormalizeCentered(value: number, center: number, range: number): number {
+  if (range <= 0) return 0;
+  const clamped = Math.max(-1, Math.min(1, (value - center) / range));
+  return clamped;
+}
+
+function scoreNormalizePositive(value: number, range: number): number {
+  if (range <= 0) return 0;
+  return Math.max(0, Math.min(1, value / range));
 }

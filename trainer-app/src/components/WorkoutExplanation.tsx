@@ -23,6 +23,7 @@ type Props = {
 };
 
 type ExplanationResponse = {
+  confidence: WorkoutExplanation["confidence"];
   sessionContext: WorkoutExplanation["sessionContext"];
   coachMessages: WorkoutExplanation["coachMessages"];
   exerciseRationales: Record<string, WorkoutExplanation["exerciseRationales"] extends Map<string, infer T> ? T : never>;
@@ -58,6 +59,7 @@ export function WorkoutExplanation({ workoutId, explanation: serverExplanation }
 
         // Convert Record to Map for component consumption
         const workoutExplanation: WorkoutExplanation = {
+          confidence: data.confidence,
           sessionContext: data.sessionContext,
           coachMessages: data.coachMessages,
           exerciseRationales: new Map(Object.entries(data.exerciseRationales)),

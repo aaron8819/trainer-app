@@ -46,7 +46,7 @@ describe("buildMuscleRecoveryMap", () => {
         exercises: [
           {
             exerciseId: "bench",
-            movementPattern: "push",
+
             sets: [{ exerciseId: "bench", setIndex: 1, reps: 10 }],
           },
         ],
@@ -71,7 +71,7 @@ describe("buildMuscleRecoveryMap", () => {
         exercises: [
           {
             exerciseId: "bench",
-            movementPattern: "push",
+
             sets: [{ exerciseId: "bench", setIndex: 1, reps: 10 }],
           },
         ],
@@ -94,7 +94,7 @@ describe("buildMuscleRecoveryMap", () => {
         exercises: [
           {
             exerciseId: "bench",
-            movementPattern: "push",
+
             sets: [{ exerciseId: "bench", setIndex: 1, reps: 10 }],
           },
         ],
@@ -116,7 +116,7 @@ describe("buildMuscleRecoveryMap", () => {
         exercises: [
           {
             exerciseId: "bench",
-            movementPattern: "push",
+
             sets: [{ exerciseId: "bench", setIndex: 1, reps: 10 }],
           },
         ],
@@ -144,7 +144,7 @@ describe("buildMuscleRecoveryMap", () => {
         exercises: [
           {
             exerciseId: "bench",
-            movementPattern: "push",
+
             sets: [{ exerciseId: "bench", setIndex: 1, reps: 10 }],
           },
         ],
@@ -182,7 +182,7 @@ describe("buildMuscleRecoveryMap", () => {
         exercises: [
           {
             exerciseId: "row",
-            movementPattern: "pull",
+
             sets: [{ exerciseId: "row", setIndex: 1, reps: 10 }],
           },
         ],
@@ -211,7 +211,7 @@ describe("generateSraWarnings", () => {
         exercises: [
           {
             exerciseId: "bench",
-            movementPattern: "push",
+
             sets: [{ exerciseId: "bench", setIndex: 1, reps: 10 }],
           },
         ],
@@ -241,7 +241,7 @@ describe("generateSraWarnings", () => {
         exercises: [
           {
             exerciseId: "row",
-            movementPattern: "pull",
+
             primaryMuscles: ["UPPER BACK"],
             sets: [{ exerciseId: "row", setIndex: 1, reps: 10 }],
           },

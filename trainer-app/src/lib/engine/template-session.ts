@@ -10,7 +10,7 @@ import type {
   WorkoutPlan,
 } from "./types";
 import { createId } from "./utils";
-import { prescribeSetsReps, getRestSeconds, resolveSetTargetReps } from "./prescription";
+import { prescribeSetsReps, getRestSeconds, resolveSetTargetReps, REST_SECONDS } from "./prescription";
 import {
   buildVolumeContext,
   buildVolumePlanByMuscle,
@@ -18,7 +18,6 @@ import {
   enforceVolumeCaps,
   type VolumePlanByMuscle,
 } from "./volume";
-import { estimateWorkoutMinutes, enforceTimeBudget } from "./timeboxing";
 import { buildMuscleRecoveryMap, generateSraWarnings, type SraWarning } from "./sra";
 import { getGoalRepRanges, type PeriodizationModifiers } from "./rules";
 import { suggestSubstitutes } from "./substitution";
@@ -187,7 +186,7 @@ export function generateWorkoutFromTemplate(
     notesParts.push(`Under-recovered: ${muscleList}`);
   }
 
-  let workout: WorkoutPlan = {
+  const workout: WorkoutPlan = {
     id: createId(),
     scheduledDate: new Date().toISOString(),
     warmup: [],
@@ -196,12 +195,6 @@ export function generateWorkoutFromTemplate(
     estimatedMinutes,
     notes: notesParts.length > 0 ? notesParts.join(". ") : undefined,
   };
-
-  // Enforce time budget (Phase 2 safety net)
-  if (options.sessionMinutes !== undefined) {
-    const enforced = enforceTimeBudget(workout, options.sessionMinutes);
-    workout = enforced.workout;
-  }
 
   const finalExerciseIds = new Set(
     [...workout.mainLifts, ...workout.accessories].map((exercise) => exercise.exercise.id)
@@ -362,4 +355,48 @@ function formatPainFlag(bodyPart?: string): string {
     .filter(Boolean)
     .map((part) => part[0]?.toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+/**
+ * Estimate total workout duration in minutes.
+ * Uses per-exercise timing: warmup sets + working sets (work time + rest time).
+ * Superset labels in notes are informational only; rest periods are not reduced
+ * (prescription does not enforce superset rest pairing).
+ */
+export function estimateWorkoutMinutes(exercises: WorkoutExercise[]): number {
+  const resolveSetTiming = (
+    set: { restSeconds?: number | null; targetReps: number | null; targetRepMin?: number | null; targetRepMax?: number | null },
+    exercise: WorkoutExercise,
+    isWarmupSet: boolean
+  ) => {
+    const targetReps = set.targetReps ?? undefined;
+    const restSeconds =
+      set.restSeconds ??
+      (isWarmupSet
+        ? REST_SECONDS.warmup
+        : getRestSeconds(exercise.exercise, exercise.isMainLift, targetReps));
+    const fallbackWork = exercise.exercise.timePerSetSec ?? (exercise.isMainLift ? 60 : 40);
+    const repAwareFallbackWork =
+      targetReps !== undefined
+        ? Math.max(20, Math.min(90, targetReps * 2 + 10))
+        : undefined;
+    const workSeconds = repAwareFallbackWork ?? fallbackWork;
+    const cappedWorkSeconds = isWarmupSet ? Math.min(30, workSeconds) : workSeconds;
+    return { workSeconds: cappedWorkSeconds, restSeconds };
+  };
+
+  let totalSeconds = 0;
+
+  for (const exercise of exercises) {
+    for (const set of exercise.warmupSets ?? []) {
+      const timing = resolveSetTiming(set, exercise, true);
+      totalSeconds += timing.workSeconds + timing.restSeconds;
+    }
+    for (const set of exercise.sets) {
+      const timing = resolveSetTiming(set, exercise, false);
+      totalSeconds += timing.workSeconds + timing.restSeconds;
+    }
+  }
+
+  return Math.round(totalSeconds / 60);
 }

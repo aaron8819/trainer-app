@@ -3,10 +3,6 @@ import { prisma } from "@/lib/db/prisma";
 import { saveWorkoutSchema } from "@/lib/validation";
 import { resolveOwner } from "@/lib/api/workout-context";
 import { WorkoutStatus } from "@prisma/client";
-import {
-  updateBaselinesFromWorkout,
-  type BaselineUpdateSummary,
-} from "@/lib/api/baseline-updater";
 import { updateExerciseExposure } from "@/lib/api/exercise-exposure";
 
 export async function POST(request: Request) {
@@ -29,7 +25,6 @@ export async function POST(request: Request) {
   const completedAt =
     status === WorkoutStatus.COMPLETED ? new Date() : undefined;
 
-  let baselineSummary: BaselineUpdateSummary | null = null;
   const workoutId = parsed.data.workoutId;
 
   try {
@@ -39,7 +34,7 @@ export async function POST(request: Request) {
         select: { id: true, userId: true },
       });
       if (existingWorkout && existingWorkout.userId !== user.id) {
-        throw new Error("WORKOUT_NOT_FOUND");
+        throw new Error("WORKOUT_FORBIDDEN");
       }
 
       if (parsed.data.templateId) {
@@ -147,9 +142,6 @@ export async function POST(request: Request) {
         });
       }
 
-      if (status === WorkoutStatus.COMPLETED) {
-        baselineSummary = await updateBaselinesFromWorkout(tx, workout.id, user.id);
-      }
     });
 
     // Update exercise exposure for rotation tracking (outside transaction)
@@ -162,6 +154,9 @@ export async function POST(request: Request) {
       }
     }
   } catch (error) {
+    if (error instanceof Error && error.message === "WORKOUT_FORBIDDEN") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
     if (error instanceof Error && error.message === "WORKOUT_NOT_FOUND") {
       return NextResponse.json({ error: "Workout not found" }, { status: 404 });
     }
@@ -174,6 +169,5 @@ export async function POST(request: Request) {
   return NextResponse.json({
     status: "saved",
     workoutId: parsed.data.workoutId,
-    baselineSummary,
   });
 }

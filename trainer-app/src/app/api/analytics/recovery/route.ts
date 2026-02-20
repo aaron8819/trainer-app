@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db/prisma";
 import { resolveOwner, mapExercises, mapHistory } from "@/lib/api/workout-context";
 import { buildMuscleRecoveryMap } from "@/lib/engine/sra";
 import { WorkoutStatus } from "@prisma/client";
+import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 
 export async function GET() {
   const user = await resolveOwner();
@@ -17,7 +18,7 @@ export async function GET() {
     prisma.workout.findMany({
       where: {
         userId: user.id,
-        status: WorkoutStatus.COMPLETED,
+        status: { in: [...PERFORMED_WORKOUT_STATUSES] as WorkoutStatus[] },
         scheduledDate: { gte: cutoff },
       },
       orderBy: { scheduledDate: "desc" },

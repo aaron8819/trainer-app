@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db/prisma";
 import { WorkoutStatus } from "@prisma/client";
 import { VOLUME_LANDMARKS } from "@/lib/engine/volume-landmarks";
+import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 
 export type WeeklyMuscleVolume = {
   weekStart: string;
@@ -17,7 +18,7 @@ export async function computeWeeklyMuscleVolume(
   const workouts = await prisma.workout.findMany({
     where: {
       userId,
-      status: WorkoutStatus.COMPLETED,
+      status: { in: [...PERFORMED_WORKOUT_STATUSES] as WorkoutStatus[] },
       scheduledDate: { gte: cutoff },
     },
     orderBy: { scheduledDate: "asc" },

@@ -4,7 +4,6 @@
  */
 
 import { prisma } from "@/lib/db/prisma";
-import { WorkoutStatus } from "@prisma/client";
 import { VOLUME_LANDMARKS, computeWeeklyVolumeTarget } from "@/lib/engine/volume-landmarks";
 import { computeWeeklyMuscleVolume } from "./analytics";
 import { computeCurrentMesoWeek } from "./periodization";

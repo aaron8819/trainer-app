@@ -1,0 +1,59 @@
+# 04 API Contracts
+
+Owner: Aaron  
+Last reviewed: 2026-02-20  
+Purpose: Canonical API contract map for App Router endpoints and payload validation boundaries.
+
+This doc covers:
+- Current API route surface
+- Validation contract source files
+- Runtime enum contract source and verification
+
+Invariants:
+- Validation schemas in `src/lib/validation.ts` are canonical for request payloads.
+- Enum contract values are canonical in `docs/contracts/runtime-contracts.json` and verified by script.
+- API docs should reference schemas and route files, not duplicate large inline contracts.
+
+Sources of truth:
+- `trainer-app/src/app/api`
+- `trainer-app/src/lib/validation.ts`
+- `trainer-app/docs/contracts/runtime-contracts.json`
+- `trainer-app/scripts/check-doc-runtime-contracts.ts`
+
+## Canonical runtime contracts
+- File: `docs/contracts/runtime-contracts.json`
+- Verification command: `npm run verify:contracts`
+- Runtime enum sources:
+  - `WORKOUT_STATUS_VALUES` in `src/lib/validation.ts`
+  - `WORKOUT_SELECTION_MODE_VALUES` in `src/lib/validation.ts`
+  - `WORKOUT_SESSION_INTENT_DB_VALUES` in `src/lib/validation.ts`
+  - `WORKOUT_EXERCISE_SECTION_VALUES` in `src/lib/validation.ts`
+  - Matching Prisma enums in `prisma/schema.prisma`
+
+## API route groups
+- Workouts: `src/app/api/workouts/**`
+- Logging: `src/app/api/logs/set/route.ts`
+- Program/periodization/readiness: `src/app/api/program/route.ts`, `src/app/api/periodization/macro/route.ts`, `src/app/api/readiness/submit/route.ts`, `src/app/api/stalls/route.ts`
+- Templates: `src/app/api/templates/**`
+- Exercises and preferences: `src/app/api/exercises/**`, `src/app/api/preferences/route.ts`
+- Analytics: `src/app/api/analytics/**`
+- Profile/session support: `src/app/api/profile/setup/route.ts`, `src/app/api/session-checkins/route.ts`
+
+## Validation-backed contracts (examples)
+- Workout generation/save: `generateFromTemplateSchema`, `generateFromIntentSchema`, `saveWorkoutSchema`
+- Logging: `setLogSchema`
+- Templates: `createTemplateSchema`, `updateTemplateSchema`, `addExerciseToTemplateSchema`
+- Profile/readiness/analytics: `profileSetupSchema`, `readinessSignalSchema`, `analyticsSummarySchema`
+
+## Workout save terminal transition contract
+- Route: `POST /api/workouts/save` (`src/app/api/workouts/save/route.ts`).
+- Request action enum (validation source): `WORKOUT_SAVE_ACTION_VALUES` in `src/lib/validation.ts`.
+- Terminal transitions are action-based:
+  - `mark_completed` => finalize as `COMPLETED` or auto-normalize to `PARTIAL` when unresolved sets remain.
+  - `mark_partial` => finalize as `PARTIAL`.
+  - `mark_skipped` => finalize as `SKIPPED`.
+- `save_plan` cannot finalize terminal statuses (`COMPLETED`, `PARTIAL`, `SKIPPED`); terminal `status` in a plan write is ignored and persisted status remains non-terminal/current.
+- Completion gating: `mark_completed` requires at least one performed non-skipped set log; otherwise route returns `409`.
+- Program advancement split:
+  - Performed-signal readers use `COMPLETED` + `PARTIAL` (`src/lib/workout-status.ts`).
+  - Mesocycle advancement increments on transition to `COMPLETED` only (`src/app/api/workouts/save/route.ts`).

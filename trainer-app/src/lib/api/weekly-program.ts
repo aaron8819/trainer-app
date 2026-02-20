@@ -3,6 +3,7 @@ import { resolveSetCount } from "@/lib/engine/prescription";
 import type { FatigueState, TrainingAge } from "@/lib/engine/types";
 import type { WeeklyProgramSessionInput } from "@/lib/engine/weekly-program-analysis";
 import { WorkoutStatus, type WorkoutSessionIntent } from "@prisma/client";
+import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 import {
   pickTemplateForSessionIntent,
   selectTemplatesForWeeklyProgram,
@@ -89,7 +90,7 @@ export async function loadWeeklyProgramInputs(
     const intentHistory = await prisma.workout.findMany({
       where: {
         userId,
-        status: WorkoutStatus.COMPLETED,
+        status: { in: [...PERFORMED_WORKOUT_STATUSES] as WorkoutStatus[] },
         sessionIntent: { not: null },
       },
       orderBy: [{ completedAt: "desc" }, { scheduledDate: "desc" }],
@@ -279,4 +280,3 @@ function resolveMainLiftIndexes<
 
   return new Set(eligible.slice(0, slotCap).map((entry) => entry.index));
 }
-

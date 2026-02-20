@@ -1,5 +1,24 @@
 import { z } from "zod";
 
+export const WORKOUT_STATUS_VALUES = ["PLANNED", "IN_PROGRESS", "PARTIAL", "COMPLETED", "SKIPPED"] as const;
+export const WORKOUT_SAVE_ACTION_VALUES = [
+  "save_plan",
+  "mark_completed",
+  "mark_partial",
+  "mark_skipped",
+] as const;
+export const WORKOUT_SELECTION_MODE_VALUES = ["AUTO", "MANUAL", "BONUS", "INTENT"] as const;
+export const WORKOUT_SESSION_INTENT_DB_VALUES = [
+  "PUSH",
+  "PULL",
+  "LEGS",
+  "UPPER",
+  "LOWER",
+  "FULL_BODY",
+  "BODY_PART",
+] as const;
+export const WORKOUT_EXERCISE_SECTION_VALUES = ["WARMUP", "MAIN", "ACCESSORY"] as const;
+
 const optionalNumber = (schema: z.ZodNumber) =>
   z.preprocess((value) => {
     if (value === null || value === "") {
@@ -35,15 +54,7 @@ export const sessionIntentSchema = z.enum([
   "body_part",
 ]);
 
-export const workoutSessionIntentDbSchema = z.enum([
-  "PUSH",
-  "PULL",
-  "LEGS",
-  "UPPER",
-  "LOWER",
-  "FULL_BODY",
-  "BODY_PART",
-]);
+export const workoutSessionIntentDbSchema = z.enum(WORKOUT_SESSION_INTENT_DB_VALUES);
 
 export const generateFromIntentSchema = z
   .object({
@@ -63,12 +74,14 @@ export const generateFromIntentSchema = z
 
 export const saveWorkoutSchema = z.object({
   workoutId: z.string(),
+  action: z.enum(WORKOUT_SAVE_ACTION_VALUES).optional(),
+  expectedRevision: z.number().int().min(1).optional(),
   templateId: z.string().optional(),
   scheduledDate: z.string().optional(),
-  status: z.enum(["PLANNED", "IN_PROGRESS", "COMPLETED", "SKIPPED"]).optional(),
+  status: z.enum(WORKOUT_STATUS_VALUES).optional(),
   estimatedMinutes: z.number().optional(),
   notes: z.string().optional(),
-  selectionMode: z.enum(["AUTO", "MANUAL", "BONUS", "INTENT"]).optional(),
+  selectionMode: z.enum(WORKOUT_SELECTION_MODE_VALUES).optional(),
   sessionIntent: workoutSessionIntentDbSchema.optional(),
   selectionMetadata: z.unknown().optional(),
   forcedSplit: z.enum(["PUSH", "PULL", "LEGS", "UPPER", "LOWER", "FULL_BODY"]).optional(),
@@ -86,7 +99,7 @@ export const saveWorkoutSchema = z.object({
   exercises: z
     .array(
       z.object({
-        section: z.enum(["WARMUP", "MAIN", "ACCESSORY"]),
+        section: z.enum(WORKOUT_EXERCISE_SECTION_VALUES),
         exerciseId: z.string(),
         sets: z
           .array(

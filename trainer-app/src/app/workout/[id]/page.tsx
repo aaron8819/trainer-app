@@ -1,11 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
 import { resolveOwner } from "@/lib/api/workout-context";
-import { mapLatestCheckIn } from "@/lib/api/checkin-staleness";
 import { generateWorkoutExplanation } from "@/lib/api/explainability";
-import type { WorkoutExplanation as WorkoutExplanationType } from "@/lib/engine/explainability";
-import { PrimaryGoal, TrainingAge } from "@prisma/client";
-import type { Prisma } from "@prisma/client";
 import { WorkoutExplanation } from "@/components/WorkoutExplanation";
 import { isDumbbellEquipment, formatLoad } from "@/lib/ui/load-display";
 
@@ -13,18 +9,6 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const runtime = "nodejs";
 
-
-const formatTrainingAge = (trainingAge?: TrainingAge | null) =>
-  trainingAge ? trainingAge.toLowerCase() : "intermediate";
-
-const formatPainFlags = (painFlags?: unknown) => {
-  if (!painFlags || typeof painFlags !== "object") {
-    return [] as string[];
-  }
-  return Object.entries(painFlags as Record<string, unknown>)
-    .filter(([, value]) => typeof value === "number" && value >= 2)
-    .map(([key]) => key.replace(/_/g, " "));
-};
 
 const formatTargetRepDisplay = (set?: { targetReps: number; targetRepMin: number | null; targetRepMax: number | null }) => {
   if (!set) {
@@ -107,41 +91,14 @@ export default async function WorkoutDetailPage({
     );
   }
 
-  const [goals, profile, injuries, latestCheckIn] = await Promise.all([
-    prisma.goals.findUnique({ where: { userId: workout.userId } }),
-    prisma.profile.findUnique({ where: { userId: workout.userId } }),
+  const [injuries] = await Promise.all([
     prisma.injury.findMany({ where: { userId: workout.userId, isActive: true } }),
-    prisma.sessionCheckIn.findFirst({
-      where: { userId: workout.userId },
-      orderBy: { date: "desc" },
-    }),
   ]);
   // Load workout explanation (unified data source for inline badges + detail panel)
   const explanationResult = await generateWorkoutExplanation(workout.id);
   const explanation = "error" in explanationResult ? null : explanationResult;
 
   const hasHighSeverityInjury = injuries.some((injury) => injury.severity >= 3);
-  const primaryGoal = goals?.primaryGoal?.toLowerCase() ?? "general_health";
-  const secondaryGoal = goals?.secondaryGoal?.toLowerCase() ?? "none";
-  const sourceLabel =
-    workout.selectionMode === "INTENT"
-      ? "intent"
-      : workout.templateId
-        ? "template"
-        : "legacy";
-  const intentLabel = workout.sessionIntent
-    ? workout.sessionIntent.toLowerCase().replaceAll("_", " ")
-    : undefined;
-  const trainingAge = formatTrainingAge(profile?.trainingAge ?? TrainingAge.INTERMEDIATE);
-  const freshCheckIn = mapLatestCheckIn(latestCheckIn ? [latestCheckIn] : undefined);
-  const painLabels = formatPainFlags(freshCheckIn?.painFlags);
-  const readinessLine = freshCheckIn
-    ? `Readiness: ${freshCheckIn.readiness}/5${
-        painLabels.length > 0 ? ` - Pain: ${painLabels.join(", ")}` : ""
-      }.`
-    : latestCheckIn
-      ? "Readiness: defaulted to 3 (latest check-in is older than 48 hours)."
-    : "Readiness: defaulted to 3 (no readiness logs currently stored).";
 
   const sectionedExercises = (() => {
     const warmup: typeof workout.exercises = [];
@@ -230,7 +187,6 @@ export default async function WorkoutDetailPage({
                       : "Accessory";
                   // Get exercise rationale from new explainability system
                   const exerciseRationale = explanation?.exerciseRationales.get(exercise.exercise.id);
-                  const primaryReason = exerciseRationale?.primaryReasons[0]; // Top reason from KB-backed system
                   const topReasons = exerciseRationale?.primaryReasons.slice(0, 2) ?? [];
 
                   return (

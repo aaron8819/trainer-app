@@ -1,0 +1,11 @@
+{
+  "workoutStatus": ["PLANNED", "IN_PROGRESS", "PARTIAL", "COMPLETED", "SKIPPED"],
+  "workoutSaveAction": ["save_plan", "mark_completed", "mark_partial", "mark_skipped"],
+  "workoutSelectionMode": ["AUTO", "MANUAL", "BONUS", "INTENT"],
+  "workoutSessionIntentDb": ["PUSH", "PULL", "LEGS", "UPPER", "LOWER", "FULL_BODY", "BODY_PART"],
+  "workoutExerciseSection": ["WARMUP", "MAIN", "ACCESSORY"],
+  "WorkoutStatus": ["PLANNED", "IN_PROGRESS", "PARTIAL", "COMPLETED", "SKIPPED"],
+  "WorkoutSelectionMode": ["AUTO", "MANUAL", "BONUS", "INTENT"],
+  "WorkoutSessionIntent": ["PUSH", "PULL", "LEGS", "UPPER", "LOWER", "FULL_BODY", "BODY_PART"],
+  "WorkoutExerciseSection": ["WARMUP", "MAIN", "ACCESSORY"]
+}

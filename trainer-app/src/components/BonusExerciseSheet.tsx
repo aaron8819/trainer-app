@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { SlideUpSheet } from "@/components/ui/SlideUpSheet";
-import type { LogExerciseInput } from "@/components/LogWorkoutClient";
+import type { LogExerciseInput } from "@/components/log-workout/types";
 import type { BonusSuggestion } from "@/lib/api/bonus-suggestions";
 
 type ExerciseSearchResult = {

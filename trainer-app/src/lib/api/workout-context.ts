@@ -48,41 +48,22 @@ type WorkoutWithRelations = Workout & {
 };
 
 export async function resolveOwner() {
+  const runtimeMode = process.env.RUNTIME_MODE?.trim().toLowerCase() ?? "single_user_local";
   const configuredOwnerEmail = process.env.OWNER_EMAIL?.trim().toLowerCase();
-  if (configuredOwnerEmail) {
+  const singleUserEmail = configuredOwnerEmail ?? "owner@local";
+
+  if (runtimeMode === "single_user_local") {
     return prisma.user.upsert({
-      where: { email: configuredOwnerEmail },
+      where: { email: singleUserEmail },
       update: {},
-      create: { email: configuredOwnerEmail },
+      create: { email: singleUserEmail },
     });
   }
 
-  const withProfile = await prisma.user.findFirst({
-    orderBy: { createdAt: "asc" },
-    where: {
-      profile: {
-        isNot: null,
-      },
-      goals: {
-        isNot: null,
-      },
-      constraints: {
-        isNot: null,
-      },
-    },
-  });
-
-  if (withProfile) {
-    return withProfile;
-  }
-
-  const firstUser = await prisma.user.findFirst({ orderBy: { createdAt: "asc" } });
-  if (firstUser) {
-    return firstUser;
-  }
-
-  return prisma.user.create({
-    data: { email: configuredOwnerEmail ?? "owner@local" },
+  return prisma.user.upsert({
+    where: { email: singleUserEmail },
+    update: {},
+    create: { email: singleUserEmail },
   });
 }
 
@@ -117,10 +98,35 @@ export async function loadWorkoutContext(userId: string) {
       },
     }),
     prisma.userPreference.findUnique({ where: { userId } }),
-    prisma.sessionCheckIn.findMany({ where: { userId }, orderBy: { date: "desc" }, take: 1 }),
+    prisma.readinessSignal.findMany({
+      where: { userId },
+      orderBy: { timestamp: "desc" },
+      take: 1,
+      select: {
+        timestamp: true,
+        subjectiveReadiness: true,
+        subjectiveSoreness: true,
+      },
+    }),
   ]);
 
-  return { profile, goals, constraints, injuries, exercises, workouts, preferences, checkIns };
+  const normalizedCheckIns: CheckInRow[] = checkIns.map((signal) => ({
+    date: signal.timestamp,
+    readiness: signal.subjectiveReadiness,
+    painFlags: signal.subjectiveSoreness,
+    notes: null,
+  }));
+
+  return {
+    profile,
+    goals,
+    constraints,
+    injuries,
+    exercises,
+    workouts,
+    preferences,
+    checkIns: normalizedCheckIns,
+  };
 }
 
 export function mapProfile(userId: string, profile: Profile, injuries: Injury[]): UserProfile {
@@ -222,15 +228,20 @@ export function mapHistory(workouts: WorkoutWithRelations[]): WorkoutHistoryEntr
       primaryMuscles: exercise.exercise.exerciseMuscles
         ?.filter((m) => m.role === "PRIMARY")
         .map((m) => m.muscle.name) ?? [],
-      sets: exercise.sets.map((set) => {
+      sets: exercise.sets.flatMap((set) => {
         const log = set.logs[0];
-        return {
-          exerciseId: exercise.exerciseId,
-          setIndex: set.setIndex,
-          reps: log?.actualReps ?? set.targetReps ?? 0,
-          rpe: log?.actualRpe ?? set.targetRpe ?? undefined,
-          load: log?.actualLoad ?? set.targetLoad ?? undefined,
-        };
+        if (!log || log.wasSkipped) {
+          return [];
+        }
+        return [
+          {
+            exerciseId: exercise.exerciseId,
+            setIndex: set.setIndex,
+            reps: log.actualReps ?? 0,
+            rpe: log.actualRpe ?? undefined,
+            load: log.actualLoad ?? undefined,
+          },
+        ];
       }),
     })),
   }));

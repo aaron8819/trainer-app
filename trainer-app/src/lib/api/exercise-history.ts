@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
 import { WorkoutStatus } from "@prisma/client";
+import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 
 export type ExerciseSession = {
   date: string;
@@ -30,7 +31,7 @@ export async function loadExerciseHistory(
       exerciseId,
       workout: {
         userId,
-        status: WorkoutStatus.COMPLETED,
+        status: { in: [...PERFORMED_WORKOUT_STATUSES] as WorkoutStatus[] },
       },
     },
     orderBy: { workout: { scheduledDate: "desc" } },
@@ -46,13 +47,16 @@ export async function loadExerciseHistory(
 
   const sessions: ExerciseSession[] = workoutExercises.map((we) => ({
     date: we.workout.scheduledDate.toISOString(),
-    sets: we.sets.map((set) => {
+    sets: we.sets.flatMap((set) => {
       const log = set.logs[0];
+      if (!log || log.wasSkipped) {
+        return [];
+      }
       return {
         setIndex: set.setIndex,
-        reps: log?.actualReps ?? set.targetReps ?? 0,
-        load: log?.actualLoad ?? set.targetLoad ?? null,
-        rpe: log?.actualRpe ?? set.targetRpe ?? null,
+        reps: log.actualReps ?? 0,
+        load: log.actualLoad ?? null,
+        rpe: log.actualRpe ?? null,
       };
     }),
   }));

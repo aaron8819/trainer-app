@@ -1,3 +1,7 @@
+/**
+ * Protects: Intent generation is intent-aligned (push/pull/legs/upper/lower/full_body/body_part(targetMuscles)) with diagnostics.
+ * Why it matters: Request validation is the first contract guard for intent-specific generation semantics.
+ */
 import { describe, expect, it } from "vitest";
 import { generateFromIntentSchema, generateFromTemplateSchema } from "./validation";
 

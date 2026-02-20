@@ -95,6 +95,7 @@ enum Difficulty {
 enum WorkoutStatus {
   PLANNED
   IN_PROGRESS
+  PARTIAL
   COMPLETED
   SKIPPED
 }
@@ -374,6 +375,7 @@ model Workout {
   selectionMode   WorkoutSelectionMode @default(AUTO)
   sessionIntent   WorkoutSessionIntent?
   selectionMetadata Json?
+  revision        Int           @default(1)
   forcedSplit     SplitDay?
   advancesSplit   Boolean @default(true)
 
@@ -407,6 +409,8 @@ model WorkoutExercise {
   notes           String?
 
   sets WorkoutSet[]
+
+  @@unique([workoutId, orderIndex])
 }
 
 model WorkoutSet {

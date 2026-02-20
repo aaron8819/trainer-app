@@ -4,6 +4,33 @@ import { saveWorkoutSchema } from "@/lib/validation";
 import { resolveOwner } from "@/lib/api/workout-context";
 import { WorkoutStatus } from "@prisma/client";
 import { updateExerciseExposure } from "@/lib/api/exercise-exposure";
+import { isTerminalWorkoutStatus } from "@/lib/workout-status";
+
+type SaveAction = "save_plan" | "mark_completed" | "mark_partial" | "mark_skipped";
+type PersistedStatus = "PLANNED" | "IN_PROGRESS" | "PARTIAL" | "COMPLETED" | "SKIPPED";
+
+function inferAction(input: {
+  action?: SaveAction;
+  hasExerciseRewrite: boolean;
+  status?: string;
+}): SaveAction {
+  if (input.action) {
+    return input.action;
+  }
+  if (input.hasExerciseRewrite) {
+    return "save_plan";
+  }
+  if (input.status === "SKIPPED") {
+    return "mark_skipped";
+  }
+  if (input.status === "COMPLETED") {
+    return "mark_completed";
+  }
+  if (input.status === "PARTIAL") {
+    return "mark_partial";
+  }
+  return "save_plan";
+}
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
@@ -18,23 +45,47 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
 
+  const workoutId = parsed.data.workoutId;
   const scheduledDate = parsed.data.scheduledDate ? new Date(parsed.data.scheduledDate) : new Date();
-  const status = parsed.data.status ?? WorkoutStatus.PLANNED;
+  const hasExerciseRewrite = Boolean(parsed.data.exercises && parsed.data.exercises.length > 0);
+  const action = inferAction({
+    action: parsed.data.action,
+    hasExerciseRewrite,
+    status: parsed.data.status,
+  });
   const selectionMode =
     parsed.data.selectionMode ?? (parsed.data.sessionIntent ? "INTENT" : undefined);
-  const completedAt =
-    status === WorkoutStatus.COMPLETED ? new Date() : undefined;
-
-  const workoutId = parsed.data.workoutId;
+  let persistedRevision = 1;
+  let finalStatus: PersistedStatus = (parsed.data.status ?? WorkoutStatus.PLANNED) as PersistedStatus;
+  let didCompleteTransition = false;
 
   try {
     await prisma.$transaction(async (tx) => {
       const existingWorkout = await tx.workout.findUnique({
-        where: { id: parsed.data.workoutId },
-        select: { id: true, userId: true },
+        where: { id: workoutId },
+        select: { id: true, userId: true, status: true, revision: true },
       });
+
       if (existingWorkout && existingWorkout.userId !== user.id) {
         throw new Error("WORKOUT_FORBIDDEN");
+      }
+      if (
+        existingWorkout &&
+        hasExerciseRewrite &&
+        existingWorkout.status !== WorkoutStatus.PLANNED
+      ) {
+        throw new Error("WORKOUT_IMMUTABLE");
+      }
+      if (
+        existingWorkout &&
+        hasExerciseRewrite &&
+        parsed.data.expectedRevision != null &&
+        parsed.data.expectedRevision !== existingWorkout.revision
+      ) {
+        throw new Error("REVISION_CONFLICT");
+      }
+      if (!existingWorkout && action !== "save_plan") {
+        throw new Error("WORKOUT_NOT_FOUND");
       }
 
       if (parsed.data.templateId) {
@@ -47,39 +98,114 @@ export async function POST(request: Request) {
         }
       }
 
-      const workout = await tx.workout.upsert({
-      where: { id: parsed.data.workoutId },
-      update: {
-        scheduledDate,
-        status,
-        completedAt,
-        estimatedMinutes: parsed.data.estimatedMinutes ?? undefined,
-        notes: parsed.data.notes ?? undefined,
-        selectionMode,
-        sessionIntent: parsed.data.sessionIntent ?? undefined,
-        selectionMetadata: parsed.data.selectionMetadata ?? undefined,
-        forcedSplit: parsed.data.forcedSplit ?? undefined,
-        advancesSplit: parsed.data.advancesSplit ?? undefined,
-        templateId: parsed.data.templateId ?? undefined,
-      },
-      create: {
-        id: parsed.data.workoutId,
-        userId: user.id,
-        scheduledDate,
-        status,
-        completedAt,
-        estimatedMinutes: parsed.data.estimatedMinutes ?? undefined,
-        notes: parsed.data.notes ?? undefined,
-        selectionMode,
-        sessionIntent: parsed.data.sessionIntent ?? undefined,
-        selectionMetadata: parsed.data.selectionMetadata ?? undefined,
-        forcedSplit: parsed.data.forcedSplit ?? undefined,
-        advancesSplit: parsed.data.advancesSplit ?? undefined,
-        templateId: parsed.data.templateId ?? undefined,
-      },
-    });
+      if (action === "mark_completed") {
+        const snapshot = await tx.workout.findUnique({
+          where: { id: workoutId },
+          include: {
+            exercises: {
+              include: {
+                sets: {
+                  include: {
+                    logs: { orderBy: { completedAt: "desc" }, take: 1 },
+                  },
+                },
+              },
+            },
+          },
+        });
+        if (!snapshot) {
+          throw new Error("WORKOUT_NOT_FOUND");
+        }
 
-      if (parsed.data.exercises && parsed.data.exercises.length > 0) {
+        const allSets = snapshot.exercises.flatMap((exercise) => exercise.sets);
+        const resolvedSetCount = allSets.filter((set) => Boolean(set.logs[0])).length;
+        const effectiveSetCount = allSets.filter((set) => {
+          const log = set.logs[0];
+          return Boolean(log) && !log?.wasSkipped;
+        }).length;
+
+        if (effectiveSetCount === 0) {
+          throw new Error("WORKOUT_COMPLETION_EMPTY");
+        }
+        finalStatus =
+          resolvedSetCount < allSets.length
+            ? "PARTIAL"
+            : "COMPLETED";
+      } else if (action === "mark_partial") {
+        finalStatus = "PARTIAL";
+      } else if (action === "mark_skipped") {
+        finalStatus = "SKIPPED";
+      } else {
+        const requestedStatus = parsed.data.status as PersistedStatus | undefined;
+        if (isTerminalWorkoutStatus(requestedStatus)) {
+          // Plan writes cannot finalize workouts.
+          finalStatus = (existingWorkout?.status ?? WorkoutStatus.PLANNED) as PersistedStatus;
+        } else {
+          finalStatus = (requestedStatus ?? existingWorkout?.status ?? WorkoutStatus.PLANNED) as PersistedStatus;
+        }
+      }
+
+      const completedAt =
+        finalStatus === "COMPLETED" ? new Date() : undefined;
+
+      const workout = await tx.workout.upsert({
+        where: { id: workoutId },
+        update: {
+          scheduledDate,
+          status: finalStatus as never,
+          completedAt,
+          estimatedMinutes: parsed.data.estimatedMinutes ?? undefined,
+          notes: parsed.data.notes ?? undefined,
+          selectionMode,
+          sessionIntent: parsed.data.sessionIntent ?? undefined,
+          selectionMetadata: parsed.data.selectionMetadata ?? undefined,
+          forcedSplit: parsed.data.forcedSplit ?? undefined,
+          advancesSplit: parsed.data.advancesSplit ?? undefined,
+          templateId: parsed.data.templateId ?? undefined,
+          ...(existingWorkout && hasExerciseRewrite
+            ? { revision: { increment: 1 } }
+            : {}),
+        },
+        create: {
+          id: workoutId,
+          userId: user.id,
+          scheduledDate,
+          status: finalStatus as never,
+          completedAt,
+          estimatedMinutes: parsed.data.estimatedMinutes ?? undefined,
+          notes: parsed.data.notes ?? undefined,
+          selectionMode,
+          sessionIntent: parsed.data.sessionIntent ?? undefined,
+          selectionMetadata: parsed.data.selectionMetadata ?? undefined,
+          forcedSplit: parsed.data.forcedSplit ?? undefined,
+          advancesSplit: parsed.data.advancesSplit ?? undefined,
+          templateId: parsed.data.templateId ?? undefined,
+        },
+        select: { id: true, revision: true },
+      });
+      persistedRevision = workout.revision;
+
+      if (
+        finalStatus === "COMPLETED" &&
+        existingWorkout?.status !== WorkoutStatus.COMPLETED
+      ) {
+        const activeMeso = await tx.mesocycle.findFirst({
+          where: {
+            isActive: true,
+            macroCycle: { userId: user.id },
+          },
+          select: { id: true },
+        });
+        if (activeMeso) {
+          await tx.mesocycle.update({
+            where: { id: activeMeso.id },
+            data: { completedSessions: { increment: 1 } },
+          });
+        }
+        didCompleteTransition = true;
+      }
+
+      if (hasExerciseRewrite) {
         const existingExercises = await tx.workoutExercise.findMany({
           where: { workoutId: workout.id },
           select: { id: true },
@@ -96,15 +222,13 @@ export async function POST(request: Request) {
             where: { id: exercise.exerciseId },
           });
 
-          const section = exercise.section;
-
           const createdExercise = await tx.workoutExercise.create({
             data: {
               workoutId: workout.id,
               exerciseId: exercise.exerciseId,
               orderIndex: exerciseIndex,
-              section,
-              isMainLift: section === "MAIN",
+              section: exercise.section,
+              isMainLift: exercise.section === "MAIN",
               movementPatterns: exerciseRecord?.movementPatterns ?? [],
               sets: {
                 create: exercise.sets.map((set) => ({
@@ -121,33 +245,33 @@ export async function POST(request: Request) {
           });
 
           if (!createdExercise) {
-            throw new Error("Failed to create workout exercise");
+            throw new Error("WORKOUT_EXERCISE_CREATE_FAILED");
           }
         }
       }
 
-      // Persist filtered exercises (intent mode explainability)
-      await tx.filteredExercise.deleteMany({ where: { workoutId } });
-      if (parsed.data.filteredExercises?.length) {
-        await tx.filteredExercise.createMany({
-          data: parsed.data.filteredExercises.map((fe) => ({
-            workoutId,
-            exerciseId: fe.exerciseId ?? null,
-            exerciseName: fe.exerciseName,
-            reason: fe.reason,
-            userFriendlyMessage: fe.userFriendlyMessage,
-          })),
-        });
+      // Persist filtered exercises only when explicitly provided.
+      if (parsed.data.filteredExercises !== undefined) {
+        await tx.filteredExercise.deleteMany({ where: { workoutId } });
+        if (parsed.data.filteredExercises.length) {
+          await tx.filteredExercise.createMany({
+            data: parsed.data.filteredExercises.map((fe) => ({
+              workoutId,
+              exerciseId: fe.exerciseId ?? null,
+              exerciseName: fe.exerciseName,
+              reason: fe.reason,
+              userFriendlyMessage: fe.userFriendlyMessage,
+            })),
+          });
+        }
       }
-
     });
 
     // Update exercise exposure for rotation tracking (outside transaction)
-    if (status === WorkoutStatus.COMPLETED) {
+    if (didCompleteTransition && finalStatus === "COMPLETED") {
       try {
         await updateExerciseExposure(user.id, workoutId);
       } catch (exposureError) {
-        // Log error but don't fail the request
         console.error("Failed to update exercise exposure:", exposureError);
       }
     }
@@ -161,11 +285,32 @@ export async function POST(request: Request) {
     if (error instanceof Error && error.message === "TEMPLATE_NOT_FOUND") {
       return NextResponse.json({ error: "Template not found" }, { status: 404 });
     }
+    if (error instanceof Error && error.message === "WORKOUT_IMMUTABLE") {
+      return NextResponse.json(
+        { error: "Only PLANNED workouts can be rewritten with a new exercise list" },
+        { status: 409 }
+      );
+    }
+    if (error instanceof Error && error.message === "REVISION_CONFLICT") {
+      return NextResponse.json(
+        { error: "Workout revision conflict. Refresh and try again." },
+        { status: 409 }
+      );
+    }
+    if (error instanceof Error && error.message === "WORKOUT_COMPLETION_EMPTY") {
+      return NextResponse.json(
+        { error: "Cannot mark completed without at least one performed (non-skipped) set log." },
+        { status: 409 }
+      );
+    }
     throw error;
   }
 
   return NextResponse.json({
     status: "saved",
     workoutId: parsed.data.workoutId,
+    revision: persistedRevision,
+    workoutStatus: finalStatus,
+    action,
   });
 }

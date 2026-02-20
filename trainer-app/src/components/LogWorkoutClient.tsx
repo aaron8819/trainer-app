@@ -6,88 +6,32 @@ import { isSetQualifiedForBaseline } from "@/lib/baseline-qualification";
 import { BonusExerciseSheet } from "@/components/BonusExerciseSheet";
 import { RestTimer } from "@/components/RestTimer";
 import { isDumbbellEquipment, toDisplayLoad, toStoredLoad } from "@/lib/ui/load-display";
+import {
+  deleteSetLogRequest,
+  logSetRequest,
+  saveWorkoutRequest,
+} from "@/components/log-workout/api";
+import {
+  formatSectionLabel,
+  getNextUnloggedSetId,
+  resolveRestSeconds,
+  useWorkoutLogState,
+} from "@/components/log-workout/useWorkoutLogState";
+import type {
+  AutoregHint,
+  BaselineUpdateSummary,
+  ExerciseSection,
+  LogExerciseInput,
+  LogSetInput,
+  NormalizedExercises,
+  SectionedExercises,
+  UndoSnapshot,
+} from "@/components/log-workout/types";
+import { ActiveSetPanel } from "@/components/log-workout/ActiveSetPanel";
+import { ExerciseListPanel } from "@/components/log-workout/ExerciseListPanel";
+import { WorkoutFooter } from "@/components/log-workout/WorkoutFooter";
 
-export type LogSetInput = {
-  setId: string;
-  setIndex: number;
-  targetReps: number;
-  targetRepRange?: { min: number; max: number };
-  targetLoad?: number | null;
-  targetRpe?: number | null;
-  restSeconds?: number | null;
-  actualReps?: number | null;
-  actualLoad?: number | null;
-  actualRpe?: number | null;
-  wasSkipped?: boolean;
-};
-
-export type LogExerciseInput = {
-  workoutExerciseId: string;
-  name: string;
-  equipment?: string[];
-  isMainLift: boolean;
-  section?: "WARMUP" | "MAIN" | "ACCESSORY";
-  sets: LogSetInput[];
-};
-
-type SectionedExercises = {
-  warmup?: LogExerciseInput[];
-  main: LogExerciseInput[];
-  accessory?: LogExerciseInput[];
-};
-
-type NormalizedExercises = {
-  warmup: LogExerciseInput[];
-  main: LogExerciseInput[];
-  accessory: LogExerciseInput[];
-};
-
-type ExerciseSection = keyof NormalizedExercises;
-
-type FlatSetItem = {
-  section: ExerciseSection;
-  sectionLabel: string;
-  exerciseIndex: number;
-  setIndex: number;
-  exercise: LogExerciseInput;
-  set: LogSetInput;
-};
-
-type UndoSnapshot = {
-  setId: string;
-  previousSet: LogSetInput | null;
-  previousLog: {
-    actualReps?: number | null;
-    actualRpe?: number | null;
-    actualLoad?: number | null;
-    wasSkipped?: boolean | null;
-    notes?: string | null;
-  } | null;
-  wasCreated: boolean;
-  expiresAt: number;
-};
-
-type BaselineUpdateSummary = {
-  context: string;
-  evaluatedExercises: number;
-  updated: number;
-  skipped: number;
-  items: {
-    exerciseName: string;
-    previousTopSetWeight?: number;
-    newTopSetWeight: number;
-    reps: number;
-  }[];
-  skippedItems: {
-    exerciseName: string;
-    reason: string;
-  }[];
-};
-
-type AutoregHint = {
-  exerciseId: string;
-  message: string;
-};
+export type { LogExerciseInput, LogSetInput } from "@/components/log-workout/types";
 
 const SECTION_ORDER: ExerciseSection[] = ["warmup", "main", "accessory"];
 
@@ -119,16 +63,6 @@ function shouldUseBodyweightLoadLabel(exercise: LogExerciseInput, set: LogSetInp
   return isBodyweightExercise(exercise) && (set.targetLoad === null || set.targetLoad === undefined);
 }
 
-function formatSectionLabel(section: ExerciseSection): string {
-  if (section === "warmup") {
-    return "Warmup";
-  }
-  if (section === "main") {
-    return "Main Lifts";
-  }
-  return "Accessories";
-}
-
 function normalizeStepValue(value: number | null | undefined, fallback: number | null | undefined, delta: number) {
   const base = value ?? fallback ?? 0;
   const next = Math.round((base + delta) * 100) / 100;
@@ -138,57 +72,6 @@ function normalizeStepValue(value: number | null | undefined, fallback: number |
 function clampReps(value: number | null | undefined, delta: number) {
   const base = value ?? 0;
   return Math.max(0, Math.round(base + delta));
-}
-
-function resolveRestSeconds(item: FlatSetItem): number {
-  if (item.set.restSeconds != null && item.set.restSeconds > 0) {
-    return item.set.restSeconds;
-  }
-  if (item.section === "warmup") {
-    return 60;
-  }
-  if (item.section === "main") {
-    return 180;
-  }
-  return 90;
-}
-
-function getNextUnloggedSetId(
-  flatSets: FlatSetItem[],
-  loggedSetIds: Set<string>,
-  currentSetId: string
-): string | null {
-  if (flatSets.length === 0) {
-    return null;
-  }
-  const currentIndex = flatSets.findIndex((item) => item.set.setId === currentSetId);
-  if (currentIndex === -1) {
-    return flatSets[0]?.set.setId ?? null;
-  }
-  for (let index = currentIndex + 1; index < flatSets.length; index += 1) {
-    const candidate = flatSets[index];
-    if (!loggedSetIds.has(candidate.set.setId)) {
-      return candidate.set.setId;
-    }
-  }
-  for (let index = 0; index < currentIndex; index += 1) {
-    const candidate = flatSets[index];
-    if (!loggedSetIds.has(candidate.set.setId)) {
-      return candidate.set.setId;
-    }
-  }
-  return null;
-}
-
-function normalizeExercises(exercises: LogExerciseInput[] | SectionedExercises): NormalizedExercises {
-  if (Array.isArray(exercises)) {
-    return { warmup: [], main: exercises, accessory: [] };
-  }
-  return {
-    warmup: exercises.warmup ?? [],
-    main: exercises.main ?? [],
-    accessory: exercises.accessory ?? [],
-  };
 }
 
 function buildSetChipLabel(set: LogSetInput, isLogged: boolean, isDumbbell = false): string {
@@ -219,8 +102,21 @@ export default function LogWorkoutClient({
   workoutId: string;
   exercises: LogExerciseInput[] | SectionedExercises;
 }) {
-  const initial = useMemo(() => normalizeExercises(exercises), [exercises]);
-  const [data, setData] = useState<NormalizedExercises>(initial);
+  const {
+    data,
+    setData,
+    loggedSetIds,
+    setLoggedSetIds,
+    setActiveSetId,
+    expandedSections,
+    setExpandedSections,
+    expandedExerciseId,
+    setExpandedExerciseId,
+    restTimerSeconds,
+    setRestTimerSeconds,
+    flatSets,
+    activeSet,
+  } = useWorkoutLogState(exercises);
   const [savingSetId, setSavingSetId] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -229,55 +125,17 @@ export default function LogWorkoutClient({
   const [completing, setCompleting] = useState(false);
   const [skipping, setSkipping] = useState(false);
   const [baselineSummary, setBaselineSummary] = useState<BaselineUpdateSummary | null>(null);
-  const [loggedSetIds, setLoggedSetIds] = useState<Set<string>>(new Set());
   const [skipReason, setSkipReason] = useState("");
-  const [activeSetId, setActiveSetId] = useState<string | null>(null);
   const [showSkipOptions, setShowSkipOptions] = useState(false);
   const [footerExpanded, setFooterExpanded] = useState(false);
-  const [expandedSections, setExpandedSections] = useState<Record<ExerciseSection, boolean>>({
-    warmup: false,
-    main: true,
-    accessory: false,
-  });
-  const [expandedExerciseId, setExpandedExerciseId] = useState<string | null>(null);
   const [undoSnapshot, setUndoSnapshot] = useState<UndoSnapshot | null>(null);
   const [autoregHint, setAutoregHint] = useState<AutoregHint | null>(null);
   const [showBonusSheet, setShowBonusSheet] = useState(false);
-  const [restTimerSeconds, setRestTimerSeconds] = useState<number | null>(null);
-
-  const flatSets = useMemo<FlatSetItem[]>(() => {
-    const output: FlatSetItem[] = [];
-    for (const section of SECTION_ORDER) {
-      const exercisesInSection = data[section];
-      exercisesInSection.forEach((exercise, exerciseIndex) => {
-        exercise.sets.forEach((set, setIndex) => {
-          output.push({
-            section,
-            sectionLabel: formatSectionLabel(section),
-            exerciseIndex,
-            setIndex,
-            exercise,
-            set,
-          });
-        });
-      });
-    }
-    return output;
-  }, [data]);
 
   const totalSets = flatSets.length;
   const loggedCount = loggedSetIds.size;
   const remainingCount = Math.max(0, totalSets - loggedCount);
   const allSetsLogged = loggedCount === totalSets && totalSets > 0;
-
-  const fallbackActiveSet = useMemo(
-    () => flatSets.find((item) => !loggedSetIds.has(item.set.setId)) ?? flatSets[0] ?? null,
-    [flatSets, loggedSetIds]
-  );
-  const activeSet = useMemo(
-    () => flatSets.find((item) => item.set.setId === activeSetId) ?? fallbackActiveSet,
-    [activeSetId, fallbackActiveSet, flatSets]
-  );
   const resolvedActiveSetId = activeSet?.set.setId ?? null;
 
   const showAutoregHint =
@@ -389,35 +247,20 @@ export default function LogWorkoutClient({
     const mergedSet = { ...targetSet.set, ...overrides };
     setSavingSetId(setId);
 
-    const response = await fetch("/api/logs/set", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        workoutSetId: targetSet.set.setId,
-        workoutExerciseId: targetSet.exercise.workoutExerciseId,
-        actualReps: mergedSet.actualReps ?? undefined,
-        actualLoad: mergedSet.actualLoad ?? undefined,
-        actualRpe: mergedSet.actualRpe ?? undefined,
-        wasSkipped: mergedSet.wasSkipped ?? false,
-      }),
+    const response = await logSetRequest({
+      workoutSetId: targetSet.set.setId,
+      actualReps: mergedSet.actualReps ?? undefined,
+      actualLoad: mergedSet.actualLoad ?? undefined,
+      actualRpe: mergedSet.actualRpe ?? undefined,
+      wasSkipped: mergedSet.wasSkipped ?? false,
     });
 
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}));
-      setError(body.error ?? "Failed to log set");
+    if (response.error) {
+      setError(response.error);
       setSavingSetId(null);
       return;
     }
-
-    const body = (await response.json().catch(() => ({}))) as {
-      wasCreated?: boolean;
-      previousLog?: {
-        actualReps?: number | null;
-        actualRpe?: number | null;
-        actualLoad?: number | null;
-        wasSkipped?: boolean | null;
-      } | null;
-    };
+    const body = response.data;
 
     updateSetFields(setId, (set) => ({ ...set, ...mergedSet }));
 
@@ -484,14 +327,9 @@ export default function LogWorkoutClient({
 
     try {
       if (undoSnapshot.wasCreated) {
-        const response = await fetch("/api/logs/set", {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ workoutSetId: undoSnapshot.setId }),
-        });
-        if (!response.ok) {
-          const body = await response.json().catch(() => ({}));
-          setError(body.error ?? "Failed to undo set log");
+        const response = await deleteSetLogRequest(undoSnapshot.setId);
+        if (response.error) {
+          setError(response.error);
           setSavingSetId(null);
           return;
         }
@@ -504,35 +342,22 @@ export default function LogWorkoutClient({
           return next;
         });
       } else {
-        const deleteResponse = await fetch("/api/logs/set", {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            workoutSetId: undoSnapshot.setId,
-          }),
-        });
-        if (!deleteResponse.ok) {
-          const body = await deleteResponse.json().catch(() => ({}));
-          setError(body.error ?? "Failed to restore previous set log");
+        const deleteResponse = await deleteSetLogRequest(undoSnapshot.setId);
+        if (deleteResponse.error) {
+          setError(deleteResponse.error);
           setSavingSetId(null);
           return;
         }
 
-        const restoreResponse = await fetch("/api/logs/set", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            workoutSetId: undoSnapshot.setId,
-            actualReps: undoSnapshot.previousLog?.actualReps ?? undefined,
-            actualLoad: undoSnapshot.previousLog?.actualLoad ?? undefined,
-            actualRpe: undoSnapshot.previousLog?.actualRpe ?? undefined,
-            wasSkipped: undoSnapshot.previousLog?.wasSkipped ?? false,
-            notes: undoSnapshot.previousLog?.notes ?? undefined,
-          }),
+        const restoreResponse = await logSetRequest({
+          workoutSetId: undoSnapshot.setId,
+          actualReps: undoSnapshot.previousLog?.actualReps ?? undefined,
+          actualLoad: undoSnapshot.previousLog?.actualLoad ?? undefined,
+          actualRpe: undoSnapshot.previousLog?.actualRpe ?? undefined,
+          wasSkipped: undoSnapshot.previousLog?.wasSkipped ?? false,
         });
-        if (!restoreResponse.ok) {
-          const body = await restoreResponse.json().catch(() => ({}));
-          setError(body.error ?? "Failed to restore previous set log");
+        if (restoreResponse.error) {
+          setError(restoreResponse.error);
           setSavingSetId(null);
           return;
         }
@@ -561,26 +386,26 @@ export default function LogWorkoutClient({
     setBaselineSummary(null);
 
     try {
-      const response = await fetch("/api/workouts/save", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          workoutId,
-          status: "COMPLETED",
-          exercises: [],
-        }),
+      const response = await saveWorkoutRequest({
+        workoutId,
+        action: "mark_completed",
+        status: "COMPLETED",
+        exercises: [],
       });
 
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        setError(body.error ?? "Failed to mark workout completed");
+      if (response.error) {
+        setError(response.error);
         return;
       }
 
-      const body = await response.json().catch(() => ({}));
+      const body = response.data;
       setBaselineSummary(body.baselineSummary ?? null);
       setCompleted(true);
-      setStatus("Workout marked as completed");
+      setStatus(
+        body.workoutStatus === "PARTIAL"
+          ? "Workout saved as partial (some planned sets were unresolved)"
+          : "Workout marked as completed"
+      );
     } catch {
       setError("Failed to mark workout completed");
     } finally {
@@ -598,20 +423,16 @@ export default function LogWorkoutClient({
     setBaselineSummary(null);
 
     try {
-      const response = await fetch("/api/workouts/save", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          workoutId,
-          status: "SKIPPED",
-          notes: skipReason ? `Skipped: ${skipReason}` : "Skipped",
-          exercises: [],
-        }),
+      const response = await saveWorkoutRequest({
+        workoutId,
+        action: "mark_skipped",
+        status: "SKIPPED",
+        notes: skipReason ? `Skipped: ${skipReason}` : "Skipped",
+        exercises: [],
       });
 
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        setError(body.error ?? "Failed to mark workout skipped");
+      if (response.error) {
+        setError(response.error);
         return;
       }
 
@@ -681,7 +502,8 @@ export default function LogWorkoutClient({
         </section>
       ) : !completed && !skipped && activeSet ? (
         /* Active set card */
-        <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
+        <ActiveSetPanel>
+          <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
           <div className="flex items-center justify-between gap-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Active set</p>
             <p className="text-xs text-slate-500">
@@ -893,9 +715,10 @@ export default function LogWorkoutClient({
             </button>
           </div>
 
-          {status ? <p className="mt-3 text-sm text-emerald-600">{status}</p> : null}
-          {error ? <p className="mt-3 text-sm text-rose-600">{error}</p> : null}
-        </section>
+            {status ? <p className="mt-3 text-sm text-emerald-600">{status}</p> : null}
+            {error ? <p className="mt-3 text-sm text-rose-600">{error}</p> : null}
+          </section>
+        </ActiveSetPanel>
       ) : null}
 
       {!completed && !skipped && restTimerSeconds !== null ? (
@@ -912,7 +735,8 @@ export default function LogWorkoutClient({
       ) : null}
 
       {!completed && !skipped ? (
-        <section className="space-y-3">
+        <ExerciseListPanel>
+          <section className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Exercise queue</h2>
             <p className="text-xs text-slate-500">{remainingCount} sets remaining</p>
@@ -1001,7 +825,8 @@ export default function LogWorkoutClient({
               </div>
             );
           })}
-        </section>
+          </section>
+        </ExerciseListPanel>
       ) : null}
 
       {/* Phase 3: Add Exercise button */}
@@ -1202,7 +1027,8 @@ export default function LogWorkoutClient({
       />
 
       {/* 1A: Footer made always inline (no fixed positioning) */}
-      <div className="space-y-3">
+      <WorkoutFooter>
+        <div className="space-y-3">
         <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm md:rounded-none md:border-0 md:bg-transparent md:p-0 md:shadow-none">
           <div className="mb-2 flex items-center justify-between gap-2">
             <div className="text-xs text-slate-500">{loggedCount}/{totalSets} sets logged</div>
@@ -1271,7 +1097,8 @@ export default function LogWorkoutClient({
             </Link>
           </div>
         ) : null}
-      </div>
+        </div>
+      </WorkoutFooter>
     </div>
   );
 }

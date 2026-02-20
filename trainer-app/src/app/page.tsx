@@ -13,6 +13,7 @@ export const runtime = "nodejs";
 const STATUS_LABELS: Record<string, string> = {
   PLANNED: "Planned",
   IN_PROGRESS: "In progress",
+  PARTIAL: "Partial",
   COMPLETED: "Completed",
   SKIPPED: "Skipped",
 };
@@ -20,6 +21,7 @@ const STATUS_LABELS: Record<string, string> = {
 const STATUS_CLASSES: Record<string, string> = {
   COMPLETED: "bg-emerald-50 text-emerald-700",
   IN_PROGRESS: "bg-amber-50 text-amber-700",
+  PARTIAL: "bg-orange-50 text-orange-700",
   SKIPPED: "bg-slate-100 text-slate-600",
   PLANNED: "bg-slate-100 text-slate-700",
 };
@@ -43,7 +45,7 @@ export default async function Home() {
         orderBy: { completedAt: "desc" },
       }),
       prisma.workout.findFirst({
-        where: { userId: owner.id, status: { in: ["PLANNED", "IN_PROGRESS"] } },
+        where: { userId: owner.id, status: { in: ["PLANNED", "IN_PROGRESS", "PARTIAL"] } },
         orderBy: { scheduledDate: "desc" },
       }),
       prisma.workout.findMany({

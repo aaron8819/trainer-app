@@ -84,7 +84,7 @@ export async function applyAutoregulation(
   );
 
   const signalAge = getSignalAgeHours(signal);
-  let rationale = `${baseRationale} (signal ${formatSignalAge(signalAge)})`;
+  const rationale = `${baseRationale} (signal ${formatSignalAge(signalAge)})`;
 
   // 5. Map adjusted exercises back to original structure
   const warmupCount = workout.warmup.length;

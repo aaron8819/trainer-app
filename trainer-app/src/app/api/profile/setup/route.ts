@@ -13,13 +13,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid request", details: parsed.error.flatten() }, { status: 400 });
   }
 
-  const user = parsed.data.email
-    ? await prisma.user.upsert({
-        where: { email: parsed.data.email },
-        update: {},
-        create: { email: parsed.data.email },
-      })
-    : await resolveOwner();
+  const user = await resolveOwner();
 
   await prisma.$transaction(async (tx) => {
     const heightIn = parsed.data.heightIn ?? null;

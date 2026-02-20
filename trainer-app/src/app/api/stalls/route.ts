@@ -6,14 +6,12 @@ import { prisma } from "@/lib/db/prisma";
 import { resolveOwner } from "@/lib/api/workout-context";
 import { WorkoutStatus } from "@prisma/client";
 import { detectStalls, suggestIntervention } from "@/lib/engine";
+import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 import type {
-  StallDetectionWorkoutHistory,
-  StallDetectionExerciseHistory,
-  StallDetectionSetHistory,
   StallDetectionExercise,
 } from "@/lib/engine/readiness/stall-intervention";
 
-export async function GET(request: Request) {
+export async function GET() {
   // Get user from database (matches existing codebase pattern)
   const user = await resolveOwner();
   const userId = user.id;
@@ -25,7 +23,7 @@ export async function GET(request: Request) {
   const workouts = await prisma.workout.findMany({
     where: {
       userId,
-      status: WorkoutStatus.COMPLETED,
+      status: { in: [...PERFORMED_WORKOUT_STATUSES] as WorkoutStatus[] },
       scheduledDate: { gte: twelveWeeksAgo },
     },
     orderBy: { scheduledDate: "desc" },

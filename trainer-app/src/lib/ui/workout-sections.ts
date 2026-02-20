@@ -1,4 +1,4 @@
-﻿import type { LogExerciseInput } from "@/components/LogWorkoutClient";
+import type { LogExerciseInput } from "@/components/log-workout/types";
 
 type WorkoutExercise = {
   id: string;
@@ -71,3 +71,4 @@ export function splitExercises(exercises: WorkoutExercise[]): SectionedExercises
 
   return { warmup, main, accessory };
 }
+

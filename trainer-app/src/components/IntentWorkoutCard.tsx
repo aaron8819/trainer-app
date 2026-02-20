@@ -170,10 +170,11 @@ export function IntentWorkoutCard() {
       filteredExercises: generatedMetadata?.filteredExercises,
       advancesSplit: true,
       exercises: [
+        ...workout.warmup.map((exercise) => ({ ...exercise, section: "WARMUP" as const })),
         ...workout.mainLifts.map((exercise) => ({ ...exercise, section: "MAIN" as const })),
         ...workout.accessories.map((exercise) => ({ ...exercise, section: "ACCESSORY" as const })),
       ].map((exercise) => ({
-        section: (exercise as { section: "MAIN" | "ACCESSORY" }).section,
+        section: (exercise as { section: "WARMUP" | "MAIN" | "ACCESSORY" }).section,
         exerciseId: exercise.exercise.id,
         sets: exercise.sets.map((set) => ({
           setIndex: set.setIndex,

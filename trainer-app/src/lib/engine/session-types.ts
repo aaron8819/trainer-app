@@ -34,6 +34,14 @@ export type SelectionOutput = {
       components: Record<string, number>;
       hardFilterPass: boolean;
       selectedStep: SelectionStep;
+      reason?: string;
     }
   >;
+  intentDiagnostics?: {
+    intent: SessionIntent;
+    targetMuscles: string[];
+    alignedRatio: number;
+    minAlignedRatio: number;
+    selectedCount: number;
+  };
 };

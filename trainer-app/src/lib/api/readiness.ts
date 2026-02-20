@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/db/prisma";
 import { WorkoutStatus } from "@prisma/client";
+import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 import type {
   ReadinessSignal,
   PerformanceSignals,
@@ -27,7 +28,7 @@ export async function computePerformanceSignals(
   const recentWorkouts = await prisma.workout.findMany({
     where: {
       userId,
-      status: WorkoutStatus.COMPLETED,
+      status: { in: [...PERFORMED_WORKOUT_STATUSES] as WorkoutStatus[] },
     },
     orderBy: { scheduledDate: "desc" },
     take: sessionCount,
@@ -64,10 +65,39 @@ export async function computePerformanceSignals(
       ? rpeDeviations.reduce((sum, val) => sum + val, 0) / rpeDeviations.length
       : 0;
 
-  // Compute stall count
-  // Note: Detailed stall detection is handled separately via /api/stalls route
-  // using stall-intervention.ts. Stubbed here as it's not used in fatigue scoring.
-  const stallCount = 0;
+  // Compute stall count proxy from last two completed exposures per exercise.
+  const exercisePerformance = new Map<string, number[]>();
+  for (const workout of recentWorkouts) {
+    for (const workoutExercise of workout.exercises) {
+      let bestScore = 0;
+      for (const set of workoutExercise.sets) {
+        const log = set.logs[0];
+        if (!log || log.wasSkipped) {
+          continue;
+        }
+        const reps = log.actualReps ?? 0;
+        const load = log.actualLoad ?? 0;
+        const score = load > 0 && reps > 0 ? load * reps : reps;
+        bestScore = Math.max(bestScore, score);
+      }
+      if (bestScore <= 0) {
+        continue;
+      }
+      const scores = exercisePerformance.get(workoutExercise.exerciseId) ?? [];
+      scores.push(bestScore);
+      exercisePerformance.set(workoutExercise.exerciseId, scores);
+    }
+  }
+  let stallCount = 0;
+  for (const scores of exercisePerformance.values()) {
+    if (scores.length < 2) {
+      continue;
+    }
+    const [latest, previous] = scores;
+    if (latest <= previous) {
+      stallCount += 1;
+    }
+  }
 
   // Compute volume compliance rate
   let totalPrescribedSets = 0;
@@ -76,7 +106,10 @@ export async function computePerformanceSignals(
   for (const workout of recentWorkouts) {
     for (const exercise of workout.exercises) {
       totalPrescribedSets += exercise.sets.length;
-      totalCompletedSets += exercise.sets.filter((set) => set.logs.length > 0).length;
+      totalCompletedSets += exercise.sets.filter((set) => {
+        const log = set.logs[0];
+        return Boolean(log) && !log?.wasSkipped;
+      }).length;
     }
   }
 
@@ -152,9 +185,11 @@ export async function getLatestReadinessSignal(
  * @returns WhoopData or null if not available
  */
 export async function fetchWhoopRecovery(
-  userId: string,
-  date: Date
+  _userId: string,
+  _date: Date
 ): Promise<WhoopData | null> {
+  void _userId;
+  void _date;
   // Phase 3: Whoop integration not yet implemented
   // Return null to fall back to subjective + performance signals
   return null;
@@ -175,7 +210,8 @@ export async function fetchWhoopRecovery(
  * @param userId - User ID
  * @throws Error always (not yet implemented)
  */
-export async function refreshWhoopToken(userId: string): Promise<void> {
+export async function refreshWhoopToken(_userId: string): Promise<void> {
+  void _userId;
   throw new Error(
     "Whoop integration not yet implemented. Phase 3.5 will add OAuth support."
   );

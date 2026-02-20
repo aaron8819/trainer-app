@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db/prisma";
 import { resolveOwner } from "@/lib/api/workout-context";
 import { getBaseTargetRpe } from "@/lib/engine/rules";
 import type { TrainingAge, PrimaryGoal } from "@/lib/engine/types";
+import { Prisma } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -93,32 +94,51 @@ export async function POST(
   const setCount = profile?.trainingAge === "ADVANCED" ? 4 : 3;
   const setIndices = Array.from({ length: setCount }, (_, i) => i + 1);
 
-  // Get max orderIndex to place new exercise last
-  const maxOrderIndex = workout.exercises.reduce((max, ex) => Math.max(max, ex.orderIndex), -1);
+  const createExerciseAtNextIndex = async () =>
+    prisma.$transaction(async (tx) => {
+      const latest = await tx.workoutExercise.findFirst({
+        where: { workoutId },
+        orderBy: { orderIndex: "desc" },
+        select: { orderIndex: true },
+      });
+      const nextOrderIndex = (latest?.orderIndex ?? -1) + 1;
+      return tx.workoutExercise.create({
+        data: {
+          workoutId,
+          exerciseId: exercise.id,
+          orderIndex: nextOrderIndex,
+          section: "ACCESSORY",
+          isMainLift: false,
+          sets: {
+            create: setIndices.map((setIndex) => ({
+              setIndex,
+              targetReps,
+              targetRepMin,
+              targetRepMax,
+              targetRpe,
+              ...(targetLoad !== null ? { targetLoad } : {}),
+            })),
+          },
+        },
+        include: {
+          sets: { orderBy: { setIndex: "asc" } },
+        },
+      });
+    });
 
-  // Create WorkoutExercise with training-age-appropriate set count
-  const workoutExercise = await prisma.workoutExercise.create({
-    data: {
-      workoutId,
-      exerciseId: exercise.id,
-      orderIndex: maxOrderIndex + 1,
-      section: "ACCESSORY",
-      isMainLift: false,
-      sets: {
-        create: setIndices.map((setIndex) => ({
-          setIndex,
-          targetReps,
-          targetRepMin,
-          targetRepMax,
-          targetRpe,
-          ...(targetLoad !== null ? { targetLoad } : {}),
-        })),
-      },
-    },
-    include: {
-      sets: { orderBy: { setIndex: "asc" } },
-    },
-  });
+  let workoutExercise;
+  try {
+    workoutExercise = await createExerciseAtNextIndex();
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      workoutExercise = await createExerciseAtNextIndex();
+    } else {
+      throw error;
+    }
+  }
 
   // Return in LogExerciseInput format
   const logExercise = {

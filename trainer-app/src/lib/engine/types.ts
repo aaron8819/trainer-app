@@ -169,7 +169,7 @@ export type SetLog = {
 export type WorkoutHistoryEntry = {
   date: string;
   completed: boolean;
-  status?: "PLANNED" | "IN_PROGRESS" | "COMPLETED" | "SKIPPED";
+  status?: "PLANNED" | "IN_PROGRESS" | "PARTIAL" | "COMPLETED" | "SKIPPED";
   advancesSplit?: boolean;
   forcedSplit?: SplitDay;
   sessionIntent?: SplitDay;

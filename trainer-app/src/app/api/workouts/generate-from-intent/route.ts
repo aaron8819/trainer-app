@@ -44,7 +44,7 @@ export async function POST(request: Request) {
     selectionMode: result.selectionMode,
     sessionIntent: result.sessionIntent,
     selectionSummary,
-    selectionMetadata: includeSelectionDebug ? result.selection : undefined,
+    selectionMetadata: result.selection,
     selection: includeSelectionDebug ? result.selection : undefined,
     autoregulation: {
       applied: autoregulated.applied,

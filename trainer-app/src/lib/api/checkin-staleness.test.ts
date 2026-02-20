@@ -1,3 +1,7 @@
+/**
+ * Protects: Readiness canonicalized to ReadinessSignal; session-checkins is a compatibility shim.
+ * Why it matters: Legacy check-in compatibility must not leak stale readiness into decisions.
+ */
 import { describe, expect, it } from "vitest";
 import {
   CHECK_IN_STALENESS_WINDOW_MS,
@@ -34,10 +38,7 @@ describe("mapLatestCheckIn", () => {
   });
 
   it("keeps check-ins that are exactly 48 hours old", () => {
-    const mapped = mapLatestCheckIn(
-      [makeCheckIn(CHECK_IN_STALENESS_WINDOW_MS)],
-      new Date(NOW_ISO)
-    );
+    const mapped = mapLatestCheckIn([makeCheckIn(CHECK_IN_STALENESS_WINDOW_MS)], new Date(NOW_ISO));
 
     expect(mapped).toBeDefined();
     expect(mapped?.readiness).toBe(2);

@@ -3,10 +3,7 @@
 
 import { NextResponse } from "next/server";
 import { readinessSignalSchema } from "@/lib/validation";
-import {
-  computePerformanceSignals,
-  fetchWhoopRecovery,
-} from "@/lib/api/readiness";
+import { computePerformanceSignals } from "@/lib/api/readiness";
 import { computeFatigueScore } from "@/lib/engine";
 import { prisma } from "@/lib/db/prisma";
 import { resolveOwner } from "@/lib/api/workout-context";
@@ -29,9 +26,6 @@ export async function POST(request: Request) {
   const user = await resolveOwner();
   const userId = user.id;
 
-  // 1. Fetch Whoop data (stubbed, returns null for Phase 3)
-  const whoop = await fetchWhoopRecovery(userId, new Date());
-
   // 2. Compute performance signals from recent workout history
   const performance = await computePerformanceSignals(userId, 3);
 
@@ -39,7 +33,7 @@ export async function POST(request: Request) {
   const signal: ReadinessSignal = {
     timestamp: new Date(),
     userId,
-    whoop: whoop ?? undefined,
+    whoop: undefined,
     subjective: {
       readiness: subjective.readiness as 1 | 2 | 3 | 4 | 5,
       motivation: subjective.motivation as 1 | 2 | 3 | 4 | 5,
@@ -57,11 +51,11 @@ export async function POST(request: Request) {
     data: {
       userId,
       timestamp: signal.timestamp,
-      whoopRecovery: whoop?.recovery ?? null,
-      whoopStrain: whoop?.strain ?? null,
-      whoopHrv: whoop?.hrv ?? null,
-      whoopSleepQuality: whoop?.sleepQuality ?? null,
-      whoopSleepHours: whoop?.sleepDuration ?? null,
+      whoopRecovery: null,
+      whoopStrain: null,
+      whoopHrv: null,
+      whoopSleepQuality: null,
+      whoopSleepHours: null,
       subjectiveReadiness: subjective.readiness,
       subjectiveMotivation: subjective.motivation,
       subjectiveSoreness: subjective.soreness as Record<string, number>,
@@ -75,7 +69,7 @@ export async function POST(request: Request) {
   });
 
   // 6. Return signal + fatigue score
-  const sourceMode = signal.whoop ? "whoop+subjective+performance" : "subjective+performance";
+  const sourceMode = "manual+performance";
   return NextResponse.json({
     signal: {
       timestamp: signal.timestamp.toISOString(),
@@ -84,7 +78,7 @@ export async function POST(request: Request) {
       performance: signal.performance,
     },
     source: {
-      whoopAvailable: signal.whoop !== undefined,
+      whoopAvailable: false,
       sourceMode,
     },
     fatigueScore: {

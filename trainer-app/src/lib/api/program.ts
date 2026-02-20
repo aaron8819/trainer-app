@@ -57,7 +57,27 @@ export type ProgramDashboardData = {
   volumeThisWeek: ProgramVolumeRow[];
   recentWorkouts: ProgramRecentWorkout[];
   deloadReadiness: DeloadReadiness | null;
+  capabilities: CapabilityFlags;
 };
+
+export type CapabilityFlags = {
+  whoopConnected: boolean;
+  readinessEnabled: boolean;
+};
+
+export async function loadCapabilityFlags(userId: string): Promise<CapabilityFlags> {
+  const [whoopIntegration] = await Promise.all([
+    prisma.userIntegration.findFirst({
+      where: { userId, provider: "whoop", isActive: true },
+      select: { id: true },
+    }),
+  ]);
+
+  return {
+    whoopConnected: Boolean(whoopIntegration),
+    readinessEnabled: process.env.ENABLE_READINESS_CHECKINS !== "0",
+  };
+}
 
 /**
  * Compute a unified deload readiness signal from:
@@ -175,6 +195,7 @@ export async function loadActiveBlockPhase(userId: string): Promise<ActiveBlockP
 }
 
 export async function loadProgramDashboardData(userId: string): Promise<ProgramDashboardData> {
+  const capabilities = await loadCapabilityFlags(userId);
   // Load active mesocycle with blocks + macro start date
   const mesoRecord = await prisma.mesocycle.findFirst({
     where: { macroCycle: { userId }, isActive: true },
@@ -295,6 +316,7 @@ export async function loadProgramDashboardData(userId: string): Promise<ProgramD
     sessionsUntilDeload,
     volumeThisWeek,
     deloadReadiness,
+    capabilities,
     recentWorkouts: recentWorkouts.map((w) => ({
       id: w.id,
       scheduledDate: w.scheduledDate.toISOString(),

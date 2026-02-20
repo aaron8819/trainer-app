@@ -30,8 +30,8 @@ const defaultValues: ProfileFormValues = {
   daysPerWeek: 4,
   sessionMinutes: 55,
   splitType: "PPL",
-  weeklySchedule: ["PUSH", "PULL", "LEGS", "UPPER"],
-  injuryActive: true,
+  weeklySchedule: [],
+  injuryActive: false,
 };
 
 const SESSION_INTENT_OPTIONS: {

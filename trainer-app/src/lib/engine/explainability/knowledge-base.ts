@@ -28,7 +28,6 @@ export const KB_CITATIONS = {
       title: "Triceps brachii hypertrophy is substantially greater after elbow extension training performed in the overhead versus neutral arm position",
       finding: "Overhead extensions produced ~40% more total triceps growth than pushdowns over 12 weeks",
       relevance: "Supports prioritizing overhead triceps extensions for lengthened-position loading",
-      url: undefined,
     } as Citation,
 
     pedrosa_2022_leg_extension: {
@@ -38,7 +37,6 @@ export const KB_CITATIONS = {
       title: "Partial range of motion training elicits favorable improvements in muscular adaptations when carried out at long muscle lengths",
       finding: "Lengthened partial leg extensions produced ~2× quad hypertrophy vs shortened partials",
       relevance: "Supports exercises that load quads at long muscle lengths (deep squats, leg press)",
-      url: undefined,
     } as Citation,
 
     wolf_2023_lengthened_meta: {
@@ -48,7 +46,6 @@ export const KB_CITATIONS = {
       title: "Lengthened partial range of motion resistance training: A systematic review and meta-analysis",
       finding: "Lengthened partials trend toward superior hypertrophy vs full ROM (SME = −0.28)",
       relevance: "Meta-analytic support for prioritizing exercises with deep stretch under load",
-      url: undefined,
     } as Citation,
 
     pedrosa_2023_incline_curls: {
@@ -58,7 +55,6 @@ export const KB_CITATIONS = {
       title: "Training in the initial range of motion promotes greater muscle adaptations than at final in the arm curl",
       finding: "Incline dumbbell curls (lengthened ROM) produced greater biceps hypertrophy",
       relevance: "Supports incline curls at 45° for lengthened-position bicep training",
-      url: undefined,
     } as Citation,
 
     kassiano_2023_calf_lengthened: {
@@ -68,7 +64,6 @@ export const KB_CITATIONS = {
       title: "Greater gastrocnemius muscle hypertrophy with lengthened versus shortened partial range of motion resistance training",
       finding: "Lengthened partial calf raises produced 15.2% growth vs 3.4% shortened partials",
       relevance: "Strongest evidence for lengthened-position training; emphasizes deep dorsiflexion stretch",
-      url: undefined,
     } as Citation,
 
     maeo_2021_seated_curls: {
@@ -78,7 +73,6 @@ export const KB_CITATIONS = {
       title: "Greater hamstrings muscle hypertrophy but similar damage protection after training at long versus short muscle lengths",
       finding: "Seated leg curls (hip flexed) produced significantly greater hamstring hypertrophy than prone curls",
       relevance: "Supports seated leg curls for loading hamstrings at longer muscle length",
-      url: undefined,
     } as Citation,
 
     kinoshita_2023_standing_calves: {
@@ -88,7 +82,6 @@ export const KB_CITATIONS = {
       title: "Comparison of muscle hypertrophy following standing and seated calf raises",
       finding: "Standing calf raises produced greater gastrocnemius hypertrophy than seated",
       relevance: "Knee-extended position stretches the biarticular gastrocnemius; seated targets soleus",
-      url: undefined,
     } as Citation,
   },
 
@@ -103,7 +96,6 @@ export const KB_CITATIONS = {
       title: "Dose-response relationship between weekly resistance training volume and increases in muscle mass",
       finding: "Each additional weekly set increases hypertrophy by ~0.37% (ES increase of 0.023/set)",
       relevance: "Foundational evidence for volume progression strategy",
-      url: undefined,
     } as Citation,
 
     pelland_2024_volume_bayesian: {
@@ -113,7 +105,6 @@ export const KB_CITATIONS = {
       title: "Volume and strength training: A Bayesian meta-analysis",
       finding: "100% posterior probability that volume increases hypertrophy, with diminishing returns",
       relevance: "Confirms volume dose-response with clear diminishing returns beyond ~20 sets/week",
-      url: undefined,
     } as Citation,
   },
 
@@ -128,7 +119,6 @@ export const KB_CITATIONS = {
       title: "Proximity-to-failure and resistance training outcomes: A meta-regression",
       finding: "Hypertrophy significantly increases as sets approach failure (clear dose-response)",
       relevance: "Supports RIR progression from 3-4 to 0-1 across mesocycle",
-      url: undefined,
     } as Citation,
 
     refalo_2023_failure_vs_reserve: {
@@ -138,7 +128,6 @@ export const KB_CITATIONS = {
       title: "The effects of resistance training performed to repetition failure on muscular strength",
       finding: "Only trivial advantage (ES=0.19) for failure training vs reserve",
       relevance: "Supports leaving 1-2 RIR on most sets to preserve set quality",
-      url: undefined,
     } as Citation,
 
     refalo_2024_rir_quad: {
@@ -148,7 +137,6 @@ export const KB_CITATIONS = {
       title: "Similar muscle hypertrophy following eight weeks of resistance training to volitional failure or leaving two repetitions in reserve",
       finding: "0 RIR and 1-2 RIR produced similar quadriceps hypertrophy over 8 weeks",
       relevance: "Confirms 1-2 RIR is sufficient for hypertrophy while reducing fatigue",
-      url: undefined,
     } as Citation,
   },
 
@@ -163,7 +151,6 @@ export const KB_CITATIONS = {
       title: "Longer interset rest periods enhance muscle strength and hypertrophy in resistance-trained men",
       finding: "3-minute rest produced significantly greater strength and hypertrophy than 1-minute rest",
       relevance: "Supports 2-3 min rest for compounds, 1-2 min for isolation",
-      url: undefined,
     } as Citation,
   },
 
@@ -178,7 +165,6 @@ export const KB_CITATIONS = {
       title: "A meta-analysis of periodized versus nonperiodized strength and power training programs",
       finding: "Periodized training produces superior results to non-periodized (ES = 0.84)",
       relevance: "Foundational support for block periodization approach (accumulation, intensification, realization)",
-      url: undefined,
     } as Citation,
   },
 
@@ -193,7 +179,6 @@ export const KB_CITATIONS = {
       title: "The effects of free-weight versus machine-based resistance training on muscle mass and strength",
       finding: "No significant hypertrophy difference between free-weight and machine training (n=1,016)",
       relevance: "Supports using a combination of free weights, machines, and cables",
-      url: undefined,
     } as Citation,
 
     plotkin_2023_squat_vs_thrust: {
@@ -203,7 +188,6 @@ export const KB_CITATIONS = {
       title: "Hip thrust and back squat training elicit similar gluteus muscle hypertrophy and transfer similarly to the deadlift",
       finding: "9 weeks of squats and hip thrusts produced similar upper/mid/lower glute CSA growth",
       relevance: "Landmark finding: EMG doesn't predict growth; deep squats match hip thrusts for glutes",
-      url: undefined,
     } as Citation,
   },
 };

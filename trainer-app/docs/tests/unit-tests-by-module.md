@@ -334,4 +334,4 @@ See [testing-patterns.md](testing-patterns.md) for complete patterns documentati
 ---
 
 **Last Updated:** 2026-02-16
-**Total Tests:** 805 tests across 54 files
+**Total Tests:** 610 tests across 44 files

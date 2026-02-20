@@ -96,9 +96,7 @@ export async function POST(request: Request) {
             where: { id: exercise.exerciseId },
           });
 
-          const section =
-            exercise.section ??
-            (exerciseIndex < 2 ? "WARMUP" : exerciseIndex < 5 ? "MAIN" : "ACCESSORY");
+          const section = exercise.section;
 
           const createdExercise = await tx.workoutExercise.create({
             data: {
@@ -106,7 +104,7 @@ export async function POST(request: Request) {
               exerciseId: exercise.exerciseId,
               orderIndex: exerciseIndex,
               section,
-              isMainLift: section === "MAIN" ? true : false,
+              isMainLift: section === "MAIN",
               movementPatterns: exerciseRecord?.movementPatterns ?? [],
               sets: {
                 create: exercise.sets.map((set) => ({

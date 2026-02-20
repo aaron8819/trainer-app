@@ -33,10 +33,7 @@ type FatigueResult = {
       performanceContribution: number;
     };
   };
-  source?: {
-    whoopAvailable: boolean;
-    sourceMode: string;
-  };
+  source?: { whoopAvailable: boolean; sourceMode: string };
 };
 
 // Muscle groups for soreness tracking
@@ -273,21 +270,9 @@ export default function ReadinessCheckInForm({
           <div className="mt-4">
             <p className="text-sm font-semibold text-slate-700">Signal Breakdown</p>
             <p className="mt-1 text-xs text-slate-500">
-              {result.source?.whoopAvailable
-                ? "Using Whoop + subjective + performance signals."
-                : "Whoop unavailable: using subjective + performance signals only."}
+              Using manual readiness and recent performance signals.
             </p>
             <div className="mt-2 space-y-2">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-600">
-                  Whoop ({(result.fatigueScore.weights.whoop * 100).toFixed(0)}%)
-                </span>
-                <span className="font-semibold text-slate-900">
-                  {result.signal.hasWhoop
-                    ? (result.fatigueScore.components.whoopContribution * 100).toFixed(0) + "%"
-                    : "N/A"}
-                </span>
-              </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-slate-600">
                   Subjective ({(result.fatigueScore.weights.subjective * 100).toFixed(0)}%)

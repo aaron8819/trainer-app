@@ -7,6 +7,7 @@ describe("saveWorkoutSchema", () => {
       workoutId: "workout-1",
       exercises: [
         {
+          section: "MAIN",
           exerciseId: "exercise-1",
           sets: [
             {
@@ -27,6 +28,7 @@ describe("saveWorkoutSchema", () => {
       workoutId: "workout-1",
       exercises: [
         {
+          section: "MAIN",
           exerciseId: "exercise-1",
           sets: [
             {
@@ -54,5 +56,19 @@ describe("saveWorkoutSchema", () => {
 
     expect(parsed.selectionMode).toBe("INTENT");
     expect(parsed.sessionIntent).toBe("BODY_PART");
+  });
+
+  it("rejects workouts missing exercise section", () => {
+    const parsed = saveWorkoutSchema.safeParse({
+      workoutId: "workout-1",
+      exercises: [
+        {
+          exerciseId: "exercise-1",
+          sets: [{ setIndex: 1, targetReps: 8 }],
+        },
+      ],
+    });
+
+    expect(parsed.success).toBe(false);
   });
 });

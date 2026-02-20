@@ -21,6 +21,9 @@ export type AutoregulationResult = {
   fatigueScore: FatigueScore | null;
   rationale: string;
   wasAutoregulated: boolean;
+  applied: boolean;
+  reason: string;
+  signalAgeHours: number | null;
 };
 
 /**
@@ -43,20 +46,21 @@ export async function applyAutoregulation(
   // 1. Get latest readiness signal
   const signal = await getLatestReadinessSignal(userId);
 
-  // 2. Compute fatigue score from readiness signal (or use defaults if expired/missing)
-  // Phase 3.5: Expired signals (> 48 hours) return null, triggering default 0.7 fatigue
-  const fatigueScore: FatigueScore = signal
-    ? computeFatigueScore(signal)
-    : {
-        overall: 0.7, // Default "recovered" score when no signal available
-        perMuscle: {},
-        weights: { whoop: 0, subjective: 0, performance: 0 },
-        components: {
-          whoopContribution: 0,
-          subjectiveContribution: 0,
-          performanceContribution: 0,
-        },
-      };
+  if (!signal) {
+    return {
+      original: workout,
+      adjusted: workout,
+      modifications: [],
+      fatigueScore: null,
+      rationale: "No recent readiness signal. Workout left unchanged.",
+      wasAutoregulated: false,
+      applied: false,
+      reason: "No recent readiness signal. Workout left unchanged.",
+      signalAgeHours: null,
+    };
+  }
+
+  const fatigueScore: FatigueScore = computeFatigueScore(signal);
 
   // 3. Flatten workout to single exercises array for autoregulation
   const flatExercises = [...workout.warmup, ...workout.mainLifts, ...workout.accessories];
@@ -79,22 +83,8 @@ export async function applyAutoregulation(
     policy
   );
 
-  // 4.5. Add signal age indicator to rationale (Phase 3.5)
-  let rationale = baseRationale;
-  if (signal) {
-    const signalAge = getSignalAgeHours(signal);
-    if (signalAge > 24) {
-      // Stale: 24-48 hours old
-      rationale += ` (⚠️ using ${formatSignalAge(signalAge)} data - consider fresh check-in)`;
-    } else if (signalAge > 4) {
-      // Aging: 4-24 hours old
-      rationale += ` (using ${formatSignalAge(signalAge)} data)`;
-    }
-    // Fresh: < 4 hours old - no note needed
-  } else {
-    // No signal or expired (> 48 hours)
-    rationale += " (using default readiness score - no recent check-in available)";
-  }
+  const signalAge = getSignalAgeHours(signal);
+  let rationale = `${baseRationale} (signal ${formatSignalAge(signalAge)})`;
 
   // 5. Map adjusted exercises back to original structure
   const warmupCount = workout.warmup.length;
@@ -129,5 +119,8 @@ export async function applyAutoregulation(
     fatigueScore,
     rationale,
     wasAutoregulated: modifications.length > 0,
+    applied: modifications.length > 0,
+    reason: rationale,
+    signalAgeHours: signalAge,
   };
 }

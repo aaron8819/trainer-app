@@ -86,7 +86,7 @@ export const saveWorkoutSchema = z.object({
   exercises: z
     .array(
       z.object({
-        section: z.enum(["WARMUP", "MAIN", "ACCESSORY"]).optional(),
+        section: z.enum(["WARMUP", "MAIN", "ACCESSORY"]),
         exerciseId: z.string(),
         sets: z
           .array(

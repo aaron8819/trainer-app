@@ -3,9 +3,8 @@ import { prisma } from "@/lib/db/prisma";
 import { resolveOwner } from "@/lib/api/workout-context";
 import { DashboardGenerateSection } from "@/components/DashboardGenerateSection";
 import RecentWorkouts from "@/components/RecentWorkouts";
-import { loadTemplatesWithScores } from "@/lib/api/templates";
-import { shouldDefaultNewUserToIntent } from "@/lib/api/intent-rollout";
 import ReadinessCheckInForm from "@/components/ReadinessCheckInForm";
+import { loadCapabilityFlags } from "@/lib/api/program";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -27,7 +26,7 @@ const STATUS_CLASSES: Record<string, string> = {
 
 export default async function Home() {
   const owner = await resolveOwner();
-  const [latestWorkout, latestCompleted, latestIncomplete, recentWorkouts, templates, workoutCount] =
+  const [latestWorkout, latestCompleted, latestIncomplete, recentWorkouts, templateCount, capabilities] =
     await Promise.all([
       prisma.workout.findFirst({
         where: { userId: owner.id },
@@ -58,10 +57,8 @@ export default async function Home() {
           },
         },
       }),
-      loadTemplatesWithScores(owner.id),
-      prisma.workout.count({
-        where: { userId: owner.id },
-      }),
+      prisma.workoutTemplate.count({ where: { userId: owner.id } }),
+      loadCapabilityFlags(owner.id),
     ]);
 
   const nextSessionName = latestWorkout
@@ -78,12 +75,6 @@ export default async function Home() {
     exercisesCount: workout.exercises.length,
   }));
 
-  const defaultGenerateMode = shouldDefaultNewUserToIntent({
-    hasExistingWorkouts: workoutCount > 0,
-  })
-    ? "intent"
-    : "template";
-
   return (
     <main className="min-h-screen bg-white text-slate-900">
       <div className="page-shell max-w-5xl">
@@ -97,29 +88,20 @@ export default async function Home() {
 
         <section className="grid gap-6 md:grid-cols-2">
           <div className="min-w-0">
-            <DashboardGenerateSection
-              defaultMode={defaultGenerateMode}
-              templates={templates.map((t) => ({
-                id: t.id,
-                name: t.name,
-                exerciseCount: t.exerciseCount,
-                score: t.score,
-                scoreLabel: t.scoreLabel,
-              }))}
-            />
+            <DashboardGenerateSection templateCount={templateCount} />
           </div>
           <div className="min-w-0 space-y-6">
-            {/* Phase 3: Daily Readiness Check-In */}
-            <div className="rounded-2xl border border-blue-200 bg-blue-50 p-6 shadow-sm">
-              <h2 className="text-xl font-semibold">Daily Readiness Check-In</h2>
-              <p className="mt-2 text-sm text-slate-600">
-                Submit readiness to drive autoregulation. Current mode uses subjective and performance signals
-                unless Whoop data is connected.
-              </p>
-              <div className="mt-4">
-                <ReadinessCheckInForm />
-              </div>
-            </div>
+            {capabilities.readinessEnabled ? (
+              <details className="rounded-2xl border border-slate-200 p-6 shadow-sm">
+                <summary className="cursor-pointer text-xl font-semibold">Optional readiness check-in</summary>
+                <p className="mt-2 text-sm text-slate-600">
+                  Manual readiness input can tune today&apos;s session intensity.
+                </p>
+                <div className="mt-4">
+                  <ReadinessCheckInForm />
+                </div>
+              </details>
+            ) : null}
 
             {latestIncomplete ? (
               <div className="rounded-2xl border border-slate-200 p-6 shadow-sm">
@@ -141,14 +123,11 @@ export default async function Home() {
                 </div>
               </div>
             ) : null}
-
             <div className="rounded-2xl border border-slate-200 p-6 shadow-sm">
-              <h2 className="text-xl font-semibold">Quick Snapshot</h2>
-              <ul className="mt-4 space-y-2 text-sm text-slate-600">
-                <li>Rolling plan: 4 days / week</li>
-                <li>Average session length: 55 minutes</li>
-                <li>Readiness trend: stable</li>
-              </ul>
+              <h2 className="text-xl font-semibold">Progress</h2>
+              <p className="mt-2 text-sm text-slate-600">
+                Review trends and recovery insights in Analytics.
+              </p>
               <Link className="mt-4 inline-block text-sm font-semibold text-slate-900" href="/analytics">
                 View analytics
               </Link>

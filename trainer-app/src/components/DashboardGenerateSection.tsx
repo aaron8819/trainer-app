@@ -1,59 +1,25 @@
 "use client";
 
-import { useState } from "react";
-import { GenerateFromTemplateCard } from "./GenerateFromTemplateCard";
+import Link from "next/link";
 import { IntentWorkoutCard } from "./IntentWorkoutCard";
 
-type TemplateSummary = {
-  id: string;
-  name: string;
-  exerciseCount: number;
-  score?: number;
-  scoreLabel?: string;
-};
-
 type DashboardGenerateSectionProps = {
-  templates: TemplateSummary[];
-  defaultMode?: "template" | "intent";
+  templateCount: number;
 };
 
-export function DashboardGenerateSection({
-  templates,
-  defaultMode = "template",
-}: DashboardGenerateSectionProps) {
-  const [mode, setMode] = useState<"template" | "intent">(defaultMode);
-
+export function DashboardGenerateSection({ templateCount }: DashboardGenerateSectionProps) {
   return (
     <section className="space-y-3">
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          className={`rounded-full px-4 py-2 text-sm font-semibold ${
-            mode === "template"
-              ? "bg-slate-900 text-white"
-              : "border border-slate-300 text-slate-700"
-          }`}
-          onClick={() => setMode("template")}
-        >
-          Template Workout
-        </button>
-        <button
-          type="button"
-          className={`rounded-full px-4 py-2 text-sm font-semibold ${
-            mode === "intent"
-              ? "bg-slate-900 text-white"
-              : "border border-slate-300 text-slate-700"
-          }`}
-          onClick={() => setMode("intent")}
-        >
-          Intent Workout
-        </button>
+      <div className="rounded-2xl border border-slate-200 p-4 text-sm text-slate-600">
+        <p>
+          Templates moved to their own area to keep generation simple.
+          {templateCount > 0 ? ` ${templateCount} template${templateCount === 1 ? "" : "s"} available.` : " No templates yet."}
+        </p>
+        <Link className="mt-2 inline-block font-semibold text-slate-900" href="/templates">
+          Go to templates
+        </Link>
       </div>
-      {mode === "template" ? (
-        <GenerateFromTemplateCard templates={templates} />
-      ) : (
-        <IntentWorkoutCard />
-      )}
+      <IntentWorkoutCard />
     </section>
   );
 }

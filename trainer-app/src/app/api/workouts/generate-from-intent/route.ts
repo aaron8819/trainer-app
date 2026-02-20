@@ -5,6 +5,7 @@ import { generateSessionFromIntent } from "@/lib/api/template-session";
 import { applyAutoregulation } from "@/lib/api/autoregulation";
 
 export async function POST(request: Request) {
+  const includeSelectionDebug = new URL(request.url).searchParams.get("debug") === "1";
   const body = await request.json().catch(() => ({}));
   const parsed = generateFromIntentSchema.safeParse(body);
 
@@ -25,6 +26,16 @@ export async function POST(request: Request) {
   // Phase 3: Apply autoregulation
   const autoregulated = await applyAutoregulation(user.id, result.workout);
 
+  const selectionSummary = {
+    selectedCount:
+      result.selection.selectedExerciseIds?.length ??
+      Object.keys(result.selection.rationale ?? {}).length,
+    pinnedCount: Object.values(result.selection.rationale ?? {}).filter(
+      (entry) => entry.selectedStep === "pin"
+    ).length,
+    setTargetCount: Object.keys(result.selection.perExerciseSetTargets ?? {}).length,
+  };
+
   return NextResponse.json({
     workout: autoregulated.adjusted,
     sraWarnings: result.sraWarnings,
@@ -32,15 +43,18 @@ export async function POST(request: Request) {
     volumePlanByMuscle: result.volumePlanByMuscle,
     selectionMode: result.selectionMode,
     sessionIntent: result.sessionIntent,
-    selection: result.selection,
-    // Phase 3: Include autoregulation metadata
+    selectionSummary,
+    selectionMetadata: includeSelectionDebug ? result.selection : undefined,
+    selection: includeSelectionDebug ? result.selection : undefined,
     autoregulation: {
-      wasAutoregulated: autoregulated.wasAutoregulated,
+      applied: autoregulated.applied,
+      reason: autoregulated.reason,
+      signalAgeHours: autoregulated.signalAgeHours,
       fatigueScore: autoregulated.fatigueScore,
       modifications: autoregulated.modifications,
       rationale: autoregulated.rationale,
+      wasAutoregulated: autoregulated.wasAutoregulated,
     },
-    // Phase 2: Include filtered exercises for explainability
     filteredExercises: result.filteredExercises,
   });
 }

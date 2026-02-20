@@ -38,8 +38,10 @@ export async function POST(request: Request) {
     selectionMode: result.selectionMode,
     sessionIntent: result.sessionIntent,
     selection: result.selection,
-    // Phase 3: Include autoregulation metadata
     autoregulation: {
+      applied: autoregulated.applied,
+      reason: autoregulated.reason,
+      signalAgeHours: autoregulated.signalAgeHours,
       wasAutoregulated: autoregulated.wasAutoregulated,
       fatigueScore: autoregulated.fatigueScore,
       modifications: autoregulated.modifications,

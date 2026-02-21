@@ -4,6 +4,7 @@ import { loadWorkoutContext, mapCheckIn, mapConstraints, mapExercises, mapGoals,
 import { loadCurrentBlockContext } from "@/lib/api/periodization";
 import { loadExerciseExposure } from "@/lib/api/exercise-exposure";
 import type { MappedGenerationContext } from "./types";
+import type { CycleContextSnapshot, DeloadDecision } from "@/lib/evidence/types";
 
 export async function loadMappedGenerationContext(userId: string): Promise<MappedGenerationContext> {
   const context = await loadWorkoutContext(userId);
@@ -22,7 +23,7 @@ export async function loadMappedGenerationContext(userId: string): Promise<Mappe
   const mappedCheckIn = mapCheckIn(checkIns);
 
   const { blockContext, weekInMeso } = await loadCurrentBlockContext(userId);
-  const weekInBlock = weekInMeso;
+  const weekInBlock = blockContext?.weekInBlock ?? weekInMeso;
   const mesocycleLength = blockContext?.mesocycle.durationWeeks ?? 4;
 
   const mainLiftExerciseIds = new Set(
@@ -33,6 +34,29 @@ export async function loadMappedGenerationContext(userId: string): Promise<Mappe
   const effectivePeriodization = adaptiveDeload
     ? { ...periodization, isDeload: true, setMultiplier: 0.5, rpeOffset: -2.0, backOffMultiplier: 0.75 }
     : periodization;
+  const cycleContext: CycleContextSnapshot = {
+    weekInMeso,
+    weekInBlock,
+    phase: (blockContext?.block.blockType ?? (effectivePeriodization.isDeload ? "deload" : "accumulation")),
+    blockType: (blockContext?.block.blockType ?? (effectivePeriodization.isDeload ? "deload" : "accumulation")),
+    isDeload: effectivePeriodization.isDeload,
+    source: "computed",
+  };
+  const deloadDecision: DeloadDecision = effectivePeriodization.isDeload
+    ? {
+        mode: adaptiveDeload ? "reactive" : "scheduled",
+        reason: adaptiveDeload
+          ? ["Reactive deload triggered by performed-history fatigue/plateau signal."]
+          : ["Scheduled deload week for this cycle phase."],
+        reductionPercent: 50,
+        appliedTo: "both",
+      }
+    : {
+        mode: "none",
+        reason: [],
+        reductionPercent: 0,
+        appliedTo: "none",
+      };
 
   const rotationContext = await loadExerciseExposure(userId);
 
@@ -50,7 +74,9 @@ export async function loadMappedGenerationContext(userId: string): Promise<Mappe
     mesocycleLength,
     effectivePeriodization,
     adaptiveDeload,
+    deloadDecision,
     blockContext,
     rotationContext,
+    cycleContext,
   };
 }

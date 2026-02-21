@@ -1,3 +1,4 @@
+import type { CycleContextSnapshot, DeloadDecision } from "@/lib/evidence/types";
 type SelectionStep = "pin" | "anchor" | "main_pick" | "accessory_pick";
 
 export type ExplainabilityRationaleEntry = {
@@ -13,6 +14,8 @@ export type ExplainabilitySelectionMetadata = {
   perExerciseSetTargets?: Record<string, number>;
   adaptiveDeloadApplied?: boolean;
   periodizationWeek?: number;
+  cycleContext?: CycleContextSnapshot;
+  deloadDecision?: DeloadDecision;
 };
 
 type DriverLabel =
@@ -90,6 +93,14 @@ export function parseExplainabilitySelectionMetadata(
     typeof parsed.periodizationWeek === "number" && Number.isFinite(parsed.periodizationWeek)
       ? parsed.periodizationWeek
       : undefined;
+  const cycleContext =
+    parsed.cycleContext && typeof parsed.cycleContext === "object" && !Array.isArray(parsed.cycleContext)
+      ? (parsed.cycleContext as CycleContextSnapshot)
+      : undefined;
+  const deloadDecision =
+    parsed.deloadDecision && typeof parsed.deloadDecision === "object" && !Array.isArray(parsed.deloadDecision)
+      ? (parsed.deloadDecision as DeloadDecision)
+      : undefined;
 
   return {
     rationale,
@@ -97,6 +108,8 @@ export function parseExplainabilitySelectionMetadata(
     perExerciseSetTargets,
     adaptiveDeloadApplied,
     periodizationWeek,
+    cycleContext,
+    deloadDecision,
   };
 }
 

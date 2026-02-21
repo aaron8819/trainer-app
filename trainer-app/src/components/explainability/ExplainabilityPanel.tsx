@@ -41,6 +41,7 @@ export function ExplainabilityPanel({ explanation }: Props) {
   // Convert Map to array for rendering
   const exerciseRationales = Array.from(explanation.exerciseRationales.entries());
   const prescriptionRationales = explanation.prescriptionRationales;
+  const progressionReceipts = explanation.progressionReceipts;
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -90,9 +91,9 @@ export function ExplainabilityPanel({ explanation }: Props) {
             return (
               <ExerciseRationaleCard
                 key={exerciseId}
-                exerciseId={exerciseId}
                 rationale={rationale}
                 prescription={prescription}
+                progressionReceipt={progressionReceipts.get(exerciseId)}
                 isExpanded={expandedExercises.has(exerciseId)}
                 onToggle={() => toggleExercise(exerciseId)}
               />

@@ -113,4 +113,35 @@ describe("generateSessionFromIntent", () => {
     expect(result.selection.intentDiagnostics?.targetMuscles).toEqual(["Chest"]);
     expect(result.selection.intentDiagnostics?.alignedRatio).toBeGreaterThanOrEqual(0.7);
   });
+
+  it("uses blockContext.weekInBlock for periodization week when it differs from weekInMeso", async () => {
+    loadCurrentBlockContextMock.mockResolvedValue({
+      weekInMeso: 4,
+      blockContext: {
+        weekInBlock: 2,
+        block: { blockType: "intensification", durationWeeks: 3 },
+        mesocycle: { durationWeeks: 5 },
+        macroCycle: { primaryGoal: "hypertrophy", trainingAge: "intermediate" },
+      },
+    });
+
+    const result = await generateSessionFromIntent("user-1", { intent: "push" });
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    expect(result.selection.periodizationWeek).toBe(2);
+    expect(result.selection.cycleContext?.weekInMeso).toBe(4);
+    expect(result.selection.cycleContext?.weekInBlock).toBe(2);
+  });
+
+  it("populates deloadDecision when a deload is applied", async () => {
+    loadCurrentBlockContextMock.mockResolvedValue({ blockContext: null, weekInMeso: 4 });
+
+    const result = await generateSessionFromIntent("user-1", { intent: "push" });
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    expect(result.selection.deloadDecision?.mode).toBe("scheduled");
+    expect(result.selection.deloadDecision?.reductionPercent).toBe(50);
+  });
 });

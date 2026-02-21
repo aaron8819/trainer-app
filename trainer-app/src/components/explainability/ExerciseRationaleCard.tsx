@@ -9,20 +9,21 @@
 "use client";
 
 import type { ExerciseRationale, PrescriptionRationale } from "@/lib/engine/explainability";
+import type { ProgressionReceipt } from "@/lib/evidence/types";
 import { PrescriptionDetails } from "./PrescriptionDetails";
 
 type Props = {
-  exerciseId: string;
   rationale: ExerciseRationale;
   prescription?: PrescriptionRationale;
+  progressionReceipt?: ProgressionReceipt;
   isExpanded: boolean;
   onToggle: () => void;
 };
 
 export function ExerciseRationaleCard({
-  exerciseId,
   rationale,
   prescription,
+  progressionReceipt,
   isExpanded,
   onToggle,
 }: Props) {
@@ -149,6 +150,29 @@ export function ExerciseRationaleCard({
             </div>
           )}
 
+          {progressionReceipt && (
+            <div className="mb-4 rounded-lg border border-slate-100 bg-slate-50 p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Progression Receipt
+              </p>
+              <p className="mt-1 text-xs text-slate-700">
+                Trigger: {progressionReceipt.trigger.replaceAll("_", " ")}
+              </p>
+              <p className="mt-1 text-xs text-slate-600">
+                Last: {formatSummary(progressionReceipt.lastPerformed)}
+              </p>
+              <p className="mt-1 text-xs text-slate-600">
+                Today: {formatSummary(progressionReceipt.todayPrescription)}
+              </p>
+              {progressionReceipt.delta.loadPercent != null ? (
+                <p className="mt-1 text-xs text-slate-600">
+                  Delta: {progressionReceipt.delta.loadPercent >= 0 ? "+" : ""}
+                  {progressionReceipt.delta.loadPercent.toFixed(1)}% load
+                </p>
+              ) : null}
+            </div>
+          )}
+
           {/* Alternatives */}
           {rationale.alternatives.length > 0 && (
             <div>
@@ -192,4 +216,16 @@ function formatFactorLabel(key: string): string {
     movementNovelty: "Movement Novelty",
   };
   return labels[key] || key;
+}
+
+function formatSummary(
+  summary: ProgressionReceipt["lastPerformed"] | ProgressionReceipt["todayPrescription"]
+) {
+  if (!summary) return "No performed history";
+  const parts = [
+    summary.reps != null ? `${summary.reps} reps` : null,
+    summary.load != null ? `${summary.load} load` : null,
+    summary.rpe != null ? `RPE ${summary.rpe}` : null,
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(" | ") : "No performed history";
 }

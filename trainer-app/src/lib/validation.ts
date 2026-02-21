@@ -84,6 +84,8 @@ export const saveWorkoutSchema = z.object({
   selectionMode: z.enum(WORKOUT_SELECTION_MODE_VALUES).optional(),
   sessionIntent: workoutSessionIntentDbSchema.optional(),
   selectionMetadata: z.unknown().optional(),
+  wasAutoregulated: z.boolean().optional(),
+  autoregulationLog: z.unknown().optional(),
   forcedSplit: z.enum(["PUSH", "PULL", "LEGS", "UPPER", "LOWER", "FULL_BODY"]).optional(),
   advancesSplit: z.boolean().optional(),
   filteredExercises: z

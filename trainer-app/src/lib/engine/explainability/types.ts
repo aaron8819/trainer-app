@@ -18,6 +18,7 @@ export type WorkoutExplanation = {
   coachMessages: CoachMessage[];
   exerciseRationales: Map<string, ExerciseRationale>; // exerciseId -> rationale
   prescriptionRationales: Map<string, PrescriptionRationale>; // exerciseId -> rationale
+  progressionReceipts: Map<string, ProgressionReceipt>; // exerciseId -> progression receipt
   filteredExercises?: FilteredExerciseSummary[]; // Exercises filtered due to constraints (Phase 2)
 };
 
@@ -223,3 +224,4 @@ export type FilteredExerciseSummary = {
     | string; // Other rejection reasons
   userFriendlyMessage: string; // "Avoided per your preferences", "Equipment not available", etc.
 };
+import type { ProgressionReceipt } from "@/lib/evidence/types";

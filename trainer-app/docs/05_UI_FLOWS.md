@@ -1,7 +1,7 @@
 # 05 UI Flows
 
 Owner: Aaron  
-Last reviewed: 2026-02-20  
+Last reviewed: 2026-02-21  
 Purpose: Canonical reference for current UI routes and core user flows implemented in the Next.js App Router.
 
 This doc covers:
@@ -46,10 +46,12 @@ Sources of truth:
 - Completion actions call `POST /api/workouts/save` with explicit action commands (`mark_completed`, `mark_skipped`).
 - `mark_completed` can return `workoutStatus: PARTIAL` when unresolved sets remain; UI must treat this as a performed session result, not a hard error.
 - Plan writes remain non-terminal (`save_plan`) and do not finalize `COMPLETED|PARTIAL|SKIPPED`.
+- Log page now surfaces persisted cycle/explainability context (`cycleContext`, deload decision reason, and derived target RIR) from `selectionMetadata` parsing in `src/app/log/[id]/page.tsx` and `src/lib/ui/explainability.ts`.
 
 4. Review workout rationale
 - UI: `/workout/[id]` via `WorkoutExplanation`
 - API: `GET /api/workouts/[id]/explanation`
+- Explainability panel renders per-exercise progression receipts alongside rationale/prescription details via `src/components/WorkoutExplanation.tsx`, `src/components/explainability/ExplainabilityPanel.tsx`, and `src/components/explainability/ExerciseRationaleCard.tsx`.
 
 5. Program and readiness loop
 - UI: `/program`, readiness components

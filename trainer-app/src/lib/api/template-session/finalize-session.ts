@@ -112,6 +112,8 @@ export function finalizePostLoadResult(
       volumePlanByMuscle,
       adaptiveDeloadApplied: mapped.adaptiveDeload,
       periodizationWeek: mapped.weekInBlock,
+      cycleContext: mapped.cycleContext,
+      deloadDecision: mapped.deloadDecision,
     },
     filteredExercises,
   };

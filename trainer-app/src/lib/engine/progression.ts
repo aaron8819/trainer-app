@@ -1,6 +1,7 @@
 import { DELOAD_THRESHOLDS, PLATEAU_CRITERIA } from "./rules";
 import type { TrainingAge, WorkoutHistoryEntry } from "./types";
 import { roundLoad } from "./utils";
+import { isPerformedHistoryEntry } from "./history";
 
 export type ProgressionSet = { reps: number; rpe?: number; load?: number };
 type HistorySet = WorkoutHistoryEntry["exercises"][number]["sets"][number];
@@ -156,8 +157,8 @@ export function shouldDeload(
   const recent = history.slice(-PLATEAU_CRITERIA.noProgressSessions);
   if (recent.length < PLATEAU_CRITERIA.noProgressSessions) return false;
 
-  const allCompleted = recent.every((entry) => entry.completed);
-  if (!allCompleted) return false;
+  const allPerformed = recent.every(isPerformedHistoryEntry);
+  if (!allPerformed) return false;
 
   if (!shouldUseMainLiftPlateauDetection() || !mainLiftExerciseIds?.size) {
     return hasPlateauByTotalReps(recent);

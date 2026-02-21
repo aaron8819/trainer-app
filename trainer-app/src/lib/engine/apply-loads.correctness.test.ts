@@ -60,6 +60,25 @@ function makeHistory(completed: boolean): WorkoutHistoryEntry[] {
   ];
 }
 
+function makePartialHistory(): WorkoutHistoryEntry[] {
+  return [
+    {
+      date: "2026-02-19T00:00:00.000Z",
+      completed: false,
+      status: "PARTIAL",
+      exercises: [
+        {
+          exerciseId: "bench",
+          sets: [
+            { exerciseId: "bench", setIndex: 1, reps: 10, rpe: 7.5, load: 200 },
+            { exerciseId: "bench", setIndex: 2, reps: 10, rpe: 8, load: 200 },
+          ],
+        },
+      ],
+    },
+  ];
+}
+
 describe("applyLoads correctness", () => {
   it("progresses load from performed history but does not from unperformed history", () => {
     const withPerformed = applyLoads(baseWorkout, {
@@ -83,5 +102,18 @@ describe("applyLoads correctness", () => {
 
     expect(performedTop).toBeGreaterThan(200);
     expect(unperformedTop).toBe(200);
+  });
+
+  it("treats PARTIAL status as performed history for progression", () => {
+    const withPartial = applyLoads(baseWorkout, {
+      history: makePartialHistory(),
+      baselines: [{ exerciseId: "bench", context: "volume", topSetWeight: 200 }],
+      exerciseById: { bench },
+      primaryGoal: "hypertrophy",
+      profile: { trainingAge: "intermediate" },
+    });
+
+    const partialTop = withPartial.mainLifts[0].sets[0].targetLoad ?? 0;
+    expect(partialTop).toBeGreaterThan(200);
   });
 });

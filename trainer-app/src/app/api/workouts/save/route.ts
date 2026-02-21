@@ -5,9 +5,56 @@ import { resolveOwner } from "@/lib/api/workout-context";
 import { WorkoutStatus } from "@prisma/client";
 import { updateExerciseExposure } from "@/lib/api/exercise-exposure";
 import { isTerminalWorkoutStatus } from "@/lib/workout-status";
+import type { CycleContextSnapshot } from "@/lib/evidence/types";
 
 type SaveAction = "save_plan" | "mark_completed" | "mark_partial" | "mark_skipped";
 type PersistedStatus = "PLANNED" | "IN_PROGRESS" | "PARTIAL" | "COMPLETED" | "SKIPPED";
+type JsonObject = Record<string, unknown>;
+
+function toObject(value: unknown): JsonObject {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  return value as JsonObject;
+}
+
+function deriveCycleContext(
+  incomingSelectionMetadata: JsonObject
+): CycleContextSnapshot {
+  const incoming = incomingSelectionMetadata.cycleContext;
+  if (incoming && typeof incoming === "object" && !Array.isArray(incoming)) {
+    const parsed = incoming as Partial<CycleContextSnapshot>;
+    if (
+      typeof parsed.weekInMeso === "number" &&
+      typeof parsed.weekInBlock === "number" &&
+      typeof parsed.phase === "string" &&
+      typeof parsed.blockType === "string" &&
+      typeof parsed.isDeload === "boolean" &&
+      (parsed.source === "computed" || parsed.source === "fallback")
+    ) {
+      return parsed as CycleContextSnapshot;
+    }
+  }
+
+  const deloadDecision = incomingSelectionMetadata.deloadDecision;
+  const isDeload =
+    Boolean(
+      deloadDecision &&
+      typeof deloadDecision === "object" &&
+      !Array.isArray(deloadDecision) &&
+      (deloadDecision as Record<string, unknown>).mode !== "none"
+    );
+  const blockType: CycleContextSnapshot["blockType"] = isDeload ? "deload" : "accumulation";
+
+  return {
+    weekInMeso: 1,
+    weekInBlock: 1,
+    phase: blockType,
+    blockType,
+    isDeload,
+    source: "fallback",
+  };
+}
 
 function inferAction(input: {
   action?: SaveAction;
@@ -58,6 +105,19 @@ export async function POST(request: Request) {
   let persistedRevision = 1;
   let finalStatus: PersistedStatus = (parsed.data.status ?? WorkoutStatus.PLANNED) as PersistedStatus;
   let didCompleteTransition = false;
+  const incomingSelectionMetadata = toObject(parsed.data.selectionMetadata);
+  const cycleContext = deriveCycleContext(incomingSelectionMetadata);
+  const selectionMetadata: JsonObject = {
+    ...incomingSelectionMetadata,
+    cycleContext,
+  };
+
+  const incomingAutoregulationLog = toObject(parsed.data.autoregulationLog);
+  const wasAutoregulated =
+    parsed.data.wasAutoregulated ?? Boolean(incomingAutoregulationLog.wasAutoregulated);
+  const autoregulationLog = Object.keys(incomingAutoregulationLog).length > 0
+    ? incomingAutoregulationLog
+    : undefined;
 
   try {
     await prisma.$transaction(async (tx) => {
@@ -158,7 +218,9 @@ export async function POST(request: Request) {
           notes: parsed.data.notes ?? undefined,
           selectionMode,
           sessionIntent: parsed.data.sessionIntent ?? undefined,
-          selectionMetadata: parsed.data.selectionMetadata ?? undefined,
+          selectionMetadata,
+          wasAutoregulated,
+          autoregulationLog,
           forcedSplit: parsed.data.forcedSplit ?? undefined,
           advancesSplit: parsed.data.advancesSplit ?? undefined,
           templateId: parsed.data.templateId ?? undefined,
@@ -176,7 +238,9 @@ export async function POST(request: Request) {
           notes: parsed.data.notes ?? undefined,
           selectionMode,
           sessionIntent: parsed.data.sessionIntent ?? undefined,
-          selectionMetadata: parsed.data.selectionMetadata ?? undefined,
+          selectionMetadata,
+          wasAutoregulated,
+          autoregulationLog,
           forcedSplit: parsed.data.forcedSplit ?? undefined,
           advancesSplit: parsed.data.advancesSplit ?? undefined,
           templateId: parsed.data.templateId ?? undefined,

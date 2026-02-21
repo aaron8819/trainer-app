@@ -44,6 +44,7 @@ export async function GET(
     coachMessages: result.coachMessages,
     exerciseRationales: Object.fromEntries(result.exerciseRationales),
     prescriptionRationales: Object.fromEntries(result.prescriptionRationales),
+    progressionReceipts: Object.fromEntries(result.progressionReceipts),
     filteredExercises: result.filteredExercises ?? [],
   });
 }

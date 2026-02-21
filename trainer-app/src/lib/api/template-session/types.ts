@@ -6,6 +6,7 @@ import type { SraWarning } from "@/lib/engine/sra";
 import type { SubstitutionSuggestion } from "@/lib/engine/template-session";
 import type { FilteredExerciseSummary } from "@/lib/engine/explainability";
 import type { VolumePlanByMuscle } from "@/lib/engine/volume";
+import type { CycleContextSnapshot, DeloadDecision } from "@/lib/evidence/types";
 import type {
   loadWorkoutContext,
   mapCheckIn,
@@ -41,6 +42,8 @@ export type SessionGenerationResult =
       selection: SelectionOutput & {
         adaptiveDeloadApplied?: boolean;
         periodizationWeek?: number;
+        cycleContext?: CycleContextSnapshot;
+        deloadDecision?: DeloadDecision;
       };
       filteredExercises?: FilteredExerciseSummary[];
     }
@@ -60,6 +63,8 @@ export type MappedGenerationContext = {
   mesocycleLength: number;
   effectivePeriodization: ReturnType<typeof getPeriodizationModifiers>;
   adaptiveDeload: boolean;
+  deloadDecision: DeloadDecision;
   blockContext: BlockContext | null;
   rotationContext: Awaited<ReturnType<typeof loadExerciseExposure>>;
+  cycleContext: CycleContextSnapshot;
 };

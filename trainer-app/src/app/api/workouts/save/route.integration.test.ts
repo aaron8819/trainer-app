@@ -295,4 +295,31 @@ describe("POST /api/workouts/save", () => {
     const upsert = mocks.workoutUpsert.mock.calls[0][0];
     expect(upsert.update.revision).toEqual({ increment: 1 });
   });
+
+  it("persists fallback cycle context with source=fallback when missing upstream", async () => {
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutId: "workout-1",
+          exercises: [
+            {
+              section: "MAIN",
+              exerciseId: "bench",
+              sets: [{ setIndex: 1, targetReps: 8 }],
+            },
+          ],
+        }),
+      })
+    );
+    expect(response.status).toBe(200);
+
+    const upsert = mocks.workoutUpsert.mock.calls[0][0];
+    const createMetadata = upsert.create.selectionMetadata as Record<string, unknown>;
+    const cycleContext = createMetadata.cycleContext as Record<string, unknown>;
+    expect(cycleContext.source).toBe("fallback");
+    expect(cycleContext.weekInMeso).toBe(1);
+    expect(cycleContext.weekInBlock).toBe(1);
+  });
 });

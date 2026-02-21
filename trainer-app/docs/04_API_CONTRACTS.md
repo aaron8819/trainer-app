@@ -1,7 +1,7 @@
 # 04 API Contracts
 
 Owner: Aaron  
-Last reviewed: 2026-02-20  
+Last reviewed: 2026-02-21  
 Purpose: Canonical API contract map for App Router endpoints and payload validation boundaries.
 
 This doc covers:
@@ -44,6 +44,7 @@ Sources of truth:
 - Logging: `setLogSchema`
 - Templates: `createTemplateSchema`, `updateTemplateSchema`, `addExerciseToTemplateSchema`
 - Profile/readiness/analytics: `profileSetupSchema`, `readinessSignalSchema`, `analyticsSummarySchema`
+- Save payload supports explainability/runtime metadata passthrough for persisted workouts via `saveWorkoutSchema` fields `wasAutoregulated` and `autoregulationLog` in `src/lib/validation.ts` and persistence in `src/app/api/workouts/save/route.ts`.
 
 ## Workout save terminal transition contract
 - Route: `POST /api/workouts/save` (`src/app/api/workouts/save/route.ts`).
@@ -57,3 +58,9 @@ Sources of truth:
 - Program advancement split:
   - Performed-signal readers use `COMPLETED` + `PARTIAL` (`src/lib/workout-status.ts`).
   - Mesocycle advancement increments on transition to `COMPLETED` only (`src/app/api/workouts/save/route.ts`).
+- Save route normalizes/persists cycle context into `selectionMetadata.cycleContext`; when not supplied upstream it writes a fallback snapshot with `source: "fallback"` (`deriveCycleContext()` in `src/app/api/workouts/save/route.ts`).
+
+## Workout explanation response contract
+- Route: `GET /api/workouts/[id]/explanation` (`src/app/api/workouts/[id]/explanation/route.ts`).
+- Response includes `progressionReceipts` keyed by `exerciseId` in addition to `exerciseRationales` and `prescriptionRationales`.
+- Receipt payload shape is defined by `ProgressionReceipt` in `src/lib/evidence/types.ts` and populated by `generateWorkoutExplanation()` in `src/lib/api/explainability.ts`.

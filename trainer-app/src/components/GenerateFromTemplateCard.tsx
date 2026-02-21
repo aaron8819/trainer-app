@@ -81,6 +81,37 @@ type GeneratedMetadata = {
   selection?: unknown;
 };
 
+type AutoregulationData = {
+  applied: boolean;
+  reason: string;
+  rationale?: string;
+  wasAutoregulated?: boolean;
+  signalAgeHours: number | null;
+  fatigueScore?: {
+    overall: number;
+  } | null;
+  modifications: Array<{ type?: string; reason: string }>;
+};
+
+function buildAutoregulationLog(autoregulation: AutoregulationData | null) {
+  if (!autoregulation) return undefined;
+  const hasReadinessDeload = autoregulation.modifications.some(
+    (mod) => mod.type === "deload_trigger"
+  );
+
+  return {
+    ...autoregulation,
+    deloadDecision: hasReadinessDeload
+      ? {
+          mode: "readiness",
+          reason: [autoregulation.reason],
+          reductionPercent: 50,
+          appliedTo: "both",
+        }
+      : undefined,
+  };
+}
+
 function formatTargetReps(set?: WorkoutSet): string {
   if (!set) {
     return "";
@@ -187,6 +218,7 @@ export function GenerateFromTemplateCard({ templates, blockPhase }: GenerateFrom
   const [savedId, setSavedId] = useState<string | null>(null);
   const [showCheckIn, setShowCheckIn] = useState(false);
   const [generatedMetadata, setGeneratedMetadata] = useState<GeneratedMetadata | null>(null);
+  const [autoregulation, setAutoregulation] = useState<AutoregulationData | null>(null);
 
   const generateWorkout = async () => {
     const response = await fetch("/api/workouts/generate-from-template", {
@@ -210,6 +242,7 @@ export function GenerateFromTemplateCard({ templates, blockPhase }: GenerateFrom
       sessionIntent: body.sessionIntent,
       selection: body.selection,
     });
+    setAutoregulation(body.autoregulation ?? null);
     setDismissedSubstitutions(new Set());
     setAppliedSubstitutions(new Set());
     return true;
@@ -226,6 +259,7 @@ export function GenerateFromTemplateCard({ templates, blockPhase }: GenerateFrom
     setSraWarnings([]);
     setSubstitutions([]);
     setGeneratedMetadata(null);
+    setAutoregulation(null);
     setDismissedSubstitutions(new Set());
     setAppliedSubstitutions(new Set());
     setShowCheckIn(true);
@@ -310,6 +344,8 @@ export function GenerateFromTemplateCard({ templates, blockPhase }: GenerateFrom
           ? toDbSessionIntent(generatedMetadata.sessionIntent)
           : undefined,
       selectionMetadata: generatedMetadata?.selection,
+      wasAutoregulated: autoregulation?.wasAutoregulated ?? autoregulation?.applied ?? false,
+      autoregulationLog: buildAutoregulationLog(autoregulation),
       advancesSplit: false,
       exercises: [
         ...workout.mainLifts.map((e) => ({ ...e, section: "MAIN" as const })),

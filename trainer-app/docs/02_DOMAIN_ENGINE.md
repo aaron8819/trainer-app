@@ -1,7 +1,7 @@
 # 02 Domain Engine
 
 Owner: Aaron  
-Last reviewed: 2026-02-20  
+Last reviewed: 2026-02-21  
 Purpose: Canonical reference for workout-generation domain logic, including selection, progression, periodization, readiness, and explainability.
 
 This doc covers:
@@ -34,6 +34,7 @@ Sources of truth:
 - Progression math is implemented in `src/lib/engine/progression.ts`.
 - Load assignment and fallback logic are implemented in `src/lib/engine/apply-loads.ts`.
 - Historical training signals are mapped from persisted workouts/logs in `mapHistory()` within `src/lib/api/workout-context.ts`.
+- Performed-history filtering (not completed-only filtering) is canonical for load progression and plateau/deload checks via `filterPerformedHistory()` and `isPerformedHistoryEntry()` in `src/lib/engine/history.ts`.
 
 ## Periodization and readiness
 - Macro/meso/block logic lives in `src/lib/engine/periodization`.
@@ -50,3 +51,4 @@ Sources of truth:
 - Explainability domain modules are in `src/lib/engine/explainability`.
 - API composition for workout explanations is in `src/lib/api/explainability.ts`.
 - Explanation endpoint is `src/app/api/workouts/[id]/explanation/route.ts`.
+- Workout explanations include per-exercise progression receipts (`WorkoutExplanation.progressionReceipts` in `src/lib/engine/explainability/types.ts`), derived from performed history and current prescription in `src/lib/api/explainability.ts`.

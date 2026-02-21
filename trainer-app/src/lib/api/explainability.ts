@@ -15,6 +15,7 @@ import { mapExercises } from "./workout-context";
 import { getPeriodizationModifiers } from "@/lib/engine/rules";
 import type { Prisma, Workout, WorkoutExercise, WorkoutSet } from "@prisma/client";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
+import type { DeloadDecision, ProgressionReceipt, ProgressionSetSummary } from "@/lib/evidence/types";
 import {
   computeMusclesApproachingMRV,
   computeVolumeSpikePercent,
@@ -146,6 +147,9 @@ export async function generateWorkoutExplanation(
   const rawMacroGoal = blockContext?.macroCycle.primaryGoal ?? "hypertrophy";
   const mappedPrimaryGoal: PrimaryGoal = rawMacroGoal === "general_fitness" ? "hypertrophy" : rawMacroGoal;
   const prescriptionRationales = new Map();
+  const progressionReceipts = new Map<string, ProgressionReceipt>();
+  const deloadDecision = resolveDeloadDecision(workout.selectionMetadata, workout.autoregulationLog);
+  const readinessScaledExerciseIds = resolveReadinessScaledExercises(workout.autoregulationLog);
 
   for (const workoutExercise of workout.exercises) {
     const exercise = mappedExercises.find((e) => e.id === workoutExercise.exerciseId);
@@ -194,6 +198,18 @@ export async function generateWorkoutExplanation(
     });
 
     prescriptionRationales.set(workoutExercise.exerciseId, rationale);
+
+    const lastPerformed = await loadLatestPerformedSetSummary(
+      workout.userId,
+      workout.id,
+      workoutExercise.exerciseId
+    );
+    const todayPrescription = summarizeTodayTopSet(engineSets);
+    const isReadinessScaled = readinessScaledExerciseIds.has(workoutExercise.exerciseId);
+    progressionReceipts.set(
+      workoutExercise.exerciseId,
+      buildProgressionReceipt(lastPerformed, todayPrescription, deloadDecision, isReadinessScaled)
+    );
   }
 
   const filteredExercises: FilteredExerciseSummary[] = (workout.filteredExercises ?? []).map((fe) => ({
@@ -219,6 +235,7 @@ export async function generateWorkoutExplanation(
     coachMessages,
     exerciseRationales,
     prescriptionRationales,
+    progressionReceipts,
     filteredExercises,
   };
 }
@@ -715,5 +732,167 @@ function buildSelectionCandidate(
     timeContribution: ((exercise.timePerSetSec ?? 90) * setCount) / 60,
     scores,
     totalScore: storedRationale?.score ?? fallbackTotalScore,
+  };
+}
+
+function resolveDeloadDecision(
+  selectionMetadata: Prisma.JsonValue | null | undefined,
+  autoregulationLog: Prisma.JsonValue | null | undefined
+): DeloadDecision | null {
+  const fromSelection = extractDeloadDecisionFromJson(selectionMetadata);
+  if (fromSelection) return fromSelection;
+  const fromAutoreg = extractDeloadDecisionFromJson(autoregulationLog);
+  return fromAutoreg ?? null;
+}
+
+function extractDeloadDecisionFromJson(value: Prisma.JsonValue | null | undefined): DeloadDecision | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const root = value as Record<string, unknown>;
+  const raw = root.deloadDecision;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return null;
+  }
+
+  const entry = raw as Record<string, unknown>;
+  if (
+    typeof entry.mode !== "string" ||
+    !Array.isArray(entry.reason) ||
+    typeof entry.reductionPercent !== "number" ||
+    typeof entry.appliedTo !== "string"
+  ) {
+    return null;
+  }
+
+  return {
+    mode: entry.mode as DeloadDecision["mode"],
+    reason: entry.reason.filter((item): item is string => typeof item === "string"),
+    reductionPercent: entry.reductionPercent,
+    appliedTo: entry.appliedTo as DeloadDecision["appliedTo"],
+  };
+}
+
+function resolveReadinessScaledExercises(
+  autoregulationLog: Prisma.JsonValue | null | undefined
+): Set<string> {
+  if (!autoregulationLog || typeof autoregulationLog !== "object" || Array.isArray(autoregulationLog)) {
+    return new Set<string>();
+  }
+  const root = autoregulationLog as Record<string, unknown>;
+  const modsRaw = root.modifications;
+  if (!Array.isArray(modsRaw)) {
+    return new Set<string>();
+  }
+
+  const ids = new Set<string>();
+  for (const mod of modsRaw) {
+    if (!mod || typeof mod !== "object" || Array.isArray(mod)) continue;
+    const record = mod as Record<string, unknown>;
+    const exerciseId = record.exerciseId;
+    const type = record.type;
+    if (typeof exerciseId === "string" && typeof type === "string" && type === "intensity_scale") {
+      ids.add(exerciseId);
+    }
+  }
+  return ids;
+}
+
+async function loadLatestPerformedSetSummary(
+  userId: string,
+  workoutId: string,
+  exerciseId: string
+): Promise<ProgressionSetSummary | null> {
+  const previous = await prisma.workoutExercise.findFirst({
+    where: {
+      exerciseId,
+      workout: {
+        userId,
+        id: { not: workoutId },
+        status: { in: [...PERFORMED_WORKOUT_STATUSES] },
+      },
+    },
+    orderBy: { workout: { scheduledDate: "desc" } },
+    include: {
+      sets: {
+        orderBy: { setIndex: "asc" },
+        include: {
+          logs: { orderBy: { completedAt: "desc" }, take: 1 },
+        },
+      },
+    },
+  });
+
+  if (!previous) return null;
+  for (const set of previous.sets) {
+    const log = set.logs[0];
+    if (!log || log.wasSkipped) continue;
+    return {
+      reps: log.actualReps ?? null,
+      load: log.actualLoad ?? null,
+      rpe: log.actualRpe ?? null,
+    };
+  }
+  return null;
+}
+
+function summarizeTodayTopSet(
+  sets: Array<{ targetReps?: number; targetRpe?: number; targetLoad?: number }>
+): ProgressionSetSummary | null {
+  const top = sets.find((set) => set.targetLoad != null || set.targetReps != null || set.targetRpe != null);
+  if (!top) return null;
+  return {
+    reps: top.targetReps ?? null,
+    load: top.targetLoad ?? null,
+    rpe: top.targetRpe ?? null,
+  };
+}
+
+function buildProgressionReceipt(
+  lastPerformed: ProgressionSetSummary | null,
+  todayPrescription: ProgressionSetSummary | null,
+  deloadDecision: DeloadDecision | null,
+  readinessScaled: boolean
+): ProgressionReceipt {
+  const loadDelta =
+    lastPerformed?.load != null && todayPrescription?.load != null
+      ? todayPrescription.load - lastPerformed.load
+      : null;
+  const loadPercent =
+    loadDelta != null && lastPerformed?.load && lastPerformed.load > 0
+      ? (loadDelta / lastPerformed.load) * 100
+      : null;
+  const repsDelta =
+    lastPerformed?.reps != null && todayPrescription?.reps != null
+      ? todayPrescription.reps - lastPerformed.reps
+      : null;
+  const rpeDelta =
+    lastPerformed?.rpe != null && todayPrescription?.rpe != null
+      ? todayPrescription.rpe - lastPerformed.rpe
+      : null;
+
+  let trigger: ProgressionReceipt["trigger"] = "insufficient_data";
+  if (deloadDecision && deloadDecision.mode !== "none") {
+    trigger = "deload";
+  } else if (readinessScaled) {
+    trigger = "readiness_scale";
+  } else if (todayPrescription?.load == null || lastPerformed?.load == null) {
+    trigger = "insufficient_data";
+  } else if (todayPrescription.load > lastPerformed.load) {
+    trigger = "double_progression";
+  } else {
+    trigger = "hold";
+  }
+
+  return {
+    lastPerformed,
+    todayPrescription,
+    delta: {
+      load: loadDelta,
+      loadPercent,
+      reps: repsDelta,
+      rpe: rpeDelta,
+    },
+    trigger,
   };
 }

@@ -1,5 +1,5 @@
 import { computeNextLoad } from "./progression";
-import { filterCompletedHistory, sortHistoryByDateDesc } from "./history";
+import { filterPerformedHistory, sortHistoryByDateDesc } from "./history";
 import {
   getBaseTargetRpe,
   getBackOffMultiplier,
@@ -209,7 +209,7 @@ export function applyLoads(workout: WorkoutPlan, options: ApplyLoadsOptions): Wo
 }
 
 function buildHistoryIndex(history: WorkoutHistoryEntry[]) {
-  const sorted = sortHistoryByDateDesc(filterCompletedHistory(history));
+  const sorted = sortHistoryByDateDesc(filterPerformedHistory(history));
   const index = new Map<string, WorkoutSetHistory[]>();
   for (const entry of sorted) {
     for (const exercise of entry.exercises) {

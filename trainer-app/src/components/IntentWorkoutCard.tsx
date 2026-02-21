@@ -48,12 +48,33 @@ type GeneratedMetadata = {
 type AutoregulationData = {
   applied: boolean;
   reason: string;
+  rationale?: string;
+  wasAutoregulated?: boolean;
   signalAgeHours: number | null;
   fatigueScore: {
     overall: number;
   } | null;
-  modifications: Array<{ reason: string }>;
+  modifications: Array<{ type?: string; reason: string }>;
 };
+
+function buildAutoregulationLog(autoregulation: AutoregulationData | null) {
+  if (!autoregulation) return undefined;
+  const hasReadinessDeload = autoregulation.modifications.some(
+    (mod) => mod.type === "deload_trigger"
+  );
+
+  return {
+    ...autoregulation,
+    deloadDecision: hasReadinessDeload
+      ? {
+          mode: "readiness",
+          reason: [autoregulation.reason],
+          reductionPercent: 50,
+          appliedTo: "both",
+        }
+      : undefined,
+  };
+}
 
 const INTENT_OPTIONS: { value: SessionIntent; label: string }[] = [
   { value: "push", label: "Push" },
@@ -167,6 +188,8 @@ export function IntentWorkoutCard() {
       selectionMode: generatedMetadata?.selectionMode ?? "INTENT",
       sessionIntent: toDbSessionIntent(generatedMetadata?.sessionIntent ?? intent),
       selectionMetadata: generatedMetadata?.selectionMetadata,
+      wasAutoregulated: autoregulation?.wasAutoregulated ?? autoregulation?.applied ?? false,
+      autoregulationLog: buildAutoregulationLog(autoregulation),
       filteredExercises: generatedMetadata?.filteredExercises,
       advancesSplit: true,
       exercises: [

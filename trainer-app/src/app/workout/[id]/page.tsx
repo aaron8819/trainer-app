@@ -4,13 +4,22 @@ import { resolveOwner } from "@/lib/api/workout-context";
 import { generateWorkoutExplanation } from "@/lib/api/explainability";
 import { WorkoutExplanation } from "@/components/WorkoutExplanation";
 import { isDumbbellEquipment, formatLoad } from "@/lib/ui/load-display";
+import { parseExplainabilitySelectionMetadata } from "@/lib/ui/explainability";
+import {
+  getLoadProvenanceNote,
+  hasPerformedHistory,
+  isPerformedWorkoutStatus,
+} from "@/lib/ui/session-overview";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const runtime = "nodejs";
 
-
-const formatTargetRepDisplay = (set?: { targetReps: number; targetRepMin: number | null; targetRepMax: number | null }) => {
+const formatTargetRepDisplay = (set?: {
+  targetReps: number;
+  targetRepMin: number | null;
+  targetRepMax: number | null;
+}) => {
   if (!set) {
     return "-- reps";
   }
@@ -33,8 +42,6 @@ const hasDumbbellEquipment = (exercise: {
   isDumbbellEquipment(
     (exercise.exerciseEquipment ?? []).map((item) => item.equipment.type)
   );
-
-
 
 export default async function WorkoutDetailPage({
   params,
@@ -72,7 +79,10 @@ export default async function WorkoutDetailPage({
               },
             },
           },
-          sets: { orderBy: { setIndex: "asc" }, include: { logs: { orderBy: { completedAt: "desc" }, take: 1 } } },
+          sets: {
+            orderBy: { setIndex: "asc" },
+            include: { logs: { orderBy: { completedAt: "desc" }, take: 1 } },
+          },
         },
       },
     },
@@ -94,9 +104,22 @@ export default async function WorkoutDetailPage({
   const [injuries] = await Promise.all([
     prisma.injury.findMany({ where: { userId: workout.userId, isActive: true } }),
   ]);
-  // Load workout explanation (unified data source for inline badges + detail panel)
+
   const explanationResult = await generateWorkoutExplanation(workout.id);
   const explanation = "error" in explanationResult ? null : explanationResult;
+  const selectionMetadata = parseExplainabilitySelectionMetadata(workout.selectionMetadata);
+  const deloadDecision = selectionMetadata.deloadDecision;
+  const hasPerformedStatus = isPerformedWorkoutStatus(workout.status);
+  const startLoggingHref =
+    workout.status !== "COMPLETED" && workout.status !== "SKIPPED" ? `/log/${workout.id}` : null;
+  const intentBase = workout.sessionIntent
+    ? `${workout.sessionIntent.charAt(0)}${workout.sessionIntent.slice(1).toLowerCase()}`
+    : "Session";
+  const intentLabel = `${intentBase} - ${explanation?.sessionContext.progressionContext.volumeProgression ?? "planned"}`;
+  const deloadSummary =
+    deloadDecision && deloadDecision.mode !== "none"
+      ? `Deload: ${deloadDecision.mode} (${deloadDecision.reductionPercent}% ${deloadDecision.appliedTo})`
+      : null;
 
   const hasHighSeverityInjury = injuries.some((injury) => injury.severity >= 3);
 
@@ -136,29 +159,28 @@ export default async function WorkoutDetailPage({
           <div>
             <p className="text-sm uppercase tracking-wide text-slate-500">Workout</p>
             <h1 className="page-title mt-1.5">
-              {workout.status === "COMPLETED" ? "Session Review" : "Session Overview"}
+              {workout.status === "COMPLETED" || workout.status === "PARTIAL"
+                ? "Session Review"
+                : "Session Overview"}
             </h1>
-            <p className="mt-1.5 text-sm text-slate-600">
-              Estimated {workout.estimatedMinutes ?? "--"} minutes
-            </p>
+            <p className="mt-1.5 text-sm text-slate-600">Estimated {workout.estimatedMinutes ?? "--"} minutes</p>
           </div>
-          {workout.status !== "COMPLETED" && workout.status !== "SKIPPED" && (
-            <Link
-              className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-slate-300 px-5 py-2 text-sm font-semibold sm:w-auto"
-              href={`/log/${workout.id}`}
-            >
-              Start logging
-            </Link>
-          )}
         </div>
 
         <section className="mt-6 space-y-6 sm:mt-8 sm:space-y-8">
-          <WorkoutExplanation workoutId={workout.id} explanation={explanation} />
-          {sectionedExercises.filter((section) => section.items.length > 0).map((section) => (
-            <div key={section.label} className="space-y-3 sm:space-y-4">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">{section.label}</h2>
-              {(
-                section.items.map((exercise) => {
+          <WorkoutExplanation
+            workoutId={workout.id}
+            explanation={explanation}
+            intentLabel={intentLabel}
+            deloadSummary={deloadSummary}
+            startLoggingHref={startLoggingHref}
+          />
+          {sectionedExercises
+            .filter((section) => section.items.length > 0)
+            .map((section) => (
+              <div key={section.label} className="space-y-3 sm:space-y-4">
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">{section.label}</h2>
+                {section.items.map((exercise) => {
                   const isBodyweightExercise = hasBodyweightEquipment(exercise.exercise);
                   const isDumbbellExercise = hasDumbbellEquipment(exercise.exercise);
                   const targetLoad = exercise.sets[0]?.targetLoad;
@@ -171,11 +193,14 @@ export default async function WorkoutDetailPage({
                   const backOffLoadDisplay = hasBackOff
                     ? formatLoad(backOffSets[0]?.targetLoad, isDumbbellExercise, isBodyweightExercise)
                     : null;
-                  const loadNote = targetLoad !== null && targetLoad !== undefined
-                    ? "Estimated load (from workout history)."
-                    : isBodyweightExercise
-                    ? "Bodyweight movement (BW). Add load during logging only for weighted variations."
-                    : "Load to be chosen during logging.";
+
+                  const progressionReceipt = explanation?.progressionReceipts.get(exercise.exercise.id);
+                  const loadNote = getLoadProvenanceNote({
+                    targetLoad,
+                    isBodyweightExercise,
+                    hasHistory: hasPerformedHistory(progressionReceipt),
+                  });
+
                   const stressNote = hasHighSeverityInjury
                     ? `Joint stress: ${exercise.exercise.jointStress.toLowerCase()} (high stress filtered).`
                     : `Joint stress: ${exercise.exercise.jointStress.toLowerCase()}.`;
@@ -185,9 +210,13 @@ export default async function WorkoutDetailPage({
                       : exercise.section === "MAIN" || exercise.isMainLift
                       ? "Main lift"
                       : "Accessory";
-                  // Get exercise rationale from new explainability system
-                  const exerciseRationale = explanation?.exerciseRationales.get(exercise.exercise.id);
-                  const topReasons = exerciseRationale?.primaryReasons.slice(0, 2) ?? [];
+                  const triggerLabel = progressionReceipt?.trigger
+                    ? progressionReceipt.trigger.replaceAll("_", " ")
+                    : null;
+                  const loadDeltaLabel =
+                    progressionReceipt?.delta.loadPercent != null
+                      ? `${progressionReceipt.delta.loadPercent >= 0 ? "+" : ""}${progressionReceipt.delta.loadPercent.toFixed(1)}% load`
+                      : "No recent load delta";
 
                   return (
                     <div key={exercise.id} className="rounded-2xl border border-slate-200 p-4 sm:p-5">
@@ -200,12 +229,14 @@ export default async function WorkoutDetailPage({
                                 {`Top set: ${formatTargetRepDisplay(exercise.sets[0])}`}
                                 {topSetLoadDisplay ? ` | ${topSetLoadDisplay}` : ""}
                                 {exercise.sets[0]?.targetRpe ? ` | RPE ${exercise.sets[0].targetRpe}` : ""}
-                                {` + ${backOffSets.length}× back-off`}
-                                {backOffLoadDisplay ? `: ${formatTargetRepDisplay(backOffSets[0])} | ${backOffLoadDisplay}` : ""}
+                                {` + ${backOffSets.length}x back-off`}
+                                {backOffLoadDisplay
+                                  ? `: ${formatTargetRepDisplay(backOffSets[0])} | ${backOffLoadDisplay}`
+                                  : ""}
                               </>
                             ) : (
                               <>
-                                {`${exercise.sets.length} sets – ${formatTargetRepDisplay(exercise.sets[0])}`}
+                                {`${exercise.sets.length} sets - ${formatTargetRepDisplay(exercise.sets[0])}`}
                                 {topSetLoadDisplay ? ` | ${topSetLoadDisplay}` : ""}
                                 {exercise.sets[0]?.targetRpe ? ` | RPE ${exercise.sets[0].targetRpe}` : ""}
                               </>
@@ -213,26 +244,27 @@ export default async function WorkoutDetailPage({
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className="text-xs uppercase tracking-wide text-slate-500">
-                            {roleLabel}
-                          </span>
+                          <span className="text-xs uppercase tracking-wide text-slate-500">{roleLabel}</span>
                         </div>
                       </div>
-                      <p className="mt-2 text-xs text-slate-500">
-                        Why: {(exercise.movementPatterns?.length ? exercise.movementPatterns.map((p: string) => p.toLowerCase().replace(/_/g, " ")).join(", ") : "unknown")} pattern. {stressNote} {loadNote}
-                      </p>
-                      {topReasons.length > 0 ? (
-                        <div className="mt-2 text-xs text-slate-600">
-                          <p>
-                            Why included: {topReasons.join(" • ")}
-                          </p>
-                        </div>
+                      {roleLabel === "Main lift" && progressionReceipt ? (
+                        <p className="mt-1 text-xs text-slate-600">
+                          Progression: {triggerLabel}. {loadDeltaLabel}.
+                        </p>
                       ) : null}
+                      <p className="mt-2 text-xs text-slate-500">
+                        Why: {exercise.movementPatterns?.length
+                          ? exercise.movementPatterns
+                              .map((p: string) => p.toLowerCase().replace(/_/g, " "))
+                              .join(", ")
+                          : "unknown"}{" "}
+                        pattern. {stressNote} {loadNote}
+                      </p>
+
                       <div className="mt-3 grid gap-2 text-sm text-slate-600">
                         {exercise.sets.map((set) => {
                           const log = set.logs[0];
-                          const isCompleted = workout.status === "COMPLETED";
-                          const repDiff = isCompleted && log && !log.wasSkipped
+                          const repDiff = hasPerformedStatus && log && !log.wasSkipped
                             ? (log.actualReps ?? 0) - (set.targetReps ?? 0)
                             : null;
                           const loadMiss =
@@ -249,11 +281,9 @@ export default async function WorkoutDetailPage({
                               : repDiff === -1
                               ? "text-amber-700"
                               : "text-rose-700";
+
                           return (
-                            <div
-                              key={set.id}
-                              className="rounded-lg bg-slate-50 px-3 py-2"
-                            >
+                            <div key={set.id} className="rounded-lg bg-slate-50 px-3 py-2">
                               <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
                                 <span>{set.setIndex === 1 ? "Top set" : `Set ${set.setIndex}`}</span>
                                 <span className="text-slate-700">
@@ -264,23 +294,27 @@ export default async function WorkoutDetailPage({
                                   {set.targetRpe ? ` | RPE ${set.targetRpe}` : ""}
                                 </span>
                               </div>
-                              {isCompleted && log ? (
+                              {hasPerformedStatus && log ? (
                                 <>
                                   <div className={`mt-0.5 text-xs font-medium ${actualColor}`}>
                                     {log.wasSkipped
                                       ? "Actual: Skipped"
                                       : [
                                           `Actual: ${log.actualReps ?? "?"} reps`,
-                                          log.actualLoad != null ? formatLoad(log.actualLoad, isDumbbellExercise, false) : null,
+                                          log.actualLoad != null
+                                            ? formatLoad(log.actualLoad, isDumbbellExercise, false)
+                                            : null,
                                           log.actualRpe != null ? `RPE ${log.actualRpe}` : null,
                                         ]
                                           .filter(Boolean)
                                           .join(" | ")}
-                                    {!log.wasSkipped && repDiff !== null && repDiff >= 0 && !loadMiss ? " ✓" : ""}
+                                    {!log.wasSkipped && repDiff !== null && repDiff >= 0 && !loadMiss ? " OK" : ""}
                                   </div>
                                   {loadMiss && !log.wasSkipped && log.actualLoad != null && set.targetLoad != null ? (
                                     <div className="mt-0.5 text-xs text-slate-500">
-                                      {`Load: ${log.actualLoad} / ${set.targetLoad} lbs (${Math.round(((log.actualLoad - set.targetLoad) / set.targetLoad) * 100)}%)`}
+                                      {`Load: ${log.actualLoad} / ${set.targetLoad} lbs (${Math.round(
+                                        ((log.actualLoad - set.targetLoad) / set.targetLoad) * 100
+                                      )}%)`}
                                     </div>
                                   ) : null}
                                 </>
@@ -291,17 +325,11 @@ export default async function WorkoutDetailPage({
                       </div>
                     </div>
                   );
-                })
-              )}
-            </div>
-          ))}
+                })}
+              </div>
+            ))}
         </section>
       </div>
     </main>
   );
 }
-
-
-
-
-

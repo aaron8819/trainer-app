@@ -10,12 +10,17 @@ import type { Exercise as EngineExercise, PrimaryGoal } from "@/lib/engine/types
 import type { SelectionObjective, SelectionCandidate } from "@/lib/engine/selection-v2/types";
 import { loadCurrentBlockContext } from "./periodization";
 import { getRestSeconds } from "@/lib/engine/prescription";
-import { mapLatestCheckIn } from "./checkin-staleness";
+import { CHECK_IN_STALENESS_WINDOW_MS } from "./checkin-staleness";
 import { mapExercises } from "./workout-context";
 import { getPeriodizationModifiers } from "@/lib/engine/rules";
 import type { Prisma, Workout, WorkoutExercise, WorkoutSet } from "@prisma/client";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
-import type { DeloadDecision, ProgressionReceipt, ProgressionSetSummary } from "@/lib/evidence/types";
+import type {
+  CycleContextSnapshot,
+  DeloadDecision,
+  ProgressionReceipt,
+  ProgressionSetSummary,
+} from "@/lib/evidence/types";
 import {
   computeMusclesApproachingMRV,
   computeVolumeSpikePercent,
@@ -43,6 +48,8 @@ type WorkoutWithExplainabilityRelations = Prisma.WorkoutGetPayload<{
     };
   };
 }>;
+
+const HISTORY_RECENCY_WINDOW_DAYS = 42;
 
 export async function generateWorkoutExplanation(
   workoutId: string
@@ -86,27 +93,31 @@ export async function generateWorkoutExplanation(
     select: {
       timestamp: true,
       subjectiveReadiness: true,
-      subjectiveSoreness: true,
     },
   });
-  const readiness = mapLatestCheckIn(
-    readinessSignals.map((signal) => ({
-      date: signal.timestamp,
-      readiness: signal.subjectiveReadiness,
-      painFlags: signal.subjectiveSoreness,
-      notes: null,
-    })),
-    workout.scheduledDate
+  const latestReadiness = readinessSignals[0];
+  const latestReadinessAgeDays = latestReadiness
+    ? Math.floor(
+        (workout.scheduledDate.getTime() - new Date(latestReadiness.timestamp).getTime()) /
+          (24 * 60 * 60 * 1000)
+      )
+    : undefined;
+  const latestReadinessAgeMs = latestReadiness
+    ? workout.scheduledDate.getTime() - new Date(latestReadiness.timestamp).getTime()
+    : undefined;
+  const hasRecentReadinessSignal = Boolean(
+    latestReadinessAgeMs != null && latestReadinessAgeMs <= CHECK_IN_STALENESS_WINDOW_MS
   );
+  const cycleContext = parseCycleContext(workout.selectionMetadata);
 
   const sessionContext = explainSessionContext({
     blockContext,
+    cycleContext,
     volumeByMuscle,
     fatigueScore: undefined,
     modifications: undefined,
-    signalAge: readiness
-      ? Math.floor((workout.scheduledDate.getTime() - new Date(readiness.date).getTime()) / (24 * 60 * 60 * 1000))
-      : undefined,
+    signalAge: latestReadinessAgeDays,
+    hasRecentReadinessSignal,
     sessionIntent: workout.sessionIntent?.toLowerCase() as "push" | "pull" | "legs" | undefined,
   });
 
@@ -202,7 +213,8 @@ export async function generateWorkoutExplanation(
     const lastPerformed = await loadLatestPerformedSetSummary(
       workout.userId,
       workout.id,
-      workoutExercise.exerciseId
+      workoutExercise.exerciseId,
+      workout.scheduledDate
     );
     const todayPrescription = summarizeTodayTopSet(engineSets);
     const isReadinessScaled = readinessScaledExerciseIds.has(workoutExercise.exerciseId);
@@ -220,7 +232,7 @@ export async function generateWorkoutExplanation(
   }));
 
   const confidence = deriveExplainabilityConfidence({
-    hasReadinessSignal: Boolean(readiness),
+    hasReadinessSignal: hasRecentReadinessSignal,
     hasBlockContext: Boolean(blockContext),
     hasStoredSelectionRationale: hasStoredRationale,
     hasDerivedWorkoutStats:
@@ -745,6 +757,30 @@ function resolveDeloadDecision(
   return fromAutoreg ?? null;
 }
 
+function parseCycleContext(selectionMetadata: Prisma.JsonValue | null | undefined): CycleContextSnapshot | undefined {
+  if (!selectionMetadata || typeof selectionMetadata !== "object" || Array.isArray(selectionMetadata)) {
+    return undefined;
+  }
+  const root = selectionMetadata as Record<string, unknown>;
+  const raw = root.cycleContext;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return undefined;
+  }
+  const value = raw as Record<string, unknown>;
+  if (
+    typeof value.weekInMeso !== "number" ||
+    typeof value.weekInBlock !== "number" ||
+    typeof value.phase !== "string" ||
+    typeof value.blockType !== "string" ||
+    typeof value.isDeload !== "boolean" ||
+    (value.source !== "computed" && value.source !== "fallback")
+  ) {
+    return undefined;
+  }
+
+  return value as CycleContextSnapshot;
+}
+
 function extractDeloadDecisionFromJson(value: Prisma.JsonValue | null | undefined): DeloadDecision | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
@@ -801,7 +837,8 @@ function resolveReadinessScaledExercises(
 async function loadLatestPerformedSetSummary(
   userId: string,
   workoutId: string,
-  exerciseId: string
+  exerciseId: string,
+  asOfDate: Date
 ): Promise<ProgressionSetSummary | null> {
   const previous = await prisma.workoutExercise.findFirst({
     where: {
@@ -814,6 +851,11 @@ async function loadLatestPerformedSetSummary(
     },
     orderBy: { workout: { scheduledDate: "desc" } },
     include: {
+      workout: {
+        select: {
+          scheduledDate: true,
+        },
+      },
       sets: {
         orderBy: { setIndex: "asc" },
         include: {
@@ -824,6 +866,13 @@ async function loadLatestPerformedSetSummary(
   });
 
   if (!previous) return null;
+  const performedDate = previous.workout?.scheduledDate ?? null;
+  if (performedDate) {
+    const ageDays = Math.floor((asOfDate.getTime() - performedDate.getTime()) / (24 * 60 * 60 * 1000));
+    if (ageDays > HISTORY_RECENCY_WINDOW_DAYS) {
+      return null;
+    }
+  }
   for (const set of previous.sets) {
     const log = set.logs[0];
     if (!log || log.wasSkipped) continue;
@@ -831,6 +880,7 @@ async function loadLatestPerformedSetSummary(
       reps: log.actualReps ?? null,
       load: log.actualLoad ?? null,
       rpe: log.actualRpe ?? null,
+      performedAt: performedDate ? performedDate.toISOString() : null,
     };
   }
   return null;

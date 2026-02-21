@@ -51,7 +51,9 @@ Sources of truth:
 4. Review workout rationale
 - UI: `/workout/[id]` via `WorkoutExplanation`
 - API: `GET /api/workouts/[id]/explanation`
-- Explainability panel renders per-exercise progression receipts alongside rationale/prescription details via `src/components/WorkoutExplanation.tsx`, `src/components/explainability/ExplainabilityPanel.tsx`, and `src/components/explainability/ExerciseRationaleCard.tsx`.
+- Explainability panel now renders a session-level Training Status card (intent, cycle-source badge, readiness label, deload summary, and conditional Start logging CTA) via `src/components/explainability/SessionContextCard.tsx` and `src/components/explainability/ExplainabilityPanel.tsx`.
+- Programming Logic UI is split into Evidence vs Selection tabs in `src/components/explainability/ExplainabilityPanel.tsx`, while selection details continue through `src/components/explainability/ExerciseRationaleCard.tsx`.
+- Workout detail copy for prescription/load provenance now treats `PARTIAL` and `COMPLETED` as performed states through `src/lib/ui/session-overview.ts` and usage in `src/app/workout/[id]/page.tsx`.
 
 5. Program and readiness loop
 - UI: `/program`, readiness components

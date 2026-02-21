@@ -43,13 +43,21 @@ vi.mock("@/lib/engine/explainability", () => ({
   explainSessionContext: () => ({
     blockPhase: { blockType: "accumulation", weekInBlock: 1, totalWeeksInBlock: 4, primaryGoal: "build" },
     volumeStatus: { muscleStatuses: new Map(), overallSummary: "ok" },
-    readinessStatus: { overall: "moderate", signalAge: 0, perMuscleFatigue: new Map(), adaptations: [] },
+    readinessStatus: {
+      overall: "moderate",
+      signalAge: 0,
+      availability: "recent",
+      label: "Recent readiness",
+      perMuscleFatigue: new Map(),
+      adaptations: [],
+    },
     progressionContext: {
       weekInMesocycle: 1,
       volumeProgression: "building",
       intensityProgression: "ramping",
       nextMilestone: "next",
     },
+    cycleSource: "computed",
     narrative: "narrative",
   }),
   explainExerciseRationale: () => ({
@@ -147,6 +155,7 @@ describe("generateWorkoutExplanation progression receipt", () => {
     mocks.workoutFindMany.mockResolvedValue([]);
     mocks.setLogAggregate.mockResolvedValue({ _max: { actualLoad: null, actualReps: null } });
     mocks.workoutExerciseFindFirst.mockResolvedValue({
+      workout: { scheduledDate: new Date("2026-02-18T00:00:00.000Z") },
       sets: [
         {
           setIndex: 1,
@@ -165,5 +174,34 @@ describe("generateWorkoutExplanation progression receipt", () => {
     expect(receipt).toBeDefined();
     expect(receipt?.lastPerformed?.load).toBe(200);
     expect(receipt?.todayPrescription?.load).toBe(205);
+  });
+
+  it("does not treat old history as current progression evidence", async () => {
+    mocks.workoutExerciseFindFirst.mockResolvedValueOnce({
+      workout: { scheduledDate: new Date("2025-10-01T00:00:00.000Z") },
+      sets: [
+        {
+          setIndex: 1,
+          logs: [{ actualReps: 8, actualLoad: 200, actualRpe: 8, wasSkipped: false }],
+        },
+      ],
+    });
+
+    const result = await generateWorkoutExplanation("w1");
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    const receipt = result.progressionReceipts.get("ex1");
+    expect(receipt?.lastPerformed).toBeNull();
+  });
+
+  it("queries performed volume using PARTIAL + COMPLETED statuses", async () => {
+    await generateWorkoutExplanation("w1");
+
+    const firstWorkoutFindManyCall = mocks.workoutFindMany.mock.calls[0]?.[0] as
+      | { where?: { status?: { in?: string[] } } }
+      | undefined;
+
+    expect(firstWorkoutFindManyCall?.where?.status?.in).toEqual(["COMPLETED", "PARTIAL"]);
   });
 });

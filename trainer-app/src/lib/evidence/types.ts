@@ -24,6 +24,7 @@ export type ProgressionSetSummary = {
   reps: number | null;
   load: number | null;
   rpe: number | null;
+  performedAt?: string | null;
 };
 
 export type ProgressionReceiptTrigger =

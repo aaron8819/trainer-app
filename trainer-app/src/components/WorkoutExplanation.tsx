@@ -20,6 +20,9 @@ import { ExplainabilityPanel } from "./explainability";
 type Props = {
   workoutId: string;
   explanation?: WorkoutExplanation | null;
+  intentLabel?: string;
+  deloadSummary?: string | null;
+  startLoggingHref?: string | null;
 };
 
 type ExplanationResponse = {
@@ -32,7 +35,13 @@ type ExplanationResponse = {
   filteredExercises?: WorkoutExplanation["filteredExercises"];
 };
 
-export function WorkoutExplanation({ workoutId, explanation: serverExplanation }: Props) {
+export function WorkoutExplanation({
+  workoutId,
+  explanation: serverExplanation,
+  intentLabel,
+  deloadSummary,
+  startLoggingHref,
+}: Props) {
   const [explanation, setExplanation] = useState<WorkoutExplanation | null>(serverExplanation ?? null);
   const [isLoading, setIsLoading] = useState(!serverExplanation);
   const [error, setError] = useState<string | null>(null);
@@ -109,5 +118,12 @@ export function WorkoutExplanation({ workoutId, explanation: serverExplanation }
     return null;
   }
 
-  return <ExplainabilityPanel explanation={explanation} />;
+  return (
+    <ExplainabilityPanel
+      explanation={explanation}
+      intentLabel={intentLabel}
+      deloadSummary={deloadSummary}
+      startLoggingHref={startLoggingHref}
+    />
+  );
 }

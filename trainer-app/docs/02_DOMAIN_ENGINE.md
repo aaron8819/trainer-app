@@ -52,3 +52,6 @@ Sources of truth:
 - API composition for workout explanations is in `src/lib/api/explainability.ts`.
 - Explanation endpoint is `src/app/api/workouts/[id]/explanation/route.ts`.
 - Workout explanations include per-exercise progression receipts (`WorkoutExplanation.progressionReceipts` in `src/lib/engine/explainability/types.ts`), derived from performed history and current prescription in `src/lib/api/explainability.ts`.
+- Session context now includes cycle provenance and readiness availability labels (`SessionContext.cycleSource`, `ReadinessStatus.availability`, `ReadinessStatus.label`) in `src/lib/engine/explainability/types.ts`, produced in `src/lib/engine/explainability/session-context.ts`.
+- Explainability consumes persisted cycle context from `selectionMetadata.cycleContext` when available and falls back safely when missing/invalid via `parseCycleContext()` in `src/lib/api/explainability.ts`.
+- Progression receipts only use recent performed evidence (42-day recency window) when loading `lastPerformed` in `loadLatestPerformedSetSummary()` within `src/lib/api/explainability.ts`.

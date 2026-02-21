@@ -21,10 +21,19 @@ import { FilteredExercisesCard } from "./FilteredExercisesCard";
 
 type Props = {
   explanation: WorkoutExplanation;
+  intentLabel?: string;
+  deloadSummary?: string | null;
+  startLoggingHref?: string | null;
 };
 
-export function ExplainabilityPanel({ explanation }: Props) {
+export function ExplainabilityPanel({
+  explanation,
+  intentLabel,
+  deloadSummary,
+  startLoggingHref,
+}: Props) {
   const [expandedExercises, setExpandedExercises] = useState<Set<string>>(new Set());
+  const [activeTab, setActiveTab] = useState<"evidence" | "selection">("evidence");
 
   const toggleExercise = (exerciseId: string) => {
     setExpandedExercises((prev) => {
@@ -42,65 +51,102 @@ export function ExplainabilityPanel({ explanation }: Props) {
   const exerciseRationales = Array.from(explanation.exerciseRationales.entries());
   const prescriptionRationales = explanation.prescriptionRationales;
   const progressionReceipts = explanation.progressionReceipts;
+  const logicMessages = explanation.coachMessages.filter(
+    (message) => message.type !== "encouragement" && message.type !== "tip"
+  );
+  const hasRecentHistory = Array.from(progressionReceipts.values()).some((receipt) => receipt.lastPerformed != null);
+  const basisLabel = hasRecentHistory ? "Based on recent performance" : "Based on planned baseline";
+  const basisWithCycle =
+    explanation.sessionContext.cycleSource === "fallback"
+      ? `${basisLabel} (cycle estimated)`
+      : basisLabel;
+  const evidenceRows = [
+    `Cycle rules: ${explanation.sessionContext.cycleSource === "fallback" ? "estimated cycle context" : "computed cycle context"}.`,
+    `Deload rule: ${deloadSummary ?? "No active deload."}`,
+    "Volume window: Performed sets in a rolling 7-day window (today inclusive).",
+    "History recency: Progression receipts use recent performed history only.",
+  ];
 
   return (
     <div className="space-y-4 sm:space-y-6">
-      <div
-        className={`rounded-xl border px-3 py-2 text-xs ${
-          explanation.confidence.level === "high"
-            ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-            : explanation.confidence.level === "medium"
-            ? "border-amber-200 bg-amber-50 text-amber-800"
-            : "border-slate-200 bg-slate-50 text-slate-700"
-        }`}
-      >
-        <p className="font-semibold">Explainability confidence: {explanation.confidence.level}</p>
-        <p className="mt-1">{explanation.confidence.summary}</p>
-        {explanation.confidence.missingSignals.length > 0 ? (
-          <p className="mt-1">
-            Missing: {explanation.confidence.missingSignals.join(", ")}.
-          </p>
-        ) : null}
-      </div>
+      <SessionContextCard
+        context={explanation.sessionContext}
+        confidence={explanation.confidence}
+        intentLabel={intentLabel}
+        deloadSummary={deloadSummary}
+        basisLabel={basisWithCycle}
+        startLoggingHref={startLoggingHref}
+      />
 
-      {/* Session Context */}
-      <SessionContextCard context={explanation.sessionContext} />
+      <details className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
+        <summary className="cursor-pointer text-sm font-semibold text-slate-900">Programming Logic</summary>
 
-      {/* Filtered Exercises */}
-      {explanation.filteredExercises && explanation.filteredExercises.length > 0 && (
-        <FilteredExercisesCard filteredExercises={explanation.filteredExercises} />
-      )}
+        <div className="mt-3 space-y-4">
+          <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1 text-xs">
+            <button
+              className={`rounded px-3 py-1 ${activeTab === "evidence" ? "bg-white text-slate-900" : "text-slate-600"}`}
+              onClick={() => setActiveTab("evidence")}
+              type="button"
+            >
+              Evidence
+            </button>
+            <button
+              className={`rounded px-3 py-1 ${activeTab === "selection" ? "bg-white text-slate-900" : "text-slate-600"}`}
+              onClick={() => setActiveTab("selection")}
+              type="button"
+            >
+              Selection
+            </button>
+          </div>
 
-      {/* Coach Messages */}
-      {explanation.coachMessages.length > 0 && (
-        <div className="space-y-3">
-          {explanation.coachMessages.map((message, idx) => (
-            <CoachMessageCard key={idx} message={message} />
-          ))}
+          {activeTab === "evidence" ? (
+            <div className="space-y-3">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Evidence Rules</p>
+                <ul className="mt-2 space-y-1 text-xs text-slate-700">
+                  {evidenceRows.map((row) => (
+                    <li key={row}>- {row}</li>
+                  ))}
+                </ul>
+              </div>
+              {logicMessages.length > 0 ? (
+                <div className="space-y-3">
+                  {logicMessages.map((message, idx) => (
+                    <CoachMessageCard key={idx} message={message} />
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {explanation.filteredExercises && explanation.filteredExercises.length > 0 ? (
+                <FilteredExercisesCard filteredExercises={explanation.filteredExercises} />
+              ) : null}
+
+              {exerciseRationales.length > 0 ? (
+                <div className="space-y-3">
+                  <h3 className="text-base font-semibold text-slate-900 sm:text-lg">
+                    Exercise Selection Details
+                  </h3>
+                  {exerciseRationales.map(([exerciseId, rationale]) => {
+                    const prescription = prescriptionRationales.get(exerciseId);
+                    return (
+                      <ExerciseRationaleCard
+                        key={exerciseId}
+                        rationale={rationale}
+                        prescription={prescription}
+                        progressionReceipt={progressionReceipts.get(exerciseId)}
+                        isExpanded={expandedExercises.has(exerciseId)}
+                        onToggle={() => toggleExercise(exerciseId)}
+                      />
+                    );
+                  })}
+                </div>
+              ) : null}
+            </div>
+          )}
         </div>
-      )}
-
-      {/* Exercise Explanations */}
-      {exerciseRationales.length > 0 && (
-        <div className="space-y-3">
-          <h3 className="text-base font-semibold text-slate-900 sm:text-lg">
-            Exercise Selection Details
-          </h3>
-          {exerciseRationales.map(([exerciseId, rationale]) => {
-            const prescription = prescriptionRationales.get(exerciseId);
-            return (
-              <ExerciseRationaleCard
-                key={exerciseId}
-                rationale={rationale}
-                prescription={prescription}
-                progressionReceipt={progressionReceipts.get(exerciseId)}
-                isExpanded={expandedExercises.has(exerciseId)}
-                onToggle={() => toggleExercise(exerciseId)}
-              />
-            );
-          })}
-        </div>
-      )}
+      </details>
     </div>
   );
 }

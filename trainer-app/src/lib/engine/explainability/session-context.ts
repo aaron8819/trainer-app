@@ -23,6 +23,7 @@ import type { WorkoutPlan } from "../types";
 import type { RejectedExercise } from "../selection-v2/types";
 import { VOLUME_LANDMARKS, MUSCLE_SPLIT_MAP, type VolumeLandmarks } from "../volume-landmarks";
 import { formatBlockPhase, formatWeekInMesocycle, pluralize } from "./utils";
+import type { CycleContextSnapshot } from "@/lib/evidence/types";
 
 /**
  * Generate complete session context explanation
@@ -36,17 +37,27 @@ import { formatBlockPhase, formatWeekInMesocycle, pluralize } from "./utils";
  */
 export function explainSessionContext(params: {
   blockContext: BlockContext | null;
+  cycleContext?: CycleContextSnapshot;
   volumeByMuscle: Map<string, number>;
   fatigueScore?: FatigueScore;
   modifications?: AutoregulationModification[];
   signalAge?: number;
+  hasRecentReadinessSignal?: boolean;
   sessionIntent?: "push" | "pull" | "legs";
 }): SessionContext {
-  const { blockContext, volumeByMuscle, fatigueScore, modifications, signalAge, sessionIntent } =
-    params;
+  const {
+    blockContext,
+    cycleContext,
+    volumeByMuscle,
+    fatigueScore,
+    modifications,
+    signalAge,
+    hasRecentReadinessSignal,
+    sessionIntent,
+  } = params;
 
   // Build block phase context
-  const blockPhase = describeBlockGoal(blockContext);
+  const blockPhase = describeBlockGoal(blockContext, cycleContext);
 
   // Build volume status (today's target muscles shown first)
   const volumeStatus = describeVolumeProgress(volumeByMuscle, sessionIntent);
@@ -56,10 +67,11 @@ export function explainSessionContext(params: {
     fatigueScore,
     modifications,
     signalAge,
+    hasRecentReadinessSignal,
   });
 
   // Build progression context
-  const progressionContext = describeProgressionContext(blockContext);
+  const progressionContext = describeProgressionContext(blockContext, cycleContext);
 
   // Generate narrative summary
   const narrative = generateSessionNarrative({
@@ -74,6 +86,7 @@ export function explainSessionContext(params: {
     volumeStatus,
     readinessStatus,
     progressionContext,
+    cycleSource: cycleContext?.source ?? (blockContext ? "computed" : "none"),
     narrative,
   };
 }
@@ -84,9 +97,28 @@ export function explainSessionContext(params: {
  * @param blockContext - Current block context (null if no macro cycle)
  * @returns Block phase description
  */
-export function describeBlockGoal(blockContext: BlockContext | null): BlockPhaseContext {
+export function describeBlockGoal(
+  blockContext: BlockContext | null,
+  cycleContext?: CycleContextSnapshot
+): BlockPhaseContext {
+  const goalMap: Record<BlockPhaseContext["blockType"], string> = {
+    accumulation: "Build work capacity and muscle mass with progressive volume",
+    intensification: "Convert fitness into strength with increased intensity",
+    realization: "Peak strength and performance with max specificity",
+    deload: "Recover and dissipate fatigue while maintaining adaptations",
+  };
+
+  if (cycleContext) {
+    return {
+      blockType: cycleContext.blockType,
+      weekInBlock: cycleContext.weekInBlock,
+      totalWeeksInBlock: 4,
+      primaryGoal: goalMap[cycleContext.blockType],
+    };
+  }
+
   if (!blockContext) {
-    // No macro cycle → default accumulation week 1
+    // No macro cycle -> default accumulation week 1
     return {
       blockType: "accumulation",
       weekInBlock: 1,
@@ -96,15 +128,6 @@ export function describeBlockGoal(blockContext: BlockContext | null): BlockPhase
   }
 
   const { block, weekInBlock } = blockContext;
-
-  // Map block type to primary goal
-  const goalMap: Record<BlockPhaseContext["blockType"], string> = {
-    accumulation: "Build work capacity and muscle mass with progressive volume",
-    intensification: "Convert fitness into strength with increased intensity",
-    realization: "Peak strength and performance with max specificity",
-    deload: "Recover and dissipate fatigue while maintaining adaptations",
-  };
-
   return {
     blockType: block.blockType,
     weekInBlock,
@@ -112,7 +135,6 @@ export function describeBlockGoal(blockContext: BlockContext | null): BlockPhase
     primaryGoal: goalMap[block.blockType],
   };
 }
-
 /**
  * Describe volume progress across muscle groups
  *
@@ -206,39 +228,51 @@ export function describeReadinessStatus(params: {
   fatigueScore?: FatigueScore;
   modifications?: AutoregulationModification[];
   signalAge?: number;
+  hasRecentReadinessSignal?: boolean;
 }): ReadinessStatus {
-  const { fatigueScore, modifications = [], signalAge = 0 } = params;
+  const { fatigueScore, modifications = [], signalAge = 0, hasRecentReadinessSignal = false } = params;
 
   if (!fatigueScore) {
-    // No readiness data available
+    if (!hasRecentReadinessSignal) {
+      const hasAnySignal = Number.isFinite(signalAge) && signalAge > 0;
+      return {
+        overall: "moderate",
+        signalAge: hasAnySignal ? signalAge : 0,
+        availability: hasAnySignal ? "stale" : "missing",
+        label: hasAnySignal ? `Stale readiness (${signalAge}d old)` : "No recent readiness",
+        perMuscleFatigue: new Map(),
+        adaptations: [],
+      };
+    }
+
     return {
       overall: "moderate",
-      signalAge: 0,
+      signalAge,
+      availability: "recent",
+      label: signalAge > 0 ? `Recent readiness (${signalAge}d old)` : "Recent readiness",
       perMuscleFatigue: new Map(),
       adaptations: [],
     };
   }
 
-  // Classify overall readiness
   const overall = classifyReadiness(fatigueScore.overall);
 
-  // Build per-muscle fatigue map (convert 0-1 scale to 0-10)
   const perMuscleFatigue = new Map<string, number>();
   for (const [muscle, fatigue] of Object.entries(fatigueScore.perMuscle)) {
-    perMuscleFatigue.set(muscle, Math.round((1 - fatigue) * 10)); // Invert: 1=fresh → 0 fatigue
+    perMuscleFatigue.set(muscle, Math.round((1 - fatigue) * 10));
   }
 
-  // Summarize adaptations from modifications
   const adaptations = summarizeAdaptations(modifications);
 
   return {
     overall,
     signalAge,
+    availability: "recent",
+    label: signalAge > 0 ? `Readiness: ${overall} (${signalAge}d old)` : `Readiness: ${overall}`,
     perMuscleFatigue,
     adaptations,
   };
 }
-
 /**
  * Describe progression context
  *
@@ -246,10 +280,22 @@ export function describeReadinessStatus(params: {
  * @returns Progression context description
  */
 export function describeProgressionContext(
-  blockContext: BlockContext | null
+  blockContext: BlockContext | null,
+  cycleContext?: CycleContextSnapshot
 ): ProgressionContext {
+  if (cycleContext) {
+    const volumeProgression = getVolumeProgression(cycleContext.blockType, cycleContext.weekInBlock);
+    const intensityProgression = getIntensityProgression(cycleContext.blockType, cycleContext.weekInBlock);
+    const nextMilestone = getNextMilestone(cycleContext.blockType, cycleContext.weekInBlock, 4);
+    return {
+      weekInMesocycle: cycleContext.weekInMeso,
+      volumeProgression,
+      intensityProgression,
+      nextMilestone,
+    };
+  }
+
   if (!blockContext) {
-    // No macro cycle → default progression
     return {
       weekInMesocycle: 1,
       volumeProgression: "building",
@@ -259,14 +305,8 @@ export function describeProgressionContext(
   }
 
   const { block, weekInBlock, weekInMeso } = blockContext;
-
-  // Determine volume progression based on block type
   const volumeProgression = getVolumeProgression(block.blockType, weekInBlock);
-
-  // Determine intensity progression based on block type
   const intensityProgression = getIntensityProgression(block.blockType, weekInBlock);
-
-  // Generate next milestone
   const nextMilestone = getNextMilestone(block.blockType, weekInBlock, block.durationWeeks);
 
   return {
@@ -276,7 +316,6 @@ export function describeProgressionContext(
     nextMilestone,
   };
 }
-
 /**
  * Generate session narrative summary
  *
@@ -484,3 +523,7 @@ export function summarizeFilteredExercises(
     };
   });
 }
+
+
+
+

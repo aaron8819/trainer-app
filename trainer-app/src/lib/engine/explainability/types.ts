@@ -38,6 +38,7 @@ export type SessionContext = {
   volumeStatus: VolumeStatus;
   readinessStatus: ReadinessStatus;
   progressionContext: ProgressionContext;
+  cycleSource: "computed" | "fallback" | "none";
   narrative: string; // Human-readable summary
 };
 
@@ -72,6 +73,8 @@ export type VolumeStatus = {
 export type ReadinessStatus = {
   overall: "fresh" | "moderate" | "fatigued";
   signalAge: number; // Days since last check-in
+  availability: "recent" | "stale" | "missing";
+  label: string;
   perMuscleFatigue: Map<string, number>; // muscle -> fatigue score (0-10)
   adaptations: string[]; // ["Reduced volume by 2 sets chest", "Maintained intensity"]
 };

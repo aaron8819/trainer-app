@@ -6,7 +6,6 @@
  * Explains "Why was this exercise not selected?" grouped by rejection reason:
  * - User avoids (preferences)
  * - Pain conflicts (autoregulation)
- * - Equipment unavailable
  * - Other contraindications
  */
 
@@ -24,14 +23,8 @@ export function FilteredExercisesCard({ filteredExercises }: Props) {
   // Group filtered exercises by reason
   const userAvoids = filteredExercises.filter((ex) => ex.reason === "user_avoided");
   const painConflicts = filteredExercises.filter((ex) => ex.reason === "pain_conflict");
-  const equipmentUnavailable = filteredExercises.filter(
-    (ex) => ex.reason === "equipment_unavailable"
-  );
   const other = filteredExercises.filter(
-    (ex) =>
-      ex.reason !== "user_avoided" &&
-      ex.reason !== "pain_conflict" &&
-      ex.reason !== "equipment_unavailable"
+    (ex) => ex.reason !== "user_avoided" && ex.reason !== "pain_conflict"
   );
 
   return (
@@ -47,7 +40,7 @@ export function FilteredExercisesCard({ filteredExercises }: Props) {
         {userAvoids.length > 0 && (
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-lg">✓</span>
+              <span className="text-lg text-emerald-500">✓</span>
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Your Preferences Honored
               </p>
@@ -67,33 +60,13 @@ export function FilteredExercisesCard({ filteredExercises }: Props) {
         {painConflicts.length > 0 && (
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-lg">⚠️</span>
+              <span className="text-lg text-amber-500">⚠</span>
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Pain Conflicts
               </p>
             </div>
             <ul className="mt-2 space-y-1 pl-7">
               {painConflicts.map((ex) => (
-                <li key={ex.exerciseId} className="text-sm text-slate-700">
-                  <span className="font-medium">{ex.exerciseName}</span>
-                  <span className="ml-2 text-xs text-slate-500">({ex.userFriendlyMessage})</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {/* Equipment Unavailable */}
-        {equipmentUnavailable.length > 0 && (
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-lg">🏋️</span>
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Equipment Unavailable
-              </p>
-            </div>
-            <ul className="mt-2 space-y-1 pl-7">
-              {equipmentUnavailable.map((ex) => (
                 <li key={ex.exerciseId} className="text-sm text-slate-700">
                   <span className="font-medium">{ex.exerciseName}</span>
                   <span className="ml-2 text-xs text-slate-500">({ex.userFriendlyMessage})</span>

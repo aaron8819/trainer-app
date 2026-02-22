@@ -34,7 +34,6 @@ export function runSessionGeneration(
     goals: mapped.mappedGoals,
     history: mapped.history,
     exerciseLibrary: mapped.exerciseLibrary,
-    sessionMinutes: mapped.mappedConstraints.sessionMinutes,
     preferences: mapped.mappedPreferences,
     checkIn: mapped.mappedCheckIn,
     weekInBlock: mapped.weekInBlock,
@@ -75,7 +74,6 @@ export function finalizePostLoadResult(
     mapped.history,
     mapped.mappedProfile,
     mapped.mappedGoals.primary,
-    mapped.mappedConstraints.sessionMinutes,
     mapped.effectivePeriodization,
     mapped.weekInBlock
   );

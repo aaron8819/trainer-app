@@ -14,7 +14,6 @@ export type ProfileFormValues = {
   primaryGoal: "HYPERTROPHY" | "STRENGTH" | "FAT_LOSS" | "ATHLETICISM" | "GENERAL_HEALTH";
   secondaryGoal: "POSTURE" | "CONDITIONING" | "INJURY_PREVENTION" | "NONE";
   daysPerWeek: number;
-  sessionMinutes: number;
   splitType: "PPL" | "UPPER_LOWER" | "FULL_BODY" | "CUSTOM";
   weeklySchedule?: ("PUSH" | "PULL" | "LEGS" | "UPPER" | "LOWER" | "FULL_BODY" | "BODY_PART")[];
   injuryBodyPart?: string;
@@ -28,7 +27,6 @@ const defaultValues: ProfileFormValues = {
   primaryGoal: "HYPERTROPHY",
   secondaryGoal: "CONDITIONING",
   daysPerWeek: 4,
-  sessionMinutes: 55,
   splitType: "PPL",
   weeklySchedule: [],
   injuryActive: false,
@@ -262,15 +260,6 @@ export default function ProfileForm({
               type="number"
               inputMode="numeric"
               {...form.register("daysPerWeek", { valueAsNumber: true })}
-            />
-          </label>
-          <label className={labelClassName}>
-            Session minutes
-            <input
-              className={fieldClassName}
-              type="number"
-              inputMode="numeric"
-              {...form.register("sessionMinutes", { valueAsNumber: true })}
             />
           </label>
           <label className={labelClassName}>

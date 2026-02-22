@@ -32,7 +32,6 @@ export default async function SettingsPage() {
         primaryGoal: goals?.primaryGoal ?? "HYPERTROPHY",
         secondaryGoal: goals?.secondaryGoal ?? "CONDITIONING",
         daysPerWeek: constraints?.daysPerWeek ?? 4,
-        sessionMinutes: constraints?.sessionMinutes ?? 55,
         splitType: constraints?.splitType ?? "PPL",
         weeklySchedule: [],
         injuryBodyPart: injury?.bodyPart ?? undefined,

@@ -170,7 +170,7 @@ export default async function Home() {
           </div>
           <div className="rounded-2xl border border-slate-200 p-5">
             <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Settings</h3>
-            <p className="mt-3 text-sm text-slate-600">Split, equipment, and goals</p>
+            <p className="mt-3 text-sm text-slate-600">Split, goals, and preferences</p>
             <Link className="mt-3 inline-block text-sm font-semibold text-slate-900" href="/settings">
               Manage settings
             </Link>

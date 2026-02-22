@@ -222,7 +222,6 @@ export type FilteredExerciseSummary = {
   reason:
     | "user_avoided"
     | "pain_conflict"
-    | "equipment_unavailable"
     | "contraindicated"
     | string; // Other rejection reasons
   userFriendlyMessage: string; // "Avoided per your preferences", "Equipment not available", etc.

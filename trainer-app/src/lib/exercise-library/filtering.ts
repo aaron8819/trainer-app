@@ -67,12 +67,6 @@ export function filterExercises(
       }
     }
 
-    if (filters.equipment) {
-      if (!exercise.equipment.includes(filters.equipment)) {
-        return false;
-      }
-    }
-
     if (filters.splitTag) {
       if (!exercise.splitTags.includes(filters.splitTag)) {
         return false;

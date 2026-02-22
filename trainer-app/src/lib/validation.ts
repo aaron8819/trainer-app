@@ -160,7 +160,6 @@ export const profileSetupSchema = z.object({
   primaryGoal: z.enum(["HYPERTROPHY", "STRENGTH", "FAT_LOSS", "ATHLETICISM", "GENERAL_HEALTH"]),
   secondaryGoal: z.enum(["POSTURE", "CONDITIONING", "INJURY_PREVENTION", "NONE"]),
   daysPerWeek: z.number().int().min(1).max(7),
-  sessionMinutes: z.number().int().min(20).max(180),
   weeklySchedule: z.array(workoutSessionIntentDbSchema).max(7).optional(),
   splitType: z.enum(["PPL", "UPPER_LOWER", "FULL_BODY", "CUSTOM"]).optional(),
   injuryBodyPart: optionalString(z.string().max(80)),

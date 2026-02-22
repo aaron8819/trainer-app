@@ -48,7 +48,7 @@ describe("selection correctness", () => {
     loadWorkoutContextMock.mockResolvedValue({
       profile: { id: "profile" },
       goals: { primaryGoal: "HYPERTROPHY", secondaryGoal: "NONE" },
-      constraints: { sessionMinutes: 60, daysPerWeek: 4 },
+      constraints: { daysPerWeek: 4, splitType: "UPPER_LOWER" },
       injuries: [],
       exercises: exampleExerciseLibrary.map((exercise) => ({ id: exercise.id })),
       workouts: [],
@@ -58,7 +58,7 @@ describe("selection correctness", () => {
 
     mapProfileMock.mockReturnValue(exampleUser);
     mapGoalsMock.mockReturnValue(exampleGoals);
-    mapConstraintsMock.mockReturnValue({ daysPerWeek: 4, sessionMinutes: 60, splitType: "upper_lower" });
+    mapConstraintsMock.mockReturnValue({ daysPerWeek: 4, splitType: "upper_lower" });
     mapHistoryMock.mockReturnValue([]);
     mapCheckInMock.mockReturnValue(undefined);
     applyLoadsMock.mockImplementation((workout: unknown) => workout);

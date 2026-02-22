@@ -163,7 +163,6 @@ export function mapGoals(primary: PrimaryGoal, secondary: SecondaryGoal): Goals 
 export function mapConstraints(constraints: ConstraintsRecord): Constraints {
   return {
     daysPerWeek: constraints.daysPerWeek,
-    sessionMinutes: constraints.sessionMinutes,
     splitType: constraints.splitType.toLowerCase() as Constraints["splitType"],
   };
 }
@@ -279,7 +278,6 @@ export function applyLoads(
   history: WorkoutHistoryEntry[],
   profile: UserProfile,
   primaryGoal: Goals["primary"],
-  sessionMinutes?: number,
   periodization?: PeriodizationModifiers,
   weekInBlock?: number
 ): WorkoutPlan {
@@ -293,7 +291,6 @@ export function applyLoads(
     exerciseById,
     primaryGoal,
     profile,
-    sessionMinutes,
     periodization,
     weekInBlock,
   });

@@ -88,7 +88,6 @@ export type Goals = {
 
 export type Constraints = {
   daysPerWeek: number;
-  sessionMinutes: number;
   splitType: SplitType;
 };
 

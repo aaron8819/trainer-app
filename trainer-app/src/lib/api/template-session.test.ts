@@ -54,7 +54,7 @@ describe("generateSessionFromIntent", () => {
     loadWorkoutContextMock.mockResolvedValue({
       profile: { id: "profile" },
       goals: { primaryGoal: "HYPERTROPHY", secondaryGoal: "NONE" },
-      constraints: { sessionMinutes: 90, daysPerWeek: 4 },
+      constraints: { daysPerWeek: 4, splitType: "UPPER_LOWER" },
       injuries: [],
       exercises: exampleExerciseLibrary.map((exercise) => ({ id: exercise.id })),
       workouts: [],
@@ -66,7 +66,6 @@ describe("generateSessionFromIntent", () => {
     mapGoalsMock.mockReturnValue(exampleGoals);
     mapConstraintsMock.mockReturnValue({
       daysPerWeek: 4,
-      sessionMinutes: 90,
       splitType: "upper_lower",
     });
     mapExercisesMock.mockReturnValue(exampleExerciseLibrary);

@@ -51,7 +51,6 @@ export type ExerciseFilters = {
   muscles?: string[];
   exerciseTypes?: ExerciseTypeFilter[];
   movementPatterns?: MovementPatternV2[];
-  equipment?: EquipmentType;
   splitTag?: SplitTag;
   favoritesOnly?: boolean;
 };

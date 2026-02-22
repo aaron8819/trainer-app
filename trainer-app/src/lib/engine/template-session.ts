@@ -45,7 +45,6 @@ export type GenerateFromTemplateOptions = {
   goals: Goals;
   history: WorkoutHistoryEntry[];
   exerciseLibrary: Exercise[];
-  sessionMinutes?: number;
   preferences?: UserPreferences;
   checkIn?: SessionCheckIn;
   weekInBlock?: number;

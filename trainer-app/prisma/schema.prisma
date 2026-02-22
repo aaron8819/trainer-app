@@ -233,7 +233,6 @@ model Constraints {
   userId         String    @id
   user           User      @relation(fields: [userId], references: [id])
   daysPerWeek    Int
-  sessionMinutes Int
   splitType      SplitType
 }
 

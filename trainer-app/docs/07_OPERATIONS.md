@@ -43,3 +43,42 @@ Sources of truth:
 - Recent schema changes to apply in order include:
   - `prisma/migrations/20260220_add_partial_workout_status/migration.sql`
   - `prisma/migrations/20260220_workout_revision_and_exercise_order_unique/migration.sql`
+
+## Standalone Prisma scripts
+Use this pattern for one-off scripts in `prisma/` (backfills, diagnostics, cleanup).
+
+Why adapter pattern is required:
+- The Next.js app uses `@prisma/adapter-pg` with a `pg` `Pool`.
+- In Prisma 7, bare `new PrismaClient()` fails in this setup without an adapter.
+- Standalone scripts must mirror `src/lib/db/prisma.ts`.
+
+Standard script header (copy exactly):
+```ts
+import { PrismaClient } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { Pool } from "pg";
+
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const adapter = new PrismaPg(pool);
+const prisma = new PrismaClient({ adapter });
+```
+
+Standard run command:
+```powershell
+$env:NODE_TLS_REJECT_UNAUTHORIZED='0'; node -r dotenv/config .\node_modules\tsx\dist\cli.mjs prisma/your-script.ts
+```
+
+Command notes:
+- `NODE_TLS_REJECT_UNAUTHORIZED=0`: local Postgres uses a self-signed cert; this suppresses the SSL warning. Not needed in production.
+- `-r dotenv/config`: loads `.env.local` then `.env` so `DATABASE_URL` is available without manual export.
+
+User resolution in scripts:
+```ts
+prisma.user.findFirst({
+  orderBy: { createdAt: "asc" },
+  where: { email: { not: { endsWith: "@test.com" } } },
+})
+```
+
+Never use bare `findFirst()` for user resolution:
+- Test users exist in the live DB and may be returned first.

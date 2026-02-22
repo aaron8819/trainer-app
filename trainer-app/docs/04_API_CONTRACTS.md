@@ -1,7 +1,7 @@
 # 04 API Contracts
 
 Owner: Aaron  
-Last reviewed: 2026-02-21  
+Last reviewed: 2026-02-22  
 Purpose: Canonical API contract map for App Router endpoints and payload validation boundaries.
 
 This doc covers:
@@ -38,6 +38,10 @@ Sources of truth:
 - Exercises and preferences: `src/app/api/exercises/**`, `src/app/api/preferences/route.ts`
 - Analytics: `src/app/api/analytics/**`
 - Profile/session support: `src/app/api/profile/setup/route.ts`, `src/app/api/session-checkins/route.ts`
+
+## Program dashboard response notes
+- Route: `GET /api/program` (`src/app/api/program/route.ts`) returns `loadProgramDashboardData()` output directly.
+- `ProgramDashboardData` now includes `daysPerWeek` (`src/lib/api/program.ts`) sourced from user constraints and used by clients to avoid hardcoded frequency assumptions.
 
 ## Validation-backed contracts (examples)
 - Workout generation/save: `generateFromTemplateSchema`, `generateFromIntentSchema`, `saveWorkoutSchema`

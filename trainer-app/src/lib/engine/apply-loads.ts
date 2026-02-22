@@ -35,7 +35,6 @@ export type ApplyLoadsOptions = {
   exerciseById: Record<string, Exercise>;
   primaryGoal: Goals["primary"];
   profile?: Pick<UserProfile, "weightKg" | "trainingAge">;
-  sessionMinutes?: number;
   periodization?: PeriodizationModifiers;
   prescriptionModifiers?: PrescriptionModifiers | null;
   weekInBlock?: number;

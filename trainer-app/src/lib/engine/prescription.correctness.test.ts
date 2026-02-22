@@ -45,7 +45,6 @@ const commonOptions = {
   profile: { id: "u1", trainingAge: "intermediate" as const, injuries: [] },
   history: [],
   exerciseLibrary: [mainLift, accessory],
-  sessionMinutes: 60,
   isStrict: true,
 };
 

@@ -1,7 +1,7 @@
 # 05 UI Flows
 
 Owner: Aaron  
-Last reviewed: 2026-02-21  
+Last reviewed: 2026-02-22  
 Purpose: Canonical reference for current UI routes and core user flows implemented in the Next.js App Router.
 
 This doc covers:
@@ -58,3 +58,4 @@ Sources of truth:
 5. Program and readiness loop
 - UI: `/program`, readiness components
 - APIs: `/api/program`, `/api/readiness/submit`, `/api/stalls`, `/api/periodization/macro`
+- Dashboard training status uses API-provided `daysPerWeek` for session totals (not a fixed weekly constant) in `src/components/TrainingStatusCard.tsx`, with value supplied by `loadProgramDashboardData()` in `src/lib/api/program.ts`.

@@ -23,7 +23,6 @@ export type SmartBuildExercise = {
 export type SmartBuildInput = {
   targetMuscleGroups: string[];
   exercisePool: SmartBuildExercise[];
-  availableEquipment?: string[];
   exerciseCount?: number;
   trainingGoal?: string;
   seed?: number;
@@ -100,8 +99,7 @@ export function resolveTargetMuscles(groups: string[]): string[] {
 
 export function filterPool(
   pool: SmartBuildExercise[],
-  targetMuscles: string[],
-  availableEquipment?: string[]
+  targetMuscles: string[]
 ): SmartBuildExercise[] {
   const targetSet = new Set(targetMuscles);
 
@@ -114,13 +112,6 @@ export function filterPool(
     if (hasBlockedTag) {
       const hasTargetOverlap = ex.primaryMuscles.some((m) => targetSet.has(m));
       if (!hasTargetOverlap) return false;
-    }
-
-    // Filter by equipment if specified
-    if (availableEquipment && availableEquipment.length > 0) {
-      const equipSet = new Set(availableEquipment);
-      const hasEquipment = ex.equipment.some((e) => equipSet.has(e));
-      if (!hasEquipment) return false;
     }
 
     return true;
@@ -227,7 +218,6 @@ export function smartBuild(input: SmartBuildInput): SmartBuildResult {
   const {
     targetMuscleGroups,
     exercisePool,
-    availableEquipment,
     exerciseCount = 7,
     trainingGoal,
     seed,
@@ -245,7 +235,7 @@ export function smartBuild(input: SmartBuildInput): SmartBuildResult {
   }
 
   // 2. Filter pool
-  const pool = filterPool(exercisePool, targetMuscles, availableEquipment);
+  const pool = filterPool(exercisePool, targetMuscles);
   if (pool.length === 0) {
     return {
       exercises: [],

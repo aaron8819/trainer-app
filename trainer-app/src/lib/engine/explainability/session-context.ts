@@ -504,14 +504,8 @@ export function summarizeFilteredExercises(
         break;
       default: {
         // Handle string reasons not in the current RejectionReason union
-        // (equipment_unavailable removed in ADR-067 but still appears in DB records)
-        const reasonStr: string = item.reason;
-        if (reasonStr === "equipment_unavailable") {
-          userFriendlyMessage = "Equipment not available";
-        } else {
-          // Other rejection reasons (SRA, volume ceiling, etc.) - not surfaced in UI
-          userFriendlyMessage = `Filtered (${item.reason})`;
-        }
+        // Other rejection reasons (SRA, volume ceiling, etc.) - not surfaced in UI
+        userFriendlyMessage = `Filtered (${item.reason})`;
       }
     }
 

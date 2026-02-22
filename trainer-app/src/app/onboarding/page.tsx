@@ -19,7 +19,7 @@ export default async function OnboardingPage() {
       <div className="page-shell max-w-3xl">
         <h1 className="page-title">Profile Setup</h1>
         <p className="mt-1.5 text-sm text-slate-600">
-          Capture goals, constraints, and equipment to power personalized workouts.
+          Capture goals and constraints to power personalized workouts.
         </p>
         <OnboardingFlow
           initialValues={initialValues}

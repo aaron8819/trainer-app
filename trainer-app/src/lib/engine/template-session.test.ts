@@ -26,7 +26,6 @@ const commonOptions = {
   goals: { primary: "strength" as const, secondary: "none" as const },
   history: [],
   exerciseLibrary: [bench],
-  sessionMinutes: 45,
   isStrict: true,
 };
 

@@ -16,7 +16,6 @@ export const exampleGoals: Goals = {
 
 export const exampleConstraints: Constraints = {
   daysPerWeek: 4,
-  sessionMinutes: 55,
   splitType: "upper_lower",
 };
 

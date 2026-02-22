@@ -2,14 +2,20 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { saveWorkoutSchema } from "@/lib/validation";
 import { resolveOwner } from "@/lib/api/workout-context";
-import { WorkoutStatus } from "@prisma/client";
+import { WorkoutStatus, Prisma } from "@prisma/client";
 import { updateExerciseExposure } from "@/lib/api/exercise-exposure";
 import { isTerminalWorkoutStatus } from "@/lib/workout-status";
 import type { CycleContextSnapshot } from "@/lib/evidence/types";
+import { loadCurrentBlockContext } from "@/lib/api/periodization";
+import type { BlockContext } from "@/lib/engine";
 
 type SaveAction = "save_plan" | "mark_completed" | "mark_partial" | "mark_skipped";
 type PersistedStatus = "PLANNED" | "IN_PROGRESS" | "PARTIAL" | "COMPLETED" | "SKIPPED";
 type JsonObject = Record<string, unknown>;
+type DbCycleContext = {
+  blockContext: BlockContext | null;
+  weekInMeso: number;
+};
 
 function toObject(value: unknown): JsonObject {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -18,22 +24,42 @@ function toObject(value: unknown): JsonObject {
   return value as JsonObject;
 }
 
-function deriveCycleContext(
-  incomingSelectionMetadata: JsonObject
-): CycleContextSnapshot {
+function hasValidCycleContext(incomingSelectionMetadata: JsonObject): boolean {
   const incoming = incomingSelectionMetadata.cycleContext;
-  if (incoming && typeof incoming === "object" && !Array.isArray(incoming)) {
-    const parsed = incoming as Partial<CycleContextSnapshot>;
-    if (
-      typeof parsed.weekInMeso === "number" &&
-      typeof parsed.weekInBlock === "number" &&
-      typeof parsed.phase === "string" &&
-      typeof parsed.blockType === "string" &&
-      typeof parsed.isDeload === "boolean" &&
-      (parsed.source === "computed" || parsed.source === "fallback")
-    ) {
-      return parsed as CycleContextSnapshot;
-    }
+  if (!incoming || typeof incoming !== "object" || Array.isArray(incoming)) {
+    return false;
+  }
+  const parsed = incoming as Partial<CycleContextSnapshot>;
+  return (
+    typeof parsed.weekInMeso === "number" &&
+    typeof parsed.weekInBlock === "number" &&
+    typeof parsed.phase === "string" &&
+    typeof parsed.blockType === "string" &&
+    typeof parsed.isDeload === "boolean" &&
+    (parsed.source === "computed" || parsed.source === "fallback")
+  );
+}
+
+function deriveCycleContext(
+  incomingSelectionMetadata: JsonObject,
+  dbContext?: DbCycleContext
+): CycleContextSnapshot {
+  if (hasValidCycleContext(incomingSelectionMetadata)) {
+    return incomingSelectionMetadata.cycleContext as CycleContextSnapshot;
+  }
+
+  if (dbContext) {
+    const isDeload = dbContext.blockContext?.block.blockType === "deload";
+    const blockType: CycleContextSnapshot["blockType"] =
+      dbContext.blockContext?.block.blockType ?? (isDeload ? "deload" : "accumulation");
+    return {
+      weekInMeso: dbContext.weekInMeso,
+      weekInBlock: dbContext.blockContext?.weekInBlock ?? dbContext.weekInMeso,
+      phase: blockType,
+      blockType,
+      isDeload,
+      source: "computed",
+    };
   }
 
   const deloadDecision = incomingSelectionMetadata.deloadDecision;
@@ -106,7 +132,12 @@ export async function POST(request: Request) {
   let finalStatus: PersistedStatus = (parsed.data.status ?? WorkoutStatus.PLANNED) as PersistedStatus;
   let didCompleteTransition = false;
   const incomingSelectionMetadata = toObject(parsed.data.selectionMetadata);
-  const cycleContext = deriveCycleContext(incomingSelectionMetadata);
+  let dbCycleContext: DbCycleContext | undefined;
+  if (!hasValidCycleContext(incomingSelectionMetadata)) {
+    const loadedContext = await loadCurrentBlockContext(user.id);
+    dbCycleContext = loadedContext.blockContext ? loadedContext : undefined;
+  }
+  const cycleContext = deriveCycleContext(incomingSelectionMetadata, dbCycleContext);
   const selectionMetadata: JsonObject = {
     ...incomingSelectionMetadata,
     cycleContext,
@@ -218,9 +249,9 @@ export async function POST(request: Request) {
           notes: parsed.data.notes ?? undefined,
           selectionMode,
           sessionIntent: parsed.data.sessionIntent ?? undefined,
-          selectionMetadata,
+          selectionMetadata: selectionMetadata as Prisma.InputJsonValue,
           wasAutoregulated,
-          autoregulationLog,
+          autoregulationLog: autoregulationLog as Prisma.InputJsonValue | undefined,
           forcedSplit: parsed.data.forcedSplit ?? undefined,
           advancesSplit: parsed.data.advancesSplit ?? undefined,
           templateId: parsed.data.templateId ?? undefined,
@@ -238,9 +269,9 @@ export async function POST(request: Request) {
           notes: parsed.data.notes ?? undefined,
           selectionMode,
           sessionIntent: parsed.data.sessionIntent ?? undefined,
-          selectionMetadata,
+          selectionMetadata: selectionMetadata as Prisma.InputJsonValue,
           wasAutoregulated,
-          autoregulationLog,
+          autoregulationLog: autoregulationLog as Prisma.InputJsonValue | undefined,
           forcedSplit: parsed.data.forcedSplit ?? undefined,
           advancesSplit: parsed.data.advancesSplit ?? undefined,
           templateId: parsed.data.templateId ?? undefined,
@@ -281,7 +312,7 @@ export async function POST(request: Request) {
           await tx.workoutExercise.deleteMany({ where: { id: { in: exerciseIds } } });
         }
 
-        for (const [exerciseIndex, exercise] of parsed.data.exercises.entries()) {
+        for (const [exerciseIndex, exercise] of parsed.data.exercises!.entries()) {
           const exerciseRecord = await tx.exercise.findUnique({
             where: { id: exercise.exerciseId },
           });

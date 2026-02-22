@@ -12,6 +12,7 @@ This doc covers:
 Invariants:
 - `DATABASE_URL` is required for runtime.
 - Prisma client generation must be in sync with schema changes.
+- Standalone Prisma scripts must use the adapter pattern from `src/lib/db/prisma.ts` (with `@prisma/adapter-pg` + `pg` pool), not bare `new PrismaClient()`.
 - Contract verification should be run with tests for release hygiene.
 
 Sources of truth:

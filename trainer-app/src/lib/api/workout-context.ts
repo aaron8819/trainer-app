@@ -34,7 +34,7 @@ import type {
   WorkoutPlan,
 } from "@/lib/engine/types";
 
-import { deriveWeekInBlock, type WeekInBlockHistoryEntry } from "./periodization";
+import type { WeekInBlockHistoryEntry } from "./periodization";
 
 type ExerciseWithMuscles = Exercise & {
   exerciseMuscles?: { role: string; muscle: { name: string } }[];
@@ -299,4 +299,4 @@ export function applyLoads(
   });
 }
 
-export { deriveWeekInBlock, type WeekInBlockHistoryEntry };
+export type { WeekInBlockHistoryEntry };

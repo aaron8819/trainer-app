@@ -38,38 +38,6 @@ export function computeCurrentMesoWeek(ctx: ActiveMesoContext, daysPerWeek: numb
   return Math.min(sessionWeek, calendarWeek, ctx.durationWeeks);
 }
 
-export function deriveWeekInBlock(
-  scheduledDate: Date,
-  history: WeekInBlockHistoryEntry[] = []
-) {
-  const scheduledTime = scheduledDate.getTime();
-  const weekMs = 7 * 24 * 60 * 60 * 1000;
-  const dayMs = 24 * 60 * 60 * 1000;
-
-  if (history.length === 0) {
-    return 1;
-  }
-
-  const windowStart = scheduledTime - 28 * dayMs;
-  const recent = history.filter((workout) => {
-    const time = workout.scheduledDate.getTime();
-    return time >= windowStart && time <= scheduledTime;
-  });
-  if (recent.length === 0) {
-    return 1;
-  }
-
-  const oldest = Math.min(...recent.map((workout) => workout.scheduledDate.getTime()));
-  const newest = Math.max(...recent.map((workout) => workout.scheduledDate.getTime()));
-  const spanDays = (newest - oldest) / dayMs;
-  if (spanDays < 14) {
-    return 1;
-  }
-
-  const weekIndex = Math.floor((scheduledTime - oldest) / weekMs);
-  return ((weekIndex % 4) + 4) % 4 + 1;
-}
-
 export type BlockContextResult = {
   blockContext: BlockContext | null;
   /** Current 1-indexed week within the active mesocycle (defaults to 1 when no macro cycle). */

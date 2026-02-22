@@ -270,8 +270,8 @@ export default function LogWorkoutClient({
     setUndoSnapshot({
       setId,
       previousSet: targetSet.set,
-      previousLog: body.previousLog ?? null,
-      wasCreated: body.wasCreated ?? !loggedSetIds.has(setId),
+      previousLog: body?.previousLog ?? null,
+      wasCreated: body?.wasCreated ?? !loggedSetIds.has(setId),
       expiresAt: Date.now() + 5000,
     });
 
@@ -399,10 +399,10 @@ export default function LogWorkoutClient({
       }
 
       const body = response.data;
-      setBaselineSummary(body.baselineSummary ?? null);
+      setBaselineSummary((body?.baselineSummary as BaselineUpdateSummary | null | undefined) ?? null);
       setCompleted(true);
       setStatus(
-        body.workoutStatus === "PARTIAL"
+        body?.workoutStatus === "PARTIAL"
           ? "Workout saved as partial (some planned sets were unresolved)"
           : "Workout marked as completed"
       );

@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => {
   const workoutExerciseFindMany = vi.fn();
   const workoutExerciseCreate = vi.fn();
   const exerciseFindUnique = vi.fn();
+  const loadCurrentBlockContext = vi.fn();
 
   const tx = {
     workout: {
@@ -52,6 +53,7 @@ const mocks = vi.hoisted(() => {
     workoutExerciseFindMany,
     workoutExerciseCreate,
     exerciseFindUnique,
+    loadCurrentBlockContext,
   };
 });
 
@@ -67,6 +69,10 @@ vi.mock("@/lib/api/exercise-exposure", () => ({
   updateExerciseExposure: vi.fn(async () => undefined),
 }));
 
+vi.mock("@/lib/api/periodization", () => ({
+  loadCurrentBlockContext: mocks.loadCurrentBlockContext,
+}));
+
 import { POST } from "./route";
 
 describe("POST /api/workouts/save", () => {
@@ -77,6 +83,13 @@ describe("POST /api/workouts/save", () => {
     mocks.workoutExerciseFindMany.mockResolvedValue([]);
     mocks.exerciseFindUnique.mockResolvedValue({ movementPatterns: [] });
     mocks.workoutExerciseCreate.mockResolvedValue({ id: "we-1" });
+    mocks.loadCurrentBlockContext.mockResolvedValue({
+      blockContext: {
+        weekInBlock: 3,
+        block: { blockType: "accumulation" },
+      },
+      weekInMeso: 3,
+    });
   });
 
   it.each(["COMPLETED", "PARTIAL", "SKIPPED"] as const)(
@@ -296,7 +309,82 @@ describe("POST /api/workouts/save", () => {
     expect(upsert.update.revision).toEqual({ increment: 1 });
   });
 
-  it("persists fallback cycle context with source=fallback when missing upstream", async () => {
+  it("persists computed cycle context from DB when payload cycleContext is missing and active mesocycle exists", async () => {
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutId: "workout-1",
+          exercises: [
+            {
+              section: "MAIN",
+              exerciseId: "bench",
+              sets: [{ setIndex: 1, targetReps: 8 }],
+            },
+          ],
+        }),
+      })
+    );
+    expect(response.status).toBe(200);
+
+    const upsert = mocks.workoutUpsert.mock.calls[0][0];
+    const createMetadata = upsert.create.selectionMetadata as Record<string, unknown>;
+    const cycleContext = createMetadata.cycleContext as Record<string, unknown>;
+    expect(cycleContext.source).toBe("computed");
+    expect(cycleContext.weekInMeso).toBe(3);
+    expect(cycleContext.weekInBlock).toBe(3);
+    expect(mocks.loadCurrentBlockContext).toHaveBeenCalledTimes(1);
+  });
+
+  it("persists valid incoming cycle context as-is and skips DB cycle-context load", async () => {
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutId: "workout-1",
+          selectionMetadata: {
+            cycleContext: {
+              weekInMeso: 6,
+              weekInBlock: 2,
+              phase: "deload",
+              blockType: "deload",
+              isDeload: true,
+              source: "computed",
+            },
+          },
+          exercises: [
+            {
+              section: "MAIN",
+              exerciseId: "bench",
+              sets: [{ setIndex: 1, targetReps: 8 }],
+            },
+          ],
+        }),
+      })
+    );
+    expect(response.status).toBe(200);
+
+    const upsert = mocks.workoutUpsert.mock.calls[0][0];
+    const createMetadata = upsert.create.selectionMetadata as Record<string, unknown>;
+    expect(createMetadata.cycleContext).toEqual({
+      weekInMeso: 6,
+      weekInBlock: 2,
+      phase: "deload",
+      blockType: "deload",
+      isDeload: true,
+      source: "computed",
+    });
+    expect(mocks.loadCurrentBlockContext).not.toHaveBeenCalled();
+  });
+
+  it("persists fallback cycle context when payload is missing cycleContext and no active mesocycle exists", async () => {
+    mocks.loadCurrentBlockContext.mockResolvedValueOnce({
+      blockContext: null,
+      weekInMeso: 4,
+    });
+
     const response = await POST(
       new Request("http://localhost/api/workouts/save", {
         method: "POST",
@@ -320,6 +408,5 @@ describe("POST /api/workouts/save", () => {
     const cycleContext = createMetadata.cycleContext as Record<string, unknown>;
     expect(cycleContext.source).toBe("fallback");
     expect(cycleContext.weekInMeso).toBe(1);
-    expect(cycleContext.weekInBlock).toBe(1);
   });
 });

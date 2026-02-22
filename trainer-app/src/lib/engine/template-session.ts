@@ -23,6 +23,7 @@ import { getGoalRepRanges, type PeriodizationModifiers } from "./rules";
 import { suggestSubstitutes } from "./substitution";
 import { buildProjectedWarmupSets, canResolveLoadForWarmupRamp } from "./warmup-ramp";
 import type { BlockContext } from "./periodization/types";
+import { prescribeWithBlock } from "./periodization/prescribe-with-block";
 
 export type TemplateExerciseInput = {
   exercise: Exercise;
@@ -98,6 +99,7 @@ export function generateWorkoutFromTemplate(
       fatigueState,
       mainLiftSlots.has(index),
       periodization,
+      options.blockContext,
       options.setCountOverrides?.[input.exercise.id]
     )
   );
@@ -218,6 +220,7 @@ function buildTemplateExercise(
   fatigueState: FatigueState,
   isMainLift: boolean,
   periodization?: PeriodizationModifiers,
+  blockContext?: BlockContext | null,
   overrideSetCount?: number
 ): WorkoutExercise {
   const { exercise, orderIndex } = input;
@@ -243,6 +246,27 @@ function buildTemplateExercise(
     role,
     restSeconds,
   }));
+  const blockAdjustedSets = blockContext
+    ? sets.map((set) => {
+        const startingRpe = set.targetRpe ?? 8;
+        const rir = 10 - startingRpe;
+        const adjusted = prescribeWithBlock({
+          basePrescription: {
+            sets: 1,
+            reps: set.targetReps,
+            rir,
+            restSec: set.restSeconds ?? 90,
+          },
+          blockContext,
+        });
+        const adjustedRpe = Math.min(10, Math.max(5, 10 - adjusted.rir));
+        return {
+          ...set,
+          targetRpe: adjustedRpe,
+          restSeconds: adjusted.restSec,
+        };
+      })
+    : sets;
 
   return {
     id: createId(),
@@ -252,7 +276,7 @@ function buildTemplateExercise(
     role,
     notes: isMainLift ? "Primary movement" : undefined,
     supersetGroup,
-    sets,
+    sets: blockAdjustedSets,
   };
 }
 

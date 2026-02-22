@@ -93,7 +93,7 @@ function computeAlignmentRatio(
   }
   const aligned = selectedIds.filter((exerciseId) => {
     const exercise = byId.get(exerciseId);
-    return Boolean(exercise) && isIntentAlignedExercise(exercise, intent, targetMuscles);
+    return exercise !== undefined && isIntentAlignedExercise(exercise, intent, targetMuscles);
   }).length;
   return aligned / selectedIds.length;
 }

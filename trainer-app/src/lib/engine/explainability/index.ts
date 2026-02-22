@@ -13,6 +13,7 @@
 // Types
 export type {
   WorkoutExplanation,
+  ExplainabilityConfidence,
   SessionContext,
   BlockPhaseContext,
   VolumeStatus,

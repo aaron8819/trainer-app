@@ -525,7 +525,7 @@ function buildPlannedMaxByExercise(
 }
 
 function countLoggedPerformedSets(
-  sets: Array<WorkoutSet & { logs: { wasSkipped: boolean }[] }>
+  sets: Array<{ logs: { wasSkipped: boolean }[] }>
 ): number {
   return sets.filter((set) => {
     const latest = set.logs[0];

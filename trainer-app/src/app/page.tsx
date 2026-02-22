@@ -4,7 +4,8 @@ import { resolveOwner } from "@/lib/api/workout-context";
 import { DashboardGenerateSection } from "@/components/DashboardGenerateSection";
 import RecentWorkouts from "@/components/RecentWorkouts";
 import ReadinessCheckInForm from "@/components/ReadinessCheckInForm";
-import { loadCapabilityFlags } from "@/lib/api/program";
+import TrainingStatusCard from "@/components/TrainingStatusCard";
+import { loadCapabilityFlags, loadProgramDashboardData } from "@/lib/api/program";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -28,7 +29,7 @@ const STATUS_CLASSES: Record<string, string> = {
 
 export default async function Home() {
   const owner = await resolveOwner();
-  const [latestWorkout, latestCompleted, latestIncomplete, recentWorkouts, templateCount, capabilities] =
+  const [latestWorkout, latestCompleted, latestIncomplete, recentWorkouts, templateCount, capabilities, programData] =
     await Promise.all([
       prisma.workout.findFirst({
         where: { userId: owner.id },
@@ -61,6 +62,7 @@ export default async function Home() {
       }),
       prisma.workoutTemplate.count({ where: { userId: owner.id } }),
       loadCapabilityFlags(owner.id),
+      loadProgramDashboardData(owner.id),
     ]);
 
   const nextSessionName = latestWorkout
@@ -125,15 +127,7 @@ export default async function Home() {
                 </div>
               </div>
             ) : null}
-            <div className="rounded-2xl border border-slate-200 p-6 shadow-sm">
-              <h2 className="text-xl font-semibold">Progress</h2>
-              <p className="mt-2 text-sm text-slate-600">
-                Review trends and recovery insights in Analytics.
-              </p>
-              <Link className="mt-4 inline-block text-sm font-semibold text-slate-900" href="/analytics">
-                View analytics
-              </Link>
-            </div>
+            <TrainingStatusCard data={programData} />
           </div>
         </section>
 

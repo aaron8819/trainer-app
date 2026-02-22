@@ -35,6 +35,7 @@ Sources of truth:
 1. Onboarding/profile setup
 - UI: `/onboarding`
 - API: `POST /api/profile/setup`
+- Onboarding/settings profile constraints no longer include session duration input; the form persists goal fields plus `daysPerWeek` and `splitType` (`src/app/onboarding/ProfileForm.tsx`, `src/app/settings/page.tsx`, `src/lib/validation.ts`).
 
 2. Generate and save workout
 - UI entry points: dashboard/template/intent components

@@ -48,6 +48,7 @@ Sources of truth:
 - Logging: `setLogSchema`
 - Templates: `createTemplateSchema`, `updateTemplateSchema`, `addExerciseToTemplateSchema`
 - Profile/readiness/analytics: `profileSetupSchema`, `readinessSignalSchema`, `analyticsSummarySchema`
+- `profileSetupSchema` no longer accepts `sessionMinutes`; profile setup persists `daysPerWeek` and optional `splitType` through `POST /api/profile/setup` (`src/lib/validation.ts`, `src/app/api/profile/setup/route.ts`).
 - Save payload supports explainability/runtime metadata passthrough for persisted workouts via `saveWorkoutSchema` fields `wasAutoregulated` and `autoregulationLog` in `src/lib/validation.ts` and persistence in `src/app/api/workouts/save/route.ts`.
 
 ## Workout save terminal transition contract

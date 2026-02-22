@@ -1,7 +1,7 @@
 # 07 Operations
 
 Owner: Aaron  
-Last reviewed: 2026-02-20  
+Last reviewed: 2026-02-22  
 Purpose: Operational runbook for local development/runtime setup, migrations, seed, and verification for this single-user app.
 
 This doc covers:
@@ -25,6 +25,7 @@ Sources of truth:
 
 ## Environment
 - Required: `DATABASE_URL`
+- Required for `prisma migrate dev` against Supabase: `SHADOW_DATABASE_URL` (or `SHADOW_URL`) so Prisma can create/apply shadow migrations (`prisma.config.ts`).
 - Optional SSL override: `DATABASE_SSL_NO_VERIFY`
 - Single-user owner identity: `OWNER_EMAIL`
 
@@ -40,9 +41,7 @@ Sources of truth:
 - `npm run verify:exercise-library`: validates exercise library integrity
 - `npm run repair:exercise-library` (and `:apply`) for repair workflow
 - Keep `docs/contracts/runtime-contracts.json` aligned with `src/lib/validation.ts`
-- Recent schema changes to apply in order include:
-  - `prisma/migrations/20260220_add_partial_workout_status/migration.sql`
-  - `prisma/migrations/20260220_workout_revision_and_exercise_order_unique/migration.sql`
+- Current baseline migration history is squashed to `prisma/migrations/20260222_baseline/migration.sql`; historical per-feature migration folders are retained only in local backup (`prisma/migrations_backup/`, ignored by Git).
 
 ## Standalone Prisma scripts
 Use this pattern for one-off scripts in `prisma/` (backfills, diagnostics, cleanup).

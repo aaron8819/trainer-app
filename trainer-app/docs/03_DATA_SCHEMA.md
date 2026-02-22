@@ -1,7 +1,7 @@
 # 03 Data Schema
 
 Owner: Aaron  
-Last reviewed: 2026-02-20  
+Last reviewed: 2026-02-22  
 Purpose: Canonical data-model reference for runtime persistence used by workout generation, logging, templates, analytics, readiness, and periodization.
 
 This doc covers:
@@ -39,5 +39,6 @@ Canonical machine-readable values: `docs/contracts/runtime-contracts.json`.
 - Workout saves rewrite workout exercises/sets when exercise payload is supplied (`/api/workouts/save`).
 - Set logging upserts by `workoutSetId` (`/api/logs/set`), making log state idempotent per set.
 - Filtered/rejected intent exercises are persisted to `FilteredExercise` for later explainability rendering.
-- Workout rewrites are revision-guarded by `Workout.revision` (see migration `prisma/migrations/20260220_workout_revision_and_exercise_order_unique/migration.sql` and route enforcement in `src/app/api/workouts/save/route.ts`).
-- Exercise ordering is deterministic per workout via unique index `WorkoutExercise(workoutId, orderIndex)` (same migration as above).
+- `Constraints` now persists scheduling constraints as `daysPerWeek` and `splitType` (no `sessionMinutes` field) in `prisma/schema.prisma`, and is mapped into runtime constraints in `src/lib/api/workout-context.ts`.
+- Workout rewrites are revision-guarded by `Workout.revision` in `prisma/schema.prisma` and route enforcement in `src/app/api/workouts/save/route.ts`.
+- Exercise ordering is deterministic per workout via unique index `WorkoutExercise(workoutId, orderIndex)` in `prisma/schema.prisma` (materialized in baseline migration `prisma/migrations/20260222_baseline/migration.sql`).

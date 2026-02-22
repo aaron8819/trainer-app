@@ -1131,7 +1131,10 @@ async function seedOwner() {
     return withProfile;
   }
 
-  const firstUser = await prisma.user.findFirst({ orderBy: { createdAt: "asc" } });
+  const firstUser = await prisma.user.findFirst({
+    orderBy: { createdAt: "asc" },
+    where: { email: { not: { endsWith: "@test.com" } } },
+  });
   if (firstUser) {
     return firstUser;
   }

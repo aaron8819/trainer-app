@@ -53,6 +53,7 @@ export type ProgramDashboardData = {
   activeMeso: ProgramMesoSummary | null;
   currentWeek: number;
   sessionsUntilDeload: number;
+  daysPerWeek: number;
   volumeThisWeek: ProgramVolumeRow[];
   recentWorkouts: ProgramRecentWorkout[];
   deloadReadiness: DeloadReadiness | null;
@@ -313,6 +314,7 @@ export async function loadProgramDashboardData(userId: string): Promise<ProgramD
       : null,
     currentWeek,
     sessionsUntilDeload,
+    daysPerWeek,
     volumeThisWeek,
     deloadReadiness,
     capabilities,

@@ -51,7 +51,7 @@ export default function TrainingStatusCard({ data }: TrainingStatusCardProps) {
   const { activeMeso, currentWeek, sessionsUntilDeload, deloadReadiness, volumeThisWeek } = data;
   const durationWeeks = activeMeso.durationWeeks;
   const progressPct = Math.max(0, Math.min(100, (currentWeek / Math.max(1, durationWeeks)) * 100));
-  const totalSessions = Math.max(0, (durationWeeks - 1) * 3);
+  const totalSessions = Math.max(0, (durationWeeks - 1) * data.daysPerWeek);
   const blockType = activeMeso.currentBlockType ?? "accumulation";
   const coachingCue = BLOCK_COACHING_CUES[blockType] ?? BLOCK_COACHING_CUES.accumulation;
   const visibleVolumeRows = volumeThisWeek.filter((row) => row.mav > 0).slice(0, 8);

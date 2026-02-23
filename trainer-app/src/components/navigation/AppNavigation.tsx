@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { NavLink } from "./NavLink";
 
@@ -51,16 +52,26 @@ const NAV_ITEMS = [
 
 export function AppNavigation() {
   const pathname = usePathname();
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(max-width: 767px)");
+    const update = () => setIsMobile(mediaQuery.matches);
+    update();
+
+    mediaQuery.addEventListener("change", update);
+    return () => mediaQuery.removeEventListener("change", update);
+  }, []);
 
   const isActive = (href: string) => {
+    if (!pathname) return false;
     if (href === "/") return pathname === "/";
-    return pathname.startsWith(href);
+    return pathname === href || pathname.startsWith(`${href}/`);
   };
 
-  return (
-    <>
-      {/* Mobile: Fixed bottom bar */}
-      <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] md:hidden">
+  if (isMobile) {
+    return (
+      <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)]">
         <div className="mx-auto flex h-[var(--mobile-nav-height)] max-w-5xl items-stretch justify-between px-1">
           {NAV_ITEMS.map((item) => (
             <NavLink
@@ -69,26 +80,29 @@ export function AppNavigation() {
               label={item.label}
               icon={item.icon}
               isActive={isActive(item.href)}
+              mode="mobile"
             />
           ))}
         </div>
       </nav>
+    );
+  }
 
-      {/* Desktop: Sticky top bar */}
-      <nav className="sticky top-0 z-50 hidden border-b border-slate-200 bg-white md:block">
-        <div className="mx-auto flex max-w-5xl items-center gap-1 px-4 py-2 sm:px-5 md:px-6">
-          <span className="mr-6 text-lg font-bold text-slate-900">Trainer</span>
-          {NAV_ITEMS.map((item) => (
-            <NavLink
-              key={item.href}
-              href={item.href}
-              label={item.label}
-              icon={item.icon}
-              isActive={isActive(item.href)}
-            />
-          ))}
-        </div>
-      </nav>
-    </>
+  return (
+    <nav className="sticky top-0 z-50 border-b border-slate-200 bg-white">
+      <div className="mx-auto flex max-w-5xl items-center gap-1 px-4 py-2 sm:px-5 md:px-6">
+        <span className="mr-6 text-lg font-bold text-slate-900">Trainer</span>
+        {NAV_ITEMS.map((item) => (
+          <NavLink
+            key={item.href}
+            href={item.href}
+            label={item.label}
+            icon={item.icon}
+            isActive={isActive(item.href)}
+            mode="desktop"
+          />
+        ))}
+      </div>
+    </nav>
   );
 }

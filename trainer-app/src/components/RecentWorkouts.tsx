@@ -8,6 +8,7 @@ type WorkoutListItem = {
   id: string;
   scheduledDate: string;
   status: string;
+  sessionIntent: string | null;
   exercisesCount: number;
 };
 
@@ -32,6 +33,13 @@ export default function RecentWorkouts({
     router.refresh();
   };
 
+  const formatSessionIntent = (intent: string) =>
+    intent
+      .split("_")
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ");
+
   return (
     <section className="mt-10">
       <div className="flex items-center justify-between">
@@ -50,7 +58,11 @@ export default function RecentWorkouts({
               className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 p-5"
             >
               <div>
-                <p className="text-sm font-semibold">Workout {workout.id.slice(0, 8)}</p>
+                <p className="text-sm font-semibold">
+                  {workout.sessionIntent
+                    ? `${formatSessionIntent(workout.sessionIntent)} - ${new Date(workout.scheduledDate).toLocaleDateString()}`
+                    : `Workout ${new Date(workout.scheduledDate).toLocaleDateString()}`}
+                </p>
                 <p className="mt-1 text-xs text-slate-500">
                   {new Date(workout.scheduledDate).toLocaleDateString()} · {workout.exercisesCount} exercises
                 </p>

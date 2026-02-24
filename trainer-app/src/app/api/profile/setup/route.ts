@@ -56,11 +56,13 @@ export async function POST(request: Request) {
       update: {
         daysPerWeek: parsed.data.daysPerWeek,
         ...(parsed.data.splitType ? { splitType: parsed.data.splitType } : {}),
+        weeklySchedule: parsed.data.weeklySchedule ?? [],
       },
       create: {
         userId: user.id,
         daysPerWeek: parsed.data.daysPerWeek,
         splitType: parsed.data.splitType ?? "CUSTOM",
+        weeklySchedule: parsed.data.weeklySchedule ?? [],
       },
     });
 

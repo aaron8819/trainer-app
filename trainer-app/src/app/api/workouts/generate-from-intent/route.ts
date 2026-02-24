@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { generateFromIntentSchema } from "@/lib/validation";
 import { resolveOwner } from "@/lib/api/workout-context";
-import { generateSessionFromIntent } from "@/lib/api/template-session";
+import { generateDeloadSessionFromIntent, generateSessionFromIntent } from "@/lib/api/template-session";
 import { applyAutoregulation } from "@/lib/api/autoregulation";
+import { loadActiveMesocycle } from "@/lib/api/mesocycle-lifecycle";
 
 export async function POST(request: Request) {
   const includeSelectionDebug = new URL(request.url).searchParams.get("debug") === "1";
@@ -18,7 +19,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
 
-  const result = await generateSessionFromIntent(user.id, parsed.data);
+  const activeMesocycle = await loadActiveMesocycle(user.id);
+  const result =
+    activeMesocycle?.state === "ACTIVE_DELOAD"
+      ? await generateDeloadSessionFromIntent(user.id, parsed.data)
+      : await generateSessionFromIntent(user.id, parsed.data);
   if ("error" in result) {
     return NextResponse.json({ error: result.error }, { status: 400 });
   }

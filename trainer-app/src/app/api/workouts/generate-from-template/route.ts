@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { generateFromTemplateSchema } from "@/lib/validation";
 import { resolveOwner } from "@/lib/api/workout-context";
-import { generateSessionFromTemplate } from "@/lib/api/template-session";
+import { generateDeloadSessionFromTemplate, generateSessionFromTemplate } from "@/lib/api/template-session";
 import { applyAutoregulation } from "@/lib/api/autoregulation";
+import { loadActiveMesocycle } from "@/lib/api/mesocycle-lifecycle";
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
@@ -17,10 +18,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
 
-  const result = await generateSessionFromTemplate(user.id, parsed.data.templateId, {
-    pinnedExerciseIds: parsed.data.pinnedExerciseIds,
-    autoFillUnpinned: parsed.data.autoFillUnpinned,
-  });
+  const activeMesocycle = await loadActiveMesocycle(user.id);
+  const result =
+    activeMesocycle?.state === "ACTIVE_DELOAD"
+      ? await generateDeloadSessionFromTemplate(user.id, parsed.data.templateId)
+      : await generateSessionFromTemplate(user.id, parsed.data.templateId, {
+          pinnedExerciseIds: parsed.data.pinnedExerciseIds,
+          autoFillUnpinned: parsed.data.autoFillUnpinned,
+        });
 
   if ("error" in result) {
     return NextResponse.json({ error: result.error }, { status: 400 });

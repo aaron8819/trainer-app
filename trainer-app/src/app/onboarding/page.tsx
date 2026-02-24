@@ -2,6 +2,8 @@ import { prisma } from "@/lib/db/prisma";
 import { resolveOwner } from "@/lib/api/workout-context";
 import OnboardingFlow from "./OnboardingFlow";
 
+export const dynamic = "force-dynamic";
+
 export default async function OnboardingPage() {
   const user = await resolveOwner();
   const [goals, constraints] = await Promise.all([
@@ -11,7 +13,9 @@ export default async function OnboardingPage() {
 
   const initialValues = {
     primaryGoal: goals?.primaryGoal ?? "HYPERTROPHY",
+    daysPerWeek: constraints?.daysPerWeek ?? 4,
     splitType: constraints?.splitType ?? "PPL",
+    weeklySchedule: constraints?.weeklySchedule ?? [],
   };
 
   return (

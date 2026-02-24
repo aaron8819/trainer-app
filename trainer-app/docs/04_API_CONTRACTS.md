@@ -46,6 +46,7 @@ Sources of truth:
 ## Validation-backed contracts (examples)
 - Workout generation/save: `generateFromTemplateSchema`, `generateFromIntentSchema`, `saveWorkoutSchema`
 - Logging: `setLogSchema`
+- Dumbbell load contract: clients submit dumbbell `actualLoad` in per-hand units and `POST /api/logs/set` persists the provided per-hand value directly.
 - Templates: `createTemplateSchema`, `updateTemplateSchema`, `addExerciseToTemplateSchema`
 - Profile/readiness/analytics: `profileSetupSchema`, `readinessSignalSchema`, `analyticsSummarySchema`
 - `profileSetupSchema` no longer accepts `sessionMinutes`; profile setup persists `daysPerWeek` and optional `splitType` through `POST /api/profile/setup` (`src/lib/validation.ts`, `src/app/api/profile/setup/route.ts`).
@@ -64,6 +65,18 @@ Sources of truth:
   - Performed-signal readers use `COMPLETED` + `PARTIAL` (`src/lib/workout-status.ts`).
   - Mesocycle advancement increments on transition to `COMPLETED` only (`src/app/api/workouts/save/route.ts`).
 - Save route normalizes/persists cycle context into `selectionMetadata.cycleContext`; when not supplied upstream it writes a fallback snapshot with `source: "fallback"` (`deriveCycleContext()` in `src/app/api/workouts/save/route.ts`).
+
+## Deload gate contract
+- Routes:
+  - `POST /api/workouts/generate-from-intent` (`src/app/api/workouts/generate-from-intent/route.ts`)
+  - `POST /api/workouts/generate-from-template` (`src/app/api/workouts/generate-from-template/route.ts`)
+- Gate condition: when active mesocycle state is `ACTIVE_DELOAD`, both routes dispatch to deload generation and do not execute the normal accumulation generation path.
+- Deload generation implementation: `src/lib/api/template-session/deload-session.ts`.
+- Deload prescription contract:
+  - Exercise list is anchored to the final accumulation week/session history for the requested intent.
+  - Set volume is reduced to ~40-50% (`DELOAD_SET_FACTOR = 0.45`) with minimum set floor safeguards.
+  - Load anchoring comes from the final accumulation modal load selection logic.
+  - RIR target is deload band (`4-6`) via lifecycle RIR targeting.
 
 ## Workout explanation response contract
 - Route: `GET /api/workouts/[id]/explanation` (`src/app/api/workouts/[id]/explanation/route.ts`).

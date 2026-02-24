@@ -32,7 +32,7 @@ export function ExerciseDetailSheet({ exerciseId, onClose, onNavigate }: Exercis
   const [favoriteState, setFavoriteState] = useState(false);
   const [avoidState, setAvoidState] = useState(false);
   const [prevId, setPrevId] = useState<string | null>(null);
-  const [refreshCounter, setRefreshCounter] = useState(0);
+  const [refreshCounter] = useState(0);
   const [templateSheetOpen, setTemplateSheetOpen] = useState(false);
 
   // React 19: adjust state from props during render (no side effects)

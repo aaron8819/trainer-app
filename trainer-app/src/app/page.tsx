@@ -27,20 +27,24 @@ const STATUS_CLASSES: Record<string, string> = {
   PLANNED: "bg-slate-100 text-slate-700",
 };
 
+type SessionIntent = "push" | "pull" | "legs" | "upper" | "lower" | "full_body" | "body_part";
+
+function isSessionIntent(value: string | null): value is SessionIntent {
+  return (
+    value === "push" ||
+    value === "pull" ||
+    value === "legs" ||
+    value === "upper" ||
+    value === "lower" ||
+    value === "full_body" ||
+    value === "body_part"
+  );
+}
+
 export default async function Home() {
   const owner = await resolveOwner();
-  const [latestWorkout, latestCompleted, latestIncomplete, recentWorkouts, templateCount, capabilities, programData] =
+  const [latestCompleted, latestIncomplete, recentWorkouts, templateCount, capabilities, programData] =
     await Promise.all([
-      prisma.workout.findFirst({
-        where: { userId: owner.id },
-        orderBy: { scheduledDate: "desc" },
-        include: {
-          exercises: {
-            orderBy: { orderIndex: "asc" },
-            include: { exercise: true },
-          },
-        },
-      }),
       prisma.workout.findFirst({
         where: { userId: owner.id, status: "COMPLETED" },
         orderBy: { completedAt: "desc" },
@@ -65,17 +69,32 @@ export default async function Home() {
       loadProgramDashboardData(owner.id),
     ]);
 
-  const nextSessionName = latestWorkout
-    ? latestWorkout.exercises
-        .slice(0, 3)
-        .map((exercise) => exercise.exercise.name)
-        .join(", ")
-    : "No saved workouts yet";
+  const formatSessionIntent = (intent: string) =>
+    intent
+      .split("_")
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ");
+
+  const nextSessionIntent = isSessionIntent(programData.nextSessionIntent)
+    ? programData.nextSessionIntent
+    : null;
+  const nextSessionLabel = nextSessionIntent ? formatSessionIntent(nextSessionIntent) : null;
+
+  const matchingPlannedWorkout =
+    nextSessionIntent
+      ? recentWorkouts.find(
+          (workout) =>
+            ["PLANNED", "IN_PROGRESS", "PARTIAL"].includes(workout.status) &&
+            workout.sessionIntent?.toLowerCase() === nextSessionIntent
+        ) ?? null
+      : null;
 
   const recentList = recentWorkouts.map((workout) => ({
     id: workout.id,
     scheduledDate: workout.scheduledDate.toISOString(),
     status: workout.status,
+    sessionIntent: workout.sessionIntent?.toLowerCase() ?? null,
     exercisesCount: workout.exercises.length,
   }));
 
@@ -92,7 +111,10 @@ export default async function Home() {
 
         <section className="grid gap-6 md:grid-cols-2">
           <div className="min-w-0">
-            <DashboardGenerateSection templateCount={templateCount} />
+            <DashboardGenerateSection
+              templateCount={templateCount}
+              initialIntent={nextSessionIntent ?? undefined}
+            />
           </div>
           <div className="min-w-0 space-y-6">
             {capabilities.readinessEnabled ? (
@@ -134,14 +156,26 @@ export default async function Home() {
         <section className="mt-8 grid gap-6 md:mt-10 md:grid-cols-3">
           <div className="rounded-2xl border border-slate-200 p-5">
             <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Next Session</h3>
-            <p className="mt-3 text-lg font-semibold">{latestWorkout ? "Upcoming Workout" : "No workout"}</p>
-            <p className="mt-2 text-sm text-slate-600">{nextSessionName}</p>
-            {latestWorkout ? (
+            <p className="mt-3 text-lg font-semibold">
+              {nextSessionLabel ? `Next: ${nextSessionLabel}` : "No session intent"}
+            </p>
+            <p className="mt-2 text-sm text-slate-600">
+              {matchingPlannedWorkout
+                ? "A matching workout is already saved."
+                : nextSessionLabel
+                  ? `Generate a ${nextSessionLabel} session.`
+                  : "Set up weekly schedule to enable next-session intent."}
+            </p>
+            {matchingPlannedWorkout ? (
               <Link
                 className="mt-3 inline-block text-sm font-semibold text-slate-900"
-                href={`/workout/${latestWorkout.id}`}
+                href={`/workout/${matchingPlannedWorkout.id}`}
               >
                 View workout
+              </Link>
+            ) : nextSessionLabel ? (
+              <Link className="mt-3 inline-block text-sm font-semibold text-slate-900" href="#generate-workout">
+                Generate {nextSessionLabel}
               </Link>
             ) : (
               <span className="mt-3 inline-block text-sm text-slate-500">Generate a workout first</span>

@@ -187,6 +187,7 @@ export function mapMacroCycle(
     "strength" | "hypertrophy" | "fat_loss" | "general_fitness"
   > = {
     STRENGTH: "strength",
+    STRENGTH_HYPERTROPHY: "strength",
     HYPERTROPHY: "hypertrophy",
     FAT_LOSS: "fat_loss",
     ATHLETICISM: "general_fitness",

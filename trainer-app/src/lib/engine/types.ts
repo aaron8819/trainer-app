@@ -2,6 +2,7 @@ export type TrainingAge = "beginner" | "intermediate" | "advanced";
 export type PrimaryGoal =
   | "hypertrophy"
   | "strength"
+  | "strength_hypertrophy"
   | "fat_loss"
   | "athleticism"
   | "general_health";
@@ -84,11 +85,14 @@ export type UserProfile = {
 export type Goals = {
   primary: PrimaryGoal;
   secondary: SecondaryGoal;
+  isStrengthFocused?: boolean;
+  isHypertrophyFocused?: boolean;
 };
 
 export type Constraints = {
   daysPerWeek: number;
   splitType: SplitType;
+  weeklySchedule: SplitDay[];
 };
 
 export type UserPreferences = {

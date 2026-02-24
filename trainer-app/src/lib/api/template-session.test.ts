@@ -17,8 +17,11 @@ const mapHistoryMock = vi.fn();
 const mapPreferencesMock = vi.fn();
 const mapCheckInMock = vi.fn();
 const applyLoadsMock = vi.fn();
-const loadCurrentBlockContextMock = vi.fn();
+const loadActiveMesocycleMock = vi.fn();
 const loadExerciseExposureMock = vi.fn();
+const getCurrentMesoWeekMock = vi.fn();
+const getRirTargetMock = vi.fn();
+const getWeeklyVolumeTargetMock = vi.fn();
 
 vi.mock("./templates", () => ({
   loadTemplateDetail: (...args: unknown[]) => loadTemplateDetailMock(...args),
@@ -36,12 +39,15 @@ vi.mock("./workout-context", () => ({
   applyLoads: (...args: unknown[]) => applyLoadsMock(...args),
 }));
 
-vi.mock("./periodization", () => ({
-  loadCurrentBlockContext: (...args: unknown[]) => loadCurrentBlockContextMock(...args),
-}));
-
 vi.mock("./exercise-exposure", () => ({
   loadExerciseExposure: (...args: unknown[]) => loadExerciseExposureMock(...args),
+}));
+
+vi.mock("@/lib/api/mesocycle-lifecycle", () => ({
+  loadActiveMesocycle: (...args: unknown[]) => loadActiveMesocycleMock(...args),
+  getCurrentMesoWeek: (...args: unknown[]) => getCurrentMesoWeekMock(...args),
+  getRirTarget: (...args: unknown[]) => getRirTargetMock(...args),
+  getWeeklyVolumeTarget: (...args: unknown[]) => getWeeklyVolumeTargetMock(...args),
 }));
 
 import { generateSessionFromIntent } from "./template-session";
@@ -54,7 +60,7 @@ describe("generateSessionFromIntent", () => {
     loadWorkoutContextMock.mockResolvedValue({
       profile: { id: "profile" },
       goals: { primaryGoal: "HYPERTROPHY", secondaryGoal: "NONE" },
-      constraints: { daysPerWeek: 4, splitType: "UPPER_LOWER" },
+      constraints: { daysPerWeek: 4, splitType: "UPPER_LOWER", weeklySchedule: ["UPPER", "LOWER"] },
       injuries: [],
       exercises: exampleExerciseLibrary.map((exercise) => ({ id: exercise.id })),
       workouts: [],
@@ -67,13 +73,22 @@ describe("generateSessionFromIntent", () => {
     mapConstraintsMock.mockReturnValue({
       daysPerWeek: 4,
       splitType: "upper_lower",
+      weeklySchedule: ["upper", "lower"],
     });
     mapExercisesMock.mockReturnValue(exampleExerciseLibrary);
     mapHistoryMock.mockReturnValue([]);
     mapPreferencesMock.mockReturnValue(undefined);
     mapCheckInMock.mockReturnValue(undefined);
     applyLoadsMock.mockImplementation((workout: unknown) => workout);
-    loadCurrentBlockContextMock.mockResolvedValue({ blockContext: null, weekInMeso: 1 });
+    loadActiveMesocycleMock.mockResolvedValue({
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION",
+      accumulationSessionsCompleted: 3,
+      durationWeeks: 5,
+    });
+    getCurrentMesoWeekMock.mockReturnValue(2);
+    getRirTargetMock.mockReturnValue({ min: 2, max: 3 });
+    getWeeklyVolumeTargetMock.mockImplementation(() => 12);
     loadExerciseExposureMock.mockResolvedValue(new Map());
   });
 
@@ -113,28 +128,33 @@ describe("generateSessionFromIntent", () => {
     expect(result.selection.intentDiagnostics?.alignedRatio).toBeGreaterThanOrEqual(0.7);
   });
 
-  it("uses blockContext.weekInBlock for periodization week when it differs from weekInMeso", async () => {
-    loadCurrentBlockContextMock.mockResolvedValue({
-      weekInMeso: 4,
-      blockContext: {
-        weekInBlock: 2,
-        block: { blockType: "intensification", durationWeeks: 3 },
-        mesocycle: { durationWeeks: 5 },
-        macroCycle: { primaryGoal: "hypertrophy", trainingAge: "intermediate" },
-      },
+  it("uses lifecycle week for periodization week and cycle context", async () => {
+    getCurrentMesoWeekMock.mockReturnValue(4);
+    loadActiveMesocycleMock.mockResolvedValue({
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION",
+      accumulationSessionsCompleted: 9,
+      durationWeeks: 5,
     });
 
     const result = await generateSessionFromIntent("user-1", { intent: "push" });
     expect("error" in result).toBe(false);
     if ("error" in result) return;
 
-    expect(result.selection.periodizationWeek).toBe(2);
+    expect(result.selection.periodizationWeek).toBe(4);
     expect(result.selection.cycleContext?.weekInMeso).toBe(4);
-    expect(result.selection.cycleContext?.weekInBlock).toBe(2);
+    expect(result.selection.cycleContext?.weekInBlock).toBe(4);
   });
 
   it("populates deloadDecision when a deload is applied", async () => {
-    loadCurrentBlockContextMock.mockResolvedValue({ blockContext: null, weekInMeso: 4 });
+    loadActiveMesocycleMock.mockResolvedValue({
+      id: "meso-1",
+      state: "ACTIVE_DELOAD",
+      accumulationSessionsCompleted: 12,
+      durationWeeks: 5,
+    });
+    getCurrentMesoWeekMock.mockReturnValue(5);
+    getRirTargetMock.mockReturnValue({ min: 4, max: 6 });
 
     const result = await generateSessionFromIntent("user-1", { intent: "push" });
     expect("error" in result).toBe(false);
@@ -142,5 +162,40 @@ describe("generateSessionFromIntent", () => {
 
     expect(result.selection.deloadDecision?.mode).toBe("scheduled");
     expect(result.selection.deloadDecision?.reductionPercent).toBe(50);
+  });
+
+  it("applies lifecycle RIR bands to session RPE progression (week 1 -> 2 -> 4)", async () => {
+    loadActiveMesocycleMock.mockResolvedValue({
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION",
+      accumulationSessionsCompleted: 0,
+      durationWeeks: 5,
+    });
+    getCurrentMesoWeekMock.mockReturnValue(1);
+    getRirTargetMock.mockReturnValue({ min: 3, max: 4 });
+    let result = await generateSessionFromIntent("user-1", { intent: "push" });
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+    const week1Rpe = result.workout.mainLifts[0]?.sets[0]?.targetRpe ?? 0;
+    expect(week1Rpe).toBeGreaterThanOrEqual(6);
+    expect(week1Rpe).toBeLessThanOrEqual(7);
+
+    getCurrentMesoWeekMock.mockReturnValue(2);
+    getRirTargetMock.mockReturnValue({ min: 2, max: 3 });
+    result = await generateSessionFromIntent("user-1", { intent: "push" });
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+    const week2Rpe = result.workout.mainLifts[0]?.sets[0]?.targetRpe ?? 0;
+    expect(week2Rpe).toBeGreaterThanOrEqual(7);
+    expect(week2Rpe).toBeLessThanOrEqual(8);
+
+    getCurrentMesoWeekMock.mockReturnValue(4);
+    getRirTargetMock.mockReturnValue({ min: 1, max: 2 });
+    result = await generateSessionFromIntent("user-1", { intent: "push" });
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+    const week4Rpe = result.workout.mainLifts[0]?.sets[0]?.targetRpe ?? 0;
+    expect(week4Rpe).toBeGreaterThanOrEqual(8);
+    expect(week4Rpe).toBeLessThanOrEqual(9);
   });
 });

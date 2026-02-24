@@ -42,6 +42,30 @@ Sources of truth:
 - `npm run repair:exercise-library` (and `:apply`) for repair workflow
 - Keep `docs/contracts/runtime-contracts.json` aligned with `src/lib/validation.ts`
 - Current baseline migration history is squashed to `prisma/migrations/20260222_baseline/migration.sql`; historical per-feature migration folders are retained only in local backup (`prisma/migrations_backup/`, ignored by Git).
+- Lifecycle backfill/role management scripts:
+  - `prisma/reset-backfill-mesocycle-lifecycle.ts`: reset and rebuild mesocycle lifecycle state from existing performed workouts.
+  - `prisma/backfill-week2-pull.ts`: example manual session backfill flow.
+  - `prisma/update-pull-exercise-roles.ts` and `prisma/update-push-exercise-roles.ts`: canonical mesocycle exercise role updates.
+- Lifecycle verification query pattern (mesocycle state, counters, snapshots, roles):
+```sql
+-- Mesocycle lifecycle state + counters
+select id, state, "accumulationSessionsCompleted", "deloadSessionsCompleted", "sessionsPerWeek", "daysPerWeek", "splitType"
+from "Mesocycle"
+where "isActive" = true
+order by "updatedAt" desc nulls last;
+
+-- Recent workout lifecycle snapshots
+select id, status, "mesocycleId", "mesocyclePhaseSnapshot", "mesocycleWeekSnapshot", "mesoSessionSnapshot", "scheduledDate"
+from "Workout"
+where "mesocycleId" is not null
+order by "scheduledDate" desc
+limit 50;
+
+-- Exercise role continuity
+select "mesocycleId", "sessionIntent", role, "exerciseId", "addedInWeek"
+from "MesocycleExerciseRole"
+order by "mesocycleId", "sessionIntent", role, "addedInWeek", "exerciseId";
+```
 
 ## Standalone Prisma scripts
 Use this pattern for one-off scripts in `prisma/` (backfills, diagnostics, cleanup).

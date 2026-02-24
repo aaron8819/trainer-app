@@ -40,11 +40,9 @@ export default function UserPreferencesForm({
   // Derive initial display names from stored IDs
   const idToName = (id: string) => exercises?.find((e) => e.id === id)?.name;
   const initialFavoriteNames = (initialValues?.favoriteExerciseIds ?? [])
-    .map(idToName)
-    .filter((n): n is string => Boolean(n));
+    .map((id) => idToName(id) ?? id);
   const initialAvoidNames = (initialValues?.avoidExerciseIds ?? [])
-    .map(idToName)
-    .filter((n): n is string => Boolean(n));
+    .map((id) => idToName(id) ?? id);
 
   const form = useForm<PreferenceFormValues>({
     defaultValues: {
@@ -60,7 +58,9 @@ export default function UserPreferencesForm({
   const favorites = form.watch("favoriteExercises");
   const avoids = form.watch("avoidExercises");
 
-  const nameToId = (name: string) => exercises?.find((e) => e.name === name)?.id;
+  const nameToId = (name: string) =>
+    exercises?.find((e) => e.name === name)?.id ??
+    (exercises?.some((e) => e.id === name) ? name : undefined);
 
   const onSubmit = form.handleSubmit(async (values) => {
     setStatus(null);

@@ -49,8 +49,20 @@ export async function POST(request: NextRequest) {
     : userWithProfile.profile?.trainingAge.toLowerCase() as "beginner" | "intermediate" | "advanced";
 
   const effectivePrimaryGoal = primaryGoal
-    ? primaryGoal.toLowerCase() as "hypertrophy" | "strength" | "fat_loss" | "athleticism" | "general_health"
-    : userWithProfile.goals?.primaryGoal.toLowerCase() as "hypertrophy" | "strength" | "fat_loss" | "athleticism" | "general_health";
+    ? primaryGoal.toLowerCase() as
+        | "hypertrophy"
+        | "strength"
+        | "strength_hypertrophy"
+        | "fat_loss"
+        | "athleticism"
+        | "general_health"
+    : userWithProfile.goals?.primaryGoal.toLowerCase() as
+        | "hypertrophy"
+        | "strength"
+        | "strength_hypertrophy"
+        | "fat_loss"
+        | "athleticism"
+        | "general_health";
 
   if (!effectiveTrainingAge || !effectivePrimaryGoal) {
     return NextResponse.json(
@@ -80,7 +92,13 @@ export async function POST(request: NextRequest) {
       primaryGoal:
         macro.primaryGoal === "general_fitness"
           ? "GENERAL_HEALTH"
-          : (macro.primaryGoal.toUpperCase() as "HYPERTROPHY" | "STRENGTH" | "FAT_LOSS" | "ATHLETICISM" | "GENERAL_HEALTH"),
+          : (macro.primaryGoal.toUpperCase() as
+              | "HYPERTROPHY"
+              | "STRENGTH"
+              | "STRENGTH_HYPERTROPHY"
+              | "FAT_LOSS"
+              | "ATHLETICISM"
+              | "GENERAL_HEALTH"),
       mesocycles: {
         create: macro.mesocycles.map((meso) => ({
           id: meso.id,

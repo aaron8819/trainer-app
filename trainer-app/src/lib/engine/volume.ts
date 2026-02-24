@@ -28,6 +28,7 @@ export type EnhancedVolumeContext = VolumeContext & {
   muscleVolume: Record<string, MuscleVolumeState>;
   mesocycleWeek: number;
   mesocycleLength: number;
+  weeklyTargets?: Record<string, number>;
 };
 
 export type VolumePlanByMuscleEntry = {
@@ -43,7 +44,7 @@ const USE_EFFECTIVE_VOLUME_CAPS_ENV = "USE_EFFECTIVE_VOLUME_CAPS";
 export function buildVolumeContext(
   history: WorkoutHistoryEntry[],
   exerciseLibrary: Exercise[],
-  mesocycleOptions?: { week: number; length: number }
+  mesocycleOptions?: { week: number; length: number; weeklyTargets?: Record<string, number> }
 ): VolumeContext | EnhancedVolumeContext {
   const byId = new Map(exerciseLibrary.map((exercise) => [exercise.id, exercise]));
   const now = Date.now();
@@ -107,6 +108,7 @@ export function buildVolumeContext(
     muscleVolume,
     mesocycleWeek: mesocycleOptions.week,
     mesocycleLength: mesocycleOptions.length,
+    weeklyTargets: mesocycleOptions.weeklyTargets,
   };
 }
 
@@ -284,7 +286,9 @@ export function buildVolumePlanByMuscle(
 
   const plan: VolumePlanByMuscle = {};
   for (const [muscle, landmark] of Object.entries(VOLUME_LANDMARKS)) {
-    const target = getTargetVolume(landmark, mesocycleWeek, mesocycleLength);
+    const target = enhanced && volumeContext.weeklyTargets?.[muscle] != null
+      ? volumeContext.weeklyTargets[muscle]
+      : getTargetVolume(landmark, mesocycleWeek, mesocycleLength);
     const planned =
       (directSets[muscle] ?? 0) + (indirectSets[muscle] ?? 0) * INDIRECT_SET_MULTIPLIER;
     const delta = target - planned;

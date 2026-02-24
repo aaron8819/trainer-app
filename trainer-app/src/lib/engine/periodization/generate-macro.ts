@@ -66,6 +66,8 @@ export function generateMacroCycle(input: GenerateMacroInput): MacroCycle {
     primaryGoal:
       primaryGoal === "athleticism" || primaryGoal === "general_health"
         ? "general_fitness"
+        : primaryGoal === "strength_hypertrophy"
+          ? "strength"
         : primaryGoal,
     mesocycles: mesocyclesWithIds,
   };

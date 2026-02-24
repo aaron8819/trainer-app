@@ -1,0 +1,5 @@
+-- AlterEnum
+ALTER TYPE "PrimaryGoal" ADD VALUE 'STRENGTH_HYPERTROPHY';
+
+-- AlterEnum
+ALTER TYPE "SecondaryGoal" ADD VALUE 'STRENGTH';

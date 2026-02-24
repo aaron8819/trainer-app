@@ -19,7 +19,6 @@ import type {
 } from "./types";
 import type { BlockContext } from "../periodization/types";
 import type { FatigueScore, AutoregulationModification } from "../readiness/types";
-import type { WorkoutPlan } from "../types";
 import type { RejectedExercise } from "../selection-v2/types";
 import { VOLUME_LANDMARKS, MUSCLE_SPLIT_MAP, type VolumeLandmarks } from "../volume-landmarks";
 import { formatBlockPhase, formatWeekInMesocycle, pluralize } from "./utils";
@@ -284,8 +283,8 @@ export function describeProgressionContext(
   cycleContext?: CycleContextSnapshot
 ): ProgressionContext {
   if (cycleContext) {
-    const volumeProgression = getVolumeProgression(cycleContext.blockType, cycleContext.weekInBlock);
-    const intensityProgression = getIntensityProgression(cycleContext.blockType, cycleContext.weekInBlock);
+    const volumeProgression = getVolumeProgression(cycleContext.blockType);
+    const intensityProgression = getIntensityProgression(cycleContext.blockType);
     const nextMilestone = getNextMilestone(cycleContext.blockType, cycleContext.weekInBlock, 4);
     return {
       weekInMesocycle: cycleContext.weekInMeso,
@@ -305,8 +304,8 @@ export function describeProgressionContext(
   }
 
   const { block, weekInBlock, weekInMeso } = blockContext;
-  const volumeProgression = getVolumeProgression(block.blockType, weekInBlock);
-  const intensityProgression = getIntensityProgression(block.blockType, weekInBlock);
+  const volumeProgression = getVolumeProgression(block.blockType);
+  const intensityProgression = getIntensityProgression(block.blockType);
   const nextMilestone = getNextMilestone(block.blockType, weekInBlock, block.durationWeeks);
 
   return {
@@ -415,8 +414,7 @@ function summarizeAdaptations(modifications: AutoregulationModification[]): stri
  * Get volume progression based on block type
  */
 function getVolumeProgression(
-  blockType: BlockPhaseContext["blockType"],
-  weekInBlock: number
+  blockType: BlockPhaseContext["blockType"]
 ): "building" | "maintaining" | "deloading" {
   if (blockType === "deload") return "deloading";
   if (blockType === "accumulation") return "building";
@@ -427,8 +425,7 @@ function getVolumeProgression(
  * Get intensity progression based on block type
  */
 function getIntensityProgression(
-  blockType: BlockPhaseContext["blockType"],
-  weekInBlock: number
+  blockType: BlockPhaseContext["blockType"]
 ): "ramping" | "peak" | "reduced" {
   if (blockType === "deload") return "reduced";
   if (blockType === "realization") return "peak";

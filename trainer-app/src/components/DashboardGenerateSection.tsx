@@ -5,11 +5,12 @@ import { IntentWorkoutCard } from "./IntentWorkoutCard";
 
 type DashboardGenerateSectionProps = {
   templateCount: number;
+  initialIntent?: "push" | "pull" | "legs" | "upper" | "lower" | "full_body" | "body_part";
 };
 
-export function DashboardGenerateSection({ templateCount }: DashboardGenerateSectionProps) {
+export function DashboardGenerateSection({ templateCount, initialIntent }: DashboardGenerateSectionProps) {
   return (
-    <section className="space-y-3">
+    <section className="space-y-3" id="generate-workout">
       <div className="rounded-2xl border border-slate-200 p-4 text-sm text-slate-600">
         <p>
           Templates moved to their own area to keep generation simple.
@@ -19,7 +20,7 @@ export function DashboardGenerateSection({ templateCount }: DashboardGenerateSec
           Go to templates
         </Link>
       </div>
-      <IntentWorkoutCard />
+      <IntentWorkoutCard initialIntent={initialIntent} />
     </section>
   );
 }

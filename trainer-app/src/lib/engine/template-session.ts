@@ -148,10 +148,14 @@ export function generateWorkoutFromTemplate(
   );
 
   // Remove legacy timeboxing - selection-v2 handles this (ADR-040)
-  const finalAccessories = enforceVolumeCaps(
-    workoutExercises.filter((e) => !e.isMainLift),
-    mainLifts,
-    volumeContext
+  const unboundedAccessories = workoutExercises.filter((e) => !e.isMainLift);
+  // Intent generation already runs selection-v2 volume/structure constraints.
+  // Preserve selected accessories instead of post-hoc pruning, which can break
+  // continuity and week-over-week set progression in generated sessions.
+  const finalAccessories = (
+    options.setCountOverrides
+      ? unboundedAccessories
+      : enforceVolumeCaps(unboundedAccessories, mainLifts, volumeContext)
   ).sort((a, b) => {
     // W5: KB line 110 — order affects strength gains (ES=0.32); compound accessories first
     const aIsCompound = a.exercise.isCompound ?? false;
@@ -226,13 +230,17 @@ function buildTemplateExercise(
   const role: NonNullable<WorkoutExercise["role"]> = isMainLift ? "main" : "accessory";
   const exerciseRepRange = resolveExerciseRepRange(exercise);
   const supersetGroup = !isMainLift ? input.supersetGroup : undefined;
+  const periodizationForPrescription =
+    blockContext && periodization
+      ? { ...periodization, rpeOffset: 0 }
+      : periodization;
 
   const prescribedSets = prescribeSetsReps(
     isMainLift,
     profile.trainingAge,
     goals,
     fatigueState,
-    periodization,
+    periodizationForPrescription,
     exerciseRepRange,
     !isMainLift && !(exercise.isCompound ?? false),
     overrideSetCount
@@ -257,6 +265,7 @@ function buildTemplateExercise(
             restSec: set.restSeconds ?? 90,
           },
           blockContext,
+          lifecycleRirTarget: periodization?.lifecycleRirTarget,
         });
         const adjustedRpe = Math.min(10, Math.max(5, 10 - adjusted.rir));
         return {
@@ -293,7 +302,9 @@ function resolveMainLiftSlots(
       const exerciseRepRange = resolveExerciseRepRange(input.exercise);
       const isMainLiftEligible = input.exercise.isMainLiftEligible ?? false;
       const canBeMainLift =
-        isMainLiftEligible && !shouldDemoteMainLiftForRepRange(goals, exerciseRepRange);
+        isMainLiftEligible &&
+        !shouldDemoteBodyweightMainLiftForGoal(input.exercise, goals) &&
+        !shouldDemoteMainLiftForRepRange(goals, exerciseRepRange);
       if (!canBeMainLift) {
         return undefined;
       }
@@ -308,6 +319,20 @@ function resolveMainLiftSlots(
     });
 
   return new Set(eligible.slice(0, slotCap).map((entry) => entry.index));
+}
+
+function shouldDemoteBodyweightMainLiftForGoal(exercise: Exercise, goals: Goals): boolean {
+  const normalizedPrimary = String(goals.primary).trim().toLowerCase();
+  const isStrengthFocused =
+    goals.isStrengthFocused ??
+    (normalizedPrimary === "strength" || normalizedPrimary === "strength_hypertrophy");
+  if (!isStrengthFocused) {
+    return false;
+  }
+
+  const includesBodyweight = (exercise.equipment ?? []).includes("bodyweight");
+  const isWeightedVariation = exercise.name.toLowerCase().includes("weighted");
+  return includesBodyweight && !isWeightedVariation;
 }
 
 function resolveExerciseRepRange(exercise: Exercise) {

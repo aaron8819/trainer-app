@@ -1,13 +1,79 @@
 import { deriveFatigueState } from "@/lib/engine/volume";
 import { buildVolumeContext } from "@/lib/engine/volume";
-import type { Muscle, Exercise } from "@/lib/engine/types";
+import type { Muscle, Exercise, WorkoutHistoryEntry } from "@/lib/engine/types";
 import type { SelectionObjective, SelectionResult, RotationContext } from "@/lib/engine/selection-v2";
 import { DEFAULT_SELECTION_WEIGHTS } from "@/lib/engine/selection-v2";
 import type { SelectionOutput, SessionIntent } from "@/lib/engine/session-types";
 import { VOLUME_LANDMARKS, MUSCLE_SPLIT_MAP, computeWeeklyVolumeTarget } from "@/lib/engine/volume-landmarks";
 import { INDIRECT_SET_MULTIPLIER } from "@/lib/engine/volume-constants";
+import { filterPerformedHistory, sortHistoryByDateDesc } from "@/lib/engine/history";
 import type { VolumePlanByMuscle } from "@/lib/engine/volume";
 import type { MappedGenerationContext } from "./types";
+
+const CONTINUITY_USER_PREFERENCE_WEIGHT = 0.35;
+const CONTINUITY_MIN_ROTATION_WEIGHT = 0.01;
+
+function getMostRecentPerformedIntentEntry(
+  history: WorkoutHistoryEntry[],
+  sessionIntent: SessionIntent
+): WorkoutHistoryEntry | undefined {
+  return sortHistoryByDateDesc(filterPerformedHistory(history)).find(
+    (entry) => entry.sessionIntent === sessionIntent
+  );
+}
+
+function applyContinuityWeightBias(
+  baseWeights: SelectionObjective["weights"],
+  hasContinuityHistory: boolean
+): SelectionObjective["weights"] {
+  if (!hasContinuityHistory || baseWeights.userPreference >= CONTINUITY_USER_PREFERENCE_WEIGHT) {
+    return baseWeights;
+  }
+
+  const desiredShift = CONTINUITY_USER_PREFERENCE_WEIGHT - baseWeights.userPreference;
+  const availableRotationWeight = Math.max(
+    0,
+    baseWeights.rotationNovelty - CONTINUITY_MIN_ROTATION_WEIGHT
+  );
+  const shift = Math.min(desiredShift, availableRotationWeight);
+
+  if (shift <= 0) {
+    return baseWeights;
+  }
+
+  return {
+    ...baseWeights,
+    userPreference: baseWeights.userPreference + shift,
+    rotationNovelty: baseWeights.rotationNovelty - shift,
+  };
+}
+
+function resolveContinuityProgressionIncrement(mapped: MappedGenerationContext): number {
+  const blockType = mapped.cycleContext?.blockType ?? mapped.blockContext?.block.blockType;
+  const weekInBlock = mapped.lifecycleWeek;
+  const isDeload = mapped.cycleContext?.isDeload ?? mapped.effectivePeriodization.isDeload;
+  if (isDeload) {
+    return 0;
+  }
+  if (blockType !== "accumulation" || weekInBlock <= 1) {
+    return 0;
+  }
+  return Math.max(0, weekInBlock - 1);
+}
+
+function shouldDemoteBodyweightMainLiftForGoal(exercise: Exercise, primaryGoal: string): boolean {
+  const normalizedGoal = primaryGoal.trim().toLowerCase();
+  const isStrengthFocused =
+    normalizedGoal === "strength" || normalizedGoal === "strength_hypertrophy";
+  if (!isStrengthFocused) {
+    return false;
+  }
+
+  const equipment = exercise.equipment ?? [];
+  const includesBodyweight = equipment.includes("bodyweight");
+  const isWeightedVariation = exercise.name.toLowerCase().includes("weighted");
+  return includesBodyweight && !isWeightedVariation;
+}
 
 function buildSraContext(
   rotationContext: RotationContext,
@@ -42,8 +108,9 @@ export function buildSelectionObjective(
 ): SelectionObjective {
   const fatigueState = deriveFatigueState(mapped.history, mapped.mappedCheckIn);
   const volumeContext = buildVolumeContext(mapped.history, mapped.exerciseLibrary, {
-    week: mapped.weekInBlock,
+    week: mapped.lifecycleWeek,
     length: mapped.mesocycleLength,
+    weeklyTargets: mapped.lifecycleVolumeTargets,
   });
 
   const activePainBodyParts = fatigueState.painFlags
@@ -87,19 +154,17 @@ export function buildSelectionObjective(
     }
   }
 
-  const constraints: SelectionObjective["constraints"] = {
-    volumeFloor: new Map(),
-    volumeCeiling,
-    painConflicts: painConflictIds,
-    userAvoids: new Set(mapped.mappedPreferences?.avoidExerciseIds ?? []),
-    minExercises: 3,
-    maxExercises: 8,
-    minMainLifts: sessionIntent === "body_part" ? 0 : 1,
-    maxMainLifts: 3,
-    minAccessories: 2,
-  };
-
-  const weights = { ...DEFAULT_SELECTION_WEIGHTS };
+  const recentPerformedIntentEntry = getMostRecentPerformedIntentEntry(mapped.history, sessionIntent);
+  const recentPerformedIntentExerciseIds = new Set(
+    recentPerformedIntentEntry?.exercises.map((exercise) => exercise.exerciseId) ?? []
+  );
+  const continuityMinSetsByExerciseId = new Map(
+    recentPerformedIntentEntry?.exercises.map((exercise) => [exercise.exerciseId, exercise.sets.length]) ?? []
+  );
+  const weights = applyContinuityWeightBias(
+    { ...DEFAULT_SELECTION_WEIGHTS },
+    recentPerformedIntentExerciseIds.size > 0
+  );
   const weeklyTarget = new Map<Muscle, number>();
   const weeklyActual = new Map<Muscle, number>();
   const effectiveActual = new Map<Muscle, number>();
@@ -110,12 +175,13 @@ export function buildSelectionObjective(
         if (landmarks) {
           weeklyTarget.set(
             muscle as Muscle,
-            computeWeeklyVolumeTarget(
-              landmarks,
-              mapped.weekInBlock,
-              mapped.mesocycleLength,
-              mapped.effectivePeriodization.isDeload
-            )
+            mapped.lifecycleVolumeTargets[muscle] ??
+              computeWeeklyVolumeTarget(
+                landmarks,
+                mapped.lifecycleWeek,
+                mapped.mesocycleLength,
+                mapped.effectivePeriodization.isDeload
+              )
           );
         }
       }
@@ -131,12 +197,13 @@ export function buildSelectionObjective(
         if (landmarks) {
           weeklyTarget.set(
             muscle as Muscle,
-            computeWeeklyVolumeTarget(
-              landmarks,
-              mapped.weekInBlock,
-              mapped.mesocycleLength,
-              mapped.effectivePeriodization.isDeload
-            )
+            mapped.lifecycleVolumeTargets[muscle] ??
+              computeWeeklyVolumeTarget(
+                landmarks,
+                mapped.lifecycleWeek,
+                mapped.mesocycleLength,
+                mapped.effectivePeriodization.isDeload
+              )
           );
         }
       }
@@ -146,6 +213,47 @@ export function buildSelectionObjective(
       effectiveActual.set(muscle as Muscle, sets);
     }
   }
+
+  const requiredMuscles: Muscle[] = [];
+  if (sessionIntent === "pull") {
+    const pullPriorityMuscles: Muscle[] = ["Biceps", "Rear Delts"];
+    for (const muscle of pullPriorityMuscles) {
+      const landmarks = VOLUME_LANDMARKS[muscle];
+      if (!landmarks || landmarks.mev <= 0) {
+        continue;
+      }
+      const actual = effectiveActual.get(muscle) ?? 0;
+      if (actual < landmarks.mev) {
+        requiredMuscles.push(muscle);
+      }
+    }
+  }
+
+  const constraints: SelectionObjective["constraints"] = {
+    volumeFloor: new Map(),
+    volumeCeiling,
+    painConflicts: painConflictIds,
+    userAvoids: new Set(mapped.mappedPreferences?.avoidExerciseIds ?? []),
+    minExercises: 3,
+    maxExercises: 6,
+    minMainLifts: sessionIntent === "body_part" ? 0 : 1,
+    maxMainLifts: 3,
+    minAccessories: 2,
+    minAccessoryProposedSets: 3,
+    requiredMuscles,
+    demotedFromMainLift: new Set(
+      mapped.exerciseLibrary
+        .filter((exercise) =>
+          mapped.mappedGoals.isStrengthFocused
+            ? shouldDemoteBodyweightMainLiftForGoal(exercise, "strength")
+            : shouldDemoteBodyweightMainLiftForGoal(exercise, mapped.mappedGoals.primary)
+        )
+        .map((exercise) => exercise.id)
+    ),
+    preferredContinuityExerciseIds: recentPerformedIntentExerciseIds,
+    continuityMinSetsByExerciseId,
+    continuitySetProgressionIncrement: resolveContinuityProgressionIncrement(mapped),
+  };
 
   const sraContext = buildSraContext(mapped.rotationContext, mapped.exerciseLibrary, new Date());
 
@@ -160,22 +268,32 @@ export function buildSelectionObjective(
     rotationContext: mapped.rotationContext,
     sraContext,
     preferences: {
-      favoriteExerciseIds: new Set(mapped.mappedPreferences?.favoriteExerciseIds ?? []),
+      favoriteExerciseIds: new Set([
+        ...(mapped.mappedPreferences?.favoriteExerciseIds ?? []),
+        ...recentPerformedIntentExerciseIds,
+      ]),
       avoidExerciseIds: new Set(mapped.mappedPreferences?.avoidExerciseIds ?? []),
     },
     blockContext: mapped.blockContext ?? undefined,
     goals: mapped.mappedGoals,
     trainingAge: mapped.mappedProfile.trainingAge,
+    sessionIntent,
   };
 }
 
-export function mapSelectionResult(result: SelectionResult): SelectionOutput {
+export function mapSelectionResult(
+  result: SelectionResult,
+  demotedFromMainLift: Set<string> = new Set()
+): SelectionOutput {
+  const isMainLift = (candidate: SelectionResult["selected"][number]) =>
+    (candidate.exercise.isMainLiftEligible ?? false) &&
+    !demotedFromMainLift.has(candidate.exercise.id);
   const selectedExerciseIds = result.selected.map((c) => c.exercise.id);
   const mainLiftIds = result.selected
-    .filter((c) => c.exercise.isMainLiftEligible)
+    .filter((c) => isMainLift(c))
     .map((c) => c.exercise.id);
   const accessoryIds = result.selected
-    .filter((c) => !c.exercise.isMainLiftEligible)
+    .filter((c) => !isMainLift(c))
     .map((c) => c.exercise.id);
 
   const perExerciseSetTargets: Record<string, number> = {};

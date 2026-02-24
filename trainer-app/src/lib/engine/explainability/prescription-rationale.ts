@@ -208,6 +208,7 @@ export function explainRepTarget(
   > = {
     hypertrophy: { main: [6, 10], accessory: [10, 15], label: "muscle growth" },
     strength: { main: [3, 6], accessory: [6, 10], label: "maximal strength" },
+    strength_hypertrophy: { main: [4, 8], accessory: [8, 12], label: "strength and muscle growth" },
     fat_loss: { main: [8, 12], accessory: [12, 20], label: "metabolic stress" },
     athleticism: { main: [4, 8], accessory: [8, 12], label: "power and athleticism" },
     general_health: { main: [8, 12], accessory: [10, 15], label: "general fitness" },
@@ -361,6 +362,7 @@ export function explainRirTarget(
     const goalIntensity: Record<Goals["primary"], string> = {
       hypertrophy: "moderate-high intensity (effective for hypertrophy)",
       strength: "high intensity (required for strength adaptation)",
+      strength_hypertrophy: "high intensity with moderate volume (balanced strength and hypertrophy)",
       fat_loss: "moderate intensity (balance fatigue with metabolic demand)",
       athleticism: "moderate-high intensity (build power and speed)",
       general_health: "moderate intensity (sustainable for health goals)",

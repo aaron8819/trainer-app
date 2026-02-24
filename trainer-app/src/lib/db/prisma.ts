@@ -25,7 +25,16 @@ const sanitizedConnectionString = (() => {
   return url.toString();
 })();
 
-const pool = new Pool({ connectionString: sanitizedConnectionString, ssl });
+const pool = new Pool({
+  connectionString: sanitizedConnectionString,
+  ssl,
+  connectionTimeoutMillis: 10_000,
+  idleTimeoutMillis: 30_000,
+});
+
+pool.on("error", (error) => {
+  console.error("[prisma-pg-pool] unexpected error", error);
+});
 const adapter = new PrismaPg(pool);
 
 export const prisma =

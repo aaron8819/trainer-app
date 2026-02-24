@@ -18,6 +18,7 @@ import type {
   mapProfile,
 } from "@/lib/api/workout-context";
 import type { loadExerciseExposure } from "@/lib/api/exercise-exposure";
+import type { Mesocycle } from "@prisma/client";
 
 export type GenerateTemplateSessionParams = {
   pinnedExerciseIds?: string[];
@@ -61,6 +62,10 @@ export type MappedGenerationContext = {
   rawWorkouts: Awaited<ReturnType<typeof loadWorkoutContext>>["workouts"];
   weekInBlock: number;
   mesocycleLength: number;
+  lifecycleWeek: number;
+  lifecycleRirTarget: { min: number; max: number };
+  lifecycleVolumeTargets: Record<string, number>;
+  activeMesocycle: Mesocycle | null;
   effectivePeriodization: ReturnType<typeof getPeriodizationModifiers>;
   adaptiveDeload: boolean;
   deloadDecision: DeloadDecision;

@@ -75,17 +75,19 @@ export function finalizePostLoadResult(
     mapped.mappedProfile,
     mapped.mappedGoals.primary,
     mapped.effectivePeriodization,
-    mapped.weekInBlock
+    mapped.weekInBlock,
+    result.sessionIntent
   );
   const postLoadVolumeContext = buildVolumeContext(mapped.history, mapped.exerciseLibrary, {
-    week: mapped.weekInBlock,
+    week: mapped.lifecycleWeek,
     length: mapped.mesocycleLength,
+    weeklyTargets: mapped.lifecycleVolumeTargets,
   });
   const volumePlanByMuscle = buildVolumePlanByMuscle(
     withLoads.mainLifts,
     withLoads.accessories,
     postLoadVolumeContext,
-    { mesocycleWeek: mapped.weekInBlock, mesocycleLength: mapped.mesocycleLength }
+    { mesocycleWeek: mapped.lifecycleWeek, mesocycleLength: mapped.mesocycleLength }
   );
 
   const finalWorkout = mapped.adaptiveDeload
@@ -109,7 +111,7 @@ export function finalizePostLoadResult(
       ...result.selection,
       volumePlanByMuscle,
       adaptiveDeloadApplied: mapped.adaptiveDeload,
-      periodizationWeek: mapped.weekInBlock,
+      periodizationWeek: mapped.lifecycleWeek,
       cycleContext: mapped.cycleContext,
       deloadDecision: mapped.deloadDecision,
     },

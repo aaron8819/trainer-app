@@ -20,6 +20,21 @@ const bench: Exercise = {
 };
 
 const templateExercises: TemplateExerciseInput[] = [{ exercise: bench, orderIndex: 0 }];
+const inclineCurl: Exercise = {
+  id: "incline-curl",
+  name: "Incline Dumbbell Curl",
+  movementPatterns: ["isolation"],
+  splitTags: ["pull"],
+  jointStress: "low",
+  isMainLiftEligible: false,
+  isCompound: false,
+  fatigueCost: 1,
+  equipment: ["dumbbell", "bench"],
+  primaryMuscles: ["Biceps"],
+  repRangeMin: 8,
+  repRangeMax: 20,
+};
+const accessoryTemplateExercises: TemplateExerciseInput[] = [{ exercise: inclineCurl, orderIndex: 0 }];
 
 const commonOptions = {
   profile: { id: "u1", trainingAge: "intermediate" as const, injuries: [] },
@@ -132,5 +147,42 @@ describe("template-session block-aware bridge", () => {
 
     expect(deloadSet.targetRpe ?? 10).toBeLessThanOrEqual(6);
     expect(deloadSet.restSeconds ?? 0).toBeLessThan(baselineSet.restSeconds ?? 0);
+  });
+
+  it("does not double-apply periodization intensity when blockContext is present for accessories", () => {
+    const withPeriodization = generateWorkoutFromTemplate(accessoryTemplateExercises, {
+      ...commonOptions,
+      goals: { primary: "hypertrophy", secondary: "none" },
+      periodization: getPeriodizationModifiers(1, "hypertrophy", "intermediate"),
+      blockContext: makeBlockContext("accumulation", 1, 2),
+    });
+    const blockOnly = generateWorkoutFromTemplate(accessoryTemplateExercises, {
+      ...commonOptions,
+      goals: { primary: "hypertrophy", secondary: "none" },
+      blockContext: makeBlockContext("accumulation", 1, 2),
+    });
+
+    const withPeriodizationRpe = withPeriodization.workout.accessories[0].sets[0].targetRpe ?? 0;
+    const blockOnlyRpe = blockOnly.workout.accessories[0].sets[0].targetRpe ?? 0;
+
+    expect(withPeriodizationRpe).toBe(blockOnlyRpe);
+  });
+
+  it("progresses accessory RPE from accumulation to intensification", () => {
+    const accumulation = generateWorkoutFromTemplate(accessoryTemplateExercises, {
+      ...commonOptions,
+      goals: { primary: "hypertrophy", secondary: "none" },
+      blockContext: makeBlockContext("accumulation", 1, 2),
+    });
+    const intensification = generateWorkoutFromTemplate(accessoryTemplateExercises, {
+      ...commonOptions,
+      goals: { primary: "hypertrophy", secondary: "none" },
+      blockContext: makeBlockContext("intensification", 1, 2),
+    });
+
+    const accumulationRpe = accumulation.workout.accessories[0].sets[0].targetRpe ?? 0;
+    const intensificationRpe = intensification.workout.accessories[0].sets[0].targetRpe ?? 0;
+
+    expect(intensificationRpe).toBeGreaterThan(accumulationRpe);
   });
 });

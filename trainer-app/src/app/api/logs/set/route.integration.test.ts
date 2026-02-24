@@ -85,4 +85,29 @@ describe("POST /api/logs/set", () => {
       })
     );
   });
+
+  it("stores provided load value unchanged", async () => {
+    mocks.setLogFindUnique.mockResolvedValue(null);
+
+    const response = await POST(
+      new Request("http://localhost/api/logs/set", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutSetId: "set-1",
+          actualReps: 8,
+          actualRpe: 8,
+          actualLoad: 90,
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.setLogUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({ actualLoad: 90 }),
+        create: expect.objectContaining({ actualLoad: 90 }),
+      })
+    );
+  });
 });

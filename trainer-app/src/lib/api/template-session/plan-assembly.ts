@@ -33,7 +33,10 @@ export function buildTemplateSelection(
   });
 
   const selectionResult = selectExercisesOptimized(pool, objective);
-  return mapSelectionResult(selectionResult);
+  return mapSelectionResult(
+    selectionResult,
+    objective.constraints.demotedFromMainLift ?? new Set()
+  );
 }
 
 export function applyTemplateAutoFillSelection(

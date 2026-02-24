@@ -5,9 +5,11 @@ import { resolveOwner } from "@/lib/api/workout-context";
 import { WorkoutStatus, Prisma } from "@prisma/client";
 import { updateExerciseExposure } from "@/lib/api/exercise-exposure";
 import { isTerminalWorkoutStatus } from "@/lib/workout-status";
+import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 import type { CycleContextSnapshot } from "@/lib/evidence/types";
 import { loadCurrentBlockContext } from "@/lib/api/periodization";
 import type { BlockContext } from "@/lib/engine";
+import { getCurrentMesoWeek, transitionMesocycleState } from "@/lib/api/mesocycle-lifecycle";
 
 type SaveAction = "save_plan" | "mark_completed" | "mark_partial" | "mark_skipped";
 type PersistedStatus = "PLANNED" | "IN_PROGRESS" | "PARTIAL" | "COMPLETED" | "SKIPPED";
@@ -105,6 +107,10 @@ function inferAction(input: {
   return "save_plan";
 }
 
+function isPerformedWorkoutStatus(status: PersistedStatus | string | null | undefined): boolean {
+  return Boolean(status) && (PERFORMED_WORKOUT_STATUSES as readonly string[]).includes(status as string);
+}
+
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
   const parsed = saveWorkoutSchema.safeParse(body);
@@ -131,6 +137,8 @@ export async function POST(request: Request) {
   let persistedRevision = 1;
   let finalStatus: PersistedStatus = (parsed.data.status ?? WorkoutStatus.PLANNED) as PersistedStatus;
   let didCompleteTransition = false;
+  let didPerformedTransition = false;
+  let performedTransitionMesocycleId: string | null = null;
   const incomingSelectionMetadata = toObject(parsed.data.selectionMetadata);
   let dbCycleContext: DbCycleContext | undefined;
   if (!hasValidCycleContext(incomingSelectionMetadata)) {
@@ -154,7 +162,7 @@ export async function POST(request: Request) {
     await prisma.$transaction(async (tx) => {
       const existingWorkout = await tx.workout.findUnique({
         where: { id: workoutId },
-        select: { id: true, userId: true, status: true, revision: true },
+        select: { id: true, userId: true, status: true, revision: true, mesocycleId: true },
       });
 
       if (existingWorkout && existingWorkout.userId !== user.id) {
@@ -239,6 +247,38 @@ export async function POST(request: Request) {
       const completedAt =
         finalStatus === "COMPLETED" ? new Date() : undefined;
 
+      const shouldTransitionPerformed =
+        isPerformedWorkoutStatus(finalStatus) && !isPerformedWorkoutStatus(existingWorkout?.status);
+      const shouldSetMesoSnapshot =
+        shouldTransitionPerformed && Boolean(existingWorkout?.mesocycleId);
+      let mesoSnapshot:
+        | { week: number; phase: "ACCUMULATION" | "DELOAD"; session: number }
+        | undefined;
+      if (shouldSetMesoSnapshot && existingWorkout?.mesocycleId) {
+        const mesocycle = await tx.mesocycle.findUnique({
+          where: { id: existingWorkout.mesocycleId },
+          select: {
+            id: true,
+            state: true,
+            accumulationSessionsCompleted: true,
+            deloadSessionsCompleted: true,
+            sessionsPerWeek: true,
+          },
+        });
+        if (mesocycle) {
+          const week = getCurrentMesoWeek(mesocycle);
+          const session =
+            mesocycle.state === "ACTIVE_DELOAD"
+              ? Math.min(3, mesocycle.deloadSessionsCompleted + 1)
+              : Math.max(1, (mesocycle.accumulationSessionsCompleted % Math.max(1, mesocycle.sessionsPerWeek)) + 1);
+          mesoSnapshot = {
+            week,
+            phase: mesocycle.state === "ACTIVE_ACCUMULATION" ? "ACCUMULATION" : "DELOAD",
+            session,
+          };
+        }
+      }
+
       const workout = await tx.workout.upsert({
         where: { id: workoutId },
         update: {
@@ -255,6 +295,13 @@ export async function POST(request: Request) {
           forcedSplit: parsed.data.forcedSplit ?? undefined,
           advancesSplit: parsed.data.advancesSplit ?? undefined,
           templateId: parsed.data.templateId ?? undefined,
+          ...(mesoSnapshot
+            ? {
+                mesocycleWeekSnapshot: mesoSnapshot.week,
+                mesocyclePhaseSnapshot: mesoSnapshot.phase as never,
+                mesoSessionSnapshot: mesoSnapshot.session,
+              }
+            : {}),
           ...(existingWorkout && hasExerciseRewrite
             ? { revision: { increment: 1 } }
             : {}),
@@ -275,15 +322,19 @@ export async function POST(request: Request) {
           forcedSplit: parsed.data.forcedSplit ?? undefined,
           advancesSplit: parsed.data.advancesSplit ?? undefined,
           templateId: parsed.data.templateId ?? undefined,
+          ...(mesoSnapshot
+            ? {
+                mesocycleWeekSnapshot: mesoSnapshot.week,
+                mesocyclePhaseSnapshot: mesoSnapshot.phase as never,
+                mesoSessionSnapshot: mesoSnapshot.session,
+              }
+            : {}),
         },
-        select: { id: true, revision: true },
+        select: { id: true, revision: true, mesocycleId: true },
       });
       persistedRevision = workout.revision;
 
-      if (
-        finalStatus === "COMPLETED" &&
-        existingWorkout?.status !== WorkoutStatus.COMPLETED
-      ) {
+      if (shouldTransitionPerformed) {
         const activeMeso = await tx.mesocycle.findFirst({
           where: {
             isActive: true,
@@ -297,6 +348,13 @@ export async function POST(request: Request) {
             data: { completedSessions: { increment: 1 } },
           });
         }
+        didPerformedTransition = true;
+        performedTransitionMesocycleId = workout.mesocycleId ?? existingWorkout?.mesocycleId ?? null;
+      }
+      if (
+        finalStatus === "COMPLETED" &&
+        existingWorkout?.status !== WorkoutStatus.COMPLETED
+      ) {
         didCompleteTransition = true;
       }
 
@@ -368,6 +426,13 @@ export async function POST(request: Request) {
         await updateExerciseExposure(user.id, workoutId);
       } catch (exposureError) {
         console.error("Failed to update exercise exposure:", exposureError);
+      }
+    }
+    if (didPerformedTransition && performedTransitionMesocycleId) {
+      try {
+        await transitionMesocycleState(performedTransitionMesocycleId);
+      } catch (lifecycleError) {
+        console.error("Failed to transition mesocycle lifecycle:", lifecycleError);
       }
     }
   } catch (error) {

@@ -18,6 +18,7 @@ import type {
   UserProfile,
   WorkoutHistoryEntry,
   WorkoutPlan,
+  SplitDay,
 } from "./types";
 import type { PrescriptionModifiers } from "./periodization/types";
 
@@ -38,6 +39,7 @@ export type ApplyLoadsOptions = {
   periodization?: PeriodizationModifiers;
   prescriptionModifiers?: PrescriptionModifiers | null;
   weekInBlock?: number;
+  sessionIntent?: SplitDay;
 };
 
 type LoadEquipment =
@@ -91,7 +93,8 @@ const EQUIPMENT_DEFAULTS: Record<LoadEquipment, number> = {
 };
 
 export function applyLoads(workout: WorkoutPlan, options: ApplyLoadsOptions): WorkoutPlan {
-  const historyIndex = buildHistoryIndex(options.history ?? []);
+  const historyIndex = buildHistoryIndex(options.history ?? [], options.sessionIntent);
+  const historyTopLoadIndex = buildHistoryTopLoadIndex(historyIndex);
   const preferredContext = getPreferredBaselineContext(options.primaryGoal);
   const baselineIndex = buildBaselineIndex(options.baselines ?? [], preferredContext);
   const baselineLoadIndex = buildBaselineLoadIndex(baselineIndex);
@@ -129,6 +132,7 @@ export function applyLoads(workout: WorkoutPlan, options: ApplyLoadsOptions): Wo
         historyIndex.get(exercise.id),
         baselineIndex.get(exercise.id),
         baselineLoadIndex,
+        historyTopLoadIndex,
         options.exerciseById,
         options.profile?.weightKg,
         repRange,
@@ -207,10 +211,13 @@ export function applyLoads(workout: WorkoutPlan, options: ApplyLoadsOptions): Wo
   };
 }
 
-function buildHistoryIndex(history: WorkoutHistoryEntry[]) {
+function buildHistoryIndex(history: WorkoutHistoryEntry[], sessionIntent?: SplitDay) {
   const sorted = sortHistoryByDateDesc(filterPerformedHistory(history));
   const index = new Map<string, WorkoutSetHistory[]>();
   for (const entry of sorted) {
+    if (sessionIntent && entry.sessionIntent !== sessionIntent) {
+      continue;
+    }
     for (const exercise of entry.exercises) {
       if (exercise.sets.length === 0) {
         continue;
@@ -224,7 +231,83 @@ function buildHistoryIndex(history: WorkoutHistoryEntry[]) {
   return index;
 }
 
-type WorkoutSetHistory = { reps: number; rpe?: number; load?: number }[];
+type WorkoutSetHistory = { setIndex: number; reps: number; rpe?: number; load?: number }[];
+
+function buildHistoryTopLoadIndex(historyIndex: Map<string, WorkoutSetHistory[]>) {
+  const topLoadIndex = new Map<string, number>();
+  for (const [exerciseId, sessions] of historyIndex.entries()) {
+    const latestSets = sessions[0] ?? [];
+    const modalLoad = getModalSessionLoad(latestSets);
+    if (modalLoad !== undefined) {
+      topLoadIndex.set(exerciseId, modalLoad);
+    }
+  }
+  return topLoadIndex;
+}
+
+function getModalSessionLoad(sets: WorkoutSetHistory): number | undefined {
+  const loadFrequency = new Map<number, { count: number; latestSetIndex: number }>();
+  for (const set of sets) {
+    const load = set.load;
+    if (!Number.isFinite(load) || (load ?? 0) < 0) {
+      continue;
+    }
+    const current = loadFrequency.get(load as number);
+    if (!current) {
+      loadFrequency.set(load as number, { count: 1, latestSetIndex: set.setIndex });
+      continue;
+    }
+    current.count += 1;
+    current.latestSetIndex = Math.max(current.latestSetIndex, set.setIndex);
+  }
+
+  if (loadFrequency.size === 0) {
+    return undefined;
+  }
+
+  return Array.from(loadFrequency.entries())
+    .sort((a, b) => {
+      const [, left] = a;
+      const [, right] = b;
+      if (right.count !== left.count) {
+        return right.count - left.count;
+      }
+      if (right.latestSetIndex !== left.latestSetIndex) {
+        return right.latestSetIndex - left.latestSetIndex;
+      }
+      return b[0] - a[0];
+    })[0]?.[0];
+}
+
+function getModalSessionRpe(sets: WorkoutSetHistory): number | undefined {
+  const rpeFrequency = new Map<number, number>();
+  for (const set of sets) {
+    if (!Number.isFinite(set.rpe)) {
+      continue;
+    }
+    const rounded = Number((set.rpe as number).toFixed(1));
+    rpeFrequency.set(rounded, (rpeFrequency.get(rounded) ?? 0) + 1);
+  }
+  if (rpeFrequency.size === 0) {
+    return undefined;
+  }
+  const [mode] = Array.from(rpeFrequency.entries()).sort((a, b) => {
+    if (b[1] !== a[1]) return b[1] - a[1];
+    return b[0] - a[0];
+  })[0];
+  return mode;
+}
+
+function normalizeSessionLoadsToModal(sets: WorkoutSetHistory): WorkoutSetHistory {
+  const modalLoad = getModalSessionLoad(sets);
+  if (modalLoad === undefined) {
+    return sets;
+  }
+
+  return sets.map((set) =>
+    Number.isFinite(set.load) && (set.load ?? 0) >= 0 ? { ...set, load: modalLoad } : set
+  );
+}
 
 type BaselineSelection = {
   load: number;
@@ -286,6 +369,7 @@ function resolveLoadForExercise(
   historySets: WorkoutSetHistory[] | undefined,
   baselineSelection: BaselineSelection | undefined,
   baselineLoadIndex: Map<string, number>,
+  historyTopLoadIndex: Map<string, number>,
   exerciseById: Record<string, Exercise>,
   weightKg: number | undefined,
   repRange: [number, number],
@@ -296,15 +380,29 @@ function resolveLoadForExercise(
   weekInBlock: number | undefined,
   preferredContext: string
 ): number | undefined {
-  const latestSets = historySets?.[0];
+  const latestSetsRaw = historySets?.[0];
+  const useModalAnchoring = shouldUseModalAnchoring(exercise);
+  const latestSets =
+    latestSetsRaw && useModalAnchoring ? normalizeSessionLoadsToModal(latestSetsRaw) : latestSetsRaw;
   if (latestSets && latestSets.length > 0) {
+    const anchorLoad = useModalAnchoring
+      ? getModalSessionLoad(latestSets)
+      : getTopSessionLoad(latestSets);
+    const modalRpe = getModalSessionRpe(latestSets);
+    if (anchorLoad !== undefined && modalRpe !== undefined && modalRpe >= 9) {
+      return anchorLoad;
+    }
+    const recentSessions =
+      historySets?.slice(1).map((session) =>
+        useModalAnchoring ? normalizeSessionLoadsToModal(session) : session
+      ) ?? [];
     const computed = computeNextLoad(latestSets, repRange, targetRpe, undefined, {
       trainingAge,
       isUpperBody,
       weekInBlock,
       backOffMultiplier: periodization?.backOffMultiplier,
       isDeloadWeek: periodization?.isDeload,
-      recentSessions: historySets?.slice(1),
+      recentSessions,
     });
     if (computed !== undefined) {
       return computed;
@@ -319,12 +417,33 @@ function resolveLoadForExercise(
     );
   }
 
-  return estimateLoad(exercise, baselineLoadIndex, exerciseById, weightKg);
+  return estimateLoad(
+    exercise,
+    baselineLoadIndex,
+    historyTopLoadIndex,
+    exerciseById,
+    weightKg
+  );
+}
+
+function getTopSessionLoad(sets: WorkoutSetHistory): number | undefined {
+  const sorted = [...sets].sort((a, b) => a.setIndex - b.setIndex);
+  for (const set of sorted) {
+    if (Number.isFinite(set.load) && (set.load ?? 0) >= 0) {
+      return set.load as number;
+    }
+  }
+  return undefined;
+}
+
+function shouldUseModalAnchoring(exercise: Exercise): boolean {
+  return !(exercise.isMainLiftEligible ?? false);
 }
 
 function estimateLoad(
   exercise: Exercise,
   baselineIndex: Map<string, number>,
+  historyTopLoadIndex: Map<string, number>,
   exerciseById: Record<string, Exercise>,
   weightKg?: number
 ): number | undefined {
@@ -334,7 +453,9 @@ function estimateLoad(
 
   let estimate: number;
 
-  const donorEstimate = estimateFromDonors(exercise, baselineIndex, exerciseById);
+  const donorEstimate =
+    estimateFromDonors(exercise, baselineIndex, exerciseById) ??
+    estimateFromHistoryPatternDonors(exercise, historyTopLoadIndex, exerciseById);
   if (donorEstimate !== undefined) {
     estimate = roundToHalf(donorEstimate);
   } else if (weightKg !== undefined) {
@@ -424,6 +545,54 @@ function estimateFromDonors(
   });
 
   return candidates[0].load;
+}
+
+function estimateFromHistoryPatternDonors(
+  target: Exercise,
+  historyTopLoadIndex: Map<string, number>,
+  exerciseById: Record<string, Exercise>
+): number | undefined {
+  const targetPatterns = target.movementPatterns ?? [];
+  if (targetPatterns.length === 0) {
+    return undefined;
+  }
+
+  const targetEquipment = getLoadEquipment(target);
+  const targetJointStress = target.jointStress;
+  const targetCompound = isCompound(target);
+  const candidates: { score: number; load: number }[] = [];
+
+  for (const [donorId, donorLoad] of historyTopLoadIndex.entries()) {
+    const donor = exerciseById[donorId];
+    if (!donor) {
+      continue;
+    }
+    const donorPatterns = donor.movementPatterns ?? [];
+    const patternOverlap = countOverlap(targetPatterns, donorPatterns);
+    if (patternOverlap === 0) {
+      continue;
+    }
+
+    const donorEquipment = getLoadEquipment(donor);
+    const donorJointStress = donor.jointStress;
+    const donorCompound = isCompound(donor);
+    const equipmentScale = getEquipmentScale(donorEquipment, targetEquipment);
+    const compoundScale = getCompoundScale(donorCompound, targetCompound);
+    const scaledLoad = donorLoad * equipmentScale * compoundScale * 0.65;
+    const score =
+      patternOverlap * 2 +
+      (donorEquipment === targetEquipment ? 1 : 0) +
+      (donorJointStress === targetJointStress ? 1 : 0) +
+      (donorCompound === targetCompound ? 0.5 : 0);
+    candidates.push({ score, load: scaledLoad });
+  }
+
+  if (candidates.length === 0) {
+    return undefined;
+  }
+
+  candidates.sort((a, b) => b.score - a.score);
+  return roundToHalf(candidates[0].load);
 }
 
 function countOverlap(a: string[], b: string[]) {

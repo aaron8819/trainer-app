@@ -7,6 +7,7 @@
 
 import type { Exercise, Muscle, Goals, TrainingAge } from "../types";
 import type { BlockContext } from "../periodization/types";
+import type { SessionIntent } from "../session-types";
 
 // ============================================================================
 // Selection Objective (Input to Optimizer)
@@ -61,6 +62,9 @@ export interface SelectionObjective {
    * KB §8: Beginner 6-10 sets/week, Intermediate 10-16, Advanced 16-25+
    */
   trainingAge?: TrainingAge;
+
+  /** Session intent (push/pull/legs/etc.) for intent-specific constraints */
+  sessionIntent?: SessionIntent;
 }
 
 /**
@@ -99,6 +103,24 @@ export interface SelectionConstraints {
 
   /** Minimum accessories (ensure variety, typically 2-3) */
   minAccessories?: number;
+
+  /** Minimum proposed sets for accessories unless min-exercise fallback is needed */
+  minAccessoryProposedSets?: number;
+
+  /** Required primary-muscle coverage for the session (e.g., direct biceps on pull) */
+  requiredMuscles?: Muscle[];
+
+  /** Exercise IDs treated as accessory-only even if exercise metadata marks main-lift eligible */
+  demotedFromMainLift?: Set<string>;
+
+  /** Exercise IDs from most recent performed same-intent session that should be preserved when feasible */
+  preferredContinuityExerciseIds?: Set<string>;
+
+  /** Minimum per-exercise set targets derived from most recent performed same-intent session */
+  continuityMinSetsByExerciseId?: Map<string, number>;
+
+  /** Additional per-exercise sets above continuity minimums (e.g., +1 in accumulation weeks > 1) */
+  continuitySetProgressionIncrement?: number;
 }
 
 /**

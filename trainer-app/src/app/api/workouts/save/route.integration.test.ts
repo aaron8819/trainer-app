@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => {
   const workoutExerciseCreate = vi.fn();
   const exerciseFindUnique = vi.fn();
   const loadCurrentBlockContext = vi.fn();
+  const transitionMesocycleState = vi.fn();
+  const getCurrentMesoWeek = vi.fn();
 
   const tx = {
     workout: {
@@ -22,6 +24,7 @@ const mocks = vi.hoisted(() => {
     },
     mesocycle: {
       findFirst: vi.fn(),
+      findUnique: vi.fn(),
       update: vi.fn(),
     },
     workoutExercise: {
@@ -54,6 +57,8 @@ const mocks = vi.hoisted(() => {
     workoutExerciseCreate,
     exerciseFindUnique,
     loadCurrentBlockContext,
+    transitionMesocycleState,
+    getCurrentMesoWeek,
   };
 });
 
@@ -73,6 +78,11 @@ vi.mock("@/lib/api/periodization", () => ({
   loadCurrentBlockContext: mocks.loadCurrentBlockContext,
 }));
 
+vi.mock("@/lib/api/mesocycle-lifecycle", () => ({
+  transitionMesocycleState: mocks.transitionMesocycleState,
+  getCurrentMesoWeek: mocks.getCurrentMesoWeek,
+}));
+
 import { POST } from "./route";
 
 describe("POST /api/workouts/save", () => {
@@ -83,6 +93,11 @@ describe("POST /api/workouts/save", () => {
     mocks.workoutExerciseFindMany.mockResolvedValue([]);
     mocks.exerciseFindUnique.mockResolvedValue({ movementPatterns: [] });
     mocks.workoutExerciseCreate.mockResolvedValue({ id: "we-1" });
+    mocks.tx.mesocycle.findUnique.mockResolvedValue(null);
+    mocks.tx.mesocycle.findFirst.mockResolvedValue({ id: "meso-active" });
+    mocks.tx.mesocycle.update.mockResolvedValue({});
+    mocks.transitionMesocycleState.mockResolvedValue({});
+    mocks.getCurrentMesoWeek.mockReturnValue(1);
     mocks.loadCurrentBlockContext.mockResolvedValue({
       blockContext: {
         weekInBlock: 3,
@@ -154,6 +169,64 @@ describe("POST /api/workouts/save", () => {
 
     expect(response.status).toBe(200);
     expect(body.workoutStatus).toBe("COMPLETED");
+  });
+
+  it("calls lifecycle transition for first performed save when workout has mesocycleId", async () => {
+    mocks.workoutFindUnique
+      .mockResolvedValueOnce({
+        id: "workout-1",
+        userId: "user-1",
+        status: "PLANNED",
+        revision: 1,
+        mesocycleId: "meso-1",
+      })
+      .mockResolvedValueOnce({
+        exercises: [
+          {
+            sets: [{ logs: [{ wasSkipped: false }] }],
+          },
+        ],
+      });
+    mocks.tx.mesocycle.findUnique.mockResolvedValueOnce({
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION",
+      accumulationSessionsCompleted: 3,
+      deloadSessionsCompleted: 0,
+      sessionsPerWeek: 3,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workoutId: "workout-1", action: "mark_completed" }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.transitionMesocycleState).toHaveBeenCalledWith("meso-1");
+
+    const upsert = mocks.workoutUpsert.mock.calls[0][0];
+    expect(upsert.update.mesocycleWeekSnapshot).toBe(1);
+    expect(upsert.update.mesoSessionSnapshot).toBe(1);
+    expect(upsert.update.mesocyclePhaseSnapshot).toBe("ACCUMULATION");
+  });
+
+  it("does not call lifecycle transition for non-performed save", async () => {
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutId: "workout-1",
+          status: "IN_PROGRESS",
+          notes: "still training",
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.transitionMesocycleState).not.toHaveBeenCalled();
   });
 
   it("mark_completed resolves to PARTIAL when unresolved sets remain", async () => {

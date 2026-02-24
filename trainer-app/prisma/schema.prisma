@@ -5,7 +5,7 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
+  provider = "postgresql"
 }
 
 enum TrainingAge {
@@ -17,6 +17,7 @@ enum TrainingAge {
 enum PrimaryGoal {
   HYPERTROPHY
   STRENGTH
+  STRENGTH_HYPERTROPHY
   FAT_LOSS
   ATHLETICISM
   GENERAL_HEALTH
@@ -26,6 +27,7 @@ enum SecondaryGoal {
   POSTURE
   CONDITIONING
   INJURY_PREVENTION
+  STRENGTH
   NONE
 }
 
@@ -144,7 +146,6 @@ enum MuscleRole {
   SECONDARY
 }
 
-
 enum VariationType {
   TEMPO
   PAUSED
@@ -165,31 +166,47 @@ enum TemplateIntent {
 }
 
 enum BlockType {
-  ACCUMULATION      // High volume, moderate intensity
-  INTENSIFICATION   // Moderate volume, high intensity
-  REALIZATION       // Low volume, peak intensity (testing)
-  DELOAD           // Low volume, low intensity (recovery)
+  ACCUMULATION // High volume, moderate intensity
+  INTENSIFICATION // Moderate volume, high intensity
+  REALIZATION // Low volume, peak intensity (testing)
+  DELOAD // Low volume, low intensity (recovery)
 }
 
 enum VolumeTarget {
-  LOW              // ~50% of normal
-  MODERATE         // ~70-80% of normal
-  HIGH             // ~90-100% of normal
-  PEAK             // ~100-110% of normal (approaching MRV)
+  LOW // ~50% of normal
+  MODERATE // ~70-80% of normal
+  HIGH // ~90-100% of normal
+  PEAK // ~100-110% of normal (approaching MRV)
 }
 
 enum IntensityBias {
-  STRENGTH         // 1-6 reps, heavy loads
-  HYPERTROPHY      // 6-12 reps, moderate loads
-  ENDURANCE        // 12-20+ reps, lighter loads
+  STRENGTH // 1-6 reps, heavy loads
+  HYPERTROPHY // 6-12 reps, moderate loads
+  ENDURANCE // 12-20+ reps, lighter loads
 }
 
 enum AdaptationType {
-  NEURAL_ADAPTATION           // Strength gains via CNS efficiency
-  MYOFIBRILLAR_HYPERTROPHY   // Muscle fiber growth
-  SARCOPLASMIC_HYPERTROPHY   // Metabolic adaptations
-  WORK_CAPACITY              // Conditioning
-  RECOVERY                   // Active recovery
+  NEURAL_ADAPTATION // Strength gains via CNS efficiency
+  MYOFIBRILLAR_HYPERTROPHY // Muscle fiber growth
+  SARCOPLASMIC_HYPERTROPHY // Metabolic adaptations
+  WORK_CAPACITY // Conditioning
+  RECOVERY // Active recovery
+}
+
+enum MesocycleState {
+  ACTIVE_ACCUMULATION
+  ACTIVE_DELOAD
+  COMPLETED
+}
+
+enum MesocyclePhase {
+  ACCUMULATION
+  DELOAD
+}
+
+enum MesocycleExerciseRoleType {
+  CORE_COMPOUND
+  ACCESSORY
 }
 
 model User {
@@ -197,18 +214,18 @@ model User {
   email     String   @unique
   createdAt DateTime @default(now())
 
-  profile          Profile?
-  constraints      Constraints?
-  goals            Goals?
-  injuries         Injury[]
-  workouts         Workout[]
-  sessionCheckIns  SessionCheckIn[]
-  preferences      UserPreference?
-  templates        WorkoutTemplate[]
-  macroCycles      MacroCycle[]
+  profile           Profile?
+  constraints       Constraints?
+  goals             Goals?
+  injuries          Injury[]
+  workouts          Workout[]
+  sessionCheckIns   SessionCheckIn[]
+  preferences       UserPreference?
+  templates         WorkoutTemplate[]
+  macroCycles       MacroCycle[]
   exerciseExposures ExerciseExposure[]
-  readinessSignals ReadinessSignal[]
-  integrations     UserIntegration[]
+  readinessSignals  ReadinessSignal[]
+  integrations      UserIntegration[]
 }
 
 model UserPreference {
@@ -220,8 +237,8 @@ model UserPreference {
 }
 
 model Profile {
-  userId      String       @id
-  user        User         @relation(fields: [userId], references: [id])
+  userId      String      @id
+  user        User        @relation(fields: [userId], references: [id])
   age         Int?
   sex         String?
   heightIn    Int?
@@ -230,15 +247,16 @@ model Profile {
 }
 
 model Constraints {
-  userId         String    @id
-  user           User      @relation(fields: [userId], references: [id])
+  userId         String                 @id
+  user           User                   @relation(fields: [userId], references: [id])
   daysPerWeek    Int
   splitType      SplitType
+  weeklySchedule WorkoutSessionIntent[] @default([])
 }
 
 model Goals {
-  userId        String         @id
-  user          User           @relation(fields: [userId], references: [id])
+  userId        String        @id
+  user          User          @relation(fields: [userId], references: [id])
   primaryGoal   PrimaryGoal
   secondaryGoal SecondaryGoal
 }
@@ -249,7 +267,7 @@ model Injury {
   user        User     @relation(fields: [userId], references: [id])
   bodyPart    String
   description String?
-  severity    Int      // 1-5
+  severity    Int // 1-5
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
 
@@ -277,42 +295,43 @@ model Muscle {
 }
 
 model Exercise {
-  id                  String          @id @default(uuid())
-  name                String          @unique
+  id                  String              @id @default(uuid())
+  name                String              @unique
   movementPatterns    MovementPatternV2[] @default([])
-  splitTags           SplitTag[] @default([])
+  splitTags           SplitTag[]          @default([])
   jointStress         JointStress
-  isMainLiftEligible  Boolean         @default(false)
-  isCompound          Boolean         @default(false)
-  fatigueCost         Int             @default(3)
-  stimulusBias        StimulusBias[]  @default([])
+  isMainLiftEligible  Boolean             @default(false)
+  isCompound          Boolean             @default(false)
+  fatigueCost         Int                 @default(3)
+  stimulusBias        StimulusBias[]      @default([])
   contraindications   Json?
-  timePerSetSec       Int             @default(120)
-  sfrScore            Int             @default(3)
-  lengthPositionScore Int             @default(3)
-  difficulty          Difficulty      @default(BEGINNER)
-  isUnilateral        Boolean         @default(false)
-  repRangeMin         Int             @default(1)
-  repRangeMax         Int             @default(20)
+  timePerSetSec       Int                 @default(120)
+  sfrScore            Int                 @default(3)
+  lengthPositionScore Int                 @default(3)
+  difficulty          Difficulty          @default(BEGINNER)
+  isUnilateral        Boolean             @default(false)
+  repRangeMin         Int                 @default(1)
+  repRangeMax         Int                 @default(20)
 
-  variations            ExerciseVariation[]
-  aliases               ExerciseAlias[]
-  exerciseMuscles       ExerciseMuscle[]
-  exerciseEquipment     ExerciseEquipment[]
-  workoutExercises      WorkoutExercise[]
-  substitutionsFrom     SubstitutionRule[] @relation("SubstitutionFrom")
-  substitutionsTo       SubstitutionRule[] @relation("SubstitutionTo")
-  templateExercises     WorkoutTemplateExercise[]
+  variations             ExerciseVariation[]
+  aliases                ExerciseAlias[]
+  exerciseMuscles        ExerciseMuscle[]
+  exerciseEquipment      ExerciseEquipment[]
+  workoutExercises       WorkoutExercise[]
+  substitutionsFrom      SubstitutionRule[]        @relation("SubstitutionFrom")
+  substitutionsTo        SubstitutionRule[]        @relation("SubstitutionTo")
+  templateExercises      WorkoutTemplateExercise[]
+  mesocycleExerciseRoles MesocycleExerciseRole[]
 }
 
 model ExerciseVariation {
-  id          String   @id @default(uuid())
-  exerciseId  String
-  exercise    Exercise @relation(fields: [exerciseId], references: [id])
-  name        String
-  description String?
+  id            String         @id @default(uuid())
+  exerciseId    String
+  exercise      Exercise       @relation(fields: [exerciseId], references: [id])
+  name          String
+  description   String?
   variationType VariationType?
-  metadata    Json?
+  metadata      Json?
 }
 
 model ExerciseAlias {
@@ -345,13 +364,13 @@ model ExerciseEquipment {
 }
 
 model SubstitutionRule {
-  id            String   @id @default(uuid())
+  id             String  @id @default(uuid())
   fromExerciseId String
   toExerciseId   String
-  reason        String?
-  priority      Int      @default(50)
-  constraints   Json?
-  preserves     Json?
+  reason         String?
+  priority       Int     @default(50)
+  constraints    Json?
+  preserves      Json?
 
   fromExercise Exercise @relation("SubstitutionFrom", fields: [fromExerciseId], references: [id])
   toExercise   Exercise @relation("SubstitutionTo", fields: [toExerciseId], references: [id])
@@ -361,51 +380,59 @@ model SubstitutionRule {
 }
 
 model Workout {
-  id              String        @id @default(uuid())
-  userId          String
-  user            User          @relation(fields: [userId], references: [id])
-  templateId      String?
-  template        WorkoutTemplate? @relation(fields: [templateId], references: [id])
-  scheduledDate   DateTime
-  completedAt     DateTime?
-  status          WorkoutStatus @default(PLANNED)
-  estimatedMinutes Int?
-  notes           String?
-  selectionMode   WorkoutSelectionMode @default(AUTO)
-  sessionIntent   WorkoutSessionIntent?
+  id                String                @id @default(uuid())
+  userId            String
+  user              User                  @relation(fields: [userId], references: [id])
+  templateId        String?
+  template          WorkoutTemplate?      @relation(fields: [templateId], references: [id])
+  scheduledDate     DateTime
+  completedAt       DateTime?
+  status            WorkoutStatus         @default(PLANNED)
+  estimatedMinutes  Int?
+  notes             String?
+  selectionMode     WorkoutSelectionMode  @default(AUTO)
+  sessionIntent     WorkoutSessionIntent?
   selectionMetadata Json?
-  revision        Int           @default(1)
-  forcedSplit     SplitDay?
-  advancesSplit   Boolean @default(true)
+  revision          Int                   @default(1)
+  forcedSplit       SplitDay?
+  advancesSplit     Boolean               @default(true)
 
   // Periodization context (nullable for backward compat)
-  trainingBlockId    String?
-  trainingBlock      TrainingBlock? @relation(fields: [trainingBlockId], references: [id])
-  weekInBlock        Int?           // 1, 2, 3 within block
+  trainingBlockId String?
+  trainingBlock   TrainingBlock? @relation(fields: [trainingBlockId], references: [id])
+  weekInBlock     Int? // 1, 2, 3 within block
+
+  // Mesocycle lifecycle context (nullable for backward compat)
+  mesocycleId            String?
+  mesocycle              Mesocycle?      @relation(fields: [mesocycleId], references: [id], onDelete: SetNull)
+  mesocyclePhaseSnapshot MesocyclePhase?
+  mesocycleWeekSnapshot  Int?
+  mesoSessionSnapshot    Int?
 
   // Autoregulation tracking (Phase 3)
-  wasAutoregulated Boolean @default(false)
-  autoregulationLog Json?  // { modifications: [...], fatigueScore: 0.45, rationale: "..." }
+  wasAutoregulated  Boolean @default(false)
+  autoregulationLog Json? // { modifications: [...], fatigueScore: 0.45, rationale: "..." }
 
-  exercises WorkoutExercise[]
-  sessionCheckIns SessionCheckIn[]
+  exercises         WorkoutExercise[]
+  sessionCheckIns   SessionCheckIn[]
   filteredExercises FilteredExercise[]
 
   @@index([userId, scheduledDate])
   @@index([trainingBlockId])
+  @@index([mesocycleId])
 }
 
 model WorkoutExercise {
-  id              String              @id @default(uuid())
-  workoutId       String
-  workout         Workout             @relation(fields: [workoutId], references: [id])
-  exerciseId      String
-  exercise        Exercise            @relation(fields: [exerciseId], references: [id])
-  orderIndex      Int
-  section         WorkoutExerciseSection?
-  isMainLift      Boolean
-  movementPatterns MovementPatternV2[] @default([])
-  notes           String?
+  id               String                  @id @default(uuid())
+  workoutId        String
+  workout          Workout                 @relation(fields: [workoutId], references: [id])
+  exerciseId       String
+  exercise         Exercise                @relation(fields: [exerciseId], references: [id])
+  orderIndex       Int
+  section          WorkoutExerciseSection?
+  isMainLift       Boolean
+  movementPatterns MovementPatternV2[]     @default([])
+  notes            String?
 
   sets WorkoutSet[]
 
@@ -413,7 +440,7 @@ model WorkoutExercise {
 }
 
 model WorkoutSet {
-  id                String   @id @default(uuid())
+  id                String          @id @default(uuid())
   workoutExerciseId String
   workoutExercise   WorkoutExercise @relation(fields: [workoutExerciseId], references: [id])
   setIndex          Int
@@ -440,194 +467,220 @@ model FilteredExercise {
 }
 
 model SetLog {
-  id            String   @id @default(uuid())
-  workoutSetId  String   @unique
-  workoutSet    WorkoutSet @relation(fields: [workoutSetId], references: [id])
-  actualReps    Int?
-  actualRpe     Float?
-  actualLoad    Float?
-  completedAt   DateTime @default(now())
-  notes         String?
-  wasSkipped    Boolean  @default(false)
+  id           String     @id @default(uuid())
+  workoutSetId String     @unique
+  workoutSet   WorkoutSet @relation(fields: [workoutSetId], references: [id])
+  actualReps   Int?
+  actualRpe    Float?
+  actualLoad   Float?
+  completedAt  DateTime   @default(now())
+  notes        String?
+  wasSkipped   Boolean    @default(false)
 }
 
-
 model SessionCheckIn {
-  id         String   @id @default(uuid())
-  userId     String
-  user       User     @relation(fields: [userId], references: [id])
-  workoutId  String?
-  workout    Workout? @relation(fields: [workoutId], references: [id])
-  date       DateTime
-  readiness  Int      // 1-5
-  painFlags  Json?
-  notes      String?
-  createdAt  DateTime @default(now())
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  workoutId String?
+  workout   Workout? @relation(fields: [workoutId], references: [id])
+  date      DateTime
+  readiness Int // 1-5
+  painFlags Json?
+  notes     String?
+  createdAt DateTime @default(now())
 
   @@index([userId, date])
 }
 
 // Phase 3: Autoregulation & Readiness Integration
 model ReadinessSignal {
-  id         String   @id @default(cuid())
-  userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  timestamp  DateTime @default(now())
+  timestamp DateTime @default(now())
 
   // Whoop data (stubbed, nullable until Phase 3.5)
-  whoopRecovery     Float?  // 0-100
-  whoopStrain       Float?  // 0-21
-  whoopHrv          Float?  // ms (RMSSD)
-  whoopSleepQuality Float?  // 0-100
-  whoopSleepHours   Float?  // hours
+  whoopRecovery     Float? // 0-100
+  whoopStrain       Float? // 0-21
+  whoopHrv          Float? // ms (RMSSD)
+  whoopSleepQuality Float? // 0-100
+  whoopSleepHours   Float? // hours
 
   // Subjective (always present)
-  subjectiveReadiness  Int  // 1-5
-  subjectiveMotivation Int  // 1-5
+  subjectiveReadiness  Int // 1-5
+  subjectiveMotivation Int // 1-5
   subjectiveSoreness   Json // Map<MuscleGroup, 1-3>
   subjectiveStress     Int? // 1-5 (optional)
 
   // Performance (computed from history)
-  performanceRpeDeviation  Float  // Avg(actual - expected RPE) last 3 sessions
-  performanceStalls        Int    // Count of stalled exercises
-  performanceCompliance    Float  // % sets completed (0-1)
+  performanceRpeDeviation Float // Avg(actual - expected RPE) last 3 sessions
+  performanceStalls       Int // Count of stalled exercises
+  performanceCompliance   Float // % sets completed (0-1)
 
   // Computed fatigue score (stored for analytics)
-  fatigueScoreOverall      Float  // 0-1 (0=exhausted, 1=fresh)
-  fatigueScoreBreakdown    Json   // { whoop: 0.35, subjective: 0.2, performance: 0.1 }
+  fatigueScoreOverall   Float // 0-1 (0=exhausted, 1=fresh)
+  fatigueScoreBreakdown Json // { whoop: 0.35, subjective: 0.2, performance: 0.1 }
 
   @@index([userId, timestamp(sort: Desc)])
 }
 
 model UserIntegration {
-  id           String   @id @default(cuid())
-  userId       String
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  provider     String   // "whoop", "oura", "garmin" (future)
-  accessToken  String?  @db.Text
-  refreshToken String?  @db.Text
+  provider     String // "whoop", "oura", "garmin" (future)
+  accessToken  String?   @db.Text
+  refreshToken String?   @db.Text
   expiresAt    DateTime?
 
-  isActive     Boolean  @default(true)
+  isActive Boolean @default(true)
 
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([userId, provider])
   @@index([userId, isActive])
 }
 
-
 model WorkoutTemplate {
-  id             String   @id @default(uuid())
-  userId         String
-  user           User     @relation(fields: [userId], references: [id])
-  name           String
-  targetMuscles  String[] @default([])
-  isStrict       Boolean  @default(false)
-  intent         TemplateIntent @default(CUSTOM)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id            String         @id @default(uuid())
+  userId        String
+  user          User           @relation(fields: [userId], references: [id])
+  name          String
+  targetMuscles String[]       @default([])
+  isStrict      Boolean        @default(false)
+  intent        TemplateIntent @default(CUSTOM)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
 
   exercises WorkoutTemplateExercise[]
   workouts  Workout[]
 }
 
 model WorkoutTemplateExercise {
-  id         String          @id @default(uuid())
-  templateId String
-  template   WorkoutTemplate @relation(fields: [templateId], references: [id])
-  exerciseId String
-  exercise   Exercise        @relation(fields: [exerciseId], references: [id])
-  orderIndex Int
+  id            String          @id @default(uuid())
+  templateId    String
+  template      WorkoutTemplate @relation(fields: [templateId], references: [id])
+  exerciseId    String
+  exercise      Exercise        @relation(fields: [exerciseId], references: [id])
+  orderIndex    Int
   supersetGroup Int?
 
   @@unique([templateId, orderIndex])
 }
 
 model MacroCycle {
-  id              String      @id @default(uuid())
-  userId          String
-  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  startDate       DateTime
-  endDate         DateTime
-  durationWeeks   Int
+  startDate     DateTime
+  endDate       DateTime
+  durationWeeks Int
 
-  trainingAge     TrainingAge
-  primaryGoal     PrimaryGoal
+  trainingAge TrainingAge
+  primaryGoal PrimaryGoal
 
-  mesocycles      Mesocycle[]
+  mesocycles Mesocycle[]
 
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([userId, startDate])
 }
 
 model Mesocycle {
-  id              String        @id @default(uuid())
-  macroCycleId    String
-  macroCycle      MacroCycle    @relation(fields: [macroCycleId], references: [id], onDelete: Cascade)
+  id           String     @id @default(uuid())
+  macroCycleId String
+  macroCycle   MacroCycle @relation(fields: [macroCycleId], references: [id], onDelete: Cascade)
 
-  mesoNumber         Int           // 1, 2, 3... within macro
-  startWeek          Int           // Week offset from macro start (0-indexed)
-  durationWeeks      Int
+  mesoNumber    Int // 1, 2, 3... within macro
+  startWeek     Int // Week offset from macro start (0-indexed)
+  durationWeeks Int
 
-  focus              String        // "Upper Body Hypertrophy", "Lower Strength", etc.
-  volumeTarget       VolumeTarget
-  intensityBias      IntensityBias
+  focus         String // "Upper Body Hypertrophy", "Lower Strength", etc.
+  volumeTarget  VolumeTarget
+  intensityBias IntensityBias
 
-  // ADR-080: Session-count-based week tracking
-  completedSessions  Int           @default(0) // incremented on each logged workout
-  isActive           Boolean       @default(false) // true for the current meso
+  // Legacy counter retained temporarily for backwards compatibility.
+  completedSessions             Int            @default(0)
+  accumulationSessionsCompleted Int            @default(0)
+  deloadSessionsCompleted       Int            @default(0)
+  sessionsPerWeek               Int            @default(3)
+  splitType                     SplitType      @default(PPL)
+  daysPerWeek                   Int            @default(3)
+  state                         MesocycleState @default(ACTIVE_ACCUMULATION)
+  volumeRampConfig              Json?
+  rirBandConfig                 Json?
+  isActive                      Boolean        @default(false) // true for the current meso
 
-  blocks             TrainingBlock[]
+  blocks        TrainingBlock[]
+  workouts      Workout[]
+  exerciseRoles MesocycleExerciseRole[]
 
   @@unique([macroCycleId, mesoNumber])
   @@index([macroCycleId])
   @@index([macroCycleId, isActive])
+  @@index([macroCycleId, isActive, state])
 }
 
 model TrainingBlock {
-  id              String          @id @default(uuid())
-  mesocycleId     String
-  mesocycle       Mesocycle       @relation(fields: [mesocycleId], references: [id], onDelete: Cascade)
+  id          String    @id @default(uuid())
+  mesocycleId String
+  mesocycle   Mesocycle @relation(fields: [mesocycleId], references: [id], onDelete: Cascade)
 
-  blockNumber     Int             // 1, 2, 3... within meso
-  blockType       BlockType
+  blockNumber Int // 1, 2, 3... within meso
+  blockType   BlockType
 
-  startWeek       Int             // Week offset from macro start
-  durationWeeks   Int
+  startWeek     Int // Week offset from macro start
+  durationWeeks Int
 
-  volumeTarget    VolumeTarget
-  intensityBias   IntensityBias
-  adaptationType  AdaptationType
+  volumeTarget   VolumeTarget
+  intensityBias  IntensityBias
+  adaptationType AdaptationType
 
-  workouts        Workout[]
+  workouts Workout[]
 
   @@unique([mesocycleId, blockNumber])
   @@index([mesocycleId])
 }
 
 model ExerciseExposure {
-  id              String      @id @default(uuid())
-  userId          String
-  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  exerciseName    String
-  lastUsedAt      DateTime
-  timesUsedL4W    Int         @default(0)  // Last 4 weeks
-  timesUsedL8W    Int         @default(0)  // Last 8 weeks
-  timesUsedL12W   Int         @default(0)  // Last 12 weeks
+  exerciseName  String
+  lastUsedAt    DateTime
+  timesUsedL4W  Int      @default(0) // Last 4 weeks
+  timesUsedL8W  Int      @default(0) // Last 8 weeks
+  timesUsedL12W Int      @default(0) // Last 12 weeks
 
-  avgSetsPerWeek  Float       @default(0)
-  avgVolumePerWeek Float      @default(0)
+  avgSetsPerWeek   Float @default(0)
+  avgVolumePerWeek Float @default(0)
 
-  updatedAt       DateTime    @updatedAt
+  updatedAt DateTime @updatedAt
 
   @@unique([userId, exerciseName])
   @@index([userId, lastUsedAt])
+}
+
+model MesocycleExerciseRole {
+  id            String                    @id @default(uuid())
+  mesocycleId   String
+  mesocycle     Mesocycle                 @relation(fields: [mesocycleId], references: [id], onDelete: Cascade)
+  exerciseId    String
+  exercise      Exercise                  @relation(fields: [exerciseId], references: [id])
+  sessionIntent WorkoutSessionIntent
+  role          MesocycleExerciseRoleType
+  addedInWeek   Int
+  createdAt     DateTime                  @default(now())
+  updatedAt     DateTime                  @updatedAt
+
+  @@unique([mesocycleId, exerciseId, sessionIntent])
+  @@index([mesocycleId, sessionIntent])
+  @@index([exerciseId])
 }

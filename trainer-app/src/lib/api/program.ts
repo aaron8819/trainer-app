@@ -54,6 +54,7 @@ export type ProgramDashboardData = {
   currentWeek: number;
   sessionsUntilDeload: number;
   daysPerWeek: number;
+  nextSessionIntent: string | null;
   volumeThisWeek: ProgramVolumeRow[];
   recentWorkouts: ProgramRecentWorkout[];
   deloadReadiness: DeloadReadiness | null;
@@ -221,9 +222,17 @@ export async function loadProgramDashboardData(userId: string): Promise<ProgramD
   // daysPerWeek from constraints (fallback 3)
   const constraints = await prisma.constraints.findUnique({
     where: { userId },
-    select: { daysPerWeek: true },
+    select: { daysPerWeek: true, weeklySchedule: true },
   });
   const daysPerWeek = constraints?.daysPerWeek ?? 3;
+  const weeklySchedule = (constraints?.weeklySchedule ?? []).map((intent) =>
+    intent.toLowerCase()
+  );
+  const completedSessions = mesoRecord?.completedSessions ?? 0;
+  const nextSessionIntent =
+    weeklySchedule.length > 0
+      ? weeklySchedule[completedSessions % weeklySchedule.length]
+      : null;
 
   // Compute current week (1-indexed)
   let currentWeek = 1;
@@ -315,6 +324,7 @@ export async function loadProgramDashboardData(userId: string): Promise<ProgramD
     currentWeek,
     sessionsUntilDeload,
     daysPerWeek,
+    nextSessionIntent,
     volumeThisWeek,
     deloadReadiness,
     capabilities,

@@ -24,6 +24,47 @@ import {
 import { getGoalRepRanges, getGoalSetMultiplier } from "../rules";
 import { getRestSeconds, REST_SECONDS } from "../prescription";
 
+const PER_SESSION_MUSCLE_CAPS: Record<string, number> = {
+  "Rear Delts": 3,
+  "Side Delts": 3,
+  "Front Delts": 2,
+  Biceps: 4,
+  Triceps: 4,
+};
+
+function buildDeficitScoringContribution(
+  exercise: Exercise,
+  contribution: VolumeContribution,
+  objective: SelectionObjective
+): VolumeContribution {
+  // Pull intent: prioritize primary-muscle deficits only.
+  // This prevents forearm-focused hangs from scoring on secondary lat/back spillover.
+  if (objective.sessionIntent !== "pull") {
+    return contribution;
+  }
+
+  const filtered: VolumeContribution = new Map();
+  for (const muscle of exercise.primaryMuscles ?? []) {
+    const direct = contribution.get(muscle)?.direct ?? 0;
+    if (direct <= 0) {
+      continue;
+    }
+    filtered.set(muscle, { direct, indirect: 0 });
+  }
+
+  // Shrug-style trap isolation should not drive pull-session deficit targeting.
+  const isTrapIsolation =
+    !(exercise.isCompound ?? false) &&
+    (exercise.movementPatterns ?? []).includes("isolation") &&
+    (exercise.primaryMuscles ?? []).length === 1 &&
+    (exercise.primaryMuscles ?? [])[0] === "Upper Back";
+  if (isTrapIsolation) {
+    filtered.delete("Upper Back");
+  }
+
+  return filtered;
+}
+
 /**
  * Build a scored candidate from an exercise
  *
@@ -42,10 +83,11 @@ export function buildCandidate(
 
   // Estimate time contribution
   const timeContribution = estimateTimeContribution(exercise, proposedSets, objective);
+  const deficitContribution = buildDeficitScoringContribution(exercise, volumeContribution, objective);
 
   // Compute multi-objective scores
   const scores: CandidateScores = {
-    deficitFill: scoreDeficitFill(volumeContribution, objective.volumeContext),
+    deficitFill: scoreDeficitFill(deficitContribution, objective.volumeContext),
     rotationNovelty: scoreRotationNovelty(exercise, objective.rotationContext),
     sfrScore: scoreSFR(exercise),
     lengthenedScore: scoreLengthened(exercise),
@@ -202,6 +244,21 @@ export function computeProposedSets(
   const goalMultiplier = objective.goals?.primary
     ? getGoalSetMultiplier(objective.goals.primary)
     : 1;
+  const perSessionCap = (exercise.primaryMuscles ?? []).reduce<number | undefined>(
+    (currentCap, muscle) => {
+      const muscleCap = PER_SESSION_MUSCLE_CAPS[muscle];
+      if (muscleCap === undefined) {
+        return currentCap;
+      }
+      if (currentCap === undefined) {
+        return muscleCap;
+      }
+      return Math.min(currentCap, muscleCap);
+    },
+    undefined
+  );
+  const applyPerSessionCap = (sets: number) =>
+    perSessionCap === undefined ? sets : Math.min(sets, perSessionCap);
 
   // Find largest deficit among primary muscles
   let maxDeficit = 0;
@@ -213,13 +270,15 @@ export function computeProposedSets(
   }
 
   // If no deficit, default to 3 sets (with goal multiplier)
-  if (maxDeficit === 0) return Math.max(MIN_SETS, Math.round(DEFAULT_SETS * goalMultiplier));
+  if (maxDeficit === 0) {
+    return applyPerSessionCap(Math.max(MIN_SETS, Math.round(DEFAULT_SETS * goalMultiplier)));
+  }
 
   // Propose sets proportional to deficit, apply goal multiplier, clamp to [MIN_SETS, MAX_SETS]
   // The C1b per-session per-muscle direct-set ceiling (SESSION_DIRECT_SET_CEILING = 12)
   // in beam-search.ts acts as the natural per-session cap.
   const rawSets = Math.max(MIN_SETS, Math.min(MAX_SETS, Math.ceil(maxDeficit / 2)));
-  return Math.max(MIN_SETS, Math.round(rawSets * goalMultiplier));
+  return applyPerSessionCap(Math.max(MIN_SETS, Math.round(rawSets * goalMultiplier)));
 }
 
 /**

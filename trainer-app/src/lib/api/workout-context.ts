@@ -32,6 +32,7 @@ import type {
   UserProfile,
   WorkoutHistoryEntry,
   WorkoutPlan,
+  SplitDay,
 } from "@/lib/engine/types";
 
 import type { WeekInBlockHistoryEntry } from "./periodization";
@@ -52,19 +53,37 @@ export async function resolveOwner() {
   const configuredOwnerEmail = process.env.OWNER_EMAIL?.trim().toLowerCase();
   const singleUserEmail = configuredOwnerEmail ?? "owner@local";
 
-  if (runtimeMode === "single_user_local") {
-    return prisma.user.upsert({
+  const upsertOwner = async () =>
+    prisma.user.upsert({
       where: { email: singleUserEmail },
       update: {},
       create: { email: singleUserEmail },
     });
+
+  if (runtimeMode !== "single_user_local") {
+    return upsertOwner();
   }
 
-  return prisma.user.upsert({
-    where: { email: singleUserEmail },
-    update: {},
-    create: { email: singleUserEmail },
-  });
+  // Prisma adapter/driver failures can be transient in local dev.
+  const maxAttempts = 2;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await upsertOwner();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const isTransientDriverExit =
+        message.includes("DbHandler exited") || message.includes("DriverAdapterError");
+
+      if (!isTransientDriverExit || attempt >= maxAttempts) {
+        throw error;
+      }
+
+      await prisma.$disconnect().catch(() => undefined);
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    }
+  }
+
+  throw new Error("resolveOwner retry loop exhausted");
 }
 
 export async function loadWorkoutContext(userId: string) {
@@ -154,9 +173,20 @@ export function mapProfile(userId: string, profile: Profile, injuries: Injury[])
 }
 
 export function mapGoals(primary: PrimaryGoal, secondary: SecondaryGoal): Goals {
+  const normalizedPrimary = primary.toLowerCase() as Goals["primary"];
+  const normalizedSecondary = secondary.toLowerCase() as Goals["secondary"];
+  const isStrengthFocused =
+    normalizedPrimary === "strength" ||
+    normalizedPrimary === "strength_hypertrophy" ||
+    normalizedSecondary === "strength";
+  const isHypertrophyFocused =
+    normalizedPrimary === "hypertrophy" || normalizedPrimary === "strength_hypertrophy";
+
   return {
-    primary: primary.toLowerCase() as Goals["primary"],
-    secondary: secondary.toLowerCase() as Goals["secondary"],
+    primary: normalizedPrimary,
+    secondary: normalizedSecondary,
+    isStrengthFocused,
+    isHypertrophyFocused,
   };
 }
 
@@ -164,6 +194,9 @@ export function mapConstraints(constraints: ConstraintsRecord): Constraints {
   return {
     daysPerWeek: constraints.daysPerWeek,
     splitType: constraints.splitType.toLowerCase() as Constraints["splitType"],
+    weeklySchedule: (constraints.weeklySchedule ?? []).map(
+      (intent) => intent.toLowerCase() as Constraints["weeklySchedule"][number]
+    ),
   };
 }
 
@@ -279,7 +312,8 @@ export function applyLoads(
   profile: UserProfile,
   primaryGoal: Goals["primary"],
   periodization?: PeriodizationModifiers,
-  weekInBlock?: number
+  weekInBlock?: number,
+  sessionIntent?: SplitDay
 ): WorkoutPlan {
   const exerciseById = Object.fromEntries(
     mapExercises(exercises).map((exercise) => [exercise.id, exercise])
@@ -293,6 +327,7 @@ export function applyLoads(
     profile,
     periodization,
     weekInBlock,
+    sessionIntent,
   });
 }
 

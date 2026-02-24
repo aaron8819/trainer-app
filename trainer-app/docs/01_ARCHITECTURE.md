@@ -13,6 +13,7 @@ Invariants:
 - Runtime identity is owner-scoped via `resolveOwner()`.
 - App routes and API routes are the only external app surface.
 - Engine logic is pure/domain-focused under `src/lib/engine`; DB access lives in API/orchestration.
+- Mesocycle lifecycle state transitions are owned by `src/lib/api/mesocycle-lifecycle.ts`.
 
 Sources of truth:
 - `trainer-app/src/lib/api/workout-context.ts`
@@ -26,8 +27,9 @@ Sources of truth:
 1. UI layer: App Router pages and client components under `src/app` and `src/components`.
 2. API layer: route handlers under `src/app/api/**/route.ts`.
 3. Orchestration layer: runtime composition under `src/lib/api`.
-4. Engine layer: selection/progression/periodization/readiness/explainability logic under `src/lib/engine`.
-5. Data layer: Prisma models and migrations under `prisma/` and client setup in `src/lib/db/prisma.ts`.
+4. Mesocycle lifecycle service layer: lifecycle counters/state transitions and week/volume/RIR derivation in `src/lib/api/mesocycle-lifecycle.ts`.
+5. Engine layer: selection/progression/periodization/readiness/explainability logic under `src/lib/engine`.
+6. Data layer: Prisma models and migrations under `prisma/` and client setup in `src/lib/db/prisma.ts`.
 
 ## Single-user local-first behavior
 - `resolveOwner()` upserts a deterministic owner user, using `OWNER_EMAIL` or fallback `owner@local`.
@@ -44,3 +46,8 @@ Sources of truth:
 3. Orchestration loads context from Prisma and invokes engine functions.
 4. Engine returns deterministic plan/rationale outputs.
 5. API persists workout/log changes and returns response payloads.
+
+## Lifecycle ownership and data entities
+- Lifecycle state transitions (`ACTIVE_ACCUMULATION` -> `ACTIVE_DELOAD` -> `COMPLETED`) are executed by `transitionMesocycleState()` in `src/lib/api/mesocycle-lifecycle.ts`, invoked from `src/app/api/workouts/save/route.ts` after first transition into a performed status.
+- Lifecycle-derived targeting helpers (`getCurrentMesoWeek()`, `getWeeklyVolumeTarget()`, `getRirTarget()`) are consumed by template-session orchestration.
+- `MesocycleExerciseRole` is a first-class data-layer entity for intent-scoped exercise role continuity (`CORE_COMPOUND` / `ACCESSORY`) across mesocycle lifecycle events.

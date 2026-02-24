@@ -3,7 +3,7 @@
  */
 
 import type { Exercise } from "../types";
-import type { SelectionObjective, SelectionCandidate } from "./types";
+import type { SelectionObjective } from "./types";
 
 /**
  * Create a mock exercise with all required fields

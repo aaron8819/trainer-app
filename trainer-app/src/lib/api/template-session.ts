@@ -8,6 +8,7 @@ import {
   buildSelectionObjective,
   mapSelectionResult,
 } from "./template-session/selection-adapter";
+import { generateDeloadSessionFromIntentContext } from "./template-session/deload-session";
 import {
   enforceIntentAlignment,
   filterPoolForIntent,
@@ -87,6 +88,60 @@ export async function generateSessionFromTemplate(
   return finalizePostLoadResult(result, mapped);
 }
 
+export async function generateDeloadSessionFromTemplate(
+  userId: string,
+  templateId: string
+): Promise<SessionGenerationResult> {
+  const template = await loadTemplateDetail(templateId, userId);
+  if (!template) {
+    return { error: "Template not found" };
+  }
+
+  let mapped;
+  try {
+    mapped = await loadMappedGenerationContext(userId);
+  } catch (error) {
+    if (error instanceof Error) {
+      return { error: error.message };
+    }
+    return { error: "Failed to load generation context" };
+  }
+
+  const templateExercises = mapTemplateExercises(template.exercises, mapped.exerciseLibrary);
+  const sessionIntent = resolveTemplateSessionIntent(
+    template.intent,
+    template.targetMuscles ?? [],
+    templateExercises
+  );
+
+  const deload = await generateDeloadSessionFromIntentContext(userId, mapped, sessionIntent);
+  if ("error" in deload) {
+    return deload;
+  }
+
+  return {
+    workout: deload.workout,
+    selectionMode: "AUTO",
+    sessionIntent,
+    templateId,
+    sraWarnings: [],
+    substitutions: [],
+    volumePlanByMuscle: {},
+    selection: {
+      ...deload.selection,
+      adaptiveDeloadApplied: true,
+      periodizationWeek: mapped.lifecycleWeek,
+      cycleContext: mapped.cycleContext,
+      deloadDecision: {
+        mode: "scheduled",
+        reason: [deload.note],
+        reductionPercent: 55,
+        appliedTo: "both",
+      },
+    },
+  };
+}
+
 export async function generateSessionFromIntent(
   userId: string,
   input: GenerateIntentSessionInput
@@ -113,7 +168,10 @@ export async function generateSessionFromIntent(
 
   const selectionResult = selectExercisesOptimized(filteredPool, objective);
   const filteredExercises = summarizeFilteredExercises(selectionResult.rejected);
-  const mappedSelection = mapSelectionResult(selectionResult);
+  const mappedSelection = mapSelectionResult(
+    selectionResult,
+    objective.constraints.demotedFromMainLift ?? new Set()
+  );
   const alignedSelection = enforceIntentAlignment(
     mappedSelection,
     mapped.exerciseLibrary,
@@ -159,4 +217,47 @@ export async function generateSessionFromIntent(
   }
 
   return finalizePostLoadResult(result, mapped, filteredExercises);
+}
+
+export async function generateDeloadSessionFromIntent(
+  userId: string,
+  input: GenerateIntentSessionInput
+): Promise<SessionGenerationResult> {
+  let mapped;
+  try {
+    mapped = await loadMappedGenerationContext(userId);
+  } catch (error) {
+    if (error instanceof Error) {
+      return { error: error.message };
+    }
+    return { error: "Failed to load generation context" };
+  }
+
+  const deload = await generateDeloadSessionFromIntentContext(userId, mapped, input.intent);
+  if ("error" in deload) {
+    return deload;
+  }
+
+  return {
+    workout: deload.workout,
+    selectionMode: "INTENT",
+    sessionIntent: input.intent,
+    templateId: undefined,
+    sraWarnings: [],
+    substitutions: [],
+    volumePlanByMuscle: {},
+    selection: {
+      ...deload.selection,
+      adaptiveDeloadApplied: true,
+      periodizationWeek: mapped.lifecycleWeek,
+      cycleContext: mapped.cycleContext,
+      deloadDecision: {
+        mode: "scheduled",
+        reason: [deload.note],
+        reductionPercent: 55,
+        appliedTo: "both",
+      },
+    },
+    filteredExercises: [],
+  };
 }

@@ -1,7 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
+import {
+  PRIMARY_GOAL_OPTIONS,
+  SECONDARY_GOAL_OPTIONS,
+} from "@/lib/profile-goal-options";
 
 export type ProfileFormValues = {
   userId?: string;
@@ -11,8 +15,14 @@ export type ProfileFormValues = {
   heightIn?: number;
   weightLb?: number;
   trainingAge: "BEGINNER" | "INTERMEDIATE" | "ADVANCED";
-  primaryGoal: "HYPERTROPHY" | "STRENGTH" | "FAT_LOSS" | "ATHLETICISM" | "GENERAL_HEALTH";
-  secondaryGoal: "POSTURE" | "CONDITIONING" | "INJURY_PREVENTION" | "NONE";
+  primaryGoal:
+    | "HYPERTROPHY"
+    | "STRENGTH"
+    | "STRENGTH_HYPERTROPHY"
+    | "FAT_LOSS"
+    | "ATHLETICISM"
+    | "GENERAL_HEALTH";
+  secondaryGoal: "POSTURE" | "CONDITIONING" | "INJURY_PREVENTION" | "STRENGTH" | "NONE";
   daysPerWeek: number;
   splitType: "PPL" | "UPPER_LOWER" | "FULL_BODY" | "CUSTOM";
   weeklySchedule?: ("PUSH" | "PULL" | "LEGS" | "UPPER" | "LOWER" | "FULL_BODY" | "BODY_PART")[];
@@ -56,6 +66,8 @@ export default function ProfileForm({
   initialValues,
   submitLabel = "Save profile",
   onSaved,
+  primaryGoalOptions = PRIMARY_GOAL_OPTIONS,
+  secondaryGoalOptions = SECONDARY_GOAL_OPTIONS,
 }: {
   initialValues?: Partial<ProfileFormValues>;
   submitLabel?: string;
@@ -63,13 +75,41 @@ export default function ProfileForm({
     primaryGoal: ProfileFormValues["primaryGoal"];
     splitType: ProfileFormValues["splitType"];
   }) => void;
+  primaryGoalOptions?: ReadonlyArray<{ value: ProfileFormValues["primaryGoal"]; label: string }>;
+  secondaryGoalOptions?: ReadonlyArray<{ value: ProfileFormValues["secondaryGoal"]; label: string }>;
 }) {
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [weeklyAnalysisSummary, setWeeklyAnalysisSummary] = useState<string | null>(null);
 
+  const initialDayCount = useMemo(
+    () =>
+      Math.max(
+        1,
+        Math.min(
+          7,
+          Number.isFinite(initialValues?.daysPerWeek)
+            ? Number(initialValues?.daysPerWeek)
+            : defaultValues.daysPerWeek
+        )
+      ),
+    [initialValues?.daysPerWeek]
+  );
+  const initialWeeklySchedule = useMemo(
+    () =>
+      Array.isArray(initialValues?.weeklySchedule)
+        ? initialValues.weeklySchedule
+        : defaultValues.weeklySchedule ?? [],
+    [initialValues?.weeklySchedule]
+  );
+
   const form = useForm<ProfileFormValues>({
-    defaultValues: { ...defaultValues, ...initialValues },
+    defaultValues: {
+      ...defaultValues,
+      ...initialValues,
+      daysPerWeek: initialDayCount,
+      weeklySchedule: initialWeeklySchedule.slice(0, initialDayCount),
+    },
   });
 
   const sectionClassName = "rounded-2xl border border-slate-200 p-4 sm:p-6";
@@ -79,14 +119,23 @@ export default function ProfileForm({
   const watchedWeeklySchedule = form.watch("weeklySchedule");
 
   useEffect(() => {
-    const dayCount = Number.isFinite(watchedDaysPerWeek) ? Math.max(1, Math.min(7, watchedDaysPerWeek)) : 4;
+    const dayCount = Number.isFinite(watchedDaysPerWeek)
+      ? Math.max(1, Math.min(7, watchedDaysPerWeek))
+      : initialDayCount;
     const current = Array.isArray(watchedWeeklySchedule) ? watchedWeeklySchedule : [];
-    const next = Array.from({ length: dayCount }, (_, index) => current[index] ?? "PUSH");
+    const next = Array.from(
+      { length: dayCount },
+      (_, index) =>
+        current[index] ??
+        initialWeeklySchedule[index] ??
+        SESSION_INTENT_OPTIONS[0]?.value ??
+        "PUSH"
+    );
     const changed = next.length !== current.length || next.some((value, index) => current[index] !== value);
     if (changed) {
       form.setValue("weeklySchedule", next, { shouldDirty: false });
     }
-  }, [form, watchedDaysPerWeek, watchedWeeklySchedule]);
+  }, [form, initialDayCount, initialWeeklySchedule, watchedDaysPerWeek, watchedWeeklySchedule]);
 
   const onSubmit = form.handleSubmit(async (values) => {
     setStatus(null);
@@ -231,20 +280,21 @@ export default function ProfileForm({
           <label className={labelClassName}>
             Primary Goal
             <select className={fieldClassName} {...form.register("primaryGoal")}>
-              <option value="HYPERTROPHY">Hypertrophy</option>
-              <option value="STRENGTH">Strength</option>
-              <option value="FAT_LOSS">Fat Loss</option>
-              <option value="ATHLETICISM">Athleticism</option>
-              <option value="GENERAL_HEALTH">General Health</option>
+              {primaryGoalOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
           </label>
           <label className={labelClassName}>
             Secondary Goal
             <select className={fieldClassName} {...form.register("secondaryGoal")}>
-              <option value="POSTURE">Posture</option>
-              <option value="CONDITIONING">Conditioning</option>
-              <option value="INJURY_PREVENTION">Injury Prevention</option>
-              <option value="NONE">None</option>
+              {secondaryGoalOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
           </label>
         </div>

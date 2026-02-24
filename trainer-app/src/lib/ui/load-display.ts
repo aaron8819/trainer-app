@@ -1,9 +1,8 @@
 /**
  * Utilities for displaying exercise loads consistently.
  *
- * Storage convention: all loads are stored as total weight in lbs.
- * Dumbbell exercises display per-dumbbell weight (total / 2) to match
- * how users think about dumbbell loads.
+ * Storage convention: loads are stored in the same unit shown to users.
+ * Dumbbell exercises use per-dumbbell ("each") values.
  */
 
 const DUMBBELL_WEIGHTS = [
@@ -23,19 +22,19 @@ export function isDumbbellEquipment(equipment: string[] | undefined): boolean {
 }
 
 /**
- * Format a stored total load for display.
+ * Format a stored load for display.
  * Dumbbell exercises show per-dumbbell weight with "lbs each" label.
  */
 export function formatLoad(
-  totalLbs: number | null | undefined,
+  lbs: number | null | undefined,
   isDumbbell: boolean,
   isBodyweight: boolean
 ): string | undefined {
-  if (totalLbs != null) {
+  if (lbs != null) {
     if (isDumbbell) {
-      return `${snapToDumbbell(totalLbs / 2)} lbs each`;
+      return `${snapToDumbbell(lbs)} lbs each`;
     }
-    return `${totalLbs} lbs`;
+    return `${lbs} lbs`;
   }
   if (isBodyweight) {
     return "BW";
@@ -44,22 +43,20 @@ export function formatLoad(
 }
 
 /**
- * Convert a stored total load to its display value.
- * Returns half the value for dumbbell exercises (per-dumbbell).
+ * Convert a stored load to its display value.
  */
-export function toDisplayLoad(totalLbs: number, isDumbbell: boolean): number;
-export function toDisplayLoad(totalLbs: number | null | undefined, isDumbbell: boolean): number | null | undefined;
+export function toDisplayLoad(lbs: number, isDumbbell: boolean): number;
+export function toDisplayLoad(lbs: number | null | undefined, isDumbbell: boolean): number | null | undefined;
 export function toDisplayLoad(
-  totalLbs: number | null | undefined,
+  lbs: number | null | undefined,
   isDumbbell: boolean
 ): number | null | undefined {
-  if (totalLbs == null) return totalLbs;
-  return isDumbbell ? totalLbs / 2 : totalLbs;
+  if (lbs == null) return lbs;
+  return isDumbbell ? snapToDumbbell(lbs) : lbs;
 }
 
 /**
- * Convert a per-dumbbell display value back to the stored total.
- * Multiplies by 2 for dumbbell exercises.
+ * Convert a display value back to the stored value.
  */
 export function toStoredLoad(displayLbs: number, isDumbbell: boolean): number;
 export function toStoredLoad(displayLbs: number | null, isDumbbell: boolean): number | null;
@@ -68,8 +65,9 @@ export function toStoredLoad(
   displayLbs: number | null | undefined,
   isDumbbell: boolean
 ): number | null | undefined {
+  void isDumbbell;
   if (displayLbs == null) return displayLbs;
-  return isDumbbell ? displayLbs * 2 : displayLbs;
+  return displayLbs;
 }
 
 /**
@@ -82,8 +80,8 @@ export function formatBaselineRange(
   isDumbbell: boolean
 ): string | undefined {
   if (min != null && max != null) {
-    const displayMin = isDumbbell ? snapToDumbbell(min / 2) : min;
-    const displayMax = isDumbbell ? snapToDumbbell(max / 2) : max;
+    const displayMin = isDumbbell ? snapToDumbbell(min) : min;
+    const displayMax = isDumbbell ? snapToDumbbell(max) : max;
     return `${displayMin}–${displayMax} lbs${isDumbbell ? " each" : ""}`;
   }
   return undefined;

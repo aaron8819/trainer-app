@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type SessionIntent = "push" | "pull" | "legs" | "upper" | "lower" | "full_body" | "body_part";
 
@@ -123,8 +123,12 @@ function parseTargetMuscles(input: string): string[] {
     .filter((entry) => entry.length > 0);
 }
 
-export function IntentWorkoutCard() {
-  const [intent, setIntent] = useState<SessionIntent>("push");
+type IntentWorkoutCardProps = {
+  initialIntent?: SessionIntent;
+};
+
+export function IntentWorkoutCard({ initialIntent = "push" }: IntentWorkoutCardProps) {
+  const [intent, setIntent] = useState<SessionIntent>(initialIntent);
   const [targetMusclesInput, setTargetMusclesInput] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
 
@@ -135,6 +139,10 @@ export function IntentWorkoutCard() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedId, setSavedId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setIntent(initialIntent);
+  }, [initialIntent]);
 
   const allExercises = useMemo(
     () => [...(workout?.mainLifts ?? []), ...(workout?.accessories ?? [])],

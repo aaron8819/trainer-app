@@ -17,6 +17,7 @@ export const exampleGoals: Goals = {
 export const exampleConstraints: Constraints = {
   daysPerWeek: 4,
   splitType: "upper_lower",
+  weeklySchedule: ["upper", "lower"],
 };
 
 export const exampleExerciseLibrary: Exercise[] = [

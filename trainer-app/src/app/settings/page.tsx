@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db/prisma";
 import UserPreferencesForm from "@/components/UserPreferencesForm";
 import { loadExerciseLibrary } from "@/lib/api/exercise-library";
 import { resolveOwner } from "@/lib/api/workout-context";
+import { PRIMARY_GOAL_OPTIONS, SECONDARY_GOAL_OPTIONS } from "@/lib/profile-goal-options";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -14,7 +15,7 @@ export default async function SettingsPage() {
         prisma.profile.findUnique({ where: { userId: user.id } }),
         prisma.goals.findUnique({ where: { userId: user.id } }),
         prisma.constraints.findUnique({ where: { userId: user.id } }),
-        prisma.injury.findFirst({ where: { userId: user.id, isActive: true } }),
+        prisma.injury.findFirst({ where: { userId: user.id }, orderBy: { createdAt: "desc" } }),
         prisma.userPreference.findUnique({ where: { userId: user.id } }),
         loadExerciseLibrary(user.id),
       ])
@@ -33,7 +34,7 @@ export default async function SettingsPage() {
         secondaryGoal: goals?.secondaryGoal ?? "CONDITIONING",
         daysPerWeek: constraints?.daysPerWeek ?? 4,
         splitType: constraints?.splitType ?? "PPL",
-        weeklySchedule: [],
+        weeklySchedule: constraints?.weeklySchedule ?? [],
         injuryBodyPart: injury?.bodyPart ?? undefined,
         injurySeverity: injury?.severity ?? undefined,
         injuryDescription: injury?.description ?? undefined,
@@ -49,6 +50,9 @@ export default async function SettingsPage() {
       }
     : undefined;
 
+  const primaryGoalOptions = PRIMARY_GOAL_OPTIONS;
+  const secondaryGoalOptions = SECONDARY_GOAL_OPTIONS;
+
   return (
     <main className="min-h-screen bg-white text-slate-900">
       <div className="page-shell max-w-3xl">
@@ -57,7 +61,11 @@ export default async function SettingsPage() {
           Manage goals, schedule, equipment, and preferences.
         </p>
 
-        <ProfileForm initialValues={initialValues} />
+        <ProfileForm
+          initialValues={initialValues}
+          primaryGoalOptions={primaryGoalOptions}
+          secondaryGoalOptions={secondaryGoalOptions}
+        />
         <UserPreferencesForm initialValues={preferenceValues} exercises={exercises} />
       </div>
     </main>

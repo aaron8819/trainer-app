@@ -51,7 +51,7 @@ export function getMesoTemplateForAge(
 
   if (trainingAge === "intermediate") {
     // Intermediate: Classic 3-block wave
-    const isStrengthFocused = goal === "strength";
+    const isStrengthFocused = goal === "strength" || goal === "strength_hypertrophy";
 
     return [
       {
@@ -79,7 +79,7 @@ export function getMesoTemplateForAge(
   }
 
   // Advanced: Full 4-block conjugate-style periodization
-  const isStrengthFocused = goal === "strength";
+  const isStrengthFocused = goal === "strength" || goal === "strength_hypertrophy";
 
   return [
     {
@@ -128,6 +128,12 @@ export function getPrescriptionModifiers(
 ): PrescriptionModifiers {
   // Progress through block (0.0 to 1.0)
   const progress = (weekInBlock - 1) / Math.max(1, durationWeeks - 1);
+  const resolveRirTier = (week: number): 1 | 0 | -1 => {
+    if (week <= 1) return 1;
+    if (week <= 3) return 0;
+    return -1;
+  };
+  const baseAccumulationRirAdjustment = resolveRirTier(weekInBlock);
 
   switch (blockType) {
     case "accumulation":
@@ -138,7 +144,7 @@ export function getPrescriptionModifiers(
       return {
         volumeMultiplier: 1.0 + progress * 0.2, // 1.0 → 1.2
         intensityMultiplier: 0.7 + progress * 0.1, // 0.7 → 0.8
-        rirAdjustment: 2,
+        rirAdjustment: baseAccumulationRirAdjustment,
         restMultiplier: 0.9, // Slightly shorter rest
       };
 
@@ -150,7 +156,7 @@ export function getPrescriptionModifiers(
       return {
         volumeMultiplier: 1.0 - progress * 0.2, // 1.0 → 0.8
         intensityMultiplier: 0.8 + progress * 0.15, // 0.8 → 0.95
-        rirAdjustment: 1,
+        rirAdjustment: baseAccumulationRirAdjustment - 1,
         restMultiplier: 1.0, // Normal rest
       };
 
@@ -162,7 +168,7 @@ export function getPrescriptionModifiers(
       return {
         volumeMultiplier: 0.6 + progress * 0.1, // 0.6 → 0.7
         intensityMultiplier: 0.95 + progress * 0.05, // 0.95 → 1.0
-        rirAdjustment: 0, // Close to failure
+        rirAdjustment: baseAccumulationRirAdjustment - 2,
         restMultiplier: 1.2, // Longer rest for max efforts
       };
 
@@ -188,7 +194,7 @@ export function getMesoFocus(
   trainingAge: TrainingAge,
   goal: PrimaryGoal
 ): string {
-  if (goal === "strength") {
+  if (goal === "strength" || goal === "strength_hypertrophy") {
     // Strength programs alternate between power and foundation
     return mesoNumber % 2 === 0 ? "Power Development" : "Strength Foundation";
   }
@@ -205,3 +211,4 @@ export function getMesoFocus(
   // General fitness / athleticism
   return "General Conditioning";
 }
+

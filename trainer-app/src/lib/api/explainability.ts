@@ -214,7 +214,8 @@ export async function generateWorkoutExplanation(
       workout.userId,
       workout.id,
       workoutExercise.exerciseId,
-      workout.scheduledDate
+      workout.scheduledDate,
+      workoutExercise.isMainLift
     );
     const todayPrescription = summarizeTodayTopSet(engineSets);
     const isReadinessScaled = readinessScaledExerciseIds.has(workoutExercise.exerciseId);
@@ -838,7 +839,8 @@ async function loadLatestPerformedSetSummary(
   userId: string,
   workoutId: string,
   exerciseId: string,
-  asOfDate: Date
+  asOfDate: Date,
+  isMainLift: boolean
 ): Promise<ProgressionSetSummary | null> {
   const previous = await prisma.workoutExercise.findFirst({
     where: {
@@ -873,17 +875,63 @@ async function loadLatestPerformedSetSummary(
       return null;
     }
   }
-  for (const set of previous.sets) {
-    const log = set.logs[0];
-    if (!log || log.wasSkipped) continue;
-    return {
-      reps: log.actualReps ?? null,
-      load: log.actualLoad ?? null,
-      rpe: log.actualRpe ?? null,
-      performedAt: performedDate ? performedDate.toISOString() : null,
-    };
+
+  const performedLogs = previous.sets
+    .map((set) => ({ setIndex: set.setIndex, log: set.logs[0] }))
+    .filter((entry) => Boolean(entry.log) && !entry.log?.wasSkipped);
+  if (performedLogs.length === 0) {
+    return null;
   }
-  return null;
+
+  const loadFrequency = new Map<number, { count: number; latestSetIndex: number }>();
+  for (const entry of performedLogs) {
+    const load = entry.log?.actualLoad;
+    if (!Number.isFinite(load) || (load ?? 0) < 0) {
+      continue;
+    }
+    const current = loadFrequency.get(load as number);
+    if (!current) {
+      loadFrequency.set(load as number, { count: 1, latestSetIndex: entry.setIndex });
+      continue;
+    }
+    current.count += 1;
+    current.latestSetIndex = Math.max(current.latestSetIndex, entry.setIndex);
+  }
+
+  const modalLoad =
+    loadFrequency.size > 0
+      ? Array.from(loadFrequency.entries()).sort((a, b) => {
+          const [, left] = a;
+          const [, right] = b;
+          if (right.count !== left.count) {
+            return right.count - left.count;
+          }
+          if (right.latestSetIndex !== left.latestSetIndex) {
+            return right.latestSetIndex - left.latestSetIndex;
+          }
+          return b[0] - a[0];
+        })[0]?.[0]
+      : null;
+  const topSetLoad =
+    performedLogs
+      .sort((a, b) => a.setIndex - b.setIndex)
+      .find((entry) => Number.isFinite(entry.log?.actualLoad) && (entry.log?.actualLoad ?? 0) >= 0)
+      ?.log?.actualLoad ?? null;
+  const anchorLoad = isMainLift ? topSetLoad : modalLoad;
+
+  const representative =
+    anchorLoad == null
+      ? performedLogs.sort((a, b) => a.setIndex - b.setIndex)[0]
+      : performedLogs
+          .filter((entry) => entry.log?.actualLoad === anchorLoad)
+          .sort((a, b) => b.setIndex - a.setIndex)[0];
+
+  return {
+    reps: representative?.log?.actualReps ?? null,
+    load: anchorLoad,
+    rpe: representative?.log?.actualRpe ?? null,
+    performedAt: performedDate ? performedDate.toISOString() : null,
+  };
 }
 
 function summarizeTodayTopSet(

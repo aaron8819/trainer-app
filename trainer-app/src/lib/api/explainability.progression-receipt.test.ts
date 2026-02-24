@@ -176,6 +176,134 @@ describe("generateWorkoutExplanation progression receipt", () => {
     expect(receipt?.todayPrescription?.load).toBe(205);
   });
 
+  it("summarizes latest performed load using modal load across sets", async () => {
+    mocks.workoutFindUnique.mockResolvedValueOnce({
+      id: "w1",
+      userId: "u1",
+      scheduledDate: new Date("2026-02-21T00:00:00.000Z"),
+      sessionIntent: "PUSH",
+      selectionMetadata: {},
+      autoregulationLog: null,
+      filteredExercises: [],
+      exercises: [
+        {
+          exerciseId: "ex1",
+          isMainLift: false,
+          exercise: {
+            id: "ex1",
+            name: "Bench Press",
+            movementPatterns: ["HORIZONTAL_PUSH"],
+            exerciseEquipment: [{ equipment: { type: "BARBELL" } }],
+            exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Chest" } }],
+          },
+          sets: [
+            {
+              setIndex: 1,
+              targetReps: 8,
+              targetRepMin: null,
+              targetRepMax: null,
+              targetRpe: 8,
+              targetLoad: 205,
+              restSeconds: 150,
+              logs: [],
+            },
+          ],
+        },
+      ],
+    });
+    mocks.workoutExerciseFindFirst.mockResolvedValueOnce({
+      workout: { scheduledDate: new Date("2026-02-18T00:00:00.000Z") },
+      sets: [
+        {
+          setIndex: 1,
+          logs: [{ actualReps: 10, actualLoad: 35, actualRpe: 7.5, wasSkipped: false }],
+        },
+        {
+          setIndex: 2,
+          logs: [{ actualReps: 10, actualLoad: 40, actualRpe: 8, wasSkipped: false }],
+        },
+        {
+          setIndex: 3,
+          logs: [{ actualReps: 10, actualLoad: 40, actualRpe: 8, wasSkipped: false }],
+        },
+        {
+          setIndex: 4,
+          logs: [{ actualReps: 10, actualLoad: 40, actualRpe: 8, wasSkipped: false }],
+        },
+        {
+          setIndex: 5,
+          logs: [{ actualReps: 10, actualLoad: 40, actualRpe: 8, wasSkipped: false }],
+        },
+      ],
+    });
+
+    const result = await generateWorkoutExplanation("w1");
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    const receipt = result.progressionReceipts.get("ex1");
+    expect(receipt?.lastPerformed?.load).toBe(40);
+  });
+
+  it("labels hold when prescribed load equals prior performed anchor load", async () => {
+    mocks.workoutFindUnique.mockResolvedValueOnce({
+      id: "w1",
+      userId: "u1",
+      scheduledDate: new Date("2026-02-21T00:00:00.000Z"),
+      sessionIntent: "PUSH",
+      selectionMetadata: {},
+      autoregulationLog: null,
+      filteredExercises: [],
+      exercises: [
+        {
+          exerciseId: "ex1",
+          isMainLift: true,
+          exercise: {
+            id: "ex1",
+            name: "Bench Press",
+            movementPatterns: ["HORIZONTAL_PUSH"],
+            exerciseEquipment: [{ equipment: { type: "BARBELL" } }],
+            exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Chest" } }],
+          },
+          sets: [
+            {
+              setIndex: 1,
+              targetReps: 8,
+              targetRepMin: null,
+              targetRepMax: null,
+              targetRpe: 8,
+              targetLoad: 200,
+              restSeconds: 150,
+              logs: [],
+            },
+          ],
+        },
+      ],
+    });
+    mocks.workoutExerciseFindFirst.mockResolvedValueOnce({
+      workout: { scheduledDate: new Date("2026-02-18T00:00:00.000Z") },
+      sets: [
+        {
+          setIndex: 1,
+          logs: [{ actualReps: 8, actualLoad: 200, actualRpe: 8, wasSkipped: false }],
+        },
+        {
+          setIndex: 2,
+          logs: [{ actualReps: 8, actualLoad: 180, actualRpe: 8, wasSkipped: false }],
+        },
+      ],
+    });
+
+    const result = await generateWorkoutExplanation("w1");
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    const receipt = result.progressionReceipts.get("ex1");
+    expect(receipt?.todayPrescription?.load).toBe(200);
+    expect(receipt?.lastPerformed?.load).toBe(200);
+    expect(receipt?.trigger).toBe("hold");
+  });
+
   it("does not treat old history as current progression evidence", async () => {
     mocks.workoutExerciseFindFirst.mockResolvedValueOnce({
       workout: { scheduledDate: new Date("2025-10-01T00:00:00.000Z") },

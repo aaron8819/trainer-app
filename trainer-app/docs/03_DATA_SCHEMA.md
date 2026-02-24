@@ -25,7 +25,7 @@ Sources of truth:
 - User context: `User`, `Profile`, `Goals`, `Constraints`, `Injury`, `UserPreference`, `SessionCheckIn`
 - Workout execution: `Workout`, `WorkoutExercise`, `WorkoutSet`, `SetLog`, `FilteredExercise`
 - Catalog/template: `Exercise`, `Muscle`, `Equipment`, `WorkoutTemplate`, `WorkoutTemplateExercise`
-- Adaptive systems: `ReadinessSignal`, `ExerciseExposure`, `MacroCycle`, `Mesocycle`, `TrainingBlock`
+- Adaptive systems: `ReadinessSignal`, `ExerciseExposure`, `MacroCycle`, `Mesocycle`, `TrainingBlock`, `MesocycleExerciseRole`
 
 ## Runtime-critical enums
 - `WorkoutStatus`: `PLANNED`, `IN_PROGRESS`, `PARTIAL`, `COMPLETED`, `SKIPPED`
@@ -42,3 +42,26 @@ Canonical machine-readable values: `docs/contracts/runtime-contracts.json`.
 - `Constraints` now persists scheduling constraints as `daysPerWeek` and `splitType` (no `sessionMinutes` field) in `prisma/schema.prisma`, and is mapped into runtime constraints in `src/lib/api/workout-context.ts`.
 - Workout rewrites are revision-guarded by `Workout.revision` in `prisma/schema.prisma` and route enforcement in `src/app/api/workouts/save/route.ts`.
 - Exercise ordering is deterministic per workout via unique index `WorkoutExercise(workoutId, orderIndex)` in `prisma/schema.prisma` (materialized in baseline migration `prisma/migrations/20260222_baseline/migration.sql`).
+
+## Mesocycle lifecycle fields
+- `Mesocycle.state` (`MesocycleState`)
+- `Mesocycle.accumulationSessionsCompleted`
+- `Mesocycle.deloadSessionsCompleted`
+- `Mesocycle.sessionsPerWeek`
+- `Mesocycle.daysPerWeek`
+- `Mesocycle.splitType`
+- `Mesocycle.volumeRampConfig` (JSONB in Postgres)
+- `Mesocycle.rirBandConfig` (JSONB in Postgres)
+
+## Mesocycle exercise roles
+- `MesocycleExerciseRole.mesocycleId`
+- `MesocycleExerciseRole.exerciseId`
+- `MesocycleExerciseRole.sessionIntent`
+- `MesocycleExerciseRole.role` (`MesocycleExerciseRoleType`)
+- `MesocycleExerciseRole.addedInWeek`
+
+## Workout mesocycle snapshots
+- `Workout.mesocycleId`
+- `Workout.mesocycleWeekSnapshot`
+- `Workout.mesocyclePhaseSnapshot`
+- `Workout.mesoSessionSnapshot`

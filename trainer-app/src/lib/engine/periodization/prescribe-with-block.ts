@@ -29,6 +29,7 @@ export type BlockAwarePrescription = BasePrescription;
 export type PrescribeWithBlockInput = {
   basePrescription: BasePrescription;
   blockContext: BlockContext | null;
+  lifecycleRirTarget?: { min: number; max: number };
 };
 
 /**
@@ -42,6 +43,13 @@ export function prescribeWithBlock(
   input: PrescribeWithBlockInput
 ): BlockAwarePrescription {
   const { basePrescription, blockContext } = input;
+  if (input.lifecycleRirTarget) {
+    const midpoint = (input.lifecycleRirTarget.min + input.lifecycleRirTarget.max) / 2;
+    return {
+      ...basePrescription,
+      rir: midpoint,
+    };
+  }
 
   // Backward compatibility: no block context → return base unchanged
   if (!blockContext) {

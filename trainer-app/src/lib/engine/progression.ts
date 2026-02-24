@@ -25,7 +25,7 @@ export function computeNextLoad(
   options?: ComputeNextLoadOptions
 ): number | undefined {
   const lastLoad = lastSets.find((set) => set.load !== undefined)?.load;
-  if (!lastLoad) return undefined;
+  if (lastLoad === undefined) return undefined;
 
   const trainingAge = options?.trainingAge ?? "intermediate";
   const isUpperBody = options?.isUpperBody ?? true;

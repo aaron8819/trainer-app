@@ -234,6 +234,11 @@ function resolveTargetRpe(
   periodization?: PeriodizationModifiers,
   isIsolationAccessory = false
 ) {
+  if (periodization?.lifecycleRirTarget) {
+    const midpoint = (periodization.lifecycleRirTarget.min + periodization.lifecycleRirTarget.max) / 2;
+    const lifecycleRpe = 10 - midpoint;
+    return Number(lifecycleRpe.toFixed(1));
+  }
   let targetRpe =
     getBaseTargetRpe(goals.primary, trainingAge) -
     (fatigueState.readinessScore <= 2 ? 0.5 : 0);

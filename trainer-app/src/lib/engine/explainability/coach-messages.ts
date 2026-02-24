@@ -10,7 +10,7 @@
  * - tip: Actionable coaching advice
  */
 
-import type { CoachMessage, SessionContext, ReadinessStatus } from "./types";
+import type { CoachMessage, SessionContext } from "./types";
 import type { BlockContext } from "../periodization/types";
 import { pluralize } from "./utils";
 
@@ -37,20 +37,20 @@ export function generateCoachMessages(params: {
     musclesApproachingMRV?: string[];
   };
 }): CoachMessage[] {
-  const { sessionContext, blockContext, workoutStats } = params;
+  const { sessionContext, workoutStats } = params;
   const messages: CoachMessage[] = [];
 
   // 1. Warnings (high priority)
   messages.push(...generateWarnings(sessionContext, workoutStats));
 
   // 2. Milestones (medium priority)
-  messages.push(...generateMilestones(sessionContext, blockContext));
+  messages.push(...generateMilestones(sessionContext));
 
   // 3. Encouragement (low priority)
   messages.push(...generateEncouragement(sessionContext, workoutStats));
 
   // 4. Tips (low priority)
-  messages.push(...generateTips(sessionContext, blockContext));
+  messages.push(...generateTips(sessionContext));
 
   // Sort by priority: high -> medium -> low
   return messages.sort((a, b) => {
@@ -128,10 +128,7 @@ function generateWarnings(
  * - Deload week milestone
  * - Mesocycle progression milestones
  */
-function generateMilestones(
-  sessionContext: SessionContext,
-  blockContext: BlockContext | null
-): CoachMessage[] {
+function generateMilestones(sessionContext: SessionContext): CoachMessage[] {
   const milestones: CoachMessage[] = [];
   const { blockPhase, progressionContext } = sessionContext;
 
@@ -179,7 +176,7 @@ function generateEncouragement(
   workoutStats?: { hasPRPotential?: boolean }
 ): CoachMessage[] {
   const encouragement: CoachMessage[] = [];
-  const { readinessStatus, blockPhase, progressionContext } = sessionContext;
+  const { readinessStatus, blockPhase } = sessionContext;
 
   // Fresh readiness
   if (readinessStatus.overall === "fresh") {
@@ -228,10 +225,7 @@ function generateEncouragement(
  * - Readiness-based recovery tips
  * - Progression strategy tips
  */
-function generateTips(
-  sessionContext: SessionContext,
-  blockContext: BlockContext | null
-): CoachMessage[] {
+function generateTips(sessionContext: SessionContext): CoachMessage[] {
   const tips: CoachMessage[] = [];
   const { blockPhase, readinessStatus, progressionContext } = sessionContext;
 

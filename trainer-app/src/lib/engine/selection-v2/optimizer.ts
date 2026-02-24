@@ -20,6 +20,18 @@ import { DEFAULT_BEAM_CONFIG, COLD_START_BEAM_CONFIGS } from "./types";
 import { buildCandidate, computeProposedSets } from "./candidate";
 import { beamSearch } from "./beam-search";
 import { generateRationale } from "./rationale";
+import { INDIRECT_SET_MULTIPLIER } from "../volume-constants";
+
+function isMainLiftExercise(
+  exercise: Exercise,
+  objective: SelectionObjective
+): boolean {
+  if (!(exercise.isMainLiftEligible ?? false)) {
+    return false;
+  }
+  const demoted = objective.constraints.demotedFromMainLift;
+  return !(demoted?.has(exercise.id) ?? false);
+}
 
 /**
  * Select exercises using multi-objective beam search optimization
@@ -64,8 +76,40 @@ export function selectExercisesOptimized(
   // Phase 2: Build scored candidates
   const candidates = feasible.map((exercise) => {
     const proposedSets = computeProposedSets(exercise, objective);
-    return buildCandidate(exercise, objective, proposedSets);
+    const continuityMinSets =
+      objective.constraints.continuityMinSetsByExerciseId?.get(exercise.id) ?? 0;
+    const continuityProgressionIncrement =
+      continuityMinSets > 0 ? objective.constraints.continuitySetProgressionIncrement ?? 0 : 0;
+    const continuityProgressionFloor = Math.min(12, continuityMinSets + continuityProgressionIncrement);
+    const isRequiredMuscleAccessory =
+      !isMainLiftExercise(exercise, objective) &&
+      (objective.constraints.requiredMuscles ?? []).some((muscle) =>
+        (exercise.primaryMuscles ?? []).includes(muscle)
+      );
+    const normalizedSets = Math.max(
+      continuityProgressionFloor,
+      isRequiredMuscleAccessory && proposedSets < 3 ? 3 : proposedSets
+    );
+    return buildCandidate(exercise, objective, normalizedSets);
   });
+  const minAccessoryProposedSets = objective.constraints.minAccessoryProposedSets ?? 0;
+  const qualityFilteredCandidates =
+    minAccessoryProposedSets <= 0
+      ? candidates
+      : candidates.filter(
+          (candidate) =>
+            isMainLiftExercise(candidate.exercise, objective) ||
+            candidate.proposedSets >= minAccessoryProposedSets ||
+            (objective.constraints.preferredContinuityExerciseIds?.has(candidate.exercise.id) ??
+              false) ||
+            (objective.constraints.requiredMuscles ?? []).some((muscle) =>
+              (candidate.exercise.primaryMuscles ?? []).includes(muscle)
+            )
+        );
+  const candidatesForSearch =
+    qualityFilteredCandidates.length >= objective.constraints.minExercises
+      ? qualityFilteredCandidates
+      : candidates;
 
   // Sort so higher-stretch exercises are evaluated first within each tier.
   // Main lifts first (structural priority), then within non-main-lifts sort by
@@ -74,9 +118,12 @@ export function selectExercisesOptimized(
   // stretch stimulus wins — e.g. overhead cable extension (5/5) beats skull
   // crusher (3/5) and the isolation-duplicate filter then correctly blocks the
   // lower-quality option as "dominated_by_better_option".
-  candidates.sort((a, b) => {
-    const aIsMain = a.exercise.isMainLiftEligible ? 1 : 0;
-    const bIsMain = b.exercise.isMainLiftEligible ? 1 : 0;
+  candidatesForSearch.sort((a, b) => {
+    const aQualityTier = isMainLiftExercise(a.exercise, objective) || a.scores.deficitFill > 0 ? 1 : 0;
+    const bQualityTier = isMainLiftExercise(b.exercise, objective) || b.scores.deficitFill > 0 ? 1 : 0;
+    if (aQualityTier !== bQualityTier) return bQualityTier - aQualityTier;
+    const aIsMain = isMainLiftExercise(a.exercise, objective) ? 1 : 0;
+    const bIsMain = isMainLiftExercise(b.exercise, objective) ? 1 : 0;
     if (aIsMain !== bIsMain) return bIsMain - aIsMain;
     const aLen = a.exercise.lengthPositionScore ?? 3;
     const bLen = b.exercise.lengthPositionScore ?? 3;
@@ -84,13 +131,13 @@ export function selectExercisesOptimized(
   });
 
   // Phase 3: Beam search optimization
-  const result = beamSearch(candidates, objective, beamConfig);
+  const result = beamSearch(candidatesForSearch, objective, beamConfig);
 
   // Phase 3.5: Post-beam stretch upgrade
   // Swap any selected isolation that is strictly dominated by an available
   // alternative (same muscle + pattern, higher lengthPositionScore, equal or
   // better sfrScore, passes hard constraints, fits time budget).
-  const upgraded = applyStretchUpgrades(result, candidates, objective);
+  const upgraded = applyStretchUpgrades(result, candidatesForSearch, objective);
 
   // Phase 4: Merge rejected exercises
   const allRejected = [
@@ -218,7 +265,7 @@ function applyStretchUpgrades(
     const ex = current.exercise;
 
     // Only upgrade isolation accessories (not main lifts, not compounds)
-    if (ex.isMainLiftEligible || ex.isCompound) continue;
+    if (isMainLiftExercise(ex, objective) || ex.isCompound) continue;
 
     const currentLen = ex.lengthPositionScore ?? 3;
     const currentSfr = ex.sfrScore ?? 3;
@@ -235,7 +282,7 @@ function applyStretchUpgrades(
       if (alt.id === ex.id) continue;
 
       // Must also be an isolation
-      if (alt.isMainLiftEligible || alt.isCompound) continue;
+      if (isMainLiftExercise(alt, objective) || alt.isCompound) continue;
 
       // Must be strictly better in lengthPositionScore
       const altLen = alt.lengthPositionScore ?? 3;
@@ -284,11 +331,14 @@ function applyStretchUpgrades(
       // Update volumeFilled: subtract displaced contribution, add replacement
       for (const [muscle, { direct, indirect }] of current.volumeContribution) {
         const prev = newVolumeFilled.get(muscle) ?? 0;
-        newVolumeFilled.set(muscle, Math.max(0, prev - (direct + indirect)));
+        newVolumeFilled.set(
+          muscle,
+          Math.max(0, prev - (direct + indirect * INDIRECT_SET_MULTIPLIER))
+        );
       }
       for (const [muscle, { direct, indirect }] of bestAlt.volumeContribution) {
         const prev = newVolumeFilled.get(muscle) ?? 0;
-        newVolumeFilled.set(muscle, prev + direct + indirect);
+        newVolumeFilled.set(muscle, prev + direct + indirect * INDIRECT_SET_MULTIPLIER);
       }
 
       // Update rejected: remove alt (no longer rejected), add displaced exercise

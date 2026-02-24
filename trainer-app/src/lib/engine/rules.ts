@@ -8,6 +8,7 @@ export const REP_RANGES_BY_GOAL: Record<
 > = {
   hypertrophy: { main: [6, 10], accessory: [10, 15] },
   strength: { main: [3, 6], accessory: [6, 10] },
+  strength_hypertrophy: { main: [4, 8], accessory: [8, 12] },
   // KB: 6-10 reps with maintained load is optimal for muscle preservation during deficit (Helms 2014)
   fat_loss: { main: [6, 10], accessory: [12, 20] },
   athleticism: { main: [4, 8], accessory: [8, 12] },
@@ -17,6 +18,7 @@ export const REP_RANGES_BY_GOAL: Record<
 export const TARGET_RPE_BY_GOAL: Record<PrimaryGoal, number> = {
   hypertrophy: 7.5,
   strength: 8.0,
+  strength_hypertrophy: 8.0,
   // KB: stop 1-2 RIR during deficit; 7.5 RPE reflects this conservative but effective approach
   fat_loss: 7.5,
   athleticism: 7.5,
@@ -46,6 +48,7 @@ export type PeriodizationModifiers = {
   backOffMultiplier: number;
   isDeload: boolean;
   weekInBlock?: number;
+  lifecycleRirTarget?: { min: number; max: number };
 };
 
 export type MesocycleConfig = {
@@ -57,6 +60,7 @@ export type MesocycleConfig = {
 const DEFAULT_BACKOFF_MULTIPLIER_BY_GOAL: Record<PrimaryGoal, number> = {
   hypertrophy: 0.88,
   strength: 0.9,
+  strength_hypertrophy: 0.89,
   fat_loss: 0.85,
   athleticism: 0.85,
   general_health: 0.85,

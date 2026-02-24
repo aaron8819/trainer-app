@@ -45,7 +45,23 @@ Sources of truth:
 - The split exists to separate adaptation signals from advancement control: partially performed work should inform future load/selection, while schedule/phase advancement remains a stricter completion event.
 - Performed-signal consumers use `COMPLETED` + `PARTIAL` via `PERFORMED_WORKOUT_STATUSES` in `src/lib/workout-status.ts`.
 - Program advancement remains `COMPLETED` only via `ADVANCEMENT_WORKOUT_STATUSES` in `src/lib/workout-status.ts`.
-- Mesocycle advancement is incremented only on transition to `COMPLETED` in `src/app/api/workouts/save/route.ts` (`completedSessions` update path).
+- Mesocycle lifecycle progression is driven by first transition into performed status (`COMPLETED` or `PARTIAL`) and increments lifecycle counters through `transitionMesocycleState()` in `src/lib/api/mesocycle-lifecycle.ts`.
+- Canonical mesocycle progression counters are `accumulationSessionsCompleted` and `deloadSessionsCompleted` (not `completedSessions`) and drive lifecycle week/phase derivation.
+
+## Mesocycle lifecycle service
+- Service file: `src/lib/api/mesocycle-lifecycle.ts`.
+- `transitionMesocycleState(mesocycleId)`: increments accumulation/deload counters, transitions state (`ACTIVE_ACCUMULATION` -> `ACTIVE_DELOAD` -> `COMPLETED`), and initializes the next mesocycle when deload is complete.
+- `getCurrentMesoWeek(mesocycle)`: derives effective lifecycle week from `state`, `accumulationSessionsCompleted`, and `sessionsPerWeek`.
+- `getWeeklyVolumeTarget(mesocycle, muscleGroup, week)`: returns lifecycle week-specific target sets from mesocycle ramp semantics and landmarks.
+- `getRirTarget(mesocycle, week)`: returns lifecycle week/state-specific RIR bands, including deload targets.
+- `initializeNextMesocycle(completedMesocycle)`: closes current mesocycle, creates next active mesocycle with reset lifecycle counters, and carries forward core exercise roles.
+
+## Deload generation path
+- Deload generation has a separate pipeline in `src/lib/api/template-session/deload-session.ts`.
+- Route hard gate:
+  - `POST /api/workouts/generate-from-intent` (`src/app/api/workouts/generate-from-intent/route.ts`) routes to `generateDeloadSessionFromIntent()` when active mesocycle state is `ACTIVE_DELOAD`.
+  - `POST /api/workouts/generate-from-template` (`src/app/api/workouts/generate-from-template/route.ts`) routes to `generateDeloadSessionFromTemplate()` when active mesocycle state is `ACTIVE_DELOAD`.
+- During `ACTIVE_DELOAD`, normal accumulation generation paths are unreachable from these routes.
 
 ## Explainability
 - Explainability domain modules are in `src/lib/engine/explainability`.

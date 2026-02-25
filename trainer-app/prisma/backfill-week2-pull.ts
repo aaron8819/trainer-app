@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { MesocycleExerciseRoleType, PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 import { getCurrentMesoWeek, transitionMesocycleState } from "../src/lib/api/mesocycle-lifecycle";
@@ -308,11 +308,19 @@ async function main() {
       }
     }
 
-    const roleRows = matched.map((item) => ({
+    const roleRows: Array<{
+      mesocycleId: string;
+      exerciseId: string;
+      sessionIntent: typeof SESSION_INTENT;
+      role: MesocycleExerciseRoleType;
+      addedInWeek: number;
+    }> = matched.map((item) => ({
       mesocycleId: MESOCYCLE_ID,
       exerciseId: item.exerciseId,
       sessionIntent: SESSION_INTENT,
-      role: item.input.isMainLift ? "CORE_COMPOUND" : "ACCESSORY",
+      role: item.input.isMainLift
+        ? MesocycleExerciseRoleType.CORE_COMPOUND
+        : MesocycleExerciseRoleType.ACCESSORY,
       addedInWeek: 2,
     }));
     await tx.mesocycleExerciseRole.createMany({
@@ -349,4 +357,3 @@ main()
   .finally(async () => {
     await pool.end();
   });
-

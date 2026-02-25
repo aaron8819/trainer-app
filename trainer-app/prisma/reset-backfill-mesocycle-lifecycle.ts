@@ -1,5 +1,6 @@
 import {
   PrismaClient,
+  type MesocycleExerciseRoleType,
   type WorkoutSessionIntent,
 } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -186,7 +187,7 @@ async function main() {
   const performed = await prisma.workout.findMany({
     where: {
       userId: user.id,
-      status: { in: PERFORMED_STATUSES },
+      status: { in: [...PERFORMED_STATUSES] },
     },
     orderBy: [{ scheduledDate: "asc" }, { id: "asc" }],
     take: 3,

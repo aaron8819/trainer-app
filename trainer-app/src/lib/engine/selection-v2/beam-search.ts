@@ -38,7 +38,7 @@ function isMainLiftCandidate(
   return !(demoted?.has(candidate.exercise.id) ?? false);
 }
 
-function hasMovementPattern(candidate: SelectionCandidate, pattern: string): boolean {
+function hasMovementPattern(candidate: SelectionCandidate, pattern: SelectionCandidate["exercise"]["movementPatterns"][number]): boolean {
   return (candidate.exercise.movementPatterns ?? []).includes(pattern);
 }
 
@@ -1253,3 +1253,4 @@ function buildResult(
     rationale,
   };
 }
+

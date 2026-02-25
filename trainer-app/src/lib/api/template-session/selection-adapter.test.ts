@@ -55,7 +55,7 @@ function makeMappedContext(history: WorkoutHistoryEntry[]): MappedGenerationCont
     },
     mappedCheckIn: undefined,
     mappedPreferences: undefined,
-    exerciseLibrary,
+    exerciseLibrary: exerciseLibrary as MappedGenerationContext["exerciseLibrary"],
     history,
     rawExercises: [],
     rawWorkouts: [],
@@ -176,3 +176,4 @@ describe("buildSelectionObjective continuity bias", () => {
     expect(objective.constraints.continuitySetProgressionIncrement).toBe(2);
   });
 });
+

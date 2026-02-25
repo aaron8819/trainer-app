@@ -1,4 +1,4 @@
-import type { Mesocycle } from "@prisma/client";
+import type { Mesocycle, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 
 type MuscleLandmark = {
@@ -31,6 +31,7 @@ type MesoWithLifecycle = Pick<
 type WeekDerivationInput = Pick<MesoWithLifecycle, "state" | "accumulationSessionsCompleted" | "sessionsPerWeek">;
 type VolumeTargetInput = Pick<MesoWithLifecycle, "volumeRampConfig">;
 type RirTargetInput = Pick<MesoWithLifecycle, "state" | "rirBandConfig">;
+type RirBandConfigInput = { rirBandConfig: Prisma.JsonValue };
 
 const ACCUMULATION_SESSION_THRESHOLD = 12;
 const DELOAD_SESSION_THRESHOLD = 3;
@@ -103,7 +104,7 @@ function asObject(value: unknown): Record<string, unknown> | null {
   return value as Record<string, unknown>;
 }
 
-function parseRirBandConfig(mesocycle: MesoWithLifecycle): Record<number, RirTarget> {
+function parseRirBandConfig(mesocycle: RirBandConfigInput): Record<number, RirTarget> {
   const config = asObject(mesocycle.rirBandConfig);
   const weekBands = config ? asObject(config.weekBands) : null;
   if (!weekBands) {

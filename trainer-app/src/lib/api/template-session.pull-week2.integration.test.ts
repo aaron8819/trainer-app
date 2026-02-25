@@ -309,9 +309,9 @@ function buildMappedContext(): MappedGenerationContext {
       favoriteExerciseIds: [],
       avoidExerciseIds: ["incline-db-curl"],
     },
-    exerciseLibrary,
+    exerciseLibrary: exerciseLibrary as MappedGenerationContext["exerciseLibrary"],
     history,
-    rawExercises: exerciseLibrary.map(toPrismaExercise),
+    rawExercises: exerciseLibrary.map(toPrismaExercise) as unknown as MappedGenerationContext["rawExercises"],
     rawWorkouts: [] as never[],
     weekInBlock: 2,
     lifecycleWeek: 2,
@@ -472,3 +472,4 @@ describe("Week1 -> Week2 pull intent integration", () => {
     expect(bicepsSets).toBeGreaterThanOrEqual(4);
   });
 });
+

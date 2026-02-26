@@ -1,7 +1,7 @@
 # 06 Testing
 
-Owner: Aaron  
-Last reviewed: 2026-02-21  
+Owner: Aaron
+Last reviewed: 2026-02-26
 Purpose: Canonical testing reference for Vitest-based coverage of engine, API helpers, and UI components.
 
 This doc covers:
@@ -26,7 +26,7 @@ Sources of truth:
 - `npm run test:watch`: watch mode
 - `npm run test:fast`: focused fast subset
 - `npm run test:slow`: slow simulation suite opt-in
-- `npm run verify`: lint + tests + contract verification
+- `npm run verify`: lint + type-check (`tsc --noEmit`) + tests + contract verification
 - `npm run verify:contracts`: docs/runtime enum drift check
 
 ## Scope

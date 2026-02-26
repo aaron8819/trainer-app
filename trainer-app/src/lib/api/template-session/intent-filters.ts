@@ -119,6 +119,7 @@ function hasFullBodyCoverage(selectedIds: string[], byId: Map<string, Exercise>)
 type AlignmentOptions = {
   minRatio?: number;
   targetMuscles?: string[];
+  pinnedExerciseIds?: string[];
 };
 
 export function enforceIntentAlignment(
@@ -128,6 +129,7 @@ export function enforceIntentAlignment(
   options: AlignmentOptions = {}
 ): SelectionOutput | { error: string } {
   const minRatio = options.minRatio ?? 0.7;
+  const pinnedExerciseIds = new Set(options.pinnedExerciseIds ?? []);
   const byId = new Map(exercisePool.map((exercise) => [exercise.id, exercise]));
   const selectedIds = [...selection.selectedExerciseIds];
   const alignedPool = filterPoolForIntent(exercisePool, intent, options.targetMuscles);
@@ -164,6 +166,9 @@ export function enforceIntentAlignment(
   if (ratio < minRatio) {
     for (let i = 0; i < selectedIds.length && ratio < minRatio; i += 1) {
       const currentId = selectedIds[i];
+      if (pinnedExerciseIds.has(currentId)) {
+        continue;
+      }
       const currentExercise = byId.get(currentId);
       if (!currentExercise || isIntentAlignedExercise(currentExercise, intent, options.targetMuscles)) {
         continue;
@@ -184,6 +189,9 @@ export function enforceIntentAlignment(
         const needed = !coverage.hasUpper ? "upper" : "lower";
         const replacement = alignedPool.find((exercise) => {
           if (used.has(exercise.id)) {
+            return false;
+          }
+          if (pinnedExerciseIds.has(exercise.id)) {
             return false;
           }
           return needed === "upper" ? isUpperExercise(exercise) : isLowerExercise(exercise);

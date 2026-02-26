@@ -44,4 +44,16 @@ describe("session-context correctness", () => {
     expect(context.progressionContext.weekInMesocycle).toBe(2);
     expect(context.blockPhase.weekInBlock).toBe(3);
   });
+
+  it("shows separate pull-muscle volume rows for Lats and Upper Back", () => {
+    const context = explainSessionContext({
+      blockContext: null,
+      volumeByMuscle: new Map(),
+      sessionIntent: "pull",
+      hasRecentReadinessSignal: false,
+    });
+
+    expect(context.volumeStatus.muscleStatuses.has("Lats")).toBe(true);
+    expect(context.volumeStatus.muscleStatuses.has("Upper Back")).toBe(true);
+  });
 });

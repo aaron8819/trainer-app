@@ -29,6 +29,7 @@ export type GenerateIntentSessionInput = {
   intent: SessionIntent;
   targetMuscles?: string[];
   pinnedExerciseIds?: string[];
+  roleListIncomplete?: true;
 };
 
 export type SessionGenerationResult =
@@ -72,4 +73,8 @@ export type MappedGenerationContext = {
   blockContext: BlockContext | null;
   rotationContext: Awaited<ReturnType<typeof loadExerciseExposure>>;
   cycleContext: CycleContextSnapshot;
+  mesocycleRoleMapByIntent: Record<
+    SessionIntent,
+    Map<string, "CORE_COMPOUND" | "ACCESSORY">
+  >;
 };

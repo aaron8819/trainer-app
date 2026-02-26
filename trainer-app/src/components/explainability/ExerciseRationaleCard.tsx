@@ -170,6 +170,18 @@ export function ExerciseRationaleCard({
                   {progressionReceipt.delta.loadPercent.toFixed(1)}% load
                 </p>
               ) : null}
+              {progressionReceipt.decisionLog && progressionReceipt.decisionLog.length > 0 ? (
+                <div className="mt-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Progression Logic
+                  </p>
+                  <ol className="mt-1 list-decimal pl-4 text-xs text-slate-600">
+                    {progressionReceipt.decisionLog.map((line, idx) => (
+                      <li key={`decision-${idx}`}>{line}</li>
+                    ))}
+                  </ol>
+                </div>
+              ) : null}
             </div>
           )}
 

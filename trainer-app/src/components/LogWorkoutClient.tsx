@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FocusEvent } from "react";
 import { isSetQualifiedForBaseline } from "@/lib/baseline-qualification";
 import { BonusExerciseSheet } from "@/components/BonusExerciseSheet";
 import { RestTimer } from "@/components/RestTimer";
@@ -30,10 +30,15 @@ import type {
 import { ActiveSetPanel } from "@/components/log-workout/ActiveSetPanel";
 import { ExerciseListPanel } from "@/components/log-workout/ExerciseListPanel";
 import { WorkoutFooter } from "@/components/log-workout/WorkoutFooter";
+import { useSetDraft } from "@/components/log-workout/useSetDraft";
 
 export type { LogExerciseInput, LogSetInput } from "@/components/log-workout/types";
 
 const SECTION_ORDER: ExerciseSection[] = ["warmup", "main", "accessory"];
+type CompletionAction = "mark_completed" | "mark_partial" | "mark_skipped";
+type PrefilledFieldState = { actualReps: boolean; actualLoad: boolean; actualRpe: boolean };
+type DraftRestoreValue = { reps: string; load: string; rpe: string };
+type ChipEditDraft = { reps: string; load: string; rpe: string };
 
 function formatTargetReps(set: LogSetInput): string {
   if (set.targetRepRange && set.targetRepRange.min !== set.targetRepRange.max) {
@@ -67,6 +72,21 @@ function normalizeStepValue(value: number | null | undefined, fallback: number |
   const base = value ?? fallback ?? 0;
   const next = Math.round((base + delta) * 100) / 100;
   return Math.max(0, next);
+}
+
+function toInputNumberString(value: number | null | undefined): string {
+  if (value == null) {
+    return "";
+  }
+  return Number.isInteger(value) ? String(value) : String(value);
+}
+
+function normalizeLoadInput(raw: string, isDumbbell: boolean): number | null {
+  const parsed = parseNullableNumber(raw);
+  if (parsed == null) {
+    return null;
+  }
+  return toStoredLoad(toDisplayLoad(parsed, isDumbbell) ?? null, isDumbbell) ?? null;
 }
 
 function clampReps(value: number | null | undefined, delta: number) {
@@ -131,12 +151,62 @@ export default function LogWorkoutClient({
   const [undoSnapshot, setUndoSnapshot] = useState<UndoSnapshot | null>(null);
   const [autoregHint, setAutoregHint] = useState<AutoregHint | null>(null);
   const [showBonusSheet, setShowBonusSheet] = useState(false);
+  const [loadInputBuffers, setLoadInputBuffers] = useState<Record<string, string>>({});
+  const [activeLoadEditSetId, setActiveLoadEditSetId] = useState<string | null>(null);
+  const [repsInputBuffers, setRepsInputBuffers] = useState<Record<string, string>>({});
+  const [rpeInputBuffers, setRpeInputBuffers] = useState<Record<string, string>>({});
+  const [touchedFieldsBySet, setTouchedFieldsBySet] = useState<Record<string, PrefilledFieldState>>({});
+  const [prefilledFieldsBySet, setPrefilledFieldsBySet] = useState<Record<string, PrefilledFieldState>>({});
+  const [chipEditSetId, setChipEditSetId] = useState<string | null>(null);
+  const [chipEditDraftBySet, setChipEditDraftBySet] = useState<Record<string, ChipEditDraft>>({});
+  const [chipEditLoadSetId, setChipEditLoadSetId] = useState<string | null>(null);
+  const [completionAction, setCompletionAction] = useState<CompletionAction | null>(null);
+  const [completionSubmitting, setCompletionSubmitting] = useState(false);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const sectionRefs = useRef<Record<ExerciseSection, HTMLDivElement | null>>({
+    warmup: null,
+    main: null,
+    accessory: null,
+  });
 
   const totalSets = flatSets.length;
   const loggedCount = loggedSetIds.size;
   const remainingCount = Math.max(0, totalSets - loggedCount);
   const allSetsLogged = loggedCount === totalSets && totalSets > 0;
   const resolvedActiveSetId = activeSet?.set.setId ?? null;
+  const activeSection = activeSet?.section ?? null;
+  const activeExerciseId = activeSet?.exercise.workoutExerciseId ?? null;
+  const activeSetIds = useMemo(() => flatSets.map((item) => item.set.setId), [flatSets]);
+
+  const markFieldTouched = useCallback(
+    (setId: string, field: keyof PrefilledFieldState) => {
+      setTouchedFieldsBySet((prev) => ({
+        ...prev,
+        [setId]: {
+          actualReps: prev[setId]?.actualReps ?? false,
+          actualLoad: prev[setId]?.actualLoad ?? false,
+          actualRpe: prev[setId]?.actualRpe ?? false,
+          [field]: true,
+        },
+      }));
+    },
+    []
+  );
+
+  const setFieldPrefilled = useCallback(
+    (setId: string, field: keyof PrefilledFieldState, isPrefilled: boolean) => {
+      setPrefilledFieldsBySet((prev) => ({
+        ...prev,
+        [setId]: {
+          actualReps: prev[setId]?.actualReps ?? false,
+          actualLoad: prev[setId]?.actualLoad ?? false,
+          actualRpe: prev[setId]?.actualRpe ?? false,
+          [field]: isPrefilled,
+        },
+      }));
+    },
+    []
+  );
 
   const showAutoregHint =
     autoregHint !== null &&
@@ -194,79 +264,340 @@ export default function LogWorkoutClient({
     return () => clearTimeout(timeout);
   }, [undoSnapshot]);
 
-  const updateSetFields = (
-    setId: string,
-    updater: (set: LogSetInput) => LogSetInput
-  ) => {
-    setData((prev) => {
-      const next: NormalizedExercises = {
-        warmup: prev.warmup.map((exercise) => ({
-          ...exercise,
-          sets: exercise.sets.map((set) => (set.setId === setId ? updater(set) : set)),
-        })),
-        main: prev.main.map((exercise) => ({
-          ...exercise,
-          sets: exercise.sets.map((set) => (set.setId === setId ? updater(set) : set)),
-        })),
-        accessory: prev.accessory.map((exercise) => ({
-          ...exercise,
-          sets: exercise.sets.map((set) => (set.setId === setId ? updater(set) : set)),
-        })),
-      };
+  useEffect(() => {
+    if (!window.visualViewport) {
+      return;
+    }
+    const viewport = window.visualViewport;
+    const handleResize = () => {
+      const activeElement = document.activeElement;
+      const isInput =
+        activeElement instanceof HTMLInputElement || activeElement instanceof HTMLTextAreaElement;
+      const keyboardOpen = window.innerHeight - viewport.height > 120;
+      if (isInput && keyboardOpen) {
+        setTimeout(() => {
+          if (typeof activeElement.scrollIntoView === "function") {
+            activeElement.scrollIntoView({ behavior: "smooth", block: "center" });
+          }
+        }, 50);
+      }
+    };
+    viewport.addEventListener("resize", handleResize);
+    return () => viewport.removeEventListener("resize", handleResize);
+  }, []);
+
+  const updateSetFields = useCallback(
+    (setId: string, updater: (set: LogSetInput) => LogSetInput) => {
+      setData((prev) => {
+        const next: NormalizedExercises = {
+          warmup: prev.warmup.map((exercise) => ({
+            ...exercise,
+            sets: exercise.sets.map((set) => (set.setId === setId ? updater(set) : set)),
+          })),
+          main: prev.main.map((exercise) => ({
+            ...exercise,
+            sets: exercise.sets.map((set) => (set.setId === setId ? updater(set) : set)),
+          })),
+          accessory: prev.accessory.map((exercise) => ({
+            ...exercise,
+            sets: exercise.sets.map((set) => (set.setId === setId ? updater(set) : set)),
+          })),
+        };
+        return next;
+      });
+    },
+    [setData]
+  );
+
+  const setSingleField = useCallback(
+    (setId: string, field: keyof LogSetInput, value: number | boolean | null) => {
+      updateSetFields(setId, (set) => ({ ...set, [field]: value }));
+    },
+    [updateSetFields]
+  );
+
+  const findPreviousLoggedSet = useCallback(
+    (exercise: LogExerciseInput, currentSetIndex: number) => {
+      for (let index = currentSetIndex - 1; index >= 0; index -= 1) {
+        const candidate = exercise.sets[index];
+        if (!candidate) continue;
+        if (!loggedSetIds.has(candidate.setId)) continue;
+        if (candidate.wasSkipped) continue;
+        return candidate;
+      }
+      return null;
+    },
+    [loggedSetIds]
+  );
+
+  useEffect(() => {
+    if (!activeSet) {
+      return;
+    }
+    const setId = activeSet.set.setId;
+    if (loggedSetIds.has(setId)) {
+      return;
+    }
+    const hasExistingActuals =
+      activeSet.set.actualReps != null || activeSet.set.actualLoad != null || activeSet.set.actualRpe != null;
+    if (hasExistingActuals || (activeSet.set.wasSkipped ?? false)) {
+      return;
+    }
+
+    const previousLoggedSet = findPreviousLoggedSet(activeSet.exercise, activeSet.setIndex);
+    const prefillValues = previousLoggedSet
+      ? {
+          actualReps: previousLoggedSet.actualReps ?? null,
+          actualLoad: previousLoggedSet.actualLoad ?? null,
+          actualRpe: previousLoggedSet.actualRpe ?? null,
+        }
+      : {
+          actualReps: activeSet.set.targetReps ?? null,
+          actualLoad: activeSet.set.targetLoad ?? null,
+          actualRpe: activeSet.set.targetRpe ?? null,
+        };
+    if (
+      prefillValues.actualReps == null &&
+      prefillValues.actualLoad == null &&
+      prefillValues.actualRpe == null
+    ) {
+      return;
+    }
+
+    updateSetFields(setId, (set) => ({
+      ...set,
+      actualReps: prefillValues.actualReps,
+      actualLoad: prefillValues.actualLoad,
+      actualRpe: prefillValues.actualRpe,
+      wasSkipped: false,
+    }));
+    setTouchedFieldsBySet((prev) => ({
+      ...prev,
+      [setId]: { actualReps: false, actualLoad: false, actualRpe: false },
+    }));
+    setPrefilledFieldsBySet((prev) => ({
+      ...prev,
+      [setId]: {
+        actualReps: prefillValues.actualReps != null,
+        actualLoad: prefillValues.actualLoad != null,
+        actualRpe: prefillValues.actualRpe != null,
+      },
+    }));
+  }, [activeSet, findPreviousLoggedSet, loggedSetIds, updateSetFields]);
+
+  useEffect(() => {
+    if (completed || skipped || activeSection === null || activeExerciseId === null) {
+      setExpandedSections({ warmup: true, main: true, accessory: true });
+      return;
+    }
+    setExpandedSections({ warmup: false, main: false, accessory: false, [activeSection]: true });
+    setExpandedExerciseId(activeExerciseId);
+    const scrollTimeout = setTimeout(() => {
+      const sectionElement = sectionRefs.current[activeSection];
+      if (sectionElement && typeof sectionElement.scrollIntoView === "function") {
+        sectionElement.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+    }, 100);
+    return () => clearTimeout(scrollTimeout);
+  }, [activeExerciseId, activeSection, completed, setExpandedExerciseId, setExpandedSections, skipped]);
+
+  const clearDraftInputBuffers = useCallback((setId: string) => {
+    setRepsInputBuffers((prev) => {
+      const next = { ...prev };
+      delete next[setId];
       return next;
     });
-  };
+    setLoadInputBuffers((prev) => {
+      const next = { ...prev };
+      delete next[setId];
+      return next;
+    });
+    setRpeInputBuffers((prev) => {
+      const next = { ...prev };
+      delete next[setId];
+      return next;
+    });
+  }, []);
 
-  const setSingleField = (
-    setId: string,
-    field: keyof LogSetInput,
-    value: number | boolean | null
-  ) => {
-    updateSetFields(setId, (set) => ({ ...set, [field]: value }));
-  };
+  const handleRestoreDraft = useCallback(
+    (setId: string, draft: DraftRestoreValue) => {
+      updateSetFields(setId, (set) => ({
+        ...set,
+        actualReps: parseNullableNumber(draft.reps),
+        actualLoad: parseNullableNumber(draft.load),
+        actualRpe: parseNullableNumber(draft.rpe),
+      }));
+      setRepsInputBuffers((prev) => ({ ...prev, [setId]: draft.reps }));
+      setLoadInputBuffers((prev) => ({ ...prev, [setId]: draft.load }));
+      setRpeInputBuffers((prev) => ({ ...prev, [setId]: draft.rpe }));
+    },
+    [updateSetFields]
+  );
 
-  const findPreviousLoggedSet = (exercise: LogExerciseInput, currentSetIndex: number) => {
-    for (let index = currentSetIndex - 1; index >= 0; index -= 1) {
-      const candidate = exercise.sets[index];
-      if (!candidate) continue;
-      if (!loggedSetIds.has(candidate.setId)) continue;
-      if (candidate.wasSkipped) continue;
-      return candidate;
+  const {
+    saveDraft,
+    clearDraft,
+    clearAllDrafts,
+    restoredSetIds,
+    markRestoredSeen,
+  } = useSetDraft({
+    workoutId,
+    setIds: activeSetIds,
+    onRestore: handleRestoreDraft,
+  });
+
+  useEffect(() => {
+    if (!activeSet) {
+      return;
     }
-    return null;
-  };
+    const setId = activeSet.set.setId;
+    saveDraft(setId, {
+      reps: repsInputBuffers[setId] ?? toInputNumberString(activeSet.set.actualReps),
+      load: loadInputBuffers[setId] ?? toInputNumberString(activeSet.set.actualLoad),
+      rpe: rpeInputBuffers[setId] ?? toInputNumberString(activeSet.set.actualRpe),
+    });
+  }, [activeSet, loadInputBuffers, repsInputBuffers, rpeInputBuffers, saveDraft]);
 
-  const handleLogSet = async (setId: string, overrides?: Partial<LogSetInput>) => {
+  const scrollFieldIntoView = useCallback((element: HTMLElement) => {
+    setTimeout(() => {
+      if (typeof element.scrollIntoView === "function") {
+        element.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }, 100);
+  }, []);
+
+  const handleNumericFieldFocus = useCallback(
+    (event: FocusEvent<HTMLInputElement>) => {
+      scrollFieldIntoView(event.currentTarget);
+      if (resolvedActiveSetId && restoredSetIds.has(resolvedActiveSetId)) {
+        markRestoredSeen(resolvedActiveSetId);
+      }
+    },
+    [markRestoredSeen, resolvedActiveSetId, restoredSetIds, scrollFieldIntoView]
+  );
+
+  const handleLoadFocus = useCallback(() => {
+    if (!activeSet) {
+      return;
+    }
+    const setId = activeSet.set.setId;
+    setActiveLoadEditSetId(setId);
+    setLoadInputBuffers((prev) => ({
+      ...prev,
+      [setId]: toInputNumberString(activeSet.set.actualLoad),
+    }));
+  }, [activeSet]);
+
+  const handleLoadBlur = useCallback((event: FocusEvent<HTMLInputElement>) => {
+    if (!activeSet) {
+      return;
+    }
+    const setId = activeSet.set.setId;
+    const isDB = isDumbbellExercise(activeSet.exercise);
+    const rawValue = (event.currentTarget.value ?? loadInputBuffers[setId] ?? "").trim();
+    const parsed = parseNullableNumber(rawValue);
+    const normalized = parsed == null ? null : toStoredLoad(toDisplayLoad(parsed, isDB) ?? null, isDB);
+    setSingleField(setId, "actualLoad", normalized);
+    markFieldTouched(setId, "actualLoad");
+    setFieldPrefilled(setId, "actualLoad", false);
+    setActiveLoadEditSetId((prev) => (prev === setId ? null : prev));
+    setLoadInputBuffers((prev) => {
+      const next = { ...prev };
+      delete next[setId];
+      return next;
+    });
+  }, [activeSet, loadInputBuffers, markFieldTouched, setFieldPrefilled, setSingleField]);
+
+  const openChipEditor = useCallback((setId: string) => {
+    const target = flatSets.find((item) => item.set.setId === setId);
+    if (!target) {
+      return;
+    }
+    setChipEditSetId(setId);
+    setChipEditDraftBySet((prev) => ({
+      ...prev,
+      [setId]: {
+        reps: toInputNumberString(target.set.actualReps),
+        load: toInputNumberString(toDisplayLoad(target.set.actualLoad, isDumbbellExercise(target.exercise))),
+        rpe: toInputNumberString(target.set.actualRpe),
+      },
+    }));
+    setChipEditLoadSetId(null);
+  }, [flatSets]);
+
+  const closeChipEditor = useCallback(() => {
+    setChipEditSetId(null);
+    setChipEditLoadSetId(null);
+  }, []);
+
+  const handleChipLoadBlur = useCallback(
+    (setId: string, isDumbbell: boolean) => {
+      setChipEditDraftBySet((prev) => {
+        const current = prev[setId];
+        if (!current) {
+          return prev;
+        }
+        const normalized = normalizeLoadInput(current.load, isDumbbell);
+        return {
+          ...prev,
+          [setId]: {
+            ...current,
+            load: toInputNumberString(toDisplayLoad(normalized, isDumbbell)),
+          },
+        };
+      });
+      setChipEditLoadSetId((prev) => (prev === setId ? null : prev));
+    },
+    []
+  );
+
+  const handleLogSet = async (setId: string, overrides?: Partial<LogSetInput>): Promise<boolean> => {
     setStatus(null);
     setError(null);
     const targetSet = flatSets.find((item) => item.set.setId === setId);
     if (!targetSet) {
       setError("Unable to find set");
-      return;
+      return false;
     }
     const mergedSet = { ...targetSet.set, ...overrides };
+    const isBodyweightTarget =
+      isBodyweightExercise(targetSet.exercise) &&
+      (targetSet.set.targetLoad === null || targetSet.set.targetLoad === undefined || targetSet.set.targetLoad === 0);
+    const normalizedSet: LogSetInput = {
+      ...mergedSet,
+      actualLoad:
+        !(mergedSet.wasSkipped ?? false) && isBodyweightTarget && mergedSet.actualLoad == null
+          ? 0
+          : mergedSet.actualLoad,
+    };
     setSavingSetId(setId);
 
     const response = await logSetRequest({
       workoutSetId: targetSet.set.setId,
-      actualReps: mergedSet.actualReps ?? undefined,
-      actualLoad: mergedSet.actualLoad ?? undefined,
-      actualRpe: mergedSet.actualRpe ?? undefined,
-      wasSkipped: mergedSet.wasSkipped ?? false,
+      actualReps: normalizedSet.actualReps ?? undefined,
+      actualLoad: normalizedSet.actualLoad ?? undefined,
+      actualRpe: normalizedSet.actualRpe ?? undefined,
+      wasSkipped: normalizedSet.wasSkipped ?? false,
     });
 
     if (response.error) {
       setError(response.error);
       setSavingSetId(null);
-      return;
+      return false;
     }
     const body = response.data;
 
-    updateSetFields(setId, (set) => ({ ...set, ...mergedSet }));
+    updateSetFields(setId, (set) => ({ ...set, ...normalizedSet }));
 
     const nextLogged = new Set(loggedSetIds);
     nextLogged.add(setId);
     setLoggedSetIds(nextLogged);
+    clearDraft(setId);
+    clearDraftInputBuffers(setId);
+    setPrefilledFieldsBySet((prev) => ({
+      ...prev,
+      [setId]: { actualReps: false, actualLoad: false, actualRpe: false },
+    }));
     setUndoSnapshot({
       setId,
       previousSet: targetSet.set,
@@ -283,7 +614,7 @@ export default function LogWorkoutClient({
       }
     }
 
-    if (!(mergedSet.wasSkipped ?? false)) {
+    if (!(normalizedSet.wasSkipped ?? false)) {
       setRestTimerSeconds(resolveRestSeconds(targetSet));
     }
 
@@ -294,8 +625,8 @@ export default function LogWorkoutClient({
         !nextLogged.has(item.set.setId) &&
         item.set.targetRpe != null
     );
-    if (nextExerciseSet && mergedSet.actualRpe != null && nextExerciseSet.set.targetRpe != null) {
-      const diff = mergedSet.actualRpe - nextExerciseSet.set.targetRpe;
+    if (nextExerciseSet && normalizedSet.actualRpe != null && nextExerciseSet.set.targetRpe != null) {
+      const diff = normalizedSet.actualRpe - nextExerciseSet.set.targetRpe;
       if (diff <= -1.5) {
         setAutoregHint({
           exerciseId: targetSet.exercise.workoutExerciseId,
@@ -315,6 +646,36 @@ export default function LogWorkoutClient({
 
     setStatus(loggedSetIds.has(setId) ? "Set updated" : "Set logged");
     setSavingSetId(null);
+    return true;
+  };
+
+  const handleChipEditSave = async (setId: string) => {
+    const draft = chipEditDraftBySet[setId];
+    if (!draft) return;
+    const target = flatSets.find((item) => item.set.setId === setId);
+    if (!target) return;
+    const isDumbbell = isDumbbellExercise(target.exercise);
+    const reps = parseNullableNumber(draft.reps);
+    const load = normalizeLoadInput(draft.load, isDumbbell);
+    const rpe = parseNullableNumber(draft.rpe);
+
+    updateSetFields(setId, (set) => ({
+      ...set,
+      actualReps: reps,
+      actualLoad: load,
+      actualRpe: rpe,
+      wasSkipped: false,
+    }));
+
+    const success = await handleLogSet(setId, {
+      actualReps: reps,
+      actualLoad: load,
+      actualRpe: rpe,
+      wasSkipped: false,
+    });
+    if (success) {
+      closeChipEditor();
+    }
   };
 
   const handleUndo = async () => {
@@ -376,20 +737,45 @@ export default function LogWorkoutClient({
     }
   };
 
-  const handleCompleteWorkout = async () => {
-    if (completing || skipping) {
+  const executeCompletionAction = async (action: CompletionAction) => {
+    if (completing || skipping || completionSubmitting) {
       return;
     }
-    setCompleting(true);
+    setCompletionSubmitting(true);
     setStatus(null);
     setError(null);
     setBaselineSummary(null);
 
+    if (action === "mark_skipped") {
+      setSkipping(true);
+    } else {
+      setCompleting(true);
+    }
+
     try {
+      if (action === "mark_skipped") {
+        const response = await saveWorkoutRequest({
+          workoutId,
+          action: "mark_skipped",
+          status: "SKIPPED",
+          notes: skipReason ? `Skipped: ${skipReason}` : "Skipped",
+          exercises: [],
+        });
+
+        if (response.error) {
+          setError(response.error);
+          return;
+        }
+        clearAllDrafts();
+        setSkipped(true);
+        setStatus("Workout marked as skipped");
+        return;
+      }
+
       const response = await saveWorkoutRequest({
         workoutId,
-        action: "mark_completed",
-        status: "COMPLETED",
+        action,
+        status: action === "mark_partial" ? "PARTIAL" : "COMPLETED",
         exercises: [],
       });
 
@@ -399,6 +785,7 @@ export default function LogWorkoutClient({
       }
 
       const body = response.data;
+      clearAllDrafts();
       setBaselineSummary((body?.baselineSummary as BaselineUpdateSummary | null | undefined) ?? null);
       setCompleted(true);
       setStatus(
@@ -407,42 +794,20 @@ export default function LogWorkoutClient({
           : "Workout marked as completed"
       );
     } catch {
-      setError("Failed to mark workout completed");
+      setError("Failed to complete workout action");
     } finally {
       setCompleting(false);
+      setSkipping(false);
+      setCompletionSubmitting(false);
+      setCompletionAction(null);
     }
   };
 
-  const handleSkipWorkout = async () => {
-    if (skipping || completing) {
+  const openCompletionConfirm = (action: CompletionAction) => {
+    if (completing || skipping || completionSubmitting) {
       return;
     }
-    setSkipping(true);
-    setStatus(null);
-    setError(null);
-    setBaselineSummary(null);
-
-    try {
-      const response = await saveWorkoutRequest({
-        workoutId,
-        action: "mark_skipped",
-        status: "SKIPPED",
-        notes: skipReason ? `Skipped: ${skipReason}` : "Skipped",
-        exercises: [],
-      });
-
-      if (response.error) {
-        setError(response.error);
-        return;
-      }
-
-      setSkipped(true);
-      setStatus("Workout marked as skipped");
-    } catch {
-      setError("Failed to mark workout skipped");
-    } finally {
-      setSkipping(false);
-    }
+    setCompletionAction(action);
   };
 
   const handleAddExercise = (exercise: LogExerciseInput) => {
@@ -480,7 +845,11 @@ export default function LogWorkoutClient({
   };
 
   return (
-    <div className="mt-5 space-y-5 pb-8 sm:mt-6 sm:space-y-6">
+    <div
+      ref={scrollContainerRef}
+      className="mt-5 space-y-5 pb-8 sm:mt-6 sm:space-y-6"
+      style={{ paddingBottom: "max(env(keyboard-inset-height, 0px), 300px)" }}
+    >
       {/* 1A: Green completion banner when all sets logged */}
       {!completed && !skipped && allSetsLogged ? (
         <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 sm:p-5">
@@ -491,7 +860,7 @@ export default function LogWorkoutClient({
           <div className="mt-4">
             <button
               className="inline-flex min-h-11 items-center justify-center rounded-full bg-emerald-700 px-6 py-2 text-sm font-semibold text-white disabled:opacity-60"
-              onClick={handleCompleteWorkout}
+              onClick={() => openCompletionConfirm("mark_completed")}
               disabled={completed || skipped || completing || skipping}
               type="button"
             >
@@ -543,6 +912,9 @@ export default function LogWorkoutClient({
           {isBaselineEligible(activeSet.set) ? (
             <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-emerald-700">Baseline eligible</p>
           ) : null}
+          {restoredSetIds.has(activeSet.set.setId) ? (
+            <p className="mt-2 text-xs text-slate-500">Draft restored</p>
+          ) : null}
 
           <div className="mt-4 space-y-3">
             <div>
@@ -550,35 +922,65 @@ export default function LogWorkoutClient({
               <div className="mt-1 flex items-center gap-2">
                 <button
                   className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border border-slate-300 px-3 text-sm font-semibold text-slate-700"
-                  onClick={() =>
+                  onClick={() => {
+                    markFieldTouched(activeSet.set.setId, "actualReps");
+                    setFieldPrefilled(activeSet.set.setId, "actualReps", false);
                     setSingleField(
                       activeSet.set.setId,
                       "actualReps",
                       clampReps(activeSet.set.actualReps, -1)
-                    )
-                  }
+                    );
+                  }}
                   type="button"
                 >
                   -1
                 </button>
                 <input
-                  className="min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  aria-label="Reps"
+                  className={`min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm ${
+                    prefilledFieldsBySet[activeSet.set.setId]?.actualReps &&
+                    !touchedFieldsBySet[activeSet.set.setId]?.actualReps
+                      ? "text-slate-400"
+                      : "text-slate-900"
+                  }`}
                   type="number"
                   inputMode="numeric"
-                  value={activeSet.set.actualReps ?? ""}
-                  onChange={(event) =>
-                    setSingleField(activeSet.set.setId, "actualReps", parseNullableNumber(event.target.value))
+                  value={
+                    repsInputBuffers[activeSet.set.setId] ?? toInputNumberString(activeSet.set.actualReps)
                   }
+                  onFocus={(event) => {
+                    handleNumericFieldFocus(event);
+                    setRepsInputBuffers((prev) => ({
+                      ...prev,
+                      [activeSet.set.setId]: toInputNumberString(activeSet.set.actualReps),
+                    }));
+                  }}
+                  onBlur={() =>
+                    setRepsInputBuffers((prev) => {
+                      const next = { ...prev };
+                      delete next[activeSet.set.setId];
+                      return next;
+                    })
+                  }
+                  onChange={(event) => {
+                    const nextValue = event.target.value;
+                    setRepsInputBuffers((prev) => ({ ...prev, [activeSet.set.setId]: nextValue }));
+                    setSingleField(activeSet.set.setId, "actualReps", parseNullableNumber(nextValue));
+                    markFieldTouched(activeSet.set.setId, "actualReps");
+                    setFieldPrefilled(activeSet.set.setId, "actualReps", false);
+                  }}
                 />
                 <button
                   className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border border-slate-300 px-3 text-sm font-semibold text-slate-700"
-                  onClick={() =>
+                  onClick={() => {
+                    markFieldTouched(activeSet.set.setId, "actualReps");
+                    setFieldPrefilled(activeSet.set.setId, "actualReps", false);
                     setSingleField(
                       activeSet.set.setId,
                       "actualReps",
                       clampReps(activeSet.set.actualReps, 1)
-                    )
-                  }
+                    );
+                  }}
                   type="button"
                 >
                   +1
@@ -596,25 +998,26 @@ export default function LogWorkoutClient({
               </p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {[-5, -2.5, 2.5, 5].map((delta) => {
-                  const isDB = isDumbbellExercise(activeSet.exercise);
                   return (
                     <button
                       key={`${activeSet.set.setId}-delta-${delta}`}
-                      className="inline-flex min-h-10 items-center justify-center rounded-full border border-slate-300 px-3 text-xs font-semibold text-slate-700"
-                      onClick={() =>
-                        setSingleField(
-                          activeSet.set.setId,
-                          "actualLoad",
-                          toStoredLoad(
-                            normalizeStepValue(
-                              toDisplayLoad(activeSet.set.actualLoad, isDB),
-                              toDisplayLoad(activeSet.set.targetLoad, isDB),
-                              delta
-                            ),
-                            isDB
-                          )
-                        )
-                      }
+                      className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border border-slate-300 px-3 text-xs font-semibold text-slate-700"
+                      onClick={() => {
+                        const bufferedLoad = parseNullableNumber(loadInputBuffers[activeSet.set.setId] ?? "");
+                        const nextLoad = normalizeStepValue(
+                          bufferedLoad ?? activeSet.set.actualLoad,
+                          activeSet.set.targetLoad,
+                          delta
+                        );
+                        setSingleField(activeSet.set.setId, "actualLoad", nextLoad);
+                        setLoadInputBuffers((prev) => ({
+                          ...prev,
+                          [activeSet.set.setId]: toInputNumberString(nextLoad),
+                        }));
+                        setActiveLoadEditSetId(activeSet.set.setId);
+                        markFieldTouched(activeSet.set.setId, "actualLoad");
+                        setFieldPrefilled(activeSet.set.setId, "actualLoad", false);
+                      }}
                       type="button"
                     >
                       {delta > 0 ? `+${delta}` : delta}
@@ -622,25 +1025,45 @@ export default function LogWorkoutClient({
                   );
                 })}
                 <button
-                  className="inline-flex min-h-10 items-center justify-center rounded-full border border-slate-300 px-3 text-xs font-semibold text-slate-700"
-                  onClick={() => setSingleField(activeSet.set.setId, "actualLoad", null)}
+                  className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border border-slate-300 px-3 text-xs font-semibold text-slate-700"
+                  onClick={() => {
+                    setSingleField(activeSet.set.setId, "actualLoad", null);
+                    setLoadInputBuffers((prev) => ({ ...prev, [activeSet.set.setId]: "" }));
+                    setActiveLoadEditSetId(activeSet.set.setId);
+                    markFieldTouched(activeSet.set.setId, "actualLoad");
+                    setFieldPrefilled(activeSet.set.setId, "actualLoad", false);
+                  }}
                   type="button"
                 >
                   Clear
                 </button>
               </div>
               <input
-                className="mt-2 min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                aria-label="Load"
+                className={`mt-2 min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm ${
+                  prefilledFieldsBySet[activeSet.set.setId]?.actualLoad &&
+                  !touchedFieldsBySet[activeSet.set.setId]?.actualLoad
+                    ? "text-slate-400"
+                    : "text-slate-900"
+                }`}
                 type="number"
                 inputMode="decimal"
-                value={toDisplayLoad(activeSet.set.actualLoad, isDumbbellExercise(activeSet.exercise)) ?? ""}
-                onChange={(event) =>
-                  setSingleField(
-                    activeSet.set.setId,
-                    "actualLoad",
-                    toStoredLoad(parseNullableNumber(event.target.value), isDumbbellExercise(activeSet.exercise))
-                  )
+                value={
+                  activeLoadEditSetId === activeSet.set.setId
+                    ? loadInputBuffers[activeSet.set.setId] ?? ""
+                    : toInputNumberString(
+                        toDisplayLoad(activeSet.set.actualLoad, isDumbbellExercise(activeSet.exercise)) ?? null
+                      )
                 }
+                onFocus={(event) => {
+                  handleNumericFieldFocus(event);
+                  handleLoadFocus();
+                }}
+                onBlur={handleLoadBlur}
+                onChange={(event) => {
+                  setLoadInputBuffers((prev) => ({ ...prev, [activeSet.set.setId]: event.target.value }));
+                  setActiveLoadEditSetId(activeSet.set.setId);
+                }}
               />
             </div>
 
@@ -650,12 +1073,20 @@ export default function LogWorkoutClient({
                 {[7, 8, 9, 10].map((preset) => (
                   <button
                     key={`${activeSet.set.setId}-rpe-${preset}`}
-                    className={`inline-flex min-h-10 min-w-10 items-center justify-center rounded-full border px-3 text-xs font-semibold ${
+                    className={`inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border px-3 text-xs font-semibold ${
                       activeSet.set.actualRpe === preset
                         ? "border-slate-900 bg-slate-900 text-white"
                         : "border-slate-300 text-slate-700"
                     }`}
-                    onClick={() => setSingleField(activeSet.set.setId, "actualRpe", preset)}
+                    onClick={() => {
+                      setSingleField(activeSet.set.setId, "actualRpe", preset);
+                      setRpeInputBuffers((prev) => ({
+                        ...prev,
+                        [activeSet.set.setId]: toInputNumberString(preset),
+                      }));
+                      markFieldTouched(activeSet.set.setId, "actualRpe");
+                      setFieldPrefilled(activeSet.set.setId, "actualRpe", false);
+                    }}
                     type="button"
                   >
                     {preset}
@@ -663,14 +1094,38 @@ export default function LogWorkoutClient({
                 ))}
               </div>
               <input
-                className="mt-2 min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                aria-label="RPE"
+                className={`mt-2 min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm ${
+                  prefilledFieldsBySet[activeSet.set.setId]?.actualRpe &&
+                  !touchedFieldsBySet[activeSet.set.setId]?.actualRpe
+                    ? "text-slate-400"
+                    : "text-slate-900"
+                }`}
                 type="number"
                 step="0.5"
                 inputMode="decimal"
-                value={activeSet.set.actualRpe ?? ""}
-                onChange={(event) =>
-                  setSingleField(activeSet.set.setId, "actualRpe", parseNullableNumber(event.target.value))
+                value={rpeInputBuffers[activeSet.set.setId] ?? toInputNumberString(activeSet.set.actualRpe)}
+                onFocus={(event) => {
+                  handleNumericFieldFocus(event);
+                  setRpeInputBuffers((prev) => ({
+                    ...prev,
+                    [activeSet.set.setId]: toInputNumberString(activeSet.set.actualRpe),
+                  }));
+                }}
+                onBlur={() =>
+                  setRpeInputBuffers((prev) => {
+                    const next = { ...prev };
+                    delete next[activeSet.set.setId];
+                    return next;
+                  })
                 }
+                onChange={(event) => {
+                  const nextValue = event.target.value;
+                  setRpeInputBuffers((prev) => ({ ...prev, [activeSet.set.setId]: nextValue }));
+                  setSingleField(activeSet.set.setId, "actualRpe", parseNullableNumber(nextValue));
+                  markFieldTouched(activeSet.set.setId, "actualRpe");
+                  setFieldPrefilled(activeSet.set.setId, "actualRpe", false);
+                }}
               />
             </div>
           </div>
@@ -700,6 +1155,26 @@ export default function LogWorkoutClient({
                 setSingleField(activeSet.set.setId, "actualLoad", previousSet.actualLoad ?? null);
                 setSingleField(activeSet.set.setId, "actualRpe", previousSet.actualRpe ?? null);
                 setSingleField(activeSet.set.setId, "wasSkipped", false);
+                setRepsInputBuffers((prev) => ({
+                  ...prev,
+                  [activeSet.set.setId]: toInputNumberString(previousSet.actualReps),
+                }));
+                setLoadInputBuffers((prev) => ({
+                  ...prev,
+                  [activeSet.set.setId]: toInputNumberString(previousSet.actualLoad),
+                }));
+                setRpeInputBuffers((prev) => ({
+                  ...prev,
+                  [activeSet.set.setId]: toInputNumberString(previousSet.actualRpe),
+                }));
+                setTouchedFieldsBySet((prev) => ({
+                  ...prev,
+                  [activeSet.set.setId]: { actualReps: true, actualLoad: true, actualRpe: true },
+                }));
+                setPrefilledFieldsBySet((prev) => ({
+                  ...prev,
+                  [activeSet.set.setId]: { actualReps: false, actualLoad: false, actualRpe: false },
+                }));
               }}
               disabled={findPreviousLoggedSet(activeSet.exercise, activeSet.setIndex) === null}
             >
@@ -748,7 +1223,11 @@ export default function LogWorkoutClient({
             }
             const isExpanded = expandedSections[section];
             return (
-              <div key={section} className="rounded-2xl border border-slate-200 bg-white">
+              <div
+                key={section}
+                ref={(el) => { sectionRefs.current[section] = el; }}
+                className="rounded-2xl border border-slate-200 bg-white"
+              >
                 <button
                   className="flex min-h-11 w-full items-center justify-between px-4 py-3 text-left"
                   onClick={() =>
@@ -759,6 +1238,24 @@ export default function LogWorkoutClient({
                   <span className="text-sm font-semibold">{formatSectionLabel(section)}</span>
                   <span className="text-xs text-slate-500">{isExpanded ? "Hide" : "Show"}</span>
                 </button>
+                {!isExpanded ? (
+                  <div className="border-t border-slate-100 px-4 py-2" data-testid={`collapsed-summary-${section}`}>
+                    {sectionItems.map((exercise) => {
+                      const exerciseLogged = exercise.sets.filter((set) => loggedSetIds.has(set.setId)).length;
+                      return (
+                        <div
+                          key={exercise.workoutExerciseId}
+                          className="flex items-center justify-between py-1 text-xs text-slate-500"
+                        >
+                          <span className="truncate">{exercise.name}</span>
+                          <span className="ml-2 shrink-0">
+                            {exerciseLogged}/{exercise.sets.length} sets logged
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
                 {isExpanded ? (
                   <div className="space-y-2 border-t border-slate-100 p-3">
                     {sectionItems.map((exercise) => {
@@ -799,14 +1296,20 @@ export default function LogWorkoutClient({
                                 return (
                                   <button
                                     key={set.setId}
-                                    className={`inline-flex min-h-9 items-center justify-center rounded-full border px-3 text-xs font-semibold ${
+                                    className={`inline-flex min-h-11 items-center justify-center rounded-full border px-3 text-xs font-semibold ${
                                       isActive
                                         ? "border-slate-900 bg-slate-900 text-white"
                                         : isLogged
                                         ? "border-emerald-300 bg-emerald-50 text-emerald-700"
                                         : "border-slate-300 text-slate-700"
                                     }`}
-                                    onClick={() => setActiveSetId(set.setId)}
+                                    onClick={() => {
+                                      if (isLogged && !isActive) {
+                                        openChipEditor(set.setId);
+                                      } else {
+                                        setActiveSetId(set.setId);
+                                      }
+                                    }}
                                     type="button"
                                   >
                                     {/* 1C: actual values in logged chips */}
@@ -817,6 +1320,114 @@ export default function LogWorkoutClient({
                               })}
                             </div>
                           ) : null}
+                          {/* 4d: Inline chip edit micro-form */}
+                          {chipEditSetId &&
+                            exercise.sets.some((s) => s.setId === chipEditSetId) &&
+                            (() => {
+                              const editSet = exercise.sets.find((s) => s.setId === chipEditSetId);
+                              const draft = chipEditDraftBySet[chipEditSetId];
+                              if (!editSet || !draft) return null;
+                              const isDB = isDumbbellExercise(exercise);
+                              return (
+                                <div
+                                  className="border-t border-slate-100 p-3"
+                                  data-testid="chip-edit-form"
+                                >
+                                  <p className="mb-2 text-xs font-semibold text-slate-500">
+                                    Edit Set {editSet.setIndex}
+                                  </p>
+                                  <div className="grid grid-cols-3 gap-2">
+                                    <div>
+                                      <label className="text-[10px] font-medium uppercase tracking-wide text-slate-400">
+                                        Reps
+                                      </label>
+                                      <input
+                                        aria-label="Chip edit reps"
+                                        className="mt-0.5 min-h-9 w-full rounded-lg border border-slate-300 px-2 py-1 text-sm text-slate-900"
+                                        type="number"
+                                        inputMode="numeric"
+                                        value={draft.reps}
+                                        onChange={(e) =>
+                                          setChipEditDraftBySet((prev) => ({
+                                            ...prev,
+                                            [chipEditSetId!]: {
+                                              ...prev[chipEditSetId!],
+                                              reps: e.target.value,
+                                            },
+                                          }))
+                                        }
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="text-[10px] font-medium uppercase tracking-wide text-slate-400">
+                                        {isDB ? "Load ea" : "Load"}
+                                      </label>
+                                      <input
+                                        aria-label="Chip edit load"
+                                        className="mt-0.5 min-h-9 w-full rounded-lg border border-slate-300 px-2 py-1 text-sm text-slate-900"
+                                        type="number"
+                                        inputMode="decimal"
+                                        value={
+                                          chipEditLoadSetId === chipEditSetId
+                                            ? draft.load
+                                            : draft.load
+                                        }
+                                        onFocus={() => setChipEditLoadSetId(chipEditSetId)}
+                                        onBlur={() => handleChipLoadBlur(chipEditSetId!, isDB)}
+                                        onChange={(e) =>
+                                          setChipEditDraftBySet((prev) => ({
+                                            ...prev,
+                                            [chipEditSetId!]: {
+                                              ...prev[chipEditSetId!],
+                                              load: e.target.value,
+                                            },
+                                          }))
+                                        }
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="text-[10px] font-medium uppercase tracking-wide text-slate-400">
+                                        RPE
+                                      </label>
+                                      <input
+                                        aria-label="Chip edit RPE"
+                                        className="mt-0.5 min-h-9 w-full rounded-lg border border-slate-300 px-2 py-1 text-sm text-slate-900"
+                                        type="number"
+                                        step="0.5"
+                                        inputMode="decimal"
+                                        value={draft.rpe}
+                                        onChange={(e) =>
+                                          setChipEditDraftBySet((prev) => ({
+                                            ...prev,
+                                            [chipEditSetId!]: {
+                                              ...prev[chipEditSetId!],
+                                              rpe: e.target.value,
+                                            },
+                                          }))
+                                        }
+                                      />
+                                    </div>
+                                  </div>
+                                  <div className="mt-2 flex gap-2">
+                                    <button
+                                      className="inline-flex min-h-9 items-center justify-center rounded-full bg-slate-900 px-4 text-xs font-semibold text-white disabled:opacity-60"
+                                      onClick={() => handleChipEditSave(chipEditSetId!)}
+                                      disabled={savingSetId === chipEditSetId}
+                                      type="button"
+                                    >
+                                      {savingSetId === chipEditSetId ? "Saving..." : "Save"}
+                                    </button>
+                                    <button
+                                      className="inline-flex min-h-9 items-center justify-center rounded-full border border-slate-300 px-4 text-xs font-semibold text-slate-700"
+                                      onClick={closeChipEditor}
+                                      type="button"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })()}
                         </div>
                       );
                     })}
@@ -833,7 +1444,7 @@ export default function LogWorkoutClient({
       {!completed && !skipped ? (
         <div className="flex justify-center">
           <button
-            className="inline-flex min-h-10 items-center justify-center rounded-full border border-slate-300 px-5 text-sm font-semibold text-slate-700"
+            className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 px-5 text-sm font-semibold text-slate-700"
             onClick={() => setShowBonusSheet(true)}
             type="button"
           >
@@ -993,11 +1604,56 @@ export default function LogWorkoutClient({
               session.
             </p>
             <Link
-              className="mt-4 inline-flex min-h-10 items-center justify-center rounded-full bg-slate-900 px-5 text-sm font-semibold text-white"
+              className="mt-4 inline-flex min-h-11 items-center justify-center rounded-full bg-slate-900 px-5 text-sm font-semibold text-white"
               href="/"
             >
               Generate next workout
             </Link>
+          </div>
+        </div>
+      ) : null}
+
+      {completionAction ? (
+        <div
+          aria-label="Workout completion confirmation"
+          aria-modal="true"
+          className="fixed inset-0 z-40 flex items-end justify-center bg-slate-900/40 p-3 sm:items-center"
+          role="dialog"
+        >
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-4 shadow-lg sm:p-5">
+            <p className="text-sm font-semibold text-slate-900">
+              {completionAction === "mark_completed"
+                ? "Complete workout"
+                : completionAction === "mark_partial"
+                ? "Mark partial"
+                : "Skip workout"}
+            </p>
+            <p className="mt-1 text-sm text-slate-600">
+              {loggedCount} of {totalSets} sets logged
+            </p>
+            {completionAction === "mark_skipped" ? (
+              <p className="mt-2 text-xs text-slate-500">
+                This will skip the entire workout and not count toward progression.
+              </p>
+            ) : null}
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              <button
+                className="inline-flex min-h-11 items-center justify-center rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                onClick={() => executeCompletionAction(completionAction)}
+                disabled={completionSubmitting}
+                type="button"
+              >
+                Confirm
+              </button>
+              <button
+                className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
+                onClick={() => setCompletionAction(null)}
+                disabled={completionSubmitting}
+                type="button"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       ) : null}
@@ -1007,7 +1663,7 @@ export default function LogWorkoutClient({
           <div className="flex items-center justify-between gap-3">
             <p className="text-xs text-slate-600">Set logged. Undo available for a few seconds.</p>
             <button
-              className="inline-flex min-h-9 items-center justify-center rounded-full border border-slate-300 px-3 text-xs font-semibold text-slate-700"
+              className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 px-3 text-xs font-semibold text-slate-700"
               onClick={handleUndo}
               disabled={savingSetId !== null}
               type="button"
@@ -1034,7 +1690,7 @@ export default function LogWorkoutClient({
             <div className="text-xs text-slate-500">{loggedCount}/{totalSets} sets logged</div>
             {!completed && !skipped ? (
               <button
-                className="inline-flex min-h-9 items-center justify-center rounded-full border border-slate-300 px-3 text-xs font-semibold text-slate-700"
+                className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 px-3 text-xs font-semibold text-slate-700"
                 onClick={() => setFooterExpanded((prev) => !prev)}
                 type="button"
               >
@@ -1045,7 +1701,7 @@ export default function LogWorkoutClient({
           <div className="grid gap-2 md:flex md:flex-wrap md:items-center md:gap-3">
             <button
               className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-slate-900 px-6 py-2 text-sm font-semibold text-white disabled:opacity-60 sm:w-auto"
-              onClick={handleCompleteWorkout}
+              onClick={() => openCompletionConfirm("mark_completed")}
               disabled={completed || skipped || completing || skipping}
             >
               {completed ? "Workout completed" : "Mark workout completed"}
@@ -1053,7 +1709,7 @@ export default function LogWorkoutClient({
             {footerExpanded || completed || skipped ? (
               <button
                 className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-slate-300 px-6 py-2 text-sm font-semibold text-slate-700 disabled:opacity-60 sm:w-auto"
-                onClick={handleSkipWorkout}
+                onClick={() => openCompletionConfirm("mark_skipped")}
                 disabled={completed || skipped || completing || skipping}
               >
                 {skipped ? "Workout skipped" : "Mark workout skipped"}
@@ -1063,7 +1719,7 @@ export default function LogWorkoutClient({
           {!completed && !skipped && footerExpanded ? (
             <div className="mt-2">
               <button
-                className="inline-flex min-h-9 items-center justify-center rounded-full border border-slate-300 px-3 text-xs font-semibold text-slate-700"
+                className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 px-3 text-xs font-semibold text-slate-700"
                 onClick={() => setShowSkipOptions((prev) => !prev)}
                 type="button"
               >
@@ -1102,3 +1758,4 @@ export default function LogWorkoutClient({
     </div>
   );
 }
+

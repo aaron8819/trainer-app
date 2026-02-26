@@ -13,7 +13,7 @@
 "use client";
 
 import { useState } from "react";
-import type { WorkoutExplanation } from "@/lib/engine/explainability";
+import type { WorkoutExplanation, VolumeComplianceStatus } from "@/lib/engine/explainability";
 import { SessionContextCard } from "./SessionContextCard";
 import { CoachMessageCard } from "./CoachMessageCard";
 import { ExerciseRationaleCard } from "./ExerciseRationaleCard";
@@ -25,6 +25,24 @@ type Props = {
   deloadSummary?: string | null;
   startLoggingHref?: string | null;
 };
+
+function VolumeComplianceBadge({ status }: { status: VolumeComplianceStatus }) {
+  const config: Record<VolumeComplianceStatus, { label: string; className: string }> = {
+    OVER_MAV: { label: "Over MAV", className: "bg-red-100 text-red-700" },
+    AT_MAV: { label: "At MAV", className: "bg-amber-100 text-amber-700" },
+    APPROACHING_MAV: { label: "Near MAV", className: "bg-amber-100 text-amber-700" },
+    OVER_TARGET: { label: "On track", className: "bg-emerald-100 text-emerald-700" },
+    ON_TARGET: { label: "On target", className: "bg-emerald-100 text-emerald-700" },
+    APPROACHING_TARGET: { label: "Building", className: "bg-slate-100 text-slate-500" },
+    UNDER_MEV: { label: "↑ needs more", className: "bg-slate-100 text-slate-500" },
+  };
+  const { label, className } = config[status];
+  return (
+    <span className={`rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap ${className}`}>
+      {label}
+    </span>
+  );
+}
 
 export function ExplainabilityPanel({
   explanation,
@@ -55,6 +73,13 @@ export function ExplainabilityPanel({
     (message) => message.type !== "encouragement" && message.type !== "tip"
   );
   const hasRecentHistory = Array.from(progressionReceipts.values()).some((receipt) => receipt.lastPerformed != null);
+  const progressionLogicRows = Array.from(progressionReceipts.entries())
+    .map(([exerciseId, receipt]) => ({
+      exerciseId,
+      exerciseName: explanation.exerciseRationales.get(exerciseId)?.exerciseName ?? exerciseId,
+      decisionLog: receipt.decisionLog ?? [],
+    }))
+    .filter((entry) => entry.decisionLog.length > 0);
   const basisLabel = hasRecentHistory ? "Based on recent performance" : "Based on planned baseline";
   const basisWithCycle =
     explanation.sessionContext.cycleSource === "fallback"
@@ -114,6 +139,46 @@ export function ExplainabilityPanel({
                   {logicMessages.map((message, idx) => (
                     <CoachMessageCard key={idx} message={message} />
                   ))}
+                </div>
+              ) : null}
+              {progressionLogicRows.length > 0 ? (
+                <div className="rounded-xl border border-slate-200 bg-white p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Progression Logic
+                  </p>
+                  <div className="mt-2 space-y-3">
+                    {progressionLogicRows.map((entry) => (
+                      <div key={entry.exerciseId}>
+                        <p className="text-xs font-semibold text-slate-700">{entry.exerciseName}</p>
+                        <ol className="mt-1 list-decimal pl-4 text-xs text-slate-600">
+                          {entry.decisionLog.map((line, index) => (
+                            <li key={`${entry.exerciseId}-${index}`}>{line}</li>
+                          ))}
+                        </ol>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              {explanation.volumeCompliance.length > 0 ? (
+                <div className="rounded-xl border border-slate-200 bg-white p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Volume Check
+                  </p>
+                  <div className="mt-2 space-y-2">
+                    {explanation.volumeCompliance.map((row) => (
+                      <div key={row.muscle} className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-medium text-slate-700 min-w-0 flex-1">
+                          {row.muscle}
+                        </span>
+                        <span className="text-xs text-slate-500 whitespace-nowrap">
+                          {row.setsLoggedBeforeSession} + {row.setsPrescribedThisSession}{" "}
+                          → {row.projectedTotal} / {row.weeklyTarget} sets
+                        </span>
+                        <VolumeComplianceBadge status={row.status} />
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ) : null}
             </div>

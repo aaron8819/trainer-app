@@ -174,6 +174,7 @@ describe("generateWorkoutExplanation progression receipt", () => {
     expect(receipt).toBeDefined();
     expect(receipt?.lastPerformed?.load).toBe(200);
     expect(receipt?.todayPrescription?.load).toBe(205);
+    expect(receipt?.decisionLog?.length).toBeGreaterThan(0);
   });
 
   it("summarizes latest performed load using modal load across sets", async () => {
@@ -331,5 +332,32 @@ describe("generateWorkoutExplanation progression receipt", () => {
       | undefined;
 
     expect(firstWorkoutFindManyCall?.where?.status?.in).toEqual(["COMPLETED", "PARTIAL"]);
+  });
+
+  it("excludes RPE < 6 sets from progression anchor summaries", async () => {
+    mocks.workoutExerciseFindFirst.mockResolvedValueOnce({
+      workout: { scheduledDate: new Date("2026-02-18T00:00:00.000Z") },
+      sets: [
+        {
+          setIndex: 1,
+          logs: [{ actualReps: 12, actualLoad: 10, actualRpe: 5, wasSkipped: false }],
+        },
+        {
+          setIndex: 2,
+          logs: [{ actualReps: 12, actualLoad: 20, actualRpe: 8, wasSkipped: false }],
+        },
+        {
+          setIndex: 3,
+          logs: [{ actualReps: 12, actualLoad: 20, actualRpe: 8, wasSkipped: false }],
+        },
+      ],
+    });
+
+    const result = await generateWorkoutExplanation("w1");
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    const receipt = result.progressionReceipts.get("ex1");
+    expect(receipt?.lastPerformed?.load).toBe(20);
   });
 });

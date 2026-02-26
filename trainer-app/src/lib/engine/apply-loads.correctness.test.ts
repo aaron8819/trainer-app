@@ -390,6 +390,190 @@ describe("applyLoads correctness", () => {
     expect(result.mainLifts[0].sets[0].targetLoad).toBe(70);
   });
 
+  it("applies load increment when reps hit top of range at submaximal RPE (double progression)", () => {
+    const inclineBarbell: Exercise = {
+      id: "incline-barbell",
+      name: "Incline Barbell Press",
+      movementPatterns: ["horizontal_push"],
+      splitTags: ["push"],
+      jointStress: "medium",
+      isMainLiftEligible: true,
+      isCompound: true,
+      fatigueCost: 4,
+      equipment: ["barbell", "bench"],
+      primaryMuscles: ["Chest"],
+      repRangeMin: 6,
+      repRangeMax: 10,
+    };
+    const workout: WorkoutPlan = {
+      id: "w7",
+      scheduledDate: "2026-02-20T00:00:00.000Z",
+      warmup: [],
+      mainLifts: [
+        {
+          id: "we7",
+          exercise: inclineBarbell,
+          orderIndex: 0,
+          isMainLift: true,
+          sets: [{ setIndex: 1, targetReps: 10, targetRpe: 8 }],
+        },
+      ],
+      accessories: [],
+      estimatedMinutes: 30,
+    };
+
+    const result = applyLoads(workout, {
+      history: [
+        {
+          date: "2026-02-19T00:00:00.000Z",
+          completed: true,
+          status: "COMPLETED",
+          sessionIntent: "push",
+          exercises: [
+            {
+              exerciseId: "incline-barbell",
+              sets: [
+                { exerciseId: "incline-barbell", setIndex: 1, reps: 10, rpe: 7.5, load: 185 },
+                { exerciseId: "incline-barbell", setIndex: 2, reps: 10, rpe: 8, load: 185 },
+                { exerciseId: "incline-barbell", setIndex: 3, reps: 10, rpe: 8, load: 185 },
+              ],
+            },
+          ],
+        },
+      ],
+      baselines: [],
+      exerciseById: { "incline-barbell": inclineBarbell },
+      primaryGoal: "hypertrophy",
+      profile: { trainingAge: "intermediate" },
+      sessionIntent: "push",
+    });
+
+    expect(result.mainLifts[0].sets[0].targetLoad).toBe(189);
+  });
+
+  it("uses conservative modal anchor when prior session has high load variance", () => {
+    const inclineDb: Exercise = {
+      id: "incline-db",
+      name: "Incline DB Press",
+      movementPatterns: ["horizontal_push"],
+      splitTags: ["push"],
+      jointStress: "medium",
+      isMainLiftEligible: false,
+      isCompound: false,
+      fatigueCost: 2,
+      equipment: ["dumbbell", "bench"],
+      primaryMuscles: ["Chest"],
+      repRangeMin: 8,
+      repRangeMax: 12,
+    };
+    const workout: WorkoutPlan = {
+      id: "w8",
+      scheduledDate: "2026-02-20T00:00:00.000Z",
+      warmup: [],
+      mainLifts: [],
+      accessories: [
+        {
+          id: "we8",
+          exercise: inclineDb,
+          orderIndex: 0,
+          isMainLift: false,
+          sets: [{ setIndex: 1, targetReps: 12, targetRpe: 8 }],
+        },
+      ],
+      estimatedMinutes: 30,
+    };
+
+    const result = applyLoads(workout, {
+      history: [
+        {
+          date: "2026-02-19T00:00:00.000Z",
+          completed: true,
+          status: "COMPLETED",
+          sessionIntent: "push",
+          exercises: [
+            {
+              exerciseId: "incline-db",
+              sets: [
+                { exerciseId: "incline-db", setIndex: 1, reps: 12, rpe: 7.5, load: 45 },
+                { exerciseId: "incline-db", setIndex: 2, reps: 12, rpe: 8, load: 50 },
+                { exerciseId: "incline-db", setIndex: 3, reps: 12, rpe: 8, load: 50 },
+                { exerciseId: "incline-db", setIndex: 4, reps: 8, rpe: 9, load: 60 },
+              ],
+            },
+          ],
+        },
+      ],
+      baselines: [],
+      exerciseById: { "incline-db": inclineDb },
+      primaryGoal: "hypertrophy",
+      profile: { trainingAge: "intermediate" },
+      sessionIntent: "push",
+    });
+
+    expect(result.accessories[0].sets[0].targetLoad).toBe(50);
+  });
+
+  it("ignores RPE < 6 warmup sets when anchoring modal progression load", () => {
+    const rearDelt: Exercise = {
+      id: "rear-delt-fly",
+      name: "Cable Rear Delt Fly",
+      movementPatterns: ["horizontal_pull", "isolation"],
+      splitTags: ["pull"],
+      jointStress: "low",
+      isMainLiftEligible: false,
+      isCompound: false,
+      fatigueCost: 1,
+      equipment: ["cable"],
+      primaryMuscles: ["Rear Delts"],
+      repRangeMin: 12,
+      repRangeMax: 20,
+    };
+    const workout: WorkoutPlan = {
+      id: "w9",
+      scheduledDate: "2026-02-20T00:00:00.000Z",
+      warmup: [],
+      mainLifts: [],
+      accessories: [
+        {
+          id: "we9",
+          exercise: rearDelt,
+          orderIndex: 0,
+          isMainLift: false,
+          sets: [{ setIndex: 1, targetReps: 15, targetRpe: 8 }],
+        },
+      ],
+      estimatedMinutes: 25,
+    };
+
+    const result = applyLoads(workout, {
+      history: [
+        {
+          date: "2026-02-19T00:00:00.000Z",
+          completed: true,
+          status: "COMPLETED",
+          sessionIntent: "pull",
+          exercises: [
+            {
+              exerciseId: "rear-delt-fly",
+              sets: [
+                { exerciseId: "rear-delt-fly", setIndex: 1, reps: 15, rpe: 5, load: 10 },
+                { exerciseId: "rear-delt-fly", setIndex: 2, reps: 15, rpe: 8, load: 20 },
+                { exerciseId: "rear-delt-fly", setIndex: 3, reps: 15, rpe: 8, load: 20 },
+              ],
+            },
+          ],
+        },
+      ],
+      baselines: [],
+      exerciseById: { "rear-delt-fly": rearDelt },
+      primaryGoal: "hypertrophy",
+      profile: { trainingAge: "intermediate" },
+      sessionIntent: "pull",
+    });
+
+    expect(result.accessories[0].sets[0].targetLoad).toBe(22);
+  });
+
   it("treats 0 lb performed load as valid for bodyweight continuity anchors", () => {
     const dip: Exercise = {
       id: "dip-chest",
@@ -454,5 +638,259 @@ describe("applyLoads correctness", () => {
     });
 
     expect(result.accessories[0].sets[0].targetLoad).toBe(0);
+  });
+
+  it("weights MANUAL modal history at 0.7 vs INTENT when both exist", () => {
+    const cableRaise: Exercise = {
+      id: "cable-raise",
+      name: "Cable Raise",
+      movementPatterns: ["abduction"],
+      splitTags: ["push"],
+      jointStress: "low",
+      isMainLiftEligible: false,
+      isCompound: false,
+      fatigueCost: 1,
+      equipment: ["cable"],
+      primaryMuscles: ["Side Delts"],
+      repRangeMin: 8,
+      repRangeMax: 15,
+    };
+    const workout: WorkoutPlan = {
+      id: "w10",
+      scheduledDate: "2026-02-20T00:00:00.000Z",
+      warmup: [],
+      mainLifts: [],
+      accessories: [
+        {
+          id: "we10",
+          exercise: cableRaise,
+          orderIndex: 0,
+          isMainLift: false,
+          sets: [{ setIndex: 1, targetReps: 12, targetRpe: 8 }],
+        },
+      ],
+      estimatedMinutes: 20,
+    };
+
+    const result = applyLoads(workout, {
+      history: [
+        {
+          date: "2026-02-19T00:00:00.000Z",
+          completed: true,
+          status: "COMPLETED",
+          selectionMode: "MANUAL",
+          exercises: [{ exerciseId: "cable-raise", sets: [{ exerciseId: "cable-raise", setIndex: 1, reps: 12, rpe: 8, load: 30 }] }],
+        },
+        {
+          date: "2026-02-18T00:00:00.000Z",
+          completed: true,
+          status: "COMPLETED",
+          selectionMode: "INTENT",
+          exercises: [{ exerciseId: "cable-raise", sets: [{ exerciseId: "cable-raise", setIndex: 1, reps: 12, rpe: 8, load: 40 }] }],
+        },
+      ],
+      baselines: [],
+      exerciseById: { "cable-raise": cableRaise },
+      primaryGoal: "hypertrophy",
+      profile: { trainingAge: "intermediate" },
+    });
+
+    expect(result.accessories[0].sets[0].targetLoad).toBe(40);
+  });
+
+  it("uses MANUAL-only history at full weight when no INTENT history exists", () => {
+    const cableRaise: Exercise = {
+      id: "manual-only-raise",
+      name: "Manual Only Raise",
+      movementPatterns: ["abduction"],
+      splitTags: ["push"],
+      jointStress: "low",
+      isMainLiftEligible: false,
+      isCompound: false,
+      fatigueCost: 1,
+      equipment: ["cable"],
+      primaryMuscles: ["Side Delts"],
+      repRangeMin: 8,
+      repRangeMax: 15,
+    };
+    const workout: WorkoutPlan = {
+      id: "w11",
+      scheduledDate: "2026-02-20T00:00:00.000Z",
+      warmup: [],
+      mainLifts: [],
+      accessories: [
+        {
+          id: "we11",
+          exercise: cableRaise,
+          orderIndex: 0,
+          isMainLift: false,
+          sets: [{ setIndex: 1, targetReps: 15, targetRpe: 8 }],
+        },
+      ],
+      estimatedMinutes: 20,
+    };
+
+    const result = applyLoads(workout, {
+      history: [
+        {
+          date: "2026-02-19T00:00:00.000Z",
+          completed: true,
+          status: "COMPLETED",
+          selectionMode: "MANUAL",
+          exercises: [{ exerciseId: "manual-only-raise", sets: [{ exerciseId: "manual-only-raise", setIndex: 1, reps: 15, rpe: 7, load: 40 }] }],
+        },
+        {
+          date: "2026-02-18T00:00:00.000Z",
+          completed: true,
+          status: "COMPLETED",
+          selectionMode: "MANUAL",
+          exercises: [{ exerciseId: "manual-only-raise", sets: [{ exerciseId: "manual-only-raise", setIndex: 1, reps: 15, rpe: 7, load: 35 }] }],
+        },
+      ],
+      baselines: [],
+      exerciseById: { "manual-only-raise": cableRaise },
+      primaryGoal: "hypertrophy",
+      profile: { trainingAge: "intermediate" },
+    });
+
+    expect(result.accessories[0].sets[0].targetLoad).toBe(42.5);
+  });
+
+  it("uses W4 accumulation history (not deload history) as baseline source on a new mesocycle start", () => {
+    const result = applyLoads(baseWorkout, {
+      history: [
+        {
+          date: "2026-02-25T00:00:00.000Z",
+          completed: true,
+          status: "COMPLETED",
+          sessionIntent: "push",
+          mesocyclePhaseSnapshot: "DELOAD",
+          mesocycleWeekSnapshot: 5,
+          exercises: [
+            {
+              exerciseId: "bench",
+              sets: [{ exerciseId: "bench", setIndex: 1, reps: 10, rpe: 8, load: 95 }],
+            },
+          ],
+        } as WorkoutHistoryEntry,
+        {
+          date: "2026-02-20T00:00:00.000Z",
+          completed: true,
+          status: "COMPLETED",
+          sessionIntent: "push",
+          mesocyclePhaseSnapshot: "ACCUMULATION",
+          mesocycleWeekSnapshot: 4,
+          exercises: [
+            {
+              exerciseId: "bench",
+              sets: [{ exerciseId: "bench", setIndex: 1, reps: 10, rpe: 8, load: 200 }],
+            },
+          ],
+        } as WorkoutHistoryEntry,
+      ],
+      baselines: [],
+      exerciseById: { bench },
+      primaryGoal: "hypertrophy",
+      profile: { trainingAge: "intermediate" },
+      sessionIntent: "push",
+      accumulationSessionsCompleted: 0,
+    });
+
+    expect(result.mainLifts[0].sets[0].targetLoad).toBe(204);
+  });
+
+  it("falls back from missing W4 to highest accumulation week, then to non-deload performed history", () => {
+    const w4MissingResult = applyLoads(baseWorkout, {
+      history: [
+        {
+          date: "2026-02-25T00:00:00.000Z",
+          completed: true,
+          status: "COMPLETED",
+          sessionIntent: "push",
+          mesocyclePhaseSnapshot: "DELOAD",
+          mesocycleWeekSnapshot: 5,
+          exercises: [
+            {
+              exerciseId: "bench",
+              sets: [{ exerciseId: "bench", setIndex: 1, reps: 10, rpe: 8, load: 95 }],
+            },
+          ],
+        } as WorkoutHistoryEntry,
+        {
+          date: "2026-02-22T00:00:00.000Z",
+          completed: true,
+          status: "COMPLETED",
+          sessionIntent: "push",
+          mesocyclePhaseSnapshot: "ACCUMULATION",
+          mesocycleWeekSnapshot: 3,
+          exercises: [
+            {
+              exerciseId: "bench",
+              sets: [{ exerciseId: "bench", setIndex: 1, reps: 10, rpe: 8, load: 170 }],
+            },
+          ],
+        } as WorkoutHistoryEntry,
+        {
+          date: "2026-02-18T00:00:00.000Z",
+          completed: true,
+          status: "COMPLETED",
+          sessionIntent: "push",
+          mesocyclePhaseSnapshot: "ACCUMULATION",
+          mesocycleWeekSnapshot: 2,
+          exercises: [
+            {
+              exerciseId: "bench",
+              sets: [{ exerciseId: "bench", setIndex: 1, reps: 10, rpe: 8, load: 150 }],
+            },
+          ],
+        } as WorkoutHistoryEntry,
+      ],
+      baselines: [],
+      exerciseById: { bench },
+      primaryGoal: "hypertrophy",
+      profile: { trainingAge: "intermediate" },
+      sessionIntent: "push",
+      accumulationSessionsCompleted: 0,
+    });
+
+    const noAccumulationSnapshotResult = applyLoads(baseWorkout, {
+      history: [
+        {
+          date: "2026-02-25T00:00:00.000Z",
+          completed: true,
+          status: "COMPLETED",
+          sessionIntent: "push",
+          mesocyclePhaseSnapshot: "ACTIVE_DELOAD",
+          mesocycleWeekSnapshot: 5,
+          exercises: [
+            {
+              exerciseId: "bench",
+              sets: [{ exerciseId: "bench", setIndex: 1, reps: 10, rpe: 8, load: 90 }],
+            },
+          ],
+        } as WorkoutHistoryEntry,
+        {
+          date: "2026-02-21T00:00:00.000Z",
+          completed: true,
+          status: "COMPLETED",
+          sessionIntent: "push",
+          exercises: [
+            {
+              exerciseId: "bench",
+              sets: [{ exerciseId: "bench", setIndex: 1, reps: 10, rpe: 8, load: 160 }],
+            },
+          ],
+        } as WorkoutHistoryEntry,
+      ],
+      baselines: [],
+      exerciseById: { bench },
+      primaryGoal: "hypertrophy",
+      profile: { trainingAge: "intermediate" },
+      sessionIntent: "push",
+      accumulationSessionsCompleted: 0,
+    });
+
+    expect(w4MissingResult.mainLifts[0].sets[0].targetLoad).toBe(174);
+    expect(noAccumulationSnapshotResult.mainLifts[0].sets[0].targetLoad).toBe(164);
   });
 });

@@ -1,4 +1,5 @@
 import { applyLoads as applyLoadsEngine } from "@/lib/engine/apply-loads";
+import { resolveBaseSelectionModeConfidence } from "@/lib/engine/history";
 import type { PeriodizationModifiers } from "@/lib/engine/rules";
 import { prisma } from "@/lib/db/prisma";
 import type {
@@ -243,7 +244,7 @@ export function mapExercises(
 }
 
 export function mapHistory(workouts: WorkoutWithRelations[]): WorkoutHistoryEntry[] {
-  return workouts.map((workout) => ({
+  const mapped = workouts.map((workout) => ({
     date: workout.scheduledDate.toISOString(),
     completed: workout.status === WorkoutStatus.COMPLETED,
     status: workout.status,
@@ -265,6 +266,13 @@ export function mapHistory(workouts: WorkoutWithRelations[]): WorkoutHistoryEntr
         if (!log || log.wasSkipped) {
           return [];
         }
+        const hasSignal = log.actualReps != null || log.actualRpe != null || log.actualLoad != null;
+        if (!hasSignal) {
+          return [];
+        }
+        if (log.actualRpe != null && log.actualRpe < 6) {
+          return [];
+        }
         return [
           {
             exerciseId: exercise.exerciseId,
@@ -277,6 +285,96 @@ export function mapHistory(workouts: WorkoutWithRelations[]): WorkoutHistoryEntr
       }),
     })),
   }));
+
+  const intentModalByExercise = new Map<string, number>();
+  const sortedByDateAsc = [...mapped].sort(
+    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+  );
+
+  for (const entry of sortedByDateAsc) {
+    const anomalyFlags: string[] = [];
+    const confidenceNotes: string[] = [];
+    let confidence = resolveBaseSelectionModeConfidence(entry);
+
+    if (entry.selectionMode === "MANUAL") {
+      confidenceNotes.push("MANUAL session discounted for progression confidence.");
+      const allSets = entry.exercises.flatMap((exercise) => exercise.sets);
+      const rpes = allSets
+        .map((set) => set.rpe)
+        .filter((rpe): rpe is number => Number.isFinite(rpe));
+      const hasUniformRpe = rpes.length > 0 && rpes.every((rpe) => rpe === rpes[0]);
+      if (hasUniformRpe) {
+        confidence *= 0.5;
+        anomalyFlags.push("uniform_rpe_synthetic");
+        confidenceNotes.push("Uniform-RPE MANUAL session detected; additional confidence discount applied.");
+      }
+
+      const setCount = allSets.length;
+      const topEffortSetCount = allSets.filter((set) => set.rpe === 10).length;
+      if (setCount > 0 && topEffortSetCount / setCount > 0.5) {
+        anomalyFlags.push("rpe10_majority");
+      }
+
+      for (const exercise of entry.exercises) {
+        const latestIntentModal = intentModalByExercise.get(exercise.exerciseId);
+        if (latestIntentModal == null || latestIntentModal <= 0) {
+          continue;
+        }
+        const modalLoad = resolveExerciseModalLoad(exercise.sets);
+        if (modalLoad != null && modalLoad < latestIntentModal * 0.5) {
+          anomalyFlags.push(`load_regression_${exercise.exerciseId}`);
+        }
+      }
+
+      if (anomalyFlags.length > 0) {
+        confidence = 0.3;
+        confidenceNotes.push(
+          `Anomaly flag(s): ${anomalyFlags.join(", ")}. Confidence reduced to 0.3.`
+        );
+      }
+    }
+
+    (entry as WorkoutHistoryEntry).confidence = Number(confidence.toFixed(2));
+    if (confidenceNotes.length > 0) {
+      (entry as WorkoutHistoryEntry).confidenceNotes = confidenceNotes;
+    }
+    if (anomalyFlags.length > 0) {
+      (entry as WorkoutHistoryEntry).anomalyFlags = anomalyFlags;
+    }
+
+    if (entry.selectionMode === "INTENT") {
+      for (const exercise of entry.exercises) {
+        const modalLoad = resolveExerciseModalLoad(exercise.sets);
+        if (modalLoad != null) {
+          intentModalByExercise.set(exercise.exerciseId, modalLoad);
+        }
+      }
+    }
+  }
+
+  return mapped;
+}
+
+function resolveExerciseModalLoad(
+  sets: Array<{ load?: number }>
+): number | undefined {
+  const frequency = new Map<number, number>();
+  for (const set of sets) {
+    if (!Number.isFinite(set.load) || (set.load ?? 0) < 0) {
+      continue;
+    }
+    const load = set.load as number;
+    frequency.set(load, (frequency.get(load) ?? 0) + 1);
+  }
+  if (frequency.size === 0) {
+    return undefined;
+  }
+  return Array.from(frequency.entries()).sort((a, b) => {
+    if (b[1] !== a[1]) {
+      return b[1] - a[1];
+    }
+    return b[0] - a[0];
+  })[0]?.[0];
 }
 
 export function mapPreferences(preferences: {

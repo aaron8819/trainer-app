@@ -61,6 +61,10 @@ export const generateFromIntentSchema = z
     intent: sessionIntentSchema,
     targetMuscles: z.array(z.string()).optional(),
     pinnedExerciseIds: z.array(z.string()).optional(),
+    roleListIncomplete: z.preprocess(
+      (value) => (value === true ? true : undefined),
+      z.literal(true).optional()
+    ),
   })
   .superRefine((value, ctx) => {
     if (value.intent === "body_part" && (!value.targetMuscles || value.targetMuscles.length === 0)) {
@@ -288,4 +292,14 @@ export const autoregulationPolicySchema = z.object({
   aggressiveness: z.enum(["conservative", "moderate", "aggressive"]),
   allowUpRegulation: z.boolean(),
   allowDownRegulation: z.boolean(),
+});
+
+export const workoutHistoryQuerySchema = z.object({
+  intent: z.enum(WORKOUT_SESSION_INTENT_DB_VALUES).optional(),
+  status: z.string().optional(),
+  mesocycleId: z.string().uuid().optional(),
+  from: z.string().optional(),
+  to: z.string().optional(),
+  cursor: z.string().optional(),
+  take: z.coerce.number().int().min(1).max(50).default(20),
 });

@@ -31,6 +31,8 @@ export type {
   RirRationale,
   RestRationale,
   FilteredExerciseSummary,
+  VolumeComplianceStatus,
+  MuscleVolumeCompliance,
 } from "./types";
 
 // Knowledge Base

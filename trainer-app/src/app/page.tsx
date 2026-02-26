@@ -43,31 +43,44 @@ function isSessionIntent(value: string | null): value is SessionIntent {
 
 export default async function Home() {
   const owner = await resolveOwner();
-  const [latestCompleted, latestIncomplete, recentWorkouts, templateCount, capabilities, programData] =
+  const exerciseInclude = {
+    exercises: {
+      orderBy: { orderIndex: "asc" as const },
+      include: { exercise: true },
+    },
+  } as const;
+
+  const [latestCompleted, performedWorkouts, unperformedWorkouts, templateCount, capabilities, programData] =
     await Promise.all([
       prisma.workout.findFirst({
         where: { userId: owner.id, status: "COMPLETED" },
         orderBy: { completedAt: "desc" },
       }),
-      prisma.workout.findFirst({
-        where: { userId: owner.id, status: { in: ["PLANNED", "IN_PROGRESS", "PARTIAL"] } },
-        orderBy: { scheduledDate: "desc" },
-      }),
+      // Performed: COMPLETED + PARTIAL, most recently completed first
       prisma.workout.findMany({
-        where: { userId: owner.id },
-        orderBy: { scheduledDate: "desc" },
+        where: { userId: owner.id, status: { in: ["COMPLETED", "PARTIAL"] } },
+        orderBy: [{ completedAt: { sort: "desc", nulls: "last" } }, { scheduledDate: "desc" }],
         take: 6,
-        include: {
-          exercises: {
-            orderBy: { orderIndex: "asc" },
-            include: { exercise: true },
-          },
-        },
+        include: exerciseInclude,
+      }),
+      // Unperformed: PLANNED + IN_PROGRESS, soonest first
+      prisma.workout.findMany({
+        where: { userId: owner.id, status: { in: ["PLANNED", "IN_PROGRESS"] } },
+        orderBy: { scheduledDate: "asc" },
+        take: 6,
+        include: exerciseInclude,
       }),
       prisma.workoutTemplate.count({ where: { userId: owner.id } }),
       loadCapabilityFlags(owner.id),
       loadProgramDashboardData(owner.id),
     ]);
+
+  // Performed first (most recently done), then unperformed (soonest upcoming), capped at 6
+  const recentWorkouts = [...performedWorkouts, ...unperformedWorkouts].slice(0, 6);
+
+  // latestIncomplete is now resolved with priority sort (IN_PROGRESS > PARTIAL > PLANNED)
+  // inside loadProgramDashboardData — no separate query needed here.
+  const latestIncomplete = programData.latestIncomplete;
 
   const formatSessionIntent = (intent: string) =>
     intent
@@ -76,19 +89,9 @@ export default async function Home() {
       .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
       .join(" ");
 
-  const nextSessionIntent = isSessionIntent(programData.nextSessionIntent)
-    ? programData.nextSessionIntent
-    : null;
-  const nextSessionLabel = nextSessionIntent ? formatSessionIntent(nextSessionIntent) : null;
-
-  const matchingPlannedWorkout =
-    nextSessionIntent
-      ? recentWorkouts.find(
-          (workout) =>
-            ["PLANNED", "IN_PROGRESS", "PARTIAL"].includes(workout.status) &&
-            workout.sessionIntent?.toLowerCase() === nextSessionIntent
-        ) ?? null
-      : null;
+  const nextSession = programData.nextSession;
+  // Validate intent type for DashboardGenerateSection (typed prop).
+  const nextSessionTyped = isSessionIntent(nextSession.intent) ? nextSession.intent : null;
 
   const recentList = recentWorkouts.map((workout) => ({
     id: workout.id,
@@ -113,7 +116,7 @@ export default async function Home() {
           <div className="min-w-0">
             <DashboardGenerateSection
               templateCount={templateCount}
-              initialIntent={nextSessionIntent ?? undefined}
+              initialIntent={nextSessionTyped ?? undefined}
             />
           </div>
           <div className="min-w-0 space-y-6">
@@ -129,7 +132,9 @@ export default async function Home() {
               </details>
             ) : null}
 
-            {latestIncomplete ? (
+            {latestIncomplete && !nextSession.isExisting ? (
+              // Only show the Resume card when Next Session card is NOT already handling this workout.
+              // When nextSession.isExisting=true the Next Session card links directly to the workout.
               <div className="rounded-2xl border border-slate-200 p-6 shadow-sm">
                 <h2 className="text-xl font-semibold">Resume Workout</h2>
                 <p className="mt-2 text-slate-600">Continue your latest in-progress session.</p>
@@ -157,25 +162,32 @@ export default async function Home() {
           <div className="rounded-2xl border border-slate-200 p-5">
             <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Next Session</h3>
             <p className="mt-3 text-lg font-semibold">
-              {nextSessionLabel ? `Next: ${nextSessionLabel}` : "No session intent"}
+              {nextSession.intent
+                ? `Next: ${formatSessionIntent(nextSession.intent)}`
+                : "No session intent"}
             </p>
+            {programData.lastSessionSkipped && nextSession.intent ? (
+              <p className="mt-1 text-xs text-slate-500">
+                You skipped your last {formatSessionIntent(nextSession.intent)} session.
+              </p>
+            ) : null}
             <p className="mt-2 text-sm text-slate-600">
-              {matchingPlannedWorkout
-                ? "A matching workout is already saved."
-                : nextSessionLabel
-                  ? `Generate a ${nextSessionLabel} session.`
+              {nextSession.isExisting
+                ? "Ready to log."
+                : nextSession.intent
+                  ? `Generate a ${formatSessionIntent(nextSession.intent)} session.`
                   : "Set up weekly schedule to enable next-session intent."}
             </p>
-            {matchingPlannedWorkout ? (
+            {nextSession.isExisting && nextSession.workoutId ? (
               <Link
                 className="mt-3 inline-block text-sm font-semibold text-slate-900"
-                href={`/workout/${matchingPlannedWorkout.id}`}
+                href={`/log/${nextSession.workoutId}`}
               >
-                View workout
+                {latestIncomplete?.status === "planned" ? "Start logging" : "Continue logging"}
               </Link>
-            ) : nextSessionLabel ? (
+            ) : nextSession.intent ? (
               <Link className="mt-3 inline-block text-sm font-semibold text-slate-900" href="#generate-workout">
-                Generate {nextSessionLabel}
+                Generate {formatSessionIntent(nextSession.intent)}
               </Link>
             ) : (
               <span className="mt-3 inline-block text-sm text-slate-500">Generate a workout first</span>

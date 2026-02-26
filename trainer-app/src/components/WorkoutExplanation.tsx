@@ -33,6 +33,7 @@ type ExplanationResponse = {
   prescriptionRationales: Record<string, WorkoutExplanation["prescriptionRationales"] extends Map<string, infer T> ? T : never>;
   progressionReceipts: Record<string, WorkoutExplanation["progressionReceipts"] extends Map<string, infer T> ? T : never>;
   filteredExercises?: WorkoutExplanation["filteredExercises"];
+  volumeCompliance?: WorkoutExplanation["volumeCompliance"];
 };
 
 export function WorkoutExplanation({
@@ -76,6 +77,7 @@ export function WorkoutExplanation({
           prescriptionRationales: new Map(Object.entries(data.prescriptionRationales)),
           progressionReceipts: new Map(Object.entries(data.progressionReceipts ?? {})),
           filteredExercises: data.filteredExercises,
+          volumeCompliance: data.volumeCompliance ?? [],
         };
 
         if (mounted) {

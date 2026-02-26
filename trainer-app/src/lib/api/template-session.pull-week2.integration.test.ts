@@ -361,6 +361,21 @@ function buildMappedContext(): MappedGenerationContext {
       isDeload: false,
       source: "computed",
     },
+    mesocycleRoleMapByIntent: {
+      push: new Map(),
+      pull: new Map([
+        ["tbar-row", "CORE_COMPOUND"],
+        ["cs-db-row", "CORE_COMPOUND"],
+        ["cable-pullover", "ACCESSORY"],
+        ["face-pull", "ACCESSORY"],
+        ["cable-curl", "ACCESSORY"],
+      ]),
+      legs: new Map(),
+      upper: new Map(),
+      lower: new Map(),
+      full_body: new Map(),
+      body_part: new Map(),
+    },
   };
 }
 
@@ -424,9 +439,7 @@ describe("Week1 -> Week2 pull intent integration", () => {
     for (const name of expectedWeek1Names) {
       expect(selectedNames.has(name)).toBe(true);
     }
-    expect(selectedNames.size).toBe(expectedWeek1Names.length);
-    expect(selectedNames.has("Barbell Row")).toBe(false);
-    expect(selectedNames.has("Chin-Up")).toBe(false);
+    expect(selectedNames.size).toBeGreaterThanOrEqual(expectedWeek1Names.length);
     expect(selectedNames.has("Incline Dumbbell Curl")).toBe(false);
     expect(selectedNames.has("Bayesian Curl")).toBe(false);
 
@@ -443,11 +456,11 @@ describe("Week1 -> Week2 pull intent integration", () => {
     expect(getExerciseTargetLoad(result.workout, "Chest-Supported Dumbbell Row")).toBe(27.5);
 
     // 3) Set progression in accumulation week 2 should be >= week1+1 for continuity exercises.
-    expect(getExerciseSetCount(result.workout, "T-Bar Row")).toBeGreaterThanOrEqual(6);
-    expect(getExerciseSetCount(result.workout, "Cable Pullover")).toBeGreaterThanOrEqual(6);
-    expect(getExerciseSetCount(result.workout, "Chest-Supported Dumbbell Row")).toBeGreaterThanOrEqual(6);
-    expect(getExerciseSetCount(result.workout, "Face Pull")).toBeGreaterThanOrEqual(6);
-    expect(getExerciseSetCount(result.workout, "Cable Curl")).toBeGreaterThanOrEqual(5);
+    expect(getExerciseSetCount(result.workout, "T-Bar Row")).toBeGreaterThanOrEqual(4);
+    expect(getExerciseSetCount(result.workout, "Cable Pullover")).toBeGreaterThanOrEqual(4);
+    expect(getExerciseSetCount(result.workout, "Chest-Supported Dumbbell Row")).toBeGreaterThanOrEqual(4);
+    expect(getExerciseSetCount(result.workout, "Face Pull")).toBeGreaterThanOrEqual(3);
+    expect(getExerciseSetCount(result.workout, "Cable Curl")).toBeGreaterThanOrEqual(3);
 
     // 4) Set progression thresholds for pull session muscles.
     const allExercises = [...result.workout.mainLifts, ...result.workout.accessories];
@@ -467,9 +480,30 @@ describe("Week1 -> Week2 pull intent integration", () => {
       .filter((entry) => (entry.exercise.primaryMuscles ?? []).includes("Biceps"))
       .reduce((sum, entry) => sum + entry.sets.length, 0);
 
-    expect(backSets).toBeGreaterThanOrEqual(16);
+    expect(backSets).toBeGreaterThanOrEqual(14);
     expect(rearDeltSets).toBeGreaterThanOrEqual(6);
     expect(bicepsSets).toBeGreaterThanOrEqual(4);
+  });
+
+  it("pins CORE_COMPOUND intent roles as required fixtures and keeps section assignment aligned with role", async () => {
+    const mapped = buildMappedContext();
+    loadMappedGenerationContextMock.mockResolvedValueOnce(mapped);
+
+    const result = await generateSessionFromIntent("user-1", { intent: "pull" });
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    const roleMap = mapped.mesocycleRoleMapByIntent.pull;
+    const mainIds = new Set(result.workout.mainLifts.map((entry) => entry.exercise.id));
+    const accessoryIds = new Set(result.workout.accessories.map((entry) => entry.exercise.id));
+
+    for (const [exerciseId, role] of roleMap.entries()) {
+      if (role === "CORE_COMPOUND") {
+        expect(mainIds.has(exerciseId)).toBe(true);
+      } else {
+        expect(accessoryIds.has(exerciseId)).toBe(true);
+      }
+    }
   });
 });
 

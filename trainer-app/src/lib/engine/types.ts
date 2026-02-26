@@ -177,6 +177,9 @@ export type WorkoutHistoryEntry = {
   forcedSplit?: SplitDay;
   sessionIntent?: SplitDay;
   selectionMode?: WorkoutSelectionMode;
+  confidence?: number;
+  confidenceNotes?: string[];
+  anomalyFlags?: string[];
   exercises: {
     exerciseId: string;
     primaryMuscles?: string[];

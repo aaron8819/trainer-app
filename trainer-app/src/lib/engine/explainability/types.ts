@@ -20,6 +20,7 @@ export type WorkoutExplanation = {
   prescriptionRationales: Map<string, PrescriptionRationale>; // exerciseId -> rationale
   progressionReceipts: Map<string, ProgressionReceipt>; // exerciseId -> progression receipt
   filteredExercises?: FilteredExerciseSummary[]; // Exercises filtered due to constraints (Phase 2)
+  volumeCompliance: MuscleVolumeCompliance[]; // Per-muscle weekly volume compliance (post-generation)
 };
 
 export type ExplainabilityConfidence = {
@@ -226,4 +227,33 @@ export type FilteredExerciseSummary = {
     | string; // Other rejection reasons
   userFriendlyMessage: string; // "Avoided per your preferences", "Equipment not available", etc.
 };
+
+/**
+ * Volume compliance status for a muscle group after this session.
+ * Severity descending: OVER_MAV > AT_MAV > APPROACHING_MAV > OVER_TARGET > ON_TARGET > APPROACHING_TARGET > UNDER_MEV
+ */
+export type VolumeComplianceStatus =
+  | "OVER_MAV"
+  | "AT_MAV"
+  | "APPROACHING_MAV"
+  | "OVER_TARGET"
+  | "ON_TARGET"
+  | "APPROACHING_TARGET"
+  | "UNDER_MEV";
+
+/**
+ * Per-muscle weekly volume compliance annotation.
+ * projectedTotal = setsLoggedBeforeSession + setsPrescribedThisSession
+ */
+export type MuscleVolumeCompliance = {
+  muscle: string; // Title Case, matches VOLUME_LANDMARKS keys
+  setsLoggedBeforeSession: number;
+  setsPrescribedThisSession: number;
+  projectedTotal: number;
+  weeklyTarget: number;
+  mev: number;
+  mav: number;
+  status: VolumeComplianceStatus;
+};
+
 import type { ProgressionReceipt } from "@/lib/evidence/types";

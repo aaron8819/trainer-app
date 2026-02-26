@@ -25,6 +25,7 @@ export async function POST(request: Request) {
       },
       select: {
         id: true,
+        targetLoad: true,
         workoutExercise: {
           select: {
             workout: {
@@ -40,6 +41,17 @@ export async function POST(request: Request) {
 
     if (!setRecord) {
       return { error: "Workout set not found" as const };
+    }
+    const wasSkipped = parsed.data.wasSkipped ?? false;
+    const normalizedActualLoad =
+      parsed.data.actualLoad ??
+      (!wasSkipped && setRecord.targetLoad === 0 ? 0 : undefined);
+    const hasPerformanceSignal =
+      parsed.data.actualReps != null || parsed.data.actualRpe != null;
+    if (!wasSkipped && !hasPerformanceSignal) {
+      return {
+        error: "Cannot log a performed set without reps or RPE. Leave unresolved sets as missing." as const,
+      };
     }
 
     const previousLog = await tx.setLog.findUnique({
@@ -58,8 +70,8 @@ export async function POST(request: Request) {
       update: {
         actualReps: parsed.data.actualReps ?? undefined,
         actualRpe: parsed.data.actualRpe ?? undefined,
-        actualLoad: parsed.data.actualLoad ?? undefined,
-        wasSkipped: parsed.data.wasSkipped ?? false,
+        actualLoad: normalizedActualLoad,
+        wasSkipped,
         notes: parsed.data.notes ?? undefined,
         completedAt: new Date(),
       },
@@ -67,8 +79,8 @@ export async function POST(request: Request) {
         workoutSetId: parsed.data.workoutSetId,
         actualReps: parsed.data.actualReps ?? undefined,
         actualRpe: parsed.data.actualRpe ?? undefined,
-        actualLoad: parsed.data.actualLoad ?? undefined,
-        wasSkipped: parsed.data.wasSkipped ?? false,
+        actualLoad: normalizedActualLoad,
+        wasSkipped,
         notes: parsed.data.notes ?? undefined,
       },
     });
@@ -91,7 +103,8 @@ export async function POST(request: Request) {
   });
 
   if ("error" in outcome) {
-    return NextResponse.json({ error: outcome.error }, { status: 404 });
+    const status = outcome.error === "Workout set not found" ? 404 : 400;
+    return NextResponse.json({ error: outcome.error }, { status });
   }
 
   return NextResponse.json({

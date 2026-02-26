@@ -45,6 +45,7 @@ describe("POST /api/logs/set", () => {
     vi.clearAllMocks();
     mocks.workoutSetFindFirst.mockResolvedValue({
       id: "set-1",
+      targetLoad: 185,
       workoutExercise: { workout: { id: "workout-1", status: "PLANNED" } },
     });
     mocks.setLogUpsert.mockResolvedValue({ id: "log-1" });
@@ -109,5 +110,54 @@ describe("POST /api/logs/set", () => {
         create: expect.objectContaining({ actualLoad: 90 }),
       })
     );
+  });
+
+  it("normalizes bodyweight performed-set load to 0 when targetLoad is 0 and actualLoad is omitted", async () => {
+    mocks.workoutSetFindFirst.mockResolvedValueOnce({
+      id: "set-bw",
+      targetLoad: 0,
+      workoutExercise: { workout: { id: "workout-1", status: "PLANNED" } },
+    });
+    mocks.setLogFindUnique.mockResolvedValue(null);
+
+    const response = await POST(
+      new Request("http://localhost/api/logs/set", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutSetId: "set-bw",
+          actualReps: 10,
+          actualRpe: 8,
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.setLogUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({ actualLoad: 0 }),
+        create: expect.objectContaining({ actualLoad: 0 }),
+      })
+    );
+  });
+
+  it("rejects empty non-skipped logs so unresolved sets remain missing", async () => {
+    mocks.setLogFindUnique.mockResolvedValue(null);
+
+    const response = await POST(
+      new Request("http://localhost/api/logs/set", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutSetId: "set-1",
+        }),
+      })
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "Cannot log a performed set without reps or RPE. Leave unresolved sets as missing.",
+    });
+    expect(mocks.setLogUpsert).not.toHaveBeenCalled();
   });
 });

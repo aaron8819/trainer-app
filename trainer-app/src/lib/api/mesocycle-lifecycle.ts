@@ -1,5 +1,6 @@
 import type { Mesocycle, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
+import { VOLUME_LANDMARKS } from "@/lib/engine/volume-landmarks";
 
 type MuscleLandmark = {
   mev: number;
@@ -45,27 +46,27 @@ const DEFAULT_RIR_BANDS: Record<number, RirTarget> = {
   5: { min: 4, max: 6 },
 };
 
-const INTERMEDIATE_LANDMARKS: Record<string, MuscleLandmark> = {
-  back: { mev: 10, mavUpper: 22, mrv: 25 },
-  rear_delts: { mev: 8, mavUpper: 18, mrv: 26 },
-  biceps: { mev: 8, mavUpper: 20, mrv: 26 },
-  chest: { mev: 10, mavUpper: 20, mrv: 22 },
-  front_delts: { mev: 0, mavUpper: 8, mrv: 12 },
-  side_delts: { mev: 8, mavUpper: 22, mrv: 26 },
-  quads: { mev: 8, mavUpper: 18, mrv: 20 },
-  hamstrings: { mev: 6, mavUpper: 16, mrv: 20 },
-  glutes: { mev: 0, mavUpper: 12, mrv: 16 },
-  triceps: { mev: 6, mavUpper: 14, mrv: 18 },
-  calves: { mev: 8, mavUpper: 16, mrv: 20 },
-  core: { mev: 0, mavUpper: 12, mrv: 16 },
-  forearms: { mev: 0, mavUpper: 6, mrv: 10 },
-  adductors: { mev: 0, mavUpper: 8, mrv: 12 },
-  neck: { mev: 0, mavUpper: 4, mrv: 6 },
-  lower_back: { mev: 0, mavUpper: 6, mrv: 10 },
-  abductors: { mev: 0, mavUpper: 8, mrv: 12 },
-  abs: { mev: 0, mavUpper: 12, mrv: 16 },
-  traps: { mev: 0, mavUpper: 12, mrv: 16 },
-  rotator_cuff: { mev: 0, mavUpper: 6, mrv: 10 },
+// Explicit mapping from normalized snake_case keys to VOLUME_LANDMARKS Title Case keys.
+// Must be exhaustive for all muscles in VOLUME_LANDMARKS.
+const SNAKE_TO_TITLE_MUSCLE_KEY: Record<string, string> = {
+  chest: "Chest",
+  lats: "Lats",
+  upper_back: "Upper Back",
+  front_delts: "Front Delts",
+  side_delts: "Side Delts",
+  rear_delts: "Rear Delts",
+  quads: "Quads",
+  hamstrings: "Hamstrings",
+  glutes: "Glutes",
+  biceps: "Biceps",
+  triceps: "Triceps",
+  calves: "Calves",
+  core: "Core",
+  lower_back: "Lower Back",
+  forearms: "Forearms",
+  adductors: "Adductors",
+  abductors: "Abductors",
+  abs: "Abs",
 };
 
 const DEFAULT_FALLBACK_LANDMARK: MuscleLandmark = {
@@ -76,7 +77,6 @@ const DEFAULT_FALLBACK_LANDMARK: MuscleLandmark = {
 
 function normalizeMuscleGroup(muscleGroup: string): string {
   const normalized = muscleGroup.trim().toLowerCase().replace(/[\s-]+/g, "_");
-  if (normalized === "lats" || normalized === "upper_back") return "back";
   if (normalized === "rear_deltoids") return "rear_delts";
   if (normalized === "front_deltoids") return "front_delts";
   if (normalized === "side_deltoids") return "side_delts";
@@ -84,9 +84,10 @@ function normalizeMuscleGroup(muscleGroup: string): string {
 }
 
 function resolveLandmark(muscleGroup: string): MuscleLandmark {
-  const key = normalizeMuscleGroup(muscleGroup);
-  const landmark = INTERMEDIATE_LANDMARKS[key];
-  if (!landmark) {
+  const snakeKey = normalizeMuscleGroup(muscleGroup);
+  const titleKey = SNAKE_TO_TITLE_MUSCLE_KEY[snakeKey];
+  const lm = titleKey ? VOLUME_LANDMARKS[titleKey] : undefined;
+  if (!lm) {
     console.warn(
       `[mesocycle-lifecycle] Unsupported muscle group for lifecycle volume target: ${muscleGroup}. ` +
         `Using fallback landmark (MEV=${DEFAULT_FALLBACK_LANDMARK.mev}, ` +
@@ -94,7 +95,7 @@ function resolveLandmark(muscleGroup: string): MuscleLandmark {
     );
     return DEFAULT_FALLBACK_LANDMARK;
   }
-  return landmark;
+  return { mev: lm.mev, mavUpper: lm.mav, mrv: lm.mrv };
 }
 
 function asObject(value: unknown): Record<string, unknown> | null {
@@ -152,10 +153,10 @@ export function getWeeklyVolumeTarget(
   void mesocycle.volumeRampConfig;
 
   const landmark = resolveLandmark(muscleGroup);
-  if (week <= 1) return landmark.mev;
-  if (week === 2) return landmark.mev + 2;
-  if (week === 3) return landmark.mev + 4;
   const week4 = Math.min(landmark.mavUpper, landmark.mrv);
+  if (week <= 1) return landmark.mev;
+  if (week === 2) return landmark.mev + Math.round((week4 - landmark.mev) * (1 / 3));
+  if (week === 3) return landmark.mev + Math.round((week4 - landmark.mev) * (2 / 3));
   if (week === 4) return week4;
   return Math.round(week4 * 0.45);
 }
@@ -249,6 +250,14 @@ export async function initializeNextMesocycle(
   });
 }
 
+/**
+ * Check lifecycle thresholds and transition mesocycle state if needed.
+ *
+ * Counter increments (accumulationSessionsCompleted / deloadSessionsCompleted) are
+ * performed atomically inside the save-workout transaction BEFORE this function runs.
+ * This function only reads the already-incremented counters and applies state
+ * transitions when the threshold has been reached.
+ */
 export async function transitionMesocycleState(mesocycleId: string): Promise<Mesocycle> {
   const mesocycle = await prisma.mesocycle.findUnique({
     where: { id: mesocycleId },
@@ -263,31 +272,27 @@ export async function transitionMesocycleState(mesocycleId: string): Promise<Mes
   }
 
   if (mesocycle.state === "ACTIVE_ACCUMULATION") {
-    const nextAccumulationCount = mesocycle.accumulationSessionsCompleted + 1;
-    const shouldEnterDeload = nextAccumulationCount >= ACCUMULATION_SESSION_THRESHOLD;
+    // Counter already incremented in the save transaction; just check threshold.
+    if (mesocycle.accumulationSessionsCompleted < ACCUMULATION_SESSION_THRESHOLD) {
+      return mesocycle;
+    }
     const updated = await prisma.mesocycle.update({
       where: { id: mesocycle.id },
-      data: {
-        accumulationSessionsCompleted: nextAccumulationCount,
-        state: shouldEnterDeload ? "ACTIVE_DELOAD" : mesocycle.state,
-      },
+      data: { state: "ACTIVE_DELOAD" },
     });
     return updated;
   }
 
-  const nextDeloadCount = mesocycle.deloadSessionsCompleted + 1;
-  const shouldComplete = nextDeloadCount >= DELOAD_SESSION_THRESHOLD;
+  // ACTIVE_DELOAD: counter already incremented in the save transaction.
+  if (mesocycle.deloadSessionsCompleted < DELOAD_SESSION_THRESHOLD) {
+    return mesocycle;
+  }
   const updated = await prisma.mesocycle.update({
     where: { id: mesocycle.id },
-    data: {
-      deloadSessionsCompleted: nextDeloadCount,
-      state: shouldComplete ? "COMPLETED" : mesocycle.state,
-    },
+    data: { state: "COMPLETED" },
   });
 
-  if (shouldComplete) {
-    await initializeNextMesocycle(updated);
-  }
+  await initializeNextMesocycle(updated);
 
   return updated;
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 type RestTimerProps = {
   durationSeconds: number;
@@ -10,19 +10,118 @@ type RestTimerProps = {
 
 export function RestTimer({ durationSeconds, onDismiss, onAdjust }: RestTimerProps) {
   const [remaining, setRemaining] = useState(durationSeconds);
+  const [muted, setMuted] = useState(false);
+  const endAtRef = useRef<number>(0);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const completedRef = useRef(false);
+  const audioContextRef = useRef<AudioContext | null>(null);
 
-  useEffect(() => {
-    setRemaining(durationSeconds);
-  }, [durationSeconds]);
+  const initializeAudioContext = useCallback(() => {
+    if (typeof window === "undefined") {
+      return null;
+    }
+    if (audioContextRef.current) {
+      return audioContextRef.current;
+    }
+    const Context =
+      window.AudioContext ??
+      (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Context) {
+      return null;
+    }
+    audioContextRef.current = new Context();
+    return audioContextRef.current;
+  }, []);
 
-  useEffect(() => {
-    if (remaining <= 0) {
-      onDismiss();
+  const playCompletionAlert = useCallback(() => {
+    if (muted) {
       return;
     }
-    const id = setInterval(() => setRemaining((r) => r - 1), 1000);
-    return () => clearInterval(id);
-  }, [remaining, onDismiss]);
+    if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+      navigator.vibrate([200, 100, 200]);
+      return;
+    }
+    const context = audioContextRef.current;
+    if (!context) {
+      return;
+    }
+    const oscillator = context.createOscillator();
+    const gainNode = context.createGain();
+    oscillator.type = "sine";
+    oscillator.frequency.value = 440;
+    gainNode.gain.setValueAtTime(0.001, context.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.15, context.currentTime + 0.02);
+    gainNode.gain.exponentialRampToValueAtTime(0.001, context.currentTime + 0.2);
+    oscillator.connect(gainNode);
+    gainNode.connect(context.destination);
+    oscillator.start();
+    oscillator.stop(context.currentTime + 0.2);
+  }, [muted]);
+
+  const clearTimer = useCallback(() => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+  }, []);
+
+  const tick = useCallback(() => {
+    const remainingSeconds = Math.max(0, Math.ceil((endAtRef.current - Date.now()) / 1000));
+    setRemaining(remainingSeconds);
+    if (remainingSeconds <= 0 && !completedRef.current) {
+      completedRef.current = true;
+      clearTimer();
+      playCompletionAlert();
+      onDismiss();
+    }
+  }, [clearTimer, onDismiss, playCompletionAlert]);
+
+  useEffect(() => {
+    completedRef.current = false;
+    endAtRef.current = Date.now() + durationSeconds * 1000;
+    clearTimer();
+    intervalRef.current = setInterval(tick, 250);
+    const initialTickTimeout = setTimeout(() => {
+      tick();
+    }, 0);
+    return () => {
+      clearTimeout(initialTickTimeout);
+      clearTimer();
+    };
+  }, [clearTimer, durationSeconds, tick]);
+
+  useEffect(() => {
+    const initializeAudio = () => {
+      initializeAudioContext();
+      document.removeEventListener("pointerdown", initializeAudio);
+      document.removeEventListener("keydown", initializeAudio);
+    };
+    document.addEventListener("pointerdown", initializeAudio);
+    document.addEventListener("keydown", initializeAudio);
+    return () => {
+      document.removeEventListener("pointerdown", initializeAudio);
+      document.removeEventListener("keydown", initializeAudio);
+    };
+  }, [initializeAudioContext]);
+
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        tick();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, [tick]);
+
+  useEffect(() => {
+    return () => {
+      clearTimer();
+      if (audioContextRef.current) {
+        void audioContextRef.current.close();
+      }
+    };
+  }, [clearTimer]);
 
   const minutes = Math.floor(remaining / 60);
   const seconds = remaining % 60;
@@ -43,15 +142,21 @@ export function RestTimer({ durationSeconds, onDismiss, onAdjust }: RestTimerPro
       {onAdjust ? (
         <div className="mt-4 flex items-center justify-center gap-2">
           <button
-            className="inline-flex min-h-9 items-center justify-center rounded-full border border-slate-300 px-3 text-sm font-semibold text-slate-700"
-            onClick={() => onAdjust(-15)}
+            className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border border-slate-300 px-3 text-sm font-semibold text-slate-700"
+            onClick={() => {
+              initializeAudioContext();
+              onAdjust(-15);
+            }}
             type="button"
           >
             -15s
           </button>
           <button
-            className="inline-flex min-h-9 items-center justify-center rounded-full border border-slate-300 px-3 text-sm font-semibold text-slate-700"
-            onClick={() => onAdjust(15)}
+            className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border border-slate-300 px-3 text-sm font-semibold text-slate-700"
+            onClick={() => {
+              initializeAudioContext();
+              onAdjust(15);
+            }}
             type="button"
           >
             +15s
@@ -59,7 +164,18 @@ export function RestTimer({ durationSeconds, onDismiss, onAdjust }: RestTimerPro
         </div>
       ) : null}
       <button
-        className="mt-4 inline-flex min-h-9 items-center justify-center rounded-full border border-slate-300 px-4 text-sm font-semibold text-slate-700"
+        aria-pressed={muted}
+        className="mt-3 inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border border-slate-300 px-4 text-sm font-semibold text-slate-700"
+        onClick={() => {
+          initializeAudioContext();
+          setMuted((prev) => !prev);
+        }}
+        type="button"
+      >
+        {muted ? "Unmute alerts" : "Mute alerts"}
+      </button>
+      <button
+        className="mt-4 inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border border-slate-300 px-4 text-sm font-semibold text-slate-700"
         onClick={onDismiss}
         type="button"
       >

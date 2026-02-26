@@ -41,7 +41,8 @@ export function prescribeSetsReps(
   periodization?: PeriodizationModifiers,
   exerciseRepRange?: ExerciseRepRange,
   isIsolationAccessory = false,
-  overrideSetCount?: number
+  overrideSetCount?: number,
+  mesocycleRole?: "CORE_COMPOUND" | "ACCESSORY"
 ): WorkoutSet[] {
   if (isMainLift) {
     return prescribeMainLiftSets(
@@ -50,7 +51,8 @@ export function prescribeSetsReps(
       fatigueState,
       periodization,
       exerciseRepRange,
-      overrideSetCount
+      overrideSetCount,
+      mesocycleRole
     );
   }
   return prescribeAccessorySets(
@@ -60,7 +62,8 @@ export function prescribeSetsReps(
     periodization,
     exerciseRepRange,
     isIsolationAccessory,
-    overrideSetCount
+    overrideSetCount,
+    mesocycleRole
   );
 }
 
@@ -105,7 +108,8 @@ function prescribeMainLiftSets(
   fatigueState: FatigueState,
   periodization?: PeriodizationModifiers,
   exerciseRepRange?: ExerciseRepRange,
-  overrideSetCount?: number
+  overrideSetCount?: number,
+  mesocycleRole?: "CORE_COMPOUND" | "ACCESSORY"
 ): WorkoutSet[] {
   const goalRepRange = getGoalRepRanges(goals.primary);
   const effectiveMain = clampRepRange(goalRepRange.main, exerciseRepRange);
@@ -138,7 +142,8 @@ function prescribeMainLiftSets(
     goals,
     fatigueState,
     periodization,
-    false
+    false,
+    mesocycleRole
   );
 
   if (periodization?.isDeload) {
@@ -165,7 +170,8 @@ function prescribeAccessorySets(
   periodization?: PeriodizationModifiers,
   exerciseRepRange?: ExerciseRepRange,
   isIsolationAccessory = false,
-  overrideSetCount?: number
+  overrideSetCount?: number,
+  mesocycleRole?: "CORE_COMPOUND" | "ACCESSORY"
 ): WorkoutSet[] {
   const goalRepRange = getGoalRepRanges(goals.primary);
   const clampedAccessory = clampRepRange(goalRepRange.accessory, exerciseRepRange);
@@ -194,7 +200,8 @@ function prescribeAccessorySets(
     goals,
     fatigueState,
     periodization,
-    isIsolationAccessory
+    isIsolationAccessory,
+    mesocycleRole
   );
 
   return Array.from({ length: setCount }, (_, index) => ({
@@ -232,11 +239,18 @@ function resolveTargetRpe(
   goals: Goals,
   fatigueState: FatigueState,
   periodization?: PeriodizationModifiers,
-  isIsolationAccessory = false
+  isIsolationAccessory = false,
+  mesocycleRole?: "CORE_COMPOUND" | "ACCESSORY"
 ) {
   if (periodization?.lifecycleRirTarget) {
     const midpoint = (periodization.lifecycleRirTarget.min + periodization.lifecycleRirTarget.max) / 2;
-    const lifecycleRpe = 10 - midpoint;
+    const roleAdjustedRir =
+      mesocycleRole === "CORE_COMPOUND"
+        ? Math.min(periodization.lifecycleRirTarget.max, midpoint + 0.5)
+        : mesocycleRole === "ACCESSORY"
+          ? Math.max(periodization.lifecycleRirTarget.min, midpoint)
+          : midpoint;
+    const lifecycleRpe = 10 - roleAdjustedRir;
     return Number(lifecycleRpe.toFixed(1));
   }
   let targetRpe =

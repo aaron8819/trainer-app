@@ -34,4 +34,22 @@ describe("generate workout schemas", () => {
 
     expect(parsed.intent).toBe("push");
   });
+
+  it("ignores client-supplied roleListIncomplete=false", () => {
+    const parsed = generateFromIntentSchema.parse({
+      intent: "legs",
+      roleListIncomplete: false,
+    });
+
+    expect(parsed.roleListIncomplete).toBeUndefined();
+  });
+
+  it("accepts roleListIncomplete=true", () => {
+    const parsed = generateFromIntentSchema.parse({
+      intent: "legs",
+      roleListIncomplete: true,
+    });
+
+    expect(parsed.roleListIncomplete).toBe(true);
+  });
 });

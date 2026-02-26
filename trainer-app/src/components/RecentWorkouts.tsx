@@ -1,8 +1,9 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import DeleteWorkoutButton from "./DeleteWorkoutButton";
+import { WorkoutRowActions } from "./workout/WorkoutRowActions";
 
 type WorkoutListItem = {
   id: string;
@@ -40,11 +41,18 @@ export default function RecentWorkouts({
       .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
       .join(" ");
 
+  const countLabel = `${recentWorkouts.length} workout${recentWorkouts.length === 1 ? "" : "s"}`;
+
   return (
     <section className="mt-10">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">Recent Workouts</h2>
-        <span className="text-sm text-slate-500">Last 6 sessions</span>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-slate-500">{countLabel}</span>
+          <Link className="text-sm font-semibold text-slate-900" href="/history">
+            View all
+          </Link>
+        </div>
       </div>
       <div className="mt-4 space-y-3">
         {recentWorkouts.length === 0 ? (
@@ -59,12 +67,11 @@ export default function RecentWorkouts({
             >
               <div>
                 <p className="text-sm font-semibold">
-                  {workout.sessionIntent
-                    ? `${formatSessionIntent(workout.sessionIntent)} - ${new Date(workout.scheduledDate).toLocaleDateString()}`
-                    : `Workout ${new Date(workout.scheduledDate).toLocaleDateString()}`}
+                  {workout.sessionIntent ? formatSessionIntent(workout.sessionIntent) : "Workout"}
                 </p>
                 <p className="mt-1 text-xs text-slate-500">
-                  {new Date(workout.scheduledDate).toLocaleDateString()} · {workout.exercisesCount} exercises
+                  {new Date(workout.scheduledDate).toLocaleDateString()} · {workout.exercisesCount}{" "}
+                  exercises
                 </p>
               </div>
               <div className="flex items-center gap-3">
@@ -73,18 +80,7 @@ export default function RecentWorkouts({
                 >
                   {statusLabels[workout.status] ?? workout.status}
                 </span>
-                <Link
-                  className="inline-flex min-h-10 items-center rounded-full px-2 text-sm font-semibold text-slate-900"
-                  href={`/workout/${workout.id}`}
-                >
-                  View
-                </Link>
-                <Link
-                  className="inline-flex min-h-10 items-center rounded-full px-2 text-sm font-semibold text-slate-900"
-                  href={`/log/${workout.id}`}
-                >
-                  Log
-                </Link>
+                <WorkoutRowActions workout={workout} />
                 <DeleteWorkoutButton workoutId={workout.id} onDeleted={handleDeleted} />
               </div>
             </div>

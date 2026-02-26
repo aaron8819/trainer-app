@@ -46,5 +46,6 @@ export async function GET(
     prescriptionRationales: Object.fromEntries(result.prescriptionRationales),
     progressionReceipts: Object.fromEntries(result.progressionReceipts),
     filteredExercises: result.filteredExercises ?? [],
+    volumeCompliance: result.volumeCompliance,
   });
 }

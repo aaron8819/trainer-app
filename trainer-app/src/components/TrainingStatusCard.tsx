@@ -5,13 +5,6 @@ type TrainingStatusCardProps = {
   data: ProgramDashboardData | null;
 };
 
-const BLOCK_COACHING_CUES: Record<string, string> = {
-  accumulation: "Accumulation phase - build volume, work within 2-3 RIR.",
-  intensification: "Intensification phase - heavier loads, push to 0-1 RIR.",
-  realization: "Peak week - express your strength today.",
-  deload: "Deload week - keep loads light, focus on technique and recovery.",
-};
-
 function toTitleCase(value: string): string {
   return value
     .split(/[_\s-]+/)
@@ -20,18 +13,17 @@ function toTitleCase(value: string): string {
     .join(" ");
 }
 
-function getTargetRir(currentWeek: number, durationWeeks: number): string {
-  if (currentWeek >= durationWeeks) return "4-6 RIR";
-  if (currentWeek === durationWeeks - 1) return "0-1 RIR";
-  if (currentWeek >= durationWeeks - 2) return "1-2 RIR";
-  if (currentWeek >= 2) return "2-3 RIR";
-  return "3-4 RIR";
-}
-
-function getVolumeDotClass(directSets: number, mev: number, mav: number, mrv: number): string {
+export function getVolumeDotClass(
+  directSets: number,
+  target: number,
+  mev: number,
+  mav: number,
+  mrv: number
+): string {
   if (directSets >= mrv) return "bg-rose-500";
   if (directSets > mav && directSets < mrv) return "bg-amber-400";
-  if (directSets >= mev && directSets <= mav) return "bg-emerald-500";
+  if (directSets > target && directSets <= mav) return "bg-emerald-300";
+  if (directSets >= mev && directSets <= target) return "bg-emerald-500";
   return "bg-slate-300";
 }
 
@@ -48,13 +40,12 @@ export default function TrainingStatusCard({ data }: TrainingStatusCardProps) {
     );
   }
 
-  const { activeMeso, currentWeek, sessionsUntilDeload, deloadReadiness, volumeThisWeek } = data;
+  const { activeMeso, currentWeek, sessionsUntilDeload, deloadReadiness, volumeThisWeek, rirTarget, coachingCue } = data;
   const durationWeeks = activeMeso.durationWeeks;
-  const progressPct = Math.max(0, Math.min(100, (currentWeek / Math.max(1, durationWeeks)) * 100));
   const totalSessions = Math.max(0, (durationWeeks - 1) * data.daysPerWeek);
+  const cappedSessions = Math.min(activeMeso.completedSessions, totalSessions);
+  const progressPct = totalSessions > 0 ? Math.min((cappedSessions / totalSessions) * 100, 100) : 0;
   const blockType = activeMeso.currentBlockType ?? "accumulation";
-  const coachingCue = BLOCK_COACHING_CUES[blockType] ?? BLOCK_COACHING_CUES.accumulation;
-  const visibleVolumeRows = volumeThisWeek.filter((row) => row.mav > 0).slice(0, 8);
 
   return (
     <div className="rounded-2xl border border-slate-200 p-6 shadow-sm">
@@ -73,13 +64,15 @@ export default function TrainingStatusCard({ data }: TrainingStatusCardProps) {
           <div className="h-2 rounded-full bg-slate-900" style={{ width: `${progressPct}%` }} />
         </div>
         <p className="mt-2 text-xs text-slate-600">
-          Session {activeMeso.completedSessions} of ~{totalSessions}
+          Session {cappedSessions} of {totalSessions}
         </p>
       </div>
 
       <div className="mt-4 rounded-xl border border-slate-200 p-3">
         <p className="text-xs uppercase tracking-wide text-slate-500">Target RIR this week</p>
-        <p className="mt-1 text-sm font-semibold text-slate-900">{getTargetRir(currentWeek, durationWeeks)}</p>
+        <p className="mt-1 text-sm font-semibold text-slate-900">
+          {rirTarget ? `${rirTarget.min}-${rirTarget.max} RIR` : "—"}
+        </p>
       </div>
 
       <p
@@ -101,21 +94,33 @@ export default function TrainingStatusCard({ data }: TrainingStatusCardProps) {
         </div>
       ) : null}
 
-      {visibleVolumeRows.length > 0 ? (
-        <div className="mt-4 grid gap-2">
-          {visibleVolumeRows.map((row) => (
-            <div key={row.muscle} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 text-sm">
-              <p className="truncate text-slate-700">{toTitleCase(row.muscle)}</p>
-              <p className="text-slate-600">
-                {row.directSets} / {row.target}
-              </p>
-              <span
-                aria-hidden
-                className={`h-2.5 w-2.5 rounded-full ${getVolumeDotClass(row.directSets, row.mev, row.mav, row.mrv)}`}
-              />
-            </div>
-          ))}
-        </div>
+      {volumeThisWeek.length > 0 ? (
+        <>
+          <div className={`mt-4 grid gap-2${volumeThisWeek.length > 10 ? " max-h-64 overflow-y-auto" : ""}`}>
+            {volumeThisWeek.map((row) => (
+              <div
+                key={row.muscle}
+                className={`grid grid-cols-[1fr_auto_auto] items-center gap-3 rounded text-sm${row.directSets < row.target ? " border-l-2 border-amber-300 bg-amber-50 pl-1" : ""}`}
+              >
+                <p className="truncate text-slate-700">{toTitleCase(row.muscle)}</p>
+                <p className="text-slate-600">
+                  {row.directSets} / {row.target}
+                </p>
+                <span
+                  aria-hidden
+                  className={`h-2.5 w-2.5 rounded-full ${getVolumeDotClass(row.directSets, row.target, row.mev, row.mav, row.mrv)}`}
+                />
+              </div>
+            ))}
+          </div>
+          <p className="mt-1 flex flex-wrap items-center gap-x-3 text-xs text-slate-400">
+            <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500" />on track</span>
+            <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-300" />ahead of target</span>
+            <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-amber-400" />near MRV</span>
+            <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-rose-500" />at MRV</span>
+            <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-slate-300" />below MEV</span>
+          </p>
+        </>
       ) : null}
 
       <p className="mt-4 text-xs italic text-slate-600">{coachingCue}</p>

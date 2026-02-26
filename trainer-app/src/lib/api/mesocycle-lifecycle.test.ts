@@ -58,36 +58,28 @@ describe("mesocycle-lifecycle", () => {
     vi.clearAllMocks();
   });
 
-  it("increments accumulation counter for each performed transition call", async () => {
+  it("returns mesocycle unchanged when below accumulation threshold", async () => {
+    // Counter is pre-incremented in the save transaction; transitionMesocycleState only checks thresholds.
+    // accumulationSessionsCompleted=3 is well below threshold (12) → no update, no state change.
     mocks.mesocycleFindUnique.mockResolvedValue({
       id: "m1",
       state: "ACTIVE_ACCUMULATION",
       accumulationSessionsCompleted: 3,
       deloadSessionsCompleted: 0,
     });
-    mocks.mesocycleUpdate.mockResolvedValue({
-      id: "m1",
-      state: "ACTIVE_ACCUMULATION",
-      accumulationSessionsCompleted: 4,
-      deloadSessionsCompleted: 0,
-    });
 
     const updated = await transitionMesocycleState("m1");
-    expect(updated.accumulationSessionsCompleted).toBe(4);
-    expect(mocks.mesocycleUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          accumulationSessionsCompleted: 4,
-        }),
-      })
-    );
+    expect(updated.accumulationSessionsCompleted).toBe(3);
+    expect(updated.state).toBe("ACTIVE_ACCUMULATION");
+    expect(mocks.mesocycleUpdate).not.toHaveBeenCalled();
   });
 
   it("transitions ACTIVE_ACCUMULATION to ACTIVE_DELOAD at session 12", async () => {
+    // Save transaction has already incremented to 12; transitionMesocycleState reads 12 >= threshold.
     mocks.mesocycleFindUnique.mockResolvedValue({
       id: "m1",
       state: "ACTIVE_ACCUMULATION",
-      accumulationSessionsCompleted: 11,
+      accumulationSessionsCompleted: 12,
       deloadSessionsCompleted: 0,
     });
     mocks.mesocycleUpdate.mockResolvedValue({
@@ -99,22 +91,21 @@ describe("mesocycle-lifecycle", () => {
 
     const updated = await transitionMesocycleState("m1");
     expect(updated.state).toBe("ACTIVE_DELOAD");
+    // Counter write is absent — only state changes here.
     expect(mocks.mesocycleUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: {
-          accumulationSessionsCompleted: 12,
-          state: "ACTIVE_DELOAD",
-        },
+        data: { state: "ACTIVE_DELOAD" },
       })
     );
   });
 
   it("transitions ACTIVE_DELOAD to COMPLETED at session 3 and initializes next mesocycle", async () => {
+    // Save transaction has already incremented deloadSessionsCompleted to 3; transitionMesocycleState reads 3 >= threshold.
     mocks.mesocycleFindUnique.mockResolvedValue({
       id: "m1",
       state: "ACTIVE_DELOAD",
       accumulationSessionsCompleted: 12,
-      deloadSessionsCompleted: 2,
+      deloadSessionsCompleted: 3,
     });
     mocks.mesocycleUpdate.mockResolvedValue({
       id: "m1",
@@ -221,26 +212,64 @@ describe("mesocycle-lifecycle", () => {
     ).toBe(5);
   });
 
-  it("computes weekly volume targets for back/biceps/rear delts across all 5 weeks", () => {
+  it("uses evidence-based landmarks for rear delts, lats, and upper back", () => {
     const meso = { volumeRampConfig: { weekTargets: {} } };
 
-    expect(getWeeklyVolumeTarget(meso, "Back", 1)).toBe(10);
-    expect(getWeeklyVolumeTarget(meso, "Back", 2)).toBe(12);
-    expect(getWeeklyVolumeTarget(meso, "Back", 3)).toBe(14);
-    expect(getWeeklyVolumeTarget(meso, "Back", 4)).toBe(22);
-    expect(getWeeklyVolumeTarget(meso, "Back", 5)).toBe(10);
+    expect(getWeeklyVolumeTarget(meso, "Rear delts", 1)).toBe(4);
+    expect(getWeeklyVolumeTarget(meso, "Rear delts", 4)).toBe(12);
+    expect(getWeeklyVolumeTarget(meso, "Lats", 1)).toBe(8);
+    expect(getWeeklyVolumeTarget(meso, "Lats", 4)).toBe(16);
+    expect(getWeeklyVolumeTarget(meso, "Upper Back", 1)).toBe(6);
+    expect(getWeeklyVolumeTarget(meso, "Upper Back", 4)).toBe(14);
+  });
 
-    expect(getWeeklyVolumeTarget(meso, "Biceps", 1)).toBe(8);
-    expect(getWeeklyVolumeTarget(meso, "Biceps", 2)).toBe(10);
-    expect(getWeeklyVolumeTarget(meso, "Biceps", 3)).toBe(12);
-    expect(getWeeklyVolumeTarget(meso, "Biceps", 4)).toBe(20);
-    expect(getWeeklyVolumeTarget(meso, "Biceps", 5)).toBe(9);
+  it("interpolates accumulation volume targets monotonically for all configured muscle groups", () => {
+    const meso = { volumeRampConfig: { weekTargets: {} } };
+    const muscles = [
+      "lats",
+      "upper_back",
+      "rear_delts",
+      "biceps",
+      "chest",
+      "front_delts",
+      "side_delts",
+      "quads",
+      "hamstrings",
+      "glutes",
+      "triceps",
+      "calves",
+      "core",
+      "forearms",
+      "adductors",
+      "neck",
+      "lower_back",
+      "abductors",
+      "abs",
+      "traps",
+      "rotator_cuff",
+    ];
 
-    expect(getWeeklyVolumeTarget(meso, "Rear delts", 1)).toBe(8);
-    expect(getWeeklyVolumeTarget(meso, "Rear delts", 2)).toBe(10);
-    expect(getWeeklyVolumeTarget(meso, "Rear delts", 3)).toBe(12);
-    expect(getWeeklyVolumeTarget(meso, "Rear delts", 4)).toBe(18);
-    expect(getWeeklyVolumeTarget(meso, "Rear delts", 5)).toBe(8);
+    for (const muscle of muscles) {
+      const w1 = getWeeklyVolumeTarget(meso, muscle, 1);
+      const w2 = getWeeklyVolumeTarget(meso, muscle, 2);
+      const w3 = getWeeklyVolumeTarget(meso, muscle, 3);
+      const w4 = getWeeklyVolumeTarget(meso, muscle, 4);
+      expect(w2).toBeGreaterThanOrEqual(w1);
+      expect(w3).toBeGreaterThanOrEqual(w2);
+      expect(w4).toBeGreaterThanOrEqual(w3);
+
+      const maxAllowedJump = (w4 - w1) / 2;
+      expect(w2 - w1).toBeLessThanOrEqual(maxAllowedJump);
+      expect(w3 - w2).toBeLessThanOrEqual(maxAllowedJump);
+      expect(w4 - w3).toBeLessThanOrEqual(maxAllowedJump);
+    }
+  });
+
+  it("keeps deload target near 45% of W4 volume", () => {
+    const meso = { volumeRampConfig: { weekTargets: {} } };
+    const w4 = getWeeklyVolumeTarget(meso, "Lats", 4);
+    const w5 = getWeeklyVolumeTarget(meso, "Lats", 5);
+    expect(w5).toBe(Math.round(w4 * 0.45));
   });
 
   it("returns correct RIR bands for all 5 weeks", () => {
@@ -345,4 +374,3 @@ describe("mesocycle-lifecycle", () => {
     );
   });
 });
-

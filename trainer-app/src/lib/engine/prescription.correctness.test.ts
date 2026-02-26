@@ -74,4 +74,33 @@ describe("prescription correctness", () => {
       hypertrophy.workout.accessories[0].sets[0].restSeconds ?? 0
     );
   });
+
+  it("applies role-aware lifecycle RIR offsets in W2 and keeps values within band bounds", () => {
+    const roleAwareTemplate: TemplateExerciseInput[] = [
+      { exercise: mainLift, orderIndex: 0, mesocycleRole: "CORE_COMPOUND" },
+      { exercise: accessory, orderIndex: 1, mesocycleRole: "ACCESSORY" },
+    ];
+
+    const result = generateWorkoutFromTemplate(roleAwareTemplate, {
+      ...commonOptions,
+      goals: { primary: "hypertrophy" as const, secondary: "none" as const },
+      periodization: {
+        setMultiplier: 1,
+        rpeOffset: 0,
+        isDeload: false,
+        backOffMultiplier: 0.9,
+        lifecycleRirTarget: { min: 2, max: 3 },
+      },
+    });
+
+    const compoundRpe = result.workout.mainLifts[0].sets[0].targetRpe ?? 0;
+    const accessoryRpe = result.workout.accessories[0].sets[0].targetRpe ?? 0;
+    const compoundRir = 10 - compoundRpe;
+    const accessoryRir = 10 - accessoryRpe;
+
+    expect(compoundRir).toBe(3);
+    expect(accessoryRir).toBe(2.5);
+    expect(compoundRir).toBeLessThanOrEqual(3);
+    expect(accessoryRir).toBeGreaterThanOrEqual(2);
+  });
 });

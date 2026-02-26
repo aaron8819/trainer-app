@@ -44,4 +44,5 @@ export type ProgressionReceipt = {
     rpe: number | null;
   };
   trigger: ProgressionReceiptTrigger;
+  decisionLog?: string[];
 };

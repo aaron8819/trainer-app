@@ -13,12 +13,20 @@ import type { MappedGenerationContext } from "./types";
 const CONTINUITY_USER_PREFERENCE_WEIGHT = 0.35;
 const CONTINUITY_MIN_ROTATION_WEIGHT = 0.01;
 
+export const SESSION_CAPS = {
+  minExercises: 3,
+  // Evidence-informed practical upper bound for intermediates before marginal per-session returns drop.
+  maxExercises: 6,
+  // Evidence-informed direct-set ceiling where per-session returns usually diminish beyond ~10-12 hard sets.
+  maxDirectSetsPerMuscle: 12,
+} as const;
+
 function getMostRecentPerformedIntentEntry(
   history: WorkoutHistoryEntry[],
   sessionIntent: SessionIntent
 ): WorkoutHistoryEntry | undefined {
   return sortHistoryByDateDesc(filterPerformedHistory(history)).find(
-    (entry) => entry.sessionIntent === sessionIntent
+    (entry) => entry.sessionIntent === sessionIntent || entry.forcedSplit === sessionIntent
   );
 }
 
@@ -234,8 +242,8 @@ export function buildSelectionObjective(
     volumeCeiling,
     painConflicts: painConflictIds,
     userAvoids: new Set(mapped.mappedPreferences?.avoidExerciseIds ?? []),
-    minExercises: 3,
-    maxExercises: 6,
+    minExercises: SESSION_CAPS.minExercises,
+    maxExercises: SESSION_CAPS.maxExercises,
     minMainLifts: sessionIntent === "body_part" ? 0 : 1,
     maxMainLifts: 3,
     minAccessories: 2,

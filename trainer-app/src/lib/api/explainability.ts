@@ -1,5 +1,11 @@
 import { prisma } from "@/lib/db/prisma";
-import type { WorkoutExplanation, FilteredExerciseSummary } from "@/lib/engine/explainability";
+import type {
+  WorkoutExplanation,
+  FilteredExerciseSummary,
+  MuscleVolumeCompliance,
+  VolumeComplianceStatus,
+} from "@/lib/engine/explainability";
+import { VOLUME_LANDMARKS, computeWeeklyVolumeTarget } from "@/lib/engine/volume-landmarks";
 import {
   explainSessionContext,
   explainExerciseRationale,
@@ -27,6 +33,7 @@ import {
   hasPRPotential,
   SECONDARY_VOLUME_MULTIPLIER,
 } from "./explainability/stats";
+import { computeDoubleProgressionDecision } from "@/lib/engine/progression";
 
 type WorkoutWithExplainabilityRelations = Prisma.WorkoutGetPayload<{
   include: {
@@ -210,12 +217,18 @@ export async function generateWorkoutExplanation(
 
     prescriptionRationales.set(workoutExercise.exerciseId, rationale);
 
+    const topSet = engineSets.find((set) => set.targetReps != null || set.targetRepRange != null);
+    const repRange: [number, number] = topSet?.targetRepRange
+      ? [topSet.targetRepRange.min, topSet.targetRepRange.max]
+      : [topSet?.targetReps ?? 8, topSet?.targetReps ?? 8];
     const lastPerformed = await loadLatestPerformedSetSummary(
       workout.userId,
       workout.id,
       workoutExercise.exerciseId,
       workout.scheduledDate,
-      workoutExercise.isMainLift
+      workoutExercise.isMainLift,
+      repRange,
+      workoutExercise.exercise.exerciseEquipment.map((item) => item.equipment.type)
     );
     const todayPrescription = summarizeTodayTopSet(engineSets);
     const isReadinessScaled = readinessScaledExerciseIds.has(workoutExercise.exerciseId);
@@ -242,6 +255,8 @@ export async function generateWorkoutExplanation(
       (workoutStats.musclesApproachingMRV?.length ?? 0) > 0,
   });
 
+  const volumeCompliance = await computeVolumeCompliance(workout);
+
   return {
     confidence,
     sessionContext,
@@ -250,6 +265,7 @@ export async function generateWorkoutExplanation(
     prescriptionRationales,
     progressionReceipts,
     filteredExercises,
+    volumeCompliance,
   };
 }
 
@@ -840,8 +856,10 @@ async function loadLatestPerformedSetSummary(
   workoutId: string,
   exerciseId: string,
   asOfDate: Date,
-  isMainLift: boolean
-): Promise<ProgressionSetSummary | null> {
+  isMainLift: boolean,
+  repRange: [number, number],
+  equipment: string[]
+): Promise<(ProgressionSetSummary & { decisionLog?: string[] }) | null> {
   const previous = await prisma.workoutExercise.findFirst({
     where: {
       exerciseId,
@@ -856,6 +874,7 @@ async function loadLatestPerformedSetSummary(
       workout: {
         select: {
           scheduledDate: true,
+          selectionMode: true,
         },
       },
       sets: {
@@ -878,7 +897,12 @@ async function loadLatestPerformedSetSummary(
 
   const performedLogs = previous.sets
     .map((set) => ({ setIndex: set.setIndex, log: set.logs[0] }))
-    .filter((entry) => Boolean(entry.log) && !entry.log?.wasSkipped);
+    .filter(
+      (entry) =>
+        Boolean(entry.log) &&
+        !entry.log?.wasSkipped &&
+        (entry.log?.actualRpe == null || entry.log.actualRpe >= 6)
+    );
   if (performedLogs.length === 0) {
     return null;
   }
@@ -926,12 +950,239 @@ async function loadLatestPerformedSetSummary(
           .filter((entry) => entry.log?.actualLoad === anchorLoad)
           .sort((a, b) => b.setIndex - a.setIndex)[0];
 
+  const decision = computeDoubleProgressionDecision(
+    performedLogs.map((entry) => ({
+      reps: entry.log?.actualReps ?? 0,
+      rpe: entry.log?.actualRpe ?? undefined,
+      load: entry.log?.actualLoad ?? undefined,
+    })),
+    repRange,
+    resolveProgressionEquipment(equipment),
+    {
+      priorSessionCount: await countPerformedHistorySessions(userId, exerciseId, workoutId),
+      historyConfidenceScale: await resolveExplainabilityHistoryConfidenceScale({
+        userId,
+        workoutId,
+        previousSelectionMode: previous.workout.selectionMode ?? undefined,
+        previousScheduledDate: performedDate ?? undefined,
+        exerciseId,
+        performedLogs,
+      }),
+      confidenceReasons: await resolveExplainabilityConfidenceNotes({
+        userId,
+        workoutId,
+        previousSelectionMode: previous.workout.selectionMode ?? undefined,
+        previousScheduledDate: performedDate ?? undefined,
+        exerciseId,
+        performedLogs,
+      }),
+    }
+  );
+
   return {
     reps: representative?.log?.actualReps ?? null,
     load: anchorLoad,
     rpe: representative?.log?.actualRpe ?? null,
     performedAt: performedDate ? performedDate.toISOString() : null,
+    decisionLog: decision?.decisionLog,
   };
+}
+
+async function countPerformedHistorySessions(
+  userId: string,
+  exerciseId: string,
+  excludeWorkoutId: string
+): Promise<number> {
+  const countFn = (prisma as unknown as {
+    workoutExercise?: {
+      count?: (args: unknown) => Promise<number>;
+    };
+  }).workoutExercise?.count;
+  if (!countFn) {
+    return 1;
+  }
+  return countFn({
+    where: {
+      exerciseId,
+      workout: {
+        userId,
+        id: { not: excludeWorkoutId },
+        status: { in: [...PERFORMED_WORKOUT_STATUSES] },
+      },
+    },
+  });
+}
+
+type ExplainabilityConfidenceInput = {
+  userId: string;
+  workoutId: string;
+  exerciseId: string;
+  previousSelectionMode?: string;
+  previousScheduledDate?: Date;
+  performedLogs: Array<{
+    setIndex: number;
+    log?: { actualRpe: number | null; actualLoad: number | null } | undefined;
+  }>;
+};
+
+async function resolveExplainabilityHistoryConfidenceScale(
+  input: ExplainabilityConfidenceInput
+): Promise<number> {
+  const { previousSelectionMode } = input;
+  if (previousSelectionMode !== "MANUAL") {
+    return previousSelectionMode === "INTENT" ? 1 : 0.8;
+  }
+  const anomalyFlags = await resolveManualAnomalyFlags(input);
+  if (anomalyFlags.length > 0) {
+    return 0.3;
+  }
+
+  const hasIntentHistory = await prisma.workoutExercise.findFirst({
+    where: {
+      exerciseId: input.exerciseId,
+      workout: {
+        userId: input.userId,
+        id: { not: input.workoutId },
+        status: { in: [...PERFORMED_WORKOUT_STATUSES] },
+        selectionMode: "INTENT",
+      },
+    },
+    select: { id: true },
+  });
+  return hasIntentHistory ? 0.7 : 1;
+}
+
+async function resolveExplainabilityConfidenceNotes(
+  input: ExplainabilityConfidenceInput
+): Promise<string[]> {
+  const notes: string[] = [];
+  if (input.previousSelectionMode === "INTENT") {
+    notes.push("INTENT session confidence=1.00.");
+    return notes;
+  }
+  if (input.previousSelectionMode !== "MANUAL") {
+    notes.push("Non-INTENT session confidence=0.80.");
+    return notes;
+  }
+
+  const anomalyFlags = await resolveManualAnomalyFlags(input);
+  if (anomalyFlags.length > 0) {
+    notes.push(
+      `MANUAL anomaly flag(s): ${anomalyFlags.join(", ")}. Confidence reduced to 0.30.`
+    );
+    return notes;
+  }
+
+  const hasIntentHistory = await prisma.workoutExercise.findFirst({
+    where: {
+      exerciseId: input.exerciseId,
+      workout: {
+        userId: input.userId,
+        id: { not: input.workoutId },
+        status: { in: [...PERFORMED_WORKOUT_STATUSES] },
+        selectionMode: "INTENT",
+      },
+    },
+    select: { id: true },
+  });
+  notes.push(
+    hasIntentHistory
+      ? "MANUAL session discounted (confidence=0.70) because INTENT history exists."
+      : "MANUAL-only history detected; confidence held at 1.00."
+  );
+  return notes;
+}
+
+async function resolveManualAnomalyFlags(
+  input: ExplainabilityConfidenceInput
+): Promise<string[]> {
+  const anomalyFlags: string[] = [];
+  const rpes = input.performedLogs
+    .map((entry) => entry.log?.actualRpe)
+    .filter((value): value is number => Number.isFinite(value));
+  if (rpes.length > 0 && rpes.every((rpe) => rpe === rpes[0])) {
+    anomalyFlags.push("uniform_rpe_synthetic");
+  }
+
+  const rpeTenCount = rpes.filter((rpe) => rpe === 10).length;
+  if (rpes.length > 0 && rpeTenCount / rpes.length > 0.5) {
+    anomalyFlags.push("rpe10_majority");
+  }
+
+  const currentModal = resolvePerformedModalLoad(input.performedLogs);
+  if (currentModal != null && input.previousScheduledDate) {
+    const recentIntent = await prisma.workoutExercise.findFirst({
+      where: {
+        exerciseId: input.exerciseId,
+        workout: {
+          userId: input.userId,
+          id: { not: input.workoutId },
+          status: { in: [...PERFORMED_WORKOUT_STATUSES] },
+          selectionMode: "INTENT",
+          scheduledDate: { lt: input.previousScheduledDate },
+        },
+      },
+      orderBy: { workout: { scheduledDate: "desc" } },
+      include: {
+        sets: {
+          orderBy: { setIndex: "asc" },
+          include: {
+            logs: { orderBy: { completedAt: "desc" }, take: 1 },
+          },
+        },
+      },
+    });
+
+    if (recentIntent) {
+      const intentLogs = recentIntent.sets.map((set) => ({
+        setIndex: set.setIndex,
+        log: set.logs[0]
+          ? {
+              actualRpe: set.logs[0].actualRpe,
+              actualLoad: set.logs[0].actualLoad,
+            }
+          : undefined,
+      }));
+      const intentModal = resolvePerformedModalLoad(intentLogs);
+      if (intentModal != null && intentModal > 0 && currentModal < intentModal * 0.5) {
+        anomalyFlags.push("load_regression_vs_intent");
+      }
+    }
+  }
+
+  return anomalyFlags;
+}
+
+function resolvePerformedModalLoad(
+  performedLogs: Array<{
+    setIndex: number;
+    log?: { actualRpe: number | null; actualLoad: number | null } | undefined;
+  }>
+): number | null {
+  const frequency = new Map<number, number>();
+  for (const entry of performedLogs) {
+    if (
+      entry.log?.actualRpe != null &&
+      Number.isFinite(entry.log.actualRpe) &&
+      entry.log.actualRpe < 6
+    ) {
+      continue;
+    }
+    if (!Number.isFinite(entry.log?.actualLoad) || (entry.log?.actualLoad ?? 0) < 0) {
+      continue;
+    }
+    const load = entry.log?.actualLoad as number;
+    frequency.set(load, (frequency.get(load) ?? 0) + 1);
+  }
+  if (frequency.size === 0) {
+    return null;
+  }
+  return Array.from(frequency.entries()).sort((a, b) => {
+    if (b[1] !== a[1]) {
+      return b[1] - a[1];
+    }
+    return b[0] - a[0];
+  })[0]?.[0] ?? null;
 }
 
 function summarizeTodayTopSet(
@@ -947,7 +1198,7 @@ function summarizeTodayTopSet(
 }
 
 function buildProgressionReceipt(
-  lastPerformed: ProgressionSetSummary | null,
+  lastPerformed: (ProgressionSetSummary & { decisionLog?: string[] }) | null,
   todayPrescription: ProgressionSetSummary | null,
   deloadDecision: DeloadDecision | null,
   readinessScaled: boolean
@@ -992,5 +1243,159 @@ function buildProgressionReceipt(
       rpe: rpeDelta,
     },
     trigger,
+    decisionLog: lastPerformed?.decisionLog,
   };
+}
+
+function resolveProgressionEquipment(equipment: string[]): "barbell" | "dumbbell" | "cable" | "other" {
+  const normalized = equipment.map((item) => item.trim().toLowerCase());
+  if (normalized.includes("barbell")) return "barbell";
+  if (normalized.includes("dumbbell")) return "dumbbell";
+  if (normalized.includes("cable")) return "cable";
+  return "other";
+}
+
+// ---------------------------------------------------------------------------
+// Volume Compliance (post-generation, read-only)
+// ---------------------------------------------------------------------------
+
+const VOLUME_COMPLIANCE_SEVERITY: VolumeComplianceStatus[] = [
+  "OVER_MAV",
+  "AT_MAV",
+  "APPROACHING_MAV",
+  "OVER_TARGET",
+  "ON_TARGET",
+  "APPROACHING_TARGET",
+  "UNDER_MEV",
+];
+
+function computeVolumeComplianceStatus(
+  projectedTotal: number,
+  weeklyTarget: number,
+  mev: number,
+  mav: number
+): VolumeComplianceStatus {
+  if (projectedTotal > mav) return "OVER_MAV";
+  if (projectedTotal === mav) return "AT_MAV";
+  if (projectedTotal > mav * 0.85) return "APPROACHING_MAV";
+  if (projectedTotal > weeklyTarget) return "OVER_TARGET";
+  if (projectedTotal >= weeklyTarget) return "ON_TARGET";
+  if (projectedTotal >= mev) return "APPROACHING_TARGET";
+  return "UNDER_MEV";
+}
+
+async function computeVolumeCompliance(
+  workout: WorkoutWithExplainabilityRelations
+): Promise<MuscleVolumeCompliance[]> {
+  if (!workout.mesocycleId || workout.mesocycleWeekSnapshot == null) {
+    return [];
+  }
+
+  const mesocycleId = workout.mesocycleId;
+  const mesocycleWeekSnapshot = workout.mesocycleWeekSnapshot;
+
+  const meso = await prisma.mesocycle.findUnique({
+    where: { id: mesocycleId },
+    select: { durationWeeks: true, state: true },
+  });
+  if (!meso) return [];
+
+  const isDeload = meso.state === "ACTIVE_DELOAD";
+  const mesoLength = meso.durationWeeks;
+
+  // Query prior performed workouts in the same mesocycle week, excluding this workout
+  const priorWorkouts = await prisma.workout.findMany({
+    where: {
+      mesocycleId,
+      mesocycleWeekSnapshot,
+      status: { in: [...PERFORMED_WORKOUT_STATUSES] },
+      id: { not: workout.id },
+    },
+    include: {
+      exercises: {
+        include: {
+          exercise: {
+            include: {
+              exerciseMuscles: { include: { muscle: true } },
+            },
+          },
+          sets: {
+            include: {
+              logs: { orderBy: { completedAt: "desc" }, take: 1 },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  // Count performed direct sets per primary muscle from prior sessions
+  const setsLoggedBefore = new Map<string, number>();
+  for (const priorWorkout of priorWorkouts) {
+    for (const we of priorWorkout.exercises) {
+      const performedSets = we.sets.filter((s) => {
+        const latest = s.logs[0];
+        return Boolean(latest) && !latest?.wasSkipped;
+      }).length;
+      if (performedSets === 0) continue;
+      for (const em of we.exercise.exerciseMuscles) {
+        if (em.role === "PRIMARY") {
+          const muscle = em.muscle.name;
+          setsLoggedBefore.set(muscle, (setsLoggedBefore.get(muscle) ?? 0) + performedSets);
+        }
+      }
+    }
+  }
+
+  // Count prescribed direct sets per primary muscle for this session
+  // (sets that are not explicitly skipped via a log)
+  const setsPrescribed = new Map<string, number>();
+  for (const we of workout.exercises) {
+    const prescribedSets = we.sets.filter(
+      (s) => !s.logs[0]?.wasSkipped
+    ).length;
+    if (prescribedSets === 0) continue;
+    for (const em of we.exercise.exerciseMuscles) {
+      if (em.role === "PRIMARY") {
+        const muscle = em.muscle.name;
+        setsPrescribed.set(muscle, (setsPrescribed.get(muscle) ?? 0) + prescribedSets);
+      }
+    }
+  }
+
+  // Build compliance rows for muscles with prescribed sets in this session
+  const compliance: MuscleVolumeCompliance[] = [];
+  for (const [muscle, prescribed] of setsPrescribed.entries()) {
+    const landmarks = VOLUME_LANDMARKS[muscle];
+    if (!landmarks) continue;
+
+    const before = setsLoggedBefore.get(muscle) ?? 0;
+    const projected = before + prescribed;
+    const weeklyTarget = computeWeeklyVolumeTarget(
+      landmarks,
+      mesocycleWeekSnapshot,
+      mesoLength,
+      isDeload
+    );
+
+    compliance.push({
+      muscle,
+      setsLoggedBeforeSession: before,
+      setsPrescribedThisSession: prescribed,
+      projectedTotal: projected,
+      weeklyTarget,
+      mev: landmarks.mev,
+      mav: landmarks.mav,
+      status: computeVolumeComplianceStatus(projected, weeklyTarget, landmarks.mev, landmarks.mav),
+    });
+  }
+
+  // Sort by severity descending (OVER_MAV first, UNDER_MEV last)
+  compliance.sort(
+    (a, b) =>
+      VOLUME_COMPLIANCE_SEVERITY.indexOf(a.status) -
+      VOLUME_COMPLIANCE_SEVERITY.indexOf(b.status)
+  );
+
+  return compliance;
 }

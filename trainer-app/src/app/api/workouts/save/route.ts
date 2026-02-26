@@ -217,17 +217,21 @@ export async function POST(request: Request) {
         }
 
         const allSets = snapshot.exercises.flatMap((exercise) => exercise.sets);
-        const resolvedSetCount = allSets.filter((set) => Boolean(set.logs[0])).length;
-        const effectiveSetCount = allSets.filter((set) => {
-          const log = set.logs[0];
-          return Boolean(log) && !log?.wasSkipped;
-        }).length;
+        const isResolvedLog = (log: { actualReps: number | null; actualRpe: number | null; actualLoad: number | null; wasSkipped: boolean } | undefined) =>
+          Boolean(log) &&
+          (log?.wasSkipped === true || log?.actualReps != null || log?.actualRpe != null || log?.actualLoad != null);
+        const isEffectiveLog = (log: { actualReps: number | null; actualRpe: number | null; actualLoad: number | null; wasSkipped: boolean } | undefined) =>
+          Boolean(log) &&
+          log?.wasSkipped !== true &&
+          (log?.actualReps != null || log?.actualRpe != null);
+        const effectiveSetCount = allSets.filter((set) => isEffectiveLog(set.logs[0])).length;
+        const resolvedSignalSetCount = allSets.filter((set) => isResolvedLog(set.logs[0])).length;
 
         if (effectiveSetCount === 0) {
           throw new Error("WORKOUT_COMPLETION_EMPTY");
         }
         finalStatus =
-          resolvedSetCount < allSets.length
+          resolvedSignalSetCount < allSets.length
             ? "PARTIAL"
             : "COMPLETED";
       } else if (action === "mark_partial") {
@@ -249,34 +253,66 @@ export async function POST(request: Request) {
 
       const shouldTransitionPerformed =
         isPerformedWorkoutStatus(finalStatus) && !isPerformedWorkoutStatus(existingWorkout?.status);
-      const shouldSetMesoSnapshot =
-        shouldTransitionPerformed && Boolean(existingWorkout?.mesocycleId);
+      let resolvedMesocycleId = existingWorkout?.mesocycleId ?? null;
+      let resolvedMesocycle:
+        | {
+            id: string;
+            state: "ACTIVE_ACCUMULATION" | "ACTIVE_DELOAD" | "COMPLETED";
+            accumulationSessionsCompleted: number;
+            deloadSessionsCompleted: number;
+            sessionsPerWeek: number;
+          }
+        | null = null;
+
+      if (shouldTransitionPerformed) {
+        if (resolvedMesocycleId) {
+          resolvedMesocycle = await tx.mesocycle.findUnique({
+            where: { id: resolvedMesocycleId },
+            select: {
+              id: true,
+              state: true,
+              accumulationSessionsCompleted: true,
+              deloadSessionsCompleted: true,
+              sessionsPerWeek: true,
+            },
+          });
+        } else {
+          resolvedMesocycle = await tx.mesocycle.findFirst({
+            where: {
+              isActive: true,
+              macroCycle: { userId: user.id },
+            },
+            select: {
+              id: true,
+              state: true,
+              accumulationSessionsCompleted: true,
+              deloadSessionsCompleted: true,
+              sessionsPerWeek: true,
+            },
+          });
+          resolvedMesocycleId = resolvedMesocycle?.id ?? null;
+        }
+
+        if (!resolvedMesocycleId || !resolvedMesocycle) {
+          throw new Error("ACTIVE_MESOCYCLE_NOT_FOUND");
+        }
+      }
+
+      const shouldSetMesoSnapshot = shouldTransitionPerformed && Boolean(resolvedMesocycleId);
       let mesoSnapshot:
         | { week: number; phase: "ACCUMULATION" | "DELOAD"; session: number }
         | undefined;
-      if (shouldSetMesoSnapshot && existingWorkout?.mesocycleId) {
-        const mesocycle = await tx.mesocycle.findUnique({
-          where: { id: existingWorkout.mesocycleId },
-          select: {
-            id: true,
-            state: true,
-            accumulationSessionsCompleted: true,
-            deloadSessionsCompleted: true,
-            sessionsPerWeek: true,
-          },
-        });
-        if (mesocycle) {
-          const week = getCurrentMesoWeek(mesocycle);
-          const session =
-            mesocycle.state === "ACTIVE_DELOAD"
-              ? Math.min(3, mesocycle.deloadSessionsCompleted + 1)
-              : Math.max(1, (mesocycle.accumulationSessionsCompleted % Math.max(1, mesocycle.sessionsPerWeek)) + 1);
-          mesoSnapshot = {
-            week,
-            phase: mesocycle.state === "ACTIVE_ACCUMULATION" ? "ACCUMULATION" : "DELOAD",
-            session,
-          };
-        }
+      if (shouldSetMesoSnapshot && resolvedMesocycle) {
+        const week = getCurrentMesoWeek(resolvedMesocycle);
+        const session =
+          resolvedMesocycle.state === "ACTIVE_DELOAD"
+            ? Math.min(3, resolvedMesocycle.deloadSessionsCompleted + 1)
+            : Math.max(1, (resolvedMesocycle.accumulationSessionsCompleted % Math.max(1, resolvedMesocycle.sessionsPerWeek)) + 1);
+        mesoSnapshot = {
+          week,
+          phase: resolvedMesocycle.state === "ACTIVE_ACCUMULATION" ? "ACCUMULATION" : "DELOAD",
+          session,
+        };
       }
 
       const workout = await tx.workout.upsert({
@@ -295,6 +331,7 @@ export async function POST(request: Request) {
           forcedSplit: parsed.data.forcedSplit ?? undefined,
           advancesSplit: parsed.data.advancesSplit ?? undefined,
           templateId: parsed.data.templateId ?? undefined,
+          ...(resolvedMesocycleId ? { mesocycleId: resolvedMesocycleId } : {}),
           ...(mesoSnapshot
             ? {
                 mesocycleWeekSnapshot: mesoSnapshot.week,
@@ -322,6 +359,7 @@ export async function POST(request: Request) {
           forcedSplit: parsed.data.forcedSplit ?? undefined,
           advancesSplit: parsed.data.advancesSplit ?? undefined,
           templateId: parsed.data.templateId ?? undefined,
+          ...(resolvedMesocycleId ? { mesocycleId: resolvedMesocycleId } : {}),
           ...(mesoSnapshot
             ? {
                 mesocycleWeekSnapshot: mesoSnapshot.week,
@@ -335,21 +373,20 @@ export async function POST(request: Request) {
       persistedRevision = workout.revision;
 
       if (shouldTransitionPerformed) {
-        const activeMeso = await tx.mesocycle.findFirst({
-          where: {
-            isActive: true,
-            macroCycle: { userId: user.id },
+        // Increment both completedSessions and the lifecycle counter atomically.
+        // transitionMesocycleState() (called post-transaction) reads the already-incremented
+        // counter to check thresholds; it no longer writes these counters itself.
+        await tx.mesocycle.update({
+          where: { id: resolvedMesocycleId! },
+          data: {
+            completedSessions: { increment: 1 },
+            ...(resolvedMesocycle!.state === "ACTIVE_DELOAD"
+              ? { deloadSessionsCompleted: { increment: 1 } }
+              : { accumulationSessionsCompleted: { increment: 1 } }),
           },
-          select: { id: true },
         });
-        if (activeMeso) {
-          await tx.mesocycle.update({
-            where: { id: activeMeso.id },
-            data: { completedSessions: { increment: 1 } },
-          });
-        }
         didPerformedTransition = true;
-        performedTransitionMesocycleId = workout.mesocycleId ?? existingWorkout?.mesocycleId ?? null;
+        performedTransitionMesocycleId = resolvedMesocycleId;
       }
       if (
         finalStatus === "COMPLETED" &&
@@ -460,6 +497,12 @@ export async function POST(request: Request) {
     if (error instanceof Error && error.message === "WORKOUT_COMPLETION_EMPTY") {
       return NextResponse.json(
         { error: "Cannot mark completed without at least one performed (non-skipped) set log." },
+        { status: 409 }
+      );
+    }
+    if (error instanceof Error && error.message === "ACTIVE_MESOCYCLE_NOT_FOUND") {
+      return NextResponse.json(
+        { error: "No active mesocycle found for performed workout save." },
         { status: 409 }
       );
     }

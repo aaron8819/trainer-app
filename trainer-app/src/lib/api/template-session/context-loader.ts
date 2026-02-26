@@ -6,6 +6,53 @@ import type { MappedGenerationContext } from "./types";
 import type { CycleContextSnapshot, DeloadDecision } from "@/lib/evidence/types";
 import { getCurrentMesoWeek, getRirTarget, getWeeklyVolumeTarget, loadActiveMesocycle } from "@/lib/api/mesocycle-lifecycle";
 import { VOLUME_LANDMARKS } from "@/lib/engine/volume-landmarks";
+import { prisma } from "@/lib/db/prisma";
+import type { SessionIntent } from "@/lib/engine/session-types";
+
+const INTENT_KEYS: SessionIntent[] = ["push", "pull", "legs", "upper", "lower", "full_body", "body_part"];
+
+function createEmptyRoleMapByIntent(): Record<SessionIntent, Map<string, "CORE_COMPOUND" | "ACCESSORY">> {
+  return {
+    push: new Map(),
+    pull: new Map(),
+    legs: new Map(),
+    upper: new Map(),
+    lower: new Map(),
+    full_body: new Map(),
+    body_part: new Map(),
+  };
+}
+
+function dbIntentToSessionIntent(value: string): SessionIntent | null {
+  const normalized = value.trim().toLowerCase();
+  return INTENT_KEYS.includes(normalized as SessionIntent) ? (normalized as SessionIntent) : null;
+}
+
+function expectedSectionForRole(role: "CORE_COMPOUND" | "ACCESSORY"): "MAIN" | "ACCESSORY" {
+  return role === "CORE_COMPOUND" ? "MAIN" : "ACCESSORY";
+}
+
+function auditSectionRoleMismatches(
+  workouts: Awaited<ReturnType<typeof loadWorkoutContext>>["workouts"],
+  roleMapByIntent: Record<SessionIntent, Map<string, "CORE_COMPOUND" | "ACCESSORY">>
+) {
+  for (const workout of workouts) {
+    if (!workout.sessionIntent) continue;
+    const intent = dbIntentToSessionIntent(workout.sessionIntent);
+    if (!intent) continue;
+    const roleMap = roleMapByIntent[intent];
+    for (const exercise of workout.exercises) {
+      const role = roleMap.get(exercise.exerciseId);
+      if (!role || !exercise.section) continue;
+      const expectedSection = expectedSectionForRole(role);
+      if (exercise.section !== expectedSection) {
+        console.warn(
+          `[template-session] Section/role mismatch detected: workout=${workout.id} intent=${intent} exerciseId=${exercise.exerciseId} actual=${exercise.section} expected=${expectedSection} role=${role}`
+        );
+      }
+    }
+  }
+}
 
 export async function loadMappedGenerationContext(userId: string): Promise<MappedGenerationContext> {
   const context = await loadWorkoutContext(userId);
@@ -24,6 +71,32 @@ export async function loadMappedGenerationContext(userId: string): Promise<Mappe
   const mappedCheckIn = mapCheckIn(checkIns);
 
   const activeMesocycle = await loadActiveMesocycle(userId);
+  const mesocycleRoleMapByIntent = createEmptyRoleMapByIntent();
+  if (activeMesocycle?.id) {
+    const roleModel = (prisma as unknown as {
+      mesocycleExerciseRole?: {
+        findMany?: (args: unknown) => Promise<Array<{ exerciseId: string; role: "CORE_COMPOUND" | "ACCESSORY"; sessionIntent: string }>>;
+      };
+    }).mesocycleExerciseRole;
+    const roleRows = roleModel?.findMany
+      ? await roleModel.findMany({
+          where: { mesocycleId: activeMesocycle.id },
+          select: {
+            exerciseId: true,
+            role: true,
+            sessionIntent: true,
+          },
+        })
+      : [];
+    for (const row of roleRows) {
+      const intent = dbIntentToSessionIntent(row.sessionIntent);
+      if (!intent) {
+        continue;
+      }
+      mesocycleRoleMapByIntent[intent].set(row.exerciseId, row.role);
+    }
+  }
+  auditSectionRoleMismatches(workouts, mesocycleRoleMapByIntent);
   const lifecycleWeek = activeMesocycle ? getCurrentMesoWeek(activeMesocycle) : 1;
   const weekInBlock = lifecycleWeek;
   const mesocycleLength = activeMesocycle?.durationWeeks ?? 5;
@@ -98,5 +171,6 @@ export async function loadMappedGenerationContext(userId: string): Promise<Mappe
     blockContext: null,
     rotationContext,
     cycleContext,
+    mesocycleRoleMapByIntent,
   };
 }

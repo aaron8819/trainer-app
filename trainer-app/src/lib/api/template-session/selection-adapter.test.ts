@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildSelectionObjective } from "./selection-adapter";
+import { buildSelectionObjective, SESSION_CAPS } from "./selection-adapter";
 import type { MappedGenerationContext } from "./types";
 import type { WorkoutHistoryEntry, Exercise } from "@/lib/engine/types";
 
@@ -93,6 +93,15 @@ function makeMappedContext(history: WorkoutHistoryEntry[]): MappedGenerationCont
       isDeload: false,
       source: "computed",
     },
+    mesocycleRoleMapByIntent: {
+      push: new Map(),
+      pull: new Map(),
+      legs: new Map(),
+      upper: new Map(),
+      lower: new Map(),
+      full_body: new Map(),
+      body_part: new Map(),
+    },
   };
 }
 
@@ -174,6 +183,12 @@ describe("buildSelectionObjective continuity bias", () => {
     mapped.cycleContext.weekInBlock = 3;
     const objective = buildSelectionObjective(mapped, "pull");
     expect(objective.constraints.continuitySetProgressionIncrement).toBe(2);
+  });
+
+  it("exports documented session cap policy values", () => {
+    expect(SESSION_CAPS.minExercises).toBe(3);
+    expect(SESSION_CAPS.maxExercises).toBe(6);
+    expect(SESSION_CAPS.maxDirectSetsPerMuscle).toBe(12);
   });
 });
 

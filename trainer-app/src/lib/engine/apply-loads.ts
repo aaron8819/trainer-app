@@ -1,5 +1,9 @@
-import { computeNextLoad } from "./progression";
-import { filterPerformedHistory, sortHistoryByDateDesc } from "./history";
+import { computeDoubleProgressionDecision, computeNextLoad } from "./progression";
+import {
+  filterPerformedHistory,
+  resolveBaseSelectionModeConfidence,
+  sortHistoryByDateDesc,
+} from "./history";
 import {
   getBaseTargetRpe,
   getBackOffMultiplier,
@@ -28,6 +32,8 @@ export type BaselineInput = {
   workingWeightMin?: number | null;
   workingWeightMax?: number | null;
   topSetWeight?: number | null;
+  mesocyclePhaseSnapshot?: string | null;
+  mesocycleWeekSnapshot?: number | null;
 };
 
 export type ApplyLoadsOptions = {
@@ -40,6 +46,8 @@ export type ApplyLoadsOptions = {
   prescriptionModifiers?: PrescriptionModifiers | null;
   weekInBlock?: number;
   sessionIntent?: SplitDay;
+  accumulationSessionsCompleted?: number;
+  isFirstSessionInMesocycle?: boolean;
 };
 
 type LoadEquipment =
@@ -58,6 +66,7 @@ const FATIGUE_SCALE_MIN = 0.45;
 const FATIGUE_SCALE_MAX = 0.9;
 const BASELINE_SCALE_STRENGTH_TO_VOLUME = 0.78;
 const BASELINE_SCALE_VOLUME_TO_STRENGTH = 1.12;
+const EFFECTIVE_RPE_MIN = 6;
 
 const BASE_BODYWEIGHT_RATIO: Record<LoadEquipment, { compound: number; isolation: number }> = {
   barbell: { compound: 0.65, isolation: 0.35 },
@@ -93,7 +102,12 @@ const EQUIPMENT_DEFAULTS: Record<LoadEquipment, number> = {
 };
 
 export function applyLoads(workout: WorkoutPlan, options: ApplyLoadsOptions): WorkoutPlan {
-  const historyIndex = buildHistoryIndex(options.history ?? [], options.sessionIntent);
+  const historyIndex = buildHistoryIndex(options.history ?? [], {
+    sessionIntent: options.sessionIntent,
+    useNewMesocycleBaselineSource:
+      options.isFirstSessionInMesocycle === true ||
+      (options.accumulationSessionsCompleted ?? -1) === 0,
+  });
   const historyTopLoadIndex = buildHistoryTopLoadIndex(historyIndex);
   const preferredContext = getPreferredBaselineContext(options.primaryGoal);
   const baselineIndex = buildBaselineIndex(options.baselines ?? [], preferredContext);
@@ -211,13 +225,25 @@ export function applyLoads(workout: WorkoutPlan, options: ApplyLoadsOptions): Wo
   };
 }
 
-function buildHistoryIndex(history: WorkoutHistoryEntry[], sessionIntent?: SplitDay) {
+type BuildHistoryIndexOptions = {
+  sessionIntent?: SplitDay;
+  useNewMesocycleBaselineSource?: boolean;
+};
+
+function buildHistoryIndex(history: WorkoutHistoryEntry[], options: BuildHistoryIndexOptions = {}) {
   const sorted = sortHistoryByDateDesc(filterPerformedHistory(history));
-  const index = new Map<string, WorkoutSetHistory[]>();
-  for (const entry of sorted) {
-    if (sessionIntent && entry.sessionIntent !== sessionIntent) {
+  const sourceEntries = options.useNewMesocycleBaselineSource
+    ? selectNewMesocycleBaselineHistory(sorted)
+    : sorted;
+  const index = new Map<string, WorkoutSessionHistory[]>();
+  for (const entry of sourceEntries) {
+    if (options.sessionIntent && entry.sessionIntent !== options.sessionIntent) {
       continue;
     }
+    const entryConfidence =
+      typeof entry.confidence === "number" && Number.isFinite(entry.confidence)
+        ? entry.confidence
+        : resolveBaseSelectionModeConfidence(entry);
     for (const exercise of entry.exercises) {
       if (exercise.sets.length === 0) {
         continue;
@@ -225,19 +251,87 @@ function buildHistoryIndex(history: WorkoutHistoryEntry[], sessionIntent?: Split
       if (!index.has(exercise.exerciseId)) {
         index.set(exercise.exerciseId, []);
       }
-      index.get(exercise.exerciseId)?.push(exercise.sets);
+      index.get(exercise.exerciseId)?.push({
+        sets: exercise.sets,
+        confidence: entryConfidence,
+        selectionMode: entry.selectionMode,
+        confidenceNotes: entry.confidenceNotes ?? [],
+      });
     }
   }
   return index;
 }
 
-type WorkoutSetHistory = { setIndex: number; reps: number; rpe?: number; load?: number }[];
+function selectNewMesocycleBaselineHistory(
+  sortedPerformedHistory: WorkoutHistoryEntry[]
+): WorkoutHistoryEntry[] {
+  const nonDeloadHistory = sortedPerformedHistory.filter((entry) => !isDeloadPhaseEntry(entry));
+  if (nonDeloadHistory.length === 0) {
+    return [];
+  }
 
-function buildHistoryTopLoadIndex(historyIndex: Map<string, WorkoutSetHistory[]>) {
+  const accumulationHistory = nonDeloadHistory.filter((entry) => isAccumulationPhaseEntry(entry));
+  if (accumulationHistory.length === 0) {
+    return nonDeloadHistory;
+  }
+
+  const w4AccumulationHistory = accumulationHistory.filter(
+    (entry) => getMesocycleWeekSnapshot(entry) === 4
+  );
+  if (w4AccumulationHistory.length > 0) {
+    return w4AccumulationHistory;
+  }
+
+  const highestAccumulationWeek = Math.max(
+    ...accumulationHistory
+      .map((entry) => getMesocycleWeekSnapshot(entry))
+      .filter((week): week is number => Number.isFinite(week))
+  );
+  if (Number.isFinite(highestAccumulationWeek)) {
+    const highestWeekEntries = accumulationHistory.filter(
+      (entry) => getMesocycleWeekSnapshot(entry) === highestAccumulationWeek
+    );
+    if (highestWeekEntries.length > 0) {
+      return highestWeekEntries;
+    }
+  }
+
+  return accumulationHistory;
+}
+
+function getMesocyclePhaseSnapshot(entry: WorkoutHistoryEntry): string | undefined {
+  const value = (entry as WorkoutHistoryEntry & { mesocyclePhaseSnapshot?: unknown })
+    .mesocyclePhaseSnapshot;
+  return typeof value === "string" ? value.trim().toUpperCase() : undefined;
+}
+
+function getMesocycleWeekSnapshot(entry: WorkoutHistoryEntry): number | undefined {
+  const value = (entry as WorkoutHistoryEntry & { mesocycleWeekSnapshot?: unknown })
+    .mesocycleWeekSnapshot;
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function isAccumulationPhaseEntry(entry: WorkoutHistoryEntry): boolean {
+  return getMesocyclePhaseSnapshot(entry) === "ACCUMULATION";
+}
+
+function isDeloadPhaseEntry(entry: WorkoutHistoryEntry): boolean {
+  const phase = getMesocyclePhaseSnapshot(entry);
+  return phase === "DELOAD" || phase === "ACTIVE_DELOAD";
+}
+
+type WorkoutSetHistory = { setIndex: number; reps: number; rpe?: number; load?: number }[];
+type WorkoutSessionHistory = {
+  sets: WorkoutSetHistory;
+  confidence: number;
+  selectionMode?: WorkoutHistoryEntry["selectionMode"];
+  confidenceNotes: string[];
+};
+
+function buildHistoryTopLoadIndex(historyIndex: Map<string, WorkoutSessionHistory[]>) {
   const topLoadIndex = new Map<string, number>();
   for (const [exerciseId, sessions] of historyIndex.entries()) {
-    const latestSets = sessions[0] ?? [];
-    const modalLoad = getModalSessionLoad(latestSets);
+    const modalLoad = resolveWeightedModalLoadAcrossHistory(sessions);
     if (modalLoad !== undefined) {
       topLoadIndex.set(exerciseId, modalLoad);
     }
@@ -248,6 +342,9 @@ function buildHistoryTopLoadIndex(historyIndex: Map<string, WorkoutSetHistory[]>
 function getModalSessionLoad(sets: WorkoutSetHistory): number | undefined {
   const loadFrequency = new Map<number, { count: number; latestSetIndex: number }>();
   for (const set of sets) {
+    if (set.rpe != null && set.rpe < EFFECTIVE_RPE_MIN) {
+      continue;
+    }
     const load = set.load;
     if (!Number.isFinite(load) || (load ?? 0) < 0) {
       continue;
@@ -282,7 +379,7 @@ function getModalSessionLoad(sets: WorkoutSetHistory): number | undefined {
 function getModalSessionRpe(sets: WorkoutSetHistory): number | undefined {
   const rpeFrequency = new Map<number, number>();
   for (const set of sets) {
-    if (!Number.isFinite(set.rpe)) {
+    if (!Number.isFinite(set.rpe) || (set.rpe as number) < EFFECTIVE_RPE_MIN) {
       continue;
     }
     const rounded = Number((set.rpe as number).toFixed(1));
@@ -305,7 +402,9 @@ function normalizeSessionLoadsToModal(sets: WorkoutSetHistory): WorkoutSetHistor
   }
 
   return sets.map((set) =>
-    Number.isFinite(set.load) && (set.load ?? 0) >= 0 ? { ...set, load: modalLoad } : set
+    Number.isFinite(set.load) && (set.load ?? 0) >= 0 && (set.rpe == null || set.rpe >= EFFECTIVE_RPE_MIN)
+      ? { ...set, load: modalLoad }
+      : set
   );
 }
 
@@ -366,7 +465,7 @@ function resolveBaselineLoad(baseline: BaselineInput): number | undefined {
 
 function resolveLoadForExercise(
   exercise: Exercise,
-  historySets: WorkoutSetHistory[] | undefined,
+  historySessions: WorkoutSessionHistory[] | undefined,
   baselineSelection: BaselineSelection | undefined,
   baselineLoadIndex: Map<string, number>,
   historyTopLoadIndex: Map<string, number>,
@@ -380,21 +479,49 @@ function resolveLoadForExercise(
   weekInBlock: number | undefined,
   preferredContext: string
 ): number | undefined {
-  const latestSetsRaw = historySets?.[0];
+  const latestSetsRaw = historySessions?.[0]?.sets;
   const useModalAnchoring = shouldUseModalAnchoring(exercise);
   const latestSets =
     latestSetsRaw && useModalAnchoring ? normalizeSessionLoadsToModal(latestSetsRaw) : latestSetsRaw;
+  const weightedHistoryModalLoad = historySessions
+    ? resolveWeightedModalLoadAcrossHistory(historySessions)
+    : undefined;
+  const historyConfidenceScale = historySessions
+    ? resolveProgressionHistoryConfidenceScale(historySessions)
+    : 1;
+  const confidenceNotes = historySessions
+    ? collectProgressionConfidenceNotes(historySessions)
+    : [];
   if (latestSets && latestSets.length > 0) {
+    const latestSetsForDecision =
+      useModalAnchoring &&
+      weightedHistoryModalLoad !== undefined &&
+      (historySessions?.length ?? 0) > 1
+        ? latestSets.map((set) =>
+            Number.isFinite(set.load) && (set.load ?? 0) >= 0
+              ? { ...set, load: weightedHistoryModalLoad }
+              : set
+          )
+        : latestSets;
+    const equipment = getPrimaryProgressionEquipment(exercise);
+    const decision = computeDoubleProgressionDecision(latestSetsForDecision, repRange, equipment, {
+      priorSessionCount: historySessions?.length ?? 1,
+      historyConfidenceScale,
+      confidenceReasons: confidenceNotes,
+    });
     const anchorLoad = useModalAnchoring
-      ? getModalSessionLoad(latestSets)
+      ? (decision?.anchorLoad ?? weightedHistoryModalLoad ?? getModalSessionLoad(latestSets))
       : getTopSessionLoad(latestSets);
-    const modalRpe = getModalSessionRpe(latestSets);
+    const modalRpe = getModalSessionRpe(latestSetsForDecision);
     if (anchorLoad !== undefined && modalRpe !== undefined && modalRpe >= 9) {
       return anchorLoad;
     }
+    if (decision) {
+      return decision.nextLoad;
+    }
     const recentSessions =
-      historySets?.slice(1).map((session) =>
-        useModalAnchoring ? normalizeSessionLoadsToModal(session) : session
+      historySessions?.slice(1).map((session) =>
+        useModalAnchoring ? normalizeSessionLoadsToModal(session.sets) : session.sets
       ) ?? [];
     const computed = computeNextLoad(latestSets, repRange, targetRpe, undefined, {
       trainingAge,
@@ -403,6 +530,7 @@ function resolveLoadForExercise(
       backOffMultiplier: periodization?.backOffMultiplier,
       isDeloadWeek: periodization?.isDeload,
       recentSessions,
+      equipment,
     });
     if (computed !== undefined) {
       return computed;
@@ -429,11 +557,22 @@ function resolveLoadForExercise(
 function getTopSessionLoad(sets: WorkoutSetHistory): number | undefined {
   const sorted = [...sets].sort((a, b) => a.setIndex - b.setIndex);
   for (const set of sorted) {
+    if (set.rpe != null && set.rpe < EFFECTIVE_RPE_MIN) {
+      continue;
+    }
     if (Number.isFinite(set.load) && (set.load ?? 0) >= 0) {
       return set.load as number;
     }
   }
   return undefined;
+}
+
+function getPrimaryProgressionEquipment(exercise: Exercise): "barbell" | "dumbbell" | "cable" | "other" {
+  const equipment = getLoadEquipment(exercise);
+  if (equipment === "barbell" || equipment === "dumbbell" || equipment === "cable") {
+    return equipment;
+  }
+  return "other";
 }
 
 function shouldUseModalAnchoring(exercise: Exercise): boolean {
@@ -728,4 +867,63 @@ function applyBaselineContextScaling(
   }
 
   return load;
+}
+
+function resolveWeightedModalLoadAcrossHistory(
+  sessions: WorkoutSessionHistory[]
+): number | undefined {
+  if (sessions.length === 0) {
+    return undefined;
+  }
+  if (sessions.length === 1) {
+    return getModalSessionLoad(sessions[0].sets);
+  }
+
+  const hasIntentHistory = sessions.some((session) => session.selectionMode === "INTENT");
+  const weightedFrequency = new Map<number, number>();
+  for (const session of sessions) {
+    const modalLoad = getModalSessionLoad(session.sets);
+    if (modalLoad === undefined) {
+      continue;
+    }
+    const weight =
+      !hasIntentHistory && session.selectionMode === "MANUAL"
+        ? 1
+        : Math.min(1, Math.max(0, session.confidence));
+    weightedFrequency.set(modalLoad, (weightedFrequency.get(modalLoad) ?? 0) + weight);
+  }
+
+  if (weightedFrequency.size === 0) {
+    return undefined;
+  }
+
+  return Array.from(weightedFrequency.entries()).sort((a, b) => {
+    if (b[1] !== a[1]) {
+      return b[1] - a[1];
+    }
+    return b[0] - a[0];
+  })[0]?.[0];
+}
+
+function resolveProgressionHistoryConfidenceScale(
+  sessions: WorkoutSessionHistory[]
+): number {
+  if (sessions.length <= 1) {
+    return 1;
+  }
+  const hasIntentHistory = sessions.some((session) => session.selectionMode === "INTENT");
+  if (!hasIntentHistory && sessions.every((session) => session.selectionMode === "MANUAL")) {
+    return 1;
+  }
+  const total = sessions.reduce(
+    (sum, session) => sum + Math.min(1, Math.max(0, session.confidence)),
+    0
+  );
+  return Number((total / sessions.length).toFixed(2));
+}
+
+function collectProgressionConfidenceNotes(
+  sessions: WorkoutSessionHistory[]
+): string[] {
+  return [...new Set(sessions.flatMap((session) => session.confidenceNotes ?? []))];
 }

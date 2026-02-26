@@ -151,8 +151,8 @@ describe("POST /api/workouts/save", () => {
         exercises: [
           {
             sets: [
-              { logs: [{ wasSkipped: false }] },
-              { logs: [{ wasSkipped: false }] },
+              { logs: [{ wasSkipped: false, actualReps: 8, actualRpe: 8, actualLoad: 135 }] },
+              { logs: [{ wasSkipped: false, actualReps: 8, actualRpe: 8, actualLoad: 135 }] },
             ],
           },
         ],
@@ -183,7 +183,7 @@ describe("POST /api/workouts/save", () => {
       .mockResolvedValueOnce({
         exercises: [
           {
-            sets: [{ logs: [{ wasSkipped: false }] }],
+            sets: [{ logs: [{ wasSkipped: false, actualReps: 8, actualRpe: 8, actualLoad: 135 }] }],
           },
         ],
       });
@@ -207,8 +207,55 @@ describe("POST /api/workouts/save", () => {
     expect(mocks.transitionMesocycleState).toHaveBeenCalledWith("meso-1");
 
     const upsert = mocks.workoutUpsert.mock.calls[0][0];
+    expect(upsert.update.mesocycleId).toBe("meso-1");
     expect(upsert.update.mesocycleWeekSnapshot).toBe(1);
     expect(upsert.update.mesoSessionSnapshot).toBe(1);
+    expect(upsert.update.mesocyclePhaseSnapshot).toBe("ACCUMULATION");
+  });
+
+  it("attaches active mesocycle and transitions lifecycle when first performed save has null mesocycleId", async () => {
+    mocks.workoutFindUnique
+      .mockResolvedValueOnce({
+        id: "workout-1",
+        userId: "user-1",
+        status: "PLANNED",
+        revision: 1,
+        mesocycleId: null,
+      })
+      .mockResolvedValueOnce({
+        exercises: [
+          {
+            sets: [{ logs: [{ wasSkipped: false, actualReps: 8, actualRpe: 8, actualLoad: 135 }] }],
+          },
+        ],
+      });
+    mocks.tx.mesocycle.findFirst.mockResolvedValueOnce({
+      id: "meso-active",
+      state: "ACTIVE_ACCUMULATION",
+      accumulationSessionsCompleted: 4,
+      deloadSessionsCompleted: 0,
+      sessionsPerWeek: 3,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workoutId: "workout-1", action: "mark_completed" }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.transitionMesocycleState).toHaveBeenCalledWith("meso-active");
+    expect(mocks.tx.mesocycle.update).toHaveBeenCalledWith({
+      where: { id: "meso-active" },
+      data: { completedSessions: { increment: 1 }, accumulationSessionsCompleted: { increment: 1 } },
+    });
+
+    const upsert = mocks.workoutUpsert.mock.calls[0][0];
+    expect(upsert.update.mesocycleId).toBe("meso-active");
+    expect(upsert.update.mesocycleWeekSnapshot).toBe(1);
+    expect(upsert.update.mesoSessionSnapshot).toBe(2);
     expect(upsert.update.mesocyclePhaseSnapshot).toBe("ACCUMULATION");
   });
 
@@ -240,7 +287,39 @@ describe("POST /api/workouts/save", () => {
       .mockResolvedValueOnce({
         exercises: [
           {
-            sets: [{ logs: [{ wasSkipped: false }] }, { logs: [] }],
+            sets: [{ logs: [{ wasSkipped: false, actualReps: 8, actualRpe: 8, actualLoad: 135 }] }, { logs: [] }],
+          },
+        ],
+      });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workoutId: "workout-1", action: "mark_completed" }),
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.workoutStatus).toBe("PARTIAL");
+  });
+
+  it("treats LOGGED_EMPTY rows as unresolved and marks completion as PARTIAL", async () => {
+    mocks.workoutFindUnique
+      .mockResolvedValueOnce({
+        id: "workout-1",
+        userId: "user-1",
+        status: "PLANNED",
+        revision: 1,
+      })
+      .mockResolvedValueOnce({
+        exercises: [
+          {
+            sets: [
+              { logs: [{ wasSkipped: false, actualReps: 8, actualRpe: 8, actualLoad: 135 }] },
+              { logs: [{ wasSkipped: false, actualReps: null, actualRpe: null, actualLoad: null }] },
+            ],
           },
         ],
       });
@@ -286,6 +365,39 @@ describe("POST /api/workouts/save", () => {
     await expect(response.json()).resolves.toMatchObject({
       error: "Cannot mark completed without at least one performed (non-skipped) set log.",
     });
+  });
+
+  it("returns 409 for performed saves when no active mesocycle can be resolved", async () => {
+    mocks.workoutFindUnique
+      .mockResolvedValueOnce({
+        id: "workout-1",
+        userId: "user-1",
+        status: "PLANNED",
+        revision: 1,
+        mesocycleId: null,
+      })
+      .mockResolvedValueOnce({
+        exercises: [
+          {
+            sets: [{ logs: [{ wasSkipped: false, actualReps: 8, actualRpe: 8, actualLoad: 135 }] }],
+          },
+        ],
+      });
+    mocks.tx.mesocycle.findFirst.mockResolvedValueOnce(null);
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workoutId: "workout-1", action: "mark_completed" }),
+      })
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "No active mesocycle found for performed workout save.",
+    });
+    expect(mocks.transitionMesocycleState).not.toHaveBeenCalled();
   });
 
   it("cannot bypass rewrite gating via inferred action", async () => {
@@ -450,6 +562,55 @@ describe("POST /api/workouts/save", () => {
       source: "computed",
     });
     expect(mocks.loadCurrentBlockContext).not.toHaveBeenCalled();
+  });
+
+  it("counters remain consistent when state transition throws after transaction commits", async () => {
+    // Both completedSessions and the lifecycle counter (accumulationSessionsCompleted) are written
+    // inside the transaction. Even if transitionMesocycleState throws afterward, both counters
+    // were already incremented atomically and the save response is still 200.
+    mocks.workoutFindUnique
+      .mockResolvedValueOnce({
+        id: "workout-1",
+        userId: "user-1",
+        status: "PLANNED",
+        revision: 1,
+        mesocycleId: "meso-1",
+      })
+      .mockResolvedValueOnce({
+        exercises: [
+          {
+            sets: [{ logs: [{ wasSkipped: false, actualReps: 8, actualRpe: 8, actualLoad: 135 }] }],
+          },
+        ],
+      });
+    mocks.tx.mesocycle.findUnique.mockResolvedValueOnce({
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION",
+      accumulationSessionsCompleted: 5,
+      deloadSessionsCompleted: 0,
+      sessionsPerWeek: 3,
+    });
+    mocks.transitionMesocycleState.mockRejectedValueOnce(new Error("DB timeout"));
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workoutId: "workout-1", action: "mark_completed" }),
+      })
+    );
+
+    // Save succeeds (lifecycle error is caught and logged, not re-thrown)
+    expect(response.status).toBe(200);
+
+    // Both counters were written atomically in the same update inside the transaction
+    expect(mocks.tx.mesocycle.update).toHaveBeenCalledWith({
+      where: { id: "meso-1" },
+      data: { completedSessions: { increment: 1 }, accumulationSessionsCompleted: { increment: 1 } },
+    });
+
+    // State transition was attempted (it failed, but the counters are still consistent)
+    expect(mocks.transitionMesocycleState).toHaveBeenCalledWith("meso-1");
   });
 
   it("persists fallback cycle context when payload is missing cycleContext and no active mesocycle exists", async () => {

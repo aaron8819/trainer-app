@@ -131,4 +131,117 @@ describe("mapHistory", () => {
       load: 185,
     });
   });
+
+  it("excludes low-effort warmup/feeler sets (RPE < 6) from progression history signals", () => {
+    const history = mapHistory([
+      {
+        id: "w2",
+        userId: "u1",
+        templateId: null,
+        scheduledDate: new Date("2026-02-21T00:00:00.000Z"),
+        completedAt: new Date("2026-02-21T01:00:00.000Z"),
+        status: WorkoutStatus.COMPLETED,
+        estimatedMinutes: 45,
+        notes: null,
+        selectionMode: "INTENT",
+        sessionIntent: "PULL",
+        selectionMetadata: null,
+        revision: 1,
+        forcedSplit: null,
+        advancesSplit: true,
+        trainingBlockId: null,
+        weekInBlock: null,
+        wasAutoregulated: false,
+        autoregulationLog: null,
+        exercises: [
+          {
+            id: "we2",
+            workoutId: "w2",
+            exerciseId: "rear-delt-fly",
+            orderIndex: 0,
+            section: "ACCESSORY",
+            isMainLift: false,
+            movementPatterns: [],
+            notes: null,
+            exercise: {
+              id: "rear-delt-fly",
+              name: "Rear Delt Fly",
+              movementPatterns: [],
+              splitTags: [],
+              jointStress: "LOW",
+              isMainLiftEligible: false,
+              isCompound: false,
+              fatigueCost: 2,
+              stimulusBias: [],
+              contraindications: null,
+              timePerSetSec: 120,
+              sfrScore: 3,
+              lengthPositionScore: 3,
+              difficulty: "INTERMEDIATE",
+              isUnilateral: false,
+              repRangeMin: 10,
+              repRangeMax: 20,
+              exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Rear Delts", sraHours: 48 } }],
+            },
+            sets: [
+              {
+                id: "s21",
+                workoutExerciseId: "we2",
+                setIndex: 1,
+                targetReps: 12,
+                targetRepMin: null,
+                targetRepMax: null,
+                targetRpe: 8,
+                targetLoad: 20,
+                restSeconds: 90,
+                logs: [
+                  {
+                    id: "l21",
+                    workoutSetId: "s21",
+                    actualReps: 15,
+                    actualRpe: 5,
+                    actualLoad: 15,
+                    completedAt: new Date(),
+                    notes: "warmup feel set",
+                    wasSkipped: false,
+                  },
+                ],
+              },
+              {
+                id: "s22",
+                workoutExerciseId: "we2",
+                setIndex: 2,
+                targetReps: 12,
+                targetRepMin: null,
+                targetRepMax: null,
+                targetRpe: 8,
+                targetLoad: 20,
+                restSeconds: 90,
+                logs: [
+                  {
+                    id: "l22",
+                    workoutSetId: "s22",
+                    actualReps: 12,
+                    actualRpe: 8,
+                    actualLoad: 20,
+                    completedAt: new Date(),
+                    notes: null,
+                    wasSkipped: false,
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      } as never,
+    ]);
+
+    expect(history[0].exercises[0].sets).toHaveLength(1);
+    expect(history[0].exercises[0].sets[0]).toMatchObject({
+      setIndex: 2,
+      reps: 12,
+      rpe: 8,
+      load: 20,
+    });
+  });
 });

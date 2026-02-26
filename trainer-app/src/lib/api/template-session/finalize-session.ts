@@ -16,6 +16,7 @@ export function runSessionGeneration(
     templateId?: string;
     isStrict: boolean;
     setCountOverrides?: Record<string, number>;
+    mainLiftSlotCap?: number;
     selection: SelectionOutput;
   }
 ):
@@ -26,10 +27,11 @@ export function runSessionGeneration(
       sessionIntent: SessionIntent;
       sraWarnings: SraWarning[];
       substitutions: SubstitutionSuggestion[];
+      droppedAccessoryExerciseIds: string[];
       selection: SelectionOutput;
     }
   | { error: string } {
-  const { workout, sraWarnings, substitutions } = generateWorkoutFromTemplate(templateExercises, {
+  const { workout, sraWarnings, substitutions, droppedAccessoryExerciseIds } = generateWorkoutFromTemplate(templateExercises, {
     profile: mapped.mappedProfile,
     goals: mapped.mappedGoals,
     history: mapped.history,
@@ -42,6 +44,7 @@ export function runSessionGeneration(
     blockContext: mapped.blockContext,
     isStrict: options.isStrict,
     setCountOverrides: options.setCountOverrides,
+    mainLiftSlotCap: options.mainLiftSlotCap,
   });
 
   return {
@@ -51,6 +54,7 @@ export function runSessionGeneration(
     sessionIntent: options.sessionIntent,
     sraWarnings,
     substitutions,
+    droppedAccessoryExerciseIds,
     selection: options.selection,
   };
 }
@@ -63,6 +67,7 @@ export function finalizePostLoadResult(
     sessionIntent: SessionIntent;
     sraWarnings: SraWarning[];
     substitutions: SubstitutionSuggestion[];
+    droppedAccessoryExerciseIds?: string[];
     selection: SelectionOutput;
   },
   mapped: MappedGenerationContext,

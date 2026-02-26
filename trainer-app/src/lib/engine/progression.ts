@@ -5,8 +5,28 @@ import { isPerformedHistoryEntry } from "./history";
 
 export type ProgressionSet = { reps: number; rpe?: number; load?: number };
 type HistorySet = WorkoutHistoryEntry["exercises"][number]["sets"][number];
+export type ProgressionEquipment = "barbell" | "dumbbell" | "cable" | "other";
+export type ProgressionDecisionPath = "path_1" | "path_2" | "path_3" | "path_4" | "fallback_hold";
+export type ProgressionDecision = {
+  nextLoad: number;
+  anchorLoad: number;
+  path: ProgressionDecisionPath;
+  decisionLog: string[];
+};
+
+export const PROGRESSION_CONFIG = {
+  // Treat >=20% intra-session spread as unstable enough to trim outliers.
+  highVarianceThreshold: 0.2,
+  // Trim sets outside +/-15% of session median when high variance is detected.
+  outlierTrimRange: 0.15,
+  // Three or more prior sessions provides full confidence for progression steps.
+  minSessionsForFullConfidence: 3,
+  // Single prior-session signal is directionally useful, but scaled to avoid overshooting.
+  singleSessionConfidenceScale: 0.8,
+} as const;
 
 const USE_MAIN_LIFT_PLATEAU_DETECTION_ENV = "USE_MAIN_LIFT_PLATEAU_DETECTION";
+const EFFECTIVE_RPE_MIN = 6;
 
 export type ComputeNextLoadOptions = {
   trainingAge?: TrainingAge;
@@ -15,6 +35,7 @@ export type ComputeNextLoadOptions = {
   backOffMultiplier?: number;
   isDeloadWeek?: boolean;
   recentSessions?: ProgressionSet[][];
+  equipment?: ProgressionEquipment;
 };
 
 export function computeNextLoad(
@@ -61,6 +82,10 @@ export function computeNextLoad(
     return applyChange(-0.06);
   }
 
+  const decision = computeDoubleProgressionDecision(lastSets, repRange, options?.equipment);
+  if (decision) {
+    return decision.nextLoad;
+  }
   return computeDoubleProgressionLoad(lastLoad, lastSets, repRange, targetRpe, applyChange);
 }
 
@@ -112,6 +137,143 @@ function computeDoubleProgressionLoad(
   }
 
   return roundLoad(lastLoad);
+}
+
+export function computeDoubleProgressionDecision(
+  lastSets: ProgressionSet[],
+  repRange: [number, number],
+  equipment: ProgressionEquipment = "other",
+  options?: {
+    priorSessionCount?: number;
+    historyConfidenceScale?: number;
+    confidenceReasons?: string[];
+  }
+): ProgressionDecision | undefined {
+  const signalSets = lastSets.filter(
+    (set) =>
+      Number.isFinite(set.load) &&
+      (set.load ?? 0) >= 0 &&
+      Number.isFinite(set.reps) &&
+      set.reps > 0 &&
+      (set.rpe == null || set.rpe >= EFFECTIVE_RPE_MIN)
+  );
+  if (signalSets.length === 0) {
+    return undefined;
+  }
+
+  const loadValues = signalSets.map((set) => set.load as number);
+  const medianLoad = median(loadValues);
+  if (!Number.isFinite(medianLoad)) {
+    return undefined;
+  }
+
+  const maxLoad = Math.max(...loadValues);
+  const minLoad = Math.min(...loadValues);
+  const hasHighVariance =
+    loadValues.length >= 4 &&
+    medianLoad > 0 &&
+    (maxLoad - minLoad) / medianLoad >= PROGRESSION_CONFIG.highVarianceThreshold;
+  const trimmedSets = hasHighVariance
+    ? signalSets.filter(
+        (set) =>
+          Math.abs((set.load as number) - medianLoad) / medianLoad <=
+          PROGRESSION_CONFIG.outlierTrimRange
+      )
+    : signalSets;
+  const effectiveSets = trimmedSets.length > 0 ? trimmedSets : signalSets;
+
+  const anchorLoad = resolveConservativeModalLoad(effectiveSets);
+  if (anchorLoad == null) {
+    return undefined;
+  }
+
+  const modalRpe = getModalRpe(effectiveSets);
+  const medianReps = median(effectiveSets.map((set) => set.reps));
+  const topOfRange = repRange[1];
+  const increment = resolveIncrementByEquipment(equipment);
+  const decisionLog: string[] = [];
+  const sampleConfidenceScale = resolveSampleSizeConfidenceScale(options?.priorSessionCount);
+  const historyConfidenceScale = clampConfidenceScale(options?.historyConfidenceScale);
+  const progressionConfidenceScale = Number((sampleConfidenceScale * historyConfidenceScale).toFixed(2));
+
+  if (hasHighVariance) {
+    decisionLog.push(
+      `High intra-session load variance detected (${minLoad}-${maxLoad}). Trimmed outlier sets before anchoring.`
+    );
+  }
+  decisionLog.push(
+    `Anchor load=${anchorLoad}, modal RPE=${modalRpe == null ? "n/a" : modalRpe}, median reps=${medianReps.toFixed(1)}, rep-range top=${topOfRange}.`
+  );
+  decisionLog.push(
+    `Progression confidence scale=${progressionConfidenceScale.toFixed(2)} (sample=${sampleConfidenceScale.toFixed(2)}, history=${historyConfidenceScale.toFixed(2)}).`
+  );
+  if (options?.confidenceReasons && options.confidenceReasons.length > 0) {
+    decisionLog.push(`Confidence notes: ${options.confidenceReasons.join(" | ")}`);
+  }
+
+  if (anchorLoad === 0) {
+    decisionLog.push("bodyweight exercise — rep progression only");
+    if (medianReps >= topOfRange) {
+      decisionLog.push(
+        "Top of rep range achieved at bodyweight load. Hold load at 0 and progress via reps until external load is added."
+      );
+    } else {
+      decisionLog.push(
+        "Below top of rep range for bodyweight load. Hold load at 0 and target more reps."
+      );
+    }
+    return {
+      nextLoad: 0,
+      anchorLoad: 0,
+      path: "fallback_hold",
+      decisionLog,
+    };
+  }
+
+  if (modalRpe != null && modalRpe >= 9) {
+    decisionLog.push("Path 1 fired: prior modal RPE >= 9. Hold load.");
+    return {
+      nextLoad: roundLoad(anchorLoad),
+      anchorLoad,
+      path: "path_1",
+      decisionLog,
+    };
+  }
+
+  if (medianReps >= topOfRange) {
+    if (modalRpe != null && modalRpe <= 7) {
+      const nextLoad = roundLoad(anchorLoad + increment * progressionConfidenceScale);
+      decisionLog.push(
+        `Path 2 fired: modal RPE <= 7 and median reps reached top of range. Increment +${(increment * progressionConfidenceScale).toFixed(1)}.`
+      );
+      return { nextLoad, anchorLoad, path: "path_2", decisionLog };
+    }
+    if (modalRpe == null || (modalRpe > 7 && modalRpe <= 8)) {
+      const nextLoad = roundLoad(anchorLoad + increment * progressionConfidenceScale);
+      decisionLog.push(
+        `Path 3 fired: modal RPE in 7-8 range and median reps reached top of range. Increment +${(increment * progressionConfidenceScale).toFixed(1)}.`
+      );
+      return { nextLoad, anchorLoad, path: "path_3", decisionLog };
+    }
+  }
+
+  if (modalRpe != null && modalRpe >= 7 && modalRpe <= 8 && medianReps < topOfRange) {
+    decisionLog.push("Path 4 fired: modal RPE in 7-8 range but reps below top. Hold load and target rep progression.");
+    return {
+      nextLoad: roundLoad(anchorLoad),
+      anchorLoad,
+      path: "path_4",
+      decisionLog,
+    };
+  }
+
+  decisionLog.push("Fallback hold: progression conditions not met.");
+  return {
+    nextLoad: roundLoad(anchorLoad),
+    anchorLoad,
+    path: "fallback_hold",
+    decisionLog,
+  };
 }
 
 function computePeriodizedLoad(
@@ -244,4 +406,86 @@ function resolveTopSet(sets: HistorySet[]) {
     }
   }
   return topSet;
+}
+
+function resolveIncrementByEquipment(equipment: ProgressionEquipment): number {
+  if (equipment === "barbell") return 5;
+  if (equipment === "dumbbell") return 2.5;
+  if (equipment === "cable") return 2.5;
+  return 2.5;
+}
+
+function resolveConservativeModalLoad(sets: ProgressionSet[]): number | undefined {
+  const frequency = new Map<number, number>();
+  for (const set of sets) {
+    if (!Number.isFinite(set.load) || (set.load ?? 0) < 0) {
+      continue;
+    }
+    const load = set.load as number;
+    frequency.set(load, (frequency.get(load) ?? 0) + 1);
+  }
+  if (frequency.size === 0) {
+    return undefined;
+  }
+  const center = median(Array.from(frequency.keys()));
+  return Array.from(frequency.entries()).sort((a, b) => {
+    if (b[1] !== a[1]) {
+      return b[1] - a[1];
+    }
+    const distA = Math.abs(a[0] - center);
+    const distB = Math.abs(b[0] - center);
+    if (distA !== distB) {
+      return distA - distB;
+    }
+    return a[0] - b[0];
+  })[0]?.[0];
+}
+
+function getModalRpe(sets: ProgressionSet[]): number | undefined {
+  const frequency = new Map<number, number>();
+  for (const set of sets) {
+    if (!Number.isFinite(set.rpe)) continue;
+    const rounded = Number((set.rpe as number).toFixed(1));
+    frequency.set(rounded, (frequency.get(rounded) ?? 0) + 1);
+  }
+  if (frequency.size === 0) {
+    return undefined;
+  }
+  return Array.from(frequency.entries()).sort((a, b) => {
+    if (b[1] !== a[1]) return b[1] - a[1];
+    return a[0] - b[0];
+  })[0][0];
+}
+
+function median(values: number[]): number {
+  if (values.length === 0) return NaN;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 0) {
+    return (sorted[middle - 1] + sorted[middle]) / 2;
+  }
+  return sorted[middle];
+}
+
+function resolveSampleSizeConfidenceScale(priorSessionCount?: number): number {
+  if (!Number.isFinite(priorSessionCount) || (priorSessionCount ?? 0) <= 0) {
+    return 1;
+  }
+  if ((priorSessionCount as number) >= PROGRESSION_CONFIG.minSessionsForFullConfidence) {
+    return 1;
+  }
+  if ((priorSessionCount as number) <= 1) {
+    return PROGRESSION_CONFIG.singleSessionConfidenceScale;
+  }
+  if ((priorSessionCount as number) === PROGRESSION_CONFIG.minSessionsForFullConfidence - 1) {
+    return 0.9;
+  }
+  return 1;
+}
+
+function clampConfidenceScale(value?: number): number {
+  if (!Number.isFinite(value)) {
+    return 1;
+  }
+  return Math.min(1, Math.max(0, value as number));
 }

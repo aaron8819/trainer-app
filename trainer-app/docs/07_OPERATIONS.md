@@ -1,7 +1,7 @@
 # 07 Operations
 
-Owner: Aaron  
-Last reviewed: 2026-02-22  
+Owner: Aaron
+Last reviewed: 2026-02-26
 Purpose: Operational runbook for local development/runtime setup, migrations, seed, and verification for this single-user app.
 
 This doc covers:
@@ -37,7 +37,7 @@ Sources of truth:
 5. Start app: `npm run dev`
 
 ## Verification and maintenance
-- `npm run verify`: lint + test + contracts
+- `npm run verify`: lint + type-check (`tsc --noEmit`) + test + contracts
 - `npm run verify:exercise-library`: validates exercise library integrity
 - `npm run repair:exercise-library` (and `:apply`) for repair workflow
 - Keep `docs/contracts/runtime-contracts.json` aligned with `src/lib/validation.ts`

@@ -5,8 +5,10 @@
 
 import { prisma } from "@/lib/db/prisma";
 import { VOLUME_LANDMARKS, computeWeeklyVolumeTarget } from "@/lib/engine/volume-landmarks";
-import { computeWeeklyMuscleVolume } from "./analytics";
 import { computeCurrentMesoWeek } from "./periodization";
+import { getRirTarget } from "./mesocycle-lifecycle";
+import { WorkoutStatus, WorkoutSessionIntent } from "@prisma/client";
+import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 
 export type ProgramMesoBlock = {
   blockType: string;       // "accumulation" | "intensification" | "realization" | "deload"
@@ -49,16 +51,31 @@ export type DeloadReadiness = {
   reason: string;
 };
 
+export type NextSessionData = {
+  /** Lowercase session intent, e.g. "push". Null when no schedule configured. */
+  intent: string | null;
+  /** ID of the existing incomplete workout, or null when rotation-derived. */
+  workoutId: string | null;
+  /** True when an existing IN_PROGRESS / PARTIAL / PLANNED workout was found. */
+  isExisting: boolean;
+};
+
 export type ProgramDashboardData = {
   activeMeso: ProgramMesoSummary | null;
   currentWeek: number;
   sessionsUntilDeload: number;
   daysPerWeek: number;
+  /** Backward-compat alias for nextSession.intent. */
   nextSessionIntent: string | null;
+  nextSession: NextSessionData;
+  lastSessionSkipped: boolean;
+  latestIncomplete: { id: string; status: string } | null;
   volumeThisWeek: ProgramVolumeRow[];
   recentWorkouts: ProgramRecentWorkout[];
   deloadReadiness: DeloadReadiness | null;
+  rirTarget: { min: number; max: number } | null;
   capabilities: CapabilityFlags;
+  coachingCue: string;
 };
 
 export type CapabilityFlags = {
@@ -195,18 +212,91 @@ export async function loadActiveBlockPhase(userId: string): Promise<ActiveBlockP
   };
 }
 
+/**
+ * Returns the Date on which the given meso week starts.
+ * mesoStartDate is the first day of the mesocycle (week 1, day 1).
+ * currentWeek is 1-indexed.
+ */
+export function computeMesoWeekStart(mesoStartDate: Date, currentWeek: number): Date {
+  const d = new Date(mesoStartDate);
+  d.setDate(d.getDate() + (currentWeek - 1) * 7);
+  return d;
+}
+
+/**
+ * Load direct + indirect set counts per muscle for all performed workouts
+ * in the given mesocycle that fall on or after mesoWeekStart.
+ * Uses the same set-counting semantics as analytics.ts (non-skipped logs).
+ */
+async function loadMesoWeekMuscleVolume(
+  userId: string,
+  mesocycleId: string,
+  mesoWeekStart: Date
+): Promise<Record<string, { directSets: number; indirectSets: number }>> {
+  const workouts = await prisma.workout.findMany({
+    where: {
+      userId,
+      mesocycleId,
+      status: { in: [...PERFORMED_WORKOUT_STATUSES] as WorkoutStatus[] },
+      scheduledDate: { gte: mesoWeekStart },
+    },
+    include: {
+      exercises: {
+        include: {
+          exercise: {
+            include: {
+              exerciseMuscles: { include: { muscle: true } },
+            },
+          },
+          sets: { include: { logs: { orderBy: { completedAt: "desc" }, take: 1 } } },
+        },
+      },
+    },
+  });
+
+  const muscles: Record<string, { directSets: number; indirectSets: number }> = {};
+  for (const workout of workouts) {
+    for (const we of workout.exercises) {
+      const completedSets = we.sets.filter(
+        (s) => s.logs.length > 0 && !s.logs[0].wasSkipped
+      ).length;
+      if (completedSets === 0) continue;
+
+      const primaryMuscles = we.exercise.exerciseMuscles
+        .filter((m) => m.role === "PRIMARY")
+        .map((m) => m.muscle.name);
+      const secondaryMuscles = we.exercise.exerciseMuscles
+        .filter((m) => m.role === "SECONDARY")
+        .map((m) => m.muscle.name);
+
+      for (const muscle of primaryMuscles) {
+        if (!muscles[muscle]) muscles[muscle] = { directSets: 0, indirectSets: 0 };
+        muscles[muscle].directSets += completedSets;
+      }
+      for (const muscle of secondaryMuscles) {
+        if (!muscles[muscle]) muscles[muscle] = { directSets: 0, indirectSets: 0 };
+        muscles[muscle].indirectSets += completedSets;
+      }
+    }
+  }
+  return muscles;
+}
+
 export async function loadProgramDashboardData(userId: string): Promise<ProgramDashboardData> {
   const capabilities = await loadCapabilityFlags(userId);
   // Load active mesocycle with blocks + macro start date
   const mesoRecord = await prisma.mesocycle.findFirst({
     where: { macroCycle: { userId }, isActive: true },
     select: {
+      id: true,
       mesoNumber: true,
       focus: true,
       durationWeeks: true,
       completedSessions: true,
       volumeTarget: true,
       startWeek: true,
+      state: true,
+      rirBandConfig: true,
       blocks: {
         orderBy: { blockNumber: "asc" },
         select: {
@@ -226,13 +316,65 @@ export async function loadProgramDashboardData(userId: string): Promise<ProgramD
   });
   const daysPerWeek = constraints?.daysPerWeek ?? 3;
   const weeklySchedule = (constraints?.weeklySchedule ?? []).map((intent) =>
-    intent.toLowerCase()
+    (intent as string).toLowerCase()
   );
   const completedSessions = mesoRecord?.completedSessions ?? 0;
-  const nextSessionIntent =
-    weeklySchedule.length > 0
-      ? weeklySchedule[completedSessions % weeklySchedule.length]
-      : null;
+
+  // N1/N2/N3: Priority-aware incomplete workout query.
+  // Serves both the Next Session card (intent) and the Resume Workout card (id/status).
+  // Priority: IN_PROGRESS (0) → PARTIAL (1) → PLANNED (2), then scheduledDate asc.
+  const rawIncomplete = await prisma.workout.findMany({
+    where: { userId, status: { in: ["IN_PROGRESS", "PARTIAL", "PLANNED"] as WorkoutStatus[] } },
+    orderBy: { scheduledDate: "asc" },
+    take: 20,
+    select: { id: true, sessionIntent: true, status: true, scheduledDate: true },
+  });
+
+  const STATUS_PRIORITY: Record<string, number> = { IN_PROGRESS: 0, PARTIAL: 1, PLANNED: 2 };
+  const sortedIncomplete = [...rawIncomplete].sort((a, b) => {
+    const pa = STATUS_PRIORITY[a.status] ?? 3;
+    const pb = STATUS_PRIORITY[b.status] ?? 3;
+    if (pa !== pb) return pa - pb;
+    return a.scheduledDate.getTime() - b.scheduledDate.getTime();
+  });
+  const topIncomplete = sortedIncomplete[0] ?? null;
+
+  // Derive next session: existing incomplete workout takes precedence over rotation.
+  let nextSession: NextSessionData;
+  if (topIncomplete) {
+    nextSession = {
+      intent: topIncomplete.sessionIntent?.toLowerCase() ?? null,
+      workoutId: topIncomplete.id,
+      isExisting: true,
+    };
+  } else {
+    nextSession = {
+      intent:
+        weeklySchedule.length > 0
+          ? weeklySchedule[completedSessions % weeklySchedule.length]
+          : null,
+      workoutId: null,
+      isExisting: false,
+    };
+  }
+  const nextSessionIntent = nextSession.intent; // backward-compat alias
+
+  const latestIncomplete = topIncomplete
+    ? { id: topIncomplete.id, status: topIncomplete.status.toLowerCase() }
+    : null;
+
+  // N4: Detect a stalled rotation (last workout for this intent was SKIPPED).
+  // Only applies when the intent comes from the rotation (no existing incomplete workout).
+  let lastSessionSkipped = false;
+  if (!nextSession.isExisting && nextSession.intent) {
+    const intentEnum = nextSession.intent.toUpperCase() as WorkoutSessionIntent;
+    const latestForIntent = await prisma.workout.findFirst({
+      where: { userId, sessionIntent: intentEnum },
+      orderBy: { scheduledDate: "desc" },
+      select: { status: true },
+    });
+    lastSessionSkipped = latestForIntent?.status === "SKIPPED";
+  }
 
   // Compute current week (1-indexed)
   let currentWeek = 1;
@@ -260,12 +402,17 @@ export async function loadProgramDashboardData(userId: string): Promise<ProgramD
     ? Math.max(0, (mesoRecord.durationWeeks - 1) * daysPerWeek - mesoRecord.completedSessions)
     : 0;
 
-  // Volume this week
-  const weeklyVolume = await computeWeeklyMuscleVolume(userId, 1);
-  const thisWeekMuscles = weeklyVolume[weeklyVolume.length - 1]?.muscles ?? {};
+  // Volume this week — scoped to the current mesocycle week, not ISO calendar week
+  let thisWeekMuscles: Record<string, { directSets: number; indirectSets: number }> = {};
+  if (mesoRecord) {
+    const mesoStart = new Date(mesoRecord.macroCycle.startDate);
+    mesoStart.setDate(mesoStart.getDate() + mesoRecord.startWeek * 7);
+    const mesoWeekStart = computeMesoWeekStart(mesoStart, currentWeek);
+    thisWeekMuscles = await loadMesoWeekMuscleVolume(userId, mesoRecord.id, mesoWeekStart);
+  }
 
   const mesoLength = mesoRecord?.durationWeeks ?? 4;
-  const isDeload = mesoRecord ? currentWeek >= mesoRecord.durationWeeks : false;
+  const isDeload = mesoRecord?.state === "ACTIVE_DELOAD";
 
   const volumeThisWeek: ProgramVolumeRow[] = Object.entries(VOLUME_LANDMARKS)
     .map(([muscle, landmarks]) => {
@@ -281,7 +428,14 @@ export async function loadProgramDashboardData(userId: string): Promise<ProgramD
         mrv: landmarks.mrv,
       };
     })
-    .filter((v) => v.mav > 0); // Only muscles the system tracks (mav > 0)
+    // Exclude muscles with no minimum volume requirement and no sets logged this week
+    .filter((v) => v.mav > 0 && !(v.mev === 0 && v.directSets === 0))
+    // Sort most-lagging first (lowest ratio of sets completed vs weekly target)
+    .sort((a, b) => {
+      const ratioA = a.target === 0 ? 0 : a.directSets / a.target;
+      const ratioB = b.target === 0 ? 0 : b.directSets / b.target;
+      return ratioA - ratioB;
+    });
 
   // Recent workouts (last 10)
   const recentWorkouts = await prisma.workout.findMany({
@@ -298,6 +452,8 @@ export async function loadProgramDashboardData(userId: string): Promise<ProgramD
     },
   });
 
+  const rirTarget = mesoRecord ? getRirTarget(mesoRecord, currentWeek) : null;
+
   const deloadReadiness = mesoRecord
     ? computeDeloadReadiness(currentWeek, mesoRecord.durationWeeks, volumeThisWeek)
     : null;
@@ -308,6 +464,8 @@ export async function loadProgramDashboardData(userId: string): Promise<ProgramD
     startWeek: b.startWeek - mesoRecord.startWeek + 1, // absolute → meso-relative 1-indexed
     durationWeeks: b.durationWeeks,
   })) ?? [];
+
+  const blockTypeForCue = currentBlockType ?? "accumulation";
 
   return {
     activeMeso: mesoRecord
@@ -325,9 +483,14 @@ export async function loadProgramDashboardData(userId: string): Promise<ProgramD
     sessionsUntilDeload,
     daysPerWeek,
     nextSessionIntent,
+    nextSession,
+    lastSessionSkipped,
+    latestIncomplete,
     volumeThisWeek,
     deloadReadiness,
+    rirTarget,
     capabilities,
+    coachingCue: BLOCK_COACHING_CUES[blockTypeForCue] ?? BLOCK_COACHING_CUES.accumulation,
     recentWorkouts: recentWorkouts.map((w) => ({
       id: w.id,
       scheduledDate: w.scheduledDate.toISOString(),

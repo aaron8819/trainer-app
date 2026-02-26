@@ -35,6 +35,14 @@ const AnalyticsIcon = () => (
   </svg>
 );
 
+const HistoryIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 3v5h5" />
+    <path d="M3.05 13A9 9 0 1 0 6 5.3L3 8" />
+    <path d="M12 7v5l4 2" />
+  </svg>
+);
+
 const SettingsIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
     <circle cx="12" cy="12" r="3" />
@@ -44,6 +52,7 @@ const SettingsIcon = () => (
 
 const NAV_ITEMS = [
   { href: "/", label: "Home", icon: <HomeIcon /> },
+  { href: "/history", label: "History", icon: <HistoryIcon /> },
   { href: "/templates", label: "Templates", icon: <TemplatesIcon /> },
   { href: "/library", label: "Library", icon: <LibraryIcon /> },
   { href: "/analytics", label: "Analytics", icon: <AnalyticsIcon /> },

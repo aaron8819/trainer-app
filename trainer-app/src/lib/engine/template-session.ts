@@ -29,6 +29,7 @@ export type TemplateExerciseInput = {
   exercise: Exercise;
   orderIndex: number;
   supersetGroup?: number;
+  mesocycleRole?: "CORE_COMPOUND" | "ACCESSORY";
 };
 
 export type { VolumePlanByMuscle } from "./volume";
@@ -53,6 +54,7 @@ export type GenerateFromTemplateOptions = {
   blockContext?: BlockContext | null;
   isStrict?: boolean;
   setCountOverrides?: Record<string, number>;
+  mainLiftSlotCap?: number;
 };
 
 const DEFAULT_MAIN_LIFT_SLOT_CAP = 2;
@@ -62,6 +64,7 @@ export type TemplateWorkoutResult = {
   sraWarnings: SraWarning[];
   substitutions: SubstitutionSuggestion[];
   volumePlanByMuscle: VolumePlanByMuscle;
+  droppedAccessoryExerciseIds: string[];
 };
 
 export function generateWorkoutFromTemplate(
@@ -88,7 +91,11 @@ export function generateWorkoutFromTemplate(
           length: normalizedMesocycleLength,
         })
       : buildVolumeContext(history, exerciseLibrary);
-  const mainLiftSlots = resolveMainLiftSlots(templateExercises, goals);
+  const mainLiftSlots = resolveMainLiftSlots(
+    templateExercises,
+    goals,
+    options.mainLiftSlotCap ?? DEFAULT_MAIN_LIFT_SLOT_CAP
+  );
 
   const workoutExercises = templateExercises.map((input, index) =>
     buildTemplateExercise(
@@ -165,6 +172,10 @@ export function generateWorkoutFromTemplate(
     return 0;
   });
   const accessories = applyAccessorySupersetMetadata(finalAccessories);
+  const finalAccessoryIds = new Set(accessories.map((exercise) => exercise.exercise.id));
+  const droppedAccessoryExerciseIds = unboundedAccessories
+    .filter((exercise) => !finalAccessoryIds.has(exercise.exercise.id))
+    .map((exercise) => exercise.exercise.id);
 
   // Calculate estimated time (metadata only - no trimming)
   const allExercises = [...projectedMainLifts, ...accessories];
@@ -213,6 +224,7 @@ export function generateWorkoutFromTemplate(
     sraWarnings,
     substitutions: filteredSubstitutions,
     volumePlanByMuscle,
+    droppedAccessoryExerciseIds,
   };
 }
 
@@ -243,7 +255,8 @@ function buildTemplateExercise(
     periodizationForPrescription,
     exerciseRepRange,
     !isMainLift && !(exercise.isCompound ?? false),
-    overrideSetCount
+    overrideSetCount,
+    input.mesocycleRole
   );
   const topSetReps =
     prescribedSets.length > 0 ? resolveSetTargetReps(prescribedSets[0]) : undefined;
@@ -275,6 +288,17 @@ function buildTemplateExercise(
         };
       })
     : sets;
+  const lifecycleRirTarget = periodization?.lifecycleRirTarget;
+  const cappedSets =
+    lifecycleRirTarget
+      ? blockAdjustedSets.map((set) => ({
+          ...set,
+          targetRpe:
+            set.targetRpe == null
+              ? set.targetRpe
+              : Math.min(set.targetRpe, 10 - lifecycleRirTarget.min),
+        }))
+      : blockAdjustedSets;
 
   return {
     id: createId(),
@@ -284,7 +308,7 @@ function buildTemplateExercise(
     role,
     notes: isMainLift ? "Primary movement" : undefined,
     supersetGroup,
-    sets: blockAdjustedSets,
+    sets: cappedSets,
   };
 }
 
@@ -297,8 +321,28 @@ function resolveMainLiftSlots(
     return new Set<number>();
   }
 
-  const eligible = templateExercises
+  const forcedMain = new Set(
+    templateExercises
+      .map((input, index) => ({ input, index }))
+      .filter(({ input }) => input.mesocycleRole === "CORE_COMPOUND")
+      .map(({ index }) => index)
+  );
+  const forcedAccessory = new Set(
+    templateExercises
+      .map((input, index) => ({ input, index }))
+      .filter(({ input }) => input.mesocycleRole === "ACCESSORY")
+      .map(({ index }) => index)
+  );
+
+  const forcedMainPatterns = new Set(
+    [...forcedMain].flatMap((index) => templateExercises[index]?.exercise.movementPatterns ?? [])
+  );
+
+  const eligibleOptional = templateExercises
     .map((input, index) => {
+      if (forcedAccessory.has(index) || forcedMain.has(index)) {
+        return undefined;
+      }
       const exerciseRepRange = resolveExerciseRepRange(input.exercise);
       const isMainLiftEligible = input.exercise.isMainLiftEligible ?? false;
       const canBeMainLift =
@@ -307,6 +351,15 @@ function resolveMainLiftSlots(
         !shouldDemoteMainLiftForRepRange(goals, exerciseRepRange);
       if (!canBeMainLift) {
         return undefined;
+      }
+      if (forcedMainPatterns.size > 0) {
+        const candidatePatterns = input.exercise.movementPatterns ?? [];
+        const duplicatesForcedMainPattern = candidatePatterns.some((pattern) =>
+          forcedMainPatterns.has(pattern)
+        );
+        if (duplicatesForcedMainPattern) {
+          return undefined;
+        }
       }
       return { index, orderIndex: input.orderIndex };
     })
@@ -318,7 +371,17 @@ function resolveMainLiftSlots(
       return a.index - b.index;
     });
 
-  return new Set(eligible.slice(0, slotCap).map((entry) => entry.index));
+  const selectedMainSlots = new Set<number>(forcedMain);
+  if (slotCap <= forcedMain.size) {
+    return selectedMainSlots;
+  }
+
+  const remainingSlots = slotCap - forcedMain.size;
+  for (const optional of eligibleOptional.slice(0, remainingSlots)) {
+    selectedMainSlots.add(optional.index);
+  }
+
+  return selectedMainSlots;
 }
 
 function shouldDemoteBodyweightMainLiftForGoal(exercise: Exercise, goals: Goals): boolean {

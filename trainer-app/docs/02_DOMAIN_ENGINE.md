@@ -1,7 +1,7 @@
 # 02 Domain Engine
 
-Owner: Aaron  
-Last reviewed: 2026-02-21  
+Owner: Aaron
+Last reviewed: 2026-02-26
 Purpose: Canonical reference for workout-generation domain logic, including selection, progression, periodization, readiness, and explainability.
 
 This doc covers:
@@ -61,14 +61,14 @@ Sources of truth:
 - The split exists to separate adaptation signals from advancement control: partially performed work should inform future load/selection, while schedule/phase advancement remains a stricter completion event.
 - Performed-signal consumers use `COMPLETED` + `PARTIAL` via `PERFORMED_WORKOUT_STATUSES` in `src/lib/workout-status.ts`.
 - Program advancement remains `COMPLETED` only via `ADVANCEMENT_WORKOUT_STATUSES` in `src/lib/workout-status.ts`.
-- Mesocycle lifecycle progression is driven by first transition into performed status (`COMPLETED` or `PARTIAL`) and increments lifecycle counters through `transitionMesocycleState()` in `src/lib/api/mesocycle-lifecycle.ts`.
+- Mesocycle lifecycle progression is driven by first transition into performed status (`COMPLETED` or `PARTIAL`). Lifecycle counters (`accumulationSessionsCompleted`, `deloadSessionsCompleted`) are incremented atomically inside the save-workout transaction in `src/app/api/workouts/save/route.ts`; `transitionMesocycleState()` in `src/lib/api/mesocycle-lifecycle.ts` reads the already-incremented counters and applies state transitions when thresholds are reached.
 - Canonical mesocycle progression counters are `accumulationSessionsCompleted` and `deloadSessionsCompleted` (not `completedSessions`) and drive lifecycle week/phase derivation.
 
 ## Mesocycle lifecycle service
 - Service file: `src/lib/api/mesocycle-lifecycle.ts`.
 - `transitionMesocycleState(mesocycleId)`: increments accumulation/deload counters, transitions state (`ACTIVE_ACCUMULATION` -> `ACTIVE_DELOAD` -> `COMPLETED`), and initializes the next mesocycle when deload is complete.
 - `getCurrentMesoWeek(mesocycle)`: derives effective lifecycle week from `state`, `accumulationSessionsCompleted`, and `sessionsPerWeek`.
-- `getWeeklyVolumeTarget(mesocycle, muscleGroup, week)`: returns lifecycle week-specific target sets from mesocycle ramp semantics and landmarks.
+- `getWeeklyVolumeTarget(mesocycle, muscleGroup, week)`: returns lifecycle week-specific target sets from mesocycle ramp semantics and landmarks. Landmark values (MEV/MAV/MRV) are sourced from `VOLUME_LANDMARKS` in `src/lib/engine/volume-landmarks.ts` (single source of truth; the former local `INTERMEDIATE_LANDMARKS` table has been removed).
 - Weekly accumulation targets are linearly interpolated from `MEV` (W1) to `MAV` (W4): W2/W3 use 1/3 and 2/3 interpolation; deload remains `~45%` of W4.
 - Pull musculature landmarks are split (`lats`, `upper_back`) and rear-delt landmarks are reduced to evidence-aligned defaults (`rear_delts: MEV 4, MAV 12`; `lats: MEV 8, MAV 16`; `upper_back: MEV 6, MAV 14`).
 - `getRirTarget(mesocycle, week)`: returns lifecycle week/state-specific RIR bands, including deload targets.
@@ -91,6 +91,7 @@ Sources of truth:
 - Progression receipts only use recent performed evidence (42-day recency window) when loading `lastPerformed` in `loadLatestPerformedSetSummary()` within `src/lib/api/explainability.ts`.
 - Progression receipts include a decision log summarizing which load-progression rule path fired and why.
 - Explainability renders per-exercise progression decision logs in the Evidence tab under `Progression Logic` when logs are available.
+- Workout explanations include per-muscle weekly volume compliance (`WorkoutExplanation.volumeCompliance` in `src/lib/engine/explainability/types.ts`), computed by `computeVolumeCompliance()` in `src/lib/api/explainability.ts`. Per-muscle compliance is annotated with `VolumeComplianceStatus` — one of `OVER_MAV | AT_MAV | APPROACHING_MAV | OVER_TARGET | ON_TARGET | APPROACHING_TARGET | UNDER_MEV` — and carries projected weekly totals against week-specific targets.
 
 ## Session Composition Constraints
 - Canonical session composition caps:

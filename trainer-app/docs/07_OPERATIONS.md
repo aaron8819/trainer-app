@@ -46,6 +46,8 @@ Sources of truth:
   - `prisma/reset-backfill-mesocycle-lifecycle.ts`: reset and rebuild mesocycle lifecycle state from existing performed workouts.
   - `prisma/backfill-week2-pull.ts`: example manual session backfill flow.
   - `prisma/update-pull-exercise-roles.ts` and `prisma/update-push-exercise-roles.ts`: canonical mesocycle exercise role updates.
+  - `prisma/audit-mesocycle.ts`: diagnostic — prints active mesocycle state, lifecycle counters, and recent workout snapshots.
+  - `prisma/fix-workout-388f.ts`: one-off data repair (corrects `mesocycleId` + snapshots after lifecycle counter backfill).
 - Lifecycle verification query pattern (mesocycle state, counters, snapshots, roles):
 ```sql
 -- Mesocycle lifecycle state + counters

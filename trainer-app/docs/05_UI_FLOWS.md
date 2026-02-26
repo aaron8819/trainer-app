@@ -1,7 +1,7 @@
 # 05 UI Flows
 
 Owner: Aaron  
-Last reviewed: 2026-02-22  
+Last reviewed: 2026-02-26
 Purpose: Canonical reference for current UI routes and core user flows implemented in the Next.js App Router.
 
 This doc covers:
@@ -28,6 +28,7 @@ Sources of truth:
 - `/analytics`: analytics dashboards (`src/app/analytics/page.tsx`)
 - `/templates`, `/templates/new`, `/templates/[id]/edit`: template management
 - `/library`: exercise library (`src/app/library/page.tsx`)
+- `/history`: paginated workout history with intent/date/mesocycle filters and volume compliance dots (`src/app/history/page.tsx`, `src/components/HistoryClient.tsx`)
 - `/settings`: user settings (`src/app/settings/page.tsx`)
 - `/program`: mesocycle/block/program dashboard (`src/app/program/page.tsx`)
 
@@ -60,3 +61,4 @@ Sources of truth:
 - UI: `/program`, readiness components
 - APIs: `/api/program`, `/api/readiness/submit`, `/api/stalls`, `/api/periodization/macro`
 - Dashboard training status uses API-provided `daysPerWeek` for session totals (not a fixed weekly constant) in `src/components/TrainingStatusCard.tsx`, with value supplied by `loadProgramDashboardData()` in `src/lib/api/program.ts`.
+- `ProgramDashboardData` now includes `lastSessionSkipped` (bool), `latestIncomplete` (workout id/status), `rirTarget` (RIR band for current meso week), and `coachingCue` (human-readable session readiness message), all used by `TrainingStatusCard` to surface coaching context on the dashboard.

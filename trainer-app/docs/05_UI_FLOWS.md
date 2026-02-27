@@ -1,7 +1,7 @@
 # 05 UI Flows
 
-Owner: Aaron  
-Last reviewed: 2026-02-26
+Owner: Aaron
+Last reviewed: 2026-02-27
 Purpose: Canonical reference for current UI routes and core user flows implemented in the Next.js App Router.
 
 This doc covers:
@@ -24,7 +24,7 @@ Sources of truth:
 - `/`: dashboard (`src/app/page.tsx`)
 - `/onboarding`: profile setup (`src/app/onboarding/page.tsx`)
 - `/workout/[id]`: workout detail + explainability (`src/app/workout/[id]/page.tsx`)
-- `/log/[id]`: logging workflow (`src/app/log/[id]/page.tsx`)
+- `/log/[id]`: logging workflow (`src/app/log/[id]/page.tsx`). AppNavigation marks the home (`/`) item active for all `/log/*` paths (`src/components/navigation/AppNavigation.tsx`).
 - `/analytics`: analytics dashboards (`src/app/analytics/page.tsx`)
 - `/templates`, `/templates/new`, `/templates/[id]/edit`: template management
 - `/library`: exercise library (`src/app/library/page.tsx`)
@@ -45,8 +45,9 @@ Sources of truth:
 3. Log sets and complete workout
 - UI: `/log/[id]`, `LogWorkoutClient`
 - API: `POST /api/logs/set` (and `DELETE /api/logs/set` for log removal)
-- Completion actions call `POST /api/workouts/save` with explicit action commands (`mark_completed`, `mark_skipped`).
+- Completion actions call `POST /api/workouts/save` with explicit action commands (`mark_completed`, `mark_partial`, `mark_skipped`).
 - `mark_completed` can return `workoutStatus: PARTIAL` when unresolved sets remain; UI must treat this as a performed session result, not a hard error.
+- `mark_partial` is surfaced as an explicit "Save progress" button in the active-set panel once at least one set has been logged (`loggedCount > 0`). It persists a `PARTIAL` status without requiring all sets to be resolved first (`src/components/LogWorkoutClient.tsx`).
 - Plan writes remain non-terminal (`save_plan`) and do not finalize `COMPLETED|PARTIAL|SKIPPED`.
 - Log page now surfaces persisted cycle/explainability context (`cycleContext`, deload decision reason, and derived target RIR) from `selectionMetadata` parsing in `src/app/log/[id]/page.tsx` and `src/lib/ui/explainability.ts`.
 

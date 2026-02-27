@@ -225,22 +225,47 @@ describe("LogWorkoutClient UX behavior", () => {
     });
   });
 
-  it("scrolls reps and load input into view on focus", async () => {
-    const user = userEvent.setup();
+  it("uses text-base font size on reps, load, and RPE inputs to prevent iOS autozoom", () => {
+    renderClient();
+    const repsInput = screen.getByLabelText("Reps") as HTMLInputElement;
+    const loadInput = screen.getByLabelText("Load") as HTMLInputElement;
+    const rpeInput = screen.getByLabelText("RPE") as HTMLInputElement;
+    expect(repsInput.className).toContain("text-base");
+    expect(loadInput.className).toContain("text-base");
+    expect(rpeInput.className).toContain("text-base");
+  });
+
+  it("scrolls active set panel on exercise change, not on every input focus", async () => {
     const scrollSpy = vi.fn();
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
       configurable: true,
       value: scrollSpy,
     });
+    // scrollBy is not implemented in jsdom — stub it to suppress noise
+    Object.defineProperty(window, "scrollBy", { configurable: true, value: vi.fn() });
 
-    renderClient();
+    render(
+      <LogWorkoutClient
+        workoutId="workout-1"
+        exercises={makeMultiSectionExercises()}
+      />
+    );
 
-    await user.click(screen.getByLabelText("Reps"));
-    await user.click(screen.getByLabelText("Load"));
+    // Wait for initial mount scroll (scrollToActiveSet has 150ms delay)
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    scrollSpy.mockClear();
 
+    // Focus inputs — should NOT trigger scroll
+    fireEvent.focus(screen.getByLabelText("Reps"));
+    fireEvent.focus(screen.getByLabelText("Load"));
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(scrollSpy).not.toHaveBeenCalled();
+
+    // Log the active set → exercise changes → scrollToActiveSet fires
+    fireEvent.click(screen.getByRole("button", { name: "Log set" }));
     await waitFor(() => {
-      expect(scrollSpy).toHaveBeenCalled();
-    });
+      expect(scrollSpy).toHaveBeenCalledTimes(1);
+    }, { timeout: 2000 });
   });
 });
 
@@ -535,4 +560,330 @@ describe("4i — Collapse exercise queue during active set", () => {
     expect(screen.queryByTestId("collapsed-summary-main")).not.toBeInTheDocument();
     expect(screen.queryByTestId("collapsed-summary-accessory")).not.toBeInTheDocument();
   });
+});
+
+describe("L-2/L-3/L-1/T-1/T-3 — Layout and UX fixes", () => {
+  beforeEach(() => {
+    mockedLogSetRequest.mockResolvedValue({ data: { status: "ok", wasCreated: true }, error: null });
+    mockedSaveWorkoutRequest.mockResolvedValue({ data: { status: "ok", workoutStatus: "COMPLETED" }, error: null });
+    window.localStorage.clear();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: vi.fn(),
+    });
+    Object.defineProperty(window, "scrollBy", { configurable: true, value: vi.fn() });
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.clearAllMocks();
+    vi.useRealTimers();
+  });
+
+  it("L-3: undo toast renders with position fixed when undoSnapshot is set", async () => {
+    const user = userEvent.setup();
+    render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
+
+    await user.click(screen.getByRole("button", { name: "Log set" }));
+
+    await waitFor(() => {
+      const paragraph = screen.getByText(/Set logged. Undo available/);
+      const toast = paragraph.closest("div[style]") as HTMLElement | null;
+      expect(toast).not.toBeNull();
+      expect(toast).toHaveStyle({ position: "fixed" });
+    });
+  });
+
+  it("T-3: mute preference persists across rest timer remounts", async () => {
+    const user = userEvent.setup();
+    render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
+
+    // Log first set → rest timer appears
+    await user.click(screen.getByRole("button", { name: "Log set" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Mute alerts" })).toBeInTheDocument();
+    });
+
+    // Toggle mute
+    await user.click(screen.getByRole("button", { name: "Mute alerts" }));
+    expect(screen.getByRole("button", { name: "Unmute alerts" })).toBeInTheDocument();
+
+    // Log second set → timer re-mounts with new duration
+    await user.click(screen.getByRole("button", { name: /Log set|Update set/ }));
+
+    // Mute should still be toggled (state lifted to parent)
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Unmute alerts" })).toBeInTheDocument();
+    });
+  });
+
+  it("T-1: compact timer banner renders when keyboard is open via visualViewport", async () => {
+    let resizeHandler: (() => void) | undefined;
+    const mockViewport = {
+      height: 800,
+      addEventListener: vi.fn((_event: string, handler: () => void) => {
+        resizeHandler = handler;
+      }),
+      removeEventListener: vi.fn(),
+    };
+    Object.defineProperty(window, "visualViewport", { configurable: true, value: mockViewport });
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 800 });
+
+    const user = userEvent.setup();
+    render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
+
+    // Log first set → rest timer appears (initially full card, keyboard closed)
+    await user.click(screen.getByRole("button", { name: "Log set" }));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Mute alerts" })).toBeInTheDocument();
+    });
+
+    // Simulate keyboard opening (viewport shrinks)
+    mockViewport.height = 480;
+    resizeHandler?.();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("compact-timer-banner")).toBeInTheDocument();
+    });
+  });
+
+  it("T-1: full timer card renders when keyboard is closed", async () => {
+    let resizeHandler: (() => void) | undefined;
+    const mockViewport = {
+      height: 800,
+      addEventListener: vi.fn((_event: string, handler: () => void) => {
+        resizeHandler = handler;
+      }),
+      removeEventListener: vi.fn(),
+    };
+    Object.defineProperty(window, "visualViewport", { configurable: true, value: mockViewport });
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 800 });
+
+    const user = userEvent.setup();
+    render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
+
+    // Log first set → rest timer appears (keyboard closed = full card)
+    await user.click(screen.getByRole("button", { name: "Log set" }));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("compact-timer-banner")).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Mute alerts" })).toBeInTheDocument();
+    });
+
+    // Simulate keyboard close (viewport back to full height)
+    mockViewport.height = 800;
+    resizeHandler?.();
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("compact-timer-banner")).not.toBeInTheDocument();
+    });
+  });
+
+  it("L-1: bottom padding updates when visualViewport height changes", async () => {
+    let resizeHandler: (() => void) | undefined;
+    const mockViewport = {
+      height: 800,
+      addEventListener: vi.fn((_event: string, handler: () => void) => {
+        resizeHandler = handler;
+      }),
+      removeEventListener: vi.fn(),
+    };
+    Object.defineProperty(window, "visualViewport", { configurable: true, value: mockViewport });
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 800 });
+
+    const { container } = render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
+    const root = container.firstChild as HTMLElement;
+
+    // Initially: keyboard closed, padding uses safe-area fallback
+    expect(root).toHaveStyle({ paddingBottom: "env(safe-area-inset-bottom, 16px)" });
+
+    // Simulate keyboard opening (320px keyboard)
+    mockViewport.height = 480;
+    resizeHandler?.();
+
+    await waitFor(() => {
+      expect(root).toHaveStyle({ paddingBottom: "336px" }); // 320 + 16
+    });
+  });
+});
+
+describe("I-2/I-4/I-5/E-4/E-5/E-6/L-4/S-5 — Remaining low-priority fixes", () => {
+  beforeEach(() => {
+    mockedLogSetRequest.mockResolvedValue({ data: { status: "ok", wasCreated: true }, error: null });
+    mockedSaveWorkoutRequest.mockResolvedValue({ data: { status: "ok", workoutStatus: "COMPLETED" }, error: null });
+    window.localStorage.clear();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: vi.fn(),
+    });
+    Object.defineProperty(window, "scrollBy", { configurable: true, value: vi.fn() });
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.clearAllMocks();
+    vi.useRealTimers();
+  });
+
+  it("I-2: Same as last button is disabled when no previous set is logged", () => {
+    render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
+    const btn = screen.getByRole("button", { name: "Same as last" });
+    expect(btn).toBeDisabled();
+  });
+
+  it("I-2: Same as last button is enabled after first set is logged", async () => {
+    const user = userEvent.setup();
+    render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
+
+    await user.click(screen.getByRole("button", { name: "Log set" }));
+    await waitFor(() => expect(mockedLogSetRequest).toHaveBeenCalledTimes(1));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Same as last" })).not.toBeDisabled();
+    });
+  });
+
+  it("I-4: RPE preset buttons include 6", () => {
+    render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
+    // All five preset buttons should be present
+    expect(screen.getByRole("button", { name: "6" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "7" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "10" })).toBeInTheDocument();
+  });
+
+  it("I-5: shows spinner in Log set button while saving", async () => {
+    let resolveLog!: (val: { data: { status: string; wasCreated: boolean }; error: null }) => void;
+    mockedLogSetRequest.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveLog = resolve;
+        })
+    );
+
+    render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Log set" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("log-set-spinner")).toBeInTheDocument();
+    });
+
+    resolveLog({ data: { status: "ok", wasCreated: true }, error: null });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("log-set-spinner")).not.toBeInTheDocument();
+    });
+  });
+
+  it("E-4: shows spinner in Confirm button while completion submitting", async () => {
+    let resolveSave!: (val: { data: { status: string; workoutStatus: string }; error: null }) => void;
+    mockedSaveWorkoutRequest.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveSave = resolve;
+        })
+    );
+
+    render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Mark workout completed" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("dialog", { name: "Workout completion confirmation" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("completion-spinner")).toBeInTheDocument();
+    });
+
+    resolveSave({ data: { status: "ok", workoutStatus: "COMPLETED" }, error: null });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("completion-spinner")).not.toBeInTheDocument();
+    });
+  });
+
+  it("E-5: log set error renders as fixed snackbar with Dismiss button", async () => {
+    mockedLogSetRequest.mockResolvedValueOnce({ data: null, error: "Server error" });
+
+    render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Log set" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("error-snackbar")).toBeInTheDocument();
+    });
+
+    const snackbar = screen.getByTestId("error-snackbar");
+    expect(snackbar).toHaveStyle({ position: "fixed" });
+    expect(screen.getByText("Server error")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Dismiss" })).toBeInTheDocument();
+  });
+
+  it("E-5: Dismiss button clears the error snackbar", async () => {
+    mockedLogSetRequest.mockResolvedValueOnce({ data: null, error: "Server error" });
+
+    const user = userEvent.setup();
+    render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Log set" }));
+
+    await waitFor(() => expect(screen.getByTestId("error-snackbar")).toBeInTheDocument());
+
+    await user.click(screen.getByRole("button", { name: "Dismiss" }));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("error-snackbar")).not.toBeInTheDocument();
+    });
+  });
+
+  it("E-5: error snackbar auto-clears after 5 seconds", async () => {
+    mockedLogSetRequest.mockResolvedValueOnce({ data: null, error: "Auto-clear error" });
+
+    render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Log set" }));
+
+    await waitFor(() => expect(screen.getByTestId("error-snackbar")).toBeInTheDocument());
+
+    await new Promise((resolve) => setTimeout(resolve, 5100));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("error-snackbar")).not.toBeInTheDocument();
+    });
+  }, 10000);
+
+  it("E-6: rest timer is cleared after successful workout completion", async () => {
+    const user = userEvent.setup();
+    render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
+
+    await user.click(screen.getByRole("button", { name: "Log set" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Mute alerts" })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Mark workout completed" }));
+    await user.click(screen.getByRole("button", { name: "Confirm" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: /Mute alerts|Unmute alerts/ })).not.toBeInTheDocument();
+    });
+  });
+
+  it("L-4: status message clears after 2500ms", async () => {
+    const user = userEvent.setup();
+    render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
+
+    await user.click(screen.getByRole("button", { name: "Log set" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Set logged")).toBeInTheDocument();
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 2600));
+
+    await waitFor(() => {
+      expect(screen.queryByText("Set logged")).not.toBeInTheDocument();
+    });
+  }, 8000);
 });

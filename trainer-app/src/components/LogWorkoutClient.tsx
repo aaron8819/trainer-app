@@ -162,7 +162,13 @@ export default function LogWorkoutClient({
   const [chipEditLoadSetId, setChipEditLoadSetId] = useState<string | null>(null);
   const [completionAction, setCompletionAction] = useState<CompletionAction | null>(null);
   const [completionSubmitting, setCompletionSubmitting] = useState(false);
-  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [restTimerMuted, setRestTimerMuted] = useState(false);
+  const activeSetPanelRef = useRef<HTMLElement | null>(null);
+  const scrollCancelRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const statusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const errorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sectionRefs = useRef<Record<ExerciseSection, HTMLDivElement | null>>({
     warmup: null,
     main: null,
@@ -265,6 +271,35 @@ export default function LogWorkoutClient({
   }, [undoSnapshot]);
 
   useEffect(() => {
+    return () => {
+      if (statusTimeoutRef.current) clearTimeout(statusTimeoutRef.current);
+      if (errorTimeoutRef.current) clearTimeout(errorTimeoutRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!error) return;
+    if (errorTimeoutRef.current) clearTimeout(errorTimeoutRef.current);
+    errorTimeoutRef.current = setTimeout(() => setError(null), 5000);
+    return () => {
+      if (errorTimeoutRef.current) clearTimeout(errorTimeoutRef.current);
+    };
+  }, [error]);
+
+  const scrollToActiveSet = useCallback(() => {
+    if (scrollCancelRef.current !== null) {
+      clearTimeout(scrollCancelRef.current);
+    }
+    scrollCancelRef.current = setTimeout(() => {
+      scrollCancelRef.current = null;
+      const el = activeSetPanelRef.current;
+      if (!el || typeof el.scrollIntoView !== "function") return;
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+      window.scrollBy?.(0, -72);
+    }, 150);
+  }, []);
+
+  useEffect(() => {
     if (!window.visualViewport) {
       return;
     }
@@ -273,18 +308,17 @@ export default function LogWorkoutClient({
       const activeElement = document.activeElement;
       const isInput =
         activeElement instanceof HTMLInputElement || activeElement instanceof HTMLTextAreaElement;
-      const keyboardOpen = window.innerHeight - viewport.height > 120;
-      if (isInput && keyboardOpen) {
-        setTimeout(() => {
-          if (typeof activeElement.scrollIntoView === "function") {
-            activeElement.scrollIntoView({ behavior: "smooth", block: "center" });
-          }
-        }, 50);
+      const heightDiff = window.innerHeight - viewport.height;
+      const kbOpen = heightDiff > 120;
+      setKeyboardOpen(kbOpen);
+      setKeyboardHeight(kbOpen ? heightDiff : 0);
+      if (isInput && kbOpen) {
+        scrollToActiveSet();
       }
     };
     viewport.addEventListener("resize", handleResize);
     return () => viewport.removeEventListener("resize", handleResize);
-  }, []);
+  }, [scrollToActiveSet]);
 
   const updateSetFields = useCallback(
     (setId: string, updater: (set: LogSetInput) => LogSetInput) => {
@@ -392,14 +426,8 @@ export default function LogWorkoutClient({
     }
     setExpandedSections({ warmup: false, main: false, accessory: false, [activeSection]: true });
     setExpandedExerciseId(activeExerciseId);
-    const scrollTimeout = setTimeout(() => {
-      const sectionElement = sectionRefs.current[activeSection];
-      if (sectionElement && typeof sectionElement.scrollIntoView === "function") {
-        sectionElement.scrollIntoView({ behavior: "smooth", block: "nearest" });
-      }
-    }, 100);
-    return () => clearTimeout(scrollTimeout);
-  }, [activeExerciseId, activeSection, completed, setExpandedExerciseId, setExpandedSections, skipped]);
+    scrollToActiveSet();
+  }, [activeExerciseId, activeSection, completed, scrollToActiveSet, setExpandedExerciseId, setExpandedSections, skipped]);
 
   const clearDraftInputBuffers = useCallback((setId: string) => {
     setRepsInputBuffers((prev) => {
@@ -458,23 +486,11 @@ export default function LogWorkoutClient({
     });
   }, [activeSet, loadInputBuffers, repsInputBuffers, rpeInputBuffers, saveDraft]);
 
-  const scrollFieldIntoView = useCallback((element: HTMLElement) => {
-    setTimeout(() => {
-      if (typeof element.scrollIntoView === "function") {
-        element.scrollIntoView({ behavior: "smooth", block: "center" });
-      }
-    }, 100);
-  }, []);
-
-  const handleNumericFieldFocus = useCallback(
-    (event: FocusEvent<HTMLInputElement>) => {
-      scrollFieldIntoView(event.currentTarget);
-      if (resolvedActiveSetId && restoredSetIds.has(resolvedActiveSetId)) {
-        markRestoredSeen(resolvedActiveSetId);
-      }
-    },
-    [markRestoredSeen, resolvedActiveSetId, restoredSetIds, scrollFieldIntoView]
-  );
+  const handleNumericFieldFocus = useCallback(() => {
+    if (resolvedActiveSetId && restoredSetIds.has(resolvedActiveSetId)) {
+      markRestoredSeen(resolvedActiveSetId);
+    }
+  }, [markRestoredSeen, resolvedActiveSetId, restoredSetIds]);
 
   const handleLoadFocus = useCallback(() => {
     if (!activeSet) {
@@ -644,7 +660,10 @@ export default function LogWorkoutClient({
       setAutoregHint(null);
     }
 
-    setStatus(loggedSetIds.has(setId) ? "Set updated" : "Set logged");
+    const nextStatus = loggedSetIds.has(setId) ? "Set updated" : "Set logged";
+    setStatus(nextStatus);
+    if (statusTimeoutRef.current) clearTimeout(statusTimeoutRef.current);
+    statusTimeoutRef.current = setTimeout(() => setStatus(null), 2500);
     setSavingSetId(null);
     return true;
   };
@@ -788,6 +807,7 @@ export default function LogWorkoutClient({
       clearAllDrafts();
       setBaselineSummary((body?.baselineSummary as BaselineUpdateSummary | null | undefined) ?? null);
       setCompleted(true);
+      setRestTimerSeconds(null);
       setStatus(
         body?.workoutStatus === "PARTIAL"
           ? "Workout saved as partial (some planned sets were unresolved)"
@@ -844,11 +864,17 @@ export default function LogWorkoutClient({
     return true;
   };
 
+  const hasPreviousSet = activeSet
+    ? findPreviousLoggedSet(activeSet.exercise, activeSet.setIndex) !== null
+    : false;
+
   return (
     <div
-      ref={scrollContainerRef}
       className="mt-5 space-y-5 pb-8 sm:mt-6 sm:space-y-6"
-      style={{ paddingBottom: "max(env(keyboard-inset-height, 0px), 300px)" }}
+      style={{
+        paddingBottom:
+          keyboardHeight > 0 ? `${keyboardHeight + 16}px` : "env(safe-area-inset-bottom, 16px)",
+      }}
     >
       {/* 1A: Green completion banner when all sets logged */}
       {!completed && !skipped && allSetsLogged ? (
@@ -872,7 +898,11 @@ export default function LogWorkoutClient({
       ) : !completed && !skipped && activeSet ? (
         /* Active set card */
         <ActiveSetPanel>
-          <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
+          <section
+          ref={activeSetPanelRef}
+          className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5"
+          style={{ scrollMarginBottom: "calc(var(--mobile-nav-height, 56px) + env(safe-area-inset-bottom, 0px))" }}
+        >
           <div className="flex items-center justify-between gap-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Active set</p>
             <p className="text-xs text-slate-500">
@@ -937,7 +967,7 @@ export default function LogWorkoutClient({
                 </button>
                 <input
                   aria-label="Reps"
-                  className={`min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm ${
+                  className={`min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-base ${
                     prefilledFieldsBySet[activeSet.set.setId]?.actualReps &&
                     !touchedFieldsBySet[activeSet.set.setId]?.actualReps
                       ? "text-slate-400"
@@ -948,26 +978,29 @@ export default function LogWorkoutClient({
                   value={
                     repsInputBuffers[activeSet.set.setId] ?? toInputNumberString(activeSet.set.actualReps)
                   }
-                  onFocus={(event) => {
-                    handleNumericFieldFocus(event);
+                  onFocus={() => {
+                    handleNumericFieldFocus();
                     setRepsInputBuffers((prev) => ({
                       ...prev,
                       [activeSet.set.setId]: toInputNumberString(activeSet.set.actualReps),
                     }));
                   }}
-                  onBlur={() =>
+                  onBlur={() => {
+                    const rawValue =
+                      repsInputBuffers[activeSet.set.setId] ??
+                      toInputNumberString(activeSet.set.actualReps);
+                    setSingleField(activeSet.set.setId, "actualReps", parseNullableNumber(rawValue));
+                    markFieldTouched(activeSet.set.setId, "actualReps");
+                    setFieldPrefilled(activeSet.set.setId, "actualReps", false);
                     setRepsInputBuffers((prev) => {
                       const next = { ...prev };
                       delete next[activeSet.set.setId];
                       return next;
-                    })
-                  }
+                    });
+                  }}
                   onChange={(event) => {
                     const nextValue = event.target.value;
                     setRepsInputBuffers((prev) => ({ ...prev, [activeSet.set.setId]: nextValue }));
-                    setSingleField(activeSet.set.setId, "actualReps", parseNullableNumber(nextValue));
-                    markFieldTouched(activeSet.set.setId, "actualReps");
-                    setFieldPrefilled(activeSet.set.setId, "actualReps", false);
                   }}
                 />
                 <button
@@ -1040,7 +1073,7 @@ export default function LogWorkoutClient({
               </div>
               <input
                 aria-label="Load"
-                className={`mt-2 min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm ${
+                className={`mt-2 min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-base ${
                   prefilledFieldsBySet[activeSet.set.setId]?.actualLoad &&
                   !touchedFieldsBySet[activeSet.set.setId]?.actualLoad
                     ? "text-slate-400"
@@ -1055,8 +1088,8 @@ export default function LogWorkoutClient({
                         toDisplayLoad(activeSet.set.actualLoad, isDumbbellExercise(activeSet.exercise)) ?? null
                       )
                 }
-                onFocus={(event) => {
-                  handleNumericFieldFocus(event);
+                onFocus={() => {
+                  handleNumericFieldFocus();
                   handleLoadFocus();
                 }}
                 onBlur={handleLoadBlur}
@@ -1070,7 +1103,7 @@ export default function LogWorkoutClient({
             <div>
               <p className="text-xs font-medium uppercase tracking-wide text-slate-500">RPE</p>
               <div className="mt-2 flex flex-wrap gap-2">
-                {[7, 8, 9, 10].map((preset) => (
+                {[6, 7, 8, 9, 10].map((preset) => (
                   <button
                     key={`${activeSet.set.setId}-rpe-${preset}`}
                     className={`inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border px-3 text-xs font-semibold ${
@@ -1095,7 +1128,7 @@ export default function LogWorkoutClient({
               </div>
               <input
                 aria-label="RPE"
-                className={`mt-2 min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm ${
+                className={`mt-2 min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-base ${
                   prefilledFieldsBySet[activeSet.set.setId]?.actualRpe &&
                   !touchedFieldsBySet[activeSet.set.setId]?.actualRpe
                     ? "text-slate-400"
@@ -1105,26 +1138,29 @@ export default function LogWorkoutClient({
                 step="0.5"
                 inputMode="decimal"
                 value={rpeInputBuffers[activeSet.set.setId] ?? toInputNumberString(activeSet.set.actualRpe)}
-                onFocus={(event) => {
-                  handleNumericFieldFocus(event);
+                onFocus={() => {
+                  handleNumericFieldFocus();
                   setRpeInputBuffers((prev) => ({
                     ...prev,
                     [activeSet.set.setId]: toInputNumberString(activeSet.set.actualRpe),
                   }));
                 }}
-                onBlur={() =>
+                onBlur={() => {
+                  const rawValue =
+                    rpeInputBuffers[activeSet.set.setId] ??
+                    toInputNumberString(activeSet.set.actualRpe);
+                  setSingleField(activeSet.set.setId, "actualRpe", parseNullableNumber(rawValue));
+                  markFieldTouched(activeSet.set.setId, "actualRpe");
+                  setFieldPrefilled(activeSet.set.setId, "actualRpe", false);
                   setRpeInputBuffers((prev) => {
                     const next = { ...prev };
                     delete next[activeSet.set.setId];
                     return next;
-                  })
-                }
+                  });
+                }}
                 onChange={(event) => {
                   const nextValue = event.target.value;
                   setRpeInputBuffers((prev) => ({ ...prev, [activeSet.set.setId]: nextValue }));
-                  setSingleField(activeSet.set.setId, "actualRpe", parseNullableNumber(nextValue));
-                  markFieldTouched(activeSet.set.setId, "actualRpe");
-                  setFieldPrefilled(activeSet.set.setId, "actualRpe", false);
                 }}
               />
             </div>
@@ -1137,11 +1173,19 @@ export default function LogWorkoutClient({
               disabled={savingSetId === activeSet.set.setId}
               type="button"
             >
-              {savingSetId === activeSet.set.setId
-                ? "Saving..."
-                : resolvedActiveSetId && loggedSetIds.has(resolvedActiveSetId)
-                ? "Update set"
-                : "Log set"}
+              {savingSetId === activeSet.set.setId ? (
+                <span className="inline-flex items-center gap-2">
+                  <span
+                    data-testid="log-set-spinner"
+                    className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"
+                  />
+                  Saving...
+                </span>
+              ) : resolvedActiveSetId && loggedSetIds.has(resolvedActiveSetId) ? (
+                "Update set"
+              ) : (
+                "Log set"
+              )}
             </button>
             <button
               className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 px-6 py-2 text-sm font-semibold text-slate-700 disabled:opacity-60"
@@ -1176,7 +1220,7 @@ export default function LogWorkoutClient({
                   [activeSet.set.setId]: { actualReps: false, actualLoad: false, actualRpe: false },
                 }));
               }}
-              disabled={findPreviousLoggedSet(activeSet.exercise, activeSet.setIndex) === null}
+              disabled={!hasPreviousSet}
             >
               Same as last
             </button>
@@ -1190,8 +1234,19 @@ export default function LogWorkoutClient({
             </button>
           </div>
 
+          {loggedCount > 0 ? (
+            <div className="mt-3">
+              <button
+                className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-slate-300 px-4 py-2 text-xs font-semibold text-slate-600 disabled:opacity-60"
+                onClick={() => openCompletionConfirm("mark_partial")}
+                disabled={completing || skipping}
+                type="button"
+              >
+                Save progress
+              </button>
+            </div>
+          ) : null}
             {status ? <p className="mt-3 text-sm text-emerald-600">{status}</p> : null}
-            {error ? <p className="mt-3 text-sm text-rose-600">{error}</p> : null}
           </section>
         </ActiveSetPanel>
       ) : null}
@@ -1206,6 +1261,9 @@ export default function LogWorkoutClient({
               return Math.max(0, prev + deltaSeconds);
             })
           }
+          compact={keyboardOpen}
+          muted={restTimerMuted}
+          onMuteToggle={() => setRestTimerMuted((prev) => !prev)}
         />
       ) : null}
 
@@ -1336,14 +1394,14 @@ export default function LogWorkoutClient({
                                   <p className="mb-2 text-xs font-semibold text-slate-500">
                                     Edit Set {editSet.setIndex}
                                   </p>
-                                  <div className="grid grid-cols-3 gap-2">
+                                  <div className="grid grid-cols-3 gap-1.5">
                                     <div>
                                       <label className="text-[10px] font-medium uppercase tracking-wide text-slate-400">
                                         Reps
                                       </label>
                                       <input
                                         aria-label="Chip edit reps"
-                                        className="mt-0.5 min-h-9 w-full rounded-lg border border-slate-300 px-2 py-1 text-sm text-slate-900"
+                                        className="mt-0.5 min-h-9 w-full rounded-lg border border-slate-300 px-1.5 py-1 text-base text-slate-900"
                                         type="number"
                                         inputMode="numeric"
                                         value={draft.reps}
@@ -1364,7 +1422,7 @@ export default function LogWorkoutClient({
                                       </label>
                                       <input
                                         aria-label="Chip edit load"
-                                        className="mt-0.5 min-h-9 w-full rounded-lg border border-slate-300 px-2 py-1 text-sm text-slate-900"
+                                        className="mt-0.5 min-h-9 w-full rounded-lg border border-slate-300 px-1.5 py-1 text-base text-slate-900"
                                         type="number"
                                         inputMode="decimal"
                                         value={
@@ -1391,7 +1449,7 @@ export default function LogWorkoutClient({
                                       </label>
                                       <input
                                         aria-label="Chip edit RPE"
-                                        className="mt-0.5 min-h-9 w-full rounded-lg border border-slate-300 px-2 py-1 text-sm text-slate-900"
+                                        className="mt-0.5 min-h-9 w-full rounded-lg border border-slate-300 px-1.5 py-1 text-base text-slate-900"
                                         type="number"
                                         step="0.5"
                                         inputMode="decimal"
@@ -1643,7 +1701,17 @@ export default function LogWorkoutClient({
                 disabled={completionSubmitting}
                 type="button"
               >
-                Confirm
+                {completionSubmitting ? (
+                  <span className="inline-flex items-center gap-2">
+                    <span
+                      data-testid="completion-spinner"
+                      className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"
+                    />
+                    Saving...
+                  </span>
+                ) : (
+                  "Confirm"
+                )}
               </button>
               <button
                 className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
@@ -1658,8 +1726,44 @@ export default function LogWorkoutClient({
         </div>
       ) : null}
 
+      {error ? (
+        <div
+          data-testid="error-snackbar"
+          className="rounded-xl border border-rose-200 bg-rose-50 p-3 shadow-sm"
+          style={{
+            position: "fixed",
+            bottom:
+              "calc(var(--mobile-nav-height, 56px) + env(safe-area-inset-bottom, 0px) + 8px)",
+            left: "16px",
+            right: "16px",
+            zIndex: 50,
+          }}
+        >
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-rose-700">{error}</p>
+            <button
+              className="inline-flex min-h-9 items-center justify-center rounded-full border border-rose-300 px-3 text-xs font-semibold text-rose-700"
+              onClick={() => setError(null)}
+              type="button"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {undoSnapshot ? (
-        <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+        <div
+          className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm"
+          style={{
+            position: "fixed",
+            bottom:
+              "calc(var(--mobile-nav-height, 56px) + env(safe-area-inset-bottom, 0px) + 8px)",
+            left: "16px",
+            right: "16px",
+            zIndex: 50,
+          }}
+        >
           <div className="flex items-center justify-between gap-3">
             <p className="text-xs text-slate-600">Set logged. Undo available for a few seconds.</p>
             <button
@@ -1729,7 +1833,7 @@ export default function LogWorkoutClient({
                 <label className="mt-2 block text-xs font-medium text-slate-500">
                   Skip reason (optional)
                   <input
-                    className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-base"
                     placeholder="Travel, low energy, time constraints"
                     value={skipReason}
                     onChange={(event) => setSkipReason(event.target.value)}

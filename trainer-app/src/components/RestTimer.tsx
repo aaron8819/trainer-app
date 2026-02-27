@@ -6,15 +6,23 @@ type RestTimerProps = {
   durationSeconds: number;
   onDismiss: () => void;
   onAdjust?: (deltaSeconds: number) => void;
+  compact?: boolean;
+  muted: boolean;
+  onMuteToggle: () => void;
 };
 
-export function RestTimer({ durationSeconds, onDismiss, onAdjust }: RestTimerProps) {
+export function RestTimer({ durationSeconds, onDismiss, onAdjust, compact, muted, onMuteToggle }: RestTimerProps) {
   const [remaining, setRemaining] = useState(durationSeconds);
-  const [muted, setMuted] = useState(false);
+  // Mirror muted into a ref so playCompletionAlert can read it without restarting the timer
+  const mutedRef = useRef(muted);
   const endAtRef = useRef<number>(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const completedRef = useRef(false);
   const audioContextRef = useRef<AudioContext | null>(null);
+
+  useEffect(() => {
+    mutedRef.current = muted;
+  }, [muted]);
 
   const initializeAudioContext = useCallback(() => {
     if (typeof window === "undefined") {
@@ -34,7 +42,7 @@ export function RestTimer({ durationSeconds, onDismiss, onAdjust }: RestTimerPro
   }, []);
 
   const playCompletionAlert = useCallback(() => {
-    if (muted) {
+    if (mutedRef.current) {
       return;
     }
     if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
@@ -45,18 +53,27 @@ export function RestTimer({ durationSeconds, onDismiss, onAdjust }: RestTimerPro
     if (!context) {
       return;
     }
-    const oscillator = context.createOscillator();
-    const gainNode = context.createGain();
-    oscillator.type = "sine";
-    oscillator.frequency.value = 440;
-    gainNode.gain.setValueAtTime(0.001, context.currentTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.15, context.currentTime + 0.02);
-    gainNode.gain.exponentialRampToValueAtTime(0.001, context.currentTime + 0.2);
-    oscillator.connect(gainNode);
-    gainNode.connect(context.destination);
-    oscillator.start();
-    oscillator.stop(context.currentTime + 0.2);
-  }, [muted]);
+    const playTone = () => {
+      const oscillator = context.createOscillator();
+      const gainNode = context.createGain();
+      oscillator.type = "sine";
+      oscillator.frequency.value = 440;
+      gainNode.gain.setValueAtTime(0.001, context.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.15, context.currentTime + 0.02);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, context.currentTime + 0.2);
+      oscillator.connect(gainNode);
+      gainNode.connect(context.destination);
+      oscillator.start();
+      oscillator.stop(context.currentTime + 0.2);
+    };
+    if (context.state === "suspended") {
+      context.resume().then(playTone).catch(() => {
+        // resume failed — vibrate already tried above, fall through silently
+      });
+      return;
+    }
+    playTone();
+  }, []);
 
   const clearTimer = useCallback(() => {
     if (intervalRef.current) {
@@ -127,6 +144,27 @@ export function RestTimer({ durationSeconds, onDismiss, onAdjust }: RestTimerPro
   const seconds = remaining % 60;
   const progress = durationSeconds > 0 ? remaining / durationSeconds : 0;
 
+  if (compact) {
+    return (
+      <div
+        className="fixed left-0 right-0 top-0 z-50 flex items-center justify-between bg-slate-900 px-4 py-2 text-white"
+        data-testid="compact-timer-banner"
+      >
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-300">Rest</p>
+        <p className="text-2xl font-bold tabular-nums">
+          {minutes}:{String(seconds).padStart(2, "0")}
+        </p>
+        <button
+          className="inline-flex min-h-9 items-center justify-center rounded-full border border-slate-600 px-3 text-sm font-semibold text-white"
+          onClick={onDismiss}
+          type="button"
+        >
+          Skip
+        </button>
+      </div>
+    );
+  }
+
   return (
     <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-center sm:p-5">
       <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Rest</p>
@@ -168,7 +206,7 @@ export function RestTimer({ durationSeconds, onDismiss, onAdjust }: RestTimerPro
         className="mt-3 inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border border-slate-300 px-4 text-sm font-semibold text-slate-700"
         onClick={() => {
           initializeAudioContext();
-          setMuted((prev) => !prev);
+          onMuteToggle();
         }}
         type="button"
       >

@@ -74,7 +74,7 @@ export function AppNavigation() {
 
   const isActive = (href: string) => {
     if (!pathname) return false;
-    if (href === "/") return pathname === "/";
+    if (href === "/") return pathname === "/" || pathname.startsWith("/log");
     return pathname === href || pathname.startsWith(`${href}/`);
   };
 

@@ -11,6 +11,8 @@ type WorkoutListItem = {
   status: string;
   sessionIntent: string | null;
   exercisesCount: number;
+  mesocycleWeekSnapshot: number | null;
+  mesoSessionSnapshot: number | null;
 };
 
 type StatusMap = {
@@ -68,6 +70,14 @@ export default function RecentWorkouts({
               <div>
                 <p className="text-sm font-semibold">
                   {workout.sessionIntent ? formatSessionIntent(workout.sessionIntent) : "Workout"}
+                  {workout.mesocycleWeekSnapshot != null ? (
+                    <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600">
+                      Wk{workout.mesocycleWeekSnapshot}
+                      {workout.mesoSessionSnapshot != null
+                        ? `·S${workout.mesoSessionSnapshot}`
+                        : ""}
+                    </span>
+                  ) : null}
                 </p>
                 <p className="mt-1 text-xs text-slate-500">
                   {new Date(workout.scheduledDate).toLocaleDateString()} · {workout.exercisesCount}{" "}

@@ -350,7 +350,7 @@ async function loadVolumeByMuscle(userId: string, currentDate: Date): Promise<Ma
           volumeByMuscle.set(em.muscle.name, current + setCount);
         } else if (em.role === "SECONDARY") {
           const current = volumeByMuscle.get(em.muscle.name) ?? 0;
-          volumeByMuscle.set(em.muscle.name, current + setCount * SECONDARY_VOLUME_MULTIPLIER);
+          volumeByMuscle.set(em.muscle.name, Math.round((current + setCount * SECONDARY_VOLUME_MULTIPLIER) * 10) / 10);
         }
       }
     }

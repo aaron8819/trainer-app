@@ -50,6 +50,10 @@ function roleOrderedIds(
   return [...core, ...accessory];
 }
 
+// Hard cap on working sets for CORE_COMPOUND main lifts (1 top + back-offs).
+// Prevents the continuity ramp from exceeding what's prescribed by resolveSetCount.
+const MAIN_LIFT_MAX_WORKING_SETS = 5;
+
 function resolveRoleFixtureSetTarget(
   exercisePrimaryMuscles: string[],
   exerciseId: string,
@@ -59,8 +63,12 @@ function resolveRoleFixtureSetTarget(
   lifecycleWeeklyTargets: Record<string, number>,
   assignedSetsByMuscleInSession: Map<string, number>,
   remainingRoleExerciseIdsByMuscle: Map<string, string[]>,
-  allRoleExerciseIdsByMuscle: Map<string, string[]>
+  allRoleExerciseIdsByMuscle: Map<string, string[]>,
+  role: "CORE_COMPOUND" | "ACCESSORY" | undefined
 ): number {
+  const applyRoleCap = (sets: number): number =>
+    role === "CORE_COMPOUND" ? Math.min(sets, MAIN_LIFT_MAX_WORKING_SETS) : sets;
+
   if (isDeload) {
     return proposedSets;
   }
@@ -71,7 +79,7 @@ function resolveRoleFixtureSetTarget(
   const progressionFloor = Math.min(12, continuityMin + progressionIncrement);
   const continuityFloored = Math.max(proposedSets, continuityMin, progressionFloor);
   if (exercisePrimaryMuscles.length === 0) {
-    return continuityFloored;
+    return applyRoleCap(continuityFloored);
   }
 
   const muscleCaps = exercisePrimaryMuscles.map((muscle) => {
@@ -97,7 +105,7 @@ function resolveRoleFixtureSetTarget(
   const capRemainingForExercise = Math.min(...muscleCaps);
   const clampedToBudget = Math.min(continuityFloored, capRemainingForExercise);
   if (clampedToBudget >= continuityMin) {
-    return clampedToBudget;
+    return applyRoleCap(clampedToBudget);
   }
   const mustHoldPriorFloor = exercisePrimaryMuscles.some((muscle) => {
     const allRoleIdsForMuscle = allRoleExerciseIdsByMuscle.get(muscle) ?? [];
@@ -114,7 +122,7 @@ function resolveRoleFixtureSetTarget(
     const w4Mav = VOLUME_LANDMARKS[muscle]?.mav ?? weeklyTarget;
     return priorFloorTotalForMuscle > Math.min(weeklyTarget, w4Mav);
   });
-  return mustHoldPriorFloor ? continuityMin : clampedToBudget;
+  return applyRoleCap(mustHoldPriorFloor ? continuityMin : clampedToBudget);
 }
 
 export async function generateSessionFromTemplate(
@@ -326,7 +334,8 @@ export async function generateSessionFromIntent(
           mapped.lifecycleVolumeTargets,
           assignedSetsByMuscleInSession,
           remainingRoleExerciseIdsByMuscle,
-          allRoleExerciseIdsByMuscle
+          allRoleExerciseIdsByMuscle,
+          roleMap.get(exerciseId)
         );
         for (const muscle of exercise.primaryMuscles ?? []) {
           assignedSetsByMuscleInSession.set(
@@ -445,7 +454,8 @@ export async function generateSessionFromIntent(
         mapped.lifecycleVolumeTargets,
         assignedSetsByMuscleInSession,
         remainingRoleExerciseIdsByMuscle,
-        allRoleExerciseIdsByMuscle
+        allRoleExerciseIdsByMuscle,
+        roleMap.get(exerciseId)
       );
       for (const muscle of exercise.primaryMuscles ?? []) {
         assignedSetsByMuscleInSession.set(

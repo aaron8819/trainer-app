@@ -5,8 +5,7 @@
 
 import { prisma } from "@/lib/db/prisma";
 import { VOLUME_LANDMARKS, computeWeeklyVolumeTarget } from "@/lib/engine/volume-landmarks";
-import { computeCurrentMesoWeek } from "./periodization";
-import { getRirTarget } from "./mesocycle-lifecycle";
+import { getCurrentMesoWeek, getRirTarget } from "./mesocycle-lifecycle";
 import { WorkoutStatus, WorkoutSessionIntent } from "@prisma/client";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 
@@ -63,6 +62,8 @@ export type NextSessionData = {
 export type ProgramDashboardData = {
   activeMeso: ProgramMesoSummary | null;
   currentWeek: number;
+  /** The week whose volume data is shown. Equals currentWeek unless a historical week is requested. */
+  viewedWeek: number;
   sessionsUntilDeload: number;
   daysPerWeek: number;
   /** Backward-compat alias for nextSession.intent. */
@@ -170,6 +171,9 @@ export async function loadActiveBlockPhase(userId: string): Promise<ActiveBlockP
     select: {
       durationWeeks: true,
       completedSessions: true,
+      accumulationSessionsCompleted: true,
+      sessionsPerWeek: true,
+      state: true,
       startWeek: true,
       blocks: { orderBy: { blockNumber: "asc" }, select: { blockType: true, startWeek: true, durationWeeks: true } },
       macroCycle: { select: { startDate: true } },
@@ -178,19 +182,7 @@ export async function loadActiveBlockPhase(userId: string): Promise<ActiveBlockP
 
   if (!meso) return null;
 
-  const constraints = await prisma.constraints.findUnique({
-    where: { userId },
-    select: { daysPerWeek: true },
-  });
-  const daysPerWeek = constraints?.daysPerWeek ?? 3;
-
-  const mesoStart = new Date(meso.macroCycle.startDate);
-  mesoStart.setDate(mesoStart.getDate() + meso.startWeek * 7);
-
-  const weekInMeso = computeCurrentMesoWeek(
-    { completedSessions: meso.completedSessions, durationWeeks: meso.durationWeeks, startDate: mesoStart },
-    daysPerWeek
-  );
+  const weekInMeso = getCurrentMesoWeek(meso);
 
   const weekIndex = meso.startWeek + weekInMeso - 1; // absolute 0-indexed
   const currentBlock = meso.blocks.find(
@@ -200,7 +192,7 @@ export async function loadActiveBlockPhase(userId: string): Promise<ActiveBlockP
 
   const sessionsUntilDeload = Math.max(
     0,
-    (meso.durationWeeks - 1) * daysPerWeek - meso.completedSessions
+    (meso.durationWeeks - 1) * meso.sessionsPerWeek - meso.accumulationSessionsCompleted
   );
 
   return {
@@ -282,7 +274,10 @@ async function loadMesoWeekMuscleVolume(
   return muscles;
 }
 
-export async function loadProgramDashboardData(userId: string): Promise<ProgramDashboardData> {
+export async function loadProgramDashboardData(
+  userId: string,
+  viewWeek?: number
+): Promise<ProgramDashboardData> {
   const capabilities = await loadCapabilityFlags(userId);
   // Load active mesocycle with blocks + macro start date
   const mesoRecord = await prisma.mesocycle.findFirst({
@@ -293,6 +288,8 @@ export async function loadProgramDashboardData(userId: string): Promise<ProgramD
       focus: true,
       durationWeeks: true,
       completedSessions: true,
+      accumulationSessionsCompleted: true,
+      sessionsPerWeek: true,
       volumeTarget: true,
       startWeek: true,
       state: true,
@@ -376,16 +373,19 @@ export async function loadProgramDashboardData(userId: string): Promise<ProgramD
     lastSessionSkipped = latestForIntent?.status === "SKIPPED";
   }
 
-  // Compute current week (1-indexed)
+  // Compute current week (1-indexed) using the lifecycle counter as canonical source.
+  // getCurrentMesoWeek uses accumulationSessionsCompleted / sessionsPerWeek and has no
+  // calendar guard, so it reflects the actual session progression without date skew.
   let currentWeek = 1;
   if (mesoRecord) {
-    const mesoStart = new Date(mesoRecord.macroCycle.startDate);
-    mesoStart.setDate(mesoStart.getDate() + mesoRecord.startWeek * 7);
-    currentWeek = computeCurrentMesoWeek(
-      { completedSessions: mesoRecord.completedSessions, durationWeeks: mesoRecord.durationWeeks, startDate: mesoStart },
-      daysPerWeek
-    );
+    currentWeek = getCurrentMesoWeek(mesoRecord);
   }
+
+  // Effective week for volume/RIR display — clamped to [1, durationWeeks].
+  // Defaults to currentWeek; overridden by caller when navigating historical weeks.
+  const effectiveViewWeek = mesoRecord
+    ? Math.max(1, Math.min(viewWeek ?? currentWeek, mesoRecord.durationWeeks))
+    : 1;
 
   // Find current block type (blocks use absolute startWeek within macro)
   let currentBlockType: string | null = null;
@@ -397,27 +397,42 @@ export async function loadProgramDashboardData(userId: string): Promise<ProgramD
     currentBlockType = currentBlock?.blockType?.toLowerCase() ?? null;
   }
 
-  // Sessions until deload: last week of meso is deload → accumulation sessions = (durationWeeks-1) * daysPerWeek
+  // Sessions until deload: last week of meso is deload → accumulation sessions = (durationWeeks-1) * sessionsPerWeek.
+  // Use accumulationSessionsCompleted (lifecycle counter) not completedSessions (may diverge via manual imports).
   const sessionsUntilDeload = mesoRecord
-    ? Math.max(0, (mesoRecord.durationWeeks - 1) * daysPerWeek - mesoRecord.completedSessions)
+    ? Math.max(0, (mesoRecord.durationWeeks - 1) * mesoRecord.sessionsPerWeek - mesoRecord.accumulationSessionsCompleted)
     : 0;
 
-  // Volume this week — scoped to the current mesocycle week, not ISO calendar week
+  // Volume for the viewed week — scoped to the viewed meso week's date window, not ISO calendar week.
+  // When navigating historical weeks, effectiveViewWeek may differ from currentWeek.
   let thisWeekMuscles: Record<string, { directSets: number; indirectSets: number }> = {};
   if (mesoRecord) {
     const mesoStart = new Date(mesoRecord.macroCycle.startDate);
     mesoStart.setDate(mesoStart.getDate() + mesoRecord.startWeek * 7);
-    const mesoWeekStart = computeMesoWeekStart(mesoStart, currentWeek);
+    const mesoWeekStart = computeMesoWeekStart(mesoStart, effectiveViewWeek);
     thisWeekMuscles = await loadMesoWeekMuscleVolume(userId, mesoRecord.id, mesoWeekStart);
   }
 
   const mesoLength = mesoRecord?.durationWeeks ?? 4;
-  const isDeload = mesoRecord?.state === "ACTIVE_DELOAD";
+  // isDeload is true only when the viewed week IS the deload week (last week of meso).
+  // Using the viewed week (not meso state) so historical accumulation weeks show ramp targets.
+  const isDeload = effectiveViewWeek >= mesoLength;
+
+  // Only display muscles with research-backed MEV/MAV landmarks (Israetel RP model).
+  // The remaining muscles in VOLUME_LANDMARKS (Core, Lower Back, Forearms, etc.) are
+  // retained for engine use (indirect volume counting) but excluded from the dashboard.
+  const RESEARCH_BACKED_MUSCLES = new Set([
+    "Chest", "Lats", "Upper Back",
+    "Front Delts", "Side Delts", "Rear Delts",
+    "Quads", "Hamstrings", "Glutes",
+    "Biceps", "Triceps", "Calves",
+  ]);
 
   const volumeThisWeek: ProgramVolumeRow[] = Object.entries(VOLUME_LANDMARKS)
+    .filter(([muscle]) => RESEARCH_BACKED_MUSCLES.has(muscle))
     .map(([muscle, landmarks]) => {
       const data = thisWeekMuscles[muscle] ?? { directSets: 0, indirectSets: 0 };
-      const target = computeWeeklyVolumeTarget(landmarks, currentWeek, mesoLength, isDeload);
+      const target = computeWeeklyVolumeTarget(landmarks, effectiveViewWeek, mesoLength, isDeload);
       return {
         muscle,
         directSets: data.directSets,
@@ -428,8 +443,9 @@ export async function loadProgramDashboardData(userId: string): Promise<ProgramD
         mrv: landmarks.mrv,
       };
     })
-    // Exclude muscles with no minimum volume requirement and no sets logged this week
-    .filter((v) => v.mav > 0 && !(v.mev === 0 && v.directSets === 0))
+    // Show muscles that are tracked (mav > 0) AND have a programmed target this week OR logged sets.
+    // MEV=0 is valid (e.g., Glutes trained indirectly via squat/RDL) — do not filter on MEV alone.
+    .filter((v) => v.mav > 0 && (v.target > 0 || v.directSets > 0))
     // Sort most-lagging first (lowest ratio of sets completed vs weekly target)
     .sort((a, b) => {
       const ratioA = a.target === 0 ? 0 : a.directSets / a.target;
@@ -452,8 +468,9 @@ export async function loadProgramDashboardData(userId: string): Promise<ProgramD
     },
   });
 
-  const rirTarget = mesoRecord ? getRirTarget(mesoRecord, currentWeek) : null;
+  const rirTarget = mesoRecord ? getRirTarget(mesoRecord, effectiveViewWeek) : null;
 
+  // deloadReadiness is always anchored to currentWeek (live state, not historical view)
   const deloadReadiness = mesoRecord
     ? computeDeloadReadiness(currentWeek, mesoRecord.durationWeeks, volumeThisWeek)
     : null;
@@ -473,13 +490,16 @@ export async function loadProgramDashboardData(userId: string): Promise<ProgramD
           mesoNumber: mesoRecord.mesoNumber,
           focus: mesoRecord.focus,
           durationWeeks: mesoRecord.durationWeeks,
-          completedSessions: mesoRecord.completedSessions,
+          // Use accumulationSessionsCompleted: the canonical lifecycle counter.
+          // completedSessions may diverge from it when workouts are imported manually.
+          completedSessions: mesoRecord.accumulationSessionsCompleted,
           volumeTarget: mesoRecord.volumeTarget.toLowerCase(),
           currentBlockType,
           blocks: mesoBlocks,
         }
       : null,
     currentWeek,
+    viewedWeek: effectiveViewWeek,
     sessionsUntilDeload,
     daysPerWeek,
     nextSessionIntent,
@@ -509,7 +529,7 @@ export type CycleAnchorAction = "deload" | "extend_phase" | "skip_phase" | "rese
  *
  * - deload: Mark next session as deload by bumping completedSessions to the deload threshold
  * - extend_phase: Add +1 week to the current block
- * - skip_phase: Advance completedSessions by one full week (daysPerWeek sessions)
+ * - skip_phase: Mark a session as skipped — neither counter increments (skipped ≠ performed)
  * - reset: Reset completedSessions to 0
  *
  * All actions are reversible via reset.
@@ -517,7 +537,7 @@ export type CycleAnchorAction = "deload" | "extend_phase" | "skip_phase" | "rese
 export async function applyCycleAnchor(userId: string, action: CycleAnchorAction): Promise<void> {
   const meso = await prisma.mesocycle.findFirst({
     where: { macroCycle: { userId }, isActive: true },
-    select: { id: true, completedSessions: true, durationWeeks: true },
+    select: { id: true, completedSessions: true, accumulationSessionsCompleted: true, durationWeeks: true },
   });
 
   if (!meso) {
@@ -532,11 +552,14 @@ export async function applyCycleAnchor(userId: string, action: CycleAnchorAction
 
   switch (action) {
     case "deload": {
-      // Jump completedSessions to the start of the deload week
+      // Jump both counters to the start of the deload week atomically
       const deloadThreshold = (meso.durationWeeks - 1) * daysPerWeek;
       await prisma.mesocycle.update({
         where: { id: meso.id },
-        data: { completedSessions: Math.max(meso.completedSessions, deloadThreshold) },
+        data: {
+          completedSessions: Math.max(meso.completedSessions, deloadThreshold),
+          accumulationSessionsCompleted: Math.max(meso.accumulationSessionsCompleted, deloadThreshold),
+        },
       });
       break;
     }
@@ -549,17 +572,13 @@ export async function applyCycleAnchor(userId: string, action: CycleAnchorAction
       break;
     }
     case "skip_phase": {
-      // Advance session count by one full week of training
-      await prisma.mesocycle.update({
-        where: { id: meso.id },
-        data: { completedSessions: Math.min(meso.completedSessions + daysPerWeek, meso.durationWeeks * daysPerWeek) },
-      });
+      // A skipped session is not a performed session — neither counter increments.
       break;
     }
     case "reset": {
       await prisma.mesocycle.update({
         where: { id: meso.id },
-        data: { completedSessions: 0 },
+        data: { completedSessions: 0, accumulationSessionsCompleted: 0 },
       });
       break;
     }

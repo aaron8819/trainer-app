@@ -142,7 +142,7 @@ export function SessionContextCard({
                 <div key={muscle} className={`rounded-lg border px-2 py-1 text-xs ${statusColor}`}>
                   <p className="font-medium">{muscle}</p>
                   <p className="text-xs">
-                    {status.currentSets} / {status.targetRange.min}-{status.targetRange.max} sets
+                    {Math.round(status.currentSets * 10) / 10} / {status.targetRange.min}-{status.targetRange.max} sets
                   </p>
                 </div>
               );

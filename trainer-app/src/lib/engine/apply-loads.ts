@@ -504,10 +504,15 @@ function resolveLoadForExercise(
           )
         : latestSets;
     const equipment = getPrimaryProgressionEquipment(exercise);
+    // For main lifts (top set + back-offs), anchor progression to the top set load.
+    // Modal anchoring would return the back-off weight (more frequent) and produce a
+    // phantom ~11% reduction on every session. Accessories keep modal anchoring.
+    const anchorOverride = !useModalAnchoring ? getTopSessionLoad(latestSets) : undefined;
     const decision = computeDoubleProgressionDecision(latestSetsForDecision, repRange, equipment, {
       priorSessionCount: historySessions?.length ?? 1,
       historyConfidenceScale,
       confidenceReasons: confidenceNotes,
+      anchorOverride,
     });
     const anchorLoad = useModalAnchoring
       ? (decision?.anchorLoad ?? weightedHistoryModalLoad ?? getModalSessionLoad(latestSets))
@@ -587,6 +592,14 @@ function estimateLoad(
   weightKg?: number
 ): number | undefined {
   if (isBodyweightOnly(exercise)) {
+    return undefined;
+  }
+
+  // Hybrid exercises (e.g. Dip: Bodyweight + Machine) default to bodyweight when
+  // there is no load history to base a progression on. History with non-zero loads
+  // takes the history-driven path before estimateLoad is ever called, so this only
+  // fires for genuinely unweighted first use.
+  if ((exercise.equipment ?? []).includes("bodyweight")) {
     return undefined;
   }
 

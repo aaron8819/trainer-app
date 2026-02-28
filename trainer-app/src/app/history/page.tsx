@@ -25,6 +25,7 @@ export default async function HistoryPage() {
         sessionIntent: true,
         mesocycleId: true,
         mesocycleWeekSnapshot: true,
+        mesoSessionSnapshot: true,
         mesocyclePhaseSnapshot: true,
         _count: { select: { exercises: true } },
         exercises: {
@@ -60,6 +61,7 @@ export default async function HistoryPage() {
     sessionIntent: w.sessionIntent ?? null,
     mesocycleId: w.mesocycleId ?? null,
     mesocycleWeekSnapshot: w.mesocycleWeekSnapshot ?? null,
+    mesoSessionSnapshot: w.mesoSessionSnapshot ?? null,
     mesocyclePhaseSnapshot: w.mesocyclePhaseSnapshot ?? null,
     exerciseCount: w._count.exercises,
     totalSetsLogged: w.exercises

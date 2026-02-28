@@ -56,7 +56,7 @@ export function explainPrescriptionRationale(
   const { exercise, sets, isMainLift, goals, profile, periodization, weekInMesocycle } = context;
 
   // Get top set for representative prescription
-  const topSet = sets.find((s) => s.setIndex === 1) ?? sets[0];
+  const topSet = [...sets].sort((a, b) => a.setIndex - b.setIndex)[0];
   if (!topSet) {
     throw new Error("No sets provided for prescription rationale");
   }

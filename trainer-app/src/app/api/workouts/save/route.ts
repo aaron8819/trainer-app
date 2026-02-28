@@ -253,6 +253,8 @@ export async function POST(request: Request) {
 
       const shouldTransitionPerformed =
         isPerformedWorkoutStatus(finalStatus) && !isPerformedWorkoutStatus(existingWorkout?.status);
+      // Also snapshot on initial plan-save so the label appears immediately in Recent Workouts.
+      const shouldSetPlannedMesoSnapshot = action === "save_plan" && !existingWorkout;
       let resolvedMesocycleId = existingWorkout?.mesocycleId ?? null;
       let resolvedMesocycle:
         | {
@@ -264,7 +266,7 @@ export async function POST(request: Request) {
           }
         | null = null;
 
-      if (shouldTransitionPerformed) {
+      if (shouldTransitionPerformed || shouldSetPlannedMesoSnapshot) {
         if (resolvedMesocycleId) {
           resolvedMesocycle = await tx.mesocycle.findUnique({
             where: { id: resolvedMesocycleId },
@@ -293,16 +295,22 @@ export async function POST(request: Request) {
           resolvedMesocycleId = resolvedMesocycle?.id ?? null;
         }
 
-        if (!resolvedMesocycleId || !resolvedMesocycle) {
+        if (shouldTransitionPerformed && (!resolvedMesocycleId || !resolvedMesocycle)) {
           throw new Error("ACTIVE_MESOCYCLE_NOT_FOUND");
         }
       }
 
-      const shouldSetMesoSnapshot = shouldTransitionPerformed && Boolean(resolvedMesocycleId);
+      const shouldSetMesoSnapshot =
+        (shouldTransitionPerformed || shouldSetPlannedMesoSnapshot) && Boolean(resolvedMesocycleId);
       let mesoSnapshot:
         | { week: number; phase: "ACCUMULATION" | "DELOAD"; session: number }
         | undefined;
       if (shouldSetMesoSnapshot && resolvedMesocycle) {
+        // Both getCurrentMesoWeek and the session formula read the PRE-increment value of
+        // accumulationSessionsCompleted (the counter hasn't been incremented yet at this point).
+        // This is correct by design: pre-increment value N means "N sessions done before this one",
+        // so floor(N / sessionsPerWeek) + 1 gives the current week, and (N % sessionsPerWeek) + 1
+        // gives the current session within that week.  The increment happens below after the upsert.
         const week = getCurrentMesoWeek(resolvedMesocycle);
         const session =
           resolvedMesocycle.state === "ACTIVE_DELOAD"

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getVolumeDotClass } from "./TrainingStatusCard";
+import { getVolumeDotClass } from "./ProgramStatusCard";
 
 // Fixtures: mev=6, target=10, mav=16, mrv=20
 const MEV = 6;

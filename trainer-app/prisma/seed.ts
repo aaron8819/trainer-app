@@ -65,6 +65,9 @@ const MOVEMENT_PATTERN_MAP: Record<string, MovementPatternV2> = {
   abduction: MovementPatternV2.ABDUCTION,
   adduction: MovementPatternV2.ADDUCTION,
   isolation: MovementPatternV2.ISOLATION,
+  // Calf-specific patterns — map to ISOLATION until enum is extended
+  calf_raise_extended: MovementPatternV2.ISOLATION,
+  calf_raise_flexed: MovementPatternV2.ISOLATION,
 };
 
 const SPLIT_TAG_MAP: Record<string, SplitTag> = {

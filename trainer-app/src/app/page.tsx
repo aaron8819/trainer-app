@@ -4,7 +4,7 @@ import { resolveOwner } from "@/lib/api/workout-context";
 import { DashboardGenerateSection } from "@/components/DashboardGenerateSection";
 import RecentWorkouts from "@/components/RecentWorkouts";
 import ReadinessCheckInForm from "@/components/ReadinessCheckInForm";
-import TrainingStatusCard from "@/components/TrainingStatusCard";
+import { ProgramStatusCard } from "@/components/ProgramStatusCard";
 import { loadCapabilityFlags, loadProgramDashboardData } from "@/lib/api/program";
 
 export const dynamic = "force-dynamic";
@@ -50,23 +50,16 @@ export default async function Home() {
     },
   } as const;
 
-  const [latestCompleted, performedWorkouts, unperformedWorkouts, templateCount, capabilities, programData] =
+  const [latestCompleted, recentWorkouts, templateCount, capabilities, programData] =
     await Promise.all([
       prisma.workout.findFirst({
         where: { userId: owner.id, status: "COMPLETED" },
         orderBy: { completedAt: "desc" },
       }),
-      // Performed: COMPLETED + PARTIAL, most recently completed first
+      // Rolling 6: all statuses, most recently scheduled first
       prisma.workout.findMany({
-        where: { userId: owner.id, status: { in: ["COMPLETED", "PARTIAL"] } },
-        orderBy: [{ completedAt: { sort: "desc", nulls: "last" } }, { scheduledDate: "desc" }],
-        take: 6,
-        include: exerciseInclude,
-      }),
-      // Unperformed: PLANNED + IN_PROGRESS, soonest first
-      prisma.workout.findMany({
-        where: { userId: owner.id, status: { in: ["PLANNED", "IN_PROGRESS"] } },
-        orderBy: { scheduledDate: "asc" },
+        where: { userId: owner.id },
+        orderBy: { scheduledDate: "desc" },
         take: 6,
         include: exerciseInclude,
       }),
@@ -74,9 +67,6 @@ export default async function Home() {
       loadCapabilityFlags(owner.id),
       loadProgramDashboardData(owner.id),
     ]);
-
-  // Performed first (most recently done), then unperformed (soonest upcoming), capped at 6
-  const recentWorkouts = [...performedWorkouts, ...unperformedWorkouts].slice(0, 6);
 
   // latestIncomplete is now resolved with priority sort (IN_PROGRESS > PARTIAL > PLANNED)
   // inside loadProgramDashboardData — no separate query needed here.
@@ -99,6 +89,8 @@ export default async function Home() {
     status: workout.status,
     sessionIntent: workout.sessionIntent?.toLowerCase() ?? null,
     exercisesCount: workout.exercises.length,
+    mesocycleWeekSnapshot: workout.mesocycleWeekSnapshot ?? null,
+    mesoSessionSnapshot: workout.mesoSessionSnapshot ?? null,
   }));
 
   return (
@@ -154,7 +146,7 @@ export default async function Home() {
                 </div>
               </div>
             ) : null}
-            <TrainingStatusCard data={programData} />
+            <ProgramStatusCard initialData={programData} />
           </div>
         </section>
 

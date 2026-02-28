@@ -893,4 +893,61 @@ describe("applyLoads correctness", () => {
     expect(w4MissingResult.mainLifts[0].sets[0].targetLoad).toBe(174);
     expect(noAccumulationSnapshotResult.mainLifts[0].sets[0].targetLoad).toBe(164);
   });
+
+  it("getTopSessionLoad returns same result for 0-based and 1-based setIndex history", () => {
+    // Regression: MANUAL backfill scripts historically wrote setIndex starting at 0.
+    // applyLoads must anchor progression from the first (top) set regardless of whether
+    // history uses 0-based or 1-based setIndex.
+    const zeroBased = applyLoads(baseWorkout, {
+      history: [
+        {
+          date: "2026-02-19T00:00:00.000Z",
+          completed: true,
+          status: "COMPLETED",
+          exercises: [
+            {
+              exerciseId: "bench",
+              sets: [
+                { exerciseId: "bench", setIndex: 0, reps: 10, rpe: 7.5, load: 200 },
+                { exerciseId: "bench", setIndex: 1, reps: 10, rpe: 8, load: 200 },
+              ],
+            },
+          ],
+        },
+      ],
+      baselines: [{ exerciseId: "bench", context: "volume", topSetWeight: 200 }],
+      exerciseById: { bench },
+      primaryGoal: "hypertrophy",
+      profile: { trainingAge: "intermediate" },
+    });
+
+    const oneBased = applyLoads(baseWorkout, {
+      history: [
+        {
+          date: "2026-02-19T00:00:00.000Z",
+          completed: true,
+          status: "COMPLETED",
+          exercises: [
+            {
+              exerciseId: "bench",
+              sets: [
+                { exerciseId: "bench", setIndex: 1, reps: 10, rpe: 7.5, load: 200 },
+                { exerciseId: "bench", setIndex: 2, reps: 10, rpe: 8, load: 200 },
+              ],
+            },
+          ],
+        },
+      ],
+      baselines: [{ exerciseId: "bench", context: "volume", topSetWeight: 200 }],
+      exerciseById: { bench },
+      primaryGoal: "hypertrophy",
+      profile: { trainingAge: "intermediate" },
+    });
+
+    const zeroBasedTop = zeroBased.mainLifts[0].sets[0].targetLoad;
+    const oneBasedTop = oneBased.mainLifts[0].sets[0].targetLoad;
+    // Both should progress above 200 (top set RPE 7.5 → double progression)
+    expect(zeroBasedTop).toBeGreaterThan(200);
+    expect(zeroBasedTop).toBe(oneBasedTop);
+  });
 });

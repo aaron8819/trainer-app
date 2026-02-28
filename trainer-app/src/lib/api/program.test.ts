@@ -1,21 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // ─── Hoisted mocks ─────────────────────────────────────────────────────────────
-// Must be defined before any imports that touch @/lib/db/prisma or ./periodization.
+// Must be defined before any imports that touch @/lib/db/prisma or ./mesocycle-lifecycle.
 const mocks = vi.hoisted(() => {
   const mesocycleFindFirst = vi.fn();
   const constraintsFindUnique = vi.fn();
   const userIntegrationFindFirst = vi.fn();
   const workoutFindMany = vi.fn();
   const workoutFindFirst = vi.fn();
-  const computeCurrentMesoWeekFn = vi.fn(() => 1);
+  const getCurrentMesoWeekFn = vi.fn(() => 1);
   return {
     mesocycleFindFirst,
     constraintsFindUnique,
     userIntegrationFindFirst,
     workoutFindMany,
     workoutFindFirst,
-    computeCurrentMesoWeekFn,
+    getCurrentMesoWeekFn,
     prisma: {
       mesocycle: { findFirst: mesocycleFindFirst },
       constraints: { findUnique: constraintsFindUnique },
@@ -26,7 +26,12 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock("@/lib/db/prisma", () => ({ prisma: mocks.prisma }));
-vi.mock("./periodization", () => ({ computeCurrentMesoWeek: mocks.computeCurrentMesoWeekFn }));
+// Partial mock: stub getCurrentMesoWeek so tests control week derivation,
+// but let getRirTarget run from real source so rirTarget tests exercise real logic.
+vi.mock("./mesocycle-lifecycle", async (importOriginal) => {
+  const original = await importOriginal<typeof import("./mesocycle-lifecycle")>();
+  return { ...original, getCurrentMesoWeek: mocks.getCurrentMesoWeekFn };
+});
 
 import { computeMesoWeekStart, loadProgramDashboardData } from "./program";
 
@@ -38,6 +43,8 @@ const BASE_MESO = {
   focus: "Hypertrophy",
   durationWeeks: 5,
   completedSessions: 0,
+  accumulationSessionsCompleted: 0,
+  sessionsPerWeek: 3,
   volumeTarget: "MODERATE",
   startWeek: 0,
   state: "ACTIVE_ACCUMULATION" as "ACTIVE_ACCUMULATION" | "ACTIVE_DELOAD" | "COMPLETED",
@@ -62,7 +69,7 @@ function setupDefaultMocks(
   const mesoRecord = mesoOverrides === null ? null : { ...BASE_MESO, ...mesoOverrides };
   mocks.mesocycleFindFirst.mockResolvedValue(mesoRecord);
   mocks.constraintsFindUnique.mockResolvedValue({ daysPerWeek: 3, weeklySchedule: [] });
-  mocks.computeCurrentMesoWeekFn.mockReturnValue(week);
+  mocks.getCurrentMesoWeekFn.mockReturnValue(week);
   // Default: no workouts for all findMany calls (incompleteWorkouts, loadMesoWeekMuscleVolume, recentWorkouts)
   mocks.workoutFindMany.mockResolvedValue([]);
   // Default: no workout for findFirst (lastSessionSkipped query)

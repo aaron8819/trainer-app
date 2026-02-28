@@ -13,6 +13,7 @@ export type HistoryWorkoutItem = {
   sessionIntent: string | null;
   mesocycleId: string | null;
   mesocycleWeekSnapshot: number | null;
+  mesoSessionSnapshot: number | null;
   mesocyclePhaseSnapshot: string | null;
   exerciseCount: number;
   totalSetsLogged: number;
@@ -331,8 +332,11 @@ export default function HistoryClient({
                   <p className="text-sm font-semibold">
                     {workout.sessionIntent ? formatIntent(workout.sessionIntent) : "Workout"}
                     {workout.mesocycleWeekSnapshot != null ? (
-                      <span className="ml-2 font-normal text-slate-500">
-                        · Week {workout.mesocycleWeekSnapshot}
+                      <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600">
+                        Wk{workout.mesocycleWeekSnapshot}
+                        {workout.mesoSessionSnapshot != null
+                          ? `·S${workout.mesoSessionSnapshot}`
+                          : ""}
                       </span>
                     ) : null}
                   </p>

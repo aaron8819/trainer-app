@@ -1286,10 +1286,10 @@
         "shoulder": true
       },
       "primaryMuscles": [
-        "Chest"
+        "Chest",
+        "Triceps"
       ],
       "secondaryMuscles": [
-        "Triceps",
         "Front Delts"
       ],
       "difficulty": "beginner",
@@ -1399,10 +1399,10 @@
         "shoulder": true
       },
       "primaryMuscles": [
-        "Chest"
+        "Chest",
+        "Triceps"
       ],
       "secondaryMuscles": [
-        "Triceps",
         "Front Delts"
       ],
       "difficulty": "beginner",
@@ -1823,11 +1823,11 @@
         "low_back": true
       },
       "primaryMuscles": [
-        "Front Delts",
+        "Side Delts",
         "Triceps"
       ],
       "secondaryMuscles": [
-        "Side Delts",
+        "Front Delts",
         "Upper Back",
         "Core"
       ],
@@ -1862,11 +1862,11 @@
         "shoulder": true
       },
       "primaryMuscles": [
-        "Front Delts",
+        "Side Delts",
         "Triceps"
       ],
       "secondaryMuscles": [
-        "Side Delts",
+        "Front Delts",
         "Upper Back"
       ],
       "difficulty": "beginner",
@@ -1901,11 +1901,11 @@
         "shoulder": true
       },
       "primaryMuscles": [
-        "Front Delts",
+        "Side Delts",
         "Triceps"
       ],
       "secondaryMuscles": [
-        "Side Delts",
+        "Front Delts",
         "Core"
       ],
       "difficulty": "beginner",
@@ -1940,10 +1940,10 @@
         "shoulder": true
       },
       "primaryMuscles": [
-        "Front Delts",
         "Side Delts"
       ],
       "secondaryMuscles": [
+        "Front Delts",
         "Triceps"
       ],
       "difficulty": "beginner",
@@ -1975,11 +1975,11 @@
       ],
       "contraindications": null,
       "primaryMuscles": [
-        "Front Delts"
+        "Side Delts",
+        "Triceps"
       ],
       "secondaryMuscles": [
-        "Triceps",
-        "Side Delts"
+        "Front Delts"
       ],
       "difficulty": "beginner",
       "unilateral": false,
@@ -2010,10 +2010,10 @@
       ],
       "contraindications": null,
       "primaryMuscles": [
-        "Front Delts",
         "Chest"
       ],
       "secondaryMuscles": [
+        "Front Delts",
         "Triceps",
         "Core"
       ],
@@ -3552,10 +3552,11 @@
       ],
       "contraindications": null,
       "primaryMuscles": [
-        "Biceps",
+        "Biceps"
+      ],
+      "secondaryMuscles": [
         "Forearms"
       ],
-      "secondaryMuscles": [],
       "difficulty": "beginner",
       "unilateral": false,
       "repRangeRecommendation": {

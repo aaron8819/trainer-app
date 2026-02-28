@@ -147,6 +147,10 @@ export function computeDoubleProgressionDecision(
     priorSessionCount?: number;
     historyConfidenceScale?: number;
     confidenceReasons?: string[];
+    /** Override the anchor load instead of computing from modal distribution.
+     *  Used for main lifts (top set + back-offs) so progression anchors to the
+     *  top set rather than the more-frequent back-off weight. */
+    anchorOverride?: number;
   }
 ): ProgressionDecision | undefined {
   const signalSets = lastSets.filter(
@@ -182,7 +186,10 @@ export function computeDoubleProgressionDecision(
     : signalSets;
   const effectiveSets = trimmedSets.length > 0 ? trimmedSets : signalSets;
 
-  const anchorLoad = resolveConservativeModalLoad(effectiveSets);
+  const anchorLoad =
+    options?.anchorOverride !== undefined
+      ? options.anchorOverride
+      : resolveConservativeModalLoad(effectiveSets);
   if (anchorLoad == null) {
     return undefined;
   }

@@ -6,9 +6,11 @@ import { loadProgramDashboardData, applyCycleAnchor } from "@/lib/api/program";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const user = await resolveOwner();
-  const data = await loadProgramDashboardData(user.id);
+  const weekParam = request.nextUrl.searchParams.get("week");
+  const viewWeek = weekParam !== null ? parseInt(weekParam, 10) : undefined;
+  const data = await loadProgramDashboardData(user.id, Number.isFinite(viewWeek) ? viewWeek : undefined);
   return NextResponse.json(data);
 }
 

@@ -51,12 +51,16 @@ vi.mock("./exercise-exposure", () => ({
   loadExerciseExposure: (...args: unknown[]) => loadExerciseExposureMock(...args),
 }));
 
-vi.mock("@/lib/api/mesocycle-lifecycle", () => ({
-  loadActiveMesocycle: (...args: unknown[]) => loadActiveMesocycleMock(...args),
-  getCurrentMesoWeek: (...args: unknown[]) => getCurrentMesoWeekMock(...args),
-  getRirTarget: (...args: unknown[]) => getRirTargetMock(...args),
-  getWeeklyVolumeTarget: (...args: unknown[]) => getWeeklyVolumeTargetMock(...args),
-}));
+vi.mock("@/lib/api/mesocycle-lifecycle", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/lib/api/mesocycle-lifecycle")>();
+  return {
+    ...original,
+    loadActiveMesocycle: (...args: unknown[]) => loadActiveMesocycleMock(...args),
+    getCurrentMesoWeek: (...args: unknown[]) => getCurrentMesoWeekMock(...args),
+    getRirTarget: (...args: unknown[]) => getRirTargetMock(...args),
+    getWeeklyVolumeTarget: (...args: unknown[]) => getWeeklyVolumeTargetMock(...args),
+  };
+});
 
 import { generateSessionFromIntent } from "./template-session";
 
@@ -227,6 +231,29 @@ describe("generateSessionFromIntent", () => {
     expect(rpes.length).toBeGreaterThan(0);
     for (const rpe of rpes) {
       expect(rpe).toBeLessThanOrEqual(8);
+    }
+  });
+
+  it("prescribes week-3 pull work at 8-9 RPE in a 5-week hypertrophy mesocycle", async () => {
+    loadActiveMesocycleMock.mockResolvedValue({
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION",
+      accumulationSessionsCompleted: 6,
+      durationWeeks: 5,
+    });
+    getCurrentMesoWeekMock.mockReturnValue(3);
+    getRirTargetMock.mockReturnValue({ min: 1, max: 2 });
+
+    const result = await generateSessionFromIntent("user-1", { intent: "pull" });
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    const allSets = [...result.workout.mainLifts, ...result.workout.accessories].flatMap((exercise) => exercise.sets);
+    const rpes = allSets.map((set) => set.targetRpe).filter((rpe): rpe is number => rpe != null);
+    expect(rpes.length).toBeGreaterThan(0);
+    for (const rpe of rpes) {
+      expect(rpe).toBeGreaterThanOrEqual(8);
+      expect(rpe).toBeLessThanOrEqual(9);
     }
   });
 
@@ -526,8 +553,8 @@ describe("generateSessionFromIntent", () => {
     const quadTotal =
       (result.selection.perExerciseSetTargets["squat"] ?? 0) +
       (result.selection.perExerciseSetTargets["leg-press"] ?? 0);
-    expect(quadTotal).toBe(6);
-    expect(quadTotal).toBeLessThanOrEqual(6);
+    expect(quadTotal).toBe(5);
+    expect(quadTotal).toBeLessThanOrEqual(5);
   });
 
   it("never reduces W4 role continuity targets below W3 performed counts", async () => {

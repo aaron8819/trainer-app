@@ -1,7 +1,7 @@
 # 02 Domain Engine
 
 Owner: Aaron
-Last reviewed: 2026-02-26
+Last reviewed: 2026-02-28
 Purpose: Canonical reference for workout-generation domain logic, including selection, progression, periodization, readiness, and explainability.
 
 This doc covers:
@@ -36,7 +36,8 @@ Sources of truth:
   - `ACCESSORY -> ACCESSORY`
   - Exercise metadata defaults are only used when no mesocycle role exists.
 - Intent role-list completeness is server-owned: a role list is complete iff the current mesocycle has at least one `CORE_COMPOUND` and at least one `ACCESSORY` role for that intent; client `roleListIncomplete=false` is ignored, while `roleListIncomplete=true` can force incomplete-mode reselection.
-- Role continuity set floors are lifecycle-budget constrained in accumulation weeks: continuity progression cannot exceed lifecycle weekly muscle targets or W4 MAV caps unless prior-week continuity floors already exceed those caps (no mid-mesocycle reduction in that case).
+- Role continuity set floors are lifecycle-budget constrained in accumulation weeks: continuity progression cannot exceed lifecycle weekly muscle targets or the peak-accumulation MAV cap for the configured mesocycle length unless prior-week continuity floors already exceed those caps (no mid-mesocycle reduction in that case).
+- `CORE_COMPOUND` role exercises are hard-capped at `MAIN_LIFT_MAX_WORKING_SETS = 5` working sets in `resolveRoleFixtureSetTarget()` (`src/lib/api/template-session.ts`). This cap fires after the continuity ramp, preventing back-off set accumulation from exceeding prescription (e.g., a continuity ramp from 3→5 sets is capped; it cannot produce 7 sets).
 - `MANUAL` sessions are ingested into progression with confidence discounting and anomaly-aware downgrades (see MANUAL Session Contract below) rather than treated as equal-signal to `INTENT` by default.
 
 ## Progression and load assignment
@@ -46,8 +47,10 @@ Sources of truth:
 - Performed-history filtering (not completed-only filtering) is canonical for load progression and plateau/deload checks via `filterPerformedHistory()` and `isPerformedHistoryEntry()` in `src/lib/engine/history.ts`.
 - Effective-reps filtering is enforced at signal derivation: sets logged below `RPE 6` are excluded from modal-load and progression anchoring (data is still persisted).
 - Intermediate double-progression decision tree is enforced for load updates (hold at high fatigue; progress load only when reps/RPE thresholds are met; use conservative anchoring under high intra-session load variance).
+- `computeDoubleProgressionDecision()` in `src/lib/engine/progression.ts` accepts an optional `anchorOverride` parameter. When provided it replaces the modal-load computation as the progression anchor. Used by `resolveLoadForExercise()` in `src/lib/engine/apply-loads.ts` to anchor main lifts (non-modal path) to the top-set load rather than the more-frequent back-off weight, preventing a phantom ~11% load reduction each session.
 - Progression outlier thresholds and sample-size confidence scaling are centralized in `PROGRESSION_CONFIG` (`src/lib/engine/progression.ts`) and emitted into progression decision logs.
 - Bodyweight working sets are canonicalized at write-time to `actualLoad=0` when `targetLoad=0`; `null` is not treated as canonical bodyweight load.
+- `estimateLoad()` in `src/lib/engine/apply-loads.ts` returns `undefined` (no estimate) for exercises whose equipment list includes `"bodyweight"` when no non-zero load history exists. This prevents phantom load assignments on hybrid bodyweight/machine exercises (e.g., Dip) on their first weighted use.
 - Bodyweight progression is rep-driven only at `anchorLoad=0` in `computeDoubleProgressionDecision()`; the engine never auto-increments external load from `0` and logs `bodyweight exercise — rep progression only`.
 - Empty performed logs are invalid (`LOGGED_EMPTY` is rejected on write); unresolved sets should remain `MISSING` and are treated as unresolved during completion status resolution.
 - On first session of a new mesocycle (`accumulationSessionsCompleted=0` or explicit first-session flag), load anchoring history is sourced from accumulation history only: prefer week-4 accumulation, else highest available accumulation week, else any non-deload performed history; deload (`DELOAD`/`ACTIVE_DELOAD`) snapshots are excluded as baseline sources.
@@ -67,11 +70,11 @@ Sources of truth:
 ## Mesocycle lifecycle service
 - Service file: `src/lib/api/mesocycle-lifecycle.ts`.
 - `transitionMesocycleState(mesocycleId)`: increments accumulation/deload counters, transitions state (`ACTIVE_ACCUMULATION` -> `ACTIVE_DELOAD` -> `COMPLETED`), and initializes the next mesocycle when deload is complete.
-- `getCurrentMesoWeek(mesocycle)`: derives effective lifecycle week from `state`, `accumulationSessionsCompleted`, and `sessionsPerWeek`.
+- `getCurrentMesoWeek(mesocycle)`: derives effective lifecycle week from `state`, `durationWeeks`, `accumulationSessionsCompleted`, and `sessionsPerWeek`. Accumulation weeks are `durationWeeks - 1`; the final week is deload.
 - `getWeeklyVolumeTarget(mesocycle, muscleGroup, week)`: returns lifecycle week-specific target sets from mesocycle ramp semantics and landmarks. Landmark values (MEV/MAV/MRV) are sourced from `VOLUME_LANDMARKS` in `src/lib/engine/volume-landmarks.ts` (single source of truth; the former local `INTERMEDIATE_LANDMARKS` table has been removed).
-- Weekly accumulation targets are linearly interpolated from `MEV` (W1) to `MAV` (W4): W2/W3 use 1/3 and 2/3 interpolation; deload remains `~45%` of W4.
+- Weekly accumulation targets are linearly interpolated from `MEV` in week 1 to peak accumulation `MAV` in the last accumulation week (`durationWeeks - 1`); deload remains `~45%` of peak accumulation volume.
 - Pull musculature landmarks are split (`lats`, `upper_back`) and rear-delt landmarks are reduced to evidence-aligned defaults (`rear_delts: MEV 4, MAV 12`; `lats: MEV 8, MAV 16`; `upper_back: MEV 6, MAV 14`).
-- `getRirTarget(mesocycle, week)`: returns lifecycle week/state-specific RIR bands, including deload targets.
+- `getRirTarget(mesocycle, week)`: returns lifecycle week/state-specific RIR bands, including deload targets. Default hypertrophy bands are duration-aware: 4-week total = `3-4 -> 2-3 -> 1-2 -> deload`; 5-week total = `3-4 -> 2-3 -> 1-2 -> 0-1 -> deload`; 6-week total = `3-4 -> 2-3 -> 2 -> 1-2 -> 0-1 -> deload`.
 - `initializeNextMesocycle(completedMesocycle)`: closes current mesocycle, creates next active mesocycle with reset lifecycle counters, and carries forward core exercise roles.
 
 ## Deload generation path

@@ -3,6 +3,7 @@ export type CyclePhase = "accumulation" | "intensification" | "realization" | "d
 export type CycleContextSnapshot = {
   weekInMeso: number;
   weekInBlock: number;
+  mesocycleLength?: number;
   phase: CyclePhase;
   blockType: CyclePhase;
   isDeload: boolean;

@@ -1,6 +1,6 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import RecentWorkouts from "./RecentWorkouts";
+import RecentWorkouts, { type WorkoutListItem } from "./RecentWorkouts";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn() }),
@@ -25,14 +25,6 @@ const STATUS_CLASSES: Record<string, string> = {
   PLANNED: "",
 };
 
-type WorkoutListItem = {
-  id: string;
-  scheduledDate: string;
-  status: string;
-  sessionIntent: string | null;
-  exercisesCount: number;
-};
-
 function makeWorkout(overrides: Partial<WorkoutListItem> = {}): WorkoutListItem {
   return {
     id: "w1",
@@ -40,6 +32,8 @@ function makeWorkout(overrides: Partial<WorkoutListItem> = {}): WorkoutListItem 
     status: "COMPLETED",
     sessionIntent: "push",
     exercisesCount: 5,
+    mesocycleWeekSnapshot: null,
+    mesoSessionSnapshot: null,
     ...overrides,
   };
 }

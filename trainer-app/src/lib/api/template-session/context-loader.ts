@@ -1,10 +1,15 @@
-import { getPeriodizationModifiers } from "@/lib/engine/rules";
 import { shouldDeload } from "@/lib/engine/progression";
 import { loadWorkoutContext, mapCheckIn, mapConstraints, mapExercises, mapGoals, mapHistory, mapPreferences, mapProfile } from "@/lib/api/workout-context";
 import { loadExerciseExposure } from "@/lib/api/exercise-exposure";
 import type { MappedGenerationContext } from "./types";
 import type { CycleContextSnapshot, DeloadDecision } from "@/lib/evidence/types";
-import { getCurrentMesoWeek, getRirTarget, getWeeklyVolumeTarget, loadActiveMesocycle } from "@/lib/api/mesocycle-lifecycle";
+import {
+  buildLifecyclePeriodization,
+  getCurrentMesoWeek,
+  getRirTarget,
+  getWeeklyVolumeTarget,
+  loadActiveMesocycle,
+} from "@/lib/api/mesocycle-lifecycle";
 import { VOLUME_LANDMARKS } from "@/lib/engine/volume-landmarks";
 import { prisma } from "@/lib/db/prisma";
 import type { SessionIntent } from "@/lib/engine/session-types";
@@ -30,6 +35,43 @@ function dbIntentToSessionIntent(value: string): SessionIntent | null {
 
 function expectedSectionForRole(role: "CORE_COMPOUND" | "ACCESSORY"): "MAIN" | "ACCESSORY" {
   return role === "CORE_COMPOUND" ? "MAIN" : "ACCESSORY";
+}
+
+function normalizeLifecycleMuscleKey(muscle: string): string {
+  return muscle.trim().toLowerCase().replace(/[\s-]+/g, "_");
+}
+
+function buildSorenessSuppressedTargets(input: {
+  lifecycleVolumeTargets: Record<string, number>;
+  mappedCheckIn: MappedGenerationContext["mappedCheckIn"];
+  activeMesocycle: Awaited<ReturnType<typeof loadActiveMesocycle>>;
+  lifecycleWeek: number;
+}): { targets: Record<string, number>; suppressedMuscles: string[] } {
+  const { lifecycleVolumeTargets, mappedCheckIn, activeMesocycle, lifecycleWeek } = input;
+  if (!mappedCheckIn?.painFlags || !activeMesocycle || lifecycleWeek <= 1) {
+    return { targets: lifecycleVolumeTargets, suppressedMuscles: [] };
+  }
+
+  const sorenessByKey = new Map(
+    Object.entries(mappedCheckIn.painFlags).map(([muscle, severity]) => [
+      normalizeLifecycleMuscleKey(muscle),
+      severity,
+    ])
+  );
+  const suppressedMuscles = Object.keys(lifecycleVolumeTargets).filter((muscle) => {
+    const normalized = normalizeLifecycleMuscleKey(muscle);
+    return (sorenessByKey.get(normalized) ?? 0) >= 3;
+  });
+  if (suppressedMuscles.length === 0) {
+    return { targets: lifecycleVolumeTargets, suppressedMuscles: [] };
+  }
+
+  const priorWeek = Math.max(1, lifecycleWeek - 1);
+  const adjustedTargets = { ...lifecycleVolumeTargets };
+  for (const muscle of suppressedMuscles) {
+    adjustedTargets[muscle] = getWeeklyVolumeTarget(activeMesocycle, muscle, priorWeek);
+  }
+  return { targets: adjustedTargets, suppressedMuscles };
 }
 
 function auditSectionRoleMismatches(
@@ -103,29 +145,43 @@ export async function loadMappedGenerationContext(userId: string): Promise<Mappe
   const lifecycleRirTarget = activeMesocycle
     ? getRirTarget(activeMesocycle, lifecycleWeek)
     : { min: 3, max: 4 };
-  const lifecycleVolumeTargets = Object.fromEntries(
+  const baseLifecycleVolumeTargets = Object.fromEntries(
     Object.keys(VOLUME_LANDMARKS).map((muscle) => [
       muscle,
       activeMesocycle ? getWeeklyVolumeTarget(activeMesocycle, muscle, lifecycleWeek) : VOLUME_LANDMARKS[muscle].mev,
     ])
   );
+  const sorenessAdjustedTargets = buildSorenessSuppressedTargets({
+    lifecycleVolumeTargets: baseLifecycleVolumeTargets,
+    mappedCheckIn,
+    activeMesocycle,
+    lifecycleWeek,
+  });
+  const lifecycleVolumeTargets = sorenessAdjustedTargets.targets;
 
   const mainLiftExerciseIds = new Set(
     exerciseLibrary.filter((exercise) => exercise.isMainLiftEligible).map((exercise) => exercise.id)
   );
-  const periodization = getPeriodizationModifiers(weekInBlock, mappedGoals.primary, mappedProfile.trainingAge);
-  const rirMidpoint = (lifecycleRirTarget.min + lifecycleRirTarget.max) / 2;
-  const lifecycleTargetRpe = 10 - rirMidpoint;
-  const baseTargetRpe = mappedGoals.primary === "hypertrophy"
-    ? (mappedProfile.trainingAge === "beginner" ? 7 : mappedProfile.trainingAge === "advanced" ? 8.5 : 8)
-    : 7.5;
-  const adaptiveDeload = !periodization.isDeload && shouldDeload(history, mainLiftExerciseIds);
+  const lifecyclePeriodization = buildLifecyclePeriodization({
+    primaryGoal: mappedGoals.primary,
+    durationWeeks: mesocycleLength,
+    week: lifecycleWeek,
+    isDeload: activeMesocycle?.state === "ACTIVE_DELOAD",
+    rirTarget: lifecycleRirTarget,
+  });
+  const adaptiveDeload = !lifecyclePeriodization.isDeload && shouldDeload(history, mainLiftExerciseIds);
   const effectivePeriodization = adaptiveDeload
-    ? { ...periodization, isDeload: true, setMultiplier: 0.5, rpeOffset: -2.0, backOffMultiplier: 0.75, lifecycleRirTarget: { min: 4, max: 6 } }
-    : { ...periodization, rpeOffset: lifecycleTargetRpe - baseTargetRpe, weekInBlock, lifecycleRirTarget };
+    ? buildLifecyclePeriodization({
+        primaryGoal: mappedGoals.primary,
+        durationWeeks: mesocycleLength,
+        week: lifecycleWeek,
+        isDeload: true,
+      })
+    : lifecyclePeriodization;
   const cycleContext: CycleContextSnapshot = {
     weekInMeso: lifecycleWeek,
     weekInBlock,
+    mesocycleLength,
     phase: (activeMesocycle?.state === "ACTIVE_DELOAD" || effectivePeriodization.isDeload ? "deload" : "accumulation"),
     blockType: (activeMesocycle?.state === "ACTIVE_DELOAD" || effectivePeriodization.isDeload ? "deload" : "accumulation"),
     isDeload: activeMesocycle?.state === "ACTIVE_DELOAD" || effectivePeriodization.isDeload,
@@ -164,6 +220,7 @@ export async function loadMappedGenerationContext(userId: string): Promise<Mappe
     lifecycleWeek,
     lifecycleRirTarget,
     lifecycleVolumeTargets,
+    sorenessSuppressedMuscles: sorenessAdjustedTargets.suppressedMuscles,
     activeMesocycle,
     effectivePeriodization,
     adaptiveDeload,

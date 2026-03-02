@@ -77,6 +77,7 @@ export type ReadinessStatus = {
   availability: "recent" | "stale" | "missing";
   label: string;
   perMuscleFatigue: Map<string, number>; // muscle -> fatigue score (0-10)
+  sorenessSuppressedMuscles: string[];
   adaptations: string[]; // ["Reduced volume by 2 sets chest", "Maintained intensity"]
 };
 

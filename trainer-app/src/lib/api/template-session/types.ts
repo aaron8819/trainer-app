@@ -1,4 +1,4 @@
-import type { getPeriodizationModifiers } from "@/lib/engine/rules";
+import type { PeriodizationModifiers } from "@/lib/engine/rules";
 import type { BlockContext } from "@/lib/engine/periodization/types";
 import type { SessionIntent, SelectionOutput } from "@/lib/engine/session-types";
 import type { WorkoutPlan } from "@/lib/engine/types";
@@ -46,6 +46,7 @@ export type SessionGenerationResult =
         periodizationWeek?: number;
         cycleContext?: CycleContextSnapshot;
         deloadDecision?: DeloadDecision;
+        sorenessSuppressedMuscles?: string[];
       };
       filteredExercises?: FilteredExerciseSummary[];
     }
@@ -66,8 +67,9 @@ export type MappedGenerationContext = {
   lifecycleWeek: number;
   lifecycleRirTarget: { min: number; max: number };
   lifecycleVolumeTargets: Record<string, number>;
+  sorenessSuppressedMuscles: string[];
   activeMesocycle: Mesocycle | null;
-  effectivePeriodization: ReturnType<typeof getPeriodizationModifiers>;
+  effectivePeriodization: PeriodizationModifiers;
   adaptiveDeload: boolean;
   deloadDecision: DeloadDecision;
   blockContext: BlockContext | null;

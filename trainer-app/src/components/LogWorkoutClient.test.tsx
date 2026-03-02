@@ -21,6 +21,7 @@ vi.mock("@/components/log-workout/api", () => ({
 }));
 
 const mockedLogSetRequest = vi.mocked(workoutApi.logSetRequest);
+const mockedDeleteSetLogRequest = vi.mocked(workoutApi.deleteSetLogRequest);
 const mockedSaveWorkoutRequest = vi.mocked(workoutApi.saveWorkoutRequest);
 
 function makeExercises(): LogExerciseInput[] {
@@ -59,8 +60,10 @@ function renderClient() {
 describe("LogWorkoutClient UX behavior", () => {
   beforeEach(() => {
     mockedLogSetRequest.mockResolvedValue({ data: { status: "ok", wasCreated: true }, error: null });
+    mockedDeleteSetLogRequest.mockResolvedValue({ data: { status: "ok" }, error: null });
     mockedSaveWorkoutRequest.mockResolvedValue({ data: { status: "ok", workoutStatus: "COMPLETED" }, error: null });
     window.localStorage.clear();
+    window.sessionStorage.clear();
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
       configurable: true,
       value: vi.fn(),
@@ -158,6 +161,20 @@ describe("LogWorkoutClient UX behavior", () => {
     expect((screen.getByLabelText("Load") as HTMLInputElement).value).toBe("47.5");
   });
 
+  it("updates reps immediately from increment buttons even while input buffer is active", async () => {
+    const user = userEvent.setup();
+    renderClient();
+
+    const repsInput = screen.getByLabelText("Reps") as HTMLInputElement;
+    await user.click(repsInput);
+    await user.clear(repsInput);
+    await user.type(repsInput, "11");
+
+    await user.click(screen.getByRole("button", { name: "+1" }));
+
+    expect((screen.getByLabelText("Reps") as HTMLInputElement).value).toBe("12");
+  });
+
   it("shows completion confirmation before calling completion API", async () => {
     const user = userEvent.setup();
     renderClient();
@@ -193,6 +210,21 @@ describe("LogWorkoutClient UX behavior", () => {
     expect(saved).toContain('"reps":"9"');
   });
 
+  it("shows draft save feedback while editing", async () => {
+    const user = userEvent.setup();
+    renderClient();
+
+    const repsInput = screen.getByLabelText("Reps") as HTMLInputElement;
+    await user.clear(repsInput);
+    await user.type(repsInput, "9");
+
+    expect(screen.getByText("Saving draft...")).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.getByText(/Draft saved/)).toBeInTheDocument();
+    });
+  });
+
   it("restores draft values on remount", () => {
     window.localStorage.setItem(
       "draft_set_workout-1_set-1",
@@ -206,6 +238,120 @@ describe("LogWorkoutClient UX behavior", () => {
     expect(screen.getByLabelText("RPE")).toHaveValue(7.5);
     return waitFor(() => {
       expect(screen.getByText("Draft restored")).toBeInTheDocument();
+    });
+  });
+
+  it("restores an active rest timer after remount", async () => {
+    const user = userEvent.setup();
+    const { unmount } = renderClient();
+
+    await user.click(screen.getByRole("button", { name: "Log set" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Mute alerts" })).toBeInTheDocument();
+    });
+
+    unmount();
+    renderClient();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Mute alerts" })).toBeInTheDocument();
+    });
+  });
+
+  it("restores both draft values and the active rest timer after remount", async () => {
+    const user = userEvent.setup();
+    const { unmount } = renderClient();
+
+    await user.click(screen.getByRole("button", { name: /Set 2/ }));
+    const repsInput = screen.getByLabelText("Reps") as HTMLInputElement;
+    await user.clear(repsInput);
+    await user.type(repsInput, "9");
+    await waitFor(() => {
+      expect(screen.getByText(/Draft saved/)).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: /Set 1/ }));
+    await user.click(screen.getByRole("button", { name: "Log set" }));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Mute alerts" })).toBeInTheDocument();
+    });
+
+    unmount();
+    renderClient();
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Reps")).toHaveValue(10);
+      expect(screen.getByRole("button", { name: "Mute alerts" })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: /Set 2/ }));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Reps")).toHaveValue(9);
+      expect(screen.getByText(/Draft restored|Draft saved/)).toBeInTheDocument();
+    });
+  });
+
+  it("persists the selected active set across remount", async () => {
+    const user = userEvent.setup();
+    const { unmount } = renderClient();
+
+    await user.click(screen.getByRole("button", { name: /Set 2/ }));
+    expect(screen.getByText(/Set 2 of 2/)).toBeInTheDocument();
+
+    unmount();
+    renderClient();
+
+    await waitFor(() => {
+      expect(screen.getByText(/Set 2 of 2/)).toBeInTheDocument();
+    });
+  });
+
+  it("persists rest timer mute preference across remount", async () => {
+    const user = userEvent.setup();
+    const { unmount } = renderClient();
+
+    await user.click(screen.getByRole("button", { name: "Log set" }));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Mute alerts" })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Mute alerts" }));
+    expect(screen.getByRole("button", { name: "Unmute alerts" })).toBeInTheDocument();
+
+    unmount();
+    renderClient();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Unmute alerts" })).toBeInTheDocument();
+    });
+  });
+
+  it("logs typed load and rpe without requiring blur", async () => {
+    const user = userEvent.setup();
+    renderClient();
+
+    const loadInput = screen.getByLabelText("Load") as HTMLInputElement;
+    const rpeInput = screen.getByLabelText("RPE") as HTMLInputElement;
+
+    await user.click(loadInput);
+    await user.clear(loadInput);
+    await user.type(loadInput, "55");
+
+    await user.click(rpeInput);
+    await user.clear(rpeInput);
+    await user.type(rpeInput, "9");
+
+    await user.click(screen.getByRole("button", { name: "Log set" }));
+
+    await waitFor(() => {
+      expect(mockedLogSetRequest).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          actualReps: 10,
+          actualLoad: 55,
+          actualRpe: 9,
+        })
+      );
     });
   });
 
@@ -285,6 +431,21 @@ function makeThreeSetExercise(): LogExerciseInput[] {
   ];
 }
 
+function makeMixedRestExercise(): LogExerciseInput[] {
+  return [
+    {
+      workoutExerciseId: "ex-rest",
+      name: "Barbell Row",
+      equipment: ["barbell"],
+      isMainLift: true,
+      sets: [
+        { setId: "set-r1", setIndex: 1, targetReps: 8, targetLoad: 135, targetRpe: 8, restSeconds: 60 },
+        { setId: "set-r2", setIndex: 2, targetReps: 8, targetLoad: 135, targetRpe: 8, restSeconds: 180 },
+      ],
+    },
+  ];
+}
+
 function makeMultiSectionExercises(): SectionedExercises {
   return {
     warmup: [
@@ -322,8 +483,10 @@ function makeMultiSectionExercises(): SectionedExercises {
 describe("4d — Inline edit on chip tap", () => {
   beforeEach(() => {
     mockedLogSetRequest.mockResolvedValue({ data: { status: "ok", wasCreated: true }, error: null });
+    mockedDeleteSetLogRequest.mockResolvedValue({ data: { status: "ok" }, error: null });
     mockedSaveWorkoutRequest.mockResolvedValue({ data: { status: "ok", workoutStatus: "COMPLETED" }, error: null });
     window.localStorage.clear();
+    window.sessionStorage.clear();
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
       configurable: true,
       value: vi.fn(),
@@ -471,13 +634,27 @@ describe("4d — Inline edit on chip tap", () => {
     expect(screen.getByText("Edit Set 2")).toBeInTheDocument();
     expect(screen.queryByText("Edit Set 1")).not.toBeInTheDocument();
   });
+
+  it("shows queue guidance when an exercise has logged and active set chips", async () => {
+    const user = userEvent.setup();
+    render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
+
+    await user.click(screen.getByRole("button", { name: "Log set" }));
+    await waitFor(() => expect(mockedLogSetRequest).toHaveBeenCalledTimes(1));
+
+    expect(
+      screen.getByText("Dark chip is the current set. Green chips are logged and can be tapped to edit.")
+    ).toBeInTheDocument();
+  });
 });
 
 describe("4i — Collapse exercise queue during active set", () => {
   beforeEach(() => {
     mockedLogSetRequest.mockResolvedValue({ data: { status: "ok", wasCreated: true }, error: null });
+    mockedDeleteSetLogRequest.mockResolvedValue({ data: { status: "ok" }, error: null });
     mockedSaveWorkoutRequest.mockResolvedValue({ data: { status: "ok", workoutStatus: "COMPLETED" }, error: null });
     window.localStorage.clear();
+    window.sessionStorage.clear();
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
       configurable: true,
       value: vi.fn(),
@@ -520,8 +697,8 @@ describe("4i — Collapse exercise queue during active set", () => {
     // Now warmup should be collapsed, main should be expanded
     await waitFor(() => {
       expect(screen.getByTestId("collapsed-summary-warmup")).toBeInTheDocument();
+      expect(screen.queryByTestId("collapsed-summary-main")).not.toBeInTheDocument();
     });
-    expect(screen.queryByTestId("collapsed-summary-main")).not.toBeInTheDocument();
   });
 
   it("manual expand of collapsed section works without changing active set", async () => {
@@ -565,8 +742,10 @@ describe("4i — Collapse exercise queue during active set", () => {
 describe("L-2/L-3/L-1/T-1/T-3 — Layout and UX fixes", () => {
   beforeEach(() => {
     mockedLogSetRequest.mockResolvedValue({ data: { status: "ok", wasCreated: true }, error: null });
+    mockedDeleteSetLogRequest.mockResolvedValue({ data: { status: "ok" }, error: null });
     mockedSaveWorkoutRequest.mockResolvedValue({ data: { status: "ok", workoutStatus: "COMPLETED" }, error: null });
     window.localStorage.clear();
+    window.sessionStorage.clear();
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
       configurable: true,
       value: vi.fn(),
@@ -591,6 +770,26 @@ describe("L-2/L-3/L-1/T-1/T-3 — Layout and UX fixes", () => {
       const toast = paragraph.closest("div[style]") as HTMLElement | null;
       expect(toast).not.toBeNull();
       expect(toast).toHaveStyle({ position: "fixed" });
+    });
+  });
+
+  it("restores the previous rest timer when undoing a later set log", async () => {
+    const user = userEvent.setup();
+    render(<LogWorkoutClient workoutId="workout-1" exercises={makeMixedRestExercise()} />);
+
+    await user.click(screen.getByRole("button", { name: "Log set" }));
+    await waitFor(() => {
+      expect(screen.getByText("1:00")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: /Log set|Update set/ }));
+    await waitFor(() => {
+      expect(screen.getByText("3:00")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    await waitFor(() => {
+      expect(screen.getByText("1:00")).toBeInTheDocument();
     });
   });
 
@@ -711,8 +910,10 @@ describe("L-2/L-3/L-1/T-1/T-3 — Layout and UX fixes", () => {
 describe("I-2/I-4/I-5/E-4/E-5/E-6/L-4/S-5 — Remaining low-priority fixes", () => {
   beforeEach(() => {
     mockedLogSetRequest.mockResolvedValue({ data: { status: "ok", wasCreated: true }, error: null });
+    mockedDeleteSetLogRequest.mockResolvedValue({ data: { status: "ok" }, error: null });
     mockedSaveWorkoutRequest.mockResolvedValue({ data: { status: "ok", workoutStatus: "COMPLETED" }, error: null });
     window.localStorage.clear();
+    window.sessionStorage.clear();
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
       configurable: true,
       value: vi.fn(),

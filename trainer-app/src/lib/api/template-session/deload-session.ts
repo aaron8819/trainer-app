@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db/prisma";
 import { createId } from "@/lib/engine/utils";
 import type { SessionIntent, SelectionOutput } from "@/lib/engine/session-types";
 import type { WorkoutExercise, WorkoutPlan } from "@/lib/engine/types";
-import { getRirTarget } from "@/lib/api/mesocycle-lifecycle";
+import { getDeloadWeek, getPeakAccumulationWeek, getRirTarget } from "@/lib/api/mesocycle-lifecycle";
 import type { MappedGenerationContext } from "./types";
 
 const PERFORMED_WORKOUT_STATUSES = ["COMPLETED", "PARTIAL"] as const;
@@ -83,7 +83,7 @@ export async function generateDeloadSessionFromIntentContext(
       sessionIntent: intentDb as never,
       status: { in: [...PERFORMED_WORKOUT_STATUSES] as never },
       mesocyclePhaseSnapshot: "ACCUMULATION",
-      mesocycleWeekSnapshot: 4,
+      mesocycleWeekSnapshot: getPeakAccumulationWeek(activeMesocycle.durationWeeks),
     },
     include: {
       exercises: {
@@ -116,8 +116,8 @@ export async function generateDeloadSessionFromIntentContext(
   }
 
   const exerciseById = new Map(mapped.exerciseLibrary.map((exercise) => [exercise.id, exercise]));
-  const week4Source = week4Workouts.length > 0 ? week4Workouts : [latestAccumWorkout];
-  const rirTarget = getRirTarget(activeMesocycle, 5);
+  const peakAccumulationSource = week4Workouts.length > 0 ? week4Workouts : [latestAccumWorkout];
+  const rirTarget = getRirTarget(activeMesocycle, getDeloadWeek(activeMesocycle.durationWeeks));
   const targetRpe = 10 - (rirTarget.min + rirTarget.max) / 2;
 
   const workoutExercises: WorkoutExercise[] = [];
@@ -134,7 +134,7 @@ export async function generateDeloadSessionFromIntentContext(
         .filter((reps) => reps > 0)
     ) ?? 8;
 
-    const week4Loads = week4Source.flatMap((workout) =>
+    const peakAccumulationLoads = peakAccumulationSource.flatMap((workout) =>
       workout.exercises
         .filter((entry) => entry.exerciseId === exerciseId)
         .flatMap((entry) =>
@@ -148,7 +148,7 @@ export async function generateDeloadSessionFromIntentContext(
       .flatMap((set) => set.logs)
       .map((log) => log.actualLoad ?? 0)
       .filter((load) => load > 0);
-    const anchoredLoad = modalNumber(week4Loads.length > 0 ? week4Loads : latestLoads);
+    const anchoredLoad = modalNumber(peakAccumulationLoads.length > 0 ? peakAccumulationLoads : latestLoads);
 
     workoutExercises.push({
       id: createId(),
@@ -176,7 +176,7 @@ export async function generateDeloadSessionFromIntentContext(
     mainLifts,
     accessories,
     estimatedMinutes,
-    notes: "Lifecycle-deload: fixed exercise list, 45% week-4 volume, anchored accumulation loads.",
+    notes: "Lifecycle-deload: fixed exercise list, 45% peak-accumulation volume, anchored accumulation loads.",
   };
 
   const perExerciseSetTargets = Object.fromEntries(
@@ -198,4 +198,3 @@ export async function generateDeloadSessionFromIntentContext(
     note: "Deload gate enforced from ACTIVE_DELOAD mesocycle state.",
   };
 }
-

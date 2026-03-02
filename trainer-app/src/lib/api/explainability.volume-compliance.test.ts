@@ -54,6 +54,7 @@ vi.mock("@/lib/engine/explainability", () => ({
       availability: "recent",
       label: "Recent readiness",
       perMuscleFatigue: new Map(),
+      sorenessSuppressedMuscles: [],
       adaptations: [],
     },
     progressionContext: {

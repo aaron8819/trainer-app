@@ -2,6 +2,17 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RestTimer } from "./RestTimer";
 
+function makeTimerProps(durationSeconds: number) {
+  const startedAtMs = Date.now();
+  return {
+    startedAtMs,
+    endAtMs: startedAtMs + durationSeconds * 1000,
+    onDismiss: vi.fn(),
+    muted: false,
+    onMuteToggle: vi.fn(),
+  };
+}
+
 describe("RestTimer", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -15,7 +26,7 @@ describe("RestTimer", () => {
   });
 
   it("reconciles against wall clock when returning visible after background delay", () => {
-    render(<RestTimer durationSeconds={60} onDismiss={vi.fn()} muted={false} onMuteToggle={vi.fn()} />);
+    render(<RestTimer {...makeTimerProps(60)} />);
 
     Object.defineProperty(document, "visibilityState", {
       configurable: true,
@@ -35,7 +46,7 @@ describe("RestTimer", () => {
     });
     const dismiss = vi.fn();
 
-    render(<RestTimer durationSeconds={1} onDismiss={dismiss} muted={false} onMuteToggle={vi.fn()} />);
+    render(<RestTimer {...makeTimerProps(1)} onDismiss={dismiss} />);
 
     vi.setSystemTime(new Date("2026-01-01T00:00:01.000Z"));
     vi.advanceTimersByTime(300);
@@ -80,7 +91,7 @@ describe("RestTimer", () => {
       value: MockAudioContext,
     });
 
-    render(<RestTimer durationSeconds={1} onDismiss={vi.fn()} muted={false} onMuteToggle={vi.fn()} />);
+    render(<RestTimer {...makeTimerProps(1)} />);
 
     fireEvent(document, new Event("pointerdown"));
     vi.setSystemTime(new Date("2026-01-01T00:00:01.000Z"));
@@ -120,7 +131,7 @@ describe("RestTimer", () => {
       value: MockSuspendedAudioContext,
     });
 
-    render(<RestTimer durationSeconds={1} onDismiss={vi.fn()} muted={false} onMuteToggle={vi.fn()} />);
+    render(<RestTimer {...makeTimerProps(1)} />);
 
     fireEvent(document, new Event("pointerdown"));
     vi.setSystemTime(new Date("2026-01-01T00:00:01.000Z"));
@@ -129,6 +140,51 @@ describe("RestTimer", () => {
 
     expect(resume).toHaveBeenCalledTimes(1);
     expect(start).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not restart from parent rerenders when callbacks change identity", () => {
+    const props = makeTimerProps(60);
+    const { rerender } = render(<RestTimer {...props} />);
+
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => "visible",
+    });
+    vi.setSystemTime(new Date("2026-01-01T00:00:10.000Z"));
+    fireEvent(document, new Event("visibilitychange"));
+    expect(screen.getByText("0:50")).toBeInTheDocument();
+
+    rerender(<RestTimer {...props} onDismiss={vi.fn()} />);
+
+    expect(screen.getByText("0:50")).toBeInTheDocument();
+  });
+
+  it("preserves elapsed time when adjusted", () => {
+    const start = Date.now();
+    const { rerender } = render(
+      <RestTimer
+        startedAtMs={start}
+        endAtMs={start + 60_000}
+        onDismiss={vi.fn()}
+        onAdjust={vi.fn()}
+        muted={false}
+        onMuteToggle={vi.fn()}
+      />
+    );
+
+    vi.advanceTimersByTime(10_300);
+    rerender(
+      <RestTimer
+        startedAtMs={start}
+        endAtMs={start + 75_000}
+        onDismiss={vi.fn()}
+        onAdjust={vi.fn()}
+        muted={false}
+        onMuteToggle={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText("1:05")).toBeInTheDocument();
   });
 });
 
@@ -142,10 +198,7 @@ describe("RestTimer — compact mode", () => {
   it("renders compact fixed banner when compact is true", () => {
     render(
       <RestTimer
-        durationSeconds={60}
-        onDismiss={vi.fn()}
-        muted={false}
-        onMuteToggle={vi.fn()}
+        {...makeTimerProps(60)}
         compact={true}
       />
     );
@@ -159,10 +212,7 @@ describe("RestTimer — compact mode", () => {
   it("renders full card when compact is false", () => {
     render(
       <RestTimer
-        durationSeconds={60}
-        onDismiss={vi.fn()}
-        muted={false}
-        onMuteToggle={vi.fn()}
+        {...makeTimerProps(60)}
         onAdjust={vi.fn()}
         compact={false}
       />
@@ -178,9 +228,7 @@ describe("RestTimer — compact mode", () => {
     const onMuteToggle = vi.fn();
     render(
       <RestTimer
-        durationSeconds={60}
-        onDismiss={vi.fn()}
-        muted={false}
+        {...makeTimerProps(60)}
         onMuteToggle={onMuteToggle}
         compact={false}
       />
@@ -193,8 +241,7 @@ describe("RestTimer — compact mode", () => {
   it("shows Unmute alerts when muted prop is true", () => {
     render(
       <RestTimer
-        durationSeconds={60}
-        onDismiss={vi.fn()}
+        {...makeTimerProps(60)}
         muted={true}
         onMuteToggle={vi.fn()}
         compact={false}

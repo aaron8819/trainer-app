@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 type RestTimerProps = {
-  durationSeconds: number;
+  startedAtMs: number;
+  endAtMs: number;
   onDismiss: () => void;
   onAdjust?: (deltaSeconds: number) => void;
   compact?: boolean;
@@ -11,10 +12,21 @@ type RestTimerProps = {
   onMuteToggle: () => void;
 };
 
-export function RestTimer({ durationSeconds, onDismiss, onAdjust, compact, muted, onMuteToggle }: RestTimerProps) {
-  const [remaining, setRemaining] = useState(durationSeconds);
+export function RestTimer({
+  startedAtMs,
+  endAtMs,
+  onDismiss,
+  onAdjust,
+  compact,
+  muted,
+  onMuteToggle,
+}: RestTimerProps) {
+  const [remaining, setRemaining] = useState(() =>
+    Math.max(0, Math.ceil((endAtMs - Date.now()) / 1000))
+  );
   // Mirror muted into a ref so playCompletionAlert can read it without restarting the timer
   const mutedRef = useRef(muted);
+  const dismissRef = useRef(onDismiss);
   const endAtRef = useRef<number>(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const completedRef = useRef(false);
@@ -23,6 +35,10 @@ export function RestTimer({ durationSeconds, onDismiss, onAdjust, compact, muted
   useEffect(() => {
     mutedRef.current = muted;
   }, [muted]);
+
+  useEffect(() => {
+    dismissRef.current = onDismiss;
+  }, [onDismiss]);
 
   const initializeAudioContext = useCallback(() => {
     if (typeof window === "undefined") {
@@ -89,13 +105,14 @@ export function RestTimer({ durationSeconds, onDismiss, onAdjust, compact, muted
       completedRef.current = true;
       clearTimer();
       playCompletionAlert();
-      onDismiss();
+      dismissRef.current();
     }
-  }, [clearTimer, onDismiss, playCompletionAlert]);
+  }, [clearTimer, playCompletionAlert]);
 
   useEffect(() => {
     completedRef.current = false;
-    endAtRef.current = Date.now() + durationSeconds * 1000;
+    endAtRef.current = endAtMs;
+    setRemaining(Math.max(0, Math.ceil((endAtMs - Date.now()) / 1000)));
     clearTimer();
     intervalRef.current = setInterval(tick, 250);
     const initialTickTimeout = setTimeout(() => {
@@ -105,7 +122,7 @@ export function RestTimer({ durationSeconds, onDismiss, onAdjust, compact, muted
       clearTimeout(initialTickTimeout);
       clearTimer();
     };
-  }, [clearTimer, durationSeconds, tick]);
+  }, [clearTimer, endAtMs, tick]);
 
   useEffect(() => {
     const initializeAudio = () => {
@@ -142,7 +159,8 @@ export function RestTimer({ durationSeconds, onDismiss, onAdjust, compact, muted
 
   const minutes = Math.floor(remaining / 60);
   const seconds = remaining % 60;
-  const progress = durationSeconds > 0 ? remaining / durationSeconds : 0;
+  const totalSeconds = Math.max(1, Math.ceil((endAtMs - startedAtMs) / 1000));
+  const progress = Math.min(1, remaining / totalSeconds);
 
   if (compact) {
     return (

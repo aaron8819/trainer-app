@@ -75,9 +75,7 @@ function resolveRoleFixtureSetTarget(
 
   const continuityMin =
     objective.constraints.continuityMinSetsByExerciseId?.get(exerciseId) ?? 0;
-  const progressionIncrement = objective.constraints.continuitySetProgressionIncrement ?? 0;
-  const progressionFloor = Math.min(12, continuityMin + progressionIncrement);
-  const continuityFloored = Math.max(proposedSets, continuityMin, progressionFloor);
+  const continuityFloored = Math.max(proposedSets, continuityMin);
   if (exercisePrimaryMuscles.length === 0) {
     return applyRoleCap(continuityFloored);
   }

@@ -51,4 +51,30 @@ describe("periodization correctness", () => {
     expect(week3Set.targetReps).toBeLessThan(week1Set.targetReps);
     expect((week3Set.targetRpe ?? 0)).toBeGreaterThan((week1Set.targetRpe ?? 0));
   });
+
+  it("continues progressing across a longer accumulation phase before deload", () => {
+    const week1 = generateWorkoutFromTemplate(templateExercises, {
+      ...commonOptions,
+      weekInBlock: 1,
+      periodization: getPeriodizationModifiers(1, "strength", "intermediate", 6),
+    });
+    const week5 = generateWorkoutFromTemplate(templateExercises, {
+      ...commonOptions,
+      weekInBlock: 5,
+      periodization: getPeriodizationModifiers(5, "strength", "intermediate", 6),
+    });
+    const deload = generateWorkoutFromTemplate(templateExercises, {
+      ...commonOptions,
+      weekInBlock: 6,
+      periodization: getPeriodizationModifiers(6, "strength", "intermediate", 6),
+    });
+
+    const week1Set = week1.workout.mainLifts[0].sets[0];
+    const week5Set = week5.workout.mainLifts[0].sets[0];
+    const deloadSet = deload.workout.mainLifts[0].sets[0];
+
+    expect(week5Set.targetReps).toBeLessThan(week1Set.targetReps);
+    expect((week5Set.targetRpe ?? 0)).toBeGreaterThan((week1Set.targetRpe ?? 0));
+    expect(deloadSet.targetRpe).toBeLessThanOrEqual(6);
+  });
 });

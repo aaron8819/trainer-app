@@ -68,6 +68,7 @@ function makeMappedContext(history: WorkoutHistoryEntry[]): MappedGenerationCont
       Biceps: 10,
       "Rear Delts": 10,
     },
+    sorenessSuppressedMuscles: [],
     activeMesocycle: null,
     mesocycleLength: 4,
     effectivePeriodization: {
@@ -75,6 +76,7 @@ function makeMappedContext(history: WorkoutHistoryEntry[]): MappedGenerationCont
       rpeOffset: 0,
       isDeload: false,
       backOffMultiplier: 0.9,
+      lifecycleSetTargets: { main: 4, accessory: 3 },
     },
     adaptiveDeload: false,
     deloadDecision: {
@@ -157,7 +159,7 @@ describe("buildSelectionObjective continuity bias", () => {
     expect(objective.weights.rotationNovelty).toBeLessThan(0.22);
     expect(objective.weights.userPreference).toBeCloseTo(0.22, 6);
     expect(objective.weights.rotationNovelty).toBeCloseTo(0.01, 6);
-    expect(objective.constraints.continuitySetProgressionIncrement).toBe(1);
+    expect(objective.constraints.lifecycleSetTargets).toEqual({ main: 4, accessory: 3 });
   });
 
   it("uses lifecycle weekly volume target for pull musculature (week 2 back = 12)", () => {
@@ -166,7 +168,7 @@ describe("buildSelectionObjective continuity bias", () => {
     expect(objective.volumeContext.weeklyTarget.get("Upper Back")).toBe(12);
   });
 
-  it("sets lifecycle-aware continuity increment to week-1", () => {
+  it("uses lifecycle set targets as the canonical weekly set progression", () => {
     const history: WorkoutHistoryEntry[] = [
       {
         date: "2026-02-17T01:40:25.252Z",
@@ -181,8 +183,9 @@ describe("buildSelectionObjective continuity bias", () => {
     mapped.weekInBlock = 3;
     mapped.cycleContext.weekInMeso = 3;
     mapped.cycleContext.weekInBlock = 3;
+    mapped.effectivePeriodization.lifecycleSetTargets = { main: 5, accessory: 4 };
     const objective = buildSelectionObjective(mapped, "pull");
-    expect(objective.constraints.continuitySetProgressionIncrement).toBe(2);
+    expect(objective.constraints.lifecycleSetTargets).toEqual({ main: 5, accessory: 4 });
   });
 
   it("exports documented session cap policy values", () => {

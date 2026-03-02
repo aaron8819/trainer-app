@@ -119,8 +119,11 @@ export interface SelectionConstraints {
   /** Minimum per-exercise set targets derived from most recent performed same-intent session */
   continuityMinSetsByExerciseId?: Map<string, number>;
 
-  /** Additional per-exercise sets above continuity minimums (e.g., +1 in accumulation weeks > 1) */
-  continuitySetProgressionIncrement?: number;
+  /** Lifecycle-derived working set targets used as the canonical weekly set progression */
+  lifecycleSetTargets?: {
+    main: number;
+    accessory: number;
+  };
 }
 
 /**

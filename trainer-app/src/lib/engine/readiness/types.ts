@@ -145,9 +145,7 @@ export const DEFAULT_FATIGUE_CONFIG: FatigueConfig = {
 export type AutoregulationAction =
   | 'maintain'          // No adjustment needed
   | 'scale_down'        // -10% load, +1 RIR
-  | 'scale_up'          // +5% load, -0.5 RIR
-  | 'reduce_volume'     // Drop accessory sets
-  | 'trigger_deload';   // 50% volume, 60% intensity
+  | 'scale_up';         // +5% load, -0.5 RIR
 
 /**
  * Autoregulation policy

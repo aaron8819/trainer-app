@@ -36,8 +36,8 @@ function buildRirBandConfig() {
     weekBands: {
       week1: { min: 3, max: 4 },
       week2: { min: 2, max: 3 },
-      week3: { min: 2, max: 3 },
-      week4: { min: 1, max: 2 },
+      week3: { min: 1, max: 2 },
+      week4: { min: 0, max: 1 },
       week5Deload: { min: 4, max: 6 },
     },
   } as const;

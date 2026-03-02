@@ -133,7 +133,7 @@ function toPrisma(raw: EngineExercise): PrismaExercise & {
 const idbp = exercise({
   id: "incline-db-bench",
   name: "Incline Dumbbell Bench Press",
-  movementPatterns: ["incline_push"],
+  movementPatterns: ["horizontal_push"],
   splitTags: ["push"],
   primaryMuscles: ["Chest"],
   secondaryMuscles: ["Triceps", "Front Delts"],
@@ -311,12 +311,14 @@ function buildMappedContext(): MappedGenerationContext {
       Abductors: 0,
       Abs: 0,
     },
+    sorenessSuppressedMuscles: [],
     activeMesocycle: null,
     effectivePeriodization: {
       setMultiplier: 1.2,
       rpeOffset: 0.5,
       isDeload: false,
       backOffMultiplier: 0.9,
+      lifecycleSetTargets: { main: 5, accessory: 4 },
     },
     adaptiveDeload: false,
     deloadDecision: {

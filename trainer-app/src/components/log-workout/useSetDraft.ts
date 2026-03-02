@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type DraftPayload = {
   reps: string;
@@ -55,9 +55,12 @@ export function useSetDraft({
   onRestore: (setId: string, draft: RestoreDraft) => void;
 }) {
   const [restoredSetIds, setRestoredSetIds] = useState<Set<string>>(new Set());
+  const [savingDraftSetId, setSavingDraftSetId] = useState<string | null>(null);
+  const [lastSavedDraft, setLastSavedDraft] = useState<{ setId: string; savedAt: number } | null>(null);
   const saveTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const restoredOnceRef = useRef<Set<string>>(new Set());
-  const stableSetIds = Array.from(new Set(setIds));
+  const stableSetIds = useMemo(() => Array.from(new Set(setIds)), [setIds]);
+  const stableSetIdsKey = useMemo(() => stableSetIds.join("|"), [stableSetIds]);
 
   useEffect(() => {
     restoredOnceRef.current = new Set();
@@ -66,7 +69,8 @@ export function useSetDraft({
   useEffect(() => {
     const now = Date.now();
     const restored = new Set<string>();
-    stableSetIds.forEach((setId) => {
+    const setIdsToRestore = stableSetIdsKey ? stableSetIdsKey.split("|") : [];
+    setIdsToRestore.forEach((setId) => {
       const key = getDraftKey(workoutId, setId);
       const draft = parseDraft(window.localStorage.getItem(key));
       if (!draft) {
@@ -94,7 +98,7 @@ export function useSetDraft({
       });
     }, 0);
     return () => clearTimeout(syncTimeout);
-  }, [onRestore, stableSetIds, workoutId]);
+  }, [onRestore, stableSetIdsKey, workoutId]);
 
   useEffect(() => {
     return () => {
@@ -109,6 +113,7 @@ export function useSetDraft({
       if (saveTimersRef.current[setId]) {
         clearTimeout(saveTimersRef.current[setId]);
       }
+      setSavingDraftSetId(setId);
       saveTimersRef.current[setId] = setTimeout(() => {
         const payload: DraftPayload = {
           reps: values.reps,
@@ -117,6 +122,9 @@ export function useSetDraft({
           savedAt: Date.now(),
         };
         window.localStorage.setItem(key, JSON.stringify(payload));
+        delete saveTimersRef.current[setId];
+        setSavingDraftSetId((prev) => (prev === setId ? null : prev));
+        setLastSavedDraft({ setId, savedAt: payload.savedAt });
       }, DRAFT_WRITE_DEBOUNCE_MS);
     },
     [workoutId]
@@ -131,6 +139,8 @@ export function useSetDraft({
       }
       window.localStorage.removeItem(getDraftKey(workoutId, setId));
       restoredOnceRef.current.delete(`${workoutId}:${setId}`);
+      setSavingDraftSetId((prev) => (prev === setId ? null : prev));
+      setLastSavedDraft((prev) => (prev?.setId === setId ? null : prev));
       setRestoredSetIds((prev) => {
         const next = new Set(prev);
         next.delete(setId);
@@ -150,6 +160,8 @@ export function useSetDraft({
       window.localStorage.removeItem(getDraftKey(workoutId, setId));
       restoredOnceRef.current.delete(`${workoutId}:${setId}`);
     });
+    setSavingDraftSetId(null);
+    setLastSavedDraft(null);
     setRestoredSetIds(new Set());
   }, [stableSetIds, workoutId]);
 
@@ -169,6 +181,8 @@ export function useSetDraft({
     clearDraft,
     clearAllDrafts,
     restoredSetIds,
+    savingDraftSetId,
+    lastSavedDraft,
     markRestoredSeen,
   };
 }

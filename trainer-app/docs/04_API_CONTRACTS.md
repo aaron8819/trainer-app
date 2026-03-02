@@ -1,7 +1,7 @@
 # 04 API Contracts
 
 Owner: Aaron  
-Last reviewed: 2026-02-26
+Last reviewed: 2026-02-28
 Purpose: Canonical API contract map for App Router endpoints and payload validation boundaries.
 
 This doc covers:
@@ -42,11 +42,14 @@ Sources of truth:
 
 ## Program dashboard response notes
 - Route: `GET /api/program` (`src/app/api/program/route.ts`) returns `loadProgramDashboardData()` output directly.
+- `GET /api/program` accepts an optional `?week=N` query parameter (`src/app/api/program/route.ts`). When supplied, `loadProgramDashboardData()` returns volume and RIR data for the requested historical week instead of the current week. The live `currentWeek` is always present in the response; the requested week is returned as `viewedWeek`.
 - `ProgramDashboardData` now includes `daysPerWeek` (`src/lib/api/program.ts`) sourced from user constraints and used by clients to avoid hardcoded frequency assumptions.
+- `ProgramDashboardData.viewedWeek` is the effective week whose volume/RIR data is rendered — equals `currentWeek` by default, overridden by `?week=N`. Clamped to `[1, durationWeeks]`.
+- `ProgramDashboardData.activeMeso.completedSessions` is now sourced from `accumulationSessionsCompleted` (the canonical lifecycle counter), not the `completedSessions` DB column. Clients should treat this field as the lifecycle-derived session count.
 
 ## Validation-backed contracts (examples)
 - Workout generation/save: `generateFromTemplateSchema`, `generateFromIntentSchema`, `saveWorkoutSchema`
-- Workout history query: `workoutHistoryQuerySchema` in `src/lib/validation.ts`; consumed by `GET /api/workouts/history`. Supports `intent`, `status` (comma-separated), `mesocycleId`, `from`/`to` date range, and cursor-based pagination (`cursor`, `take`).
+- Workout history query: `workoutHistoryQuerySchema` in `src/lib/validation.ts`; consumed by `GET /api/workouts/history`. Supports `intent`, `status` (comma-separated), `mesocycleId`, `from`/`to` date range, and cursor-based pagination (`cursor`, `take`). History items now include `mesoSessionSnapshot` (session-within-week number, nullable) in the response shape (`src/app/api/workouts/history/route.ts`).
 - Logging: `setLogSchema`
 - Dumbbell load contract: clients submit dumbbell `actualLoad` in per-hand units and `POST /api/logs/set` persists the provided per-hand value directly.
 - Performed-set signal requirement: `POST /api/logs/set` returns 400 when a non-skipped set log supplies neither `actualReps` nor `actualRpe`. Unresolved sets must remain un-logged (missing) rather than being written as empty performed logs.
@@ -64,10 +67,13 @@ Sources of truth:
   - `mark_partial` => finalize as `PARTIAL`.
   - `mark_skipped` => finalize as `SKIPPED`.
 - `save_plan` cannot finalize terminal statuses (`COMPLETED`, `PARTIAL`, `SKIPPED`); terminal `status` in a plan write is ignored and persisted status remains non-terminal/current.
+- `save_plan` on a **new workout** (no existing record) now triggers a mesocycle snapshot lookup and writes `mesocycleWeekSnapshot` / `mesoSessionSnapshot` / `mesocyclePhaseSnapshot` — the same fields written on performed transition — so the week/session badge appears in Recent Workouts immediately upon plan save (`src/app/api/workouts/save/route.ts`). The performed-transition error gate (`ACTIVE_MESOCYCLE_NOT_FOUND`) is skipped for plan saves; missing active mesocycle is tolerated gracefully.
 - Completion gating: `mark_completed` requires at least one performed non-skipped set log; otherwise route returns `409`.
+- Mesocycle snapshots are duration-aware: `mesocycleWeekSnapshot` is derived from `durationWeeks`, `accumulationSessionsCompleted`, and `sessionsPerWeek`, and `mesoSessionSnapshot` during deload is capped by `sessionsPerWeek` rather than a fixed `3`.
 - Mesocycle lifecycle counter increment split:
   - Performed-signal readers use `COMPLETED` + `PARTIAL` (`src/lib/workout-status.ts`).
   - Lifecycle counters (`accumulationSessionsCompleted`, `deloadSessionsCompleted`) are incremented on any first transition to a performed status (`COMPLETED` or `PARTIAL`) atomically inside the save-workout transaction (`src/app/api/workouts/save/route.ts`); `transitionMesocycleState()` is then called post-transaction to apply threshold-based state transitions.
+- Lifecycle thresholds are duration-aware: accumulation completes after `(durationWeeks - 1) * sessionsPerWeek` performed sessions and deload completes after `sessionsPerWeek` performed sessions.
 - Save route normalizes/persists cycle context into `selectionMetadata.cycleContext`; when not supplied upstream it writes a fallback snapshot with `source: "fallback"` (`deriveCycleContext()` in `src/app/api/workouts/save/route.ts`).
 
 ## Deload gate contract
@@ -81,6 +87,7 @@ Sources of truth:
   - Set volume is reduced to ~40-50% (`DELOAD_SET_FACTOR = 0.45`) with minimum set floor safeguards.
   - Load anchoring comes from the final accumulation modal load selection logic.
   - RIR target is deload band (`4-6`) via lifecycle RIR targeting.
+- Default lifecycle hypertrophy RIR bands are duration-aware rather than fixed to a 4+1 template.
 
 ## Workout explanation response contract
 - Route: `GET /api/workouts/[id]/explanation` (`src/app/api/workouts/[id]/explanation/route.ts`).

@@ -27,6 +27,7 @@ function makeExplanation(withDecisionLog: boolean): WorkoutExplanation {
         availability: "recent",
         label: "Fresh",
         perMuscleFatigue: new Map(),
+        sorenessSuppressedMuscles: [],
         adaptations: [],
       },
       progressionContext: {

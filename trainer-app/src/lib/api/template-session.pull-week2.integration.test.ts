@@ -336,6 +336,7 @@ function buildMappedContext(): MappedGenerationContext {
       Abductors: 0,
       Abs: 0,
     },
+    sorenessSuppressedMuscles: [],
     activeMesocycle: null,
     mesocycleLength: 4,
     effectivePeriodization: {
@@ -343,6 +344,7 @@ function buildMappedContext(): MappedGenerationContext {
       rpeOffset: 0,
       isDeload: false,
       backOffMultiplier: 0.9,
+      lifecycleSetTargets: { main: 4, accessory: 3 },
     },
     adaptiveDeload: false,
     deloadDecision: {

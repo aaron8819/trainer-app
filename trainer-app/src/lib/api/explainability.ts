@@ -5,7 +5,7 @@ import type {
   MuscleVolumeCompliance,
   VolumeComplianceStatus,
 } from "@/lib/engine/explainability";
-import { VOLUME_LANDMARKS, computeWeeklyVolumeTarget } from "@/lib/engine/volume-landmarks";
+import { VOLUME_LANDMARKS } from "@/lib/engine/volume-landmarks";
 import {
   explainSessionContext,
   explainExerciseRationale,
@@ -34,6 +34,7 @@ import {
   SECONDARY_VOLUME_MULTIPLIER,
 } from "./explainability/stats";
 import { computeDoubleProgressionDecision } from "@/lib/engine/progression";
+import { buildLifecyclePeriodization, getWeeklyVolumeTarget } from "./mesocycle-lifecycle";
 
 type WorkoutWithExplainabilityRelations = Prisma.WorkoutGetPayload<{
   include: {
@@ -116,11 +117,13 @@ export async function generateWorkoutExplanation(
     latestReadinessAgeMs != null && latestReadinessAgeMs <= CHECK_IN_STALENESS_WINDOW_MS
   );
   const cycleContext = parseCycleContext(workout.selectionMetadata);
+  const sorenessSuppressedMuscles = parseSorenessSuppressedMuscles(workout.selectionMetadata);
 
   const sessionContext = explainSessionContext({
     blockContext,
     cycleContext,
     volumeByMuscle,
+    sorenessSuppressedMuscles,
     fatigueScore: undefined,
     modifications: undefined,
     signalAge: latestReadinessAgeDays,
@@ -195,17 +198,25 @@ export async function generateWorkoutExplanation(
       profile: {
         trainingAge: blockContext?.macroCycle.trainingAge ?? "intermediate",
       },
-      periodization: blockContext
-        ? getPeriodizationModifiers(
-            blockContext.weekInBlock,
-            blockContext.macroCycle.primaryGoal === "general_fitness"
-              ? "hypertrophy"
-              : blockContext.macroCycle.primaryGoal,
-            blockContext.macroCycle.trainingAge
-          )
-        : undefined,
-      blockType: blockContext?.block.blockType,
-      weekInMesocycle: weekInMeso,
+      periodization:
+        cycleContext && mappedPrimaryGoal === "hypertrophy"
+          ? buildLifecyclePeriodization({
+              primaryGoal: mappedPrimaryGoal,
+              durationWeeks: cycleContext.mesocycleLength ?? Math.max(4, cycleContext.weekInMeso),
+              week: cycleContext.weekInMeso,
+              isDeload: cycleContext.isDeload,
+            })
+          : blockContext
+            ? getPeriodizationModifiers(
+                blockContext.weekInBlock,
+                blockContext.macroCycle.primaryGoal === "general_fitness"
+                  ? "hypertrophy"
+                  : blockContext.macroCycle.primaryGoal,
+                blockContext.macroCycle.trainingAge
+              )
+            : undefined,
+      blockType: cycleContext?.blockType ?? blockContext?.block.blockType,
+      weekInMesocycle: cycleContext?.weekInMeso ?? weekInMeso,
       restSeconds:
         engineSets[0]?.restSeconds ??
         getRestSeconds(exercise, workoutExercise.isMainLift, engineSets[0]?.targetReps ?? 10),
@@ -798,6 +809,20 @@ function parseCycleContext(selectionMetadata: Prisma.JsonValue | null | undefine
   return value as CycleContextSnapshot;
 }
 
+function parseSorenessSuppressedMuscles(
+  selectionMetadata: Prisma.JsonValue | null | undefined
+): string[] {
+  if (!selectionMetadata || typeof selectionMetadata !== "object" || Array.isArray(selectionMetadata)) {
+    return [];
+  }
+  const root = selectionMetadata as Record<string, unknown>;
+  const raw = root.sorenessSuppressedMuscles;
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw.filter((item): item is string => typeof item === "string");
+}
+
 function extractDeloadDecisionFromJson(value: Prisma.JsonValue | null | undefined): DeloadDecision | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
@@ -1296,12 +1321,9 @@ async function computeVolumeCompliance(
 
   const meso = await prisma.mesocycle.findUnique({
     where: { id: mesocycleId },
-    select: { durationWeeks: true, state: true },
+    select: { durationWeeks: true },
   });
   if (!meso) return [];
-
-  const isDeload = meso.state === "ACTIVE_DELOAD";
-  const mesoLength = meso.durationWeeks;
 
   // Query prior performed workouts in the same mesocycle week, excluding this workout
   const priorWorkouts = await prisma.workout.findMany({
@@ -1371,12 +1393,7 @@ async function computeVolumeCompliance(
 
     const before = setsLoggedBefore.get(muscle) ?? 0;
     const projected = before + prescribed;
-    const weeklyTarget = computeWeeklyVolumeTarget(
-      landmarks,
-      mesocycleWeekSnapshot,
-      mesoLength,
-      isDeload
-    );
+    const weeklyTarget = getWeeklyVolumeTarget(meso, muscle, mesocycleWeekSnapshot);
 
     compliance.push({
       muscle,

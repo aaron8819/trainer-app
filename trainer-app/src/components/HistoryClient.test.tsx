@@ -35,6 +35,7 @@ function makeWorkout(overrides: Partial<HistoryWorkoutItem> = {}): HistoryWorkou
     sessionIntent: "PUSH",
     mesocycleId: null,
     mesocycleWeekSnapshot: null,
+    mesoSessionSnapshot: null,
     mesocyclePhaseSnapshot: null,
     exerciseCount: 5,
     totalSetsLogged: 15,

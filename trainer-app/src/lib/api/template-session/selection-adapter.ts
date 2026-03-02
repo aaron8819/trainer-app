@@ -56,19 +56,6 @@ function applyContinuityWeightBias(
   };
 }
 
-function resolveContinuityProgressionIncrement(mapped: MappedGenerationContext): number {
-  const blockType = mapped.cycleContext?.blockType ?? mapped.blockContext?.block.blockType;
-  const weekInBlock = mapped.lifecycleWeek;
-  const isDeload = mapped.cycleContext?.isDeload ?? mapped.effectivePeriodization.isDeload;
-  if (isDeload) {
-    return 0;
-  }
-  if (blockType !== "accumulation" || weekInBlock <= 1) {
-    return 0;
-  }
-  return Math.max(0, weekInBlock - 1);
-}
-
 function shouldDemoteBodyweightMainLiftForGoal(exercise: Exercise, primaryGoal: string): boolean {
   const normalizedGoal = primaryGoal.trim().toLowerCase();
   const isStrengthFocused =
@@ -247,7 +234,7 @@ export function buildSelectionObjective(
     minMainLifts: sessionIntent === "body_part" ? 0 : 1,
     maxMainLifts: 3,
     minAccessories: 2,
-    minAccessoryProposedSets: 3,
+    minAccessoryProposedSets: mapped.effectivePeriodization.lifecycleSetTargets?.accessory ?? 3,
     requiredMuscles,
     demotedFromMainLift: new Set(
       mapped.exerciseLibrary
@@ -260,7 +247,7 @@ export function buildSelectionObjective(
     ),
     preferredContinuityExerciseIds: recentPerformedIntentExerciseIds,
     continuityMinSetsByExerciseId,
-    continuitySetProgressionIncrement: resolveContinuityProgressionIncrement(mapped),
+    lifecycleSetTargets: mapped.effectivePeriodization.lifecycleSetTargets,
   };
 
   const sraContext = buildSraContext(mapped.rotationContext, mapped.exerciseLibrary, new Date());

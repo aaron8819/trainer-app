@@ -25,6 +25,19 @@ describe("session-context correctness", () => {
     expect(result.label).toContain("Stale readiness (5d old)");
   });
 
+  it("surfaces soreness-based volume suppression from generation metadata", () => {
+    const result = describeReadinessStatus({
+      fatigueScore: undefined,
+      sorenessSuppressedMuscles: ["Chest", "Front Delts"],
+      hasRecentReadinessSignal: false,
+    });
+
+    expect(result.sorenessSuppressedMuscles).toEqual(["Chest", "Front Delts"]);
+    expect(result.adaptations).toContain(
+      "Held back weekly volume progression for Chest, Front Delts due to high soreness"
+    );
+  });
+
   it("surfaces fallback cycle context source and week", () => {
     const context = explainSessionContext({
       blockContext: null,

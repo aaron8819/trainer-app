@@ -74,7 +74,6 @@ export function useWorkoutLogState(exercises: LogExerciseInput[] | SectionedExer
     accessory: false,
   });
   const [expandedExerciseId, setExpandedExerciseId] = useState<string | null>(null);
-  const [restTimerSeconds, setRestTimerSeconds] = useState<number | null>(null);
 
   const flatSets = useMemo<FlatSetItem[]>(() => {
     const output: FlatSetItem[] = [];
@@ -117,8 +116,6 @@ export function useWorkoutLogState(exercises: LogExerciseInput[] | SectionedExer
     setExpandedSections,
     expandedExerciseId,
     setExpandedExerciseId,
-    restTimerSeconds,
-    setRestTimerSeconds,
     flatSets,
     activeSet,
   };

@@ -116,6 +116,8 @@ function prescribeMainLiftSets(
   const setCount =
     overrideSetCount !== undefined
       ? Math.max(1, Math.round(overrideSetCount))
+      : periodization?.lifecycleSetTargets?.main !== undefined
+        ? periodization.lifecycleSetTargets.main
       : resolveSetCount(
           true,
           trainingAge,
@@ -126,8 +128,10 @@ function prescribeMainLiftSets(
   // Accumulation: start at upper rep range (early block = more reps, less load),
   // progress toward lower rep range as block peaks (late block = fewer reps, heavier).
   // blockProgress: 0.0 at week 1 (upper end) → 1.0 at week 3 (lower end).
+  const accumulationWeeks = Math.max(1, periodization?.accumulationWeeks ?? 3);
+  const boundedWeekInBlock = Math.min(periodization?.weekInBlock ?? 1, accumulationWeeks);
   const blockProgress = periodization
-    ? Math.min(1, Math.max(0, ((periodization.weekInBlock ?? 1) - 1) / 2))
+    ? Math.min(1, Math.max(0, (boundedWeekInBlock - 1) / Math.max(1, accumulationWeeks - 1)))
     : 0;
   const topSetReps = Math.round(
     effectiveMain[1] - blockProgress * (effectiveMain[1] - effectiveMain[0])
@@ -182,6 +186,8 @@ function prescribeAccessorySets(
   const setCount =
     overrideSetCount !== undefined
       ? Math.max(1, Math.round(overrideSetCount))
+      : periodization?.lifecycleSetTargets?.accessory !== undefined
+        ? periodization.lifecycleSetTargets.accessory
       : resolveSetCount(
           false,
           trainingAge,
@@ -244,13 +250,8 @@ function resolveTargetRpe(
 ) {
   if (periodization?.lifecycleRirTarget) {
     const midpoint = (periodization.lifecycleRirTarget.min + periodization.lifecycleRirTarget.max) / 2;
-    const roleAdjustedRir =
-      mesocycleRole === "CORE_COMPOUND"
-        ? Math.min(periodization.lifecycleRirTarget.max, midpoint + 0.5)
-        : mesocycleRole === "ACCESSORY"
-          ? Math.max(periodization.lifecycleRirTarget.min, midpoint)
-          : midpoint;
-    const lifecycleRpe = 10 - roleAdjustedRir;
+    void mesocycleRole;
+    const lifecycleRpe = 10 - midpoint;
     return Number(lifecycleRpe.toFixed(1));
   }
   let targetRpe =

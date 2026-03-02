@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import DeleteWorkoutButton from "./DeleteWorkoutButton";
 import { WorkoutRowActions } from "./workout/WorkoutRowActions";
 
-type WorkoutListItem = {
+export type WorkoutListItem = {
   id: string;
   scheduledDate: string;
   status: string;

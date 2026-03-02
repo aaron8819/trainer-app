@@ -1,6 +1,8 @@
-import type { Mesocycle, Prisma } from "@prisma/client";
+import type { Mesocycle } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { VOLUME_LANDMARKS } from "@/lib/engine/volume-landmarks";
+import { getBackOffMultiplier, type PeriodizationModifiers } from "@/lib/engine/rules";
+import type { PrimaryGoal } from "@/lib/engine/types";
 
 type MuscleLandmark = {
   mev: number;
@@ -9,6 +11,13 @@ type MuscleLandmark = {
 };
 
 type RirTarget = { min: number; max: number };
+type LifecycleSetTargets = { main: number; accessory: number };
+type HypertrophyWeekProfile = {
+  rirTarget: RirTarget;
+  setTargets: LifecycleSetTargets;
+  setMultiplier: number;
+  volumeFraction: number;
+};
 
 type MesoWithLifecycle = Pick<
   Mesocycle,
@@ -26,25 +35,23 @@ type MesoWithLifecycle = Pick<
   | "sessionsPerWeek"
   | "daysPerWeek"
   | "splitType"
-  | "volumeRampConfig"
-  | "rirBandConfig"
 >;
-type WeekDerivationInput = Pick<MesoWithLifecycle, "state" | "accumulationSessionsCompleted" | "sessionsPerWeek">;
-type VolumeTargetInput = Pick<MesoWithLifecycle, "volumeRampConfig">;
-type RirTargetInput = Pick<MesoWithLifecycle, "state" | "rirBandConfig">;
-type RirBandConfigInput = { rirBandConfig: Prisma.JsonValue };
-
-const ACCUMULATION_SESSION_THRESHOLD = 12;
-const DELOAD_SESSION_THRESHOLD = 3;
-const ACCUMULATION_WEEK_CAP = 4;
-const DELOAD_WEEK = 5;
-const DEFAULT_RIR_BANDS: Record<number, RirTarget> = {
-  1: { min: 3, max: 4 },
-  2: { min: 2, max: 3 },
-  3: { min: 2, max: 3 },
-  4: { min: 1, max: 2 },
-  5: { min: 4, max: 6 },
+type WeekDerivationInput = Pick<
+  MesoWithLifecycle,
+  "state" | "accumulationSessionsCompleted" | "sessionsPerWeek" | "durationWeeks"
+>;
+type VolumeTargetInput = Pick<MesoWithLifecycle, "durationWeeks">;
+type RirTargetInput = Pick<MesoWithLifecycle, "state" | "durationWeeks">;
+type LifecyclePeriodizationInput = {
+  primaryGoal: PrimaryGoal;
+  durationWeeks: number;
+  week: number;
+  isDeload?: boolean;
+  rirTarget?: RirTarget;
 };
+
+const DEFAULT_DELOAD_RIR: RirTarget = { min: 5, max: 6 };
+const DEFAULT_DELOAD_SET_TARGETS: LifecycleSetTargets = { main: 2, accessory: 1 };
 
 // Explicit mapping from normalized snake_case keys to VOLUME_LANDMARKS Title Case keys.
 // Must be exhaustive for all muscles in VOLUME_LANDMARKS.
@@ -98,48 +105,124 @@ function resolveLandmark(muscleGroup: string): MuscleLandmark {
   return { mev: lm.mev, mavUpper: lm.mav, mrv: lm.mrv };
 }
 
-function asObject(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return null;
-  }
-  return value as Record<string, unknown>;
+export function getAccumulationWeeks(durationWeeks: number): number {
+  return Math.max(1, durationWeeks - 1);
 }
 
-function parseRirBandConfig(mesocycle: RirBandConfigInput): Record<number, RirTarget> {
-  const config = asObject(mesocycle.rirBandConfig);
-  const weekBands = config ? asObject(config.weekBands) : null;
-  if (!weekBands) {
-    return DEFAULT_RIR_BANDS;
+export function getDeloadWeek(durationWeeks: number): number {
+  return Math.max(2, durationWeeks);
+}
+
+export function getPeakAccumulationWeek(durationWeeks: number): number {
+  return getAccumulationWeeks(durationWeeks);
+}
+
+function interpolateSetTargets(
+  start: LifecycleSetTargets,
+  peak: LifecycleSetTargets,
+  accumulationWeeks: number,
+  week: number
+): LifecycleSetTargets {
+  if (accumulationWeeks <= 1) {
+    return start;
   }
 
-  const parsed: Record<number, RirTarget> = { ...DEFAULT_RIR_BANDS };
-  const mapBand = (targetWeek: number, sourceKey: string) => {
-    const raw = asObject(weekBands[sourceKey]);
-    if (!raw) return;
-    const min = typeof raw.min === "number" ? raw.min : undefined;
-    const max = typeof raw.max === "number" ? raw.max : undefined;
-    if (typeof min === "number" && typeof max === "number") {
-      parsed[targetWeek] = { min, max };
-    }
+  const progress = Math.max(0, Math.min(1, (week - 1) / (accumulationWeeks - 1)));
+  return {
+    main: Math.round(start.main + (peak.main - start.main) * progress),
+    accessory: Math.round(start.accessory + (peak.accessory - start.accessory) * progress),
   };
-
-  mapBand(1, "week1");
-  mapBand(2, "week2");
-  mapBand(3, "week3");
-  mapBand(4, "week4");
-  mapBand(5, "week5Deload");
-
-  return parsed;
 }
+
+function buildHypertrophyWeekProfile(
+  durationWeeks: number,
+  week: number,
+  isDeload: boolean
+): HypertrophyWeekProfile {
+  const accumulationWeeks = getAccumulationWeeks(durationWeeks);
+  if (isDeload) {
+    return {
+      rirTarget: DEFAULT_DELOAD_RIR,
+      setTargets: DEFAULT_DELOAD_SET_TARGETS,
+      setMultiplier: 0.5,
+      volumeFraction: 0.45,
+    };
+  }
+
+  const boundedWeek = Math.max(1, Math.min(week, accumulationWeeks));
+  if (durationWeeks === 5) {
+    const profiles: Record<number, HypertrophyWeekProfile> = {
+      1: {
+        rirTarget: { min: 3, max: 4 },
+        setTargets: { main: 3, accessory: 2 },
+        setMultiplier: 0.8,
+        volumeFraction: 0,
+      },
+      2: {
+        rirTarget: { min: 2, max: 3 },
+        setTargets: { main: 4, accessory: 3 },
+        setMultiplier: 1,
+        volumeFraction: 1 / 3,
+      },
+      3: {
+        rirTarget: { min: 1, max: 2 },
+        setTargets: { main: 5, accessory: 4 },
+        setMultiplier: 1.15,
+        volumeFraction: 2 / 3,
+      },
+      4: {
+        rirTarget: { min: 0, max: 1 },
+        setTargets: { main: 5, accessory: 5 },
+        setMultiplier: 1.3,
+        volumeFraction: 1,
+      },
+    };
+    return profiles[boundedWeek] ?? profiles[1];
+  }
+
+  const startTargets: LifecycleSetTargets = { main: 3, accessory: 2 };
+  const peakTargets: LifecycleSetTargets = durationWeeks <= 4 ? { main: 5, accessory: 4 } : { main: 5, accessory: 5 };
+  const setTargets = interpolateSetTargets(startTargets, peakTargets, accumulationWeeks, boundedWeek);
+  const progress = accumulationWeeks <= 1 ? 0 : (boundedWeek - 1) / (accumulationWeeks - 1);
+  const rirPath: RirTarget[] =
+    accumulationWeeks <= 3
+      ? [
+          { min: 3, max: 4 },
+          { min: 2, max: 3 },
+          { min: 1, max: 2 },
+        ]
+      : [
+          { min: 3, max: 4 },
+          { min: 2, max: 3 },
+          { min: 1, max: 2 },
+          { min: 0, max: 1 },
+        ];
+
+  return {
+    rirTarget: rirPath[Math.min(rirPath.length - 1, boundedWeek - 1)] ?? rirPath[0],
+    setTargets,
+    setMultiplier: Number((0.8 + progress * 0.5).toFixed(2)),
+    volumeFraction: progress,
+  };
+}
+
+function getAccumulationSessionThreshold(mesocycle: Pick<MesoWithLifecycle, "durationWeeks" | "sessionsPerWeek">): number {
+  return getAccumulationWeeks(mesocycle.durationWeeks) * Math.max(1, mesocycle.sessionsPerWeek);
+}
+
+function getDeloadSessionThreshold(mesocycle: Pick<MesoWithLifecycle, "sessionsPerWeek">): number {
+  return Math.max(1, mesocycle.sessionsPerWeek);
+}
+
 
 export function getCurrentMesoWeek(mesocycle: WeekDerivationInput): number {
   if (mesocycle.state === "ACTIVE_ACCUMULATION") {
     const sessionsPerWeek = Math.max(1, mesocycle.sessionsPerWeek);
     const week = Math.floor(mesocycle.accumulationSessionsCompleted / sessionsPerWeek) + 1;
-    return Math.min(ACCUMULATION_WEEK_CAP, week);
+    return Math.min(getAccumulationWeeks(mesocycle.durationWeeks), week);
   }
   if (mesocycle.state === "ACTIVE_DELOAD" || mesocycle.state === "COMPLETED") {
-    return DELOAD_WEEK;
+    return getDeloadWeek(mesocycle.durationWeeks);
   }
   return 1;
 }
@@ -149,24 +232,68 @@ export function getWeeklyVolumeTarget(
   muscleGroup: string,
   week: number
 ): number {
-  // Access config to ensure the target is derived from the persisted mesocycle snapshot.
-  void mesocycle.volumeRampConfig;
-
   const landmark = resolveLandmark(muscleGroup);
   const week4 = Math.min(landmark.mavUpper, landmark.mrv);
+  const accumulationWeeks = getAccumulationWeeks(mesocycle.durationWeeks);
+  const boundedWeek = Math.max(1, Math.min(week, accumulationWeeks));
+  const profile = buildHypertrophyWeekProfile(mesocycle.durationWeeks, boundedWeek, false);
+  const accumulationTarget = Math.round(
+    landmark.mev + profile.volumeFraction * (week4 - landmark.mev)
+  );
+
   if (week <= 1) return landmark.mev;
-  if (week === 2) return landmark.mev + Math.round((week4 - landmark.mev) * (1 / 3));
-  if (week === 3) return landmark.mev + Math.round((week4 - landmark.mev) * (2 / 3));
-  if (week === 4) return week4;
+  if (week <= accumulationWeeks) return accumulationTarget;
   return Math.round(week4 * 0.45);
 }
 
 export function getRirTarget(mesocycle: RirTargetInput, week: number): RirTarget {
-  if (week >= DELOAD_WEEK || mesocycle.state === "ACTIVE_DELOAD" || mesocycle.state === "COMPLETED") {
-    return { min: 4, max: 6 };
+  const deloadWeek = getDeloadWeek(mesocycle.durationWeeks);
+  if (week >= deloadWeek || mesocycle.state === "ACTIVE_DELOAD" || mesocycle.state === "COMPLETED") {
+    return DEFAULT_DELOAD_RIR;
   }
-  const bands = parseRirBandConfig(mesocycle);
-  return bands[week] ?? DEFAULT_RIR_BANDS[1];
+  return buildHypertrophyWeekProfile(mesocycle.durationWeeks, week, false).rirTarget;
+}
+
+export function getLifecycleSetTargets(
+  durationWeeks: number,
+  week: number,
+  isDeload = false
+): LifecycleSetTargets {
+  return buildHypertrophyWeekProfile(durationWeeks, week, isDeload).setTargets;
+}
+
+export function buildLifecyclePeriodization(
+  input: LifecyclePeriodizationInput
+): PeriodizationModifiers {
+  const accumulationWeeks = getAccumulationWeeks(input.durationWeeks);
+  const deloadWeek = getDeloadWeek(input.durationWeeks);
+  const boundedWeek = Math.max(1, Math.min(input.week, deloadWeek));
+  const isDeload = input.isDeload ?? boundedWeek >= deloadWeek;
+  const hypertrophyProfile = buildHypertrophyWeekProfile(input.durationWeeks, boundedWeek, isDeload);
+  const rirTarget = input.rirTarget ?? hypertrophyProfile.rirTarget;
+
+  const setMultiplier =
+    input.primaryGoal === "hypertrophy"
+      ? hypertrophyProfile.setMultiplier
+      : isDeload
+        ? 0.5
+        : 1.0;
+
+  return {
+    rpeOffset: 0,
+    setMultiplier,
+    backOffMultiplier: isDeload ? 0.75 : getBackOffMultiplier(input.primaryGoal),
+    isDeload,
+    weekInBlock: boundedWeek,
+    accumulationWeeks,
+    lifecycleRirTarget: rirTarget,
+    lifecycleSetTargets:
+      input.primaryGoal === "hypertrophy"
+        ? hypertrophyProfile.setTargets
+        : isDeload
+          ? DEFAULT_DELOAD_SET_TARGETS
+          : undefined,
+  };
 }
 
 export async function initializeNextMesocycle(
@@ -183,14 +310,12 @@ export async function initializeNextMesocycle(
         durationWeeks: true,
         focus: true,
         volumeTarget: true,
-        intensityBias: true,
-        sessionsPerWeek: true,
-        daysPerWeek: true,
-        splitType: true,
-        volumeRampConfig: true,
-        rirBandConfig: true,
-      },
-    });
+      intensityBias: true,
+      sessionsPerWeek: true,
+      daysPerWeek: true,
+      splitType: true,
+    },
+  });
     if (!source) {
       throw new Error(`Mesocycle not found: ${completedMesocycle.id}`);
     }
@@ -216,8 +341,6 @@ export async function initializeNextMesocycle(
         sessionsPerWeek: source.sessionsPerWeek,
         daysPerWeek: source.daysPerWeek,
         splitType: source.splitType,
-        volumeRampConfig: source.volumeRampConfig ?? undefined,
-        rirBandConfig: source.rirBandConfig ?? undefined,
       },
     });
 
@@ -273,7 +396,7 @@ export async function transitionMesocycleState(mesocycleId: string): Promise<Mes
 
   if (mesocycle.state === "ACTIVE_ACCUMULATION") {
     // Counter already incremented in the save transaction; just check threshold.
-    if (mesocycle.accumulationSessionsCompleted < ACCUMULATION_SESSION_THRESHOLD) {
+    if (mesocycle.accumulationSessionsCompleted < getAccumulationSessionThreshold(mesocycle)) {
       return mesocycle;
     }
     const updated = await prisma.mesocycle.update({
@@ -284,7 +407,7 @@ export async function transitionMesocycleState(mesocycleId: string): Promise<Mes
   }
 
   // ACTIVE_DELOAD: counter already incremented in the save transaction.
-  if (mesocycle.deloadSessionsCompleted < DELOAD_SESSION_THRESHOLD) {
+  if (mesocycle.deloadSessionsCompleted < getDeloadSessionThreshold(mesocycle)) {
     return mesocycle;
   }
   const updated = await prisma.mesocycle.update({

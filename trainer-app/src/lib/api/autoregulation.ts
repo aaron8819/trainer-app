@@ -31,7 +31,7 @@ export type AutoregulationResult = {
  * Orchestrates the full pipeline:
  * 1. Fetch latest readiness signal from DB
  * 2. Compute fatigue score
- * 3. Apply autoregulation (scale intensity, reduce volume, etc.)
+ * 3. Apply readiness-based intensity autoregulation
  *
  * @param userId - User ID
  * @param workout - Original workout plan to autoregulate
@@ -75,7 +75,7 @@ export async function applyAutoregulation(
     notes: workout.notes,
   };
 
-  // 4. Apply autoregulation
+  // 4. Apply post-generation readiness intensity scaling
   const autoregPlan: Parameters<typeof autoregulateWorkout>[0] = flatPlan;
   const { adjustedWorkout, modifications, rationale: baseRationale } = autoregulateWorkout(
     autoregPlan,

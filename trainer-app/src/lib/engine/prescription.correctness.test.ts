@@ -75,7 +75,7 @@ describe("prescription correctness", () => {
     );
   });
 
-  it("applies role-aware lifecycle RIR offsets in W2 and keeps values within band bounds", () => {
+  it("centers lifecycle RIR bands equally for compounds and accessories in W2", () => {
     const roleAwareTemplate: TemplateExerciseInput[] = [
       { exercise: mainLift, orderIndex: 0, mesocycleRole: "CORE_COMPOUND" },
       { exercise: accessory, orderIndex: 1, mesocycleRole: "ACCESSORY" },
@@ -90,6 +90,7 @@ describe("prescription correctness", () => {
         isDeload: false,
         backOffMultiplier: 0.9,
         lifecycleRirTarget: { min: 2, max: 3 },
+        lifecycleSetTargets: { main: 4, accessory: 3 },
       },
     });
 
@@ -98,9 +99,40 @@ describe("prescription correctness", () => {
     const compoundRir = 10 - compoundRpe;
     const accessoryRir = 10 - accessoryRpe;
 
-    expect(compoundRir).toBe(3);
+    expect(compoundRir).toBe(2.5);
     expect(accessoryRir).toBe(2.5);
-    expect(compoundRir).toBeLessThanOrEqual(3);
+    expect(compoundRir).toBeGreaterThanOrEqual(2);
     expect(accessoryRir).toBeGreaterThanOrEqual(2);
+    expect(compoundRpe).toBe(accessoryRpe);
+    expect(result.workout.mainLifts[0].sets).toHaveLength(4);
+    expect(result.workout.accessories[0].sets).toHaveLength(3);
+  });
+
+  it("prescribes week-3 hypertrophy work at 1-2 RIR in a 5-week mesocycle", () => {
+    const roleAwareTemplate: TemplateExerciseInput[] = [
+      { exercise: mainLift, orderIndex: 0, mesocycleRole: "CORE_COMPOUND" },
+      { exercise: accessory, orderIndex: 1, mesocycleRole: "ACCESSORY" },
+    ];
+
+    const result = generateWorkoutFromTemplate(roleAwareTemplate, {
+      ...commonOptions,
+      goals: { primary: "hypertrophy" as const, secondary: "none" as const },
+      periodization: {
+        setMultiplier: 1.15,
+        rpeOffset: 0,
+        isDeload: false,
+        backOffMultiplier: 0.9,
+        weekInBlock: 3,
+        accumulationWeeks: 4,
+        lifecycleRirTarget: { min: 1, max: 2 },
+        lifecycleSetTargets: { main: 5, accessory: 4 },
+      },
+    });
+
+    const mainRpe = result.workout.mainLifts[0].sets[0].targetRpe ?? 0;
+    const accessoryRpe = result.workout.accessories[0].sets[0].targetRpe ?? 0;
+
+    expect(mainRpe).toBe(8.5);
+    expect(accessoryRpe).toBe(8.5);
   });
 });

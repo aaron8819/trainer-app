@@ -40,6 +40,7 @@ export function explainSessionContext(params: {
   volumeByMuscle: Map<string, number>;
   fatigueScore?: FatigueScore;
   modifications?: AutoregulationModification[];
+  sorenessSuppressedMuscles?: string[];
   signalAge?: number;
   hasRecentReadinessSignal?: boolean;
   sessionIntent?: "push" | "pull" | "legs";
@@ -50,6 +51,7 @@ export function explainSessionContext(params: {
     volumeByMuscle,
     fatigueScore,
     modifications,
+    sorenessSuppressedMuscles,
     signalAge,
     hasRecentReadinessSignal,
     sessionIntent,
@@ -65,6 +67,7 @@ export function explainSessionContext(params: {
   const readinessStatus = describeReadinessStatus({
     fatigueScore,
     modifications,
+    sorenessSuppressedMuscles,
     signalAge,
     hasRecentReadinessSignal,
   });
@@ -111,7 +114,7 @@ export function describeBlockGoal(
     return {
       blockType: cycleContext.blockType,
       weekInBlock: cycleContext.weekInBlock,
-      totalWeeksInBlock: 4,
+      totalWeeksInBlock: cycleContext.mesocycleLength ?? 4,
       primaryGoal: goalMap[cycleContext.blockType],
     };
   }
@@ -226,10 +229,17 @@ export function describeVolumeProgress(
 export function describeReadinessStatus(params: {
   fatigueScore?: FatigueScore;
   modifications?: AutoregulationModification[];
+  sorenessSuppressedMuscles?: string[];
   signalAge?: number;
   hasRecentReadinessSignal?: boolean;
 }): ReadinessStatus {
-  const { fatigueScore, modifications = [], signalAge = 0, hasRecentReadinessSignal = false } = params;
+  const {
+    fatigueScore,
+    modifications = [],
+    sorenessSuppressedMuscles = [],
+    signalAge = 0,
+    hasRecentReadinessSignal = false,
+  } = params;
 
   if (!fatigueScore) {
     if (!hasRecentReadinessSignal) {
@@ -240,7 +250,8 @@ export function describeReadinessStatus(params: {
         availability: hasAnySignal ? "stale" : "missing",
         label: hasAnySignal ? `Stale readiness (${signalAge}d old)` : "No recent readiness",
         perMuscleFatigue: new Map(),
-        adaptations: [],
+        sorenessSuppressedMuscles,
+        adaptations: summarizeAdaptations(modifications, sorenessSuppressedMuscles),
       };
     }
 
@@ -250,7 +261,8 @@ export function describeReadinessStatus(params: {
       availability: "recent",
       label: signalAge > 0 ? `Recent readiness (${signalAge}d old)` : "Recent readiness",
       perMuscleFatigue: new Map(),
-      adaptations: [],
+      sorenessSuppressedMuscles,
+      adaptations: summarizeAdaptations(modifications, sorenessSuppressedMuscles),
     };
   }
 
@@ -261,7 +273,7 @@ export function describeReadinessStatus(params: {
     perMuscleFatigue.set(muscle, Math.round((1 - fatigue) * 10));
   }
 
-  const adaptations = summarizeAdaptations(modifications);
+  const adaptations = summarizeAdaptations(modifications, sorenessSuppressedMuscles);
 
   return {
     overall,
@@ -269,6 +281,7 @@ export function describeReadinessStatus(params: {
     availability: "recent",
     label: signalAge > 0 ? `Readiness: ${overall} (${signalAge}d old)` : `Readiness: ${overall}`,
     perMuscleFatigue,
+    sorenessSuppressedMuscles,
     adaptations,
   };
 }
@@ -285,7 +298,11 @@ export function describeProgressionContext(
   if (cycleContext) {
     const volumeProgression = getVolumeProgression(cycleContext.blockType);
     const intensityProgression = getIntensityProgression(cycleContext.blockType);
-    const nextMilestone = getNextMilestone(cycleContext.blockType, cycleContext.weekInBlock, 4);
+    const nextMilestone = getNextMilestone(
+      cycleContext.blockType,
+      cycleContext.weekInBlock,
+      cycleContext.mesocycleLength ?? 4
+    );
     return {
       weekInMesocycle: cycleContext.weekInMeso,
       volumeProgression,
@@ -375,7 +392,10 @@ function classifyReadiness(fatigueScore: number): "fresh" | "moderate" | "fatigu
 /**
  * Summarize autoregulation adaptations
  */
-function summarizeAdaptations(modifications: AutoregulationModification[]): string[] {
+function summarizeAdaptations(
+  modifications: AutoregulationModification[],
+  sorenessSuppressedMuscles: string[]
+): string[] {
   const adaptations: string[] = [];
 
   let volumeCuts = 0;
@@ -393,6 +413,11 @@ function summarizeAdaptations(modifications: AutoregulationModification[]): stri
     }
   }
 
+  if (sorenessSuppressedMuscles.length > 0) {
+    adaptations.push(
+      `Held back weekly volume progression for ${sorenessSuppressedMuscles.join(", ")} due to high soreness`
+    );
+  }
   if (volumeCuts > 0) {
     adaptations.push(`Reduced volume by ${pluralize(volumeCuts, "set")}`);
   }

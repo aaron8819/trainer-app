@@ -234,6 +234,14 @@ export function computeProposedSets(
 ): number {
   const MIN_SETS = 2;
   const DEFAULT_SETS = 3;
+  const isMainLift =
+    (exercise.isMainLiftEligible ?? false) &&
+    !(objective.constraints.demotedFromMainLift?.has(exercise.id) ?? false);
+  const lifecycleSetTarget = objective.constraints.lifecycleSetTargets
+    ? isMainLift
+      ? objective.constraints.lifecycleSetTargets.main
+      : objective.constraints.lifecycleSetTargets.accessory
+    : undefined;
 
   // G2: Training-age-aware set cap (KB §8)
   // Beginner 6-10 sets/week → smaller per-exercise cap; Advanced 16-25+ → larger cap
@@ -259,6 +267,10 @@ export function computeProposedSets(
   );
   const applyPerSessionCap = (sets: number) =>
     perSessionCap === undefined ? sets : Math.min(sets, perSessionCap);
+
+  if (lifecycleSetTarget !== undefined) {
+    return applyPerSessionCap(Math.max(MIN_SETS, lifecycleSetTarget));
+  }
 
   // Find largest deficit among primary muscles
   let maxDeficit = 0;

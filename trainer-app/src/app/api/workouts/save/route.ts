@@ -38,6 +38,7 @@ function hasValidCycleContext(incomingSelectionMetadata: JsonObject): boolean {
     typeof parsed.phase === "string" &&
     typeof parsed.blockType === "string" &&
     typeof parsed.isDeload === "boolean" &&
+    (parsed.mesocycleLength === undefined || typeof parsed.mesocycleLength === "number") &&
     (parsed.source === "computed" || parsed.source === "fallback")
   );
 }
@@ -57,6 +58,7 @@ function deriveCycleContext(
     return {
       weekInMeso: dbContext.weekInMeso,
       weekInBlock: dbContext.blockContext?.weekInBlock ?? dbContext.weekInMeso,
+      mesocycleLength: undefined,
       phase: blockType,
       blockType,
       isDeload,
@@ -77,6 +79,7 @@ function deriveCycleContext(
   return {
     weekInMeso: 1,
     weekInBlock: 1,
+    mesocycleLength: undefined,
     phase: blockType,
     blockType,
     isDeload,
@@ -260,6 +263,7 @@ export async function POST(request: Request) {
         | {
             id: string;
             state: "ACTIVE_ACCUMULATION" | "ACTIVE_DELOAD" | "COMPLETED";
+            durationWeeks: number;
             accumulationSessionsCompleted: number;
             deloadSessionsCompleted: number;
             sessionsPerWeek: number;
@@ -273,6 +277,7 @@ export async function POST(request: Request) {
             select: {
               id: true,
               state: true,
+              durationWeeks: true,
               accumulationSessionsCompleted: true,
               deloadSessionsCompleted: true,
               sessionsPerWeek: true,
@@ -287,6 +292,7 @@ export async function POST(request: Request) {
             select: {
               id: true,
               state: true,
+              durationWeeks: true,
               accumulationSessionsCompleted: true,
               deloadSessionsCompleted: true,
               sessionsPerWeek: true,
@@ -314,7 +320,10 @@ export async function POST(request: Request) {
         const week = getCurrentMesoWeek(resolvedMesocycle);
         const session =
           resolvedMesocycle.state === "ACTIVE_DELOAD"
-            ? Math.min(3, resolvedMesocycle.deloadSessionsCompleted + 1)
+            ? Math.min(
+                Math.max(1, resolvedMesocycle.sessionsPerWeek),
+                resolvedMesocycle.deloadSessionsCompleted + 1
+              )
             : Math.max(1, (resolvedMesocycle.accumulationSessionsCompleted % Math.max(1, resolvedMesocycle.sessionsPerWeek)) + 1);
         mesoSnapshot = {
           week,

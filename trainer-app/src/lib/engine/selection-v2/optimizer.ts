@@ -76,18 +76,15 @@ export function selectExercisesOptimized(
   // Phase 2: Build scored candidates
   const candidates = feasible.map((exercise) => {
     const proposedSets = computeProposedSets(exercise, objective);
-    const continuityMinSets =
+    const continuityFloor =
       objective.constraints.continuityMinSetsByExerciseId?.get(exercise.id) ?? 0;
-    const continuityProgressionIncrement =
-      continuityMinSets > 0 ? objective.constraints.continuitySetProgressionIncrement ?? 0 : 0;
-    const continuityProgressionFloor = Math.min(12, continuityMinSets + continuityProgressionIncrement);
     const isRequiredMuscleAccessory =
       !isMainLiftExercise(exercise, objective) &&
       (objective.constraints.requiredMuscles ?? []).some((muscle) =>
         (exercise.primaryMuscles ?? []).includes(muscle)
       );
     const normalizedSets = Math.max(
-      continuityProgressionFloor,
+      continuityFloor,
       isRequiredMuscleAccessory && proposedSets < 3 ? 3 : proposedSets
     );
     return buildCandidate(exercise, objective, normalizedSets);

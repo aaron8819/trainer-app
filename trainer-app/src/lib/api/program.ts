@@ -4,8 +4,8 @@
  */
 
 import { prisma } from "@/lib/db/prisma";
-import { VOLUME_LANDMARKS, computeWeeklyVolumeTarget } from "@/lib/engine/volume-landmarks";
-import { getCurrentMesoWeek, getRirTarget } from "./mesocycle-lifecycle";
+import { VOLUME_LANDMARKS } from "@/lib/engine/volume-landmarks";
+import { getCurrentMesoWeek, getRirTarget, getWeeklyVolumeTarget } from "./mesocycle-lifecycle";
 import { WorkoutStatus, WorkoutSessionIntent } from "@prisma/client";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 
@@ -293,7 +293,6 @@ export async function loadProgramDashboardData(
       volumeTarget: true,
       startWeek: true,
       state: true,
-      rirBandConfig: true,
       blocks: {
         orderBy: { blockNumber: "asc" },
         select: {
@@ -413,11 +412,6 @@ export async function loadProgramDashboardData(
     thisWeekMuscles = await loadMesoWeekMuscleVolume(userId, mesoRecord.id, mesoWeekStart);
   }
 
-  const mesoLength = mesoRecord?.durationWeeks ?? 4;
-  // isDeload is true only when the viewed week IS the deload week (last week of meso).
-  // Using the viewed week (not meso state) so historical accumulation weeks show ramp targets.
-  const isDeload = effectiveViewWeek >= mesoLength;
-
   // Only display muscles with research-backed MEV/MAV landmarks (Israetel RP model).
   // The remaining muscles in VOLUME_LANDMARKS (Core, Lower Back, Forearms, etc.) are
   // retained for engine use (indirect volume counting) but excluded from the dashboard.
@@ -432,7 +426,9 @@ export async function loadProgramDashboardData(
     .filter(([muscle]) => RESEARCH_BACKED_MUSCLES.has(muscle))
     .map(([muscle, landmarks]) => {
       const data = thisWeekMuscles[muscle] ?? { directSets: 0, indirectSets: 0 };
-      const target = computeWeeklyVolumeTarget(landmarks, effectiveViewWeek, mesoLength, isDeload);
+      const target = mesoRecord
+        ? getWeeklyVolumeTarget(mesoRecord, muscle, effectiveViewWeek)
+        : landmarks.mev;
       return {
         muscle,
         directSets: data.directSets,

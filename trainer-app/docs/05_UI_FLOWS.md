@@ -1,7 +1,7 @@
 # 05 UI Flows
 
 Owner: Aaron
-Last reviewed: 2026-02-27
+Last reviewed: 2026-02-28
 Purpose: Canonical reference for current UI routes and core user flows implemented in the Next.js App Router.
 
 This doc covers:
@@ -61,5 +61,8 @@ Sources of truth:
 5. Program and readiness loop
 - UI: `/program`, readiness components
 - APIs: `/api/program`, `/api/readiness/submit`, `/api/stalls`, `/api/periodization/macro`
-- Dashboard training status uses API-provided `daysPerWeek` for session totals (not a fixed weekly constant) in `src/components/TrainingStatusCard.tsx`, with value supplied by `loadProgramDashboardData()` in `src/lib/api/program.ts`.
-- `ProgramDashboardData` now includes `lastSessionSkipped` (bool), `latestIncomplete` (workout id/status), `rirTarget` (RIR band for current meso week), and `coachingCue` (human-readable session readiness message), all used by `TrainingStatusCard` to surface coaching context on the dashboard.
+- Dashboard training status is rendered by `ProgramStatusCard` (`src/components/ProgramStatusCard.tsx`), a client component that replaces the former `TrainingStatusCard`. It supports historical week navigation: clicking a week pill fetches `GET /api/program?week=N` and re-renders volume data for that week without a full-page reload.
+- `ProgramDashboardData` includes `lastSessionSkipped` (bool), `latestIncomplete` (workout id/status), `rirTarget` (RIR band for the viewed meso week), `coachingCue` (human-readable session readiness message), `currentWeek`, and `viewedWeek` (the week whose volume is displayed), all consumed by `ProgramStatusCard`.
+- `currentWeek`, `viewedWeek`, lifecycle RIR, and weekly volume targets are duration-aware: accumulation spans `durationWeeks - 1`, and the final week is deload instead of assuming a fixed 4+1 structure.
+- `ProgramStatusCard` is mounted on both the home dashboard (`src/app/page.tsx`) and the `/program` page (`src/app/program/page.tsx`), replacing the prior inline server-rendered volume table on `/program`.
+- Recent Workouts (`src/components/RecentWorkouts.tsx`) and History (`src/components/HistoryClient.tsx`) now display a `Wk{N}·S{N}` badge (week and session-within-week) sourced from `mesocycleWeekSnapshot` and `mesoSessionSnapshot`. Planned workouts show this badge immediately upon plan-save because the save route now snapshots mesocycle context for new plan writes.

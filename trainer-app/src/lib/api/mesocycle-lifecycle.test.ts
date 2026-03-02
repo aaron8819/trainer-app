@@ -46,6 +46,7 @@ vi.mock("@/lib/db/prisma", () => ({
 }));
 
 import {
+  getLifecycleSetTargets,
   getCurrentMesoWeek,
   getRirTarget,
   getWeeklyVolumeTarget,
@@ -66,6 +67,8 @@ describe("mesocycle-lifecycle", () => {
       state: "ACTIVE_ACCUMULATION",
       accumulationSessionsCompleted: 3,
       deloadSessionsCompleted: 0,
+      durationWeeks: 5,
+      sessionsPerWeek: 3,
     });
 
     const updated = await transitionMesocycleState("m1");
@@ -74,13 +77,15 @@ describe("mesocycle-lifecycle", () => {
     expect(mocks.mesocycleUpdate).not.toHaveBeenCalled();
   });
 
-  it("transitions ACTIVE_ACCUMULATION to ACTIVE_DELOAD at session 12", async () => {
-    // Save transaction has already incremented to 12; transitionMesocycleState reads 12 >= threshold.
+  it("transitions ACTIVE_ACCUMULATION to ACTIVE_DELOAD at the duration-aware accumulation threshold", async () => {
+    // durationWeeks=5 and sessionsPerWeek=3 => 4 accumulation weeks => threshold 12.
     mocks.mesocycleFindUnique.mockResolvedValue({
       id: "m1",
       state: "ACTIVE_ACCUMULATION",
       accumulationSessionsCompleted: 12,
       deloadSessionsCompleted: 0,
+      durationWeeks: 5,
+      sessionsPerWeek: 3,
     });
     mocks.mesocycleUpdate.mockResolvedValue({
       id: "m1",
@@ -106,6 +111,7 @@ describe("mesocycle-lifecycle", () => {
       state: "ACTIVE_DELOAD",
       accumulationSessionsCompleted: 12,
       deloadSessionsCompleted: 3,
+      sessionsPerWeek: 3,
     });
     mocks.mesocycleUpdate.mockResolvedValue({
       id: "m1",
@@ -123,8 +129,6 @@ describe("mesocycle-lifecycle", () => {
       sessionsPerWeek: 3,
       daysPerWeek: 3,
       splitType: "PPL",
-      volumeRampConfig: { weekTargets: {} },
-      rirBandConfig: { weekBands: {} },
     });
 
     mocks.txMesoFindUnique.mockResolvedValue({
@@ -139,8 +143,6 @@ describe("mesocycle-lifecycle", () => {
       sessionsPerWeek: 3,
       daysPerWeek: 3,
       splitType: "PPL",
-      volumeRampConfig: { weekTargets: {} },
-      rirBandConfig: { weekBands: {} },
     });
     mocks.txMesoCreate.mockResolvedValue({ id: "m2" });
     mocks.txRoleFindMany.mockResolvedValue([]);
@@ -158,6 +160,8 @@ describe("mesocycle-lifecycle", () => {
       state: "COMPLETED",
       accumulationSessionsCompleted: 12,
       deloadSessionsCompleted: 3,
+      durationWeeks: 5,
+      sessionsPerWeek: 3,
     });
 
     const updated = await transitionMesocycleState("m1");
@@ -167,12 +171,13 @@ describe("mesocycle-lifecycle", () => {
     warnSpy.mockRestore();
   });
 
-  it("derives current mesocycle week correctly for sessions 0-12 and deload", () => {
+  it("derives current mesocycle week correctly for a 5-week mesocycle", () => {
     expect(
       getCurrentMesoWeek({
         state: "ACTIVE_ACCUMULATION",
         accumulationSessionsCompleted: 0,
         sessionsPerWeek: 3,
+        durationWeeks: 5,
       })
     ).toBe(1);
     expect(
@@ -180,6 +185,7 @@ describe("mesocycle-lifecycle", () => {
         state: "ACTIVE_ACCUMULATION",
         accumulationSessionsCompleted: 3,
         sessionsPerWeek: 3,
+        durationWeeks: 5,
       })
     ).toBe(2);
     expect(
@@ -187,6 +193,7 @@ describe("mesocycle-lifecycle", () => {
         state: "ACTIVE_ACCUMULATION",
         accumulationSessionsCompleted: 6,
         sessionsPerWeek: 3,
+        durationWeeks: 5,
       })
     ).toBe(3);
     expect(
@@ -194,6 +201,7 @@ describe("mesocycle-lifecycle", () => {
         state: "ACTIVE_ACCUMULATION",
         accumulationSessionsCompleted: 9,
         sessionsPerWeek: 3,
+        durationWeeks: 5,
       })
     ).toBe(4);
     expect(
@@ -201,6 +209,7 @@ describe("mesocycle-lifecycle", () => {
         state: "ACTIVE_ACCUMULATION",
         accumulationSessionsCompleted: 12,
         sessionsPerWeek: 3,
+        durationWeeks: 5,
       })
     ).toBe(4);
     expect(
@@ -208,12 +217,83 @@ describe("mesocycle-lifecycle", () => {
         state: "ACTIVE_DELOAD",
         accumulationSessionsCompleted: 12,
         sessionsPerWeek: 3,
+        durationWeeks: 5,
       })
     ).toBe(5);
   });
 
+  it("derives current mesocycle week correctly for a 4-week mesocycle", () => {
+    expect(
+      getCurrentMesoWeek({
+        state: "ACTIVE_ACCUMULATION",
+        accumulationSessionsCompleted: 0,
+        sessionsPerWeek: 3,
+        durationWeeks: 4,
+      })
+    ).toBe(1);
+    expect(
+      getCurrentMesoWeek({
+        state: "ACTIVE_ACCUMULATION",
+        accumulationSessionsCompleted: 3,
+        sessionsPerWeek: 3,
+        durationWeeks: 4,
+      })
+    ).toBe(2);
+    expect(
+      getCurrentMesoWeek({
+        state: "ACTIVE_ACCUMULATION",
+        accumulationSessionsCompleted: 6,
+        sessionsPerWeek: 3,
+        durationWeeks: 4,
+      })
+    ).toBe(3);
+    expect(
+      getCurrentMesoWeek({
+        state: "ACTIVE_ACCUMULATION",
+        accumulationSessionsCompleted: 9,
+        sessionsPerWeek: 3,
+        durationWeeks: 4,
+      })
+    ).toBe(3);
+    expect(
+      getCurrentMesoWeek({
+        state: "ACTIVE_DELOAD",
+        accumulationSessionsCompleted: 9,
+        sessionsPerWeek: 3,
+        durationWeeks: 4,
+      })
+    ).toBe(4);
+  });
+
+  it("derives current mesocycle week correctly for a 6-week mesocycle", () => {
+    expect(
+      getCurrentMesoWeek({
+        state: "ACTIVE_ACCUMULATION",
+        accumulationSessionsCompleted: 6,
+        sessionsPerWeek: 3,
+        durationWeeks: 6,
+      })
+    ).toBe(3);
+    expect(
+      getCurrentMesoWeek({
+        state: "ACTIVE_ACCUMULATION",
+        accumulationSessionsCompleted: 12,
+        sessionsPerWeek: 3,
+        durationWeeks: 6,
+      })
+    ).toBe(5);
+    expect(
+      getCurrentMesoWeek({
+        state: "ACTIVE_DELOAD",
+        accumulationSessionsCompleted: 15,
+        sessionsPerWeek: 3,
+        durationWeeks: 6,
+      })
+    ).toBe(6);
+  });
+
   it("uses evidence-based landmarks for rear delts, lats, and upper back", () => {
-    const meso = { volumeRampConfig: { weekTargets: {} } };
+    const meso = { durationWeeks: 5 };
 
     expect(getWeeklyVolumeTarget(meso, "Rear delts", 1)).toBe(4);
     expect(getWeeklyVolumeTarget(meso, "Rear delts", 4)).toBe(12);
@@ -224,7 +304,7 @@ describe("mesocycle-lifecycle", () => {
   });
 
   it("interpolates accumulation volume targets monotonically for all configured muscle groups", () => {
-    const meso = { volumeRampConfig: { weekTargets: {} } };
+    const meso = { durationWeeks: 5 };
     const muscles = [
       "lats",
       "upper_back",
@@ -266,31 +346,57 @@ describe("mesocycle-lifecycle", () => {
   });
 
   it("keeps deload target near 45% of W4 volume", () => {
-    const meso = { volumeRampConfig: { weekTargets: {} } };
+    const meso = { durationWeeks: 5 };
     const w4 = getWeeklyVolumeTarget(meso, "Lats", 4);
     const w5 = getWeeklyVolumeTarget(meso, "Lats", 5);
     expect(w5).toBe(Math.round(w4 * 0.45));
   });
 
-  it("returns correct RIR bands for all 5 weeks", () => {
+  it("returns corrected default RIR bands for a 4-week mesocycle", () => {
     const meso = {
       state: "ACTIVE_ACCUMULATION" as const,
-      rirBandConfig: {
-        weekBands: {
-          week1: { min: 3, max: 4 },
-          week2: { min: 2, max: 3 },
-          week3: { min: 2, max: 3 },
-          week4: { min: 1, max: 2 },
-          week5Deload: { min: 4, max: 6 },
-        },
-      },
+      durationWeeks: 4,
     };
 
     expect(getRirTarget(meso, 1)).toEqual({ min: 3, max: 4 });
     expect(getRirTarget(meso, 2)).toEqual({ min: 2, max: 3 });
-    expect(getRirTarget(meso, 3)).toEqual({ min: 2, max: 3 });
-    expect(getRirTarget(meso, 4)).toEqual({ min: 1, max: 2 });
-    expect(getRirTarget(meso, 5)).toEqual({ min: 4, max: 6 });
+    expect(getRirTarget(meso, 3)).toEqual({ min: 1, max: 2 });
+    expect(getRirTarget(meso, 4)).toEqual({ min: 5, max: 6 });
+  });
+
+  it("returns corrected default RIR bands for a 5-week mesocycle", () => {
+    const meso = {
+      state: "ACTIVE_ACCUMULATION" as const,
+      durationWeeks: 5,
+    };
+
+    expect(getRirTarget(meso, 1)).toEqual({ min: 3, max: 4 });
+    expect(getRirTarget(meso, 2)).toEqual({ min: 2, max: 3 });
+    expect(getRirTarget(meso, 3)).toEqual({ min: 1, max: 2 });
+    expect(getRirTarget(meso, 4)).toEqual({ min: 0, max: 1 });
+    expect(getRirTarget(meso, 5)).toEqual({ min: 5, max: 6 });
+  });
+
+  it("returns corrected default RIR bands for a 6-week mesocycle", () => {
+    const meso = {
+      state: "ACTIVE_ACCUMULATION" as const,
+      durationWeeks: 6,
+    };
+
+    expect(getRirTarget(meso, 1)).toEqual({ min: 3, max: 4 });
+    expect(getRirTarget(meso, 2)).toEqual({ min: 2, max: 3 });
+    expect(getRirTarget(meso, 3)).toEqual({ min: 1, max: 2 });
+    expect(getRirTarget(meso, 4)).toEqual({ min: 0, max: 1 });
+    expect(getRirTarget(meso, 5)).toEqual({ min: 0, max: 1 });
+    expect(getRirTarget(meso, 6)).toEqual({ min: 5, max: 6 });
+  });
+
+  it("returns explicit 5-week hypertrophy set targets", () => {
+    expect(getLifecycleSetTargets(5, 1)).toEqual({ main: 3, accessory: 2 });
+    expect(getLifecycleSetTargets(5, 2)).toEqual({ main: 4, accessory: 3 });
+    expect(getLifecycleSetTargets(5, 3)).toEqual({ main: 5, accessory: 4 });
+    expect(getLifecycleSetTargets(5, 4)).toEqual({ main: 5, accessory: 5 });
+    expect(getLifecycleSetTargets(5, 5, true)).toEqual({ main: 2, accessory: 1 });
   });
 
   it("initializeNextMesocycle carries CORE_COMPOUND only and resets counters", async () => {
@@ -306,8 +412,6 @@ describe("mesocycle-lifecycle", () => {
       sessionsPerWeek: 3,
       daysPerWeek: 3,
       splitType: "PPL",
-      volumeRampConfig: { weekTargets: {} },
-      rirBandConfig: { weekBands: {} },
     });
     mocks.txMesoCreate.mockResolvedValue({
       id: "m4",
@@ -335,8 +439,6 @@ describe("mesocycle-lifecycle", () => {
       sessionsPerWeek: 3,
       daysPerWeek: 3,
       splitType: "PPL",
-      volumeRampConfig: { weekTargets: {} },
-      rirBandConfig: { weekBands: {} },
     } as never);
 
     expect(next.id).toBe("m4");

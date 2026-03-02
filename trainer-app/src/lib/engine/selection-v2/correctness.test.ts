@@ -39,12 +39,16 @@ vi.mock("@/lib/api/exercise-exposure", () => ({
   loadExerciseExposure: (...args: unknown[]) => loadExerciseExposureMock(...args),
 }));
 
-vi.mock("@/lib/api/mesocycle-lifecycle", () => ({
-  loadActiveMesocycle: (...args: unknown[]) => loadActiveMesocycleMock(...args),
-  getCurrentMesoWeek: (...args: unknown[]) => getCurrentMesoWeekMock(...args),
-  getRirTarget: (...args: unknown[]) => getRirTargetMock(...args),
-  getWeeklyVolumeTarget: (...args: unknown[]) => getWeeklyVolumeTargetMock(...args),
-}));
+vi.mock("@/lib/api/mesocycle-lifecycle", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/lib/api/mesocycle-lifecycle")>();
+  return {
+    ...original,
+    loadActiveMesocycle: (...args: unknown[]) => loadActiveMesocycleMock(...args),
+    getCurrentMesoWeek: (...args: unknown[]) => getCurrentMesoWeekMock(...args),
+    getRirTarget: (...args: unknown[]) => getRirTargetMock(...args),
+    getWeeklyVolumeTarget: (...args: unknown[]) => getWeeklyVolumeTargetMock(...args),
+  };
+});
 
 import { generateSessionFromIntent } from "@/lib/api/template-session";
 

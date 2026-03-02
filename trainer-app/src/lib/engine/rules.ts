@@ -48,7 +48,9 @@ export type PeriodizationModifiers = {
   backOffMultiplier: number;
   isDeload: boolean;
   weekInBlock?: number;
+  accumulationWeeks?: number;
   lifecycleRirTarget?: { min: number; max: number };
+  lifecycleSetTargets?: { main: number; accessory: number };
 };
 
 export type MesocycleConfig = {
@@ -126,20 +128,28 @@ export function getMesocyclePeriodization(
 export function getPeriodizationModifiers(
   weekInBlock: number,
   goal: PrimaryGoal,
-  trainingAge?: TrainingAge
+  trainingAge?: TrainingAge,
+  mesocycleLength = 4
 ): PeriodizationModifiers {
-  const totalWeeks = 4;
-  // weekInBlock is 1-based (week 1 = first week, week 4 = deload)
-  const weekIndex = Math.min(weekInBlock - 1, totalWeeks - 1);
-  const isDeload = weekIndex >= totalWeeks - 1;
+  const totalWeeks = Math.max(2, mesocycleLength);
+  const accumulationWeeks = Math.max(1, totalWeeks - 1);
+  // weekInBlock is 1-based. Final week is deload.
+  const boundedWeek = Math.max(1, Math.min(weekInBlock, totalWeeks));
+  const weekIndex = boundedWeek - 1;
+  const isDeload = boundedWeek >= totalWeeks;
 
   return {
     ...getMesocyclePeriodization(
-      { totalWeeks: totalWeeks - 1, currentWeek: Math.min(weekIndex, totalWeeks - 2), isDeload },
+      {
+        totalWeeks: accumulationWeeks,
+        currentWeek: Math.min(weekIndex, accumulationWeeks - 1),
+        isDeload,
+      },
       goal,
       trainingAge
     ),
-    weekInBlock,
+    weekInBlock: boundedWeek,
+    accumulationWeeks,
   };
 }
 

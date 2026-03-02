@@ -119,6 +119,7 @@ export function finalizePostLoadResult(
       periodizationWeek: mapped.lifecycleWeek,
       cycleContext: mapped.cycleContext,
       deloadDecision: mapped.deloadDecision,
+      sorenessSuppressedMuscles: mapped.sorenessSuppressedMuscles,
     },
     filteredExercises,
   };

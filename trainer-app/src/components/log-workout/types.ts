@@ -46,6 +46,10 @@ export type FlatSetItem = {
 
 export type UndoSnapshot = {
   setId: string;
+  previousRestTimer: {
+    startedAtMs: number;
+    endAtMs: number;
+  } | null;
   previousSet: LogSetInput | null;
   previousLog: {
     actualReps?: number | null;

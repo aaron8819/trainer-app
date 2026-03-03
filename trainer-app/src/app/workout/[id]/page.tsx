@@ -107,10 +107,7 @@ export default async function WorkoutDetailPage({
 
   const explanationResult = await generateWorkoutExplanation(workout.id);
   const explanation = "error" in explanationResult ? null : explanationResult;
-  const selectionMetadata = parseExplainabilitySelectionMetadata(
-    workout.selectionMetadata,
-    workout.autoregulationLog
-  );
+  const selectionMetadata = parseExplainabilitySelectionMetadata(workout.selectionMetadata);
   const deloadDecision = selectionMetadata.sessionDecisionReceipt?.deloadDecision;
   const hasPerformedStatus = isPerformedWorkoutStatus(workout.status);
   const startLoggingHref =

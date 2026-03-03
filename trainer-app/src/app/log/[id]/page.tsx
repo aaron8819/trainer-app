@@ -65,10 +65,7 @@ export default async function LogWorkoutPage({
   }
 
   const exercises = splitExercises(workout.exercises);
-  const selectionMetadata = parseExplainabilitySelectionMetadata(
-    workout.selectionMetadata,
-    workout.autoregulationLog
-  );
+  const selectionMetadata = parseExplainabilitySelectionMetadata(workout.selectionMetadata);
   const sessionDecisionReceipt = selectionMetadata.sessionDecisionReceipt;
   const cycleContext = sessionDecisionReceipt?.cycleContext;
   const deloadDecision = sessionDecisionReceipt?.deloadDecision;

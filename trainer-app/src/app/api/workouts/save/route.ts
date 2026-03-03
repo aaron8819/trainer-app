@@ -8,13 +8,11 @@ import { isTerminalWorkoutStatus } from "@/lib/workout-status";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 import type { CycleContextSnapshot } from "@/lib/evidence/types";
 import {
-  buildSessionDecisionReceipt,
   extractSessionDecisionReceipt,
-  parseDeloadDecision,
 } from "@/lib/evidence/session-decision-receipt";
+import { normalizeSessionDecisionForSave } from "@/lib/evidence/session-decision-compatibility";
 import { loadCurrentBlockContext } from "@/lib/api/periodization";
 import type { BlockContext } from "@/lib/engine";
-import type { AutoregulationModification } from "@/lib/engine/readiness/types";
 import { getCurrentMesoWeek, transitionMesocycleState } from "@/lib/api/mesocycle-lifecycle";
 
 type SaveAction = "save_plan" | "mark_completed" | "mark_partial" | "mark_skipped";
@@ -60,10 +58,8 @@ function deriveCycleContext(
     };
   }
 
-  const deloadDecision =
-    parseDeloadDecision(incomingSelectionMetadata.deloadDecision) ??
-    extractSessionDecisionReceipt(incomingSelectionMetadata)?.deloadDecision;
-  const isDeload = deloadDecision?.mode !== "none";
+  const isDeload =
+    extractSessionDecisionReceipt(incomingSelectionMetadata)?.deloadDecision.mode !== "none";
   const blockType: CycleContextSnapshot["blockType"] = isDeload ? "deload" : "accumulation";
 
   return {
@@ -139,52 +135,13 @@ export async function POST(request: Request) {
     dbCycleContext = loadedContext.blockContext ? loadedContext : undefined;
   }
   const cycleContext = deriveCycleContext(incomingSelectionMetadata, dbCycleContext);
-
-  const incomingAutoregulationLog = toObject(parsed.data.autoregulationLog);
-  const wasAutoregulated =
-    parsed.data.wasAutoregulated ?? Boolean(incomingAutoregulationLog.wasAutoregulated);
-  const existingReceipt = extractSessionDecisionReceipt(incomingSelectionMetadata);
-  const deloadDecision =
-    existingReceipt?.deloadDecision ??
-    parseDeloadDecision(incomingSelectionMetadata.deloadDecision) ??
-    parseDeloadDecision(incomingAutoregulationLog.deloadDecision);
-  const sorenessSuppressedMuscles = existingReceipt?.sorenessSuppressedMuscles ?? [];
-  const fatigueScoreRecord = toObject(incomingAutoregulationLog.fatigueScore);
-  const sessionDecisionReceipt = buildSessionDecisionReceipt({
+  const normalizedSessionDecision = normalizeSessionDecisionForSave({
+    selectionMetadata: incomingSelectionMetadata,
+    autoregulationLog: parsed.data.autoregulationLog,
+    wasAutoregulated: parsed.data.wasAutoregulated,
     cycleContext,
-    lifecycleRirTarget: existingReceipt?.lifecycleRirTarget,
-    lifecycleVolumeTargets: existingReceipt?.lifecycleVolume.targets,
-    sorenessSuppressedMuscles,
-    deloadDecision,
-    autoregulation: {
-      wasAutoregulated,
-      signalAgeHours:
-        typeof incomingAutoregulationLog.signalAgeHours === "number"
-          ? incomingAutoregulationLog.signalAgeHours
-          : existingReceipt?.readiness.signalAgeHours,
-      fatigueScoreOverall:
-        typeof fatigueScoreRecord?.overall === "number"
-          ? fatigueScoreRecord.overall
-          : existingReceipt?.readiness.fatigueScoreOverall,
-      rationale:
-        typeof incomingAutoregulationLog.rationale === "string"
-          ? incomingAutoregulationLog.rationale
-          : typeof incomingAutoregulationLog.reason === "string"
-          ? incomingAutoregulationLog.reason
-          : existingReceipt?.readiness.rationale,
-      modifications: Array.isArray(incomingAutoregulationLog.modifications)
-        ? (incomingAutoregulationLog.modifications as AutoregulationModification[])
-        : undefined,
-      intensityScaling: existingReceipt?.readiness.intensityScaling,
-    },
   });
-  const selectionMetadata: JsonObject = {
-    ...incomingSelectionMetadata,
-    sessionDecisionReceipt,
-  };
-  const autoregulationLog = Object.keys(incomingAutoregulationLog).length > 0
-    ? incomingAutoregulationLog
-    : undefined;
+  const selectionMetadata = normalizedSessionDecision.selectionMetadata;
 
   try {
     await prisma.$transaction(async (tx) => {
@@ -368,8 +325,6 @@ export async function POST(request: Request) {
           selectionMode,
           sessionIntent: parsed.data.sessionIntent ?? undefined,
           selectionMetadata: selectionMetadata as Prisma.InputJsonValue,
-          wasAutoregulated,
-          autoregulationLog: autoregulationLog as Prisma.InputJsonValue | undefined,
           forcedSplit: parsed.data.forcedSplit ?? undefined,
           advancesSplit: parsed.data.advancesSplit ?? undefined,
           templateId: parsed.data.templateId ?? undefined,
@@ -396,8 +351,6 @@ export async function POST(request: Request) {
           selectionMode,
           sessionIntent: parsed.data.sessionIntent ?? undefined,
           selectionMetadata: selectionMetadata as Prisma.InputJsonValue,
-          wasAutoregulated,
-          autoregulationLog: autoregulationLog as Prisma.InputJsonValue | undefined,
           forcedSplit: parsed.data.forcedSplit ?? undefined,
           advancesSplit: parsed.data.advancesSplit ?? undefined,
           templateId: parsed.data.templateId ?? undefined,

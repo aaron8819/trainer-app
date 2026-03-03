@@ -70,6 +70,9 @@ export type WorkoutGenerationAutoregulationPayload = Pick<
   | "rationale"
   | "wasAutoregulated"
 >;
+// Compatibility note: canonical session-level readiness state is persisted under
+// selectionMetadata.sessionDecisionReceipt.readiness. This top-level payload exists so
+// generation clients can carry the latest autoregulation context across the save boundary.
 
 type SharedGeneratedWorkoutResponse = {
   workout: WorkoutPlan;

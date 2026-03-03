@@ -301,8 +301,7 @@ export function extractSessionDecisionReceipt(value: unknown): SessionDecisionRe
 }
 
 export function readSessionDecisionReceipt(
-  selectionMetadata: unknown,
-  _autoregulationLog?: unknown
+  selectionMetadata: unknown
 ): SessionDecisionReceipt | undefined {
   return extractSessionDecisionReceipt(selectionMetadata);
 }

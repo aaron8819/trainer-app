@@ -1,4 +1,5 @@
 import type { FilteredExerciseSummary } from "@/lib/engine/explainability";
+import type { SessionDecisionCompatibilityAutoregulationLog } from "@/lib/evidence/session-decision-compatibility";
 import type { SaveableSelectionMetadata } from "@/lib/ui/selection-metadata";
 
 type ApiResult<T> = { data: T; error: null } | { data: null; error: string };
@@ -35,8 +36,10 @@ export type SaveWorkoutRequestPayload = {
   selectionMode?: WorkoutSelectionMode;
   sessionIntent?: WorkoutSessionIntentDb;
   selectionMetadata?: SaveableSelectionMetadata;
+  // Compatibility-only: older callers may still provide this; current app save paths should not.
   wasAutoregulated?: boolean;
-  autoregulationLog?: unknown;
+  // Compatibility-only: older callers may still provide this; current app save paths should not.
+  autoregulationLog?: SessionDecisionCompatibilityAutoregulationLog;
   forcedSplit?: WorkoutForcedSplit;
   advancesSplit?: boolean;
   filteredExercises?: FilteredExerciseSummary[];

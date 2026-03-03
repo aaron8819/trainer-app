@@ -1,0 +1,160 @@
+# 08 Mesocycle Simplification Roadmap
+
+Owner: Aaron
+Last reviewed: 2026-03-03
+Purpose: Audit-driven roadmap for simplifying mesocycle progression workflow and session-decision handling.
+
+This doc covers:
+- Current Phase 1 audit status
+- What still blocks a clean Phase 1 exit
+- Revised sequencing for later phases
+
+Sources of truth:
+- `trainer-app/src/lib/evidence/types.ts`
+- `trainer-app/src/lib/evidence/session-decision-receipt.ts`
+- `trainer-app/src/lib/api/template-session.ts`
+- `trainer-app/src/lib/api/template-session/finalize-session.ts`
+- `trainer-app/src/app/api/workouts/save/route.ts`
+- `trainer-app/src/lib/api/explainability.ts`
+- `trainer-app/src/lib/ui/selection-metadata.ts`
+- `trainer-app/src/lib/ui/explainability.ts`
+- `trainer-app/src/lib/validation.ts`
+
+## Audit summary
+
+Phase 1 is closed. The canonical model is in place and compatibility-only session-decision inputs are isolated away from active runtime reads/writes.
+
+Implemented now:
+- Canonical persisted session decision shape exists as `selectionMetadata.sessionDecisionReceipt`.
+- Generation/finalization writes the receipt (`src/lib/api/template-session.ts`, `src/lib/api/template-session/finalize-session.ts`).
+- Save normalizes and persists the receipt (`src/app/api/workouts/save/route.ts`).
+- Explainability reads session-level context from the receipt rather than legacy mirrors (`src/lib/api/explainability.ts`, `src/lib/ui/explainability.ts`).
+- Workout detail and log pages read the receipt (`src/app/workout/[id]/page.tsx`, `src/app/log/[id]/page.tsx`).
+- Save validation rejects legacy top-level session mirrors inside `selectionMetadata` (`src/lib/validation.ts`).
+- Save-time compatibility folding is isolated in `src/lib/evidence/session-decision-compatibility.ts`.
+- UI/explainability runtime reads are receipt-only; they do not read `autoregulationLog`.
+- Current app save paths do not send compatibility-only `wasAutoregulated` / `autoregulationLog` fields.
+- Save no longer persists compatibility-only workout autoregulation mirrors as active state.
+
+Not a Phase 1 blocker anymore:
+- Explainability is already receipt-first.
+- UI receipt consumption is already wired.
+- Generation/finalization already produces the canonical decision object.
+- Compatibility-only save inputs are isolated to a narrow normalization shim.
+
+## Revised roadmap
+
+### Phase 1 - Canonical Decision Model
+Status: COMPLETE
+
+Goal:
+- Keep one canonical session decision receipt and make all remaining non-receipt session decision fields explicitly compatibility-only.
+
+Completed focus:
+- Isolated save-time compatibility folding behind a clearly named compatibility boundary.
+- Marked `wasAutoregulated` and `autoregulationLog` as compatibility-only in docs and types.
+- Tightened runtime reads so new code paths prefer `sessionDecisionReceipt` and do not imply multiple active session-decision sources.
+
+Exit criteria:
+- Canonical receipt remains the only active session-decision source read by explainability/UI/runtime consumers.
+- Compatibility reads are either removed or isolated to one narrow normalization layer.
+- Runtime types make receipt-first behavior obvious.
+
+### Phase 2 - User-Facing Session Clarity
+Status: READY AFTER PHASE 1 CLOSEOUT
+
+Goal:
+- Make "why today looks like this" obvious without exposing overlapping engine jargon.
+
+Focus:
+- Simplify session header and summary copy.
+- Present today goal, target effort, deload context, soreness-held volume, and readiness scaling through one explanation path.
+- Remove duplicated explanation surfaces between workout detail, log, and explainability views.
+
+### Phase 3 - Workout Logging Flow Simplification
+Status: NOT STARTED
+
+Goal:
+- Reduce friction and fragmented state in `LogWorkoutClient` and related logging flows.
+
+Focus:
+- Simplify draft state, active set handling, rest timer ownership, footer/save behavior, and recovery behavior.
+- Keep progression cues minimal and actionable during training.
+
+### Phase 4 - API and Persistence Cleanup
+Status: NOT STARTED
+
+Goal:
+- Standardize the contract between generation, save, persistence, history, and UI.
+
+Focus:
+- Normalize payloads around receipt-first semantics.
+- Reduce duplicate persisted/runtime fields, especially session-level autoregulation mirrors.
+- Make naming consistent across generation responses, save payloads, persisted workout metadata, and explainability output.
+
+### Phase 5 - Legacy Compatibility Reduction
+Status: NOT STARTED
+
+Goal:
+- Remove active dependency on old mesocycle/progression pathways.
+
+Focus:
+- Categorize fields and branches as canonical, compatibility-only, or removable.
+- Remove active reads of compatibility-only session-decision fields after migration.
+- Keep repair/migration logic separate from runtime logic.
+
+### Phase 6 - Evidence and Rule Audit
+Status: NOT STARTED
+
+Goal:
+- Keep only decision logic that is conservative, explainable, and evidence-aligned.
+
+Focus:
+- Audit progression, deload, readiness scaling, soreness suppression, and exercise-selection constraints.
+- Remove speculative or weakly defensible behavior.
+
+### Phase 7 - Documentation and Deletion Pass
+Status: NOT STARTED
+
+Goal:
+- Make docs and code reflect the simplified architecture with stale paths removed.
+
+Focus:
+- Remove dead code/tests/docs.
+- Collapse duplicate architectural descriptions.
+- Keep one short architecture description of the canonical flow.
+
+## Priority buckets
+
+Do now:
+- Session clarity work in workout detail/log surfaces.
+- Define one shared session summary model driven from the receipt.
+
+Do next:
+- Logging flow simplification.
+- Broader API/persistence cleanup outside the now-closed Phase 1 boundary.
+
+Do later:
+- Broader evidence/rule audit.
+- Deeper analytics/history UX cleanup after contracts settle.
+
+Delete after migration:
+- Save-time legacy session decision fallbacks that still synthesize receipt state from non-canonical fields.
+- Duplicate active session-decision typing that treats top-level autoregulation fields as primary.
+- Stale docs that still describe multiple session-decision sources.
+
+## Practical sequence for the next passes
+
+1. Simplify the user-facing session summary and explanation path.
+2. Simplify logging state ownership and save/recovery behavior.
+3. Normalize generation/save/history contracts around receipt-first semantics.
+4. Remove remaining legacy compatibility branches once migration pressure is gone.
+5. Audit remaining rules against evidence.
+6. Do final deletion and docs cleanup.
+
+## Working principle
+
+For each pass, require clear answers to:
+- What is the single source of truth?
+- What user-facing behavior does this simplify?
+- What compatibility path becomes isolated or deleted afterward?

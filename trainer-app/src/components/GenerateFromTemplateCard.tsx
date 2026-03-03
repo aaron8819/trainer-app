@@ -82,36 +82,7 @@ type GenerateFromTemplateCardProps = {
 
 type GeneratedMetadata = Pick<GenerateFromTemplateResponse, "selectionMode" | "sessionIntent" | "selection">;
 
-type AutoregulationData = {
-  applied: boolean;
-  reason: string;
-  rationale?: string;
-  wasAutoregulated?: boolean;
-  signalAgeHours: number | null;
-  fatigueScore?: {
-    overall: number;
-  } | null;
-  modifications: Array<{ type?: string; reason: string }>;
-};
-
-function buildAutoregulationLog(autoregulation: AutoregulationData | null) {
-  if (!autoregulation) return undefined;
-  const hasReadinessDeload = autoregulation.modifications.some(
-    (mod) => mod.type === "deload_trigger"
-  );
-
-  return {
-    ...autoregulation,
-    deloadDecision: hasReadinessDeload
-      ? {
-          mode: "readiness",
-          reason: [autoregulation.reason],
-          reductionPercent: 50,
-          appliedTo: "both",
-        }
-      : undefined,
-  };
-}
+type AutoregulationData = GenerateFromTemplateResponse["autoregulation"];
 
 function formatTargetReps(set?: WorkoutSet): string {
   if (!set) {
@@ -345,8 +316,6 @@ export function GenerateFromTemplateCard({ templates, blockPhase }: GenerateFrom
           ? toDbSessionIntent(generatedMetadata.sessionIntent)
           : undefined,
       selectionMetadata: generatedMetadata?.selection,
-      wasAutoregulated: autoregulation?.wasAutoregulated ?? autoregulation?.applied ?? false,
-      autoregulationLog: buildAutoregulationLog(autoregulation),
       advancesSplit: false,
       exercises: [
         ...workout.mainLifts.map((e) => ({ ...e, section: "MAIN" as const })),

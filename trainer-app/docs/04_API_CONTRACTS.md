@@ -57,8 +57,9 @@ Sources of truth:
 - Templates: `createTemplateSchema`, `updateTemplateSchema`, `addExerciseToTemplateSchema`
 - Profile/readiness/analytics: `profileSetupSchema`, `readinessSignalSchema`, `analyticsSummarySchema`
 - `profileSetupSchema` no longer accepts `sessionMinutes`; profile setup persists `daysPerWeek` and optional `splitType` through `POST /api/profile/setup` (`src/lib/validation.ts`, `src/app/api/profile/setup/route.ts`).
-- Save payload supports explainability/runtime metadata passthrough for persisted workouts via `saveWorkoutSchema` fields `wasAutoregulated` and `autoregulationLog` in `src/lib/validation.ts` and persistence in `src/app/api/workouts/save/route.ts`.
+- Save payload still accepts compatibility-only `wasAutoregulated` / `autoregulationLog` fields in `src/lib/validation.ts`, but current app save paths should send canonical `selectionMetadata.sessionDecisionReceipt` instead.
 - `saveWorkoutSchema` rejects legacy top-level session metadata mirrors inside `selectionMetadata` (`cycleContext`, `deloadDecision`, `sorenessSuppressedMuscles`, `adaptiveDeloadApplied`, `periodizationWeek`, `lifecycleRirTarget`, `lifecycleVolumeTargets`) and requires canonical session-level metadata to live under `selectionMetadata.sessionDecisionReceipt` (`src/lib/validation.ts`, `src/app/api/workouts/save/route.ts`).
+- `src/lib/evidence/session-decision-compatibility.ts` folds any incoming compatibility fields into canonical `selectionMetadata.sessionDecisionReceipt.readiness`; `src/app/api/workouts/save/route.ts` no longer writes those compatibility fields back as active workout state.
 
 ## Workout save terminal transition contract
 - Route: `POST /api/workouts/save` (`src/app/api/workouts/save/route.ts`).

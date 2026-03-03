@@ -132,14 +132,10 @@ function buildExplanationPeriodization(input: {
 
 function buildSessionEvidence(input: {
   selectionMetadata: WorkoutWithExplainabilityRelations["selectionMetadata"];
-  autoregulationLog: WorkoutWithExplainabilityRelations["autoregulationLog"];
   latestReadinessTimestamp?: Date;
   scheduledDate: Date;
 }): SessionEvidence {
-  const sessionDecisionReceipt = readSessionDecisionReceipt(
-    input.selectionMetadata,
-    input.autoregulationLog
-  );
+  const sessionDecisionReceipt = readSessionDecisionReceipt(input.selectionMetadata);
   const latestReadinessAgeDays = input.latestReadinessTimestamp
     ? Math.floor(
         (input.scheduledDate.getTime() - input.latestReadinessTimestamp.getTime()) /
@@ -240,7 +236,6 @@ export async function generateWorkoutExplanation(
   const latestReadiness = readinessSignals[0];
   const sessionEvidence = buildSessionEvidence({
     selectionMetadata: workout.selectionMetadata,
-    autoregulationLog: workout.autoregulationLog,
     latestReadinessTimestamp: latestReadiness ? new Date(latestReadiness.timestamp) : undefined,
     scheduledDate: workout.scheduledDate,
   });

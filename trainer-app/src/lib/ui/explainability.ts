@@ -67,16 +67,15 @@ export const EXERCISE_ATTRIBUTE_HELP: Record<string, string> = {
 };
 
 export function parseExplainabilitySelectionMetadata(
-  value: unknown,
-  autoregulationLog?: unknown
+  value: unknown
 ): ExplainabilitySelectionMetadata {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return {
-      sessionDecisionReceipt: readSessionDecisionReceipt(value, autoregulationLog),
+      sessionDecisionReceipt: readSessionDecisionReceipt(value),
     };
   }
   const parsed = value as Record<string, unknown>;
-  const sessionDecisionReceipt = readSessionDecisionReceipt(value, autoregulationLog);
+  const sessionDecisionReceipt = readSessionDecisionReceipt(value);
   const rationale =
     parsed.rationale && typeof parsed.rationale === "object" && !Array.isArray(parsed.rationale)
       ? (parsed.rationale as Record<string, ExplainabilityRationaleEntry>)

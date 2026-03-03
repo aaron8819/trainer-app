@@ -29,6 +29,7 @@ Sources of truth:
 - `docs/05_UI_FLOWS.md`: App Router pages and major user flows
 - `docs/06_TESTING.md`: test strategy and run commands
 - `docs/07_OPERATIONS.md`: env, migrations, seed, verification, production hygiene
+- `docs/08_MESOCYCLE_SIMPLIFICATION_ROADMAP.md`: active simplification roadmap and phase audit for mesocycle/session-decision cleanup
 - `docs/contracts/runtime-contracts.json`: canonical enum/runtime contract values
 
 Reference-only docs:

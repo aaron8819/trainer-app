@@ -50,7 +50,7 @@ Sources of truth:
 - `mark_completed` can return `workoutStatus: PARTIAL` when unresolved sets remain; UI must treat this as a performed session result, not a hard error.
 - `mark_partial` is surfaced as an explicit "Save progress" button in the active-set panel once at least one set has been logged (`loggedCount > 0`). It persists a `PARTIAL` status without requiring all sets to be resolved first (`src/components/LogWorkoutClient.tsx`).
 - Plan writes remain non-terminal (`save_plan`) and do not finalize `COMPLETED|PARTIAL|SKIPPED`.
-- Log page now surfaces persisted cycle/explainability context (receipt-backed cycle context, deload decision reason, and derived target RIR) from `selectionMetadata.sessionDecisionReceipt` parsing in `src/app/log/[id]/page.tsx` and `src/lib/ui/explainability.ts`.
+- Log page now surfaces persisted cycle/explainability context (receipt-backed cycle context, deload decision reason, and derived target RIR) from `selectionMetadata.sessionDecisionReceipt` parsing in `src/app/log/[id]/page.tsx` and `src/lib/ui/explainability.ts`; it does not read `autoregulationLog` as an active decision source.
 
 4. Review workout rationale
 - UI: `/workout/[id]` via `WorkoutExplanation`

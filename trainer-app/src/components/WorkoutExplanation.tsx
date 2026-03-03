@@ -15,13 +15,16 @@
 
 import { useEffect, useState } from "react";
 import type { WorkoutExplanation } from "@/lib/engine/explainability";
+import type { SessionDecisionReceipt } from "@/lib/evidence/types";
+import { buildSessionSummaryModel } from "@/lib/ui/session-summary";
 import { ExplainabilityPanel } from "./explainability";
 
 type Props = {
   workoutId: string;
   explanation?: WorkoutExplanation | null;
-  intentLabel?: string;
-  deloadSummary?: string | null;
+  sessionDecisionReceipt?: SessionDecisionReceipt;
+  sessionIntent?: string | null;
+  estimatedMinutes?: number | null;
   startLoggingHref?: string | null;
 };
 
@@ -39,8 +42,9 @@ type ExplanationResponse = {
 export function WorkoutExplanation({
   workoutId,
   explanation: serverExplanation,
-  intentLabel,
-  deloadSummary,
+  sessionDecisionReceipt,
+  sessionIntent,
+  estimatedMinutes,
   startLoggingHref,
 }: Props) {
   const [explanation, setExplanation] = useState<WorkoutExplanation | null>(serverExplanation ?? null);
@@ -120,11 +124,17 @@ export function WorkoutExplanation({
     return null;
   }
 
+  const summary = buildSessionSummaryModel({
+    context: explanation.sessionContext,
+    receipt: sessionDecisionReceipt,
+    sessionIntent,
+    estimatedMinutes,
+  });
+
   return (
     <ExplainabilityPanel
       explanation={explanation}
-      intentLabel={intentLabel}
-      deloadSummary={deloadSummary}
+      summary={summary}
       startLoggingHref={startLoggingHref}
     />
   );

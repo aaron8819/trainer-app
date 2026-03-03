@@ -1,7 +1,9 @@
 import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 import { ExplainabilityPanel } from "./ExplainabilityPanel";
 import type { WorkoutExplanation } from "@/lib/engine/explainability";
+import type { SessionSummaryModel } from "@/lib/ui/session-summary";
 
 function makeExplanation(withDecisionLog: boolean): WorkoutExplanation {
   return {
@@ -79,20 +81,45 @@ function makeExplanation(withDecisionLog: boolean): WorkoutExplanation {
   };
 }
 
+const summary: SessionSummaryModel = {
+  title: "Why today looks like this",
+  summary: "This pull session is set up to build workload without pushing to failure.",
+  tags: ["Pull", "Accumulation week 2"],
+  items: [
+    { label: "Today's goal", value: "Build pull work this week." },
+    { label: "Target effort", value: "Leave 2-3 reps in reserve on work sets." },
+    { label: "Readiness", value: "Readiness looked normal enough to keep the planned targets in place." },
+  ],
+};
+
 describe("ExplainabilityPanel progression logic rendering", () => {
   afterEach(() => {
     cleanup();
   });
 
   it("renders progression decisionLog lines in the Evidence tab", () => {
-    render(<ExplainabilityPanel explanation={makeExplanation(true)} />);
+    render(<ExplainabilityPanel explanation={makeExplanation(true)} summary={summary} />);
     expect(screen.getByText("Progression Logic")).toBeInTheDocument();
     expect(screen.getByText("Path 2 fired")).toBeInTheDocument();
     expect(screen.getByText("Confidence scale=0.70")).toBeInTheDocument();
   });
 
   it("hides progression logic section when decisionLog is absent", () => {
-    render(<ExplainabilityPanel explanation={makeExplanation(false)} />);
+    render(<ExplainabilityPanel explanation={makeExplanation(false)} summary={summary} />);
     expect(screen.queryByText("Path 2 fired")).not.toBeInTheDocument();
+  });
+
+  it("shows simplified exercise detail labels instead of engine jargon", async () => {
+    const user = userEvent.setup();
+    render(<ExplainabilityPanel explanation={makeExplanation(true)} summary={summary} />);
+
+    await user.click(screen.getByRole("button", { name: "Exercise details" }));
+    await user.click(screen.getByRole("button", { name: /show details/i }));
+
+    expect(screen.getByText("Why it made the plan")).toBeInTheDocument();
+    expect(screen.getByText("Main factors")).toBeInTheDocument();
+    expect(screen.queryByText("Selection Factors")).not.toBeInTheDocument();
+    expect(screen.queryByText("Deficit Fill")).not.toBeInTheDocument();
+    expect(screen.getByText("Volume need")).toBeInTheDocument();
   });
 });

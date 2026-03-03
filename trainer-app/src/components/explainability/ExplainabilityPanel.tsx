@@ -14,6 +14,7 @@
 
 import { useState } from "react";
 import type { WorkoutExplanation, VolumeComplianceStatus } from "@/lib/engine/explainability";
+import type { SessionSummaryModel } from "@/lib/ui/session-summary";
 import { SessionContextCard } from "./SessionContextCard";
 import { CoachMessageCard } from "./CoachMessageCard";
 import { ExerciseRationaleCard } from "./ExerciseRationaleCard";
@@ -21,8 +22,7 @@ import { FilteredExercisesCard } from "./FilteredExercisesCard";
 
 type Props = {
   explanation: WorkoutExplanation;
-  intentLabel?: string;
-  deloadSummary?: string | null;
+  summary: SessionSummaryModel;
   startLoggingHref?: string | null;
 };
 
@@ -46,8 +46,7 @@ function VolumeComplianceBadge({ status }: { status: VolumeComplianceStatus }) {
 
 export function ExplainabilityPanel({
   explanation,
-  intentLabel,
-  deloadSummary,
+  summary,
   startLoggingHref,
 }: Props) {
   const [expandedExercises, setExpandedExercises] = useState<Set<string>>(new Set());
@@ -80,33 +79,32 @@ export function ExplainabilityPanel({
       decisionLog: receipt.decisionLog ?? [],
     }))
     .filter((entry) => entry.decisionLog.length > 0);
-  const basisLabel = hasRecentHistory ? "Based on recent performance" : "Based on planned baseline";
-  const basisWithCycle =
-    explanation.sessionContext.cycleSource === "fallback"
-      ? `${basisLabel} (cycle estimated)`
-      : basisLabel;
   const evidenceRows = [
-    `Cycle rules: ${explanation.sessionContext.cycleSource === "fallback" ? "estimated cycle context" : "computed cycle context"}.`,
-    `Deload rule: ${deloadSummary ?? "No active deload."}`,
-    "Volume window: Performed sets in a rolling 7-day window (today inclusive).",
-    "History recency: Progression receipts use recent performed history only.",
+    `Cycle timing: ${explanation.sessionContext.cycleSource === "fallback" ? "estimated from available context" : "read from the current cycle plan"}.`,
+    hasRecentHistory ? "Load guidance: recent performed history was available." : "Load guidance: planned baseline was used because recent performed history was limited.",
+    "Volume view: performed sets in a rolling 7-day window, including today.",
+    "Session decisions: receipt-first summary for deload, soreness, and readiness adjustments.",
   ];
 
   return (
     <div className="space-y-4 sm:space-y-6">
-      <SessionContextCard
-        context={explanation.sessionContext}
-        confidence={explanation.confidence}
-        intentLabel={intentLabel}
-        deloadSummary={deloadSummary}
-        basisLabel={basisWithCycle}
-        startLoggingHref={startLoggingHref}
-      />
+      <SessionContextCard summary={summary} startLoggingHref={startLoggingHref} />
 
       <details className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
-        <summary className="cursor-pointer text-sm font-semibold text-slate-900">Programming Logic</summary>
+        <summary className="cursor-pointer text-sm font-semibold text-slate-900">
+          Detailed programming breakdown
+        </summary>
 
         <div className="mt-3 space-y-4">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+            <p>{explanation.confidence.summary}</p>
+            {explanation.confidence.missingSignals.length > 0 ? (
+              <p className="mt-1 text-slate-600">
+                Missing signals: {explanation.confidence.missingSignals.join(", ")}.
+              </p>
+            ) : null}
+          </div>
+
           <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1 text-xs">
             <button
               className={`rounded px-3 py-1 ${activeTab === "evidence" ? "bg-white text-slate-900" : "text-slate-600"}`}
@@ -120,14 +118,14 @@ export function ExplainabilityPanel({
               onClick={() => setActiveTab("selection")}
               type="button"
             >
-              Selection
+              Exercise details
             </button>
           </div>
 
           {activeTab === "evidence" ? (
             <div className="space-y-3">
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Evidence Rules</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Session Rules</p>
                 <ul className="mt-2 space-y-1 text-xs text-slate-700">
                   {evidenceRows.map((row) => (
                     <li key={row}>- {row}</li>
@@ -190,9 +188,7 @@ export function ExplainabilityPanel({
 
               {exerciseRationales.length > 0 ? (
                 <div className="space-y-3">
-                  <h3 className="text-base font-semibold text-slate-900 sm:text-lg">
-                    Exercise Selection Details
-                  </h3>
+                  <h3 className="text-base font-semibold text-slate-900 sm:text-lg">Exercise details</h3>
                   {exerciseRationales.map(([exerciseId, rationale]) => {
                     const prescription = prescriptionRationales.get(exerciseId);
                     return (

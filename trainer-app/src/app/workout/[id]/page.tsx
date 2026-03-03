@@ -1,15 +1,16 @@
 import Link from "next/link";
-import { prisma } from "@/lib/db/prisma";
-import { resolveOwner } from "@/lib/api/workout-context";
 import { generateWorkoutExplanation } from "@/lib/api/explainability";
-import { WorkoutExplanation } from "@/components/WorkoutExplanation";
-import { isDumbbellEquipment, formatLoad } from "@/lib/ui/load-display";
+import { resolveOwner } from "@/lib/api/workout-context";
+import { SessionContextCard } from "@/components/explainability";
+import { prisma } from "@/lib/db/prisma";
 import { parseExplainabilitySelectionMetadata } from "@/lib/ui/explainability";
+import { isDumbbellEquipment, formatLoad } from "@/lib/ui/load-display";
 import {
   getLoadProvenanceNote,
   hasPerformedHistory,
   isPerformedWorkoutStatus,
 } from "@/lib/ui/session-overview";
+import { buildSessionSummaryModel } from "@/lib/ui/session-summary";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -101,27 +102,27 @@ export default async function WorkoutDetailPage({
     );
   }
 
-  const [injuries] = await Promise.all([
+  const [injuries, explanationResult] = await Promise.all([
     prisma.injury.findMany({ where: { userId: workout.userId, isActive: true } }),
+    generateWorkoutExplanation(workout.id),
   ]);
 
-  const explanationResult = await generateWorkoutExplanation(workout.id);
   const explanation = "error" in explanationResult ? null : explanationResult;
   const selectionMetadata = parseExplainabilitySelectionMetadata(workout.selectionMetadata);
-  const deloadDecision = selectionMetadata.sessionDecisionReceipt?.deloadDecision;
+  const sessionDecisionReceipt = selectionMetadata.sessionDecisionReceipt;
   const hasPerformedStatus = isPerformedWorkoutStatus(workout.status);
   const startLoggingHref =
     workout.status !== "COMPLETED" && workout.status !== "SKIPPED" ? `/log/${workout.id}` : null;
-  const intentBase = workout.sessionIntent
-    ? `${workout.sessionIntent.charAt(0)}${workout.sessionIntent.slice(1).toLowerCase()}`
-    : "Session";
-  const intentLabel = `${intentBase} - ${explanation?.sessionContext.progressionContext.volumeProgression ?? "planned"}`;
-  const deloadSummary =
-    deloadDecision && deloadDecision.mode !== "none"
-      ? `Deload: ${deloadDecision.mode} (${deloadDecision.reductionPercent}% ${deloadDecision.appliedTo})`
-      : null;
-
   const hasHighSeverityInjury = injuries.some((injury) => injury.severity >= 3);
+  const summary =
+    explanation != null
+      ? buildSessionSummaryModel({
+          context: explanation.sessionContext,
+          receipt: sessionDecisionReceipt,
+          sessionIntent: workout.sessionIntent,
+          estimatedMinutes: workout.estimatedMinutes,
+        })
+      : null;
 
   const sectionedExercises = (() => {
     const warmup: typeof workout.exercises = [];
@@ -168,13 +169,8 @@ export default async function WorkoutDetailPage({
         </div>
 
         <section className="mt-6 space-y-6 sm:mt-8 sm:space-y-8">
-          <WorkoutExplanation
-            workoutId={workout.id}
-            explanation={explanation}
-            intentLabel={intentLabel}
-            deloadSummary={deloadSummary}
-            startLoggingHref={startLoggingHref}
-          />
+          {summary ? <SessionContextCard summary={summary} startLoggingHref={startLoggingHref} /> : null}
+
           {sectionedExercises
             .filter((section) => section.items.length > 0)
             .map((section) => (
@@ -249,16 +245,11 @@ export default async function WorkoutDetailPage({
                       </div>
                       {roleLabel === "Main lift" && progressionReceipt ? (
                         <p className="mt-1 text-xs text-slate-600">
-                          Progression: {triggerLabel}. {loadDeltaLabel}.
+                          Progression today: {triggerLabel}. {loadDeltaLabel}.
                         </p>
                       ) : null}
                       <p className="mt-2 text-xs text-slate-500">
-                        Why: {exercise.movementPatterns?.length
-                          ? exercise.movementPatterns
-                              .map((p: string) => p.toLowerCase().replace(/_/g, " "))
-                              .join(", ")
-                          : "unknown"}{" "}
-                        pattern. {stressNote} {loadNote}
+                        {stressNote} {loadNote}
                       </p>
 
                       <div className="mt-3 grid gap-2 text-sm text-slate-600">

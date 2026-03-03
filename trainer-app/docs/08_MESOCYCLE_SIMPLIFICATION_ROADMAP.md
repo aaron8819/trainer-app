@@ -61,7 +61,7 @@ Exit criteria:
 - Runtime types make receipt-first behavior obvious.
 
 ### Phase 2 - User-Facing Session Clarity
-Status: READY AFTER PHASE 1 CLOSEOUT
+Status: COMPLETE
 
 Goal:
 - Make "why today looks like this" obvious without exposing overlapping engine jargon.
@@ -70,6 +70,19 @@ Focus:
 - Simplify session header and summary copy.
 - Present today goal, target effort, deload context, soreness-held volume, and readiness scaling through one explanation path.
 - Remove duplicated explanation surfaces between workout detail, log, and explainability views.
+
+Implemented in this pass:
+- Added a shared receipt-first session summary model for workout detail and log surfaces.
+- Replaced the log-page cycle/RIR/deload strip with the same user-facing summary used on workout detail.
+- Simplified the default explainability card to one summary path and moved richer evidence into a secondary disclosure.
+- Reduced duplicated "why" copy on workout exercise cards so session context is explained once at the session level.
+- Removed the full explainability panel from the default workout user flow.
+- Moved detailed explainability to a dedicated internal audit route (`/workout/[id]/audit`) instead of a user-facing summary surface.
+
+Exit criteria met:
+- Workout detail and log pages now share one receipt-first user-facing session summary path.
+- Default user surfaces no longer expose the richer explainability/audit UI.
+- Detailed explanation remains available for backend auditing without competing with the core training flow.
 
 ### Phase 3 - Workout Logging Flow Simplification
 Status: NOT STARTED

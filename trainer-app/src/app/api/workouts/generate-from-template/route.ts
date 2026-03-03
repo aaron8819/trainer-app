@@ -4,6 +4,8 @@ import { resolveOwner } from "@/lib/api/workout-context";
 import { generateDeloadSessionFromTemplate, generateSessionFromTemplate } from "@/lib/api/template-session";
 import { applyAutoregulation } from "@/lib/api/autoregulation";
 import { loadActiveMesocycle } from "@/lib/api/mesocycle-lifecycle";
+import type { GenerateFromTemplateResponse } from "@/lib/api/template-session/types";
+import { buildCanonicalSelectionMetadata } from "@/lib/ui/selection-metadata";
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
@@ -33,16 +35,17 @@ export async function POST(request: Request) {
 
   // Phase 3: Apply autoregulation
   const autoregulated = await applyAutoregulation(user.id, result.workout);
+  const selection = buildCanonicalSelectionMetadata(result.selection, autoregulated);
 
-  return NextResponse.json({
+  const response: GenerateFromTemplateResponse = {
     workout: autoregulated.adjusted,
-    templateId: result.templateId,
+    templateId: result.templateId!,
     sraWarnings: result.sraWarnings,
     substitutions: result.substitutions,
     volumePlanByMuscle: result.volumePlanByMuscle,
     selectionMode: result.selectionMode,
     sessionIntent: result.sessionIntent,
-    selection: result.selection,
+    selection,
     autoregulation: {
       applied: autoregulated.applied,
       reason: autoregulated.reason,
@@ -52,5 +55,7 @@ export async function POST(request: Request) {
       modifications: autoregulated.modifications,
       rationale: autoregulated.rationale,
     },
-  });
+  };
+
+  return NextResponse.json(response);
 }

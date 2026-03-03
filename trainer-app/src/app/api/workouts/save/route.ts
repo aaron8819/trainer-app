@@ -7,8 +7,14 @@ import { updateExerciseExposure } from "@/lib/api/exercise-exposure";
 import { isTerminalWorkoutStatus } from "@/lib/workout-status";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 import type { CycleContextSnapshot } from "@/lib/evidence/types";
+import {
+  buildSessionDecisionReceipt,
+  extractSessionDecisionReceipt,
+  parseDeloadDecision,
+} from "@/lib/evidence/session-decision-receipt";
 import { loadCurrentBlockContext } from "@/lib/api/periodization";
 import type { BlockContext } from "@/lib/engine";
+import type { AutoregulationModification } from "@/lib/engine/readiness/types";
 import { getCurrentMesoWeek, transitionMesocycleState } from "@/lib/api/mesocycle-lifecycle";
 
 type SaveAction = "save_plan" | "mark_completed" | "mark_partial" | "mark_skipped";
@@ -27,28 +33,16 @@ function toObject(value: unknown): JsonObject {
 }
 
 function hasValidCycleContext(incomingSelectionMetadata: JsonObject): boolean {
-  const incoming = incomingSelectionMetadata.cycleContext;
-  if (!incoming || typeof incoming !== "object" || Array.isArray(incoming)) {
-    return false;
-  }
-  const parsed = incoming as Partial<CycleContextSnapshot>;
-  return (
-    typeof parsed.weekInMeso === "number" &&
-    typeof parsed.weekInBlock === "number" &&
-    typeof parsed.phase === "string" &&
-    typeof parsed.blockType === "string" &&
-    typeof parsed.isDeload === "boolean" &&
-    (parsed.mesocycleLength === undefined || typeof parsed.mesocycleLength === "number") &&
-    (parsed.source === "computed" || parsed.source === "fallback")
-  );
+  return Boolean(extractSessionDecisionReceipt(incomingSelectionMetadata)?.cycleContext);
 }
 
 function deriveCycleContext(
   incomingSelectionMetadata: JsonObject,
   dbContext?: DbCycleContext
 ): CycleContextSnapshot {
-  if (hasValidCycleContext(incomingSelectionMetadata)) {
-    return incomingSelectionMetadata.cycleContext as CycleContextSnapshot;
+  const receiptCycleContext = extractSessionDecisionReceipt(incomingSelectionMetadata)?.cycleContext;
+  if (receiptCycleContext) {
+    return receiptCycleContext;
   }
 
   if (dbContext) {
@@ -66,14 +60,10 @@ function deriveCycleContext(
     };
   }
 
-  const deloadDecision = incomingSelectionMetadata.deloadDecision;
-  const isDeload =
-    Boolean(
-      deloadDecision &&
-      typeof deloadDecision === "object" &&
-      !Array.isArray(deloadDecision) &&
-      (deloadDecision as Record<string, unknown>).mode !== "none"
-    );
+  const deloadDecision =
+    parseDeloadDecision(incomingSelectionMetadata.deloadDecision) ??
+    extractSessionDecisionReceipt(incomingSelectionMetadata)?.deloadDecision;
+  const isDeload = deloadDecision?.mode !== "none";
   const blockType: CycleContextSnapshot["blockType"] = isDeload ? "deload" : "accumulation";
 
   return {
@@ -149,14 +139,49 @@ export async function POST(request: Request) {
     dbCycleContext = loadedContext.blockContext ? loadedContext : undefined;
   }
   const cycleContext = deriveCycleContext(incomingSelectionMetadata, dbCycleContext);
-  const selectionMetadata: JsonObject = {
-    ...incomingSelectionMetadata,
-    cycleContext,
-  };
 
   const incomingAutoregulationLog = toObject(parsed.data.autoregulationLog);
   const wasAutoregulated =
     parsed.data.wasAutoregulated ?? Boolean(incomingAutoregulationLog.wasAutoregulated);
+  const existingReceipt = extractSessionDecisionReceipt(incomingSelectionMetadata);
+  const deloadDecision =
+    existingReceipt?.deloadDecision ??
+    parseDeloadDecision(incomingSelectionMetadata.deloadDecision) ??
+    parseDeloadDecision(incomingAutoregulationLog.deloadDecision);
+  const sorenessSuppressedMuscles = existingReceipt?.sorenessSuppressedMuscles ?? [];
+  const fatigueScoreRecord = toObject(incomingAutoregulationLog.fatigueScore);
+  const sessionDecisionReceipt = buildSessionDecisionReceipt({
+    cycleContext,
+    lifecycleRirTarget: existingReceipt?.lifecycleRirTarget,
+    lifecycleVolumeTargets: existingReceipt?.lifecycleVolume.targets,
+    sorenessSuppressedMuscles,
+    deloadDecision,
+    autoregulation: {
+      wasAutoregulated,
+      signalAgeHours:
+        typeof incomingAutoregulationLog.signalAgeHours === "number"
+          ? incomingAutoregulationLog.signalAgeHours
+          : existingReceipt?.readiness.signalAgeHours,
+      fatigueScoreOverall:
+        typeof fatigueScoreRecord?.overall === "number"
+          ? fatigueScoreRecord.overall
+          : existingReceipt?.readiness.fatigueScoreOverall,
+      rationale:
+        typeof incomingAutoregulationLog.rationale === "string"
+          ? incomingAutoregulationLog.rationale
+          : typeof incomingAutoregulationLog.reason === "string"
+          ? incomingAutoregulationLog.reason
+          : existingReceipt?.readiness.rationale,
+      modifications: Array.isArray(incomingAutoregulationLog.modifications)
+        ? (incomingAutoregulationLog.modifications as AutoregulationModification[])
+        : undefined,
+      intensityScaling: existingReceipt?.readiness.intensityScaling,
+    },
+  });
+  const selectionMetadata: JsonObject = {
+    ...incomingSelectionMetadata,
+    sessionDecisionReceipt,
+  };
   const autoregulationLog = Object.keys(incomingAutoregulationLog).length > 0
     ? incomingAutoregulationLog
     : undefined;

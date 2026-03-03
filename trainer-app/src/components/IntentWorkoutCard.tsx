@@ -2,6 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import {
+  buildCanonicalSelectionMetadata,
+} from "@/lib/ui/selection-metadata";
+import type { GenerateFromIntentResponse } from "@/lib/api/template-session/types";
+import type { SaveWorkoutRequestPayload } from "@/components/log-workout/api";
 
 type SessionIntent = "push" | "pull" | "legs" | "upper" | "lower" | "full_body" | "body_part";
 
@@ -31,19 +36,10 @@ type WorkoutPlan = {
   notes?: string;
 };
 
-type SelectionSummary = {
-  selectedCount: number;
-  pinnedCount: number;
-  setTargetCount: number;
-};
-
-type GeneratedMetadata = {
-  selectionMode?: "AUTO" | "INTENT";
-  sessionIntent?: SessionIntent;
-  selectionMetadata?: unknown;
-  filteredExercises?: unknown[];
-  selectionSummary?: SelectionSummary;
-};
+type GeneratedMetadata = Pick<
+  GenerateFromIntentResponse,
+  "selectionMode" | "sessionIntent" | "selectionMetadata" | "filteredExercises" | "selectionSummary"
+>;
 
 type AutoregulationData = {
   applied: boolean;
@@ -171,12 +167,12 @@ export function IntentWorkoutCard({ initialIntent = "push" }: IntentWorkoutCardP
       return;
     }
 
-    const body = await response.json();
-    setWorkout(body.workout as WorkoutPlan);
+    const body: GenerateFromIntentResponse = await response.json();
+    setWorkout(body.workout);
     setGeneratedMetadata({
       selectionMode: body.selectionMode,
       sessionIntent: body.sessionIntent,
-      selectionMetadata: body.selectionMetadata,
+      selectionMetadata: buildCanonicalSelectionMetadata(body.selectionMetadata),
       filteredExercises: body.filteredExercises ?? [],
       selectionSummary: body.selectionSummary,
     });
@@ -189,7 +185,7 @@ export function IntentWorkoutCard({ initialIntent = "push" }: IntentWorkoutCardP
     setSaving(true);
     setError(null);
 
-    const payload = {
+    const payload: SaveWorkoutRequestPayload = {
       workoutId: workout.id,
       scheduledDate: workout.scheduledDate,
       estimatedMinutes: workout.estimatedMinutes,

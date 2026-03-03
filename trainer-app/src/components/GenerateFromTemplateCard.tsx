@@ -9,7 +9,12 @@ import {
   getTopComponentLabels,
   parseExplainabilitySelectionMetadata,
 } from "@/lib/ui/explainability";
+import {
+  buildCanonicalSelectionMetadata,
+} from "@/lib/ui/selection-metadata";
 import type { ActiveBlockPhase } from "@/lib/api/program";
+import type { GenerateFromTemplateResponse } from "@/lib/api/template-session/types";
+import type { SaveWorkoutRequestPayload } from "@/components/log-workout/api";
 
 type WorkoutSet = {
   setIndex: number;
@@ -75,11 +80,7 @@ type GenerateFromTemplateCardProps = {
   blockPhase?: ActiveBlockPhase;
 };
 
-type GeneratedMetadata = {
-  selectionMode?: "AUTO" | "INTENT";
-  sessionIntent?: "push" | "pull" | "legs" | "upper" | "lower" | "full_body" | "body_part";
-  selection?: unknown;
-};
+type GeneratedMetadata = Pick<GenerateFromTemplateResponse, "selectionMode" | "sessionIntent" | "selection">;
 
 type AutoregulationData = {
   applied: boolean;
@@ -233,14 +234,14 @@ export function GenerateFromTemplateCard({ templates, blockPhase }: GenerateFrom
       return false;
     }
 
-    const body = await response.json();
-    setWorkout(body.workout as WorkoutPlan);
+    const body: GenerateFromTemplateResponse = await response.json();
+    setWorkout(body.workout);
     setSraWarnings(body.sraWarnings ?? []);
-    setSubstitutions((body.substitutions ?? []) as SubstitutionSuggestion[]);
+    setSubstitutions(body.substitutions ?? []);
     setGeneratedMetadata({
       selectionMode: body.selectionMode,
       sessionIntent: body.sessionIntent,
-      selection: body.selection,
+      selection: buildCanonicalSelectionMetadata(body.selection),
     });
     setAutoregulation(body.autoregulation ?? null);
     setDismissedSubstitutions(new Set());
@@ -333,7 +334,7 @@ export function GenerateFromTemplateCard({ templates, blockPhase }: GenerateFrom
     setSaving(true);
     setError(null);
 
-    const payload = {
+    const payload: SaveWorkoutRequestPayload = {
       workoutId: workout.id,
       templateId: selectedTemplateId,
       scheduledDate: workout.scheduledDate,

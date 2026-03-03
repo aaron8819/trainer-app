@@ -6,7 +6,13 @@ import type { SraWarning } from "@/lib/engine/sra";
 import type { SubstitutionSuggestion } from "@/lib/engine/template-session";
 import type { FilteredExerciseSummary } from "@/lib/engine/explainability";
 import type { VolumePlanByMuscle } from "@/lib/engine/volume";
-import type { CycleContextSnapshot, DeloadDecision } from "@/lib/evidence/types";
+import type { AutoregulationResult } from "@/lib/api/autoregulation";
+import type { SaveableSelectionMetadata } from "@/lib/ui/selection-metadata";
+import type {
+  CycleContextSnapshot,
+  DeloadDecision,
+  SessionDecisionReceipt,
+} from "@/lib/evidence/types";
 import type {
   loadWorkoutContext,
   mapCheckIn,
@@ -42,15 +48,50 @@ export type SessionGenerationResult =
       substitutions: SubstitutionSuggestion[];
       volumePlanByMuscle: VolumePlanByMuscle;
       selection: SelectionOutput & {
-        adaptiveDeloadApplied?: boolean;
-        periodizationWeek?: number;
-        cycleContext?: CycleContextSnapshot;
-        deloadDecision?: DeloadDecision;
-        sorenessSuppressedMuscles?: string[];
+        sessionDecisionReceipt?: SessionDecisionReceipt;
       };
       filteredExercises?: FilteredExerciseSummary[];
     }
   | { error: string };
+
+export type WorkoutGenerationSelectionSummary = {
+  selectedCount: number;
+  pinnedCount: number;
+  setTargetCount: number;
+};
+
+export type WorkoutGenerationAutoregulationPayload = Pick<
+  AutoregulationResult,
+  | "applied"
+  | "reason"
+  | "signalAgeHours"
+  | "fatigueScore"
+  | "modifications"
+  | "rationale"
+  | "wasAutoregulated"
+>;
+
+type SharedGeneratedWorkoutResponse = {
+  workout: WorkoutPlan;
+  sraWarnings: SraWarning[];
+  substitutions: SubstitutionSuggestion[];
+  volumePlanByMuscle: VolumePlanByMuscle;
+  selectionMode: "AUTO" | "INTENT";
+  sessionIntent: SessionIntent;
+  autoregulation: WorkoutGenerationAutoregulationPayload;
+};
+
+export type GenerateFromIntentResponse = SharedGeneratedWorkoutResponse & {
+  selectionMetadata: SaveableSelectionMetadata;
+  selectionSummary: WorkoutGenerationSelectionSummary;
+  selection?: SaveableSelectionMetadata;
+  filteredExercises?: FilteredExerciseSummary[];
+};
+
+export type GenerateFromTemplateResponse = SharedGeneratedWorkoutResponse & {
+  templateId: string;
+  selection: SaveableSelectionMetadata;
+};
 
 export type MappedGenerationContext = {
   mappedProfile: ReturnType<typeof mapProfile>;

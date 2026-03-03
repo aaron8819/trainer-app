@@ -33,6 +33,7 @@ Sources of truth:
 - Engine tests: `src/lib/engine/**/*.test.ts`
 - API helper tests: `src/lib/api/**/*.test.ts`
 - UI tests: component tests under `src/components/**`
+- UI session summary-model coverage: `src/lib/ui/session-summary.test.ts` (receipt-first summary text/tags/items, including deload, soreness hold, and readiness-scaling cases).
 - Save-route terminal transition coverage: `src/app/api/workouts/save/route.integration.test.ts`
 - Validation/status coverage: `src/lib/validation.workout-save.test.ts`, `src/lib/validation.test.ts`, `src/lib/api/exercise-history.test.ts`, `src/lib/api/readiness.test.ts`
 - Performed-history progression coverage: `src/lib/engine/apply-loads.correctness.test.ts` and `src/lib/engine/history.test.ts` (includes `PARTIAL` and malformed legacy-status handling; also covers top-set anchor correctness and bodyweight early-exit behavior).
@@ -48,6 +49,7 @@ Sources of truth:
 - Explainability session-context correctness coverage: `src/lib/engine/explainability/session-context.correctness.test.ts` (readiness availability labels and fallback cycle-source behavior).
 - End-to-end-ish receipt pipeline coverage: `src/app/api/workouts/receipt-pipeline.integration.test.ts` (generate -> save -> explainability with canonical `sessionDecisionReceipt` and no legacy fallback).
 - UI session overview copy guards: `src/lib/ui/session-overview.test.ts` (`PARTIAL`/`COMPLETED` performed basis and load-provenance wording).
+- Explainability panel UI coverage: `src/components/explainability/ExplainabilityPanel.test.tsx` now also asserts the simplified audit labels (`Exercise details`, `Why it made the plan`, `Main factors`) instead of the older engine-jargon labels.
 - UI program dashboard coverage: `src/components/ProgramStatusCard.test.ts` (volume dot class logic, deload banner, week navigation, and `getVolumeDotClass` boundary assertions).
 - Save-route cycle-context fallback persistence coverage: `src/app/api/workouts/save/route.integration.test.ts`.
 

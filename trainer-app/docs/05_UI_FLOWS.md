@@ -23,7 +23,8 @@ Sources of truth:
 ## Route map
 - `/`: dashboard (`src/app/page.tsx`)
 - `/onboarding`: profile setup (`src/app/onboarding/page.tsx`)
-- `/workout/[id]`: workout detail + explainability (`src/app/workout/[id]/page.tsx`)
+- `/workout/[id]`: workout detail + receipt-first session summary (`src/app/workout/[id]/page.tsx`)
+- `/workout/[id]/audit`: internal explainability audit surface (`src/app/workout/[id]/audit/page.tsx`)
 - `/log/[id]`: logging workflow (`src/app/log/[id]/page.tsx`). AppNavigation marks the home (`/`) item active for all `/log/*` paths (`src/components/navigation/AppNavigation.tsx`).
 - `/analytics`: analytics dashboards (`src/app/analytics/page.tsx`)
 - `/templates`, `/templates/new`, `/templates/[id]/edit`: template management
@@ -50,13 +51,14 @@ Sources of truth:
 - `mark_completed` can return `workoutStatus: PARTIAL` when unresolved sets remain; UI must treat this as a performed session result, not a hard error.
 - `mark_partial` is surfaced as an explicit "Save progress" button in the active-set panel once at least one set has been logged (`loggedCount > 0`). It persists a `PARTIAL` status without requiring all sets to be resolved first (`src/components/LogWorkoutClient.tsx`).
 - Plan writes remain non-terminal (`save_plan`) and do not finalize `COMPLETED|PARTIAL|SKIPPED`.
-- Log page now surfaces persisted cycle/explainability context (receipt-backed cycle context, deload decision reason, and derived target RIR) from `selectionMetadata.sessionDecisionReceipt` parsing in `src/app/log/[id]/page.tsx` and `src/lib/ui/explainability.ts`; it does not read `autoregulationLog` as an active decision source.
+- Log page now renders the same receipt-first session summary card used on workout detail by building a `SessionSummaryModel` from explainability context plus `selectionMetadata.sessionDecisionReceipt` (`src/app/log/[id]/page.tsx`, `src/lib/ui/session-summary.ts`, `src/components/explainability/SessionContextCard.tsx`).
 
 4. Review workout rationale
-- UI: `/workout/[id]` via `WorkoutExplanation`
+- UI: `/workout/[id]` for the default user-facing session summary, `/workout/[id]/audit` for detailed explainability
 - API: `GET /api/workouts/[id]/explanation`
-- Explainability panel now renders a session-level Training Status card (intent, cycle-source badge, readiness label, deload summary, and conditional Start logging CTA) via `src/components/explainability/SessionContextCard.tsx` and `src/components/explainability/ExplainabilityPanel.tsx`.
-- Programming Logic UI is split into Evidence vs Selection tabs in `src/components/explainability/ExplainabilityPanel.tsx`, while selection details continue through `src/components/explainability/ExerciseRationaleCard.tsx`.
+- Workout detail now renders the receipt-first session summary directly and no longer mounts the full explainability panel in the default flow (`src/app/workout/[id]/page.tsx`, `src/lib/ui/session-summary.ts`, `src/components/explainability/SessionContextCard.tsx`).
+- Detailed explainability is intentionally separated into `/workout/[id]/audit`, which loads `WorkoutExplanation` and exposes the richer evidence and exercise-detail panels for internal auditing (`src/app/workout/[id]/audit/page.tsx`, `src/components/WorkoutExplanation.tsx`, `src/components/explainability/ExplainabilityPanel.tsx`).
+- The audit explainability panel now uses the same summary card at the top, then places confidence details and the Evidence vs Exercise details breakdown inside a secondary disclosure (`src/components/explainability/ExplainabilityPanel.tsx`, `src/components/explainability/ExerciseRationaleCard.tsx`).
 - Workout detail copy for prescription/load provenance now treats `PARTIAL` and `COMPLETED` as performed states through `src/lib/ui/session-overview.ts` and usage in `src/app/workout/[id]/page.tsx`.
 - Workout detail and log pages both read session-level context through `parseExplainabilitySelectionMetadata()`, which is now canonical-receipt only for `sessionDecisionReceipt` (`src/app/workout/[id]/page.tsx`, `src/app/log/[id]/page.tsx`, `src/lib/ui/explainability.ts`).
 

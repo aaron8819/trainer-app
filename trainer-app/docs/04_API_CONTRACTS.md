@@ -1,7 +1,7 @@
 # 04 API Contracts
 
 Owner: Aaron  
-Last reviewed: 2026-02-28
+Last reviewed: 2026-03-03
 Purpose: Canonical API contract map for App Router endpoints and payload validation boundaries.
 
 This doc covers:
@@ -58,6 +58,7 @@ Sources of truth:
 - Profile/readiness/analytics: `profileSetupSchema`, `readinessSignalSchema`, `analyticsSummarySchema`
 - `profileSetupSchema` no longer accepts `sessionMinutes`; profile setup persists `daysPerWeek` and optional `splitType` through `POST /api/profile/setup` (`src/lib/validation.ts`, `src/app/api/profile/setup/route.ts`).
 - Save payload supports explainability/runtime metadata passthrough for persisted workouts via `saveWorkoutSchema` fields `wasAutoregulated` and `autoregulationLog` in `src/lib/validation.ts` and persistence in `src/app/api/workouts/save/route.ts`.
+- `saveWorkoutSchema` rejects legacy top-level session metadata mirrors inside `selectionMetadata` (`cycleContext`, `deloadDecision`, `sorenessSuppressedMuscles`, `adaptiveDeloadApplied`, `periodizationWeek`, `lifecycleRirTarget`, `lifecycleVolumeTargets`) and requires canonical session-level metadata to live under `selectionMetadata.sessionDecisionReceipt` (`src/lib/validation.ts`, `src/app/api/workouts/save/route.ts`).
 
 ## Workout save terminal transition contract
 - Route: `POST /api/workouts/save` (`src/app/api/workouts/save/route.ts`).
@@ -88,6 +89,15 @@ Sources of truth:
   - Load anchoring comes from the final accumulation modal load selection logic.
   - RIR target is deload band (`4-6`) via lifecycle RIR targeting.
 - Default lifecycle hypertrophy RIR bands are duration-aware rather than fixed to a 4+1 template.
+
+## Workout generation receipt contract
+- Routes:
+  - `POST /api/workouts/generate-from-intent` (`src/app/api/workouts/generate-from-intent/route.ts`)
+  - `POST /api/workouts/generate-from-template` (`src/app/api/workouts/generate-from-template/route.ts`)
+- Generation responses persist canonical selection metadata only:
+  - intent route returns `selectionMetadata` and optional debug `selection`, both carrying canonical `sessionDecisionReceipt`
+  - template route returns `selection`, carrying canonical `sessionDecisionReceipt`
+- Generation routes canonicalize receipt readiness/autoregulation fields through shared selection metadata helpers rather than returning ad hoc top-level session mirrors (`src/lib/ui/selection-metadata.ts`, `src/lib/api/template-session/types.ts`).
 
 ## Workout explanation response contract
 - Route: `GET /api/workouts/[id]/explanation` (`src/app/api/workouts/[id]/explanation/route.ts`).

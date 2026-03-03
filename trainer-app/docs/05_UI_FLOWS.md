@@ -1,7 +1,7 @@
 # 05 UI Flows
 
 Owner: Aaron
-Last reviewed: 2026-02-28
+Last reviewed: 2026-03-03
 Purpose: Canonical reference for current UI routes and core user flows implemented in the Next.js App Router.
 
 This doc covers:
@@ -41,6 +41,7 @@ Sources of truth:
 2. Generate and save workout
 - UI entry points: dashboard/template/intent components
 - APIs: `POST /api/workouts/generate-from-template`, `POST /api/workouts/generate-from-intent`, `POST /api/workouts/save`
+- `IntentWorkoutCard` and `GenerateFromTemplateCard` consume shared generation response types and save only canonicalized selection metadata; session-level context is passed through `selectionMetadata.sessionDecisionReceipt` / `selection.sessionDecisionReceipt`, not duplicated as top-level mirrors (`src/components/IntentWorkoutCard.tsx`, `src/components/GenerateFromTemplateCard.tsx`, `src/components/log-workout/api.ts`).
 
 3. Log sets and complete workout
 - UI: `/log/[id]`, `LogWorkoutClient`
@@ -57,6 +58,7 @@ Sources of truth:
 - Explainability panel now renders a session-level Training Status card (intent, cycle-source badge, readiness label, deload summary, and conditional Start logging CTA) via `src/components/explainability/SessionContextCard.tsx` and `src/components/explainability/ExplainabilityPanel.tsx`.
 - Programming Logic UI is split into Evidence vs Selection tabs in `src/components/explainability/ExplainabilityPanel.tsx`, while selection details continue through `src/components/explainability/ExerciseRationaleCard.tsx`.
 - Workout detail copy for prescription/load provenance now treats `PARTIAL` and `COMPLETED` as performed states through `src/lib/ui/session-overview.ts` and usage in `src/app/workout/[id]/page.tsx`.
+- Workout detail and log pages both read session-level context through `parseExplainabilitySelectionMetadata()`, which is now canonical-receipt only for `sessionDecisionReceipt` (`src/app/workout/[id]/page.tsx`, `src/app/log/[id]/page.tsx`, `src/lib/ui/explainability.ts`).
 
 5. Program and readiness loop
 - UI: `/program`, readiness components

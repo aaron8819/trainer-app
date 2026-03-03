@@ -1,7 +1,7 @@
 # 07 Operations
 
 Owner: Aaron
-Last reviewed: 2026-02-26
+Last reviewed: 2026-03-03
 Purpose: Operational runbook for local development/runtime setup, migrations, seed, and verification for this single-user app.
 
 This doc covers:
@@ -44,10 +44,12 @@ Sources of truth:
 - Current baseline migration history is squashed to `prisma/migrations/20260222_baseline/migration.sql`; historical per-feature migration folders are retained only in local backup (`prisma/migrations_backup/`, ignored by Git).
 - Lifecycle backfill/role management scripts:
   - `prisma/reset-backfill-mesocycle-lifecycle.ts`: reset and rebuild mesocycle lifecycle state from existing performed workouts.
+  - `prisma/repair-mesocycle-rir-bands.ts`: repair legacy 5-week `rirBandConfig` JSON to the corrected duration-aware default week bands.
   - `prisma/backfill-week2-pull.ts`: example manual session backfill flow.
   - `prisma/update-pull-exercise-roles.ts` and `prisma/update-push-exercise-roles.ts`: canonical mesocycle exercise role updates.
   - `prisma/audit-mesocycle.ts`: diagnostic — prints active mesocycle state, lifecycle counters, and recent workout snapshots.
   - `prisma/fix-workout-388f.ts`: one-off data repair (corrects `mesocycleId` + snapshots after lifecycle counter backfill).
+- Generated local artifacts under `trainer-app/output/` are ignored via the repo root `.gitignore` and are not part of the operational source of truth.
 - Lifecycle verification query pattern (mesocycle state, counters, snapshots, roles):
 ```sql
 -- Mesocycle lifecycle state + counters

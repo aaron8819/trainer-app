@@ -83,3 +83,56 @@ export type AutoregHint = {
   exerciseId: string;
   message: string;
 };
+
+export type CompletedWorkoutSetSummary = {
+  setIndex: number;
+  targetReps: number;
+  targetRepRange?: { min: number; max: number };
+  targetLoad?: number | null;
+  targetRpe?: number | null;
+  actualReps?: number | null;
+  actualLoad?: number | null;
+  actualRpe?: number | null;
+  wasLogged: boolean;
+  wasSkipped: boolean;
+};
+
+export type CompletedWorkoutExerciseSummary = {
+  name: string;
+  equipment?: string[];
+  section: ExerciseSection;
+  sets: CompletedWorkoutSetSummary[];
+};
+
+export type RpeAdherenceSummary = {
+  adherent: number;
+  total: number;
+};
+
+export type CompletionAction = "mark_completed" | "mark_partial" | "mark_skipped";
+
+export type PrefilledFieldState = {
+  actualReps: boolean;
+  actualLoad: boolean;
+  actualRpe: boolean;
+};
+
+export type SetDraftBuffers = {
+  reps: string;
+  load: string;
+  rpe: string;
+};
+
+export type SavedDraftStatus = {
+  setId: string;
+  savedAt: number;
+} | null;
+
+export type ActiveSetDraftState = {
+  draftBuffersBySet: Record<string, SetDraftBuffers>;
+  prefilledFieldsBySet: Record<string, PrefilledFieldState>;
+  touchedFieldsBySet: Record<string, PrefilledFieldState>;
+  restoredSetIds: Set<string>;
+  savingDraftSetId: string | null;
+  lastSavedDraft: SavedDraftStatus;
+};

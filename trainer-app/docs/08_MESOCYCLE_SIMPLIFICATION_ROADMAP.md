@@ -85,7 +85,7 @@ Exit criteria met:
 - Detailed explanation remains available for backend auditing without competing with the core training flow.
 
 ### Phase 3 - Workout Logging Flow Simplification
-Status: NOT STARTED
+Status: IN PROGRESS
 
 Goal:
 - Reduce friction and fragmented state in `LogWorkoutClient` and related logging flows.
@@ -93,6 +93,25 @@ Goal:
 Focus:
 - Simplify draft state, active set handling, rest timer ownership, footer/save behavior, and recovery behavior.
 - Keep progression cues minimal and actionable during training.
+
+Implemented in this pass:
+- Collapsed active-set draft buffering to one shared per-set draft map instead of separate reps/load/RPE buffer stores.
+- Simplified logged-set chip editing to one active draft object instead of parallel per-set edit buffers.
+- Removed duplicate in-panel partial-save action so session-level save/recovery decisions live in the footer only.
+- Reduced live-training progression noise by removing baseline qualification badges from the in-workout flow.
+- Moved active-set persistence and rest-timer mute persistence behind one dedicated UI-session hook.
+- Collapsed completion, partial-save, and skip control state into one session-flow owner instead of parallel booleans.
+- Extracted active-set draft, prefill, and restore behavior behind a dedicated draft-state hook instead of keeping that field-level logic in `LogWorkoutClient`.
+- Isolated completed-session review rendering behind a dedicated post-workout component so runtime logging state and post-workout analysis no longer live in the same large client file.
+- Isolated footer session actions and the completion confirmation dialog behind dedicated components so session-ending UI no longer shares the main logging render path.
+- Isolated exercise-set chip rendering and inline chip edit micro-form behind a dedicated exercise queue component so secondary set editing no longer bloats the main logging client.
+- Isolated the expandable exercise queue sections and exercise cards behind a dedicated queue view so `LogWorkoutClient` no longer owns the full browse/edit render tree.
+- Isolated set logging, undo, completion, chip-edit save coordination, and transient runtime feedback behind `useWorkoutSessionFlow` so one hook now owns the session mutation flow instead of `LogWorkoutClient`.
+- Isolated the active-set editor card and its reps/load/RPE form wiring behind `WorkoutActiveSetCard` so the main client no longer owns the full active-set render tree.
+- Collapsed the active-set card boundary to grouped draft/view/action props so the extracted editor no longer depends on a wide low-level prop list from `LogWorkoutClient`.
+- Deleted stale Phase 3 inline notes, removed queue-only helper residue from `LogWorkoutClient`, and grouped chip-edit/completion hook outputs so the main client stays closer to composition wiring than runtime ownership.
+- Moved hook-only chip-edit/session-flow types behind `useWorkoutSessionFlow` instead of keeping those compatibility-free boundary types in the shared logging type file.
+- Reused the shared draft buffer shape across draft restore/persist boundaries, reduced duplicate field-state builders in the active-set draft hook, and simplified persisted workout-session UI storage setup so the remaining Phase 3 draft/session cleanup is less scaffold-heavy.
 
 ### Phase 4 - API and Persistence Cleanup
 Status: NOT STARTED

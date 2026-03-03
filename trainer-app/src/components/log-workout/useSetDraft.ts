@@ -1,18 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { SavedDraftStatus, SetDraftBuffers } from "@/components/log-workout/types";
 
 type DraftPayload = {
-  reps: string;
-  load: string;
-  rpe: string;
+  reps: SetDraftBuffers["reps"];
+  load: SetDraftBuffers["load"];
+  rpe: SetDraftBuffers["rpe"];
   savedAt: number;
-};
-
-type RestoreDraft = {
-  reps: string;
-  load: string;
-  rpe: string;
 };
 
 const DRAFT_TTL_MS = 24 * 60 * 60 * 1000;
@@ -52,11 +47,11 @@ export function useSetDraft({
 }: {
   workoutId: string;
   setIds: string[];
-  onRestore: (setId: string, draft: RestoreDraft) => void;
+  onRestore: (setId: string, draft: SetDraftBuffers) => void;
 }) {
   const [restoredSetIds, setRestoredSetIds] = useState<Set<string>>(new Set());
   const [savingDraftSetId, setSavingDraftSetId] = useState<string | null>(null);
-  const [lastSavedDraft, setLastSavedDraft] = useState<{ setId: string; savedAt: number } | null>(null);
+  const [lastSavedDraft, setLastSavedDraft] = useState<SavedDraftStatus>(null);
   const saveTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const restoredOnceRef = useRef<Set<string>>(new Set());
   const stableSetIds = useMemo(() => Array.from(new Set(setIds)), [setIds]);
@@ -108,7 +103,7 @@ export function useSetDraft({
   }, []);
 
   const saveDraft = useCallback(
-    (setId: string, values: RestoreDraft) => {
+    (setId: string, values: SetDraftBuffers) => {
       const key = getDraftKey(workoutId, setId);
       if (saveTimersRef.current[setId]) {
         clearTimeout(saveTimersRef.current[setId]);

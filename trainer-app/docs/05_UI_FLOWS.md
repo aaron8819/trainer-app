@@ -49,7 +49,7 @@ Sources of truth:
 - API: `POST /api/logs/set` (and `DELETE /api/logs/set` for log removal)
 - Completion actions call `POST /api/workouts/save` with explicit action commands (`mark_completed`, `mark_partial`, `mark_skipped`).
 - `mark_completed` can return `workoutStatus: PARTIAL` when unresolved sets remain; UI must treat this as a performed session result, not a hard error.
-- `mark_partial` is surfaced as an explicit "Save progress" button in the active-set panel once at least one set has been logged (`loggedCount > 0`). It persists a `PARTIAL` status without requiring all sets to be resolved first (`src/components/LogWorkoutClient.tsx`).
+- `mark_partial` is surfaced as a single footer-level "Leave for now" action once at least one set has been logged (`loggedCount > 0`). It persists a `PARTIAL` status without requiring all sets to be resolved first (`src/components/LogWorkoutClient.tsx`).
 - Plan writes remain non-terminal (`save_plan`) and do not finalize `COMPLETED|PARTIAL|SKIPPED`.
 - Log page now renders the same receipt-first session summary card used on workout detail by building a `SessionSummaryModel` from explainability context plus `selectionMetadata.sessionDecisionReceipt` (`src/app/log/[id]/page.tsx`, `src/lib/ui/session-summary.ts`, `src/components/explainability/SessionContextCard.tsx`).
 

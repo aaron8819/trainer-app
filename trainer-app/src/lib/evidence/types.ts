@@ -21,6 +21,53 @@ export type DeloadDecision = {
   appliedTo: DeloadDecisionAppliedTo;
 };
 
+export type LifecycleRirTarget = {
+  min: number;
+  max: number;
+};
+
+export type SessionDecisionVolumeTargetSource =
+  | "lifecycle"
+  | "soreness_adjusted_lifecycle"
+  | "unknown";
+
+export type SessionDecisionReadinessScaling = {
+  applied: boolean;
+  exerciseIds: string[];
+  scaledUpCount: number;
+  scaledDownCount: number;
+};
+
+export type SessionDecisionExceptionCode =
+  | "soreness_suppression"
+  | "deload"
+  | "readiness_scale";
+
+export type SessionDecisionException = {
+  code: SessionDecisionExceptionCode;
+  message: string;
+};
+
+export type SessionDecisionReceipt = {
+  version: 1;
+  cycleContext: CycleContextSnapshot;
+  lifecycleRirTarget?: LifecycleRirTarget;
+  lifecycleVolume: {
+    targets?: Record<string, number>;
+    source: SessionDecisionVolumeTargetSource;
+  };
+  sorenessSuppressedMuscles: string[];
+  deloadDecision: DeloadDecision;
+  readiness: {
+    wasAutoregulated: boolean;
+    signalAgeHours: number | null;
+    fatigueScoreOverall: number | null;
+    intensityScaling: SessionDecisionReadinessScaling;
+    rationale?: string;
+  };
+  exceptions: SessionDecisionException[];
+};
+
 export type ProgressionSetSummary = {
   reps: number | null;
   load: number | null;

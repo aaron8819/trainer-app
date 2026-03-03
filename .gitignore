@@ -10,6 +10,9 @@
 # Local docs (plans, knowledgebase)
 trainer-app/docs/knowledgebase/
 
+# Generated output
+trainer-app/output/
+
 # OS/editor noise
 .DS_Store
 Thumbs.db

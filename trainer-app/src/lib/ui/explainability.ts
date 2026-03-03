@@ -1,4 +1,5 @@
-import type { CycleContextSnapshot, DeloadDecision } from "@/lib/evidence/types";
+import type { SessionDecisionReceipt } from "@/lib/evidence/types";
+import { readSessionDecisionReceipt } from "@/lib/evidence/session-decision-receipt";
 type SelectionStep = "pin" | "anchor" | "main_pick" | "accessory_pick";
 
 export type ExplainabilityRationaleEntry = {
@@ -12,10 +13,7 @@ export type ExplainabilitySelectionMetadata = {
   rationale?: Record<string, ExplainabilityRationaleEntry>;
   selectedExerciseIds?: string[];
   perExerciseSetTargets?: Record<string, number>;
-  adaptiveDeloadApplied?: boolean;
-  periodizationWeek?: number;
-  cycleContext?: CycleContextSnapshot;
-  deloadDecision?: DeloadDecision;
+  sessionDecisionReceipt?: SessionDecisionReceipt;
 };
 
 type DriverLabel =
@@ -69,12 +67,16 @@ export const EXERCISE_ATTRIBUTE_HELP: Record<string, string> = {
 };
 
 export function parseExplainabilitySelectionMetadata(
-  value: unknown
+  value: unknown,
+  autoregulationLog?: unknown
 ): ExplainabilitySelectionMetadata {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return {};
+    return {
+      sessionDecisionReceipt: readSessionDecisionReceipt(value, autoregulationLog),
+    };
   }
   const parsed = value as Record<string, unknown>;
+  const sessionDecisionReceipt = readSessionDecisionReceipt(value, autoregulationLog);
   const rationale =
     parsed.rationale && typeof parsed.rationale === "object" && !Array.isArray(parsed.rationale)
       ? (parsed.rationale as Record<string, ExplainabilityRationaleEntry>)
@@ -88,28 +90,12 @@ export function parseExplainabilitySelectionMetadata(
     !Array.isArray(parsed.perExerciseSetTargets)
       ? (parsed.perExerciseSetTargets as Record<string, number>)
       : undefined;
-  const adaptiveDeloadApplied = parsed.adaptiveDeloadApplied === true;
-  const periodizationWeek =
-    typeof parsed.periodizationWeek === "number" && Number.isFinite(parsed.periodizationWeek)
-      ? parsed.periodizationWeek
-      : undefined;
-  const cycleContext =
-    parsed.cycleContext && typeof parsed.cycleContext === "object" && !Array.isArray(parsed.cycleContext)
-      ? (parsed.cycleContext as CycleContextSnapshot)
-      : undefined;
-  const deloadDecision =
-    parsed.deloadDecision && typeof parsed.deloadDecision === "object" && !Array.isArray(parsed.deloadDecision)
-      ? (parsed.deloadDecision as DeloadDecision)
-      : undefined;
 
   return {
     rationale,
     selectedExerciseIds,
     perExerciseSetTargets,
-    adaptiveDeloadApplied,
-    periodizationWeek,
-    cycleContext,
-    deloadDecision,
+    sessionDecisionReceipt,
   };
 }
 

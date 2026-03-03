@@ -56,6 +56,32 @@ export const sessionIntentSchema = z.enum([
 
 export const workoutSessionIntentDbSchema = z.enum(WORKOUT_SESSION_INTENT_DB_VALUES);
 
+const LEGACY_SELECTION_METADATA_SESSION_KEYS = [
+  "cycleContext",
+  "deloadDecision",
+  "sorenessSuppressedMuscles",
+  "adaptiveDeloadApplied",
+  "periodizationWeek",
+  "lifecycleRirTarget",
+  "lifecycleVolumeTargets",
+] as const;
+
+const selectionMetadataSchema = z.unknown().superRefine((value, ctx) => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return;
+  }
+
+  for (const key of LEGACY_SELECTION_METADATA_SESSION_KEYS) {
+    if (key in value) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `selectionMetadata.${key} is no longer supported; use selectionMetadata.sessionDecisionReceipt instead`,
+        path: ["selectionMetadata", key],
+      });
+    }
+  }
+});
+
 export const generateFromIntentSchema = z
   .object({
     intent: sessionIntentSchema,
@@ -87,7 +113,7 @@ export const saveWorkoutSchema = z.object({
   notes: z.string().optional(),
   selectionMode: z.enum(WORKOUT_SELECTION_MODE_VALUES).optional(),
   sessionIntent: workoutSessionIntentDbSchema.optional(),
-  selectionMetadata: z.unknown().optional(),
+  selectionMetadata: selectionMetadataSchema.optional(),
   wasAutoregulated: z.boolean().optional(),
   autoregulationLog: z.unknown().optional(),
   forcedSplit: z.enum(["PUSH", "PULL", "LEGS", "UPPER", "LOWER", "FULL_BODY"]).optional(),

@@ -74,7 +74,7 @@ Sources of truth:
   - Performed-signal readers use `COMPLETED` + `PARTIAL` (`src/lib/workout-status.ts`).
   - Lifecycle counters (`accumulationSessionsCompleted`, `deloadSessionsCompleted`) are incremented on any first transition to a performed status (`COMPLETED` or `PARTIAL`) atomically inside the save-workout transaction (`src/app/api/workouts/save/route.ts`); `transitionMesocycleState()` is then called post-transaction to apply threshold-based state transitions.
 - Lifecycle thresholds are duration-aware: accumulation completes after `(durationWeeks - 1) * sessionsPerWeek` performed sessions and deload completes after `sessionsPerWeek` performed sessions.
-- Save route normalizes/persists cycle context into `selectionMetadata.cycleContext`; when not supplied upstream it writes a fallback snapshot with `source: "fallback"` (`deriveCycleContext()` in `src/app/api/workouts/save/route.ts`).
+- Save route persists session-level cycle context only inside `selectionMetadata.sessionDecisionReceipt`; top-level `selectionMetadata.cycleContext` is no longer a supported write shape. When upstream omits a canonical receipt, the route computes a receipt-backed cycle snapshot or falls back to `source: "fallback"` (`src/app/api/workouts/save/route.ts`).
 
 ## Deload gate contract
 - Routes:

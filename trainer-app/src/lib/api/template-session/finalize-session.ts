@@ -5,6 +5,7 @@ import type { SelectionOutput, SessionIntent } from "@/lib/engine/session-types"
 import type { WorkoutPlan } from "@/lib/engine/types";
 import type { FilteredExerciseSummary } from "@/lib/engine/explainability";
 import { applyLoads } from "@/lib/api/workout-context";
+import { buildSessionDecisionReceipt } from "@/lib/evidence/session-decision-receipt";
 import type { MappedGenerationContext, SessionGenerationResult } from "./types";
 
 export function runSessionGeneration(
@@ -103,6 +104,13 @@ export function finalizePostLoadResult(
           : "Adjusted to recovery session based on recent fatigue signals.",
       }
     : withLoads;
+  const sessionDecisionReceipt = buildSessionDecisionReceipt({
+    cycleContext: mapped.cycleContext,
+    lifecycleRirTarget: mapped.lifecycleRirTarget,
+    lifecycleVolumeTargets: mapped.lifecycleVolumeTargets,
+    sorenessSuppressedMuscles: mapped.sorenessSuppressedMuscles,
+    deloadDecision: mapped.deloadDecision,
+  });
 
   return {
     workout: finalWorkout,
@@ -114,12 +122,8 @@ export function finalizePostLoadResult(
     volumePlanByMuscle,
     selection: {
       ...result.selection,
+      sessionDecisionReceipt,
       volumePlanByMuscle,
-      adaptiveDeloadApplied: mapped.adaptiveDeload,
-      periodizationWeek: mapped.lifecycleWeek,
-      cycleContext: mapped.cycleContext,
-      deloadDecision: mapped.deloadDecision,
-      sorenessSuppressedMuscles: mapped.sorenessSuppressedMuscles,
     },
     filteredExercises,
   };

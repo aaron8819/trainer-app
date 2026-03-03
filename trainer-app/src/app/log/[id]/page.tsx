@@ -65,14 +65,16 @@ export default async function LogWorkoutPage({
   }
 
   const exercises = splitExercises(workout.exercises);
-  const selectionMetadata = parseExplainabilitySelectionMetadata(workout.selectionMetadata);
-  const cycleContext = selectionMetadata.cycleContext;
-  const deloadDecision = selectionMetadata.deloadDecision;
-  const mainTopSetRpe = workout.exercises
-    .filter((exercise) => exercise.isMainLift || exercise.section === "MAIN")
-    .flatMap((exercise) => exercise.sets)
-    .sort((a, b) => a.setIndex - b.setIndex)[0]?.targetRpe;
-  const targetRir = mainTopSetRpe != null ? Math.max(0, 10 - mainTopSetRpe) : null;
+  const selectionMetadata = parseExplainabilitySelectionMetadata(
+    workout.selectionMetadata,
+    workout.autoregulationLog
+  );
+  const sessionDecisionReceipt = selectionMetadata.sessionDecisionReceipt;
+  const cycleContext = sessionDecisionReceipt?.cycleContext;
+  const deloadDecision = sessionDecisionReceipt?.deloadDecision;
+  const targetRir = sessionDecisionReceipt?.lifecycleRirTarget
+    ? `${sessionDecisionReceipt.lifecycleRirTarget.min}-${sessionDecisionReceipt.lifecycleRirTarget.max}`
+    : null;
 
   return (
     <main className="min-h-screen bg-white text-slate-900">
@@ -106,7 +108,7 @@ export default async function LogWorkoutPage({
                   ) : null}
                 </span>
               ) : null}
-              {targetRir != null ? <span>Target RIR {targetRir.toFixed(1)}</span> : null}
+              {targetRir != null ? <span>Target RIR {targetRir}</span> : null}
               {deloadDecision && deloadDecision.mode !== "none" ? (
                 <span>
                   Deload: {deloadDecision.mode} ({deloadDecision.reductionPercent}% {deloadDecision.appliedTo})

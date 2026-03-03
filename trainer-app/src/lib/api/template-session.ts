@@ -6,6 +6,7 @@ import { VOLUME_LANDMARKS } from "@/lib/engine/volume-landmarks";
 import { loadTemplateDetail } from "./templates";
 import { loadMappedGenerationContext } from "./template-session/context-loader";
 import { runSessionGeneration, finalizePostLoadResult } from "./template-session/finalize-session";
+import { buildSessionDecisionReceipt } from "@/lib/evidence/session-decision-receipt";
 import {
   buildSelectionObjective,
   mapSelectionResult,
@@ -234,15 +235,17 @@ export async function generateDeloadSessionFromTemplate(
     volumePlanByMuscle: {},
     selection: {
       ...deload.selection,
-      adaptiveDeloadApplied: true,
-      periodizationWeek: mapped.lifecycleWeek,
-      cycleContext: mapped.cycleContext,
-      deloadDecision: {
-        mode: "scheduled",
-        reason: [deload.note],
-        reductionPercent: 55,
-        appliedTo: "both",
-      },
+      sessionDecisionReceipt: buildSessionDecisionReceipt({
+        cycleContext: mapped.cycleContext,
+        lifecycleRirTarget: mapped.lifecycleRirTarget,
+        lifecycleVolumeTargets: mapped.lifecycleVolumeTargets,
+        deloadDecision: {
+          mode: "scheduled",
+          reason: [deload.note],
+          reductionPercent: 55,
+          appliedTo: "both",
+        },
+      }),
     },
   };
 }
@@ -568,15 +571,17 @@ export async function generateDeloadSessionFromIntent(
     volumePlanByMuscle: {},
     selection: {
       ...deload.selection,
-      adaptiveDeloadApplied: true,
-      periodizationWeek: mapped.lifecycleWeek,
-      cycleContext: mapped.cycleContext,
-      deloadDecision: {
-        mode: "scheduled",
-        reason: [deload.note],
-        reductionPercent: 55,
-        appliedTo: "both",
-      },
+      sessionDecisionReceipt: buildSessionDecisionReceipt({
+        cycleContext: mapped.cycleContext,
+        lifecycleRirTarget: mapped.lifecycleRirTarget,
+        lifecycleVolumeTargets: mapped.lifecycleVolumeTargets,
+        deloadDecision: {
+          mode: "scheduled",
+          reason: [deload.note],
+          reductionPercent: 55,
+          appliedTo: "both",
+        },
+      }),
     },
     filteredExercises: [],
   };

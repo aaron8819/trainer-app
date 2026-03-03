@@ -4,6 +4,7 @@ import type {
   FilteredExerciseSummary,
   MuscleVolumeCompliance,
   VolumeComplianceStatus,
+  SessionContext,
 } from "@/lib/engine/explainability";
 import { VOLUME_LANDMARKS } from "@/lib/engine/volume-landmarks";
 import {
@@ -22,11 +23,11 @@ import { getPeriodizationModifiers } from "@/lib/engine/rules";
 import type { Prisma, Workout, WorkoutExercise, WorkoutSet } from "@prisma/client";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 import type {
-  CycleContextSnapshot,
   DeloadDecision,
   ProgressionReceipt,
   ProgressionSetSummary,
 } from "@/lib/evidence/types";
+import { readSessionDecisionReceipt } from "@/lib/evidence/session-decision-receipt";
 import {
   computeMusclesApproachingMRV,
   computeVolumeSpikePercent,
@@ -58,6 +59,139 @@ type WorkoutWithExplainabilityRelations = Prisma.WorkoutGetPayload<{
 }>;
 
 const HISTORY_RECENCY_WINDOW_DAYS = 42;
+const HOURS_PER_DAY = 24;
+type LoadedBlockContext = Awaited<ReturnType<typeof loadCurrentBlockContext>>;
+type ResolvedSessionDecisionReceipt = NonNullable<ReturnType<typeof readSessionDecisionReceipt>>;
+type SessionEvidence = {
+  sessionDecisionReceipt?: ResolvedSessionDecisionReceipt;
+  cycleContext?: ResolvedSessionDecisionReceipt["cycleContext"];
+  sorenessSuppressedMuscles: string[];
+  deloadDecision: DeloadDecision | null;
+  readinessScaledExerciseIds: Set<string>;
+  hasRecentReadinessSignal: boolean;
+  signalAgeDays?: number;
+  hasSessionDecisionReceipt: boolean;
+};
+
+function toSignalAgeDays(signalAgeHours: number | null | undefined): number | undefined {
+  if (typeof signalAgeHours !== "number" || !Number.isFinite(signalAgeHours)) {
+    return undefined;
+  }
+  return Math.max(0, Math.floor(signalAgeHours / HOURS_PER_DAY));
+}
+
+function hasRecentReceiptSignal(signalAgeHours: number | null | undefined): boolean {
+  return typeof signalAgeHours === "number" &&
+    Number.isFinite(signalAgeHours) &&
+    signalAgeHours * 60 * 60 * 1000 <= CHECK_IN_STALENESS_WINDOW_MS;
+}
+
+function buildExplanationPeriodization(input: {
+  blockContext: LoadedBlockContext["blockContext"];
+  weekInMeso: number;
+  sessionDecisionReceipt?: ResolvedSessionDecisionReceipt;
+  mappedPrimaryGoal: PrimaryGoal;
+}) {
+  const { blockContext, weekInMeso, sessionDecisionReceipt, mappedPrimaryGoal } = input;
+  const cycleContext = sessionDecisionReceipt?.cycleContext;
+
+  if (cycleContext && mappedPrimaryGoal === "hypertrophy") {
+    return {
+      periodization: buildLifecyclePeriodization({
+        primaryGoal: mappedPrimaryGoal,
+        durationWeeks: cycleContext.mesocycleLength ?? Math.max(4, cycleContext.weekInMeso),
+        week: cycleContext.weekInMeso,
+        isDeload: cycleContext.isDeload,
+        rirTarget: sessionDecisionReceipt?.lifecycleRirTarget,
+      }),
+      blockType: cycleContext.blockType,
+      weekInMesocycle: cycleContext.weekInMeso,
+    };
+  }
+
+  if (blockContext) {
+    return {
+      periodization: getPeriodizationModifiers(
+        blockContext.weekInBlock,
+        blockContext.macroCycle.primaryGoal === "general_fitness"
+          ? "hypertrophy"
+          : blockContext.macroCycle.primaryGoal,
+        blockContext.macroCycle.trainingAge
+      ),
+      blockType: blockContext.block.blockType,
+      weekInMesocycle: weekInMeso,
+    };
+  }
+
+  return {
+    periodization: undefined,
+    blockType: undefined,
+    weekInMesocycle: weekInMeso,
+  };
+}
+
+function buildSessionEvidence(input: {
+  selectionMetadata: WorkoutWithExplainabilityRelations["selectionMetadata"];
+  autoregulationLog: WorkoutWithExplainabilityRelations["autoregulationLog"];
+  latestReadinessTimestamp?: Date;
+  scheduledDate: Date;
+}): SessionEvidence {
+  const sessionDecisionReceipt = readSessionDecisionReceipt(
+    input.selectionMetadata,
+    input.autoregulationLog
+  );
+  const latestReadinessAgeDays = input.latestReadinessTimestamp
+    ? Math.floor(
+        (input.scheduledDate.getTime() - input.latestReadinessTimestamp.getTime()) /
+          (24 * 60 * 60 * 1000)
+      )
+    : undefined;
+  const latestReadinessAgeMs = input.latestReadinessTimestamp
+    ? input.scheduledDate.getTime() - input.latestReadinessTimestamp.getTime()
+    : undefined;
+  const hasRecentReadinessSignalFromDb = Boolean(
+    latestReadinessAgeMs != null && latestReadinessAgeMs <= CHECK_IN_STALENESS_WINDOW_MS
+  );
+  const signalAgeDays =
+    toSignalAgeDays(sessionDecisionReceipt?.readiness.signalAgeHours) ?? latestReadinessAgeDays;
+
+  return {
+    sessionDecisionReceipt,
+    cycleContext: sessionDecisionReceipt?.cycleContext,
+    sorenessSuppressedMuscles: sessionDecisionReceipt?.sorenessSuppressedMuscles ?? [],
+    deloadDecision: sessionDecisionReceipt?.deloadDecision ?? null,
+    readinessScaledExerciseIds: new Set(
+      sessionDecisionReceipt?.readiness.intensityScaling.exerciseIds ?? []
+    ),
+    hasRecentReadinessSignal:
+      hasRecentReceiptSignal(sessionDecisionReceipt?.readiness.signalAgeHours) ||
+      hasRecentReadinessSignalFromDb,
+    signalAgeDays,
+    hasSessionDecisionReceipt: Boolean(sessionDecisionReceipt),
+  };
+}
+
+function buildSessionContextFromEvidence(input: {
+  blockContext: LoadedBlockContext["blockContext"];
+  volumeByMuscle: Map<string, number>;
+  sessionEvidence: SessionEvidence;
+  sessionIntent?: WorkoutWithExplainabilityRelations["sessionIntent"];
+}): SessionContext {
+  const { blockContext, volumeByMuscle, sessionEvidence, sessionIntent } = input;
+
+  return explainSessionContext({
+    blockContext,
+    cycleContext: sessionEvidence.cycleContext,
+    volumeByMuscle,
+    sorenessSuppressedMuscles: sessionEvidence.sorenessSuppressedMuscles,
+    intensityScaling: sessionEvidence.sessionDecisionReceipt?.readiness.intensityScaling,
+    fatigueScore: undefined,
+    modifications: undefined,
+    signalAge: sessionEvidence.signalAgeDays,
+    hasRecentReadinessSignal: sessionEvidence.hasRecentReadinessSignal,
+    sessionIntent: sessionIntent?.toLowerCase() as "push" | "pull" | "legs" | undefined,
+  });
+}
 
 export async function generateWorkoutExplanation(
   workoutId: string
@@ -104,31 +238,17 @@ export async function generateWorkoutExplanation(
     },
   });
   const latestReadiness = readinessSignals[0];
-  const latestReadinessAgeDays = latestReadiness
-    ? Math.floor(
-        (workout.scheduledDate.getTime() - new Date(latestReadiness.timestamp).getTime()) /
-          (24 * 60 * 60 * 1000)
-      )
-    : undefined;
-  const latestReadinessAgeMs = latestReadiness
-    ? workout.scheduledDate.getTime() - new Date(latestReadiness.timestamp).getTime()
-    : undefined;
-  const hasRecentReadinessSignal = Boolean(
-    latestReadinessAgeMs != null && latestReadinessAgeMs <= CHECK_IN_STALENESS_WINDOW_MS
-  );
-  const cycleContext = parseCycleContext(workout.selectionMetadata);
-  const sorenessSuppressedMuscles = parseSorenessSuppressedMuscles(workout.selectionMetadata);
-
-  const sessionContext = explainSessionContext({
+  const sessionEvidence = buildSessionEvidence({
+    selectionMetadata: workout.selectionMetadata,
+    autoregulationLog: workout.autoregulationLog,
+    latestReadinessTimestamp: latestReadiness ? new Date(latestReadiness.timestamp) : undefined,
+    scheduledDate: workout.scheduledDate,
+  });
+  const sessionContext = buildSessionContextFromEvidence({
     blockContext,
-    cycleContext,
     volumeByMuscle,
-    sorenessSuppressedMuscles,
-    fatigueScore: undefined,
-    modifications: undefined,
-    signalAge: latestReadinessAgeDays,
-    hasRecentReadinessSignal,
-    sessionIntent: workout.sessionIntent?.toLowerCase() as "push" | "pull" | "legs" | undefined,
+    sessionEvidence,
+    sessionIntent: workout.sessionIntent,
   });
 
   const exerciseLibrary = await prisma.exercise.findMany({
@@ -142,13 +262,16 @@ export async function generateWorkoutExplanation(
   const workoutStats = await deriveWorkoutStats(workout, volumeByMuscle);
   const coachMessages = generateCoachMessages({
     sessionContext,
-    blockContext,
     workoutStats,
   });
 
   const exerciseRationales = new Map();
   const selectionObjective = buildSelectionObjective();
-  const storedRationaleByExerciseId = parseStoredRationale(workout.selectionMetadata);
+  const workoutExerciseIds = new Set(workout.exercises.map((exercise) => exercise.exerciseId));
+  const storedRationaleByExerciseId = parseStoredRationale(
+    workout.selectionMetadata,
+    workoutExerciseIds
+  );
   const hasStoredRationale = Boolean(
     storedRationaleByExerciseId && Object.keys(storedRationaleByExerciseId).length > 0
   );
@@ -169,8 +292,12 @@ export async function generateWorkoutExplanation(
   const mappedPrimaryGoal: PrimaryGoal = rawMacroGoal === "general_fitness" ? "hypertrophy" : rawMacroGoal;
   const prescriptionRationales = new Map();
   const progressionReceipts = new Map<string, ProgressionReceipt>();
-  const deloadDecision = resolveDeloadDecision(workout.selectionMetadata, workout.autoregulationLog);
-  const readinessScaledExerciseIds = resolveReadinessScaledExercises(workout.autoregulationLog);
+  const explanationPeriodization = buildExplanationPeriodization({
+    blockContext,
+    weekInMeso,
+    sessionDecisionReceipt: sessionEvidence.sessionDecisionReceipt,
+    mappedPrimaryGoal,
+  });
 
   for (const workoutExercise of workout.exercises) {
     const exercise = mappedExercises.find((e) => e.id === workoutExercise.exerciseId);
@@ -198,25 +325,9 @@ export async function generateWorkoutExplanation(
       profile: {
         trainingAge: blockContext?.macroCycle.trainingAge ?? "intermediate",
       },
-      periodization:
-        cycleContext && mappedPrimaryGoal === "hypertrophy"
-          ? buildLifecyclePeriodization({
-              primaryGoal: mappedPrimaryGoal,
-              durationWeeks: cycleContext.mesocycleLength ?? Math.max(4, cycleContext.weekInMeso),
-              week: cycleContext.weekInMeso,
-              isDeload: cycleContext.isDeload,
-            })
-          : blockContext
-            ? getPeriodizationModifiers(
-                blockContext.weekInBlock,
-                blockContext.macroCycle.primaryGoal === "general_fitness"
-                  ? "hypertrophy"
-                  : blockContext.macroCycle.primaryGoal,
-                blockContext.macroCycle.trainingAge
-              )
-            : undefined,
-      blockType: cycleContext?.blockType ?? blockContext?.block.blockType,
-      weekInMesocycle: cycleContext?.weekInMeso ?? weekInMeso,
+      periodization: explanationPeriodization.periodization,
+      blockType: explanationPeriodization.blockType,
+      weekInMesocycle: explanationPeriodization.weekInMesocycle,
       restSeconds:
         engineSets[0]?.restSeconds ??
         getRestSeconds(exercise, workoutExercise.isMainLift, engineSets[0]?.targetReps ?? 10),
@@ -242,10 +353,15 @@ export async function generateWorkoutExplanation(
       workoutExercise.exercise.exerciseEquipment.map((item) => item.equipment.type)
     );
     const todayPrescription = summarizeTodayTopSet(engineSets);
-    const isReadinessScaled = readinessScaledExerciseIds.has(workoutExercise.exerciseId);
+    const isReadinessScaled = sessionEvidence.readinessScaledExerciseIds.has(workoutExercise.exerciseId);
     progressionReceipts.set(
       workoutExercise.exerciseId,
-      buildProgressionReceipt(lastPerformed, todayPrescription, deloadDecision, isReadinessScaled)
+      buildProgressionReceipt(
+        lastPerformed,
+        todayPrescription,
+        sessionEvidence.deloadDecision,
+        isReadinessScaled
+      )
     );
   }
 
@@ -257,8 +373,9 @@ export async function generateWorkoutExplanation(
   }));
 
   const confidence = deriveExplainabilityConfidence({
-    hasReadinessSignal: hasRecentReadinessSignal,
+    hasReadinessSignal: sessionEvidence.hasRecentReadinessSignal,
     hasBlockContext: Boolean(blockContext),
+    hasSessionDecisionReceipt: sessionEvidence.hasSessionDecisionReceipt,
     hasStoredSelectionRationale: hasStoredRationale,
     hasDerivedWorkoutStats:
       workoutStats.volumeSpikePercent !== undefined ||
@@ -283,6 +400,7 @@ export async function generateWorkoutExplanation(
 function deriveExplainabilityConfidence(input: {
   hasReadinessSignal: boolean;
   hasBlockContext: boolean;
+  hasSessionDecisionReceipt: boolean;
   hasStoredSelectionRationale: boolean;
   hasDerivedWorkoutStats: boolean;
 }): WorkoutExplanation["confidence"] {
@@ -290,11 +408,11 @@ function deriveExplainabilityConfidence(input: {
   if (!input.hasReadinessSignal) {
     missingSignals.push("fresh readiness signal");
   }
-  if (!input.hasBlockContext) {
+  if (!input.hasBlockContext && !input.hasSessionDecisionReceipt) {
     missingSignals.push("active block context");
   }
   if (!input.hasStoredSelectionRationale) {
-    missingSignals.push("persisted selection rationale");
+    missingSignals.push("persisted exercise selection rationale");
   }
   if (!input.hasDerivedWorkoutStats) {
     missingSignals.push("history-derived workout stats");
@@ -654,7 +772,8 @@ type StoredSelectionRationale = {
 };
 
 function parseStoredRationale(
-  metadata: Prisma.JsonValue | null | undefined
+  metadata: Prisma.JsonValue | null | undefined,
+  allowedExerciseIds?: Set<string>
 ): Record<string, StoredSelectionRationale> | undefined {
   if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
     return undefined;
@@ -668,6 +787,9 @@ function parseStoredRationale(
 
   const output: Record<string, StoredSelectionRationale> = {};
   for (const [exerciseId, value] of Object.entries(rationaleRaw as Record<string, unknown>)) {
+    if (allowedExerciseIds && !allowedExerciseIds.has(exerciseId)) {
+      continue;
+    }
     if (!value || typeof value !== "object" || Array.isArray(value)) {
       continue;
     }
@@ -773,107 +895,6 @@ function buildSelectionCandidate(
     scores,
     totalScore: storedRationale?.score ?? fallbackTotalScore,
   };
-}
-
-function resolveDeloadDecision(
-  selectionMetadata: Prisma.JsonValue | null | undefined,
-  autoregulationLog: Prisma.JsonValue | null | undefined
-): DeloadDecision | null {
-  const fromSelection = extractDeloadDecisionFromJson(selectionMetadata);
-  if (fromSelection) return fromSelection;
-  const fromAutoreg = extractDeloadDecisionFromJson(autoregulationLog);
-  return fromAutoreg ?? null;
-}
-
-function parseCycleContext(selectionMetadata: Prisma.JsonValue | null | undefined): CycleContextSnapshot | undefined {
-  if (!selectionMetadata || typeof selectionMetadata !== "object" || Array.isArray(selectionMetadata)) {
-    return undefined;
-  }
-  const root = selectionMetadata as Record<string, unknown>;
-  const raw = root.cycleContext;
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    return undefined;
-  }
-  const value = raw as Record<string, unknown>;
-  if (
-    typeof value.weekInMeso !== "number" ||
-    typeof value.weekInBlock !== "number" ||
-    typeof value.phase !== "string" ||
-    typeof value.blockType !== "string" ||
-    typeof value.isDeload !== "boolean" ||
-    (value.source !== "computed" && value.source !== "fallback")
-  ) {
-    return undefined;
-  }
-
-  return value as CycleContextSnapshot;
-}
-
-function parseSorenessSuppressedMuscles(
-  selectionMetadata: Prisma.JsonValue | null | undefined
-): string[] {
-  if (!selectionMetadata || typeof selectionMetadata !== "object" || Array.isArray(selectionMetadata)) {
-    return [];
-  }
-  const root = selectionMetadata as Record<string, unknown>;
-  const raw = root.sorenessSuppressedMuscles;
-  if (!Array.isArray(raw)) {
-    return [];
-  }
-  return raw.filter((item): item is string => typeof item === "string");
-}
-
-function extractDeloadDecisionFromJson(value: Prisma.JsonValue | null | undefined): DeloadDecision | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return null;
-  }
-  const root = value as Record<string, unknown>;
-  const raw = root.deloadDecision;
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    return null;
-  }
-
-  const entry = raw as Record<string, unknown>;
-  if (
-    typeof entry.mode !== "string" ||
-    !Array.isArray(entry.reason) ||
-    typeof entry.reductionPercent !== "number" ||
-    typeof entry.appliedTo !== "string"
-  ) {
-    return null;
-  }
-
-  return {
-    mode: entry.mode as DeloadDecision["mode"],
-    reason: entry.reason.filter((item): item is string => typeof item === "string"),
-    reductionPercent: entry.reductionPercent,
-    appliedTo: entry.appliedTo as DeloadDecision["appliedTo"],
-  };
-}
-
-function resolveReadinessScaledExercises(
-  autoregulationLog: Prisma.JsonValue | null | undefined
-): Set<string> {
-  if (!autoregulationLog || typeof autoregulationLog !== "object" || Array.isArray(autoregulationLog)) {
-    return new Set<string>();
-  }
-  const root = autoregulationLog as Record<string, unknown>;
-  const modsRaw = root.modifications;
-  if (!Array.isArray(modsRaw)) {
-    return new Set<string>();
-  }
-
-  const ids = new Set<string>();
-  for (const mod of modsRaw) {
-    if (!mod || typeof mod !== "object" || Array.isArray(mod)) continue;
-    const record = mod as Record<string, unknown>;
-    const exerciseId = record.exerciseId;
-    const type = record.type;
-    if (typeof exerciseId === "string" && typeof type === "string" && type === "intensity_scale") {
-      ids.add(exerciseId);
-    }
-  }
-  return ids;
 }
 
 async function loadLatestPerformedSetSummary(

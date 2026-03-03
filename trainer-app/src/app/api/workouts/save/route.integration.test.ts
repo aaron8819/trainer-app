@@ -515,14 +515,17 @@ describe("POST /api/workouts/save", () => {
 
     const upsert = mocks.workoutUpsert.mock.calls[0][0];
     const createMetadata = upsert.create.selectionMetadata as Record<string, unknown>;
-    const cycleContext = createMetadata.cycleContext as Record<string, unknown>;
+    const sessionDecisionReceipt = createMetadata.sessionDecisionReceipt as Record<string, unknown>;
+    const cycleContext = sessionDecisionReceipt.cycleContext as Record<string, unknown>;
+    expect(createMetadata.cycleContext).toBeUndefined();
     expect(cycleContext.source).toBe("computed");
     expect(cycleContext.weekInMeso).toBe(3);
     expect(cycleContext.weekInBlock).toBe(3);
+    expect(sessionDecisionReceipt.version).toBe(1);
     expect(mocks.loadCurrentBlockContext).toHaveBeenCalledTimes(1);
   });
 
-  it("persists valid incoming cycle context as-is and skips DB cycle-context load", async () => {
+  it("persists canonical receipt cycle context as-is and skips DB cycle-context load", async () => {
     const response = await POST(
       new Request("http://localhost/api/workouts/save", {
         method: "POST",
@@ -530,13 +533,38 @@ describe("POST /api/workouts/save", () => {
         body: JSON.stringify({
           workoutId: "workout-1",
           selectionMetadata: {
-            cycleContext: {
-              weekInMeso: 6,
-              weekInBlock: 2,
-              phase: "deload",
-              blockType: "deload",
-              isDeload: true,
-              source: "computed",
+            sessionDecisionReceipt: {
+              version: 1,
+              cycleContext: {
+                weekInMeso: 6,
+                weekInBlock: 2,
+                phase: "deload",
+                blockType: "deload",
+                isDeload: true,
+                source: "computed",
+              },
+              lifecycleVolume: {
+                source: "unknown",
+              },
+              sorenessSuppressedMuscles: [],
+              deloadDecision: {
+                mode: "none",
+                reason: [],
+                reductionPercent: 0,
+                appliedTo: "none",
+              },
+              readiness: {
+                wasAutoregulated: false,
+                signalAgeHours: null,
+                fatigueScoreOverall: null,
+                intensityScaling: {
+                  applied: false,
+                  exerciseIds: [],
+                  scaledUpCount: 0,
+                  scaledDownCount: 0,
+                },
+              },
+              exceptions: [],
             },
           },
           exercises: [
@@ -553,7 +581,8 @@ describe("POST /api/workouts/save", () => {
 
     const upsert = mocks.workoutUpsert.mock.calls[0][0];
     const createMetadata = upsert.create.selectionMetadata as Record<string, unknown>;
-    expect(createMetadata.cycleContext).toEqual({
+    expect(createMetadata.cycleContext).toBeUndefined();
+    expect((createMetadata.sessionDecisionReceipt as Record<string, unknown>).cycleContext).toEqual({
       weekInMeso: 6,
       weekInBlock: 2,
       phase: "deload",
@@ -562,6 +591,40 @@ describe("POST /api/workouts/save", () => {
       source: "computed",
     });
     expect(mocks.loadCurrentBlockContext).not.toHaveBeenCalled();
+  });
+
+  it("rejects legacy top-level cycleContext in selection metadata", async () => {
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutId: "workout-1",
+          selectionMetadata: {
+            cycleContext: {
+              weekInMeso: 9,
+              weekInBlock: 1,
+              phase: "deload",
+              blockType: "deload",
+              isDeload: true,
+              source: "computed",
+            },
+          },
+          exercises: [
+            {
+              section: "MAIN",
+              exerciseId: "bench",
+              sets: [{ setIndex: 1, targetReps: 8 }],
+            },
+          ],
+        }),
+      })
+    );
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "Invalid request",
+    });
+    expect(mocks.workoutUpsert).not.toHaveBeenCalled();
   });
 
   it("counters remain consistent when state transition throws after transaction commits", async () => {
@@ -639,8 +702,138 @@ describe("POST /api/workouts/save", () => {
 
     const upsert = mocks.workoutUpsert.mock.calls[0][0];
     const createMetadata = upsert.create.selectionMetadata as Record<string, unknown>;
-    const cycleContext = createMetadata.cycleContext as Record<string, unknown>;
+    const sessionDecisionReceipt = createMetadata.sessionDecisionReceipt as Record<string, unknown>;
+    const cycleContext = sessionDecisionReceipt.cycleContext as Record<string, unknown>;
+    expect(createMetadata.cycleContext).toBeUndefined();
     expect(cycleContext.source).toBe("fallback");
     expect(cycleContext.weekInMeso).toBe(1);
+  });
+
+  it("normalizes a canonical session decision receipt from receipt metadata and autoregulation log", async () => {
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutId: "workout-1",
+          selectionMetadata: {
+            sessionDecisionReceipt: {
+              version: 1,
+              cycleContext: {
+                weekInMeso: 4,
+                weekInBlock: 4,
+                mesocycleLength: 6,
+                phase: "accumulation",
+                blockType: "accumulation",
+                isDeload: false,
+                source: "computed",
+              },
+              lifecycleRirTarget: { min: 1, max: 2 },
+              lifecycleVolume: {
+                targets: { Chest: 16 },
+                source: "lifecycle",
+              },
+              sorenessSuppressedMuscles: ["Chest"],
+              deloadDecision: {
+                mode: "none",
+                reason: [],
+                reductionPercent: 0,
+                appliedTo: "none",
+              },
+              readiness: {
+                wasAutoregulated: false,
+                signalAgeHours: null,
+                fatigueScoreOverall: null,
+                intensityScaling: {
+                  applied: false,
+                  exerciseIds: [],
+                  scaledUpCount: 0,
+                  scaledDownCount: 0,
+                },
+              },
+              exceptions: [],
+            },
+          },
+          autoregulationLog: {
+            wasAutoregulated: true,
+            signalAgeHours: 6,
+            fatigueScore: { overall: 0.41 },
+            rationale: "Readiness scaled pressing volume.",
+            modifications: [
+              {
+                type: "intensity_scale",
+                exerciseId: "bench",
+                direction: "down",
+                reason: "Fatigued",
+              },
+            ],
+          },
+          exercises: [
+            {
+              section: "MAIN",
+              exerciseId: "bench",
+              sets: [{ setIndex: 1, targetReps: 8 }],
+            },
+          ],
+        }),
+      })
+    );
+    expect(response.status).toBe(200);
+
+    const upsert = mocks.workoutUpsert.mock.calls[0][0];
+    const createMetadata = upsert.create.selectionMetadata as Record<string, unknown>;
+    const receipt = createMetadata.sessionDecisionReceipt as Record<string, unknown>;
+    const readiness = receipt.readiness as Record<string, unknown>;
+    const intensityScaling = readiness.intensityScaling as Record<string, unknown>;
+    const lifecycleVolume = receipt.lifecycleVolume as Record<string, unknown>;
+
+    expect((receipt.lifecycleRirTarget as Record<string, unknown>).min).toBe(1);
+    expect((lifecycleVolume.targets as Record<string, unknown>).Chest).toBe(16);
+    expect(receipt.sorenessSuppressedMuscles).toEqual(["Chest"]);
+    expect((receipt.deloadDecision as Record<string, unknown>).mode).toBe("none");
+    expect(readiness.wasAutoregulated).toBe(true);
+    expect(readiness.signalAgeHours).toBe(6);
+    expect(readiness.fatigueScoreOverall).toBe(0.41);
+    expect(intensityScaling.applied).toBe(true);
+    expect(intensityScaling.exerciseIds).toEqual(["bench"]);
+    expect(intensityScaling.scaledDownCount).toBe(1);
+  });
+
+  it("rejects legacy top-level session mirrors in selection metadata", async () => {
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutId: "workout-1",
+          selectionMetadata: {
+            adaptiveDeloadApplied: true,
+            periodizationWeek: 7,
+            lifecycleRirTarget: { min: 4, max: 5 },
+            lifecycleVolumeTargets: { Chest: 8 },
+            sorenessSuppressedMuscles: ["Legs"],
+            deloadDecision: {
+              mode: "reactive",
+              reason: ["legacy"],
+              reductionPercent: 25,
+              appliedTo: "load",
+            },
+          },
+          exercises: [
+            {
+              section: "MAIN",
+              exerciseId: "bench",
+              sets: [{ setIndex: 1, targetReps: 8 }],
+            },
+          ],
+        }),
+      })
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "Invalid request",
+    });
+    expect(mocks.workoutUpsert).not.toHaveBeenCalled();
   });
 });

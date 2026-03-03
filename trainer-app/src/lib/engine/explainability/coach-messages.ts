@@ -11,7 +11,6 @@
  */
 
 import type { CoachMessage, SessionContext } from "./types";
-import type { BlockContext } from "../periodization/types";
 import { pluralize } from "./utils";
 
 /**
@@ -23,13 +22,11 @@ import { pluralize } from "./utils";
  * - Low priority: Encouragement, tips
  *
  * @param sessionContext - Complete session context
- * @param blockContext - Block context (for deeper block analysis)
  * @param workoutStats - Optional workout characteristics (volume, PR potential, etc.)
  * @returns Array of coach messages (sorted by priority: high -> medium -> low)
  */
 export function generateCoachMessages(params: {
   sessionContext: SessionContext;
-  blockContext: BlockContext | null;
   workoutStats?: {
     totalSets: number;
     hasPRPotential?: boolean;

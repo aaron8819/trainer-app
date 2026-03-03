@@ -22,7 +22,10 @@ import type { FatigueScore, AutoregulationModification } from "../readiness/type
 import type { RejectedExercise } from "../selection-v2/types";
 import { VOLUME_LANDMARKS, MUSCLE_SPLIT_MAP, type VolumeLandmarks } from "../volume-landmarks";
 import { formatBlockPhase, formatWeekInMesocycle, pluralize } from "./utils";
-import type { CycleContextSnapshot } from "@/lib/evidence/types";
+import type {
+  CycleContextSnapshot,
+  SessionDecisionReadinessScaling,
+} from "@/lib/evidence/types";
 
 /**
  * Generate complete session context explanation
@@ -40,6 +43,7 @@ export function explainSessionContext(params: {
   volumeByMuscle: Map<string, number>;
   fatigueScore?: FatigueScore;
   modifications?: AutoregulationModification[];
+  intensityScaling?: SessionDecisionReadinessScaling;
   sorenessSuppressedMuscles?: string[];
   signalAge?: number;
   hasRecentReadinessSignal?: boolean;
@@ -51,6 +55,7 @@ export function explainSessionContext(params: {
     volumeByMuscle,
     fatigueScore,
     modifications,
+    intensityScaling,
     sorenessSuppressedMuscles,
     signalAge,
     hasRecentReadinessSignal,
@@ -67,6 +72,7 @@ export function explainSessionContext(params: {
   const readinessStatus = describeReadinessStatus({
     fatigueScore,
     modifications,
+    intensityScaling,
     sorenessSuppressedMuscles,
     signalAge,
     hasRecentReadinessSignal,
@@ -229,6 +235,7 @@ export function describeVolumeProgress(
 export function describeReadinessStatus(params: {
   fatigueScore?: FatigueScore;
   modifications?: AutoregulationModification[];
+  intensityScaling?: SessionDecisionReadinessScaling;
   sorenessSuppressedMuscles?: string[];
   signalAge?: number;
   hasRecentReadinessSignal?: boolean;
@@ -236,6 +243,7 @@ export function describeReadinessStatus(params: {
   const {
     fatigueScore,
     modifications = [],
+    intensityScaling,
     sorenessSuppressedMuscles = [],
     signalAge = 0,
     hasRecentReadinessSignal = false,
@@ -251,7 +259,7 @@ export function describeReadinessStatus(params: {
         label: hasAnySignal ? `Stale readiness (${signalAge}d old)` : "No recent readiness",
         perMuscleFatigue: new Map(),
         sorenessSuppressedMuscles,
-        adaptations: summarizeAdaptations(modifications, sorenessSuppressedMuscles),
+        adaptations: summarizeAdaptations(modifications, sorenessSuppressedMuscles, intensityScaling),
       };
     }
 
@@ -262,7 +270,7 @@ export function describeReadinessStatus(params: {
       label: signalAge > 0 ? `Recent readiness (${signalAge}d old)` : "Recent readiness",
       perMuscleFatigue: new Map(),
       sorenessSuppressedMuscles,
-      adaptations: summarizeAdaptations(modifications, sorenessSuppressedMuscles),
+      adaptations: summarizeAdaptations(modifications, sorenessSuppressedMuscles, intensityScaling),
     };
   }
 
@@ -273,7 +281,7 @@ export function describeReadinessStatus(params: {
     perMuscleFatigue.set(muscle, Math.round((1 - fatigue) * 10));
   }
 
-  const adaptations = summarizeAdaptations(modifications, sorenessSuppressedMuscles);
+  const adaptations = summarizeAdaptations(modifications, sorenessSuppressedMuscles, intensityScaling);
 
   return {
     overall,
@@ -394,18 +402,22 @@ function classifyReadiness(fatigueScore: number): "fresh" | "moderate" | "fatigu
  */
 function summarizeAdaptations(
   modifications: AutoregulationModification[],
-  sorenessSuppressedMuscles: string[]
+  sorenessSuppressedMuscles: string[],
+  intensityScaling?: SessionDecisionReadinessScaling
 ): string[] {
   const adaptations: string[] = [];
 
   let volumeCuts = 0;
-  let intensityScaleDown = 0;
-  let intensityScaleUp = 0;
+  let intensityScaleDown = intensityScaling?.scaledDownCount ?? 0;
+  let intensityScaleUp = intensityScaling?.scaledUpCount ?? 0;
 
   for (const mod of modifications) {
     if (mod.type === "volume_reduction" && mod.setsCut) {
       volumeCuts += mod.setsCut;
-    } else if (mod.type === "intensity_scale") {
+    } else if (
+      mod.type === "intensity_scale" &&
+      !intensityScaling
+    ) {
       if (mod.direction === "down") intensityScaleDown++;
       if (mod.direction === "up") intensityScaleUp++;
     } else if (mod.type === "deload_trigger") {

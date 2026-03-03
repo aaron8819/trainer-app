@@ -107,8 +107,11 @@ export default async function WorkoutDetailPage({
 
   const explanationResult = await generateWorkoutExplanation(workout.id);
   const explanation = "error" in explanationResult ? null : explanationResult;
-  const selectionMetadata = parseExplainabilitySelectionMetadata(workout.selectionMetadata);
-  const deloadDecision = selectionMetadata.deloadDecision;
+  const selectionMetadata = parseExplainabilitySelectionMetadata(
+    workout.selectionMetadata,
+    workout.autoregulationLog
+  );
+  const deloadDecision = selectionMetadata.sessionDecisionReceipt?.deloadDecision;
   const hasPerformedStatus = isPerformedWorkoutStatus(workout.status);
   const startLoggingHref =
     workout.status !== "COMPLETED" && workout.status !== "SKIPPED" ? `/log/${workout.id}` : null;

@@ -154,9 +154,9 @@ describe("generateSessionFromIntent", () => {
     expect("error" in result).toBe(false);
     if ("error" in result) return;
 
-    expect(result.selection.periodizationWeek).toBe(4);
-    expect(result.selection.cycleContext?.weekInMeso).toBe(4);
-    expect(result.selection.cycleContext?.weekInBlock).toBe(4);
+    expect(result.selection.sessionDecisionReceipt?.cycleContext.weekInMeso).toBe(4);
+    expect(result.selection.sessionDecisionReceipt?.cycleContext.weekInBlock).toBe(4);
+    expect(result.selection.sessionDecisionReceipt?.lifecycleRirTarget).toEqual({ min: 2, max: 3 });
   });
 
   it("populates deloadDecision when a deload is applied", async () => {
@@ -173,8 +173,8 @@ describe("generateSessionFromIntent", () => {
     expect("error" in result).toBe(false);
     if ("error" in result) return;
 
-    expect(result.selection.deloadDecision?.mode).toBe("scheduled");
-    expect(result.selection.deloadDecision?.reductionPercent).toBe(50);
+    expect(result.selection.sessionDecisionReceipt?.deloadDecision.mode).toBe("scheduled");
+    expect(result.selection.sessionDecisionReceipt?.deloadDecision.reductionPercent).toBe(50);
   });
 
   it("applies lifecycle RIR bands to session RPE progression (week 1 -> 2 -> 4)", async () => {
@@ -437,12 +437,12 @@ describe("generateSessionFromIntent", () => {
         entry.sets.length,
       ])
     );
-    expect(setCountById.get("squat")).toBe(5);
-    expect(setCountById.get("rdl")).toBe(3);
-    expect(setCountById.get("seated-leg-curl")).toBe(5);
-    expect(result.selection.perExerciseSetTargets["squat"]).toBe(5);
-    expect(result.selection.perExerciseSetTargets["rdl"]).toBe(3);
-    expect(result.selection.perExerciseSetTargets["seated-leg-curl"]).toBe(5);
+    expect(setCountById.get("squat")).toBe(4);
+    expect(setCountById.get("rdl")).toBe(4);
+    expect(setCountById.get("seated-leg-curl")).toBe(3);
+    expect(result.selection.perExerciseSetTargets["squat"]).toBe(4);
+    expect(result.selection.perExerciseSetTargets["rdl"]).toBe(4);
+    expect(result.selection.perExerciseSetTargets["seated-leg-curl"]).toBe(3);
   });
 
   it("keeps W2 accumulation role exercise sets at or above W1 performed sets", async () => {

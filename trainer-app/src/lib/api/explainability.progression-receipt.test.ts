@@ -89,8 +89,10 @@ vi.mock("@/lib/engine/explainability", () => ({
   generateCoachMessages: () => [],
 }));
 
+const loadCurrentBlockContextMock = vi.fn().mockResolvedValue({ blockContext: null, weekInMeso: 1 });
+
 vi.mock("./periodization", () => ({
-  loadCurrentBlockContext: vi.fn().mockResolvedValue({ blockContext: null, weekInMeso: 1 }),
+  loadCurrentBlockContext: (...args: unknown[]) => loadCurrentBlockContextMock(...args),
 }));
 
 vi.mock("./workout-context", () => ({
@@ -116,6 +118,7 @@ import { generateWorkoutExplanation } from "./explainability";
 describe("generateWorkoutExplanation progression receipt", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    loadCurrentBlockContextMock.mockResolvedValue({ blockContext: null, weekInMeso: 1 });
 
     mocks.workoutFindUnique.mockResolvedValue({
       id: "w1",
@@ -360,5 +363,136 @@ describe("generateWorkoutExplanation progression receipt", () => {
 
     const receipt = result.progressionReceipts.get("ex1");
     expect(receipt?.lastPerformed?.load).toBe(20);
+  });
+
+  it("ignores non-exercise rationale keys when assessing persisted selection evidence", async () => {
+    mocks.workoutFindUnique.mockResolvedValueOnce({
+      id: "w1",
+      userId: "u1",
+      scheduledDate: new Date("2026-02-21T00:00:00.000Z"),
+      sessionIntent: "PUSH",
+      selectionMetadata: {
+        rationale: {
+          overallStrategy: {
+            score: 1,
+            components: { pinned: 1 },
+          },
+        },
+      },
+      autoregulationLog: null,
+      filteredExercises: [],
+      exercises: [
+        {
+          exerciseId: "ex1",
+          isMainLift: true,
+          exercise: {
+            id: "ex1",
+            name: "Bench Press",
+            movementPatterns: ["HORIZONTAL_PUSH"],
+            exerciseEquipment: [{ equipment: { type: "BARBELL" } }],
+            exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Chest" } }],
+          },
+          sets: [
+            {
+              setIndex: 1,
+              targetReps: 8,
+              targetRepMin: null,
+              targetRepMax: null,
+              targetRpe: 8,
+              targetLoad: 205,
+              restSeconds: 150,
+              logs: [],
+            },
+          ],
+        },
+      ],
+    });
+
+    const result = await generateWorkoutExplanation("w1");
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    expect(result.confidence.missingSignals).toContain("persisted exercise selection rationale");
+  });
+
+  it("does not require active block context when a canonical session decision receipt exists", async () => {
+    loadCurrentBlockContextMock.mockResolvedValueOnce({ blockContext: null, weekInMeso: 1 });
+    mocks.workoutFindUnique.mockResolvedValueOnce({
+      id: "w1",
+      userId: "u1",
+      scheduledDate: new Date("2026-02-21T00:00:00.000Z"),
+      sessionIntent: "PUSH",
+      selectionMetadata: {
+        sessionDecisionReceipt: {
+          version: 1,
+          cycleContext: {
+            weekInMeso: 2,
+            weekInBlock: 2,
+            mesocycleLength: 5,
+            phase: "accumulation",
+            blockType: "accumulation",
+            isDeload: false,
+            source: "computed",
+          },
+          lifecycleRirTarget: { min: 2, max: 3 },
+          lifecycleVolume: {
+            targets: { Chest: 13 },
+            source: "lifecycle",
+          },
+          sorenessSuppressedMuscles: [],
+          deloadDecision: {
+            mode: "none",
+            reason: [],
+            reductionPercent: 0,
+            appliedTo: "none",
+          },
+          readiness: {
+            wasAutoregulated: false,
+            signalAgeHours: 12,
+            fatigueScoreOverall: null,
+            intensityScaling: {
+              applied: false,
+              exerciseIds: [],
+              scaledUpCount: 0,
+              scaledDownCount: 0,
+            },
+          },
+          exceptions: [],
+        },
+      },
+      autoregulationLog: null,
+      filteredExercises: [],
+      exercises: [
+        {
+          exerciseId: "ex1",
+          isMainLift: true,
+          exercise: {
+            id: "ex1",
+            name: "Bench Press",
+            movementPatterns: ["HORIZONTAL_PUSH"],
+            exerciseEquipment: [{ equipment: { type: "BARBELL" } }],
+            exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Chest" } }],
+          },
+          sets: [
+            {
+              setIndex: 1,
+              targetReps: 8,
+              targetRepMin: null,
+              targetRepMax: null,
+              targetRpe: 8,
+              targetLoad: 205,
+              restSeconds: 150,
+              logs: [],
+            },
+          ],
+        },
+      ],
+    });
+
+    const result = await generateWorkoutExplanation("w1");
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    expect(result.confidence.missingSignals).not.toContain("active block context");
   });
 });

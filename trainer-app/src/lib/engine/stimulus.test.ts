@@ -108,4 +108,64 @@ describe("stimulus helper", () => {
       })
     ).toThrow(/without explicit stimulusProfile coverage/i);
   });
+
+  it("keeps bench variants chest-dominant unless explicitly triceps-emphasis", () => {
+    const bench = makeExercise({
+      id: "barbell-bench-press",
+      name: "Barbell Bench Press",
+      primaryMuscles: ["Chest"],
+      secondaryMuscles: ["Triceps", "Front Delts"],
+    });
+    const tricepsDip = makeExercise({
+      id: "dip-triceps",
+      name: "Dip (Triceps Emphasis)",
+      primaryMuscles: ["Triceps"],
+      secondaryMuscles: ["Chest", "Front Delts"],
+    });
+
+    const benchProfile = resolveStimulusProfile(bench);
+    const dipProfile = resolveStimulusProfile(tricepsDip);
+
+    expect((benchProfile.chest ?? 0)).toBeGreaterThanOrEqual(benchProfile.triceps ?? 0);
+    expect((dipProfile.triceps ?? 0)).toBeGreaterThanOrEqual(dipProfile.chest ?? 0);
+  });
+
+  it("keeps rows prime-mover dominant over elbow flexors", () => {
+    const row = makeExercise({
+      id: "barbell-row",
+      name: "Barbell Row",
+      primaryMuscles: ["Upper Back", "Lats"],
+      secondaryMuscles: ["Biceps"],
+    });
+    const profile = resolveStimulusProfile(row);
+    const rowPrimeMover = Math.max(profile.upper_back ?? 0, profile.lats ?? 0);
+
+    expect(rowPrimeMover).toBeGreaterThan(profile.biceps ?? 0);
+  });
+
+  it("keeps knee-dominant squats quad-dominant and non-hamstring-prime", () => {
+    const squat = makeExercise({
+      id: "barbell-back-squat",
+      name: "Barbell Back Squat",
+      primaryMuscles: ["Quads"],
+      secondaryMuscles: ["Glutes", "Adductors"],
+    });
+    const profile = resolveStimulusProfile(squat);
+
+    expect((profile.quads ?? 0)).toBeGreaterThan(profile.glutes ?? 0);
+    expect(profile.hamstrings ?? 0).toBeLessThan(0.5);
+  });
+
+  it("caps carry upper-back hypertrophy credit below direct carry/grip drivers", () => {
+    const carry = makeExercise({
+      id: "farmers-carry",
+      name: "Farmer's Carry",
+      primaryMuscles: ["Forearms", "Upper Back"],
+      secondaryMuscles: ["Core"],
+    });
+    const profile = resolveStimulusProfile(carry);
+
+    expect(profile.upper_back ?? 0).toBeLessThanOrEqual(0.5);
+    expect(profile.forearms ?? 0).toBeGreaterThanOrEqual(profile.upper_back ?? 0);
+  });
 });

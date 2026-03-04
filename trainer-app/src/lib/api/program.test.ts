@@ -116,10 +116,10 @@ describe("loadProgramDashboardData", () => {
   });
 
   describe("volumeThisWeek", () => {
-    it("filters out Front Delts when MEV is zero and no direct sets are logged", async () => {
+    it("includes Front Delts when baseline target is non-zero even without direct sets", async () => {
       setupDashboardMocks();
       const result = await loadProgramDashboardData("user-1");
-      expect(result.volumeThisWeek.map((row) => row.muscle)).not.toContain("Front Delts");
+      expect(result.volumeThisWeek.map((row) => row.muscle)).toContain("Front Delts");
     });
 
     it("keeps Front Delts when direct sets are present", async () => {

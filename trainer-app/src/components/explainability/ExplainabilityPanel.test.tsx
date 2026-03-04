@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 import { ExplainabilityPanel } from "./ExplainabilityPanel";
 import type { WorkoutExplanation } from "@/lib/engine/explainability";
+import type { SessionDecisionReceipt } from "@/lib/evidence/types";
 import type { SessionSummaryModel } from "@/lib/ui/session-summary";
 
 function makeExplanation(withDecisionLog: boolean): WorkoutExplanation {
@@ -92,6 +93,103 @@ const summary: SessionSummaryModel = {
   ],
 };
 
+const receipt: SessionDecisionReceipt = {
+  version: 1,
+  cycleContext: {
+    weekInMeso: 2,
+    weekInBlock: 2,
+    phase: "accumulation",
+    blockType: "accumulation",
+    isDeload: false,
+    source: "computed",
+  },
+  lifecycleVolume: {
+    targets: { Chest: 12 },
+    source: "lifecycle",
+  },
+  sorenessSuppressedMuscles: [],
+  deloadDecision: {
+    mode: "none",
+    reason: [],
+    reductionPercent: 0,
+    appliedTo: "none",
+  },
+  readiness: {
+    wasAutoregulated: false,
+    signalAgeHours: null,
+    fatigueScoreOverall: null,
+    intensityScaling: {
+      applied: false,
+      exerciseIds: [],
+      scaledUpCount: 0,
+      scaledDownCount: 0,
+    },
+  },
+  plannerDiagnostics: {
+    muscles: {
+      Chest: {
+        weeklyTarget: 12,
+        performedEffectiveVolumeBeforeSession: 4,
+        plannedEffectiveVolumeAfterRoleBudgeting: 3,
+        projectedEffectiveVolumeAfterRoleBudgeting: 7,
+        deficitAfterRoleBudgeting: 5,
+        plannedEffectiveVolumeAfterClosure: 5,
+        projectedEffectiveVolumeAfterClosure: 9,
+        finalRemainingDeficit: 3,
+      },
+    },
+    exercises: {
+      ex1: {
+        exerciseId: "ex1",
+        exerciseName: "Bench Press",
+        assignedSetCount: 5,
+        stimulusVector: { Chest: 1, Triceps: 0.35 },
+        isRoleFixture: true,
+        isClosureAddition: false,
+        isSetExpandedCarryover: true,
+        closureSetDelta: 1,
+      },
+    },
+    closure: {
+      actions: [
+        {
+          exerciseId: "ex1",
+          exerciseName: "Bench Press",
+          kind: "expand",
+          setDelta: 1,
+          deficitReduction: 1,
+          collateralOvershoot: 0,
+          fatigueCost: 4,
+          score: 95,
+        },
+      ],
+      firstIterationCandidates: [
+        {
+          exerciseId: "ex1",
+          exerciseName: "Bench Press",
+          kind: "expand",
+          setDelta: 1,
+          dominantDeficitMuscle: "Chest",
+          dominantDeficitRemaining: 5,
+          dominantDeficitContribution: 1,
+          score: 95,
+        },
+        {
+          exerciseId: "ex2",
+          exerciseName: "Machine Lateral Raise",
+          kind: "add",
+          setDelta: 4,
+          dominantDeficitMuscle: "Chest",
+          dominantDeficitRemaining: 5,
+          dominantDeficitContribution: 0,
+          filteredOutReason: "movement_pattern_cap",
+        },
+      ],
+    },
+  },
+  exceptions: [],
+};
+
 describe("ExplainabilityPanel progression logic rendering", () => {
   afterEach(() => {
     cleanup();
@@ -141,5 +239,22 @@ describe("ExplainabilityPanel progression logic rendering", () => {
     expect(screen.getByText("Missing or weak signals")).toBeInTheDocument();
     expect(screen.getByText(/same-day readiness check-in/)).toBeInTheDocument();
     expect(screen.getByText(/stored exercise selection reasons/)).toBeInTheDocument();
+  });
+
+  it("renders planner diagnostics from the canonical receipt", () => {
+    render(
+      <ExplainabilityPanel
+        explanation={makeExplanation(true)}
+        summary={summary}
+        sessionDecisionReceipt={receipt}
+      />
+    );
+
+    expect(screen.getByText("Planner diagnostics")).toBeInTheDocument();
+    expect(screen.getByText(/post-role planned 3.0/)).toBeInTheDocument();
+    expect(screen.getByText(/set-expanded carryover \(\+1\)/)).toBeInTheDocument();
+    expect(screen.getByText("Closure candidate trace")).toBeInTheDocument();
+    expect(screen.getAllByText("Bench Press").length).toBeGreaterThan(0);
+    expect(screen.getByText(/filtered movement_pattern_cap/)).toBeInTheDocument();
   });
 });

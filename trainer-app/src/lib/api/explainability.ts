@@ -13,6 +13,7 @@ import {
   explainPrescriptionRationale,
   generateCoachMessages,
 } from "@/lib/engine/explainability";
+import { getEffectiveStimulusByMuscle } from "@/lib/engine/stimulus";
 import type { Exercise as EngineExercise, PrimaryGoal } from "@/lib/engine/types";
 import type { SelectionObjective, SelectionCandidate } from "@/lib/engine/selection-v2/types";
 import { loadCurrentBlockContext } from "./periodization";
@@ -31,7 +32,6 @@ import {
   computeMusclesApproachingMRV,
   computeVolumeSpikePercent,
   hasPRPotential,
-  SECONDARY_VOLUME_MULTIPLIER,
 } from "./explainability/stats";
 import { computeDoubleProgressionDecision } from "@/lib/engine/progression";
 import { buildLifecyclePeriodization, getWeeklyVolumeTarget } from "./mesocycle-lifecycle";
@@ -176,6 +176,10 @@ function buildSessionContextFromEvidence(input: {
   });
 }
 
+function roundToTenth(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
 export async function generateWorkoutExplanation(
   workoutId: string
 ): Promise<WorkoutExplanation | { error: string }> {
@@ -205,11 +209,23 @@ export async function generateWorkoutExplanation(
     return { error: "Workout not found" };
   }
 
+  const exerciseLibrary = await prisma.exercise.findMany({
+    include: {
+      exerciseEquipment: { include: { equipment: true } },
+      exerciseMuscles: { include: { muscle: true } },
+    },
+  });
+  const mappedExercises = mapExercises(exerciseLibrary);
+  const exerciseById = new Map(mappedExercises.map((exercise) => [exercise.id, exercise]));
   const { blockContext, weekInMeso } = await loadCurrentBlockContext(
     workout.userId,
     workout.scheduledDate
   );
-  const volumeByMuscle = await loadVolumeByMuscle(workout.userId, workout.scheduledDate);
+  const volumeByMuscle = await loadVolumeByMuscle(
+    workout.userId,
+    workout.scheduledDate,
+    exerciseById
+  );
 
   const sessionEvidence = buildSessionEvidence({
     selectionMetadata: workout.selectionMetadata,
@@ -221,15 +237,7 @@ export async function generateWorkoutExplanation(
     sessionIntent: workout.sessionIntent,
   });
 
-  const exerciseLibrary = await prisma.exercise.findMany({
-    include: {
-      exerciseEquipment: { include: { equipment: true } },
-      exerciseMuscles: { include: { muscle: true } },
-    },
-  });
-  const mappedExercises = mapExercises(exerciseLibrary);
-
-  const workoutStats = await deriveWorkoutStats(workout, volumeByMuscle);
+  const workoutStats = await deriveWorkoutStats(workout, volumeByMuscle, exerciseById);
   const coachMessages = generateCoachMessages({
     sessionContext,
     workoutStats,
@@ -353,7 +361,7 @@ export async function generateWorkoutExplanation(
       (workoutStats.musclesApproachingMRV?.length ?? 0) > 0,
   });
 
-  const volumeCompliance = await computeVolumeCompliance(workout);
+  const volumeCompliance = await computeVolumeCompliance(workout, exerciseById);
 
   return {
     confidence,
@@ -400,7 +408,11 @@ function deriveExplainabilityConfidence(input: {
   return { level, summary, missingSignals };
 }
 
-async function loadVolumeByMuscle(userId: string, currentDate: Date): Promise<Map<string, number>> {
+async function loadVolumeByMuscle(
+  userId: string,
+  currentDate: Date,
+  exerciseById: Map<string, EngineExercise>
+): Promise<Map<string, number>> {
   const sevenDaysAgo = new Date(currentDate);
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
@@ -443,14 +455,12 @@ async function loadVolumeByMuscle(userId: string, currentDate: Date): Promise<Ma
       if (setCount === 0) {
         continue;
       }
-      for (const em of exercise.exercise.exerciseMuscles) {
-        if (em.role === "PRIMARY") {
-          const current = volumeByMuscle.get(em.muscle.name) ?? 0;
-          volumeByMuscle.set(em.muscle.name, current + setCount);
-        } else if (em.role === "SECONDARY") {
-          const current = volumeByMuscle.get(em.muscle.name) ?? 0;
-          volumeByMuscle.set(em.muscle.name, Math.round((current + setCount * SECONDARY_VOLUME_MULTIPLIER) * 10) / 10);
-        }
+      const mappedExercise = exerciseById.get(exercise.exerciseId);
+      if (!mappedExercise) {
+        continue;
+      }
+      for (const [muscle, effective] of getEffectiveStimulusByMuscle(mappedExercise, setCount)) {
+        volumeByMuscle.set(muscle, roundToTenth((volumeByMuscle.get(muscle) ?? 0) + effective));
       }
     }
   }
@@ -472,7 +482,8 @@ async function deriveWorkoutStats(
       }
     >;
   },
-  weeklyVolumeByMuscle: Map<string, number>
+  weeklyVolumeByMuscle: Map<string, number>,
+  exerciseById: Map<string, EngineExercise>
 ): Promise<{
   totalSets: number;
   hasPRPotential?: boolean;
@@ -480,17 +491,21 @@ async function deriveWorkoutStats(
   musclesApproachingMRV?: string[];
 }> {
   const totalSets = workout.exercises.reduce((sum, ex) => sum + countLoggedPerformedSets(ex.sets), 0);
-  const currentWorkoutEffectiveSets = computeWorkoutEffectiveSets(workout.exercises);
+  const currentWorkoutEffectiveSets = computeWorkoutEffectiveSets(workout.exercises, exerciseById);
   const baselineEffectiveSets = await loadHistoricalEffectiveSetTotals(
     workout.userId,
     workout.scheduledDate,
     workout.id,
+    exerciseById,
     workout.sessionIntent ?? undefined
   );
   const volumeSpikePercent = computeVolumeSpikePercent(currentWorkoutEffectiveSets, baselineEffectiveSets);
 
   const weeklyWithCurrent = new Map(weeklyVolumeByMuscle);
-  for (const [muscle, sets] of computeWorkoutEffectiveSetsByMuscle(workout.exercises).entries()) {
+  for (const [muscle, sets] of computeWorkoutEffectiveSetsByMuscle(
+    workout.exercises,
+    exerciseById
+  ).entries()) {
     weeklyWithCurrent.set(muscle, (weeklyWithCurrent.get(muscle) ?? 0) + sets);
   }
   const musclesApproachingMRV = computeMusclesApproachingMRV(weeklyWithCurrent);
@@ -521,7 +536,8 @@ function computeWorkoutEffectiveSets(
         }[];
       };
     }
-  >
+  >,
+  exerciseById: Map<string, EngineExercise>
 ): number {
   let total = 0;
   for (const exercise of exercises) {
@@ -529,15 +545,15 @@ function computeWorkoutEffectiveSets(
     if (setCount === 0) {
       continue;
     }
-    for (const mapping of exercise.exercise.exerciseMuscles) {
-      if (mapping.role === "PRIMARY") {
-        total += setCount;
-      } else if (mapping.role === "SECONDARY") {
-        total += setCount * SECONDARY_VOLUME_MULTIPLIER;
-      }
+    const mappedExercise = exerciseById.get(exercise.exerciseId);
+    if (!mappedExercise) {
+      continue;
+    }
+    for (const [, effective] of getEffectiveStimulusByMuscle(mappedExercise, setCount)) {
+      total += effective;
     }
   }
-  return total;
+  return roundToTenth(total);
 }
 
 function computeWorkoutEffectiveSetsByMuscle(
@@ -551,7 +567,8 @@ function computeWorkoutEffectiveSetsByMuscle(
         }[];
       };
     }
-  >
+  >,
+  exerciseById: Map<string, EngineExercise>
 ): Map<string, number> {
   const output = new Map<string, number>();
   for (const exercise of exercises) {
@@ -559,13 +576,12 @@ function computeWorkoutEffectiveSetsByMuscle(
     if (setCount === 0) {
       continue;
     }
-    for (const mapping of exercise.exercise.exerciseMuscles) {
-      const current = output.get(mapping.muscle.name) ?? 0;
-      if (mapping.role === "PRIMARY") {
-        output.set(mapping.muscle.name, current + setCount);
-      } else if (mapping.role === "SECONDARY") {
-        output.set(mapping.muscle.name, current + setCount * SECONDARY_VOLUME_MULTIPLIER);
-      }
+    const mappedExercise = exerciseById.get(exercise.exerciseId);
+    if (!mappedExercise) {
+      continue;
+    }
+    for (const [muscle, effective] of getEffectiveStimulusByMuscle(mappedExercise, setCount)) {
+      output.set(muscle, roundToTenth((output.get(muscle) ?? 0) + effective));
     }
   }
   return output;
@@ -575,6 +591,7 @@ async function loadHistoricalEffectiveSetTotals(
   userId: string,
   currentDate: Date,
   excludeWorkoutId: string,
+  exerciseById: Map<string, EngineExercise>,
   sessionIntent?: string
 ): Promise<number[]> {
   const workouts = await prisma.workout.findMany({
@@ -606,10 +623,10 @@ async function loadHistoricalEffectiveSetTotals(
   });
 
   if (workouts.length === 0 && sessionIntent) {
-    return loadHistoricalEffectiveSetTotals(userId, currentDate, excludeWorkoutId);
+    return loadHistoricalEffectiveSetTotals(userId, currentDate, excludeWorkoutId, exerciseById);
   }
 
-  return workouts.map((entry) => computeWorkoutEffectiveSets(entry.exercises));
+  return workouts.map((entry) => computeWorkoutEffectiveSets(entry.exercises, exerciseById));
 }
 
 function buildPlannedMaxByExercise(
@@ -815,33 +832,9 @@ function buildSelectionCandidate(
   const exercise = exerciseLibrary.find((e) => e.id === workoutExercise.exerciseId);
   if (!exercise) return null;
 
-  const volumeContribution = new Map<
-    string,
-    {
-      direct: number;
-      indirect: number;
-    }
-  >();
-
-  for (const em of workoutExercise.exercise.exerciseMuscles) {
-    const performedSetCount = countLoggedPerformedSets(workoutExercise.sets);
-    const setCount = performedSetCount > 0 ? performedSetCount : workoutExercise.sets?.length ?? 3;
-    if (em.role === "PRIMARY") {
-      volumeContribution.set(em.muscle.name, {
-        direct: setCount,
-        indirect: 0,
-      });
-    } else if (em.role === "SECONDARY") {
-      const existing = volumeContribution.get(em.muscle.name) ?? { direct: 0, indirect: 0 };
-      volumeContribution.set(em.muscle.name, {
-        direct: existing.direct,
-        indirect: existing.indirect + setCount * SECONDARY_VOLUME_MULTIPLIER,
-      });
-    }
-  }
-
   const performedSetCount = countLoggedPerformedSets(workoutExercise.sets);
   const setCount = performedSetCount > 0 ? performedSetCount : workoutExercise.sets?.length ?? 3;
+  const volumeContribution = getEffectiveStimulusByMuscle(exercise, setCount);
   const fallback = {
     deficitFill: Math.min(1, setCount / 6),
     rotationNovelty: Math.min(1, Math.max(1, exercise.movementPatterns.length) / 3),
@@ -1315,7 +1308,8 @@ function computeVolumeComplianceStatus(
 }
 
 async function computeVolumeCompliance(
-  workout: WorkoutWithExplainabilityRelations
+  workout: WorkoutWithExplainabilityRelations,
+  exerciseById: Map<string, EngineExercise>
 ): Promise<MuscleVolumeCompliance[]> {
   const mesocycleSnapshot = readPersistedWorkoutMesocycleSnapshot(workout);
   if (!mesocycleSnapshot) {
@@ -1354,55 +1348,59 @@ async function computeVolumeCompliance(
     },
   });
 
-  // Count performed direct sets per primary muscle from prior sessions
-  const setsLoggedBefore = new Map<string, number>();
+  const performedEffectiveVolumeBeforeSession = new Map<string, number>();
   for (const priorWorkout of priorWorkouts) {
     for (const we of priorWorkout.exercises) {
       const performedSets = we.sets.filter((s) => {
         const latest = s.logs[0];
         return Boolean(latest) && !latest?.wasSkipped;
       }).length;
-      if (performedSets === 0) continue;
-      for (const em of we.exercise.exerciseMuscles) {
-        if (em.role === "PRIMARY") {
-          const muscle = em.muscle.name;
-          setsLoggedBefore.set(muscle, (setsLoggedBefore.get(muscle) ?? 0) + performedSets);
-        }
+      const exercise = exerciseById.get(we.exerciseId);
+      if (!exercise || performedSets === 0) {
+        continue;
+      }
+      for (const [muscle, effective] of getEffectiveStimulusByMuscle(exercise, performedSets)) {
+        performedEffectiveVolumeBeforeSession.set(
+          muscle,
+          roundToTenth(
+            (performedEffectiveVolumeBeforeSession.get(muscle) ?? 0) + effective
+          )
+        );
       }
     }
   }
 
-  // Count prescribed direct sets per primary muscle for this session
-  // (sets that are not explicitly skipped via a log)
-  const setsPrescribed = new Map<string, number>();
+  const plannedEffectiveVolumeThisSession = new Map<string, number>();
   for (const we of workout.exercises) {
     const prescribedSets = we.sets.filter(
       (s) => !s.logs[0]?.wasSkipped
     ).length;
-    if (prescribedSets === 0) continue;
-    for (const em of we.exercise.exerciseMuscles) {
-      if (em.role === "PRIMARY") {
-        const muscle = em.muscle.name;
-        setsPrescribed.set(muscle, (setsPrescribed.get(muscle) ?? 0) + prescribedSets);
-      }
+    const exercise = exerciseById.get(we.exerciseId);
+    if (!exercise || prescribedSets === 0) {
+      continue;
+    }
+    for (const [muscle, effective] of getEffectiveStimulusByMuscle(exercise, prescribedSets)) {
+      plannedEffectiveVolumeThisSession.set(
+        muscle,
+        roundToTenth((plannedEffectiveVolumeThisSession.get(muscle) ?? 0) + effective)
+      );
     }
   }
 
-  // Build compliance rows for muscles with prescribed sets in this session
   const compliance: MuscleVolumeCompliance[] = [];
-  for (const [muscle, prescribed] of setsPrescribed.entries()) {
+  for (const [muscle, planned] of plannedEffectiveVolumeThisSession.entries()) {
     const landmarks = VOLUME_LANDMARKS[muscle];
     if (!landmarks) continue;
 
-    const before = setsLoggedBefore.get(muscle) ?? 0;
-    const projected = before + prescribed;
+    const before = performedEffectiveVolumeBeforeSession.get(muscle) ?? 0;
+    const projected = roundToTenth(before + planned);
     const weeklyTarget = getWeeklyVolumeTarget(meso, muscle, mesocycleSnapshot.week);
 
     compliance.push({
       muscle,
-      setsLoggedBeforeSession: before,
-      setsPrescribedThisSession: prescribed,
-      projectedTotal: projected,
+      performedEffectiveVolumeBeforeSession: before,
+      plannedEffectiveVolumeThisSession: planned,
+      projectedEffectiveVolume: projected,
       weeklyTarget,
       mev: landmarks.mev,
       mav: landmarks.mav,

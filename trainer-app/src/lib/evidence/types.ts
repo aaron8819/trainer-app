@@ -1,3 +1,5 @@
+import type { PlannerDiagnostics } from "@/lib/planner-diagnostics/types";
+
 export type CyclePhase = "accumulation" | "intensification" | "realization" | "deload";
 
 export type CycleContextSnapshot = {
@@ -58,6 +60,7 @@ export type SessionDecisionReceipt = {
   };
   sorenessSuppressedMuscles: string[];
   deloadDecision: DeloadDecision;
+  plannerDiagnostics?: PlannerDiagnostics;
   readiness: {
     wasAutoregulated: boolean;
     signalAgeHours: number | null;

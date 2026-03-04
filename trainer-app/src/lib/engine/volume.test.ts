@@ -80,6 +80,7 @@ describe("volume context", () => {
     expect(context.muscleVolume.Chest.weeklyDirectSets).toBe(3);
     expect(context.muscleVolume.Triceps.weeklyDirectSets).toBe(2);
     expect(context.muscleVolume.Triceps.weeklyIndirectSets).toBe(3);
+    expect(context.muscleVolume.Triceps.weeklyEffectiveSets).toBeCloseTo(2.9, 6);
     expect(context.recent.Chest).toBe(12);
   });
 

@@ -12,10 +12,12 @@ import {
   loadActiveMesocycle,
 } from "@/lib/api/mesocycle-lifecycle";
 import { VOLUME_LANDMARKS } from "@/lib/engine/volume-landmarks";
+import { validateStimulusProfileCoverage } from "@/lib/engine/stimulus";
 import { prisma } from "@/lib/db/prisma";
 import type { SessionIntent } from "@/lib/engine/session-types";
 
 const INTENT_KEYS: SessionIntent[] = ["push", "pull", "legs", "upper", "lower", "full_body", "body_part"];
+const STRICT_STIMULUS_COVERAGE_ENV = "STRICT_STIMULUS_PROFILE_COVERAGE";
 
 function createEmptyRoleMapByIntent(): Record<SessionIntent, Map<string, "CORE_COMPOUND" | "ACCESSORY">> {
   return {
@@ -36,6 +38,14 @@ function dbIntentToSessionIntent(value: string): SessionIntent | null {
 
 function expectedSectionForRole(role: "CORE_COMPOUND" | "ACCESSORY"): "MAIN" | "ACCESSORY" {
   return role === "CORE_COMPOUND" ? "MAIN" : "ACCESSORY";
+}
+
+function shouldUseStrictStimulusCoverage(): boolean {
+  const rawValue = process.env[STRICT_STIMULUS_COVERAGE_ENV];
+  if (!rawValue) {
+    return false;
+  }
+  return ["1", "true", "yes", "on"].includes(rawValue.trim().toLowerCase());
 }
 
 function normalizeLifecycleMuscleKey(muscle: string): string {
@@ -112,6 +122,10 @@ export async function loadMappedGenerationContext(userId: string): Promise<Mappe
   const mappedGoals = mapGoals(goals.primaryGoal, goals.secondaryGoal);
   const mappedConstraints = mapConstraints(constraints);
   const exerciseLibrary = mapExercises(exercises);
+  validateStimulusProfileCoverage(exerciseLibrary, {
+    context: "template-session generation",
+    strict: shouldUseStrictStimulusCoverage(),
+  });
   const history = mapHistory(workouts);
   const mappedPreferences = mapPreferences(preferences);
   const mappedCheckIn = mapCheckIn(checkIns);

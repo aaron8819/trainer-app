@@ -10,7 +10,7 @@ import {
   getMostRecentHistoryEntry,
   isPerformedHistoryEntry,
 } from "./history";
-import { INDIRECT_SET_MULTIPLIER } from "./volume-constants";
+import { getEffectiveStimulusByMuscle } from "./stimulus";
 
 export type VolumeContext = {
   recent: Record<string, number>;
@@ -20,6 +20,7 @@ export type VolumeContext = {
 export type MuscleVolumeState = {
   weeklyDirectSets: number;
   weeklyIndirectSets: number;
+  weeklyEffectiveSets: number;
   plannedSets: number;
   landmark: VolumeLandmarks;
 };
@@ -55,6 +56,7 @@ export function buildVolumeContext(
   const previous: Record<string, number> = {};
   const weeklyDirect: Record<string, number> = {};
   const weeklyIndirect: Record<string, number> = {};
+  const weeklyEffective: Record<string, number> = {};
 
   for (const entry of history) {
     if (!isPerformedHistoryEntry(entry)) continue;
@@ -74,9 +76,10 @@ export function buildVolumeContext(
       const primaryMuscles = exercise.primaryMuscles ?? [];
       const secondaryMuscles = exercise.secondaryMuscles ?? [];
       const setsCount = exerciseEntry.sets.length;
+      const effectiveContribution = getEffectiveStimulusByMuscle(exercise, setsCount);
 
-      for (const muscle of primaryMuscles) {
-        target[muscle] = (target[muscle] ?? 0) + setsCount;
+      for (const [muscle, effectiveSets] of effectiveContribution) {
+        target[muscle] = (target[muscle] ?? 0) + effectiveSets;
       }
 
       const snapshot = entry.mesocycleSnapshot;
@@ -93,6 +96,9 @@ export function buildVolumeContext(
         for (const muscle of secondaryMuscles) {
           weeklyIndirect[muscle] = (weeklyIndirect[muscle] ?? 0) + setsCount;
         }
+        for (const [muscle, effectiveSets] of effectiveContribution) {
+          weeklyEffective[muscle] = (weeklyEffective[muscle] ?? 0) + effectiveSets;
+        }
       }
     }
   }
@@ -106,6 +112,7 @@ export function buildVolumeContext(
     muscleVolume[muscle] = {
       weeklyDirectSets: weeklyDirect[muscle] ?? 0,
       weeklyIndirectSets: weeklyIndirect[muscle] ?? 0,
+      weeklyEffectiveSets: weeklyEffective[muscle] ?? 0,
       plannedSets: 0,
       landmark,
     };
@@ -142,70 +149,40 @@ export function enforceVolumeCaps(
   const useEffectiveVolumeCaps = shouldUseEffectiveVolumeCaps();
 
   type PlannedVolume = {
-    directSets: Record<string, number>;
-    indirectSets: Record<string, number>;
+    effectiveSets: Record<string, number>;
   };
 
-  const directBaseline = enhanced
+  const effectiveBaseline = enhanced
     ? Object.fromEntries(
         Object.entries(volumeContext.muscleVolume)
-          .filter(([, state]) => state.weeklyDirectSets > 0)
-          .map(([muscle, state]) => [muscle, state.weeklyDirectSets])
+          .filter(([, state]) => state.weeklyEffectiveSets > 0)
+          .map(([muscle, state]) => [muscle, state.weeklyEffectiveSets])
       )
     : { ...volumeContext.recent };
-  const indirectBaseline = enhanced
-    ? Object.fromEntries(
-        Object.entries(volumeContext.muscleVolume)
-          .filter(([, state]) => state.weeklyIndirectSets > 0)
-          .map(([muscle, state]) => [muscle, state.weeklyIndirectSets])
-      )
-    : {};
 
   const buildPlannedVolume = (currentAccessories: WorkoutExercise[]) => {
-    const directSets: Record<string, number> = { ...directBaseline };
-    const indirectSets: Record<string, number> = { ...indirectBaseline };
+    const effectiveSets: Record<string, number> = { ...effectiveBaseline };
 
     const addExercise = (exercise: WorkoutExercise) => {
-      const primaryMuscles = exercise.exercise.primaryMuscles ?? [];
-      const secondaryMuscles = exercise.exercise.secondaryMuscles ?? [];
-      const sets = exercise.sets.length;
-      for (const muscle of primaryMuscles) {
-        directSets[muscle] = (directSets[muscle] ?? 0) + sets;
-      }
-      for (const muscle of secondaryMuscles) {
-        indirectSets[muscle] = (indirectSets[muscle] ?? 0) + sets;
+      const contribution = getEffectiveStimulusByMuscle(exercise.exercise, exercise.sets.length);
+      for (const [muscle, effective] of contribution) {
+        effectiveSets[muscle] = (effectiveSets[muscle] ?? 0) + effective;
       }
     };
     [...mainLifts, ...currentAccessories].forEach(addExercise);
-    return { directSets, indirectSets } satisfies PlannedVolume;
+    return { effectiveSets } satisfies PlannedVolume;
   };
 
   const exceedsCap = (planned: PlannedVolume) => {
     if (enhanced) {
-      if (useEffectiveVolumeCaps) {
-        const muscles = new Set<string>([
-          ...Object.keys(planned.directSets),
-          ...Object.keys(planned.indirectSets),
-        ]);
-        return Array.from(muscles).some((muscle) => {
-          const directSets = planned.directSets[muscle] ?? 0;
-          const indirectSets = planned.indirectSets[muscle] ?? 0;
-          const landmark = VOLUME_LANDMARKS[muscle];
-          const effectiveSets = directSets + indirectSets * INDIRECT_SET_MULTIPLIER;
-          const exceedsLandmark = landmark ? effectiveSets > landmark.mrv : false;
-          const exceedsSpike = exceedsSpikeCap(directSets, volumeContext.previous[muscle]);
-          return exceedsLandmark || exceedsSpike;
-        });
-      }
-
-      return Object.entries(planned.directSets).some(([muscle, sets]) => {
+      return Object.entries(planned.effectiveSets).some(([muscle, sets]) => {
         const landmark = VOLUME_LANDMARKS[muscle];
-        const exceedsLandmark = landmark ? sets > landmark.mrv : false;
+        const exceedsLandmark = useEffectiveVolumeCaps && landmark ? sets > landmark.mrv : false;
         const exceedsSpike = exceedsSpikeCap(sets, volumeContext.previous[muscle]);
         return exceedsLandmark || exceedsSpike;
       });
     }
-    return Object.entries(planned.directSets).some(([muscle, sets]) => {
+    return Object.entries(planned.effectiveSets).some(([muscle, sets]) => {
       return exceedsSpikeCap(sets, volumeContext.previous[muscle]);
     });
   };
@@ -260,7 +237,7 @@ export function deriveFatigueState(
 }
 
 export function effectiveWeeklySets(state: MuscleVolumeState): number {
-  return state.weeklyDirectSets + state.weeklyIndirectSets * INDIRECT_SET_MULTIPLIER;
+  return state.weeklyEffectiveSets;
 }
 
 export function buildVolumePlanByMuscle(
@@ -273,29 +250,19 @@ export function buildVolumePlanByMuscle(
   }
 ): VolumePlanByMuscle {
   const enhanced = isEnhancedVolumeContext(volumeContext);
-  const directSets: Record<string, number> = enhanced
+  const effectiveSets: Record<string, number> = enhanced
     ? Object.fromEntries(
         Object.entries(volumeContext.muscleVolume)
-          .filter(([, state]) => state.weeklyDirectSets > 0)
-          .map(([muscle, state]) => [muscle, state.weeklyDirectSets])
+          .filter(([, state]) => state.weeklyEffectiveSets > 0)
+          .map(([muscle, state]) => [muscle, state.weeklyEffectiveSets])
       )
     : { ...volumeContext.recent };
-  const indirectSets: Record<string, number> = enhanced
-    ? Object.fromEntries(
-        Object.entries(volumeContext.muscleVolume)
-          .filter(([, state]) => state.weeklyIndirectSets > 0)
-          .map(([muscle, state]) => [muscle, state.weeklyIndirectSets])
-      )
-    : {};
 
   const allExercises = [...mainLifts, ...accessories];
   for (const exercise of allExercises) {
-    const sets = exercise.sets.length;
-    for (const muscle of exercise.exercise.primaryMuscles ?? []) {
-      directSets[muscle] = (directSets[muscle] ?? 0) + sets;
-    }
-    for (const muscle of exercise.exercise.secondaryMuscles ?? []) {
-      indirectSets[muscle] = (indirectSets[muscle] ?? 0) + sets;
+    const contribution = getEffectiveStimulusByMuscle(exercise.exercise, exercise.sets.length);
+    for (const [muscle, effective] of contribution) {
+      effectiveSets[muscle] = (effectiveSets[muscle] ?? 0) + effective;
     }
   }
 
@@ -313,8 +280,7 @@ export function buildVolumePlanByMuscle(
     const target = enhanced && volumeContext.weeklyTargets?.[muscle] != null
       ? volumeContext.weeklyTargets[muscle]
       : getTargetVolume(landmark, mesocycleWeek, mesocycleLength);
-    const planned =
-      (directSets[muscle] ?? 0) + (indirectSets[muscle] ?? 0) * INDIRECT_SET_MULTIPLIER;
+    const planned = effectiveSets[muscle] ?? 0;
     const delta = target - planned;
     plan[muscle] = {
       target: roundVolumeValue(target),

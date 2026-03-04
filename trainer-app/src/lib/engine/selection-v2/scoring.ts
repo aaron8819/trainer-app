@@ -7,7 +7,6 @@
  */
 
 import type { Exercise, Muscle } from "../types";
-import { INDIRECT_SET_MULTIPLIER } from "../volume-constants";
 import type {
   VolumeContribution,
   SelectionVolumeContext,
@@ -21,16 +20,16 @@ import type {
 /**
  * Score how well this exercise fills volume deficits
  *
- * Uses EFFECTIVE volume (direct + 0.3 × indirect) to account for indirect work.
+ * Uses effective stimulus contribution to account for exercise overlap.
  *
  * Example:
  * - Chest deficit: 4 sets
  * - Front delt deficit: 5.6 sets (after bench filled 2.4 indirect)
  * - Side delt deficit: 8 sets
  *
- * - OHP contributes: 3 front delts (direct), 0.9 side delts (indirect)
+ * - OHP contributes: 3 front delts, 1.05 side delts
  *   → Fills 3/5.6 = 53.6% of front delt deficit
- *   → Fills 0.9/8 = 11.25% of side delt deficit
+ *   → Fills 1.05/8 = 13.1% of side delt deficit
  *   → Total: (3 + 0.9) / (5.6 + 8) = 28.7%
  *
  * - Lateral Raise contributes: 3 side delts (direct)
@@ -48,15 +47,12 @@ export function scoreDeficitFill(
   let totalFilled = 0;
   let totalDeficit = 0;
 
-  for (const [muscle, { direct, indirect }] of contribution) {
+  for (const [muscle, effectiveContribution] of contribution) {
     const target = volumeContext.weeklyTarget.get(muscle) ?? 0;
     const actual = volumeContext.effectiveActual.get(muscle) ?? 0;
     const deficit = Math.max(0, target - actual);
 
     if (deficit === 0) continue; // No deficit to fill
-
-    // Effective contribution (direct + 0.3 × indirect)
-    const effectiveContribution = direct + indirect * INDIRECT_SET_MULTIPLIER;
 
     // How much of this deficit can we fill?
     const filled = Math.min(effectiveContribution, deficit);
@@ -90,7 +86,7 @@ export function scoreDeficitFillDynamic(
   let totalFilled = 0;
   let totalDeficit = 0;
 
-  for (const [muscle, { direct, indirect }] of contribution) {
+  for (const [muscle, effectiveContribution] of contribution) {
     const target = volumeContext.weeklyTarget.get(muscle) ?? 0;
     const historicalActual = volumeContext.effectiveActual.get(muscle) ?? 0;
     const beamActual = beamVolumeFilled.get(muscle) ?? 0;
@@ -98,8 +94,6 @@ export function scoreDeficitFillDynamic(
     const deficit = Math.max(0, target - actual);
 
     if (deficit === 0) continue; // Already at target in this beam path
-
-    const effectiveContribution = direct + indirect * INDIRECT_SET_MULTIPLIER;
     const filled = Math.min(effectiveContribution, deficit);
 
     totalFilled += filled;

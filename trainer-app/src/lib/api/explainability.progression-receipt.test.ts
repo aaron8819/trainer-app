@@ -106,6 +106,10 @@ vi.mock("./workout-context", () => ({
       equipment: ["barbell"],
       primaryMuscles: ["Chest"],
       secondaryMuscles: ["Triceps"],
+      stimulusProfile: {
+        chest: 1,
+        triceps: 0.35,
+      },
       isCompound: true,
       repRangeMin: 3,
       repRangeMax: 12,

@@ -160,7 +160,7 @@ function formatScoreReason(key: string, value: number, candidate: SelectionCandi
 /**
  * Format volume contribution into summary text
  *
- * Example: "3 sets chest, 0.9 indirect front delts"
+ * Example: "3.0 effective chest, 1.1 effective front delts"
  *
  * @param candidate - Exercise candidate
  * @returns Volume contribution summary
@@ -168,12 +168,9 @@ function formatScoreReason(key: string, value: number, candidate: SelectionCandi
 function formatVolumeContribution(candidate: SelectionCandidate): string {
   const parts: string[] = [];
 
-  for (const [muscle, { direct, indirect }] of candidate.volumeContribution) {
-    if (direct > 0) {
-      parts.push(`${direct} sets ${muscle.toLowerCase()}`);
-    }
-    if (indirect > 0) {
-      parts.push(`${indirect.toFixed(1)} indirect ${muscle.toLowerCase()}`);
+  for (const [muscle, effective] of candidate.volumeContribution) {
+    if (effective > 0) {
+      parts.push(`${effective.toFixed(1)} effective ${muscle.toLowerCase()}`);
     }
   }
 

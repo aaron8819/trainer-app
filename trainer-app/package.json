@@ -18,6 +18,7 @@
         "postinstall": "prisma generate",
         "export:ppl-options": "tsx scripts/export-ppl-options.ts",
         "verify:exercise-library": "tsx scripts/verify-exercise-library.ts",
+        "report:stimulus-coverage": "tsx scripts/report-stimulus-profile-coverage.ts",
         "verify:contracts": "tsx scripts/check-doc-runtime-contracts.ts",
         "verify": "npm run lint && npx tsc --noEmit && npm run test && npm run verify:contracts",
         "repair:exercise-library": "tsx scripts/repair-exercise-library.ts",

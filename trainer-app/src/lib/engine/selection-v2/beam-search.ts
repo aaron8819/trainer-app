@@ -243,13 +243,13 @@ function hasGenuinePrimaryMuscleDeficit(
   const beamActual = state.volumeFilled.get(muscle) ?? 0;
   const remainingDeficit = Math.max(0, target - (historicalActual + beamActual));
 
-  const candidateDirect = candidate.volumeContribution.get(muscle)?.direct ?? 0;
-  if (candidateDirect <= 0) {
+  const candidateContribution = candidate.volumeContribution.get(muscle) ?? 0;
+  if (candidateContribution <= 0) {
     return false;
   }
 
-  // Treat duplicate isolation as warranted only when deficit materially exceeds one direct-isolation dose.
-  return remainingDeficit > candidateDirect;
+  // Treat duplicate isolation as warranted only when deficit materially exceeds one isolation dose.
+  return remainingDeficit > candidateContribution;
 }
 
 /**
@@ -382,13 +382,13 @@ export function beamSearch(
         // Applies to all muscles — prevents chest/front-delt/triceps over-accumulation on push days.
         const SESSION_DIRECT_SET_CEILING = 12;
         let exceedsSessionMuscle = false;
-        for (const [muscle, { direct }] of candidate.volumeContribution) {
-          if (direct > 0) {
+        for (const [muscle, effective] of candidate.volumeContribution) {
+          if (effective > 0) {
             const currentDirect = state.selected.reduce(
-              (sum, c) => sum + (c.volumeContribution.get(muscle)?.direct ?? 0),
+              (sum, c) => sum + (c.volumeContribution.get(muscle) ?? 0),
               0
             );
-            if (currentDirect + direct > SESSION_DIRECT_SET_CEILING) {
+            if (currentDirect + effective > SESSION_DIRECT_SET_CEILING) {
               exceedsSessionMuscle = true;
               break;
             }

@@ -111,6 +111,7 @@ export function finalizePostLoadResult(
     lifecycleVolumeTargets: mapped.lifecycleVolumeTargets,
     sorenessSuppressedMuscles: mapped.sorenessSuppressedMuscles,
     deloadDecision: mapped.deloadDecision,
+    plannerDiagnostics: result.selection.plannerDiagnostics,
   });
 
   return {

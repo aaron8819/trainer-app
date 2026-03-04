@@ -1,4 +1,5 @@
 import type { AutoregulationModification } from "@/lib/engine/readiness/types";
+import type { PlannerDiagnostics } from "@/lib/planner-diagnostics/types";
 import type {
   CycleContextSnapshot,
   DeloadDecision,
@@ -129,6 +130,219 @@ function parseVolumeTargetSource(value: unknown): SessionDecisionVolumeTargetSou
     : undefined;
 }
 
+function parsePlannerDiagnostics(value: unknown): PlannerDiagnostics | undefined {
+  const record = toObject(value);
+  const musclesRecord = toObject(record?.muscles);
+  const exercisesRecord = toObject(record?.exercises);
+  const closureRecord = toObject(record?.closure);
+  if (!record || !musclesRecord || !exercisesRecord || !closureRecord) {
+    return undefined;
+  }
+
+  const muscles = Object.fromEntries(
+    Object.entries(musclesRecord).flatMap(([muscle, entry]) => {
+      const item = toObject(entry);
+      if (!item) {
+        return [];
+      }
+
+      const weeklyTarget = toFiniteNumber(item.weeklyTarget);
+      const performedEffectiveVolumeBeforeSession = toFiniteNumber(
+        item.performedEffectiveVolumeBeforeSession
+      );
+      const plannedEffectiveVolumeAfterRoleBudgeting = toFiniteNumber(
+        item.plannedEffectiveVolumeAfterRoleBudgeting
+      );
+      const projectedEffectiveVolumeAfterRoleBudgeting = toFiniteNumber(
+        item.projectedEffectiveVolumeAfterRoleBudgeting
+      );
+      const deficitAfterRoleBudgeting = toFiniteNumber(item.deficitAfterRoleBudgeting);
+      const plannedEffectiveVolumeAfterClosure = toFiniteNumber(
+        item.plannedEffectiveVolumeAfterClosure
+      );
+      const projectedEffectiveVolumeAfterClosure = toFiniteNumber(
+        item.projectedEffectiveVolumeAfterClosure
+      );
+      const finalRemainingDeficit = toFiniteNumber(item.finalRemainingDeficit);
+
+      if (
+        weeklyTarget == null ||
+        performedEffectiveVolumeBeforeSession == null ||
+        plannedEffectiveVolumeAfterRoleBudgeting == null ||
+        projectedEffectiveVolumeAfterRoleBudgeting == null ||
+        deficitAfterRoleBudgeting == null ||
+        plannedEffectiveVolumeAfterClosure == null ||
+        projectedEffectiveVolumeAfterClosure == null ||
+        finalRemainingDeficit == null
+      ) {
+        return [];
+      }
+
+      return [[muscle, {
+        weeklyTarget,
+        performedEffectiveVolumeBeforeSession,
+        plannedEffectiveVolumeAfterRoleBudgeting,
+        projectedEffectiveVolumeAfterRoleBudgeting,
+        deficitAfterRoleBudgeting,
+        plannedEffectiveVolumeAfterClosure,
+        projectedEffectiveVolumeAfterClosure,
+        finalRemainingDeficit,
+      }]];
+    })
+  );
+
+  const exercises = Object.fromEntries(
+    Object.entries(exercisesRecord).flatMap(([exerciseId, entry]) => {
+      const item = toObject(entry);
+      const anchorUsed = toObject(item?.anchorUsed);
+      const anchorBudgetDecision = toObject(item?.anchorBudgetDecision);
+      const overshootAdjustmentsApplied = toObject(item?.overshootAdjustmentsApplied);
+      if (
+        !item ||
+        typeof item.exerciseName !== "string" ||
+        toFiniteNumber(item.assignedSetCount) == null ||
+        !toObject(item.stimulusVector)
+      ) {
+        return [];
+      }
+
+      const stimulusVector = parseVolumeTargets(item.stimulusVector) ?? {};
+      const parsedAnchorUsed =
+        anchorUsed &&
+        ((anchorUsed.kind === "muscle" && typeof anchorUsed.muscle === "string") ||
+          (anchorUsed.kind === "movement_pattern" &&
+            typeof anchorUsed.movementPattern === "string"))
+          ? (anchorUsed as PlannerDiagnostics["exercises"][string]["anchorUsed"])
+          : undefined;
+
+      const parsedAnchorBudgetDecision =
+        anchorBudgetDecision &&
+        toFiniteNumber(anchorBudgetDecision.weeklyTarget) != null &&
+        toFiniteNumber(anchorBudgetDecision.performedEffectiveVolumeBeforeSession) != null &&
+        toFiniteNumber(anchorBudgetDecision.plannedEffectiveVolumeBeforeAssignment) != null &&
+        toFiniteNumber(anchorBudgetDecision.reservedEffectiveVolumeForRemainingRoleFixtures) != null &&
+        toFiniteNumber(anchorBudgetDecision.anchorRemainingBeforeAssignment) != null &&
+        toFiniteNumber(anchorBudgetDecision.anchorContributionPerSet) != null &&
+        toFiniteNumber(anchorBudgetDecision.desiredSetTarget) != null &&
+        toFiniteNumber(anchorBudgetDecision.anchorConstrainedContinuousSetTarget) != null
+          ? {
+              weeklyTarget: anchorBudgetDecision.weeklyTarget as number,
+              performedEffectiveVolumeBeforeSession:
+                anchorBudgetDecision.performedEffectiveVolumeBeforeSession as number,
+              plannedEffectiveVolumeBeforeAssignment:
+                anchorBudgetDecision.plannedEffectiveVolumeBeforeAssignment as number,
+              reservedEffectiveVolumeForRemainingRoleFixtures:
+                anchorBudgetDecision.reservedEffectiveVolumeForRemainingRoleFixtures as number,
+              anchorRemainingBeforeAssignment:
+                anchorBudgetDecision.anchorRemainingBeforeAssignment as number,
+              anchorContributionPerSet: anchorBudgetDecision.anchorContributionPerSet as number,
+              desiredSetTarget: anchorBudgetDecision.desiredSetTarget as number,
+              anchorConstrainedContinuousSetTarget:
+                anchorBudgetDecision.anchorConstrainedContinuousSetTarget as number,
+            }
+          : undefined;
+
+      const parsedOvershootAdjustments =
+        overshootAdjustmentsApplied &&
+        toFiniteNumber(overshootAdjustmentsApplied.initialSetTarget) != null &&
+        toFiniteNumber(overshootAdjustmentsApplied.finalSetTarget) != null &&
+        toFiniteNumber(overshootAdjustmentsApplied.reductionsApplied) != null
+          ? {
+              initialSetTarget: overshootAdjustmentsApplied.initialSetTarget as number,
+              finalSetTarget: overshootAdjustmentsApplied.finalSetTarget as number,
+              reductionsApplied: overshootAdjustmentsApplied.reductionsApplied as number,
+              limitingMuscles: parseStringArray(overshootAdjustmentsApplied.limitingMuscles),
+            }
+          : undefined;
+
+      return [[exerciseId, {
+        exerciseId,
+        exerciseName: item.exerciseName,
+        assignedSetCount: item.assignedSetCount as number,
+        stimulusVector,
+        anchorUsed: parsedAnchorUsed,
+        anchorBudgetDecision: parsedAnchorBudgetDecision,
+        overshootAdjustmentsApplied: parsedOvershootAdjustments,
+        isRoleFixture: item.isRoleFixture === true,
+        isClosureAddition: item.isClosureAddition === true,
+        isSetExpandedCarryover: item.isSetExpandedCarryover === true,
+        closureSetDelta: toFiniteNumber(item.closureSetDelta) ?? 0,
+      }]];
+    })
+  );
+
+  const actions = Array.isArray(closureRecord.actions)
+    ? closureRecord.actions.flatMap((entry) => {
+        const item = toObject(entry);
+        if (
+          !item ||
+          typeof item.exerciseId !== "string" ||
+          typeof item.exerciseName !== "string" ||
+          (item.kind !== "add" && item.kind !== "expand") ||
+          toFiniteNumber(item.setDelta) == null ||
+          toFiniteNumber(item.deficitReduction) == null ||
+          toFiniteNumber(item.collateralOvershoot) == null ||
+          toFiniteNumber(item.fatigueCost) == null ||
+          toFiniteNumber(item.score) == null
+        ) {
+          return [];
+        }
+
+        return [{
+          exerciseId: item.exerciseId,
+          exerciseName: item.exerciseName,
+          kind: item.kind as "add" | "expand",
+          setDelta: item.setDelta as number,
+          deficitReduction: item.deficitReduction as number,
+          collateralOvershoot: item.collateralOvershoot as number,
+          fatigueCost: item.fatigueCost as number,
+          score: item.score as number,
+        }];
+      })
+    : [];
+
+  const firstIterationCandidates = Array.isArray(closureRecord.firstIterationCandidates)
+    ? closureRecord.firstIterationCandidates.flatMap((entry) => {
+        const item = toObject(entry);
+        if (
+          !item ||
+          typeof item.exerciseId !== "string" ||
+          typeof item.exerciseName !== "string" ||
+          (item.kind !== "add" && item.kind !== "expand") ||
+          toFiniteNumber(item.setDelta) == null ||
+          toFiniteNumber(item.dominantDeficitContribution) == null
+        ) {
+          return [];
+        }
+
+        return [{
+          exerciseId: item.exerciseId,
+          exerciseName: item.exerciseName,
+          kind: item.kind as "add" | "expand",
+          setDelta: item.setDelta as number,
+          dominantDeficitMuscle:
+            typeof item.dominantDeficitMuscle === "string" ? item.dominantDeficitMuscle : undefined,
+          dominantDeficitRemaining: toFiniteNumber(item.dominantDeficitRemaining),
+          dominantDeficitContribution: item.dominantDeficitContribution as number,
+          totalScore: toFiniteNumber(item.totalScore),
+          deficitReduction: toFiniteNumber(item.deficitReduction),
+          dominantDeficitReduction: toFiniteNumber(item.dominantDeficitReduction),
+          collateralOvershoot: toFiniteNumber(item.collateralOvershoot),
+          fatigueCost: toFiniteNumber(item.fatigueCost),
+          score: toFiniteNumber(item.score),
+          filteredOutReason:
+            typeof item.filteredOutReason === "string" ? item.filteredOutReason : undefined,
+        }];
+      })
+    : [];
+
+  return {
+    muscles,
+    exercises,
+    closure: { actions, firstIterationCandidates },
+  };
+}
+
 function summarizeIntensityScaling(
   modifications: AutoregulationModification[] | undefined,
   existing?: Partial<SessionDecisionReadinessScaling>
@@ -198,6 +412,7 @@ export function buildSessionDecisionReceipt(input: {
   sorenessSuppressedMuscles?: string[];
   deloadDecision?: DeloadDecision | null;
   autoregulation?: ReadinessReceiptInput;
+  plannerDiagnostics?: PlannerDiagnostics;
 }): SessionDecisionReceipt {
   const sorenessSuppressedMuscles = input.sorenessSuppressedMuscles ?? [];
   const deloadDecision = input.deloadDecision ?? DEFAULT_DELOAD_DECISION;
@@ -222,6 +437,7 @@ export function buildSessionDecisionReceipt(input: {
     },
     sorenessSuppressedMuscles,
     deloadDecision,
+    plannerDiagnostics: input.plannerDiagnostics,
     readiness: {
       wasAutoregulated:
         (input.autoregulation?.wasAutoregulated ?? false) || intensityScaling.applied,
@@ -262,6 +478,7 @@ function parsePersistedReceipt(value: unknown): SessionDecisionReceipt | undefin
     },
     sorenessSuppressedMuscles: parseStringArray(record.sorenessSuppressedMuscles),
     deloadDecision,
+    plannerDiagnostics: parsePlannerDiagnostics(record.plannerDiagnostics),
     readiness: {
       wasAutoregulated: readinessRecord.wasAutoregulated === true,
       signalAgeHours: toFiniteNumber(readinessRecord.signalAgeHours) ?? null,
@@ -321,6 +538,7 @@ export function normalizeSelectionMetadataWithReceipt(input: {
       lifecycleVolumeTargets: existingReceipt?.lifecycleVolume.targets,
       sorenessSuppressedMuscles: existingReceipt?.sorenessSuppressedMuscles ?? [],
       deloadDecision: existingReceipt?.deloadDecision,
+      plannerDiagnostics: existingReceipt?.plannerDiagnostics,
       autoregulation: existingReceipt
         ? {
             wasAutoregulated: existingReceipt.readiness.wasAutoregulated,

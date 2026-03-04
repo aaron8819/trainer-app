@@ -1,5 +1,6 @@
 import { applyLoads as applyLoadsEngine } from "@/lib/engine/apply-loads";
 import { resolveBaseSelectionModeConfidence } from "@/lib/engine/history";
+import { getExplicitStimulusProfileForExercise } from "@/lib/engine/stimulus";
 import type { PeriodizationModifiers } from "@/lib/engine/rules";
 import { prisma } from "@/lib/db/prisma";
 import type {
@@ -207,12 +208,20 @@ export function mapExercises(
     exerciseMuscles: { role: string; muscle: { name: string; sraHours: number } }[];
   })[]
 ) {
-  return exercises.map((exercise) => ({
-    id: exercise.id,
-    name: exercise.name,
-    movementPatterns: (exercise.movementPatterns ?? []).map((pattern) =>
-      pattern.toLowerCase()
-    ) as MovementPatternV2[],
+  return exercises.map((exercise) => {
+    const primaryMuscles = exercise.exerciseMuscles
+      .filter((item) => item.role === "PRIMARY")
+      .map((item) => item.muscle.name);
+    const secondaryMuscles = exercise.exerciseMuscles
+      .filter((item) => item.role === "SECONDARY")
+      .map((item) => item.muscle.name);
+
+    return {
+      id: exercise.id,
+      name: exercise.name,
+      movementPatterns: (exercise.movementPatterns ?? []).map((pattern) =>
+        pattern.toLowerCase()
+      ) as MovementPatternV2[],
     splitTags: (exercise.splitTags ?? []).map((tag) => tag.toLowerCase()) as SplitTag[],
     jointStress: exercise.jointStress.toLowerCase() as JointStress,
     isMainLiftEligible: exercise.isMainLiftEligible ?? false,
@@ -231,16 +240,14 @@ export function mapExercises(
     equipment: exercise.exerciseEquipment.map((item) =>
       item.equipment.type.toLowerCase()
     ) as EquipmentType[],
-    primaryMuscles: exercise.exerciseMuscles
-      .filter((item) => item.role === "PRIMARY")
-      .map((item) => item.muscle.name),
-    secondaryMuscles: exercise.exerciseMuscles
-      .filter((item) => item.role === "SECONDARY")
-      .map((item) => item.muscle.name),
-    muscleSraHours: Object.fromEntries(
-      exercise.exerciseMuscles.map((item) => [item.muscle.name, item.muscle.sraHours])
-    ),
-  }));
+      primaryMuscles,
+      secondaryMuscles,
+      stimulusProfile: getExplicitStimulusProfileForExercise(exercise),
+      muscleSraHours: Object.fromEntries(
+        exercise.exerciseMuscles.map((item) => [item.muscle.name, item.muscle.sraHours])
+      ),
+    };
+  });
 }
 
 export function mapHistory(workouts: WorkoutWithRelations[]): WorkoutHistoryEntry[] {

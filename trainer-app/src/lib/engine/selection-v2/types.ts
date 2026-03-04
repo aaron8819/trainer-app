@@ -2,7 +2,7 @@
  * Selection V2: Multi-Objective Beam Search Optimizer
  *
  * Type definitions for the beam search-based exercise selection system.
- * Supports indirect volume accounting, rotation memory, and Pareto optimization.
+ * Supports effective stimulus accounting, rotation memory, and Pareto optimization.
  */
 
 import type { Exercise, Muscle, Goals, TrainingAge } from "../types";
@@ -162,10 +162,7 @@ export interface SelectionVolumeContext {
   /** Sets already completed this week (direct only) */
   weeklyActual: Map<Muscle, number>;
 
-  /**
-   * Effective sets already completed (direct + 0.3 × indirect)
-   * This is the key field for indirect volume accounting
-   */
+  /** Effective sets already completed for the current week */
   effectiveActual: Map<Muscle, number>;
 }
 
@@ -233,7 +230,7 @@ export interface SelectionCandidate {
   /** Proposed number of sets */
   proposedSets: number;
 
-  /** Volume contribution (direct + indirect per muscle) */
+  /** Effective stimulus contribution per muscle */
   volumeContribution: VolumeContribution;
 
   /** Time contribution in minutes */
@@ -247,15 +244,9 @@ export interface SelectionCandidate {
 }
 
 /**
- * Volume contribution per muscle (direct and indirect)
+ * Effective stimulus contribution per muscle
  */
-export type VolumeContribution = Map<
-  Muscle,
-  {
-    direct: number; // Sets directly targeting this muscle (primary)
-    indirect: number; // Sets indirectly hitting this muscle (secondary)
-  }
->;
+export type VolumeContribution = Map<Muscle, number>;
 
 /**
  * Multi-objective scores for a candidate (all 0-1 normalized)

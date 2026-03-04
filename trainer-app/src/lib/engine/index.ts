@@ -7,6 +7,7 @@ export * from "./utils";
 export * from "./prescription";
 export * from "./volume";
 export * from "./volume-landmarks";
+export * from "./stimulus";
 export * from "./substitution";
 export * from "./progression";
 export * from "./sra";

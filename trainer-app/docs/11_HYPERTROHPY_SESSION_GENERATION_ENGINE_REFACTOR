@@ -1,0 +1,1038 @@
+Hypertrophy Session Generation Engine Refactor
+Straightening Volume Accounting, Role Budgeting, and Deficit Closure
+
+Owner: Aaron
+Last reviewed: 2026-03-04
+Status: Phase 1 complete; Phase 2 complete; Phase 3 complete; Phase 4 complete
+
+## 1. Purpose
+
+This document defines the implementation direction for fixing the hypertrophy session generator without introducing new conceptual drift.
+
+The goal is not to add more heuristics on top of the current behavior. The goal is to restore a clean planning model that is:
+
+- straightforward
+- aligned to first principles
+- explicit about what each model owns
+- resistant to future drift between exercise metadata, volume accounting, and session planning
+
+The runtime architecture remains:
+
+Intent -> Role Fixtures -> Fill -> Session Assembly
+
+What changes is the contract inside those stages.
+
+## 2. Problem Statement
+
+The current engine fails on some hypertrophy sessions because three structural problems compound:
+
+1. volume accounting uses binary primary/secondary muscle semantics
+2. role fixture budgeting clamps multi-muscle exercises by the most constrained primary muscle
+3. role presence is treated as a stopping condition rather than an anchoring condition
+
+Observed live failure:
+
+- week 3 push session for a once-weekly push frequency
+- chest target materially underfilled
+- triceps reported as on target due to current accounting
+- chest accessory role dropped as `weekly_budget_exhausted`
+- no closure pass runs after the role-driven branch
+
+## 3. Design Principles
+
+These principles are mandatory. If an implementation violates them, it should be rejected.
+
+### 3.1 Separate classification from planning math
+
+Exercise taxonomy is not the same thing as stimulus accounting.
+
+Classification fields such as:
+
+- `primaryMuscles`
+- `secondaryMuscles`
+- `splitTags`
+- `movementPatterns`
+
+exist to support:
+
+- filtering
+- UI display
+- substitutions
+- explainability language
+- intent alignment
+
+They must not be treated as the canonical source of hypertrophy stimulus math.
+
+### 3.2 One canonical stimulus model for planning
+
+All effective-set accounting must come from one explicit stimulus model.
+
+That model must be used consistently for:
+
+- performed weekly effective volume
+- planned in-session effective volume
+- deficit calculation
+- role budgeting
+- closure fill
+- volume compliance and explainability reporting
+
+### 3.3 Roles are anchors, not stopping conditions
+
+Mesocycle roles exist to preserve continuity and structural intent.
+
+They do not mean:
+
+- the session is already sufficient
+- the optimizer should stop
+- unresolved deficits are acceptable
+
+### 3.4 Closure is outcome-based
+
+The engine should decide whether planning is complete by checking unresolved deficits after role placement and role budgeting, not by checking whether a role registry exists.
+
+### 3.5 Preserve simple runtime semantics
+
+The implementation should avoid ad hoc muscle-specific rules where a generic model works.
+
+Prefer:
+
+- explicit data contracts
+- reusable deficit math
+- one closure pass
+
+Avoid:
+
+- branching by anecdotal special cases
+- hardcoded "if chest then add flyes" logic as the primary system
+
+### 3.6 One shared contribution helper
+
+Once `stimulusProfile` is introduced, no planning or volume-accounting code may derive hypertrophy contribution directly from:
+
+- `primaryMuscles`
+- `secondaryMuscles`
+
+All planning/accounting paths must use one shared helper that converts:
+
+- exercise
+- set count
+
+into:
+
+- effective contribution by muscle
+
+This is a hard anti-drift rule.
+
+## 4. Current Runtime Failure
+
+Current runtime flow:
+
+1. `generateSessionFromIntent()`
+2. `loadMappedGenerationContext()`
+3. `buildSelectionObjective()`
+4. check mesocycle role registry
+5. if role list is considered complete, enter role-driven branch
+6. budget registered role fixtures
+7. assemble session
+8. annotate dropped accessories after the fact
+
+Current failure points:
+
+### 4.1 Binary accounting
+
+Current `effectiveActual` is built in:
+
+- `src/lib/api/template-session/selection-adapter.ts`
+- from volume state built in `src/lib/engine/volume.ts`
+
+Current issue:
+
+- exercises with multiple primary muscles can contribute full-credit direct sets to all of them
+- this overstates effective volume for assisting muscles
+
+### 4.2 Min-cap role budgeting
+
+Current role budgeting happens in:
+
+- `resolveRoleFixtureSetTarget()` in `src/lib/api/template-session.ts`
+
+Current issue:
+
+- remaining budget is computed per primary muscle
+- `Math.min(...muscleCaps)` becomes the hard cap for the exercise
+- one constrained co-primary muscle can zero an otherwise useful exercise
+
+### 4.3 Role-complete stop condition
+
+Current role-complete branch begins at:
+
+- `src/lib/api/template-session.ts`
+
+Current issue:
+
+- the existence of at least one `CORE_COMPOUND` and one `ACCESSORY` role is treated as sufficient to bypass normal fill
+- if role budgeting underfills a critical muscle, no rescue pass runs
+
+## 5. What Stays vs What Changes
+
+### 5.1 What stays
+
+- high-level pipeline: `Intent -> Role Fixtures -> Fill -> Session Assembly`
+- mesocycle role system
+- continuity concept
+- selection-v2 optimizer as the general candidate selection engine
+- exercise taxonomy fields for filtering and UI
+
+### 5.2 What changes
+
+- effective volume accounting source
+- role budgeting semantics
+- completion criteria for role-driven planning
+- regression expectations
+
+## 6. Canonical Model Boundaries
+
+This is the core anti-drift section.
+
+### 6.1 Taxonomy model
+
+Owned by exercise metadata.
+
+Purpose:
+
+- classify exercises
+- support UI and filtering
+- support substitutions and explainability
+
+Fields:
+
+- `primaryMuscles`
+- `secondaryMuscles`
+- `splitTags`
+- `movementPatterns`
+
+Taxonomy is categorical, not weighted.
+
+### 6.2 Stimulus model
+
+Owned by planning/accounting.
+
+Purpose:
+
+- quantify hypertrophy-relevant effective stimulus by muscle
+
+New field:
+
+```ts
+type StimulusProfile = Partial<Record<Muscle, number>>;
+```
+
+Example:
+
+```ts
+{
+  "Chest": 1.0,
+  "Triceps": 0.35,
+  "Front Delts": 0.45
+}
+```
+
+Rules:
+
+- weights are relative effective-set multipliers
+- a value of `1.0` means one effective set per performed set for that muscle
+- values below `1.0` represent partial contribution
+- weights must be explicit, not inferred at runtime from primary/secondary labels
+
+### 6.2.1 Canonical muscle identifiers
+
+Planning/accounting must not depend on free-form muscle strings.
+
+Introduce one canonical `MuscleId` contract for all weighted-accounting surfaces.
+
+Minimum requirement:
+
+```ts
+type MuscleId =
+  | "chest"
+  | "front_delts"
+  | "side_delts"
+  | "rear_delts"
+  | "triceps"
+  | "biceps"
+  | "lats"
+  | "upper_back"
+  | "quads"
+  | "hamstrings"
+  | "glutes"
+  | "calves"
+  | "core"
+  | "lower_back"
+  | "forearms"
+  | "adductors"
+  | "abductors"
+  | "abs";
+```
+
+UI-facing labels may still use display strings such as `Front Delts`, but planning/accounting logic must use `MuscleId`.
+
+### 6.2.2 Validation rules
+
+`stimulusProfile` validation rules:
+
+- all keys must be valid `MuscleId`
+- all values must satisfy `0 < weight <= 1.2`
+- missing muscle weights are treated as `0`
+- any exercise used for a role anchor must have `stimulusProfile[anchorMuscle] > 0`
+
+Short-head / long-head sub-muscle variants are out of scope for this refactor. Planning remains at the current aggregated-muscle level unless a later design expands the canonical `MuscleId` space.
+
+### 6.3 Role model
+
+Owned by mesocycle planning.
+
+Purpose:
+
+- preserve continuity
+- encode session structure
+- anchor specific movement families or muscle priorities inside a mesocycle
+
+Roles must not own effective-set accounting.
+
+### 6.3.1 Anchor ownership
+
+Anchor semantics must be explicit and centrally owned.
+
+Disallowed:
+
+- inferring anchors from exercise names
+- inferring anchors ad hoc in multiple files
+
+Allowed short-term implementation:
+
+- one centralized role-anchor policy file
+- one explicit mapping from role context to anchor semantics
+
+Target long-term implementation:
+
+- anchor semantics owned by persisted slot/role metadata rather than inferred from runtime exercise selection
+
+### 6.4 Session sufficiency model
+
+Owned by the planner.
+
+Purpose:
+
+- determine whether the session is done
+
+The planner is done only when critical deficits are sufficiently closed within constraints.
+
+## 7. Proposed Data Contract Changes
+
+### 7.1 Add stimulus profile to engine exercise shape
+
+Current engine exercise shape includes:
+
+- `primaryMuscles`
+- `secondaryMuscles`
+
+Add:
+
+```ts
+type Exercise = {
+  // existing fields...
+  primaryMuscles?: string[];
+  secondaryMuscles?: string[];
+  stimulusProfile?: Partial<Record<MuscleId, number>>;
+};
+```
+
+### 7.2 Keep primary/secondary semantics
+
+Do not delete or redefine `primaryMuscles` / `secondaryMuscles`.
+
+Reason:
+
+- too many read paths depend on them for non-planning semantics
+- collapsing them into weighted planning data would spread planning logic into unrelated features
+
+### 7.3 Add explicit role anchor semantics
+
+The planner needs a stable notion of what muscle or slot a role is anchoring.
+
+Minimum viable contract:
+
+```ts
+type RoleAnchor =
+  | { kind: "muscle"; muscle: MuscleId }
+  | { kind: "movement_pattern"; movementPattern: string };
+```
+
+Short-term implementation may derive this from centralized role policy if persisted role-slot metadata is not yet available, but it must not be inferred from exercise names.
+
+### 7.4 Transitional missing-profile policy
+
+The end state is that every planner-eligible exercise has an explicit `stimulusProfile`.
+
+Phase 1 transitional policy must be explicit:
+
+- exercises used by planning/accounting but missing `stimulusProfile` may use one centralized fallback mapper
+- the fallback mapper must live in one file
+- every fallback use must be logged in diagnostics or test output
+- fallback use is temporary and should be treated as migration debt, not normal runtime behavior
+
+Disallowed transitional behavior:
+
+- silently inferring `stimulusProfile` in multiple modules
+- allowing different fallback behaviors in different planning stages
+
+Preferred end-state gate:
+
+- once migration coverage is complete, planner-eligible exercises missing `stimulusProfile` should fail validation in non-test runtime paths
+
+### 7.4.1 Stimulus profile registry artifact
+
+Phase 1 must treat the initial production `stimulusProfile` table as a first-class artifact.
+
+Required properties:
+
+- one centralized registry file for explicit production stimulus vectors
+- one centralized coverage/validation helper
+- one deterministic report of planner-eligible exercises still using fallback
+
+The goal is to make stimulus calibration reviewable without reopening planning architecture.
+
+### 7.4.2 Production-safe fallback guardrail
+
+Fallback is migration debt, not steady-state planner behavior.
+
+Required policy before Phase 2:
+
+- planner startup/context loading must emit one centralized coverage warning summarizing uncovered planner-eligible exercises
+- runtime must support a strict mode that fails planning when uncovered planner-eligible exercises remain
+- any fallback allowance must remain centralized rather than being reintroduced ad hoc in call sites
+
+## 7.5 Definitions
+
+These terms are used precisely in the rest of this document.
+
+- `effectiveActual`: performed effective stimulus already counted for the current week before planning this session
+- `plannedEffectiveSession`: effective stimulus assigned to the session currently being built
+- `projectedEffectiveTotal`: `effectiveActual + plannedEffectiveSession`
+- `deficit`: `weeklyTarget - projectedEffectiveTotal`
+- `anchor`: the muscle or slot objective that justifies preserving a role fixture
+- `overshoot`: projected effective stimulus beyond the allowed tolerance for a non-anchor muscle
+
+## 8. Volume Accounting Refactor
+
+### 8.1 Replace binary effective volume math
+
+Current performed and planned effective volume use:
+
+- direct sets for primary muscles
+- discounted indirect sets for secondary muscles
+
+Replace with:
+
+```ts
+effectiveSets[muscle] += performedSets * stimulusProfile[muscle]
+```
+
+### 8.2 Canonical accounting surfaces to update
+
+The following must all use the same stimulus model:
+
+- `buildVolumeContext()` in `src/lib/engine/volume.ts`
+- `effectiveActual` construction in `src/lib/api/template-session/selection-adapter.ts`
+- `recordAssignedSessionVolume()` in `src/lib/api/template-session.ts`
+- `buildVolumePlanByMuscle()` in `src/lib/engine/volume.ts`
+- explainability / compliance projections that present effective weekly totals
+
+### 8.3 New in-session planning state
+
+Replace this conceptual state:
+
+```ts
+Map<string, number> // assignedSetsByMuscleInSession
+```
+
+with:
+
+```ts
+Map<string, number> // assignedEffectiveByMuscleInSession
+```
+
+It should represent planned effective stimulus already allocated in this session.
+
+### 8.4 Required invariant
+
+There must be one reusable helper for converting:
+
+- exercise
+- set count
+
+into:
+
+- effective contribution by muscle
+
+Every planning path must use that helper.
+
+### 8.5 Effective-unit semantics
+
+The following concepts must explicitly move into effective units where they represent muscle-level budget:
+
+- `effectiveActual`
+- in-session assigned budget
+- deficit calculations
+- projected weekly totals
+- explainability/compliance comparisons
+
+For lifecycle weekly muscle targets and MAV-style ceiling checks, implementation must choose one unit system and use it consistently.
+
+Recommended choice:
+
+- muscle-level targets and caps used by hypertrophy planning should be expressed in effective-set units
+
+Phase 1 clarification:
+
+- performed accounting
+- planned in-session accounting
+- explainability/compliance projections in touched paths
+
+must all stay in effective-set units
+
+Phase 2 follow-on:
+
+- anchor budgeting rounding/floor rules
+- overshoot tolerance
+- reserved-floor semantics
+
+must also be specified in effective-set units before anchor budgeting ships
+
+Disallowed:
+
+- mixing raw-set budgeting in one stage with effective-set budgeting in another for the same muscle-level decision
+
+## 9. Role Fixture Budgeting Refactor
+
+### 9.1 Current behavior to remove
+
+Remove the budgeting rule that effectively says:
+
+```ts
+allowedSets = min(remainingBudgetForEveryPrimaryMuscle)
+```
+
+This rule is too brittle for multi-muscle compounds.
+
+### 9.2 New budgeting rule
+
+Role fixtures should be budgeted by anchor first.
+
+Conceptually:
+
+```ts
+anchorRemaining = weeklyTarget[anchor] - (effectiveActual[anchor] + plannedEffective[anchor])
+maxSetsFromAnchor = floor(anchorRemaining / stimulusProfile[anchor])
+```
+
+Then apply:
+
+- lifecycle set target
+- continuity floor
+- role-specific minimum viable floor
+- global session constraints
+- overshoot policy
+
+### 9.3 Overshoot policy
+
+Non-anchor muscles should not hard-zero an anchor-relevant exercise when the anchor deficit remains meaningful.
+
+Allowed behavior:
+
+- soft penalty
+- modest set reduction
+- closure compensation later
+
+Disallowed behavior:
+
+- drive chest-priority push work to zero solely because triceps is near target
+
+### 9.3.1 Deterministic overshoot rule
+
+The overshoot policy must be deterministic.
+
+Minimum viable rule:
+
+1. compute anchor-constrained candidate set target
+2. compute projected non-anchor overshoot in effective units
+3. if overshoot exceeds tolerance, reduce sets until overshoot is within tolerance or the exercise reaches its minimum viable floor
+4. if the exercise still overshoots but anchor deficit remains materially large, preserve the anchor-relevant minimum and allow closure/final sufficiency checks to resolve the rest
+
+This should be implemented as one reusable algorithm, not open-coded differently across fixtures.
+
+### 9.4 Core vs accessory semantics
+
+Core role fixtures may still preserve a small representation floor.
+
+Accessory role fixtures may still be droppable.
+
+But drop decisions must be based on weighted effective sufficiency, not corrupted co-primary minima.
+
+### 9.5 Reserved floors and lifecycle caps
+
+Current concepts such as:
+
+- reserved floor for remaining role fixtures
+- lifecycle weekly targets
+- MAV / cap comparisons
+
+must be translated into the same effective-unit system used for deficits and projected totals when they operate on muscle-level budget.
+
+Explicit requirement:
+
+- if a reserved floor is consuming future muscle budget, it must reserve effective budget, not raw set count, unless the decision is intentionally exercise-structural rather than muscle-budget-based
+
+## 10. Deficit Closure Pass
+
+### 10.1 New required planning stage
+
+After role placement and role budgeting:
+
+1. compute projected effective totals
+2. compute unresolved deficits
+3. if critical deficits remain, run closure fill
+
+This pass is mandatory for hypertrophy-focused planning.
+
+### 10.2 Deficit formula
+
+```ts
+deficit[muscle] =
+  weeklyTarget[muscle] -
+  (effectiveActual[muscle] + plannedEffectiveSession[muscle])
+```
+
+### 10.2.1 Critical muscles
+
+Critical muscles are the muscles the current intent is responsible for materially advancing.
+
+Initial rule:
+
+- for `push`, `pull`, and `legs`, critical muscles are the intent-aligned target muscles with non-zero weekly targets
+- for `body_part`, critical muscles are the requested target muscles
+- for `upper` / `lower` / `full_body`, critical muscles are the intent-owned muscles with non-zero weekly targets that are exposed by the current objective
+
+If later needed, this can be narrowed by explicit slot/role design. For this refactor, it should remain objective-owned and deterministic.
+
+### 10.2.2 Tolerance
+
+Closure needs explicit tolerance thresholds.
+
+Initial recommended rule:
+
+- a muscle is considered sufficiently covered when its remaining deficit is less than or equal to the greater of:
+  - `1.0` effective set
+  - `10%` of that muscle's weekly target
+
+This keeps closure strict enough to protect once-weekly intents while avoiding endless micro-adjustment.
+
+### 10.3 Completion rule
+
+The planner is sufficient only if:
+
+- critical intent muscles are within tolerance, or
+- further closure would violate hard constraints and no materially better candidate exists
+
+### 10.4 Closure mechanism
+
+Use the optimizer, but on a constrained candidate pool.
+
+Pool should be filtered by:
+
+- intent alignment
+- unresolved target muscles
+- role exclusions already honored
+- session structure constraints
+
+Closure should remain optimizer-driven, not primarily a hardcoded rules table.
+
+### 10.4.1 Closure mode behavior
+
+Closure mode must be explicitly different from the normal selection pass.
+
+Required closure semantics:
+
+- closure may add new exercises and may also add sets to already-selected exercises if that is the best way to reduce deficits
+- closure candidate pool should prefer intent-aligned exercises that contribute to unresolved critical deficits
+- closure scoring must strongly prioritize deficit reduction over rotation novelty or variety
+- closure must still obey hard structural/session constraints
+
+Recommended closure scoring priority:
+
+1. deficit reduction
+2. overlap efficiency / low collateral overshoot
+3. fatigue cost
+4. movement novelty / rotation as low-priority tie-breakers
+
+### 10.4.2 Closure candidate pool
+
+Initial recommended closure pool rules:
+
+- include both accessories and compounds if they materially reduce unresolved deficits
+- prefer accessories when they solve the deficit with less collateral overshoot
+- allow already-selected exercises to receive added sets when that is simpler and structurally cleaner than adding another exercise
+- respect max exercises, max main lifts, and other hard session constraints
+
+### 10.5 What replaces "role list complete"
+
+The boolean contract:
+
+- `roles complete => stop`
+
+should be removed from planning semantics.
+
+If kept for diagnostics, it must become descriptive only.
+
+Operationally, the new concept is:
+
+- `roles sufficient after budgeting and closure`
+
+## 11. Proposed Runtime Flow After Refactor
+
+```text
+generateSessionFromIntent()
+    |
+    v
+loadMappedGenerationContext()
+    |
+    v
+buildSelectionObjective()
+  - weekly targets
+  - effective actuals from stimulus profiles
+  - continuity context
+    |
+    v
+place role fixtures
+    |
+    v
+budget role fixtures by anchor muscle
+  - using weighted effective contribution
+    |
+    v
+compute projected deficits
+    |
+    +--> if unresolved critical deficits remain:
+    |        run closure fill via constrained optimizer
+    |
+    v
+assemble session
+    |
+    v
+finalize reporting / explainability
+```
+
+## 12. Implementation Phases
+
+### Phase 1: Stimulus accounting foundation
+
+Status:
+
+- complete
+
+Goal:
+
+- add weighted stimulus accounting without changing broader planning control flow yet
+
+Changes:
+
+- add `stimulusProfile`
+- add canonical helper for effective contribution
+- migrate `buildVolumeContext()`
+- migrate `effectiveActual`
+- migrate `recordAssignedSessionVolume()`
+- migrate `buildVolumePlanByMuscle()`
+
+Exit criteria:
+
+- live push case no longer reports inflated triceps effective volume from incline + OHP
+- performed and planned effective volume agree across engine and explainability surfaces
+- the initial production `stimulusProfile` registry exists as a reviewable artifact
+- one coverage check can list planner-eligible exercises still relying on fallback
+
+Completion status:
+
+- canonical planning/accounting `MuscleId` implemented
+- `stimulusProfile` added to the engine exercise contract
+- one shared stimulus contribution helper implemented in `src/lib/engine/stimulus.ts`
+- touched accounting/reporting surfaces migrated onto the shared helper
+- centralized fallback policy implemented
+- explicit `stimulusProfile` registry implemented and externally reviewed
+- planner-eligible exercise coverage is currently `100%` in the production registry report
+- Phase 1 targeted tests and typecheck are passing
+
+Locked Phase 1 baseline:
+
+- Phase 1 accounting semantics should now be treated as the baseline for Phase 2
+- further registry changes should be limited to clear calibration defects, not architectural rework
+
+Consultation note:
+
+- outside hypertrophy-domain review is not required before starting Phase 1
+- however, Phase 1 should isolate the initial production `stimulusProfile` weight table cleanly enough that it can be reviewed without reopening architectural decisions
+- the preferred consultation point is after Phase 1 implementation and before Phase 2 is finalized
+- that review should focus on stimulus calibration assumptions, not software architecture
+
+### Phase 2: Role budgeting refactor
+
+Goal:
+
+- replace co-primary min clamp with anchor-driven budgeting
+
+Status:
+
+- complete
+
+Changes:
+
+- refactor `resolveRoleFixtureSetTarget()`
+- add explicit anchor concept
+- preserve continuity floors and lifecycle set targets
+
+Exit criteria:
+
+- chest-priority role fixture cannot be zeroed solely by non-anchor triceps saturation when chest remains materially under target
+
+Completion status:
+
+- `resolveRoleFixtureSetTarget()` now budgets role fixtures from an explicit centralized anchor policy
+- role budgeting now computes anchor remaining in effective units using `effectiveActual + plannedEffectiveSession`
+- reserved future role floors now reserve effective anchor budget rather than raw set count
+- continuity floors and lifecycle role set targets remain preserved
+- accessory fixtures remain droppable when anchor budget is exhausted
+- `CORE_COMPOUND` fixtures retain a deterministic one-set representation floor when anchor deficit remains positive
+- deterministic non-anchor overshoot tolerance is now `max(1.0 effective set, 10% of weekly target)`
+- deterministic rounding policy is now: compute continuous anchor-constrained sets, floor to an integer set target, then reduce one set at a time only as needed for non-anchor overshoot
+- targeted push-week-3 regression coverage now protects the motivating failure class plus accessory droppability and the core representation floor
+
+Temporary anchor-policy assumptions now locked in code:
+
+- anchor semantics are centralized in one runtime role-anchor policy file
+- current runtime anchor selection is muscle-only for budgeting
+- movement-pattern anchors remain structural in the type contract but are not yet used by the current budgeting path
+- anchor selection is derived from the exercise `stimulusProfile` plus current weekly-target relevance, with deterministic tie-breaking by per-set contribution, weekly target, primary-muscle order, then canonical muscle id
+- taxonomy fields remain allowed for non-planning semantics and deterministic tie-breaking only; hypertrophy contribution math still flows through the shared helper in `src/lib/engine/stimulus.ts`
+
+Consultation note:
+
+- a second outside review is optional during Phase 2 if role-anchor policy starts depending on hypertrophy-theory claims rather than clearly structural session-design rules
+- if anchor behavior remains mostly a planning-structure decision, no additional domain review is required at this stage
+
+### Phase 3: Deficit closure pass
+
+Goal:
+
+- remove the role-driven dead end
+
+Status:
+
+- complete
+
+Changes:
+
+- replace role-complete stop semantics
+- compute unresolved deficits after role budgeting
+- run closure fill when required
+
+Exit criteria:
+
+- unresolved critical push deficits trigger additional fill candidates
+- dropped role accessories no longer imply planning is done
+
+Completion status:
+
+- `generateSessionFromIntent()` now runs a shared post-selection closure pass after role budgeting / selection and before session assembly
+- planner completion is now based on unresolved critical deficits rather than role-list completeness
+- unresolved deficits are computed in effective units from `projectedEffectiveTotal = effectiveActual + plannedEffectiveSession`
+- critical muscles are determined deterministically from current intent ownership:
+  - `push` / `pull` / `legs`: objective-exposed intent muscles with non-zero weekly targets
+  - `body_part`: requested target muscles with non-zero weekly targets
+  - `upper` / `lower` / `full_body`: objective-exposed muscles with non-zero weekly targets
+- closure tolerance is now `max(1.0 effective set, 10% of weekly target)`
+- closure can either add a new exercise or add sets to an already-selected exercise
+- closure action scoring now prioritizes deficit reduction first, then low collateral overshoot, then fatigue cost, with novelty / base candidate quality retained only as a low-order tiebreaker
+- closure remains constrained by existing hard session structure:
+  - max exercises
+  - max main lifts
+  - movement-pattern duplication limits already enforced in runtime
+  - existing role / assembly semantics
+- closure contribution math continues to flow through the shared helper in `src/lib/engine/stimulus.ts`
+- targeted regressions now protect:
+  - unresolved post-budget push deficits triggering closure
+  - dropped role accessories no longer implying planning is done
+  - closure adding a new exercise when that resolves the deficit more cleanly
+  - closure expanding sets on an already-selected exercise when that is the better structural fit
+- Phase 3 targeted tests and typecheck are passing
+
+Current closure-mode assumptions now locked in code:
+
+- deload sessions do not run closure fill
+- closure evaluates both add-exercise and set-expansion actions on the current intent-filtered pool
+- actions that would push an already-sufficient muscle materially past target are rejected rather than merely soft-penalized
+- current set-expansion cap is `5` for main-lift / `CORE_COMPOUND` exercises and `6` for accessories
+
+Diagnostic note:
+
+- Phase 3 runtime behavior is implemented and regression-covered
+- however, audit-facing receipts for why a closure action won are intentionally deferred to Phase 4
+
+### Phase 4: Receipts, explainability, and regression hardening
+
+Goal:
+
+- make the new semantics visible and testable
+
+Status:
+
+- complete
+
+Changes:
+
+- update explainability
+- update volume compliance
+- add audit-facing reporting for weighted effective volume
+- rewrite outdated tests that assume binary primary/secondary planning semantics
+
+Exit criteria:
+
+- one audit artifact can explain:
+  - performed effective volume
+  - planned effective volume
+  - anchor budget decisions
+  - closure additions
+
+Completion status:
+
+- canonical session receipts now carry additive planner diagnostics rather than relying on implicit planner state
+- planner diagnostics are now attached at runtime during intent generation and persisted through the canonical `sessionDecisionReceipt`
+- minimum required per-muscle diagnostics are now available in the persisted receipt:
+  - weekly target
+  - performed effective volume before session
+  - planned effective volume after role budgeting
+  - deficit after role budgeting
+  - planned effective volume after closure
+  - final remaining deficit
+- minimum required per-exercise diagnostics are now available in the persisted receipt:
+  - assigned set count
+  - stimulus vector used for planning
+  - anchor used for budgeting
+  - overshoot adjustments applied
+  - whether the exercise was a role fixture, closure addition, or set-expanded carryover
+- explainability / volume-compliance reporting in touched paths now uses weighted effective accounting from the shared helper rather than legacy binary primary/secondary math
+- the audit-facing explainability surface now exposes concise receipt-backed planner diagnostics without turning the default UI into a raw debugging console
+- outdated regressions that encoded pre-refactor semantics were updated to assert weighted effective outcomes and closure / anchor behavior rather than relying on old binary assumptions
+- targeted receipt, explainability, regression, and receipt-pipeline tests plus typecheck are passing
+
+Current Phase 4 scope boundary now locked:
+
+- planner diagnostics are implemented as additive receipt data, not as a planner rewrite
+- the default audit UI remains intentionally concise; deeper receipt diagnostics remain available for targeted debugging and test coverage rather than always-expanded user-facing display
+
+Remaining verification note:
+
+- implementation work for Phase 4 is complete
+- the remaining recommended step is manual audit of real generated sessions to confirm that the current receipt and audit surfaces are sufficient in practice before adding any more diagnostic UI
+
+## 13. Testing Strategy
+
+### 13.1 Replace drifted assumptions
+
+Current tests that encode old semantics must be rewritten.
+
+In particular:
+
+- tests that assume direct full-credit contribution from all current primary muscles
+- tests that assume role presence means fill is skipped
+
+### 13.2 Add live-semantic protected scenarios
+
+Required protected cases:
+
+- week 3 push, once-weekly push frequency
+- role fixture with multi-muscle compound where anchor deficit remains but assisting muscle is near target
+- role accessory dropped during budgeting but closure pass restores target coverage
+
+### 13.3 Assert outcomes, not only exercise names
+
+Primary assertions should be about effective stimulus outcomes and structural guarantees.
+
+Examples:
+
+- chest projected effective volume is within acceptable tolerance
+- triceps projected effective volume is not materially overstated
+- unresolved critical deficit after role budgeting triggers closure pass
+
+### 13.4 Keep deterministic fixture coverage
+
+The current regression style is still useful, but fixtures must match production muscle/stimulus semantics.
+
+### 13.5 Required planner diagnostics
+
+The refactor should produce enough structured planner diagnostics to audit decisions.
+
+Minimum required per-muscle diagnostics:
+
+- weekly target
+- performed effective volume before session
+- planned effective volume after role budgeting
+- deficit after role budgeting
+- planned effective volume after closure
+- final remaining deficit
+
+Minimum required per-exercise diagnostics:
+
+- assigned set count
+- stimulus vector used for planning
+- anchor used for budgeting
+- overshoot adjustments applied
+- whether the exercise was a role fixture, closure addition, or set-expanded carryover
+
+## 14. Non-Goals
+
+This refactor does not:
+
+- redesign the whole optimizer
+- remove mesocycle roles
+- replace exercise taxonomy across the app
+- force one exact bodybuilding split template
+- encode per-muscle programming through one-off rules tables
+
+## 15. Acceptance Criteria
+
+The refactor is successful if all are true:
+
+1. planning uses one canonical weighted stimulus model for effective volume
+2. exercise taxonomy remains separate from stimulus accounting
+3. role budgeting no longer hard-zeros anchor-relevant work because of co-primary minima
+4. planning completion is determined by deficit sufficiency, not mere role existence
+5. the live push week 3 case no longer underfills chest in the same structural way
+6. explainability and audit output can show why a muscle was considered sufficiently covered
+
+## 16. Final Decision
+
+Proceed with the refactor.
+
+Approved concepts:
+
+- weighted stimulus accounting
+- anchor-based role budgeting
+- mandatory post-role deficit closure
+
+Explicit adjustments to the original proposal:
+
+- keep `primaryMuscles` / `secondaryMuscles` as taxonomy fields
+- add a separate weighted stimulus model rather than redefining taxonomy
+- make closure optimizer-driven rather than primarily hardcoded by muscle
+- treat role completeness as diagnostic metadata, not a stop condition
+
+This is the implementation path most likely to improve workout quality while reducing conceptual drift over time.

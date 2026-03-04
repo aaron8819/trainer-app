@@ -3,6 +3,7 @@
  */
 
 import type { VolumePlanByMuscle } from "./volume";
+import type { PlannerDiagnostics } from "@/lib/planner-diagnostics/types";
 
 export type SessionIntent =
   | "push"
@@ -37,6 +38,7 @@ export type SelectionOutput = {
       reason?: string;
     }
   >;
+  plannerDiagnostics?: PlannerDiagnostics;
   intentDiagnostics?: {
     intent: SessionIntent;
     targetMuscles: string[];

@@ -45,6 +45,80 @@ describe("readSessionDecisionReceipt", () => {
           reductionPercent: 0,
           appliedTo: "none",
         },
+        plannerDiagnostics: {
+          muscles: {
+            Chest: {
+              weeklyTarget: 16,
+              performedEffectiveVolumeBeforeSession: 6,
+              plannedEffectiveVolumeAfterRoleBudgeting: 4,
+              projectedEffectiveVolumeAfterRoleBudgeting: 10,
+              deficitAfterRoleBudgeting: 6,
+              plannedEffectiveVolumeAfterClosure: 6,
+              projectedEffectiveVolumeAfterClosure: 12,
+              finalRemainingDeficit: 4,
+            },
+          },
+          exercises: {
+            ex1: {
+              exerciseId: "ex1",
+              exerciseName: "Bench Press",
+              assignedSetCount: 4,
+              stimulusVector: { Chest: 1, Triceps: 0.35 },
+              anchorUsed: { kind: "muscle", muscle: "chest" },
+              anchorBudgetDecision: {
+                weeklyTarget: 16,
+                performedEffectiveVolumeBeforeSession: 6,
+                plannedEffectiveVolumeBeforeAssignment: 0,
+                reservedEffectiveVolumeForRemainingRoleFixtures: 1,
+                anchorRemainingBeforeAssignment: 9,
+                anchorContributionPerSet: 1,
+                desiredSetTarget: 5,
+                anchorConstrainedContinuousSetTarget: 5,
+              },
+              overshootAdjustmentsApplied: {
+                initialSetTarget: 5,
+                finalSetTarget: 4,
+                reductionsApplied: 1,
+                limitingMuscles: ["Triceps"],
+              },
+              isRoleFixture: true,
+              isClosureAddition: false,
+              isSetExpandedCarryover: true,
+              closureSetDelta: 1,
+            },
+          },
+          closure: {
+            actions: [
+              {
+                exerciseId: "ex1",
+                exerciseName: "Bench Press",
+                kind: "expand",
+                setDelta: 1,
+                deficitReduction: 1,
+                collateralOvershoot: 0,
+                fatigueCost: 4,
+                score: 96,
+              },
+            ],
+            firstIterationCandidates: [
+              {
+                exerciseId: "ex1",
+                exerciseName: "Bench Press",
+                kind: "expand",
+                setDelta: 1,
+                dominantDeficitMuscle: "Chest",
+                dominantDeficitRemaining: 6,
+                dominantDeficitContribution: 1,
+                totalScore: 0.8,
+                deficitReduction: 1,
+                dominantDeficitReduction: 1,
+                collateralOvershoot: 0,
+                fatigueCost: 4,
+                score: 96,
+              },
+            ],
+          },
+        },
         readiness: {
           wasAutoregulated: false,
           signalAgeHours: null,
@@ -65,6 +139,9 @@ describe("readSessionDecisionReceipt", () => {
     expect(receipt?.lifecycleVolume.targets).toEqual({ Chest: 16 });
     expect(receipt?.sorenessSuppressedMuscles).toEqual([]);
     expect(receipt?.deloadDecision.mode).toBe("none");
+    expect(receipt?.plannerDiagnostics?.muscles.Chest.plannedEffectiveVolumeAfterClosure).toBe(6);
+    expect(receipt?.plannerDiagnostics?.closure.actions[0]?.kind).toBe("expand");
+    expect(receipt?.plannerDiagnostics?.closure.firstIterationCandidates?.[0]?.exerciseId).toBe("ex1");
   });
 
   it("returns undefined when no canonical persisted receipt exists", () => {

@@ -5,7 +5,6 @@ import type { SelectionObjective, SelectionResult, RotationContext } from "@/lib
 import { DEFAULT_SELECTION_WEIGHTS } from "@/lib/engine/selection-v2";
 import type { SelectionOutput, SessionIntent } from "@/lib/engine/session-types";
 import { VOLUME_LANDMARKS, MUSCLE_SPLIT_MAP, computeWeeklyVolumeTarget } from "@/lib/engine/volume-landmarks";
-import { INDIRECT_SET_MULTIPLIER } from "@/lib/engine/volume-constants";
 import { filterPerformedHistory, sortHistoryByDateDesc } from "@/lib/engine/history";
 import type { VolumePlanByMuscle } from "@/lib/engine/volume";
 import type { MappedGenerationContext } from "./types";
@@ -182,9 +181,7 @@ export function buildSelectionObjective(
         }
       }
       weeklyActual.set(muscle as Muscle, state.weeklyDirectSets);
-      const effectiveVolume =
-        state.weeklyDirectSets + (state.weeklyIndirectSets * INDIRECT_SET_MULTIPLIER);
-      effectiveActual.set(muscle as Muscle, effectiveVolume);
+      effectiveActual.set(muscle as Muscle, state.weeklyEffectiveSets);
     }
   } else {
     for (const [muscle] of Object.entries(MUSCLE_SPLIT_MAP)) {

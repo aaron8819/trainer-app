@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { WorkoutExplanation, VolumeComplianceStatus } from "@/lib/engine/explainability";
 import type { SessionSummaryModel } from "@/lib/ui/session-summary";
+import type { SessionDecisionReceipt } from "@/lib/evidence/types";
 import { SessionContextCard } from "./SessionContextCard";
 import { CoachMessageCard } from "./CoachMessageCard";
 import { ExerciseRationaleCard } from "./ExerciseRationaleCard";
@@ -11,6 +12,7 @@ import { FilteredExercisesCard } from "./FilteredExercisesCard";
 type Props = {
   explanation: WorkoutExplanation;
   summary: SessionSummaryModel;
+  sessionDecisionReceipt?: SessionDecisionReceipt;
   startLoggingHref?: string | null;
 };
 
@@ -45,6 +47,7 @@ function formatHistorySource(hasRecentHistory: boolean): string {
 export function ExplainabilityPanel({
   explanation,
   summary,
+  sessionDecisionReceipt,
   startLoggingHref,
 }: Props) {
   const [expandedExercises, setExpandedExercises] = useState<Set<string>>(new Set());
@@ -77,6 +80,16 @@ export function ExplainabilityPanel({
       hasHistory: receipt.lastPerformed != null,
     }))
     .filter((entry) => entry.decisionLog.length > 0);
+  const plannerDiagnostics = sessionDecisionReceipt?.plannerDiagnostics;
+  const plannerMuscleRows = plannerDiagnostics
+    ? Object.entries(plannerDiagnostics.muscles).sort((left, right) => left[0].localeCompare(right[0]))
+    : [];
+  const plannerExerciseRows = plannerDiagnostics
+    ? Object.values(plannerDiagnostics.exercises).sort((left, right) =>
+        left.exerciseName.localeCompare(right.exerciseName)
+      )
+    : [];
+  const plannerClosureCandidates = plannerDiagnostics?.closure.firstIterationCandidates ?? [];
 
   const evidenceChecklist = [
     {
@@ -101,7 +114,7 @@ export function ExplainabilityPanel({
     },
     {
       label: "Volume view",
-      value: "Volume checks use performed sets in the current 7-day lookback, including this session.",
+      value: "Volume checks use weighted effective volume from the shared stimulus model, not binary primary or secondary set credit.",
       tone: "border-slate-200 bg-slate-50",
     },
   ];
@@ -193,6 +206,95 @@ export function ExplainabilityPanel({
               </div>
             ) : null}
 
+            {plannerDiagnostics ? (
+              <div className="rounded-xl border border-slate-200 bg-white p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Planner diagnostics
+                </p>
+                <div className="mt-3 space-y-3">
+                  {plannerMuscleRows.length > 0 ? (
+                    <div className="space-y-2">
+                      {plannerMuscleRows.map(([muscle, diagnostic]) => (
+                        <div key={muscle} className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-sm font-medium text-slate-800">{muscle}</span>
+                            <span className="text-xs text-slate-500">
+                              target {diagnostic.weeklyTarget.toFixed(1)}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-xs text-slate-600">
+                            performed {diagnostic.performedEffectiveVolumeBeforeSession.toFixed(1)} |
+                            post-role planned {diagnostic.plannedEffectiveVolumeAfterRoleBudgeting.toFixed(1)} |
+                            post-closure planned {diagnostic.plannedEffectiveVolumeAfterClosure.toFixed(1)} |
+                            remaining deficit {diagnostic.finalRemainingDeficit.toFixed(1)}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {plannerExerciseRows.length > 0 ? (
+                    <div className="space-y-2">
+                      {plannerExerciseRows.map((diagnostic) => (
+                        <div
+                          key={diagnostic.exerciseId}
+                          className="rounded-lg border border-slate-100 bg-slate-50 p-3"
+                        >
+                          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                            <p className="text-sm font-semibold text-slate-800">
+                              {diagnostic.exerciseName}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              {diagnostic.assignedSetCount} set{diagnostic.assignedSetCount === 1 ? "" : "s"}
+                            </p>
+                          </div>
+                          <p className="mt-1 text-xs text-slate-600">
+                            {diagnostic.isRoleFixture ? "role fixture" : "non-role selection"}
+                            {diagnostic.isClosureAddition ? " | closure addition" : ""}
+                            {diagnostic.isSetExpandedCarryover ? ` | set-expanded carryover (+${diagnostic.closureSetDelta})` : ""}
+                            {diagnostic.anchorUsed?.kind === "muscle"
+                              ? ` | anchor ${diagnostic.anchorUsed.muscle}`
+                              : ""}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {plannerClosureCandidates.length > 0 ? (
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Closure candidate trace
+                      </p>
+                      {plannerClosureCandidates.map((candidate) => (
+                        <div
+                          key={`${candidate.kind}-${candidate.exerciseId}-${candidate.setDelta}`}
+                          className="rounded-lg border border-slate-100 bg-slate-50 p-3"
+                        >
+                          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                            <p className="text-sm font-semibold text-slate-800">
+                              {candidate.exerciseName}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              {candidate.kind} {candidate.setDelta} set
+                              {candidate.setDelta === 1 ? "" : "s"}
+                            </p>
+                          </div>
+                          <p className="mt-1 text-xs text-slate-600">
+                            dominant deficit {candidate.dominantDeficitMuscle ?? "n/a"} |
+                            remaining {candidate.dominantDeficitRemaining?.toFixed(1) ?? "n/a"} |
+                            contribution {candidate.dominantDeficitContribution.toFixed(1)}
+                            {candidate.score != null ? ` | closure score ${candidate.score.toFixed(1)}` : ""}
+                            {candidate.filteredOutReason ? ` | filtered ${candidate.filteredOutReason}` : ""}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+
             {explanation.volumeCompliance.length > 0 ? (
               <div className="rounded-xl border border-slate-200 bg-white p-3">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -206,7 +308,7 @@ export function ExplainabilityPanel({
                         <VolumeComplianceBadge status={row.status} />
                       </div>
                       <p className="mt-1 text-xs text-slate-600">
-                        {row.setsLoggedBeforeSession} logged + {row.setsPrescribedThisSession} prescribed = {row.projectedTotal} projected sets against a {row.weeklyTarget}-set target.
+                        {row.performedEffectiveVolumeBeforeSession} performed + {row.plannedEffectiveVolumeThisSession} planned = {row.projectedEffectiveVolume} projected effective sets against a {row.weeklyTarget}-set target.
                       </p>
                     </div>
                   ))}

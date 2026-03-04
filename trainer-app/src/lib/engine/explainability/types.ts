@@ -244,13 +244,13 @@ export type VolumeComplianceStatus =
 
 /**
  * Per-muscle weekly volume compliance annotation.
- * projectedTotal = setsLoggedBeforeSession + setsPrescribedThisSession
+ * projectedEffectiveVolume = performedEffectiveVolumeBeforeSession + plannedEffectiveVolumeThisSession
  */
 export type MuscleVolumeCompliance = {
   muscle: string; // Title Case, matches VOLUME_LANDMARKS keys
-  setsLoggedBeforeSession: number;
-  setsPrescribedThisSession: number;
-  projectedTotal: number;
+  performedEffectiveVolumeBeforeSession: number;
+  plannedEffectiveVolumeThisSession: number;
+  projectedEffectiveVolume: number;
   weeklyTarget: number;
   mev: number;
   mav: number;

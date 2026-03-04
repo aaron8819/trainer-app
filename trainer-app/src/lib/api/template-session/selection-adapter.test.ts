@@ -118,7 +118,7 @@ describe("buildSelectionObjective continuity bias", () => {
         exercises: [{ exerciseId: "barbell-row", sets: [] }],
       },
       {
-        date: "2026-02-17T01:40:25.252Z",
+        date: "2026-03-03T01:40:25.252Z",
         completed: true,
         status: "COMPLETED",
         sessionIntent: "pull",
@@ -166,6 +166,35 @@ describe("buildSelectionObjective continuity bias", () => {
     const objective = buildSelectionObjective(makeMappedContext([]), "pull");
     expect(objective.volumeContext.weeklyTarget.get("Lats")).toBe(12);
     expect(objective.volumeContext.weeklyTarget.get("Upper Back")).toBe(12);
+  });
+
+  it("builds effectiveActual from the shared stimulus helper instead of binary primary credit", () => {
+    const recentDate = new Date().toISOString();
+    const history: WorkoutHistoryEntry[] = [
+      {
+        date: recentDate,
+        completed: true,
+        status: "COMPLETED",
+        sessionIntent: "pull",
+        mesocycleSnapshot: { week: 2, mesocycleId: "meso-1" },
+        exercises: [
+          {
+            exerciseId: "tbar-row",
+            sets: [
+              { exerciseId: "tbar-row", setIndex: 1, reps: 10, load: 135 },
+              { exerciseId: "tbar-row", setIndex: 2, reps: 10, load: 135 },
+            ],
+          },
+        ],
+      },
+    ];
+
+    const objective = buildSelectionObjective(makeMappedContext(history), "pull");
+
+    expect(objective.volumeContext.weeklyActual.get("Biceps")).toBe(0);
+    expect(objective.volumeContext.effectiveActual.get("Lats")).toBeCloseTo(1.6, 6);
+    expect(objective.volumeContext.effectiveActual.get("Upper Back")).toBe(2);
+    expect(objective.volumeContext.effectiveActual.get("Biceps")).toBeCloseTo(0.8, 6);
   });
 
   it("uses lifecycle set targets as the canonical weekly set progression", () => {

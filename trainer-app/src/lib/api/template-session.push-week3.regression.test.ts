@@ -48,6 +48,7 @@ function exercise(
     | "equipment"
     | "isMainLiftEligible"
     | "isCompound"
+    | "stimulusProfile"
   > & { secondaryMuscles?: string[] }
 ): EngineExercise {
   return {
@@ -62,6 +63,7 @@ function exercise(
     equipment: partial.equipment,
     primaryMuscles: partial.primaryMuscles,
     secondaryMuscles: partial.secondaryMuscles ?? [],
+    stimulusProfile: partial.stimulusProfile,
     repRangeMin: partial.isCompound ? 5 : 8,
     repRangeMax: partial.isCompound ? 12 : 15,
     sfrScore: partial.isCompound ? 3 : 4,
@@ -201,6 +203,141 @@ const overheadTriceps = exercise({
   equipment: ["cable"],
   isMainLiftEligible: false,
   isCompound: false,
+});
+
+const chestPriorityPress = exercise({
+  id: "chest-priority-press",
+  name: "Chest Priority Press",
+  movementPatterns: ["horizontal_push"],
+  splitTags: ["push"],
+  primaryMuscles: ["Chest", "Triceps"],
+  secondaryMuscles: ["Front Delts"],
+  equipment: ["machine"],
+  isMainLiftEligible: true,
+  isCompound: true,
+  stimulusProfile: {
+    chest: 1.0,
+    triceps: 0.35,
+    front_delts: 0.2,
+  },
+});
+
+const chestMicroPress = exercise({
+  id: "chest-micro-press",
+  name: "Chest Micro Press",
+  movementPatterns: ["horizontal_push"],
+  splitTags: ["push"],
+  primaryMuscles: ["Chest", "Triceps"],
+  secondaryMuscles: [],
+  equipment: ["machine"],
+  isMainLiftEligible: true,
+  isCompound: true,
+  stimulusProfile: {
+    chest: 0.25,
+    triceps: 0.1,
+  },
+});
+
+const cableFly = exercise({
+  id: "cable-fly",
+  name: "Cable Fly",
+  movementPatterns: ["isolation"],
+  splitTags: ["push"],
+  primaryMuscles: ["Chest"],
+  secondaryMuscles: [],
+  equipment: ["cable"],
+  isMainLiftEligible: false,
+  isCompound: false,
+});
+
+const patternedCableLateralRaise = exercise({
+  id: "patterned-cable-lateral-raise",
+  name: "Patterned Cable Lateral Raise",
+  movementPatterns: ["abduction"],
+  splitTags: ["push"],
+  primaryMuscles: ["Side Delts"],
+  secondaryMuscles: [],
+  equipment: ["cable"],
+  isMainLiftEligible: false,
+  isCompound: false,
+  stimulusProfile: {
+    side_delts: 1,
+  },
+});
+
+const patternedMachineLateralRaise = exercise({
+  id: "patterned-machine-lateral-raise",
+  name: "Patterned Machine Lateral Raise",
+  movementPatterns: ["abduction"],
+  splitTags: ["push"],
+  primaryMuscles: ["Side Delts"],
+  secondaryMuscles: [],
+  equipment: ["machine"],
+  isMainLiftEligible: false,
+  isCompound: false,
+  stimulusProfile: {
+    side_delts: 1,
+  },
+});
+
+const patternedOverheadTriceps = exercise({
+  id: "patterned-overhead-triceps-ext",
+  name: "Patterned Overhead Triceps Extension",
+  movementPatterns: ["extension"],
+  splitTags: ["push"],
+  primaryMuscles: ["Triceps"],
+  secondaryMuscles: [],
+  equipment: ["cable"],
+  isMainLiftEligible: false,
+  isCompound: false,
+  stimulusProfile: {
+    triceps: 1,
+  },
+});
+
+const patternedCableFly = exercise({
+  id: "patterned-cable-fly",
+  name: "Patterned Cable Fly",
+  movementPatterns: ["adduction"],
+  splitTags: ["push"],
+  primaryMuscles: ["Chest"],
+  secondaryMuscles: [],
+  equipment: ["cable"],
+  isMainLiftEligible: false,
+  isCompound: false,
+  stimulusProfile: {
+    chest: 1,
+  },
+});
+
+const stalePatternCableLateralRaise = exercise({
+  id: "stale-pattern-cable-lateral-raise",
+  name: "Stale Pattern Cable Lateral Raise",
+  movementPatterns: ["horizontal_push"],
+  splitTags: ["push"],
+  primaryMuscles: ["Side Delts"],
+  secondaryMuscles: [],
+  equipment: ["cable"],
+  isMainLiftEligible: false,
+  isCompound: false,
+  stimulusProfile: {
+    side_delts: 1,
+  },
+});
+
+const stalePatternCableFly = exercise({
+  id: "stale-pattern-cable-fly",
+  name: "Stale Pattern Cable Fly",
+  movementPatterns: ["horizontal_push"],
+  splitTags: ["push"],
+  primaryMuscles: ["Chest"],
+  secondaryMuscles: [],
+  equipment: ["cable"],
+  isMainLiftEligible: false,
+  isCompound: false,
+  stimulusProfile: {
+    chest: 1,
+  },
 });
 
 const exerciseLibrary = [idbp, dip, tricepsPushdown, lateralRaise, cableLateralRaise, overheadTriceps];
@@ -441,6 +578,428 @@ function buildWeek3Session2MappedContext(): MappedGenerationContext {
   };
 }
 
+function buildChestAnchorBudgetMappedContext(): MappedGenerationContext {
+  const tricepsHeavyHistory: WorkoutHistoryEntry = {
+    date: "2026-03-03T10:00:00.000Z",
+    completed: true,
+    status: "COMPLETED",
+    sessionIntent: "push",
+    mesocycleSnapshot: {
+      mesocycleId: "meso-active",
+      week: 3,
+      session: 1,
+      phase: "ACCUMULATION",
+    },
+    exercises: [
+      {
+        exerciseId: "cable-triceps-pushdown",
+        sets: makeSets("cable-triceps-pushdown", 7, 30),
+      },
+    ],
+  };
+
+  return {
+    ...buildMappedContext(),
+    exerciseLibrary: [chestPriorityPress, tricepsPushdown, lateralRaise] as MappedGenerationContext["exerciseLibrary"],
+    rawExercises: [chestPriorityPress, tricepsPushdown, lateralRaise].map(toPrisma) as unknown as MappedGenerationContext["rawExercises"],
+    history: [tricepsHeavyHistory],
+    lifecycleVolumeTargets: {
+      Chest: 12,
+      Triceps: 8,
+      "Side Delts": 8,
+      "Front Delts": 6,
+      "Upper Back": 12,
+      Lats: 12,
+      Biceps: 10,
+      "Rear Delts": 10,
+      Quads: 16,
+      Hamstrings: 12,
+      Glutes: 8,
+      Calves: 10,
+      Core: 0,
+      "Lower Back": 0,
+      Forearms: 0,
+      Adductors: 0,
+      Abductors: 0,
+      Abs: 0,
+    },
+    mesocycleRoleMapByIntent: {
+      push: new Map([
+        ["chest-priority-press", "CORE_COMPOUND"],
+        ["cable-triceps-pushdown", "ACCESSORY"],
+        ["lateral-raise", "ACCESSORY"],
+      ]),
+      pull: new Map(),
+      legs: new Map(),
+      upper: new Map(),
+      lower: new Map(),
+      full_body: new Map(),
+      body_part: new Map(),
+    },
+  };
+}
+
+function buildAccessoryDroppableMappedContext(): MappedGenerationContext {
+  return {
+    ...buildMappedContext(),
+    exerciseLibrary: [chestPriorityPress, tricepsPushdown, lateralRaise] as MappedGenerationContext["exerciseLibrary"],
+    rawExercises: [chestPriorityPress, tricepsPushdown, lateralRaise].map(toPrisma) as unknown as MappedGenerationContext["rawExercises"],
+    history: [],
+    lifecycleVolumeTargets: {
+      Chest: 12,
+      Triceps: 0,
+      "Side Delts": 4,
+      "Front Delts": 4,
+      "Upper Back": 12,
+      Lats: 12,
+      Biceps: 10,
+      "Rear Delts": 10,
+      Quads: 16,
+      Hamstrings: 12,
+      Glutes: 8,
+      Calves: 10,
+      Core: 0,
+      "Lower Back": 0,
+      Forearms: 0,
+      Adductors: 0,
+      Abductors: 0,
+      Abs: 0,
+    },
+    mesocycleRoleMapByIntent: {
+      push: new Map([
+        ["chest-priority-press", "CORE_COMPOUND"],
+        ["cable-triceps-pushdown", "ACCESSORY"],
+        ["lateral-raise", "ACCESSORY"],
+      ]),
+      pull: new Map(),
+      legs: new Map(),
+      upper: new Map(),
+      lower: new Map(),
+      full_body: new Map(),
+      body_part: new Map(),
+    },
+  };
+}
+
+function buildCoreFloorMappedContext(): MappedGenerationContext {
+  const chestNearTargetHistory: WorkoutHistoryEntry = {
+    date: "2026-03-03T10:00:00.000Z",
+    completed: true,
+    status: "COMPLETED",
+    sessionIntent: "push",
+    mesocycleSnapshot: {
+      mesocycleId: "meso-active",
+      week: 3,
+      session: 1,
+      phase: "ACCUMULATION",
+    },
+    exercises: [
+      {
+        exerciseId: "cable-triceps-pushdown",
+        sets: makeSets("cable-triceps-pushdown", 2, 30),
+      },
+    ],
+  };
+
+  return {
+    ...buildMappedContext(),
+    exerciseLibrary: [chestMicroPress, tricepsPushdown] as MappedGenerationContext["exerciseLibrary"],
+    rawExercises: [chestMicroPress, tricepsPushdown].map(toPrisma) as unknown as MappedGenerationContext["rawExercises"],
+    history: [chestNearTargetHistory],
+    lifecycleVolumeTargets: {
+      Chest: 0.2,
+      Triceps: 4,
+      "Side Delts": 0,
+      "Front Delts": 0,
+      "Upper Back": 12,
+      Lats: 12,
+      Biceps: 10,
+      "Rear Delts": 10,
+      Quads: 16,
+      Hamstrings: 12,
+      Glutes: 8,
+      Calves: 10,
+      Core: 0,
+      "Lower Back": 0,
+      Forearms: 0,
+      Adductors: 0,
+      Abductors: 0,
+      Abs: 0,
+    },
+    mesocycleRoleMapByIntent: {
+      push: new Map([
+        ["chest-micro-press", "CORE_COMPOUND"],
+        ["cable-triceps-pushdown", "ACCESSORY"],
+      ]),
+      pull: new Map(),
+      legs: new Map(),
+      upper: new Map(),
+      lower: new Map(),
+      full_body: new Map(),
+      body_part: new Map(),
+    },
+  };
+}
+
+function buildClosureNewExerciseMappedContext(): MappedGenerationContext {
+  return {
+    ...buildMappedContext(),
+    exerciseLibrary: [chestPriorityPress, tricepsPushdown, lateralRaise, cableFly] as MappedGenerationContext["exerciseLibrary"],
+    rawExercises: [chestPriorityPress, tricepsPushdown, lateralRaise, cableFly].map(toPrisma) as unknown as MappedGenerationContext["rawExercises"],
+    history: [],
+    lifecycleVolumeTargets: {
+      Chest: 10,
+      Triceps: 0,
+      "Side Delts": 0,
+      "Front Delts": 4,
+      "Upper Back": 12,
+      Lats: 12,
+      Biceps: 10,
+      "Rear Delts": 10,
+      Quads: 16,
+      Hamstrings: 12,
+      Glutes: 8,
+      Calves: 10,
+      Core: 0,
+      "Lower Back": 0,
+      Forearms: 0,
+      Adductors: 0,
+      Abductors: 0,
+      Abs: 0,
+    },
+    mesocycleRoleMapByIntent: {
+      push: new Map([
+        ["chest-priority-press", "CORE_COMPOUND"],
+        ["cable-triceps-pushdown", "ACCESSORY"],
+        ["lateral-raise", "ACCESSORY"],
+      ]),
+      pull: new Map(),
+      legs: new Map(),
+      upper: new Map(),
+      lower: new Map(),
+      full_body: new Map(),
+      body_part: new Map(),
+    },
+  };
+}
+
+function buildClosureExpansionMappedContext(): MappedGenerationContext {
+  return {
+    ...buildMappedContext(),
+    exerciseLibrary: [chestPriorityPress, tricepsPushdown, lateralRaise] as MappedGenerationContext["exerciseLibrary"],
+    rawExercises: [chestPriorityPress, tricepsPushdown, lateralRaise].map(toPrisma) as unknown as MappedGenerationContext["rawExercises"],
+    history: [],
+    lifecycleVolumeTargets: {
+      Chest: 6,
+      Triceps: 0,
+      "Side Delts": 0,
+      "Front Delts": 4,
+      "Upper Back": 12,
+      Lats: 12,
+      Biceps: 10,
+      "Rear Delts": 10,
+      Quads: 16,
+      Hamstrings: 12,
+      Glutes: 8,
+      Calves: 10,
+      Core: 0,
+      "Lower Back": 0,
+      Forearms: 0,
+      Adductors: 0,
+      Abductors: 0,
+      Abs: 0,
+    },
+    effectivePeriodization: {
+      ...buildMappedContext().effectivePeriodization,
+      lifecycleSetTargets: { main: 4, accessory: 3 },
+    },
+    mesocycleRoleMapByIntent: {
+      push: new Map([
+        ["chest-priority-press", "CORE_COMPOUND"],
+        ["cable-triceps-pushdown", "ACCESSORY"],
+        ["lateral-raise", "ACCESSORY"],
+      ]),
+      pull: new Map(),
+      legs: new Map(),
+      upper: new Map(),
+      lower: new Map(),
+      full_body: new Map(),
+      body_part: new Map(),
+    },
+  };
+}
+
+function buildClosureDuplicateAccessoryMappedContext(): MappedGenerationContext {
+  return {
+    ...buildMappedContext(),
+    exerciseLibrary: [
+      chestPriorityPress,
+      dip,
+      patternedOverheadTriceps,
+      patternedCableLateralRaise,
+      patternedMachineLateralRaise,
+      patternedCableFly,
+    ] as MappedGenerationContext["exerciseLibrary"],
+    rawExercises: [
+      chestPriorityPress,
+      dip,
+      patternedOverheadTriceps,
+      patternedCableLateralRaise,
+      patternedMachineLateralRaise,
+      patternedCableFly,
+    ].map(toPrisma) as unknown as MappedGenerationContext["rawExercises"],
+    history: [],
+    lifecycleVolumeTargets: {
+      Chest: 14,
+      Triceps: 10,
+      "Side Delts": 6,
+      "Front Delts": 5,
+      "Upper Back": 12,
+      Lats: 12,
+      Biceps: 10,
+      "Rear Delts": 10,
+      Quads: 16,
+      Hamstrings: 12,
+      Glutes: 8,
+      Calves: 10,
+      Core: 0,
+      "Lower Back": 0,
+      Forearms: 0,
+      Adductors: 0,
+      Abductors: 0,
+      Abs: 0,
+    },
+    mesocycleRoleMapByIntent: {
+      push: new Map([
+        ["chest-priority-press", "CORE_COMPOUND"],
+        ["dip", "CORE_COMPOUND"],
+        ["patterned-overhead-triceps-ext", "ACCESSORY"],
+        ["patterned-cable-lateral-raise", "ACCESSORY"],
+      ]),
+      pull: new Map(),
+      legs: new Map(),
+      upper: new Map(),
+      lower: new Map(),
+      full_body: new Map(),
+      body_part: new Map(),
+    },
+  };
+}
+
+function buildClosureDominantDeficitBypassesPatternCapMappedContext(): MappedGenerationContext {
+  return {
+    ...buildMappedContext(),
+    exerciseLibrary: [
+      chestPriorityPress,
+      dip,
+      patternedOverheadTriceps,
+      stalePatternCableLateralRaise,
+      patternedMachineLateralRaise,
+      stalePatternCableFly,
+    ] as MappedGenerationContext["exerciseLibrary"],
+    rawExercises: [
+      chestPriorityPress,
+      dip,
+      patternedOverheadTriceps,
+      stalePatternCableLateralRaise,
+      patternedMachineLateralRaise,
+      stalePatternCableFly,
+    ].map(toPrisma) as unknown as MappedGenerationContext["rawExercises"],
+    history: [],
+    lifecycleVolumeTargets: {
+      Chest: 14,
+      Triceps: 10,
+      "Side Delts": 6,
+      "Front Delts": 5,
+      "Upper Back": 12,
+      Lats: 12,
+      Biceps: 10,
+      "Rear Delts": 10,
+      Quads: 16,
+      Hamstrings: 12,
+      Glutes: 8,
+      Calves: 10,
+      Core: 0,
+      "Lower Back": 0,
+      Forearms: 0,
+      Adductors: 0,
+      Abductors: 0,
+      Abs: 0,
+    },
+    mesocycleRoleMapByIntent: {
+      push: new Map([
+        ["chest-priority-press", "CORE_COMPOUND"],
+        ["dip", "CORE_COMPOUND"],
+        ["patterned-overhead-triceps-ext", "ACCESSORY"],
+        ["stale-pattern-cable-lateral-raise", "ACCESSORY"],
+      ]),
+      pull: new Map(),
+      legs: new Map(),
+      upper: new Map(),
+      lower: new Map(),
+      full_body: new Map(),
+      body_part: new Map(),
+    },
+  };
+}
+
+function buildClosureStackedIsolationPenaltyMappedContext(): MappedGenerationContext {
+  return {
+    ...buildMappedContext(),
+    exerciseLibrary: [
+      idbp,
+      dip,
+      overheadTriceps,
+      cableLateralRaise,
+      patternedMachineLateralRaise,
+      cableFly,
+    ] as MappedGenerationContext["exerciseLibrary"],
+    rawExercises: [
+      idbp,
+      dip,
+      overheadTriceps,
+      cableLateralRaise,
+      patternedMachineLateralRaise,
+      cableFly,
+    ].map(toPrisma) as unknown as MappedGenerationContext["rawExercises"],
+    history: [],
+    lifecycleVolumeTargets: {
+      Chest: 14,
+      Triceps: 4,
+      "Side Delts": 16,
+      "Front Delts": 0,
+      "Upper Back": 12,
+      Lats: 12,
+      Biceps: 10,
+      "Rear Delts": 10,
+      Quads: 16,
+      Hamstrings: 12,
+      Glutes: 8,
+      Calves: 10,
+      Core: 0,
+      "Lower Back": 0,
+      Forearms: 0,
+      Adductors: 0,
+      Abductors: 0,
+      Abs: 0,
+    },
+    mesocycleRoleMapByIntent: {
+      push: new Map([
+        ["incline-db-bench", "CORE_COMPOUND"],
+        ["dip", "CORE_COMPOUND"],
+        ["overhead-triceps-ext", "ACCESSORY"],
+        ["cable-lateral-raise", "ACCESSORY"],
+      ]),
+      pull: new Map(),
+      legs: new Map(),
+      upper: new Map(),
+      lower: new Map(),
+      full_body: new Map(),
+      body_part: new Map(),
+    },
+  };
+}
+
 function getAllExerciseSets(
   workout: {
     mainLifts: { exercise: { id: string; name: string }; sets: { targetLoad?: number }[] }[];
@@ -535,6 +1094,189 @@ describe("W3S1 Push regression — 4 engine bug fixes", () => {
     expect(dipSets?.length).toBe(1);
     expect(overheadSets?.length ?? 0).toBeLessThanOrEqual(2);
     expect(result.volumePlanByMuscle.Chest.planned).toBe(12);
-    expect(result.volumePlanByMuscle.Triceps.planned).toBeLessThanOrEqual(10);
+    expect(result.volumePlanByMuscle.Triceps.planned).toBeLessThanOrEqual(10.4);
+  });
+
+  it("keeps a chest-anchored press above the core floor when chest deficit remains meaningful and triceps is near target", async () => {
+    loadMappedGenerationContextMock.mockResolvedValueOnce(buildChestAnchorBudgetMappedContext());
+
+    const result = await generateSessionFromIntent("user-1", { intent: "push" });
+    expect("error" in result).toBe(false);
+    if ("error" in result) {
+      return;
+    }
+
+    const pressSets = getAllExerciseSets(result.workout, "chest-priority-press");
+    expect(pressSets).not.toBeNull();
+    expect(pressSets?.length ?? 0).toBe(5);
+    expect(result.volumePlanByMuscle.Triceps.planned).toBeLessThanOrEqual(9);
+    expect(
+      result.selection.sessionDecisionReceipt?.plannerDiagnostics?.exercises["chest-priority-press"]
+        ?.anchorUsed
+    ).toEqual({ kind: "muscle", muscle: "chest" });
+  });
+
+  it("drops accessory fixtures when their anchor budget is exhausted", async () => {
+    loadMappedGenerationContextMock.mockResolvedValueOnce(buildAccessoryDroppableMappedContext());
+
+    const result = await generateSessionFromIntent("user-1", { intent: "push" });
+    expect("error" in result).toBe(false);
+    if ("error" in result) {
+      return;
+    }
+
+    expect(getAllExerciseSets(result.workout, "cable-triceps-pushdown")).toBeNull();
+    expect(
+      result.filteredExercises?.some((entry) => entry.exerciseId === "cable-triceps-pushdown")
+    ).toBe(true);
+  });
+
+  it("keeps a one-set core floor when a small anchor deficit remains", async () => {
+    loadMappedGenerationContextMock.mockResolvedValueOnce(buildCoreFloorMappedContext());
+
+    const result = await generateSessionFromIntent("user-1", { intent: "push" });
+    expect("error" in result).toBe(false);
+    if ("error" in result) {
+      return;
+    }
+
+    const microPressSets = getAllExerciseSets(result.workout, "chest-micro-press");
+    expect(microPressSets?.length ?? 0).toBe(1);
+  });
+
+  it("runs closure after dropped role accessories so unresolved chest deficits still get filled", async () => {
+    loadMappedGenerationContextMock.mockResolvedValueOnce(buildClosureNewExerciseMappedContext());
+
+    const result = await generateSessionFromIntent("user-1", { intent: "push" });
+    expect("error" in result).toBe(false);
+    if ("error" in result) {
+      return;
+    }
+
+    expect(getAllExerciseSets(result.workout, "cable-triceps-pushdown")).toBeNull();
+    expect(
+      result.filteredExercises?.some((entry) => entry.exerciseId === "cable-triceps-pushdown")
+    ).toBe(true);
+    expect(getAllExerciseSets(result.workout, "cable-fly")?.length ?? 0).toBeGreaterThan(0);
+    expect(result.volumePlanByMuscle.Chest.planned).toBeGreaterThanOrEqual(9);
+    expect(
+      result.selection.sessionDecisionReceipt?.plannerDiagnostics?.closure.actions.some(
+        (action) => action.exerciseId === "cable-fly" && action.kind === "add"
+      )
+    ).toBe(true);
+    expect(
+      result.selection.sessionDecisionReceipt?.plannerDiagnostics?.muscles.Chest
+        .plannedEffectiveVolumeAfterClosure
+    ).toBeGreaterThan(
+      result.selection.sessionDecisionReceipt?.plannerDiagnostics?.muscles.Chest
+        .plannedEffectiveVolumeAfterRoleBudgeting ?? 0
+    );
+  });
+
+  it("can use closure set expansion on an already-selected exercise when critical deficits remain", async () => {
+    loadMappedGenerationContextMock.mockResolvedValueOnce(buildClosureExpansionMappedContext());
+
+    const result = await generateSessionFromIntent("user-1", { intent: "push" });
+    expect("error" in result).toBe(false);
+    if ("error" in result) {
+      return;
+    }
+
+    expect(result.selection.selectedExerciseIds).toEqual(["chest-priority-press"]);
+    expect(getAllExerciseSets(result.workout, "chest-priority-press")?.length ?? 0).toBe(5);
+    expect(result.volumePlanByMuscle.Chest.planned).toBeGreaterThanOrEqual(5);
+    expect(
+      result.selection.sessionDecisionReceipt?.plannerDiagnostics?.closure.actions
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          exerciseId: "chest-priority-press",
+          kind: "expand",
+          setDelta: 1,
+        }),
+      ])
+    );
+    expect(
+      result.selection.sessionDecisionReceipt?.plannerDiagnostics?.exercises["chest-priority-press"]
+        ?.isSetExpandedCarryover
+    ).toBe(true);
+  });
+
+  it("prefers resolving the largest remaining deficit over stacking duplicate accessory isolation during closure", async () => {
+    loadMappedGenerationContextMock.mockResolvedValueOnce(buildClosureDuplicateAccessoryMappedContext());
+
+    const result = await generateSessionFromIntent("user-1", { intent: "push" });
+    expect("error" in result).toBe(false);
+    if ("error" in result) {
+      return;
+    }
+
+    const receipt = result.selection.sessionDecisionReceipt?.plannerDiagnostics;
+    expect(receipt?.muscles.Chest.deficitAfterRoleBudgeting).toBeGreaterThan(
+      receipt?.muscles["Side Delts"].deficitAfterRoleBudgeting ?? 0
+    );
+    expect(receipt?.closure.actions[0]).toEqual(
+      expect.objectContaining({
+        exerciseId: "patterned-cable-fly",
+        kind: "add",
+      })
+    );
+    expect(getAllExerciseSets(result.workout, "patterned-cable-fly")?.length ?? 0).toBeGreaterThan(0);
+    expect(getAllExerciseSets(result.workout, "patterned-machine-lateral-raise")).toBeNull();
+    expect(
+      receipt?.muscles.Chest.plannedEffectiveVolumeAfterClosure
+    ).toBeGreaterThan(receipt?.muscles.Chest.plannedEffectiveVolumeAfterRoleBudgeting ?? 0);
+  });
+
+  it("allows a dominant-deficit closure addition even when stale movement metadata would otherwise trip the pattern cap", async () => {
+    loadMappedGenerationContextMock.mockResolvedValueOnce(
+      buildClosureDominantDeficitBypassesPatternCapMappedContext()
+    );
+
+    const result = await generateSessionFromIntent("user-1", { intent: "push" });
+    expect("error" in result).toBe(false);
+    if ("error" in result) {
+      return;
+    }
+
+    const receipt = result.selection.sessionDecisionReceipt?.plannerDiagnostics;
+    expect(receipt?.muscles.Chest.deficitAfterRoleBudgeting).toBeGreaterThan(
+      receipt?.muscles["Side Delts"].deficitAfterRoleBudgeting ?? 0
+    );
+    expect(receipt?.closure.actions[0]).toEqual(
+      expect.objectContaining({
+        exerciseId: "stale-pattern-cable-fly",
+        kind: "add",
+      })
+    );
+    expect(getAllExerciseSets(result.workout, "stale-pattern-cable-fly")?.length ?? 0).toBeGreaterThan(0);
+    expect(
+      receipt?.closure.actions.some((action) => action.exerciseId === "stale-pattern-cable-fly")
+    ).toBe(true);
+    expect(
+      receipt?.muscles.Chest.plannedEffectiveVolumeAfterClosure
+    ).toBeGreaterThan(receipt?.muscles.Chest.plannedEffectiveVolumeAfterRoleBudgeting ?? 0);
+  });
+
+  it("penalizes stacked isolation on an already-covered muscle when another deficit remains materially unresolved", async () => {
+    loadMappedGenerationContextMock.mockResolvedValueOnce(
+      buildClosureStackedIsolationPenaltyMappedContext()
+    );
+
+    const result = await generateSessionFromIntent("user-1", { intent: "push" });
+    expect("error" in result).toBe(false);
+    if ("error" in result) {
+      return;
+    }
+
+    const receipt = result.selection.sessionDecisionReceipt?.plannerDiagnostics;
+    expect(receipt?.muscles["Side Delts"].deficitAfterRoleBudgeting).toBeGreaterThan(
+      receipt?.muscles.Chest.deficitAfterRoleBudgeting ?? 0
+    );
+    expect(["cable-fly", "dip", "incline-db-bench"]).toContain(receipt?.closure.actions[0]?.exerciseId);
+    expect(receipt?.closure.actions[0]?.exerciseId).not.toBe("patterned-machine-lateral-raise");
+    expect(
+      receipt?.muscles.Chest.plannedEffectiveVolumeAfterClosure
+    ).toBeGreaterThan(receipt?.muscles.Chest.plannedEffectiveVolumeAfterRoleBudgeting ?? 0);
   });
 });

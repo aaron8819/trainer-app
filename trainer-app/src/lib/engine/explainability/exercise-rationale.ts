@@ -167,8 +167,8 @@ function explainDeficitFill(candidate: SelectionCandidate, objective: SelectionO
     const actual = objective.volumeContext.weeklyActual.get(muscle) ?? 0;
     const deficit = Math.max(0, target - actual);
 
-    if (deficit > 0 && contribution.direct > 0) {
-      const fillAmount = contribution.direct / deficit;
+    if (deficit > 0 && contribution > 0) {
+      const fillAmount = contribution / deficit;
       deficitContributions.push({ muscle, fillAmount });
     }
   }
@@ -398,17 +398,14 @@ function extractPrimaryReasons(breakdown: SelectionFactorBreakdown): string[] {
 /**
  * Build volume contribution summary
  *
- * Example: "3 sets chest, 0.9 indirect front delts"
+ * Example: "3.0 effective chest, 1.1 effective front delts"
  */
 function buildVolumeContributionSummary(candidate: SelectionCandidate): string {
   const parts: string[] = [];
 
-  for (const [muscle, { direct, indirect }] of candidate.volumeContribution) {
-    if (direct > 0) {
-      parts.push(`${direct} sets ${muscle.toLowerCase()}`);
-    }
-    if (indirect > 0) {
-      parts.push(`${indirect.toFixed(1)} indirect ${muscle.toLowerCase()}`);
+  for (const [muscle, effective] of candidate.volumeContribution) {
+    if (effective > 0) {
+      parts.push(`${effective.toFixed(1)} effective ${muscle.toLowerCase()}`);
     }
   }
 

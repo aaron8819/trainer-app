@@ -110,6 +110,10 @@ vi.mock("./workout-context", () => ({
       equipment: ["barbell"],
       primaryMuscles: ["Chest"],
       secondaryMuscles: ["Triceps"],
+      stimulusProfile: {
+        chest: 1,
+        triceps: 0.35,
+      },
       isCompound: true,
       repRangeMin: 3,
       repRangeMax: 12,
@@ -123,6 +127,9 @@ vi.mock("./workout-context", () => ({
       equipment: ["barbell"],
       primaryMuscles: ["Biceps"],
       secondaryMuscles: [],
+      stimulusProfile: {
+        biceps: 1,
+      },
       isCompound: false,
       repRangeMin: 8,
       repRangeMax: 15,
@@ -179,10 +186,11 @@ function makeBicepsExercise(setCount: number) {
   };
 }
 
-function makePriorWorkoutWithSets(muscleName: string, setCount: number) {
+function makePriorWorkoutWithSets(exerciseId: string, muscleName: string, setCount: number) {
   return {
     exercises: [
       {
+        exerciseId,
         exercise: {
           exerciseMuscles: [{ role: "PRIMARY", muscle: { name: muscleName } }],
         },
@@ -243,7 +251,7 @@ describe("generateWorkoutExplanation – volumeCompliance", () => {
 
   it("returns correct projectedTotal when prior sessions exist in the same meso week", async () => {
     // Prior workout: 3 chest sets performed
-    compliancePriorWorkouts = [makePriorWorkoutWithSets("Chest", 3)];
+    compliancePriorWorkouts = [makePriorWorkoutWithSets("ex1", "Chest", 3)];
 
     const result = await generateWorkoutExplanation("w1");
     expect("error" in result).toBe(false);
@@ -251,10 +259,10 @@ describe("generateWorkoutExplanation – volumeCompliance", () => {
 
     const chestRow = result.volumeCompliance.find((r) => r.muscle === "Chest");
     expect(chestRow).toBeDefined();
-    expect(chestRow?.setsLoggedBeforeSession).toBe(3);
-    expect(chestRow?.setsPrescribedThisSession).toBe(3);
-    expect(chestRow?.projectedTotal).toBe(6);
-    // Chest MEV=10, projectedTotal=6 < MEV → UNDER_MEV
+    expect(chestRow?.performedEffectiveVolumeBeforeSession).toBe(3);
+    expect(chestRow?.plannedEffectiveVolumeThisSession).toBe(3);
+    expect(chestRow?.projectedEffectiveVolume).toBe(6);
+    // Chest MEV=10, projectedEffectiveVolume=6 < MEV → UNDER_MEV
     expect(chestRow?.status).toBe("UNDER_MEV");
   });
 
@@ -265,7 +273,7 @@ describe("generateWorkoutExplanation – volumeCompliance", () => {
     if ("error" in result) return;
 
     const chestRow = result.volumeCompliance.find((r) => r.muscle === "Chest");
-    expect(chestRow?.setsLoggedBeforeSession).toBe(0);
+    expect(chestRow?.performedEffectiveVolumeBeforeSession).toBe(0);
 
     // Verify the query was issued with the correct week snapshot
     const complianceCall = mocks.workoutFindMany.mock.calls.find(
@@ -287,20 +295,20 @@ describe("generateWorkoutExplanation – volumeCompliance", () => {
     expect(complianceCall?.[0]?.where?.id).toEqual({ not: "w1" });
   });
 
-  it("computes OVER_MAV when projectedTotal exceeds MAV", async () => {
+  it("computes OVER_MAV when projectedEffectiveVolume exceeds MAV", async () => {
     // Chest MAV=16; prior=14 + current=3 = 17 > 16
-    compliancePriorWorkouts = [makePriorWorkoutWithSets("Chest", 14)];
+    compliancePriorWorkouts = [makePriorWorkoutWithSets("ex1", "Chest", 14)];
 
     const result = await generateWorkoutExplanation("w1");
     if ("error" in result) return;
 
     const chestRow = result.volumeCompliance.find((r) => r.muscle === "Chest");
-    expect(chestRow?.projectedTotal).toBe(17);
+    expect(chestRow?.projectedEffectiveVolume).toBe(17);
     expect(chestRow?.status).toBe("OVER_MAV");
   });
 
-  it("computes UNDER_MEV when projectedTotal is below MEV", async () => {
-    // Only 1 set prescribed, no prior → projectedTotal=1 < Chest MEV=10
+  it("computes UNDER_MEV when projectedEffectiveVolume is below MEV", async () => {
+    // Only 1 set prescribed, no prior → projectedEffectiveVolume=1 < Chest MEV=10
     mocks.workoutFindUnique.mockResolvedValue({
       ...BASE_WORKOUT,
       exercises: [makeChestExercise(1)],
@@ -310,35 +318,35 @@ describe("generateWorkoutExplanation – volumeCompliance", () => {
     if ("error" in result) return;
 
     const chestRow = result.volumeCompliance.find((r) => r.muscle === "Chest");
-    expect(chestRow?.projectedTotal).toBe(1);
+    expect(chestRow?.projectedEffectiveVolume).toBe(1);
     expect(chestRow?.status).toBe("UNDER_MEV");
   });
 
-  it("computes ON_TARGET when projectedTotal equals weeklyTarget", async () => {
+  it("computes ON_TARGET when projectedEffectiveVolume equals weeklyTarget", async () => {
     // Week 2 of 4 for Chest: target = MEV + 0.5*(MAV-MEV) = 10 + 3 = 13
-    // prior=10, current=3 → projectedTotal=13 = weeklyTarget
-    compliancePriorWorkouts = [makePriorWorkoutWithSets("Chest", 10)];
+    // prior=10, current=3 → projectedEffectiveVolume=13 = weeklyTarget
+    compliancePriorWorkouts = [makePriorWorkoutWithSets("ex1", "Chest", 10)];
 
     const result = await generateWorkoutExplanation("w1");
     if ("error" in result) return;
 
     const chestRow = result.volumeCompliance.find((r) => r.muscle === "Chest");
-    expect(chestRow?.projectedTotal).toBe(13);
+    expect(chestRow?.projectedEffectiveVolume).toBe(13);
     expect(chestRow?.weeklyTarget).toBe(13);
     expect(chestRow?.status).toBe("ON_TARGET");
   });
 
-  it("APPROACHING_MAV takes priority over OVER_TARGET at the boundary (projectedTotal > 0.85*MAV)", async () => {
-    // Chest: MAV=16, 0.85*MAV=13.6; prior=11, current=3 → projectedTotal=14 > 13.6
-    // weeklyTarget=13, projectedTotal=14 > weeklyTarget → would be OVER_TARGET
-    // BUT projectedTotal=14 > 0.85*16=13.6 → APPROACHING_MAV takes priority
-    compliancePriorWorkouts = [makePriorWorkoutWithSets("Chest", 11)];
+  it("APPROACHING_MAV takes priority over OVER_TARGET at the boundary (projectedEffectiveVolume > 0.85*MAV)", async () => {
+    // Chest: MAV=16, 0.85*MAV=13.6; prior=11, current=3 → projectedEffectiveVolume=14 > 13.6
+    // weeklyTarget=13, projectedEffectiveVolume=14 > weeklyTarget → would be OVER_TARGET
+    // BUT projectedEffectiveVolume=14 > 0.85*16=13.6 → APPROACHING_MAV takes priority
+    compliancePriorWorkouts = [makePriorWorkoutWithSets("ex1", "Chest", 11)];
 
     const result = await generateWorkoutExplanation("w1");
     if ("error" in result) return;
 
     const chestRow = result.volumeCompliance.find((r) => r.muscle === "Chest");
-    expect(chestRow?.projectedTotal).toBe(14);
+    expect(chestRow?.projectedEffectiveVolume).toBe(14);
     expect(chestRow?.status).toBe("APPROACHING_MAV");
   });
 
@@ -366,7 +374,7 @@ describe("generateWorkoutExplanation – volumeCompliance", () => {
       ...BASE_WORKOUT,
       exercises: [makeChestExercise(3), makeBicepsExercise(1)],
     });
-    compliancePriorWorkouts = [makePriorWorkoutWithSets("Chest", 14)];
+    compliancePriorWorkouts = [makePriorWorkoutWithSets("ex1", "Chest", 14)];
 
     const result = await generateWorkoutExplanation("w1");
     if ("error" in result) return;
@@ -375,5 +383,17 @@ describe("generateWorkoutExplanation – volumeCompliance", () => {
     const statuses = result.volumeCompliance.map((r) => r.status);
     expect(statuses[0]).toBe("OVER_MAV");
     expect(statuses[statuses.length - 1]).toBe("UNDER_MEV");
+  });
+
+  it("uses weighted effective stimulus for assisting muscles instead of binary secondary credit", async () => {
+    const result = await generateWorkoutExplanation("w1");
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    const tricepsRow = result.volumeCompliance.find((row) => row.muscle === "Triceps");
+    expect(tricepsRow).toBeDefined();
+    expect(tricepsRow?.plannedEffectiveVolumeThisSession).toBe(1);
+    expect(tricepsRow?.projectedEffectiveVolume).toBe(1);
+    expect(tricepsRow?.plannedEffectiveVolumeThisSession).toBeLessThan(3);
   });
 });

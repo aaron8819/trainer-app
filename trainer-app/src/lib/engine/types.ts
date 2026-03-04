@@ -27,6 +27,26 @@ export type WorkoutMesocycleSnapshot = {
  * Represents muscle group names (e.g., "Chest", "Front Delts", "Quads")
  */
 export type Muscle = string;
+export type MuscleId =
+  | "chest"
+  | "front_delts"
+  | "side_delts"
+  | "rear_delts"
+  | "triceps"
+  | "biceps"
+  | "lats"
+  | "upper_back"
+  | "quads"
+  | "hamstrings"
+  | "glutes"
+  | "calves"
+  | "core"
+  | "lower_back"
+  | "forearms"
+  | "adductors"
+  | "abductors"
+  | "abs";
+export type StimulusProfile = Partial<Record<MuscleId, number>>;
 export type MovementPatternV2 =
   | "horizontal_push"
   | "vertical_push"
@@ -127,6 +147,7 @@ export type Exercise = {
   equipment: EquipmentType[];
   primaryMuscles?: string[];
   secondaryMuscles?: string[];
+  stimulusProfile?: StimulusProfile;
   muscleSraHours?: Record<string, number>;
 };
 

@@ -5,7 +5,7 @@
  */
 
 import type { Exercise, Muscle } from "../types";
-import { INDIRECT_SET_MULTIPLIER } from "../volume-constants";
+import { getEffectiveStimulusByMuscle } from "../stimulus";
 import type {
   SelectionObjective,
   SelectionCandidate,
@@ -37,11 +37,11 @@ function buildDeficitScoringContribution(
 
   const filtered: VolumeContribution = new Map();
   for (const muscle of exercise.primaryMuscles ?? []) {
-    const direct = contribution.get(muscle)?.direct ?? 0;
-    if (direct <= 0) {
+    const effective = contribution.get(muscle) ?? 0;
+    if (effective <= 0) {
       continue;
     }
-    filtered.set(muscle, { direct, indirect: 0 });
+    filtered.set(muscle, effective);
   }
 
   // Shrug-style trap isolation should not drive pull-session deficit targeting.
@@ -128,27 +128,7 @@ export function computeVolumeContribution(
   exercise: Exercise,
   sets: number
 ): VolumeContribution {
-  const contribution: VolumeContribution = new Map();
-
-  // Direct volume from primary muscles
-  for (const muscle of exercise.primaryMuscles ?? []) {
-    const existing = contribution.get(muscle) ?? { direct: 0, indirect: 0 };
-    contribution.set(muscle, {
-      ...existing,
-      direct: existing.direct + sets,
-    });
-  }
-
-  // Indirect volume from secondary muscles
-  for (const muscle of exercise.secondaryMuscles ?? []) {
-    const existing = contribution.get(muscle) ?? { direct: 0, indirect: 0 };
-    contribution.set(muscle, {
-      ...existing,
-      indirect: existing.indirect + sets,
-    });
-  }
-
-  return contribution;
+  return getEffectiveStimulusByMuscle(exercise, sets);
 }
 
 /**
@@ -166,9 +146,8 @@ export function mergeVolume(
 ): Map<Muscle, number> {
   const merged = new Map(existing);
 
-  for (const [muscle, { direct, indirect }] of contribution) {
+  for (const [muscle, effective] of contribution) {
     const current = merged.get(muscle) ?? 0;
-    const effective = direct + indirect * INDIRECT_SET_MULTIPLIER;
     merged.set(muscle, current + effective);
   }
 

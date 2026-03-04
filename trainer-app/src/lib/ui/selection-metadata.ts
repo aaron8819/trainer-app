@@ -90,6 +90,7 @@ export function buildCanonicalSelectionMetadata(
             lifecycleVolumeTargets: priorReceipt.lifecycleVolume.targets,
             sorenessSuppressedMuscles: priorReceipt.sorenessSuppressedMuscles,
             deloadDecision: priorReceipt.deloadDecision,
+            plannerDiagnostics: priorReceipt.plannerDiagnostics,
             autoregulation: autoregulation
               ? {
                   wasAutoregulated: autoregulation.wasAutoregulated,

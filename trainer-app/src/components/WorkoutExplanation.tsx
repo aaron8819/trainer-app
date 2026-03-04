@@ -119,6 +119,7 @@ export function WorkoutExplanation({
     <ExplainabilityPanel
       explanation={explanation}
       summary={summary}
+      sessionDecisionReceipt={sessionDecisionReceipt}
       startLoggingHref={startLoggingHref}
     />
   );

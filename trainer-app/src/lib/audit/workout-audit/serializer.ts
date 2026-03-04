@@ -17,16 +17,25 @@ export function buildWorkoutAuditArtifact(
   request: WorkoutAuditRequest,
   run: WorkoutAuditRun
 ): WorkoutAuditArtifact {
+  const piiSafe = request.sanitizationLevel === "pii-safe";
+  const sanitizedRequest: WorkoutAuditRequest = piiSafe
+    ? {
+        ...request,
+        userId: undefined,
+        ownerEmail: undefined,
+      }
+    : request;
+
   return {
     version: 1,
     generatedAt: run.generatedAt,
     mode: request.mode,
-    source: "live",
+    source: piiSafe ? "pii-safe" : "live",
     identity: {
-      userId: run.context.userId,
-      ownerEmail: run.context.ownerEmail,
+      userId: piiSafe ? "redacted" : run.context.userId,
+      ownerEmail: piiSafe ? undefined : run.context.ownerEmail,
     },
-    request,
+    request: sanitizedRequest,
     nextSession: run.context.nextSession,
     generation: run.generationResult,
   };

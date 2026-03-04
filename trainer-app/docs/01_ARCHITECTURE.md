@@ -61,7 +61,7 @@ Sources of truth:
 
 ## Canonical read-side boundaries
 - `ProgramDashboardData` in `src/lib/api/program.ts` is the canonical program dashboard read model for the shared `ProgramStatusCard` mounted on `/` and `/program`. It owns mesocycle header/timeline state, current vs viewed week, lifecycle RIR target, deload/readiness cue, and mesocycle-week volume rows. It is not the canonical contract for generic workout-history lists.
-- Home-page operational helpers that are not part of the shared dashboard card contract live separately in `loadHomeProgramSupport()` in `src/lib/api/program.ts`. That loader owns next-session intent, resume-workout targeting, and skipped-last-session hints for `/` only.
+- Home-page operational helpers that are not part of the shared dashboard card contract live separately in `loadHomeProgramSupport()` in `src/lib/api/program.ts`. `loadHomeProgramSupport()` consumes `loadNextWorkoutContext()` from `src/lib/api/next-session.ts`, which is the canonical next-session derivation service shared with the audit harness.
 - `WorkoutListSurfaceSummary` in `src/lib/ui/workout-list-items.ts` is the canonical workout/session summary read model for list surfaces. `/history`, `GET /api/workouts/history`, and the home-page Recent Workouts section should anchor on this shape rather than ad hoc row contracts.
 - Shared workout-list display semantics for those list surfaces now live with that contract in `src/lib/ui/workout-list-items.ts`: status labels/classes, intent labels, and exercise/set count copy are centralized there so Recent Workouts and History do not drift.
 - Shared route-purpose/navigation metadata now lives in `src/lib/ui/app-surface-map.ts`. That metadata is a UI-navigation aid only; it does not own read-model semantics.
@@ -71,3 +71,17 @@ Sources of truth:
   - explainability week-scoped volume compliance uses `readPersistedWorkoutMesocycleSnapshot()` in `src/lib/api/workout-mesocycle-snapshot.ts`
 - Analytics routes under `src/app/api/analytics/**` remain surface-oriented projections rather than one shared read model, but they now share one explicit semantics helper in `src/lib/api/analytics-semantics.ts` for generated/performed/completed counting vocabulary and rolling-window descriptions. The stable shared boundary with the rest of the app is still the performed-workout / mesocycle-week semantics they reuse, not the full route payload shapes.
 - Surface-local formatting stays in the consuming UI when it does not change domain semantics: date formatting, compact vs full layouts, chart grouping, and tab/panel composition.
+
+## Internal workout-audit harness boundaries
+- Canonical next-session derivation for both dashboard and audit flows is `loadNextWorkoutContext()` in `src/lib/api/next-session.ts`.
+- Audit context normalization is owned by `src/lib/audit/workout-audit/context-builder.ts`, and generation dispatch is owned by `src/lib/audit/workout-audit/generation-runner.ts`.
+- Audit artifact assembly/serialization is owned by `src/lib/audit/workout-audit/serializer.ts` and persists JSON artifacts to `artifacts/audits/` via `scripts/workout-audit.ts`.
+- Audit generation modes currently supported are `next-session` and `intent-preview` (`src/lib/audit/workout-audit/types.ts`).
+- Planner diagnostics persistence is mode-gated in the canonical session receipt:
+  - `standard`: keeps planner action/muscle/exercise diagnostics, strips first-iteration closure candidate trace
+  - `debug`: keeps first-iteration closure candidate trace
+  - Source: `src/lib/evidence/session-decision-receipt.ts`
+- Audit artifacts support privacy-aware output modes:
+  - `live`: full internal identity context
+  - `pii-safe`: redacted identity/request identifiers
+  - Source: `src/lib/audit/workout-audit/types.ts`, `src/lib/audit/workout-audit/serializer.ts`, `scripts/workout-audit.ts`

@@ -26,6 +26,7 @@ Sources of truth:
 - `npm run test:watch`: watch mode
 - `npm run test:fast`: focused fast subset
 - `npm run test:slow`: slow simulation suite opt-in
+- `npm run test:audit:matrix`: workout-audit diagnostics matrix regression sweep (`intent-preview` + `next-session` across intents)
 - `npm run verify`: lint + type-check (`tsc --noEmit`) + tests + contract verification
 - `npm run verify:contracts`: docs/runtime enum drift check
 
@@ -54,6 +55,11 @@ Sources of truth:
 - Explainability panel UI coverage: `src/components/explainability/ExplainabilityPanel.test.tsx` now also asserts the scan-first audit labels (`Session scan`, `Exercise drill-down`, `Missing or weak signals`, `Why this lift stayed in`, `Top factors`) instead of the older disclosure/jargon-heavy copy.
 - UI program dashboard coverage: `src/components/ProgramStatusCard.test.ts` (volume dot class logic, deload banner, week navigation, and `getVolumeDotClass` boundary assertions).
 - Save-route canonical receipt enforcement coverage: `src/app/api/workouts/save/route.integration.test.ts`.
+- Audit harness context/generation/serialization coverage: `src/lib/audit/workout-audit/context-builder.test.ts`, `src/lib/audit/workout-audit/generation-runner.test.ts`, `src/lib/audit/workout-audit/serializer.test.ts`.
+- Audit diagnostics matrix coverage:
+  - `src/lib/audit/workout-audit/intent-matrix.test.ts`
+  - `src/lib/audit/workout-audit/next-session-intent-matrix.test.ts`
+  - Matrix assertions keep standard/debug selection parity while verifying diagnostics gating for closure candidate trace persistence.
 
 ## Configuration
 - Vitest include patterns: `src/**/*.test.ts` and `src/**/*.test.tsx`

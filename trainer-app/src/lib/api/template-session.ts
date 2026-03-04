@@ -27,7 +27,6 @@ import type {
   PlannerAnchorBudgetDecision,
   PlannerClosureActionDiagnostic,
   PlannerClosureCandidateDiagnostic,
-  PlannerDiagnostics,
   PlannerExerciseDiagnostic,
   PlannerMuscleDiagnostic,
   PlannerOvershootAdjustment,
@@ -80,8 +79,10 @@ const NON_ANCHOR_OVERSHOOT_TOLERANCE_FRACTION = 0.1;
 const MAX_ADAPTIVE_COLLATERAL_ALLOWANCE_FRACTION = 0.6;
 const COLLATERAL_COUPLING_ALLOWANCE_FACTOR = 1.0;
 const CLOSURE_ACTION_SCORE_EPSILON = 1e-6;
+const CLOSURE_MIN_ACCEPTABLE_SCORE = 0;
 const CLOSURE_REDUNDANT_ACCESSORY_PENALTY_WEIGHT = 75;
 const CLOSURE_STACKED_ISOLATION_PENALTY_WEIGHT = 110;
+const CLOSURE_DEFAULT_CALF_SOFT_CAP = 9;
 
 function getLifecycleRoleSetTarget(
   objective: ReturnType<typeof buildSelectionObjective>,
@@ -281,6 +282,19 @@ function getAdaptiveCollateralAllowance(params: {
 
 function hasMaterialDeficit(remainingDeficit: number, tolerance: number): boolean {
   return remainingDeficit > Math.max(tolerance * 1.5, tolerance + 0.5);
+}
+
+function buildClosureSoftCaps(weeklySchedule?: string[]): Partial<Record<Muscle, number>> {
+  const normalizedSchedule = (weeklySchedule ?? []).map((entry) =>
+    String(entry).trim().toLowerCase()
+  );
+  const lowerBodySlots = normalizedSchedule.filter((entry) =>
+    ["legs", "lower", "full_body"].includes(entry)
+  ).length;
+  if (lowerBodySlots >= 2) {
+    return { Calves: CLOSURE_DEFAULT_CALF_SOFT_CAP };
+  }
+  return {};
 }
 
 function buildRemainingRoleFixturesByAnchor(
@@ -601,6 +615,27 @@ function buildAssignedEffectiveByMuscleInSession(
     recordAssignedSessionVolume(assigned, exercise, setCount);
   }
   return assigned;
+}
+
+function getAssignedPrimarySetsForMuscle(
+  perExerciseSetTargets: Record<string, number>,
+  exerciseById: Map<string, EngineExercise>,
+  muscle: Muscle
+): number {
+  let assignedPrimarySets = 0;
+  for (const [exerciseId, setCount] of Object.entries(perExerciseSetTargets)) {
+    if (setCount <= 0) {
+      continue;
+    }
+    const exercise = exerciseById.get(exerciseId);
+    if (!exercise) {
+      continue;
+    }
+    if ((exercise.primaryMuscles ?? []).includes(muscle)) {
+      assignedPrimarySets += setCount;
+    }
+  }
+  return assignedPrimarySets;
 }
 
 function buildProjectedEffectiveTotals(
@@ -1033,6 +1068,7 @@ function selectBestClosureAction(params: {
   roleMap: Map<string, "CORE_COMPOUND" | "ACCESSORY">;
   sessionIntent: GenerateIntentSessionInput["intent"];
   targetMuscles?: string[];
+  closureSoftCaps?: Partial<Record<Muscle, number>>;
 }): { bestAction?: ClosureAction; candidateDiagnostics: PlannerClosureCandidateDiagnostic[] } {
   const {
     objective,
@@ -1042,6 +1078,7 @@ function selectBestClosureAction(params: {
     roleMap,
     sessionIntent,
     targetMuscles,
+    closureSoftCaps,
   } = params;
   const unresolvedCriticalDeficits = getCriticalMuscleDeficits(
     objective,
@@ -1077,6 +1114,12 @@ function selectBestClosureAction(params: {
     exerciseById,
     objective,
   });
+  const calfSetSoftCap = closureSoftCaps?.Calves;
+  const assignedCalfPrimarySets = getAssignedPrimarySetsForMuscle(
+    selection.perExerciseSetTargets,
+    exerciseById,
+    "Calves"
+  );
 
     if (selection.selectedExerciseIds.length < maxExercises) {
       for (const exercise of filteredPool) {
@@ -1117,6 +1160,18 @@ function selectBestClosureAction(params: {
       const proposedSets = computeProposedSets(exercise, closureObjective);
       if (proposedSets <= 0) {
         candidateDiagnostics.push({ ...baseCandidate, rejectionReason: "no_proposed_sets" });
+        continue;
+      }
+      if (
+        calfSetSoftCap != null &&
+        (exercise.primaryMuscles ?? []).includes("Calves") &&
+        assignedCalfPrimarySets + proposedSets > calfSetSoftCap
+      ) {
+        candidateDiagnostics.push({
+          ...baseCandidate,
+          setDelta: proposedSets,
+          rejectionReason: "muscle_session_soft_cap_reached",
+        });
         continue;
       }
 
@@ -1207,6 +1262,17 @@ function selectBestClosureAction(params: {
       candidateDiagnostics.push({ ...baseCandidate, rejectionReason: "working_set_cap_reached" });
       continue;
     }
+    if (
+      calfSetSoftCap != null &&
+      (exercise.primaryMuscles ?? []).includes("Calves") &&
+      assignedCalfPrimarySets + 1 > calfSetSoftCap
+    ) {
+      candidateDiagnostics.push({
+        ...baseCandidate,
+        rejectionReason: "muscle_session_soft_cap_reached",
+      });
+      continue;
+    }
 
     const candidate = buildCandidate(exercise, closureObjective, 1);
     const evaluation = evaluateClosureAction(
@@ -1270,6 +1336,7 @@ function applyClosureFill(params: {
   sessionIntent: GenerateIntentSessionInput["intent"];
   targetMuscles?: string[];
   isDeload: boolean;
+  closureSoftCaps?: Partial<Record<Muscle, number>>;
 }): ClosureFillResult {
   if (params.isDeload) {
     return { selection: params.selection, actions: [], firstIterationCandidates: [] };
@@ -1307,12 +1374,31 @@ function applyClosureFill(params: {
       roleMap: params.roleMap,
       sessionIntent: params.sessionIntent,
       targetMuscles: params.targetMuscles,
+      closureSoftCaps: params.closureSoftCaps,
     });
     if (iteration === 0) {
       firstIterationCandidates = selectionResult.candidateDiagnostics;
     }
     const bestAction = selectionResult.bestAction;
     if (!bestAction) {
+      break;
+    }
+    if (bestAction.score <= CLOSURE_MIN_ACCEPTABLE_SCORE) {
+      break;
+    }
+    const dominantDeficit = unresolvedCriticalDeficits[0];
+    const hasViableDominantCandidate = selectionResult.candidateDiagnostics.some(
+      (candidate) =>
+        candidate.decision === "selected" &&
+        (candidate.score ?? Number.NEGATIVE_INFINITY) > CLOSURE_MIN_ACCEPTABLE_SCORE &&
+        (candidate.dominantDeficitContribution ?? 0) > CLOSURE_ACTION_SCORE_EPSILON
+    );
+    if (
+      dominantDeficit &&
+      hasMaterialDeficit(dominantDeficit.remainingDeficit, dominantDeficit.tolerance) &&
+      bestAction.dominantDeficitReduction <= CLOSURE_ACTION_SCORE_EPSILON &&
+      hasViableDominantCandidate
+    ) {
       break;
     }
 
@@ -1750,6 +1836,7 @@ export async function generateSessionFromIntent(
     sessionIntent: input.intent,
     targetMuscles: input.targetMuscles,
     isDeload: isDeloadSession,
+    closureSoftCaps: buildClosureSoftCaps(mapped.mappedConstraints.weeklySchedule),
   });
   const selection = closureResult.selection;
   const finalAssignedEffectiveByMuscleInSession = buildAssignedEffectiveByMuscleInSession(

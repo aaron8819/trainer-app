@@ -92,8 +92,9 @@ export function resolveNextWorkoutContext(input: {
       existingWorkoutId: topIncomplete.id,
       isExisting: true,
       source: "existing_incomplete",
-      weekInMeso: derived?.week ?? null,
-      sessionInWeek: derived?.session ?? null,
+      // Rotation week/session describe advancing generation context, not resume-workout context.
+      weekInMeso: null,
+      sessionInWeek: null,
       derivationTrace: trace,
       selectedIncompleteStatus: topIncomplete.status.toLowerCase(),
     };

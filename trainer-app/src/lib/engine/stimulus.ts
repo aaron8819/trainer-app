@@ -268,6 +268,15 @@ export const INITIAL_STIMULUS_PROFILE_BY_NAME: Record<string, StimulusProfile> =
     ["glutes", 0.65],
     ["hamstrings", 0.45],
   ]);
+  const plank = buildStimulusProfile([
+    ["core", 1.0],
+    ["abs", 0.8],
+  ]);
+  const farmersCarry = buildStimulusProfile([
+    ["forearms", 1.0],
+    ["core", 0.6],
+    ["upper_back", 0.35],
+  ]);
 
   register(
     [
@@ -283,6 +292,7 @@ export const INITIAL_STIMULUS_PROFILE_BY_NAME: Record<string, StimulusProfile> =
   register(["Decline Barbell Bench Press", "Decline Dumbbell Bench Press"], declinePress);
   register(["Dip (Chest Emphasis)"], chestDip);
   register(["Dip (Triceps Emphasis)", "Diamond Push-Up"], tricepsDip);
+  register(["Push-Up", "Deficit Push-Up"], pushUpPress);
   register(["Close-Grip Bench Press"], closeGripPress);
   register(["Cable Fly", "Pec Deck Machine", "Cable Crossover", "Dumbbell Fly", "Incline Dumbbell Fly"], fly);
   register(["Low-to-High Cable Fly"], lowToHighFly);
@@ -319,21 +329,13 @@ export const INITIAL_STIMULUS_PROFILE_BY_NAME: Record<string, StimulusProfile> =
     horizontalRow
   );
   register(["Inverted Row"], supportedHorizontalRow);
-  register(["Pull-Up", "Weighted Pull-Up", "Neutral Grip Pull-Up"], buildStimulusProfile([
-    ["lats", 1.0],
-    ["biceps", 0.4],
-    ["upper_back", 0.45],
-  ]));
+  register(["Pull-Up", "Weighted Pull-Up", "Neutral Grip Pull-Up"], verticalPull);
   register(["Chin-Up"], buildStimulusProfile([
     ["lats", 1.0],
     ["biceps", 0.55],
     ["upper_back", 0.35],
   ]));
-  register(["Lat Pulldown", "Close-Grip Lat Pulldown"], buildStimulusProfile([
-    ["lats", 1.0],
-    ["biceps", 0.4],
-    ["upper_back", 0.3],
-  ]));
+  register(["Lat Pulldown", "Close-Grip Lat Pulldown"], verticalPull);
   register(["Cable Pullover", "Dumbbell Pullover", "Straight-Arm Pulldown"], pullover);
   register(["Barbell Shrug", "Dumbbell Shrug"], shrug);
   register(["Dead Hang"], deadHang);
@@ -375,6 +377,8 @@ export const INITIAL_STIMULUS_PROFILE_BY_NAME: Record<string, StimulusProfile> =
   register(["Hip Abduction Machine", "Cable Hip Abduction"], hipAbduction);
   register(["Hip Adduction Machine"], hipAdduction);
   register(["Back Extension (45 Degree)", "Reverse Hyperextension"], backExtension);
+  register(["Plank"], plank);
+  register(["Farmer's Carry"], farmersCarry);
 
   return registry;
 })();

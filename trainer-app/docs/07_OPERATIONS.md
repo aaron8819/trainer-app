@@ -1,7 +1,7 @@
 # 07 Operations
 
 Owner: Aaron
-Last reviewed: 2026-03-03
+Last reviewed: 2026-03-04
 Purpose: Operational runbook for local development/runtime setup, migrations, seed, and verification for this single-user app.
 
 This doc covers:
@@ -28,6 +28,7 @@ Sources of truth:
 - Required for `prisma migrate dev` against Supabase: `SHADOW_DATABASE_URL` (or `SHADOW_URL`) so Prisma can create/apply shadow migrations (`prisma.config.ts`).
 - Optional SSL override: `DATABASE_SSL_NO_VERIFY`
 - Single-user owner identity: `OWNER_EMAIL`
+- Optional strict stimulus coverage gate: `STRICT_STIMULUS_PROFILE_COVERAGE` (fails generation-context loading when planner-eligible exercises are missing explicit stimulus profile coverage)
 
 ## Local setup
 1. `npm install`
@@ -39,6 +40,9 @@ Sources of truth:
 ## Verification and maintenance
 - `npm run verify`: lint + type-check (`tsc --noEmit`) + test + contracts
 - `npm run verify:exercise-library`: validates exercise library integrity
+- `npm run report:stimulus-coverage`: reports planner-eligible exercise stimulus-profile coverage and remaining centralized fallback usage
+- `npm run audit:workout -- --mode next-session --owner owner@local`: generate structured workout-audit artifact under `artifacts/audits/`
+- `npm run audit:workout -- --mode intent-preview --owner owner@local --intent push`: explicit-intent audit artifact
 - `npm run repair:exercise-library` (and `:apply`) for repair workflow
 - Keep `docs/contracts/runtime-contracts.json` aligned with `src/lib/validation.ts`
 - Current baseline migration history is squashed to `prisma/migrations/20260222_baseline/migration.sql`; historical per-feature migration folders are retained only in local backup (`prisma/migrations_backup/`, ignored by Git).

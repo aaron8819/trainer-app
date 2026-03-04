@@ -29,12 +29,18 @@ Sources of truth:
 - `docs/05_UI_FLOWS.md`: App Router pages and major user flows
 - `docs/06_TESTING.md`: test strategy and run commands
 - `docs/07_OPERATIONS.md`: env, migrations, seed, verification, production hygiene
-- `docs/08_MESOCYCLE_SIMPLIFICATION_ROADMAP.md`: active simplification roadmap and phase audit for mesocycle/session-decision cleanup
-- `docs/09_HISTORY_ANALYTICS_DASHBOARD_ROADMAP.md`: phased follow-on roadmap for program dashboard, recent workouts, history, and analytics contract cleanup
 - `docs/contracts/runtime-contracts.json`: canonical enum/runtime contract values
 
 Reference-only docs:
 - `docs/research/` is non-canonical reference material and not a source of runtime truth.
+
+Archived roadmap/design logs:
+- `docs/archive/08_MESOCYCLE_SIMPLIFICATION_ROADMAP.md`
+- `docs/archive/09_HISTORY_ANALYTICS_DASHBOARD_ROADMAP.md`
+- `docs/archive/10_WORKOUT_AUDIT_HARNESS_DESIGN.md`
+- `docs/archive/11_HYPERTROHPY_SESSION_GENERATION_ENGINE_REFACTOR`
+- These files are historical decision logs and implementation history, not active contract sources.
+- Durable outcomes from these docs are captured in canonical docs `01/02/04/05/06/07`.
 
 ## Docs Review Checklist
 
@@ -57,3 +63,4 @@ Reference-only docs:
 - Keep one canonical location per topic
 - Do not copy enum values into multiple files; reference `docs/contracts/runtime-contracts.json`
 - Prefer short invariants over speculative roadmap language
+- Before archiving roadmap/design docs, migrate durable invariants and contracts into canonical docs `01-07`.

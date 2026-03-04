@@ -37,7 +37,7 @@ export type WorkoutAuditArtifact = {
   version: 1;
   generatedAt: string;
   mode: WorkoutAuditMode;
-  source: "live";
+  source: "live" | "pii-safe";
   identity: {
     userId: string;
     ownerEmail?: string;

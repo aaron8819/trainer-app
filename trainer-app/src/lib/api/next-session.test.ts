@@ -34,8 +34,8 @@ describe("resolveNextWorkoutContext", () => {
     expect(context.isExisting).toBe(true);
     expect(context.existingWorkoutId).toBe("in-progress-later");
     expect(context.intent).toBe("push");
-    expect(context.weekInMeso).toBe(3);
-    expect(context.sessionInWeek).toBe(2);
+    expect(context.weekInMeso).toBeNull();
+    expect(context.sessionInWeek).toBeNull();
   });
 
   it("falls back to rotation when no incomplete workout exists", () => {

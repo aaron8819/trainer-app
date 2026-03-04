@@ -1,7 +1,7 @@
 # 02 Domain Engine
 
 Owner: Aaron
-Last reviewed: 2026-03-03
+Last reviewed: 2026-03-04
 Purpose: Canonical reference for workout-generation domain logic, including selection, progression, periodization, readiness, and explainability.
 
 This doc covers:
@@ -40,6 +40,23 @@ Sources of truth:
 - `CORE_COMPOUND` role exercises are hard-capped at `MAIN_LIFT_MAX_WORKING_SETS = 5` working sets in `resolveRoleFixtureSetTarget()` (`src/lib/api/template-session.ts`). This cap fires after the continuity ramp, preventing back-off set accumulation from exceeding prescription (e.g., a continuity ramp from 3→5 sets is capped; it cannot produce 7 sets).
 - `MANUAL` sessions are ingested into progression with confidence discounting and anomaly-aware downgrades (see MANUAL Session Contract below) rather than treated as equal-signal to `INTENT` by default.
 
+## Stimulus accounting boundaries
+- Exercise taxonomy (`primaryMuscles`, `secondaryMuscles`, split/pattern metadata) remains classification/filtering input and explainability language input; it is not the canonical hypertrophy contribution math source.
+- Canonical hypertrophy contribution math is the weighted `stimulusProfile` model on engine exercises (`src/lib/engine/types.ts`) and must flow through shared helpers in `src/lib/engine/stimulus.ts`:
+  - `resolveStimulusProfile()`
+  - `getEffectiveStimulusByMuscleId()`
+  - `getEffectiveStimulusByMuscle()`
+- Effective-set accounting surfaces (`effectiveActual`, planning deficits, session planning contributions, volume compliance) are expected to consume that shared stimulus helper path rather than re-deriving contribution ad hoc.
+- Transitional fallback policy for missing explicit profiles is centralized in `src/lib/engine/stimulus.ts` and coverage-checked in `src/lib/api/template-session/context-loader.ts` via `validateStimulusProfileCoverage()`.
+- Strict fallback enforcement is controlled by `STRICT_STIMULUS_PROFILE_COVERAGE` in `src/lib/api/template-session/context-loader.ts`.
+- Coverage reporting command is `npm run report:stimulus-coverage` (`scripts/report-stimulus-profile-coverage.ts`).
+
+## Role and closure guardrails
+- Mesocycle exercise roles are anchors for continuity and structure; role-list presence is not a session sufficiency stop condition.
+- Session sufficiency remains deficit/constraint outcome-based and includes closure passes when material unresolved deficits remain (`src/lib/api/template-session.ts`).
+- Closure candidate and action diagnostics are persisted in planner diagnostics to keep ranking/filtering decisions auditable from receipts (`src/lib/planner-diagnostics/types.ts`, `src/lib/evidence/session-decision-receipt.ts`).
+- Deterministic tie-breaking is required for equivalent-score closure candidates to keep audits/regressions stable (`src/lib/api/template-session.ts`).
+
 ## Progression and load assignment
 - Progression math is implemented in `src/lib/engine/progression.ts`.
 - Load assignment and fallback logic are implemented in `src/lib/engine/apply-loads.ts`.
@@ -60,6 +77,12 @@ Sources of truth:
 - Readiness, fatigue scoring, and autoregulation logic lives in `src/lib/engine/readiness`.
 - API orchestration for readiness and periodization endpoints lives in `src/lib/api/readiness.ts` and `src/lib/api/periodization.ts`.
 - Session-decision ownership is receipt-first. The canonical flow is defined once in `docs/01_ARCHITECTURE.md`; domain logic here assumes session-level cycle/readiness context is carried only by `selectionMetadata.sessionDecisionReceipt` and parsed by `src/lib/evidence/session-decision-receipt.ts`.
+- Default readiness autoregulation policy is conservative down-regulation only (`allowUpRegulation=false`) unless explicitly overridden by policy input (`src/lib/engine/readiness/types.ts`, `src/lib/engine/readiness/autoregulate.ts`).
+
+## Evidence and rule guardrails
+- Reactive deload logic in `shouldDeload()` is evidence-gated and requires stronger signals (sustained low-readiness streak or repeated main-lift plateau evidence) rather than flat total-session-rep plateaus alone (`src/lib/engine/progression.ts`, `src/lib/engine/progression.correctness.test.ts`).
+- Intent alignment enforcement is diagnostics-first by default (`minRatio=0` unless explicitly requested), with explicit intent diagnostics returned on selection output (`src/lib/api/template-session/intent-filters.ts`).
+- Post-hoc optimizer stretch swapping is removed; final selection remains optimizer-owned (`src/lib/engine/selection-v2/optimizer.evidence.test.ts`).
 
 ## Workout status semantics
 - The split exists to separate adaptation signals from advancement control: partially performed work should inform future load/selection, while schedule/phase advancement remains a stricter completion event.

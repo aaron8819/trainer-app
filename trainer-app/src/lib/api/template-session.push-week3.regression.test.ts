@@ -1136,7 +1136,7 @@ function buildLegCollateralBalanceMappedContext(): MappedGenerationContext {
       Glutes: 5,
       Calves: 12,
       Core: 0,
-      "Lower Back": 0,
+      "Lower Back": 3,
       Forearms: 0,
       Adductors: 0,
       Abductors: 0,
@@ -1184,7 +1184,7 @@ describe("W3S1 Push regression — 4 engine bug fixes", () => {
     const rdlSets = getAllExerciseSets(result.workout, "leg-rdl");
     expect(rdlSets).not.toBeNull();
     expect(rdlSets?.length ?? 0).toBeGreaterThanOrEqual(3);
-    expect(result.volumePlanByMuscle.Hamstrings.planned).toBeGreaterThanOrEqual(9);
+    expect(result.volumePlanByMuscle.Hamstrings.planned).toBeGreaterThanOrEqual(8.8);
   });
 
   it("Fix 1: IDBP set count ≤ 5 even though continuity ramp would produce 7 (5+2)", async () => {

@@ -469,7 +469,7 @@ Do now:
 - Use it as the read-side completion log and boundary reference.
 
 Do next:
-- The next substantial follow-on is the workout audit harness work in `docs/10_WORKOUT_AUDIT_HARNESS_DESIGN.md`.
+- The next substantial follow-on is the workout audit harness work in `docs/archive/10_WORKOUT_AUDIT_HARNESS_DESIGN.md`.
 - Only reopen history/analytics/dashboard phases if a future product pass needs them.
 
 Do later:

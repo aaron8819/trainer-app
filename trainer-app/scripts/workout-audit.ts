@@ -48,6 +48,7 @@ function parseRequestFromArgs(argv: string[]): WorkoutAuditRequest {
     intent,
     targetMuscles,
     plannerDiagnosticsMode: args.debug === true ? "debug" : "standard",
+    sanitizationLevel: args.sanitization === "pii-safe" ? "pii-safe" : "none",
   };
 }
 

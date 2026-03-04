@@ -87,6 +87,7 @@ export function finalizePostLoadResult(
   const postLoadVolumeContext = buildVolumeContext(mapped.history, mapped.exerciseLibrary, {
     week: mapped.lifecycleWeek,
     length: mapped.mesocycleLength,
+    mesocycleId: mapped.activeMesocycle?.id ?? undefined,
     weeklyTargets: mapped.lifecycleVolumeTargets,
   });
   const volumePlanByMuscle = buildVolumePlanByMuscle(

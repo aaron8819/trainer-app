@@ -5,6 +5,7 @@ import type { MappedGenerationContext } from "./types";
 import type { CycleContextSnapshot, DeloadDecision } from "@/lib/evidence/types";
 import {
   buildLifecyclePeriodization,
+  deriveCurrentMesocycleSession,
   getCurrentMesoWeek,
   getRirTarget,
   getWeeklyVolumeTarget,
@@ -78,6 +79,9 @@ function auditSectionRoleMismatches(
   workouts: Awaited<ReturnType<typeof loadWorkoutContext>>["workouts"],
   roleMapByIntent: Record<SessionIntent, Map<string, "CORE_COMPOUND" | "ACCESSORY">>
 ) {
+  // Historical workout sections are receipts, not the canonical mesocycle-role registry.
+  // Keep mismatches visible for auditability, but do not let them rewrite role fixtures at read time.
+  // Planning/generation must continue to use mesocycleExerciseRole rows as the canonical source.
   for (const workout of workouts) {
     if (!workout.sessionIntent) continue;
     const intent = dbIntentToSessionIntent(workout.sessionIntent);
@@ -139,7 +143,8 @@ export async function loadMappedGenerationContext(userId: string): Promise<Mappe
     }
   }
   auditSectionRoleMismatches(workouts, mesocycleRoleMapByIntent);
-  const lifecycleWeek = activeMesocycle ? getCurrentMesoWeek(activeMesocycle) : 1;
+  const lifecycleSession = activeMesocycle ? deriveCurrentMesocycleSession(activeMesocycle) : null;
+  const lifecycleWeek = lifecycleSession?.week ?? (activeMesocycle ? getCurrentMesoWeek(activeMesocycle) : 1);
   const weekInBlock = lifecycleWeek;
   const mesocycleLength = activeMesocycle?.durationWeeks ?? 5;
   const lifecycleRirTarget = activeMesocycle

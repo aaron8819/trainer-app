@@ -1,7 +1,7 @@
 # 00 Start Here
 
 Owner: Aaron  
-Last reviewed: 2026-02-20  
+Last reviewed: 2026-03-04  
 Purpose: Canonical entry point for the Trainer app docs. Use this file to find current docs, update docs after code changes, and prevent drift.
 
 This doc covers:
@@ -30,6 +30,7 @@ Sources of truth:
 - `docs/06_TESTING.md`: test strategy and run commands
 - `docs/07_OPERATIONS.md`: env, migrations, seed, verification, production hygiene
 - `docs/08_MESOCYCLE_SIMPLIFICATION_ROADMAP.md`: active simplification roadmap and phase audit for mesocycle/session-decision cleanup
+- `docs/09_HISTORY_ANALYTICS_DASHBOARD_ROADMAP.md`: phased follow-on roadmap for program dashboard, recent workouts, history, and analytics contract cleanup
 - `docs/contracts/runtime-contracts.json`: canonical enum/runtime contract values
 
 Reference-only docs:

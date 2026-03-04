@@ -46,6 +46,8 @@ vi.mock("@/lib/db/prisma", () => ({
 }));
 
 import {
+  deriveCurrentMesocycleSession,
+  deriveNextAdvancingSession,
   getLifecycleSetTargets,
   getCurrentMesoWeek,
   getRirTarget,
@@ -290,6 +292,43 @@ describe("mesocycle-lifecycle", () => {
         durationWeeks: 6,
       })
     ).toBe(6);
+  });
+
+  it("derives the canonical next advancing accumulation slot from lifecycle counters", () => {
+    expect(
+      deriveCurrentMesocycleSession({
+        state: "ACTIVE_ACCUMULATION",
+        accumulationSessionsCompleted: 7,
+        deloadSessionsCompleted: 0,
+        sessionsPerWeek: 3,
+        durationWeeks: 5,
+      })
+    ).toEqual({
+      week: 3,
+      session: 2,
+      phase: "ACCUMULATION",
+    });
+  });
+
+  it("derives next advancing intent from the weekly schedule instead of legacy completedSessions", () => {
+    expect(
+      deriveNextAdvancingSession(
+        {
+          state: "ACTIVE_ACCUMULATION",
+          accumulationSessionsCompleted: 7,
+          deloadSessionsCompleted: 0,
+          sessionsPerWeek: 3,
+          durationWeeks: 5,
+        },
+        ["push", "pull", "legs"]
+      )
+    ).toEqual({
+      week: 3,
+      session: 2,
+      phase: "ACCUMULATION",
+      intent: "pull",
+      scheduleIndex: 1,
+    });
   });
 
   it("uses evidence-based landmarks for rear delts, lats, and upper back", () => {

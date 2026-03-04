@@ -44,6 +44,7 @@ const BASE_MESO = {
   durationWeeks: 5,
   completedSessions: 0,
   accumulationSessionsCompleted: 0,
+  deloadSessionsCompleted: 0,
   sessionsPerWeek: 3,
   volumeTarget: "MODERATE",
   startWeek: 0,
@@ -141,23 +142,23 @@ describe("loadProgramDashboardData", () => {
       expect(result.rirTarget).toEqual({ min: 2, max: 3 });
     });
 
-    it("returns { min: 2, max: 3 } for week 3", async () => {
+    it("returns { min: 1, max: 2 } for week 3", async () => {
       setupDefaultMocks({}, 3);
-      const result = await loadProgramDashboardData("user-1");
-      expect(result.rirTarget).toEqual({ min: 2, max: 3 });
-    });
-
-    it("returns { min: 1, max: 2 } for week 4", async () => {
-      setupDefaultMocks({}, 4);
       const result = await loadProgramDashboardData("user-1");
       expect(result.rirTarget).toEqual({ min: 1, max: 2 });
     });
 
-    it("returns { min: 4, max: 6 } for deload (ACTIVE_DELOAD state)", async () => {
+    it("returns { min: 0, max: 1 } for week 4", async () => {
+      setupDefaultMocks({}, 4);
+      const result = await loadProgramDashboardData("user-1");
+      expect(result.rirTarget).toEqual({ min: 0, max: 1 });
+    });
+
+    it("returns { min: 5, max: 6 } for deload (ACTIVE_DELOAD state)", async () => {
       setupDefaultMocks({ state: "ACTIVE_DELOAD" }, 5);
       const result = await loadProgramDashboardData("user-1");
       // Cross-referenced against mesocycle-lifecycle.test.ts: week5Deload band
-      expect(result.rirTarget).toEqual({ min: 4, max: 6 });
+      expect(result.rirTarget).toEqual({ min: 5, max: 6 });
     });
 
     it("returns null rirTarget when no active mesocycle exists", async () => {
@@ -306,6 +307,24 @@ describe("loadProgramDashboardData", () => {
       expect(result.nextSession.isExisting).toBe(false);
       expect(result.nextSession.workoutId).toBeNull();
       expect(result.nextSession.intent).toBe("push");
+    });
+
+    it("derives the next session from accumulationSessionsCompleted when legacy completedSessions diverges", async () => {
+      setupDefaultMocks({
+        completedSessions: 0,
+        accumulationSessionsCompleted: 7,
+        sessionsPerWeek: 3,
+        durationWeeks: 5,
+      });
+      mocks.constraintsFindUnique.mockResolvedValue({
+        daysPerWeek: 3,
+        weeklySchedule: ["PUSH", "PULL", "LEGS"],
+      });
+
+      const result = await loadProgramDashboardData("user-1");
+
+      expect(result.nextSession.isExisting).toBe(false);
+      expect(result.nextSession.intent).toBe("pull");
     });
   });
 

@@ -3,6 +3,7 @@ import type { SelectionOutput } from "@/lib/engine/session-types";
 import type { TemplateExerciseInput } from "@/lib/engine/template-session";
 import { summarizeFilteredExercises } from "@/lib/engine/explainability";
 import { VOLUME_LANDMARKS } from "@/lib/engine/volume-landmarks";
+import { INDIRECT_SET_MULTIPLIER } from "@/lib/engine/volume-constants";
 import { loadTemplateDetail } from "./templates";
 import { loadMappedGenerationContext } from "./template-session/context-loader";
 import { runSessionGeneration, finalizePostLoadResult } from "./template-session/finalize-session";
@@ -55,6 +56,46 @@ function roleOrderedIds(
 // Prevents the continuity ramp from exceeding what's prescribed by resolveSetCount.
 const MAIN_LIFT_MAX_WORKING_SETS = 5;
 
+function getLifecycleRoleSetTarget(
+  objective: ReturnType<typeof buildSelectionObjective>,
+  role: "CORE_COMPOUND" | "ACCESSORY" | undefined
+): number | undefined {
+  if (role === "CORE_COMPOUND") {
+    return objective.constraints.lifecycleSetTargets?.main;
+  }
+  if (role === "ACCESSORY") {
+    return objective.constraints.lifecycleSetTargets?.accessory;
+  }
+  return undefined;
+}
+
+function getMinimumViableRoleSets(
+  role: "CORE_COMPOUND" | "ACCESSORY" | undefined
+): number {
+  // Core fixtures stay represented even when the current week is effectively full.
+  // Accessory fixtures are budget-constrained and may be dropped when no weekly budget remains.
+  return role === "CORE_COMPOUND" ? 1 : 0;
+}
+
+function recordAssignedSessionVolume(
+  assignedSetsByMuscleInSession: Map<string, number>,
+  exercise: { primaryMuscles?: string[]; secondaryMuscles?: string[] },
+  setCount: number
+) {
+  for (const muscle of exercise.primaryMuscles ?? []) {
+    assignedSetsByMuscleInSession.set(
+      muscle,
+      (assignedSetsByMuscleInSession.get(muscle) ?? 0) + setCount
+    );
+  }
+  for (const muscle of exercise.secondaryMuscles ?? []) {
+    assignedSetsByMuscleInSession.set(
+      muscle,
+      (assignedSetsByMuscleInSession.get(muscle) ?? 0) + setCount * INDIRECT_SET_MULTIPLIER
+    );
+  }
+}
+
 function resolveRoleFixtureSetTarget(
   exercisePrimaryMuscles: string[],
   exerciseId: string,
@@ -63,8 +104,8 @@ function resolveRoleFixtureSetTarget(
   isDeload: boolean,
   lifecycleWeeklyTargets: Record<string, number>,
   assignedSetsByMuscleInSession: Map<string, number>,
-  remainingRoleExerciseIdsByMuscle: Map<string, string[]>,
-  allRoleExerciseIdsByMuscle: Map<string, string[]>,
+  remainingRequiredRoleExerciseIdsByMuscle: Map<string, string[]>,
+  roleMap: Map<string, "CORE_COMPOUND" | "ACCESSORY">,
   role: "CORE_COMPOUND" | "ACCESSORY" | undefined
 ): number {
   const applyRoleCap = (sets: number): number =>
@@ -76,9 +117,15 @@ function resolveRoleFixtureSetTarget(
 
   const continuityMin =
     objective.constraints.continuityMinSetsByExerciseId?.get(exerciseId) ?? 0;
-  const continuityFloored = Math.max(proposedSets, continuityMin);
+  const lifecycleRoleTarget = getLifecycleRoleSetTarget(objective, role);
+  const boundedContinuityFloor =
+    lifecycleRoleTarget != null
+      ? Math.min(continuityMin, lifecycleRoleTarget)
+      : continuityMin;
+  const continuityFloored = Math.max(proposedSets, boundedContinuityFloor);
+  const minimumViableSets = getMinimumViableRoleSets(role);
   if (exercisePrimaryMuscles.length === 0) {
-    return applyRoleCap(continuityFloored);
+    return applyRoleCap(Math.max(continuityFloored, minimumViableSets));
   }
 
   const muscleCaps = exercisePrimaryMuscles.map((muscle) => {
@@ -88,40 +135,35 @@ function resolveRoleFixtureSetTarget(
       VOLUME_LANDMARKS[muscle]?.mav ??
       12;
     const w4Mav = VOLUME_LANDMARKS[muscle]?.mav ?? weeklyTarget;
+    const performedThisWeek =
+      objective.volumeContext.effectiveActual.get(muscle) ??
+      objective.volumeContext.weeklyActual.get(muscle) ??
+      0;
     const assignedInSession = assignedSetsByMuscleInSession.get(muscle) ?? 0;
-    const remainingRoleIds = remainingRoleExerciseIdsByMuscle.get(muscle) ?? [];
+    const remainingRoleIds = remainingRequiredRoleExerciseIdsByMuscle.get(muscle) ?? [];
     const reservedFloorForRemaining = remainingRoleIds.reduce((sum, roleExerciseId) => {
       if (roleExerciseId === exerciseId) {
         return sum;
       }
-      return sum + (objective.constraints.continuityMinSetsByExerciseId?.get(roleExerciseId) ?? 0);
+      return sum + getMinimumViableRoleSets(roleMap.get(roleExerciseId));
     }, 0);
-    const weeklyTargetRemaining = Math.max(0, weeklyTarget - assignedInSession - reservedFloorForRemaining);
-    const w4MavRemaining = Math.max(0, w4Mav - assignedInSession - reservedFloorForRemaining);
+    const weeklyTargetRemaining = Math.max(
+      0,
+      weeklyTarget - performedThisWeek - assignedInSession - reservedFloorForRemaining
+    );
+    const w4MavRemaining = Math.max(
+      0,
+      w4Mav - performedThisWeek - assignedInSession - reservedFloorForRemaining
+    );
     return Math.min(weeklyTargetRemaining, w4MavRemaining);
   });
 
   const capRemainingForExercise = Math.min(...muscleCaps);
   const clampedToBudget = Math.min(continuityFloored, capRemainingForExercise);
-  if (clampedToBudget >= continuityMin) {
+  if (clampedToBudget > 0) {
     return applyRoleCap(clampedToBudget);
   }
-  const mustHoldPriorFloor = exercisePrimaryMuscles.some((muscle) => {
-    const allRoleIdsForMuscle = allRoleExerciseIdsByMuscle.get(muscle) ?? [];
-    const priorFloorTotalForMuscle = allRoleIdsForMuscle.reduce(
-      (sum, roleExerciseId) =>
-        sum + (objective.constraints.continuityMinSetsByExerciseId?.get(roleExerciseId) ?? 0),
-      0
-    );
-    const weeklyTarget =
-      lifecycleWeeklyTargets[muscle] ??
-      objective.volumeContext.weeklyTarget.get(muscle) ??
-      VOLUME_LANDMARKS[muscle]?.mav ??
-      12;
-    const w4Mav = VOLUME_LANDMARKS[muscle]?.mav ?? weeklyTarget;
-    return priorFloorTotalForMuscle > Math.min(weeklyTarget, w4Mav);
-  });
-  return applyRoleCap(mustHoldPriorFloor ? continuityMin : clampedToBudget);
+  return minimumViableSets > 0 ? applyRoleCap(minimumViableSets) : 0;
 }
 
 export async function generateSessionFromTemplate(
@@ -309,24 +351,22 @@ export async function generateSessionFromIntent(
       }
       const perExerciseSetTargets: Record<string, number> = {};
       const assignedSetsByMuscleInSession = new Map<string, number>();
-      const remainingRoleExerciseIdsByMuscle = new Map<string, string[]>();
-      for (const roleExerciseId of availableRoleIds) {
+      const selectedRoleIds: string[] = [];
+      const remainingRequiredRoleExerciseIdsByMuscle = new Map<string, string[]>();
+      for (const roleExerciseId of availableRoleIds.filter((exerciseId) => roleMap.get(exerciseId) === "CORE_COMPOUND")) {
         const roleExercise = exerciseById.get(roleExerciseId);
         for (const muscle of roleExercise?.primaryMuscles ?? []) {
-          const remaining = remainingRoleExerciseIdsByMuscle.get(muscle) ?? [];
+          const remaining = remainingRequiredRoleExerciseIdsByMuscle.get(muscle) ?? [];
           remaining.push(roleExerciseId);
-          remainingRoleExerciseIdsByMuscle.set(muscle, remaining);
+          remainingRequiredRoleExerciseIdsByMuscle.set(muscle, remaining);
         }
       }
-      const allRoleExerciseIdsByMuscle = new Map(
-        Array.from(remainingRoleExerciseIdsByMuscle.entries()).map(([muscle, ids]) => [muscle, [...ids]])
-      );
       for (const exerciseId of availableRoleIds) {
         const exercise = exerciseById.get(exerciseId);
         if (!exercise) {
           continue;
         }
-        perExerciseSetTargets[exerciseId] = resolveRoleFixtureSetTarget(
+        const plannedSets = resolveRoleFixtureSetTarget(
           exercise.primaryMuscles ?? [],
           exerciseId,
           computeProposedSets(exercise, objective),
@@ -334,26 +374,28 @@ export async function generateSessionFromIntent(
           isDeloadSession,
           mapped.lifecycleVolumeTargets,
           assignedSetsByMuscleInSession,
-          remainingRoleExerciseIdsByMuscle,
-          allRoleExerciseIdsByMuscle,
+          remainingRequiredRoleExerciseIdsByMuscle,
+          roleMap,
           roleMap.get(exerciseId)
         );
+        if (plannedSets <= 0) {
+          continue;
+        }
+        perExerciseSetTargets[exerciseId] = plannedSets;
+        selectedRoleIds.push(exerciseId);
+        recordAssignedSessionVolume(assignedSetsByMuscleInSession, exercise, perExerciseSetTargets[exerciseId]);
         for (const muscle of exercise.primaryMuscles ?? []) {
-          assignedSetsByMuscleInSession.set(
-            muscle,
-            (assignedSetsByMuscleInSession.get(muscle) ?? 0) + perExerciseSetTargets[exerciseId]
-          );
-          const remaining = remainingRoleExerciseIdsByMuscle.get(muscle) ?? [];
-          remainingRoleExerciseIdsByMuscle.set(
+          const remaining = remainingRequiredRoleExerciseIdsByMuscle.get(muscle) ?? [];
+          remainingRequiredRoleExerciseIdsByMuscle.set(
             muscle,
             remaining.filter((roleExerciseId) => roleExerciseId !== exerciseId)
           );
         }
       }
       return {
-        selectedExerciseIds: availableRoleIds,
-        mainLiftIds: availableRoleIds.filter((exerciseId) => roleMap.get(exerciseId) === "CORE_COMPOUND"),
-        accessoryIds: availableRoleIds.filter((exerciseId) => roleMap.get(exerciseId) !== "CORE_COMPOUND"),
+        selectedExerciseIds: selectedRoleIds,
+        mainLiftIds: selectedRoleIds.filter((exerciseId) => roleMap.get(exerciseId) === "CORE_COMPOUND"),
+        accessoryIds: selectedRoleIds.filter((exerciseId) => roleMap.get(exerciseId) !== "CORE_COMPOUND"),
         perExerciseSetTargets,
         rationale: {},
         volumePlanByMuscle: {},
@@ -415,28 +457,26 @@ export async function generateSessionFromIntent(
     const assignedSetsByMuscleInSession = new Map<string, number>();
     for (const [selectedExerciseId, setTarget] of Object.entries(perExerciseSetTargets)) {
       const selectedExercise = exerciseById.get(selectedExerciseId);
-      for (const muscle of selectedExercise?.primaryMuscles ?? []) {
-        assignedSetsByMuscleInSession.set(
-          muscle,
-          (assignedSetsByMuscleInSession.get(muscle) ?? 0) + setTarget
-        );
+      if (!selectedExercise) {
+        continue;
       }
+      recordAssignedSessionVolume(assignedSetsByMuscleInSession, selectedExercise, setTarget);
     }
-    const remainingRoleExerciseIdsByMuscle = new Map<string, string[]>();
+    const remainingRequiredRoleExerciseIdsByMuscle = new Map<string, string[]>();
     for (const pinnedExerciseId of pinnedRoleIds) {
       if (perExerciseSetTargets[pinnedExerciseId] != null) {
         continue;
       }
+      if (roleMap.get(pinnedExerciseId) !== "CORE_COMPOUND") {
+        continue;
+      }
       const pinnedExercise = exerciseById.get(pinnedExerciseId);
       for (const muscle of pinnedExercise?.primaryMuscles ?? []) {
-        const remaining = remainingRoleExerciseIdsByMuscle.get(muscle) ?? [];
+        const remaining = remainingRequiredRoleExerciseIdsByMuscle.get(muscle) ?? [];
         remaining.push(pinnedExerciseId);
-        remainingRoleExerciseIdsByMuscle.set(muscle, remaining);
+        remainingRequiredRoleExerciseIdsByMuscle.set(muscle, remaining);
       }
     }
-    const allRoleExerciseIdsByMuscle = new Map(
-      Array.from(remainingRoleExerciseIdsByMuscle.entries()).map(([muscle, ids]) => [muscle, [...ids]])
-    );
     for (const exerciseId of pinnedRoleIds) {
       if (perExerciseSetTargets[exerciseId] != null) {
         continue;
@@ -445,7 +485,7 @@ export async function generateSessionFromIntent(
       if (!exercise) {
         continue;
       }
-      perExerciseSetTargets[exerciseId] = resolveRoleFixtureSetTarget(
+      const plannedSets = resolveRoleFixtureSetTarget(
         exercise.primaryMuscles ?? [],
         exerciseId,
         computeProposedSets(exercise, objective),
@@ -453,24 +493,31 @@ export async function generateSessionFromIntent(
         isDeloadSession,
         mapped.lifecycleVolumeTargets,
         assignedSetsByMuscleInSession,
-        remainingRoleExerciseIdsByMuscle,
-        allRoleExerciseIdsByMuscle,
+        remainingRequiredRoleExerciseIdsByMuscle,
+        roleMap,
         roleMap.get(exerciseId)
       );
+      if (plannedSets <= 0) {
+        continue;
+      }
+      perExerciseSetTargets[exerciseId] = plannedSets;
+      recordAssignedSessionVolume(assignedSetsByMuscleInSession, exercise, perExerciseSetTargets[exerciseId]);
       for (const muscle of exercise.primaryMuscles ?? []) {
-        assignedSetsByMuscleInSession.set(
-          muscle,
-          (assignedSetsByMuscleInSession.get(muscle) ?? 0) + perExerciseSetTargets[exerciseId]
-        );
-        const remaining = remainingRoleExerciseIdsByMuscle.get(muscle) ?? [];
-        remainingRoleExerciseIdsByMuscle.set(
+        const remaining = remainingRequiredRoleExerciseIdsByMuscle.get(muscle) ?? [];
+        remainingRequiredRoleExerciseIdsByMuscle.set(
           muscle,
           remaining.filter((roleExerciseId) => roleExerciseId !== exerciseId)
         );
       }
     }
+    const filteredSelectedExerciseIds = selectionBase.selectedExerciseIds.filter(
+      (exerciseId) => perExerciseSetTargets[exerciseId] != null
+    );
     return {
       ...selectionBase,
+      selectedExerciseIds: filteredSelectedExerciseIds,
+      mainLiftIds: selectionBase.mainLiftIds.filter((exerciseId) => perExerciseSetTargets[exerciseId] != null),
+      accessoryIds: selectionBase.accessoryIds.filter((exerciseId) => perExerciseSetTargets[exerciseId] != null),
       perExerciseSetTargets,
     };
   })();
@@ -514,10 +561,10 @@ export async function generateSessionFromIntent(
   const workoutExerciseIds = new Set(
     [...result.workout.mainLifts, ...result.workout.accessories].map((entry) => entry.exercise.id)
   );
-  const missingRegisteredRoleIds = Array.from(pinnedRoleIds).filter((exerciseId) => !workoutExerciseIds.has(exerciseId));
-  if (missingRegisteredRoleIds.length > 0) {
+  const missingRegisteredCoreRoleIds = Array.from(pinnedCoreIds).filter((exerciseId) => !workoutExerciseIds.has(exerciseId));
+  if (missingRegisteredCoreRoleIds.length > 0) {
     const droppedBySessionCap = new Set(result.droppedAccessoryExerciseIds ?? []);
-    const unresolvedMissingRoleIds = missingRegisteredRoleIds.filter((exerciseId) => !droppedBySessionCap.has(exerciseId));
+    const unresolvedMissingRoleIds = missingRegisteredCoreRoleIds.filter((exerciseId) => !droppedBySessionCap.has(exerciseId));
     if (unresolvedMissingRoleIds.length > 0) {
       return {
         error:
@@ -525,15 +572,22 @@ export async function generateSessionFromIntent(
           `Missing exercise ids: ${unresolvedMissingRoleIds.join(", ")}`,
       };
     }
+  }
 
+  const intentionallyDroppedAccessoryRoleIds = Array.from(pinnedRoleIds).filter(
+    (exerciseId) =>
+      roleMap.get(exerciseId) === "ACCESSORY" &&
+      !selection.selectedExerciseIds.includes(exerciseId)
+  );
+  if (intentionallyDroppedAccessoryRoleIds.length > 0) {
     const byId = new Map(mapped.exerciseLibrary.map((exercise) => [exercise.id, exercise]));
-    for (const exerciseId of missingRegisteredRoleIds) {
+    for (const exerciseId of intentionallyDroppedAccessoryRoleIds) {
       const exercise = byId.get(exerciseId);
       filteredExercises.push({
         exerciseId,
         exerciseName: exercise?.name ?? exerciseId,
-        reason: "session_set_cap",
-        userFriendlyMessage: "Excluded due to hard per-session set cap.",
+        reason: "weekly_budget_exhausted",
+        userFriendlyMessage: "Excluded because this week's remaining volume budget was already allocated.",
       });
     }
   }

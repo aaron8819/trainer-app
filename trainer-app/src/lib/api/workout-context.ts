@@ -259,6 +259,7 @@ export function mapHistory(workouts: WorkoutWithRelations[]): WorkoutHistoryEntr
     mesocycleSnapshot:
       workout.mesocycleWeekSnapshot != null
         ? {
+            mesocycleId: workout.mesocycleId,
             week: workout.mesocycleWeekSnapshot,
             session: workout.mesoSessionSnapshot,
             phase: workout.mesocyclePhaseSnapshot,

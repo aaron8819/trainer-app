@@ -16,6 +16,7 @@ export type SplitType = "ppl" | "upper_lower" | "full_body" | "custom";
 export type SplitDay = "push" | "pull" | "legs" | "upper" | "lower" | "full_body" | "body_part";
 export type WorkoutSelectionMode = "AUTO" | "MANUAL" | "BONUS" | "INTENT";
 export type WorkoutMesocycleSnapshot = {
+  mesocycleId?: string | null;
   week: number;
   session?: number | null;
   phase?: string | null;

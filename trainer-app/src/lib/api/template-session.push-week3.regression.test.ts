@@ -216,6 +216,12 @@ const w2s2PushHistory: WorkoutHistoryEntry = {
   completed: true,
   status: "COMPLETED",
   sessionIntent: "push",
+  mesocycleSnapshot: {
+    mesocycleId: "meso-prev",
+    week: 2,
+    session: 2,
+    phase: "ACCUMULATION",
+  },
   exercises: [
     {
       exerciseId: "incline-db-bench",
@@ -257,6 +263,47 @@ const w2s2PushHistory: WorkoutHistoryEntry = {
     },
   ],
 };
+
+const w3s1PushHistory: WorkoutHistoryEntry = {
+  date: "2026-03-03T10:00:00.000Z",
+  completed: true,
+  status: "COMPLETED",
+  sessionIntent: "push",
+  mesocycleSnapshot: {
+    mesocycleId: "meso-active",
+    week: 3,
+    session: 1,
+    phase: "ACCUMULATION",
+  },
+  exercises: [
+    {
+      exerciseId: "incline-db-bench",
+      sets: makeSets("incline-db-bench", 5, 45),
+    },
+    {
+      exerciseId: "dip",
+      sets: makeSets("dip", 5, 0),
+    },
+    {
+      exerciseId: "cable-triceps-pushdown",
+      sets: makeSets("cable-triceps-pushdown", 4, 30),
+    },
+    {
+      exerciseId: "lateral-raise",
+      sets: makeSets("lateral-raise", 4, 15),
+    },
+  ],
+};
+
+function makeSets(exerciseId: string, count: number, load: number) {
+  return Array.from({ length: count }, (_, index) => ({
+    exerciseId,
+    setIndex: index + 1,
+    reps: 8,
+    rpe: 8,
+    load,
+  }));
+}
 
 function buildMappedContext(): MappedGenerationContext {
   const recentExposureDate = new Date("2026-02-24T10:00:00.000Z");
@@ -366,6 +413,34 @@ function buildMappedContext(): MappedGenerationContext {
   };
 }
 
+function buildWeek3Session2MappedContext(): MappedGenerationContext {
+  const mapped = buildMappedContext();
+  return {
+    ...mapped,
+    history: [w3s1PushHistory, w2s2PushHistory],
+    activeMesocycle: {
+      id: "meso-active",
+      state: "ACTIVE_ACCUMULATION",
+      accumulationSessionsCompleted: 7,
+      deloadSessionsCompleted: 0,
+      sessionsPerWeek: 3,
+      macroCycleId: "macro",
+      mesoNumber: 3,
+      startWeek: 0,
+      durationWeeks: 4,
+      focus: "hypertrophy",
+      volumeTarget: "MODERATE",
+      intensityBias: "HYPERTROPHY",
+      completedSessions: 7,
+      splitType: "PPL",
+      daysPerWeek: 3,
+      isActive: true,
+      volumeRampConfig: {},
+      rirBandConfig: {},
+    } as never,
+  };
+}
+
 function getAllExerciseSets(
   workout: {
     mainLifts: { exercise: { id: string; name: string }; sets: { targetLoad?: number }[] }[];
@@ -441,5 +516,25 @@ describe("W3S1 Push regression — 4 engine bug fixes", () => {
     if (firstSetLoad !== undefined) {
       expect(firstSetLoad).toBeGreaterThanOrEqual(45);
     }
+  });
+
+  it("W3S2 runtime semantics: budgets role fixtures against current-week performed volume", async () => {
+    loadMappedGenerationContextMock.mockResolvedValueOnce(buildWeek3Session2MappedContext());
+
+    const result = await generateSessionFromIntent("user-1", { intent: "push" });
+    expect("error" in result).toBe(false);
+    if ("error" in result) {
+      return;
+    }
+
+    const idbpSets = getAllExerciseSets(result.workout, "incline-db-bench");
+    const dipSets = getAllExerciseSets(result.workout, "dip");
+    const overheadSets = getAllExerciseSets(result.workout, "overhead-triceps-ext");
+
+    expect(idbpSets?.length).toBe(1);
+    expect(dipSets?.length).toBe(1);
+    expect(overheadSets?.length ?? 0).toBeLessThanOrEqual(2);
+    expect(result.volumePlanByMuscle.Chest.planned).toBe(12);
+    expect(result.volumePlanByMuscle.Triceps.planned).toBeLessThanOrEqual(10);
   });
 });

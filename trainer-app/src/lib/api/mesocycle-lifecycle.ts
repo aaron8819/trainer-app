@@ -40,6 +40,14 @@ type WeekDerivationInput = Pick<
   MesoWithLifecycle,
   "state" | "accumulationSessionsCompleted" | "sessionsPerWeek" | "durationWeeks"
 >;
+type SessionDerivationInput = Pick<
+  MesoWithLifecycle,
+  | "state"
+  | "accumulationSessionsCompleted"
+  | "deloadSessionsCompleted"
+  | "sessionsPerWeek"
+  | "durationWeeks"
+>;
 type VolumeTargetInput = Pick<MesoWithLifecycle, "durationWeeks">;
 type RirTargetInput = Pick<MesoWithLifecycle, "state" | "durationWeeks">;
 type LifecyclePeriodizationInput = {
@@ -48,6 +56,17 @@ type LifecyclePeriodizationInput = {
   week: number;
   isDeload?: boolean;
   rirTarget?: RirTarget;
+};
+
+export type CanonicalMesocycleSession = {
+  week: number;
+  session: number;
+  phase: "ACCUMULATION" | "DELOAD";
+};
+
+export type NextAdvancingSession = CanonicalMesocycleSession & {
+  intent: string | null;
+  scheduleIndex: number | null;
 };
 
 const DEFAULT_DELOAD_RIR: RirTarget = { min: 5, max: 6 };
@@ -214,17 +233,54 @@ function getDeloadSessionThreshold(mesocycle: Pick<MesoWithLifecycle, "sessionsP
   return Math.max(1, mesocycle.sessionsPerWeek);
 }
 
+export function deriveCurrentMesocycleSession(
+  mesocycle: SessionDerivationInput
+): CanonicalMesocycleSession {
+  const sessionsPerWeek = Math.max(1, mesocycle.sessionsPerWeek);
+  const shouldUseDeloadPhase =
+    mesocycle.state === "ACTIVE_DELOAD" || mesocycle.state === "COMPLETED";
+
+  if (shouldUseDeloadPhase) {
+    return {
+      week: getDeloadWeek(mesocycle.durationWeeks),
+      session: Math.min(sessionsPerWeek, Math.max(1, mesocycle.deloadSessionsCompleted + 1)),
+      phase: "DELOAD",
+    };
+  }
+
+  return {
+    week: Math.min(
+      getAccumulationWeeks(mesocycle.durationWeeks),
+      Math.floor(mesocycle.accumulationSessionsCompleted / sessionsPerWeek) + 1
+    ),
+    session: Math.max(1, (mesocycle.accumulationSessionsCompleted % sessionsPerWeek) + 1),
+    phase: "ACCUMULATION",
+  };
+}
+
+export function deriveNextAdvancingSession(
+  mesocycle: SessionDerivationInput,
+  weeklySchedule: readonly string[] = []
+): NextAdvancingSession {
+  const current = deriveCurrentMesocycleSession(mesocycle);
+  const normalizedSchedule = weeklySchedule
+    .map((intent) => intent.trim().toLowerCase())
+    .filter((intent) => intent.length > 0);
+  const scheduleIndex =
+    normalizedSchedule.length > 0 ? (current.session - 1) % normalizedSchedule.length : null;
+
+  return {
+    ...current,
+    intent: scheduleIndex == null ? null : normalizedSchedule[scheduleIndex] ?? null,
+    scheduleIndex,
+  };
+}
 
 export function getCurrentMesoWeek(mesocycle: WeekDerivationInput): number {
-  if (mesocycle.state === "ACTIVE_ACCUMULATION") {
-    const sessionsPerWeek = Math.max(1, mesocycle.sessionsPerWeek);
-    const week = Math.floor(mesocycle.accumulationSessionsCompleted / sessionsPerWeek) + 1;
-    return Math.min(getAccumulationWeeks(mesocycle.durationWeeks), week);
-  }
-  if (mesocycle.state === "ACTIVE_DELOAD" || mesocycle.state === "COMPLETED") {
-    return getDeloadWeek(mesocycle.durationWeeks);
-  }
-  return 1;
+  return deriveCurrentMesocycleSession({
+    ...mesocycle,
+    deloadSessionsCompleted: 0,
+  }).week;
 }
 
 export function getWeeklyVolumeTarget(

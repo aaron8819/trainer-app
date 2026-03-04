@@ -5,7 +5,12 @@
 
 import { prisma } from "@/lib/db/prisma";
 import { VOLUME_LANDMARKS } from "@/lib/engine/volume-landmarks";
-import { getCurrentMesoWeek, getRirTarget, getWeeklyVolumeTarget } from "./mesocycle-lifecycle";
+import {
+  deriveNextAdvancingSession,
+  getCurrentMesoWeek,
+  getRirTarget,
+  getWeeklyVolumeTarget,
+} from "./mesocycle-lifecycle";
 import { WorkoutStatus, WorkoutSessionIntent } from "@prisma/client";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 
@@ -289,6 +294,7 @@ export async function loadProgramDashboardData(
       durationWeeks: true,
       completedSessions: true,
       accumulationSessionsCompleted: true,
+      deloadSessionsCompleted: true,
       sessionsPerWeek: true,
       volumeTarget: true,
       startWeek: true,
@@ -314,8 +320,6 @@ export async function loadProgramDashboardData(
   const weeklySchedule = (constraints?.weeklySchedule ?? []).map((intent) =>
     (intent as string).toLowerCase()
   );
-  const completedSessions = mesoRecord?.completedSessions ?? 0;
-
   // N1/N2/N3: Priority-aware incomplete workout query.
   // Serves both the Next Session card (intent) and the Resume Workout card (id/status).
   // Priority: IN_PROGRESS (0) → PARTIAL (1) → PLANNED (2), then scheduledDate asc.
@@ -344,11 +348,11 @@ export async function loadProgramDashboardData(
       isExisting: true,
     };
   } else {
+    const derivedNextSession = mesoRecord
+      ? deriveNextAdvancingSession(mesoRecord, weeklySchedule)
+      : { intent: weeklySchedule[0] ?? null };
     nextSession = {
-      intent:
-        weeklySchedule.length > 0
-          ? weeklySchedule[completedSessions % weeklySchedule.length]
-          : null,
+      intent: derivedNextSession.intent,
       workoutId: null,
       isExisting: false,
     };

@@ -10,9 +10,7 @@ const mocks = vi.hoisted(() => {
   const workoutExerciseFindMany = vi.fn();
   const workoutExerciseCreate = vi.fn();
   const exerciseFindUnique = vi.fn();
-  const loadCurrentBlockContext = vi.fn();
   const transitionMesocycleState = vi.fn();
-  const getCurrentMesoWeek = vi.fn();
 
   const tx = {
     workout: {
@@ -56,9 +54,7 @@ const mocks = vi.hoisted(() => {
     workoutExerciseFindMany,
     workoutExerciseCreate,
     exerciseFindUnique,
-    loadCurrentBlockContext,
     transitionMesocycleState,
-    getCurrentMesoWeek,
   };
 });
 
@@ -74,14 +70,13 @@ vi.mock("@/lib/api/exercise-exposure", () => ({
   updateExerciseExposure: vi.fn(async () => undefined),
 }));
 
-vi.mock("@/lib/api/periodization", () => ({
-  loadCurrentBlockContext: mocks.loadCurrentBlockContext,
-}));
-
-vi.mock("@/lib/api/mesocycle-lifecycle", () => ({
-  transitionMesocycleState: mocks.transitionMesocycleState,
-  getCurrentMesoWeek: mocks.getCurrentMesoWeek,
-}));
+vi.mock("@/lib/api/mesocycle-lifecycle", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/api/mesocycle-lifecycle")>();
+  return {
+    ...actual,
+    transitionMesocycleState: mocks.transitionMesocycleState,
+  };
+});
 
 import { POST } from "./route";
 
@@ -131,9 +126,7 @@ describe("POST /api/workouts/save", () => {
     mocks.workoutExerciseFindMany.mockReset();
     mocks.workoutExerciseCreate.mockReset();
     mocks.exerciseFindUnique.mockReset();
-    mocks.loadCurrentBlockContext.mockReset();
     mocks.transitionMesocycleState.mockReset();
-    mocks.getCurrentMesoWeek.mockReset();
     mocks.tx.mesocycle.findUnique.mockReset();
     mocks.tx.mesocycle.findFirst.mockReset();
     mocks.tx.mesocycle.update.mockReset();
@@ -143,17 +136,16 @@ describe("POST /api/workouts/save", () => {
     mocks.exerciseFindUnique.mockResolvedValue({ movementPatterns: [] });
     mocks.workoutExerciseCreate.mockResolvedValue({ id: "we-1" });
     mocks.tx.mesocycle.findUnique.mockResolvedValue(null);
-    mocks.tx.mesocycle.findFirst.mockResolvedValue({ id: "meso-active" });
+    mocks.tx.mesocycle.findFirst.mockResolvedValue({
+      id: "meso-active",
+      state: "ACTIVE_ACCUMULATION",
+      durationWeeks: 5,
+      accumulationSessionsCompleted: 0,
+      deloadSessionsCompleted: 0,
+      sessionsPerWeek: 3,
+    });
     mocks.tx.mesocycle.update.mockResolvedValue({});
     mocks.transitionMesocycleState.mockResolvedValue({});
-    mocks.getCurrentMesoWeek.mockReturnValue(1);
-    mocks.loadCurrentBlockContext.mockResolvedValue({
-      blockContext: {
-        weekInBlock: 3,
-        block: { blockType: "accumulation" },
-      },
-      weekInMeso: 3,
-    });
   });
 
   it.each(["COMPLETED", "PARTIAL", "SKIPPED"] as const)(
@@ -288,6 +280,7 @@ describe("POST /api/workouts/save", () => {
     mocks.tx.mesocycle.findUnique.mockResolvedValueOnce({
       id: "meso-1",
       state: "ACTIVE_ACCUMULATION",
+      durationWeeks: 5,
       accumulationSessionsCompleted: 3,
       deloadSessionsCompleted: 0,
       sessionsPerWeek: 3,
@@ -331,7 +324,6 @@ describe("POST /api/workouts/save", () => {
     expect(readiness.fatigueScoreOverall).toBe(0.41);
     expect(intensityScaling.exerciseIds).toEqual(["bench"]);
     expect(intensityScaling.scaledDownCount).toBe(1);
-    expect(mocks.loadCurrentBlockContext).not.toHaveBeenCalled();
   });
 
   it("calls lifecycle transition for first performed save when workout has mesocycleId", async () => {
@@ -354,6 +346,7 @@ describe("POST /api/workouts/save", () => {
     mocks.tx.mesocycle.findUnique.mockResolvedValueOnce({
       id: "meso-1",
       state: "ACTIVE_ACCUMULATION",
+      durationWeeks: 5,
       accumulationSessionsCompleted: 3,
       deloadSessionsCompleted: 0,
       sessionsPerWeek: 3,
@@ -372,7 +365,7 @@ describe("POST /api/workouts/save", () => {
 
     const upsert = mocks.workoutUpsert.mock.calls[0][0];
     expect(upsert.update.mesocycleId).toBe("meso-1");
-    expect(upsert.update.mesocycleWeekSnapshot).toBe(1);
+    expect(upsert.update.mesocycleWeekSnapshot).toBe(2);
     expect(upsert.update.mesoSessionSnapshot).toBe(1);
     expect(upsert.update.mesocyclePhaseSnapshot).toBe("ACCUMULATION");
   });
@@ -397,6 +390,7 @@ describe("POST /api/workouts/save", () => {
     mocks.tx.mesocycle.findFirst.mockResolvedValueOnce({
       id: "meso-active",
       state: "ACTIVE_ACCUMULATION",
+      durationWeeks: 5,
       accumulationSessionsCompleted: 4,
       deloadSessionsCompleted: 0,
       sessionsPerWeek: 3,
@@ -419,7 +413,7 @@ describe("POST /api/workouts/save", () => {
 
     const upsert = mocks.workoutUpsert.mock.calls[0][0];
     expect(upsert.update.mesocycleId).toBe("meso-active");
-    expect(upsert.update.mesocycleWeekSnapshot).toBe(1);
+    expect(upsert.update.mesocycleWeekSnapshot).toBe(2);
     expect(upsert.update.mesoSessionSnapshot).toBe(2);
     expect(upsert.update.mesocyclePhaseSnapshot).toBe("ACCUMULATION");
   });
@@ -537,7 +531,6 @@ describe("POST /api/workouts/save", () => {
         sessionDecisionReceipt: persistedReceipt,
         selectedExerciseIds: ["bench"],
       });
-      expect(mocks.loadCurrentBlockContext).not.toHaveBeenCalled();
     }
   );
 
@@ -828,7 +821,6 @@ describe("POST /api/workouts/save", () => {
       isDeload: true,
       source: "computed",
     });
-    expect(mocks.loadCurrentBlockContext).not.toHaveBeenCalled();
   });
 
   it("rejects legacy top-level cycleContext in selection metadata", async () => {
@@ -1092,5 +1084,127 @@ describe("POST /api/workouts/save", () => {
       error: "Invalid request",
     });
     expect(mocks.workoutUpsert).not.toHaveBeenCalled();
+  });
+
+  it("stamps initial planned saves with the pre-increment canonical lifecycle snapshot", async () => {
+    mocks.tx.mesocycle.findFirst.mockResolvedValueOnce({
+      id: "meso-active",
+      state: "ACTIVE_ACCUMULATION",
+      durationWeeks: 5,
+      accumulationSessionsCompleted: 4,
+      deloadSessionsCompleted: 0,
+      sessionsPerWeek: 3,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutId: "workout-1",
+          selectionMetadata: buildCanonicalSelectionMetadata(),
+          exercises: [
+            {
+              section: "MAIN",
+              exerciseId: "bench",
+              sets: [{ setIndex: 1, targetReps: 8 }],
+            },
+          ],
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+
+    const upsert = mocks.workoutUpsert.mock.calls[0][0];
+    expect(upsert.create.mesocycleId).toBe("meso-active");
+    expect(upsert.create.mesocycleWeekSnapshot).toBe(2);
+    expect(upsert.create.mesoSessionSnapshot).toBe(2);
+    expect(upsert.create.mesocyclePhaseSnapshot).toBe("ACCUMULATION");
+    expect(mocks.tx.mesocycle.update).not.toHaveBeenCalled();
+    expect(mocks.transitionMesocycleState).not.toHaveBeenCalled();
+  });
+
+  it("increments only the deload lifecycle counter for first performed deload saves", async () => {
+    mocks.workoutFindUnique
+      .mockResolvedValueOnce({
+        id: "workout-1",
+        userId: "user-1",
+        status: "PLANNED",
+        revision: 1,
+        mesocycleId: "meso-1",
+        selectionMetadata: buildCanonicalSelectionMetadata(),
+      })
+      .mockResolvedValueOnce({
+        exercises: [
+          {
+            sets: [{ logs: [{ wasSkipped: false, actualReps: 5, actualRpe: 7, actualLoad: 185 }] }],
+          },
+        ],
+      });
+    mocks.tx.mesocycle.findUnique.mockResolvedValueOnce({
+      id: "meso-1",
+      state: "ACTIVE_DELOAD",
+      durationWeeks: 5,
+      accumulationSessionsCompleted: 12,
+      deloadSessionsCompleted: 1,
+      sessionsPerWeek: 3,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workoutId: "workout-1", action: "mark_completed" }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.tx.mesocycle.update).toHaveBeenCalledWith({
+      where: { id: "meso-1" },
+      data: { completedSessions: { increment: 1 }, deloadSessionsCompleted: { increment: 1 } },
+    });
+
+    const upsert = mocks.workoutUpsert.mock.calls[0][0];
+    expect(upsert.update.mesocycleWeekSnapshot).toBe(5);
+    expect(upsert.update.mesoSessionSnapshot).toBe(2);
+    expect(upsert.update.mesocyclePhaseSnapshot).toBe("DELOAD");
+  });
+
+  it("does not double-advance lifecycle counters when an already performed workout is saved again", async () => {
+    mocks.workoutFindUnique
+      .mockResolvedValueOnce({
+        id: "workout-1",
+        userId: "user-1",
+        status: "PARTIAL",
+        revision: 1,
+        mesocycleId: "meso-1",
+        selectionMetadata: buildCanonicalSelectionMetadata(),
+      })
+      .mockResolvedValueOnce({
+        exercises: [
+          {
+            sets: [{ logs: [{ wasSkipped: false, actualReps: 8, actualRpe: 8, actualLoad: 135 }] }],
+          },
+        ],
+      });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workoutId: "workout-1", action: "mark_completed" }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.tx.mesocycle.findUnique).not.toHaveBeenCalled();
+    expect(mocks.tx.mesocycle.update).not.toHaveBeenCalled();
+    expect(mocks.transitionMesocycleState).not.toHaveBeenCalled();
+
+    const upsert = mocks.workoutUpsert.mock.calls[0][0];
+    expect(upsert.update.mesocycleWeekSnapshot).toBeUndefined();
+    expect(upsert.update.mesoSessionSnapshot).toBeUndefined();
+    expect(upsert.update.mesocyclePhaseSnapshot).toBeUndefined();
   });
 });

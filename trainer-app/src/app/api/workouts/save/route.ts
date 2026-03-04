@@ -10,7 +10,14 @@ import {
   extractSessionDecisionReceipt,
   normalizeSelectionMetadataWithReceipt,
 } from "@/lib/evidence/session-decision-receipt";
-import { getCurrentMesoWeek, transitionMesocycleState } from "@/lib/api/mesocycle-lifecycle";
+import {
+  transitionMesocycleState,
+} from "@/lib/api/mesocycle-lifecycle";
+import {
+  buildPerformedLifecycleCounterUpdate,
+  deriveSaveRouteMesoSnapshot,
+  type SaveRouteMesocycle,
+} from "./lifecycle-contract";
 
 type SaveAction = "save_plan" | "mark_completed" | "mark_partial" | "mark_skipped";
 type PersistedStatus = "PLANNED" | "IN_PROGRESS" | "PARTIAL" | "COMPLETED" | "SKIPPED";
@@ -205,16 +212,7 @@ export async function POST(request: Request) {
       // Also snapshot on initial plan-save so the label appears immediately in Recent Workouts.
       const shouldSetPlannedMesoSnapshot = action === "save_plan" && !existingWorkout;
       let resolvedMesocycleId = existingWorkout?.mesocycleId ?? null;
-      let resolvedMesocycle:
-        | {
-            id: string;
-            state: "ACTIVE_ACCUMULATION" | "ACTIVE_DELOAD" | "COMPLETED";
-            durationWeeks: number;
-            accumulationSessionsCompleted: number;
-            deloadSessionsCompleted: number;
-            sessionsPerWeek: number;
-          }
-        | null = null;
+      let resolvedMesocycle: SaveRouteMesocycle | null = null;
 
       if (shouldTransitionPerformed || shouldSetPlannedMesoSnapshot) {
         if (resolvedMesocycleId) {
@@ -258,24 +256,7 @@ export async function POST(request: Request) {
         | { week: number; phase: "ACCUMULATION" | "DELOAD"; session: number }
         | undefined;
       if (shouldSetMesoSnapshot && resolvedMesocycle) {
-        // Both getCurrentMesoWeek and the session formula read the PRE-increment value of
-        // accumulationSessionsCompleted (the counter hasn't been incremented yet at this point).
-        // This is correct by design: pre-increment value N means "N sessions done before this one",
-        // so floor(N / sessionsPerWeek) + 1 gives the current week, and (N % sessionsPerWeek) + 1
-        // gives the current session within that week.  The increment happens below after the upsert.
-        const week = getCurrentMesoWeek(resolvedMesocycle);
-        const session =
-          resolvedMesocycle.state === "ACTIVE_DELOAD"
-            ? Math.min(
-                Math.max(1, resolvedMesocycle.sessionsPerWeek),
-                resolvedMesocycle.deloadSessionsCompleted + 1
-              )
-            : Math.max(1, (resolvedMesocycle.accumulationSessionsCompleted % Math.max(1, resolvedMesocycle.sessionsPerWeek)) + 1);
-        mesoSnapshot = {
-          week,
-          phase: resolvedMesocycle.state === "ACTIVE_ACCUMULATION" ? "ACCUMULATION" : "DELOAD",
-          session,
-        };
+        mesoSnapshot = deriveSaveRouteMesoSnapshot(resolvedMesocycle);
       }
 
       const workout = await tx.workout.upsert({
@@ -337,12 +318,7 @@ export async function POST(request: Request) {
         // counter to check thresholds; it no longer writes these counters itself.
         await tx.mesocycle.update({
           where: { id: resolvedMesocycleId! },
-          data: {
-            completedSessions: { increment: 1 },
-            ...(resolvedMesocycle!.state === "ACTIVE_DELOAD"
-              ? { deloadSessionsCompleted: { increment: 1 } }
-              : { accumulationSessionsCompleted: { increment: 1 } }),
-          },
+          data: buildPerformedLifecycleCounterUpdate(resolvedMesocycle!.state),
         });
         didPerformedTransition = true;
         performedTransitionMesocycleId = resolvedMesocycleId;

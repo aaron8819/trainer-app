@@ -8,7 +8,7 @@ import type {
 import { VOLUME_LANDMARKS, type VolumeLandmarks } from "./volume-landmarks";
 import {
   getMostRecentHistoryEntry,
-  isCompletedHistoryEntry,
+  isPerformedHistoryEntry,
 } from "./history";
 import { INDIRECT_SET_MULTIPLIER } from "./volume-constants";
 
@@ -28,6 +28,7 @@ export type EnhancedVolumeContext = VolumeContext & {
   muscleVolume: Record<string, MuscleVolumeState>;
   mesocycleWeek: number;
   mesocycleLength: number;
+  mesocycleId?: string;
   weeklyTargets?: Record<string, number>;
 };
 
@@ -44,7 +45,7 @@ const USE_EFFECTIVE_VOLUME_CAPS_ENV = "USE_EFFECTIVE_VOLUME_CAPS";
 export function buildVolumeContext(
   history: WorkoutHistoryEntry[],
   exerciseLibrary: Exercise[],
-  mesocycleOptions?: { week: number; length: number; weeklyTargets?: Record<string, number> }
+  mesocycleOptions?: { week: number; length: number; mesocycleId?: string; weeklyTargets?: Record<string, number> }
 ): VolumeContext | EnhancedVolumeContext {
   const byId = new Map(exerciseLibrary.map((exercise) => [exercise.id, exercise]));
   const now = Date.now();
@@ -56,7 +57,7 @@ export function buildVolumeContext(
   const weeklyIndirect: Record<string, number> = {};
 
   for (const entry of history) {
-    if (!isCompletedHistoryEntry(entry)) continue;
+    if (!isPerformedHistoryEntry(entry)) continue;
 
     const entryTime = new Date(entry.date).getTime();
     const delta = now - entryTime;
@@ -76,12 +77,19 @@ export function buildVolumeContext(
 
       for (const muscle of primaryMuscles) {
         target[muscle] = (target[muscle] ?? 0) + setsCount;
-        if (isRecent) {
-          weeklyDirect[muscle] = (weeklyDirect[muscle] ?? 0) + setsCount;
-        }
       }
 
-      if (isRecent) {
+      const snapshot = entry.mesocycleSnapshot;
+      const matchesMesocycleWeek =
+        mesocycleOptions &&
+        snapshot?.week === mesocycleOptions.week &&
+        (!mesocycleOptions.mesocycleId ||
+          !snapshot?.mesocycleId ||
+          snapshot.mesocycleId === mesocycleOptions.mesocycleId);
+      if (matchesMesocycleWeek) {
+        for (const muscle of primaryMuscles) {
+          weeklyDirect[muscle] = (weeklyDirect[muscle] ?? 0) + setsCount;
+        }
         for (const muscle of secondaryMuscles) {
           weeklyIndirect[muscle] = (weeklyIndirect[muscle] ?? 0) + setsCount;
         }
@@ -108,6 +116,7 @@ export function buildVolumeContext(
     muscleVolume,
     mesocycleWeek: mesocycleOptions.week,
     mesocycleLength: mesocycleOptions.length,
+    mesocycleId: mesocycleOptions.mesocycleId,
     weeklyTargets: mesocycleOptions.weeklyTargets,
   };
 }
@@ -137,15 +146,24 @@ export function enforceVolumeCaps(
     indirectSets: Record<string, number>;
   };
 
+  const directBaseline = enhanced
+    ? Object.fromEntries(
+        Object.entries(volumeContext.muscleVolume)
+          .filter(([, state]) => state.weeklyDirectSets > 0)
+          .map(([muscle, state]) => [muscle, state.weeklyDirectSets])
+      )
+    : { ...volumeContext.recent };
+  const indirectBaseline = enhanced
+    ? Object.fromEntries(
+        Object.entries(volumeContext.muscleVolume)
+          .filter(([, state]) => state.weeklyIndirectSets > 0)
+          .map(([muscle, state]) => [muscle, state.weeklyIndirectSets])
+      )
+    : {};
+
   const buildPlannedVolume = (currentAccessories: WorkoutExercise[]) => {
-    const directSets: Record<string, number> = { ...volumeContext.recent };
-    const indirectSets: Record<string, number> = enhanced
-      ? Object.fromEntries(
-          Object.entries(volumeContext.muscleVolume)
-            .filter(([, state]) => state.weeklyIndirectSets > 0)
-            .map(([muscle, state]) => [muscle, state.weeklyIndirectSets])
-        )
-      : {};
+    const directSets: Record<string, number> = { ...directBaseline };
+    const indirectSets: Record<string, number> = { ...indirectBaseline };
 
     const addExercise = (exercise: WorkoutExercise) => {
       const primaryMuscles = exercise.exercise.primaryMuscles ?? [];
@@ -255,7 +273,13 @@ export function buildVolumePlanByMuscle(
   }
 ): VolumePlanByMuscle {
   const enhanced = isEnhancedVolumeContext(volumeContext);
-  const directSets: Record<string, number> = { ...volumeContext.recent };
+  const directSets: Record<string, number> = enhanced
+    ? Object.fromEntries(
+        Object.entries(volumeContext.muscleVolume)
+          .filter(([, state]) => state.weeklyDirectSets > 0)
+          .map(([muscle, state]) => [muscle, state.weeklyDirectSets])
+      )
+    : { ...volumeContext.recent };
   const indirectSets: Record<string, number> = enhanced
     ? Object.fromEntries(
         Object.entries(volumeContext.muscleVolume)

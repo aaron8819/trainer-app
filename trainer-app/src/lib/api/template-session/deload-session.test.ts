@@ -111,7 +111,6 @@ describe("deload-session generation", () => {
     const sets = result.workout.mainLifts[0].sets;
     expect(sets.length).toBe(2); // ceil(4 * 0.45)=2
     expect(sets[0].targetLoad).toBe(60);
-    expect(sets[0].targetRpe).toBe(5);
+    expect(sets[0].targetRpe).toBe(4.5);
   });
 });
-

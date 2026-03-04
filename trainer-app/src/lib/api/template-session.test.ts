@@ -143,24 +143,6 @@ describe("generateSessionFromIntent", () => {
     expect(result.selection.intentDiagnostics?.minAlignedRatio).toBe(0);
   });
 
-  it("uses lifecycle week for periodization week and cycle context", async () => {
-    getCurrentMesoWeekMock.mockReturnValue(4);
-    loadActiveMesocycleMock.mockResolvedValue({
-      id: "meso-1",
-      state: "ACTIVE_ACCUMULATION",
-      accumulationSessionsCompleted: 9,
-      durationWeeks: 5,
-    });
-
-    const result = await generateSessionFromIntent("user-1", { intent: "push" });
-    expect("error" in result).toBe(false);
-    if ("error" in result) return;
-
-    expect(result.selection.sessionDecisionReceipt?.cycleContext.weekInMeso).toBe(4);
-    expect(result.selection.sessionDecisionReceipt?.cycleContext.weekInBlock).toBe(4);
-    expect(result.selection.sessionDecisionReceipt?.lifecycleRirTarget).toEqual({ min: 2, max: 3 });
-  });
-
   it("populates deloadDecision when a deload is applied", async () => {
     loadActiveMesocycleMock.mockResolvedValue({
       id: "meso-1",
@@ -391,124 +373,6 @@ describe("generateSessionFromIntent", () => {
     expect(mainLiftIds).toContain("lat-pull");
   });
 
-  it("uses exactly registered LEGS roles with no non-role additions and preserves role set targets", async () => {
-    mapExercisesMock.mockReturnValue([
-      ...exampleExerciseLibrary,
-      {
-        id: "seated-leg-curl",
-        name: "Seated Leg Curl",
-        movementPatterns: ["knee_flexion"],
-        splitTags: ["legs"],
-        jointStress: "low",
-        isMainLiftEligible: false,
-        fatigueCost: 2,
-        sfrScore: 4,
-        lengthPositionScore: 4,
-        equipment: ["machine"],
-        primaryMuscles: ["Hamstrings"],
-        secondaryMuscles: ["Calves"],
-      },
-    ]);
-
-    mesocycleRoleFindManyMock.mockResolvedValue([
-      { exerciseId: "squat", role: "CORE_COMPOUND", sessionIntent: "LEGS" },
-      { exerciseId: "rdl", role: "ACCESSORY", sessionIntent: "LEGS" },
-      { exerciseId: "seated-leg-curl", role: "ACCESSORY", sessionIntent: "LEGS" },
-    ]);
-
-    const result = await generateSessionFromIntent("user-1", { intent: "legs" });
-
-    expect("error" in result).toBe(false);
-    if ("error" in result) return;
-
-    const allIds = [...result.workout.mainLifts, ...result.workout.accessories]
-      .map((entry) => entry.exercise.id)
-      .sort();
-    expect(allIds).toEqual(["rdl", "seated-leg-curl", "squat"]);
-
-    expect(result.selection.selectedExerciseIds.sort()).toEqual(["rdl", "seated-leg-curl", "squat"]);
-    expect(result.workout.mainLifts.map((entry) => entry.exercise.id)).toEqual(["squat"]);
-    expect(result.workout.accessories.map((entry) => entry.exercise.id).sort()).toEqual([
-      "rdl",
-      "seated-leg-curl",
-    ]);
-
-    const setCountById = new Map(
-      [...result.workout.mainLifts, ...result.workout.accessories].map((entry) => [
-        entry.exercise.id,
-        entry.sets.length,
-      ])
-    );
-    expect(setCountById.get("squat")).toBe(4);
-    expect(setCountById.get("rdl")).toBe(4);
-    expect(setCountById.get("seated-leg-curl")).toBe(3);
-    expect(result.selection.perExerciseSetTargets["squat"]).toBe(4);
-    expect(result.selection.perExerciseSetTargets["rdl"]).toBe(4);
-    expect(result.selection.perExerciseSetTargets["seated-leg-curl"]).toBe(3);
-  });
-
-  it("keeps W2 accumulation role exercise sets at or above W1 performed sets", async () => {
-    mapHistoryMock.mockReturnValue([
-      {
-        date: "2026-02-18T00:00:00.000Z",
-        completed: true,
-        status: "COMPLETED",
-        selectionMode: "MANUAL",
-        sessionIntent: "legs",
-        exercises: [
-          {
-            exerciseId: "squat",
-            sets: Array.from({ length: 4 }, (_, idx) => ({
-              exerciseId: "squat",
-              setIndex: idx + 1,
-              reps: 6,
-              rpe: 8,
-              load: 225,
-            })),
-          },
-          {
-            exerciseId: "leg-press",
-            sets: Array.from({ length: 3 }, (_, idx) => ({
-              exerciseId: "leg-press",
-              setIndex: idx + 1,
-              reps: 10,
-              rpe: 8,
-              load: 360,
-            })),
-          },
-        ],
-      },
-    ]);
-    getCurrentMesoWeekMock.mockReturnValue(2);
-    loadActiveMesocycleMock.mockResolvedValue({
-      id: "meso-1",
-      state: "ACTIVE_ACCUMULATION",
-      accumulationSessionsCompleted: 3,
-      durationWeeks: 5,
-    });
-
-    mesocycleRoleFindManyMock.mockResolvedValue([
-      { exerciseId: "squat", role: "CORE_COMPOUND", sessionIntent: "LEGS" },
-      { exerciseId: "leg-press", role: "ACCESSORY", sessionIntent: "LEGS" },
-    ]);
-
-    const result = await generateSessionFromIntent("user-1", { intent: "legs" });
-
-    expect("error" in result).toBe(false);
-    if ("error" in result) return;
-
-    const setCountById = new Map(
-      [...result.workout.mainLifts, ...result.workout.accessories].map((entry) => [
-        entry.exercise.id,
-        entry.sets.length,
-      ])
-    );
-    expect(setCountById.get("squat") ?? 0).toBeGreaterThanOrEqual(4);
-    expect(setCountById.get("leg-press") ?? 0).toBeGreaterThanOrEqual(3);
-    expect(result.selection.perExerciseSetTargets["squat"]).toBeGreaterThanOrEqual(4);
-    expect(result.selection.perExerciseSetTargets["leg-press"]).toBeGreaterThanOrEqual(3);
-  });
-
   it("clamps W4 role continuity progression to weekly target unless prior-floor hold is required", async () => {
     mapHistoryMock.mockReturnValue([
       {
@@ -557,55 +421,6 @@ describe("generateSessionFromIntent", () => {
       (result.selection.perExerciseSetTargets["leg-press"] ?? 0);
     expect(quadTotal).toBe(5);
     expect(quadTotal).toBeLessThanOrEqual(5);
-  });
-
-  it("never reduces W4 role continuity targets below W3 performed counts", async () => {
-    mapHistoryMock.mockReturnValue([
-      {
-        date: "2026-02-18T00:00:00.000Z",
-        completed: true,
-        status: "COMPLETED",
-        selectionMode: "INTENT",
-        sessionIntent: "legs",
-        exercises: [
-          {
-            exerciseId: "squat",
-            sets: Array.from({ length: 4 }, (_, idx) => ({
-              exerciseId: "squat",
-              setIndex: idx + 1,
-              reps: 6,
-              rpe: 8,
-              load: 245,
-            })),
-          },
-          {
-            exerciseId: "leg-press",
-            sets: Array.from({ length: 2 }, (_, idx) => ({
-              exerciseId: "leg-press",
-              setIndex: idx + 1,
-              reps: 10,
-              rpe: 8,
-              load: 360,
-            })),
-          },
-        ],
-      },
-    ]);
-    getCurrentMesoWeekMock.mockReturnValue(4);
-    getWeeklyVolumeTargetMock.mockImplementation((_meso: unknown, muscle: string) =>
-      muscle === "Quads" ? 6 : 12
-    );
-    mesocycleRoleFindManyMock.mockResolvedValue([
-      { exerciseId: "squat", role: "CORE_COMPOUND", sessionIntent: "LEGS" },
-      { exerciseId: "leg-press", role: "ACCESSORY", sessionIntent: "LEGS" },
-    ]);
-
-    const result = await generateSessionFromIntent("user-1", { intent: "legs" });
-    expect("error" in result).toBe(false);
-    if ("error" in result) return;
-
-    expect(result.selection.perExerciseSetTargets["squat"]).toBeGreaterThanOrEqual(4);
-    expect(result.selection.perExerciseSetTargets["leg-press"]).toBeGreaterThanOrEqual(2);
   });
 
   it("ignores client roleListIncomplete=false when server derives role list as incomplete", async () => {

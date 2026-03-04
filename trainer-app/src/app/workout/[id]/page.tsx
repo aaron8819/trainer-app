@@ -181,6 +181,12 @@ export default async function WorkoutDetailPage({
             </h1>
             <p className="mt-1.5 text-sm text-slate-600">Estimated {workout.estimatedMinutes ?? "--"} minutes</p>
           </div>
+          <Link
+            className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-slate-200 bg-slate-50 px-5 py-2 text-sm font-semibold text-slate-700 sm:w-auto"
+            href={`/workout/${workout.id}/audit`}
+          >
+            Audit
+          </Link>
         </div>
 
         <section className="mt-6 space-y-6 sm:mt-8 sm:space-y-8">

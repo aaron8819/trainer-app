@@ -6,6 +6,7 @@ import type { WorkoutPlan } from "@/lib/engine/types";
 import type { FilteredExerciseSummary } from "@/lib/engine/explainability";
 import { applyLoads } from "@/lib/api/workout-context";
 import { buildSessionDecisionReceipt } from "@/lib/evidence/session-decision-receipt";
+import type { PlannerDiagnosticsMode } from "@/lib/evidence/types";
 import type { MappedGenerationContext, SessionGenerationResult } from "./types";
 
 export function runSessionGeneration(
@@ -72,7 +73,8 @@ export function finalizePostLoadResult(
     selection: SelectionOutput;
   },
   mapped: MappedGenerationContext,
-  filteredExercises?: FilteredExerciseSummary[]
+  filteredExercises?: FilteredExerciseSummary[],
+  plannerDiagnosticsMode: PlannerDiagnosticsMode = "standard"
 ): SessionGenerationResult {
   const withLoads = applyLoads(
     result.workout,
@@ -112,6 +114,7 @@ export function finalizePostLoadResult(
     sorenessSuppressedMuscles: mapped.sorenessSuppressedMuscles,
     deloadDecision: mapped.deloadDecision,
     plannerDiagnostics: result.selection.plannerDiagnostics,
+    plannerDiagnosticsMode,
   });
 
   return {

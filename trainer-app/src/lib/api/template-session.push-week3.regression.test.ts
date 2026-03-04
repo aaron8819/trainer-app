@@ -342,6 +342,101 @@ const stalePatternCableFly = exercise({
 
 const exerciseLibrary = [idbp, dip, tricepsPushdown, lateralRaise, cableLateralRaise, overheadTriceps];
 
+const legBackSquat = exercise({
+  id: "leg-back-squat",
+  name: "Barbell Back Squat",
+  movementPatterns: ["squat"],
+  splitTags: ["legs"],
+  primaryMuscles: ["Quads"],
+  secondaryMuscles: ["Glutes", "Hamstrings"],
+  equipment: ["barbell", "rack"],
+  isMainLiftEligible: true,
+  isCompound: true,
+  stimulusProfile: {
+    quads: 1,
+    glutes: 0.6,
+    hamstrings: 0.15,
+  },
+});
+
+const legPress = exercise({
+  id: "leg-press-main",
+  name: "Leg Press",
+  movementPatterns: ["squat"],
+  splitTags: ["legs"],
+  primaryMuscles: ["Quads"],
+  secondaryMuscles: ["Glutes"],
+  equipment: ["machine"],
+  isMainLiftEligible: false,
+  isCompound: true,
+  stimulusProfile: {
+    quads: 1,
+    glutes: 0.35,
+  },
+});
+
+const legRdl = exercise({
+  id: "leg-rdl",
+  name: "Romanian Deadlift",
+  movementPatterns: ["hinge"],
+  splitTags: ["legs"],
+  primaryMuscles: ["Hamstrings"],
+  secondaryMuscles: ["Glutes", "Lower Back"],
+  equipment: ["barbell"],
+  isMainLiftEligible: false,
+  isCompound: true,
+  stimulusProfile: {
+    hamstrings: 1,
+    glutes: 0.75,
+    lower_back: 0.45,
+  },
+});
+
+const legCurl = exercise({
+  id: "leg-curl-main",
+  name: "Seated Leg Curl",
+  movementPatterns: ["flexion"],
+  splitTags: ["legs"],
+  primaryMuscles: ["Hamstrings"],
+  secondaryMuscles: [],
+  equipment: ["machine"],
+  isMainLiftEligible: false,
+  isCompound: false,
+  stimulusProfile: {
+    hamstrings: 1,
+  },
+});
+
+const standingCalf = exercise({
+  id: "leg-standing-calf",
+  name: "Standing Calf Raise",
+  movementPatterns: ["calf_raise_extended"],
+  splitTags: ["legs"],
+  primaryMuscles: ["Calves"],
+  secondaryMuscles: [],
+  equipment: ["machine"],
+  isMainLiftEligible: false,
+  isCompound: false,
+  stimulusProfile: {
+    calves: 1,
+  },
+});
+
+const seatedCalf = exercise({
+  id: "leg-seated-calf",
+  name: "Seated Calf Raise",
+  movementPatterns: ["calf_raise_flexed"],
+  splitTags: ["legs"],
+  primaryMuscles: ["Calves"],
+  secondaryMuscles: [],
+  equipment: ["machine"],
+  isMainLiftEligible: false,
+  isCompound: false,
+  stimulusProfile: {
+    calves: 1,
+  },
+});
+
 // ---------------------------------------------------------------------------
 // W2S2 Push history (the bug scenario)
 // IDBP: 1 top set @ 45 lbs + 4 back-off sets @ 40 lbs, all rpe=8, reps=8
@@ -1012,6 +1107,60 @@ function getAllExerciseSets(
   return entry?.sets ?? null;
 }
 
+function buildLegCollateralBalanceMappedContext(): MappedGenerationContext {
+  const legsExerciseLibrary = [
+    legBackSquat,
+    legPress,
+    legRdl,
+    legCurl,
+    standingCalf,
+    seatedCalf,
+  ];
+
+  return {
+    ...buildMappedContext(),
+    exerciseLibrary: legsExerciseLibrary as MappedGenerationContext["exerciseLibrary"],
+    rawExercises: legsExerciseLibrary.map(toPrisma) as unknown as MappedGenerationContext["rawExercises"],
+    history: [],
+    lifecycleVolumeTargets: {
+      Chest: 0,
+      Triceps: 0,
+      "Side Delts": 0,
+      "Front Delts": 0,
+      "Upper Back": 0,
+      Lats: 0,
+      Biceps: 0,
+      "Rear Delts": 0,
+      Quads: 15,
+      Hamstrings: 13,
+      Glutes: 5,
+      Calves: 12,
+      Core: 0,
+      "Lower Back": 0,
+      Forearms: 0,
+      Adductors: 0,
+      Abductors: 0,
+      Abs: 0,
+    },
+    mesocycleRoleMapByIntent: {
+      push: new Map(),
+      pull: new Map(),
+      legs: new Map([
+        ["leg-back-squat", "CORE_COMPOUND"],
+        ["leg-press-main", "ACCESSORY"],
+        ["leg-rdl", "ACCESSORY"],
+        ["leg-curl-main", "ACCESSORY"],
+        ["leg-standing-calf", "ACCESSORY"],
+        ["leg-seated-calf", "ACCESSORY"],
+      ]),
+      upper: new Map(),
+      lower: new Map(),
+      full_body: new Map(),
+      body_part: new Map(),
+    },
+  };
+}
+
 describe("W3S1 Push regression — 4 engine bug fixes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -1021,6 +1170,21 @@ describe("W3S1 Push regression — 4 engine bug fixes", () => {
   it("generates a push session without errors", async () => {
     const result = await generateSessionFromIntent("user-1", { intent: "push" });
     expect("error" in result).toBe(false);
+  });
+
+  it("prevents hinge under-dosing when collateral glute stimulus is unavoidable", async () => {
+    loadMappedGenerationContextMock.mockResolvedValueOnce(buildLegCollateralBalanceMappedContext());
+
+    const result = await generateSessionFromIntent("user-1", { intent: "legs" });
+    expect("error" in result).toBe(false);
+    if ("error" in result) {
+      return;
+    }
+
+    const rdlSets = getAllExerciseSets(result.workout, "leg-rdl");
+    expect(rdlSets).not.toBeNull();
+    expect(rdlSets?.length ?? 0).toBeGreaterThanOrEqual(3);
+    expect(result.volumePlanByMuscle.Hamstrings.planned).toBeGreaterThanOrEqual(9);
   });
 
   it("Fix 1: IDBP set count ≤ 5 even though continuity ramp would produce 7 (5+2)", async () => {

@@ -40,6 +40,7 @@ export function useRestTimerState(workoutId: string) {
   useEffect(() => {
     const restored = parseSnapshot(window.sessionStorage.getItem(storageKey));
     if (!restored) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setTimer(null);
       return;
     }

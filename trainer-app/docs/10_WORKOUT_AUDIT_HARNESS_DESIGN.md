@@ -2,7 +2,8 @@
 
 Owner: Aaron
 Last reviewed: 2026-03-04
-Purpose: Design proposal for a repeatable workout audit harness that can inspect and validate workout generation without ad hoc shell or database forensics.
+Status: Design refreshed after closure-trace instrumentation and post-Phase-4 closure tuning
+Purpose: Design and rollout plan for a repeatable workout audit harness that can inspect and validate workout generation without ad hoc shell or database forensics.
 
 This doc covers:
 - Proposed design decisions and rationale
@@ -20,6 +21,8 @@ Sources of truth:
 - `trainer-app/src/lib/api/mesocycle-lifecycle.ts`
 - `trainer-app/src/lib/api/workout-context.ts`
 - `trainer-app/src/lib/evidence/session-decision-receipt.ts`
+- `trainer-app/src/lib/planner-diagnostics/types.ts`
+- `trainer-app/src/components/explainability/ExplainabilityPanel.tsx`
 - `trainer-app/src/app/api/workouts/save/route.ts`
 - `trainer-app/src/lib/api/template-session.test.ts`
 - `trainer-app/src/lib/api/template-session.push-week3.regression.test.ts`
@@ -28,6 +31,24 @@ Sources of truth:
 - `trainer-app/src/lib/api/explainability.volume-compliance.test.ts`
 - `trainer-app/src/lib/engine/apply-loads.correctness.test.ts`
 - `trainer-app/src/app/api/workouts/receipt-pipeline.integration.test.ts`
+
+## Current runtime state (important)
+
+Implemented now (outside the future harness CLI work):
+- `/workout/[id]/audit` includes receipt-first planner diagnostics with closure action details.
+- Planner diagnostics now include first-iteration closure candidate traces:
+  - candidate exercise id/name
+  - add vs expand kind
+  - set delta
+  - dominant deficit muscle/remaining
+  - dominant deficit contribution
+  - closure score (if actionable)
+  - filtered reason (if rejected)
+- Push closure regressions now protect against stacked duplicate accessory isolation when another meaningful deficit remains unresolved.
+
+Implication:
+- We now have enough live evidence to debug closure ranking/filtering from receipts directly.
+- The next harness phase should focus on multi-intent stability and invariant enforcement, not adding more one-off debug fields.
 
 ## Why this design exists
 
@@ -52,6 +73,7 @@ Current interim audit UX note:
 - It now reads in two passes:
   - session-level scan first (evidence quality, missing signals, cycle/progression/volume context)
   - exercise drill-down second for per-lift rationale and prescription inspection
+- It now also includes closure candidate trace diagnostics for first-iteration closure ranking/filtering.
 - That layout improves review speed, but it does not replace the need for the structured audit artifact proposed in this doc.
 
 ## Scope and goals
@@ -82,6 +104,16 @@ Phase 1 non-goals:
 - Do not broaden the existing `/workout/[id]/audit` page into the harness.
 - Do not build fixture-regression infrastructure yet beyond minimal type/composition seams.
 - Do not attempt multi-step `generate -> save -> next-session` simulation in Phase 1.
+
+## New guardrails from recent closure work
+
+These are now architecture-level audit invariants, not single-workout expectations:
+- Closure should reduce at least one meaningful unresolved deficit when viable actions exist.
+- Closure should avoid repeatedly stacking isolated work on a muscle that already has isolated in-session coverage when another meaningful unresolved deficit remains.
+- Closure candidate ranking decisions must be explainable from receipt evidence (candidate list, filtered reasons, and scores).
+- Deterministic ordering must be preserved for equivalent-score candidates.
+
+These invariants should be asserted by fixture regressions and by matrix audits across intents/weeks.
 
 ## Proposed design decisions and rationale
 
@@ -755,6 +787,14 @@ Protect:
 - weekly target caps
 - W4 continuity hold behavior
 
+### Contract tests for closure ranking/filtering invariants
+
+Protect:
+- first closure iteration candidate trace includes actionable + filtered candidates with explicit reasons
+- closure picks actions that improve meaningful unresolved deficits
+- closure does not spend all remaining closure budget on stacked duplicate isolation when alternate meaningful deficits remain
+- dominant-deficit ranking does not silently mask viable alternate-deficit resolution when diminishing-returns conditions apply
+
 ### Contract tests for progression/load anchoring
 
 Protect:
@@ -784,6 +824,9 @@ Optional internal debug route:
 - should use the same underlying audit service
 - should remain internal-only
 - should not be the primary supported interface in Phase 1
+
+Current practical note:
+- Until the dedicated CLI harness is implemented, `/workout/[id]/audit` with planner diagnostics + closure candidate trace is the primary evidence surface for live debugging.
 
 Diff mode should compare at least:
 - selected exercises
@@ -820,6 +863,61 @@ Recommendation:
 - persist canonical session decision receipt in the normal runtime path
 - generate richer audit explainability on demand rather than storing every audit artifact
 
+### Closure candidate trace scope and persistence
+
+Decision:
+- keep closure candidate trace computation in planner runtime for determinism/testing, but treat full candidate trace as debug telemetry rather than canonical persisted receipt data
+
+Required trace contract (debug artifact):
+
+```ts
+type ClosureCandidateTraceItem = {
+  // required identity / action shape
+  exerciseId: string;
+  kind: "add" | "expand";
+  setDelta: number;
+
+  // required decision outcome
+  decision: "selected" | "rejected";
+  rejectionReason?: string; // required when decision="rejected"
+
+  // required scoring context
+  dominantDeficitMuscleId: MuscleId;
+  dominantDeficitRemaining: number;
+  dominantDeficitContribution: number;
+  score: number | null; // null when rejected before scoring
+
+  // optional explainability fields
+  exerciseName?: string;
+  deficitReduction?: number;
+  dominantDeficitReduction?: number;
+  collateralOvershoot?: number;
+  fatigueCost?: number;
+};
+```
+
+Keep:
+- `exerciseId`, `kind`, `setDelta`
+- `dominantDeficit*` fields
+- final `score` used by closure action comparison
+- `rejectionReason`
+
+Change:
+- use canonical `MuscleId` in trace contracts instead of display labels
+- replace optional `filteredOutReason` with `decision + rejectionReason` semantics
+- drop ambiguous duplicate score fields (`totalScore` versus `score`) from the long-term persisted contract
+
+Remove (from long-term persisted receipt payload):
+- `exerciseName` on each candidate (derive from exercise library when rendering)
+- full candidate list in default non-debug persisted receipts
+
+Migration plan:
+1. Keep current always-on `firstIterationCandidates` while matrix audits are still hardening.
+2. Add receipt-level diagnostics mode (`standard` vs `debug`) and gate candidate-list persistence behind `debug`.
+3. Keep closure actions and per-muscle/exercise diagnostics in `standard`.
+4. Update explainability/audit surfaces to tolerate missing candidate list and show it only when debug diagnostics are present.
+5. After one stable matrix sweep period, default to `standard` in runtime save paths and keep debug mode for harness/targeted investigations.
+
 ### Internal-only exposure
 
 Recommendation:
@@ -829,7 +927,7 @@ Recommendation:
 ## Proposed phased rollout
 
 ### Phase 1 - Core audit module, shared derivation seam, CLI, structured JSON
-Status: NOT STARTED
+Status: IN PROGRESS (design stable; runtime receipt instrumentation already landed)
 
 Goal:
 - Establish the minimum first-class audit capability without changing runtime generation behavior.
@@ -869,6 +967,14 @@ Suggested Phase 1 validation:
 - `npx tsc --noEmit`
 - targeted lint on touched files
 
+Additional Phase 1 validation now required:
+- verify audit artifacts include closure candidate trace parity with the live receipt view
+- verify at least one matrix sweep (`push/pull/legs/upper/lower/full_body` across representative weeks) can be produced as stable JSON artifacts
+- add a receipt schema compatibility check for `sessionDecisionReceipt` (`current` + `previous` supported version) to prevent parser/runtime drift during refactors
+- verify `standard` diagnostics mode strips candidate-level closure trace while `debug` mode preserves it
+- automated now: `src/lib/audit/workout-audit/intent-matrix.test.ts` sweeps `intent-preview` across `push/pull/legs/upper/lower/full_body` in both diagnostics modes and asserts generation success, diagnostics gating, and standard/debug selection parity per intent
+- automated now: `src/lib/audit/workout-audit/next-session-intent-matrix.test.ts` mirrors the same assertions through `next-session` context resolution for all six intents
+
 ### Phase 2 - Deterministic fixtures and regression tests
 Status: NOT STARTED
 
@@ -882,6 +988,11 @@ Focus:
 
 Exit criteria:
 - fixture regressions catch drift in push/pull/lifecycle/progression scenarios
+
+Updated fixture minimums:
+- include at least one closure-ranking scenario where the numerically largest deficit is not the selected closure action muscle after diminishing-returns logic
+- include at least one scenario with filtered chest/push options to validate overshoot and pattern-cap diagnostics
+- include at least one deload scenario where underfill is explicitly expected/annotated and is not classified as a planner failure
 
 ### Phase 3 - Richer explainability, diff mode, optional internal debug UI
 Status: NOT STARTED
@@ -941,3 +1052,11 @@ Why:
 
 Planned future extension:
 - add a multi-step scenario mode after Phase 1 for `generate -> save -> lifecycle transition -> next-session` validation
+
+Decision:
+- Keep closure candidate trace computation in planner runtime, but move full candidate-list persistence behind a debug diagnostics mode once matrix invariants are stable.
+
+Why:
+- Recent live audit debugging depended on candidate-level evidence to distinguish filtering failures from ranking failures.
+- Removing candidate-level evidence before matrix hardening would reduce confidence and increase one-off patch risk.
+- Keeping full candidate lists permanently in canonical persisted receipts increases payload noise and long-term coupling to local closure heuristics.

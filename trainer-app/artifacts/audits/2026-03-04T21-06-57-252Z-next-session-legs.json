@@ -1,0 +1,33 @@
+{
+  "generatedAt": "2026-03-04T21:06:57.243Z",
+  "generation": {
+    "error": "Max client connections reached"
+  },
+  "identity": {
+    "ownerEmail": "aaron8819@gmail.com",
+    "userId": "f03601b5-5e2a-40dc-974d-14bb1d1862a3"
+  },
+  "mode": "next-session",
+  "nextSession": {
+    "derivationTrace": [
+      "normalized_schedule_count=3",
+      "incomplete_candidates=0",
+      "derived_rotation intent=legs week=3 session=3",
+      "selected_rotation_intent=legs"
+    ],
+    "existingWorkoutId": null,
+    "intent": "legs",
+    "isExisting": false,
+    "selectedIncompleteStatus": null,
+    "sessionInWeek": 3,
+    "source": "rotation",
+    "weekInMeso": 3
+  },
+  "request": {
+    "mode": "next-session",
+    "ownerEmail": "aaron8819@gmail.com",
+    "plannerDiagnosticsMode": "debug"
+  },
+  "source": "live",
+  "version": 1
+}

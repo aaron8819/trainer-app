@@ -23,7 +23,6 @@ type UseWorkoutChipEditorParams = {
   flatSets: FlatSetItem[];
   isDumbbellExercise: (exercise: LogExerciseInput) => boolean;
   toInputNumberString: (value: number | null | undefined) => string;
-  toDisplayLoadValue: (value: number | null | undefined, isDumbbell: boolean) => number | null;
   parseNullableNumber: (raw: string) => number | null;
   normalizeLoadInput: (raw: string, isDumbbell: boolean) => number | null;
   updateSetFields: (setId: string, updater: (set: LogSetInput) => LogSetInput) => void;
@@ -34,7 +33,6 @@ export function useWorkoutChipEditor({
   flatSets,
   isDumbbellExercise,
   toInputNumberString,
-  toDisplayLoadValue,
   parseNullableNumber,
   normalizeLoadInput,
   updateSetFields,
@@ -53,13 +51,11 @@ export function useWorkoutChipEditor({
       setChipEditSetId(setId);
       setChipEditDraft({
         reps: toInputNumberString(target.set.actualReps),
-        load: toInputNumberString(
-          toDisplayLoadValue(target.set.actualLoad, isDumbbellExercise(target.exercise))
-        ),
+        load: toInputNumberString(target.set.actualLoad),
         rpe: toInputNumberString(target.set.actualRpe),
       });
     },
-    [flatSets, isDumbbellExercise, toDisplayLoadValue, toInputNumberString]
+    [flatSets, toInputNumberString]
   );
 
   const close = useCallback(() => {
@@ -78,12 +74,12 @@ export function useWorkoutChipEditor({
         prev
           ? {
               ...prev,
-              load: toInputNumberString(toDisplayLoadValue(normalized, isDumbbell)),
+              load: toInputNumberString(normalized),
             }
           : prev
       );
     },
-    [chipEditDraft, chipEditSetId, normalizeLoadInput, toDisplayLoadValue, toInputNumberString]
+    [chipEditDraft, chipEditSetId, normalizeLoadInput, toInputNumberString]
   );
 
   const save = useCallback(

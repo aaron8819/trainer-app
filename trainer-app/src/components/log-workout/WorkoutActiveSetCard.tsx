@@ -74,7 +74,7 @@ export type WorkoutActiveSetCardFormActions = {
     isDumbbell: boolean,
     options?: { commit?: boolean }
   ) => void;
-  setRpeValue: (setId: string, rawValue: string) => void;
+  setRpeValue: (setId: string, rawValue: string, options?: { commit?: boolean }) => void;
   setSingleField: (setId: string, field: keyof LogSetInput, value: number | boolean | null) => void;
   updateDraftBuffer: (setId: string, field: keyof SetDraftBuffers, value: string) => void;
 };
@@ -141,9 +141,7 @@ export function WorkoutActiveSetCard({
     updateDraftBuffer,
   } = formActions;
   const repsDraft = draftBuffersBySet[setId]?.reps ?? toInputNumberString(activeSet.set.actualReps);
-  const loadDraft =
-    draftBuffersBySet[setId]?.load ??
-    toInputNumberString(toDisplayLoad(activeSet.set.actualLoad, isDumbbell) ?? null);
+  const loadDraft = draftBuffersBySet[setId]?.load ?? toInputNumberString(activeSet.set.actualLoad);
   const rpeDraft = draftBuffersBySet[setId]?.rpe ?? toInputNumberString(activeSet.set.actualRpe);
 
   return (
@@ -234,7 +232,6 @@ export function WorkoutActiveSetCard({
               }}
               onChange={(event) => {
                 const nextValue = event.target.value;
-                setSingleField(setId, "actualReps", parseNullableNumber(nextValue));
                 updateDraftBuffer(setId, "reps", nextValue);
               }}
             />
@@ -304,6 +301,7 @@ export function WorkoutActiveSetCard({
                 : "text-slate-900"
             }`}
             type="number"
+            step="0.5"
             inputMode="decimal"
             value={loadDraft}
             onFocus={() => {
@@ -329,7 +327,7 @@ export function WorkoutActiveSetCard({
                     : "border-slate-300 text-slate-700"
                 }`}
                 onClick={() => {
-                  setRpeValue(setId, toInputNumberString(preset));
+                  setRpeValue(setId, toInputNumberString(preset), { commit: true });
                   markFieldTouched(setId, "actualRpe");
                   setFieldPrefilled(setId, "actualRpe", false);
                 }}

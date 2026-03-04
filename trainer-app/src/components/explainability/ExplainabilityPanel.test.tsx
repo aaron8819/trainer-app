@@ -144,6 +144,23 @@ const receipt: SessionDecisionReceipt = {
         exerciseName: "Bench Press",
         assignedSetCount: 5,
         stimulusVector: { Chest: 1, Triceps: 0.35 },
+        anchorUsed: { kind: "muscle", muscle: "chest" },
+        anchorBudgetDecision: {
+          weeklyTarget: 12,
+          performedEffectiveVolumeBeforeSession: 4,
+          plannedEffectiveVolumeBeforeAssignment: 3,
+          reservedEffectiveVolumeForRemainingRoleFixtures: 1,
+          anchorRemainingBeforeAssignment: 4,
+          anchorContributionPerSet: 1,
+          desiredSetTarget: 5,
+          anchorConstrainedContinuousSetTarget: 4,
+        },
+        overshootAdjustmentsApplied: {
+          initialSetTarget: 5,
+          finalSetTarget: 5,
+          reductionsApplied: 0,
+          limitingMuscles: ["Triceps"],
+        },
         isRoleFixture: true,
         isClosureAddition: false,
         isSetExpandedCarryover: true,
@@ -169,9 +186,10 @@ const receipt: SessionDecisionReceipt = {
           exerciseName: "Bench Press",
           kind: "expand",
           setDelta: 1,
-          dominantDeficitMuscle: "Chest",
+          dominantDeficitMuscleId: "chest",
           dominantDeficitRemaining: 5,
           dominantDeficitContribution: 1,
+          decision: "selected",
           score: 95,
         },
         {
@@ -179,10 +197,12 @@ const receipt: SessionDecisionReceipt = {
           exerciseName: "Machine Lateral Raise",
           kind: "add",
           setDelta: 4,
-          dominantDeficitMuscle: "Chest",
+          dominantDeficitMuscleId: "chest",
           dominantDeficitRemaining: 5,
           dominantDeficitContribution: 0,
-          filteredOutReason: "movement_pattern_cap",
+          decision: "rejected",
+          score: null,
+          rejectionReason: "movement_pattern_cap",
         },
       ],
     },
@@ -253,6 +273,10 @@ describe("ExplainabilityPanel progression logic rendering", () => {
     expect(screen.getByText("Planner diagnostics")).toBeInTheDocument();
     expect(screen.getByText(/post-role planned 3.0/)).toBeInTheDocument();
     expect(screen.getByText(/set-expanded carryover \(\+1\)/)).toBeInTheDocument();
+    expect(screen.getByText(/stimulus vector: Chest 1.00 \| Triceps 0.35/)).toBeInTheDocument();
+    expect(screen.getByText(/anchor budget:/)).toBeInTheDocument();
+    expect(screen.getByText(/overshoot adjustments:/)).toBeInTheDocument();
+    expect(screen.getByText(/limiting muscles Triceps/)).toBeInTheDocument();
     expect(screen.getByText("Closure candidate trace")).toBeInTheDocument();
     expect(screen.getAllByText("Bench Press").length).toBeGreaterThan(0);
     expect(screen.getByText(/filtered movement_pattern_cap/)).toBeInTheDocument();

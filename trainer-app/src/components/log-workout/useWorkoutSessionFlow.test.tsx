@@ -149,7 +149,6 @@ function WorkoutSessionFlowHarness({
     isBodyweightExercise,
     isDumbbellExercise,
     toInputNumberString,
-    toDisplayLoadValue: (value) => value ?? null,
     parseNullableNumber,
     normalizeLoadInput,
   });

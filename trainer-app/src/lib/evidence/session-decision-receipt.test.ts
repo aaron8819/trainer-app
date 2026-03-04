@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { readSessionDecisionReceipt } from "./session-decision-receipt";
+import { buildSessionDecisionReceipt, readSessionDecisionReceipt } from "./session-decision-receipt";
 
 describe("readSessionDecisionReceipt", () => {
   it("prefers the canonical persisted receipt over legacy top-level mirrors", () => {
@@ -45,6 +45,7 @@ describe("readSessionDecisionReceipt", () => {
           reductionPercent: 0,
           appliedTo: "none",
         },
+        plannerDiagnosticsMode: "debug",
         plannerDiagnostics: {
           muscles: {
             Chest: {
@@ -106,10 +107,10 @@ describe("readSessionDecisionReceipt", () => {
                 exerciseName: "Bench Press",
                 kind: "expand",
                 setDelta: 1,
-                dominantDeficitMuscle: "Chest",
+                dominantDeficitMuscleId: "chest",
                 dominantDeficitRemaining: 6,
                 dominantDeficitContribution: 1,
-                totalScore: 0.8,
+                decision: "selected",
                 deficitReduction: 1,
                 dominantDeficitReduction: 1,
                 collateralOvershoot: 0,
@@ -140,6 +141,7 @@ describe("readSessionDecisionReceipt", () => {
     expect(receipt?.sorenessSuppressedMuscles).toEqual([]);
     expect(receipt?.deloadDecision.mode).toBe("none");
     expect(receipt?.plannerDiagnostics?.muscles.Chest.plannedEffectiveVolumeAfterClosure).toBe(6);
+    expect(receipt?.plannerDiagnosticsMode).toBe("debug");
     expect(receipt?.plannerDiagnostics?.closure.actions[0]?.kind).toBe("expand");
     expect(receipt?.plannerDiagnostics?.closure.firstIterationCandidates?.[0]?.exerciseId).toBe("ex1");
   });
@@ -164,5 +166,100 @@ describe("readSessionDecisionReceipt", () => {
     });
 
     expect(receipt).toBeUndefined();
+  });
+
+  it("defaults to standard diagnostics mode and strips closure candidate trace", () => {
+    const receipt = buildSessionDecisionReceipt({
+      cycleContext: {
+        weekInMeso: 2,
+        weekInBlock: 2,
+        mesocycleLength: 5,
+        phase: "accumulation",
+        blockType: "accumulation",
+        isDeload: false,
+        source: "computed",
+      },
+      plannerDiagnostics: {
+        muscles: {
+          Chest: {
+            weeklyTarget: 12,
+            performedEffectiveVolumeBeforeSession: 4,
+            plannedEffectiveVolumeAfterRoleBudgeting: 3,
+            projectedEffectiveVolumeAfterRoleBudgeting: 7,
+            deficitAfterRoleBudgeting: 5,
+            plannedEffectiveVolumeAfterClosure: 5,
+            projectedEffectiveVolumeAfterClosure: 9,
+            finalRemainingDeficit: 3,
+          },
+        },
+        exercises: {},
+        closure: {
+          actions: [],
+          firstIterationCandidates: [
+            {
+              exerciseId: "ex1",
+              kind: "expand",
+              setDelta: 1,
+              dominantDeficitMuscleId: "chest",
+              dominantDeficitRemaining: 5,
+              dominantDeficitContribution: 1,
+              decision: "selected",
+              score: 90,
+            },
+          ],
+        },
+      },
+    });
+
+    expect(receipt.plannerDiagnosticsMode).toBe("standard");
+    expect(receipt.plannerDiagnostics?.closure.firstIterationCandidates).toBeUndefined();
+  });
+
+  it("keeps closure candidate trace when debug diagnostics mode is requested", () => {
+    const receipt = buildSessionDecisionReceipt({
+      cycleContext: {
+        weekInMeso: 2,
+        weekInBlock: 2,
+        mesocycleLength: 5,
+        phase: "accumulation",
+        blockType: "accumulation",
+        isDeload: false,
+        source: "computed",
+      },
+      plannerDiagnosticsMode: "debug",
+      plannerDiagnostics: {
+        muscles: {
+          Chest: {
+            weeklyTarget: 12,
+            performedEffectiveVolumeBeforeSession: 4,
+            plannedEffectiveVolumeAfterRoleBudgeting: 3,
+            projectedEffectiveVolumeAfterRoleBudgeting: 7,
+            deficitAfterRoleBudgeting: 5,
+            plannedEffectiveVolumeAfterClosure: 5,
+            projectedEffectiveVolumeAfterClosure: 9,
+            finalRemainingDeficit: 3,
+          },
+        },
+        exercises: {},
+        closure: {
+          actions: [],
+          firstIterationCandidates: [
+            {
+              exerciseId: "ex1",
+              kind: "expand",
+              setDelta: 1,
+              dominantDeficitMuscleId: "chest",
+              dominantDeficitRemaining: 5,
+              dominantDeficitContribution: 1,
+              decision: "selected",
+              score: 90,
+            },
+          ],
+        },
+      },
+    });
+
+    expect(receipt.plannerDiagnosticsMode).toBe("debug");
+    expect(receipt.plannerDiagnostics?.closure.firstIterationCandidates?.[0]?.exerciseId).toBe("ex1");
   });
 });

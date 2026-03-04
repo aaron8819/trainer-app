@@ -8,11 +8,11 @@ import { prisma } from "@/lib/db/prisma";
 import { VOLUME_LANDMARKS } from "@/lib/engine/volume-landmarks";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 import {
-  deriveNextAdvancingSession,
   getCurrentMesoWeek,
   getRirTarget,
   getWeeklyVolumeTarget,
 } from "./mesocycle-lifecycle";
+import { loadNextWorkoutContext } from "./next-session";
 
 export type ProgramMesoBlock = {
   blockType: string;
@@ -250,65 +250,18 @@ async function loadMesoWeekMuscleVolume(
   return muscles;
 }
 
-async function loadTopIncompleteWorkout(userId: string) {
-  const rawIncomplete = await prisma.workout.findMany({
-    where: { userId, status: { in: ["IN_PROGRESS", "PARTIAL", "PLANNED"] as WorkoutStatus[] } },
-    orderBy: { scheduledDate: "asc" },
-    take: 20,
-    select: { id: true, sessionIntent: true, status: true, scheduledDate: true },
-  });
-
-  const statusPriority: Record<string, number> = { IN_PROGRESS: 0, PARTIAL: 1, PLANNED: 2 };
-  return [...rawIncomplete].sort((left, right) => {
-    const leftPriority = statusPriority[left.status] ?? 3;
-    const rightPriority = statusPriority[right.status] ?? 3;
-    if (leftPriority !== rightPriority) {
-      return leftPriority - rightPriority;
-    }
-    return left.scheduledDate.getTime() - right.scheduledDate.getTime();
-  })[0] ?? null;
-}
-
 export async function loadHomeProgramSupport(userId: string): Promise<HomeProgramSupportData> {
-  const [mesoRecord, constraints, topIncomplete] = await Promise.all([
-    prisma.mesocycle.findFirst({
-      where: { macroCycle: { userId }, isActive: true },
-      select: {
-        durationWeeks: true,
-        completedSessions: true,
-        accumulationSessionsCompleted: true,
-        deloadSessionsCompleted: true,
-        sessionsPerWeek: true,
-        state: true,
-      },
-    }),
-    prisma.constraints.findUnique({
-      where: { userId },
-      select: { weeklySchedule: true },
-    }),
-    loadTopIncompleteWorkout(userId),
-  ]);
-
-  const weeklySchedule = (constraints?.weeklySchedule ?? []).map((intent) =>
-    (intent as string).toLowerCase()
-  );
-
-  const nextSession: NextSessionData = topIncomplete
+  const nextWorkoutContext = await loadNextWorkoutContext(userId);
+  const nextSession: NextSessionData = {
+    intent: nextWorkoutContext.intent,
+    workoutId: nextWorkoutContext.existingWorkoutId,
+    isExisting: nextWorkoutContext.isExisting,
+  };
+  const latestIncomplete = nextWorkoutContext.existingWorkoutId
     ? {
-        intent: topIncomplete.sessionIntent?.toLowerCase() ?? null,
-        workoutId: topIncomplete.id,
-        isExisting: true,
+        id: nextWorkoutContext.existingWorkoutId,
+        status: nextWorkoutContext.selectedIncompleteStatus ?? "planned",
       }
-    : {
-        intent: mesoRecord
-          ? deriveNextAdvancingSession(mesoRecord, weeklySchedule).intent
-          : weeklySchedule[0] ?? null,
-        workoutId: null,
-        isExisting: false,
-      };
-
-  const latestIncomplete = topIncomplete
-    ? { id: topIncomplete.id, status: topIncomplete.status.toLowerCase() }
     : null;
 
   let lastSessionSkipped = false;

@@ -91,6 +91,7 @@ export function buildCanonicalSelectionMetadata(
             sorenessSuppressedMuscles: priorReceipt.sorenessSuppressedMuscles,
             deloadDecision: priorReceipt.deloadDecision,
             plannerDiagnostics: priorReceipt.plannerDiagnostics,
+            plannerDiagnosticsMode: "standard",
             autoregulation: autoregulation
               ? {
                   wasAutoregulated: autoregulation.wasAutoregulated,

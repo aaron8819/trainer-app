@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/refs */
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -22,18 +23,20 @@ function LayoutHarness({
     setExpandedSections,
     setExpandedExerciseId,
   });
+  const keyboardHeight = layout.keyboardHeight;
+  const keyboardOpen = layout.keyboardOpen;
 
   return (
     <div
       data-testid="root"
       style={{
         paddingBottom:
-          layout.keyboardHeight > 0 ? `${layout.keyboardHeight + 16}px` : "env(safe-area-inset-bottom, 16px)",
+          keyboardHeight > 0 ? `${keyboardHeight + 16}px` : "env(safe-area-inset-bottom, 16px)",
       }}
     >
       <input aria-label="Reps" />
       <section ref={layout.activeSetPanelRef} data-testid="active-set-panel" />
-      <div data-testid="keyboard-open">{String(layout.keyboardOpen)}</div>
+      <div data-testid="keyboard-open">{String(keyboardOpen)}</div>
       <div data-testid="expanded-sections">{JSON.stringify(expandedSections)}</div>
       <div data-testid="expanded-exercise">{expandedExerciseId ?? ""}</div>
     </div>

@@ -1,9 +1,11 @@
 import type { AutoregulationModification } from "@/lib/engine/readiness/types";
+import { toMuscleId } from "@/lib/engine/stimulus";
 import type { PlannerDiagnostics } from "@/lib/planner-diagnostics/types";
 import type {
   CycleContextSnapshot,
   DeloadDecision,
   LifecycleRirTarget,
+  PlannerDiagnosticsMode,
   SessionDecisionException,
   SessionDecisionReadinessScaling,
   SessionDecisionReceipt,
@@ -128,6 +130,28 @@ function parseVolumeTargetSource(value: unknown): SessionDecisionVolumeTargetSou
     value === "unknown"
     ? value
     : undefined;
+}
+
+function parsePlannerDiagnosticsMode(value: unknown): PlannerDiagnosticsMode | undefined {
+  return value === "standard" || value === "debug" ? value : undefined;
+}
+
+function sanitizePlannerDiagnosticsForMode(
+  plannerDiagnostics: PlannerDiagnostics | undefined,
+  mode: PlannerDiagnosticsMode
+): PlannerDiagnostics | undefined {
+  if (!plannerDiagnostics) {
+    return undefined;
+  }
+  if (mode === "debug") {
+    return plannerDiagnostics;
+  }
+  return {
+    ...plannerDiagnostics,
+    closure: {
+      actions: plannerDiagnostics.closure.actions,
+    },
+  };
 }
 
 function parsePlannerDiagnostics(value: unknown): PlannerDiagnostics | undefined {
@@ -304,10 +328,31 @@ function parsePlannerDiagnostics(value: unknown): PlannerDiagnostics | undefined
   const firstIterationCandidates = Array.isArray(closureRecord.firstIterationCandidates)
     ? closureRecord.firstIterationCandidates.flatMap((entry) => {
         const item = toObject(entry);
+        const parsedScore =
+          toFiniteNumber(item?.score) ??
+          toFiniteNumber(item?.totalScore) ??
+          null;
+        const parsedRejectionReason =
+          typeof item?.rejectionReason === "string"
+            ? item.rejectionReason
+            : typeof item?.filteredOutReason === "string"
+              ? item.filteredOutReason
+              : undefined;
+        const parsedDecision: "selected" | "rejected" =
+          item?.decision === "selected" || item?.decision === "rejected"
+            ? (item.decision as "selected" | "rejected")
+            : parsedRejectionReason
+              ? "rejected"
+              : "selected";
+        const dominantDeficitKey =
+          typeof item?.dominantDeficitMuscleId === "string"
+            ? item.dominantDeficitMuscleId
+            : typeof item?.dominantDeficitMuscle === "string"
+              ? item.dominantDeficitMuscle
+              : undefined;
         if (
           !item ||
           typeof item.exerciseId !== "string" ||
-          typeof item.exerciseName !== "string" ||
           (item.kind !== "add" && item.kind !== "expand") ||
           toFiniteNumber(item.setDelta) == null ||
           toFiniteNumber(item.dominantDeficitContribution) == null
@@ -317,21 +362,23 @@ function parsePlannerDiagnostics(value: unknown): PlannerDiagnostics | undefined
 
         return [{
           exerciseId: item.exerciseId,
-          exerciseName: item.exerciseName,
           kind: item.kind as "add" | "expand",
           setDelta: item.setDelta as number,
-          dominantDeficitMuscle:
-            typeof item.dominantDeficitMuscle === "string" ? item.dominantDeficitMuscle : undefined,
+          dominantDeficitMuscleId:
+            typeof dominantDeficitKey === "string"
+              ? toMuscleId(dominantDeficitKey)
+              : undefined,
           dominantDeficitRemaining: toFiniteNumber(item.dominantDeficitRemaining),
           dominantDeficitContribution: item.dominantDeficitContribution as number,
-          totalScore: toFiniteNumber(item.totalScore),
+          decision: parsedDecision,
+          rejectionReason: parsedRejectionReason,
           deficitReduction: toFiniteNumber(item.deficitReduction),
           dominantDeficitReduction: toFiniteNumber(item.dominantDeficitReduction),
           collateralOvershoot: toFiniteNumber(item.collateralOvershoot),
           fatigueCost: toFiniteNumber(item.fatigueCost),
-          score: toFiniteNumber(item.score),
-          filteredOutReason:
-            typeof item.filteredOutReason === "string" ? item.filteredOutReason : undefined,
+          score: parsedScore,
+          exerciseName:
+            typeof item.exerciseName === "string" ? item.exerciseName : undefined,
         }];
       })
     : [];
@@ -413,6 +460,7 @@ export function buildSessionDecisionReceipt(input: {
   deloadDecision?: DeloadDecision | null;
   autoregulation?: ReadinessReceiptInput;
   plannerDiagnostics?: PlannerDiagnostics;
+  plannerDiagnosticsMode?: PlannerDiagnosticsMode;
 }): SessionDecisionReceipt {
   const sorenessSuppressedMuscles = input.sorenessSuppressedMuscles ?? [];
   const deloadDecision = input.deloadDecision ?? DEFAULT_DELOAD_DECISION;
@@ -426,6 +474,7 @@ export function buildSessionDecisionReceipt(input: {
         ? "soreness_adjusted_lifecycle"
         : "lifecycle"
       : "unknown";
+  const plannerDiagnosticsMode = input.plannerDiagnosticsMode ?? "standard";
 
   return {
     version: 1,
@@ -437,7 +486,11 @@ export function buildSessionDecisionReceipt(input: {
     },
     sorenessSuppressedMuscles,
     deloadDecision,
-    plannerDiagnostics: input.plannerDiagnostics,
+    plannerDiagnosticsMode,
+    plannerDiagnostics: sanitizePlannerDiagnosticsForMode(
+      input.plannerDiagnostics,
+      plannerDiagnosticsMode
+    ),
     readiness: {
       wasAutoregulated:
         (input.autoregulation?.wasAutoregulated ?? false) || intensityScaling.applied,
@@ -478,6 +531,7 @@ function parsePersistedReceipt(value: unknown): SessionDecisionReceipt | undefin
     },
     sorenessSuppressedMuscles: parseStringArray(record.sorenessSuppressedMuscles),
     deloadDecision,
+    plannerDiagnosticsMode: parsePlannerDiagnosticsMode(record.plannerDiagnosticsMode) ?? "standard",
     plannerDiagnostics: parsePlannerDiagnostics(record.plannerDiagnostics),
     readiness: {
       wasAutoregulated: readinessRecord.wasAutoregulated === true,
@@ -539,6 +593,7 @@ export function normalizeSelectionMetadataWithReceipt(input: {
       sorenessSuppressedMuscles: existingReceipt?.sorenessSuppressedMuscles ?? [],
       deloadDecision: existingReceipt?.deloadDecision,
       plannerDiagnostics: existingReceipt?.plannerDiagnostics,
+      plannerDiagnosticsMode: "standard",
       autoregulation: existingReceipt
         ? {
             wasAutoregulated: existingReceipt.readiness.wasAutoregulated,

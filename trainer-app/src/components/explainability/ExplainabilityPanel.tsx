@@ -44,6 +44,16 @@ function formatHistorySource(hasRecentHistory: boolean): string {
     : "Recent performed history was limited, so load calls stayed closer to the written plan.";
 }
 
+function formatStimulusVector(stimulusVector: Record<string, number>): string {
+  const entries = Object.entries(stimulusVector)
+    .filter(([, value]) => Number.isFinite(value) && value > 0)
+    .sort((left, right) => right[1] - left[1]);
+  if (entries.length === 0) {
+    return "n/a";
+  }
+  return entries.map(([muscle, effective]) => `${muscle} ${effective.toFixed(2)}`).join(" | ");
+}
+
 export function ExplainabilityPanel({
   explanation,
   summary,
@@ -254,8 +264,39 @@ export function ExplainabilityPanel({
                             {diagnostic.isSetExpandedCarryover ? ` | set-expanded carryover (+${diagnostic.closureSetDelta})` : ""}
                             {diagnostic.anchorUsed?.kind === "muscle"
                               ? ` | anchor ${diagnostic.anchorUsed.muscle}`
+                              : diagnostic.anchorUsed?.kind === "movement_pattern"
+                              ? ` | anchor ${diagnostic.anchorUsed.movementPattern}`
                               : ""}
                           </p>
+                          <p className="mt-1 text-xs text-slate-600">
+                            stimulus vector: {formatStimulusVector(diagnostic.stimulusVector)}
+                          </p>
+                          {diagnostic.anchorBudgetDecision ? (
+                            <p className="mt-1 text-xs text-slate-600">
+                              anchor budget:
+                              {" "}
+                              target {diagnostic.anchorBudgetDecision.weeklyTarget.toFixed(1)} |
+                              performed {diagnostic.anchorBudgetDecision.performedEffectiveVolumeBeforeSession.toFixed(1)} |
+                              pre-assignment planned {diagnostic.anchorBudgetDecision.plannedEffectiveVolumeBeforeAssignment.toFixed(1)} |
+                              reserved {diagnostic.anchorBudgetDecision.reservedEffectiveVolumeForRemainingRoleFixtures.toFixed(1)} |
+                              remaining {diagnostic.anchorBudgetDecision.anchorRemainingBeforeAssignment.toFixed(1)} |
+                              per-set {diagnostic.anchorBudgetDecision.anchorContributionPerSet.toFixed(2)} |
+                              desired sets {diagnostic.anchorBudgetDecision.desiredSetTarget} |
+                              anchor-constrained {diagnostic.anchorBudgetDecision.anchorConstrainedContinuousSetTarget.toFixed(2)}
+                            </p>
+                          ) : null}
+                          {diagnostic.overshootAdjustmentsApplied ? (
+                            <p className="mt-1 text-xs text-slate-600">
+                              overshoot adjustments:
+                              {" "}
+                              initial sets {diagnostic.overshootAdjustmentsApplied.initialSetTarget} |
+                              final sets {diagnostic.overshootAdjustmentsApplied.finalSetTarget} |
+                              reductions {diagnostic.overshootAdjustmentsApplied.reductionsApplied}
+                              {diagnostic.overshootAdjustmentsApplied.limitingMuscles.length > 0
+                                ? ` | limiting muscles ${diagnostic.overshootAdjustmentsApplied.limitingMuscles.join(", ")}`
+                                : ""}
+                            </p>
+                          ) : null}
                         </div>
                       ))}
                     </div>
@@ -273,7 +314,7 @@ export function ExplainabilityPanel({
                         >
                           <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                             <p className="text-sm font-semibold text-slate-800">
-                              {candidate.exerciseName}
+                              {candidate.exerciseName ?? candidate.exerciseId}
                             </p>
                             <p className="text-xs text-slate-500">
                               {candidate.kind} {candidate.setDelta} set
@@ -281,11 +322,13 @@ export function ExplainabilityPanel({
                             </p>
                           </div>
                           <p className="mt-1 text-xs text-slate-600">
-                            dominant deficit {candidate.dominantDeficitMuscle ?? "n/a"} |
+                            dominant deficit {candidate.dominantDeficitMuscleId ?? "n/a"} |
                             remaining {candidate.dominantDeficitRemaining?.toFixed(1) ?? "n/a"} |
                             contribution {candidate.dominantDeficitContribution.toFixed(1)}
                             {candidate.score != null ? ` | closure score ${candidate.score.toFixed(1)}` : ""}
-                            {candidate.filteredOutReason ? ` | filtered ${candidate.filteredOutReason}` : ""}
+                            {candidate.decision === "rejected" && candidate.rejectionReason
+                              ? ` | filtered ${candidate.rejectionReason}`
+                              : ""}
                           </p>
                         </div>
                       ))}

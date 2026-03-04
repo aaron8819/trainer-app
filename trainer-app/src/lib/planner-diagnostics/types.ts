@@ -60,19 +60,19 @@ export type PlannerClosureActionDiagnostic = {
 
 export type PlannerClosureCandidateDiagnostic = {
   exerciseId: string;
-  exerciseName: string;
   kind: "add" | "expand";
   setDelta: number;
-  dominantDeficitMuscle?: string;
+  dominantDeficitMuscleId?: MuscleId;
   dominantDeficitRemaining?: number;
   dominantDeficitContribution: number;
-  totalScore?: number;
+  decision: "selected" | "rejected";
+  rejectionReason?: string;
   deficitReduction?: number;
   dominantDeficitReduction?: number;
   collateralOvershoot?: number;
   fatigueCost?: number;
-  score?: number;
-  filteredOutReason?: string;
+  score: number | null;
+  exerciseName?: string;
 };
 
 export type PlannerDiagnostics = {

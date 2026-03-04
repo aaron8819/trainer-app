@@ -235,7 +235,6 @@ export default function LogWorkoutClient({
     findPreviousLoggedSet,
     updateSetFields,
     setSingleField,
-    toDisplayLoadValue: (value, isDumbbell) => toDisplayLoad(value, isDumbbell) ?? null,
     toStoredLoadValue: (value, isDumbbell) => toStoredLoad(value, isDumbbell) ?? null,
     isDumbbellExercise,
   });
@@ -270,7 +269,6 @@ export default function LogWorkoutClient({
     isBodyweightExercise,
     isDumbbellExercise,
     toInputNumberString,
-    toDisplayLoadValue: (value, isDumbbell) => toDisplayLoad(value, isDumbbell) ?? null,
     parseNullableNumber,
     normalizeLoadInput,
   });

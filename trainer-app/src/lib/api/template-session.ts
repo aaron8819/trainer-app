@@ -7,6 +7,7 @@ import { VOLUME_LANDMARKS } from "@/lib/engine/volume-landmarks";
 import {
   getEffectiveStimulusByMuscle,
   getEffectiveStimulusByMuscleId,
+  toMuscleId,
   toMuscleLabel,
 } from "@/lib/engine/stimulus";
 import { loadTemplateDetail } from "./templates";
@@ -76,6 +77,8 @@ const MAIN_LIFT_MAX_WORKING_SETS = 5;
 const ACCESSORY_MAX_WORKING_SETS = 6;
 const MIN_NON_ANCHOR_OVERSHOOT_TOLERANCE = 1.0;
 const NON_ANCHOR_OVERSHOOT_TOLERANCE_FRACTION = 0.1;
+const MAX_ADAPTIVE_COLLATERAL_ALLOWANCE_FRACTION = 0.6;
+const COLLATERAL_COUPLING_ALLOWANCE_FACTOR = 1.0;
 const CLOSURE_ACTION_SCORE_EPSILON = 1e-6;
 const CLOSURE_REDUNDANT_ACCESSORY_PENALTY_WEIGHT = 75;
 const CLOSURE_STACKED_ISOLATION_PENALTY_WEIGHT = 110;
@@ -244,6 +247,42 @@ function getNonAnchorOvershootTolerance(weeklyTarget: number): number {
   );
 }
 
+function getAdaptiveCollateralAllowance(params: {
+  anchorRemaining: number;
+  anchorContributionPerSet: number;
+  collateralContributionPerSet: number;
+  collateralWeeklyTarget: number;
+}): number {
+  const {
+    anchorRemaining,
+    anchorContributionPerSet,
+    collateralContributionPerSet,
+    collateralWeeklyTarget,
+  } = params;
+  if (
+    anchorRemaining <= 0 ||
+    anchorContributionPerSet <= 0 ||
+    collateralContributionPerSet <= 0 ||
+    collateralWeeklyTarget <= 0
+  ) {
+    return 0;
+  }
+
+  const anchorSetsRemaining = anchorRemaining / anchorContributionPerSet;
+  if (anchorSetsRemaining <= 0) {
+    return 0;
+  }
+
+  const expectedCollateralToResolveAnchor = anchorSetsRemaining * collateralContributionPerSet;
+  const adaptiveAllowance = expectedCollateralToResolveAnchor * COLLATERAL_COUPLING_ALLOWANCE_FACTOR;
+  const cappedAllowance = collateralWeeklyTarget * MAX_ADAPTIVE_COLLATERAL_ALLOWANCE_FRACTION;
+  return Math.max(0, Math.min(adaptiveAllowance, cappedAllowance));
+}
+
+function hasMaterialDeficit(remainingDeficit: number, tolerance: number): boolean {
+  return remainingDeficit > Math.max(tolerance * 1.5, tolerance + 0.5);
+}
+
 function buildRemainingRoleFixturesByAnchor(
   exerciseIds: string[],
   exerciseById: Map<string, EngineExercise>,
@@ -410,7 +449,16 @@ function resolveRoleFixtureSetTarget(
           0) +
         (assignedEffectiveByMuscleInSession.get(muscle) ?? 0) +
         effectiveSets;
-      if (projectedEffectiveTotal > nonAnchorWeeklyTarget + tolerance) {
+      const collateralContributionPerSet = setCount > 0 ? effectiveSets / setCount : 0;
+      const adaptiveAllowance = getAdaptiveCollateralAllowance({
+        anchorRemaining: hasMaterialDeficit(anchorRemaining, getNonAnchorOvershootTolerance(weeklyTarget))
+          ? anchorRemaining
+          : 0,
+        anchorContributionPerSet,
+        collateralContributionPerSet,
+        collateralWeeklyTarget: nonAnchorWeeklyTarget,
+      });
+      if (projectedEffectiveTotal > nonAnchorWeeklyTarget + tolerance + adaptiveAllowance) {
         limitingMuscles.push(muscle);
       }
     }
@@ -831,10 +879,37 @@ function evaluateClosureAction(
     }
     const tolerance = getNonAnchorOvershootTolerance(weeklyTarget);
     const projectedAfter = (projectedTotals.get(muscle) ?? 0) + effectiveSets;
-    if (projectedAfter > weeklyTarget && deficit <= tolerance) {
+    const dominantContribution = dominantDeficit
+      ? contribution.get(dominantDeficit.muscle) ?? 0
+      : 0;
+    const maxContribution = Math.max(
+      ...Array.from(contribution.values()),
+      0
+    );
+    const dominantDeficitIsPrimaryDriver =
+      dominantContribution > CLOSURE_ACTION_SCORE_EPSILON &&
+      Math.abs(maxContribution - dominantContribution) <= CLOSURE_ACTION_SCORE_EPSILON;
+    const adaptiveAllowance =
+      dominantDeficit &&
+      dominantContribution > CLOSURE_ACTION_SCORE_EPSILON &&
+      dominantDeficitIsPrimaryDriver &&
+      hasMaterialDeficit(dominantDeficit.remainingDeficit, dominantDeficit.tolerance) &&
+      muscle !== dominantDeficit.muscle
+        ? getAdaptiveCollateralAllowance({
+            anchorRemaining: dominantDeficit.remainingDeficit,
+            anchorContributionPerSet: dominantContribution / setDelta,
+            collateralContributionPerSet: effectiveSets / setDelta,
+            collateralWeeklyTarget: weeklyTarget,
+          })
+        : 0;
+    const nonAnchorGuardrail = weeklyTarget + adaptiveAllowance;
+    if (projectedAfter > nonAnchorGuardrail && deficit <= tolerance) {
       return { rejectionReason: "overshoots_non_anchor_target" };
     }
-    collateralOvershoot += Math.max(0, projectedAfter - (weeklyTarget + tolerance));
+    collateralOvershoot += Math.max(
+      0,
+      projectedAfter - nonAnchorGuardrail
+    );
   }
 
   if (deficitReduction <= 0) {
@@ -991,6 +1066,11 @@ function selectBestClosureAction(params: {
   const maxMainLifts = objective.constraints.maxMainLifts ?? Number.POSITIVE_INFINITY;
   const actions: ClosureAction[] = [];
   const dominantDeficit = unresolvedCriticalDeficits[0];
+  if (!dominantDeficit) {
+    return { bestAction: undefined, candidateDiagnostics: [] };
+  }
+  const dominantDeficitMuscleId =
+    toMuscleId(dominantDeficit.muscle) ?? (dominantDeficit.muscle as MuscleId | undefined);
   const candidateDiagnostics: PlannerClosureCandidateDiagnostic[] = [];
   const selectedIsolationCoverageByMuscle = buildSelectedIsolationCoverageByMuscle({
     selection,
@@ -1003,40 +1083,40 @@ function selectBestClosureAction(params: {
         const baseCandidate: PlannerClosureCandidateDiagnostic = {
           exerciseId: exercise.id,
           exerciseName: exercise.name,
-        kind: "add",
-        setDelta: 0,
-        dominantDeficitMuscle: dominantDeficit?.muscle,
-        dominantDeficitRemaining: dominantDeficit
-          ? roundPlannerValue(dominantDeficit.remainingDeficit)
-          : undefined,
+          kind: "add",
+          setDelta: 0,
+          dominantDeficitMuscleId,
+          dominantDeficitRemaining: roundPlannerValue(dominantDeficit.remainingDeficit),
           dominantDeficitContribution: 0,
+          decision: "rejected",
+          score: null,
         };
         const hardConstraintRejection = getClosurePoolRejectionReason(exercise, objective);
         if (hardConstraintRejection) {
           candidateDiagnostics.push({
             ...baseCandidate,
-            filteredOutReason: hardConstraintRejection,
+            rejectionReason: hardConstraintRejection,
           });
           continue;
         }
         if (selectedIds.has(exercise.id)) {
-          candidateDiagnostics.push({ ...baseCandidate, filteredOutReason: "already_selected" });
+          candidateDiagnostics.push({ ...baseCandidate, rejectionReason: "already_selected" });
           continue;
         }
       if (
         isMainLiftExercise(exercise, objective) &&
         selection.mainLiftIds.length >= maxMainLifts
       ) {
-        candidateDiagnostics.push({ ...baseCandidate, filteredOutReason: "main_lift_cap_reached" });
+        candidateDiagnostics.push({ ...baseCandidate, rejectionReason: "main_lift_cap_reached" });
         continue;
       }
       if (sharesBaseExerciseName(selectedExercises, exercise)) {
-        candidateDiagnostics.push({ ...baseCandidate, filteredOutReason: "duplicate_base_name" });
+        candidateDiagnostics.push({ ...baseCandidate, rejectionReason: "duplicate_base_name" });
         continue;
       }
       const proposedSets = computeProposedSets(exercise, closureObjective);
       if (proposedSets <= 0) {
-        candidateDiagnostics.push({ ...baseCandidate, filteredOutReason: "no_proposed_sets" });
+        candidateDiagnostics.push({ ...baseCandidate, rejectionReason: "no_proposed_sets" });
         continue;
       }
 
@@ -1053,7 +1133,7 @@ function selectBestClosureAction(params: {
           ...baseCandidate,
           setDelta: proposedSets,
           dominantDeficitContribution: roundPlannerValue(materialDominantContribution),
-          filteredOutReason: "movement_pattern_cap",
+          rejectionReason: "movement_pattern_cap",
         });
         continue;
       }
@@ -1075,9 +1155,9 @@ function selectBestClosureAction(params: {
         actions.push(evaluation.action);
         candidateDiagnostics.push({
           ...baseCandidate,
+          decision: "selected",
           setDelta: proposedSets,
           dominantDeficitContribution: roundPlannerValue(materialDominantContribution),
-          totalScore: roundPlannerValue(candidate.totalScore),
           deficitReduction: roundPlannerValue(evaluation.action.deficitReduction),
           dominantDeficitReduction: roundPlannerValue(evaluation.action.dominantDeficitReduction),
           collateralOvershoot: roundPlannerValue(evaluation.action.collateralOvershoot),
@@ -1089,8 +1169,8 @@ function selectBestClosureAction(params: {
           ...baseCandidate,
           setDelta: proposedSets,
           dominantDeficitContribution: roundPlannerValue(materialDominantContribution),
-          totalScore: roundPlannerValue(candidate.totalScore),
-          filteredOutReason: evaluation.rejectionReason ?? "not_actionable_after_scoring",
+          score: roundPlannerValue(candidate.totalScore),
+          rejectionReason: evaluation.rejectionReason ?? "not_actionable_after_scoring",
         });
       }
     }
@@ -1106,13 +1186,13 @@ function selectBestClosureAction(params: {
       exerciseName: exercise.name,
       kind: "expand",
       setDelta: 1,
-      dominantDeficitMuscle: dominantDeficit?.muscle,
-      dominantDeficitRemaining: dominantDeficit
-        ? roundPlannerValue(dominantDeficit.remainingDeficit)
-        : undefined,
+      dominantDeficitMuscleId,
+      dominantDeficitRemaining: roundPlannerValue(dominantDeficit.remainingDeficit),
       dominantDeficitContribution: roundPlannerValue(
         getMaterialContributionToDeficit(exercise, 1, dominantDeficit)
       ),
+      decision: "rejected",
+      score: null,
     };
 
     const currentSets = selection.perExerciseSetTargets[exerciseId] ?? 0;
@@ -1124,7 +1204,7 @@ function selectBestClosureAction(params: {
           ? MAIN_LIFT_MAX_WORKING_SETS
           : ACCESSORY_MAX_WORKING_SETS;
     if (currentSets >= expansionCap) {
-      candidateDiagnostics.push({ ...baseCandidate, filteredOutReason: "working_set_cap_reached" });
+      candidateDiagnostics.push({ ...baseCandidate, rejectionReason: "working_set_cap_reached" });
       continue;
     }
 
@@ -1145,7 +1225,7 @@ function selectBestClosureAction(params: {
       actions.push(evaluation.action);
       candidateDiagnostics.push({
         ...baseCandidate,
-        totalScore: roundPlannerValue(candidate.totalScore),
+        decision: "selected",
         deficitReduction: roundPlannerValue(evaluation.action.deficitReduction),
         dominantDeficitReduction: roundPlannerValue(evaluation.action.dominantDeficitReduction),
         collateralOvershoot: roundPlannerValue(evaluation.action.collateralOvershoot),
@@ -1155,8 +1235,8 @@ function selectBestClosureAction(params: {
     } else {
       candidateDiagnostics.push({
         ...baseCandidate,
-        totalScore: roundPlannerValue(candidate.totalScore),
-        filteredOutReason: evaluation.rejectionReason ?? "not_actionable_after_scoring",
+        score: roundPlannerValue(candidate.totalScore),
+        rejectionReason: evaluation.rejectionReason ?? "not_actionable_after_scoring",
       });
     }
   }
@@ -1169,7 +1249,14 @@ function selectBestClosureAction(params: {
       if (rightScore !== leftScore) {
         return rightScore - leftScore;
       }
-      return left.exerciseName.localeCompare(right.exerciseName);
+      const exerciseDelta = left.exerciseId.localeCompare(right.exerciseId);
+      if (exerciseDelta !== 0) {
+        return exerciseDelta;
+      }
+      if (left.kind !== right.kind) {
+        return left.kind === "expand" ? -1 : 1;
+      }
+      return left.setDelta - right.setDelta;
     }),
   };
 }
@@ -1758,7 +1845,12 @@ export async function generateSessionFromIntent(
     }
   }
 
-  return finalizePostLoadResult(result, mapped, filteredExercises);
+  return finalizePostLoadResult(
+    result,
+    mapped,
+    filteredExercises,
+    input.plannerDiagnosticsMode ?? "standard"
+  );
 }
 
 export async function generateDeloadSessionFromIntent(
@@ -1800,6 +1892,7 @@ export async function generateDeloadSessionFromIntent(
           reductionPercent: 50,
           appliedTo: "both",
         },
+        plannerDiagnosticsMode: input.plannerDiagnosticsMode ?? "standard",
       }),
     },
     filteredExercises: [],

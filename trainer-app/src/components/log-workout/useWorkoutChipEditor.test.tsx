@@ -59,7 +59,6 @@ function ChipEditorHarness({
     flatSets,
     isDumbbellExercise: (exercise) => (exercise.equipment ?? []).includes("dumbbell"),
     toInputNumberString: (value) => (value == null ? "" : String(value)),
-    toDisplayLoadValue: (value) => value ?? null,
     parseNullableNumber: (raw) => {
       const normalized = raw.trim();
       if (!normalized) {

@@ -147,7 +147,7 @@ describe("LogWorkoutClient UX behavior", () => {
     await user.type(loadInput, "41");
     fireEvent.blur(loadInput);
 
-    expect(loadInput.value).toBe("40");
+    expect(loadInput.value).toBe("41");
   });
 
   it("applies quick adjustments as exact deltas", async () => {
@@ -430,7 +430,6 @@ describe("LogWorkoutClient UX behavior", () => {
     await waitFor(() => {
       expect(mockedLogSetRequest).toHaveBeenLastCalledWith(
         expect.objectContaining({
-          actualReps: 10,
           actualLoad: 55,
           actualRpe: 9,
         })

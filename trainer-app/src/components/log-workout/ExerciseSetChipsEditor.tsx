@@ -1,4 +1,3 @@
-import { toDisplayLoad } from "@/lib/ui/load-display";
 import type { ChipEditDraft } from "@/components/log-workout/useWorkoutChipEditor";
 import type { LogExerciseInput } from "@/components/log-workout/types";
 
@@ -16,7 +15,7 @@ function buildSetChipLabel(
 
   const parts: string[] = [`Set ${set.setIndex}`];
   if (set.actualLoad != null) {
-    const displayLoad = toDisplayLoad(set.actualLoad, isDumbbell);
+    const displayLoad = set.actualLoad;
     const loadSuffix = isDumbbell ? " ea" : "";
     parts.push(`${displayLoad}${loadSuffix}×${set.actualReps ?? "?"}`);
   } else if (set.actualReps != null) {
@@ -127,6 +126,7 @@ export function ExerciseSetChipsEditor({
                 aria-label="Chip edit load"
                 className="mt-0.5 min-h-9 w-full rounded-lg border border-slate-300 px-1.5 py-1 text-base text-slate-900"
                 type="number"
+                step="0.5"
                 inputMode="decimal"
                 value={chipEditDraft.load}
                 onBlur={() => onChipLoadBlur(editingSet.setId, isDumbbell)}

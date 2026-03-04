@@ -103,7 +103,7 @@ export function CompletedWorkoutReview({
                           set.actualReps != null ? `${set.actualReps} reps` : null,
                           set.actualLoad != null
                             ? isDumbbell
-                              ? `${toDisplayLoad(set.actualLoad, true)} lbs each`
+                              ? `${set.actualLoad} lbs each`
                               : `${set.actualLoad} lbs`
                             : null,
                           set.actualRpe != null ? `RPE ${set.actualRpe}` : null,
@@ -169,7 +169,7 @@ export function CompletedWorkoutReview({
       ) : null}
 
       <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
-        <p className="font-semibold text-slate-900">What's next</p>
+        <p className="font-semibold text-slate-900">What&apos;s next</p>
         <p className="mt-2 text-sm text-slate-600">
           Allow 48-72h before training these muscles again. Log a readiness check-in before your next session.
         </p>

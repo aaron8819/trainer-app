@@ -50,7 +50,6 @@ type UseWorkoutSessionFlowParams = {
   isBodyweightExercise: (exercise: LogExerciseInput) => boolean;
   isDumbbellExercise: (exercise: LogExerciseInput) => boolean;
   toInputNumberString: (value: number | null | undefined) => string;
-  toDisplayLoadValue: (value: number | null | undefined, isDumbbell: boolean) => number | null;
   parseNullableNumber: (raw: string) => number | null;
   normalizeLoadInput: (raw: string, isDumbbell: boolean) => number | null;
 };
@@ -84,7 +83,6 @@ export function useWorkoutSessionFlow({
   isBodyweightExercise,
   isDumbbellExercise,
   toInputNumberString,
-  toDisplayLoadValue,
   parseNullableNumber,
   normalizeLoadInput,
 }: UseWorkoutSessionFlowParams) {
@@ -360,7 +358,6 @@ export function useWorkoutSessionFlow({
     flatSets,
     isDumbbellExercise,
     toInputNumberString,
-    toDisplayLoadValue,
     parseNullableNumber,
     normalizeLoadInput,
     updateSetFields,

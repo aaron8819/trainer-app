@@ -17,7 +17,7 @@ type UseWorkoutSetHistoryActionsParams = {
   setRepsValue: (setId: string, value: number | null) => void;
   updateDraftBuffer: (setId: string, field: keyof SetDraftBuffers, value: string) => void;
   setSingleField: (setId: string, field: keyof LogSetInput, value: number | boolean | null) => void;
-  setRpeValue: (setId: string, rawValue: string) => void;
+  setRpeValue: (setId: string, rawValue: string, options?: { commit?: boolean }) => void;
   toInputNumberString: (value: number | null | undefined) => string;
 };
 
@@ -49,7 +49,7 @@ export function useWorkoutSetHistoryActions({
     setRepsValue(setId, previousSet.actualReps ?? null);
     updateDraftBuffer(setId, "load", toInputNumberString(previousSet.actualLoad));
     setSingleField(setId, "actualLoad", previousSet.actualLoad ?? null);
-    setRpeValue(setId, toInputNumberString(previousSet.actualRpe));
+    setRpeValue(setId, toInputNumberString(previousSet.actualRpe), { commit: true });
     setSingleField(setId, "wasSkipped", false);
     markFieldTouched(setId, "actualReps");
     markFieldTouched(setId, "actualLoad");

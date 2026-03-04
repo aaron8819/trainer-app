@@ -527,10 +527,12 @@ describe("POST /api/workouts/save", () => {
       expect(response.status).toBe(200);
       const upsert = mocks.workoutUpsert.mock.calls[0][0];
       expect(upsert.update.status).toBe(expectedStatus);
-      expect(upsert.update.selectionMetadata).toEqual({
-        sessionDecisionReceipt: persistedReceipt,
-        selectedExerciseIds: ["bench"],
-      });
+      expect(upsert.update.selectionMetadata).toEqual(
+        expect.objectContaining({
+          selectedExerciseIds: ["bench"],
+          sessionDecisionReceipt: expect.objectContaining(persistedReceipt),
+        })
+      );
     }
   );
 

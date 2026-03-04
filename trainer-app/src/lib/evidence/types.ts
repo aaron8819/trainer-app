@@ -50,6 +50,8 @@ export type SessionDecisionException = {
   message: string;
 };
 
+export type PlannerDiagnosticsMode = "standard" | "debug";
+
 export type SessionDecisionReceipt = {
   version: 1;
   cycleContext: CycleContextSnapshot;
@@ -60,6 +62,7 @@ export type SessionDecisionReceipt = {
   };
   sorenessSuppressedMuscles: string[];
   deloadDecision: DeloadDecision;
+  plannerDiagnosticsMode?: PlannerDiagnosticsMode;
   plannerDiagnostics?: PlannerDiagnostics;
   readiness: {
     wasAutoregulated: boolean;

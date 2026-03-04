@@ -11,6 +11,7 @@ import type {
   CycleContextSnapshot,
   DeloadDecision,
   SessionDecisionReceipt,
+  PlannerDiagnosticsMode,
 } from "@/lib/evidence/types";
 import type {
   loadWorkoutContext,
@@ -35,6 +36,7 @@ export type GenerateIntentSessionInput = {
   targetMuscles?: string[];
   pinnedExerciseIds?: string[];
   roleListIncomplete?: true;
+  plannerDiagnosticsMode?: PlannerDiagnosticsMode;
 };
 
 export type SessionGenerationResult =

@@ -112,6 +112,7 @@ export function RestTimer({
   useEffect(() => {
     completedRef.current = false;
     endAtRef.current = endAtMs;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setRemaining(Math.max(0, Math.ceil((endAtMs - Date.now()) / 1000)));
     clearTimer();
     intervalRef.current = setInterval(tick, 250);

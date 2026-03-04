@@ -98,6 +98,7 @@ describe("buildSessionSummaryModel", () => {
       "Readiness",
     ]);
     expect(summary.items[1]?.value).toContain("2-3 reps in reserve");
+    expect(summary.items[2]?.value).toContain("recent readiness signal");
   });
 
   it("surfaces deload, soreness hold, and readiness scaling through the same summary", () => {

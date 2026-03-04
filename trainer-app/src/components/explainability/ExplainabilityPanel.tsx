@@ -1,15 +1,3 @@
-/**
- * ExplainabilityPanel - Main container for workout explanations
- *
- * Phase 4.6: UI for complete workout explanation
- *
- * Displays:
- * - Session context (block phase, volume, readiness)
- * - Coach messages (warnings, encouragement, milestones, tips)
- * - Per-exercise rationale (selection factors, KB citations)
- * - Per-exercise prescription rationale (sets/reps/load/RIR/rest)
- */
-
 "use client";
 
 import { useState } from "react";
@@ -31,10 +19,10 @@ function VolumeComplianceBadge({ status }: { status: VolumeComplianceStatus }) {
     OVER_MAV: { label: "Over MAV", className: "bg-red-100 text-red-700" },
     AT_MAV: { label: "At MAV", className: "bg-amber-100 text-amber-700" },
     APPROACHING_MAV: { label: "Near MAV", className: "bg-amber-100 text-amber-700" },
-    OVER_TARGET: { label: "On track", className: "bg-emerald-100 text-emerald-700" },
+    OVER_TARGET: { label: "Over target", className: "bg-emerald-100 text-emerald-700" },
     ON_TARGET: { label: "On target", className: "bg-emerald-100 text-emerald-700" },
-    APPROACHING_TARGET: { label: "Building", className: "bg-slate-100 text-slate-500" },
-    UNDER_MEV: { label: "↑ needs more", className: "bg-slate-100 text-slate-500" },
+    APPROACHING_TARGET: { label: "At MEV", className: "bg-slate-100 text-slate-600" },
+    UNDER_MEV: { label: "Below MEV", className: "bg-slate-100 text-slate-600" },
   };
   const { label, className } = config[status];
   return (
@@ -42,6 +30,16 @@ function VolumeComplianceBadge({ status }: { status: VolumeComplianceStatus }) {
       {label}
     </span>
   );
+}
+
+function formatCycleSource(value: WorkoutExplanation["sessionContext"]["cycleSource"]): string {
+  return value === "fallback" ? "Cycle timing was approximated from persisted context." : "Cycle timing came from the active plan context.";
+}
+
+function formatHistorySource(hasRecentHistory: boolean): string {
+  return hasRecentHistory
+    ? "Recent performed history was available for progression and load checks."
+    : "Recent performed history was limited, so load calls stayed closer to the written plan.";
 }
 
 export function ExplainabilityPanel({
@@ -64,7 +62,6 @@ export function ExplainabilityPanel({
     });
   };
 
-  // Convert Map to array for rendering
   const exerciseRationales = Array.from(explanation.exerciseRationales.entries());
   const prescriptionRationales = explanation.prescriptionRationales;
   const progressionReceipts = explanation.progressionReceipts;
@@ -77,32 +74,50 @@ export function ExplainabilityPanel({
       exerciseId,
       exerciseName: explanation.exerciseRationales.get(exerciseId)?.exerciseName ?? exerciseId,
       decisionLog: receipt.decisionLog ?? [],
+      hasHistory: receipt.lastPerformed != null,
     }))
     .filter((entry) => entry.decisionLog.length > 0);
-  const evidenceRows = [
-    `Cycle timing: ${explanation.sessionContext.cycleSource === "fallback" ? "estimated from available context" : "read from the current cycle plan"}.`,
-    hasRecentHistory ? "Load guidance: recent performed history was available." : "Load guidance: planned baseline was used because recent performed history was limited.",
-    "Volume view: performed sets in a rolling 7-day window, including today.",
-    "Session decisions: receipt-first summary for deload, soreness, and readiness adjustments.",
+
+  const evidenceChecklist = [
+    {
+      label: "Evidence quality",
+      value: explanation.confidence.summary,
+      tone:
+        explanation.confidence.level === "high"
+          ? "border-emerald-200 bg-emerald-50"
+          : explanation.confidence.level === "medium"
+          ? "border-amber-200 bg-amber-50"
+          : "border-rose-200 bg-rose-50",
+    },
+    {
+      label: "Cycle context",
+      value: formatCycleSource(explanation.sessionContext.cycleSource),
+      tone: "border-slate-200 bg-slate-50",
+    },
+    {
+      label: "Progression evidence",
+      value: formatHistorySource(hasRecentHistory),
+      tone: "border-slate-200 bg-slate-50",
+    },
+    {
+      label: "Volume view",
+      value: "Volume checks use performed sets in the current 7-day lookback, including this session.",
+      tone: "border-slate-200 bg-slate-50",
+    },
   ];
 
   return (
     <div className="space-y-4 sm:space-y-6">
       <SessionContextCard summary={summary} startLoggingHref={startLoggingHref} />
 
-      <details className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
-        <summary className="cursor-pointer text-sm font-semibold text-slate-900">
-          Detailed programming breakdown
-        </summary>
-
-        <div className="mt-3 space-y-4">
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
-            <p>{explanation.confidence.summary}</p>
-            {explanation.confidence.missingSignals.length > 0 ? (
-              <p className="mt-1 text-slate-600">
-                Missing signals: {explanation.confidence.missingSignals.join(", ")}.
-              </p>
-            ) : null}
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Audit guide</p>
+            <h2 className="mt-1 text-lg font-semibold text-slate-900">Session-level scan</h2>
+            <p className="mt-1 text-sm text-slate-600">
+              Start here to see which inputs were present, which ones were approximated, and where to drill deeper.
+            </p>
           </div>
 
           <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1 text-xs">
@@ -111,103 +126,121 @@ export function ExplainabilityPanel({
               onClick={() => setActiveTab("evidence")}
               type="button"
             >
-              Evidence
+              Session scan
             </button>
             <button
               className={`rounded px-3 py-1 ${activeTab === "selection" ? "bg-white text-slate-900" : "text-slate-600"}`}
               onClick={() => setActiveTab("selection")}
               type="button"
             >
-              Exercise details
+              Exercise drill-down
             </button>
           </div>
+        </div>
 
-          {activeTab === "evidence" ? (
-            <div className="space-y-3">
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Session Rules</p>
-                <ul className="mt-2 space-y-1 text-xs text-slate-700">
-                  {evidenceRows.map((row) => (
-                    <li key={row}>- {row}</li>
+        {activeTab === "evidence" ? (
+          <div className="mt-4 space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              {evidenceChecklist.map((item) => (
+                <div key={item.label} className={`rounded-xl border p-3 ${item.tone}`}>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{item.label}</p>
+                  <p className="mt-1 text-sm text-slate-700">{item.value}</p>
+                </div>
+              ))}
+            </div>
+
+            {explanation.confidence.missingSignals.length > 0 ? (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">Missing or weak signals</p>
+                <ul className="mt-2 space-y-1 text-sm text-amber-900">
+                  {explanation.confidence.missingSignals.map((signal) => (
+                    <li key={signal}>- {signal}</li>
                   ))}
                 </ul>
               </div>
-              {logicMessages.length > 0 ? (
-                <div className="space-y-3">
-                  {logicMessages.map((message, idx) => (
-                    <CoachMessageCard key={idx} message={message} />
+            ) : null}
+
+            {logicMessages.length > 0 ? (
+              <div className="space-y-3">
+                {logicMessages.map((message, idx) => (
+                  <CoachMessageCard key={idx} message={message} />
+                ))}
+              </div>
+            ) : null}
+
+            {progressionLogicRows.length > 0 ? (
+              <div className="rounded-xl border border-slate-200 bg-white p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Exercise decision trace
+                </p>
+                <div className="mt-3 space-y-3">
+                  {progressionLogicRows.map((entry) => (
+                    <div key={entry.exerciseId} className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+                      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                        <p className="text-sm font-semibold text-slate-800">{entry.exerciseName}</p>
+                        <p className="text-xs text-slate-500">
+                          {entry.hasHistory ? "Uses recent performed history" : "No recent performed anchor"}
+                        </p>
+                      </div>
+                      <ol className="mt-2 list-decimal pl-4 text-sm text-slate-600">
+                        {entry.decisionLog.map((line, index) => (
+                          <li key={`${entry.exerciseId}-${index}`}>{line}</li>
+                        ))}
+                      </ol>
+                    </div>
                   ))}
                 </div>
-              ) : null}
-              {progressionLogicRows.length > 0 ? (
-                <div className="rounded-xl border border-slate-200 bg-white p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Progression Logic
-                  </p>
-                  <div className="mt-2 space-y-3">
-                    {progressionLogicRows.map((entry) => (
-                      <div key={entry.exerciseId}>
-                        <p className="text-xs font-semibold text-slate-700">{entry.exerciseName}</p>
-                        <ol className="mt-1 list-decimal pl-4 text-xs text-slate-600">
-                          {entry.decisionLog.map((line, index) => (
-                            <li key={`${entry.exerciseId}-${index}`}>{line}</li>
-                          ))}
-                        </ol>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-              {explanation.volumeCompliance.length > 0 ? (
-                <div className="rounded-xl border border-slate-200 bg-white p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Volume Check
-                  </p>
-                  <div className="mt-2 space-y-2">
-                    {explanation.volumeCompliance.map((row) => (
-                      <div key={row.muscle} className="flex items-center justify-between gap-2">
-                        <span className="text-xs font-medium text-slate-700 min-w-0 flex-1">
-                          {row.muscle}
-                        </span>
-                        <span className="text-xs text-slate-500 whitespace-nowrap">
-                          {row.setsLoggedBeforeSession} + {row.setsPrescribedThisSession}{" "}
-                          → {row.projectedTotal} / {row.weeklyTarget} sets
-                        </span>
+              </div>
+            ) : null}
+
+            {explanation.volumeCompliance.length > 0 ? (
+              <div className="rounded-xl border border-slate-200 bg-white p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Week volume check
+                </p>
+                <div className="mt-3 space-y-2">
+                  {explanation.volumeCompliance.map((row) => (
+                    <div key={row.muscle} className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm font-medium text-slate-800">{row.muscle}</span>
                         <VolumeComplianceBadge status={row.status} />
                       </div>
-                    ))}
-                  </div>
+                      <p className="mt-1 text-xs text-slate-600">
+                        {row.setsLoggedBeforeSession} logged + {row.setsPrescribedThisSession} prescribed = {row.projectedTotal} projected sets against a {row.weeklyTarget}-set target.
+                      </p>
+                    </div>
+                  ))}
                 </div>
-              ) : null}
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {explanation.filteredExercises && explanation.filteredExercises.length > 0 ? (
-                <FilteredExercisesCard filteredExercises={explanation.filteredExercises} />
-              ) : null}
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <div className="mt-4 space-y-4">
+            {explanation.filteredExercises && explanation.filteredExercises.length > 0 ? (
+              <FilteredExercisesCard filteredExercises={explanation.filteredExercises} />
+            ) : null}
 
-              {exerciseRationales.length > 0 ? (
-                <div className="space-y-3">
-                  <h3 className="text-base font-semibold text-slate-900 sm:text-lg">Exercise details</h3>
-                  {exerciseRationales.map(([exerciseId, rationale]) => {
-                    const prescription = prescriptionRationales.get(exerciseId);
-                    return (
-                      <ExerciseRationaleCard
-                        key={exerciseId}
-                        rationale={rationale}
-                        prescription={prescription}
-                        progressionReceipt={progressionReceipts.get(exerciseId)}
-                        isExpanded={expandedExercises.has(exerciseId)}
-                        onToggle={() => toggleExercise(exerciseId)}
-                      />
-                    );
-                  })}
-                </div>
-              ) : null}
-            </div>
-          )}
-        </div>
-      </details>
+            {exerciseRationales.length > 0 ? (
+              <div className="space-y-3">
+                <h3 className="text-base font-semibold text-slate-900 sm:text-lg">Exercise drill-down</h3>
+                {exerciseRationales.map(([exerciseId, rationale]) => {
+                  const prescription = prescriptionRationales.get(exerciseId);
+                  return (
+                    <ExerciseRationaleCard
+                      key={exerciseId}
+                      rationale={rationale}
+                      prescription={prescription}
+                      progressionReceipt={progressionReceipts.get(exerciseId)}
+                      isExpanded={expandedExercises.has(exerciseId)}
+                      onToggle={() => toggleExercise(exerciseId)}
+                    />
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
+        )}
+      </section>
     </div>
   );
 }

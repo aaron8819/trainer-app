@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db/prisma";
 import { resolveOwner } from "@/lib/api/workout-context";
 import HistoryClient, { type HistoryWorkoutItem, type MesocycleOption } from "@/components/HistoryClient";
+import { SurfaceGuideCard } from "@/components/SurfaceGuideCard";
 import {
   buildWorkoutListSurfaceSummary,
   workoutListItemSelect,
@@ -55,8 +56,13 @@ export default async function HistoryPage() {
       <div className="page-shell max-w-5xl">
         <header className="mb-8 md:mb-10">
           <h1 className="page-title">Workout History</h1>
-          <p className="mt-2 text-slate-600">Browse and filter your full training log.</p>
+          <p className="mt-2 text-slate-600">
+            Browse and filter past sessions. Use Program for live block state and Analytics for broader trends.
+          </p>
         </header>
+        <div className="mb-6">
+          <SurfaceGuideCard current="history" />
+        </div>
         <HistoryClient
           initialWorkouts={initialWorkouts}
           initialNextCursor={nextCursor}

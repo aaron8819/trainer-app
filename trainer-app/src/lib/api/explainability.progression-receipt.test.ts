@@ -411,7 +411,7 @@ describe("generateWorkoutExplanation progression receipt", () => {
     expect("error" in result).toBe(false);
     if ("error" in result) return;
 
-    expect(result.confidence.missingSignals).toContain("persisted exercise selection rationale");
+    expect(result.confidence.missingSignals).toContain("stored exercise selection reasons");
   });
 
   it("does not require active block context when a canonical session decision receipt exists", async () => {
@@ -491,7 +491,7 @@ describe("generateWorkoutExplanation progression receipt", () => {
     expect("error" in result).toBe(false);
     if ("error" in result) return;
 
-    expect(result.confidence.missingSignals).not.toContain("active block context");
+    expect(result.confidence.missingSignals).not.toContain("receipt-backed cycle context");
   });
 
   it("does not treat live readiness rows as session evidence when the canonical receipt is missing", async () => {
@@ -506,7 +506,7 @@ describe("generateWorkoutExplanation progression receipt", () => {
     expect("error" in result).toBe(false);
     if ("error" in result) return;
 
-    expect(result.confidence.missingSignals).toContain("fresh readiness signal");
+    expect(result.confidence.missingSignals).toContain("same-day readiness check-in");
   });
 });
 

@@ -1,7 +1,7 @@
 # 04 API Contracts
 
 Owner: Aaron  
-Last reviewed: 2026-03-03
+Last reviewed: 2026-03-04
 Purpose: Canonical API contract map for App Router endpoints and payload validation boundaries.
 
 This doc covers:
@@ -43,9 +43,20 @@ Sources of truth:
 ## Program dashboard response notes
 - Route: `GET /api/program` (`src/app/api/program/route.ts`) returns `loadProgramDashboardData()` output directly.
 - `GET /api/program` accepts an optional `?week=N` query parameter (`src/app/api/program/route.ts`). When supplied, `loadProgramDashboardData()` returns volume and RIR data for the requested historical week instead of the current week. The live `currentWeek` is always present in the response; the requested week is returned as `viewedWeek`.
-- `ProgramDashboardData` now includes `daysPerWeek` (`src/lib/api/program.ts`) sourced from user constraints and used by clients to avoid hardcoded frequency assumptions.
 - `ProgramDashboardData.viewedWeek` is the effective week whose volume/RIR data is rendered - equals `currentWeek` by default, overridden by `?week=N`. Clamped to `[1, durationWeeks]`.
 - `ProgramDashboardData.activeMeso.completedSessions` is now sourced from `accumulationSessionsCompleted` (the canonical lifecycle counter), not the `completedSessions` DB column. Clients should treat this field as the lifecycle-derived session count.
+- `ProgramDashboardData` is now the shared dashboard-card contract only. Home-page operational helpers (`nextSession`, `latestIncomplete`, `lastSessionSkipped`) are loaded separately through `loadHomeProgramSupport()` in `src/lib/api/program.ts` and are not part of `GET /api/program`.
+- `ProgramDashboardData.deloadReadiness` is always computed from the live `currentWeek` state even when `viewedWeek` is historical. Historical week navigation changes `volumeThisWeek` and `rirTarget`, but not the live deload recommendation.
+
+## Analytics response notes
+- Shared analytics semantics helpers now live in `src/lib/api/analytics-semantics.ts`. That helper is the canonical source for analytics counting vocabulary (`generated`, `performed`, `completed`) and explicit time-window descriptors (`all_time`, `rolling_days`, `rolling_iso_weeks`, `date_range`).
+- `GET /api/analytics/summary` now returns explicit totals for `workoutsGenerated`, `workoutsPerformed`, `workoutsCompleted`, and performed set totals. Workout counts use `scheduledDate` within the selected query range; performed set totals use `setLog.completedAt` within that same query range. The response also returns `semantics` metadata documenting both windows and the generated/performed/completed definitions.
+- `GET /api/analytics/templates` now returns template usage rows with `generatedWorkouts`, `performedWorkouts`, `completedWorkouts`, `performedRate`, and `completionRate`, plus `semantics` metadata describing the all-time generated/performed/completed vocabulary.
+- `GET /api/analytics/volume` returns `weeklyVolume` and `landmarks` plus `semantics` metadata documenting that:
+  - the chart window is rolling ISO weeks by `scheduledDate`
+  - only performed workouts (`COMPLETED` + `PARTIAL`) are included
+  - only non-skipped logged sets contribute to direct/indirect volume
+- `GET /api/analytics/recovery` now returns `muscles` plus `semantics` metadata documenting that recovery is a rolling 14-day SRA view built from performed workouts only.
 
 ## Validation-backed contracts (examples)
 - Workout generation/save: `generateFromTemplateSchema`, `generateFromIntentSchema`, `saveWorkoutSchema`
@@ -105,3 +116,13 @@ Sources of truth:
 - Receipt payload shape is defined by `ProgressionReceipt` in `src/lib/evidence/types.ts` and populated by `generateWorkoutExplanation()` in `src/lib/api/explainability.ts`.
 - `ProgressionSetSummary` now supports `performedAt` for historical evidence timestamps (`src/lib/evidence/types.ts`), and receipt history is recency-bounded in `loadLatestPerformedSetSummary()` (`src/lib/api/explainability.ts`).
 - Session context payload now carries cycle/readiness contract fields (`sessionContext.cycleSource`, `sessionContext.readinessStatus.availability`, `sessionContext.readinessStatus.label`) defined in `src/lib/engine/explainability/types.ts` and produced by `explainSessionContext()` in `src/lib/engine/explainability/session-context.ts`.
+- Route responsibilities are documented canonically in `docs/01_ARCHITECTURE.md`; this section only records payload shape.
+- `confidence.missingSignals` now uses user-facing diagnostic labels rather than engine shorthand:
+  - `same-day readiness check-in`
+  - `receipt-backed cycle context`
+  - `stored exercise selection reasons`
+  - `recent performance-derived workout stats`
+- `confidence.summary` is intentionally diagnostic:
+  - high confidence means the audit has enough evidence to explain the session without major guesswork
+  - medium confidence means one signal is being approximated
+  - low confidence means the audit can only explain part of the session with confidence

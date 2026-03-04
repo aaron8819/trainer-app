@@ -46,6 +46,14 @@ This design proposes a long-term internal audit harness that makes workout gener
 - continuity, weekly volume budget, and progression interactions
 - regression checks after engine or lifecycle changes
 
+Current interim audit UX note:
+- The existing `/workout/[id]/audit` route is still a page-level debugging surface, not the proposed harness.
+- Its route boundary is documented canonically in `docs/01_ARCHITECTURE.md`.
+- It now reads in two passes:
+  - session-level scan first (evidence quality, missing signals, cycle/progression/volume context)
+  - exercise drill-down second for per-lift rationale and prescription inspection
+- That layout improves review speed, but it does not replace the need for the structured audit artifact proposed in this doc.
+
 ## Scope and goals
 
 Problems this harness should solve:
@@ -69,6 +77,12 @@ Out of scope:
 - This is not a generic observability platform for all routes.
 - This is not a persistence-heavy analytics system; audit artifacts should be generated on demand unless a later phase justifies storage.
 
+Phase 1 non-goals:
+- Do not redesign generation, progression, lifecycle, or receipt ownership.
+- Do not broaden the existing `/workout/[id]/audit` page into the harness.
+- Do not build fixture-regression infrastructure yet beyond minimal type/composition seams.
+- Do not attempt multi-step `generate -> save -> next-session` simulation in Phase 1.
+
 ## Proposed design decisions and rationale
 
 ### 1. Reuse production derivation and generation paths
@@ -86,7 +100,7 @@ Rationale:
 
 ### 2. Introduce a canonical next-session derivation service
 
-The current de facto next-session logic lives inside `loadProgramDashboardData` in `src/lib/api/program.ts`. The harness should force that logic into an explicit shared service consumed by both the dashboard and audit code.
+The current next-session logic now lives in `loadHomeProgramSupport()` in `src/lib/api/program.ts`. The harness should force that logic into an explicit shared service consumed by both the dashboard and audit code.
 
 Rationale:
 - The most important audit question is often "what is the actual next workout right now?"
@@ -245,6 +259,24 @@ Should be shared with:
 - `src/lib/api/program.ts`
 - audit harness
 
+Recommended minimum Phase 1 contract:
+
+```ts
+type NextWorkoutContext = {
+  intent: "push" | "pull" | "legs" | "upper" | "lower" | "full_body" | "body_part";
+  existingWorkoutId: string | null;
+  isExisting: boolean;
+  source: "existing_incomplete" | "rotation";
+  weekInMeso: number | null;
+  sessionInWeek: number | null;
+  derivationTrace: string[];
+};
+```
+
+Phase 1 boundary:
+- Extract only the shared derivation seam needed by `loadHomeProgramSupport()` and the audit harness.
+- Do not move unrelated `program.ts` dashboard-read-model logic into this module.
+
 ### Audit context builder
 
 Proposed module:
@@ -328,6 +360,12 @@ Responsibilities:
 - Run audit
 - Write artifact files
 - Print concise terminal summary
+
+Phase 1 command surface:
+- support `next-session`
+- support `intent-preview`
+- write JSON by default
+- treat markdown/text rendering as optional follow-up work, not a blocker
 
 ### Optional internal debug endpoint
 
@@ -803,8 +841,33 @@ Focus:
 - Add CLI entrypoint
 - Emit versioned JSON artifacts
 
+Recommended implementation order:
+1. Extract `src/lib/api/next-session.ts` from the current `loadHomeProgramSupport()` logic and switch `program.ts` to consume it without behavior change.
+2. Add audit request/result types under `src/lib/audit/workout-audit/types.ts`.
+3. Implement a minimal `context-builder.ts` that supports only `next-session` and `intent-preview`.
+4. Implement a minimal `generation-runner.ts` that composes existing production generation entrypoints rather than wrapping new business logic around them.
+5. Implement `serializer.ts` for stable JSON ordering.
+6. Add `scripts/workout-audit.ts`.
+7. Add focused tests for next-session derivation ownership and one smoke path for each supported mode.
+
 Exit criteria:
 - engineers can run repeatable `next-session` and `intent-preview` audits without shell/database forensics
+
+Suggested Phase 1 file set:
+- `src/lib/api/next-session.ts`
+- `src/lib/api/next-session.test.ts`
+- `src/lib/audit/workout-audit/types.ts`
+- `src/lib/audit/workout-audit/context-builder.ts`
+- `src/lib/audit/workout-audit/generation-runner.ts`
+- `src/lib/audit/workout-audit/serializer.ts`
+- `scripts/workout-audit.ts`
+
+Suggested Phase 1 validation:
+- focused unit tests for `next-session.ts`
+- one direct module smoke test for `next-session`
+- one direct module smoke test for `intent-preview`
+- `npx tsc --noEmit`
+- targeted lint on touched files
 
 ### Phase 2 - Deterministic fixtures and regression tests
 Status: NOT STARTED
@@ -837,9 +900,12 @@ Exit criteria:
 ## Decisions, open questions, and assumptions
 
 Assumptions:
-- `loadProgramDashboardData` currently contains the de facto next-session derivation logic and should be the extraction source for a canonical next-session service.
+- `loadHomeProgramSupport()` now contains the de facto next-session derivation logic and should be the extraction source for a canonical next-session service.
 - deterministic fixture mode can build `MappedGenerationContext` directly, because current regression tests already prove that seam works.
 - this harness remains an internal engineering capability, not a user-facing feature.
+
+Phase 1 readiness note:
+- This design is ready to start as long as implementation stays scoped to the shared next-session seam plus a JSON-first CLI for `next-session` and `intent-preview`.
 
 Decision:
 - `historical-compare` should use current exercise-library and current contracts by default.

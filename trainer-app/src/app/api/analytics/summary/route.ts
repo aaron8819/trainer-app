@@ -1,8 +1,13 @@
 import { NextResponse } from "next/server";
 import { analyticsSummarySchema } from "@/lib/validation";
 import { prisma } from "@/lib/db/prisma";
-import { WorkoutStatus } from "@prisma/client";
 import { resolveOwner } from "@/lib/api/workout-context";
+import {
+  buildDateRangeAnalyticsWindow,
+  countAnalyticsWorkoutStatuses,
+} from "@/lib/api/analytics-semantics";
+import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
+import { WorkoutStatus } from "@prisma/client";
 
 const TRACKED_SELECTION_MODES = ["AUTO", "MANUAL", "BONUS", "INTENT"] as const;
 
@@ -30,14 +35,6 @@ export async function GET(request: Request) {
         }
       : {};
 
-  const workoutsCompleted = await prisma.workout.count({
-    where: {
-      userId: owner.id,
-      status: WorkoutStatus.COMPLETED,
-      ...workoutDateFilter,
-    },
-  });
-
   const completedAtFilter =
     dateFrom || dateTo
       ? {
@@ -60,16 +57,21 @@ export async function GET(request: Request) {
     },
   });
 
+  const totalCounts = countAnalyticsWorkoutStatuses(workouts.map((workout) => workout.status));
+
   const modeCounts = new Map<
     (typeof TRACKED_SELECTION_MODES)[number],
-    { generated: number; completed: number }
+    { generated: number; performed: number; completed: number }
   >(
     TRACKED_SELECTION_MODES.map((mode) => [
       mode,
-      { generated: 0, completed: 0 },
+      { generated: 0, performed: 0, completed: 0 },
     ])
   );
-  const intentCounts = new Map<string, { generated: number; completed: number }>();
+  const intentCounts = new Map<
+    string,
+    { generated: number; performed: number; completed: number }
+  >();
 
   for (const workout of workouts) {
     const mode = TRACKED_SELECTION_MODES.includes(
@@ -80,6 +82,9 @@ export async function GET(request: Request) {
     const modeBucket = modeCounts.get(mode);
     if (modeBucket) {
       modeBucket.generated += 1;
+      if ((PERFORMED_WORKOUT_STATUSES as readonly string[]).includes(workout.status)) {
+        modeBucket.performed += 1;
+      }
       if (workout.status === WorkoutStatus.COMPLETED) {
         modeBucket.completed += 1;
       }
@@ -87,8 +92,15 @@ export async function GET(request: Request) {
 
     if (workout.sessionIntent) {
       const intent = workout.sessionIntent;
-      const bucket = intentCounts.get(intent) ?? { generated: 0, completed: 0 };
+      const bucket = intentCounts.get(intent) ?? {
+        generated: 0,
+        performed: 0,
+        completed: 0,
+      };
       bucket.generated += 1;
+      if ((PERFORMED_WORKOUT_STATUSES as readonly string[]).includes(workout.status)) {
+        bucket.performed += 1;
+      }
       if (workout.status === WorkoutStatus.COMPLETED) {
         bucket.completed += 1;
       }
@@ -98,10 +110,12 @@ export async function GET(request: Request) {
 
   const setLogs = await prisma.setLog.findMany({
     where: {
+      wasSkipped: false,
       workoutSet: {
         workoutExercise: {
           workout: {
             userId: owner.id,
+            status: { in: [...PERFORMED_WORKOUT_STATUSES] as WorkoutStatus[] },
           },
         },
       },
@@ -136,21 +150,45 @@ export async function GET(request: Request) {
     .sort((a, b) => b.volume - a.volume);
 
   return NextResponse.json({
+    semantics: {
+      workoutWindow: buildDateRangeAnalyticsWindow({
+        label: "Generated, performed, and completed workouts use scheduledDate within the selected range.",
+        dateField: "scheduledDate",
+        dateFrom,
+        dateTo,
+      }),
+      performedSetWindow: buildDateRangeAnalyticsWindow({
+        label: "Performed set totals use set-log completedAt within the selected range.",
+        dateField: "completedAt",
+        dateFrom,
+        dateTo,
+      }),
+      counts: {
+        generated: "Generated workouts include every saved workout in the scheduledDate window.",
+        performed:
+          "Performed workouts include COMPLETED and PARTIAL workouts in the scheduledDate window.",
+        completed: "Completed workouts include only COMPLETED workouts in the scheduledDate window.",
+      },
+    },
     totals: {
-      workoutsCompleted,
+      workoutsGenerated: totalCounts.generated,
+      workoutsPerformed: totalCounts.performed,
+      workoutsCompleted: totalCounts.completed,
       totalSets,
       volumeByExercise: volumeByExerciseArray,
     },
     kpis: {
       selectionModes: TRACKED_SELECTION_MODES.map((mode) => {
-        const bucket = modeCounts.get(mode) ?? { generated: 0, completed: 0 };
-        const completionRate =
-          bucket.generated > 0 ? Number((bucket.completed / bucket.generated).toFixed(3)) : null;
+        const bucket = modeCounts.get(mode) ?? { generated: 0, performed: 0, completed: 0 };
         return {
           mode,
           generated: bucket.generated,
+          performed: bucket.performed,
           completed: bucket.completed,
-          completionRate,
+          performedRate:
+            bucket.generated > 0 ? Number((bucket.performed / bucket.generated).toFixed(3)) : null,
+          completionRate:
+            bucket.generated > 0 ? Number((bucket.completed / bucket.generated).toFixed(3)) : null,
         };
       }),
       intents: Array.from(intentCounts.entries())
@@ -158,11 +196,12 @@ export async function GET(request: Request) {
         .map(([intent, bucket]) => ({
           intent,
           generated: bucket.generated,
+          performed: bucket.performed,
           completed: bucket.completed,
+          performedRate:
+            bucket.generated > 0 ? Number((bucket.performed / bucket.generated).toFixed(3)) : null,
           completionRate:
-            bucket.generated > 0
-              ? Number((bucket.completed / bucket.generated).toFixed(3))
-              : null,
+            bucket.generated > 0 ? Number((bucket.completed / bucket.generated).toFixed(3)) : null,
         })),
     },
   });

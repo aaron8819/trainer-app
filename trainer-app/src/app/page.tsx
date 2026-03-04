@@ -5,7 +5,11 @@ import { DashboardGenerateSection } from "@/components/DashboardGenerateSection"
 import RecentWorkouts from "@/components/RecentWorkouts";
 import ReadinessCheckInForm from "@/components/ReadinessCheckInForm";
 import { ProgramStatusCard } from "@/components/ProgramStatusCard";
-import { loadCapabilityFlags, loadProgramDashboardData } from "@/lib/api/program";
+import {
+  loadCapabilityFlags,
+  loadHomeProgramSupport,
+  loadProgramDashboardData,
+} from "@/lib/api/program";
 import {
   buildWorkoutListSurfaceSummary,
   workoutListItemSelect,
@@ -14,22 +18,6 @@ import {
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const runtime = "nodejs";
-
-const STATUS_LABELS: Record<string, string> = {
-  PLANNED: "Planned",
-  IN_PROGRESS: "In progress",
-  PARTIAL: "Partial",
-  COMPLETED: "Completed",
-  SKIPPED: "Skipped",
-};
-
-const STATUS_CLASSES: Record<string, string> = {
-  COMPLETED: "bg-emerald-50 text-emerald-700",
-  IN_PROGRESS: "bg-amber-50 text-amber-700",
-  PARTIAL: "bg-orange-50 text-orange-700",
-  SKIPPED: "bg-slate-100 text-slate-600",
-  PLANNED: "bg-slate-100 text-slate-700",
-};
 
 type SessionIntent = "push" | "pull" | "legs" | "upper" | "lower" | "full_body" | "body_part";
 
@@ -48,7 +36,7 @@ function isSessionIntent(value: string | null): value is SessionIntent {
 export default async function Home() {
   const owner = await resolveOwner();
 
-  const [latestCompleted, recentWorkouts, templateCount, capabilities, programData] =
+  const [latestCompleted, recentWorkouts, templateCount, capabilities, programData, homeProgram] =
     await Promise.all([
       prisma.workout.findFirst({
         where: { userId: owner.id, status: "COMPLETED" },
@@ -64,11 +52,10 @@ export default async function Home() {
       prisma.workoutTemplate.count({ where: { userId: owner.id } }),
       loadCapabilityFlags(owner.id),
       loadProgramDashboardData(owner.id),
+      loadHomeProgramSupport(owner.id),
     ]);
 
-  // latestIncomplete is now resolved with priority sort (IN_PROGRESS > PARTIAL > PLANNED)
-  // inside loadProgramDashboardData — no separate query needed here.
-  const latestIncomplete = programData.latestIncomplete;
+  const latestIncomplete = homeProgram.latestIncomplete;
 
   const formatSessionIntent = (intent: string) =>
     intent
@@ -77,22 +64,11 @@ export default async function Home() {
       .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
       .join(" ");
 
-  const nextSession = programData.nextSession;
+  const nextSession = homeProgram.nextSession;
   // Validate intent type for DashboardGenerateSection (typed prop).
   const nextSessionTyped = isSessionIntent(nextSession.intent) ? nextSession.intent : null;
 
-  const recentList = recentWorkouts.map((workout) => {
-    const summary = buildWorkoutListSurfaceSummary(workout);
-
-    return {
-      id: summary.id,
-      scheduledDate: summary.scheduledDate,
-      status: summary.status,
-      sessionIntent: summary.sessionIntent?.toLowerCase() ?? null,
-      exercisesCount: summary.exerciseCount,
-      sessionSnapshot: summary.sessionSnapshot,
-    };
-  });
+  const recentList = recentWorkouts.map(buildWorkoutListSurfaceSummary);
 
   return (
     <main className="min-h-screen bg-white text-slate-900">
@@ -101,7 +77,7 @@ export default async function Home() {
           <p className="text-sm uppercase tracking-wide text-slate-500">Personal AI Trainer</p>
           <h1 className="page-title mt-2">Today&apos;s Training</h1>
           <p className="mt-2 text-slate-600">
-            Generate, log, and adapt your plan with minimal friction.
+            Your operational dashboard for today. Use Program for block state, History for past sessions, and Analytics for longer-term trends.
           </p>
         </header>
 
@@ -159,7 +135,7 @@ export default async function Home() {
                 ? `Next: ${formatSessionIntent(nextSession.intent)}`
                 : "No session intent"}
             </p>
-            {programData.lastSessionSkipped && nextSession.intent ? (
+            {homeProgram.lastSessionSkipped && nextSession.intent ? (
               <p className="mt-1 text-xs text-slate-500">
                 You skipped your last {formatSessionIntent(nextSession.intent)} session.
               </p>
@@ -208,19 +184,34 @@ export default async function Home() {
             )}
           </div>
           <div className="rounded-2xl border border-slate-200 p-5">
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Settings</h3>
-            <p className="mt-3 text-sm text-slate-600">Split, goals, and preferences</p>
-            <Link className="mt-3 inline-block text-sm font-semibold text-slate-900" href="/settings">
-              Manage settings
-            </Link>
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Explore</h3>
+            <p className="mt-3 text-sm text-slate-600">
+              Move from today&apos;s decisions to block state, session history, or trend review.
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Link
+                className="inline-flex min-h-10 items-center justify-center rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-900"
+                href="/program"
+              >
+                Program
+              </Link>
+              <Link
+                className="inline-flex min-h-10 items-center justify-center rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-900"
+                href="/history"
+              >
+                History
+              </Link>
+              <Link
+                className="inline-flex min-h-10 items-center justify-center rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-900"
+                href="/analytics"
+              >
+                Analytics
+              </Link>
+            </div>
           </div>
         </section>
 
-        <RecentWorkouts
-          recentWorkouts={recentList}
-          statusLabels={STATUS_LABELS}
-          statusClasses={STATUS_CLASSES}
-        />
+        <RecentWorkouts recentWorkouts={recentList} />
       </div>
     </main>
   );

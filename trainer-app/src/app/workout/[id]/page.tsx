@@ -44,6 +44,21 @@ const hasDumbbellEquipment = (exercise: {
     (exercise.exerciseEquipment ?? []).map((item) => item.equipment.type)
   );
 
+const formatProgressionCall = (trigger?: string | null) => {
+  switch (trigger) {
+    case "double_progression":
+      return "Load moved up from your latest performed anchor.";
+    case "hold":
+      return "Load stayed with your latest performed anchor.";
+    case "deload":
+      return "Load was reduced for deload work.";
+    case "readiness_scale":
+      return "Load was adjusted to match today's readiness.";
+    default:
+      return "Load stayed close to the written plan because there was not enough recent performed history.";
+  }
+};
+
 export default async function WorkoutDetailPage({
   params,
 }: {
@@ -198,7 +213,7 @@ export default async function WorkoutDetailPage({
                   });
 
                   const stressNote = hasHighSeverityInjury
-                    ? `Joint stress: ${exercise.exercise.jointStress.toLowerCase()} (high stress filtered).`
+                    ? `Joint stress: ${exercise.exercise.jointStress.toLowerCase()}; higher-stress options were filtered out.`
                     : `Joint stress: ${exercise.exercise.jointStress.toLowerCase()}.`;
                   const roleLabel =
                     exercise.section === "WARMUP"
@@ -206,13 +221,10 @@ export default async function WorkoutDetailPage({
                       : exercise.section === "MAIN" || exercise.isMainLift
                       ? "Main lift"
                       : "Accessory";
-                  const triggerLabel = progressionReceipt?.trigger
-                    ? progressionReceipt.trigger.replaceAll("_", " ")
-                    : null;
                   const loadDeltaLabel =
                     progressionReceipt?.delta.loadPercent != null
                       ? `${progressionReceipt.delta.loadPercent >= 0 ? "+" : ""}${progressionReceipt.delta.loadPercent.toFixed(1)}% load`
-                      : "No recent load delta";
+                      : null;
 
                   return (
                     <div key={exercise.id} className="rounded-2xl border border-slate-200 p-4 sm:p-5">
@@ -245,7 +257,8 @@ export default async function WorkoutDetailPage({
                       </div>
                       {roleLabel === "Main lift" && progressionReceipt ? (
                         <p className="mt-1 text-xs text-slate-600">
-                          Progression today: {triggerLabel}. {loadDeltaLabel}.
+                          {formatProgressionCall(progressionReceipt.trigger)}
+                          {loadDeltaLabel ? ` ${loadDeltaLabel}.` : ""}
                         </p>
                       ) : null}
                       <p className="mt-2 text-xs text-slate-500">

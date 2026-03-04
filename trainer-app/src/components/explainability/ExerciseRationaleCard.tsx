@@ -20,6 +20,8 @@ export function ExerciseRationaleCard({
   onToggle,
 }: Props) {
   const plainLanguageFactors = getPlainLanguageFactors(rationale);
+  const lastPerformedSummary = formatSummary(progressionReceipt?.lastPerformed);
+  const todayTargetSummary = formatSummary(progressionReceipt?.todayPrescription);
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white text-sm">
@@ -30,7 +32,7 @@ export function ExerciseRationaleCard({
             <p className="mt-1 text-xs text-slate-600">{rationale.volumeContribution}</p>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-500">{isExpanded ? "Hide" : "Show"} details</span>
+            <span className="text-xs text-slate-500">{isExpanded ? "Hide" : "Open"} drill-down</span>
             <svg
               className={`h-5 w-5 text-slate-400 transition-transform ${isExpanded ? "rotate-180" : ""}`}
               fill="none"
@@ -46,7 +48,7 @@ export function ExerciseRationaleCard({
       {isExpanded ? (
         <div className="border-t border-slate-100 px-4 py-3 sm:px-5">
           <div className="mb-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Why it made the plan</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Why this lift stayed in</p>
             <ul className="mt-2 space-y-1">
               {rationale.primaryReasons.map((reason, idx) => (
                 <li key={idx} className="flex items-start gap-2 text-slate-700">
@@ -59,7 +61,7 @@ export function ExerciseRationaleCard({
 
           {plainLanguageFactors.length > 0 ? (
             <div className="mb-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Main factors</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Top factors</p>
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
                 {plainLanguageFactors.map((factor) => (
                   <div key={factor.label} className="rounded-lg border border-slate-100 bg-slate-50 p-3">
@@ -79,12 +81,24 @@ export function ExerciseRationaleCard({
 
           {progressionReceipt ? (
             <div className="mb-4 rounded-lg border border-slate-100 bg-slate-50 p-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Progression today</p>
-              <p className="mt-1 text-xs text-slate-700">
-                {formatTrigger(progressionReceipt.trigger)}
-              </p>
-              <p className="mt-1 text-xs text-slate-600">Last useful log: {formatSummary(progressionReceipt.lastPerformed)}</p>
-              <p className="mt-1 text-xs text-slate-600">Today&apos;s target: {formatSummary(progressionReceipt.todayPrescription)}</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Progression check</p>
+              <p className="mt-1 text-sm text-slate-700">{formatTrigger(progressionReceipt.trigger)}</p>
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                <div className="rounded-md border border-slate-200 bg-white px-3 py-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Last performed</p>
+                  <p className="mt-1 text-xs text-slate-700">{lastPerformedSummary.label}</p>
+                  {lastPerformedSummary.detail ? (
+                    <p className="mt-1 text-xs text-slate-500">{lastPerformedSummary.detail}</p>
+                  ) : null}
+                </div>
+                <div className="rounded-md border border-slate-200 bg-white px-3 py-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Today&apos;s target</p>
+                  <p className="mt-1 text-xs text-slate-700">{todayTargetSummary.label}</p>
+                  {todayTargetSummary.detail ? (
+                    <p className="mt-1 text-xs text-slate-500">{todayTargetSummary.detail}</p>
+                  ) : null}
+                </div>
+              </div>
               {progressionReceipt.delta.loadPercent != null ? (
                 <p className="mt-1 text-xs text-slate-600">
                   Change: {progressionReceipt.delta.loadPercent >= 0 ? "+" : ""}
@@ -165,21 +179,25 @@ function getPlainLanguageFactors(rationale: ExerciseRationale): Array<{ label: s
 function formatTrigger(trigger: ProgressionReceipt["trigger"]): string {
   switch (trigger) {
     case "double_progression":
-      return "Recent performance supported a progression step.";
+      return "Recent performance supported a progression step today.";
     case "hold":
-      return "Recent performance supported keeping the same target.";
+      return "Recent performance supported holding the same target.";
     case "deload":
       return "Targets were reduced because this session is in deload mode.";
     case "readiness_scale":
       return "Targets were adjusted to match today's readiness.";
     default:
-      return "Not enough recent history was available to push load.";
+      return "There was not enough recent performed history to justify a progression step.";
   }
 }
 
-function formatSummary(summary: ProgressionReceipt["lastPerformed"] | ProgressionReceipt["todayPrescription"]) {
+function formatSummary(
+  summary: ProgressionReceipt["lastPerformed"] | ProgressionReceipt["todayPrescription"] | undefined
+) {
   if (!summary) {
-    return "No useful history";
+    return {
+      label: "No recent performed anchor",
+    };
   }
 
   const parts = [
@@ -188,5 +206,11 @@ function formatSummary(summary: ProgressionReceipt["lastPerformed"] | Progressio
     summary.rpe != null ? `RPE ${summary.rpe}` : null,
   ].filter(Boolean);
 
-  return parts.length > 0 ? parts.join(" | ") : "No useful history";
+  return {
+    label: parts.length > 0 ? parts.join(" | ") : "No recent performed anchor",
+    detail:
+      "performedAt" in summary && summary.performedAt
+        ? `Logged ${new Date(summary.performedAt).toLocaleDateString()}`
+        : undefined,
+  };
 }

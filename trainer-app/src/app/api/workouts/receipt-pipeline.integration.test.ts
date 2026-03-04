@@ -404,6 +404,6 @@ describe("canonical session decision receipt pipeline", () => {
       return;
     }
 
-    expect(explanation.confidence.missingSignals).not.toContain("active block context");
+    expect(explanation.confidence.missingSignals).not.toContain("receipt-backed cycle context");
   });
 });

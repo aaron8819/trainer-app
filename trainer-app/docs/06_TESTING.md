@@ -51,7 +51,7 @@ Sources of truth:
 - Explainability session-context correctness coverage: `src/lib/engine/explainability/session-context.correctness.test.ts` (readiness availability labels and fallback cycle-source behavior).
 - End-to-end-ish receipt pipeline coverage: `src/app/api/workouts/receipt-pipeline.integration.test.ts` (generate -> save -> explainability with canonical `sessionDecisionReceipt` and no legacy fallback).
 - UI session overview copy guards: `src/lib/ui/session-overview.test.ts` (`PARTIAL`/`COMPLETED` performed basis and load-provenance wording).
-- Explainability panel UI coverage: `src/components/explainability/ExplainabilityPanel.test.tsx` now also asserts the simplified audit labels (`Exercise details`, `Why it made the plan`, `Main factors`) instead of the older engine-jargon labels.
+- Explainability panel UI coverage: `src/components/explainability/ExplainabilityPanel.test.tsx` now also asserts the scan-first audit labels (`Session scan`, `Exercise drill-down`, `Missing or weak signals`, `Why this lift stayed in`, `Top factors`) instead of the older disclosure/jargon-heavy copy.
 - UI program dashboard coverage: `src/components/ProgramStatusCard.test.ts` (volume dot class logic, deload banner, week navigation, and `getVolumeDotClass` boundary assertions).
 - Save-route canonical receipt enforcement coverage: `src/app/api/workouts/save/route.integration.test.ts`.
 

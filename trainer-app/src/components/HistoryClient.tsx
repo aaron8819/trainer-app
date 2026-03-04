@@ -4,22 +4,17 @@ import { useMemo, useState } from "react";
 import DeleteWorkoutButton from "./DeleteWorkoutButton";
 import { WorkoutRowActions } from "./workout/WorkoutRowActions";
 import {
-  type WorkoutSessionSnapshotSummary,
-  formatWorkoutSessionSnapshotLabel,
-} from "@/lib/ui/workout-session-snapshot";
+  formatWorkoutListExerciseLabel,
+  formatWorkoutListIntentLabel,
+  formatWorkoutListLoggedSetsLabel,
+  getWorkoutListStatusClasses,
+  getWorkoutListStatusLabel,
+  WORKOUT_LIST_STATUS_OPTIONS,
+  type WorkoutListSurfaceSummary,
+} from "@/lib/ui/workout-list-items";
+import { formatWorkoutSessionSnapshotLabel } from "@/lib/ui/workout-session-snapshot";
 
-export type HistoryWorkoutItem = {
-  id: string;
-  scheduledDate: string;
-  completedAt: string | null;
-  status: string;
-  selectionMode: string | null;
-  sessionIntent: string | null;
-  mesocycleId: string | null;
-  sessionSnapshot: WorkoutSessionSnapshotSummary | null;
-  exerciseCount: number;
-  totalSetsLogged: number;
-};
+export type HistoryWorkoutItem = WorkoutListSurfaceSummary;
 
 export type MesocycleOption = {
   id: string;
@@ -44,36 +39,11 @@ type Filters = {
 };
 
 const INTENT_OPTIONS = ["PUSH", "PULL", "LEGS", "UPPER", "LOWER", "FULL_BODY"] as const;
-const STATUS_OPTIONS = ["COMPLETED", "PARTIAL", "SKIPPED", "PLANNED"] as const;
-
-const STATUS_LABELS: Record<string, string> = {
-  COMPLETED: "Completed",
-  IN_PROGRESS: "In progress",
-  PARTIAL: "Partial",
-  SKIPPED: "Skipped",
-  PLANNED: "Planned",
-};
-
-const STATUS_CLASSES: Record<string, string> = {
-  COMPLETED: "bg-emerald-50 text-emerald-700",
-  IN_PROGRESS: "bg-amber-50 text-amber-700",
-  PARTIAL: "bg-orange-50 text-orange-700",
-  SKIPPED: "bg-slate-100 text-slate-600",
-  PLANNED: "bg-slate-100 text-slate-700",
-};
-
-function formatIntent(intent: string): string {
-  return intent
-    .split("_")
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
-    .join(" ");
-}
 
 function buildApiUrl(filters: Filters, cursor: string | null): string {
   const params = new URLSearchParams();
   if (filters.intent) params.set("intent", filters.intent);
-  if (filters.statuses.length > 0 && filters.statuses.length < STATUS_OPTIONS.length) {
+  if (filters.statuses.length > 0 && filters.statuses.length < WORKOUT_LIST_STATUS_OPTIONS.length) {
     params.set("status", filters.statuses.join(","));
   }
   if (filters.mesocycleId) params.set("mesocycleId", filters.mesocycleId);
@@ -85,7 +55,7 @@ function buildApiUrl(filters: Filters, cursor: string | null): string {
 
 const DEFAULT_FILTERS: Filters = {
   intent: null,
-  statuses: [...STATUS_OPTIONS],
+  statuses: [...WORKOUT_LIST_STATUS_OPTIONS],
   mesocycleId: null,
   from: null,
   to: null,
@@ -119,7 +89,7 @@ export default function HistoryClient({
   const isDefaultFilters = useMemo(
     () =>
       filters.intent === null &&
-      filters.statuses.length === STATUS_OPTIONS.length &&
+      filters.statuses.length === WORKOUT_LIST_STATUS_OPTIONS.length &&
       filters.mesocycleId === null &&
       filters.from === null &&
       filters.to === null,
@@ -214,7 +184,7 @@ export default function HistoryClient({
                 onClick={() => toggleIntent(intent)}
                 aria-pressed={filters.intent === intent}
               >
-                {formatIntent(intent)}
+                {formatWorkoutListIntentLabel(intent)}
               </button>
             ))}
           </div>
@@ -225,7 +195,7 @@ export default function HistoryClient({
             Status
           </p>
           <div className="flex flex-wrap gap-2">
-            {STATUS_OPTIONS.map((status) => (
+            {WORKOUT_LIST_STATUS_OPTIONS.map((status) => (
               <button
                 key={status}
                 className={`${pillBase} ${
@@ -234,7 +204,7 @@ export default function HistoryClient({
                 onClick={() => toggleStatus(status)}
                 aria-pressed={filters.statuses.includes(status)}
               >
-                {STATUS_LABELS[status]}
+                {getWorkoutListStatusLabel(status)}
               </button>
             ))}
           </div>
@@ -327,7 +297,7 @@ export default function HistoryClient({
                 >
                   <div>
                     <p className="text-sm font-semibold">
-                      {workout.sessionIntent ? formatIntent(workout.sessionIntent) : "Workout"}
+                      {formatWorkoutListIntentLabel(workout.sessionIntent)}
                       {sessionSnapshotLabel ? (
                         <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600">
                           {sessionSnapshotLabel}
@@ -336,17 +306,15 @@ export default function HistoryClient({
                     </p>
                     <p className="mt-1 text-xs text-slate-500">
                       {new Date(workout.scheduledDate).toLocaleDateString()} |{" "}
-                      {workout.exerciseCount} exercise{workout.exerciseCount === 1 ? "" : "s"} |{" "}
-                      {workout.totalSetsLogged} set{workout.totalSetsLogged === 1 ? "" : "s"} logged
+                      {formatWorkoutListExerciseLabel(workout.exerciseCount)} |{" "}
+                      {formatWorkoutListLoggedSetsLabel(workout.totalSetsLogged)}
                     </p>
                   </div>
                   <div className="flex items-center gap-3">
                     <span
-                      className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                        STATUS_CLASSES[workout.status] ?? "bg-slate-100 text-slate-600"
-                      }`}
+                      className={`rounded-full px-3 py-1 text-xs font-semibold ${getWorkoutListStatusClasses(workout.status)}`}
                     >
-                      {STATUS_LABELS[workout.status] ?? workout.status}
+                      {getWorkoutListStatusLabel(workout.status)}
                     </span>
                     <WorkoutRowActions workout={workout} />
                     <DeleteWorkoutButton

@@ -376,26 +376,26 @@ function deriveExplainabilityConfidence(input: {
 }): WorkoutExplanation["confidence"] {
   const missingSignals: string[] = [];
   if (!input.hasReadinessSignal) {
-    missingSignals.push("fresh readiness signal");
+    missingSignals.push("same-day readiness check-in");
   }
   if (!input.hasBlockContext && !input.hasSessionDecisionReceipt) {
-    missingSignals.push("active block context");
+    missingSignals.push("receipt-backed cycle context");
   }
   if (!input.hasStoredSelectionRationale) {
-    missingSignals.push("persisted exercise selection rationale");
+    missingSignals.push("stored exercise selection reasons");
   }
   if (!input.hasDerivedWorkoutStats) {
-    missingSignals.push("history-derived workout stats");
+    missingSignals.push("recent performance-derived workout stats");
   }
 
   const level: WorkoutExplanation["confidence"]["level"] =
     missingSignals.length === 0 ? "high" : missingSignals.length === 1 ? "medium" : "low";
   const summary =
     level === "high"
-      ? "Explanations are grounded in full session context."
+      ? "Evidence is complete enough to explain this session without major guesswork."
       : level === "medium"
-      ? "Explanations are mostly grounded in context with minor approximations."
-      : "Explanations include approximations due to missing context signals.";
+      ? `Most of the session evidence is present; one signal is being approximated (${missingSignals[0]}).`
+      : "Several inputs are missing, so this audit can only explain part of the session with confidence.";
 
   return { level, summary, missingSignals };
 }
@@ -1087,18 +1087,18 @@ async function resolveExplainabilityConfidenceNotes(
 ): Promise<string[]> {
   const notes: string[] = [];
   if (input.previousSelectionMode === "INTENT") {
-    notes.push("INTENT session confidence=1.00.");
+    notes.push("Previous INTENT history kept full progression confidence.");
     return notes;
   }
   if (input.previousSelectionMode !== "MANUAL") {
-    notes.push("Non-INTENT session confidence=0.80.");
+    notes.push("Previous history was not INTENT, so progression confidence was reduced.");
     return notes;
   }
 
   const anomalyFlags = await resolveManualAnomalyFlags(input);
   if (anomalyFlags.length > 0) {
     notes.push(
-      `MANUAL anomaly flag(s): ${anomalyFlags.join(", ")}. Confidence reduced to 0.30.`
+      `MANUAL history was heavily discounted because it looked unreliable: ${anomalyFlags.join(", ")}.`
     );
     return notes;
   }
@@ -1117,8 +1117,8 @@ async function resolveExplainabilityConfidenceNotes(
   });
   notes.push(
     hasIntentHistory
-      ? "MANUAL session discounted (confidence=0.70) because INTENT history exists."
-      : "MANUAL-only history detected; confidence held at 1.00."
+      ? "MANUAL history was discounted because cleaner INTENT history exists for this exercise."
+      : "Only MANUAL history was available, so progression used it without an extra discount."
   );
   return notes;
 }
@@ -1131,12 +1131,12 @@ async function resolveManualAnomalyFlags(
     .map((entry) => entry.log?.actualRpe)
     .filter((value): value is number => Number.isFinite(value));
   if (rpes.length > 0 && rpes.every((rpe) => rpe === rpes[0])) {
-    anomalyFlags.push("uniform_rpe_synthetic");
+    anomalyFlags.push("every set reported the same RPE");
   }
 
   const rpeTenCount = rpes.filter((rpe) => rpe === 10).length;
   if (rpes.length > 0 && rpeTenCount / rpes.length > 0.5) {
-    anomalyFlags.push("rpe10_majority");
+    anomalyFlags.push("most sets were logged at RPE 10");
   }
 
   const currentModal = resolvePerformedModalLoad(input.performedLogs);
@@ -1175,7 +1175,7 @@ async function resolveManualAnomalyFlags(
       }));
       const intentModal = resolvePerformedModalLoad(intentLogs);
       if (intentModal != null && intentModal > 0 && currentModal < intentModal * 0.5) {
-        anomalyFlags.push("load_regression_vs_intent");
+        anomalyFlags.push("manual load dropped far below earlier INTENT history");
       }
     }
   }

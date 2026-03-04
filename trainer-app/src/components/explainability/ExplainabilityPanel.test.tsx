@@ -99,7 +99,7 @@ describe("ExplainabilityPanel progression logic rendering", () => {
 
   it("renders progression decisionLog lines in the Evidence tab", () => {
     render(<ExplainabilityPanel explanation={makeExplanation(true)} summary={summary} />);
-    expect(screen.getByText("Progression Logic")).toBeInTheDocument();
+    expect(screen.getByText("Exercise decision trace")).toBeInTheDocument();
     expect(screen.getByText("Path 2 fired")).toBeInTheDocument();
     expect(screen.getByText("Confidence scale=0.70")).toBeInTheDocument();
   });
@@ -113,13 +113,33 @@ describe("ExplainabilityPanel progression logic rendering", () => {
     const user = userEvent.setup();
     render(<ExplainabilityPanel explanation={makeExplanation(true)} summary={summary} />);
 
-    await user.click(screen.getByRole("button", { name: "Exercise details" }));
-    await user.click(screen.getByRole("button", { name: /show details/i }));
+    await user.click(screen.getByRole("button", { name: "Exercise drill-down" }));
+    await user.click(screen.getByRole("button", { name: /open drill-down/i }));
 
-    expect(screen.getByText("Why it made the plan")).toBeInTheDocument();
-    expect(screen.getByText("Main factors")).toBeInTheDocument();
+    expect(screen.getByText("Why this lift stayed in")).toBeInTheDocument();
+    expect(screen.getByText("Top factors")).toBeInTheDocument();
     expect(screen.queryByText("Selection Factors")).not.toBeInTheDocument();
     expect(screen.queryByText("Deficit Fill")).not.toBeInTheDocument();
     expect(screen.getByText("Volume need")).toBeInTheDocument();
+  });
+
+  it("surfaces missing signals as a scan-friendly list", () => {
+    render(
+      <ExplainabilityPanel
+        explanation={{
+          ...makeExplanation(true),
+          confidence: {
+            level: "low",
+            summary: "Several inputs are missing, so this audit can only explain part of the session with confidence.",
+            missingSignals: ["same-day readiness check-in", "stored exercise selection reasons"],
+          },
+        }}
+        summary={summary}
+      />
+    );
+
+    expect(screen.getByText("Missing or weak signals")).toBeInTheDocument();
+    expect(screen.getByText(/same-day readiness check-in/)).toBeInTheDocument();
+    expect(screen.getByText(/stored exercise selection reasons/)).toBeInTheDocument();
   });
 });

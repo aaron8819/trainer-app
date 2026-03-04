@@ -5,9 +5,11 @@ import { useEffect, useState } from "react";
 type TemplateStat = {
   templateId: string;
   templateName: string;
-  totalWorkouts: number;
+  generatedWorkouts: number;
+  performedWorkouts: number;
   completedWorkouts: number;
-  completionRate: number;
+  performedRate: number | null;
+  completionRate: number | null;
   lastUsed: string | null;
   avgFrequencyDays: number | null;
 };
@@ -38,13 +40,19 @@ export function TemplateStatsSection() {
           <div className="flex items-center justify-between">
             <h4 className="text-sm font-semibold text-slate-800">{t.templateName}</h4>
             <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
-              {t.completionRate}% completion
+              {t.performedRate ?? 0}% performed
             </span>
           </div>
-          <div className="mt-2 grid grid-cols-1 gap-2 text-xs text-slate-500 sm:grid-cols-3 sm:gap-3">
+          <div className="mt-2 grid grid-cols-1 gap-2 text-xs text-slate-500 sm:grid-cols-4 sm:gap-3">
             <div>
-              <span className="block text-slate-500">Workouts</span>
-              <span className="font-medium text-slate-700">{t.completedWorkouts}/{t.totalWorkouts}</span>
+              <span className="block text-slate-500">Generated</span>
+              <span className="font-medium text-slate-700">{t.generatedWorkouts}</span>
+            </div>
+            <div>
+              <span className="block text-slate-500">Performed / Completed</span>
+              <span className="font-medium text-slate-700">
+                {t.performedWorkouts} / {t.completedWorkouts}
+              </span>
             </div>
             <div>
               <span className="block text-slate-500">Last used</span>
@@ -53,9 +61,10 @@ export function TemplateStatsSection() {
               </span>
             </div>
             <div>
-              <span className="block text-slate-500">Avg frequency</span>
+              <span className="block text-slate-500">Avg frequency / completion</span>
               <span className="font-medium text-slate-700">
                 {t.avgFrequencyDays !== null ? `${t.avgFrequencyDays}d` : "N/A"}
+                {t.completionRate !== null ? ` / ${t.completionRate}%` : ""}
               </span>
             </div>
           </div>

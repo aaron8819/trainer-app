@@ -4,6 +4,7 @@ import { resolveOwner, mapExercises, mapHistory } from "@/lib/api/workout-contex
 import { buildMuscleRecoveryMap } from "@/lib/engine/sra";
 import { WorkoutStatus } from "@prisma/client";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
+import { buildRollingDaysAnalyticsWindow } from "@/lib/api/analytics-semantics";
 
 export async function GET() {
   const user = await resolveOwner();
@@ -56,5 +57,19 @@ export async function GET() {
     sraWindowHours: state.sraWindowHours,
   }));
 
-  return NextResponse.json({ muscles });
+  return NextResponse.json({
+    muscles,
+    semantics: {
+      window: buildRollingDaysAnalyticsWindow(
+        14,
+        "Recovery uses performed workouts from the last 14 days."
+      ),
+      counts: {
+        workouts:
+          "Recovery includes performed workouts only (COMPLETED and PARTIAL) within the rolling 14-day window.",
+        output:
+          "Recovery percentages are SRA-based recovery states derived from recent performed history, not a live readiness score.",
+      },
+    },
+  });
 }

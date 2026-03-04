@@ -5,46 +5,26 @@ import { useRouter } from "next/navigation";
 import DeleteWorkoutButton from "./DeleteWorkoutButton";
 import { WorkoutRowActions } from "./workout/WorkoutRowActions";
 import {
-  type WorkoutSessionSnapshotSummary,
+  formatWorkoutListExerciseLabel,
+  formatWorkoutListIntentLabel,
+  getWorkoutListStatusClasses,
+  getWorkoutListStatusLabel,
+  type WorkoutListSurfaceSummary,
+} from "@/lib/ui/workout-list-items";
+import {
   formatWorkoutSessionSnapshotLabel,
 } from "@/lib/ui/workout-session-snapshot";
 
-export type WorkoutListItem = {
-  id: string;
-  scheduledDate: string;
-  status: string;
-  sessionIntent: string | null;
-  exercisesCount: number;
-  sessionSnapshot: WorkoutSessionSnapshotSummary | null;
-};
-
-type StatusMap = {
-  [key: string]: string;
-};
-
 type Props = {
-  recentWorkouts: WorkoutListItem[];
-  statusLabels: StatusMap;
-  statusClasses: StatusMap;
+  recentWorkouts: WorkoutListSurfaceSummary[];
 };
 
-export default function RecentWorkouts({
-  recentWorkouts,
-  statusLabels,
-  statusClasses,
-}: Props) {
+export default function RecentWorkouts({ recentWorkouts }: Props) {
   const router = useRouter();
 
   const handleDeleted = () => {
     router.refresh();
   };
-
-  const formatSessionIntent = (intent: string) =>
-    intent
-      .split("_")
-      .filter(Boolean)
-      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-      .join(" ");
 
   const countLabel = `${recentWorkouts.length} workout${recentWorkouts.length === 1 ? "" : "s"}`;
 
@@ -77,7 +57,7 @@ export default function RecentWorkouts({
               >
                 <div>
                   <p className="text-sm font-semibold">
-                    {workout.sessionIntent ? formatSessionIntent(workout.sessionIntent) : "Workout"}
+                    {formatWorkoutListIntentLabel(workout.sessionIntent)}
                     {sessionSnapshotLabel ? (
                       <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600">
                         {sessionSnapshotLabel}
@@ -85,15 +65,15 @@ export default function RecentWorkouts({
                     ) : null}
                   </p>
                   <p className="mt-1 text-xs text-slate-500">
-                    {new Date(workout.scheduledDate).toLocaleDateString()} | {workout.exercisesCount}{" "}
-                    exercises
+                    {new Date(workout.scheduledDate).toLocaleDateString()} |{" "}
+                    {formatWorkoutListExerciseLabel(workout.exerciseCount)}
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
                   <span
-                    className={`rounded-full px-3 py-1 text-xs font-semibold ${statusClasses[workout.status]}`}
+                    className={`rounded-full px-3 py-1 text-xs font-semibold ${getWorkoutListStatusClasses(workout.status)}`}
                   >
-                    {statusLabels[workout.status] ?? workout.status}
+                    {getWorkoutListStatusLabel(workout.status)}
                   </span>
                   <WorkoutRowActions workout={workout} />
                   <DeleteWorkoutButton workoutId={workout.id} onDeleted={handleDeleted} />

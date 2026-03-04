@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { resolveOwner } from "@/lib/api/workout-context";
-import { WorkoutStatus } from "@prisma/client";
+import {
+  buildAllTimeAnalyticsWindow,
+  countAnalyticsWorkoutStatuses,
+} from "@/lib/api/analytics-semantics";
 
 export async function GET() {
 
@@ -35,22 +38,22 @@ export async function GET() {
 
   const grouped = new Map<
     string,
-    { total: number; completed: number; lastUsed: Date | null; dates: Date[] }
+    { statuses: string[]; lastUsed: Date | null; dates: Date[] }
   >();
 
   for (const w of workouts) {
     if (!w.templateId) continue;
     if (!grouped.has(w.templateId)) {
-      grouped.set(w.templateId, { total: 0, completed: 0, lastUsed: null, dates: [] });
+      grouped.set(w.templateId, { statuses: [], lastUsed: null, dates: [] });
     }
     const g = grouped.get(w.templateId)!;
-    g.total++;
-    if (w.status === WorkoutStatus.COMPLETED) g.completed++;
+    g.statuses.push(w.status);
     if (!g.lastUsed || w.scheduledDate > g.lastUsed) g.lastUsed = w.scheduledDate;
     g.dates.push(w.scheduledDate);
   }
 
   const result = Array.from(grouped.entries()).map(([templateId, data]) => {
+    const counts = countAnalyticsWorkoutStatuses(data.statuses);
     const sorted = data.dates.sort((a, b) => a.getTime() - b.getTime());
     let avgFrequencyDays: number | null = null;
     if (sorted.length >= 2) {
@@ -62,13 +65,30 @@ export async function GET() {
     return {
       templateId,
       templateName: templateMap.get(templateId) ?? "Unknown",
-      totalWorkouts: data.total,
-      completedWorkouts: data.completed,
-      completionRate: data.total > 0 ? Math.round((data.completed / data.total) * 100) : 0,
+      generatedWorkouts: counts.generated,
+      performedWorkouts: counts.performed,
+      completedWorkouts: counts.completed,
+      performedRate:
+        counts.performedRate !== null ? Math.round(counts.performedRate * 100) : null,
+      completionRate:
+        counts.completionRate !== null ? Math.round(counts.completionRate * 100) : null,
       lastUsed: data.lastUsed?.toISOString() ?? null,
       avgFrequencyDays,
     };
   });
 
-  return NextResponse.json({ templates: result });
+  return NextResponse.json({
+    semantics: {
+      window: buildAllTimeAnalyticsWindow(
+        "Template usage counts all generated workouts for the current owner."
+      ),
+      counts: {
+        generated: "Generated workouts include every workout created from a template.",
+        performed:
+          "Performed workouts include template workouts saved as COMPLETED or PARTIAL.",
+        completed: "Completed workouts include only template workouts saved as COMPLETED.",
+      },
+    },
+    templates: result,
+  });
 }

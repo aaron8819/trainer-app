@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { AnalyticsSummaryPanel } from "@/components/analytics/AnalyticsSummaryPanel";
+import { SurfaceGuideCard } from "@/components/SurfaceGuideCard";
 import { MuscleRecoveryPanel } from "@/components/analytics/MuscleRecoveryPanel";
 import { MuscleVolumeChart } from "@/components/analytics/MuscleVolumeChart";
 import { WeeklyVolumeTrend } from "@/components/analytics/WeeklyVolumeTrend";
@@ -18,8 +20,12 @@ export default function AnalyticsPage() {
       <div className="page-shell max-w-5xl">
         <h1 className="page-title">Analytics</h1>
         <p className="mt-1.5 text-sm text-slate-600">
-          Training volume, progress, and readiness trends.
+          Longer-term trend review for volume, recovery, and follow-through. Use Program for live decisions and History for individual sessions.
         </p>
+
+        <section className="mt-5">
+          <SurfaceGuideCard current="analytics" />
+        </section>
 
         {/* Tab bar */}
         <div className="mt-5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -46,7 +52,7 @@ export default function AnalyticsPage() {
             <div className="space-y-4">
               <h2 className="text-base font-semibold sm:text-lg">Muscle Recovery Status</h2>
               <p className="text-sm text-slate-500">
-                Recovery progress based on SRA (Stimulus-Recovery-Adaptation) windows.
+                SRA-based recovery from performed sessions in the last 14 days.
               </p>
               <MuscleRecoveryPanel />
             </div>
@@ -57,7 +63,7 @@ export default function AnalyticsPage() {
               <div>
                 <h2 className="text-base font-semibold sm:text-lg">Weekly Volume by Muscle</h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  Direct and indirect sets per muscle with MEV/MAV/MRV reference lines.
+                  Performed direct and indirect sets grouped into rolling ISO weeks with MEV/MAV/MRV reference lines.
                 </p>
                 <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200 p-3.5 sm:mt-4 sm:p-4">
                   <MuscleVolumeChart />
@@ -66,7 +72,7 @@ export default function AnalyticsPage() {
               <div>
                 <h2 className="text-base font-semibold sm:text-lg">Volume Trend</h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  Top muscle groups tracked over 8 weeks.
+                  Top direct-set muscle trends across the rolling 8-week analytics window.
                 </p>
                 <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200 p-3.5 sm:mt-4 sm:p-4">
                   <WeeklyVolumeTrend />
@@ -78,9 +84,18 @@ export default function AnalyticsPage() {
           {activeTab === "Overview" && (
             <div className="space-y-6">
               <div>
+                <h2 className="text-base font-semibold sm:text-lg">Workout Summary</h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Generated, performed, and completed workout counts use one shared analytics vocabulary.
+                </p>
+                <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200 p-3.5 sm:mt-4 sm:p-4">
+                  <AnalyticsSummaryPanel />
+                </div>
+              </div>
+              <div>
                 <h2 className="text-base font-semibold sm:text-lg">Push / Pull / Legs Distribution</h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  Set distribution across training splits over the past 4 weeks.
+                  Direct performed sets grouped into Push / Pull / Legs across the rolling 4-week volume window.
                 </p>
                 <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200 p-3.5 sm:mt-4 sm:p-4">
                   <SplitDistribution />
@@ -93,7 +108,7 @@ export default function AnalyticsPage() {
             <div className="space-y-4">
               <h2 className="text-base font-semibold sm:text-lg">Template Usage</h2>
               <p className="text-sm text-slate-500">
-                Completion rates and usage frequency for your workout templates.
+                Generated template workouts, plus performed and completed follow-through rates.
               </p>
               <TemplateStatsSection />
             </div>

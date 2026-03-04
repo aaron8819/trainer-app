@@ -228,8 +228,8 @@ Exit criteria met:
 ## Priority buckets
 
 Do now:
-- Phase 7 documentation and deletion pass.
-- Keep the receipt-first session-decision contract stable while removing stale code/docs that still describe pre-Phase-6 behavior.
+- Keep the receipt-first session-decision contract stable.
+- Treat this roadmap as complete unless a future change explicitly reopens one of the closed phases.
 
 Do next:
 - Deeper analytics/history UX cleanup after contracts settle.
@@ -245,10 +245,9 @@ Delete after migration:
 
 ## Practical sequence for the next passes
 
-1. Complete the documentation and deletion pass against the now-stabilized receipt-first architecture.
-2. Remove dead code/tests/docs that survived Phases 1-6.
-3. Collapse duplicate architecture descriptions to one short canonical flow.
-4. Revisit broader analytics/history UX only after the Phase 7 cleanup settles.
+1. Keep this roadmap as the completion log for the receipt-first simplification work.
+2. Revisit broader analytics/history UX only after those surfaces need new product work.
+3. Avoid reopening completed mesocycle/session-decision phases unless a runtime bug forces it.
 
 ## Working principle
 

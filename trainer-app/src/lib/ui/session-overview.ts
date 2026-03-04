@@ -16,15 +16,15 @@ export function getLoadProvenanceNote(input: {
   const { targetLoad, isBodyweightExercise, hasHistory } = input;
   if (targetLoad != null) {
     return hasHistory
-      ? "Estimated load (from workout history)."
-      : "Planned load target. No performed history available.";
+      ? "Load target came from recent performed history."
+      : "Load target follows the written plan because no recent performed history is available.";
   }
 
   if (isBodyweightExercise) {
-    return "Bodyweight movement (BW). Add load during logging only for weighted variations.";
+    return "Bodyweight movement. Add load during logging only if you make it weighted.";
   }
 
-  return "Load to be chosen during logging.";
+  return "Choose the load while logging.";
 }
 
 export function hasPerformedHistory(receipt: {

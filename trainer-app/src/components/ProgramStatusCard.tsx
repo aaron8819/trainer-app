@@ -170,7 +170,7 @@ export function ProgramStatusCard({ initialData }: { initialData: ProgramDashboa
     initialData;
   const durationWeeks = activeMeso?.durationWeeks ?? 1;
 
-  const [selectedWeek, setSelectedWeek] = useState(currentWeek);
+  const [selectedWeek, setSelectedWeek] = useState(initialData.viewedWeek);
   const [volumeRows, setVolumeRows] = useState(initialData.volumeThisWeek);
   const [loading, setLoading] = useState(false);
 

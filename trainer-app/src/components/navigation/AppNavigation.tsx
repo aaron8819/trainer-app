@@ -27,6 +27,15 @@ const TemplatesIcon = () => (
   </svg>
 );
 
+const ProgramIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4 5h16" />
+    <path d="M4 12h16" />
+    <path d="M4 19h10" />
+    <circle cx="18" cy="19" r="2" />
+  </svg>
+);
+
 const AnalyticsIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
     <line x1="18" y1="20" x2="18" y2="10" />
@@ -52,6 +61,7 @@ const SettingsIcon = () => (
 
 const NAV_ITEMS = [
   { href: "/", label: "Home", icon: <HomeIcon /> },
+  { href: "/program", label: "Program", icon: <ProgramIcon /> },
   { href: "/history", label: "History", icon: <HistoryIcon /> },
   { href: "/templates", label: "Templates", icon: <TemplatesIcon /> },
   { href: "/library", label: "Library", icon: <LibraryIcon /> },

@@ -33,6 +33,12 @@ Sources of truth:
 - `/settings`: user settings (`src/app/settings/page.tsx`)
 - `/program`: mesocycle/block/program dashboard (`src/app/program/page.tsx`)
 
+Route-purpose shorthand:
+- `/` = today’s operational dashboard
+- `/program` = live mesocycle and current-week decision support
+- `/history` = past session review and filtering
+- `/analytics` = longer-term trend review
+
 ## Core user flows
 1. Onboarding/profile setup
 - UI: `/onboarding`
@@ -56,9 +62,11 @@ Sources of truth:
 4. Review workout rationale
 - UI: `/workout/[id]` for the default user-facing session summary, `/workout/[id]/audit` for detailed explainability
 - API: `GET /api/workouts/[id]/explanation`
+- The route boundary is canonical in `docs/01_ARCHITECTURE.md`; this flow doc only records the implemented UX.
 - Workout detail now renders the receipt-first session summary directly and no longer mounts the full explainability panel in the default flow (`src/app/workout/[id]/page.tsx`, `src/lib/ui/session-summary.ts`, `src/components/explainability/SessionContextCard.tsx`).
-- Detailed explainability is intentionally separated into `/workout/[id]/audit`, which loads `WorkoutExplanation` and exposes the richer evidence and exercise-detail panels for internal auditing (`src/app/workout/[id]/audit/page.tsx`, `src/components/WorkoutExplanation.tsx`, `src/components/explainability/ExplainabilityPanel.tsx`).
-- The audit explainability panel now uses the same summary card at the top, then places confidence details and the Evidence vs Exercise details breakdown inside a secondary disclosure (`src/components/explainability/ExplainabilityPanel.tsx`, `src/components/explainability/ExerciseRationaleCard.tsx`).
+- `/workout/[id]` stays compact: session summary, practical set review, and short load-call context for main lifts.
+- Detailed explainability is intentionally separated into `/workout/[id]/audit`, which loads `WorkoutExplanation` and exposes the richer evidence panels for internal auditing (`src/app/workout/[id]/audit/page.tsx`, `src/components/WorkoutExplanation.tsx`, `src/components/explainability/ExplainabilityPanel.tsx`).
+- The audit page uses the same summary card at the top, then splits into a session-level scan and an exercise drill-down (`src/components/explainability/ExplainabilityPanel.tsx`, `src/components/explainability/ExerciseRationaleCard.tsx`).
 - Workout detail copy for prescription/load provenance now treats `PARTIAL` and `COMPLETED` as performed states through `src/lib/ui/session-overview.ts` and usage in `src/app/workout/[id]/page.tsx`.
 - Workout detail and log pages both read session-level context through `parseExplainabilitySelectionMetadata()`, which is canonical-receipt only for `sessionDecisionReceipt` (`src/app/workout/[id]/page.tsx`, `src/app/log/[id]/page.tsx`, `src/lib/ui/explainability.ts`).
 
@@ -66,7 +74,25 @@ Sources of truth:
 - UI: `/program`, readiness components
 - APIs: `/api/program`, `/api/readiness/submit`, `/api/stalls`, `/api/periodization/macro`
 - Dashboard training status is rendered by `ProgramStatusCard` (`src/components/ProgramStatusCard.tsx`), a client component that replaces the former `TrainingStatusCard`. It supports historical week navigation: clicking a week pill fetches `GET /api/program?week=N` and re-renders volume data for that week without a full-page reload.
-- `ProgramDashboardData` includes `lastSessionSkipped` (bool), `latestIncomplete` (workout id/status), `rirTarget` (RIR band for the viewed meso week), `coachingCue` (human-readable session readiness message), `currentWeek`, and `viewedWeek` (the week whose volume is displayed), all consumed by `ProgramStatusCard`.
+- `ProgramDashboardData` is now scoped to the shared dashboard card: `activeMeso`, `currentWeek`, `viewedWeek`, `sessionsUntilDeload`, `volumeThisWeek`, `deloadReadiness`, `rirTarget`, and `coachingCue` (`src/lib/api/program.ts`, `src/components/ProgramStatusCard.tsx`).
+- The home page loads next-session / resume-workout helpers separately through `loadHomeProgramSupport()` (`src/lib/api/program.ts`) instead of treating them as part of the shared dashboard-card contract.
 - `currentWeek`, `viewedWeek`, lifecycle RIR, and weekly volume targets are duration-aware: accumulation spans `durationWeeks - 1`, and the final week is deload instead of assuming a fixed 4+1 structure.
 - `ProgramStatusCard` is mounted on both the home dashboard (`src/app/page.tsx`) and the `/program` page (`src/app/program/page.tsx`), replacing the prior inline server-rendered volume table on `/program`.
-- Recent Workouts (`src/components/RecentWorkouts.tsx`) and History (`src/components/HistoryClient.tsx`) now display a week/session badge from a derived `sessionSnapshot` summary built from mesocycle snapshot persistence. Planned workouts show this badge immediately upon plan-save because the save route now snapshots mesocycle context for new plan writes.
+- `/program` session history is no longer carried inside `ProgramDashboardData`; it is loaded independently from the canonical workout-list summary builder in `src/lib/ui/workout-list-items.ts`.
+- Recent Workouts (`src/components/RecentWorkouts.tsx`) and History (`src/components/HistoryClient.tsx`) now share the same workout-list summary contract and display helpers from `src/lib/ui/workout-list-items.ts` for status labels, intent labels, and exercise/set count copy. Both still render the same derived week/session badge from `sessionSnapshot` via `src/lib/ui/workout-session-snapshot.ts`. Planned workouts show this badge immediately upon plan-save because the save route now snapshots mesocycle context for new plan writes.
+
+6. Analytics review
+- UI: `/analytics`
+- APIs: `GET /api/analytics/summary`, `GET /api/analytics/volume`, `GET /api/analytics/recovery`, `GET /api/analytics/templates`
+- The analytics overview now consumes `GET /api/analytics/summary` directly to show generated vs performed vs completed workout counts plus selection-mode and intent follow-through (`src/app/analytics/page.tsx`, `src/components/analytics/AnalyticsSummaryPanel.tsx`).
+- Analytics routes now expose explicit `semantics` metadata describing their counting vocabulary and time windows (`src/lib/api/analytics-semantics.ts`, `src/app/api/analytics/**/route.ts`).
+- Volume analytics remains intentionally separate from the program dashboard:
+  - `/program` volume is mesocycle-week scoped for decision support
+  - `/analytics` volume is rolling ISO-week charting for trend review
+- Recovery analytics remains a rolling 14-day SRA view from performed sessions rather than a live readiness/dashboard score.
+- Template analytics now distinguishes generated, performed, and completed template workouts instead of treating one completion percentage as the only usage signal.
+
+7. Cross-surface navigation simplification
+- Primary navigation now includes `/program` in addition to `/`, `/history`, and `/analytics` (`src/components/navigation/AppNavigation.tsx`).
+- Shared surface-purpose metadata lives in `src/lib/ui/app-surface-map.ts`, and `SurfaceGuideCard` uses it to show adjacent surfaces without duplicating route-purpose copy in multiple page-local implementations (`src/components/SurfaceGuideCard.tsx`).
+- Home keeps the operational actions for “what should I do now?”, while `/program`, `/history`, and `/analytics` each include a short cross-linking guide to reinforce “where should I go next?” without duplicating the home dashboard’s operational role.

@@ -1,6 +1,7 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import RecentWorkouts, { type WorkoutListItem } from "./RecentWorkouts";
+import RecentWorkouts from "./RecentWorkouts";
+import type { WorkoutListSurfaceSummary } from "@/lib/ui/workout-list-items";
 import { buildWorkoutSessionSnapshotSummary } from "@/lib/ui/workout-session-snapshot";
 
 vi.mock("next/navigation", () => ({
@@ -11,41 +12,26 @@ vi.mock("./DeleteWorkoutButton", () => ({
   default: () => <button type="button">Delete</button>,
 }));
 
-const STATUS_LABELS: Record<string, string> = {
-  PLANNED: "Planned",
-  IN_PROGRESS: "In progress",
-  PARTIAL: "Partial",
-  COMPLETED: "Completed",
-  SKIPPED: "Skipped",
-};
-const STATUS_CLASSES: Record<string, string> = {
-  COMPLETED: "",
-  IN_PROGRESS: "",
-  PARTIAL: "",
-  SKIPPED: "",
-  PLANNED: "",
-};
-
-function makeWorkout(overrides: Partial<WorkoutListItem> = {}): WorkoutListItem {
+function makeWorkout(
+  overrides: Partial<WorkoutListSurfaceSummary> = {}
+): WorkoutListSurfaceSummary {
   return {
     id: "w1",
     scheduledDate: "2026-02-25T00:00:00.000Z",
+    completedAt: null,
     status: "COMPLETED",
-    sessionIntent: "push",
-    exercisesCount: 5,
+    selectionMode: "INTENT",
+    sessionIntent: "PUSH",
+    mesocycleId: null,
     sessionSnapshot: null,
+    exerciseCount: 5,
+    totalSetsLogged: 0,
     ...overrides,
   };
 }
 
-function renderRecent(workouts: WorkoutListItem[]) {
-  return render(
-    <RecentWorkouts
-      recentWorkouts={workouts}
-      statusLabels={STATUS_LABELS}
-      statusClasses={STATUS_CLASSES}
-    />
-  );
+function renderRecent(workouts: WorkoutListSurfaceSummary[]) {
+  return render(<RecentWorkouts recentWorkouts={workouts} />);
 }
 
 afterEach(() => {

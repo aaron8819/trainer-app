@@ -102,20 +102,20 @@ function formatReadinessValue(context: SessionContext, receipt?: SessionDecision
   if (context.readinessStatus.availability === "stale") {
     return {
       label: "Readiness",
-      value: "No fresh check-in today, so the plan stays closer to your normal targets.",
+      value: "No same-day check-in was available, so the plan stayed near your default targets.",
     };
   }
 
   if (context.readinessStatus.availability === "missing") {
     return {
       label: "Readiness",
-      value: "No readiness check-in was available, so this session uses the standard plan.",
+      value: "No readiness check-in was recorded, so this session uses the standard plan.",
     };
   }
 
   return {
     label: "Readiness",
-    value: "Readiness looked normal enough to keep the planned targets in place.",
+    value: "A recent readiness signal was available, and it did not require changes to the planned targets.",
     tone: "positive",
   };
 }

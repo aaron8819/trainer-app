@@ -72,4 +72,10 @@ describe("L-5 — AppNavigation active tab on /log paths", () => {
     const historyLink = screen.getByRole("link", { name: /History/ });
     expect(isActiveLink(historyLink)).toBe(true);
   });
+
+  it("Program tab is active on /program", () => {
+    renderDesktopNav("/program");
+    const programLink = screen.getByRole("link", { name: /Program/ });
+    expect(isActiveLink(programLink)).toBe(true);
+  });
 });

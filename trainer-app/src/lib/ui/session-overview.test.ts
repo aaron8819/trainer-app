@@ -25,7 +25,7 @@ describe("session-overview copy guards", () => {
         isBodyweightExercise: false,
         hasHistory: true,
       })
-    ).toBe("Estimated load (from workout history).");
+    ).toBe("Load target came from recent performed history.");
 
     expect(
       getLoadProvenanceNote({
@@ -33,6 +33,6 @@ describe("session-overview copy guards", () => {
         isBodyweightExercise: false,
         hasHistory: false,
       })
-    ).toBe("Planned load target. No performed history available.");
+    ).toBe("Load target follows the written plan because no recent performed history is available.");
   });
 });

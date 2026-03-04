@@ -69,7 +69,7 @@ export default async function WorkoutAuditPage({
             <p className="text-sm uppercase tracking-wide text-slate-500">Workout Audit</p>
             <h1 className="page-title mt-1.5">Explainability Audit</h1>
             <p className="mt-1.5 text-sm text-slate-600">
-              Receipt-first audit view for session decisions and programming evidence.
+              Receipt-first audit view for session decisions, missing signals, and per-exercise reasoning.
             </p>
           </div>
           <Link
@@ -84,7 +84,7 @@ export default async function WorkoutAuditPage({
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700 sm:p-5">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Internal audit view</p>
             <p className="mt-1">
-              This surface is for backend auditing and rule verification. It is intentionally separate from the default user-facing workout flow.
+              This surface is for backend auditing and rule verification. Scan the session-level evidence first, then use the exercise drill-down only for the lifts that look wrong or surprising.
             </p>
           </div>
 

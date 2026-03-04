@@ -107,6 +107,18 @@ export function useWorkoutSessionCompletion({
         }
 
         const body = response.data;
+        if (action === "mark_partial") {
+          clearTimer();
+          setSessionFlow((prev) => ({
+            ...prev,
+            completionAction: null,
+            pendingAction: null,
+            showSkipOptions: false,
+          }));
+          showStatus("Workout saved as partial (some planned sets were unresolved)");
+          return;
+        }
+
         clearAllDrafts();
         setBaselineSummary((body?.baselineSummary as BaselineUpdateSummary | null | undefined) ?? null);
         clearTimer();
@@ -117,11 +129,7 @@ export function useWorkoutSessionCompletion({
           showSkipOptions: false,
           terminalState: "completed",
         }));
-        showStatus(
-          body?.workoutStatus === "PARTIAL"
-            ? "Workout saved as partial (some planned sets were unresolved)"
-            : "Workout marked as completed"
-        );
+        showStatus("Workout marked as completed");
       } catch {
         showError("Failed to complete workout action");
       } finally {

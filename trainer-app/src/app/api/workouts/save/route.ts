@@ -6,22 +6,15 @@ import { WorkoutStatus, Prisma } from "@prisma/client";
 import { updateExerciseExposure } from "@/lib/api/exercise-exposure";
 import { isTerminalWorkoutStatus } from "@/lib/workout-status";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
-import type { CycleContextSnapshot } from "@/lib/evidence/types";
 import {
   extractSessionDecisionReceipt,
   normalizeSelectionMetadataWithReceipt,
 } from "@/lib/evidence/session-decision-receipt";
-import { loadCurrentBlockContext } from "@/lib/api/periodization";
-import type { BlockContext } from "@/lib/engine";
 import { getCurrentMesoWeek, transitionMesocycleState } from "@/lib/api/mesocycle-lifecycle";
 
 type SaveAction = "save_plan" | "mark_completed" | "mark_partial" | "mark_skipped";
 type PersistedStatus = "PLANNED" | "IN_PROGRESS" | "PARTIAL" | "COMPLETED" | "SKIPPED";
 type JsonObject = Record<string, unknown>;
-type DbCycleContext = {
-  blockContext: BlockContext | null;
-  weekInMeso: number;
-};
 
 function toObject(value: unknown): JsonObject {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -30,46 +23,10 @@ function toObject(value: unknown): JsonObject {
   return value as JsonObject;
 }
 
-function hasValidCycleContext(incomingSelectionMetadata: JsonObject): boolean {
-  return Boolean(extractSessionDecisionReceipt(incomingSelectionMetadata)?.cycleContext);
-}
-
-function deriveCycleContext(
-  incomingSelectionMetadata: JsonObject,
-  dbContext?: DbCycleContext
-): CycleContextSnapshot {
-  const receiptCycleContext = extractSessionDecisionReceipt(incomingSelectionMetadata)?.cycleContext;
-  if (receiptCycleContext) {
-    return receiptCycleContext;
-  }
-
-  if (dbContext) {
-    const isDeload = dbContext.blockContext?.block.blockType === "deload";
-    const blockType: CycleContextSnapshot["blockType"] =
-      dbContext.blockContext?.block.blockType ?? (isDeload ? "deload" : "accumulation");
-    return {
-      weekInMeso: dbContext.weekInMeso,
-      weekInBlock: dbContext.blockContext?.weekInBlock ?? dbContext.weekInMeso,
-      mesocycleLength: undefined,
-      phase: blockType,
-      blockType,
-      isDeload,
-      source: "computed",
-    };
-  }
-
-  const isDeload =
-    extractSessionDecisionReceipt(incomingSelectionMetadata)?.deloadDecision.mode !== "none";
-  const blockType: CycleContextSnapshot["blockType"] = isDeload ? "deload" : "accumulation";
-
+function mergeSelectionMetadata(base: unknown, overrides: unknown): JsonObject {
   return {
-    weekInMeso: 1,
-    weekInBlock: 1,
-    mesocycleLength: undefined,
-    phase: blockType,
-    blockType,
-    isDeload,
-    source: "fallback",
+    ...toObject(base),
+    ...toObject(overrides),
   };
 }
 
@@ -129,22 +86,19 @@ export async function POST(request: Request) {
   let didPerformedTransition = false;
   let performedTransitionMesocycleId: string | null = null;
   const incomingSelectionMetadata = toObject(parsed.data.selectionMetadata);
-  let dbCycleContext: DbCycleContext | undefined;
-  if (!hasValidCycleContext(incomingSelectionMetadata)) {
-    const loadedContext = await loadCurrentBlockContext(user.id);
-    dbCycleContext = loadedContext.blockContext ? loadedContext : undefined;
-  }
-  const cycleContext = deriveCycleContext(incomingSelectionMetadata, dbCycleContext);
-  const selectionMetadata = normalizeSelectionMetadataWithReceipt({
-    selectionMetadata: incomingSelectionMetadata,
-    cycleContext,
-  });
 
   try {
     await prisma.$transaction(async (tx) => {
       const existingWorkout = await tx.workout.findUnique({
         where: { id: workoutId },
-        select: { id: true, userId: true, status: true, revision: true, mesocycleId: true },
+        select: {
+          id: true,
+          userId: true,
+          status: true,
+          revision: true,
+          mesocycleId: true,
+          selectionMetadata: true,
+        },
       });
 
       if (existingWorkout && existingWorkout.userId !== user.id) {
@@ -168,6 +122,19 @@ export async function POST(request: Request) {
       if (!existingWorkout && action !== "save_plan") {
         throw new Error("WORKOUT_NOT_FOUND");
       }
+
+      const effectiveSelectionMetadata = mergeSelectionMetadata(
+        existingWorkout?.selectionMetadata,
+        incomingSelectionMetadata
+      );
+      const receipt = extractSessionDecisionReceipt(effectiveSelectionMetadata);
+      if (!receipt?.cycleContext) {
+        throw new Error("WORKOUT_SELECTION_METADATA_REQUIRED");
+      }
+      const selectionMetadata = normalizeSelectionMetadataWithReceipt({
+        selectionMetadata: effectiveSelectionMetadata,
+        cycleContext: receipt.cycleContext,
+      });
 
       if (parsed.data.templateId) {
         const template = await tx.workoutTemplate.findFirst({
@@ -470,6 +437,12 @@ export async function POST(request: Request) {
     }
     if (error instanceof Error && error.message === "WORKOUT_NOT_FOUND") {
       return NextResponse.json({ error: "Workout not found" }, { status: 404 });
+    }
+    if (error instanceof Error && error.message === "WORKOUT_SELECTION_METADATA_REQUIRED") {
+      return NextResponse.json(
+        { error: "Canonical selectionMetadata.sessionDecisionReceipt is required." },
+        { status: 409 }
+      );
     }
     if (error instanceof Error && error.message === "TEMPLATE_NOT_FOUND") {
       return NextResponse.json({ error: "Template not found" }, { status: 404 });

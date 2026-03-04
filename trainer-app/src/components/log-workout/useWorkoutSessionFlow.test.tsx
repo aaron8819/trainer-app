@@ -174,6 +174,9 @@ function WorkoutSessionFlowHarness({
       <button onClick={() => void hook.completion.run("mark_completed")} type="button">
         complete
       </button>
+      <button onClick={() => void hook.completion.run("mark_partial")} type="button">
+        partial
+      </button>
       <button onClick={() => hook.chipEditor.open("set-1")} type="button">
         open-chip
       </button>
@@ -321,6 +324,34 @@ describe("useWorkoutSessionFlow", () => {
       expect(screen.getByTestId("terminal-state")).toHaveTextContent("completed");
       expect(screen.getByTestId("timer-end")).toHaveTextContent("");
       expect(screen.getByTestId("baseline-summary")).toHaveTextContent("Dumbbell Bench Press");
+    });
+  });
+
+  it("keeps the logging flow active for partial saves", async () => {
+    const callbacks = createCallbacks();
+    mockedSaveWorkoutRequest.mockResolvedValueOnce({
+      data: { status: "ok", workoutStatus: "PARTIAL" },
+      error: null,
+    });
+
+    render(<WorkoutSessionFlowHarness callbacks={callbacks} />);
+    fireEvent.click(screen.getByRole("button", { name: "partial" }));
+
+    await waitFor(() => {
+      expect(mockedSaveWorkoutRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          workoutId: "workout-1",
+          action: "mark_partial",
+          status: "PARTIAL",
+        })
+      );
+      expect(callbacks.clearAllDraftsSpy).not.toHaveBeenCalled();
+      expect(screen.getByTestId("terminal-state")).toHaveTextContent("active");
+      expect(screen.getByTestId("timer-end")).toHaveTextContent("");
+      expect(screen.getByTestId("baseline-summary")).toHaveTextContent("");
+      expect(screen.getByTestId("status")).toHaveTextContent(
+        "Workout saved as partial (some planned sets were unresolved)"
+      );
     });
   });
 

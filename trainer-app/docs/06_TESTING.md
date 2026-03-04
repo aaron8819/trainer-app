@@ -53,7 +53,7 @@ Sources of truth:
 - UI session overview copy guards: `src/lib/ui/session-overview.test.ts` (`PARTIAL`/`COMPLETED` performed basis and load-provenance wording).
 - Explainability panel UI coverage: `src/components/explainability/ExplainabilityPanel.test.tsx` now also asserts the simplified audit labels (`Exercise details`, `Why it made the plan`, `Main factors`) instead of the older engine-jargon labels.
 - UI program dashboard coverage: `src/components/ProgramStatusCard.test.ts` (volume dot class logic, deload banner, week navigation, and `getVolumeDotClass` boundary assertions).
-- Save-route cycle-context fallback persistence coverage: `src/app/api/workouts/save/route.integration.test.ts`.
+- Save-route canonical receipt enforcement coverage: `src/app/api/workouts/save/route.integration.test.ts`.
 
 ## Configuration
 - Vitest include patterns: `src/**/*.test.ts` and `src/**/*.test.tsx`

@@ -85,9 +85,58 @@ vi.mock("@/lib/api/mesocycle-lifecycle", () => ({
 
 import { POST } from "./route";
 
+function buildCanonicalSelectionMetadata(overrides?: Record<string, unknown>) {
+  return {
+    sessionDecisionReceipt: {
+      version: 1,
+      cycleContext: {
+        weekInMeso: 4,
+        weekInBlock: 2,
+        phase: "accumulation",
+        blockType: "accumulation",
+        isDeload: false,
+        source: "computed",
+      },
+      lifecycleVolume: {
+        source: "unknown",
+      },
+      sorenessSuppressedMuscles: [],
+      deloadDecision: {
+        mode: "none",
+        reason: [],
+        reductionPercent: 0,
+        appliedTo: "none",
+      },
+      readiness: {
+        wasAutoregulated: false,
+        signalAgeHours: null,
+        fatigueScoreOverall: null,
+        intensityScaling: {
+          applied: false,
+          exerciseIds: [],
+          scaledUpCount: 0,
+          scaledDownCount: 0,
+        },
+      },
+      exceptions: [],
+    },
+    ...overrides,
+  };
+}
+
 describe("POST /api/workouts/save", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    mocks.workoutFindUnique.mockReset();
+    mocks.workoutUpsert.mockReset();
+    mocks.workoutExerciseFindMany.mockReset();
+    mocks.workoutExerciseCreate.mockReset();
+    mocks.exerciseFindUnique.mockReset();
+    mocks.loadCurrentBlockContext.mockReset();
+    mocks.transitionMesocycleState.mockReset();
+    mocks.getCurrentMesoWeek.mockReset();
+    mocks.tx.mesocycle.findUnique.mockReset();
+    mocks.tx.mesocycle.findFirst.mockReset();
+    mocks.tx.mesocycle.update.mockReset();
     mocks.workoutFindUnique.mockResolvedValue(null);
     mocks.workoutUpsert.mockResolvedValue({ id: "workout-1", revision: 1 });
     mocks.workoutExerciseFindMany.mockResolvedValue([]);
@@ -116,6 +165,7 @@ describe("POST /api/workouts/save", () => {
         body: JSON.stringify({
           workoutId: "workout-1",
           status: terminalStatus,
+          selectionMetadata: buildCanonicalSelectionMetadata(),
           exercises: [
             {
               section: "MAIN",
@@ -146,6 +196,7 @@ describe("POST /api/workouts/save", () => {
         userId: "user-1",
         status: "PLANNED",
         revision: 1,
+        selectionMetadata: buildCanonicalSelectionMetadata(),
       })
       .mockResolvedValueOnce({
         exercises: [
@@ -171,6 +222,118 @@ describe("POST /api/workouts/save", () => {
     expect(body.workoutStatus).toBe("COMPLETED");
   });
 
+  it("preserves persisted canonical selectionMetadata for mark_completed when the request omits it", async () => {
+    const persistedReceipt = {
+      version: 1,
+      cycleContext: {
+        weekInMeso: 4,
+        weekInBlock: 2,
+        phase: "accumulation",
+        blockType: "accumulation",
+        isDeload: false,
+        source: "computed",
+      },
+      lifecycleRirTarget: { min: 1, max: 2 },
+      lifecycleVolume: {
+        targets: { Chest: 16 },
+        source: "lifecycle",
+      },
+      sorenessSuppressedMuscles: ["Chest"],
+      deloadDecision: {
+        mode: "none",
+        reason: [],
+        reductionPercent: 0,
+        appliedTo: "none",
+      },
+      readiness: {
+        wasAutoregulated: true,
+        signalAgeHours: 6,
+        fatigueScoreOverall: 0.41,
+        intensityScaling: {
+          applied: true,
+          exerciseIds: ["bench"],
+          scaledUpCount: 0,
+          scaledDownCount: 1,
+        },
+        rationale: "Readiness scaled pressing volume.",
+      },
+      exceptions: [
+        {
+          code: "readiness_scale",
+          message: "Readiness scaled 1 exercise(s): 1 down, 0 up.",
+        },
+      ],
+    };
+
+    mocks.workoutFindUnique
+      .mockResolvedValueOnce({
+        id: "workout-1",
+        userId: "user-1",
+        status: "IN_PROGRESS",
+        revision: 3,
+        mesocycleId: "meso-1",
+        selectionMetadata: {
+          rationale: { bench: { selectedStep: "pin", score: 0.9, components: { pinned: 1 }, hardFilterPass: true } },
+          selectedExerciseIds: ["bench"],
+          sessionDecisionReceipt: persistedReceipt,
+        },
+      })
+      .mockResolvedValueOnce({
+        exercises: [
+          {
+            sets: [{ logs: [{ wasSkipped: false, actualReps: 8, actualRpe: 8, actualLoad: 135 }] }],
+          },
+        ],
+      });
+    mocks.tx.mesocycle.findUnique.mockResolvedValueOnce({
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION",
+      accumulationSessionsCompleted: 3,
+      deloadSessionsCompleted: 0,
+      sessionsPerWeek: 3,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workoutId: "workout-1", action: "mark_completed" }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+
+    const upsert = mocks.workoutUpsert.mock.calls[0][0];
+    const selectionMetadata = upsert.update.selectionMetadata as Record<string, unknown>;
+    const receipt = selectionMetadata.sessionDecisionReceipt as Record<string, unknown>;
+    const lifecycleVolume = receipt.lifecycleVolume as Record<string, unknown>;
+    const readiness = receipt.readiness as Record<string, unknown>;
+    const intensityScaling = readiness.intensityScaling as Record<string, unknown>;
+
+    expect(selectionMetadata.rationale).toEqual({
+      bench: { selectedStep: "pin", score: 0.9, components: { pinned: 1 }, hardFilterPass: true },
+    });
+    expect(selectionMetadata.selectedExerciseIds).toEqual(["bench"]);
+    expect(receipt.cycleContext).toEqual(
+      expect.objectContaining({
+        weekInMeso: 4,
+        weekInBlock: 2,
+        phase: "accumulation",
+        blockType: "accumulation",
+        isDeload: false,
+        source: "computed",
+      })
+    );
+    expect(receipt.lifecycleRirTarget).toEqual({ min: 1, max: 2 });
+    expect((lifecycleVolume.targets as Record<string, unknown>).Chest).toBe(16);
+    expect(readiness.wasAutoregulated).toBe(true);
+    expect(readiness.signalAgeHours).toBe(6);
+    expect(readiness.fatigueScoreOverall).toBe(0.41);
+    expect(intensityScaling.exerciseIds).toEqual(["bench"]);
+    expect(intensityScaling.scaledDownCount).toBe(1);
+    expect(mocks.loadCurrentBlockContext).not.toHaveBeenCalled();
+  });
+
   it("calls lifecycle transition for first performed save when workout has mesocycleId", async () => {
     mocks.workoutFindUnique
       .mockResolvedValueOnce({
@@ -179,6 +342,7 @@ describe("POST /api/workouts/save", () => {
         status: "PLANNED",
         revision: 1,
         mesocycleId: "meso-1",
+        selectionMetadata: buildCanonicalSelectionMetadata(),
       })
       .mockResolvedValueOnce({
         exercises: [
@@ -221,6 +385,7 @@ describe("POST /api/workouts/save", () => {
         status: "PLANNED",
         revision: 1,
         mesocycleId: null,
+        selectionMetadata: buildCanonicalSelectionMetadata(),
       })
       .mockResolvedValueOnce({
         exercises: [
@@ -268,6 +433,7 @@ describe("POST /api/workouts/save", () => {
           workoutId: "workout-1",
           status: "IN_PROGRESS",
           notes: "still training",
+          selectionMetadata: buildCanonicalSelectionMetadata(),
         }),
       })
     );
@@ -283,6 +449,7 @@ describe("POST /api/workouts/save", () => {
         userId: "user-1",
         status: "PLANNED",
         revision: 1,
+        selectionMetadata: buildCanonicalSelectionMetadata(),
       })
       .mockResolvedValueOnce({
         exercises: [
@@ -305,6 +472,75 @@ describe("POST /api/workouts/save", () => {
     expect(body.workoutStatus).toBe("PARTIAL");
   });
 
+  it.each([
+    ["mark_partial", "PARTIAL"],
+    ["mark_skipped", "SKIPPED"],
+  ] as const)(
+    "%s preserves persisted canonical selectionMetadata when the request omits it",
+    async (action, expectedStatus) => {
+      const persistedReceipt = {
+        version: 1,
+        cycleContext: {
+          weekInMeso: 5,
+          weekInBlock: 1,
+          phase: "deload",
+          blockType: "deload",
+          isDeload: true,
+          source: "computed",
+        },
+        lifecycleVolume: { source: "unknown" },
+        sorenessSuppressedMuscles: [],
+        deloadDecision: {
+          mode: "none",
+          reason: [],
+          reductionPercent: 0,
+          appliedTo: "none",
+        },
+        readiness: {
+          wasAutoregulated: false,
+          signalAgeHours: null,
+          fatigueScoreOverall: null,
+          intensityScaling: {
+            applied: false,
+            exerciseIds: [],
+            scaledUpCount: 0,
+            scaledDownCount: 0,
+          },
+        },
+        exceptions: [],
+      };
+
+      mocks.workoutFindUnique.mockResolvedValueOnce({
+        id: "workout-1",
+        userId: "user-1",
+        status: "IN_PROGRESS",
+        revision: 2,
+        mesocycleId: null,
+        selectionMetadata: {
+          sessionDecisionReceipt: persistedReceipt,
+          selectedExerciseIds: ["bench"],
+        },
+      });
+
+      const response = await POST(
+        new Request("http://localhost/api/workouts/save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ workoutId: "workout-1", action }),
+        })
+      );
+
+      expect(response.status).toBe(200);
+      const upsert = mocks.workoutUpsert.mock.calls[0][0];
+      expect(upsert.update.status).toBe(expectedStatus);
+      expect(upsert.update.selectionMetadata).toEqual({
+        sessionDecisionReceipt: persistedReceipt,
+        selectedExerciseIds: ["bench"],
+      });
+      expect(mocks.loadCurrentBlockContext).not.toHaveBeenCalled();
+    }
+  );
+
   it("treats LOGGED_EMPTY rows as unresolved and marks completion as PARTIAL", async () => {
     mocks.workoutFindUnique
       .mockResolvedValueOnce({
@@ -312,6 +548,7 @@ describe("POST /api/workouts/save", () => {
         userId: "user-1",
         status: "PLANNED",
         revision: 1,
+        selectionMetadata: buildCanonicalSelectionMetadata(),
       })
       .mockResolvedValueOnce({
         exercises: [
@@ -344,6 +581,7 @@ describe("POST /api/workouts/save", () => {
         userId: "user-1",
         status: "PLANNED",
         revision: 1,
+        selectionMetadata: buildCanonicalSelectionMetadata(),
       })
       .mockResolvedValueOnce({
         exercises: [
@@ -375,6 +613,7 @@ describe("POST /api/workouts/save", () => {
         status: "PLANNED",
         revision: 1,
         mesocycleId: null,
+        selectionMetadata: buildCanonicalSelectionMetadata(),
       })
       .mockResolvedValueOnce({
         exercises: [
@@ -406,6 +645,7 @@ describe("POST /api/workouts/save", () => {
       userId: "user-1",
       status: "PARTIAL",
       revision: 2,
+      selectionMetadata: buildCanonicalSelectionMetadata(),
     });
 
     const response = await POST(
@@ -415,6 +655,7 @@ describe("POST /api/workouts/save", () => {
         body: JSON.stringify({
           workoutId: "workout-1",
           status: "COMPLETED",
+          selectionMetadata: buildCanonicalSelectionMetadata(),
           exercises: [
             {
               section: "MAIN",
@@ -438,6 +679,7 @@ describe("POST /api/workouts/save", () => {
       userId: "user-1",
       status: "PLANNED",
       revision: 3,
+      selectionMetadata: buildCanonicalSelectionMetadata(),
     });
 
     const response = await POST(
@@ -447,6 +689,7 @@ describe("POST /api/workouts/save", () => {
         body: JSON.stringify({
           workoutId: "workout-1",
           expectedRevision: 2,
+          selectionMetadata: buildCanonicalSelectionMetadata(),
           exercises: [
             {
               section: "MAIN",
@@ -470,6 +713,7 @@ describe("POST /api/workouts/save", () => {
       userId: "user-1",
       status: "PLANNED",
       revision: 1,
+      selectionMetadata: buildCanonicalSelectionMetadata(),
     });
 
     await POST(
@@ -479,6 +723,7 @@ describe("POST /api/workouts/save", () => {
         body: JSON.stringify({
           workoutId: "workout-1",
           expectedRevision: 1,
+          selectionMetadata: buildCanonicalSelectionMetadata(),
           exercises: [
             {
               section: "MAIN",
@@ -494,7 +739,7 @@ describe("POST /api/workouts/save", () => {
     expect(upsert.update.revision).toEqual({ increment: 1 });
   });
 
-  it("persists computed cycle context from DB when payload cycleContext is missing and active mesocycle exists", async () => {
+  it("rejects save_plan when canonical receipt metadata is missing", async () => {
     const response = await POST(
       new Request("http://localhost/api/workouts/save", {
         method: "POST",
@@ -511,18 +756,11 @@ describe("POST /api/workouts/save", () => {
         }),
       })
     );
-    expect(response.status).toBe(200);
-
-    const upsert = mocks.workoutUpsert.mock.calls[0][0];
-    const createMetadata = upsert.create.selectionMetadata as Record<string, unknown>;
-    const sessionDecisionReceipt = createMetadata.sessionDecisionReceipt as Record<string, unknown>;
-    const cycleContext = sessionDecisionReceipt.cycleContext as Record<string, unknown>;
-    expect(createMetadata.cycleContext).toBeUndefined();
-    expect(cycleContext.source).toBe("computed");
-    expect(cycleContext.weekInMeso).toBe(3);
-    expect(cycleContext.weekInBlock).toBe(3);
-    expect(sessionDecisionReceipt.version).toBe(1);
-    expect(mocks.loadCurrentBlockContext).toHaveBeenCalledTimes(1);
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "Canonical selectionMetadata.sessionDecisionReceipt is required.",
+    });
+    expect(mocks.workoutUpsert).not.toHaveBeenCalled();
   });
 
   it("persists canonical receipt cycle context as-is and skips DB cycle-context load", async () => {
@@ -638,6 +876,7 @@ describe("POST /api/workouts/save", () => {
         status: "PLANNED",
         revision: 1,
         mesocycleId: "meso-1",
+        selectionMetadata: buildCanonicalSelectionMetadata(),
       })
       .mockResolvedValueOnce({
         exercises: [
@@ -676,10 +915,14 @@ describe("POST /api/workouts/save", () => {
     expect(mocks.transitionMesocycleState).toHaveBeenCalledWith("meso-1");
   });
 
-  it("persists fallback cycle context when payload is missing cycleContext and no active mesocycle exists", async () => {
-    mocks.loadCurrentBlockContext.mockResolvedValueOnce({
-      blockContext: null,
-      weekInMeso: 4,
+  it("rejects performed save when neither request nor persisted workout has canonical receipt metadata", async () => {
+    mocks.workoutFindUnique.mockResolvedValueOnce({
+      id: "workout-1",
+      userId: "user-1",
+      status: "IN_PROGRESS",
+      revision: 1,
+      mesocycleId: null,
+      selectionMetadata: null,
     });
 
     const response = await POST(
@@ -688,25 +931,15 @@ describe("POST /api/workouts/save", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           workoutId: "workout-1",
-          exercises: [
-            {
-              section: "MAIN",
-              exerciseId: "bench",
-              sets: [{ setIndex: 1, targetReps: 8 }],
-            },
-          ],
+          action: "mark_partial",
         }),
       })
     );
-    expect(response.status).toBe(200);
-
-    const upsert = mocks.workoutUpsert.mock.calls[0][0];
-    const createMetadata = upsert.create.selectionMetadata as Record<string, unknown>;
-    const sessionDecisionReceipt = createMetadata.sessionDecisionReceipt as Record<string, unknown>;
-    const cycleContext = sessionDecisionReceipt.cycleContext as Record<string, unknown>;
-    expect(createMetadata.cycleContext).toBeUndefined();
-    expect(cycleContext.source).toBe("fallback");
-    expect(cycleContext.weekInMeso).toBe(1);
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "Canonical selectionMetadata.sessionDecisionReceipt is required.",
+    });
+    expect(mocks.workoutUpsert).not.toHaveBeenCalled();
   });
 
   it("preserves canonical receipt readiness fields without a compatibility save shim", async () => {

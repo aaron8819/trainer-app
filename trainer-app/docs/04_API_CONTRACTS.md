@@ -59,7 +59,7 @@ Sources of truth:
 - `profileSetupSchema` no longer accepts `sessionMinutes`; profile setup persists `daysPerWeek` and optional `splitType` through `POST /api/profile/setup` (`src/lib/validation.ts`, `src/app/api/profile/setup/route.ts`).
 - Save payload no longer accepts compatibility-only `autoregulationLog`; session-level readiness must be carried canonically in `selectionMetadata.sessionDecisionReceipt.readiness` (`src/lib/validation.ts`, `src/app/api/workouts/save/route.ts`).
 - `saveWorkoutSchema` rejects legacy top-level session metadata mirrors inside `selectionMetadata` (`cycleContext`, `deloadDecision`, `sorenessSuppressedMuscles`, `adaptiveDeloadApplied`, `periodizationWeek`, `lifecycleRirTarget`, `lifecycleVolumeTargets`) and requires canonical session-level metadata to live under `selectionMetadata.sessionDecisionReceipt` (`src/lib/validation.ts`, `src/app/api/workouts/save/route.ts`).
-- `src/app/api/workouts/save/route.ts` rebuilds canonical receipt metadata from `selectionMetadata.sessionDecisionReceipt`; save-time compatibility folding for top-level readiness mirrors has been removed.
+- `src/app/api/workouts/save/route.ts` rebuilds canonical receipt metadata from `selectionMetadata.sessionDecisionReceipt`; save-time compatibility folding for top-level readiness mirrors has been removed, and save requests without a canonical receipt are rejected instead of synthesized.
 
 ## Workout save terminal transition contract
 - Route: `POST /api/workouts/save` (`src/app/api/workouts/save/route.ts`).
@@ -77,7 +77,7 @@ Sources of truth:
   - Performed-signal readers use `COMPLETED` + `PARTIAL` (`src/lib/workout-status.ts`).
   - Lifecycle counters (`accumulationSessionsCompleted`, `deloadSessionsCompleted`) are incremented on any first transition to a performed status (`COMPLETED` or `PARTIAL`) atomically inside the save-workout transaction (`src/app/api/workouts/save/route.ts`); `transitionMesocycleState()` is then called post-transaction to apply threshold-based state transitions.
 - Lifecycle thresholds are duration-aware: accumulation completes after `(durationWeeks - 1) * sessionsPerWeek` performed sessions and deload completes after `sessionsPerWeek` performed sessions.
-- Save route persists session-level cycle context only inside `selectionMetadata.sessionDecisionReceipt`; top-level `selectionMetadata.cycleContext` is no longer a supported write shape. When upstream omits a canonical receipt, the route computes a receipt-backed cycle snapshot or falls back to `source: "fallback"` (`src/app/api/workouts/save/route.ts`).
+- Save route persists session-level cycle context only inside `selectionMetadata.sessionDecisionReceipt`; top-level `selectionMetadata.cycleContext` is no longer a supported write shape, and `POST /api/workouts/save` now rejects writes that omit canonical `selectionMetadata.sessionDecisionReceipt` instead of synthesizing fallback receipt state (`src/app/api/workouts/save/route.ts`).
 
 ## Deload gate contract
 - Routes:

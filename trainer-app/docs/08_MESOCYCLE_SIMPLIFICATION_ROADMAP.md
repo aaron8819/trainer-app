@@ -1,7 +1,7 @@
 # 08 Mesocycle Simplification Roadmap
 
 Owner: Aaron
-Last reviewed: 2026-03-03
+Last reviewed: 2026-03-04
 Purpose: Audit-driven roadmap for simplifying mesocycle progression workflow and session-decision handling.
 
 This doc covers:
@@ -22,16 +22,16 @@ Sources of truth:
 
 ## Audit summary
 
-Phase 1 is closed. The canonical model is in place and compatibility-only session-decision inputs are isolated away from active runtime reads/writes.
+Phases 1-4 are closed. The canonical model is in place, compatibility-only session-decision inputs are isolated away from active runtime reads/writes, and the last Phase 3 partial-save regression has been resolved.
 
 Implemented now:
 - Canonical persisted session decision shape exists as `selectionMetadata.sessionDecisionReceipt`.
 - Generation/finalization writes the receipt (`src/lib/api/template-session.ts`, `src/lib/api/template-session/finalize-session.ts`).
-- Save normalizes and persists the receipt (`src/app/api/workouts/save/route.ts`).
+- Save preserves and normalizes the canonical receipt, and rejects writes that omit it (`src/app/api/workouts/save/route.ts`).
 - Explainability reads session-level context from the receipt rather than legacy mirrors (`src/lib/api/explainability.ts`, `src/lib/ui/explainability.ts`).
 - Workout detail and log pages read the receipt (`src/app/workout/[id]/page.tsx`, `src/app/log/[id]/page.tsx`).
 - Save validation rejects legacy top-level session mirrors inside `selectionMetadata` (`src/lib/validation.ts`).
-- Save-time receipt normalization is now receipt-only; top-level readiness compatibility payloads are no longer accepted on the main save route.
+- Save-time receipt normalization is now receipt-only; top-level readiness compatibility payloads are no longer accepted on the main save route, and save writes without a canonical receipt are rejected.
 - UI/explainability runtime reads are receipt-only; they do not read `autoregulationLog`.
 - Current app save paths do not send compatibility-only `wasAutoregulated` / `autoregulationLog` fields.
 - Save no longer persists compatibility-only workout autoregulation mirrors as active state.
@@ -40,7 +40,13 @@ Not a Phase 1 blocker anymore:
 - Explainability is already receipt-first.
 - UI receipt consumption is already wired.
 - Generation/finalization already produces the canonical decision object.
-- Compatibility-only save inputs are isolated to a narrow normalization shim.
+- Compatibility-only save inputs are rejected on the main save route rather than synthesized into active receipt state.
+
+Phase 3 follow-up:
+- Re-audit found one remaining regression in the extracted completion owner: `mark_partial` incorrectly drove the client into completed-session UI.
+- The completion hook now keeps partial saves in the active logging state, matching the footer contract that "Leave for now" preserves a resumable session.
+- Focused tests now cover partial-save behavior at the completion-hook, session-flow, and `LogWorkoutClient` boundaries.
+- Phase 5 is no longer blocked by Phase 3 logging-flow ownership/runtime behavior.
 
 ## Revised roadmap
 
@@ -51,9 +57,10 @@ Goal:
 - Keep one canonical session decision receipt and make all remaining non-receipt session decision fields explicitly compatibility-only.
 
 Completed focus:
-- Isolated save-time compatibility folding behind a clearly named compatibility boundary.
+- Removed save-time receipt synthesis from the main save route so canonical receipt metadata must already exist on write.
 - Removed `wasAutoregulated` / `autoregulationLog` from the active save contract and kept receipt readiness as the only supported session-decision write shape.
 - Tightened runtime reads so new code paths prefer `sessionDecisionReceipt` and do not imply multiple active session-decision sources.
+- Tightened save semantics so performed and plan writes without canonical `selectionMetadata.sessionDecisionReceipt` are rejected instead of rebuilt from DB/fallback context.
 
 Exit criteria:
 - Canonical receipt remains the only active session-decision source read by explainability/UI/runtime consumers.
@@ -123,7 +130,7 @@ Exit criteria met:
 - `useWorkoutSessionFlow` is narrowed to core set-log mutation, undo, autoreg hinting, and add-exercise coordination; chip edit and terminal completion/skip flows now have tighter dedicated owners.
 - Draft state remains single-owner in `useActiveSetDraftState`; no parallel field buffers were reintroduced.
 - Footer actions remain the only session-end action owner.
-- Focused tests now cover extracted layout, completion, and chip-edit boundaries in addition to the remaining client/session-flow integration coverage.
+- Focused tests now cover extracted layout, completion, partial-save, and chip-edit boundaries in addition to the remaining client/session-flow integration coverage.
 
 ### Phase 4 - API and Persistence Cleanup
 Status: COMPLETE
@@ -141,6 +148,7 @@ Implemented in this pass:
 - Deleted the intent-route debug echo so generation responses expose only one canonical selection metadata payload.
 - Tightened client/API typing so current save flows keep treating `selectionMetadata` as the active contract surface.
 - Removed the last save-time legacy autoregulation payload from the main route boundary so receipt readiness is the only supported save-time session-decision input.
+- Removed the last active save-route receipt synthesis path so persistence no longer fabricates cycle-context receipt data from DB/fallback context when canonical metadata is missing.
 - Collapsed history/recent-workout badge data to a derived `sessionSnapshot` summary model instead of exposing parallel top-level snapshot fields across list surfaces.
 - Normalized progression history around a derived `mesocycleSnapshot` object so runtime load-selection logic no longer reads raw snapshot column names directly.
 - Removed top-level generation autoregulation from intent/template responses so generation preview and save flows now read readiness state only from `selectionMetadata.sessionDecisionReceipt.readiness`.
@@ -186,19 +194,18 @@ Focus:
 ## Priority buckets
 
 Do now:
-- Session clarity work in workout detail/log surfaces.
-- Define one shared session summary model driven from the receipt.
+- Phase 5 legacy compatibility reduction.
+- Keep runtime session-decision ownership receipt-first while separating migration-only logic from active save/read flows.
 
 Do next:
-- Logging flow simplification.
-- Broader API/persistence cleanup outside the now-closed Phase 1 boundary.
-
-Do later:
-- Broader evidence/rule audit.
+- Broader evidence/rule audit once compatibility-only runtime branches are removed.
 - Deeper analytics/history UX cleanup after contracts settle.
 
+Do later:
+- Final deletion/doc cleanup once Phase 5 and Phase 6 settle.
+
 Delete after migration:
-- Save-time legacy session decision fallbacks that still synthesize receipt state from non-canonical fields.
+- Any remaining compatibility-only session decision helpers outside the active save/runtime path that still need deletion after migration.
 - Duplicate active session-decision typing that treats top-level autoregulation fields as primary.
 - Stale docs that still describe multiple session-decision sources.
 

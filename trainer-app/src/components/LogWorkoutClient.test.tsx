@@ -248,6 +248,38 @@ describe("LogWorkoutClient UX behavior", () => {
     });
   });
 
+  it("keeps the logging UI active after leave-for-now confirms a partial save", async () => {
+    const user = userEvent.setup();
+    mockedSaveWorkoutRequest.mockResolvedValueOnce({
+      data: { status: "ok", workoutStatus: "PARTIAL" },
+      error: null,
+    });
+
+    renderClient();
+
+    await user.click(screen.getByRole("button", { name: "Log set" }));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Leave for now" })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Leave for now" }));
+    await user.click(screen.getByRole("button", { name: "Confirm" }));
+
+    await waitFor(() => {
+      expect(mockedSaveWorkoutRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          workoutId: "workout-1",
+          action: "mark_partial",
+          status: "PARTIAL",
+        })
+      );
+      expect(screen.getByText(/Workout saved as partial/)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Log set|Update set/ })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Leave for now" })).toBeInTheDocument();
+      expect(screen.queryByText("Session complete!")).not.toBeInTheDocument();
+    });
+  });
+
   it("writes draft to localStorage on input change", async () => {
     vi.useFakeTimers();
     renderClient();

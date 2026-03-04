@@ -315,7 +315,6 @@ describe("canonical session decision receipt pipeline", () => {
       scheduledDate: new Date("2026-03-03T00:00:00.000Z"),
       sessionIntent: "PUSH",
       selectionMetadata: state.persistedSelectionMetadata ?? {},
-      autoregulationLog: null,
       filteredExercises: [],
       exercises: [
         {

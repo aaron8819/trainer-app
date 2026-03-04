@@ -1,7 +1,7 @@
 # 01 Architecture
 
 Owner: Aaron  
-Last reviewed: 2026-02-20  
+Last reviewed: 2026-03-04  
 Purpose: Defines the current runtime architecture for the single-user local-first Trainer app and the boundaries between UI, API routes, orchestration, engine, and persistence.
 
 This doc covers:
@@ -46,6 +46,12 @@ Sources of truth:
 3. Orchestration loads context from Prisma and invokes engine functions.
 4. Engine returns deterministic plan/rationale outputs.
 5. API persists workout/log changes and returns response payloads.
+
+## Canonical session-decision flow
+- Generation/finalization build the canonical session decision under `selectionMetadata.sessionDecisionReceipt` in `src/lib/api/template-session.ts` and `src/lib/api/template-session/finalize-session.ts`.
+- Save requires that receipt, then only re-parses/re-normalizes the persisted JSON shape at the database boundary in `src/app/api/workouts/save/route.ts` and `src/lib/evidence/session-decision-receipt.ts`.
+- Runtime readers in UI and explainability consume only `selectionMetadata.sessionDecisionReceipt` via `src/lib/ui/selection-metadata.ts`, `src/lib/ui/explainability.ts`, and `src/lib/api/explainability.ts`.
+- Removed top-level session mirrors (`wasAutoregulated`, `autoregulationLog`, legacy `selectionMetadata.*` session fields) remain guardrail rejects in `src/lib/validation.ts`; they are not active runtime inputs.
 
 ## Lifecycle ownership and data entities
 - Lifecycle state transitions (`ACTIVE_ACCUMULATION` -> `ACTIVE_DELOAD` -> `COMPLETED`) are executed by `transitionMesocycleState()` in `src/lib/api/mesocycle-lifecycle.ts`, invoked from `src/app/api/workouts/save/route.ts` after first transition into a performed status.

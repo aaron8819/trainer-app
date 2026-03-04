@@ -129,7 +129,6 @@ describe("generateWorkoutExplanation progression receipt", () => {
       scheduledDate: new Date("2026-02-21T00:00:00.000Z"),
       sessionIntent: "PUSH",
       selectionMetadata: {},
-      autoregulationLog: null,
       filteredExercises: [],
       exercises: [
         {
@@ -191,7 +190,6 @@ describe("generateWorkoutExplanation progression receipt", () => {
       scheduledDate: new Date("2026-02-21T00:00:00.000Z"),
       sessionIntent: "PUSH",
       selectionMetadata: {},
-      autoregulationLog: null,
       filteredExercises: [],
       exercises: [
         {
@@ -260,7 +258,6 @@ describe("generateWorkoutExplanation progression receipt", () => {
       scheduledDate: new Date("2026-02-21T00:00:00.000Z"),
       sessionIntent: "PUSH",
       selectionMetadata: {},
-      autoregulationLog: null,
       filteredExercises: [],
       exercises: [
         {
@@ -382,7 +379,6 @@ describe("generateWorkoutExplanation progression receipt", () => {
           },
         },
       },
-      autoregulationLog: null,
       filteredExercises: [],
       exercises: [
         {
@@ -463,7 +459,6 @@ describe("generateWorkoutExplanation progression receipt", () => {
           exceptions: [],
         },
       },
-      autoregulationLog: null,
       filteredExercises: [],
       exercises: [
         {

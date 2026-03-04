@@ -29,8 +29,6 @@ describe("mapHistory", () => {
         mesocycleWeekSnapshot: 4,
         mesoSessionSnapshot: 2,
         mesocyclePhaseSnapshot: "ACCUMULATION",
-        wasAutoregulated: false,
-        autoregulationLog: null,
         exercises: [
           {
             id: "we1",
@@ -159,8 +157,6 @@ describe("mapHistory", () => {
         advancesSplit: true,
         trainingBlockId: null,
         weekInBlock: null,
-        wasAutoregulated: false,
-        autoregulationLog: null,
         exercises: [
           {
             id: "we2",

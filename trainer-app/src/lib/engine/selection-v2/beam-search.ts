@@ -1073,7 +1073,7 @@ function buildResult(
   });
 
   // Generate rationale
-  const rationale = generateRationale(annotatedSelected, rejected, objective);
+  const rationale = generateRationale(annotatedSelected, objective);
 
   return {
     selected,

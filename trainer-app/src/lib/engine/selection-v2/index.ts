@@ -29,7 +29,6 @@ export type {
 export {
   DEFAULT_SELECTION_WEIGHTS,
   DEFAULT_BEAM_CONFIG,
-  COLD_START_BEAM_CONFIGS,
 } from "./types";
 
 // Main optimizer

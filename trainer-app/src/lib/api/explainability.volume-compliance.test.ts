@@ -200,7 +200,6 @@ const BASE_WORKOUT = {
   scheduledDate: new Date("2026-02-21T00:00:00.000Z"),
   sessionIntent: "PUSH",
   selectionMetadata: {},
-  autoregulationLog: null,
   filteredExercises: [],
   mesocycleId: "meso1",
   mesocycleWeekSnapshot: 2,

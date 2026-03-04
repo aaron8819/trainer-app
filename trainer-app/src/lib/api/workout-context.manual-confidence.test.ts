@@ -28,8 +28,6 @@ function makeWorkout(input: {
     advancesSplit: true,
     trainingBlockId: null,
     weekInBlock: null,
-    wasAutoregulated: false,
-    autoregulationLog: null,
     exercises: [
       {
         id: `we-${input.id}`,

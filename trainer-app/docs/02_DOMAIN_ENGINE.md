@@ -59,10 +59,7 @@ Sources of truth:
 - Macro/meso/block logic lives in `src/lib/engine/periodization`.
 - Readiness, fatigue scoring, and autoregulation logic lives in `src/lib/engine/readiness`.
 - API orchestration for readiness and periodization endpoints lives in `src/lib/api/readiness.ts` and `src/lib/api/periodization.ts`.
-- Canonical session-level training context is materialized as `selectionMetadata.sessionDecisionReceipt`, with build/parse/read helpers in `src/lib/evidence/session-decision-receipt.ts` and its persisted shape in `src/lib/evidence/types.ts`.
-- Receipt readiness context is canonicalized from autoregulation into `readiness.wasAutoregulated`, `readiness.signalAgeHours`, `readiness.fatigueScoreOverall`, and `readiness.intensityScaling`; exception rows are derived from receipt state rather than stored as separate session-level mirrors (`src/lib/evidence/session-decision-receipt.ts`, `src/lib/api/autoregulation.ts`).
-- Save-time session-decision writes are receipt-only: runtime consumers read the canonical receipt, and the main save route no longer accepts top-level autoregulation payloads.
-- Generation responses are also receipt-only: generation UI reads readiness preview state from `selectionMetadata.sessionDecisionReceipt.readiness` rather than a parallel top-level autoregulation payload.
+- Session-decision ownership is receipt-first. The canonical flow is defined once in `docs/01_ARCHITECTURE.md`; domain logic here assumes session-level cycle/readiness context is carried only by `selectionMetadata.sessionDecisionReceipt` and parsed by `src/lib/evidence/session-decision-receipt.ts`.
 
 ## Workout status semantics
 - The split exists to separate adaptation signals from advancement control: partially performed work should inform future load/selection, while schedule/phase advancement remains a stricter completion event.
@@ -94,8 +91,7 @@ Sources of truth:
 - Explanation endpoint is `src/app/api/workouts/[id]/explanation/route.ts`.
 - Workout explanations include per-exercise progression receipts (`WorkoutExplanation.progressionReceipts` in `src/lib/engine/explainability/types.ts`), derived from performed history and current prescription in `src/lib/api/explainability.ts`.
 - Session context now includes cycle provenance and readiness availability labels (`SessionContext.cycleSource`, `ReadinessStatus.availability`, `ReadinessStatus.label`) in `src/lib/engine/explainability/types.ts`, produced in `src/lib/engine/explainability/session-context.ts`.
-- Explainability is strictly receipt-first: it reads session-level cycle/readiness context only from `selectionMetadata.sessionDecisionReceipt`; workouts without a canonical persisted receipt are treated as missing session-level evidence (`src/lib/evidence/session-decision-receipt.ts`, `src/lib/api/explainability.ts`).
-- Receipt parsing is strict and canonical-only: `readSessionDecisionReceipt()` no longer falls back to legacy top-level session metadata or `autoregulationLog`; missing canonical receipt means missing session-level evidence (`src/lib/evidence/session-decision-receipt.ts`, `src/lib/ui/explainability.ts`).
+- Explainability is strictly receipt-first: it reads session-level cycle/readiness context only from `selectionMetadata.sessionDecisionReceipt`, and missing canonical receipt means missing session-level evidence (`src/lib/evidence/session-decision-receipt.ts`, `src/lib/api/explainability.ts`, `src/lib/ui/explainability.ts`).
 - Progression receipts only use recent performed evidence (42-day recency window) when loading `lastPerformed` in `loadLatestPerformedSetSummary()` within `src/lib/api/explainability.ts`.
 - Progression receipts include a decision log summarizing which load-progression rule path fired and why.
 - Explainability renders per-exercise progression decision logs in the Evidence tab under `Progression Logic` when logs are available.

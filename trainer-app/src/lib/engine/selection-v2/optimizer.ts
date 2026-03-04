@@ -12,11 +12,10 @@ import type { Exercise } from "../types";
 import type {
   SelectionObjective,
   SelectionResult,
-  SelectionCandidate,
   RejectionReason,
   BeamSearchConfig,
 } from "./types";
-import { DEFAULT_BEAM_CONFIG, COLD_START_BEAM_CONFIGS } from "./types";
+import { DEFAULT_BEAM_CONFIG } from "./types";
 import { buildCandidate, computeProposedSets } from "./candidate";
 import { beamSearch } from "./beam-search";
 
@@ -195,8 +194,6 @@ function checkHardConstraints(
 /**
  * Resolve beam search config
  *
- * Supports cold start: reduce beam width/depth for new users
- *
  * @param objective - Selection objective
  * @param configOverride - Optional config override
  * @returns Resolved beam config
@@ -205,8 +202,7 @@ function resolveBeamConfig(
   objective: SelectionObjective,
   configOverride?: Partial<BeamSearchConfig>
 ): BeamSearchConfig {
-  // Check for cold start context (would be passed in objective)
-  // For now, use default config
+  void objective;
   const baseConfig = DEFAULT_BEAM_CONFIG;
 
   // Apply overrides

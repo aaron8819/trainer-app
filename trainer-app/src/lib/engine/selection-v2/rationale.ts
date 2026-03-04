@@ -1,11 +1,6 @@
-/**
- * Explainability: Generate human-readable selection rationale
- *
- * Phase 2: Minimal MVP rationale (strings only)
- * Phase 4: Full explainability with KB citations and UI
- */
+/** Generate human-readable selection rationale for the optimized result. */
 
-import type { SelectionCandidate, RejectedExercise, SelectionObjective, SelectionRationale } from "./types";
+import type { SelectionCandidate, SelectionObjective, SelectionRationale } from "./types";
 
 /**
  * Generate selection rationale
@@ -17,7 +12,6 @@ import type { SelectionCandidate, RejectedExercise, SelectionObjective, Selectio
  */
 export function generateRationale(
   selected: SelectionCandidate[],
-  rejected: RejectedExercise[],
   objective: SelectionObjective
 ): SelectionRationale {
   // Overall strategy description

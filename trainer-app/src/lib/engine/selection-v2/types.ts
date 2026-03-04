@@ -432,12 +432,3 @@ export const DEFAULT_BEAM_CONFIG: BeamSearchConfig = {
   beamWidth: 7,
   maxDepth: 8,
 };
-
-/**
- * Cold start beam configs (reduced complexity for new users)
- */
-export const COLD_START_BEAM_CONFIGS: Record<0 | 1 | 2, BeamSearchConfig> = {
-  0: { beamWidth: 2, maxDepth: 2 }, // Minimal (1-2 exercises)
-  1: { beamWidth: 3, maxDepth: 5 }, // Moderate
-  2: DEFAULT_BEAM_CONFIG, // Full
-};

@@ -42,7 +42,7 @@ Sources of truth:
 2. Generate and save workout
 - UI entry points: dashboard/template/intent components
 - APIs: `POST /api/workouts/generate-from-template`, `POST /api/workouts/generate-from-intent`, `POST /api/workouts/save`
-- `IntentWorkoutCard` and `GenerateFromTemplateCard` consume shared generation response types and save only canonicalized selection metadata; session-level context is passed through `selectionMetadata.sessionDecisionReceipt`, not duplicated as top-level mirrors (`src/components/IntentWorkoutCard.tsx`, `src/components/GenerateFromTemplateCard.tsx`, `src/components/log-workout/api.ts`).
+- `IntentWorkoutCard` and `GenerateFromTemplateCard` consume shared generation response types and pass session-level context through the canonical `selectionMetadata.sessionDecisionReceipt` flow described in `docs/01_ARCHITECTURE.md` (`src/components/IntentWorkoutCard.tsx`, `src/components/GenerateFromTemplateCard.tsx`, `src/components/log-workout/api.ts`).
 
 3. Log sets and complete workout
 - UI: `/log/[id]`, `LogWorkoutClient`
@@ -60,7 +60,7 @@ Sources of truth:
 - Detailed explainability is intentionally separated into `/workout/[id]/audit`, which loads `WorkoutExplanation` and exposes the richer evidence and exercise-detail panels for internal auditing (`src/app/workout/[id]/audit/page.tsx`, `src/components/WorkoutExplanation.tsx`, `src/components/explainability/ExplainabilityPanel.tsx`).
 - The audit explainability panel now uses the same summary card at the top, then places confidence details and the Evidence vs Exercise details breakdown inside a secondary disclosure (`src/components/explainability/ExplainabilityPanel.tsx`, `src/components/explainability/ExerciseRationaleCard.tsx`).
 - Workout detail copy for prescription/load provenance now treats `PARTIAL` and `COMPLETED` as performed states through `src/lib/ui/session-overview.ts` and usage in `src/app/workout/[id]/page.tsx`.
-- Workout detail and log pages both read session-level context through `parseExplainabilitySelectionMetadata()`, which is now canonical-receipt only for `sessionDecisionReceipt` (`src/app/workout/[id]/page.tsx`, `src/app/log/[id]/page.tsx`, `src/lib/ui/explainability.ts`).
+- Workout detail and log pages both read session-level context through `parseExplainabilitySelectionMetadata()`, which is canonical-receipt only for `sessionDecisionReceipt` (`src/app/workout/[id]/page.tsx`, `src/app/log/[id]/page.tsx`, `src/lib/ui/explainability.ts`).
 
 5. Program and readiness loop
 - UI: `/program`, readiness components

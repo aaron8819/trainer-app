@@ -2,12 +2,12 @@
 
 Owner: Aaron
 Last reviewed: 2026-03-04
-Purpose: Audit-driven roadmap for simplifying mesocycle progression workflow and session-decision handling.
+Purpose: Completion log for the mesocycle/session-decision simplification pass.
 
 This doc covers:
-- Current Phase 1 audit status
-- What still blocks a clean Phase 1 exit
-- Revised sequencing for later phases
+- What Phases 1-7 changed
+- What canonical architecture remains in place
+- What compatibility guardrails intentionally remain
 
 Sources of truth:
 - `trainer-app/src/lib/evidence/types.ts`
@@ -22,7 +22,7 @@ Sources of truth:
 
 ## Audit summary
 
-Phases 1-4 are closed. The canonical model is in place, compatibility-only session-decision inputs are isolated away from active runtime reads/writes, and the last Phase 3 partial-save regression has been resolved.
+Phases 1-7 are closed. Runtime session-decision ownership is receipt-first, stale compatibility reads are gone, and the remaining compatibility handling is limited to explicit save validation guardrails plus DB-boundary receipt parsing.
 
 Implemented now:
 - Canonical persisted session decision shape exists as `selectionMetadata.sessionDecisionReceipt`.
@@ -209,15 +209,21 @@ Exit criteria met:
 - Focused tests cover the changed progression, readiness, and selection behaviors.
 
 ### Phase 7 - Documentation and Deletion Pass
-Status: NOT STARTED
+Status: COMPLETE
 
 Goal:
 - Make docs and code reflect the simplified architecture with stale paths removed.
 
-Focus:
-- Remove dead code/tests/docs.
-- Collapse duplicate architectural descriptions.
-- Keep one short architecture description of the canonical flow.
+Implemented in this pass:
+- Added one short canonical session-decision flow description to `docs/01_ARCHITECTURE.md` and trimmed duplicated architecture wording from the domain/API/UI docs.
+- Updated this roadmap to reflect the fully completed Phase 1-7 state instead of the earlier in-progress audit framing.
+- Removed dead `selection-v2` scaffolding that no longer affected runtime behavior.
+- Removed compatibility-only residue from test fixtures/comments where those fields no longer participate in active runtime behavior.
+
+Exit criteria met:
+- Docs and comments now describe the receipt-first architecture consistently.
+- Dead code/tests/comments left behind by Phases 1-6 were removed without reopening compatibility paths.
+- Canonical runtime ownership remains centered on `selectionMetadata.sessionDecisionReceipt`.
 
 ## Priority buckets
 

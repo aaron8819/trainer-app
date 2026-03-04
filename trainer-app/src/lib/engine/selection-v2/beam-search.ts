@@ -23,7 +23,7 @@ import type {
   RejectionReason,
 } from "./types";
 import { BEAM_TIEBREAKER_EPSILON } from "./types";
-import { buildCandidate, mergeVolume } from "./candidate";
+import { mergeVolume } from "./candidate";
 import { generateRationale } from "./rationale";
 import { scoreMovementNovelty, scoreDeficitFillDynamic } from "./scoring";
 
@@ -36,10 +36,6 @@ function isMainLiftCandidate(
   }
   const demoted = objective.constraints.demotedFromMainLift;
   return !(demoted?.has(candidate.exercise.id) ?? false);
-}
-
-function hasMovementPattern(candidate: SelectionCandidate, pattern: SelectionCandidate["exercise"]["movementPatterns"][number]): boolean {
-  return (candidate.exercise.movementPatterns ?? []).includes(pattern);
 }
 
 function getExerciseBaseName(name: string): string {
@@ -61,48 +57,6 @@ function sharesBaseExerciseName(
       (selectedBase.startsWith(candidateBase) || candidateBase.startsWith(selectedBase))
     );
   });
-}
-
-function isPullCompoundCandidate(candidate: SelectionCandidate): boolean {
-  if (!(candidate.exercise.isCompound ?? false)) {
-    return false;
-  }
-  return (
-    hasMovementPattern(candidate, "horizontal_pull") ||
-    hasMovementPattern(candidate, "vertical_pull")
-  );
-}
-
-function wouldViolatePullStructure(
-  state: BeamState,
-  candidate: SelectionCandidate,
-  objective: SelectionObjective
-): boolean {
-  if (objective.sessionIntent !== "pull") {
-    return false;
-  }
-
-  const candidateIsMainLift = isMainLiftCandidate(candidate, objective);
-  if (candidateIsMainLift && hasMovementPattern(candidate, "vertical_pull")) {
-    const existingVerticalMainLifts = state.selected.filter(
-      (selected) =>
-        isMainLiftCandidate(selected, objective) && hasMovementPattern(selected, "vertical_pull")
-    ).length;
-    if (existingVerticalMainLifts >= 1) {
-      return true;
-    }
-  }
-
-  const projected = [...state.selected, candidate];
-  const pullCompoundCount = projected.filter((selected) => isPullCompoundCandidate(selected)).length;
-  if (pullCompoundCount < 2) {
-    return false;
-  }
-
-  const hasHorizontalPull = projected.some((selected) =>
-    hasMovementPattern(selected, "horizontal_pull")
-  );
-  return !hasHorizontalPull;
 }
 
 /**
@@ -211,7 +165,6 @@ function hasRemainingDeficitFillingOption(
     if (selectedIds.has(candidate.exercise.id)) continue;
     if (candidate.scores.deficitFill <= 0) continue;
     if (wouldViolateMovementPatternCap(state, candidate)) continue;
-    if (wouldViolatePullStructure(state, candidate, objective)) continue;
     if (!wouldSatisfyStructure(state, candidate, objective)) continue;
 
     const mergedVolume = mergeVolume(state.volumeFilled, candidate.volumeContribution);
@@ -245,41 +198,6 @@ function computeMovementPatternPenalty(
 
   // Soft-penalize third+ vertical pulls on pull days without hard-blocking them.
   return 0.2 * (existingVerticalPulls - 1);
-}
-
-function getMissingRequiredMuscles(
-  selected: SelectionCandidate[],
-  objective: SelectionObjective
-): Muscle[] {
-  const required = objective.constraints.requiredMuscles ?? [];
-  if (required.length === 0) {
-    return [];
-  }
-
-  return required.filter(
-    (muscle) =>
-      !selected.some(
-        (entry) =>
-          !isMainLiftCandidate(entry, objective) &&
-          (entry.exercise.primaryMuscles ?? []).includes(muscle)
-      )
-  );
-}
-
-function candidateSatisfiesRequiredMuscle(
-  candidate: SelectionCandidate,
-  missingRequiredMuscles: Muscle[],
-  objective: SelectionObjective
-): boolean {
-  if (missingRequiredMuscles.length === 0) {
-    return false;
-  }
-  if (isMainLiftCandidate(candidate, objective)) {
-    return false;
-  }
-  return missingRequiredMuscles.some((muscle) =>
-    (candidate.exercise.primaryMuscles ?? []).includes(muscle)
-  );
 }
 
 function computeMainLiftPatternDuplicatePenalty(
@@ -402,12 +320,6 @@ export function beamSearch(
           continue;
         }
 
-        const missingRequiredMuscles = getMissingRequiredMuscles(state.selected, objective);
-        const candidateSatisfiesRequirement = candidateSatisfiesRequiredMuscle(
-          candidate,
-          missingRequiredMuscles,
-          objective
-        );
         const candidateIsMainLift = isMainLiftCandidate(candidate, objective);
         const mainLiftsSelected = state.selected.filter((selected) =>
           isMainLiftCandidate(selected, objective)
@@ -415,17 +327,12 @@ export function beamSearch(
         const minMainLifts = objective.constraints.minMainLifts ?? 0;
         const fillsMainLiftRequirement = candidateIsMainLift && mainLiftsSelected < minMainLifts;
         const candidateHasDeficit = candidate.scores.deficitFill > 0 || fillsMainLiftRequirement;
-        if (
-          !candidateHasDeficit &&
-          !candidateSatisfiesRequirement &&
-          state.selected.length >= objective.constraints.minExercises
-        ) {
+        if (!candidateHasDeficit && state.selected.length >= objective.constraints.minExercises) {
           rejectedMap.set(candidate.exercise.id, "dominated_by_better_option");
           continue;
         }
         if (
           !candidateHasDeficit &&
-          !candidateSatisfiesRequirement &&
           hasRemainingDeficitFillingOption(state, candidates, objective, candidate.exercise.id)
         ) {
           rejectedMap.set(candidate.exercise.id, "dominated_by_better_option");
@@ -439,11 +346,6 @@ export function beamSearch(
           rejectedMap.set(candidate.exercise.id, "dominated_by_better_option");
           continue;
         }
-        if (wouldViolatePullStructure(state, candidate, objective)) {
-          rejectedMap.set(candidate.exercise.id, "structure_constraint_violated");
-          continue;
-        }
-
         // C1: Per-session triceps isolation cap
         // KB: MRV=18 for triceps accounts for full pressing stimulus. When ≥2 pressing
         // compounds have Triceps as primary, allow only 1 isolation to stay within per-session
@@ -628,8 +530,6 @@ export function beamSearch(
   // Enforce structural constraints (main lifts + accessories balance)
   finalBeam = enforceStructuralConstraints(finalBeam, candidates, objective, rejectedMap);
 
-  // Enforce required primary-muscle coverage (e.g., direct biceps on pull sessions)
-  finalBeam = enforceRequiredMuscles(finalBeam, candidates, objective, rejectedMap);
   // Enforce continuity from most-recent same-intent performed session when feasible.
   finalBeam = enforceContinuityExercises(finalBeam, candidates, objective, rejectedMap);
 
@@ -810,61 +710,6 @@ function enforceStructuralConstraints(
 
       addCandidateToBeam(augmentedBeam, candidate);
     }
-  }
-
-  return augmentedBeam;
-}
-
-function enforceRequiredMuscles(
-  beam: BeamState,
-  candidates: SelectionCandidate[],
-  objective: SelectionObjective,
-  rejectedMap: Map<string, RejectionReason>
-): BeamState {
-  const requiredMuscles = objective.constraints.requiredMuscles ?? [];
-  if (requiredMuscles.length === 0) {
-    return beam;
-  }
-
-  const augmentedBeam: BeamState = {
-    selected: [...beam.selected],
-    volumeFilled: new Map(beam.volumeFilled),
-    timeUsed: beam.timeUsed,
-    score: beam.score,
-    favoritesCount: beam.favoritesCount,
-  };
-
-  const updateMissing = () => getMissingRequiredMuscles(augmentedBeam.selected, objective);
-  let missing = updateMissing();
-  if (missing.length === 0) {
-    return augmentedBeam;
-  }
-
-  while (
-    missing.length > 0 &&
-    augmentedBeam.selected.length < objective.constraints.maxExercises
-  ) {
-    const selectedIds = new Set(augmentedBeam.selected.map((selected) => selected.exercise.id));
-    const matchingCandidates = candidates
-      .filter((candidate) => !selectedIds.has(candidate.exercise.id))
-      .filter((candidate) => candidateSatisfiesRequiredMuscle(candidate, missing, objective))
-      .sort((a, b) => b.totalScore - a.totalScore);
-
-    if (matchingCandidates.length === 0) {
-      break;
-    }
-
-    const chosen = matchingCandidates
-      .map((candidate) =>
-        candidate.proposedSets >= 3 ? candidate : buildCandidate(candidate.exercise, objective, 3)
-      )
-      .find((candidate) => canAddCandidate(augmentedBeam, candidate, candidates, objective, rejectedMap));
-    if (!chosen) {
-      break;
-    }
-
-    addCandidateToBeam(augmentedBeam, chosen);
-    missing = updateMissing();
   }
 
   return augmentedBeam;
@@ -1055,10 +900,6 @@ function canAddCandidate(
     return false;
   }
 
-  if (wouldViolatePullStructure(beam, candidate, objective)) {
-    rejectedMap.set(candidate.exercise.id, "structure_constraint_violated");
-    return false;
-  }
   if (sharesBaseExerciseName(beam.selected, candidate)) {
     rejectedMap.set(candidate.exercise.id, "dominated_by_better_option");
     return false;
@@ -1211,17 +1052,8 @@ function buildResult(
     mainLiftCount >= minMainLifts &&
     mainLiftCount <= maxMainLifts &&
     accessoryCount >= minAccessories;
-  const requiredMuscles = objective.constraints.requiredMuscles ?? [];
-  const meetsRequiredMuscles = requiredMuscles.every((muscle) =>
-    selected.some(
-      (candidate) =>
-        !isMainLiftCandidate(candidate, objective) &&
-        (candidate.exercise.primaryMuscles ?? []).includes(muscle)
-    )
-  );
-
   const constraintsSatisfied =
-    meetsMinExercises && meetsVolumeFloor && meetsStructuralConstraints && meetsRequiredMuscles;
+    meetsMinExercises && meetsVolumeFloor && meetsStructuralConstraints;
 
   // Annotate selected candidates with marginal deficitFill for rationale.
   // Simulate sequential selection so each exercise shows what it contributed

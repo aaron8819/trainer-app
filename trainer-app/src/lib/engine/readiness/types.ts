@@ -163,7 +163,7 @@ export type AutoregulationPolicy = {
  */
 export const DEFAULT_AUTOREGULATION_POLICY: AutoregulationPolicy = {
   aggressiveness: 'moderate',
-  allowUpRegulation: true,
+  allowUpRegulation: false,
   allowDownRegulation: true,
 };
 

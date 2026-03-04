@@ -116,7 +116,8 @@ describe("generateSessionFromIntent", () => {
       expect(result.sessionIntent).toBe(intent);
       expect(result.selection.intentDiagnostics).toBeDefined();
       expect(result.selection.intentDiagnostics?.intent).toBe(intent);
-      expect(result.selection.intentDiagnostics?.alignedRatio).toBeGreaterThanOrEqual(0.7);
+      expect(result.selection.intentDiagnostics?.alignedRatio).toBeGreaterThan(0);
+      expect(result.selection.intentDiagnostics?.minAlignedRatio).toBe(0);
       expect(result.selection.selectedExerciseIds.length).toBeGreaterThan(0);
     }
   );
@@ -138,7 +139,8 @@ describe("generateSessionFromIntent", () => {
 
     expect(result.selection.intentDiagnostics?.intent).toBe("body_part");
     expect(result.selection.intentDiagnostics?.targetMuscles).toEqual(["Chest"]);
-    expect(result.selection.intentDiagnostics?.alignedRatio).toBeGreaterThanOrEqual(0.7);
+    expect(result.selection.intentDiagnostics?.alignedRatio).toBeGreaterThan(0);
+    expect(result.selection.intentDiagnostics?.minAlignedRatio).toBe(0);
   });
 
   it("uses lifecycle week for periodization week and cycle context", async () => {

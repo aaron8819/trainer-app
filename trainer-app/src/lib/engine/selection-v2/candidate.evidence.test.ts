@@ -1,0 +1,77 @@
+import { describe, expect, it } from "vitest";
+
+import { computeProposedSets } from "./candidate";
+import type { SelectionObjective } from "./types";
+import type { Exercise } from "../types";
+
+function buildObjective(overrides?: Partial<SelectionObjective>): SelectionObjective {
+  return {
+    constraints: {
+      volumeFloor: new Map(),
+      volumeCeiling: new Map(),
+      painConflicts: new Set(),
+      userAvoids: new Set(),
+      minExercises: 1,
+      maxExercises: 6,
+      minMainLifts: 0,
+      maxMainLifts: 2,
+      minAccessories: 0,
+      ...overrides?.constraints,
+    },
+    weights: {
+      volumeDeficitFill: 0.33,
+      rotationNovelty: 0.22,
+      sfrEfficiency: 0.12,
+      lengthenedBias: 0.2,
+      movementDiversity: 0.07,
+      sraReadiness: 0.05,
+      userPreference: 0.01,
+      ...overrides?.weights,
+    },
+    volumeContext: {
+      weeklyTarget: new Map([["Triceps", 16]]),
+      weeklyActual: new Map(),
+      effectiveActual: new Map([["Triceps", 4]]),
+      ...overrides?.volumeContext,
+    },
+    rotationContext: new Map(),
+    sraContext: new Map(),
+    preferences: {
+      favoriteExerciseIds: new Set(),
+      avoidExerciseIds: new Set(),
+    },
+    goals: {
+      primary: "hypertrophy",
+      secondary: "none",
+      isStrengthFocused: false,
+      isHypertrophyFocused: true,
+    },
+    trainingAge: "advanced",
+    sessionIntent: "push",
+    ...overrides,
+  };
+}
+
+describe("candidate evidence guardrails", () => {
+  it("does not clip small-muscle accessory set proposals with arbitrary per-muscle caps", () => {
+    const exercise: Exercise = {
+      id: "oh-tri-ext",
+      name: "Overhead Cable Triceps Extension",
+      movementPatterns: ["extension", "isolation"],
+      splitTags: ["push"],
+      jointStress: "low",
+      isMainLiftEligible: false,
+      isCompound: false,
+      fatigueCost: 1,
+      sfrScore: 5,
+      lengthPositionScore: 5,
+      equipment: ["cable"],
+      primaryMuscles: ["Triceps"],
+      secondaryMuscles: [],
+    };
+
+    const proposedSets = computeProposedSets(exercise, buildObjective());
+
+    expect(proposedSets).toBe(6);
+  });
+});

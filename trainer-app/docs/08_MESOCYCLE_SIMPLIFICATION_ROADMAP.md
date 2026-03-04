@@ -185,7 +185,7 @@ Exit criteria met:
 - Legacy rationale/progression alias keys are no longer treated as active explainability inputs.
 
 ### Phase 6 - Evidence and Rule Audit
-Status: NOT STARTED
+Status: COMPLETE
 
 Goal:
 - Keep only decision logic that is conservative, explainable, and evidence-aligned.
@@ -193,6 +193,20 @@ Goal:
 Focus:
 - Audit progression, deload, readiness scaling, soreness suppression, and exercise-selection constraints.
 - Remove speculative or weakly defensible behavior.
+
+Implemented in this pass:
+- Tightened reactive deload so runtime deloads now require either a sustained low-readiness streak or repeated main-lift plateau evidence; the weak total-session-rep plateau fallback was removed.
+- Kept soreness-based lifecycle volume suppression as a conservative hold-at-prior-week rule rather than letting soreness escalate or zero-out work.
+- Standardized scheduled deload receipts to a 50% reduction signal instead of mixing 50% and 55% metadata for the same policy.
+- Made default readiness autoregulation down-regulation only; fresh readiness no longer escalates load above the planned prescription by default.
+- Removed the post-search selection "stretch upgrade" override so final exercise choice stays owned by the optimizer/beam result rather than a speculative after-the-fact swap.
+- Removed exact small-muscle per-session set caps from selection candidate set proposals so accessory set counts are now bounded by training-age caps, lifecycle targets, and session-level direct-set ceilings instead of muscle-specific magic numbers.
+- Relaxed intent-alignment from a hard `0.7` gate to diagnostics-first behavior, and removed pull-specific hard structure/required-muscle enforcement so selection quality now relies on intent filtering, soft scoring, and conservative session ceilings rather than extra pattern-shape rules.
+
+Exit criteria met:
+- Runtime rule paths are narrower and easier to defend from the stored receipt and generated evidence.
+- Weakly defended progression/deload/selection heuristics were either removed or tightened without reintroducing compatibility pathways.
+- Focused tests cover the changed progression, readiness, and selection behaviors.
 
 ### Phase 7 - Documentation and Deletion Pass
 Status: NOT STARTED
@@ -208,15 +222,15 @@ Focus:
 ## Priority buckets
 
 Do now:
-- Phase 5 legacy compatibility reduction.
-- Keep runtime session-decision ownership receipt-first while separating migration-only logic from active save/read flows.
+- Phase 7 documentation and deletion pass.
+- Keep the receipt-first session-decision contract stable while removing stale code/docs that still describe pre-Phase-6 behavior.
 
 Do next:
-- Broader evidence/rule audit once compatibility-only runtime branches are removed.
 - Deeper analytics/history UX cleanup after contracts settle.
+- Any narrow post-Phase-6 tuning only if a remaining rule is clearly weak and user-visible.
 
 Do later:
-- Final deletion/doc cleanup once Phase 5 and Phase 6 settle.
+- Broader product/analytics refinement after Phase 7 cleanup lands.
 
 Delete after migration:
 - Any remaining compatibility-only session decision helpers outside the active save/runtime path that still need deletion after migration.
@@ -225,12 +239,10 @@ Delete after migration:
 
 ## Practical sequence for the next passes
 
-1. Simplify the user-facing session summary and explanation path.
-2. Simplify logging state ownership and save/recovery behavior.
-3. Normalize generation/save/history contracts around receipt-first semantics.
-4. Remove remaining legacy compatibility branches once migration pressure is gone.
-5. Audit remaining rules against evidence.
-6. Do final deletion and docs cleanup.
+1. Complete the documentation and deletion pass against the now-stabilized receipt-first architecture.
+2. Remove dead code/tests/docs that survived Phases 1-6.
+3. Collapse duplicate architecture descriptions to one short canonical flow.
+4. Revisit broader analytics/history UX only after the Phase 7 cleanup settles.
 
 ## Working principle
 

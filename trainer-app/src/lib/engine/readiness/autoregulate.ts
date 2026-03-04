@@ -83,6 +83,7 @@ function selectAction(
     return policy.allowDownRegulation ? "scale_down" : "maintain";
   }
 
+  // Freshness alone is not enough evidence to push prescription above the planned dose.
   if (fatigueScore > config.SCALE_UP_THRESHOLD && policy.allowUpRegulation) {
     return "scale_up";
   }

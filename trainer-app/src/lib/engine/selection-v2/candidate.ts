@@ -24,14 +24,6 @@ import {
 import { getGoalRepRanges, getGoalSetMultiplier } from "../rules";
 import { getRestSeconds, REST_SECONDS } from "../prescription";
 
-const PER_SESSION_MUSCLE_CAPS: Record<string, number> = {
-  "Rear Delts": 3,
-  "Side Delts": 3,
-  "Front Delts": 2,
-  Biceps: 4,
-  Triceps: 4,
-};
-
 function buildDeficitScoringContribution(
   exercise: Exercise,
   contribution: VolumeContribution,
@@ -252,24 +244,9 @@ export function computeProposedSets(
   const goalMultiplier = objective.goals?.primary
     ? getGoalSetMultiplier(objective.goals.primary)
     : 1;
-  const perSessionCap = (exercise.primaryMuscles ?? []).reduce<number | undefined>(
-    (currentCap, muscle) => {
-      const muscleCap = PER_SESSION_MUSCLE_CAPS[muscle];
-      if (muscleCap === undefined) {
-        return currentCap;
-      }
-      if (currentCap === undefined) {
-        return muscleCap;
-      }
-      return Math.min(currentCap, muscleCap);
-    },
-    undefined
-  );
-  const applyPerSessionCap = (sets: number) =>
-    perSessionCap === undefined ? sets : Math.min(sets, perSessionCap);
 
   if (lifecycleSetTarget !== undefined) {
-    return applyPerSessionCap(Math.max(MIN_SETS, lifecycleSetTarget));
+    return Math.max(MIN_SETS, lifecycleSetTarget);
   }
 
   // Find largest deficit among primary muscles
@@ -283,14 +260,14 @@ export function computeProposedSets(
 
   // If no deficit, default to 3 sets (with goal multiplier)
   if (maxDeficit === 0) {
-    return applyPerSessionCap(Math.max(MIN_SETS, Math.round(DEFAULT_SETS * goalMultiplier)));
+    return Math.max(MIN_SETS, Math.round(DEFAULT_SETS * goalMultiplier));
   }
 
   // Propose sets proportional to deficit, apply goal multiplier, clamp to [MIN_SETS, MAX_SETS]
   // The C1b per-session per-muscle direct-set ceiling (SESSION_DIRECT_SET_CEILING = 12)
   // in beam-search.ts acts as the natural per-session cap.
   const rawSets = Math.max(MIN_SETS, Math.min(MAX_SETS, Math.ceil(maxDeficit / 2)));
-  return applyPerSessionCap(Math.max(MIN_SETS, Math.round(rawSets * goalMultiplier)));
+  return Math.max(MIN_SETS, Math.round(rawSets * goalMultiplier));
 }
 
 /**

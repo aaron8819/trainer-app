@@ -242,7 +242,7 @@ export async function generateDeloadSessionFromTemplate(
         deloadDecision: {
           mode: "scheduled",
           reason: [deload.note],
-          reductionPercent: 55,
+          reductionPercent: 50,
           appliedTo: "both",
         },
       }),
@@ -396,7 +396,6 @@ export async function generateSessionFromIntent(
       mapped.exerciseLibrary,
       input.intent,
       {
-        minRatio: 0.7,
         targetMuscles: input.targetMuscles,
         pinnedExerciseIds: Array.from(pinnedRoleIds),
       }
@@ -578,7 +577,7 @@ export async function generateDeloadSessionFromIntent(
         deloadDecision: {
           mode: "scheduled",
           reason: [deload.note],
-          reductionPercent: 55,
+          reductionPercent: 50,
           appliedTo: "both",
         },
       }),

@@ -107,9 +107,6 @@ export interface SelectionConstraints {
   /** Minimum proposed sets for accessories unless min-exercise fallback is needed */
   minAccessoryProposedSets?: number;
 
-  /** Required primary-muscle coverage for the session (e.g., direct biceps on pull) */
-  requiredMuscles?: Muscle[];
-
   /** Exercise IDs treated as accessory-only even if exercise metadata marks main-lift eligible */
   demotedFromMainLift?: Set<string>;
 

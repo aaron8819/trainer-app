@@ -23,9 +23,11 @@ export const PROGRESSION_CONFIG = {
   minSessionsForFullConfidence: 3,
   // Single prior-session signal is directionally useful, but scaled to avoid overshooting.
   singleSessionConfidenceScale: 0.8,
+  // Plateau needs at least three tracked exposures to avoid reacting to noise.
+  minSessionsForPlateauEvidence: 3,
+  // Treat <=1% e1RM drift as effectively flat rather than meaningful progress.
+  plateauImprovementEpsilon: 0.01,
 } as const;
-
-const USE_MAIN_LIFT_PLATEAU_DETECTION_ENV = "USE_MAIN_LIFT_PLATEAU_DETECTION";
 const EFFECTIVE_RPE_MIN = 6;
 
 export type ComputeNextLoadOptions = {
@@ -328,46 +330,17 @@ export function shouldDeload(
 
   const allPerformed = recent.every(isPerformedHistoryEntry);
   if (!allPerformed) return false;
-
-  if (!shouldUseMainLiftPlateauDetection() || !mainLiftExerciseIds?.size) {
-    return hasPlateauByTotalReps(recent);
-  }
-
-  const mainLiftPlateau = hasMainLiftPlateau(recent, mainLiftExerciseIds);
-  if (mainLiftPlateau === null) {
-    return hasPlateauByTotalReps(recent);
-  }
-
-  return mainLiftPlateau;
-}
-
-function shouldUseMainLiftPlateauDetection(): boolean {
-  const rawValue = process.env[USE_MAIN_LIFT_PLATEAU_DETECTION_ENV];
-  if (!rawValue) {
+  if (!mainLiftExerciseIds?.size) {
     return false;
   }
-  const normalized = rawValue.trim().toLowerCase();
-  return ["1", "true", "yes", "on"].includes(normalized);
-}
 
-function hasPlateauByTotalReps(history: WorkoutHistoryEntry[]): boolean {
-  const totalVolume = history.map((entry) =>
-    entry.exercises.reduce(
-      (sum, exercise) => sum + exercise.sets.reduce((setSum, set) => setSum + set.reps, 0),
-      0
-    )
-  );
-
-  const hasImprovement = totalVolume.some(
-    (volume, index) => index > 0 && volume > totalVolume[index - 1]
-  );
-  return !hasImprovement;
+  return hasMainLiftPlateau(recent, mainLiftExerciseIds);
 }
 
 function hasMainLiftPlateau(
   history: WorkoutHistoryEntry[],
   mainLiftExerciseIds: Set<string>
-): boolean | null {
+): boolean {
   const sortedByDate = [...history].sort(
     (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
   );
@@ -390,15 +363,15 @@ function hasMainLiftPlateau(
     }
   }
 
-  const tracked = Array.from(e1rmByExercise.entries()).filter(([, values]) => values.length >= 2);
-  if (tracked.length === 0) {
-    return null;
-  }
+  const tracked = Array.from(e1rmByExercise.entries()).filter(
+    ([, values]) => values.length >= PROGRESSION_CONFIG.minSessionsForPlateauEvidence
+  );
+  if (tracked.length === 0) return false;
 
   return tracked.every(([, values]) => {
     const oldest = values[0];
     const max = Math.max(...values);
-    return max <= oldest;
+    return max <= oldest * (1 + PROGRESSION_CONFIG.plateauImprovementEpsilon);
   });
 }
 

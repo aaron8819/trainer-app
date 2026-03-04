@@ -87,4 +87,45 @@ describe("autoregulation correctness", () => {
     expect(stale.adjusted).toEqual(workout);
     expect(stale.reason).toContain("No recent readiness signal");
   });
+
+  it("does not scale above the planned prescription on high-readiness signals", async () => {
+    const workout = {
+      id: "w2",
+      scheduledDate: "2026-02-20T00:00:00.000Z",
+      warmup: [],
+      mainLifts: [
+        {
+          id: "e1",
+          exercise: { name: "Bench Press" },
+          isMainLift: true,
+          sets: [{ setIndex: 1, targetReps: 5, targetLoad: 225, targetRpe: 8 }],
+        },
+      ],
+      accessories: [],
+      estimatedMinutes: 45,
+    } as const;
+
+    mocks.readinessFindFirst.mockResolvedValueOnce({
+      timestamp: new Date(Date.now() - 60 * 60 * 1000),
+      userId: "user-1",
+      whoopRecovery: 95,
+      whoopStrain: 8,
+      whoopHrv: 80,
+      whoopSleepQuality: 95,
+      whoopSleepHours: 8.5,
+      subjectiveReadiness: 5,
+      subjectiveMotivation: 5,
+      subjectiveSoreness: { Chest: 1 },
+      subjectiveStress: 1,
+      performanceRpeDeviation: -0.5,
+      performanceStalls: 0,
+      performanceCompliance: 1,
+    });
+
+    const result = await applyAutoregulation("user-1", workout as never);
+
+    expect(result.applied).toBe(false);
+    expect(result.adjusted).toEqual(workout);
+    expect(result.modifications).toEqual([]);
+  });
 });

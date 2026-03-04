@@ -209,21 +209,6 @@ export function buildSelectionObjective(
     }
   }
 
-  const requiredMuscles: Muscle[] = [];
-  if (sessionIntent === "pull") {
-    const pullPriorityMuscles: Muscle[] = ["Biceps", "Rear Delts"];
-    for (const muscle of pullPriorityMuscles) {
-      const landmarks = VOLUME_LANDMARKS[muscle];
-      if (!landmarks || landmarks.mev <= 0) {
-        continue;
-      }
-      const actual = effectiveActual.get(muscle) ?? 0;
-      if (actual < landmarks.mev) {
-        requiredMuscles.push(muscle);
-      }
-    }
-  }
-
   const constraints: SelectionObjective["constraints"] = {
     volumeFloor: new Map(),
     volumeCeiling,
@@ -235,7 +220,6 @@ export function buildSelectionObjective(
     maxMainLifts: 3,
     minAccessories: 2,
     minAccessoryProposedSets: mapped.effectivePeriodization.lifecycleSetTargets?.accessory ?? 3,
-    requiredMuscles,
     demotedFromMainLift: new Set(
       mapped.exerciseLibrary
         .filter((exercise) =>

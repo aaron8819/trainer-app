@@ -128,7 +128,7 @@ export function enforceIntentAlignment(
   intent: SessionIntent,
   options: AlignmentOptions = {}
 ): SelectionOutput | { error: string } {
-  const minRatio = options.minRatio ?? 0.7;
+  const minRatio = options.minRatio ?? 0;
   const pinnedExerciseIds = new Set(options.pinnedExerciseIds ?? []);
   const byId = new Map(exercisePool.map((exercise) => [exercise.id, exercise]));
   const selectedIds = [...selection.selectedExerciseIds];
@@ -163,7 +163,7 @@ export function enforceIntentAlignment(
   };
 
   let ratio = computeAlignmentRatio(selectedIds, byId, intent, options.targetMuscles);
-  if (ratio < minRatio) {
+  if (minRatio > 0 && ratio < minRatio) {
     for (let i = 0; i < selectedIds.length && ratio < minRatio; i += 1) {
       const currentId = selectedIds[i];
       if (pinnedExerciseIds.has(currentId)) {
@@ -209,7 +209,11 @@ export function enforceIntentAlignment(
   }
 
   ratio = computeAlignmentRatio(selectedIds, byId, intent, options.targetMuscles);
-  if (ratio < minRatio) {
+  if (ratio <= 0) {
+    return { error: "Unable to preserve any intent-aligned exercises with available selections" };
+  }
+
+  if (minRatio > 0 && ratio < minRatio) {
     return { error: "Unable to satisfy intent alignment with available exercises" };
   }
 

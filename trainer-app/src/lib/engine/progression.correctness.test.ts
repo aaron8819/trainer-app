@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeDoubleProgressionDecision, PROGRESSION_CONFIG } from "./progression";
+import { computeDoubleProgressionDecision, PROGRESSION_CONFIG, shouldDeload } from "./progression";
 
 describe("progression correctness", () => {
   it("never increments load from a 0-load bodyweight baseline (Dips and Pull-Ups)", () => {
@@ -85,5 +85,50 @@ describe("progression correctness", () => {
     expect(PROGRESSION_CONFIG.outlierTrimRange).toBe(0.15);
     expect(PROGRESSION_CONFIG.minSessionsForFullConfidence).toBe(3);
     expect(PROGRESSION_CONFIG.singleSessionConfidenceScale).toBe(0.8);
+    expect(PROGRESSION_CONFIG.minSessionsForPlateauEvidence).toBe(3);
+    expect(PROGRESSION_CONFIG.plateauImprovementEpsilon).toBe(0.01);
+  });
+
+  it("triggers deload on a sustained low-readiness streak", () => {
+    const history = [
+      { date: "2026-02-01T00:00:00.000Z", status: "COMPLETED", readinessScore: 2, exercises: [] },
+      { date: "2026-02-03T00:00:00.000Z", status: "COMPLETED", readinessScore: 2, exercises: [] },
+      { date: "2026-02-05T00:00:00.000Z", status: "COMPLETED", readinessScore: 1, exercises: [] },
+      { date: "2026-02-07T00:00:00.000Z", status: "COMPLETED", readinessScore: 2, exercises: [] },
+    ];
+
+    expect(shouldDeload(history as never)).toBe(true);
+  });
+
+  it("does not trigger deload from flat total session reps without main-lift plateau evidence", () => {
+    const history = Array.from({ length: 5 }, (_, index) => ({
+      date: `2026-02-0${index + 1}T00:00:00.000Z`,
+      status: "COMPLETED",
+      readinessScore: 3,
+      exercises: [
+        {
+          exerciseId: `exercise-${index}`,
+          sets: [{ setIndex: 1, reps: 10, load: 100, rpe: 8 }],
+        },
+      ],
+    }));
+
+    expect(shouldDeload(history as never, new Set(["bench"]))).toBe(false);
+  });
+
+  it("triggers deload when tracked main lifts show no meaningful e1rm improvement across repeated sessions", () => {
+    const history = [100, 100, 100.5, 100, 100.2].map((load, index) => ({
+      date: `2026-02-0${index + 1}T00:00:00.000Z`,
+      status: "COMPLETED",
+      readinessScore: 3,
+      exercises: [
+        {
+          exerciseId: "bench",
+          sets: [{ setIndex: 1, reps: 5, load, rpe: 8 }],
+        },
+      ],
+    }));
+
+    expect(shouldDeload(history as never, new Set(["bench"]))).toBe(true);
   });
 });

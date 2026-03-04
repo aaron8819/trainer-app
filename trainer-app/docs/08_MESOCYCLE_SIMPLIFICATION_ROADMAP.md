@@ -31,7 +31,7 @@ Implemented now:
 - Explainability reads session-level context from the receipt rather than legacy mirrors (`src/lib/api/explainability.ts`, `src/lib/ui/explainability.ts`).
 - Workout detail and log pages read the receipt (`src/app/workout/[id]/page.tsx`, `src/app/log/[id]/page.tsx`).
 - Save validation rejects legacy top-level session mirrors inside `selectionMetadata` (`src/lib/validation.ts`).
-- Save-time compatibility folding is isolated in `src/lib/evidence/session-decision-compatibility.ts`.
+- Save-time receipt normalization is now receipt-only; top-level readiness compatibility payloads are no longer accepted on the main save route.
 - UI/explainability runtime reads are receipt-only; they do not read `autoregulationLog`.
 - Current app save paths do not send compatibility-only `wasAutoregulated` / `autoregulationLog` fields.
 - Save no longer persists compatibility-only workout autoregulation mirrors as active state.
@@ -52,7 +52,7 @@ Goal:
 
 Completed focus:
 - Isolated save-time compatibility folding behind a clearly named compatibility boundary.
-- Marked `wasAutoregulated` and `autoregulationLog` as compatibility-only in docs and types.
+- Removed `wasAutoregulated` / `autoregulationLog` from the active save contract and kept receipt readiness as the only supported session-decision write shape.
 - Tightened runtime reads so new code paths prefer `sessionDecisionReceipt` and do not imply multiple active session-decision sources.
 
 Exit criteria:
@@ -114,7 +114,7 @@ Implemented in this pass:
 - Reused the shared draft buffer shape across draft restore/persist boundaries, reduced duplicate field-state builders in the active-set draft hook, and simplified persisted workout-session UI storage setup so the remaining Phase 3 draft/session cleanup is less scaffold-heavy.
 
 ### Phase 4 - API and Persistence Cleanup
-Status: NOT STARTED
+Status: COMPLETE
 
 Goal:
 - Standardize the contract between generation, save, persistence, history, and UI.
@@ -123,6 +123,21 @@ Focus:
 - Normalize payloads around receipt-first semantics.
 - Reduce duplicate persisted/runtime fields, especially session-level autoregulation mirrors.
 - Make naming consistent across generation responses, save payloads, persisted workout metadata, and explainability output.
+
+Implemented in this pass:
+- Standardized workout generation responses around canonical `selectionMetadata` instead of mixing `selectionMetadata` and `selection` across intent/template routes.
+- Deleted the intent-route debug echo so generation responses expose only one canonical selection metadata payload.
+- Tightened client/API typing so current save flows keep treating `selectionMetadata` as the active contract surface.
+- Removed the last save-time legacy autoregulation payload from the main route boundary so receipt readiness is the only supported save-time session-decision input.
+- Collapsed history/recent-workout badge data to a derived `sessionSnapshot` summary model instead of exposing parallel top-level snapshot fields across list surfaces.
+- Normalized progression history around a derived `mesocycleSnapshot` object so runtime load-selection logic no longer reads raw snapshot column names directly.
+- Removed top-level generation autoregulation from intent/template responses so generation preview and save flows now read readiness state only from `selectionMetadata.sessionDecisionReceipt.readiness`.
+- Deleted generation-card state that carried a separate autoregulation object across preview/save boundaries; any remaining readiness copy is derived directly from the canonical receipt.
+
+Exit criteria met:
+- Generation, save, persistence, history, explainability, and generation preview UI now share one session-decision owner: `selectionMetadata.sessionDecisionReceipt`.
+- Top-level generation autoregulation is no longer an active API/UI contract.
+- Phase 4 is complete because the remaining blocker was the parallel generation autoregulation payload, and that duplicate contract has been removed.
 
 ### Phase 5 - Legacy Compatibility Reduction
 Status: NOT STARTED

@@ -2,6 +2,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import HistoryClient, { type HistoryWorkoutItem, type MesocycleOption } from "./HistoryClient";
+import { buildWorkoutSessionSnapshotSummary } from "@/lib/ui/workout-session-snapshot";
 
 // ---------------------------------------------------------------------------
 // Static mocks
@@ -34,9 +35,7 @@ function makeWorkout(overrides: Partial<HistoryWorkoutItem> = {}): HistoryWorkou
     selectionMode: "INTENT",
     sessionIntent: "PUSH",
     mesocycleId: null,
-    mesocycleWeekSnapshot: null,
-    mesoSessionSnapshot: null,
-    mesocyclePhaseSnapshot: null,
+    sessionSnapshot: null,
     exerciseCount: 5,
     totalSetsLogged: 15,
     ...overrides,
@@ -79,7 +78,14 @@ describe("HistoryClient", () => {
 
   it("renders initial workouts without fetching on mount", () => {
     // Use a unique exercise count to distinguish the workout row from filter buttons
-    const workouts = [makeWorkout({ id: "w1", sessionIntent: "PUSH", exerciseCount: 7 })];
+    const workouts = [
+      makeWorkout({
+        id: "w1",
+        sessionIntent: "PUSH",
+        exerciseCount: 7,
+        sessionSnapshot: buildWorkoutSessionSnapshotSummary({ week: 3, session: 2, phase: "ACCUMULATION" }),
+      }),
+    ];
     render(
       <HistoryClient
         initialWorkouts={workouts}
@@ -90,6 +96,7 @@ describe("HistoryClient", () => {
     );
     // "7 exercises" only appears in a workout row, never in filter buttons
     expect(screen.getByText(/7 exercises/)).toBeInTheDocument();
+    expect(screen.getByText("Wk3·S2")).toBeInTheDocument();
     // Did NOT call fetch on mount
     expect(fetchMock).not.toHaveBeenCalled();
   });

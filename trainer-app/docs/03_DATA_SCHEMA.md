@@ -70,4 +70,4 @@ Canonical machine-readable values: `docs/contracts/runtime-contracts.json`.
 - `Workout.wasAutoregulated`
 - `Workout.autoregulationLog`
 - These fields are retained in the schema for backward compatibility and historical inspection only.
-- Active runtime session-decision state is persisted under `Workout.selectionMetadata.sessionDecisionReceipt`, and current save paths should not depend on the compatibility columns.
+- Active runtime session-decision state is persisted under `Workout.selectionMetadata.sessionDecisionReceipt`, and `POST /api/workouts/save` no longer accepts these compatibility fields as write inputs.

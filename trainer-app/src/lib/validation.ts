@@ -102,61 +102,85 @@ export const generateFromIntentSchema = z
     }
   });
 
-export const saveWorkoutSchema = z.object({
-  workoutId: z.string(),
-  action: z.enum(WORKOUT_SAVE_ACTION_VALUES).optional(),
-  expectedRevision: z.number().int().min(1).optional(),
-  templateId: z.string().optional(),
-  scheduledDate: z.string().optional(),
-  status: z.enum(WORKOUT_STATUS_VALUES).optional(),
-  estimatedMinutes: z.number().optional(),
-  notes: z.string().optional(),
-  selectionMode: z.enum(WORKOUT_SELECTION_MODE_VALUES).optional(),
-  sessionIntent: workoutSessionIntentDbSchema.optional(),
-  selectionMetadata: selectionMetadataSchema.optional(),
-  wasAutoregulated: z.boolean().optional(),
-  autoregulationLog: z.unknown().optional(),
-  forcedSplit: z.enum(["PUSH", "PULL", "LEGS", "UPPER", "LOWER", "FULL_BODY"]).optional(),
-  advancesSplit: z.boolean().optional(),
-  filteredExercises: z
-    .array(
-      z.object({
-        exerciseId: z.string().optional(),
-        exerciseName: z.string(),
-        reason: z.string(),
-        userFriendlyMessage: z.string(),
-      })
-    )
-    .optional(),
-  exercises: z
-    .array(
-      z.object({
-        section: z.enum(WORKOUT_EXERCISE_SECTION_VALUES),
-        exerciseId: z.string(),
-        sets: z
-          .array(
-            z.object({
-              setIndex: z.number(),
-              targetReps: z.number(),
-              targetRepRange: z
-                .object({
-                  min: z.number().int().min(1),
-                  max: z.number().int().min(1),
-                })
-                .refine((range) => range.min <= range.max, {
-                  message: "targetRepRange.min must be <= max",
-                })
-                .optional(),
-              targetRpe: z.number().optional(),
-              targetLoad: z.number().optional(),
-              restSeconds: z.number().optional(),
-            })
-          )
-          .min(1),
-      })
-    )
-    .optional(),
-});
+const saveWorkoutPayloadSchema = z.object({
+    workoutId: z.string(),
+    action: z.enum(WORKOUT_SAVE_ACTION_VALUES).optional(),
+    expectedRevision: z.number().int().min(1).optional(),
+    templateId: z.string().optional(),
+    scheduledDate: z.string().optional(),
+    status: z.enum(WORKOUT_STATUS_VALUES).optional(),
+    estimatedMinutes: z.number().optional(),
+    notes: z.string().optional(),
+    selectionMode: z.enum(WORKOUT_SELECTION_MODE_VALUES).optional(),
+    sessionIntent: workoutSessionIntentDbSchema.optional(),
+    selectionMetadata: selectionMetadataSchema.optional(),
+    forcedSplit: z.enum(["PUSH", "PULL", "LEGS", "UPPER", "LOWER", "FULL_BODY"]).optional(),
+    advancesSplit: z.boolean().optional(),
+    filteredExercises: z
+      .array(
+        z.object({
+          exerciseId: z.string().optional(),
+          exerciseName: z.string(),
+          reason: z.string(),
+          userFriendlyMessage: z.string(),
+        })
+      )
+      .optional(),
+    exercises: z
+      .array(
+        z.object({
+          section: z.enum(WORKOUT_EXERCISE_SECTION_VALUES),
+          exerciseId: z.string(),
+          sets: z
+            .array(
+              z.object({
+                setIndex: z.number(),
+                targetReps: z.number(),
+                targetRepRange: z
+                  .object({
+                    min: z.number().int().min(1),
+                    max: z.number().int().min(1),
+                  })
+                  .refine((range) => range.min <= range.max, {
+                    message: "targetRepRange.min must be <= max",
+                  })
+                  .optional(),
+                targetRpe: z.number().optional(),
+                targetLoad: z.number().optional(),
+                restSeconds: z.number().optional(),
+              })
+            )
+            .min(1),
+        })
+      )
+      .optional(),
+  });
+
+export const saveWorkoutSchema = z
+  .unknown()
+  .superRefine((value, ctx) => {
+    if (
+      value &&
+      typeof value === "object" &&
+      !Array.isArray(value)
+    ) {
+      if ("wasAutoregulated" in value) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "wasAutoregulated is no longer supported; use selectionMetadata.sessionDecisionReceipt.readiness instead",
+          path: ["wasAutoregulated"],
+        });
+      }
+      if ("autoregulationLog" in value) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "autoregulationLog is no longer supported; use selectionMetadata.sessionDecisionReceipt.readiness instead",
+          path: ["autoregulationLog"],
+        });
+      }
+    }
+  })
+  .pipe(saveWorkoutPayloadSchema);
 
 export const setLogSchema = z.object({
   workoutSetId: z.string(),

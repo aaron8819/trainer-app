@@ -36,6 +36,7 @@ import {
 } from "./explainability/stats";
 import { computeDoubleProgressionDecision } from "@/lib/engine/progression";
 import { buildLifecyclePeriodization, getWeeklyVolumeTarget } from "./mesocycle-lifecycle";
+import { readPersistedWorkoutMesocycleSnapshot } from "./workout-mesocycle-snapshot";
 
 type WorkoutWithExplainabilityRelations = Prisma.WorkoutGetPayload<{
   include: {
@@ -1328,15 +1329,13 @@ function computeVolumeComplianceStatus(
 async function computeVolumeCompliance(
   workout: WorkoutWithExplainabilityRelations
 ): Promise<MuscleVolumeCompliance[]> {
-  if (!workout.mesocycleId || workout.mesocycleWeekSnapshot == null) {
+  const mesocycleSnapshot = readPersistedWorkoutMesocycleSnapshot(workout);
+  if (!mesocycleSnapshot) {
     return [];
   }
 
-  const mesocycleId = workout.mesocycleId;
-  const mesocycleWeekSnapshot = workout.mesocycleWeekSnapshot;
-
   const meso = await prisma.mesocycle.findUnique({
-    where: { id: mesocycleId },
+    where: { id: mesocycleSnapshot.mesocycleId },
     select: { durationWeeks: true },
   });
   if (!meso) return [];
@@ -1344,8 +1343,8 @@ async function computeVolumeCompliance(
   // Query prior performed workouts in the same mesocycle week, excluding this workout
   const priorWorkouts = await prisma.workout.findMany({
     where: {
-      mesocycleId,
-      mesocycleWeekSnapshot,
+      mesocycleId: mesocycleSnapshot.mesocycleId,
+      mesocycleWeekSnapshot: mesocycleSnapshot.week,
       status: { in: [...PERFORMED_WORKOUT_STATUSES] },
       id: { not: workout.id },
     },
@@ -1409,7 +1408,7 @@ async function computeVolumeCompliance(
 
     const before = setsLoggedBefore.get(muscle) ?? 0;
     const projected = before + prescribed;
-    const weeklyTarget = getWeeklyVolumeTarget(meso, muscle, mesocycleWeekSnapshot);
+    const weeklyTarget = getWeeklyVolumeTarget(meso, muscle, mesocycleSnapshot.week);
 
     compliance.push({
       muscle,

@@ -33,7 +33,7 @@ Sources of truth:
 ## API route groups
 - Workouts: `src/app/api/workouts/**` (generate-from-intent, generate-from-template, save, `GET /api/workouts/history`)
 - Logging: `src/app/api/logs/set/route.ts`
-- Mesocycles: `GET /api/mesocycles` (`src/app/api/mesocycles/route.ts`) — returns list of user mesocycles with state, durationWeeks, startDate, isActive
+- Mesocycles: `GET /api/mesocycles` (`src/app/api/mesocycles/route.ts`) - returns list of user mesocycles with state, durationWeeks, startDate, isActive
 - Program/periodization/readiness: `src/app/api/program/route.ts`, `src/app/api/periodization/macro/route.ts`, `src/app/api/readiness/submit/route.ts`, `src/app/api/stalls/route.ts`
 - Templates: `src/app/api/templates/**`
 - Exercises and preferences: `src/app/api/exercises/**`, `src/app/api/preferences/route.ts`
@@ -44,12 +44,12 @@ Sources of truth:
 - Route: `GET /api/program` (`src/app/api/program/route.ts`) returns `loadProgramDashboardData()` output directly.
 - `GET /api/program` accepts an optional `?week=N` query parameter (`src/app/api/program/route.ts`). When supplied, `loadProgramDashboardData()` returns volume and RIR data for the requested historical week instead of the current week. The live `currentWeek` is always present in the response; the requested week is returned as `viewedWeek`.
 - `ProgramDashboardData` now includes `daysPerWeek` (`src/lib/api/program.ts`) sourced from user constraints and used by clients to avoid hardcoded frequency assumptions.
-- `ProgramDashboardData.viewedWeek` is the effective week whose volume/RIR data is rendered — equals `currentWeek` by default, overridden by `?week=N`. Clamped to `[1, durationWeeks]`.
+- `ProgramDashboardData.viewedWeek` is the effective week whose volume/RIR data is rendered - equals `currentWeek` by default, overridden by `?week=N`. Clamped to `[1, durationWeeks]`.
 - `ProgramDashboardData.activeMeso.completedSessions` is now sourced from `accumulationSessionsCompleted` (the canonical lifecycle counter), not the `completedSessions` DB column. Clients should treat this field as the lifecycle-derived session count.
 
 ## Validation-backed contracts (examples)
 - Workout generation/save: `generateFromTemplateSchema`, `generateFromIntentSchema`, `saveWorkoutSchema`
-- Workout history query: `workoutHistoryQuerySchema` in `src/lib/validation.ts`; consumed by `GET /api/workouts/history`. Supports `intent`, `status` (comma-separated), `mesocycleId`, `from`/`to` date range, and cursor-based pagination (`cursor`, `take`). History items now include `mesoSessionSnapshot` (session-within-week number, nullable) in the response shape (`src/app/api/workouts/history/route.ts`).
+- Workout history query: `workoutHistoryQuerySchema` in `src/lib/validation.ts`; consumed by `GET /api/workouts/history`. Supports `intent`, `status` (comma-separated), `mesocycleId`, `from`/`to` date range, and cursor-based pagination (`cursor`, `take`). History items expose only a derived `sessionSnapshot` summary for week/session/phase badge rendering instead of parallel top-level snapshot fields in the response shape (`src/app/api/workouts/history/route.ts`).
 - Logging: `setLogSchema`
 - Dumbbell load contract: clients submit dumbbell `actualLoad` in per-hand units and `POST /api/logs/set` persists the provided per-hand value directly.
 - Performed-set signal requirement: `POST /api/logs/set` returns 400 when a non-skipped set log supplies neither `actualReps` nor `actualRpe`. Unresolved sets must remain un-logged (missing) rather than being written as empty performed logs.
@@ -57,9 +57,9 @@ Sources of truth:
 - Templates: `createTemplateSchema`, `updateTemplateSchema`, `addExerciseToTemplateSchema`
 - Profile/readiness/analytics: `profileSetupSchema`, `readinessSignalSchema`, `analyticsSummarySchema`
 - `profileSetupSchema` no longer accepts `sessionMinutes`; profile setup persists `daysPerWeek` and optional `splitType` through `POST /api/profile/setup` (`src/lib/validation.ts`, `src/app/api/profile/setup/route.ts`).
-- Save payload still accepts compatibility-only `wasAutoregulated` / `autoregulationLog` fields in `src/lib/validation.ts`, but current app save paths should send canonical `selectionMetadata.sessionDecisionReceipt` instead.
+- Save payload no longer accepts compatibility-only `autoregulationLog`; session-level readiness must be carried canonically in `selectionMetadata.sessionDecisionReceipt.readiness` (`src/lib/validation.ts`, `src/app/api/workouts/save/route.ts`).
 - `saveWorkoutSchema` rejects legacy top-level session metadata mirrors inside `selectionMetadata` (`cycleContext`, `deloadDecision`, `sorenessSuppressedMuscles`, `adaptiveDeloadApplied`, `periodizationWeek`, `lifecycleRirTarget`, `lifecycleVolumeTargets`) and requires canonical session-level metadata to live under `selectionMetadata.sessionDecisionReceipt` (`src/lib/validation.ts`, `src/app/api/workouts/save/route.ts`).
-- `src/lib/evidence/session-decision-compatibility.ts` folds any incoming compatibility fields into canonical `selectionMetadata.sessionDecisionReceipt.readiness`; `src/app/api/workouts/save/route.ts` no longer writes those compatibility fields back as active workout state.
+- `src/app/api/workouts/save/route.ts` rebuilds canonical receipt metadata from `selectionMetadata.sessionDecisionReceipt`; save-time compatibility folding for top-level readiness mirrors has been removed.
 
 ## Workout save terminal transition contract
 - Route: `POST /api/workouts/save` (`src/app/api/workouts/save/route.ts`).
@@ -69,7 +69,8 @@ Sources of truth:
   - `mark_partial` => finalize as `PARTIAL`.
   - `mark_skipped` => finalize as `SKIPPED`.
 - `save_plan` cannot finalize terminal statuses (`COMPLETED`, `PARTIAL`, `SKIPPED`); terminal `status` in a plan write is ignored and persisted status remains non-terminal/current.
-- `save_plan` on a **new workout** (no existing record) now triggers a mesocycle snapshot lookup and writes `mesocycleWeekSnapshot` / `mesoSessionSnapshot` / `mesocyclePhaseSnapshot` — the same fields written on performed transition — so the week/session badge appears in Recent Workouts immediately upon plan save (`src/app/api/workouts/save/route.ts`). The performed-transition error gate (`ACTIVE_MESOCYCLE_NOT_FOUND`) is skipped for plan saves; missing active mesocycle is tolerated gracefully.
+- `save_plan` on a **new workout** (no existing record) now triggers a mesocycle snapshot lookup and writes `mesocycleWeekSnapshot` / `mesoSessionSnapshot` / `mesocyclePhaseSnapshot` - the same fields written on performed transition - so the week/session badge appears in Recent Workouts immediately upon plan save (`src/app/api/workouts/save/route.ts`). The performed-transition error gate (`ACTIVE_MESOCYCLE_NOT_FOUND`) is skipped for plan saves; missing active mesocycle is tolerated gracefully.
+- Those persisted mesocycle snapshot columns are canonical derived metadata for history badges and progression/explainability week context. UI/list contracts should consume only derived summaries (`sessionSnapshot`), while runtime history/progression consumers should use a normalized `mesocycleSnapshot` object rather than raw column mirrors.
 - Completion gating: `mark_completed` requires at least one performed non-skipped set log; otherwise route returns `409`.
 - Mesocycle snapshots are duration-aware: `mesocycleWeekSnapshot` is derived from `durationWeeks`, `accumulationSessionsCompleted`, and `sessionsPerWeek`, and `mesoSessionSnapshot` during deload is capped by `sessionsPerWeek` rather than a fixed `3`.
 - Mesocycle lifecycle counter increment split:
@@ -96,8 +97,8 @@ Sources of truth:
   - `POST /api/workouts/generate-from-intent` (`src/app/api/workouts/generate-from-intent/route.ts`)
   - `POST /api/workouts/generate-from-template` (`src/app/api/workouts/generate-from-template/route.ts`)
 - Generation responses persist canonical selection metadata only:
-  - intent route returns `selectionMetadata` and optional debug `selection`, both carrying canonical `sessionDecisionReceipt`
-  - template route returns `selection`, carrying canonical `sessionDecisionReceipt`
+  - intent route returns `selectionMetadata`, carrying canonical `sessionDecisionReceipt`
+  - template route returns `selectionMetadata`, carrying canonical `sessionDecisionReceipt`
 - Generation routes canonicalize receipt readiness/autoregulation fields through shared selection metadata helpers rather than returning ad hoc top-level session mirrors (`src/lib/ui/selection-metadata.ts`, `src/lib/api/template-session/types.ts`).
 
 ## Workout explanation response contract

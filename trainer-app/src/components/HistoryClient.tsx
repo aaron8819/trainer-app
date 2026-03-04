@@ -1,20 +1,22 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { WorkoutRowActions } from "./workout/WorkoutRowActions";
 import DeleteWorkoutButton from "./DeleteWorkoutButton";
+import { WorkoutRowActions } from "./workout/WorkoutRowActions";
+import {
+  type WorkoutSessionSnapshotSummary,
+  formatWorkoutSessionSnapshotLabel,
+} from "@/lib/ui/workout-session-snapshot";
 
 export type HistoryWorkoutItem = {
   id: string;
   scheduledDate: string;
   completedAt: string | null;
   status: string;
-  selectionMode: string;
+  selectionMode: string | null;
   sessionIntent: string | null;
   mesocycleId: string | null;
-  mesocycleWeekSnapshot: number | null;
-  mesoSessionSnapshot: number | null;
-  mesocyclePhaseSnapshot: string | null;
+  sessionSnapshot: WorkoutSessionSnapshotSummary | null;
   exerciseCount: number;
   totalSetsLogged: number;
 };
@@ -192,9 +194,7 @@ export default function HistoryClient({
 
   return (
     <div>
-      {/* Filter controls */}
       <div className="space-y-4 rounded-2xl border border-slate-200 p-4 md:p-5">
-        {/* Intent */}
         <div>
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
             Session type
@@ -220,7 +220,6 @@ export default function HistoryClient({
           </div>
         </div>
 
-        {/* Status */}
         <div>
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
             Status
@@ -241,14 +240,13 @@ export default function HistoryClient({
           </div>
         </div>
 
-        {/* Mesocycle + Date range */}
         <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">
           <div className="sm:col-span-2">
             <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
               Mesocycle
             </label>
             <select
-              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-400 min-w-0 max-w-full"
+              className="min-w-0 max-w-full w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-400"
               value={filters.mesocycleId ?? ""}
               onChange={(e) =>
                 applyFilters({ ...filters, mesocycleId: e.target.value || null })
@@ -257,7 +255,7 @@ export default function HistoryClient({
               <option value="">All mesocycles</option>
               {mesocycles.map((meso) => (
                 <option key={meso.id} value={meso.id}>
-                  {meso.isActive ? "Active · " : ""}Meso {meso.mesoNumber} —{" "}
+                  {meso.isActive ? "Active - " : ""}Meso {meso.mesoNumber} -{" "}
                   {new Date(meso.startDate).toLocaleDateString()}
                 </option>
               ))}
@@ -271,9 +269,7 @@ export default function HistoryClient({
               type="date"
               className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-400"
               value={filters.from ?? ""}
-              onChange={(e) =>
-                applyFilters({ ...filters, from: e.target.value || null })
-              }
+              onChange={(e) => applyFilters({ ...filters, from: e.target.value || null })}
             />
           </div>
           <div>
@@ -284,30 +280,26 @@ export default function HistoryClient({
               type="date"
               className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-400"
               value={filters.to ?? ""}
-              onChange={(e) =>
-                applyFilters({ ...filters, to: e.target.value || null })
-              }
+              onChange={(e) => applyFilters({ ...filters, to: e.target.value || null })}
             />
           </div>
         </div>
       </div>
 
-      {/* Summary row */}
       <div className="mt-5 flex items-center justify-between">
         <p className="text-sm text-slate-500">
           {totalCount} session{totalCount === 1 ? "" : "s"}
         </p>
-        {!isDefaultFilters && (
+        {!isDefaultFilters ? (
           <button
             className="text-sm font-semibold text-slate-900 underline underline-offset-2"
             onClick={resetFilters}
           >
             Reset filters
           </button>
-        )}
+        ) : null}
       </div>
 
-      {/* List */}
       <div className="mt-3">
         {isLoading && workouts.length === 0 ? (
           <SkeletonRows />
@@ -323,61 +315,63 @@ export default function HistoryClient({
           </div>
         ) : (
           <div className="space-y-3">
-            {workouts.map((workout) => (
-              <div
-                key={workout.id}
-                className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 p-5"
-              >
-                <div>
-                  <p className="text-sm font-semibold">
-                    {workout.sessionIntent ? formatIntent(workout.sessionIntent) : "Workout"}
-                    {workout.mesocycleWeekSnapshot != null ? (
-                      <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600">
-                        Wk{workout.mesocycleWeekSnapshot}
-                        {workout.mesoSessionSnapshot != null
-                          ? `·S${workout.mesoSessionSnapshot}`
-                          : ""}
-                      </span>
-                    ) : null}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {new Date(workout.scheduledDate).toLocaleDateString()} ·{" "}
-                    {workout.exerciseCount} exercise{workout.exerciseCount === 1 ? "" : "s"} ·{" "}
-                    {workout.totalSetsLogged} set{workout.totalSetsLogged === 1 ? "" : "s"} logged
-                  </p>
+            {workouts.map((workout) => {
+              const sessionSnapshotLabel = formatWorkoutSessionSnapshotLabel(
+                workout.sessionSnapshot
+              );
+
+              return (
+                <div
+                  key={workout.id}
+                  className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 p-5"
+                >
+                  <div>
+                    <p className="text-sm font-semibold">
+                      {workout.sessionIntent ? formatIntent(workout.sessionIntent) : "Workout"}
+                      {sessionSnapshotLabel ? (
+                        <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600">
+                          {sessionSnapshotLabel}
+                        </span>
+                      ) : null}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {new Date(workout.scheduledDate).toLocaleDateString()} |{" "}
+                      {workout.exerciseCount} exercise{workout.exerciseCount === 1 ? "" : "s"} |{" "}
+                      {workout.totalSetsLogged} set{workout.totalSetsLogged === 1 ? "" : "s"} logged
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span
+                      className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                        STATUS_CLASSES[workout.status] ?? "bg-slate-100 text-slate-600"
+                      }`}
+                    >
+                      {STATUS_LABELS[workout.status] ?? workout.status}
+                    </span>
+                    <WorkoutRowActions workout={workout} />
+                    <DeleteWorkoutButton
+                      workoutId={workout.id}
+                      onDeleted={() => handleDeleted(workout.id)}
+                    />
+                  </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <span
-                    className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                      STATUS_CLASSES[workout.status] ?? "bg-slate-100 text-slate-600"
-                    }`}
-                  >
-                    {STATUS_LABELS[workout.status] ?? workout.status}
-                  </span>
-                  <WorkoutRowActions workout={workout} />
-                  <DeleteWorkoutButton
-                    workoutId={workout.id}
-                    onDeleted={() => handleDeleted(workout.id)}
-                  />
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
 
-      {/* Load more */}
-      {nextCursor && (
+      {nextCursor ? (
         <div className="mt-6 flex justify-center">
           <button
             className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 px-6 py-2 text-sm font-semibold text-slate-900 transition-colors hover:bg-slate-50 disabled:opacity-50"
             onClick={loadMore}
             disabled={isLoading}
           >
-            {isLoading ? "Loading…" : "Load more"}
+            {isLoading ? "Loading..." : "Load more"}
           </button>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

@@ -305,3 +305,31 @@ export function readSessionDecisionReceipt(
 ): SessionDecisionReceipt | undefined {
   return extractSessionDecisionReceipt(selectionMetadata);
 }
+
+export function normalizeSelectionMetadataWithReceipt(input: {
+  selectionMetadata: unknown;
+  cycleContext: CycleContextSnapshot;
+}): JsonRecord {
+  const record = toObject(input.selectionMetadata) ?? {};
+  const existingReceipt = extractSessionDecisionReceipt(record);
+
+  return {
+    ...record,
+    sessionDecisionReceipt: buildSessionDecisionReceipt({
+      cycleContext: input.cycleContext,
+      lifecycleRirTarget: existingReceipt?.lifecycleRirTarget,
+      lifecycleVolumeTargets: existingReceipt?.lifecycleVolume.targets,
+      sorenessSuppressedMuscles: existingReceipt?.sorenessSuppressedMuscles ?? [],
+      deloadDecision: existingReceipt?.deloadDecision,
+      autoregulation: existingReceipt
+        ? {
+            wasAutoregulated: existingReceipt.readiness.wasAutoregulated,
+            signalAgeHours: existingReceipt.readiness.signalAgeHours,
+            fatigueScoreOverall: existingReceipt.readiness.fatigueScoreOverall,
+            rationale: existingReceipt.readiness.rationale,
+            intensityScaling: existingReceipt.readiness.intensityScaling,
+          }
+        : undefined,
+    }),
+  };
+}

@@ -32,8 +32,6 @@ export type BaselineInput = {
   workingWeightMin?: number | null;
   workingWeightMax?: number | null;
   topSetWeight?: number | null;
-  mesocyclePhaseSnapshot?: string | null;
-  mesocycleWeekSnapshot?: number | null;
 };
 
 export type ApplyLoadsOptions = {
@@ -300,14 +298,12 @@ function selectNewMesocycleBaselineHistory(
 }
 
 function getMesocyclePhaseSnapshot(entry: WorkoutHistoryEntry): string | undefined {
-  const value = (entry as WorkoutHistoryEntry & { mesocyclePhaseSnapshot?: unknown })
-    .mesocyclePhaseSnapshot;
+  const value = entry.mesocycleSnapshot?.phase;
   return typeof value === "string" ? value.trim().toUpperCase() : undefined;
 }
 
 function getMesocycleWeekSnapshot(entry: WorkoutHistoryEntry): number | undefined {
-  const value = (entry as WorkoutHistoryEntry & { mesocycleWeekSnapshot?: unknown })
-    .mesocycleWeekSnapshot;
+  const value = entry.mesocycleSnapshot?.week;
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 

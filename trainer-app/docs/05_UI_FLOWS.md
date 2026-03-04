@@ -42,7 +42,7 @@ Sources of truth:
 2. Generate and save workout
 - UI entry points: dashboard/template/intent components
 - APIs: `POST /api/workouts/generate-from-template`, `POST /api/workouts/generate-from-intent`, `POST /api/workouts/save`
-- `IntentWorkoutCard` and `GenerateFromTemplateCard` consume shared generation response types and save only canonicalized selection metadata; session-level context is passed through `selectionMetadata.sessionDecisionReceipt` / `selection.sessionDecisionReceipt`, not duplicated as top-level mirrors (`src/components/IntentWorkoutCard.tsx`, `src/components/GenerateFromTemplateCard.tsx`, `src/components/log-workout/api.ts`).
+- `IntentWorkoutCard` and `GenerateFromTemplateCard` consume shared generation response types and save only canonicalized selection metadata; session-level context is passed through `selectionMetadata.sessionDecisionReceipt`, not duplicated as top-level mirrors (`src/components/IntentWorkoutCard.tsx`, `src/components/GenerateFromTemplateCard.tsx`, `src/components/log-workout/api.ts`).
 
 3. Log sets and complete workout
 - UI: `/log/[id]`, `LogWorkoutClient`
@@ -69,4 +69,4 @@ Sources of truth:
 - `ProgramDashboardData` includes `lastSessionSkipped` (bool), `latestIncomplete` (workout id/status), `rirTarget` (RIR band for the viewed meso week), `coachingCue` (human-readable session readiness message), `currentWeek`, and `viewedWeek` (the week whose volume is displayed), all consumed by `ProgramStatusCard`.
 - `currentWeek`, `viewedWeek`, lifecycle RIR, and weekly volume targets are duration-aware: accumulation spans `durationWeeks - 1`, and the final week is deload instead of assuming a fixed 4+1 structure.
 - `ProgramStatusCard` is mounted on both the home dashboard (`src/app/page.tsx`) and the `/program` page (`src/app/program/page.tsx`), replacing the prior inline server-rendered volume table on `/program`.
-- Recent Workouts (`src/components/RecentWorkouts.tsx`) and History (`src/components/HistoryClient.tsx`) now display a `Wk{N}·S{N}` badge (week and session-within-week) sourced from `mesocycleWeekSnapshot` and `mesoSessionSnapshot`. Planned workouts show this badge immediately upon plan-save because the save route now snapshots mesocycle context for new plan writes.
+- Recent Workouts (`src/components/RecentWorkouts.tsx`) and History (`src/components/HistoryClient.tsx`) now display a week/session badge from a derived `sessionSnapshot` summary built from mesocycle snapshot persistence. Planned workouts show this badge immediately upon plan-save because the save route now snapshots mesocycle context for new plan writes.

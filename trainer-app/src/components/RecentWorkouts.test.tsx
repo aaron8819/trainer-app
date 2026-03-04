@@ -1,6 +1,7 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import RecentWorkouts, { type WorkoutListItem } from "./RecentWorkouts";
+import { buildWorkoutSessionSnapshotSummary } from "@/lib/ui/workout-session-snapshot";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn() }),
@@ -32,8 +33,7 @@ function makeWorkout(overrides: Partial<WorkoutListItem> = {}): WorkoutListItem 
     status: "COMPLETED",
     sessionIntent: "push",
     exercisesCount: 5,
-    mesocycleWeekSnapshot: null,
-    mesoSessionSnapshot: null,
+    sessionSnapshot: null,
     ...overrides,
   };
 }
@@ -67,6 +67,21 @@ describe("dynamic count label", () => {
       makeWorkout({ id: "c" }),
     ]);
     expect(screen.getByText("3 workouts")).toBeInTheDocument();
+  });
+});
+
+describe("session snapshot badge", () => {
+  it("renders the derived week-session label when a snapshot exists", () => {
+    renderRecent([
+      makeWorkout({
+        sessionSnapshot: buildWorkoutSessionSnapshotSummary({
+          week: 4,
+          session: 1,
+          phase: "ACCUMULATION",
+        }),
+      }),
+    ]);
+    expect(screen.getByText("Wk4·S1")).toBeInTheDocument();
   });
 });
 

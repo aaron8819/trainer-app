@@ -764,8 +764,7 @@ describe("applyLoads correctness", () => {
           completed: true,
           status: "COMPLETED",
           sessionIntent: "push",
-          mesocyclePhaseSnapshot: "DELOAD",
-          mesocycleWeekSnapshot: 5,
+          mesocycleSnapshot: { phase: "DELOAD", week: 5 },
           exercises: [
             {
               exerciseId: "bench",
@@ -778,8 +777,7 @@ describe("applyLoads correctness", () => {
           completed: true,
           status: "COMPLETED",
           sessionIntent: "push",
-          mesocyclePhaseSnapshot: "ACCUMULATION",
-          mesocycleWeekSnapshot: 4,
+          mesocycleSnapshot: { phase: "ACCUMULATION", week: 4 },
           exercises: [
             {
               exerciseId: "bench",
@@ -807,8 +805,7 @@ describe("applyLoads correctness", () => {
           completed: true,
           status: "COMPLETED",
           sessionIntent: "push",
-          mesocyclePhaseSnapshot: "DELOAD",
-          mesocycleWeekSnapshot: 5,
+          mesocycleSnapshot: { phase: "DELOAD", week: 5 },
           exercises: [
             {
               exerciseId: "bench",
@@ -821,8 +818,7 @@ describe("applyLoads correctness", () => {
           completed: true,
           status: "COMPLETED",
           sessionIntent: "push",
-          mesocyclePhaseSnapshot: "ACCUMULATION",
-          mesocycleWeekSnapshot: 3,
+          mesocycleSnapshot: { phase: "ACCUMULATION", week: 3 },
           exercises: [
             {
               exerciseId: "bench",
@@ -835,8 +831,7 @@ describe("applyLoads correctness", () => {
           completed: true,
           status: "COMPLETED",
           sessionIntent: "push",
-          mesocyclePhaseSnapshot: "ACCUMULATION",
-          mesocycleWeekSnapshot: 2,
+          mesocycleSnapshot: { phase: "ACCUMULATION", week: 2 },
           exercises: [
             {
               exerciseId: "bench",
@@ -860,8 +855,7 @@ describe("applyLoads correctness", () => {
           completed: true,
           status: "COMPLETED",
           sessionIntent: "push",
-          mesocyclePhaseSnapshot: "ACTIVE_DELOAD",
-          mesocycleWeekSnapshot: 5,
+          mesocycleSnapshot: { phase: "ACTIVE_DELOAD", week: 5 },
           exercises: [
             {
               exerciseId: "bench",

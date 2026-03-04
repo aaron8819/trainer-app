@@ -1,6 +1,10 @@
 import { prisma } from "@/lib/db/prisma";
 import { resolveOwner } from "@/lib/api/workout-context";
 import HistoryClient, { type HistoryWorkoutItem, type MesocycleOption } from "@/components/HistoryClient";
+import {
+  buildWorkoutListSurfaceSummary,
+  workoutListItemSelect,
+} from "@/lib/ui/workout-list-items";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -16,30 +20,7 @@ export default async function HistoryPage() {
       where: { userId: owner.id },
       orderBy: { scheduledDate: "desc" },
       take: TAKE + 1,
-      select: {
-        id: true,
-        scheduledDate: true,
-        completedAt: true,
-        status: true,
-        selectionMode: true,
-        sessionIntent: true,
-        mesocycleId: true,
-        mesocycleWeekSnapshot: true,
-        mesoSessionSnapshot: true,
-        mesocyclePhaseSnapshot: true,
-        _count: { select: { exercises: true } },
-        exercises: {
-          select: {
-            sets: {
-              select: {
-                _count: {
-                  select: { logs: { where: { wasSkipped: false } } },
-                },
-              },
-            },
-          },
-        },
-      },
+      select: workoutListItemSelect,
     }),
     prisma.workout.count({ where: { userId: owner.id } }),
     prisma.mesocycle.findMany({
@@ -52,22 +33,7 @@ export default async function HistoryPage() {
   const hasMore = workoutsRaw.length > TAKE;
   const page = hasMore ? workoutsRaw.slice(0, TAKE) : workoutsRaw;
 
-  const initialWorkouts: HistoryWorkoutItem[] = page.map((w) => ({
-    id: w.id,
-    scheduledDate: w.scheduledDate.toISOString(),
-    completedAt: w.completedAt?.toISOString() ?? null,
-    status: w.status,
-    selectionMode: w.selectionMode,
-    sessionIntent: w.sessionIntent ?? null,
-    mesocycleId: w.mesocycleId ?? null,
-    mesocycleWeekSnapshot: w.mesocycleWeekSnapshot ?? null,
-    mesoSessionSnapshot: w.mesoSessionSnapshot ?? null,
-    mesocyclePhaseSnapshot: w.mesocyclePhaseSnapshot ?? null,
-    exerciseCount: w._count.exercises,
-    totalSetsLogged: w.exercises
-      .flatMap((e) => e.sets)
-      .reduce((sum, s) => sum + s._count.logs, 0),
-  }));
+  const initialWorkouts: HistoryWorkoutItem[] = page.map(buildWorkoutListSurfaceSummary);
 
   const nextCursor = hasMore
     ? page[page.length - 1].scheduledDate.toISOString()

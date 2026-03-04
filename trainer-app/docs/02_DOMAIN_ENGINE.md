@@ -61,7 +61,8 @@ Sources of truth:
 - API orchestration for readiness and periodization endpoints lives in `src/lib/api/readiness.ts` and `src/lib/api/periodization.ts`.
 - Canonical session-level training context is materialized as `selectionMetadata.sessionDecisionReceipt`, with build/parse/read helpers in `src/lib/evidence/session-decision-receipt.ts` and its persisted shape in `src/lib/evidence/types.ts`.
 - Receipt readiness context is canonicalized from autoregulation into `readiness.wasAutoregulated`, `readiness.signalAgeHours`, `readiness.fatigueScoreOverall`, and `readiness.intensityScaling`; exception rows are derived from receipt state rather than stored as separate session-level mirrors (`src/lib/evidence/session-decision-receipt.ts`, `src/lib/api/autoregulation.ts`).
-- Compatibility-only save folding for legacy/top-level autoregulation payloads is isolated in `src/lib/evidence/session-decision-compatibility.ts`; runtime consumers still read the canonical receipt only.
+- Save-time session-decision writes are receipt-only: runtime consumers read the canonical receipt, and the main save route no longer accepts top-level autoregulation payloads.
+- Generation responses are also receipt-only: generation UI reads readiness preview state from `selectionMetadata.sessionDecisionReceipt.readiness` rather than a parallel top-level autoregulation payload.
 
 ## Workout status semantics
 - The split exists to separate adaptation signals from advancement control: partially performed work should inform future load/selection, while schedule/phase advancement remains a stricter completion event.

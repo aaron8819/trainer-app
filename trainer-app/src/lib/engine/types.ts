@@ -15,6 +15,11 @@ export type SecondaryGoal =
 export type SplitType = "ppl" | "upper_lower" | "full_body" | "custom";
 export type SplitDay = "push" | "pull" | "legs" | "upper" | "lower" | "full_body" | "body_part";
 export type WorkoutSelectionMode = "AUTO" | "MANUAL" | "BONUS" | "INTENT";
+export type WorkoutMesocycleSnapshot = {
+  week: number;
+  session?: number | null;
+  phase?: string | null;
+};
 
 /**
  * Muscle name type alias for selection-v2
@@ -180,6 +185,7 @@ export type WorkoutHistoryEntry = {
   confidence?: number;
   confidenceNotes?: string[];
   anomalyFlags?: string[];
+  mesocycleSnapshot?: WorkoutMesocycleSnapshot;
   exercises: {
     exerciseId: string;
     primaryMuscles?: string[];

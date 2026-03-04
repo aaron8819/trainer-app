@@ -3,6 +3,10 @@ import { prisma } from "@/lib/db/prisma";
 import { resolveOwner } from "@/lib/api/workout-context";
 import { workoutHistoryQuerySchema, WORKOUT_STATUS_VALUES } from "@/lib/validation";
 import { type WorkoutStatus, type WorkoutSessionIntent, type Prisma } from "@prisma/client";
+import {
+  buildWorkoutListSurfaceSummary,
+  workoutListItemSelect,
+} from "@/lib/ui/workout-list-items";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -74,32 +78,7 @@ export async function GET(request: Request) {
       where: paginatedWhere,
       orderBy: { scheduledDate: "desc" },
       take: take + 1,
-      select: {
-        id: true,
-        scheduledDate: true,
-        completedAt: true,
-        status: true,
-        selectionMode: true,
-        sessionIntent: true,
-        mesocycleId: true,
-        mesocycleWeekSnapshot: true,
-        mesoSessionSnapshot: true,
-        mesocyclePhaseSnapshot: true,
-        _count: { select: { exercises: true } },
-        exercises: {
-          select: {
-            sets: {
-              select: {
-                _count: {
-                  select: {
-                    logs: { where: { wasSkipped: false } },
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
+      select: workoutListItemSelect,
     }),
     prisma.workout.count({ where: baseWhere }),
   ]);
@@ -107,22 +86,7 @@ export async function GET(request: Request) {
   const hasMore = workouts.length > take;
   const page = hasMore ? workouts.slice(0, take) : workouts;
 
-  const items = page.map((w) => ({
-    id: w.id,
-    scheduledDate: w.scheduledDate.toISOString(),
-    completedAt: w.completedAt?.toISOString() ?? null,
-    status: w.status,
-    selectionMode: w.selectionMode,
-    sessionIntent: w.sessionIntent ?? null,
-    mesocycleId: w.mesocycleId ?? null,
-    mesocycleWeekSnapshot: w.mesocycleWeekSnapshot ?? null,
-    mesoSessionSnapshot: w.mesoSessionSnapshot ?? null,
-    mesocyclePhaseSnapshot: w.mesocyclePhaseSnapshot ?? null,
-    exerciseCount: w._count.exercises,
-    totalSetsLogged: w.exercises
-      .flatMap((e) => e.sets)
-      .reduce((sum, s) => sum + s._count.logs, 0),
-  }));
+  const items = page.map(buildWorkoutListSurfaceSummary);
 
   const nextCursor = hasMore ? page[page.length - 1].scheduledDate.toISOString() : null;
 

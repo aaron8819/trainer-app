@@ -6,6 +6,10 @@ import RecentWorkouts from "@/components/RecentWorkouts";
 import ReadinessCheckInForm from "@/components/ReadinessCheckInForm";
 import { ProgramStatusCard } from "@/components/ProgramStatusCard";
 import { loadCapabilityFlags, loadProgramDashboardData } from "@/lib/api/program";
+import {
+  buildWorkoutListSurfaceSummary,
+  workoutListItemSelect,
+} from "@/lib/ui/workout-list-items";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -43,12 +47,6 @@ function isSessionIntent(value: string | null): value is SessionIntent {
 
 export default async function Home() {
   const owner = await resolveOwner();
-  const exerciseInclude = {
-    exercises: {
-      orderBy: { orderIndex: "asc" as const },
-      include: { exercise: true },
-    },
-  } as const;
 
   const [latestCompleted, recentWorkouts, templateCount, capabilities, programData] =
     await Promise.all([
@@ -61,7 +59,7 @@ export default async function Home() {
         where: { userId: owner.id },
         orderBy: { scheduledDate: "desc" },
         take: 6,
-        include: exerciseInclude,
+        select: workoutListItemSelect,
       }),
       prisma.workoutTemplate.count({ where: { userId: owner.id } }),
       loadCapabilityFlags(owner.id),
@@ -83,15 +81,18 @@ export default async function Home() {
   // Validate intent type for DashboardGenerateSection (typed prop).
   const nextSessionTyped = isSessionIntent(nextSession.intent) ? nextSession.intent : null;
 
-  const recentList = recentWorkouts.map((workout) => ({
-    id: workout.id,
-    scheduledDate: workout.scheduledDate.toISOString(),
-    status: workout.status,
-    sessionIntent: workout.sessionIntent?.toLowerCase() ?? null,
-    exercisesCount: workout.exercises.length,
-    mesocycleWeekSnapshot: workout.mesocycleWeekSnapshot ?? null,
-    mesoSessionSnapshot: workout.mesoSessionSnapshot ?? null,
-  }));
+  const recentList = recentWorkouts.map((workout) => {
+    const summary = buildWorkoutListSurfaceSummary(workout);
+
+    return {
+      id: summary.id,
+      scheduledDate: summary.scheduledDate,
+      status: summary.status,
+      sessionIntent: summary.sessionIntent?.toLowerCase() ?? null,
+      exercisesCount: summary.exerciseCount,
+      sessionSnapshot: summary.sessionSnapshot,
+    };
+  });
 
   return (
     <main className="min-h-screen bg-white text-slate-900">

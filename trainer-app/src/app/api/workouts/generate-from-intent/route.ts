@@ -8,7 +8,6 @@ import type { GenerateFromIntentResponse } from "@/lib/api/template-session/type
 import { buildCanonicalSelectionMetadata } from "@/lib/ui/selection-metadata";
 
 export async function POST(request: Request) {
-  const includeSelectionDebug = new URL(request.url).searchParams.get("debug") === "1";
   const body = await request.json().catch(() => ({}));
   const parsed = generateFromIntentSchema.safeParse(body);
 
@@ -56,16 +55,6 @@ export async function POST(request: Request) {
     sessionIntent: result.sessionIntent,
     selectionSummary,
     selectionMetadata,
-    selection: includeSelectionDebug ? selectionMetadata : undefined,
-    autoregulation: {
-      applied: autoregulated.applied,
-      reason: autoregulated.reason,
-      signalAgeHours: autoregulated.signalAgeHours,
-      fatigueScore: autoregulated.fatigueScore,
-      modifications: autoregulated.modifications,
-      rationale: autoregulated.rationale,
-      wasAutoregulated: autoregulated.wasAutoregulated,
-    },
     filteredExercises: result.filteredExercises,
   };
 

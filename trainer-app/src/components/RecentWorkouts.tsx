@@ -4,6 +4,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import DeleteWorkoutButton from "./DeleteWorkoutButton";
 import { WorkoutRowActions } from "./workout/WorkoutRowActions";
+import {
+  type WorkoutSessionSnapshotSummary,
+  formatWorkoutSessionSnapshotLabel,
+} from "@/lib/ui/workout-session-snapshot";
 
 export type WorkoutListItem = {
   id: string;
@@ -11,8 +15,7 @@ export type WorkoutListItem = {
   status: string;
   sessionIntent: string | null;
   exercisesCount: number;
-  mesocycleWeekSnapshot: number | null;
-  mesoSessionSnapshot: number | null;
+  sessionSnapshot: WorkoutSessionSnapshotSummary | null;
 };
 
 type StatusMap = {
@@ -62,39 +65,42 @@ export default function RecentWorkouts({
             No workouts saved yet.
           </div>
         ) : (
-          recentWorkouts.map((workout) => (
-            <div
-              key={workout.id}
-              className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 p-5"
-            >
-              <div>
-                <p className="text-sm font-semibold">
-                  {workout.sessionIntent ? formatSessionIntent(workout.sessionIntent) : "Workout"}
-                  {workout.mesocycleWeekSnapshot != null ? (
-                    <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600">
-                      Wk{workout.mesocycleWeekSnapshot}
-                      {workout.mesoSessionSnapshot != null
-                        ? `·S${workout.mesoSessionSnapshot}`
-                        : ""}
-                    </span>
-                  ) : null}
-                </p>
-                <p className="mt-1 text-xs text-slate-500">
-                  {new Date(workout.scheduledDate).toLocaleDateString()} · {workout.exercisesCount}{" "}
-                  exercises
-                </p>
+          recentWorkouts.map((workout) => {
+            const sessionSnapshotLabel = formatWorkoutSessionSnapshotLabel(
+              workout.sessionSnapshot
+            );
+
+            return (
+              <div
+                key={workout.id}
+                className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 p-5"
+              >
+                <div>
+                  <p className="text-sm font-semibold">
+                    {workout.sessionIntent ? formatSessionIntent(workout.sessionIntent) : "Workout"}
+                    {sessionSnapshotLabel ? (
+                      <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600">
+                        {sessionSnapshotLabel}
+                      </span>
+                    ) : null}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {new Date(workout.scheduledDate).toLocaleDateString()} | {workout.exercisesCount}{" "}
+                    exercises
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span
+                    className={`rounded-full px-3 py-1 text-xs font-semibold ${statusClasses[workout.status]}`}
+                  >
+                    {statusLabels[workout.status] ?? workout.status}
+                  </span>
+                  <WorkoutRowActions workout={workout} />
+                  <DeleteWorkoutButton workoutId={workout.id} onDeleted={handleDeleted} />
+                </div>
               </div>
-              <div className="flex items-center gap-3">
-                <span
-                  className={`rounded-full px-3 py-1 text-xs font-semibold ${statusClasses[workout.status]}`}
-                >
-                  {statusLabels[workout.status] ?? workout.status}
-                </span>
-                <WorkoutRowActions workout={workout} />
-                <DeleteWorkoutButton workoutId={workout.id} onDeleted={handleDeleted} />
-              </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
     </section>

@@ -9,8 +9,8 @@ import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 import type { CycleContextSnapshot } from "@/lib/evidence/types";
 import {
   extractSessionDecisionReceipt,
+  normalizeSelectionMetadataWithReceipt,
 } from "@/lib/evidence/session-decision-receipt";
-import { normalizeSessionDecisionForSave } from "@/lib/evidence/session-decision-compatibility";
 import { loadCurrentBlockContext } from "@/lib/api/periodization";
 import type { BlockContext } from "@/lib/engine";
 import { getCurrentMesoWeek, transitionMesocycleState } from "@/lib/api/mesocycle-lifecycle";
@@ -135,13 +135,10 @@ export async function POST(request: Request) {
     dbCycleContext = loadedContext.blockContext ? loadedContext : undefined;
   }
   const cycleContext = deriveCycleContext(incomingSelectionMetadata, dbCycleContext);
-  const normalizedSessionDecision = normalizeSessionDecisionForSave({
+  const selectionMetadata = normalizeSelectionMetadataWithReceipt({
     selectionMetadata: incomingSelectionMetadata,
-    autoregulationLog: parsed.data.autoregulationLog,
-    wasAutoregulated: parsed.data.wasAutoregulated,
     cycleContext,
   });
-  const selectionMetadata = normalizedSessionDecision.selectionMetadata;
 
   try {
     await prisma.$transaction(async (tx) => {

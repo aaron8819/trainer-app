@@ -41,8 +41,6 @@ type GeneratedMetadata = Pick<
   "selectionMode" | "sessionIntent" | "selectionMetadata" | "filteredExercises" | "selectionSummary"
 >;
 
-type AutoregulationData = GenerateFromIntentResponse["autoregulation"];
-
 const INTENT_OPTIONS: { value: SessionIntent; label: string }[] = [
   { value: "push", label: "Push" },
   { value: "pull", label: "Pull" },
@@ -101,7 +99,6 @@ export function IntentWorkoutCard({ initialIntent = "push" }: IntentWorkoutCardP
 
   const [workout, setWorkout] = useState<WorkoutPlan | null>(null);
   const [generatedMetadata, setGeneratedMetadata] = useState<GeneratedMetadata | null>(null);
-  const [autoregulation, setAutoregulation] = useState<AutoregulationData | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -147,7 +144,6 @@ export function IntentWorkoutCard({ initialIntent = "push" }: IntentWorkoutCardP
       filteredExercises: body.filteredExercises ?? [],
       selectionSummary: body.selectionSummary,
     });
-    setAutoregulation(body.autoregulation ?? null);
     setLoading(false);
   };
 
@@ -199,6 +195,10 @@ export function IntentWorkoutCard({ initialIntent = "push" }: IntentWorkoutCardP
     setSavedId(body.workoutId ?? workout.id);
     setSaving(false);
   };
+
+  const readinessPreview = generatedMetadata?.selectionMetadata?.sessionDecisionReceipt?.readiness;
+  const showReadinessPreview =
+    Boolean(readinessPreview?.rationale) || readinessPreview?.signalAgeHours != null;
 
   return (
     <div className="w-full min-w-0 rounded-2xl border border-slate-200 p-5 shadow-sm sm:p-6">
@@ -267,11 +267,13 @@ export function IntentWorkoutCard({ initialIntent = "push" }: IntentWorkoutCardP
 
       {error ? <p className="mt-3 text-sm text-rose-600">{error}</p> : null}
 
-      {autoregulation ? (
+      {showReadinessPreview ? (
         <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
-          <p>{autoregulation.reason}</p>
-          {autoregulation.signalAgeHours != null ? (
-            <p className="mt-1">Signal age: {autoregulation.signalAgeHours.toFixed(1)}h</p>
+          {readinessPreview?.rationale ? <p>{readinessPreview.rationale}</p> : null}
+          {readinessPreview?.signalAgeHours != null ? (
+            <p className={readinessPreview.rationale ? "mt-1" : undefined}>
+              Signal age: {readinessPreview.signalAgeHours.toFixed(1)}h
+            </p>
           ) : null}
         </div>
       ) : null}

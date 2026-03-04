@@ -26,6 +26,9 @@ describe("mapHistory", () => {
         advancesSplit: true,
         trainingBlockId: null,
         weekInBlock: null,
+        mesocycleWeekSnapshot: 4,
+        mesoSessionSnapshot: 2,
+        mesocyclePhaseSnapshot: "ACCUMULATION",
         wasAutoregulated: false,
         autoregulationLog: null,
         exercises: [
@@ -129,6 +132,11 @@ describe("mapHistory", () => {
       setIndex: 1,
       reps: 8,
       load: 185,
+    });
+    expect(history[0].mesocycleSnapshot).toEqual({
+      week: 4,
+      session: 2,
+      phase: "ACCUMULATION",
     });
   });
 

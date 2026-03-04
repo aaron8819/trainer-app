@@ -3,15 +3,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => {
   const resolveOwner = vi.fn();
   const loadActiveMesocycle = vi.fn();
-  const generateSessionFromIntent = vi.fn();
-  const generateDeloadSessionFromIntent = vi.fn();
+  const generateSessionFromTemplate = vi.fn();
+  const generateDeloadSessionFromTemplate = vi.fn();
   const applyAutoregulation = vi.fn();
 
   return {
     resolveOwner,
     loadActiveMesocycle,
-    generateSessionFromIntent,
-    generateDeloadSessionFromIntent,
+    generateSessionFromTemplate,
+    generateDeloadSessionFromTemplate,
     applyAutoregulation,
   };
 });
@@ -25,9 +25,9 @@ vi.mock("@/lib/api/mesocycle-lifecycle", () => ({
 }));
 
 vi.mock("@/lib/api/template-session", () => ({
-  generateSessionFromIntent: (...args: unknown[]) => mocks.generateSessionFromIntent(...args),
-  generateDeloadSessionFromIntent: (...args: unknown[]) =>
-    mocks.generateDeloadSessionFromIntent(...args),
+  generateSessionFromTemplate: (...args: unknown[]) => mocks.generateSessionFromTemplate(...args),
+  generateDeloadSessionFromTemplate: (...args: unknown[]) =>
+    mocks.generateDeloadSessionFromTemplate(...args),
 }));
 
 vi.mock("@/lib/api/autoregulation", () => ({
@@ -36,10 +36,11 @@ vi.mock("@/lib/api/autoregulation", () => ({
 
 import { POST } from "./route";
 
-describe("POST /api/workouts/generate-from-intent deload gate", () => {
+describe("POST /api/workouts/generate-from-template", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.resolveOwner.mockResolvedValue({ id: "user-1" });
+    mocks.loadActiveMesocycle.mockResolvedValue(null);
     mocks.applyAutoregulation.mockImplementation(async (_userId, workout) => ({
       adjusted: workout,
       applied: false,
@@ -52,77 +53,35 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
     }));
   });
 
-  it("returns deload prescription path when active mesocycle state is ACTIVE_DELOAD", async () => {
-    mocks.loadActiveMesocycle.mockResolvedValue({ id: "meso-1", state: "ACTIVE_DELOAD" });
-    mocks.generateDeloadSessionFromIntent.mockResolvedValue({
+  it("returns canonical selectionMetadata for template generation", async () => {
+    mocks.generateSessionFromTemplate.mockResolvedValue({
       workout: {
         id: "w1",
-        scheduledDate: new Date().toISOString(),
-        warmup: [],
-        mainLifts: [{ id: "ex", exercise: { id: "ex", name: "Row" }, isMainLift: true, orderIndex: 0, sets: [{ setIndex: 1, targetReps: 8, targetLoad: 60, targetRpe: 5 }] }],
-        accessories: [],
-        estimatedMinutes: 30,
-      },
-      selectionMode: "INTENT",
-      sessionIntent: "pull",
-      sraWarnings: [],
-      substitutions: [],
-      volumePlanByMuscle: {},
-      selection: {
-        selectedExerciseIds: ["ex"],
-        mainLiftIds: ["ex"],
-        accessoryIds: [],
-        perExerciseSetTargets: { ex: 1 },
-        rationale: {},
-        volumePlanByMuscle: {},
-      },
-      filteredExercises: [],
-    });
-
-    const response = await POST(
-      new Request("http://localhost/api/workouts/generate-from-intent", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ intent: "pull" }),
-      })
-    );
-    const body = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(mocks.generateDeloadSessionFromIntent).toHaveBeenCalledOnce();
-    expect(mocks.generateSessionFromIntent).not.toHaveBeenCalled();
-    expect(body.workout.mainLifts[0].sets[0].targetRpe).toBe(5);
-  });
-
-  it("returns receipt-first selection metadata without top-level autoregulation", async () => {
-    mocks.loadActiveMesocycle.mockResolvedValue(null);
-    mocks.generateSessionFromIntent.mockResolvedValue({
-      workout: {
-        id: "w2",
         scheduledDate: new Date("2026-03-03T00:00:00.000Z").toISOString(),
         warmup: [],
         mainLifts: [
           {
-            id: "we-2",
-            exercise: { id: "ex-2", name: "Press" },
+            id: "we-1",
+            exercise: { id: "ex-1", name: "Bench Press" },
             isMainLift: true,
             orderIndex: 0,
-            sets: [{ setIndex: 1, targetReps: 6, targetLoad: 135, targetRpe: 7 }],
+            sets: [{ setIndex: 1, targetReps: 8, targetLoad: 185, targetRpe: 8 }],
           },
         ],
         accessories: [],
-        estimatedMinutes: 40,
+        estimatedMinutes: 45,
       },
-      selectionMode: "INTENT",
+      templateId: "template-1",
+      selectionMode: "AUTO",
       sessionIntent: "push",
       sraWarnings: [],
       substitutions: [],
       volumePlanByMuscle: {},
       selection: {
-        selectedExerciseIds: ["ex-2"],
-        mainLiftIds: ["ex-2"],
+        selectedExerciseIds: ["ex-1"],
+        mainLiftIds: ["ex-1"],
         accessoryIds: [],
-        perExerciseSetTargets: { "ex-2": 3 },
+        perExerciseSetTargets: { "ex-1": 3 },
         rationale: {},
         volumePlanByMuscle: {},
         sessionDecisionReceipt: {
@@ -160,14 +119,13 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
           exceptions: [],
         },
       },
-      filteredExercises: [],
     });
 
     const response = await POST(
-      new Request("http://localhost/api/workouts/generate-from-intent", {
+      new Request("http://localhost/api/workouts/generate-from-template", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ intent: "push" }),
+        body: JSON.stringify({ templateId: "template-1" }),
       })
     );
     const body = await response.json();

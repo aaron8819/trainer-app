@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { readPersistedWorkoutMesocycleSnapshot } from "./workout-mesocycle-snapshot";
 
 const mocks = vi.hoisted(() => {
   const workoutFindUnique = vi.fn();
@@ -272,7 +273,9 @@ describe("generateWorkoutExplanation – volumeCompliance", () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (call: any[]) => call[0]?.where?.mesocycleId === "meso1"
     );
-    expect(complianceCall?.[0]?.where?.mesocycleWeekSnapshot).toBe(2);
+    expect(complianceCall?.[0]?.where?.mesocycleWeekSnapshot).toBe(
+      readPersistedWorkoutMesocycleSnapshot(BASE_WORKOUT)?.week
+    );
   });
 
   it("current workout is excluded from prior-session count via id filter", async () => {

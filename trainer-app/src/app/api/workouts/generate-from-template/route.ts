@@ -35,7 +35,7 @@ export async function POST(request: Request) {
 
   // Phase 3: Apply autoregulation
   const autoregulated = await applyAutoregulation(user.id, result.workout);
-  const selection = buildCanonicalSelectionMetadata(result.selection, autoregulated);
+  const selectionMetadata = buildCanonicalSelectionMetadata(result.selection, autoregulated);
 
   const response: GenerateFromTemplateResponse = {
     workout: autoregulated.adjusted,
@@ -45,16 +45,7 @@ export async function POST(request: Request) {
     volumePlanByMuscle: result.volumePlanByMuscle,
     selectionMode: result.selectionMode,
     sessionIntent: result.sessionIntent,
-    selection,
-    autoregulation: {
-      applied: autoregulated.applied,
-      reason: autoregulated.reason,
-      signalAgeHours: autoregulated.signalAgeHours,
-      wasAutoregulated: autoregulated.wasAutoregulated,
-      fatigueScore: autoregulated.fatigueScore,
-      modifications: autoregulated.modifications,
-      rationale: autoregulated.rationale,
-    },
+    selectionMetadata,
   };
 
   return NextResponse.json(response);

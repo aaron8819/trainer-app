@@ -35,10 +35,11 @@ function makeWorkout(overrides: Partial<{
   scheduledDate: Date;
   completedAt: Date | null;
   status: string;
-  selectionMode: string;
+  selectionMode: string | null;
   sessionIntent: string | null;
   mesocycleId: string | null;
   mesocycleWeekSnapshot: number | null;
+  mesoSessionSnapshot: number | null;
   mesocyclePhaseSnapshot: string | null;
   exerciseCount: number;
   setLogCount: number;
@@ -61,6 +62,7 @@ function makeWorkout(overrides: Partial<{
     sessionIntent: overrides.sessionIntent ?? "PUSH",
     mesocycleId: overrides.mesocycleId ?? null,
     mesocycleWeekSnapshot: overrides.mesocycleWeekSnapshot ?? null,
+    mesoSessionSnapshot: overrides.mesoSessionSnapshot ?? null,
     mesocyclePhaseSnapshot: overrides.mesocyclePhaseSnapshot ?? null,
     _count: { exercises: exerciseCount },
     exercises,
@@ -203,8 +205,14 @@ describe("GET /api/workouts/history", () => {
     expect(res.status).toBe(400);
   });
 
-  it("maps exerciseCount and totalSetsLogged correctly", async () => {
-    const workout = makeWorkout({ exerciseCount: 3, setLogCount: 9 });
+  it("maps exerciseCount, totalSetsLogged, and sessionSnapshot correctly", async () => {
+    const workout = makeWorkout({
+      exerciseCount: 3,
+      setLogCount: 9,
+      mesocycleWeekSnapshot: 2,
+      mesoSessionSnapshot: 1,
+      mesocyclePhaseSnapshot: "ACCUMULATION",
+    });
     mocks.workoutFindMany.mockResolvedValue([workout]);
     mocks.workoutCount.mockResolvedValue(1);
 
@@ -212,6 +220,11 @@ describe("GET /api/workouts/history", () => {
     const body = await res.json();
 
     expect(body.workouts[0].exerciseCount).toBe(3);
+    expect(body.workouts[0].sessionSnapshot).toEqual({
+      week: 2,
+      session: 1,
+      phase: "ACCUMULATION",
+    });
     // 3 exercises × 3 sets × floor(9/3) = 9 logs total (may vary by int division)
     expect(typeof body.workouts[0].totalSetsLogged).toBe("number");
   });

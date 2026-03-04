@@ -709,7 +709,7 @@ describe("POST /api/workouts/save", () => {
     expect(cycleContext.weekInMeso).toBe(1);
   });
 
-  it("normalizes a canonical session decision receipt from receipt metadata and autoregulation log", async () => {
+  it("preserves canonical receipt readiness fields without a compatibility save shim", async () => {
     const response = await POST(
       new Request("http://localhost/api/workouts/save", {
         method: "POST",
@@ -741,32 +741,28 @@ describe("POST /api/workouts/save", () => {
                 appliedTo: "none",
               },
               readiness: {
-                wasAutoregulated: false,
-                signalAgeHours: null,
-                fatigueScoreOverall: null,
+                wasAutoregulated: true,
+                signalAgeHours: 6,
+                fatigueScoreOverall: 0.41,
                 intensityScaling: {
-                  applied: false,
-                  exerciseIds: [],
+                  applied: true,
+                  exerciseIds: ["bench"],
                   scaledUpCount: 0,
-                  scaledDownCount: 0,
+                  scaledDownCount: 1,
                 },
+                rationale: "Readiness scaled pressing volume.",
               },
-              exceptions: [],
+              exceptions: [
+                {
+                  code: "soreness_suppression",
+                  message: "Held back weekly volume for Chest due to soreness.",
+                },
+                {
+                  code: "readiness_scale",
+                  message: "Readiness scaled 1 exercise(s): 1 down, 0 up.",
+                },
+              ],
             },
-          },
-          autoregulationLog: {
-            wasAutoregulated: true,
-            signalAgeHours: 6,
-            fatigueScore: { overall: 0.41 },
-            rationale: "Readiness scaled pressing volume.",
-            modifications: [
-              {
-                type: "intensity_scale",
-                exerciseId: "bench",
-                direction: "down",
-                reason: "Fatigued",
-              },
-            ],
           },
           exercises: [
             {
@@ -797,6 +793,34 @@ describe("POST /api/workouts/save", () => {
     expect(intensityScaling.applied).toBe(true);
     expect(intensityScaling.exerciseIds).toEqual(["bench"]);
     expect(intensityScaling.scaledDownCount).toBe(1);
+  });
+
+  it("rejects removed top-level autoregulationLog compatibility input", async () => {
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutId: "workout-1",
+          autoregulationLog: {
+            wasAutoregulated: true,
+          },
+          exercises: [
+            {
+              section: "MAIN",
+              exerciseId: "bench",
+              sets: [{ setIndex: 1, targetReps: 8 }],
+            },
+          ],
+        }),
+      })
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "Invalid request",
+    });
+    expect(mocks.workoutUpsert).not.toHaveBeenCalled();
   });
 
   it("rejects legacy top-level session mirrors in selection metadata", async () => {

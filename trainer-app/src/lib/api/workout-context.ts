@@ -256,6 +256,14 @@ export function mapHistory(workouts: WorkoutWithRelations[]): WorkoutHistoryEntr
     forcedSplit: workout.forcedSplit
       ? (workout.forcedSplit.toLowerCase() as EngineSplitDay)
       : undefined,
+    mesocycleSnapshot:
+      workout.mesocycleWeekSnapshot != null
+        ? {
+            week: workout.mesocycleWeekSnapshot,
+            session: workout.mesoSessionSnapshot,
+            phase: workout.mesocyclePhaseSnapshot,
+          }
+        : undefined,
     exercises: workout.exercises.map((exercise) => ({
       exerciseId: exercise.exerciseId,
       primaryMuscles: exercise.exercise.exerciseMuscles

@@ -160,7 +160,7 @@ Exit criteria met:
 - Phase 4 is complete because the remaining blocker was the parallel generation autoregulation payload, and that duplicate contract has been removed.
 
 ### Phase 5 - Legacy Compatibility Reduction
-Status: NOT STARTED
+Status: COMPLETE
 
 Goal:
 - Remove active dependency on old mesocycle/progression pathways.
@@ -169,6 +169,20 @@ Focus:
 - Categorize fields and branches as canonical, compatibility-only, or removable.
 - Remove active reads of compatibility-only session-decision fields after migration.
 - Keep repair/migration logic separate from runtime logic.
+
+Implemented in this pass:
+- Removed explainability runtime fallback that inferred session readiness recency from live readiness rows when canonical `selectionMetadata.sessionDecisionReceipt.readiness` was absent; session-level readiness context is now receipt-owned.
+- Tightened selection-metadata sanitization so only parseable canonical receipts survive generation/save preparation; arbitrary receipt-like objects are no longer treated as active runtime state.
+- Removed explainability fallback support for legacy stored rationale component aliases (`volumeDeficitFill`, `sfrEfficiency`, `lengthenedBias`, `movementDiversity`, `sraReadiness`); active runtime reads now use canonical stored keys only.
+
+Remaining compatibility-only paths:
+- Save validation still explicitly rejects removed top-level session mirrors (`selectionMetadata.cycleContext`, `lifecycleRirTarget`, `sorenessSuppressedMuscles`, `deloadDecision`, `adaptiveDeloadApplied`, `periodizationWeek`, and top-level `wasAutoregulated` / `autoregulationLog`). These remain as guardrails until stale callers are fully gone; they are not active runtime inputs.
+- Receipt parsing/normalization still accepts persisted canonical `sessionDecisionReceipt` objects and strips invalid payloads. This remains because persisted JSON is untyped at the database boundary, but it no longer reconstructs active state from legacy mirrors.
+
+Exit criteria met:
+- Runtime save/read/explainability flows use canonical receipt-owned session-decision state only.
+- Compatibility-only branches are isolated to validation or normalization boundaries instead of active runtime reads.
+- Legacy rationale/progression alias keys are no longer treated as active explainability inputs.
 
 ### Phase 6 - Evidence and Rule Audit
 Status: NOT STARTED

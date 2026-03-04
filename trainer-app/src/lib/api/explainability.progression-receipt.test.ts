@@ -113,7 +113,10 @@ vi.mock("./workout-context", () => ({
   ]),
 }));
 
-import { generateWorkoutExplanation } from "./explainability";
+import {
+  generateWorkoutExplanation,
+  normalizeStoredSelectionRationaleComponents,
+} from "./explainability";
 
 describe("generateWorkoutExplanation progression receipt", () => {
   beforeEach(() => {
@@ -494,5 +497,49 @@ describe("generateWorkoutExplanation progression receipt", () => {
     if ("error" in result) return;
 
     expect(result.confidence.missingSignals).not.toContain("active block context");
+  });
+
+  it("does not treat live readiness rows as session evidence when the canonical receipt is missing", async () => {
+    mocks.readinessFindMany.mockResolvedValueOnce([
+      {
+        timestamp: new Date("2026-02-20T12:00:00.000Z"),
+        subjectiveReadiness: 4,
+      },
+    ]);
+
+    const result = await generateWorkoutExplanation("w1");
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    expect(result.confidence.missingSignals).toContain("fresh readiness signal");
+  });
+});
+
+describe("normalizeStoredSelectionRationaleComponents", () => {
+  it("keeps canonical rationale component keys", () => {
+    expect(
+      normalizeStoredSelectionRationaleComponents({
+        deficitFill: 0.8,
+        rotationNovelty: 0.4,
+        sfrScore: 0.6,
+        extra: 99,
+      })
+    ).toEqual({
+      deficitFill: 0.8,
+      rotationNovelty: 0.4,
+      sfrScore: 0.6,
+    });
+  });
+
+  it("drops legacy-only rationale component aliases", () => {
+    expect(
+      normalizeStoredSelectionRationaleComponents({
+        volumeDeficitFill: 0.8,
+        sfrEfficiency: 0.6,
+        lengthenedBias: 0.7,
+        movementDiversity: 0.5,
+        sraReadiness: 0.4,
+      })
+    ).toBeUndefined();
   });
 });

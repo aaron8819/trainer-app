@@ -62,7 +62,12 @@ export function sanitizeSelectionMetadataForSave(value: unknown): SaveableSelect
 
   const sessionDecisionReceipt = toObject(record.sessionDecisionReceipt);
   if (sessionDecisionReceipt) {
-    output.sessionDecisionReceipt = sessionDecisionReceipt as SessionDecisionReceipt;
+    const canonicalReceipt = extractSessionDecisionReceipt({
+      sessionDecisionReceipt,
+    });
+    if (canonicalReceipt) {
+      output.sessionDecisionReceipt = canonicalReceipt;
+    }
   }
 
   return Object.keys(output).length > 0 ? output : {};

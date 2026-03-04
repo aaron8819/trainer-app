@@ -17,7 +17,6 @@ import type { Exercise as EngineExercise, PrimaryGoal } from "@/lib/engine/types
 import type { SelectionObjective, SelectionCandidate } from "@/lib/engine/selection-v2/types";
 import { loadCurrentBlockContext } from "./periodization";
 import { getRestSeconds } from "@/lib/engine/prescription";
-import { CHECK_IN_STALENESS_WINDOW_MS } from "./checkin-staleness";
 import { mapExercises } from "./workout-context";
 import { getPeriodizationModifiers } from "@/lib/engine/rules";
 import type { Prisma, Workout, WorkoutExercise, WorkoutSet } from "@prisma/client";
@@ -61,6 +60,16 @@ type WorkoutWithExplainabilityRelations = Prisma.WorkoutGetPayload<{
 
 const HISTORY_RECENCY_WINDOW_DAYS = 42;
 const HOURS_PER_DAY = 24;
+const CANONICAL_RATIONALE_COMPONENT_KEYS = [
+  "deficitFill",
+  "rotationNovelty",
+  "sfrScore",
+  "lengthenedScore",
+  "movementNovelty",
+  "sraAlignment",
+  "userPreference",
+] as const;
+
 type LoadedBlockContext = Awaited<ReturnType<typeof loadCurrentBlockContext>>;
 type ResolvedSessionDecisionReceipt = NonNullable<ReturnType<typeof readSessionDecisionReceipt>>;
 type SessionEvidence = {
@@ -79,12 +88,6 @@ function toSignalAgeDays(signalAgeHours: number | null | undefined): number | un
     return undefined;
   }
   return Math.max(0, Math.floor(signalAgeHours / HOURS_PER_DAY));
-}
-
-function hasRecentReceiptSignal(signalAgeHours: number | null | undefined): boolean {
-  return typeof signalAgeHours === "number" &&
-    Number.isFinite(signalAgeHours) &&
-    signalAgeHours * 60 * 60 * 1000 <= CHECK_IN_STALENESS_WINDOW_MS;
 }
 
 function buildExplanationPeriodization(input: {
@@ -133,24 +136,9 @@ function buildExplanationPeriodization(input: {
 
 function buildSessionEvidence(input: {
   selectionMetadata: WorkoutWithExplainabilityRelations["selectionMetadata"];
-  latestReadinessTimestamp?: Date;
-  scheduledDate: Date;
 }): SessionEvidence {
   const sessionDecisionReceipt = readSessionDecisionReceipt(input.selectionMetadata);
-  const latestReadinessAgeDays = input.latestReadinessTimestamp
-    ? Math.floor(
-        (input.scheduledDate.getTime() - input.latestReadinessTimestamp.getTime()) /
-          (24 * 60 * 60 * 1000)
-      )
-    : undefined;
-  const latestReadinessAgeMs = input.latestReadinessTimestamp
-    ? input.scheduledDate.getTime() - input.latestReadinessTimestamp.getTime()
-    : undefined;
-  const hasRecentReadinessSignalFromDb = Boolean(
-    latestReadinessAgeMs != null && latestReadinessAgeMs <= CHECK_IN_STALENESS_WINDOW_MS
-  );
-  const signalAgeDays =
-    toSignalAgeDays(sessionDecisionReceipt?.readiness.signalAgeHours) ?? latestReadinessAgeDays;
+  const signalAgeDays = toSignalAgeDays(sessionDecisionReceipt?.readiness.signalAgeHours);
 
   return {
     sessionDecisionReceipt,
@@ -160,9 +148,7 @@ function buildSessionEvidence(input: {
     readinessScaledExerciseIds: new Set(
       sessionDecisionReceipt?.readiness.intensityScaling.exerciseIds ?? []
     ),
-    hasRecentReadinessSignal:
-      hasRecentReceiptSignal(sessionDecisionReceipt?.readiness.signalAgeHours) ||
-      hasRecentReadinessSignalFromDb,
+    hasRecentReadinessSignal: signalAgeDays != null && signalAgeDays <= 0,
     signalAgeDays,
     hasSessionDecisionReceipt: Boolean(sessionDecisionReceipt),
   };
@@ -225,20 +211,8 @@ export async function generateWorkoutExplanation(
   );
   const volumeByMuscle = await loadVolumeByMuscle(workout.userId, workout.scheduledDate);
 
-  const readinessSignals = await prisma.readinessSignal.findMany({
-    where: { userId: workout.userId },
-    orderBy: { timestamp: "desc" },
-    take: 1,
-    select: {
-      timestamp: true,
-      subjectiveReadiness: true,
-    },
-  });
-  const latestReadiness = readinessSignals[0];
   const sessionEvidence = buildSessionEvidence({
     selectionMetadata: workout.selectionMetadata,
-    latestReadinessTimestamp: latestReadiness ? new Date(latestReadiness.timestamp) : undefined,
-    scheduledDate: workout.scheduledDate,
   });
   const sessionContext = buildSessionContextFromEvidence({
     blockContext,
@@ -761,11 +735,28 @@ function buildSelectionObjective(): SelectionObjective {
 
 type StoredSelectionRationale = {
   score: number;
-  components?: Record<string, number>;
+  components?: Partial<Record<(typeof CANONICAL_RATIONALE_COMPONENT_KEYS)[number], number>>;
   hardFilterPass?: boolean;
   selectedStep?: string;
   reason?: string;
 };
+
+export function normalizeStoredSelectionRationaleComponents(
+  value: unknown
+): StoredSelectionRationale["components"] | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const normalizedEntries = CANONICAL_RATIONALE_COMPONENT_KEYS.flatMap((key) => {
+    const componentValue = (value as Record<string, unknown>)[key];
+    return typeof componentValue === "number" && Number.isFinite(componentValue)
+      ? [[key, componentValue] as const]
+      : [];
+  });
+
+  return normalizedEntries.length > 0 ? Object.fromEntries(normalizedEntries) : undefined;
+}
 
 function parseStoredRationale(
   metadata: Prisma.JsonValue | null | undefined,
@@ -795,10 +786,7 @@ function parseStoredRationale(
     }
     output[exerciseId] = {
       score: entry.score,
-      components:
-        entry.components && typeof entry.components === "object" && !Array.isArray(entry.components)
-          ? (entry.components as Record<string, number>)
-          : undefined,
+      components: normalizeStoredSelectionRationaleComponents(entry.components),
       hardFilterPass: typeof entry.hardFilterPass === "boolean" ? entry.hardFilterPass : undefined,
       selectedStep: typeof entry.selectedStep === "string" ? entry.selectedStep : undefined,
       reason: typeof entry.reason === "string" ? entry.reason : undefined,
@@ -865,12 +853,12 @@ function buildSelectionCandidate(
   };
   const components = storedRationale?.components ?? {};
   const scores = {
-    deficitFill: components.deficitFill ?? components.volumeDeficitFill ?? fallback.deficitFill,
+    deficitFill: components.deficitFill ?? fallback.deficitFill,
     rotationNovelty: components.rotationNovelty ?? fallback.rotationNovelty,
-    sfrScore: components.sfrScore ?? components.sfrEfficiency ?? fallback.sfrScore,
-    lengthenedScore: components.lengthenedScore ?? components.lengthenedBias ?? fallback.lengthenedScore,
-    movementNovelty: components.movementNovelty ?? components.movementDiversity ?? fallback.movementNovelty,
-    sraAlignment: components.sraAlignment ?? components.sraReadiness ?? fallback.sraAlignment,
+    sfrScore: components.sfrScore ?? fallback.sfrScore,
+    lengthenedScore: components.lengthenedScore ?? fallback.lengthenedScore,
+    movementNovelty: components.movementNovelty ?? fallback.movementNovelty,
+    sraAlignment: components.sraAlignment ?? fallback.sraAlignment,
     userPreference: components.userPreference ?? fallback.userPreference,
   };
 

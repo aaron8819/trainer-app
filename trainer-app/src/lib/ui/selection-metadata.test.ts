@@ -71,6 +71,21 @@ describe("sanitizeSelectionMetadataForSave", () => {
       }),
     });
   });
+
+  it("drops receipt-shaped objects that do not parse as canonical receipts", () => {
+    const result = sanitizeSelectionMetadataForSave({
+      sessionDecisionReceipt: {
+        cycleContext: {
+          weekInMeso: 2,
+        },
+      },
+      selectedExerciseIds: ["bench"],
+    });
+
+    expect(result).toEqual({
+      selectedExerciseIds: ["bench"],
+    });
+  });
 });
 
 describe("buildCanonicalSelectionMetadata", () => {

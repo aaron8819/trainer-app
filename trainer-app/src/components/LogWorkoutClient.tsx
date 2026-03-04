@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useMemo, useState } from "react";
 import { BonusExerciseSheet } from "@/components/BonusExerciseSheet";
 import { RestTimer } from "@/components/RestTimer";
 import { isDumbbellEquipment, toDisplayLoad, toStoredLoad } from "@/lib/ui/load-display";
@@ -32,11 +26,14 @@ import {
 import { WorkoutCompletionDialog } from "@/components/log-workout/WorkoutCompletionDialog";
 import { WorkoutExerciseQueue } from "@/components/log-workout/WorkoutExerciseQueue";
 import { WorkoutFooter } from "@/components/log-workout/WorkoutFooter";
+import { WorkoutSessionFeedback } from "@/components/log-workout/WorkoutSessionFeedback";
 import { WorkoutSessionActions } from "@/components/log-workout/WorkoutSessionActions";
 import { useActiveSetDraftState } from "@/components/log-workout/useActiveSetDraftState";
 import { usePersistedWorkoutSessionUi } from "@/components/log-workout/usePersistedWorkoutSessionUi";
 import { useRestTimerState } from "@/components/log-workout/useRestTimerState";
+import { useWorkoutSessionLayout } from "@/components/log-workout/useWorkoutSessionLayout";
 import { useWorkoutSessionFlow } from "@/components/log-workout/useWorkoutSessionFlow";
+import { useWorkoutSetHistoryActions } from "@/components/log-workout/useWorkoutSetHistoryActions";
 
 export type { LogExerciseInput, LogSetInput } from "@/components/log-workout/types";
 
@@ -99,15 +96,6 @@ export default function LogWorkoutClient({
   } = useWorkoutLogState(exercises);
   const { restTimer, startTimer, clearTimer, restoreTimer, adjustTimer } = useRestTimerState(workoutId);
   const [showBonusSheet, setShowBonusSheet] = useState(false);
-  const [keyboardOpen, setKeyboardOpen] = useState(false);
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
-  const activeSetPanelRef = useRef<HTMLElement | null>(null);
-  const scrollCancelRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const sectionRefs = useRef<Record<ExerciseSection, HTMLDivElement | null>>({
-    warmup: null,
-    main: null,
-    accessory: null,
-  });
 
   const totalSets = flatSets.length;
   const loggedCount = loggedSetIds.size;
@@ -165,48 +153,6 @@ export default function LogWorkoutClient({
     ).length;
     return { adherent, total: setsWithBothRpe.length };
   }, [flatSets, loggedSetIds]);
-
-  const scrollToActiveSet = useCallback(() => {
-    if (scrollCancelRef.current !== null) {
-      clearTimeout(scrollCancelRef.current);
-    }
-
-    scrollCancelRef.current = setTimeout(() => {
-      scrollCancelRef.current = null;
-      const element = activeSetPanelRef.current;
-      if (!element || typeof element.scrollIntoView !== "function") {
-        return;
-      }
-
-      element.scrollIntoView({ behavior: "smooth", block: "start" });
-      window.scrollBy?.(0, -72);
-    }, 150);
-  }, []);
-
-  useEffect(() => {
-    if (!window.visualViewport) {
-      return;
-    }
-
-    const viewport = window.visualViewport;
-    const handleResize = () => {
-      const activeElement = document.activeElement;
-      const isInput =
-        activeElement instanceof HTMLInputElement || activeElement instanceof HTMLTextAreaElement;
-      const heightDiff = window.innerHeight - viewport.height;
-      const nextKeyboardOpen = heightDiff > 120;
-
-      setKeyboardOpen(nextKeyboardOpen);
-      setKeyboardHeight(nextKeyboardOpen ? heightDiff : 0);
-
-      if (isInput && nextKeyboardOpen) {
-        scrollToActiveSet();
-      }
-    };
-
-    viewport.addEventListener("resize", handleResize);
-    return () => viewport.removeEventListener("resize", handleResize);
-  }, [scrollToActiveSet]);
 
   const updateSetFields = useCallback(
     (setId: string, updater: (set: LogSetInput) => LogSetInput) => {
@@ -333,25 +279,14 @@ export default function LogWorkoutClient({
     autoregHint !== null &&
     activeSet !== null &&
     autoregHint.exerciseId === activeSet.exercise.workoutExerciseId;
-
-  useEffect(() => {
-    if (completion.completed || completion.skipped || activeSection === null || activeExerciseId === null) {
-      setExpandedSections({ warmup: true, main: true, accessory: true });
-      return;
-    }
-
-    setExpandedSections({ warmup: false, main: false, accessory: false, [activeSection]: true });
-    setExpandedExerciseId(activeExerciseId);
-    scrollToActiveSet();
-  }, [
-    activeExerciseId,
+  const sessionTerminated = completion.completed || completion.skipped;
+  const { keyboardOpen, keyboardHeight, activeSetPanelRef, sectionRefs } = useWorkoutSessionLayout({
     activeSection,
-    completion.completed,
-    completion.skipped,
-    scrollToActiveSet,
-    setExpandedExerciseId,
+    activeExerciseId,
+    sessionTerminated,
     setExpandedSections,
-  ]);
+    setExpandedExerciseId,
+  });
 
   const handleAddExercise = useCallback(
     (exercise: LogExerciseInput) => {
@@ -361,41 +296,17 @@ export default function LogWorkoutClient({
     [actions, setExpandedSections]
   );
 
-  const handleUseSameAsLast = useCallback(() => {
-    if (!activeSet) {
-      return;
-    }
-
-    const previousSet = findPreviousLoggedSet(activeSet.exercise, activeSet.setIndex);
-    if (!previousSet) {
-      return;
-    }
-
-    setRepsValue(activeSet.set.setId, previousSet.actualReps ?? null);
-    updateDraftBuffer(activeSet.set.setId, "load", toInputNumberString(previousSet.actualLoad));
-    setSingleField(activeSet.set.setId, "actualLoad", previousSet.actualLoad ?? null);
-    setRpeValue(activeSet.set.setId, toInputNumberString(previousSet.actualRpe));
-    setSingleField(activeSet.set.setId, "wasSkipped", false);
-    markFieldTouched(activeSet.set.setId, "actualReps");
-    markFieldTouched(activeSet.set.setId, "actualLoad");
-    markFieldTouched(activeSet.set.setId, "actualRpe");
-    setFieldPrefilled(activeSet.set.setId, "actualReps", false);
-    setFieldPrefilled(activeSet.set.setId, "actualLoad", false);
-    setFieldPrefilled(activeSet.set.setId, "actualRpe", false);
-  }, [
+  const { hasPreviousSet, useSameAsLast } = useWorkoutSetHistoryActions({
     activeSet,
     findPreviousLoggedSet,
     markFieldTouched,
     setFieldPrefilled,
     setRepsValue,
-    setRpeValue,
-    setSingleField,
     updateDraftBuffer,
-  ]);
-
-  const hasPreviousSet = activeSet
-    ? findPreviousLoggedSet(activeSet.exercise, activeSet.setIndex) !== null
-    : false;
+    setSingleField,
+    setRpeValue,
+    toInputNumberString,
+  });
   const activeSetDraftState: ActiveSetDraftState = {
     draftBuffersBySet,
     prefilledFieldsBySet,
@@ -437,7 +348,7 @@ export default function LogWorkoutClient({
           keyboardHeight > 0 ? `${keyboardHeight + 16}px` : "env(safe-area-inset-bottom, 16px)",
       }}
     >
-      {!completion.completed && !completion.skipped && allSetsLogged ? (
+      {!sessionTerminated && allSetsLogged ? (
         <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 sm:p-5">
           <p className="font-semibold text-emerald-900">All sets logged - great work!</p>
           <p className="mt-1 text-sm text-emerald-700">
@@ -447,7 +358,7 @@ export default function LogWorkoutClient({
             <button
               className="inline-flex min-h-11 items-center justify-center rounded-full bg-emerald-700 px-6 py-2 text-sm font-semibold text-white disabled:opacity-60"
               onClick={() => completion.openConfirm("mark_completed")}
-              disabled={completion.completed || completion.skipped || completion.pending}
+              disabled={sessionTerminated || completion.pending}
               type="button"
             >
               Complete Workout
@@ -455,7 +366,7 @@ export default function LogWorkoutClient({
           </div>
           {error ? <p className="mt-3 text-sm text-rose-600">{error}</p> : null}
         </section>
-      ) : !completion.completed && !completion.skipped && activeSet ? (
+      ) : !sessionTerminated && activeSet ? (
         <ActiveSetPanel>
           <WorkoutActiveSetCard
             activeSet={activeSet}
@@ -467,13 +378,13 @@ export default function LogWorkoutClient({
             toInputNumberString={toInputNumberString}
             parseNullableNumber={parseNullableNumber}
             onLogSet={() => actions.logSet(activeSet.set.setId)}
-            onUseSameAsLast={handleUseSameAsLast}
+            onUseSameAsLast={useSameAsLast}
             onSkipSet={() => actions.logSet(activeSet.set.setId, { wasSkipped: true })}
           />
         </ActiveSetPanel>
       ) : null}
 
-      {!completion.completed && !completion.skipped && restTimer !== null ? (
+      {!sessionTerminated && restTimer !== null ? (
         <RestTimer
           startedAtMs={restTimer.startedAtMs}
           endAtMs={restTimer.endAtMs}
@@ -485,7 +396,7 @@ export default function LogWorkoutClient({
         />
       ) : null}
 
-      {!completion.completed && !completion.skipped ? (
+      {!sessionTerminated ? (
         <ExerciseListPanel>
           <WorkoutExerciseQueue
             data={data}
@@ -512,7 +423,7 @@ export default function LogWorkoutClient({
         </ExerciseListPanel>
       ) : null}
 
-      {!completion.completed && !completion.skipped ? (
+      {!sessionTerminated ? (
         <div className="flex justify-center">
           <button
             className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 px-5 text-sm font-semibold text-slate-700"
@@ -545,57 +456,13 @@ export default function LogWorkoutClient({
         />
       ) : null}
 
-      {error ? (
-        <div
-          data-testid="error-snackbar"
-          className="rounded-xl border border-rose-200 bg-rose-50 p-3 shadow-sm"
-          style={{
-            position: "fixed",
-            bottom:
-              "calc(var(--mobile-nav-height, 56px) + env(safe-area-inset-bottom, 0px) + 8px)",
-            left: "16px",
-            right: "16px",
-            zIndex: 50,
-          }}
-        >
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-xs text-rose-700">{error}</p>
-            <button
-              className="inline-flex min-h-9 items-center justify-center rounded-full border border-rose-300 px-3 text-xs font-semibold text-rose-700"
-              onClick={dismissError}
-              type="button"
-            >
-              Dismiss
-            </button>
-          </div>
-        </div>
-      ) : null}
-
-      {undoSnapshot ? (
-        <div
-          className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm"
-          style={{
-            position: "fixed",
-            bottom:
-              "calc(var(--mobile-nav-height, 56px) + env(safe-area-inset-bottom, 0px) + 8px)",
-            left: "16px",
-            right: "16px",
-            zIndex: 50,
-          }}
-        >
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-xs text-slate-600">Set logged. Undo available for a few seconds.</p>
-            <button
-              className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 px-3 text-xs font-semibold text-slate-700"
-              onClick={actions.undo}
-              disabled={savingSetId !== null}
-              type="button"
-            >
-              Undo
-            </button>
-          </div>
-        </div>
-      ) : null}
+      <WorkoutSessionFeedback
+        error={error}
+        undoSnapshot={undoSnapshot}
+        savingSetId={savingSetId}
+        onDismissError={dismissError}
+        onUndo={() => void actions.undo()}
+      />
 
       <BonusExerciseSheet
         isOpen={showBonusSheet}

@@ -1,5 +1,5 @@
 import { toDisplayLoad } from "@/lib/ui/load-display";
-import type { ChipEditDraft } from "@/components/log-workout/useWorkoutSessionFlow";
+import type { ChipEditDraft } from "@/components/log-workout/useWorkoutChipEditor";
 import type { LogExerciseInput } from "@/components/log-workout/types";
 
 function buildSetChipLabel(

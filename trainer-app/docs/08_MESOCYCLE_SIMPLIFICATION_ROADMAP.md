@@ -85,7 +85,7 @@ Exit criteria met:
 - Detailed explanation remains available for backend auditing without competing with the core training flow.
 
 ### Phase 3 - Workout Logging Flow Simplification
-Status: IN PROGRESS
+Status: COMPLETE
 
 Goal:
 - Reduce friction and fragmented state in `LogWorkoutClient` and related logging flows.
@@ -112,6 +112,18 @@ Implemented in this pass:
 - Deleted stale Phase 3 inline notes, removed queue-only helper residue from `LogWorkoutClient`, and grouped chip-edit/completion hook outputs so the main client stays closer to composition wiring than runtime ownership.
 - Moved hook-only chip-edit/session-flow types behind `useWorkoutSessionFlow` instead of keeping those compatibility-free boundary types in the shared logging type file.
 - Reused the shared draft buffer shape across draft restore/persist boundaries, reduced duplicate field-state builders in the active-set draft hook, and simplified persisted workout-session UI storage setup so the remaining Phase 3 draft/session cleanup is less scaffold-heavy.
+- Moved keyboard viewport handling, active-panel scroll behavior, and queue auto-expansion policy behind one dedicated session-layout hook so `LogWorkoutClient` no longer owns runtime layout coordination.
+- Split terminal completion/skip ownership into a dedicated completion hook so footer actions remain the only session-end owner and completion state no longer shares the broader set-logging hook.
+- Split logged-set chip editing into a dedicated chip-editor hook so inline edit state no longer bloats the main session mutation owner.
+- Moved "same as last" set-history application into a dedicated hook so the main client no longer owns previous-set mutation policy.
+- Moved undo/error overlay rendering into a dedicated feedback component so `LogWorkoutClient` stays focused on composing the training flow rather than rendering transient session chrome.
+
+Exit criteria met:
+- `LogWorkoutClient` is now primarily composition and wiring; session layout behavior, same-as-last mutation policy, and transient feedback rendering no longer live in the main client.
+- `useWorkoutSessionFlow` is narrowed to core set-log mutation, undo, autoreg hinting, and add-exercise coordination; chip edit and terminal completion/skip flows now have tighter dedicated owners.
+- Draft state remains single-owner in `useActiveSetDraftState`; no parallel field buffers were reintroduced.
+- Footer actions remain the only session-end action owner.
+- Focused tests now cover extracted layout, completion, and chip-edit boundaries in addition to the remaining client/session-flow integration coverage.
 
 ### Phase 4 - API and Persistence Cleanup
 Status: COMPLETE

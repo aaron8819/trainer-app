@@ -1,5 +1,5 @@
 import { ExerciseSetChipsEditor } from "@/components/log-workout/ExerciseSetChipsEditor";
-import type { ChipEditDraft } from "@/components/log-workout/useWorkoutSessionFlow";
+import type { ChipEditDraft } from "@/components/log-workout/useWorkoutChipEditor";
 import { formatSectionLabel } from "@/components/log-workout/useWorkoutLogState";
 import type {
   ExerciseSection,

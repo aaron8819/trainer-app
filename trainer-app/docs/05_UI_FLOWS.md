@@ -1,7 +1,7 @@
 # 05 UI Flows
 
 Owner: Aaron
-Last reviewed: 2026-03-03
+Last reviewed: 2026-03-04
 Purpose: Canonical reference for current UI routes and core user flows implemented in the Next.js App Router.
 
 This doc covers:
@@ -29,7 +29,7 @@ Sources of truth:
 - `/analytics`: analytics dashboards (`src/app/analytics/page.tsx`)
 - `/templates`, `/templates/new`, `/templates/[id]/edit`: template management
 - `/library`: exercise library (`src/app/library/page.tsx`)
-- `/history`: paginated workout history with intent/date/mesocycle filters and volume compliance dots (`src/app/history/page.tsx`, `src/components/HistoryClient.tsx`)
+- `/history`: paginated workout history with intent/date/mesocycle filters and derived week/session snapshot badges (`src/app/history/page.tsx`, `src/components/HistoryClient.tsx`)
 - `/settings`: user settings (`src/app/settings/page.tsx`)
 - `/program`: mesocycle/block/program dashboard (`src/app/program/page.tsx`)
 

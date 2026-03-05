@@ -4,7 +4,6 @@ import { saveWorkoutSchema } from "@/lib/validation";
 import { resolveOwner } from "@/lib/api/workout-context";
 import { WorkoutStatus, Prisma } from "@prisma/client";
 import { updateExerciseExposure } from "@/lib/api/exercise-exposure";
-import { isTerminalWorkoutStatus } from "@/lib/workout-status";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 import {
   extractSessionDecisionReceipt,
@@ -18,9 +17,11 @@ import {
   deriveSaveRouteMesoSnapshot,
   type SaveRouteMesocycle,
 } from "./lifecycle-contract";
-
-type SaveAction = "save_plan" | "mark_completed" | "mark_partial" | "mark_skipped";
-type PersistedStatus = "PLANNED" | "IN_PROGRESS" | "PARTIAL" | "COMPLETED" | "SKIPPED";
+import {
+  inferAction,
+  resolveFinalStatus,
+  type PersistedStatus,
+} from "./status-machine";
 type JsonObject = Record<string, unknown>;
 
 function toObject(value: unknown): JsonObject {
@@ -35,29 +36,6 @@ function mergeSelectionMetadata(base: unknown, overrides: unknown): JsonObject {
     ...toObject(base),
     ...toObject(overrides),
   };
-}
-
-function inferAction(input: {
-  action?: SaveAction;
-  hasExerciseRewrite: boolean;
-  status?: string;
-}): SaveAction {
-  if (input.action) {
-    return input.action;
-  }
-  if (input.hasExerciseRewrite) {
-    return "save_plan";
-  }
-  if (input.status === "SKIPPED") {
-    return "mark_skipped";
-  }
-  if (input.status === "COMPLETED") {
-    return "mark_completed";
-  }
-  if (input.status === "PARTIAL") {
-    return "mark_partial";
-  }
-  return "save_plan";
 }
 
 function isPerformedWorkoutStatus(status: PersistedStatus | string | null | undefined): boolean {
@@ -182,26 +160,22 @@ export async function POST(request: Request) {
           (log?.actualReps != null || log?.actualRpe != null);
         const effectiveSetCount = allSets.filter((set) => isEffectiveLog(set.logs[0])).length;
         const resolvedSignalSetCount = allSets.filter((set) => isResolvedLog(set.logs[0])).length;
-
-        if (effectiveSetCount === 0) {
-          throw new Error("WORKOUT_COMPLETION_EMPTY");
-        }
-        finalStatus =
-          resolvedSignalSetCount < allSets.length
-            ? "PARTIAL"
-            : "COMPLETED";
-      } else if (action === "mark_partial") {
-        finalStatus = "PARTIAL";
-      } else if (action === "mark_skipped") {
-        finalStatus = "SKIPPED";
+        finalStatus = resolveFinalStatus({
+          action,
+          requestedStatus: parsed.data.status as PersistedStatus | undefined,
+          existingStatus: existingWorkout?.status as PersistedStatus | undefined,
+          completedMetrics: {
+            allSetsCount: allSets.length,
+            resolvedSignalSetCount,
+            effectiveSetCount,
+          },
+        });
       } else {
-        const requestedStatus = parsed.data.status as PersistedStatus | undefined;
-        if (isTerminalWorkoutStatus(requestedStatus)) {
-          // Plan writes cannot finalize workouts.
-          finalStatus = (existingWorkout?.status ?? WorkoutStatus.PLANNED) as PersistedStatus;
-        } else {
-          finalStatus = (requestedStatus ?? existingWorkout?.status ?? WorkoutStatus.PLANNED) as PersistedStatus;
-        }
+        finalStatus = resolveFinalStatus({
+          action,
+          requestedStatus: parsed.data.status as PersistedStatus | undefined,
+          existingStatus: existingWorkout?.status as PersistedStatus | undefined,
+        });
       }
 
       const completedAt =

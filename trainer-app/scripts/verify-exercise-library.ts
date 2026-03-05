@@ -37,6 +37,14 @@ function normalizeArray(values: string[] | undefined): string[] {
     .sort((a, b) => a.localeCompare(b));
 }
 
+function normalizeMovementPatterns(values: string[] | undefined): string[] {
+  return normalizeArray(values).map((pattern) =>
+    pattern === "calf_raise_extended" || pattern === "calf_raise_flexed"
+      ? "isolation"
+      : pattern
+  );
+}
+
 function sortJsonValue(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map((item) => sortJsonValue(item));
@@ -66,7 +74,7 @@ function stableContraindications(value: Record<string, unknown> | null | undefin
 
 function normalizeJsonExercise(exercise: JsonExercise) {
   return {
-    movementPatterns: normalizeArray(exercise.movementPatterns),
+    movementPatterns: normalizeMovementPatterns(exercise.movementPatterns),
     splitTags: normalizeArray([exercise.splitTag]),
     jointStress: exercise.jointStress.toLowerCase(),
     equipment: normalizeArray(exercise.equipment),
@@ -88,7 +96,7 @@ function normalizeJsonExercise(exercise: JsonExercise) {
 
 function normalizeDbExercise(exercise: ExerciseRecord) {
   return {
-    movementPatterns: normalizeArray(exercise.movementPatterns),
+    movementPatterns: normalizeMovementPatterns(exercise.movementPatterns),
     splitTags: normalizeArray(exercise.splitTags),
     jointStress: exercise.jointStress.toLowerCase(),
     equipment: normalizeArray(exercise.exerciseEquipment.map((entry) => entry.equipment.type)),

@@ -47,50 +47,74 @@ export type MuscleId =
   | "abductors"
   | "abs";
 export type StimulusProfile = Partial<Record<MuscleId, number>>;
-export type MovementPatternV2 =
-  | "horizontal_push"
-  | "vertical_push"
-  | "horizontal_pull"
-  | "vertical_pull"
-  | "squat"
-  | "hinge"
-  | "lunge"
-  | "carry"
-  | "rotation"
-  | "anti_rotation"
-  | "flexion"
-  | "extension"
-  | "abduction"
-  | "adduction"
-  | "isolation"
-  | "calf_raise_extended"
-  | "calf_raise_flexed";
+export const CANONICAL_MOVEMENT_PATTERN_VALUES = [
+  "horizontal_push",
+  "vertical_push",
+  "horizontal_pull",
+  "vertical_pull",
+  "squat",
+  "hinge",
+  "lunge",
+  "carry",
+  "rotation",
+  "anti_rotation",
+  "flexion",
+  "extension",
+  "abduction",
+  "adduction",
+  "isolation",
+] as const;
+export const LEGACY_MOVEMENT_PATTERN_ALIAS_VALUES = [
+  "calf_raise_extended",
+  "calf_raise_flexed",
+] as const;
+export type CanonicalMovementPattern =
+  (typeof CANONICAL_MOVEMENT_PATTERN_VALUES)[number];
+export type LegacyMovementPatternAlias =
+  (typeof LEGACY_MOVEMENT_PATTERN_ALIAS_VALUES)[number];
+export type MovementPatternV2 = CanonicalMovementPattern | LegacyMovementPatternAlias;
 
-export type SplitTag =
-  | "push"
-  | "pull"
-  | "legs"
-  | "core"
-  | "mobility"
-  | "prehab"
-  | "conditioning";
-export type StimulusBias = "mechanical" | "metabolic" | "stretch" | "stability";
-export type JointStress = "low" | "medium" | "high";
-export type Difficulty = "beginner" | "intermediate" | "advanced";
-export type EquipmentType =
-  | "barbell"
-  | "dumbbell"
-  | "machine"
-  | "cable"
-  | "bodyweight"
-  | "kettlebell"
-  | "band"
-  | "sled"
-  | "bench"
-  | "rack"
-  | "ez_bar"
-  | "trap_bar"
-  | "other";
+export const SPLIT_TAG_VALUES = [
+  "push",
+  "pull",
+  "legs",
+  "core",
+  "mobility",
+  "prehab",
+  "conditioning",
+] as const;
+export type SplitTag = (typeof SPLIT_TAG_VALUES)[number];
+
+export const STIMULUS_BIAS_VALUES = [
+  "mechanical",
+  "metabolic",
+  "stretch",
+  "stability",
+] as const;
+export type StimulusBias = (typeof STIMULUS_BIAS_VALUES)[number];
+
+export const JOINT_STRESS_VALUES = ["low", "medium", "high"] as const;
+export type JointStress = (typeof JOINT_STRESS_VALUES)[number];
+
+export const DIFFICULTY_VALUES = ["beginner", "intermediate", "advanced"] as const;
+export type Difficulty = (typeof DIFFICULTY_VALUES)[number];
+
+export const EQUIPMENT_TYPE_VALUES = [
+  "barbell",
+  "dumbbell",
+  "machine",
+  "cable",
+  "bodyweight",
+  "kettlebell",
+  "band",
+  "sled",
+  "bench",
+  "rack",
+  "ez_bar",
+  "trap_bar",
+  "other",
+] as const;
+export type EquipmentType = (typeof EQUIPMENT_TYPE_VALUES)[number];
 
 export type InjuryFlag = {
   bodyPart: string;

@@ -49,55 +49,55 @@ type ExerciseAliasSeed = { exerciseName: string; alias: string };
 // Enum mappings (JSON string → Prisma enum)
 // ═══════════════════════════════════════════════════════════════════════════
 
-const MOVEMENT_PATTERN_MAP: Record<string, MovementPatternV2> = {
-  horizontal_push: MovementPatternV2.HORIZONTAL_PUSH,
-  vertical_push: MovementPatternV2.VERTICAL_PUSH,
-  horizontal_pull: MovementPatternV2.HORIZONTAL_PULL,
-  vertical_pull: MovementPatternV2.VERTICAL_PULL,
-  squat: MovementPatternV2.SQUAT,
-  hinge: MovementPatternV2.HINGE,
-  lunge: MovementPatternV2.LUNGE,
-  carry: MovementPatternV2.CARRY,
-  rotation: MovementPatternV2.ROTATION,
-  anti_rotation: MovementPatternV2.ANTI_ROTATION,
-  flexion: MovementPatternV2.FLEXION,
-  extension: MovementPatternV2.EXTENSION,
-  abduction: MovementPatternV2.ABDUCTION,
-  adduction: MovementPatternV2.ADDUCTION,
-  isolation: MovementPatternV2.ISOLATION,
-  // Calf-specific patterns — map to ISOLATION until enum is extended
+const LEGACY_MOVEMENT_PATTERN_ALIASES: Record<string, MovementPatternV2> = {
+  // Calf-specific patterns are canonicalized to ISOLATION in schema.
   calf_raise_extended: MovementPatternV2.ISOLATION,
   calf_raise_flexed: MovementPatternV2.ISOLATION,
 };
 
-const SPLIT_TAG_MAP: Record<string, SplitTag> = {
-  push: SplitTag.PUSH,
-  pull: SplitTag.PULL,
-  legs: SplitTag.LEGS,
-  core: SplitTag.CORE,
-  conditioning: SplitTag.CONDITIONING,
-  mobility: SplitTag.MOBILITY,
-  prehab: SplitTag.PREHAB,
-};
+function normalizeEnumToken(value: string): string {
+  return value.trim().toUpperCase().replace(/[\s-]+/g, "_");
+}
 
-const JOINT_STRESS_MAP: Record<string, JointStress> = {
-  low: JointStress.LOW,
-  medium: JointStress.MEDIUM,
-  high: JointStress.HIGH,
-};
+function parsePrismaEnumValue<E extends string>(
+  enumValues: readonly E[],
+  rawValue: string,
+  context: string
+): E {
+  const token = normalizeEnumToken(rawValue) as E;
+  if (!enumValues.includes(token)) {
+    throw new Error(`Unknown ${context}: ${rawValue}`);
+  }
+  return token;
+}
 
-const STIMULUS_BIAS_MAP: Record<string, StimulusBias> = {
-  mechanical: StimulusBias.MECHANICAL,
-  metabolic: StimulusBias.METABOLIC,
-  stretch: StimulusBias.STRETCH,
-  stability: StimulusBias.STABILITY,
-};
+function parseMovementPattern(rawValue: string): MovementPatternV2 {
+  const legacy = LEGACY_MOVEMENT_PATTERN_ALIASES[rawValue.trim().toLowerCase()];
+  if (legacy) {
+    return legacy;
+  }
+  return parsePrismaEnumValue(
+    Object.values(MovementPatternV2),
+    rawValue,
+    "movement pattern"
+  );
+}
 
-const DIFFICULTY_MAP: Record<string, Difficulty> = {
-  beginner: Difficulty.BEGINNER,
-  intermediate: Difficulty.INTERMEDIATE,
-  advanced: Difficulty.ADVANCED,
-};
+function parseSplitTag(rawValue: string): SplitTag {
+  return parsePrismaEnumValue(Object.values(SplitTag), rawValue, "split tag");
+}
+
+function parseJointStress(rawValue: string): JointStress {
+  return parsePrismaEnumValue(Object.values(JointStress), rawValue, "joint stress");
+}
+
+function parseStimulusBias(rawValue: string): StimulusBias {
+  return parsePrismaEnumValue(Object.values(StimulusBias), rawValue, "stimulus bias");
+}
+
+function parseDifficulty(rawValue: string): Difficulty {
+  return parsePrismaEnumValue(Object.values(Difficulty), rawValue, "difficulty");
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Seed data — Equipment
@@ -701,26 +701,13 @@ async function seedExercisesFromJson() {
   let updated = 0;
 
   for (const ex of exercisesJson.exercises) {
-    const movementPatterns = ex.movementPatterns.map((p) => {
-      const mapped = MOVEMENT_PATTERN_MAP[p];
-      if (!mapped) throw new Error(`Unknown movement pattern: ${p} in ${ex.name}`);
-      return mapped;
-    });
-
-    const splitTag = SPLIT_TAG_MAP[ex.splitTag];
-    if (!splitTag) throw new Error(`Unknown split tag: ${ex.splitTag} in ${ex.name}`);
-
-    const jointStress = JOINT_STRESS_MAP[ex.jointStress];
-    if (!jointStress) throw new Error(`Unknown joint stress: ${ex.jointStress} in ${ex.name}`);
-
-    const stimulusBias = ex.stimulusBias.map((b) => {
-      const mapped = STIMULUS_BIAS_MAP[b];
-      if (!mapped) throw new Error(`Unknown stimulus bias: ${b} in ${ex.name}`);
-      return mapped;
-    });
-
-    const difficulty = DIFFICULTY_MAP[ex.difficulty];
-    if (!difficulty) throw new Error(`Unknown difficulty: ${ex.difficulty} in ${ex.name}`);
+    const movementPatterns = ex.movementPatterns.map((pattern) =>
+      parseMovementPattern(pattern)
+    );
+    const splitTag = parseSplitTag(ex.splitTag);
+    const jointStress = parseJointStress(ex.jointStress);
+    const stimulusBias = ex.stimulusBias.map((bias) => parseStimulusBias(bias));
+    const difficulty = parseDifficulty(ex.difficulty);
 
     const timePerSetSec = resolveTimePerSet(ex);
 
@@ -1076,4 +1063,5 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
+
 

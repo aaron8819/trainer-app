@@ -1,5 +1,10 @@
 import type { MuscleGroup } from "./types";
-import type { MovementPatternV2, StimulusBias } from "@/lib/engine/types";
+import {
+  CANONICAL_MOVEMENT_PATTERN_VALUES,
+  LEGACY_MOVEMENT_PATTERN_ALIAS_VALUES,
+  type MovementPatternV2,
+  type StimulusBias,
+} from "@/lib/engine/types";
 
 export const MUSCLE_GROUP_HIERARCHY: Record<MuscleGroup, string[]> = {
   chest: ["Chest"],
@@ -58,15 +63,8 @@ export const COMMON_MOVEMENT_PATTERNS: MovementPatternV2[] = [
 ];
 
 export const ALL_MOVEMENT_PATTERNS: MovementPatternV2[] = [
-  ...COMMON_MOVEMENT_PATTERNS,
-  "carry",
-  "rotation",
-  "anti_rotation",
-  "abduction",
-  "adduction",
-  "isolation",
-  "calf_raise_extended",
-  "calf_raise_flexed",
+  ...CANONICAL_MOVEMENT_PATTERN_VALUES,
+  ...LEGACY_MOVEMENT_PATTERN_ALIAS_VALUES,
 ];
 
 export const STIMULUS_BIAS_LABELS: Record<StimulusBias, string> = {

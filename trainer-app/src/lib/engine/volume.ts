@@ -6,6 +6,7 @@ import type {
   WorkoutHistoryEntry,
 } from "./types";
 import { VOLUME_LANDMARKS, type VolumeLandmarks } from "./volume-landmarks";
+import { interpolateWeeklyVolumeTarget } from "./volume-targets";
 import {
   getMostRecentHistoryEntry,
   isPerformedHistoryEntry,
@@ -133,9 +134,15 @@ export function getTargetVolume(
   mesocycleWeek: number,
   mesocycleLength: number
 ): number {
-  if (mesocycleLength <= 1) return landmark.mav;
-  const t = mesocycleWeek / (mesocycleLength - 1);
-  return landmark.mev + (landmark.mav - landmark.mev) * t;
+  return interpolateWeeklyVolumeTarget(
+    {
+      mev: landmark.mev,
+      mav: landmark.mav,
+      mrv: landmark.mrv,
+    },
+    mesocycleLength,
+    mesocycleWeek
+  );
 }
 
 export function enforceVolumeCaps(

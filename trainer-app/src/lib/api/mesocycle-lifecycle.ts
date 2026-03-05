@@ -1,6 +1,7 @@
 import type { Mesocycle } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { VOLUME_LANDMARKS } from "@/lib/engine/volume-landmarks";
+import { interpolateWeeklyVolumeTarget } from "@/lib/engine/volume-targets";
 import { getBackOffMultiplier, type PeriodizationModifiers } from "@/lib/engine/rules";
 import type { PrimaryGoal } from "@/lib/engine/types";
 
@@ -289,17 +290,15 @@ export function getWeeklyVolumeTarget(
   week: number
 ): number {
   const landmark = resolveLandmark(muscleGroup);
-  const week4 = Math.min(landmark.mavUpper, landmark.mrv);
-  const accumulationWeeks = getAccumulationWeeks(mesocycle.durationWeeks);
-  const boundedWeek = Math.max(1, Math.min(week, accumulationWeeks));
-  const profile = buildHypertrophyWeekProfile(mesocycle.durationWeeks, boundedWeek, false);
-  const accumulationTarget = Math.round(
-    landmark.mev + profile.volumeFraction * (week4 - landmark.mev)
+  return interpolateWeeklyVolumeTarget(
+    {
+      mev: landmark.mev,
+      mav: landmark.mavUpper,
+      mrv: landmark.mrv,
+    },
+    mesocycle.durationWeeks,
+    week
   );
-
-  if (week <= 1) return landmark.mev;
-  if (week <= accumulationWeeks) return accumulationTarget;
-  return Math.round(week4 * 0.45);
 }
 
 export function getRirTarget(mesocycle: RirTargetInput, week: number): RirTarget {

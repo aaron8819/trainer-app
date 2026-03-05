@@ -24,7 +24,7 @@ function toStringArray(value: unknown): string[] | undefined {
     return undefined;
   }
   const items = value.filter((entry): entry is string => typeof entry === "string");
-  return items.length > 0 ? items : [];
+  return items.length > 0 ? items : undefined;
 }
 
 function toNumberRecord(value: unknown): Record<string, number> | undefined {
@@ -36,7 +36,7 @@ function toNumberRecord(value: unknown): Record<string, number> | undefined {
   const entries = Object.entries(record).filter(
     (entry): entry is [string, number] => typeof entry[1] === "number" && Number.isFinite(entry[1])
   );
-  return entries.length > 0 ? Object.fromEntries(entries) : {};
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
 export function sanitizeSelectionMetadataForSave(value: unknown): SaveableSelectionMetadata | undefined {

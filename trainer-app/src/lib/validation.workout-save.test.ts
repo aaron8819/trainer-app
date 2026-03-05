@@ -63,23 +63,4 @@ describe("saveWorkoutSchema", () => {
     expect(parsed.success).toBe(false);
   });
 
-  it("rejects removed top-level wasAutoregulated compatibility input", () => {
-    const parsed = saveWorkoutSchema.safeParse({
-      workoutId: "workout-1",
-      wasAutoregulated: true,
-    });
-
-    expect(parsed.success).toBe(false);
-  });
-
-  it("rejects removed top-level autoregulationLog compatibility input", () => {
-    const parsed = saveWorkoutSchema.safeParse({
-      workoutId: "workout-1",
-      autoregulationLog: {
-        wasAutoregulated: true,
-      },
-    });
-
-    expect(parsed.success).toBe(false);
-  });
 });

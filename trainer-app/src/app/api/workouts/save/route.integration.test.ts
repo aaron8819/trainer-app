@@ -825,39 +825,6 @@ describe("POST /api/workouts/save", () => {
     });
   });
 
-  it("rejects legacy top-level cycleContext in selection metadata", async () => {
-    const response = await POST(
-      new Request("http://localhost/api/workouts/save", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          workoutId: "workout-1",
-          selectionMetadata: {
-            cycleContext: {
-              weekInMeso: 9,
-              weekInBlock: 1,
-              phase: "deload",
-              blockType: "deload",
-              isDeload: true,
-              source: "computed",
-            },
-          },
-          exercises: [
-            {
-              section: "MAIN",
-              exerciseId: "bench",
-              sets: [{ setIndex: 1, targetReps: 8 }],
-            },
-          ],
-        }),
-      })
-    );
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
-      error: "Invalid request",
-    });
-    expect(mocks.workoutUpsert).not.toHaveBeenCalled();
-  });
 
   it("counters remain consistent when state transition throws after transaction commits", async () => {
     // Both completedSessions and the lifecycle counter (accumulationSessionsCompleted) are written
@@ -1020,72 +987,6 @@ describe("POST /api/workouts/save", () => {
     expect(intensityScaling.applied).toBe(true);
     expect(intensityScaling.exerciseIds).toEqual(["bench"]);
     expect(intensityScaling.scaledDownCount).toBe(1);
-  });
-
-  it("rejects removed top-level autoregulationLog compatibility input", async () => {
-    const response = await POST(
-      new Request("http://localhost/api/workouts/save", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          workoutId: "workout-1",
-          autoregulationLog: {
-            wasAutoregulated: true,
-          },
-          exercises: [
-            {
-              section: "MAIN",
-              exerciseId: "bench",
-              sets: [{ setIndex: 1, targetReps: 8 }],
-            },
-          ],
-        }),
-      })
-    );
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
-      error: "Invalid request",
-    });
-    expect(mocks.workoutUpsert).not.toHaveBeenCalled();
-  });
-
-  it("rejects legacy top-level session mirrors in selection metadata", async () => {
-    const response = await POST(
-      new Request("http://localhost/api/workouts/save", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          workoutId: "workout-1",
-          selectionMetadata: {
-            adaptiveDeloadApplied: true,
-            periodizationWeek: 7,
-            lifecycleRirTarget: { min: 4, max: 5 },
-            lifecycleVolumeTargets: { Chest: 8 },
-            sorenessSuppressedMuscles: ["Legs"],
-            deloadDecision: {
-              mode: "reactive",
-              reason: ["legacy"],
-              reductionPercent: 25,
-              appliedTo: "load",
-            },
-          },
-          exercises: [
-            {
-              section: "MAIN",
-              exerciseId: "bench",
-              sets: [{ setIndex: 1, targetReps: 8 }],
-            },
-          ],
-        }),
-      })
-    );
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
-      error: "Invalid request",
-    });
-    expect(mocks.workoutUpsert).not.toHaveBeenCalled();
   });
 
   it("stamps initial planned saves with the pre-increment canonical lifecycle snapshot", async () => {

@@ -56,32 +56,6 @@ export const sessionIntentSchema = z.enum([
 
 export const workoutSessionIntentDbSchema = z.enum(WORKOUT_SESSION_INTENT_DB_VALUES);
 
-const LEGACY_SELECTION_METADATA_SESSION_KEYS = [
-  "cycleContext",
-  "deloadDecision",
-  "sorenessSuppressedMuscles",
-  "adaptiveDeloadApplied",
-  "periodizationWeek",
-  "lifecycleRirTarget",
-  "lifecycleVolumeTargets",
-] as const;
-
-const selectionMetadataSchema = z.unknown().superRefine((value, ctx) => {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return;
-  }
-
-  for (const key of LEGACY_SELECTION_METADATA_SESSION_KEYS) {
-    if (key in value) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: `selectionMetadata.${key} is no longer supported; use selectionMetadata.sessionDecisionReceipt instead`,
-        path: ["selectionMetadata", key],
-      });
-    }
-  }
-});
-
 export const generateFromIntentSchema = z
   .object({
     intent: sessionIntentSchema,
@@ -113,7 +87,7 @@ const saveWorkoutPayloadSchema = z.object({
     notes: z.string().optional(),
     selectionMode: z.enum(WORKOUT_SELECTION_MODE_VALUES).optional(),
     sessionIntent: workoutSessionIntentDbSchema.optional(),
-    selectionMetadata: selectionMetadataSchema.optional(),
+    selectionMetadata: z.unknown().optional(),
     forcedSplit: z.enum(["PUSH", "PULL", "LEGS", "UPPER", "LOWER", "FULL_BODY"]).optional(),
     advancesSplit: z.boolean().optional(),
     filteredExercises: z
@@ -156,31 +130,7 @@ const saveWorkoutPayloadSchema = z.object({
       .optional(),
   });
 
-export const saveWorkoutSchema = z
-  .unknown()
-  .superRefine((value, ctx) => {
-    if (
-      value &&
-      typeof value === "object" &&
-      !Array.isArray(value)
-    ) {
-      if ("wasAutoregulated" in value) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "wasAutoregulated is no longer supported; use selectionMetadata.sessionDecisionReceipt.readiness instead",
-          path: ["wasAutoregulated"],
-        });
-      }
-      if ("autoregulationLog" in value) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "autoregulationLog is no longer supported; use selectionMetadata.sessionDecisionReceipt.readiness instead",
-          path: ["autoregulationLog"],
-        });
-      }
-    }
-  })
-  .pipe(saveWorkoutPayloadSchema);
+export const saveWorkoutSchema = saveWorkoutPayloadSchema;
 
 export const setLogSchema = z.object({
   workoutSetId: z.string(),

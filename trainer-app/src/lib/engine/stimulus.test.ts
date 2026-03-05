@@ -116,8 +116,8 @@ describe("stimulus helper", () => {
       primaryMuscles: ["Rear Delts"],
     });
     const blocking = makeExercise({
-      id: "incline-curl",
-      name: "Incline Curl",
+      id: "custom-uncovered-curl",
+      name: "Custom Uncovered Curl",
       primaryMuscles: ["Biceps"],
     });
 
@@ -127,7 +127,7 @@ describe("stimulus helper", () => {
         strict: true,
         allowExerciseIds: ["rear-delt-fly"],
       })
-    ).toThrow(/Incline Curl \(incline-curl\)/i);
+    ).toThrow(/Custom Uncovered Curl \(custom-uncovered-curl\)/i);
   });
 
   it("keeps bench variants chest-dominant unless explicitly triceps-emphasis", () => {

@@ -146,7 +146,6 @@ export async function loadActiveBlockPhase(userId: string): Promise<ActiveBlockP
     where: { macroCycle: { userId }, isActive: true },
     select: {
       durationWeeks: true,
-      completedSessions: true,
       accumulationSessionsCompleted: true,
       sessionsPerWeek: true,
       state: true,
@@ -343,7 +342,6 @@ export async function loadProgramDashboardData(
       mesoNumber: true,
       focus: true,
       durationWeeks: true,
-      completedSessions: true,
       accumulationSessionsCompleted: true,
       deloadSessionsCompleted: true,
       sessionsPerWeek: true,
@@ -458,7 +456,7 @@ export type CycleAnchorAction = "deload" | "extend_phase" | "skip_phase" | "rese
 export async function applyCycleAnchor(userId: string, action: CycleAnchorAction): Promise<void> {
   const meso = await prisma.mesocycle.findFirst({
     where: { macroCycle: { userId }, isActive: true },
-    select: { id: true, completedSessions: true, accumulationSessionsCompleted: true, durationWeeks: true },
+    select: { id: true, accumulationSessionsCompleted: true, durationWeeks: true },
   });
 
   if (!meso) {
@@ -474,11 +472,15 @@ export async function applyCycleAnchor(userId: string, action: CycleAnchorAction
   switch (action) {
     case "deload": {
       const deloadThreshold = (meso.durationWeeks - 1) * daysPerWeek;
+      const nextAccumulationSessionsCompleted = Math.max(
+        meso.accumulationSessionsCompleted,
+        deloadThreshold
+      );
       await prisma.mesocycle.update({
         where: { id: meso.id },
         data: {
-          completedSessions: Math.max(meso.completedSessions, deloadThreshold),
-          accumulationSessionsCompleted: Math.max(meso.accumulationSessionsCompleted, deloadThreshold),
+          completedSessions: nextAccumulationSessionsCompleted,
+          accumulationSessionsCompleted: nextAccumulationSessionsCompleted,
         },
       });
       break;
@@ -496,7 +498,7 @@ export async function applyCycleAnchor(userId: string, action: CycleAnchorAction
     case "reset": {
       await prisma.mesocycle.update({
         where: { id: meso.id },
-        data: { completedSessions: 0, accumulationSessionsCompleted: 0 },
+        data: { completedSessions: 0, accumulationSessionsCompleted: 0, deloadSessionsCompleted: 0 },
       });
       break;
     }

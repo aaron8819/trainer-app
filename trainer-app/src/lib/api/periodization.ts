@@ -12,7 +12,7 @@ export type WeekInBlockHistoryEntry = {
  * ADR-080: session count is the canonical source of truth; calendar is a guard.
  */
 export type ActiveMesoContext = {
-  completedSessions: number;
+  accumulationSessionsCompleted: number;
   durationWeeks: number;
   startDate: Date;
 };
@@ -23,13 +23,13 @@ export type ActiveMesoContext = {
  * Uses session count as the primary source and calendar time as an upper-bound
  * guard to prevent counting a burst of sessions as more than one real week.
  *
- * sessionWeek = floor(completedSessions / daysPerWeek) + 1
+ * sessionWeek = floor(accumulationSessionsCompleted / daysPerWeek) + 1
  * calendarWeek = floor(daysSinceStart / 7) + 1
  * result = min(sessionWeek, calendarWeek, durationWeeks)
  */
 export function computeCurrentMesoWeek(ctx: ActiveMesoContext, daysPerWeek: number): number {
   const effectiveDaysPerWeek = Math.max(1, daysPerWeek);
-  const sessionWeek = Math.floor(ctx.completedSessions / effectiveDaysPerWeek) + 1;
+  const sessionWeek = Math.floor(ctx.accumulationSessionsCompleted / effectiveDaysPerWeek) + 1;
   const daysSinceStart = Math.max(
     0,
     Math.floor((Date.now() - ctx.startDate.getTime()) / (1000 * 60 * 60 * 24))
@@ -48,7 +48,7 @@ export type BlockContextResult = {
  * Load the current block context for a user.
  *
  * Prefers session-count-based week derivation (ADR-080) when an active mesocycle
- * with `completedSessions` is available. Falls back to date arithmetic when no
+ * with canonical lifecycle counters is available. Falls back to date arithmetic when no
  * active meso is found (e.g., legacy users without structured cycles).
  *
  * Returns both the BlockContext (for beam-search scoring) and weekInMeso (the
@@ -94,7 +94,11 @@ export async function loadCurrentBlockContext(
     mesoStart.setDate(mesoStart.getDate() + activeMeso.startWeek * 7);
 
     const weekInMeso = computeCurrentMesoWeek(
-      { completedSessions: activeMeso.completedSessions, durationWeeks: activeMeso.durationWeeks, startDate: mesoStart },
+      {
+        accumulationSessionsCompleted: activeMeso.accumulationSessionsCompleted,
+        durationWeeks: activeMeso.durationWeeks,
+        startDate: mesoStart,
+      },
       daysPerWeek
     );
 

@@ -67,121 +67,7 @@ export type HomeProgramSupportData = {
   nextSession: NextSessionData;
   lastSessionSkipped: boolean;
   latestIncomplete: { id: string; status: string } | null;
-  gapFill: GapFillSupportData;
 };
-
-export type GapFillDeficitRow = {
-  muscle: string;
-  target: number;
-  actual: number;
-  deficit: number;
-};
-
-export type GapFillPolicy = {
-  requiredSessionsPerWeek: number;
-  maxOptionalGapFillSessionsPerWeek: number;
-  maxGeneratedHardSets: number;
-  maxGeneratedExercises: number;
-  excludedDuringDeload: boolean;
-  minSingleMuscleDeficitSets: number;
-  minTotalDeficitSets: number;
-};
-
-export type GapFillSupportData = {
-  eligible: boolean;
-  reason: string | null;
-  anchorWeek: number | null;
-  targetMuscles: string[];
-  deficitSummary: GapFillDeficitRow[];
-  alreadyUsedThisWeek: boolean;
-  suppressedByStartedNextWeek: boolean;
-  policy: {
-    requiredSessionsPerWeek: number;
-    maxOptionalGapFillSessionsPerWeek: number;
-    maxGeneratedHardSets: number;
-    maxGeneratedExercises: number;
-  };
-};
-
-const DEFAULT_GAP_FILL_POLICY = {
-  maxOptionalGapFillSessionsPerWeek: 1,
-  maxGeneratedHardSets: 12,
-  maxGeneratedExercises: 4,
-  excludedDuringDeload: true,
-  minSingleMuscleDeficitSets: 2,
-  minTotalDeficitSets: 6,
-} as const;
-
-function toObject(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return {};
-  }
-  return value as Record<string, unknown>;
-}
-
-function toNumberOrUndefined(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
-}
-
-function deriveGapFillPolicy(input: {
-  sessionsPerWeek: number;
-  volumeRampConfig: unknown;
-}): GapFillPolicy {
-  const config = toObject(input.volumeRampConfig);
-  const optionalSessions = toObject(config.optionalSessions);
-  const gapFill = toObject(optionalSessions.gapFill);
-
-  return {
-    requiredSessionsPerWeek: input.sessionsPerWeek,
-    maxOptionalGapFillSessionsPerWeek:
-      toNumberOrUndefined(gapFill.maxOptionalGapFillSessionsPerWeek) ??
-      DEFAULT_GAP_FILL_POLICY.maxOptionalGapFillSessionsPerWeek,
-    maxGeneratedHardSets:
-      toNumberOrUndefined(gapFill.maxGeneratedHardSets) ??
-      DEFAULT_GAP_FILL_POLICY.maxGeneratedHardSets,
-    maxGeneratedExercises:
-      toNumberOrUndefined(gapFill.maxGeneratedExercises) ??
-      DEFAULT_GAP_FILL_POLICY.maxGeneratedExercises,
-    excludedDuringDeload:
-      typeof gapFill.excludedDuringDeload === "boolean"
-        ? gapFill.excludedDuringDeload
-        : DEFAULT_GAP_FILL_POLICY.excludedDuringDeload,
-    minSingleMuscleDeficitSets:
-      toNumberOrUndefined(gapFill.minSingleMuscleDeficitSets) ??
-      DEFAULT_GAP_FILL_POLICY.minSingleMuscleDeficitSets,
-    minTotalDeficitSets:
-      toNumberOrUndefined(gapFill.minTotalDeficitSets) ??
-      DEFAULT_GAP_FILL_POLICY.minTotalDeficitSets,
-  };
-}
-
-function emptyGapFillSupport(policy: GapFillPolicy, reason: string | null): GapFillSupportData {
-  return {
-    eligible: false,
-    reason,
-    anchorWeek: null,
-    targetMuscles: [],
-    deficitSummary: [],
-    alreadyUsedThisWeek: false,
-    suppressedByStartedNextWeek: false,
-    policy: {
-      requiredSessionsPerWeek: policy.requiredSessionsPerWeek,
-      maxOptionalGapFillSessionsPerWeek: policy.maxOptionalGapFillSessionsPerWeek,
-      maxGeneratedHardSets: policy.maxGeneratedHardSets,
-      maxGeneratedExercises: policy.maxGeneratedExercises,
-    },
-  };
-}
-
-function hasOptionalGapFillReceiptMarker(selectionMetadata: unknown): boolean {
-  const metadata = toObject(selectionMetadata);
-  const receipt = toObject(metadata.sessionDecisionReceipt);
-  const exceptions = Array.isArray(receipt.exceptions) ? receipt.exceptions : [];
-  return exceptions.some((entry) => {
-    const exception = toObject(entry);
-    return exception.code === "optional_gap_fill";
-  });
-}
 
 export type CapabilityFlags = {
   whoopConnected: boolean;
@@ -388,24 +274,17 @@ export function computeMesoWeekStart(mesoStartDate: Date, currentWeek: number): 
   return date;
 }
 
-export function computeMesoWeekEnd(mesoWeekStart: Date): Date {
-  const date = new Date(mesoWeekStart);
-  date.setDate(date.getDate() + 7);
-  return date;
-}
-
 async function loadMesoWeekMuscleVolume(
   userId: string,
   mesocycleId: string,
-  mesoWeekStart: Date,
-  mesoWeekEnd: Date
+  mesoWeekStart: Date
 ): Promise<Record<string, { directSets: number; indirectSets: number }>> {
   const workouts = await prisma.workout.findMany({
     where: {
       userId,
       mesocycleId,
       status: { in: [...PERFORMED_WORKOUT_STATUSES] as WorkoutStatus[] },
-      scheduledDate: { gte: mesoWeekStart, lt: mesoWeekEnd },
+      scheduledDate: { gte: mesoWeekStart },
     },
     include: {
       exercises: {
@@ -456,201 +335,8 @@ async function loadMesoWeekMuscleVolume(
   return muscles;
 }
 
-async function loadGapFillSupport(userId: string): Promise<GapFillSupportData> {
-  const activeMeso = await prisma.mesocycle.findFirst({
-    where: { macroCycle: { userId }, isActive: true },
-    select: {
-      id: true,
-      state: true,
-      durationWeeks: true,
-      volumeTarget: true,
-      startWeek: true,
-      sessionsPerWeek: true,
-      accumulationSessionsCompleted: true,
-      volumeRampConfig: true,
-      macroCycle: { select: { startDate: true } },
-    },
-  });
-
-  const fallbackPolicy = deriveGapFillPolicy({
-    sessionsPerWeek: activeMeso?.sessionsPerWeek ?? 3,
-    volumeRampConfig: activeMeso?.volumeRampConfig,
-  });
-  if (!activeMeso) {
-    return emptyGapFillSupport(fallbackPolicy, "no_active_mesocycle");
-  }
-
-  const policy = deriveGapFillPolicy({
-    sessionsPerWeek: activeMeso.sessionsPerWeek,
-    volumeRampConfig: activeMeso.volumeRampConfig,
-  });
-
-  if (policy.excludedDuringDeload && activeMeso.state === "ACTIVE_DELOAD") {
-    return emptyGapFillSupport(policy, "in_deload");
-  }
-
-  const anchorEligible =
-    activeMeso.accumulationSessionsCompleted > 0 &&
-    activeMeso.accumulationSessionsCompleted % activeMeso.sessionsPerWeek === 0;
-  if (!anchorEligible) {
-    return emptyGapFillSupport(policy, "not_end_of_required_rotation");
-  }
-
-  const anchorWeek = activeMeso.accumulationSessionsCompleted / activeMeso.sessionsPerWeek;
-  const baseResponse: GapFillSupportData = {
-    ...emptyGapFillSupport(policy, null),
-    anchorWeek,
-  };
-
-  const startedIncomplete = await prisma.workout.findFirst({
-    where: {
-      userId,
-      status: { in: ["IN_PROGRESS", "PARTIAL"] },
-    },
-    select: { id: true },
-  });
-  if (startedIncomplete) {
-    return { ...baseResponse, reason: "started_incomplete_workout" };
-  }
-
-  const nextWeekStartedOrPerformedAdvancing = await prisma.workout.findFirst({
-    where: {
-      userId,
-      mesocycleId: activeMeso.id,
-      mesocycleWeekSnapshot: anchorWeek + 1,
-      status: { in: ["IN_PROGRESS", "PARTIAL", ...PERFORMED_WORKOUT_STATUSES] as WorkoutStatus[] },
-      advancesSplit: { not: false },
-    },
-    select: { id: true },
-  });
-  if (nextWeekStartedOrPerformedAdvancing) {
-    return {
-      ...baseResponse,
-      reason: "started_next_week_advancing_workout",
-      suppressedByStartedNextWeek: true,
-    };
-  }
-
-  const candidateGapFillSessions = await prisma.workout.findMany({
-    where: {
-      userId,
-      mesocycleId: activeMeso.id,
-      mesocycleWeekSnapshot: anchorWeek,
-      status: { in: [...PERFORMED_WORKOUT_STATUSES] as WorkoutStatus[] },
-      selectionMode: "INTENT",
-      sessionIntent: "BODY_PART",
-      advancesSplit: false,
-    },
-    select: { selectionMetadata: true },
-  });
-  const performedGapFillCount = candidateGapFillSessions.filter((entry) =>
-    hasOptionalGapFillReceiptMarker(entry.selectionMetadata)
-  ).length;
-  if (performedGapFillCount >= policy.maxOptionalGapFillSessionsPerWeek) {
-    return {
-      ...baseResponse,
-      reason: "already_used_gap_fill",
-      alreadyUsedThisWeek: true,
-    };
-  }
-
-  const mesoStartDate = activeMeso.macroCycle?.startDate;
-  if (!(mesoStartDate instanceof Date) || Number.isNaN(mesoStartDate.getTime())) {
-    return { ...baseResponse, reason: "insufficient_week_scoping_data" };
-  }
-  const mesoStart = new Date(mesoStartDate);
-  mesoStart.setDate(mesoStart.getDate() + activeMeso.startWeek * 7);
-  const anchorWeekStart = computeMesoWeekStart(mesoStart, anchorWeek);
-  const anchorWeekEnd = computeMesoWeekEnd(anchorWeekStart);
-  const weekMuscles = await loadMesoWeekMuscleVolume(
-    userId,
-    activeMeso.id,
-    anchorWeekStart,
-    anchorWeekEnd
-  );
-
-  const researchBackedMuscles = [
-    "Chest",
-    "Lats",
-    "Upper Back",
-    "Front Delts",
-    "Side Delts",
-    "Rear Delts",
-    "Quads",
-    "Hamstrings",
-    "Glutes",
-    "Biceps",
-    "Triceps",
-    "Calves",
-  ];
-
-  const deficits = researchBackedMuscles
-    .map((muscle) => {
-      const target = getWeeklyVolumeTarget(
-        {
-          durationWeeks: activeMeso.durationWeeks,
-          sessionsPerWeek: activeMeso.sessionsPerWeek,
-          volumeTarget: activeMeso.volumeTarget,
-          accumulationSessionsCompleted: activeMeso.accumulationSessionsCompleted,
-          id: activeMeso.id,
-        },
-        muscle,
-        anchorWeek
-      );
-      const actual = weekMuscles[muscle]?.directSets ?? 0;
-      const deficit = Math.max(0, target - actual);
-      const deficitRatio = deficit / Math.max(target, 1);
-      return { muscle, target, actual, deficit, deficitRatio };
-    })
-    .filter((row) => row.target > 0);
-
-  const anyLargeDeficit = deficits.some((row) => row.deficit >= policy.minSingleMuscleDeficitSets);
-  const totalDeficit = deficits.reduce((sum, row) => sum + row.deficit, 0);
-  if (!anyLargeDeficit && totalDeficit < policy.minTotalDeficitSets) {
-    return {
-      ...baseResponse,
-      reason: "deficit_below_threshold",
-      deficitSummary: deficits
-        .filter((row) => row.deficit > 0)
-        .sort((a, b) => b.deficit - a.deficit)
-        .map((row) => ({
-          muscle: row.muscle,
-          target: row.target,
-          actual: row.actual,
-          deficit: row.deficit,
-        })),
-    };
-  }
-
-  const sortedDeficits = deficits
-    .filter((row) => row.deficit > 0)
-    .sort((left, right) => {
-      if (right.deficit !== left.deficit) {
-        return right.deficit - left.deficit;
-      }
-      return right.deficitRatio - left.deficitRatio;
-    });
-
-  return {
-    ...baseResponse,
-    eligible: true,
-    reason: null,
-    targetMuscles: sortedDeficits.slice(0, 3).map((row) => row.muscle),
-    deficitSummary: sortedDeficits.map((row) => ({
-      muscle: row.muscle,
-      target: row.target,
-      actual: row.actual,
-      deficit: row.deficit,
-    })),
-    alreadyUsedThisWeek: performedGapFillCount > 0,
-  };
-}
-
 export async function loadHomeProgramSupport(userId: string): Promise<HomeProgramSupportData> {
-  const [nextWorkoutContext, gapFill] = await Promise.all([
-    loadNextWorkoutContext(userId),
-    loadGapFillSupport(userId),
-  ]);
+  const nextWorkoutContext = await loadNextWorkoutContext(userId);
   const nextSession: NextSessionData = {
     intent: nextWorkoutContext.intent,
     workoutId: nextWorkoutContext.existingWorkoutId,
@@ -678,7 +364,6 @@ export async function loadHomeProgramSupport(userId: string): Promise<HomeProgra
     nextSession,
     lastSessionSkipped,
     latestIncomplete,
-    gapFill,
   };
 }
 
@@ -808,13 +493,10 @@ export async function loadProgramDashboardData(
     const mesoStart = new Date(mesoRecord.macroCycle.startDate);
     mesoStart.setDate(mesoStart.getDate() + mesoRecord.startWeek * 7);
 
-    const viewedWeekStart = computeMesoWeekStart(mesoStart, effectiveViewWeek);
-    const currentWeekStart = computeMesoWeekStart(mesoStart, currentWeek);
     viewedWeekMuscles = await loadMesoWeekMuscleVolume(
       userId,
       mesoRecord.id,
-      viewedWeekStart,
-      computeMesoWeekEnd(viewedWeekStart)
+      computeMesoWeekStart(mesoStart, effectiveViewWeek)
     );
     currentWeekMuscles =
       effectiveViewWeek === currentWeek
@@ -822,8 +504,7 @@ export async function loadProgramDashboardData(
         : await loadMesoWeekMuscleVolume(
             userId,
             mesoRecord.id,
-            currentWeekStart,
-            computeMesoWeekEnd(currentWeekStart)
+            computeMesoWeekStart(mesoStart, currentWeek)
           );
   }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import {
   PRIMARY_GOAL_OPTIONS,
   SECONDARY_GOAL_OPTIONS,
@@ -100,7 +100,7 @@ export default function ProfileForm({
       Array.isArray(initialValues?.weeklySchedule)
         ? initialValues.weeklySchedule
         : defaultValues.weeklySchedule ?? [],
-    [initialValues?.weeklySchedule]
+    [initialValues]
   );
 
   const form = useForm<ProfileFormValues>({
@@ -115,8 +115,14 @@ export default function ProfileForm({
   const sectionClassName = "rounded-2xl border border-slate-200 p-4 sm:p-6";
   const fieldClassName = "h-11 w-full rounded-xl border border-slate-300 px-3 text-sm";
   const labelClassName = "space-y-1 text-sm font-medium text-slate-700";
-  const watchedDaysPerWeek = form.watch("daysPerWeek");
-  const watchedWeeklySchedule = form.watch("weeklySchedule");
+  const watchedDaysPerWeek = useWatch({
+    control: form.control,
+    name: "daysPerWeek",
+  });
+  const watchedWeeklySchedule = useWatch({
+    control: form.control,
+    name: "weeklySchedule",
+  });
 
   useEffect(() => {
     const dayCount = Number.isFinite(watchedDaysPerWeek)

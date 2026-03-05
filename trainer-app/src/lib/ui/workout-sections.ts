@@ -18,6 +18,12 @@ type WorkoutExercise = {
     targetLoad?: number | null;
     targetRpe?: number | null;
     restSeconds?: number | null;
+    logs?: {
+      actualReps: number | null;
+      actualRpe: number | null;
+      actualLoad: number | null;
+      wasSkipped: boolean;
+    }[];
   }[];
 };
 
@@ -41,6 +47,14 @@ export function splitExercises(exercises: WorkoutExercise[]): SectionedExercises
       equipment: (exercise.exercise.exerciseEquipment ?? []).map((item) => item.equipment.type),
       isMainLift: exercise.isMainLift,
       sets: exercise.sets.map((set) => ({
+        ...(set.logs?.[0]
+          ? {
+              actualReps: set.logs[0].actualReps ?? null,
+              actualLoad: set.logs[0].actualLoad ?? null,
+              actualRpe: set.logs[0].actualRpe ?? null,
+              wasSkipped: set.logs[0].wasSkipped ?? false,
+            }
+          : {}),
         setId: set.id,
         setIndex: set.setIndex,
         targetReps: set.targetReps,

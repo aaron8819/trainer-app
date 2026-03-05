@@ -3,21 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ExerciseSection } from "@/components/log-workout/types";
 
-type UseWorkoutSessionLayoutParams = {
-  activeSection: ExerciseSection | null;
-  activeExerciseId: string | null;
-  sessionTerminated: boolean;
-  setExpandedSections: React.Dispatch<React.SetStateAction<Record<ExerciseSection, boolean>>>;
-  setExpandedExerciseId: React.Dispatch<React.SetStateAction<string | null>>;
-};
-
-export function useWorkoutSessionLayout({
-  activeSection,
-  activeExerciseId,
-  sessionTerminated,
-  setExpandedSections,
-  setExpandedExerciseId,
-}: UseWorkoutSessionLayoutParams) {
+export function useWorkoutSessionLayout() {
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const activeSetPanelRef = useRef<HTMLElement | null>(null);
@@ -28,7 +14,7 @@ export function useWorkoutSessionLayout({
     accessory: null,
   });
 
-  const scrollToActiveSet = useCallback(() => {
+  const jumpToActiveSet = useCallback(() => {
     if (scrollCancelRef.current !== null) {
       clearTimeout(scrollCancelRef.current);
     }
@@ -60,46 +46,22 @@ export function useWorkoutSessionLayout({
 
     const viewport = window.visualViewport;
     const handleResize = () => {
-      const activeElement = document.activeElement;
-      const isInput =
-        activeElement instanceof HTMLInputElement || activeElement instanceof HTMLTextAreaElement;
       const heightDiff = window.innerHeight - viewport.height;
       const nextKeyboardOpen = heightDiff > 120;
 
       setKeyboardOpen(nextKeyboardOpen);
       setKeyboardHeight(nextKeyboardOpen ? heightDiff : 0);
-
-      if (isInput && nextKeyboardOpen) {
-        scrollToActiveSet();
-      }
     };
 
     viewport.addEventListener("resize", handleResize);
     return () => viewport.removeEventListener("resize", handleResize);
-  }, [scrollToActiveSet]);
-
-  useEffect(() => {
-    if (sessionTerminated || activeSection === null || activeExerciseId === null) {
-      setExpandedSections({ warmup: true, main: true, accessory: true });
-      return;
-    }
-
-    setExpandedSections({ warmup: false, main: false, accessory: false, [activeSection]: true });
-    setExpandedExerciseId(activeExerciseId);
-    scrollToActiveSet();
-  }, [
-    activeExerciseId,
-    activeSection,
-    scrollToActiveSet,
-    sessionTerminated,
-    setExpandedExerciseId,
-    setExpandedSections,
-  ]);
+  }, []);
 
   return {
     keyboardOpen,
     keyboardHeight,
     activeSetPanelRef,
+    jumpToActiveSet,
     sectionRefs,
   };
 }

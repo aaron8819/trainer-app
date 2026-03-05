@@ -147,7 +147,7 @@ describe("LogWorkoutClient UX behavior", () => {
     await user.type(loadInput, "41");
     fireEvent.blur(loadInput);
 
-    expect(loadInput.value).toBe("41");
+    expect(loadInput.value).toBe("40");
   });
 
   it("applies quick adjustments as exact deltas", async () => {
@@ -179,6 +179,7 @@ describe("LogWorkoutClient UX behavior", () => {
     const user = userEvent.setup();
     renderClient();
 
+    await user.click(screen.getByRole("button", { name: "Log set" }));
     await user.click(screen.getByRole("button", { name: "Finish workout" }));
 
     expect(screen.getByRole("dialog", { name: "Workout completion confirmation" })).toBeInTheDocument();
@@ -189,6 +190,7 @@ describe("LogWorkoutClient UX behavior", () => {
     const user = userEvent.setup();
     renderClient();
 
+    await user.click(screen.getByRole("button", { name: "Log set" }));
     await user.click(screen.getByRole("button", { name: "Finish workout" }));
     await user.click(screen.getByRole("button", { name: "Cancel" }));
 
@@ -224,7 +226,7 @@ describe("LogWorkoutClient UX behavior", () => {
 
     await user.click(screen.getByRole("button", { name: "Log set" }));
     await user.click(screen.getByRole("button", { name: /Log set|Update set/ }));
-    await user.click(screen.getByRole("button", { name: "Finish workout" }));
+    await user.click(screen.getByRole("button", { name: /Finish workout|Complete Workout/ }));
     await user.click(screen.getByRole("button", { name: "Confirm" }));
 
     await waitFor(() => {
@@ -729,7 +731,7 @@ describe("4d — Inline edit on chip tap", () => {
   });
 });
 
-describe("4i — Collapse exercise queue during active set", () => {
+describe("4i - Exercise queue expansion stays user-controlled", () => {
   beforeEach(() => {
     mockedLogSetRequest.mockResolvedValue({ data: { status: "ok", wasCreated: true }, error: null });
     mockedDeleteSetLogRequest.mockResolvedValue({ data: { status: "ok" }, error: null });
@@ -748,64 +750,43 @@ describe("4i — Collapse exercise queue during active set", () => {
     vi.useRealTimers();
   });
 
-  it("non-active exercise sections are collapsed when active set exists", () => {
+  it("does not force-collapse non-active sections by layout side effects", () => {
     render(<LogWorkoutClient workoutId="workout-1" exercises={makeMultiSectionExercises()} />);
 
-    // Active set is in warmup (first unlogged), so main and accessory should be collapsed
-    const mainSummary = screen.getByTestId("collapsed-summary-main");
-    expect(mainSummary).toBeInTheDocument();
-    expect(within(mainSummary).getByText("Barbell Bench Press")).toBeInTheDocument();
-    expect(within(mainSummary).getByText("0/2 sets logged")).toBeInTheDocument();
-
-    const accSummary = screen.getByTestId("collapsed-summary-accessory");
-    expect(accSummary).toBeInTheDocument();
-    expect(within(accSummary).getByText("Cable Fly")).toBeInTheDocument();
-    expect(within(accSummary).getByText("0/1 sets logged")).toBeInTheDocument();
-
-    // Warmup should NOT have a collapsed summary (it's expanded)
     expect(screen.queryByTestId("collapsed-summary-warmup")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("collapsed-summary-main")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("collapsed-summary-accessory")).not.toBeInTheDocument();
   });
 
-  it("active exercise section is expanded and others are collapsed on set advance", async () => {
+  it("advancing sets does not rewrite section expansion state", async () => {
     const user = userEvent.setup();
     render(<LogWorkoutClient workoutId="workout-1" exercises={makeMultiSectionExercises()} />);
 
-    // Initially active set is in warmup. Log it to advance to main section.
     await user.click(screen.getByRole("button", { name: "Log set" }));
     await waitFor(() => expect(mockedLogSetRequest).toHaveBeenCalledTimes(1));
 
-    // After logging warmup set, active set advances to main section (set-m1)
-    // Now warmup should be collapsed, main should be expanded
     await waitFor(() => {
-      expect(screen.getByTestId("collapsed-summary-warmup")).toBeInTheDocument();
+      expect(screen.queryByTestId("collapsed-summary-warmup")).not.toBeInTheDocument();
       expect(screen.queryByTestId("collapsed-summary-main")).not.toBeInTheDocument();
     });
   });
 
-  it("manual expand of collapsed section works without changing active set", async () => {
+  it("manual section toggles are preserved while active set remains in warmup", async () => {
     const user = userEvent.setup();
     render(<LogWorkoutClient workoutId="workout-1" exercises={makeMultiSectionExercises()} />);
 
-    // Active set is in warmup. Main is collapsed.
-    expect(screen.getByTestId("collapsed-summary-main")).toBeInTheDocument();
+    const warmupSection = screen.getByRole("button", { name: /Warmup.*Hide/i });
+    await user.click(warmupSection);
+    expect(screen.getByTestId("collapsed-summary-warmup")).toBeInTheDocument();
 
-    // Click "Show" on main section to expand it manually
-    const mainSection = screen.getByTestId("collapsed-summary-main").closest("div.rounded-2xl") as HTMLElement;
-    const showButton = within(mainSection).getByRole("button", { name: /Show/ });
-    await user.click(showButton);
-
-    // Main section should now be expanded (no collapsed summary)
-    expect(screen.queryByTestId("collapsed-summary-main")).not.toBeInTheDocument();
-
-    // Active set should still be in warmup — verify warmup info in the active set panel
-    expect(screen.getByText(/Warmup · Set 1/)).toBeInTheDocument();
+    expect(screen.getByText(/Warmup .* Set 1/)).toBeInTheDocument();
   });
 
   it("all sections hidden when workout is completed", async () => {
     const user = userEvent.setup();
     render(<LogWorkoutClient workoutId="workout-1" exercises={makeMultiSectionExercises()} />);
 
-    // Complete the workout
+    await user.click(screen.getByRole("button", { name: "Log set" }));
     await user.click(screen.getByRole("button", { name: "Finish workout" }));
     await user.click(screen.getByRole("button", { name: "Confirm" }));
 
@@ -813,7 +794,6 @@ describe("4i — Collapse exercise queue during active set", () => {
       expect(screen.getByText(/Session complete|Workout marked as completed/)).toBeInTheDocument();
     });
 
-    // No collapsed summaries should exist (exercise queue is hidden)
     expect(screen.queryByTestId("collapsed-summary-warmup")).not.toBeInTheDocument();
     expect(screen.queryByTestId("collapsed-summary-main")).not.toBeInTheDocument();
     expect(screen.queryByTestId("collapsed-summary-accessory")).not.toBeInTheDocument();
@@ -1058,6 +1038,7 @@ describe("I-2/I-4/I-5/E-4/E-5/E-6/L-4/S-5 — Remaining low-priority fixes", () 
   });
 
   it("E-4: shows spinner in Confirm button while completion submitting", async () => {
+    const user = userEvent.setup();
     let resolveSave!: (val: { data: { status: string; workoutStatus: string }; error: null }) => void;
     mockedSaveWorkoutRequest.mockImplementationOnce(
       () =>
@@ -1067,14 +1048,18 @@ describe("I-2/I-4/I-5/E-4/E-5/E-6/L-4/S-5 — Remaining low-priority fixes", () 
     );
 
     render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
+    await user.click(screen.getByRole("button", { name: "Log set" }));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Finish workout" })).toBeInTheDocument();
+    });
 
-    fireEvent.click(screen.getByRole("button", { name: "Finish workout" }));
+    await user.click(screen.getByRole("button", { name: "Finish workout" }));
 
     await waitFor(() => {
       expect(screen.getByRole("dialog", { name: "Workout completion confirmation" })).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+    await user.click(screen.getByRole("button", { name: "Confirm" }));
 
     await waitFor(() => {
       expect(screen.getByTestId("completion-spinner")).toBeInTheDocument();
@@ -1145,9 +1130,16 @@ describe("I-2/I-4/I-5/E-4/E-5/E-6/L-4/S-5 — Remaining low-priority fixes", () 
     });
 
     await user.click(screen.getByRole("button", { name: "Finish workout" }));
+    await waitFor(() => {
+      expect(screen.getByRole("dialog", { name: "Workout completion confirmation" })).toBeInTheDocument();
+    });
     await user.click(screen.getByRole("button", { name: "Confirm" }));
 
     await waitFor(() => {
+      expect(mockedSaveWorkoutRequest).toHaveBeenCalledWith(
+        expect.objectContaining({ workoutId: "workout-1", action: "mark_completed" })
+      );
+      expect(screen.getByText("Session complete!")).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /Mute alerts|Unmute alerts/ })).not.toBeInTheDocument();
     });
   });

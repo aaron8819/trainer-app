@@ -126,7 +126,7 @@ export function ExerciseSetChipsEditor({
                 aria-label="Chip edit load"
                 className="mt-0.5 min-h-9 w-full rounded-lg border border-slate-300 px-1.5 py-1 text-base text-slate-900"
                 type="number"
-                step="0.5"
+                step="2.5"
                 inputMode="decimal"
                 value={chipEditDraft.load}
                 onBlur={() => onChipLoadBlur(editingSet.setId, isDumbbell)}

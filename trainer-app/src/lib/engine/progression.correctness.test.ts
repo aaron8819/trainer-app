@@ -59,7 +59,7 @@ describe("progression correctness", () => {
     );
 
     expect(decision?.path).toBe("path_2");
-    expect(decision?.nextLoad).toBe(104);
+    expect(decision?.nextLoad).toBe(105);
     expect(decision?.decisionLog.join(" | ")).toContain("Progression confidence scale=0.80");
   });
 

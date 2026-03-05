@@ -22,6 +22,7 @@ import type {
   PrefilledFieldState,
   UndoSnapshot,
 } from "@/components/log-workout/types";
+import { getLoadRecommendation } from "@/lib/progression/load-coaching";
 
 export type WorkoutSessionActions = {
   logSet: (setId: string, overrides?: Partial<LogSetInput>) => Promise<boolean>;
@@ -52,6 +53,7 @@ type UseWorkoutSessionFlowParams = {
   toInputNumberString: (value: number | null | undefined) => string;
   parseNullableNumber: (raw: string) => number | null;
   normalizeLoadInput: (raw: string, isDumbbell: boolean) => number | null;
+  onAdvanceSet?: () => void;
 };
 
 function setSetInputFieldsPrefilled(
@@ -85,6 +87,7 @@ export function useWorkoutSessionFlow({
   toInputNumberString,
   parseNullableNumber,
   normalizeLoadInput,
+  onAdvanceSet,
 }: UseWorkoutSessionFlowParams) {
   const [savingSetId, setSavingSetId] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -209,7 +212,11 @@ export function useWorkoutSessionFlow({
 
         const nextLogged = new Set(loggedSetIds);
         nextLogged.add(setId);
-        setLoggedSetIds(nextLogged);
+        setLoggedSetIds((prev) => {
+          const next = new Set(prev);
+          next.add(setId);
+          return next;
+        });
         clearDraft(setId);
         clearDraftInputBuffers(setId);
         setSetInputFieldsPrefilled(setId, setFieldPrefilled, false);
@@ -226,6 +233,7 @@ export function useWorkoutSessionFlow({
           const nextSetId = getNextUnloggedSetId(flatSets, nextLogged, setId);
           if (nextSetId) {
             setActiveSetId(nextSetId);
+            onAdvanceSet?.();
           }
         }
 
@@ -240,16 +248,20 @@ export function useWorkoutSessionFlow({
             item.set.targetRpe != null
         );
         if (nextExerciseSet && normalizedSet.actualRpe != null && nextExerciseSet.set.targetRpe != null) {
-          const diff = normalizedSet.actualRpe - nextExerciseSet.set.targetRpe;
-          if (diff <= -1.5) {
+          const repRange = nextExerciseSet.set.targetRepRange ?? {
+            min: nextExerciseSet.set.targetReps,
+            max: nextExerciseSet.set.targetReps,
+          };
+          const recommendation = getLoadRecommendation({
+            reps: normalizedSet.actualReps,
+            rir: 10 - normalizedSet.actualRpe,
+            repRange,
+            targetRir: 10 - nextExerciseSet.set.targetRpe,
+          });
+          if (recommendation) {
             setAutoregHint({
               exerciseId: targetSet.exercise.workoutExerciseId,
-              message: "Set felt easier than target. Consider +2.5-5 lbs for next set.",
-            });
-          } else if (diff >= 1.0) {
-            setAutoregHint({
-              exerciseId: targetSet.exercise.workoutExerciseId,
-              message: "Set was harder than target. Consider -2.5 lbs or -1 rep.",
+              message: recommendation.message,
             });
           } else {
             setAutoregHint(null);
@@ -279,6 +291,7 @@ export function useWorkoutSessionFlow({
       showStatus,
       startTimer,
       updateSetFields,
+      onAdvanceSet,
     ]
   );
 

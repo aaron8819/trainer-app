@@ -1,6 +1,6 @@
 "use client";
 
-import type { FocusEventHandler, RefObject } from "react";
+import type { RefObject } from "react";
 import { toDisplayLoad } from "@/lib/ui/load-display";
 import type {
   ActiveSetDraftState,
@@ -64,16 +64,10 @@ export type WorkoutActiveSetCardFormActions = {
     applyValue: (nextRaw: string) => void
   ) => void;
   handleLoadFocus: () => void;
-  handleLoadBlur: FocusEventHandler<HTMLInputElement>;
   markFieldTouched: (setId: string, field: keyof PrefilledFieldState) => void;
   setFieldPrefilled: (setId: string, field: keyof PrefilledFieldState, isPrefilled: boolean) => void;
   setRepsValue: (setId: string, value: number | null) => void;
-  setLoadValue: (
-    setId: string,
-    rawValue: string,
-    isDumbbell: boolean,
-    options?: { commit?: boolean }
-  ) => void;
+  commitLoadValue: (setId: string, rawValue: string, isDumbbell: boolean) => void;
   setRpeValue: (setId: string, rawValue: string, options?: { commit?: boolean }) => void;
   setSingleField: (setId: string, field: keyof LogSetInput, value: number | boolean | null) => void;
   updateDraftBuffer: (setId: string, field: keyof SetDraftBuffers, value: string) => void;
@@ -131,11 +125,10 @@ export function WorkoutActiveSetCard({
     primeNumericBuffer,
     commitNumericBuffer,
     handleLoadFocus,
-    handleLoadBlur,
     markFieldTouched,
     setFieldPrefilled,
     setRepsValue,
-    setLoadValue,
+    commitLoadValue,
     setRpeValue,
     setSingleField,
     updateDraftBuffer,
@@ -301,16 +294,18 @@ export function WorkoutActiveSetCard({
                 : "text-slate-900"
             }`}
             type="number"
-            step="0.5"
+            step="2.5"
             inputMode="decimal"
             value={loadDraft}
             onFocus={() => {
               handleNumericFieldFocus();
               handleLoadFocus();
             }}
-            onBlur={handleLoadBlur}
+            onBlur={() => {
+              commitLoadValue(setId, loadDraft, isDumbbell);
+            }}
             onChange={(event) => {
-              setLoadValue(setId, event.target.value, isDumbbell);
+              updateDraftBuffer(setId, "load", event.target.value);
             }}
           />
         </div>

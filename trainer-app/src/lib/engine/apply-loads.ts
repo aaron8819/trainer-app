@@ -25,6 +25,7 @@ import type {
   SplitDay,
 } from "./types";
 import type { PrescriptionModifiers } from "./periodization/types";
+import { quantizeLoad } from "@/lib/units/load-quantization";
 
 export type BaselineInput = {
   exerciseId: string;
@@ -840,7 +841,7 @@ function getEquipmentDefault(exercise: Exercise) {
 }
 
 function roundToHalf(value: number) {
-  return Math.round(value * 2) / 2;
+  return quantizeLoad(value);
 }
 
 function buildWarmupSets(

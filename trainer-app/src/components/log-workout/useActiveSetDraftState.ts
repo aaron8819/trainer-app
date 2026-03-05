@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, type FocusEvent } from "react";
 import { useSetDraft } from "@/components/log-workout/useSetDraft";
+import { quantizeLoad } from "@/lib/units/load-quantization";
 import type {
   FlatSetItem,
   LogExerciseInput,
@@ -232,7 +233,8 @@ export function useActiveSetDraftState({
   const setLoadValue = useCallback(
     (setId: string, rawValue: string, isDumbbell: boolean, options?: { commit?: boolean }) => {
       const parsed = parseNullableNumber(rawValue);
-      const normalized = parsed == null ? null : toStoredLoadValue(parsed, isDumbbell);
+      const normalized =
+        parsed == null ? null : quantizeLoad(toStoredLoadValue(parsed, isDumbbell) ?? parsed);
       if (options?.commit) {
         setSingleField(setId, "actualLoad", normalized);
       }
@@ -245,6 +247,19 @@ export function useActiveSetDraftState({
       );
     },
     [setSingleField, toStoredLoadValue, updateDraftBuffer]
+  );
+
+  const commitLoadValue = useCallback(
+    (setId: string, rawValue: string, isDumbbell: boolean) => {
+      const parsed = parseNullableNumber(rawValue.trim());
+      const normalized =
+        parsed == null ? null : quantizeLoad(toStoredLoadValue(parsed, isDumbbell) ?? parsed);
+      setSingleField(setId, "actualLoad", normalized);
+      markFieldTouched(setId, "actualLoad");
+      setFieldPrefilled(setId, "actualLoad", false);
+      updateDraftBuffer(setId, "load", toInputNumberString(normalized));
+    },
+    [markFieldTouched, setFieldPrefilled, setSingleField, toStoredLoadValue, updateDraftBuffer]
   );
 
   const setRpeValue = useCallback(
@@ -310,7 +325,8 @@ export function useActiveSetDraftState({
       const isDumbbell = isDumbbellExercise(activeSet.exercise);
       const rawValue = (event.currentTarget.value ?? draftBuffersBySet[setId]?.load ?? "").trim();
       const parsed = parseNullableNumber(rawValue);
-      const normalized = parsed == null ? null : toStoredLoadValue(parsed, isDumbbell);
+      const normalized =
+        parsed == null ? null : quantizeLoad(toStoredLoadValue(parsed, isDumbbell) ?? parsed);
       setSingleField(setId, "actualLoad", normalized);
       markFieldTouched(setId, "actualLoad");
       setFieldPrefilled(setId, "actualLoad", false);
@@ -343,6 +359,7 @@ export function useActiveSetDraftState({
     setFieldPrefilled,
     setRepsValue,
     setLoadValue,
+    commitLoadValue,
     setRpeValue,
     primeNumericBuffer,
     commitNumericBuffer,

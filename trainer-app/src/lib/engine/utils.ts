@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import type { Exercise, WorkoutHistoryEntry } from "./types";
 import { filterCompletedHistory, sortHistoryByDateDesc } from "./history";
+import { quantizeLoad } from "@/lib/units/load-quantization";
 
 export function normalizeName(name: string): string {
   return name
@@ -89,7 +90,7 @@ export function getPrimaryMuscles(exercise: Exercise): string[] {
 }
 
 export function roundLoad(value: number): number {
-  return Math.round(value * 2) / 2;
+  return quantizeLoad(value);
 }
 
 export function createId(seed?: string): string {

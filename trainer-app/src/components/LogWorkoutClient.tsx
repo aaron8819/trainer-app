@@ -2,8 +2,8 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { BonusExerciseSheet } from "@/components/BonusExerciseSheet";
-import { RestTimer } from "@/components/RestTimer";
 import { isDumbbellEquipment, toDisplayLoad, toStoredLoad } from "@/lib/ui/load-display";
+import { quantizeLoad } from "@/lib/units/load-quantization";
 import { useWorkoutLogState } from "@/components/log-workout/useWorkoutLogState";
 import type {
   ActiveSetDraftState,
@@ -28,6 +28,7 @@ import { WorkoutExerciseQueue } from "@/components/log-workout/WorkoutExerciseQu
 import { WorkoutFooter } from "@/components/log-workout/WorkoutFooter";
 import { WorkoutSessionFeedback } from "@/components/log-workout/WorkoutSessionFeedback";
 import { WorkoutSessionActions } from "@/components/log-workout/WorkoutSessionActions";
+import { WorkoutTimerHud } from "@/components/log-workout/WorkoutTimerHud";
 import { useActiveSetDraftState } from "@/components/log-workout/useActiveSetDraftState";
 import { usePersistedWorkoutSessionUi } from "@/components/log-workout/usePersistedWorkoutSessionUi";
 import { useRestTimerState } from "@/components/log-workout/useRestTimerState";
@@ -71,7 +72,8 @@ function normalizeLoadInput(raw: string, isDumbbell: boolean): number | null {
     return null;
   }
 
-  return toStoredLoad(toDisplayLoad(parsed, isDumbbell) ?? null, isDumbbell) ?? null;
+  const stored = toStoredLoad(toDisplayLoad(parsed, isDumbbell) ?? null, isDumbbell) ?? null;
+  return stored == null ? null : quantizeLoad(stored);
 }
 
 export default function LogWorkoutClient({
@@ -101,15 +103,16 @@ export default function LogWorkoutClient({
   const loggedCount = loggedSetIds.size;
   const remainingCount = Math.max(0, totalSets - loggedCount);
   const resolvedActiveSetId = activeSet?.set.setId ?? null;
-  const activeSection = activeSet?.section ?? null;
-  const activeExerciseId = activeSet?.exercise.workoutExerciseId ?? null;
   const activeSetIds = useMemo(() => flatSets.map((item) => item.set.setId), [flatSets]);
+  const { keyboardOpen, keyboardHeight, activeSetPanelRef, sectionRefs, jumpToActiveSet } =
+    useWorkoutSessionLayout();
 
   const { restTimerMuted, setRestTimerMuted } = usePersistedWorkoutSessionUi({
     workoutId,
     activeSetIds,
     resolvedActiveSetId,
     setActiveSetId,
+    onResumeSet: jumpToActiveSet,
   });
 
   const performanceSummary = useMemo<CompletedWorkoutExerciseSummary[]>(() => {
@@ -157,21 +160,40 @@ export default function LogWorkoutClient({
   const updateSetFields = useCallback(
     (setId: string, updater: (set: LogSetInput) => LogSetInput) => {
       setData((prev) => {
-        const next: NormalizedExercises = {
-          warmup: prev.warmup.map((exercise) => ({
-            ...exercise,
-            sets: exercise.sets.map((set) => (set.setId === setId ? updater(set) : set)),
-          })),
-          main: prev.main.map((exercise) => ({
-            ...exercise,
-            sets: exercise.sets.map((set) => (set.setId === setId ? updater(set) : set)),
-          })),
-          accessory: prev.accessory.map((exercise) => ({
-            ...exercise,
-            sets: exercise.sets.map((set) => (set.setId === setId ? updater(set) : set)),
-          })),
-        };
-        return next;
+        for (const section of SECTION_ORDER) {
+          const exerciseIndex = prev[section].findIndex((exercise) =>
+            exercise.sets.some((set) => set.setId === setId)
+          );
+          if (exerciseIndex === -1) {
+            continue;
+          }
+
+          const exercise = prev[section][exerciseIndex];
+          const setIndex = exercise.sets.findIndex((set) => set.setId === setId);
+          if (setIndex === -1) {
+            return prev;
+          }
+
+          const currentSet = exercise.sets[setIndex];
+          const nextSet = updater(currentSet);
+          if (nextSet === currentSet) {
+            return prev;
+          }
+
+          const nextSets = [...exercise.sets];
+          nextSets[setIndex] = nextSet;
+
+          const nextExercise = { ...exercise, sets: nextSets };
+          const nextSection = [...prev[section]];
+          nextSection[exerciseIndex] = nextExercise;
+
+          return {
+            ...prev,
+            [section]: nextSection,
+          };
+        }
+
+        return prev;
       });
     },
     [setData]
@@ -211,7 +233,6 @@ export default function LogWorkoutClient({
     clearDraftInputBuffers,
     commitNumericBuffer,
     draftBuffersBySet,
-    handleLoadBlur,
     handleLoadFocus,
     handleNumericFieldFocus,
     lastSavedDraft,
@@ -221,7 +242,7 @@ export default function LogWorkoutClient({
     restoredSetIds,
     savingDraftSetId,
     setFieldPrefilled,
-    setLoadValue,
+    commitLoadValue,
     setRepsValue,
     setRpeValue,
     touchedFieldsBySet,
@@ -271,6 +292,7 @@ export default function LogWorkoutClient({
     toInputNumberString,
     parseNullableNumber,
     normalizeLoadInput,
+    onAdvanceSet: jumpToActiveSet,
   });
   const allSetsLogged = loggedCount === totalSets && totalSets > 0;
   const showAutoregHint =
@@ -278,13 +300,8 @@ export default function LogWorkoutClient({
     activeSet !== null &&
     autoregHint.exerciseId === activeSet.exercise.workoutExerciseId;
   const sessionTerminated = completion.completed || completion.skipped;
-  const { keyboardOpen, keyboardHeight, activeSetPanelRef, sectionRefs } = useWorkoutSessionLayout({
-    activeSection,
-    activeExerciseId,
-    sessionTerminated,
-    setExpandedSections,
-    setExpandedExerciseId,
-  });
+  const hasActiveTimer = !sessionTerminated && restTimer !== null;
+  const showFooterActions = !sessionTerminated && loggedCount > 0 && !allSetsLogged;
 
   const handleAddExercise = useCallback(
     (exercise: LogExerciseInput) => {
@@ -328,11 +345,10 @@ export default function LogWorkoutClient({
     primeNumericBuffer,
     commitNumericBuffer,
     handleLoadFocus,
-    handleLoadBlur,
     markFieldTouched,
     setFieldPrefilled,
     setRepsValue,
-    setLoadValue,
+    commitLoadValue,
     setRpeValue,
     setSingleField,
     updateDraftBuffer,
@@ -342,6 +358,7 @@ export default function LogWorkoutClient({
     <div
       className="mt-5 space-y-5 pb-8 sm:mt-6 sm:space-y-6"
       style={{
+        paddingTop: hasActiveTimer ? (keyboardOpen ? "56px" : "220px") : undefined,
         paddingBottom:
           keyboardHeight > 0 ? `${keyboardHeight + 16}px` : "env(safe-area-inset-bottom, 16px)",
       }}
@@ -382,16 +399,27 @@ export default function LogWorkoutClient({
         </ActiveSetPanel>
       ) : null}
 
-      {!sessionTerminated && restTimer !== null ? (
-        <RestTimer
-          startedAtMs={restTimer.startedAtMs}
-          endAtMs={restTimer.endAtMs}
-          onDismiss={clearTimer}
-          onAdjust={adjustTimer}
+      {!sessionTerminated ? (
+        <WorkoutTimerHud
+          timer={restTimer}
           compact={keyboardOpen}
           muted={restTimerMuted}
+          onDismiss={clearTimer}
+          onAdjust={adjustTimer}
           onMuteToggle={() => setRestTimerMuted((prev) => !prev)}
         />
+      ) : null}
+
+      {!sessionTerminated && activeSet ? (
+        <div className="flex justify-end">
+          <button
+            className="inline-flex min-h-9 items-center justify-center rounded-full border border-slate-300 px-4 text-xs font-semibold text-slate-700"
+            onClick={jumpToActiveSet}
+            type="button"
+          >
+            Jump to active set
+          </button>
+        </div>
       ) : null}
 
       {!sessionTerminated ? (
@@ -469,22 +497,24 @@ export default function LogWorkoutClient({
         onAdd={handleAddExercise}
       />
 
-      <WorkoutFooter>
-        <WorkoutSessionActions
-          loggedCount={loggedCount}
-          totalSets={totalSets}
-          completed={completion.completed}
-          skipped={completion.skipped}
-          showSkipOptions={completion.state.showSkipOptions}
-          skipReason={completion.state.skipReason}
-          sessionActionPending={completion.pending}
-          onFinish={() => completion.openConfirm("mark_completed")}
-          onLeaveForNow={() => completion.openConfirm("mark_partial")}
-          onToggleSkipOptions={completion.toggleSkipOptions}
-          onSkipReasonChange={completion.setSkipReason}
-          onConfirmSkip={() => completion.openConfirm("mark_skipped")}
-        />
-      </WorkoutFooter>
+      {showFooterActions ? (
+        <WorkoutFooter>
+          <WorkoutSessionActions
+            loggedCount={loggedCount}
+            totalSets={totalSets}
+            completed={completion.completed}
+            skipped={completion.skipped}
+            showSkipOptions={completion.state.showSkipOptions}
+            skipReason={completion.state.skipReason}
+            sessionActionPending={completion.pending}
+            onFinish={() => completion.openConfirm("mark_completed")}
+            onLeaveForNow={() => completion.openConfirm("mark_partial")}
+            onToggleSkipOptions={completion.toggleSkipOptions}
+            onSkipReasonChange={completion.setSkipReason}
+            onConfirmSkip={() => completion.openConfirm("mark_skipped")}
+          />
+        </WorkoutFooter>
+      ) : null}
     </div>
   );
 }

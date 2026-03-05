@@ -1,28 +1,10 @@
 /* eslint-disable react-hooks/refs */
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useWorkoutSessionLayout } from "@/components/log-workout/useWorkoutSessionLayout";
-import type { ExerciseSection } from "@/components/log-workout/types";
 
-function LayoutHarness({
-  sessionTerminated = false,
-}: {
-  sessionTerminated?: boolean;
-}) {
-  const [expandedSections, setExpandedSections] = useState<Record<ExerciseSection, boolean>>({
-    warmup: true,
-    main: true,
-    accessory: true,
-  });
-  const [expandedExerciseId, setExpandedExerciseId] = useState<string | null>(null);
-  const layout = useWorkoutSessionLayout({
-    activeSection: "main",
-    activeExerciseId: "ex-main",
-    sessionTerminated,
-    setExpandedSections,
-    setExpandedExerciseId,
-  });
+function LayoutHarness() {
+  const layout = useWorkoutSessionLayout();
   const keyboardHeight = layout.keyboardHeight;
   const keyboardOpen = layout.keyboardOpen;
 
@@ -36,9 +18,10 @@ function LayoutHarness({
     >
       <input aria-label="Reps" />
       <section ref={layout.activeSetPanelRef} data-testid="active-set-panel" />
+      <button onClick={layout.jumpToActiveSet} type="button">
+        jump
+      </button>
       <div data-testid="keyboard-open">{String(keyboardOpen)}</div>
-      <div data-testid="expanded-sections">{JSON.stringify(expandedSections)}</div>
-      <div data-testid="expanded-exercise">{expandedExerciseId ?? ""}</div>
     </div>
   );
 }
@@ -60,28 +43,15 @@ describe("useWorkoutSessionLayout", () => {
     vi.clearAllMocks();
   });
 
-  it("owns active section expansion while the session is in progress", async () => {
+  it("exposes explicit jumpToActiveSet action", async () => {
     render(<LayoutHarness />);
-
+    fireEvent.click(screen.getByRole("button", { name: "jump" }));
     await waitFor(() => {
-      expect(screen.getByTestId("expanded-sections")).toHaveTextContent(
-        '{"warmup":false,"main":true,"accessory":false}'
-      );
-      expect(screen.getByTestId("expanded-exercise")).toHaveTextContent("ex-main");
+      expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalled();
     });
   });
 
-  it("restores all sections when the session is terminal", async () => {
-    render(<LayoutHarness sessionTerminated />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId("expanded-sections")).toHaveTextContent(
-        '{"warmup":true,"main":true,"accessory":true}'
-      );
-    });
-  });
-
-  it("tracks keyboard viewport height and scrolls the active panel on input focus", async () => {
+  it("tracks keyboard viewport height without forcing active panel scroll", async () => {
     let resizeHandler: (() => void) | undefined;
     const mockViewport = {
       height: 800,
@@ -95,13 +65,14 @@ describe("useWorkoutSessionLayout", () => {
 
     render(<LayoutHarness />);
     fireEvent.focus(screen.getByLabelText("Reps"));
+    (HTMLElement.prototype.scrollIntoView as ReturnType<typeof vi.fn>).mockClear();
     mockViewport.height = 480;
     resizeHandler?.();
 
     await waitFor(() => {
       expect(screen.getByTestId("keyboard-open")).toHaveTextContent("true");
       expect(screen.getByTestId("root")).toHaveStyle({ paddingBottom: "336px" });
-      expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalled();
+      expect(HTMLElement.prototype.scrollIntoView).not.toHaveBeenCalled();
     });
   });
 });

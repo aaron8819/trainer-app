@@ -448,7 +448,7 @@ describe("applyLoads correctness", () => {
       sessionIntent: "push",
     });
 
-    expect(result.mainLifts[0].sets[0].targetLoad).toBe(189);
+    expect(result.mainLifts[0].sets[0].targetLoad).toBe(190);
   });
 
   it("uses conservative modal anchor when prior session has high load variance", () => {
@@ -571,7 +571,7 @@ describe("applyLoads correctness", () => {
       sessionIntent: "pull",
     });
 
-    expect(result.accessories[0].sets[0].targetLoad).toBe(22);
+    expect(result.accessories[0].sets[0].targetLoad).toBe(22.5);
   });
 
   it("treats 0 lb performed load as valid for bodyweight continuity anchors", () => {
@@ -794,7 +794,7 @@ describe("applyLoads correctness", () => {
       accumulationSessionsCompleted: 0,
     });
 
-    expect(result.mainLifts[0].sets[0].targetLoad).toBe(204);
+    expect(result.mainLifts[0].sets[0].targetLoad).toBe(205);
   });
 
   it("falls back from missing W4 to highest accumulation week, then to non-deload performed history", () => {
@@ -884,8 +884,8 @@ describe("applyLoads correctness", () => {
       accumulationSessionsCompleted: 0,
     });
 
-    expect(w4MissingResult.mainLifts[0].sets[0].targetLoad).toBe(174);
-    expect(noAccumulationSnapshotResult.mainLifts[0].sets[0].targetLoad).toBe(164);
+    expect(w4MissingResult.mainLifts[0].sets[0].targetLoad).toBe(175);
+    expect(noAccumulationSnapshotResult.mainLifts[0].sets[0].targetLoad).toBe(165);
   });
 
   it("getTopSessionLoad returns same result for 0-based and 1-based setIndex history", () => {

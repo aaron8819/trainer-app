@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db/prisma";
 import { resolveOwner } from "@/lib/api/workout-context";
 import { z } from "zod";
 import { WorkoutStatus } from "@prisma/client";
+import { quantizeLoad } from "@/lib/units/load-quantization";
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
@@ -44,7 +45,7 @@ export async function POST(request: Request) {
     }
     const wasSkipped = parsed.data.wasSkipped ?? false;
     const normalizedActualLoad =
-      parsed.data.actualLoad ??
+      (parsed.data.actualLoad != null ? quantizeLoad(parsed.data.actualLoad) : undefined) ??
       (!wasSkipped && setRecord.targetLoad === 0 ? 0 : undefined);
     const hasPerformanceSignal =
       parsed.data.actualReps != null || parsed.data.actualRpe != null;

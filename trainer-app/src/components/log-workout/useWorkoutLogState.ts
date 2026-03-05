@@ -65,15 +65,41 @@ export function getNextUnloggedSetId(
 
 export function useWorkoutLogState(exercises: LogExerciseInput[] | SectionedExercises) {
   const initial = useMemo(() => normalizeExercises(exercises), [exercises]);
+  const initialLoggedSetIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const section of SECTION_ORDER) {
+      for (const exercise of initial[section]) {
+        for (const set of exercise.sets) {
+          const hasResolvedSignal =
+            (set.wasSkipped ?? false) ||
+            set.actualReps != null ||
+            set.actualRpe != null ||
+            set.actualLoad != null;
+          if (hasResolvedSignal) {
+            ids.add(set.setId);
+          }
+        }
+      }
+    }
+    return ids;
+  }, [initial]);
   const [data, setData] = useState<NormalizedExercises>(initial);
-  const [loggedSetIds, setLoggedSetIds] = useState<Set<string>>(new Set());
+  const [loggedSetIds, setLoggedSetIds] = useState<Set<string>>(initialLoggedSetIds);
   const [activeSetId, setActiveSetId] = useState<string | null>(null);
   const [expandedSections, setExpandedSections] = useState<Record<ExerciseSection, boolean>>({
-    warmup: false,
+    warmup: true,
     main: true,
-    accessory: false,
+    accessory: true,
   });
-  const [expandedExerciseId, setExpandedExerciseId] = useState<string | null>(null);
+  const [expandedExerciseId, setExpandedExerciseId] = useState<string | null>(() => {
+    for (const section of SECTION_ORDER) {
+      const first = initial[section][0];
+      if (first) {
+        return first.workoutExerciseId;
+      }
+    }
+    return null;
+  });
 
   const flatSets = useMemo<FlatSetItem[]>(() => {
     const output: FlatSetItem[] = [];

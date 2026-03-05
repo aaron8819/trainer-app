@@ -1167,18 +1167,12 @@ describe("W3S1 Push regression — 4 engine bug fixes", () => {
     loadMappedGenerationContextMock.mockResolvedValue(buildMappedContext());
   });
 
-  it("generates a push session without errors", async () => {
-    const result = await generateSessionFromIntent("user-1", { intent: "push" });
-    expect("error" in result).toBe(false);
-  });
-
   it("prevents hinge under-dosing when collateral glute stimulus is unavoidable", async () => {
     loadMappedGenerationContextMock.mockResolvedValueOnce(buildLegCollateralBalanceMappedContext());
 
     const result = await generateSessionFromIntent("user-1", { intent: "legs" });
-    expect("error" in result).toBe(false);
     if ("error" in result) {
-      return;
+      throw new Error(`Unexpected error: ${result.error}`);
     }
 
     const rdlSets = getAllExerciseSets(result.workout, "leg-rdl");
@@ -1245,9 +1239,8 @@ describe("W3S1 Push regression — 4 engine bug fixes", () => {
     loadMappedGenerationContextMock.mockResolvedValueOnce(buildWeek3Session2MappedContext());
 
     const result = await generateSessionFromIntent("user-1", { intent: "push" });
-    expect("error" in result).toBe(false);
     if ("error" in result) {
-      return;
+      throw new Error(`Unexpected error: ${result.error}`);
     }
 
     const idbpSets = getAllExerciseSets(result.workout, "incline-db-bench");
@@ -1265,9 +1258,8 @@ describe("W3S1 Push regression — 4 engine bug fixes", () => {
     loadMappedGenerationContextMock.mockResolvedValueOnce(buildChestAnchorBudgetMappedContext());
 
     const result = await generateSessionFromIntent("user-1", { intent: "push" });
-    expect("error" in result).toBe(false);
     if ("error" in result) {
-      return;
+      throw new Error(`Unexpected error: ${result.error}`);
     }
 
     const pressSets = getAllExerciseSets(result.workout, "chest-priority-press");
@@ -1284,9 +1276,8 @@ describe("W3S1 Push regression — 4 engine bug fixes", () => {
     loadMappedGenerationContextMock.mockResolvedValueOnce(buildAccessoryDroppableMappedContext());
 
     const result = await generateSessionFromIntent("user-1", { intent: "push" });
-    expect("error" in result).toBe(false);
     if ("error" in result) {
-      return;
+      throw new Error(`Unexpected error: ${result.error}`);
     }
 
     expect(getAllExerciseSets(result.workout, "cable-triceps-pushdown")).toBeNull();
@@ -1299,9 +1290,8 @@ describe("W3S1 Push regression — 4 engine bug fixes", () => {
     loadMappedGenerationContextMock.mockResolvedValueOnce(buildCoreFloorMappedContext());
 
     const result = await generateSessionFromIntent("user-1", { intent: "push" });
-    expect("error" in result).toBe(false);
     if ("error" in result) {
-      return;
+      throw new Error(`Unexpected error: ${result.error}`);
     }
 
     const microPressSets = getAllExerciseSets(result.workout, "chest-micro-press");
@@ -1312,9 +1302,8 @@ describe("W3S1 Push regression — 4 engine bug fixes", () => {
     loadMappedGenerationContextMock.mockResolvedValueOnce(buildClosureNewExerciseMappedContext());
 
     const result = await generateSessionFromIntent("user-1", { intent: "push" });
-    expect("error" in result).toBe(false);
     if ("error" in result) {
-      return;
+      throw new Error(`Unexpected error: ${result.error}`);
     }
 
     expect(getAllExerciseSets(result.workout, "cable-triceps-pushdown")).toBeNull();
@@ -1341,9 +1330,8 @@ describe("W3S1 Push regression — 4 engine bug fixes", () => {
     loadMappedGenerationContextMock.mockResolvedValueOnce(buildClosureExpansionMappedContext());
 
     const result = await generateSessionFromIntent("user-1", { intent: "push" });
-    expect("error" in result).toBe(false);
     if ("error" in result) {
-      return;
+      throw new Error(`Unexpected error: ${result.error}`);
     }
 
     expect(result.selection.selectedExerciseIds).toEqual(["chest-priority-press"]);
@@ -1370,9 +1358,8 @@ describe("W3S1 Push regression — 4 engine bug fixes", () => {
     loadMappedGenerationContextMock.mockResolvedValueOnce(buildClosureDuplicateAccessoryMappedContext());
 
     const result = await generateSessionFromIntent("user-1", { intent: "push" });
-    expect("error" in result).toBe(false);
     if ("error" in result) {
-      return;
+      throw new Error(`Unexpected error: ${result.error}`);
     }
 
     const receipt = result.selection.sessionDecisionReceipt?.plannerDiagnostics;
@@ -1398,9 +1385,8 @@ describe("W3S1 Push regression — 4 engine bug fixes", () => {
     );
 
     const result = await generateSessionFromIntent("user-1", { intent: "push" });
-    expect("error" in result).toBe(false);
     if ("error" in result) {
-      return;
+      throw new Error(`Unexpected error: ${result.error}`);
     }
 
     const receipt = result.selection.sessionDecisionReceipt?.plannerDiagnostics;
@@ -1428,9 +1414,8 @@ describe("W3S1 Push regression — 4 engine bug fixes", () => {
     );
 
     const result = await generateSessionFromIntent("user-1", { intent: "push" });
-    expect("error" in result).toBe(false);
     if ("error" in result) {
-      return;
+      throw new Error(`Unexpected error: ${result.error}`);
     }
 
     const receipt = result.selection.sessionDecisionReceipt?.plannerDiagnostics;

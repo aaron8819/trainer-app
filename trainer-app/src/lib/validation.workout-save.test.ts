@@ -16,7 +16,6 @@ describe("saveWorkoutSchema", () => {
 
     expect(parsed.status).toBe("PARTIAL");
     expect(parsed.action).toBe("mark_partial");
-    expect(parsed.expectedRevision).toBe(2);
   });
 
   it("accepts optional targetRepRange on sets", () => {

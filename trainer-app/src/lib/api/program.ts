@@ -67,7 +67,121 @@ export type HomeProgramSupportData = {
   nextSession: NextSessionData;
   lastSessionSkipped: boolean;
   latestIncomplete: { id: string; status: string } | null;
+  gapFill: GapFillSupportData;
 };
+
+export type GapFillDeficitRow = {
+  muscle: string;
+  target: number;
+  actual: number;
+  deficit: number;
+};
+
+export type GapFillPolicy = {
+  requiredSessionsPerWeek: number;
+  maxOptionalGapFillSessionsPerWeek: number;
+  maxGeneratedHardSets: number;
+  maxGeneratedExercises: number;
+  excludedDuringDeload: boolean;
+  minSingleMuscleDeficitSets: number;
+  minTotalDeficitSets: number;
+};
+
+export type GapFillSupportData = {
+  eligible: boolean;
+  reason: string | null;
+  anchorWeek: number | null;
+  targetMuscles: string[];
+  deficitSummary: GapFillDeficitRow[];
+  alreadyUsedThisWeek: boolean;
+  suppressedByStartedNextWeek: boolean;
+  policy: {
+    requiredSessionsPerWeek: number;
+    maxOptionalGapFillSessionsPerWeek: number;
+    maxGeneratedHardSets: number;
+    maxGeneratedExercises: number;
+  };
+};
+
+const DEFAULT_GAP_FILL_POLICY = {
+  maxOptionalGapFillSessionsPerWeek: 1,
+  maxGeneratedHardSets: 12,
+  maxGeneratedExercises: 4,
+  excludedDuringDeload: true,
+  minSingleMuscleDeficitSets: 2,
+  minTotalDeficitSets: 6,
+} as const;
+
+function toObject(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  return value as Record<string, unknown>;
+}
+
+function toNumberOrUndefined(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function deriveGapFillPolicy(input: {
+  sessionsPerWeek: number;
+  volumeRampConfig: unknown;
+}): GapFillPolicy {
+  const config = toObject(input.volumeRampConfig);
+  const optionalSessions = toObject(config.optionalSessions);
+  const gapFill = toObject(optionalSessions.gapFill);
+
+  return {
+    requiredSessionsPerWeek: input.sessionsPerWeek,
+    maxOptionalGapFillSessionsPerWeek:
+      toNumberOrUndefined(gapFill.maxOptionalGapFillSessionsPerWeek) ??
+      DEFAULT_GAP_FILL_POLICY.maxOptionalGapFillSessionsPerWeek,
+    maxGeneratedHardSets:
+      toNumberOrUndefined(gapFill.maxGeneratedHardSets) ??
+      DEFAULT_GAP_FILL_POLICY.maxGeneratedHardSets,
+    maxGeneratedExercises:
+      toNumberOrUndefined(gapFill.maxGeneratedExercises) ??
+      DEFAULT_GAP_FILL_POLICY.maxGeneratedExercises,
+    excludedDuringDeload:
+      typeof gapFill.excludedDuringDeload === "boolean"
+        ? gapFill.excludedDuringDeload
+        : DEFAULT_GAP_FILL_POLICY.excludedDuringDeload,
+    minSingleMuscleDeficitSets:
+      toNumberOrUndefined(gapFill.minSingleMuscleDeficitSets) ??
+      DEFAULT_GAP_FILL_POLICY.minSingleMuscleDeficitSets,
+    minTotalDeficitSets:
+      toNumberOrUndefined(gapFill.minTotalDeficitSets) ??
+      DEFAULT_GAP_FILL_POLICY.minTotalDeficitSets,
+  };
+}
+
+function emptyGapFillSupport(policy: GapFillPolicy, reason: string | null): GapFillSupportData {
+  return {
+    eligible: false,
+    reason,
+    anchorWeek: null,
+    targetMuscles: [],
+    deficitSummary: [],
+    alreadyUsedThisWeek: false,
+    suppressedByStartedNextWeek: false,
+    policy: {
+      requiredSessionsPerWeek: policy.requiredSessionsPerWeek,
+      maxOptionalGapFillSessionsPerWeek: policy.maxOptionalGapFillSessionsPerWeek,
+      maxGeneratedHardSets: policy.maxGeneratedHardSets,
+      maxGeneratedExercises: policy.maxGeneratedExercises,
+    },
+  };
+}
+
+function hasOptionalGapFillReceiptMarker(selectionMetadata: unknown): boolean {
+  const metadata = toObject(selectionMetadata);
+  const receipt = toObject(metadata.sessionDecisionReceipt);
+  const exceptions = Array.isArray(receipt.exceptions) ? receipt.exceptions : [];
+  return exceptions.some((entry) => {
+    const exception = toObject(entry);
+    return exception.code === "optional_gap_fill";
+  });
+}
 
 export type CapabilityFlags = {
   whoopConnected: boolean;
@@ -127,7 +241,7 @@ export function computeDeloadReadiness(
 }
 
 export type ActiveBlockPhase = {
-  blockType: string;
+  blockType: string | null;
   weekInMeso: number;
   mesoDurationWeeks: number;
   sessionsUntilDeload: number;
@@ -140,6 +254,86 @@ const BLOCK_COACHING_CUES: Record<string, string> = {
   realization: "Peak week - express your strength today.",
   deload: "Deload week - keep loads light, focus on technique and recovery.",
 };
+
+type ProgramBlockRecord = { blockType: string; startWeek: number; durationWeeks: number };
+
+function normalizeMesoBlocks(input: {
+  mesoStartWeek: number;
+  durationWeeks: number;
+  blocks: ProgramBlockRecord[];
+}): ProgramBlockRecord[] {
+  const { mesoStartWeek, durationWeeks, blocks } = input;
+  if (durationWeeks <= 0) return [];
+
+  const mesoEndWeek = mesoStartWeek + durationWeeks;
+  const weekTypes: Array<string | null> = Array.from({ length: durationWeeks }, () => null);
+
+  for (const block of blocks) {
+    const blockStart = Math.max(mesoStartWeek, block.startWeek);
+    const rawBlockEnd = block.startWeek + Math.max(0, block.durationWeeks);
+    const blockEnd = Math.min(mesoEndWeek, rawBlockEnd);
+    if (blockEnd <= blockStart) continue;
+
+    for (let absoluteWeek = blockStart; absoluteWeek < blockEnd; absoluteWeek += 1) {
+      const weekIndex = absoluteWeek - mesoStartWeek;
+      if (weekTypes[weekIndex] == null) {
+        weekTypes[weekIndex] = block.blockType.toLowerCase();
+      }
+    }
+  }
+
+  for (let weekIndex = 0; weekIndex < weekTypes.length; weekIndex += 1) {
+    if (weekTypes[weekIndex] != null) continue;
+    weekTypes[weekIndex] = weekIndex === weekTypes.length - 1 ? "deload" : "accumulation";
+  }
+
+  const normalized: ProgramBlockRecord[] = [];
+  let segmentStart = 0;
+  while (segmentStart < weekTypes.length) {
+    const blockType = weekTypes[segmentStart] ?? "accumulation";
+    let segmentEnd = segmentStart + 1;
+    while (segmentEnd < weekTypes.length && weekTypes[segmentEnd] === blockType) {
+      segmentEnd += 1;
+    }
+    normalized.push({
+      blockType,
+      startWeek: mesoStartWeek + segmentStart,
+      durationWeeks: segmentEnd - segmentStart,
+    });
+    segmentStart = segmentEnd;
+  }
+
+  return normalized;
+}
+
+function resolveBlockTypeForWeek(input: {
+  mesoStartWeek: number;
+  weekInMeso: number;
+  mesoState: "ACTIVE_ACCUMULATION" | "ACTIVE_DELOAD" | "COMPLETED";
+  blocks: ProgramBlockRecord[];
+}): string | null {
+  const absoluteWeek = input.mesoStartWeek + input.weekInMeso - 1;
+  const block = input.blocks.find(
+    (candidate) =>
+      absoluteWeek >= candidate.startWeek &&
+      absoluteWeek < candidate.startWeek + candidate.durationWeeks
+  );
+  const normalizedBlockType = block?.blockType?.toLowerCase() ?? null;
+  if (normalizedBlockType) {
+    return normalizedBlockType;
+  }
+  if (input.mesoState === "ACTIVE_DELOAD") {
+    return "deload";
+  }
+  return null;
+}
+
+function getCoachingCueForBlockType(blockType: string | null): string {
+  if (!blockType) {
+    return "Phase context unavailable for current week.";
+  }
+  return BLOCK_COACHING_CUES[blockType] ?? `Current phase: ${blockType}.`;
+}
 
 export async function loadActiveBlockPhase(userId: string): Promise<ActiveBlockPhase | null> {
   const meso = await prisma.mesocycle.findFirst({
@@ -163,11 +357,17 @@ export async function loadActiveBlockPhase(userId: string): Promise<ActiveBlockP
   }
 
   const weekInMeso = getCurrentMesoWeek(meso);
-  const weekIndex = meso.startWeek + weekInMeso - 1;
-  const currentBlock = meso.blocks.find(
-    (block) => weekIndex >= block.startWeek && weekIndex < block.startWeek + block.durationWeeks
-  );
-  const blockType = currentBlock?.blockType?.toLowerCase() ?? "accumulation";
+  const normalizedBlocks = normalizeMesoBlocks({
+    mesoStartWeek: meso.startWeek,
+    durationWeeks: meso.durationWeeks,
+    blocks: meso.blocks,
+  });
+  const blockType = resolveBlockTypeForWeek({
+    mesoStartWeek: meso.startWeek,
+    weekInMeso,
+    mesoState: meso.state,
+    blocks: normalizedBlocks,
+  });
   const sessionsUntilDeload = Math.max(
     0,
     (meso.durationWeeks - 1) * meso.sessionsPerWeek - meso.accumulationSessionsCompleted
@@ -178,7 +378,7 @@ export async function loadActiveBlockPhase(userId: string): Promise<ActiveBlockP
     weekInMeso,
     mesoDurationWeeks: meso.durationWeeks,
     sessionsUntilDeload,
-    coachingCue: BLOCK_COACHING_CUES[blockType] ?? BLOCK_COACHING_CUES.accumulation,
+    coachingCue: getCoachingCueForBlockType(blockType),
   };
 }
 
@@ -188,17 +388,24 @@ export function computeMesoWeekStart(mesoStartDate: Date, currentWeek: number): 
   return date;
 }
 
+export function computeMesoWeekEnd(mesoWeekStart: Date): Date {
+  const date = new Date(mesoWeekStart);
+  date.setDate(date.getDate() + 7);
+  return date;
+}
+
 async function loadMesoWeekMuscleVolume(
   userId: string,
   mesocycleId: string,
-  mesoWeekStart: Date
+  mesoWeekStart: Date,
+  mesoWeekEnd: Date
 ): Promise<Record<string, { directSets: number; indirectSets: number }>> {
   const workouts = await prisma.workout.findMany({
     where: {
       userId,
       mesocycleId,
       status: { in: [...PERFORMED_WORKOUT_STATUSES] as WorkoutStatus[] },
-      scheduledDate: { gte: mesoWeekStart },
+      scheduledDate: { gte: mesoWeekStart, lt: mesoWeekEnd },
     },
     include: {
       exercises: {
@@ -249,8 +456,201 @@ async function loadMesoWeekMuscleVolume(
   return muscles;
 }
 
+async function loadGapFillSupport(userId: string): Promise<GapFillSupportData> {
+  const activeMeso = await prisma.mesocycle.findFirst({
+    where: { macroCycle: { userId }, isActive: true },
+    select: {
+      id: true,
+      state: true,
+      durationWeeks: true,
+      volumeTarget: true,
+      startWeek: true,
+      sessionsPerWeek: true,
+      accumulationSessionsCompleted: true,
+      volumeRampConfig: true,
+      macroCycle: { select: { startDate: true } },
+    },
+  });
+
+  const fallbackPolicy = deriveGapFillPolicy({
+    sessionsPerWeek: activeMeso?.sessionsPerWeek ?? 3,
+    volumeRampConfig: activeMeso?.volumeRampConfig,
+  });
+  if (!activeMeso) {
+    return emptyGapFillSupport(fallbackPolicy, "no_active_mesocycle");
+  }
+
+  const policy = deriveGapFillPolicy({
+    sessionsPerWeek: activeMeso.sessionsPerWeek,
+    volumeRampConfig: activeMeso.volumeRampConfig,
+  });
+
+  if (policy.excludedDuringDeload && activeMeso.state === "ACTIVE_DELOAD") {
+    return emptyGapFillSupport(policy, "in_deload");
+  }
+
+  const anchorEligible =
+    activeMeso.accumulationSessionsCompleted > 0 &&
+    activeMeso.accumulationSessionsCompleted % activeMeso.sessionsPerWeek === 0;
+  if (!anchorEligible) {
+    return emptyGapFillSupport(policy, "not_end_of_required_rotation");
+  }
+
+  const anchorWeek = activeMeso.accumulationSessionsCompleted / activeMeso.sessionsPerWeek;
+  const baseResponse: GapFillSupportData = {
+    ...emptyGapFillSupport(policy, null),
+    anchorWeek,
+  };
+
+  const startedIncomplete = await prisma.workout.findFirst({
+    where: {
+      userId,
+      status: { in: ["IN_PROGRESS", "PARTIAL"] },
+    },
+    select: { id: true },
+  });
+  if (startedIncomplete) {
+    return { ...baseResponse, reason: "started_incomplete_workout" };
+  }
+
+  const nextWeekStartedOrPerformedAdvancing = await prisma.workout.findFirst({
+    where: {
+      userId,
+      mesocycleId: activeMeso.id,
+      mesocycleWeekSnapshot: anchorWeek + 1,
+      status: { in: ["IN_PROGRESS", "PARTIAL", ...PERFORMED_WORKOUT_STATUSES] as WorkoutStatus[] },
+      advancesSplit: { not: false },
+    },
+    select: { id: true },
+  });
+  if (nextWeekStartedOrPerformedAdvancing) {
+    return {
+      ...baseResponse,
+      reason: "started_next_week_advancing_workout",
+      suppressedByStartedNextWeek: true,
+    };
+  }
+
+  const candidateGapFillSessions = await prisma.workout.findMany({
+    where: {
+      userId,
+      mesocycleId: activeMeso.id,
+      mesocycleWeekSnapshot: anchorWeek,
+      status: { in: [...PERFORMED_WORKOUT_STATUSES] as WorkoutStatus[] },
+      selectionMode: "INTENT",
+      sessionIntent: "BODY_PART",
+      advancesSplit: false,
+    },
+    select: { selectionMetadata: true },
+  });
+  const performedGapFillCount = candidateGapFillSessions.filter((entry) =>
+    hasOptionalGapFillReceiptMarker(entry.selectionMetadata)
+  ).length;
+  if (performedGapFillCount >= policy.maxOptionalGapFillSessionsPerWeek) {
+    return {
+      ...baseResponse,
+      reason: "already_used_gap_fill",
+      alreadyUsedThisWeek: true,
+    };
+  }
+
+  const mesoStartDate = activeMeso.macroCycle?.startDate;
+  if (!(mesoStartDate instanceof Date) || Number.isNaN(mesoStartDate.getTime())) {
+    return { ...baseResponse, reason: "insufficient_week_scoping_data" };
+  }
+  const mesoStart = new Date(mesoStartDate);
+  mesoStart.setDate(mesoStart.getDate() + activeMeso.startWeek * 7);
+  const anchorWeekStart = computeMesoWeekStart(mesoStart, anchorWeek);
+  const anchorWeekEnd = computeMesoWeekEnd(anchorWeekStart);
+  const weekMuscles = await loadMesoWeekMuscleVolume(
+    userId,
+    activeMeso.id,
+    anchorWeekStart,
+    anchorWeekEnd
+  );
+
+  const researchBackedMuscles = [
+    "Chest",
+    "Lats",
+    "Upper Back",
+    "Front Delts",
+    "Side Delts",
+    "Rear Delts",
+    "Quads",
+    "Hamstrings",
+    "Glutes",
+    "Biceps",
+    "Triceps",
+    "Calves",
+  ];
+
+  const deficits = researchBackedMuscles
+    .map((muscle) => {
+      const target = getWeeklyVolumeTarget(
+        {
+          durationWeeks: activeMeso.durationWeeks,
+          sessionsPerWeek: activeMeso.sessionsPerWeek,
+          volumeTarget: activeMeso.volumeTarget,
+          accumulationSessionsCompleted: activeMeso.accumulationSessionsCompleted,
+          id: activeMeso.id,
+        },
+        muscle,
+        anchorWeek
+      );
+      const actual = weekMuscles[muscle]?.directSets ?? 0;
+      const deficit = Math.max(0, target - actual);
+      const deficitRatio = deficit / Math.max(target, 1);
+      return { muscle, target, actual, deficit, deficitRatio };
+    })
+    .filter((row) => row.target > 0);
+
+  const anyLargeDeficit = deficits.some((row) => row.deficit >= policy.minSingleMuscleDeficitSets);
+  const totalDeficit = deficits.reduce((sum, row) => sum + row.deficit, 0);
+  if (!anyLargeDeficit && totalDeficit < policy.minTotalDeficitSets) {
+    return {
+      ...baseResponse,
+      reason: "deficit_below_threshold",
+      deficitSummary: deficits
+        .filter((row) => row.deficit > 0)
+        .sort((a, b) => b.deficit - a.deficit)
+        .map((row) => ({
+          muscle: row.muscle,
+          target: row.target,
+          actual: row.actual,
+          deficit: row.deficit,
+        })),
+    };
+  }
+
+  const sortedDeficits = deficits
+    .filter((row) => row.deficit > 0)
+    .sort((left, right) => {
+      if (right.deficit !== left.deficit) {
+        return right.deficit - left.deficit;
+      }
+      return right.deficitRatio - left.deficitRatio;
+    });
+
+  return {
+    ...baseResponse,
+    eligible: true,
+    reason: null,
+    targetMuscles: sortedDeficits.slice(0, 3).map((row) => row.muscle),
+    deficitSummary: sortedDeficits.map((row) => ({
+      muscle: row.muscle,
+      target: row.target,
+      actual: row.actual,
+      deficit: row.deficit,
+    })),
+    alreadyUsedThisWeek: performedGapFillCount > 0,
+  };
+}
+
 export async function loadHomeProgramSupport(userId: string): Promise<HomeProgramSupportData> {
-  const nextWorkoutContext = await loadNextWorkoutContext(userId);
+  const [nextWorkoutContext, gapFill] = await Promise.all([
+    loadNextWorkoutContext(userId),
+    loadGapFillSupport(userId),
+  ]);
   const nextSession: NextSessionData = {
     intent: nextWorkoutContext.intent,
     workoutId: nextWorkoutContext.existingWorkoutId,
@@ -278,6 +678,7 @@ export async function loadHomeProgramSupport(userId: string): Promise<HomeProgra
     nextSession,
     lastSessionSkipped,
     latestIncomplete,
+    gapFill,
   };
 }
 
@@ -369,14 +770,30 @@ export async function loadProgramDashboardData(
     ? Math.max(1, Math.min(viewWeek ?? currentWeek, mesoRecord.durationWeeks))
     : 1;
 
-  let currentBlockType: string | null = null;
-  if (mesoRecord) {
-    const absoluteWeek = mesoRecord.startWeek + currentWeek - 1;
-    const currentBlock = mesoRecord.blocks.find(
-      (block) => absoluteWeek >= block.startWeek && absoluteWeek < block.startWeek + block.durationWeeks
-    );
-    currentBlockType = currentBlock?.blockType?.toLowerCase() ?? null;
-  }
+  const normalizedBlocks = mesoRecord
+    ? normalizeMesoBlocks({
+        mesoStartWeek: mesoRecord.startWeek,
+        durationWeeks: mesoRecord.durationWeeks,
+        blocks: mesoRecord.blocks,
+      })
+    : [];
+
+  const currentBlockType = mesoRecord
+    ? resolveBlockTypeForWeek({
+        mesoStartWeek: mesoRecord.startWeek,
+        weekInMeso: currentWeek,
+        mesoState: mesoRecord.state,
+        blocks: normalizedBlocks,
+      })
+    : null;
+  const viewedBlockType = mesoRecord
+    ? resolveBlockTypeForWeek({
+        mesoStartWeek: mesoRecord.startWeek,
+        weekInMeso: effectiveViewWeek,
+        mesoState: mesoRecord.state,
+        blocks: normalizedBlocks,
+      })
+    : null;
 
   const sessionsUntilDeload = mesoRecord
     ? Math.max(
@@ -391,10 +808,13 @@ export async function loadProgramDashboardData(
     const mesoStart = new Date(mesoRecord.macroCycle.startDate);
     mesoStart.setDate(mesoStart.getDate() + mesoRecord.startWeek * 7);
 
+    const viewedWeekStart = computeMesoWeekStart(mesoStart, effectiveViewWeek);
+    const currentWeekStart = computeMesoWeekStart(mesoStart, currentWeek);
     viewedWeekMuscles = await loadMesoWeekMuscleVolume(
       userId,
       mesoRecord.id,
-      computeMesoWeekStart(mesoStart, effectiveViewWeek)
+      viewedWeekStart,
+      computeMesoWeekEnd(viewedWeekStart)
     );
     currentWeekMuscles =
       effectiveViewWeek === currentWeek
@@ -402,7 +822,8 @@ export async function loadProgramDashboardData(
         : await loadMesoWeekMuscleVolume(
             userId,
             mesoRecord.id,
-            computeMesoWeekStart(mesoStart, currentWeek)
+            currentWeekStart,
+            computeMesoWeekEnd(currentWeekStart)
           );
   }
 
@@ -421,13 +842,11 @@ export async function loadProgramDashboardData(
     ? computeDeloadReadiness(currentWeek, mesoRecord.durationWeeks, liveCurrentWeekVolume)
     : null;
 
-  const mesoBlocks: ProgramMesoBlock[] = mesoRecord?.blocks.map((block) => ({
+  const mesoBlocks: ProgramMesoBlock[] = mesoRecord ? normalizedBlocks.map((block) => ({
     blockType: block.blockType.toLowerCase(),
     startWeek: block.startWeek - mesoRecord.startWeek + 1,
     durationWeeks: block.durationWeeks,
-  })) ?? [];
-
-  const blockTypeForCue = currentBlockType ?? "accumulation";
+  })) : [];
 
   return {
     activeMeso: mesoRecord
@@ -447,7 +866,7 @@ export async function loadProgramDashboardData(
     volumeThisWeek,
     deloadReadiness,
     rirTarget,
-    coachingCue: BLOCK_COACHING_CUES[blockTypeForCue] ?? BLOCK_COACHING_CUES.accumulation,
+    coachingCue: getCoachingCueForBlockType(viewedBlockType),
   };
 }
 

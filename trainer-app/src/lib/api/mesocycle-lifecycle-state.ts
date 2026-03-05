@@ -46,6 +46,18 @@ export async function initializeNextMesocycle(
         sessionsPerWeek: true,
         daysPerWeek: true,
         splitType: true,
+        blocks: {
+          orderBy: { blockNumber: "asc" },
+          select: {
+            blockNumber: true,
+            blockType: true,
+            startWeek: true,
+            durationWeeks: true,
+            volumeTarget: true,
+            intensityBias: true,
+            adaptationType: true,
+          },
+        },
       },
     });
     if (!source) {
@@ -75,6 +87,21 @@ export async function initializeNextMesocycle(
         splitType: source.splitType,
       },
     });
+
+    if (source.blocks.length > 0) {
+      await tx.trainingBlock.createMany({
+        data: source.blocks.map((block) => ({
+          mesocycleId: next.id,
+          blockNumber: block.blockNumber,
+          blockType: block.blockType,
+          startWeek: block.startWeek + source.durationWeeks,
+          durationWeeks: block.durationWeeks,
+          volumeTarget: block.volumeTarget,
+          intensityBias: block.intensityBias,
+          adaptationType: block.adaptationType,
+        })),
+      });
+    }
 
     const carriedCoreRows = await tx.mesocycleExerciseRole.findMany({
       where: {

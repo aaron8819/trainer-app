@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => {
   const txMesoFindUnique = vi.fn();
   const txMesoUpdate = vi.fn();
   const txMesoCreate = vi.fn();
+  const txTrainingBlockCreateMany = vi.fn();
   const txRoleFindMany = vi.fn();
   const txRoleCreateMany = vi.fn();
   const transaction = vi.fn(async (callback: (tx: unknown) => Promise<unknown>) =>
@@ -14,6 +15,9 @@ const mocks = vi.hoisted(() => {
         findUnique: txMesoFindUnique,
         update: txMesoUpdate,
         create: txMesoCreate,
+      },
+      trainingBlock: {
+        createMany: txTrainingBlockCreateMany,
       },
       mesocycleExerciseRole: {
         findMany: txRoleFindMany,
@@ -28,6 +32,7 @@ const mocks = vi.hoisted(() => {
     txMesoFindUnique,
     txMesoUpdate,
     txMesoCreate,
+    txTrainingBlockCreateMany,
     txRoleFindMany,
     txRoleCreateMany,
     transaction,
@@ -145,6 +150,7 @@ describe("mesocycle-lifecycle", () => {
       sessionsPerWeek: 3,
       daysPerWeek: 3,
       splitType: "PPL",
+      blocks: [],
     });
     mocks.txMesoCreate.mockResolvedValue({ id: "m2" });
     mocks.txRoleFindMany.mockResolvedValue([]);
@@ -469,6 +475,7 @@ describe("mesocycle-lifecycle", () => {
       sessionsPerWeek: 3,
       daysPerWeek: 3,
       splitType: "PPL",
+      blocks: [],
     });
     mocks.txMesoCreate.mockResolvedValue({
       id: "m4",

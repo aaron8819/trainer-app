@@ -303,6 +303,9 @@ export function ProgramStatusCard({ initialData }: { initialData: ProgramDashboa
           <p className="mt-0.5 text-xs text-slate-500">
             Direct sets vs weekly target (MEV → MAV).
           </p>
+          <p className="mt-0.5 text-xs text-slate-400">
+            Indirect sets are shown as context only.
+          </p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
           <button
@@ -351,6 +354,9 @@ export function ProgramStatusCard({ initialData }: { initialData: ProgramDashboa
                 <p className="text-xs font-semibold">{row.muscle}</p>
                 <p className="mt-0.5 text-lg font-bold leading-none">{row.directSets}</p>
                 <p className="text-xs opacity-75">target {row.target} sets</p>
+                {row.indirectSets > 0 && (
+                  <p className="mt-0.5 text-xs opacity-65">+{row.indirectSets} indirect sets</p>
+                )}
                 <div className="mt-2 h-1 w-full rounded-full bg-current opacity-20">
                   <div
                     className="h-1 rounded-full bg-current opacity-80 transition-all"

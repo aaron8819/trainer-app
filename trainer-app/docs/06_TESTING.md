@@ -27,7 +27,7 @@ Sources of truth:
 - `npm run test:fast`: focused fast subset
 - `npm run test:slow`: slow simulation suite opt-in
 - `npm run test:audit:matrix`: workout-audit diagnostics matrix regression sweep (`intent-preview` + `next-session` across intents)
-- `npm run verify`: lint + type-check (`tsc --noEmit`) + tests + contract verification
+- `npm run verify`: lint + type-check (`tsc --noEmit`) + `test:fast` + contract verification
 - `npm run verify:contracts`: docs/runtime enum drift check
 
 ## Scope
@@ -35,15 +35,15 @@ Sources of truth:
 - API helper tests: `src/lib/api/**/*.test.ts`
 - UI tests: component tests under `src/components/**`
 - UI session summary-model coverage: `src/lib/ui/session-summary.test.ts` (receipt-first summary text/tags/items, including deload, soreness hold, and readiness-scaling cases).
-- Save-route terminal transition coverage: `src/app/api/workouts/save/route.integration.test.ts`
+- Save-route terminal transition coverage (including status-machine behavior through route boundary): `src/app/api/workouts/save/route.integration.test.ts`
 - Validation/status coverage: `src/lib/validation.workout-save.test.ts`, `src/lib/validation.test.ts`, `src/lib/api/exercise-history.test.ts`, `src/lib/api/readiness.test.ts`
 - Performed-history progression coverage: `src/lib/engine/apply-loads.correctness.test.ts` and `src/lib/engine/history.test.ts` (includes `PARTIAL` and malformed legacy-status handling; also covers top-set anchor correctness and bodyweight early-exit behavior).
 - Double-progression decision coverage: `src/lib/engine/progression.correctness.test.ts` (covers `computeDoubleProgressionDecision` paths, bodyweight rep-only progression, high-variance trimming, confidence scaling, and `anchorOverride` pass-through).
-- Mesocycle lifecycle coverage: `src/lib/api/mesocycle-lifecycle.test.ts` (duration-aware week derivation, accumulation/deload thresholds, volume ramping, and default RIR bands for 4-, 5-, and 6-week mesocycles).
+- Mesocycle lifecycle coverage: `src/lib/api/mesocycle-lifecycle.test.ts` (facade + math/state split behavior, duration-aware week derivation, accumulation/deload thresholds, volume ramping, and default RIR bands for 4-, 5-, and 6-week mesocycles).
 - Periodization bridge coverage: `src/lib/engine/periodization.correctness.test.ts` asserts that longer accumulation phases continue progressing before deload rather than hard-stopping at week 4.
-- Template-session regression coverage: `src/lib/api/template-session.push-week3.regression.test.ts` (W3S1 Push scenario covering CORE_COMPOUND set-count cap ≤5, bodyweight Dip `targetLoad=0`, and top-set load anchoring ≥ top-set history value across 0-based and 1-based `setIndex` history).
+- Template-session regression coverage: `src/lib/api/template-session.push-week3.regression.test.ts` (W3S1 Push scenario covering role-budgeting/closure seams, CORE_COMPOUND set-count cap <=5, bodyweight Dip `targetLoad=0`, and top-set load anchoring >= top-set history value across 0-based and 1-based `setIndex` history).
 - Volume landmark coverage: `src/lib/engine/volume-landmarks.test.ts` (MEV/MAV/MRV values for all muscles; ramp interpolation correctness).
-- Explainability volume compliance coverage: `src/lib/api/explainability.volume-compliance.test.ts` (meso-week scoped muscle volume, compliance status classification, and `UNDER_MEV`/`OVER_MAV` boundary assertions).
+- Explainability volume compliance coverage: `src/lib/api/explainability.volume-compliance.test.ts` (query/assembly split surfaced through explainability facade; meso-week scoped muscle volume, compliance status classification, and `UNDER_MEV`/`OVER_MAV` boundary assertions).
 - Workout generation route contract coverage: `src/app/api/workouts/generate-from-intent/route.test.ts` and `src/app/api/workouts/generate-from-template/route.test.ts` assert receipt-first `selectionMetadata` responses and absence of top-level generation autoregulation payloads.
 - Explainability progression receipt coverage: `src/lib/api/explainability.progression-receipt.test.ts` (includes recency-window guard and `PARTIAL` + `COMPLETED` performed-status query assertions).
 - Canonical session receipt coverage: `src/lib/evidence/session-decision-receipt.test.ts` (receipt build/parse/read behavior and canonical-only extraction from `selectionMetadata.sessionDecisionReceipt`).

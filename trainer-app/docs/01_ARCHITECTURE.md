@@ -13,7 +13,7 @@ Invariants:
 - Runtime identity is owner-scoped via `resolveOwner()`.
 - App routes and API routes are the only external app surface.
 - Engine logic is pure/domain-focused under `src/lib/engine`; DB access lives in API/orchestration.
-- Mesocycle lifecycle state transitions are owned by `src/lib/api/mesocycle-lifecycle.ts`.
+- Mesocycle lifecycle ownership is split into math/state modules behind the `src/lib/api/mesocycle-lifecycle.ts` facade.
 
 Sources of truth:
 - `trainer-app/src/lib/api/workout-context.ts`
@@ -27,7 +27,7 @@ Sources of truth:
 1. UI layer: App Router pages and client components under `src/app` and `src/components`.
 2. API layer: route handlers under `src/app/api/**/route.ts`.
 3. Orchestration layer: runtime composition under `src/lib/api`.
-4. Mesocycle lifecycle service layer: lifecycle counters/state transitions and week/volume/RIR derivation in `src/lib/api/mesocycle-lifecycle.ts`.
+4. Mesocycle lifecycle service layer: `src/lib/api/mesocycle-lifecycle.ts` facade over `src/lib/api/mesocycle-lifecycle-math.ts` (derivation/targets) and `src/lib/api/mesocycle-lifecycle-state.ts` (state transitions).
 5. Engine layer: selection/progression/periodization/readiness/explainability logic under `src/lib/engine`.
 6. Data layer: Prisma models and migrations under `prisma/` and client setup in `src/lib/db/prisma.ts`.
 
@@ -48,15 +48,16 @@ Sources of truth:
 5. API persists workout/log changes and returns response payloads.
 
 ## Canonical session-decision flow
-- Generation/finalization build the canonical session decision under `selectionMetadata.sessionDecisionReceipt` in `src/lib/api/template-session.ts` and `src/lib/api/template-session/finalize-session.ts`.
-- Save requires that receipt, then only re-parses/re-normalizes the persisted JSON shape at the database boundary in `src/app/api/workouts/save/route.ts` and `src/lib/evidence/session-decision-receipt.ts`.
-- Runtime readers in UI and explainability consume only `selectionMetadata.sessionDecisionReceipt` via `src/lib/ui/selection-metadata.ts`, `src/lib/ui/explainability.ts`, and `src/lib/api/explainability.ts`.
+- Generation/finalization build the canonical session decision under `selectionMetadata.sessionDecisionReceipt` in `src/lib/api/template-session.ts`, with role-budgeting and closure seams in `src/lib/api/template-session/role-budgeting.ts` and `src/lib/api/template-session/closure-actions.ts`.
+- Save requires that receipt, then only re-parses/re-normalizes the persisted JSON shape at the database boundary in `src/app/api/workouts/save/route.ts`, with action/status resolution isolated in `src/app/api/workouts/save/status-machine.ts` and receipt parsing in `src/lib/evidence/session-decision-receipt.ts`.
+- Runtime readers in UI and explainability consume only `selectionMetadata.sessionDecisionReceipt` via `src/lib/ui/selection-metadata.ts`, `src/lib/ui/explainability.ts`, and the explainability facade in `src/lib/api/explainability.ts` (split into `src/lib/api/explainability/query.ts` + `src/lib/api/explainability/assembly.ts`).
 - Removed top-level session mirrors (`wasAutoregulated`, `autoregulationLog`, legacy `selectionMetadata.*` session fields) remain guardrail rejects in `src/lib/validation.ts`; they are not active runtime inputs.
 - User-facing workout detail and log routes stay on the compact receipt-first `SessionSummaryModel`, while the internal `/workout/[id]/audit` route layers a session-level audit scan plus exercise drill-down on top of the same receipt/explainability inputs. That split is a presentation boundary only; ownership remains receipt-first in `selectionMetadata.sessionDecisionReceipt`.
 
 ## Lifecycle ownership and data entities
-- Lifecycle state transitions (`ACTIVE_ACCUMULATION` -> `ACTIVE_DELOAD` -> `COMPLETED`) are executed by `transitionMesocycleState()` in `src/lib/api/mesocycle-lifecycle.ts`, invoked from `src/app/api/workouts/save/route.ts` after first transition into a performed status.
-- Lifecycle-derived targeting helpers (`getCurrentMesoWeek()`, `getWeeklyVolumeTarget()`, `getRirTarget()`) are consumed by template-session orchestration.
+- Lifecycle state transitions (`ACTIVE_ACCUMULATION` -> `ACTIVE_DELOAD` -> `COMPLETED`) are executed through `transitionMesocycleState()` via `src/lib/api/mesocycle-lifecycle.ts` (state module: `src/lib/api/mesocycle-lifecycle-state.ts`), invoked from `src/app/api/workouts/save/route.ts` after first transition into a performed status.
+- Lifecycle-derived targeting helpers (`getCurrentMesoWeek()`, `getWeeklyVolumeTarget()`, `getRirTarget()`) are consumed by template-session orchestration through the lifecycle facade (math module: `src/lib/api/mesocycle-lifecycle-math.ts`).
+- Weekly volume interpolation is centralized in `src/lib/engine/volume-targets.ts` and consumed by lifecycle math/engine volume services.
 - `MesocycleExerciseRole` is a first-class data-layer entity for intent-scoped exercise role continuity (`CORE_COMPOUND` / `ACCESSORY`) across mesocycle lifecycle events.
 
 ## Canonical read-side boundaries

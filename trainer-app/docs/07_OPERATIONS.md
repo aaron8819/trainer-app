@@ -38,7 +38,7 @@ Sources of truth:
 5. Start app: `npm run dev`
 
 ## Verification and maintenance
-- `npm run verify`: lint + type-check (`tsc --noEmit`) + test + contracts
+- `npm run verify`: lint + type-check (`tsc --noEmit`) + `test:fast` + contracts
 - `npm run verify:exercise-library`: validates exercise library integrity
 - `npm run report:stimulus-coverage`: reports planner-eligible exercise stimulus-profile coverage and remaining centralized fallback usage
 - `npm run audit:workout -- --mode next-session --owner owner@local`: generate structured workout-audit artifact under `artifacts/audits/`

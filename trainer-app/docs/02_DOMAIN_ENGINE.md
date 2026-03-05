@@ -28,7 +28,7 @@ Sources of truth:
 ## Selection and generation
 - Intent and template generation both rely on engine-level session construction and selection primitives.
 - Selection-v2 beam search implementation is under `src/lib/engine/selection-v2`.
-- Template session orchestration bridges API data to engine inputs in `src/lib/api/template-session.ts`.
+- Template session orchestration bridges API data to engine inputs in `src/lib/api/template-session.ts`, with dedicated seams in `src/lib/api/template-session/role-budgeting.ts` and `src/lib/api/template-session/closure-actions.ts`.
 - `MANUAL` selection mode bypasses mesocycle continuity enforcement by design; continuity pinning only applies to auto/intention-generated sessions.
 - For `INTENT` generation, active mesocycle `CORE_COMPOUND` role exercises for the matching intent are required fixtures (pre-assigned before beam search), not optional scored candidates.
 - When a mesocycle role exists, section/main-accessory mapping is role-driven:
@@ -37,7 +37,7 @@ Sources of truth:
   - Exercise metadata defaults are only used when no mesocycle role exists.
 - Intent role-list completeness is server-owned: a role list is complete iff the current mesocycle has at least one `CORE_COMPOUND` and at least one `ACCESSORY` role for that intent; client `roleListIncomplete=false` is ignored, while `roleListIncomplete=true` can force incomplete-mode reselection.
 - Role continuity set floors are lifecycle-budget constrained in accumulation weeks: continuity progression cannot exceed lifecycle weekly muscle targets or the peak-accumulation MAV cap for the configured mesocycle length unless prior-week continuity floors already exceed those caps (no mid-mesocycle reduction in that case).
-- `CORE_COMPOUND` role exercises are hard-capped at `MAIN_LIFT_MAX_WORKING_SETS = 5` working sets in `resolveRoleFixtureSetTarget()` (`src/lib/api/template-session.ts`). This cap fires after the continuity ramp, preventing back-off set accumulation from exceeding prescription (e.g., a continuity ramp from 3→5 sets is capped; it cannot produce 7 sets).
+- `CORE_COMPOUND` role exercises are hard-capped at `MAIN_LIFT_MAX_WORKING_SETS = 5` working sets in role-budgeting logic (`src/lib/api/template-session/role-budgeting.ts`). This cap fires after the continuity ramp, preventing back-off set accumulation from exceeding prescription.
 - `MANUAL` sessions are ingested into progression with confidence discounting and anomaly-aware downgrades (see MANUAL Session Contract below) rather than treated as equal-signal to `INTENT` by default.
 
 ## Stimulus accounting boundaries
@@ -53,9 +53,9 @@ Sources of truth:
 
 ## Role and closure guardrails
 - Mesocycle exercise roles are anchors for continuity and structure; role-list presence is not a session sufficiency stop condition.
-- Session sufficiency remains deficit/constraint outcome-based and includes closure passes when material unresolved deficits remain (`src/lib/api/template-session.ts`).
+- Session sufficiency remains deficit/constraint outcome-based and includes closure passes when material unresolved deficits remain (`src/lib/api/template-session/closure-actions.ts` via `src/lib/api/template-session.ts` orchestration).
 - Closure candidate and action diagnostics are persisted in planner diagnostics to keep ranking/filtering decisions auditable from receipts (`src/lib/planner-diagnostics/types.ts`, `src/lib/evidence/session-decision-receipt.ts`).
-- Deterministic tie-breaking is required for equivalent-score closure candidates to keep audits/regressions stable (`src/lib/api/template-session.ts`).
+- Deterministic tie-breaking is required for equivalent-score closure candidates to keep audits/regressions stable (`src/lib/api/template-session/closure-actions.ts`).
 
 ## Progression and load assignment
 - Progression math is implemented in `src/lib/engine/progression.ts`.
@@ -88,15 +88,17 @@ Sources of truth:
 - The split exists to separate adaptation signals from advancement control: partially performed work should inform future load/selection, while schedule/phase advancement remains a stricter completion event.
 - Performed-signal consumers use `COMPLETED` + `PARTIAL` via `PERFORMED_WORKOUT_STATUSES` in `src/lib/workout-status.ts`.
 - Program advancement remains `COMPLETED` only via `ADVANCEMENT_WORKOUT_STATUSES` in `src/lib/workout-status.ts`.
-- Mesocycle lifecycle progression is driven by first transition into performed status (`COMPLETED` or `PARTIAL`). Lifecycle counters (`accumulationSessionsCompleted`, `deloadSessionsCompleted`) are incremented atomically inside the save-workout transaction in `src/app/api/workouts/save/route.ts`; `transitionMesocycleState()` in `src/lib/api/mesocycle-lifecycle.ts` reads the already-incremented counters and applies state transitions when thresholds are reached.
+- Mesocycle lifecycle progression is driven by first transition into performed status (`COMPLETED` or `PARTIAL`). Lifecycle counters (`accumulationSessionsCompleted`, `deloadSessionsCompleted`) are incremented atomically inside the save-workout transaction in `src/app/api/workouts/save/route.ts`; status/action resolution is isolated in `src/app/api/workouts/save/status-machine.ts`; `transitionMesocycleState()` in the lifecycle facade (`src/lib/api/mesocycle-lifecycle.ts`) applies state transitions when thresholds are reached.
 - Canonical mesocycle progression counters are `accumulationSessionsCompleted` and `deloadSessionsCompleted` (not `completedSessions`) and drive lifecycle week/phase derivation.
 
 ## Mesocycle lifecycle service
-- Service file: `src/lib/api/mesocycle-lifecycle.ts`.
-- `transitionMesocycleState(mesocycleId)`: increments accumulation/deload counters, transitions state (`ACTIVE_ACCUMULATION` -> `ACTIVE_DELOAD` -> `COMPLETED`), and initializes the next mesocycle when deload is complete.
+- Facade: `src/lib/api/mesocycle-lifecycle.ts`.
+- Math module: `src/lib/api/mesocycle-lifecycle-math.ts` (week derivation, RIR targets, lifecycle volume targets).
+- State module: `src/lib/api/mesocycle-lifecycle-state.ts` (state transitions + next-mesocycle initialization).
+- `transitionMesocycleState(mesocycleId)`: transitions state (`ACTIVE_ACCUMULATION` -> `ACTIVE_DELOAD` -> `COMPLETED`) and initializes the next mesocycle when deload is complete.
 - `getCurrentMesoWeek(mesocycle)`: derives effective lifecycle week from `state`, `durationWeeks`, `accumulationSessionsCompleted`, and `sessionsPerWeek`. Accumulation weeks are `durationWeeks - 1`; the final week is deload.
-- `getWeeklyVolumeTarget(mesocycle, muscleGroup, week)`: returns lifecycle week-specific target sets from mesocycle ramp semantics and landmarks. Landmark values (MEV/MAV/MRV) are sourced from `VOLUME_LANDMARKS` in `src/lib/engine/volume-landmarks.ts` (single source of truth; the former local `INTERMEDIATE_LANDMARKS` table has been removed).
-- Weekly accumulation targets are linearly interpolated from `MEV` in week 1 to peak accumulation `MAV` in the last accumulation week (`durationWeeks - 1`); deload remains `~45%` of peak accumulation volume.
+- `getWeeklyVolumeTarget(mesocycle, muscleGroup, week)`: returns lifecycle week-specific target sets from mesocycle ramp semantics and landmarks. Landmark values (MEV/MAV/MRV) are sourced from `VOLUME_LANDMARKS` in `src/lib/engine/volume-landmarks.ts`.
+- Weekly accumulation targets are interpolated via centralized helper `interpolateWeeklyVolumeTarget()` in `src/lib/engine/volume-targets.ts`; deload remains `~45%` of peak accumulation volume.
 - Pull musculature landmarks are split (`lats`, `upper_back`) and rear-delt landmarks are reduced to evidence-aligned defaults (`rear_delts: MEV 4, MAV 12`; `lats: MEV 8, MAV 16`; `upper_back: MEV 6, MAV 14`).
 - `getRirTarget(mesocycle, week)`: returns lifecycle week/state-specific RIR bands, including deload targets. Default hypertrophy bands are duration-aware: 4-week total = `3-4 -> 2-3 -> 1-2 -> deload`; 5-week total = `3-4 -> 2-3 -> 1-2 -> 0-1 -> deload`; 6-week total = `3-4 -> 2-3 -> 2 -> 1-2 -> 0-1 -> deload`.
 - `initializeNextMesocycle(completedMesocycle)`: closes current mesocycle, creates next active mesocycle with reset lifecycle counters, and carries forward core exercise roles.
@@ -110,7 +112,7 @@ Sources of truth:
 
 ## Explainability
 - Explainability domain modules are in `src/lib/engine/explainability`.
-- API composition for workout explanations is in `src/lib/api/explainability.ts`.
+- API explainability facade is `src/lib/api/explainability.ts`, split into `src/lib/api/explainability/query.ts` (read/query) and `src/lib/api/explainability/assembly.ts` (response assembly/scoring).
 - Explanation endpoint is `src/app/api/workouts/[id]/explanation/route.ts`.
 - Workout explanations include per-exercise progression receipts (`WorkoutExplanation.progressionReceipts` in `src/lib/engine/explainability/types.ts`), derived from performed history and current prescription in `src/lib/api/explainability.ts`.
 - Session context now includes cycle provenance and readiness availability labels (`SessionContext.cycleSource`, `ReadinessStatus.availability`, `ReadinessStatus.label`) in `src/lib/engine/explainability/types.ts`, produced in `src/lib/engine/explainability/session-context.ts`.

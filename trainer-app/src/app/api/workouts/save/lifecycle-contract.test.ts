@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const deriveCurrentMesocycleSessionMock = vi.fn();
 
@@ -12,6 +12,10 @@ import {
 } from "./lifecycle-contract";
 
 describe("save lifecycle contract", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it("derives the save snapshot from the canonical lifecycle helper", () => {
     deriveCurrentMesocycleSessionMock.mockReturnValue({
       week: 4,
@@ -56,5 +60,28 @@ describe("save lifecycle contract", () => {
       completedSessions: { increment: 1 },
       deloadSessionsCompleted: { increment: 1 },
     });
+  });
+
+  it("derives deterministic save snapshots for identical mesocycle inputs", () => {
+    deriveCurrentMesocycleSessionMock.mockReturnValue({
+      week: 3,
+      session: 1,
+      phase: "ACCUMULATION",
+    });
+
+    const mesocycle = {
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION" as const,
+      durationWeeks: 5,
+      accumulationSessionsCompleted: 6,
+      deloadSessionsCompleted: 0,
+      sessionsPerWeek: 3,
+    };
+
+    const first = deriveSaveRouteMesoSnapshot(mesocycle);
+    const second = deriveSaveRouteMesoSnapshot(mesocycle);
+
+    expect(first).toEqual(second);
+    expect(deriveCurrentMesocycleSessionMock).toHaveBeenCalledTimes(2);
   });
 });

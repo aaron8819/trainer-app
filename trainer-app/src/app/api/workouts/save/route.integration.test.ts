@@ -1209,4 +1209,67 @@ describe("POST /api/workouts/save", () => {
     expect(upsert.update.mesoSessionSnapshot).toBeUndefined();
     expect(upsert.update.mesocyclePhaseSnapshot).toBeUndefined();
   });
+
+  it("keeps lifecycle counters idempotent across repeated identical mark_completed saves", async () => {
+    mocks.workoutFindUnique
+      .mockResolvedValueOnce({
+        id: "workout-1",
+        userId: "user-1",
+        status: "PLANNED",
+        revision: 1,
+        mesocycleId: "meso-1",
+        selectionMetadata: buildCanonicalSelectionMetadata(),
+      })
+      .mockResolvedValueOnce({
+        exercises: [
+          {
+            sets: [{ logs: [{ wasSkipped: false, actualReps: 8, actualRpe: 8, actualLoad: 135 }] }],
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        id: "workout-1",
+        userId: "user-1",
+        status: "COMPLETED",
+        revision: 2,
+        mesocycleId: "meso-1",
+        selectionMetadata: buildCanonicalSelectionMetadata(),
+      })
+      .mockResolvedValueOnce({
+        exercises: [
+          {
+            sets: [{ logs: [{ wasSkipped: false, actualReps: 8, actualRpe: 8, actualLoad: 135 }] }],
+          },
+        ],
+      });
+    mocks.tx.mesocycle.findUnique.mockResolvedValueOnce({
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION",
+      durationWeeks: 5,
+      accumulationSessionsCompleted: 4,
+      deloadSessionsCompleted: 0,
+      sessionsPerWeek: 3,
+    });
+
+    const firstResponse = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workoutId: "workout-1", action: "mark_completed" }),
+      })
+    );
+    const secondResponse = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workoutId: "workout-1", action: "mark_completed" }),
+      })
+    );
+
+    expect(firstResponse.status).toBe(200);
+    expect(secondResponse.status).toBe(200);
+    expect(mocks.tx.mesocycle.update).toHaveBeenCalledTimes(1);
+    expect(mocks.transitionMesocycleState).toHaveBeenCalledTimes(1);
+    expect(mocks.transitionMesocycleState).toHaveBeenCalledWith("meso-1");
+  });
 });

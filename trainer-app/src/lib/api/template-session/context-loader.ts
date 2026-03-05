@@ -18,6 +18,14 @@ import type { SessionIntent } from "@/lib/engine/session-types";
 
 const INTENT_KEYS: SessionIntent[] = ["push", "pull", "legs", "upper", "lower", "full_body", "body_part"];
 const STRICT_STIMULUS_COVERAGE_ENV = "STRICT_STIMULUS_PROFILE_COVERAGE";
+const CLEANUP_STRICT_STIMULUS_COVERAGE_ENV = "CLEANUP_STRICT_STIMULUS_PROFILE_COVERAGE";
+
+function isTruthyEnv(value: string | undefined): boolean {
+  if (!value) {
+    return false;
+  }
+  return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase());
+}
 
 function createEmptyRoleMapByIntent(): Record<SessionIntent, Map<string, "CORE_COMPOUND" | "ACCESSORY">> {
   return {
@@ -41,11 +49,10 @@ function expectedSectionForRole(role: "CORE_COMPOUND" | "ACCESSORY"): "MAIN" | "
 }
 
 function shouldUseStrictStimulusCoverage(): boolean {
-  const rawValue = process.env[STRICT_STIMULUS_COVERAGE_ENV];
-  if (!rawValue) {
-    return false;
+  if (isTruthyEnv(process.env[STRICT_STIMULUS_COVERAGE_ENV])) {
+    return true;
   }
-  return ["1", "true", "yes", "on"].includes(rawValue.trim().toLowerCase());
+  return isTruthyEnv(process.env[CLEANUP_STRICT_STIMULUS_COVERAGE_ENV]);
 }
 
 function normalizeLifecycleMuscleKey(muscle: string): string {

@@ -8,6 +8,29 @@ import {
   hasExplicitStimulusProfile,
 } from "@/lib/engine/stimulus";
 
+const STRICT_STIMULUS_COVERAGE_ENV = "STRICT_STIMULUS_PROFILE_COVERAGE";
+const CLEANUP_STRICT_STIMULUS_COVERAGE_ENV = "CLEANUP_STRICT_STIMULUS_PROFILE_COVERAGE";
+
+function isTruthyEnv(value: string | undefined): boolean {
+  if (!value) {
+    return false;
+  }
+  return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase());
+}
+
+function shouldUseStrictCoverage(): boolean {
+  if (process.argv.includes("--strict")) {
+    return true;
+  }
+  if (isTruthyEnv(process.env[STRICT_STIMULUS_COVERAGE_ENV])) {
+    return true;
+  }
+  if (isTruthyEnv(process.env[CLEANUP_STRICT_STIMULUS_COVERAGE_ENV])) {
+    return true;
+  }
+  return isTruthyEnv(process.env.CI);
+}
+
 function createPrisma() {
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) {
@@ -41,6 +64,7 @@ function isPlannerEligibleExercise(exercise: ReturnType<typeof mapExercises>[num
 
 async function main() {
   const prisma = createPrisma();
+  const strictCoverage = shouldUseStrictCoverage();
 
   try {
     const dbExercises = await prisma.exercise.findMany({
@@ -76,6 +100,7 @@ async function main() {
     console.log(`Explicitly covered: ${covered.length}`);
     console.log(`Fallback required: ${uncovered.length}`);
     console.log(`Coverage: ${coveragePct.toFixed(1)}%`);
+    console.log(`Strict coverage mode: ${strictCoverage ? "on" : "off"}`);
 
     console.log("\nCoverage by split:");
     for (const row of splitCoverage) {
@@ -89,6 +114,12 @@ async function main() {
       for (const exercise of uncovered) {
         console.log(`- ${exercise.name} (${exercise.id})`);
       }
+    }
+
+    if (strictCoverage && uncovered.length > 0) {
+      throw new Error(
+        `Strict stimulus coverage check failed: ${uncovered.length} exercise(s) still rely on fallback.`
+      );
     }
   } finally {
     await prisma.$disconnect();

@@ -109,6 +109,27 @@ describe("stimulus helper", () => {
     ).toThrow(/without explicit stimulusProfile coverage/i);
   });
 
+  it("supports strict coverage allowlists for phased cleanup", () => {
+    const allowlisted = makeExercise({
+      id: "rear-delt-fly",
+      name: "Rear Delt Fly",
+      primaryMuscles: ["Rear Delts"],
+    });
+    const blocking = makeExercise({
+      id: "incline-curl",
+      name: "Incline Curl",
+      primaryMuscles: ["Biceps"],
+    });
+
+    expect(() =>
+      validateStimulusProfileCoverage([allowlisted, blocking], {
+        context: "cleanup",
+        strict: true,
+        allowExerciseIds: ["rear-delt-fly"],
+      })
+    ).toThrow(/Incline Curl \(incline-curl\)/i);
+  });
+
   it("keeps bench variants chest-dominant unless explicitly triceps-emphasis", () => {
     const bench = makeExercise({
       id: "barbell-bench-press",

@@ -65,4 +65,20 @@ describe("resolveNextWorkoutContext", () => {
     expect(context.weekInMeso).toBeNull();
     expect(context.sessionInWeek).toBeNull();
   });
+
+  it("derives deterministic rotation context for identical lifecycle counters", () => {
+    const input = {
+      mesocycle: baseMeso,
+      weeklySchedule: ["PUSH", "PULL", "LEGS"],
+      incompleteWorkouts: [],
+    };
+
+    const first = resolveNextWorkoutContext(input);
+    const second = resolveNextWorkoutContext(input);
+
+    expect(first).toEqual(second);
+    expect(first.intent).toBe("pull");
+    expect(first.weekInMeso).toBe(3);
+    expect(first.sessionInWeek).toBe(2);
+  });
 });

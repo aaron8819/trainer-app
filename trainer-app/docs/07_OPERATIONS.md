@@ -45,7 +45,7 @@ Sources of truth:
 - `npm run audit:workout -- --mode intent-preview --owner owner@local --intent push`: explicit-intent audit artifact
 - `npm run repair:exercise-library` (and `:apply`) for repair workflow
 - Keep `docs/contracts/runtime-contracts.json` aligned with `src/lib/validation.ts`
-- Current baseline migration history is squashed to `prisma/migrations/20260222_baseline/migration.sql`; historical per-feature migration folders are retained only in local backup (`prisma/migrations_backup/`, ignored by Git).
+- Current baseline migration history is squashed to `prisma/migrations/20260222_baseline/migration.sql`; historical per-feature migration folders are archived at `docs/archive/prisma-migrations-backup/` (see `docs/archive/MIGRATIONS_BACKUP_ARCHIVE.md`).
 - Lifecycle backfill/role management scripts:
   - `prisma/reset-backfill-mesocycle-lifecycle.ts`: reset and rebuild mesocycle lifecycle state from existing performed workouts.
   - `prisma/repair-mesocycle-rir-bands.ts`: repair legacy 5-week `rirBandConfig` JSON to the corrected duration-aware default week bands.

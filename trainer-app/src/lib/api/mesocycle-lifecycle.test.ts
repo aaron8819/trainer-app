@@ -331,6 +331,24 @@ describe("mesocycle-lifecycle", () => {
     });
   });
 
+  it("derives deterministic current and next sessions for identical lifecycle counters", () => {
+    const mesocycle = {
+      state: "ACTIVE_ACCUMULATION" as const,
+      accumulationSessionsCompleted: 10,
+      deloadSessionsCompleted: 0,
+      sessionsPerWeek: 3,
+      durationWeeks: 5,
+    };
+
+    const firstCurrent = deriveCurrentMesocycleSession(mesocycle);
+    const secondCurrent = deriveCurrentMesocycleSession(mesocycle);
+    expect(firstCurrent).toEqual(secondCurrent);
+
+    const firstNext = deriveNextAdvancingSession(mesocycle, ["push", "pull", "legs"]);
+    const secondNext = deriveNextAdvancingSession(mesocycle, ["push", "pull", "legs"]);
+    expect(firstNext).toEqual(secondNext);
+  });
+
   it("uses evidence-based landmarks for rear delts, lats, and upper back", () => {
     const meso = { durationWeeks: 5 };
 

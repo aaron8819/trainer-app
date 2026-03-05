@@ -135,8 +135,8 @@ PR0 (guardrails)
  |- PR3 constants SSOT (statuses/intents/modes)
  |   `- PR6 taxonomy/stimulus SSOT
  |- PR8 large-file extraction: save route
- |- PR9 large-file extraction: mesocycle-lifecycle
- |- PR10 large-file extraction: explainability
+ |- PR9 lifecycle math/state import separation follow-up
+ |- PR10 explainability split (query vs assembly)
  |- PR11 template-session role budgeting extraction
  |- PR12 template-session closure loop extraction
  `- PR13 test suite simplification/deletions
@@ -275,14 +275,14 @@ PR0 (guardrails)
   - `npm run lint`
 - Dependencies: PR0, PR1
 
-### PR9 - Mesocycle Lifecycle Module Extraction Follow-Up
+### PR9 - Lifecycle Math/State Import Separation Follow-Up
 
 - Problem: remaining lifecycle module responsibilities still broad after PR7.
 - Files touched:
   - `src/lib/api/mesocycle-lifecycle.ts`
   - extracted helper modules introduced in PR7
 - Summary:
-  - complete separation of read-only derivation helpers vs mutation/state-transition helpers
+  - follow up on lifecycle module split by enforcing import-boundary separation between math/read helpers and state-transition paths
 - Risk: Medium
 - Verification:
   - `npx vitest run src/lib/api/mesocycle-lifecycle.test.ts src/lib/api/program.test.ts src/lib/api/next-session.test.ts`

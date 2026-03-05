@@ -206,6 +206,7 @@ export function mapExercises(
   exercises: (Exercise & {
     exerciseEquipment: { equipment: { type: PrismaEquipmentType } }[];
     exerciseMuscles: { role: string; muscle: { name: string; sraHours: number } }[];
+    aliases?: { alias: string }[];
   })[]
 ) {
   return exercises.map((exercise) => {
@@ -242,7 +243,10 @@ export function mapExercises(
     ) as EquipmentType[],
       primaryMuscles,
       secondaryMuscles,
-      stimulusProfile: getExplicitStimulusProfileForExercise(exercise),
+      stimulusProfile: getExplicitStimulusProfileForExercise({
+        name: exercise.name,
+        aliases: (exercise.aliases ?? []).map((alias) => alias.alias),
+      }),
       muscleSraHours: Object.fromEntries(
         exercise.exerciseMuscles.map((item) => [item.muscle.name, item.muscle.sraHours])
       ),

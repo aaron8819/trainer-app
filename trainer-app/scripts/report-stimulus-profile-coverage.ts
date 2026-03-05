@@ -4,7 +4,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 import { mapExercises } from "@/lib/api/workout-context";
 import {
-  collectStimulusFallbackExercises,
+  validateStimulusProfileCoverage,
   hasExplicitStimulusProfile,
 } from "@/lib/engine/stimulus";
 
@@ -79,7 +79,10 @@ async function main() {
     const exerciseLibrary = mapExercises(dbExercises);
     const plannerEligible = exerciseLibrary.filter(isPlannerEligibleExercise);
     const covered = plannerEligible.filter((exercise) => hasExplicitStimulusProfile(exercise));
-    const uncovered = collectStimulusFallbackExercises(plannerEligible);
+    const uncovered = validateStimulusProfileCoverage(plannerEligible, {
+      context: "stimulus coverage report",
+      strict: false,
+    });
     const coveragePct =
       plannerEligible.length === 0 ? 100 : (covered.length / plannerEligible.length) * 100;
 

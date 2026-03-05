@@ -3,7 +3,9 @@ import type { Exercise, Muscle, MuscleId, StimulusProfile } from "./types";
 type StimulusBearingExercise = Pick<
   Exercise,
   "id" | "name" | "primaryMuscles" | "secondaryMuscles" | "stimulusProfile"
->;
+> & {
+  aliases?: string[];
+};
 
 export type StimulusFallbackExercise = {
   id: string;
@@ -280,6 +282,7 @@ export const INITIAL_STIMULUS_PROFILE_BY_NAME: Record<string, StimulusProfile> =
 
   register(
     [
+      "Bench Press",
       "Barbell Bench Press",
       "Dumbbell Bench Press",
       "Machine Chest Press",
@@ -309,12 +312,13 @@ export const INITIAL_STIMULUS_PROFILE_BY_NAME: Record<string, StimulusProfile> =
   register(["Landmine Press"], landminePress);
   register(["Dumbbell Lateral Raise", "Lateral Raise", "Cable Lateral Raise", "Machine Lateral Raise"], lateralRaise);
   register(["Cable Front Raise", "Dumbbell Front Raise"], frontRaise);
-  register(["Reverse Pec Deck", "Dumbbell Rear Delt Fly", "Cable Rear Delt Fly"], rearDeltFly);
+  register(["Reverse Pec Deck", "Dumbbell Rear Delt Fly", "Cable Rear Delt Fly", "Rear Delt Fly"], rearDeltFly);
   register(["Face Pull"], facePull);
   register(
     [
       "Cable Triceps Pushdown",
       "Triceps Pushdown",
+      "Pushdown",
       "Rope Triceps Pushdown",
       "Overhead Cable Triceps Extension",
       "Overhead Dumbbell Extension",
@@ -348,6 +352,7 @@ export const INITIAL_STIMULUS_PROFILE_BY_NAME: Record<string, StimulusProfile> =
       "Concentration Curl",
       "Dumbbell Curl",
       "EZ-Bar Curl",
+      "Incline Curl",
       "Incline Dumbbell Curl",
       "Preacher Curl",
       "Spider Curl",
@@ -357,7 +362,7 @@ export const INITIAL_STIMULUS_PROFILE_BY_NAME: Record<string, StimulusProfile> =
   register(["Hammer Curl", "Cross-Body Hammer Curl"], hammerCurl);
   register(["Reverse Curl"], reverseCurl);
   register(["Wrist Curl", "Reverse Wrist Curl"], wristCurl);
-  register(["Barbell Back Squat", "Goblet Squat", "Sissy Squat"], squat);
+  register(["Back Squat", "Barbell Back Squat", "Goblet Squat", "Sissy Squat"], squat);
   register(["Front Squat"], frontSquat);
   register(["Hack Squat"], hackSquat);
   register(["Leg Press"], legPress);
@@ -384,13 +389,20 @@ export const INITIAL_STIMULUS_PROFILE_BY_NAME: Record<string, StimulusProfile> =
 })();
 
 export function getExplicitStimulusProfileForExercise(
-  exercise: Pick<StimulusBearingExercise, "name">
+  exercise: Pick<StimulusBearingExercise, "name"> & { aliases?: string[] }
 ): StimulusProfile | undefined {
-  const normalizedName = normalizeNameKey(exercise.name);
-  if (!normalizedName) {
-    return undefined;
+  const candidateNames = [exercise.name, ...(exercise.aliases ?? [])];
+  for (const candidate of candidateNames) {
+    const normalizedName = normalizeNameKey(candidate);
+    if (!normalizedName) {
+      continue;
+    }
+    const profile = INITIAL_STIMULUS_PROFILE_BY_NAME[normalizedName];
+    if (profile) {
+      return profile;
+    }
   }
-  return INITIAL_STIMULUS_PROFILE_BY_NAME[normalizedName];
+  return undefined;
 }
 
 export function hasExplicitStimulusProfile(exercise: StimulusBearingExercise): boolean {

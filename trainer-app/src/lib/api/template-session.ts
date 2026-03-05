@@ -38,6 +38,7 @@ import {
   enforceIntentAlignment,
   filterPoolForIntent,
 } from "./template-session/intent-filters";
+import { applyClosureFill } from "./template-session/closure-actions";
 import {
   applyTemplateAutoFillSelection,
   buildTemplateSelection,
@@ -258,12 +259,6 @@ type ClosureAction = {
   dominantDeficitReduction: number;
   collateralOvershoot: number;
   fatigueCost: number;
-};
-
-type ClosureFillResult = {
-  selection: SelectionOutput;
-  actions: PlannerClosureActionDiagnostic[];
-  firstIterationCandidates: PlannerClosureCandidateDiagnostic[];
 };
 
 function isMainLiftExercise(
@@ -1048,113 +1043,6 @@ function selectBestClosureAction(params: {
   };
 }
 
-function applyClosureFill(params: {
-  objective: ReturnType<typeof buildSelectionObjective>;
-  selection: SelectionOutput;
-  filteredPool: EngineExercise[];
-  exerciseById: Map<string, EngineExercise>;
-  roleMap: Map<string, "CORE_COMPOUND" | "ACCESSORY">;
-  sessionIntent: GenerateIntentSessionInput["intent"];
-  targetMuscles?: string[];
-  isDeload: boolean;
-  closureSoftCaps?: Partial<Record<Muscle, number>>;
-}): ClosureFillResult {
-  if (params.isDeload) {
-    return { selection: params.selection, actions: [], firstIterationCandidates: [] };
-  }
-
-  const selection: SelectionOutput = {
-    ...params.selection,
-    selectedExerciseIds: [...params.selection.selectedExerciseIds],
-    mainLiftIds: [...params.selection.mainLiftIds],
-    accessoryIds: [...params.selection.accessoryIds],
-    perExerciseSetTargets: { ...params.selection.perExerciseSetTargets },
-    rationale: { ...params.selection.rationale },
-  };
-  const actions: PlannerClosureActionDiagnostic[] = [];
-  let firstIterationCandidates: PlannerClosureCandidateDiagnostic[] = [];
-
-  const maxClosureIterations =
-    params.objective.constraints.maxExercises * ACCESSORY_MAX_WORKING_SETS;
-  for (let iteration = 0; iteration < maxClosureIterations; iteration += 1) {
-    const unresolvedCriticalDeficits = getCriticalMuscleDeficits(
-      params.objective,
-      buildAssignedEffectiveByMuscleInSession(selection.perExerciseSetTargets, params.exerciseById),
-      params.sessionIntent,
-      params.targetMuscles
-    ).filter((entry) => entry.remainingDeficit > entry.tolerance);
-    if (unresolvedCriticalDeficits.length === 0) {
-      break;
-    }
-
-    const selectionResult = selectBestClosureAction({
-      objective: params.objective,
-      selection,
-      filteredPool: params.filteredPool,
-      exerciseById: params.exerciseById,
-      roleMap: params.roleMap,
-      sessionIntent: params.sessionIntent,
-      targetMuscles: params.targetMuscles,
-      closureSoftCaps: params.closureSoftCaps,
-    });
-    if (iteration === 0) {
-      firstIterationCandidates = selectionResult.candidateDiagnostics;
-    }
-    const bestAction = selectionResult.bestAction;
-    if (!bestAction) {
-      break;
-    }
-    if (bestAction.score <= CLOSURE_MIN_ACCEPTABLE_SCORE) {
-      break;
-    }
-    const dominantDeficit = unresolvedCriticalDeficits[0];
-    const hasViableDominantCandidate = selectionResult.candidateDiagnostics.some(
-      (candidate) =>
-        candidate.decision === "selected" &&
-        (candidate.score ?? Number.NEGATIVE_INFINITY) > CLOSURE_MIN_ACCEPTABLE_SCORE &&
-        (candidate.dominantDeficitContribution ?? 0) > CLOSURE_ACTION_SCORE_EPSILON
-    );
-    if (
-      dominantDeficit &&
-      hasMaterialDeficit(dominantDeficit.remainingDeficit, dominantDeficit.tolerance) &&
-      bestAction.dominantDeficitReduction <= CLOSURE_ACTION_SCORE_EPSILON &&
-      hasViableDominantCandidate
-    ) {
-      break;
-    }
-
-    const exercise = params.exerciseById.get(bestAction.exerciseId);
-    if (!exercise) {
-      break;
-    }
-
-    actions.push({
-      exerciseId: bestAction.exerciseId,
-      exerciseName: exercise.name,
-      kind: bestAction.kind,
-      setDelta: bestAction.setDelta,
-      deficitReduction: roundPlannerValue(bestAction.deficitReduction),
-      collateralOvershoot: roundPlannerValue(bestAction.collateralOvershoot),
-      fatigueCost: roundPlannerValue(bestAction.fatigueCost),
-      score: roundPlannerValue(bestAction.score),
-    });
-
-    selection.perExerciseSetTargets[bestAction.exerciseId] =
-      (selection.perExerciseSetTargets[bestAction.exerciseId] ?? 0) + bestAction.setDelta;
-
-    if (!selection.selectedExerciseIds.includes(bestAction.exerciseId)) {
-      selection.selectedExerciseIds.push(bestAction.exerciseId);
-      if (isMainLiftExercise(exercise, params.objective)) {
-        selection.mainLiftIds.push(bestAction.exerciseId);
-      } else {
-        selection.accessoryIds.push(bestAction.exerciseId);
-      }
-    }
-  }
-
-  return { selection, actions, firstIterationCandidates };
-}
-
 export async function generateSessionFromTemplate(
   userId: string,
   templateId: string,
@@ -1551,13 +1439,29 @@ export async function generateSessionFromIntent(
   const closureResult = applyClosureFill({
     objective,
     selection: selectionOrError,
-    filteredPool,
     exerciseById,
-    roleMap,
     sessionIntent: input.intent,
     targetMuscles: input.targetMuscles,
     isDeload: isDeloadSession,
-    closureSoftCaps: buildClosureSoftCaps(mapped.mappedConstraints.weeklySchedule),
+    maxClosureIterations: objective.constraints.maxExercises * ACCESSORY_MAX_WORKING_SETS,
+    minAcceptableScore: CLOSURE_MIN_ACCEPTABLE_SCORE,
+    scoreEpsilon: CLOSURE_ACTION_SCORE_EPSILON,
+    roundPlannerValue,
+    hasMaterialDeficit,
+    getCriticalMuscleDeficits,
+    buildAssignedEffectiveByMuscleInSession,
+    selectBestClosureAction: (selection) =>
+      selectBestClosureAction({
+        objective,
+        selection,
+        filteredPool,
+        exerciseById,
+        roleMap,
+        sessionIntent: input.intent,
+        targetMuscles: input.targetMuscles,
+        closureSoftCaps: buildClosureSoftCaps(mapped.mappedConstraints.weeklySchedule),
+      }),
+    isMainLiftExercise,
   });
   const selection = closureResult.selection;
   const finalAssignedEffectiveByMuscleInSession = buildAssignedEffectiveByMuscleInSession(

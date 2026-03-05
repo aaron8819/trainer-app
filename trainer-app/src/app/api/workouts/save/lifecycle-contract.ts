@@ -1,4 +1,4 @@
-import { deriveCurrentMesocycleSession } from "@/lib/api/mesocycle-lifecycle";
+import { deriveCurrentMesocycleSession } from "@/lib/api/mesocycle-lifecycle-math";
 
 export type SaveRouteMesocycleState = "ACTIVE_ACCUMULATION" | "ACTIVE_DELOAD" | "COMPLETED";
 

@@ -11,7 +11,7 @@ import {
 } from "@/lib/evidence/session-decision-receipt";
 import {
   transitionMesocycleState,
-} from "@/lib/api/mesocycle-lifecycle";
+} from "@/lib/api/mesocycle-lifecycle-state";
 import {
   buildPerformedLifecycleCounterUpdate,
   deriveSaveRouteMesoSnapshot,

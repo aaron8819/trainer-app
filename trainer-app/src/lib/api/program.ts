@@ -11,7 +11,7 @@ import {
   getCurrentMesoWeek,
   getRirTarget,
   getWeeklyVolumeTarget,
-} from "./mesocycle-lifecycle";
+} from "./mesocycle-lifecycle-math";
 import { loadNextWorkoutContext } from "./next-session";
 
 export type ProgramMesoBlock = {

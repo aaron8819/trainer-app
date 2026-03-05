@@ -136,8 +136,15 @@ vi.mock("@/lib/api/mesocycle-lifecycle", async (importOriginal) => {
   return {
     ...actual,
     loadActiveMesocycle: (...args: unknown[]) => mocks.loadActiveMesocycle(...args),
-    transitionMesocycleState: (...args: unknown[]) => mocks.transitionMesocycleState(...args),
     getCurrentMesoWeek: (...args: unknown[]) => mocks.getCurrentMesoWeek(...args),
+  };
+});
+
+vi.mock("@/lib/api/mesocycle-lifecycle-state", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/api/mesocycle-lifecycle-state")>();
+  return {
+    ...actual,
+    transitionMesocycleState: (...args: unknown[]) => mocks.transitionMesocycleState(...args),
   };
 });
 

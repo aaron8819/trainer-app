@@ -1,6 +1,6 @@
 import { WorkoutStatus } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
-import { deriveNextAdvancingSession } from "./mesocycle-lifecycle";
+import { deriveNextAdvancingSession } from "./mesocycle-lifecycle-math";
 
 type MesoSessionInput = {
   durationWeeks: number;

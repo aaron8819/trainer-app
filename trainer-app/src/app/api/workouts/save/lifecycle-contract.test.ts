@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const deriveCurrentMesocycleSessionMock = vi.fn();
 
-vi.mock("@/lib/api/mesocycle-lifecycle", () => ({
+vi.mock("@/lib/api/mesocycle-lifecycle-math", () => ({
   deriveCurrentMesocycleSession: (...args: unknown[]) => deriveCurrentMesocycleSessionMock(...args),
 }));
 

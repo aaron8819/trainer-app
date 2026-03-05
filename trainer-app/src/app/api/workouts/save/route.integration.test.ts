@@ -70,8 +70,8 @@ vi.mock("@/lib/api/exercise-exposure", () => ({
   updateExerciseExposure: vi.fn(async () => undefined),
 }));
 
-vi.mock("@/lib/api/mesocycle-lifecycle", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/api/mesocycle-lifecycle")>();
+vi.mock("@/lib/api/mesocycle-lifecycle-state", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/api/mesocycle-lifecycle-state")>();
   return {
     ...actual,
     transitionMesocycleState: mocks.transitionMesocycleState,

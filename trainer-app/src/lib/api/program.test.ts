@@ -27,8 +27,8 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock("@/lib/db/prisma", () => ({ prisma: mocks.prisma }));
-vi.mock("./mesocycle-lifecycle", async (importOriginal) => {
-  const original = await importOriginal<typeof import("./mesocycle-lifecycle")>();
+vi.mock("./mesocycle-lifecycle-math", async (importOriginal) => {
+  const original = await importOriginal<typeof import("./mesocycle-lifecycle-math")>();
   return { ...original, getCurrentMesoWeek: mocks.getCurrentMesoWeekFn };
 });
 

@@ -34,7 +34,7 @@ import {
   hasPRPotential,
 } from "./explainability/stats";
 import { computeDoubleProgressionDecision } from "@/lib/engine/progression";
-import { buildLifecyclePeriodization, getWeeklyVolumeTarget } from "./mesocycle-lifecycle";
+import { buildLifecyclePeriodization, getWeeklyVolumeTarget } from "./mesocycle-lifecycle-math";
 import { readPersistedWorkoutMesocycleSnapshot } from "./workout-mesocycle-snapshot";
 
 type WorkoutWithExplainabilityRelations = Prisma.WorkoutGetPayload<{

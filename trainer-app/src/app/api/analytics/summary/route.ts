@@ -7,9 +7,9 @@ import {
   countAnalyticsWorkoutStatuses,
 } from "@/lib/api/analytics-semantics";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
+import { WORKOUT_SELECTION_MODE_VALUES } from "@/lib/validation";
 import { WorkoutStatus } from "@prisma/client";
-
-const TRACKED_SELECTION_MODES = ["AUTO", "MANUAL", "BONUS", "INTENT"] as const;
+const TRACKED_SELECTION_MODES = WORKOUT_SELECTION_MODE_VALUES;
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);

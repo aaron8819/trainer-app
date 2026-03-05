@@ -3,9 +3,9 @@ import { createId } from "@/lib/engine/utils";
 import type { SessionIntent, SelectionOutput } from "@/lib/engine/session-types";
 import type { WorkoutExercise, WorkoutPlan } from "@/lib/engine/types";
 import { getDeloadWeek, getPeakAccumulationWeek, getRirTarget } from "@/lib/api/mesocycle-lifecycle";
+import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 import type { MappedGenerationContext } from "./types";
 
-const PERFORMED_WORKOUT_STATUSES = ["COMPLETED", "PARTIAL"] as const;
 const DELOAD_SET_FACTOR = 0.45;
 const DELOAD_MIN_SETS = 2;
 

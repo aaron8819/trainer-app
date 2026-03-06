@@ -38,6 +38,7 @@ import { useRestTimerState } from "@/components/log-workout/useRestTimerState";
 import { useWorkoutSessionLayout } from "@/components/log-workout/useWorkoutSessionLayout";
 import { useWorkoutSessionFlow } from "@/components/log-workout/useWorkoutSessionFlow";
 import { useWorkoutSetHistoryActions } from "@/components/log-workout/useWorkoutSetHistoryActions";
+import { isSetSatisfied } from "@/components/log-workout/useWorkoutLogState";
 
 export type { LogExerciseInput, LogSetInput } from "@/components/log-workout/types";
 
@@ -145,7 +146,16 @@ export default function LogWorkoutClient({
   const pendingEditExitActionRef = useRef<PendingEditExitAction | null>(null);
 
   const totalSets = flatSets.length;
-  const loggedCount = loggedSetIds.size;
+  const satisfiedSetIds = useMemo(
+    () =>
+      new Set(
+        flatSets
+          .filter((item) => loggedSetIds.has(item.set.setId) || isSetSatisfied(item.set))
+          .map((item) => item.set.setId)
+      ),
+    [flatSets, loggedSetIds]
+  );
+  const loggedCount = satisfiedSetIds.size;
   const remainingCount = Math.max(0, totalSets - loggedCount);
   const resolvedActiveSetId = activeSet?.set.setId ?? null;
   const resolvedActiveSetIdRef = useRef<string | null>(resolvedActiveSetId);
@@ -183,7 +193,7 @@ export default function LogWorkoutClient({
   const performanceSummary = useMemo<CompletedWorkoutExerciseSummary[]>(() => {
     return SECTION_ORDER.flatMap((section) =>
       data[section]
-        .filter((exercise) => exercise.sets.some((set) => loggedSetIds.has(set.setId)))
+        .filter((exercise) => exercise.sets.some((set) => satisfiedSetIds.has(set.setId)))
         .map((exercise) => ({
           name: exercise.name,
           equipment: exercise.equipment,
@@ -197,12 +207,12 @@ export default function LogWorkoutClient({
             actualReps: set.actualReps,
             actualLoad: set.actualLoad,
             actualRpe: set.actualRpe,
-            wasLogged: loggedSetIds.has(set.setId),
+            wasLogged: satisfiedSetIds.has(set.setId),
             wasSkipped: set.wasSkipped ?? false,
           })),
         }))
     );
-  }, [data, loggedSetIds]);
+  }, [data, satisfiedSetIds]);
 
   const rpeAdherence = useMemo<RpeAdherenceSummary | null>(() => {
     const setsWithBothRpe = flatSets.filter(
@@ -518,12 +528,13 @@ export default function LogWorkoutClient({
           collapsedSummaries: sectionItems.map((exercise) => ({
             exerciseId: exercise.workoutExerciseId,
             exerciseName: exercise.name,
-            loggedCount: exercise.sets.filter((set) => loggedSetIds.has(set.setId)).length,
+            loggedCount: exercise.sets.filter((set) => satisfiedSetIds.has(set.setId)).length,
             totalSets: exercise.sets.length,
           })),
           exercises: sectionItems.map((exercise) => {
-            const loggedCountForExercise = exercise.sets.filter((set) => loggedSetIds.has(set.setId)).length;
-            const nextSet = exercise.sets.find((set) => !loggedSetIds.has(set.setId)) ?? exercise.sets[0] ?? null;
+            const loggedCountForExercise = exercise.sets.filter((set) => satisfiedSetIds.has(set.setId)).length;
+            const nextSet =
+              exercise.sets.find((set) => !satisfiedSetIds.has(set.setId)) ?? exercise.sets[0] ?? null;
 
             return {
               exerciseId: exercise.workoutExerciseId,
@@ -538,10 +549,10 @@ export default function LogWorkoutClient({
                 setId: set.setId,
                 label: formatQueueSetSummary(
                   set,
-                  loggedSetIds.has(set.setId),
+                  satisfiedSetIds.has(set.setId),
                   isDumbbellExercise(exercise)
                 ),
-                isLogged: loggedSetIds.has(set.setId),
+                isLogged: satisfiedSetIds.has(set.setId),
                 isActive: resolvedActiveSetId === set.setId,
                 isSaving: savingSetId === set.setId,
               })),
@@ -555,7 +566,7 @@ export default function LogWorkoutClient({
     expandedExerciseId,
     expandedSections,
     isDumbbellExercise,
-    loggedSetIds,
+    satisfiedSetIds,
     resolvedActiveSetId,
     savingSetId,
   ]);
@@ -818,7 +829,7 @@ export default function LogWorkoutClient({
         <div
           aria-label="Discard edit confirmation"
           aria-modal="true"
-          className="fixed inset-0 z-40 flex items-end justify-center bg-slate-900/40 p-3 sm:items-center"
+          className="fixed inset-0 z-[70] flex items-end justify-center bg-slate-900/40 px-3 pt-3 pb-[calc(var(--mobile-nav-height)+env(safe-area-inset-bottom,0px)+12px)] sm:items-center sm:p-3"
           role="dialog"
         >
           <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-4 shadow-lg sm:p-5">

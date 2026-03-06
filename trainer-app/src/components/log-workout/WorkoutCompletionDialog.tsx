@@ -31,7 +31,7 @@ export function WorkoutCompletionDialog({
     <div
       aria-label="Workout completion confirmation"
       aria-modal="true"
-      className="fixed inset-0 z-40 flex items-end justify-center bg-slate-900/40 p-3 sm:items-center"
+      className="fixed inset-0 z-[70] flex items-end justify-center bg-slate-900/40 px-3 pt-3 pb-[calc(var(--mobile-nav-height)+env(safe-area-inset-bottom,0px)+12px)] sm:items-center sm:p-3"
       role="dialog"
     >
       <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-4 shadow-lg sm:p-5">

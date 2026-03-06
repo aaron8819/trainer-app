@@ -5,11 +5,21 @@ import type {
   ExerciseSection,
   FlatSetItem,
   LogExerciseInput,
+  LogSetInput,
   NormalizedExercises,
   SectionedExercises,
 } from "./types";
 
 const SECTION_ORDER: ExerciseSection[] = ["warmup", "main", "accessory"];
+
+export function isSetSatisfied(set: LogSetInput): boolean {
+  return (
+    (set.wasSkipped ?? false) ||
+    set.actualReps != null ||
+    set.actualRpe != null ||
+    set.actualLoad != null
+  );
+}
 
 export function normalizeExercises(
   exercises: LogExerciseInput[] | SectionedExercises
@@ -70,12 +80,7 @@ export function useWorkoutLogState(exercises: LogExerciseInput[] | SectionedExer
     for (const section of SECTION_ORDER) {
       for (const exercise of initial[section]) {
         for (const set of exercise.sets) {
-          const hasResolvedSignal =
-            (set.wasSkipped ?? false) ||
-            set.actualReps != null ||
-            set.actualRpe != null ||
-            set.actualLoad != null;
-          if (hasResolvedSignal) {
+          if (isSetSatisfied(set)) {
             ids.add(set.setId);
           }
         }

@@ -20,6 +20,8 @@
         "verify:exercise-library": "tsx scripts/verify-exercise-library.ts",
         "audit:workout": "tsx scripts/workout-audit.ts",
         "audit:exercise-classification": "tsx scripts/audit-exercise-classification.ts",
+        "report:workout-week-snapshot-repair": "tsx scripts/report-workout-week-snapshot-repair.ts",
+        "repair:workout-week-snapshot": "tsx scripts/repair-workout-week-snapshot.ts",
         "report:stimulus-coverage": "tsx scripts/report-stimulus-profile-coverage.ts",
         "report:weekly-volume-targets": "tsx scripts/report-weekly-volume-targets.ts",
         "verify:contracts": "tsx scripts/check-doc-runtime-contracts.ts",

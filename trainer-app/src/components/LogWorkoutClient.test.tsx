@@ -349,6 +349,51 @@ describe("LogWorkoutClient UX behavior", () => {
     expect((container.firstChild as HTMLElement).style.paddingBottom).toContain("88px");
   });
 
+  it("counts skipped sets as satisfied and renders finish CTA", async () => {
+    const user = userEvent.setup();
+    renderClient();
+
+    await user.click(screen.getByRole("button", { name: /Skip set/i }));
+    await user.click(screen.getByRole("button", { name: /Skip set/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("0 sets remaining")).toBeInTheDocument();
+      expect(screen.getByTestId("workout-finish-bar")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Finish workout" })).toBeInTheDocument();
+    });
+  });
+
+  it("renders finish CTA when completion is mixed logged + skipped", async () => {
+    const user = userEvent.setup();
+    renderClient();
+
+    await user.click(screen.getByRole("button", { name: "Log set" }));
+    await user.click(screen.getByRole("button", { name: /Skip set/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("0 sets remaining")).toBeInTheDocument();
+      expect(screen.getByTestId("workout-finish-bar")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Finish workout" })).toBeInTheDocument();
+    });
+  });
+
+  it("uses identical completion gating for gap-fill workouts", async () => {
+    const user = userEvent.setup();
+    render(<LogWorkoutClient workoutId="workout-gap-fill" exercises={makeGapFillExercises()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("1 sets remaining")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: /Skip set/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("0 sets remaining")).toBeInTheDocument();
+      expect(screen.getByTestId("workout-finish-bar")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Finish workout" })).toBeInTheDocument();
+    });
+  });
+
   it("keeps the logging UI active after leave-for-now confirms a partial save", async () => {
     const user = userEvent.setup();
     mockedSaveWorkoutRequest.mockResolvedValueOnce({
@@ -719,6 +764,60 @@ function makeMultiSectionExercises(): SectionedExercises {
         equipment: ["cable"],
         isMainLift: false,
         sets: [{ setId: "set-a1", setIndex: 1, targetReps: 12, targetLoad: 30, targetRpe: 8, restSeconds: 90 }],
+      },
+    ],
+  };
+}
+
+function makeGapFillExercises(): SectionedExercises {
+  return {
+    warmup: [],
+    main: [
+      {
+        workoutExerciseId: "ex-gap-main",
+        name: "Leg Press",
+        equipment: ["machine"],
+        isMainLift: true,
+        sets: [
+          {
+            setId: "set-gap-main-1",
+            setIndex: 1,
+            targetReps: 10,
+            targetLoad: 180,
+            targetRpe: 8,
+            restSeconds: 120,
+            actualReps: 10,
+            actualLoad: 180,
+            actualRpe: 8,
+          },
+        ],
+      },
+    ],
+    accessory: [
+      {
+        workoutExerciseId: "ex-gap-acc",
+        name: "Seated Leg Curl",
+        equipment: ["machine"],
+        isMainLift: false,
+        sets: [
+          {
+            setId: "set-gap-acc-1",
+            setIndex: 1,
+            targetReps: 12,
+            targetLoad: 60,
+            targetRpe: 8,
+            restSeconds: 90,
+            wasSkipped: true,
+          },
+          {
+            setId: "set-gap-acc-2",
+            setIndex: 2,
+            targetReps: 12,
+            targetLoad: 60,
+            targetRpe: 8,
+            restSeconds: 90,
+          },
+        ],
       },
     ],
   };

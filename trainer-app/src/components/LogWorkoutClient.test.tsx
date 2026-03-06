@@ -72,6 +72,10 @@ async function openRestTimerControls(user: ReturnType<typeof userEvent.setup>) {
   return screen.findByTestId("rest-timer-expanded-controls");
 }
 
+async function clickResolvedSubmitButton(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByRole("button", { name: /Log set|Update set/ }));
+}
+
 describe("LogWorkoutClient UX behavior", () => {
   beforeEach(() => {
     mockedLogSetRequest.mockResolvedValue({ data: { status: "ok", wasCreated: true }, error: null });
@@ -262,7 +266,7 @@ describe("LogWorkoutClient UX behavior", () => {
     renderClient();
 
     await user.click(screen.getByRole("button", { name: "Log set" }));
-    await user.click(screen.getByRole("button", { name: /Log set|Update set/ }));
+    await clickResolvedSubmitButton(user);
     await user.click(screen.getByRole("button", { name: "Finish workout" }));
     await user.click(screen.getByRole("button", { name: "Confirm" }));
 
@@ -292,7 +296,7 @@ describe("LogWorkoutClient UX behavior", () => {
     renderClient();
 
     await user.click(screen.getByRole("button", { name: "Log set" }));
-    await user.click(screen.getByRole("button", { name: /Log set|Update set/ }));
+    await clickResolvedSubmitButton(user);
 
     await waitFor(() => {
       expect(screen.getByText("All sets logged - great work!")).toBeInTheDocument();
@@ -387,7 +391,7 @@ describe("LogWorkoutClient UX behavior", () => {
 
     await waitFor(() => {
       expect(screen.getByText("0/2 logged")).toBeInTheDocument();
-      expect(screen.queryByText("Editing set (previously logged)")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("active-set-edit-banner")).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "Leave for now" })).not.toBeInTheDocument();
     });
   });
@@ -679,7 +683,32 @@ function makeMultiSectionExercises(): SectionedExercises {
   };
 }
 
-describe("4d — Inline edit on chip tap", () => {
+function makeQueuePerformanceExercises(): LogExerciseInput[] {
+  return [
+    {
+      workoutExerciseId: "ex-1",
+      name: "Dumbbell Bench Press",
+      equipment: ["dumbbell"],
+      isMainLift: true,
+      sets: [
+        { setId: "set-1", setIndex: 1, targetReps: 10, targetLoad: 50, targetRpe: 8, restSeconds: 90 },
+        { setId: "set-2", setIndex: 2, targetReps: 10, targetLoad: 50, targetRpe: 8, restSeconds: 90 },
+      ],
+    },
+    {
+      workoutExerciseId: "ex-2",
+      name: "Chest Supported Row",
+      equipment: ["dumbbell"],
+      isMainLift: false,
+      sets: [
+        { setId: "set-3", setIndex: 1, targetReps: 12, targetLoad: 40, targetRpe: 8, restSeconds: 90 },
+        { setId: "set-4", setIndex: 2, targetReps: 12, targetLoad: 40, targetRpe: 8, restSeconds: 90 },
+      ],
+    },
+  ];
+}
+
+describe("4d - Active card edit mode", () => {
   beforeEach(() => {
     mockedLogSetRequest.mockResolvedValue({ data: { status: "ok", wasCreated: true }, error: null });
     mockedDeleteSetLogRequest.mockResolvedValue({ data: { status: "ok" }, error: null });
@@ -699,143 +728,64 @@ describe("4d — Inline edit on chip tap", () => {
     vi.useRealTimers();
   });
 
-  it("chip tap opens micro-form pre-populated with logged values", async () => {
+  it("logged chip opens the active card in edit mode with canonical values", async () => {
     const user = userEvent.setup();
     render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
 
-    // Log set-1 with prefilled values (reps=10, load=50, RPE=8)
     await user.click(screen.getByRole("button", { name: "Log set" }));
     await waitFor(() => {
       expect(mockedLogSetRequest).toHaveBeenCalledTimes(1);
     });
 
-    // Find and click the logged set-1 chip
-    const loggedChip = screen.getByRole("button", { name: /Set 1 · 50 ea×10/ });
-    await user.click(loggedChip);
+    await user.click(screen.getByRole("button", { name: /Set 1 OK 50 x 10 @8/ }));
 
-    // Verify micro-form appears with pre-populated values
-    const form = screen.getByTestId("chip-edit-form");
-    expect(form).toBeInTheDocument();
-    expect(screen.getByLabelText("Chip edit reps")).toHaveValue(10);
-    expect(screen.getByLabelText("Chip edit load")).toHaveValue(50);
-    expect(screen.getByLabelText("Chip edit RPE")).toHaveValue(8);
+    await waitFor(() => {
+      expect(screen.getByTestId("active-set-edit-banner")).toBeInTheDocument();
+      expect(screen.getByText("Editing Set 1 - Dumbbell Bench Press")).toBeInTheDocument();
+      expect(screen.getByLabelText("Reps")).toHaveValue(10);
+      expect(screen.getByLabelText("Load")).toHaveValue(50);
+      expect(screen.getByLabelText("RPE")).toHaveValue(8);
+      expect(screen.queryByTestId("chip-edit-form")).not.toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Return to current set" }));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("active-set-edit-banner")).not.toBeInTheDocument();
+      expect(screen.getByText(/Set 2 of 2/)).toBeInTheDocument();
+    });
   });
 
-  it("micro-form save calls update path with correct payload", async () => {
+  it("submitting edit mode updates the logged set and returns to the live set", async () => {
     const user = userEvent.setup();
     render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
 
-    // Log set-1
     await user.click(screen.getByRole("button", { name: "Log set" }));
-    await waitFor(() => {
-      expect(mockedLogSetRequest).toHaveBeenCalledTimes(1);
-    });
+    await waitFor(() => expect(mockedLogSetRequest).toHaveBeenCalledTimes(1));
 
-    // Open micro-form for logged set-1
-    const loggedChip = screen.getByRole("button", { name: /Set 1 · 50 ea×10/ });
-    await user.click(loggedChip);
+    await user.click(screen.getByRole("button", { name: /Set 1 OK 50 x 10 @8/ }));
 
-    // Edit reps to 12
-    const chipReps = screen.getByLabelText("Chip edit reps");
-    await user.clear(chipReps);
-    await user.type(chipReps, "12");
-
-    // Click Save
-    await user.click(screen.getByRole("button", { name: "Save" }));
+    const repsInput = screen.getByLabelText("Reps");
+    await user.clear(repsInput);
+    await user.type(repsInput, "12");
+    await user.click(screen.getByRole("button", { name: "Update set" }));
 
     await waitFor(() => {
       expect(mockedLogSetRequest).toHaveBeenCalledTimes(2);
       expect(mockedLogSetRequest).toHaveBeenLastCalledWith(
         expect.objectContaining({
+          workoutSetId: "set-1",
           actualReps: 12,
           actualLoad: 50,
           actualRpe: 8,
         })
       );
+      expect(screen.queryByTestId("active-set-edit-banner")).not.toBeInTheDocument();
+      expect(screen.getByText(/Set 2 of 2/)).toBeInTheDocument();
     });
   });
 
-  it("micro-form cancel leaves logged value unchanged", async () => {
-    const user = userEvent.setup();
-    render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
-
-    // Log set-1
-    await user.click(screen.getByRole("button", { name: "Log set" }));
-    await waitFor(() => {
-      expect(mockedLogSetRequest).toHaveBeenCalledTimes(1);
-    });
-
-    // Open micro-form
-    const loggedChip = screen.getByRole("button", { name: /Set 1 · 50 ea×10/ });
-    await user.click(loggedChip);
-
-    // Edit reps
-    const chipReps = screen.getByLabelText("Chip edit reps");
-    await user.clear(chipReps);
-    await user.type(chipReps, "99");
-
-    // Click Cancel
-    await user.click(screen.getByRole("button", { name: "Cancel" }));
-
-    // Micro-form should be gone
-    expect(screen.queryByTestId("chip-edit-form")).not.toBeInTheDocument();
-
-    // logSetRequest should NOT have been called again
-    expect(mockedLogSetRequest).toHaveBeenCalledTimes(1);
-
-    // Chip still shows original logged values
-    expect(screen.getByRole("button", { name: /Set 1 · 50 ea×10/ })).toBeInTheDocument();
-  });
-
-  it("active set chip does not open micro-form (uses existing panel)", async () => {
-    const user = userEvent.setup();
-    render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
-
-    // Log both sets so set-2 becomes logged AND active
-    await user.click(screen.getByRole("button", { name: "Log set" }));
-    await waitFor(() => expect(mockedLogSetRequest).toHaveBeenCalledTimes(1));
-
-    await user.click(screen.getByRole("button", { name: /Log set|Update set/ }));
-    await waitFor(() => expect(mockedLogSetRequest).toHaveBeenCalledTimes(2));
-
-    // set-2 is now active (dark chip). Click it.
-    const activeChip = screen.getByRole("button", { name: /Set 2 · 50 ea/ });
-    await user.click(activeChip);
-
-    // No micro-form should appear
-    expect(screen.queryByTestId("chip-edit-form")).not.toBeInTheDocument();
-  });
-
-  it("only one micro-form open at a time", async () => {
-    const user = userEvent.setup();
-    render(<LogWorkoutClient workoutId="workout-1" exercises={makeThreeSetExercise()} />);
-
-    // Log set-1
-    await user.click(screen.getByRole("button", { name: "Log set" }));
-    await waitFor(() => expect(mockedLogSetRequest).toHaveBeenCalledTimes(1));
-
-    // Log set-2
-    await user.click(screen.getByRole("button", { name: /Log set|Update set/ }));
-    await waitFor(() => expect(mockedLogSetRequest).toHaveBeenCalledTimes(2));
-
-    // Now set-1 and set-2 are logged, set-3 is active
-    // Open micro-form for set-1
-    const chip1 = screen.getByRole("button", { name: /Set 1 · 50 ea/ });
-    await user.click(chip1);
-    expect(screen.getByTestId("chip-edit-form")).toBeInTheDocument();
-    expect(screen.getByText("Edit Set 1")).toBeInTheDocument();
-
-    // Open micro-form for set-2 (should close set-1's)
-    const chip2 = screen.getByRole("button", { name: /Set 2 · 50 ea/ });
-    await user.click(chip2);
-
-    const forms = screen.getAllByTestId("chip-edit-form");
-    expect(forms).toHaveLength(1);
-    expect(screen.getByText("Edit Set 2")).toBeInTheDocument();
-    expect(screen.queryByText("Edit Set 1")).not.toBeInTheDocument();
-  });
-
-  it("shows queue guidance when an exercise has logged and active set chips", async () => {
+  it("shows queue guidance for active-card editing", async () => {
     const user = userEvent.setup();
     render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
 
@@ -843,8 +793,87 @@ describe("4d — Inline edit on chip tap", () => {
     await waitFor(() => expect(mockedLogSetRequest).toHaveBeenCalledTimes(1));
 
     expect(
-      screen.getByText("Dark chip is the current set. Green chips are logged and can be tapped to edit.")
+      screen.getByText("Dark chip is the selected set. Logged chips reopen the active card in edit mode.")
     ).toBeInTheDocument();
+  });
+});
+
+describe("Queue render stability", () => {
+  beforeEach(() => {
+    mockedLogSetRequest.mockResolvedValue({ data: { status: "ok", wasCreated: true }, error: null });
+    mockedDeleteSetLogRequest.mockResolvedValue({ data: { status: "ok" }, error: null });
+    mockedSaveWorkoutRequest.mockResolvedValue({ data: { status: "ok", workoutStatus: "COMPLETED" }, error: null });
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+    setupDialogMocks();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: vi.fn(),
+    });
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.clearAllMocks();
+    vi.useRealTimers();
+  });
+
+  it("typing in the active set does not rerender unrelated exercise rows", async () => {
+    const user = userEvent.setup();
+    const rowRenderSpy = vi.fn();
+    render(
+      <LogWorkoutClient
+        workoutId="workout-1"
+        exercises={makeQueuePerformanceExercises()}
+        onQueueExerciseRowRender={rowRenderSpy}
+      />
+    );
+
+    await waitFor(() => {
+      expect(rowRenderSpy).toHaveBeenCalledWith("ex-1");
+      expect(rowRenderSpy).toHaveBeenCalledWith("ex-2");
+    });
+
+    rowRenderSpy.mockClear();
+
+    const repsInput = screen.getByLabelText("Reps");
+    await user.clear(repsInput);
+    await user.type(repsInput, "11");
+
+    expect(rowRenderSpy).not.toHaveBeenCalled();
+  });
+
+  it("editing a logged set rerenders only the affected exercise row", async () => {
+    const user = userEvent.setup();
+    const rowRenderSpy = vi.fn();
+    render(
+      <LogWorkoutClient
+        workoutId="workout-1"
+        exercises={makeQueuePerformanceExercises()}
+        onQueueExerciseRowRender={rowRenderSpy}
+      />
+    );
+
+    await waitFor(() => {
+      expect(rowRenderSpy).toHaveBeenCalledWith("ex-1");
+      expect(rowRenderSpy).toHaveBeenCalledWith("ex-2");
+    });
+
+    await user.click(screen.getByRole("button", { name: "Log set" }));
+    await waitFor(() => expect(mockedLogSetRequest).toHaveBeenCalledTimes(1));
+
+    rowRenderSpy.mockClear();
+    await user.click(screen.getByRole("button", { name: /Set 1 OK 50 x 10 @8/ }));
+    const repsInput = screen.getByLabelText("Reps");
+    await user.clear(repsInput);
+    await user.type(repsInput, "11");
+    await user.click(screen.getByRole("button", { name: "Update set" }));
+
+    await waitFor(() => {
+      const rerenderedRows = rowRenderSpy.mock.calls.map(([exerciseId]) => exerciseId);
+      expect(rerenderedRows).toContain("ex-1");
+      expect(rerenderedRows).not.toContain("ex-2");
+    });
   });
 });
 
@@ -961,7 +990,7 @@ describe("L-2/L-3/L-1/T-1/T-3 — Layout and UX fixes", () => {
       expect(screen.getByText("1:00")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: /Log set|Update set/ }));
+    await clickResolvedSubmitButton(user);
     await waitFor(() => {
       expect(screen.getByText("3:00")).toBeInTheDocument();
     });
@@ -983,7 +1012,7 @@ describe("L-2/L-3/L-1/T-1/T-3 — Layout and UX fixes", () => {
     await user.click(screen.getByRole("button", { name: "Mute alerts" }));
     expect(screen.getByRole("button", { name: "Unmute alerts" })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /Log set|Update set/ }));
+    await clickResolvedSubmitButton(user);
 
     await waitFor(() => expect(within(screen.getByTestId("rest-timer-hud")).getByText("Muted")).toBeInTheDocument());
   });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BonusExerciseSheet } from "@/components/BonusExerciseSheet";
 import { isDumbbellEquipment, toDisplayLoad, toStoredLoad } from "@/lib/ui/load-display";
 import { quantizeLoad } from "@/lib/units/load-quantization";
@@ -24,7 +24,10 @@ import {
   type WorkoutActiveSetCardSummary,
 } from "@/components/log-workout/WorkoutActiveSetCard";
 import { WorkoutCompletionDialog } from "@/components/log-workout/WorkoutCompletionDialog";
-import { WorkoutExerciseQueue } from "@/components/log-workout/WorkoutExerciseQueue";
+import {
+  WorkoutExerciseQueue,
+  type WorkoutQueueSectionData,
+} from "@/components/log-workout/WorkoutExerciseQueue";
 import { WorkoutFooter } from "@/components/log-workout/WorkoutFooter";
 import { WorkoutSessionFeedback } from "@/components/log-workout/WorkoutSessionFeedback";
 import { WorkoutSessionActions } from "@/components/log-workout/WorkoutSessionActions";
@@ -39,6 +42,15 @@ import { useWorkoutSetHistoryActions } from "@/components/log-workout/useWorkout
 export type { LogExerciseInput, LogSetInput } from "@/components/log-workout/types";
 
 const SECTION_ORDER: ExerciseSection[] = ["warmup", "main", "accessory"];
+
+type ActiveCardMode =
+  | { kind: "live" }
+  | {
+      kind: "edit";
+      setId: string;
+      returnSetId: string | null;
+      setIndex: number;
+    };
 
 function parseNullableNumber(raw: string): number | null {
   const normalized = raw.trim();
@@ -76,12 +88,36 @@ function normalizeLoadInput(raw: string, isDumbbell: boolean): number | null {
   return stored == null ? null : quantizeLoad(stored);
 }
 
+function formatQueueSetSummary(set: LogSetInput, isLogged: boolean, isDumbbell: boolean): string {
+  if (!isLogged) {
+    return `Set ${set.setIndex}`;
+  }
+
+  if (set.wasSkipped) {
+    return `Set ${set.setIndex} skipped`;
+  }
+
+  const parts: string[] = [`Set ${set.setIndex} OK`];
+  if (set.actualLoad != null && set.actualReps != null) {
+    parts.push(`${toDisplayLoad(set.actualLoad, isDumbbell) ?? set.actualLoad} x ${set.actualReps}`);
+  } else if (set.actualReps != null) {
+    parts.push(`${set.actualReps} reps`);
+  }
+  if (set.actualRpe != null) {
+    parts.push(`@${set.actualRpe}`);
+  }
+
+  return parts.join(" ");
+}
+
 export default function LogWorkoutClient({
   workoutId,
   exercises,
+  onQueueExerciseRowRender,
 }: {
   workoutId: string;
   exercises: LogExerciseInput[] | SectionedExercises;
+  onQueueExerciseRowRender?: (exerciseId: string) => void;
 }) {
   const {
     data,
@@ -98,11 +134,16 @@ export default function LogWorkoutClient({
   } = useWorkoutLogState(exercises);
   const { restTimer, startTimer, clearTimer, restoreTimer, adjustTimer } = useRestTimerState(workoutId);
   const [showBonusSheet, setShowBonusSheet] = useState(false);
+  const [activeCardMode, setActiveCardMode] = useState<ActiveCardMode>({ kind: "live" });
+  const activeCardModeRef = useRef<ActiveCardMode>(activeCardMode);
 
   const totalSets = flatSets.length;
   const loggedCount = loggedSetIds.size;
   const remainingCount = Math.max(0, totalSets - loggedCount);
   const resolvedActiveSetId = activeSet?.set.setId ?? null;
+  const resolvedActiveSetIdRef = useRef<string | null>(resolvedActiveSetId);
+  const loggedSetIdsRef = useRef(loggedSetIds);
+  const flatSetsRef = useRef(flatSets);
   const activeSetIds = useMemo(() => flatSets.map((item) => item.set.setId), [flatSets]);
   const { keyboardOpen, keyboardHeight, activeSetPanelRef, sectionRefs, jumpToActiveSet } =
     useWorkoutSessionLayout();
@@ -114,6 +155,16 @@ export default function LogWorkoutClient({
     setActiveSetId,
     onResumeSet: jumpToActiveSet,
   });
+
+  useEffect(() => {
+    activeCardModeRef.current = activeCardMode;
+  }, [activeCardMode]);
+
+  useEffect(() => {
+    resolvedActiveSetIdRef.current = resolvedActiveSetId;
+    loggedSetIdsRef.current = loggedSetIds;
+    flatSetsRef.current = flatSets;
+  }, [flatSets, loggedSetIds, resolvedActiveSetId]);
 
   const performanceSummary = useMemo<CompletedWorkoutExerciseSummary[]>(() => {
     return SECTION_ORDER.flatMap((section) =>
@@ -242,7 +293,9 @@ export default function LogWorkoutClient({
     restoredSetIds,
     savingDraftSetId,
     setFieldPrefilled,
+    seedDraftFromValues,
     commitLoadValue,
+    resetDraftVisualState,
     setRepsValue,
     setRpeValue,
     touchedFieldsBySet,
@@ -280,7 +333,6 @@ export default function LogWorkoutClient({
     baselineSummary,
     undoSnapshot,
     autoregHint,
-    chipEditor,
     completion,
     actions,
     dismissError,
@@ -307,6 +359,176 @@ export default function LogWorkoutClient({
     normalizeLoadInput,
     onAdvanceSet: jumpToActiveSet,
   });
+
+  useEffect(() => {
+    if (activeCardMode.kind !== "edit") {
+      return;
+    }
+
+    const editSet = flatSets.find((item) => item.set.setId === activeCardMode.setId);
+    if (!editSet || !loggedSetIds.has(activeCardMode.setId)) {
+      setActiveCardMode({ kind: "live" });
+      return;
+    }
+
+    setActiveSetId(activeCardMode.setId);
+    seedDraftFromValues(activeCardMode.setId, {
+      reps: editSet.set.actualReps ?? null,
+      load: editSet.set.actualLoad ?? null,
+      rpe: editSet.set.actualRpe ?? null,
+    });
+  }, [activeCardMode, flatSets, loggedSetIds, seedDraftFromValues, setActiveSetId]);
+
+  const exitEditMode = useCallback(
+    (options?: { restoreLiveSet?: boolean; discardChanges?: boolean }) => {
+      if (activeCardMode.kind !== "edit") {
+        return;
+      }
+
+      if (options?.discardChanges ?? true) {
+        clearDraft(activeCardMode.setId);
+        clearDraftInputBuffers(activeCardMode.setId);
+        resetDraftVisualState(activeCardMode.setId);
+      }
+
+      if (options?.restoreLiveSet !== false && activeCardMode.returnSetId) {
+        setActiveSetId(activeCardMode.returnSetId);
+      }
+
+      setActiveCardMode({ kind: "live" });
+    },
+    [activeCardMode, clearDraft, clearDraftInputBuffers, resetDraftVisualState, setActiveSetId]
+  );
+
+  const handleQueueSetSelect = useCallback(
+    (setId: string) => {
+      const selected = flatSetsRef.current.find((item) => item.set.setId === setId);
+      if (!selected) {
+        return;
+      }
+
+      const currentMode = activeCardModeRef.current;
+      const currentResolvedActiveSetId = resolvedActiveSetIdRef.current;
+      const currentLoggedSetIds = loggedSetIdsRef.current;
+
+      if (currentLoggedSetIds.has(setId)) {
+        if (currentMode.kind === "edit" && currentMode.setId !== setId) {
+          clearDraft(currentMode.setId);
+          clearDraftInputBuffers(currentMode.setId);
+          resetDraftVisualState(currentMode.setId);
+        }
+
+        setActiveCardMode({
+          kind: "edit",
+          setId,
+          returnSetId:
+            currentMode.kind === "edit"
+              ? currentMode.returnSetId
+              : currentResolvedActiveSetId && !currentLoggedSetIds.has(currentResolvedActiveSetId)
+              ? currentResolvedActiveSetId
+              : null,
+          setIndex: selected.set.setIndex,
+        });
+        return;
+      }
+
+      if (currentMode.kind === "edit") {
+        clearDraft(currentMode.setId);
+        clearDraftInputBuffers(currentMode.setId);
+        resetDraftVisualState(currentMode.setId);
+      }
+
+      setActiveCardMode({ kind: "live" });
+      setActiveSetId(setId);
+    },
+    [
+      clearDraft,
+      clearDraftInputBuffers,
+      resetDraftVisualState,
+      setActiveSetId,
+    ]
+  );
+
+  const handleJumpToCurrentSet = useCallback(() => {
+    if (activeCardMode.kind === "edit") {
+      exitEditMode({ restoreLiveSet: true, discardChanges: true });
+      return;
+    }
+
+    jumpToActiveSet();
+  }, [activeCardMode.kind, exitEditMode, jumpToActiveSet]);
+
+  const queueSections = useMemo<WorkoutQueueSectionData[]>(() => {
+    return SECTION_ORDER.flatMap((section) => {
+      const sectionItems = data[section];
+      if (sectionItems.length === 0) {
+        return [];
+      }
+
+      return [
+        {
+          section,
+          isExpanded: expandedSections[section],
+          collapsedSummaries: sectionItems.map((exercise) => ({
+            exerciseId: exercise.workoutExerciseId,
+            exerciseName: exercise.name,
+            loggedCount: exercise.sets.filter((set) => loggedSetIds.has(set.setId)).length,
+            totalSets: exercise.sets.length,
+          })),
+          exercises: sectionItems.map((exercise) => {
+            const loggedCountForExercise = exercise.sets.filter((set) => loggedSetIds.has(set.setId)).length;
+            const nextSet = exercise.sets.find((set) => !loggedSetIds.has(set.setId)) ?? exercise.sets[0] ?? null;
+
+            return {
+              exerciseId: exercise.workoutExerciseId,
+              exerciseName: exercise.name,
+              loggedCount: loggedCountForExercise,
+              totalSets: exercise.sets.length,
+              allSetsLogged:
+                loggedCountForExercise === exercise.sets.length && exercise.sets.length > 0,
+              isExpanded: expandedExerciseId === exercise.workoutExerciseId,
+              nextSetId: nextSet?.setId ?? null,
+              chips: exercise.sets.map((set) => ({
+                setId: set.setId,
+                label: formatQueueSetSummary(
+                  set,
+                  loggedSetIds.has(set.setId),
+                  isDumbbellExercise(exercise)
+                ),
+                isLogged: loggedSetIds.has(set.setId),
+                isActive: resolvedActiveSetId === set.setId,
+                isSaving: savingSetId === set.setId,
+              })),
+            };
+          }),
+        },
+      ];
+    });
+  }, [
+    data,
+    expandedExerciseId,
+    expandedSections,
+    isDumbbellExercise,
+    loggedSetIds,
+    resolvedActiveSetId,
+    savingSetId,
+  ]);
+
+  const toggleQueueSection = useCallback((section: ExerciseSection) => {
+    setExpandedSections((prev) => ({ ...prev, [section]: !prev[section] }));
+  }, [setExpandedSections]);
+
+  const toggleQueueExercise = useCallback(
+    (exerciseId: string, nextSetId: string | null) => {
+      if (nextSetId) {
+        handleQueueSetSelect(nextSetId);
+      }
+
+      setExpandedExerciseId((prev) => (prev === exerciseId ? null : exerciseId));
+    },
+    [handleQueueSetSelect, setExpandedExerciseId]
+  );
+
   const allSetsLogged = loggedCount === totalSets && totalSets > 0;
   const showAutoregHint =
     autoregHint !== null &&
@@ -338,6 +560,41 @@ export default function LogWorkoutClient({
     };
   }, [activeSet, resolvedActiveSetValues]);
 
+  const submitActiveSet = useCallback(async () => {
+    if (!activeSet) {
+      return false;
+    }
+
+    const success = await actions.logSet(activeSet.set.setId, {
+      ...resolvedActiveSetValues,
+      wasSkipped:
+        resolvedActiveSetValues.actualReps != null ||
+        resolvedActiveSetValues.actualLoad != null ||
+        resolvedActiveSetValues.actualRpe != null
+          ? false
+          : (activeSet.set.wasSkipped ?? false),
+    });
+
+    if (success && activeCardMode.kind === "edit") {
+      exitEditMode({ restoreLiveSet: true, discardChanges: false });
+    }
+
+    return success;
+  }, [activeCardMode.kind, activeSet, actions, exitEditMode, resolvedActiveSetValues]);
+
+  const skipActiveSet = useCallback(async () => {
+    if (!activeSet) {
+      return false;
+    }
+
+    const success = await actions.logSet(activeSet.set.setId, { wasSkipped: true });
+    if (success && activeCardMode.kind === "edit") {
+      exitEditMode({ restoreLiveSet: true, discardChanges: false });
+    }
+
+    return success;
+  }, [activeCardMode.kind, activeSet, actions, exitEditMode]);
+
   const handleAddExercise = useCallback(
     (exercise: LogExerciseInput) => {
       setExpandedSections((prev) => ({ ...prev, accessory: true }));
@@ -367,8 +624,9 @@ export default function LogWorkoutClient({
   const activeSetSummary: WorkoutActiveSetCardSummary = {
     loggedCount,
     totalSets,
-    resolvedActiveSetId,
-    loggedSetIds,
+    isEditing: activeCardMode.kind === "edit",
+    editingSetLabel: activeCardMode.kind === "edit" ? `Set ${activeCardMode.setIndex}` : null,
+    canReturnToLiveSet: activeCardMode.kind === "edit" && activeCardMode.returnSetId !== null,
     autoregHintMessage: showAutoregHint ? autoregHint.message : null,
     savingSetId,
     status,
@@ -438,19 +696,10 @@ export default function LogWorkoutClient({
             toInputNumberString={toInputNumberString}
             parseNullableNumber={parseNullableNumber}
             resolvedValues={resolvedActiveSetValues}
-            onLogSet={() =>
-              actions.logSet(activeSet.set.setId, {
-                ...resolvedActiveSetValues,
-                wasSkipped:
-                  resolvedActiveSetValues.actualReps != null ||
-                  resolvedActiveSetValues.actualLoad != null ||
-                  resolvedActiveSetValues.actualRpe != null
-                    ? false
-                    : (activeSet.set.wasSkipped ?? false),
-              })
-            }
+            onLogSet={() => void submitActiveSet()}
+            onReturnToCurrentSet={handleJumpToCurrentSet}
             onUseSameAsLast={useSameAsLast}
-            onSkipSet={() => actions.logSet(activeSet.set.setId, { wasSkipped: true })}
+            onSkipSet={() => void skipActiveSet()}
           />
         </ActiveSetPanel>
       ) : null}
@@ -459,7 +708,7 @@ export default function LogWorkoutClient({
         <div className="flex justify-end">
           <button
             className="inline-flex min-h-9 items-center justify-center rounded-full border border-slate-300 px-4 text-xs font-semibold text-slate-700"
-            onClick={jumpToActiveSet}
+            onClick={handleJumpToCurrentSet}
             type="button"
           >
             Jump to active set
@@ -470,26 +719,13 @@ export default function LogWorkoutClient({
       {!sessionTerminated ? (
         <ExerciseListPanel>
           <WorkoutExerciseQueue
-            data={data}
-            sectionOrder={SECTION_ORDER}
+            sections={queueSections}
             remainingCount={remainingCount}
-            loggedSetIds={loggedSetIds}
-            expandedSections={expandedSections}
-            expandedExerciseId={expandedExerciseId}
-            resolvedActiveSetId={resolvedActiveSetId}
-            chipEditSetId={chipEditor.setId}
-            chipEditDraft={chipEditor.draft}
-            savingSetId={savingSetId}
             sectionRefs={sectionRefs}
-            setExpandedSections={setExpandedSections}
-            setExpandedExerciseId={setExpandedExerciseId}
-            setActiveSetId={setActiveSetId}
-            isDumbbellExercise={isDumbbellExercise}
-            openChipEditor={chipEditor.open}
-            setChipEditDraft={chipEditor.setDraft}
-            handleChipLoadBlur={chipEditor.handleLoadBlur}
-            handleChipEditSave={chipEditor.save}
-            closeChipEditor={chipEditor.close}
+            onToggleSection={toggleQueueSection}
+            onToggleExercise={toggleQueueExercise}
+            onSelectSet={handleQueueSetSelect}
+            onExerciseRowRender={onQueueExerciseRowRender}
           />
         </ExerciseListPanel>
       ) : null}

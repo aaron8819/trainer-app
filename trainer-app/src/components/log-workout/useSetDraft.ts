@@ -111,9 +111,9 @@ export function useSetDraft({
       setSavingDraftSetId(setId);
       saveTimersRef.current[setId] = setTimeout(() => {
         const payload: DraftPayload = {
-          reps: values.reps,
-          load: values.load,
-          rpe: values.rpe,
+          reps: values.reps ?? "",
+          load: values.load ?? "",
+          rpe: values.rpe ?? "",
           savedAt: Date.now(),
         };
         window.localStorage.setItem(key, JSON.stringify(payload));

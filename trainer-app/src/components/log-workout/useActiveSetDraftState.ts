@@ -242,6 +242,48 @@ export function useActiveSetDraftState({
     });
   }, []);
 
+  const seedDraftFromValues = useCallback(
+    (
+      setId: string,
+      values: { reps?: number | null; load?: number | null; rpe?: number | null },
+      options?: { prefilled?: boolean }
+    ) => {
+      restoredBufferIdsRef.current.delete(setId);
+      setDraftBuffersBySet((prev) => ({
+        ...prev,
+        [setId]: {
+          reps: toInputNumberString(values.reps),
+          load: toInputNumberString(values.load),
+          rpe: toInputNumberString(values.rpe),
+        },
+      }));
+      setTouchedFieldsBySet((prev) => ({
+        ...prev,
+        [setId]: { actualReps: false, actualLoad: false, actualRpe: false },
+      }));
+      setPrefilledFieldsBySet((prev) => ({
+        ...prev,
+        [setId]: {
+          actualReps: options?.prefilled ?? false,
+          actualLoad: options?.prefilled ?? false,
+          actualRpe: options?.prefilled ?? false,
+        },
+      }));
+    },
+    []
+  );
+
+  const resetDraftVisualState = useCallback((setId: string) => {
+    setTouchedFieldsBySet((prev) => ({
+      ...prev,
+      [setId]: { actualReps: false, actualLoad: false, actualRpe: false },
+    }));
+    setPrefilledFieldsBySet((prev) => ({
+      ...prev,
+      [setId]: { actualReps: false, actualLoad: false, actualRpe: false },
+    }));
+  }, []);
+
   const setRepsValue = useCallback(
     (setId: string, value: number | null) => {
       updateDraftBuffer(setId, "reps", toInputNumberString(value));
@@ -362,6 +404,8 @@ export function useActiveSetDraftState({
     clearDraft,
     clearAllDrafts,
     clearDraftInputBuffers,
+    seedDraftFromValues,
+    resetDraftVisualState,
     updateDraftBuffer,
     markFieldTouched,
     setFieldPrefilled,

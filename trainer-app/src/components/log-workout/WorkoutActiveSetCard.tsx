@@ -6,6 +6,7 @@ import type {
   ActiveSetDraftState,
   FlatSetItem,
   LogExerciseInput,
+  LogSetInput,
   PrefilledFieldState,
   SetDraftBuffers,
   SetDraftNumericValues,
@@ -41,8 +42,9 @@ function clampReps(value: number | null | undefined, delta: number) {
 export type WorkoutActiveSetCardSummary = {
   loggedCount: number;
   totalSets: number;
-  resolvedActiveSetId: string | null;
-  loggedSetIds: Set<string>;
+  isEditing: boolean;
+  editingSetLabel: string | null;
+  canReturnToLiveSet: boolean;
   autoregHintMessage: string | null;
   savingSetId: string | null;
   status: string | null;
@@ -84,6 +86,7 @@ type WorkoutActiveSetCardProps = {
   parseNullableNumber: (raw: string) => number | null;
   resolvedValues: SetDraftNumericValues;
   onLogSet: () => void;
+  onReturnToCurrentSet: () => void;
   onUseSameAsLast: () => void;
   onSkipSet: () => void;
 };
@@ -99,6 +102,7 @@ export function WorkoutActiveSetCard({
   parseNullableNumber,
   resolvedValues,
   onLogSet,
+  onReturnToCurrentSet,
   onUseSameAsLast,
   onSkipSet,
 }: WorkoutActiveSetCardProps) {
@@ -107,8 +111,9 @@ export function WorkoutActiveSetCard({
   const {
     loggedCount,
     totalSets,
-    resolvedActiveSetId,
-    loggedSetIds,
+    isEditing,
+    editingSetLabel,
+    canReturnToLiveSet,
     autoregHintMessage,
     savingSetId,
     status,
@@ -153,6 +158,24 @@ export function WorkoutActiveSetCard({
           {loggedCount}/{totalSets} logged
         </p>
       </div>
+      {isEditing ? (
+        <div
+          className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3"
+          data-testid="active-set-edit-banner"
+        >
+          <p className="text-sm font-semibold text-amber-900">
+            Editing {editingSetLabel ?? `Set ${activeSet.set.setIndex}`} - {activeSet.exercise.name}
+          </p>
+          <button
+            className="mt-2 inline-flex min-h-9 items-center justify-center rounded-full border border-amber-300 px-4 text-xs font-semibold text-amber-800 disabled:opacity-60"
+            onClick={onReturnToCurrentSet}
+            disabled={!canReturnToLiveSet}
+            type="button"
+          >
+            Return to current set
+          </button>
+        </div>
+      ) : null}
       <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-slate-100">
         <div
           className="h-full rounded-full bg-slate-900 transition-all"
@@ -161,11 +184,8 @@ export function WorkoutActiveSetCard({
       </div>
       <div className="mt-4">
         <h2 className="text-lg font-semibold">{activeSet.exercise.name}</h2>
-        {resolvedActiveSetId && loggedSetIds.has(resolvedActiveSetId) ? (
-          <p className="mt-0.5 text-xs font-semibold text-amber-700">Editing set (previously logged)</p>
-        ) : null}
         <p className="mt-1 text-sm text-slate-500">
-          {activeSet.sectionLabel} · Set {activeSet.set.setIndex} of {activeSet.exercise.sets.length} · Target{" "}
+          {activeSet.sectionLabel} - Set {activeSet.set.setIndex} of {activeSet.exercise.sets.length} - Target{" "}
           {formatTargetReps(activeSet.set)}
           {activeSet.set.targetLoad != null
             ? ` | ${
@@ -380,7 +400,7 @@ export function WorkoutActiveSetCard({
             </span>
           ) : !canSubmit ? (
             "Add reps or RPE"
-          ) : resolvedActiveSetId && loggedSetIds.has(resolvedActiveSetId) ? (
+          ) : isEditing ? (
             "Update set"
           ) : (
             "Log set"

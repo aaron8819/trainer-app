@@ -1,56 +1,129 @@
-import { ExerciseSetChipsEditor } from "@/components/log-workout/ExerciseSetChipsEditor";
-import type { ChipEditDraft } from "@/components/log-workout/useWorkoutChipEditor";
+import { memo, useEffect, type MutableRefObject } from "react";
+import {
+  ExerciseSetChipsEditor,
+  type ExerciseSetChip,
+} from "@/components/log-workout/ExerciseSetChipsEditor";
 import { formatSectionLabel } from "@/components/log-workout/useWorkoutLogState";
-import type {
-  ExerciseSection,
-  LogExerciseInput,
-  NormalizedExercises,
-} from "@/components/log-workout/types";
+import type { ExerciseSection } from "@/components/log-workout/types";
 
-type WorkoutExerciseQueueProps = {
-  data: NormalizedExercises;
-  sectionOrder: ExerciseSection[];
-  remainingCount: number;
-  loggedSetIds: Set<string>;
-  expandedSections: Record<ExerciseSection, boolean>;
-  expandedExerciseId: string | null;
-  resolvedActiveSetId: string | null;
-  chipEditSetId: string | null;
-  chipEditDraft: ChipEditDraft | null;
-  savingSetId: string | null;
-  sectionRefs: React.MutableRefObject<Record<ExerciseSection, HTMLDivElement | null>>;
-  setExpandedSections: React.Dispatch<React.SetStateAction<Record<ExerciseSection, boolean>>>;
-  setExpandedExerciseId: React.Dispatch<React.SetStateAction<string | null>>;
-  setActiveSetId: (setId: string) => void;
-  isDumbbellExercise: (exercise: LogExerciseInput) => boolean;
-  openChipEditor: (setId: string) => void;
-  setChipEditDraft: React.Dispatch<React.SetStateAction<ChipEditDraft | null>>;
-  handleChipLoadBlur: (setId: string, isDumbbell: boolean) => void;
-  handleChipEditSave: (setId: string) => void;
-  closeChipEditor: () => void;
+export type WorkoutQueueExerciseRowData = {
+  exerciseId: string;
+  exerciseName: string;
+  loggedCount: number;
+  totalSets: number;
+  allSetsLogged: boolean;
+  isExpanded: boolean;
+  nextSetId: string | null;
+  chips: ExerciseSetChip[];
 };
 
+export type WorkoutQueueSectionData = {
+  section: ExerciseSection;
+  isExpanded: boolean;
+  collapsedSummaries: Array<{
+    exerciseId: string;
+    exerciseName: string;
+    loggedCount: number;
+    totalSets: number;
+  }>;
+  exercises: WorkoutQueueExerciseRowData[];
+};
+
+type WorkoutExerciseQueueProps = {
+  sections: WorkoutQueueSectionData[];
+  remainingCount: number;
+  sectionRefs: MutableRefObject<Record<ExerciseSection, HTMLDivElement | null>>;
+  onToggleSection: (section: ExerciseSection) => void;
+  onToggleExercise: (exerciseId: string, nextSetId: string | null) => void;
+  onSelectSet: (setId: string) => void;
+  onExerciseRowRender?: (exerciseId: string) => void;
+};
+
+function areChipsEqual(previous: ExerciseSetChip[], next: ExerciseSetChip[]) {
+  if (previous.length !== next.length) {
+    return false;
+  }
+
+  return previous.every((chip, index) => {
+    const nextChip = next[index];
+    return (
+      chip.setId === nextChip?.setId &&
+      chip.label === nextChip.label &&
+      chip.isLogged === nextChip.isLogged &&
+      chip.isActive === nextChip.isActive &&
+      chip.isSaving === nextChip.isSaving
+    );
+  });
+}
+
+const ExerciseQueueRow = memo(
+  function ExerciseQueueRow({
+    row,
+    onToggleExercise,
+    onSelectSet,
+    onRender,
+  }: {
+    row: WorkoutQueueExerciseRowData;
+    onToggleExercise: (exerciseId: string, nextSetId: string | null) => void;
+    onSelectSet: (setId: string) => void;
+    onRender?: (exerciseId: string) => void;
+  }) {
+    useEffect(() => {
+      onRender?.(row.exerciseId);
+    });
+
+    return (
+      <div
+        className="rounded-xl border border-slate-100"
+        data-testid={`queue-row-${row.exerciseId}`}
+      >
+        <button
+          className="flex min-h-11 w-full items-center justify-between px-3 py-2 text-left"
+          onClick={() => onToggleExercise(row.exerciseId, row.nextSetId)}
+          type="button"
+        >
+          <span className="text-sm font-medium">{row.exerciseName}</span>
+          <span
+            className={`text-xs ${
+              row.allSetsLogged ? "font-semibold text-emerald-700" : "text-slate-500"
+            }`}
+          >
+            {row.allSetsLogged ? "OK " : ""}
+            {row.loggedCount}/{row.totalSets}
+          </span>
+        </button>
+        {row.isExpanded ? (
+          <ExerciseSetChipsEditor
+            chips={row.chips}
+            hasLoggedSets={row.loggedCount > 0}
+            onSelectSet={onSelectSet}
+          />
+        ) : null}
+      </div>
+    );
+  },
+  (previous, next) =>
+    previous.row.exerciseId === next.row.exerciseId &&
+    previous.row.exerciseName === next.row.exerciseName &&
+    previous.row.loggedCount === next.row.loggedCount &&
+    previous.row.totalSets === next.row.totalSets &&
+    previous.row.allSetsLogged === next.row.allSetsLogged &&
+    previous.row.isExpanded === next.row.isExpanded &&
+    previous.row.nextSetId === next.row.nextSetId &&
+    areChipsEqual(previous.row.chips, next.row.chips) &&
+    previous.onToggleExercise === next.onToggleExercise &&
+    previous.onSelectSet === next.onSelectSet &&
+    previous.onRender === next.onRender
+);
+
 export function WorkoutExerciseQueue({
-  data,
-  sectionOrder,
+  sections,
   remainingCount,
-  loggedSetIds,
-  expandedSections,
-  expandedExerciseId,
-  resolvedActiveSetId,
-  chipEditSetId,
-  chipEditDraft,
-  savingSetId,
   sectionRefs,
-  setExpandedSections,
-  setExpandedExerciseId,
-  setActiveSetId,
-  isDumbbellExercise,
-  openChipEditor,
-  setChipEditDraft,
-  handleChipLoadBlur,
-  handleChipEditSave,
-  closeChipEditor,
+  onToggleSection,
+  onToggleExercise,
+  onSelectSet,
+  onExerciseRowRender,
 }: WorkoutExerciseQueueProps) {
   return (
     <section className="space-y-3">
@@ -58,103 +131,55 @@ export function WorkoutExerciseQueue({
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Exercise queue</h2>
         <p className="text-xs text-slate-500">{remainingCount} sets remaining</p>
       </div>
-      {sectionOrder.map((section) => {
-        const sectionItems = data[section];
-        if (sectionItems.length === 0) {
-          return null;
-        }
-        const isExpanded = expandedSections[section];
-        return (
-          <div
-            key={section}
-            ref={(el) => {
-              sectionRefs.current[section] = el;
-            }}
-            className="rounded-2xl border border-slate-200 bg-white"
+      {sections.map((section) => (
+        <div
+          key={section.section}
+          ref={(el) => {
+            sectionRefs.current[section.section] = el;
+          }}
+          className="rounded-2xl border border-slate-200 bg-white"
+        >
+          <button
+            className="flex min-h-11 w-full items-center justify-between px-4 py-3 text-left"
+            onClick={() => onToggleSection(section.section)}
+            type="button"
           >
-            <button
-              className="flex min-h-11 w-full items-center justify-between px-4 py-3 text-left"
-              onClick={() => setExpandedSections((prev) => ({ ...prev, [section]: !prev[section] }))}
-              type="button"
+            <span className="text-sm font-semibold">{formatSectionLabel(section.section)}</span>
+            <span className="text-xs text-slate-500">{section.isExpanded ? "Hide" : "Show"}</span>
+          </button>
+          {!section.isExpanded ? (
+            <div
+              className="border-t border-slate-100 px-4 py-2"
+              data-testid={`collapsed-summary-${section.section}`}
             >
-              <span className="text-sm font-semibold">{formatSectionLabel(section)}</span>
-              <span className="text-xs text-slate-500">{isExpanded ? "Hide" : "Show"}</span>
-            </button>
-            {!isExpanded ? (
-              <div className="border-t border-slate-100 px-4 py-2" data-testid={`collapsed-summary-${section}`}>
-                {sectionItems.map((exercise) => {
-                  const exerciseLogged = exercise.sets.filter((set) => loggedSetIds.has(set.setId)).length;
-                  return (
-                    <div
-                      key={exercise.workoutExerciseId}
-                      className="flex items-center justify-between py-1 text-xs text-slate-500"
-                    >
-                      <span className="truncate">{exercise.name}</span>
-                      <span className="ml-2 shrink-0">
-                        {exerciseLogged}/{exercise.sets.length} sets logged
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : null}
-            {isExpanded ? (
-              <div className="space-y-2 border-t border-slate-100 p-3">
-                {sectionItems.map((exercise) => {
-                  const exerciseLogged = exercise.sets.filter((set) => loggedSetIds.has(set.setId)).length;
-                  const allExerciseSetsLogged =
-                    exerciseLogged === exercise.sets.length && exercise.sets.length > 0;
-                  const nextSet = exercise.sets.find((set) => !loggedSetIds.has(set.setId)) ?? exercise.sets[0];
-                  const isExerciseExpanded = expandedExerciseId === exercise.workoutExerciseId;
-                  return (
-                    <div key={exercise.workoutExerciseId} className="rounded-xl border border-slate-100">
-                      <button
-                        className="flex min-h-11 w-full items-center justify-between px-3 py-2 text-left"
-                        onClick={() => {
-                          if (nextSet) {
-                            setActiveSetId(nextSet.setId);
-                          }
-                          setExpandedExerciseId((prev) =>
-                            prev === exercise.workoutExerciseId ? null : exercise.workoutExerciseId
-                          );
-                        }}
-                        type="button"
-                      >
-                        <span className="text-sm font-medium">{exercise.name}</span>
-                        <span
-                          className={`text-xs ${
-                            allExerciseSetsLogged ? "font-semibold text-emerald-700" : "text-slate-500"
-                          }`}
-                        >
-                          {allExerciseSetsLogged ? "✓ " : ""}
-                          {exerciseLogged}/{exercise.sets.length}
-                        </span>
-                      </button>
-                      {isExerciseExpanded ? (
-                        <ExerciseSetChipsEditor
-                          exercise={exercise}
-                          loggedSetIds={loggedSetIds}
-                          resolvedActiveSetId={resolvedActiveSetId}
-                          chipEditSetId={chipEditSetId}
-                          chipEditDraft={chipEditDraft}
-                          savingSetId={savingSetId}
-                          isDumbbell={isDumbbellExercise(exercise)}
-                          onOpenChipEditor={openChipEditor}
-                          onSetActiveSetId={setActiveSetId}
-                          onChipDraftChange={setChipEditDraft}
-                          onChipLoadBlur={handleChipLoadBlur}
-                          onChipEditSave={handleChipEditSave}
-                          onCloseChipEditor={closeChipEditor}
-                        />
-                      ) : null}
-                    </div>
-                  );
-                })}
-              </div>
-            ) : null}
-          </div>
-        );
-      })}
+              {section.collapsedSummaries.map((exercise) => (
+                <div
+                  key={exercise.exerciseId}
+                  className="flex items-center justify-between py-1 text-xs text-slate-500"
+                >
+                  <span className="truncate">{exercise.exerciseName}</span>
+                  <span className="ml-2 shrink-0">
+                    {exercise.loggedCount}/{exercise.totalSets} sets logged
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {section.isExpanded ? (
+            <div className="space-y-2 border-t border-slate-100 p-3">
+              {section.exercises.map((row) => (
+                <ExerciseQueueRow
+                  key={row.exerciseId}
+                  row={row}
+                  onToggleExercise={onToggleExercise}
+                  onSelectSet={onSelectSet}
+                  onRender={onExerciseRowRender}
+                />
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ))}
     </section>
   );
 }

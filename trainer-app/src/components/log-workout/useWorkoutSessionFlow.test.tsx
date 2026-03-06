@@ -176,20 +176,6 @@ function WorkoutSessionFlowHarness({
       <button onClick={() => void hook.completion.run("mark_partial")} type="button">
         partial
       </button>
-      <button onClick={() => hook.chipEditor.open("set-1")} type="button">
-        open-chip
-      </button>
-      <button onClick={() => hook.chipEditor.setDraft({ reps: "11", load: "55", rpe: "9" })} type="button">
-        set-chip-draft
-      </button>
-      <button
-        onClick={() => {
-          void hook.chipEditor.save("set-1");
-        }}
-        type="button"
-      >
-        save-chip
-      </button>
 
       <div data-testid="logged-ids">{Array.from(loggedSetIds).join(",")}</div>
       <div data-testid="active-set-id">{activeSetId ?? ""}</div>
@@ -202,7 +188,6 @@ function WorkoutSessionFlowHarness({
         {hook.baselineSummary ? JSON.stringify(hook.baselineSummary) : ""}
       </div>
       <div data-testid="timer-end">{restTimer?.endAtMs ?? ""}</div>
-      <div data-testid="chip-edit-open">{hook.chipEditor.setId ?? ""}</div>
       <div data-testid="set-1-reps">{data.main[0]?.sets[0]?.actualReps ?? ""}</div>
       <div data-testid="set-1-load">{data.main[0]?.sets[0]?.actualLoad ?? ""}</div>
       <div data-testid="set-1-rpe">{data.main[0]?.sets[0]?.actualRpe ?? ""}</div>
@@ -351,30 +336,6 @@ describe("useWorkoutSessionFlow", () => {
       expect(screen.getByTestId("status")).toHaveTextContent(
         "Workout saved as partial (some planned sets were unresolved)"
       );
-    });
-  });
-
-  it("saves chip edits through the same runtime log path and closes the editor", async () => {
-    const callbacks = createCallbacks();
-
-    render(<WorkoutSessionFlowHarness callbacks={callbacks} />);
-    fireEvent.click(screen.getByRole("button", { name: "open-chip" }));
-    fireEvent.click(screen.getByRole("button", { name: "set-chip-draft" }));
-    fireEvent.click(screen.getByRole("button", { name: "save-chip" }));
-
-    await waitFor(() => {
-      expect(mockedLogSetRequest).toHaveBeenCalledWith(
-        expect.objectContaining({
-          workoutSetId: "set-1",
-          actualReps: 11,
-          actualLoad: 55,
-          actualRpe: 9,
-        })
-      );
-      expect(screen.getByTestId("chip-edit-open")).toHaveTextContent("");
-      expect(screen.getByTestId("set-1-reps")).toHaveTextContent("11");
-      expect(screen.getByTestId("set-1-load")).toHaveTextContent("55");
-      expect(screen.getByTestId("set-1-rpe")).toHaveTextContent("9");
     });
   });
 });

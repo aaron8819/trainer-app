@@ -3,10 +3,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { deleteSetLogRequest, logSetRequest } from "@/components/log-workout/api";
-import {
-  useWorkoutChipEditor,
-  type WorkoutSessionChipEditor,
-} from "@/components/log-workout/useWorkoutChipEditor";
 import { getNextUnloggedSetId, resolveRestSeconds } from "@/components/log-workout/useWorkoutLogState";
 import type { RestTimerSnapshot } from "@/components/log-workout/useRestTimerState";
 import {
@@ -373,15 +369,6 @@ export function useWorkoutSessionFlow({
     [setActiveSetId, setData]
   );
 
-  const chipEditor: WorkoutSessionChipEditor = useWorkoutChipEditor({
-    flatSets,
-    isDumbbellExercise,
-    toInputNumberString,
-    parseNullableNumber,
-    normalizeLoadInput,
-    updateSetFields,
-    logSet: handleLogSet,
-  });
   const completion: WorkoutSessionCompletionController = useWorkoutSessionCompletion({
     workoutId,
     clearAllDrafts,
@@ -403,7 +390,6 @@ export function useWorkoutSessionFlow({
     baselineSummary: completion.baselineSummary,
     undoSnapshot,
     autoregHint,
-    chipEditor,
     completion,
     actions,
     dismissError,

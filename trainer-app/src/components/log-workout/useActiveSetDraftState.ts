@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, type FocusEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FocusEvent } from "react";
 import { useSetDraft } from "@/components/log-workout/useSetDraft";
 import { quantizeLoad } from "@/lib/units/load-quantization";
 import type {
@@ -44,8 +44,6 @@ export function useActiveSetDraftState({
   loggedSetIds,
   resolvedActiveSetId,
   findPreviousLoggedSet,
-  updateSetFields,
-  setSingleField,
   toStoredLoadValue,
   isDumbbellExercise,
 }: {
@@ -55,21 +53,20 @@ export function useActiveSetDraftState({
   loggedSetIds: Set<string>;
   resolvedActiveSetId: string | null;
   findPreviousLoggedSet: (exercise: LogExerciseInput, currentSetIndex: number) => LogSetInput | null;
-  updateSetFields: (setId: string, updater: (set: LogSetInput) => LogSetInput) => void;
-  setSingleField: (setId: string, field: keyof LogSetInput, value: number | boolean | null) => void;
   toStoredLoadValue: (value: number | null | undefined, isDumbbell: boolean) => number | null;
   isDumbbellExercise: (exercise: LogExerciseInput) => boolean;
 }) {
   const [draftBuffersBySet, setDraftBuffersBySet] = useState<Record<string, SetDraftBuffers>>({});
   const [touchedFieldsBySet, setTouchedFieldsBySet] = useState<Record<string, PrefilledFieldState>>({});
   const [prefilledFieldsBySet, setPrefilledFieldsBySet] = useState<Record<string, PrefilledFieldState>>({});
+  const restoredBufferIdsRef = useRef<Set<string>>(new Set());
 
   const updateDraftBuffer = useCallback(
     (setId: string, field: keyof SetDraftBuffers, value: string) => {
       setDraftBuffersBySet((prev) => ({
         ...prev,
         [setId]: {
-          ...(prev[setId] ?? { reps: "", load: "", rpe: "" }),
+          ...(prev[setId] ?? {}),
           [field]: value,
         },
       }));
@@ -102,18 +99,21 @@ export function useActiveSetDraftState({
 
   const handleRestoreDraft = useCallback(
     (setId: string, draft: SetDraftBuffers) => {
-      updateSetFields(setId, (set) => ({
-        ...set,
-        actualReps: parseNullableNumber(draft.reps),
-        actualLoad: parseNullableNumber(draft.load),
-        actualRpe: parseNullableNumber(draft.rpe),
-      }));
+      restoredBufferIdsRef.current.add(setId);
       setDraftBuffersBySet((prev) => ({
         ...prev,
         [setId]: { reps: draft.reps, load: draft.load, rpe: draft.rpe },
       }));
+      setTouchedFieldsBySet((prev) => ({
+        ...prev,
+        [setId]: buildEmptyFieldState(prev[setId]),
+      }));
+      setPrefilledFieldsBySet((prev) => ({
+        ...prev,
+        [setId]: buildEmptyFieldState(prev[setId]),
+      }));
     },
-    [updateSetFields]
+    []
   );
 
   const {
@@ -135,6 +135,9 @@ export function useActiveSetDraftState({
       return;
     }
     const setId = activeSet.set.setId;
+    if (restoredBufferIdsRef.current.has(setId)) {
+      return;
+    }
     if (loggedSetIds.has(setId)) {
       return;
     }
@@ -173,14 +176,14 @@ export function useActiveSetDraftState({
       return;
     }
 
-    updateSetFields(setId, (set) => ({
-      ...set,
-      actualReps: prefillValues.actualReps,
-      actualLoad: prefillValues.actualLoad,
-      actualRpe: prefillValues.actualRpe,
-      wasSkipped: false,
+    setDraftBuffersBySet((prev) => ({
+      ...prev,
+      [setId]: {
+        reps: toInputNumberString(prefillValues.actualReps),
+        load: toInputNumberString(prefillValues.actualLoad),
+        rpe: toInputNumberString(prefillValues.actualRpe),
+      },
     }));
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setTouchedFieldsBySet((prev) => ({
       ...prev,
       [setId]: { actualReps: false, actualLoad: false, actualRpe: false },
@@ -199,22 +202,39 @@ export function useActiveSetDraftState({
     findPreviousLoggedSet,
     loggedSetIds,
     touchedFieldsBySet,
-    updateSetFields,
+    toInputNumberString,
   ]);
+
+  useEffect(() => {
+    restoredBufferIdsRef.current = new Set();
+  }, [workoutId]);
 
   useEffect(() => {
     if (!activeSet) {
       return;
     }
     const setId = activeSet.set.setId;
+    const draftBuffers = draftBuffersBySet[setId];
+    if (!draftBuffers) {
+      return;
+    }
+    const hasTouchedFields = Boolean(
+      touchedFieldsBySet[setId]?.actualReps ||
+        touchedFieldsBySet[setId]?.actualLoad ||
+        touchedFieldsBySet[setId]?.actualRpe
+    );
+    if (!hasTouchedFields) {
+      return;
+    }
     saveDraft(setId, {
-      reps: draftBuffersBySet[setId]?.reps ?? toInputNumberString(activeSet.set.actualReps),
-      load: draftBuffersBySet[setId]?.load ?? toInputNumberString(activeSet.set.actualLoad),
-      rpe: draftBuffersBySet[setId]?.rpe ?? toInputNumberString(activeSet.set.actualRpe),
+      reps: draftBuffers.reps ?? "",
+      load: draftBuffers.load ?? "",
+      rpe: draftBuffers.rpe ?? "",
     });
-  }, [activeSet, draftBuffersBySet, saveDraft]);
+  }, [activeSet, draftBuffersBySet, saveDraft, touchedFieldsBySet]);
 
   const clearDraftInputBuffers = useCallback((setId: string) => {
+    restoredBufferIdsRef.current.delete(setId);
     setDraftBuffersBySet((prev) => {
       const next = { ...prev };
       delete next[setId];
@@ -224,10 +244,9 @@ export function useActiveSetDraftState({
 
   const setRepsValue = useCallback(
     (setId: string, value: number | null) => {
-      setSingleField(setId, "actualReps", value);
       updateDraftBuffer(setId, "reps", toInputNumberString(value));
     },
-    [setSingleField, updateDraftBuffer]
+    [updateDraftBuffer]
   );
 
   const setLoadValue = useCallback(
@@ -235,9 +254,6 @@ export function useActiveSetDraftState({
       const parsed = parseNullableNumber(rawValue);
       const normalized =
         parsed == null ? null : quantizeLoad(toStoredLoadValue(parsed, isDumbbell) ?? parsed);
-      if (options?.commit) {
-        setSingleField(setId, "actualLoad", normalized);
-      }
       updateDraftBuffer(
         setId,
         "load",
@@ -246,7 +262,7 @@ export function useActiveSetDraftState({
           : rawValue
       );
     },
-    [setSingleField, toStoredLoadValue, updateDraftBuffer]
+    [toStoredLoadValue, updateDraftBuffer]
   );
 
   const commitLoadValue = useCallback(
@@ -254,22 +270,18 @@ export function useActiveSetDraftState({
       const parsed = parseNullableNumber(rawValue.trim());
       const normalized =
         parsed == null ? null : quantizeLoad(toStoredLoadValue(parsed, isDumbbell) ?? parsed);
-      setSingleField(setId, "actualLoad", normalized);
       markFieldTouched(setId, "actualLoad");
       setFieldPrefilled(setId, "actualLoad", false);
       updateDraftBuffer(setId, "load", toInputNumberString(normalized));
     },
-    [markFieldTouched, setFieldPrefilled, setSingleField, toStoredLoadValue, updateDraftBuffer]
+    [markFieldTouched, setFieldPrefilled, toStoredLoadValue, updateDraftBuffer]
   );
 
   const setRpeValue = useCallback(
     (setId: string, rawValue: string, options?: { commit?: boolean }) => {
-      if (options?.commit) {
-        setSingleField(setId, "actualRpe", parseNullableNumber(rawValue));
-      }
       updateDraftBuffer(setId, "rpe", rawValue);
     },
-    [setSingleField, updateDraftBuffer]
+    [updateDraftBuffer]
   );
 
   const primeNumericBuffer = useCallback(
@@ -288,10 +300,8 @@ export function useActiveSetDraftState({
       setId: string,
       rawValue: string,
       field: keyof PrefilledFieldState,
-      draftField: keyof SetDraftBuffers,
-      applyValue: (nextRaw: string) => void
+      draftField: keyof SetDraftBuffers
     ) => {
-      applyValue(rawValue);
       markFieldTouched(setId, field);
       setFieldPrefilled(setId, field, false);
       updateDraftBuffer(setId, draftField, toInputNumberString(parseNullableNumber(rawValue)));
@@ -327,7 +337,6 @@ export function useActiveSetDraftState({
       const parsed = parseNullableNumber(rawValue);
       const normalized =
         parsed == null ? null : quantizeLoad(toStoredLoadValue(parsed, isDumbbell) ?? parsed);
-      setSingleField(setId, "actualLoad", normalized);
       markFieldTouched(setId, "actualLoad");
       setFieldPrefilled(setId, "actualLoad", false);
       updateDraftBuffer(setId, "load", toInputNumberString(normalized));
@@ -338,7 +347,6 @@ export function useActiveSetDraftState({
       isDumbbellExercise,
       markFieldTouched,
       setFieldPrefilled,
-      setSingleField,
       toStoredLoadValue,
       updateDraftBuffer,
     ]

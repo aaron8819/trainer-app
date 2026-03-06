@@ -10,6 +10,9 @@ function makeTimerProps(durationSeconds: number) {
     onDismiss: vi.fn(),
     muted: false,
     onMuteToggle: vi.fn(),
+    expanded: false,
+    onExpand: vi.fn(),
+    onCloseExpanded: vi.fn(),
   };
 }
 
@@ -17,12 +20,48 @@ describe("RestTimer", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+    HTMLDialogElement.prototype.showModal = vi.fn(function showModal(this: HTMLDialogElement) {
+      this.open = true;
+    });
+    HTMLDialogElement.prototype.close = vi.fn(function close(this: HTMLDialogElement) {
+      this.open = false;
+      this.dispatchEvent(new Event("close"));
+    });
   });
 
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
     vi.useRealTimers();
+  });
+
+  it("renders a compact HUD by default and hides expanded controls", () => {
+    render(<RestTimer {...makeTimerProps(60)} onAdjust={vi.fn()} />);
+
+    expect(screen.getByTestId("rest-timer-hud")).toBeInTheDocument();
+    expect(screen.getByTestId("rest-timer-progress")).toBeInTheDocument();
+    expect(screen.queryByTestId("rest-timer-expanded-controls")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Mute alerts" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "+15s" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Skip rest" })).not.toBeInTheDocument();
+  });
+
+  it("opens expanded controls on demand", () => {
+    render(<RestTimer {...makeTimerProps(60)} onAdjust={vi.fn()} expanded={true} />);
+
+    expect(screen.getByTestId("rest-timer-expanded-controls")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Mute alerts" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "+15s" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Skip rest" })).toBeInTheDocument();
+  });
+
+  it("calls onExpand when the compact HUD is tapped", async () => {
+    const onExpand = vi.fn();
+    render(<RestTimer {...makeTimerProps(60)} onExpand={onExpand} />);
+
+    fireEvent.click(screen.getByTestId("rest-timer-hud"));
+
+    expect(onExpand).toHaveBeenCalledTimes(1);
   });
 
   it("reconciles against wall clock when returning visible after background delay", () => {
@@ -136,7 +175,7 @@ describe("RestTimer", () => {
     fireEvent(document, new Event("pointerdown"));
     vi.setSystemTime(new Date("2026-01-01T00:00:01.000Z"));
     vi.advanceTimersByTime(300);
-    await Promise.resolve(); // flush microtasks so resume().then(playTone) fires
+    await Promise.resolve();
 
     expect(resume).toHaveBeenCalledTimes(1);
     expect(start).toHaveBeenCalledTimes(1);
@@ -154,7 +193,7 @@ describe("RestTimer", () => {
     fireEvent(document, new Event("visibilitychange"));
     expect(screen.getByText("0:50")).toBeInTheDocument();
 
-    rerender(<RestTimer {...props} onDismiss={vi.fn()} />);
+    rerender(<RestTimer {...props} onDismiss={vi.fn()} onExpand={vi.fn()} onCloseExpanded={vi.fn()} />);
 
     expect(screen.getByText("0:50")).toBeInTheDocument();
   });
@@ -169,6 +208,9 @@ describe("RestTimer", () => {
         onAdjust={vi.fn()}
         muted={false}
         onMuteToggle={vi.fn()}
+        expanded={false}
+        onExpand={vi.fn()}
+        onCloseExpanded={vi.fn()}
       />
     );
 
@@ -181,72 +223,54 @@ describe("RestTimer", () => {
         onAdjust={vi.fn()}
         muted={false}
         onMuteToggle={vi.fn()}
+        expanded={false}
+        onExpand={vi.fn()}
+        onCloseExpanded={vi.fn()}
       />
     );
 
     expect(screen.getByText("1:05")).toBeInTheDocument();
   });
-});
-
-describe("RestTimer — compact mode", () => {
-  afterEach(() => {
-    cleanup();
-    vi.restoreAllMocks();
-    vi.useRealTimers();
-  });
-
-  it("renders compact fixed banner when compact is true", () => {
-    render(
-      <RestTimer
-        {...makeTimerProps(60)}
-        compact={true}
-      />
-    );
-
-    expect(screen.getByTestId("compact-timer-banner")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Skip" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Mute|Unmute/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "+15s" })).not.toBeInTheDocument();
-  });
-
-  it("renders full card when compact is false", () => {
-    render(
-      <RestTimer
-        {...makeTimerProps(60)}
-        onAdjust={vi.fn()}
-        compact={false}
-      />
-    );
-
-    expect(screen.queryByTestId("compact-timer-banner")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Mute alerts" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "+15s" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Skip rest" })).toBeInTheDocument();
-  });
 
   it("mute button calls onMuteToggle prop", () => {
     const onMuteToggle = vi.fn();
-    render(
-      <RestTimer
-        {...makeTimerProps(60)}
-        onMuteToggle={onMuteToggle}
-        compact={false}
-      />
-    );
+    render(<RestTimer {...makeTimerProps(60)} onMuteToggle={onMuteToggle} expanded={true} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Mute alerts" }));
     expect(onMuteToggle).toHaveBeenCalledTimes(1);
   });
 
-  it("shows Unmute alerts when muted prop is true", () => {
+  it("adjust buttons call onAdjust with 15-second deltas", () => {
+    const onAdjust = vi.fn();
+    render(<RestTimer {...makeTimerProps(60)} onAdjust={onAdjust} expanded={true} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "-15s" }));
+    fireEvent.click(screen.getByRole("button", { name: "+15s" }));
+
+    expect(onAdjust).toHaveBeenNthCalledWith(1, -15);
+    expect(onAdjust).toHaveBeenNthCalledWith(2, 15);
+  });
+
+  it("skip rest calls dismiss and closes the expanded sheet", () => {
+    const onDismiss = vi.fn();
+    const onCloseExpanded = vi.fn();
     render(
       <RestTimer
         {...makeTimerProps(60)}
-        muted={true}
-        onMuteToggle={vi.fn()}
-        compact={false}
+        onDismiss={onDismiss}
+        onCloseExpanded={onCloseExpanded}
+        expanded={true}
       />
     );
+
+    fireEvent.click(screen.getByRole("button", { name: "Skip rest" }));
+
+    expect(onCloseExpanded).toHaveBeenCalledTimes(1);
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows Unmute alerts when muted prop is true", () => {
+    render(<RestTimer {...makeTimerProps(60)} muted={true} onMuteToggle={vi.fn()} expanded={true} />);
 
     expect(screen.getByRole("button", { name: "Unmute alerts" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Mute alerts" })).not.toBeInTheDocument();

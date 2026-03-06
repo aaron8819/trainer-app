@@ -29,6 +29,8 @@ export function WorkoutSessionFeedback({
         <div
           data-testid="error-snackbar"
           className="rounded-xl border border-rose-200 bg-rose-50 p-3 shadow-sm"
+          role="alert"
+          aria-live="assertive"
           style={FEEDBACK_POSITION_STYLE}
         >
           <div className="flex items-center justify-between gap-3">
@@ -47,6 +49,7 @@ export function WorkoutSessionFeedback({
       {undoSnapshot ? (
         <div
           className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm"
+          aria-live="polite"
           style={FEEDBACK_POSITION_STYLE}
         >
           <div className="flex items-center justify-between gap-3">

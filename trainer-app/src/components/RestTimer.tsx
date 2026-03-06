@@ -1,15 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { SlideUpSheet } from "@/components/ui/SlideUpSheet";
 
 type RestTimerProps = {
   startedAtMs: number;
   endAtMs: number;
   onDismiss: () => void;
   onAdjust?: (deltaSeconds: number) => void;
-  compact?: boolean;
   muted: boolean;
   onMuteToggle: () => void;
+  expanded: boolean;
+  onExpand: () => void;
+  onCloseExpanded: () => void;
 };
 
 export function RestTimer({
@@ -17,9 +20,11 @@ export function RestTimer({
   endAtMs,
   onDismiss,
   onAdjust,
-  compact,
   muted,
   onMuteToggle,
+  expanded,
+  onExpand,
+  onCloseExpanded,
 }: RestTimerProps) {
   const [remaining, setRemaining] = useState(() =>
     Math.max(0, Math.ceil((endAtMs - Date.now()) / 1000))
@@ -162,82 +167,102 @@ export function RestTimer({
   const seconds = remaining % 60;
   const totalSeconds = Math.max(1, Math.ceil((endAtMs - startedAtMs) / 1000));
   const progress = Math.min(1, remaining / totalSeconds);
-
-  if (compact) {
-    return (
-      <div
-        className="fixed left-0 right-0 top-0 z-50 flex items-center justify-between bg-slate-900 px-4 py-2 text-white"
-        data-testid="compact-timer-banner"
-      >
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-300">Rest</p>
-        <p className="text-2xl font-bold tabular-nums">
-          {minutes}:{String(seconds).padStart(2, "0")}
-        </p>
-        <button
-          className="inline-flex min-h-9 items-center justify-center rounded-full border border-slate-600 px-3 text-sm font-semibold text-white"
-          onClick={onDismiss}
-          type="button"
-        >
-          Skip
-        </button>
-      </div>
-    );
-  }
+  const formattedTime = `${minutes}:${String(seconds).padStart(2, "0")}`;
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-center sm:p-5">
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Rest</p>
-      <p className="mt-2 text-4xl font-bold tabular-nums text-slate-900">
-        {minutes}:{String(seconds).padStart(2, "0")}
-      </p>
-      <div className="mx-auto mt-3 h-1.5 w-32 overflow-hidden rounded-full bg-slate-200">
-        <div
-          className="h-full rounded-full bg-slate-900 transition-all duration-1000"
-          style={{ width: `${progress * 100}%` }}
-        />
-      </div>
-      {onAdjust ? (
-        <div className="mt-4 flex items-center justify-center gap-2">
-          <button
-            className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border border-slate-300 px-3 text-sm font-semibold text-slate-700"
-            onClick={() => {
-              initializeAudioContext();
-              onAdjust(-15);
-            }}
-            type="button"
-          >
-            -15s
-          </button>
-          <button
-            className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border border-slate-300 px-3 text-sm font-semibold text-slate-700"
-            onClick={() => {
-              initializeAudioContext();
-              onAdjust(15);
-            }}
-            type="button"
-          >
-            +15s
-          </button>
+    <>
+      <button
+        aria-expanded={expanded}
+        aria-haspopup="dialog"
+        aria-label={`Open rest timer controls. ${formattedTime} remaining.`}
+        className="flex w-full flex-col gap-2 rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-left text-white shadow-sm"
+        data-testid="rest-timer-hud"
+        onClick={onExpand}
+        type="button"
+      >
+        <div className="flex min-h-8 items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-300">Rest</p>
+            <div className="flex items-center gap-2">
+              <p className="text-xl font-bold tabular-nums sm:text-2xl">{formattedTime}</p>
+              {muted ? (
+                <span className="rounded-full border border-slate-600 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-300">
+                  Muted
+                </span>
+              ) : null}
+            </div>
+          </div>
+          <span className="shrink-0 text-xs font-semibold text-slate-300">Controls</span>
         </div>
-      ) : null}
-      <button
-        aria-pressed={muted}
-        className="mt-3 inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border border-slate-300 px-4 text-sm font-semibold text-slate-700"
-        onClick={() => {
-          initializeAudioContext();
-          onMuteToggle();
-        }}
-        type="button"
-      >
-        {muted ? "Unmute alerts" : "Mute alerts"}
+        <div className="h-1.5 overflow-hidden rounded-full bg-slate-700/80" data-testid="rest-timer-progress">
+          <div
+            className="h-full rounded-full bg-emerald-400 transition-all duration-1000"
+            style={{ width: `${progress * 100}%` }}
+          />
+        </div>
       </button>
-      <button
-        className="mt-4 inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border border-slate-300 px-4 text-sm font-semibold text-slate-700"
-        onClick={onDismiss}
-        type="button"
-      >
-        Skip rest
-      </button>
-    </section>
+
+      <SlideUpSheet isOpen={expanded} onClose={onCloseExpanded} title="Rest timer">
+        <section className="space-y-5" data-testid="rest-timer-expanded-controls">
+          <div className="space-y-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Rest Timer</p>
+            <p className="text-4xl font-bold tabular-nums text-slate-900 sm:text-5xl">{formattedTime}</p>
+            <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200">
+              <div
+                className="h-full rounded-full bg-slate-900 transition-all duration-1000"
+                style={{ width: `${progress * 100}%` }}
+              />
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {onAdjust ? (
+              <>
+                <button
+                  className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border border-slate-300 px-4 text-sm font-semibold text-slate-700"
+                  onClick={() => {
+                    initializeAudioContext();
+                    onAdjust(-15);
+                  }}
+                  type="button"
+                >
+                  -15s
+                </button>
+                <button
+                  className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border border-slate-300 px-4 text-sm font-semibold text-slate-700"
+                  onClick={() => {
+                    initializeAudioContext();
+                    onAdjust(15);
+                  }}
+                  type="button"
+                >
+                  +15s
+                </button>
+              </>
+            ) : null}
+            <button
+              aria-pressed={muted}
+              className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border border-slate-300 px-4 text-sm font-semibold text-slate-700"
+              onClick={() => {
+                initializeAudioContext();
+                onMuteToggle();
+              }}
+              type="button"
+            >
+              {muted ? "Unmute alerts" : "Mute alerts"}
+            </button>
+            <button
+              className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border border-slate-300 px-4 text-sm font-semibold text-slate-700"
+              onClick={() => {
+                onCloseExpanded();
+                onDismiss();
+              }}
+              type="button"
+            >
+              Skip rest
+            </button>
+          </div>
+        </section>
+      </SlideUpSheet>
+    </>
   );
 }

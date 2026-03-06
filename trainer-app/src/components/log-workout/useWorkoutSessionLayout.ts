@@ -27,7 +27,6 @@ export function useWorkoutSessionLayout() {
       }
 
       element.scrollIntoView({ behavior: "smooth", block: "start" });
-      window.scrollBy?.(0, -72);
     }, 150);
   }, []);
 

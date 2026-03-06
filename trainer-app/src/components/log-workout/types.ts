@@ -118,9 +118,15 @@ export type PrefilledFieldState = {
 };
 
 export type SetDraftBuffers = {
-  reps: string;
-  load: string;
-  rpe: string;
+  reps?: string;
+  load?: string;
+  rpe?: string;
+};
+
+export type SetDraftNumericValues = {
+  actualReps: number | null;
+  actualLoad: number | null;
+  actualRpe: number | null;
 };
 
 export type SavedDraftStatus = {

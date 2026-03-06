@@ -4,9 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SavedDraftStatus, SetDraftBuffers } from "@/components/log-workout/types";
 
 type DraftPayload = {
-  reps: SetDraftBuffers["reps"];
-  load: SetDraftBuffers["load"];
-  rpe: SetDraftBuffers["rpe"];
+  reps: string;
+  load: string;
+  rpe: string;
   savedAt: number;
 };
 

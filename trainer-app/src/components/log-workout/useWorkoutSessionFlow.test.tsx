@@ -262,7 +262,7 @@ describe("useWorkoutSessionFlow", () => {
       expect(screen.getByTestId("logged-ids")).toHaveTextContent("set-1");
       expect(screen.getByTestId("active-set-id")).toHaveTextContent("set-2");
       expect(screen.getByTestId("undo-set-id")).toHaveTextContent("set-1");
-      expect(screen.getByTestId("status")).toHaveTextContent("Set logged");
+      expect(screen.getByTestId("status")).toHaveTextContent("Set logged. Rest timer started.");
       expect(screen.getByTestId("timer-end")).toHaveTextContent("95000");
       expect(screen.getByTestId("autoreg-hint")).toHaveTextContent("Set felt easier than target");
     });

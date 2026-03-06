@@ -270,7 +270,13 @@ export function useWorkoutSessionFlow({
           setAutoregHint(null);
         }
 
-        showStatus(wasAlreadyLogged ? "Set updated" : "Set logged");
+        showStatus(
+          normalizedSet.wasSkipped ?? false
+            ? "Set skipped."
+            : wasAlreadyLogged
+            ? "Set updated."
+            : "Set logged. Rest timer started."
+        );
         return true;
       } finally {
         setSavingSetId(null);

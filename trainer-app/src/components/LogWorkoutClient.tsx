@@ -254,11 +254,24 @@ export default function LogWorkoutClient({
     loggedSetIds,
     resolvedActiveSetId,
     findPreviousLoggedSet,
-    updateSetFields,
-    setSingleField,
     toStoredLoadValue: (value, isDumbbell) => toStoredLoad(value, isDumbbell) ?? null,
     isDumbbellExercise,
   });
+
+  const resolveDraftNumericValues = useCallback(
+    (set: LogSetInput, exercise: LogExerciseInput) => {
+      const draft = draftBuffersBySet[set.setId];
+      return {
+        actualReps: draft?.reps !== undefined ? parseNullableNumber(draft.reps) : set.actualReps ?? null,
+        actualLoad:
+          draft?.load !== undefined
+            ? normalizeLoadInput(draft.load, isDumbbellExercise(exercise))
+            : set.actualLoad ?? null,
+        actualRpe: draft?.rpe !== undefined ? parseNullableNumber(draft.rpe) : set.actualRpe ?? null,
+      };
+    },
+    [draftBuffersBySet, isDumbbellExercise]
+  );
 
   const {
     savingSetId,
@@ -300,8 +313,30 @@ export default function LogWorkoutClient({
     activeSet !== null &&
     autoregHint.exerciseId === activeSet.exercise.workoutExerciseId;
   const sessionTerminated = completion.completed || completion.skipped;
-  const hasActiveTimer = !sessionTerminated && restTimer !== null;
-  const showFooterActions = !sessionTerminated && loggedCount > 0 && !allSetsLogged;
+  const resolvedActiveSetValues = activeSet
+    ? resolveDraftNumericValues(activeSet.set, activeSet.exercise)
+    : { actualReps: null, actualLoad: null, actualRpe: null };
+  const activeSetValidation = useMemo(() => {
+    if (!activeSet) {
+      return { canSubmit: false, message: null as string | null };
+    }
+
+    const hasPerformanceSignal =
+      resolvedActiveSetValues.actualReps != null || resolvedActiveSetValues.actualRpe != null;
+    if (hasPerformanceSignal || (activeSet.set.wasSkipped ?? false)) {
+      return { canSubmit: true, message: null as string | null };
+    }
+    if (resolvedActiveSetValues.actualLoad != null) {
+      return {
+        canSubmit: false,
+        message: "Load alone will not save. Add reps or RPE, or skip the set.",
+      };
+    }
+    return {
+      canSubmit: false,
+      message: "Add reps or RPE to log this set, or skip it.",
+    };
+  }, [activeSet, resolvedActiveSetValues]);
 
   const handleAddExercise = useCallback(
     (exercise: LogExerciseInput) => {
@@ -318,7 +353,6 @@ export default function LogWorkoutClient({
     setFieldPrefilled,
     setRepsValue,
     updateDraftBuffer,
-    setSingleField,
     setRpeValue,
     toInputNumberString,
   });
@@ -339,6 +373,8 @@ export default function LogWorkoutClient({
     savingSetId,
     status,
     hasPreviousSet,
+    canSubmit: activeSetValidation.canSubmit,
+    validationMessage: activeSetValidation.message,
   };
   const activeSetFormActions: WorkoutActiveSetCardFormActions = {
     handleNumericFieldFocus,
@@ -350,7 +386,6 @@ export default function LogWorkoutClient({
     setRepsValue,
     commitLoadValue,
     setRpeValue,
-    setSingleField,
     updateDraftBuffer,
   };
 
@@ -358,11 +393,21 @@ export default function LogWorkoutClient({
     <div
       className="mt-5 space-y-5 pb-8 sm:mt-6 sm:space-y-6"
       style={{
-        paddingTop: hasActiveTimer ? (keyboardOpen ? "56px" : "220px") : undefined,
         paddingBottom:
           keyboardHeight > 0 ? `${keyboardHeight + 16}px` : "env(safe-area-inset-bottom, 16px)",
       }}
     >
+      {!sessionTerminated ? (
+        <WorkoutTimerHud
+          timer={restTimer}
+          keyboardOpen={keyboardOpen}
+          muted={restTimerMuted}
+          onDismiss={clearTimer}
+          onAdjust={adjustTimer}
+          onMuteToggle={() => setRestTimerMuted((prev) => !prev)}
+        />
+      ) : null}
+
       {!sessionTerminated && allSetsLogged ? (
         <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 sm:p-5">
           <p className="font-semibold text-emerald-900">All sets logged - great work!</p>
@@ -392,22 +437,22 @@ export default function LogWorkoutClient({
             isDumbbellExercise={isDumbbellExercise}
             toInputNumberString={toInputNumberString}
             parseNullableNumber={parseNullableNumber}
-            onLogSet={() => actions.logSet(activeSet.set.setId)}
+            resolvedValues={resolvedActiveSetValues}
+            onLogSet={() =>
+              actions.logSet(activeSet.set.setId, {
+                ...resolvedActiveSetValues,
+                wasSkipped:
+                  resolvedActiveSetValues.actualReps != null ||
+                  resolvedActiveSetValues.actualLoad != null ||
+                  resolvedActiveSetValues.actualRpe != null
+                    ? false
+                    : (activeSet.set.wasSkipped ?? false),
+              })
+            }
             onUseSameAsLast={useSameAsLast}
             onSkipSet={() => actions.logSet(activeSet.set.setId, { wasSkipped: true })}
           />
         </ActiveSetPanel>
-      ) : null}
-
-      {!sessionTerminated ? (
-        <WorkoutTimerHud
-          timer={restTimer}
-          compact={keyboardOpen}
-          muted={restTimerMuted}
-          onDismiss={clearTimer}
-          onAdjust={adjustTimer}
-          onMuteToggle={() => setRestTimerMuted((prev) => !prev)}
-        />
       ) : null}
 
       {!sessionTerminated && activeSet ? (
@@ -497,7 +542,7 @@ export default function LogWorkoutClient({
         onAdd={handleAddExercise}
       />
 
-      {showFooterActions ? (
+      {!sessionTerminated ? (
         <WorkoutFooter>
           <WorkoutSessionActions
             loggedCount={loggedCount}

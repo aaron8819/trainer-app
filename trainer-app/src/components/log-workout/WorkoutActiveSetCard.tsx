@@ -6,9 +6,9 @@ import type {
   ActiveSetDraftState,
   FlatSetItem,
   LogExerciseInput,
-  LogSetInput,
   PrefilledFieldState,
   SetDraftBuffers,
+  SetDraftNumericValues,
 } from "@/components/log-workout/types";
 
 function formatTargetReps(set: LogSetInput): string {
@@ -47,6 +47,8 @@ export type WorkoutActiveSetCardSummary = {
   savingSetId: string | null;
   status: string | null;
   hasPreviousSet: boolean;
+  canSubmit: boolean;
+  validationMessage: string | null;
 };
 
 export type WorkoutActiveSetCardFormActions = {
@@ -60,8 +62,7 @@ export type WorkoutActiveSetCardFormActions = {
     setId: string,
     rawValue: string,
     field: keyof PrefilledFieldState,
-    draftField: keyof SetDraftBuffers,
-    applyValue: (nextRaw: string) => void
+    draftField: keyof SetDraftBuffers
   ) => void;
   handleLoadFocus: () => void;
   markFieldTouched: (setId: string, field: keyof PrefilledFieldState) => void;
@@ -69,7 +70,6 @@ export type WorkoutActiveSetCardFormActions = {
   setRepsValue: (setId: string, value: number | null) => void;
   commitLoadValue: (setId: string, rawValue: string, isDumbbell: boolean) => void;
   setRpeValue: (setId: string, rawValue: string, options?: { commit?: boolean }) => void;
-  setSingleField: (setId: string, field: keyof LogSetInput, value: number | boolean | null) => void;
   updateDraftBuffer: (setId: string, field: keyof SetDraftBuffers, value: string) => void;
 };
 
@@ -82,6 +82,7 @@ type WorkoutActiveSetCardProps = {
   isDumbbellExercise: (exercise: LogExerciseInput) => boolean;
   toInputNumberString: (value: number | null | undefined) => string;
   parseNullableNumber: (raw: string) => number | null;
+  resolvedValues: SetDraftNumericValues;
   onLogSet: () => void;
   onUseSameAsLast: () => void;
   onSkipSet: () => void;
@@ -96,6 +97,7 @@ export function WorkoutActiveSetCard({
   isDumbbellExercise,
   toInputNumberString,
   parseNullableNumber,
+  resolvedValues,
   onLogSet,
   onUseSameAsLast,
   onSkipSet,
@@ -111,6 +113,8 @@ export function WorkoutActiveSetCard({
     savingSetId,
     status,
     hasPreviousSet,
+    canSubmit,
+    validationMessage,
   } = summary;
   const {
     draftBuffersBySet,
@@ -130,12 +134,12 @@ export function WorkoutActiveSetCard({
     setRepsValue,
     commitLoadValue,
     setRpeValue,
-    setSingleField,
     updateDraftBuffer,
   } = formActions;
   const repsDraft = draftBuffersBySet[setId]?.reps ?? toInputNumberString(activeSet.set.actualReps);
   const loadDraft = draftBuffersBySet[setId]?.load ?? toInputNumberString(activeSet.set.actualLoad);
   const rpeDraft = draftBuffersBySet[setId]?.rpe ?? toInputNumberString(activeSet.set.actualRpe);
+  const { actualReps, actualLoad, actualRpe } = resolvedValues;
 
   return (
     <section
@@ -195,7 +199,7 @@ export function WorkoutActiveSetCard({
             <button
               className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border border-slate-300 px-3 text-sm font-semibold text-slate-700"
               onClick={() => {
-                const nextReps = clampReps(activeSet.set.actualReps, -1);
+                const nextReps = clampReps(actualReps, -1);
                 markFieldTouched(setId, "actualReps");
                 setFieldPrefilled(setId, "actualReps", false);
                 setRepsValue(setId, nextReps);
@@ -219,19 +223,19 @@ export function WorkoutActiveSetCard({
                 primeNumericBuffer(setId, activeSet.set.actualReps, "reps");
               }}
               onBlur={() => {
-                commitNumericBuffer(setId, repsDraft, "actualReps", "reps", (nextRaw) =>
-                  setSingleField(setId, "actualReps", parseNullableNumber(nextRaw))
-                );
+                commitNumericBuffer(setId, repsDraft, "actualReps", "reps");
               }}
               onChange={(event) => {
                 const nextValue = event.target.value;
+                markFieldTouched(setId, "actualReps");
+                setFieldPrefilled(setId, "actualReps", false);
                 updateDraftBuffer(setId, "reps", nextValue);
               }}
             />
             <button
               className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border border-slate-300 px-3 text-sm font-semibold text-slate-700"
               onClick={() => {
-                const nextReps = clampReps(activeSet.set.actualReps, 1);
+                const nextReps = clampReps(actualReps, 1);
                 markFieldTouched(setId, "actualReps");
                 setFieldPrefilled(setId, "actualReps", false);
                 setRepsValue(setId, nextReps);
@@ -259,11 +263,10 @@ export function WorkoutActiveSetCard({
                 onClick={() => {
                   const bufferedLoad = parseNullableNumber(draftBuffersBySet[setId]?.load ?? "");
                   const nextLoad = normalizeStepValue(
-                    bufferedLoad ?? activeSet.set.actualLoad,
+                    bufferedLoad ?? actualLoad,
                     activeSet.set.targetLoad,
                     delta
                   );
-                  setSingleField(setId, "actualLoad", nextLoad);
                   updateDraftBuffer(setId, "load", toInputNumberString(nextLoad));
                   markFieldTouched(setId, "actualLoad");
                   setFieldPrefilled(setId, "actualLoad", false);
@@ -276,7 +279,6 @@ export function WorkoutActiveSetCard({
             <button
               className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border border-slate-300 px-3 text-xs font-semibold text-slate-700"
               onClick={() => {
-                setSingleField(setId, "actualLoad", null);
                 updateDraftBuffer(setId, "load", "");
                 markFieldTouched(setId, "actualLoad");
                 setFieldPrefilled(setId, "actualLoad", false);
@@ -305,6 +307,8 @@ export function WorkoutActiveSetCard({
               commitLoadValue(setId, loadDraft, isDumbbell);
             }}
             onChange={(event) => {
+              markFieldTouched(setId, "actualLoad");
+              setFieldPrefilled(setId, "actualLoad", false);
               updateDraftBuffer(setId, "load", event.target.value);
             }}
           />
@@ -317,7 +321,7 @@ export function WorkoutActiveSetCard({
               <button
                 key={`${setId}-rpe-${preset}`}
                 className={`inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border px-3 text-xs font-semibold ${
-                  activeSet.set.actualRpe === preset
+                  actualRpe === preset
                     ? "border-slate-900 bg-slate-900 text-white"
                     : "border-slate-300 text-slate-700"
                 }`}
@@ -343,19 +347,19 @@ export function WorkoutActiveSetCard({
             step="0.5"
             inputMode="decimal"
             value={rpeDraft}
-            onFocus={() => {
-              handleNumericFieldFocus();
-              primeNumericBuffer(setId, activeSet.set.actualRpe, "rpe");
-            }}
-            onBlur={() => {
-              commitNumericBuffer(setId, rpeDraft, "actualRpe", "rpe", (nextRaw) =>
-                setSingleField(setId, "actualRpe", parseNullableNumber(nextRaw))
-              );
-            }}
-            onChange={(event) => {
-              setRpeValue(setId, event.target.value);
-            }}
-          />
+              onFocus={() => {
+                handleNumericFieldFocus();
+                primeNumericBuffer(setId, activeSet.set.actualRpe, "rpe");
+              }}
+              onBlur={() => {
+                commitNumericBuffer(setId, rpeDraft, "actualRpe", "rpe");
+              }}
+              onChange={(event) => {
+                markFieldTouched(setId, "actualRpe");
+                setFieldPrefilled(setId, "actualRpe", false);
+                setRpeValue(setId, event.target.value);
+              }}
+            />
         </div>
       </div>
 
@@ -363,7 +367,7 @@ export function WorkoutActiveSetCard({
         <button
           className="inline-flex min-h-11 items-center justify-center rounded-full bg-slate-900 px-6 py-2 text-sm font-semibold text-white disabled:opacity-60"
           onClick={onLogSet}
-          disabled={savingSetId === setId}
+          disabled={savingSetId === setId || !canSubmit}
           type="button"
         >
           {savingSetId === setId ? (
@@ -374,6 +378,8 @@ export function WorkoutActiveSetCard({
               />
               Saving...
             </span>
+          ) : !canSubmit ? (
+            "Add reps or RPE"
           ) : resolvedActiveSetId && loggedSetIds.has(resolvedActiveSetId) ? (
             "Update set"
           ) : (
@@ -398,7 +404,19 @@ export function WorkoutActiveSetCard({
         </button>
       </div>
 
-      {status ? <p className="mt-3 text-sm text-emerald-600">{status}</p> : null}
+      {validationMessage ? (
+        <p className="mt-3 text-sm font-medium text-amber-700" aria-live="polite">
+          {validationMessage}
+        </p>
+      ) : null}
+      {status ? (
+        <p
+          className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700"
+          aria-live="polite"
+        >
+          {status}
+        </p>
+      ) : null}
     </section>
   );
 }

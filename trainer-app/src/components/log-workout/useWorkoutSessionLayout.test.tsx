@@ -32,10 +32,6 @@ describe("useWorkoutSessionLayout", () => {
       configurable: true,
       value: vi.fn(),
     });
-    Object.defineProperty(window, "scrollBy", {
-      configurable: true,
-      value: vi.fn(),
-    });
   });
 
   afterEach(() => {

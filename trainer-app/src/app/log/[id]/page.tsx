@@ -108,7 +108,7 @@ export default async function LogWorkoutPage({
           </Link>
         </div>
 
-        {summary ? <SessionContextCard summary={summary} /> : null}
+        {summary ? <SessionContextCard summary={summary} defaultCollapsed={true} /> : null}
 
         <LogWorkoutClient workoutId={workout.id} exercises={exercises} />
       </div>

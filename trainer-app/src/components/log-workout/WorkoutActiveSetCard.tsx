@@ -2,6 +2,7 @@
 
 import type { RefObject } from "react";
 import { toDisplayLoad } from "@/lib/ui/load-display";
+import { getSetValidity } from "@/lib/logging/setValidity";
 import type {
   ActiveSetDraftState,
   FlatSetItem,
@@ -49,8 +50,6 @@ export type WorkoutActiveSetCardSummary = {
   savingSetId: string | null;
   status: string | null;
   hasPreviousSet: boolean;
-  canSubmit: boolean;
-  validationMessage: string | null;
 };
 
 export type WorkoutActiveSetCardFormActions = {
@@ -118,8 +117,6 @@ export function WorkoutActiveSetCard({
     savingSetId,
     status,
     hasPreviousSet,
-    canSubmit,
-    validationMessage,
   } = summary;
   const {
     draftBuffersBySet,
@@ -145,6 +142,14 @@ export function WorkoutActiveSetCard({
   const loadDraft = draftBuffersBySet[setId]?.load ?? toInputNumberString(activeSet.set.actualLoad);
   const rpeDraft = draftBuffersBySet[setId]?.rpe ?? toInputNumberString(activeSet.set.actualRpe);
   const { actualReps, actualLoad, actualRpe } = resolvedValues;
+  const setValidity = getSetValidity({
+    actualReps,
+    actualRpe,
+    actualLoad,
+    wasSkipped: activeSet.set.wasSkipped ?? false,
+  });
+  const canSubmit = setValidity.valid;
+  const validationMessage = setValidity.reason ?? null;
 
   return (
     <section

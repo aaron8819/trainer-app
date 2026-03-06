@@ -18,6 +18,7 @@ import type {
   PrefilledFieldState,
   UndoSnapshot,
 } from "@/components/log-workout/types";
+import { getSetValidity } from "@/lib/logging/setValidity";
 import { getLoadRecommendation } from "@/lib/progression/load-coaching";
 
 export type WorkoutSessionActions = {
@@ -186,6 +187,16 @@ export function useWorkoutSessionFlow({
             ? 0
             : mergedSet.actualLoad,
       };
+      const validity = getSetValidity({
+        actualReps: normalizedSet.actualReps,
+        actualRpe: normalizedSet.actualRpe,
+        actualLoad: normalizedSet.actualLoad,
+        wasSkipped: normalizedSet.wasSkipped,
+      });
+      if (!validity.valid) {
+        showError(validity.reason ?? "Unable to log set");
+        return false;
+      }
 
       setSavingSetId(setId);
 

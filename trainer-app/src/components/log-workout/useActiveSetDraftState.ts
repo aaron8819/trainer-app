@@ -41,6 +41,7 @@ export function useActiveSetDraftState({
   workoutId,
   activeSetIds,
   activeSet,
+  flatSets,
   loggedSetIds,
   resolvedActiveSetId,
   findPreviousLoggedSet,
@@ -50,6 +51,7 @@ export function useActiveSetDraftState({
   workoutId: string;
   activeSetIds: string[];
   activeSet: FlatSetItem | null;
+  flatSets: FlatSetItem[];
   loggedSetIds: Set<string>;
   resolvedActiveSetId: string | null;
   findPreviousLoggedSet: (exercise: LogExerciseInput, currentSetIndex: number) => LogSetInput | null;
@@ -394,6 +396,33 @@ export function useActiveSetDraftState({
     ]
   );
 
+  const isDraftDirty = useCallback(
+    (setId: string) => {
+      const canonicalSet = flatSets.find((item) => item.set.setId === setId)?.set;
+      if (!canonicalSet) {
+        return false;
+      }
+
+      const draft = draftBuffersBySet[setId];
+      if (!draft) {
+        return false;
+      }
+
+      const canonicalValues = {
+        reps: toInputNumberString(canonicalSet.actualReps),
+        load: toInputNumberString(canonicalSet.actualLoad),
+        rpe: toInputNumberString(canonicalSet.actualRpe),
+      };
+
+      return (
+        (draft.reps ?? canonicalValues.reps) !== canonicalValues.reps ||
+        (draft.load ?? canonicalValues.load) !== canonicalValues.load ||
+        (draft.rpe ?? canonicalValues.rpe) !== canonicalValues.rpe
+      );
+    },
+    [draftBuffersBySet, flatSets]
+  );
+
   return {
     draftBuffersBySet,
     touchedFieldsBySet,
@@ -418,5 +447,6 @@ export function useActiveSetDraftState({
     handleNumericFieldFocus,
     handleLoadFocus,
     handleLoadBlur,
+    isDraftDirty,
   };
 }

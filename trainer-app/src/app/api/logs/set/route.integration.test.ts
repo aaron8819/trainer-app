@@ -156,7 +156,28 @@ describe("POST /api/logs/set", () => {
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
-      error: "Cannot log a performed set without reps or RPE. Leave unresolved sets as missing.",
+      error: "Add reps or RPE to log this set, or skip it.",
+    });
+    expect(mocks.setLogUpsert).not.toHaveBeenCalled();
+  });
+
+  it("rejects load-only performed logs using the shared validity helper", async () => {
+    mocks.setLogFindUnique.mockResolvedValue(null);
+
+    const response = await POST(
+      new Request("http://localhost/api/logs/set", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutSetId: "set-1",
+          actualLoad: 90,
+        }),
+      })
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "Load alone will not save. Add reps or RPE, or skip the set.",
     });
     expect(mocks.setLogUpsert).not.toHaveBeenCalled();
   });

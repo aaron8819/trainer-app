@@ -5,6 +5,7 @@ import { resolveOwner } from "@/lib/api/workout-context";
 import { z } from "zod";
 import { WorkoutStatus } from "@prisma/client";
 import { quantizeLoad } from "@/lib/units/load-quantization";
+import { getSetValidity } from "@/lib/logging/setValidity";
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
@@ -47,11 +48,15 @@ export async function POST(request: Request) {
     const normalizedActualLoad =
       (parsed.data.actualLoad != null ? quantizeLoad(parsed.data.actualLoad) : undefined) ??
       (!wasSkipped && setRecord.targetLoad === 0 ? 0 : undefined);
-    const hasPerformanceSignal =
-      parsed.data.actualReps != null || parsed.data.actualRpe != null;
-    if (!wasSkipped && !hasPerformanceSignal) {
+    const validity = getSetValidity({
+      actualReps: parsed.data.actualReps,
+      actualRpe: parsed.data.actualRpe,
+      actualLoad: normalizedActualLoad,
+      wasSkipped,
+    });
+    if (!validity.valid) {
       return {
-        error: "Cannot log a performed set without reps or RPE. Leave unresolved sets as missing." as const,
+        error: (validity.reason ?? "Invalid set log") as const,
       };
     }
 

@@ -135,6 +135,7 @@ export default function LogWorkoutClient({
   const { restTimer, startTimer, clearTimer, restoreTimer, adjustTimer } = useRestTimerState(workoutId);
   const [showBonusSheet, setShowBonusSheet] = useState(false);
   const [activeCardMode, setActiveCardMode] = useState<ActiveCardMode>({ kind: "live" });
+  const [showDiscardEditConfirm, setShowDiscardEditConfirm] = useState(false);
   const activeCardModeRef = useRef<ActiveCardMode>(activeCardMode);
 
   const totalSets = flatSets.length;
@@ -158,6 +159,12 @@ export default function LogWorkoutClient({
 
   useEffect(() => {
     activeCardModeRef.current = activeCardMode;
+  }, [activeCardMode]);
+
+  useEffect(() => {
+    if (activeCardMode.kind !== "edit") {
+      setShowDiscardEditConfirm(false);
+    }
   }, [activeCardMode]);
 
   useEffect(() => {
@@ -286,6 +293,7 @@ export default function LogWorkoutClient({
     draftBuffersBySet,
     handleLoadFocus,
     handleNumericFieldFocus,
+    isDraftDirty,
     lastSavedDraft,
     markFieldTouched,
     prefilledFieldsBySet,
@@ -304,6 +312,7 @@ export default function LogWorkoutClient({
     workoutId,
     activeSetIds,
     activeSet,
+    flatSets,
     loggedSetIds,
     resolvedActiveSetId,
     findPreviousLoggedSet,
@@ -451,12 +460,16 @@ export default function LogWorkoutClient({
 
   const handleJumpToCurrentSet = useCallback(() => {
     if (activeCardMode.kind === "edit") {
+      if (isDraftDirty(activeCardMode.setId)) {
+        setShowDiscardEditConfirm(true);
+        return;
+      }
       exitEditMode({ restoreLiveSet: true, discardChanges: true });
       return;
     }
 
     jumpToActiveSet();
-  }, [activeCardMode.kind, exitEditMode, jumpToActiveSet]);
+  }, [activeCardMode, exitEditMode, isDraftDirty, jumpToActiveSet]);
 
   const queueSections = useMemo<WorkoutQueueSectionData[]>(() => {
     return SECTION_ORDER.flatMap((section) => {
@@ -535,31 +548,10 @@ export default function LogWorkoutClient({
     activeSet !== null &&
     autoregHint.exerciseId === activeSet.exercise.workoutExerciseId;
   const sessionTerminated = completion.completed || completion.skipped;
+  const showFinishBar = !sessionTerminated && allSetsLogged;
   const resolvedActiveSetValues = activeSet
     ? resolveDraftNumericValues(activeSet.set, activeSet.exercise)
     : { actualReps: null, actualLoad: null, actualRpe: null };
-  const activeSetValidation = useMemo(() => {
-    if (!activeSet) {
-      return { canSubmit: false, message: null as string | null };
-    }
-
-    const hasPerformanceSignal =
-      resolvedActiveSetValues.actualReps != null || resolvedActiveSetValues.actualRpe != null;
-    if (hasPerformanceSignal || (activeSet.set.wasSkipped ?? false)) {
-      return { canSubmit: true, message: null as string | null };
-    }
-    if (resolvedActiveSetValues.actualLoad != null) {
-      return {
-        canSubmit: false,
-        message: "Load alone will not save. Add reps or RPE, or skip the set.",
-      };
-    }
-    return {
-      canSubmit: false,
-      message: "Add reps or RPE to log this set, or skip it.",
-    };
-  }, [activeSet, resolvedActiveSetValues]);
-
   const submitActiveSet = useCallback(async () => {
     if (!activeSet) {
       return false;
@@ -631,8 +623,6 @@ export default function LogWorkoutClient({
     savingSetId,
     status,
     hasPreviousSet,
-    canSubmit: activeSetValidation.canSubmit,
-    validationMessage: activeSetValidation.message,
   };
   const activeSetFormActions: WorkoutActiveSetCardFormActions = {
     handleNumericFieldFocus,
@@ -652,7 +642,11 @@ export default function LogWorkoutClient({
       className="mt-5 space-y-5 pb-8 sm:mt-6 sm:space-y-6"
       style={{
         paddingBottom:
-          keyboardHeight > 0 ? `${keyboardHeight + 16}px` : "env(safe-area-inset-bottom, 16px)",
+          keyboardHeight > 0
+            ? `${keyboardHeight + 16}px`
+            : showFinishBar
+            ? "calc(env(safe-area-inset-bottom, 16px) + 88px)"
+            : "env(safe-area-inset-bottom, 16px)",
       }}
     >
       {!sessionTerminated ? (
@@ -666,25 +660,7 @@ export default function LogWorkoutClient({
         />
       ) : null}
 
-      {!sessionTerminated && allSetsLogged ? (
-        <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 sm:p-5">
-          <p className="font-semibold text-emerald-900">All sets logged - great work!</p>
-          <p className="mt-1 text-sm text-emerald-700">
-            {loggedCount}/{totalSets} sets completed. Tap below to save your session.
-          </p>
-          <div className="mt-4">
-            <button
-              className="inline-flex min-h-11 items-center justify-center rounded-full bg-emerald-700 px-6 py-2 text-sm font-semibold text-white disabled:opacity-60"
-              onClick={() => completion.openConfirm("mark_completed")}
-              disabled={sessionTerminated || completion.pending}
-              type="button"
-            >
-              Complete Workout
-            </button>
-          </div>
-          {error ? <p className="mt-3 text-sm text-rose-600">{error}</p> : null}
-        </section>
-      ) : !sessionTerminated && activeSet ? (
+      {!sessionTerminated && activeSet && !allSetsLogged ? (
         <ActiveSetPanel>
           <WorkoutActiveSetCard
             activeSet={activeSet}
@@ -704,7 +680,7 @@ export default function LogWorkoutClient({
         </ActiveSetPanel>
       ) : null}
 
-      {!sessionTerminated && activeSet ? (
+      {!sessionTerminated && activeSet && !allSetsLogged ? (
         <div className="flex justify-end">
           <button
             className="inline-flex min-h-9 items-center justify-center rounded-full border border-slate-300 px-4 text-xs font-semibold text-slate-700"
@@ -778,13 +754,32 @@ export default function LogWorkoutClient({
         onAdd={handleAddExercise}
       />
 
-      {!sessionTerminated ? (
-        <WorkoutFooter>
+      {!sessionTerminated && !showFinishBar ? (
+        <WorkoutSessionActions
+          loggedCount={loggedCount}
+          totalSets={totalSets}
+          completed={completion.completed}
+          skipped={completion.skipped}
+          showFinishBar={showFinishBar}
+          showSkipOptions={completion.state.showSkipOptions}
+          skipReason={completion.state.skipReason}
+          sessionActionPending={completion.pending}
+          onFinish={() => completion.openConfirm("mark_completed")}
+          onLeaveForNow={() => completion.openConfirm("mark_partial")}
+          onToggleSkipOptions={completion.toggleSkipOptions}
+          onSkipReasonChange={completion.setSkipReason}
+          onConfirmSkip={() => completion.openConfirm("mark_skipped")}
+        />
+      ) : null}
+
+      {showFinishBar ? (
+        <WorkoutFooter sticky>
           <WorkoutSessionActions
             loggedCount={loggedCount}
             totalSets={totalSets}
             completed={completion.completed}
             skipped={completion.skipped}
+            showFinishBar={showFinishBar}
             showSkipOptions={completion.state.showSkipOptions}
             skipReason={completion.state.skipReason}
             sessionActionPending={completion.pending}
@@ -795,6 +790,44 @@ export default function LogWorkoutClient({
             onConfirmSkip={() => completion.openConfirm("mark_skipped")}
           />
         </WorkoutFooter>
+      ) : null}
+
+      {showDiscardEditConfirm ? (
+        <div
+          aria-label="Discard edit confirmation"
+          aria-modal="true"
+          className="fixed inset-0 z-40 flex items-end justify-center bg-slate-900/40 p-3 sm:items-center"
+          role="dialog"
+        >
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-4 shadow-lg sm:p-5">
+            <p className="text-sm font-semibold text-slate-900">Discard changes?</p>
+            <p className="mt-2 text-sm text-slate-600">
+              You modified this set.
+            </p>
+            <p className="mt-1 text-sm text-slate-600">
+              Discard edits and return to the current set?
+            </p>
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              <button
+                className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
+                onClick={() => setShowDiscardEditConfirm(false)}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button
+                className="inline-flex min-h-11 items-center justify-center rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
+                onClick={() => {
+                  setShowDiscardEditConfirm(false);
+                  exitEditMode({ restoreLiveSet: true, discardChanges: true });
+                }}
+                type="button"
+              >
+                Discard
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
     </div>
   );

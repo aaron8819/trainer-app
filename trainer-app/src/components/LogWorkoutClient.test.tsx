@@ -76,6 +76,21 @@ async function clickResolvedSubmitButton(user: ReturnType<typeof userEvent.setup
   await user.click(await screen.findByRole("button", { name: /Log set|Update set/ }));
 }
 
+async function logVisibleSets(user: ReturnType<typeof userEvent.setup>, count: number) {
+  for (let index = 0; index < count; index += 1) {
+    await clickResolvedSubmitButton(user);
+  }
+}
+
+async function logAllSets(user: ReturnType<typeof userEvent.setup>) {
+  await logVisibleSets(user, 2);
+}
+
+async function openWorkoutOptions(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole("button", { name: "... Workout options" }));
+  await screen.findByRole("heading", { name: "Workout options" });
+}
+
 describe("LogWorkoutClient UX behavior", () => {
   beforeEach(() => {
     mockedLogSetRequest.mockResolvedValue({ data: { status: "ok", wasCreated: true }, error: null });
@@ -220,7 +235,7 @@ describe("LogWorkoutClient UX behavior", () => {
     const user = userEvent.setup();
     renderClient();
 
-    await user.click(screen.getByRole("button", { name: "Log set" }));
+    await logAllSets(user);
     await user.click(screen.getByRole("button", { name: "Finish workout" }));
 
     expect(screen.getByRole("dialog", { name: "Workout completion confirmation" })).toBeInTheDocument();
@@ -231,7 +246,7 @@ describe("LogWorkoutClient UX behavior", () => {
     const user = userEvent.setup();
     renderClient();
 
-    await user.click(screen.getByRole("button", { name: "Log set" }));
+    await logAllSets(user);
     await user.click(screen.getByRole("button", { name: "Finish workout" }));
     await user.click(screen.getByRole("button", { name: "Cancel" }));
 
@@ -265,8 +280,7 @@ describe("LogWorkoutClient UX behavior", () => {
 
     renderClient();
 
-    await user.click(screen.getByRole("button", { name: "Log set" }));
-    await clickResolvedSubmitButton(user);
+    await logAllSets(user);
     await user.click(screen.getByRole("button", { name: "Finish workout" }));
     await user.click(screen.getByRole("button", { name: "Confirm" }));
 
@@ -278,31 +292,38 @@ describe("LogWorkoutClient UX behavior", () => {
     });
   });
 
-  it("shows a single leave-for-now action in the footer after logging begins", async () => {
+  it("keeps leave-for-now in the workout options sheet while a workout is in progress", async () => {
     const user = userEvent.setup();
     renderClient();
 
     expect(screen.queryByRole("button", { name: "Leave for now" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Finish workout" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Log set" }));
+    expect(screen.getByRole("button", { name: "... Workout options" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Finish workout" })).not.toBeInTheDocument();
 
-    await waitFor(() => {
-      expect(screen.getAllByRole("button", { name: "Leave for now" })).toHaveLength(1);
-    });
+    await openWorkoutOptions(user);
+
+    expect(screen.getByRole("button", { name: "Leave for now" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Skip workout" })).toBeInTheDocument();
   });
 
-  it("keeps the footer actions available after all sets are logged", async () => {
+  it("shows a sticky finish bar only after all sets are logged", async () => {
     const user = userEvent.setup();
-    renderClient();
+    const { container } = renderClient();
 
-    await user.click(screen.getByRole("button", { name: "Log set" }));
-    await clickResolvedSubmitButton(user);
+    expect(screen.queryByTestId("workout-finish-bar")).not.toBeInTheDocument();
 
-    await waitFor(() => {
-      expect(screen.getByText("All sets logged - great work!")).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Finish workout" })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Leave for now" })).toBeInTheDocument();
-    });
+    await logAllSets(user);
+
+    await waitFor(() => expect(screen.getByTestId("workout-finish-bar")).toBeInTheDocument());
+
+    const finishBar = screen.getByTestId("workout-finish-bar");
+    expect(finishBar).toHaveClass("fixed");
+    expect(screen.getByRole("button", { name: "Finish workout" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "... Workout options" })).not.toBeInTheDocument();
+    expect((container.firstChild as HTMLElement).style.paddingBottom).toContain("88px");
   });
 
   it("keeps the logging UI active after leave-for-now confirms a partial save", async () => {
@@ -315,10 +336,7 @@ describe("LogWorkoutClient UX behavior", () => {
     renderClient();
 
     await user.click(screen.getByRole("button", { name: "Log set" }));
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Leave for now" })).toBeInTheDocument();
-    });
-
+    await openWorkoutOptions(user);
     await user.click(screen.getByRole("button", { name: "Leave for now" }));
     await user.click(screen.getByRole("button", { name: "Confirm" }));
 
@@ -332,7 +350,7 @@ describe("LogWorkoutClient UX behavior", () => {
       );
       expect(screen.getByText(/Workout saved as partial/)).toBeInTheDocument();
       expect(screen.getByRole("button", { name: /Log set|Update set/ })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Leave for now" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "... Workout options" })).toBeInTheDocument();
       expect(screen.queryByText("Session complete!")).not.toBeInTheDocument();
     });
   });
@@ -756,6 +774,74 @@ describe("4d - Active card edit mode", () => {
     });
   });
 
+  it("returning from edit mode does not prompt when the draft is untouched", async () => {
+    const user = userEvent.setup();
+    render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
+
+    await user.click(screen.getByRole("button", { name: "Log set" }));
+    await waitFor(() => expect(mockedLogSetRequest).toHaveBeenCalledTimes(1));
+
+    await user.click(screen.getByRole("button", { name: /Set 1 OK 50 x 10 @8/ }));
+    await user.click(screen.getByRole("button", { name: "Return to current set" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "Discard edit confirmation" })).not.toBeInTheDocument();
+      expect(screen.queryByTestId("active-set-edit-banner")).not.toBeInTheDocument();
+      expect(screen.getByText(/Set 2 of 2/)).toBeInTheDocument();
+    });
+  });
+
+  it("prompts before discarding dirty edit-mode changes and cancel keeps editing", async () => {
+    const user = userEvent.setup();
+    render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
+
+    await user.click(screen.getByRole("button", { name: "Log set" }));
+    await waitFor(() => expect(mockedLogSetRequest).toHaveBeenCalledTimes(1));
+
+    await user.click(screen.getByRole("button", { name: /Set 1 OK 50 x 10 @8/ }));
+    const repsInput = screen.getByLabelText("Reps");
+    await user.clear(repsInput);
+    await user.type(repsInput, "11");
+
+    await user.click(screen.getByRole("button", { name: "Return to current set" }));
+    expect(screen.getByRole("dialog", { name: "Discard edit confirmation" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "Discard edit confirmation" })).not.toBeInTheDocument();
+      expect(screen.getByTestId("active-set-edit-banner")).toBeInTheDocument();
+      expect(screen.getByLabelText("Reps")).toHaveValue(11);
+    });
+  });
+
+  it("discard confirmation resets the edit draft and returns to the live set", async () => {
+    const user = userEvent.setup();
+    render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
+
+    await user.click(screen.getByRole("button", { name: "Log set" }));
+    await waitFor(() => expect(mockedLogSetRequest).toHaveBeenCalledTimes(1));
+
+    await user.click(screen.getByRole("button", { name: /Set 1 OK 50 x 10 @8/ }));
+    const repsInput = screen.getByLabelText("Reps");
+    await user.clear(repsInput);
+    await user.type(repsInput, "11");
+
+    await user.click(screen.getByRole("button", { name: "Return to current set" }));
+    await user.click(screen.getByRole("button", { name: "Discard" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "Discard edit confirmation" })).not.toBeInTheDocument();
+      expect(screen.queryByTestId("active-set-edit-banner")).not.toBeInTheDocument();
+      expect(screen.getByText(/Set 2 of 2/)).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: /Set 1 OK 50 x 10 @8/ }));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Reps")).toHaveValue(10);
+    });
+  });
+
   it("submitting edit mode updates the logged set and returns to the live set", async () => {
     const user = userEvent.setup();
     render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
@@ -933,7 +1019,7 @@ describe("4i - Exercise queue expansion stays user-controlled", () => {
     const user = userEvent.setup();
     render(<LogWorkoutClient workoutId="workout-1" exercises={makeMultiSectionExercises()} />);
 
-    await user.click(screen.getByRole("button", { name: "Log set" }));
+    await logVisibleSets(user, 4);
     await user.click(screen.getByRole("button", { name: "Finish workout" }));
     await user.click(screen.getByRole("button", { name: "Confirm" }));
 
@@ -1223,10 +1309,7 @@ describe("I-2/I-4/I-5/E-4/E-5/E-6/L-4/S-5 — Remaining low-priority fixes", () 
     );
 
     render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
-    await user.click(screen.getByRole("button", { name: "Log set" }));
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Finish workout" })).toBeInTheDocument();
-    });
+    await logAllSets(user);
 
     await user.click(screen.getByRole("button", { name: "Finish workout" }));
 
@@ -1298,11 +1381,7 @@ describe("I-2/I-4/I-5/E-4/E-5/E-6/L-4/S-5 — Remaining low-priority fixes", () 
     const user = userEvent.setup();
     render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
 
-    await user.click(screen.getByRole("button", { name: "Log set" }));
-
-    await waitFor(() => {
-      expect(screen.getByTestId("rest-timer-hud")).toBeInTheDocument();
-    });
+    await logAllSets(user);
 
     await user.click(screen.getByRole("button", { name: "Finish workout" }));
     await waitFor(() => {

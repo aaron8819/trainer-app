@@ -151,4 +151,50 @@ describe("template-session context-loader mismatch policy", () => {
     expect(result.mesocycleRoleMapByIntent.push.get("bench")).toBe("CORE_COMPOUND");
     expect(result.rawWorkouts[0]?.exercises[0]?.section).toBe("ACCESSORY");
   });
+
+  it("forces accumulation semantics for anchored optional gap-fill after lifecycle advances to deload", async () => {
+    loadActiveMesocycleMock.mockResolvedValueOnce({
+      id: "meso-1",
+      state: "ACTIVE_DELOAD",
+      durationWeeks: 5,
+      accumulationSessionsCompleted: 12,
+      deloadSessionsCompleted: 0,
+      sessionsPerWeek: 3,
+    });
+    getRirTargetMock.mockReturnValueOnce({ min: 0, max: 1 });
+    buildLifecyclePeriodizationMock.mockReturnValueOnce({
+      isDeload: false,
+      weekInBlock: 4,
+      setMultiplier: 1.3,
+      backOffMultiplier: 1,
+      rpeOffset: 0,
+      accumulationWeeks: 4,
+      lifecycleRirTarget: { min: 0, max: 1 },
+      lifecycleSetTargets: { main: 5, accessory: 5 },
+    });
+
+    const result = await loadMappedGenerationContext("user-1", {
+      anchorWeek: 4,
+      forceAccumulation: true,
+    });
+
+    expect(getRirTargetMock).toHaveBeenCalledWith(
+      expect.objectContaining({ state: "ACTIVE_ACCUMULATION" }),
+      4
+    );
+    expect(buildLifecyclePeriodizationMock).toHaveBeenCalledWith(
+      expect.objectContaining({ week: 4, isDeload: false })
+    );
+    expect(result.lifecycleWeek).toBe(4);
+    expect(result.cycleContext).toEqual(
+      expect.objectContaining({
+        weekInMeso: 4,
+        weekInBlock: 4,
+        phase: "accumulation",
+        blockType: "accumulation",
+        isDeload: false,
+      })
+    );
+    expect(result.deloadDecision.mode).toBe("none");
+  });
 });

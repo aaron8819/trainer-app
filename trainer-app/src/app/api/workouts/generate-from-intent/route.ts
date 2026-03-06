@@ -95,7 +95,7 @@ function withOptionalGapFillMarker(
 
 function withOptionalGapFillAnchorWeek(
   selectionMetadata: SaveableSelectionMetadata,
-  input: { enabled: boolean; anchorWeek?: number }
+  input: { enabled: boolean; anchorWeek?: number; mesocycleLength?: number }
 ): SaveableSelectionMetadata {
   if (!input.enabled || input.anchorWeek == null) {
     return selectionMetadata;
@@ -112,6 +112,10 @@ function withOptionalGapFillAnchorWeek(
         ...receipt.cycleContext,
         weekInMeso: input.anchorWeek,
         weekInBlock: input.anchorWeek,
+        mesocycleLength: input.mesocycleLength ?? receipt.cycleContext.mesocycleLength,
+        phase: "accumulation",
+        blockType: "accumulation",
+        isDeload: false,
       },
     },
   };
@@ -131,8 +135,10 @@ export async function POST(request: Request) {
   }
 
   const activeMesocycle = await loadActiveMesocycle(user.id);
+  const shouldApplyOptionalGapFill =
+    parsed.data.optionalGapFill === true && parsed.data.intent === "body_part";
   const result =
-    activeMesocycle?.state === "ACTIVE_DELOAD"
+    !shouldApplyOptionalGapFill && activeMesocycle?.state === "ACTIVE_DELOAD"
       ? await generateDeloadSessionFromIntent(user.id, parsed.data)
       : await generateSessionFromIntent(user.id, parsed.data);
   if ("error" in result) {
@@ -161,11 +167,10 @@ export async function POST(request: Request) {
     maxGeneratedHardSets: parsed.data.maxGeneratedHardSets,
     maxGeneratedExercises: parsed.data.maxGeneratedExercises,
   });
-  const shouldApplyOptionalGapFill =
-    parsed.data.optionalGapFill === true && parsed.data.intent === "body_part";
   const anchorPinnedSelectionMetadata = withOptionalGapFillAnchorWeek(selectionMetadata, {
     enabled: shouldApplyOptionalGapFill,
     anchorWeek: parsed.data.anchorWeek,
+    mesocycleLength: activeMesocycle?.durationWeeks,
   });
   const markedSelectionMetadata = withOptionalGapFillMarker(
     anchorPinnedSelectionMetadata,

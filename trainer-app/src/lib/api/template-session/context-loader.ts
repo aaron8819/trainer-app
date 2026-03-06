@@ -117,7 +117,10 @@ function auditSectionRoleMismatches(
   }
 }
 
-export async function loadMappedGenerationContext(userId: string): Promise<MappedGenerationContext> {
+export async function loadMappedGenerationContext(
+  userId: string,
+  options?: { anchorWeek?: number; forceAccumulation?: boolean }
+): Promise<MappedGenerationContext> {
   const context = await loadWorkoutContext(userId);
   const { profile, goals, constraints, injuries, exercises, workouts, preferences, checkIns } = context;
 
@@ -165,11 +168,19 @@ export async function loadMappedGenerationContext(userId: string): Promise<Mappe
   }
   auditSectionRoleMismatches(workouts, mesocycleRoleMapByIntent);
   const lifecycleSession = activeMesocycle ? deriveCurrentMesocycleSession(activeMesocycle) : null;
-  const lifecycleWeek = lifecycleSession?.week ?? (activeMesocycle ? getCurrentMesoWeek(activeMesocycle) : 1);
+  const forceAccumulation = options?.forceAccumulation === true;
+  const lifecycleWeek =
+    options?.anchorWeek ??
+    lifecycleSession?.week ??
+    (activeMesocycle ? getCurrentMesoWeek(activeMesocycle) : 1);
   const weekInBlock = lifecycleWeek;
   const mesocycleLength = activeMesocycle?.durationWeeks ?? 5;
+  const lifecycleState =
+    activeMesocycle && forceAccumulation
+      ? { ...activeMesocycle, state: "ACTIVE_ACCUMULATION" as const }
+      : activeMesocycle;
   const lifecycleRirTarget = activeMesocycle
-    ? getRirTarget(activeMesocycle, lifecycleWeek)
+    ? getRirTarget(lifecycleState ?? activeMesocycle, lifecycleWeek)
     : { min: 3, max: 4 };
   const baseLifecycleVolumeTargets = Object.fromEntries(
     Object.keys(VOLUME_LANDMARKS).map((muscle) => [
@@ -192,7 +203,7 @@ export async function loadMappedGenerationContext(userId: string): Promise<Mappe
     primaryGoal: mappedGoals.primary,
     durationWeeks: mesocycleLength,
     week: lifecycleWeek,
-    isDeload: activeMesocycle?.state === "ACTIVE_DELOAD",
+    isDeload: forceAccumulation ? false : activeMesocycle?.state === "ACTIVE_DELOAD",
     rirTarget: lifecycleRirTarget,
   });
   const adaptiveDeload = !lifecyclePeriodization.isDeload && shouldDeload(history, mainLiftExerciseIds);
@@ -208,9 +219,13 @@ export async function loadMappedGenerationContext(userId: string): Promise<Mappe
     weekInMeso: lifecycleWeek,
     weekInBlock,
     mesocycleLength,
-    phase: (activeMesocycle?.state === "ACTIVE_DELOAD" || effectivePeriodization.isDeload ? "deload" : "accumulation"),
-    blockType: (activeMesocycle?.state === "ACTIVE_DELOAD" || effectivePeriodization.isDeload ? "deload" : "accumulation"),
-    isDeload: activeMesocycle?.state === "ACTIVE_DELOAD" || effectivePeriodization.isDeload,
+    phase: forceAccumulation || !(activeMesocycle?.state === "ACTIVE_DELOAD" || effectivePeriodization.isDeload)
+      ? "accumulation"
+      : "deload",
+    blockType: forceAccumulation || !(activeMesocycle?.state === "ACTIVE_DELOAD" || effectivePeriodization.isDeload)
+      ? "accumulation"
+      : "deload",
+    isDeload: forceAccumulation ? false : activeMesocycle?.state === "ACTIVE_DELOAD" || effectivePeriodization.isDeload,
     source: "computed",
   };
   const deloadDecision: DeloadDecision = effectivePeriodization.isDeload

@@ -49,6 +49,31 @@ function isLifecycleAdvancementStatus(status: PersistedStatus | string | null | 
   return Boolean(status) && (ADVANCEMENT_WORKOUT_STATUSES as readonly string[]).includes(status as string);
 }
 
+function resolveGapFillSnapshot(input: {
+  existingWorkout: {
+    mesocycleWeekSnapshot: number | null;
+    mesocyclePhaseSnapshot: string | null;
+    mesoSessionSnapshot: number | null;
+  } | null;
+  receiptWeek: number | undefined;
+  requestWeek: number | undefined;
+  sessionsPerWeek: number;
+}): { week: number; phase: "ACCUMULATION"; session: number } | undefined {
+  const anchorWeek =
+    input.existingWorkout?.mesocycleWeekSnapshot ??
+    input.requestWeek ??
+    input.receiptWeek;
+  if (anchorWeek == null) {
+    return undefined;
+  }
+
+  return {
+    week: anchorWeek,
+    phase: "ACCUMULATION",
+    session: input.existingWorkout?.mesoSessionSnapshot ?? input.sessionsPerWeek + 1,
+  };
+}
+
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
   const parsed = saveWorkoutSchema.safeParse(body);
@@ -89,6 +114,9 @@ export async function POST(request: Request) {
           status: true,
           revision: true,
           mesocycleId: true,
+          mesocycleWeekSnapshot: true,
+          mesocyclePhaseSnapshot: true,
+          mesoSessionSnapshot: true,
           advancesSplit: true,
           selectionMode: true,
           sessionIntent: true,
@@ -261,11 +289,27 @@ export async function POST(request: Request) {
         | undefined;
       if (shouldSetMesoSnapshot && resolvedMesocycle) {
         mesoSnapshot = deriveSaveRouteMesoSnapshot(resolvedMesocycle);
-        if (isOptionalGapFill && parsed.data.mesocycleWeekSnapshot != null) {
+        // Preserve canonical persisted snapshot for already-planned workouts.
+        // This prevents completion-time lifecycle week drift from re-bucketing volume/history.
+        if (existingWorkout?.mesocycleWeekSnapshot != null) {
           mesoSnapshot = {
-            ...mesoSnapshot,
-            week: parsed.data.mesocycleWeekSnapshot,
+            week: existingWorkout.mesocycleWeekSnapshot,
+            phase:
+              (existingWorkout.mesocyclePhaseSnapshot as "ACCUMULATION" | "DELOAD" | null | undefined) ??
+              mesoSnapshot.phase,
+            session: existingWorkout.mesoSessionSnapshot ?? mesoSnapshot.session,
           };
+        }
+        if (isOptionalGapFill) {
+          const gapFillSnapshot = resolveGapFillSnapshot({
+            existingWorkout,
+            receiptWeek: receipt.cycleContext.weekInMeso,
+            requestWeek: parsed.data.mesocycleWeekSnapshot,
+            sessionsPerWeek: resolvedMesocycle.sessionsPerWeek,
+          });
+          if (gapFillSnapshot) {
+            mesoSnapshot = gapFillSnapshot;
+          }
         }
       }
 

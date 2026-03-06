@@ -88,7 +88,7 @@ describe("buildWorkoutListSurfaceSummary", () => {
     });
   });
 
-  it("derives gap-fill session slot from sessionsPerWeek and labels from canonical receipt", () => {
+  it("uses persisted gap-fill session snapshot and labels from canonical receipt", () => {
     const summary = buildWorkoutListSurfaceSummary({
       id: "workout-gap",
       scheduledDate: new Date("2026-03-04T10:00:00.000Z"),
@@ -98,7 +98,7 @@ describe("buildWorkoutListSurfaceSummary", () => {
       sessionIntent: "BODY_PART",
       mesocycleId: "meso-1",
       mesocycleWeekSnapshot: 3,
-      mesoSessionSnapshot: 1,
+      mesoSessionSnapshot: 4,
       mesocyclePhaseSnapshot: "ACCUMULATION",
       selectionMetadata: {
         sessionDecisionReceipt: {

@@ -8,11 +8,13 @@ import { prisma } from "@/lib/db/prisma";
 import { VOLUME_LANDMARKS } from "@/lib/engine/volume-landmarks";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 import {
+  getAccumulationWeeks,
   getCurrentMesoWeek,
   getRirTarget,
   getWeeklyVolumeTarget,
 } from "./mesocycle-lifecycle-math";
 import { loadNextWorkoutContext } from "./next-session";
+import { isStrictOptionalGapFillSession } from "@/lib/gap-fill/classifier";
 
 export type ProgramMesoBlock = {
   blockType: string;
@@ -99,6 +101,46 @@ export type CapabilityFlags = {
   whoopConnected: boolean;
   readinessEnabled: boolean;
 };
+
+function deriveGapFillAnchorWeek(input: {
+  activeMesocycle: {
+    durationWeeks: number;
+    accumulationSessionsCompleted: number;
+    deloadSessionsCompleted: number;
+    sessionsPerWeek: number;
+    state: "ACTIVE_ACCUMULATION" | "ACTIVE_DELOAD" | "COMPLETED";
+  } | null;
+}): number | null {
+  const { activeMesocycle } = input;
+  if (!activeMesocycle) {
+    return null;
+  }
+
+  const requiredSessionsPerWeek = Math.max(1, activeMesocycle.sessionsPerWeek);
+  const completedAccumulationWeeks =
+    activeMesocycle.accumulationSessionsCompleted / requiredSessionsPerWeek;
+  if (
+    activeMesocycle.accumulationSessionsCompleted <= 0 ||
+    activeMesocycle.accumulationSessionsCompleted % requiredSessionsPerWeek !== 0
+  ) {
+    return null;
+  }
+
+  if (activeMesocycle.state === "ACTIVE_ACCUMULATION") {
+    return completedAccumulationWeeks;
+  }
+
+  if (
+    activeMesocycle.state === "ACTIVE_DELOAD" &&
+    activeMesocycle.deloadSessionsCompleted === 0 &&
+    activeMesocycle.accumulationSessionsCompleted ===
+      getAccumulationWeeks(activeMesocycle.durationWeeks) * requiredSessionsPerWeek
+  ) {
+    return completedAccumulationWeeks;
+  }
+
+  return null;
+}
 
 export async function loadCapabilityFlags(userId: string): Promise<CapabilityFlags> {
   const whoopIntegration = await prisma.userIntegration.findFirst({
@@ -376,9 +418,18 @@ export async function loadHomeProgramSupport(userId: string): Promise<HomeProgra
     prisma.mesocycle.findFirst({
       where: { macroCycle: { userId }, isActive: true },
       select: {
+        id: true,
+        durationWeeks: true,
         sessionsPerWeek: true,
         accumulationSessionsCompleted: true,
+        deloadSessionsCompleted: true,
+        volumeTarget: true,
         state: true,
+        macroCycle: {
+          select: {
+            startDate: true,
+          },
+        },
       },
     }),
   ]);
@@ -411,28 +462,86 @@ export async function loadHomeProgramSupport(userId: string): Promise<HomeProgra
     maxGeneratedHardSets: 12,
     maxGeneratedExercises: 4,
   };
-  const anchorWeek =
-    activeMesocycle &&
-    activeMesocycle.state === "ACTIVE_ACCUMULATION" &&
-    activeMesocycle.accumulationSessionsCompleted > 0 &&
-    activeMesocycle.accumulationSessionsCompleted % policy.requiredSessionsPerWeek === 0
-      ? activeMesocycle.accumulationSessionsCompleted / policy.requiredSessionsPerWeek
-      : null;
+  const anchorWeek = deriveGapFillAnchorWeek({ activeMesocycle });
   const suppressedByStartedNextWeek =
     Boolean(latestIncomplete) && latestIncomplete?.status !== "planned";
+  let targetMuscles: string[] = [];
+  let deficitSummary: GapFillDeficitRow[] = [];
+  let alreadyUsedThisWeek = false;
+
+  if (activeMesocycle && anchorWeek != null) {
+    const anchorWeekMuscles = await loadMesoWeekMuscleVolume(
+      userId,
+      activeMesocycle.id,
+      anchorWeek,
+      computeMesoWeekStart(activeMesocycle.macroCycle.startDate, anchorWeek)
+    );
+    deficitSummary = Object.entries(VOLUME_LANDMARKS)
+      .map(([muscle, landmarks]) => {
+        const actual = anchorWeekMuscles[muscle]?.directSets ?? 0;
+        const target = getWeeklyVolumeTarget(activeMesocycle, muscle, anchorWeek);
+        return {
+          muscle,
+          target,
+          actual,
+          deficit: Math.max(0, target - actual),
+          mav: landmarks.mav,
+        };
+      })
+      .filter((row) => row.mav > 0 && row.deficit > 0)
+      .sort((left, right) => right.deficit - left.deficit)
+      .slice(0, 3)
+      .map(({ muscle, target, actual, deficit }) => ({
+        muscle,
+        target,
+        actual,
+        deficit,
+      }));
+    targetMuscles = deficitSummary.map((row) => row.muscle);
+
+    const performedWorkouts = await prisma.workout.findMany({
+      where: {
+        userId,
+        mesocycleId: activeMesocycle.id,
+        status: { in: [...PERFORMED_WORKOUT_STATUSES] as WorkoutStatus[] },
+        mesocycleWeekSnapshot: anchorWeek,
+      },
+      select: {
+        selectionMetadata: true,
+        selectionMode: true,
+        sessionIntent: true,
+      },
+    });
+    alreadyUsedThisWeek =
+      performedWorkouts.filter((workout) =>
+        isStrictOptionalGapFillSession({
+          selectionMetadata: workout.selectionMetadata,
+          selectionMode: workout.selectionMode,
+          sessionIntent: workout.sessionIntent,
+        })
+      ).length >= policy.maxOptionalGapFillSessionsPerWeek;
+  }
+
   const gapFill: GapFillSupportData = {
-    // Fail closed until bounded per-week deficit actuals are loaded into this read model.
-    eligible: false,
+    eligible:
+      anchorWeek != null &&
+      !suppressedByStartedNextWeek &&
+      !alreadyUsedThisWeek &&
+      targetMuscles.length > 0,
     reason:
       anchorWeek == null
         ? "not_at_required_rotation_boundary"
         : suppressedByStartedNextWeek
           ? "suppressed_by_started_next_week"
-          : "insufficient_week_scoping_data",
+          : alreadyUsedThisWeek
+            ? "weekly_optional_gap_fill_cap_reached"
+            : targetMuscles.length === 0
+              ? "no_meaningful_weekly_deficit"
+              : null,
     anchorWeek,
-    targetMuscles: [],
-    deficitSummary: [],
-    alreadyUsedThisWeek: false,
+    targetMuscles,
+    deficitSummary,
+    alreadyUsedThisWeek,
     suppressedByStartedNextWeek,
     policy,
   };

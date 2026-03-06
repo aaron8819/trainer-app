@@ -141,11 +141,7 @@ export function buildWorkoutListSurfaceSummary(
   const displaySession =
     displayWeek == null
       ? null
-      : isGapFill
-        ? row.mesocycle?.sessionsPerWeek != null
-          ? row.mesocycle.sessionsPerWeek + 1
-          : (row.mesoSessionSnapshot ?? null)
-        : row.mesoSessionSnapshot;
+      : row.mesoSessionSnapshot ?? null;
   const displayPhase = row.mesocyclePhaseSnapshot ?? receipt?.cycleContext.phase?.toUpperCase() ?? null;
   const gapFillTargetMuscles = resolveGapFillTargetMuscles({
     selectionMetadata: row.selectionMetadata,

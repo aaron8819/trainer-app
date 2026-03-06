@@ -292,6 +292,102 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
     expect(body.selectionMetadata.sessionDecisionReceipt.targetMuscles).toEqual(["front delts"]);
   });
 
+  it("bypasses deload route semantics for anchored optional gap-fill after lifecycle advances", async () => {
+    mocks.loadActiveMesocycle.mockResolvedValue({ id: "meso-1", state: "ACTIVE_DELOAD", durationWeeks: 5 });
+    mocks.generateSessionFromIntent.mockResolvedValue({
+      workout: {
+        id: "w-gap",
+        scheduledDate: new Date("2026-03-24T00:00:00.000Z").toISOString(),
+        warmup: [],
+        mainLifts: [
+          {
+            id: "we-1",
+            exercise: { id: "ex-1", name: "Press" },
+            isMainLift: true,
+            orderIndex: 0,
+            sets: [{ setIndex: 1, targetReps: 8, targetRpe: 9 }],
+          },
+        ],
+        accessories: [],
+        estimatedMinutes: 35,
+      },
+      selectionMode: "INTENT",
+      sessionIntent: "body_part",
+      sraWarnings: [],
+      substitutions: [],
+      volumePlanByMuscle: {},
+      selection: {
+        selectedExerciseIds: ["ex-1"],
+        mainLiftIds: ["ex-1"],
+        accessoryIds: [],
+        perExerciseSetTargets: { "ex-1": 1 },
+        rationale: {},
+        volumePlanByMuscle: {},
+        sessionDecisionReceipt: {
+          version: 1,
+          cycleContext: {
+            weekInMeso: 5,
+            weekInBlock: 5,
+            mesocycleLength: 5,
+            phase: "deload",
+            blockType: "deload",
+            isDeload: true,
+            source: "computed",
+          },
+          lifecycleVolume: { source: "unknown" },
+          sorenessSuppressedMuscles: [],
+          deloadDecision: {
+            mode: "scheduled",
+            reason: ["Scheduled deload week for this cycle phase."],
+            reductionPercent: 50,
+            appliedTo: "both",
+          },
+          readiness: {
+            wasAutoregulated: false,
+            signalAgeHours: null,
+            fatigueScoreOverall: null,
+            intensityScaling: {
+              applied: false,
+              exerciseIds: [],
+              scaledUpCount: 0,
+              scaledDownCount: 0,
+            },
+          },
+          exceptions: [],
+        },
+      },
+      filteredExercises: [],
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/generate-from-intent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          intent: "body_part",
+          anchorWeek: 4,
+          targetMuscles: ["front delts"],
+          optionalGapFill: true,
+        }),
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(mocks.generateSessionFromIntent).toHaveBeenCalledOnce();
+    expect(mocks.generateDeloadSessionFromIntent).not.toHaveBeenCalled();
+    expect(body.selectionMetadata.sessionDecisionReceipt.cycleContext).toEqual(
+      expect.objectContaining({
+        weekInMeso: 4,
+        weekInBlock: 4,
+        mesocycleLength: 5,
+        phase: "accumulation",
+        blockType: "accumulation",
+        isDeload: false,
+      })
+    );
+  });
+
   it("keeps lifecycle-derived receipt week when optionalGapFill is false", async () => {
     mocks.loadActiveMesocycle.mockResolvedValue(null);
     mocks.generateSessionFromIntent.mockResolvedValue({

@@ -1179,7 +1179,10 @@ export async function generateSessionFromIntent(
 
   let mapped;
   try {
-    mapped = await loadMappedGenerationContext(userId);
+    mapped = await loadMappedGenerationContext(userId, {
+      anchorWeek: input.optionalGapFill ? input.anchorWeek : undefined,
+      forceAccumulation: input.optionalGapFill === true,
+    });
   } catch (error) {
     if (error instanceof Error) {
       return { error: error.message };

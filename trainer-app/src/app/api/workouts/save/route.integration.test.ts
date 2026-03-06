@@ -766,6 +766,100 @@ describe("POST /api/workouts/save", () => {
     expect(upsert.update.mesocycleWeekSnapshot).toBe(3);
   });
 
+  it("preserves existing planned snapshot week for normal workouts when completed later", async () => {
+    mocks.workoutFindUnique
+      .mockResolvedValueOnce({
+        id: "workout-1",
+        userId: "user-1",
+        status: "PLANNED",
+        revision: 1,
+        mesocycleId: "meso-1",
+        mesocycleWeekSnapshot: 3,
+        mesocyclePhaseSnapshot: "ACCUMULATION",
+        mesoSessionSnapshot: 4,
+        advancesSplit: true,
+        selectionMetadata: buildCanonicalSelectionMetadata(),
+      })
+      .mockResolvedValueOnce({
+        exercises: [{ sets: [{ logs: [{ wasSkipped: false, actualReps: 8, actualRpe: 8, actualLoad: 135 }] }] }],
+      });
+    // Lifecycle has advanced to week 4 by completion time.
+    mocks.tx.mesocycle.findUnique.mockResolvedValueOnce({
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION",
+      durationWeeks: 5,
+      accumulationSessionsCompleted: 9,
+      deloadSessionsCompleted: 0,
+      sessionsPerWeek: 3,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutId: "workout-1",
+          action: "mark_completed",
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    const upsert = mocks.workoutUpsert.mock.calls[0][0];
+    expect(upsert.update.mesocycleWeekSnapshot).toBe(3);
+    expect(upsert.update.mesoSessionSnapshot).toBe(4);
+    expect(upsert.update.mesocyclePhaseSnapshot).toBe("ACCUMULATION");
+  });
+
+  it("preserves existing anchor week for gap-fill completion when active week has advanced", async () => {
+    mocks.workoutFindUnique
+      .mockResolvedValueOnce({
+        id: "workout-1",
+        userId: "user-1",
+        status: "PLANNED",
+        revision: 1,
+        mesocycleId: "meso-1",
+        mesocycleWeekSnapshot: 3,
+        mesocyclePhaseSnapshot: "ACCUMULATION",
+        mesoSessionSnapshot: 4,
+        advancesSplit: false,
+        selectionMode: "INTENT",
+        sessionIntent: "BODY_PART",
+        selectionMetadata: buildOptionalGapFillSelectionMetadata(),
+      })
+      .mockResolvedValueOnce({
+        exercises: [{ sets: [{ logs: [{ wasSkipped: false, actualReps: 8, actualRpe: 8, actualLoad: 135 }] }] }],
+      });
+    // Lifecycle moved to week 4 after planning the anchored week-3 gap-fill.
+    mocks.tx.mesocycle.findUnique.mockResolvedValueOnce({
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION",
+      durationWeeks: 5,
+      accumulationSessionsCompleted: 9,
+      deloadSessionsCompleted: 0,
+      sessionsPerWeek: 3,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutId: "workout-1",
+          action: "mark_completed",
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.tx.mesocycle.update).not.toHaveBeenCalled();
+    const upsert = mocks.workoutUpsert.mock.calls[0][0];
+    expect(upsert.update.advancesSplit).toBe(false);
+    expect(upsert.update.mesocycleWeekSnapshot).toBe(3);
+    expect(upsert.update.mesocyclePhaseSnapshot).toBe("ACCUMULATION");
+    expect(upsert.update.mesoSessionSnapshot).toBe(4);
+  });
+
   it("does not advance lifecycle when a workout is only marked partial", async () => {
     mocks.workoutFindUnique.mockResolvedValueOnce({
       id: "workout-1",
@@ -1454,6 +1548,50 @@ describe("POST /api/workouts/save", () => {
     expect(upsert.create.mesocycleWeekSnapshot).toBe(2);
     expect(upsert.create.mesoSessionSnapshot).toBe(2);
     expect(upsert.create.mesocyclePhaseSnapshot).toBe("ACCUMULATION");
+    expect(mocks.tx.mesocycle.update).not.toHaveBeenCalled();
+    expect(mocks.transitionMesocycleState).not.toHaveBeenCalled();
+  });
+
+  it("pins strict optional gap-fill planned saves to the anchored accumulation snapshot", async () => {
+    mocks.tx.mesocycle.findFirst.mockResolvedValueOnce({
+      id: "meso-active",
+      state: "ACTIVE_DELOAD",
+      durationWeeks: 5,
+      accumulationSessionsCompleted: 12,
+      deloadSessionsCompleted: 0,
+      sessionsPerWeek: 3,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutId: "workout-gap",
+          selectionMode: "INTENT",
+          sessionIntent: "BODY_PART",
+          advancesSplit: false,
+          mesocycleWeekSnapshot: 4,
+          selectionMetadata: buildOptionalGapFillSelectionMetadata(),
+          exercises: [
+            {
+              section: "MAIN",
+              exerciseId: "bench",
+              sets: [{ setIndex: 1, targetReps: 12 }],
+            },
+          ],
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+
+    const upsert = mocks.workoutUpsert.mock.calls[0][0];
+    expect(upsert.create.mesocycleId).toBe("meso-active");
+    expect(upsert.create.mesocycleWeekSnapshot).toBe(4);
+    expect(upsert.create.mesocyclePhaseSnapshot).toBe("ACCUMULATION");
+    expect(upsert.create.mesoSessionSnapshot).toBe(4);
+    expect(upsert.create.advancesSplit).toBe(false);
     expect(mocks.tx.mesocycle.update).not.toHaveBeenCalled();
     expect(mocks.transitionMesocycleState).not.toHaveBeenCalled();
   });

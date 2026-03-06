@@ -141,6 +141,39 @@ describe("loadProgramDashboardData", () => {
   });
 
   describe("volumeThisWeek", () => {
+    it("counts anchored optional gap-fill volume toward the anchored viewed week after lifecycle advances", async () => {
+      setupDashboardMocks(
+        {
+          state: "ACTIVE_DELOAD",
+          accumulationSessionsCompleted: 12,
+          deloadSessionsCompleted: 0,
+          sessionsPerWeek: 3,
+        },
+        5
+      );
+      mocks.workoutFindMany.mockResolvedValueOnce([
+        {
+          id: "w-gap-fill",
+          exercises: [
+            {
+              exercise: {
+                exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Chest" } }],
+              },
+              sets: [
+                { logs: [{ wasSkipped: false }] },
+                { logs: [{ wasSkipped: false }] },
+              ],
+            },
+          ],
+        },
+      ]);
+
+      const result = await loadProgramDashboardData("user-1", 4);
+      const chestRow = result.volumeThisWeek.find((row) => row.muscle === "Chest");
+
+      expect(chestRow?.directSets).toBe(2);
+    });
+
     it("includes Front Delts when baseline target is non-zero even without direct sets", async () => {
       setupDashboardMocks();
       const result = await loadProgramDashboardData("user-1");
@@ -238,6 +271,32 @@ describe("loadProgramDashboardData", () => {
             }),
           }),
         ])
+      );
+    });
+
+    it("uses the viewed canonical week bucket (not active week) when loading dashboard volume", async () => {
+      setupDashboardMocks(
+        {
+          durationWeeks: 5,
+          sessionsPerWeek: 3,
+          startWeek: 0,
+          macroCycle: { startDate: new Date("2026-01-01T00:00:00.000Z") },
+        },
+        4
+      );
+      mocks.workoutFindMany.mockResolvedValue([]);
+
+      await loadProgramDashboardData("user-1", 3);
+
+      expect(mocks.workoutFindMany).toHaveBeenCalledTimes(2);
+      const viewedWhere = mocks.workoutFindMany.mock.calls[0]?.[0]?.where;
+      const currentWhere = mocks.workoutFindMany.mock.calls[1]?.[0]?.where;
+
+      expect(viewedWhere?.OR).toEqual(
+        expect.arrayContaining([expect.objectContaining({ mesocycleWeekSnapshot: 3 })])
+      );
+      expect(currentWhere?.OR).toEqual(
+        expect.arrayContaining([expect.objectContaining({ mesocycleWeekSnapshot: 4 })])
       );
     });
   });
@@ -404,7 +463,9 @@ describe("loadHomeProgramSupport", () => {
 
     expect(result.gapFill.anchorWeek).toBe(1);
     expect(result.gapFill.suppressedByStartedNextWeek).toBe(false);
-    expect(result.gapFill.reason).toBe("insufficient_week_scoping_data");
+    expect(result.gapFill.reason).toBeNull();
+    expect(result.gapFill.eligible).toBe(true);
+    expect(result.gapFill.targetMuscles.length).toBeGreaterThan(0);
   });
 
   it.each(["IN_PROGRESS", "PARTIAL"] as const)(
@@ -435,6 +496,112 @@ describe("loadHomeProgramSupport", () => {
       expect(result.gapFill.anchorWeek).toBe(1);
       expect(result.gapFill.suppressedByStartedNextWeek).toBe(true);
       expect(result.gapFill.reason).toBe("suppressed_by_started_next_week");
+      expect(result.gapFill.eligible).toBe(false);
     }
   );
+
+  it("keeps prior-week gap-fill eligible after lifecycle advances into deload with only a planned next-week carryover", async () => {
+    setupDashboardMocks(
+      {
+        state: "ACTIVE_DELOAD",
+        sessionsPerWeek: 3,
+        accumulationSessionsCompleted: 12,
+        deloadSessionsCompleted: 0,
+      },
+      5
+    );
+    mocks.constraintsFindUnique.mockResolvedValue({
+      weeklySchedule: ["PUSH", "PULL", "LEGS"],
+    });
+    mocks.workoutFindMany.mockResolvedValueOnce([
+      {
+        id: "w-deload-planned",
+        status: "PLANNED",
+        sessionIntent: "PUSH",
+        scheduledDate: new Date("2026-03-29T00:00:00.000Z"),
+      },
+    ]);
+
+    const result = await loadHomeProgramSupport("user-1");
+
+    expect(result.gapFill.anchorWeek).toBe(4);
+    expect(result.gapFill.eligible).toBe(true);
+    expect(result.gapFill.reason).toBeNull();
+    expect(result.gapFill.suppressedByStartedNextWeek).toBe(false);
+  });
+
+  it("counts anchored strict gap-fill volume toward the anchored week", async () => {
+    setupDashboardMocks(
+      {
+        state: "ACTIVE_DELOAD",
+        sessionsPerWeek: 3,
+        accumulationSessionsCompleted: 12,
+        deloadSessionsCompleted: 0,
+      },
+      5
+    );
+    mocks.workoutFindMany
+      .mockResolvedValueOnce([
+        {
+          id: "w-deload-planned",
+          status: "PLANNED",
+          sessionIntent: "PUSH",
+          scheduledDate: new Date("2026-03-29T00:00:00.000Z"),
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          status: "COMPLETED",
+          mesocycleWeekSnapshot: 4,
+          scheduledDate: new Date("2026-03-25T00:00:00.000Z"),
+          exercises: [
+            {
+              exercise: {
+                exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Chest" } }],
+              },
+              sets: [
+                { logs: [{ wasSkipped: false }] },
+                { logs: [{ wasSkipped: false }] },
+              ],
+            },
+          ],
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          selectionMetadata: {
+            sessionDecisionReceipt: {
+              version: 1,
+              cycleContext: {
+                weekInMeso: 4,
+                weekInBlock: 4,
+                phase: "accumulation",
+                blockType: "accumulation",
+                isDeload: false,
+                source: "computed",
+              },
+              lifecycleVolume: { source: "unknown" },
+              sorenessSuppressedMuscles: [],
+              deloadDecision: { mode: "none", reason: [], reductionPercent: 0, appliedTo: "none" },
+              readiness: {
+                wasAutoregulated: false,
+                signalAgeHours: null,
+                fatigueScoreOverall: null,
+                intensityScaling: { applied: false, exerciseIds: [], scaledUpCount: 0, scaledDownCount: 0 },
+              },
+              exceptions: [{ code: "optional_gap_fill", message: "Marked as optional gap-fill session." }],
+            },
+          },
+          selectionMode: "INTENT",
+          sessionIntent: "BODY_PART",
+        },
+      ]);
+
+    const result = await loadHomeProgramSupport("user-1");
+
+    expect(result.gapFill.alreadyUsedThisWeek).toBe(true);
+    expect(result.gapFill.eligible).toBe(false);
+    expect(result.gapFill.reason).toBe("weekly_optional_gap_fill_cap_reached");
+    expect(result.gapFill.targetMuscles.length).toBeGreaterThan(0);
+  });
 });

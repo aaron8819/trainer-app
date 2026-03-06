@@ -1,7 +1,7 @@
 # 02 Domain Engine
 
 Owner: Aaron
-Last reviewed: 2026-03-04
+Last reviewed: 2026-03-06
 Purpose: Canonical reference for workout-generation domain logic, including selection, progression, periodization, readiness, and explainability.
 
 This doc covers:
@@ -90,6 +90,24 @@ Sources of truth:
 - Program advancement remains `COMPLETED` only via `ADVANCEMENT_WORKOUT_STATUSES` in `src/lib/workout-status.ts`.
 - Mesocycle lifecycle progression is driven by first transition into performed status (`COMPLETED` or `PARTIAL`). Lifecycle counters (`accumulationSessionsCompleted`, `deloadSessionsCompleted`) are incremented atomically inside the save-workout transaction in `src/app/api/workouts/save/route.ts`; status/action resolution is isolated in `src/app/api/workouts/save/status-machine.ts`; `transitionMesocycleState()` in the lifecycle facade (`src/lib/api/mesocycle-lifecycle.ts`) applies state transitions when thresholds are reached.
 - Canonical mesocycle progression counters are `accumulationSessionsCompleted` and `deloadSessionsCompleted` (not `completedSessions`) and drive lifecycle week/phase derivation.
+
+## Optional session policy (gap-fill)
+- Phase-1 optional sessions reuse canonical INTENT generation (`intent=body_part`) and do not introduce a separate planner path (`src/lib/api/template-session.ts`).
+- Gap-fill policy read model is surfaced by `loadHomeProgramSupport()` (`src/lib/api/program.ts`) with fields:
+  - `requiredSessionsPerWeek`
+  - `maxOptionalGapFillSessionsPerWeek`
+  - `maxGeneratedHardSets`
+  - `maxGeneratedExercises`
+- Current default policy: required sessions = active mesocycle `sessionsPerWeek` (min 1), max optional sessions/week = 1, max hard sets = 12, max exercises = 4.
+- Override precedence is policy-first and split-agnostic: policy values are resolved centrally in `program.ts`; generation/save do not fork by split type.
+- Strict classification for optional sessions uses the shared triplet predicate in `src/lib/gap-fill/classifier.ts`.
+
+## Gap-fill decision order
+1. Compute anchor gate from lifecycle boundary: active accumulation + `accumulationSessionsCompleted % requiredSessionsPerWeek === 0`.
+2. Apply next-week suppression: `PLANNED` does not suppress; `IN_PROGRESS`/`PARTIAL` suppress.
+3. Enforce weekly optional cap using strict classification (`optional_gap_fill` + `INTENT` + `BODY_PART`) when counting is enabled; missing marker never counts as gap-fill.
+4. Resolve deficits and target muscles for `anchorWeek` only.
+5. Fail closed when canonical week-bounded data is insufficient.
 
 ## Mesocycle lifecycle service
 - Facade: `src/lib/api/mesocycle-lifecycle.ts`.

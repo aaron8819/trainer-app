@@ -1,7 +1,7 @@
 # 04 API Contracts
 
 Owner: Aaron  
-Last reviewed: 2026-03-04
+Last reviewed: 2026-03-06
 Purpose: Canonical API contract map for App Router endpoints and payload validation boundaries.
 
 This doc covers:
@@ -87,6 +87,11 @@ Sources of truth:
   - Lifecycle counters (`accumulationSessionsCompleted`, `deloadSessionsCompleted`) are incremented on any first transition to a performed status (`COMPLETED` or `PARTIAL`) atomically inside the save-workout transaction (`src/app/api/workouts/save/route.ts`); `transitionMesocycleState()` is then called post-transaction to apply threshold-based state transitions.
 - Lifecycle thresholds are duration-aware: accumulation completes after `(durationWeeks - 1) * sessionsPerWeek` performed sessions and deload completes after `sessionsPerWeek` performed sessions.
 - Save route persists session-level cycle context only inside `selectionMetadata.sessionDecisionReceipt`; `POST /api/workouts/save` rejects writes that omit the canonical receipt instead of synthesizing fallback state (`src/app/api/workouts/save/route.ts`).
+- Optional gap-fill enforcement is strictly scoped to the canonical triplet:
+  - receipt marker `optional_gap_fill`
+  - effective `selectionMode=INTENT`
+  - `sessionIntent=BODY_PART`
+  When true, save forces `advancesSplit=false`, blocks lifecycle counter updates/state transition, and allows `mesocycleWeekSnapshot` anchor override. Non-triplet payloads use normal lifecycle behavior.
 
 ## Deload gate contract
 - Routes:
@@ -109,6 +114,21 @@ Sources of truth:
   - intent route returns `selectionMetadata`, carrying canonical `sessionDecisionReceipt`
   - template route returns `selectionMetadata`, carrying canonical `sessionDecisionReceipt`
 - Generation routes canonicalize receipt readiness/autoregulation fields through shared selection metadata helpers rather than returning ad hoc top-level session mirrors (`src/lib/ui/selection-metadata.ts`, `src/lib/api/template-session/types.ts`).
+- `POST /api/workouts/generate-from-intent` request fields include optional gap-fill controls (`src/lib/validation.ts`, `src/lib/api/template-session/types.ts`):
+  - `optionalGapFill?: boolean`
+  - `anchorWeek?: number` (required when `optionalGapFill=true`)
+  - `maxGeneratedHardSets?: number`
+  - `maxGeneratedExercises?: number`
+  - `targetMuscles` remains required for `intent=body_part`
+- Optional gap-fill generation uses the same planner/selection engine path as standard intent generation. Allowed route-level deltas are:
+  - post-generation caps trimming
+  - receipt marker injection (`exceptions += optional_gap_fill`)
+  - receipt `targetMuscles` stamping
+  - receipt cycle-context anchor pinning (`weekInMeso/weekInBlock=anchorWeek`)
+- Canonical receipt fields for gap-fill payloads:
+  - `selectionMetadata.sessionDecisionReceipt.exceptions` contains `optional_gap_fill`
+  - `selectionMetadata.sessionDecisionReceipt.targetMuscles` carries chosen muscles
+  - `selectionMetadata.sessionDecisionReceipt.cycleContext.weekInMeso/weekInBlock` are anchor-pinned
 
 ## Workout explanation response contract
 - Route: `GET /api/workouts/[id]/explanation` (`src/app/api/workouts/[id]/explanation/route.ts`).

@@ -1,7 +1,7 @@
 # 01 Architecture
 
 Owner: Aaron  
-Last reviewed: 2026-03-04  
+Last reviewed: 2026-03-06  
 Purpose: Defines the current runtime architecture for the single-user local-first Trainer app and the boundaries between UI, API routes, orchestration, engine, and persistence.
 
 This doc covers:
@@ -59,6 +59,20 @@ Sources of truth:
 - Lifecycle-derived targeting helpers (`getCurrentMesoWeek()`, `getWeeklyVolumeTarget()`, `getRirTarget()`) are consumed by template-session orchestration through the lifecycle facade (math module: `src/lib/api/mesocycle-lifecycle-math.ts`).
 - Weekly volume interpolation is centralized in `src/lib/engine/volume-targets.ts` and consumed by lifecycle math/engine volume services.
 - `MesocycleExerciseRole` is a first-class data-layer entity for intent-scoped exercise role continuity (`CORE_COMPOUND` / `ACCESSORY`) across mesocycle lifecycle events.
+
+## Optional sessions / gap-fill
+- Optional gap-fill sessions are non-advancing by contract: save route forces `advancesSplit=false` for strict gap-fill sessions and blocks lifecycle mutation for those performed transitions (`src/app/api/workouts/save/route.ts`, `src/app/api/workouts/save/lifecycle-contract.ts`).
+- Strict gap-fill classification is canonicalized in one shared predicate (`src/lib/gap-fill/classifier.ts`): receipt marker `optional_gap_fill` AND effective `selectionMode=INTENT` AND `sessionIntent=BODY_PART`.
+- Anchor-week semantics are dual-stamped:
+  - generation pins receipt cycle context to `anchorWeek` (`selectionMetadata.sessionDecisionReceipt.cycleContext.weekInMeso/weekInBlock`)
+  - save pins `mesocycleWeekSnapshot=anchorWeek` for strict gap-fill payloads
+- Read-side week precedence is snapshot-first for UI/session labels: `mesocycleWeekSnapshot ?? receipt.cycleContext.weekInMeso ?? lifecycle-derived week` (`src/lib/ui/workout-list-items.ts`, `src/app/log/[id]/page.tsx`).
+- Program week-volume reads are anchor-safe and week-bounded: query by `mesocycleWeekSnapshot` first, with bounded date fallback for legacy rows lacking snapshot (`src/lib/api/program.ts`).
+- Ownership boundaries:
+  - next-session derivation and suppression context: `src/lib/api/next-session.ts` + `src/lib/api/program.ts`
+  - lifecycle mutation gate and persistence semantics: `src/app/api/workouts/save/route.ts` + `src/app/api/workouts/save/lifecycle-contract.ts`
+  - generation path and receipt stamping: `src/app/api/workouts/generate-from-intent/route.ts` + `src/lib/api/template-session.ts`
+  - receipt parsing/normalization: `src/lib/evidence/session-decision-receipt.ts`
 
 ## Canonical read-side boundaries
 - `ProgramDashboardData` in `src/lib/api/program.ts` is the canonical program dashboard read model for the shared `ProgramStatusCard` mounted on `/` and `/program`. It owns mesocycle header/timeline state, current vs viewed week, lifecycle RIR target, deload/readiness cue, and mesocycle-week volume rows. It is not the canonical contract for generic workout-history lists.

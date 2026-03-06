@@ -1,7 +1,7 @@
 # 05 UI Flows
 
 Owner: Aaron
-Last reviewed: 2026-03-04
+Last reviewed: 2026-03-06
 Purpose: Canonical reference for current UI routes and core user flows implemented in the Next.js App Router.
 
 This doc covers:
@@ -80,6 +80,23 @@ Route-purpose shorthand:
 - `ProgramStatusCard` is mounted on both the home dashboard (`src/app/page.tsx`) and the `/program` page (`src/app/program/page.tsx`), replacing the prior inline server-rendered volume table on `/program`.
 - `/program` session history is no longer carried inside `ProgramDashboardData`; it is loaded independently from the canonical workout-list summary builder in `src/lib/ui/workout-list-items.ts`.
 - Recent Workouts (`src/components/RecentWorkouts.tsx`) and History (`src/components/HistoryClient.tsx`) now share the same workout-list summary contract and display helpers from `src/lib/ui/workout-list-items.ts` for status labels, intent labels, and exercise/set count copy. Both still render the same derived week/session badge from `sessionSnapshot` via `src/lib/ui/workout-session-snapshot.ts`. Planned workouts show this badge immediately upon plan-save because the save route now snapshots mesocycle context for new plan writes.
+
+## Optional gap-fill flow
+1. Dashboard/home support computes optional-session state (`loadHomeProgramSupport()` in `src/lib/api/program.ts`) with `anchorWeek`, suppression flags, and policy caps.
+2. UI shows the optional gap-fill card only when eligible (`src/components/OptionalGapFillCard.tsx`).
+3. Generate action calls `POST /api/workouts/generate-from-intent` with:
+  - `intent=body_part`
+  - `optionalGapFill=true`
+  - `anchorWeek`
+  - `targetMuscles`
+  - policy caps (`maxGeneratedHardSets`, `maxGeneratedExercises`)
+4. Save action calls `POST /api/workouts/save` with `advancesSplit=false` semantics enforced server-side by strict triplet classification.
+5. Disappearance rules:
+  - Next-week `PLANNED` carryover does not hide prior-week optional gap-fill.
+  - Started carryover (`IN_PROGRESS`/`PARTIAL`) suppresses prior-week optional gap-fill.
+6. Labels and week/session mapping:
+  - list/log summary labels use canonical strict classifier for `Gap Fill` title + muscles subtext
+  - week/session badge uses snapshot-first semantics, so optional session renders as anchor `Wk:S` (sessions-per-week + 1 slot)
 
 6. Analytics review
 - UI: `/analytics`

@@ -1,7 +1,7 @@
 # 06 Testing
 
 Owner: Aaron
-Last reviewed: 2026-03-04
+Last reviewed: 2026-03-06
 Purpose: Canonical testing reference for Vitest-based coverage of engine, API helpers, and UI components.
 
 This doc covers:
@@ -60,6 +60,24 @@ Sources of truth:
   - `src/lib/audit/workout-audit/intent-matrix.test.ts`
   - `src/lib/audit/workout-audit/next-session-intent-matrix.test.ts`
   - Matrix assertions keep standard/debug selection parity while verifying diagnostics gating for closure candidate trace persistence.
+
+## Gap-fill regression
+- Key invariants:
+  - lifecycle counters/state do not advance for strict optional gap-fill (`advancesSplit=false`)
+  - persisted non-advancing workouts cannot be flipped advancing via request payload
+  - strict classifier triplet is enforced (`optional_gap_fill` + `INTENT` + `BODY_PART`)
+  - anchor week is pinned in both persisted snapshot and receipt cycle context
+  - program week-volume queries are week-bounded and snapshot-aware (no cross-week leak)
+- Fixture location:
+  - `src/lib/audit/workout-audit/fixtures/optional-gap-fill-body-part.intent-preview.json`
+- Focused test files:
+  - `src/app/api/workouts/save/route.integration.test.ts`
+  - `src/app/api/workouts/save/lifecycle-contract.test.ts`
+  - `src/lib/ui/gap-fill.test.ts`
+  - `src/lib/audit/workout-audit/optional-gap-fill.fixture-regression.test.ts`
+  - `src/lib/api/program.test.ts`
+- Recommended focused command:
+  - `npm run test -- src/app/api/workouts/save/lifecycle-contract.test.ts src/app/api/workouts/save/route.integration.test.ts src/lib/api/program.test.ts src/lib/ui/gap-fill.test.ts src/lib/audit/workout-audit/optional-gap-fill.fixture-regression.test.ts`
 
 ## Configuration
 - Vitest include patterns: `src/**/*.test.ts` and `src/**/*.test.tsx`

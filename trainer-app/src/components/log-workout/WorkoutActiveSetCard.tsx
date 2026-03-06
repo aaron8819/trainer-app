@@ -1,6 +1,6 @@
 "use client";
 
-import type { RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { toDisplayLoad } from "@/lib/ui/load-display";
 import { getSetValidity } from "@/lib/logging/setValidity";
 import type {
@@ -138,6 +138,25 @@ export function WorkoutActiveSetCard({
     setRpeValue,
     updateDraftBuffer,
   } = formActions;
+  // Auto-dismiss "Draft restored" after 3 s; also hide on any field interaction
+  const [showDraftRestored, setShowDraftRestored] = useState(false);
+  const draftRestoredTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!restoredSetIds.has(setId)) {
+      return;
+    }
+    setShowDraftRestored(true);
+    draftRestoredTimerRef.current = setTimeout(() => setShowDraftRestored(false), 3000);
+    return () => {
+      if (draftRestoredTimerRef.current !== null) clearTimeout(draftRestoredTimerRef.current);
+    };
+  }, [restoredSetIds, setId]);
+
+  const dismissDraftRestored = () => {
+    if (draftRestoredTimerRef.current !== null) clearTimeout(draftRestoredTimerRef.current);
+    setShowDraftRestored(false);
+  };
+
   const repsDraft = draftBuffersBySet[setId]?.reps ?? toInputNumberString(activeSet.set.actualReps);
   const loadDraft = draftBuffersBySet[setId]?.load ?? toInputNumberString(activeSet.set.actualLoad);
   const rpeDraft = draftBuffersBySet[setId]?.rpe ?? toInputNumberString(activeSet.set.actualRpe);
@@ -154,7 +173,7 @@ export function WorkoutActiveSetCard({
   return (
     <section
       ref={activeSetPanelRef}
-      className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5"
+      className="rounded-2xl border border-slate-200 bg-white p-3 sm:p-4"
       style={{ scrollMarginBottom: "calc(var(--mobile-nav-height, 56px) + env(safe-area-inset-bottom, 0px))" }}
     >
       <div className="flex items-center justify-between gap-3">
@@ -165,7 +184,7 @@ export function WorkoutActiveSetCard({
       </div>
       {isEditing ? (
         <div
-          className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3"
+          className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5"
           data-testid="active-set-edit-banner"
         >
           <p className="text-sm font-semibold text-amber-900">
@@ -187,19 +206,21 @@ export function WorkoutActiveSetCard({
           style={{ width: `${totalSets === 0 ? 0 : (loggedCount / totalSets) * 100}%` }}
         />
       </div>
-      <div className="mt-4">
-        <h2 className="text-lg font-semibold">{activeSet.exercise.name}</h2>
-        <p className="mt-1 text-sm text-slate-500">
-          {activeSet.sectionLabel} - Set {activeSet.set.setIndex} of {activeSet.exercise.sets.length} - Target{" "}
+      <div className="mt-3">
+        <h2 className="text-base font-semibold leading-snug">{activeSet.exercise.name}</h2>
+        <p className="mt-0.5 text-xs text-slate-400">
+          {activeSet.sectionLabel} · Set {activeSet.set.setIndex} of {activeSet.exercise.sets.length}
+        </p>
+        <p className="mt-0.5 text-xs font-medium text-slate-600">
           {formatTargetReps(activeSet.set)}
           {activeSet.set.targetLoad != null
-            ? ` | ${
+            ? ` · ${
                 isDumbbell
                   ? `${toDisplayLoad(activeSet.set.targetLoad, true)} lbs each`
                   : `${activeSet.set.targetLoad} lbs`
               }`
             : ""}
-          {activeSet.set.targetRpe ? ` | RPE ${activeSet.set.targetRpe}` : ""}
+          {activeSet.set.targetRpe ? ` · RPE ${activeSet.set.targetRpe}` : ""}
         </p>
         {autoregHintMessage ? (
           <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">{autoregHintMessage}</p>
@@ -208,7 +229,7 @@ export function WorkoutActiveSetCard({
       {shouldUseBodyweightLoadLabel(activeSet.exercise, activeSet.set) ? (
         <p className="mt-2 text-xs text-slate-500">Bodyweight movement (load optional for weighted variation).</p>
       ) : null}
-      {restoredSetIds.has(setId) ? <p className="mt-2 text-xs text-slate-500">Draft restored</p> : null}
+      {showDraftRestored ? <p className="mt-2 text-xs text-slate-400">Draft restored</p> : null}
       {savingDraftSetId === setId ? (
         <p className="mt-1 text-xs text-slate-500">Saving draft...</p>
       ) : lastSavedDraft?.setId === setId ? (
@@ -217,7 +238,7 @@ export function WorkoutActiveSetCard({
         </p>
       ) : null}
 
-      <div className="mt-4 space-y-3">
+      <div className="mt-3 space-y-2.5">
         <div>
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Reps</p>
           <div className="mt-1 flex items-center gap-2">
@@ -246,6 +267,7 @@ export function WorkoutActiveSetCard({
               onFocus={() => {
                 handleNumericFieldFocus();
                 primeNumericBuffer(setId, activeSet.set.actualReps, "reps");
+                dismissDraftRestored();
               }}
               onBlur={() => {
                 commitNumericBuffer(setId, repsDraft, "actualReps", "reps");
@@ -327,6 +349,7 @@ export function WorkoutActiveSetCard({
             onFocus={() => {
               handleNumericFieldFocus();
               handleLoadFocus();
+              dismissDraftRestored();
             }}
             onBlur={() => {
               commitLoadValue(setId, loadDraft, isDumbbell);
@@ -375,6 +398,7 @@ export function WorkoutActiveSetCard({
               onFocus={() => {
                 handleNumericFieldFocus();
                 primeNumericBuffer(setId, activeSet.set.actualRpe, "rpe");
+                dismissDraftRestored();
               }}
               onBlur={() => {
                 commitNumericBuffer(setId, rpeDraft, "actualRpe", "rpe");
@@ -388,7 +412,7 @@ export function WorkoutActiveSetCard({
         </div>
       </div>
 
-      <div className="mt-4 grid gap-2 sm:grid-cols-3">
+      <div className="mt-3 grid gap-2 sm:grid-cols-3">
         <button
           className="inline-flex min-h-11 items-center justify-center rounded-full bg-slate-900 px-6 py-2 text-sm font-semibold text-white disabled:opacity-60"
           onClick={onLogSet}
@@ -420,7 +444,7 @@ export function WorkoutActiveSetCard({
           Same as last
         </button>
         <button
-          className="inline-flex min-h-11 items-center justify-center rounded-full border border-rose-300 px-6 py-2 text-sm font-semibold text-rose-700 disabled:opacity-60"
+          className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-200 px-6 py-2 text-sm font-medium text-rose-400 disabled:opacity-60"
           onClick={onSkipSet}
           disabled={savingSetId === setId}
           type="button"

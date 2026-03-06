@@ -714,18 +714,6 @@ export default function LogWorkoutClient({
         </ActiveSetPanel>
       ) : null}
 
-      {!sessionTerminated && activeSet && !allSetsLogged ? (
-        <div className="flex justify-end">
-          <button
-            className="inline-flex min-h-9 items-center justify-center rounded-full border border-slate-300 px-4 text-xs font-semibold text-slate-700"
-            onClick={handleJumpToCurrentSet}
-            type="button"
-          >
-            Jump to active set
-          </button>
-        </div>
-      ) : null}
-
       {!sessionTerminated ? (
         <ExerciseListPanel>
           <WorkoutExerciseQueue

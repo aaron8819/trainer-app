@@ -1,0 +1,50 @@
+{
+  "fixture": "optional-gap-fill-body-part.intent-preview",
+  "mode": "intent-preview",
+  "anchorWeek": 3,
+  "selectionMode": "INTENT",
+  "sessionIntent": "BODY_PART",
+  "mesocycleWeekSnapshot": 3,
+  "selectionMetadata": {
+    "sessionDecisionReceipt": {
+      "version": 1,
+      "cycleContext": {
+        "weekInMeso": 3,
+        "weekInBlock": 3,
+        "mesocycleLength": 5,
+        "phase": "accumulation",
+        "blockType": "accumulation",
+        "isDeload": false,
+        "source": "computed"
+      },
+      "lifecycleVolume": {
+        "source": "unknown"
+      },
+      "sorenessSuppressedMuscles": [],
+      "deloadDecision": {
+        "mode": "none",
+        "reason": [],
+        "reductionPercent": 0,
+        "appliedTo": "none"
+      },
+      "readiness": {
+        "wasAutoregulated": false,
+        "signalAgeHours": null,
+        "fatigueScoreOverall": null,
+        "intensityScaling": {
+          "applied": false,
+          "exerciseIds": [],
+          "scaledUpCount": 0,
+          "scaledDownCount": 0
+        }
+      },
+      "targetMuscles": ["front delts", "rear delts", "biceps"],
+      "exceptions": [
+        {
+          "code": "optional_gap_fill",
+          "message": "Marked as optional gap-fill session."
+        }
+      ]
+    }
+  }
+}

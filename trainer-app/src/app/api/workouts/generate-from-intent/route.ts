@@ -6,6 +6,116 @@ import { applyAutoregulation } from "@/lib/api/autoregulation";
 import { loadActiveMesocycle } from "@/lib/api/mesocycle-lifecycle";
 import type { GenerateFromIntentResponse } from "@/lib/api/template-session/types";
 import { buildCanonicalSelectionMetadata } from "@/lib/ui/selection-metadata";
+import type { SaveableSelectionMetadata } from "@/lib/ui/selection-metadata";
+
+type PlannedExercise = GenerateFromIntentResponse["workout"]["mainLifts"][number];
+type PlannedSet = PlannedExercise["sets"][number];
+
+function applyGapFillCaps(input: {
+  workout: GenerateFromIntentResponse["workout"];
+  maxGeneratedHardSets?: number;
+  maxGeneratedExercises?: number;
+}): GenerateFromIntentResponse["workout"] {
+  const maxSets = input.maxGeneratedHardSets;
+  const maxExercises = input.maxGeneratedExercises;
+  if (!maxSets && !maxExercises) {
+    return input.workout;
+  }
+
+  const combined: Array<{ section: "main" | "accessory"; exercise: PlannedExercise }> = [
+    ...input.workout.mainLifts.map((exercise) => ({ section: "main" as const, exercise })),
+    ...input.workout.accessories.map((exercise) => ({ section: "accessory" as const, exercise })),
+  ];
+
+  const exerciseLimited = maxExercises ? combined.slice(0, maxExercises) : combined;
+  let remainingSets = maxSets ?? Number.POSITIVE_INFINITY;
+  const mainLifts: PlannedExercise[] = [];
+  const accessories: PlannedExercise[] = [];
+
+  for (const entry of exerciseLimited) {
+    if (remainingSets <= 0) {
+      break;
+    }
+    const allowedSets = entry.exercise.sets.slice(0, Math.max(0, remainingSets));
+    if (allowedSets.length === 0) {
+      continue;
+    }
+    const nextExercise: PlannedExercise = {
+      ...entry.exercise,
+      sets: allowedSets as PlannedSet[],
+    };
+    if (entry.section === "main") {
+      mainLifts.push(nextExercise);
+    } else {
+      accessories.push(nextExercise);
+    }
+    remainingSets -= allowedSets.length;
+  }
+
+  return {
+    ...input.workout,
+    mainLifts,
+    accessories,
+  };
+}
+
+function withOptionalGapFillMarker(
+  selectionMetadata: SaveableSelectionMetadata,
+  input: { enabled: boolean; targetMuscles?: string[] }
+): SaveableSelectionMetadata {
+  if (!input.enabled) {
+    return selectionMetadata;
+  }
+  const receipt = selectionMetadata.sessionDecisionReceipt;
+  if (!receipt) {
+    return selectionMetadata;
+  }
+  const hasMarker = receipt.exceptions.some((entry) => entry.code === "optional_gap_fill");
+  if (hasMarker) {
+    return selectionMetadata;
+  }
+  return {
+    ...selectionMetadata,
+    sessionDecisionReceipt: {
+      ...receipt,
+      targetMuscles:
+        input.targetMuscles && input.targetMuscles.length > 0
+          ? input.targetMuscles
+          : receipt.targetMuscles,
+      exceptions: [
+        ...receipt.exceptions,
+        {
+          code: "optional_gap_fill",
+          message: "Marked as optional gap-fill session.",
+        },
+      ],
+    },
+  };
+}
+
+function withOptionalGapFillAnchorWeek(
+  selectionMetadata: SaveableSelectionMetadata,
+  input: { enabled: boolean; anchorWeek?: number }
+): SaveableSelectionMetadata {
+  if (!input.enabled || input.anchorWeek == null) {
+    return selectionMetadata;
+  }
+  const receipt = selectionMetadata.sessionDecisionReceipt;
+  if (!receipt) {
+    return selectionMetadata;
+  }
+  return {
+    ...selectionMetadata,
+    sessionDecisionReceipt: {
+      ...receipt,
+      cycleContext: {
+        ...receipt.cycleContext,
+        weekInMeso: input.anchorWeek,
+        weekInBlock: input.anchorWeek,
+      },
+    },
+  };
+}
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
@@ -46,15 +156,34 @@ export async function POST(request: Request) {
     setTargetCount: Object.keys(selectionMetadata.perExerciseSetTargets ?? {}).length,
   };
 
-  const response: GenerateFromIntentResponse = {
+  const cappedWorkout = applyGapFillCaps({
     workout: autoregulated.adjusted,
+    maxGeneratedHardSets: parsed.data.maxGeneratedHardSets,
+    maxGeneratedExercises: parsed.data.maxGeneratedExercises,
+  });
+  const shouldApplyOptionalGapFill =
+    parsed.data.optionalGapFill === true && parsed.data.intent === "body_part";
+  const anchorPinnedSelectionMetadata = withOptionalGapFillAnchorWeek(selectionMetadata, {
+    enabled: shouldApplyOptionalGapFill,
+    anchorWeek: parsed.data.anchorWeek,
+  });
+  const markedSelectionMetadata = withOptionalGapFillMarker(
+    anchorPinnedSelectionMetadata,
+    {
+      enabled: shouldApplyOptionalGapFill,
+      targetMuscles: parsed.data.targetMuscles,
+    }
+  );
+
+  const response: GenerateFromIntentResponse = {
+    workout: cappedWorkout,
     sraWarnings: result.sraWarnings,
     substitutions: result.substitutions,
     volumePlanByMuscle: result.volumePlanByMuscle,
     selectionMode: result.selectionMode,
     sessionIntent: result.sessionIntent,
     selectionSummary,
-    selectionMetadata,
+    selectionMetadata: markedSelectionMetadata,
     filteredExercises: result.filteredExercises,
   };
 

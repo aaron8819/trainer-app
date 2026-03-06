@@ -34,6 +34,10 @@ export type GenerateTemplateSessionParams = {
 export type GenerateIntentSessionInput = {
   intent: SessionIntent;
   targetMuscles?: string[];
+  anchorWeek?: number;
+  maxGeneratedHardSets?: number;
+  maxGeneratedExercises?: number;
+  optionalGapFill?: boolean;
   pinnedExerciseIds?: string[];
   roleListIncomplete?: true;
   plannerDiagnosticsMode?: PlannerDiagnosticsMode;

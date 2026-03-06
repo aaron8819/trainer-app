@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db/prisma";
 import { parseExplainabilitySelectionMetadata } from "@/lib/ui/explainability";
 import { buildSessionSummaryModel } from "@/lib/ui/session-summary";
 import { splitExercises } from "@/lib/ui/workout-sections";
+import { resolveGapFillTargetMuscles } from "@/lib/ui/gap-fill";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -72,12 +73,20 @@ export default async function LogWorkoutPage({
   const explanation = "error" in explanationResult ? null : explanationResult;
   const selectionMetadata = parseExplainabilitySelectionMetadata(workout.selectionMetadata);
   const sessionDecisionReceipt = selectionMetadata.sessionDecisionReceipt;
+  const lifecycleCurrentWeek = explanation?.sessionContext.progressionContext.weekInMesocycle ?? null;
+  const displayWeek = workout.mesocycleWeekSnapshot ?? lifecycleCurrentWeek;
+  const gapFillTargetMuscles = resolveGapFillTargetMuscles({
+    selectionMetadata: workout.selectionMetadata,
+  });
   const summary =
     explanation != null
       ? buildSessionSummaryModel({
           context: explanation.sessionContext,
           receipt: sessionDecisionReceipt,
+          selectionMode: workout.selectionMode,
           sessionIntent: workout.sessionIntent,
+          displayWeek,
+          targetMuscles: gapFillTargetMuscles,
           estimatedMinutes: workout.estimatedMinutes,
         })
       : null;

@@ -178,4 +178,201 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
     expect(body.autoregulation).toBeUndefined();
     expect(body.selectionMetadata.sessionDecisionReceipt.version).toBe(1);
   });
+
+  it("anchor-pins receipt week for optional gap-fill and preserves marker + target muscles", async () => {
+    mocks.loadActiveMesocycle.mockResolvedValue(null);
+    mocks.generateSessionFromIntent.mockResolvedValue({
+      workout: {
+        id: "w-gap",
+        scheduledDate: new Date("2026-03-03T00:00:00.000Z").toISOString(),
+        warmup: [],
+        mainLifts: [
+          {
+            id: "we-1",
+            exercise: { id: "ex-1", name: "Press" },
+            isMainLift: true,
+            orderIndex: 0,
+            sets: [
+              { setIndex: 1, targetReps: 10 },
+              { setIndex: 2, targetReps: 10 },
+            ],
+          },
+          {
+            id: "we-2",
+            exercise: { id: "ex-2", name: "Fly" },
+            isMainLift: true,
+            orderIndex: 1,
+            sets: [{ setIndex: 1, targetReps: 12 }],
+          },
+        ],
+        accessories: [
+          {
+            id: "we-3",
+            exercise: { id: "ex-3", name: "Curl" },
+            isMainLift: false,
+            orderIndex: 2,
+            sets: [{ setIndex: 1, targetReps: 12 }],
+          },
+        ],
+        estimatedMinutes: 40,
+      },
+      selectionMode: "INTENT",
+      sessionIntent: "body_part",
+      sraWarnings: [],
+      substitutions: [],
+      volumePlanByMuscle: {},
+      selection: {
+        selectedExerciseIds: ["ex-1", "ex-2", "ex-3"],
+        mainLiftIds: ["ex-1", "ex-2"],
+        accessoryIds: ["ex-3"],
+        perExerciseSetTargets: { "ex-1": 2, "ex-2": 1, "ex-3": 1 },
+        rationale: {},
+        volumePlanByMuscle: {},
+        sessionDecisionReceipt: {
+          version: 1,
+          cycleContext: {
+            weekInMeso: 4,
+            weekInBlock: 4,
+            mesocycleLength: 5,
+            phase: "accumulation",
+            blockType: "accumulation",
+            isDeload: false,
+            source: "computed",
+          },
+          lifecycleVolume: { source: "unknown" },
+          sorenessSuppressedMuscles: [],
+          deloadDecision: {
+            mode: "none",
+            reason: [],
+            reductionPercent: 0,
+            appliedTo: "none",
+          },
+          readiness: {
+            wasAutoregulated: false,
+            signalAgeHours: null,
+            fatigueScoreOverall: null,
+            intensityScaling: {
+              applied: false,
+              exerciseIds: [],
+              scaledUpCount: 0,
+              scaledDownCount: 0,
+            },
+          },
+          exceptions: [],
+        },
+      },
+      filteredExercises: [],
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/generate-from-intent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          intent: "body_part",
+          anchorWeek: 3,
+          targetMuscles: ["front delts"],
+          maxGeneratedHardSets: 2,
+          maxGeneratedExercises: 1,
+          optionalGapFill: true,
+        }),
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.selectionMetadata.sessionDecisionReceipt.cycleContext.weekInMeso).toBe(3);
+    expect(body.selectionMetadata.sessionDecisionReceipt.cycleContext.weekInBlock).toBe(3);
+    expect(body.workout.mainLifts.length).toBe(1);
+    expect(body.workout.accessories.length).toBe(0);
+    expect(body.workout.mainLifts[0].sets.length).toBe(2);
+    expect(body.selectionMetadata.sessionDecisionReceipt.exceptions).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: "optional_gap_fill" })])
+    );
+    expect(body.selectionMetadata.sessionDecisionReceipt.targetMuscles).toEqual(["front delts"]);
+  });
+
+  it("keeps lifecycle-derived receipt week when optionalGapFill is false", async () => {
+    mocks.loadActiveMesocycle.mockResolvedValue(null);
+    mocks.generateSessionFromIntent.mockResolvedValue({
+      workout: {
+        id: "w-pull",
+        scheduledDate: new Date("2026-03-03T00:00:00.000Z").toISOString(),
+        warmup: [],
+        mainLifts: [
+          {
+            id: "we-1",
+            exercise: { id: "ex-1", name: "Row" },
+            isMainLift: true,
+            orderIndex: 0,
+            sets: [{ setIndex: 1, targetReps: 8 }],
+          },
+        ],
+        accessories: [],
+        estimatedMinutes: 35,
+      },
+      selectionMode: "INTENT",
+      sessionIntent: "pull",
+      sraWarnings: [],
+      substitutions: [],
+      volumePlanByMuscle: {},
+      selection: {
+        selectedExerciseIds: ["ex-1"],
+        mainLiftIds: ["ex-1"],
+        accessoryIds: [],
+        perExerciseSetTargets: { "ex-1": 1 },
+        rationale: {},
+        volumePlanByMuscle: {},
+        sessionDecisionReceipt: {
+          version: 1,
+          cycleContext: {
+            weekInMeso: 4,
+            weekInBlock: 4,
+            mesocycleLength: 5,
+            phase: "accumulation",
+            blockType: "accumulation",
+            isDeload: false,
+            source: "computed",
+          },
+          lifecycleVolume: { source: "unknown" },
+          sorenessSuppressedMuscles: [],
+          deloadDecision: {
+            mode: "none",
+            reason: [],
+            reductionPercent: 0,
+            appliedTo: "none",
+          },
+          readiness: {
+            wasAutoregulated: false,
+            signalAgeHours: null,
+            fatigueScoreOverall: null,
+            intensityScaling: {
+              applied: false,
+              exerciseIds: [],
+              scaledUpCount: 0,
+              scaledDownCount: 0,
+            },
+          },
+          exceptions: [],
+        },
+      },
+      filteredExercises: [],
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/generate-from-intent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          intent: "pull",
+          optionalGapFill: false,
+        }),
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.selectionMetadata.sessionDecisionReceipt.cycleContext.weekInMeso).toBe(4);
+    expect(body.selectionMetadata.sessionDecisionReceipt.exceptions).toEqual([]);
+  });
 });

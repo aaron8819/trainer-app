@@ -43,7 +43,26 @@ export function buildPerformedLifecycleCounterUpdate(
         deloadSessionsCompleted: { increment: 1 },
       }
     : {
-        completedSessions: { increment: 1 },
-        accumulationSessionsCompleted: { increment: 1 },
-      };
+      completedSessions: { increment: 1 },
+      accumulationSessionsCompleted: { increment: 1 },
+    };
+}
+
+export function shouldAdvanceLifecycleForPerformedTransition(
+  advancesSplit: boolean | null | undefined
+): boolean {
+  // `advancesSplit=false` explicitly opts out of lifecycle advancement.
+  // Missing/null values preserve historical default behavior (advance).
+  return advancesSplit !== false;
+}
+
+export function resolvePersistedAdvancesSplit(input: {
+  persistedAdvancesSplit: boolean | null | undefined;
+  requestAdvancesSplit: boolean | null | undefined;
+}): boolean | undefined {
+  // Persisted value is immutable once set; request can only initialize when persisted is absent.
+  if (input.persistedAdvancesSplit != null) {
+    return input.persistedAdvancesSplit;
+  }
+  return input.requestAdvancesSplit ?? undefined;
 }

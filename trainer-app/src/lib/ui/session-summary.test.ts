@@ -101,6 +101,47 @@ describe("buildSessionSummaryModel", () => {
     expect(summary.items[2]?.value).toContain("recent readiness signal");
   });
 
+  it("renders gap-fill labels and snapshot week tag when canonical marker + INTENT + BODY_PART are present", () => {
+    const summary = buildSessionSummaryModel({
+      context: makeContext({
+        blockPhase: {
+          blockType: "accumulation",
+          weekInBlock: 4,
+          totalWeeksInBlock: 4,
+          primaryGoal: "hypertrophy",
+        },
+        progressionContext: {
+          weekInMesocycle: 4,
+          volumeProgression: "building",
+          intensityProgression: "ramping",
+          nextMilestone: "Deload in week 5",
+        },
+      }),
+      receipt: makeReceipt({
+        cycleContext: {
+          weekInMeso: 3,
+          weekInBlock: 3,
+          mesocycleLength: 5,
+          phase: "accumulation",
+          blockType: "accumulation",
+          isDeload: false,
+          source: "computed",
+        },
+        targetMuscles: ["front delts", "rear delts", "biceps"],
+        exceptions: [{ code: "optional_gap_fill", message: "Marked as optional gap-fill session." }],
+      }),
+      selectionMode: "INTENT",
+      sessionIntent: "BODY_PART",
+      displayWeek: 3,
+      targetMuscles: ["front delts", "rear delts", "biceps"],
+      estimatedMinutes: 42,
+    });
+
+    expect(summary.tags).toEqual(["Gap Fill", "Accumulation week 3", "42 min"]);
+    expect(summary.summary).toContain("gap-fill session targets front delts, rear delts, biceps");
+    expect(summary.items[0]?.value).toContain("Close gaps for front delts, rear delts, biceps");
+  });
+
   it("surfaces deload, soreness hold, and readiness scaling through the same summary", () => {
     const summary = buildSessionSummaryModel({
       context: makeContext(),

@@ -1,5 +1,11 @@
 import type { Prisma } from "@prisma/client";
 import { buildWorkoutSessionSnapshotSummary } from "./workout-session-snapshot";
+import {
+  formatGapFillMuscleList,
+  isGapFillWorkout,
+  resolveGapFillTargetMuscles,
+} from "./gap-fill";
+import { readSessionDecisionReceipt } from "@/lib/evidence/session-decision-receipt";
 
 export const workoutListItemSelect = {
   id: true,
@@ -12,6 +18,12 @@ export const workoutListItemSelect = {
   mesocycleWeekSnapshot: true,
   mesoSessionSnapshot: true,
   mesocyclePhaseSnapshot: true,
+  selectionMetadata: true,
+  mesocycle: {
+    select: {
+      sessionsPerWeek: true,
+    },
+  },
   _count: { select: { exercises: true } },
   exercises: {
     select: {
@@ -41,6 +53,8 @@ export type WorkoutListSurfaceSummary = {
   sessionIntent: string | null;
   mesocycleId: string | null;
   sessionSnapshot: ReturnType<typeof buildWorkoutSessionSnapshotSummary>;
+  isGapFill?: boolean;
+  gapFillTargetMuscles?: string[];
   exerciseCount: number;
   totalSetsLogged: number;
 };
@@ -80,6 +94,20 @@ export function formatWorkoutListIntentLabel(intent: string | null | undefined):
     .join(" ");
 }
 
+export function getWorkoutListPrimaryLabel(workout: Pick<WorkoutListSurfaceSummary, "isGapFill" | "sessionIntent">): string {
+  return workout.isGapFill ? "Gap Fill" : formatWorkoutListIntentLabel(workout.sessionIntent);
+}
+
+export function getWorkoutListSecondaryLabel(workout: Pick<WorkoutListSurfaceSummary, "isGapFill" | "gapFillTargetMuscles">): string | null {
+  if (!workout.isGapFill) {
+    return null;
+  }
+  if (!workout.gapFillTargetMuscles || workout.gapFillTargetMuscles.length === 0) {
+    return null;
+  }
+  return formatGapFillMuscleList(workout.gapFillTargetMuscles);
+}
+
 export function getWorkoutListStatusLabel(status: string): string {
   return WORKOUT_LIST_STATUS_LABELS[status] ?? status;
 }
@@ -103,6 +131,26 @@ function countLoggedSets(row: WorkoutListItemRow): number {
 export function buildWorkoutListSurfaceSummary(
   row: WorkoutListItemRow
 ): WorkoutListSurfaceSummary {
+  const isGapFill = isGapFillWorkout({
+    selectionMetadata: row.selectionMetadata,
+    selectionMode: row.selectionMode,
+    sessionIntent: row.sessionIntent,
+  });
+  const receipt = readSessionDecisionReceipt(row.selectionMetadata);
+  const displayWeek = row.mesocycleWeekSnapshot ?? receipt?.cycleContext.weekInMeso ?? null;
+  const displaySession =
+    displayWeek == null
+      ? null
+      : isGapFill
+        ? row.mesocycle?.sessionsPerWeek != null
+          ? row.mesocycle.sessionsPerWeek + 1
+          : (row.mesoSessionSnapshot ?? null)
+        : row.mesoSessionSnapshot;
+  const displayPhase = row.mesocyclePhaseSnapshot ?? receipt?.cycleContext.phase?.toUpperCase() ?? null;
+  const gapFillTargetMuscles = resolveGapFillTargetMuscles({
+    selectionMetadata: row.selectionMetadata,
+  });
+
   return {
     id: row.id,
     scheduledDate: row.scheduledDate.toISOString(),
@@ -112,10 +160,12 @@ export function buildWorkoutListSurfaceSummary(
     sessionIntent: row.sessionIntent ?? null,
     mesocycleId: row.mesocycleId ?? null,
     sessionSnapshot: buildWorkoutSessionSnapshotSummary({
-      week: row.mesocycleWeekSnapshot,
-      session: row.mesoSessionSnapshot,
-      phase: row.mesocyclePhaseSnapshot,
+      week: displayWeek,
+      session: displaySession,
+      phase: displayPhase,
     }),
+    isGapFill,
+    gapFillTargetMuscles,
     exerciseCount: row._count.exercises,
     totalSetsLogged: countLoggedSets(row),
   };

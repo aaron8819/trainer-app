@@ -9,6 +9,8 @@ vi.mock("@/lib/api/mesocycle-lifecycle-math", () => ({
 import {
   buildPerformedLifecycleCounterUpdate,
   deriveSaveRouteMesoSnapshot,
+  resolvePersistedAdvancesSplit,
+  shouldAdvanceLifecycleForPerformedTransition,
 } from "./lifecycle-contract";
 
 describe("save lifecycle contract", () => {
@@ -83,5 +85,39 @@ describe("save lifecycle contract", () => {
 
     expect(first).toEqual(second);
     expect(deriveCurrentMesocycleSessionMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("treats advancesSplit=false as non-lifecycle and defaults others to lifecycle-advancing", () => {
+    expect(shouldAdvanceLifecycleForPerformedTransition(false)).toBe(false);
+    expect(shouldAdvanceLifecycleForPerformedTransition(true)).toBe(true);
+    expect(shouldAdvanceLifecycleForPerformedTransition(undefined)).toBe(true);
+    expect(shouldAdvanceLifecycleForPerformedTransition(null)).toBe(true);
+  });
+
+  it("uses persisted advancesSplit when present and only uses request while persisted is unset", () => {
+    expect(
+      resolvePersistedAdvancesSplit({
+        persistedAdvancesSplit: false,
+        requestAdvancesSplit: true,
+      })
+    ).toBe(false);
+    expect(
+      resolvePersistedAdvancesSplit({
+        persistedAdvancesSplit: true,
+        requestAdvancesSplit: false,
+      })
+    ).toBe(true);
+    expect(
+      resolvePersistedAdvancesSplit({
+        persistedAdvancesSplit: undefined,
+        requestAdvancesSplit: false,
+      })
+    ).toBe(false);
+    expect(
+      resolvePersistedAdvancesSplit({
+        persistedAdvancesSplit: null,
+        requestAdvancesSplit: true,
+      })
+    ).toBe(true);
   });
 });

@@ -67,6 +67,32 @@ export type HomeProgramSupportData = {
   nextSession: NextSessionData;
   lastSessionSkipped: boolean;
   latestIncomplete: { id: string; status: string } | null;
+  gapFill: GapFillSupportData;
+};
+
+export type GapFillDeficitRow = {
+  muscle: string;
+  target: number;
+  actual: number;
+  deficit: number;
+};
+
+export type GapFillPolicy = {
+  requiredSessionsPerWeek: number;
+  maxOptionalGapFillSessionsPerWeek: number;
+  maxGeneratedHardSets: number;
+  maxGeneratedExercises: number;
+};
+
+export type GapFillSupportData = {
+  eligible: boolean;
+  reason: string | null;
+  anchorWeek: number | null;
+  targetMuscles: string[];
+  deficitSummary: GapFillDeficitRow[];
+  alreadyUsedThisWeek: boolean;
+  suppressedByStartedNextWeek: boolean;
+  policy: GapFillPolicy;
 };
 
 export type CapabilityFlags = {
@@ -277,14 +303,23 @@ export function computeMesoWeekStart(mesoStartDate: Date, currentWeek: number): 
 async function loadMesoWeekMuscleVolume(
   userId: string,
   mesocycleId: string,
+  weekInMeso: number,
   mesoWeekStart: Date
 ): Promise<Record<string, { directSets: number; indirectSets: number }>> {
+  const mesoWeekEnd = new Date(mesoWeekStart);
+  mesoWeekEnd.setDate(mesoWeekEnd.getDate() + 7);
   const workouts = await prisma.workout.findMany({
     where: {
       userId,
       mesocycleId,
       status: { in: [...PERFORMED_WORKOUT_STATUSES] as WorkoutStatus[] },
-      scheduledDate: { gte: mesoWeekStart },
+      OR: [
+        { mesocycleWeekSnapshot: weekInMeso },
+        {
+          mesocycleWeekSnapshot: null,
+          scheduledDate: { gte: mesoWeekStart, lt: mesoWeekEnd },
+        },
+      ],
     },
     include: {
       exercises: {
@@ -336,7 +371,17 @@ async function loadMesoWeekMuscleVolume(
 }
 
 export async function loadHomeProgramSupport(userId: string): Promise<HomeProgramSupportData> {
-  const nextWorkoutContext = await loadNextWorkoutContext(userId);
+  const [nextWorkoutContext, activeMesocycle] = await Promise.all([
+    loadNextWorkoutContext(userId),
+    prisma.mesocycle.findFirst({
+      where: { macroCycle: { userId }, isActive: true },
+      select: {
+        sessionsPerWeek: true,
+        accumulationSessionsCompleted: true,
+        state: true,
+      },
+    }),
+  ]);
   const nextSession: NextSessionData = {
     intent: nextWorkoutContext.intent,
     workoutId: nextWorkoutContext.existingWorkoutId,
@@ -360,10 +405,43 @@ export async function loadHomeProgramSupport(userId: string): Promise<HomeProgra
     lastSessionSkipped = latestForIntent?.status === "SKIPPED";
   }
 
+  const policy: GapFillPolicy = {
+    requiredSessionsPerWeek: Math.max(1, activeMesocycle?.sessionsPerWeek ?? 3),
+    maxOptionalGapFillSessionsPerWeek: 1,
+    maxGeneratedHardSets: 12,
+    maxGeneratedExercises: 4,
+  };
+  const anchorWeek =
+    activeMesocycle &&
+    activeMesocycle.state === "ACTIVE_ACCUMULATION" &&
+    activeMesocycle.accumulationSessionsCompleted > 0 &&
+    activeMesocycle.accumulationSessionsCompleted % policy.requiredSessionsPerWeek === 0
+      ? activeMesocycle.accumulationSessionsCompleted / policy.requiredSessionsPerWeek
+      : null;
+  const suppressedByStartedNextWeek =
+    Boolean(latestIncomplete) && latestIncomplete?.status !== "planned";
+  const gapFill: GapFillSupportData = {
+    // Fail closed until bounded per-week deficit actuals are loaded into this read model.
+    eligible: false,
+    reason:
+      anchorWeek == null
+        ? "not_at_required_rotation_boundary"
+        : suppressedByStartedNextWeek
+          ? "suppressed_by_started_next_week"
+          : "insufficient_week_scoping_data",
+    anchorWeek,
+    targetMuscles: [],
+    deficitSummary: [],
+    alreadyUsedThisWeek: false,
+    suppressedByStartedNextWeek,
+    policy,
+  };
+
   return {
     nextSession,
     lastSessionSkipped,
     latestIncomplete,
+    gapFill,
   };
 }
 
@@ -496,6 +574,7 @@ export async function loadProgramDashboardData(
     viewedWeekMuscles = await loadMesoWeekMuscleVolume(
       userId,
       mesoRecord.id,
+      effectiveViewWeek,
       computeMesoWeekStart(mesoStart, effectiveViewWeek)
     );
     currentWeekMuscles =
@@ -504,6 +583,7 @@ export async function loadProgramDashboardData(
         : await loadMesoWeekMuscleVolume(
             userId,
             mesoRecord.id,
+            currentWeek,
             computeMesoWeekStart(mesoStart, currentWeek)
           );
   }

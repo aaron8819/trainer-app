@@ -119,6 +119,42 @@ function buildCanonicalSelectionMetadata(overrides?: Record<string, unknown>) {
   };
 }
 
+function buildOptionalGapFillSelectionMetadata() {
+  return buildCanonicalSelectionMetadata({
+    sessionDecisionReceipt: {
+      version: 1,
+      cycleContext: {
+        weekInMeso: 4,
+        weekInBlock: 4,
+        phase: "accumulation",
+        blockType: "accumulation",
+        isDeload: false,
+        source: "computed",
+      },
+      lifecycleVolume: { source: "unknown" },
+      sorenessSuppressedMuscles: [],
+      deloadDecision: {
+        mode: "none",
+        reason: [],
+        reductionPercent: 0,
+        appliedTo: "none",
+      },
+      readiness: {
+        wasAutoregulated: false,
+        signalAgeHours: null,
+        fatigueScoreOverall: null,
+        intensityScaling: {
+          applied: false,
+          exerciseIds: [],
+          scaledUpCount: 0,
+          scaledDownCount: 0,
+        },
+      },
+      exceptions: [{ code: "optional_gap_fill", message: "Marked as optional gap-fill session." }],
+    },
+  });
+}
+
 describe("POST /api/workouts/save", () => {
   beforeEach(() => {
     mocks.workoutFindUnique.mockReset();
@@ -416,6 +452,357 @@ describe("POST /api/workouts/save", () => {
     expect(upsert.update.mesocycleWeekSnapshot).toBe(2);
     expect(upsert.update.mesoSessionSnapshot).toBe(2);
     expect(upsert.update.mesocyclePhaseSnapshot).toBe("ACCUMULATION");
+  });
+
+  it("does not advance lifecycle for first performed mark_partial when advancesSplit=false", async () => {
+    mocks.workoutFindUnique.mockResolvedValueOnce({
+      id: "workout-1",
+      userId: "user-1",
+      status: "PLANNED",
+      revision: 1,
+      mesocycleId: "meso-1",
+      advancesSplit: undefined,
+      selectionMetadata: buildCanonicalSelectionMetadata(),
+    });
+    mocks.tx.mesocycle.findUnique.mockResolvedValueOnce({
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION",
+      durationWeeks: 5,
+      accumulationSessionsCompleted: 4,
+      deloadSessionsCompleted: 0,
+      sessionsPerWeek: 3,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutId: "workout-1",
+          action: "mark_partial",
+          advancesSplit: false,
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.tx.mesocycle.update).not.toHaveBeenCalled();
+    expect(mocks.transitionMesocycleState).not.toHaveBeenCalled();
+  });
+
+  it("does not advance lifecycle for first performed mark_completed when persisted advancesSplit=false", async () => {
+    mocks.workoutFindUnique
+      .mockResolvedValueOnce({
+        id: "workout-1",
+        userId: "user-1",
+        status: "PLANNED",
+        revision: 1,
+        mesocycleId: "meso-1",
+        advancesSplit: false,
+        selectionMetadata: buildCanonicalSelectionMetadata(),
+      })
+      .mockResolvedValueOnce({
+        exercises: [
+          {
+            sets: [{ logs: [{ wasSkipped: false, actualReps: 8, actualRpe: 8, actualLoad: 135 }] }],
+          },
+        ],
+      });
+    mocks.tx.mesocycle.findUnique.mockResolvedValueOnce({
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION",
+      durationWeeks: 5,
+      accumulationSessionsCompleted: 4,
+      deloadSessionsCompleted: 0,
+      sessionsPerWeek: 3,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutId: "workout-1",
+          action: "mark_completed",
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.tx.mesocycle.update).not.toHaveBeenCalled();
+    expect(mocks.transitionMesocycleState).not.toHaveBeenCalled();
+  });
+
+  it("cannot bypass non-advancing persistence: mark_completed with payload advancesSplit=true stays non-lifecycle when persisted is false", async () => {
+    mocks.workoutFindUnique
+      .mockResolvedValueOnce({
+        id: "workout-1",
+        userId: "user-1",
+        status: "PLANNED",
+        revision: 1,
+        mesocycleId: "meso-1",
+        advancesSplit: false,
+        selectionMetadata: buildCanonicalSelectionMetadata(),
+      })
+      .mockResolvedValueOnce({
+        exercises: [
+          {
+            sets: [{ logs: [{ wasSkipped: false, actualReps: 8, actualRpe: 8, actualLoad: 135 }] }],
+          },
+        ],
+      });
+    mocks.tx.mesocycle.findUnique.mockResolvedValueOnce({
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION",
+      durationWeeks: 5,
+      accumulationSessionsCompleted: 4,
+      deloadSessionsCompleted: 0,
+      sessionsPerWeek: 3,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutId: "workout-1",
+          action: "mark_completed",
+          advancesSplit: true,
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.tx.mesocycle.update).not.toHaveBeenCalled();
+    expect(mocks.transitionMesocycleState).not.toHaveBeenCalled();
+    const upsert = mocks.workoutUpsert.mock.calls[0][0];
+    expect(upsert.update.advancesSplit).toBe(false);
+  });
+
+  it("does not enforce gap-fill behavior when marker is present but intent is non-BODY_PART", async () => {
+    mocks.workoutFindUnique
+      .mockResolvedValueOnce({
+        id: "workout-1",
+        userId: "user-1",
+        status: "PLANNED",
+        revision: 1,
+        mesocycleId: "meso-1",
+        advancesSplit: undefined,
+        selectionMetadata: buildOptionalGapFillSelectionMetadata(),
+      })
+      .mockResolvedValueOnce({
+        exercises: [{ sets: [{ logs: [{ wasSkipped: false, actualReps: 8, actualRpe: 8, actualLoad: 135 }] }] }],
+      });
+    mocks.tx.mesocycle.findUnique.mockResolvedValueOnce({
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION",
+      durationWeeks: 5,
+      accumulationSessionsCompleted: 6,
+      deloadSessionsCompleted: 0,
+      sessionsPerWeek: 3,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutId: "workout-1",
+          action: "mark_completed",
+          selectionMode: "INTENT",
+          sessionIntent: "PULL",
+          advancesSplit: true,
+          mesocycleWeekSnapshot: 99,
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.tx.mesocycle.update).toHaveBeenCalledWith({
+      where: { id: "meso-1" },
+      data: { completedSessions: { increment: 1 }, accumulationSessionsCompleted: { increment: 1 } },
+    });
+    expect(mocks.transitionMesocycleState).toHaveBeenCalledWith("meso-1");
+    const upsert = mocks.workoutUpsert.mock.calls[0][0];
+    expect(upsert.update.advancesSplit).toBe(true);
+    expect(upsert.update.mesocycleWeekSnapshot).toBe(3);
+  });
+
+  it("does not enforce gap-fill behavior when BODY_PART intent has no optional marker", async () => {
+    mocks.workoutFindUnique
+      .mockResolvedValueOnce({
+        id: "workout-1",
+        userId: "user-1",
+        status: "PLANNED",
+        revision: 1,
+        mesocycleId: "meso-1",
+        advancesSplit: undefined,
+        selectionMetadata: buildCanonicalSelectionMetadata(),
+      })
+      .mockResolvedValueOnce({
+        exercises: [{ sets: [{ logs: [{ wasSkipped: false, actualReps: 8, actualRpe: 8, actualLoad: 135 }] }] }],
+      });
+    mocks.tx.mesocycle.findUnique.mockResolvedValueOnce({
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION",
+      durationWeeks: 5,
+      accumulationSessionsCompleted: 6,
+      deloadSessionsCompleted: 0,
+      sessionsPerWeek: 3,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutId: "workout-1",
+          action: "mark_completed",
+          selectionMode: "INTENT",
+          sessionIntent: "BODY_PART",
+          advancesSplit: true,
+          mesocycleWeekSnapshot: 99,
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.tx.mesocycle.update).toHaveBeenCalledWith({
+      where: { id: "meso-1" },
+      data: { completedSessions: { increment: 1 }, accumulationSessionsCompleted: { increment: 1 } },
+    });
+    expect(mocks.transitionMesocycleState).toHaveBeenCalledWith("meso-1");
+    const upsert = mocks.workoutUpsert.mock.calls[0][0];
+    expect(upsert.update.advancesSplit).toBe(true);
+    expect(upsert.update.mesocycleWeekSnapshot).toBe(3);
+  });
+
+  it("enforces gap-fill behavior only for marker + INTENT + BODY_PART", async () => {
+    mocks.workoutFindUnique
+      .mockResolvedValueOnce({
+        id: "workout-1",
+        userId: "user-1",
+        status: "PLANNED",
+        revision: 1,
+        mesocycleId: "meso-1",
+        advancesSplit: undefined,
+        selectionMetadata: buildOptionalGapFillSelectionMetadata(),
+      })
+      .mockResolvedValueOnce({
+        exercises: [{ sets: [{ logs: [{ wasSkipped: false, actualReps: 8, actualRpe: 8, actualLoad: 135 }] }] }],
+      });
+    mocks.tx.mesocycle.findUnique.mockResolvedValueOnce({
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION",
+      durationWeeks: 5,
+      accumulationSessionsCompleted: 6,
+      deloadSessionsCompleted: 0,
+      sessionsPerWeek: 3,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutId: "workout-1",
+          action: "mark_completed",
+          selectionMode: "INTENT",
+          sessionIntent: "BODY_PART",
+          advancesSplit: true,
+          mesocycleWeekSnapshot: 2,
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.tx.mesocycle.update).not.toHaveBeenCalled();
+    expect(mocks.transitionMesocycleState).not.toHaveBeenCalled();
+    const upsert = mocks.workoutUpsert.mock.calls[0][0];
+    expect(upsert.update.advancesSplit).toBe(false);
+    expect(upsert.update.mesocycleWeekSnapshot).toBe(2);
+  });
+
+  it("ignores client mesocycleWeekSnapshot override for non-gap-fill payloads", async () => {
+    mocks.workoutFindUnique
+      .mockResolvedValueOnce({
+        id: "workout-1",
+        userId: "user-1",
+        status: "PLANNED",
+        revision: 1,
+        mesocycleId: "meso-1",
+        advancesSplit: undefined,
+        selectionMetadata: buildCanonicalSelectionMetadata(),
+      })
+      .mockResolvedValueOnce({
+        exercises: [{ sets: [{ logs: [{ wasSkipped: false, actualReps: 8, actualRpe: 8, actualLoad: 135 }] }] }],
+      });
+    mocks.tx.mesocycle.findUnique.mockResolvedValueOnce({
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION",
+      durationWeeks: 5,
+      accumulationSessionsCompleted: 6,
+      deloadSessionsCompleted: 0,
+      sessionsPerWeek: 3,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutId: "workout-1",
+          action: "mark_completed",
+          selectionMode: "INTENT",
+          sessionIntent: "PUSH",
+          advancesSplit: true,
+          mesocycleWeekSnapshot: 1,
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    const upsert = mocks.workoutUpsert.mock.calls[0][0];
+    expect(upsert.update.mesocycleWeekSnapshot).toBe(3);
+  });
+
+  it("continues to advance lifecycle for first performed saves when advancesSplit=true", async () => {
+    mocks.workoutFindUnique.mockResolvedValueOnce({
+      id: "workout-1",
+      userId: "user-1",
+      status: "PLANNED",
+      revision: 1,
+      mesocycleId: "meso-1",
+      advancesSplit: undefined,
+      selectionMetadata: buildCanonicalSelectionMetadata(),
+    });
+    mocks.tx.mesocycle.findUnique.mockResolvedValueOnce({
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION",
+      durationWeeks: 5,
+      accumulationSessionsCompleted: 4,
+      deloadSessionsCompleted: 0,
+      sessionsPerWeek: 3,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutId: "workout-1",
+          action: "mark_partial",
+          advancesSplit: true,
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.tx.mesocycle.update).toHaveBeenCalledWith({
+      where: { id: "meso-1" },
+      data: { completedSessions: { increment: 1 }, accumulationSessionsCompleted: { increment: 1 } },
+    });
+    expect(mocks.transitionMesocycleState).toHaveBeenCalledWith("meso-1");
   });
 
   it("does not call lifecycle transition for non-performed save", async () => {

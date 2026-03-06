@@ -1,5 +1,10 @@
 import type { SessionContext } from "@/lib/engine/explainability";
 import type { SessionDecisionReceipt } from "@/lib/evidence/types";
+import {
+  formatGapFillMuscleList,
+  isGapFillWorkout,
+  resolveGapFillTargetMuscles,
+} from "./gap-fill";
 
 export type SessionSummaryTone = "neutral" | "positive" | "caution";
 
@@ -27,9 +32,14 @@ function formatIntent(sessionIntent?: string | null): string {
   return toTitleCase(sessionIntent);
 }
 
-function formatWeekTag(context: SessionContext): string {
-  const blockType = toTitleCase(context.blockPhase.blockType);
-  return `${blockType} week ${context.blockPhase.weekInBlock}`;
+function formatWeekTag(input: {
+  context: SessionContext;
+  receipt?: SessionDecisionReceipt;
+  displayWeek?: number | null;
+}): string {
+  const blockType = toTitleCase(input.receipt?.cycleContext.blockType ?? input.context.blockPhase.blockType);
+  const week = input.displayWeek ?? input.context.progressionContext.weekInMesocycle;
+  return `${blockType} week ${week}`;
 }
 
 function formatEffortTarget(receipt?: SessionDecisionReceipt): string {
@@ -123,9 +133,21 @@ function formatReadinessValue(context: SessionContext, receipt?: SessionDecision
 function buildSummaryText(input: {
   context: SessionContext;
   receipt?: SessionDecisionReceipt;
+  selectionMode?: string | null;
   sessionIntent?: string | null;
+  targetMuscles?: string[];
 }): string {
-  const { context, receipt, sessionIntent } = input;
+  const { context, receipt, selectionMode, sessionIntent, targetMuscles } = input;
+  const isGapFill = isGapFillWorkout({
+    selectionMetadata: { sessionDecisionReceipt: receipt },
+    selectionMode,
+    sessionIntent,
+  });
+  const gapFillMuscles = resolveGapFillTargetMuscles({
+    selectionMetadata: { targetMuscles, sessionDecisionReceipt: receipt },
+    persistedTargetMuscles: targetMuscles,
+  });
+  const musclesLabel = formatGapFillMuscleList(gapFillMuscles).toLowerCase();
   const intent = formatIntent(sessionIntent).toLowerCase();
   const deload = receipt?.deloadDecision;
   const soreness = receipt?.sorenessSuppressedMuscles ?? [];
@@ -142,6 +164,11 @@ function buildSummaryText(input: {
   if (soreness.length > 0) {
     return `This ${intent} session keeps the main goal intact while holding back work where soreness is still high.`;
   }
+  if (isGapFill) {
+    return musclesLabel.length > 0
+      ? `This gap-fill session targets ${musclesLabel} while keeping effort controlled.`
+      : "This gap-fill session targets under-dosed muscles while keeping effort controlled.";
+  }
 
   if (context.progressionContext.volumeProgression === "building") {
     return `This ${intent} session is set up to build workload without pushing to failure.`;
@@ -157,16 +184,33 @@ function buildSummaryText(input: {
 export function buildSessionSummaryModel(input: {
   context: SessionContext;
   receipt?: SessionDecisionReceipt;
+  selectionMode?: string | null;
   sessionIntent?: string | null;
+  displayWeek?: number | null;
+  targetMuscles?: string[];
   estimatedMinutes?: number | null;
 }): SessionSummaryModel {
-  const { context, receipt, sessionIntent, estimatedMinutes } = input;
+  const { context, receipt, selectionMode, sessionIntent, displayWeek, targetMuscles, estimatedMinutes } = input;
+  const isGapFill = isGapFillWorkout({
+    selectionMetadata: { sessionDecisionReceipt: receipt },
+    selectionMode,
+    sessionIntent,
+  });
+  const gapFillTargetMuscles = resolveGapFillTargetMuscles({
+    selectionMetadata: { targetMuscles, sessionDecisionReceipt: receipt },
+    persistedTargetMuscles: targetMuscles,
+  });
+  const sessionLabel = isGapFill ? "Gap Fill" : formatIntent(sessionIntent);
   const items: SessionSummaryItem[] = [
     {
       label: "Today's goal",
       value:
         context.progressionContext.volumeProgression === "building"
-          ? `Build ${formatIntent(sessionIntent).toLowerCase()} work this week.`
+          ? isGapFill
+            ? gapFillTargetMuscles.length > 0
+              ? `Close gaps for ${formatGapFillMuscleList(gapFillTargetMuscles).toLowerCase()} this week.`
+              : "Close unresolved weekly volume gaps this week."
+            : `Build ${formatIntent(sessionIntent).toLowerCase()} work this week.`
           : context.progressionContext.volumeProgression === "maintaining"
           ? `Hold ${formatIntent(sessionIntent).toLowerCase()} work steady this week.`
           : "Keep the session lighter while recovery catches up.",
@@ -188,14 +232,14 @@ export function buildSessionSummaryModel(input: {
     items.push(sorenessItem);
   }
 
-  const tags = [formatIntent(sessionIntent), formatWeekTag(context)];
+  const tags = [sessionLabel, formatWeekTag({ context, receipt, displayWeek })];
   if (estimatedMinutes != null) {
     tags.push(`${estimatedMinutes} min`);
   }
 
   return {
     title: "Why today looks like this",
-    summary: buildSummaryText({ context, receipt, sessionIntent }),
+    summary: buildSummaryText({ context, receipt, selectionMode, sessionIntent, targetMuscles }),
     tags,
     items,
   };

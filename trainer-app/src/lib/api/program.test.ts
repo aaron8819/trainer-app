@@ -38,7 +38,32 @@ import {
   loadProgramDashboardData,
 } from "./program";
 
-const BASE_MESO = {
+type BaseMesoRecord = {
+  id: string;
+  mesoNumber: number;
+  focus: string;
+  durationWeeks: number;
+  completedSessions: number;
+  accumulationSessionsCompleted: number;
+  deloadSessionsCompleted: number;
+  sessionsPerWeek: number;
+  volumeTarget: string;
+  startWeek: number;
+  state: "ACTIVE_ACCUMULATION" | "ACTIVE_DELOAD" | "COMPLETED";
+  rirBandConfig: {
+    weekBands: {
+      week1: { min: number; max: number };
+      week2: { min: number; max: number };
+      week3: { min: number; max: number };
+      week4: { min: number; max: number };
+      week5Deload: { min: number; max: number };
+    };
+  };
+  blocks: Array<{ blockType: string; startWeek: number; durationWeeks: number }>;
+  macroCycle: { startDate: Date };
+};
+
+const BASE_MESO: BaseMesoRecord = {
   id: "meso-1",
   mesoNumber: 1,
   focus: "Hypertrophy",
@@ -64,7 +89,7 @@ const BASE_MESO = {
 };
 
 function setupDashboardMocks(
-  mesoOverrides: Partial<typeof BASE_MESO> | null = {},
+  mesoOverrides: Partial<BaseMesoRecord> | null = {},
   week = 1
 ) {
   const mesoRecord = mesoOverrides === null ? null : { ...BASE_MESO, ...mesoOverrides };
@@ -170,6 +195,50 @@ describe("loadProgramDashboardData", () => {
       expect(chestIndex).toBeGreaterThanOrEqual(0);
       expect(bicepsIndex).toBeGreaterThanOrEqual(0);
       expect(chestIndex).toBeLessThan(bicepsIndex);
+    });
+
+    it("scopes performed-volume queries to the requested mesocycle week snapshot with bounded legacy date fallback", async () => {
+      setupDashboardMocks(
+        {
+          durationWeeks: 5,
+          sessionsPerWeek: 3,
+          startWeek: 0,
+          macroCycle: { startDate: new Date("2026-01-01T00:00:00.000Z") },
+        },
+        2
+      );
+      mocks.workoutFindMany.mockResolvedValue([]);
+
+      await loadProgramDashboardData("user-1", 1);
+
+      expect(mocks.workoutFindMany).toHaveBeenCalledTimes(2);
+      const viewedWhere = mocks.workoutFindMany.mock.calls[0]?.[0]?.where;
+      const currentWhere = mocks.workoutFindMany.mock.calls[1]?.[0]?.where;
+
+      expect(viewedWhere?.OR).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ mesocycleWeekSnapshot: 1 }),
+          expect.objectContaining({
+            mesocycleWeekSnapshot: null,
+            scheduledDate: expect.objectContaining({
+              gte: expect.any(Date),
+              lt: expect.any(Date),
+            }),
+          }),
+        ])
+      );
+      expect(currentWhere?.OR).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ mesocycleWeekSnapshot: 2 }),
+          expect.objectContaining({
+            mesocycleWeekSnapshot: null,
+            scheduledDate: expect.objectContaining({
+              gte: expect.any(Date),
+              lt: expect.any(Date),
+            }),
+          }),
+        ])
+      );
     });
   });
 
@@ -309,4 +378,63 @@ describe("loadHomeProgramSupport", () => {
     expect(result.nextSession.intent).toBe("push");
     expect(result.lastSessionSkipped).toBe(true);
   });
+
+  it("does not suppress gap-fill when next-week carryover is only PLANNED", async () => {
+    setupDashboardMocks(
+      {
+        state: "ACTIVE_ACCUMULATION",
+        sessionsPerWeek: 3,
+        accumulationSessionsCompleted: 3,
+      },
+      2
+    );
+    mocks.constraintsFindUnique.mockResolvedValue({
+      weeklySchedule: ["PUSH", "PULL", "LEGS"],
+    });
+    mocks.workoutFindMany.mockResolvedValueOnce([
+      {
+        id: "w-planned",
+        status: "PLANNED",
+        sessionIntent: "PUSH",
+        scheduledDate: new Date("2026-03-08T00:00:00.000Z"),
+      },
+    ]);
+
+    const result = await loadHomeProgramSupport("user-1");
+
+    expect(result.gapFill.anchorWeek).toBe(1);
+    expect(result.gapFill.suppressedByStartedNextWeek).toBe(false);
+    expect(result.gapFill.reason).toBe("insufficient_week_scoping_data");
+  });
+
+  it.each(["IN_PROGRESS", "PARTIAL"] as const)(
+    "suppresses gap-fill when next-week carryover is %s",
+    async (status) => {
+      setupDashboardMocks(
+        {
+          state: "ACTIVE_ACCUMULATION",
+          sessionsPerWeek: 3,
+          accumulationSessionsCompleted: 3,
+        },
+        2
+      );
+      mocks.constraintsFindUnique.mockResolvedValue({
+        weeklySchedule: ["PUSH", "PULL", "LEGS"],
+      });
+      mocks.workoutFindMany.mockResolvedValueOnce([
+        {
+          id: "w-started",
+          status,
+          sessionIntent: "PUSH",
+          scheduledDate: new Date("2026-03-08T00:00:00.000Z"),
+        },
+      ]);
+
+      const result = await loadHomeProgramSupport("user-1");
+
+      expect(result.gapFill.anchorWeek).toBe(1);
+      expect(result.gapFill.suppressedByStartedNextWeek).toBe(true);
+      expect(result.gapFill.reason).toBe("suppressed_by_started_next_week");
+    }
+  );
 });

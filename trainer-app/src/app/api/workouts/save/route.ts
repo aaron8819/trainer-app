@@ -15,6 +15,8 @@ import {
 import {
   buildPerformedLifecycleCounterUpdate,
   deriveSaveRouteMesoSnapshot,
+  resolvePersistedAdvancesSplit,
+  shouldAdvanceLifecycleForPerformedTransition,
   type SaveRouteMesocycle,
 } from "./lifecycle-contract";
 import {
@@ -22,6 +24,7 @@ import {
   resolveFinalStatus,
   type PersistedStatus,
 } from "./status-machine";
+import { isStrictOptionalGapFillSession } from "@/lib/gap-fill/classifier";
 type JsonObject = Record<string, unknown>;
 
 function toObject(value: unknown): JsonObject {
@@ -82,6 +85,9 @@ export async function POST(request: Request) {
           status: true,
           revision: true,
           mesocycleId: true,
+          advancesSplit: true,
+          selectionMode: true,
+          sessionIntent: true,
           selectionMetadata: true,
         },
       });
@@ -119,6 +125,17 @@ export async function POST(request: Request) {
       const selectionMetadata = normalizeSelectionMetadataWithReceipt({
         selectionMetadata: effectiveSelectionMetadata,
         cycleContext: receipt.cycleContext,
+      });
+      const effectiveSelectionMode =
+        parsed.data.selectionMode ??
+        existingWorkout?.selectionMode ??
+        (parsed.data.sessionIntent ? "INTENT" : undefined);
+      const effectiveSessionIntent =
+        parsed.data.sessionIntent ?? existingWorkout?.sessionIntent;
+      const isOptionalGapFill = isStrictOptionalGapFillSession({
+        selectionMetadata,
+        selectionMode: effectiveSelectionMode,
+        sessionIntent: effectiveSessionIntent,
       });
 
       if (parsed.data.templateId) {
@@ -183,6 +200,14 @@ export async function POST(request: Request) {
 
       const shouldTransitionPerformed =
         isPerformedWorkoutStatus(finalStatus) && !isPerformedWorkoutStatus(existingWorkout?.status);
+      const resolvedAdvancesSplit = resolvePersistedAdvancesSplit({
+        persistedAdvancesSplit: existingWorkout?.advancesSplit,
+        requestAdvancesSplit: parsed.data.advancesSplit,
+      });
+      const effectiveAdvancesSplit = isOptionalGapFill ? false : (resolvedAdvancesSplit ?? true);
+      const shouldAdvanceLifecycleTransition =
+        shouldTransitionPerformed &&
+        shouldAdvanceLifecycleForPerformedTransition(effectiveAdvancesSplit);
       // Also snapshot on initial plan-save so the label appears immediately in Recent Workouts.
       const shouldSetPlannedMesoSnapshot = action === "save_plan" && !existingWorkout;
       let resolvedMesocycleId = existingWorkout?.mesocycleId ?? null;
@@ -231,6 +256,12 @@ export async function POST(request: Request) {
         | undefined;
       if (shouldSetMesoSnapshot && resolvedMesocycle) {
         mesoSnapshot = deriveSaveRouteMesoSnapshot(resolvedMesocycle);
+        if (isOptionalGapFill && parsed.data.mesocycleWeekSnapshot != null) {
+          mesoSnapshot = {
+            ...mesoSnapshot,
+            week: parsed.data.mesocycleWeekSnapshot,
+          };
+        }
       }
 
       const workout = await tx.workout.upsert({
@@ -245,7 +276,7 @@ export async function POST(request: Request) {
           sessionIntent: parsed.data.sessionIntent ?? undefined,
           selectionMetadata: selectionMetadata as Prisma.InputJsonValue,
           forcedSplit: parsed.data.forcedSplit ?? undefined,
-          advancesSplit: parsed.data.advancesSplit ?? undefined,
+          advancesSplit: isOptionalGapFill ? false : resolvedAdvancesSplit,
           templateId: parsed.data.templateId ?? undefined,
           ...(resolvedMesocycleId ? { mesocycleId: resolvedMesocycleId } : {}),
           ...(mesoSnapshot
@@ -271,7 +302,7 @@ export async function POST(request: Request) {
           sessionIntent: parsed.data.sessionIntent ?? undefined,
           selectionMetadata: selectionMetadata as Prisma.InputJsonValue,
           forcedSplit: parsed.data.forcedSplit ?? undefined,
-          advancesSplit: parsed.data.advancesSplit ?? undefined,
+          advancesSplit: isOptionalGapFill ? false : resolvedAdvancesSplit,
           templateId: parsed.data.templateId ?? undefined,
           ...(resolvedMesocycleId ? { mesocycleId: resolvedMesocycleId } : {}),
           ...(mesoSnapshot
@@ -286,7 +317,7 @@ export async function POST(request: Request) {
       });
       persistedRevision = workout.revision;
 
-      if (shouldTransitionPerformed) {
+      if (shouldAdvanceLifecycleTransition) {
         // Increment both completedSessions and the lifecycle counter atomically.
         // transitionMesocycleState() (called post-transaction) reads the already-incremented
         // counter to check thresholds; it no longer writes these counters itself.

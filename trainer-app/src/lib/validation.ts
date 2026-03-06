@@ -60,6 +60,10 @@ export const generateFromIntentSchema = z
   .object({
     intent: sessionIntentSchema,
     targetMuscles: z.array(z.string()).optional(),
+    anchorWeek: z.number().int().min(1).optional(),
+    maxGeneratedHardSets: z.number().int().min(1).max(100).optional(),
+    maxGeneratedExercises: z.number().int().min(1).max(20).optional(),
+    optionalGapFill: z.boolean().optional(),
     pinnedExerciseIds: z.array(z.string()).optional(),
     roleListIncomplete: z.preprocess(
       (value) => (value === true ? true : undefined),
@@ -72,6 +76,13 @@ export const generateFromIntentSchema = z
         code: z.ZodIssueCode.custom,
         message: "targetMuscles is required when intent is body_part",
         path: ["targetMuscles"],
+      });
+    }
+    if (value.optionalGapFill === true && value.anchorWeek == null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "anchorWeek is required when optionalGapFill is true",
+        path: ["anchorWeek"],
       });
     }
   });
@@ -90,6 +101,7 @@ const saveWorkoutPayloadSchema = z.object({
     selectionMetadata: z.unknown().optional(),
     forcedSplit: z.enum(["PUSH", "PULL", "LEGS", "UPPER", "LOWER", "FULL_BODY"]).optional(),
     advancesSplit: z.boolean().optional(),
+    mesocycleWeekSnapshot: z.number().int().min(1).optional(),
     filteredExercises: z
       .array(
         z.object({

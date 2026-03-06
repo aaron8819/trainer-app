@@ -5,6 +5,7 @@ import { DashboardGenerateSection } from "@/components/DashboardGenerateSection"
 import RecentWorkouts from "@/components/RecentWorkouts";
 import ReadinessCheckInForm from "@/components/ReadinessCheckInForm";
 import { ProgramStatusCard } from "@/components/ProgramStatusCard";
+import { OptionalGapFillCard } from "@/components/OptionalGapFillCard";
 import {
   loadCapabilityFlags,
   loadHomeProgramSupport,
@@ -162,6 +163,7 @@ export default async function Home() {
               <span className="mt-3 inline-block text-sm text-slate-500">Generate a workout first</span>
             )}
           </div>
+          {homeProgram.gapFill.eligible ? <OptionalGapFillCard gapFill={homeProgram.gapFill} /> : null}
           <div className="rounded-2xl border border-slate-200 p-5">
             <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Latest Log</h3>
             <p className="mt-3 text-lg font-semibold">

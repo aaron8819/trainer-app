@@ -24,6 +24,8 @@ function makeWorkout(
     sessionIntent: "PUSH",
     mesocycleId: null,
     sessionSnapshot: null,
+    isGapFill: false,
+    gapFillTargetMuscles: [],
     exerciseCount: 5,
     totalSetsLogged: 0,
     ...overrides,
@@ -68,6 +70,27 @@ describe("session snapshot badge", () => {
       }),
     ]);
     expect(screen.getByText("Wk4·S1")).toBeInTheDocument();
+  });
+});
+
+describe("gap-fill labels", () => {
+  it("renders Gap Fill title, muscles subtext, and S{sessionsPerWeek+1} snapshot slot", () => {
+    renderRecent([
+      makeWorkout({
+        sessionIntent: "BODY_PART",
+        isGapFill: true,
+        gapFillTargetMuscles: ["front delts", "rear delts", "biceps"],
+        sessionSnapshot: buildWorkoutSessionSnapshotSummary({
+          week: 3,
+          session: 4,
+          phase: "ACCUMULATION",
+        }),
+      }),
+    ]);
+
+    expect(screen.getByText("Gap Fill")).toBeInTheDocument();
+    expect(screen.getByText("Front Delts, Rear Delts, Biceps")).toBeInTheDocument();
+    expect(screen.getByText("Wk3·S4")).toBeInTheDocument();
   });
 });
 

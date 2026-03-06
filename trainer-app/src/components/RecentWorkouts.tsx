@@ -6,7 +6,8 @@ import DeleteWorkoutButton from "./DeleteWorkoutButton";
 import { WorkoutRowActions } from "./workout/WorkoutRowActions";
 import {
   formatWorkoutListExerciseLabel,
-  formatWorkoutListIntentLabel,
+  getWorkoutListPrimaryLabel,
+  getWorkoutListSecondaryLabel,
   getWorkoutListStatusClasses,
   getWorkoutListStatusLabel,
   type WorkoutListSurfaceSummary,
@@ -49,6 +50,7 @@ export default function RecentWorkouts({ recentWorkouts }: Props) {
             const sessionSnapshotLabel = formatWorkoutSessionSnapshotLabel(
               workout.sessionSnapshot
             );
+            const secondaryLabel = getWorkoutListSecondaryLabel(workout);
 
             return (
               <div
@@ -57,13 +59,16 @@ export default function RecentWorkouts({ recentWorkouts }: Props) {
               >
                 <div>
                   <p className="text-sm font-semibold">
-                    {formatWorkoutListIntentLabel(workout.sessionIntent)}
+                    {getWorkoutListPrimaryLabel(workout)}
                     {sessionSnapshotLabel ? (
                       <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600">
                         {sessionSnapshotLabel}
                       </span>
                     ) : null}
                   </p>
+                  {secondaryLabel ? (
+                    <p className="mt-1 text-xs text-slate-600">{secondaryLabel}</p>
+                  ) : null}
                   <p className="mt-1 text-xs text-slate-500">
                     {new Date(workout.scheduledDate).toLocaleDateString()} |{" "}
                     {formatWorkoutListExerciseLabel(workout.exerciseCount)}

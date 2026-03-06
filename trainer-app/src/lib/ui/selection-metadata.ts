@@ -86,6 +86,7 @@ export function buildCanonicalSelectionMetadata(
       sessionDecisionReceipt: priorReceipt
         ? buildSessionDecisionReceipt({
             cycleContext: priorReceipt.cycleContext,
+            targetMuscles: priorReceipt.targetMuscles,
             lifecycleRirTarget: priorReceipt.lifecycleRirTarget,
             lifecycleVolumeTargets: priorReceipt.lifecycleVolume.targets,
             sorenessSuppressedMuscles: priorReceipt.sorenessSuppressedMuscles,

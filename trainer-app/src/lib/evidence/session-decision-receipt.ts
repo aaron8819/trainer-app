@@ -48,6 +48,11 @@ function parseStringArray(value: unknown): string[] {
   return value.filter((item): item is string => typeof item === "string");
 }
 
+function parseOptionalStringArray(value: unknown): string[] | undefined {
+  const parsed = parseStringArray(value);
+  return parsed.length > 0 ? parsed : undefined;
+}
+
 export function parseCycleContextSnapshot(value: unknown): CycleContextSnapshot | undefined {
   const record = toObject(value);
   if (!record) {
@@ -427,6 +432,7 @@ function buildExceptions(input: {
   sorenessSuppressedMuscles: string[];
   deloadDecision: DeloadDecision;
   intensityScaling: SessionDecisionReadinessScaling;
+  additionalExceptions?: SessionDecisionException[];
 }): SessionDecisionException[] {
   const output: SessionDecisionException[] = [];
   if (input.sorenessSuppressedMuscles.length > 0) {
@@ -449,11 +455,18 @@ function buildExceptions(input: {
       message: `Readiness scaled ${input.intensityScaling.exerciseIds.length} exercise(s): ${input.intensityScaling.scaledDownCount} down, ${input.intensityScaling.scaledUpCount} up.`,
     });
   }
+  for (const additional of input.additionalExceptions ?? []) {
+    if (output.some((entry) => entry.code === additional.code && entry.message === additional.message)) {
+      continue;
+    }
+    output.push(additional);
+  }
   return output;
 }
 
 export function buildSessionDecisionReceipt(input: {
   cycleContext: CycleContextSnapshot;
+  targetMuscles?: string[];
   lifecycleRirTarget?: LifecycleRirTarget;
   lifecycleVolumeTargets?: Record<string, number>;
   sorenessSuppressedMuscles?: string[];
@@ -461,6 +474,7 @@ export function buildSessionDecisionReceipt(input: {
   autoregulation?: ReadinessReceiptInput;
   plannerDiagnostics?: PlannerDiagnostics;
   plannerDiagnosticsMode?: PlannerDiagnosticsMode;
+  additionalExceptions?: SessionDecisionException[];
 }): SessionDecisionReceipt {
   const sorenessSuppressedMuscles = input.sorenessSuppressedMuscles ?? [];
   const deloadDecision = input.deloadDecision ?? DEFAULT_DELOAD_DECISION;
@@ -479,6 +493,7 @@ export function buildSessionDecisionReceipt(input: {
   return {
     version: 1,
     cycleContext: input.cycleContext,
+    targetMuscles: parseOptionalStringArray(input.targetMuscles),
     lifecycleRirTarget: input.lifecycleRirTarget,
     lifecycleVolume: {
       targets: input.lifecycleVolumeTargets,
@@ -503,6 +518,7 @@ export function buildSessionDecisionReceipt(input: {
       sorenessSuppressedMuscles,
       deloadDecision,
       intensityScaling,
+      additionalExceptions: input.additionalExceptions,
     }),
   };
 }
@@ -524,6 +540,7 @@ function parsePersistedReceipt(value: unknown): SessionDecisionReceipt | undefin
   return {
     version: 1,
     cycleContext,
+    targetMuscles: parseOptionalStringArray(record.targetMuscles),
     lifecycleRirTarget: parseLifecycleRirTarget(record.lifecycleRirTarget),
     lifecycleVolume: {
       targets: parseVolumeTargets(toObject(record.lifecycleVolume)?.targets),
@@ -588,12 +605,15 @@ export function normalizeSelectionMetadataWithReceipt(input: {
     ...record,
     sessionDecisionReceipt: buildSessionDecisionReceipt({
       cycleContext: input.cycleContext,
+      targetMuscles: existingReceipt?.targetMuscles,
       lifecycleRirTarget: existingReceipt?.lifecycleRirTarget,
       lifecycleVolumeTargets: existingReceipt?.lifecycleVolume.targets,
       sorenessSuppressedMuscles: existingReceipt?.sorenessSuppressedMuscles ?? [],
       deloadDecision: existingReceipt?.deloadDecision,
       plannerDiagnostics: existingReceipt?.plannerDiagnostics,
       plannerDiagnosticsMode: "standard",
+      additionalExceptions:
+        existingReceipt?.exceptions.filter((entry) => entry.code === "optional_gap_fill") ?? [],
       autoregulation: existingReceipt
         ? {
             wasAutoregulated: existingReceipt.readiness.wasAutoregulated,

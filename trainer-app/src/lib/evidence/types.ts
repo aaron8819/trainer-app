@@ -43,7 +43,8 @@ export type SessionDecisionReadinessScaling = {
 export type SessionDecisionExceptionCode =
   | "soreness_suppression"
   | "deload"
-  | "readiness_scale";
+  | "readiness_scale"
+  | "optional_gap_fill";
 
 export type SessionDecisionException = {
   code: SessionDecisionExceptionCode;
@@ -55,6 +56,7 @@ export type PlannerDiagnosticsMode = "standard" | "debug";
 export type SessionDecisionReceipt = {
   version: 1;
   cycleContext: CycleContextSnapshot;
+  targetMuscles?: string[];
   lifecycleRirTarget?: LifecycleRirTarget;
   lifecycleVolume: {
     targets?: Record<string, number>;

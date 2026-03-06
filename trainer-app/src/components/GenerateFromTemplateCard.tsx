@@ -178,6 +178,13 @@ const BLOCK_PHASE_STYLE: Record<string, string> = {
   deload: "border-slate-200 bg-slate-50 text-slate-700",
 };
 
+function normalizeBlockPhaseType(blockType: string | null | undefined): string {
+  if (!blockType) {
+    return "accumulation";
+  }
+  return blockType.toLowerCase();
+}
+
 export function GenerateFromTemplateCard({ templates, blockPhase }: GenerateFromTemplateCardProps) {
   const [selectedTemplateId, setSelectedTemplateId] = useState(templates[0]?.id ?? "");
   const [workout, setWorkout] = useState<WorkoutPlan | null>(null);
@@ -372,6 +379,8 @@ export function GenerateFromTemplateCard({ templates, blockPhase }: GenerateFrom
       !appliedSubstitutions.has(suggestion.originalExerciseId)
   );
   const selectedTemplate = templates.find((template) => template.id === selectedTemplateId);
+  const normalizedBlockType = normalizeBlockPhaseType(blockPhase?.blockType);
+  const blockTypeLabel = `${normalizedBlockType.charAt(0).toUpperCase()}${normalizedBlockType.slice(1)}`;
   const selectionMetadata = parseExplainabilitySelectionMetadata(
     generatedMetadata?.selectionMetadata
   );
@@ -408,10 +417,10 @@ export function GenerateFromTemplateCard({ templates, blockPhase }: GenerateFrom
       </p>
 
       {blockPhase && (
-        <div className={`mt-3 rounded-xl border px-3 py-2.5 text-xs ${BLOCK_PHASE_STYLE[blockPhase.blockType] ?? BLOCK_PHASE_STYLE.accumulation}`}>
+        <div className={`mt-3 rounded-xl border px-3 py-2.5 text-xs ${BLOCK_PHASE_STYLE[normalizedBlockType] ?? BLOCK_PHASE_STYLE.accumulation}`}>
           <p className="font-semibold">
             Week {blockPhase.weekInMeso} of {blockPhase.mesoDurationWeeks}
-            {" · "}{blockPhase.blockType.charAt(0).toUpperCase() + blockPhase.blockType.slice(1)}
+            {" · "}{blockTypeLabel}
           </p>
           <p className="mt-0.5 opacity-90">{blockPhase.coachingCue}</p>
           {blockPhase.sessionsUntilDeload > 0 ? (

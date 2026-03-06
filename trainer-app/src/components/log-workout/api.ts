@@ -37,6 +37,7 @@ export type SaveWorkoutRequestPayload = {
   selectionMetadata?: SaveableSelectionMetadata;
   forcedSplit?: WorkoutForcedSplit;
   advancesSplit?: boolean;
+  mesocycleWeekSnapshot?: number;
   filteredExercises?: FilteredExerciseSummary[];
   exercises?: SaveWorkoutExerciseInput[];
 };

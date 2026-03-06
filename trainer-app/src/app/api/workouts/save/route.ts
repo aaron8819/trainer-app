@@ -4,7 +4,7 @@ import { saveWorkoutSchema } from "@/lib/validation";
 import { resolveOwner } from "@/lib/api/workout-context";
 import { WorkoutStatus, Prisma } from "@prisma/client";
 import { updateExerciseExposure } from "@/lib/api/exercise-exposure";
-import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
+import { ADVANCEMENT_WORKOUT_STATUSES, PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 import {
   extractSessionDecisionReceipt,
   normalizeSelectionMetadataWithReceipt,
@@ -43,6 +43,10 @@ function mergeSelectionMetadata(base: unknown, overrides: unknown): JsonObject {
 
 function isPerformedWorkoutStatus(status: PersistedStatus | string | null | undefined): boolean {
   return Boolean(status) && (PERFORMED_WORKOUT_STATUSES as readonly string[]).includes(status as string);
+}
+
+function isLifecycleAdvancementStatus(status: PersistedStatus | string | null | undefined): boolean {
+  return Boolean(status) && (ADVANCEMENT_WORKOUT_STATUSES as readonly string[]).includes(status as string);
 }
 
 export async function POST(request: Request) {
@@ -199,7 +203,8 @@ export async function POST(request: Request) {
         finalStatus === "COMPLETED" ? new Date() : undefined;
 
       const shouldTransitionPerformed =
-        isPerformedWorkoutStatus(finalStatus) && !isPerformedWorkoutStatus(existingWorkout?.status);
+        isLifecycleAdvancementStatus(finalStatus) &&
+        !isLifecycleAdvancementStatus(existingWorkout?.status);
       const resolvedAdvancesSplit = resolvePersistedAdvancesSplit({
         persistedAdvancesSplit: existingWorkout?.advancesSplit,
         requestAdvancesSplit: parsed.data.advancesSplit,

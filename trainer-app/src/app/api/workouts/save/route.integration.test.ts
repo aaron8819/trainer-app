@@ -766,7 +766,7 @@ describe("POST /api/workouts/save", () => {
     expect(upsert.update.mesocycleWeekSnapshot).toBe(3);
   });
 
-  it("continues to advance lifecycle for first performed saves when advancesSplit=true", async () => {
+  it("does not advance lifecycle when a workout is only marked partial", async () => {
     mocks.workoutFindUnique.mockResolvedValueOnce({
       id: "workout-1",
       userId: "user-1",
@@ -793,6 +793,49 @@ describe("POST /api/workouts/save", () => {
           workoutId: "workout-1",
           action: "mark_partial",
           advancesSplit: true,
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.tx.mesocycle.update).not.toHaveBeenCalled();
+    expect(mocks.transitionMesocycleState).not.toHaveBeenCalled();
+  });
+
+  it("advances lifecycle when a partial workout is later completed for the first time", async () => {
+    mocks.workoutFindUnique
+      .mockResolvedValueOnce({
+        id: "workout-1",
+        userId: "user-1",
+        status: "PARTIAL",
+        revision: 2,
+        mesocycleId: "meso-1",
+        advancesSplit: true,
+        selectionMetadata: buildCanonicalSelectionMetadata(),
+      })
+      .mockResolvedValueOnce({
+        exercises: [
+          {
+            sets: [{ logs: [{ wasSkipped: false, actualReps: 8, actualRpe: 8, actualLoad: 135 }] }],
+          },
+        ],
+      });
+    mocks.tx.mesocycle.findUnique.mockResolvedValueOnce({
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION",
+      durationWeeks: 5,
+      accumulationSessionsCompleted: 4,
+      deloadSessionsCompleted: 0,
+      sessionsPerWeek: 3,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutId: "workout-1",
+          action: "mark_completed",
         }),
       })
     );
@@ -1461,12 +1504,12 @@ describe("POST /api/workouts/save", () => {
     expect(upsert.update.mesocyclePhaseSnapshot).toBe("DELOAD");
   });
 
-  it("does not double-advance lifecycle counters when an already performed workout is saved again", async () => {
+  it("does not double-advance lifecycle counters when an already completed workout is saved again", async () => {
     mocks.workoutFindUnique
       .mockResolvedValueOnce({
         id: "workout-1",
         userId: "user-1",
-        status: "PARTIAL",
+        status: "COMPLETED",
         revision: 1,
         mesocycleId: "meso-1",
         selectionMetadata: buildCanonicalSelectionMetadata(),

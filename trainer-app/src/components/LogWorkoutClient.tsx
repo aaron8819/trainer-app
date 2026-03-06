@@ -679,7 +679,7 @@ export default function LogWorkoutClient({
           keyboardHeight > 0
             ? `${keyboardHeight + (showFinishBar ? 88 : 16)}px`
             : showFinishBar
-              ? "calc(env(safe-area-inset-bottom, 16px) + 88px)"
+              ? "calc(var(--mobile-nav-height) + env(safe-area-inset-bottom, 16px) + 88px)"
               : "env(safe-area-inset-bottom, 16px)",
       }}
     >

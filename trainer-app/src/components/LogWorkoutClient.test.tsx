@@ -341,8 +341,11 @@ describe("LogWorkoutClient UX behavior", () => {
 
     const finishBar = screen.getByTestId("workout-finish-bar");
     expect(finishBar).toHaveClass("fixed");
+    expect(finishBar.className).toContain("bottom-[calc(var(--mobile-nav-height)+env(safe-area-inset-bottom,0px))]");
+    expect(finishBar.style.bottom).toBe("");
     expect(screen.getByRole("button", { name: "Finish workout" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "... Workout options" })).not.toBeInTheDocument();
+    expect((container.firstChild as HTMLElement).style.paddingBottom).toContain("var(--mobile-nav-height)");
     expect((container.firstChild as HTMLElement).style.paddingBottom).toContain("88px");
   });
 
@@ -1300,6 +1303,10 @@ describe("L-2/L-3/L-1/T-1/T-3 — Layout and UX fixes", () => {
     await waitFor(() => {
       expect(screen.getByTestId("rest-timer-hud")).toBeInTheDocument();
       expect(screen.getByTestId("workout-finish-bar")).toBeInTheDocument();
+      expect(screen.getByTestId("workout-finish-bar").className).toContain(
+        "bottom-[calc(var(--mobile-nav-height)+env(safe-area-inset-bottom,0px))]"
+      );
+      expect(root.style.paddingBottom).toContain("var(--mobile-nav-height)");
       expect(root.style.paddingBottom).toContain("88px");
     });
 

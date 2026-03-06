@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { deleteWorkoutSchema } from "@/lib/validation";
 import { resolveOwner } from "@/lib/api/workout-context";
+import { reconcileMesocycleLifecycle } from "@/lib/api/mesocycle-lifecycle-reconciliation";
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
@@ -14,10 +15,31 @@ export async function POST(request: Request) {
   const owner = await resolveOwner();
   const workout = await prisma.workout.findFirst({
     where: { id: parsed.data.workoutId, userId: owner.id },
-    select: { id: true },
+    select: {
+      id: true,
+      mesocycleId: true,
+      mesocycle: {
+        select: {
+          id: true,
+          durationWeeks: true,
+          sessionsPerWeek: true,
+          state: true,
+          isActive: true,
+        },
+      },
+    },
   });
   if (!workout) {
     return NextResponse.json({ error: "Workout not found" }, { status: 404 });
+  }
+  if (workout.mesocycle && !workout.mesocycle.isActive && workout.mesocycle.state === "COMPLETED") {
+    return NextResponse.json(
+      {
+        error:
+          "Cannot delete a historical workout from a completed mesocycle after rollover finalized lifecycle history.",
+      },
+      { status: 409 }
+    );
   }
 
   await prisma.$transaction(async (tx) => {
@@ -41,6 +63,13 @@ export async function POST(request: Request) {
     }
 
     await tx.workout.delete({ where: { id: workout.id } });
+
+    if (
+      workout.mesocycle &&
+      (workout.mesocycle.isActive || workout.mesocycle.state !== "COMPLETED")
+    ) {
+      await reconcileMesocycleLifecycle(tx, workout.mesocycle);
+    }
   });
 
   return NextResponse.json({ status: "deleted" });

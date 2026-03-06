@@ -52,6 +52,10 @@ type ActiveCardMode =
       setIndex: number;
     };
 
+type PendingEditExitAction = {
+  run: () => void;
+};
+
 function parseNullableNumber(raw: string): number | null {
   const normalized = raw.trim();
   if (normalized.length === 0) {
@@ -137,6 +141,8 @@ export default function LogWorkoutClient({
   const [activeCardMode, setActiveCardMode] = useState<ActiveCardMode>({ kind: "live" });
   const [showDiscardEditConfirm, setShowDiscardEditConfirm] = useState(false);
   const activeCardModeRef = useRef<ActiveCardMode>(activeCardMode);
+  const isDraftDirtyRef = useRef<(setId: string) => boolean>(() => false);
+  const pendingEditExitActionRef = useRef<PendingEditExitAction | null>(null);
 
   const totalSets = flatSets.length;
   const loggedCount = loggedSetIds.size;
@@ -164,6 +170,7 @@ export default function LogWorkoutClient({
   useEffect(() => {
     if (activeCardMode.kind !== "edit") {
       setShowDiscardEditConfirm(false);
+      pendingEditExitActionRef.current = null;
     }
   }, [activeCardMode]);
 
@@ -320,6 +327,10 @@ export default function LogWorkoutClient({
     isDumbbellExercise,
   });
 
+  useEffect(() => {
+    isDraftDirtyRef.current = isDraftDirty;
+  }, [isDraftDirty]);
+
   const resolveDraftNumericValues = useCallback(
     (set: LogSetInput, exercise: LogExerciseInput) => {
       const draft = draftBuffersBySet[set.setId];
@@ -390,26 +401,46 @@ export default function LogWorkoutClient({
 
   const exitEditMode = useCallback(
     (options?: { restoreLiveSet?: boolean; discardChanges?: boolean }) => {
-      if (activeCardMode.kind !== "edit") {
+      const currentMode = activeCardModeRef.current;
+      if (currentMode.kind !== "edit") {
         return;
       }
 
       if (options?.discardChanges ?? true) {
-        clearDraft(activeCardMode.setId);
-        clearDraftInputBuffers(activeCardMode.setId);
-        resetDraftVisualState(activeCardMode.setId);
+        clearDraft(currentMode.setId);
+        clearDraftInputBuffers(currentMode.setId);
+        resetDraftVisualState(currentMode.setId);
       }
 
-      if (options?.restoreLiveSet !== false && activeCardMode.returnSetId) {
-        setActiveSetId(activeCardMode.returnSetId);
+      if (options?.restoreLiveSet !== false && currentMode.returnSetId) {
+        setActiveSetId(currentMode.returnSetId);
       }
 
       setActiveCardMode({ kind: "live" });
     },
-    [activeCardMode, clearDraft, clearDraftInputBuffers, resetDraftVisualState, setActiveSetId]
+    [clearDraft, clearDraftInputBuffers, resetDraftVisualState, setActiveSetId]
   );
 
-  const handleQueueSetSelect = useCallback(
+  const requestEditModeExit = useCallback(
+    (nextAction: () => void) => {
+      const currentMode = activeCardModeRef.current;
+      if (currentMode.kind !== "edit") {
+        nextAction();
+        return;
+      }
+
+      if (!isDraftDirtyRef.current(currentMode.setId)) {
+        nextAction();
+        return;
+      }
+
+      pendingEditExitActionRef.current = { run: nextAction };
+      setShowDiscardEditConfirm(true);
+    },
+    []
+  );
+
+  const navigateToSet = useCallback(
     (setId: string) => {
       const selected = flatSetsRef.current.find((item) => item.set.setId === setId);
       if (!selected) {
@@ -420,11 +451,13 @@ export default function LogWorkoutClient({
       const currentResolvedActiveSetId = resolvedActiveSetIdRef.current;
       const currentLoggedSetIds = loggedSetIdsRef.current;
 
+      if (currentMode.kind === "edit" && currentMode.setId === setId) {
+        return;
+      }
+
       if (currentLoggedSetIds.has(setId)) {
-        if (currentMode.kind === "edit" && currentMode.setId !== setId) {
-          clearDraft(currentMode.setId);
-          clearDraftInputBuffers(currentMode.setId);
-          resetDraftVisualState(currentMode.setId);
+        if (currentMode.kind === "edit") {
+          exitEditMode({ restoreLiveSet: false, discardChanges: true });
         }
 
         setActiveCardMode({
@@ -434,42 +467,42 @@ export default function LogWorkoutClient({
             currentMode.kind === "edit"
               ? currentMode.returnSetId
               : currentResolvedActiveSetId && !currentLoggedSetIds.has(currentResolvedActiveSetId)
-              ? currentResolvedActiveSetId
-              : null,
+                ? currentResolvedActiveSetId
+                : null,
           setIndex: selected.set.setIndex,
         });
         return;
       }
 
       if (currentMode.kind === "edit") {
-        clearDraft(currentMode.setId);
-        clearDraftInputBuffers(currentMode.setId);
-        resetDraftVisualState(currentMode.setId);
+        exitEditMode({ restoreLiveSet: false, discardChanges: true });
       }
 
       setActiveCardMode({ kind: "live" });
       setActiveSetId(setId);
     },
-    [
-      clearDraft,
-      clearDraftInputBuffers,
-      resetDraftVisualState,
-      setActiveSetId,
-    ]
+    [exitEditMode, setActiveSetId]
+  );
+
+  const handleQueueSetSelect = useCallback(
+    (setId: string) => {
+      requestEditModeExit(() => {
+        navigateToSet(setId);
+      });
+    },
+    [navigateToSet, requestEditModeExit]
   );
 
   const handleJumpToCurrentSet = useCallback(() => {
     if (activeCardMode.kind === "edit") {
-      if (isDraftDirty(activeCardMode.setId)) {
-        setShowDiscardEditConfirm(true);
-        return;
-      }
-      exitEditMode({ restoreLiveSet: true, discardChanges: true });
+      requestEditModeExit(() => {
+        exitEditMode({ restoreLiveSet: true, discardChanges: true });
+      });
       return;
     }
 
     jumpToActiveSet();
-  }, [activeCardMode, exitEditMode, isDraftDirty, jumpToActiveSet]);
+  }, [activeCardMode, exitEditMode, jumpToActiveSet, requestEditModeExit]);
 
   const queueSections = useMemo<WorkoutQueueSectionData[]>(() => {
     return SECTION_ORDER.flatMap((section) => {
@@ -549,6 +582,7 @@ export default function LogWorkoutClient({
     autoregHint.exerciseId === activeSet.exercise.workoutExerciseId;
   const sessionTerminated = completion.completed || completion.skipped;
   const showFinishBar = !sessionTerminated && allSetsLogged;
+  const finishBarBottomOffset = showFinishBar && keyboardHeight > 0 ? keyboardHeight : 0;
   const resolvedActiveSetValues = activeSet
     ? resolveDraftNumericValues(activeSet.set, activeSet.exercise)
     : { actualReps: null, actualLoad: null, actualRpe: null };
@@ -643,10 +677,10 @@ export default function LogWorkoutClient({
       style={{
         paddingBottom:
           keyboardHeight > 0
-            ? `${keyboardHeight + 16}px`
+            ? `${keyboardHeight + (showFinishBar ? 88 : 16)}px`
             : showFinishBar
-            ? "calc(env(safe-area-inset-bottom, 16px) + 88px)"
-            : "env(safe-area-inset-bottom, 16px)",
+              ? "calc(env(safe-area-inset-bottom, 16px) + 88px)"
+              : "env(safe-area-inset-bottom, 16px)",
       }}
     >
       {!sessionTerminated ? (
@@ -773,7 +807,7 @@ export default function LogWorkoutClient({
       ) : null}
 
       {showFinishBar ? (
-        <WorkoutFooter sticky>
+        <WorkoutFooter sticky bottomOffset={finishBarBottomOffset}>
           <WorkoutSessionActions
             loggedCount={loggedCount}
             totalSets={totalSets}
@@ -805,12 +839,15 @@ export default function LogWorkoutClient({
               You modified this set.
             </p>
             <p className="mt-1 text-sm text-slate-600">
-              Discard edits and return to the current set?
+              Discard edits and continue?
             </p>
             <div className="mt-4 grid gap-2 sm:grid-cols-2">
               <button
                 className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
-                onClick={() => setShowDiscardEditConfirm(false)}
+                onClick={() => {
+                  pendingEditExitActionRef.current = null;
+                  setShowDiscardEditConfirm(false);
+                }}
                 type="button"
               >
                 Cancel
@@ -818,8 +855,10 @@ export default function LogWorkoutClient({
               <button
                 className="inline-flex min-h-11 items-center justify-center rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
                 onClick={() => {
+                  const pendingAction = pendingEditExitActionRef.current;
+                  pendingEditExitActionRef.current = null;
                   setShowDiscardEditConfirm(false);
-                  exitEditMode({ restoreLiveSet: true, discardChanges: true });
+                  pendingAction?.run();
                 }}
                 type="button"
               >

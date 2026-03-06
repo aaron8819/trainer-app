@@ -91,6 +91,26 @@ async function openWorkoutOptions(user: ReturnType<typeof userEvent.setup>) {
   await screen.findByRole("heading", { name: "Workout options" });
 }
 
+function setupVisualViewport(initialHeight = 800) {
+  let resizeHandler: (() => void) | undefined;
+  const mockViewport = {
+    height: initialHeight,
+    addEventListener: vi.fn((_event: string, handler: () => void) => {
+      resizeHandler = handler;
+    }),
+    removeEventListener: vi.fn(),
+  };
+  Object.defineProperty(window, "visualViewport", { configurable: true, value: mockViewport });
+  Object.defineProperty(window, "innerHeight", { configurable: true, value: initialHeight });
+
+  return {
+    setHeight(nextHeight: number) {
+      mockViewport.height = nextHeight;
+      resizeHandler?.();
+    },
+  };
+}
+
 describe("LogWorkoutClient UX behavior", () => {
   beforeEach(() => {
     mockedLogSetRequest.mockResolvedValue({ data: { status: "ok", wasCreated: true }, error: null });
@@ -842,6 +862,88 @@ describe("4d - Active card edit mode", () => {
     });
   });
 
+  it("prompt protects switching to another logged set while edit mode is dirty", async () => {
+    const user = userEvent.setup();
+    render(<LogWorkoutClient workoutId="workout-1" exercises={makeQueuePerformanceExercises()} />);
+
+    await user.click(screen.getByRole("button", { name: "Log set" }));
+    await waitFor(() => expect(mockedLogSetRequest).toHaveBeenCalledTimes(1));
+    await user.click(screen.getByRole("button", { name: "Log set" }));
+    await waitFor(() => expect(mockedLogSetRequest).toHaveBeenCalledTimes(2));
+
+    await user.click(screen.getByRole("button", { name: /Set 1 OK 50 x 10 @8/ }));
+    const repsInput = screen.getByLabelText("Reps");
+    await user.clear(repsInput);
+    await user.type(repsInput, "11");
+
+    await user.click(screen.getByRole("button", { name: /Set 2 OK 50 x 10 @8/ }));
+
+    expect(screen.getByRole("dialog", { name: "Discard edit confirmation" })).toBeInTheDocument();
+    expect(screen.getByText("Editing Set 1 - Dumbbell Bench Press")).toBeInTheDocument();
+    expect(screen.getByLabelText("Reps")).toHaveValue(11);
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "Discard edit confirmation" })).not.toBeInTheDocument();
+      expect(screen.getByText("Editing Set 1 - Dumbbell Bench Press")).toBeInTheDocument();
+      expect(screen.getByLabelText("Reps")).toHaveValue(11);
+    });
+
+    await user.click(screen.getByRole("button", { name: /Set 2 OK 50 x 10 @8/ }));
+    await user.click(screen.getByRole("button", { name: "Discard" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "Discard edit confirmation" })).not.toBeInTheDocument();
+      expect(screen.getByText("Editing Set 2 - Dumbbell Bench Press")).toBeInTheDocument();
+      expect(screen.getByLabelText("Reps")).toHaveValue(10);
+    });
+  });
+
+  it("prompt protects switching to another queue target while edit mode is dirty", async () => {
+    const user = userEvent.setup();
+    render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
+
+    await user.click(screen.getByRole("button", { name: "Log set" }));
+    await waitFor(() => expect(mockedLogSetRequest).toHaveBeenCalledTimes(1));
+
+    await user.click(screen.getByRole("button", { name: /Set 1 OK 50 x 10 @8/ }));
+    const repsInput = screen.getByLabelText("Reps");
+    await user.clear(repsInput);
+    await user.type(repsInput, "11");
+
+    await user.click(screen.getByRole("button", { name: /Set 2$/ }));
+
+    expect(screen.getByRole("dialog", { name: "Discard edit confirmation" })).toBeInTheDocument();
+    expect(screen.getByText("Editing Set 1 - Dumbbell Bench Press")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Discard" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "Discard edit confirmation" })).not.toBeInTheDocument();
+      expect(screen.queryByTestId("active-set-edit-banner")).not.toBeInTheDocument();
+      expect(screen.getByText(/Set 2 of 2/)).toBeInTheDocument();
+      expect(screen.getByLabelText("Reps")).toHaveValue(10);
+    });
+  });
+
+  it("clean draft switches to another queue target immediately without prompting", async () => {
+    const user = userEvent.setup();
+    render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
+
+    await user.click(screen.getByRole("button", { name: "Log set" }));
+    await waitFor(() => expect(mockedLogSetRequest).toHaveBeenCalledTimes(1));
+
+    await user.click(screen.getByRole("button", { name: /Set 1 OK 50 x 10 @8/ }));
+    await user.click(screen.getByRole("button", { name: /Set 2$/ }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "Discard edit confirmation" })).not.toBeInTheDocument();
+      expect(screen.queryByTestId("active-set-edit-banner")).not.toBeInTheDocument();
+      expect(screen.getByText(/Set 2 of 2/)).toBeInTheDocument();
+    });
+  });
+
   it("submitting edit mode updates the logged set and returns to the live set", async () => {
     const user = userEvent.setup();
     render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
@@ -1104,16 +1206,7 @@ describe("L-2/L-3/L-1/T-1/T-3 — Layout and UX fixes", () => {
   });
 
   it("T-1: compact timer HUD remains visible and dismisses the sheet when keyboard opens", async () => {
-    let resizeHandler: (() => void) | undefined;
-    const mockViewport = {
-      height: 800,
-      addEventListener: vi.fn((_event: string, handler: () => void) => {
-        resizeHandler = handler;
-      }),
-      removeEventListener: vi.fn(),
-    };
-    Object.defineProperty(window, "visualViewport", { configurable: true, value: mockViewport });
-    Object.defineProperty(window, "innerHeight", { configurable: true, value: 800 });
+    const viewport = setupVisualViewport();
 
     const user = userEvent.setup();
     render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
@@ -1123,8 +1216,7 @@ describe("L-2/L-3/L-1/T-1/T-3 — Layout and UX fixes", () => {
     await openRestTimerControls(user);
     expect(screen.getByTestId("rest-timer-expanded-controls")).toBeInTheDocument();
 
-    mockViewport.height = 480;
-    resizeHandler?.();
+    viewport.setHeight(480);
 
     await waitFor(() => {
       expect(screen.getByTestId("rest-timer-hud")).toBeInTheDocument();
@@ -1133,16 +1225,7 @@ describe("L-2/L-3/L-1/T-1/T-3 — Layout and UX fixes", () => {
   });
 
   it("T-1: expanded timer controls stay hidden until the HUD is tapped", async () => {
-    let resizeHandler: (() => void) | undefined;
-    const mockViewport = {
-      height: 800,
-      addEventListener: vi.fn((_event: string, handler: () => void) => {
-        resizeHandler = handler;
-      }),
-      removeEventListener: vi.fn(),
-    };
-    Object.defineProperty(window, "visualViewport", { configurable: true, value: mockViewport });
-    Object.defineProperty(window, "innerHeight", { configurable: true, value: 800 });
+    const viewport = setupVisualViewport();
 
     const user = userEvent.setup();
     render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
@@ -1154,8 +1237,7 @@ describe("L-2/L-3/L-1/T-1/T-3 — Layout and UX fixes", () => {
       expect(screen.queryByTestId("rest-timer-expanded-controls")).not.toBeInTheDocument();
     });
 
-    mockViewport.height = 800;
-    resizeHandler?.();
+    viewport.setHeight(800);
 
     await openRestTimerControls(user);
 
@@ -1166,16 +1248,7 @@ describe("L-2/L-3/L-1/T-1/T-3 — Layout and UX fixes", () => {
   });
 
   it("L-1: bottom padding updates when visualViewport height changes", async () => {
-    let resizeHandler: (() => void) | undefined;
-    const mockViewport = {
-      height: 800,
-      addEventListener: vi.fn((_event: string, handler: () => void) => {
-        resizeHandler = handler;
-      }),
-      removeEventListener: vi.fn(),
-    };
-    Object.defineProperty(window, "visualViewport", { configurable: true, value: mockViewport });
-    Object.defineProperty(window, "innerHeight", { configurable: true, value: 800 });
+    const viewport = setupVisualViewport();
 
     const { container } = render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
     const root = container.firstChild as HTMLElement;
@@ -1184,8 +1257,7 @@ describe("L-2/L-3/L-1/T-1/T-3 — Layout and UX fixes", () => {
     expect(root).toHaveStyle({ paddingBottom: "env(safe-area-inset-bottom, 16px)" });
 
     // Simulate keyboard opening (320px keyboard)
-    mockViewport.height = 480;
-    resizeHandler?.();
+    viewport.setHeight(480);
 
     await waitFor(() => {
       expect(root).toHaveStyle({ paddingBottom: "336px" }); // 320 + 16
@@ -1193,16 +1265,7 @@ describe("L-2/L-3/L-1/T-1/T-3 — Layout and UX fixes", () => {
   });
 
   it("does not reserve fake top padding when focusing inputs with an active timer", async () => {
-    let resizeHandler: (() => void) | undefined;
-    const mockViewport = {
-      height: 800,
-      addEventListener: vi.fn((_event: string, handler: () => void) => {
-        resizeHandler = handler;
-      }),
-      removeEventListener: vi.fn(),
-    };
-    Object.defineProperty(window, "visualViewport", { configurable: true, value: mockViewport });
-    Object.defineProperty(window, "innerHeight", { configurable: true, value: 800 });
+    const viewport = setupVisualViewport();
 
     const user = userEvent.setup();
     const { container } = render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
@@ -1217,13 +1280,35 @@ describe("L-2/L-3/L-1/T-1/T-3 — Layout and UX fixes", () => {
     (HTMLElement.prototype.scrollIntoView as ReturnType<typeof vi.fn>).mockClear();
 
     fireEvent.focus(screen.getByLabelText("Reps"));
-    mockViewport.height = 480;
-    resizeHandler?.();
+    viewport.setHeight(480);
 
     await waitFor(() => {
       expect(screen.getByTestId("rest-timer-hud")).toBeInTheDocument();
       expect(root.style.paddingTop).toBe("");
       expect(HTMLElement.prototype.scrollIntoView).not.toHaveBeenCalled();
+    });
+  });
+
+  it("finish bar stays reachable with timer HUD and keyboard viewport changes", async () => {
+    const viewport = setupVisualViewport();
+    const user = userEvent.setup();
+    const { container } = render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
+    const root = container.firstChild as HTMLElement;
+
+    await logAllSets(user);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("rest-timer-hud")).toBeInTheDocument();
+      expect(screen.getByTestId("workout-finish-bar")).toBeInTheDocument();
+      expect(root.style.paddingBottom).toContain("88px");
+    });
+
+    viewport.setHeight(480);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("workout-finish-bar")).toHaveStyle({ bottom: "320px" });
+      expect(root).toHaveStyle({ paddingBottom: "408px" });
+      expect(screen.getByRole("button", { name: "Finish workout" })).toBeInTheDocument();
     });
   });
 });

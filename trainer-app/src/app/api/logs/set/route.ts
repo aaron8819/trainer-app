@@ -56,7 +56,7 @@ export async function POST(request: Request) {
     });
     if (!validity.valid) {
       return {
-        error: (validity.reason ?? "Invalid set log") as const,
+        error: validity.reason ?? "Invalid set log",
       };
     }
 

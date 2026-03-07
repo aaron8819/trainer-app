@@ -1,7 +1,7 @@
 # 04 API Contracts
 
 Owner: Aaron  
-Last reviewed: 2026-03-06
+Last reviewed: 2026-03-07
 Purpose: Canonical API contract map for App Router endpoints and payload validation boundaries.
 
 This doc covers:
@@ -116,19 +116,21 @@ Sources of truth:
 - Generation routes canonicalize receipt readiness/autoregulation fields through shared selection metadata helpers rather than returning ad hoc top-level session mirrors (`src/lib/ui/selection-metadata.ts`, `src/lib/api/template-session/types.ts`).
 - `POST /api/workouts/generate-from-intent` request fields include optional gap-fill controls (`src/lib/validation.ts`, `src/lib/api/template-session/types.ts`):
   - `optionalGapFill?: boolean`
-  - `anchorWeek?: number` (required when `optionalGapFill=true`)
+  - `anchorWeek?: number` (legacy/manual override path; current week-close flow derives the effective week from pending week-close context)
+  - `weekCloseId?: string`
+  - `optionalGapFillContext?: { weekCloseId: string; targetWeek: number }` on the internal generation seam used by `src/app/api/workouts/generate-from-intent/route.ts`
   - `maxGeneratedHardSets?: number`
   - `maxGeneratedExercises?: number`
   - `targetMuscles` remains required for `intent=body_part`
 - Optional gap-fill generation uses the same planner/selection engine path as standard intent generation. Allowed route-level deltas are:
   - post-generation caps trimming
-  - receipt marker injection (`exceptions += optional_gap_fill`)
-  - receipt `targetMuscles` stamping
-  - receipt cycle-context anchor pinning (`weekInMeso/weekInBlock=anchorWeek`)
+  - canonical metadata stamping via `attachOptionalGapFillMetadata()` (`src/lib/ui/selection-metadata.ts`)
+  - week-close-context injection (`optionalGapFillContext.targetWeek`) before planner context loading (`src/app/api/workouts/generate-from-intent/route.ts`, `src/lib/api/template-session.ts`)
 - Canonical receipt fields for gap-fill payloads:
   - `selectionMetadata.sessionDecisionReceipt.exceptions` contains `optional_gap_fill`
   - `selectionMetadata.sessionDecisionReceipt.targetMuscles` carries chosen muscles
-  - `selectionMetadata.sessionDecisionReceipt.cycleContext.weekInMeso/weekInBlock` are anchor-pinned
+  - `selectionMetadata.weekCloseId` carries the linked pending week-close id
+  - `selectionMetadata.sessionDecisionReceipt.cycleContext.weekInMeso/weekInBlock` are pinned from the pending week-close `targetWeek`
 
 ## Workout explanation response contract
 - Route: `GET /api/workouts/[id]/explanation` (`src/app/api/workouts/[id]/explanation/route.ts`).

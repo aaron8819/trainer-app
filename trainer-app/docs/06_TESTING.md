@@ -1,7 +1,7 @@
 # 06 Testing
 
 Owner: Aaron
-Last reviewed: 2026-03-06
+Last reviewed: 2026-03-07
 Purpose: Canonical testing reference for Vitest-based coverage of engine, API helpers, and UI components.
 
 This doc covers:
@@ -44,7 +44,7 @@ Sources of truth:
 - Template-session regression coverage: `src/lib/api/template-session.push-week3.regression.test.ts` (W3S1 Push scenario covering role-budgeting/closure seams, CORE_COMPOUND set-count cap <=5, bodyweight Dip `targetLoad=0`, and top-set load anchoring >= top-set history value across 0-based and 1-based `setIndex` history).
 - Volume landmark coverage: `src/lib/engine/volume-landmarks.test.ts` (MEV/MAV/MRV values for all muscles; ramp interpolation correctness).
 - Explainability volume compliance coverage: `src/lib/api/explainability.volume-compliance.test.ts` (query/assembly split surfaced through explainability facade; meso-week scoped muscle volume, compliance status classification, and `UNDER_MEV`/`OVER_MAV` boundary assertions).
-- Workout generation route contract coverage: `src/app/api/workouts/generate-from-intent/route.test.ts` and `src/app/api/workouts/generate-from-template/route.test.ts` assert receipt-first `selectionMetadata` responses and absence of top-level generation autoregulation payloads.
+- Workout generation route contract coverage: `src/app/api/workouts/generate-from-intent/route.test.ts` and `src/app/api/workouts/generate-from-template/route.test.ts` assert receipt-first `selectionMetadata` responses, absence of top-level generation autoregulation payloads, and pending-week-close `optionalGapFillContext` pinning for optional gap-fill requests.
 - Explainability progression receipt coverage: `src/lib/api/explainability.progression-receipt.test.ts` (includes recency-window guard and `PARTIAL` + `COMPLETED` performed-status query assertions).
 - Canonical session receipt coverage: `src/lib/evidence/session-decision-receipt.test.ts` (receipt build/parse/read behavior and canonical-only extraction from `selectionMetadata.sessionDecisionReceipt`).
 - Selection metadata sanitization coverage: `src/lib/ui/selection-metadata.test.ts` (save-safe metadata keeps canonical `sessionDecisionReceipt`, drops legacy top-level session mirrors, and keeps generation readiness context inside the receipt).
@@ -74,10 +74,12 @@ Sources of truth:
   - `src/app/api/workouts/save/route.integration.test.ts`
   - `src/app/api/workouts/save/lifecycle-contract.test.ts`
   - `src/lib/ui/gap-fill.test.ts`
+  - `src/app/api/workouts/generate-from-intent/route.test.ts`
+  - `src/lib/ui/selection-metadata.test.ts`
   - `src/lib/audit/workout-audit/optional-gap-fill.fixture-regression.test.ts`
   - `src/lib/api/program.test.ts`
 - Recommended focused command:
-  - `npm run test -- src/app/api/workouts/save/lifecycle-contract.test.ts src/app/api/workouts/save/route.integration.test.ts src/lib/api/program.test.ts src/lib/ui/gap-fill.test.ts src/lib/audit/workout-audit/optional-gap-fill.fixture-regression.test.ts`
+  - `npm run test -- src/app/api/workouts/generate-from-intent/route.test.ts src/app/api/workouts/save/lifecycle-contract.test.ts src/app/api/workouts/save/route.integration.test.ts src/lib/api/program.test.ts src/lib/ui/gap-fill.test.ts src/lib/ui/selection-metadata.test.ts src/lib/audit/workout-audit/optional-gap-fill.fixture-regression.test.ts`
 
 ## Configuration
 - Vitest include patterns: `src/**/*.test.ts` and `src/**/*.test.tsx`

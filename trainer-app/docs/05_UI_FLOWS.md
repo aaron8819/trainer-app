@@ -1,7 +1,7 @@
 # 05 UI Flows
 
 Owner: Aaron
-Last reviewed: 2026-03-06
+Last reviewed: 2026-03-07
 Purpose: Canonical reference for current UI routes and core user flows implemented in the Next.js App Router.
 
 This doc covers:
@@ -87,9 +87,11 @@ Route-purpose shorthand:
 3. Generate action calls `POST /api/workouts/generate-from-intent` with:
   - `intent=body_part`
   - `optionalGapFill=true`
-  - `anchorWeek`
+  - `weekCloseId`
   - `targetMuscles`
   - policy caps (`maxGeneratedHardSets`, `maxGeneratedExercises`)
+  The route resolves the authoritative pending week-close row and injects `optionalGapFillContext.targetWeek` server-side before planner generation (`src/app/api/workouts/generate-from-intent/route.ts`, `src/lib/api/template-session.ts`).
+  Generated response metadata is normalized through `attachOptionalGapFillMetadata()` before save so the client keeps canonical `selectionMetadata.weekCloseId`, `targetMuscles`, and `optional_gap_fill` receipt marker without UI-local metadata forks (`src/components/OptionalGapFillCard.tsx`, `src/lib/ui/selection-metadata.ts`).
 4. Save action calls `POST /api/workouts/save` with `advancesSplit=false` semantics enforced server-side by strict triplet classification.
 5. Disappearance rules:
   - Next-week `PLANNED` carryover does not hide prior-week optional gap-fill.

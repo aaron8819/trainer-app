@@ -1,7 +1,7 @@
 # 02 Domain Engine
 
 Owner: Aaron
-Last reviewed: 2026-03-06
+Last reviewed: 2026-03-07
 Purpose: Canonical reference for workout-generation domain logic, including selection, progression, periodization, readiness, and explainability.
 
 This doc covers:
@@ -93,6 +93,7 @@ Sources of truth:
 
 ## Optional session policy (gap-fill)
 - Phase-1 optional sessions reuse canonical INTENT generation (`intent=body_part`) and do not introduce a separate planner path (`src/lib/api/template-session.ts`).
+- Pending week-close context is canonical for gap-fill week anchoring. `generateSessionFromIntent()` now passes `optionalGapFillContext.targetWeek` into `loadMappedGenerationContext()` so accumulation lifecycle math is pinned from the pending week-close row rather than route-local receipt rewriting (`src/lib/api/template-session.ts`, `src/lib/api/template-session/context-loader.ts`).
 - Gap-fill policy read model is surfaced by `loadHomeProgramSupport()` (`src/lib/api/program.ts`) with fields:
   - `requiredSessionsPerWeek`
   - `maxOptionalGapFillSessionsPerWeek`
@@ -101,12 +102,13 @@ Sources of truth:
 - Current default policy: required sessions = active mesocycle `sessionsPerWeek` (min 1), max optional sessions/week = 1, max hard sets = 12, max exercises = 4.
 - Override precedence is policy-first and split-agnostic: policy values are resolved centrally in `program.ts`; generation/save do not fork by split type.
 - Strict classification for optional sessions uses the shared triplet predicate in `src/lib/gap-fill/classifier.ts`.
+- Canonical optional-session receipt/metadata stamping is shared in `src/lib/ui/selection-metadata.ts`; generation and UI callers attach `weekCloseId`, `targetMuscles`, and the `optional_gap_fill` exception through `attachOptionalGapFillMetadata()` instead of duplicating route/component-local mutation logic.
 
 ## Gap-fill decision order
 1. Compute anchor gate from lifecycle boundary: active accumulation + `accumulationSessionsCompleted % requiredSessionsPerWeek === 0`.
 2. Apply next-week suppression: `PLANNED` does not suppress; `IN_PROGRESS`/`PARTIAL` suppress.
 3. Enforce weekly optional cap using strict classification (`optional_gap_fill` + `INTENT` + `BODY_PART`) when counting is enabled; missing marker never counts as gap-fill.
-4. Resolve deficits and target muscles for `anchorWeek` only.
+4. Resolve deficits and target muscles for the pending week-close `targetWeek` only.
 5. Fail closed when canonical week-bounded data is insufficient.
 
 ## Mesocycle lifecycle service

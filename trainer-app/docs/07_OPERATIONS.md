@@ -1,7 +1,7 @@
 # 07 Operations
 
 Owner: Aaron
-Last reviewed: 2026-03-04
+Last reviewed: 2026-03-07
 Purpose: Operational runbook for local development/runtime setup, migrations, seed, and verification for this single-user app.
 
 This doc covers:
@@ -36,6 +36,10 @@ Sources of truth:
 3. Apply migrations (`npx prisma migrate deploy` or local dev flow)
 4. Optional seed: `npm run db:seed`
 5. Start app: `npm run dev`
+
+Migration hygiene:
+- After pulling any branch with new files under `prisma/migrations/`, run `npx prisma migrate deploy` before relying on the app runtime.
+- If the Prisma schema/client include a model but the database is missing its table, runtime reads will fail with `PrismaClientKnownRequestError` reporting that the table does not exist.
 
 ## Verification and maintenance
 - `npm run verify`: lint + type-check (`tsc --noEmit`) + `test:fast` + contracts

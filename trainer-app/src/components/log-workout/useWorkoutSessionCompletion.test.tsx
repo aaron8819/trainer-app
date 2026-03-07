@@ -24,11 +24,20 @@ type CompletionHarnessCallbacks = {
 
 function CompletionHarness({
   callbacks,
+  totalSets = 2,
+  completedSetCount = 1,
+  skippedSetCount = 1,
 }: {
   callbacks: CompletionHarnessCallbacks;
+  totalSets?: number;
+  completedSetCount?: number;
+  skippedSetCount?: number;
 }) {
   const completion = useWorkoutSessionCompletion({
     workoutId: "workout-1",
+    totalSets,
+    completedSetCount,
+    skippedSetCount,
     clearAllDrafts: callbacks.clearAllDrafts,
     clearTimer: callbacks.clearTimer,
     clearFeedback: callbacks.clearFeedback,
@@ -190,6 +199,34 @@ describe("useWorkoutSessionCompletion", () => {
       expect(screen.getByTestId("clear-timer")).toHaveTextContent("1");
       expect(screen.getByTestId("show-status")).toHaveTextContent(
         "Workout saved as partial (some planned sets were unresolved)"
+      );
+    });
+  });
+
+  it("maps all-skipped completion to mark_skipped", async () => {
+    const callbacks = createCallbacks();
+
+    render(
+      <CompletionHarness
+        callbacks={callbacks}
+        totalSets={2}
+        completedSetCount={0}
+        skippedSetCount={2}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "open-complete" }));
+
+    expect(screen.getByTestId("completion-action")).toHaveTextContent("mark_skipped");
+
+    fireEvent.click(screen.getByRole("button", { name: "complete" }));
+
+    await waitFor(() => {
+      expect(mockedSaveWorkoutRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          workoutId: "workout-1",
+          action: "mark_skipped",
+          status: "SKIPPED",
+        })
       );
     });
   });

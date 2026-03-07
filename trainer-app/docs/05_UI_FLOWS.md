@@ -54,6 +54,10 @@ Route-purpose shorthand:
 - UI: `/log/[id]`, `LogWorkoutClient`
 - API: `POST /api/logs/set` (and `DELETE /api/logs/set` for log removal)
 - Completion actions call `POST /api/workouts/save` with explicit action commands (`mark_completed`, `mark_partial`, `mark_skipped`).
+- Live set logs are the only actions that start or advance the rest timer. Historical set editing is timer-neutral.
+- The rest timer is persisted per workout in session storage and re-synced when the user returns to the in-progress log page for the same workout.
+- Queue browsing stays scroll-neutral: tapping an exercise row only expands/collapses that row. Active-card auto-scroll is reserved for explicit set-chip targeting and live auto-advance after a set log.
+- If every set in the session is skipped, the footer completion path resolves through `mark_skipped` and the terminal state renders explicit skipped-session messaging with replacement/home actions instead of attempting a completed save path.
 - `mark_completed` can return `workoutStatus: PARTIAL` when unresolved sets remain; UI must treat this as a performed session result, not a hard error.
 - `mark_partial` is surfaced as a single footer-level "Leave for now" action once at least one set has been logged (`loggedCount > 0`). It persists a `PARTIAL` status without requiring all sets to be resolved first (`src/components/LogWorkoutClient.tsx`).
 - Plan writes remain non-terminal (`save_plan`) and do not finalize `COMPLETED|PARTIAL|SKIPPED`.

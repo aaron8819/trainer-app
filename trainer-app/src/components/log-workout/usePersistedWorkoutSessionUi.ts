@@ -14,13 +14,11 @@ export function usePersistedWorkoutSessionUi({
   activeSetIds,
   resolvedActiveSetId,
   setActiveSetId,
-  onResumeSet,
 }: {
   workoutId: string;
   activeSetIds: string[];
   resolvedActiveSetId: string | null;
   setActiveSetId: (setId: string | null) => void;
-  onResumeSet?: () => void;
 }) {
   const [restTimerMuted, setRestTimerMuted] = useState(
     () => (typeof window !== "undefined" ? window.localStorage.getItem(REST_TIMER_MUTE_STORAGE_KEY) === "true" : false)
@@ -50,8 +48,7 @@ export function usePersistedWorkoutSessionUi({
     }
     restoredActiveSetRef.current = true;
     setActiveSetId(storedSetId);
-    onResumeSet?.();
-  }, [activeSetIds, activeSetStorageKey, onResumeSet, setActiveSetId]);
+  }, [activeSetIds, activeSetStorageKey, setActiveSetId]);
 
   useEffect(() => {
     if (!resolvedActiveSetId) {

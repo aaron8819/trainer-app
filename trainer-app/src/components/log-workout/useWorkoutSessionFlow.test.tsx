@@ -128,6 +128,9 @@ function WorkoutSessionFlowHarness({
   const hook = useWorkoutSessionFlow({
     workoutId: "workout-1",
     flatSets,
+    totalSets: flatSets.length,
+    completedSetCount: flatSets.filter((item) => !(item.set.wasSkipped ?? false) && loggedSetIds.has(item.set.setId)).length,
+    skippedSetCount: flatSets.filter((item) => (item.set.wasSkipped ?? false) && loggedSetIds.has(item.set.setId)).length,
     loggedSetIds,
     setLoggedSetIds,
     setActiveSetId,

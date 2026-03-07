@@ -18,6 +18,7 @@ import type {
 import { ActiveSetPanel } from "@/components/log-workout/ActiveSetPanel";
 import { CompletedWorkoutReview } from "@/components/log-workout/CompletedWorkoutReview";
 import { ExerciseListPanel } from "@/components/log-workout/ExerciseListPanel";
+import { SkippedWorkoutReview } from "@/components/log-workout/SkippedWorkoutReview";
 import {
   WorkoutActiveSetCard,
   type WorkoutActiveSetCardFormActions,
@@ -141,6 +142,7 @@ export default function LogWorkoutClient({
   const [showBonusSheet, setShowBonusSheet] = useState(false);
   const [activeCardMode, setActiveCardMode] = useState<ActiveCardMode>({ kind: "live" });
   const [showDiscardEditConfirm, setShowDiscardEditConfirm] = useState(false);
+  const [timerHudHeight, setTimerHudHeight] = useState(0);
   const activeCardModeRef = useRef<ActiveCardMode>(activeCardMode);
   const isDraftDirtyRef = useRef<(setId: string) => boolean>(() => false);
   const pendingEditExitActionRef = useRef<PendingEditExitAction | null>(null);
@@ -156,6 +158,15 @@ export default function LogWorkoutClient({
     [flatSets, loggedSetIds]
   );
   const loggedCount = satisfiedSetIds.size;
+  const completedSetCount = useMemo(
+    () =>
+      flatSets.filter((item) => satisfiedSetIds.has(item.set.setId) && !(item.set.wasSkipped ?? false)).length,
+    [flatSets, satisfiedSetIds]
+  );
+  const skippedSetCount = useMemo(
+    () => flatSets.filter((item) => satisfiedSetIds.has(item.set.setId) && (item.set.wasSkipped ?? false)).length,
+    [flatSets, satisfiedSetIds]
+  );
   const remainingCount = Math.max(0, totalSets - loggedCount);
   const resolvedActiveSetId = activeSet?.set.setId ?? null;
   const resolvedActiveSetIdRef = useRef<string | null>(resolvedActiveSetId);
@@ -163,14 +174,13 @@ export default function LogWorkoutClient({
   const flatSetsRef = useRef(flatSets);
   const activeSetIds = useMemo(() => flatSets.map((item) => item.set.setId), [flatSets]);
   const { keyboardOpen, keyboardHeight, activeSetPanelRef, sectionRefs, jumpToActiveSet } =
-    useWorkoutSessionLayout();
+    useWorkoutSessionLayout(restTimer ? timerHudHeight : 0);
 
   const { restTimerMuted, setRestTimerMuted } = usePersistedWorkoutSessionUi({
     workoutId,
     activeSetIds,
     resolvedActiveSetId,
     setActiveSetId,
-    onResumeSet: jumpToActiveSet,
   });
 
   useEffect(() => {
@@ -361,7 +371,6 @@ export default function LogWorkoutClient({
     status,
     error,
     baselineSummary,
-    undoSnapshot,
     autoregHint,
     completion,
     actions,
@@ -369,6 +378,9 @@ export default function LogWorkoutClient({
   } = useWorkoutSessionFlow({
     workoutId,
     flatSets,
+    totalSets,
+    completedSetCount,
+    skippedSetCount,
     loggedSetIds,
     setLoggedSetIds,
     setActiveSetId,
@@ -481,6 +493,7 @@ export default function LogWorkoutClient({
                 : null,
           setIndex: selected.set.setIndex,
         });
+        jumpToActiveSet();
         return;
       }
 
@@ -490,8 +503,9 @@ export default function LogWorkoutClient({
 
       setActiveCardMode({ kind: "live" });
       setActiveSetId(setId);
+      jumpToActiveSet();
     },
-    [exitEditMode, setActiveSetId]
+    [exitEditMode, jumpToActiveSet, setActiveSetId]
   );
 
   const handleQueueSetSelect = useCallback(
@@ -576,17 +590,14 @@ export default function LogWorkoutClient({
   }, [setExpandedSections]);
 
   const toggleQueueExercise = useCallback(
-    (exerciseId: string, nextSetId: string | null) => {
-      if (nextSetId) {
-        handleQueueSetSelect(nextSetId);
-      }
-
+    (exerciseId: string, _nextSetId: string | null) => {
       setExpandedExerciseId((prev) => (prev === exerciseId ? null : exerciseId));
     },
-    [handleQueueSetSelect, setExpandedExerciseId]
+    [setExpandedExerciseId]
   );
 
   const allSetsLogged = loggedCount === totalSets && totalSets > 0;
+  const allSetsSkipped = allSetsLogged && skippedSetCount === totalSets && completedSetCount === 0;
   const showAutoregHint =
     autoregHint !== null &&
     activeSet !== null &&
@@ -661,6 +672,7 @@ export default function LogWorkoutClient({
   const activeSetSummary: WorkoutActiveSetCardSummary = {
     loggedCount,
     totalSets,
+    stickyOffset: restTimer ? timerHudHeight : 0,
     isEditing: activeCardMode.kind === "edit",
     editingSetLabel: activeCardMode.kind === "edit" ? `Set ${activeCardMode.setIndex}` : null,
     canReturnToLiveSet: activeCardMode.kind === "edit" && activeCardMode.returnSetId !== null,
@@ -699,6 +711,7 @@ export default function LogWorkoutClient({
           timer={restTimer}
           keyboardOpen={keyboardOpen}
           muted={restTimerMuted}
+          onHeightChange={setTimerHudHeight}
           onDismiss={clearTimer}
           onAdjust={adjustTimer}
           onMuteToggle={() => setRestTimerMuted((prev) => !prev)}
@@ -761,6 +774,8 @@ export default function LogWorkoutClient({
         />
       ) : null}
 
+      {completion.skipped ? <SkippedWorkoutReview /> : null}
+
       {completion.state.completionAction ? (
         <WorkoutCompletionDialog
           action={completion.state.completionAction}
@@ -774,10 +789,7 @@ export default function LogWorkoutClient({
 
       <WorkoutSessionFeedback
         error={error}
-        undoSnapshot={undoSnapshot}
-        savingSetId={savingSetId}
         onDismissError={dismissError}
-        onUndo={() => void actions.undo()}
       />
 
       <BonusExerciseSheet
@@ -794,6 +806,7 @@ export default function LogWorkoutClient({
           completed={completion.completed}
           skipped={completion.skipped}
           showFinishBar={showFinishBar}
+          finishActionLabel={allSetsSkipped ? "Skip workout" : "Finish workout"}
           showSkipOptions={completion.state.showSkipOptions}
           skipReason={completion.state.skipReason}
           sessionActionPending={completion.pending}
@@ -813,6 +826,7 @@ export default function LogWorkoutClient({
             completed={completion.completed}
             skipped={completion.skipped}
             showFinishBar={showFinishBar}
+            finishActionLabel={allSetsSkipped ? "Skip workout" : "Finish workout"}
             showSkipOptions={completion.state.showSkipOptions}
             skipReason={completion.state.skipReason}
             sessionActionPending={completion.pending}

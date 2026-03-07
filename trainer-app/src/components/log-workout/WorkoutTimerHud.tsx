@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { RestTimer } from "@/components/RestTimer";
 import type { RestTimerSnapshot } from "@/components/log-workout/useRestTimerState";
 
@@ -8,6 +8,7 @@ type WorkoutTimerHudProps = {
   timer: RestTimerSnapshot | null;
   keyboardOpen: boolean;
   muted: boolean;
+  onHeightChange?: (height: number) => void;
   onDismiss: () => void;
   onAdjust: (deltaSeconds: number) => void;
   onMuteToggle: () => void;
@@ -17,11 +18,13 @@ export const WorkoutTimerHud = memo(function WorkoutTimerHud({
   timer,
   keyboardOpen,
   muted,
+  onHeightChange,
   onDismiss,
   onAdjust,
   onMuteToggle,
 }: WorkoutTimerHudProps) {
   const [expanded, setExpanded] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!timer || keyboardOpen) {
@@ -29,12 +32,31 @@ export const WorkoutTimerHud = memo(function WorkoutTimerHud({
     }
   }, [keyboardOpen, timer]);
 
+  useEffect(() => {
+    if (!timer) {
+      onHeightChange?.(0);
+      return;
+    }
+    const element = rootRef.current;
+    if (!element) {
+      return;
+    }
+    const notify = () => onHeightChange?.(element.getBoundingClientRect().height);
+    notify();
+    if (typeof ResizeObserver === "undefined") {
+      return;
+    }
+    const observer = new ResizeObserver(() => notify());
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [expanded, keyboardOpen, onHeightChange, timer]);
+
   if (!timer) {
     return null;
   }
 
   return (
-    <div className="sticky top-0 z-40 -mx-1 px-1 pt-1 sm:px-0">
+    <div ref={rootRef} className="sticky top-0 z-40 -mx-1 px-1 pt-1 sm:px-0">
       <div className="mx-auto w-full max-w-4xl">
         <RestTimer
           startedAtMs={timer.startedAtMs}

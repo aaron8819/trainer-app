@@ -10,6 +10,7 @@ type WorkoutSessionActionsProps = {
   completed: boolean;
   skipped: boolean;
   showFinishBar: boolean;
+  finishActionLabel?: string;
   showSkipOptions: boolean;
   skipReason: string;
   sessionActionPending: boolean;
@@ -26,6 +27,7 @@ export function WorkoutSessionActions({
   completed,
   skipped,
   showFinishBar,
+  finishActionLabel = "Finish workout",
   showSkipOptions,
   skipReason,
   sessionActionPending,
@@ -133,7 +135,7 @@ export function WorkoutSessionActions({
           disabled={sessionActionPending}
           type="button"
         >
-          Finish workout
+          {finishActionLabel}
         </button>
       ) : null}
     </>

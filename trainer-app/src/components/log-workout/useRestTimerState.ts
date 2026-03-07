@@ -36,11 +36,9 @@ function parseSnapshot(value: string | null): RestTimerSnapshot | null {
 export function useRestTimerState(workoutId: string) {
   const storageKey = useMemo(() => getStorageKey(workoutId), [workoutId]);
   const [timer, setTimer] = useState<RestTimerSnapshot | null>(null);
-
-  useEffect(() => {
+  const syncTimerFromStorage = useCallback(() => {
     const restored = parseSnapshot(window.sessionStorage.getItem(storageKey));
     if (!restored) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setTimer(null);
       return;
     }
@@ -51,6 +49,31 @@ export function useRestTimerState(workoutId: string) {
     }
     setTimer(restored);
   }, [storageKey]);
+
+  useEffect(() => {
+    syncTimerFromStorage();
+  }, [syncTimerFromStorage]);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        syncTimerFromStorage();
+      }
+    };
+    const handlePageShow = () => {
+      syncTimerFromStorage();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("pageshow", handlePageShow);
+    window.addEventListener("focus", handlePageShow);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("pageshow", handlePageShow);
+      window.removeEventListener("focus", handlePageShow);
+    };
+  }, [syncTimerFromStorage]);
 
   useEffect(() => {
     if (!timer) {

@@ -34,6 +34,8 @@ Sources of truth:
 - Engine tests: `src/lib/engine/**/*.test.ts`
 - API helper tests: `src/lib/api/**/*.test.ts`
 - UI tests: component tests under `src/components/**`
+- Workout log UI regressions are covered in `src/components/LogWorkoutClient.test.tsx`, including all-skipped completion routing, timer resume/remount behavior, queue-chip targeting, queue-row scroll neutrality, skipped terminal state copy/actions, and reduced mobile edit-state chrome.
+- Timer/session-layout hook coverage lives in `src/components/log-workout/useRestTimerState.test.tsx` and `src/components/log-workout/useWorkoutSessionLayout.test.tsx`, covering visibility-return timer re-sync and explicit-only scroll correction.
 - UI session summary-model coverage: `src/lib/ui/session-summary.test.ts` (receipt-first summary text/tags/items, including deload, soreness hold, and readiness-scaling cases).
 - Save-route terminal transition coverage (including status-machine behavior through route boundary): `src/app/api/workouts/save/route.integration.test.ts`
 - Validation/status coverage: `src/lib/validation.workout-save.test.ts`, `src/lib/validation.test.ts`, `src/lib/api/exercise-history.test.ts`, `src/lib/api/readiness.test.ts`

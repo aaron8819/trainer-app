@@ -28,6 +28,9 @@ export type WorkoutSessionCompletionController = {
 
 type UseWorkoutSessionCompletionParams = {
   workoutId: string;
+  totalSets: number;
+  completedSetCount: number;
+  skippedSetCount: number;
   clearAllDrafts: () => void;
   clearTimer: () => void;
   clearFeedback: () => void;
@@ -37,6 +40,9 @@ type UseWorkoutSessionCompletionParams = {
 
 export function useWorkoutSessionCompletion({
   workoutId,
+  totalSets,
+  completedSetCount,
+  skippedSetCount,
   clearAllDrafts,
   clearTimer,
   clearFeedback,
@@ -55,19 +61,32 @@ export function useWorkoutSessionCompletion({
   const sessionActionPending = sessionFlow.pendingAction !== null;
   const completed = sessionFlow.terminalState === "completed";
   const skipped = sessionFlow.terminalState === "skipped";
+  const resolveAction = useCallback(
+    (action: CompletionAction): CompletionAction => {
+      if (action !== "mark_completed") {
+        return action;
+      }
+      if (totalSets > 0 && skippedSetCount === totalSets && completedSetCount === 0) {
+        return "mark_skipped";
+      }
+      return action;
+    },
+    [completedSetCount, skippedSetCount, totalSets]
+  );
 
   const run = useCallback(
     async (action: CompletionAction) => {
       if (sessionActionPending) {
         return;
       }
+      const resolvedAction = resolveAction(action);
 
-      setSessionFlow((prev) => ({ ...prev, pendingAction: action }));
+      setSessionFlow((prev) => ({ ...prev, pendingAction: resolvedAction }));
       clearFeedback();
       setBaselineSummary(null);
 
       try {
-        if (action === "mark_skipped") {
+        if (resolvedAction === "mark_skipped") {
           const response = await saveWorkoutRequest({
             workoutId,
             action: "mark_skipped",
@@ -96,8 +115,8 @@ export function useWorkoutSessionCompletion({
 
         const response = await saveWorkoutRequest({
           workoutId,
-          action,
-          status: action === "mark_partial" ? "PARTIAL" : "COMPLETED",
+          action: resolvedAction,
+          status: resolvedAction === "mark_partial" ? "PARTIAL" : "COMPLETED",
           exercises: [],
         });
 
@@ -107,7 +126,7 @@ export function useWorkoutSessionCompletion({
         }
 
         const body = response.data;
-        if (action === "mark_partial") {
+        if (resolvedAction === "mark_partial") {
           clearTimer();
           setSessionFlow((prev) => ({
             ...prev,
@@ -144,6 +163,7 @@ export function useWorkoutSessionCompletion({
       clearAllDrafts,
       clearFeedback,
       clearTimer,
+      resolveAction,
       sessionActionPending,
       sessionFlow.skipReason,
       showError,
@@ -158,9 +178,9 @@ export function useWorkoutSessionCompletion({
         return;
       }
 
-      setSessionFlow((prev) => ({ ...prev, completionAction: action }));
+      setSessionFlow((prev) => ({ ...prev, completionAction: resolveAction(action) }));
     },
-    [sessionActionPending]
+    [resolveAction, sessionActionPending]
   );
 
   const cancelConfirm = useCallback(() => {

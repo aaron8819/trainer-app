@@ -43,6 +43,7 @@ function clampReps(value: number | null | undefined, delta: number) {
 export type WorkoutActiveSetCardSummary = {
   loggedCount: number;
   totalSets: number;
+  stickyOffset: number;
   isEditing: boolean;
   editingSetLabel: string | null;
   canReturnToLiveSet: boolean;
@@ -110,6 +111,7 @@ export function WorkoutActiveSetCard({
   const {
     loggedCount,
     totalSets,
+    stickyOffset,
     isEditing,
     editingSetLabel,
     canReturnToLiveSet,
@@ -174,7 +176,10 @@ export function WorkoutActiveSetCard({
     <section
       ref={activeSetPanelRef}
       className="rounded-2xl border border-slate-200 bg-white p-3 sm:p-4"
-      style={{ scrollMarginBottom: "calc(var(--mobile-nav-height, 56px) + env(safe-area-inset-bottom, 0px))" }}
+      style={{
+        scrollMarginTop: `${stickyOffset + 12}px`,
+        scrollMarginBottom: "calc(var(--mobile-nav-height, 56px) + env(safe-area-inset-bottom, 0px))",
+      }}
     >
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Active set</p>
@@ -184,19 +189,22 @@ export function WorkoutActiveSetCard({
       </div>
       {isEditing ? (
         <div
-          className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5"
+          className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2"
           data-testid="active-set-edit-banner"
         >
-          <p className="text-sm font-semibold text-amber-900">
-            Editing {editingSetLabel ?? `Set ${activeSet.set.setIndex}`} - {activeSet.exercise.name}
-          </p>
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-700">Editing</p>
+            <p className="truncate text-sm font-semibold text-amber-900">
+              {editingSetLabel ?? `Set ${activeSet.set.setIndex}`} - {activeSet.exercise.name}
+            </p>
+          </div>
           <button
-            className="mt-2 inline-flex min-h-9 items-center justify-center rounded-full border border-amber-300 px-4 text-xs font-semibold text-amber-800 disabled:opacity-60"
+            className="inline-flex min-h-9 shrink-0 items-center justify-center rounded-full border border-amber-300 px-3 text-xs font-semibold text-amber-800 disabled:opacity-60"
             onClick={onReturnToCurrentSet}
             disabled={!canReturnToLiveSet}
             type="button"
           >
-            Return to current set
+            Return
           </button>
         </div>
       ) : null}
@@ -229,14 +237,16 @@ export function WorkoutActiveSetCard({
       {shouldUseBodyweightLoadLabel(activeSet.exercise, activeSet.set) ? (
         <p className="mt-2 text-xs text-slate-500">Bodyweight movement (load optional for weighted variation).</p>
       ) : null}
-      {showDraftRestored ? <p className="mt-2 text-xs text-slate-400">Draft restored</p> : null}
-      {savingDraftSetId === setId ? (
-        <p className="mt-1 text-xs text-slate-500">Saving draft...</p>
-      ) : lastSavedDraft?.setId === setId ? (
-        <p className="mt-1 text-xs text-slate-500">
-          Draft saved {new Date(lastSavedDraft.savedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
-        </p>
-      ) : null}
+      <div className="mt-2 min-h-9">
+        {showDraftRestored ? <p className="text-xs text-slate-400">Draft restored</p> : null}
+        {savingDraftSetId === setId ? (
+          <p className="text-xs text-slate-500">Saving draft...</p>
+        ) : lastSavedDraft?.setId === setId ? (
+          <p className="text-xs text-slate-500">
+            Draft saved {new Date(lastSavedDraft.savedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+          </p>
+        ) : null}
+      </div>
 
       <div className="mt-3 space-y-2.5">
         <div>

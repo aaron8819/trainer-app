@@ -32,6 +32,9 @@ type SetPrefilledField = keyof PrefilledFieldState;
 type UseWorkoutSessionFlowParams = {
   workoutId: string;
   flatSets: FlatSetItem[];
+  totalSets: number;
+  completedSetCount: number;
+  skippedSetCount: number;
   loggedSetIds: Set<string>;
   setLoggedSetIds: Dispatch<SetStateAction<Set<string>>>;
   setActiveSetId: Dispatch<SetStateAction<string | null>>;
@@ -66,6 +69,9 @@ function setSetInputFieldsPrefilled(
 export function useWorkoutSessionFlow({
   workoutId,
   flatSets,
+  totalSets,
+  completedSetCount,
+  skippedSetCount,
   loggedSetIds,
   setLoggedSetIds,
   setActiveSetId,
@@ -244,7 +250,7 @@ export function useWorkoutSessionFlow({
           }
         }
 
-        if (!(normalizedSet.wasSkipped ?? false)) {
+        if (!(normalizedSet.wasSkipped ?? false) && !wasAlreadyLogged) {
           startTimer(resolveRestSeconds(targetSet));
         }
 
@@ -382,6 +388,9 @@ export function useWorkoutSessionFlow({
 
   const completion: WorkoutSessionCompletionController = useWorkoutSessionCompletion({
     workoutId,
+    totalSets,
+    completedSetCount,
+    skippedSetCount,
     clearAllDrafts,
     clearTimer,
     clearFeedback,

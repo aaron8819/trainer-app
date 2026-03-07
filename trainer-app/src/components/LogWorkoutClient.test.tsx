@@ -123,6 +123,10 @@ describe("LogWorkoutClient UX behavior", () => {
       configurable: true,
       value: vi.fn(),
     });
+    Object.defineProperty(window, "scrollTo", {
+      configurable: true,
+      value: vi.fn(),
+    });
   });
 
   afterEach(() => {
@@ -349,7 +353,7 @@ describe("LogWorkoutClient UX behavior", () => {
     expect((container.firstChild as HTMLElement).style.paddingBottom).toContain("88px");
   });
 
-  it("counts skipped sets as satisfied and renders finish CTA", async () => {
+  it("counts skipped sets as satisfied and routes the footer CTA to skip", async () => {
     const user = userEvent.setup();
     renderClient();
 
@@ -359,7 +363,7 @@ describe("LogWorkoutClient UX behavior", () => {
     await waitFor(() => {
       expect(screen.getByText("0 sets remaining")).toBeInTheDocument();
       expect(screen.getByTestId("workout-finish-bar")).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Finish workout" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Skip workout" })).toBeInTheDocument();
     });
   });
 
@@ -374,6 +378,43 @@ describe("LogWorkoutClient UX behavior", () => {
       expect(screen.getByText("0 sets remaining")).toBeInTheDocument();
       expect(screen.getByTestId("workout-finish-bar")).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Finish workout" })).toBeInTheDocument();
+    });
+  });
+
+  it("saves all-skipped workouts as skipped instead of completed", async () => {
+    const user = userEvent.setup();
+    renderClient();
+
+    await user.click(screen.getByRole("button", { name: /Skip set/i }));
+    await user.click(screen.getByRole("button", { name: /Skip set/i }));
+    await user.click(screen.getByRole("button", { name: "Skip workout" }));
+    await user.click(screen.getByRole("button", { name: "Confirm" }));
+
+    await waitFor(() => {
+      expect(mockedSaveWorkoutRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          workoutId: "workout-1",
+          action: "mark_skipped",
+          status: "SKIPPED",
+        })
+      );
+    });
+  });
+
+  it("shows a clear skipped terminal state after skip confirmation", async () => {
+    const user = userEvent.setup();
+    renderClient();
+
+    await user.click(screen.getByRole("button", { name: /Skip set/i }));
+    await user.click(screen.getByRole("button", { name: /Skip set/i }));
+    await user.click(screen.getByRole("button", { name: "Skip workout" }));
+    await user.click(screen.getByRole("button", { name: "Confirm" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Workout skipped")).toBeInTheDocument();
+      expect(screen.getByText("This workout was skipped.")).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Generate a replacement session" })).toHaveAttribute("href", "/");
+      expect(screen.getByRole("link", { name: "Back to home" })).toHaveAttribute("href", "/");
     });
   });
 
@@ -673,9 +714,14 @@ describe("LogWorkoutClient UX behavior", () => {
 
   it("scrolls active set panel on exercise change, not on every input focus", async () => {
     const scrollSpy = vi.fn();
+    const scrollToSpy = vi.fn();
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
       configurable: true,
       value: scrollSpy,
+    });
+    Object.defineProperty(window, "scrollTo", {
+      configurable: true,
+      value: scrollToSpy,
     });
     // scrollBy is not implemented in jsdom — stub it to suppress noise
 
@@ -695,12 +741,31 @@ describe("LogWorkoutClient UX behavior", () => {
     fireEvent.focus(screen.getByLabelText("Load"));
     await new Promise((resolve) => setTimeout(resolve, 300));
     expect(scrollSpy).not.toHaveBeenCalled();
+    expect(scrollToSpy).not.toHaveBeenCalled();
 
     // Log the active set → exercise changes → scrollToActiveSet fires
     fireEvent.click(screen.getByRole("button", { name: "Log set" }));
     await waitFor(() => {
       expect(scrollSpy).toHaveBeenCalledTimes(1);
+      expect(scrollToSpy).toHaveBeenCalledTimes(1);
     }, { timeout: 2000 });
+  });
+
+  it("does not auto-scroll when toggling an exercise row in the queue", async () => {
+    const user = userEvent.setup();
+    const scrollToSpy = vi.fn();
+    Object.defineProperty(window, "scrollTo", {
+      configurable: true,
+      value: scrollToSpy,
+    });
+
+    renderClient();
+
+    const queueRow = screen.getByTestId("queue-row-ex-1");
+    await user.click(within(queueRow).getByRole("button", { name: /Dumbbell Bench Press/ }));
+
+    expect(scrollToSpy).not.toHaveBeenCalled();
+    expect(screen.getByText(/Set 1 of 2/)).toBeInTheDocument();
   });
 });
 
@@ -860,6 +925,10 @@ describe("4d - Active card edit mode", () => {
       configurable: true,
       value: vi.fn(),
     });
+    Object.defineProperty(window, "scrollTo", {
+      configurable: true,
+      value: vi.fn(),
+    });
   });
 
   afterEach(() => {
@@ -881,14 +950,13 @@ describe("4d - Active card edit mode", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("active-set-edit-banner")).toBeInTheDocument();
-      expect(screen.getByText("Editing Set 1 - Dumbbell Bench Press")).toBeInTheDocument();
+      expect(screen.getByText("Set 1 - Dumbbell Bench Press")).toBeInTheDocument();
       expect(screen.getByLabelText("Reps")).toHaveValue(10);
       expect(screen.getByLabelText("Load")).toHaveValue(50);
       expect(screen.getByLabelText("RPE")).toHaveValue(8);
       expect(screen.queryByTestId("chip-edit-form")).not.toBeInTheDocument();
     });
-
-    await user.click(screen.getByRole("button", { name: "Return to current set" }));
+    await user.click(screen.getByRole("button", { name: "Return" }));
 
     await waitFor(() => {
       expect(screen.queryByTestId("active-set-edit-banner")).not.toBeInTheDocument();
@@ -904,7 +972,7 @@ describe("4d - Active card edit mode", () => {
     await waitFor(() => expect(mockedLogSetRequest).toHaveBeenCalledTimes(1));
 
     await user.click(screen.getByRole("button", { name: /Set 1 OK 50 x 10 @8/ }));
-    await user.click(screen.getByRole("button", { name: "Return to current set" }));
+    await user.click(screen.getByRole("button", { name: "Return" }));
 
     await waitFor(() => {
       expect(screen.queryByRole("dialog", { name: "Discard edit confirmation" })).not.toBeInTheDocument();
@@ -925,7 +993,7 @@ describe("4d - Active card edit mode", () => {
     await user.clear(repsInput);
     await user.type(repsInput, "11");
 
-    await user.click(screen.getByRole("button", { name: "Return to current set" }));
+    await user.click(screen.getByRole("button", { name: "Return" }));
     expect(screen.getByRole("dialog", { name: "Discard edit confirmation" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Cancel" }));
@@ -949,7 +1017,7 @@ describe("4d - Active card edit mode", () => {
     await user.clear(repsInput);
     await user.type(repsInput, "11");
 
-    await user.click(screen.getByRole("button", { name: "Return to current set" }));
+    await user.click(screen.getByRole("button", { name: "Return" }));
     await user.click(screen.getByRole("button", { name: "Discard" }));
 
     await waitFor(() => {
@@ -981,14 +1049,14 @@ describe("4d - Active card edit mode", () => {
     await user.click(screen.getByRole("button", { name: /Set 2 OK 50 x 10 @8/ }));
 
     expect(screen.getByRole("dialog", { name: "Discard edit confirmation" })).toBeInTheDocument();
-    expect(screen.getByText("Editing Set 1 - Dumbbell Bench Press")).toBeInTheDocument();
+    expect(screen.getByText("Set 1 - Dumbbell Bench Press")).toBeInTheDocument();
     expect(screen.getByLabelText("Reps")).toHaveValue(11);
 
     await user.click(screen.getByRole("button", { name: "Cancel" }));
 
     await waitFor(() => {
       expect(screen.queryByRole("dialog", { name: "Discard edit confirmation" })).not.toBeInTheDocument();
-      expect(screen.getByText("Editing Set 1 - Dumbbell Bench Press")).toBeInTheDocument();
+      expect(screen.getByText("Set 1 - Dumbbell Bench Press")).toBeInTheDocument();
       expect(screen.getByLabelText("Reps")).toHaveValue(11);
     });
 
@@ -997,7 +1065,7 @@ describe("4d - Active card edit mode", () => {
 
     await waitFor(() => {
       expect(screen.queryByRole("dialog", { name: "Discard edit confirmation" })).not.toBeInTheDocument();
-      expect(screen.getByText("Editing Set 2 - Dumbbell Bench Press")).toBeInTheDocument();
+      expect(screen.getByText("Set 2 - Dumbbell Bench Press")).toBeInTheDocument();
       expect(screen.getByLabelText("Reps")).toHaveValue(10);
     });
   });
@@ -1017,7 +1085,7 @@ describe("4d - Active card edit mode", () => {
     await user.click(screen.getByRole("button", { name: /Set 2$/ }));
 
     expect(screen.getByRole("dialog", { name: "Discard edit confirmation" })).toBeInTheDocument();
-    expect(screen.getByText("Editing Set 1 - Dumbbell Bench Press")).toBeInTheDocument();
+    expect(screen.getByText("Set 1 - Dumbbell Bench Press")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Discard" }));
 
@@ -1075,6 +1143,25 @@ describe("4d - Active card edit mode", () => {
     });
   });
 
+  it("editing a logged set does not restart the live rest timer", async () => {
+    const user = userEvent.setup();
+    render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
+
+    await user.click(screen.getByRole("button", { name: "Log set" }));
+    await waitFor(() => {
+      expect(screen.getByText("1:30")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: /Set 1 OK 50 x 10 @8/ }));
+    await user.clear(screen.getByLabelText("Reps"));
+    await user.type(screen.getByLabelText("Reps"), "12");
+    await user.click(screen.getByRole("button", { name: "Update set" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("1:30")).toBeInTheDocument();
+    });
+  });
+
   it("shows queue guidance for active-card editing", async () => {
     const user = userEvent.setup();
     render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
@@ -1097,6 +1184,10 @@ describe("Queue render stability", () => {
     window.sessionStorage.clear();
     setupDialogMocks();
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: vi.fn(),
+    });
+    Object.defineProperty(window, "scrollTo", {
       configurable: true,
       value: vi.fn(),
     });
@@ -1257,37 +1348,15 @@ describe("L-2/L-3/L-1/T-1/T-3 — Layout and UX fixes", () => {
     vi.useRealTimers();
   });
 
-  it("L-3: undo toast renders with position fixed when undoSnapshot is set", async () => {
+  it("L-3: logging a set does not show the transient undo toast", async () => {
     const user = userEvent.setup();
     render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
 
     await user.click(screen.getByRole("button", { name: "Log set" }));
 
     await waitFor(() => {
-      const paragraph = screen.getByText(/Set logged. Undo available/);
-      const toast = paragraph.closest("div[style]") as HTMLElement | null;
-      expect(toast).not.toBeNull();
-      expect(toast).toHaveStyle({ position: "fixed" });
-    });
-  });
-
-  it("restores the previous rest timer when undoing a later set log", async () => {
-    const user = userEvent.setup();
-    render(<LogWorkoutClient workoutId="workout-1" exercises={makeMixedRestExercise()} />);
-
-    await user.click(screen.getByRole("button", { name: "Log set" }));
-    await waitFor(() => {
-      expect(screen.getByText("1:00")).toBeInTheDocument();
-    });
-
-    await clickResolvedSubmitButton(user);
-    await waitFor(() => {
-      expect(screen.getByText("3:00")).toBeInTheDocument();
-    });
-
-    await user.click(screen.getByRole("button", { name: "Undo" }));
-    await waitFor(() => {
-      expect(screen.getByText("1:00")).toBeInTheDocument();
+      expect(screen.queryByText(/Set logged. Undo available/)).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Undo" })).not.toBeInTheDocument();
     });
   });
 
@@ -1380,6 +1449,7 @@ describe("L-2/L-3/L-1/T-1/T-3 — Layout and UX fixes", () => {
     });
 
     (HTMLElement.prototype.scrollIntoView as ReturnType<typeof vi.fn>).mockClear();
+    (window.scrollTo as ReturnType<typeof vi.fn>).mockClear();
 
     fireEvent.focus(screen.getByLabelText("Reps"));
     viewport.setHeight(480);
@@ -1388,6 +1458,7 @@ describe("L-2/L-3/L-1/T-1/T-3 — Layout and UX fixes", () => {
       expect(screen.getByTestId("rest-timer-hud")).toBeInTheDocument();
       expect(root.style.paddingTop).toBe("");
       expect(HTMLElement.prototype.scrollIntoView).not.toHaveBeenCalled();
+      expect(window.scrollTo).not.toHaveBeenCalled();
     });
   });
 
@@ -1431,7 +1502,7 @@ describe("I-2/I-4/I-5/E-4/E-5/E-6/L-4/S-5 — Remaining low-priority fixes", () 
       configurable: true,
       value: vi.fn(),
     });
-    Object.defineProperty(window, "scrollBy", { configurable: true, value: vi.fn() });
+    Object.defineProperty(window, "scrollTo", { configurable: true, value: vi.fn() });
   });
 
   afterEach(() => {

@@ -32,6 +32,10 @@ describe("useWorkoutSessionLayout", () => {
       configurable: true,
       value: vi.fn(),
     });
+    Object.defineProperty(window, "scrollTo", {
+      configurable: true,
+      value: vi.fn(),
+    });
   });
 
   afterEach(() => {
@@ -44,6 +48,7 @@ describe("useWorkoutSessionLayout", () => {
     fireEvent.click(screen.getByRole("button", { name: "jump" }));
     await waitFor(() => {
       expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalled();
+      expect(window.scrollTo).toHaveBeenCalled();
     });
   });
 
@@ -69,6 +74,7 @@ describe("useWorkoutSessionLayout", () => {
       expect(screen.getByTestId("keyboard-open")).toHaveTextContent("true");
       expect(screen.getByTestId("root")).toHaveStyle({ paddingBottom: "336px" });
       expect(HTMLElement.prototype.scrollIntoView).not.toHaveBeenCalled();
+      expect(window.scrollTo).not.toHaveBeenCalled();
     });
   });
 });

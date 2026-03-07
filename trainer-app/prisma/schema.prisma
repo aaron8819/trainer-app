@@ -204,6 +204,18 @@ enum MesocyclePhase {
   DELOAD
 }
 
+enum MesocycleWeekCloseStatus {
+  PENDING_OPTIONAL_GAP_FILL
+  RESOLVED
+}
+
+enum MesocycleWeekCloseResolution {
+  NO_GAP_FILL_NEEDED
+  GAP_FILL_COMPLETED
+  GAP_FILL_DISMISSED
+  AUTO_DISMISSED
+}
+
 enum MesocycleExerciseRoleType {
   CORE_COMPOUND
   ACCESSORY
@@ -408,6 +420,7 @@ model Workout {
   mesocyclePhaseSnapshot MesocyclePhase?
   mesocycleWeekSnapshot  Int?
   mesoSessionSnapshot    Int?
+  optionalWeekClose      MesocycleWeekClose? @relation("WeekCloseOptionalWorkout")
 
   // Autoregulation tracking (Phase 3)
   wasAutoregulated  Boolean @default(false)
@@ -620,11 +633,32 @@ model Mesocycle {
   blocks        TrainingBlock[]
   workouts      Workout[]
   exerciseRoles MesocycleExerciseRole[]
+  weekCloses    MesocycleWeekClose[]
 
   @@unique([macroCycleId, mesoNumber])
   @@index([macroCycleId])
   @@index([macroCycleId, isActive])
   @@index([macroCycleId, isActive, state])
+}
+
+model MesocycleWeekClose {
+  id                  String                        @id @default(uuid())
+  mesocycleId         String
+  mesocycle           Mesocycle                     @relation(fields: [mesocycleId], references: [id], onDelete: Cascade)
+  targetWeek          Int
+  targetPhase         MesocyclePhase
+  status              MesocycleWeekCloseStatus
+  resolution          MesocycleWeekCloseResolution?
+  optionalWorkoutId   String?                       @unique
+  optionalWorkout     Workout?                      @relation("WeekCloseOptionalWorkout", fields: [optionalWorkoutId], references: [id], onDelete: SetNull)
+  deficitSnapshotJson Json?
+  triggeredAt         DateTime                      @default(now())
+  resolvedAt          DateTime?
+  createdAt           DateTime                      @default(now())
+  updatedAt           DateTime                      @updatedAt
+
+  @@unique([mesocycleId, targetWeek])
+  @@index([mesocycleId, status])
 }
 
 model TrainingBlock {

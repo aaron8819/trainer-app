@@ -42,15 +42,20 @@ export function OptionalGapFillCard({ gapFill }: OptionalGapFillCardProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const anchorWeek = gapFill.anchorWeek;
-  if (!gapFill.eligible || anchorWeek == null) {
+  const targetWeek = gapFill.targetWeek ?? gapFill.anchorWeek;
+  if (!gapFill.eligible || targetWeek == null || !gapFill.weekCloseId) {
     return null;
   }
 
   const summaryRows = gapFill.deficitSummary.slice(0, 3);
-  const targetMuscles = gapFill.targetMuscles.slice(0, 3);
 
   const handleGenerateGapFill = async () => {
+    if (gapFill.linkedWorkout) {
+      router.push(`/log/${gapFill.linkedWorkout.id}`);
+      router.refresh();
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
@@ -59,10 +64,7 @@ export function OptionalGapFillCard({ gapFill }: OptionalGapFillCardProps) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         intent: "body_part",
-        anchorWeek,
-        targetMuscles,
-        maxGeneratedHardSets: gapFill.policy.maxGeneratedHardSets,
-        maxGeneratedExercises: gapFill.policy.maxGeneratedExercises,
+        weekCloseId: gapFill.weekCloseId,
         optionalGapFill: true,
       }),
     });
@@ -88,7 +90,7 @@ export function OptionalGapFillCard({ gapFill }: OptionalGapFillCardProps) {
       sessionIntent: "BODY_PART",
       selectionMetadata: canonicalSelectionMetadata,
       advancesSplit: false,
-      mesocycleWeekSnapshot: anchorWeek,
+      mesocycleWeekSnapshot: targetWeek,
       filteredExercises: generatedBody.filteredExercises,
       exercises: [
         ...workout.warmup.map((exercise) => ({ ...exercise, section: "WARMUP" as const })),
@@ -130,14 +132,14 @@ export function OptionalGapFillCard({ gapFill }: OptionalGapFillCardProps) {
       <h3 className="text-sm font-semibold uppercase tracking-wide text-amber-700">
         Optional Gap-Fill
       </h3>
-      <p className="mt-2 text-lg font-semibold text-slate-900">Gap-fill for Week {anchorWeek}</p>
+      <p className="mt-2 text-lg font-semibold text-slate-900">Gap-fill for Week {targetWeek}</p>
       <p className="mt-2 text-sm text-slate-700">
         {summaryRows.length > 0
           ? summaryRows.map((row) => `${row.muscle} (${row.deficit} sets)`).join(", ")
           : "Focus target muscles are available."}
       </p>
       <p className="mt-2 text-xs text-amber-800">
-        Starting Week {anchorWeek + 1} will hide this gap-fill.
+        Starting Week {targetWeek + 1} will hide this gap-fill.
       </p>
       <button
         type="button"
@@ -145,7 +147,11 @@ export function OptionalGapFillCard({ gapFill }: OptionalGapFillCardProps) {
         onClick={handleGenerateGapFill}
         disabled={loading}
       >
-        {loading ? "Generating..." : "Generate gap-fill"}
+        {loading
+          ? "Generating..."
+          : gapFill.linkedWorkout
+            ? "Open gap-fill"
+            : "Generate gap-fill"}
       </button>
       {error ? <p className="mt-2 text-sm text-rose-600">{error}</p> : null}
     </div>

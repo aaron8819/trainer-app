@@ -9,6 +9,10 @@ export type SaveRouteMesocycle = {
   accumulationSessionsCompleted: number;
   deloadSessionsCompleted: number;
   sessionsPerWeek: number;
+  startWeek?: number;
+  macroCycle?: {
+    startDate: Date;
+  };
 };
 
 export type SaveRouteMesoSnapshot = {
@@ -46,6 +50,25 @@ export function buildPerformedLifecycleCounterUpdate(
       completedSessions: { increment: 1 },
       accumulationSessionsCompleted: { increment: 1 },
     };
+}
+
+export function deriveAccumulationBoundaryAfterPerformedSave(input: {
+  state: SaveRouteMesocycleState;
+  accumulationSessionsCompleted: number;
+  sessionsPerWeek: number;
+}): { crossesBoundary: boolean; targetWeek: number | null } {
+  if (input.state !== "ACTIVE_ACCUMULATION") {
+    return { crossesBoundary: false, targetWeek: null };
+  }
+
+  const sessionsPerWeek = Math.max(1, input.sessionsPerWeek);
+  const nextAccumulationCount = input.accumulationSessionsCompleted + 1;
+  const crossesBoundary = nextAccumulationCount % sessionsPerWeek === 0;
+
+  return {
+    crossesBoundary,
+    targetWeek: crossesBoundary ? nextAccumulationCount / sessionsPerWeek : null,
+  };
 }
 
 export function shouldAdvanceLifecycleForPerformedTransition(

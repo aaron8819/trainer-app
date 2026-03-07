@@ -14,7 +14,10 @@ function buildGapFill(overrides: Partial<GapFillSupportData> = {}): GapFillSuppo
   return {
     eligible: true,
     reason: null,
+    weekCloseId: "wc-1",
     anchorWeek: 3,
+    targetWeek: 3,
+    targetPhase: "ACCUMULATION",
     targetMuscles: ["front delts", "rear delts", "biceps"],
     deficitSummary: [
       { muscle: "Front Delts", target: 5, actual: 0, deficit: 5 },
@@ -22,6 +25,7 @@ function buildGapFill(overrides: Partial<GapFillSupportData> = {}): GapFillSuppo
     ],
     alreadyUsedThisWeek: false,
     suppressedByStartedNextWeek: false,
+    linkedWorkout: null,
     policy: {
       requiredSessionsPerWeek: 3,
       maxOptionalGapFillSessionsPerWeek: 1,
@@ -71,6 +75,7 @@ describe("OptionalGapFillCard", () => {
           sessionIntent: "body_part",
           selectionSummary: { selectedCount: 1, pinnedCount: 0, setTargetCount: 1 },
           selectionMetadata: {
+            weekCloseId: "wc-1",
             sessionDecisionReceipt: {
               version: 1,
               cycleContext: {
@@ -120,10 +125,7 @@ describe("OptionalGapFillCard", () => {
     const generatePayload = JSON.parse(generateCall[1].body as string);
     expect(generatePayload).toMatchObject({
       intent: "body_part",
-      anchorWeek: 3,
-      targetMuscles: ["front delts", "rear delts", "biceps"],
-      maxGeneratedHardSets: 12,
-      maxGeneratedExercises: 4,
+      weekCloseId: "wc-1",
       optionalGapFill: true,
     });
 
@@ -134,11 +136,29 @@ describe("OptionalGapFillCard", () => {
     expect(savePayload.selectionMode).toBe("INTENT");
     expect(savePayload.sessionIntent).toBe("BODY_PART");
     expect(savePayload.mesocycleWeekSnapshot).toBe(3);
+    expect(savePayload.selectionMetadata.weekCloseId).toBe("wc-1");
     expect(savePayload.selectionMetadata.sessionDecisionReceipt.exceptions).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ code: "optional_gap_fill" }),
       ])
     );
     expect(pushMock).toHaveBeenCalledWith("/log/w-gap-1");
+  });
+
+  it("opens the linked workout instead of re-generating when one already exists", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <OptionalGapFillCard
+        gapFill={buildGapFill({
+          linkedWorkout: { id: "w-gap-existing", status: "PLANNED" },
+        })}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Open gap-fill" }));
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(pushMock).toHaveBeenCalledWith("/log/w-gap-existing");
   });
 });

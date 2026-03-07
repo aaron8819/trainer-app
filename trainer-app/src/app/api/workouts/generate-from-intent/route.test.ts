@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => {
   const resolveOwner = vi.fn();
   const loadActiveMesocycle = vi.fn();
+  const findPendingWeekCloseForUser = vi.fn();
   const generateSessionFromIntent = vi.fn();
   const generateDeloadSessionFromIntent = vi.fn();
   const applyAutoregulation = vi.fn();
@@ -10,6 +11,7 @@ const mocks = vi.hoisted(() => {
   return {
     resolveOwner,
     loadActiveMesocycle,
+    findPendingWeekCloseForUser,
     generateSessionFromIntent,
     generateDeloadSessionFromIntent,
     applyAutoregulation,
@@ -22,6 +24,10 @@ vi.mock("@/lib/api/workout-context", () => ({
 
 vi.mock("@/lib/api/mesocycle-lifecycle", () => ({
   loadActiveMesocycle: (...args: unknown[]) => mocks.loadActiveMesocycle(...args),
+}));
+
+vi.mock("@/lib/api/mesocycle-week-close", () => ({
+  findPendingWeekCloseForUser: (...args: unknown[]) => mocks.findPendingWeekCloseForUser(...args),
 }));
 
 vi.mock("@/lib/api/template-session", () => ({
@@ -40,6 +46,7 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.resolveOwner.mockResolvedValue({ id: "user-1" });
+    mocks.findPendingWeekCloseForUser.mockResolvedValue(null);
     mocks.applyAutoregulation.mockImplementation(async (_userId, workout) => ({
       adjusted: workout,
       applied: false,
@@ -179,8 +186,31 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
     expect(body.selectionMetadata.sessionDecisionReceipt.version).toBe(1);
   });
 
-  it("anchor-pins receipt week for optional gap-fill and preserves marker + target muscles", async () => {
-    mocks.loadActiveMesocycle.mockResolvedValue(null);
+  it("pins receipt week from the pending week-close row and preserves marker + weekCloseId", async () => {
+    mocks.loadActiveMesocycle.mockResolvedValue({ id: "meso-1", state: "ACTIVE_ACCUMULATION", durationWeeks: 5 });
+    mocks.findPendingWeekCloseForUser.mockResolvedValue({
+      id: "wc-1",
+      mesocycleId: "meso-1",
+      targetWeek: 3,
+      targetPhase: "ACCUMULATION",
+      status: "PENDING_OPTIONAL_GAP_FILL",
+      deficitSnapshot: {
+        version: 1,
+        policy: {
+          requiredSessionsPerWeek: 3,
+          maxOptionalGapFillSessionsPerWeek: 1,
+          maxGeneratedHardSets: 2,
+          maxGeneratedExercises: 1,
+        },
+        summary: {
+          totalDeficitSets: 4,
+          qualifyingMuscleCount: 1,
+          topTargetMuscles: ["front delts"],
+        },
+        muscles: [{ muscle: "front delts", target: 6, actual: 2, deficit: 4 }],
+      },
+      optionalWorkout: null,
+    });
     mocks.generateSessionFromIntent.mockResolvedValue({
       workout: {
         id: "w-gap",
@@ -270,10 +300,7 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           intent: "body_part",
-          anchorWeek: 3,
-          targetMuscles: ["front delts"],
-          maxGeneratedHardSets: 2,
-          maxGeneratedExercises: 1,
+          weekCloseId: "wc-1",
           optionalGapFill: true,
         }),
       })
@@ -281,6 +308,21 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
+    expect(mocks.findPendingWeekCloseForUser).toHaveBeenCalledWith({
+      userId: "user-1",
+      weekCloseId: "wc-1",
+      mesocycleId: "meso-1",
+    });
+    expect(mocks.generateSessionFromIntent).toHaveBeenCalledWith(
+      "user-1",
+      expect.objectContaining({
+        weekCloseId: "wc-1",
+        anchorWeek: 3,
+        targetMuscles: ["front delts"],
+        maxGeneratedHardSets: 2,
+        maxGeneratedExercises: 1,
+      })
+    );
     expect(body.selectionMetadata.sessionDecisionReceipt.cycleContext.weekInMeso).toBe(3);
     expect(body.selectionMetadata.sessionDecisionReceipt.cycleContext.weekInBlock).toBe(3);
     expect(body.workout.mainLifts.length).toBe(1);
@@ -290,10 +332,34 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
       expect.arrayContaining([expect.objectContaining({ code: "optional_gap_fill" })])
     );
     expect(body.selectionMetadata.sessionDecisionReceipt.targetMuscles).toEqual(["front delts"]);
+    expect(body.selectionMetadata.weekCloseId).toBe("wc-1");
   });
 
-  it("bypasses deload route semantics for anchored optional gap-fill after lifecycle advances", async () => {
+  it("bypasses deload route semantics for pending optional gap-fill after lifecycle advances", async () => {
     mocks.loadActiveMesocycle.mockResolvedValue({ id: "meso-1", state: "ACTIVE_DELOAD", durationWeeks: 5 });
+    mocks.findPendingWeekCloseForUser.mockResolvedValue({
+      id: "wc-1",
+      mesocycleId: "meso-1",
+      targetWeek: 4,
+      targetPhase: "ACCUMULATION",
+      status: "PENDING_OPTIONAL_GAP_FILL",
+      deficitSnapshot: {
+        version: 1,
+        policy: {
+          requiredSessionsPerWeek: 3,
+          maxOptionalGapFillSessionsPerWeek: 1,
+          maxGeneratedHardSets: 12,
+          maxGeneratedExercises: 4,
+        },
+        summary: {
+          totalDeficitSets: 3,
+          qualifyingMuscleCount: 1,
+          topTargetMuscles: ["front delts"],
+        },
+        muscles: [{ muscle: "front delts", target: 5, actual: 2, deficit: 3 }],
+      },
+      optionalWorkout: null,
+    });
     mocks.generateSessionFromIntent.mockResolvedValue({
       workout: {
         id: "w-gap",
@@ -365,8 +431,7 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           intent: "body_part",
-          anchorWeek: 4,
-          targetMuscles: ["front delts"],
+          weekCloseId: "wc-1",
           optionalGapFill: true,
         }),
       })
@@ -386,6 +451,79 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
         isDeload: false,
       })
     );
+    expect(body.selectionMetadata.weekCloseId).toBe("wc-1");
+  });
+
+  it("rejects optional gap-fill generation when the pending row is missing or stale", async () => {
+    mocks.loadActiveMesocycle.mockResolvedValue({ id: "meso-1", state: "ACTIVE_ACCUMULATION", durationWeeks: 5 });
+    mocks.findPendingWeekCloseForUser.mockResolvedValue(null);
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/generate-from-intent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          intent: "body_part",
+          weekCloseId: "wc-stale",
+          optionalGapFill: true,
+        }),
+      })
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "Pending week-close window not found.",
+    });
+    expect(mocks.generateSessionFromIntent).not.toHaveBeenCalled();
+  });
+
+  it("rejects optional gap-fill generation when a workout is already linked", async () => {
+    mocks.loadActiveMesocycle.mockResolvedValue({ id: "meso-1", state: "ACTIVE_ACCUMULATION", durationWeeks: 5 });
+    mocks.findPendingWeekCloseForUser.mockResolvedValue({
+      id: "wc-1",
+      mesocycleId: "meso-1",
+      targetWeek: 3,
+      targetPhase: "ACCUMULATION",
+      status: "PENDING_OPTIONAL_GAP_FILL",
+      deficitSnapshot: {
+        version: 1,
+        policy: {
+          requiredSessionsPerWeek: 3,
+          maxOptionalGapFillSessionsPerWeek: 1,
+          maxGeneratedHardSets: 12,
+          maxGeneratedExercises: 4,
+        },
+        summary: {
+          totalDeficitSets: 3,
+          qualifyingMuscleCount: 1,
+          topTargetMuscles: ["front delts"],
+        },
+        muscles: [{ muscle: "front delts", target: 5, actual: 2, deficit: 3 }],
+      },
+      optionalWorkout: {
+        id: "w-gap-1",
+        status: "PLANNED",
+        scheduledDate: new Date("2026-03-03T00:00:00.000Z"),
+      },
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/generate-from-intent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          intent: "body_part",
+          weekCloseId: "wc-1",
+          optionalGapFill: true,
+        }),
+      })
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "A gap-fill workout is already linked to this week-close window.",
+      workoutId: "w-gap-1",
+    });
   });
 
   it("keeps lifecycle-derived receipt week when optionalGapFill is false", async () => {

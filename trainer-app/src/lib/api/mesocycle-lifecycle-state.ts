@@ -1,4 +1,4 @@
-import type { Mesocycle } from "@prisma/client";
+import type { Mesocycle, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { getAccumulationWeeks } from "./mesocycle-lifecycle-math";
 
@@ -132,6 +132,48 @@ export async function initializeNextMesocycle(
   });
 }
 
+type LifecycleTx = Prisma.TransactionClient;
+
+export async function transitionMesocycleStateInTransaction(
+  tx: LifecycleTx,
+  mesocycleId: string
+): Promise<{ mesocycle: Mesocycle; advanced: boolean }> {
+  const mesocycle = await tx.mesocycle.findUnique({
+    where: { id: mesocycleId },
+  });
+  if (!mesocycle) {
+    throw new Error(`Mesocycle not found: ${mesocycleId}`);
+  }
+
+  if (mesocycle.state === "COMPLETED") {
+    console.warn(`[mesocycle-lifecycle] transition requested on COMPLETED mesocycle ${mesocycleId}; no-op`);
+    return { mesocycle, advanced: false };
+  }
+
+  if (mesocycle.state === "ACTIVE_ACCUMULATION") {
+    if (mesocycle.accumulationSessionsCompleted < getAccumulationSessionThreshold(mesocycle)) {
+      return { mesocycle, advanced: false };
+    }
+    const updated = await tx.mesocycle.update({
+      where: { id: mesocycle.id },
+      data: { state: "ACTIVE_DELOAD" },
+    });
+    return { mesocycle: updated, advanced: true };
+  }
+
+  if (mesocycle.deloadSessionsCompleted < getDeloadSessionThreshold(mesocycle)) {
+    return { mesocycle, advanced: false };
+  }
+  const updated = await tx.mesocycle.update({
+    where: { id: mesocycle.id },
+    data: { state: "COMPLETED" },
+  });
+
+  await initializeNextMesocycle(updated);
+
+  return { mesocycle: updated, advanced: true };
+}
+
 /**
  * Check lifecycle thresholds and transition mesocycle state if needed.
  *
@@ -141,42 +183,10 @@ export async function initializeNextMesocycle(
  * transitions when the threshold has been reached.
  */
 export async function transitionMesocycleState(mesocycleId: string): Promise<Mesocycle> {
-  const mesocycle = await prisma.mesocycle.findUnique({
-    where: { id: mesocycleId },
-  });
-  if (!mesocycle) {
-    throw new Error(`Mesocycle not found: ${mesocycleId}`);
-  }
-
-  if (mesocycle.state === "COMPLETED") {
-    console.warn(`[mesocycle-lifecycle] transition requested on COMPLETED mesocycle ${mesocycleId}; no-op`);
-    return mesocycle;
-  }
-
-  if (mesocycle.state === "ACTIVE_ACCUMULATION") {
-    // Counter already incremented in the save transaction; just check threshold.
-    if (mesocycle.accumulationSessionsCompleted < getAccumulationSessionThreshold(mesocycle)) {
-      return mesocycle;
-    }
-    const updated = await prisma.mesocycle.update({
-      where: { id: mesocycle.id },
-      data: { state: "ACTIVE_DELOAD" },
-    });
-    return updated;
-  }
-
-  // ACTIVE_DELOAD: counter already incremented in the save transaction.
-  if (mesocycle.deloadSessionsCompleted < getDeloadSessionThreshold(mesocycle)) {
-    return mesocycle;
-  }
-  const updated = await prisma.mesocycle.update({
-    where: { id: mesocycle.id },
-    data: { state: "COMPLETED" },
-  });
-
-  await initializeNextMesocycle(updated);
-
-  return updated;
+  const result = await prisma.$transaction(async (tx) =>
+    transitionMesocycleStateInTransaction(tx, mesocycleId)
+  );
+  return result.mesocycle;
 }
 
 export async function loadActiveMesocycle(userId: string): Promise<Mesocycle | null> {

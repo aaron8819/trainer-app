@@ -4,6 +4,7 @@ import { resolveOwner } from "@/lib/api/workout-context";
 import { generateDeloadSessionFromIntent, generateSessionFromIntent } from "@/lib/api/template-session";
 import { applyAutoregulation } from "@/lib/api/autoregulation";
 import { loadActiveMesocycle } from "@/lib/api/mesocycle-lifecycle";
+import { findPendingWeekCloseForUser } from "@/lib/api/mesocycle-week-close";
 import type { GenerateFromIntentResponse } from "@/lib/api/template-session/types";
 import { buildCanonicalSelectionMetadata } from "@/lib/ui/selection-metadata";
 import type { SaveableSelectionMetadata } from "@/lib/ui/selection-metadata";
@@ -61,7 +62,7 @@ function applyGapFillCaps(input: {
 
 function withOptionalGapFillMarker(
   selectionMetadata: SaveableSelectionMetadata,
-  input: { enabled: boolean; targetMuscles?: string[] }
+  input: { enabled: boolean; targetMuscles?: string[]; weekCloseId?: string }
 ): SaveableSelectionMetadata {
   if (!input.enabled) {
     return selectionMetadata;
@@ -76,6 +77,7 @@ function withOptionalGapFillMarker(
   }
   return {
     ...selectionMetadata,
+    ...(input.weekCloseId ? { weekCloseId: input.weekCloseId } : {}),
     sessionDecisionReceipt: {
       ...receipt,
       targetMuscles:
@@ -137,10 +139,72 @@ export async function POST(request: Request) {
   const activeMesocycle = await loadActiveMesocycle(user.id);
   const shouldApplyOptionalGapFill =
     parsed.data.optionalGapFill === true && parsed.data.intent === "body_part";
+  let canonicalGapFill:
+    | {
+        weekCloseId: string;
+        targetWeek: number;
+        targetMuscles: string[];
+        maxGeneratedHardSets?: number;
+        maxGeneratedExercises?: number;
+      }
+    | null = null;
+
+  if (shouldApplyOptionalGapFill) {
+    const pendingWeekClose = await findPendingWeekCloseForUser({
+      userId: user.id,
+      weekCloseId: parsed.data.weekCloseId,
+      mesocycleId: activeMesocycle?.id,
+    });
+    if (!activeMesocycle || !pendingWeekClose || pendingWeekClose.mesocycleId !== activeMesocycle.id) {
+      return NextResponse.json({ error: "Pending week-close window not found." }, { status: 409 });
+    }
+    if (pendingWeekClose.optionalWorkout) {
+      return NextResponse.json(
+        {
+          error: "A gap-fill workout is already linked to this week-close window.",
+          workoutId: pendingWeekClose.optionalWorkout.id,
+        },
+        { status: 409 }
+      );
+    }
+
+    const deficitSnapshot = pendingWeekClose.deficitSnapshot;
+    const targetMuscles =
+      deficitSnapshot?.summary.topTargetMuscles?.filter(Boolean) ??
+      deficitSnapshot?.muscles.slice(0, 3).map((entry) => entry.muscle) ??
+      [];
+    if (targetMuscles.length === 0) {
+      return NextResponse.json(
+        { error: "Pending week-close window does not contain a usable deficit snapshot." },
+        { status: 409 }
+      );
+    }
+
+    canonicalGapFill = {
+      weekCloseId: pendingWeekClose.id,
+      targetWeek: pendingWeekClose.targetWeek,
+      targetMuscles,
+      maxGeneratedHardSets:
+        deficitSnapshot?.policy.maxGeneratedHardSets ?? parsed.data.maxGeneratedHardSets,
+      maxGeneratedExercises:
+        deficitSnapshot?.policy.maxGeneratedExercises ?? parsed.data.maxGeneratedExercises,
+    };
+  }
+
+  const generationInput = shouldApplyOptionalGapFill && canonicalGapFill
+    ? {
+        ...parsed.data,
+        targetMuscles: canonicalGapFill.targetMuscles,
+        anchorWeek: canonicalGapFill.targetWeek,
+        weekCloseId: canonicalGapFill.weekCloseId,
+        maxGeneratedHardSets: canonicalGapFill.maxGeneratedHardSets,
+        maxGeneratedExercises: canonicalGapFill.maxGeneratedExercises,
+      }
+    : parsed.data;
   const result =
     !shouldApplyOptionalGapFill && activeMesocycle?.state === "ACTIVE_DELOAD"
-      ? await generateDeloadSessionFromIntent(user.id, parsed.data)
-      : await generateSessionFromIntent(user.id, parsed.data);
+      ? await generateDeloadSessionFromIntent(user.id, generationInput)
+      : await generateSessionFromIntent(user.id, generationInput);
   if ("error" in result) {
     return NextResponse.json({ error: result.error }, { status: 400 });
   }
@@ -164,19 +228,20 @@ export async function POST(request: Request) {
 
   const cappedWorkout = applyGapFillCaps({
     workout: autoregulated.adjusted,
-    maxGeneratedHardSets: parsed.data.maxGeneratedHardSets,
-    maxGeneratedExercises: parsed.data.maxGeneratedExercises,
+    maxGeneratedHardSets: generationInput.maxGeneratedHardSets,
+    maxGeneratedExercises: generationInput.maxGeneratedExercises,
   });
   const anchorPinnedSelectionMetadata = withOptionalGapFillAnchorWeek(selectionMetadata, {
     enabled: shouldApplyOptionalGapFill,
-    anchorWeek: parsed.data.anchorWeek,
+    anchorWeek: generationInput.anchorWeek,
     mesocycleLength: activeMesocycle?.durationWeeks,
   });
   const markedSelectionMetadata = withOptionalGapFillMarker(
     anchorPinnedSelectionMetadata,
     {
       enabled: shouldApplyOptionalGapFill,
-      targetMuscles: parsed.data.targetMuscles,
+      targetMuscles: generationInput.targetMuscles,
+      weekCloseId: generationInput.weekCloseId,
     }
   );
 

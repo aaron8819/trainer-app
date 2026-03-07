@@ -24,7 +24,7 @@ const mocks = vi.hoisted(() => {
   const txWorkoutExerciseCreate = vi.fn();
   const txExerciseFindUnique = vi.fn();
   const getCurrentMesoWeek = vi.fn();
-  const transitionMesocycleState = vi.fn();
+  const transitionMesocycleStateInTransaction = vi.fn();
 
   const tx = {
     workout: {
@@ -53,6 +53,10 @@ const mocks = vi.hoisted(() => {
     filteredExercise: {
       deleteMany: vi.fn(),
       createMany: vi.fn(),
+    },
+    mesocycleWeekClose: {
+      findFirst: vi.fn(),
+      upsert: vi.fn(),
     },
   };
 
@@ -98,7 +102,7 @@ const mocks = vi.hoisted(() => {
     txWorkoutExerciseCreate,
     txExerciseFindUnique,
     getCurrentMesoWeek,
-    transitionMesocycleState,
+    transitionMesocycleStateInTransaction,
     tx,
     prisma,
   };
@@ -144,7 +148,7 @@ vi.mock("@/lib/api/mesocycle-lifecycle-state", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/mesocycle-lifecycle-state")>();
   return {
     ...actual,
-    transitionMesocycleState: (...args: unknown[]) => mocks.transitionMesocycleState(...args),
+    transitionMesocycleStateInTransaction: (...args: unknown[]) => mocks.transitionMesocycleStateInTransaction(...args),
   };
 });
 
@@ -318,7 +322,10 @@ describe("canonical session decision receipt pipeline", () => {
       return { id: "workout-1", revision: 1 };
     });
     mocks.getCurrentMesoWeek.mockReturnValue(1);
-    mocks.transitionMesocycleState.mockResolvedValue({});
+    mocks.transitionMesocycleStateInTransaction.mockResolvedValue({
+      mesocycle: { id: "meso-1", state: "ACTIVE_ACCUMULATION" },
+      advanced: false,
+    });
 
     mocks.workoutFindUnique.mockImplementation(async () => ({
       id: "workout-1",

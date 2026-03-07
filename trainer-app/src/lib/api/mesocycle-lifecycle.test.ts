@@ -69,7 +69,7 @@ describe("mesocycle-lifecycle", () => {
   it("returns mesocycle unchanged when below accumulation threshold", async () => {
     // Counter is pre-incremented in the save transaction; transitionMesocycleState only checks thresholds.
     // accumulationSessionsCompleted=3 is well below threshold (12) → no update, no state change.
-    mocks.mesocycleFindUnique.mockResolvedValue({
+    mocks.txMesoFindUnique.mockResolvedValue({
       id: "m1",
       state: "ACTIVE_ACCUMULATION",
       accumulationSessionsCompleted: 3,
@@ -81,12 +81,12 @@ describe("mesocycle-lifecycle", () => {
     const updated = await transitionMesocycleState("m1");
     expect(updated.accumulationSessionsCompleted).toBe(3);
     expect(updated.state).toBe("ACTIVE_ACCUMULATION");
-    expect(mocks.mesocycleUpdate).not.toHaveBeenCalled();
+    expect(mocks.txMesoUpdate).not.toHaveBeenCalled();
   });
 
   it("transitions ACTIVE_ACCUMULATION to ACTIVE_DELOAD at the duration-aware accumulation threshold", async () => {
     // durationWeeks=5 and sessionsPerWeek=3 => 4 accumulation weeks => threshold 12.
-    mocks.mesocycleFindUnique.mockResolvedValue({
+    mocks.txMesoFindUnique.mockResolvedValue({
       id: "m1",
       state: "ACTIVE_ACCUMULATION",
       accumulationSessionsCompleted: 12,
@@ -94,7 +94,7 @@ describe("mesocycle-lifecycle", () => {
       durationWeeks: 5,
       sessionsPerWeek: 3,
     });
-    mocks.mesocycleUpdate.mockResolvedValue({
+    mocks.txMesoUpdate.mockResolvedValue({
       id: "m1",
       state: "ACTIVE_DELOAD",
       accumulationSessionsCompleted: 12,
@@ -104,7 +104,7 @@ describe("mesocycle-lifecycle", () => {
     const updated = await transitionMesocycleState("m1");
     expect(updated.state).toBe("ACTIVE_DELOAD");
     // Counter write is absent — only state changes here.
-    expect(mocks.mesocycleUpdate).toHaveBeenCalledWith(
+    expect(mocks.txMesoUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: { state: "ACTIVE_DELOAD" },
       })
@@ -113,14 +113,14 @@ describe("mesocycle-lifecycle", () => {
 
   it("transitions ACTIVE_DELOAD to COMPLETED at session 3 and initializes next mesocycle", async () => {
     // Save transaction has already incremented deloadSessionsCompleted to 3; transitionMesocycleState reads 3 >= threshold.
-    mocks.mesocycleFindUnique.mockResolvedValue({
+    mocks.txMesoFindUnique.mockResolvedValue({
       id: "m1",
       state: "ACTIVE_DELOAD",
       accumulationSessionsCompleted: 12,
       deloadSessionsCompleted: 3,
       sessionsPerWeek: 3,
     });
-    mocks.mesocycleUpdate.mockResolvedValue({
+    mocks.txMesoUpdate.mockResolvedValue({
       id: "m1",
       macroCycleId: "macro-1",
       mesoNumber: 1,
@@ -157,13 +157,13 @@ describe("mesocycle-lifecycle", () => {
 
     const updated = await transitionMesocycleState("m1");
     expect(updated.state).toBe("COMPLETED");
-    expect(mocks.transaction).toHaveBeenCalledTimes(1);
+    expect(mocks.transaction).toHaveBeenCalledTimes(2);
     expect(mocks.txMesoCreate).toHaveBeenCalledTimes(1);
   });
 
   it("no-ops transition for already COMPLETED mesocycle", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    mocks.mesocycleFindUnique.mockResolvedValue({
+    mocks.txMesoFindUnique.mockResolvedValue({
       id: "m1",
       state: "COMPLETED",
       accumulationSessionsCompleted: 12,
@@ -174,7 +174,7 @@ describe("mesocycle-lifecycle", () => {
 
     const updated = await transitionMesocycleState("m1");
     expect(updated.state).toBe("COMPLETED");
-    expect(mocks.mesocycleUpdate).not.toHaveBeenCalled();
+    expect(mocks.txMesoUpdate).not.toHaveBeenCalled();
     expect(warnSpy).toHaveBeenCalledOnce();
     warnSpy.mockRestore();
   });

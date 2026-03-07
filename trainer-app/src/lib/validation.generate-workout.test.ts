@@ -26,6 +26,25 @@ describe("generate workout schemas", () => {
     expect(parsed.success).toBe(false);
   });
 
+  it("allows body_part optional gap-fill without targetMuscles when weekCloseId is present", () => {
+    const parsed = generateFromIntentSchema.parse({
+      intent: "body_part",
+      optionalGapFill: true,
+      weekCloseId: "wc-1",
+    });
+
+    expect(parsed.weekCloseId).toBe("wc-1");
+  });
+
+  it("requires weekCloseId when optionalGapFill is true", () => {
+    const parsed = generateFromIntentSchema.safeParse({
+      intent: "body_part",
+      optionalGapFill: true,
+    });
+
+    expect(parsed.success).toBe(false);
+  });
+
   it("accepts non-body_part intent without targetMuscles", () => {
     const parsed = generateFromIntentSchema.parse({
       intent: "push",

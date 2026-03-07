@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => {
   const workoutFindFirst = vi.fn();
   const mesocycleUpdate = vi.fn();
   const getCurrentMesoWeekFn = vi.fn(() => 1);
+  const findPendingWeekCloseForUser = vi.fn();
 
   return {
     mesocycleFindFirst,
@@ -17,6 +18,7 @@ const mocks = vi.hoisted(() => {
     workoutFindFirst,
     mesocycleUpdate,
     getCurrentMesoWeekFn,
+    findPendingWeekCloseForUser,
     prisma: {
       mesocycle: { findFirst: mesocycleFindFirst, update: mesocycleUpdate },
       constraints: { findUnique: constraintsFindUnique },
@@ -31,6 +33,9 @@ vi.mock("./mesocycle-lifecycle-math", async (importOriginal) => {
   const original = await importOriginal<typeof import("./mesocycle-lifecycle-math")>();
   return { ...original, getCurrentMesoWeek: mocks.getCurrentMesoWeekFn };
 });
+vi.mock("./mesocycle-week-close", () => ({
+  findPendingWeekCloseForUser: (...args: unknown[]) => mocks.findPendingWeekCloseForUser(...args),
+}));
 
 import {
   computeMesoWeekStart,
@@ -99,6 +104,7 @@ function setupDashboardMocks(
   mocks.workoutFindMany.mockResolvedValue([]);
   mocks.workoutFindFirst.mockResolvedValue(null);
   mocks.getCurrentMesoWeekFn.mockReturnValue(week);
+  mocks.findPendingWeekCloseForUser.mockResolvedValue(null);
 }
 
 describe("computeMesoWeekStart", () => {
@@ -438,7 +444,7 @@ describe("loadHomeProgramSupport", () => {
     expect(result.lastSessionSkipped).toBe(true);
   });
 
-  it("does not suppress gap-fill when next-week carryover is only PLANNED", async () => {
+  it("surfaces pending week-close support from the canonical row", async () => {
     setupDashboardMocks(
       {
         state: "ACTIVE_ACCUMULATION",
@@ -458,49 +464,46 @@ describe("loadHomeProgramSupport", () => {
         scheduledDate: new Date("2026-03-08T00:00:00.000Z"),
       },
     ]);
+    mocks.findPendingWeekCloseForUser.mockResolvedValueOnce({
+      id: "wc-1",
+      mesocycleId: "meso-1",
+      targetWeek: 1,
+      targetPhase: "ACCUMULATION",
+      status: "PENDING_OPTIONAL_GAP_FILL",
+      deficitSnapshot: {
+        version: 1,
+        policy: {
+          requiredSessionsPerWeek: 3,
+          maxOptionalGapFillSessionsPerWeek: 1,
+          maxGeneratedHardSets: 12,
+          maxGeneratedExercises: 4,
+        },
+        summary: {
+          totalDeficitSets: 6,
+          qualifyingMuscleCount: 2,
+          topTargetMuscles: ["Chest", "Biceps"],
+        },
+        muscles: [
+          { muscle: "Chest", target: 12, actual: 8, deficit: 4 },
+          { muscle: "Biceps", target: 8, actual: 6, deficit: 2 },
+        ],
+      },
+      optionalWorkout: null,
+    });
 
     const result = await loadHomeProgramSupport("user-1");
 
+    expect(result.gapFill.weekCloseId).toBe("wc-1");
     expect(result.gapFill.anchorWeek).toBe(1);
-    expect(result.gapFill.suppressedByStartedNextWeek).toBe(false);
+    expect(result.gapFill.targetWeek).toBe(1);
+    expect(result.gapFill.targetPhase).toBe("ACCUMULATION");
     expect(result.gapFill.reason).toBeNull();
     expect(result.gapFill.eligible).toBe(true);
-    expect(result.gapFill.targetMuscles.length).toBeGreaterThan(0);
+    expect(result.gapFill.targetMuscles).toEqual(["Chest", "Biceps"]);
+    expect(result.gapFill.linkedWorkout).toBeNull();
   });
 
-  it.each(["IN_PROGRESS", "PARTIAL"] as const)(
-    "suppresses gap-fill when next-week carryover is %s",
-    async (status) => {
-      setupDashboardMocks(
-        {
-          state: "ACTIVE_ACCUMULATION",
-          sessionsPerWeek: 3,
-          accumulationSessionsCompleted: 3,
-        },
-        2
-      );
-      mocks.constraintsFindUnique.mockResolvedValue({
-        weeklySchedule: ["PUSH", "PULL", "LEGS"],
-      });
-      mocks.workoutFindMany.mockResolvedValueOnce([
-        {
-          id: "w-started",
-          status,
-          sessionIntent: "PUSH",
-          scheduledDate: new Date("2026-03-08T00:00:00.000Z"),
-        },
-      ]);
-
-      const result = await loadHomeProgramSupport("user-1");
-
-      expect(result.gapFill.anchorWeek).toBe(1);
-      expect(result.gapFill.suppressedByStartedNextWeek).toBe(true);
-      expect(result.gapFill.reason).toBe("suppressed_by_started_next_week");
-      expect(result.gapFill.eligible).toBe(false);
-    }
-  );
-
-  it("keeps prior-week gap-fill eligible after lifecycle advances into deload with only a planned next-week carryover", async () => {
+  it("keeps prior-week gap-fill available after lifecycle advances into deload while the row remains pending", async () => {
     setupDashboardMocks(
       {
         state: "ACTIVE_DELOAD",
@@ -521,16 +524,39 @@ describe("loadHomeProgramSupport", () => {
         scheduledDate: new Date("2026-03-29T00:00:00.000Z"),
       },
     ]);
+    mocks.findPendingWeekCloseForUser.mockResolvedValueOnce({
+      id: "wc-4",
+      mesocycleId: "meso-1",
+      targetWeek: 4,
+      targetPhase: "ACCUMULATION",
+      status: "PENDING_OPTIONAL_GAP_FILL",
+      deficitSnapshot: {
+        version: 1,
+        policy: {
+          requiredSessionsPerWeek: 3,
+          maxOptionalGapFillSessionsPerWeek: 1,
+          maxGeneratedHardSets: 12,
+          maxGeneratedExercises: 4,
+        },
+        summary: {
+          totalDeficitSets: 4,
+          qualifyingMuscleCount: 1,
+          topTargetMuscles: ["Front Delts"],
+        },
+        muscles: [{ muscle: "Front Delts", target: 5, actual: 1, deficit: 4 }],
+      },
+      optionalWorkout: null,
+    });
 
     const result = await loadHomeProgramSupport("user-1");
 
     expect(result.gapFill.anchorWeek).toBe(4);
     expect(result.gapFill.eligible).toBe(true);
     expect(result.gapFill.reason).toBeNull();
-    expect(result.gapFill.suppressedByStartedNextWeek).toBe(false);
+    expect(result.gapFill.targetMuscles).toEqual(["Front Delts"]);
   });
 
-  it("counts anchored strict gap-fill volume toward the anchored week", async () => {
+  it("surfaces a linked optional workout from the pending row", async () => {
     setupDashboardMocks(
       {
         state: "ACTIVE_DELOAD",
@@ -540,68 +566,64 @@ describe("loadHomeProgramSupport", () => {
       },
       5
     );
-    mocks.workoutFindMany
-      .mockResolvedValueOnce([
-        {
-          id: "w-deload-planned",
-          status: "PLANNED",
-          sessionIntent: "PUSH",
-          scheduledDate: new Date("2026-03-29T00:00:00.000Z"),
+    mocks.workoutFindMany.mockResolvedValueOnce([
+      {
+        id: "w-deload-planned",
+        status: "PLANNED",
+        sessionIntent: "PUSH",
+        scheduledDate: new Date("2026-03-29T00:00:00.000Z"),
+      },
+    ]);
+    mocks.findPendingWeekCloseForUser.mockResolvedValueOnce({
+      id: "wc-4",
+      mesocycleId: "meso-1",
+      targetWeek: 4,
+      targetPhase: "ACCUMULATION",
+      status: "PENDING_OPTIONAL_GAP_FILL",
+      deficitSnapshot: {
+        version: 1,
+        policy: {
+          requiredSessionsPerWeek: 3,
+          maxOptionalGapFillSessionsPerWeek: 1,
+          maxGeneratedHardSets: 12,
+          maxGeneratedExercises: 4,
         },
-      ])
-      .mockResolvedValueOnce([
-        {
-          status: "COMPLETED",
-          mesocycleWeekSnapshot: 4,
-          scheduledDate: new Date("2026-03-25T00:00:00.000Z"),
-          exercises: [
-            {
-              exercise: {
-                exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Chest" } }],
-              },
-              sets: [
-                { logs: [{ wasSkipped: false }] },
-                { logs: [{ wasSkipped: false }] },
-              ],
-            },
-          ],
+        summary: {
+          totalDeficitSets: 4,
+          qualifyingMuscleCount: 1,
+          topTargetMuscles: ["Chest"],
         },
-      ])
-      .mockResolvedValueOnce([
-        {
-          selectionMetadata: {
-            sessionDecisionReceipt: {
-              version: 1,
-              cycleContext: {
-                weekInMeso: 4,
-                weekInBlock: 4,
-                phase: "accumulation",
-                blockType: "accumulation",
-                isDeload: false,
-                source: "computed",
-              },
-              lifecycleVolume: { source: "unknown" },
-              sorenessSuppressedMuscles: [],
-              deloadDecision: { mode: "none", reason: [], reductionPercent: 0, appliedTo: "none" },
-              readiness: {
-                wasAutoregulated: false,
-                signalAgeHours: null,
-                fatigueScoreOverall: null,
-                intensityScaling: { applied: false, exerciseIds: [], scaledUpCount: 0, scaledDownCount: 0 },
-              },
-              exceptions: [{ code: "optional_gap_fill", message: "Marked as optional gap-fill session." }],
-            },
-          },
-          selectionMode: "INTENT",
-          sessionIntent: "BODY_PART",
-        },
-      ]);
+        muscles: [{ muscle: "Chest", target: 12, actual: 8, deficit: 4 }],
+      },
+      optionalWorkout: {
+        id: "w-gap-fill",
+        status: "PLANNED",
+        scheduledDate: new Date("2026-03-25T00:00:00.000Z"),
+      },
+    });
 
     const result = await loadHomeProgramSupport("user-1");
 
-    expect(result.gapFill.alreadyUsedThisWeek).toBe(true);
+    expect(result.gapFill.eligible).toBe(true);
+    expect(result.gapFill.linkedWorkout).toEqual({
+      id: "w-gap-fill",
+      status: "PLANNED",
+    });
+    expect(result.gapFill.weekCloseId).toBe("wc-4");
+  });
+
+  it("returns ineligible support when no pending week-close exists", async () => {
+    setupDashboardMocks();
+    mocks.constraintsFindUnique.mockResolvedValue({
+      weeklySchedule: ["PUSH", "PULL", "LEGS"],
+    });
+    mocks.workoutFindMany.mockResolvedValueOnce([]);
+    mocks.findPendingWeekCloseForUser.mockResolvedValueOnce(null);
+
+    const result = await loadHomeProgramSupport("user-1");
+
     expect(result.gapFill.eligible).toBe(false);
-    expect(result.gapFill.reason).toBe("weekly_optional_gap_fill_cap_reached");
-    expect(result.gapFill.targetMuscles.length).toBeGreaterThan(0);
+    expect(result.gapFill.reason).toBe("no_pending_week_close");
+    expect(result.gapFill.weekCloseId).toBeNull();
   });
 });

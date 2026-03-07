@@ -10,10 +10,17 @@ import {
   normalizeSelectionMetadataWithReceipt,
 } from "@/lib/evidence/session-decision-receipt";
 import {
-  transitionMesocycleState,
+  transitionMesocycleStateInTransaction,
 } from "@/lib/api/mesocycle-lifecycle-state";
 import {
+  autoDismissPendingWeekCloseOnForwardProgress,
+  linkOptionalWorkoutToWeekClose,
+  evaluateWeekCloseAtBoundary,
+  resolveWeekCloseOnOptionalGapFillCompletion,
+} from "@/lib/api/mesocycle-week-close";
+import {
   buildPerformedLifecycleCounterUpdate,
+  deriveAccumulationBoundaryAfterPerformedSave,
   deriveSaveRouteMesoSnapshot,
   resolvePersistedAdvancesSplit,
   shouldAdvanceLifecycleForPerformedTransition,
@@ -47,6 +54,11 @@ function isPerformedWorkoutStatus(status: PersistedStatus | string | null | unde
 
 function isLifecycleAdvancementStatus(status: PersistedStatus | string | null | undefined): boolean {
   return Boolean(status) && (ADVANCEMENT_WORKOUT_STATUSES as readonly string[]).includes(status as string);
+}
+
+function resolveWeekCloseIdFromSelectionMetadata(value: unknown): string | undefined {
+  const metadata = toObject(value);
+  return typeof metadata.weekCloseId === "string" ? metadata.weekCloseId : undefined;
 }
 
 function resolveGapFillSnapshot(input: {
@@ -100,8 +112,6 @@ export async function POST(request: Request) {
   let persistedRevision = 1;
   let finalStatus: PersistedStatus = (parsed.data.status ?? WorkoutStatus.PLANNED) as PersistedStatus;
   let didCompleteTransition = false;
-  let didPerformedTransition = false;
-  let performedTransitionMesocycleId: string | null = null;
   const incomingSelectionMetadata = toObject(parsed.data.selectionMetadata);
 
   try {
@@ -158,6 +168,7 @@ export async function POST(request: Request) {
         selectionMetadata: effectiveSelectionMetadata,
         cycleContext: receipt.cycleContext,
       });
+      const linkedWeekCloseId = resolveWeekCloseIdFromSelectionMetadata(selectionMetadata);
       const effectiveSelectionMode =
         parsed.data.selectionMode ??
         existingWorkout?.selectionMode ??
@@ -257,6 +268,12 @@ export async function POST(request: Request) {
               accumulationSessionsCompleted: true,
               deloadSessionsCompleted: true,
               sessionsPerWeek: true,
+              startWeek: true,
+              macroCycle: {
+                select: {
+                  startDate: true,
+                },
+              },
             },
           });
         } else {
@@ -272,6 +289,12 @@ export async function POST(request: Request) {
               accumulationSessionsCompleted: true,
               deloadSessionsCompleted: true,
               sessionsPerWeek: true,
+              startWeek: true,
+              macroCycle: {
+                select: {
+                  startDate: true,
+                },
+              },
             },
           });
           resolvedMesocycleId = resolvedMesocycle?.id ?? null;
@@ -313,73 +336,139 @@ export async function POST(request: Request) {
         }
       }
 
-      const workout = await tx.workout.upsert({
-        where: { id: workoutId },
-        update: {
-          scheduledDate,
-          status: finalStatus as never,
-          completedAt,
-          estimatedMinutes: parsed.data.estimatedMinutes ?? undefined,
-          notes: parsed.data.notes ?? undefined,
-          selectionMode,
-          sessionIntent: parsed.data.sessionIntent ?? undefined,
-          selectionMetadata: selectionMetadata as Prisma.InputJsonValue,
-          forcedSplit: parsed.data.forcedSplit ?? undefined,
-          advancesSplit: isOptionalGapFill ? false : resolvedAdvancesSplit,
-          templateId: parsed.data.templateId ?? undefined,
-          ...(resolvedMesocycleId ? { mesocycleId: resolvedMesocycleId } : {}),
-          ...(mesoSnapshot
-            ? {
-                mesocycleWeekSnapshot: mesoSnapshot.week,
-                mesocyclePhaseSnapshot: mesoSnapshot.phase as never,
-                mesoSessionSnapshot: mesoSnapshot.session,
-              }
-            : {}),
-          ...(existingWorkout && hasExerciseRewrite
-            ? { revision: { increment: 1 } }
-            : {}),
-        },
-        create: {
-          id: workoutId,
-          userId: user.id,
-          scheduledDate,
-          status: finalStatus as never,
-          completedAt,
-          estimatedMinutes: parsed.data.estimatedMinutes ?? undefined,
-          notes: parsed.data.notes ?? undefined,
-          selectionMode,
-          sessionIntent: parsed.data.sessionIntent ?? undefined,
-          selectionMetadata: selectionMetadata as Prisma.InputJsonValue,
-          forcedSplit: parsed.data.forcedSplit ?? undefined,
-          advancesSplit: isOptionalGapFill ? false : resolvedAdvancesSplit,
-          templateId: parsed.data.templateId ?? undefined,
-          ...(resolvedMesocycleId ? { mesocycleId: resolvedMesocycleId } : {}),
-          ...(mesoSnapshot
-            ? {
-                mesocycleWeekSnapshot: mesoSnapshot.week,
-                mesocyclePhaseSnapshot: mesoSnapshot.phase as never,
-                mesoSessionSnapshot: mesoSnapshot.session,
-              }
-            : {}),
-        },
-        select: { id: true, revision: true, mesocycleId: true },
-      });
+      const workoutUpdateData = {
+        scheduledDate,
+        status: finalStatus as never,
+        completedAt,
+        estimatedMinutes: parsed.data.estimatedMinutes ?? undefined,
+        notes: parsed.data.notes ?? undefined,
+        selectionMode,
+        sessionIntent: parsed.data.sessionIntent ?? undefined,
+        selectionMetadata: selectionMetadata as Prisma.InputJsonValue,
+        forcedSplit: parsed.data.forcedSplit ?? undefined,
+        advancesSplit: isOptionalGapFill ? false : resolvedAdvancesSplit,
+        templateId: parsed.data.templateId ?? undefined,
+        ...(resolvedMesocycleId ? { mesocycleId: resolvedMesocycleId } : {}),
+        ...(mesoSnapshot
+          ? {
+              mesocycleWeekSnapshot: mesoSnapshot.week,
+              mesocyclePhaseSnapshot: mesoSnapshot.phase as never,
+              mesoSessionSnapshot: mesoSnapshot.session,
+            }
+          : {}),
+      };
+      const workoutCreateData = {
+        id: workoutId,
+        userId: user.id,
+        ...workoutUpdateData,
+      };
+      if (existingWorkout && hasExerciseRewrite) {
+        Object.assign(workoutUpdateData, { revision: { increment: 1 } });
+      }
+
+      let wonLifecycleTransition = false;
+      let workout:
+        | { id: string; revision: number; mesocycleId: string | null }
+        | null = null;
+      if (shouldAdvanceLifecycleTransition && existingWorkout) {
+        const conditionalTransition = await tx.workout.updateMany({
+          where: {
+            id: workoutId,
+            status: {
+              notIn: [...ADVANCEMENT_WORKOUT_STATUSES] as WorkoutStatus[],
+            },
+          },
+          data: workoutUpdateData,
+        });
+        wonLifecycleTransition = conditionalTransition.count === 1;
+        workout = wonLifecycleTransition
+          ? {
+              id: existingWorkout.id,
+              revision: existingWorkout.revision,
+              mesocycleId: resolvedMesocycleId,
+            }
+          : await tx.workout.findUnique({
+              where: { id: workoutId },
+              select: { id: true, revision: true, mesocycleId: true },
+            });
+      } else {
+        workout = await tx.workout.upsert({
+          where: { id: workoutId },
+          update: workoutUpdateData,
+          create: workoutCreateData,
+          select: { id: true, revision: true, mesocycleId: true },
+        });
+      }
+      if (!workout) {
+        throw new Error("WORKOUT_NOT_FOUND");
+      }
       persistedRevision = workout.revision;
 
-      if (shouldAdvanceLifecycleTransition) {
-        // Increment both completedSessions and the lifecycle counter atomically.
-        // transitionMesocycleState() (called post-transaction) reads the already-incremented
-        // counter to check thresholds; it no longer writes these counters itself.
+      if (isOptionalGapFill && linkedWeekCloseId) {
+        const linkResult = await linkOptionalWorkoutToWeekClose(tx, {
+          weekCloseId: linkedWeekCloseId,
+          workoutId: workout.id,
+        });
+        if (linkResult === "conflict") {
+          throw new Error("WEEK_CLOSE_OPTIONAL_WORKOUT_CONFLICT");
+        }
+      }
+
+      if (shouldAdvanceLifecycleTransition && wonLifecycleTransition) {
         await tx.mesocycle.update({
           where: { id: resolvedMesocycleId! },
           data: buildPerformedLifecycleCounterUpdate(resolvedMesocycle!.state),
         });
-        didPerformedTransition = true;
-        performedTransitionMesocycleId = resolvedMesocycleId;
+        const boundaryProgression = deriveAccumulationBoundaryAfterPerformedSave({
+          state: resolvedMesocycle!.state,
+          accumulationSessionsCompleted: resolvedMesocycle!.accumulationSessionsCompleted,
+          sessionsPerWeek: resolvedMesocycle!.sessionsPerWeek,
+        });
+        if (boundaryProgression.crossesBoundary && !isOptionalGapFill) {
+          await evaluateWeekCloseAtBoundary(tx, {
+            userId: user.id,
+            mesocycle: {
+              id: resolvedMesocycle!.id,
+              durationWeeks: resolvedMesocycle!.durationWeeks,
+              sessionsPerWeek: resolvedMesocycle!.sessionsPerWeek,
+              startWeek: resolvedMesocycle!.startWeek ?? 0,
+              macroCycle: {
+                startDate: resolvedMesocycle!.macroCycle?.startDate ?? scheduledDate,
+              },
+            },
+            targetWeek: boundaryProgression.targetWeek!,
+            targetPhase: "ACCUMULATION",
+          });
+        } else {
+          const autoDismissResult = !isOptionalGapFill
+            ? await autoDismissPendingWeekCloseOnForwardProgress(tx, {
+                mesocycleId: resolvedMesocycleId!,
+                workoutWeek: mesoSnapshot?.week,
+              })
+            : null;
+          if (
+            !autoDismissResult ||
+            autoDismissResult.outcome === "not_found" ||
+            autoDismissResult.outcome === "not_applicable"
+          ) {
+            await transitionMesocycleStateInTransaction(tx, resolvedMesocycleId!);
+          }
+        }
+      }
+      if (
+        isOptionalGapFill &&
+        finalStatus === "COMPLETED" &&
+        existingWorkout?.status !== WorkoutStatus.COMPLETED
+      ) {
+        await resolveWeekCloseOnOptionalGapFillCompletion(tx, {
+          workoutId: workout.id,
+          weekCloseId: linkedWeekCloseId,
+        });
       }
       if (
         finalStatus === "COMPLETED" &&
-        existingWorkout?.status !== WorkoutStatus.COMPLETED
+        existingWorkout?.status !== WorkoutStatus.COMPLETED &&
+        (!shouldAdvanceLifecycleTransition || wonLifecycleTransition)
       ) {
         didCompleteTransition = true;
       }
@@ -454,13 +543,6 @@ export async function POST(request: Request) {
         console.error("Failed to update exercise exposure:", exposureError);
       }
     }
-    if (didPerformedTransition && performedTransitionMesocycleId) {
-      try {
-        await transitionMesocycleState(performedTransitionMesocycleId);
-      } catch (lifecycleError) {
-        console.error("Failed to transition mesocycle lifecycle:", lifecycleError);
-      }
-    }
   } catch (error) {
     if (error instanceof Error && error.message === "WORKOUT_FORBIDDEN") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -498,6 +580,24 @@ export async function POST(request: Request) {
     if (error instanceof Error && error.message === "ACTIVE_MESOCYCLE_NOT_FOUND") {
       return NextResponse.json(
         { error: "No active mesocycle found for performed workout save." },
+        { status: 409 }
+      );
+    }
+    if (error instanceof Error && error.message === "PENDING_WEEK_CLOSE_EXISTS") {
+      return NextResponse.json(
+        { error: "A prior week-close window must be resolved before closing a new week." },
+        { status: 409 }
+      );
+    }
+    if (error instanceof Error && error.message === "WEEK_CLOSE_NOT_PENDING") {
+      return NextResponse.json(
+        { error: "Linked week-close window is no longer pending." },
+        { status: 409 }
+      );
+    }
+    if (error instanceof Error && error.message === "WEEK_CLOSE_OPTIONAL_WORKOUT_CONFLICT") {
+      return NextResponse.json(
+        { error: "Week-close window is already linked to a different optional workout." },
         { status: 409 }
       );
     }

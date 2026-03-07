@@ -9,6 +9,7 @@ export type SaveableSelectionMetadata = {
   rationale?: Record<string, unknown>;
   selectedExerciseIds?: string[];
   perExerciseSetTargets?: Record<string, number>;
+  weekCloseId?: string;
   sessionDecisionReceipt?: SessionDecisionReceipt;
 };
 
@@ -58,6 +59,10 @@ export function sanitizeSelectionMetadataForSave(value: unknown): SaveableSelect
   const perExerciseSetTargets = toNumberRecord(record.perExerciseSetTargets);
   if (perExerciseSetTargets) {
     output.perExerciseSetTargets = perExerciseSetTargets;
+  }
+
+  if (typeof record.weekCloseId === "string") {
+    output.weekCloseId = record.weekCloseId;
   }
 
   const sessionDecisionReceipt = toObject(record.sessionDecisionReceipt);

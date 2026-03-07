@@ -61,6 +61,7 @@ export const generateFromIntentSchema = z
     intent: sessionIntentSchema,
     targetMuscles: z.array(z.string()).optional(),
     anchorWeek: z.number().int().min(1).optional(),
+    weekCloseId: z.string().optional(),
     maxGeneratedHardSets: z.number().int().min(1).max(100).optional(),
     maxGeneratedExercises: z.number().int().min(1).max(20).optional(),
     optionalGapFill: z.boolean().optional(),
@@ -71,18 +72,22 @@ export const generateFromIntentSchema = z
     ),
   })
   .superRefine((value, ctx) => {
-    if (value.intent === "body_part" && (!value.targetMuscles || value.targetMuscles.length === 0)) {
+    if (
+      value.intent === "body_part" &&
+      value.optionalGapFill !== true &&
+      (!value.targetMuscles || value.targetMuscles.length === 0)
+    ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: "targetMuscles is required when intent is body_part",
         path: ["targetMuscles"],
       });
     }
-    if (value.optionalGapFill === true && value.anchorWeek == null) {
+    if (value.optionalGapFill === true && value.weekCloseId == null) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "anchorWeek is required when optionalGapFill is true",
-        path: ["anchorWeek"],
+        message: "weekCloseId is required when optionalGapFill is true",
+        path: ["weekCloseId"],
       });
     }
   });

@@ -3,39 +3,16 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { GapFillSupportData } from "@/lib/api/program";
-import { buildCanonicalSelectionMetadata } from "@/lib/ui/selection-metadata";
+import {
+  attachOptionalGapFillMetadata,
+  buildCanonicalSelectionMetadata,
+} from "@/lib/ui/selection-metadata";
 import type { GenerateFromIntentResponse } from "@/lib/api/template-session/types";
 import type { SaveWorkoutRequestPayload } from "@/components/log-workout/api";
 
 type OptionalGapFillCardProps = {
   gapFill: GapFillSupportData;
 };
-
-function withOptionalGapFillMarker(
-  selectionMetadata: ReturnType<typeof buildCanonicalSelectionMetadata>
-) {
-  const receipt = selectionMetadata.sessionDecisionReceipt;
-  if (!receipt) {
-    return selectionMetadata;
-  }
-  const hasMarker = receipt.exceptions.some((entry) => entry.code === "optional_gap_fill");
-  if (hasMarker) {
-    return selectionMetadata;
-  }
-  return {
-    ...selectionMetadata,
-    sessionDecisionReceipt: {
-      ...receipt,
-      exceptions: [
-        ...receipt.exceptions,
-        {
-          code: "optional_gap_fill" as const,
-          message: "Marked as optional gap-fill session.",
-        },
-      ],
-    },
-  };
-}
 
 export function OptionalGapFillCard({ gapFill }: OptionalGapFillCardProps) {
   const router = useRouter();
@@ -76,8 +53,13 @@ export function OptionalGapFillCard({ gapFill }: OptionalGapFillCardProps) {
     }
 
     const generatedBody: GenerateFromIntentResponse = await generateResponse.json();
-    const canonicalSelectionMetadata = withOptionalGapFillMarker(
-      buildCanonicalSelectionMetadata(generatedBody.selectionMetadata)
+    const canonicalSelectionMetadata = attachOptionalGapFillMetadata(
+      buildCanonicalSelectionMetadata(generatedBody.selectionMetadata),
+      {
+        enabled: true,
+        targetMuscles: gapFill.targetMuscles,
+        weekCloseId: gapFill.weekCloseId ?? undefined,
+      }
     );
     const workout = generatedBody.workout;
 

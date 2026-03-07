@@ -6,8 +6,10 @@ import { applyAutoregulation } from "@/lib/api/autoregulation";
 import { loadActiveMesocycle } from "@/lib/api/mesocycle-lifecycle";
 import { findPendingWeekCloseForUser } from "@/lib/api/mesocycle-week-close";
 import type { GenerateFromIntentResponse } from "@/lib/api/template-session/types";
-import { buildCanonicalSelectionMetadata } from "@/lib/ui/selection-metadata";
-import type { SaveableSelectionMetadata } from "@/lib/ui/selection-metadata";
+import {
+  attachOptionalGapFillMetadata,
+  buildCanonicalSelectionMetadata,
+} from "@/lib/ui/selection-metadata";
 
 type PlannedExercise = GenerateFromIntentResponse["workout"]["mainLifts"][number];
 type PlannedSet = PlannedExercise["sets"][number];
@@ -57,69 +59,6 @@ function applyGapFillCaps(input: {
     ...input.workout,
     mainLifts,
     accessories,
-  };
-}
-
-function withOptionalGapFillMarker(
-  selectionMetadata: SaveableSelectionMetadata,
-  input: { enabled: boolean; targetMuscles?: string[]; weekCloseId?: string }
-): SaveableSelectionMetadata {
-  if (!input.enabled) {
-    return selectionMetadata;
-  }
-  const receipt = selectionMetadata.sessionDecisionReceipt;
-  if (!receipt) {
-    return selectionMetadata;
-  }
-  const hasMarker = receipt.exceptions.some((entry) => entry.code === "optional_gap_fill");
-  if (hasMarker) {
-    return selectionMetadata;
-  }
-  return {
-    ...selectionMetadata,
-    ...(input.weekCloseId ? { weekCloseId: input.weekCloseId } : {}),
-    sessionDecisionReceipt: {
-      ...receipt,
-      targetMuscles:
-        input.targetMuscles && input.targetMuscles.length > 0
-          ? input.targetMuscles
-          : receipt.targetMuscles,
-      exceptions: [
-        ...receipt.exceptions,
-        {
-          code: "optional_gap_fill",
-          message: "Marked as optional gap-fill session.",
-        },
-      ],
-    },
-  };
-}
-
-function withOptionalGapFillAnchorWeek(
-  selectionMetadata: SaveableSelectionMetadata,
-  input: { enabled: boolean; anchorWeek?: number; mesocycleLength?: number }
-): SaveableSelectionMetadata {
-  if (!input.enabled || input.anchorWeek == null) {
-    return selectionMetadata;
-  }
-  const receipt = selectionMetadata.sessionDecisionReceipt;
-  if (!receipt) {
-    return selectionMetadata;
-  }
-  return {
-    ...selectionMetadata,
-    sessionDecisionReceipt: {
-      ...receipt,
-      cycleContext: {
-        ...receipt.cycleContext,
-        weekInMeso: input.anchorWeek,
-        weekInBlock: input.anchorWeek,
-        mesocycleLength: input.mesocycleLength ?? receipt.cycleContext.mesocycleLength,
-        phase: "accumulation",
-        blockType: "accumulation",
-        isDeload: false,
-      },
-    },
   };
 }
 
@@ -195,8 +134,11 @@ export async function POST(request: Request) {
     ? {
         ...parsed.data,
         targetMuscles: canonicalGapFill.targetMuscles,
-        anchorWeek: canonicalGapFill.targetWeek,
         weekCloseId: canonicalGapFill.weekCloseId,
+        optionalGapFillContext: {
+          weekCloseId: canonicalGapFill.weekCloseId,
+          targetWeek: canonicalGapFill.targetWeek,
+        },
         maxGeneratedHardSets: canonicalGapFill.maxGeneratedHardSets,
         maxGeneratedExercises: canonicalGapFill.maxGeneratedExercises,
       }
@@ -231,19 +173,11 @@ export async function POST(request: Request) {
     maxGeneratedHardSets: generationInput.maxGeneratedHardSets,
     maxGeneratedExercises: generationInput.maxGeneratedExercises,
   });
-  const anchorPinnedSelectionMetadata = withOptionalGapFillAnchorWeek(selectionMetadata, {
-    enabled: shouldApplyOptionalGapFill,
-    anchorWeek: generationInput.anchorWeek,
-    mesocycleLength: activeMesocycle?.durationWeeks,
-  });
-  const markedSelectionMetadata = withOptionalGapFillMarker(
-    anchorPinnedSelectionMetadata,
-    {
+  const markedSelectionMetadata = attachOptionalGapFillMetadata(selectionMetadata, {
       enabled: shouldApplyOptionalGapFill,
       targetMuscles: generationInput.targetMuscles,
       weekCloseId: generationInput.weekCloseId,
-    }
-  );
+    });
 
   const response: GenerateFromIntentResponse = {
     workout: cappedWorkout,

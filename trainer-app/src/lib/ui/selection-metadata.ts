@@ -78,6 +78,54 @@ export function sanitizeSelectionMetadataForSave(value: unknown): SaveableSelect
   return Object.keys(output).length > 0 ? output : {};
 }
 
+export function readWeekCloseIdFromSelectionMetadata(value: unknown): string | undefined {
+  const record = toObject(value);
+  return typeof record?.weekCloseId === "string" ? record.weekCloseId : undefined;
+}
+
+export function attachOptionalGapFillMetadata(
+  selectionMetadata: SaveableSelectionMetadata,
+  input: {
+    enabled: boolean;
+    targetMuscles?: string[];
+    weekCloseId?: string;
+  }
+): SaveableSelectionMetadata {
+  if (!input.enabled) {
+    return selectionMetadata;
+  }
+  const receipt = selectionMetadata.sessionDecisionReceipt;
+  if (!receipt) {
+    return selectionMetadata;
+  }
+  const nextTargetMuscles =
+    input.targetMuscles && input.targetMuscles.length > 0
+      ? input.targetMuscles
+      : receipt.targetMuscles;
+  const hasMarker = receipt.exceptions.some((entry) => entry.code === "optional_gap_fill");
+
+  return {
+    ...selectionMetadata,
+    ...(input.weekCloseId ? { weekCloseId: input.weekCloseId } : {}),
+    sessionDecisionReceipt: hasMarker
+      ? {
+          ...receipt,
+          targetMuscles: nextTargetMuscles,
+        }
+      : {
+          ...receipt,
+          targetMuscles: nextTargetMuscles,
+          exceptions: [
+            ...receipt.exceptions,
+            {
+              code: "optional_gap_fill",
+              message: "Marked as optional gap-fill session.",
+            },
+          ],
+        },
+  };
+}
+
 export function buildCanonicalSelectionMetadata(
   value: unknown,
   autoregulation?: AutoregulationResult

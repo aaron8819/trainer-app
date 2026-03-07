@@ -261,8 +261,8 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
         sessionDecisionReceipt: {
           version: 1,
           cycleContext: {
-            weekInMeso: 4,
-            weekInBlock: 4,
+            weekInMeso: 3,
+            weekInBlock: 3,
             mesocycleLength: 5,
             phase: "accumulation",
             blockType: "accumulation",
@@ -317,7 +317,10 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
       "user-1",
       expect.objectContaining({
         weekCloseId: "wc-1",
-        anchorWeek: 3,
+        optionalGapFillContext: {
+          weekCloseId: "wc-1",
+          targetWeek: 3,
+        },
         targetMuscles: ["front delts"],
         maxGeneratedHardSets: 2,
         maxGeneratedExercises: 1,
@@ -392,21 +395,21 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
         sessionDecisionReceipt: {
           version: 1,
           cycleContext: {
-            weekInMeso: 5,
-            weekInBlock: 5,
+            weekInMeso: 4,
+            weekInBlock: 4,
             mesocycleLength: 5,
-            phase: "deload",
-            blockType: "deload",
-            isDeload: true,
+            phase: "accumulation",
+            blockType: "accumulation",
+            isDeload: false,
             source: "computed",
           },
           lifecycleVolume: { source: "unknown" },
           sorenessSuppressedMuscles: [],
           deloadDecision: {
-            mode: "scheduled",
-            reason: ["Scheduled deload week for this cycle phase."],
-            reductionPercent: 50,
-            appliedTo: "both",
+            mode: "none",
+            reason: [],
+            reductionPercent: 0,
+            appliedTo: "none",
           },
           readiness: {
             wasAutoregulated: false,

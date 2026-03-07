@@ -9,6 +9,7 @@ import {
   extractSessionDecisionReceipt,
   normalizeSelectionMetadataWithReceipt,
 } from "@/lib/evidence/session-decision-receipt";
+import { readWeekCloseIdFromSelectionMetadata } from "@/lib/ui/selection-metadata";
 import {
   transitionMesocycleStateInTransaction,
 } from "@/lib/api/mesocycle-lifecycle-state";
@@ -54,11 +55,6 @@ function isPerformedWorkoutStatus(status: PersistedStatus | string | null | unde
 
 function isLifecycleAdvancementStatus(status: PersistedStatus | string | null | undefined): boolean {
   return Boolean(status) && (ADVANCEMENT_WORKOUT_STATUSES as readonly string[]).includes(status as string);
-}
-
-function resolveWeekCloseIdFromSelectionMetadata(value: unknown): string | undefined {
-  const metadata = toObject(value);
-  return typeof metadata.weekCloseId === "string" ? metadata.weekCloseId : undefined;
 }
 
 function resolveGapFillSnapshot(input: {
@@ -168,7 +164,7 @@ export async function POST(request: Request) {
         selectionMetadata: effectiveSelectionMetadata,
         cycleContext: receipt.cycleContext,
       });
-      const linkedWeekCloseId = resolveWeekCloseIdFromSelectionMetadata(selectionMetadata);
+      const linkedWeekCloseId = readWeekCloseIdFromSelectionMetadata(selectionMetadata);
       const effectiveSelectionMode =
         parsed.data.selectionMode ??
         existingWorkout?.selectionMode ??

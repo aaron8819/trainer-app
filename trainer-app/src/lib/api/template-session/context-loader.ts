@@ -119,7 +119,11 @@ function auditSectionRoleMismatches(
 
 export async function loadMappedGenerationContext(
   userId: string,
-  options?: { anchorWeek?: number; forceAccumulation?: boolean }
+  options?: {
+    anchorWeek?: number;
+    weekCloseContext?: { targetWeek: number };
+    forceAccumulation?: boolean;
+  }
 ): Promise<MappedGenerationContext> {
   const context = await loadWorkoutContext(userId);
   const { profile, goals, constraints, injuries, exercises, workouts, preferences, checkIns } = context;
@@ -170,6 +174,7 @@ export async function loadMappedGenerationContext(
   const lifecycleSession = activeMesocycle ? deriveCurrentMesocycleSession(activeMesocycle) : null;
   const forceAccumulation = options?.forceAccumulation === true;
   const lifecycleWeek =
+    options?.weekCloseContext?.targetWeek ??
     options?.anchorWeek ??
     lifecycleSession?.week ??
     (activeMesocycle ? getCurrentMesoWeek(activeMesocycle) : 1);

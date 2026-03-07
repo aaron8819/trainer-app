@@ -36,6 +36,10 @@ export type GenerateIntentSessionInput = {
   targetMuscles?: string[];
   anchorWeek?: number;
   weekCloseId?: string;
+  optionalGapFillContext?: {
+    weekCloseId: string;
+    targetWeek: number;
+  };
   maxGeneratedHardSets?: number;
   maxGeneratedExercises?: number;
   optionalGapFill?: boolean;

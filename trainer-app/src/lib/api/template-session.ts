@@ -1179,9 +1179,18 @@ export async function generateSessionFromIntent(
 
   let mapped;
   try {
+    const weekCloseTargetWeek = input.optionalGapFillContext?.targetWeek;
+    const gapFillAnchorWeek =
+      weekCloseTargetWeek ??
+      (input.optionalGapFill ? input.anchorWeek : undefined);
     mapped = await loadMappedGenerationContext(userId, {
-      anchorWeek: input.optionalGapFill ? input.anchorWeek : undefined,
-      forceAccumulation: input.optionalGapFill === true,
+      anchorWeek: gapFillAnchorWeek,
+      weekCloseContext:
+        input.optionalGapFillContext && input.optionalGapFill
+          ? { targetWeek: input.optionalGapFillContext.targetWeek }
+          : undefined,
+      forceAccumulation:
+        input.optionalGapFill === true || input.optionalGapFillContext != null,
     });
   } catch (error) {
     if (error instanceof Error) {

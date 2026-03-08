@@ -3,6 +3,10 @@ import type { TemplateExerciseInput } from "@/lib/engine/template-session";
 import { selectExercisesOptimized } from "@/lib/engine/selection-v2";
 import { mapExercises } from "@/lib/api/workout-context";
 import type { TemplateIntent } from "@/lib/api/templates";
+import {
+  inferPrimarySplitIntentFromExercises,
+  inferUpperLowerIntentFromTargets,
+} from "@/lib/planning/session-opportunities";
 import { buildSelectionObjective, mapSelectionResult } from "./selection-adapter";
 import type { GenerateTemplateSessionParams, MappedGenerationContext } from "./types";
 
@@ -129,29 +133,10 @@ export function resolveTemplateSessionIntent(
     return "body_part";
   }
   if (templateIntent === "PUSH_PULL_LEGS" || templateIntent === "CUSTOM") {
-    return inferIntentFromExerciseTags(templateExercises);
+    return inferPrimarySplitIntentFromExercises(templateExercises.map((entry) => entry.exercise));
   }
   if (templateIntent === "UPPER_LOWER") {
-    const lowerMarkers = ["quads", "hamstrings", "glutes", "calves", "adductors", "abductors"];
-    const hasLowerTarget = targetMuscles.some((muscle) =>
-      lowerMarkers.includes(muscle.trim().toLowerCase())
-    );
-    return hasLowerTarget ? "lower" : "upper";
+    return inferUpperLowerIntentFromTargets(targetMuscles);
   }
   return "full_body";
-}
-
-function inferIntentFromExerciseTags(templateExercises: TemplateExerciseInput[]): SessionIntent {
-  const counts: Record<"push" | "pull" | "legs", number> = { push: 0, pull: 0, legs: 0 };
-  for (const entry of templateExercises) {
-    for (const tag of entry.exercise.splitTags ?? []) {
-      if (tag === "push" || tag === "pull" || tag === "legs") {
-        counts[tag] += 1;
-      }
-    }
-  }
-  const ranked = (Object.keys(counts) as Array<keyof typeof counts>).sort(
-    (a, b) => counts[b] - counts[a]
-  );
-  return counts[ranked[0]] > 0 ? ranked[0] : "full_body";
 }

@@ -17,8 +17,10 @@ import { prisma } from "@/lib/db/prisma";
 import type { SessionIntent } from "@/lib/engine/session-types";
 import type { RotationContext } from "@/lib/engine/selection-v2/types";
 import type { CheckInRow } from "@/lib/api/checkin-staleness";
-
-const INTENT_KEYS: SessionIntent[] = ["push", "pull", "legs", "upper", "lower", "full_body", "body_part"];
+import {
+  buildSessionIntentRecord,
+  parseSessionIntent,
+} from "@/lib/planning/session-opportunities";
 const STRICT_STIMULUS_COVERAGE_ENV = "STRICT_STIMULUS_PROFILE_COVERAGE";
 const CLEANUP_STRICT_STIMULUS_COVERAGE_ENV = "CLEANUP_STRICT_STIMULUS_PROFILE_COVERAGE";
 
@@ -30,20 +32,11 @@ function isTruthyEnv(value: string | undefined): boolean {
 }
 
 function createEmptyRoleMapByIntent(): Record<SessionIntent, Map<string, "CORE_COMPOUND" | "ACCESSORY">> {
-  return {
-    push: new Map(),
-    pull: new Map(),
-    legs: new Map(),
-    upper: new Map(),
-    lower: new Map(),
-    full_body: new Map(),
-    body_part: new Map(),
-  };
+  return buildSessionIntentRecord(() => new Map());
 }
 
 function dbIntentToSessionIntent(value: string): SessionIntent | null {
-  const normalized = value.trim().toLowerCase();
-  return INTENT_KEYS.includes(normalized as SessionIntent) ? (normalized as SessionIntent) : null;
+  return parseSessionIntent(value);
 }
 
 function expectedSectionForRole(role: "CORE_COMPOUND" | "ACCESSORY"): "MAIN" | "ACCESSORY" {

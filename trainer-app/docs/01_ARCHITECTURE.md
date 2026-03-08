@@ -1,7 +1,7 @@
 # 01 Architecture
 
 Owner: Aaron  
-Last reviewed: 2026-03-06  
+Last reviewed: 2026-03-08  
 Purpose: Defines the current runtime architecture for the single-user local-first Trainer app and the boundaries between UI, API routes, orchestration, engine, and persistence.
 
 This doc covers:
@@ -48,11 +48,22 @@ Sources of truth:
 5. API persists workout/log changes and returns response payloads.
 
 ## Canonical session-decision flow
-- Generation/finalization build the canonical session decision under `selectionMetadata.sessionDecisionReceipt` in `src/lib/api/template-session.ts`, with role-budgeting and closure seams in `src/lib/api/template-session/role-budgeting.ts` and `src/lib/api/template-session/closure-actions.ts`.
+- Generation/finalization build the canonical session decision under `selectionMetadata.sessionDecisionReceipt` in `src/lib/api/template-session.ts`, with planning-critical seams in `src/lib/planning/session-opportunities.ts`, `src/lib/api/template-session/role-budgeting.ts`, and `src/lib/api/template-session/closure-actions.ts`.
 - Save requires that receipt, then only re-parses/re-normalizes the persisted JSON shape at the database boundary in `src/app/api/workouts/save/route.ts`, with action/status resolution isolated in `src/app/api/workouts/save/status-machine.ts` and receipt parsing in `src/lib/evidence/session-decision-receipt.ts`.
 - Runtime readers in UI and explainability consume only `selectionMetadata.sessionDecisionReceipt` via `src/lib/ui/selection-metadata.ts`, `src/lib/ui/explainability.ts`, and the explainability facade in `src/lib/api/explainability.ts` (split into `src/lib/api/explainability/query.ts` + `src/lib/api/explainability/assembly.ts`).
 - Removed top-level session mirrors (`wasAutoregulated`, `autoregulationLog`, legacy `selectionMetadata.*` session fields) remain guardrail rejects in `src/lib/validation.ts`; they are not active runtime inputs.
 - User-facing workout detail and log routes stay on the compact receipt-first `SessionSummaryModel`, while the internal `/workout/[id]/audit` route layers a session-level audit scan plus exercise drill-down on top of the same receipt/explainability inputs. That split is a presentation boundary only; ownership remains receipt-first in `selectionMetadata.sessionDecisionReceipt`.
+
+## Session planning boundaries
+- `SessionOpportunityDefinition` in `src/lib/planning/session-opportunities.ts` is the canonical planning layer above the optimizer for session-intent semantics.
+- That module owns:
+  - session character (`upper`, `lower`, `full_body`, `specialized`)
+  - intent alignment rules
+  - per-muscle opportunity weights for current-session and future-slot planning
+  - inventory eligibility by planning phase (`standard`, `closure`, `rescue`)
+  - anchor policy for role fixtures
+- `src/lib/api/template-session.ts` orchestrates generation against those opportunity definitions; it should not introduce new split-specific ownership maps outside that boundary.
+- Remaining-week planning (`src/lib/api/template-session/remaining-week-planner.ts`), selection targeting (`src/lib/api/template-session/selection-adapter.ts`), and intent filtering (`src/lib/api/template-session/intent-filters.ts`) all consume the same opportunity layer.
 
 ## Lifecycle ownership and data entities
 - Lifecycle state transitions (`ACTIVE_ACCUMULATION` -> `ACTIVE_DELOAD` -> `COMPLETED`) are executed through `transitionMesocycleState()` via `src/lib/api/mesocycle-lifecycle.ts` (state module: `src/lib/api/mesocycle-lifecycle-state.ts`), invoked from `src/app/api/workouts/save/route.ts` after first transition into a performed status.
@@ -63,6 +74,7 @@ Sources of truth:
 ## Optional sessions / gap-fill
 - Optional gap-fill sessions are non-advancing by contract: save route forces `advancesSplit=false` for strict gap-fill sessions and blocks lifecycle mutation for those performed transitions (`src/app/api/workouts/save/route.ts`, `src/app/api/workouts/save/lifecycle-contract.ts`).
 - Strict gap-fill classification is canonicalized in one shared predicate (`src/lib/gap-fill/classifier.ts`): receipt marker `optional_gap_fill` AND effective `selectionMode=INTENT` AND `sessionIntent=BODY_PART`.
+- Gap-fill generation still uses the normal planner path, but now routes through the explicit `rescue` session inventory in `src/lib/planning/session-opportunities.ts` rather than relying on ad hoc body-part exceptions.
 - Anchor-week semantics are dual-stamped:
   - generation pins receipt cycle context to `anchorWeek` (`selectionMetadata.sessionDecisionReceipt.cycleContext.weekInMeso/weekInBlock`)
   - save pins `mesocycleWeekSnapshot=anchorWeek` for strict gap-fill payloads

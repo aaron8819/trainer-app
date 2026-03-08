@@ -1,8 +1,8 @@
 import { filterPerformedHistory } from "@/lib/engine/history";
 import type { FatigueState, Muscle } from "@/lib/engine/types";
-import { MUSCLE_SPLIT_MAP } from "@/lib/engine/volume-landmarks";
 import type { RemainingWeekVolumeContext } from "@/lib/engine/selection-v2/types";
 import type { SessionIntent } from "@/lib/engine/session-types";
+import { getSessionMuscleOpportunityWeight } from "@/lib/planning/session-opportunities";
 import type { MappedGenerationContext } from "./types";
 
 function toCountMap(intents: SessionIntent[]): Map<SessionIntent, number> {
@@ -50,28 +50,7 @@ function getIntentOpportunityWeight(
   muscle: Muscle,
   intent: SessionIntent
 ): number {
-  const split = MUSCLE_SPLIT_MAP[muscle];
-  if (!split) {
-    return 0;
-  }
-
-  if (intent === split) {
-    return 1;
-  }
-  if (intent === "upper") {
-    return split === "push" || split === "pull" ? 0.8 : 0;
-  }
-  if (intent === "lower") {
-    return split === "legs" ? 0.85 : 0;
-  }
-  if (intent === "full_body") {
-    return split === "legs" ? 0.55 : 0.65;
-  }
-  if (intent === "body_part") {
-    return 0.35;
-  }
-
-  return 0;
+  return getSessionMuscleOpportunityWeight(intent, muscle, { purpose: "future_slot" });
 }
 
 function getFutureCapacityFactor(

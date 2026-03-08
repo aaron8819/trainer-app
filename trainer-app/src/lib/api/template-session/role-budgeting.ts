@@ -1,6 +1,7 @@
 import type { Exercise as EngineExercise, Muscle, MuscleId } from "@/lib/engine/types";
 import { VOLUME_LANDMARKS } from "@/lib/engine/volume-landmarks";
 import { getEffectiveStimulusByMuscleId, toMuscleLabel } from "@/lib/engine/stimulus";
+import { getSessionAnchorPolicy } from "@/lib/planning/session-opportunities";
 import {
   resolveRoleFixtureAnchor,
   type RoleAnchor,
@@ -59,11 +60,15 @@ function getLifecycleRoleSetTarget(
 }
 
 function getMinimumViableRoleSets(
+  sessionIntent: GenerateIntentSessionInput["intent"],
   role: "CORE_COMPOUND" | "ACCESSORY" | undefined
 ): number {
   // Core fixtures stay represented even when the current week is effectively full.
   // Accessory fixtures are budget-constrained and may be dropped when no weekly budget remains.
-  return role === "CORE_COMPOUND" ? 1 : 0;
+  const anchorPolicy = getSessionAnchorPolicy(sessionIntent);
+  return role === "CORE_COMPOUND"
+    ? anchorPolicy.coreMinimumSets
+    : anchorPolicy.accessoryMinimumSets;
 }
 
 function getEffectiveWeeklyTargetForMuscle(
@@ -127,9 +132,13 @@ function hasMaterialDeficit(remainingDeficit: number, tolerance: number): boolea
 }
 
 function getRoleDeferredDeficitCarryFraction(
+  sessionIntent: GenerateIntentSessionInput["intent"],
   role: "CORE_COMPOUND" | "ACCESSORY" | undefined
 ): number {
-  return role === "CORE_COMPOUND" ? 0.4 : 0.25;
+  const anchorPolicy = getSessionAnchorPolicy(sessionIntent);
+  return role === "CORE_COMPOUND"
+    ? anchorPolicy.coreDeferredDeficitCarryFraction
+    : anchorPolicy.accessoryDeferredDeficitCarryFraction;
 }
 
 export function buildRemainingRoleFixturesByAnchor(
@@ -217,7 +226,7 @@ export function resolveRoleFixtureSetTarget(
       ? Math.min(continuityMin, lifecycleRoleTarget)
       : continuityMin;
   const continuityFloored = Math.max(proposedSets, boundedContinuityFloor);
-  const minimumViableSets = getMinimumViableRoleSets(role);
+  const minimumViableSets = getMinimumViableRoleSets(sessionIntent, role);
   const desiredSetTarget =
     lifecycleRoleTarget != null
       ? Math.min(continuityFloored, lifecycleRoleTarget)
@@ -257,7 +266,7 @@ export function resolveRoleFixtureSetTarget(
       if (fixture.exerciseId === exerciseId) {
         return sum;
       }
-      return sum + fixture.anchorEffectivePerSet * getMinimumViableRoleSets(fixture.role);
+      return sum + fixture.anchorEffectivePerSet * getMinimumViableRoleSets(sessionIntent, fixture.role);
     },
     0
   );
@@ -271,7 +280,7 @@ export function resolveRoleFixtureSetTarget(
   const deferredCarry = Math.max(0, anchorRemaining - requiredNow);
   const planningAdjustedRemaining = Math.min(
     anchorRemaining,
-    requiredNow + deferredCarry * getRoleDeferredDeficitCarryFraction(role)
+    requiredNow + deferredCarry * getRoleDeferredDeficitCarryFraction(sessionIntent, role)
   );
   const anchorConstrainedContinuousSets = Math.min(
     desiredSetTarget,

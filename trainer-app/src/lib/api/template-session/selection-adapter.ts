@@ -7,6 +7,7 @@ import type { SelectionOutput, SessionIntent } from "@/lib/engine/session-types"
 import { VOLUME_LANDMARKS, MUSCLE_SPLIT_MAP, computeWeeklyVolumeTarget } from "@/lib/engine/volume-landmarks";
 import { filterPerformedHistory, sortHistoryByDateDesc } from "@/lib/engine/history";
 import type { VolumePlanByMuscle } from "@/lib/engine/volume";
+import { getSessionMuscleOpportunityWeight } from "@/lib/planning/session-opportunities";
 import type { MappedGenerationContext } from "./types";
 import { buildRemainingWeekVolumeContext } from "./remaining-week-planner";
 
@@ -123,22 +124,10 @@ export function buildSelectionObjective(
   );
 
   const normalizedTargets = new Set((targetMuscles ?? []).map((muscle) => muscle.trim().toLowerCase()));
-  const matchesIntentMuscle = (muscle: string): boolean => {
-    if (sessionIntent === "upper") {
-      const split = MUSCLE_SPLIT_MAP[muscle];
-      return split === "push" || split === "pull";
-    }
-    if (sessionIntent === "lower") {
-      return MUSCLE_SPLIT_MAP[muscle] === "legs";
-    }
-    if (sessionIntent === "full_body") {
-      return true;
-    }
-    if (sessionIntent === "body_part") {
-      return normalizedTargets.size === 0 || normalizedTargets.has(muscle.toLowerCase());
-    }
-    return MUSCLE_SPLIT_MAP[muscle] === sessionIntent;
-  };
+  const matchesIntentMuscle = (muscle: string): boolean =>
+    getSessionMuscleOpportunityWeight(sessionIntent, muscle, {
+      targetMuscles: normalizedTargets.size > 0 ? Array.from(normalizedTargets) : targetMuscles,
+    }) > 0;
 
   const volumeCeiling = new Map<Muscle, number>();
   for (const [muscle] of Object.entries(MUSCLE_SPLIT_MAP)) {

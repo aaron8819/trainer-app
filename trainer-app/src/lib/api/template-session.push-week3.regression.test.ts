@@ -1324,7 +1324,7 @@ describe("W3S1 Push regression — 4 engine bug fixes", () => {
     expect(microPressSets?.length ?? 0).toBe(1);
   });
 
-  it("runs closure after dropped role accessories so unresolved chest deficits still get filled", async () => {
+  it("fills unresolved chest deficits after dropped role accessories without re-adding dropped role fixtures", async () => {
     loadMappedGenerationContextMock.mockResolvedValueOnce(buildClosureNewExerciseMappedContext());
 
     const result = await generateSessionFromIntent("user-1", { intent: "push" });
@@ -1339,17 +1339,13 @@ describe("W3S1 Push regression — 4 engine bug fixes", () => {
     expect(getAllExerciseSets(result.workout, "cable-fly")?.length ?? 0).toBeGreaterThan(0);
     expect(result.volumePlanByMuscle.Chest.planned).toBeGreaterThanOrEqual(9);
     expect(
-      result.selection.sessionDecisionReceipt?.plannerDiagnostics?.closure.actions.some(
-        (action) => action.exerciseId === "cable-fly" && action.kind === "add"
-      )
-    ).toBe(true);
-    expect(
       result.selection.sessionDecisionReceipt?.plannerDiagnostics?.muscles.Chest
         .plannedEffectiveVolumeAfterClosure
     ).toBeGreaterThan(
       result.selection.sessionDecisionReceipt?.plannerDiagnostics?.muscles.Chest
         .plannedEffectiveVolumeAfterRoleBudgeting ?? 0
     );
+    expect(result.selection.selectedExerciseIds).not.toContain("cable-triceps-pushdown");
   });
 
   it("can use closure set expansion on an already-selected exercise when critical deficits remain", async () => {

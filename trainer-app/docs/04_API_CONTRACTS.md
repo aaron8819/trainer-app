@@ -116,6 +116,7 @@ Sources of truth:
   - intent route returns `selectionMetadata`, carrying canonical `sessionDecisionReceipt`
   - template route returns `selectionMetadata`, carrying canonical `sessionDecisionReceipt`
 - Generation routes canonicalize receipt readiness/autoregulation fields through shared selection metadata helpers rather than returning ad hoc top-level session mirrors (`src/lib/ui/selection-metadata.ts`, `src/lib/api/template-session/types.ts`).
+- Planning semantics behind those routes are centralized in `src/lib/planning/session-opportunities.ts`. Route contracts do not expose planner inventory mode directly; `standard`, `closure`, and `rescue` remain internal generation concepts selected by the orchestration layer.
 - `POST /api/workouts/generate-from-intent` request fields include optional gap-fill controls (`src/lib/validation.ts`, `src/lib/api/template-session/types.ts`):
   - `optionalGapFill?: boolean`
   - `anchorWeek?: number` (legacy/manual override path; current week-close flow derives the effective week from pending week-close context)
@@ -128,6 +129,7 @@ Sources of truth:
   - post-generation caps trimming
   - canonical metadata stamping via `attachOptionalGapFillMetadata()` (`src/lib/ui/selection-metadata.ts`)
   - week-close-context injection (`optionalGapFillContext.targetWeek`) before planner context loading (`src/app/api/workouts/generate-from-intent/route.ts`, `src/lib/api/template-session.ts`)
+- Within that shared generation path, optional gap-fill currently enters the planner through the explicit `rescue` inventory layer on `SessionOpportunityDefinition` rather than widening standard inventory eligibility for all `body_part` requests.
 - Canonical receipt fields for gap-fill payloads:
   - `selectionMetadata.sessionDecisionReceipt.exceptions` contains `optional_gap_fill`
   - `selectionMetadata.sessionDecisionReceipt.targetMuscles` carries chosen muscles

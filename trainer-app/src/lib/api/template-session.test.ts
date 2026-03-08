@@ -460,6 +460,198 @@ describe("generateSessionFromIntent", () => {
     }
   });
 
+  it("treats complete role lists as anchors and still supplements from opportunity inventory when deficits remain", async () => {
+    const customLibrary = [
+      {
+        id: "bench",
+        name: "Bench Press",
+        movementPatterns: ["horizontal_push"],
+        splitTags: ["push"],
+        jointStress: "medium",
+        isMainLiftEligible: true,
+        isCompound: true,
+        fatigueCost: 4,
+        equipment: ["barbell"],
+        primaryMuscles: ["Chest"],
+        secondaryMuscles: ["Triceps", "Front Delts"],
+        sfrScore: 4,
+        lengthPositionScore: 3,
+      },
+      {
+        id: "pressdown",
+        name: "Cable Triceps Pushdown",
+        movementPatterns: ["isolation"],
+        splitTags: ["push"],
+        jointStress: "low",
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 2,
+        equipment: ["cable"],
+        primaryMuscles: ["Triceps"],
+        secondaryMuscles: [],
+        sfrScore: 4,
+        lengthPositionScore: 3,
+      },
+      {
+        id: "cable-fly",
+        name: "Cable Fly",
+        movementPatterns: ["isolation"],
+        splitTags: ["push"],
+        jointStress: "low",
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 2,
+        equipment: ["cable"],
+        primaryMuscles: ["Chest"],
+        secondaryMuscles: [],
+        sfrScore: 4,
+        lengthPositionScore: 4,
+      },
+    ];
+    mapExercisesMock.mockReturnValue(customLibrary);
+    mesocycleRoleFindManyMock.mockResolvedValue([
+      { exerciseId: "bench", role: "CORE_COMPOUND", sessionIntent: "PUSH" },
+      { exerciseId: "pressdown", role: "ACCESSORY", sessionIntent: "PUSH" },
+    ]);
+
+    const selectSpy = vi.spyOn(selectionV2, "selectExercisesOptimized").mockImplementation((pool) => {
+      const fly = pool.find((exercise) => exercise.id === "cable-fly");
+      if (!fly) {
+        throw new Error("Expected cable-fly in supplemental pool");
+      }
+      return {
+        selected: [
+          {
+            exercise: fly,
+            proposedSets: 3,
+            volumeContribution: new Map([["Chest", 3]]),
+            timeContribution: 8,
+            scores: {
+              deficitFill: 0.9,
+              rotationNovelty: 0.6,
+              sfrScore: 0.8,
+              lengthenedScore: 0.8,
+              movementNovelty: 0.6,
+              sraAlignment: 0.7,
+              userPreference: 0.5,
+            },
+            totalScore: 0.82,
+          },
+        ],
+        rejected: [],
+        volumeFilled: new Map([["Chest", 3]]),
+        volumeDeficit: new Map(),
+        timeUsed: 8,
+        constraintsSatisfied: true,
+        rationale: {
+          overallStrategy: "supplement anchors",
+          perExercise: new Map([["cable-fly", "fills chest deficit beyond anchor fixtures"]]),
+        },
+      };
+    });
+
+    try {
+      const result = await generateSessionFromIntent("user-1", { intent: "push" });
+
+      expect("error" in result).toBe(false);
+      if ("error" in result) return;
+
+      expect(selectSpy).toHaveBeenCalledTimes(1);
+      expect(result.selection.selectedExerciseIds).toEqual(
+        expect.arrayContaining(["bench", "pressdown", "cable-fly"])
+      );
+    } finally {
+      selectSpy.mockRestore();
+    }
+  });
+
+  it("uses rescue inventory for optional gap-fill generation when standard body_part inventory has no direct primary matches", async () => {
+    const rescueOnlyLibrary = [
+      {
+        id: "close-grip-bench",
+        name: "Close-Grip Bench Press",
+        movementPatterns: ["horizontal_push"],
+        splitTags: ["push"],
+        jointStress: "medium",
+        isMainLiftEligible: true,
+        isCompound: true,
+        fatigueCost: 4,
+        equipment: ["barbell"],
+        primaryMuscles: ["Triceps"],
+        secondaryMuscles: ["Chest"],
+        stimulusProfile: {
+          triceps: 1,
+          chest: 0.35,
+        },
+        sfrScore: 4,
+        lengthPositionScore: 3,
+      },
+      {
+        id: "landmine-press",
+        name: "Landmine Press",
+        movementPatterns: ["vertical_push"],
+        splitTags: ["push"],
+        jointStress: "medium",
+        isMainLiftEligible: true,
+        isCompound: true,
+        fatigueCost: 3,
+        equipment: ["barbell"],
+        primaryMuscles: ["Front Delts"],
+        secondaryMuscles: ["Chest", "Triceps"],
+        stimulusProfile: {
+          front_delts: 1,
+          chest: 0.35,
+          triceps: 0.35,
+        },
+        sfrScore: 4,
+        lengthPositionScore: 3,
+      },
+      {
+        id: "weighted-dip",
+        name: "Weighted Dip",
+        movementPatterns: ["vertical_push"],
+        splitTags: ["push"],
+        jointStress: "medium",
+        isMainLiftEligible: true,
+        isCompound: true,
+        fatigueCost: 4,
+        equipment: ["bodyweight"],
+        primaryMuscles: ["Triceps"],
+        secondaryMuscles: ["Chest"],
+        stimulusProfile: {
+          triceps: 1,
+          chest: 0.4,
+          front_delts: 0.25,
+        },
+        sfrScore: 4,
+        lengthPositionScore: 3,
+      },
+    ];
+    mapExercisesMock.mockReturnValue(rescueOnlyLibrary);
+    mesocycleRoleFindManyMock.mockResolvedValue([]);
+
+    const standard = await generateSessionFromIntent("user-1", {
+      intent: "body_part",
+      targetMuscles: ["Chest"],
+    });
+    expect(standard).toEqual({ error: "No compatible exercises found for the requested intent" });
+
+    const rescue = await generateSessionFromIntent("user-1", {
+      intent: "body_part",
+      targetMuscles: ["Chest"],
+      optionalGapFill: true,
+    });
+
+    expect("error" in rescue).toBe(false);
+    if ("error" in rescue) return;
+
+    expect(rescue.selection.selectedExerciseIds.length).toBeGreaterThan(0);
+    expect(rescue.selection.selectedExerciseIds).toEqual(
+      expect.arrayContaining(["close-grip-bench", "landmine-press"])
+    );
+    expect(rescue.selection.intentDiagnostics?.alignedRatio).toBeGreaterThan(0);
+  });
+
   it("respects client roleListIncomplete=true even when server role list is complete", async () => {
     mesocycleRoleFindManyMock.mockResolvedValue([
       { exerciseId: "squat", role: "CORE_COMPOUND", sessionIntent: "LEGS" },

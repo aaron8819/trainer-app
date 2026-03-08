@@ -168,6 +168,18 @@ describe("buildSelectionObjective continuity bias", () => {
     expect(objective.volumeContext.weeklyTarget.get("Upper Back")).toBe(12);
   });
 
+  it("routes upper and body_part muscle targeting through the centralized opportunity profile", () => {
+    const objectiveUpper = buildSelectionObjective(makeMappedContext([]), "upper");
+    const objectiveBodyPart = buildSelectionObjective(makeMappedContext([]), "body_part", ["Biceps"]);
+
+    expect(objectiveUpper.volumeContext.weeklyTarget.get("Lats")).toBe(12);
+    expect(objectiveUpper.volumeContext.weeklyTarget.get("Upper Back")).toBe(12);
+    expect(objectiveUpper.volumeContext.weeklyTarget.has("Quads")).toBe(false);
+
+    expect(objectiveBodyPart.volumeContext.weeklyTarget.get("Biceps")).toBe(10);
+    expect(objectiveBodyPart.volumeContext.weeklyTarget.has("Lats")).toBe(false);
+  });
+
   it("derives a remaining-week context from schedule order and current-week performed sessions", () => {
     const history: WorkoutHistoryEntry[] = [
       {

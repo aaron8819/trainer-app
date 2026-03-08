@@ -1,16 +1,10 @@
 import type { WorkoutSessionIntent } from "@prisma/client";
+import {
+  getTemplateIntentPriorityForSessionIntent,
+  parseSessionIntent,
+} from "@/lib/planning/session-opportunities";
 
 type TemplateLike = { id: string; intent: string };
-
-const INTENT_TO_TEMPLATE_INTENT_PRIORITY: Record<WorkoutSessionIntent, string[]> = {
-  PUSH: ["PUSH_PULL_LEGS", "CUSTOM", "UPPER_LOWER", "FULL_BODY", "BODY_PART"],
-  PULL: ["PUSH_PULL_LEGS", "CUSTOM", "UPPER_LOWER", "FULL_BODY", "BODY_PART"],
-  LEGS: ["PUSH_PULL_LEGS", "CUSTOM", "UPPER_LOWER", "FULL_BODY", "BODY_PART"],
-  UPPER: ["UPPER_LOWER", "FULL_BODY", "CUSTOM", "PUSH_PULL_LEGS", "BODY_PART"],
-  LOWER: ["UPPER_LOWER", "FULL_BODY", "CUSTOM", "PUSH_PULL_LEGS", "BODY_PART"],
-  FULL_BODY: ["FULL_BODY", "CUSTOM", "UPPER_LOWER", "PUSH_PULL_LEGS", "BODY_PART"],
-  BODY_PART: ["BODY_PART", "CUSTOM", "PUSH_PULL_LEGS", "UPPER_LOWER", "FULL_BODY"],
-};
 
 export function selectTemplatesForWeeklyProgram<T extends TemplateLike>(
   templates: T[],
@@ -41,7 +35,10 @@ export function pickTemplateForSessionIntent<T extends TemplateLike>(
   usedIds: Set<string>,
   options?: { allowReuse?: boolean }
 ): T | undefined {
-  const intentPriority = INTENT_TO_TEMPLATE_INTENT_PRIORITY[sessionIntent] ?? [];
+  const normalizedIntent = parseSessionIntent(sessionIntent);
+  const intentPriority = normalizedIntent
+    ? getTemplateIntentPriorityForSessionIntent(normalizedIntent)
+    : [];
   for (const templateIntent of intentPriority) {
     const picked = templates.find(
       (template) =>

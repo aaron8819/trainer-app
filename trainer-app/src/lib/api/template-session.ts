@@ -36,7 +36,7 @@ import {
 } from "./template-session/role-budgeting";
 import {
   enforceIntentAlignment,
-  filterPoolForIntent,
+  filterPoolForInventory,
 } from "./template-session/intent-filters";
 import { applyClosureFill } from "./template-session/closure-actions";
 import {
@@ -51,6 +51,10 @@ import type {
   MappedGenerationContext,
   SessionGenerationResult,
 } from "./template-session/types";
+import {
+  getSessionAnchorPolicy,
+  type SessionInventoryKind,
+} from "@/lib/planning/session-opportunities";
 
 export type { GenerateIntentSessionInput } from "./template-session/types";
 
@@ -503,6 +507,110 @@ function buildClosureObjective(
       ...objective.volumeContext,
       effectiveActual: buildProjectedEffectiveTotals(objective, assignedEffectiveByMuscleInSession),
     },
+  };
+}
+
+function getSessionPlanningInventoryKind(
+  input: Pick<GenerateIntentSessionInput, "optionalGapFill" | "optionalGapFillContext">
+): Extract<SessionInventoryKind, "standard" | "rescue"> {
+  return input.optionalGapFill === true || input.optionalGapFillContext != null
+    ? "rescue"
+    : "standard";
+}
+
+function buildSupplementalSelectionObjective(params: {
+  objective: ReturnType<typeof buildSelectionObjective>;
+  selectedExerciseIds: string[];
+  mainLiftIds: string[];
+  assignedEffectiveByMuscleInSession: Map<string, number>;
+}): ReturnType<typeof buildSelectionObjective> | null {
+  const remainingExerciseSlots = Math.max(
+    0,
+    params.objective.constraints.maxExercises - params.selectedExerciseIds.length
+  );
+  if (remainingExerciseSlots <= 0) {
+    return null;
+  }
+
+  const baseObjective = buildClosureObjective(
+    params.objective,
+    params.assignedEffectiveByMuscleInSession
+  );
+  const maxMainLifts = params.objective.constraints.maxMainLifts;
+  const remainingMainLiftSlots =
+    maxMainLifts == null
+      ? undefined
+      : Math.max(0, maxMainLifts - params.mainLiftIds.length);
+
+  return {
+    ...baseObjective,
+    constraints: {
+      ...baseObjective.constraints,
+      minExercises: 0,
+      minMainLifts: 0,
+      minAccessories: 0,
+      maxExercises: remainingExerciseSlots,
+      ...(remainingMainLiftSlots != null
+        ? { maxMainLifts: remainingMainLiftSlots }
+        : {}),
+    },
+  };
+}
+
+function shouldSupplementAnchorSelection(params: {
+  objective: ReturnType<typeof buildSelectionObjective>;
+  selection: Pick<SelectionOutput, "selectedExerciseIds" | "mainLiftIds" | "perExerciseSetTargets">;
+  exerciseById: Map<string, EngineExercise>;
+  sessionIntent: GenerateIntentSessionInput["intent"];
+  targetMuscles?: string[];
+}): boolean {
+  void params.exerciseById;
+  void params.sessionIntent;
+  void params.targetMuscles;
+  void params.selection.perExerciseSetTargets;
+  return params.selection.selectedExerciseIds.length < params.objective.constraints.minExercises;
+}
+
+function mergeSupplementalSelection(params: {
+  baseSelection: SelectionOutput;
+  supplementalSelection: SelectionOutput;
+  roleMap: Map<string, "CORE_COMPOUND" | "ACCESSORY">;
+}): SelectionOutput {
+  const selectedExerciseIds = [
+    ...params.baseSelection.selectedExerciseIds,
+    ...params.supplementalSelection.selectedExerciseIds.filter(
+      (exerciseId) => !params.baseSelection.selectedExerciseIds.includes(exerciseId)
+    ),
+  ];
+
+  const perExerciseSetTargets = {
+    ...params.baseSelection.perExerciseSetTargets,
+    ...params.supplementalSelection.perExerciseSetTargets,
+  };
+  const rationale = {
+    ...params.baseSelection.rationale,
+    ...params.supplementalSelection.rationale,
+  };
+
+  const mainLiftIds = selectedExerciseIds.filter((exerciseId) => {
+    const role = params.roleMap.get(exerciseId);
+    if (role) {
+      return role === "CORE_COMPOUND";
+    }
+    return params.supplementalSelection.mainLiftIds.includes(exerciseId);
+  });
+  const accessoryIds = selectedExerciseIds.filter(
+    (exerciseId) => !mainLiftIds.includes(exerciseId)
+  );
+
+  return {
+    ...params.baseSelection,
+    selectedExerciseIds,
+    mainLiftIds,
+    accessoryIds,
+    perExerciseSetTargets,
+    rationale,
+    volumePlanByMuscle: params.supplementalSelection.volumePlanByMuscle,
   };
 }
 
@@ -1252,10 +1360,24 @@ export function generateSessionFromMappedContext(
     objective.constraints.maxMainLifts = 0;
     objective.constraints.minMainLifts = 0;
   }
-  const filteredPool = filterPoolForIntent(mapped.exerciseLibrary, input.intent, input.targetMuscles);
+  const planningInventoryKind = getSessionPlanningInventoryKind(input);
+  const closureInventoryKind: SessionInventoryKind =
+    planningInventoryKind === "rescue" ? "rescue" : "closure";
+  const filteredPool = filterPoolForInventory(
+    mapped.exerciseLibrary,
+    input.intent,
+    planningInventoryKind,
+    input.targetMuscles
+  );
   if (filteredPool.length === 0) {
     return { error: "No compatible exercises found for the requested intent" };
   }
+  const closurePool = filterPoolForInventory(
+    mapped.exerciseLibrary,
+    input.intent,
+    closureInventoryKind,
+    input.targetMuscles
+  );
 
   const exerciseById = new Map(mapped.exerciseLibrary.map((exercise) => [exercise.id, exercise]));
   const plannerExerciseDiagnostics: Record<string, PlannerExerciseDiagnostic> = {};
@@ -1327,7 +1449,7 @@ export function generateSessionFromMappedContext(
           })
         );
       }
-      return {
+      const anchorSelection: SelectionOutput = {
         selectedExerciseIds: selectedRoleIds,
         mainLiftIds: selectedRoleIds.filter((exerciseId) => roleMap.get(exerciseId) === "CORE_COMPOUND"),
         accessoryIds: selectedRoleIds.filter((exerciseId) => roleMap.get(exerciseId) !== "CORE_COMPOUND"),
@@ -1335,6 +1457,59 @@ export function generateSessionFromMappedContext(
         rationale: {},
         volumePlanByMuscle: {},
       };
+      if (
+        !shouldSupplementAnchorSelection({
+          objective,
+          selection: anchorSelection,
+          exerciseById,
+          sessionIntent: input.intent,
+          targetMuscles: input.targetMuscles,
+        })
+      ) {
+        return anchorSelection;
+      }
+
+      const supplementalInventoryKind =
+        planningInventoryKind === "rescue"
+          ? "rescue"
+          : getSessionAnchorPolicy(input.intent).supplementalInventory;
+      const supplementalObjective = buildSupplementalSelectionObjective({
+        objective,
+        selectedExerciseIds: anchorSelection.selectedExerciseIds,
+        mainLiftIds: anchorSelection.mainLiftIds,
+        assignedEffectiveByMuscleInSession,
+      });
+      const supplementalPool = filterPoolForInventory(
+        mapped.exerciseLibrary,
+        input.intent,
+        supplementalInventoryKind,
+        input.targetMuscles
+      ).filter(
+        (exercise) =>
+          !anchorSelection.selectedExerciseIds.includes(exercise.id) &&
+          !pinnedRoleIds.has(exercise.id)
+      );
+      if (!supplementalObjective || supplementalPool.length === 0) {
+        return anchorSelection;
+      }
+
+      const supplementalSelectionResult = selectExercisesOptimized(
+        supplementalPool,
+        supplementalObjective
+      );
+      filteredExercises = [
+        ...filteredExercises,
+        ...summarizeFilteredExercises(supplementalSelectionResult.rejected),
+      ];
+      const supplementalSelection = mapSelectionResult(
+        supplementalSelectionResult,
+        supplementalObjective.constraints.demotedFromMainLift ?? new Set()
+      );
+      return mergeSupplementalSelection({
+        baseSelection: anchorSelection,
+        supplementalSelection,
+        roleMap,
+      });
     }
 
     const poolWithoutPinnedRoles = filteredPool.filter((exercise) => !pinnedRoleIds.has(exercise.id));
@@ -1373,6 +1548,7 @@ export function generateSessionFromMappedContext(
       mapped.exerciseLibrary,
       input.intent,
       {
+        inventoryKind: planningInventoryKind,
         targetMuscles: input.targetMuscles,
         pinnedExerciseIds: Array.from(pinnedRoleIds),
       }
@@ -1499,7 +1675,7 @@ export function generateSessionFromMappedContext(
       selectBestClosureAction({
         objective,
         selection,
-        filteredPool,
+        filteredPool: closurePool,
         exerciseById,
         roleMap,
         sessionIntent: input.intent,

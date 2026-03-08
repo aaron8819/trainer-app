@@ -1,77 +1,20 @@
 import type { SessionIntent, SelectionOutput } from "@/lib/engine/session-types";
 import type { Exercise } from "@/lib/engine/types";
-
-const LOWER_MUSCLES = new Set([
-  "quads",
-  "hamstrings",
-  "glutes",
-  "calves",
-  "adductors",
-  "abductors",
-  "lower back",
-  "core",
-  "abs",
-]);
-
-const UPPER_MUSCLES = new Set([
-  "chest",
-  "lats",
-  "upper back",
-  "front delts",
-  "side delts",
-  "rear delts",
-  "biceps",
-  "triceps",
-  "forearms",
-]);
-
-function normalizeMuscle(muscle: string): string {
-  return muscle.trim().toLowerCase();
-}
-
-function toTargetSet(targetMuscles?: string[]): Set<string> {
-  return new Set((targetMuscles ?? []).map(normalizeMuscle));
-}
-
-function isLowerExercise(exercise: Exercise): boolean {
-  if (exercise.splitTags.includes("legs")) {
-    return true;
-  }
-  return (exercise.primaryMuscles ?? []).some((muscle) => LOWER_MUSCLES.has(normalizeMuscle(muscle)));
-}
-
-function isUpperExercise(exercise: Exercise): boolean {
-  if (exercise.splitTags.includes("push") || exercise.splitTags.includes("pull")) {
-    return true;
-  }
-  return (exercise.primaryMuscles ?? []).some((muscle) => UPPER_MUSCLES.has(normalizeMuscle(muscle)));
-}
+import {
+  exerciseMatchesOpportunityRegion,
+  filterPoolForSessionInventory,
+  getRequiredCoverageRegions,
+  isExerciseEligibleForSessionInventory,
+  isExerciseAlignedToSessionOpportunity,
+  type SessionInventoryKind,
+} from "@/lib/planning/session-opportunities";
 
 export function isIntentAlignedExercise(
   exercise: Exercise,
   intent: SessionIntent,
   targetMuscles?: string[]
 ): boolean {
-  const targetSet = toTargetSet(targetMuscles);
-  switch (intent) {
-    case "push":
-    case "pull":
-    case "legs":
-      return exercise.splitTags.includes(intent);
-    case "upper":
-      return isUpperExercise(exercise) && !isLowerExercise(exercise);
-    case "lower":
-      return isLowerExercise(exercise);
-    case "full_body":
-      return isUpperExercise(exercise) || isLowerExercise(exercise);
-    case "body_part":
-      if (targetSet.size === 0) {
-        return false;
-      }
-      return (exercise.primaryMuscles ?? []).some((muscle) => targetSet.has(normalizeMuscle(muscle)));
-    default:
-      return false;
-  }
+  return isExerciseAlignedToSessionOpportunity(exercise, intent, targetMuscles);
 }
 
 export function filterPoolForIntent(
@@ -79,21 +22,43 @@ export function filterPoolForIntent(
   intent: SessionIntent,
   targetMuscles?: string[]
 ): Exercise[] {
-  return exercisePool.filter((exercise) => isIntentAlignedExercise(exercise, intent, targetMuscles));
+  return filterPoolForInventory(exercisePool, intent, "standard", targetMuscles);
+}
+
+export function isInventoryEligibleExercise(
+  exercise: Exercise,
+  intent: SessionIntent,
+  inventoryKind: SessionInventoryKind,
+  targetMuscles?: string[]
+): boolean {
+  return isExerciseEligibleForSessionInventory(exercise, intent, inventoryKind, targetMuscles);
+}
+
+export function filterPoolForInventory(
+  exercisePool: Exercise[],
+  intent: SessionIntent,
+  inventoryKind: SessionInventoryKind,
+  targetMuscles?: string[]
+): Exercise[] {
+  return filterPoolForSessionInventory(exercisePool, intent, inventoryKind, targetMuscles);
 }
 
 function computeAlignmentRatio(
   selectedIds: string[],
   byId: Map<string, Exercise>,
   intent: SessionIntent,
-  targetMuscles?: string[]
+  targetMuscles?: string[],
+  inventoryKind: SessionInventoryKind = "standard"
 ): number {
   if (selectedIds.length === 0) {
     return 0;
   }
   const aligned = selectedIds.filter((exerciseId) => {
     const exercise = byId.get(exerciseId);
-    return exercise !== undefined && isIntentAlignedExercise(exercise, intent, targetMuscles);
+    return (
+      exercise !== undefined &&
+      isInventoryEligibleExercise(exercise, intent, inventoryKind, targetMuscles)
+    );
   }).length;
   return aligned / selectedIds.length;
 }
@@ -106,10 +71,10 @@ function hasFullBodyCoverage(selectedIds: string[], byId: Map<string, Exercise>)
     if (!exercise) {
       continue;
     }
-    if (isUpperExercise(exercise)) {
+    if (exerciseMatchesOpportunityRegion(exercise, "upper")) {
       hasUpper = true;
     }
-    if (isLowerExercise(exercise)) {
+    if (exerciseMatchesOpportunityRegion(exercise, "lower")) {
       hasLower = true;
     }
   }
@@ -120,6 +85,7 @@ type AlignmentOptions = {
   minRatio?: number;
   targetMuscles?: string[];
   pinnedExerciseIds?: string[];
+  inventoryKind?: SessionInventoryKind;
 };
 
 export function enforceIntentAlignment(
@@ -129,10 +95,11 @@ export function enforceIntentAlignment(
   options: AlignmentOptions = {}
 ): SelectionOutput | { error: string } {
   const minRatio = options.minRatio ?? 0;
+  const inventoryKind = options.inventoryKind ?? "standard";
   const pinnedExerciseIds = new Set(options.pinnedExerciseIds ?? []);
   const byId = new Map(exercisePool.map((exercise) => [exercise.id, exercise]));
   const selectedIds = [...selection.selectedExerciseIds];
-  const alignedPool = filterPoolForIntent(exercisePool, intent, options.targetMuscles);
+  const alignedPool = filterPoolForInventory(exercisePool, intent, inventoryKind, options.targetMuscles);
   if (alignedPool.length === 0) {
     return { error: "No compatible exercises found for the requested intent" };
   }
@@ -162,7 +129,7 @@ export function enforceIntentAlignment(
     delete selection.rationale[previousId];
   };
 
-  let ratio = computeAlignmentRatio(selectedIds, byId, intent, options.targetMuscles);
+  let ratio = computeAlignmentRatio(selectedIds, byId, intent, options.targetMuscles, inventoryKind);
   if (minRatio > 0 && ratio < minRatio) {
     for (let i = 0; i < selectedIds.length && ratio < minRatio; i += 1) {
       const currentId = selectedIds[i];
@@ -170,7 +137,10 @@ export function enforceIntentAlignment(
         continue;
       }
       const currentExercise = byId.get(currentId);
-      if (!currentExercise || isIntentAlignedExercise(currentExercise, intent, options.targetMuscles)) {
+      if (
+        !currentExercise ||
+        isInventoryEligibleExercise(currentExercise, intent, inventoryKind, options.targetMuscles)
+      ) {
         continue;
       }
       const replacement = alignedPool.find((exercise) => !used.has(exercise.id));
@@ -178,11 +148,12 @@ export function enforceIntentAlignment(
         break;
       }
       replaceAt(i, replacement.id);
-      ratio = computeAlignmentRatio(selectedIds, byId, intent, options.targetMuscles);
+      ratio = computeAlignmentRatio(selectedIds, byId, intent, options.targetMuscles, inventoryKind);
     }
   }
 
-  if (intent === "full_body") {
+  const requiredCoverage = getRequiredCoverageRegions(intent);
+  if (requiredCoverage.length > 0) {
     let coverage = hasFullBodyCoverage(selectedIds, byId);
     if (!coverage.hasUpper || !coverage.hasLower) {
       for (let i = selectedIds.length - 1; i >= 0 && (!coverage.hasUpper || !coverage.hasLower); i -= 1) {
@@ -194,7 +165,7 @@ export function enforceIntentAlignment(
           if (pinnedExerciseIds.has(exercise.id)) {
             return false;
           }
-          return needed === "upper" ? isUpperExercise(exercise) : isLowerExercise(exercise);
+          return exerciseMatchesOpportunityRegion(exercise, needed);
         });
         if (!replacement) {
           break;
@@ -208,7 +179,7 @@ export function enforceIntentAlignment(
     }
   }
 
-  ratio = computeAlignmentRatio(selectedIds, byId, intent, options.targetMuscles);
+  ratio = computeAlignmentRatio(selectedIds, byId, intent, options.targetMuscles, inventoryKind);
   if (ratio <= 0) {
     return { error: "Unable to preserve any intent-aligned exercises with available selections" };
   }

@@ -22,15 +22,16 @@ Sources of truth:
 - `trainer-app/src/lib/engine/periodization`
 - `trainer-app/src/lib/engine/readiness`
 - `trainer-app/src/lib/engine/explainability`
+- `trainer-app/src/lib/planning/session-opportunities.ts`
 - `trainer-app/src/lib/api/template-session.ts`
 - `trainer-app/src/lib/api/workout-context.ts`
 
 ## Selection and generation
 - Intent and template generation both rely on engine-level session construction and selection primitives.
 - Selection-v2 beam search implementation is under `src/lib/engine/selection-v2`.
-- Template session orchestration bridges API data to engine inputs in `src/lib/api/template-session.ts`, with dedicated seams in `src/lib/api/template-session/role-budgeting.ts` and `src/lib/api/template-session/closure-actions.ts`.
+- Template session orchestration bridges API data to engine inputs in `src/lib/api/template-session.ts`, with planning semantics centralized in `src/lib/planning/session-opportunities.ts` and dedicated seams in `src/lib/api/template-session/role-budgeting.ts` and `src/lib/api/template-session/closure-actions.ts`.
 - `MANUAL` selection mode bypasses mesocycle continuity enforcement by design; continuity pinning only applies to auto/intention-generated sessions.
-- For `INTENT` generation, active mesocycle `CORE_COMPOUND` role exercises for the matching intent are required fixtures (pre-assigned before beam search), not optional scored candidates.
+- For `INTENT` generation, active mesocycle roles are continuity anchors, not full workout cages. Role fixtures are budgeted first, but complete role-list sessions may still supplement from opportunity-compatible inventory when deficits or minimum composition constraints remain unresolved.
 - When a mesocycle role exists, section/main-accessory mapping is role-driven:
   - `CORE_COMPOUND -> MAIN`
   - `ACCESSORY -> ACCESSORY`
@@ -39,6 +40,19 @@ Sources of truth:
 - Role continuity set floors are lifecycle-budget constrained in accumulation weeks: continuity progression cannot exceed lifecycle weekly muscle targets or the peak-accumulation MAV cap for the configured mesocycle length unless prior-week continuity floors already exceed those caps (no mid-mesocycle reduction in that case).
 - `CORE_COMPOUND` role exercises are hard-capped at `MAIN_LIFT_MAX_WORKING_SETS = 5` working sets in role-budgeting logic (`src/lib/api/template-session/role-budgeting.ts`). This cap fires after the continuity ramp, preventing back-off set accumulation from exceeding prescription.
 - `MANUAL` sessions are ingested into progression with confidence discounting and anomaly-aware downgrades (see MANUAL Session Contract below) rather than treated as equal-signal to `INTENT` by default.
+
+## Session opportunity and inventory model
+- `SessionOpportunityDefinition` in `src/lib/planning/session-opportunities.ts` is the canonical source for current intent/session semantics.
+- Each supported session intent (`push`, `pull`, `legs`, `upper`, `lower`, `full_body`, `body_part`) defines:
+  - alignment and structural character
+  - current-session muscle opportunity weights
+  - future-slot opportunity weights for remaining-week planning
+  - inventory eligibility for `standard`, `closure`, and `rescue`
+  - anchor policy for role fixtures
+- This replaces the older pattern where intent alignment, muscle ownership, and future-slot opportunity lived in separate hard-coded maps across filtering and planning modules.
+- `body_part` is the first intent with materially different inventory layers:
+  - `standard` inventory prefers direct target-muscle matches
+  - `closure` and `rescue` inventory allow controlled stimulus-based top-up candidates for the chosen target muscles
 
 ## Stimulus accounting boundaries
 - Exercise taxonomy (`primaryMuscles`, `secondaryMuscles`, split/pattern metadata) remains classification/filtering input and explainability language input; it is not the canonical hypertrophy contribution math source.
@@ -54,7 +68,11 @@ Sources of truth:
 
 ## Role and closure guardrails
 - Mesocycle exercise roles are anchors for continuity and structure; role-list presence is not a session sufficiency stop condition.
-- Session sufficiency remains deficit/constraint outcome-based and includes closure passes when material unresolved deficits remain (`src/lib/api/template-session/closure-actions.ts` via `src/lib/api/template-session.ts` orchestration).
+- Session sufficiency remains deficit/constraint outcome-based and now has three explicit planning layers:
+  - `standard` inventory for normal session construction
+  - anchor supplementation from opportunity-compatible inventory when role fixtures alone are insufficient
+  - `closure` inventory for same-session add/expand top-ups when material unresolved deficits remain
+- Week-close optional gap-fill is the first explicit `rescue` inventory consumer. Rescue is not globally open; it is a controlled inventory phase selected by the generation path.
 - Closure candidate and action diagnostics are persisted in planner diagnostics to keep ranking/filtering decisions auditable from receipts (`src/lib/planner-diagnostics/types.ts`, `src/lib/evidence/session-decision-receipt.ts`).
 - Deterministic tie-breaking is required for equivalent-score closure candidates to keep audits/regressions stable (`src/lib/api/template-session/closure-actions.ts`).
 
@@ -93,8 +111,9 @@ Sources of truth:
 - Canonical mesocycle progression counters are `accumulationSessionsCompleted` and `deloadSessionsCompleted` (not `completedSessions`) and drive lifecycle week/phase derivation.
 
 ## Optional session policy (gap-fill)
-- Phase-1 optional sessions reuse canonical INTENT generation (`intent=body_part`) and do not introduce a separate planner path (`src/lib/api/template-session.ts`).
+- Optional sessions reuse canonical INTENT generation (`intent=body_part`) and do not introduce a separate optimizer path (`src/lib/api/template-session.ts`).
 - Pending week-close context is canonical for gap-fill week anchoring. `generateSessionFromIntent()` now passes `optionalGapFillContext.targetWeek` into `loadMappedGenerationContext()` so accumulation lifecycle math is pinned from the pending week-close row rather than route-local receipt rewriting (`src/lib/api/template-session.ts`, `src/lib/api/template-session/context-loader.ts`).
+- Optional gap-fill now uses the explicit `rescue` inventory layer from `SessionOpportunityDefinition`. This is the current bridge between week-close deficit snapshots and controlled rescue access without rewriting the planner into a long-horizon system.
 - Gap-fill policy read model is surfaced by `loadHomeProgramSupport()` (`src/lib/api/program.ts`) with fields:
   - `requiredSessionsPerWeek`
   - `maxOptionalGapFillSessionsPerWeek`

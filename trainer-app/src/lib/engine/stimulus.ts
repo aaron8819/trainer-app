@@ -104,13 +104,13 @@ export const INITIAL_STIMULUS_PROFILE_BY_NAME: Record<string, StimulusProfile> =
     ["front_delts", 0.15],
   ]);
   const verticalPress = buildStimulusProfile([
-    ["front_delts", 1.0],
+    ["side_delts", 1.0],
+    ["front_delts", 0.7],
     ["triceps", 0.5],
-    ["side_delts", 0.2],
   ]);
   const arnoldPress = buildStimulusProfile([
-    ["front_delts", 1.0],
-    ["side_delts", 0.3],
+    ["side_delts", 1.0],
+    ["front_delts", 0.75],
     ["triceps", 0.35],
   ]);
   const landminePress = buildStimulusProfile([

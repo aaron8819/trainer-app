@@ -177,6 +177,39 @@ describe("stimulus helper", () => {
     expect(profile.hamstrings ?? 0).toBeLessThan(0.5);
   });
 
+  it("keeps vertical presses side-delt dominant with front-delt support", () => {
+    const overheadPress = makeExercise({
+      id: "barbell-overhead-press",
+      name: "Barbell Overhead Press",
+      primaryMuscles: ["Side Delts", "Triceps"],
+      secondaryMuscles: ["Front Delts"],
+    });
+    const arnold = makeExercise({
+      id: "arnold-press",
+      name: "Arnold Press",
+      primaryMuscles: ["Side Delts"],
+      secondaryMuscles: ["Front Delts", "Triceps"],
+    });
+
+    const overheadProfile = resolveStimulusProfile(overheadPress);
+    const arnoldProfile = resolveStimulusProfile(arnold);
+
+    expect(overheadProfile).toEqual({
+      side_delts: 1,
+      front_delts: 0.7,
+      triceps: 0.5,
+    });
+    expect((overheadProfile.side_delts ?? 0)).toBeGreaterThan(overheadProfile.front_delts ?? 0);
+    expect((overheadProfile.front_delts ?? 0)).toBeGreaterThan(overheadProfile.triceps ?? 0);
+
+    expect(arnoldProfile).toEqual({
+      side_delts: 1,
+      front_delts: 0.75,
+      triceps: 0.35,
+    });
+    expect((arnoldProfile.side_delts ?? 0)).toBeGreaterThan(arnoldProfile.front_delts ?? 0);
+  });
+
   it("caps carry upper-back hypertrophy credit below direct carry/grip drivers", () => {
     const carry = makeExercise({
       id: "farmers-carry",

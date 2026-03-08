@@ -165,7 +165,8 @@ export function buildSelectionObjective(
                 landmarks,
                 mapped.lifecycleWeek,
                 mapped.mesocycleLength,
-                mapped.effectivePeriodization.isDeload
+                mapped.effectivePeriodization.isDeload,
+                { blocks: mapped.blockContext?.mesocycle.blocks }
               )
           );
         }
@@ -185,7 +186,8 @@ export function buildSelectionObjective(
                 landmarks,
                 mapped.lifecycleWeek,
                 mapped.mesocycleLength,
-                mapped.effectivePeriodization.isDeload
+                mapped.effectivePeriodization.isDeload,
+                { blocks: mapped.blockContext?.mesocycle.blocks }
               )
           );
         }

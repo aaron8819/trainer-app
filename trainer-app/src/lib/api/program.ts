@@ -454,6 +454,13 @@ function buildProgramVolumeRows(input: {
     volumeTarget: string;
     accumulationSessionsCompleted: number;
     id: string;
+    blocks?: Array<{
+      blockType: string;
+      startWeek: number;
+      durationWeeks: number;
+      volumeTarget: string;
+      intensityBias: string;
+    }>;
   } | null;
   week: number;
   weekMuscles: Record<string, WeeklyMuscleVolumeRow>;
@@ -577,6 +584,8 @@ export async function loadProgramDashboardData(
           blockType: true,
           startWeek: true,
           durationWeeks: true,
+          volumeTarget: true,
+          intensityBias: true,
         },
       },
       macroCycle: { select: { startDate: true } },

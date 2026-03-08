@@ -47,6 +47,13 @@ type ActiveMesocycleRecord = {
   accumulationSessionsCompleted: number;
   deloadSessionsCompleted: number;
   sessionsPerWeek: number;
+  blocks?: Array<{
+    blockType: string;
+    startWeek: number;
+    durationWeeks: number;
+    volumeTarget: string;
+    intensityBias: string;
+  }>;
   macroCycle: { startDate: Date };
 };
 
@@ -159,6 +166,16 @@ export async function loadWeeklyMuscleOutcome(
       accumulationSessionsCompleted: true,
       deloadSessionsCompleted: true,
       sessionsPerWeek: true,
+      blocks: {
+        orderBy: { blockNumber: "asc" },
+        select: {
+          blockType: true,
+          startWeek: true,
+          durationWeeks: true,
+          volumeTarget: true,
+          intensityBias: true,
+        },
+      },
       macroCycle: {
         select: {
           startDate: true,

@@ -88,7 +88,13 @@ type BaseMesoRecord = {
       week5Deload: { min: number; max: number };
     };
   };
-  blocks: Array<{ blockType: string; startWeek: number; durationWeeks: number }>;
+  blocks: Array<{
+    blockType: string;
+    startWeek: number;
+    durationWeeks: number;
+    volumeTarget?: string;
+    intensityBias?: string;
+  }>;
   macroCycle: { startDate: Date };
 };
 
@@ -574,6 +580,50 @@ describe("loadProgramDashboardData", () => {
     expect(viewedDeload.coachingCue).toBe(
       "Deload week - keep loads light, focus on technique and recovery."
     );
+  });
+
+  it("uses block-aware realization targets on dashboard rows when mesocycle blocks are present", async () => {
+    setupDashboardMocks(
+      {
+        durationWeeks: 6,
+        blocks: [
+          {
+            blockType: "ACCUMULATION",
+            startWeek: 0,
+            durationWeeks: 2,
+            volumeTarget: "HIGH",
+            intensityBias: "HYPERTROPHY",
+          },
+          {
+            blockType: "INTENSIFICATION",
+            startWeek: 2,
+            durationWeeks: 2,
+            volumeTarget: "MODERATE",
+            intensityBias: "HYPERTROPHY",
+          },
+          {
+            blockType: "REALIZATION",
+            startWeek: 4,
+            durationWeeks: 1,
+            volumeTarget: "LOW",
+            intensityBias: "STRENGTH",
+          },
+          {
+            blockType: "DELOAD",
+            startWeek: 5,
+            durationWeeks: 1,
+            volumeTarget: "LOW",
+            intensityBias: "HYPERTROPHY",
+          },
+        ],
+      },
+      5
+    );
+
+    const result = await loadProgramDashboardData("user-1", 5);
+    const latsRow = result.volumeThisWeek.find((row) => row.muscle === "Lats");
+
+    expect(latsRow?.target).toBe(13);
   });
 });
 

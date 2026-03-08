@@ -18,6 +18,24 @@ export type WeeklyVolumeTargetProfile = {
   deloadFraction: number;
 };
 
+const DEFAULT_DELOAD_TARGET_FRACTION = 0.45;
+const MIN_PRODUCTIVE_WEEK_PROGRESS = 0.25;
+const REALIZATION_BASE_TAPER_STEP = -0.5;
+const MAX_REALIZATION_WEEK_PROGRESS = -0.25;
+
+const VOLUME_TARGET_PROGRESS_WEIGHT: Record<VolumeTarget, number> = {
+  low: -0.5,
+  moderate: 0,
+  high: 0,
+  peak: 0.25,
+};
+
+const INTENSITY_BIAS_PROGRESS_WEIGHT: Record<IntensityBias, number> = {
+  strength: -0.15,
+  hypertrophy: 0,
+  endurance: 0.1,
+};
+
 type WeeklyVolumeTargetOptions = {
   blocks?: readonly WeeklyVolumeTargetBlock[];
   blockContext?: { mesocycle: { blocks: readonly WeeklyVolumeTargetBlock[] } } | null;
@@ -52,14 +70,14 @@ function buildDurationFallbackProfile(durationWeeks: number): WeeklyVolumeTarget
       const week = index + 1;
       const accumulationWeeks = getAccumulationWeeks(durationWeeks);
       if (week > accumulationWeeks) {
-        return 0.45;
+        return DEFAULT_DELOAD_TARGET_FRACTION;
       }
       return getLifecycleVolumeFraction(durationWeeks, week);
     }),
     weekKinds: Array.from({ length: Math.max(1, durationWeeks) }, (_, index) =>
       index + 1 > getAccumulationWeeks(durationWeeks) ? "deload" : "productive"
     ),
-    deloadFraction: 0.45,
+    deloadFraction: DEFAULT_DELOAD_TARGET_FRACTION,
   };
 }
 
@@ -96,42 +114,32 @@ function mapWeeksToBlocks(
 }
 
 function getVolumeTargetWeight(volumeTarget: VolumeTarget): number {
-  switch (volumeTarget) {
-    case "low":
-      return -0.5;
-    case "moderate":
-      return 0;
-    case "high":
-      return 0;
-    case "peak":
-      return 0.25;
-  }
+  return VOLUME_TARGET_PROGRESS_WEIGHT[volumeTarget];
 }
 
 function getIntensityBiasWeight(intensityBias: IntensityBias): number {
-  switch (intensityBias) {
-    case "strength":
-      return -0.15;
-    case "hypertrophy":
-      return 0;
-    case "endurance":
-      return 0.1;
-  }
+  return INTENSITY_BIAS_PROGRESS_WEIGHT[intensityBias];
 }
 
-function getWeeklyProgressWeight(block: WeeklyVolumeTargetBlock): number {
+function getWeeklyProgressStep(block: WeeklyVolumeTargetBlock): number {
   switch (block.blockType) {
     case "accumulation":
-      return Math.max(0.25, 1 + getVolumeTargetWeight(block.volumeTarget));
+      return Math.max(MIN_PRODUCTIVE_WEEK_PROGRESS, 1 + getVolumeTargetWeight(block.volumeTarget));
     case "intensification":
       return Math.max(
-        0.25,
+        MIN_PRODUCTIVE_WEEK_PROGRESS,
         1 + getVolumeTargetWeight(block.volumeTarget) + getIntensityBiasWeight(block.intensityBias)
       );
     case "realization":
+      // Realization explicitly tapers from the prior productive peak. A low-volume,
+      // strength-biased week becomes -1.15 progress units: -0.5 base taper, -0.5 for
+      // low volume, and -0.15 for strength bias. With prior positions [0,1,2,3], that
+      // yields 1.85 / 3 = 0.6167 of the prior peak rather than continuing the ramp.
       return Math.min(
-        -0.25,
-        -0.5 + getVolumeTargetWeight(block.volumeTarget) + getIntensityBiasWeight(block.intensityBias)
+        MAX_REALIZATION_WEEK_PROGRESS,
+        REALIZATION_BASE_TAPER_STEP +
+          getVolumeTargetWeight(block.volumeTarget) +
+          getIntensityBiasWeight(block.intensityBias)
       );
     case "deload":
       return 0;
@@ -172,7 +180,7 @@ export function buildWeeklyVolumeTargetProfile(
       continue;
     }
 
-    cumulativePosition += getWeeklyProgressWeight(block);
+    cumulativePosition += getWeeklyProgressStep(block);
     weekPositions[weekIndex] = cumulativePosition;
     lastProductiveWeekIndex = weekIndex;
   }
@@ -186,15 +194,15 @@ export function buildWeeklyVolumeTargetProfile(
     source: "block-aware",
     weekFractions: weekBlocks.map((block, index) => {
       if (!block) {
-        return 0.45;
+        return DEFAULT_DELOAD_TARGET_FRACTION;
       }
       if (block.blockType === "deload") {
-        return 0.45;
+        return DEFAULT_DELOAD_TARGET_FRACTION;
       }
       return Math.max(0, Math.min(1, weekPositions[index] / peakPosition));
     }),
     weekKinds: weekBlocks.map((block) => (block?.blockType === "deload" ? "deload" : "productive")),
-    deloadFraction: 0.45,
+    deloadFraction: DEFAULT_DELOAD_TARGET_FRACTION,
   };
 }
 

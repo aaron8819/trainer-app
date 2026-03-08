@@ -51,6 +51,13 @@ export type BoundaryWeekCloseMesocycle = {
   durationWeeks: number;
   sessionsPerWeek: number;
   startWeek: number;
+  blocks?: Array<{
+    blockType: string;
+    startWeek: number;
+    durationWeeks: number;
+    volumeTarget: string;
+    intensityBias: string;
+  }>;
   macroCycle: {
     startDate: Date;
   };

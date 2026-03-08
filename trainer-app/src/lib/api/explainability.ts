@@ -1144,6 +1144,16 @@ async function computeVolumeCompliance(
     select: {
       durationWeeks: true,
       startWeek: true,
+      blocks: {
+        orderBy: { blockNumber: "asc" },
+        select: {
+          blockType: true,
+          startWeek: true,
+          durationWeeks: true,
+          volumeTarget: true,
+          intensityBias: true,
+        },
+      },
       macroCycle: {
         select: {
           startDate: true,

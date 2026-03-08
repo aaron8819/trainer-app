@@ -115,4 +115,59 @@ describe("loadWeeklyMuscleOutcome", () => {
       ],
     });
   });
+
+  it("uses mesocycle block metadata for weekly targets without a separate blockContext", async () => {
+    const mesocycleFindFirst = vi.fn().mockResolvedValue({
+      id: "meso-1",
+      durationWeeks: 6,
+      startWeek: 0,
+      state: "ACTIVE_ACCUMULATION",
+      accumulationSessionsCompleted: 12,
+      deloadSessionsCompleted: 0,
+      sessionsPerWeek: 3,
+      blocks: [
+        {
+          blockType: "ACCUMULATION",
+          startWeek: 0,
+          durationWeeks: 2,
+          volumeTarget: "HIGH",
+          intensityBias: "HYPERTROPHY",
+        },
+        {
+          blockType: "INTENSIFICATION",
+          startWeek: 2,
+          durationWeeks: 2,
+          volumeTarget: "MODERATE",
+          intensityBias: "HYPERTROPHY",
+        },
+        {
+          blockType: "REALIZATION",
+          startWeek: 4,
+          durationWeeks: 1,
+          volumeTarget: "LOW",
+          intensityBias: "STRENGTH",
+        },
+        {
+          blockType: "DELOAD",
+          startWeek: 5,
+          durationWeeks: 1,
+          volumeTarget: "LOW",
+          intensityBias: "HYPERTROPHY",
+        },
+      ],
+      macroCycle: { startDate: new Date("2026-03-02T00:00:00.000Z") },
+    });
+    const workoutFindMany = vi.fn().mockResolvedValue([]);
+
+    const result = await loadWeeklyMuscleOutcome(
+      {
+        mesocycle: { findFirst: mesocycleFindFirst },
+        workout: { findMany: workoutFindMany },
+      } as never,
+      "user-1"
+    );
+
+    expect(result?.week).toBe(5);
+    expect(result?.rows.find((row) => row.muscle === "Lats")?.targetSets).toBe(13);
+  });
 });

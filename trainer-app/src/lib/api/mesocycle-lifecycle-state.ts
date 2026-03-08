@@ -20,6 +20,10 @@ type MesoWithLifecycle = Pick<
   | "splitType"
 >;
 
+export type ActiveMesocycleWithBlocks = Prisma.MesocycleGetPayload<{
+  include: { blocks: true };
+}>;
+
 function getAccumulationSessionThreshold(mesocycle: Pick<MesoWithLifecycle, "durationWeeks" | "sessionsPerWeek">): number {
   return getAccumulationWeeks(mesocycle.durationWeeks) * Math.max(1, mesocycle.sessionsPerWeek);
 }
@@ -189,12 +193,17 @@ export async function transitionMesocycleState(mesocycleId: string): Promise<Mes
   return result.mesocycle;
 }
 
-export async function loadActiveMesocycle(userId: string): Promise<Mesocycle | null> {
+export async function loadActiveMesocycle(userId: string): Promise<ActiveMesocycleWithBlocks | null> {
   return prisma.mesocycle.findFirst({
     where: {
       isActive: true,
       macroCycle: { userId },
     },
     orderBy: [{ mesoNumber: "desc" }],
+    include: {
+      blocks: {
+        orderBy: { blockNumber: "asc" },
+      },
+    },
   });
 }

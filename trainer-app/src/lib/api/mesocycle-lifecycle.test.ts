@@ -494,6 +494,46 @@ describe("mesocycle-lifecycle", () => {
     expect(getWeeklyVolumeTarget(meso, "Lats", 5, { blockContext })).toBe(13);
   });
 
+  it("uses mesocycle.blocks as the canonical block-aware target source without explicit blockContext", () => {
+    const meso = {
+      durationWeeks: 6,
+      blocks: [
+        {
+          blockType: "ACCUMULATION",
+          startWeek: 0,
+          durationWeeks: 2,
+          volumeTarget: "HIGH",
+          intensityBias: "HYPERTROPHY",
+        },
+        {
+          blockType: "INTENSIFICATION",
+          startWeek: 2,
+          durationWeeks: 2,
+          volumeTarget: "MODERATE",
+          intensityBias: "HYPERTROPHY",
+        },
+        {
+          blockType: "REALIZATION",
+          startWeek: 4,
+          durationWeeks: 1,
+          volumeTarget: "LOW",
+          intensityBias: "STRENGTH",
+        },
+        {
+          blockType: "DELOAD",
+          startWeek: 5,
+          durationWeeks: 1,
+          volumeTarget: "LOW",
+          intensityBias: "HYPERTROPHY",
+        },
+      ],
+    };
+
+    expect(getWeeklyVolumeTarget(meso, "Lats", 4)).toBe(16);
+    expect(getWeeklyVolumeTarget(meso, "Lats", 5)).toBe(13);
+    expect(getWeeklyVolumeTarget(meso, "Lats", 6)).toBe(7);
+  });
+
   it("returns corrected default RIR bands for a 4-week mesocycle", () => {
     const meso = {
       state: "ACTIVE_ACCUMULATION" as const,

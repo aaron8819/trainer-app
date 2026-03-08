@@ -33,10 +33,9 @@ export const VOLUME_LANDMARKS: Record<string, VolumeLandmarks> = {
 };
 
 /**
- * Compute the weekly volume target (sets) for a muscle based on mesocycle position.
- *
- * Linearly ramps from MEV at week 1 to MAV at the last accumulation week.
- * Returns MV during deload weeks. Accumulation weeks = mesoLength - 1.
+ * Compute the weekly volume target (sets) for a muscle from the canonical weekly
+ * target profile. When ordered block coverage is present, target shape is derived
+ * from that block layout; otherwise it falls back to the legacy duration-only ramp.
  */
 export function computeWeeklyVolumeTarget(
   landmarks: VolumeLandmarks,

@@ -43,8 +43,17 @@ type SessionDerivationInput = {
   durationWeeks: number;
 };
 
+type WeeklyVolumeTargetBlockInput = {
+  blockType: string;
+  durationWeeks: number;
+  intensityBias: string;
+  startWeek: number;
+  volumeTarget: string;
+};
+
 type VolumeTargetInput = {
   durationWeeks: number;
+  blocks?: readonly WeeklyVolumeTargetBlockInput[];
 };
 
 type RirTargetInput = {
@@ -125,6 +134,32 @@ function resolveLandmark(muscleGroup: string): MuscleLandmark {
     return DEFAULT_FALLBACK_LANDMARK;
   }
   return { mev: lm.mev, mavUpper: lm.mav, mrv: lm.mrv };
+}
+
+function normalizeWeeklyTargetBlocks(
+  blocks: VolumeTargetInput["blocks"]
+): readonly WeeklyVolumeTargetBlock[] | undefined {
+  if (!blocks || blocks.length === 0) {
+    return undefined;
+  }
+
+  if (
+    blocks.some(
+      (block) =>
+        typeof block.blockType !== "string" ||
+        typeof block.volumeTarget !== "string" ||
+        typeof block.intensityBias !== "string"
+    )
+  ) {
+    return undefined;
+  }
+
+  return blocks.map((block) => ({
+    ...block,
+    blockType: block.blockType.toLowerCase() as WeeklyVolumeTargetBlock["blockType"],
+    volumeTarget: block.volumeTarget.toLowerCase() as WeeklyVolumeTargetBlock["volumeTarget"],
+    intensityBias: block.intensityBias.toLowerCase() as WeeklyVolumeTargetBlock["intensityBias"],
+  }));
 }
 
 export function getAccumulationWeeks(durationWeeks: number): number {
@@ -362,6 +397,7 @@ export function getWeeklyVolumeTarget(
     mesocycle.durationWeeks,
     week,
     {
+      blocks: options?.blockContext ? undefined : normalizeWeeklyTargetBlocks(mesocycle.blocks),
       blockContext: options?.blockContext,
     }
   );

@@ -54,6 +54,40 @@ function volumeStatus(
   return "below_mev";
 }
 
+function formatOpportunityStateLabel(
+  state: ProgramVolumeRow["opportunityState"]
+): string {
+  switch (state) {
+    case "high_opportunity":
+      return "High opportunity";
+    case "moderate_opportunity":
+      return "Moderate opportunity";
+    case "covered":
+      return "Covered";
+    case "deprioritize_today":
+      return "Deprioritize today";
+    default:
+      return "Covered";
+  }
+}
+
+function getOpportunityStateClass(
+  state: ProgramVolumeRow["opportunityState"]
+): string {
+  switch (state) {
+    case "high_opportunity":
+      return "bg-blue-50 text-blue-700 border-blue-200";
+    case "moderate_opportunity":
+      return "bg-slate-100 text-slate-600 border-slate-200";
+    case "covered":
+      return "bg-emerald-50 text-emerald-700 border-emerald-200";
+    case "deprioritize_today":
+      return "bg-amber-50 text-amber-700 border-amber-200";
+    default:
+      return "bg-slate-100 text-slate-600 border-slate-200";
+  }
+}
+
 const STATUS_STYLE: Record<string, string> = {
   below_mev: "bg-slate-50 text-slate-500 border-slate-200",
   at_mev: "bg-yellow-50 text-yellow-700 border-yellow-200",
@@ -462,6 +496,17 @@ function ProgramStatusCardDefault({ initialData }: { initialData: ProgramDashboa
                   {formatSetCount(row.effectiveSets)}
                 </p>
                 <p className="text-xs opacity-75">target {row.target} sets</p>
+                {!isHistorical ? (
+                  <div className="mt-1.5">
+                    <span
+                      className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium ${getOpportunityStateClass(
+                        row.opportunityState
+                      )}`}
+                    >
+                      {formatOpportunityStateLabel(row.opportunityState)}
+                    </span>
+                  </div>
+                ) : null}
                 {row.directSets > 0 || row.indirectSets > 0 ? (
                   <p className="mt-0.5 text-xs opacity-65">
                     {row.directSets} direct

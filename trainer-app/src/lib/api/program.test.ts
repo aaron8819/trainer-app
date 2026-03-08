@@ -9,6 +9,22 @@ const mocks = vi.hoisted(() => {
   const mesocycleUpdate = vi.fn();
   const getCurrentMesoWeekFn = vi.fn(() => 1);
   const findPendingWeekCloseForUser = vi.fn();
+  const loadRecentMuscleStimulus = vi.fn(async (_client, input: { targetByMuscle: Record<string, number> }) =>
+    Object.fromEntries(
+      Object.keys(input.targetByMuscle).map((muscle) => [
+        muscle,
+        {
+          muscle,
+          lastStimulatedAt: null,
+          hoursSinceStimulus: null,
+          recentEffectiveSets: 0,
+          recentStimulusRatio: 0,
+          sraHours: 48,
+        },
+      ])
+    )
+  );
+  const getLatestReadinessSignal = vi.fn(async () => null);
 
   return {
     mesocycleFindFirst,
@@ -19,6 +35,8 @@ const mocks = vi.hoisted(() => {
     mesocycleUpdate,
     getCurrentMesoWeekFn,
     findPendingWeekCloseForUser,
+    loadRecentMuscleStimulus,
+    getLatestReadinessSignal,
     prisma: {
       mesocycle: { findFirst: mesocycleFindFirst, update: mesocycleUpdate },
       constraints: { findUnique: constraintsFindUnique },
@@ -35,6 +53,12 @@ vi.mock("./mesocycle-lifecycle-math", async (importOriginal) => {
 });
 vi.mock("./mesocycle-week-close", () => ({
   findPendingWeekCloseForUser: (...args: unknown[]) => mocks.findPendingWeekCloseForUser(...args),
+}));
+vi.mock("./recent-muscle-stimulus", () => ({
+  loadRecentMuscleStimulus: mocks.loadRecentMuscleStimulus,
+}));
+vi.mock("./readiness", () => ({
+  getLatestReadinessSignal: mocks.getLatestReadinessSignal,
 }));
 
 import {
@@ -219,6 +243,29 @@ describe("loadProgramDashboardData", () => {
         effectiveSets: 0.6,
         directSets: 0,
         indirectSets: 2,
+      });
+    });
+
+    it("threads opportunity fields onto dashboard muscle rows", async () => {
+      setupDashboardMocks();
+      mocks.loadRecentMuscleStimulus.mockResolvedValueOnce({
+        Chest: {
+          muscle: "Chest",
+          lastStimulatedAt: null,
+          hoursSinceStimulus: null,
+          recentEffectiveSets: 0,
+          recentStimulusRatio: 0,
+          sraHours: 60,
+        },
+      });
+
+      const result = await loadProgramDashboardData("user-1");
+      const chestRow = result.volumeThisWeek.find((row) => row.muscle === "Chest");
+
+      expect(chestRow).toMatchObject({
+        opportunityScore: expect.any(Number),
+        opportunityState: expect.any(String),
+        opportunityRationale: expect.any(String),
       });
     });
 

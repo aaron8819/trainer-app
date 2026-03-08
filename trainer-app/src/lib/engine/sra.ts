@@ -1,5 +1,6 @@
 import type { Exercise, WorkoutHistoryEntry } from "./types";
 import { VOLUME_LANDMARKS } from "./volume-landmarks";
+import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 
 const DEFAULT_SRA_WINDOW_HOURS = 48;
 const USE_DB_SRA_WINDOWS_ENV = "USE_DB_SRA_WINDOWS";
@@ -36,7 +37,11 @@ export function buildMuscleRecoveryMap(
   const muscleLabels = new Map<string, string>();
 
   for (const entry of history) {
-    if (!entry.completed) continue;
+    const isPerformed =
+      entry.status != null
+        ? (PERFORMED_WORKOUT_STATUSES as readonly string[]).includes(entry.status)
+        : entry.completed;
+    if (!isPerformed) continue;
     const entryMs = new Date(entry.date).getTime();
 
     for (const ex of entry.exercises) {

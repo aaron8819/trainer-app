@@ -1,7 +1,7 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ProgramStatusCard } from "./ProgramStatusCard";
-import type { ProgramDashboardData } from "@/lib/api/program";
+import type { ProgramDashboardData, ProgramVolumeRow } from "@/lib/api/program";
 import type { ComponentPropsWithoutRef } from "react";
 import userEvent from "@testing-library/user-event";
 
@@ -52,10 +52,30 @@ function buildData(volumeThisWeek: ProgramDashboardData["volumeThisWeek"]): Prog
   };
 }
 
+function withOpportunity(
+  row: Omit<ProgramVolumeRow, "opportunityScore" | "opportunityState" | "opportunityRationale">
+): ProgramVolumeRow {
+  return {
+    ...row,
+    opportunityScore: 0,
+    opportunityState: "covered",
+    opportunityRationale: "Weekly target is already covered; no need to prioritize more work today.",
+  };
+}
+
+function buildCurrentWeekData(
+  volumeThisWeek: ProgramDashboardData["volumeThisWeek"]
+): ProgramDashboardData {
+  return {
+    ...buildData(volumeThisWeek),
+    viewedWeek: 4,
+  };
+}
+
 describe("ProgramStatusCard indirect volume context", () => {
   it("renders indirect line when indirectSets > 0", () => {
     const data = buildData([
-      {
+      withOpportunity({
         muscle: "Front Delts",
         effectiveSets: 0.9,
         directSets: 0,
@@ -78,7 +98,7 @@ describe("ProgramStatusCard indirect volume context", () => {
             },
           ],
         },
-      },
+      }),
     ]);
 
     render(<ProgramStatusCard initialData={data} />);
@@ -88,7 +108,7 @@ describe("ProgramStatusCard indirect volume context", () => {
 
   it("hides indirect line when indirectSets = 0", () => {
     const data = buildData([
-      {
+      withOpportunity({
         muscle: "Front Delts",
         effectiveSets: 0,
         directSets: 0,
@@ -103,7 +123,7 @@ describe("ProgramStatusCard indirect volume context", () => {
           targetSets: 5,
           contributions: [],
         },
-      },
+      }),
     ]);
 
     render(<ProgramStatusCard initialData={data} />);
@@ -113,7 +133,7 @@ describe("ProgramStatusCard indirect volume context", () => {
 
   it("shows effective sets as the primary value and keeps raw counts contextual", () => {
     const data = buildData([
-      {
+      withOpportunity({
         muscle: "Front Delts",
         effectiveSets: 0.9,
         directSets: 0,
@@ -136,7 +156,7 @@ describe("ProgramStatusCard indirect volume context", () => {
             },
           ],
         },
-      },
+      }),
     ]);
 
     render(<ProgramStatusCard initialData={data} />);
@@ -152,12 +172,63 @@ describe("ProgramStatusCard indirect volume context", () => {
   });
 });
 
+describe("ProgramStatusCard opportunity state", () => {
+  it("shows a subtle opportunity label on current week muscle cards", () => {
+    const data = buildCurrentWeekData([
+      {
+        ...withOpportunity({
+          muscle: "Chest",
+          effectiveSets: 4,
+          directSets: 4,
+          indirectSets: 0,
+          target: 10,
+          mev: 6,
+          mav: 16,
+          mrv: 22,
+        }),
+        opportunityState: "high_opportunity",
+        opportunityRationale:
+          "Below target with limited recent local fatigue; this muscle is a strong candidate for more work.",
+      },
+    ]);
+
+    render(<ProgramStatusCard initialData={data} />);
+
+    expect(screen.getByText("High opportunity")).toBeInTheDocument();
+    expect(screen.queryByText(/^0\.[0-9]+$/)).not.toBeInTheDocument();
+  });
+
+  it("hides the opportunity label when viewing a historical week", () => {
+    const data = buildData([
+      {
+        ...withOpportunity({
+          muscle: "Chest",
+          effectiveSets: 4,
+          directSets: 4,
+          indirectSets: 0,
+          target: 10,
+          mev: 6,
+          mav: 16,
+          mrv: 22,
+        }),
+        opportunityState: "deprioritize_today",
+        opportunityRationale:
+          "Below target, but recent weighted stimulus is still too fresh to prioritize more work today.",
+      },
+    ]);
+
+    render(<ProgramStatusCard initialData={data} />);
+
+    expect(screen.queryByText("Deprioritize today")).not.toBeInTheDocument();
+  });
+});
+
 describe("ProgramStatusCard muscle breakdown", () => {
   it("opens the breakdown sheet and shows contributors in descending weighted order", async () => {
     setupDialogMocks();
     const user = userEvent.setup();
     const data = buildData([
-      {
+      withOpportunity({
         muscle: "Biceps",
         effectiveSets: 4.1,
         directSets: 2,
@@ -194,7 +265,7 @@ describe("ProgramStatusCard muscle breakdown", () => {
             },
           ],
         },
-      },
+      }),
     ]);
 
     render(<ProgramStatusCard initialData={data} />);
@@ -221,7 +292,7 @@ describe("ProgramStatusCard muscle breakdown", () => {
 describe("ProgramStatusCard homeCompact variant", () => {
   it("renders a compact summary without timeline or volume grid details", () => {
     const data = buildData([
-      {
+      withOpportunity({
         muscle: "Front Delts",
         effectiveSets: 0.9,
         directSets: 0,
@@ -230,7 +301,7 @@ describe("ProgramStatusCard homeCompact variant", () => {
         mev: 2,
         mav: 7,
         mrv: 14,
-      },
+      }),
     ]);
 
     render(<ProgramStatusCard initialData={data} variant="homeCompact" />);

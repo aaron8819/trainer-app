@@ -41,7 +41,7 @@ function roundToTenth(value: number): number {
   return Math.round(value * 10) / 10;
 }
 
-function countCompletedSets(
+export function countCompletedSets(
   sets: Array<{ logs: Array<{ wasSkipped: boolean }> }>
 ): number {
   return sets.filter((set) => set.logs.length > 0 && !set.logs[0]?.wasSkipped).length;

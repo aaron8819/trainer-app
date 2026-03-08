@@ -6,6 +6,7 @@
 import { WorkoutSessionIntent } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { VOLUME_LANDMARKS } from "@/lib/engine/volume-landmarks";
+import { getLatestReadinessSignal } from "./readiness";
 import {
   getCurrentMesoWeek,
   getRirTarget,
@@ -18,6 +19,8 @@ import {
   type WeeklyMuscleExerciseContribution,
   type WeeklyMuscleVolumeRow,
 } from "./weekly-volume";
+import { loadRecentMuscleStimulus } from "./recent-muscle-stimulus";
+import { computeMuscleOpportunity, type OpportunityState } from "./opportunity";
 
 export type ProgramMesoBlock = {
   blockType: string;
@@ -44,6 +47,9 @@ export type ProgramVolumeRow = {
   mev: number;
   mav: number;
   mrv: number;
+  opportunityScore: number;
+  opportunityState: OpportunityState;
+  opportunityRationale: string;
   breakdown?: ProgramMuscleContributionBreakdown;
 };
 
@@ -482,6 +488,9 @@ function buildProgramVolumeRows(input: {
         mev: landmarks.mev,
         mav: landmarks.mav,
         mrv: landmarks.mrv,
+        opportunityScore: 0,
+        opportunityState: "covered" as OpportunityState,
+        opportunityRationale: "Weekly target is already covered; no need to prioritize more work today.",
         ...(data.contributions && data.contributions.length > 0
           ? {
               breakdown: {
@@ -500,6 +509,49 @@ function buildProgramVolumeRows(input: {
       const rightRatio = right.target === 0 ? 0 : right.effectiveSets / right.target;
       return leftRatio - rightRatio;
     });
+}
+
+async function attachOpportunityToVolumeRows(
+  userId: string,
+  rows: ProgramVolumeRow[]
+): Promise<ProgramVolumeRow[]> {
+  if (rows.length === 0) {
+    return rows;
+  }
+
+  const targetByMuscle = Object.fromEntries(rows.map((row) => [row.muscle, row.target]));
+  const [recentStimulus, readinessSignal] = await Promise.all([
+    loadRecentMuscleStimulus(prisma, {
+      userId,
+      targetByMuscle,
+    }),
+    getLatestReadinessSignal(userId),
+  ]);
+
+  return rows.map((row) => {
+    const recent = recentStimulus[row.muscle] ?? {
+      muscle: row.muscle,
+      lastStimulatedAt: null,
+      hoursSinceStimulus: null,
+      recentEffectiveSets: 0,
+      recentStimulusRatio: 0,
+      sraHours: VOLUME_LANDMARKS[row.muscle]?.sraHours ?? 48,
+    };
+    const opportunity = computeMuscleOpportunity({
+      muscle: row.muscle,
+      targetEffectiveSets: row.target,
+      weeklyEffectiveSets: row.effectiveSets,
+      recentStimulus: recent,
+      readinessSignal,
+    });
+
+    return {
+      ...row,
+      opportunityScore: opportunity.score,
+      opportunityState: opportunity.state,
+      opportunityRationale: opportunity.rationale,
+    };
+  });
 }
 
 export async function loadProgramDashboardData(
@@ -595,16 +647,22 @@ export async function loadProgramDashboardData(
           );
   }
 
-  const volumeThisWeek = buildProgramVolumeRows({
+  const baseViewedWeekVolume = buildProgramVolumeRows({
     mesoRecord,
     week: effectiveViewWeek,
     weekMuscles: viewedWeekMuscles,
   });
-  const liveCurrentWeekVolume = buildProgramVolumeRows({
+  const baseCurrentWeekVolume = buildProgramVolumeRows({
     mesoRecord,
     week: currentWeek,
     weekMuscles: currentWeekMuscles,
   });
+  const [volumeThisWeek, liveCurrentWeekVolume] = await Promise.all([
+    attachOpportunityToVolumeRows(userId, baseViewedWeekVolume),
+    effectiveViewWeek === currentWeek
+      ? Promise.resolve(baseViewedWeekVolume)
+      : attachOpportunityToVolumeRows(userId, baseCurrentWeekVolume),
+  ]);
   const rirTarget = mesoRecord ? getRirTarget(mesoRecord, effectiveViewWeek) : null;
   const deloadReadiness = mesoRecord
     ? computeDeloadReadiness(currentWeek, mesoRecord.durationWeeks, liveCurrentWeekVolume)

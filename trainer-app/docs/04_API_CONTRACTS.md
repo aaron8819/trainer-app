@@ -54,12 +54,14 @@ Sources of truth:
 
 ## Analytics response notes
 - Shared analytics semantics helpers now live in `src/lib/api/analytics-semantics.ts`. That helper is the canonical source for analytics counting vocabulary (`generated`, `performed`, `completed`) and explicit time-window descriptors (`all_time`, `rolling_days`, `rolling_iso_weeks`, `date_range`).
-- `GET /api/analytics/summary` now returns explicit totals for `workoutsGenerated`, `workoutsPerformed`, `workoutsCompleted`, and performed set totals. Workout counts use `scheduledDate` within the selected query range; performed set totals use `setLog.completedAt` within that same query range. The response also returns `semantics` metadata documenting both windows and the generated/performed/completed definitions.
+- `GET /api/analytics/summary` now returns explicit totals for `workoutsGenerated`, `workoutsPerformed`, `workoutsCompleted`, performed set totals, and a `consistency` block (`targetSessionsPerWeek`, `thisWeekPerformed`, `rollingFourWeekAverage`, `currentTrainingStreakWeeks`, `weeksMeetingTarget`, `trackedWeeks`). Workout counts use `scheduledDate` within the selected query range; performed set totals use `setLog.completedAt` within that same query range. The response also returns `semantics` metadata documenting both windows and the generated/performed/completed definitions.
 - `GET /api/analytics/templates` now returns template usage rows with `generatedWorkouts`, `performedWorkouts`, `completedWorkouts`, `performedRate`, and `completionRate`, plus `semantics` metadata describing the all-time generated/performed/completed vocabulary.
 - `GET /api/analytics/volume` returns `weeklyVolume` and `landmarks` plus `semantics` metadata documenting that:
   - the chart window is rolling ISO weeks by `scheduledDate`
   - only performed workouts (`COMPLETED` + `PARTIAL`) are included
   - only non-skipped logged sets contribute to direct/indirect volume
+  - each weekly muscle bucket now also includes canonical weighted `effectiveSets` for analytics views that need lifecycle-aligned volume interpretation
+- `GET /api/analytics/muscle-outcomes` returns the active-week `review` model for analytics outcome auditing. Each row includes `muscle`, `targetSets`, `actualEffectiveSets`, `delta`, `percentDelta`, `status`, `contributingExerciseCount`, and up to three `topContributors`. Targets come from canonical lifecycle volume targeting and actuals come from canonical weighted effective stimulus.
 - `GET /api/analytics/recovery` now returns `muscles` plus `semantics` metadata documenting that the screen is a rolling 14-day SRA-style stimulus-recency view built from performed workouts only.
 - Each recovery row now also carries a 7-day `timeline` of canonical weighted effective stimulus buckets (`date`, `effectiveSets`, `intensityBand`) derived with the shared stimulus engine, not raw direct sets (`src/lib/api/muscle-stimulus-timeline.ts`, `src/lib/engine/stimulus.ts`).
 - Dashboard opportunity does not consume `GET /api/analytics/recovery`; analytics stimulus recency remains a separate pattern-review surface and is not the dashboard source of truth.

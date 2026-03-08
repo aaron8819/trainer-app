@@ -14,7 +14,7 @@ import {
 type VolumeData = {
   weeklyVolume: {
     weekStart: string;
-    muscles: Record<string, { directSets: number; indirectSets: number }>;
+    muscles: Record<string, { directSets: number; indirectSets: number; effectiveSets: number }>;
   }[];
 };
 
@@ -52,11 +52,11 @@ export function WeeklyVolumeTrend() {
     return <div className="rounded-2xl border border-slate-200 p-4 text-sm text-slate-500 sm:p-6">No trend data available.</div>;
   }
 
-  // Find top 6 muscles by total volume
+  // Find top 6 muscles by total weighted volume
   const muscleTotals = new Map<string, number>();
   for (const week of data.weeklyVolume) {
     for (const [muscle, vol] of Object.entries(week.muscles)) {
-      muscleTotals.set(muscle, (muscleTotals.get(muscle) ?? 0) + vol.directSets);
+      muscleTotals.set(muscle, (muscleTotals.get(muscle) ?? 0) + vol.effectiveSets);
     }
   }
   const topMuscles = Array.from(muscleTotals.entries())
@@ -67,7 +67,7 @@ export function WeeklyVolumeTrend() {
   const chartData = data.weeklyVolume.map((week) => {
     const point: Record<string, string | number> = { week: week.weekStart.slice(5) };
     for (const m of topMuscles) {
-      point[m] = week.muscles[m]?.directSets ?? 0;
+      point[m] = week.muscles[m]?.effectiveSets ?? 0;
     }
     return point;
   });

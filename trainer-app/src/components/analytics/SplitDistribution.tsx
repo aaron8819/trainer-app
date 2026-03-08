@@ -2,22 +2,22 @@
 
 import { useEffect, useState } from "react";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
+import { MUSCLE_SPLIT_MAP } from "@/lib/engine/volume-landmarks";
 
 type VolumeData = {
   weeklyVolume: {
     weekStart: string;
-    muscles: Record<string, { directSets: number; indirectSets: number }>;
+    muscles: Record<string, { directSets: number; indirectSets: number; effectiveSets: number }>;
   }[];
 };
 
-const SPLIT_MAP: Record<string, string> = {
-  Chest: "Push", "Front Delts": "Push", "Side Delts": "Push", Triceps: "Push",
-  Lats: "Pull", "Upper Back": "Pull", "Rear Delts": "Pull", Biceps: "Pull", Forearms: "Pull",
-  Quads: "Legs", Hamstrings: "Legs", Glutes: "Legs", Calves: "Legs",
-  Adductors: "Legs", Abductors: "Legs", Core: "Legs", Abs: "Legs", "Lower Back": "Legs",
-};
-
 const COLORS = { Push: "#3b82f6", Pull: "#22c55e", Legs: "#f59e0b" };
+
+function toSplitLabel(split: "push" | "pull" | "legs"): "Push" | "Pull" | "Legs" {
+  if (split === "push") return "Push";
+  if (split === "pull") return "Pull";
+  return "Legs";
+}
 
 export function SplitDistribution() {
   const [data, setData] = useState<VolumeData | null>(null);
@@ -54,8 +54,11 @@ export function SplitDistribution() {
   const splitTotals: Record<string, number> = { Push: 0, Pull: 0, Legs: 0 };
   for (const week of data.weeklyVolume) {
     for (const [muscle, vol] of Object.entries(week.muscles)) {
-      const split = SPLIT_MAP[muscle] ?? "Legs";
-      splitTotals[split] += vol.directSets;
+      const split = MUSCLE_SPLIT_MAP[muscle];
+      if (!split) {
+        continue;
+      }
+      splitTotals[toSplitLabel(split)] += vol.directSets;
     }
   }
 
@@ -106,6 +109,11 @@ export function SplitDistribution() {
           </span>
         ))}
       </div>
+
+      <p className="text-xs text-slate-500">
+        Reference only. Compare this against your intended weekly split rather than a universal
+        Push / Pull / Legs target.
+      </p>
     </div>
   );
 }

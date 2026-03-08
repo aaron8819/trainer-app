@@ -5,6 +5,7 @@ import { AnalyticsSummaryPanel } from "@/components/analytics/AnalyticsSummaryPa
 import { SurfaceGuideCard } from "@/components/SurfaceGuideCard";
 import { MuscleRecoveryPanel } from "@/components/analytics/MuscleRecoveryPanel";
 import { MuscleVolumeChart } from "@/components/analytics/MuscleVolumeChart";
+import { MuscleOutcomeReviewPanel } from "@/components/analytics/MuscleOutcomeReviewPanel";
 import { WeeklyVolumeTrend } from "@/components/analytics/WeeklyVolumeTrend";
 import { SplitDistribution } from "@/components/analytics/SplitDistribution";
 import { TemplateStatsSection } from "@/components/analytics/TemplateStatsSection";
@@ -63,16 +64,27 @@ export default function AnalyticsPage() {
               <div>
                 <h2 className="text-base font-semibold sm:text-lg">Weekly Volume by Muscle</h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  Performed direct and indirect sets grouped into rolling ISO weeks with MEV/MAV/MRV reference lines.
+                  Review direct-set structure or switch to weighted effective sets. MEV, MAV, and
+                  MRV references only apply to effective-set mode.
                 </p>
                 <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200 p-3.5 sm:mt-4 sm:p-4">
                   <MuscleVolumeChart />
                 </div>
               </div>
               <div>
+                <h2 className="text-base font-semibold sm:text-lg">Muscle Outcome Review</h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Compare each muscle&apos;s current-week target against actual weighted effective
+                  sets to see where volume landed relative to plan.
+                </p>
+                <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200 p-3.5 sm:mt-4 sm:p-4">
+                  <MuscleOutcomeReviewPanel />
+                </div>
+              </div>
+              <div>
                 <h2 className="text-base font-semibold sm:text-lg">Volume Trend</h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  Top direct-set muscle trends across the rolling 8-week analytics window.
+                  Top weighted effective-set trends across the rolling 8-week analytics window.
                 </p>
                 <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200 p-3.5 sm:mt-4 sm:p-4">
                   <WeeklyVolumeTrend />
@@ -86,7 +98,8 @@ export default function AnalyticsPage() {
               <div>
                 <h2 className="text-base font-semibold sm:text-lg">Workout Summary</h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  Generated, performed, and completed workout counts use one shared analytics vocabulary.
+                  Training consistency, performed history, and telemetry all use the same canonical
+                  workout-status model.
                 </p>
                 <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200 p-3.5 sm:mt-4 sm:p-4">
                   <AnalyticsSummaryPanel />
@@ -95,7 +108,8 @@ export default function AnalyticsPage() {
               <div>
                 <h2 className="text-base font-semibold sm:text-lg">Push / Pull / Legs Distribution</h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  Direct performed sets grouped into Push / Pull / Legs across the rolling 4-week volume window.
+                  Direct performed sets grouped into Push / Pull / Legs across the rolling 4-week
+                  volume window. This is descriptive context, not a universal target.
                 </p>
                 <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200 p-3.5 sm:mt-4 sm:p-4">
                   <SplitDistribution />

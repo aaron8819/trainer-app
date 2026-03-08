@@ -18,6 +18,10 @@ vi.mock("@/components/analytics/MuscleVolumeChart", () => ({
   MuscleVolumeChart: () => <div>Volume Chart</div>,
 }));
 
+vi.mock("@/components/analytics/MuscleOutcomeReviewPanel", () => ({
+  MuscleOutcomeReviewPanel: () => <div>Outcome Review</div>,
+}));
+
 vi.mock("@/components/analytics/WeeklyVolumeTrend", () => ({
   WeeklyVolumeTrend: () => <div>Weekly Trend</div>,
 }));

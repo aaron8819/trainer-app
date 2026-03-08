@@ -30,9 +30,9 @@ export async function GET(request: Request) {
       counts: {
         workouts:
           "Volume includes performed workouts only (COMPLETED and PARTIAL) grouped by scheduledDate ISO week.",
-        sets: "Only non-skipped logged sets count toward direct and indirect muscle volume.",
+        sets: "Only non-skipped logged sets count. Direct and indirect are structural set counts, while effective sets use canonical weighted stimulus accounting.",
         muscles:
-          "Primary muscle mappings count as direct sets; secondary mappings count as indirect sets.",
+          "Primary muscle mappings count as direct sets, secondary mappings count as indirect sets, and effective sets reuse the shared planner stimulus model.",
       },
     },
   });

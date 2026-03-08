@@ -108,12 +108,14 @@ Route-purpose shorthand:
 
 6. Analytics review
 - UI: `/analytics`
-- APIs: `GET /api/analytics/summary`, `GET /api/analytics/volume`, `GET /api/analytics/recovery`, `GET /api/analytics/templates`
-- The analytics overview now consumes `GET /api/analytics/summary` directly to show generated vs performed vs completed workout counts plus selection-mode and intent follow-through (`src/app/analytics/page.tsx`, `src/components/analytics/AnalyticsSummaryPanel.tsx`).
+- APIs: `GET /api/analytics/summary`, `GET /api/analytics/volume`, `GET /api/analytics/muscle-outcomes`, `GET /api/analytics/recovery`, `GET /api/analytics/templates`
+- The analytics overview now consumes `GET /api/analytics/summary` directly to show training-consistency metrics first (`this week`, `4-week average`, `training streak`, `weeks at target`), with workout totals and selection-mode telemetry demoted to secondary context (`src/app/analytics/page.tsx`, `src/components/analytics/AnalyticsSummaryPanel.tsx`).
 - Analytics routes now expose explicit `semantics` metadata describing their counting vocabulary and time windows (`src/lib/api/analytics-semantics.ts`, `src/app/api/analytics/**/route.ts`).
 - Volume analytics remains intentionally separate from the program dashboard:
   - `/program` volume is mesocycle-week scoped for decision support
   - `/analytics` volume is rolling ISO-week charting for trend review
+- The Volume tab now defaults to weighted effective-set interpretation for landmark comparisons. Direct and combined set-count modes remain available as structural context, but MEV/MAV/MRV references are only shown in effective-set mode to avoid conflating raw set counts with weighted lifecycle targets (`src/components/analytics/MuscleVolumeChart.tsx`).
+- `/analytics` also includes `Muscle Outcome Review`, a current-week table that compares canonical weekly target volume versus actual weighted effective stimulus per muscle and classifies the result as `on target`, `slightly low`, `meaningfully low`, `slightly high`, or `meaningfully high` (`src/components/analytics/MuscleOutcomeReviewPanel.tsx`, `src/lib/api/muscle-outcome-review.ts`).
 - The Recovery tab is framed as `Muscle Stimulus Recency`, not a recommendation surface. It explains how recently each muscle was meaningfully stimulated and includes a compact 7-day weighted-stimulus timeline for pattern review (`src/app/analytics/page.tsx`, `src/components/analytics/MuscleRecoveryPanel.tsx`).
 - Analytics recovery remains a rolling 14-day SRA-style recency view from performed sessions rather than a training prescription or dashboard score.
 - Dashboard opportunity is a separate abstraction from analytics stimulus recency: it is driven by weekly target pressure, recent local weighted stimulus, and optional fresh readiness modulation rather than raw recovery percent.

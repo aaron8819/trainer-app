@@ -2,13 +2,11 @@ import { NextResponse } from "next/server";
 import { analyticsSummarySchema } from "@/lib/validation";
 import { prisma } from "@/lib/db/prisma";
 import { resolveOwner } from "@/lib/api/workout-context";
-import {
-  buildDateRangeAnalyticsWindow,
-  countAnalyticsWorkoutStatuses,
-} from "@/lib/api/analytics-semantics";
+import { buildDateRangeAnalyticsWindow } from "@/lib/api/analytics-semantics";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 import { WORKOUT_SELECTION_MODE_VALUES } from "@/lib/validation";
 import { WorkoutStatus } from "@prisma/client";
+import { buildAnalyticsSummary } from "@/lib/api/analytics-summary";
 const TRACKED_SELECTION_MODES = WORKOUT_SELECTION_MODE_VALUES;
 
 export async function GET(request: Request) {
@@ -25,6 +23,10 @@ export async function GET(request: Request) {
   const dateFrom = parsed.data.dateFrom ? new Date(parsed.data.dateFrom) : undefined;
   const dateTo = parsed.data.dateTo ? new Date(parsed.data.dateTo) : undefined;
   const owner = await resolveOwner();
+  if (!owner) {
+    return NextResponse.json({ error: "User not found" }, { status: 404 });
+  }
+
   const workoutDateFilter =
     dateFrom || dateTo
       ? {
@@ -45,109 +47,57 @@ export async function GET(request: Request) {
         }
       : {};
 
-  const workouts = await prisma.workout.findMany({
-    where: {
-      userId: owner.id,
-      ...workoutDateFilter,
-    },
-    select: {
-      status: true,
-      selectionMode: true,
-      sessionIntent: true,
-    },
-  });
-
-  const totalCounts = countAnalyticsWorkoutStatuses(workouts.map((workout) => workout.status));
-
-  const modeCounts = new Map<
-    (typeof TRACKED_SELECTION_MODES)[number],
-    { generated: number; performed: number; completed: number }
-  >(
-    TRACKED_SELECTION_MODES.map((mode) => [
-      mode,
-      { generated: 0, performed: 0, completed: 0 },
-    ])
-  );
-  const intentCounts = new Map<
-    string,
-    { generated: number; performed: number; completed: number }
-  >();
-
-  for (const workout of workouts) {
-    const mode = TRACKED_SELECTION_MODES.includes(
-      workout.selectionMode as (typeof TRACKED_SELECTION_MODES)[number]
-    )
-      ? (workout.selectionMode as (typeof TRACKED_SELECTION_MODES)[number])
-      : "AUTO";
-    const modeBucket = modeCounts.get(mode);
-    if (modeBucket) {
-      modeBucket.generated += 1;
-      if ((PERFORMED_WORKOUT_STATUSES as readonly string[]).includes(workout.status)) {
-        modeBucket.performed += 1;
-      }
-      if (workout.status === WorkoutStatus.COMPLETED) {
-        modeBucket.completed += 1;
-      }
-    }
-
-    if (workout.sessionIntent) {
-      const intent = workout.sessionIntent;
-      const bucket = intentCounts.get(intent) ?? {
-        generated: 0,
-        performed: 0,
-        completed: 0,
-      };
-      bucket.generated += 1;
-      if ((PERFORMED_WORKOUT_STATUSES as readonly string[]).includes(workout.status)) {
-        bucket.performed += 1;
-      }
-      if (workout.status === WorkoutStatus.COMPLETED) {
-        bucket.completed += 1;
-      }
-      intentCounts.set(intent, bucket);
-    }
-  }
-
-  const setLogs = await prisma.setLog.findMany({
-    where: {
-      wasSkipped: false,
-      workoutSet: {
-        workoutExercise: {
-          workout: {
-            userId: owner.id,
-            status: { in: [...PERFORMED_WORKOUT_STATUSES] as WorkoutStatus[] },
-          },
-        },
+  const [activeMesocycle, constraints, workouts, setLogs] = await Promise.all([
+    prisma.mesocycle.findFirst({
+      where: { macroCycle: { userId: owner.id }, isActive: true },
+      select: { sessionsPerWeek: true },
+    }),
+    prisma.constraints.findUnique({
+      where: { userId: owner.id },
+      select: { daysPerWeek: true },
+    }),
+    prisma.workout.findMany({
+      where: {
+        userId: owner.id,
+        ...workoutDateFilter,
       },
-      ...completedAtFilter,
-    },
-    include: {
-      workoutSet: {
-        include: {
+      select: {
+        status: true,
+        selectionMode: true,
+        sessionIntent: true,
+        scheduledDate: true,
+      },
+    }),
+    prisma.setLog.findMany({
+      where: {
+        wasSkipped: false,
+        workoutSet: {
           workoutExercise: {
-            include: {
-              exercise: true,
+            workout: {
+              userId: owner.id,
+              status: { in: [...PERFORMED_WORKOUT_STATUSES] as WorkoutStatus[] },
             },
           },
         },
+        ...completedAtFilter,
       },
-    },
+      select: { id: true },
+    }),
+  ]);
+
+  const targetSessionsPerWeek = Math.max(
+    1,
+    activeMesocycle?.sessionsPerWeek ?? constraints?.daysPerWeek ?? 3
+  );
+  const summary = buildAnalyticsSummary({
+    workouts,
+    trackedSelectionModes: TRACKED_SELECTION_MODES,
+    targetSessionsPerWeek,
+    totalSets: setLogs.length,
+    now: new Date(),
+    dateFrom,
+    dateTo,
   });
-
-  const totalSets = setLogs.length;
-  const volumeByExercise = new Map<string, number>();
-
-  for (const log of setLogs) {
-    const exerciseName = log.workoutSet.workoutExercise.exercise.name;
-    const reps = log.actualReps ?? 0;
-    const load = log.actualLoad ?? 0;
-    const volume = reps * load;
-    volumeByExercise.set(exerciseName, (volumeByExercise.get(exerciseName) ?? 0) + volume);
-  }
-
-  const volumeByExerciseArray = Array.from(volumeByExercise.entries())
-    .map(([exercise, volume]) => ({ exercise, volume }))
-    .sort((a, b) => b.volume - a.volume);
 
   return NextResponse.json({
     semantics: {
@@ -168,41 +118,12 @@ export async function GET(request: Request) {
         performed:
           "Performed workouts include COMPLETED and PARTIAL workouts in the scheduledDate window.",
         completed: "Completed workouts include only COMPLETED workouts in the scheduledDate window.",
+        consistency:
+          "Consistency groups performed workouts into ISO weeks by scheduledDate and compares them against the active sessions-per-week target.",
       },
     },
-    totals: {
-      workoutsGenerated: totalCounts.generated,
-      workoutsPerformed: totalCounts.performed,
-      workoutsCompleted: totalCounts.completed,
-      totalSets,
-      volumeByExercise: volumeByExerciseArray,
-    },
-    kpis: {
-      selectionModes: TRACKED_SELECTION_MODES.map((mode) => {
-        const bucket = modeCounts.get(mode) ?? { generated: 0, performed: 0, completed: 0 };
-        return {
-          mode,
-          generated: bucket.generated,
-          performed: bucket.performed,
-          completed: bucket.completed,
-          performedRate:
-            bucket.generated > 0 ? Number((bucket.performed / bucket.generated).toFixed(3)) : null,
-          completionRate:
-            bucket.generated > 0 ? Number((bucket.completed / bucket.generated).toFixed(3)) : null,
-        };
-      }),
-      intents: Array.from(intentCounts.entries())
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([intent, bucket]) => ({
-          intent,
-          generated: bucket.generated,
-          performed: bucket.performed,
-          completed: bucket.completed,
-          performedRate:
-            bucket.generated > 0 ? Number((bucket.performed / bucket.generated).toFixed(3)) : null,
-          completionRate:
-            bucket.generated > 0 ? Number((bucket.completed / bucket.generated).toFixed(3)) : null,
-        })),
-    },
+    totals: summary.totals,
+    consistency: summary.consistency,
+    kpis: summary.kpis,
   });
 }

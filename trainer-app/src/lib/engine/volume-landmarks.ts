@@ -1,3 +1,8 @@
+import {
+  interpolateWeeklyVolumeTarget,
+  type WeeklyVolumeTargetBlock,
+} from "./volume-targets";
+
 export type VolumeLandmarks = {
   mv: number;
   mev: number;
@@ -37,12 +42,22 @@ export function computeWeeklyVolumeTarget(
   landmarks: VolumeLandmarks,
   currentWeek: number,
   mesoLength: number,
-  isDeload: boolean
+  isDeload: boolean,
+  options?: {
+    blocks?: readonly WeeklyVolumeTargetBlock[];
+  }
 ): number {
   if (isDeload) return landmarks.mv;
-  const accumWeeks = Math.max(1, mesoLength - 1);
-  const progress = Math.min(1, Math.max(0, (currentWeek - 1) / (accumWeeks - 1 || 1)));
-  return Math.round(landmarks.mev + progress * (landmarks.mav - landmarks.mev));
+  return interpolateWeeklyVolumeTarget(
+    {
+      mev: landmarks.mev,
+      mav: landmarks.mav,
+      mrv: landmarks.mrv,
+    },
+    mesoLength,
+    currentWeek,
+    options
+  );
 }
 
 export const MUSCLE_SPLIT_MAP: Record<string, "push" | "pull" | "legs"> = {

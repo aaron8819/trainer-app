@@ -138,14 +138,19 @@ Sources of truth:
 - State module: `src/lib/api/mesocycle-lifecycle-state.ts` (state transitions + next-mesocycle initialization).
 - `transitionMesocycleState(mesocycleId)`: transitions state (`ACTIVE_ACCUMULATION` -> `ACTIVE_DELOAD` -> `COMPLETED`) and initializes the next mesocycle when deload is complete.
 - `getCurrentMesoWeek(mesocycle)`: derives effective lifecycle week from `state`, `durationWeeks`, `accumulationSessionsCompleted`, and `sessionsPerWeek`. Accumulation weeks are `durationWeeks - 1`; the final week is deload.
-- `getWeeklyVolumeTarget(mesocycle, muscleGroup, week)`: returns lifecycle week-specific target sets from mesocycle ramp semantics and landmarks. Landmark values (MEV/MAV/MRV) are sourced from `VOLUME_LANDMARKS` in `src/lib/engine/volume-landmarks.ts`.
+- `getWeeklyVolumeTarget(mesocycle, muscleGroup, week, options?)`: returns lifecycle week-specific target sets from landmarks plus the canonical weekly target profile. Landmark values (MEV/MAV/MRV) are sourced from `VOLUME_LANDMARKS` in `src/lib/engine/volume-landmarks.ts`. When generation has real block context, `options.blockContext` routes target generation through the active mesocycle block timeline; when block data is unavailable or incomplete, it falls back to duration-only lifecycle interpolation.
 - Analytics outcome review for the active mesocycle week is a read-only comparison layer built from `getWeeklyVolumeTarget(...)` + `loadMesocycleWeekMuscleVolume(...)`. It does not own alternate stimulus math or alternate target interpolation (`src/lib/api/muscle-outcome-review.ts`).
-- Weekly accumulation targets are interpolated via centralized helper `interpolateWeeklyVolumeTarget()` in `src/lib/engine/volume-targets.ts`; deload remains `~45%` of peak accumulation volume.
+- Weekly target placement is centralized in `src/lib/engine/volume-targets.ts` via `buildWeeklyVolumeTargetProfile()` + `interpolateWeeklyVolumeTarget()`. Default 4/5-week behavior is preserved under the default block layouts, but non-default block types can now materially shape target placement:
+  - `accumulation`: rising weekly targets toward peak productive volume
+  - `intensification`: continued but moderated rise/plateau based on block config
+  - `realization`: intentional reduction from prior peak volume while intensity rises
+  - `deload`: explicit `~45%` of peak accumulation volume
 - When phase/block context is supplied, lifecycle prescription helpers now consume real block type and block-relative week:
   - `getRirTarget(..., phaseBlockContext?)`
   - `getLifecycleSetTargets(..., phaseBlockContext?)`
   - `buildLifecyclePeriodization({ ..., phaseBlockContext })`
   This preserves current default 4/5/6-week behavior under the existing default block definitions while making generation materially block-aware.
+- Weekly volume targeting now uses the same generation-facing block seam. `src/lib/api/template-session/context-loader.ts` resolves `phaseBlockContext`, then materializes `lifecycleVolumeTargets` through `getWeeklyVolumeTarget(..., { blockContext })` before remaining-week planning, selection, closure, and rescue.
 - Current landmark table includes the weighted-model Biceps retune in `src/lib/engine/volume-landmarks.ts` (`Biceps: MV 6, MEV 6, MAV 14, MRV 22, SRA 36`) and is consumed unchanged by planner targeting, dashboard rows, week-close deficits, and explainability compliance.
 - Pull musculature landmarks are split (`lats`, `upper_back`) and rear-delt landmarks are reduced to evidence-aligned defaults (`rear_delts: MEV 4, MAV 12`; `lats: MEV 8, MAV 16`; `upper_back: MEV 6, MAV 14`).
 - `getRirTarget(mesocycle, week, phaseBlockContext?)`: returns lifecycle week/state-specific RIR bands, including deload targets. Without block context, default hypertrophy bands remain duration-aware: 4-week total = `3-4 -> 2-3 -> 1-2 -> deload`; 5-week total = `3-4 -> 2-3 -> 1-2 -> 0-1 -> deload`; 6-week total = `3-4 -> 2-3 -> 2 -> 1-2 -> 0-1 -> deload`.

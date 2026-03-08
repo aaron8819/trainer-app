@@ -64,8 +64,9 @@ function buildSorenessSuppressedTargets(input: {
   mappedCheckIn: MappedGenerationContext["mappedCheckIn"];
   activeMesocycle: Awaited<ReturnType<typeof loadActiveMesocycle>>;
   lifecycleWeek: number;
+  blockContext: GenerationPhaseBlockContext["blockContext"];
 }): { targets: Record<string, number>; suppressedMuscles: string[] } {
-  const { lifecycleVolumeTargets, mappedCheckIn, activeMesocycle, lifecycleWeek } = input;
+  const { lifecycleVolumeTargets, mappedCheckIn, activeMesocycle, lifecycleWeek, blockContext } = input;
   if (!mappedCheckIn?.painFlags || !activeMesocycle || lifecycleWeek <= 1) {
     return { targets: lifecycleVolumeTargets, suppressedMuscles: [] };
   }
@@ -87,7 +88,9 @@ function buildSorenessSuppressedTargets(input: {
   const priorWeek = Math.max(1, lifecycleWeek - 1);
   const adjustedTargets = { ...lifecycleVolumeTargets };
   for (const muscle of suppressedMuscles) {
-    adjustedTargets[muscle] = getWeeklyVolumeTarget(activeMesocycle, muscle, priorWeek);
+    adjustedTargets[muscle] = getWeeklyVolumeTarget(activeMesocycle, muscle, priorWeek, {
+      blockContext,
+    });
   }
   return { targets: adjustedTargets, suppressedMuscles };
 }
@@ -222,7 +225,11 @@ export function buildMappedGenerationContextFromSnapshot(
   const baseLifecycleVolumeTargets = Object.fromEntries(
     Object.keys(VOLUME_LANDMARKS).map((muscle) => [
       muscle,
-      activeMesocycle ? getWeeklyVolumeTarget(activeMesocycle, muscle, lifecycleWeek) : VOLUME_LANDMARKS[muscle].mev,
+      activeMesocycle
+        ? getWeeklyVolumeTarget(activeMesocycle, muscle, lifecycleWeek, {
+            blockContext: phaseBlockContext.blockContext,
+          })
+        : VOLUME_LANDMARKS[muscle].mev,
     ])
   );
   const sorenessAdjustedTargets = buildSorenessSuppressedTargets({
@@ -230,6 +237,7 @@ export function buildMappedGenerationContextFromSnapshot(
     mappedCheckIn,
     activeMesocycle,
     lifecycleWeek,
+    blockContext: phaseBlockContext.blockContext,
   });
   const lifecycleVolumeTargets = sorenessAdjustedTargets.targets;
 

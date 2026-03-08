@@ -415,6 +415,85 @@ describe("mesocycle-lifecycle", () => {
     expect(w5).toBe(Math.round(w4 * 0.45));
   });
 
+  it("uses real block context to preserve the default 5-week target path", () => {
+    const meso = { durationWeeks: 5 };
+    const blockContext = {
+      mesocycle: {
+        blocks: [
+          {
+            blockType: "accumulation",
+            startWeek: 0,
+            durationWeeks: 2,
+            volumeTarget: "high",
+            intensityBias: "hypertrophy",
+          },
+          {
+            blockType: "intensification",
+            startWeek: 2,
+            durationWeeks: 2,
+            volumeTarget: "moderate",
+            intensityBias: "hypertrophy",
+          },
+          {
+            blockType: "deload",
+            startWeek: 4,
+            durationWeeks: 1,
+            volumeTarget: "low",
+            intensityBias: "hypertrophy",
+          },
+        ],
+      },
+    } as const;
+
+    expect(getWeeklyVolumeTarget(meso, "Lats", 2, { blockContext })).toBe(11);
+    expect(getWeeklyVolumeTarget(meso, "Lats", 3, { blockContext })).toBe(13);
+    expect(getWeeklyVolumeTarget(meso, "Lats", 5, { blockContext })).toBe(7);
+  });
+
+  it("reduces targets in a realization block when block context includes a low-volume peak phase", () => {
+    const meso = { durationWeeks: 6 };
+    const blockContext = {
+      mesocycle: {
+        blocks: [
+          {
+            blockType: "accumulation",
+            startWeek: 0,
+            durationWeeks: 2,
+            volumeTarget: "high",
+            intensityBias: "hypertrophy",
+          },
+          {
+            blockType: "intensification",
+            startWeek: 2,
+            durationWeeks: 2,
+            volumeTarget: "moderate",
+            intensityBias: "hypertrophy",
+          },
+          {
+            blockType: "realization",
+            startWeek: 4,
+            durationWeeks: 1,
+            volumeTarget: "low",
+            intensityBias: "strength",
+          },
+          {
+            blockType: "deload",
+            startWeek: 5,
+            durationWeeks: 1,
+            volumeTarget: "low",
+            intensityBias: "hypertrophy",
+          },
+        ],
+      },
+    } as const;
+
+    expect(getWeeklyVolumeTarget(meso, "Lats", 4, { blockContext })).toBe(16);
+    expect(getWeeklyVolumeTarget(meso, "Lats", 5, { blockContext })).toBeLessThan(
+      getWeeklyVolumeTarget(meso, "Lats", 4, { blockContext })
+    );
+    expect(getWeeklyVolumeTarget(meso, "Lats", 5, { blockContext })).toBe(13);
+  });
+
   it("returns corrected default RIR bands for a 4-week mesocycle", () => {
     const meso = {
       state: "ACTIVE_ACCUMULATION" as const,

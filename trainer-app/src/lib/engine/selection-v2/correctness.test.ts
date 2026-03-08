@@ -22,6 +22,7 @@ const loadExerciseExposureMock = vi.fn();
 const getCurrentMesoWeekMock = vi.fn();
 const getRirTargetMock = vi.fn();
 const getWeeklyVolumeTargetMock = vi.fn();
+const loadGenerationPhaseBlockContextMock = vi.fn();
 
 vi.mock("@/lib/api/workout-context", () => ({
   loadWorkoutContext: (...args: unknown[]) => loadWorkoutContextMock(...args),
@@ -37,6 +38,13 @@ vi.mock("@/lib/api/workout-context", () => ({
 
 vi.mock("@/lib/api/exercise-exposure", () => ({
   loadExerciseExposure: (...args: unknown[]) => loadExerciseExposureMock(...args),
+}));
+
+vi.mock("@/lib/api/generation-phase-block-context", () => ({
+  loadGenerationPhaseBlockContext: (...args: unknown[]) =>
+    loadGenerationPhaseBlockContextMock(...args),
+  resolveGenerationPhaseBlockContext: (...args: unknown[]) =>
+    loadGenerationPhaseBlockContextMock(...args),
 }));
 
 vi.mock("@/lib/api/mesocycle-lifecycle", async (importOriginal) => {
@@ -87,6 +95,63 @@ describe("selection correctness", () => {
     getRirTargetMock.mockReturnValue({ min: 3, max: 4 });
     getWeeklyVolumeTargetMock.mockImplementation(() => 10);
     loadExerciseExposureMock.mockResolvedValue(new Map());
+    loadGenerationPhaseBlockContextMock.mockResolvedValue({
+      blockContext: {
+        block: {
+          id: "block-1",
+          mesocycleId: "meso-1",
+          blockNumber: 1,
+          blockType: "accumulation",
+          startWeek: 0,
+          durationWeeks: 2,
+          volumeTarget: "high",
+          intensityBias: "hypertrophy",
+          adaptationType: "myofibrillar_hypertrophy",
+        },
+        weekInBlock: 1,
+        weekInMeso: 1,
+        weekInMacro: 1,
+        mesocycle: {
+          id: "meso-1",
+          macroCycleId: "macro-1",
+          mesoNumber: 1,
+          startWeek: 0,
+          durationWeeks: 5,
+          focus: "Hypertrophy",
+          volumeTarget: "high",
+          intensityBias: "hypertrophy",
+          blocks: [],
+        },
+        macroCycle: {
+          id: "macro-1",
+          userId: "user-1",
+          startDate: new Date("2026-03-01T00:00:00.000Z"),
+          endDate: new Date("2026-04-05T00:00:00.000Z"),
+          durationWeeks: 5,
+          trainingAge: "intermediate",
+          primaryGoal: "hypertrophy",
+          mesocycles: [],
+        },
+      },
+      profile: {
+        blockType: "accumulation",
+        weekInBlock: 1,
+        blockDurationWeeks: 2,
+        isDeload: false,
+      },
+      cycleContext: {
+        weekInMeso: 1,
+        weekInBlock: 1,
+        mesocycleLength: 5,
+        phase: "accumulation",
+        blockType: "accumulation",
+        isDeload: false,
+        source: "computed",
+      },
+      weekInMeso: 1,
+      weekInBlock: 1,
+      mesocycleLength: 5,
+    });
   });
 
   it("respects avoid constraints while preserving at least some intent-aligned selection", async () => {

@@ -30,6 +30,7 @@ const loadExerciseExposureMock = vi.fn();
 const getCurrentMesoWeekMock = vi.fn();
 const getRirTargetMock = vi.fn();
 const getWeeklyVolumeTargetMock = vi.fn();
+const loadGenerationPhaseBlockContextMock = vi.fn();
 
 vi.mock("./templates", () => ({
   loadTemplateDetail: (...args: unknown[]) => loadTemplateDetailMock(...args),
@@ -49,6 +50,13 @@ vi.mock("./workout-context", () => ({
 
 vi.mock("./exercise-exposure", () => ({
   loadExerciseExposure: (...args: unknown[]) => loadExerciseExposureMock(...args),
+}));
+
+vi.mock("@/lib/api/generation-phase-block-context", () => ({
+  loadGenerationPhaseBlockContext: (...args: unknown[]) =>
+    loadGenerationPhaseBlockContextMock(...args),
+  resolveGenerationPhaseBlockContext: (...args: unknown[]) =>
+    loadGenerationPhaseBlockContextMock(...args),
 }));
 
 vi.mock("@/lib/api/mesocycle-lifecycle", async (importOriginal) => {
@@ -102,6 +110,63 @@ describe("generateSessionFromIntent", () => {
     getRirTargetMock.mockReturnValue({ min: 2, max: 3 });
     getWeeklyVolumeTargetMock.mockImplementation(() => 12);
     loadExerciseExposureMock.mockResolvedValue(new Map());
+    loadGenerationPhaseBlockContextMock.mockResolvedValue({
+      blockContext: {
+        block: {
+          id: "block-1",
+          mesocycleId: "meso-1",
+          blockNumber: 1,
+          blockType: "accumulation",
+          startWeek: 0,
+          durationWeeks: 2,
+          volumeTarget: "high",
+          intensityBias: "hypertrophy",
+          adaptationType: "myofibrillar_hypertrophy",
+        },
+        weekInBlock: 2,
+        weekInMeso: 2,
+        weekInMacro: 2,
+        mesocycle: {
+          id: "meso-1",
+          macroCycleId: "macro-1",
+          mesoNumber: 1,
+          startWeek: 0,
+          durationWeeks: 5,
+          focus: "Hypertrophy",
+          volumeTarget: "high",
+          intensityBias: "hypertrophy",
+          blocks: [],
+        },
+        macroCycle: {
+          id: "macro-1",
+          userId: "user-1",
+          startDate: new Date("2026-03-01T00:00:00.000Z"),
+          endDate: new Date("2026-04-05T00:00:00.000Z"),
+          durationWeeks: 5,
+          trainingAge: "intermediate",
+          primaryGoal: "hypertrophy",
+          mesocycles: [],
+        },
+      },
+      profile: {
+        blockType: "accumulation",
+        weekInBlock: 2,
+        blockDurationWeeks: 2,
+        isDeload: false,
+      },
+      cycleContext: {
+        weekInMeso: 2,
+        weekInBlock: 2,
+        mesocycleLength: 5,
+        phase: "accumulation",
+        blockType: "accumulation",
+        isDeload: false,
+        source: "computed",
+      },
+      weekInMeso: 2,
+      weekInBlock: 2,
+      mesocycleLength: 5,
+    });
     mesocycleRoleFindManyMock.mockResolvedValue([]);
   });
 
@@ -152,6 +217,63 @@ describe("generateSessionFromIntent", () => {
     });
     getCurrentMesoWeekMock.mockReturnValue(5);
     getRirTargetMock.mockReturnValue({ min: 4, max: 6 });
+    loadGenerationPhaseBlockContextMock.mockResolvedValueOnce({
+      blockContext: {
+        block: {
+          id: "block-3",
+          mesocycleId: "meso-1",
+          blockNumber: 3,
+          blockType: "deload",
+          startWeek: 4,
+          durationWeeks: 1,
+          volumeTarget: "low",
+          intensityBias: "hypertrophy",
+          adaptationType: "recovery",
+        },
+        weekInBlock: 1,
+        weekInMeso: 5,
+        weekInMacro: 5,
+        mesocycle: {
+          id: "meso-1",
+          macroCycleId: "macro-1",
+          mesoNumber: 1,
+          startWeek: 0,
+          durationWeeks: 5,
+          focus: "Hypertrophy",
+          volumeTarget: "high",
+          intensityBias: "hypertrophy",
+          blocks: [],
+        },
+        macroCycle: {
+          id: "macro-1",
+          userId: "user-1",
+          startDate: new Date("2026-03-01T00:00:00.000Z"),
+          endDate: new Date("2026-04-05T00:00:00.000Z"),
+          durationWeeks: 5,
+          trainingAge: "intermediate",
+          primaryGoal: "hypertrophy",
+          mesocycles: [],
+        },
+      },
+      profile: {
+        blockType: "deload",
+        weekInBlock: 1,
+        blockDurationWeeks: 1,
+        isDeload: true,
+      },
+      cycleContext: {
+        weekInMeso: 5,
+        weekInBlock: 1,
+        mesocycleLength: 5,
+        phase: "deload",
+        blockType: "deload",
+        isDeload: true,
+        source: "computed",
+      },
+      weekInMeso: 5,
+      weekInBlock: 1,
+      mesocycleLength: 5,
+    });
 
     const result = await generateSessionFromIntent("user-1", { intent: "push" });
     expect("error" in result).toBe(false);

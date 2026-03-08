@@ -1,5 +1,8 @@
 import { VOLUME_LANDMARKS } from "@/lib/engine/volume-landmarks";
-import { interpolateWeeklyVolumeTarget } from "@/lib/engine/volume-targets";
+import {
+  interpolateWeeklyVolumeTarget,
+  type WeeklyVolumeTargetBlock,
+} from "@/lib/engine/volume-targets";
 import type { BlockType } from "@/lib/engine/periodization/types";
 import { getBackOffMultiplier, type PeriodizationModifiers } from "@/lib/engine/rules";
 import type { PrimaryGoal } from "@/lib/engine/types";
@@ -344,7 +347,10 @@ export function getCurrentMesoWeek(mesocycle: WeekDerivationInput): number {
 export function getWeeklyVolumeTarget(
   mesocycle: VolumeTargetInput,
   muscleGroup: string,
-  week: number
+  week: number,
+  options?: {
+    blockContext?: { mesocycle: { blocks: readonly WeeklyVolumeTargetBlock[] } } | null;
+  }
 ): number {
   const landmark = resolveLandmark(muscleGroup);
   return interpolateWeeklyVolumeTarget(
@@ -354,7 +360,10 @@ export function getWeeklyVolumeTarget(
       mrv: landmark.mrv,
     },
     mesocycle.durationWeeks,
-    week
+    week,
+    {
+      blockContext: options?.blockContext,
+    }
   );
 }
 

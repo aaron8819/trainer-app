@@ -257,6 +257,17 @@ describe("template-session context-loader mismatch policy", () => {
         }),
       })
     );
+    expect(getWeeklyVolumeTargetMock).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.any(String),
+      2,
+      expect.objectContaining({
+        blockContext: expect.objectContaining({
+          weekInBlock: 2,
+          block: expect.objectContaining({ blockType: "accumulation" }),
+        }),
+      })
+    );
   });
 
   it("forces accumulation semantics for anchored optional gap-fill after lifecycle advances to deload", async () => {

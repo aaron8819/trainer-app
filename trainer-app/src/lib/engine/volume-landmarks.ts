@@ -16,7 +16,7 @@ export const VOLUME_LANDMARKS: Record<string, VolumeLandmarks> = {
   "Quads":       { mv: 6,  mev: 8,  mav: 18, mrv: 26, sraHours: 72 },
   "Hamstrings":  { mv: 6,  mev: 6,  mav: 16, mrv: 24, sraHours: 72 },
   "Glutes":      { mv: 0,  mev: 4,  mav: 8,  mrv: 16, sraHours: 72 },
-  "Biceps":      { mv: 6,  mev: 8,  mav: 17, mrv: 26, sraHours: 36 },
+  "Biceps":      { mv: 6,  mev: 6,  mav: 14, mrv: 22, sraHours: 36 },
   "Triceps":     { mv: 4,  mev: 6,  mav: 12, mrv: 20, sraHours: 48 },
   "Calves":      { mv: 6,  mev: 8,  mav: 14, mrv: 20, sraHours: 36 },
   "Core":        { mv: 0,  mev: 0,  mav: 12, mrv: 20, sraHours: 36 },

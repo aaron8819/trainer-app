@@ -12,23 +12,27 @@ import type {
 type ProgramStatusCardVariant = "default" | "homeCompact";
 
 export function getVolumeDotClass(
-  directSets: number,
+  effectiveSets: number,
   target: number,
   mev: number,
   mav: number,
   mrv: number
 ): string {
-  if (directSets >= mrv) return "bg-rose-500";
-  if (directSets > mav && directSets < mrv) return "bg-amber-400";
-  if (directSets > target && directSets <= mav) return "bg-emerald-300";
-  if (directSets >= mev && directSets <= target) return "bg-emerald-500";
+  if (effectiveSets >= mrv) return "bg-rose-500";
+  if (effectiveSets > mav && effectiveSets < mrv) return "bg-amber-400";
+  if (effectiveSets > target && effectiveSets <= mav) return "bg-emerald-300";
+  if (effectiveSets >= mev && effectiveSets <= target) return "bg-emerald-500";
   return "bg-slate-300";
+}
+
+function formatSetCount(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
 function volumeStatus(
   row: ProgramVolumeRow
 ): "below_mev" | "at_mev" | "optimal" | "approaching_mrv" | "at_mrv" {
-  const sets = row.directSets;
+  const sets = row.effectiveSets;
   if (row.mev === 0 && sets === 0) return "below_mev";
   if (sets >= row.mrv) return "at_mrv";
   if (sets >= row.mrv * 0.85) return "approaching_mrv";
@@ -336,7 +340,7 @@ function ProgramStatusCardDefault({ initialData }: { initialData: ProgramDashboa
 
   const blockType = activeMeso.currentBlockType ?? "accumulation";
   const relevantVolume = volumeRows.filter(
-    (v) => v.mev > 0 || v.target > 0 || v.directSets > 0
+    (v) => v.mev > 0 || v.target > 0 || v.effectiveSets > 0
   );
 
   return (
@@ -371,10 +375,10 @@ function ProgramStatusCardDefault({ initialData }: { initialData: ProgramDashboa
               : "Volume This Week"}
           </p>
           <p className="mt-0.5 text-xs text-slate-500">
-            Direct sets vs weekly target (MEV to MAV).
+            Weighted effective sets vs weekly target (MEV to MAV).
           </p>
           <p className="mt-0.5 text-xs text-slate-400">
-            Indirect sets are shown as context only.
+            Raw direct and indirect sets are shown as context only.
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
@@ -416,14 +420,19 @@ function ProgramStatusCardDefault({ initialData }: { initialData: ProgramDashboa
             const status = volumeStatus(row);
             const cls = STATUS_STYLE[status];
             const barWidth =
-              row.mrv > 0 ? Math.min(100, Math.round((row.directSets / row.mrv) * 100)) : 0;
+              row.mrv > 0 ? Math.min(100, Math.round((row.effectiveSets / row.mrv) * 100)) : 0;
             return (
               <div key={row.muscle} className={`rounded-xl border p-3 ${cls}`}>
                 <p className="text-xs font-semibold">{row.muscle}</p>
-                <p className="mt-0.5 text-lg font-bold leading-none">{row.directSets}</p>
+                <p className="mt-0.5 text-lg font-bold leading-none">
+                  {formatSetCount(row.effectiveSets)}
+                </p>
                 <p className="text-xs opacity-75">target {row.target} sets</p>
-                {row.indirectSets > 0 ? (
-                  <p className="mt-0.5 text-xs opacity-65">+{row.indirectSets} indirect sets</p>
+                {row.directSets > 0 || row.indirectSets > 0 ? (
+                  <p className="mt-0.5 text-xs opacity-65">
+                    {row.directSets} direct
+                    {row.indirectSets > 0 ? `, +${row.indirectSets} indirect` : ""}
+                  </p>
                 ) : null}
                 <div className="mt-2 h-1 w-full rounded-full bg-current opacity-20">
                   <div

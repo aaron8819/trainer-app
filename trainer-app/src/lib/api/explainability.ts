@@ -43,6 +43,7 @@ import {
   loadWorkoutWithExplainabilityRelations,
   type WorkoutWithExplainabilityRelations,
 } from "./explainability/query";
+import { loadMesocycleWeekMuscleVolume } from "./weekly-volume";
 
 const HISTORY_RECENCY_WINDOW_DAYS = 42;
 const CANONICAL_RATIONALE_COMPONENT_KEYS = [
@@ -1140,57 +1141,32 @@ async function computeVolumeCompliance(
 
   const meso = await prisma.mesocycle.findUnique({
     where: { id: mesocycleSnapshot.mesocycleId },
-    select: { durationWeeks: true },
-  });
-  if (!meso) return [];
-
-  // Query prior performed workouts in the same mesocycle week, excluding this workout
-  const priorWorkouts = await prisma.workout.findMany({
-    where: {
-      mesocycleId: mesocycleSnapshot.mesocycleId,
-      mesocycleWeekSnapshot: mesocycleSnapshot.week,
-      status: { in: [...PERFORMED_WORKOUT_STATUSES] },
-      id: { not: workout.id },
-    },
-    include: {
-      exercises: {
-        include: {
-          exercise: {
-            include: {
-              exerciseMuscles: { include: { muscle: true } },
-            },
-          },
-          sets: {
-            include: {
-              logs: { orderBy: { completedAt: "desc" }, take: 1 },
-            },
-          },
+    select: {
+      durationWeeks: true,
+      startWeek: true,
+      macroCycle: {
+        select: {
+          startDate: true,
         },
       },
     },
   });
+  if (!meso) return [];
 
-  const performedEffectiveVolumeBeforeSession = new Map<string, number>();
-  for (const priorWorkout of priorWorkouts) {
-    for (const we of priorWorkout.exercises) {
-      const performedSets = we.sets.filter((s) => {
-        const latest = s.logs[0];
-        return Boolean(latest) && !latest?.wasSkipped;
-      }).length;
-      const exercise = exerciseById.get(we.exerciseId);
-      if (!exercise || performedSets === 0) {
-        continue;
-      }
-      for (const [muscle, effective] of getEffectiveStimulusByMuscle(exercise, performedSets)) {
-        performedEffectiveVolumeBeforeSession.set(
-          muscle,
-          roundToTenth(
-            (performedEffectiveVolumeBeforeSession.get(muscle) ?? 0) + effective
-          )
-        );
-      }
-    }
-  }
+  const weekStart = new Date(meso.macroCycle.startDate);
+  weekStart.setDate(weekStart.getDate() + (meso.startWeek + mesocycleSnapshot.week - 1) * 7);
+  const performedEffectiveVolumeBeforeSession = new Map<string, number>(
+    Object.entries(
+      await loadMesocycleWeekMuscleVolume(prisma, {
+        userId: workout.userId,
+        mesocycleId: mesocycleSnapshot.mesocycleId,
+        targetWeek: mesocycleSnapshot.week,
+        weekStart,
+        excludeWorkoutId: workout.id,
+        performedBefore: workout.scheduledDate,
+      })
+    ).map(([muscle, row]) => [muscle, row.effectiveSets])
+  );
 
   const plannedEffectiveVolumeThisSession = new Map<string, number>();
   for (const we of workout.exercises) {

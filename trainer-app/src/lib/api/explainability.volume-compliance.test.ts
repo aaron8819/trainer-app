@@ -236,6 +236,10 @@ describe("generateWorkoutExplanation – volumeCompliance", () => {
     mocks.mesocleFindUnique.mockResolvedValue({
       durationWeeks: 4,
       state: "ACTIVE_ACCUMULATION",
+      startWeek: 0,
+      macroCycle: {
+        startDate: new Date("2026-02-08T00:00:00.000Z"),
+      },
     });
 
     // Route workout.findMany: compliance query (has mesocycleId) vs. other queries
@@ -280,8 +284,12 @@ describe("generateWorkoutExplanation – volumeCompliance", () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (call: any[]) => call[0]?.where?.mesocycleId === "meso1"
     );
-    expect(complianceCall?.[0]?.where?.mesocycleWeekSnapshot).toBe(
-      readPersistedWorkoutMesocycleSnapshot(BASE_WORKOUT)?.week
+    expect(complianceCall?.[0]?.where?.OR).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          mesocycleWeekSnapshot: readPersistedWorkoutMesocycleSnapshot(BASE_WORKOUT)?.week,
+        }),
+      ])
     );
   });
 

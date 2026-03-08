@@ -164,7 +164,7 @@ function explainDeficitFill(candidate: SelectionCandidate, objective: SelectionO
 
   for (const [muscle, contribution] of candidate.volumeContribution) {
     const target = objective.volumeContext.weeklyTarget.get(muscle) ?? 0;
-    const actual = objective.volumeContext.weeklyActual.get(muscle) ?? 0;
+    const actual = objective.volumeContext.effectiveActual.get(muscle) ?? 0;
     const deficit = Math.max(0, target - actual);
 
     if (deficit > 0 && contribution > 0) {

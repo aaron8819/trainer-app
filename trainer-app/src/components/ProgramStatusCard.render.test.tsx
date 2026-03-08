@@ -46,6 +46,7 @@ describe("ProgramStatusCard indirect volume context", () => {
     const data = buildData([
       {
         muscle: "Front Delts",
+        effectiveSets: 0.9,
         directSets: 0,
         indirectSets: 3,
         target: 5,
@@ -57,13 +58,14 @@ describe("ProgramStatusCard indirect volume context", () => {
 
     render(<ProgramStatusCard initialData={data} />);
 
-    expect(screen.getByText("+3 indirect sets")).toBeInTheDocument();
+    expect(screen.getByText("0 direct, +3 indirect")).toBeInTheDocument();
   });
 
   it("hides indirect line when indirectSets = 0", () => {
     const data = buildData([
       {
         muscle: "Front Delts",
+        effectiveSets: 0,
         directSets: 0,
         indirectSets: 0,
         target: 5,
@@ -75,14 +77,14 @@ describe("ProgramStatusCard indirect volume context", () => {
 
     render(<ProgramStatusCard initialData={data} />);
 
-    expect(screen.queryByText("+0 indirect sets")).not.toBeInTheDocument();
-    expect(screen.queryByText(/^\+\d+ indirect sets$/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^\d+ direct/)).not.toBeInTheDocument();
   });
 
-  it("keeps direct sets as primary value and target copy unchanged", () => {
+  it("shows effective sets as the primary value and keeps raw counts contextual", () => {
     const data = buildData([
       {
         muscle: "Front Delts",
+        effectiveSets: 0.9,
         directSets: 0,
         indirectSets: 3,
         target: 5,
@@ -99,9 +101,9 @@ describe("ProgramStatusCard indirect volume context", () => {
     if (!card) return;
 
     const scoped = within(card);
-    expect(scoped.getByText("0")).toBeInTheDocument();
+    expect(scoped.getByText("0.9")).toBeInTheDocument();
     expect(scoped.getByText("target 5 sets")).toBeInTheDocument();
-    expect(scoped.getByText("+3 indirect sets")).toBeInTheDocument();
+    expect(scoped.getByText("0 direct, +3 indirect")).toBeInTheDocument();
   });
 });
 
@@ -110,6 +112,7 @@ describe("ProgramStatusCard homeCompact variant", () => {
     const data = buildData([
       {
         muscle: "Front Delts",
+        effectiveSets: 0.9,
         directSets: 0,
         indirectSets: 3,
         target: 5,

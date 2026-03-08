@@ -96,6 +96,9 @@ describe("mesocycle week close", () => {
         exercises: [
           {
             exercise: {
+              id: "ex-bench",
+              name: "Bench Press",
+              aliases: [],
               exerciseMuscles: [
                 { role: "PRIMARY", muscle: { name: "Chest" } },
                 { role: "SECONDARY", muscle: { name: "Triceps" } },
@@ -136,6 +139,48 @@ describe("mesocycle week close", () => {
         deficit: expect.any(Number),
       })
     );
+  });
+
+  it("uses weighted effective weekly actuals for deficits instead of primary-only set counts", async () => {
+    mocks.workoutFindMany.mockResolvedValue([
+      {
+        exercises: [
+          {
+            exercise: {
+              id: "ex-bench",
+              name: "Bench Press",
+              aliases: [],
+              exerciseMuscles: [
+                { role: "PRIMARY", muscle: { name: "Chest" } },
+                { role: "SECONDARY", muscle: { name: "Triceps" } },
+              ],
+            },
+            sets: [
+              { logs: [{ wasSkipped: false }] },
+              { logs: [{ wasSkipped: false }] },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    const snapshot = await buildWeekCloseDeficitSnapshot(mocks.tx as never, {
+      userId: "user-1",
+      mesocycle: {
+        id: "meso-1",
+        durationWeeks: 5,
+        sessionsPerWeek: 3,
+        startWeek: 0,
+        macroCycle: {
+          startDate: new Date("2026-03-01T00:00:00.000Z"),
+        },
+      },
+      targetWeek: 1,
+    });
+
+    const tricepsRow = snapshot.muscles.find((row) => row.muscle === "Triceps");
+    expect(tricepsRow?.actual).toBeCloseTo(0.9, 6);
+    expect(tricepsRow?.deficit).toBeGreaterThan(0);
   });
 
   it("creates a resolved row and advances lifecycle when no deficits remain", async () => {
@@ -189,6 +234,9 @@ describe("mesocycle week close", () => {
         exercises: [
           {
             exercise: {
+              id: "ex-press",
+              name: "Bench Press",
+              aliases: [],
               exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Chest" } }],
             },
             sets: [{ logs: [{ wasSkipped: false }] }],

@@ -159,7 +159,7 @@ export interface SelectionVolumeContext {
   /** Target sets per muscle this week */
   weeklyTarget: Map<Muscle, number>;
 
-  /** Sets already completed this week (direct only) */
+  /** Raw direct sets already completed this week (context/debug only; not canonical) */
   weeklyActual: Map<Muscle, number>;
 
   /** Effective sets already completed for the current week */

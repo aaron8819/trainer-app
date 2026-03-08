@@ -3,10 +3,9 @@
  * Shared by the API route and the server-component page to avoid HTTP round-trips.
  */
 
-import { WorkoutStatus, WorkoutSessionIntent } from "@prisma/client";
+import { WorkoutSessionIntent } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { VOLUME_LANDMARKS } from "@/lib/engine/volume-landmarks";
-import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 import {
   getCurrentMesoWeek,
   getRirTarget,
@@ -14,6 +13,7 @@ import {
 } from "./mesocycle-lifecycle-math";
 import { loadNextWorkoutContext } from "./next-session";
 import { findPendingWeekCloseForUser } from "./mesocycle-week-close";
+import { loadMesocycleWeekMuscleVolume, type WeeklyMuscleVolumeRow } from "./weekly-volume";
 
 export type ProgramMesoBlock = {
   blockType: string;
@@ -33,6 +33,7 @@ export type ProgramMesoSummary = {
 
 export type ProgramVolumeRow = {
   muscle: string;
+  effectiveSets: number;
   directSets: number;
   indirectSets: number;
   target: number;
@@ -125,7 +126,7 @@ export function computeDeloadReadiness(
   const isScheduled = currentWeek >= durationWeeks;
 
   const saturatedMuscles = volumeRows.filter(
-    (row) => row.mav > 0 && row.directSets >= Math.floor(row.mrv * 0.85)
+    (row) => row.mav > 0 && row.effectiveSets >= row.mrv * 0.85
   );
   const isVolumeSaturated = saturatedMuscles.length >= 2;
 
@@ -310,69 +311,13 @@ async function loadMesoWeekMuscleVolume(
   mesocycleId: string,
   weekInMeso: number,
   mesoWeekStart: Date
-): Promise<Record<string, { directSets: number; indirectSets: number }>> {
-  const mesoWeekEnd = new Date(mesoWeekStart);
-  mesoWeekEnd.setDate(mesoWeekEnd.getDate() + 7);
-  const workouts = await prisma.workout.findMany({
-    where: {
-      userId,
-      mesocycleId,
-      status: { in: [...PERFORMED_WORKOUT_STATUSES] as WorkoutStatus[] },
-      OR: [
-        { mesocycleWeekSnapshot: weekInMeso },
-        {
-          mesocycleWeekSnapshot: null,
-          scheduledDate: { gte: mesoWeekStart, lt: mesoWeekEnd },
-        },
-      ],
-    },
-    include: {
-      exercises: {
-        include: {
-          exercise: {
-            include: {
-              exerciseMuscles: { include: { muscle: true } },
-            },
-          },
-          sets: { include: { logs: { orderBy: { completedAt: "desc" }, take: 1 } } },
-        },
-      },
-    },
+): Promise<Record<string, WeeklyMuscleVolumeRow>> {
+  return loadMesocycleWeekMuscleVolume(prisma, {
+    userId,
+    mesocycleId,
+    targetWeek: weekInMeso,
+    weekStart: mesoWeekStart,
   });
-
-  const muscles: Record<string, { directSets: number; indirectSets: number }> = {};
-  for (const workout of workouts) {
-    for (const workoutExercise of workout.exercises) {
-      const completedSets = workoutExercise.sets.filter(
-        (set) => set.logs.length > 0 && !set.logs[0].wasSkipped
-      ).length;
-      if (completedSets === 0) {
-        continue;
-      }
-
-      const primaryMuscles = workoutExercise.exercise.exerciseMuscles
-        .filter((mapping) => mapping.role === "PRIMARY")
-        .map((mapping) => mapping.muscle.name);
-      const secondaryMuscles = workoutExercise.exercise.exerciseMuscles
-        .filter((mapping) => mapping.role === "SECONDARY")
-        .map((mapping) => mapping.muscle.name);
-
-      for (const muscle of primaryMuscles) {
-        if (!muscles[muscle]) {
-          muscles[muscle] = { directSets: 0, indirectSets: 0 };
-        }
-        muscles[muscle].directSets += completedSets;
-      }
-      for (const muscle of secondaryMuscles) {
-        if (!muscles[muscle]) {
-          muscles[muscle] = { directSets: 0, indirectSets: 0 };
-        }
-        muscles[muscle].indirectSets += completedSets;
-      }
-    }
-  }
-
-  return muscles;
 }
 
 export async function loadHomeProgramSupport(userId: string): Promise<HomeProgramSupportData> {
@@ -490,7 +435,7 @@ function buildProgramVolumeRows(input: {
     id: string;
   } | null;
   week: number;
-  weekMuscles: Record<string, { directSets: number; indirectSets: number }>;
+  weekMuscles: Record<string, WeeklyMuscleVolumeRow>;
 }): ProgramVolumeRow[] {
   const { mesoRecord, week, weekMuscles } = input;
   const researchBackedMuscles = new Set([
@@ -511,10 +456,11 @@ function buildProgramVolumeRows(input: {
   return Object.entries(VOLUME_LANDMARKS)
     .filter(([muscle]) => researchBackedMuscles.has(muscle))
     .map(([muscle, landmarks]) => {
-      const data = weekMuscles[muscle] ?? { directSets: 0, indirectSets: 0 };
+      const data = weekMuscles[muscle] ?? { directSets: 0, indirectSets: 0, effectiveSets: 0 };
       const target = mesoRecord ? getWeeklyVolumeTarget(mesoRecord, muscle, week) : landmarks.mev;
       return {
         muscle,
+        effectiveSets: data.effectiveSets,
         directSets: data.directSets,
         indirectSets: data.indirectSets,
         target,
@@ -523,10 +469,10 @@ function buildProgramVolumeRows(input: {
         mrv: landmarks.mrv,
       };
     })
-    .filter((row) => row.mav > 0 && (row.target > 0 || row.directSets > 0))
+    .filter((row) => row.mav > 0 && (row.target > 0 || row.effectiveSets > 0))
     .sort((left, right) => {
-      const leftRatio = left.target === 0 ? 0 : left.directSets / left.target;
-      const rightRatio = right.target === 0 ? 0 : right.directSets / right.target;
+      const leftRatio = left.target === 0 ? 0 : left.effectiveSets / left.target;
+      const rightRatio = right.target === 0 ? 0 : right.effectiveSets / right.target;
       return leftRatio - rightRatio;
     });
 }
@@ -601,8 +547,8 @@ export async function loadProgramDashboardData(
       )
     : 0;
 
-  let viewedWeekMuscles: Record<string, { directSets: number; indirectSets: number }> = {};
-  let currentWeekMuscles: Record<string, { directSets: number; indirectSets: number }> = {};
+  let viewedWeekMuscles: Record<string, WeeklyMuscleVolumeRow> = {};
+  let currentWeekMuscles: Record<string, WeeklyMuscleVolumeRow> = {};
   if (mesoRecord) {
     const mesoStart = new Date(mesoRecord.macroCycle.startDate);
     mesoStart.setDate(mesoStart.getDate() + mesoRecord.startWeek * 7);

@@ -186,6 +186,42 @@ describe("loadProgramDashboardData", () => {
       expect(result.volumeThisWeek.map((row) => row.muscle)).toContain("Front Delts");
     });
 
+    it("uses weighted effective sets as the canonical dashboard actual while keeping raw counts contextual", async () => {
+      setupDashboardMocks();
+      mocks.workoutFindMany.mockResolvedValueOnce([
+        {
+          id: "w1",
+          exercises: [
+            {
+              exercise: {
+                id: "ex-bench",
+                name: "Bench Press",
+                aliases: [],
+                exerciseMuscles: [
+                  { role: "PRIMARY", muscle: { name: "Chest" } },
+                  { role: "SECONDARY", muscle: { name: "Front Delts" } },
+                  { role: "SECONDARY", muscle: { name: "Triceps" } },
+                ],
+              },
+              sets: [
+                { logs: [{ wasSkipped: false }] },
+                { logs: [{ wasSkipped: false }] },
+              ],
+            },
+          ],
+        },
+      ]);
+
+      const result = await loadProgramDashboardData("user-1");
+      const frontDeltRow = result.volumeThisWeek.find((row) => row.muscle === "Front Delts");
+
+      expect(frontDeltRow).toMatchObject({
+        effectiveSets: 0.6,
+        directSets: 0,
+        indirectSets: 2,
+      });
+    });
+
     it("keeps Front Delts when direct sets are present", async () => {
       setupDashboardMocks();
       mocks.workoutFindMany.mockResolvedValueOnce([
@@ -338,6 +374,41 @@ describe("loadProgramDashboardData", () => {
       shouldDeload: true,
       urgency: "scheduled",
     });
+  });
+
+  it("uses weighted effective weekly volume, not primary-only counts, for deload readiness saturation", async () => {
+    setupDashboardMocks({ durationWeeks: 5 }, 4);
+    mocks.workoutFindMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          id: "current-week",
+          exercises: [
+            {
+              exercise: {
+                id: "ex-bench",
+                name: "Bench Press",
+                aliases: [],
+                exerciseMuscles: [
+                  { role: "PRIMARY", muscle: { name: "Chest" } },
+                  { role: "SECONDARY", muscle: { name: "Front Delts" } },
+                  { role: "SECONDARY", muscle: { name: "Triceps" } },
+                ],
+              },
+              sets: Array.from({ length: 40 }, () => ({ logs: [{ wasSkipped: false }] })),
+            },
+          ],
+        },
+      ]);
+
+    const result = await loadProgramDashboardData("user-1", 1);
+
+    expect(result.deloadReadiness).toMatchObject({
+      shouldDeload: true,
+      urgency: "recommended",
+    });
+    expect(result.deloadReadiness?.reason).toContain("Front Delts");
+    expect(result.deloadReadiness?.reason).toContain("Triceps");
   });
 
   it("fills missing trailing block coverage with a deload week for timeline continuity", async () => {

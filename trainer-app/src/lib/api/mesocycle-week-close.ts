@@ -1,10 +1,9 @@
-import type { MesocyclePhase, MesocycleWeekCloseResolution, Prisma } from "@prisma/client";
-import { WorkoutStatus } from "@prisma/client";
+import type { MesocyclePhase, MesocycleWeekCloseResolution, Prisma, WorkoutStatus } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { VOLUME_LANDMARKS } from "@/lib/engine/volume-landmarks";
-import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 import { getWeeklyVolumeTarget } from "./mesocycle-lifecycle-math";
 import { transitionMesocycleStateInTransaction } from "./mesocycle-lifecycle-state";
+import { loadMesocycleWeekMuscleVolume } from "./weekly-volume";
 
 type Tx = Prisma.TransactionClient;
 
@@ -80,57 +79,10 @@ async function loadWeekMuscleVolume(tx: Tx, input: {
   targetWeek: number;
   weekStart: Date;
 }): Promise<Record<string, number>> {
-  const weekEnd = new Date(input.weekStart);
-  weekEnd.setDate(weekEnd.getDate() + 7);
-
-  const workouts = await tx.workout.findMany({
-    where: {
-      userId: input.userId,
-      mesocycleId: input.mesocycleId,
-      status: { in: [...PERFORMED_WORKOUT_STATUSES] as WorkoutStatus[] },
-      OR: [
-        { mesocycleWeekSnapshot: input.targetWeek },
-        {
-          mesocycleWeekSnapshot: null,
-          scheduledDate: { gte: input.weekStart, lt: weekEnd },
-        },
-      ],
-    },
-    include: {
-      exercises: {
-        include: {
-          exercise: {
-            include: {
-              exerciseMuscles: { include: { muscle: true } },
-            },
-          },
-          sets: { include: { logs: { orderBy: { completedAt: "desc" }, take: 1 } } },
-        },
-      },
-    },
-  });
-
-  const directSetsByMuscle: Record<string, number> = {};
-  for (const workout of workouts) {
-    for (const workoutExercise of workout.exercises) {
-      const completedSets = workoutExercise.sets.filter(
-        (set) => set.logs.length > 0 && !set.logs[0].wasSkipped
-      ).length;
-      if (completedSets <= 0) {
-        continue;
-      }
-
-      for (const mapping of workoutExercise.exercise.exerciseMuscles) {
-        if (mapping.role !== "PRIMARY") {
-          continue;
-        }
-        directSetsByMuscle[mapping.muscle.name] =
-          (directSetsByMuscle[mapping.muscle.name] ?? 0) + completedSets;
-      }
-    }
-  }
-
-  return directSetsByMuscle;
+  const weeklyVolume = await loadMesocycleWeekMuscleVolume(tx, input);
+  return Object.fromEntries(
+    Object.entries(weeklyVolume).map(([muscle, row]) => [muscle, row.effectiveSets])
+  );
 }
 
 export async function buildWeekCloseDeficitSnapshot(tx: Tx, input: {

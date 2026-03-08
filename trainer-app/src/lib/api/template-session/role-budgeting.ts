@@ -244,10 +244,7 @@ export function resolveRoleFixtureSetTarget(
     lifecycleWeeklyTargets,
     objective
   );
-  const performedThisWeek =
-    objective.volumeContext.effectiveActual.get(anchorMuscle) ??
-    objective.volumeContext.weeklyActual.get(anchorMuscle) ??
-    0;
+  const performedThisWeek = objective.volumeContext.effectiveActual.get(anchorMuscle) ?? 0;
   const assignedInSession = assignedEffectiveByMuscleInSession.get(anchorMuscle) ?? 0;
   const reservedFloorForRemaining = (remainingRoleFixturesByAnchor.get(anchor.muscle) ?? []).reduce(
     (sum, fixture) => {
@@ -287,9 +284,7 @@ export function resolveRoleFixtureSetTarget(
       );
       const tolerance = getNonAnchorOvershootTolerance(nonAnchorWeeklyTarget);
       const projectedEffectiveTotal =
-        (objective.volumeContext.effectiveActual.get(muscle) ??
-          objective.volumeContext.weeklyActual.get(muscle) ??
-          0) +
+        (objective.volumeContext.effectiveActual.get(muscle) ?? 0) +
         (assignedEffectiveByMuscleInSession.get(muscle) ?? 0) +
         effectiveSets;
       const collateralContributionPerSet = setCount > 0 ? effectiveSets / setCount : 0;

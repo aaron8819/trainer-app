@@ -33,26 +33,35 @@ function parseSnapshot(value: string | null): RestTimerSnapshot | null {
   }
 }
 
+function readTimerFromStorage(storageKey: string): RestTimerSnapshot | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const restored = parseSnapshot(window.sessionStorage.getItem(storageKey));
+  if (!restored) {
+    return null;
+  }
+
+  if (restored.endAtMs <= Date.now()) {
+    window.sessionStorage.removeItem(storageKey);
+    return null;
+  }
+
+  return restored;
+}
+
 export function useRestTimerState(workoutId: string) {
   const storageKey = useMemo(() => getStorageKey(workoutId), [workoutId]);
-  const [timer, setTimer] = useState<RestTimerSnapshot | null>(null);
+  const [timer, setTimer] = useState<RestTimerSnapshot | null>(() => readTimerFromStorage(storageKey));
   const syncTimerFromStorage = useCallback(() => {
-    const restored = parseSnapshot(window.sessionStorage.getItem(storageKey));
+    const restored = readTimerFromStorage(storageKey);
     if (!restored) {
-      setTimer(null);
-      return;
-    }
-    if (restored.endAtMs <= Date.now()) {
-      window.sessionStorage.removeItem(storageKey);
       setTimer(null);
       return;
     }
     setTimer(restored);
   }, [storageKey]);
-
-  useEffect(() => {
-    syncTimerFromStorage();
-  }, [syncTimerFromStorage]);
 
   useEffect(() => {
     const handleVisibilityChange = () => {

@@ -141,22 +141,27 @@ export function WorkoutActiveSetCard({
     updateDraftBuffer,
   } = formActions;
   // Auto-dismiss "Draft restored" after 3 s; also hide on any field interaction
-  const [showDraftRestored, setShowDraftRestored] = useState(false);
+  const [dismissedDraftRestoredSetId, setDismissedDraftRestoredSetId] = useState<string | null>(null);
   const draftRestoredTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showDraftRestored = restoredSetIds.has(setId) && dismissedDraftRestoredSetId !== setId;
+
   useEffect(() => {
-    if (!restoredSetIds.has(setId)) {
+    if (!showDraftRestored) {
       return;
     }
-    setShowDraftRestored(true);
-    draftRestoredTimerRef.current = setTimeout(() => setShowDraftRestored(false), 3000);
+
+    draftRestoredTimerRef.current = setTimeout(() => {
+      setDismissedDraftRestoredSetId(setId);
+    }, 3000);
+
     return () => {
       if (draftRestoredTimerRef.current !== null) clearTimeout(draftRestoredTimerRef.current);
     };
-  }, [restoredSetIds, setId]);
+  }, [setId, showDraftRestored]);
 
   const dismissDraftRestored = () => {
     if (draftRestoredTimerRef.current !== null) clearTimeout(draftRestoredTimerRef.current);
-    setShowDraftRestored(false);
+    setDismissedDraftRestoredSetId(setId);
   };
 
   const repsDraft = draftBuffersBySet[setId]?.reps ?? toInputNumberString(activeSet.set.actualReps);

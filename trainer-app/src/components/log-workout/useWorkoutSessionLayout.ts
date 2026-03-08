@@ -16,7 +16,9 @@ export function useWorkoutSessionLayout(stickyOffset = 0) {
     accessory: null,
   });
 
-  stickyOffsetRef.current = stickyOffset;
+  useEffect(() => {
+    stickyOffsetRef.current = stickyOffset;
+  }, [stickyOffset]);
 
   const scrollActiveSetIntoView = useCallback(() => {
     const element = activeSetPanelRef.current;

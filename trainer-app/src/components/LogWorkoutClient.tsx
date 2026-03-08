@@ -11,7 +11,6 @@ import type {
   ExerciseSection,
   LogExerciseInput,
   LogSetInput,
-  NormalizedExercises,
   RpeAdherenceSummary,
   SectionedExercises,
 } from "@/components/log-workout/types";
@@ -189,7 +188,6 @@ export default function LogWorkoutClient({
 
   useEffect(() => {
     if (activeCardMode.kind !== "edit") {
-      setShowDiscardEditConfirm(false);
       pendingEditExitActionRef.current = null;
     }
   }, [activeCardMode]);
@@ -284,13 +282,6 @@ export default function LogWorkoutClient({
     [setData]
   );
 
-  const setSingleField = useCallback(
-    (setId: string, field: keyof LogSetInput, value: number | boolean | null) => {
-      updateSetFields(setId, (set) => ({ ...set, [field]: value }));
-    },
-    [updateSetFields]
-  );
-
   const findPreviousLoggedSet = useCallback(
     (exercise: LogExerciseInput, currentSetIndex: number) => {
       for (let index = currentSetIndex - 1; index >= 0; index -= 1) {
@@ -363,7 +354,7 @@ export default function LogWorkoutClient({
         actualRpe: draft?.rpe !== undefined ? parseNullableNumber(draft.rpe) : set.actualRpe ?? null,
       };
     },
-    [draftBuffersBySet, isDumbbellExercise]
+    [draftBuffersBySet]
   );
 
   const {
@@ -409,17 +400,24 @@ export default function LogWorkoutClient({
 
     const editSet = flatSets.find((item) => item.set.setId === activeCardMode.setId);
     if (!editSet || !loggedSetIds.has(activeCardMode.setId)) {
-      setActiveCardMode({ kind: "live" });
-      return;
+      const exitTimerId = window.setTimeout(() => {
+        pendingEditExitActionRef.current = null;
+        setShowDiscardEditConfirm(false);
+        setActiveCardMode({ kind: "live" });
+      }, 0);
+      return () => window.clearTimeout(exitTimerId);
     }
 
-    setActiveSetId(activeCardMode.setId);
+    if (resolvedActiveSetId !== activeCardMode.setId) {
+      setActiveSetId(activeCardMode.setId);
+    }
+
     seedDraftFromValues(activeCardMode.setId, {
       reps: editSet.set.actualReps ?? null,
       load: editSet.set.actualLoad ?? null,
       rpe: editSet.set.actualRpe ?? null,
     });
-  }, [activeCardMode, flatSets, loggedSetIds, seedDraftFromValues, setActiveSetId]);
+  }, [activeCardMode, flatSets, loggedSetIds, resolvedActiveSetId, seedDraftFromValues, setActiveSetId]);
 
   const exitEditMode = useCallback(
     (options?: { restoreLiveSet?: boolean; discardChanges?: boolean }) => {
@@ -438,6 +436,7 @@ export default function LogWorkoutClient({
         setActiveSetId(currentMode.returnSetId);
       }
 
+      setShowDiscardEditConfirm(false);
       setActiveCardMode({ kind: "live" });
     },
     [clearDraft, clearDraftInputBuffers, resetDraftVisualState, setActiveSetId]
@@ -605,6 +604,7 @@ export default function LogWorkoutClient({
   const sessionTerminated = completion.completed || completion.skipped;
   const showFinishBar = !sessionTerminated && allSetsLogged;
   const finishBarBottomOffset = showFinishBar && keyboardHeight > 0 ? keyboardHeight : 0;
+  const discardEditConfirmOpen = activeCardMode.kind === "edit" && showDiscardEditConfirm;
   const resolvedActiveSetValues = activeSet
     ? resolveDraftNumericValues(activeSet.set, activeSet.exercise)
     : { actualReps: null, actualLoad: null, actualRpe: null };
@@ -839,7 +839,7 @@ export default function LogWorkoutClient({
         </WorkoutFooter>
       ) : null}
 
-      {showDiscardEditConfirm ? (
+      {discardEditConfirmOpen ? (
         <div
           aria-label="Discard edit confirmation"
           aria-modal="true"

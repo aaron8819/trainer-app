@@ -25,11 +25,22 @@ export const WorkoutTimerHud = memo(function WorkoutTimerHud({
 }: WorkoutTimerHudProps) {
   const [expanded, setExpanded] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const collapseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!timer || keyboardOpen) {
-      setExpanded(false);
+      collapseTimerRef.current = setTimeout(() => {
+        setExpanded(false);
+        collapseTimerRef.current = null;
+      }, 0);
     }
+
+    return () => {
+      if (collapseTimerRef.current !== null) {
+        clearTimeout(collapseTimerRef.current);
+        collapseTimerRef.current = null;
+      }
+    };
   }, [keyboardOpen, timer]);
 
   useEffect(() => {

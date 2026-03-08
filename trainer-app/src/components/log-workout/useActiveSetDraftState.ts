@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type FocusEvent } from "react";
+import { useCallback, useEffect, useReducer, useRef, type FocusEvent } from "react";
 import { useSetDraft } from "@/components/log-workout/useSetDraft";
 import { quantizeLoad } from "@/lib/units/load-quantization";
 import type {
@@ -37,6 +37,48 @@ function toInputNumberString(value: number | null | undefined): string {
   return String(value);
 }
 
+type DraftUiState = {
+  draftBuffersBySet: Record<string, SetDraftBuffers>;
+  touchedFieldsBySet: Record<string, PrefilledFieldState>;
+  prefilledFieldsBySet: Record<string, PrefilledFieldState>;
+};
+
+type DraftUiAction =
+  | {
+      type: "draftBuffers";
+      updater: (prev: Record<string, SetDraftBuffers>) => Record<string, SetDraftBuffers>;
+    }
+  | {
+      type: "touchedFields";
+      updater: (prev: Record<string, PrefilledFieldState>) => Record<string, PrefilledFieldState>;
+    }
+  | {
+      type: "prefilledFields";
+      updater: (prev: Record<string, PrefilledFieldState>) => Record<string, PrefilledFieldState>;
+    };
+
+function draftUiReducer(state: DraftUiState, action: DraftUiAction): DraftUiState {
+  switch (action.type) {
+    case "draftBuffers":
+      return {
+        ...state,
+        draftBuffersBySet: action.updater(state.draftBuffersBySet),
+      };
+    case "touchedFields":
+      return {
+        ...state,
+        touchedFieldsBySet: action.updater(state.touchedFieldsBySet),
+      };
+    case "prefilledFields":
+      return {
+        ...state,
+        prefilledFieldsBySet: action.updater(state.prefilledFieldsBySet),
+      };
+    default:
+      return state;
+  }
+}
+
 export function useActiveSetDraftState({
   workoutId,
   activeSetIds,
@@ -58,43 +100,55 @@ export function useActiveSetDraftState({
   toStoredLoadValue: (value: number | null | undefined, isDumbbell: boolean) => number | null;
   isDumbbellExercise: (exercise: LogExerciseInput) => boolean;
 }) {
-  const [draftBuffersBySet, setDraftBuffersBySet] = useState<Record<string, SetDraftBuffers>>({});
-  const [touchedFieldsBySet, setTouchedFieldsBySet] = useState<Record<string, PrefilledFieldState>>({});
-  const [prefilledFieldsBySet, setPrefilledFieldsBySet] = useState<Record<string, PrefilledFieldState>>({});
+  const [draftUiState, dispatchDraftUi] = useReducer(draftUiReducer, {
+    draftBuffersBySet: {},
+    touchedFieldsBySet: {},
+    prefilledFieldsBySet: {},
+  });
+  const { draftBuffersBySet, touchedFieldsBySet, prefilledFieldsBySet } = draftUiState;
   const restoredBufferIdsRef = useRef<Set<string>>(new Set());
 
   const updateDraftBuffer = useCallback(
     (setId: string, field: keyof SetDraftBuffers, value: string) => {
-      setDraftBuffersBySet((prev) => ({
-        ...prev,
-        [setId]: {
-          ...(prev[setId] ?? {}),
-          [field]: value,
-        },
-      }));
+      dispatchDraftUi({
+        type: "draftBuffers",
+        updater: (prev) => ({
+          ...prev,
+          [setId]: {
+            ...(prev[setId] ?? {}),
+            [field]: value,
+          },
+        }),
+      });
     },
     []
   );
 
   const markFieldTouched = useCallback((setId: string, field: keyof PrefilledFieldState) => {
-    setTouchedFieldsBySet((prev) => ({
-      ...prev,
-      [setId]: {
-        ...buildEmptyFieldState(prev[setId]),
-        [field]: true,
-      },
-    }));
+    dispatchDraftUi({
+      type: "touchedFields",
+      updater: (prev) => ({
+        ...prev,
+        [setId]: {
+          ...buildEmptyFieldState(prev[setId]),
+          [field]: true,
+        },
+      }),
+    });
   }, []);
 
   const setFieldPrefilled = useCallback(
     (setId: string, field: keyof PrefilledFieldState, isPrefilled: boolean) => {
-      setPrefilledFieldsBySet((prev) => ({
-        ...prev,
-        [setId]: {
-          ...buildEmptyFieldState(prev[setId]),
-          [field]: isPrefilled,
-        },
-      }));
+      dispatchDraftUi({
+        type: "prefilledFields",
+        updater: (prev) => ({
+          ...prev,
+          [setId]: {
+            ...buildEmptyFieldState(prev[setId]),
+            [field]: isPrefilled,
+          },
+        }),
+      });
     },
     []
   );
@@ -102,18 +156,27 @@ export function useActiveSetDraftState({
   const handleRestoreDraft = useCallback(
     (setId: string, draft: SetDraftBuffers) => {
       restoredBufferIdsRef.current.add(setId);
-      setDraftBuffersBySet((prev) => ({
-        ...prev,
-        [setId]: { reps: draft.reps, load: draft.load, rpe: draft.rpe },
-      }));
-      setTouchedFieldsBySet((prev) => ({
-        ...prev,
-        [setId]: buildEmptyFieldState(prev[setId]),
-      }));
-      setPrefilledFieldsBySet((prev) => ({
-        ...prev,
-        [setId]: buildEmptyFieldState(prev[setId]),
-      }));
+      dispatchDraftUi({
+        type: "draftBuffers",
+        updater: (prev) => ({
+          ...prev,
+          [setId]: { reps: draft.reps, load: draft.load, rpe: draft.rpe },
+        }),
+      });
+      dispatchDraftUi({
+        type: "touchedFields",
+        updater: (prev) => ({
+          ...prev,
+          [setId]: buildEmptyFieldState(prev[setId]),
+        }),
+      });
+      dispatchDraftUi({
+        type: "prefilledFields",
+        updater: (prev) => ({
+          ...prev,
+          [setId]: buildEmptyFieldState(prev[setId]),
+        }),
+      });
     },
     []
   );
@@ -178,33 +241,41 @@ export function useActiveSetDraftState({
       return;
     }
 
-    setDraftBuffersBySet((prev) => ({
-      ...prev,
-      [setId]: {
-        reps: toInputNumberString(prefillValues.actualReps),
-        load: toInputNumberString(prefillValues.actualLoad),
-        rpe: toInputNumberString(prefillValues.actualRpe),
-      },
-    }));
-    setTouchedFieldsBySet((prev) => ({
-      ...prev,
-      [setId]: { actualReps: false, actualLoad: false, actualRpe: false },
-    }));
-    setPrefilledFieldsBySet((prev) => ({
-      ...prev,
-      [setId]: {
-        actualReps: prefillValues.actualReps != null,
-        actualLoad: prefillValues.actualLoad != null,
-        actualRpe: prefillValues.actualRpe != null,
-      },
-    }));
+    dispatchDraftUi({
+      type: "draftBuffers",
+      updater: (prev) => ({
+        ...prev,
+        [setId]: {
+          reps: toInputNumberString(prefillValues.actualReps),
+          load: toInputNumberString(prefillValues.actualLoad),
+          rpe: toInputNumberString(prefillValues.actualRpe),
+        },
+      }),
+    });
+    dispatchDraftUi({
+      type: "touchedFields",
+      updater: (prev) => ({
+        ...prev,
+        [setId]: { actualReps: false, actualLoad: false, actualRpe: false },
+      }),
+    });
+    dispatchDraftUi({
+      type: "prefilledFields",
+      updater: (prev) => ({
+        ...prev,
+        [setId]: {
+          actualReps: prefillValues.actualReps != null,
+          actualLoad: prefillValues.actualLoad != null,
+          actualRpe: prefillValues.actualRpe != null,
+        },
+      }),
+    });
   }, [
     activeSet,
     draftBuffersBySet,
     findPreviousLoggedSet,
     loggedSetIds,
     touchedFieldsBySet,
-    toInputNumberString,
   ]);
 
   useEffect(() => {
@@ -237,10 +308,13 @@ export function useActiveSetDraftState({
 
   const clearDraftInputBuffers = useCallback((setId: string) => {
     restoredBufferIdsRef.current.delete(setId);
-    setDraftBuffersBySet((prev) => {
-      const next = { ...prev };
-      delete next[setId];
-      return next;
+    dispatchDraftUi({
+      type: "draftBuffers",
+      updater: (prev) => {
+        const next = { ...prev };
+        delete next[setId];
+        return next;
+      },
     });
   }, []);
 
@@ -251,39 +325,54 @@ export function useActiveSetDraftState({
       options?: { prefilled?: boolean }
     ) => {
       restoredBufferIdsRef.current.delete(setId);
-      setDraftBuffersBySet((prev) => ({
-        ...prev,
-        [setId]: {
-          reps: toInputNumberString(values.reps),
-          load: toInputNumberString(values.load),
-          rpe: toInputNumberString(values.rpe),
-        },
-      }));
-      setTouchedFieldsBySet((prev) => ({
-        ...prev,
-        [setId]: { actualReps: false, actualLoad: false, actualRpe: false },
-      }));
-      setPrefilledFieldsBySet((prev) => ({
-        ...prev,
-        [setId]: {
-          actualReps: options?.prefilled ?? false,
-          actualLoad: options?.prefilled ?? false,
-          actualRpe: options?.prefilled ?? false,
-        },
-      }));
+      dispatchDraftUi({
+        type: "draftBuffers",
+        updater: (prev) => ({
+          ...prev,
+          [setId]: {
+            reps: toInputNumberString(values.reps),
+            load: toInputNumberString(values.load),
+            rpe: toInputNumberString(values.rpe),
+          },
+        }),
+      });
+      dispatchDraftUi({
+        type: "touchedFields",
+        updater: (prev) => ({
+          ...prev,
+          [setId]: { actualReps: false, actualLoad: false, actualRpe: false },
+        }),
+      });
+      dispatchDraftUi({
+        type: "prefilledFields",
+        updater: (prev) => ({
+          ...prev,
+          [setId]: {
+            actualReps: options?.prefilled ?? false,
+            actualLoad: options?.prefilled ?? false,
+            actualRpe: options?.prefilled ?? false,
+          },
+        }),
+      });
     },
     []
   );
 
   const resetDraftVisualState = useCallback((setId: string) => {
-    setTouchedFieldsBySet((prev) => ({
-      ...prev,
-      [setId]: { actualReps: false, actualLoad: false, actualRpe: false },
-    }));
-    setPrefilledFieldsBySet((prev) => ({
-      ...prev,
-      [setId]: { actualReps: false, actualLoad: false, actualRpe: false },
-    }));
+    dispatchDraftUi({
+      type: "touchedFields",
+      updater: (prev) => ({
+        ...prev,
+        [setId]: { actualReps: false, actualLoad: false, actualRpe: false },
+      }),
+    });
+    dispatchDraftUi({
+      type: "prefilledFields",
+      updater: (prev) => ({
+        ...prev,
+        [setId]: { actualReps: false, actualLoad: false, actualRpe: false },
+      }),
+    });
   }, []);
 
   const setRepsValue = useCallback(

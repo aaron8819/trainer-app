@@ -21,6 +21,7 @@ import {
 } from "./weekly-volume";
 import { loadRecentMuscleStimulus } from "./recent-muscle-stimulus";
 import { computeMuscleOpportunity, type OpportunityState } from "./opportunity";
+import { resolvePhaseBlockProfile } from "./generation-phase-block-context";
 
 export type ProgramMesoBlock = {
   blockType: string;
@@ -186,13 +187,6 @@ export type ActiveBlockPhase = {
   coachingCue: string;
 };
 
-const BLOCK_COACHING_CUES: Record<string, string> = {
-  accumulation: "Accumulation phase - build volume, work within 2-3 RIR.",
-  intensification: "Intensification phase - heavier loads, push to 0-1 RIR.",
-  realization: "Peak week - express your strength today.",
-  deload: "Deload week - keep loads light, focus on technique and recovery.",
-};
-
 type ProgramBlockRecord = { blockType: string; startWeek: number; durationWeeks: number };
 
 function normalizeMesoBlocks(input: {
@@ -266,11 +260,33 @@ function resolveBlockTypeForWeek(input: {
   return null;
 }
 
-function getCoachingCueForBlockType(blockType: string | null): string {
+function formatRirTarget(rirTarget: { min: number; max: number } | null | undefined): string | null {
+  if (!rirTarget) return null;
+  return `${rirTarget.min}-${rirTarget.max} RIR`;
+}
+
+function getCoachingCueForBlockType(
+  blockType: string | null,
+  rirTarget?: { min: number; max: number } | null
+): string {
+  const formattedRir = formatRirTarget(rirTarget);
   if (!blockType) {
     return "Phase context unavailable for current week.";
   }
-  return BLOCK_COACHING_CUES[blockType] ?? `Current phase: ${blockType}.`;
+  switch (blockType) {
+    case "accumulation":
+      return `Accumulation phase - build volume, work within ${formattedRir ?? "2-3 RIR"}.`;
+    case "intensification":
+      return `Intensification phase - heavier loads, push to ${formattedRir ?? "0-1 RIR"}.`;
+    case "realization":
+      return formattedRir
+        ? `Peak week - express your strength with ${formattedRir}.`
+        : "Peak week - express your strength today.";
+    case "deload":
+      return "Deload week - keep loads light, focus on technique and recovery.";
+    default:
+      return `Current phase: ${blockType}.`;
+  }
 }
 
 export async function loadActiveBlockPhase(userId: string): Promise<ActiveBlockPhase | null> {
@@ -306,6 +322,14 @@ export async function loadActiveBlockPhase(userId: string): Promise<ActiveBlockP
     mesoState: meso.state,
     blocks: normalizedBlocks,
   });
+  const phaseProfile = resolvePhaseBlockProfile({
+    mesocycleStartWeek: meso.startWeek,
+    mesocycleLength: meso.durationWeeks,
+    mesocycleState: meso.state,
+    blocks: normalizedBlocks,
+    weekInMeso,
+  });
+  const rirTarget = getRirTarget(meso, weekInMeso, phaseProfile);
   const sessionsUntilDeload = Math.max(
     0,
     (meso.durationWeeks - 1) * meso.sessionsPerWeek - meso.accumulationSessionsCompleted
@@ -316,7 +340,7 @@ export async function loadActiveBlockPhase(userId: string): Promise<ActiveBlockP
     weekInMeso,
     mesoDurationWeeks: meso.durationWeeks,
     sessionsUntilDeload,
-    coachingCue: getCoachingCueForBlockType(blockType),
+    coachingCue: getCoachingCueForBlockType(blockType, rirTarget),
   };
 }
 
@@ -625,6 +649,15 @@ export async function loadProgramDashboardData(
         blocks: normalizedBlocks,
       })
     : null;
+  const viewedPhaseProfile = mesoRecord
+    ? resolvePhaseBlockProfile({
+        mesocycleStartWeek: mesoRecord.startWeek,
+        mesocycleLength: mesoRecord.durationWeeks,
+        mesocycleState: mesoRecord.state,
+        blocks: normalizedBlocks,
+        weekInMeso: effectiveViewWeek,
+      })
+    : null;
 
   const sessionsUntilDeload = mesoRecord
     ? Math.max(
@@ -672,7 +705,10 @@ export async function loadProgramDashboardData(
       ? Promise.resolve(baseViewedWeekVolume)
       : attachOpportunityToVolumeRows(userId, baseCurrentWeekVolume),
   ]);
-  const rirTarget = mesoRecord ? getRirTarget(mesoRecord, effectiveViewWeek) : null;
+  const rirTarget =
+    mesoRecord && viewedPhaseProfile
+      ? getRirTarget(mesoRecord, effectiveViewWeek, viewedPhaseProfile)
+      : null;
   const deloadReadiness = mesoRecord
     ? computeDeloadReadiness(currentWeek, mesoRecord.durationWeeks, liveCurrentWeekVolume)
     : null;
@@ -701,7 +737,7 @@ export async function loadProgramDashboardData(
     volumeThisWeek,
     deloadReadiness,
     rirTarget,
-    coachingCue: getCoachingCueForBlockType(viewedBlockType),
+    coachingCue: getCoachingCueForBlockType(viewedBlockType, rirTarget),
   };
 }
 

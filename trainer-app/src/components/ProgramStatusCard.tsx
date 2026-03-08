@@ -114,22 +114,22 @@ const BLOCK_PILL_STYLE: Record<string, { pill: string; label: string; desc: stri
   accumulation: {
     pill: "bg-blue-500 text-white",
     label: "Acc",
-    desc: "High volume, moderate intensity. Work within 2-3 RIR.",
+    desc: "High volume accumulation phase.",
   },
   intensification: {
     pill: "bg-purple-500 text-white",
     label: "Int",
-    desc: "Moderate volume, high intensity. Push to 0-1 RIR.",
+    desc: "Lower volume, higher intensity phase.",
   },
   realization: {
     pill: "bg-orange-500 text-white",
     label: "Peak",
-    desc: "Low volume, maximal intensity. Test your strength.",
+    desc: "Peak phase.",
   },
   deload: {
     pill: "bg-slate-400 text-white",
     label: "Deload",
-    desc: "40-60% reduced volume. Focus on recovery.",
+    desc: "Reduced-volume recovery phase.",
   },
 };
 

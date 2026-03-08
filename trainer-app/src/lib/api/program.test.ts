@@ -66,6 +66,8 @@ import {
   loadHomeProgramSupport,
   loadProgramDashboardData,
 } from "./program";
+import { getRirTarget } from "./mesocycle-lifecycle-math";
+import { resolvePhaseBlockProfile } from "./generation-phase-block-context";
 
 type BaseMesoRecord = {
   id: string;
@@ -173,6 +175,40 @@ describe("loadProgramDashboardData", () => {
       setupDashboardMocks(null);
       const result = await loadProgramDashboardData("user-1");
       expect(result.rirTarget).toBeNull();
+    });
+
+    it("uses the same block-aware RIR seam as generation for a week-4 accumulation block", async () => {
+      setupDashboardMocks(
+        {
+          durationWeeks: 5,
+          blocks: [
+            { blockType: "ACCUMULATION", startWeek: 0, durationWeeks: 4 },
+            { blockType: "DELOAD", startWeek: 4, durationWeeks: 1 },
+          ],
+        },
+        4
+      );
+
+      const result = await loadProgramDashboardData("user-1", 4);
+      const canonicalProfile = resolvePhaseBlockProfile({
+        mesocycleStartWeek: 0,
+        mesocycleLength: 5,
+        mesocycleState: "ACTIVE_ACCUMULATION",
+        blocks: [
+          { blockType: "accumulation", startWeek: 0, durationWeeks: 4 },
+          { blockType: "deload", startWeek: 4, durationWeeks: 1 },
+        ],
+        weekInMeso: 4,
+      });
+
+      expect(result.rirTarget).toEqual(
+        getRirTarget(
+          { state: "ACTIVE_ACCUMULATION", durationWeeks: 5 },
+          4,
+          canonicalProfile
+        )
+      );
+      expect(result.rirTarget).toEqual({ min: 1, max: 2 });
     });
   });
 
@@ -575,7 +611,7 @@ describe("loadProgramDashboardData", () => {
     const viewedDeload = await loadProgramDashboardData("user-1", 5);
 
     expect(viewedAccumulation.coachingCue).toBe(
-      "Accumulation phase - build volume, work within 2-3 RIR."
+      "Accumulation phase - build volume, work within 1-2 RIR."
     );
     expect(viewedDeload.coachingCue).toBe(
       "Deload week - keep loads light, focus on technique and recovery."

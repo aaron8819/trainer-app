@@ -26,6 +26,33 @@ export type GenerationPhaseBlockContext = {
   mesocycleLength: number;
 };
 
+export type PhaseBlockProfileResolutionInput = {
+  mesocycleStartWeek: number;
+  mesocycleLength: number;
+  mesocycleState: "ACTIVE_ACCUMULATION" | "ACTIVE_DELOAD" | "COMPLETED";
+  blocks: ReadonlyArray<{
+    blockType: string;
+    startWeek: number;
+    durationWeeks: number;
+  }>;
+  weekInMeso: number;
+  forceAccumulation?: boolean;
+};
+
+function normalizeProfileBlockType(
+  blockType: string | undefined
+): PhaseBlockProfileContext["blockType"] {
+  switch (blockType) {
+    case "accumulation":
+    case "intensification":
+    case "realization":
+    case "deload":
+      return blockType;
+    default:
+      return "accumulation";
+  }
+}
+
 function clampWeek(week: number | undefined, durationWeeks: number): number {
   return Math.max(1, Math.min(week ?? 1, Math.max(1, durationWeeks)));
 }
@@ -66,6 +93,46 @@ function resolveFallbackProfile(input: {
     weekInMeso: lifecycleWeek,
     weekInBlock,
     mesocycleLength: durationWeeks,
+  };
+}
+
+export function resolvePhaseBlockProfile(
+  input: PhaseBlockProfileResolutionInput
+): PhaseBlockProfileContext {
+  const lifecycleWeek = clampWeek(input.weekInMeso, input.mesocycleLength);
+  const absoluteWeek = input.mesocycleStartWeek + lifecycleWeek - 1;
+  const matchedBlock =
+    input.blocks.find((candidate) => {
+      const blockEndWeek = candidate.startWeek + candidate.durationWeeks;
+      return absoluteWeek >= candidate.startWeek && absoluteWeek < blockEndWeek;
+    }) ?? null;
+
+  if (!matchedBlock) {
+    return resolveFallbackProfile({
+      activeMesocycle: {
+        id: "fallback",
+        state: input.mesocycleState,
+        durationWeeks: input.mesocycleLength,
+        accumulationSessionsCompleted: 0,
+        deloadSessionsCompleted: 0,
+        sessionsPerWeek: 1,
+      },
+      weekInMeso: lifecycleWeek,
+      forceAccumulation: input.forceAccumulation,
+    }).profile;
+  }
+
+  const matchedBlockType = normalizeProfileBlockType(matchedBlock.blockType);
+  const blockType: PhaseBlockProfileContext["blockType"] =
+    input.forceAccumulation === true && matchedBlockType === "deload"
+      ? "accumulation"
+      : matchedBlockType;
+
+  return {
+    blockType,
+    weekInBlock: absoluteWeek - matchedBlock.startWeek + 1,
+    blockDurationWeeks: matchedBlock.durationWeeks,
+    isDeload: input.forceAccumulation === true ? false : blockType === "deload",
   };
 }
 

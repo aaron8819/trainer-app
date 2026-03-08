@@ -104,3 +104,37 @@ describe("ProgramStatusCard indirect volume context", () => {
     expect(scoped.getByText("+3 indirect sets")).toBeInTheDocument();
   });
 });
+
+describe("ProgramStatusCard homeCompact variant", () => {
+  it("renders a compact summary without timeline or volume grid details", () => {
+    const data = buildData([
+      {
+        muscle: "Front Delts",
+        directSets: 0,
+        indirectSets: 3,
+        target: 5,
+        mev: 2,
+        mav: 7,
+        mrv: 14,
+      },
+    ]);
+
+    render(<ProgramStatusCard initialData={data} variant="homeCompact" />);
+
+    expect(screen.getByText("Mesocycle 1")).toBeInTheDocument();
+    expect(screen.getByText("Strength-Hypertrophy")).toBeInTheDocument();
+    expect(screen.getByText("Week 4 of 5")).toBeInTheDocument();
+    expect(screen.getByText("0-1 RIR")).toBeInTheDocument();
+    expect(screen.getByText("3 sessions until deload")).toBeInTheDocument();
+    expect(screen.getByText("Build volume.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open program details" })).toHaveAttribute(
+      "href",
+      "/program"
+    );
+
+    expect(screen.queryByText("Mesocycle Timeline")).not.toBeInTheDocument();
+    expect(screen.queryByText("Volume This Week")).not.toBeInTheDocument();
+    expect(screen.queryByText("Front Delts")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("View previous week")).not.toBeInTheDocument();
+  });
+});

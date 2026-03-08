@@ -3,6 +3,10 @@ import {
   interpolateWeeklyVolumeTarget,
   type WeeklyVolumeTargetBlock,
 } from "@/lib/engine/volume-targets";
+import {
+  buildBlockPrescriptionIntent,
+  type BlockPrescriptionProfileContext,
+} from "@/lib/engine/periodization/block-prescription-intent";
 import type { BlockType } from "@/lib/engine/periodization/types";
 import { getBackOffMultiplier, type PeriodizationModifiers } from "@/lib/engine/rules";
 import type { PrimaryGoal } from "@/lib/engine/types";
@@ -15,12 +19,7 @@ type MuscleLandmark = {
 
 export type RirTarget = { min: number; max: number };
 export type LifecycleSetTargets = { main: number; accessory: number };
-export type PhaseBlockProfileContext = {
-  blockType: BlockType;
-  weekInBlock: number;
-  blockDurationWeeks: number;
-  isDeload: boolean;
-};
+export type PhaseBlockProfileContext = BlockPrescriptionProfileContext;
 type HypertrophyWeekProfile = {
   rirTarget: RirTarget;
   setTargets: LifecycleSetTargets;
@@ -263,70 +262,18 @@ function buildHypertrophyWeekProfile(
   };
 }
 
-function resolveProfileTier<T>(weekInBlock: number, tiers: readonly T[]): T {
-  const index = Math.max(0, Math.min(tiers.length - 1, weekInBlock - 1));
-  return tiers[index] ?? tiers[0];
-}
-
 function getBlockAwareRirTarget(phaseBlockContext: PhaseBlockProfileContext): RirTarget {
-  if (phaseBlockContext.isDeload || phaseBlockContext.blockType === "deload") {
-    return DEFAULT_DELOAD_RIR;
-  }
-
-  switch (phaseBlockContext.blockType) {
-    case "accumulation":
-      return resolveProfileTier(phaseBlockContext.weekInBlock, [
-        { min: 3, max: 4 },
-        { min: 2, max: 3 },
-        { min: 1, max: 2 },
-      ]);
-    case "intensification":
-      return resolveProfileTier(phaseBlockContext.weekInBlock, [
-        { min: 1, max: 2 },
-        { min: 0, max: 1 },
-      ]);
-    case "realization":
-      return { min: 0, max: 1 };
-  }
+  return buildBlockPrescriptionIntent(phaseBlockContext).rirTarget;
 }
 
 function getBlockAwareSetTargets(
   phaseBlockContext: PhaseBlockProfileContext
 ): LifecycleSetTargets {
-  if (phaseBlockContext.isDeload || phaseBlockContext.blockType === "deload") {
-    return DEFAULT_DELOAD_SET_TARGETS;
-  }
-
-  switch (phaseBlockContext.blockType) {
-    case "accumulation":
-      return resolveProfileTier(phaseBlockContext.weekInBlock, [
-        { main: 3, accessory: 2 },
-        { main: 4, accessory: 3 },
-        { main: 5, accessory: 4 },
-      ]);
-    case "intensification":
-      return resolveProfileTier(phaseBlockContext.weekInBlock, [
-        { main: 5, accessory: 4 },
-        { main: 5, accessory: 5 },
-      ]);
-    case "realization":
-      return { main: 5, accessory: 5 };
-  }
+  return buildBlockPrescriptionIntent(phaseBlockContext).setTargets;
 }
 
 function getBlockAwareSetMultiplier(phaseBlockContext: PhaseBlockProfileContext): number {
-  if (phaseBlockContext.isDeload || phaseBlockContext.blockType === "deload") {
-    return 0.5;
-  }
-
-  switch (phaseBlockContext.blockType) {
-    case "accumulation":
-      return resolveProfileTier(phaseBlockContext.weekInBlock, [0.8, 1, 1.15]);
-    case "intensification":
-      return resolveProfileTier(phaseBlockContext.weekInBlock, [1.15, 1.3]);
-    case "realization":
-      return 1.3;
-  }
+  return buildBlockPrescriptionIntent(phaseBlockContext).setMultiplier;
 }
 
 export function deriveCurrentMesocycleSession(

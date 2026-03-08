@@ -8,6 +8,7 @@ import type {
   AdaptationType,
   PrescriptionModifiers,
 } from "./types";
+import { buildBlockPrescriptionIntent } from "./block-prescription-intent";
 import type { TrainingAge, PrimaryGoal } from "../types";
 
 export type BlockTemplate = {
@@ -126,63 +127,12 @@ export function getPrescriptionModifiers(
   weekInBlock: number,
   durationWeeks: number
 ): PrescriptionModifiers {
-  // Progress through block (0.0 to 1.0)
-  const progress = (weekInBlock - 1) / Math.max(1, durationWeeks - 1);
-  const resolveRirTier = (week: number): 1 | 0 | -1 => {
-    if (week <= 1) return 1;
-    if (week <= 3) return 0;
-    return -1;
-  };
-  const baseAccumulationRirAdjustment = resolveRirTier(weekInBlock);
-
-  switch (blockType) {
-    case "accumulation":
-      // High volume, moderate intensity, progressive overload
-      // Volume ramps from 100% → 120%
-      // Intensity ramps from 70% → 80%
-      // RIR +2 (stay further from failure for volume accumulation)
-      return {
-        volumeMultiplier: 1.0 + progress * 0.2, // 1.0 → 1.2
-        intensityMultiplier: 0.7 + progress * 0.1, // 0.7 → 0.8
-        rirAdjustment: baseAccumulationRirAdjustment,
-        restMultiplier: 0.9, // Slightly shorter rest
-      };
-
-    case "intensification":
-      // Moderate volume, high intensity, peak strength
-      // Volume reduces from 100% → 80%
-      // Intensity ramps from 80% → 95%
-      // RIR +1 (moderate proximity to failure)
-      return {
-        volumeMultiplier: 1.0 - progress * 0.2, // 1.0 → 0.8
-        intensityMultiplier: 0.8 + progress * 0.15, // 0.8 → 0.95
-        rirAdjustment: baseAccumulationRirAdjustment - 1,
-        restMultiplier: 1.0, // Normal rest
-      };
-
-    case "realization":
-      // Low volume, peak intensity, test maxes
-      // Volume stays low (60% → 70%)
-      // Intensity peaks at 95% → 100%
-      // RIR 0 (go to failure or near-failure)
-      return {
-        volumeMultiplier: 0.6 + progress * 0.1, // 0.6 → 0.7
-        intensityMultiplier: 0.95 + progress * 0.05, // 0.95 → 1.0
-        rirAdjustment: baseAccumulationRirAdjustment - 2,
-        restMultiplier: 1.2, // Longer rest for max efforts
-      };
-
-    case "deload":
-      // Low volume, low intensity, recovery
-      // Volume at 50%, intensity at 70%
-      // RIR +3 (very conservative)
-      return {
-        volumeMultiplier: 0.5,
-        intensityMultiplier: 0.7,
-        rirAdjustment: 3, // Well away from failure
-        restMultiplier: 0.8, // Shorter rest (active recovery)
-      };
-  }
+  return buildBlockPrescriptionIntent({
+    blockType,
+    weekInBlock,
+    blockDurationWeeks: durationWeeks,
+    isDeload: blockType === "deload",
+  }).modifiers;
 }
 
 /**

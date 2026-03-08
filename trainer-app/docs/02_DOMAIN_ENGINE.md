@@ -151,10 +151,19 @@ Sources of truth:
   - `getLifecycleSetTargets(..., phaseBlockContext?)`
   - `buildLifecyclePeriodization({ ..., phaseBlockContext })`
   This preserves current default 4/5/6-week behavior under the existing default block definitions while making generation materially block-aware.
+- Block-aware prescription semantics are now authored in one shared seam: `src/lib/engine/periodization/block-prescription-intent.ts`.
+  - Inputs: `blockType`, `weekInBlock`, `blockDurationWeeks`, `isDeload`
+  - Outputs: canonical `rirTarget`, `setTargets`, `setMultiplier`, plus compatibility `modifiers`
+  - Lifecycle math consumes that seam for `getRirTarget(...)`, `getLifecycleSetTargets(...)`, and `buildLifecyclePeriodization(...)`
+  - Legacy bridge code in `src/lib/engine/periodization/block-config.ts` now reads the same intent instead of re-authoring separate block RIR/intensity/rest policy
 - Weekly volume targeting now uses the same canonical seam across generation and read models. `src/lib/api/template-session/context-loader.ts` resolves `phaseBlockContext`, then materializes `lifecycleVolumeTargets` through `getWeeklyVolumeTarget(..., { blockContext })` before remaining-week planning, selection, closure, and rescue. Read-side consumers such as dashboard rows, muscle-outcome review, week-close deficits, and explainability compliance route through that same helper using `mesocycle.blocks` directly.
 - Current landmark table includes the weighted-model Biceps retune in `src/lib/engine/volume-landmarks.ts` (`Biceps: MV 6, MEV 6, MAV 14, MRV 22, SRA 36`) and is consumed unchanged by planner targeting, dashboard rows, week-close deficits, and explainability compliance.
 - Pull musculature landmarks are split (`lats`, `upper_back`) and rear-delt landmarks are reduced to evidence-aligned defaults (`rear_delts: MEV 4, MAV 12`; `lats: MEV 8, MAV 16`; `upper_back: MEV 6, MAV 14`).
 - `getRirTarget(mesocycle, week, phaseBlockContext?)`: returns lifecycle week/state-specific RIR bands, including deload targets. Without block context, default hypertrophy bands remain duration-aware: 4-week total = `3-4 -> 2-3 -> 1-2 -> deload`; 5-week total = `3-4 -> 2-3 -> 1-2 -> 0-1 -> deload`; 6-week total = `3-4 -> 2-3 -> 2 -> 1-2 -> 0-1 -> deload`.
+- Prescription ownership is therefore split intentionally, not accidentally:
+  - Weekly volume target shape remains owned by `src/lib/engine/volume-targets.ts`
+  - Weekly effort/set intent remains owned by `src/lib/engine/periodization/block-prescription-intent.ts`
+  - Generator/prescription consumers should read those seams, not reinterpret block policy locally
 - `initializeNextMesocycle(completedMesocycle)`: closes current mesocycle, creates next active mesocycle with reset lifecycle counters, and carries forward core exercise roles.
 
 ## Deload generation path

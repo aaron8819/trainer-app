@@ -66,14 +66,18 @@ export function SlideUpSheet({ isOpen, onClose, title, children }: SlideUpSheetP
       {/* Mobile: Slide-up sheet from bottom */}
       <div className="flex h-full items-end md:items-center md:justify-center">
         <div
+          data-testid="slide-up-sheet-panel"
           className={
-            "w-full max-h-[90vh] overflow-y-auto rounded-t-2xl bg-white shadow-xl sm:max-h-[85vh] " +
-            "md:max-w-lg md:rounded-2xl md:max-h-[80vh] " +
+            "flex w-full max-h-[min(90dvh,90vh)] flex-col overflow-hidden rounded-t-2xl bg-white pb-[env(safe-area-inset-bottom)] shadow-xl sm:max-h-[85dvh] sm:pb-0 " +
+            "md:max-h-[80dvh] md:max-w-lg md:rounded-2xl " +
             "animate-[slideUp_200ms_ease-out] md:animate-[fadeIn_150ms_ease-out]"
           }
         >
           {title && (
-            <div className="sticky top-0 z-10 flex items-center justify-between gap-3 rounded-t-2xl border-b border-slate-100 bg-white px-4 py-3 sm:px-5 sm:py-4">
+            <div
+              data-testid="slide-up-sheet-header"
+              className="z-10 flex items-center justify-between gap-3 rounded-t-2xl border-b border-slate-100 bg-white px-4 py-3 sm:px-5 sm:py-4"
+            >
               <h2 className="min-w-0 text-base font-semibold text-slate-900 sm:text-lg">{title}</h2>
               <button
                 onClick={handleClose}
@@ -87,7 +91,12 @@ export function SlideUpSheet({ isOpen, onClose, title, children }: SlideUpSheetP
               </button>
             </div>
           )}
-          <div className="px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4 sm:p-5">{children}</div>
+          <div
+            data-testid="slide-up-sheet-body"
+            className="min-h-0 flex-1 overflow-y-auto px-4 pt-4 pb-[calc(16px+env(safe-area-inset-bottom))] sm:p-5"
+          >
+            {children}
+          </div>
         </div>
       </div>
     </dialog>

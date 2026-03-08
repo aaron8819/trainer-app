@@ -222,6 +222,84 @@ describe("loadProgramDashboardData", () => {
       });
     });
 
+    it("threads a sorted exercise breakdown onto each muscle row without changing the primary total", async () => {
+      setupDashboardMocks();
+      mocks.workoutFindMany.mockResolvedValueOnce([
+        {
+          id: "w1",
+          exercises: [
+            {
+              exercise: {
+                id: "row",
+                name: "Barbell Row",
+                aliases: [],
+                exerciseMuscles: [
+                  { role: "PRIMARY", muscle: { name: "Upper Back" } },
+                  { role: "PRIMARY", muscle: { name: "Lats" } },
+                  { role: "SECONDARY", muscle: { name: "Biceps" } },
+                ],
+              },
+              sets: Array.from({ length: 3 }, () => ({ logs: [{ wasSkipped: false }] })),
+            },
+            {
+              exercise: {
+                id: "pullup",
+                name: "Pull-Up",
+                aliases: [],
+                exerciseMuscles: [
+                  { role: "PRIMARY", muscle: { name: "Lats" } },
+                  { role: "SECONDARY", muscle: { name: "Biceps" } },
+                ],
+              },
+              sets: Array.from({ length: 2 }, () => ({ logs: [{ wasSkipped: false }] })),
+            },
+            {
+              exercise: {
+                id: "curl",
+                name: "EZ-Bar Curl",
+                aliases: [],
+                exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Biceps" } }],
+              },
+              sets: Array.from({ length: 2 }, () => ({ logs: [{ wasSkipped: false }] })),
+            },
+          ],
+        },
+      ]);
+
+      const result = await loadProgramDashboardData("user-1");
+      const bicepsRow = result.volumeThisWeek.find((row) => row.muscle === "Biceps");
+
+      expect(bicepsRow?.effectiveSets).toBe(4.1);
+      expect(bicepsRow?.breakdown).toEqual({
+        muscle: "Biceps",
+        effectiveSets: 4.1,
+        targetSets: bicepsRow?.target,
+        contributions: [
+          {
+            exerciseId: "curl",
+            exerciseName: "EZ-Bar Curl",
+            effectiveSets: 2,
+            performedSets: 2,
+            directSets: 2,
+          },
+          {
+            exerciseId: "row",
+            exerciseName: "Barbell Row",
+            effectiveSets: 1.2,
+            performedSets: 3,
+            indirectSets: 3,
+          },
+          {
+            exerciseId: "pullup",
+            exerciseName: "Pull-Up",
+            effectiveSets: 0.9,
+            performedSets: 2,
+            indirectSets: 2,
+          },
+        ],
+      });
+    });
+
     it("keeps Front Delts when direct sets are present", async () => {
       setupDashboardMocks();
       mocks.workoutFindMany.mockResolvedValueOnce([

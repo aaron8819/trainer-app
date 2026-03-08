@@ -13,7 +13,11 @@ import {
 } from "./mesocycle-lifecycle-math";
 import { loadNextWorkoutContext } from "./next-session";
 import { findPendingWeekCloseForUser } from "./mesocycle-week-close";
-import { loadMesocycleWeekMuscleVolume, type WeeklyMuscleVolumeRow } from "./weekly-volume";
+import {
+  loadMesocycleWeekMuscleVolume,
+  type WeeklyMuscleExerciseContribution,
+  type WeeklyMuscleVolumeRow,
+} from "./weekly-volume";
 
 export type ProgramMesoBlock = {
   blockType: string;
@@ -40,6 +44,16 @@ export type ProgramVolumeRow = {
   mev: number;
   mav: number;
   mrv: number;
+  breakdown?: ProgramMuscleContributionBreakdown;
+};
+
+export type ProgramMuscleContribution = WeeklyMuscleExerciseContribution;
+
+export type ProgramMuscleContributionBreakdown = {
+  muscle: string;
+  effectiveSets: number;
+  targetSets: number;
+  contributions: ProgramMuscleContribution[];
 };
 
 export type DeloadReadiness = {
@@ -317,6 +331,7 @@ async function loadMesoWeekMuscleVolume(
     mesocycleId,
     targetWeek: weekInMeso,
     weekStart: mesoWeekStart,
+    includeBreakdowns: true,
   });
 }
 
@@ -467,6 +482,16 @@ function buildProgramVolumeRows(input: {
         mev: landmarks.mev,
         mav: landmarks.mav,
         mrv: landmarks.mrv,
+        ...(data.contributions && data.contributions.length > 0
+          ? {
+              breakdown: {
+                muscle,
+                effectiveSets: data.effectiveSets,
+                targetSets: target,
+                contributions: data.contributions,
+              },
+            }
+          : {}),
       };
     })
     .filter((row) => row.mav > 0 && (row.target > 0 || row.effectiveSets > 0))

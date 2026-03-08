@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ProgramStatusCard } from "./ProgramStatusCard";
 import type { ProgramDashboardData } from "@/lib/api/program";
 import type { ComponentPropsWithoutRef } from "react";
+import userEvent from "@testing-library/user-event";
 
 vi.mock("next/link", () => ({
   default: ({
@@ -19,6 +20,16 @@ vi.mock("next/link", () => ({
 afterEach(() => {
   cleanup();
 });
+
+function setupDialogMocks() {
+  HTMLDialogElement.prototype.showModal = vi.fn(function showModal(this: HTMLDialogElement) {
+    this.open = true;
+  });
+  HTMLDialogElement.prototype.close = vi.fn(function close(this: HTMLDialogElement) {
+    this.open = false;
+    this.dispatchEvent(new Event("close"));
+  });
+}
 
 function buildData(volumeThisWeek: ProgramDashboardData["volumeThisWeek"]): ProgramDashboardData {
   return {
@@ -53,6 +64,20 @@ describe("ProgramStatusCard indirect volume context", () => {
         mev: 2,
         mav: 7,
         mrv: 14,
+        breakdown: {
+          muscle: "Front Delts",
+          effectiveSets: 0.9,
+          targetSets: 5,
+          contributions: [
+            {
+              exerciseId: "press",
+              exerciseName: "Bench Press",
+              effectiveSets: 0.9,
+              performedSets: 3,
+              indirectSets: 3,
+            },
+          ],
+        },
       },
     ]);
 
@@ -72,6 +97,12 @@ describe("ProgramStatusCard indirect volume context", () => {
         mev: 2,
         mav: 7,
         mrv: 14,
+        breakdown: {
+          muscle: "Front Delts",
+          effectiveSets: 0,
+          targetSets: 5,
+          contributions: [],
+        },
       },
     ]);
 
@@ -91,6 +122,20 @@ describe("ProgramStatusCard indirect volume context", () => {
         mev: 2,
         mav: 7,
         mrv: 14,
+        breakdown: {
+          muscle: "Front Delts",
+          effectiveSets: 0.9,
+          targetSets: 5,
+          contributions: [
+            {
+              exerciseId: "press",
+              exerciseName: "Bench Press",
+              effectiveSets: 0.9,
+              performedSets: 3,
+              indirectSets: 3,
+            },
+          ],
+        },
       },
     ]);
 
@@ -104,6 +149,72 @@ describe("ProgramStatusCard indirect volume context", () => {
     expect(scoped.getByText("0.9")).toBeInTheDocument();
     expect(scoped.getByText("target 5 sets")).toBeInTheDocument();
     expect(scoped.getByText("0 direct, +3 indirect")).toBeInTheDocument();
+  });
+});
+
+describe("ProgramStatusCard muscle breakdown", () => {
+  it("opens the breakdown sheet and shows contributors in descending weighted order", async () => {
+    setupDialogMocks();
+    const user = userEvent.setup();
+    const data = buildData([
+      {
+        muscle: "Biceps",
+        effectiveSets: 4.1,
+        directSets: 2,
+        indirectSets: 5,
+        target: 8,
+        mev: 4,
+        mav: 14,
+        mrv: 18,
+        breakdown: {
+          muscle: "Biceps",
+          effectiveSets: 4.1,
+          targetSets: 8,
+          contributions: [
+            {
+              exerciseId: "curl",
+              exerciseName: "EZ-Bar Curl",
+              effectiveSets: 2,
+              performedSets: 2,
+              directSets: 2,
+            },
+            {
+              exerciseId: "row",
+              exerciseName: "Barbell Row",
+              effectiveSets: 1.2,
+              performedSets: 3,
+              indirectSets: 3,
+            },
+            {
+              exerciseId: "pullup",
+              exerciseName: "Pull-Up",
+              effectiveSets: 0.9,
+              performedSets: 2,
+              indirectSets: 2,
+            },
+          ],
+        },
+      },
+    ]);
+
+    render(<ProgramStatusCard initialData={data} />);
+
+    await user.click(screen.getByRole("button", { name: "Show where Biceps sets came from" }));
+
+    expect(screen.getByTestId("muscle-breakdown-sheet")).toBeInTheDocument();
+    expect(screen.getByText("Biceps 4.1 / 8 sets this week")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Values are weighted by how much each exercise trains the muscle\./)
+    ).toBeInTheDocument();
+    expect(screen.getByText("Total weighted sets")).toBeInTheDocument();
+    expect(screen.getByText("2 direct, +5 indirect")).toBeInTheDocument();
+
+    const contributors = screen.getAllByTestId("muscle-breakdown-contributor");
+    expect(within(contributors[0]!).getByText("EZ-Bar Curl")).toBeInTheDocument();
+    expect(within(contributors[1]!).getByText("Barbell Row")).toBeInTheDocument();
+    expect(within(contributors[2]!).getByText("Pull-Up")).toBeInTheDocument();
+    expect(screen.getByText("2 direct")).toBeInTheDocument();
+    expect(screen.getByText("3 indirect")).toBeInTheDocument();
   });
 });
 

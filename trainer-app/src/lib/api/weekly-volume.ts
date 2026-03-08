@@ -10,9 +10,32 @@ export type WeeklyMuscleVolumeRow = {
   directSets: number;
   indirectSets: number;
   effectiveSets: number;
+  contributions?: WeeklyMuscleExerciseContribution[];
 };
 
 type WeeklyMuscleVolumeMap = Record<string, WeeklyMuscleVolumeRow>;
+
+export type WeeklyMuscleExerciseContribution = {
+  exerciseId?: string;
+  exerciseName: string;
+  effectiveSets: number;
+  performedSets: number;
+  directSets?: number;
+  indirectSets?: number;
+};
+
+type WeeklyMuscleExerciseContributionAccumulator = {
+  exerciseId?: string;
+  exerciseName: string;
+  effectiveSets: number;
+  performedSets: number;
+  directSets: number;
+  indirectSets: number;
+};
+
+type WeeklyMuscleVolumeAccumulator = WeeklyMuscleVolumeRow & {
+  contributionMap?: Map<string, WeeklyMuscleExerciseContributionAccumulator>;
+};
 
 function roundToTenth(value: number): number {
   return Math.round(value * 10) / 10;
@@ -25,13 +48,76 @@ function countCompletedSets(
 }
 
 function getOrCreateMuscleRow(
-  muscles: WeeklyMuscleVolumeMap,
+  muscles: Record<string, WeeklyMuscleVolumeAccumulator>,
   muscle: string
-): WeeklyMuscleVolumeRow {
+): WeeklyMuscleVolumeAccumulator {
   if (!muscles[muscle]) {
     muscles[muscle] = { directSets: 0, indirectSets: 0, effectiveSets: 0 };
   }
   return muscles[muscle];
+}
+
+function getOrCreateContributionRow(
+  row: WeeklyMuscleVolumeAccumulator,
+  exerciseId: string | undefined,
+  exerciseName: string
+): WeeklyMuscleExerciseContributionAccumulator {
+  if (!row.contributionMap) {
+    row.contributionMap = new Map<string, WeeklyMuscleExerciseContributionAccumulator>();
+  }
+
+  const key = exerciseId ?? exerciseName;
+  const existing = row.contributionMap.get(key);
+  if (existing) {
+    return existing;
+  }
+
+  const created: WeeklyMuscleExerciseContributionAccumulator = {
+    exerciseId,
+    exerciseName,
+    effectiveSets: 0,
+    performedSets: 0,
+    directSets: 0,
+    indirectSets: 0,
+  };
+  row.contributionMap.set(key, created);
+  return created;
+}
+
+function finalizeWeeklyMuscleVolumeMap(
+  muscles: Record<string, WeeklyMuscleVolumeAccumulator>
+): WeeklyMuscleVolumeMap {
+  return Object.fromEntries(
+    Object.entries(muscles).map(([muscle, row]) => {
+      const contributions = row.contributionMap
+        ? Array.from(row.contributionMap.values())
+            .map((contribution) => ({
+              exerciseId: contribution.exerciseId,
+              exerciseName: contribution.exerciseName,
+              effectiveSets: roundToTenth(contribution.effectiveSets),
+              performedSets: contribution.performedSets,
+              ...(contribution.directSets > 0 ? { directSets: contribution.directSets } : {}),
+              ...(contribution.indirectSets > 0 ? { indirectSets: contribution.indirectSets } : {}),
+            }))
+            .sort((left, right) => {
+              if (right.effectiveSets !== left.effectiveSets) {
+                return right.effectiveSets - left.effectiveSets;
+              }
+              return left.exerciseName.localeCompare(right.exerciseName);
+            })
+        : undefined;
+
+      return [
+        muscle,
+        {
+          directSets: row.directSets,
+          indirectSets: row.indirectSets,
+          effectiveSets: roundToTenth(row.effectiveSets),
+          ...(contributions && contributions.length > 0 ? { contributions } : {}),
+        },
+      ];
+    })
+  );
 }
 
 export async function loadMesocycleWeekMuscleVolume(
@@ -43,6 +129,7 @@ export async function loadMesocycleWeekMuscleVolume(
     weekStart: Date;
     excludeWorkoutId?: string;
     performedBefore?: Date;
+    includeBreakdowns?: boolean;
   }
 ): Promise<WeeklyMuscleVolumeMap> {
   const weekEnd = new Date(input.weekStart);
@@ -78,7 +165,7 @@ export async function loadMesocycleWeekMuscleVolume(
     },
   });
 
-  const muscles: WeeklyMuscleVolumeMap = {};
+  const muscles: Record<string, WeeklyMuscleVolumeAccumulator> = {};
   for (const workout of workouts) {
     for (const workoutExercise of workout.exercises) {
       const completedSets = countCompletedSets(workoutExercise.sets);
@@ -112,10 +199,28 @@ export async function loadMesocycleWeekMuscleVolume(
       );
       for (const [muscle, effectiveSets] of effectiveContribution) {
         const row = getOrCreateMuscleRow(muscles, muscle);
-        row.effectiveSets = roundToTenth(row.effectiveSets + effectiveSets);
+        row.effectiveSets += effectiveSets;
+
+        if (!input.includeBreakdowns) {
+          continue;
+        }
+
+        const contribution = getOrCreateContributionRow(
+          row,
+          workoutExercise.exercise.id ?? undefined,
+          workoutExercise.exercise.name ?? workoutExercise.exercise.id ?? "Unknown Exercise"
+        );
+        contribution.effectiveSets += effectiveSets;
+        contribution.performedSets += completedSets;
+        if (primaryMuscles.includes(muscle)) {
+          contribution.directSets += completedSets;
+        }
+        if (secondaryMuscles.includes(muscle)) {
+          contribution.indirectSets += completedSets;
+        }
       }
     }
   }
 
-  return muscles;
+  return finalizeWeeklyMuscleVolumeMap(muscles);
 }

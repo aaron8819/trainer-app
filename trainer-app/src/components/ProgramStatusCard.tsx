@@ -5,9 +5,11 @@ import Link from "next/link";
 import type {
   DeloadReadiness,
   ProgramDashboardData,
+  ProgramMuscleContribution,
   ProgramMesoBlock,
   ProgramVolumeRow,
 } from "@/lib/api/program";
+import { SlideUpSheet } from "@/components/ui/SlideUpSheet";
 
 type ProgramStatusCardVariant = "default" | "homeCompact";
 
@@ -27,6 +29,17 @@ export function getVolumeDotClass(
 
 function formatSetCount(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+function formatContributionContext(contribution: ProgramMuscleContribution): string | null {
+  const parts: string[] = [];
+  if (contribution.directSets && contribution.directSets > 0) {
+    parts.push(`${contribution.directSets} direct`);
+  }
+  if (contribution.indirectSets && contribution.indirectSets > 0) {
+    parts.push(`${contribution.indirectSets} indirect`);
+  }
+  return parts.length > 0 ? parts.join(", ") : null;
 }
 
 function volumeStatus(
@@ -309,6 +322,7 @@ function ProgramStatusCardDefault({ initialData }: { initialData: ProgramDashboa
   const [selectedWeek, setSelectedWeek] = useState(initialData.viewedWeek);
   const [volumeRows, setVolumeRows] = useState(initialData.volumeThisWeek);
   const [loading, setLoading] = useState(false);
+  const [selectedMuscle, setSelectedMuscle] = useState<string | null>(null);
 
   const isHistorical = selectedWeek !== currentWeek;
 
@@ -342,6 +356,8 @@ function ProgramStatusCardDefault({ initialData }: { initialData: ProgramDashboa
   const relevantVolume = volumeRows.filter(
     (v) => v.mev > 0 || v.target > 0 || v.effectiveSets > 0
   );
+  const selectedRow = relevantVolume.find((row) => row.muscle === selectedMuscle) ?? null;
+  const selectedBreakdown = selectedRow?.breakdown ?? null;
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
@@ -421,8 +437,26 @@ function ProgramStatusCardDefault({ initialData }: { initialData: ProgramDashboa
             const cls = STATUS_STYLE[status];
             const barWidth =
               row.mrv > 0 ? Math.min(100, Math.round((row.effectiveSets / row.mrv) * 100)) : 0;
+            const hasBreakdown = Boolean(row.breakdown?.contributions.length);
             return (
-              <div key={row.muscle} className={`rounded-xl border p-3 ${cls}`}>
+              <button
+                key={row.muscle}
+                type="button"
+                onClick={() => {
+                  if (hasBreakdown) {
+                    setSelectedMuscle(row.muscle);
+                  }
+                }}
+                disabled={!hasBreakdown}
+                aria-label={
+                  hasBreakdown
+                    ? `Show where ${row.muscle} sets came from`
+                    : `${row.muscle} weekly volume`
+                }
+                className={`rounded-xl border p-3 text-left ${cls} ${
+                  hasBreakdown ? "transition-shadow hover:shadow-sm" : "cursor-default"
+                }`}
+              >
                 <p className="text-xs font-semibold">{row.muscle}</p>
                 <p className="mt-0.5 text-lg font-bold leading-none">
                   {formatSetCount(row.effectiveSets)}
@@ -443,7 +477,10 @@ function ProgramStatusCardDefault({ initialData }: { initialData: ProgramDashboa
                 <p className="mt-1 text-xs opacity-60">
                   MEV {row.mev} · MAV {row.mav} · MRV {row.mrv}
                 </p>
-              </div>
+                {hasBreakdown ? (
+                  <p className="mt-2 text-[11px] font-medium opacity-70">Tap for breakdown</p>
+                ) : null}
+              </button>
             );
           })}
         </div>
@@ -454,6 +491,58 @@ function ProgramStatusCardDefault({ initialData }: { initialData: ProgramDashboa
       {!isHistorical && coachingCue ? (
         <p className="mt-4 text-xs italic text-slate-600">{coachingCue}</p>
       ) : null}
+
+      <SlideUpSheet
+        isOpen={Boolean(selectedBreakdown)}
+        onClose={() => setSelectedMuscle(null)}
+        title={selectedBreakdown ? `${selectedBreakdown.muscle} breakdown` : undefined}
+      >
+        {selectedBreakdown ? (
+          <div data-testid="muscle-breakdown-sheet">
+            <p className="text-sm font-semibold text-slate-900">
+              {selectedBreakdown.muscle} {formatSetCount(selectedBreakdown.effectiveSets)} /{" "}
+              {formatSetCount(selectedBreakdown.targetSets)} sets this week
+            </p>
+            <p className="mt-2 text-sm text-slate-600">
+              Sets are counted across all exercises that train the muscle.
+            </p>
+            <p className="mt-1 text-sm text-slate-600">
+              Includes compound and isolation work. Values are weighted by how much each exercise
+              trains the muscle.
+            </p>
+
+            <div className="mt-4 space-y-3">
+              {selectedBreakdown.contributions.map((contribution) => {
+                const context = formatContributionContext(contribution);
+                return (
+                  <div
+                    key={contribution.exerciseId ?? contribution.exerciseName}
+                    data-testid="muscle-breakdown-contributor"
+                    className="flex items-start justify-between gap-3 rounded-xl border border-slate-200 px-3 py-2.5"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-slate-900">
+                        {contribution.exerciseName}
+                      </p>
+                      {context ? (
+                        <p className="mt-0.5 text-xs text-slate-500">{context}</p>
+                      ) : null}
+                    </div>
+                    <p className="shrink-0 text-sm font-semibold tabular-nums text-slate-900">
+                      {formatSetCount(contribution.effectiveSets)}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-3 text-sm font-semibold text-slate-900">
+              <span>Total weighted sets</span>
+              <span>{formatSetCount(selectedBreakdown.effectiveSets)}</span>
+            </div>
+          </div>
+        ) : null}
+      </SlideUpSheet>
     </div>
   );
 }

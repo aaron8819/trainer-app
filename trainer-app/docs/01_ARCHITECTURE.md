@@ -107,7 +107,9 @@ Sources of truth:
 - Canonical next-session derivation for both dashboard and audit flows is `loadNextWorkoutContext()` in `src/lib/api/next-session.ts`.
 - Audit context normalization is owned by `src/lib/audit/workout-audit/context-builder.ts`, and generation dispatch is owned by `src/lib/audit/workout-audit/generation-runner.ts`.
 - Audit artifact assembly/serialization is owned by `src/lib/audit/workout-audit/serializer.ts` and persists JSON artifacts to `artifacts/audits/` via `scripts/workout-audit.ts`.
+- Bundled split/week sanity audit orchestration is owned by `src/lib/audit/workout-audit/bundle.ts` and persists compact summary artifacts to `artifacts/audits/split-sanity/` via `scripts/audit-split-sanity.ts`.
 - Audit generation modes currently supported are `next-session` and `intent-preview` (`src/lib/audit/workout-audit/types.ts`).
+- The compact split-sanity layer is intentionally extraction-only over canonical session receipts: it reuses live intent-preview generation, summarizes `sessionDecisionReceipt` / planner diagnostics fields, and preserves optional rich per-intent artifacts for deep debugging.
 - Planner diagnostics persistence is mode-gated in the canonical session receipt:
   - canonical storage surface is `selectionMetadata.sessionDecisionReceipt.plannerDiagnostics`
   - the planner emits one layered diagnostics object spanning `opportunity`, `anchor`, `standard`, `supplemental`, `closure`, `rescue`, and `outcome`, alongside the existing `muscles` and `exercises` summaries

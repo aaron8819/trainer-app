@@ -27,6 +27,7 @@ Sources of truth:
 - `npm run test:fast`: focused fast subset
 - `npm run test:slow`: slow simulation suite opt-in
 - `npm run test:audit:matrix`: workout-audit diagnostics matrix regression sweep (`intent-preview` + `next-session` across intents)
+- `npm run test -- src/lib/audit/workout-audit/bundle.test.ts`: focused split-sanity audit summary/verdict coverage
 - `npm run verify`: lint + type-check (`tsc --noEmit`) + `test:fast` + contract verification
 - `npm run verify:contracts`: docs/runtime enum drift check
 
@@ -67,6 +68,7 @@ Sources of truth:
 - Dashboard opportunity model coverage: `src/lib/api/opportunity.test.ts` (weekly pressure, covered-vs-deprioritize rules, downward-only readiness modulation, and rationale text) plus `src/lib/api/recent-muscle-stimulus.test.ts` (recent weighted local stimulus uses the canonical weighted stimulus engine rather than analytics recovery percent).
 - Save-route canonical receipt enforcement coverage: `src/app/api/workouts/save/route.integration.test.ts`.
 - Audit harness context/generation/serialization coverage: `src/lib/audit/workout-audit/context-builder.test.ts`, `src/lib/audit/workout-audit/generation-runner.test.ts`, `src/lib/audit/workout-audit/serializer.test.ts`.
+- Bundled split-sanity audit coverage: `src/lib/audit/workout-audit/bundle.test.ts` verifies compact summary emission, optional rich-artifact emission, and automatic failure when unresolved same-intent deficits remain with `futureCapacity=0`.
 - Audit diagnostics matrix coverage:
   - `src/lib/audit/workout-audit/intent-matrix.test.ts`
   - `src/lib/audit/workout-audit/next-session-intent-matrix.test.ts`

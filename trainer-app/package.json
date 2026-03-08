@@ -19,6 +19,7 @@
         "postinstall": "prisma generate",
         "verify:exercise-library": "tsx scripts/verify-exercise-library.ts",
         "audit:workout": "tsx scripts/workout-audit.ts",
+        "audit:split-sanity": "tsx scripts/audit-split-sanity.ts",
         "audit:week4-generation": "tsx scripts/audit-week4-generation.ts",
         "audit:exercise-classification": "tsx scripts/audit-exercise-classification.ts",
         "report:workout-week-snapshot-repair": "tsx scripts/report-workout-week-snapshot-repair.ts",

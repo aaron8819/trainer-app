@@ -47,7 +47,15 @@ Migration hygiene:
 - `npm run report:stimulus-coverage`: reports planner-eligible exercise stimulus-profile coverage and remaining centralized fallback usage
 - `npm run audit:workout -- --mode next-session --owner owner@local`: generate structured workout-audit artifact under `artifacts/audits/`
 - `npm run audit:workout -- --mode intent-preview --owner owner@local --intent push`: explicit-intent audit artifact
+- `npm run audit:split-sanity -- --owner owner@local --debug`: run bundled split sanity audit for `push,pull,legs` and write one compact summary artifact under `artifacts/audits/split-sanity/`
+- Add `--intents push,pull,legs` to override the default bundle and `--write-rich-artifacts` to also persist the full per-intent workout-audit JSON files under `artifacts/audits/split-sanity/rich/`
 - Add `--debug` when you need full layered planner diagnostics in the artifact/receipt. Default mode is compact `standard`.
+- Split-sanity summary artifacts encode explicit verdict checks for:
+  - block/week context presence and consistency
+  - lifecycle RIR plausibility for the active block profile
+  - no unexpected target drop in accumulation
+  - stranded same-intent deficits when `futureCapacity = 0`
+  - unexpected rescue usage
 - Current planner diagnostics blocks in audit artifacts:
   - `opportunity`: session intent, character, and remaining-week scarcity inputs
   - `anchor`: fixture/anchor decisions and floor-envelope outcomes

@@ -5,6 +5,11 @@ import type { SessionGenerationResult } from "@/lib/api/template-session/types";
 
 export type WorkoutAuditMode = "next-session" | "intent-preview";
 
+export type WorkoutAuditIdentity = {
+  userId: string;
+  ownerEmail?: string;
+};
+
 export type WorkoutAuditRequest = {
   mode: WorkoutAuditMode;
   userId?: string;

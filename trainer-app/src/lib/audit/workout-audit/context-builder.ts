@@ -1,11 +1,10 @@
 import { prisma } from "@/lib/db/prisma";
 import { loadNextWorkoutContext } from "@/lib/api/next-session";
-import type { WorkoutAuditContext, WorkoutAuditRequest } from "./types";
+import type { WorkoutAuditContext, WorkoutAuditIdentity, WorkoutAuditRequest } from "./types";
 
-async function resolveUserId(request: WorkoutAuditRequest): Promise<{
-  userId: string;
-  ownerEmail?: string;
-}> {
+export async function resolveWorkoutAuditIdentity(
+  request: Pick<WorkoutAuditRequest, "userId" | "ownerEmail">
+): Promise<WorkoutAuditIdentity> {
   if (request.userId) {
     return { userId: request.userId, ownerEmail: request.ownerEmail };
   }
@@ -27,7 +26,7 @@ async function resolveUserId(request: WorkoutAuditRequest): Promise<{
 export async function buildWorkoutAuditContext(
   request: WorkoutAuditRequest
 ): Promise<WorkoutAuditContext> {
-  const identity = await resolveUserId(request);
+  const identity = await resolveWorkoutAuditIdentity(request);
   const plannerDiagnosticsMode = request.plannerDiagnosticsMode ?? "standard";
 
   if (request.mode === "next-session") {

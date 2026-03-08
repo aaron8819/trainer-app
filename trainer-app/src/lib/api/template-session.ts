@@ -48,6 +48,7 @@ import {
 import type {
   GenerateIntentSessionInput,
   GenerateTemplateSessionParams,
+  MappedGenerationContext,
   SessionGenerationResult,
 } from "./template-session/types";
 
@@ -248,6 +249,9 @@ type CriticalMuscleDeficit = {
   projectedEffectiveTotal: number;
   remainingDeficit: number;
   tolerance: number;
+  urgencyMultiplier?: number;
+  requiredNow?: number;
+  futureCapacity?: number;
 };
 
 type ClosureAction = {
@@ -455,16 +459,26 @@ function getCriticalMuscleDeficits(
       const projectedEffectiveTotal = projectedTotals.get(muscle) ?? 0;
       const remainingDeficit = Math.max(0, weeklyTarget - projectedEffectiveTotal);
       const tolerance = getNonAnchorOvershootTolerance(weeklyTarget);
+      const urgencyMultiplier = objective.volumeContext.remainingWeek?.urgency.get(muscle) ?? 1;
       return {
         muscle,
         weeklyTarget,
         projectedEffectiveTotal,
         remainingDeficit,
         tolerance,
+        urgencyMultiplier,
+        requiredNow: objective.volumeContext.remainingWeek?.requiredNow.get(muscle) ?? 0,
+        futureCapacity: objective.volumeContext.remainingWeek?.futureCapacity.get(muscle) ?? 0,
       };
     })
     .filter((entry) => entry.weeklyTarget > 0)
     .sort((left, right) => {
+      const rightPriority = right.remainingDeficit * (right.urgencyMultiplier ?? 1);
+      const leftPriority = left.remainingDeficit * (left.urgencyMultiplier ?? 1);
+      const priorityDelta = rightPriority - leftPriority;
+      if (Math.abs(priorityDelta) > CLOSURE_ACTION_SCORE_EPSILON) {
+        return priorityDelta;
+      }
       const deficitDelta = right.remainingDeficit - left.remainingDeficit;
       if (Math.abs(deficitDelta) > CLOSURE_ACTION_SCORE_EPSILON) {
         return deficitDelta;
@@ -604,10 +618,9 @@ function evaluateClosureAction(
   let deficitReduction = 0;
   let dominantDeficitReduction = 0;
   let collateralOvershoot = 0;
+  let urgencyWeightedReduction = 0;
   const projectedTotals = buildProjectedEffectiveTotals(objective, assignedEffectiveByMuscleInSession);
-  const unresolvedByMuscle = new Map(
-    unresolvedCriticalDeficits.map((entry) => [entry.muscle, entry.remainingDeficit])
-  );
+  const unresolvedByMuscle = new Map(unresolvedCriticalDeficits.map((entry) => [entry.muscle, entry]));
   const dominantDeficit = unresolvedCriticalDeficits[0];
 
   for (const [muscle, effectiveSets] of contribution) {
@@ -615,10 +628,12 @@ function evaluateClosureAction(
       continue;
     }
 
-    const deficit = unresolvedByMuscle.get(muscle) ?? 0;
+    const deficitEntry = unresolvedByMuscle.get(muscle);
+    const deficit = deficitEntry?.remainingDeficit ?? 0;
     if (deficit > 0) {
       const reducedDeficit = Math.min(deficit, effectiveSets);
       deficitReduction += reducedDeficit;
+      urgencyWeightedReduction += reducedDeficit * (deficitEntry?.urgencyMultiplier ?? 1);
       if (muscle === dominantDeficit?.muscle) {
         dominantDeficitReduction += reducedDeficit;
       }
@@ -677,6 +692,14 @@ function evaluateClosureAction(
       entry.muscle !== dominantDeficit?.muscle &&
       entry.remainingDeficit > entry.tolerance + CLOSURE_ACTION_SCORE_EPSILON
   );
+  const dominantUrgencyWeightedNeed =
+    dominantDeficit == null
+      ? 0
+      : dominantDeficit.remainingDeficit * (dominantDeficit.urgencyMultiplier ?? 1);
+  const alternateUrgencyWeightedNeed =
+    meaningfulAlternateDeficit == null
+      ? 0
+      : meaningfulAlternateDeficit.remainingDeficit * (meaningfulAlternateDeficit.urgencyMultiplier ?? 1);
   const existingDominantIsolationCoverage =
     dominantDeficit != null
       ? selectedIsolationCoverageByMuscle.get(dominantDeficit.muscle) ?? 0
@@ -707,6 +730,8 @@ function evaluateClosureAction(
     dominantDeficit &&
     meaningfulAlternateDeficit &&
     existingDominantIsolationCoverage > CLOSURE_ACTION_SCORE_EPSILON &&
+    dominantUrgencyWeightedNeed <=
+      alternateUrgencyWeightedNeed + existingDominantIsolationCoverage + CLOSURE_ACTION_SCORE_EPSILON &&
     candidateTargetsOnlyDominantDeficit &&
     !isMainLiftExercise(exercise, objective) &&
     !(exercise.isCompound ?? false)
@@ -732,12 +757,13 @@ function evaluateClosureAction(
       score:
         deficitReduction * 100 -
         redundantAccessoryPenalty +
-        stackedIsolationPenalty * -1 +
-        dominantDeficitPriorityAdjustment -
-        collateralOvershoot * 25 -
-        fatigueCost +
-        totalScore +
-        accessoryBias,
+      stackedIsolationPenalty * -1 +
+      dominantDeficitPriorityAdjustment -
+      collateralOvershoot * 25 -
+      fatigueCost +
+      urgencyWeightedReduction * 35 +
+      totalScore +
+      accessoryBias,
     },
   };
 }
@@ -1199,6 +1225,13 @@ export async function generateSessionFromIntent(
     return { error: "Failed to load generation context" };
   }
 
+  return generateSessionFromMappedContext(mapped, input);
+}
+
+export function generateSessionFromMappedContext(
+  mapped: MappedGenerationContext,
+  input: GenerateIntentSessionInput
+): SessionGenerationResult {
   const objective = buildSelectionObjective(mapped, input.intent, input.targetMuscles);
   const isDeloadSession = mapped.effectivePeriodization.isDeload;
   const roleMap = mapped.mesocycleRoleMapByIntent[input.intent];

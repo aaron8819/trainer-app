@@ -1,177 +1,250 @@
 /**
- * Backfill exercise exposure data for all users.
- * Aggregates workout history from the last 12 weeks to populate exposure tracking.
+ * Rebuild ExerciseExposure from canonical performed history only.
  *
- * Run with: npx tsx scripts/backfill-exercise-exposure.ts
+ * Safe mode:
+ *   npx tsx scripts/backfill-exercise-exposure.ts --dry-run
+ *
+ * Execute:
+ *   npx tsx scripts/backfill-exercise-exposure.ts
+ *
+ * Optional:
+ *   npx tsx scripts/backfill-exercise-exposure.ts --user=<userId>
  */
 
 import { PrismaClient } from "@prisma/client";
+import dotenv from "dotenv";
+import {
+  buildExerciseExposureRows,
+  performedExposureLogWhere,
+} from "../src/lib/api/exercise-exposure-backfill";
 
-const prisma = new PrismaClient();
+dotenv.config({ path: ".env.local" });
+dotenv.config();
 
-const WEEKS_4 = 4 * 7 * 24 * 60 * 60 * 1000; // 4 weeks in milliseconds
-const WEEKS_8 = 8 * 7 * 24 * 60 * 60 * 1000; // 8 weeks in milliseconds
-const WEEKS_12 = 12 * 7 * 24 * 60 * 60 * 1000; // 12 weeks in milliseconds
+type BackfillOptions = {
+  dryRun: boolean;
+  userId?: string;
+};
 
-async function backfillExerciseExposure() {
-  console.log("Starting exercise exposure backfill...");
+type DiffSummary = {
+  removedExerciseNames: string[];
+  keptExerciseNames: string[];
+};
 
-  const users = await prisma.user.findMany({
-    include: {
-      workouts: {
-        where: {
-          status: "COMPLETED",
-          scheduledDate: {
-            gte: new Date(Date.now() - WEEKS_12),
-          },
-        },
-        include: {
-          exercises: {
-            include: {
-              exercise: true,
-              sets: {
-                include: {
-                  logs: true,
+function summarizeExerciseCounts(
+  counts: Map<string, number>,
+  limit = 8
+): string {
+  if (counts.size === 0) {
+    return "none";
+  }
+
+  return [...counts.entries()]
+    .sort((left, right) => {
+      if (right[1] !== left[1]) {
+        return right[1] - left[1];
+      }
+      return left[0].localeCompare(right[0]);
+    })
+    .slice(0, limit)
+    .map(([exerciseName, count]) => `${exerciseName}=${count}`)
+    .join(", ");
+}
+
+function parseOptions(argv: string[]): BackfillOptions {
+  let userId: string | undefined;
+  let dryRun = false;
+
+  for (const arg of argv) {
+    if (arg === "--dry-run") {
+      dryRun = true;
+      continue;
+    }
+    if (arg.startsWith("--user=")) {
+      userId = arg.slice("--user=".length);
+    }
+  }
+
+  return { dryRun, userId };
+}
+
+async function rebuildExposureForUser(
+  prisma: PrismaClient,
+  userId: string,
+  options: BackfillOptions
+): Promise<{
+  userId: string;
+  existingRowCount: number;
+  rebuiltRowCount: number;
+  deleted: number;
+  created: number;
+  diff: DiffSummary;
+}> {
+  const [existingRows, workouts] = await Promise.all([
+    prisma.exerciseExposure.findMany({
+      where: { userId },
+      select: { exerciseName: true },
+      orderBy: { exerciseName: "asc" },
+    }),
+    prisma.workout.findMany({
+      where: {
+        userId,
+        status: "COMPLETED",
+        exercises: {
+          some: {
+            sets: {
+              some: {
+                logs: {
+                  some: performedExposureLogWhere,
                 },
               },
             },
           },
         },
-        orderBy: {
-          scheduledDate: "desc",
-        },
       },
-    },
-  });
-
-  console.log(`Found ${users.length} users with workout history`);
-
-  let totalExposures = 0;
-
-  for (const user of users) {
-    if (user.workouts.length === 0) {
-      console.log(`  Skipping user ${user.id} (no completed workouts)`);
-      continue;
-    }
-
-    // Aggregate exposure data by exercise name
-    const exposureMap = new Map<
-      string,
-      {
-        lastUsedAt: Date;
-        timesUsedL4W: number;
-        timesUsedL8W: number;
-        timesUsedL12W: number;
-        totalSetsL12W: number;
-        totalVolumeL12W: number;
-      }
-    >();
-
-    const now = Date.now();
-    const cutoff4W = now - WEEKS_4;
-    const cutoff8W = now - WEEKS_8;
-    const cutoff12W = now - WEEKS_12;
-
-    for (const workout of user.workouts) {
-      const workoutTime = new Date(workout.scheduledDate).getTime();
-
-      for (const workoutExercise of workout.exercises) {
-        const exerciseName = workoutExercise.exercise.name;
-        const completedSets = workoutExercise.sets.filter(
-          (s) => s.logs.length === 0 || !s.logs[0].wasSkipped
-        );
-        const setsCount = completedSets.length;
-        const volume = completedSets.reduce((sum, set) => {
-          const log = set.logs[0];
-          const reps = log?.actualReps ?? set.targetReps;
-          const load = log?.actualLoad ?? set.targetLoad ?? 0;
-          return sum + reps * load;
-        }, 0);
-
-        if (!exposureMap.has(exerciseName)) {
-          exposureMap.set(exerciseName, {
-            lastUsedAt: workout.scheduledDate,
-            timesUsedL4W: 0,
-            timesUsedL8W: 0,
-            timesUsedL12W: 0,
-            totalSetsL12W: 0,
-            totalVolumeL12W: 0,
-          });
-        }
-
-        const exposure = exposureMap.get(exerciseName)!;
-
-        // Update last used date if this workout is more recent
-        if (workout.scheduledDate > exposure.lastUsedAt) {
-          exposure.lastUsedAt = workout.scheduledDate;
-        }
-
-        // Count usage in different time windows
-        if (workoutTime >= cutoff4W) {
-          exposure.timesUsedL4W++;
-        }
-        if (workoutTime >= cutoff8W) {
-          exposure.timesUsedL8W++;
-        }
-        if (workoutTime >= cutoff12W) {
-          exposure.timesUsedL12W++;
-          exposure.totalSetsL12W += setsCount;
-          exposure.totalVolumeL12W += volume;
-        }
-      }
-    }
-
-    // Calculate averages and upsert to database
-    for (const [exerciseName, data] of exposureMap.entries()) {
-      const weeksInWindow = Math.min(
-        12,
-        Math.ceil((now - new Date(data.lastUsedAt).getTime()) / (7 * 24 * 60 * 60 * 1000))
-      );
-      const avgSetsPerWeek = weeksInWindow > 0 ? data.totalSetsL12W / weeksInWindow : 0;
-      const avgVolumePerWeek = weeksInWindow > 0 ? data.totalVolumeL12W / weeksInWindow : 0;
-
-      await prisma.exerciseExposure.upsert({
-        where: {
-          userId_exerciseName: {
-            userId: user.id,
-            exerciseName,
+      select: {
+        completedAt: true,
+        scheduledDate: true,
+        exercises: {
+          select: {
+            exercise: {
+              select: {
+                name: true,
+              },
+            },
+            sets: {
+              select: {
+                logs: {
+                  orderBy: { completedAt: "desc" },
+                  take: 1,
+                  select: {
+                    actualLoad: true,
+                    actualReps: true,
+                    actualRpe: true,
+                    wasSkipped: true,
+                  },
+                },
+              },
+            },
           },
         },
-        create: {
-          userId: user.id,
-          exerciseName,
-          lastUsedAt: data.lastUsedAt,
-          timesUsedL4W: data.timesUsedL4W,
-          timesUsedL8W: data.timesUsedL8W,
-          timesUsedL12W: data.timesUsedL12W,
-          avgSetsPerWeek,
-          avgVolumePerWeek,
-        },
-        update: {
-          lastUsedAt: data.lastUsedAt,
-          timesUsedL4W: data.timesUsedL4W,
-          timesUsedL8W: data.timesUsedL8W,
-          timesUsedL12W: data.timesUsedL12W,
-          avgSetsPerWeek,
-          avgVolumePerWeek,
-        },
-      });
+      },
+    }),
+  ]);
 
-      totalExposures++;
-    }
+  const existingExerciseNames = new Set(existingRows.map((row) => row.exerciseName));
+  const rebuiltRows = buildExerciseExposureRows(userId, workouts, new Date());
+  const rebuiltExerciseNames = new Set(rebuiltRows.map((row) => row.exerciseName));
+  const removedExerciseNames = [...existingExerciseNames]
+    .filter((exerciseName) => !rebuiltExerciseNames.has(exerciseName))
+    .sort((left, right) => left.localeCompare(right));
+  const keptExerciseNames = [...existingExerciseNames]
+    .filter((exerciseName) => rebuiltExerciseNames.has(exerciseName))
+    .sort((left, right) => left.localeCompare(right));
+  const existingRowCount = existingRows.length;
 
-    console.log(`  Processed ${exposureMap.size} exercises for user ${user.id}`);
+  if (options.dryRun) {
+    return {
+      userId,
+      existingRowCount,
+      rebuiltRowCount: rebuiltRows.length,
+      deleted: existingRowCount,
+      created: rebuiltRows.length,
+      diff: {
+        removedExerciseNames,
+        keptExerciseNames,
+      },
+    };
   }
 
-  console.log(`\nBackfill complete!`);
-  console.log(`  Total exercise exposures created/updated: ${totalExposures}`);
+  await prisma.$transaction(async (tx) => {
+    await tx.exerciseExposure.deleteMany({
+      where: { userId },
+    });
+
+    if (rebuiltRows.length > 0) {
+      await tx.exerciseExposure.createMany({
+        data: rebuiltRows,
+      });
+    }
+  });
+
+  return {
+    userId,
+    existingRowCount,
+    rebuiltRowCount: rebuiltRows.length,
+    deleted: existingRowCount,
+    created: rebuiltRows.length,
+    diff: {
+      removedExerciseNames,
+      keptExerciseNames,
+    },
+  };
 }
 
-backfillExerciseExposure()
-  .catch((error) => {
-    console.error("Backfill failed:", error);
-    process.exit(1);
-  })
-  .finally(async () => {
+async function main() {
+  const { prisma } = await import("../src/lib/db/prisma");
+  const options = parseOptions(process.argv.slice(2));
+  try {
+    const users = await prisma.user.findMany({
+      where: options.userId ? { id: options.userId } : undefined,
+      select: { id: true },
+      orderBy: { createdAt: "asc" },
+    });
+
+    if (users.length === 0) {
+      throw new Error(options.userId ? `User ${options.userId} not found.` : "No users found.");
+    }
+
+    console.log(
+      options.dryRun
+        ? `Dry-run ExerciseExposure rebuild for ${users.length} user(s)`
+        : `Rebuilding ExerciseExposure for ${users.length} user(s)`
+    );
+
+    let totalDeleted = 0;
+    let totalCreated = 0;
+    const removedExerciseCounts = new Map<string, number>();
+    const keptExerciseCounts = new Map<string, number>();
+
+    for (const user of users) {
+      const result = await rebuildExposureForUser(prisma, user.id, options);
+      totalDeleted += result.deleted;
+      totalCreated += result.created;
+      for (const exerciseName of result.diff.removedExerciseNames) {
+        removedExerciseCounts.set(exerciseName, (removedExerciseCounts.get(exerciseName) ?? 0) + 1);
+      }
+      for (const exerciseName of result.diff.keptExerciseNames) {
+        keptExerciseCounts.set(exerciseName, (keptExerciseCounts.get(exerciseName) ?? 0) + 1);
+      }
+      console.log(
+        [
+          `user=${result.userId}`,
+          `existing=${result.existingRowCount}`,
+          `rebuilt=${result.rebuiltRowCount}`,
+          `delete=${result.deleted}`,
+          `create=${result.created}`,
+        ].join(" ")
+      );
+    }
+
+    if (options.dryRun) {
+      console.log(`removed(top): ${summarizeExerciseCounts(removedExerciseCounts)}`);
+      console.log(`kept(top): ${summarizeExerciseCounts(keptExerciseCounts)}`);
+    }
+
+    console.log(
+      options.dryRun
+        ? `Dry-run complete. delete=${totalDeleted} create=${totalCreated}`
+        : `Rebuild complete. delete=${totalDeleted} create=${totalCreated}`
+    );
+  } finally {
     await prisma.$disconnect();
+  }
+}
+
+main()
+  .catch((error) => {
+    console.error("ExerciseExposure backfill failed:", error);
+    process.exit(1);
   });

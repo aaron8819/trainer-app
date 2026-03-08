@@ -15,6 +15,8 @@ import { VOLUME_LANDMARKS } from "@/lib/engine/volume-landmarks";
 import { validateStimulusProfileCoverage } from "@/lib/engine/stimulus";
 import { prisma } from "@/lib/db/prisma";
 import type { SessionIntent } from "@/lib/engine/session-types";
+import type { RotationContext } from "@/lib/engine/selection-v2/types";
+import type { CheckInRow } from "@/lib/api/checkin-staleness";
 
 const INTENT_KEYS: SessionIntent[] = ["push", "pull", "legs", "upper", "lower", "full_body", "body_part"];
 const STRICT_STIMULUS_COVERAGE_ENV = "STRICT_STIMULUS_PROFILE_COVERAGE";
@@ -117,16 +119,62 @@ function auditSectionRoleMismatches(
   }
 }
 
-export async function loadMappedGenerationContext(
+export type PreloadedGenerationSnapshot = {
+  context: {
+    profile: Awaited<ReturnType<typeof loadWorkoutContext>>["profile"];
+    goals: Awaited<ReturnType<typeof loadWorkoutContext>>["goals"];
+    constraints: Awaited<ReturnType<typeof loadWorkoutContext>>["constraints"];
+    injuries: Awaited<ReturnType<typeof loadWorkoutContext>>["injuries"];
+    exercises: Awaited<ReturnType<typeof loadWorkoutContext>>["exercises"];
+    workouts: Awaited<ReturnType<typeof loadWorkoutContext>>["workouts"];
+    preferences: Awaited<ReturnType<typeof loadWorkoutContext>>["preferences"];
+    checkIns: CheckInRow[];
+  };
+  activeMesocycle: Awaited<ReturnType<typeof loadActiveMesocycle>>;
+  rotationContext: RotationContext;
+  mesocycleRoleRows: Array<{
+    exerciseId: string;
+    role: "CORE_COMPOUND" | "ACCESSORY";
+    sessionIntent: string;
+  }>;
+};
+
+async function loadMesocycleRoleRows(
+  mesocycleId: string | undefined
+): Promise<PreloadedGenerationSnapshot["mesocycleRoleRows"]> {
+  if (!mesocycleId) {
+    return [];
+  }
+
+  const roleModel = prisma as unknown as {
+    mesocycleExerciseRole?: {
+      findMany?: (args: unknown) => Promise<PreloadedGenerationSnapshot["mesocycleRoleRows"]>;
+    };
+  };
+
+  return roleModel.mesocycleExerciseRole?.findMany
+    ? roleModel.mesocycleExerciseRole.findMany({
+        where: { mesocycleId },
+        select: {
+          exerciseId: true,
+          role: true,
+          sessionIntent: true,
+        },
+      })
+    : [];
+}
+
+export function buildMappedGenerationContextFromSnapshot(
   userId: string,
+  snapshot: PreloadedGenerationSnapshot,
   options?: {
     anchorWeek?: number;
     weekCloseContext?: { targetWeek: number };
     forceAccumulation?: boolean;
   }
-): Promise<MappedGenerationContext> {
-  const context = await loadWorkoutContext(userId);
-  const { profile, goals, constraints, injuries, exercises, workouts, preferences, checkIns } = context;
+): MappedGenerationContext {
+  const { profile, goals, constraints, injuries, exercises, workouts, preferences, checkIns } =
+    snapshot.context;
 
   if (!goals || !constraints || !profile) {
     throw new Error("Profile, goals, or constraints missing");
@@ -144,31 +192,14 @@ export async function loadMappedGenerationContext(
   const mappedPreferences = mapPreferences(preferences);
   const mappedCheckIn = mapCheckIn(checkIns);
 
-  const activeMesocycle = await loadActiveMesocycle(userId);
+  const activeMesocycle = snapshot.activeMesocycle;
   const mesocycleRoleMapByIntent = createEmptyRoleMapByIntent();
-  if (activeMesocycle?.id) {
-    const roleModel = (prisma as unknown as {
-      mesocycleExerciseRole?: {
-        findMany?: (args: unknown) => Promise<Array<{ exerciseId: string; role: "CORE_COMPOUND" | "ACCESSORY"; sessionIntent: string }>>;
-      };
-    }).mesocycleExerciseRole;
-    const roleRows = roleModel?.findMany
-      ? await roleModel.findMany({
-          where: { mesocycleId: activeMesocycle.id },
-          select: {
-            exerciseId: true,
-            role: true,
-            sessionIntent: true,
-          },
-        })
-      : [];
-    for (const row of roleRows) {
-      const intent = dbIntentToSessionIntent(row.sessionIntent);
-      if (!intent) {
-        continue;
-      }
-      mesocycleRoleMapByIntent[intent].set(row.exerciseId, row.role);
+  for (const row of snapshot.mesocycleRoleRows) {
+    const intent = dbIntentToSessionIntent(row.sessionIntent);
+    if (!intent) {
+      continue;
     }
+    mesocycleRoleMapByIntent[intent].set(row.exerciseId, row.role);
   }
   auditSectionRoleMismatches(workouts, mesocycleRoleMapByIntent);
   const lifecycleSession = activeMesocycle ? deriveCurrentMesocycleSession(activeMesocycle) : null;
@@ -249,8 +280,6 @@ export async function loadMappedGenerationContext(
         appliedTo: "none",
       };
 
-  const rotationContext = await loadExerciseExposure(userId);
-
   return {
     mappedProfile,
     mappedGoals,
@@ -272,8 +301,35 @@ export async function loadMappedGenerationContext(
     adaptiveDeload,
     deloadDecision,
     blockContext: null,
-    rotationContext,
+    rotationContext: snapshot.rotationContext,
     cycleContext,
     mesocycleRoleMapByIntent,
   };
+}
+
+export async function loadMappedGenerationContext(
+  userId: string,
+  options?: {
+    anchorWeek?: number;
+    weekCloseContext?: { targetWeek: number };
+    forceAccumulation?: boolean;
+  }
+): Promise<MappedGenerationContext> {
+  const context = await loadWorkoutContext(userId);
+  const activeMesocycle = await loadActiveMesocycle(userId);
+  const [rotationContext, mesocycleRoleRows] = await Promise.all([
+    loadExerciseExposure(userId),
+    loadMesocycleRoleRows(activeMesocycle?.id),
+  ]);
+
+  return buildMappedGenerationContextFromSnapshot(
+    userId,
+    {
+      context,
+      activeMesocycle,
+      rotationContext,
+      mesocycleRoleRows,
+    },
+    options
+  );
 }

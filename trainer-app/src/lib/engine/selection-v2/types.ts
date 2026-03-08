@@ -164,6 +164,29 @@ export interface SelectionVolumeContext {
 
   /** Effective sets already completed for the current week */
   effectiveActual: Map<Muscle, number>;
+
+  /** Remaining-week planning signal derived from future natural opportunities this week */
+  remainingWeek?: RemainingWeekVolumeContext;
+}
+
+export interface RemainingWeekVolumeContext {
+  /** Remaining session intents in likely schedule order after the current session */
+  futureSlots: SessionIntent[];
+
+  /** Count of future natural slots by intent */
+  futureSlotCounts: Map<SessionIntent, number>;
+
+  /** Global future-capacity discount from late-week fatigue/readiness */
+  futureCapacityFactor: number;
+
+  /** Estimated effective sets each muscle can still receive later this week */
+  futureCapacity: Map<Muscle, number>;
+
+  /** Portion of each muscle deficit that likely needs to be addressed now */
+  requiredNow: Map<Muscle, number>;
+
+  /** Scarcity/urgency multiplier for deficit scoring */
+  urgency: Map<Muscle, number>;
 }
 
 /**

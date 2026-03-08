@@ -17,6 +17,7 @@ export type PlannerAnchorBudgetDecision = {
   plannedEffectiveVolumeBeforeAssignment: number;
   reservedEffectiveVolumeForRemainingRoleFixtures: number;
   anchorRemainingBeforeAssignment: number;
+  planningAdjustedAnchorRemaining?: number;
   anchorContributionPerSet: number;
   desiredSetTarget: number;
   anchorConstrainedContinuousSetTarget: number;

@@ -6,7 +6,31 @@
  */
 
 import { prisma } from "@/lib/db/prisma";
+import { Prisma } from "@prisma/client";
 import type { RotationContext, PerformanceTrend } from "../engine/selection-v2/types";
+
+const performedSetLogWhere = {
+  wasSkipped: false,
+  OR: [
+    { actualReps: { not: null } },
+    { actualRpe: { not: null } },
+  ],
+} satisfies Prisma.SetLogWhereInput;
+
+function hasPerformedSet(
+  sets: Array<{
+    logs: Array<{
+      actualReps: number | null;
+      actualRpe: number | null;
+      wasSkipped: boolean;
+    }>;
+  }>
+): boolean {
+  return sets.some((set) => {
+    const log = set.logs[0];
+    return Boolean(log) && log.wasSkipped !== true && (log.actualReps != null || log.actualRpe != null);
+  });
+}
 
 /**
  * Load exercise exposure data for a user
@@ -71,7 +95,15 @@ export async function updateExerciseExposure(
           },
           sets: {
             select: {
-              id: true,
+              logs: {
+                orderBy: { completedAt: "desc" },
+                take: 1,
+                select: {
+                  actualReps: true,
+                  actualRpe: true,
+                  wasSkipped: true,
+                },
+              },
             },
           },
         },
@@ -91,7 +123,13 @@ export async function updateExerciseExposure(
   const window12w = new Date(now);
   window12w.setDate(window12w.getDate() - 84);
 
-  const touchedExerciseNames = [...new Set(workout.exercises.map((exercise) => exercise.exercise.name))];
+  const touchedExerciseNames = [
+    ...new Set(
+      workout.exercises
+        .filter((exercise) => hasPerformedSet(exercise.sets))
+        .map((exercise) => exercise.exercise.name)
+    ),
+  ];
 
   // Recompute true rolling-window usage for every touched exercise.
   for (const exerciseName of touchedExerciseNames) {
@@ -99,6 +137,7 @@ export async function updateExerciseExposure(
       prisma.workoutExercise.count({
         where: {
           exercise: { name: exerciseName },
+          sets: { some: { logs: { some: performedSetLogWhere } } },
           workout: {
             userId,
             status: "COMPLETED",
@@ -109,6 +148,7 @@ export async function updateExerciseExposure(
       prisma.workoutExercise.count({
         where: {
           exercise: { name: exerciseName },
+          sets: { some: { logs: { some: performedSetLogWhere } } },
           workout: {
             userId,
             status: "COMPLETED",
@@ -119,6 +159,7 @@ export async function updateExerciseExposure(
       prisma.workoutExercise.count({
         where: {
           exercise: { name: exerciseName },
+          sets: { some: { logs: { some: performedSetLogWhere } } },
           workout: {
             userId,
             status: "COMPLETED",
@@ -130,7 +171,15 @@ export async function updateExerciseExposure(
 
     const touchedSetCount = workout.exercises
       .filter((exercise) => exercise.exercise.name === exerciseName)
-      .reduce((sum, exercise) => sum + exercise.sets.length, 0);
+      .reduce(
+        (sum, exercise) =>
+          sum +
+          exercise.sets.filter((set) => {
+            const log = set.logs[0];
+            return Boolean(log) && log.wasSkipped !== true && (log.actualReps != null || log.actualRpe != null);
+          }).length,
+        0
+      );
     const avgSetsPerWeek = Number((timesUsedL4W > 0 ? touchedSetCount / 4 : 0).toFixed(2));
 
     await prisma.exerciseExposure.upsert({
@@ -183,6 +232,13 @@ export async function assessPerformanceTrend(
       exercise: {
         name: exerciseName,
       },
+      sets: {
+        some: {
+          logs: {
+            some: performedSetLogWhere,
+          },
+        },
+      },
       workout: {
         userId,
         status: "COMPLETED",
@@ -228,7 +284,7 @@ export async function assessPerformanceTrend(
     const bestSet = session.sets.reduce(
       (best: number, set: { logs: { actualLoad: number | null; actualReps: number | null }[] }) => {
         const log = set.logs[0];
-        if (!log) return best;
+        if (!log || log.actualReps == null) return best;
         const estimated1RM = estimate1RM(log.actualLoad ?? 0, log.actualReps ?? 0);
         return estimated1RM > best ? estimated1RM : best;
       },

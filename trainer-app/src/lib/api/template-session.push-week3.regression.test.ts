@@ -1095,6 +1095,32 @@ function buildClosureStackedIsolationPenaltyMappedContext(): MappedGenerationCon
   };
 }
 
+function buildClosureDominantIsolationExpansionMappedContext(): MappedGenerationContext {
+  return {
+    ...buildClosureStackedIsolationPenaltyMappedContext(),
+    lifecycleVolumeTargets: {
+      Chest: 10,
+      Triceps: 4,
+      "Side Delts": 18,
+      "Front Delts": 0,
+      "Upper Back": 12,
+      Lats: 12,
+      Biceps: 10,
+      "Rear Delts": 10,
+      Quads: 16,
+      Hamstrings: 12,
+      Glutes: 8,
+      Calves: 10,
+      Core: 0,
+      "Lower Back": 0,
+      Forearms: 0,
+      Adductors: 0,
+      Abductors: 0,
+      Abs: 0,
+    },
+  };
+}
+
 function getAllExerciseSets(
   workout: {
     mainLifts: { exercise: { id: string; name: string }; sets: { targetLoad?: number }[] }[];
@@ -1427,5 +1453,26 @@ describe("W3S1 Push regression — 4 engine bug fixes", () => {
     expect(
       receipt?.muscles.Chest.plannedEffectiveVolumeAfterClosure
     ).toBeGreaterThan(receipt?.muscles.Chest.plannedEffectiveVolumeAfterRoleBudgeting ?? 0);
+  });
+
+  it("still expands the dominant isolation when its remaining deficit materially exceeds the alternate deficit", async () => {
+    loadMappedGenerationContextMock.mockResolvedValueOnce(
+      buildClosureDominantIsolationExpansionMappedContext()
+    );
+
+    const result = await generateSessionFromIntent("user-1", { intent: "push" });
+    if ("error" in result) {
+      throw new Error(`Unexpected error: ${result.error}`);
+    }
+
+    const receipt = result.selection.sessionDecisionReceipt?.plannerDiagnostics;
+    expect(receipt?.muscles["Side Delts"].deficitAfterRoleBudgeting).toBeGreaterThan(
+      receipt?.muscles.Chest.deficitAfterRoleBudgeting ?? 0
+    );
+    expect(["cable-lateral-raise", "patterned-machine-lateral-raise"]).toContain(
+      receipt?.closure.actions[0]?.exerciseId
+    );
+    expect(receipt?.closure.actions[0]?.exerciseId).not.toBe("cable-fly");
+    expect(receipt?.closure.actions[0]?.exerciseId).not.toBe("dip");
   });
 });

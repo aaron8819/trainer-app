@@ -8,6 +8,7 @@ import { VOLUME_LANDMARKS, MUSCLE_SPLIT_MAP, computeWeeklyVolumeTarget } from "@
 import { filterPerformedHistory, sortHistoryByDateDesc } from "@/lib/engine/history";
 import type { VolumePlanByMuscle } from "@/lib/engine/volume";
 import type { MappedGenerationContext } from "./types";
+import { buildRemainingWeekVolumeContext } from "./remaining-week-planner";
 
 const CONTINUITY_USER_PREFERENCE_WEIGHT = 0.35;
 const CONTINUITY_MIN_ROTATION_WEIGHT = 0.01;
@@ -207,6 +208,14 @@ export function buildSelectionObjective(
     }
   }
 
+  const remainingWeek = buildRemainingWeekVolumeContext({
+    mapped,
+    sessionIntent,
+    weeklyTarget,
+    effectiveActual,
+    fatigueState,
+  });
+
   const constraints: SelectionObjective["constraints"] = {
     volumeFloor: new Map(),
     volumeCeiling,
@@ -241,6 +250,7 @@ export function buildSelectionObjective(
       weeklyTarget,
       weeklyActual,
       effectiveActual,
+      remainingWeek,
     },
     rotationContext: mapped.rotationContext,
     sraContext,

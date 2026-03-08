@@ -126,6 +126,12 @@ function hasMaterialDeficit(remainingDeficit: number, tolerance: number): boolea
   return remainingDeficit > Math.max(tolerance * 1.5, tolerance + 0.5);
 }
 
+function getRoleDeferredDeficitCarryFraction(
+  role: "CORE_COMPOUND" | "ACCESSORY" | undefined
+): number {
+  return role === "CORE_COMPOUND" ? 0.4 : 0.25;
+}
+
 export function buildRemainingRoleFixturesByAnchor(
   exerciseIds: string[],
   exerciseById: Map<string, EngineExercise>,
@@ -259,9 +265,17 @@ export function resolveRoleFixtureSetTarget(
     0,
     weeklyTarget - (performedThisWeek + assignedInSession + reservedFloorForRemaining)
   );
+  const remainingWeek = objective.volumeContext.remainingWeek;
+  const futureCapacity = remainingWeek?.futureCapacity.get(anchorMuscle) ?? 0;
+  const requiredNow = remainingWeek?.requiredNow.get(anchorMuscle) ?? anchorRemaining;
+  const deferredCarry = Math.max(0, anchorRemaining - requiredNow);
+  const planningAdjustedRemaining = Math.min(
+    anchorRemaining,
+    requiredNow + deferredCarry * getRoleDeferredDeficitCarryFraction(role)
+  );
   const anchorConstrainedContinuousSets = Math.min(
     desiredSetTarget,
-    anchorRemaining / anchorContributionPerSet
+    planningAdjustedRemaining / anchorContributionPerSet
   );
   let candidateSets = Math.floor(anchorConstrainedContinuousSets + 1e-9);
   candidateSets = Math.min(applyRoleCap(desiredSetTarget), candidateSets);
@@ -329,6 +343,7 @@ export function resolveRoleFixtureSetTarget(
       plannedEffectiveVolumeBeforeAssignment: roundPlannerValue(assignedInSession),
       reservedEffectiveVolumeForRemainingRoleFixtures: roundPlannerValue(reservedFloorForRemaining),
       anchorRemainingBeforeAssignment: roundPlannerValue(anchorRemaining),
+      planningAdjustedAnchorRemaining: roundPlannerValue(planningAdjustedRemaining),
       anchorContributionPerSet: roundPlannerValue(anchorContributionPerSet),
       desiredSetTarget,
       anchorConstrainedContinuousSetTarget: roundPlannerValue(anchorConstrainedContinuousSets),

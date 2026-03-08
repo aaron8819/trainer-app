@@ -51,14 +51,15 @@ export function scoreDeficitFill(
     const target = volumeContext.weeklyTarget.get(muscle) ?? 0;
     const actual = volumeContext.effectiveActual.get(muscle) ?? 0;
     const deficit = Math.max(0, target - actual);
+    const urgency = volumeContext.remainingWeek?.urgency.get(muscle) ?? 1;
 
     if (deficit === 0) continue; // No deficit to fill
 
     // How much of this deficit can we fill?
     const filled = Math.min(effectiveContribution, deficit);
 
-    totalFilled += filled;
-    totalDeficit += deficit;
+    totalFilled += filled * urgency;
+    totalDeficit += deficit * urgency;
   }
 
   // Return proportion of total deficit filled
@@ -92,12 +93,13 @@ export function scoreDeficitFillDynamic(
     const beamActual = beamVolumeFilled.get(muscle) ?? 0;
     const actual = historicalActual + beamActual;
     const deficit = Math.max(0, target - actual);
+    const urgency = volumeContext.remainingWeek?.urgency.get(muscle) ?? 1;
 
     if (deficit === 0) continue; // Already at target in this beam path
     const filled = Math.min(effectiveContribution, deficit);
 
-    totalFilled += filled;
-    totalDeficit += deficit;
+    totalFilled += filled * urgency;
+    totalDeficit += deficit * urgency;
   }
 
   return totalDeficit > 0 ? totalFilled / totalDeficit : 0;

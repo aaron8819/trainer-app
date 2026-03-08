@@ -1,7 +1,7 @@
 # 07 Operations
 
 Owner: Aaron
-Last reviewed: 2026-03-07
+Last reviewed: 2026-03-08
 Purpose: Operational runbook for local development/runtime setup, migrations, seed, and verification for this single-user app.
 
 This doc covers:
@@ -47,6 +47,13 @@ Migration hygiene:
 - `npm run report:stimulus-coverage`: reports planner-eligible exercise stimulus-profile coverage and remaining centralized fallback usage
 - `npm run audit:workout -- --mode next-session --owner owner@local`: generate structured workout-audit artifact under `artifacts/audits/`
 - `npm run audit:workout -- --mode intent-preview --owner owner@local --intent push`: explicit-intent audit artifact
+- Add `--debug` when you need full layered planner diagnostics in the artifact/receipt. Default mode is compact `standard`.
+- Current planner diagnostics blocks in audit artifacts:
+  - `opportunity`: session intent, character, and remaining-week scarcity inputs
+  - `anchor`: fixture/anchor decisions and floor-envelope outcomes
+  - `standard` / `supplemental` / `rescue`: inventory-layer usage and candidate summaries
+  - `closure`: selected actions and, in debug mode, first-iteration candidate trace
+  - `outcome`: deficit snapshots through base session, supplementation, and closure plus key tradeoffs
 - `npm run repair:exercise-library` (and `:apply`) for repair workflow
 - Keep `docs/contracts/runtime-contracts.json` aligned with `src/lib/validation.ts`
 - Current baseline migration history is squashed to `prisma/migrations/20260222_baseline/migration.sql`; historical per-feature migration folders are archived at `docs/archive/prisma-migrations-backup/` (see `docs/archive/MIGRATIONS_BACKUP_ARCHIVE.md`).

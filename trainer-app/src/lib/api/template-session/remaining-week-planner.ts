@@ -128,6 +128,8 @@ export function buildRemainingWeekVolumeContext(params: {
   const futureCapacity = new Map<Muscle, number>();
   const requiredNow = new Map<Muscle, number>();
   const urgency = new Map<Muscle, number>();
+  const weeklyOpportunityUnitsByMuscle = new Map<Muscle, number>();
+  const futureOpportunityUnitsByMuscle = new Map<Muscle, number>();
 
   for (const [muscle, target] of weeklyTarget) {
     const deficit = Math.max(0, target - (effectiveActual.get(muscle) ?? 0));
@@ -146,6 +148,8 @@ export function buildRemainingWeekVolumeContext(params: {
     const mustAddressNow = Math.max(0, deficit - estimatedFutureCapacity);
     const scarcity = deficit > 0 ? Math.max(0, Math.min(1, mustAddressNow / deficit)) : 0;
 
+    weeklyOpportunityUnitsByMuscle.set(muscle, weeklyOpportunityUnits);
+    futureOpportunityUnitsByMuscle.set(muscle, futureOpportunityUnits);
     futureCapacity.set(muscle, estimatedFutureCapacity);
     requiredNow.set(muscle, mustAddressNow);
     urgency.set(muscle, 1 + scarcity * 1.5);
@@ -158,5 +162,7 @@ export function buildRemainingWeekVolumeContext(params: {
     futureCapacity,
     requiredNow,
     urgency,
+    weeklyOpportunityUnits: weeklyOpportunityUnitsByMuscle,
+    futureOpportunityUnits: futureOpportunityUnitsByMuscle,
   };
 }

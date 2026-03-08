@@ -22,10 +22,15 @@ import {
   resolveRoleFixtureAnchor,
 } from "./template-session/role-anchor-policy";
 import type {
+  PlannerAnchorFixtureDiagnostic,
+  PlannerDeficitSnapshot,
   PlannerClosureActionDiagnostic,
   PlannerClosureCandidateDiagnostic,
+  PlannerInventoryCandidateDiagnostic,
+  PlannerOpportunityMuscleDiagnostic,
   PlannerExerciseDiagnostic,
   PlannerMuscleDiagnostic,
+  PlannerTradeoffDiagnostic,
 } from "@/lib/planner-diagnostics/types";
 import {
   buildRemainingRoleFixturesByAnchor,
@@ -52,6 +57,8 @@ import type {
   SessionGenerationResult,
 } from "./template-session/types";
 import {
+  getSessionMuscleOpportunityWeight,
+  getSessionOpportunityDefinition,
   getSessionAnchorPolicy,
   type SessionInventoryKind,
 } from "@/lib/planning/session-opportunities";
@@ -326,6 +333,60 @@ function getClosurePoolRejectionReason(
   return undefined;
 }
 
+function mapFutureSlotCounts(
+  futureSlotCounts: Map<GenerateIntentSessionInput["intent"], number>
+): Partial<Record<GenerateIntentSessionInput["intent"], number>> {
+  return Object.fromEntries(
+    Array.from(futureSlotCounts.entries()).map(([intent, count]) => [intent, count])
+  );
+}
+
+function getInventoryEligibilityReason(
+  inventoryKind: SessionInventoryKind
+): string {
+  switch (inventoryKind) {
+    case "standard":
+      return "eligible_by_standard_session_alignment";
+    case "closure":
+      return "eligible_by_closure_inventory_alignment";
+    case "rescue":
+      return "eligible_by_rescue_inventory_alignment";
+    default:
+      return "eligible_by_inventory_alignment";
+  }
+}
+
+function buildInventoryCandidateDiagnostics(params: {
+  pool: EngineExercise[];
+  inventoryKind: SessionInventoryKind;
+  selectedIds: string[];
+  perExerciseSetTargets?: Record<string, number>;
+  rationale?: SelectionOutput["rationale"];
+  rejectedReasons?: Map<string, string>;
+}): PlannerInventoryCandidateDiagnostic[] {
+  const selectedIds = new Set(params.selectedIds);
+  return params.pool
+    .map((exercise) => ({
+      exerciseId: exercise.id,
+      exerciseName: exercise.name,
+      inventoryKind: params.inventoryKind,
+      eligibilityReason: getInventoryEligibilityReason(params.inventoryKind),
+      selected: selectedIds.has(exercise.id),
+      selectedSets: selectedIds.has(exercise.id)
+        ? params.perExerciseSetTargets?.[exercise.id]
+        : undefined,
+      rationale: params.rationale?.[exercise.id]?.reason,
+      rejectionReason: params.rejectedReasons?.get(exercise.id),
+    }))
+    .sort((left, right) => left.exerciseName.localeCompare(right.exerciseName));
+}
+
+function buildRejectedReasonMap(
+  rejected: ReturnType<typeof summarizeFilteredExercises>
+): Map<string, string> {
+  return new Map(rejected.map((entry) => [entry.exerciseId, entry.reason]));
+}
+
 function buildAssignedEffectiveByMuscleInSession(
   perExerciseSetTargets: Record<string, number>,
   exerciseById: Map<string, EngineExercise>
@@ -425,6 +486,152 @@ function buildPlannerMuscleDiagnostics(params: {
   }
 
   return diagnostics;
+}
+
+function buildDeficitSnapshot(
+  objective: ReturnType<typeof buildSelectionObjective>,
+  assignedEffectiveByMuscleInSession: Map<string, number>
+): Record<string, PlannerDeficitSnapshot> {
+  const snapshot: Record<string, PlannerDeficitSnapshot> = {};
+
+  for (const [muscle, weeklyTarget] of objective.volumeContext.weeklyTarget.entries()) {
+    if (weeklyTarget <= 0) {
+      continue;
+    }
+    const performed = objective.volumeContext.effectiveActual.get(muscle) ?? 0;
+    const planned = assignedEffectiveByMuscleInSession.get(muscle) ?? 0;
+    const projected = performed + planned;
+    snapshot[muscle] = {
+      weeklyTarget: roundPlannerValue(weeklyTarget),
+      performedEffectiveVolumeBeforeSession: roundPlannerValue(performed),
+      plannedEffectiveVolume: roundPlannerValue(planned),
+      projectedEffectiveVolume: roundPlannerValue(projected),
+      remainingDeficit: roundPlannerValue(Math.max(0, weeklyTarget - projected)),
+    };
+  }
+
+  return snapshot;
+}
+
+function buildOpportunityDiagnostics(params: {
+  objective: ReturnType<typeof buildSelectionObjective>;
+  input: GenerateIntentSessionInput;
+  planningInventoryKind: Extract<SessionInventoryKind, "standard" | "rescue">;
+  closureInventoryKind: SessionInventoryKind;
+}) {
+  const definition = getSessionOpportunityDefinition(params.input.intent);
+  const opportunityMuscles: Record<string, PlannerOpportunityMuscleDiagnostic> = {};
+  for (const [muscle, weeklyTarget] of params.objective.volumeContext.weeklyTarget.entries()) {
+    if (weeklyTarget <= 0) {
+      continue;
+    }
+    const performed = params.objective.volumeContext.effectiveActual.get(muscle) ?? 0;
+    const startingDeficit = Math.max(0, weeklyTarget - performed);
+    const remainingWeek = params.objective.volumeContext.remainingWeek;
+    opportunityMuscles[muscle] = {
+      sessionOpportunityWeight: roundPlannerValue(
+        getSessionMuscleOpportunityWeight(params.input.intent, muscle, {
+          targetMuscles: params.input.targetMuscles,
+        })
+      ),
+      weeklyTarget: roundPlannerValue(weeklyTarget),
+      performedEffectiveVolumeBeforeSession: roundPlannerValue(performed),
+      startingDeficit: roundPlannerValue(startingDeficit),
+      weeklyOpportunityUnits: roundPlannerValue(
+        remainingWeek?.weeklyOpportunityUnits?.get(muscle) ?? 0
+      ),
+      futureOpportunityUnits: roundPlannerValue(
+        remainingWeek?.futureOpportunityUnits?.get(muscle) ?? 0
+      ),
+      futureCapacity: roundPlannerValue(remainingWeek?.futureCapacity.get(muscle) ?? 0),
+      requiredNow: roundPlannerValue(remainingWeek?.requiredNow.get(muscle) ?? 0),
+      urgencyMultiplier: roundPlannerValue(remainingWeek?.urgency.get(muscle) ?? 1),
+    };
+  }
+
+  return {
+    opportunityKey: params.input.intent,
+    sessionIntent: params.input.intent,
+    sessionCharacter: definition.character,
+    targetMuscles: params.input.targetMuscles,
+    planningInventoryKind: params.planningInventoryKind,
+    closureInventoryKind: params.closureInventoryKind,
+    currentSessionMuscleOpportunity: opportunityMuscles,
+    remainingWeek: params.objective.volumeContext.remainingWeek
+      ? {
+          futureSlots: params.objective.volumeContext.remainingWeek.futureSlots,
+          futureSlotCounts: mapFutureSlotCounts(
+            params.objective.volumeContext.remainingWeek.futureSlotCounts
+          ),
+          futureCapacityFactor: roundPlannerValue(
+            params.objective.volumeContext.remainingWeek.futureCapacityFactor
+          ),
+        }
+      : undefined,
+  };
+}
+
+function inferAnchorFixtureDecisionCode(params: {
+  plannedSets: number;
+  desiredSets: number;
+  minimumSets: number;
+  anchorBudgetDecision?: PlannerAnchorFixtureDiagnostic["anchorBudgetDecision"];
+  overshootAdjustmentsApplied?: PlannerAnchorFixtureDiagnostic["overshootAdjustmentsApplied"];
+  hasAnchorBudget: boolean;
+  isDeload: boolean;
+}): PlannerAnchorFixtureDiagnostic["decisionCode"] {
+  if (params.isDeload) {
+    return "deload_passthrough";
+  }
+  if (!params.hasAnchorBudget) {
+    return "passed_through_without_anchor";
+  }
+  if (params.plannedSets <= 0) {
+    return "dropped_by_anchor_budget";
+  }
+  const reducedByBudget =
+    (params.anchorBudgetDecision?.anchorConstrainedContinuousSetTarget ?? params.desiredSets) <
+    params.desiredSets - CLOSURE_ACTION_SCORE_EPSILON;
+  const reducedByGuardrail =
+    (params.overshootAdjustmentsApplied?.reductionsApplied ?? 0) > 0;
+  if (params.plannedSets <= params.minimumSets && params.plannedSets < params.desiredSets) {
+    return "kept_at_floor";
+  }
+  if (reducedByBudget && reducedByGuardrail) {
+    return "trimmed_by_anchor_budget_and_collateral_guardrail";
+  }
+  if (reducedByBudget) {
+    return "trimmed_by_anchor_budget";
+  }
+  if (reducedByGuardrail) {
+    return "trimmed_by_collateral_guardrail";
+  }
+  return "kept_at_desired_target";
+}
+
+function describeAnchorFixtureDecision(
+  decisionCode: PlannerAnchorFixtureDiagnostic["decisionCode"]
+): string {
+  switch (decisionCode) {
+    case "deload_passthrough":
+      return "Deload session kept the fixture at its proposed set target without anchor budgeting.";
+    case "passed_through_without_anchor":
+      return "Fixture passed through because no usable anchor budget applied.";
+    case "kept_at_desired_target":
+      return "Fixture stayed at its desired target inside the anchor envelope.";
+    case "kept_at_floor":
+      return "Fixture was held at the minimum viable floor because the remaining anchor budget was tight.";
+    case "trimmed_by_anchor_budget":
+      return "Fixture was trimmed because the anchor budget could not support the desired target now.";
+    case "trimmed_by_collateral_guardrail":
+      return "Fixture was trimmed to avoid collateral overshoot on non-anchor muscles.";
+    case "trimmed_by_anchor_budget_and_collateral_guardrail":
+      return "Fixture was trimmed by both anchor scarcity and collateral overshoot guardrails.";
+    case "dropped_by_anchor_budget":
+      return "Fixture was dropped because its remaining anchor budget was exhausted.";
+    default:
+      return "Fixture decision recorded.";
+  }
 }
 
 function getCriticalMuscles(
@@ -1363,6 +1570,12 @@ export function generateSessionFromMappedContext(
   const planningInventoryKind = getSessionPlanningInventoryKind(input);
   const closureInventoryKind: SessionInventoryKind =
     planningInventoryKind === "rescue" ? "rescue" : "closure";
+  const standardPool = filterPoolForInventory(
+    mapped.exerciseLibrary,
+    input.intent,
+    "standard",
+    input.targetMuscles
+  );
   const filteredPool = filterPoolForInventory(
     mapped.exerciseLibrary,
     input.intent,
@@ -1378,9 +1591,47 @@ export function generateSessionFromMappedContext(
     closureInventoryKind,
     input.targetMuscles
   );
+  const rescuePool = filterPoolForInventory(
+    mapped.exerciseLibrary,
+    input.intent,
+    "rescue",
+    input.targetMuscles
+  );
 
   const exerciseById = new Map(mapped.exerciseLibrary.map((exercise) => [exercise.id, exercise]));
+  const anchorPolicy = getSessionAnchorPolicy(input.intent);
+  const plannerTradeoffs: PlannerTradeoffDiagnostic[] = [];
   const plannerExerciseDiagnostics: Record<string, PlannerExerciseDiagnostic> = {};
+  const roleFixtureMeta = new Map(
+    Array.from(roleMap.entries())
+      .filter(([exerciseId]) => exerciseById.has(exerciseId))
+      .map(([exerciseId, role]) => {
+        const exercise = exerciseById.get(exerciseId);
+        return [exerciseId, {
+          exercise,
+          role,
+          proposedSets: exercise ? computeProposedSets(exercise, objective) : 0,
+          decision: undefined as RoleFixtureBudgetDecision | undefined,
+          selectedDirectlyByBaseInventory: false,
+        }];
+      })
+  );
+  let baseAssignedEffectiveByMuscleInSession = new Map<string, number>();
+  let postSupplementAssignedEffectiveByMuscleInSession = new Map<string, number>();
+  let standardLayerUsed = false;
+  let standardLayerReason =
+    planningInventoryKind === "rescue"
+      ? "rescue_generation_bypassed_standard_inventory"
+      : "standard_inventory_not_used";
+  let standardSelectedExerciseIds: string[] = [];
+  let standardRejectedReasonMap = new Map<string, string>();
+  let supplementalAllowed = false;
+  let supplementalUsed = false;
+  let supplementalReason = "supplementation_not_evaluated";
+  let supplementalInventoryKind: SessionInventoryKind | undefined;
+  let supplementalSelectedExerciseIds: string[] = [];
+  let supplementalCandidates: PlannerInventoryCandidateDiagnostic[] | undefined;
+  let supplementalDeficitsTargeted: string[] = [];
   let filteredExercises: ReturnType<typeof summarizeFilteredExercises> = [];
   const selectionOrError: SelectionOutput | { error: string } = (() => {
     if (hasRegisteredRoles && !allowNonRoleAutoFill) {
@@ -1409,10 +1660,11 @@ export function generateSessionFromMappedContext(
         if (!exercise) {
           continue;
         }
+        const proposedSets = computeProposedSets(exercise, objective);
         const roleBudgetDecision = resolveRoleFixtureSetTarget(
           exercise,
           exerciseId,
-          computeProposedSets(exercise, objective),
+          proposedSets,
           objective,
           input.intent,
           isDeloadSession,
@@ -1421,8 +1673,19 @@ export function generateSessionFromMappedContext(
           remainingRoleFixturesByAnchor,
           roleMap.get(exerciseId)
         );
+        const fixtureMeta = roleFixtureMeta.get(exerciseId);
+        if (fixtureMeta) {
+          fixtureMeta.proposedSets = proposedSets;
+          fixtureMeta.decision = roleBudgetDecision;
+        }
         const plannedSets = roleBudgetDecision.plannedSets;
         if (plannedSets <= 0) {
+          plannerTradeoffs.push({
+            layer: "anchor",
+            code: "fixture_dropped",
+            exerciseId,
+            message: `${exercise.name} was dropped because its anchor budget was exhausted.`,
+          });
           continue;
         }
         perExerciseSetTargets[exerciseId] = plannedSets;
@@ -1449,6 +1712,7 @@ export function generateSessionFromMappedContext(
           })
         );
       }
+      baseAssignedEffectiveByMuscleInSession = new Map(assignedEffectiveByMuscleInSession);
       const anchorSelection: SelectionOutput = {
         selectedExerciseIds: selectedRoleIds,
         mainLiftIds: selectedRoleIds.filter((exerciseId) => roleMap.get(exerciseId) === "CORE_COMPOUND"),
@@ -1457,6 +1721,7 @@ export function generateSessionFromMappedContext(
         rationale: {},
         volumePlanByMuscle: {},
       };
+      supplementalAllowed = true;
       if (
         !shouldSupplementAnchorSelection({
           objective,
@@ -1466,10 +1731,20 @@ export function generateSessionFromMappedContext(
           targetMuscles: input.targetMuscles,
         })
       ) {
+        supplementalReason = "anchor_selection_already_satisfies_session_floor";
+        postSupplementAssignedEffectiveByMuscleInSession = new Map(baseAssignedEffectiveByMuscleInSession);
         return anchorSelection;
       }
 
-      const supplementalInventoryKind =
+      supplementalDeficitsTargeted = getCriticalMuscleDeficits(
+        objective,
+        baseAssignedEffectiveByMuscleInSession,
+        input.intent,
+        input.targetMuscles
+      )
+        .filter((entry) => entry.remainingDeficit > entry.tolerance)
+        .map((entry) => entry.muscle);
+      supplementalInventoryKind =
         planningInventoryKind === "rescue"
           ? "rescue"
           : getSessionAnchorPolicy(input.intent).supplementalInventory;
@@ -1490,12 +1765,25 @@ export function generateSessionFromMappedContext(
           !pinnedRoleIds.has(exercise.id)
       );
       if (!supplementalObjective || supplementalPool.length === 0) {
+        supplementalReason =
+          supplementalObjective == null
+            ? "no_remaining_session_slots_for_supplementation"
+            : "no_supplemental_candidates_available";
+        supplementalCandidates = buildInventoryCandidateDiagnostics({
+          pool: supplementalPool,
+          inventoryKind: supplementalInventoryKind,
+          selectedIds: [],
+        });
+        postSupplementAssignedEffectiveByMuscleInSession = new Map(baseAssignedEffectiveByMuscleInSession);
         return anchorSelection;
       }
 
       const supplementalSelectionResult = selectExercisesOptimized(
         supplementalPool,
         supplementalObjective
+      );
+      const supplementalRejectedReasons = buildRejectedReasonMap(
+        summarizeFilteredExercises(supplementalSelectionResult.rejected)
       );
       filteredExercises = [
         ...filteredExercises,
@@ -1505,6 +1793,38 @@ export function generateSessionFromMappedContext(
         supplementalSelectionResult,
         supplementalObjective.constraints.demotedFromMainLift ?? new Set()
       );
+      supplementalSelectedExerciseIds = supplementalSelection.selectedExerciseIds;
+      supplementalUsed = supplementalSelectedExerciseIds.length > 0;
+      supplementalReason = supplementalUsed
+        ? "supplemented_anchor_selection"
+        : "optimizer_selected_no_supplemental_exercises";
+      supplementalCandidates = buildInventoryCandidateDiagnostics({
+        pool: supplementalPool,
+        inventoryKind: supplementalInventoryKind,
+        selectedIds: supplementalSelectedExerciseIds,
+        perExerciseSetTargets: supplementalSelection.perExerciseSetTargets,
+        rationale: supplementalSelection.rationale,
+        rejectedReasons: supplementalRejectedReasons,
+      });
+      postSupplementAssignedEffectiveByMuscleInSession = buildAssignedEffectiveByMuscleInSession(
+        {
+          ...anchorSelection.perExerciseSetTargets,
+          ...supplementalSelection.perExerciseSetTargets,
+        },
+        exerciseById
+      );
+      for (const supplementalExerciseId of supplementalSelectedExerciseIds) {
+        const supplementalExercise = exerciseById.get(supplementalExerciseId);
+        if (!supplementalExercise) {
+          continue;
+        }
+        plannerTradeoffs.push({
+          layer: "supplemental",
+          code: "supplemental_exercise_added",
+          exerciseId: supplementalExerciseId,
+          message: `${supplementalExercise.name} was added from the supplemental inventory to cover remaining session needs.`,
+        });
+      }
       return mergeSupplementalSelection({
         baseSelection: anchorSelection,
         supplementalSelection,
@@ -1515,10 +1835,18 @@ export function generateSessionFromMappedContext(
     const poolWithoutPinnedRoles = filteredPool.filter((exercise) => !pinnedRoleIds.has(exercise.id));
     const selectionResult = selectExercisesOptimized(poolWithoutPinnedRoles, objective);
     filteredExercises = summarizeFilteredExercises(selectionResult.rejected);
+    standardLayerUsed = planningInventoryKind === "standard";
+    standardLayerReason =
+      planningInventoryKind === "standard"
+        ? "standard_inventory_drove_base_selection"
+        : "rescue_inventory_drove_base_selection";
+    standardRejectedReasonMap = buildRejectedReasonMap(filteredExercises);
     const mappedSelectionBase = mapSelectionResult(
       selectionResult,
       objective.constraints.demotedFromMainLift ?? new Set()
     );
+    standardSelectedExerciseIds =
+      planningInventoryKind === "standard" ? mappedSelectionBase.selectedExerciseIds : [];
     const selectedExerciseIds = sortPinnedFirst(
       [...pinnedRoleIds, ...mappedSelectionBase.selectedExerciseIds.filter((id) => !pinnedRoleIds.has(id))],
       pinnedRoleIds
@@ -1591,10 +1919,11 @@ export function generateSessionFromMappedContext(
       if (!exercise) {
         continue;
       }
+      const proposedSets = computeProposedSets(exercise, objective);
       const roleBudgetDecision = resolveRoleFixtureSetTarget(
         exercise,
         exerciseId,
-        computeProposedSets(exercise, objective),
+        proposedSets,
         objective,
         input.intent,
         isDeloadSession,
@@ -1603,8 +1932,19 @@ export function generateSessionFromMappedContext(
         remainingRoleFixturesByAnchor,
         roleMap.get(exerciseId)
       );
+      const fixtureMeta = roleFixtureMeta.get(exerciseId);
+      if (fixtureMeta) {
+        fixtureMeta.proposedSets = proposedSets;
+        fixtureMeta.decision = roleBudgetDecision;
+      }
       const plannedSets = roleBudgetDecision.plannedSets;
       if (plannedSets <= 0) {
+        plannerTradeoffs.push({
+          layer: "anchor",
+          code: "fixture_dropped",
+          exerciseId,
+          message: `${exercise.name} was dropped because its anchor budget was exhausted.`,
+        });
         continue;
       }
       perExerciseSetTargets[exerciseId] = plannedSets;
@@ -1633,6 +1973,21 @@ export function generateSessionFromMappedContext(
     const filteredSelectedExerciseIds = selectionBase.selectedExerciseIds.filter(
       (exerciseId) => perExerciseSetTargets[exerciseId] != null
     );
+    for (const exerciseId of filteredSelectedExerciseIds) {
+      const fixtureMeta = roleFixtureMeta.get(exerciseId);
+      if (fixtureMeta && fixtureMeta.decision == null) {
+        fixtureMeta.selectedDirectlyByBaseInventory = true;
+      }
+    }
+    baseAssignedEffectiveByMuscleInSession = buildAssignedEffectiveByMuscleInSession(
+      Object.fromEntries(
+        Object.entries(perExerciseSetTargets).filter(([exerciseId]) =>
+          filteredSelectedExerciseIds.includes(exerciseId)
+        )
+      ),
+      exerciseById
+    );
+    postSupplementAssignedEffectiveByMuscleInSession = new Map(baseAssignedEffectiveByMuscleInSession);
     return {
       ...selectionBase,
       selectedExerciseIds: filteredSelectedExerciseIds,
@@ -1653,9 +2008,88 @@ export function generateSessionFromMappedContext(
     };
   }
 
-  const roleBudgetAssignedEffectiveByMuscleInSession = buildAssignedEffectiveByMuscleInSession(
-    selectionOrError.perExerciseSetTargets,
-    exerciseById
+  const anchorFixtureDiagnostics = roleOrderedIds(roleMap).flatMap((exerciseId) => {
+    const fixtureMeta = roleFixtureMeta.get(exerciseId);
+    if (!fixtureMeta?.exercise) {
+      return [];
+    }
+    const role = fixtureMeta.role ?? "UNASSIGNED";
+    const minimumSets =
+      role === "CORE_COMPOUND"
+        ? anchorPolicy.coreMinimumSets
+        : anchorPolicy.accessoryMinimumSets;
+    const plannedSets = selectionOrError.perExerciseSetTargets[exerciseId] ?? 0;
+    const decisionCode = fixtureMeta.decision
+      ? inferAnchorFixtureDecisionCode({
+          plannedSets: fixtureMeta.decision.plannedSets,
+          desiredSets:
+            fixtureMeta.decision.anchorBudgetDecision?.desiredSetTarget ?? fixtureMeta.proposedSets,
+          minimumSets,
+          anchorBudgetDecision: fixtureMeta.decision.anchorBudgetDecision,
+          overshootAdjustmentsApplied: fixtureMeta.decision.overshootAdjustmentsApplied,
+          hasAnchorBudget: Boolean(fixtureMeta.decision.anchorBudgetDecision),
+          isDeload: isDeloadSession,
+        })
+      : "kept_at_desired_target";
+    const reason =
+      fixtureMeta.decision != null
+        ? describeAnchorFixtureDecision(decisionCode)
+        : "Role fixture landed in the base session directly from inventory selection.";
+    if (
+      fixtureMeta.decision != null &&
+      [
+        "kept_at_floor",
+        "trimmed_by_anchor_budget",
+        "trimmed_by_collateral_guardrail",
+        "trimmed_by_anchor_budget_and_collateral_guardrail",
+      ].includes(decisionCode)
+    ) {
+      plannerTradeoffs.push({
+        layer: "anchor",
+        code: decisionCode,
+        exerciseId,
+        message: `${fixtureMeta.exercise.name}: ${reason}`,
+      });
+    }
+    const priority: "core" | "accessory" =
+      role === "CORE_COMPOUND" ? "core" : "accessory";
+    return [{
+      exerciseId,
+      exerciseName: fixtureMeta.exercise.name,
+      role,
+      priority,
+      anchor:
+        fixtureMeta.decision?.anchor ??
+        resolveRoleFixtureAnchor({
+          exercise: fixtureMeta.exercise,
+          role: fixtureMeta.role,
+          sessionIntent: input.intent,
+          weeklyTarget: objective.volumeContext.weeklyTarget,
+        }),
+      proposedSets: fixtureMeta.proposedSets,
+      minimumSets,
+      desiredSets:
+        fixtureMeta.decision?.anchorBudgetDecision?.desiredSetTarget ??
+        plannedSets ??
+        fixtureMeta.proposedSets,
+      plannedSets,
+      kept: plannedSets > 0,
+      decisionCode,
+      reason,
+      anchorBudgetDecision: fixtureMeta.decision?.anchorBudgetDecision,
+      overshootAdjustmentsApplied: fixtureMeta.decision?.overshootAdjustmentsApplied,
+    }];
+  });
+  const standardCandidates = buildInventoryCandidateDiagnostics({
+    pool: standardPool.filter((exercise) => !pinnedRoleIds.has(exercise.id)),
+    inventoryKind: "standard",
+    selectedIds: standardSelectedExerciseIds,
+    perExerciseSetTargets: selectionOrError.perExerciseSetTargets,
+    rationale: selectionOrError.rationale,
+    rejectedReasons: standardRejectedReasonMap,
+  });
+  const postRoleBudgetAssignedEffectiveByMuscleInSession = new Map(
+    postSupplementAssignedEffectiveByMuscleInSession
   );
   const closureResult = applyClosureFill({
     objective,
@@ -1699,16 +2133,149 @@ export function generateSessionFromMappedContext(
     plannerExerciseDiagnostics,
     selection.perExerciseSetTargets
   );
+  const rescueOnlyPool = rescuePool.filter((exercise) =>
+    !standardPool.some((standardExercise) => standardExercise.id === exercise.id)
+  );
+  const rescueOnlyPoolIds = new Set(rescueOnlyPool.map((exercise) => exercise.id));
+  const rescueSelectedExerciseIds = selection.selectedExerciseIds.filter((exerciseId) =>
+    rescueOnlyPoolIds.has(exerciseId)
+  );
+  const rescueCandidates = buildInventoryCandidateDiagnostics({
+    pool: rescueOnlyPool,
+    inventoryKind: "rescue",
+    selectedIds: rescueSelectedExerciseIds,
+    perExerciseSetTargets: selection.perExerciseSetTargets,
+    rationale: selection.rationale,
+  });
+  const startingDeficits = buildDeficitSnapshot(objective, new Map());
+  const deficitsAfterBaseSession = buildDeficitSnapshot(
+    objective,
+    baseAssignedEffectiveByMuscleInSession
+  );
+  const deficitsAfterSupplementation = buildDeficitSnapshot(
+    objective,
+    postSupplementAssignedEffectiveByMuscleInSession
+  );
+  const deficitsAfterClosure = buildDeficitSnapshot(
+    objective,
+    finalAssignedEffectiveByMuscleInSession
+  );
+  for (const action of closureResult.actions) {
+    plannerTradeoffs.push({
+      layer: "closure",
+      code: `closure_${action.kind}`,
+      exerciseId: action.exerciseId,
+      message: `${action.exerciseName} won closure with ${action.kind} (+${action.setDelta} set${action.setDelta === 1 ? "" : "s"}).`,
+    });
+  }
+  for (const exerciseId of rescueSelectedExerciseIds) {
+    const exercise = exerciseById.get(exerciseId);
+    if (!exercise) {
+      continue;
+    }
+    plannerTradeoffs.push({
+      layer: "rescue",
+      code: "rescue_inventory_selected_exercise",
+      exerciseId,
+      message: `${exercise.name} came from rescue-only inventory because standard inventory could not cover this session.`,
+    });
+  }
+  const unresolvedDeficits = Object.entries(deficitsAfterClosure)
+    .filter(([, snapshot]) => snapshot.remainingDeficit > 0)
+    .map(([muscle]) => muscle)
+    .sort((left, right) => left.localeCompare(right));
+  for (const muscle of unresolvedDeficits) {
+    plannerTradeoffs.push({
+      layer: "closure",
+      code: "unresolved_deficit_remaining",
+      muscle,
+      message: `${muscle} still has unresolved weekly deficit after closure.`,
+    });
+  }
+  const layersUsed = [
+    ...(anchorFixtureDiagnostics.length > 0 ? (["anchor"] as const) : []),
+    ...(standardLayerUsed ? (["standard"] as const) : []),
+    ...(supplementalUsed ? (["supplemental"] as const) : []),
+    ...(closureResult.actions.length > 0 ? (["closure"] as const) : []),
+    ...(rescueSelectedExerciseIds.length > 0 ? (["rescue"] as const) : []),
+  ];
   selection.plannerDiagnostics = {
+    opportunity: buildOpportunityDiagnostics({
+      objective,
+      input,
+      planningInventoryKind,
+      closureInventoryKind,
+    }),
+    anchor: {
+      used: anchorFixtureDiagnostics.length > 0,
+      policy: anchorPolicy,
+      consideredFixtureIds: anchorFixtureDiagnostics.map((fixture) => fixture.exerciseId),
+      keptFixtureIds: anchorFixtureDiagnostics
+        .filter((fixture) => fixture.kept)
+        .map((fixture) => fixture.exerciseId),
+      droppedFixtureIds: anchorFixtureDiagnostics
+        .filter((fixture) => !fixture.kept)
+        .map((fixture) => fixture.exerciseId),
+      fixtures: anchorFixtureDiagnostics,
+    },
+    standard: {
+      used: standardLayerUsed,
+      reason: standardLayerReason,
+      inventoryKind: "standard",
+      selectedExerciseIds: standardSelectedExerciseIds,
+      candidateCount: standardCandidates.length,
+      candidates: standardCandidates,
+    },
+    supplemental: {
+      allowed: supplementalAllowed,
+      used: supplementalUsed,
+      reason: supplementalReason,
+      inventoryKind: supplementalInventoryKind,
+      deficitsTargeted: supplementalDeficitsTargeted,
+      selectedExerciseIds: supplementalSelectedExerciseIds,
+      candidateCount: supplementalCandidates?.length ?? 0,
+      candidates: supplementalCandidates,
+    },
     muscles: buildPlannerMuscleDiagnostics({
       objective,
-      roleBudgetAssignedEffectiveByMuscleInSession,
+      roleBudgetAssignedEffectiveByMuscleInSession: postRoleBudgetAssignedEffectiveByMuscleInSession,
       finalAssignedEffectiveByMuscleInSession,
     }),
     exercises: plannerExerciseDiagnostics,
     closure: {
+      eligible: closureResult.eligible,
+      used: closureResult.actions.length > 0,
+      reason: closureResult.reason,
+      inventoryKind: closureInventoryKind,
+      eligibleExerciseIds: closurePool.map((exercise) => exercise.id),
+      winningAction: closureResult.actions[0],
       actions: closureResult.actions,
       firstIterationCandidates: closureResult.firstIterationCandidates,
+    },
+    rescue: {
+      eligible: planningInventoryKind === "rescue" || closureInventoryKind === "rescue",
+      used: rescueSelectedExerciseIds.length > 0,
+      reason:
+        planningInventoryKind !== "rescue" && closureInventoryKind !== "rescue"
+          ? "rescue_not_requested"
+          : rescueOnlyPool.length === 0
+            ? "no_rescue_only_candidates_available"
+            : rescueSelectedExerciseIds.length > 0
+              ? "rescue_inventory_contributed_selected_exercises"
+              : "rescue_inventory_available_but_not_needed",
+      rescueOnlyCandidateCount: rescueOnlyPool.length,
+      rescueOnlyExerciseIds: rescueOnlyPool.map((exercise) => exercise.id),
+      selectedExerciseIds: rescueSelectedExerciseIds,
+      candidates: rescueCandidates,
+    },
+    outcome: {
+      layersUsed,
+      startingDeficits,
+      deficitsAfterBaseSession,
+      deficitsAfterSupplementation,
+      deficitsAfterClosure,
+      unresolvedDeficits,
+      keyTradeoffs: plannerTradeoffs,
     },
   };
 

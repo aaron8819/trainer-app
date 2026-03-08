@@ -551,14 +551,30 @@ describe("generateSessionFromIntent", () => {
     });
 
     try {
-      const result = await generateSessionFromIntent("user-1", { intent: "push" });
+      const result = await generateSessionFromIntent("user-1", {
+        intent: "push",
+        plannerDiagnosticsMode: "debug",
+      });
 
       expect("error" in result).toBe(false);
       if ("error" in result) return;
 
+      const diagnostics = result.selection.sessionDecisionReceipt?.plannerDiagnostics;
       expect(selectSpy).toHaveBeenCalledTimes(1);
       expect(result.selection.selectedExerciseIds).toEqual(
         expect.arrayContaining(["bench", "pressdown", "cable-fly"])
+      );
+      expect(diagnostics?.anchor?.used).toBe(true);
+      expect(diagnostics?.anchor?.fixtures.map((fixture) => fixture.exerciseId)).toEqual(
+        expect.arrayContaining(["bench", "pressdown"])
+      );
+      expect(diagnostics?.standard?.used).toBe(false);
+      expect(diagnostics?.supplemental?.allowed).toBe(true);
+      expect(diagnostics?.supplemental?.used).toBe(true);
+      expect(diagnostics?.supplemental?.selectedExerciseIds).toEqual(["cable-fly"]);
+      expect(diagnostics?.supplemental?.candidates?.some((candidate) => candidate.exerciseId === "cable-fly")).toBe(true);
+      expect(diagnostics?.outcome?.layersUsed).toEqual(
+        expect.arrayContaining(["anchor", "supplemental"])
       );
     } finally {
       selectSpy.mockRestore();
@@ -640,16 +656,30 @@ describe("generateSessionFromIntent", () => {
       intent: "body_part",
       targetMuscles: ["Chest"],
       optionalGapFill: true,
+      plannerDiagnosticsMode: "debug",
     });
 
     expect("error" in rescue).toBe(false);
     if ("error" in rescue) return;
 
+    const diagnostics = rescue.selection.sessionDecisionReceipt?.plannerDiagnostics;
     expect(rescue.selection.selectedExerciseIds.length).toBeGreaterThan(0);
     expect(rescue.selection.selectedExerciseIds).toEqual(
       expect.arrayContaining(["close-grip-bench", "landmine-press"])
     );
     expect(rescue.selection.intentDiagnostics?.alignedRatio).toBeGreaterThan(0);
+    expect(diagnostics?.standard?.used).toBe(false);
+    expect(diagnostics?.rescue?.eligible).toBe(true);
+    expect(diagnostics?.rescue?.used).toBe(true);
+    expect(diagnostics?.rescue?.rescueOnlyExerciseIds).toEqual(
+      expect.arrayContaining(["close-grip-bench", "landmine-press", "weighted-dip"])
+    );
+    expect(diagnostics?.rescue?.selectedExerciseIds).toEqual(
+      expect.arrayContaining(["close-grip-bench", "landmine-press"])
+    );
+    expect(diagnostics?.rescue?.candidates?.length).toBeGreaterThan(0);
+    expect(diagnostics?.closure).toBeDefined();
+    expect(diagnostics?.outcome?.layersUsed).toContain("rescue");
   });
 
   it("respects client roleListIncomplete=true even when server role list is complete", async () => {

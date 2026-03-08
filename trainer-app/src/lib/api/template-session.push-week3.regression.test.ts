@@ -1351,17 +1351,24 @@ describe("W3S1 Push regression — 4 engine bug fixes", () => {
   it("can use closure set expansion on an already-selected exercise when critical deficits remain", async () => {
     loadMappedGenerationContextMock.mockResolvedValueOnce(buildClosureExpansionMappedContext());
 
-    const result = await generateSessionFromIntent("user-1", { intent: "push" });
+    const result = await generateSessionFromIntent("user-1", {
+      intent: "push",
+      plannerDiagnosticsMode: "debug",
+    });
     if ("error" in result) {
       throw new Error(`Unexpected error: ${result.error}`);
     }
 
+    const receipt = result.selection.sessionDecisionReceipt?.plannerDiagnostics;
     expect(result.selection.selectedExerciseIds).toEqual(["chest-priority-press"]);
     expect(getAllExerciseSets(result.workout, "chest-priority-press")?.length ?? 0).toBe(5);
     expect(result.volumePlanByMuscle.Chest.planned).toBeGreaterThanOrEqual(5);
-    expect(
-      result.selection.sessionDecisionReceipt?.plannerDiagnostics?.closure.actions
-    ).toEqual(
+    expect(receipt?.closure.used).toBe(true);
+    expect(receipt?.closure.reason).toBe("closure_applied");
+    expect(receipt?.closure.winningAction?.exerciseId).toBe("chest-priority-press");
+    expect(receipt?.closure.firstIterationCandidates?.length ?? 0).toBeGreaterThan(0);
+    expect(receipt?.outcome?.layersUsed).toContain("closure");
+    expect(receipt?.closure.actions).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           exerciseId: "chest-priority-press",
@@ -1371,8 +1378,7 @@ describe("W3S1 Push regression — 4 engine bug fixes", () => {
       ])
     );
     expect(
-      result.selection.sessionDecisionReceipt?.plannerDiagnostics?.exercises["chest-priority-press"]
-        ?.isSetExpandedCarryover
+      receipt?.exercises["chest-priority-press"]?.isSetExpandedCarryover
     ).toBe(true);
   });
 

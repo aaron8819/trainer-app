@@ -35,6 +35,8 @@ type SelectBestActionResult = {
 
 export type ClosureFillResult = {
   selection: SelectionOutput;
+  eligible: boolean;
+  reason: string;
   actions: PlannerClosureActionDiagnostic[];
   firstIterationCandidates: PlannerClosureCandidateDiagnostic[];
 };
@@ -68,7 +70,13 @@ export function applyClosureFill(params: {
   ) => boolean;
 }): ClosureFillResult {
   if (params.isDeload) {
-    return { selection: params.selection, actions: [], firstIterationCandidates: [] };
+    return {
+      selection: params.selection,
+      eligible: false,
+      reason: "deload_session",
+      actions: [],
+      firstIterationCandidates: [],
+    };
   }
 
   const selection: SelectionOutput = {
@@ -81,6 +89,8 @@ export function applyClosureFill(params: {
   };
   const actions: PlannerClosureActionDiagnostic[] = [];
   let firstIterationCandidates: PlannerClosureCandidateDiagnostic[] = [];
+  let eligible = false;
+  let reason = "no_unresolved_critical_deficits";
 
   for (let iteration = 0; iteration < params.maxClosureIterations; iteration += 1) {
     const unresolvedCriticalDeficits = params.getCriticalMuscleDeficits(
@@ -90,8 +100,10 @@ export function applyClosureFill(params: {
       params.targetMuscles
     ).filter((entry) => entry.remainingDeficit > entry.tolerance);
     if (unresolvedCriticalDeficits.length === 0) {
+      reason = actions.length > 0 ? "closure_applied" : "no_unresolved_critical_deficits";
       break;
     }
+    eligible = true;
 
     const selectionResult = params.selectBestClosureAction(selection);
     if (iteration === 0) {
@@ -99,9 +111,11 @@ export function applyClosureFill(params: {
     }
     const bestAction = selectionResult.bestAction;
     if (!bestAction) {
+      reason = actions.length > 0 ? "closure_applied" : "no_actionable_candidate";
       break;
     }
     if (bestAction.score <= params.minAcceptableScore) {
+      reason = actions.length > 0 ? "closure_applied" : "best_action_below_score_floor";
       break;
     }
     const dominantDeficit = unresolvedCriticalDeficits[0];
@@ -117,11 +131,13 @@ export function applyClosureFill(params: {
       bestAction.dominantDeficitReduction <= params.scoreEpsilon &&
       hasViableDominantCandidate
     ) {
+      reason = actions.length > 0 ? "closure_applied" : "dominant_deficit_not_served";
       break;
     }
 
     const exercise = params.exerciseById.get(bestAction.exerciseId);
     if (!exercise) {
+      reason = actions.length > 0 ? "closure_applied" : "selected_closure_exercise_missing";
       break;
     }
 
@@ -147,7 +163,8 @@ export function applyClosureFill(params: {
         selection.accessoryIds.push(bestAction.exerciseId);
       }
     }
+    reason = "closure_applied";
   }
 
-  return { selection, actions, firstIterationCandidates };
+  return { selection, eligible, reason, actions, firstIterationCandidates };
 }

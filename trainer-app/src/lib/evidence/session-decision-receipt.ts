@@ -141,6 +141,103 @@ function parsePlannerDiagnosticsMode(value: unknown): PlannerDiagnosticsMode | u
   return value === "standard" || value === "debug" ? value : undefined;
 }
 
+function parseRecordOfFiniteNumbers(value: unknown): Record<string, number> | undefined {
+  const record = toObject(value);
+  if (!record) {
+    return undefined;
+  }
+  const parsed: Record<string, number> = {};
+  for (const [key, entry] of Object.entries(record)) {
+    const finite = toFiniteNumber(entry);
+    if (finite != null) {
+      parsed[key] = finite;
+    }
+  }
+  return parsed;
+}
+
+function parseInventoryCandidates(value: unknown) {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  return value.flatMap((entry) => {
+    const item = toObject(entry);
+    if (
+      !item ||
+      typeof item.exerciseId !== "string" ||
+      typeof item.exerciseName !== "string" ||
+      typeof item.inventoryKind !== "string" ||
+      typeof item.eligibilityReason !== "string" ||
+      typeof item.selected !== "boolean"
+    ) {
+      return [];
+    }
+    return [{
+      exerciseId: item.exerciseId,
+      exerciseName: item.exerciseName,
+      inventoryKind: item.inventoryKind as "standard" | "closure" | "rescue",
+      eligibilityReason: item.eligibilityReason,
+      selected: item.selected,
+      selectedSets: toFiniteNumber(item.selectedSets),
+      rationale: typeof item.rationale === "string" ? item.rationale : undefined,
+      rejectionReason: typeof item.rejectionReason === "string" ? item.rejectionReason : undefined,
+    }];
+  });
+}
+
+function parseDeficitSnapshots(value: unknown) {
+  const record = toObject(value);
+  if (!record) {
+    return undefined;
+  }
+  return Object.fromEntries(
+    Object.entries(record).flatMap(([muscle, entry]) => {
+      const item = toObject(entry);
+      if (
+        !item ||
+        toFiniteNumber(item.weeklyTarget) == null ||
+        toFiniteNumber(item.performedEffectiveVolumeBeforeSession) == null ||
+        toFiniteNumber(item.plannedEffectiveVolume) == null ||
+        toFiniteNumber(item.projectedEffectiveVolume) == null ||
+        toFiniteNumber(item.remainingDeficit) == null
+      ) {
+        return [];
+      }
+      return [[muscle, {
+        weeklyTarget: item.weeklyTarget as number,
+        performedEffectiveVolumeBeforeSession: item.performedEffectiveVolumeBeforeSession as number,
+        plannedEffectiveVolume: item.plannedEffectiveVolume as number,
+        projectedEffectiveVolume: item.projectedEffectiveVolume as number,
+        remainingDeficit: item.remainingDeficit as number,
+      }]];
+    })
+  );
+}
+
+function parseTradeoffs(value: unknown) {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  return value.flatMap((entry) => {
+    const item = toObject(entry);
+    if (
+      !item ||
+      typeof item.layer !== "string" ||
+      typeof item.code !== "string" ||
+      typeof item.message !== "string"
+    ) {
+      return [];
+    }
+    return [{
+      layer: item.layer as "anchor" | "standard" | "supplemental" | "closure" | "rescue",
+      code: item.code,
+      message: item.message,
+      exerciseId: typeof item.exerciseId === "string" ? item.exerciseId : undefined,
+      muscle: typeof item.muscle === "string" ? item.muscle : undefined,
+    }];
+  });
+}
+
 function sanitizePlannerDiagnosticsForMode(
   plannerDiagnostics: PlannerDiagnostics | undefined,
   mode: PlannerDiagnosticsMode
@@ -153,9 +250,29 @@ function sanitizePlannerDiagnosticsForMode(
   }
   return {
     ...plannerDiagnostics,
+    standard: plannerDiagnostics.standard
+      ? {
+          ...plannerDiagnostics.standard,
+          candidates: undefined,
+        }
+      : undefined,
+    supplemental: plannerDiagnostics.supplemental
+      ? {
+          ...plannerDiagnostics.supplemental,
+          candidates: undefined,
+        }
+      : undefined,
     closure: {
+      ...plannerDiagnostics.closure,
       actions: plannerDiagnostics.closure.actions,
+      firstIterationCandidates: undefined,
     },
+    rescue: plannerDiagnostics.rescue
+      ? {
+          ...plannerDiagnostics.rescue,
+          candidates: undefined,
+        }
+      : undefined,
   };
 }
 
@@ -388,10 +505,268 @@ function parsePlannerDiagnostics(value: unknown): PlannerDiagnostics | undefined
       })
     : [];
 
+  type ParsedSessionIntent =
+    | "push"
+    | "pull"
+    | "legs"
+    | "upper"
+    | "lower"
+    | "full_body"
+    | "body_part";
+  type ParsedOpportunityCharacter = "upper" | "lower" | "full_body" | "specialized";
+  type ParsedInventoryKind = "standard" | "closure" | "rescue";
+  type ParsedPlannerLayer = "anchor" | "standard" | "supplemental" | "closure" | "rescue";
+
+  const opportunityRecord = toObject(record.opportunity);
+  const opportunity =
+    opportunityRecord &&
+    typeof opportunityRecord.opportunityKey === "string" &&
+    typeof opportunityRecord.sessionIntent === "string" &&
+    typeof opportunityRecord.sessionCharacter === "string"
+      ? {
+          opportunityKey: opportunityRecord.opportunityKey,
+          sessionIntent: opportunityRecord.sessionIntent as ParsedSessionIntent,
+          sessionCharacter: opportunityRecord.sessionCharacter as ParsedOpportunityCharacter,
+          targetMuscles: parseOptionalStringArray(opportunityRecord.targetMuscles),
+          planningInventoryKind:
+            opportunityRecord.planningInventoryKind === "standard" ||
+            opportunityRecord.planningInventoryKind === "rescue"
+              ? (opportunityRecord.planningInventoryKind as "standard" | "rescue")
+              : "standard",
+          closureInventoryKind:
+            opportunityRecord.closureInventoryKind === "standard" ||
+            opportunityRecord.closureInventoryKind === "closure" ||
+            opportunityRecord.closureInventoryKind === "rescue"
+              ? (opportunityRecord.closureInventoryKind as "standard" | "closure" | "rescue")
+              : "closure",
+          currentSessionMuscleOpportunity: Object.fromEntries(
+            Object.entries(toObject(opportunityRecord.currentSessionMuscleOpportunity) ?? {}).flatMap(
+              ([muscle, entry]) => {
+                const item = toObject(entry);
+                if (
+                  !item ||
+                  toFiniteNumber(item.sessionOpportunityWeight) == null ||
+                  toFiniteNumber(item.weeklyTarget) == null ||
+                  toFiniteNumber(item.performedEffectiveVolumeBeforeSession) == null ||
+                  toFiniteNumber(item.startingDeficit) == null
+                ) {
+                  return [];
+                }
+                return [[muscle, {
+                  sessionOpportunityWeight: item.sessionOpportunityWeight as number,
+                  weeklyTarget: item.weeklyTarget as number,
+                  performedEffectiveVolumeBeforeSession:
+                    item.performedEffectiveVolumeBeforeSession as number,
+                  startingDeficit: item.startingDeficit as number,
+                  weeklyOpportunityUnits: toFiniteNumber(item.weeklyOpportunityUnits),
+                  futureOpportunityUnits: toFiniteNumber(item.futureOpportunityUnits),
+                  futureCapacity: toFiniteNumber(item.futureCapacity),
+                  requiredNow: toFiniteNumber(item.requiredNow),
+                  urgencyMultiplier: toFiniteNumber(item.urgencyMultiplier),
+                }]];
+              }
+            )
+          ),
+          remainingWeek: (() => {
+            const remainingWeekRecord = toObject(opportunityRecord.remainingWeek);
+            if (
+              !remainingWeekRecord ||
+              !Array.isArray(remainingWeekRecord.futureSlots) ||
+              toFiniteNumber(remainingWeekRecord.futureCapacityFactor) == null
+            ) {
+              return undefined;
+            }
+            return {
+              futureSlots: parseStringArray(remainingWeekRecord.futureSlots) as ParsedSessionIntent[],
+              futureSlotCounts: (parseRecordOfFiniteNumbers(remainingWeekRecord.futureSlotCounts) ??
+                {}) as Partial<Record<ParsedSessionIntent, number>>,
+              futureCapacityFactor: remainingWeekRecord.futureCapacityFactor as number,
+            };
+          })(),
+        }
+      : undefined;
+
+  const anchorRecord = toObject(record.anchor);
+  const anchor =
+    anchorRecord &&
+    typeof anchorRecord.used === "boolean" &&
+    toObject(anchorRecord.policy)
+      ? {
+          used: anchorRecord.used,
+          policy: {
+            coreMinimumSets: toFiniteNumber(toObject(anchorRecord.policy)?.coreMinimumSets) ?? 0,
+            accessoryMinimumSets:
+              toFiniteNumber(toObject(anchorRecord.policy)?.accessoryMinimumSets) ?? 0,
+            coreDeferredDeficitCarryFraction:
+              toFiniteNumber(toObject(anchorRecord.policy)?.coreDeferredDeficitCarryFraction) ?? 0,
+            accessoryDeferredDeficitCarryFraction:
+              toFiniteNumber(toObject(anchorRecord.policy)?.accessoryDeferredDeficitCarryFraction) ?? 0,
+            supplementalInventory:
+              toObject(anchorRecord.policy)?.supplementalInventory === "standard"
+                ? ("standard" as const)
+                : ("closure" as const),
+          },
+          consideredFixtureIds: parseStringArray(anchorRecord.consideredFixtureIds),
+          keptFixtureIds: parseStringArray(anchorRecord.keptFixtureIds),
+          droppedFixtureIds: parseStringArray(anchorRecord.droppedFixtureIds),
+          fixtures: Array.isArray(anchorRecord.fixtures)
+            ? anchorRecord.fixtures.flatMap((entry) => {
+                const item = toObject(entry);
+                const anchorUsed = toObject(item?.anchor);
+                const parsedAnchor =
+                  anchorUsed &&
+                  ((anchorUsed.kind === "muscle" && typeof anchorUsed.muscle === "string") ||
+                    (anchorUsed.kind === "movement_pattern" &&
+                      typeof anchorUsed.movementPattern === "string"))
+                    ? (anchorUsed as PlannerDiagnostics["exercises"][string]["anchorUsed"])
+                    : undefined;
+                if (
+                  !item ||
+                  typeof item.exerciseId !== "string" ||
+                  typeof item.exerciseName !== "string" ||
+                  typeof item.role !== "string" ||
+                  typeof item.priority !== "string" ||
+                  toFiniteNumber(item.proposedSets) == null ||
+                  toFiniteNumber(item.minimumSets) == null ||
+                  toFiniteNumber(item.desiredSets) == null ||
+                  toFiniteNumber(item.plannedSets) == null ||
+                  typeof item.kept !== "boolean" ||
+                  typeof item.decisionCode !== "string" ||
+                  typeof item.reason !== "string"
+                ) {
+                  return [];
+                }
+                return [{
+                  exerciseId: item.exerciseId,
+                  exerciseName: item.exerciseName,
+                  role: item.role as "CORE_COMPOUND" | "ACCESSORY" | "UNASSIGNED",
+                  priority: item.priority as "core" | "accessory",
+                  anchor: parsedAnchor,
+                  proposedSets: item.proposedSets as number,
+                  minimumSets: item.minimumSets as number,
+                  desiredSets: item.desiredSets as number,
+                  plannedSets: item.plannedSets as number,
+                  kept: item.kept,
+                  decisionCode: item.decisionCode as
+                    | "deload_passthrough"
+                    | "passed_through_without_anchor"
+                    | "kept_at_desired_target"
+                    | "kept_at_floor"
+                    | "trimmed_by_anchor_budget"
+                    | "trimmed_by_collateral_guardrail"
+                    | "trimmed_by_anchor_budget_and_collateral_guardrail"
+                    | "dropped_by_anchor_budget",
+                  reason: item.reason,
+                  anchorBudgetDecision:
+                    item.anchorBudgetDecision &&
+                    toFiniteNumber(toObject(item.anchorBudgetDecision)?.weeklyTarget) != null
+                      ? (item.anchorBudgetDecision as PlannerDiagnostics["exercises"][string]["anchorBudgetDecision"])
+                      : undefined,
+                  overshootAdjustmentsApplied:
+                    item.overshootAdjustmentsApplied &&
+                    toFiniteNumber(toObject(item.overshootAdjustmentsApplied)?.initialSetTarget) != null
+                      ? (item.overshootAdjustmentsApplied as PlannerDiagnostics["exercises"][string]["overshootAdjustmentsApplied"])
+                      : undefined,
+                }];
+              })
+            : [],
+        }
+      : undefined;
+  const standardRecord = toObject(record.standard);
+  const standard =
+    standardRecord &&
+    typeof standardRecord.used === "boolean" &&
+    typeof standardRecord.reason === "string" &&
+    standardRecord.inventoryKind === "standard"
+      ? {
+          used: standardRecord.used,
+          reason: standardRecord.reason,
+          inventoryKind: "standard" as const,
+          selectedExerciseIds: parseStringArray(standardRecord.selectedExerciseIds),
+          candidateCount: toFiniteNumber(standardRecord.candidateCount) ?? 0,
+          candidates: parseInventoryCandidates(standardRecord.candidates),
+        }
+      : undefined;
+
+  const supplementalRecord = toObject(record.supplemental);
+  const supplemental =
+    supplementalRecord &&
+    typeof supplementalRecord.allowed === "boolean" &&
+    typeof supplementalRecord.used === "boolean" &&
+    typeof supplementalRecord.reason === "string"
+      ? {
+          allowed: supplementalRecord.allowed,
+          used: supplementalRecord.used,
+          reason: supplementalRecord.reason,
+          inventoryKind:
+            supplementalRecord.inventoryKind === "standard" ||
+            supplementalRecord.inventoryKind === "closure" ||
+            supplementalRecord.inventoryKind === "rescue"
+              ? (supplementalRecord.inventoryKind as "standard" | "closure" | "rescue")
+              : undefined,
+          deficitsTargeted: parseStringArray(supplementalRecord.deficitsTargeted),
+          selectedExerciseIds: parseStringArray(supplementalRecord.selectedExerciseIds),
+          candidateCount: toFiniteNumber(supplementalRecord.candidateCount) ?? 0,
+          candidates: parseInventoryCandidates(supplementalRecord.candidates),
+        }
+      : undefined;
+
+  const rescueRecord = toObject(record.rescue);
+  const rescue =
+    rescueRecord &&
+    typeof rescueRecord.eligible === "boolean" &&
+    typeof rescueRecord.used === "boolean" &&
+    typeof rescueRecord.reason === "string"
+      ? {
+          eligible: rescueRecord.eligible,
+          used: rescueRecord.used,
+          reason: rescueRecord.reason,
+          rescueOnlyCandidateCount: toFiniteNumber(rescueRecord.rescueOnlyCandidateCount) ?? 0,
+          rescueOnlyExerciseIds: parseStringArray(rescueRecord.rescueOnlyExerciseIds),
+          selectedExerciseIds: parseStringArray(rescueRecord.selectedExerciseIds),
+          candidates: parseInventoryCandidates(rescueRecord.candidates),
+        }
+      : undefined;
+
+  const outcomeRecord = toObject(record.outcome);
+  const outcome =
+    outcomeRecord
+      ? {
+          layersUsed: parseStringArray(outcomeRecord.layersUsed) as ParsedPlannerLayer[],
+          startingDeficits: parseDeficitSnapshots(outcomeRecord.startingDeficits) ?? {},
+          deficitsAfterBaseSession: parseDeficitSnapshots(outcomeRecord.deficitsAfterBaseSession) ?? {},
+          deficitsAfterSupplementation:
+            parseDeficitSnapshots(outcomeRecord.deficitsAfterSupplementation) ?? {},
+          deficitsAfterClosure: parseDeficitSnapshots(outcomeRecord.deficitsAfterClosure) ?? {},
+          unresolvedDeficits: parseStringArray(outcomeRecord.unresolvedDeficits),
+          keyTradeoffs: parseTradeoffs(outcomeRecord.keyTradeoffs) ?? [],
+        }
+      : undefined;
+
   return {
+    opportunity,
+    anchor,
+    standard,
+    supplemental,
     muscles,
     exercises,
-    closure: { actions, firstIterationCandidates },
+    closure: {
+      eligible: closureRecord.eligible === true,
+      used: closureRecord.used === true,
+      reason: typeof closureRecord.reason === "string" ? closureRecord.reason : undefined,
+      inventoryKind:
+        closureRecord.inventoryKind === "standard" ||
+        closureRecord.inventoryKind === "closure" ||
+        closureRecord.inventoryKind === "rescue"
+          ? (closureRecord.inventoryKind as "standard" | "closure" | "rescue")
+          : undefined,
+      eligibleExerciseIds: parseStringArray(closureRecord.eligibleExerciseIds),
+      winningAction: Array.isArray(closureRecord.actions) && actions[0] ? actions[0] : undefined,
+      actions,
+      firstIterationCandidates,
+    },
+    rescue,
+    outcome,
   };
 }
 

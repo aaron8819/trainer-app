@@ -105,9 +105,12 @@ Sources of truth:
 - Audit artifact assembly/serialization is owned by `src/lib/audit/workout-audit/serializer.ts` and persists JSON artifacts to `artifacts/audits/` via `scripts/workout-audit.ts`.
 - Audit generation modes currently supported are `next-session` and `intent-preview` (`src/lib/audit/workout-audit/types.ts`).
 - Planner diagnostics persistence is mode-gated in the canonical session receipt:
-  - `standard`: keeps planner action/muscle/exercise diagnostics, strips first-iteration closure candidate trace
-  - `debug`: keeps first-iteration closure candidate trace
-  - Source: `src/lib/evidence/session-decision-receipt.ts`
+  - canonical storage surface is `selectionMetadata.sessionDecisionReceipt.plannerDiagnostics`
+  - the planner emits one layered diagnostics object spanning `opportunity`, `anchor`, `standard`, `supplemental`, `closure`, `rescue`, and `outcome`, alongside the existing `muscles` and `exercises` summaries
+  - `standard`: keeps the layered summaries and selected closure actions, strips candidate-heavy traces (`standard.candidates`, `supplemental.candidates`, `rescue.candidates`, `closure.firstIterationCandidates`)
+  - `debug`: keeps the full layered diagnostics object, including candidate-heavy traces for audits and regression testing
+  - planner diagnostics are built in the main intent-generation path in `src/lib/api/template-session.ts`, then normalized/parsed only at the receipt boundary in `src/lib/evidence/session-decision-receipt.ts`
+- Source: `src/lib/evidence/session-decision-receipt.ts`
 - Audit artifacts support privacy-aware output modes:
   - `live`: full internal identity context
   - `pii-safe`: redacted identity/request identifiers

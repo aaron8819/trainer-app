@@ -187,6 +187,12 @@ export interface RemainingWeekVolumeContext {
 
   /** Scarcity/urgency multiplier for deficit scoring */
   urgency: Map<Muscle, number>;
+
+  /** Raw opportunity units for the whole schedule */
+  weeklyOpportunityUnits?: Map<Muscle, number>;
+
+  /** Raw opportunity units remaining after the current session */
+  futureOpportunityUnits?: Map<Muscle, number>;
 }
 
 /**

@@ -47,6 +47,86 @@ describe("readSessionDecisionReceipt", () => {
         },
         plannerDiagnosticsMode: "debug",
         plannerDiagnostics: {
+          opportunity: {
+            opportunityKey: "push",
+            sessionIntent: "push",
+            sessionCharacter: "upper",
+            planningInventoryKind: "standard",
+            closureInventoryKind: "closure",
+            currentSessionMuscleOpportunity: {
+              Chest: {
+                sessionOpportunityWeight: 1,
+                weeklyTarget: 16,
+                performedEffectiveVolumeBeforeSession: 6,
+                startingDeficit: 10,
+                weeklyOpportunityUnits: 4,
+                futureOpportunityUnits: 2,
+                futureCapacity: 4,
+                requiredNow: 6,
+                urgencyMultiplier: 1.5,
+              },
+            },
+            remainingWeek: {
+              futureSlots: ["pull", "legs"],
+              futureSlotCounts: { pull: 1, legs: 1 },
+              futureCapacityFactor: 0.9,
+            },
+          },
+          anchor: {
+            used: true,
+            policy: {
+              coreMinimumSets: 1,
+              accessoryMinimumSets: 0,
+              coreDeferredDeficitCarryFraction: 0.4,
+              accessoryDeferredDeficitCarryFraction: 0.25,
+              supplementalInventory: "closure",
+            },
+            consideredFixtureIds: ["ex1"],
+            keptFixtureIds: ["ex1"],
+            droppedFixtureIds: [],
+            fixtures: [
+              {
+                exerciseId: "ex1",
+                exerciseName: "Bench Press",
+                role: "CORE_COMPOUND",
+                priority: "core",
+                anchor: { kind: "muscle", muscle: "chest" },
+                proposedSets: 5,
+                minimumSets: 1,
+                desiredSets: 5,
+                plannedSets: 4,
+                kept: true,
+                decisionCode: "trimmed_by_collateral_guardrail",
+                reason: "Fixture was trimmed to avoid collateral overshoot on non-anchor muscles.",
+              },
+            ],
+          },
+          standard: {
+            used: true,
+            reason: "standard_inventory_drove_base_selection",
+            inventoryKind: "standard",
+            selectedExerciseIds: ["ex1"],
+            candidateCount: 1,
+            candidates: [
+              {
+                exerciseId: "ex1",
+                exerciseName: "Bench Press",
+                inventoryKind: "standard",
+                eligibilityReason: "eligible_by_standard_session_alignment",
+                selected: true,
+                selectedSets: 4,
+              },
+            ],
+          },
+          supplemental: {
+            allowed: true,
+            used: false,
+            reason: "anchor_selection_already_satisfies_session_floor",
+            inventoryKind: "closure",
+            deficitsTargeted: ["Chest"],
+            selectedExerciseIds: [],
+            candidateCount: 0,
+          },
           muscles: {
             Chest: {
               weeklyTarget: 16,
@@ -89,6 +169,11 @@ describe("readSessionDecisionReceipt", () => {
             },
           },
           closure: {
+            eligible: true,
+            used: true,
+            reason: "closure_applied",
+            inventoryKind: "closure",
+            eligibleExerciseIds: ["ex1"],
             actions: [
               {
                 exerciseId: "ex1",
@@ -119,6 +204,62 @@ describe("readSessionDecisionReceipt", () => {
               },
             ],
           },
+          rescue: {
+            eligible: false,
+            used: false,
+            reason: "rescue_not_requested",
+            rescueOnlyCandidateCount: 0,
+            rescueOnlyExerciseIds: [],
+            selectedExerciseIds: [],
+          },
+          outcome: {
+            layersUsed: ["anchor", "standard", "closure"],
+            startingDeficits: {
+              Chest: {
+                weeklyTarget: 16,
+                performedEffectiveVolumeBeforeSession: 6,
+                plannedEffectiveVolume: 0,
+                projectedEffectiveVolume: 6,
+                remainingDeficit: 10,
+              },
+            },
+            deficitsAfterBaseSession: {
+              Chest: {
+                weeklyTarget: 16,
+                performedEffectiveVolumeBeforeSession: 6,
+                plannedEffectiveVolume: 4,
+                projectedEffectiveVolume: 10,
+                remainingDeficit: 6,
+              },
+            },
+            deficitsAfterSupplementation: {
+              Chest: {
+                weeklyTarget: 16,
+                performedEffectiveVolumeBeforeSession: 6,
+                plannedEffectiveVolume: 4,
+                projectedEffectiveVolume: 10,
+                remainingDeficit: 6,
+              },
+            },
+            deficitsAfterClosure: {
+              Chest: {
+                weeklyTarget: 16,
+                performedEffectiveVolumeBeforeSession: 6,
+                plannedEffectiveVolume: 6,
+                projectedEffectiveVolume: 12,
+                remainingDeficit: 4,
+              },
+            },
+            unresolvedDeficits: ["Chest"],
+            keyTradeoffs: [
+              {
+                layer: "closure",
+                code: "closure_expand",
+                message: "Bench Press won closure with expand (+1 set).",
+                exerciseId: "ex1",
+              },
+            ],
+          },
         },
         readiness: {
           wasAutoregulated: false,
@@ -142,8 +283,12 @@ describe("readSessionDecisionReceipt", () => {
     expect(receipt?.deloadDecision.mode).toBe("none");
     expect(receipt?.plannerDiagnostics?.muscles.Chest.plannedEffectiveVolumeAfterClosure).toBe(6);
     expect(receipt?.plannerDiagnosticsMode).toBe("debug");
+    expect(receipt?.plannerDiagnostics?.opportunity?.sessionIntent).toBe("push");
+    expect(receipt?.plannerDiagnostics?.anchor?.fixtures[0]?.decisionCode).toBe("trimmed_by_collateral_guardrail");
+    expect(receipt?.plannerDiagnostics?.standard?.candidates?.[0]?.exerciseId).toBe("ex1");
     expect(receipt?.plannerDiagnostics?.closure.actions[0]?.kind).toBe("expand");
     expect(receipt?.plannerDiagnostics?.closure.firstIterationCandidates?.[0]?.exerciseId).toBe("ex1");
+    expect(receipt?.plannerDiagnostics?.outcome?.layersUsed).toEqual(["anchor", "standard", "closure"]);
   });
 
   it("returns undefined when no canonical persisted receipt exists", () => {
@@ -180,6 +325,40 @@ describe("readSessionDecisionReceipt", () => {
         source: "computed",
       },
       plannerDiagnostics: {
+        standard: {
+          used: true,
+          reason: "standard_inventory_drove_base_selection",
+          inventoryKind: "standard",
+          selectedExerciseIds: ["ex1"],
+          candidateCount: 1,
+          candidates: [
+            {
+              exerciseId: "ex1",
+              exerciseName: "Bench Press",
+              inventoryKind: "standard",
+              eligibilityReason: "eligible_by_standard_session_alignment",
+              selected: true,
+            },
+          ],
+        },
+        supplemental: {
+          allowed: true,
+          used: false,
+          reason: "anchor_selection_already_satisfies_session_floor",
+          inventoryKind: "closure",
+          deficitsTargeted: ["Chest"],
+          selectedExerciseIds: [],
+          candidateCount: 1,
+          candidates: [
+            {
+              exerciseId: "ex2",
+              exerciseName: "Cable Fly",
+              inventoryKind: "closure",
+              eligibilityReason: "eligible_by_closure_inventory_alignment",
+              selected: false,
+            },
+          ],
+        },
         muscles: {
           Chest: {
             weeklyTarget: 12,
@@ -208,11 +387,31 @@ describe("readSessionDecisionReceipt", () => {
             },
           ],
         },
+        rescue: {
+          eligible: true,
+          used: false,
+          reason: "rescue_inventory_available_but_not_needed",
+          rescueOnlyCandidateCount: 1,
+          rescueOnlyExerciseIds: ["ex3"],
+          selectedExerciseIds: [],
+          candidates: [
+            {
+              exerciseId: "ex3",
+              exerciseName: "Weighted Dip",
+              inventoryKind: "rescue",
+              eligibilityReason: "eligible_by_rescue_inventory_alignment",
+              selected: false,
+            },
+          ],
+        },
       },
     });
 
     expect(receipt.plannerDiagnosticsMode).toBe("standard");
+    expect(receipt.plannerDiagnostics?.standard?.candidates).toBeUndefined();
+    expect(receipt.plannerDiagnostics?.supplemental?.candidates).toBeUndefined();
     expect(receipt.plannerDiagnostics?.closure.firstIterationCandidates).toBeUndefined();
+    expect(receipt.plannerDiagnostics?.rescue?.candidates).toBeUndefined();
   });
 
   it("keeps closure candidate trace when debug diagnostics mode is requested", () => {

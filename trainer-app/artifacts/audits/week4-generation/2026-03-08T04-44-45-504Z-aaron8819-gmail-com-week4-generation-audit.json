@@ -1,0 +1,1080 @@
+{
+  "version": 1,
+  "generatedAt": "2026-03-08T04:44:24.352Z",
+  "auditWeek": 4,
+  "identity": {
+    "userId": "f03601b5-5e2a-40dc-974d-14bb1d1862a3",
+    "ownerEmail": "aaron8819@gmail.com"
+  },
+  "mesocycleState": {
+    "mesocycleId": "85ecd62b-788e-4a51-96c1-e38862996377",
+    "mesoNumber": 1,
+    "state": "ACTIVE_ACCUMULATION",
+    "focus": "Strength-Hypertrophy",
+    "durationWeeks": 5,
+    "sessionsPerWeek": 3,
+    "splitType": "PPL",
+    "currentWeek": 4,
+    "currentSession": 1,
+    "currentPhase": "ACCUMULATION",
+    "nextSessionIntent": "pull",
+    "nextSessionSource": "rotation",
+    "nextExistingWorkoutId": null,
+    "pendingWeekCloseId": null
+  },
+  "historicalWeeklyStimulusSummary": [
+    {
+      "week": 1,
+      "totalTarget": 76,
+      "totalEffectiveSets": 96.1,
+      "totalDeficit": 6.4,
+      "rows": [
+        {
+          "muscle": "Biceps",
+          "target": 6,
+          "effectiveSets": 7.8,
+          "directSets": 4,
+          "indirectSets": 10,
+          "deficit": 0
+        },
+        {
+          "muscle": "Calves",
+          "target": 8,
+          "effectiveSets": 6,
+          "directSets": 6,
+          "indirectSets": 0,
+          "deficit": 2
+        },
+        {
+          "muscle": "Chest",
+          "target": 10,
+          "effectiveSets": 10,
+          "directSets": 10,
+          "indirectSets": 0,
+          "deficit": 0
+        },
+        {
+          "muscle": "Front Delts",
+          "target": 2,
+          "effectiveSets": 6.6,
+          "directSets": 0,
+          "indirectSets": 13,
+          "deficit": 0
+        },
+        {
+          "muscle": "Glutes",
+          "target": 4,
+          "effectiveSets": 5.7,
+          "directSets": 10,
+          "indirectSets": 0,
+          "deficit": 0
+        },
+        {
+          "muscle": "Hamstrings",
+          "target": 6,
+          "effectiveSets": 6,
+          "directSets": 6,
+          "indirectSets": 7,
+          "deficit": 0
+        },
+        {
+          "muscle": "Lats",
+          "target": 8,
+          "effectiveSets": 12.8,
+          "directSets": 15,
+          "indirectSets": 0,
+          "deficit": 0
+        },
+        {
+          "muscle": "Quads",
+          "target": 8,
+          "effectiveSets": 7,
+          "directSets": 7,
+          "indirectSets": 0,
+          "deficit": 1
+        },
+        {
+          "muscle": "Rear Delts",
+          "target": 4,
+          "effectiveSets": 7.3,
+          "directSets": 5,
+          "indirectSets": 0,
+          "deficit": 0
+        },
+        {
+          "muscle": "Side Delts",
+          "target": 8,
+          "effectiveSets": 4.6,
+          "directSets": 7,
+          "indirectSets": 0,
+          "deficit": 3.4
+        },
+        {
+          "muscle": "Triceps",
+          "target": 6,
+          "effectiveSets": 9,
+          "directSets": 16,
+          "indirectSets": 0,
+          "deficit": 0
+        },
+        {
+          "muscle": "Upper Back",
+          "target": 6,
+          "effectiveSets": 13.3,
+          "directSets": 15,
+          "indirectSets": 0,
+          "deficit": 0
+        }
+      ]
+    },
+    {
+      "week": 2,
+      "totalTarget": 122,
+      "totalEffectiveSets": 114.9,
+      "totalDeficit": 24.8,
+      "rows": [
+        {
+          "muscle": "Abductors",
+          "target": 2,
+          "effectiveSets": 0,
+          "directSets": 0,
+          "indirectSets": 0,
+          "deficit": 2
+        },
+        {
+          "muscle": "Abs",
+          "target": 3,
+          "effectiveSets": 0,
+          "directSets": 0,
+          "indirectSets": 0,
+          "deficit": 3
+        },
+        {
+          "muscle": "Adductors",
+          "target": 3,
+          "effectiveSets": 2.1,
+          "directSets": 0,
+          "indirectSets": 9,
+          "deficit": 0.9
+        },
+        {
+          "muscle": "Biceps",
+          "target": 9,
+          "effectiveSets": 9.6,
+          "directSets": 10,
+          "indirectSets": 6,
+          "deficit": 0
+        },
+        {
+          "muscle": "Calves",
+          "target": 10,
+          "effectiveSets": 8,
+          "directSets": 8,
+          "indirectSets": 0,
+          "deficit": 2
+        },
+        {
+          "muscle": "Chest",
+          "target": 12,
+          "effectiveSets": 12,
+          "directSets": 12,
+          "indirectSets": 0,
+          "deficit": 0
+        },
+        {
+          "muscle": "Core",
+          "target": 4,
+          "effectiveSets": 1,
+          "directSets": 0,
+          "indirectSets": 12,
+          "deficit": 3
+        },
+        {
+          "muscle": "Forearms",
+          "target": 2,
+          "effectiveSets": 2.2,
+          "directSets": 0,
+          "indirectSets": 23,
+          "deficit": 0
+        },
+        {
+          "muscle": "Front Delts",
+          "target": 4,
+          "effectiveSets": 8.2,
+          "directSets": 0,
+          "indirectSets": 16,
+          "deficit": 0
+        },
+        {
+          "muscle": "Glutes",
+          "target": 5,
+          "effectiveSets": 9.9,
+          "directSets": 16,
+          "indirectSets": 0,
+          "deficit": 0
+        },
+        {
+          "muscle": "Hamstrings",
+          "target": 9,
+          "effectiveSets": 10,
+          "directSets": 11,
+          "indirectSets": 9,
+          "deficit": 0
+        },
+        {
+          "muscle": "Lats",
+          "target": 11,
+          "effectiveSets": 9.3,
+          "directSets": 10,
+          "indirectSets": 3,
+          "deficit": 1.7
+        },
+        {
+          "muscle": "Lower Back",
+          "target": 1,
+          "effectiveSets": 4.4,
+          "directSets": 3,
+          "indirectSets": 9,
+          "deficit": 0
+        },
+        {
+          "muscle": "Quads",
+          "target": 11,
+          "effectiveSets": 10.1,
+          "directSets": 9,
+          "indirectSets": 3,
+          "deficit": 0.9
+        },
+        {
+          "muscle": "Rear Delts",
+          "target": 7,
+          "effectiveSets": 3.6,
+          "directSets": 3,
+          "indirectSets": 0,
+          "deficit": 3.4
+        },
+        {
+          "muscle": "Side Delts",
+          "target": 12,
+          "effectiveSets": 5.8,
+          "directSets": 9,
+          "indirectSets": 0,
+          "deficit": 6.2
+        },
+        {
+          "muscle": "Triceps",
+          "target": 8,
+          "effectiveSets": 11.4,
+          "directSets": 20,
+          "indirectSets": 0,
+          "deficit": 0
+        },
+        {
+          "muscle": "Upper Back",
+          "target": 9,
+          "effectiveSets": 7.3,
+          "directSets": 3,
+          "indirectSets": 13,
+          "deficit": 1.7
+        }
+      ]
+    },
+    {
+      "week": 3,
+      "totalTarget": 166,
+      "totalEffectiveSets": 129.3,
+      "totalDeficit": 50,
+      "rows": [
+        {
+          "muscle": "Abductors",
+          "target": 4,
+          "effectiveSets": 0,
+          "directSets": 0,
+          "indirectSets": 0,
+          "deficit": 4
+        },
+        {
+          "muscle": "Abs",
+          "target": 7,
+          "effectiveSets": 0,
+          "directSets": 0,
+          "indirectSets": 0,
+          "deficit": 7
+        },
+        {
+          "muscle": "Adductors",
+          "target": 5,
+          "effectiveSets": 2.1,
+          "directSets": 0,
+          "indirectSets": 9,
+          "deficit": 2.9
+        },
+        {
+          "muscle": "Biceps",
+          "target": 11,
+          "effectiveSets": 19.3,
+          "directSets": 19,
+          "indirectSets": 9,
+          "deficit": 0
+        },
+        {
+          "muscle": "Calves",
+          "target": 12,
+          "effectiveSets": 8,
+          "directSets": 8,
+          "indirectSets": 0,
+          "deficit": 4
+        },
+        {
+          "muscle": "Chest",
+          "target": 14,
+          "effectiveSets": 13,
+          "directSets": 13,
+          "indirectSets": 0,
+          "deficit": 1
+        },
+        {
+          "muscle": "Core",
+          "target": 8,
+          "effectiveSets": 1,
+          "directSets": 0,
+          "indirectSets": 7,
+          "deficit": 7
+        },
+        {
+          "muscle": "Forearms",
+          "target": 4,
+          "effectiveSets": 4.4,
+          "directSets": 0,
+          "indirectSets": 29,
+          "deficit": 0
+        },
+        {
+          "muscle": "Front Delts",
+          "target": 5,
+          "effectiveSets": 5.3,
+          "directSets": 0,
+          "indirectSets": 11,
+          "deficit": 0
+        },
+        {
+          "muscle": "Glutes",
+          "target": 7,
+          "effectiveSets": 7.3,
+          "directSets": 13,
+          "indirectSets": 0,
+          "deficit": 0
+        },
+        {
+          "muscle": "Hamstrings",
+          "target": 13,
+          "effectiveSets": 10,
+          "directSets": 10,
+          "indirectSets": 9,
+          "deficit": 3
+        },
+        {
+          "muscle": "Lats",
+          "target": 13,
+          "effectiveSets": 17,
+          "directSets": 18,
+          "indirectSets": 0,
+          "deficit": 0
+        },
+        {
+          "muscle": "Lower Back",
+          "target": 3,
+          "effectiveSets": 2.8,
+          "directSets": 0,
+          "indirectSets": 14,
+          "deficit": 0.2
+        },
+        {
+          "muscle": "Quads",
+          "target": 15,
+          "effectiveSets": 9,
+          "directSets": 9,
+          "indirectSets": 0,
+          "deficit": 6
+        },
+        {
+          "muscle": "Rear Delts",
+          "target": 9,
+          "effectiveSets": 4.3,
+          "directSets": 3,
+          "indirectSets": 0,
+          "deficit": 4.7
+        },
+        {
+          "muscle": "Side Delts",
+          "target": 15,
+          "effectiveSets": 6.4,
+          "directSets": 8,
+          "indirectSets": 0,
+          "deficit": 8.6
+        },
+        {
+          "muscle": "Triceps",
+          "target": 10,
+          "effectiveSets": 9,
+          "directSets": 15,
+          "indirectSets": 0,
+          "deficit": 1
+        },
+        {
+          "muscle": "Upper Back",
+          "target": 11,
+          "effectiveSets": 10.4,
+          "directSets": 8,
+          "indirectSets": 9,
+          "deficit": 0.6
+        }
+      ]
+    }
+  ],
+  "week4Targets": {
+    "week": 4,
+    "rows": [
+      {
+        "muscle": "Abductors",
+        "target": 6
+      },
+      {
+        "muscle": "Abs",
+        "target": 10
+      },
+      {
+        "muscle": "Adductors",
+        "target": 8
+      },
+      {
+        "muscle": "Biceps",
+        "target": 14
+      },
+      {
+        "muscle": "Calves",
+        "target": 14
+      },
+      {
+        "muscle": "Chest",
+        "target": 16
+      },
+      {
+        "muscle": "Core",
+        "target": 12
+      },
+      {
+        "muscle": "Forearms",
+        "target": 6
+      },
+      {
+        "muscle": "Front Delts",
+        "target": 7
+      },
+      {
+        "muscle": "Glutes",
+        "target": 8
+      },
+      {
+        "muscle": "Hamstrings",
+        "target": 16
+      },
+      {
+        "muscle": "Lats",
+        "target": 16
+      },
+      {
+        "muscle": "Lower Back",
+        "target": 4
+      },
+      {
+        "muscle": "Quads",
+        "target": 18
+      },
+      {
+        "muscle": "Rear Delts",
+        "target": 12
+      },
+      {
+        "muscle": "Side Delts",
+        "target": 19
+      },
+      {
+        "muscle": "Triceps",
+        "target": 12
+      },
+      {
+        "muscle": "Upper Back",
+        "target": 14
+      }
+    ]
+  },
+  "week4Actuals": {
+    "week": 4,
+    "rows": [
+      {
+        "muscle": "Abductors",
+        "effectiveSets": 0,
+        "directSets": 0,
+        "indirectSets": 0
+      },
+      {
+        "muscle": "Abs",
+        "effectiveSets": 0,
+        "directSets": 0,
+        "indirectSets": 0
+      },
+      {
+        "muscle": "Adductors",
+        "effectiveSets": 0,
+        "directSets": 0,
+        "indirectSets": 0
+      },
+      {
+        "muscle": "Biceps",
+        "effectiveSets": 0,
+        "directSets": 0,
+        "indirectSets": 0
+      },
+      {
+        "muscle": "Calves",
+        "effectiveSets": 0,
+        "directSets": 0,
+        "indirectSets": 0
+      },
+      {
+        "muscle": "Chest",
+        "effectiveSets": 0,
+        "directSets": 0,
+        "indirectSets": 0
+      },
+      {
+        "muscle": "Core",
+        "effectiveSets": 0,
+        "directSets": 0,
+        "indirectSets": 0
+      },
+      {
+        "muscle": "Forearms",
+        "effectiveSets": 0,
+        "directSets": 0,
+        "indirectSets": 0
+      },
+      {
+        "muscle": "Front Delts",
+        "effectiveSets": 0,
+        "directSets": 0,
+        "indirectSets": 0
+      },
+      {
+        "muscle": "Glutes",
+        "effectiveSets": 0,
+        "directSets": 0,
+        "indirectSets": 0
+      },
+      {
+        "muscle": "Hamstrings",
+        "effectiveSets": 0,
+        "directSets": 0,
+        "indirectSets": 0
+      },
+      {
+        "muscle": "Lats",
+        "effectiveSets": 0,
+        "directSets": 0,
+        "indirectSets": 0
+      },
+      {
+        "muscle": "Lower Back",
+        "effectiveSets": 0,
+        "directSets": 0,
+        "indirectSets": 0
+      },
+      {
+        "muscle": "Quads",
+        "effectiveSets": 0,
+        "directSets": 0,
+        "indirectSets": 0
+      },
+      {
+        "muscle": "Rear Delts",
+        "effectiveSets": 0,
+        "directSets": 0,
+        "indirectSets": 0
+      },
+      {
+        "muscle": "Side Delts",
+        "effectiveSets": 0,
+        "directSets": 0,
+        "indirectSets": 0
+      },
+      {
+        "muscle": "Triceps",
+        "effectiveSets": 0,
+        "directSets": 0,
+        "indirectSets": 0
+      },
+      {
+        "muscle": "Upper Back",
+        "effectiveSets": 0,
+        "directSets": 0,
+        "indirectSets": 0
+      }
+    ]
+  },
+  "week4Deficits": {
+    "week": 4,
+    "rows": [
+      {
+        "muscle": "Side Delts",
+        "target": 19,
+        "actual": 0,
+        "deficit": 19
+      },
+      {
+        "muscle": "Quads",
+        "target": 18,
+        "actual": 0,
+        "deficit": 18
+      },
+      {
+        "muscle": "Chest",
+        "target": 16,
+        "actual": 0,
+        "deficit": 16
+      },
+      {
+        "muscle": "Hamstrings",
+        "target": 16,
+        "actual": 0,
+        "deficit": 16
+      },
+      {
+        "muscle": "Lats",
+        "target": 16,
+        "actual": 0,
+        "deficit": 16
+      },
+      {
+        "muscle": "Biceps",
+        "target": 14,
+        "actual": 0,
+        "deficit": 14
+      },
+      {
+        "muscle": "Calves",
+        "target": 14,
+        "actual": 0,
+        "deficit": 14
+      },
+      {
+        "muscle": "Upper Back",
+        "target": 14,
+        "actual": 0,
+        "deficit": 14
+      },
+      {
+        "muscle": "Core",
+        "target": 12,
+        "actual": 0,
+        "deficit": 12
+      },
+      {
+        "muscle": "Rear Delts",
+        "target": 12,
+        "actual": 0,
+        "deficit": 12
+      },
+      {
+        "muscle": "Triceps",
+        "target": 12,
+        "actual": 0,
+        "deficit": 12
+      },
+      {
+        "muscle": "Abs",
+        "target": 10,
+        "actual": 0,
+        "deficit": 10
+      },
+      {
+        "muscle": "Adductors",
+        "target": 8,
+        "actual": 0,
+        "deficit": 8
+      },
+      {
+        "muscle": "Glutes",
+        "target": 8,
+        "actual": 0,
+        "deficit": 8
+      },
+      {
+        "muscle": "Front Delts",
+        "target": 7,
+        "actual": 0,
+        "deficit": 7
+      },
+      {
+        "muscle": "Abductors",
+        "target": 6,
+        "actual": 0,
+        "deficit": 6
+      },
+      {
+        "muscle": "Forearms",
+        "target": 6,
+        "actual": 0,
+        "deficit": 6
+      },
+      {
+        "muscle": "Lower Back",
+        "target": 4,
+        "actual": 0,
+        "deficit": 4
+      }
+    ],
+    "totalDeficit": 212
+  },
+  "generationPreviews": {
+    "nextSession": {
+      "label": "next-session",
+      "mode": "next-session",
+      "intent": "pull",
+      "targetMuscles": [],
+      "status": "ok",
+      "existingWorkoutId": null,
+      "source": "rotation",
+      "summary": {
+        "selectionMode": "INTENT",
+        "selectedExerciseCount": 6,
+        "mainLiftCount": 2,
+        "accessoryCount": 4,
+        "totalPlannedSets": 32,
+        "filteredExerciseCount": 0
+      },
+      "cycleContext": {
+        "weekInMeso": 4,
+        "phase": "accumulation",
+        "isDeload": false
+      },
+      "exercises": {
+        "mainLifts": [
+          "T-Bar Row",
+          "Lat Pulldown"
+        ],
+        "accessories": [
+          "Cable Pullover",
+          "Face Pull",
+          "EZ-Bar Curl",
+          "Hammer Curl"
+        ]
+      },
+      "topDeficits": [
+        {
+          "muscle": "Rear Delts",
+          "target": 12,
+          "actual": 7.3,
+          "deficit": 4.8
+        },
+        {
+          "muscle": "Upper Back",
+          "target": 14,
+          "actual": 10.7,
+          "deficit": 3.4
+        },
+        {
+          "muscle": "Forearms",
+          "target": 6,
+          "actual": 3.5,
+          "deficit": 2.5
+        },
+        {
+          "muscle": "Lats",
+          "target": 16,
+          "actual": 15,
+          "deficit": 1
+        },
+        {
+          "muscle": "Biceps",
+          "target": 14,
+          "actual": 13.3,
+          "deficit": 0.8
+        }
+      ],
+      "sraWarnings": [
+        {
+          "muscle": "Lats",
+          "lastTrainedHoursAgo": 30,
+          "sraWindowHours": 60,
+          "recoveryPercent": 50
+        },
+        {
+          "muscle": "Biceps",
+          "lastTrainedHoursAgo": 30,
+          "sraWindowHours": 36,
+          "recoveryPercent": 83
+        }
+      ]
+    },
+    "splitPreviews": [
+      {
+        "label": "push",
+        "mode": "intent-preview",
+        "intent": "push",
+        "targetMuscles": [],
+        "status": "ok",
+        "existingWorkoutId": null,
+        "source": null,
+        "summary": {
+          "selectionMode": "INTENT",
+          "selectedExerciseCount": 6,
+          "mainLiftCount": 2,
+          "accessoryCount": 4,
+          "totalPlannedSets": 30,
+          "filteredExerciseCount": 0
+        },
+        "cycleContext": {
+          "weekInMeso": 4,
+          "phase": "accumulation",
+          "isDeload": false
+        },
+        "exercises": {
+          "mainLifts": [
+            "Incline Dumbbell Bench Press",
+            "Dumbbell Overhead Press"
+          ],
+          "accessories": [
+            "Dip (Chest Emphasis)",
+            "Overhead Cable Triceps Extension",
+            "Cable Lateral Raise",
+            "Pec Deck Machine"
+          ]
+        },
+        "topDeficits": [
+          {
+            "muscle": "Side Delts",
+            "target": 19,
+            "actual": 6.8,
+            "deficit": 12.2
+          },
+          {
+            "muscle": "Chest",
+            "target": 16,
+            "actual": 15,
+            "deficit": 1
+          },
+          {
+            "muscle": "Triceps",
+            "target": 12,
+            "actual": 11.5,
+            "deficit": 0.5
+          }
+        ],
+        "sraWarnings": [
+          {
+            "muscle": "Side Delts",
+            "lastTrainedHoursAgo": 30,
+            "sraWindowHours": 36,
+            "recoveryPercent": 83
+          }
+        ]
+      },
+      {
+        "label": "pull",
+        "mode": "intent-preview",
+        "intent": "pull",
+        "targetMuscles": [],
+        "status": "ok",
+        "existingWorkoutId": null,
+        "source": null,
+        "summary": {
+          "selectionMode": "INTENT",
+          "selectedExerciseCount": 6,
+          "mainLiftCount": 2,
+          "accessoryCount": 4,
+          "totalPlannedSets": 32,
+          "filteredExerciseCount": 0
+        },
+        "cycleContext": {
+          "weekInMeso": 4,
+          "phase": "accumulation",
+          "isDeload": false
+        },
+        "exercises": {
+          "mainLifts": [
+            "T-Bar Row",
+            "Lat Pulldown"
+          ],
+          "accessories": [
+            "Cable Pullover",
+            "Face Pull",
+            "EZ-Bar Curl",
+            "Hammer Curl"
+          ]
+        },
+        "topDeficits": [
+          {
+            "muscle": "Rear Delts",
+            "target": 12,
+            "actual": 7.3,
+            "deficit": 4.8
+          },
+          {
+            "muscle": "Upper Back",
+            "target": 14,
+            "actual": 10.7,
+            "deficit": 3.4
+          },
+          {
+            "muscle": "Forearms",
+            "target": 6,
+            "actual": 3.5,
+            "deficit": 2.5
+          },
+          {
+            "muscle": "Lats",
+            "target": 16,
+            "actual": 15,
+            "deficit": 1
+          },
+          {
+            "muscle": "Biceps",
+            "target": 14,
+            "actual": 13.3,
+            "deficit": 0.8
+          }
+        ],
+        "sraWarnings": [
+          {
+            "muscle": "Lats",
+            "lastTrainedHoursAgo": 30,
+            "sraWindowHours": 60,
+            "recoveryPercent": 50
+          },
+          {
+            "muscle": "Biceps",
+            "lastTrainedHoursAgo": 30,
+            "sraWindowHours": 36,
+            "recoveryPercent": 83
+          }
+        ]
+      },
+      {
+        "label": "legs",
+        "mode": "intent-preview",
+        "intent": "legs",
+        "targetMuscles": [],
+        "status": "ok",
+        "existingWorkoutId": null,
+        "source": null,
+        "summary": {
+          "selectionMode": "INTENT",
+          "selectedExerciseCount": 6,
+          "mainLiftCount": 1,
+          "accessoryCount": 5,
+          "totalPlannedSets": 31,
+          "filteredExerciseCount": 0
+        },
+        "cycleContext": {
+          "weekInMeso": 4,
+          "phase": "accumulation",
+          "isDeload": false
+        },
+        "exercises": {
+          "mainLifts": [
+            "Barbell Back Squat"
+          ],
+          "accessories": [
+            "Leg Press",
+            "Romanian Deadlift",
+            "Seated Leg Curl",
+            "Standing Calf Raise",
+            "Seated Calf Raise"
+          ]
+        },
+        "topDeficits": [
+          {
+            "muscle": "Core",
+            "target": 12,
+            "actual": 1,
+            "deficit": 11
+          },
+          {
+            "muscle": "Abs",
+            "target": 10,
+            "actual": 0,
+            "deficit": 10
+          },
+          {
+            "muscle": "Quads",
+            "target": 18,
+            "actual": 10,
+            "deficit": 8
+          },
+          {
+            "muscle": "Abductors",
+            "target": 6,
+            "actual": 0,
+            "deficit": 6
+          },
+          {
+            "muscle": "Adductors",
+            "target": 8,
+            "actual": 2.3,
+            "deficit": 5.8
+          }
+        ],
+        "sraWarnings": [
+          {
+            "muscle": "Quads",
+            "lastTrainedHoursAgo": 58,
+            "sraWindowHours": 72,
+            "recoveryPercent": 81
+          },
+          {
+            "muscle": "Glutes",
+            "lastTrainedHoursAgo": 58,
+            "sraWindowHours": 72,
+            "recoveryPercent": 81
+          },
+          {
+            "muscle": "Hamstrings",
+            "lastTrainedHoursAgo": 58,
+            "sraWindowHours": 72,
+            "recoveryPercent": 81
+          }
+        ]
+      }
+    ]
+  },
+  "optionalGapFillState": {
+    "eligible": false,
+    "reason": "no_pending_week_close",
+    "weekCloseId": null,
+    "targetWeek": null,
+    "targetPhase": null,
+    "targetMuscles": [],
+    "deficitSummary": [],
+    "linkedWorkout": null,
+    "policy": {
+      "requiredSessionsPerWeek": 3,
+      "maxOptionalGapFillSessionsPerWeek": 1,
+      "maxGeneratedHardSets": 12,
+      "maxGeneratedExercises": 4
+    },
+    "preview": null
+  },
+  "warnings": {
+    "schemaWarnings": [],
+    "connectionRuntimeWarnings": [],
+    "stimulusFallbackWarnings": [],
+    "generationWarnings": [
+      "next-session preview emitted 2 SRA warning(s).",
+      "push preview emitted 1 SRA warning(s).",
+      "pull preview emitted 2 SRA warning(s).",
+      "legs preview emitted 3 SRA warning(s)."
+    ]
+  },
+  "failures": []
+}

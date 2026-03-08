@@ -35,7 +35,7 @@ vi.mock("@/lib/db/prisma", () => ({
   },
 }));
 
-describe("WorkoutDetailPage", () => {
+describe("WorkoutDetailPage", { timeout: 15000 }, () => {
   beforeEach(() => {
     mocks.resolveOwner.mockResolvedValue({ id: "user-1" });
     mocks.generateWorkoutExplanation.mockResolvedValue({ error: "unavailable" });

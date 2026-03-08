@@ -373,7 +373,7 @@ describe("generateSessionFromIntent", () => {
     expect(mainLiftIds).toContain("lat-pull");
   });
 
-  it("clamps W4 role continuity progression to weekly target unless prior-floor hold is required", async () => {
+  it("keeps W4 role continuity at the prior performed floor when the weekly deficit is closable later", async () => {
     mapHistoryMock.mockReturnValue([
       {
         date: "2026-02-18T00:00:00.000Z",
@@ -419,7 +419,7 @@ describe("generateSessionFromIntent", () => {
     const quadTotal =
       (result.selection.perExerciseSetTargets["squat"] ?? 0) +
       (result.selection.perExerciseSetTargets["leg-press"] ?? 0);
-    expect(quadTotal).toBe(5);
+    expect(quadTotal).toBe(3);
     expect(quadTotal).toBeLessThanOrEqual(5);
   });
 

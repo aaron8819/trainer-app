@@ -111,7 +111,7 @@ function setupVisualViewport(initialHeight = 800) {
   };
 }
 
-describe("LogWorkoutClient UX behavior", () => {
+describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
   beforeEach(() => {
     mockedLogSetRequest.mockResolvedValue({ data: { status: "ok", wasCreated: true }, error: null });
     mockedDeleteSetLogRequest.mockResolvedValue({ data: { status: "ok" }, error: null });

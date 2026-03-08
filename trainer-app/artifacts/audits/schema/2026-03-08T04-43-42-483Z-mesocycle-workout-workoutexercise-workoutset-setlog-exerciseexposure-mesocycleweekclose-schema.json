@@ -1,0 +1,750 @@
+{
+  "generatedAt": "2026-03-08T04:43:42.485Z",
+  "tables": [
+    {
+      "table": "Mesocycle",
+      "schema": "public",
+      "exists": true,
+      "columns": [
+        {
+          "name": "id",
+          "position": 1,
+          "nullable": false,
+          "dataType": "text",
+          "databaseType": "text",
+          "default": null
+        },
+        {
+          "name": "macroCycleId",
+          "position": 2,
+          "nullable": false,
+          "dataType": "text",
+          "databaseType": "text",
+          "default": null
+        },
+        {
+          "name": "mesoNumber",
+          "position": 3,
+          "nullable": false,
+          "dataType": "integer",
+          "databaseType": "int4",
+          "default": null
+        },
+        {
+          "name": "startWeek",
+          "position": 4,
+          "nullable": false,
+          "dataType": "integer",
+          "databaseType": "int4",
+          "default": null
+        },
+        {
+          "name": "durationWeeks",
+          "position": 5,
+          "nullable": false,
+          "dataType": "integer",
+          "databaseType": "int4",
+          "default": null
+        },
+        {
+          "name": "focus",
+          "position": 6,
+          "nullable": false,
+          "dataType": "text",
+          "databaseType": "text",
+          "default": null
+        },
+        {
+          "name": "volumeTarget",
+          "position": 7,
+          "nullable": false,
+          "dataType": "USER-DEFINED",
+          "databaseType": "VolumeTarget",
+          "default": null
+        },
+        {
+          "name": "intensityBias",
+          "position": 8,
+          "nullable": false,
+          "dataType": "USER-DEFINED",
+          "databaseType": "IntensityBias",
+          "default": null
+        },
+        {
+          "name": "completedSessions",
+          "position": 9,
+          "nullable": false,
+          "dataType": "integer",
+          "databaseType": "int4",
+          "default": "0"
+        },
+        {
+          "name": "isActive",
+          "position": 10,
+          "nullable": false,
+          "dataType": "boolean",
+          "databaseType": "bool",
+          "default": "false"
+        },
+        {
+          "name": "accumulationSessionsCompleted",
+          "position": 11,
+          "nullable": false,
+          "dataType": "integer",
+          "databaseType": "int4",
+          "default": "0"
+        },
+        {
+          "name": "daysPerWeek",
+          "position": 12,
+          "nullable": false,
+          "dataType": "integer",
+          "databaseType": "int4",
+          "default": "3"
+        },
+        {
+          "name": "deloadSessionsCompleted",
+          "position": 13,
+          "nullable": false,
+          "dataType": "integer",
+          "databaseType": "int4",
+          "default": "0"
+        },
+        {
+          "name": "rirBandConfig",
+          "position": 14,
+          "nullable": true,
+          "dataType": "jsonb",
+          "databaseType": "jsonb",
+          "default": null
+        },
+        {
+          "name": "sessionsPerWeek",
+          "position": 15,
+          "nullable": false,
+          "dataType": "integer",
+          "databaseType": "int4",
+          "default": "3"
+        },
+        {
+          "name": "splitType",
+          "position": 16,
+          "nullable": false,
+          "dataType": "USER-DEFINED",
+          "databaseType": "SplitType",
+          "default": "'PPL'::\"SplitType\""
+        },
+        {
+          "name": "state",
+          "position": 17,
+          "nullable": false,
+          "dataType": "USER-DEFINED",
+          "databaseType": "MesocycleState",
+          "default": "'ACTIVE_ACCUMULATION'::\"MesocycleState\""
+        },
+        {
+          "name": "volumeRampConfig",
+          "position": 18,
+          "nullable": true,
+          "dataType": "jsonb",
+          "databaseType": "jsonb",
+          "default": null
+        }
+      ]
+    },
+    {
+      "table": "Workout",
+      "schema": "public",
+      "exists": true,
+      "columns": [
+        {
+          "name": "id",
+          "position": 1,
+          "nullable": false,
+          "dataType": "text",
+          "databaseType": "text",
+          "default": null
+        },
+        {
+          "name": "userId",
+          "position": 2,
+          "nullable": false,
+          "dataType": "text",
+          "databaseType": "text",
+          "default": null
+        },
+        {
+          "name": "scheduledDate",
+          "position": 4,
+          "nullable": false,
+          "dataType": "timestamp without time zone",
+          "databaseType": "timestamp",
+          "default": null
+        },
+        {
+          "name": "completedAt",
+          "position": 5,
+          "nullable": true,
+          "dataType": "timestamp without time zone",
+          "databaseType": "timestamp",
+          "default": null
+        },
+        {
+          "name": "status",
+          "position": 6,
+          "nullable": false,
+          "dataType": "USER-DEFINED",
+          "databaseType": "WorkoutStatus",
+          "default": "'PLANNED'::\"WorkoutStatus\""
+        },
+        {
+          "name": "estimatedMinutes",
+          "position": 7,
+          "nullable": true,
+          "dataType": "integer",
+          "databaseType": "int4",
+          "default": null
+        },
+        {
+          "name": "notes",
+          "position": 8,
+          "nullable": true,
+          "dataType": "text",
+          "databaseType": "text",
+          "default": null
+        },
+        {
+          "name": "advancesSplit",
+          "position": 9,
+          "nullable": false,
+          "dataType": "boolean",
+          "databaseType": "bool",
+          "default": "true"
+        },
+        {
+          "name": "forcedSplit",
+          "position": 10,
+          "nullable": true,
+          "dataType": "USER-DEFINED",
+          "databaseType": "SplitDay",
+          "default": null
+        },
+        {
+          "name": "selectionMode",
+          "position": 11,
+          "nullable": false,
+          "dataType": "USER-DEFINED",
+          "databaseType": "WorkoutSelectionMode",
+          "default": "'AUTO'::\"WorkoutSelectionMode\""
+        },
+        {
+          "name": "templateId",
+          "position": 12,
+          "nullable": true,
+          "dataType": "text",
+          "databaseType": "text",
+          "default": null
+        },
+        {
+          "name": "sessionIntent",
+          "position": 13,
+          "nullable": true,
+          "dataType": "USER-DEFINED",
+          "databaseType": "WorkoutSessionIntent",
+          "default": null
+        },
+        {
+          "name": "selectionMetadata",
+          "position": 14,
+          "nullable": true,
+          "dataType": "jsonb",
+          "databaseType": "jsonb",
+          "default": null
+        },
+        {
+          "name": "trainingBlockId",
+          "position": 16,
+          "nullable": true,
+          "dataType": "text",
+          "databaseType": "text",
+          "default": null
+        },
+        {
+          "name": "weekInBlock",
+          "position": 17,
+          "nullable": true,
+          "dataType": "integer",
+          "databaseType": "int4",
+          "default": null
+        },
+        {
+          "name": "autoregulationLog",
+          "position": 18,
+          "nullable": true,
+          "dataType": "jsonb",
+          "databaseType": "jsonb",
+          "default": null
+        },
+        {
+          "name": "wasAutoregulated",
+          "position": 19,
+          "nullable": false,
+          "dataType": "boolean",
+          "databaseType": "bool",
+          "default": "false"
+        },
+        {
+          "name": "revision",
+          "position": 20,
+          "nullable": false,
+          "dataType": "integer",
+          "databaseType": "int4",
+          "default": "1"
+        },
+        {
+          "name": "mesoSessionSnapshot",
+          "position": 21,
+          "nullable": true,
+          "dataType": "integer",
+          "databaseType": "int4",
+          "default": null
+        },
+        {
+          "name": "mesocycleId",
+          "position": 22,
+          "nullable": true,
+          "dataType": "text",
+          "databaseType": "text",
+          "default": null
+        },
+        {
+          "name": "mesocyclePhaseSnapshot",
+          "position": 23,
+          "nullable": true,
+          "dataType": "USER-DEFINED",
+          "databaseType": "MesocyclePhase",
+          "default": null
+        },
+        {
+          "name": "mesocycleWeekSnapshot",
+          "position": 24,
+          "nullable": true,
+          "dataType": "integer",
+          "databaseType": "int4",
+          "default": null
+        }
+      ]
+    },
+    {
+      "table": "WorkoutExercise",
+      "schema": "public",
+      "exists": true,
+      "columns": [
+        {
+          "name": "id",
+          "position": 1,
+          "nullable": false,
+          "dataType": "text",
+          "databaseType": "text",
+          "default": null
+        },
+        {
+          "name": "workoutId",
+          "position": 2,
+          "nullable": false,
+          "dataType": "text",
+          "databaseType": "text",
+          "default": null
+        },
+        {
+          "name": "exerciseId",
+          "position": 3,
+          "nullable": false,
+          "dataType": "text",
+          "databaseType": "text",
+          "default": null
+        },
+        {
+          "name": "orderIndex",
+          "position": 4,
+          "nullable": false,
+          "dataType": "integer",
+          "databaseType": "int4",
+          "default": null
+        },
+        {
+          "name": "isMainLift",
+          "position": 5,
+          "nullable": false,
+          "dataType": "boolean",
+          "databaseType": "bool",
+          "default": null
+        },
+        {
+          "name": "notes",
+          "position": 7,
+          "nullable": true,
+          "dataType": "text",
+          "databaseType": "text",
+          "default": null
+        },
+        {
+          "name": "movementPatterns",
+          "position": 8,
+          "nullable": true,
+          "dataType": "ARRAY",
+          "databaseType": "_MovementPatternV2",
+          "default": "'{}'::\"MovementPatternV2\"[]"
+        },
+        {
+          "name": "section",
+          "position": 9,
+          "nullable": true,
+          "dataType": "USER-DEFINED",
+          "databaseType": "WorkoutExerciseSection",
+          "default": null
+        }
+      ]
+    },
+    {
+      "table": "WorkoutSet",
+      "schema": "public",
+      "exists": true,
+      "columns": [
+        {
+          "name": "id",
+          "position": 1,
+          "nullable": false,
+          "dataType": "text",
+          "databaseType": "text",
+          "default": null
+        },
+        {
+          "name": "workoutExerciseId",
+          "position": 2,
+          "nullable": false,
+          "dataType": "text",
+          "databaseType": "text",
+          "default": null
+        },
+        {
+          "name": "setIndex",
+          "position": 3,
+          "nullable": false,
+          "dataType": "integer",
+          "databaseType": "int4",
+          "default": null
+        },
+        {
+          "name": "targetReps",
+          "position": 4,
+          "nullable": false,
+          "dataType": "integer",
+          "databaseType": "int4",
+          "default": null
+        },
+        {
+          "name": "targetRpe",
+          "position": 5,
+          "nullable": true,
+          "dataType": "double precision",
+          "databaseType": "float8",
+          "default": null
+        },
+        {
+          "name": "targetLoad",
+          "position": 6,
+          "nullable": true,
+          "dataType": "double precision",
+          "databaseType": "float8",
+          "default": null
+        },
+        {
+          "name": "restSeconds",
+          "position": 7,
+          "nullable": true,
+          "dataType": "integer",
+          "databaseType": "int4",
+          "default": null
+        },
+        {
+          "name": "targetRepMin",
+          "position": 8,
+          "nullable": true,
+          "dataType": "integer",
+          "databaseType": "int4",
+          "default": null
+        },
+        {
+          "name": "targetRepMax",
+          "position": 9,
+          "nullable": true,
+          "dataType": "integer",
+          "databaseType": "int4",
+          "default": null
+        }
+      ]
+    },
+    {
+      "table": "SetLog",
+      "schema": "public",
+      "exists": true,
+      "columns": [
+        {
+          "name": "id",
+          "position": 1,
+          "nullable": false,
+          "dataType": "text",
+          "databaseType": "text",
+          "default": null
+        },
+        {
+          "name": "workoutSetId",
+          "position": 2,
+          "nullable": false,
+          "dataType": "text",
+          "databaseType": "text",
+          "default": null
+        },
+        {
+          "name": "actualReps",
+          "position": 3,
+          "nullable": true,
+          "dataType": "integer",
+          "databaseType": "int4",
+          "default": null
+        },
+        {
+          "name": "actualRpe",
+          "position": 4,
+          "nullable": true,
+          "dataType": "double precision",
+          "databaseType": "float8",
+          "default": null
+        },
+        {
+          "name": "actualLoad",
+          "position": 5,
+          "nullable": true,
+          "dataType": "double precision",
+          "databaseType": "float8",
+          "default": null
+        },
+        {
+          "name": "completedAt",
+          "position": 6,
+          "nullable": false,
+          "dataType": "timestamp without time zone",
+          "databaseType": "timestamp",
+          "default": "CURRENT_TIMESTAMP"
+        },
+        {
+          "name": "notes",
+          "position": 7,
+          "nullable": true,
+          "dataType": "text",
+          "databaseType": "text",
+          "default": null
+        },
+        {
+          "name": "wasSkipped",
+          "position": 8,
+          "nullable": false,
+          "dataType": "boolean",
+          "databaseType": "bool",
+          "default": "false"
+        }
+      ]
+    },
+    {
+      "table": "ExerciseExposure",
+      "schema": "public",
+      "exists": true,
+      "columns": [
+        {
+          "name": "id",
+          "position": 1,
+          "nullable": false,
+          "dataType": "text",
+          "databaseType": "text",
+          "default": null
+        },
+        {
+          "name": "userId",
+          "position": 2,
+          "nullable": false,
+          "dataType": "text",
+          "databaseType": "text",
+          "default": null
+        },
+        {
+          "name": "exerciseName",
+          "position": 3,
+          "nullable": false,
+          "dataType": "text",
+          "databaseType": "text",
+          "default": null
+        },
+        {
+          "name": "lastUsedAt",
+          "position": 4,
+          "nullable": false,
+          "dataType": "timestamp without time zone",
+          "databaseType": "timestamp",
+          "default": null
+        },
+        {
+          "name": "timesUsedL4W",
+          "position": 5,
+          "nullable": false,
+          "dataType": "integer",
+          "databaseType": "int4",
+          "default": "0"
+        },
+        {
+          "name": "timesUsedL8W",
+          "position": 6,
+          "nullable": false,
+          "dataType": "integer",
+          "databaseType": "int4",
+          "default": "0"
+        },
+        {
+          "name": "timesUsedL12W",
+          "position": 7,
+          "nullable": false,
+          "dataType": "integer",
+          "databaseType": "int4",
+          "default": "0"
+        },
+        {
+          "name": "avgSetsPerWeek",
+          "position": 8,
+          "nullable": false,
+          "dataType": "double precision",
+          "databaseType": "float8",
+          "default": "0"
+        },
+        {
+          "name": "avgVolumePerWeek",
+          "position": 9,
+          "nullable": false,
+          "dataType": "double precision",
+          "databaseType": "float8",
+          "default": "0"
+        },
+        {
+          "name": "updatedAt",
+          "position": 10,
+          "nullable": false,
+          "dataType": "timestamp without time zone",
+          "databaseType": "timestamp",
+          "default": null
+        }
+      ]
+    },
+    {
+      "table": "MesocycleWeekClose",
+      "schema": "public",
+      "exists": true,
+      "columns": [
+        {
+          "name": "id",
+          "position": 1,
+          "nullable": false,
+          "dataType": "text",
+          "databaseType": "text",
+          "default": null
+        },
+        {
+          "name": "mesocycleId",
+          "position": 2,
+          "nullable": false,
+          "dataType": "text",
+          "databaseType": "text",
+          "default": null
+        },
+        {
+          "name": "targetWeek",
+          "position": 3,
+          "nullable": false,
+          "dataType": "integer",
+          "databaseType": "int4",
+          "default": null
+        },
+        {
+          "name": "targetPhase",
+          "position": 4,
+          "nullable": false,
+          "dataType": "USER-DEFINED",
+          "databaseType": "MesocyclePhase",
+          "default": null
+        },
+        {
+          "name": "status",
+          "position": 5,
+          "nullable": false,
+          "dataType": "USER-DEFINED",
+          "databaseType": "MesocycleWeekCloseStatus",
+          "default": null
+        },
+        {
+          "name": "resolution",
+          "position": 6,
+          "nullable": true,
+          "dataType": "USER-DEFINED",
+          "databaseType": "MesocycleWeekCloseResolution",
+          "default": null
+        },
+        {
+          "name": "optionalWorkoutId",
+          "position": 7,
+          "nullable": true,
+          "dataType": "text",
+          "databaseType": "text",
+          "default": null
+        },
+        {
+          "name": "deficitSnapshotJson",
+          "position": 8,
+          "nullable": true,
+          "dataType": "jsonb",
+          "databaseType": "jsonb",
+          "default": null
+        },
+        {
+          "name": "triggeredAt",
+          "position": 9,
+          "nullable": false,
+          "dataType": "timestamp without time zone",
+          "databaseType": "timestamp",
+          "default": "CURRENT_TIMESTAMP"
+        },
+        {
+          "name": "resolvedAt",
+          "position": 10,
+          "nullable": true,
+          "dataType": "timestamp without time zone",
+          "databaseType": "timestamp",
+          "default": null
+        },
+        {
+          "name": "createdAt",
+          "position": 11,
+          "nullable": false,
+          "dataType": "timestamp without time zone",
+          "databaseType": "timestamp",
+          "default": "CURRENT_TIMESTAMP"
+        },
+        {
+          "name": "updatedAt",
+          "position": 12,
+          "nullable": false,
+          "dataType": "timestamp without time zone",
+          "databaseType": "timestamp",
+          "default": null
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,209 @@
+{
+  "version": 1,
+  "comparedAt": "2026-03-08T05:26:07.649Z",
+  "latestArtifactPath": "C:\\Users\\aabloch\\claude\\vibe-coding\\Trainer\\trainer-app\\artifacts\\audits\\week4-generation\\2026-03-08T05-25-28-894Z-aaron8819-gmail-com-week4-generation-audit.json",
+  "previousArtifactPath": "C:\\Users\\aabloch\\claude\\vibe-coding\\Trainer\\trainer-app\\artifacts\\audits\\week4-generation\\2026-03-08T05-21-08-253Z-aaron8819-gmail-com-week4-generation-audit.json",
+  "comparableIdentity": {
+    "userId": "f03601b5-5e2a-40dc-974d-14bb1d1862a3",
+    "ownerEmail": "aaron8819@gmail.com"
+  },
+  "auditWeek": 4,
+  "deltaCount": 3,
+  "deltas": [
+    {
+      "field": "topUnderRecoveredMuscles",
+      "before": [
+        {
+          "lastTrainedHoursAgo": 30,
+          "muscle": "Lats",
+          "previews": [
+            "next-session",
+            "pull"
+          ],
+          "recoveryPercent": 51,
+          "sraWindowHours": 60
+        },
+        {
+          "lastTrainedHoursAgo": 59,
+          "muscle": "Glutes",
+          "previews": [
+            "legs"
+          ],
+          "recoveryPercent": 82,
+          "sraWindowHours": 72
+        },
+        {
+          "lastTrainedHoursAgo": 59,
+          "muscle": "Hamstrings",
+          "previews": [
+            "legs"
+          ],
+          "recoveryPercent": 82,
+          "sraWindowHours": 72
+        },
+        {
+          "lastTrainedHoursAgo": 59,
+          "muscle": "Quads",
+          "previews": [
+            "legs"
+          ],
+          "recoveryPercent": 82,
+          "sraWindowHours": 72
+        },
+        {
+          "lastTrainedHoursAgo": 30,
+          "muscle": "Biceps",
+          "previews": [
+            "next-session",
+            "pull"
+          ],
+          "recoveryPercent": 85,
+          "sraWindowHours": 36
+        }
+      ],
+      "after": [
+        {
+          "lastTrainedHoursAgo": 31,
+          "muscle": "Lats",
+          "previews": [
+            "next-session",
+            "pull"
+          ],
+          "recoveryPercent": 51,
+          "sraWindowHours": 60
+        },
+        {
+          "lastTrainedHoursAgo": 59,
+          "muscle": "Glutes",
+          "previews": [
+            "legs"
+          ],
+          "recoveryPercent": 82,
+          "sraWindowHours": 72
+        },
+        {
+          "lastTrainedHoursAgo": 59,
+          "muscle": "Hamstrings",
+          "previews": [
+            "legs"
+          ],
+          "recoveryPercent": 82,
+          "sraWindowHours": 72
+        },
+        {
+          "lastTrainedHoursAgo": 59,
+          "muscle": "Quads",
+          "previews": [
+            "legs"
+          ],
+          "recoveryPercent": 82,
+          "sraWindowHours": 72
+        },
+        {
+          "lastTrainedHoursAgo": 31,
+          "muscle": "Biceps",
+          "previews": [
+            "next-session",
+            "pull"
+          ],
+          "recoveryPercent": 85,
+          "sraWindowHours": 36
+        }
+      ]
+    },
+    {
+      "field": "previewSessionDurations",
+      "before": [
+        {
+          "estimatedMinutes": 85,
+          "preview": "next-session"
+        },
+        {
+          "estimatedMinutes": 83,
+          "preview": "legs"
+        },
+        {
+          "estimatedMinutes": 85,
+          "preview": "pull"
+        },
+        {
+          "estimatedMinutes": 82,
+          "preview": "push"
+        }
+      ],
+      "after": [
+        {
+          "estimatedMinutes": 85,
+          "preview": "next-session"
+        },
+        {
+          "estimatedMinutes": 83,
+          "preview": "legs"
+        },
+        {
+          "estimatedMinutes": 85,
+          "preview": "pull"
+        },
+        {
+          "estimatedMinutes": 70,
+          "preview": "push"
+        }
+      ]
+    },
+    {
+      "field": "unresolvedDeficitsByPreview",
+      "before": [
+        {
+          "preview": "next-session",
+          "topDeficitMuscle": "Rear Delts",
+          "topDeficitValue": 4.8,
+          "unresolvedDeficitTotal": 12.5
+        },
+        {
+          "preview": "legs",
+          "topDeficitMuscle": "Core",
+          "topDeficitValue": 11,
+          "unresolvedDeficitTotal": 40.8
+        },
+        {
+          "preview": "pull",
+          "topDeficitMuscle": "Rear Delts",
+          "topDeficitValue": 4.8,
+          "unresolvedDeficitTotal": 12.5
+        },
+        {
+          "preview": "push",
+          "topDeficitMuscle": "Side Delts",
+          "topDeficitValue": 12.2,
+          "unresolvedDeficitTotal": 13.7
+        }
+      ],
+      "after": [
+        {
+          "preview": "next-session",
+          "topDeficitMuscle": "Rear Delts",
+          "topDeficitValue": 4.8,
+          "unresolvedDeficitTotal": 12.5
+        },
+        {
+          "preview": "legs",
+          "topDeficitMuscle": "Core",
+          "topDeficitValue": 11,
+          "unresolvedDeficitTotal": 40.8
+        },
+        {
+          "preview": "pull",
+          "topDeficitMuscle": "Rear Delts",
+          "topDeficitValue": 4.8,
+          "unresolvedDeficitTotal": 12.5
+        },
+        {
+          "preview": "push",
+          "topDeficitMuscle": "Side Delts",
+          "topDeficitValue": 13.2,
+          "unresolvedDeficitTotal": 19.7
+        }
+      ]
+    }
+  ]
+}

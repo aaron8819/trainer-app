@@ -114,8 +114,9 @@ Route-purpose shorthand:
 - Volume analytics remains intentionally separate from the program dashboard:
   - `/program` volume is mesocycle-week scoped for decision support
   - `/analytics` volume is rolling ISO-week charting for trend review
-- Recovery analytics remains a rolling 14-day SRA view from performed sessions rather than a live readiness/dashboard score.
-- Dashboard opportunity is a separate abstraction from analytics recovery: it is driven by weekly target pressure, recent local weighted stimulus, and optional fresh readiness modulation rather than raw recovery percent.
+- The Recovery tab is framed as `Muscle Stimulus Recency`, not a recommendation surface. It explains how recently each muscle was meaningfully stimulated and includes a compact 7-day weighted-stimulus timeline for pattern review (`src/app/analytics/page.tsx`, `src/components/analytics/MuscleRecoveryPanel.tsx`).
+- Analytics recovery remains a rolling 14-day SRA-style recency view from performed sessions rather than a training prescription or dashboard score.
+- Dashboard opportunity is a separate abstraction from analytics stimulus recency: it is driven by weekly target pressure, recent local weighted stimulus, and optional fresh readiness modulation rather than raw recovery percent.
 - Template analytics now distinguishes generated, performed, and completed template workouts instead of treating one completion percentage as the only usage signal.
 
 7. Cross-surface navigation simplification

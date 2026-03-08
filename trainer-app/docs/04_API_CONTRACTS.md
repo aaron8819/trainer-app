@@ -60,8 +60,9 @@ Sources of truth:
   - the chart window is rolling ISO weeks by `scheduledDate`
   - only performed workouts (`COMPLETED` + `PARTIAL`) are included
   - only non-skipped logged sets contribute to direct/indirect volume
-- `GET /api/analytics/recovery` now returns `muscles` plus `semantics` metadata documenting that recovery is a rolling 14-day SRA view built from performed workouts only.
-- Dashboard opportunity does not consume `GET /api/analytics/recovery`; analytics recovery remains a separate rolling SRA view and is not the dashboard source of truth.
+- `GET /api/analytics/recovery` now returns `muscles` plus `semantics` metadata documenting that the screen is a rolling 14-day SRA-style stimulus-recency view built from performed workouts only.
+- Each recovery row now also carries a 7-day `timeline` of canonical weighted effective stimulus buckets (`date`, `effectiveSets`, `intensityBand`) derived with the shared stimulus engine, not raw direct sets (`src/lib/api/muscle-stimulus-timeline.ts`, `src/lib/engine/stimulus.ts`).
+- Dashboard opportunity does not consume `GET /api/analytics/recovery`; analytics stimulus recency remains a separate pattern-review surface and is not the dashboard source of truth.
 
 ## Validation-backed contracts (examples)
 - Workout generation/save: `generateFromTemplateSchema`, `generateFromIntentSchema`, `saveWorkoutSchema`

@@ -20,7 +20,7 @@ export default function AnalyticsPage() {
       <div className="page-shell max-w-5xl">
         <h1 className="page-title">Analytics</h1>
         <p className="mt-1.5 text-sm text-slate-600">
-          Longer-term trend review for volume, recovery, and follow-through. Use Program for live decisions and History for individual sessions.
+          Longer-term trend review for volume, stimulus recency, and follow-through. Use Program for live decisions and History for individual sessions.
         </p>
 
         <section className="mt-5">
@@ -50,9 +50,9 @@ export default function AnalyticsPage() {
         <div className="mt-5 sm:mt-6">
           {activeTab === "Recovery" && (
             <div className="space-y-4">
-              <h2 className="text-base font-semibold sm:text-lg">Muscle Recovery Status</h2>
+              <h2 className="text-base font-semibold sm:text-lg">Muscle Stimulus Recency</h2>
               <p className="text-sm text-slate-500">
-                SRA-based recovery from performed sessions in the last 14 days.
+                SRA-style recency view of when each muscle was last meaningfully stimulated, plus a 7-day weighted stimulus pattern. This is analytics context, not dashboard opportunity or a go-train signal.
               </p>
               <MuscleRecoveryPanel />
             </div>

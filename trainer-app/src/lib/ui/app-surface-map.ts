@@ -35,7 +35,7 @@ export const APP_SURFACE_MAP: Record<AppSurfaceKey, AppSurfaceDefinition> = {
     href: "/analytics",
     label: "Analytics",
     title: "Analytics",
-    purpose: "Review longer-term trends, volume, recovery, and template follow-through.",
+    purpose: "Review longer-term trends, volume, stimulus recency, and template follow-through.",
   },
 };
 

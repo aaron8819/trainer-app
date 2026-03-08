@@ -5,6 +5,7 @@ import { buildMuscleRecoveryMap } from "@/lib/engine/sra";
 import { WorkoutStatus } from "@prisma/client";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 import { buildRollingDaysAnalyticsWindow } from "@/lib/api/analytics-semantics";
+import { buildMuscleStimulusTimeline } from "@/lib/api/muscle-stimulus-timeline";
 
 export async function GET() {
   const user = await resolveOwner();
@@ -28,6 +29,7 @@ export async function GET() {
           include: {
             exercise: {
               include: {
+                aliases: true,
                 exerciseMuscles: { include: { muscle: true } },
               },
             },
@@ -48,6 +50,11 @@ export async function GET() {
   const engineExercises = mapExercises(exercises);
   const history = mapHistory(workouts);
   const recoveryMap = buildMuscleRecoveryMap(history, engineExercises);
+  const timelineByMuscle = buildMuscleStimulusTimeline(workouts, {
+    asOf: new Date(),
+    windowDays: 7,
+    muscles: Array.from(recoveryMap.keys()),
+  });
 
   const muscles = Array.from(recoveryMap.values()).map((state) => ({
     name: state.muscle,
@@ -55,6 +62,7 @@ export async function GET() {
     isRecovered: state.isRecovered,
     lastTrainedHoursAgo: state.lastTrainedHoursAgo,
     sraWindowHours: state.sraWindowHours,
+    timeline: timelineByMuscle[state.muscle]?.days ?? [],
   }));
 
   return NextResponse.json({
@@ -62,13 +70,13 @@ export async function GET() {
     semantics: {
       window: buildRollingDaysAnalyticsWindow(
         14,
-        "Recovery uses performed workouts from the last 14 days."
+        "Stimulus recency uses performed workouts from the last 14 days."
       ),
       counts: {
         workouts:
-          "Recovery includes performed workouts only (COMPLETED and PARTIAL) within the rolling 14-day window.",
+          "Stimulus recency includes performed workouts only (COMPLETED and PARTIAL) within the rolling 14-day window.",
         output:
-          "Recovery percentages are SRA-based recovery states derived from recent performed history, not a live readiness score.",
+          "Percentages describe how much of each muscle's SRA window has elapsed since its last meaningful stimulus, not a training prescription or dashboard opportunity.",
       },
     },
   });

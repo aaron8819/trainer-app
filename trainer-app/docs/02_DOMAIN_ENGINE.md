@@ -1,7 +1,7 @@
 # 02 Domain Engine
 
 Owner: Aaron
-Last reviewed: 2026-03-07
+Last reviewed: 2026-03-08
 Purpose: Canonical reference for workout-generation domain logic, including selection, progression, periodization, readiness, and explainability.
 
 This doc covers:
@@ -47,6 +47,7 @@ Sources of truth:
   - `getEffectiveStimulusByMuscleId()`
   - `getEffectiveStimulusByMuscle()`
 - Effective-set accounting surfaces (`effectiveActual`, planning deficits, session planning contributions, volume compliance) are expected to consume that shared stimulus helper path rather than re-deriving contribution ad hoc.
+- Weekly performed-volume read models now share one canonical mesocycle-week adapter in `src/lib/api/weekly-volume.ts` (`loadMesocycleWeekMuscleVolume()`), which returns weighted `effectiveSets` plus raw `directSets`/`indirectSets` as contextual fields. Dashboard rows (`src/lib/api/program.ts`), week-close deficits (`src/lib/api/mesocycle-week-close.ts`), and explainability compliance (`src/lib/api/explainability.ts`) all consume that adapter.
 - Transitional fallback policy for missing explicit profiles is centralized in `src/lib/engine/stimulus.ts` and coverage-checked in `src/lib/api/template-session/context-loader.ts` via `validateStimulusProfileCoverage()`.
 - Strict fallback enforcement is controlled by `STRICT_STIMULUS_PROFILE_COVERAGE` in `src/lib/api/template-session/context-loader.ts`.
 - Coverage reporting command is `npm run report:stimulus-coverage` (`scripts/report-stimulus-profile-coverage.ts`).
@@ -119,6 +120,7 @@ Sources of truth:
 - `getCurrentMesoWeek(mesocycle)`: derives effective lifecycle week from `state`, `durationWeeks`, `accumulationSessionsCompleted`, and `sessionsPerWeek`. Accumulation weeks are `durationWeeks - 1`; the final week is deload.
 - `getWeeklyVolumeTarget(mesocycle, muscleGroup, week)`: returns lifecycle week-specific target sets from mesocycle ramp semantics and landmarks. Landmark values (MEV/MAV/MRV) are sourced from `VOLUME_LANDMARKS` in `src/lib/engine/volume-landmarks.ts`.
 - Weekly accumulation targets are interpolated via centralized helper `interpolateWeeklyVolumeTarget()` in `src/lib/engine/volume-targets.ts`; deload remains `~45%` of peak accumulation volume.
+- Current landmark table includes the weighted-model Biceps retune in `src/lib/engine/volume-landmarks.ts` (`Biceps: MV 6, MEV 6, MAV 14, MRV 22, SRA 36`) and is consumed unchanged by planner targeting, dashboard rows, week-close deficits, and explainability compliance.
 - Pull musculature landmarks are split (`lats`, `upper_back`) and rear-delt landmarks are reduced to evidence-aligned defaults (`rear_delts: MEV 4, MAV 12`; `lats: MEV 8, MAV 16`; `upper_back: MEV 6, MAV 14`).
 - `getRirTarget(mesocycle, week)`: returns lifecycle week/state-specific RIR bands, including deload targets. Default hypertrophy bands are duration-aware: 4-week total = `3-4 -> 2-3 -> 1-2 -> deload`; 5-week total = `3-4 -> 2-3 -> 1-2 -> 0-1 -> deload`; 6-week total = `3-4 -> 2-3 -> 2 -> 1-2 -> 0-1 -> deload`.
 - `initializeNextMesocycle(completedMesocycle)`: closes current mesocycle, creates next active mesocycle with reset lifecycle counters, and carries forward core exercise roles.

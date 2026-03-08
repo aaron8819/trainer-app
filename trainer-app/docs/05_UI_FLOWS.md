@@ -1,7 +1,7 @@
 # 05 UI Flows
 
 Owner: Aaron
-Last reviewed: 2026-03-07
+Last reviewed: 2026-03-08
 Purpose: Canonical reference for current UI routes and core user flows implemented in the Next.js App Router.
 
 This doc covers:
@@ -79,6 +79,7 @@ Route-purpose shorthand:
 - APIs: `/api/program`, `/api/readiness/submit`, `/api/stalls`, `/api/periodization/macro`
 - Dashboard training status is rendered by `ProgramStatusCard` (`src/components/ProgramStatusCard.tsx`), a client component that replaces the former `TrainingStatusCard`. It supports historical week navigation: clicking a week pill fetches `GET /api/program?week=N` and re-renders volume data for that week without a full-page reload.
 - `ProgramDashboardData` is now scoped to the shared dashboard card: `activeMeso`, `currentWeek`, `viewedWeek`, `sessionsUntilDeload`, `volumeThisWeek`, `deloadReadiness`, `rirTarget`, and `coachingCue` (`src/lib/api/program.ts`, `src/components/ProgramStatusCard.tsx`).
+- `ProgramStatusCard` now renders weighted weekly `effectiveSets` as the primary per-muscle number and treats raw `directSets` / `indirectSets` as contextual copy only (`src/components/ProgramStatusCard.tsx`, `src/components/ProgramStatusCard.render.test.tsx`).
 - The home page loads next-session / resume-workout helpers separately through `loadHomeProgramSupport()` (`src/lib/api/program.ts`) instead of treating them as part of the shared dashboard-card contract.
 - `currentWeek`, `viewedWeek`, lifecycle RIR, and weekly volume targets are duration-aware: accumulation spans `durationWeeks - 1`, and the final week is deload instead of assuming a fixed 4+1 structure.
 - `ProgramStatusCard` is mounted on both the home dashboard (`src/app/page.tsx`) and the `/program` page (`src/app/program/page.tsx`), replacing the prior inline server-rendered volume table on `/program`.

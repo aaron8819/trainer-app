@@ -1,7 +1,7 @@
 # 04 API Contracts
 
 Owner: Aaron  
-Last reviewed: 2026-03-07
+Last reviewed: 2026-03-08
 Purpose: Canonical API contract map for App Router endpoints and payload validation boundaries.
 
 This doc covers:
@@ -47,6 +47,8 @@ Sources of truth:
 - `ProgramDashboardData.activeMeso.completedSessions` is now sourced from `accumulationSessionsCompleted` (the canonical lifecycle counter), not the `completedSessions` DB column. Clients should treat this field as the lifecycle-derived session count.
 - `ProgramDashboardData` is now the shared dashboard-card contract only. Home-page operational helpers (`nextSession`, `latestIncomplete`, `lastSessionSkipped`) are loaded separately through `loadHomeProgramSupport()` in `src/lib/api/program.ts` and are not part of `GET /api/program`.
 - `ProgramDashboardData.deloadReadiness` is always computed from the live `currentWeek` state even when `viewedWeek` is historical. Historical week navigation changes `volumeThisWeek` and `rirTarget`, but not the live deload recommendation.
+- `ProgramDashboardData.volumeThisWeek` rows now expose canonical weighted weekly actuals as `effectiveSets`, with `directSets` and `indirectSets` retained as contextual/debug fields only (`src/lib/api/program.ts`, `src/components/ProgramStatusCard.tsx`).
+- `ProgramDashboardData.deloadReadiness` saturation logic now keys off weighted `effectiveSets` rather than primary-only direct sets (`src/lib/api/program.ts`, `src/lib/api/weekly-volume.ts`).
 
 ## Analytics response notes
 - Shared analytics semantics helpers now live in `src/lib/api/analytics-semantics.ts`. That helper is the canonical source for analytics counting vocabulary (`generated`, `performed`, `completed`) and explicit time-window descriptors (`all_time`, `rolling_days`, `rolling_iso_weeks`, `date_range`).
@@ -131,6 +133,10 @@ Sources of truth:
   - `selectionMetadata.sessionDecisionReceipt.targetMuscles` carries chosen muscles
   - `selectionMetadata.weekCloseId` carries the linked pending week-close id
   - `selectionMetadata.sessionDecisionReceipt.cycleContext.weekInMeso/weekInBlock` are pinned from the pending week-close `targetWeek`
+
+## Week-close deficit snapshot notes
+- Pending week-close rows returned through `findPendingWeekCloseForUser()` in `src/lib/api/mesocycle-week-close.ts` still serialize `deficitSnapshot.muscles[]` as `{ muscle, target, actual, deficit }`.
+- After the weekly-volume unification, `actual` and `deficit` in that snapshot are based on weighted effective weekly volume from `loadMesocycleWeekMuscleVolume()` in `src/lib/api/weekly-volume.ts`, not primary-only direct-set counts.
 
 ## Workout explanation response contract
 - Route: `GET /api/workouts/[id]/explanation` (`src/app/api/workouts/[id]/explanation/route.ts`).

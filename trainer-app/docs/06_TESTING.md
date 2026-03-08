@@ -1,7 +1,7 @@
 # 06 Testing
 
 Owner: Aaron
-Last reviewed: 2026-03-07
+Last reviewed: 2026-03-08
 Purpose: Canonical testing reference for Vitest-based coverage of engine, API helpers, and UI components.
 
 This doc covers:
@@ -45,6 +45,7 @@ Sources of truth:
 - Periodization bridge coverage: `src/lib/engine/periodization.correctness.test.ts` asserts that longer accumulation phases continue progressing before deload rather than hard-stopping at week 4.
 - Template-session regression coverage: `src/lib/api/template-session.push-week3.regression.test.ts` (W3S1 Push scenario covering role-budgeting/closure seams, CORE_COMPOUND set-count cap <=5, bodyweight Dip `targetLoad=0`, and top-set load anchoring >= top-set history value across 0-based and 1-based `setIndex` history).
 - Volume landmark coverage: `src/lib/engine/volume-landmarks.test.ts` (MEV/MAV/MRV values for all muscles; ramp interpolation correctness).
+- Weekly-volume read-model coverage: `src/lib/api/program.test.ts`, `src/lib/api/mesocycle-week-close.test.ts`, and `src/lib/api/explainability.volume-compliance.test.ts` now assert that dashboard rows, week-close deficits, and explainability compliance read weighted effective weekly volume from the canonical shared adapter in `src/lib/api/weekly-volume.ts`.
 - Explainability volume compliance coverage: `src/lib/api/explainability.volume-compliance.test.ts` (query/assembly split surfaced through explainability facade; meso-week scoped muscle volume, compliance status classification, and `UNDER_MEV`/`OVER_MAV` boundary assertions).
 - Workout generation route contract coverage: `src/app/api/workouts/generate-from-intent/route.test.ts` and `src/app/api/workouts/generate-from-template/route.test.ts` assert receipt-first `selectionMetadata` responses, absence of top-level generation autoregulation payloads, and pending-week-close `optionalGapFillContext` pinning for optional gap-fill requests.
 - Explainability progression receipt coverage: `src/lib/api/explainability.progression-receipt.test.ts` (includes recency-window guard and `PARTIAL` + `COMPLETED` performed-status query assertions).
@@ -56,6 +57,7 @@ Sources of truth:
 - UI session overview copy guards: `src/lib/ui/session-overview.test.ts` (`PARTIAL`/`COMPLETED` performed basis and load-provenance wording).
 - Explainability panel UI coverage: `src/components/explainability/ExplainabilityPanel.test.tsx` now also asserts the scan-first audit labels (`Session scan`, `Exercise drill-down`, `Missing or weak signals`, `Why this lift stayed in`, `Top factors`) instead of the older disclosure/jargon-heavy copy.
 - UI program dashboard coverage: `src/components/ProgramStatusCard.test.ts` (volume dot class logic, deload banner, week navigation, and `getVolumeDotClass` boundary assertions).
+- UI program volume presentation coverage: `src/components/ProgramStatusCard.render.test.tsx` now asserts that weighted effective sets are shown as the primary weekly value while raw direct/indirect counts remain contextual.
 - Save-route canonical receipt enforcement coverage: `src/app/api/workouts/save/route.integration.test.ts`.
 - Audit harness context/generation/serialization coverage: `src/lib/audit/workout-audit/context-builder.test.ts`, `src/lib/audit/workout-audit/generation-runner.test.ts`, `src/lib/audit/workout-audit/serializer.test.ts`.
 - Audit diagnostics matrix coverage:

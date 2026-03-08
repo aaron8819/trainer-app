@@ -17,6 +17,7 @@ const getWeeklyVolumeTargetMock = vi.fn();
 const buildLifecyclePeriodizationMock = vi.fn();
 const shouldDeloadMock = vi.fn();
 const mesocycleRoleFindManyMock = vi.fn();
+const loadGenerationPhaseBlockContextMock = vi.fn();
 
 vi.mock("@/lib/api/workout-context", () => ({
   loadWorkoutContext: (...args: unknown[]) => loadWorkoutContextMock(...args),
@@ -43,6 +44,11 @@ vi.mock("@/lib/db/prisma", () => ({
       findMany: (...args: unknown[]) => mesocycleRoleFindManyMock(...args),
     },
   },
+}));
+
+vi.mock("@/lib/api/generation-phase-block-context", () => ({
+  loadGenerationPhaseBlockContext: (...args: unknown[]) => loadGenerationPhaseBlockContextMock(...args),
+  resolveGenerationPhaseBlockContext: (...args: unknown[]) => loadGenerationPhaseBlockContextMock(...args),
 }));
 
 vi.mock("@/lib/api/mesocycle-lifecycle", () => ({
@@ -127,6 +133,63 @@ describe("template-session context-loader mismatch policy", () => {
       lifecycleRirTarget: { min: 2, max: 3 },
       lifecycleSetTargets: { main: 4, accessory: 3 },
     });
+    loadGenerationPhaseBlockContextMock.mockResolvedValue({
+      blockContext: {
+        block: {
+          id: "block-1",
+          mesocycleId: "meso-1",
+          blockNumber: 1,
+          blockType: "accumulation",
+          startWeek: 0,
+          durationWeeks: 2,
+          volumeTarget: "high",
+          intensityBias: "hypertrophy",
+          adaptationType: "myofibrillar_hypertrophy",
+        },
+        weekInBlock: 2,
+        weekInMeso: 2,
+        weekInMacro: 2,
+        mesocycle: {
+          id: "meso-1",
+          macroCycleId: "macro-1",
+          mesoNumber: 1,
+          startWeek: 0,
+          durationWeeks: 5,
+          focus: "Hypertrophy",
+          volumeTarget: "high",
+          intensityBias: "hypertrophy",
+          blocks: [],
+        },
+        macroCycle: {
+          id: "macro-1",
+          userId: "user-1",
+          startDate: new Date("2026-03-01T00:00:00.000Z"),
+          endDate: new Date("2026-04-05T00:00:00.000Z"),
+          durationWeeks: 5,
+          trainingAge: "intermediate",
+          primaryGoal: "hypertrophy",
+          mesocycles: [],
+        },
+      },
+      profile: {
+        blockType: "accumulation",
+        weekInBlock: 2,
+        blockDurationWeeks: 2,
+        isDeload: false,
+      },
+      cycleContext: {
+        weekInMeso: 2,
+        weekInBlock: 2,
+        mesocycleLength: 5,
+        phase: "accumulation",
+        blockType: "accumulation",
+        isDeload: false,
+        source: "computed",
+      },
+      weekInMeso: 2,
+      weekInBlock: 2,
+      mesocycleLength: 5,
+    });
     shouldDeloadMock.mockReturnValue(false);
   });
 
@@ -152,6 +215,50 @@ describe("template-session context-loader mismatch policy", () => {
     expect(result.rawWorkouts[0]?.exercises[0]?.section).toBe("ACCESSORY");
   });
 
+  it("loads real phase/block context into generation instead of dropping block context to null", async () => {
+    const result = await loadMappedGenerationContext("user-1");
+
+    expect(loadGenerationPhaseBlockContextMock).toHaveBeenCalledWith(
+      "user-1",
+      expect.objectContaining({
+        weekInMeso: 2,
+        forceAccumulation: false,
+      })
+    );
+    expect(result.phaseBlockContext).toEqual(
+      expect.objectContaining({
+        weekInMeso: 2,
+        weekInBlock: 2,
+        profile: expect.objectContaining({
+          blockType: "accumulation",
+          weekInBlock: 2,
+        }),
+      })
+    );
+    expect(result.blockContext).toEqual(
+      expect.objectContaining({
+        weekInBlock: 2,
+        block: expect.objectContaining({ blockType: "accumulation" }),
+      })
+    );
+    expect(getRirTargetMock).toHaveBeenCalledWith(
+      expect.any(Object),
+      2,
+      expect.objectContaining({
+        blockType: "accumulation",
+        weekInBlock: 2,
+      })
+    );
+    expect(buildLifecyclePeriodizationMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        phaseBlockContext: expect.objectContaining({
+          blockType: "accumulation",
+          weekInBlock: 2,
+        }),
+      })
+    );
+  });
+
   it("forces accumulation semantics for anchored optional gap-fill after lifecycle advances to deload", async () => {
     loadActiveMesocycleMock.mockResolvedValueOnce({
       id: "meso-1",
@@ -161,10 +268,67 @@ describe("template-session context-loader mismatch policy", () => {
       deloadSessionsCompleted: 0,
       sessionsPerWeek: 3,
     });
+    loadGenerationPhaseBlockContextMock.mockResolvedValueOnce({
+      blockContext: {
+        block: {
+          id: "block-2",
+          mesocycleId: "meso-1",
+          blockNumber: 2,
+          blockType: "intensification",
+          startWeek: 2,
+          durationWeeks: 2,
+          volumeTarget: "moderate",
+          intensityBias: "hypertrophy",
+          adaptationType: "myofibrillar_hypertrophy",
+        },
+        weekInBlock: 2,
+        weekInMeso: 4,
+        weekInMacro: 4,
+        mesocycle: {
+          id: "meso-1",
+          macroCycleId: "macro-1",
+          mesoNumber: 1,
+          startWeek: 0,
+          durationWeeks: 5,
+          focus: "Hypertrophy",
+          volumeTarget: "high",
+          intensityBias: "hypertrophy",
+          blocks: [],
+        },
+        macroCycle: {
+          id: "macro-1",
+          userId: "user-1",
+          startDate: new Date("2026-03-01T00:00:00.000Z"),
+          endDate: new Date("2026-04-05T00:00:00.000Z"),
+          durationWeeks: 5,
+          trainingAge: "intermediate",
+          primaryGoal: "hypertrophy",
+          mesocycles: [],
+        },
+      },
+      profile: {
+        blockType: "intensification",
+        weekInBlock: 2,
+        blockDurationWeeks: 2,
+        isDeload: false,
+      },
+      cycleContext: {
+        weekInMeso: 4,
+        weekInBlock: 2,
+        mesocycleLength: 5,
+        phase: "intensification",
+        blockType: "intensification",
+        isDeload: false,
+        source: "computed",
+      },
+      weekInMeso: 4,
+      weekInBlock: 2,
+      mesocycleLength: 5,
+    });
     getRirTargetMock.mockReturnValueOnce({ min: 0, max: 1 });
     buildLifecyclePeriodizationMock.mockReturnValueOnce({
       isDeload: false,
-      weekInBlock: 4,
+      weekInBlock: 2,
       setMultiplier: 1.3,
       backOffMultiplier: 1,
       rpeOffset: 0,
@@ -180,7 +344,11 @@ describe("template-session context-loader mismatch policy", () => {
 
     expect(getRirTargetMock).toHaveBeenCalledWith(
       expect.objectContaining({ state: "ACTIVE_ACCUMULATION" }),
-      4
+      4,
+      expect.objectContaining({
+        blockType: "intensification",
+        weekInBlock: 2,
+      })
     );
     expect(buildLifecyclePeriodizationMock).toHaveBeenCalledWith(
       expect.objectContaining({ week: 4, isDeload: false })
@@ -189,9 +357,9 @@ describe("template-session context-loader mismatch policy", () => {
     expect(result.cycleContext).toEqual(
       expect.objectContaining({
         weekInMeso: 4,
-        weekInBlock: 4,
-        phase: "accumulation",
-        blockType: "accumulation",
+        weekInBlock: 2,
+        phase: "intensification",
+        blockType: "intensification",
         isDeload: false,
       })
     );

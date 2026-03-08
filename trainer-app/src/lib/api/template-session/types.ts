@@ -25,6 +25,7 @@ import type {
 } from "@/lib/api/workout-context";
 import type { loadExerciseExposure } from "@/lib/api/exercise-exposure";
 import type { Mesocycle } from "@prisma/client";
+import type { GenerationPhaseBlockContext } from "@/lib/api/generation-phase-block-context";
 
 export type GenerateTemplateSessionParams = {
   pinnedExerciseIds?: string[];
@@ -112,6 +113,7 @@ export type MappedGenerationContext = {
   effectivePeriodization: PeriodizationModifiers;
   adaptiveDeload: boolean;
   deloadDecision: DeloadDecision;
+  phaseBlockContext?: GenerationPhaseBlockContext;
   blockContext: BlockContext | null;
   rotationContext: Awaited<ReturnType<typeof loadExerciseExposure>>;
   cycleContext: CycleContextSnapshot;

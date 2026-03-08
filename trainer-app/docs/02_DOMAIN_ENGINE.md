@@ -95,6 +95,7 @@ Sources of truth:
 - Macro/meso/block logic lives in `src/lib/engine/periodization`.
 - Readiness, fatigue scoring, and autoregulation logic lives in `src/lib/engine/readiness`.
 - API orchestration for readiness and periodization endpoints lives in `src/lib/api/readiness.ts` and `src/lib/api/periodization.ts`.
+- Generation-facing phase/block resolution now lives in `src/lib/api/generation-phase-block-context.ts` and is loaded by `src/lib/api/template-session/context-loader.ts`. This is the canonical seam where persisted block definitions become generation/runtime `cycleContext`.
 - Session-decision ownership is receipt-first. The canonical flow is defined once in `docs/01_ARCHITECTURE.md`; domain logic here assumes session-level cycle/readiness context is carried only by `selectionMetadata.sessionDecisionReceipt` and parsed by `src/lib/evidence/session-decision-receipt.ts`.
 - Default readiness autoregulation policy is conservative down-regulation only (`allowUpRegulation=false`) unless explicitly overridden by policy input (`src/lib/engine/readiness/types.ts`, `src/lib/engine/readiness/autoregulate.ts`).
 
@@ -112,7 +113,7 @@ Sources of truth:
 
 ## Optional session policy (gap-fill)
 - Optional sessions reuse canonical INTENT generation (`intent=body_part`) and do not introduce a separate optimizer path (`src/lib/api/template-session.ts`).
-- Pending week-close context is canonical for gap-fill week anchoring. `generateSessionFromIntent()` now passes `optionalGapFillContext.targetWeek` into `loadMappedGenerationContext()` so accumulation lifecycle math is pinned from the pending week-close row rather than route-local receipt rewriting (`src/lib/api/template-session.ts`, `src/lib/api/template-session/context-loader.ts`).
+- Pending week-close context is canonical for gap-fill week anchoring. `generateSessionFromIntent()` now passes `optionalGapFillContext.targetWeek` into `loadMappedGenerationContext()` so generation resolves the anchored `weekInMeso` from the pending week-close row, then derives block-relative `weekInBlock` from the active `TrainingBlock` when available (`src/lib/api/template-session.ts`, `src/lib/api/template-session/context-loader.ts`, `src/lib/api/generation-phase-block-context.ts`).
 - Optional gap-fill now uses the explicit `rescue` inventory layer from `SessionOpportunityDefinition`. This is the current bridge between week-close deficit snapshots and controlled rescue access without rewriting the planner into a long-horizon system.
 - Gap-fill policy read model is surfaced by `loadHomeProgramSupport()` (`src/lib/api/program.ts`) with fields:
   - `requiredSessionsPerWeek`
@@ -140,9 +141,14 @@ Sources of truth:
 - `getWeeklyVolumeTarget(mesocycle, muscleGroup, week)`: returns lifecycle week-specific target sets from mesocycle ramp semantics and landmarks. Landmark values (MEV/MAV/MRV) are sourced from `VOLUME_LANDMARKS` in `src/lib/engine/volume-landmarks.ts`.
 - Analytics outcome review for the active mesocycle week is a read-only comparison layer built from `getWeeklyVolumeTarget(...)` + `loadMesocycleWeekMuscleVolume(...)`. It does not own alternate stimulus math or alternate target interpolation (`src/lib/api/muscle-outcome-review.ts`).
 - Weekly accumulation targets are interpolated via centralized helper `interpolateWeeklyVolumeTarget()` in `src/lib/engine/volume-targets.ts`; deload remains `~45%` of peak accumulation volume.
+- When phase/block context is supplied, lifecycle prescription helpers now consume real block type and block-relative week:
+  - `getRirTarget(..., phaseBlockContext?)`
+  - `getLifecycleSetTargets(..., phaseBlockContext?)`
+  - `buildLifecyclePeriodization({ ..., phaseBlockContext })`
+  This preserves current default 4/5/6-week behavior under the existing default block definitions while making generation materially block-aware.
 - Current landmark table includes the weighted-model Biceps retune in `src/lib/engine/volume-landmarks.ts` (`Biceps: MV 6, MEV 6, MAV 14, MRV 22, SRA 36`) and is consumed unchanged by planner targeting, dashboard rows, week-close deficits, and explainability compliance.
 - Pull musculature landmarks are split (`lats`, `upper_back`) and rear-delt landmarks are reduced to evidence-aligned defaults (`rear_delts: MEV 4, MAV 12`; `lats: MEV 8, MAV 16`; `upper_back: MEV 6, MAV 14`).
-- `getRirTarget(mesocycle, week)`: returns lifecycle week/state-specific RIR bands, including deload targets. Default hypertrophy bands are duration-aware: 4-week total = `3-4 -> 2-3 -> 1-2 -> deload`; 5-week total = `3-4 -> 2-3 -> 1-2 -> 0-1 -> deload`; 6-week total = `3-4 -> 2-3 -> 2 -> 1-2 -> 0-1 -> deload`.
+- `getRirTarget(mesocycle, week, phaseBlockContext?)`: returns lifecycle week/state-specific RIR bands, including deload targets. Without block context, default hypertrophy bands remain duration-aware: 4-week total = `3-4 -> 2-3 -> 1-2 -> deload`; 5-week total = `3-4 -> 2-3 -> 1-2 -> 0-1 -> deload`; 6-week total = `3-4 -> 2-3 -> 2 -> 1-2 -> 0-1 -> deload`.
 - `initializeNextMesocycle(completedMesocycle)`: closes current mesocycle, creates next active mesocycle with reset lifecycle counters, and carries forward core exercise roles.
 
 ## Deload generation path

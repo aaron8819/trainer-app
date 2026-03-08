@@ -140,7 +140,8 @@ Sources of truth:
   - `selectionMetadata.sessionDecisionReceipt.exceptions` contains `optional_gap_fill`
   - `selectionMetadata.sessionDecisionReceipt.targetMuscles` carries chosen muscles
   - `selectionMetadata.weekCloseId` carries the linked pending week-close id
-  - `selectionMetadata.sessionDecisionReceipt.cycleContext.weekInMeso/weekInBlock` are pinned from the pending week-close `targetWeek`
+  - `selectionMetadata.sessionDecisionReceipt.cycleContext.weekInMeso` is pinned from the pending week-close `targetWeek`
+  - `selectionMetadata.sessionDecisionReceipt.cycleContext.weekInBlock` is derived from the block containing that anchored mesocycle week when `TrainingBlock` rows exist, with lifecycle fallback only when block data is unavailable
 
 ## Week-close deficit snapshot notes
 - Pending week-close rows returned through `findPendingWeekCloseForUser()` in `src/lib/api/mesocycle-week-close.ts` still serialize `deficitSnapshot.muscles[]` as `{ muscle, target, actual, deficit }`.

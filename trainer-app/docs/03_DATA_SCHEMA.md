@@ -1,7 +1,7 @@
 # 03 Data Schema
 
 Owner: Aaron  
-Last reviewed: 2026-02-22  
+Last reviewed: 2026-03-08  
 Purpose: Canonical data-model reference for runtime persistence used by workout generation, logging, templates, analytics, readiness, and periodization.
 
 This doc covers:
@@ -53,6 +53,17 @@ Canonical machine-readable values: `docs/contracts/runtime-contracts.json`.
 - `Mesocycle.volumeRampConfig` (JSONB in Postgres)
 - `Mesocycle.rirBandConfig` (JSONB in Postgres)
 
+## Training block fields
+- `TrainingBlock.mesocycleId`
+- `TrainingBlock.blockNumber`
+- `TrainingBlock.blockType` (`BlockType`)
+- `TrainingBlock.startWeek`
+- `TrainingBlock.durationWeeks`
+- `TrainingBlock.volumeTarget`
+- `TrainingBlock.intensityBias`
+- `TrainingBlock.adaptationType`
+- These rows are now read directly by generation through `src/lib/api/generation-phase-block-context.ts`; they are no longer passive schema-only periodization metadata.
+
 ## Mesocycle exercise roles
 - `MesocycleExerciseRole.mesocycleId`
 - `MesocycleExerciseRole.exerciseId`
@@ -61,10 +72,13 @@ Canonical machine-readable values: `docs/contracts/runtime-contracts.json`.
 - `MesocycleExerciseRole.addedInWeek`
 
 ## Workout mesocycle snapshots
+- `Workout.trainingBlockId`
+- `Workout.weekInBlock`
 - `Workout.mesocycleId`
 - `Workout.mesocycleWeekSnapshot`
 - `Workout.mesocyclePhaseSnapshot`
 - `Workout.mesoSessionSnapshot`
+- `trainingBlockId` / `weekInBlock` remain compatibility-oriented persisted context on the workout row; the canonical generation-time phase/block context is assembled from active `MacroCycle -> Mesocycle -> TrainingBlock` rows and stamped into `selectionMetadata.sessionDecisionReceipt.cycleContext`.
 
 ## Compatibility-only workout fields
 - `Workout.wasAutoregulated`

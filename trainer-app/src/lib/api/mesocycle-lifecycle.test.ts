@@ -440,6 +440,95 @@ describe("mesocycle-lifecycle", () => {
     expect(getRirTarget(meso, 5)).toEqual({ min: 5, max: 6 });
   });
 
+  it("preserves current 5-week hypertrophy RIR and set progression when using the default block definitions", () => {
+    const meso = {
+      state: "ACTIVE_ACCUMULATION" as const,
+      durationWeeks: 5,
+    };
+
+    expect(
+      getRirTarget(meso, 1, {
+        blockType: "accumulation",
+        weekInBlock: 1,
+        blockDurationWeeks: 2,
+        isDeload: false,
+      })
+    ).toEqual({ min: 3, max: 4 });
+    expect(
+      getRirTarget(meso, 2, {
+        blockType: "accumulation",
+        weekInBlock: 2,
+        blockDurationWeeks: 2,
+        isDeload: false,
+      })
+    ).toEqual({ min: 2, max: 3 });
+    expect(
+      getRirTarget(meso, 3, {
+        blockType: "intensification",
+        weekInBlock: 1,
+        blockDurationWeeks: 2,
+        isDeload: false,
+      })
+    ).toEqual({ min: 1, max: 2 });
+    expect(
+      getRirTarget(meso, 4, {
+        blockType: "intensification",
+        weekInBlock: 2,
+        blockDurationWeeks: 2,
+        isDeload: false,
+      })
+    ).toEqual({ min: 0, max: 1 });
+    expect(
+      getRirTarget(meso, 5, {
+        blockType: "deload",
+        weekInBlock: 1,
+        blockDurationWeeks: 1,
+        isDeload: true,
+      })
+    ).toEqual({ min: 5, max: 6 });
+
+    expect(
+      getLifecycleSetTargets(5, 1, false, {
+        blockType: "accumulation",
+        weekInBlock: 1,
+        blockDurationWeeks: 2,
+        isDeload: false,
+      })
+    ).toEqual({ main: 3, accessory: 2 });
+    expect(
+      getLifecycleSetTargets(5, 2, false, {
+        blockType: "accumulation",
+        weekInBlock: 2,
+        blockDurationWeeks: 2,
+        isDeload: false,
+      })
+    ).toEqual({ main: 4, accessory: 3 });
+    expect(
+      getLifecycleSetTargets(5, 3, false, {
+        blockType: "intensification",
+        weekInBlock: 1,
+        blockDurationWeeks: 2,
+        isDeload: false,
+      })
+    ).toEqual({ main: 5, accessory: 4 });
+    expect(
+      getLifecycleSetTargets(5, 4, false, {
+        blockType: "intensification",
+        weekInBlock: 2,
+        blockDurationWeeks: 2,
+        isDeload: false,
+      })
+    ).toEqual({ main: 5, accessory: 5 });
+    expect(
+      getLifecycleSetTargets(5, 5, true, {
+        blockType: "deload",
+        weekInBlock: 1,
+        blockDurationWeeks: 1,
+        isDeload: true,
+      })
+    ).toEqual({ main: 2, accessory: 1 });
+  });
+
   it("returns corrected default RIR bands for a 6-week mesocycle", () => {
     const meso = {
       state: "ACTIVE_ACCUMULATION" as const,

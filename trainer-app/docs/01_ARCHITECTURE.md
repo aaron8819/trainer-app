@@ -49,6 +49,7 @@ Sources of truth:
 
 ## Canonical session-decision flow
 - Generation/finalization build the canonical session decision under `selectionMetadata.sessionDecisionReceipt` in `src/lib/api/template-session.ts`, with planning-critical seams in `src/lib/planning/session-opportunities.ts`, `src/lib/api/template-session/role-budgeting.ts`, and `src/lib/api/template-session/closure-actions.ts`.
+- Generation-facing phase/block context is loaded in `src/lib/api/generation-phase-block-context.ts` and attached in `src/lib/api/template-session/context-loader.ts`. That seam is now the canonical bridge from persisted `MacroCycle -> Mesocycle -> TrainingBlock` data into generation/runtime `cycleContext`.
 - Save requires that receipt, then only re-parses/re-normalizes the persisted JSON shape at the database boundary in `src/app/api/workouts/save/route.ts`, with action/status resolution isolated in `src/app/api/workouts/save/status-machine.ts` and receipt parsing in `src/lib/evidence/session-decision-receipt.ts`.
 - Runtime readers in UI and explainability consume only `selectionMetadata.sessionDecisionReceipt` via `src/lib/ui/selection-metadata.ts`, `src/lib/ui/explainability.ts`, and the explainability facade in `src/lib/api/explainability.ts` (split into `src/lib/api/explainability/query.ts` + `src/lib/api/explainability/assembly.ts`).
 - Removed top-level session mirrors (`wasAutoregulated`, `autoregulationLog`, legacy `selectionMetadata.*` session fields) remain guardrail rejects in `src/lib/validation.ts`; they are not active runtime inputs.
@@ -67,16 +68,18 @@ Sources of truth:
 
 ## Lifecycle ownership and data entities
 - Lifecycle state transitions (`ACTIVE_ACCUMULATION` -> `ACTIVE_DELOAD` -> `COMPLETED`) are executed through `transitionMesocycleState()` via `src/lib/api/mesocycle-lifecycle.ts` (state module: `src/lib/api/mesocycle-lifecycle-state.ts`), invoked from `src/app/api/workouts/save/route.ts` after first transition into a performed status.
-- Lifecycle-derived targeting helpers (`getCurrentMesoWeek()`, `getWeeklyVolumeTarget()`, `getRirTarget()`) are consumed by template-session orchestration through the lifecycle facade (math module: `src/lib/api/mesocycle-lifecycle-math.ts`).
+- Lifecycle-derived targeting helpers (`getCurrentMesoWeek()`, `getWeeklyVolumeTarget()`, `getRirTarget()`) are consumed by template-session orchestration through the lifecycle facade (math module: `src/lib/api/mesocycle-lifecycle-math.ts`), but they now accept generation-facing phase/block profile context from `src/lib/api/generation-phase-block-context.ts` when real block definitions are present.
 - Weekly volume interpolation is centralized in `src/lib/engine/volume-targets.ts` and consumed by lifecycle math/engine volume services.
 - `MesocycleExerciseRole` is a first-class data-layer entity for intent-scoped exercise role continuity (`CORE_COMPOUND` / `ACCESSORY`) across mesocycle lifecycle events.
+- `TrainingBlock` is now generation-relevant rather than explainability-only: `cycleContext.blockType` and `cycleContext.weekInBlock` come from the active block when available, with lifecycle fallback only for legacy/missing block data.
 
 ## Optional sessions / gap-fill
 - Optional gap-fill sessions are non-advancing by contract: save route forces `advancesSplit=false` for strict gap-fill sessions and blocks lifecycle mutation for those performed transitions (`src/app/api/workouts/save/route.ts`, `src/app/api/workouts/save/lifecycle-contract.ts`).
 - Strict gap-fill classification is canonicalized in one shared predicate (`src/lib/gap-fill/classifier.ts`): receipt marker `optional_gap_fill` AND effective `selectionMode=INTENT` AND `sessionIntent=BODY_PART`.
 - Gap-fill generation still uses the normal planner path, but now routes through the explicit `rescue` session inventory in `src/lib/planning/session-opportunities.ts` rather than relying on ad hoc body-part exceptions.
 - Anchor-week semantics are dual-stamped:
-  - generation pins receipt cycle context to `anchorWeek` (`selectionMetadata.sessionDecisionReceipt.cycleContext.weekInMeso/weekInBlock`)
+  - generation pins `selectionMetadata.sessionDecisionReceipt.cycleContext.weekInMeso` to the anchor week
+  - generation derives `selectionMetadata.sessionDecisionReceipt.cycleContext.weekInBlock` from the active block containing that anchored meso week when `TrainingBlock` rows exist, with lifecycle fallback only when block data is missing
   - save pins `mesocycleWeekSnapshot=anchorWeek` for strict gap-fill payloads
 - Read-side week precedence is snapshot-first for UI/session labels: `mesocycleWeekSnapshot ?? receipt.cycleContext.weekInMeso ?? lifecycle-derived week` (`src/lib/ui/workout-list-items.ts`, `src/app/log/[id]/page.tsx`).
 - Program week-volume reads are anchor-safe and week-bounded: query by `mesocycleWeekSnapshot` first, with bounded date fallback for legacy rows lacking snapshot (`src/lib/api/program.ts`).

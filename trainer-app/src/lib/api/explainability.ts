@@ -162,6 +162,8 @@ export async function generateWorkoutExplanation(
       periodization: explanationPeriodization.periodization,
       blockType: explanationPeriodization.blockType,
       weekInMesocycle: explanationPeriodization.weekInMesocycle,
+      weekInBlock: explanationPeriodization.weekInBlock,
+      blockDurationWeeks: explanationPeriodization.blockDurationWeeks,
       restSeconds:
         engineSets[0]?.restSeconds ??
         getRestSeconds(exercise, workoutExercise.isMainLift, engineSets[0]?.targetReps ?? 10),

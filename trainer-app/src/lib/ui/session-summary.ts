@@ -37,8 +37,12 @@ function formatWeekTag(input: {
   receipt?: SessionDecisionReceipt;
   displayWeek?: number | null;
 }): string {
-  const blockType = toTitleCase(input.receipt?.cycleContext.blockType ?? input.context.blockPhase.blockType);
-  const week = input.displayWeek ?? input.context.progressionContext.weekInMesocycle;
+  const receiptCycleContext = input.receipt?.cycleContext;
+  const blockType = toTitleCase(receiptCycleContext?.blockType ?? input.context.blockPhase.blockType);
+  const week =
+    receiptCycleContext?.weekInBlock ??
+    input.displayWeek ??
+    input.context.progressionContext.weekInMesocycle;
   return `${blockType} week ${week}`;
 }
 

@@ -42,6 +42,7 @@ function makeReceipt(overrides?: Partial<SessionDecisionReceipt>): SessionDecisi
     cycleContext: {
       weekInMeso: 2,
       weekInBlock: 2,
+      blockDurationWeeks: 4,
       mesocycleLength: 4,
       phase: "accumulation",
       blockType: "accumulation",
@@ -121,6 +122,7 @@ describe("buildSessionSummaryModel", () => {
         cycleContext: {
           weekInMeso: 3,
           weekInBlock: 3,
+          blockDurationWeeks: 5,
           mesocycleLength: 5,
           phase: "accumulation",
           blockType: "accumulation",
@@ -140,6 +142,42 @@ describe("buildSessionSummaryModel", () => {
     expect(summary.tags).toEqual(["Gap Fill", "Accumulation week 3", "42 min"]);
     expect(summary.summary).toContain("gap-fill session targets front delts, rear delts, biceps");
     expect(summary.items[0]?.value).toContain("Close gaps for front delts, rear delts, biceps");
+  });
+
+  it("prefers receipt block-week tags over mesocycle week displays when canonical context exists", () => {
+    const summary = buildSessionSummaryModel({
+      context: makeContext({
+        blockPhase: {
+          blockType: "intensification",
+          weekInBlock: 1,
+          totalWeeksInBlock: 2,
+          primaryGoal: "hypertrophy",
+        },
+        progressionContext: {
+          weekInMesocycle: 4,
+          volumeProgression: "maintaining",
+          intensityProgression: "ramping",
+          nextMilestone: "Final intensification week next, then transition to next block",
+        },
+      }),
+      receipt: makeReceipt({
+        cycleContext: {
+          weekInMeso: 4,
+          weekInBlock: 1,
+          blockDurationWeeks: 2,
+          mesocycleLength: 5,
+          phase: "intensification",
+          blockType: "intensification",
+          isDeload: false,
+          source: "computed",
+        },
+      }),
+      displayWeek: 4,
+      sessionIntent: "PUSH",
+    });
+
+    expect(summary.tags).toContain("Intensification week 1");
+    expect(summary.tags).not.toContain("Intensification week 4");
   });
 
   it("surfaces deload, soreness hold, and readiness scaling through the same summary", () => {

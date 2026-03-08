@@ -38,6 +38,11 @@ export function buildExplanationPeriodization(input: {
 }) {
   const { blockContext, weekInMeso, sessionDecisionReceipt, mappedPrimaryGoal } = input;
   const cycleContext = sessionDecisionReceipt?.cycleContext;
+  const blockDurationWeeks =
+    cycleContext?.blockDurationWeeks ??
+    (blockContext != null && blockContext.block.blockType === cycleContext?.blockType
+      ? blockContext.block.durationWeeks
+      : undefined);
 
   if (cycleContext && mappedPrimaryGoal === "hypertrophy") {
     return {
@@ -47,9 +52,20 @@ export function buildExplanationPeriodization(input: {
         week: cycleContext.weekInMeso,
         isDeload: cycleContext.isDeload,
         rirTarget: sessionDecisionReceipt?.lifecycleRirTarget,
+        phaseBlockContext:
+          blockDurationWeeks != null
+            ? {
+                blockType: cycleContext.blockType,
+                weekInBlock: cycleContext.weekInBlock,
+                blockDurationWeeks,
+                isDeload: cycleContext.isDeload,
+              }
+            : undefined,
       }),
       blockType: cycleContext.blockType,
       weekInMesocycle: cycleContext.weekInMeso,
+      weekInBlock: cycleContext.weekInBlock,
+      blockDurationWeeks,
     };
   }
 
@@ -64,6 +80,8 @@ export function buildExplanationPeriodization(input: {
       ),
       blockType: blockContext.block.blockType,
       weekInMesocycle: weekInMeso,
+      weekInBlock: blockContext.weekInBlock,
+      blockDurationWeeks: blockContext.block.durationWeeks,
     };
   }
 
@@ -71,6 +89,8 @@ export function buildExplanationPeriodization(input: {
     periodization: undefined,
     blockType: undefined,
     weekInMesocycle: weekInMeso,
+    weekInBlock: undefined,
+    blockDurationWeeks: undefined,
   };
 }
 

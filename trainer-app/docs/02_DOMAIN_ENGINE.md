@@ -95,7 +95,7 @@ Sources of truth:
 - Macro/meso/block logic lives in `src/lib/engine/periodization`.
 - Readiness, fatigue scoring, and autoregulation logic lives in `src/lib/engine/readiness`.
 - API orchestration for readiness and periodization endpoints lives in `src/lib/api/readiness.ts` and `src/lib/api/periodization.ts`.
-- Generation-facing phase/block resolution now lives in `src/lib/api/generation-phase-block-context.ts` and is loaded by `src/lib/api/template-session/context-loader.ts`. This is the canonical seam where persisted block definitions become generation/runtime `cycleContext`.
+- Generation-facing phase/block resolution now lives in `src/lib/api/generation-phase-block-context.ts` and is loaded by `src/lib/api/template-session/context-loader.ts`. This is the canonical seam where persisted block definitions become generation/runtime `cycleContext`, including optional `blockDurationWeeks` for receipt-backed read-side consumers.
 - Session-decision ownership is receipt-first. The canonical flow is defined once in `docs/01_ARCHITECTURE.md`; domain logic here assumes session-level cycle/readiness context is carried only by `selectionMetadata.sessionDecisionReceipt` and parsed by `src/lib/evidence/session-decision-receipt.ts`.
 - Default readiness autoregulation policy is conservative down-regulation only (`allowUpRegulation=false`) unless explicitly overridden by policy input (`src/lib/engine/readiness/types.ts`, `src/lib/engine/readiness/autoregulate.ts`).
 
@@ -179,7 +179,7 @@ Sources of truth:
 - Explanation endpoint is `src/app/api/workouts/[id]/explanation/route.ts`.
 - Workout explanations include per-exercise progression receipts (`WorkoutExplanation.progressionReceipts` in `src/lib/engine/explainability/types.ts`), derived from performed history and current prescription in `src/lib/api/explainability.ts`.
 - Session context now includes cycle provenance and readiness availability labels (`SessionContext.cycleSource`, `ReadinessStatus.availability`, `ReadinessStatus.label`) in `src/lib/engine/explainability/types.ts`, produced in `src/lib/engine/explainability/session-context.ts`.
-- Explainability is strictly receipt-first: it reads session-level cycle/readiness context only from `selectionMetadata.sessionDecisionReceipt`, and missing canonical receipt means missing session-level evidence (`src/lib/evidence/session-decision-receipt.ts`, `src/lib/api/explainability.ts`, `src/lib/ui/explainability.ts`).
+- Explainability is strictly receipt-first: it reads session-level cycle/readiness context only from `selectionMetadata.sessionDecisionReceipt`, and missing canonical receipt means missing session-level evidence (`src/lib/evidence/session-decision-receipt.ts`, `src/lib/api/explainability.ts`, `src/lib/ui/explainability.ts`). When canonical receipt cycle context includes `weekInBlock` and `blockDurationWeeks`, read-side summary/explainability copy should prefer block-relative semantics over mesocycle-relative wording.
 - Progression receipts only use recent performed evidence (42-day recency window) when loading `lastPerformed` in `loadLatestPerformedSetSummary()` within `src/lib/api/explainability.ts`.
 - Progression receipts include a decision log summarizing which load-progression rule path fired and why.
 - Explainability renders per-exercise progression decision logs in the Evidence tab under `Progression Logic` when logs are available.

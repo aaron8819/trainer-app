@@ -27,6 +27,7 @@ describe("readSessionDecisionReceipt", () => {
         cycleContext: {
           weekInMeso: 4,
           weekInBlock: 2,
+          blockDurationWeeks: 3,
           mesocycleLength: 6,
           phase: "accumulation",
           blockType: "accumulation",
@@ -277,6 +278,7 @@ describe("readSessionDecisionReceipt", () => {
     });
 
     expect(receipt?.cycleContext.weekInMeso).toBe(4);
+    expect(receipt?.cycleContext.blockDurationWeeks).toBe(3);
     expect(receipt?.lifecycleRirTarget).toEqual({ min: 2, max: 3 });
     expect(receipt?.lifecycleVolume.targets).toEqual({ Chest: 16 });
     expect(receipt?.sorenessSuppressedMuscles).toEqual([]);
@@ -318,6 +320,7 @@ describe("readSessionDecisionReceipt", () => {
       cycleContext: {
         weekInMeso: 2,
         weekInBlock: 2,
+        blockDurationWeeks: 3,
         mesocycleLength: 5,
         phase: "accumulation",
         blockType: "accumulation",
@@ -419,6 +422,7 @@ describe("readSessionDecisionReceipt", () => {
       cycleContext: {
         weekInMeso: 2,
         weekInBlock: 2,
+        blockDurationWeeks: 3,
         mesocycleLength: 5,
         phase: "accumulation",
         blockType: "accumulation",

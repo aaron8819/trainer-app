@@ -79,6 +79,7 @@ export type ProgramDashboardData = {
   activeMeso: ProgramMesoSummary | null;
   currentWeek: number;
   viewedWeek: number;
+  viewedBlockType: string | null;
   sessionsUntilDeload: number;
   volumeThisWeek: ProgramVolumeRow[];
   deloadReadiness: DeloadReadiness | null;
@@ -733,6 +734,7 @@ export async function loadProgramDashboardData(
       : null,
     currentWeek,
     viewedWeek: effectiveViewWeek,
+    viewedBlockType,
     sessionsUntilDeload,
     volumeThisWeek,
     deloadReadiness,

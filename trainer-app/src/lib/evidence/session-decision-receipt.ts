@@ -72,6 +72,8 @@ export function parseCycleContextSnapshot(value: unknown): CycleContextSnapshot 
   return {
     weekInMeso: record.weekInMeso,
     weekInBlock: record.weekInBlock,
+    blockDurationWeeks:
+      typeof record.blockDurationWeeks === "number" ? record.blockDurationWeeks : undefined,
     mesocycleLength:
       typeof record.mesocycleLength === "number" ? record.mesocycleLength : undefined,
     phase: record.phase as CycleContextSnapshot["phase"],

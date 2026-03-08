@@ -44,6 +44,7 @@ describe("session-context correctness", () => {
       cycleContext: {
         weekInMeso: 2,
         weekInBlock: 3,
+        blockDurationWeeks: 4,
         phase: "intensification",
         blockType: "intensification",
         isDeload: false,
@@ -56,6 +57,48 @@ describe("session-context correctness", () => {
     expect(context.cycleSource).toBe("fallback");
     expect(context.progressionContext.weekInMesocycle).toBe(2);
     expect(context.blockPhase.weekInBlock).toBe(3);
+  });
+
+  it("uses receipt block duration for block horizons when canonical context exists", () => {
+    const context = explainSessionContext({
+      blockContext: null,
+      cycleContext: {
+        weekInMeso: 4,
+        weekInBlock: 1,
+        blockDurationWeeks: 2,
+        phase: "intensification",
+        blockType: "intensification",
+        isDeload: false,
+        source: "computed",
+      },
+      volumeByMuscle: new Map(),
+      hasRecentReadinessSignal: false,
+    });
+
+    expect(context.blockPhase.totalWeeksInBlock).toBe(2);
+    expect(context.progressionContext.nextMilestone).toBe(
+      "Final intensification week next, then transition to next block"
+    );
+  });
+
+  it("keeps milestone copy cautious when receipt block duration is absent", () => {
+    const context = explainSessionContext({
+      blockContext: null,
+      cycleContext: {
+        weekInMeso: 4,
+        weekInBlock: 1,
+        phase: "intensification",
+        blockType: "intensification",
+        isDeload: false,
+        source: "computed",
+      },
+      volumeByMuscle: new Map(),
+      hasRecentReadinessSignal: false,
+    });
+
+    expect(context.progressionContext.nextMilestone).toBe(
+      "Continue progressing through the intensification block."
+    );
   });
 
   it("shows separate pull-muscle volume rows for Lats and Upper Back", () => {

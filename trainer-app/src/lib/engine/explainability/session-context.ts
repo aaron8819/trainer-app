@@ -117,10 +117,15 @@ export function describeBlockGoal(
   };
 
   if (cycleContext) {
+    const totalWeeksInBlock =
+      cycleContext.blockDurationWeeks ??
+      (blockContext?.block.blockType === cycleContext.blockType
+        ? blockContext.block.durationWeeks
+        : cycleContext.mesocycleLength ?? 4);
     return {
       blockType: cycleContext.blockType,
       weekInBlock: cycleContext.weekInBlock,
-      totalWeeksInBlock: cycleContext.mesocycleLength ?? 4,
+      totalWeeksInBlock,
       primaryGoal: goalMap[cycleContext.blockType],
     };
   }
@@ -306,11 +311,15 @@ export function describeProgressionContext(
   if (cycleContext) {
     const volumeProgression = getVolumeProgression(cycleContext.blockType);
     const intensityProgression = getIntensityProgression(cycleContext.blockType);
-    const nextMilestone = getNextMilestone(
-      cycleContext.blockType,
-      cycleContext.weekInBlock,
-      cycleContext.mesocycleLength ?? 4
-    );
+    const blockDurationWeeks =
+      cycleContext.blockDurationWeeks ??
+      (blockContext?.block.blockType === cycleContext.blockType
+        ? blockContext.block.durationWeeks
+        : undefined);
+    const nextMilestone =
+      blockDurationWeeks != null
+        ? getNextMilestone(cycleContext.blockType, cycleContext.weekInBlock, blockDurationWeeks)
+        : `Continue progressing through the ${cycleContext.blockType} block.`;
     return {
       weekInMesocycle: cycleContext.weekInMeso,
       volumeProgression,

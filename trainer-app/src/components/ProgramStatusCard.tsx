@@ -287,7 +287,7 @@ function ProgramCardStatusRow({
   sessionsUntilDeload,
 }: {
   rirTarget: ProgramDashboardData["rirTarget"];
-  sessionsUntilDeload: number;
+  sessionsUntilDeload?: number | null;
 }) {
   return (
     <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -301,13 +301,15 @@ function ProgramCardStatusRow({
           </p>
         </div>
       ) : null}
-      <p
-        className={`text-sm font-medium ${
-          sessionsUntilDeload <= 3 ? "text-amber-700" : "text-slate-700"
-        }`}
-      >
-        {sessionsUntilDeload === 0 ? "Deload week" : `${sessionsUntilDeload} sessions until deload`}
-      </p>
+      {typeof sessionsUntilDeload === "number" ? (
+        <p
+          className={`text-sm font-medium ${
+            sessionsUntilDeload <= 3 ? "text-amber-700" : "text-slate-700"
+          }`}
+        >
+          {sessionsUntilDeload === 0 ? "Deload week" : `${sessionsUntilDeload} sessions until deload`}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -349,45 +351,51 @@ function ProgramStatusCardCompact({ initialData }: { initialData: ProgramDashboa
 }
 
 function ProgramStatusCardDefault({ initialData }: { initialData: ProgramDashboardData }) {
-  const { activeMeso, currentWeek, sessionsUntilDeload, deloadReadiness, rirTarget, coachingCue } =
-    initialData;
-  const durationWeeks = activeMeso?.durationWeeks ?? 1;
-
-  const [selectedWeek, setSelectedWeek] = useState(initialData.viewedWeek);
-  const [volumeRows, setVolumeRows] = useState(initialData.volumeThisWeek);
+  const [activeData, setActiveData] = useState(initialData);
   const [loading, setLoading] = useState(false);
   const [selectedMuscle, setSelectedMuscle] = useState<string | null>(null);
 
-  const isHistorical = selectedWeek !== currentWeek;
+  const {
+    activeMeso,
+    currentWeek,
+    viewedWeek,
+    viewedBlockType,
+    sessionsUntilDeload,
+    deloadReadiness,
+    rirTarget,
+    coachingCue,
+  } = activeData;
+  const durationWeeks = activeMeso?.durationWeeks ?? 1;
+  const isHistorical = viewedWeek !== currentWeek;
 
   const goToWeek = useCallback(
     async (week: number) => {
       if (week < 1 || week > currentWeek) return;
-      setSelectedWeek(week);
+      setSelectedMuscle(null);
       if (week === currentWeek) {
-        setVolumeRows(initialData.volumeThisWeek);
+        setActiveData(initialData);
         return;
       }
       setLoading(true);
       try {
         const res = await fetch(`/api/program?week=${week}`);
         const data = (await res.json()) as ProgramDashboardData;
-        setVolumeRows(data.volumeThisWeek);
+        setActiveData(data);
       } catch {
-        // Network error: keep showing current rows.
+        // Network error: keep showing the last coherent payload.
       } finally {
         setLoading(false);
       }
     },
-    [currentWeek, initialData.volumeThisWeek]
+    [currentWeek, initialData]
   );
 
   if (!activeMeso) {
     return <ProgramStatusEmptyState />;
   }
 
-  const blockType = activeMeso.currentBlockType ?? "accumulation";
-  const relevantVolume = volumeRows.filter(
+  const blockType = viewedBlockType ?? activeMeso.currentBlockType ?? "accumulation";
+  const relevantVolume = activeData.volumeThisWeek.filter(
     (v) => v.mev > 0 || v.target > 0 || v.effectiveSets > 0
   );
   const selectedRow = relevantVolume.find((row) => row.muscle === selectedMuscle) ?? null;
@@ -402,16 +410,19 @@ function ProgramStatusCardDefault({ initialData }: { initialData: ProgramDashboa
       />
       <ProgramCardProgress
         blockType={blockType}
-        currentWeek={currentWeek}
+        currentWeek={viewedWeek}
         durationWeeks={durationWeeks}
       />
       <MesocycleTimeline
         blocks={activeMeso.blocks}
-        currentWeek={currentWeek}
+        currentWeek={viewedWeek}
         durationWeeks={durationWeeks}
       />
-      <ProgramCardStatusRow rirTarget={rirTarget} sessionsUntilDeload={sessionsUntilDeload} />
-      {deloadReadiness?.shouldDeload ? (
+      <ProgramCardStatusRow
+        rirTarget={rirTarget}
+        sessionsUntilDeload={isHistorical ? null : sessionsUntilDeload}
+      />
+      {!isHistorical && deloadReadiness?.shouldDeload ? (
         <div className="mt-3">
           <DeloadBanner readiness={deloadReadiness} />
         </div>
@@ -421,7 +432,7 @@ function ProgramStatusCardDefault({ initialData }: { initialData: ProgramDashboa
         <div>
           <p className="text-sm font-semibold text-slate-900">
             {isHistorical
-              ? `Volume - Week ${selectedWeek} of ${durationWeeks}`
+              ? `Volume - Week ${viewedWeek} of ${durationWeeks}`
               : "Volume This Week"}
           </p>
           <p className="mt-0.5 text-xs text-slate-500">
@@ -433,19 +444,19 @@ function ProgramStatusCardDefault({ initialData }: { initialData: ProgramDashboa
         </div>
         <div className="flex shrink-0 items-center gap-1">
           <button
-            onClick={() => goToWeek(selectedWeek - 1)}
-            disabled={selectedWeek <= 1}
+            onClick={() => goToWeek(viewedWeek - 1)}
+            disabled={viewedWeek <= 1}
             aria-label="View previous week"
             className="flex size-7 items-center justify-center rounded-lg text-sm text-slate-500 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-30"
           >
             {"<"}
           </button>
           <span className="min-w-[3.5rem] text-center text-xs font-medium tabular-nums text-slate-600">
-            W{selectedWeek}/{durationWeeks}
+            W{viewedWeek}/{durationWeeks}
           </span>
           <button
-            onClick={() => goToWeek(selectedWeek + 1)}
-            disabled={selectedWeek >= currentWeek}
+            onClick={() => goToWeek(viewedWeek + 1)}
+            disabled={viewedWeek >= currentWeek}
             aria-label="View next week"
             className="flex size-7 items-center justify-center rounded-lg text-sm text-slate-500 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-30"
           >
@@ -456,7 +467,7 @@ function ProgramStatusCardDefault({ initialData }: { initialData: ProgramDashboa
 
       {isHistorical ? (
         <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700">
-          Viewing Week {selectedWeek} - read only
+          Viewing Week {viewedWeek} - read only
         </div>
       ) : null}
 
@@ -533,7 +544,7 @@ function ProgramStatusCardDefault({ initialData }: { initialData: ProgramDashboa
         <p className="mt-3 text-sm text-slate-500">No volume data for this week.</p>
       )}
 
-      {!isHistorical && coachingCue ? (
+      {coachingCue ? (
         <p className="mt-4 text-xs italic text-slate-600">{coachingCue}</p>
       ) : null}
 

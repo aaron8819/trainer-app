@@ -89,6 +89,7 @@ describe("generation phase/block context", () => {
     expect(result.cycleContext).toEqual({
       weekInMeso: 3,
       weekInBlock: 1,
+      blockDurationWeeks: 2,
       mesocycleLength: 5,
       phase: "intensification",
       blockType: "intensification",
@@ -120,6 +121,7 @@ describe("generation phase/block context", () => {
     expect(result.cycleContext).toEqual({
       weekInMeso: 5,
       weekInBlock: 1,
+      blockDurationWeeks: 1,
       mesocycleLength: 5,
       phase: "deload",
       blockType: "deload",

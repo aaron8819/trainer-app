@@ -84,6 +84,7 @@ function resolveFallbackProfile(input: {
     cycleContext: {
       weekInMeso: lifecycleWeek,
       weekInBlock,
+      blockDurationWeeks,
       mesocycleLength: durationWeeks,
       phase: blockType,
       blockType,
@@ -217,6 +218,7 @@ export function resolveGenerationPhaseBlockContext(input: {
     cycleContext: {
       weekInMeso: lifecycleWeek,
       weekInBlock: blockContext.weekInBlock,
+      blockDurationWeeks: block.durationWeeks,
       mesocycleLength: mesocycle.durationWeeks,
       phase: blockType,
       blockType,

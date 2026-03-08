@@ -34,6 +34,8 @@ export type PrescriptionRationaleContext = {
   profile: Pick<UserProfile, "trainingAge">;
   periodization?: PeriodizationModifiers;
   weekInMesocycle?: number;
+  weekInBlock?: number;
+  blockDurationWeeks?: number;
   lastSessionLoad?: number;
   lastSessionReps?: number;
   restSeconds?: number;
@@ -53,7 +55,17 @@ export type PrescriptionRationaleContext = {
 export function explainPrescriptionRationale(
   context: PrescriptionRationaleContext
 ): PrescriptionRationale {
-  const { exercise, sets, isMainLift, goals, profile, periodization, weekInMesocycle } = context;
+  const {
+    exercise,
+    sets,
+    isMainLift,
+    goals,
+    profile,
+    periodization,
+    weekInMesocycle,
+    weekInBlock,
+    blockDurationWeeks,
+  } = context;
 
   // Get top set for representative prescription
   const topSet = [...sets].sort((a, b) => a.setIndex - b.setIndex)[0];
@@ -89,6 +101,8 @@ export function explainPrescriptionRationale(
   const rirRationale = explainRirTarget(
     topSet.targetRpe,
     weekInMesocycle,
+    weekInBlock,
+    blockDurationWeeks,
     profile.trainingAge,
     goals.primary,
     isMainLift,
@@ -331,6 +345,8 @@ export function explainLoadChoice(
 export function explainRirTarget(
   targetRpe: number | undefined,
   weekInMesocycle: number | undefined,
+  weekInBlock: number | undefined,
+  blockDurationWeeks: number | undefined,
   trainingAge: UserProfile["trainingAge"],
   goal: Goals["primary"],
   isMainLift: boolean,
@@ -344,6 +360,23 @@ export function explainRirTarget(
   // Deload
   if (periodization?.isDeload) {
     reason = `${rir} RIR (deload week — reduced intensity for recovery)`;
+  }
+  // Block-aware progression
+  else if (weekInBlock !== undefined) {
+    if (blockDurationWeeks !== undefined) {
+      const phase =
+        weekInBlock <= 1 ? "early" : weekInBlock >= blockDurationWeeks ? "late" : "middle";
+
+      if (phase === "early") {
+        reason = `${rir} RIR (block week ${weekInBlock} of ${blockDurationWeeks} — conservative intensity to open the phase)`;
+      } else if (phase === "middle") {
+        reason = `${rir} RIR (block week ${weekInBlock} of ${blockDurationWeeks} — progressing intensity within the phase)`;
+      } else {
+        reason = `${rir} RIR (block week ${weekInBlock} of ${blockDurationWeeks} — peak intensity before the next phase)`;
+      }
+    } else {
+      reason = `${rir} RIR (block week ${weekInBlock} — intensity set by the current phase)`;
+    }
   }
   // Mesocycle progression
   else if (weekInMesocycle !== undefined) {

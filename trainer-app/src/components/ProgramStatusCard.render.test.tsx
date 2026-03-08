@@ -1,4 +1,4 @@
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ProgramStatusCard } from "./ProgramStatusCard";
 import type { ProgramDashboardData, ProgramVolumeRow } from "@/lib/api/program";
@@ -31,7 +31,10 @@ function setupDialogMocks() {
   });
 }
 
-function buildData(volumeThisWeek: ProgramDashboardData["volumeThisWeek"]): ProgramDashboardData {
+function buildData(
+  volumeThisWeek: ProgramDashboardData["volumeThisWeek"],
+  overrides: Partial<ProgramDashboardData> = {}
+): ProgramDashboardData {
   return {
     activeMeso: {
       mesoNumber: 1,
@@ -44,11 +47,13 @@ function buildData(volumeThisWeek: ProgramDashboardData["volumeThisWeek"]): Prog
     },
     currentWeek: 4,
     viewedWeek: 3,
+    viewedBlockType: "accumulation",
     sessionsUntilDeload: 3,
     volumeThisWeek,
     deloadReadiness: null,
     rirTarget: { min: 0, max: 1 },
     coachingCue: "Build volume.",
+    ...overrides,
   };
 }
 
@@ -220,6 +225,73 @@ describe("ProgramStatusCard opportunity state", () => {
     render(<ProgramStatusCard initialData={data} />);
 
     expect(screen.queryByText("Deprioritize today")).not.toBeInTheDocument();
+  });
+
+  it("renders a coherent fetched historical payload instead of mixing current-week chrome", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn().mockResolvedValue({
+      json: async () =>
+        buildData(
+          [
+            withOpportunity({
+              muscle: "Back",
+              effectiveSets: 7,
+              directSets: 6,
+              indirectSets: 1,
+              target: 9,
+              mev: 6,
+              mav: 14,
+              mrv: 18,
+            }),
+          ],
+          {
+            viewedWeek: 3,
+            viewedBlockType: "intensification",
+            rirTarget: { min: 2, max: 3 },
+            coachingCue: "Push load, not fatigue.",
+            sessionsUntilDeload: 0,
+            deloadReadiness: {
+              shouldDeload: true,
+              urgency: "scheduled",
+              reason: "Deload week",
+            },
+          }
+        ),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <ProgramStatusCard
+        initialData={buildCurrentWeekData([
+          withOpportunity({
+            muscle: "Chest",
+            effectiveSets: 4,
+            directSets: 4,
+            indirectSets: 0,
+            target: 10,
+            mev: 6,
+            mav: 16,
+            mrv: 22,
+          }),
+        ])}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: "View previous week" }));
+    await waitFor(() => {
+      expect(screen.getByText("Week 3 of 5")).toBeInTheDocument();
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/program?week=3");
+    expect(screen.getByText("intensification")).toBeInTheDocument();
+    expect(screen.getByText("2-3 RIR")).toBeInTheDocument();
+    expect(screen.getByText("Push load, not fatigue.")).toBeInTheDocument();
+    expect(screen.getByText("Volume - Week 3 of 5")).toBeInTheDocument();
+    expect(screen.getByText("Viewing Week 3 - read only")).toBeInTheDocument();
+    expect(screen.getByText("Back")).toBeInTheDocument();
+    expect(screen.queryByText("3 sessions until deload")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Deload week/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("High opportunity")).not.toBeInTheDocument();
   });
 });
 

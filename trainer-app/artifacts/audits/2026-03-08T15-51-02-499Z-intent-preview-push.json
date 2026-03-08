@@ -1,0 +1,2665 @@
+{
+  "generatedAt": "2026-03-08T15:51:02.497Z",
+  "generation": {
+    "filteredExercises": [
+      {
+        "exerciseId": "82f4c922-27d2-46e7-be48-6eb21cc46b02",
+        "exerciseName": "Incline Dumbbell Bench Press",
+        "reason": "dominated_by_better_option",
+        "userFriendlyMessage": "Filtered (dominated_by_better_option)"
+      },
+      {
+        "exerciseId": "43b3a429-1709-4fb3-8928-91f70ac62214",
+        "exerciseName": "Barbell Bench Press",
+        "reason": "dominated_by_better_option",
+        "userFriendlyMessage": "Filtered (dominated_by_better_option)"
+      },
+      {
+        "exerciseId": "50d089b0-cbcc-4f55-aacd-9b850aa7527d",
+        "exerciseName": "Incline Barbell Bench Press",
+        "reason": "dominated_by_better_option",
+        "userFriendlyMessage": "Filtered (dominated_by_better_option)"
+      },
+      {
+        "exerciseId": "92ca7c80-9668-4263-b9b2-17cdbd7b1f83",
+        "exerciseName": "Barbell Overhead Press",
+        "reason": "dominated_by_better_option",
+        "userFriendlyMessage": "Filtered (dominated_by_better_option)"
+      },
+      {
+        "exerciseId": "ac3789dd-7bbd-4c55-be9b-1c8b66b992ef",
+        "exerciseName": "Seated Barbell Overhead Press",
+        "reason": "dominated_by_better_option",
+        "userFriendlyMessage": "Filtered (dominated_by_better_option)"
+      },
+      {
+        "exerciseId": "f9ce1174-4505-411c-ac4b-e7e0b2956893",
+        "exerciseName": "Decline Barbell Bench Press",
+        "reason": "dominated_by_better_option",
+        "userFriendlyMessage": "Filtered (dominated_by_better_option)"
+      },
+      {
+        "exerciseId": "1ced2053-6953-442a-9a80-27b5586178d6",
+        "exerciseName": "Dumbbell Fly",
+        "reason": "dominated_by_better_option",
+        "userFriendlyMessage": "Filtered (dominated_by_better_option)"
+      },
+      {
+        "exerciseId": "7555c252-b3da-4d64-ae99-aba3075d9364",
+        "exerciseName": "Incline Dumbbell Fly",
+        "reason": "dominated_by_better_option",
+        "userFriendlyMessage": "Filtered (dominated_by_better_option)"
+      },
+      {
+        "exerciseId": "da86df88-62ae-42e0-a364-c027c60e41da",
+        "exerciseName": "Cable Fly",
+        "reason": "dominated_by_better_option",
+        "userFriendlyMessage": "Filtered (dominated_by_better_option)"
+      },
+      {
+        "exerciseId": "0208d4d7-79e5-460f-8c51-6b0b1cad008a",
+        "exerciseName": "Low-to-High Cable Fly",
+        "reason": "dominated_by_better_option",
+        "userFriendlyMessage": "Filtered (dominated_by_better_option)"
+      },
+      {
+        "exerciseId": "641998e4-9e6f-4bd2-953a-0e66e96b4125",
+        "exerciseName": "Pec Deck Machine",
+        "reason": "dominated_by_better_option",
+        "userFriendlyMessage": "Filtered (dominated_by_better_option)"
+      },
+      {
+        "exerciseId": "4abf3a31-dcf5-4da3-82d9-7c0e40b9b6f5",
+        "exerciseName": "Deficit Push-Up",
+        "reason": "dominated_by_better_option",
+        "userFriendlyMessage": "Filtered (dominated_by_better_option)"
+      },
+      {
+        "exerciseId": "627af4cb-5ccb-4c35-8c04-f035b4eb227a",
+        "exerciseName": "Cable Crossover",
+        "reason": "dominated_by_better_option",
+        "userFriendlyMessage": "Filtered (dominated_by_better_option)"
+      },
+      {
+        "exerciseId": "c53e4045-eb74-4330-96a5-1b049704c879",
+        "exerciseName": "Dip (Chest Emphasis)",
+        "reason": "dominated_by_better_option",
+        "userFriendlyMessage": "Filtered (dominated_by_better_option)"
+      },
+      {
+        "exerciseId": "15207229-cae1-430a-a126-3ea9536c1b9a",
+        "exerciseName": "Arnold Press",
+        "reason": "dominated_by_better_option",
+        "userFriendlyMessage": "Filtered (dominated_by_better_option)"
+      },
+      {
+        "exerciseId": "fb98bf20-9865-44ab-a8e5-bf6b22faace5",
+        "exerciseName": "Dip (Triceps Emphasis)",
+        "reason": "dominated_by_better_option",
+        "userFriendlyMessage": "Filtered (dominated_by_better_option)"
+      },
+      {
+        "exerciseId": "07eb6208-891d-4dc8-a2fc-77771e018364",
+        "exerciseName": "Lying Triceps Extension (Skull Crusher)",
+        "reason": "dominated_by_better_option",
+        "userFriendlyMessage": "Filtered (dominated_by_better_option)"
+      },
+      {
+        "exerciseId": "188ee5bc-5de4-410f-9b47-4cfa45abe7e3",
+        "exerciseName": "Decline Dumbbell Bench Press",
+        "reason": "dominated_by_better_option",
+        "userFriendlyMessage": "Filtered (dominated_by_better_option)"
+      },
+      {
+        "exerciseId": "8059e662-8d9b-47db-8a29-796e4a82858b",
+        "exerciseName": "Machine Chest Press",
+        "reason": "dominated_by_better_option",
+        "userFriendlyMessage": "Filtered (dominated_by_better_option)"
+      },
+      {
+        "exerciseId": "a95207c1-c556-491c-9229-e02f0fdd8fc9",
+        "exerciseName": "Incline Machine Press",
+        "reason": "dominated_by_better_option",
+        "userFriendlyMessage": "Filtered (dominated_by_better_option)"
+      },
+      {
+        "exerciseId": "71992d1f-5812-4b1a-b044-78776a29f305",
+        "exerciseName": "Push-Up",
+        "reason": "dominated_by_better_option",
+        "userFriendlyMessage": "Filtered (dominated_by_better_option)"
+      },
+      {
+        "exerciseId": "f2fdc3a8-8a9e-4dde-acba-2e02d9082fc3",
+        "exerciseName": "Machine Shoulder Press",
+        "reason": "dominated_by_better_option",
+        "userFriendlyMessage": "Filtered (dominated_by_better_option)"
+      },
+      {
+        "exerciseId": "4a5680e1-c2cc-48e1-80c2-5a9392a5a299",
+        "exerciseName": "Landmine Press",
+        "reason": "dominated_by_better_option",
+        "userFriendlyMessage": "Filtered (dominated_by_better_option)"
+      },
+      {
+        "exerciseId": "536738bf-f688-4180-824b-4eb362d36727",
+        "exerciseName": "Close-Grip Bench Press",
+        "reason": "dominated_by_better_option",
+        "userFriendlyMessage": "Filtered (dominated_by_better_option)"
+      },
+      {
+        "exerciseId": "f9ca2d82-a4a3-4403-9dbf-0aa04ddb17a3",
+        "exerciseName": "Diamond Push-Up",
+        "reason": "dominated_by_better_option",
+        "userFriendlyMessage": "Filtered (dominated_by_better_option)"
+      },
+      {
+        "exerciseId": "413218eb-834d-45f8-8b61-04af1afd8dce",
+        "exerciseName": "Dumbbell Lateral Raise",
+        "reason": "dominated_by_better_option",
+        "userFriendlyMessage": "Filtered (dominated_by_better_option)"
+      },
+      {
+        "exerciseId": "a086b03d-bf06-4eac-9e6d-00652e93a63b",
+        "exerciseName": "Machine Lateral Raise",
+        "reason": "dominated_by_better_option",
+        "userFriendlyMessage": "Filtered (dominated_by_better_option)"
+      },
+      {
+        "exerciseId": "01fae1f9-496b-460e-a140-d30db3617a74",
+        "exerciseName": "Dumbbell Front Raise",
+        "reason": "dominated_by_better_option",
+        "userFriendlyMessage": "Filtered (dominated_by_better_option)"
+      },
+      {
+        "exerciseId": "836f6da6-7ce8-4448-b12c-5c7a2247bd89",
+        "exerciseName": "Cable Triceps Pushdown",
+        "reason": "dominated_by_better_option",
+        "userFriendlyMessage": "Filtered (dominated_by_better_option)"
+      },
+      {
+        "exerciseId": "939cc109-95c0-4498-b8c3-6e49867a557b",
+        "exerciseName": "Rope Triceps Pushdown",
+        "reason": "dominated_by_better_option",
+        "userFriendlyMessage": "Filtered (dominated_by_better_option)"
+      }
+    ],
+    "selection": {
+      "accessoryIds": [
+        "d1f6dff7-9970-4953-8e2a-638ef047caca",
+        "af3ece0b-7ee3-4f87-94a0-5e917be16cc5",
+        "f6b1536d-9bed-4138-9db3-26ef8bf3b3d3",
+        "d23e5293-58bf-46b8-b151-f8ca306b9e3d"
+      ],
+      "intentDiagnostics": {
+        "alignedRatio": 1,
+        "intent": "push",
+        "minAlignedRatio": 0,
+        "selectedCount": 6,
+        "targetMuscles": []
+      },
+      "mainLiftIds": [
+        "e6cfce0f-21f4-489c-baf7-024fdf73996a",
+        "dadb7f1a-168c-4849-9316-262f76b46a2e"
+      ],
+      "perExerciseSetTargets": {
+        "af3ece0b-7ee3-4f87-94a0-5e917be16cc5": 2,
+        "d1f6dff7-9970-4953-8e2a-638ef047caca": 2,
+        "d23e5293-58bf-46b8-b151-f8ca306b9e3d": 2,
+        "dadb7f1a-168c-4849-9316-262f76b46a2e": 3,
+        "e6cfce0f-21f4-489c-baf7-024fdf73996a": 3,
+        "f6b1536d-9bed-4138-9db3-26ef8bf3b3d3": 2
+      },
+      "plannerDiagnostics": {
+        "anchor": {
+          "consideredFixtureIds": [],
+          "droppedFixtureIds": [],
+          "fixtures": [],
+          "keptFixtureIds": [],
+          "policy": {
+            "accessoryDeferredDeficitCarryFraction": 0.25,
+            "accessoryMinimumSets": 0,
+            "coreDeferredDeficitCarryFraction": 0.4,
+            "coreMinimumSets": 1,
+            "supplementalInventory": "closure"
+          },
+          "used": false
+        },
+        "closure": {
+          "actions": [],
+          "eligible": true,
+          "eligibleExerciseIds": [
+            "43b3a429-1709-4fb3-8928-91f70ac62214",
+            "50d089b0-cbcc-4f55-aacd-9b850aa7527d",
+            "f9ce1174-4505-411c-ac4b-e7e0b2956893",
+            "dadb7f1a-168c-4849-9316-262f76b46a2e",
+            "82f4c922-27d2-46e7-be48-6eb21cc46b02",
+            "188ee5bc-5de4-410f-9b47-4cfa45abe7e3",
+            "8059e662-8d9b-47db-8a29-796e4a82858b",
+            "a95207c1-c556-491c-9229-e02f0fdd8fc9",
+            "1ced2053-6953-442a-9a80-27b5586178d6",
+            "7555c252-b3da-4d64-ae99-aba3075d9364",
+            "da86df88-62ae-42e0-a364-c027c60e41da",
+            "0208d4d7-79e5-460f-8c51-6b0b1cad008a",
+            "641998e4-9e6f-4bd2-953a-0e66e96b4125",
+            "71992d1f-5812-4b1a-b044-78776a29f305",
+            "4abf3a31-dcf5-4da3-82d9-7c0e40b9b6f5",
+            "c53e4045-eb74-4330-96a5-1b049704c879",
+            "92ca7c80-9668-4263-b9b2-17cdbd7b1f83",
+            "ac3789dd-7bbd-4c55-be9b-1c8b66b992ef",
+            "e6cfce0f-21f4-489c-baf7-024fdf73996a",
+            "15207229-cae1-430a-a126-3ea9536c1b9a",
+            "f2fdc3a8-8a9e-4dde-acba-2e02d9082fc3",
+            "4a5680e1-c2cc-48e1-80c2-5a9392a5a299",
+            "413218eb-834d-45f8-8b61-04af1afd8dce",
+            "d23e5293-58bf-46b8-b151-f8ca306b9e3d",
+            "a086b03d-bf06-4eac-9e6d-00652e93a63b",
+            "01fae1f9-496b-460e-a140-d30db3617a74",
+            "d1f6dff7-9970-4953-8e2a-638ef047caca",
+            "536738bf-f688-4180-824b-4eb362d36727",
+            "fb98bf20-9865-44ab-a8e5-bf6b22faace5",
+            "af3ece0b-7ee3-4f87-94a0-5e917be16cc5",
+            "f6b1536d-9bed-4138-9db3-26ef8bf3b3d3",
+            "07eb6208-891d-4dc8-a2fc-77771e018364",
+            "836f6da6-7ce8-4448-b12c-5c7a2247bd89",
+            "939cc109-95c0-4498-b8c3-6e49867a557b",
+            "f9ca2d82-a4a3-4403-9dbf-0aa04ddb17a3",
+            "627af4cb-5ccb-4c35-8c04-f035b4eb227a"
+          ],
+          "firstIterationCandidates": [
+            {
+              "decision": "rejected",
+              "dominantDeficitContribution": 0,
+              "dominantDeficitMuscleId": "chest",
+              "dominantDeficitRemaining": 7,
+              "exerciseId": "e6cfce0f-21f4-489c-baf7-024fdf73996a",
+              "exerciseName": "Dumbbell Overhead Press",
+              "kind": "expand",
+              "rejectionReason": "overshoots_non_anchor_target",
+              "score": 0.711,
+              "setDelta": 1
+            },
+            {
+              "decision": "rejected",
+              "dominantDeficitContribution": 0,
+              "dominantDeficitMuscleId": "chest",
+              "dominantDeficitRemaining": 7,
+              "exerciseId": "af3ece0b-7ee3-4f87-94a0-5e917be16cc5",
+              "exerciseName": "Overhead Cable Triceps Extension",
+              "kind": "expand",
+              "rejectionReason": "overshoots_non_anchor_target",
+              "score": 0.665,
+              "setDelta": 1
+            },
+            {
+              "decision": "rejected",
+              "dominantDeficitContribution": 1,
+              "dominantDeficitMuscleId": "chest",
+              "dominantDeficitRemaining": 7,
+              "exerciseId": "dadb7f1a-168c-4849-9316-262f76b46a2e",
+              "exerciseName": "Dumbbell Bench Press",
+              "kind": "expand",
+              "rejectionReason": "overshoots_non_anchor_target",
+              "score": 0.648,
+              "setDelta": 1
+            },
+            {
+              "decision": "rejected",
+              "dominantDeficitContribution": 0,
+              "dominantDeficitMuscleId": "chest",
+              "dominantDeficitRemaining": 7,
+              "exerciseId": "f6b1536d-9bed-4138-9db3-26ef8bf3b3d3",
+              "exerciseName": "Overhead Dumbbell Extension",
+              "kind": "expand",
+              "rejectionReason": "overshoots_non_anchor_target",
+              "score": 0.641,
+              "setDelta": 1
+            },
+            {
+              "decision": "rejected",
+              "dominantDeficitContribution": 0,
+              "dominantDeficitMuscleId": "chest",
+              "dominantDeficitRemaining": 7,
+              "exerciseId": "d1f6dff7-9970-4953-8e2a-638ef047caca",
+              "exerciseName": "Cable Front Raise",
+              "kind": "expand",
+              "rejectionReason": "overshoots_non_anchor_target",
+              "score": 0.601,
+              "setDelta": 1
+            },
+            {
+              "collateralOvershoot": 0,
+              "decision": "selected",
+              "deficitReduction": 1,
+              "dominantDeficitContribution": 0,
+              "dominantDeficitMuscleId": "chest",
+              "dominantDeficitReduction": 0,
+              "dominantDeficitRemaining": 7,
+              "exerciseId": "d23e5293-58bf-46b8-b151-f8ca306b9e3d",
+              "exerciseName": "Cable Lateral Raise",
+              "fatigueCost": 2,
+              "kind": "expand",
+              "score": -173.705,
+              "setDelta": 1
+            }
+          ],
+          "inventoryKind": "closure",
+          "reason": "best_action_below_score_floor",
+          "used": false
+        },
+        "exercises": {
+          "af3ece0b-7ee3-4f87-94a0-5e917be16cc5": {
+            "assignedSetCount": 2,
+            "closureSetDelta": 0,
+            "exerciseId": "af3ece0b-7ee3-4f87-94a0-5e917be16cc5",
+            "exerciseName": "Overhead Cable Triceps Extension",
+            "isClosureAddition": false,
+            "isRoleFixture": false,
+            "isSetExpandedCarryover": false,
+            "stimulusVector": {
+              "Triceps": 1
+            }
+          },
+          "d1f6dff7-9970-4953-8e2a-638ef047caca": {
+            "assignedSetCount": 2,
+            "closureSetDelta": 0,
+            "exerciseId": "d1f6dff7-9970-4953-8e2a-638ef047caca",
+            "exerciseName": "Cable Front Raise",
+            "isClosureAddition": false,
+            "isRoleFixture": false,
+            "isSetExpandedCarryover": false,
+            "stimulusVector": {
+              "Front Delts": 1
+            }
+          },
+          "d23e5293-58bf-46b8-b151-f8ca306b9e3d": {
+            "assignedSetCount": 2,
+            "closureSetDelta": 0,
+            "exerciseId": "d23e5293-58bf-46b8-b151-f8ca306b9e3d",
+            "exerciseName": "Cable Lateral Raise",
+            "isClosureAddition": false,
+            "isRoleFixture": false,
+            "isSetExpandedCarryover": false,
+            "stimulusVector": {
+              "Side Delts": 1
+            }
+          },
+          "dadb7f1a-168c-4849-9316-262f76b46a2e": {
+            "assignedSetCount": 3,
+            "closureSetDelta": 0,
+            "exerciseId": "dadb7f1a-168c-4849-9316-262f76b46a2e",
+            "exerciseName": "Dumbbell Bench Press",
+            "isClosureAddition": false,
+            "isRoleFixture": false,
+            "isSetExpandedCarryover": false,
+            "stimulusVector": {
+              "Chest": 1,
+              "Front Delts": 0.3,
+              "Triceps": 0.45
+            }
+          },
+          "e6cfce0f-21f4-489c-baf7-024fdf73996a": {
+            "assignedSetCount": 3,
+            "closureSetDelta": 0,
+            "exerciseId": "e6cfce0f-21f4-489c-baf7-024fdf73996a",
+            "exerciseName": "Dumbbell Overhead Press",
+            "isClosureAddition": false,
+            "isRoleFixture": false,
+            "isSetExpandedCarryover": false,
+            "stimulusVector": {
+              "Front Delts": 0.7,
+              "Side Delts": 1,
+              "Triceps": 0.5
+            }
+          },
+          "f6b1536d-9bed-4138-9db3-26ef8bf3b3d3": {
+            "assignedSetCount": 2,
+            "closureSetDelta": 0,
+            "exerciseId": "f6b1536d-9bed-4138-9db3-26ef8bf3b3d3",
+            "exerciseName": "Overhead Dumbbell Extension",
+            "isClosureAddition": false,
+            "isRoleFixture": false,
+            "isSetExpandedCarryover": false,
+            "stimulusVector": {
+              "Triceps": 1
+            }
+          }
+        },
+        "muscles": {
+          "Chest": {
+            "deficitAfterRoleBudgeting": 7,
+            "finalRemainingDeficit": 7,
+            "performedEffectiveVolumeBeforeSession": 0,
+            "plannedEffectiveVolumeAfterClosure": 3,
+            "plannedEffectiveVolumeAfterRoleBudgeting": 3,
+            "projectedEffectiveVolumeAfterClosure": 3,
+            "projectedEffectiveVolumeAfterRoleBudgeting": 3,
+            "weeklyTarget": 10
+          },
+          "Front Delts": {
+            "deficitAfterRoleBudgeting": 0,
+            "finalRemainingDeficit": 0,
+            "performedEffectiveVolumeBeforeSession": 0,
+            "plannedEffectiveVolumeAfterClosure": 5,
+            "plannedEffectiveVolumeAfterRoleBudgeting": 5,
+            "projectedEffectiveVolumeAfterClosure": 5,
+            "projectedEffectiveVolumeAfterRoleBudgeting": 5,
+            "weeklyTarget": 2
+          },
+          "Side Delts": {
+            "deficitAfterRoleBudgeting": 3,
+            "finalRemainingDeficit": 3,
+            "performedEffectiveVolumeBeforeSession": 0,
+            "plannedEffectiveVolumeAfterClosure": 5,
+            "plannedEffectiveVolumeAfterRoleBudgeting": 5,
+            "projectedEffectiveVolumeAfterClosure": 5,
+            "projectedEffectiveVolumeAfterRoleBudgeting": 5,
+            "weeklyTarget": 8
+          },
+          "Triceps": {
+            "deficitAfterRoleBudgeting": 0,
+            "finalRemainingDeficit": 0,
+            "performedEffectiveVolumeBeforeSession": 0,
+            "plannedEffectiveVolumeAfterClosure": 6.85,
+            "plannedEffectiveVolumeAfterRoleBudgeting": 6.85,
+            "projectedEffectiveVolumeAfterClosure": 6.85,
+            "projectedEffectiveVolumeAfterRoleBudgeting": 6.85,
+            "weeklyTarget": 6
+          }
+        },
+        "opportunity": {
+          "closureInventoryKind": "closure",
+          "currentSessionMuscleOpportunity": {
+            "Chest": {
+              "futureCapacity": 0,
+              "futureOpportunityUnits": 0,
+              "performedEffectiveVolumeBeforeSession": 0,
+              "requiredNow": 10,
+              "sessionOpportunityWeight": 1,
+              "startingDeficit": 10,
+              "urgencyMultiplier": 2.5,
+              "weeklyOpportunityUnits": 1,
+              "weeklyTarget": 10
+            },
+            "Front Delts": {
+              "futureCapacity": 0,
+              "futureOpportunityUnits": 0,
+              "performedEffectiveVolumeBeforeSession": 0,
+              "requiredNow": 2,
+              "sessionOpportunityWeight": 1,
+              "startingDeficit": 2,
+              "urgencyMultiplier": 2.5,
+              "weeklyOpportunityUnits": 1,
+              "weeklyTarget": 2
+            },
+            "Side Delts": {
+              "futureCapacity": 0,
+              "futureOpportunityUnits": 0,
+              "performedEffectiveVolumeBeforeSession": 0,
+              "requiredNow": 8,
+              "sessionOpportunityWeight": 1,
+              "startingDeficit": 8,
+              "urgencyMultiplier": 2.5,
+              "weeklyOpportunityUnits": 1,
+              "weeklyTarget": 8
+            },
+            "Triceps": {
+              "futureCapacity": 0,
+              "futureOpportunityUnits": 0,
+              "performedEffectiveVolumeBeforeSession": 0,
+              "requiredNow": 6,
+              "sessionOpportunityWeight": 1,
+              "startingDeficit": 6,
+              "urgencyMultiplier": 2.5,
+              "weeklyOpportunityUnits": 1,
+              "weeklyTarget": 6
+            }
+          },
+          "opportunityKey": "push",
+          "planningInventoryKind": "standard",
+          "remainingWeek": {
+            "futureCapacityFactor": 0.9,
+            "futureSlotCounts": {
+              "legs": 1,
+              "pull": 1
+            },
+            "futureSlots": [
+              "pull",
+              "legs"
+            ]
+          },
+          "sessionCharacter": "upper",
+          "sessionIntent": "push"
+        },
+        "outcome": {
+          "deficitsAfterBaseSession": {
+            "Chest": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 3,
+              "projectedEffectiveVolume": 3,
+              "remainingDeficit": 7,
+              "weeklyTarget": 10
+            },
+            "Front Delts": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 5,
+              "projectedEffectiveVolume": 5,
+              "remainingDeficit": 0,
+              "weeklyTarget": 2
+            },
+            "Side Delts": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 5,
+              "projectedEffectiveVolume": 5,
+              "remainingDeficit": 3,
+              "weeklyTarget": 8
+            },
+            "Triceps": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 6.85,
+              "projectedEffectiveVolume": 6.85,
+              "remainingDeficit": 0,
+              "weeklyTarget": 6
+            }
+          },
+          "deficitsAfterClosure": {
+            "Chest": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 3,
+              "projectedEffectiveVolume": 3,
+              "remainingDeficit": 7,
+              "weeklyTarget": 10
+            },
+            "Front Delts": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 5,
+              "projectedEffectiveVolume": 5,
+              "remainingDeficit": 0,
+              "weeklyTarget": 2
+            },
+            "Side Delts": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 5,
+              "projectedEffectiveVolume": 5,
+              "remainingDeficit": 3,
+              "weeklyTarget": 8
+            },
+            "Triceps": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 6.85,
+              "projectedEffectiveVolume": 6.85,
+              "remainingDeficit": 0,
+              "weeklyTarget": 6
+            }
+          },
+          "deficitsAfterSupplementation": {
+            "Chest": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 3,
+              "projectedEffectiveVolume": 3,
+              "remainingDeficit": 7,
+              "weeklyTarget": 10
+            },
+            "Front Delts": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 5,
+              "projectedEffectiveVolume": 5,
+              "remainingDeficit": 0,
+              "weeklyTarget": 2
+            },
+            "Side Delts": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 5,
+              "projectedEffectiveVolume": 5,
+              "remainingDeficit": 3,
+              "weeklyTarget": 8
+            },
+            "Triceps": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 6.85,
+              "projectedEffectiveVolume": 6.85,
+              "remainingDeficit": 0,
+              "weeklyTarget": 6
+            }
+          },
+          "keyTradeoffs": [
+            {
+              "code": "unresolved_deficit_remaining",
+              "layer": "closure",
+              "message": "Chest still has unresolved weekly deficit after closure.",
+              "muscle": "Chest"
+            },
+            {
+              "code": "unresolved_deficit_remaining",
+              "layer": "closure",
+              "message": "Side Delts still has unresolved weekly deficit after closure.",
+              "muscle": "Side Delts"
+            }
+          ],
+          "layersUsed": [
+            "standard"
+          ],
+          "startingDeficits": {
+            "Chest": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 0,
+              "projectedEffectiveVolume": 0,
+              "remainingDeficit": 10,
+              "weeklyTarget": 10
+            },
+            "Front Delts": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 0,
+              "projectedEffectiveVolume": 0,
+              "remainingDeficit": 2,
+              "weeklyTarget": 2
+            },
+            "Side Delts": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 0,
+              "projectedEffectiveVolume": 0,
+              "remainingDeficit": 8,
+              "weeklyTarget": 8
+            },
+            "Triceps": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 0,
+              "projectedEffectiveVolume": 0,
+              "remainingDeficit": 6,
+              "weeklyTarget": 6
+            }
+          },
+          "unresolvedDeficits": [
+            "Chest",
+            "Side Delts"
+          ]
+        },
+        "rescue": {
+          "candidates": [],
+          "eligible": false,
+          "reason": "rescue_not_requested",
+          "rescueOnlyCandidateCount": 0,
+          "rescueOnlyExerciseIds": [],
+          "selectedExerciseIds": [],
+          "used": false
+        },
+        "standard": {
+          "candidateCount": 36,
+          "candidates": [
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "15207229-cae1-430a-a126-3ea9536c1b9a",
+              "exerciseName": "Arnold Press",
+              "inventoryKind": "standard",
+              "rejectionReason": "dominated_by_better_option",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "43b3a429-1709-4fb3-8928-91f70ac62214",
+              "exerciseName": "Barbell Bench Press",
+              "inventoryKind": "standard",
+              "rejectionReason": "dominated_by_better_option",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "92ca7c80-9668-4263-b9b2-17cdbd7b1f83",
+              "exerciseName": "Barbell Overhead Press",
+              "inventoryKind": "standard",
+              "rejectionReason": "dominated_by_better_option",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "627af4cb-5ccb-4c35-8c04-f035b4eb227a",
+              "exerciseName": "Cable Crossover",
+              "inventoryKind": "standard",
+              "rejectionReason": "dominated_by_better_option",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "da86df88-62ae-42e0-a364-c027c60e41da",
+              "exerciseName": "Cable Fly",
+              "inventoryKind": "standard",
+              "rejectionReason": "dominated_by_better_option",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "d1f6dff7-9970-4953-8e2a-638ef047caca",
+              "exerciseName": "Cable Front Raise",
+              "inventoryKind": "standard",
+              "rationale": "Fills volume gap (100% of deficit). Haven't used this exercise recently. Contributes: 2.0 effective front delts.",
+              "selected": true,
+              "selectedSets": 2
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "d23e5293-58bf-46b8-b151-f8ca306b9e3d",
+              "exerciseName": "Cable Lateral Raise",
+              "inventoryKind": "standard",
+              "rationale": "Haven't used this exercise recently. High stimulus-to-fatigue ratio (5/5). Contributes: 2.0 effective side delts.",
+              "selected": true,
+              "selectedSets": 2
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "836f6da6-7ce8-4448-b12c-5c7a2247bd89",
+              "exerciseName": "Cable Triceps Pushdown",
+              "inventoryKind": "standard",
+              "rejectionReason": "dominated_by_better_option",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "536738bf-f688-4180-824b-4eb362d36727",
+              "exerciseName": "Close-Grip Bench Press",
+              "inventoryKind": "standard",
+              "rejectionReason": "dominated_by_better_option",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "f9ce1174-4505-411c-ac4b-e7e0b2956893",
+              "exerciseName": "Decline Barbell Bench Press",
+              "inventoryKind": "standard",
+              "rejectionReason": "dominated_by_better_option",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "188ee5bc-5de4-410f-9b47-4cfa45abe7e3",
+              "exerciseName": "Decline Dumbbell Bench Press",
+              "inventoryKind": "standard",
+              "rejectionReason": "dominated_by_better_option",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "4abf3a31-dcf5-4da3-82d9-7c0e40b9b6f5",
+              "exerciseName": "Deficit Push-Up",
+              "inventoryKind": "standard",
+              "rejectionReason": "dominated_by_better_option",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "f9ca2d82-a4a3-4403-9dbf-0aa04ddb17a3",
+              "exerciseName": "Diamond Push-Up",
+              "inventoryKind": "standard",
+              "rejectionReason": "dominated_by_better_option",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "c53e4045-eb74-4330-96a5-1b049704c879",
+              "exerciseName": "Dip (Chest Emphasis)",
+              "inventoryKind": "standard",
+              "rejectionReason": "dominated_by_better_option",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "fb98bf20-9865-44ab-a8e5-bf6b22faace5",
+              "exerciseName": "Dip (Triceps Emphasis)",
+              "inventoryKind": "standard",
+              "rejectionReason": "dominated_by_better_option",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "dadb7f1a-168c-4849-9316-262f76b46a2e",
+              "exerciseName": "Dumbbell Bench Press",
+              "inventoryKind": "standard",
+              "rationale": "Haven't used this exercise recently. Novel movement pattern. Contributes: 3.0 effective chest, 1.4 effective triceps, 0.9 effective front delts.",
+              "selected": true,
+              "selectedSets": 3
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "1ced2053-6953-442a-9a80-27b5586178d6",
+              "exerciseName": "Dumbbell Fly",
+              "inventoryKind": "standard",
+              "rejectionReason": "dominated_by_better_option",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "01fae1f9-496b-460e-a140-d30db3617a74",
+              "exerciseName": "Dumbbell Front Raise",
+              "inventoryKind": "standard",
+              "rejectionReason": "dominated_by_better_option",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "413218eb-834d-45f8-8b61-04af1afd8dce",
+              "exerciseName": "Dumbbell Lateral Raise",
+              "inventoryKind": "standard",
+              "rejectionReason": "dominated_by_better_option",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "e6cfce0f-21f4-489c-baf7-024fdf73996a",
+              "exerciseName": "Dumbbell Overhead Press",
+              "inventoryKind": "standard",
+              "rationale": "Haven't used this exercise recently. Novel movement pattern. Contributes: 3.0 effective side delts, 2.1 effective front delts, 1.5 effective triceps.",
+              "selected": true,
+              "selectedSets": 3
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "50d089b0-cbcc-4f55-aacd-9b850aa7527d",
+              "exerciseName": "Incline Barbell Bench Press",
+              "inventoryKind": "standard",
+              "rejectionReason": "dominated_by_better_option",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "82f4c922-27d2-46e7-be48-6eb21cc46b02",
+              "exerciseName": "Incline Dumbbell Bench Press",
+              "inventoryKind": "standard",
+              "rejectionReason": "dominated_by_better_option",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "7555c252-b3da-4d64-ae99-aba3075d9364",
+              "exerciseName": "Incline Dumbbell Fly",
+              "inventoryKind": "standard",
+              "rejectionReason": "dominated_by_better_option",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "a95207c1-c556-491c-9229-e02f0fdd8fc9",
+              "exerciseName": "Incline Machine Press",
+              "inventoryKind": "standard",
+              "rejectionReason": "dominated_by_better_option",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "4a5680e1-c2cc-48e1-80c2-5a9392a5a299",
+              "exerciseName": "Landmine Press",
+              "inventoryKind": "standard",
+              "rejectionReason": "dominated_by_better_option",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "0208d4d7-79e5-460f-8c51-6b0b1cad008a",
+              "exerciseName": "Low-to-High Cable Fly",
+              "inventoryKind": "standard",
+              "rejectionReason": "dominated_by_better_option",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "07eb6208-891d-4dc8-a2fc-77771e018364",
+              "exerciseName": "Lying Triceps Extension (Skull Crusher)",
+              "inventoryKind": "standard",
+              "rejectionReason": "dominated_by_better_option",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "8059e662-8d9b-47db-8a29-796e4a82858b",
+              "exerciseName": "Machine Chest Press",
+              "inventoryKind": "standard",
+              "rejectionReason": "dominated_by_better_option",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "a086b03d-bf06-4eac-9e6d-00652e93a63b",
+              "exerciseName": "Machine Lateral Raise",
+              "inventoryKind": "standard",
+              "rejectionReason": "dominated_by_better_option",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "f2fdc3a8-8a9e-4dde-acba-2e02d9082fc3",
+              "exerciseName": "Machine Shoulder Press",
+              "inventoryKind": "standard",
+              "rejectionReason": "dominated_by_better_option",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "af3ece0b-7ee3-4f87-94a0-5e917be16cc5",
+              "exerciseName": "Overhead Cable Triceps Extension",
+              "inventoryKind": "standard",
+              "rationale": "Haven't used this exercise recently. High stimulus-to-fatigue ratio (5/5). Contributes: 2.0 effective triceps.",
+              "selected": true,
+              "selectedSets": 2
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "f6b1536d-9bed-4138-9db3-26ef8bf3b3d3",
+              "exerciseName": "Overhead Dumbbell Extension",
+              "inventoryKind": "standard",
+              "rationale": "Haven't used this exercise recently. Loads muscle at long length (score 5/5). Contributes: 2.0 effective triceps.",
+              "selected": true,
+              "selectedSets": 2
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "641998e4-9e6f-4bd2-953a-0e66e96b4125",
+              "exerciseName": "Pec Deck Machine",
+              "inventoryKind": "standard",
+              "rejectionReason": "dominated_by_better_option",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "71992d1f-5812-4b1a-b044-78776a29f305",
+              "exerciseName": "Push-Up",
+              "inventoryKind": "standard",
+              "rejectionReason": "dominated_by_better_option",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "939cc109-95c0-4498-b8c3-6e49867a557b",
+              "exerciseName": "Rope Triceps Pushdown",
+              "inventoryKind": "standard",
+              "rejectionReason": "dominated_by_better_option",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "ac3789dd-7bbd-4c55-be9b-1c8b66b992ef",
+              "exerciseName": "Seated Barbell Overhead Press",
+              "inventoryKind": "standard",
+              "rejectionReason": "dominated_by_better_option",
+              "selected": false
+            }
+          ],
+          "inventoryKind": "standard",
+          "reason": "standard_inventory_drove_base_selection",
+          "selectedExerciseIds": [
+            "d1f6dff7-9970-4953-8e2a-638ef047caca",
+            "e6cfce0f-21f4-489c-baf7-024fdf73996a",
+            "af3ece0b-7ee3-4f87-94a0-5e917be16cc5",
+            "f6b1536d-9bed-4138-9db3-26ef8bf3b3d3",
+            "dadb7f1a-168c-4849-9316-262f76b46a2e",
+            "d23e5293-58bf-46b8-b151-f8ca306b9e3d"
+          ],
+          "used": true
+        },
+        "supplemental": {
+          "allowed": false,
+          "candidateCount": 0,
+          "deficitsTargeted": [],
+          "reason": "supplementation_not_evaluated",
+          "selectedExerciseIds": [],
+          "used": false
+        }
+      },
+      "rationale": {
+        "af3ece0b-7ee3-4f87-94a0-5e917be16cc5": {
+          "components": {
+            "deficitFill": 0.3333333333333333,
+            "lengthenedScore": 1,
+            "movementNovelty": 1,
+            "rotationNovelty": 1,
+            "sfrScore": 1,
+            "sraAlignment": 1,
+            "userPreference": 0.5
+          },
+          "hardFilterPass": true,
+          "reason": "Haven't used this exercise recently. High stimulus-to-fatigue ratio (5/5). Contributes: 2.0 effective triceps.",
+          "score": 0.775,
+          "selectedStep": "accessory_pick"
+        },
+        "d1f6dff7-9970-4953-8e2a-638ef047caca": {
+          "components": {
+            "deficitFill": 1,
+            "lengthenedScore": 0.8,
+            "movementNovelty": 1,
+            "rotationNovelty": 1,
+            "sfrScore": 0.8,
+            "sraAlignment": 1,
+            "userPreference": 0.5
+          },
+          "hardFilterPass": true,
+          "reason": "Fills volume gap (100% of deficit). Haven't used this exercise recently. Contributes: 2.0 effective front delts.",
+          "score": 0.9310000000000002,
+          "selectedStep": "accessory_pick"
+        },
+        "d23e5293-58bf-46b8-b151-f8ca306b9e3d": {
+          "components": {
+            "deficitFill": 0.25,
+            "lengthenedScore": 0.6,
+            "movementNovelty": 1,
+            "rotationNovelty": 1,
+            "sfrScore": 1,
+            "sraAlignment": 1,
+            "userPreference": 0.5
+          },
+          "hardFilterPass": true,
+          "reason": "Haven't used this exercise recently. High stimulus-to-fatigue ratio (5/5). Contributes: 2.0 effective side delts.",
+          "score": 0.6675000000000001,
+          "selectedStep": "accessory_pick"
+        },
+        "dadb7f1a-168c-4849-9316-262f76b46a2e": {
+          "components": {
+            "deficitFill": 0.2916666666666667,
+            "lengthenedScore": 0.8,
+            "movementNovelty": 1,
+            "rotationNovelty": 1,
+            "sfrScore": 0.8,
+            "sraAlignment": 1,
+            "userPreference": 0.5
+          },
+          "hardFilterPass": true,
+          "reason": "Haven't used this exercise recently. Novel movement pattern. Contributes: 3.0 effective chest, 1.4 effective triceps, 0.9 effective front delts.",
+          "score": 0.69725,
+          "selectedStep": "accessory_pick"
+        },
+        "e6cfce0f-21f4-489c-baf7-024fdf73996a": {
+          "components": {
+            "deficitFill": 0.40625,
+            "lengthenedScore": 0.8,
+            "movementNovelty": 1,
+            "rotationNovelty": 1,
+            "sfrScore": 0.8,
+            "sraAlignment": 1,
+            "userPreference": 0.5
+          },
+          "hardFilterPass": true,
+          "reason": "Haven't used this exercise recently. Novel movement pattern. Contributes: 3.0 effective side delts, 2.1 effective front delts, 1.5 effective triceps.",
+          "score": 0.7350625000000001,
+          "selectedStep": "accessory_pick"
+        },
+        "f6b1536d-9bed-4138-9db3-26ef8bf3b3d3": {
+          "components": {
+            "deficitFill": 0.3333333333333333,
+            "lengthenedScore": 1,
+            "movementNovelty": 1,
+            "rotationNovelty": 1,
+            "sfrScore": 0.8,
+            "sraAlignment": 1,
+            "userPreference": 0.5
+          },
+          "hardFilterPass": true,
+          "reason": "Haven't used this exercise recently. Loads muscle at long length (score 5/5). Contributes: 2.0 effective triceps.",
+          "score": 0.7510000000000002,
+          "selectedStep": "accessory_pick"
+        }
+      },
+      "selectedExerciseIds": [
+        "d1f6dff7-9970-4953-8e2a-638ef047caca",
+        "e6cfce0f-21f4-489c-baf7-024fdf73996a",
+        "af3ece0b-7ee3-4f87-94a0-5e917be16cc5",
+        "f6b1536d-9bed-4138-9db3-26ef8bf3b3d3",
+        "dadb7f1a-168c-4849-9316-262f76b46a2e",
+        "d23e5293-58bf-46b8-b151-f8ca306b9e3d"
+      ],
+      "sessionDecisionReceipt": {
+        "cycleContext": {
+          "blockType": "accumulation",
+          "isDeload": false,
+          "mesocycleLength": 5,
+          "phase": "accumulation",
+          "source": "computed",
+          "weekInBlock": 1,
+          "weekInMeso": 1
+        },
+        "deloadDecision": {
+          "appliedTo": "none",
+          "mode": "none",
+          "reason": [],
+          "reductionPercent": 0
+        },
+        "exceptions": [],
+        "lifecycleRirTarget": {
+          "max": 4,
+          "min": 3
+        },
+        "lifecycleVolume": {
+          "source": "lifecycle",
+          "targets": {
+            "Abductors": 0,
+            "Abs": 0,
+            "Adductors": 0,
+            "Biceps": 6,
+            "Calves": 8,
+            "Chest": 10,
+            "Core": 0,
+            "Forearms": 0,
+            "Front Delts": 2,
+            "Glutes": 4,
+            "Hamstrings": 6,
+            "Lats": 8,
+            "Lower Back": 0,
+            "Quads": 8,
+            "Rear Delts": 4,
+            "Side Delts": 8,
+            "Triceps": 6,
+            "Upper Back": 6
+          }
+        },
+        "plannerDiagnostics": {
+          "anchor": {
+            "consideredFixtureIds": [],
+            "droppedFixtureIds": [],
+            "fixtures": [],
+            "keptFixtureIds": [],
+            "policy": {
+              "accessoryDeferredDeficitCarryFraction": 0.25,
+              "accessoryMinimumSets": 0,
+              "coreDeferredDeficitCarryFraction": 0.4,
+              "coreMinimumSets": 1,
+              "supplementalInventory": "closure"
+            },
+            "used": false
+          },
+          "closure": {
+            "actions": [],
+            "eligible": true,
+            "eligibleExerciseIds": [
+              "43b3a429-1709-4fb3-8928-91f70ac62214",
+              "50d089b0-cbcc-4f55-aacd-9b850aa7527d",
+              "f9ce1174-4505-411c-ac4b-e7e0b2956893",
+              "dadb7f1a-168c-4849-9316-262f76b46a2e",
+              "82f4c922-27d2-46e7-be48-6eb21cc46b02",
+              "188ee5bc-5de4-410f-9b47-4cfa45abe7e3",
+              "8059e662-8d9b-47db-8a29-796e4a82858b",
+              "a95207c1-c556-491c-9229-e02f0fdd8fc9",
+              "1ced2053-6953-442a-9a80-27b5586178d6",
+              "7555c252-b3da-4d64-ae99-aba3075d9364",
+              "da86df88-62ae-42e0-a364-c027c60e41da",
+              "0208d4d7-79e5-460f-8c51-6b0b1cad008a",
+              "641998e4-9e6f-4bd2-953a-0e66e96b4125",
+              "71992d1f-5812-4b1a-b044-78776a29f305",
+              "4abf3a31-dcf5-4da3-82d9-7c0e40b9b6f5",
+              "c53e4045-eb74-4330-96a5-1b049704c879",
+              "92ca7c80-9668-4263-b9b2-17cdbd7b1f83",
+              "ac3789dd-7bbd-4c55-be9b-1c8b66b992ef",
+              "e6cfce0f-21f4-489c-baf7-024fdf73996a",
+              "15207229-cae1-430a-a126-3ea9536c1b9a",
+              "f2fdc3a8-8a9e-4dde-acba-2e02d9082fc3",
+              "4a5680e1-c2cc-48e1-80c2-5a9392a5a299",
+              "413218eb-834d-45f8-8b61-04af1afd8dce",
+              "d23e5293-58bf-46b8-b151-f8ca306b9e3d",
+              "a086b03d-bf06-4eac-9e6d-00652e93a63b",
+              "01fae1f9-496b-460e-a140-d30db3617a74",
+              "d1f6dff7-9970-4953-8e2a-638ef047caca",
+              "536738bf-f688-4180-824b-4eb362d36727",
+              "fb98bf20-9865-44ab-a8e5-bf6b22faace5",
+              "af3ece0b-7ee3-4f87-94a0-5e917be16cc5",
+              "f6b1536d-9bed-4138-9db3-26ef8bf3b3d3",
+              "07eb6208-891d-4dc8-a2fc-77771e018364",
+              "836f6da6-7ce8-4448-b12c-5c7a2247bd89",
+              "939cc109-95c0-4498-b8c3-6e49867a557b",
+              "f9ca2d82-a4a3-4403-9dbf-0aa04ddb17a3",
+              "627af4cb-5ccb-4c35-8c04-f035b4eb227a"
+            ],
+            "firstIterationCandidates": [
+              {
+                "decision": "rejected",
+                "dominantDeficitContribution": 0,
+                "dominantDeficitMuscleId": "chest",
+                "dominantDeficitRemaining": 7,
+                "exerciseId": "e6cfce0f-21f4-489c-baf7-024fdf73996a",
+                "exerciseName": "Dumbbell Overhead Press",
+                "kind": "expand",
+                "rejectionReason": "overshoots_non_anchor_target",
+                "score": 0.711,
+                "setDelta": 1
+              },
+              {
+                "decision": "rejected",
+                "dominantDeficitContribution": 0,
+                "dominantDeficitMuscleId": "chest",
+                "dominantDeficitRemaining": 7,
+                "exerciseId": "af3ece0b-7ee3-4f87-94a0-5e917be16cc5",
+                "exerciseName": "Overhead Cable Triceps Extension",
+                "kind": "expand",
+                "rejectionReason": "overshoots_non_anchor_target",
+                "score": 0.665,
+                "setDelta": 1
+              },
+              {
+                "decision": "rejected",
+                "dominantDeficitContribution": 1,
+                "dominantDeficitMuscleId": "chest",
+                "dominantDeficitRemaining": 7,
+                "exerciseId": "dadb7f1a-168c-4849-9316-262f76b46a2e",
+                "exerciseName": "Dumbbell Bench Press",
+                "kind": "expand",
+                "rejectionReason": "overshoots_non_anchor_target",
+                "score": 0.648,
+                "setDelta": 1
+              },
+              {
+                "decision": "rejected",
+                "dominantDeficitContribution": 0,
+                "dominantDeficitMuscleId": "chest",
+                "dominantDeficitRemaining": 7,
+                "exerciseId": "f6b1536d-9bed-4138-9db3-26ef8bf3b3d3",
+                "exerciseName": "Overhead Dumbbell Extension",
+                "kind": "expand",
+                "rejectionReason": "overshoots_non_anchor_target",
+                "score": 0.641,
+                "setDelta": 1
+              },
+              {
+                "decision": "rejected",
+                "dominantDeficitContribution": 0,
+                "dominantDeficitMuscleId": "chest",
+                "dominantDeficitRemaining": 7,
+                "exerciseId": "d1f6dff7-9970-4953-8e2a-638ef047caca",
+                "exerciseName": "Cable Front Raise",
+                "kind": "expand",
+                "rejectionReason": "overshoots_non_anchor_target",
+                "score": 0.601,
+                "setDelta": 1
+              },
+              {
+                "collateralOvershoot": 0,
+                "decision": "selected",
+                "deficitReduction": 1,
+                "dominantDeficitContribution": 0,
+                "dominantDeficitMuscleId": "chest",
+                "dominantDeficitReduction": 0,
+                "dominantDeficitRemaining": 7,
+                "exerciseId": "d23e5293-58bf-46b8-b151-f8ca306b9e3d",
+                "exerciseName": "Cable Lateral Raise",
+                "fatigueCost": 2,
+                "kind": "expand",
+                "score": -173.705,
+                "setDelta": 1
+              }
+            ],
+            "inventoryKind": "closure",
+            "reason": "best_action_below_score_floor",
+            "used": false
+          },
+          "exercises": {
+            "af3ece0b-7ee3-4f87-94a0-5e917be16cc5": {
+              "assignedSetCount": 2,
+              "closureSetDelta": 0,
+              "exerciseId": "af3ece0b-7ee3-4f87-94a0-5e917be16cc5",
+              "exerciseName": "Overhead Cable Triceps Extension",
+              "isClosureAddition": false,
+              "isRoleFixture": false,
+              "isSetExpandedCarryover": false,
+              "stimulusVector": {
+                "Triceps": 1
+              }
+            },
+            "d1f6dff7-9970-4953-8e2a-638ef047caca": {
+              "assignedSetCount": 2,
+              "closureSetDelta": 0,
+              "exerciseId": "d1f6dff7-9970-4953-8e2a-638ef047caca",
+              "exerciseName": "Cable Front Raise",
+              "isClosureAddition": false,
+              "isRoleFixture": false,
+              "isSetExpandedCarryover": false,
+              "stimulusVector": {
+                "Front Delts": 1
+              }
+            },
+            "d23e5293-58bf-46b8-b151-f8ca306b9e3d": {
+              "assignedSetCount": 2,
+              "closureSetDelta": 0,
+              "exerciseId": "d23e5293-58bf-46b8-b151-f8ca306b9e3d",
+              "exerciseName": "Cable Lateral Raise",
+              "isClosureAddition": false,
+              "isRoleFixture": false,
+              "isSetExpandedCarryover": false,
+              "stimulusVector": {
+                "Side Delts": 1
+              }
+            },
+            "dadb7f1a-168c-4849-9316-262f76b46a2e": {
+              "assignedSetCount": 3,
+              "closureSetDelta": 0,
+              "exerciseId": "dadb7f1a-168c-4849-9316-262f76b46a2e",
+              "exerciseName": "Dumbbell Bench Press",
+              "isClosureAddition": false,
+              "isRoleFixture": false,
+              "isSetExpandedCarryover": false,
+              "stimulusVector": {
+                "Chest": 1,
+                "Front Delts": 0.3,
+                "Triceps": 0.45
+              }
+            },
+            "e6cfce0f-21f4-489c-baf7-024fdf73996a": {
+              "assignedSetCount": 3,
+              "closureSetDelta": 0,
+              "exerciseId": "e6cfce0f-21f4-489c-baf7-024fdf73996a",
+              "exerciseName": "Dumbbell Overhead Press",
+              "isClosureAddition": false,
+              "isRoleFixture": false,
+              "isSetExpandedCarryover": false,
+              "stimulusVector": {
+                "Front Delts": 0.7,
+                "Side Delts": 1,
+                "Triceps": 0.5
+              }
+            },
+            "f6b1536d-9bed-4138-9db3-26ef8bf3b3d3": {
+              "assignedSetCount": 2,
+              "closureSetDelta": 0,
+              "exerciseId": "f6b1536d-9bed-4138-9db3-26ef8bf3b3d3",
+              "exerciseName": "Overhead Dumbbell Extension",
+              "isClosureAddition": false,
+              "isRoleFixture": false,
+              "isSetExpandedCarryover": false,
+              "stimulusVector": {
+                "Triceps": 1
+              }
+            }
+          },
+          "muscles": {
+            "Chest": {
+              "deficitAfterRoleBudgeting": 7,
+              "finalRemainingDeficit": 7,
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolumeAfterClosure": 3,
+              "plannedEffectiveVolumeAfterRoleBudgeting": 3,
+              "projectedEffectiveVolumeAfterClosure": 3,
+              "projectedEffectiveVolumeAfterRoleBudgeting": 3,
+              "weeklyTarget": 10
+            },
+            "Front Delts": {
+              "deficitAfterRoleBudgeting": 0,
+              "finalRemainingDeficit": 0,
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolumeAfterClosure": 5,
+              "plannedEffectiveVolumeAfterRoleBudgeting": 5,
+              "projectedEffectiveVolumeAfterClosure": 5,
+              "projectedEffectiveVolumeAfterRoleBudgeting": 5,
+              "weeklyTarget": 2
+            },
+            "Side Delts": {
+              "deficitAfterRoleBudgeting": 3,
+              "finalRemainingDeficit": 3,
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolumeAfterClosure": 5,
+              "plannedEffectiveVolumeAfterRoleBudgeting": 5,
+              "projectedEffectiveVolumeAfterClosure": 5,
+              "projectedEffectiveVolumeAfterRoleBudgeting": 5,
+              "weeklyTarget": 8
+            },
+            "Triceps": {
+              "deficitAfterRoleBudgeting": 0,
+              "finalRemainingDeficit": 0,
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolumeAfterClosure": 6.85,
+              "plannedEffectiveVolumeAfterRoleBudgeting": 6.85,
+              "projectedEffectiveVolumeAfterClosure": 6.85,
+              "projectedEffectiveVolumeAfterRoleBudgeting": 6.85,
+              "weeklyTarget": 6
+            }
+          },
+          "opportunity": {
+            "closureInventoryKind": "closure",
+            "currentSessionMuscleOpportunity": {
+              "Chest": {
+                "futureCapacity": 0,
+                "futureOpportunityUnits": 0,
+                "performedEffectiveVolumeBeforeSession": 0,
+                "requiredNow": 10,
+                "sessionOpportunityWeight": 1,
+                "startingDeficit": 10,
+                "urgencyMultiplier": 2.5,
+                "weeklyOpportunityUnits": 1,
+                "weeklyTarget": 10
+              },
+              "Front Delts": {
+                "futureCapacity": 0,
+                "futureOpportunityUnits": 0,
+                "performedEffectiveVolumeBeforeSession": 0,
+                "requiredNow": 2,
+                "sessionOpportunityWeight": 1,
+                "startingDeficit": 2,
+                "urgencyMultiplier": 2.5,
+                "weeklyOpportunityUnits": 1,
+                "weeklyTarget": 2
+              },
+              "Side Delts": {
+                "futureCapacity": 0,
+                "futureOpportunityUnits": 0,
+                "performedEffectiveVolumeBeforeSession": 0,
+                "requiredNow": 8,
+                "sessionOpportunityWeight": 1,
+                "startingDeficit": 8,
+                "urgencyMultiplier": 2.5,
+                "weeklyOpportunityUnits": 1,
+                "weeklyTarget": 8
+              },
+              "Triceps": {
+                "futureCapacity": 0,
+                "futureOpportunityUnits": 0,
+                "performedEffectiveVolumeBeforeSession": 0,
+                "requiredNow": 6,
+                "sessionOpportunityWeight": 1,
+                "startingDeficit": 6,
+                "urgencyMultiplier": 2.5,
+                "weeklyOpportunityUnits": 1,
+                "weeklyTarget": 6
+              }
+            },
+            "opportunityKey": "push",
+            "planningInventoryKind": "standard",
+            "remainingWeek": {
+              "futureCapacityFactor": 0.9,
+              "futureSlotCounts": {
+                "legs": 1,
+                "pull": 1
+              },
+              "futureSlots": [
+                "pull",
+                "legs"
+              ]
+            },
+            "sessionCharacter": "upper",
+            "sessionIntent": "push"
+          },
+          "outcome": {
+            "deficitsAfterBaseSession": {
+              "Chest": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 3,
+                "projectedEffectiveVolume": 3,
+                "remainingDeficit": 7,
+                "weeklyTarget": 10
+              },
+              "Front Delts": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 5,
+                "projectedEffectiveVolume": 5,
+                "remainingDeficit": 0,
+                "weeklyTarget": 2
+              },
+              "Side Delts": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 5,
+                "projectedEffectiveVolume": 5,
+                "remainingDeficit": 3,
+                "weeklyTarget": 8
+              },
+              "Triceps": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 6.85,
+                "projectedEffectiveVolume": 6.85,
+                "remainingDeficit": 0,
+                "weeklyTarget": 6
+              }
+            },
+            "deficitsAfterClosure": {
+              "Chest": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 3,
+                "projectedEffectiveVolume": 3,
+                "remainingDeficit": 7,
+                "weeklyTarget": 10
+              },
+              "Front Delts": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 5,
+                "projectedEffectiveVolume": 5,
+                "remainingDeficit": 0,
+                "weeklyTarget": 2
+              },
+              "Side Delts": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 5,
+                "projectedEffectiveVolume": 5,
+                "remainingDeficit": 3,
+                "weeklyTarget": 8
+              },
+              "Triceps": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 6.85,
+                "projectedEffectiveVolume": 6.85,
+                "remainingDeficit": 0,
+                "weeklyTarget": 6
+              }
+            },
+            "deficitsAfterSupplementation": {
+              "Chest": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 3,
+                "projectedEffectiveVolume": 3,
+                "remainingDeficit": 7,
+                "weeklyTarget": 10
+              },
+              "Front Delts": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 5,
+                "projectedEffectiveVolume": 5,
+                "remainingDeficit": 0,
+                "weeklyTarget": 2
+              },
+              "Side Delts": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 5,
+                "projectedEffectiveVolume": 5,
+                "remainingDeficit": 3,
+                "weeklyTarget": 8
+              },
+              "Triceps": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 6.85,
+                "projectedEffectiveVolume": 6.85,
+                "remainingDeficit": 0,
+                "weeklyTarget": 6
+              }
+            },
+            "keyTradeoffs": [
+              {
+                "code": "unresolved_deficit_remaining",
+                "layer": "closure",
+                "message": "Chest still has unresolved weekly deficit after closure.",
+                "muscle": "Chest"
+              },
+              {
+                "code": "unresolved_deficit_remaining",
+                "layer": "closure",
+                "message": "Side Delts still has unresolved weekly deficit after closure.",
+                "muscle": "Side Delts"
+              }
+            ],
+            "layersUsed": [
+              "standard"
+            ],
+            "startingDeficits": {
+              "Chest": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 0,
+                "projectedEffectiveVolume": 0,
+                "remainingDeficit": 10,
+                "weeklyTarget": 10
+              },
+              "Front Delts": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 0,
+                "projectedEffectiveVolume": 0,
+                "remainingDeficit": 2,
+                "weeklyTarget": 2
+              },
+              "Side Delts": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 0,
+                "projectedEffectiveVolume": 0,
+                "remainingDeficit": 8,
+                "weeklyTarget": 8
+              },
+              "Triceps": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 0,
+                "projectedEffectiveVolume": 0,
+                "remainingDeficit": 6,
+                "weeklyTarget": 6
+              }
+            },
+            "unresolvedDeficits": [
+              "Chest",
+              "Side Delts"
+            ]
+          },
+          "rescue": {
+            "candidates": [],
+            "eligible": false,
+            "reason": "rescue_not_requested",
+            "rescueOnlyCandidateCount": 0,
+            "rescueOnlyExerciseIds": [],
+            "selectedExerciseIds": [],
+            "used": false
+          },
+          "standard": {
+            "candidateCount": 36,
+            "candidates": [
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "15207229-cae1-430a-a126-3ea9536c1b9a",
+                "exerciseName": "Arnold Press",
+                "inventoryKind": "standard",
+                "rejectionReason": "dominated_by_better_option",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "43b3a429-1709-4fb3-8928-91f70ac62214",
+                "exerciseName": "Barbell Bench Press",
+                "inventoryKind": "standard",
+                "rejectionReason": "dominated_by_better_option",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "92ca7c80-9668-4263-b9b2-17cdbd7b1f83",
+                "exerciseName": "Barbell Overhead Press",
+                "inventoryKind": "standard",
+                "rejectionReason": "dominated_by_better_option",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "627af4cb-5ccb-4c35-8c04-f035b4eb227a",
+                "exerciseName": "Cable Crossover",
+                "inventoryKind": "standard",
+                "rejectionReason": "dominated_by_better_option",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "da86df88-62ae-42e0-a364-c027c60e41da",
+                "exerciseName": "Cable Fly",
+                "inventoryKind": "standard",
+                "rejectionReason": "dominated_by_better_option",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "d1f6dff7-9970-4953-8e2a-638ef047caca",
+                "exerciseName": "Cable Front Raise",
+                "inventoryKind": "standard",
+                "rationale": "Fills volume gap (100% of deficit). Haven't used this exercise recently. Contributes: 2.0 effective front delts.",
+                "selected": true,
+                "selectedSets": 2
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "d23e5293-58bf-46b8-b151-f8ca306b9e3d",
+                "exerciseName": "Cable Lateral Raise",
+                "inventoryKind": "standard",
+                "rationale": "Haven't used this exercise recently. High stimulus-to-fatigue ratio (5/5). Contributes: 2.0 effective side delts.",
+                "selected": true,
+                "selectedSets": 2
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "836f6da6-7ce8-4448-b12c-5c7a2247bd89",
+                "exerciseName": "Cable Triceps Pushdown",
+                "inventoryKind": "standard",
+                "rejectionReason": "dominated_by_better_option",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "536738bf-f688-4180-824b-4eb362d36727",
+                "exerciseName": "Close-Grip Bench Press",
+                "inventoryKind": "standard",
+                "rejectionReason": "dominated_by_better_option",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "f9ce1174-4505-411c-ac4b-e7e0b2956893",
+                "exerciseName": "Decline Barbell Bench Press",
+                "inventoryKind": "standard",
+                "rejectionReason": "dominated_by_better_option",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "188ee5bc-5de4-410f-9b47-4cfa45abe7e3",
+                "exerciseName": "Decline Dumbbell Bench Press",
+                "inventoryKind": "standard",
+                "rejectionReason": "dominated_by_better_option",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "4abf3a31-dcf5-4da3-82d9-7c0e40b9b6f5",
+                "exerciseName": "Deficit Push-Up",
+                "inventoryKind": "standard",
+                "rejectionReason": "dominated_by_better_option",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "f9ca2d82-a4a3-4403-9dbf-0aa04ddb17a3",
+                "exerciseName": "Diamond Push-Up",
+                "inventoryKind": "standard",
+                "rejectionReason": "dominated_by_better_option",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "c53e4045-eb74-4330-96a5-1b049704c879",
+                "exerciseName": "Dip (Chest Emphasis)",
+                "inventoryKind": "standard",
+                "rejectionReason": "dominated_by_better_option",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "fb98bf20-9865-44ab-a8e5-bf6b22faace5",
+                "exerciseName": "Dip (Triceps Emphasis)",
+                "inventoryKind": "standard",
+                "rejectionReason": "dominated_by_better_option",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "dadb7f1a-168c-4849-9316-262f76b46a2e",
+                "exerciseName": "Dumbbell Bench Press",
+                "inventoryKind": "standard",
+                "rationale": "Haven't used this exercise recently. Novel movement pattern. Contributes: 3.0 effective chest, 1.4 effective triceps, 0.9 effective front delts.",
+                "selected": true,
+                "selectedSets": 3
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "1ced2053-6953-442a-9a80-27b5586178d6",
+                "exerciseName": "Dumbbell Fly",
+                "inventoryKind": "standard",
+                "rejectionReason": "dominated_by_better_option",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "01fae1f9-496b-460e-a140-d30db3617a74",
+                "exerciseName": "Dumbbell Front Raise",
+                "inventoryKind": "standard",
+                "rejectionReason": "dominated_by_better_option",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "413218eb-834d-45f8-8b61-04af1afd8dce",
+                "exerciseName": "Dumbbell Lateral Raise",
+                "inventoryKind": "standard",
+                "rejectionReason": "dominated_by_better_option",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "e6cfce0f-21f4-489c-baf7-024fdf73996a",
+                "exerciseName": "Dumbbell Overhead Press",
+                "inventoryKind": "standard",
+                "rationale": "Haven't used this exercise recently. Novel movement pattern. Contributes: 3.0 effective side delts, 2.1 effective front delts, 1.5 effective triceps.",
+                "selected": true,
+                "selectedSets": 3
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "50d089b0-cbcc-4f55-aacd-9b850aa7527d",
+                "exerciseName": "Incline Barbell Bench Press",
+                "inventoryKind": "standard",
+                "rejectionReason": "dominated_by_better_option",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "82f4c922-27d2-46e7-be48-6eb21cc46b02",
+                "exerciseName": "Incline Dumbbell Bench Press",
+                "inventoryKind": "standard",
+                "rejectionReason": "dominated_by_better_option",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "7555c252-b3da-4d64-ae99-aba3075d9364",
+                "exerciseName": "Incline Dumbbell Fly",
+                "inventoryKind": "standard",
+                "rejectionReason": "dominated_by_better_option",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "a95207c1-c556-491c-9229-e02f0fdd8fc9",
+                "exerciseName": "Incline Machine Press",
+                "inventoryKind": "standard",
+                "rejectionReason": "dominated_by_better_option",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "4a5680e1-c2cc-48e1-80c2-5a9392a5a299",
+                "exerciseName": "Landmine Press",
+                "inventoryKind": "standard",
+                "rejectionReason": "dominated_by_better_option",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "0208d4d7-79e5-460f-8c51-6b0b1cad008a",
+                "exerciseName": "Low-to-High Cable Fly",
+                "inventoryKind": "standard",
+                "rejectionReason": "dominated_by_better_option",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "07eb6208-891d-4dc8-a2fc-77771e018364",
+                "exerciseName": "Lying Triceps Extension (Skull Crusher)",
+                "inventoryKind": "standard",
+                "rejectionReason": "dominated_by_better_option",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "8059e662-8d9b-47db-8a29-796e4a82858b",
+                "exerciseName": "Machine Chest Press",
+                "inventoryKind": "standard",
+                "rejectionReason": "dominated_by_better_option",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "a086b03d-bf06-4eac-9e6d-00652e93a63b",
+                "exerciseName": "Machine Lateral Raise",
+                "inventoryKind": "standard",
+                "rejectionReason": "dominated_by_better_option",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "f2fdc3a8-8a9e-4dde-acba-2e02d9082fc3",
+                "exerciseName": "Machine Shoulder Press",
+                "inventoryKind": "standard",
+                "rejectionReason": "dominated_by_better_option",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "af3ece0b-7ee3-4f87-94a0-5e917be16cc5",
+                "exerciseName": "Overhead Cable Triceps Extension",
+                "inventoryKind": "standard",
+                "rationale": "Haven't used this exercise recently. High stimulus-to-fatigue ratio (5/5). Contributes: 2.0 effective triceps.",
+                "selected": true,
+                "selectedSets": 2
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "f6b1536d-9bed-4138-9db3-26ef8bf3b3d3",
+                "exerciseName": "Overhead Dumbbell Extension",
+                "inventoryKind": "standard",
+                "rationale": "Haven't used this exercise recently. Loads muscle at long length (score 5/5). Contributes: 2.0 effective triceps.",
+                "selected": true,
+                "selectedSets": 2
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "641998e4-9e6f-4bd2-953a-0e66e96b4125",
+                "exerciseName": "Pec Deck Machine",
+                "inventoryKind": "standard",
+                "rejectionReason": "dominated_by_better_option",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "71992d1f-5812-4b1a-b044-78776a29f305",
+                "exerciseName": "Push-Up",
+                "inventoryKind": "standard",
+                "rejectionReason": "dominated_by_better_option",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "939cc109-95c0-4498-b8c3-6e49867a557b",
+                "exerciseName": "Rope Triceps Pushdown",
+                "inventoryKind": "standard",
+                "rejectionReason": "dominated_by_better_option",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "ac3789dd-7bbd-4c55-be9b-1c8b66b992ef",
+                "exerciseName": "Seated Barbell Overhead Press",
+                "inventoryKind": "standard",
+                "rejectionReason": "dominated_by_better_option",
+                "selected": false
+              }
+            ],
+            "inventoryKind": "standard",
+            "reason": "standard_inventory_drove_base_selection",
+            "selectedExerciseIds": [
+              "d1f6dff7-9970-4953-8e2a-638ef047caca",
+              "e6cfce0f-21f4-489c-baf7-024fdf73996a",
+              "af3ece0b-7ee3-4f87-94a0-5e917be16cc5",
+              "f6b1536d-9bed-4138-9db3-26ef8bf3b3d3",
+              "dadb7f1a-168c-4849-9316-262f76b46a2e",
+              "d23e5293-58bf-46b8-b151-f8ca306b9e3d"
+            ],
+            "used": true
+          },
+          "supplemental": {
+            "allowed": false,
+            "candidateCount": 0,
+            "deficitsTargeted": [],
+            "reason": "supplementation_not_evaluated",
+            "selectedExerciseIds": [],
+            "used": false
+          }
+        },
+        "plannerDiagnosticsMode": "debug",
+        "readiness": {
+          "fatigueScoreOverall": null,
+          "intensityScaling": {
+            "applied": false,
+            "exerciseIds": [],
+            "scaledDownCount": 0,
+            "scaledUpCount": 0
+          },
+          "signalAgeHours": null,
+          "wasAutoregulated": false
+        },
+        "sorenessSuppressedMuscles": [],
+        "version": 1
+      },
+      "volumePlanByMuscle": {
+        "Abductors": {
+          "delta": 0,
+          "planned": 0,
+          "target": 0
+        },
+        "Abs": {
+          "delta": 0,
+          "planned": 0,
+          "target": 0
+        },
+        "Adductors": {
+          "delta": 0,
+          "planned": 0,
+          "target": 0
+        },
+        "Biceps": {
+          "delta": 6,
+          "planned": 0,
+          "target": 6
+        },
+        "Calves": {
+          "delta": 8,
+          "planned": 0,
+          "target": 8
+        },
+        "Chest": {
+          "delta": 7,
+          "planned": 3,
+          "target": 10
+        },
+        "Core": {
+          "delta": 0,
+          "planned": 0,
+          "target": 0
+        },
+        "Forearms": {
+          "delta": 0,
+          "planned": 0,
+          "target": 0
+        },
+        "Front Delts": {
+          "delta": -3,
+          "planned": 5,
+          "target": 2
+        },
+        "Glutes": {
+          "delta": 4,
+          "planned": 0,
+          "target": 4
+        },
+        "Hamstrings": {
+          "delta": 6,
+          "planned": 0,
+          "target": 6
+        },
+        "Lats": {
+          "delta": 8,
+          "planned": 0,
+          "target": 8
+        },
+        "Lower Back": {
+          "delta": 0,
+          "planned": 0,
+          "target": 0
+        },
+        "Quads": {
+          "delta": 8,
+          "planned": 0,
+          "target": 8
+        },
+        "Rear Delts": {
+          "delta": 4,
+          "planned": 0,
+          "target": 4
+        },
+        "Side Delts": {
+          "delta": 3,
+          "planned": 5,
+          "target": 8
+        },
+        "Triceps": {
+          "delta": -0.8,
+          "planned": 6.9,
+          "target": 6
+        },
+        "Upper Back": {
+          "delta": 6,
+          "planned": 0,
+          "target": 6
+        }
+      }
+    },
+    "selectionMode": "INTENT",
+    "sessionIntent": "push",
+    "sraWarnings": [],
+    "substitutions": [],
+    "volumePlanByMuscle": {
+      "Abductors": {
+        "delta": 0,
+        "planned": 0,
+        "target": 0
+      },
+      "Abs": {
+        "delta": 0,
+        "planned": 0,
+        "target": 0
+      },
+      "Adductors": {
+        "delta": 0,
+        "planned": 0,
+        "target": 0
+      },
+      "Biceps": {
+        "delta": 6,
+        "planned": 0,
+        "target": 6
+      },
+      "Calves": {
+        "delta": 8,
+        "planned": 0,
+        "target": 8
+      },
+      "Chest": {
+        "delta": 7,
+        "planned": 3,
+        "target": 10
+      },
+      "Core": {
+        "delta": 0,
+        "planned": 0,
+        "target": 0
+      },
+      "Forearms": {
+        "delta": 0,
+        "planned": 0,
+        "target": 0
+      },
+      "Front Delts": {
+        "delta": -3,
+        "planned": 5,
+        "target": 2
+      },
+      "Glutes": {
+        "delta": 4,
+        "planned": 0,
+        "target": 4
+      },
+      "Hamstrings": {
+        "delta": 6,
+        "planned": 0,
+        "target": 6
+      },
+      "Lats": {
+        "delta": 8,
+        "planned": 0,
+        "target": 8
+      },
+      "Lower Back": {
+        "delta": 0,
+        "planned": 0,
+        "target": 0
+      },
+      "Quads": {
+        "delta": 8,
+        "planned": 0,
+        "target": 8
+      },
+      "Rear Delts": {
+        "delta": 4,
+        "planned": 0,
+        "target": 4
+      },
+      "Side Delts": {
+        "delta": 3,
+        "planned": 5,
+        "target": 8
+      },
+      "Triceps": {
+        "delta": -0.8,
+        "planned": 6.9,
+        "target": 6
+      },
+      "Upper Back": {
+        "delta": 6,
+        "planned": 0,
+        "target": 6
+      }
+    },
+    "workout": {
+      "accessories": [
+        {
+          "exercise": {
+            "difficulty": "beginner",
+            "equipment": [
+              "cable"
+            ],
+            "fatigueCost": 2,
+            "id": "d1f6dff7-9970-4953-8e2a-638ef047caca",
+            "isCompound": false,
+            "isMainLiftEligible": false,
+            "isUnilateral": false,
+            "jointStress": "low",
+            "lengthPositionScore": 4,
+            "movementPatterns": [
+              "flexion"
+            ],
+            "muscleSraHours": {
+              "Front Delts": 48
+            },
+            "name": "Cable Front Raise",
+            "primaryMuscles": [
+              "Front Delts"
+            ],
+            "repRangeMax": 15,
+            "repRangeMin": 8,
+            "secondaryMuscles": [],
+            "sfrScore": 4,
+            "splitTags": [
+              "push"
+            ],
+            "stimulusBias": [
+              "metabolic",
+              "stretch"
+            ],
+            "stimulusProfile": {
+              "front_delts": 1
+            },
+            "timePerSetSec": 35
+          },
+          "id": "3db27c2d-c7d9-4fbd-b188-9aeea074d183",
+          "isMainLift": false,
+          "orderIndex": 0,
+          "role": "accessory",
+          "sets": [
+            {
+              "restSeconds": 90,
+              "role": "accessory",
+              "setIndex": 1,
+              "targetLoad": 40,
+              "targetRepRange": {
+                "max": 15,
+                "min": 10
+              },
+              "targetReps": 10,
+              "targetRpe": 6.5
+            },
+            {
+              "restSeconds": 90,
+              "role": "accessory",
+              "setIndex": 2,
+              "targetLoad": 40,
+              "targetRepRange": {
+                "max": 15,
+                "min": 10
+              },
+              "targetReps": 10,
+              "targetRpe": 6.5
+            }
+          ]
+        },
+        {
+          "exercise": {
+            "difficulty": "beginner",
+            "equipment": [
+              "cable"
+            ],
+            "fatigueCost": 2,
+            "id": "af3ece0b-7ee3-4f87-94a0-5e917be16cc5",
+            "isCompound": false,
+            "isMainLiftEligible": false,
+            "isUnilateral": false,
+            "jointStress": "low",
+            "lengthPositionScore": 5,
+            "movementPatterns": [
+              "extension"
+            ],
+            "muscleSraHours": {
+              "Triceps": 36
+            },
+            "name": "Overhead Cable Triceps Extension",
+            "primaryMuscles": [
+              "Triceps"
+            ],
+            "repRangeMax": 15,
+            "repRangeMin": 8,
+            "secondaryMuscles": [],
+            "sfrScore": 5,
+            "splitTags": [
+              "push"
+            ],
+            "stimulusBias": [
+              "stretch",
+              "metabolic"
+            ],
+            "stimulusProfile": {
+              "triceps": 1
+            },
+            "timePerSetSec": 35
+          },
+          "id": "5f85d5f7-c876-4fc1-90e8-9a26ce2a2538",
+          "isMainLift": false,
+          "orderIndex": 2,
+          "role": "accessory",
+          "sets": [
+            {
+              "restSeconds": 90,
+              "role": "accessory",
+              "setIndex": 1,
+              "targetLoad": 40,
+              "targetRepRange": {
+                "max": 15,
+                "min": 10
+              },
+              "targetReps": 10,
+              "targetRpe": 6.5
+            },
+            {
+              "restSeconds": 90,
+              "role": "accessory",
+              "setIndex": 2,
+              "targetLoad": 40,
+              "targetRepRange": {
+                "max": 15,
+                "min": 10
+              },
+              "targetReps": 10,
+              "targetRpe": 6.5
+            }
+          ]
+        },
+        {
+          "exercise": {
+            "contraindications": {
+              "elbow": true,
+              "shoulder": true
+            },
+            "difficulty": "beginner",
+            "equipment": [
+              "dumbbell"
+            ],
+            "fatigueCost": 2,
+            "id": "f6b1536d-9bed-4138-9db3-26ef8bf3b3d3",
+            "isCompound": false,
+            "isMainLiftEligible": false,
+            "isUnilateral": false,
+            "jointStress": "medium",
+            "lengthPositionScore": 5,
+            "movementPatterns": [
+              "extension"
+            ],
+            "muscleSraHours": {
+              "Triceps": 36
+            },
+            "name": "Overhead Dumbbell Extension",
+            "primaryMuscles": [
+              "Triceps"
+            ],
+            "repRangeMax": 15,
+            "repRangeMin": 8,
+            "secondaryMuscles": [],
+            "sfrScore": 4,
+            "splitTags": [
+              "push"
+            ],
+            "stimulusBias": [
+              "stretch",
+              "metabolic"
+            ],
+            "stimulusProfile": {
+              "triceps": 1
+            },
+            "timePerSetSec": 30
+          },
+          "id": "27106f89-1f90-425d-9816-1cb714d8233c",
+          "isMainLift": false,
+          "orderIndex": 3,
+          "role": "accessory",
+          "sets": [
+            {
+              "restSeconds": 90,
+              "role": "accessory",
+              "setIndex": 1,
+              "targetLoad": 20,
+              "targetRepRange": {
+                "max": 15,
+                "min": 10
+              },
+              "targetReps": 10,
+              "targetRpe": 6.5
+            },
+            {
+              "restSeconds": 90,
+              "role": "accessory",
+              "setIndex": 2,
+              "targetLoad": 20,
+              "targetRepRange": {
+                "max": 15,
+                "min": 10
+              },
+              "targetReps": 10,
+              "targetRpe": 6.5
+            }
+          ]
+        },
+        {
+          "exercise": {
+            "difficulty": "beginner",
+            "equipment": [
+              "cable"
+            ],
+            "fatigueCost": 2,
+            "id": "d23e5293-58bf-46b8-b151-f8ca306b9e3d",
+            "isCompound": false,
+            "isMainLiftEligible": false,
+            "isUnilateral": false,
+            "jointStress": "low",
+            "lengthPositionScore": 3,
+            "movementPatterns": [
+              "abduction"
+            ],
+            "muscleSraHours": {
+              "Side Delts": 36
+            },
+            "name": "Cable Lateral Raise",
+            "primaryMuscles": [
+              "Side Delts"
+            ],
+            "repRangeMax": 20,
+            "repRangeMin": 10,
+            "secondaryMuscles": [],
+            "sfrScore": 5,
+            "splitTags": [
+              "push"
+            ],
+            "stimulusBias": [
+              "metabolic",
+              "stretch"
+            ],
+            "stimulusProfile": {
+              "side_delts": 1
+            },
+            "timePerSetSec": 35
+          },
+          "id": "34c8514b-79b0-4922-ab3e-f19507417bec",
+          "isMainLift": false,
+          "orderIndex": 5,
+          "role": "accessory",
+          "sets": [
+            {
+              "restSeconds": 90,
+              "role": "accessory",
+              "setIndex": 1,
+              "targetLoad": 40,
+              "targetRepRange": {
+                "max": 15,
+                "min": 10
+              },
+              "targetReps": 10,
+              "targetRpe": 6.5
+            },
+            {
+              "restSeconds": 90,
+              "role": "accessory",
+              "setIndex": 2,
+              "targetLoad": 40,
+              "targetRepRange": {
+                "max": 15,
+                "min": 10
+              },
+              "targetReps": 10,
+              "targetRpe": 6.5
+            }
+          ]
+        }
+      ],
+      "estimatedMinutes": 43,
+      "id": "f92f0b33-b980-4b1f-98a7-0351b2262ed7",
+      "mainLifts": [
+        {
+          "exercise": {
+            "contraindications": {
+              "shoulder": true
+            },
+            "difficulty": "beginner",
+            "equipment": [
+              "dumbbell",
+              "bench"
+            ],
+            "fatigueCost": 3,
+            "id": "e6cfce0f-21f4-489c-baf7-024fdf73996a",
+            "isCompound": true,
+            "isMainLiftEligible": true,
+            "isUnilateral": false,
+            "jointStress": "medium",
+            "lengthPositionScore": 4,
+            "movementPatterns": [
+              "vertical_push"
+            ],
+            "muscleSraHours": {
+              "Core": 36,
+              "Front Delts": 48,
+              "Side Delts": 36,
+              "Triceps": 36
+            },
+            "name": "Dumbbell Overhead Press",
+            "primaryMuscles": [
+              "Side Delts",
+              "Triceps"
+            ],
+            "repRangeMax": 10,
+            "repRangeMin": 3,
+            "secondaryMuscles": [
+              "Front Delts",
+              "Core"
+            ],
+            "sfrScore": 4,
+            "splitTags": [
+              "push"
+            ],
+            "stimulusBias": [
+              "mechanical",
+              "stability"
+            ],
+            "stimulusProfile": {
+              "front_delts": 0.7,
+              "side_delts": 1,
+              "triceps": 0.5
+            },
+            "timePerSetSec": 50
+          },
+          "id": "b2ff7364-b843-465c-b933-559439fab184",
+          "isMainLift": true,
+          "notes": "Primary movement",
+          "orderIndex": 1,
+          "role": "main",
+          "sets": [
+            {
+              "restSeconds": 150,
+              "role": "main",
+              "setIndex": 1,
+              "targetLoad": 55,
+              "targetReps": 10,
+              "targetRpe": 6.5
+            },
+            {
+              "restSeconds": 150,
+              "role": "main",
+              "setIndex": 2,
+              "targetLoad": 47.5,
+              "targetReps": 10,
+              "targetRpe": 6.5
+            },
+            {
+              "restSeconds": 150,
+              "role": "main",
+              "setIndex": 3,
+              "targetLoad": 47.5,
+              "targetReps": 10,
+              "targetRpe": 6.5
+            }
+          ],
+          "warmupSets": [
+            {
+              "restSeconds": 60,
+              "role": "warmup",
+              "setIndex": 1,
+              "targetLoad": 27.5,
+              "targetReps": 8
+            },
+            {
+              "restSeconds": 60,
+              "role": "warmup",
+              "setIndex": 2,
+              "targetLoad": 37.5,
+              "targetReps": 5
+            },
+            {
+              "restSeconds": 90,
+              "role": "warmup",
+              "setIndex": 3,
+              "targetLoad": 47.5,
+              "targetReps": 3
+            }
+          ]
+        },
+        {
+          "exercise": {
+            "contraindications": {
+              "shoulder": true
+            },
+            "difficulty": "beginner",
+            "equipment": [
+              "dumbbell",
+              "bench"
+            ],
+            "fatigueCost": 3,
+            "id": "dadb7f1a-168c-4849-9316-262f76b46a2e",
+            "isCompound": true,
+            "isMainLiftEligible": true,
+            "isUnilateral": false,
+            "jointStress": "medium",
+            "lengthPositionScore": 4,
+            "movementPatterns": [
+              "horizontal_push"
+            ],
+            "muscleSraHours": {
+              "Chest": 60,
+              "Front Delts": 48,
+              "Triceps": 36
+            },
+            "name": "Dumbbell Bench Press",
+            "primaryMuscles": [
+              "Chest",
+              "Triceps"
+            ],
+            "repRangeMax": 10,
+            "repRangeMin": 3,
+            "secondaryMuscles": [
+              "Front Delts"
+            ],
+            "sfrScore": 4,
+            "splitTags": [
+              "push"
+            ],
+            "stimulusBias": [
+              "mechanical",
+              "stretch"
+            ],
+            "stimulusProfile": {
+              "chest": 1,
+              "front_delts": 0.3,
+              "triceps": 0.45
+            },
+            "timePerSetSec": 50
+          },
+          "id": "fd2413ac-7ec2-4e3f-830d-539280fff7b0",
+          "isMainLift": true,
+          "notes": "Primary movement",
+          "orderIndex": 4,
+          "role": "main",
+          "sets": [
+            {
+              "restSeconds": 150,
+              "role": "main",
+              "setIndex": 1,
+              "targetLoad": 55,
+              "targetReps": 10,
+              "targetRpe": 6.5
+            },
+            {
+              "restSeconds": 150,
+              "role": "main",
+              "setIndex": 2,
+              "targetLoad": 47.5,
+              "targetReps": 10,
+              "targetRpe": 6.5
+            },
+            {
+              "restSeconds": 150,
+              "role": "main",
+              "setIndex": 3,
+              "targetLoad": 47.5,
+              "targetReps": 10,
+              "targetRpe": 6.5
+            }
+          ],
+          "warmupSets": [
+            {
+              "restSeconds": 60,
+              "role": "warmup",
+              "setIndex": 1,
+              "targetLoad": 27.5,
+              "targetReps": 8
+            },
+            {
+              "restSeconds": 60,
+              "role": "warmup",
+              "setIndex": 2,
+              "targetLoad": 37.5,
+              "targetReps": 5
+            },
+            {
+              "restSeconds": 90,
+              "role": "warmup",
+              "setIndex": 3,
+              "targetLoad": 47.5,
+              "targetReps": 3
+            }
+          ]
+        }
+      ],
+      "scheduledDate": "2026-03-08T15:51:02.494Z",
+      "warmup": []
+    }
+  },
+  "identity": {
+    "ownerEmail": "audit-logflow@local.test",
+    "userId": "4d11c90d-2619-43cb-bd9a-930794eee12f"
+  },
+  "mode": "intent-preview",
+  "request": {
+    "intent": "push",
+    "mode": "intent-preview",
+    "ownerEmail": "audit-logflow@local.test",
+    "plannerDiagnosticsMode": "debug",
+    "sanitizationLevel": "none"
+  },
+  "source": "live",
+  "version": 1
+}

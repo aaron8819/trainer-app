@@ -1,0 +1,3699 @@
+{
+  "generatedAt": "2026-03-08T15:59:48.669Z",
+  "generation": {
+    "filteredExercises": [],
+    "selection": {
+      "accessoryIds": [
+        "8a033827-4c7c-4292-8cdb-85267e696ff9",
+        "d3d8a5ab-e636-41d6-97a9-04c50230b9e7",
+        "8768cf61-6fa1-4fba-b7ee-eb490597f130",
+        "279befa2-d7ce-49b2-8826-1a3f883c2ffc",
+        "0b4bb581-4f12-4c96-afbd-80a48d8e88e5"
+      ],
+      "mainLiftIds": [
+        "6f1e89b9-8a41-403a-a4a0-a64f16c86352"
+      ],
+      "perExerciseSetTargets": {
+        "0b4bb581-4f12-4c96-afbd-80a48d8e88e5": 5,
+        "279befa2-d7ce-49b2-8826-1a3f883c2ffc": 5,
+        "6f1e89b9-8a41-403a-a4a0-a64f16c86352": 5,
+        "8768cf61-6fa1-4fba-b7ee-eb490597f130": 6,
+        "8a033827-4c7c-4292-8cdb-85267e696ff9": 5,
+        "d3d8a5ab-e636-41d6-97a9-04c50230b9e7": 5
+      },
+      "plannerDiagnostics": {
+        "anchor": {
+          "consideredFixtureIds": [
+            "6f1e89b9-8a41-403a-a4a0-a64f16c86352",
+            "8a033827-4c7c-4292-8cdb-85267e696ff9",
+            "d3d8a5ab-e636-41d6-97a9-04c50230b9e7",
+            "8768cf61-6fa1-4fba-b7ee-eb490597f130",
+            "279befa2-d7ce-49b2-8826-1a3f883c2ffc",
+            "0b4bb581-4f12-4c96-afbd-80a48d8e88e5"
+          ],
+          "droppedFixtureIds": [],
+          "fixtures": [
+            {
+              "anchor": {
+                "kind": "muscle",
+                "muscle": "quads"
+              },
+              "anchorBudgetDecision": {
+                "anchorConstrainedContinuousSetTarget": 5,
+                "anchorContributionPerSet": 1,
+                "anchorRemainingBeforeAssignment": 18,
+                "desiredSetTarget": 5,
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolumeBeforeAssignment": 0,
+                "planningAdjustedAnchorRemaining": 18,
+                "reservedEffectiveVolumeForRemainingRoleFixtures": 0,
+                "weeklyTarget": 18
+              },
+              "decisionCode": "kept_at_desired_target",
+              "desiredSets": 5,
+              "exerciseId": "6f1e89b9-8a41-403a-a4a0-a64f16c86352",
+              "exerciseName": "Barbell Back Squat",
+              "kept": true,
+              "minimumSets": 1,
+              "overshootAdjustmentsApplied": {
+                "finalSetTarget": 5,
+                "initialSetTarget": 5,
+                "limitingMuscles": [],
+                "reductionsApplied": 0
+              },
+              "plannedSets": 5,
+              "priority": "core",
+              "proposedSets": 5,
+              "reason": "Fixture stayed at its desired target inside the anchor envelope.",
+              "role": "CORE_COMPOUND"
+            },
+            {
+              "anchor": {
+                "kind": "muscle",
+                "muscle": "quads"
+              },
+              "anchorBudgetDecision": {
+                "anchorConstrainedContinuousSetTarget": 5,
+                "anchorContributionPerSet": 1,
+                "anchorRemainingBeforeAssignment": 13,
+                "desiredSetTarget": 5,
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolumeBeforeAssignment": 5,
+                "planningAdjustedAnchorRemaining": 13,
+                "reservedEffectiveVolumeForRemainingRoleFixtures": 0,
+                "weeklyTarget": 18
+              },
+              "decisionCode": "kept_at_desired_target",
+              "desiredSets": 5,
+              "exerciseId": "8a033827-4c7c-4292-8cdb-85267e696ff9",
+              "exerciseName": "Leg Press",
+              "kept": true,
+              "minimumSets": 0,
+              "overshootAdjustmentsApplied": {
+                "finalSetTarget": 5,
+                "initialSetTarget": 5,
+                "limitingMuscles": [],
+                "reductionsApplied": 0
+              },
+              "plannedSets": 5,
+              "priority": "accessory",
+              "proposedSets": 5,
+              "reason": "Fixture stayed at its desired target inside the anchor envelope.",
+              "role": "ACCESSORY"
+            },
+            {
+              "anchor": {
+                "kind": "muscle",
+                "muscle": "hamstrings"
+              },
+              "anchorBudgetDecision": {
+                "anchorConstrainedContinuousSetTarget": 5,
+                "anchorContributionPerSet": 1,
+                "anchorRemainingBeforeAssignment": 16,
+                "desiredSetTarget": 5,
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolumeBeforeAssignment": 0,
+                "planningAdjustedAnchorRemaining": 16,
+                "reservedEffectiveVolumeForRemainingRoleFixtures": 0,
+                "weeklyTarget": 16
+              },
+              "decisionCode": "kept_at_desired_target",
+              "desiredSets": 5,
+              "exerciseId": "d3d8a5ab-e636-41d6-97a9-04c50230b9e7",
+              "exerciseName": "Romanian Deadlift",
+              "kept": true,
+              "minimumSets": 0,
+              "overshootAdjustmentsApplied": {
+                "finalSetTarget": 5,
+                "initialSetTarget": 5,
+                "limitingMuscles": [],
+                "reductionsApplied": 0
+              },
+              "plannedSets": 5,
+              "priority": "accessory",
+              "proposedSets": 5,
+              "reason": "Fixture stayed at its desired target inside the anchor envelope.",
+              "role": "ACCESSORY"
+            },
+            {
+              "anchor": {
+                "kind": "muscle",
+                "muscle": "hamstrings"
+              },
+              "anchorBudgetDecision": {
+                "anchorConstrainedContinuousSetTarget": 5,
+                "anchorContributionPerSet": 1,
+                "anchorRemainingBeforeAssignment": 11,
+                "desiredSetTarget": 5,
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolumeBeforeAssignment": 5,
+                "planningAdjustedAnchorRemaining": 11,
+                "reservedEffectiveVolumeForRemainingRoleFixtures": 0,
+                "weeklyTarget": 16
+              },
+              "decisionCode": "kept_at_desired_target",
+              "desiredSets": 5,
+              "exerciseId": "8768cf61-6fa1-4fba-b7ee-eb490597f130",
+              "exerciseName": "Seated Leg Curl",
+              "kept": true,
+              "minimumSets": 0,
+              "overshootAdjustmentsApplied": {
+                "finalSetTarget": 5,
+                "initialSetTarget": 5,
+                "limitingMuscles": [],
+                "reductionsApplied": 0
+              },
+              "plannedSets": 5,
+              "priority": "accessory",
+              "proposedSets": 5,
+              "reason": "Fixture stayed at its desired target inside the anchor envelope.",
+              "role": "ACCESSORY"
+            },
+            {
+              "anchor": {
+                "kind": "muscle",
+                "muscle": "calves"
+              },
+              "anchorBudgetDecision": {
+                "anchorConstrainedContinuousSetTarget": 5,
+                "anchorContributionPerSet": 1,
+                "anchorRemainingBeforeAssignment": 14,
+                "desiredSetTarget": 5,
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolumeBeforeAssignment": 0,
+                "planningAdjustedAnchorRemaining": 14,
+                "reservedEffectiveVolumeForRemainingRoleFixtures": 0,
+                "weeklyTarget": 14
+              },
+              "decisionCode": "kept_at_desired_target",
+              "desiredSets": 5,
+              "exerciseId": "279befa2-d7ce-49b2-8826-1a3f883c2ffc",
+              "exerciseName": "Standing Calf Raise",
+              "kept": true,
+              "minimumSets": 0,
+              "overshootAdjustmentsApplied": {
+                "finalSetTarget": 5,
+                "initialSetTarget": 5,
+                "limitingMuscles": [],
+                "reductionsApplied": 0
+              },
+              "plannedSets": 5,
+              "priority": "accessory",
+              "proposedSets": 5,
+              "reason": "Fixture stayed at its desired target inside the anchor envelope.",
+              "role": "ACCESSORY"
+            },
+            {
+              "anchor": {
+                "kind": "muscle",
+                "muscle": "calves"
+              },
+              "anchorBudgetDecision": {
+                "anchorConstrainedContinuousSetTarget": 5,
+                "anchorContributionPerSet": 1,
+                "anchorRemainingBeforeAssignment": 9,
+                "desiredSetTarget": 5,
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolumeBeforeAssignment": 5,
+                "planningAdjustedAnchorRemaining": 9,
+                "reservedEffectiveVolumeForRemainingRoleFixtures": 0,
+                "weeklyTarget": 14
+              },
+              "decisionCode": "kept_at_desired_target",
+              "desiredSets": 5,
+              "exerciseId": "0b4bb581-4f12-4c96-afbd-80a48d8e88e5",
+              "exerciseName": "Seated Calf Raise",
+              "kept": true,
+              "minimumSets": 0,
+              "overshootAdjustmentsApplied": {
+                "finalSetTarget": 5,
+                "initialSetTarget": 5,
+                "limitingMuscles": [],
+                "reductionsApplied": 0
+              },
+              "plannedSets": 5,
+              "priority": "accessory",
+              "proposedSets": 5,
+              "reason": "Fixture stayed at its desired target inside the anchor envelope.",
+              "role": "ACCESSORY"
+            }
+          ],
+          "keptFixtureIds": [
+            "6f1e89b9-8a41-403a-a4a0-a64f16c86352",
+            "8a033827-4c7c-4292-8cdb-85267e696ff9",
+            "d3d8a5ab-e636-41d6-97a9-04c50230b9e7",
+            "8768cf61-6fa1-4fba-b7ee-eb490597f130",
+            "279befa2-d7ce-49b2-8826-1a3f883c2ffc",
+            "0b4bb581-4f12-4c96-afbd-80a48d8e88e5"
+          ],
+          "policy": {
+            "accessoryDeferredDeficitCarryFraction": 0.25,
+            "accessoryMinimumSets": 0,
+            "coreDeferredDeficitCarryFraction": 0.4,
+            "coreMinimumSets": 1,
+            "supplementalInventory": "closure"
+          },
+          "used": true
+        },
+        "closure": {
+          "actions": [
+            {
+              "collateralOvershoot": 0,
+              "deficitReduction": 1,
+              "exerciseId": "8768cf61-6fa1-4fba-b7ee-eb490597f130",
+              "exerciseName": "Seated Leg Curl",
+              "fatigueCost": 2,
+              "kind": "expand",
+              "score": 96.313,
+              "setDelta": 1
+            }
+          ],
+          "eligible": true,
+          "eligibleExerciseIds": [
+            "53e45dd8-6994-4ac9-bf06-33c959911b59",
+            "04b0f96f-8887-438e-afe8-e7e2a6432689",
+            "d713e6bf-c04b-433e-96b8-b9bdca88619e",
+            "902593ce-581a-42bb-b78b-356d480df4bf",
+            "8a033827-4c7c-4292-8cdb-85267e696ff9",
+            "026272ed-4383-4c94-87db-ca81eca40d9a",
+            "83b75a88-c418-4638-909f-878a6502f92b",
+            "6c7b0b05-d434-4237-8b90-962a1a693834",
+            "5f35a3af-3be5-4260-8a29-f6c3b943e9ae",
+            "2b523ecb-dfda-4786-9d53-1fd2ba65b452",
+            "8768cf61-6fa1-4fba-b7ee-eb490597f130",
+            "c23dafbd-26d2-4107-832c-13af47d5d960",
+            "b5298a95-7eb0-4056-ad2f-3bffd5dd7906",
+            "9e1c1223-d803-4ed4-ae1b-7dae631e7721",
+            "6bc6eb9d-871e-41a0-a786-a58801bf6ddd",
+            "8cfc4ddb-a3c5-4cd4-9072-08da5e5098e9",
+            "de5e93ce-a784-4c4b-93c1-6f464ddfab2f",
+            "89710048-ca52-494e-ba3d-c8535803514d",
+            "d3d8a5ab-e636-41d6-97a9-04c50230b9e7",
+            "837ee0a9-a0a7-480c-8689-7606e900d4b1",
+            "e9f263fc-f659-4b8b-8068-062540147691",
+            "5e88324d-5baf-4c67-9c9e-48a4876e8990",
+            "ca99049f-333e-4c55-8b74-8e175d2d11eb",
+            "7d710086-dfff-432e-a12c-e1e52eb466f7",
+            "80b87827-ca4d-49f2-9bf2-659c196c2001",
+            "98ff706c-1c87-4404-91c2-8e7cb106fdda",
+            "6f1e89b9-8a41-403a-a4a0-a64f16c86352",
+            "247252f0-7e99-43ea-9db1-a590ffa60319",
+            "bec6b501-717e-43c9-ba42-3cc2c0251675",
+            "279befa2-d7ce-49b2-8826-1a3f883c2ffc",
+            "0b4bb581-4f12-4c96-afbd-80a48d8e88e5",
+            "51bac172-b0ff-4e8d-814e-d42b0462706f"
+          ],
+          "firstIterationCandidates": [
+            {
+              "collateralOvershoot": 0,
+              "decision": "selected",
+              "deficitReduction": 1,
+              "dominantDeficitContribution": 0,
+              "dominantDeficitMuscleId": "core",
+              "dominantDeficitReduction": 0,
+              "dominantDeficitRemaining": 11,
+              "exerciseId": "8768cf61-6fa1-4fba-b7ee-eb490597f130",
+              "exerciseName": "Seated Leg Curl",
+              "fatigueCost": 2,
+              "kind": "expand",
+              "score": 96.313,
+              "setDelta": 1
+            },
+            {
+              "collateralOvershoot": 0,
+              "decision": "selected",
+              "deficitReduction": 1,
+              "dominantDeficitContribution": 0,
+              "dominantDeficitMuscleId": "core",
+              "dominantDeficitReduction": 0,
+              "dominantDeficitRemaining": 11,
+              "exerciseId": "0b4bb581-4f12-4c96-afbd-80a48d8e88e5",
+              "exerciseName": "Seated Calf Raise",
+              "fatigueCost": 1,
+              "kind": "expand",
+              "score": -727.657,
+              "setDelta": 1
+            },
+            {
+              "collateralOvershoot": 0,
+              "decision": "selected",
+              "deficitReduction": 1,
+              "dominantDeficitContribution": 0,
+              "dominantDeficitMuscleId": "core",
+              "dominantDeficitReduction": 0,
+              "dominantDeficitRemaining": 11,
+              "exerciseId": "279befa2-d7ce-49b2-8826-1a3f883c2ffc",
+              "exerciseName": "Standing Calf Raise",
+              "fatigueCost": 2,
+              "kind": "expand",
+              "score": -728.681,
+              "setDelta": 1
+            },
+            {
+              "decision": "rejected",
+              "dominantDeficitContribution": 0.2,
+              "dominantDeficitMuscleId": "core",
+              "dominantDeficitRemaining": 11,
+              "exerciseId": "6f1e89b9-8a41-403a-a4a0-a64f16c86352",
+              "exerciseName": "Barbell Back Squat",
+              "kind": "expand",
+              "rejectionReason": "working_set_cap_reached",
+              "score": null,
+              "setDelta": 1
+            },
+            {
+              "decision": "rejected",
+              "dominantDeficitContribution": 0,
+              "dominantDeficitMuscleId": "core",
+              "dominantDeficitRemaining": 11,
+              "exerciseId": "8a033827-4c7c-4292-8cdb-85267e696ff9",
+              "exerciseName": "Leg Press",
+              "kind": "expand",
+              "rejectionReason": "working_set_cap_reached",
+              "score": null,
+              "setDelta": 1
+            },
+            {
+              "decision": "rejected",
+              "dominantDeficitContribution": 0,
+              "dominantDeficitMuscleId": "core",
+              "dominantDeficitRemaining": 11,
+              "exerciseId": "d3d8a5ab-e636-41d6-97a9-04c50230b9e7",
+              "exerciseName": "Romanian Deadlift",
+              "kind": "expand",
+              "rejectionReason": "working_set_cap_reached",
+              "score": null,
+              "setDelta": 1
+            }
+          ],
+          "inventoryKind": "closure",
+          "reason": "closure_applied",
+          "used": true,
+          "winningAction": {
+            "collateralOvershoot": 0,
+            "deficitReduction": 1,
+            "exerciseId": "8768cf61-6fa1-4fba-b7ee-eb490597f130",
+            "exerciseName": "Seated Leg Curl",
+            "fatigueCost": 2,
+            "kind": "expand",
+            "score": 96.313,
+            "setDelta": 1
+          }
+        },
+        "exercises": {
+          "0b4bb581-4f12-4c96-afbd-80a48d8e88e5": {
+            "anchorBudgetDecision": {
+              "anchorConstrainedContinuousSetTarget": 5,
+              "anchorContributionPerSet": 1,
+              "anchorRemainingBeforeAssignment": 9,
+              "desiredSetTarget": 5,
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolumeBeforeAssignment": 5,
+              "planningAdjustedAnchorRemaining": 9,
+              "reservedEffectiveVolumeForRemainingRoleFixtures": 0,
+              "weeklyTarget": 14
+            },
+            "anchorUsed": {
+              "kind": "muscle",
+              "muscle": "calves"
+            },
+            "assignedSetCount": 5,
+            "closureSetDelta": 0,
+            "exerciseId": "0b4bb581-4f12-4c96-afbd-80a48d8e88e5",
+            "exerciseName": "Seated Calf Raise",
+            "isClosureAddition": false,
+            "isRoleFixture": true,
+            "isSetExpandedCarryover": false,
+            "overshootAdjustmentsApplied": {
+              "finalSetTarget": 5,
+              "initialSetTarget": 5,
+              "limitingMuscles": [],
+              "reductionsApplied": 0
+            },
+            "stimulusVector": {
+              "Calves": 1
+            }
+          },
+          "279befa2-d7ce-49b2-8826-1a3f883c2ffc": {
+            "anchorBudgetDecision": {
+              "anchorConstrainedContinuousSetTarget": 5,
+              "anchorContributionPerSet": 1,
+              "anchorRemainingBeforeAssignment": 14,
+              "desiredSetTarget": 5,
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolumeBeforeAssignment": 0,
+              "planningAdjustedAnchorRemaining": 14,
+              "reservedEffectiveVolumeForRemainingRoleFixtures": 0,
+              "weeklyTarget": 14
+            },
+            "anchorUsed": {
+              "kind": "muscle",
+              "muscle": "calves"
+            },
+            "assignedSetCount": 5,
+            "closureSetDelta": 0,
+            "exerciseId": "279befa2-d7ce-49b2-8826-1a3f883c2ffc",
+            "exerciseName": "Standing Calf Raise",
+            "isClosureAddition": false,
+            "isRoleFixture": true,
+            "isSetExpandedCarryover": false,
+            "overshootAdjustmentsApplied": {
+              "finalSetTarget": 5,
+              "initialSetTarget": 5,
+              "limitingMuscles": [],
+              "reductionsApplied": 0
+            },
+            "stimulusVector": {
+              "Calves": 1
+            }
+          },
+          "6f1e89b9-8a41-403a-a4a0-a64f16c86352": {
+            "anchorBudgetDecision": {
+              "anchorConstrainedContinuousSetTarget": 5,
+              "anchorContributionPerSet": 1,
+              "anchorRemainingBeforeAssignment": 18,
+              "desiredSetTarget": 5,
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolumeBeforeAssignment": 0,
+              "planningAdjustedAnchorRemaining": 18,
+              "reservedEffectiveVolumeForRemainingRoleFixtures": 0,
+              "weeklyTarget": 18
+            },
+            "anchorUsed": {
+              "kind": "muscle",
+              "muscle": "quads"
+            },
+            "assignedSetCount": 5,
+            "closureSetDelta": 0,
+            "exerciseId": "6f1e89b9-8a41-403a-a4a0-a64f16c86352",
+            "exerciseName": "Barbell Back Squat",
+            "isClosureAddition": false,
+            "isRoleFixture": true,
+            "isSetExpandedCarryover": false,
+            "overshootAdjustmentsApplied": {
+              "finalSetTarget": 5,
+              "initialSetTarget": 5,
+              "limitingMuscles": [],
+              "reductionsApplied": 0
+            },
+            "stimulusVector": {
+              "Adductors": 0.25,
+              "Core": 0.2,
+              "Glutes": 0.5,
+              "Quads": 1
+            }
+          },
+          "8768cf61-6fa1-4fba-b7ee-eb490597f130": {
+            "anchorBudgetDecision": {
+              "anchorConstrainedContinuousSetTarget": 5,
+              "anchorContributionPerSet": 1,
+              "anchorRemainingBeforeAssignment": 11,
+              "desiredSetTarget": 5,
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolumeBeforeAssignment": 5,
+              "planningAdjustedAnchorRemaining": 11,
+              "reservedEffectiveVolumeForRemainingRoleFixtures": 0,
+              "weeklyTarget": 16
+            },
+            "anchorUsed": {
+              "kind": "muscle",
+              "muscle": "hamstrings"
+            },
+            "assignedSetCount": 6,
+            "closureSetDelta": 1,
+            "exerciseId": "8768cf61-6fa1-4fba-b7ee-eb490597f130",
+            "exerciseName": "Seated Leg Curl",
+            "isClosureAddition": false,
+            "isRoleFixture": true,
+            "isSetExpandedCarryover": true,
+            "overshootAdjustmentsApplied": {
+              "finalSetTarget": 5,
+              "initialSetTarget": 5,
+              "limitingMuscles": [],
+              "reductionsApplied": 0
+            },
+            "stimulusVector": {
+              "Hamstrings": 1
+            }
+          },
+          "8a033827-4c7c-4292-8cdb-85267e696ff9": {
+            "anchorBudgetDecision": {
+              "anchorConstrainedContinuousSetTarget": 5,
+              "anchorContributionPerSet": 1,
+              "anchorRemainingBeforeAssignment": 13,
+              "desiredSetTarget": 5,
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolumeBeforeAssignment": 5,
+              "planningAdjustedAnchorRemaining": 13,
+              "reservedEffectiveVolumeForRemainingRoleFixtures": 0,
+              "weeklyTarget": 18
+            },
+            "anchorUsed": {
+              "kind": "muscle",
+              "muscle": "quads"
+            },
+            "assignedSetCount": 5,
+            "closureSetDelta": 0,
+            "exerciseId": "8a033827-4c7c-4292-8cdb-85267e696ff9",
+            "exerciseName": "Leg Press",
+            "isClosureAddition": false,
+            "isRoleFixture": true,
+            "isSetExpandedCarryover": false,
+            "overshootAdjustmentsApplied": {
+              "finalSetTarget": 5,
+              "initialSetTarget": 5,
+              "limitingMuscles": [],
+              "reductionsApplied": 0
+            },
+            "stimulusVector": {
+              "Adductors": 0.2,
+              "Glutes": 0.45,
+              "Quads": 1
+            }
+          },
+          "d3d8a5ab-e636-41d6-97a9-04c50230b9e7": {
+            "anchorBudgetDecision": {
+              "anchorConstrainedContinuousSetTarget": 5,
+              "anchorContributionPerSet": 1,
+              "anchorRemainingBeforeAssignment": 16,
+              "desiredSetTarget": 5,
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolumeBeforeAssignment": 0,
+              "planningAdjustedAnchorRemaining": 16,
+              "reservedEffectiveVolumeForRemainingRoleFixtures": 0,
+              "weeklyTarget": 16
+            },
+            "anchorUsed": {
+              "kind": "muscle",
+              "muscle": "hamstrings"
+            },
+            "assignedSetCount": 5,
+            "closureSetDelta": 0,
+            "exerciseId": "d3d8a5ab-e636-41d6-97a9-04c50230b9e7",
+            "exerciseName": "Romanian Deadlift",
+            "isClosureAddition": false,
+            "isRoleFixture": true,
+            "isSetExpandedCarryover": false,
+            "overshootAdjustmentsApplied": {
+              "finalSetTarget": 5,
+              "initialSetTarget": 5,
+              "limitingMuscles": [],
+              "reductionsApplied": 0
+            },
+            "stimulusVector": {
+              "Glutes": 0.75,
+              "Hamstrings": 1,
+              "Lower Back": 0.45
+            }
+          }
+        },
+        "muscles": {
+          "Abductors": {
+            "deficitAfterRoleBudgeting": 6,
+            "finalRemainingDeficit": 6,
+            "performedEffectiveVolumeBeforeSession": 0,
+            "plannedEffectiveVolumeAfterClosure": 0,
+            "plannedEffectiveVolumeAfterRoleBudgeting": 0,
+            "projectedEffectiveVolumeAfterClosure": 0,
+            "projectedEffectiveVolumeAfterRoleBudgeting": 0,
+            "weeklyTarget": 6
+          },
+          "Abs": {
+            "deficitAfterRoleBudgeting": 10,
+            "finalRemainingDeficit": 10,
+            "performedEffectiveVolumeBeforeSession": 0,
+            "plannedEffectiveVolumeAfterClosure": 0,
+            "plannedEffectiveVolumeAfterRoleBudgeting": 0,
+            "projectedEffectiveVolumeAfterClosure": 0,
+            "projectedEffectiveVolumeAfterRoleBudgeting": 0,
+            "weeklyTarget": 10
+          },
+          "Adductors": {
+            "deficitAfterRoleBudgeting": 5.75,
+            "finalRemainingDeficit": 5.75,
+            "performedEffectiveVolumeBeforeSession": 0,
+            "plannedEffectiveVolumeAfterClosure": 2.25,
+            "plannedEffectiveVolumeAfterRoleBudgeting": 2.25,
+            "projectedEffectiveVolumeAfterClosure": 2.25,
+            "projectedEffectiveVolumeAfterRoleBudgeting": 2.25,
+            "weeklyTarget": 8
+          },
+          "Calves": {
+            "deficitAfterRoleBudgeting": 4,
+            "finalRemainingDeficit": 4,
+            "performedEffectiveVolumeBeforeSession": 0,
+            "plannedEffectiveVolumeAfterClosure": 10,
+            "plannedEffectiveVolumeAfterRoleBudgeting": 10,
+            "projectedEffectiveVolumeAfterClosure": 10,
+            "projectedEffectiveVolumeAfterRoleBudgeting": 10,
+            "weeklyTarget": 14
+          },
+          "Core": {
+            "deficitAfterRoleBudgeting": 11,
+            "finalRemainingDeficit": 11,
+            "performedEffectiveVolumeBeforeSession": 0,
+            "plannedEffectiveVolumeAfterClosure": 1,
+            "plannedEffectiveVolumeAfterRoleBudgeting": 1,
+            "projectedEffectiveVolumeAfterClosure": 1,
+            "projectedEffectiveVolumeAfterRoleBudgeting": 1,
+            "weeklyTarget": 12
+          },
+          "Glutes": {
+            "deficitAfterRoleBudgeting": 0,
+            "finalRemainingDeficit": 0,
+            "performedEffectiveVolumeBeforeSession": 0,
+            "plannedEffectiveVolumeAfterClosure": 8.5,
+            "plannedEffectiveVolumeAfterRoleBudgeting": 8.5,
+            "projectedEffectiveVolumeAfterClosure": 8.5,
+            "projectedEffectiveVolumeAfterRoleBudgeting": 8.5,
+            "weeklyTarget": 8
+          },
+          "Hamstrings": {
+            "deficitAfterRoleBudgeting": 6,
+            "finalRemainingDeficit": 5,
+            "performedEffectiveVolumeBeforeSession": 0,
+            "plannedEffectiveVolumeAfterClosure": 11,
+            "plannedEffectiveVolumeAfterRoleBudgeting": 10,
+            "projectedEffectiveVolumeAfterClosure": 11,
+            "projectedEffectiveVolumeAfterRoleBudgeting": 10,
+            "weeklyTarget": 16
+          },
+          "Lower Back": {
+            "deficitAfterRoleBudgeting": 1.75,
+            "finalRemainingDeficit": 1.75,
+            "performedEffectiveVolumeBeforeSession": 0,
+            "plannedEffectiveVolumeAfterClosure": 2.25,
+            "plannedEffectiveVolumeAfterRoleBudgeting": 2.25,
+            "projectedEffectiveVolumeAfterClosure": 2.25,
+            "projectedEffectiveVolumeAfterRoleBudgeting": 2.25,
+            "weeklyTarget": 4
+          },
+          "Quads": {
+            "deficitAfterRoleBudgeting": 8,
+            "finalRemainingDeficit": 8,
+            "performedEffectiveVolumeBeforeSession": 0,
+            "plannedEffectiveVolumeAfterClosure": 10,
+            "plannedEffectiveVolumeAfterRoleBudgeting": 10,
+            "projectedEffectiveVolumeAfterClosure": 10,
+            "projectedEffectiveVolumeAfterRoleBudgeting": 10,
+            "weeklyTarget": 18
+          }
+        },
+        "opportunity": {
+          "closureInventoryKind": "closure",
+          "currentSessionMuscleOpportunity": {
+            "Abductors": {
+              "futureCapacity": 0,
+              "futureOpportunityUnits": 0,
+              "performedEffectiveVolumeBeforeSession": 0,
+              "requiredNow": 6,
+              "sessionOpportunityWeight": 1,
+              "startingDeficit": 6,
+              "urgencyMultiplier": 2.5,
+              "weeklyOpportunityUnits": 1,
+              "weeklyTarget": 6
+            },
+            "Abs": {
+              "futureCapacity": 0,
+              "futureOpportunityUnits": 0,
+              "performedEffectiveVolumeBeforeSession": 0,
+              "requiredNow": 10,
+              "sessionOpportunityWeight": 1,
+              "startingDeficit": 10,
+              "urgencyMultiplier": 2.5,
+              "weeklyOpportunityUnits": 1,
+              "weeklyTarget": 10
+            },
+            "Adductors": {
+              "futureCapacity": 0,
+              "futureOpportunityUnits": 0,
+              "performedEffectiveVolumeBeforeSession": 0,
+              "requiredNow": 8,
+              "sessionOpportunityWeight": 1,
+              "startingDeficit": 8,
+              "urgencyMultiplier": 2.5,
+              "weeklyOpportunityUnits": 1,
+              "weeklyTarget": 8
+            },
+            "Calves": {
+              "futureCapacity": 0,
+              "futureOpportunityUnits": 0,
+              "performedEffectiveVolumeBeforeSession": 0,
+              "requiredNow": 14,
+              "sessionOpportunityWeight": 1,
+              "startingDeficit": 14,
+              "urgencyMultiplier": 2.5,
+              "weeklyOpportunityUnits": 1,
+              "weeklyTarget": 14
+            },
+            "Core": {
+              "futureCapacity": 0,
+              "futureOpportunityUnits": 0,
+              "performedEffectiveVolumeBeforeSession": 0,
+              "requiredNow": 12,
+              "sessionOpportunityWeight": 1,
+              "startingDeficit": 12,
+              "urgencyMultiplier": 2.5,
+              "weeklyOpportunityUnits": 1,
+              "weeklyTarget": 12
+            },
+            "Glutes": {
+              "futureCapacity": 0,
+              "futureOpportunityUnits": 0,
+              "performedEffectiveVolumeBeforeSession": 0,
+              "requiredNow": 8,
+              "sessionOpportunityWeight": 1,
+              "startingDeficit": 8,
+              "urgencyMultiplier": 2.5,
+              "weeklyOpportunityUnits": 1,
+              "weeklyTarget": 8
+            },
+            "Hamstrings": {
+              "futureCapacity": 0,
+              "futureOpportunityUnits": 0,
+              "performedEffectiveVolumeBeforeSession": 0,
+              "requiredNow": 16,
+              "sessionOpportunityWeight": 1,
+              "startingDeficit": 16,
+              "urgencyMultiplier": 2.5,
+              "weeklyOpportunityUnits": 1,
+              "weeklyTarget": 16
+            },
+            "Lower Back": {
+              "futureCapacity": 0,
+              "futureOpportunityUnits": 0,
+              "performedEffectiveVolumeBeforeSession": 0,
+              "requiredNow": 4,
+              "sessionOpportunityWeight": 1,
+              "startingDeficit": 4,
+              "urgencyMultiplier": 2.5,
+              "weeklyOpportunityUnits": 1,
+              "weeklyTarget": 4
+            },
+            "Quads": {
+              "futureCapacity": 0,
+              "futureOpportunityUnits": 0,
+              "performedEffectiveVolumeBeforeSession": 0,
+              "requiredNow": 18,
+              "sessionOpportunityWeight": 1,
+              "startingDeficit": 18,
+              "urgencyMultiplier": 2.5,
+              "weeklyOpportunityUnits": 1,
+              "weeklyTarget": 18
+            }
+          },
+          "opportunityKey": "legs",
+          "planningInventoryKind": "standard",
+          "remainingWeek": {
+            "futureCapacityFactor": 0.765,
+            "futureSlotCounts": {
+              "pull": 1,
+              "push": 1
+            },
+            "futureSlots": [
+              "pull",
+              "push"
+            ]
+          },
+          "sessionCharacter": "lower",
+          "sessionIntent": "legs"
+        },
+        "outcome": {
+          "deficitsAfterBaseSession": {
+            "Abductors": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 0,
+              "projectedEffectiveVolume": 0,
+              "remainingDeficit": 6,
+              "weeklyTarget": 6
+            },
+            "Abs": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 0,
+              "projectedEffectiveVolume": 0,
+              "remainingDeficit": 10,
+              "weeklyTarget": 10
+            },
+            "Adductors": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 2.25,
+              "projectedEffectiveVolume": 2.25,
+              "remainingDeficit": 5.75,
+              "weeklyTarget": 8
+            },
+            "Calves": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 10,
+              "projectedEffectiveVolume": 10,
+              "remainingDeficit": 4,
+              "weeklyTarget": 14
+            },
+            "Core": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 1,
+              "projectedEffectiveVolume": 1,
+              "remainingDeficit": 11,
+              "weeklyTarget": 12
+            },
+            "Glutes": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 8.5,
+              "projectedEffectiveVolume": 8.5,
+              "remainingDeficit": 0,
+              "weeklyTarget": 8
+            },
+            "Hamstrings": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 10,
+              "projectedEffectiveVolume": 10,
+              "remainingDeficit": 6,
+              "weeklyTarget": 16
+            },
+            "Lower Back": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 2.25,
+              "projectedEffectiveVolume": 2.25,
+              "remainingDeficit": 1.75,
+              "weeklyTarget": 4
+            },
+            "Quads": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 10,
+              "projectedEffectiveVolume": 10,
+              "remainingDeficit": 8,
+              "weeklyTarget": 18
+            }
+          },
+          "deficitsAfterClosure": {
+            "Abductors": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 0,
+              "projectedEffectiveVolume": 0,
+              "remainingDeficit": 6,
+              "weeklyTarget": 6
+            },
+            "Abs": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 0,
+              "projectedEffectiveVolume": 0,
+              "remainingDeficit": 10,
+              "weeklyTarget": 10
+            },
+            "Adductors": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 2.25,
+              "projectedEffectiveVolume": 2.25,
+              "remainingDeficit": 5.75,
+              "weeklyTarget": 8
+            },
+            "Calves": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 10,
+              "projectedEffectiveVolume": 10,
+              "remainingDeficit": 4,
+              "weeklyTarget": 14
+            },
+            "Core": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 1,
+              "projectedEffectiveVolume": 1,
+              "remainingDeficit": 11,
+              "weeklyTarget": 12
+            },
+            "Glutes": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 8.5,
+              "projectedEffectiveVolume": 8.5,
+              "remainingDeficit": 0,
+              "weeklyTarget": 8
+            },
+            "Hamstrings": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 11,
+              "projectedEffectiveVolume": 11,
+              "remainingDeficit": 5,
+              "weeklyTarget": 16
+            },
+            "Lower Back": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 2.25,
+              "projectedEffectiveVolume": 2.25,
+              "remainingDeficit": 1.75,
+              "weeklyTarget": 4
+            },
+            "Quads": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 10,
+              "projectedEffectiveVolume": 10,
+              "remainingDeficit": 8,
+              "weeklyTarget": 18
+            }
+          },
+          "deficitsAfterSupplementation": {
+            "Abductors": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 0,
+              "projectedEffectiveVolume": 0,
+              "remainingDeficit": 6,
+              "weeklyTarget": 6
+            },
+            "Abs": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 0,
+              "projectedEffectiveVolume": 0,
+              "remainingDeficit": 10,
+              "weeklyTarget": 10
+            },
+            "Adductors": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 2.25,
+              "projectedEffectiveVolume": 2.25,
+              "remainingDeficit": 5.75,
+              "weeklyTarget": 8
+            },
+            "Calves": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 10,
+              "projectedEffectiveVolume": 10,
+              "remainingDeficit": 4,
+              "weeklyTarget": 14
+            },
+            "Core": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 1,
+              "projectedEffectiveVolume": 1,
+              "remainingDeficit": 11,
+              "weeklyTarget": 12
+            },
+            "Glutes": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 8.5,
+              "projectedEffectiveVolume": 8.5,
+              "remainingDeficit": 0,
+              "weeklyTarget": 8
+            },
+            "Hamstrings": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 10,
+              "projectedEffectiveVolume": 10,
+              "remainingDeficit": 6,
+              "weeklyTarget": 16
+            },
+            "Lower Back": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 2.25,
+              "projectedEffectiveVolume": 2.25,
+              "remainingDeficit": 1.75,
+              "weeklyTarget": 4
+            },
+            "Quads": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 10,
+              "projectedEffectiveVolume": 10,
+              "remainingDeficit": 8,
+              "weeklyTarget": 18
+            }
+          },
+          "keyTradeoffs": [
+            {
+              "code": "closure_expand",
+              "exerciseId": "8768cf61-6fa1-4fba-b7ee-eb490597f130",
+              "layer": "closure",
+              "message": "Seated Leg Curl won closure with expand (+1 set)."
+            },
+            {
+              "code": "unresolved_deficit_remaining",
+              "layer": "closure",
+              "message": "Abductors still has unresolved weekly deficit after closure.",
+              "muscle": "Abductors"
+            },
+            {
+              "code": "unresolved_deficit_remaining",
+              "layer": "closure",
+              "message": "Abs still has unresolved weekly deficit after closure.",
+              "muscle": "Abs"
+            },
+            {
+              "code": "unresolved_deficit_remaining",
+              "layer": "closure",
+              "message": "Adductors still has unresolved weekly deficit after closure.",
+              "muscle": "Adductors"
+            },
+            {
+              "code": "unresolved_deficit_remaining",
+              "layer": "closure",
+              "message": "Calves still has unresolved weekly deficit after closure.",
+              "muscle": "Calves"
+            },
+            {
+              "code": "unresolved_deficit_remaining",
+              "layer": "closure",
+              "message": "Core still has unresolved weekly deficit after closure.",
+              "muscle": "Core"
+            },
+            {
+              "code": "unresolved_deficit_remaining",
+              "layer": "closure",
+              "message": "Hamstrings still has unresolved weekly deficit after closure.",
+              "muscle": "Hamstrings"
+            },
+            {
+              "code": "unresolved_deficit_remaining",
+              "layer": "closure",
+              "message": "Lower Back still has unresolved weekly deficit after closure.",
+              "muscle": "Lower Back"
+            },
+            {
+              "code": "unresolved_deficit_remaining",
+              "layer": "closure",
+              "message": "Quads still has unresolved weekly deficit after closure.",
+              "muscle": "Quads"
+            }
+          ],
+          "layersUsed": [
+            "anchor",
+            "closure"
+          ],
+          "startingDeficits": {
+            "Abductors": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 0,
+              "projectedEffectiveVolume": 0,
+              "remainingDeficit": 6,
+              "weeklyTarget": 6
+            },
+            "Abs": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 0,
+              "projectedEffectiveVolume": 0,
+              "remainingDeficit": 10,
+              "weeklyTarget": 10
+            },
+            "Adductors": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 0,
+              "projectedEffectiveVolume": 0,
+              "remainingDeficit": 8,
+              "weeklyTarget": 8
+            },
+            "Calves": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 0,
+              "projectedEffectiveVolume": 0,
+              "remainingDeficit": 14,
+              "weeklyTarget": 14
+            },
+            "Core": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 0,
+              "projectedEffectiveVolume": 0,
+              "remainingDeficit": 12,
+              "weeklyTarget": 12
+            },
+            "Glutes": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 0,
+              "projectedEffectiveVolume": 0,
+              "remainingDeficit": 8,
+              "weeklyTarget": 8
+            },
+            "Hamstrings": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 0,
+              "projectedEffectiveVolume": 0,
+              "remainingDeficit": 16,
+              "weeklyTarget": 16
+            },
+            "Lower Back": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 0,
+              "projectedEffectiveVolume": 0,
+              "remainingDeficit": 4,
+              "weeklyTarget": 4
+            },
+            "Quads": {
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolume": 0,
+              "projectedEffectiveVolume": 0,
+              "remainingDeficit": 18,
+              "weeklyTarget": 18
+            }
+          },
+          "unresolvedDeficits": [
+            "Abductors",
+            "Abs",
+            "Adductors",
+            "Calves",
+            "Core",
+            "Hamstrings",
+            "Lower Back",
+            "Quads"
+          ]
+        },
+        "rescue": {
+          "candidates": [],
+          "eligible": false,
+          "reason": "rescue_not_requested",
+          "rescueOnlyCandidateCount": 0,
+          "rescueOnlyExerciseIds": [],
+          "selectedExerciseIds": [],
+          "used": false
+        },
+        "standard": {
+          "candidateCount": 26,
+          "candidates": [
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "53e45dd8-6994-4ac9-bf06-33c959911b59",
+              "exerciseName": "Back Extension (45 Degree)",
+              "inventoryKind": "standard",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "51bac172-b0ff-4e8d-814e-d42b0462706f",
+              "exerciseName": "Barbell Hip Thrust",
+              "inventoryKind": "standard",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "247252f0-7e99-43ea-9db1-a590ffa60319",
+              "exerciseName": "Belt Squat",
+              "inventoryKind": "standard",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "80b87827-ca4d-49f2-9bf2-659c196c2001",
+              "exerciseName": "Bulgarian Split Squat",
+              "inventoryKind": "standard",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "e9f263fc-f659-4b8b-8068-062540147691",
+              "exerciseName": "Cable Hip Abduction",
+              "inventoryKind": "standard",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "837ee0a9-a0a7-480c-8689-7606e900d4b1",
+              "exerciseName": "Cable Pull-Through",
+              "inventoryKind": "standard",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "026272ed-4383-4c94-87db-ca81eca40d9a",
+              "exerciseName": "Conventional Deadlift",
+              "inventoryKind": "standard",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "d713e6bf-c04b-433e-96b8-b9bdca88619e",
+              "exerciseName": "Front Squat",
+              "inventoryKind": "standard",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "902593ce-581a-42bb-b78b-356d480df4bf",
+              "exerciseName": "Glute Bridge",
+              "inventoryKind": "standard",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "9e1c1223-d803-4ed4-ae1b-7dae631e7721",
+              "exerciseName": "Goblet Squat",
+              "inventoryKind": "standard",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "2b523ecb-dfda-4786-9d53-1fd2ba65b452",
+              "exerciseName": "Good Morning",
+              "inventoryKind": "standard",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "7d710086-dfff-432e-a12c-e1e52eb466f7",
+              "exerciseName": "Hack Squat",
+              "inventoryKind": "standard",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "bec6b501-717e-43c9-ba42-3cc2c0251675",
+              "exerciseName": "Hip Abduction Machine",
+              "inventoryKind": "standard",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "5e88324d-5baf-4c67-9c9e-48a4876e8990",
+              "exerciseName": "Hip Adduction Machine",
+              "inventoryKind": "standard",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "83b75a88-c418-4638-909f-878a6502f92b",
+              "exerciseName": "Leg Extension",
+              "inventoryKind": "standard",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "ca99049f-333e-4c55-8b74-8e175d2d11eb",
+              "exerciseName": "Leg Press Calf Raise",
+              "inventoryKind": "standard",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "04b0f96f-8887-438e-afe8-e7e2a6432689",
+              "exerciseName": "Lying Leg Curl",
+              "inventoryKind": "standard",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "c23dafbd-26d2-4107-832c-13af47d5d960",
+              "exerciseName": "Nordic Hamstring Curl",
+              "inventoryKind": "standard",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "89710048-ca52-494e-ba3d-c8535803514d",
+              "exerciseName": "Reverse Hyperextension",
+              "inventoryKind": "standard",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "6bc6eb9d-871e-41a0-a786-a58801bf6ddd",
+              "exerciseName": "Reverse Lunge",
+              "inventoryKind": "standard",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "b5298a95-7eb0-4056-ad2f-3bffd5dd7906",
+              "exerciseName": "Single-Leg Hip Thrust",
+              "inventoryKind": "standard",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "8cfc4ddb-a3c5-4cd4-9072-08da5e5098e9",
+              "exerciseName": "Sissy Squat",
+              "inventoryKind": "standard",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "5f35a3af-3be5-4260-8a29-f6c3b943e9ae",
+              "exerciseName": "Stiff-Legged Deadlift",
+              "inventoryKind": "standard",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "6c7b0b05-d434-4237-8b90-962a1a693834",
+              "exerciseName": "Sumo Deadlift",
+              "inventoryKind": "standard",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "de5e93ce-a784-4c4b-93c1-6f464ddfab2f",
+              "exerciseName": "Trap Bar Deadlift",
+              "inventoryKind": "standard",
+              "selected": false
+            },
+            {
+              "eligibilityReason": "eligible_by_standard_session_alignment",
+              "exerciseId": "98ff706c-1c87-4404-91c2-8e7cb106fdda",
+              "exerciseName": "Walking Lunge",
+              "inventoryKind": "standard",
+              "selected": false
+            }
+          ],
+          "inventoryKind": "standard",
+          "reason": "standard_inventory_not_used",
+          "selectedExerciseIds": [],
+          "used": false
+        },
+        "supplemental": {
+          "allowed": true,
+          "candidateCount": 0,
+          "deficitsTargeted": [],
+          "reason": "anchor_selection_already_satisfies_session_floor",
+          "selectedExerciseIds": [],
+          "used": false
+        }
+      },
+      "rationale": {},
+      "selectedExerciseIds": [
+        "6f1e89b9-8a41-403a-a4a0-a64f16c86352",
+        "8a033827-4c7c-4292-8cdb-85267e696ff9",
+        "d3d8a5ab-e636-41d6-97a9-04c50230b9e7",
+        "8768cf61-6fa1-4fba-b7ee-eb490597f130",
+        "279befa2-d7ce-49b2-8826-1a3f883c2ffc",
+        "0b4bb581-4f12-4c96-afbd-80a48d8e88e5"
+      ],
+      "sessionDecisionReceipt": {
+        "cycleContext": {
+          "blockType": "accumulation",
+          "isDeload": false,
+          "mesocycleLength": 5,
+          "phase": "accumulation",
+          "source": "computed",
+          "weekInBlock": 4,
+          "weekInMeso": 4
+        },
+        "deloadDecision": {
+          "appliedTo": "none",
+          "mode": "none",
+          "reason": [],
+          "reductionPercent": 0
+        },
+        "exceptions": [],
+        "lifecycleRirTarget": {
+          "max": 1,
+          "min": 0
+        },
+        "lifecycleVolume": {
+          "source": "lifecycle",
+          "targets": {
+            "Abductors": 6,
+            "Abs": 10,
+            "Adductors": 8,
+            "Biceps": 14,
+            "Calves": 14,
+            "Chest": 16,
+            "Core": 12,
+            "Forearms": 6,
+            "Front Delts": 7,
+            "Glutes": 8,
+            "Hamstrings": 16,
+            "Lats": 16,
+            "Lower Back": 4,
+            "Quads": 18,
+            "Rear Delts": 12,
+            "Side Delts": 19,
+            "Triceps": 12,
+            "Upper Back": 14
+          }
+        },
+        "plannerDiagnostics": {
+          "anchor": {
+            "consideredFixtureIds": [
+              "6f1e89b9-8a41-403a-a4a0-a64f16c86352",
+              "8a033827-4c7c-4292-8cdb-85267e696ff9",
+              "d3d8a5ab-e636-41d6-97a9-04c50230b9e7",
+              "8768cf61-6fa1-4fba-b7ee-eb490597f130",
+              "279befa2-d7ce-49b2-8826-1a3f883c2ffc",
+              "0b4bb581-4f12-4c96-afbd-80a48d8e88e5"
+            ],
+            "droppedFixtureIds": [],
+            "fixtures": [
+              {
+                "anchor": {
+                  "kind": "muscle",
+                  "muscle": "quads"
+                },
+                "anchorBudgetDecision": {
+                  "anchorConstrainedContinuousSetTarget": 5,
+                  "anchorContributionPerSet": 1,
+                  "anchorRemainingBeforeAssignment": 18,
+                  "desiredSetTarget": 5,
+                  "performedEffectiveVolumeBeforeSession": 0,
+                  "plannedEffectiveVolumeBeforeAssignment": 0,
+                  "planningAdjustedAnchorRemaining": 18,
+                  "reservedEffectiveVolumeForRemainingRoleFixtures": 0,
+                  "weeklyTarget": 18
+                },
+                "decisionCode": "kept_at_desired_target",
+                "desiredSets": 5,
+                "exerciseId": "6f1e89b9-8a41-403a-a4a0-a64f16c86352",
+                "exerciseName": "Barbell Back Squat",
+                "kept": true,
+                "minimumSets": 1,
+                "overshootAdjustmentsApplied": {
+                  "finalSetTarget": 5,
+                  "initialSetTarget": 5,
+                  "limitingMuscles": [],
+                  "reductionsApplied": 0
+                },
+                "plannedSets": 5,
+                "priority": "core",
+                "proposedSets": 5,
+                "reason": "Fixture stayed at its desired target inside the anchor envelope.",
+                "role": "CORE_COMPOUND"
+              },
+              {
+                "anchor": {
+                  "kind": "muscle",
+                  "muscle": "quads"
+                },
+                "anchorBudgetDecision": {
+                  "anchorConstrainedContinuousSetTarget": 5,
+                  "anchorContributionPerSet": 1,
+                  "anchorRemainingBeforeAssignment": 13,
+                  "desiredSetTarget": 5,
+                  "performedEffectiveVolumeBeforeSession": 0,
+                  "plannedEffectiveVolumeBeforeAssignment": 5,
+                  "planningAdjustedAnchorRemaining": 13,
+                  "reservedEffectiveVolumeForRemainingRoleFixtures": 0,
+                  "weeklyTarget": 18
+                },
+                "decisionCode": "kept_at_desired_target",
+                "desiredSets": 5,
+                "exerciseId": "8a033827-4c7c-4292-8cdb-85267e696ff9",
+                "exerciseName": "Leg Press",
+                "kept": true,
+                "minimumSets": 0,
+                "overshootAdjustmentsApplied": {
+                  "finalSetTarget": 5,
+                  "initialSetTarget": 5,
+                  "limitingMuscles": [],
+                  "reductionsApplied": 0
+                },
+                "plannedSets": 5,
+                "priority": "accessory",
+                "proposedSets": 5,
+                "reason": "Fixture stayed at its desired target inside the anchor envelope.",
+                "role": "ACCESSORY"
+              },
+              {
+                "anchor": {
+                  "kind": "muscle",
+                  "muscle": "hamstrings"
+                },
+                "anchorBudgetDecision": {
+                  "anchorConstrainedContinuousSetTarget": 5,
+                  "anchorContributionPerSet": 1,
+                  "anchorRemainingBeforeAssignment": 16,
+                  "desiredSetTarget": 5,
+                  "performedEffectiveVolumeBeforeSession": 0,
+                  "plannedEffectiveVolumeBeforeAssignment": 0,
+                  "planningAdjustedAnchorRemaining": 16,
+                  "reservedEffectiveVolumeForRemainingRoleFixtures": 0,
+                  "weeklyTarget": 16
+                },
+                "decisionCode": "kept_at_desired_target",
+                "desiredSets": 5,
+                "exerciseId": "d3d8a5ab-e636-41d6-97a9-04c50230b9e7",
+                "exerciseName": "Romanian Deadlift",
+                "kept": true,
+                "minimumSets": 0,
+                "overshootAdjustmentsApplied": {
+                  "finalSetTarget": 5,
+                  "initialSetTarget": 5,
+                  "limitingMuscles": [],
+                  "reductionsApplied": 0
+                },
+                "plannedSets": 5,
+                "priority": "accessory",
+                "proposedSets": 5,
+                "reason": "Fixture stayed at its desired target inside the anchor envelope.",
+                "role": "ACCESSORY"
+              },
+              {
+                "anchor": {
+                  "kind": "muscle",
+                  "muscle": "hamstrings"
+                },
+                "anchorBudgetDecision": {
+                  "anchorConstrainedContinuousSetTarget": 5,
+                  "anchorContributionPerSet": 1,
+                  "anchorRemainingBeforeAssignment": 11,
+                  "desiredSetTarget": 5,
+                  "performedEffectiveVolumeBeforeSession": 0,
+                  "plannedEffectiveVolumeBeforeAssignment": 5,
+                  "planningAdjustedAnchorRemaining": 11,
+                  "reservedEffectiveVolumeForRemainingRoleFixtures": 0,
+                  "weeklyTarget": 16
+                },
+                "decisionCode": "kept_at_desired_target",
+                "desiredSets": 5,
+                "exerciseId": "8768cf61-6fa1-4fba-b7ee-eb490597f130",
+                "exerciseName": "Seated Leg Curl",
+                "kept": true,
+                "minimumSets": 0,
+                "overshootAdjustmentsApplied": {
+                  "finalSetTarget": 5,
+                  "initialSetTarget": 5,
+                  "limitingMuscles": [],
+                  "reductionsApplied": 0
+                },
+                "plannedSets": 5,
+                "priority": "accessory",
+                "proposedSets": 5,
+                "reason": "Fixture stayed at its desired target inside the anchor envelope.",
+                "role": "ACCESSORY"
+              },
+              {
+                "anchor": {
+                  "kind": "muscle",
+                  "muscle": "calves"
+                },
+                "anchorBudgetDecision": {
+                  "anchorConstrainedContinuousSetTarget": 5,
+                  "anchorContributionPerSet": 1,
+                  "anchorRemainingBeforeAssignment": 14,
+                  "desiredSetTarget": 5,
+                  "performedEffectiveVolumeBeforeSession": 0,
+                  "plannedEffectiveVolumeBeforeAssignment": 0,
+                  "planningAdjustedAnchorRemaining": 14,
+                  "reservedEffectiveVolumeForRemainingRoleFixtures": 0,
+                  "weeklyTarget": 14
+                },
+                "decisionCode": "kept_at_desired_target",
+                "desiredSets": 5,
+                "exerciseId": "279befa2-d7ce-49b2-8826-1a3f883c2ffc",
+                "exerciseName": "Standing Calf Raise",
+                "kept": true,
+                "minimumSets": 0,
+                "overshootAdjustmentsApplied": {
+                  "finalSetTarget": 5,
+                  "initialSetTarget": 5,
+                  "limitingMuscles": [],
+                  "reductionsApplied": 0
+                },
+                "plannedSets": 5,
+                "priority": "accessory",
+                "proposedSets": 5,
+                "reason": "Fixture stayed at its desired target inside the anchor envelope.",
+                "role": "ACCESSORY"
+              },
+              {
+                "anchor": {
+                  "kind": "muscle",
+                  "muscle": "calves"
+                },
+                "anchorBudgetDecision": {
+                  "anchorConstrainedContinuousSetTarget": 5,
+                  "anchorContributionPerSet": 1,
+                  "anchorRemainingBeforeAssignment": 9,
+                  "desiredSetTarget": 5,
+                  "performedEffectiveVolumeBeforeSession": 0,
+                  "plannedEffectiveVolumeBeforeAssignment": 5,
+                  "planningAdjustedAnchorRemaining": 9,
+                  "reservedEffectiveVolumeForRemainingRoleFixtures": 0,
+                  "weeklyTarget": 14
+                },
+                "decisionCode": "kept_at_desired_target",
+                "desiredSets": 5,
+                "exerciseId": "0b4bb581-4f12-4c96-afbd-80a48d8e88e5",
+                "exerciseName": "Seated Calf Raise",
+                "kept": true,
+                "minimumSets": 0,
+                "overshootAdjustmentsApplied": {
+                  "finalSetTarget": 5,
+                  "initialSetTarget": 5,
+                  "limitingMuscles": [],
+                  "reductionsApplied": 0
+                },
+                "plannedSets": 5,
+                "priority": "accessory",
+                "proposedSets": 5,
+                "reason": "Fixture stayed at its desired target inside the anchor envelope.",
+                "role": "ACCESSORY"
+              }
+            ],
+            "keptFixtureIds": [
+              "6f1e89b9-8a41-403a-a4a0-a64f16c86352",
+              "8a033827-4c7c-4292-8cdb-85267e696ff9",
+              "d3d8a5ab-e636-41d6-97a9-04c50230b9e7",
+              "8768cf61-6fa1-4fba-b7ee-eb490597f130",
+              "279befa2-d7ce-49b2-8826-1a3f883c2ffc",
+              "0b4bb581-4f12-4c96-afbd-80a48d8e88e5"
+            ],
+            "policy": {
+              "accessoryDeferredDeficitCarryFraction": 0.25,
+              "accessoryMinimumSets": 0,
+              "coreDeferredDeficitCarryFraction": 0.4,
+              "coreMinimumSets": 1,
+              "supplementalInventory": "closure"
+            },
+            "used": true
+          },
+          "closure": {
+            "actions": [
+              {
+                "collateralOvershoot": 0,
+                "deficitReduction": 1,
+                "exerciseId": "8768cf61-6fa1-4fba-b7ee-eb490597f130",
+                "exerciseName": "Seated Leg Curl",
+                "fatigueCost": 2,
+                "kind": "expand",
+                "score": 96.313,
+                "setDelta": 1
+              }
+            ],
+            "eligible": true,
+            "eligibleExerciseIds": [
+              "53e45dd8-6994-4ac9-bf06-33c959911b59",
+              "04b0f96f-8887-438e-afe8-e7e2a6432689",
+              "d713e6bf-c04b-433e-96b8-b9bdca88619e",
+              "902593ce-581a-42bb-b78b-356d480df4bf",
+              "8a033827-4c7c-4292-8cdb-85267e696ff9",
+              "026272ed-4383-4c94-87db-ca81eca40d9a",
+              "83b75a88-c418-4638-909f-878a6502f92b",
+              "6c7b0b05-d434-4237-8b90-962a1a693834",
+              "5f35a3af-3be5-4260-8a29-f6c3b943e9ae",
+              "2b523ecb-dfda-4786-9d53-1fd2ba65b452",
+              "8768cf61-6fa1-4fba-b7ee-eb490597f130",
+              "c23dafbd-26d2-4107-832c-13af47d5d960",
+              "b5298a95-7eb0-4056-ad2f-3bffd5dd7906",
+              "9e1c1223-d803-4ed4-ae1b-7dae631e7721",
+              "6bc6eb9d-871e-41a0-a786-a58801bf6ddd",
+              "8cfc4ddb-a3c5-4cd4-9072-08da5e5098e9",
+              "de5e93ce-a784-4c4b-93c1-6f464ddfab2f",
+              "89710048-ca52-494e-ba3d-c8535803514d",
+              "d3d8a5ab-e636-41d6-97a9-04c50230b9e7",
+              "837ee0a9-a0a7-480c-8689-7606e900d4b1",
+              "e9f263fc-f659-4b8b-8068-062540147691",
+              "5e88324d-5baf-4c67-9c9e-48a4876e8990",
+              "ca99049f-333e-4c55-8b74-8e175d2d11eb",
+              "7d710086-dfff-432e-a12c-e1e52eb466f7",
+              "80b87827-ca4d-49f2-9bf2-659c196c2001",
+              "98ff706c-1c87-4404-91c2-8e7cb106fdda",
+              "6f1e89b9-8a41-403a-a4a0-a64f16c86352",
+              "247252f0-7e99-43ea-9db1-a590ffa60319",
+              "bec6b501-717e-43c9-ba42-3cc2c0251675",
+              "279befa2-d7ce-49b2-8826-1a3f883c2ffc",
+              "0b4bb581-4f12-4c96-afbd-80a48d8e88e5",
+              "51bac172-b0ff-4e8d-814e-d42b0462706f"
+            ],
+            "firstIterationCandidates": [
+              {
+                "collateralOvershoot": 0,
+                "decision": "selected",
+                "deficitReduction": 1,
+                "dominantDeficitContribution": 0,
+                "dominantDeficitMuscleId": "core",
+                "dominantDeficitReduction": 0,
+                "dominantDeficitRemaining": 11,
+                "exerciseId": "8768cf61-6fa1-4fba-b7ee-eb490597f130",
+                "exerciseName": "Seated Leg Curl",
+                "fatigueCost": 2,
+                "kind": "expand",
+                "score": 96.313,
+                "setDelta": 1
+              },
+              {
+                "collateralOvershoot": 0,
+                "decision": "selected",
+                "deficitReduction": 1,
+                "dominantDeficitContribution": 0,
+                "dominantDeficitMuscleId": "core",
+                "dominantDeficitReduction": 0,
+                "dominantDeficitRemaining": 11,
+                "exerciseId": "0b4bb581-4f12-4c96-afbd-80a48d8e88e5",
+                "exerciseName": "Seated Calf Raise",
+                "fatigueCost": 1,
+                "kind": "expand",
+                "score": -727.657,
+                "setDelta": 1
+              },
+              {
+                "collateralOvershoot": 0,
+                "decision": "selected",
+                "deficitReduction": 1,
+                "dominantDeficitContribution": 0,
+                "dominantDeficitMuscleId": "core",
+                "dominantDeficitReduction": 0,
+                "dominantDeficitRemaining": 11,
+                "exerciseId": "279befa2-d7ce-49b2-8826-1a3f883c2ffc",
+                "exerciseName": "Standing Calf Raise",
+                "fatigueCost": 2,
+                "kind": "expand",
+                "score": -728.681,
+                "setDelta": 1
+              },
+              {
+                "decision": "rejected",
+                "dominantDeficitContribution": 0.2,
+                "dominantDeficitMuscleId": "core",
+                "dominantDeficitRemaining": 11,
+                "exerciseId": "6f1e89b9-8a41-403a-a4a0-a64f16c86352",
+                "exerciseName": "Barbell Back Squat",
+                "kind": "expand",
+                "rejectionReason": "working_set_cap_reached",
+                "score": null,
+                "setDelta": 1
+              },
+              {
+                "decision": "rejected",
+                "dominantDeficitContribution": 0,
+                "dominantDeficitMuscleId": "core",
+                "dominantDeficitRemaining": 11,
+                "exerciseId": "8a033827-4c7c-4292-8cdb-85267e696ff9",
+                "exerciseName": "Leg Press",
+                "kind": "expand",
+                "rejectionReason": "working_set_cap_reached",
+                "score": null,
+                "setDelta": 1
+              },
+              {
+                "decision": "rejected",
+                "dominantDeficitContribution": 0,
+                "dominantDeficitMuscleId": "core",
+                "dominantDeficitRemaining": 11,
+                "exerciseId": "d3d8a5ab-e636-41d6-97a9-04c50230b9e7",
+                "exerciseName": "Romanian Deadlift",
+                "kind": "expand",
+                "rejectionReason": "working_set_cap_reached",
+                "score": null,
+                "setDelta": 1
+              }
+            ],
+            "inventoryKind": "closure",
+            "reason": "closure_applied",
+            "used": true,
+            "winningAction": {
+              "collateralOvershoot": 0,
+              "deficitReduction": 1,
+              "exerciseId": "8768cf61-6fa1-4fba-b7ee-eb490597f130",
+              "exerciseName": "Seated Leg Curl",
+              "fatigueCost": 2,
+              "kind": "expand",
+              "score": 96.313,
+              "setDelta": 1
+            }
+          },
+          "exercises": {
+            "0b4bb581-4f12-4c96-afbd-80a48d8e88e5": {
+              "anchorBudgetDecision": {
+                "anchorConstrainedContinuousSetTarget": 5,
+                "anchorContributionPerSet": 1,
+                "anchorRemainingBeforeAssignment": 9,
+                "desiredSetTarget": 5,
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolumeBeforeAssignment": 5,
+                "planningAdjustedAnchorRemaining": 9,
+                "reservedEffectiveVolumeForRemainingRoleFixtures": 0,
+                "weeklyTarget": 14
+              },
+              "anchorUsed": {
+                "kind": "muscle",
+                "muscle": "calves"
+              },
+              "assignedSetCount": 5,
+              "closureSetDelta": 0,
+              "exerciseId": "0b4bb581-4f12-4c96-afbd-80a48d8e88e5",
+              "exerciseName": "Seated Calf Raise",
+              "isClosureAddition": false,
+              "isRoleFixture": true,
+              "isSetExpandedCarryover": false,
+              "overshootAdjustmentsApplied": {
+                "finalSetTarget": 5,
+                "initialSetTarget": 5,
+                "limitingMuscles": [],
+                "reductionsApplied": 0
+              },
+              "stimulusVector": {
+                "Calves": 1
+              }
+            },
+            "279befa2-d7ce-49b2-8826-1a3f883c2ffc": {
+              "anchorBudgetDecision": {
+                "anchorConstrainedContinuousSetTarget": 5,
+                "anchorContributionPerSet": 1,
+                "anchorRemainingBeforeAssignment": 14,
+                "desiredSetTarget": 5,
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolumeBeforeAssignment": 0,
+                "planningAdjustedAnchorRemaining": 14,
+                "reservedEffectiveVolumeForRemainingRoleFixtures": 0,
+                "weeklyTarget": 14
+              },
+              "anchorUsed": {
+                "kind": "muscle",
+                "muscle": "calves"
+              },
+              "assignedSetCount": 5,
+              "closureSetDelta": 0,
+              "exerciseId": "279befa2-d7ce-49b2-8826-1a3f883c2ffc",
+              "exerciseName": "Standing Calf Raise",
+              "isClosureAddition": false,
+              "isRoleFixture": true,
+              "isSetExpandedCarryover": false,
+              "overshootAdjustmentsApplied": {
+                "finalSetTarget": 5,
+                "initialSetTarget": 5,
+                "limitingMuscles": [],
+                "reductionsApplied": 0
+              },
+              "stimulusVector": {
+                "Calves": 1
+              }
+            },
+            "6f1e89b9-8a41-403a-a4a0-a64f16c86352": {
+              "anchorBudgetDecision": {
+                "anchorConstrainedContinuousSetTarget": 5,
+                "anchorContributionPerSet": 1,
+                "anchorRemainingBeforeAssignment": 18,
+                "desiredSetTarget": 5,
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolumeBeforeAssignment": 0,
+                "planningAdjustedAnchorRemaining": 18,
+                "reservedEffectiveVolumeForRemainingRoleFixtures": 0,
+                "weeklyTarget": 18
+              },
+              "anchorUsed": {
+                "kind": "muscle",
+                "muscle": "quads"
+              },
+              "assignedSetCount": 5,
+              "closureSetDelta": 0,
+              "exerciseId": "6f1e89b9-8a41-403a-a4a0-a64f16c86352",
+              "exerciseName": "Barbell Back Squat",
+              "isClosureAddition": false,
+              "isRoleFixture": true,
+              "isSetExpandedCarryover": false,
+              "overshootAdjustmentsApplied": {
+                "finalSetTarget": 5,
+                "initialSetTarget": 5,
+                "limitingMuscles": [],
+                "reductionsApplied": 0
+              },
+              "stimulusVector": {
+                "Adductors": 0.25,
+                "Core": 0.2,
+                "Glutes": 0.5,
+                "Quads": 1
+              }
+            },
+            "8768cf61-6fa1-4fba-b7ee-eb490597f130": {
+              "anchorBudgetDecision": {
+                "anchorConstrainedContinuousSetTarget": 5,
+                "anchorContributionPerSet": 1,
+                "anchorRemainingBeforeAssignment": 11,
+                "desiredSetTarget": 5,
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolumeBeforeAssignment": 5,
+                "planningAdjustedAnchorRemaining": 11,
+                "reservedEffectiveVolumeForRemainingRoleFixtures": 0,
+                "weeklyTarget": 16
+              },
+              "anchorUsed": {
+                "kind": "muscle",
+                "muscle": "hamstrings"
+              },
+              "assignedSetCount": 6,
+              "closureSetDelta": 1,
+              "exerciseId": "8768cf61-6fa1-4fba-b7ee-eb490597f130",
+              "exerciseName": "Seated Leg Curl",
+              "isClosureAddition": false,
+              "isRoleFixture": true,
+              "isSetExpandedCarryover": true,
+              "overshootAdjustmentsApplied": {
+                "finalSetTarget": 5,
+                "initialSetTarget": 5,
+                "limitingMuscles": [],
+                "reductionsApplied": 0
+              },
+              "stimulusVector": {
+                "Hamstrings": 1
+              }
+            },
+            "8a033827-4c7c-4292-8cdb-85267e696ff9": {
+              "anchorBudgetDecision": {
+                "anchorConstrainedContinuousSetTarget": 5,
+                "anchorContributionPerSet": 1,
+                "anchorRemainingBeforeAssignment": 13,
+                "desiredSetTarget": 5,
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolumeBeforeAssignment": 5,
+                "planningAdjustedAnchorRemaining": 13,
+                "reservedEffectiveVolumeForRemainingRoleFixtures": 0,
+                "weeklyTarget": 18
+              },
+              "anchorUsed": {
+                "kind": "muscle",
+                "muscle": "quads"
+              },
+              "assignedSetCount": 5,
+              "closureSetDelta": 0,
+              "exerciseId": "8a033827-4c7c-4292-8cdb-85267e696ff9",
+              "exerciseName": "Leg Press",
+              "isClosureAddition": false,
+              "isRoleFixture": true,
+              "isSetExpandedCarryover": false,
+              "overshootAdjustmentsApplied": {
+                "finalSetTarget": 5,
+                "initialSetTarget": 5,
+                "limitingMuscles": [],
+                "reductionsApplied": 0
+              },
+              "stimulusVector": {
+                "Adductors": 0.2,
+                "Glutes": 0.45,
+                "Quads": 1
+              }
+            },
+            "d3d8a5ab-e636-41d6-97a9-04c50230b9e7": {
+              "anchorBudgetDecision": {
+                "anchorConstrainedContinuousSetTarget": 5,
+                "anchorContributionPerSet": 1,
+                "anchorRemainingBeforeAssignment": 16,
+                "desiredSetTarget": 5,
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolumeBeforeAssignment": 0,
+                "planningAdjustedAnchorRemaining": 16,
+                "reservedEffectiveVolumeForRemainingRoleFixtures": 0,
+                "weeklyTarget": 16
+              },
+              "anchorUsed": {
+                "kind": "muscle",
+                "muscle": "hamstrings"
+              },
+              "assignedSetCount": 5,
+              "closureSetDelta": 0,
+              "exerciseId": "d3d8a5ab-e636-41d6-97a9-04c50230b9e7",
+              "exerciseName": "Romanian Deadlift",
+              "isClosureAddition": false,
+              "isRoleFixture": true,
+              "isSetExpandedCarryover": false,
+              "overshootAdjustmentsApplied": {
+                "finalSetTarget": 5,
+                "initialSetTarget": 5,
+                "limitingMuscles": [],
+                "reductionsApplied": 0
+              },
+              "stimulusVector": {
+                "Glutes": 0.75,
+                "Hamstrings": 1,
+                "Lower Back": 0.45
+              }
+            }
+          },
+          "muscles": {
+            "Abductors": {
+              "deficitAfterRoleBudgeting": 6,
+              "finalRemainingDeficit": 6,
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolumeAfterClosure": 0,
+              "plannedEffectiveVolumeAfterRoleBudgeting": 0,
+              "projectedEffectiveVolumeAfterClosure": 0,
+              "projectedEffectiveVolumeAfterRoleBudgeting": 0,
+              "weeklyTarget": 6
+            },
+            "Abs": {
+              "deficitAfterRoleBudgeting": 10,
+              "finalRemainingDeficit": 10,
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolumeAfterClosure": 0,
+              "plannedEffectiveVolumeAfterRoleBudgeting": 0,
+              "projectedEffectiveVolumeAfterClosure": 0,
+              "projectedEffectiveVolumeAfterRoleBudgeting": 0,
+              "weeklyTarget": 10
+            },
+            "Adductors": {
+              "deficitAfterRoleBudgeting": 5.75,
+              "finalRemainingDeficit": 5.75,
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolumeAfterClosure": 2.25,
+              "plannedEffectiveVolumeAfterRoleBudgeting": 2.25,
+              "projectedEffectiveVolumeAfterClosure": 2.25,
+              "projectedEffectiveVolumeAfterRoleBudgeting": 2.25,
+              "weeklyTarget": 8
+            },
+            "Calves": {
+              "deficitAfterRoleBudgeting": 4,
+              "finalRemainingDeficit": 4,
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolumeAfterClosure": 10,
+              "plannedEffectiveVolumeAfterRoleBudgeting": 10,
+              "projectedEffectiveVolumeAfterClosure": 10,
+              "projectedEffectiveVolumeAfterRoleBudgeting": 10,
+              "weeklyTarget": 14
+            },
+            "Core": {
+              "deficitAfterRoleBudgeting": 11,
+              "finalRemainingDeficit": 11,
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolumeAfterClosure": 1,
+              "plannedEffectiveVolumeAfterRoleBudgeting": 1,
+              "projectedEffectiveVolumeAfterClosure": 1,
+              "projectedEffectiveVolumeAfterRoleBudgeting": 1,
+              "weeklyTarget": 12
+            },
+            "Glutes": {
+              "deficitAfterRoleBudgeting": 0,
+              "finalRemainingDeficit": 0,
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolumeAfterClosure": 8.5,
+              "plannedEffectiveVolumeAfterRoleBudgeting": 8.5,
+              "projectedEffectiveVolumeAfterClosure": 8.5,
+              "projectedEffectiveVolumeAfterRoleBudgeting": 8.5,
+              "weeklyTarget": 8
+            },
+            "Hamstrings": {
+              "deficitAfterRoleBudgeting": 6,
+              "finalRemainingDeficit": 5,
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolumeAfterClosure": 11,
+              "plannedEffectiveVolumeAfterRoleBudgeting": 10,
+              "projectedEffectiveVolumeAfterClosure": 11,
+              "projectedEffectiveVolumeAfterRoleBudgeting": 10,
+              "weeklyTarget": 16
+            },
+            "Lower Back": {
+              "deficitAfterRoleBudgeting": 1.75,
+              "finalRemainingDeficit": 1.75,
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolumeAfterClosure": 2.25,
+              "plannedEffectiveVolumeAfterRoleBudgeting": 2.25,
+              "projectedEffectiveVolumeAfterClosure": 2.25,
+              "projectedEffectiveVolumeAfterRoleBudgeting": 2.25,
+              "weeklyTarget": 4
+            },
+            "Quads": {
+              "deficitAfterRoleBudgeting": 8,
+              "finalRemainingDeficit": 8,
+              "performedEffectiveVolumeBeforeSession": 0,
+              "plannedEffectiveVolumeAfterClosure": 10,
+              "plannedEffectiveVolumeAfterRoleBudgeting": 10,
+              "projectedEffectiveVolumeAfterClosure": 10,
+              "projectedEffectiveVolumeAfterRoleBudgeting": 10,
+              "weeklyTarget": 18
+            }
+          },
+          "opportunity": {
+            "closureInventoryKind": "closure",
+            "currentSessionMuscleOpportunity": {
+              "Abductors": {
+                "futureCapacity": 0,
+                "futureOpportunityUnits": 0,
+                "performedEffectiveVolumeBeforeSession": 0,
+                "requiredNow": 6,
+                "sessionOpportunityWeight": 1,
+                "startingDeficit": 6,
+                "urgencyMultiplier": 2.5,
+                "weeklyOpportunityUnits": 1,
+                "weeklyTarget": 6
+              },
+              "Abs": {
+                "futureCapacity": 0,
+                "futureOpportunityUnits": 0,
+                "performedEffectiveVolumeBeforeSession": 0,
+                "requiredNow": 10,
+                "sessionOpportunityWeight": 1,
+                "startingDeficit": 10,
+                "urgencyMultiplier": 2.5,
+                "weeklyOpportunityUnits": 1,
+                "weeklyTarget": 10
+              },
+              "Adductors": {
+                "futureCapacity": 0,
+                "futureOpportunityUnits": 0,
+                "performedEffectiveVolumeBeforeSession": 0,
+                "requiredNow": 8,
+                "sessionOpportunityWeight": 1,
+                "startingDeficit": 8,
+                "urgencyMultiplier": 2.5,
+                "weeklyOpportunityUnits": 1,
+                "weeklyTarget": 8
+              },
+              "Calves": {
+                "futureCapacity": 0,
+                "futureOpportunityUnits": 0,
+                "performedEffectiveVolumeBeforeSession": 0,
+                "requiredNow": 14,
+                "sessionOpportunityWeight": 1,
+                "startingDeficit": 14,
+                "urgencyMultiplier": 2.5,
+                "weeklyOpportunityUnits": 1,
+                "weeklyTarget": 14
+              },
+              "Core": {
+                "futureCapacity": 0,
+                "futureOpportunityUnits": 0,
+                "performedEffectiveVolumeBeforeSession": 0,
+                "requiredNow": 12,
+                "sessionOpportunityWeight": 1,
+                "startingDeficit": 12,
+                "urgencyMultiplier": 2.5,
+                "weeklyOpportunityUnits": 1,
+                "weeklyTarget": 12
+              },
+              "Glutes": {
+                "futureCapacity": 0,
+                "futureOpportunityUnits": 0,
+                "performedEffectiveVolumeBeforeSession": 0,
+                "requiredNow": 8,
+                "sessionOpportunityWeight": 1,
+                "startingDeficit": 8,
+                "urgencyMultiplier": 2.5,
+                "weeklyOpportunityUnits": 1,
+                "weeklyTarget": 8
+              },
+              "Hamstrings": {
+                "futureCapacity": 0,
+                "futureOpportunityUnits": 0,
+                "performedEffectiveVolumeBeforeSession": 0,
+                "requiredNow": 16,
+                "sessionOpportunityWeight": 1,
+                "startingDeficit": 16,
+                "urgencyMultiplier": 2.5,
+                "weeklyOpportunityUnits": 1,
+                "weeklyTarget": 16
+              },
+              "Lower Back": {
+                "futureCapacity": 0,
+                "futureOpportunityUnits": 0,
+                "performedEffectiveVolumeBeforeSession": 0,
+                "requiredNow": 4,
+                "sessionOpportunityWeight": 1,
+                "startingDeficit": 4,
+                "urgencyMultiplier": 2.5,
+                "weeklyOpportunityUnits": 1,
+                "weeklyTarget": 4
+              },
+              "Quads": {
+                "futureCapacity": 0,
+                "futureOpportunityUnits": 0,
+                "performedEffectiveVolumeBeforeSession": 0,
+                "requiredNow": 18,
+                "sessionOpportunityWeight": 1,
+                "startingDeficit": 18,
+                "urgencyMultiplier": 2.5,
+                "weeklyOpportunityUnits": 1,
+                "weeklyTarget": 18
+              }
+            },
+            "opportunityKey": "legs",
+            "planningInventoryKind": "standard",
+            "remainingWeek": {
+              "futureCapacityFactor": 0.765,
+              "futureSlotCounts": {
+                "pull": 1,
+                "push": 1
+              },
+              "futureSlots": [
+                "pull",
+                "push"
+              ]
+            },
+            "sessionCharacter": "lower",
+            "sessionIntent": "legs"
+          },
+          "outcome": {
+            "deficitsAfterBaseSession": {
+              "Abductors": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 0,
+                "projectedEffectiveVolume": 0,
+                "remainingDeficit": 6,
+                "weeklyTarget": 6
+              },
+              "Abs": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 0,
+                "projectedEffectiveVolume": 0,
+                "remainingDeficit": 10,
+                "weeklyTarget": 10
+              },
+              "Adductors": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 2.25,
+                "projectedEffectiveVolume": 2.25,
+                "remainingDeficit": 5.75,
+                "weeklyTarget": 8
+              },
+              "Calves": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 10,
+                "projectedEffectiveVolume": 10,
+                "remainingDeficit": 4,
+                "weeklyTarget": 14
+              },
+              "Core": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 1,
+                "projectedEffectiveVolume": 1,
+                "remainingDeficit": 11,
+                "weeklyTarget": 12
+              },
+              "Glutes": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 8.5,
+                "projectedEffectiveVolume": 8.5,
+                "remainingDeficit": 0,
+                "weeklyTarget": 8
+              },
+              "Hamstrings": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 10,
+                "projectedEffectiveVolume": 10,
+                "remainingDeficit": 6,
+                "weeklyTarget": 16
+              },
+              "Lower Back": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 2.25,
+                "projectedEffectiveVolume": 2.25,
+                "remainingDeficit": 1.75,
+                "weeklyTarget": 4
+              },
+              "Quads": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 10,
+                "projectedEffectiveVolume": 10,
+                "remainingDeficit": 8,
+                "weeklyTarget": 18
+              }
+            },
+            "deficitsAfterClosure": {
+              "Abductors": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 0,
+                "projectedEffectiveVolume": 0,
+                "remainingDeficit": 6,
+                "weeklyTarget": 6
+              },
+              "Abs": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 0,
+                "projectedEffectiveVolume": 0,
+                "remainingDeficit": 10,
+                "weeklyTarget": 10
+              },
+              "Adductors": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 2.25,
+                "projectedEffectiveVolume": 2.25,
+                "remainingDeficit": 5.75,
+                "weeklyTarget": 8
+              },
+              "Calves": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 10,
+                "projectedEffectiveVolume": 10,
+                "remainingDeficit": 4,
+                "weeklyTarget": 14
+              },
+              "Core": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 1,
+                "projectedEffectiveVolume": 1,
+                "remainingDeficit": 11,
+                "weeklyTarget": 12
+              },
+              "Glutes": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 8.5,
+                "projectedEffectiveVolume": 8.5,
+                "remainingDeficit": 0,
+                "weeklyTarget": 8
+              },
+              "Hamstrings": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 11,
+                "projectedEffectiveVolume": 11,
+                "remainingDeficit": 5,
+                "weeklyTarget": 16
+              },
+              "Lower Back": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 2.25,
+                "projectedEffectiveVolume": 2.25,
+                "remainingDeficit": 1.75,
+                "weeklyTarget": 4
+              },
+              "Quads": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 10,
+                "projectedEffectiveVolume": 10,
+                "remainingDeficit": 8,
+                "weeklyTarget": 18
+              }
+            },
+            "deficitsAfterSupplementation": {
+              "Abductors": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 0,
+                "projectedEffectiveVolume": 0,
+                "remainingDeficit": 6,
+                "weeklyTarget": 6
+              },
+              "Abs": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 0,
+                "projectedEffectiveVolume": 0,
+                "remainingDeficit": 10,
+                "weeklyTarget": 10
+              },
+              "Adductors": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 2.25,
+                "projectedEffectiveVolume": 2.25,
+                "remainingDeficit": 5.75,
+                "weeklyTarget": 8
+              },
+              "Calves": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 10,
+                "projectedEffectiveVolume": 10,
+                "remainingDeficit": 4,
+                "weeklyTarget": 14
+              },
+              "Core": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 1,
+                "projectedEffectiveVolume": 1,
+                "remainingDeficit": 11,
+                "weeklyTarget": 12
+              },
+              "Glutes": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 8.5,
+                "projectedEffectiveVolume": 8.5,
+                "remainingDeficit": 0,
+                "weeklyTarget": 8
+              },
+              "Hamstrings": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 10,
+                "projectedEffectiveVolume": 10,
+                "remainingDeficit": 6,
+                "weeklyTarget": 16
+              },
+              "Lower Back": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 2.25,
+                "projectedEffectiveVolume": 2.25,
+                "remainingDeficit": 1.75,
+                "weeklyTarget": 4
+              },
+              "Quads": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 10,
+                "projectedEffectiveVolume": 10,
+                "remainingDeficit": 8,
+                "weeklyTarget": 18
+              }
+            },
+            "keyTradeoffs": [
+              {
+                "code": "closure_expand",
+                "exerciseId": "8768cf61-6fa1-4fba-b7ee-eb490597f130",
+                "layer": "closure",
+                "message": "Seated Leg Curl won closure with expand (+1 set)."
+              },
+              {
+                "code": "unresolved_deficit_remaining",
+                "layer": "closure",
+                "message": "Abductors still has unresolved weekly deficit after closure.",
+                "muscle": "Abductors"
+              },
+              {
+                "code": "unresolved_deficit_remaining",
+                "layer": "closure",
+                "message": "Abs still has unresolved weekly deficit after closure.",
+                "muscle": "Abs"
+              },
+              {
+                "code": "unresolved_deficit_remaining",
+                "layer": "closure",
+                "message": "Adductors still has unresolved weekly deficit after closure.",
+                "muscle": "Adductors"
+              },
+              {
+                "code": "unresolved_deficit_remaining",
+                "layer": "closure",
+                "message": "Calves still has unresolved weekly deficit after closure.",
+                "muscle": "Calves"
+              },
+              {
+                "code": "unresolved_deficit_remaining",
+                "layer": "closure",
+                "message": "Core still has unresolved weekly deficit after closure.",
+                "muscle": "Core"
+              },
+              {
+                "code": "unresolved_deficit_remaining",
+                "layer": "closure",
+                "message": "Hamstrings still has unresolved weekly deficit after closure.",
+                "muscle": "Hamstrings"
+              },
+              {
+                "code": "unresolved_deficit_remaining",
+                "layer": "closure",
+                "message": "Lower Back still has unresolved weekly deficit after closure.",
+                "muscle": "Lower Back"
+              },
+              {
+                "code": "unresolved_deficit_remaining",
+                "layer": "closure",
+                "message": "Quads still has unresolved weekly deficit after closure.",
+                "muscle": "Quads"
+              }
+            ],
+            "layersUsed": [
+              "anchor",
+              "closure"
+            ],
+            "startingDeficits": {
+              "Abductors": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 0,
+                "projectedEffectiveVolume": 0,
+                "remainingDeficit": 6,
+                "weeklyTarget": 6
+              },
+              "Abs": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 0,
+                "projectedEffectiveVolume": 0,
+                "remainingDeficit": 10,
+                "weeklyTarget": 10
+              },
+              "Adductors": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 0,
+                "projectedEffectiveVolume": 0,
+                "remainingDeficit": 8,
+                "weeklyTarget": 8
+              },
+              "Calves": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 0,
+                "projectedEffectiveVolume": 0,
+                "remainingDeficit": 14,
+                "weeklyTarget": 14
+              },
+              "Core": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 0,
+                "projectedEffectiveVolume": 0,
+                "remainingDeficit": 12,
+                "weeklyTarget": 12
+              },
+              "Glutes": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 0,
+                "projectedEffectiveVolume": 0,
+                "remainingDeficit": 8,
+                "weeklyTarget": 8
+              },
+              "Hamstrings": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 0,
+                "projectedEffectiveVolume": 0,
+                "remainingDeficit": 16,
+                "weeklyTarget": 16
+              },
+              "Lower Back": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 0,
+                "projectedEffectiveVolume": 0,
+                "remainingDeficit": 4,
+                "weeklyTarget": 4
+              },
+              "Quads": {
+                "performedEffectiveVolumeBeforeSession": 0,
+                "plannedEffectiveVolume": 0,
+                "projectedEffectiveVolume": 0,
+                "remainingDeficit": 18,
+                "weeklyTarget": 18
+              }
+            },
+            "unresolvedDeficits": [
+              "Abductors",
+              "Abs",
+              "Adductors",
+              "Calves",
+              "Core",
+              "Hamstrings",
+              "Lower Back",
+              "Quads"
+            ]
+          },
+          "rescue": {
+            "candidates": [],
+            "eligible": false,
+            "reason": "rescue_not_requested",
+            "rescueOnlyCandidateCount": 0,
+            "rescueOnlyExerciseIds": [],
+            "selectedExerciseIds": [],
+            "used": false
+          },
+          "standard": {
+            "candidateCount": 26,
+            "candidates": [
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "53e45dd8-6994-4ac9-bf06-33c959911b59",
+                "exerciseName": "Back Extension (45 Degree)",
+                "inventoryKind": "standard",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "51bac172-b0ff-4e8d-814e-d42b0462706f",
+                "exerciseName": "Barbell Hip Thrust",
+                "inventoryKind": "standard",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "247252f0-7e99-43ea-9db1-a590ffa60319",
+                "exerciseName": "Belt Squat",
+                "inventoryKind": "standard",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "80b87827-ca4d-49f2-9bf2-659c196c2001",
+                "exerciseName": "Bulgarian Split Squat",
+                "inventoryKind": "standard",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "e9f263fc-f659-4b8b-8068-062540147691",
+                "exerciseName": "Cable Hip Abduction",
+                "inventoryKind": "standard",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "837ee0a9-a0a7-480c-8689-7606e900d4b1",
+                "exerciseName": "Cable Pull-Through",
+                "inventoryKind": "standard",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "026272ed-4383-4c94-87db-ca81eca40d9a",
+                "exerciseName": "Conventional Deadlift",
+                "inventoryKind": "standard",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "d713e6bf-c04b-433e-96b8-b9bdca88619e",
+                "exerciseName": "Front Squat",
+                "inventoryKind": "standard",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "902593ce-581a-42bb-b78b-356d480df4bf",
+                "exerciseName": "Glute Bridge",
+                "inventoryKind": "standard",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "9e1c1223-d803-4ed4-ae1b-7dae631e7721",
+                "exerciseName": "Goblet Squat",
+                "inventoryKind": "standard",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "2b523ecb-dfda-4786-9d53-1fd2ba65b452",
+                "exerciseName": "Good Morning",
+                "inventoryKind": "standard",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "7d710086-dfff-432e-a12c-e1e52eb466f7",
+                "exerciseName": "Hack Squat",
+                "inventoryKind": "standard",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "bec6b501-717e-43c9-ba42-3cc2c0251675",
+                "exerciseName": "Hip Abduction Machine",
+                "inventoryKind": "standard",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "5e88324d-5baf-4c67-9c9e-48a4876e8990",
+                "exerciseName": "Hip Adduction Machine",
+                "inventoryKind": "standard",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "83b75a88-c418-4638-909f-878a6502f92b",
+                "exerciseName": "Leg Extension",
+                "inventoryKind": "standard",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "ca99049f-333e-4c55-8b74-8e175d2d11eb",
+                "exerciseName": "Leg Press Calf Raise",
+                "inventoryKind": "standard",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "04b0f96f-8887-438e-afe8-e7e2a6432689",
+                "exerciseName": "Lying Leg Curl",
+                "inventoryKind": "standard",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "c23dafbd-26d2-4107-832c-13af47d5d960",
+                "exerciseName": "Nordic Hamstring Curl",
+                "inventoryKind": "standard",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "89710048-ca52-494e-ba3d-c8535803514d",
+                "exerciseName": "Reverse Hyperextension",
+                "inventoryKind": "standard",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "6bc6eb9d-871e-41a0-a786-a58801bf6ddd",
+                "exerciseName": "Reverse Lunge",
+                "inventoryKind": "standard",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "b5298a95-7eb0-4056-ad2f-3bffd5dd7906",
+                "exerciseName": "Single-Leg Hip Thrust",
+                "inventoryKind": "standard",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "8cfc4ddb-a3c5-4cd4-9072-08da5e5098e9",
+                "exerciseName": "Sissy Squat",
+                "inventoryKind": "standard",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "5f35a3af-3be5-4260-8a29-f6c3b943e9ae",
+                "exerciseName": "Stiff-Legged Deadlift",
+                "inventoryKind": "standard",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "6c7b0b05-d434-4237-8b90-962a1a693834",
+                "exerciseName": "Sumo Deadlift",
+                "inventoryKind": "standard",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "de5e93ce-a784-4c4b-93c1-6f464ddfab2f",
+                "exerciseName": "Trap Bar Deadlift",
+                "inventoryKind": "standard",
+                "selected": false
+              },
+              {
+                "eligibilityReason": "eligible_by_standard_session_alignment",
+                "exerciseId": "98ff706c-1c87-4404-91c2-8e7cb106fdda",
+                "exerciseName": "Walking Lunge",
+                "inventoryKind": "standard",
+                "selected": false
+              }
+            ],
+            "inventoryKind": "standard",
+            "reason": "standard_inventory_not_used",
+            "selectedExerciseIds": [],
+            "used": false
+          },
+          "supplemental": {
+            "allowed": true,
+            "candidateCount": 0,
+            "deficitsTargeted": [],
+            "reason": "anchor_selection_already_satisfies_session_floor",
+            "selectedExerciseIds": [],
+            "used": false
+          }
+        },
+        "plannerDiagnosticsMode": "debug",
+        "readiness": {
+          "fatigueScoreOverall": null,
+          "intensityScaling": {
+            "applied": false,
+            "exerciseIds": [],
+            "scaledDownCount": 0,
+            "scaledUpCount": 0
+          },
+          "signalAgeHours": null,
+          "wasAutoregulated": false
+        },
+        "sorenessSuppressedMuscles": [],
+        "version": 1
+      },
+      "volumePlanByMuscle": {
+        "Abductors": {
+          "delta": 6,
+          "planned": 0,
+          "target": 6
+        },
+        "Abs": {
+          "delta": 10,
+          "planned": 0,
+          "target": 10
+        },
+        "Adductors": {
+          "delta": 5.8,
+          "planned": 2.3,
+          "target": 8
+        },
+        "Biceps": {
+          "delta": 14,
+          "planned": 0,
+          "target": 14
+        },
+        "Calves": {
+          "delta": 4,
+          "planned": 10,
+          "target": 14
+        },
+        "Chest": {
+          "delta": 16,
+          "planned": 0,
+          "target": 16
+        },
+        "Core": {
+          "delta": 11,
+          "planned": 1,
+          "target": 12
+        },
+        "Forearms": {
+          "delta": 6,
+          "planned": 0,
+          "target": 6
+        },
+        "Front Delts": {
+          "delta": 7,
+          "planned": 0,
+          "target": 7
+        },
+        "Glutes": {
+          "delta": -0.5,
+          "planned": 8.5,
+          "target": 8
+        },
+        "Hamstrings": {
+          "delta": 5,
+          "planned": 11,
+          "target": 16
+        },
+        "Lats": {
+          "delta": 16,
+          "planned": 0,
+          "target": 16
+        },
+        "Lower Back": {
+          "delta": 1.8,
+          "planned": 2.3,
+          "target": 4
+        },
+        "Quads": {
+          "delta": 8,
+          "planned": 10,
+          "target": 18
+        },
+        "Rear Delts": {
+          "delta": 12,
+          "planned": 0,
+          "target": 12
+        },
+        "Side Delts": {
+          "delta": 19,
+          "planned": 0,
+          "target": 19
+        },
+        "Triceps": {
+          "delta": 12,
+          "planned": 0,
+          "target": 12
+        },
+        "Upper Back": {
+          "delta": 14,
+          "planned": 0,
+          "target": 14
+        }
+      }
+    },
+    "selectionMode": "INTENT",
+    "sessionIntent": "legs",
+    "sraWarnings": [
+      {
+        "lastTrainedHoursAgo": 70,
+        "muscle": "Quads",
+        "recoveryPercent": 97,
+        "sraWindowHours": 72
+      },
+      {
+        "lastTrainedHoursAgo": 70,
+        "muscle": "Glutes",
+        "recoveryPercent": 97,
+        "sraWindowHours": 72
+      },
+      {
+        "lastTrainedHoursAgo": 70,
+        "muscle": "Hamstrings",
+        "recoveryPercent": 97,
+        "sraWindowHours": 72
+      }
+    ],
+    "substitutions": [],
+    "volumePlanByMuscle": {
+      "Abductors": {
+        "delta": 6,
+        "planned": 0,
+        "target": 6
+      },
+      "Abs": {
+        "delta": 10,
+        "planned": 0,
+        "target": 10
+      },
+      "Adductors": {
+        "delta": 5.8,
+        "planned": 2.3,
+        "target": 8
+      },
+      "Biceps": {
+        "delta": 14,
+        "planned": 0,
+        "target": 14
+      },
+      "Calves": {
+        "delta": 4,
+        "planned": 10,
+        "target": 14
+      },
+      "Chest": {
+        "delta": 16,
+        "planned": 0,
+        "target": 16
+      },
+      "Core": {
+        "delta": 11,
+        "planned": 1,
+        "target": 12
+      },
+      "Forearms": {
+        "delta": 6,
+        "planned": 0,
+        "target": 6
+      },
+      "Front Delts": {
+        "delta": 7,
+        "planned": 0,
+        "target": 7
+      },
+      "Glutes": {
+        "delta": -0.5,
+        "planned": 8.5,
+        "target": 8
+      },
+      "Hamstrings": {
+        "delta": 5,
+        "planned": 11,
+        "target": 16
+      },
+      "Lats": {
+        "delta": 16,
+        "planned": 0,
+        "target": 16
+      },
+      "Lower Back": {
+        "delta": 1.8,
+        "planned": 2.3,
+        "target": 4
+      },
+      "Quads": {
+        "delta": 8,
+        "planned": 10,
+        "target": 18
+      },
+      "Rear Delts": {
+        "delta": 12,
+        "planned": 0,
+        "target": 12
+      },
+      "Side Delts": {
+        "delta": 19,
+        "planned": 0,
+        "target": 19
+      },
+      "Triceps": {
+        "delta": 12,
+        "planned": 0,
+        "target": 12
+      },
+      "Upper Back": {
+        "delta": 14,
+        "planned": 0,
+        "target": 14
+      }
+    },
+    "workout": {
+      "accessories": [
+        {
+          "exercise": {
+            "contraindications": {
+              "knee": true,
+              "low_back": true
+            },
+            "difficulty": "beginner",
+            "equipment": [
+              "machine"
+            ],
+            "fatigueCost": 3,
+            "id": "8a033827-4c7c-4292-8cdb-85267e696ff9",
+            "isCompound": true,
+            "isMainLiftEligible": true,
+            "isUnilateral": false,
+            "jointStress": "medium",
+            "lengthPositionScore": 4,
+            "movementPatterns": [
+              "squat"
+            ],
+            "muscleSraHours": {
+              "Adductors": 48,
+              "Glutes": 72,
+              "Hamstrings": 72,
+              "Quads": 72
+            },
+            "name": "Leg Press",
+            "primaryMuscles": [
+              "Quads",
+              "Glutes"
+            ],
+            "repRangeMax": 12,
+            "repRangeMin": 6,
+            "secondaryMuscles": [
+              "Hamstrings",
+              "Adductors"
+            ],
+            "sfrScore": 4,
+            "splitTags": [
+              "legs"
+            ],
+            "stimulusBias": [
+              "mechanical"
+            ],
+            "stimulusProfile": {
+              "adductors": 0.2,
+              "glutes": 0.45,
+              "quads": 1
+            },
+            "timePerSetSec": 50
+          },
+          "id": "c927cc5c-4133-4c5d-acfd-d17a0573bbf1",
+          "isMainLift": false,
+          "orderIndex": 1,
+          "role": "accessory",
+          "sets": [
+            {
+              "restSeconds": 150,
+              "role": "accessory",
+              "setIndex": 1,
+              "targetLoad": 140,
+              "targetRepRange": {
+                "max": 12,
+                "min": 10
+              },
+              "targetReps": 10,
+              "targetRpe": 9.5
+            },
+            {
+              "restSeconds": 150,
+              "role": "accessory",
+              "setIndex": 2,
+              "targetLoad": 140,
+              "targetRepRange": {
+                "max": 12,
+                "min": 10
+              },
+              "targetReps": 10,
+              "targetRpe": 9.5
+            },
+            {
+              "restSeconds": 150,
+              "role": "accessory",
+              "setIndex": 3,
+              "targetLoad": 140,
+              "targetRepRange": {
+                "max": 12,
+                "min": 10
+              },
+              "targetReps": 10,
+              "targetRpe": 9.5
+            },
+            {
+              "restSeconds": 150,
+              "role": "accessory",
+              "setIndex": 4,
+              "targetLoad": 140,
+              "targetRepRange": {
+                "max": 12,
+                "min": 10
+              },
+              "targetReps": 10,
+              "targetRpe": 9.5
+            },
+            {
+              "restSeconds": 150,
+              "role": "accessory",
+              "setIndex": 5,
+              "targetLoad": 140,
+              "targetRepRange": {
+                "max": 12,
+                "min": 10
+              },
+              "targetReps": 10,
+              "targetRpe": 9.5
+            }
+          ]
+        },
+        {
+          "exercise": {
+            "contraindications": {
+              "low_back": true
+            },
+            "difficulty": "beginner",
+            "equipment": [
+              "dumbbell",
+              "barbell"
+            ],
+            "fatigueCost": 3,
+            "id": "d3d8a5ab-e636-41d6-97a9-04c50230b9e7",
+            "isCompound": true,
+            "isMainLiftEligible": true,
+            "isUnilateral": false,
+            "jointStress": "medium",
+            "lengthPositionScore": 5,
+            "movementPatterns": [
+              "hinge"
+            ],
+            "muscleSraHours": {
+              "Forearms": 36,
+              "Glutes": 72,
+              "Hamstrings": 72,
+              "Lower Back": 72
+            },
+            "name": "Romanian Deadlift",
+            "primaryMuscles": [
+              "Hamstrings",
+              "Glutes"
+            ],
+            "repRangeMax": 10,
+            "repRangeMin": 3,
+            "secondaryMuscles": [
+              "Lower Back",
+              "Forearms"
+            ],
+            "sfrScore": 4,
+            "splitTags": [
+              "legs"
+            ],
+            "stimulusBias": [
+              "stretch",
+              "mechanical"
+            ],
+            "stimulusProfile": {
+              "glutes": 0.75,
+              "hamstrings": 1,
+              "lower_back": 0.45
+            },
+            "timePerSetSec": 75
+          },
+          "id": "b2a6c8b3-c403-48fc-b0ae-6528289b386b",
+          "isMainLift": false,
+          "orderIndex": 2,
+          "role": "accessory",
+          "sets": [
+            {
+              "restSeconds": 150,
+              "role": "accessory",
+              "setIndex": 1,
+              "targetLoad": 45,
+              "targetRepRange": {
+                "max": 10,
+                "min": 8
+              },
+              "targetReps": 8,
+              "targetRpe": 9.5
+            },
+            {
+              "restSeconds": 150,
+              "role": "accessory",
+              "setIndex": 2,
+              "targetLoad": 45,
+              "targetRepRange": {
+                "max": 10,
+                "min": 8
+              },
+              "targetReps": 8,
+              "targetRpe": 9.5
+            },
+            {
+              "restSeconds": 150,
+              "role": "accessory",
+              "setIndex": 3,
+              "targetLoad": 45,
+              "targetRepRange": {
+                "max": 10,
+                "min": 8
+              },
+              "targetReps": 8,
+              "targetRpe": 9.5
+            },
+            {
+              "restSeconds": 150,
+              "role": "accessory",
+              "setIndex": 4,
+              "targetLoad": 45,
+              "targetRepRange": {
+                "max": 10,
+                "min": 8
+              },
+              "targetReps": 8,
+              "targetRpe": 9.5
+            },
+            {
+              "restSeconds": 150,
+              "role": "accessory",
+              "setIndex": 5,
+              "targetLoad": 45,
+              "targetRepRange": {
+                "max": 10,
+                "min": 8
+              },
+              "targetReps": 8,
+              "targetRpe": 9.5
+            }
+          ]
+        },
+        {
+          "exercise": {
+            "difficulty": "beginner",
+            "equipment": [
+              "machine"
+            ],
+            "fatigueCost": 2,
+            "id": "8768cf61-6fa1-4fba-b7ee-eb490597f130",
+            "isCompound": false,
+            "isMainLiftEligible": false,
+            "isUnilateral": false,
+            "jointStress": "low",
+            "lengthPositionScore": 5,
+            "movementPatterns": [
+              "flexion"
+            ],
+            "muscleSraHours": {
+              "Hamstrings": 72
+            },
+            "name": "Seated Leg Curl",
+            "primaryMuscles": [
+              "Hamstrings"
+            ],
+            "repRangeMax": 20,
+            "repRangeMin": 10,
+            "secondaryMuscles": [],
+            "sfrScore": 5,
+            "splitTags": [
+              "legs"
+            ],
+            "stimulusBias": [
+              "stretch",
+              "metabolic"
+            ],
+            "stimulusProfile": {
+              "hamstrings": 1
+            },
+            "timePerSetSec": 40
+          },
+          "id": "99793707-d31c-4be4-8bc1-28dd11b5609a",
+          "isMainLift": false,
+          "orderIndex": 3,
+          "role": "accessory",
+          "sets": [
+            {
+              "restSeconds": 90,
+              "role": "accessory",
+              "setIndex": 1,
+              "targetLoad": 60,
+              "targetRepRange": {
+                "max": 15,
+                "min": 10
+              },
+              "targetReps": 10,
+              "targetRpe": 9.5
+            },
+            {
+              "restSeconds": 90,
+              "role": "accessory",
+              "setIndex": 2,
+              "targetLoad": 60,
+              "targetRepRange": {
+                "max": 15,
+                "min": 10
+              },
+              "targetReps": 10,
+              "targetRpe": 9.5
+            },
+            {
+              "restSeconds": 90,
+              "role": "accessory",
+              "setIndex": 3,
+              "targetLoad": 60,
+              "targetRepRange": {
+                "max": 15,
+                "min": 10
+              },
+              "targetReps": 10,
+              "targetRpe": 9.5
+            },
+            {
+              "restSeconds": 90,
+              "role": "accessory",
+              "setIndex": 4,
+              "targetLoad": 60,
+              "targetRepRange": {
+                "max": 15,
+                "min": 10
+              },
+              "targetReps": 10,
+              "targetRpe": 9.5
+            },
+            {
+              "restSeconds": 90,
+              "role": "accessory",
+              "setIndex": 5,
+              "targetLoad": 60,
+              "targetRepRange": {
+                "max": 15,
+                "min": 10
+              },
+              "targetReps": 10,
+              "targetRpe": 9.5
+            },
+            {
+              "restSeconds": 90,
+              "role": "accessory",
+              "setIndex": 6,
+              "targetLoad": 60,
+              "targetRepRange": {
+                "max": 15,
+                "min": 10
+              },
+              "targetReps": 10,
+              "targetRpe": 9.5
+            }
+          ]
+        },
+        {
+          "exercise": {
+            "difficulty": "beginner",
+            "equipment": [
+              "machine",
+              "barbell"
+            ],
+            "fatigueCost": 2,
+            "id": "279befa2-d7ce-49b2-8826-1a3f883c2ffc",
+            "isCompound": false,
+            "isMainLiftEligible": false,
+            "isUnilateral": false,
+            "jointStress": "low",
+            "lengthPositionScore": 5,
+            "movementPatterns": [
+              "isolation"
+            ],
+            "muscleSraHours": {
+              "Calves": 36
+            },
+            "name": "Standing Calf Raise",
+            "primaryMuscles": [
+              "Calves"
+            ],
+            "repRangeMax": 20,
+            "repRangeMin": 10,
+            "secondaryMuscles": [],
+            "sfrScore": 4,
+            "splitTags": [
+              "legs"
+            ],
+            "stimulusBias": [
+              "stretch",
+              "metabolic"
+            ],
+            "stimulusProfile": {
+              "calves": 1
+            },
+            "timePerSetSec": 35
+          },
+          "id": "3f685564-da26-4399-9ae4-7f0f8f125fde",
+          "isMainLift": false,
+          "orderIndex": 4,
+          "role": "accessory",
+          "sets": [
+            {
+              "restSeconds": 90,
+              "role": "accessory",
+              "setIndex": 1,
+              "targetLoad": 90,
+              "targetRepRange": {
+                "max": 15,
+                "min": 10
+              },
+              "targetReps": 10,
+              "targetRpe": 9.5
+            },
+            {
+              "restSeconds": 90,
+              "role": "accessory",
+              "setIndex": 2,
+              "targetLoad": 90,
+              "targetRepRange": {
+                "max": 15,
+                "min": 10
+              },
+              "targetReps": 10,
+              "targetRpe": 9.5
+            },
+            {
+              "restSeconds": 90,
+              "role": "accessory",
+              "setIndex": 3,
+              "targetLoad": 90,
+              "targetRepRange": {
+                "max": 15,
+                "min": 10
+              },
+              "targetReps": 10,
+              "targetRpe": 9.5
+            },
+            {
+              "restSeconds": 90,
+              "role": "accessory",
+              "setIndex": 4,
+              "targetLoad": 90,
+              "targetRepRange": {
+                "max": 15,
+                "min": 10
+              },
+              "targetReps": 10,
+              "targetRpe": 9.5
+            },
+            {
+              "restSeconds": 90,
+              "role": "accessory",
+              "setIndex": 5,
+              "targetLoad": 90,
+              "targetRepRange": {
+                "max": 15,
+                "min": 10
+              },
+              "targetReps": 10,
+              "targetRpe": 9.5
+            }
+          ]
+        },
+        {
+          "exercise": {
+            "difficulty": "beginner",
+            "equipment": [
+              "machine"
+            ],
+            "fatigueCost": 1,
+            "id": "0b4bb581-4f12-4c96-afbd-80a48d8e88e5",
+            "isCompound": false,
+            "isMainLiftEligible": false,
+            "isUnilateral": false,
+            "jointStress": "low",
+            "lengthPositionScore": 5,
+            "movementPatterns": [
+              "isolation"
+            ],
+            "muscleSraHours": {
+              "Calves": 36
+            },
+            "name": "Seated Calf Raise",
+            "primaryMuscles": [
+              "Calves"
+            ],
+            "repRangeMax": 20,
+            "repRangeMin": 10,
+            "secondaryMuscles": [],
+            "sfrScore": 5,
+            "splitTags": [
+              "legs"
+            ],
+            "stimulusBias": [
+              "stretch",
+              "metabolic"
+            ],
+            "stimulusProfile": {
+              "calves": 1
+            },
+            "timePerSetSec": 40
+          },
+          "id": "42d00c29-f48c-4d2f-b76a-9623054bf89e",
+          "isMainLift": false,
+          "orderIndex": 5,
+          "role": "accessory",
+          "sets": [
+            {
+              "restSeconds": 90,
+              "role": "accessory",
+              "setIndex": 1,
+              "targetLoad": 50,
+              "targetRepRange": {
+                "max": 15,
+                "min": 10
+              },
+              "targetReps": 10,
+              "targetRpe": 9.5
+            },
+            {
+              "restSeconds": 90,
+              "role": "accessory",
+              "setIndex": 2,
+              "targetLoad": 50,
+              "targetRepRange": {
+                "max": 15,
+                "min": 10
+              },
+              "targetReps": 10,
+              "targetRpe": 9.5
+            },
+            {
+              "restSeconds": 90,
+              "role": "accessory",
+              "setIndex": 3,
+              "targetLoad": 50,
+              "targetRepRange": {
+                "max": 15,
+                "min": 10
+              },
+              "targetReps": 10,
+              "targetRpe": 9.5
+            },
+            {
+              "restSeconds": 90,
+              "role": "accessory",
+              "setIndex": 4,
+              "targetLoad": 50,
+              "targetRepRange": {
+                "max": 15,
+                "min": 10
+              },
+              "targetReps": 10,
+              "targetRpe": 9.5
+            },
+            {
+              "restSeconds": 90,
+              "role": "accessory",
+              "setIndex": 5,
+              "targetLoad": 50,
+              "targetRepRange": {
+                "max": 15,
+                "min": 10
+              },
+              "targetReps": 10,
+              "targetRpe": 9.5
+            }
+          ]
+        }
+      ],
+      "estimatedMinutes": 83,
+      "id": "e50a07a0-f06c-4463-ac00-e77992d44995",
+      "mainLifts": [
+        {
+          "exercise": {
+            "contraindications": {
+              "knee": true,
+              "low_back": true
+            },
+            "difficulty": "intermediate",
+            "equipment": [
+              "barbell",
+              "rack"
+            ],
+            "fatigueCost": 5,
+            "id": "6f1e89b9-8a41-403a-a4a0-a64f16c86352",
+            "isCompound": true,
+            "isMainLiftEligible": true,
+            "isUnilateral": false,
+            "jointStress": "high",
+            "lengthPositionScore": 3,
+            "movementPatterns": [
+              "squat"
+            ],
+            "muscleSraHours": {
+              "Adductors": 48,
+              "Core": 36,
+              "Glutes": 72,
+              "Hamstrings": 72,
+              "Lower Back": 72,
+              "Quads": 72
+            },
+            "name": "Barbell Back Squat",
+            "primaryMuscles": [
+              "Quads",
+              "Glutes"
+            ],
+            "repRangeMax": 8,
+            "repRangeMin": 3,
+            "secondaryMuscles": [
+              "Hamstrings",
+              "Core",
+              "Lower Back",
+              "Adductors"
+            ],
+            "sfrScore": 3,
+            "splitTags": [
+              "legs"
+            ],
+            "stimulusBias": [
+              "mechanical",
+              "stretch"
+            ],
+            "stimulusProfile": {
+              "adductors": 0.25,
+              "core": 0.2,
+              "glutes": 0.5,
+              "quads": 1
+            },
+            "timePerSetSec": 75
+          },
+          "id": "ad93c0bc-03b4-4efc-85ef-df17729002df",
+          "isMainLift": true,
+          "notes": "Primary movement",
+          "orderIndex": 0,
+          "role": "main",
+          "sets": [
+            {
+              "restSeconds": 180,
+              "role": "main",
+              "setIndex": 1,
+              "targetLoad": 135,
+              "targetReps": 6,
+              "targetRpe": 9.5
+            },
+            {
+              "restSeconds": 180,
+              "role": "main",
+              "setIndex": 2,
+              "targetLoad": 120,
+              "targetReps": 7,
+              "targetRpe": 9.5
+            },
+            {
+              "restSeconds": 180,
+              "role": "main",
+              "setIndex": 3,
+              "targetLoad": 120,
+              "targetReps": 7,
+              "targetRpe": 9.5
+            },
+            {
+              "restSeconds": 180,
+              "role": "main",
+              "setIndex": 4,
+              "targetLoad": 120,
+              "targetReps": 7,
+              "targetRpe": 9.5
+            },
+            {
+              "restSeconds": 180,
+              "role": "main",
+              "setIndex": 5,
+              "targetLoad": 120,
+              "targetReps": 7,
+              "targetRpe": 9.5
+            }
+          ],
+          "warmupSets": [
+            {
+              "restSeconds": 60,
+              "role": "warmup",
+              "setIndex": 1,
+              "targetLoad": 67.5,
+              "targetReps": 8
+            },
+            {
+              "restSeconds": 60,
+              "role": "warmup",
+              "setIndex": 2,
+              "targetLoad": 95,
+              "targetReps": 5
+            },
+            {
+              "restSeconds": 90,
+              "role": "warmup",
+              "setIndex": 3,
+              "targetLoad": 115,
+              "targetReps": 3
+            }
+          ]
+        }
+      ],
+      "notes": "Under-recovered: Quads (97%), Glutes (97%), Hamstrings (97%)",
+      "scheduledDate": "2026-03-08T15:59:48.662Z",
+      "warmup": []
+    }
+  },
+  "identity": {
+    "ownerEmail": "aaron8819@gmail.com",
+    "userId": "f03601b5-5e2a-40dc-974d-14bb1d1862a3"
+  },
+  "mode": "intent-preview",
+  "request": {
+    "intent": "legs",
+    "mode": "intent-preview",
+    "ownerEmail": "aaron8819@gmail.com",
+    "plannerDiagnosticsMode": "debug",
+    "sanitizationLevel": "none"
+  },
+  "source": "live",
+  "version": 1
+}

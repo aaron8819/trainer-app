@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { buildSessionDecisionReceipt, readSessionDecisionReceipt } from "./session-decision-receipt";
+import {
+  buildSessionDecisionReceipt,
+  normalizeSelectionMetadataWithReceipt,
+  readSessionDecisionReceipt,
+} from "./session-decision-receipt";
 
 describe("readSessionDecisionReceipt", () => {
   it("prefers the canonical persisted receipt over legacy top-level mirrors", () => {
@@ -464,5 +468,72 @@ describe("readSessionDecisionReceipt", () => {
 
     expect(receipt.plannerDiagnosticsMode).toBe("debug");
     expect(receipt.plannerDiagnostics?.closure.firstIterationCandidates?.[0]?.exerciseId).toBe("ex1");
+  });
+
+  it("preserves only supported receipt exceptions during normalization", () => {
+    const normalized = normalizeSelectionMetadataWithReceipt({
+      selectionMetadata: {
+        sessionDecisionReceipt: {
+          version: 1,
+          cycleContext: {
+            weekInMeso: 3,
+            weekInBlock: 3,
+            phase: "accumulation",
+            blockType: "accumulation",
+            isDeload: false,
+            source: "computed",
+          },
+          lifecycleVolume: {
+            source: "unknown",
+          },
+          sorenessSuppressedMuscles: [],
+          deloadDecision: {
+            mode: "none",
+            reason: [],
+            reductionPercent: 0,
+            appliedTo: "none",
+          },
+          readiness: {
+            wasAutoregulated: false,
+            signalAgeHours: null,
+            fatigueScoreOverall: null,
+            intensityScaling: {
+              applied: false,
+              exerciseIds: [],
+              scaledUpCount: 0,
+              scaledDownCount: 0,
+            },
+          },
+          exceptions: [
+            {
+              code: "optional_gap_fill",
+              message: "Marked as optional gap-fill session.",
+            },
+            {
+              code: "supplemental_deficit_session",
+              message: "Marked as supplemental deficit session.",
+            },
+            {
+              code: "unexpected_exception_code",
+              message: "should be dropped",
+            },
+          ],
+        },
+      },
+      cycleContext: {
+        weekInMeso: 3,
+        weekInBlock: 3,
+        phase: "accumulation",
+        blockType: "accumulation",
+        isDeload: false,
+        source: "computed",
+      },
+    });
+
+    expect(
+      (
+        readSessionDecisionReceipt(normalized)?.exceptions.map((entry) => entry.code) ?? []
+      )
+    ).toEqual(["optional_gap_fill", "supplemental_deficit_session"]);
   });
 });

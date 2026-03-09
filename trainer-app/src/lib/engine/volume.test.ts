@@ -119,4 +119,29 @@ describe("volume context", () => {
 
     expect(plan.Chest.planned).toBe(3);
   });
+
+  it("still counts progression-ineligible supplemental sessions toward weekly volume", () => {
+    const history: WorkoutHistoryEntry[] = [
+      {
+        date: hoursAgo(12),
+        completed: true,
+        status: "COMPLETED",
+        progressionEligible: false,
+        mesocycleSnapshot: { mesocycleId: "active-meso", week: 2, phase: "ACCUMULATION" },
+        exercises: [{ exerciseId: "press", sets: makeSets("press", 3) }],
+      },
+    ];
+
+    const context = buildVolumeContext(history, exerciseLibrary, {
+      week: 2,
+      length: 4,
+      mesocycleId: "active-meso",
+    });
+
+    expect("muscleVolume" in context).toBe(true);
+    if (!("muscleVolume" in context)) return;
+
+    expect(context.muscleVolume.Chest.weeklyDirectSets).toBe(3);
+    expect(context.muscleVolume.Chest.weeklyEffectiveSets).toBe(3);
+  });
 });

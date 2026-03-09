@@ -1,6 +1,6 @@
 import { computeDoubleProgressionDecision, computeNextLoad } from "./progression";
 import {
-  filterPerformedHistory,
+  filterProgressionHistory,
   resolveBaseSelectionModeConfidence,
   sortHistoryByDateDesc,
 } from "./history";
@@ -230,7 +230,7 @@ type BuildHistoryIndexOptions = {
 };
 
 function buildHistoryIndex(history: WorkoutHistoryEntry[], options: BuildHistoryIndexOptions = {}) {
-  const sorted = sortHistoryByDateDesc(filterPerformedHistory(history));
+  const sorted = sortHistoryByDateDesc(filterProgressionHistory(history));
   const sourceEntries = options.useNewMesocycleBaselineSource
     ? selectNewMesocycleBaselineHistory(sorted)
     : sorted;

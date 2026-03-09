@@ -65,6 +65,11 @@ export default function RecentWorkouts({ recentWorkouts }: Props) {
                         {sessionSnapshotLabel}
                       </span>
                     ) : null}
+                    {workout.isSupplementalDeficitSession ? (
+                      <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800">
+                        Supplemental
+                      </span>
+                    ) : null}
                   </p>
                   {secondaryLabel ? (
                     <p className="mt-1 text-xs text-slate-600">{secondaryLabel}</p>

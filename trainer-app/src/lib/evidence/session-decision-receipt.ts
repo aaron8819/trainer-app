@@ -946,6 +946,15 @@ function parsePersistedReceipt(value: unknown): SessionDecisionReceipt | undefin
           if (!item || typeof item.code !== "string" || typeof item.message !== "string") {
             return [];
           }
+          if (
+            item.code !== "soreness_suppression" &&
+            item.code !== "deload" &&
+            item.code !== "readiness_scale" &&
+            item.code !== "optional_gap_fill" &&
+            item.code !== "supplemental_deficit_session"
+          ) {
+            return [];
+          }
           return [
             {
               code: item.code as SessionDecisionException["code"],
@@ -990,7 +999,11 @@ export function normalizeSelectionMetadataWithReceipt(input: {
       plannerDiagnostics: existingReceipt?.plannerDiagnostics,
       plannerDiagnosticsMode: "standard",
       additionalExceptions:
-        existingReceipt?.exceptions.filter((entry) => entry.code === "optional_gap_fill") ?? [],
+        existingReceipt?.exceptions.filter(
+          (entry) =>
+            entry.code === "optional_gap_fill" ||
+            entry.code === "supplemental_deficit_session"
+        ) ?? [],
       autoregulation: existingReceipt
         ? {
             wasAutoregulated: existingReceipt.readiness.wasAutoregulated,

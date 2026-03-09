@@ -186,6 +186,116 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
     expect(body.selectionMetadata.sessionDecisionReceipt.version).toBe(1);
   });
 
+  it("rejects supplemental deficit generation for non-body_part intents", async () => {
+    mocks.loadActiveMesocycle.mockResolvedValue(null);
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/generate-from-intent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          intent: "push",
+          supplementalDeficitSession: true,
+        }),
+      })
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "Invalid request",
+    });
+    expect(mocks.generateSessionFromIntent).not.toHaveBeenCalled();
+  });
+
+  it("returns supplemental deficit metadata already stamped by the backend", async () => {
+    mocks.loadActiveMesocycle.mockResolvedValue(null);
+    mocks.generateSessionFromIntent.mockResolvedValue({
+      workout: {
+        id: "w-supp-1",
+        scheduledDate: new Date("2026-03-03T00:00:00.000Z").toISOString(),
+        warmup: [],
+        mainLifts: [
+          {
+            id: "we-2",
+            exercise: { id: "ex-2", name: "Cable Fly" },
+            isMainLift: true,
+            orderIndex: 0,
+            sets: [{ setIndex: 1, targetReps: 12, targetLoad: 40, targetRpe: 8 }],
+          },
+        ],
+        accessories: [],
+        estimatedMinutes: 30,
+      },
+      selectionMode: "INTENT",
+      sessionIntent: "body_part",
+      sraWarnings: [],
+      substitutions: [],
+      volumePlanByMuscle: {},
+      selection: {
+        selectedExerciseIds: ["ex-2"],
+        mainLiftIds: ["ex-2"],
+        accessoryIds: [],
+        perExerciseSetTargets: { "ex-2": 2 },
+        rationale: {},
+        volumePlanByMuscle: {},
+        sessionDecisionReceipt: {
+          version: 1,
+          cycleContext: {
+            weekInMeso: 2,
+            weekInBlock: 2,
+            mesocycleLength: 5,
+            phase: "accumulation",
+            blockType: "accumulation",
+            isDeload: false,
+            source: "computed",
+          },
+          lifecycleVolume: { source: "unknown" },
+          sorenessSuppressedMuscles: [],
+          deloadDecision: {
+            mode: "none",
+            reason: [],
+            reductionPercent: 0,
+            appliedTo: "none",
+          },
+          readiness: {
+            wasAutoregulated: false,
+            signalAgeHours: null,
+            fatigueScoreOverall: null,
+            intensityScaling: {
+              applied: false,
+              exerciseIds: [],
+              scaledUpCount: 0,
+              scaledDownCount: 0,
+            },
+          },
+          exceptions: [],
+        },
+      },
+      filteredExercises: [],
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/generate-from-intent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          intent: "body_part",
+          targetMuscles: ["rear delts"],
+          supplementalDeficitSession: true,
+        }),
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.selectionMetadata.sessionDecisionReceipt.targetMuscles).toEqual(["rear delts"]);
+    expect(body.selectionMetadata.sessionDecisionReceipt.exceptions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "supplemental_deficit_session" }),
+      ])
+    );
+  });
+
   it("pins receipt week from the pending week-close row and preserves marker + weekCloseId", async () => {
     mocks.loadActiveMesocycle.mockResolvedValue({ id: "meso-1", state: "ACTIVE_ACCUMULATION", durationWeeks: 5 });
     mocks.findPendingWeekCloseForUser.mockResolvedValue({

@@ -208,6 +208,36 @@ describe("buildSelectionObjective continuity bias", () => {
     expect(objective.volumeContext.remainingWeek?.futureSlotCounts.get("legs")).toBe(1);
   });
 
+  it("does not let non-advancing sessions consume future schedule slots", () => {
+    const history: WorkoutHistoryEntry[] = [
+      {
+        date: new Date().toISOString(),
+        completed: true,
+        status: "COMPLETED",
+        sessionIntent: "push",
+        advancesSplit: false,
+        mesocycleSnapshot: { week: 2, session: 1, mesocycleId: "meso-1" },
+        exercises: [
+          {
+            exerciseId: "tbar-row",
+            sets: [{ exerciseId: "tbar-row", setIndex: 1, reps: 10, load: 135 }],
+          },
+        ],
+      },
+    ];
+
+    const mapped = makeMappedContext(history);
+    mapped.activeMesocycle = { id: "meso-1" } as MappedGenerationContext["activeMesocycle"];
+    mapped.mappedConstraints.weeklySchedule = ["push", "pull", "legs", "pull"];
+
+    const objective = buildSelectionObjective(mapped, "pull");
+
+    expect(objective.volumeContext.remainingWeek?.futureSlots).toEqual(["push", "legs", "pull"]);
+    expect(objective.volumeContext.remainingWeek?.futureSlotCounts.get("pull")).toBe(1);
+    expect(objective.volumeContext.remainingWeek?.futureSlotCounts.get("push")).toBe(1);
+    expect(objective.volumeContext.remainingWeek?.futureSlotCounts.get("legs")).toBe(1);
+  });
+
   it("builds effectiveActual from the shared stimulus helper instead of binary primary credit", () => {
     const recentDate = new Date().toISOString();
     const history: WorkoutHistoryEntry[] = [

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { buildSessionDecisionReceipt } from "@/lib/evidence/session-decision-receipt";
+import { attachSupplementalSessionMetadata } from "@/lib/ui/selection-metadata";
 
 const state = vi.hoisted(() => ({
   persistedSelectionMetadata: null as Record<string, unknown> | null,
@@ -423,5 +424,89 @@ describe("canonical session decision receipt pipeline", () => {
     }
 
     expect(explanation.confidence.missingSignals).not.toContain("receipt-backed cycle context");
+  });
+
+  it("keeps the supplemental deficit marker canonical across save and resave", async () => {
+    const generatedSelectionMetadata = attachSupplementalSessionMetadata(
+      {
+        selectedExerciseIds: ["ex1"],
+        sessionDecisionReceipt: buildSessionDecisionReceipt({
+          cycleContext: {
+            weekInMeso: 2,
+            weekInBlock: 2,
+            mesocycleLength: 5,
+            phase: "accumulation",
+            blockType: "accumulation",
+            isDeload: false,
+            source: "computed",
+          },
+          lifecycleRirTarget: { min: 2, max: 3 },
+          lifecycleVolumeTargets: { Chest: 12 },
+          sorenessSuppressedMuscles: [],
+          deloadDecision: {
+            mode: "none",
+            reason: [],
+            reductionPercent: 0,
+            appliedTo: "none",
+          },
+        }),
+      },
+      {
+        enabled: true,
+        targetMuscles: ["Chest"],
+        anchorWeek: 2,
+      }
+    );
+
+    const firstSave = await saveWorkout(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutId: "workout-1",
+          selectionMode: "INTENT",
+          sessionIntent: "BODY_PART",
+          selectionMetadata: generatedSelectionMetadata,
+          exercises: [
+            {
+              section: "MAIN",
+              exerciseId: "ex1",
+              sets: [{ setIndex: 1, targetReps: 8, targetLoad: 205, targetRpe: 8 }],
+            },
+          ],
+        }),
+      })
+    );
+    expect(firstSave.status).toBe(200);
+
+    const resave = await saveWorkout(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutId: "workout-1",
+          selectionMode: "INTENT",
+          sessionIntent: "BODY_PART",
+          selectionMetadata: state.persistedSelectionMetadata,
+          exercises: [
+            {
+              section: "MAIN",
+              exerciseId: "ex1",
+              sets: [{ setIndex: 1, targetReps: 8, targetLoad: 205, targetRpe: 8 }],
+            },
+          ],
+        }),
+      })
+    );
+    expect(resave.status).toBe(200);
+
+    const persistedSelectionMetadata = state.persistedSelectionMetadata ?? {};
+    const persistedReceipt = persistedSelectionMetadata.sessionDecisionReceipt as Record<
+      string,
+      unknown
+    >;
+    expect((persistedReceipt.exceptions as Array<{ code: string }>).map((entry) => entry.code)).toContain(
+      "supplemental_deficit_session"
+    );
   });
 });

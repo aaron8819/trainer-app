@@ -6,6 +6,7 @@ import {
   resolveGapFillTargetMuscles,
 } from "./gap-fill";
 import { readSessionDecisionReceipt } from "@/lib/evidence/session-decision-receipt";
+import { isStrictSupplementalDeficitSession } from "@/lib/session-semantics/supplemental-classifier";
 
 export const workoutListItemSelect = {
   id: true,
@@ -54,6 +55,7 @@ export type WorkoutListSurfaceSummary = {
   mesocycleId: string | null;
   sessionSnapshot: ReturnType<typeof buildWorkoutSessionSnapshotSummary>;
   isGapFill?: boolean;
+  isSupplementalDeficitSession?: boolean;
   gapFillTargetMuscles?: string[];
   exerciseCount: number;
   totalSetsLogged: number;
@@ -136,6 +138,11 @@ export function buildWorkoutListSurfaceSummary(
     selectionMode: row.selectionMode,
     sessionIntent: row.sessionIntent,
   });
+  const isSupplementalDeficit = isStrictSupplementalDeficitSession({
+    selectionMetadata: row.selectionMetadata,
+    selectionMode: row.selectionMode,
+    sessionIntent: row.sessionIntent,
+  });
   const receipt = readSessionDecisionReceipt(row.selectionMetadata);
   const displayWeek = row.mesocycleWeekSnapshot ?? receipt?.cycleContext.weekInMeso ?? null;
   const displaySession =
@@ -161,6 +168,7 @@ export function buildWorkoutListSurfaceSummary(
       phase: displayPhase,
     }),
     isGapFill,
+    isSupplementalDeficitSession: isSupplementalDeficit,
     gapFillTargetMuscles,
     exerciseCount: row._count.exercises,
     totalSetsLogged: countLoggedSets(row),

@@ -165,7 +165,12 @@ describe("generateWorkoutExplanation progression receipt", () => {
     mocks.workoutFindMany.mockResolvedValue([]);
     mocks.setLogAggregate.mockResolvedValue({ _max: { actualLoad: null, actualReps: null } });
     mocks.workoutExerciseFindFirst.mockResolvedValue({
-      workout: { scheduledDate: new Date("2026-02-18T00:00:00.000Z") },
+      workout: {
+        scheduledDate: new Date("2026-02-18T00:00:00.000Z"),
+        selectionMode: "INTENT",
+        sessionIntent: "PUSH",
+        selectionMetadata: {},
+      },
       sets: [
         {
           setIndex: 1,
@@ -340,6 +345,156 @@ describe("generateWorkoutExplanation progression receipt", () => {
       | undefined;
 
     expect(firstWorkoutFindManyCall?.where?.status?.in).toEqual(["COMPLETED", "PARTIAL"]);
+  });
+
+  it("excludes supplemental sessions from progression-facing explainability and falls back to the latest eligible history", async () => {
+    mocks.workoutExerciseFindFirst
+      .mockResolvedValueOnce({
+        workout: {
+          scheduledDate: new Date("2026-02-20T00:00:00.000Z"),
+          selectionMode: "INTENT",
+          sessionIntent: "BODY_PART",
+          selectionMetadata: {
+            sessionDecisionReceipt: {
+              version: 1,
+              cycleContext: {
+                weekInMeso: 4,
+                weekInBlock: 4,
+                phase: "accumulation",
+                blockType: "accumulation",
+                isDeload: false,
+                source: "computed",
+              },
+              lifecycleVolume: { source: "unknown" },
+              sorenessSuppressedMuscles: [],
+              deloadDecision: {
+                mode: "none",
+                reason: [],
+                reductionPercent: 0,
+                appliedTo: "none",
+              },
+              readiness: {
+                wasAutoregulated: false,
+                signalAgeHours: null,
+                fatigueScoreOverall: null,
+                intensityScaling: {
+                  applied: false,
+                  exerciseIds: [],
+                  scaledUpCount: 0,
+                  scaledDownCount: 0,
+                },
+              },
+              exceptions: [
+                {
+                  code: "supplemental_deficit_session",
+                  message: "Marked as supplemental deficit session.",
+                },
+              ],
+            },
+          },
+        },
+        sets: [
+          {
+            setIndex: 1,
+            logs: [{ actualReps: 8, actualLoad: 240, actualRpe: 8, wasSkipped: false }],
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        workout: {
+          scheduledDate: new Date("2026-02-18T00:00:00.000Z"),
+          selectionMode: "INTENT",
+          sessionIntent: "PUSH",
+          selectionMetadata: {},
+        },
+        sets: [
+          {
+            setIndex: 1,
+            logs: [{ actualReps: 8, actualLoad: 200, actualRpe: 8, wasSkipped: false }],
+          },
+        ],
+      });
+
+    const result = await generateWorkoutExplanation("w1");
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    const receipt = result.progressionReceipts.get("ex1");
+    expect(receipt?.lastPerformed?.load).toBe(200);
+    expect(receipt?.lastPerformed?.load).not.toBe(240);
+  });
+
+  it("does not drift optional gap-fill progression explainability behavior", async () => {
+    mocks.workoutExerciseFindFirst.mockResolvedValueOnce({
+      workout: {
+        scheduledDate: new Date("2026-02-18T00:00:00.000Z"),
+        selectionMode: "INTENT",
+        sessionIntent: "BODY_PART",
+        selectionMetadata: {
+          sessionDecisionReceipt: {
+            version: 1,
+            cycleContext: {
+              weekInMeso: 4,
+              weekInBlock: 4,
+              phase: "accumulation",
+              blockType: "accumulation",
+              isDeload: false,
+              source: "computed",
+            },
+            lifecycleVolume: { source: "unknown" },
+            sorenessSuppressedMuscles: [],
+            deloadDecision: {
+              mode: "none",
+              reason: [],
+              reductionPercent: 0,
+              appliedTo: "none",
+            },
+            readiness: {
+              wasAutoregulated: false,
+              signalAgeHours: null,
+              fatigueScoreOverall: null,
+              intensityScaling: {
+                applied: false,
+                exerciseIds: [],
+                scaledUpCount: 0,
+                scaledDownCount: 0,
+              },
+            },
+            exceptions: [
+              {
+                code: "optional_gap_fill",
+                message: "Marked as optional gap-fill session.",
+              },
+            ],
+          },
+        },
+      },
+      sets: [
+        {
+          setIndex: 1,
+          logs: [{ actualReps: 8, actualLoad: 200, actualRpe: 8, wasSkipped: false }],
+        },
+      ],
+    });
+
+    const result = await generateWorkoutExplanation("w1");
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    const receipt = result.progressionReceipts.get("ex1");
+    expect(receipt?.lastPerformed?.load).toBe(200);
+  });
+
+  it("keeps non-progression volume queries scoped to performed status only", async () => {
+    await generateWorkoutExplanation("w1");
+
+    const volumeQuery = mocks.workoutFindMany.mock.calls[0]?.[0] as
+      | { where?: Record<string, unknown> }
+      | undefined;
+
+    expect(volumeQuery?.where?.status).toEqual({ in: ["COMPLETED", "PARTIAL"] });
+    expect(volumeQuery?.where?.selectionMode).toBeUndefined();
+    expect(volumeQuery?.where?.sessionIntent).toBeUndefined();
   });
 
   it("excludes RPE < 6 sets from progression anchor summaries", async () => {

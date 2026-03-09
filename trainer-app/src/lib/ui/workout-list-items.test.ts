@@ -82,6 +82,7 @@ describe("buildWorkoutListSurfaceSummary", () => {
         phase: "ACCUMULATION",
       },
       isGapFill: false,
+      isSupplementalDeficitSession: false,
       gapFillTargetMuscles: [],
       exerciseCount: 2,
       totalSetsLogged: 6,
@@ -145,9 +146,71 @@ describe("buildWorkoutListSurfaceSummary", () => {
       phase: "ACCUMULATION",
     });
     expect(summary.isGapFill).toBe(true);
+    expect(summary.isSupplementalDeficitSession).toBe(false);
     expect(summary.gapFillTargetMuscles).toEqual(["front delts", "rear delts", "biceps"]);
     expect(getWorkoutListPrimaryLabel(summary)).toBe("Gap Fill");
     expect(getWorkoutListSecondaryLabel(summary)).toBe("Front Delts, Rear Delts, Biceps");
+  });
+
+  it("marks strict supplemental deficit sessions without changing body-part primary labeling", () => {
+    const summary = buildWorkoutListSurfaceSummary({
+      id: "workout-supp",
+      scheduledDate: new Date("2026-03-04T10:00:00.000Z"),
+      completedAt: null,
+      status: "PLANNED",
+      selectionMode: "INTENT",
+      sessionIntent: "BODY_PART",
+      mesocycleId: "meso-1",
+      mesocycleWeekSnapshot: 3,
+      mesoSessionSnapshot: 2,
+      mesocyclePhaseSnapshot: "ACCUMULATION",
+      selectionMetadata: {
+        sessionDecisionReceipt: {
+          version: 1,
+          cycleContext: {
+            weekInMeso: 3,
+            weekInBlock: 3,
+            phase: "accumulation",
+            blockType: "accumulation",
+            isDeload: false,
+            source: "computed",
+          },
+          targetMuscles: ["rear delts"],
+          lifecycleVolume: { source: "unknown" },
+          sorenessSuppressedMuscles: [],
+          deloadDecision: {
+            mode: "none",
+            reason: [],
+            reductionPercent: 0,
+            appliedTo: "none",
+          },
+          readiness: {
+            wasAutoregulated: false,
+            signalAgeHours: null,
+            fatigueScoreOverall: null,
+            intensityScaling: {
+              applied: false,
+              exerciseIds: [],
+              scaledUpCount: 0,
+              scaledDownCount: 0,
+            },
+          },
+          exceptions: [
+            {
+              code: "supplemental_deficit_session",
+              message: "Marked as supplemental deficit session.",
+            },
+          ],
+        },
+      },
+      mesocycle: { sessionsPerWeek: 3 },
+      _count: { exercises: 1 },
+      exercises: [{ sets: [] }],
+    });
+
+    expect(summary.isGapFill).toBe(false);
+    expect(summary.isSupplementalDeficitSession).toBe(true);
+    expect(getWorkoutListPrimaryLabel(summary)).toBe("Body Part");
   });
 });
 

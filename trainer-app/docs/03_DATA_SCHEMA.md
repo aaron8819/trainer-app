@@ -85,3 +85,4 @@ Canonical machine-readable values: `docs/contracts/runtime-contracts.json`.
 - `Workout.autoregulationLog`
 - These fields are retained in the schema for backward compatibility and historical inspection only.
 - Active runtime session-decision state is persisted under `Workout.selectionMetadata.sessionDecisionReceipt`, and `POST /api/workouts/save` no longer accepts these compatibility fields as write inputs.
+- Optional-session semantics are receipt-driven, not enum-driven. Supplemental deficit sessions and optional gap-fill sessions do not add new database enums; they are represented by canonical `selectionMetadata.sessionDecisionReceipt.exceptions` markers plus persisted `Workout.selectionMode`, `Workout.sessionIntent`, and `Workout.advancesSplit`.

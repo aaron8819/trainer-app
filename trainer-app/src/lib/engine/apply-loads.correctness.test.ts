@@ -168,6 +168,52 @@ describe("applyLoads correctness", () => {
     expect(partialTop).toBeGreaterThan(200);
   });
 
+  it("ignores supplemental deficit sessions for progression anchors", () => {
+    const result = applyLoads(baseWorkout, {
+      history: [
+        {
+          date: "2026-02-20T00:00:00.000Z",
+          completed: true,
+          status: "COMPLETED",
+          progressionEligible: false,
+          sessionIntent: "push",
+          exercises: [
+            {
+              exerciseId: "bench",
+              sets: [
+                { exerciseId: "bench", setIndex: 1, reps: 10, rpe: 8, load: 240 },
+                { exerciseId: "bench", setIndex: 2, reps: 10, rpe: 8, load: 240 },
+              ],
+            },
+          ],
+        },
+        {
+          date: "2026-02-18T00:00:00.000Z",
+          completed: true,
+          status: "COMPLETED",
+          progressionEligible: true,
+          sessionIntent: "push",
+          exercises: [
+            {
+              exerciseId: "bench",
+              sets: [
+                { exerciseId: "bench", setIndex: 1, reps: 10, rpe: 7.5, load: 200 },
+                { exerciseId: "bench", setIndex: 2, reps: 10, rpe: 8, load: 200 },
+              ],
+            },
+          ],
+        },
+      ],
+      baselines: [{ exerciseId: "bench", context: "volume", topSetWeight: 200 }],
+      exerciseById: { bench },
+      primaryGoal: "hypertrophy",
+      profile: { trainingAge: "intermediate" },
+      sessionIntent: "push",
+    });
+
+    expect(result.mainLifts[0].sets[0].targetLoad).toBe(205);
+  });
+
   it("uses same-pattern performed donor load for non-avoided swap instead of cold defaults", () => {
     const swapped = applyLoads(accessorySwapWorkout, {
       history: [

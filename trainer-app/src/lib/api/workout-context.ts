@@ -20,6 +20,7 @@ import {
   WorkoutStatus,
 } from "@prisma/client";
 import { mapLatestCheckIn, type CheckInRow } from "./checkin-staleness";
+import { isProgressionEligibleWorkout } from "@/lib/progression/progression-eligibility";
 import type {
   Constraints,
   EquipmentType,
@@ -260,6 +261,11 @@ export function mapHistory(workouts: WorkoutWithRelations[]): WorkoutHistoryEntr
     completed: workout.status === WorkoutStatus.COMPLETED,
     status: workout.status,
     advancesSplit: workout.advancesSplit ?? true,
+    progressionEligible: isProgressionEligibleWorkout({
+      selectionMetadata: workout.selectionMetadata,
+      selectionMode: workout.selectionMode,
+      sessionIntent: workout.sessionIntent,
+    }),
     selectionMode: workout.selectionMode,
     sessionIntent: workout.sessionIntent
       ? (workout.sessionIntent.toLowerCase() as EngineSplitDay)

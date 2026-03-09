@@ -19,29 +19,41 @@ function getPerformedIntentKey(
   return entry.sessionIntent ?? entry.forcedSplit;
 }
 
+function consumeIntentFromSchedule(
+  remaining: SessionIntent[],
+  intent: SessionIntent
+): void {
+  const index = remaining.findIndex((slot) => slot === intent);
+  if (index >= 0) {
+    remaining.splice(index, 1);
+    return;
+  }
+
+  if (remaining.length > 0) {
+    remaining.shift();
+  }
+}
+
+export function buildRemainingScheduleAfterPerformed(
+  weeklySchedule: SessionIntent[],
+  performedIntents: SessionIntent[]
+): SessionIntent[] {
+  const remaining = [...weeklySchedule];
+
+  for (const intent of performedIntents) {
+    consumeIntentFromSchedule(remaining, intent);
+  }
+
+  return remaining;
+}
+
 function buildRemainingFutureSlots(
   weeklySchedule: SessionIntent[],
   performedIntents: SessionIntent[],
   currentIntent: SessionIntent
 ): SessionIntent[] {
-  const remaining = [...weeklySchedule];
-
-  const consumeIntent = (intent: SessionIntent) => {
-    const index = remaining.findIndex((slot) => slot === intent);
-    if (index >= 0) {
-      remaining.splice(index, 1);
-      return;
-    }
-
-    if (remaining.length > 0) {
-      remaining.shift();
-    }
-  };
-
-  for (const intent of performedIntents) {
-    consumeIntent(intent);
-  }
-  consumeIntent(currentIntent);
+  const remaining = buildRemainingScheduleAfterPerformed(weeklySchedule, performedIntents);
+  consumeIntentFromSchedule(remaining, currentIntent);
 
   return remaining;
 }
@@ -98,6 +110,7 @@ export function buildRemainingWeekVolumeContext(params: {
   }
 
   const currentWeekPerformedIntents = filterPerformedHistory(mapped.history)
+    .filter((entry) => entry.advancesSplit !== false)
     .filter((entry) => {
       const snapshot = entry.mesocycleSnapshot;
       if (!snapshot) {

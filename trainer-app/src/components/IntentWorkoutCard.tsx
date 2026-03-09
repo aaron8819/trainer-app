@@ -2,11 +2,9 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import {
-  buildCanonicalSelectionMetadata,
-} from "@/lib/ui/selection-metadata";
 import type { GenerateFromIntentResponse } from "@/lib/api/template-session/types";
 import type { SaveWorkoutRequestPayload } from "@/components/log-workout/api";
+import { isStrictSupplementalDeficitSession } from "@/lib/session-semantics/supplemental-classifier";
 
 type SessionIntent = "push" | "pull" | "legs" | "upper" | "lower" | "full_body" | "body_part";
 
@@ -95,6 +93,7 @@ type IntentWorkoutCardProps = {
 export function IntentWorkoutCard({ initialIntent = "push" }: IntentWorkoutCardProps) {
   const [intent, setIntent] = useState<SessionIntent>(initialIntent);
   const [targetMusclesInput, setTargetMusclesInput] = useState("");
+  const [supplementalMode, setSupplementalMode] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   const [workout, setWorkout] = useState<WorkoutPlan | null>(null);
@@ -107,6 +106,12 @@ export function IntentWorkoutCard({ initialIntent = "push" }: IntentWorkoutCardP
   useEffect(() => {
     setIntent(initialIntent);
   }, [initialIntent]);
+
+  useEffect(() => {
+    if (intent !== "body_part") {
+      setSupplementalMode(false);
+    }
+  }, [intent]);
 
   const allExercises = useMemo(
     () => [...(workout?.mainLifts ?? []), ...(workout?.accessories ?? [])],
@@ -125,6 +130,7 @@ export function IntentWorkoutCard({ initialIntent = "push" }: IntentWorkoutCardP
       body: JSON.stringify({
         intent,
         targetMuscles: intent === "body_part" ? targetMuscles : undefined,
+        supplementalDeficitSession: intent === "body_part" ? supplementalMode : undefined,
       }),
     });
 
@@ -140,7 +146,7 @@ export function IntentWorkoutCard({ initialIntent = "push" }: IntentWorkoutCardP
     setGeneratedMetadata({
       selectionMode: body.selectionMode,
       sessionIntent: body.sessionIntent,
-      selectionMetadata: buildCanonicalSelectionMetadata(body.selectionMetadata),
+      selectionMetadata: body.selectionMetadata,
       filteredExercises: body.filteredExercises ?? [],
       selectionSummary: body.selectionSummary,
     });
@@ -151,6 +157,11 @@ export function IntentWorkoutCard({ initialIntent = "push" }: IntentWorkoutCardP
     if (!workout) return;
     setSaving(true);
     setError(null);
+    const isSupplementalSession = isStrictSupplementalDeficitSession({
+      selectionMetadata: generatedMetadata?.selectionMetadata,
+      selectionMode: generatedMetadata?.selectionMode,
+      sessionIntent: toDbSessionIntent(generatedMetadata?.sessionIntent ?? intent),
+    });
 
     const payload: SaveWorkoutRequestPayload = {
       workoutId: workout.id,
@@ -160,7 +171,7 @@ export function IntentWorkoutCard({ initialIntent = "push" }: IntentWorkoutCardP
       sessionIntent: toDbSessionIntent(generatedMetadata?.sessionIntent ?? intent),
       selectionMetadata: generatedMetadata?.selectionMetadata,
       filteredExercises: generatedMetadata?.filteredExercises,
-      advancesSplit: true,
+      advancesSplit: isSupplementalSession ? false : true,
       exercises: [
         ...workout.warmup.map((exercise) => ({ ...exercise, section: "WARMUP" as const })),
         ...workout.mainLifts.map((exercise) => ({ ...exercise, section: "MAIN" as const })),
@@ -224,17 +235,30 @@ export function IntentWorkoutCard({ initialIntent = "push" }: IntentWorkoutCardP
         </label>
 
         {intent === "body_part" ? (
-          <label className="flex flex-col gap-2">
-            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Target Muscles (comma-separated)
-            </span>
-            <input
-              className="min-h-11 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
-              value={targetMusclesInput}
-              onChange={(event) => setTargetMusclesInput(event.target.value)}
-              placeholder="e.g., chest, triceps"
-            />
-          </label>
+          <>
+            <label className="flex flex-col gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Target Muscles (comma-separated)
+              </span>
+              <input
+                className="min-h-11 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                value={targetMusclesInput}
+                onChange={(event) => setTargetMusclesInput(event.target.value)}
+                placeholder="e.g., chest, triceps"
+              />
+            </label>
+            <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                className="mt-1 h-4 w-4 rounded border-slate-300"
+                checked={supplementalMode}
+                onChange={(event) => setSupplementalMode(event.target.checked)}
+              />
+              <span>
+                Supplemental deficit session
+              </span>
+            </label>
+          </>
         ) : null}
       </div>
 

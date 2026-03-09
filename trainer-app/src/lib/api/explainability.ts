@@ -44,6 +44,7 @@ import {
   type WorkoutWithExplainabilityRelations,
 } from "./explainability/query";
 import { loadMesocycleWeekMuscleVolume } from "./weekly-volume";
+import { isProgressionEligibleWorkout } from "@/lib/progression/progression-eligibility";
 
 const HISTORY_RECENCY_WINDOW_DAYS = 42;
 const CANONICAL_RATIONALE_COMPONENT_KEYS = [
@@ -708,30 +709,10 @@ async function loadLatestPerformedSetSummary(
   repRange: [number, number],
   equipment: string[]
 ): Promise<(ProgressionSetSummary & { decisionLog?: string[] }) | null> {
-  const previous = await prisma.workoutExercise.findFirst({
-    where: {
-      exerciseId,
-      workout: {
-        userId,
-        id: { not: workoutId },
-        status: { in: [...PERFORMED_WORKOUT_STATUSES] },
-      },
-    },
-    orderBy: { workout: { scheduledDate: "desc" } },
-    include: {
-      workout: {
-        select: {
-          scheduledDate: true,
-          selectionMode: true,
-        },
-      },
-      sets: {
-        orderBy: { setIndex: "asc" },
-        include: {
-          logs: { orderBy: { completedAt: "desc" }, take: 1 },
-        },
-      },
-    },
+  const previous = await findLatestProgressionEligibleWorkoutExercise({
+    userId,
+    workoutId,
+    exerciseId,
   });
 
   if (!previous) return null;
@@ -841,24 +822,22 @@ async function countPerformedHistorySessions(
   exerciseId: string,
   excludeWorkoutId: string
 ): Promise<number> {
-  const countFn = (prisma as unknown as {
-    workoutExercise?: {
-      count?: (args: unknown) => Promise<number>;
-    };
-  }).workoutExercise?.count;
-  if (!countFn) {
-    return 1;
-  }
-  return countFn({
-    where: {
+  let count = 0;
+  let scheduledBefore: Date | undefined;
+
+  while (true) {
+    const entry = await findLatestProgressionEligibleWorkoutExercise({
+      userId,
+      workoutId: excludeWorkoutId,
       exerciseId,
-      workout: {
-        userId,
-        id: { not: excludeWorkoutId },
-        status: { in: [...PERFORMED_WORKOUT_STATUSES] },
-      },
-    },
-  });
+      scheduledBefore,
+    });
+    if (!entry) {
+      return count;
+    }
+    count += 1;
+    scheduledBefore = entry.workout.scheduledDate;
+  }
 }
 
 type ExplainabilityConfidenceInput = {
@@ -885,17 +864,11 @@ async function resolveExplainabilityHistoryConfidenceScale(
     return 0.3;
   }
 
-  const hasIntentHistory = await prisma.workoutExercise.findFirst({
-    where: {
-      exerciseId: input.exerciseId,
-      workout: {
-        userId: input.userId,
-        id: { not: input.workoutId },
-        status: { in: [...PERFORMED_WORKOUT_STATUSES] },
-        selectionMode: "INTENT",
-      },
-    },
-    select: { id: true },
+  const hasIntentHistory = await findLatestProgressionEligibleWorkoutExercise({
+    userId: input.userId,
+    workoutId: input.workoutId,
+    exerciseId: input.exerciseId,
+    requiredSelectionMode: "INTENT",
   });
   return hasIntentHistory ? 0.7 : 1;
 }
@@ -921,17 +894,11 @@ async function resolveExplainabilityConfidenceNotes(
     return notes;
   }
 
-  const hasIntentHistory = await prisma.workoutExercise.findFirst({
-    where: {
-      exerciseId: input.exerciseId,
-      workout: {
-        userId: input.userId,
-        id: { not: input.workoutId },
-        status: { in: [...PERFORMED_WORKOUT_STATUSES] },
-        selectionMode: "INTENT",
-      },
-    },
-    select: { id: true },
+  const hasIntentHistory = await findLatestProgressionEligibleWorkoutExercise({
+    userId: input.userId,
+    workoutId: input.workoutId,
+    exerciseId: input.exerciseId,
+    requiredSelectionMode: "INTENT",
   });
   notes.push(
     hasIntentHistory
@@ -959,26 +926,12 @@ async function resolveManualAnomalyFlags(
 
   const currentModal = resolvePerformedModalLoad(input.performedLogs);
   if (currentModal != null && input.previousScheduledDate) {
-    const recentIntent = await prisma.workoutExercise.findFirst({
-      where: {
-        exerciseId: input.exerciseId,
-        workout: {
-          userId: input.userId,
-          id: { not: input.workoutId },
-          status: { in: [...PERFORMED_WORKOUT_STATUSES] },
-          selectionMode: "INTENT",
-          scheduledDate: { lt: input.previousScheduledDate },
-        },
-      },
-      orderBy: { workout: { scheduledDate: "desc" } },
-      include: {
-        sets: {
-          orderBy: { setIndex: "asc" },
-          include: {
-            logs: { orderBy: { completedAt: "desc" }, take: 1 },
-          },
-        },
-      },
+    const recentIntent = await findLatestProgressionEligibleWorkoutExercise({
+      userId: input.userId,
+      workoutId: input.workoutId,
+      exerciseId: input.exerciseId,
+      scheduledBefore: input.previousScheduledDate,
+      requiredSelectionMode: "INTENT",
     });
 
     if (recentIntent) {
@@ -999,6 +952,72 @@ async function resolveManualAnomalyFlags(
   }
 
   return anomalyFlags;
+}
+
+async function findLatestProgressionEligibleWorkoutExercise(input: {
+  userId: string;
+  workoutId: string;
+  exerciseId: string;
+  scheduledBefore?: Date;
+  requiredSelectionMode?: string;
+}) {
+  let scheduledBefore = input.scheduledBefore;
+
+  while (true) {
+    const candidate = await prisma.workoutExercise.findFirst({
+      where: {
+        exerciseId: input.exerciseId,
+        workout: {
+          userId: input.userId,
+          id: { not: input.workoutId },
+          status: { in: [...PERFORMED_WORKOUT_STATUSES] },
+          ...(input.requiredSelectionMode
+            ? { selectionMode: input.requiredSelectionMode as never }
+            : {}),
+          ...(scheduledBefore ? { scheduledDate: { lt: scheduledBefore } } : {}),
+        },
+      },
+      orderBy: { workout: { scheduledDate: "desc" } },
+      include: {
+        workout: {
+          select: {
+            scheduledDate: true,
+            selectionMode: true,
+            sessionIntent: true,
+            selectionMetadata: true,
+          },
+        },
+        sets: {
+          orderBy: { setIndex: "asc" },
+          include: {
+            logs: { orderBy: { completedAt: "desc" }, take: 1 },
+          },
+        },
+      },
+    });
+
+    if (!candidate) {
+      return null;
+    }
+    if (
+      scheduledBefore &&
+      candidate.workout.scheduledDate.getTime() >= scheduledBefore.getTime()
+    ) {
+      return null;
+    }
+
+    if (
+      isProgressionEligibleWorkout({
+        selectionMetadata: candidate.workout.selectionMetadata,
+        selectionMode: candidate.workout.selectionMode,
+        sessionIntent: candidate.workout.sessionIntent,
+      })
+    ) {
+      return candidate;
+    }
+
+    scheduledBefore = candidate.workout.scheduledDate;
+  }
 }
 
 function resolvePerformedModalLoad(

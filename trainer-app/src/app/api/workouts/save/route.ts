@@ -33,6 +33,7 @@ import {
   type PersistedStatus,
 } from "./status-machine";
 import { isStrictOptionalGapFillSession } from "@/lib/gap-fill/classifier";
+import { isStrictSupplementalDeficitSession } from "@/lib/session-semantics/supplemental-classifier";
 type JsonObject = Record<string, unknown>;
 
 function toObject(value: unknown): JsonObject {
@@ -176,6 +177,11 @@ export async function POST(request: Request) {
         selectionMode: effectiveSelectionMode,
         sessionIntent: effectiveSessionIntent,
       });
+      const isSupplementalDeficitSession = isStrictSupplementalDeficitSession({
+        selectionMetadata,
+        selectionMode: effectiveSelectionMode,
+        sessionIntent: effectiveSessionIntent,
+      });
 
       if (parsed.data.templateId) {
         const template = await tx.workoutTemplate.findFirst({
@@ -244,7 +250,10 @@ export async function POST(request: Request) {
         persistedAdvancesSplit: existingWorkout?.advancesSplit,
         requestAdvancesSplit: parsed.data.advancesSplit,
       });
-      const effectiveAdvancesSplit = isOptionalGapFill ? false : (resolvedAdvancesSplit ?? true);
+      const forcesAdvancesSplitFalse = isOptionalGapFill || isSupplementalDeficitSession;
+      const effectiveAdvancesSplit = forcesAdvancesSplitFalse
+        ? false
+        : (resolvedAdvancesSplit ?? true);
       const shouldAdvanceLifecycleTransition =
         shouldTransitionPerformed &&
         shouldAdvanceLifecycleForPerformedTransition(effectiveAdvancesSplit);
@@ -342,7 +351,7 @@ export async function POST(request: Request) {
         sessionIntent: parsed.data.sessionIntent ?? undefined,
         selectionMetadata: selectionMetadata as Prisma.InputJsonValue,
         forcedSplit: parsed.data.forcedSplit ?? undefined,
-        advancesSplit: isOptionalGapFill ? false : resolvedAdvancesSplit,
+        advancesSplit: forcesAdvancesSplitFalse ? false : resolvedAdvancesSplit,
         templateId: parsed.data.templateId ?? undefined,
         ...(resolvedMesocycleId ? { mesocycleId: resolvedMesocycleId } : {}),
         ...(mesoSnapshot

@@ -45,6 +45,46 @@ describe("generate workout schemas", () => {
     expect(parsed.success).toBe(false);
   });
 
+  it("accepts supplementalDeficitSession only for body_part with targetMuscles", () => {
+    const parsed = generateFromIntentSchema.parse({
+      intent: "body_part",
+      targetMuscles: ["chest"],
+      supplementalDeficitSession: true,
+    });
+
+    expect(parsed.supplementalDeficitSession).toBe(true);
+  });
+
+  it("rejects supplementalDeficitSession for non-body_part intents", () => {
+    const parsed = generateFromIntentSchema.safeParse({
+      intent: "push",
+      supplementalDeficitSession: true,
+    });
+
+    expect(parsed.success).toBe(false);
+  });
+
+  it("rejects supplementalDeficitSession without targetMuscles", () => {
+    const parsed = generateFromIntentSchema.safeParse({
+      intent: "body_part",
+      supplementalDeficitSession: true,
+    });
+
+    expect(parsed.success).toBe(false);
+  });
+
+  it("rejects combining supplementalDeficitSession with optionalGapFill", () => {
+    const parsed = generateFromIntentSchema.safeParse({
+      intent: "body_part",
+      targetMuscles: ["chest"],
+      weekCloseId: "wc-1",
+      optionalGapFill: true,
+      supplementalDeficitSession: true,
+    });
+
+    expect(parsed.success).toBe(false);
+  });
+
   it("accepts non-body_part intent without targetMuscles", () => {
     const parsed = generateFromIntentSchema.parse({
       intent: "push",

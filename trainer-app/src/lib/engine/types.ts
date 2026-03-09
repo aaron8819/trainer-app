@@ -225,6 +225,7 @@ export type WorkoutHistoryEntry = {
   completed: boolean;
   status?: "PLANNED" | "IN_PROGRESS" | "PARTIAL" | "COMPLETED" | "SKIPPED";
   advancesSplit?: boolean;
+  progressionEligible?: boolean;
   forcedSplit?: SplitDay;
   sessionIntent?: SplitDay;
   selectionMode?: WorkoutSelectionMode;

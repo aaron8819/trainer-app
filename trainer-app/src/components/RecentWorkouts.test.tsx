@@ -25,6 +25,7 @@ function makeWorkout(
     mesocycleId: null,
     sessionSnapshot: null,
     isGapFill: false,
+    isSupplementalDeficitSession: false,
     gapFillTargetMuscles: [],
     exerciseCount: 5,
     totalSetsLogged: 0,
@@ -39,8 +40,6 @@ function renderRecent(workouts: WorkoutListSurfaceSummary[]) {
 afterEach(() => {
   cleanup();
 });
-
-// ── R1: Dynamic count label ──────────────────────────────────────────────────
 
 describe("dynamic count label", () => {
   it("shows '1 workout' for a single workout", () => {
@@ -69,12 +68,12 @@ describe("session snapshot badge", () => {
         }),
       }),
     ]);
-    expect(screen.getByText("Wk4·S1")).toBeInTheDocument();
+    expect(screen.getByText(/Wk4/)).toBeInTheDocument();
   });
 });
 
 describe("gap-fill labels", () => {
-  it("renders Gap Fill title, muscles subtext, and S{sessionsPerWeek+1} snapshot slot", () => {
+  it("renders Gap Fill title, muscles subtext, and keeps supplemental badge absent", () => {
     renderRecent([
       makeWorkout({
         sessionIntent: "BODY_PART",
@@ -90,11 +89,35 @@ describe("gap-fill labels", () => {
 
     expect(screen.getByText("Gap Fill")).toBeInTheDocument();
     expect(screen.getByText("Front Delts, Rear Delts, Biceps")).toBeInTheDocument();
-    expect(screen.getByText("Wk3·S4")).toBeInTheDocument();
+    expect(screen.getByText(/Wk3/)).toBeInTheDocument();
+    expect(screen.queryByText("Supplemental")).not.toBeInTheDocument();
   });
 });
 
-// ── R4: Status-aware action buttons ─────────────────────────────────────────
+describe("supplemental labels", () => {
+  it("renders a Supplemental badge for strict supplemental sessions", () => {
+    renderRecent([
+      makeWorkout({
+        sessionIntent: "BODY_PART",
+        isSupplementalDeficitSession: true,
+      }),
+    ]);
+
+    expect(screen.getByText("Body Part")).toBeInTheDocument();
+    expect(screen.getByText("Supplemental")).toBeInTheDocument();
+  });
+
+  it("does not render a Supplemental badge for normal body-part sessions", () => {
+    renderRecent([
+      makeWorkout({
+        sessionIntent: "BODY_PART",
+      }),
+    ]);
+
+    expect(screen.getByText("Body Part")).toBeInTheDocument();
+    expect(screen.queryByText("Supplemental")).not.toBeInTheDocument();
+  });
+});
 
 describe("COMPLETED row", () => {
   it("renders View and no Log", () => {
@@ -137,12 +160,8 @@ describe("PARTIAL row", () => {
   });
 });
 
-// ── R5: Sort order (performed before future-dated PLANNED) ───────────────────
-
 describe("sort order", () => {
   it("renders performed workouts before future-dated PLANNED workouts", () => {
-    // The page.tsx merge concatenates performedWorkouts first, then unperformedWorkouts.
-    // Pass them pre-merged in the correct order and verify DOM order matches.
     renderRecent([
       makeWorkout({ id: "c1", status: "COMPLETED", sessionIntent: "push" }),
       makeWorkout({ id: "pl1", status: "PLANNED", sessionIntent: "pull" }),

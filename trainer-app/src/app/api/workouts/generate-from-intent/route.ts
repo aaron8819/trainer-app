@@ -8,6 +8,7 @@ import { findPendingWeekCloseForUser } from "@/lib/api/mesocycle-week-close";
 import type { GenerateFromIntentResponse } from "@/lib/api/template-session/types";
 import {
   attachOptionalGapFillMetadata,
+  attachSupplementalSessionMetadata,
   buildCanonicalSelectionMetadata,
 } from "@/lib/ui/selection-metadata";
 
@@ -78,6 +79,8 @@ export async function POST(request: Request) {
   const activeMesocycle = await loadActiveMesocycle(user.id);
   const shouldApplyOptionalGapFill =
     parsed.data.optionalGapFill === true && parsed.data.intent === "body_part";
+  const shouldApplySupplementalDeficitSession =
+    parsed.data.supplementalDeficitSession === true && parsed.data.intent === "body_part";
   let canonicalGapFill:
     | {
         weekCloseId: string;
@@ -174,10 +177,15 @@ export async function POST(request: Request) {
     maxGeneratedExercises: generationInput.maxGeneratedExercises,
   });
   const markedSelectionMetadata = attachOptionalGapFillMetadata(selectionMetadata, {
-      enabled: shouldApplyOptionalGapFill,
-      targetMuscles: generationInput.targetMuscles,
-      weekCloseId: generationInput.weekCloseId,
-    });
+    enabled: shouldApplyOptionalGapFill,
+    targetMuscles: generationInput.targetMuscles,
+    weekCloseId: generationInput.weekCloseId,
+  });
+  const finalSelectionMetadata = attachSupplementalSessionMetadata(markedSelectionMetadata, {
+    enabled: shouldApplySupplementalDeficitSession,
+    targetMuscles: generationInput.targetMuscles,
+    anchorWeek: generationInput.anchorWeek,
+  });
 
   const response: GenerateFromIntentResponse = {
     workout: cappedWorkout,
@@ -187,7 +195,7 @@ export async function POST(request: Request) {
     selectionMode: result.selectionMode,
     sessionIntent: result.sessionIntent,
     selectionSummary,
-    selectionMetadata: markedSelectionMetadata,
+    selectionMetadata: finalSelectionMetadata,
     filteredExercises: result.filteredExercises,
   };
 

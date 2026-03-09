@@ -183,6 +183,47 @@ function buildOptionalGapFillSelectionMetadata() {
   });
 }
 
+function buildSupplementalDeficitSelectionMetadata() {
+  return buildCanonicalSelectionMetadata({
+    sessionDecisionReceipt: {
+      version: 1,
+      cycleContext: {
+        weekInMeso: 4,
+        weekInBlock: 4,
+        phase: "accumulation",
+        blockType: "accumulation",
+        isDeload: false,
+        source: "computed",
+      },
+      lifecycleVolume: { source: "unknown" },
+      sorenessSuppressedMuscles: [],
+      deloadDecision: {
+        mode: "none",
+        reason: [],
+        reductionPercent: 0,
+        appliedTo: "none",
+      },
+      readiness: {
+        wasAutoregulated: false,
+        signalAgeHours: null,
+        fatigueScoreOverall: null,
+        intensityScaling: {
+          applied: false,
+          exerciseIds: [],
+          scaledUpCount: 0,
+          scaledDownCount: 0,
+        },
+      },
+      exceptions: [
+        {
+          code: "supplemental_deficit_session",
+          message: "Marked as supplemental deficit session.",
+        },
+      ],
+    },
+  });
+}
+
 describe("POST /api/workouts/save", () => {
   beforeEach(() => {
     mocks.workoutFindUnique.mockReset();
@@ -1802,6 +1843,88 @@ describe("POST /api/workouts/save", () => {
     expect(upsert.create.advancesSplit).toBe(false);
     expect(mocks.tx.mesocycle.update).not.toHaveBeenCalled();
     expect(mocks.transitionMesocycleStateInTransaction).not.toHaveBeenCalled();
+  });
+
+  it("persists strict supplemental deficit planned saves with advancesSplit=false", async () => {
+    mocks.tx.mesocycle.findFirst.mockResolvedValueOnce({
+      id: "meso-active",
+      state: "ACTIVE_ACCUMULATION",
+      durationWeeks: 5,
+      accumulationSessionsCompleted: 7,
+      deloadSessionsCompleted: 0,
+      sessionsPerWeek: 3,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutId: "workout-supp",
+          selectionMode: "INTENT",
+          sessionIntent: "BODY_PART",
+          advancesSplit: true,
+          selectionMetadata: buildSupplementalDeficitSelectionMetadata(),
+          exercises: [
+            {
+              section: "MAIN",
+              exerciseId: "bench",
+              sets: [{ setIndex: 1, targetReps: 12 }],
+            },
+          ],
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+
+    const upsert = mocks.workoutUpsert.mock.calls[0][0];
+    expect(upsert.create.advancesSplit).toBe(false);
+    expect(upsert.update.advancesSplit).toBe(false);
+    expect(mocks.tx.mesocycle.update).not.toHaveBeenCalled();
+    expect(mocks.transitionMesocycleStateInTransaction).not.toHaveBeenCalled();
+  });
+
+  it("preserves the supplemental marker on later save/update flows", async () => {
+    mocks.workoutFindUnique.mockResolvedValueOnce({
+      id: "workout-supp",
+      userId: "user-1",
+      status: "PLANNED",
+      revision: 1,
+      mesocycleId: "meso-1",
+      advancesSplit: false,
+      selectionMode: "INTENT",
+      sessionIntent: "BODY_PART",
+      selectionMetadata: buildSupplementalDeficitSelectionMetadata(),
+    });
+    mocks.workoutUpsert.mockResolvedValueOnce({
+      id: "workout-supp",
+      revision: 2,
+      mesocycleId: "meso-1",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutId: "workout-supp",
+          selectionMode: "INTENT",
+          sessionIntent: "BODY_PART",
+          notes: "updated note",
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+
+    const upsert = mocks.workoutUpsert.mock.calls[0][0];
+    const receipt = (upsert.update.selectionMetadata as Record<string, unknown>)
+      .sessionDecisionReceipt as Record<string, unknown>;
+    expect(upsert.update.advancesSplit).toBe(false);
+    expect((receipt.exceptions as Array<{ code: string }>).map((entry) => entry.code)).toContain(
+      "supplemental_deficit_session"
+    );
   });
 
   it("resolves a linked optional gap-fill completion once and advances once transactionally", async () => {

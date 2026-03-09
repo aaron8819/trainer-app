@@ -45,7 +45,8 @@ export type SessionDecisionExceptionCode =
   | "soreness_suppression"
   | "deload"
   | "readiness_scale"
-  | "optional_gap_fill";
+  | "optional_gap_fill"
+  | "supplemental_deficit_session";
 
 export type SessionDecisionException = {
   code: SessionDecisionExceptionCode;

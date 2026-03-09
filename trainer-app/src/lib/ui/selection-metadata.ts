@@ -126,6 +126,53 @@ export function attachOptionalGapFillMetadata(
   };
 }
 
+export function attachSupplementalSessionMetadata(
+  selectionMetadata: SaveableSelectionMetadata,
+  input: {
+    enabled: boolean;
+    targetMuscles?: string[];
+    anchorWeek?: number;
+  }
+): SaveableSelectionMetadata {
+  if (!input.enabled) {
+    return selectionMetadata;
+  }
+  void input.anchorWeek;
+
+  const receipt = selectionMetadata.sessionDecisionReceipt;
+  if (!receipt) {
+    return selectionMetadata;
+  }
+
+  const nextTargetMuscles =
+    input.targetMuscles && input.targetMuscles.length > 0
+      ? input.targetMuscles
+      : receipt.targetMuscles;
+  const hasMarker = receipt.exceptions.some(
+    (entry) => entry.code === "supplemental_deficit_session"
+  );
+
+  return {
+    ...selectionMetadata,
+    sessionDecisionReceipt: hasMarker
+      ? {
+          ...receipt,
+          targetMuscles: nextTargetMuscles,
+        }
+      : {
+          ...receipt,
+          targetMuscles: nextTargetMuscles,
+          exceptions: [
+            ...receipt.exceptions,
+            {
+              code: "supplemental_deficit_session",
+              message: "Marked as supplemental deficit session.",
+            },
+          ],
+        },
+  };
+}
+
 export function buildCanonicalSelectionMetadata(
   value: unknown,
   autoregulation?: AutoregulationResult

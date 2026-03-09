@@ -80,6 +80,12 @@ export function filterPerformedHistory(
   return history.filter(isPerformedHistoryEntry).map(withDerivedConfidence);
 }
 
+export function filterProgressionHistory(
+  history: WorkoutHistoryEntry[]
+): WorkoutHistoryEntry[] {
+  return filterPerformedHistory(history).filter((entry) => entry.progressionEligible !== false);
+}
+
 export function getMostRecentHistoryEntry(
   history: WorkoutHistoryEntry[]
 ): WorkoutHistoryEntry | undefined {

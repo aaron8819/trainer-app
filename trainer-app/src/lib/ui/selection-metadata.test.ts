@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { buildCanonicalSelectionMetadata, sanitizeSelectionMetadataForSave } from "./selection-metadata";
+import {
+  attachSupplementalSessionMetadata,
+  buildCanonicalSelectionMetadata,
+  sanitizeSelectionMetadataForSave,
+} from "./selection-metadata";
 
 describe("sanitizeSelectionMetadataForSave", () => {
   it("keeps only canonical save-safe selection metadata fields", () => {
@@ -167,5 +171,82 @@ describe("buildCanonicalSelectionMetadata", () => {
       rationale: "Scaled session from recent readiness (signal 3.0h old)",
     });
     expect((result as Record<string, unknown>).autoregulation).toBeUndefined();
+  });
+});
+
+describe("attachSupplementalSessionMetadata", () => {
+  it("appends the supplemental marker without removing existing receipt exceptions", () => {
+    const result = attachSupplementalSessionMetadata(
+      {
+        sessionDecisionReceipt: {
+          version: 1,
+          cycleContext: {
+            weekInMeso: 2,
+            weekInBlock: 2,
+            phase: "accumulation",
+            blockType: "accumulation",
+            isDeload: false,
+            source: "computed",
+          },
+          lifecycleVolume: {
+            source: "unknown",
+          },
+          sorenessSuppressedMuscles: [],
+          deloadDecision: {
+            mode: "none",
+            reason: [],
+            reductionPercent: 0,
+            appliedTo: "none",
+          },
+          readiness: {
+            wasAutoregulated: false,
+            signalAgeHours: null,
+            fatigueScoreOverall: null,
+            intensityScaling: {
+              applied: false,
+              exerciseIds: [],
+              scaledUpCount: 0,
+              scaledDownCount: 0,
+            },
+          },
+          exceptions: [
+            {
+              code: "optional_gap_fill",
+              message: "Marked as optional gap-fill session.",
+            },
+          ],
+        },
+      },
+      {
+        enabled: true,
+        targetMuscles: ["Chest"],
+        anchorWeek: 3,
+      }
+    );
+
+    expect(result.sessionDecisionReceipt?.targetMuscles).toEqual(["Chest"]);
+    expect(result.sessionDecisionReceipt?.exceptions).toEqual([
+      {
+        code: "optional_gap_fill",
+        message: "Marked as optional gap-fill session.",
+      },
+      {
+        code: "supplemental_deficit_session",
+        message: "Marked as supplemental deficit session.",
+      },
+    ]);
+  });
+
+  it("does not stamp supplemental metadata when disabled", () => {
+    const metadata = {
+      selectedExerciseIds: ["bench"],
+    };
+
+    expect(
+      attachSupplementalSessionMetadata(metadata, {
+        enabled: false,
+        targetMuscles: ["Chest"],
+      })
+    ).toBe(metadata);
   });
 });

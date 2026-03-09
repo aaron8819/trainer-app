@@ -44,6 +44,7 @@ export type GenerateIntentSessionInput = {
   maxGeneratedHardSets?: number;
   maxGeneratedExercises?: number;
   optionalGapFill?: boolean;
+  supplementalDeficitSession?: boolean;
   pinnedExerciseIds?: string[];
   roleListIncomplete?: true;
   plannerDiagnosticsMode?: PlannerDiagnosticsMode;

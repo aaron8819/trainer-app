@@ -7,6 +7,7 @@ import {
   formatWorkoutListExerciseLabel,
   formatWorkoutListIntentLabel,
   formatWorkoutListLoggedSetsLabel,
+  getWorkoutListPrimaryLabel,
   getWorkoutListStatusClasses,
   getWorkoutListStatusLabel,
   WORKOUT_LIST_STATUS_OPTIONS,
@@ -297,10 +298,15 @@ export default function HistoryClient({
                 >
                   <div>
                     <p className="text-sm font-semibold">
-                      {formatWorkoutListIntentLabel(workout.sessionIntent)}
+                      {getWorkoutListPrimaryLabel(workout)}
                       {sessionSnapshotLabel ? (
                         <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600">
                           {sessionSnapshotLabel}
+                        </span>
+                      ) : null}
+                      {workout.isSupplementalDeficitSession ? (
+                        <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800">
+                          Supplemental
                         </span>
                       ) : null}
                     </p>

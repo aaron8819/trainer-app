@@ -65,6 +65,7 @@ export const generateFromIntentSchema = z
     maxGeneratedHardSets: z.number().int().min(1).max(100).optional(),
     maxGeneratedExercises: z.number().int().min(1).max(20).optional(),
     optionalGapFill: z.boolean().optional(),
+    supplementalDeficitSession: z.boolean().optional(),
     pinnedExerciseIds: z.array(z.string()).optional(),
     roleListIncomplete: z.preprocess(
       (value) => (value === true ? true : undefined),
@@ -88,6 +89,30 @@ export const generateFromIntentSchema = z
         code: z.ZodIssueCode.custom,
         message: "weekCloseId is required when optionalGapFill is true",
         path: ["weekCloseId"],
+      });
+    }
+    if (value.supplementalDeficitSession === true && value.intent !== "body_part") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "supplementalDeficitSession is only allowed when intent is body_part",
+        path: ["supplementalDeficitSession"],
+      });
+    }
+    if (
+      value.supplementalDeficitSession === true &&
+      (!value.targetMuscles || value.targetMuscles.length === 0)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "targetMuscles is required when supplementalDeficitSession is true",
+        path: ["targetMuscles"],
+      });
+    }
+    if (value.supplementalDeficitSession === true && value.optionalGapFill === true) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "supplementalDeficitSession cannot be combined with optionalGapFill",
+        path: ["supplementalDeficitSession"],
       });
     }
   });

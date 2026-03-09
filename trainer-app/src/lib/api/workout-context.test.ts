@@ -248,4 +248,128 @@ describe("mapHistory", () => {
       load: 20,
     });
   });
+
+  it("marks strict supplemental deficit sessions as progression-ineligible while keeping them performed", () => {
+    const history = mapHistory([
+      {
+        id: "w3",
+        userId: "u1",
+        templateId: null,
+        scheduledDate: new Date("2026-02-22T00:00:00.000Z"),
+        completedAt: new Date("2026-02-22T01:00:00.000Z"),
+        status: WorkoutStatus.COMPLETED,
+        estimatedMinutes: 45,
+        notes: null,
+        selectionMode: "INTENT",
+        sessionIntent: "BODY_PART",
+        selectionMetadata: {
+          sessionDecisionReceipt: {
+            version: 1,
+            cycleContext: {
+              weekInMeso: 4,
+              weekInBlock: 4,
+              phase: "accumulation",
+              blockType: "accumulation",
+              isDeload: false,
+              source: "computed",
+            },
+            lifecycleVolume: {
+              source: "unknown",
+            },
+            sorenessSuppressedMuscles: [],
+            deloadDecision: {
+              mode: "none",
+              reason: [],
+              reductionPercent: 0,
+              appliedTo: "none",
+            },
+            readiness: {
+              wasAutoregulated: false,
+              signalAgeHours: null,
+              fatigueScoreOverall: null,
+              intensityScaling: {
+                applied: false,
+                exerciseIds: [],
+                scaledUpCount: 0,
+                scaledDownCount: 0,
+              },
+            },
+            exceptions: [
+              {
+                code: "supplemental_deficit_session",
+                message: "Marked as supplemental deficit session.",
+              },
+            ],
+          },
+        },
+        revision: 1,
+        forcedSplit: null,
+        advancesSplit: false,
+        trainingBlockId: null,
+        weekInBlock: null,
+        exercises: [
+          {
+            id: "we3",
+            workoutId: "w3",
+            exerciseId: "bench",
+            orderIndex: 0,
+            section: "MAIN",
+            isMainLift: true,
+            movementPatterns: [],
+            notes: null,
+            exercise: {
+              id: "bench",
+              name: "Bench Press",
+              movementPatterns: [],
+              splitTags: [],
+              jointStress: "MEDIUM",
+              isMainLiftEligible: true,
+              isCompound: true,
+              fatigueCost: 3,
+              stimulusBias: [],
+              contraindications: null,
+              timePerSetSec: 120,
+              sfrScore: 3,
+              lengthPositionScore: 3,
+              difficulty: "INTERMEDIATE",
+              isUnilateral: false,
+              repRangeMin: 5,
+              repRangeMax: 12,
+              exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Chest", sraHours: 48 } }],
+            },
+            sets: [
+              {
+                id: "s31",
+                workoutExerciseId: "we3",
+                setIndex: 1,
+                targetReps: 10,
+                targetRepMin: null,
+                targetRepMax: null,
+                targetRpe: 8,
+                targetLoad: 155,
+                restSeconds: 120,
+                logs: [
+                  {
+                    id: "l31",
+                    workoutSetId: "s31",
+                    actualReps: 10,
+                    actualRpe: 8,
+                    actualLoad: 155,
+                    completedAt: new Date(),
+                    notes: null,
+                    wasSkipped: false,
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      } as never,
+    ]);
+
+    expect(history).toHaveLength(1);
+    expect(history[0].status).toBe("COMPLETED");
+    expect(history[0].progressionEligible).toBe(false);
+    expect(history[0].exercises[0].sets).toHaveLength(1);
+  });
 });

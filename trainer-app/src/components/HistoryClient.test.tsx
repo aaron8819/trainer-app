@@ -36,6 +36,9 @@ function makeWorkout(overrides: Partial<HistoryWorkoutItem> = {}): HistoryWorkou
     sessionIntent: "PUSH",
     mesocycleId: null,
     sessionSnapshot: null,
+    isGapFill: false,
+    isSupplementalDeficitSession: false,
+    gapFillTargetMuscles: [],
     exerciseCount: 5,
     totalSetsLogged: 15,
     ...overrides,
@@ -99,6 +102,35 @@ describe("HistoryClient", () => {
     expect(screen.getByText("Wk3·S2")).toBeInTheDocument();
     // Did NOT call fetch on mount
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("renders a Supplemental badge for strict supplemental sessions but not for gap-fill", () => {
+    render(
+      <HistoryClient
+        initialWorkouts={[
+          makeWorkout({
+            id: "supp-1",
+            sessionIntent: "BODY_PART",
+            isSupplementalDeficitSession: true,
+            exerciseCount: 7,
+          }),
+          makeWorkout({
+            id: "gap-1",
+            sessionIntent: "BODY_PART",
+            isGapFill: true,
+            gapFillTargetMuscles: ["rear delts"],
+            exerciseCount: 8,
+          }),
+        ]}
+        initialNextCursor={null}
+        initialTotalCount={2}
+        mesocycles={NO_MESOCYCLES}
+      />
+    );
+
+    expect(screen.getByText("Supplemental")).toBeInTheDocument();
+    expect(screen.getByText("Gap Fill")).toBeInTheDocument();
+    expect(screen.getAllByText("Body Part")).toHaveLength(1);
   });
 
   // ── H2: filter resets list and re-fetches ─────────────────────────────────

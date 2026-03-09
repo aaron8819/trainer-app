@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { saveWorkoutRequest } from "@/components/log-workout/api";
-import type { BaselineUpdateSummary, CompletionAction } from "@/components/log-workout/types";
+import type { CompletionAction } from "@/components/log-workout/types";
 
 export type WorkoutSessionFlowState = {
   completionAction: CompletionAction | null;
@@ -14,7 +14,6 @@ export type WorkoutSessionFlowState = {
 
 export type WorkoutSessionCompletionController = {
   state: WorkoutSessionFlowState;
-  baselineSummary: BaselineUpdateSummary | null;
   completed: boolean;
   skipped: boolean;
   pending: boolean;
@@ -49,7 +48,6 @@ export function useWorkoutSessionCompletion({
   showError,
   showStatus,
 }: UseWorkoutSessionCompletionParams): WorkoutSessionCompletionController {
-  const [baselineSummary, setBaselineSummary] = useState<BaselineUpdateSummary | null>(null);
   const [sessionFlow, setSessionFlow] = useState<WorkoutSessionFlowState>({
     completionAction: null,
     pendingAction: null,
@@ -83,7 +81,6 @@ export function useWorkoutSessionCompletion({
 
       setSessionFlow((prev) => ({ ...prev, pendingAction: resolvedAction }));
       clearFeedback();
-      setBaselineSummary(null);
 
       try {
         if (resolvedAction === "mark_skipped") {
@@ -125,7 +122,6 @@ export function useWorkoutSessionCompletion({
           return;
         }
 
-        const body = response.data;
         if (resolvedAction === "mark_partial") {
           clearTimer();
           setSessionFlow((prev) => ({
@@ -139,7 +135,6 @@ export function useWorkoutSessionCompletion({
         }
 
         clearAllDrafts();
-        setBaselineSummary((body?.baselineSummary as BaselineUpdateSummary | null | undefined) ?? null);
         clearTimer();
         setSessionFlow((prev) => ({
           ...prev,
@@ -197,7 +192,6 @@ export function useWorkoutSessionCompletion({
 
   return {
     state: sessionFlow,
-    baselineSummary,
     completed,
     skipped,
     pending: sessionActionPending,

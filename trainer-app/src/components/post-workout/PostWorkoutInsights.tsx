@@ -40,11 +40,13 @@ export function PostWorkoutInsights({ explanation, exercises }: Props) {
         <h2 className="mt-1 text-lg font-semibold text-slate-900">{model.headline}</h2>
         <p className="mt-2 text-sm leading-6 text-slate-600">{model.summary}</p>
 
-        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
           {model.overview.map((item) => (
             <div key={item.label} className={`rounded-xl border p-3 ${toneClasses(item.tone)}`}>
               <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{item.label}</p>
-              <p className="mt-1 text-sm text-slate-700">{item.value}</p>
+              <p className={`mt-1 text-sm text-slate-700 ${item.emphasized ? "font-medium" : ""}`}>
+                {item.value}
+              </p>
             </div>
           ))}
         </div>

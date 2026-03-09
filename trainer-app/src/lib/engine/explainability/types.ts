@@ -18,9 +18,20 @@ export type WorkoutExplanation = {
   coachMessages: CoachMessage[];
   exerciseRationales: Map<string, ExerciseRationale>; // exerciseId -> rationale
   prescriptionRationales: Map<string, PrescriptionRationale>; // exerciseId -> rationale
-  progressionReceipts: Map<string, ProgressionReceipt>; // exerciseId -> progression receipt
+  progressionReceipts: Map<string, ProgressionReceipt>; // exerciseId -> prior-prescription receipt
+  nextExposureDecisions: Map<string, NextExposureDecision>; // exerciseId -> next-exposure read model
   filteredExercises?: FilteredExerciseSummary[]; // Exercises filtered due to constraints (Phase 2)
   volumeCompliance: MuscleVolumeCompliance[]; // Per-muscle weekly volume compliance (post-generation)
+};
+
+export type NextExposureDecision = {
+  action: "increase" | "hold" | "decrease";
+  summary: string;
+  reason: string;
+  anchorLoad: number | null;
+  repRange: { min: number; max: number };
+  modalRpe: number | null;
+  medianReps: number | null;
 };
 
 export type ExplainabilityConfidence = {

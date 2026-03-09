@@ -76,7 +76,7 @@ SetLog / logged performance
 - `deriveSessionSemantics()` is the canonical session-level interpretation bridge. It does not own set-level progression math like modal load or anchor-load computation; it owns session-level meaning such as whether a workout is advancing, supplemental, or progression-eligible.
 - `selectionMetadata.sessionDecisionReceipt` remains the canonical stored generation/evidence context for read-side consumers.
 - Post-workout explanation is a read-side interpretation layer. It should consume canonical receipts, derived session semantics, and canonical progression outputs rather than independently re-authoring progression-relevant session behavior.
-- The normal post-workout UX is a presentation layer over that same read-side data. The default completion/review path should lead with session outcome, key-lift takeaways, next-exposure guidance, and compact program-impact signals, while `/workout/[id]/audit` remains the deeper verification surface over the same canonical explanation inputs.
+- The normal post-workout UX is a presentation layer over that same read-side data. The default completion/review path should lead with session outcome, key-lift takeaways, and prominent next-exposure guidance, with program-impact signals kept compact in their dedicated section, while `/workout/[id]/audit` remains the deeper verification surface over the same canonical explanation inputs.
 - Next workout generation and load progression remain canonical in generator/engine seams (`src/lib/engine/apply-loads.ts`, `src/lib/engine/progression.ts`, `src/lib/api/next-session.ts`).
 
 ## Session planning boundaries

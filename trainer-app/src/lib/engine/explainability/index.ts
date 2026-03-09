@@ -31,6 +31,7 @@ export type {
   RirRationale,
   RestRationale,
   FilteredExerciseSummary,
+  NextExposureDecision,
   VolumeComplianceStatus,
   MuscleVolumeCompliance,
 } from "./types";

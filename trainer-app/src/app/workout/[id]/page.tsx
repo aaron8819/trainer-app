@@ -279,7 +279,7 @@ export default async function WorkoutDetailPage({
                           {loadDeltaLabel ? ` ${loadDeltaLabel}.` : ""}
                         </p>
                       ) : null}
-                      <p className="mt-2 text-xs text-slate-500">
+                      <p className="mt-3 text-[11px] leading-5 text-slate-400">
                         {stressNote} {loadNote}
                       </p>
 

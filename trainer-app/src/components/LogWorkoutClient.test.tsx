@@ -397,6 +397,11 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
       expect(screen.getByText(/Next exposure: hold load for now\./)).toBeInTheDocument();
       expect(screen.getByRole("heading", { name: "Detailed set log" })).toBeInTheDocument();
       expect(screen.queryByText("Strength updates")).not.toBeInTheDocument();
+      expect(
+        screen.getByText(
+          "See the full workout review for the original workout structure, deeper exercise detail, and fuller session context. When you're ready, generate the next workout and log a same-day readiness check-in first."
+        )
+      ).toBeInTheDocument();
       expect(screen.getByRole("link", { name: "View full review" })).toHaveAttribute("href", "/workout/workout-1");
       expect(screen.getByRole("link", { name: "Generate next workout" })).toHaveAttribute("href", "/");
     });

@@ -45,6 +45,7 @@ export async function GET(
     exerciseRationales: Object.fromEntries(result.exerciseRationales),
     prescriptionRationales: Object.fromEntries(result.prescriptionRationales),
     progressionReceipts: Object.fromEntries(result.progressionReceipts),
+    nextExposureDecisions: Object.fromEntries(result.nextExposureDecisions),
     filteredExercises: result.filteredExercises ?? [],
     volumeCompliance: result.volumeCompliance,
   });

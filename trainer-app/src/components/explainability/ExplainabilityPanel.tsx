@@ -78,6 +78,7 @@ export function ExplainabilityPanel({
   const exerciseRationales = Array.from(explanation.exerciseRationales.entries());
   const prescriptionRationales = explanation.prescriptionRationales;
   const progressionReceipts = explanation.progressionReceipts;
+  const nextExposureDecisions = explanation.nextExposureDecisions;
   const logicMessages = explanation.coachMessages.filter(
     (message) => message.type !== "encouragement" && message.type !== "tip"
   );
@@ -194,7 +195,7 @@ export function ExplainabilityPanel({
             {progressionLogicRows.length > 0 ? (
               <div className="rounded-xl border border-slate-200 bg-white p-3">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Exercise decision trace
+                  Today&apos;s prescription trace
                 </p>
                 <div className="mt-3 space-y-3">
                   {progressionLogicRows.map((entry) => (
@@ -202,7 +203,9 @@ export function ExplainabilityPanel({
                       <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                         <p className="text-sm font-semibold text-slate-800">{entry.exerciseName}</p>
                         <p className="text-xs text-slate-500">
-                          {entry.hasHistory ? "Uses recent performed history" : "No recent performed anchor"}
+                          {entry.hasHistory
+                            ? "Explains how today's written target was anchored"
+                            : "No recent performed anchor for today's target"}
                         </p>
                       </div>
                       <ol className="mt-2 list-decimal pl-4 text-sm text-slate-600">
@@ -376,6 +379,7 @@ export function ExplainabilityPanel({
                       rationale={rationale}
                       prescription={prescription}
                       progressionReceipt={progressionReceipts.get(exerciseId)}
+                      nextExposureDecision={nextExposureDecisions.get(exerciseId)}
                       isExpanded={expandedExercises.has(exerciseId)}
                       onToggle={() => toggleExercise(exerciseId)}
                     />

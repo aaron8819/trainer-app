@@ -187,9 +187,6 @@ function WorkoutSessionFlowHarness({
       <div data-testid="undo-set-id">{hook.undoSnapshot?.setId ?? ""}</div>
       <div data-testid="autoreg-hint">{hook.autoregHint?.message ?? ""}</div>
       <div data-testid="terminal-state">{hook.completion.state.terminalState}</div>
-      <div data-testid="baseline-summary">
-        {hook.baselineSummary ? JSON.stringify(hook.baselineSummary) : ""}
-      </div>
       <div data-testid="timer-end">{restTimer?.endAtMs ?? ""}</div>
       <div data-testid="set-1-reps">{data.main[0]?.sets[0]?.actualReps ?? ""}</div>
       <div data-testid="set-1-load">{data.main[0]?.sets[0]?.actualLoad ?? ""}</div>
@@ -278,7 +275,7 @@ describe("useWorkoutSessionFlow", () => {
     });
   });
 
-  it("completes a workout and clears drafts/timer while storing baseline summary", async () => {
+  it("completes a workout and clears drafts/timer without reviving the removed baseline summary path", async () => {
     const callbacks = createCallbacks();
     mockedSaveWorkoutRequest.mockResolvedValueOnce({
       data: {
@@ -310,7 +307,6 @@ describe("useWorkoutSessionFlow", () => {
       expect(callbacks.clearAllDraftsSpy).toHaveBeenCalled();
       expect(screen.getByTestId("terminal-state")).toHaveTextContent("completed");
       expect(screen.getByTestId("timer-end")).toHaveTextContent("");
-      expect(screen.getByTestId("baseline-summary")).toHaveTextContent("Dumbbell Bench Press");
     });
   });
 
@@ -335,7 +331,6 @@ describe("useWorkoutSessionFlow", () => {
       expect(callbacks.clearAllDraftsSpy).not.toHaveBeenCalled();
       expect(screen.getByTestId("terminal-state")).toHaveTextContent("active");
       expect(screen.getByTestId("timer-end")).toHaveTextContent("");
-      expect(screen.getByTestId("baseline-summary")).toHaveTextContent("");
       expect(screen.getByTestId("status")).toHaveTextContent(
         "Workout saved as partial (some planned sets were unresolved)"
       );

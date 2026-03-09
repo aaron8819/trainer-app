@@ -1,6 +1,10 @@
 "use client";
 
-import type { ExerciseRationale, PrescriptionRationale } from "@/lib/engine/explainability";
+import type {
+  ExerciseRationale,
+  PrescriptionRationale,
+  NextExposureDecision,
+} from "@/lib/engine/explainability";
 import type { ProgressionReceipt } from "@/lib/evidence/types";
 import { PrescriptionDetails } from "./PrescriptionDetails";
 
@@ -8,6 +12,7 @@ type Props = {
   rationale: ExerciseRationale;
   prescription?: PrescriptionRationale;
   progressionReceipt?: ProgressionReceipt;
+  nextExposureDecision?: NextExposureDecision;
   isExpanded: boolean;
   onToggle: () => void;
 };
@@ -16,6 +21,7 @@ export function ExerciseRationaleCard({
   rationale,
   prescription,
   progressionReceipt,
+  nextExposureDecision,
   isExpanded,
   onToggle,
 }: Props) {
@@ -79,20 +85,40 @@ export function ExerciseRationaleCard({
             </div>
           ) : null}
 
+          {nextExposureDecision ? (
+            <div className="mb-4 rounded-lg border border-emerald-100 bg-emerald-50 p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800">
+                Next exposure
+              </p>
+              <p className="mt-1 text-sm text-emerald-950">{nextExposureDecision.summary}</p>
+              <p className="mt-1 text-xs text-emerald-900">{nextExposureDecision.reason}</p>
+              <p className="mt-1 text-xs text-emerald-800">
+                Anchor {nextExposureDecision.anchorLoad ?? "n/a"} | median reps{" "}
+                {nextExposureDecision.medianReps ?? "n/a"} | modal RPE {nextExposureDecision.modalRpe ?? "n/a"}
+              </p>
+            </div>
+          ) : null}
+
           {progressionReceipt ? (
             <div className="mb-4 rounded-lg border border-slate-100 bg-slate-50 p-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Progression check</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Today&apos;s target context
+              </p>
               <p className="mt-1 text-sm text-slate-700">{formatTrigger(progressionReceipt.trigger)}</p>
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
                 <div className="rounded-md border border-slate-200 bg-white px-3 py-2">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Last performed</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    Prior session anchor
+                  </p>
                   <p className="mt-1 text-xs text-slate-700">{lastPerformedSummary.label}</p>
                   {lastPerformedSummary.detail ? (
                     <p className="mt-1 text-xs text-slate-500">{lastPerformedSummary.detail}</p>
                   ) : null}
                 </div>
                 <div className="rounded-md border border-slate-200 bg-white px-3 py-2">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Today&apos;s target</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    Today&apos;s written target
+                  </p>
                   <p className="mt-1 text-xs text-slate-700">{todayTargetSummary.label}</p>
                   {todayTargetSummary.detail ? (
                     <p className="mt-1 text-xs text-slate-500">{todayTargetSummary.detail}</p>
@@ -179,15 +205,15 @@ function getPlainLanguageFactors(rationale: ExerciseRationale): Array<{ label: s
 function formatTrigger(trigger: ProgressionReceipt["trigger"]): string {
   switch (trigger) {
     case "double_progression":
-      return "Recent performance supported a progression step today.";
+      return "Recent performance supported writing a heavier target for today.";
     case "hold":
-      return "Recent performance supported holding the same target.";
+      return "Recent performance supported writing the same target for today.";
     case "deload":
-      return "Targets were reduced because this session is in deload mode.";
+      return "Today's written target was reduced because this session is in deload mode.";
     case "readiness_scale":
-      return "Targets were adjusted to match today's readiness.";
+      return "Today's written target was adjusted to match readiness.";
     default:
-      return "There was not enough recent performed history to justify a progression step.";
+      return "There was not enough recent performed history to move today's written target.";
   }
 }
 

@@ -15,6 +15,7 @@ import {
   buildWarmupSetsFromTopSet,
   canResolveLoadForWarmupRamp,
 } from "./warmup-ramp";
+import { resolveProgressionAnchorStrategy } from "@/lib/progression/anchoring";
 import type {
   Exercise,
   Goals,
@@ -578,7 +579,9 @@ function getPrimaryProgressionEquipment(exercise: Exercise): "barbell" | "dumbbe
 }
 
 function shouldUseModalAnchoring(exercise: Exercise): boolean {
-  return !(exercise.isMainLiftEligible ?? false);
+  return resolveProgressionAnchorStrategy({
+    isMainLiftEligible: exercise.isMainLiftEligible,
+  }) === "modal";
 }
 
 function estimateLoad(

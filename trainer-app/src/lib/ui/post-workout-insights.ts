@@ -17,6 +17,7 @@ export type PostWorkoutOverviewItem = {
   label: string;
   value: string;
   tone: PostWorkoutInsightTone;
+  emphasized?: boolean;
 };
 
 export type PostWorkoutKeyLiftInsight = {
@@ -313,11 +314,6 @@ function buildOverview(
       ? `Hold load on ${formatExerciseNameList(holdNames)} and keep building reps.`
       : "Use the detailed lift cards below for the next-exposure read.";
 
-  const programImpact =
-    programSignals.length > 0
-      ? programSignals[0].value
-      : "Weekly volume stayed close to the current plan after this session.";
-
   return [
     {
       label: "How it went",
@@ -328,11 +324,7 @@ function buildOverview(
       label: "Next time",
       value: nextTime,
       tone: reduceNames.length > 0 ? "caution" : increaseNames.length > 0 ? "positive" : "neutral",
-    },
-    {
-      label: "Program impact",
-      value: programImpact,
-      tone: programSignals[0]?.tone ?? "neutral",
+      emphasized: true,
     },
   ];
 }

@@ -70,9 +70,6 @@ function CompletionHarness({
       <div data-testid="show-skip">{String(completion.state.showSkipOptions)}</div>
       <div data-testid="terminal-state">{completion.state.terminalState}</div>
       <div data-testid="pending">{String(completion.pending)}</div>
-      <div data-testid="baseline-summary">
-        {completion.baselineSummary ? JSON.stringify(completion.baselineSummary) : ""}
-      </div>
       <div data-testid="clear-drafts">{String(callbacks.clearAllDraftsSpy.mock.calls.length)}</div>
       <div data-testid="clear-timer">{String(callbacks.clearTimerSpy.mock.calls.length)}</div>
       <div data-testid="clear-feedback">{String(callbacks.clearFeedbackSpy.mock.calls.length)}</div>
@@ -116,7 +113,7 @@ describe("useWorkoutSessionCompletion", () => {
     vi.clearAllMocks();
   });
 
-  it("owns terminal completion state and baseline summary", async () => {
+  it("owns terminal completion state without showing the removed baseline summary card path", async () => {
     const callbacks = createCallbacks();
     mockedSaveWorkoutRequest.mockResolvedValueOnce({
       data: {
@@ -147,7 +144,6 @@ describe("useWorkoutSessionCompletion", () => {
         })
       );
       expect(screen.getByTestId("terminal-state")).toHaveTextContent("completed");
-      expect(screen.getByTestId("baseline-summary")).toHaveTextContent("Bench");
       expect(screen.getByTestId("clear-drafts")).toHaveTextContent("1");
       expect(screen.getByTestId("clear-timer")).toHaveTextContent("1");
       expect(screen.getByTestId("show-status")).toHaveTextContent("Workout marked as completed");

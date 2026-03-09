@@ -191,6 +191,6 @@ describe("WorkoutDetailPage", { timeout: 15000 }, () => {
     expect(screen.getByText("Key lift takeaways")).toBeInTheDocument();
     expect(screen.getByText("Today's target context")).toBeInTheDocument();
     expect(screen.getByText(/Next exposure: hold load for now\./)).toBeInTheDocument();
-    expect(screen.getAllByText("Program impact").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Program impact")).toHaveLength(1);
   });
 });

@@ -172,9 +172,9 @@ export function CompletedWorkoutReview({
                           .join(" | ");
                     return (
                       <div key={set.setIndex} className="rounded-lg bg-slate-50 px-3 py-2">
-                        <div className="flex items-center justify-between gap-2 text-xs">
-                          <span className="shrink-0 font-medium text-slate-700">Set {set.setIndex}</span>
-                          <span className="text-slate-500">{targetLabel}</span>
+                        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-xs">
+                          <span className="font-medium text-slate-700">Set {set.setIndex}</span>
+                          <span className="min-w-0 text-slate-500">{targetLabel}</span>
                         </div>
                         <div className={`mt-0.5 text-xs font-medium ${actualColor}`}>{actualLabel}</div>
                       </div>
@@ -190,7 +190,7 @@ export function CompletedWorkoutReview({
       <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
         <p className="font-semibold text-slate-900">What&apos;s next</p>
         <p className="mt-2 text-sm text-slate-600">
-          Use the full review if you want the same session takeaways alongside the full set log. When you&apos;re ready, generate the next workout and log a same-day readiness check-in first.
+          See the full workout review for the original workout structure, deeper exercise detail, and fuller session context. When you&apos;re ready, generate the next workout and log a same-day readiness check-in first.
         </p>
         <div className="mt-4 flex flex-col gap-3 sm:flex-row">
           <Link

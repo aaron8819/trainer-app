@@ -117,6 +117,8 @@ describe("buildPostWorkoutInsightsModel", () => {
     expect(model.overview.find((item) => item.label === "Next time")?.value).toContain(
       "Hold load on Lat Pulldown"
     );
+    expect(model.overview.find((item) => item.label === "Next time")?.emphasized).toBe(true);
+    expect(model.overview.some((item) => item.label === "Program impact")).toBe(false);
     expect(model.keyLifts[0]?.nextTime).toContain("Next exposure: hold load for now.");
     expect(model.keyLifts[0]?.todayContext).toContain("Today's written target moved from 35 lbs to 40 lbs");
     expect(model.programSignals[0]).toMatchObject({

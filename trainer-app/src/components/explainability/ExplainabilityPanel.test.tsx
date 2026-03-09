@@ -77,6 +77,20 @@ function makeExplanation(withDecisionLog: boolean): WorkoutExplanation {
         },
       ],
     ]),
+    nextExposureDecisions: new Map([
+      [
+        "ex1",
+        {
+          action: "hold",
+          summary: "Next exposure: hold load for now.",
+          reason: "Median reps stayed below the top of the band, so keep building reps before adding load.",
+          anchorLoad: 200,
+          repRange: { min: 8, max: 10 },
+          modalRpe: 8,
+          medianReps: 8,
+        },
+      ],
+    ]),
     filteredExercises: [],
     volumeCompliance: [],
   };
@@ -217,7 +231,7 @@ describe("ExplainabilityPanel progression logic rendering", () => {
 
   it("renders progression decisionLog lines in the Evidence tab", () => {
     render(<ExplainabilityPanel explanation={makeExplanation(true)} summary={summary} />);
-    expect(screen.getByText("Exercise decision trace")).toBeInTheDocument();
+    expect(screen.getByText("Today's prescription trace")).toBeInTheDocument();
     expect(screen.getByText("Path 2 fired")).toBeInTheDocument();
     expect(screen.getByText("Confidence scale=0.70")).toBeInTheDocument();
   });
@@ -234,6 +248,9 @@ describe("ExplainabilityPanel progression logic rendering", () => {
     await user.click(screen.getByRole("button", { name: "Exercise drill-down" }));
     await user.click(screen.getByRole("button", { name: /open drill-down/i }));
 
+    expect(screen.getByText("Next exposure")).toBeInTheDocument();
+    expect(screen.getByText("Next exposure: hold load for now.")).toBeInTheDocument();
+    expect(screen.getByText("Today's target context")).toBeInTheDocument();
     expect(screen.getByText("Why this lift stayed in")).toBeInTheDocument();
     expect(screen.getByText("Top factors")).toBeInTheDocument();
     expect(screen.queryByText("Selection Factors")).not.toBeInTheDocument();

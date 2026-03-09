@@ -44,8 +44,8 @@ export function WorkoutExplanation({
       try {
         const response = await fetch(`/api/workouts/${workoutId}/explanation`);
         if (!response.ok) {
-          const errorData = await response.json().catch(() => ({ error: "Failed to load audit details" }));
-          throw new Error(errorData.error || "Failed to load audit details");
+          const errorData = await response.json().catch(() => ({ error: "Couldn't load workout explanation" }));
+          throw new Error(errorData.error || "Couldn't load workout explanation");
         }
 
         const data: WorkoutExplanationResponse = await response.json();
@@ -58,7 +58,7 @@ export function WorkoutExplanation({
         }
       } catch (err) {
         if (mounted) {
-          setError(err instanceof Error ? err.message : "Failed to load audit details");
+          setError(err instanceof Error ? err.message : "Couldn't load workout explanation");
           setIsLoading(false);
         }
       }
@@ -74,7 +74,7 @@ export function WorkoutExplanation({
   if (isLoading) {
     return (
       <div className="rounded-2xl border border-slate-200 bg-white p-4 text-center text-sm sm:p-5">
-        <p className="text-slate-600">Loading audit details...</p>
+        <p className="text-slate-600">Loading workout explanation...</p>
       </div>
     );
   }
@@ -82,7 +82,7 @@ export function WorkoutExplanation({
   if (error) {
     return (
       <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm sm:p-5">
-        <p className="font-semibold text-red-900">Failed to load audit details</p>
+        <p className="font-semibold text-red-900">Couldn&apos;t load workout explanation</p>
         <p className="mt-1 text-red-700">{error}</p>
       </div>
     );

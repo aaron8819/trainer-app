@@ -1,7 +1,7 @@
 # 03 Data Schema
 
 Owner: Aaron  
-Last reviewed: 2026-03-08  
+Last reviewed: 2026-03-09  
 Purpose: Canonical data-model reference for runtime persistence used by workout generation, logging, templates, analytics, readiness, and periodization.
 
 This doc covers:
@@ -86,3 +86,4 @@ Canonical machine-readable values: `docs/contracts/runtime-contracts.json`.
 - These fields are retained in the schema for backward compatibility and historical inspection only.
 - Active runtime session-decision state is persisted under `Workout.selectionMetadata.sessionDecisionReceipt`, and `POST /api/workouts/save` no longer accepts these compatibility fields as write inputs.
 - Optional-session semantics are receipt-driven, not enum-driven. Supplemental deficit sessions and optional gap-fill sessions do not add new database enums; they are represented by canonical `selectionMetadata.sessionDecisionReceipt.exceptions` markers plus persisted `Workout.selectionMode`, `Workout.sessionIntent`, and `Workout.advancesSplit`.
+- Read-side consumers now centralize that interpretation in `src/lib/session-semantics/derive-session-semantics.ts`; no persisted `sessionKind` column or enum has been added.

@@ -116,6 +116,24 @@ Sources of truth:
 - Mesocycle lifecycle progression is driven by first transition into performed status (`COMPLETED` or `PARTIAL`). Lifecycle counters (`accumulationSessionsCompleted`, `deloadSessionsCompleted`) are incremented atomically inside the save-workout transaction in `src/app/api/workouts/save/route.ts`; status/action resolution is isolated in `src/app/api/workouts/save/status-machine.ts`; `transitionMesocycleState()` in the lifecycle facade (`src/lib/api/mesocycle-lifecycle.ts`) applies state transitions when thresholds are reached.
 - Canonical mesocycle progression counters are `accumulationSessionsCompleted` and `deloadSessionsCompleted` (not `completedSessions`) and drive lifecycle week/phase derivation.
 
+## Session semantics model
+- Session semantics are split intentionally between write-side lifecycle contract and read-side interpretation.
+- Write-side lifecycle contract remains `Workout.advancesSplit`. Save/lifecycle mutation code should continue treating `advancesSplit !== false` as the only advancement gate (`src/app/api/workouts/save/lifecycle-contract.ts`, `src/app/api/workouts/save/route.ts`).
+- Read-side policy is now centralized in `deriveSessionSemantics()` (`src/lib/session-semantics/derive-session-semantics.ts`). Readers should derive behavior from persisted fields rather than re-authoring ad hoc checks across progression, next-session, and planning paths.
+- Current derived kinds are `advancing`, `gap_fill`, `supplemental`, and `non_advancing_generic`.
+- The helper derives those semantics from existing persisted/runtime fields: `advancesSplit`, `selectionMode`, `sessionIntent`, `selectionMetadata`, and optional `templateId`.
+- Current read-side policies centralized there are:
+  - lifecycle-advancement interpretation for compatibility reads (`advancesLifecycle`)
+  - weekly required-slot consumption (`consumesWeeklyScheduleIntent`)
+  - progression anchor / progression explainability eligibility (`countsTowardProgressionHistory`)
+  - unique-intent subtraction eligibility for remaining-week and next-session reads (`eligibleForUniqueIntentSubtraction`)
+- Current derived policy intentionally preserves existing behavior:
+  - strict supplemental sessions are non-advancing and progression-ineligible
+  - strict gap-fill sessions are non-advancing but progression-eligible
+  - generic non-advancing sessions remain progression-eligible unless a stricter classifier excludes them
+  - `null` / `undefined` `advancesSplit` still default to advancing for backward compatibility
+- A persisted `sessionKind` enum was intentionally not added. The current system still has more semantic cases than a stable enum captures, including non-advancing but progression-eligible sessions. Adding an enum now would freeze an incomplete taxonomy into schema and migration contracts before runtime policy has settled.
+
 ## Optional session policy
 - Optional sessions reuse canonical INTENT generation (`intent=body_part`) and do not introduce a separate optimizer path (`src/lib/api/template-session.ts`).
 - Pending week-close context is canonical for gap-fill week anchoring. `generateSessionFromIntent()` now passes `optionalGapFillContext.targetWeek` into `loadMappedGenerationContext()` so generation resolves the anchored `weekInMeso` from the pending week-close row, then derives block-relative `weekInBlock` from the active `TrainingBlock` when available (`src/lib/api/template-session.ts`, `src/lib/api/template-session/context-loader.ts`, `src/lib/api/generation-phase-block-context.ts`).
@@ -130,9 +148,10 @@ Sources of truth:
 - Override precedence is policy-first and split-agnostic: policy values are resolved centrally in `program.ts`; generation/save do not fork by split type.
 - Strict classification for optional sessions uses the shared triplet predicate in `src/lib/gap-fill/classifier.ts`.
 - Strict classification for supplemental deficit sessions uses the shared triplet predicate in `src/lib/session-semantics/supplemental-classifier.ts`.
+- Read-side interpretation for those strict classifiers is centralized in `deriveSessionSemantics()` rather than scattered boolean checks in each consumer.
 - Canonical optional-session receipt/metadata stamping is shared in `src/lib/ui/selection-metadata.ts`; generation and UI callers attach `weekCloseId`, `targetMuscles`, and the `optional_gap_fill` exception through `attachOptionalGapFillMetadata()` instead of duplicating route/component-local mutation logic.
 - Canonical supplemental receipt/metadata stamping is also shared in `src/lib/ui/selection-metadata.ts`; generation attaches `targetMuscles` and the `supplemental_deficit_session` exception through `attachSupplementalSessionMetadata()`, and the client persists the returned canonical metadata unchanged.
-- Supplemental deficit sessions count toward weekly volume and recovery/recent stimulus, but they are excluded from progression anchors and progression explainability evidence (`src/lib/api/workout-context.ts`, `src/lib/progression/progression-eligibility.ts`, `src/lib/api/explainability.ts`).
+- Supplemental deficit sessions count toward weekly volume and recovery/recent stimulus, but they are excluded from progression anchors and progression explainability evidence through the derived session-semantics policy (`src/lib/session-semantics/derive-session-semantics.ts`, `src/lib/api/workout-context.ts`, `src/lib/progression/progression-eligibility.ts`, `src/lib/api/explainability.ts`).
 - Supplemental deficit sessions are non-advancing by contract: save forces `advancesSplit=false` for strict supplemental classification and blocks split advancement even if the incoming payload requests otherwise (`src/app/api/workouts/save/route.ts`).
 
 ## Supplemental Deficit Sessions

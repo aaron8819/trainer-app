@@ -1,7 +1,7 @@
 # 06 Testing
 
 Owner: Aaron
-Last reviewed: 2026-03-08
+Last reviewed: 2026-03-09
 Purpose: Canonical testing reference for Vitest-based coverage of engine, API helpers, and UI components.
 
 This doc covers:
@@ -28,8 +28,11 @@ Sources of truth:
 - `npm run test:slow`: slow simulation suite opt-in
 - `npm run test:audit:matrix`: workout-audit diagnostics matrix regression sweep (`intent-preview` + `next-session` across intents)
 - `npm run test -- src/lib/audit/workout-audit/bundle.test.ts`: focused split-sanity audit summary/verdict coverage
+- `npm run test -- src/lib/audit/workout-audit/scenario-audits.test.ts`: focused sequencing/accounting audit coverage
+- `npm run test -- src/lib/audit/workout-audit/week-close-handoff.test.ts`: focused week-close handoff and historical mixed-contract detector coverage
 - `npm run verify`: lint + type-check (`tsc --noEmit`) + `test:fast` + contract verification
 - `npm run verify:contracts`: docs/runtime enum drift check
+- Owner-scoped audit commands accept `--env-file .env.local --owner owner@local` so local audit scripts can load the intended runtime environment explicitly
 
 ## Scope
 - Engine tests: `src/lib/engine/**/*.test.ts`
@@ -74,10 +77,17 @@ Sources of truth:
 - Audit harness context/generation/serialization coverage: `src/lib/audit/workout-audit/context-builder.test.ts`, `src/lib/audit/workout-audit/generation-runner.test.ts`, `src/lib/audit/workout-audit/serializer.test.ts`.
 - Focused audit semantics coverage: `src/lib/audit/workout-audit/scenario-audits.test.ts` and `src/lib/api/template-session/remaining-week-planner.test.ts` assert off-order sequencing behavior and the `advancesSplit=false` accounting split between weekly accounting and split advancement.
 - Bundled split-sanity audit coverage: `src/lib/audit/workout-audit/bundle.test.ts` verifies compact summary emission, optional rich-artifact emission, and automatic failure when unresolved same-intent deficits remain with `futureCapacity=0`.
+- Week-close handoff audit coverage: `src/lib/audit/workout-audit/week-close-handoff.test.ts` verifies boundary-aware conclusions for final advancing-session ownership handoff, optional gap-fill eligibility basis, and `historical_mixed_contract_state` detection only when a strict optional gap-fill workout exists without a persisted week-close owner.
 - Audit diagnostics matrix coverage:
   - `src/lib/audit/workout-audit/intent-matrix.test.ts`
   - `src/lib/audit/workout-audit/next-session-intent-matrix.test.ts`
   - Matrix assertions keep standard/debug selection parity while verifying diagnostics gating for closure candidate trace persistence.
+
+## Audit commands
+- `npm run audit:workout -- --env-file .env.local --mode next-session --owner owner@local`: owner-scoped next-session artifact with preflight and conclusion blocks
+- `npm run audit:sequencing`: emits the focused sequencing audit artifact under `artifacts/audits/sequencing/`
+- `npm run audit:accounting -- --env-file .env.local --owner owner@local --selection-mode MANUAL --status COMPLETED --advances-split false --optional-gap-fill true`: emits the focused accounting semantics artifact under `artifacts/audits/accounting/`
+- `npm run audit:week-close-handoff -- --env-file .env.local --owner owner@local --target-week 3`: emits the boundary-aware week-close handoff artifact for one concrete owner/week
 
 ## Gap-fill regression
 - Key invariants:

@@ -1,3 +1,4 @@
+import { buildGenerationWarningSummary, WORKOUT_AUDIT_CONCLUSIONS } from "./conclusions";
 import type { WorkoutAuditArtifact, WorkoutAuditRequest, WorkoutAuditRun } from "./types";
 
 function sortJson(value: unknown): unknown {
@@ -31,6 +32,7 @@ export function buildWorkoutAuditArtifact(
     generatedAt: run.generatedAt,
     mode: request.mode,
     source: piiSafe ? "pii-safe" : "live",
+    conclusions: WORKOUT_AUDIT_CONCLUSIONS,
     identity: {
       userId: piiSafe ? "redacted" : run.context.userId,
       ownerEmail: piiSafe ? undefined : run.context.ownerEmail,
@@ -38,6 +40,9 @@ export function buildWorkoutAuditArtifact(
     request: sanitizedRequest,
     nextSession: run.context.nextSession,
     generation: run.generationResult,
+    warningSummary: buildGenerationWarningSummary({
+      generation: run.generationResult,
+    }),
   };
 }
 

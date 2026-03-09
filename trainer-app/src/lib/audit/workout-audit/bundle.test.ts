@@ -385,7 +385,7 @@ describe("writeSplitSanityAuditArtifacts", () => {
     expect(richJson.generation?.selection?.sessionDecisionReceipt?.plannerDiagnostics).toBeDefined();
   });
 
-  it("fails the bundled verdict when a same-intent deficit remains stranded at zero future capacity", async () => {
+  it("downgrades same-intent zero-future-capacity deficits to a warning because week-close handles the fallback", async () => {
     mocks.runWorkoutAuditGeneration.mockResolvedValue(
       buildRun("push", {
         remainingDeficit: 3,
@@ -403,8 +403,12 @@ describe("writeSplitSanityAuditArtifacts", () => {
       outputDir: tempDir,
     });
 
-    expect(result.artifact.overallVerdict).toBe("fail");
-    expect(result.artifact.failedChecks).toContain("no_stranded_zero_capacity_deficits");
+    expect(result.artifact.overallVerdict).toBe("pass");
+    expect(result.artifact.failedChecks).not.toContain("no_stranded_zero_capacity_deficits");
+    expect(
+      result.artifact.verdictChecks.find((check) => check.code === "no_stranded_zero_capacity_deficits")
+        ?.status
+    ).toBe("warn");
     expect(result.artifact.strandedDeficits).toEqual([
       {
         intent: "push",
@@ -414,5 +418,8 @@ describe("writeSplitSanityAuditArtifacts", () => {
         requiredNow: 3,
       },
     ]);
+    expect(result.artifact.warningSummary.semanticWarnings).toContain(
+      "no_stranded_zero_capacity_deficits: Same-intent future capacity is exhausted for some muscles; unresolved deficits will rely on canonical week-close / optional gap-fill handling."
+    );
   });
 });

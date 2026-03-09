@@ -18,9 +18,12 @@ import {
   buildWorkoutAuditArtifact,
   serializeWorkoutAuditArtifact,
 } from "./serializer";
+import { WORKOUT_AUDIT_CONCLUSIONS } from "./conclusions";
 import { buildWorkoutAuditContext, resolveWorkoutAuditIdentity } from "./context-builder";
 import { runWorkoutAuditGeneration } from "./generation-runner";
 import type {
+  AuditConclusionBlock,
+  AuditWarningSummary,
   WorkoutAuditIdentity,
   WorkoutAuditRequest,
   WorkoutAuditRun,
@@ -123,6 +126,7 @@ export type SplitSanityAuditArtifact = {
   auditType: "split-sanity";
   generatedAt: string;
   source: "live" | "pii-safe";
+  conclusions: AuditConclusionBlock;
   identity: WorkoutAuditIdentity;
   request: SplitSanityAuditRequest & { intents: SessionIntent[] };
   thresholds: typeof SPLIT_SANITY_THRESHOLDS;
@@ -130,6 +134,7 @@ export type SplitSanityAuditArtifact = {
   overallVerdict: SplitSanityOverallVerdict;
   failedChecks: SplitSanityCheckCode[];
   warnings: string[];
+  warningSummary: AuditWarningSummary;
   suspiciousPatterns: string[];
   verdictChecks: SplitSanityCheck[];
   plannedTotalsByIntent: Array<{
@@ -562,12 +567,13 @@ function buildChecks(params: {
       ? {
           code: "no_stranded_zero_capacity_deficits",
           status: "pass",
-          message: "No same-intent deficits remain stranded when future capacity is zero.",
+          message: "No same-intent deficits require week-close fallback after future capacity is exhausted.",
         }
       : {
           code: "no_stranded_zero_capacity_deficits",
-          status: "fail",
-          message: "Detected stranded same-intent deficits with futureCapacity=0.",
+          status: "warn",
+          message:
+            "Same-intent future capacity is exhausted for some muscles; unresolved deficits will rely on canonical week-close / optional gap-fill handling.",
           details: {
             strandedDeficits: params.strandedDeficits,
             threshold: SPLIT_SANITY_THRESHOLDS.strandedDeficitMinSets,
@@ -608,6 +614,23 @@ function buildWarnings(checks: SplitSanityCheck[]): string[] {
   return checks
     .filter((check) => check.status === "warn")
     .map((check) => `${check.code}: ${check.message}`);
+}
+
+function buildSplitSanityWarningSummary(params: {
+  checks: SplitSanityCheck[];
+  suspiciousPatterns: string[];
+}): AuditWarningSummary {
+  return {
+    blockingErrors: params.checks
+      .filter((check) => check.status === "fail")
+      .map((check) => `${check.code}: ${check.message}`),
+    semanticWarnings: params.checks
+      .filter((check) => check.status === "warn")
+      .map((check) => `${check.code}: ${check.message}`),
+    backgroundWarnings: params.suspiciousPatterns.filter(
+      (pattern) => !params.checks.some((check) => `${check.code}: ${check.message}` === pattern)
+    ),
+  };
 }
 
 function buildSuspiciousPatterns(params: {
@@ -725,6 +748,7 @@ export function buildSplitSanityAuditArtifact(params: {
     auditType: "split-sanity",
     generatedAt: params.run.generatedAt,
     source: params.request.sanitizationLevel === "pii-safe" ? "pii-safe" : "live",
+    conclusions: WORKOUT_AUDIT_CONCLUSIONS,
     identity: getSanitizedIdentity(params.request, params.run.identity),
     request: getSanitizedRequest(params.request, params.run.intents),
     thresholds: SPLIT_SANITY_THRESHOLDS,
@@ -732,6 +756,10 @@ export function buildSplitSanityAuditArtifact(params: {
     overallVerdict: failedChecks.length === 0 ? "pass" : "fail",
     failedChecks,
     warnings,
+    warningSummary: buildSplitSanityWarningSummary({
+      checks,
+      suspiciousPatterns,
+    }),
     suspiciousPatterns,
     verdictChecks: checks,
     plannedTotalsByIntent: intentSummaries.map((summary) => ({

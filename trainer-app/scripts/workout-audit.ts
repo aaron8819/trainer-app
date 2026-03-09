@@ -1,67 +1,74 @@
-import "dotenv/config";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { buildWorkoutAuditContext } from "@/lib/audit/workout-audit/context-builder";
-import { runWorkoutAuditGeneration } from "@/lib/audit/workout-audit/generation-runner";
 import {
-  buildWorkoutAuditArtifact,
-  serializeWorkoutAuditArtifact,
-} from "@/lib/audit/workout-audit/serializer";
+  assertAuditPreflight,
+  captureAuditWarnings,
+  loadAuditEnv,
+  parseArgs,
+  printAuditPreflight,
+  printWarningSummary,
+  runAuditPreflight,
+} from "./audit-cli-support";
 import type { WorkoutAuditRequest } from "@/lib/audit/workout-audit/types";
 import type { SessionIntent } from "@/lib/engine/session-types";
-
-function parseArgs(argv: string[]): Record<string, string | boolean> {
-  const output: Record<string, string | boolean> = {};
-  for (let i = 0; i < argv.length; i += 1) {
-    const token = argv[i];
-    if (!token.startsWith("--")) {
-      continue;
-    }
-    const key = token.slice(2);
-    const value = argv[i + 1];
-    if (!value || value.startsWith("--")) {
-      output[key] = true;
-      continue;
-    }
-    output[key] = value;
-    i += 1;
-  }
-  return output;
-}
-
-function parseRequestFromArgs(argv: string[]): WorkoutAuditRequest {
-  const args = parseArgs(argv);
-  const mode = (args.mode as WorkoutAuditRequest["mode"] | undefined) ?? "next-session";
-  const intent = args.intent as SessionIntent | undefined;
-  const targetMuscles =
-    typeof args["target-muscles"] === "string"
-      ? args["target-muscles"]
-          .split(",")
-          .map((entry) => entry.trim())
-          .filter((entry) => entry.length > 0)
-      : undefined;
-
-  return {
-    mode,
-    userId: typeof args["user-id"] === "string" ? args["user-id"] : undefined,
-    ownerEmail: typeof args.owner === "string" ? args.owner : undefined,
-    intent,
-    targetMuscles,
-    plannerDiagnosticsMode: args.debug === true ? "debug" : "standard",
-    sanitizationLevel: args.sanitization === "pii-safe" ? "pii-safe" : "none",
-  };
-}
 
 function slug(value: string): string {
   return value.replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").toLowerCase();
 }
 
 async function main(): Promise<void> {
-  const request = parseRequestFromArgs(process.argv.slice(2));
-  const context = await buildWorkoutAuditContext(request);
-  const run = await runWorkoutAuditGeneration(context);
-  const artifact = buildWorkoutAuditArtifact(request, run);
-  const serialized = serializeWorkoutAuditArtifact(artifact);
+  const args = parseArgs(process.argv.slice(2));
+  const env = loadAuditEnv(typeof args["env-file"] === "string" ? args["env-file"] : undefined);
+
+  const [{ resolveWorkoutAuditIdentity, buildWorkoutAuditContext }, { prisma }, generationRunner, serializer] =
+    await Promise.all([
+      import("@/lib/audit/workout-audit/context-builder"),
+      import("@/lib/db/prisma"),
+      import("@/lib/audit/workout-audit/generation-runner"),
+      import("@/lib/audit/workout-audit/serializer"),
+    ]);
+
+  const preflight = await runAuditPreflight({
+    args,
+    resolveIdentity: resolveWorkoutAuditIdentity,
+    checkDb: async () => {
+      await prisma.$queryRawUnsafe("SELECT 1");
+    },
+  });
+  preflight.envFilePath = env.envFilePath;
+  preflight.status.env_loaded = env.envLoaded;
+  printAuditPreflight("workout-audit", preflight);
+  assertAuditPreflight("workout-audit", preflight);
+
+  const request: WorkoutAuditRequest = {
+    mode:
+      (args.mode as "next-session" | "intent-preview" | undefined) ?? "next-session",
+    userId: typeof args["user-id"] === "string" ? args["user-id"] : undefined,
+    ownerEmail: typeof args.owner === "string" ? args.owner : undefined,
+    intent: typeof args.intent === "string" ? (args.intent as SessionIntent) : undefined,
+    targetMuscles:
+      typeof args["target-muscles"] === "string"
+        ? args["target-muscles"]
+            .split(",")
+            .map((entry) => entry.trim())
+            .filter((entry) => entry.length > 0)
+        : undefined,
+    plannerDiagnosticsMode: args.debug === true ? ("debug" as const) : ("standard" as const),
+    sanitizationLevel: args.sanitization === "pii-safe" ? ("pii-safe" as const) : ("none" as const),
+  };
+
+  const { result, warnings } = await captureAuditWarnings(
+    async () => {
+      const context = await buildWorkoutAuditContext(request);
+      const run = await generationRunner.runWorkoutAuditGeneration(context);
+      return { context, run };
+    },
+    { debug: args.debug === true }
+  );
+
+  const { context, run } = result;
+  const artifact = serializer.buildWorkoutAuditArtifact(request, run);
+  const serialized = serializer.serializeWorkoutAuditArtifact(artifact);
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   const intentSlug = context.generationInput.intent ? `-${slug(context.generationInput.intent)}` : "";
@@ -75,10 +82,17 @@ async function main(): Promise<void> {
     "error" in run.generationResult
       ? `generation_error=${run.generationResult.error}`
       : `selected=${run.generationResult.selection.selectedExerciseIds.length}`;
+
   console.log(`[workout-audit] wrote ${outputPath}`);
   console.log(
     `[workout-audit] mode=${request.mode} intent=${context.generationInput.intent} diagnostics=${context.plannerDiagnosticsMode} ${summary}`
   );
+  console.log(`[workout-audit:conclusions] ${JSON.stringify(artifact.conclusions)}`);
+  printWarningSummary("workout-audit", {
+    blockingErrors: [...artifact.warningSummary.blockingErrors, ...warnings.blockingErrors],
+    semanticWarnings: [...artifact.warningSummary.semanticWarnings, ...warnings.semanticWarnings],
+    backgroundWarnings: warnings.backgroundWarnings,
+  });
 }
 
 main().catch((error) => {

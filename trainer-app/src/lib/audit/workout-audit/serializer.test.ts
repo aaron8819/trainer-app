@@ -53,6 +53,8 @@ describe("buildWorkoutAuditArtifact", () => {
     expect(artifact.identity.ownerEmail).toBe("owner@test.local");
     expect(artifact.request.userId).toBe("user-1");
     expect(artifact.request.ownerEmail).toBe("owner@test.local");
+    expect(artifact.conclusions.next_session_basis.sourceFunction).toBe("loadNextWorkoutContext");
+    expect(artifact.warningSummary.blockingErrors).toEqual([]);
   });
 
   it("redacts identity fields in pii-safe mode", () => {
@@ -71,5 +73,21 @@ describe("buildWorkoutAuditArtifact", () => {
     expect(artifact.identity.ownerEmail).toBeUndefined();
     expect(artifact.request.userId).toBeUndefined();
     expect(artifact.request.ownerEmail).toBeUndefined();
+  });
+
+  it("classifies generation errors as blocking warnings", () => {
+    const artifact = buildWorkoutAuditArtifact(
+      {
+        mode: "next-session",
+        userId: "user-1",
+      },
+      {
+        ...baseRun,
+        generationResult: { error: "generation exploded" },
+      }
+    );
+
+    expect(artifact.warningSummary.blockingErrors).toEqual(["generation exploded"]);
+    expect(artifact.warningSummary.semanticWarnings).toEqual([]);
   });
 });

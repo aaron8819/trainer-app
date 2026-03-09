@@ -5,6 +5,28 @@ import type { SessionGenerationResult } from "@/lib/api/template-session/types";
 
 export type WorkoutAuditMode = "next-session" | "intent-preview";
 
+export type AuditBasisDescriptor = {
+  sourceModule: string;
+  sourceFunction: string;
+  runtimeRule: string;
+};
+
+export type AuditConclusionBlock = {
+  next_session_basis: AuditBasisDescriptor;
+  weekly_volume_basis: AuditBasisDescriptor;
+  recovery_basis: AuditBasisDescriptor;
+  progression_basis: AuditBasisDescriptor;
+  week_close_basis: AuditBasisDescriptor;
+  sequencing_basis: AuditBasisDescriptor;
+  advances_split_basis: AuditBasisDescriptor;
+};
+
+export type AuditWarningSummary = {
+  blockingErrors: string[];
+  semanticWarnings: string[];
+  backgroundWarnings: string[];
+};
+
 export type WorkoutAuditIdentity = {
   userId: string;
   ownerEmail?: string;
@@ -43,6 +65,7 @@ export type WorkoutAuditArtifact = {
   generatedAt: string;
   mode: WorkoutAuditMode;
   source: "live" | "pii-safe";
+  conclusions: AuditConclusionBlock;
   identity: {
     userId: string;
     ownerEmail?: string;
@@ -50,4 +73,5 @@ export type WorkoutAuditArtifact = {
   request: WorkoutAuditRequest;
   nextSession?: NextWorkoutContext;
   generation: SessionGenerationResult;
+  warningSummary: AuditWarningSummary;
 };

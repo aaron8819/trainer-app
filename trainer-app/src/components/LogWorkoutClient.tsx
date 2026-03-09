@@ -203,8 +203,10 @@ export default function LogWorkoutClient({
       data[section]
         .filter((exercise) => exercise.sets.some((set) => satisfiedSetIds.has(set.setId)))
         .map((exercise) => ({
+          exerciseId: exercise.workoutExerciseId,
           name: exercise.name,
           equipment: exercise.equipment,
+          isMainLift: exercise.isMainLift,
           section,
           sets: exercise.sets.map((set) => ({
             setIndex: set.setIndex,
@@ -361,7 +363,6 @@ export default function LogWorkoutClient({
     savingSetId,
     status,
     error,
-    baselineSummary,
     autoregHint,
     completion,
     actions,
@@ -766,7 +767,7 @@ export default function LogWorkoutClient({
 
       {completion.completed ? (
         <CompletedWorkoutReview
-          baselineSummary={baselineSummary}
+          workoutId={workoutId}
           loggedCount={loggedCount}
           performanceSummary={performanceSummary}
           rpeAdherence={rpeAdherence}

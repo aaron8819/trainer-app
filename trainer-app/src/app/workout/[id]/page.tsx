@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { generateWorkoutExplanation } from "@/lib/api/explainability";
 import { resolveOwner } from "@/lib/api/workout-context";
+import { PostWorkoutInsights } from "@/components/post-workout/PostWorkoutInsights";
 import { SessionContextCard } from "@/components/explainability";
 import { prisma } from "@/lib/db/prisma";
 import { parseExplainabilitySelectionMetadata } from "@/lib/ui/explainability";
@@ -47,15 +48,15 @@ const hasDumbbellEquipment = (exercise: {
 const formatProgressionCall = (trigger?: string | null) => {
   switch (trigger) {
     case "double_progression":
-      return "Load moved up from your latest performed anchor.";
+      return "Today's written target moved up from your prior session anchor.";
     case "hold":
-      return "Load stayed with your latest performed anchor.";
+      return "Today's written target held your prior session anchor.";
     case "deload":
-      return "Load was reduced for deload work.";
+      return "Today's written target was reduced for deload work.";
     case "readiness_scale":
-      return "Load was adjusted to match today's readiness.";
+      return "Today's written target was adjusted for readiness.";
     default:
-      return "Load stayed close to the written plan because there was not enough recent performed history.";
+      return "Today's written target stayed close to plan because recent performed history was limited.";
   }
 };
 
@@ -190,7 +191,18 @@ export default async function WorkoutDetailPage({
         </div>
 
         <section className="mt-6 space-y-6 sm:mt-8 sm:space-y-8">
-          {summary ? <SessionContextCard summary={summary} startLoggingHref={startLoggingHref} /> : null}
+          {hasPerformedStatus && explanation ? (
+            <PostWorkoutInsights
+              explanation={explanation}
+              exercises={workout.exercises.map((exercise) => ({
+                exerciseId: exercise.exerciseId,
+                exerciseName: exercise.exercise.name,
+                isMainLift: exercise.isMainLift || exercise.section === "MAIN",
+              }))}
+            />
+          ) : summary ? (
+            <SessionContextCard summary={summary} startLoggingHref={startLoggingHref} />
+          ) : null}
 
           {sectionedExercises
             .filter((section) => section.items.length > 0)
@@ -211,7 +223,7 @@ export default async function WorkoutDetailPage({
                     ? formatLoad(backOffSets[0]?.targetLoad, isDumbbellExercise, isBodyweightExercise)
                     : null;
 
-                  const progressionReceipt = explanation?.progressionReceipts.get(exercise.exercise.id);
+                  const progressionReceipt = explanation?.progressionReceipts.get(exercise.exerciseId);
                   const loadNote = getLoadProvenanceNote({
                     targetLoad,
                     isBodyweightExercise,
@@ -261,7 +273,7 @@ export default async function WorkoutDetailPage({
                           <span className="text-xs uppercase tracking-wide text-slate-500">{roleLabel}</span>
                         </div>
                       </div>
-                      {roleLabel === "Main lift" && progressionReceipt ? (
+                      {roleLabel === "Main lift" && !hasPerformedStatus && progressionReceipt ? (
                         <p className="mt-1 text-xs text-slate-600">
                           {formatProgressionCall(progressionReceipt.trigger)}
                           {loadDeltaLabel ? ` ${loadDeltaLabel}.` : ""}

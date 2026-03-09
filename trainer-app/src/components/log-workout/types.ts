@@ -98,8 +98,10 @@ export type CompletedWorkoutSetSummary = {
 };
 
 export type CompletedWorkoutExerciseSummary = {
+  exerciseId: string;
   name: string;
   equipment?: string[];
+  isMainLift: boolean;
   section: ExerciseSection;
   sets: CompletedWorkoutSetSummary[];
 };

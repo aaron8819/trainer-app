@@ -23,6 +23,80 @@ vi.mock("@/components/log-workout/api", () => ({
 const mockedLogSetRequest = vi.mocked(workoutApi.logSetRequest);
 const mockedDeleteSetLogRequest = vi.mocked(workoutApi.deleteSetLogRequest);
 const mockedSaveWorkoutRequest = vi.mocked(workoutApi.saveWorkoutRequest);
+const mockedFetch = vi.fn();
+
+function makeExplanationResponse() {
+  return {
+    confidence: { level: "high", summary: "ok", missingSignals: [] },
+    sessionContext: {
+      blockPhase: {
+        blockType: "accumulation",
+        weekInBlock: 4,
+        totalWeeksInBlock: 4,
+        primaryGoal: "build",
+      },
+      volumeStatus: { muscleStatuses: {}, overallSummary: "ok" },
+      readinessStatus: {
+        overall: "moderate",
+        signalAge: 0,
+        availability: "recent",
+        label: "Recent readiness",
+        perMuscleFatigue: {},
+        sorenessSuppressedMuscles: [],
+        adaptations: [],
+      },
+      progressionContext: {
+        weekInMesocycle: 4,
+        volumeProgression: "building",
+        intensityProgression: "ramping",
+        nextMilestone: "deload next",
+      },
+      cycleSource: "computed",
+      narrative: "narrative",
+    },
+    coachMessages: [],
+    exerciseRationales: {},
+    prescriptionRationales: {},
+    progressionReceipts: {
+      "ex-1": {
+        lastPerformed: {
+          reps: 10,
+          load: 45,
+          rpe: 8,
+          performedAt: "2026-02-18T00:00:00.000Z",
+        },
+        todayPrescription: { reps: 10, load: 50, rpe: 8 },
+        delta: { load: 5, loadPercent: 11.1, reps: 0, rpe: 0 },
+        trigger: "double_progression",
+        decisionLog: [],
+      },
+    },
+    nextExposureDecisions: {
+      "ex-1": {
+        action: "hold",
+        summary: "Next exposure: hold load for now.",
+        reason: "Median reps stayed at 10 in the 8-10 band, so keep building reps before adding load.",
+        anchorLoad: 50,
+        repRange: { min: 8, max: 10 },
+        modalRpe: 8,
+        medianReps: 10,
+      },
+    },
+    filteredExercises: [],
+    volumeCompliance: [
+      {
+        muscle: "Chest",
+        performedEffectiveVolumeBeforeSession: 6,
+        plannedEffectiveVolumeThisSession: 4,
+        projectedEffectiveVolume: 10,
+        weeklyTarget: 10,
+        mev: 8,
+        mav: 16,
+        status: "ON_TARGET",
+      },
+    ],
+  };
+}
 
 function makeExercises(): LogExerciseInput[] {
   return [
@@ -116,6 +190,11 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     mockedLogSetRequest.mockResolvedValue({ data: { status: "ok", wasCreated: true }, error: null });
     mockedDeleteSetLogRequest.mockResolvedValue({ data: { status: "ok" }, error: null });
     mockedSaveWorkoutRequest.mockResolvedValue({ data: { status: "ok", workoutStatus: "COMPLETED" }, error: null });
+    mockedFetch.mockResolvedValue({
+      ok: true,
+      json: async () => makeExplanationResponse(),
+    });
+    vi.stubGlobal("fetch", mockedFetch);
     window.localStorage.clear();
     window.sessionStorage.clear();
     setupDialogMocks();
@@ -277,7 +356,7 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     expect(mockedSaveWorkoutRequest).not.toHaveBeenCalled();
   });
 
-  it("renders the extracted completed review after finishing the workout", async () => {
+  it("renders the post-workout insights and completion actions after finishing the workout", async () => {
     const user = userEvent.setup();
     mockedSaveWorkoutRequest.mockResolvedValueOnce({
       data: {
@@ -310,8 +389,15 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
 
     await waitFor(() => {
       expect(screen.getByText("Session complete!")).toBeInTheDocument();
-      expect(screen.getByRole("heading", { name: "Performance" })).toBeInTheDocument();
-      expect(screen.getByText("Strength updates")).toBeInTheDocument();
+      expect(screen.getByText("Session outcome")).toBeInTheDocument();
+      expect(
+        screen.getByText("Key lifts stayed on track, but nothing clearly earned a load jump yet.")
+      ).toBeInTheDocument();
+      expect(screen.getByText("Key lift takeaways")).toBeInTheDocument();
+      expect(screen.getByText(/Next exposure: hold load for now\./)).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Detailed set log" })).toBeInTheDocument();
+      expect(screen.queryByText("Strength updates")).not.toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "View full review" })).toHaveAttribute("href", "/workout/workout-1");
       expect(screen.getByRole("link", { name: "Generate next workout" })).toHaveAttribute("href", "/");
     });
   });
@@ -935,6 +1021,7 @@ describe("4d - Active card edit mode", () => {
     cleanup();
     vi.clearAllMocks();
     vi.useRealTimers();
+    vi.unstubAllGlobals();
   });
 
   it("logged chip opens the active card in edit mode with canonical values", async () => {

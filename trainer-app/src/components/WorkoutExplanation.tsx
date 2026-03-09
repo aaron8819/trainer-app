@@ -4,6 +4,10 @@ import { useEffect, useState } from "react";
 import type { WorkoutExplanation } from "@/lib/engine/explainability";
 import type { SessionDecisionReceipt } from "@/lib/evidence/types";
 import { buildSessionSummaryModel } from "@/lib/ui/session-summary";
+import {
+  hydrateWorkoutExplanation,
+  type WorkoutExplanationResponse,
+} from "@/lib/ui/workout-explanation-response";
 import { ExplainabilityPanel } from "./explainability";
 
 type Props = {
@@ -13,17 +17,6 @@ type Props = {
   sessionIntent?: string | null;
   estimatedMinutes?: number | null;
   startLoggingHref?: string | null;
-};
-
-type ExplanationResponse = {
-  confidence: WorkoutExplanation["confidence"];
-  sessionContext: WorkoutExplanation["sessionContext"];
-  coachMessages: WorkoutExplanation["coachMessages"];
-  exerciseRationales: Record<string, WorkoutExplanation["exerciseRationales"] extends Map<string, infer T> ? T : never>;
-  prescriptionRationales: Record<string, WorkoutExplanation["prescriptionRationales"] extends Map<string, infer T> ? T : never>;
-  progressionReceipts: Record<string, WorkoutExplanation["progressionReceipts"] extends Map<string, infer T> ? T : never>;
-  filteredExercises?: WorkoutExplanation["filteredExercises"];
-  volumeCompliance?: WorkoutExplanation["volumeCompliance"];
 };
 
 export function WorkoutExplanation({
@@ -55,18 +48,9 @@ export function WorkoutExplanation({
           throw new Error(errorData.error || "Failed to load audit details");
         }
 
-        const data: ExplanationResponse = await response.json();
+        const data: WorkoutExplanationResponse = await response.json();
 
-        const workoutExplanation: WorkoutExplanation = {
-          confidence: data.confidence,
-          sessionContext: data.sessionContext,
-          coachMessages: data.coachMessages,
-          exerciseRationales: new Map(Object.entries(data.exerciseRationales)),
-          prescriptionRationales: new Map(Object.entries(data.prescriptionRationales)),
-          progressionReceipts: new Map(Object.entries(data.progressionReceipts ?? {})),
-          filteredExercises: data.filteredExercises,
-          volumeCompliance: data.volumeCompliance ?? [],
-        };
+        const workoutExplanation = hydrateWorkoutExplanation(data);
 
         if (mounted) {
           setExplanation(workoutExplanation);

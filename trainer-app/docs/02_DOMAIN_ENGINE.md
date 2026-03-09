@@ -96,6 +96,23 @@ Sources of truth:
 - On first session of a new mesocycle (`accumulationSessionsCompleted=0` or explicit first-session flag), load anchoring history is sourced from accumulation history only: prefer week-4 accumulation, else highest available accumulation week, else any non-deload performed history; deload (`DELOAD`/`ACTIVE_DELOAD`) snapshots are excluded as baseline sources.
 - Live cue contract: `getLoadRecommendation()` keeps the `increase | hold | decrease` action shape and evaluates only the current logged set against the next set target. Load-aware copy may use `actualLoad` and `targetLoad` for explanation, but it does not read history, rep-band progression gates, or mesocycle state and must not be treated as canonical next-exposure progression.
 
+## Post-workout data flow
+```text
+SetLog / logged performance
+-> workout save / status resolution
+-> deriveSessionSemantics
+-> session decision receipt + session semantics consumers
+-> post-workout explanation layer
+-> next workout generation / canonical progression
+```
+- `SetLog` is the raw authoritative performed-work source. Set-level facts such as reps, logged RPE, logged load, skipped state, and completion timestamps come from persisted set logs, not from explanation-layer inference.
+- Workout save and status resolution are the authoritative completion/state boundary. Performed status, unresolved-set handling, and lifecycle mutation are owned there, not by read-side explanation (`src/app/api/workouts/save/route.ts`, `src/app/api/workouts/save/status-machine.ts`).
+- `deriveSessionSemantics()` is the canonical session-level interpretation bridge. It owns session-level meaning derived from persisted workout fields, including advancing/non-advancing interpretation, weekly-slot consumption, and progression-history eligibility.
+- `deriveSessionSemantics()` does not own set-level progression computations such as modal load, anchor load, rep summaries, or effort-classification math. Those remain in canonical progression/history/explainability seams such as `src/lib/engine/progression.ts`, `src/lib/engine/history.ts`, and `src/lib/api/explainability.ts`.
+- `selectionMetadata.sessionDecisionReceipt` is the canonical stored generation/evidence context. Read-side consumers should combine that receipt with derived session semantics rather than recreating missing session policy locally.
+- Post-workout explanation is a read-side interpretation surface. It may explain canonical behavior, but it should not redefine the behavior that generator/progression seams will use for the next exposure.
+- Canonical next-exposure progression remains server-side in `src/lib/engine/apply-loads.ts` and `src/lib/engine/progression.ts`.
+
 ## Periodization and readiness
 - Macro/meso/block logic lives in `src/lib/engine/periodization`.
 - Readiness, fatigue scoring, and autoregulation logic lives in `src/lib/engine/readiness`.
@@ -133,6 +150,17 @@ Sources of truth:
   - generic non-advancing sessions remain progression-eligible unless a stricter classifier excludes them
   - `null` / `undefined` `advancesSplit` still default to advancing for backward compatibility
 - A persisted `sessionKind` enum was intentionally not added. The current system still has more semantic cases than a stable enum captures, including non-advancing but progression-eligible sessions. Adding an enum now would freeze an incomplete taxonomy into schema and migration contracts before runtime policy has settled.
+
+## Explainability guardrails
+- Explainability/read-side layers should consume derived session semantics or canonical decision outputs. They should not independently recompute progression-relevant session meaning unless there is a strong reason and the new seam is documented as canonical first.
+- Common drift risk: read-side explanation can accidentally describe prior prescription logic or inferred progression in a way that does not match canonical next-exposure behavior.
+- Guardrail: when explanation needs to talk about session-level behavior, it should prefer:
+  - persisted `SetLog` performance data for raw facts
+  - save/status outputs for performed-state truth
+  - `deriveSessionSemantics()` for session-level interpretation
+  - canonical progression outputs/decision logs for next-exposure load behavior
+- Avoid local fallbacks that reinterpret session policy inside explainability copy or UI helpers. If a new explanation concept truly requires new canonical semantics, add that seam first rather than encoding it only in read-side copy.
+- Future seam rule: if the app ever needs a new canonical set-level post-workout interpretation layer, document and introduce it as a seam separate from `deriveSessionSemantics()`. Do not silently expand `deriveSessionSemantics()` from session-level policy into set-level progression math ownership.
 
 ## Optional session policy
 - Optional sessions reuse canonical INTENT generation (`intent=body_part`) and do not introduce a separate optimizer path (`src/lib/api/template-session.ts`).
@@ -239,6 +267,13 @@ Sources of truth:
 - Explainability domain modules are in `src/lib/engine/explainability`.
 - API explainability facade is `src/lib/api/explainability.ts`, split into `src/lib/api/explainability/query.ts` (read/query) and `src/lib/api/explainability/assembly.ts` (response assembly/scoring).
 - Explanation endpoint is `src/app/api/workouts/[id]/explanation/route.ts`.
+- Explainability seam ownership is intentionally split:
+  - `query.ts`: persisted workout/history/evidence loading
+  - `assembly.ts`: response assembly, confidence framing, and presentation-ready summarization
+  - `deriveSessionSemantics()`: canonical session-level interpretation for read-side consumers
+  - `src/lib/engine/history.ts` + `src/lib/engine/progression.ts`: canonical set-level progression and anchoring behavior
+  - `selectionMetadata.sessionDecisionReceipt`: stored generation/evidence context
+- `src/lib/api/explainability.ts` should remain a facade over those seams. It should not become an alternate owner of session semantics or next-exposure progression policy.
 - Workout explanations include per-exercise progression receipts (`WorkoutExplanation.progressionReceipts` in `src/lib/engine/explainability/types.ts`), derived from performed history and current prescription in `src/lib/api/explainability.ts`.
 - Session context now includes cycle provenance and readiness availability labels (`SessionContext.cycleSource`, `ReadinessStatus.availability`, `ReadinessStatus.label`) in `src/lib/engine/explainability/types.ts`, produced in `src/lib/engine/explainability/session-context.ts`.
 - Explainability is strictly receipt-first: it reads session-level cycle/readiness context only from `selectionMetadata.sessionDecisionReceipt`, and missing canonical receipt means missing session-level evidence (`src/lib/evidence/session-decision-receipt.ts`, `src/lib/api/explainability.ts`, `src/lib/ui/explainability.ts`). When canonical receipt cycle context includes `weekInBlock` and `blockDurationWeeks`, read-side summary/explainability copy should prefer block-relative semantics over mesocycle-relative wording.

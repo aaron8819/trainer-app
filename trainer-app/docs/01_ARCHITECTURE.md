@@ -57,9 +57,26 @@ Sources of truth:
 - Generation/finalization build the canonical session decision under `selectionMetadata.sessionDecisionReceipt` in `src/lib/api/template-session.ts`, with planning-critical seams in `src/lib/planning/session-opportunities.ts`, `src/lib/api/template-session/role-budgeting.ts`, and `src/lib/api/template-session/closure-actions.ts`.
 - Generation-facing phase/block context is loaded in `src/lib/api/generation-phase-block-context.ts` and attached in `src/lib/api/template-session/context-loader.ts`. That seam is now the canonical bridge from persisted `MacroCycle -> Mesocycle -> TrainingBlock` data into generation/runtime `cycleContext`.
 - Save requires that receipt, then only re-parses/re-normalizes the persisted JSON shape at the database boundary in `src/app/api/workouts/save/route.ts`, with action/status resolution isolated in `src/app/api/workouts/save/status-machine.ts` and receipt parsing in `src/lib/evidence/session-decision-receipt.ts`.
+- Post-save session-level interpretation is centralized in `src/lib/session-semantics/derive-session-semantics.ts`. That helper is the canonical read-side bridge from persisted workout fields (`advancesSplit`, `selectionMode`, `sessionIntent`, `selectionMetadata`) into downstream session behavior such as progression eligibility, weekly-slot consumption, and next-session subtraction.
 - Runtime readers in UI and explainability consume only `selectionMetadata.sessionDecisionReceipt` via `src/lib/ui/selection-metadata.ts`, `src/lib/ui/explainability.ts`, and the explainability facade in `src/lib/api/explainability.ts` (split into `src/lib/api/explainability/query.ts` + `src/lib/api/explainability/assembly.ts`).
 - Removed top-level session mirrors (`wasAutoregulated`, `autoregulationLog`, legacy `selectionMetadata.*` session fields) remain guardrail rejects in `src/lib/validation.ts`; they are not active runtime inputs.
 - User-facing workout detail and log routes stay on the compact receipt-first `SessionSummaryModel`, while the internal `/workout/[id]/audit` route layers a session-level audit scan plus exercise drill-down on top of the same receipt/explainability inputs. That split is a presentation boundary only; ownership remains receipt-first in `selectionMetadata.sessionDecisionReceipt`.
+
+## Post-workout canonical flow
+```text
+SetLog / logged performance
+-> workout save / status resolution
+-> deriveSessionSemantics
+-> session decision receipt + canonical semantics consumers
+-> post-workout explanation layer
+-> next workout generation / canonical progression
+```
+- `SetLog` is the raw authoritative performed-work source. Logged reps, load, RPE, and skip state remain the only authoritative set-level performance data (`src/app/api/logs/set/route.ts`, `src/lib/api/workout-context.ts`).
+- Workout save and status resolution are the authoritative performed-status and lifecycle-mutation boundary (`src/app/api/workouts/save/route.ts`, `src/app/api/workouts/save/status-machine.ts`, `src/app/api/workouts/save/lifecycle-contract.ts`).
+- `deriveSessionSemantics()` is the canonical session-level interpretation bridge. It does not own set-level progression math like modal load or anchor-load computation; it owns session-level meaning such as whether a workout is advancing, supplemental, or progression-eligible.
+- `selectionMetadata.sessionDecisionReceipt` remains the canonical stored generation/evidence context for read-side consumers.
+- Post-workout explanation is a read-side interpretation layer. It should consume canonical receipts, derived session semantics, and canonical progression outputs rather than independently re-authoring progression-relevant session behavior.
+- Next workout generation and load progression remain canonical in generator/engine seams (`src/lib/engine/apply-loads.ts`, `src/lib/engine/progression.ts`, `src/lib/api/next-session.ts`).
 
 ## Session planning boundaries
 - `SessionOpportunityDefinition` in `src/lib/planning/session-opportunities.ts` is the canonical planning layer above the optimizer for session-intent semantics.
@@ -109,6 +126,13 @@ Sources of truth:
 - `ProgramDashboardData` in `src/lib/api/program.ts` is the canonical program dashboard read model for the shared `ProgramStatusCard` mounted on `/` and `/program`. It owns mesocycle header/timeline state, current vs viewed week, viewed block chrome (`viewedBlockType`), lifecycle RIR target, deload/readiness cue, and mesocycle-week volume rows. Historical browsing should render from the full selected payload rather than mixing current-week chrome with past-week volume rows. Dashboard `rirTarget` and phase coaching copy now resolve through the same block-aware prescription seam used by generation (`resolvePhaseBlockProfile() -> getRirTarget()`), so the dashboard does not maintain an independent week-to-RIR mapping. Per-muscle rows now also carry dashboard-only opportunity metadata (`opportunityScore`, `opportunityState`, `opportunityRationale`) derived from canonical weekly weighted volume, recent local weighted stimulus, and optional fresh readiness modulation. It is not the canonical contract for generic workout-history lists.
 - Home-page operational helpers that are not part of the shared dashboard card contract live separately in `loadHomeProgramSupport()` in `src/lib/api/program.ts`. `loadHomeProgramSupport()` consumes `loadNextWorkoutContext()` from `src/lib/api/next-session.ts`, which is the canonical next-session derivation service shared with the audit harness.
 - `loadNextWorkoutContext()` is receipt-agnostic and remains lifecycle-safe: lifecycle counters still derive canonical `week/session`, while next advancing `intent` now derives from `constraints.weeklySchedule minus performed intents whose derived session semantics still consume a weekly schedule slot`. That subtraction path is only authoritative for unique-intent weekly schedules; repeated-intent schedules still fall back to canonical slot math until the data model exposes slot identity beyond raw intent.
+- Read-side explanation and summary layers must consume derived semantics or canonical decision outputs. They should not independently recompute progression-relevant session meaning unless there is a strong reason and the new seam is documented as canonical first.
+- `src/lib/api/explainability.ts` remains a facade, not a free-form policy layer. Within explainability, canonical seam ownership is:
+  - `query.ts`: load persisted workout/history/evidence inputs
+  - `assembly.ts`: assemble response structure and confidence framing
+  - `deriveSessionSemantics()`: session-level interpretation
+  - engine progression/history helpers: set-level progression and anchor logic
+  Future explainability changes should attach to one of those seams rather than adding new local policy forks inside the facade.
 - `WorkoutListSurfaceSummary` in `src/lib/ui/workout-list-items.ts` is the canonical workout/session summary read model for list surfaces. `/history`, `GET /api/workouts/history`, and the home-page Recent Workouts section should anchor on this shape rather than ad hoc row contracts.
 - Shared workout-list display semantics for those list surfaces now live with that contract in `src/lib/ui/workout-list-items.ts`: status labels/classes, intent labels, exercise/set count copy, and optional-session labeling are centralized there so Recent Workouts and History do not drift.
 - Shared route-purpose/navigation metadata now lives in `src/lib/ui/app-surface-map.ts`. That metadata is a UI-navigation aid only; it does not own read-model semantics.

@@ -213,6 +213,7 @@ export function computeProposedSets(
       ? objective.constraints.lifecycleSetTargets.main
       : objective.constraints.lifecycleSetTargets.accessory
     : undefined;
+  const supplementalPlannerProfile = objective.constraints.supplementalPlannerProfile === true;
 
   // G2: Training-age-aware set cap (KB §8)
   // Beginner 6-10 sets/week → smaller per-exercise cap; Advanced 16-25+ → larger cap
@@ -223,30 +224,55 @@ export function computeProposedSets(
   const goalMultiplier = objective.goals?.primary
     ? getGoalSetMultiplier(objective.goals.primary)
     : 1;
+  const primaryDeficits = (exercise.primaryMuscles ?? []).map((muscle) => {
+    const target = objective.volumeContext.weeklyTarget.get(muscle) ?? 0;
+    const actual = objective.volumeContext.effectiveActual.get(muscle) ?? 0;
+    return Math.max(0, target - actual);
+  });
+  const maxDeficit = Math.max(0, ...primaryDeficits);
+  const resolveSupplementalSetCap = () => {
+    if (!supplementalPlannerProfile) {
+      return undefined;
+    }
+    if (isMainLift) {
+      return maxDeficit <= 1.5 ? 1 : 2;
+    }
+    if (maxDeficit <= 1.5) {
+      return 1;
+    }
+    if (maxDeficit <= 3.5) {
+      return 2;
+    }
+    return 3;
+  };
+  const supplementalSetCap = resolveSupplementalSetCap();
 
   if (lifecycleSetTarget !== undefined) {
+    if (supplementalPlannerProfile) {
+      return Math.max(1, Math.min(supplementalSetCap ?? lifecycleSetTarget, lifecycleSetTarget));
+    }
     return Math.max(MIN_SETS, lifecycleSetTarget);
   }
 
   // Find largest deficit among primary muscles
-  let maxDeficit = 0;
-  for (const muscle of exercise.primaryMuscles ?? []) {
-    const target = objective.volumeContext.weeklyTarget.get(muscle) ?? 0;
-    const actual = objective.volumeContext.effectiveActual.get(muscle) ?? 0;
-    const deficit = Math.max(0, target - actual);
-    maxDeficit = Math.max(maxDeficit, deficit);
-  }
-
   // If no deficit, default to 3 sets (with goal multiplier)
   if (maxDeficit === 0) {
-    return Math.max(MIN_SETS, Math.round(DEFAULT_SETS * goalMultiplier));
+    const defaultSets = Math.max(MIN_SETS, Math.round(DEFAULT_SETS * goalMultiplier));
+    if (supplementalPlannerProfile) {
+      return Math.max(1, Math.min(supplementalSetCap ?? defaultSets, defaultSets));
+    }
+    return defaultSets;
   }
 
   // Propose sets proportional to deficit, apply goal multiplier, clamp to [MIN_SETS, MAX_SETS]
   // The C1b per-session per-muscle direct-set ceiling (SESSION_DIRECT_SET_CEILING = 12)
   // in beam-search.ts acts as the natural per-session cap.
   const rawSets = Math.max(MIN_SETS, Math.min(MAX_SETS, Math.ceil(maxDeficit / 2)));
-  return Math.max(MIN_SETS, Math.round(rawSets * goalMultiplier));
+  const proposedSets = Math.max(MIN_SETS, Math.round(rawSets * goalMultiplier));
+  if (supplementalPlannerProfile) {
+    return Math.max(1, Math.min(supplementalSetCap ?? proposedSets, proposedSets));
+  }
+  return proposedSets;
 }
 
 /**

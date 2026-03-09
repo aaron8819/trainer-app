@@ -1,7 +1,7 @@
 # 02 Domain Engine
 
 Owner: Aaron
-Last reviewed: 2026-03-08
+Last reviewed: 2026-03-09
 Purpose: Canonical reference for workout-generation domain logic, including selection, progression, periodization, readiness, and explainability.
 
 This doc covers:
@@ -134,6 +134,39 @@ Sources of truth:
 - Canonical supplemental receipt/metadata stamping is also shared in `src/lib/ui/selection-metadata.ts`; generation attaches `targetMuscles` and the `supplemental_deficit_session` exception through `attachSupplementalSessionMetadata()`, and the client persists the returned canonical metadata unchanged.
 - Supplemental deficit sessions count toward weekly volume and recovery/recent stimulus, but they are excluded from progression anchors and progression explainability evidence (`src/lib/api/workout-context.ts`, `src/lib/progression/progression-eligibility.ts`, `src/lib/api/explainability.ts`).
 - Supplemental deficit sessions are non-advancing by contract: save forces `advancesSplit=false` for strict supplemental classification and blocks split advancement even if the incoming payload requests otherwise (`src/app/api/workouts/save/route.ts`).
+
+## Supplemental Deficit Sessions
+- Purpose: add a small targeted stimulus patch mid-mesocycle without mutating split advancement or corrupting progression-anchor history.
+- User intent: the user invokes a `BODY_PART` intent session to patch a weekly deficit, add weak-point work, or add extra recoverable stimulus outside the advancing split schedule.
+- Strict classification rules:
+  - `selectionMode=INTENT`
+  - `sessionIntent=BODY_PART`
+  - receipt exception marker `supplemental_deficit_session`
+  - persisted `advancesSplit=false`
+- Lifecycle semantics:
+  - counts toward weekly volume
+  - counts toward recovery and recent-stimulus accounting
+  - does not advance split lifecycle
+  - does not consume a required weekly schedule slot
+- Progression isolation:
+  - the session remains part of performed history for volume/recovery/readiness consumers
+  - the session is excluded from progression history and explainability progression evidence through `isProgressionEligibleWorkout()` and `filterProgressionHistory()`
+  - performed history and progression history are intentionally different views over the same persisted workouts
+- Generation profile:
+  - generation still uses the normal BODY_PART planner pipeline, but route orchestration enables `supplementalPlannerProfile`
+  - single-target supplemental sessions narrow to `1-3` exercises
+  - multi-target supplemental sessions narrow to `2-4` exercises
+  - route defaults clamp uncapped requests to `maxGeneratedExercises=4` and `maxGeneratedHardSets=8`
+  - selection prefers target-primary, non-main-lift, lower-fatigue exercises
+  - fallback reopens the broader BODY_PART pool only when the accessory-first preferred pool cannot cover the requested targets or cannot satisfy the supplemental minimum session floor
+  - continuity carryover and continuity minimum set floors are disabled for this profile
+  - multi-target sessions apply a soft per-target floor so each requested target gets one primary-target coverage slot when feasible
+  - main-lift slotting is suppressed by default (`maxMainLifts=0`)
+  - deficit-aware supplemental set caps narrow the dose:
+    - remaining deficit `<= 1.5` -> `1` set
+    - remaining deficit `<= 3.5` -> `2` sets
+    - remaining deficit `> 3.5` -> `3` sets
+  - main-lift-typed fallback work remains capped below normal BODY_PART prescription even when fallback is necessary
 
 ## Gap-fill decision order
 1. Compute anchor gate from lifecycle boundary: active accumulation + `accumulationSessionsCompleted % requiredSessionsPerWeek === 0`.

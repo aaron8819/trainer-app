@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildSelectionObjective, SESSION_CAPS } from "./selection-adapter";
+import {
+  buildSelectionObjective,
+  SESSION_CAPS,
+  SUPPLEMENTAL_SESSION_CAPS,
+} from "./selection-adapter";
 import type { MappedGenerationContext } from "./types";
 import type { WorkoutHistoryEntry, Exercise } from "@/lib/engine/types";
 
@@ -178,6 +182,31 @@ describe("buildSelectionObjective continuity bias", () => {
 
     expect(objectiveBodyPart.volumeContext.weeklyTarget.get("Biceps")).toBe(10);
     expect(objectiveBodyPart.volumeContext.weeklyTarget.has("Lats")).toBe(false);
+  });
+
+  it("keeps normal body_part caps unchanged and applies smaller supplemental caps only when requested", () => {
+    const standardObjective = buildSelectionObjective(makeMappedContext([]), "body_part", ["Biceps"]);
+    const supplementalObjective = buildSelectionObjective(
+      makeMappedContext([]),
+      "body_part",
+      ["Biceps"],
+      { supplementalPlannerProfile: true }
+    );
+
+    expect(standardObjective.constraints.minExercises).toBe(SESSION_CAPS.minExercises);
+    expect(standardObjective.constraints.maxExercises).toBe(SESSION_CAPS.maxExercises);
+    expect(standardObjective.constraints.maxMainLifts).toBe(3);
+    expect(standardObjective.constraints.minAccessories).toBe(2);
+
+    expect(supplementalObjective.constraints.minExercises).toBe(
+      SUPPLEMENTAL_SESSION_CAPS.minExercisesSingleTarget
+    );
+    expect(supplementalObjective.constraints.maxExercises).toBe(
+      SUPPLEMENTAL_SESSION_CAPS.maxExercisesSingleTarget
+    );
+    expect(supplementalObjective.constraints.maxMainLifts).toBe(0);
+    expect(supplementalObjective.constraints.minAccessories).toBe(1);
+    expect(supplementalObjective.constraints.supplementalPlannerProfile).toBe(true);
   });
 
   it("derives a remaining-week context from schedule order and current-week performed sessions", () => {

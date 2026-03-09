@@ -1,6 +1,7 @@
 import { WorkoutStatus } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
+import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-semantics";
 import { deriveCurrentMesocycleSession, deriveNextAdvancingSession } from "./mesocycle-lifecycle-math";
 
 type MesoSessionInput = {
@@ -160,11 +161,13 @@ export async function loadNextWorkoutContext(
             mesocycleId: mesocycle.id,
             mesocycleWeekSnapshot: currentSession.week,
             status: { in: [...PERFORMED_WORKOUT_STATUSES] as WorkoutStatus[] },
-            advancesSplit: { not: false },
             sessionIntent: { not: null },
           },
           orderBy: [{ mesoSessionSnapshot: "asc" }, { scheduledDate: "asc" }],
           select: {
+            advancesSplit: true,
+            selectionMetadata: true,
+            selectionMode: true,
             sessionIntent: true,
           },
         })
@@ -180,6 +183,14 @@ export async function loadNextWorkoutContext(
       sessionIntent: workout.sessionIntent?.toLowerCase() ?? null,
     })),
     performedAdvancingIntentsThisWeek: rawPerformedAdvancingThisWeek
+      .filter((workout) =>
+        deriveSessionSemantics({
+          advancesSplit: workout.advancesSplit,
+          selectionMetadata: workout.selectionMetadata,
+          selectionMode: workout.selectionMode,
+          sessionIntent: workout.sessionIntent,
+        }).consumesWeeklyScheduleIntent
+      )
       .map((workout) => workout.sessionIntent?.toLowerCase() ?? null)
       .filter((intent): intent is string => Boolean(intent)),
   });

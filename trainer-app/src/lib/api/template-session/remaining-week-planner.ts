@@ -3,6 +3,7 @@ import type { FatigueState, Muscle } from "@/lib/engine/types";
 import type { RemainingWeekVolumeContext } from "@/lib/engine/selection-v2/types";
 import type { SessionIntent } from "@/lib/engine/session-types";
 import { getSessionMuscleOpportunityWeight } from "@/lib/planning/session-opportunities";
+import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-semantics";
 import type { MappedGenerationContext } from "./types";
 
 function toCountMap(intents: SessionIntent[]): Map<SessionIntent, number> {
@@ -110,7 +111,11 @@ export function buildRemainingWeekVolumeContext(params: {
   }
 
   const currentWeekPerformedIntents = filterPerformedHistory(mapped.history)
-    .filter((entry) => entry.advancesSplit !== false)
+    .filter((entry) =>
+      deriveSessionSemantics({
+        advancesSplit: entry.advancesSplit,
+      }).eligibleForUniqueIntentSubtraction
+    )
     .filter((entry) => {
       const snapshot = entry.mesocycleSnapshot;
       if (!snapshot) {

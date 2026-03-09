@@ -288,6 +288,16 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
+    expect(mocks.generateSessionFromIntent).toHaveBeenCalledWith(
+      "user-1",
+      expect.objectContaining({
+        intent: "body_part",
+        targetMuscles: ["rear delts"],
+        supplementalPlannerProfile: true,
+        maxGeneratedExercises: 4,
+        maxGeneratedHardSets: 8,
+      })
+    );
     expect(body.selectionMetadata.sessionDecisionReceipt.targetMuscles).toEqual(["rear delts"]);
     expect(body.selectionMetadata.sessionDecisionReceipt.exceptions).toEqual(
       expect.arrayContaining([

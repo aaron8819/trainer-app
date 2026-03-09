@@ -356,6 +356,235 @@ function getInventoryEligibilityReason(
   }
 }
 
+function normalizeSupplementalTargetSet(targetMuscles?: string[]): Set<string> {
+  return new Set((targetMuscles ?? []).map((muscle) => muscle.trim().toLowerCase()));
+}
+
+function isSupplementalPreferredExercise(
+  exercise: EngineExercise,
+  targetSet: Set<string>,
+  objective: ReturnType<typeof buildSelectionObjective>
+): boolean {
+  if (targetSet.size > 0) {
+    const matchesPrimaryTarget = (exercise.primaryMuscles ?? []).some((muscle) =>
+      targetSet.has(muscle.trim().toLowerCase())
+    );
+    if (!matchesPrimaryTarget) {
+      return false;
+    }
+  }
+
+  const isMainLift = isMainLiftExercise(exercise, objective);
+  const fatigueCost = exercise.fatigueCost ?? 3;
+  return !isMainLift && fatigueCost <= 3;
+}
+
+function coversSupplementalTargets(
+  pool: EngineExercise[],
+  targetSet: Set<string>
+): boolean {
+  if (targetSet.size === 0) {
+    return pool.length > 0;
+  }
+
+  return Array.from(targetSet).every((targetMuscle) =>
+    pool.some((exercise) =>
+      (exercise.primaryMuscles ?? []).some(
+        (muscle) => muscle.trim().toLowerCase() === targetMuscle
+      )
+    )
+  );
+}
+
+function resolveSelectionPool(params: {
+  pool: EngineExercise[];
+  objective: ReturnType<typeof buildSelectionObjective>;
+  targetMuscles?: string[];
+}): { pool: EngineExercise[]; usedSupplementalAccessoryPreference: boolean } {
+  if (params.objective.constraints.supplementalPlannerProfile !== true) {
+    return { pool: params.pool, usedSupplementalAccessoryPreference: false };
+  }
+
+  const targetSet = normalizeSupplementalTargetSet(params.targetMuscles);
+  const preferredPool = params.pool.filter((exercise) =>
+    isSupplementalPreferredExercise(exercise, targetSet, params.objective)
+  );
+  const hasCoverage = coversSupplementalTargets(preferredPool, targetSet);
+  const hasEnoughExercises = preferredPool.length >= params.objective.constraints.minExercises;
+  if (hasCoverage && hasEnoughExercises) {
+    return { pool: preferredPool, usedSupplementalAccessoryPreference: true };
+  }
+
+  return { pool: params.pool, usedSupplementalAccessoryPreference: false };
+}
+
+function getExerciseTargetMatches(
+  exercise: Pick<EngineExercise, "primaryMuscles">,
+  targetSet: Set<string>
+): string[] {
+  return (exercise.primaryMuscles ?? [])
+    .map((muscle) => muscle.trim().toLowerCase())
+    .filter((muscle) => targetSet.has(muscle));
+}
+
+function buildTargetCoverageCount(params: {
+  selectedExerciseIds: string[];
+  exerciseById: Map<string, EngineExercise>;
+  targetSet: Set<string>;
+}): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const exerciseId of params.selectedExerciseIds) {
+    const exercise = params.exerciseById.get(exerciseId);
+    if (!exercise) {
+      continue;
+    }
+    for (const target of getExerciseTargetMatches(exercise, params.targetSet)) {
+      counts.set(target, (counts.get(target) ?? 0) + 1);
+    }
+  }
+  return counts;
+}
+
+function enforceSupplementalTargetFloor(params: {
+  selection: SelectionOutput;
+  pool: EngineExercise[];
+  objective: ReturnType<typeof buildSelectionObjective>;
+  exerciseById: Map<string, EngineExercise>;
+  targetMuscles?: string[];
+}): SelectionOutput {
+  if (params.objective.constraints.supplementalPlannerProfile !== true) {
+    return params.selection;
+  }
+
+  const targetSet = normalizeSupplementalTargetSet(params.targetMuscles);
+  if (targetSet.size <= 1) {
+    return params.selection;
+  }
+
+  const selection: SelectionOutput = {
+    ...params.selection,
+    selectedExerciseIds: [...params.selection.selectedExerciseIds],
+    mainLiftIds: [...params.selection.mainLiftIds],
+    accessoryIds: [...params.selection.accessoryIds],
+    perExerciseSetTargets: { ...params.selection.perExerciseSetTargets },
+    rationale: { ...params.selection.rationale },
+  };
+  const selectedIds = new Set(selection.selectedExerciseIds);
+  const maxExercises = params.objective.constraints.maxExercises;
+  let targetCoverageCount = buildTargetCoverageCount({
+    selectedExerciseIds: selection.selectedExerciseIds,
+    exerciseById: params.exerciseById,
+    targetSet,
+  });
+
+  const getMissingTargets = () =>
+    Array.from(targetSet).filter((target) => (targetCoverageCount.get(target) ?? 0) === 0);
+
+  for (const missingTarget of getMissingTargets()) {
+    const candidates = params.pool
+      .filter((exercise) => !selectedIds.has(exercise.id))
+      .filter((exercise) => getExerciseTargetMatches(exercise, targetSet).includes(missingTarget))
+      .filter((exercise) => !isMainLiftExercise(exercise, params.objective))
+      .map((exercise) => {
+        const proposedSets = computeProposedSets(exercise, params.objective);
+        return {
+          exercise,
+          proposedSets,
+          candidate: buildCandidate(exercise, params.objective, proposedSets),
+        };
+      })
+      .sort((left, right) => right.candidate.totalScore - left.candidate.totalScore);
+
+    const bestCandidate = candidates[0];
+    if (!bestCandidate) {
+      continue;
+    }
+
+    if (selection.selectedExerciseIds.length < maxExercises) {
+      selection.selectedExerciseIds.push(bestCandidate.exercise.id);
+      selection.accessoryIds.push(bestCandidate.exercise.id);
+      selection.perExerciseSetTargets[bestCandidate.exercise.id] = bestCandidate.proposedSets;
+      selection.rationale[bestCandidate.exercise.id] = {
+        score: bestCandidate.candidate.totalScore,
+        components: {
+          deficitFill: bestCandidate.candidate.scores.deficitFill,
+          rotationNovelty: bestCandidate.candidate.scores.rotationNovelty,
+          sfrScore: bestCandidate.candidate.scores.sfrScore,
+          lengthenedScore: bestCandidate.candidate.scores.lengthenedScore,
+          movementNovelty: bestCandidate.candidate.scores.movementNovelty,
+          sraAlignment: bestCandidate.candidate.scores.sraAlignment,
+          userPreference: bestCandidate.candidate.scores.userPreference,
+        },
+        hardFilterPass: true,
+        selectedStep: "accessory_pick",
+        reason: `Added to preserve supplemental target coverage for ${missingTarget}.`,
+      };
+      selectedIds.add(bestCandidate.exercise.id);
+      targetCoverageCount = buildTargetCoverageCount({
+        selectedExerciseIds: selection.selectedExerciseIds,
+        exerciseById: params.exerciseById,
+        targetSet,
+      });
+      continue;
+    }
+
+    const replaceableSelectedIds = selection.selectedExerciseIds
+      .filter((exerciseId) => !selection.mainLiftIds.includes(exerciseId))
+      .filter((exerciseId) => {
+        const exercise = params.exerciseById.get(exerciseId);
+        if (!exercise) {
+          return false;
+        }
+        return getExerciseTargetMatches(exercise, targetSet).every(
+          (target) => (targetCoverageCount.get(target) ?? 0) > 1
+        );
+      })
+      .sort((left, right) => {
+        const leftScore = selection.rationale[left]?.score ?? 0;
+        const rightScore = selection.rationale[right]?.score ?? 0;
+        return leftScore - rightScore;
+      });
+    const replacedExerciseId = replaceableSelectedIds[0];
+    if (!replacedExerciseId) {
+      continue;
+    }
+
+    selection.selectedExerciseIds = selection.selectedExerciseIds.map((exerciseId) =>
+      exerciseId === replacedExerciseId ? bestCandidate.exercise.id : exerciseId
+    );
+    selection.accessoryIds = selection.accessoryIds
+      .filter((exerciseId) => exerciseId !== replacedExerciseId)
+      .concat(bestCandidate.exercise.id);
+    delete selection.perExerciseSetTargets[replacedExerciseId];
+    selection.perExerciseSetTargets[bestCandidate.exercise.id] = bestCandidate.proposedSets;
+    delete selection.rationale[replacedExerciseId];
+    selection.rationale[bestCandidate.exercise.id] = {
+      score: bestCandidate.candidate.totalScore,
+      components: {
+        deficitFill: bestCandidate.candidate.scores.deficitFill,
+        rotationNovelty: bestCandidate.candidate.scores.rotationNovelty,
+        sfrScore: bestCandidate.candidate.scores.sfrScore,
+        lengthenedScore: bestCandidate.candidate.scores.lengthenedScore,
+        movementNovelty: bestCandidate.candidate.scores.movementNovelty,
+        sraAlignment: bestCandidate.candidate.scores.sraAlignment,
+        userPreference: bestCandidate.candidate.scores.userPreference,
+      },
+      hardFilterPass: true,
+      selectedStep: "accessory_pick",
+      reason: `Replaced a lower-priority supplemental pick to preserve target coverage for ${missingTarget}.`,
+    };
+    selectedIds.delete(replacedExerciseId);
+    selectedIds.add(bestCandidate.exercise.id);
+    targetCoverageCount = buildTargetCoverageCount({
+      selectedExerciseIds: selection.selectedExerciseIds,
+      exerciseById: params.exerciseById,
+      targetSet,
+    });
+  }
+
+  return selection;
+}
+
 function buildInventoryCandidateDiagnostics(params: {
   pool: EngineExercise[];
   inventoryKind: SessionInventoryKind;
@@ -1309,12 +1538,19 @@ function selectBestClosureAction(params: {
 
     const currentSets = selection.perExerciseSetTargets[exerciseId] ?? 0;
     const role = roleMap.get(exerciseId);
+    const supplementalExpansionCap =
+      objective.constraints.supplementalPlannerProfile === true
+        ? isMainLiftExercise(exercise, objective)
+          ? 2
+          : 3
+        : undefined;
     const expansionCap =
-      role === "CORE_COMPOUND"
+      supplementalExpansionCap ??
+      (role === "CORE_COMPOUND"
         ? MAIN_LIFT_MAX_WORKING_SETS
         : isMainLiftExercise(exercise, objective)
           ? MAIN_LIFT_MAX_WORKING_SETS
-          : ACCESSORY_MAX_WORKING_SETS;
+          : ACCESSORY_MAX_WORKING_SETS);
     if (currentSets >= expansionCap) {
       candidateDiagnostics.push({ ...baseCandidate, rejectionReason: "working_set_cap_reached" });
       continue;
@@ -1547,7 +1783,9 @@ export function generateSessionFromMappedContext(
   mapped: MappedGenerationContext,
   input: GenerateIntentSessionInput
 ): SessionGenerationResult {
-  const objective = buildSelectionObjective(mapped, input.intent, input.targetMuscles);
+  const objective = buildSelectionObjective(mapped, input.intent, input.targetMuscles, {
+    supplementalPlannerProfile: input.supplementalPlannerProfile,
+  });
   const isDeloadSession = mapped.effectivePeriodization.isDeload;
   const roleMap = mapped.mesocycleRoleMapByIntent[input.intent];
   const hasRegisteredRoles = roleMap.size > 0;
@@ -1597,6 +1835,11 @@ export function generateSessionFromMappedContext(
     "rescue",
     input.targetMuscles
   );
+  const baseSelectionPool = resolveSelectionPool({
+    pool: filteredPool,
+    objective,
+    targetMuscles: input.targetMuscles,
+  });
 
   const exerciseById = new Map(mapped.exerciseLibrary.map((exercise) => [exercise.id, exercise]));
   const anchorPolicy = getSessionAnchorPolicy(input.intent);
@@ -1832,27 +2075,41 @@ export function generateSessionFromMappedContext(
       });
     }
 
-    const poolWithoutPinnedRoles = filteredPool.filter((exercise) => !pinnedRoleIds.has(exercise.id));
+    const poolWithoutPinnedRoles = baseSelectionPool.pool.filter(
+      (exercise) => !pinnedRoleIds.has(exercise.id)
+    );
     const selectionResult = selectExercisesOptimized(poolWithoutPinnedRoles, objective);
     filteredExercises = summarizeFilteredExercises(selectionResult.rejected);
     standardLayerUsed = planningInventoryKind === "standard";
     standardLayerReason =
       planningInventoryKind === "standard"
-        ? "standard_inventory_drove_base_selection"
+        ? baseSelectionPool.usedSupplementalAccessoryPreference
+          ? "supplemental_accessory_preference_drove_base_selection"
+          : "standard_inventory_drove_base_selection"
         : "rescue_inventory_drove_base_selection";
     standardRejectedReasonMap = buildRejectedReasonMap(filteredExercises);
     const mappedSelectionBase = mapSelectionResult(
       selectionResult,
       objective.constraints.demotedFromMainLift ?? new Set()
     );
+    const coverageAdjustedSelectionBase = enforceSupplementalTargetFloor({
+      selection: mappedSelectionBase,
+      pool: baseSelectionPool.pool,
+      objective,
+      exerciseById,
+      targetMuscles: input.targetMuscles,
+    });
     standardSelectedExerciseIds =
-      planningInventoryKind === "standard" ? mappedSelectionBase.selectedExerciseIds : [];
+      planningInventoryKind === "standard" ? coverageAdjustedSelectionBase.selectedExerciseIds : [];
     const selectedExerciseIds = sortPinnedFirst(
-      [...pinnedRoleIds, ...mappedSelectionBase.selectedExerciseIds.filter((id) => !pinnedRoleIds.has(id))],
+      [
+        ...pinnedRoleIds,
+        ...coverageAdjustedSelectionBase.selectedExerciseIds.filter((id) => !pinnedRoleIds.has(id)),
+      ],
       pinnedRoleIds
     );
     const mappedSelection = {
-      ...mappedSelectionBase,
+      ...coverageAdjustedSelectionBase,
       selectedExerciseIds,
       mainLiftIds:
         coreCompoundRoleCount > 0
@@ -1860,7 +2117,7 @@ export function generateSessionFromMappedContext(
           : selectedExerciseIds.filter((id) => {
               const role = roleMap.get(id);
               if (role) return role === "CORE_COMPOUND";
-              return mappedSelectionBase.mainLiftIds.includes(id);
+              return coverageAdjustedSelectionBase.mainLiftIds.includes(id);
             }),
       accessoryIds:
         coreCompoundRoleCount > 0
@@ -1868,7 +2125,7 @@ export function generateSessionFromMappedContext(
           : selectedExerciseIds.filter((id) => {
               const role = roleMap.get(id);
               if (role) return role === "ACCESSORY";
-              return mappedSelectionBase.accessoryIds.includes(id);
+              return coverageAdjustedSelectionBase.accessoryIds.includes(id);
             }),
     };
     const alignedSelection = enforceIntentAlignment(
@@ -2303,7 +2560,12 @@ export function generateSessionFromMappedContext(
     sessionIntent: input.intent,
     selectionMode: "INTENT",
     setCountOverrides: selection.perExerciseSetTargets,
-    mainLiftSlotCap: coreCompoundRoleCount > 0 ? coreCompoundRoleCount : undefined,
+    mainLiftSlotCap:
+      input.supplementalPlannerProfile === true
+        ? 0
+        : coreCompoundRoleCount > 0
+          ? coreCompoundRoleCount
+          : undefined,
     selection,
     isStrict: false,
   });

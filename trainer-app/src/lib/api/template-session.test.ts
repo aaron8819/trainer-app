@@ -823,4 +823,362 @@ describe("generateSessionFromIntent", () => {
       selectSpy.mockRestore();
     }
   });
+
+  it("generates smaller accessory-first supplemental body_part sessions", async () => {
+    mapExercisesMock.mockReturnValue([
+      {
+        id: "bench",
+        name: "Bench Press",
+        movementPatterns: ["horizontal_push"],
+        splitTags: ["push"],
+        jointStress: "medium",
+        isMainLiftEligible: true,
+        isCompound: true,
+        fatigueCost: 4,
+        equipment: ["barbell"],
+        primaryMuscles: ["Chest"],
+        secondaryMuscles: ["Triceps"],
+        sfrScore: 3,
+        lengthPositionScore: 3,
+      },
+      {
+        id: "cable-fly",
+        name: "Cable Fly",
+        movementPatterns: ["isolation"],
+        splitTags: ["push"],
+        jointStress: "low",
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 2,
+        equipment: ["cable"],
+        primaryMuscles: ["Chest"],
+        secondaryMuscles: [],
+        sfrScore: 4,
+        lengthPositionScore: 4,
+      },
+      {
+        id: "machine-press",
+        name: "Machine Chest Press",
+        movementPatterns: ["horizontal_push"],
+        splitTags: ["push"],
+        jointStress: "low",
+        isMainLiftEligible: false,
+        isCompound: true,
+        fatigueCost: 3,
+        equipment: ["machine"],
+        primaryMuscles: ["Chest"],
+        secondaryMuscles: ["Triceps"],
+        sfrScore: 4,
+        lengthPositionScore: 3,
+      },
+    ]);
+
+    const result = await generateSessionFromIntent("user-1", {
+      intent: "body_part",
+      targetMuscles: ["Chest"],
+      supplementalPlannerProfile: true,
+    });
+
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    const totalExercises = result.workout.mainLifts.length + result.workout.accessories.length;
+    expect(totalExercises).toBeGreaterThanOrEqual(1);
+    expect(totalExercises).toBeLessThanOrEqual(3);
+    expect(result.workout.mainLifts).toHaveLength(0);
+    expect(result.workout.accessories.length).toBeGreaterThan(0);
+    for (const exercise of result.workout.accessories) {
+      expect(exercise.sets.length).toBeGreaterThanOrEqual(2);
+      expect(exercise.sets.length).toBeLessThanOrEqual(3);
+    }
+  });
+
+  it("keeps supplemental multi-target sessions covering each target muscle", async () => {
+    mapExercisesMock.mockReturnValue([
+      {
+        id: "leg-curl",
+        name: "Seated Leg Curl",
+        movementPatterns: ["isolation"],
+        splitTags: ["legs"],
+        jointStress: "low",
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 2,
+        equipment: ["machine"],
+        primaryMuscles: ["Hamstrings"],
+        secondaryMuscles: [],
+        sfrScore: 4,
+        lengthPositionScore: 4,
+      },
+      {
+        id: "leg-extension",
+        name: "Leg Extension",
+        movementPatterns: ["isolation"],
+        splitTags: ["legs"],
+        jointStress: "low",
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 2,
+        equipment: ["machine"],
+        primaryMuscles: ["Quads"],
+        secondaryMuscles: [],
+        sfrScore: 4,
+        lengthPositionScore: 2,
+      },
+      {
+        id: "bench",
+        name: "Bench Press",
+        movementPatterns: ["horizontal_push"],
+        splitTags: ["push"],
+        jointStress: "medium",
+        isMainLiftEligible: true,
+        isCompound: true,
+        fatigueCost: 4,
+        equipment: ["barbell"],
+        primaryMuscles: ["Chest"],
+        secondaryMuscles: ["Triceps"],
+        sfrScore: 3,
+        lengthPositionScore: 3,
+      },
+    ]);
+
+    const result = await generateSessionFromIntent("user-1", {
+      intent: "body_part",
+      targetMuscles: ["Hamstrings", "Quads"],
+      supplementalPlannerProfile: true,
+    });
+
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    expect(result.selection.selectedExerciseIds).toEqual(
+      expect.arrayContaining(["leg-curl", "leg-extension"])
+    );
+    expect(result.workout.mainLifts).toHaveLength(0);
+  });
+
+  it("falls back to compound accessory-style coverage when supplemental accessory coverage is limited", async () => {
+    mapExercisesMock.mockReturnValue([
+      {
+        id: "leg-curl",
+        name: "Seated Leg Curl",
+        movementPatterns: ["isolation"],
+        splitTags: ["legs"],
+        jointStress: "low",
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 2,
+        equipment: ["machine"],
+        primaryMuscles: ["Hamstrings"],
+        secondaryMuscles: [],
+        sfrScore: 4,
+        lengthPositionScore: 4,
+      },
+      {
+        id: "hack-squat",
+        name: "Hack Squat",
+        movementPatterns: ["squat"],
+        splitTags: ["legs"],
+        jointStress: "medium",
+        isMainLiftEligible: false,
+        isCompound: true,
+        fatigueCost: 3,
+        equipment: ["machine"],
+        primaryMuscles: ["Quads"],
+        secondaryMuscles: ["Glutes"],
+        sfrScore: 4,
+        lengthPositionScore: 3,
+      },
+    ]);
+
+    const result = await generateSessionFromIntent("user-1", {
+      intent: "body_part",
+      targetMuscles: ["Hamstrings", "Quads"],
+      supplementalPlannerProfile: true,
+    });
+
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    expect(result.selection.selectedExerciseIds).toEqual(
+      expect.arrayContaining(["leg-curl", "hack-squat"])
+    );
+    expect(result.workout.mainLifts).toHaveLength(0);
+    expect(result.workout.accessories.map((entry) => entry.exercise.id)).toEqual(
+      expect.arrayContaining(["hack-squat"])
+    );
+  });
+
+  it("shrinks supplemental prescriptions when only a small remaining deficit is left", async () => {
+    mapExercisesMock.mockReturnValue([
+      {
+        id: "cable-fly",
+        name: "Cable Fly",
+        movementPatterns: ["isolation"],
+        splitTags: ["push"],
+        jointStress: "low",
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 2,
+        equipment: ["cable"],
+        primaryMuscles: ["Chest"],
+        secondaryMuscles: [],
+        sfrScore: 4,
+        lengthPositionScore: 4,
+      },
+    ]);
+    mapHistoryMock.mockReturnValue([]);
+    getWeeklyVolumeTargetMock.mockImplementation(() => 1);
+
+    const result = await generateSessionFromIntent("user-1", {
+      intent: "body_part",
+      targetMuscles: ["Chest"],
+      supplementalPlannerProfile: true,
+    });
+
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    expect(result.workout.mainLifts).toHaveLength(0);
+    expect(result.workout.accessories).toHaveLength(1);
+    expect(result.workout.accessories[0]?.sets).toHaveLength(1);
+  });
+
+  it("keeps the normal supplemental range when the remaining deficit is still meaningful", async () => {
+    mapExercisesMock.mockReturnValue([
+      {
+        id: "cable-fly",
+        name: "Cable Fly",
+        movementPatterns: ["isolation"],
+        splitTags: ["push"],
+        jointStress: "low",
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 2,
+        equipment: ["cable"],
+        primaryMuscles: ["Chest"],
+        secondaryMuscles: [],
+        sfrScore: 4,
+        lengthPositionScore: 4,
+      },
+    ]);
+    mapHistoryMock.mockReturnValue([]);
+
+    const result = await generateSessionFromIntent("user-1", {
+      intent: "body_part",
+      targetMuscles: ["Chest"],
+      supplementalPlannerProfile: true,
+    });
+
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    expect(result.workout.accessories).toHaveLength(1);
+    expect(result.workout.accessories[0]?.sets.length).toBeGreaterThanOrEqual(2);
+    expect(result.workout.accessories[0]?.sets.length).toBeLessThanOrEqual(3);
+  });
+
+  it("repairs multi-target supplemental coverage when the base selection misses one target", async () => {
+    const customLibrary = [
+      {
+        id: "leg-curl",
+        name: "Seated Leg Curl",
+        movementPatterns: ["isolation"],
+        splitTags: ["legs"],
+        jointStress: "low",
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 2,
+        equipment: ["machine"],
+        primaryMuscles: ["Hamstrings"],
+        secondaryMuscles: [],
+        sfrScore: 4,
+        lengthPositionScore: 4,
+      },
+      {
+        id: "hip-hinge",
+        name: "45 Degree Back Extension",
+        movementPatterns: ["hinge"],
+        splitTags: ["legs"],
+        jointStress: "low",
+        isMainLiftEligible: false,
+        isCompound: true,
+        fatigueCost: 2,
+        equipment: ["machine"],
+        primaryMuscles: ["Hamstrings"],
+        secondaryMuscles: ["Glutes"],
+        sfrScore: 4,
+        lengthPositionScore: 3,
+      },
+      {
+        id: "leg-extension",
+        name: "Leg Extension",
+        movementPatterns: ["isolation"],
+        splitTags: ["legs"],
+        jointStress: "low",
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 2,
+        equipment: ["machine"],
+        primaryMuscles: ["Quads"],
+        secondaryMuscles: [],
+        sfrScore: 3,
+        lengthPositionScore: 2,
+      },
+    ];
+    mapExercisesMock.mockReturnValue(customLibrary);
+
+    const selectSpy = vi.spyOn(selectionV2, "selectExercisesOptimized").mockReturnValue({
+      selected: customLibrary
+        .filter((exercise) => exercise.id !== "leg-extension")
+        .map((exercise, index) => ({
+          exercise,
+          proposedSets: 2,
+          volumeContribution: new Map([[exercise.primaryMuscles[0] as string, 2]]),
+          timeContribution: 8,
+          scores: {
+            deficitFill: 0.8 - index * 0.1,
+            rotationNovelty: 0.6,
+            sfrScore: 0.8,
+            lengthenedScore: 0.8,
+            movementNovelty: 0.5,
+            sraAlignment: 0.8,
+            userPreference: 0.5,
+          },
+          totalScore: 0.8 - index * 0.1,
+        })),
+      rejected: [],
+      volumeFilled: new Map([["Hamstrings", 4]]),
+      volumeDeficit: new Map([["Quads", 12]]),
+      timeUsed: 16,
+      constraintsSatisfied: true,
+      rationale: {
+        overallStrategy: "test",
+        perExercise: new Map([
+          ["leg-curl", "test"],
+          ["hip-hinge", "test"],
+        ]),
+      },
+    });
+
+    try {
+      const result = await generateSessionFromIntent("user-1", {
+        intent: "body_part",
+        targetMuscles: ["Hamstrings", "Quads"],
+        supplementalPlannerProfile: true,
+      });
+
+      expect("error" in result).toBe(false);
+      if ("error" in result) return;
+
+      expect(result.selection.selectedExerciseIds).toEqual(
+        expect.arrayContaining(["leg-extension"])
+      );
+      expect(
+        result.workout.accessories.some((entry) => entry.exercise.id === "leg-extension")
+      ).toBe(true);
+    } finally {
+      selectSpy.mockRestore();
+    }
+  });
 });

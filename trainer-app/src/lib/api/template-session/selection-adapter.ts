@@ -22,6 +22,13 @@ export const SESSION_CAPS = {
   maxDirectSetsPerMuscle: 12,
 } as const;
 
+export const SUPPLEMENTAL_SESSION_CAPS = {
+  minExercisesSingleTarget: 1,
+  minExercisesMultiTarget: 2,
+  maxExercisesSingleTarget: 3,
+  maxExercisesMultiTarget: 4,
+} as const;
+
 function getMostRecentPerformedIntentEntry(
   history: WorkoutHistoryEntry[],
   sessionIntent: SessionIntent
@@ -100,7 +107,10 @@ function buildSraContext(
 export function buildSelectionObjective(
   mapped: MappedGenerationContext,
   sessionIntent: SessionIntent,
-  targetMuscles?: string[]
+  targetMuscles?: string[],
+  options?: {
+    supplementalPlannerProfile?: boolean;
+  }
 ): SelectionObjective {
   const fatigueState = deriveFatigueState(mapped.history, mapped.mappedCheckIn);
   const volumeContext = buildVolumeContext(mapped.history, mapped.exerciseLibrary, {
@@ -124,6 +134,16 @@ export function buildSelectionObjective(
   );
 
   const normalizedTargets = new Set((targetMuscles ?? []).map((muscle) => muscle.trim().toLowerCase()));
+  const supplementalPlannerProfile = options?.supplementalPlannerProfile === true;
+  const targetCount = normalizedTargets.size || (targetMuscles?.length ?? 0);
+  const supplementalMinExercises =
+    targetCount > 1
+      ? SUPPLEMENTAL_SESSION_CAPS.minExercisesMultiTarget
+      : SUPPLEMENTAL_SESSION_CAPS.minExercisesSingleTarget;
+  const supplementalMaxExercises =
+    targetCount > 1
+      ? SUPPLEMENTAL_SESSION_CAPS.maxExercisesMultiTarget
+      : SUPPLEMENTAL_SESSION_CAPS.maxExercisesSingleTarget;
   const matchesIntentMuscle = (muscle: string): boolean =>
     getSessionMuscleOpportunityWeight(sessionIntent, muscle, {
       targetMuscles: normalizedTargets.size > 0 ? Array.from(normalizedTargets) : targetMuscles,
@@ -148,7 +168,7 @@ export function buildSelectionObjective(
   );
   const weights = applyContinuityWeightBias(
     { ...DEFAULT_SELECTION_WEIGHTS },
-    recentPerformedIntentExerciseIds.size > 0
+    !supplementalPlannerProfile && recentPerformedIntentExerciseIds.size > 0
   );
   const weeklyTarget = new Map<Muscle, number>();
   const weeklyActual = new Map<Muscle, number>();
@@ -212,12 +232,14 @@ export function buildSelectionObjective(
     volumeCeiling,
     painConflicts: painConflictIds,
     userAvoids: new Set(mapped.mappedPreferences?.avoidExerciseIds ?? []),
-    minExercises: SESSION_CAPS.minExercises,
-    maxExercises: SESSION_CAPS.maxExercises,
+    minExercises: supplementalPlannerProfile ? supplementalMinExercises : SESSION_CAPS.minExercises,
+    maxExercises: supplementalPlannerProfile ? supplementalMaxExercises : SESSION_CAPS.maxExercises,
     minMainLifts: sessionIntent === "body_part" ? 0 : 1,
-    maxMainLifts: 3,
-    minAccessories: 2,
-    minAccessoryProposedSets: mapped.effectivePeriodization.lifecycleSetTargets?.accessory ?? 3,
+    maxMainLifts: supplementalPlannerProfile ? 0 : 3,
+    minAccessories: supplementalPlannerProfile ? 1 : 2,
+    minAccessoryProposedSets: supplementalPlannerProfile
+      ? 1
+      : mapped.effectivePeriodization.lifecycleSetTargets?.accessory ?? 3,
     demotedFromMainLift: new Set(
       mapped.exerciseLibrary
         .filter((exercise) =>
@@ -227,9 +249,14 @@ export function buildSelectionObjective(
         )
         .map((exercise) => exercise.id)
     ),
-    preferredContinuityExerciseIds: recentPerformedIntentExerciseIds,
-    continuityMinSetsByExerciseId,
+    preferredContinuityExerciseIds: supplementalPlannerProfile
+      ? new Set()
+      : recentPerformedIntentExerciseIds,
+    continuityMinSetsByExerciseId: supplementalPlannerProfile
+      ? new Map()
+      : continuityMinSetsByExerciseId,
     lifecycleSetTargets: mapped.effectivePeriodization.lifecycleSetTargets,
+    supplementalPlannerProfile,
   };
 
   const sraContext = buildSraContext(mapped.rotationContext, mapped.exerciseLibrary, new Date());

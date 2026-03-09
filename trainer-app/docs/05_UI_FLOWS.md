@@ -1,7 +1,7 @@
 # 05 UI Flows
 
 Owner: Aaron
-Last reviewed: 2026-03-08
+Last reviewed: 2026-03-09
 Purpose: Canonical reference for current UI routes and core user flows implemented in the Next.js App Router.
 
 This doc covers:
@@ -104,9 +104,34 @@ Route-purpose shorthand:
 5. Disappearance rules:
   - Next-week `PLANNED` carryover does not hide prior-week optional gap-fill.
   - Started carryover (`IN_PROGRESS`/`PARTIAL`) suppresses prior-week optional gap-fill.
-6. Labels and week/session mapping:
-  - list/log summary labels use canonical strict classifier for `Gap Fill` title + muscles subtext
-  - week/session badge uses snapshot-first semantics, so optional session renders as anchor `Wk:S` (sessions-per-week + 1 slot)
+  6. Labels and week/session mapping:
+    - list/log summary labels use canonical strict classifier for `Gap Fill` title + muscles subtext
+    - week/session badge uses snapshot-first semantics, so optional session renders as anchor `Wk:S` (sessions-per-week + 1 slot)
+
+## Supplemental deficit flow
+1. User invokes supplemental generation from `IntentWorkoutCard` using the existing BODY_PART intent path (`src/components/IntentWorkoutCard.tsx`).
+2. Generate action calls `POST /api/workouts/generate-from-intent` with:
+  - `intent=body_part`
+  - `supplementalDeficitSession=true`
+  - `targetMuscles`
+  The route owns canonical receipt stamping through `attachSupplementalSessionMetadata()` and enables `supplementalPlannerProfile` before returning `selectionMetadata` to the client unchanged (`src/app/api/workouts/generate-from-intent/route.ts`, `src/lib/ui/selection-metadata.ts`).
+3. Planner behavior stays inside the normal BODY_PART pipeline but narrows to small accessory-first patch sessions:
+  - single target -> `1-3` exercises
+  - multi target -> `2-4` exercises
+  - uncapped requests default to `maxGeneratedExercises=4` and `maxGeneratedHardSets=8`
+  - selection prefers target-primary, non-main-lift, lower-fatigue work
+  - remaining-deficit-aware set caps reduce small patches to `1-2` sets when little weekly deficit remains
+4. Save action calls `POST /api/workouts/save`, where strict supplemental classification forces `advancesSplit=false` even if the payload requests otherwise.
+5. User-facing meaning:
+  - use this to patch a weekly deficit
+  - use this to add weak-point work
+  - use this to add extra stimulus when recovery allows
+  - the session counts for weekly volume and recovery
+  - the session does not advance the split
+  - the session does not affect load progression or progression anchors
+6. Labels:
+  - workout lists and history surfaces render the session as `Supplemental`
+  - the normal intent/session summary still reflects the BODY_PART intent, but optional-session labeling comes from the strict supplemental classifier (`src/components/RecentWorkouts.tsx`, `src/components/HistoryClient.tsx`, `src/lib/ui/workout-list-items.ts`)
 
 6. Analytics review
 - UI: `/analytics`

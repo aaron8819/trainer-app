@@ -1,19 +1,9 @@
-import { isStrictSupplementalDeficitSession } from "@/lib/session-semantics/supplemental-classifier";
+import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-semantics";
 
 export function isProgressionEligibleWorkout(input: {
   selectionMetadata: unknown;
   selectionMode: string | null | undefined;
   sessionIntent: string | null | undefined;
 }): boolean {
-  if (
-    isStrictSupplementalDeficitSession({
-      selectionMetadata: input.selectionMetadata,
-      selectionMode: input.selectionMode,
-      sessionIntent: input.sessionIntent,
-    })
-  ) {
-    return false;
-  }
-
-  return true;
+  return deriveSessionSemantics(input).countsTowardProgressionHistory;
 }

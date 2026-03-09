@@ -15,6 +15,9 @@ import {
 type PlannedExercise = GenerateFromIntentResponse["workout"]["mainLifts"][number];
 type PlannedSet = PlannedExercise["sets"][number];
 
+const SUPPLEMENTAL_DEFAULT_MAX_EXERCISES = 4;
+const SUPPLEMENTAL_DEFAULT_MAX_HARD_SETS = 8;
+
 function applyGapFillCaps(input: {
   workout: GenerateFromIntentResponse["workout"];
   maxGeneratedHardSets?: number;
@@ -145,7 +148,18 @@ export async function POST(request: Request) {
         maxGeneratedHardSets: canonicalGapFill.maxGeneratedHardSets,
         maxGeneratedExercises: canonicalGapFill.maxGeneratedExercises,
       }
-    : parsed.data;
+    : {
+        ...parsed.data,
+        ...(shouldApplySupplementalDeficitSession
+          ? {
+              supplementalPlannerProfile: true,
+              maxGeneratedHardSets:
+                parsed.data.maxGeneratedHardSets ?? SUPPLEMENTAL_DEFAULT_MAX_HARD_SETS,
+              maxGeneratedExercises:
+                parsed.data.maxGeneratedExercises ?? SUPPLEMENTAL_DEFAULT_MAX_EXERCISES,
+            }
+          : {}),
+      };
   const result =
     !shouldApplyOptionalGapFill && activeMesocycle?.state === "ACTIVE_DELOAD"
       ? await generateDeloadSessionFromIntent(user.id, generationInput)

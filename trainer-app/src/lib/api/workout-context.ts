@@ -20,7 +20,7 @@ import {
   WorkoutStatus,
 } from "@prisma/client";
 import { mapLatestCheckIn, type CheckInRow } from "./checkin-staleness";
-import { isProgressionEligibleWorkout } from "@/lib/progression/progression-eligibility";
+import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-semantics";
 import type {
   Constraints,
   EquipmentType,
@@ -256,61 +256,68 @@ export function mapExercises(
 }
 
 export function mapHistory(workouts: WorkoutWithRelations[]): WorkoutHistoryEntry[] {
-  const mapped = workouts.map((workout) => ({
-    date: workout.scheduledDate.toISOString(),
-    completed: workout.status === WorkoutStatus.COMPLETED,
-    status: workout.status,
-    advancesSplit: workout.advancesSplit ?? true,
-    progressionEligible: isProgressionEligibleWorkout({
+  const mapped = workouts.map((workout) => {
+    const semantics = deriveSessionSemantics({
+      advancesSplit: workout.advancesSplit,
       selectionMetadata: workout.selectionMetadata,
       selectionMode: workout.selectionMode,
       sessionIntent: workout.sessionIntent,
-    }),
-    selectionMode: workout.selectionMode,
-    sessionIntent: workout.sessionIntent
-      ? (workout.sessionIntent.toLowerCase() as EngineSplitDay)
-      : undefined,
-    forcedSplit: workout.forcedSplit
-      ? (workout.forcedSplit.toLowerCase() as EngineSplitDay)
-      : undefined,
-    mesocycleSnapshot:
-      workout.mesocycleWeekSnapshot != null
-        ? {
-            mesocycleId: workout.mesocycleId,
-            week: workout.mesocycleWeekSnapshot,
-            session: workout.mesoSessionSnapshot,
-            phase: workout.mesocyclePhaseSnapshot,
-          }
+      templateId: workout.templateId,
+    });
+
+    return {
+      date: workout.scheduledDate.toISOString(),
+      completed: workout.status === WorkoutStatus.COMPLETED,
+      status: workout.status,
+      advancesSplit: semantics.advancesLifecycle,
+      progressionEligible: semantics.countsTowardProgressionHistory,
+      selectionMode: workout.selectionMode,
+      sessionIntent: workout.sessionIntent
+        ? (workout.sessionIntent.toLowerCase() as EngineSplitDay)
         : undefined,
-    exercises: workout.exercises.map((exercise) => ({
-      exerciseId: exercise.exerciseId,
-      primaryMuscles: exercise.exercise.exerciseMuscles
-        ?.filter((m) => m.role === "PRIMARY")
-        .map((m) => m.muscle.name) ?? [],
-      sets: exercise.sets.flatMap((set) => {
-        const log = set.logs[0];
-        if (!log || log.wasSkipped) {
-          return [];
-        }
-        const hasSignal = log.actualReps != null || log.actualRpe != null || log.actualLoad != null;
-        if (!hasSignal) {
-          return [];
-        }
-        if (log.actualRpe != null && log.actualRpe < 6) {
-          return [];
-        }
-        return [
-          {
-            exerciseId: exercise.exerciseId,
-            setIndex: set.setIndex,
-            reps: log.actualReps ?? 0,
-            rpe: log.actualRpe ?? undefined,
-            load: log.actualLoad ?? undefined,
-          },
-        ];
-      }),
-    })),
-  }));
+      forcedSplit: workout.forcedSplit
+        ? (workout.forcedSplit.toLowerCase() as EngineSplitDay)
+        : undefined,
+      mesocycleSnapshot:
+        workout.mesocycleWeekSnapshot != null
+          ? {
+              mesocycleId: workout.mesocycleId,
+              week: workout.mesocycleWeekSnapshot,
+              session: workout.mesoSessionSnapshot,
+              phase: workout.mesocyclePhaseSnapshot,
+            }
+          : undefined,
+      exercises: workout.exercises.map((exercise) => ({
+        exerciseId: exercise.exerciseId,
+        primaryMuscles: exercise.exercise.exerciseMuscles
+          ?.filter((m) => m.role === "PRIMARY")
+          .map((m) => m.muscle.name) ?? [],
+        sets: exercise.sets.flatMap((set) => {
+          const log = set.logs[0];
+          if (!log || log.wasSkipped) {
+            return [];
+          }
+          const hasSignal =
+            log.actualReps != null || log.actualRpe != null || log.actualLoad != null;
+          if (!hasSignal) {
+            return [];
+          }
+          if (log.actualRpe != null && log.actualRpe < 6) {
+            return [];
+          }
+          return [
+            {
+              exerciseId: exercise.exerciseId,
+              setIndex: set.setIndex,
+              reps: log.actualReps ?? 0,
+              rpe: log.actualRpe ?? undefined,
+              load: log.actualLoad ?? undefined,
+            },
+          ];
+        }),
+      })),
+    };
+  });
 
   const intentModalByExercise = new Map<string, number>();
   const sortedByDateAsc = [...mapped].sort(

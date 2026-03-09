@@ -121,6 +121,9 @@ export interface SelectionConstraints {
     main: number;
     accessory: number;
   };
+
+  /** Supplemental-deficit BODY_PART profile: smaller, accessory-first sessions */
+  supplementalPlannerProfile?: boolean;
 }
 
 /**

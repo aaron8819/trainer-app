@@ -14,10 +14,12 @@ Invariants:
 - Selection and generation logic live in `src/lib/engine` and are invoked by `src/lib/api`.
 - Persisted session enums must stay aligned with `docs/contracts/runtime-contracts.json`.
 - Logged set data is the primary progression feedback input.
+- Live workout coaching cues are non-canonical UI feedback; they must not change generator-owned next-session progression decisions.
 
 Sources of truth:
 - `trainer-app/src/lib/engine/selection-v2`
 - `trainer-app/src/lib/engine/progression.ts`
+- `trainer-app/src/lib/progression/load-coaching.ts`
 - `trainer-app/src/lib/engine/template-session.ts`
 - `trainer-app/src/lib/engine/periodization`
 - `trainer-app/src/lib/engine/readiness`
@@ -25,6 +27,7 @@ Sources of truth:
 - `trainer-app/src/lib/planning/session-opportunities.ts`
 - `trainer-app/src/lib/api/template-session.ts`
 - `trainer-app/src/lib/api/workout-context.ts`
+- `trainer-app/src/components/log-workout/useWorkoutSessionFlow.ts`
 
 ## Selection and generation
 - Intent and template generation both rely on engine-level session construction and selection primitives.
@@ -79,6 +82,7 @@ Sources of truth:
 ## Progression and load assignment
 - Progression math is implemented in `src/lib/engine/progression.ts`.
 - Load assignment and fallback logic are implemented in `src/lib/engine/apply-loads.ts`.
+- The live in-session autoreg hint is implemented separately in `src/lib/progression/load-coaching.ts` and called from `src/components/log-workout/useWorkoutSessionFlow.ts`. It is a current-session coaching/explainability seam only.
 - Historical training signals are mapped from persisted workouts/logs in `mapHistory()` within `src/lib/api/workout-context.ts`.
 - Performed-history filtering (not completed-only filtering) is canonical for load progression and plateau/deload checks via `filterPerformedHistory()` and `isPerformedHistoryEntry()` in `src/lib/engine/history.ts`.
 - Effective-reps filtering is enforced at signal derivation: sets logged below `RPE 6` are excluded from modal-load and progression anchoring (data is still persisted).
@@ -90,6 +94,7 @@ Sources of truth:
 - Bodyweight progression is rep-driven only at `anchorLoad=0` in `computeDoubleProgressionDecision()`; the engine never auto-increments external load from `0` and logs `bodyweight exercise — rep progression only`.
 - Empty performed logs are invalid (`LOGGED_EMPTY` is rejected on write); unresolved sets should remain `MISSING` and are treated as unresolved during completion status resolution.
 - On first session of a new mesocycle (`accumulationSessionsCompleted=0` or explicit first-session flag), load anchoring history is sourced from accumulation history only: prefer week-4 accumulation, else highest available accumulation week, else any non-deload performed history; deload (`DELOAD`/`ACTIVE_DELOAD`) snapshots are excluded as baseline sources.
+- Live cue contract: `getLoadRecommendation()` keeps the `increase | hold | decrease` action shape and evaluates only the current logged set against the next set target. Load-aware copy may use `actualLoad` and `targetLoad` for explanation, but it does not read history, rep-band progression gates, or mesocycle state and must not be treated as canonical next-exposure progression.
 
 ## Periodization and readiness
 - Macro/meso/block logic lives in `src/lib/engine/periodization`.

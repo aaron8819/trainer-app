@@ -47,6 +47,12 @@ Sources of truth:
 4. Engine returns deterministic plan/rationale outputs.
 5. API persists workout/log changes and returns response payloads.
 
+## Live workout cue boundary
+- The in-session autoreg/load hint shown while logging is a UI-only coaching seam owned by `src/components/log-workout/useWorkoutSessionFlow.ts` and `src/lib/progression/load-coaching.ts`.
+- That hint is derived from the just-logged set plus the next unlogged set in the same exercise. It is not persisted and it is not a canonical progression artifact.
+- Canonical next-exposure load progression remains server-side in `src/lib/engine/apply-loads.ts` + `src/lib/engine/progression.ts`; the live cue must not redefine or override that logic.
+- Load-aware live cue copy may acknowledge `actualLoad` vs `targetLoad`, but it remains an explainability aid for the current session rather than a generator input.
+
 ## Canonical session-decision flow
 - Generation/finalization build the canonical session decision under `selectionMetadata.sessionDecisionReceipt` in `src/lib/api/template-session.ts`, with planning-critical seams in `src/lib/planning/session-opportunities.ts`, `src/lib/api/template-session/role-budgeting.ts`, and `src/lib/api/template-session/closure-actions.ts`.
 - Generation-facing phase/block context is loaded in `src/lib/api/generation-phase-block-context.ts` and attached in `src/lib/api/template-session/context-loader.ts`. That seam is now the canonical bridge from persisted `MacroCycle -> Mesocycle -> TrainingBlock` data into generation/runtime `cycleContext`.

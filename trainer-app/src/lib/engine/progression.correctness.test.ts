@@ -80,6 +80,25 @@ describe("progression correctness", () => {
     expect(decision?.decisionLog.join(" | ")).toContain("Progression confidence scale=1.00");
   });
 
+  it("keeps the week-4 pull main-lift hold gate unchanged when median reps stay below the top of the band", () => {
+    const decision = computeDoubleProgressionDecision(
+      [
+        { reps: 6, rpe: 8, load: 120 },
+        { reps: 7, rpe: 8, load: 115 },
+        { reps: 7, rpe: 8.5, load: 115 },
+        { reps: 7, rpe: 8.5, load: 115 },
+        { reps: 7, rpe: 8.5, load: 115 },
+      ],
+      [6, 10],
+      "barbell",
+      { anchorOverride: 120, priorSessionCount: 3 }
+    );
+
+    expect(decision?.path).toBe("fallback_hold");
+    expect(decision?.nextLoad).toBe(120);
+    expect(decision?.decisionLog.join(" | ")).toContain("median reps=7.0, rep-range top=10");
+  });
+
   it("uses PROGRESSION_CONFIG thresholds instead of inline magic numbers", () => {
     expect(PROGRESSION_CONFIG.highVarianceThreshold).toBe(0.2);
     expect(PROGRESSION_CONFIG.outlierTrimRange).toBe(0.15);

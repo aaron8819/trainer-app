@@ -268,6 +268,8 @@ export function useWorkoutSessionFlow({
           const recommendation = getLoadRecommendation({
             reps: normalizedSet.actualReps,
             rir: 10 - normalizedSet.actualRpe,
+            actualLoad: normalizedSet.actualLoad,
+            targetLoad: nextExerciseSet.set.targetLoad,
             repRange,
             targetRir: 10 - nextExerciseSet.set.targetRpe,
           });

@@ -81,4 +81,83 @@ describe("resolveNextWorkoutContext", () => {
     expect(first.weekInMeso).toBe(3);
     expect(first.sessionInWeek).toBe(2);
   });
+
+  it("derives next push after performed advancing intents [pull]", () => {
+    const context = resolveNextWorkoutContext({
+      mesocycle: {
+        ...baseMeso,
+        accumulationSessionsCompleted: 7,
+      },
+      weeklySchedule: ["PULL", "PUSH", "LEGS"],
+      incompleteWorkouts: [],
+      performedAdvancingIntentsThisWeek: ["pull"],
+    });
+
+    expect(context.source).toBe("rotation");
+    expect(context.intent).toBe("push");
+    expect(context.weekInMeso).toBe(3);
+    expect(context.sessionInWeek).toBe(2);
+  });
+
+  it("derives next legs after performed advancing intents [pull, push]", () => {
+    const context = resolveNextWorkoutContext({
+      mesocycle: {
+        ...baseMeso,
+        accumulationSessionsCompleted: 8,
+      },
+      weeklySchedule: ["PULL", "PUSH", "LEGS"],
+      incompleteWorkouts: [],
+      performedAdvancingIntentsThisWeek: ["pull", "push"],
+    });
+
+    expect(context.intent).toBe("legs");
+    expect(context.weekInMeso).toBe(3);
+    expect(context.sessionInWeek).toBe(3);
+  });
+
+  it("derives next push after off-order performed advancing intents [pull, legs]", () => {
+    const context = resolveNextWorkoutContext({
+      mesocycle: {
+        ...baseMeso,
+        accumulationSessionsCompleted: 8,
+      },
+      weeklySchedule: ["PULL", "PUSH", "LEGS"],
+      incompleteWorkouts: [],
+      performedAdvancingIntentsThisWeek: ["pull", "legs"],
+    });
+
+    expect(context.intent).toBe("push");
+    expect(context.weekInMeso).toBe(3);
+    expect(context.sessionInWeek).toBe(3);
+  });
+
+  it("derives next push after off-order performed advancing intents [legs, pull]", () => {
+    const context = resolveNextWorkoutContext({
+      mesocycle: {
+        ...baseMeso,
+        accumulationSessionsCompleted: 8,
+      },
+      weeklySchedule: ["PULL", "PUSH", "LEGS"],
+      incompleteWorkouts: [],
+      performedAdvancingIntentsThisWeek: ["legs", "pull"],
+    });
+
+    expect(context.intent).toBe("push");
+    expect(context.weekInMeso).toBe(3);
+    expect(context.sessionInWeek).toBe(3);
+  });
+
+  it("keeps next push after [pull] when a non-advancing gap-fill does not enter performed advancing intents", () => {
+    const context = resolveNextWorkoutContext({
+      mesocycle: {
+        ...baseMeso,
+        accumulationSessionsCompleted: 7,
+      },
+      weeklySchedule: ["PULL", "PUSH", "LEGS"],
+      incompleteWorkouts: [],
+      performedAdvancingIntentsThisWeek: ["pull"],
+    });
+
+    expect(context.intent).toBe("push");
+  });
 });

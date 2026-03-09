@@ -1,7 +1,7 @@
 # 01 Architecture
 
 Owner: Aaron  
-Last reviewed: 2026-03-08  
+Last reviewed: 2026-03-09  
 Purpose: Defines the current runtime architecture for the single-user local-first Trainer app and the boundaries between UI, API routes, orchestration, engine, and persistence.
 
 This doc covers:
@@ -78,6 +78,7 @@ Sources of truth:
 - Optional gap-fill sessions are non-advancing by contract: save route forces `advancesSplit=false` for strict gap-fill sessions and blocks lifecycle mutation for those performed transitions (`src/app/api/workouts/save/route.ts`, `src/app/api/workouts/save/lifecycle-contract.ts`).
 - Strict gap-fill classification is canonicalized in one shared predicate (`src/lib/gap-fill/classifier.ts`): receipt marker `optional_gap_fill` AND effective `selectionMode=INTENT` AND `sessionIntent=BODY_PART`.
 - Gap-fill generation still uses the normal planner path, but now routes through the explicit `rescue` session inventory in `src/lib/planning/session-opportunities.ts` rather than relying on ad hoc body-part exceptions.
+- Gap-fill and other `advancesSplit=false` sessions do not participate in next advancing intent derivation. They remain visible to history/volume/recovery read paths, but they do not consume required weekly schedule slots.
 - Anchor-week semantics are dual-stamped:
   - generation pins `selectionMetadata.sessionDecisionReceipt.cycleContext.weekInMeso` to the anchor week
   - generation derives `selectionMetadata.sessionDecisionReceipt.cycleContext.weekInBlock` from the active block containing that anchored meso week when `TrainingBlock` rows exist, with lifecycle fallback only when block data is missing
@@ -93,6 +94,7 @@ Sources of truth:
 ## Canonical read-side boundaries
 - `ProgramDashboardData` in `src/lib/api/program.ts` is the canonical program dashboard read model for the shared `ProgramStatusCard` mounted on `/` and `/program`. It owns mesocycle header/timeline state, current vs viewed week, viewed block chrome (`viewedBlockType`), lifecycle RIR target, deload/readiness cue, and mesocycle-week volume rows. Historical browsing should render from the full selected payload rather than mixing current-week chrome with past-week volume rows. Dashboard `rirTarget` and phase coaching copy now resolve through the same block-aware prescription seam used by generation (`resolvePhaseBlockProfile() -> getRirTarget()`), so the dashboard does not maintain an independent week-to-RIR mapping. Per-muscle rows now also carry dashboard-only opportunity metadata (`opportunityScore`, `opportunityState`, `opportunityRationale`) derived from canonical weekly weighted volume, recent local weighted stimulus, and optional fresh readiness modulation. It is not the canonical contract for generic workout-history lists.
 - Home-page operational helpers that are not part of the shared dashboard card contract live separately in `loadHomeProgramSupport()` in `src/lib/api/program.ts`. `loadHomeProgramSupport()` consumes `loadNextWorkoutContext()` from `src/lib/api/next-session.ts`, which is the canonical next-session derivation service shared with the audit harness.
+- `loadNextWorkoutContext()` is receipt-agnostic and remains lifecycle-safe: lifecycle counters still derive canonical `week/session`, while next advancing `intent` now derives from `constraints.weeklySchedule minus performed advancing intents already stamped in the current mesocycle week`. That subtraction path is only authoritative for unique-intent weekly schedules; repeated-intent schedules still fall back to canonical slot math until the data model exposes slot identity beyond raw intent.
 - `WorkoutListSurfaceSummary` in `src/lib/ui/workout-list-items.ts` is the canonical workout/session summary read model for list surfaces. `/history`, `GET /api/workouts/history`, and the home-page Recent Workouts section should anchor on this shape rather than ad hoc row contracts.
 - Shared workout-list display semantics for those list surfaces now live with that contract in `src/lib/ui/workout-list-items.ts`: status labels/classes, intent labels, and exercise/set count copy are centralized there so Recent Workouts and History do not drift.
 - Shared route-purpose/navigation metadata now lives in `src/lib/ui/app-surface-map.ts`. That metadata is a UI-navigation aid only; it does not own read-model semantics.

@@ -52,6 +52,7 @@ vi.mock("@/lib/db/prisma", () => ({
 
 import {
   deriveCurrentMesocycleSession,
+  deriveNextAdvancingIntentByWeeklySubtraction,
   deriveNextAdvancingSession,
   getLifecycleSetTargets,
   getCurrentMesoWeek,
@@ -334,6 +335,34 @@ describe("mesocycle-lifecycle", () => {
       phase: "ACCUMULATION",
       intent: "pull",
       scheduleIndex: 1,
+    });
+  });
+
+  it("returns no next advancing intent when all unique weekly intents are already performed", () => {
+    expect(
+      deriveNextAdvancingIntentByWeeklySubtraction(
+        ["pull", "push", "legs"],
+        ["pull", "push", "legs"]
+      )
+    ).toEqual({
+      intent: null,
+      scheduleIndex: null,
+      remainingIntents: [],
+      usesSubtraction: true,
+    });
+  });
+
+  it("falls back from subtraction for duplicate-intent schedules until slot identity exists", () => {
+    expect(
+      deriveNextAdvancingIntentByWeeklySubtraction(
+        ["push", "pull", "push"],
+        ["push"]
+      )
+    ).toEqual({
+      intent: null,
+      scheduleIndex: null,
+      remainingIntents: ["push", "pull", "push"],
+      usesSubtraction: false,
     });
   });
 

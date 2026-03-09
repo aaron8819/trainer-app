@@ -1,8 +1,10 @@
 import { WorkoutStatus } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
-import { deriveNextAdvancingSession } from "./mesocycle-lifecycle-math";
+import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
+import { deriveCurrentMesocycleSession, deriveNextAdvancingSession } from "./mesocycle-lifecycle-math";
 
 type MesoSessionInput = {
+  id?: string;
   durationWeeks: number;
   accumulationSessionsCompleted: number;
   deloadSessionsCompleted: number;
@@ -66,16 +68,20 @@ export function resolveNextWorkoutContext(input: {
   mesocycle: MesoSessionInput | null;
   weeklySchedule: string[];
   incompleteWorkouts: IncompleteWorkoutCandidate[];
+  performedAdvancingIntentsThisWeek?: string[];
 }): NextWorkoutContext {
   const normalizedSchedule = normalizeWeeklySchedule(input.weeklySchedule);
   const topIncomplete = pickTopIncompleteWorkout(input.incompleteWorkouts);
   const trace: string[] = [
     `normalized_schedule_count=${normalizedSchedule.length}`,
     `incomplete_candidates=${input.incompleteWorkouts.length}`,
+    `performed_advancing_intents_this_week=${input.performedAdvancingIntentsThisWeek?.length ?? 0}`,
   ];
 
   const derived = input.mesocycle
-    ? deriveNextAdvancingSession(input.mesocycle, normalizedSchedule)
+    ? deriveNextAdvancingSession(input.mesocycle, normalizedSchedule, {
+        performedAdvancingIntentsThisWeek: input.performedAdvancingIntentsThisWeek,
+      })
     : null;
   if (derived) {
     trace.push(
@@ -125,6 +131,7 @@ export async function loadNextWorkoutContext(
     prisma.mesocycle.findFirst({
       where: { macroCycle: { userId }, isActive: true },
       select: {
+        id: true,
         durationWeeks: true,
         accumulationSessionsCompleted: true,
         deloadSessionsCompleted: true,
@@ -144,6 +151,25 @@ export async function loadNextWorkoutContext(
     }),
   ]);
 
+  const currentSession = mesocycle ? deriveCurrentMesocycleSession(mesocycle) : null;
+  const rawPerformedAdvancingThisWeek =
+    mesocycle && currentSession
+      ? await prisma.workout.findMany({
+          where: {
+            userId,
+            mesocycleId: mesocycle.id,
+            mesocycleWeekSnapshot: currentSession.week,
+            status: { in: [...PERFORMED_WORKOUT_STATUSES] as WorkoutStatus[] },
+            advancesSplit: { not: false },
+            sessionIntent: { not: null },
+          },
+          orderBy: [{ mesoSessionSnapshot: "asc" }, { scheduledDate: "asc" }],
+          select: {
+            sessionIntent: true,
+          },
+        })
+      : [];
+
   return resolveNextWorkoutContext({
     mesocycle,
     weeklySchedule: (constraints?.weeklySchedule ?? []).map((intent) => intent as string),
@@ -153,5 +179,8 @@ export async function loadNextWorkoutContext(
       scheduledDate: workout.scheduledDate,
       sessionIntent: workout.sessionIntent?.toLowerCase() ?? null,
     })),
+    performedAdvancingIntentsThisWeek: rawPerformedAdvancingThisWeek
+      .map((workout) => workout.sessionIntent?.toLowerCase() ?? null)
+      .filter((intent): intent is string => Boolean(intent)),
   });
 }

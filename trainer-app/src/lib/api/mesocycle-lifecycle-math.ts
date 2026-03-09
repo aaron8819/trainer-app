@@ -80,6 +80,11 @@ export type NextAdvancingSession = CanonicalMesocycleSession & {
   scheduleIndex: number | null;
 };
 
+type WeeklyScheduleEntry = {
+  intent: string;
+  scheduleIndex: number;
+};
+
 const DEFAULT_DELOAD_RIR: RirTarget = { min: 5, max: 6 };
 const DEFAULT_DELOAD_SET_TARGETS: LifecycleSetTargets = { main: 2, accessory: 1 };
 
@@ -301,21 +306,101 @@ export function deriveCurrentMesocycleSession(
   };
 }
 
+function normalizeWeeklyScheduleEntries(
+  weeklySchedule: readonly string[]
+): WeeklyScheduleEntry[] {
+  return weeklySchedule
+    .map((intent, index) => ({
+      intent: intent.trim().toLowerCase(),
+      scheduleIndex: index,
+    }))
+    .filter((entry) => entry.intent.length > 0);
+}
+
+function hasUniqueWeeklyScheduleIntents(
+  normalizedSchedule: readonly WeeklyScheduleEntry[]
+): boolean {
+  const unique = new Set<string>();
+  for (const entry of normalizedSchedule) {
+    if (unique.has(entry.intent)) {
+      return false;
+    }
+    unique.add(entry.intent);
+  }
+  return true;
+}
+
+export function deriveNextAdvancingIntentByWeeklySubtraction(
+  weeklySchedule: readonly string[],
+  performedAdvancingIntentsThisWeek: readonly string[] = []
+): { intent: string | null; scheduleIndex: number | null; remainingIntents: string[]; usesSubtraction: boolean } {
+  const normalizedSchedule = normalizeWeeklyScheduleEntries(weeklySchedule);
+  if (normalizedSchedule.length === 0) {
+    return {
+      intent: null,
+      scheduleIndex: null,
+      remainingIntents: [],
+      usesSubtraction: false,
+    };
+  }
+
+  if (!hasUniqueWeeklyScheduleIntents(normalizedSchedule)) {
+    return {
+      intent: null,
+      scheduleIndex: null,
+      remainingIntents: normalizedSchedule.map((entry) => entry.intent),
+      usesSubtraction: false,
+    };
+  }
+
+  const performed = new Set(
+    performedAdvancingIntentsThisWeek
+      .map((intent) => intent.trim().toLowerCase())
+      .filter((intent) => intent.length > 0)
+  );
+  const remaining = normalizedSchedule.filter((entry) => !performed.has(entry.intent));
+  const next = remaining[0] ?? null;
+
+  return {
+    intent: next?.intent ?? null,
+    scheduleIndex: next?.scheduleIndex ?? null,
+    remainingIntents: remaining.map((entry) => entry.intent),
+    usesSubtraction: true,
+  };
+}
+
 export function deriveNextAdvancingSession(
   mesocycle: SessionDerivationInput,
-  weeklySchedule: readonly string[] = []
+  weeklySchedule: readonly string[] = [],
+  options?: {
+    performedAdvancingIntentsThisWeek?: readonly string[];
+  }
 ): NextAdvancingSession {
   const current = deriveCurrentMesocycleSession(mesocycle);
-  const normalizedSchedule = weeklySchedule
-    .map((intent) => intent.trim().toLowerCase())
-    .filter((intent) => intent.length > 0);
+  const normalizedSchedule = normalizeWeeklyScheduleEntries(weeklySchedule);
   const scheduleIndex =
     normalizedSchedule.length > 0 ? (current.session - 1) % normalizedSchedule.length : null;
+  const subtractionDerived = deriveNextAdvancingIntentByWeeklySubtraction(
+    weeklySchedule,
+    options?.performedAdvancingIntentsThisWeek
+  );
+  const normalizedPerformedCount = options?.performedAdvancingIntentsThisWeek
+    ?.map((intent) => intent.trim().toLowerCase())
+    .filter((intent) => intent.length > 0).length;
+  const expectedPerformedCountInCurrentWeek = Math.max(0, current.session - 1);
+  const shouldUseWeeklySubtraction =
+    subtractionDerived.usesSubtraction &&
+    Array.isArray(options?.performedAdvancingIntentsThisWeek) &&
+    normalizedPerformedCount === expectedPerformedCountInCurrentWeek;
 
   return {
     ...current,
-    intent: scheduleIndex == null ? null : normalizedSchedule[scheduleIndex] ?? null,
-    scheduleIndex,
+    intent: shouldUseWeeklySubtraction
+      ? subtractionDerived.intent
+      : scheduleIndex == null
+        ? null
+        : normalizedSchedule[scheduleIndex]?.intent ?? null,
+    scheduleIndex: shouldUseWeeklySubtraction ? subtractionDerived.scheduleIndex : scheduleIndex,
   };
 }
 

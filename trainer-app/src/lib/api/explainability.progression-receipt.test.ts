@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { computeDoubleProgressionDecision } from "@/lib/engine/progression";
+import { derivePerformedExerciseSemantics } from "@/lib/session-semantics/performed-exercise-semantics";
 
 const mocks = vi.hoisted(() => {
   const workoutFindUnique = vi.fn();
@@ -316,6 +318,408 @@ describe("generateWorkoutExplanation progression receipt", () => {
     expect(receipt?.todayPrescription?.load).toBe(200);
     expect(receipt?.lastPerformed?.load).toBe(200);
     expect(receipt?.trigger).toBe("hold");
+  });
+
+  it("aligns nextExposureDecision to a canonical hold on the audited week-4 pull case", async () => {
+    mocks.workoutFindUnique.mockResolvedValueOnce({
+      id: "w1",
+      userId: "u1",
+      scheduledDate: new Date("2026-02-21T00:00:00.000Z"),
+      sessionIntent: "PULL",
+      selectionMetadata: {},
+      filteredExercises: [],
+      exercises: [
+        {
+          exerciseId: "ex1",
+          isMainLift: false,
+          exercise: {
+            id: "ex1",
+            name: "Lat Pulldown",
+            movementPatterns: ["VERTICAL_PULL"],
+            exerciseEquipment: [{ equipment: { type: "CABLE" } }],
+            exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Lats" } }],
+          },
+          sets: [
+            {
+              setIndex: 1,
+              targetReps: 10,
+              targetRepMin: 8,
+              targetRepMax: 12,
+              targetRpe: 8,
+              targetLoad: 40,
+              restSeconds: 120,
+              logs: [{ actualReps: 8, actualLoad: 40, actualRpe: 8, wasSkipped: false }],
+            },
+            {
+              setIndex: 2,
+              targetReps: 10,
+              targetRepMin: 8,
+              targetRepMax: 12,
+              targetRpe: 8,
+              targetLoad: 40,
+              restSeconds: 120,
+              logs: [{ actualReps: 8, actualLoad: 40, actualRpe: 8, wasSkipped: false }],
+            },
+          ],
+        },
+      ],
+    });
+    mocks.workoutExerciseFindFirst.mockResolvedValueOnce({
+      workout: {
+        scheduledDate: new Date("2026-02-18T00:00:00.000Z"),
+        selectionMode: "INTENT",
+        sessionIntent: "PULL",
+        selectionMetadata: {},
+      },
+      sets: [
+        {
+          setIndex: 1,
+          logs: [{ actualReps: 12, actualLoad: 35, actualRpe: 8, wasSkipped: false }],
+        },
+        {
+          setIndex: 2,
+          logs: [{ actualReps: 12, actualLoad: 35, actualRpe: 8, wasSkipped: false }],
+        },
+      ],
+    });
+
+    const result = await generateWorkoutExplanation("w1");
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    const priorContext = result.progressionReceipts.get("ex1");
+    const nextExposure = result.nextExposureDecisions.get("ex1");
+
+    expect(priorContext?.trigger).toBe("double_progression");
+    expect(nextExposure).toMatchObject({
+      action: "hold",
+      summary: "Next exposure: hold load for now.",
+      anchorLoad: 40,
+      medianReps: 8,
+      modalRpe: 8,
+    });
+  });
+
+  it("does not contradict a hold next-exposure summary even when prior-prescription context shows today's increment", async () => {
+    mocks.workoutFindUnique.mockResolvedValueOnce({
+      id: "w1",
+      userId: "u1",
+      scheduledDate: new Date("2026-02-21T00:00:00.000Z"),
+      sessionIntent: "PULL",
+      selectionMetadata: {},
+      filteredExercises: [],
+      exercises: [
+        {
+          exerciseId: "ex1",
+          isMainLift: false,
+          exercise: {
+            id: "ex1",
+            name: "Lat Pulldown",
+            movementPatterns: ["VERTICAL_PULL"],
+            exerciseEquipment: [{ equipment: { type: "CABLE" } }],
+            exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Lats" } }],
+          },
+          sets: [
+            {
+              setIndex: 1,
+              targetReps: 10,
+              targetRepMin: 8,
+              targetRepMax: 12,
+              targetRpe: 8,
+              targetLoad: 40,
+              restSeconds: 120,
+              logs: [{ actualReps: 9, actualLoad: 40, actualRpe: 8, wasSkipped: false }],
+            },
+          ],
+        },
+      ],
+    });
+    mocks.workoutExerciseFindFirst.mockResolvedValueOnce({
+      workout: {
+        scheduledDate: new Date("2026-02-18T00:00:00.000Z"),
+        selectionMode: "INTENT",
+        sessionIntent: "PULL",
+        selectionMetadata: {},
+      },
+      sets: [
+        {
+          setIndex: 1,
+          logs: [{ actualReps: 12, actualLoad: 35, actualRpe: 8, wasSkipped: false }],
+        },
+      ],
+    });
+
+    const result = await generateWorkoutExplanation("w1");
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    expect(result.progressionReceipts.get("ex1")?.trigger).toBe("double_progression");
+    expect(result.nextExposureDecisions.get("ex1")?.summary).toBe("Next exposure: hold load for now.");
+    expect(result.nextExposureDecisions.get("ex1")?.reason).toContain("keep building reps before adding load");
+  });
+
+  it("holds nextExposureDecision when discounted MANUAL history collapses the canonical increment", async () => {
+    const currentPerformedSets = [
+      { setIndex: 1, actualReps: 12, actualLoad: 40, actualRpe: 7, wasSkipped: false },
+      { setIndex: 2, actualReps: 12, actualLoad: 40, actualRpe: 7, wasSkipped: false },
+      { setIndex: 3, actualReps: 12, actualLoad: 40, actualRpe: 7, wasSkipped: false },
+    ];
+    const performedSemantics = derivePerformedExerciseSemantics({
+      isMainLiftEligible: false,
+      sets: currentPerformedSets,
+    });
+    const canonicalDecision = computeDoubleProgressionDecision(
+      performedSemantics?.signalSets ?? [],
+      [8, 12],
+      "cable",
+      {
+        anchorOverride: performedSemantics?.anchorLoad ?? undefined,
+        priorSessionCount: 4,
+        historyConfidenceScale: 0.48,
+        confidenceReasons: [
+          "MANUAL history was heavily discounted because it looked unreliable: every set reported the same RPE.",
+        ],
+      }
+    );
+
+    expect(canonicalDecision?.nextLoad).toBe(40);
+    expect(canonicalDecision?.decisionLog.join(" | ")).toContain("Progression confidence scale=0.48");
+
+    mocks.workoutFindUnique.mockResolvedValueOnce({
+      id: "w1",
+      userId: "u1",
+      scheduledDate: new Date("2026-02-21T00:00:00.000Z"),
+      selectionMode: "MANUAL",
+      sessionIntent: "PULL",
+      selectionMetadata: {},
+      filteredExercises: [],
+      exercises: [
+        {
+          exerciseId: "ex1",
+          isMainLift: false,
+          exercise: {
+            id: "ex1",
+            name: "Lat Pulldown",
+            movementPatterns: ["VERTICAL_PULL"],
+            exerciseEquipment: [{ equipment: { type: "CABLE" } }],
+            exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Lats" } }],
+          },
+          sets: currentPerformedSets.map((set) => ({
+            setIndex: set.setIndex,
+            targetReps: 10,
+            targetRepMin: 8,
+            targetRepMax: 12,
+            targetRpe: 8,
+            targetLoad: 40,
+            restSeconds: 120,
+            logs: [
+              {
+                actualReps: set.actualReps,
+                actualLoad: set.actualLoad,
+                actualRpe: set.actualRpe,
+                wasSkipped: set.wasSkipped,
+              },
+            ],
+          })),
+        },
+      ],
+    });
+
+    const historyEntries = [
+      {
+        workout: {
+          scheduledDate: new Date("2026-02-18T00:00:00.000Z"),
+          selectionMode: "MANUAL",
+          sessionIntent: "PULL",
+          selectionMetadata: {},
+        },
+        sets: [
+          {
+            setIndex: 1,
+            logs: [{ actualReps: 12, actualLoad: 40, actualRpe: 7, wasSkipped: false }],
+          },
+          {
+            setIndex: 2,
+            logs: [{ actualReps: 12, actualLoad: 40, actualRpe: 7, wasSkipped: false }],
+          },
+        ],
+      },
+      {
+        workout: {
+          scheduledDate: new Date("2026-02-14T00:00:00.000Z"),
+          selectionMode: "MANUAL",
+          sessionIntent: "PULL",
+          selectionMetadata: {},
+        },
+        sets: [
+          {
+            setIndex: 1,
+            logs: [{ actualReps: 12, actualLoad: 40, actualRpe: 7, wasSkipped: false }],
+          },
+          {
+            setIndex: 2,
+            logs: [{ actualReps: 12, actualLoad: 40, actualRpe: 7, wasSkipped: false }],
+          },
+        ],
+      },
+      {
+        workout: {
+          scheduledDate: new Date("2026-02-10T00:00:00.000Z"),
+          selectionMode: "INTENT",
+          sessionIntent: "PULL",
+          selectionMetadata: {},
+        },
+        sets: [
+          {
+            setIndex: 1,
+            logs: [{ actualReps: 12, actualLoad: 40, actualRpe: 7, wasSkipped: false }],
+          },
+          {
+            setIndex: 2,
+            logs: [{ actualReps: 12, actualLoad: 40, actualRpe: 7, wasSkipped: false }],
+          },
+        ],
+      },
+    ];
+
+    mocks.workoutExerciseFindFirst.mockImplementation(async (args: {
+      where?: { workout?: { scheduledDate?: { lt?: Date }; selectionMode?: string } };
+    }) => {
+      const scheduledBefore = args.where?.workout?.scheduledDate?.lt;
+      const requiredSelectionMode = args.where?.workout?.selectionMode;
+      return (
+        historyEntries.find((entry) => {
+          if (
+            requiredSelectionMode &&
+            entry.workout.selectionMode !== requiredSelectionMode
+          ) {
+            return false;
+          }
+          if (scheduledBefore) {
+            return entry.workout.scheduledDate.getTime() < scheduledBefore.getTime();
+          }
+          return true;
+        }) ?? null
+      );
+    });
+
+    const result = await generateWorkoutExplanation("w1");
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    expect(result.nextExposureDecisions.get("ex1")).toMatchObject({
+      action: "hold",
+      summary: "Next exposure: hold load for now.",
+      anchorLoad: 40,
+      medianReps: 12,
+      modalRpe: 7,
+    });
+  });
+
+  it("keeps nextExposureDecision aligned with a standard non-discounted increment", async () => {
+    const currentPerformedSets = [
+      { setIndex: 1, actualReps: 12, actualLoad: 40, actualRpe: 7, wasSkipped: false },
+      { setIndex: 2, actualReps: 12, actualLoad: 40, actualRpe: 7, wasSkipped: false },
+    ];
+    const performedSemantics = derivePerformedExerciseSemantics({
+      isMainLiftEligible: false,
+      sets: currentPerformedSets,
+    });
+    const canonicalDecision = computeDoubleProgressionDecision(
+      performedSemantics?.signalSets ?? [],
+      [8, 12],
+      "cable",
+      {
+        anchorOverride: performedSemantics?.anchorLoad ?? undefined,
+        priorSessionCount: 2,
+        historyConfidenceScale: 1,
+      }
+    );
+
+    expect(canonicalDecision?.nextLoad).toBe(42.5);
+
+    mocks.workoutFindUnique.mockResolvedValueOnce({
+      id: "w1",
+      userId: "u1",
+      scheduledDate: new Date("2026-02-21T00:00:00.000Z"),
+      selectionMode: "INTENT",
+      sessionIntent: "PULL",
+      selectionMetadata: {},
+      filteredExercises: [],
+      exercises: [
+        {
+          exerciseId: "ex1",
+          isMainLift: false,
+          exercise: {
+            id: "ex1",
+            name: "Lat Pulldown",
+            movementPatterns: ["VERTICAL_PULL"],
+            exerciseEquipment: [{ equipment: { type: "CABLE" } }],
+            exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Lats" } }],
+          },
+          sets: currentPerformedSets.map((set) => ({
+            setIndex: set.setIndex,
+            targetReps: 10,
+            targetRepMin: 8,
+            targetRepMax: 12,
+            targetRpe: 8,
+            targetLoad: 40,
+            restSeconds: 120,
+            logs: [
+              {
+                actualReps: set.actualReps,
+                actualLoad: set.actualLoad,
+                actualRpe: set.actualRpe,
+                wasSkipped: set.wasSkipped,
+              },
+            ],
+          })),
+        },
+      ],
+    });
+    mocks.workoutExerciseFindFirst.mockImplementation(async (args: {
+      where?: { workout?: { scheduledDate?: { lt?: Date }; selectionMode?: string } };
+    }) => {
+      const scheduledBefore = args.where?.workout?.scheduledDate?.lt;
+      const requiredSelectionMode = args.where?.workout?.selectionMode;
+      const priorIntent = {
+        workout: {
+          scheduledDate: new Date("2026-02-18T00:00:00.000Z"),
+          selectionMode: "INTENT",
+          sessionIntent: "PULL",
+          selectionMetadata: {},
+        },
+        sets: [
+          {
+            setIndex: 1,
+            logs: [{ actualReps: 11, actualLoad: 40, actualRpe: 7.5, wasSkipped: false }],
+          },
+          {
+            setIndex: 2,
+            logs: [{ actualReps: 11, actualLoad: 40, actualRpe: 7.5, wasSkipped: false }],
+          },
+        ],
+      };
+      if (requiredSelectionMode && requiredSelectionMode !== "INTENT") {
+        return null;
+      }
+      if (scheduledBefore && priorIntent.workout.scheduledDate.getTime() >= scheduledBefore.getTime()) {
+        return null;
+      }
+      return priorIntent;
+    });
+
+    const result = await generateWorkoutExplanation("w1");
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    expect(result.nextExposureDecisions.get("ex1")).toMatchObject({
+      action: "increase",
+      summary: "Next exposure: likely increase load.",
+      anchorLoad: 40,
+      medianReps: 12,
+      modalRpe: 7,
+    });
   });
 
   it("does not treat old history as current progression evidence", async () => {

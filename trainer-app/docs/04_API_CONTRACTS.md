@@ -158,6 +158,8 @@ Sources of truth:
 - `ProgressionSetSummary` now supports `performedAt` for historical evidence timestamps (`src/lib/evidence/types.ts`), and receipt history is recency-bounded in `loadLatestPerformedSetSummary()` (`src/lib/api/explainability.ts`).
 - Session context payload now carries cycle/readiness contract fields (`sessionContext.cycleSource`, `sessionContext.readinessStatus.availability`, `sessionContext.readinessStatus.label`) defined in `src/lib/engine/explainability/types.ts` and produced by `explainSessionContext()` in `src/lib/engine/explainability/session-context.ts`.
 - Route responsibilities are documented canonically in `docs/01_ARCHITECTURE.md`; this section only records payload shape.
+- Explanation-layer consumers should treat `deriveSessionSemantics()` plus canonical progression receipts/decision outputs as the source of session behavior. Explanation routes should not independently re-author session-level progression meaning that could drift from generator-owned next-exposure behavior.
+- `nextExposureDecisions` is a read-side interpretation layer only. Its progression verdict must be computed through `computeDoubleProgressionDecision()` using the same material confidence-sensitive inputs as canonical generation for that exercise (`anchorOverride`, `priorSessionCount`, `historyConfidenceScale`; `confidenceReasons` remains log-only).
 - `confidence.missingSignals` now uses user-facing diagnostic labels rather than engine shorthand:
   - `same-day readiness check-in`
   - `receipt-backed cycle context`

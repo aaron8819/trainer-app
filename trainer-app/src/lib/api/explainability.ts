@@ -4,6 +4,7 @@ import type {
   FilteredExerciseSummary,
   MuscleVolumeCompliance,
   VolumeComplianceStatus,
+  NextExposureDecision,
 } from "@/lib/engine/explainability";
 import { VOLUME_LANDMARKS } from "@/lib/engine/volume-landmarks";
 import {
@@ -45,6 +46,7 @@ import {
 } from "./explainability/query";
 import { loadMesocycleWeekMuscleVolume } from "./weekly-volume";
 import { isProgressionEligibleWorkout } from "@/lib/progression/progression-eligibility";
+import { derivePerformedExerciseSemantics } from "@/lib/session-semantics/performed-exercise-semantics";
 
 const HISTORY_RECENCY_WINDOW_DAYS = 42;
 const CANONICAL_RATIONALE_COMPONENT_KEYS = [
@@ -127,6 +129,7 @@ export async function generateWorkoutExplanation(
   const mappedPrimaryGoal: PrimaryGoal = rawMacroGoal === "general_fitness" ? "hypertrophy" : rawMacroGoal;
   const prescriptionRationales = new Map();
   const progressionReceipts = new Map<string, ProgressionReceipt>();
+  const nextExposureDecisions = new Map<string, NextExposureDecision>();
   const explanationPeriodization = buildExplanationPeriodization({
     blockContext,
     weekInMeso,
@@ -180,16 +183,29 @@ export async function generateWorkoutExplanation(
     const repRange: [number, number] = topSet?.targetRepRange
       ? [topSet.targetRepRange.min, topSet.targetRepRange.max]
       : [topSet?.targetReps ?? 8, topSet?.targetReps ?? 8];
+    const isMainLiftEligible = workoutExercise.exercise.isMainLiftEligible ?? workoutExercise.isMainLift;
+    const equipmentTypes = workoutExercise.exercise.exerciseEquipment.map((item) => item.equipment.type);
     const lastPerformed = await loadLatestPerformedSetSummary(
       workout.userId,
       workout.id,
       workoutExercise.exerciseId,
       workout.scheduledDate,
-      workoutExercise.isMainLift,
+      isMainLiftEligible,
       repRange,
-      workoutExercise.exercise.exerciseEquipment.map((item) => item.equipment.type)
+      equipmentTypes
     );
     const todayPrescription = summarizeTodayTopSet(engineSets);
+    const currentSemantics = derivePerformedExerciseSemantics({
+      isMainLiftEligible,
+      sets: workoutExercise.sets.map((set) => ({
+        setIndex: set.setIndex,
+        targetLoad: set.targetLoad,
+        actualLoad: set.logs[0]?.actualLoad ?? null,
+        actualReps: set.logs[0]?.actualReps ?? null,
+        actualRpe: set.logs[0]?.actualRpe ?? null,
+        wasSkipped: set.logs[0]?.wasSkipped ?? false,
+      })),
+    });
     const isReadinessScaled = sessionEvidence.readinessScaledExerciseIds.has(workoutExercise.exerciseId);
     progressionReceipts.set(
       workoutExercise.exerciseId,
@@ -200,6 +216,30 @@ export async function generateWorkoutExplanation(
         isReadinessScaled
       )
     );
+    const nextExposureDecision = await buildNextExposureDecision(
+      currentSemantics,
+      repRange,
+      equipmentTypes,
+      {
+        userId: workout.userId,
+        workoutId: workout.id,
+        exerciseId: workoutExercise.exerciseId,
+        scheduledDate: workout.scheduledDate,
+        selectionMode: workout.selectionMode ?? undefined,
+        performedLogs: workoutExercise.sets.map((set) => ({
+          setIndex: set.setIndex,
+          log: set.logs[0]
+            ? {
+                actualRpe: set.logs[0].actualRpe,
+                actualLoad: set.logs[0].actualLoad,
+              }
+            : undefined,
+        })),
+      }
+    );
+    if (nextExposureDecision) {
+      nextExposureDecisions.set(workoutExercise.exerciseId, nextExposureDecision);
+    }
   }
 
   const filteredExercises: FilteredExerciseSummary[] = (workout.filteredExercises ?? []).map((fe) => ({
@@ -229,6 +269,7 @@ export async function generateWorkoutExplanation(
     exerciseRationales,
     prescriptionRationales,
     progressionReceipts,
+    nextExposureDecisions,
     filteredExercises,
     volumeCompliance,
   };
@@ -705,7 +746,7 @@ async function loadLatestPerformedSetSummary(
   workoutId: string,
   exerciseId: string,
   asOfDate: Date,
-  isMainLift: boolean,
+  isMainLiftEligible: boolean,
   repRange: [number, number],
   equipment: string[]
 ): Promise<(ProgressionSetSummary & { decisionLog?: string[] }) | null> {
@@ -724,84 +765,41 @@ async function loadLatestPerformedSetSummary(
     }
   }
 
-  const performedLogs = previous.sets
-    .map((set) => ({ setIndex: set.setIndex, log: set.logs[0] }))
-    .filter(
-      (entry) =>
-        Boolean(entry.log) &&
-        !entry.log?.wasSkipped &&
-        (entry.log?.actualRpe == null || entry.log.actualRpe >= 6)
-    );
-  if (performedLogs.length === 0) {
+  const performedLogs = previous.sets.map((set) => ({ setIndex: set.setIndex, log: set.logs[0] }));
+  const performedSemantics = derivePerformedExerciseSemantics({
+    isMainLiftEligible,
+    sets: previous.sets.map((set) => ({
+      setIndex: set.setIndex,
+      actualLoad: set.logs[0]?.actualLoad ?? null,
+      actualReps: set.logs[0]?.actualReps ?? null,
+      actualRpe: set.logs[0]?.actualRpe ?? null,
+      wasSkipped: set.logs[0]?.wasSkipped ?? false,
+    })),
+  });
+  if (!performedSemantics) {
     return null;
   }
 
-  const loadFrequency = new Map<number, { count: number; latestSetIndex: number }>();
-  for (const entry of performedLogs) {
-    const load = entry.log?.actualLoad;
-    if (!Number.isFinite(load) || (load ?? 0) < 0) {
-      continue;
-    }
-    const current = loadFrequency.get(load as number);
-    if (!current) {
-      loadFrequency.set(load as number, { count: 1, latestSetIndex: entry.setIndex });
-      continue;
-    }
-    current.count += 1;
-    current.latestSetIndex = Math.max(current.latestSetIndex, entry.setIndex);
-  }
-
-  const modalLoad =
-    loadFrequency.size > 0
-      ? Array.from(loadFrequency.entries()).sort((a, b) => {
-          const [, left] = a;
-          const [, right] = b;
-          if (right.count !== left.count) {
-            return right.count - left.count;
-          }
-          if (right.latestSetIndex !== left.latestSetIndex) {
-            return right.latestSetIndex - left.latestSetIndex;
-          }
-          return b[0] - a[0];
-        })[0]?.[0]
-      : null;
-  const topSetLoad =
-    performedLogs
-      .sort((a, b) => a.setIndex - b.setIndex)
-      .find((entry) => Number.isFinite(entry.log?.actualLoad) && (entry.log?.actualLoad ?? 0) >= 0)
-      ?.log?.actualLoad ?? null;
-  const anchorLoad = isMainLift ? topSetLoad : modalLoad;
-
-  const representative =
-    anchorLoad == null
-      ? performedLogs.sort((a, b) => a.setIndex - b.setIndex)[0]
-      : performedLogs
-          .filter((entry) => entry.log?.actualLoad === anchorLoad)
-          .sort((a, b) => b.setIndex - a.setIndex)[0];
-
   const decision = computeDoubleProgressionDecision(
-    performedLogs.map((entry) => ({
-      reps: entry.log?.actualReps ?? 0,
-      rpe: entry.log?.actualRpe ?? undefined,
-      load: entry.log?.actualLoad ?? undefined,
-    })),
+    performedSemantics.signalSets,
     repRange,
     resolveProgressionEquipment(equipment),
     {
+      anchorOverride: performedSemantics.anchorLoad ?? undefined,
       priorSessionCount: await countPerformedHistorySessions(userId, exerciseId, workoutId),
       historyConfidenceScale: await resolveExplainabilityHistoryConfidenceScale({
         userId,
         workoutId,
-        previousSelectionMode: previous.workout.selectionMode ?? undefined,
-        previousScheduledDate: performedDate ?? undefined,
+        selectionMode: previous.workout.selectionMode ?? undefined,
+        scheduledDate: performedDate ?? undefined,
         exerciseId,
         performedLogs,
       }),
       confidenceReasons: await resolveExplainabilityConfidenceNotes({
         userId,
         workoutId,
-        previousSelectionMode: previous.workout.selectionMode ?? undefined,
-        previousScheduledDate: performedDate ?? undefined,
+        selectionMode: previous.workout.selectionMode ?? undefined,
+        scheduledDate: performedDate ?? undefined,
         exerciseId,
         performedLogs,
       }),
@@ -809,9 +807,9 @@ async function loadLatestPerformedSetSummary(
   );
 
   return {
-    reps: representative?.log?.actualReps ?? null,
-    load: anchorLoad,
-    rpe: representative?.log?.actualRpe ?? null,
+    reps: performedSemantics.medianReps,
+    load: performedSemantics.anchorLoad,
+    rpe: performedSemantics.modalRpe,
     performedAt: performedDate ? performedDate.toISOString() : null,
     decisionLog: decision?.decisionLog,
   };
@@ -844,8 +842,8 @@ type ExplainabilityConfidenceInput = {
   userId: string;
   workoutId: string;
   exerciseId: string;
-  previousSelectionMode?: string;
-  previousScheduledDate?: Date;
+  selectionMode?: string;
+  scheduledDate?: Date;
   performedLogs: Array<{
     setIndex: number;
     log?: { actualRpe: number | null; actualLoad: number | null } | undefined;
@@ -855,9 +853,9 @@ type ExplainabilityConfidenceInput = {
 async function resolveExplainabilityHistoryConfidenceScale(
   input: ExplainabilityConfidenceInput
 ): Promise<number> {
-  const { previousSelectionMode } = input;
-  if (previousSelectionMode !== "MANUAL") {
-    return previousSelectionMode === "INTENT" ? 1 : 0.8;
+  const { selectionMode } = input;
+  if (selectionMode !== "MANUAL") {
+    return selectionMode === "INTENT" ? 1 : 0.8;
   }
   const anomalyFlags = await resolveManualAnomalyFlags(input);
   if (anomalyFlags.length > 0) {
@@ -877,11 +875,11 @@ async function resolveExplainabilityConfidenceNotes(
   input: ExplainabilityConfidenceInput
 ): Promise<string[]> {
   const notes: string[] = [];
-  if (input.previousSelectionMode === "INTENT") {
+  if (input.selectionMode === "INTENT") {
     notes.push("Previous INTENT history kept full progression confidence.");
     return notes;
   }
-  if (input.previousSelectionMode !== "MANUAL") {
+  if (input.selectionMode !== "MANUAL") {
     notes.push("Previous history was not INTENT, so progression confidence was reduced.");
     return notes;
   }
@@ -925,12 +923,12 @@ async function resolveManualAnomalyFlags(
   }
 
   const currentModal = resolvePerformedModalLoad(input.performedLogs);
-  if (currentModal != null && input.previousScheduledDate) {
+  if (currentModal != null && input.scheduledDate) {
     const recentIntent = await findLatestProgressionEligibleWorkoutExercise({
       userId: input.userId,
       workoutId: input.workoutId,
       exerciseId: input.exerciseId,
-      scheduledBefore: input.previousScheduledDate,
+      scheduledBefore: input.scheduledDate,
       requiredSelectionMode: "INTENT",
     });
 
@@ -1112,6 +1110,186 @@ function buildProgressionReceipt(
     trigger,
     decisionLog: lastPerformed?.decisionLog,
   };
+}
+
+async function buildNextExposureDecision(
+  performedSemantics: ReturnType<typeof derivePerformedExerciseSemantics>,
+  repRange: [number, number],
+  equipment: string[],
+  input: ExplainabilityConfidenceInput
+): Promise<NextExposureDecision | null> {
+  if (!performedSemantics) {
+    return null;
+  }
+
+  const progressionInputs = await resolveExplainabilityProgressionInputs(input);
+  const decision = computeDoubleProgressionDecision(
+    performedSemantics.signalSets,
+    repRange,
+    resolveProgressionEquipment(equipment),
+    {
+      anchorOverride: performedSemantics.anchorLoad ?? undefined,
+      priorSessionCount: progressionInputs.priorSessionCount,
+      historyConfidenceScale: progressionInputs.historyConfidenceScale,
+      confidenceReasons: progressionInputs.confidenceReasons,
+    }
+  );
+  if (!decision) {
+    return null;
+  }
+
+  const action: NextExposureDecision["action"] =
+    decision.nextLoad > decision.anchorLoad
+      ? "increase"
+      : decision.nextLoad < decision.anchorLoad
+      ? "decrease"
+      : "hold";
+
+  return {
+    action,
+    summary:
+      action === "increase"
+        ? "Next exposure: likely increase load."
+        : action === "decrease"
+        ? "Next exposure: likely reduce load."
+        : "Next exposure: hold load for now.",
+    reason: formatNextExposureReason({
+      action,
+      repRange,
+      medianReps: performedSemantics.medianReps,
+      modalRpe: performedSemantics.modalRpe,
+      anchorLoad: decision.anchorLoad,
+    }),
+    anchorLoad: decision.anchorLoad,
+    repRange: { min: repRange[0], max: repRange[1] },
+    modalRpe: performedSemantics.modalRpe,
+    medianReps: performedSemantics.medianReps,
+  };
+}
+
+type ExplainabilityProgressionSession = {
+  selectionMode?: string;
+  confidence: number;
+  confidenceNotes: string[];
+};
+
+async function resolveExplainabilityProgressionInputs(
+  input: ExplainabilityConfidenceInput
+): Promise<{
+  priorSessionCount: number;
+  historyConfidenceScale: number;
+  confidenceReasons: string[];
+}> {
+  const sessions = await loadExplainabilityProgressionSessions(input);
+  return {
+    priorSessionCount: sessions.length,
+    historyConfidenceScale: resolveExplainabilityProgressionHistoryScale(sessions),
+    confidenceReasons: collectExplainabilityProgressionConfidenceNotes(sessions),
+  };
+}
+
+async function loadExplainabilityProgressionSessions(
+  input: ExplainabilityConfidenceInput
+): Promise<ExplainabilityProgressionSession[]> {
+  const sessions: ExplainabilityProgressionSession[] = [
+    await resolveExplainabilityProgressionSession(input),
+  ];
+  let scheduledBefore = input.scheduledDate;
+
+  while (scheduledBefore) {
+    const previous = await findLatestProgressionEligibleWorkoutExercise({
+      userId: input.userId,
+      workoutId: input.workoutId,
+      exerciseId: input.exerciseId,
+      scheduledBefore,
+    });
+    if (!previous) {
+      break;
+    }
+
+    sessions.push(
+      await resolveExplainabilityProgressionSession({
+        userId: input.userId,
+        workoutId: input.workoutId,
+        exerciseId: input.exerciseId,
+        selectionMode: previous.workout.selectionMode ?? undefined,
+        scheduledDate: previous.workout.scheduledDate,
+        performedLogs: previous.sets.map((set) => ({
+          setIndex: set.setIndex,
+          log: set.logs[0]
+            ? {
+                actualRpe: set.logs[0].actualRpe,
+                actualLoad: set.logs[0].actualLoad,
+              }
+            : undefined,
+        })),
+      })
+    );
+    scheduledBefore = previous.workout.scheduledDate;
+  }
+
+  return sessions;
+}
+
+async function resolveExplainabilityProgressionSession(
+  input: ExplainabilityConfidenceInput
+): Promise<ExplainabilityProgressionSession> {
+  const [confidence, confidenceNotes] = await Promise.all([
+    resolveExplainabilityHistoryConfidenceScale(input),
+    resolveExplainabilityConfidenceNotes(input),
+  ]);
+  return {
+    selectionMode: input.selectionMode,
+    confidence,
+    confidenceNotes,
+  };
+}
+
+function resolveExplainabilityProgressionHistoryScale(
+  sessions: ExplainabilityProgressionSession[]
+): number {
+  if (sessions.length <= 1) {
+    return 1;
+  }
+  const hasIntentHistory = sessions.some((session) => session.selectionMode === "INTENT");
+  if (!hasIntentHistory && sessions.every((session) => session.selectionMode === "MANUAL")) {
+    return 1;
+  }
+  const total = sessions.reduce(
+    (sum, session) => sum + Math.min(1, Math.max(0, session.confidence)),
+    0
+  );
+  return Number((total / sessions.length).toFixed(2));
+}
+
+function collectExplainabilityProgressionConfidenceNotes(
+  sessions: ExplainabilityProgressionSession[]
+): string[] {
+  return [...new Set(sessions.flatMap((session) => session.confidenceNotes ?? []))];
+}
+
+function formatNextExposureReason(input: {
+  action: NextExposureDecision["action"];
+  repRange: [number, number];
+  medianReps: number | null;
+  modalRpe: number | null;
+  anchorLoad: number;
+}): string {
+  const repBand = `${input.repRange[0]}-${input.repRange[1]}`;
+  const medianRepsLabel =
+    input.medianReps != null ? Number(input.medianReps.toFixed(1)) : "n/a";
+  const modalRpeLabel = input.modalRpe != null ? input.modalRpe : "n/a";
+
+  if (input.action === "increase") {
+    return `Median reps reached the top of the ${repBand} band at manageable effort (modal RPE ${modalRpeLabel}) on ${input.anchorLoad} lbs.`;
+  }
+  if (input.action === "decrease") {
+    return `Effort looked too high to keep ${input.anchorLoad} lbs moving productively next time.`;
+  }
+  if (input.modalRpe != null && input.modalRpe >= 9) {
+    return `Effort was already high at modal RPE ${modalRpeLabel}, so ${input.anchorLoad} lbs should hold.`;
+  }
+  return `Median reps stayed at ${medianRepsLabel} in the ${repBand} band, so keep building reps before adding load.`;
 }
 
 function resolveProgressionEquipment(equipment: string[]): "barbell" | "dumbbell" | "cable" | "other" {

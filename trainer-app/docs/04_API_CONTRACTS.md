@@ -161,6 +161,7 @@ Sources of truth:
 - Route responsibilities are documented canonically in `docs/01_ARCHITECTURE.md`; this section only records payload shape.
 - Explanation-layer consumers should treat `deriveSessionSemantics()` plus canonical progression receipts/decision outputs as the source of session behavior. Explanation routes should not independently re-author session-level progression meaning that could drift from generator-owned next-exposure behavior.
 - `nextExposureDecisions` is a read-side interpretation layer only. Its progression verdict must be computed through `computeDoubleProgressionDecision()` using the same material confidence-sensitive inputs as canonical generation for that exercise (`anchorOverride`, `priorSessionCount`, `historyConfidenceScale`; `confidenceReasons` remains log-only).
+- User-facing review surfaces that consume this route, including immediate completion review and `/workout/[id]`, should preserve that same verdict through the shared `PostWorkoutInsights` model rather than translating a canonical `hold` into stronger progression language.
 - `confidence.missingSignals` now uses user-facing diagnostic labels rather than engine shorthand:
   - `same-day readiness check-in`
   - `receipt-backed cycle context`

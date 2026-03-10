@@ -64,7 +64,7 @@ function withOpportunity(
     ...row,
     opportunityScore: 0,
     opportunityState: "covered",
-    opportunityRationale: "Weekly target is already covered; no need to prioritize more work today.",
+    opportunityRationale: "Weekly target is already covered in this volume snapshot.",
   };
 }
 
@@ -193,13 +193,14 @@ describe("ProgramStatusCard opportunity state", () => {
         }),
         opportunityState: "high_opportunity",
         opportunityRationale:
-          "Below target with limited recent local fatigue; this muscle is a strong candidate for more work.",
+          "Below target in this snapshot, with enough recovery room to consider more volume.",
       },
     ]);
 
     render(<ProgramStatusCard initialData={data} />);
 
-    expect(screen.getByText("High opportunity")).toBeInTheDocument();
+    expect(screen.getByText("Volume opportunity")).toBeInTheDocument();
+    expect(screen.queryByText("High opportunity")).not.toBeInTheDocument();
     expect(screen.queryByText(/^0\.[0-9]+$/)).not.toBeInTheDocument();
   });
 
@@ -218,12 +219,13 @@ describe("ProgramStatusCard opportunity state", () => {
         }),
         opportunityState: "deprioritize_today",
         opportunityRationale:
-          "Below target, but recent weighted stimulus is still too fresh to prioritize more work today.",
+          "Below target in this snapshot, but recent weighted stimulus is still fresh.",
       },
     ]);
 
     render(<ProgramStatusCard initialData={data} />);
 
+    expect(screen.queryByText("Saturation watch")).not.toBeInTheDocument();
     expect(screen.queryByText("Deprioritize today")).not.toBeInTheDocument();
   });
 
@@ -291,6 +293,7 @@ describe("ProgramStatusCard opportunity state", () => {
     expect(screen.getByText("Back")).toBeInTheDocument();
     expect(screen.queryByText("3 sessions until deload")).not.toBeInTheDocument();
     expect(screen.queryByText(/Deload week/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("Volume opportunity")).not.toBeInTheDocument();
     expect(screen.queryByText("High opportunity")).not.toBeInTheDocument();
   });
 });

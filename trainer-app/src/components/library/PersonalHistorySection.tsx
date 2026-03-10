@@ -19,11 +19,11 @@ type HistoryData = {
   trend: string;
 };
 
-const TREND_LABELS: Record<string, { label: string; color: string }> = {
-  improving: { label: "Improving", color: "text-emerald-600" },
-  stable: { label: "Stable", color: "text-blue-600" },
-  declining: { label: "Declining", color: "text-amber-600" },
-  insufficient_data: { label: "Not enough data", color: "text-slate-500" },
+const TREND_SUMMARIES: Record<string, { value: string; color: string }> = {
+  improving: { value: "Higher than earlier recent logs", color: "text-emerald-600" },
+  stable: { value: "Close to earlier recent logs", color: "text-slate-600" },
+  declining: { value: "Lower than earlier recent logs", color: "text-amber-600" },
+  insufficient_data: { value: "Limited recent history", color: "text-slate-500" },
 };
 
 export function PersonalHistorySection({ exerciseId }: { exerciseId: string }) {
@@ -52,15 +52,17 @@ export function PersonalHistorySection({ exerciseId }: { exerciseId: string }) {
     return <p className="text-xs text-slate-500">No workout history yet.</p>;
   }
 
-  const trend = TREND_LABELS[data.trend] ?? TREND_LABELS.insufficient_data;
+  const trend = TREND_SUMMARIES[data.trend] ?? TREND_SUMMARIES.insufficient_data;
 
   return (
     <div className="space-y-3">
-      {/* Trend & Personal Bests */}
       <div className="flex items-center gap-3">
-        <span className={`text-xs font-semibold ${trend.color}`}>
-          {data.trend === "improving" ? "\u2191" : data.trend === "declining" ? "\u2193" : "\u2192"} {trend.label}
-        </span>
+        <div>
+          <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400">
+            Recent top-set trend
+          </p>
+          <p className={`text-xs font-semibold ${trend.color}`}>{trend.value}</p>
+        </div>
         <div className="flex gap-2 text-[10px] text-slate-500">
           {data.personalBests.maxLoad !== null && (
             <span>Best load: {data.personalBests.maxLoad}lb</span>
@@ -71,7 +73,6 @@ export function PersonalHistorySection({ exerciseId }: { exerciseId: string }) {
         </div>
       </div>
 
-      {/* Recent Sessions */}
       {data.sessions.map((session, si) => (
         <div key={si} className="rounded-lg border border-slate-100 p-2.5">
           <p className="mb-1.5 text-[10px] font-medium text-slate-500">

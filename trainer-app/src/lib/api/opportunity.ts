@@ -89,7 +89,7 @@ export function computeMuscleOpportunity(input: OpportunityInput): MuscleOpportu
     return {
       score: 0,
       state: "covered",
-      rationale: "Weekly target is already covered; no need to prioritize more work today.",
+      rationale: "Weekly target is already covered in this volume snapshot.",
     };
   }
 
@@ -119,20 +119,20 @@ export function computeMuscleOpportunity(input: OpportunityInput): MuscleOpportu
       return {
         score,
         state: "deprioritize_today",
-        rationale: "Below target, but fresh soreness says not to chase more work for this muscle today.",
+        rationale: "Below target in this snapshot, but fresh soreness points to a more conservative volume read.",
       };
     }
     if (readinessMod.kind === "low_overall_readiness") {
       return {
         score,
         state: "deprioritize_today",
-        rationale: "Below target, but today's readiness signal suggests holding back instead of forcing more volume.",
+        rationale: "Below target in this snapshot, but today's readiness signal points to a more conservative volume read.",
       };
     }
     return {
       score,
       state: "deprioritize_today",
-      rationale: "Below target, but recent weighted stimulus is still too fresh to prioritize more work today.",
+      rationale: "Below target in this snapshot, but recent weighted stimulus is still fresh.",
     };
   }
 
@@ -140,13 +140,13 @@ export function computeMuscleOpportunity(input: OpportunityInput): MuscleOpportu
     return {
       score,
       state: "high_opportunity",
-      rationale: "Below target with limited recent local fatigue; this muscle is a strong candidate for more work.",
+      rationale: "Below target in this snapshot, with enough recovery room to consider more volume.",
     };
   }
 
   return {
     score,
     state: "moderate_opportunity",
-    rationale: "Below target, but recent stimulus or readiness context suggests a measured approach.",
+    rationale: "Below target in this snapshot, but recent stimulus or readiness keeps the read mixed.",
   };
 }

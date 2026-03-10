@@ -59,15 +59,15 @@ function formatOpportunityStateLabel(
 ): string {
   switch (state) {
     case "high_opportunity":
-      return "High opportunity";
+      return "Volume opportunity";
     case "moderate_opportunity":
-      return "Moderate opportunity";
+      return "Volume snapshot";
     case "covered":
-      return "Covered";
+      return "Volume covered";
     case "deprioritize_today":
-      return "Deprioritize today";
+      return "Saturation watch";
     default:
-      return "Covered";
+      return "Volume covered";
   }
 }
 

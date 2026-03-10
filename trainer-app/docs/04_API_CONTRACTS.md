@@ -1,7 +1,7 @@
 # 04 API Contracts
 
 Owner: Aaron  
-Last reviewed: 2026-03-09
+Last reviewed: 2026-03-10
 Purpose: Canonical API contract map for App Router endpoints and payload validation boundaries.
 
 This doc covers:
@@ -47,9 +47,10 @@ Sources of truth:
 - `ProgramDashboardData.viewedBlockType` is the effective block type for `viewedWeek`, used by the shared program card to keep historical block chrome coherent with the selected week.
 - `ProgramDashboardData.activeMeso.completedSessions` is now sourced from `accumulationSessionsCompleted` (the canonical lifecycle counter), not the `completedSessions` DB column. Clients should treat this field as the lifecycle-derived session count.
 - `ProgramDashboardData` is now the shared dashboard-card contract only. Home-page operational helpers (`nextSession`, `latestIncomplete`, `lastSessionSkipped`) are loaded separately through `loadHomeProgramSupport()` in `src/lib/api/program.ts` and are not part of `GET /api/program`.
-- `ProgramDashboardData.deloadReadiness` is always computed from the live `currentWeek` state even when `viewedWeek` is historical. Historical week navigation changes the selected week payload, but the current UI intentionally hides live-only deload recommendation chrome while browsing history rather than implying historical deload replay.
+- `ProgramDashboardData.deloadReadiness` is always computed from the live `currentWeek` state even when `viewedWeek` is historical. Historical week navigation changes the selected week payload, but the current UI intentionally hides live-only deload advisory chrome while browsing history rather than implying historical deload replay or canonical generator output.
 - `ProgramDashboardData.volumeThisWeek` rows now expose canonical weighted weekly actuals as `effectiveSets`, with `directSets` and `indirectSets` retained as contextual/debug fields only (`src/lib/api/program.ts`, `src/components/ProgramStatusCard.tsx`).
 - `ProgramDashboardData.volumeThisWeek` rows also expose dashboard-only opportunity fields: `opportunityScore`, `opportunityState`, and `opportunityRationale` (`src/lib/api/program.ts`). These are computed from canonical weekly target pressure plus a recent weighted-stimulus adapter in `src/lib/api/recent-muscle-stimulus.ts`, with optional downward-only modulation from fresh readiness signals via `src/lib/api/readiness.ts`.
+- Those opportunity and deload-readiness fields are advisory snapshot outputs for the dashboard card. They are intentionally weaker than canonical next-session generation/explainability semantics and should not be presented as authoritative progression decisions.
 - Historical `GET /api/program?week=N` responses still carry those opportunity fields, but the current UI only renders `opportunityState` for the live current week because opportunity currently uses present recency/readiness context rather than a historical as-of timestamp.
 - `ProgramDashboardData.deloadReadiness` saturation logic now keys off weighted `effectiveSets` rather than primary-only direct sets (`src/lib/api/program.ts`, `src/lib/api/weekly-volume.ts`).
 

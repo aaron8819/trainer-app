@@ -1,7 +1,7 @@
 # 06 Testing
 
 Owner: Aaron
-Last reviewed: 2026-03-09
+Last reviewed: 2026-03-10
 Purpose: Canonical testing reference for Vitest-based coverage of engine, API helpers, and UI components.
 
 This doc covers:
@@ -43,6 +43,7 @@ Sources of truth:
 - UI session summary-model coverage: `src/lib/ui/session-summary.test.ts` (receipt-first summary text/tags/items, including deload, soreness hold, and readiness-scaling cases).
 - Save-route terminal transition coverage (including status-machine behavior through route boundary): `src/app/api/workouts/save/route.integration.test.ts`
 - Validation/status coverage: `src/lib/validation.workout-save.test.ts`, `src/lib/validation.test.ts`, `src/lib/api/exercise-history.test.ts`, `src/lib/api/readiness.test.ts`
+- Exercise-library personal-history presentation coverage: `src/components/library/PersonalHistorySection.test.tsx` asserts weaker `Recent top-set trend` framing and guards against strong `Improving` / `Stable` / `Declining` chip labels in the library surface.
 - Performed-history progression coverage: `src/lib/engine/apply-loads.correctness.test.ts` and `src/lib/engine/history.test.ts` (includes `PARTIAL` and malformed legacy-status handling; also covers top-set anchor correctness and bodyweight early-exit behavior).
 - Double-progression decision coverage: `src/lib/engine/progression.correctness.test.ts` (covers `computeDoubleProgressionDecision` paths, bodyweight rep-only progression, high-variance trimming, confidence scaling, and `anchorOverride` pass-through).
 - Live workout cue coverage: `src/lib/progression/load-coaching.test.ts` (covers prescribed-load hold, above-prescribed-load hold messaging, rising-effort hold messaging, and standard increase/decrease paths without changing canonical progression math).
@@ -72,7 +73,7 @@ Sources of truth:
 - UI session overview copy guards: `src/lib/ui/session-overview.test.ts` (`PARTIAL`/`COMPLETED` performed basis and load-provenance wording).
 - Explainability panel UI coverage: `src/components/explainability/ExplainabilityPanel.test.tsx` now also asserts the scan-first audit labels (`Session scan`, `Exercise drill-down`, `Missing or weak signals`, `Why this lift stayed in`, `Top factors`) instead of the older disclosure/jargon-heavy copy.
 - UI program dashboard coverage: `src/components/ProgramStatusCard.test.ts` (volume dot class logic, deload banner, week navigation, and `getVolumeDotClass` boundary assertions).
-- UI program volume presentation coverage: `src/components/ProgramStatusCard.render.test.tsx` now asserts that weighted effective sets are shown as the primary weekly value while raw direct/indirect counts remain contextual, that the dashboard-only opportunity badge is shown for the live current week but hidden for historical week views, and that fetched historical browsing does not mix current-week chrome with past-week volume rows.
+- UI program volume presentation coverage: `src/components/ProgramStatusCard.render.test.tsx` now asserts that weighted effective sets are shown as the primary weekly value while raw direct/indirect counts remain contextual, that the dashboard-only opportunity badge is shown for the live current week but hidden for historical week views, that the rendered badge copy stays in advisory snapshot language, and that fetched historical browsing does not mix current-week chrome with past-week volume rows.
 - Receipt block-week semantics coverage: `src/lib/ui/session-summary.test.ts` and `src/lib/evidence/session-decision-receipt.test.ts` assert receipt-backed block-week tags and round-trip parsing of `cycleContext.blockDurationWeeks`.
 - UI program-card copy guard: `src/components/ProgramStatusCard.render.test.tsx` covers the rendered `rirTarget` value, while timeline pill copy intentionally stays generic so phase tooltips do not encode a second hardcoded RIR policy.
 - Dashboard opportunity model coverage: `src/lib/api/opportunity.test.ts` (weekly pressure, covered-vs-deprioritize rules, downward-only readiness modulation, and rationale text) plus `src/lib/api/recent-muscle-stimulus.test.ts` (recent weighted local stimulus uses the canonical weighted stimulus engine rather than analytics recovery percent).

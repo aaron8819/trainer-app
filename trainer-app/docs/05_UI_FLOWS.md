@@ -1,7 +1,7 @@
 # 05 UI Flows
 
 Owner: Aaron
-Last reviewed: 2026-03-09
+Last reviewed: 2026-03-10
 Purpose: Canonical reference for current UI routes and core user flows implemented in the Next.js App Router.
 
 This doc covers:
@@ -82,13 +82,15 @@ Route-purpose shorthand:
 - `ProgramDashboardData` is now scoped to the shared dashboard card: `activeMeso`, `currentWeek`, `viewedWeek`, `viewedBlockType`, `sessionsUntilDeload`, `volumeThisWeek`, `deloadReadiness`, `rirTarget`, and `coachingCue` (`src/lib/api/program.ts`, `src/components/ProgramStatusCard.tsx`). `volumeThisWeek` rows also carry dashboard-only opportunity metadata.
 - Dashboard `Target RIR this week` and phase coaching copy are read from the canonical block-aware lifecycle seam used by generation (`resolvePhaseBlockProfile() -> getRirTarget()`), not from UI-local week heuristics or hardcoded phase-to-RIR mappings.
 - `ProgramStatusCard` now renders weighted weekly `effectiveSets` as the primary per-muscle number and treats raw `directSets` / `indirectSets` as contextual copy only (`src/components/ProgramStatusCard.tsx`, `src/components/ProgramStatusCard.render.test.tsx`).
-- `ProgramStatusCard` now renders a subtle per-muscle `opportunityState` badge for the live current week only (`High opportunity`, `Moderate opportunity`, `Covered`, `Deprioritize today`). Historical week views keep opportunity hidden because the current server model uses present recency/readiness context rather than historical replay.
+- `ProgramStatusCard` now renders a subtle per-muscle `opportunityState` badge for the live current week only (`Volume opportunity`, `Volume snapshot`, `Volume covered`, `Saturation watch`). Historical week views keep opportunity hidden because the current server model uses present recency/readiness context rather than historical replay.
+- Program-card opportunity and deload copy are intentionally advisory snapshot framing, not canonical next-session guidance. The UI should preserve that weaker tone unless those surfaces are later rewired to canonical decision seams.
 - Historical `ProgramStatusCard` browsing now renders block badge, week/progress chrome, `rirTarget`, coaching cue, and volume rows from the same selected payload. Live-only deload countdown/banner chrome is intentionally hidden while browsing history because deload readiness remains a current-week signal.
 - The home page loads next-session / resume-workout helpers separately through `loadHomeProgramSupport()` (`src/lib/api/program.ts`) instead of treating them as part of the shared dashboard-card contract.
 - `currentWeek`, `viewedWeek`, lifecycle RIR, and weekly volume targets are duration-aware: accumulation spans `durationWeeks - 1`, and the final week is deload instead of assuming a fixed 4+1 structure.
 - `ProgramStatusCard` is mounted on both the home dashboard (`src/app/page.tsx`) and the `/program` page (`src/app/program/page.tsx`), replacing the prior inline server-rendered volume table on `/program`.
 - `/program` session history is no longer carried inside `ProgramDashboardData`; it is loaded independently from the canonical workout-list summary builder in `src/lib/ui/workout-list-items.ts`.
 - Recent Workouts (`src/components/RecentWorkouts.tsx`) and History (`src/components/HistoryClient.tsx`) now share the same workout-list summary contract and display helpers from `src/lib/ui/workout-list-items.ts` for status labels, intent labels, and exercise/set count copy. Both still render the same derived week/session badge from `sessionSnapshot` via `src/lib/ui/workout-session-snapshot.ts`. Planned workouts show this badge immediately upon plan-save because the save route now snapshots mesocycle context for new plan writes.
+- `/library` exercise detail keeps raw recent sessions and bests visible through `PersonalHistorySection`, but its trend copy is now explicitly descriptive (`Recent top-set trend`) rather than authoritative improvement-status labeling. That surface is for local history context, not canonical progression interpretation (`src/components/library/PersonalHistorySection.tsx`).
 
 ## Optional gap-fill flow
 1. Dashboard/home support computes optional-session state (`loadHomeProgramSupport()` in `src/lib/api/program.ts`) with `anchorWeek`, suppression flags, and policy caps.

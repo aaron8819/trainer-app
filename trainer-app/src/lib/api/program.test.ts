@@ -576,6 +576,8 @@ describe("loadProgramDashboardData", () => {
     });
     expect(result.deloadReadiness?.reason).toContain("Front Delts");
     expect(result.deloadReadiness?.reason).toContain("Triceps");
+    expect(result.deloadReadiness?.reason).toContain("may be worth considering");
+    expect(result.deloadReadiness?.reason).not.toContain("Consider taking a deload");
   });
 
   it("fills missing trailing block coverage with a deload week for timeline continuity", async () => {

@@ -1,7 +1,7 @@
 # 01 Architecture
 
 Owner: Aaron  
-Last reviewed: 2026-03-09  
+Last reviewed: 2026-03-10  
 Purpose: Defines the current runtime architecture for the single-user local-first Trainer app and the boundaries between UI, API routes, orchestration, engine, and persistence.
 
 This doc covers:
@@ -124,7 +124,7 @@ SetLog / logged performance
   - receipt parsing/normalization: `src/lib/evidence/session-decision-receipt.ts`
 
 ## Canonical read-side boundaries
-- `ProgramDashboardData` in `src/lib/api/program.ts` is the canonical program dashboard read model for the shared `ProgramStatusCard` mounted on `/` and `/program`. It owns mesocycle header/timeline state, current vs viewed week, viewed block chrome (`viewedBlockType`), lifecycle RIR target, deload/readiness cue, and mesocycle-week volume rows. Historical browsing should render from the full selected payload rather than mixing current-week chrome with past-week volume rows. Dashboard `rirTarget` and phase coaching copy now resolve through the same block-aware prescription seam used by generation (`resolvePhaseBlockProfile() -> getRirTarget()`), so the dashboard does not maintain an independent week-to-RIR mapping. Per-muscle rows now also carry dashboard-only opportunity metadata (`opportunityScore`, `opportunityState`, `opportunityRationale`) derived from canonical weekly weighted volume, recent local weighted stimulus, and optional fresh readiness modulation. It is not the canonical contract for generic workout-history lists.
+- `ProgramDashboardData` in `src/lib/api/program.ts` is the canonical program dashboard read model for the shared `ProgramStatusCard` mounted on `/` and `/program`. It owns mesocycle header/timeline state, current vs viewed week, viewed block chrome (`viewedBlockType`), lifecycle RIR target, deload/readiness cue, and mesocycle-week volume rows. Historical browsing should render from the full selected payload rather than mixing current-week chrome with past-week volume rows. Dashboard `rirTarget` and phase coaching copy now resolve through the same block-aware prescription seam used by generation (`resolvePhaseBlockProfile() -> getRirTarget()`), so the dashboard does not maintain an independent week-to-RIR mapping. Per-muscle rows now also carry dashboard-only opportunity metadata (`opportunityScore`, `opportunityState`, `opportunityRationale`) derived from canonical weekly weighted volume, recent local weighted stimulus, and optional fresh readiness modulation. That metadata is advisory dashboard framing only, not canonical next-session guidance or a generator-owned decision contract. It is not the canonical contract for generic workout-history lists.
 - Home-page operational helpers that are not part of the shared dashboard card contract live separately in `loadHomeProgramSupport()` in `src/lib/api/program.ts`. `loadHomeProgramSupport()` consumes `loadNextWorkoutContext()` from `src/lib/api/next-session.ts`, which is the canonical next-session derivation service shared with the audit harness.
 - `loadNextWorkoutContext()` is receipt-agnostic and remains lifecycle-safe: lifecycle counters still derive canonical `week/session`, while next advancing `intent` now derives from `constraints.weeklySchedule minus performed intents whose derived session semantics still consume a weekly schedule slot`. That subtraction path is only authoritative for unique-intent weekly schedules; repeated-intent schedules still fall back to canonical slot math until the data model exposes slot identity beyond raw intent.
 - Read-side explanation and summary layers must consume derived semantics or canonical decision outputs. They should not independently recompute progression-relevant session meaning unless there is a strong reason and the new seam is documented as canonical first.
@@ -143,6 +143,7 @@ SetLog / logged performance
   - explainability week-scoped volume compliance uses `readPersistedWorkoutMesocycleSnapshot()` in `src/lib/api/workout-mesocycle-snapshot.ts`
 - Analytics routes under `src/app/api/analytics/**` remain surface-oriented projections rather than one shared read model, but they now share one explicit semantics helper in `src/lib/api/analytics-semantics.ts` for generated/performed/completed counting vocabulary and rolling-window descriptions. The stable shared boundary with the rest of the app is still the performed-workout / mesocycle-week semantics they reuse, not the full route payload shapes.
 - Surface-local formatting stays in the consuming UI when it does not change domain semantics: date formatting, compact vs full layouts, chart grouping, and tab/panel composition.
+- Exercise-library personal history is a descriptive read-side surface. Its recent-trend presentation should stay explicitly non-authoritative and must not claim canonical progression status unless it is rewired onto a canonical progression/read-review seam first (`src/components/library/PersonalHistorySection.tsx`, `src/lib/api/exercise-history.ts`).
 
 ## Internal workout-audit harness boundaries
 - Canonical next-session derivation for both dashboard and audit flows is `loadNextWorkoutContext()` in `src/lib/api/next-session.ts`.

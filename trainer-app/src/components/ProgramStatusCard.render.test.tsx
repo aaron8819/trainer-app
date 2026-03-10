@@ -108,7 +108,7 @@ describe("ProgramStatusCard indirect volume context", () => {
 
     render(<ProgramStatusCard initialData={data} />);
 
-    expect(screen.getByText("0 direct, +3 indirect")).toBeInTheDocument();
+    expect(screen.getByText("Raw sets: 0 direct, 3 indirect")).toBeInTheDocument();
   });
 
   it("hides indirect line when indirectSets = 0", () => {
@@ -166,19 +166,62 @@ describe("ProgramStatusCard indirect volume context", () => {
 
     render(<ProgramStatusCard initialData={data} />);
 
-    const card = screen.getByText("Front Delts").closest("div");
+    const card = screen.getByText("Front Delts").closest("button");
     expect(card).not.toBeNull();
     if (!card) return;
 
     const scoped = within(card);
-    expect(scoped.getByText("0.9")).toBeInTheDocument();
-    expect(scoped.getByText("target 5 sets")).toBeInTheDocument();
-    expect(scoped.getByText("0 direct, +3 indirect")).toBeInTheDocument();
+    expect(scoped.getByText("0.9 weighted sets")).toBeInTheDocument();
+    expect(scoped.getByText("target 5 weighted sets")).toBeInTheDocument();
+    expect(scoped.getByText("Below MEV")).toBeInTheDocument();
+    expect(scoped.getByText("Raw sets: 0 direct, 3 indirect")).toBeInTheDocument();
+  });
+});
+
+describe("ProgramStatusCard weekly status labels", () => {
+  it("uses a more precise in-range label when above MEV but still meaningfully below target", () => {
+    const data = buildData([
+      withOpportunity({
+        muscle: "Upper Back",
+        effectiveSets: 9,
+        directSets: 9,
+        indirectSets: 4,
+        target: 14,
+        mev: 6,
+        mav: 14,
+        mrv: 22,
+      }),
+    ]);
+
+    render(<ProgramStatusCard initialData={data} />);
+
+    expect(screen.getByText("In range")).toBeInTheDocument();
+    expect(screen.queryByText("Building")).not.toBeInTheDocument();
+  });
+
+  it("uses a near-target label when close to target but not yet on target", () => {
+    const data = buildData([
+      withOpportunity({
+        muscle: "Biceps",
+        effectiveSets: 12,
+        directSets: 8,
+        indirectSets: 9,
+        target: 14,
+        mev: 6,
+        mav: 14,
+        mrv: 22,
+      }),
+    ]);
+
+    render(<ProgramStatusCard initialData={data} />);
+
+    expect(screen.getByText("Near target")).toBeInTheDocument();
+    expect(screen.queryByText("Building")).not.toBeInTheDocument();
   });
 });
 
 describe("ProgramStatusCard opportunity state", () => {
-  it("shows a subtle opportunity label on current week muscle cards", () => {
+  it("shows a separate weekly status chip and today-focused advisory on current week muscle cards", () => {
     const data = buildCurrentWeekData([
       {
         ...withOpportunity({
@@ -199,12 +242,56 @@ describe("ProgramStatusCard opportunity state", () => {
 
     render(<ProgramStatusCard initialData={data} />);
 
-    expect(screen.getByText("Volume opportunity")).toBeInTheDocument();
-    expect(screen.queryByText("High opportunity")).not.toBeInTheDocument();
-    expect(screen.queryByText(/^0\.[0-9]+$/)).not.toBeInTheDocument();
+    expect(screen.getByText("4 weighted sets")).toBeInTheDocument();
+    expect(screen.getByText("target 10 weighted sets")).toBeInTheDocument();
+    expect(screen.getByText("Below MEV")).toBeInTheDocument();
+    expect(screen.getByText("Today: room for more")).toBeInTheDocument();
+    expect(screen.queryByText("Volume opportunity")).not.toBeInTheDocument();
   });
 
-  it("hides the opportunity label when viewing a historical week", () => {
+  it("uses concrete secondary wording for moderate and deprioritized advisories", () => {
+    const data = buildCurrentWeekData([
+      {
+        ...withOpportunity({
+          muscle: "Chest",
+          effectiveSets: 0,
+          directSets: 0,
+          indirectSets: 0,
+          target: 10,
+          mev: 6,
+          mav: 16,
+          mrv: 22,
+        }),
+        opportunityState: "moderate_opportunity",
+        opportunityRationale:
+          "Below target in this snapshot, but recent stimulus or readiness keeps the read mixed.",
+      },
+      {
+        ...withOpportunity({
+          muscle: "Lats",
+          effectiveSets: 12,
+          directSets: 13,
+          indirectSets: 0,
+          target: 16,
+          mev: 8,
+          mav: 16,
+          mrv: 24,
+        }),
+        opportunityState: "deprioritize_today",
+        opportunityRationale:
+          "Below target in this snapshot, but recent weighted stimulus is still fresh.",
+      },
+    ]);
+
+    render(<ProgramStatusCard initialData={data} />);
+
+    expect(screen.getByText("Today: optional")).toBeInTheDocument();
+    expect(screen.getByText("Today: go lighter")).toBeInTheDocument();
+    expect(screen.queryByText("Today: mixed signal")).not.toBeInTheDocument();
+    expect(screen.queryByText("Today: recently hit")).not.toBeInTheDocument();
+  });
+
+  it("hides the today-focused advisory when viewing a historical week", () => {
     const data = buildData([
       {
         ...withOpportunity({
@@ -225,8 +312,8 @@ describe("ProgramStatusCard opportunity state", () => {
 
     render(<ProgramStatusCard initialData={data} />);
 
-    expect(screen.queryByText("Saturation watch")).not.toBeInTheDocument();
-    expect(screen.queryByText("Deprioritize today")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Today:/)).not.toBeInTheDocument();
+    expect(screen.getByText("Below MEV")).toBeInTheDocument();
   });
 
   it("renders a coherent fetched historical payload instead of mixing current-week chrome", async () => {
@@ -293,8 +380,7 @@ describe("ProgramStatusCard opportunity state", () => {
     expect(screen.getByText("Back")).toBeInTheDocument();
     expect(screen.queryByText("3 sessions until deload")).not.toBeInTheDocument();
     expect(screen.queryByText(/Deload week/i)).not.toBeInTheDocument();
-    expect(screen.queryByText("Volume opportunity")).not.toBeInTheDocument();
-    expect(screen.queryByText("High opportunity")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Today:/)).not.toBeInTheDocument();
   });
 });
 
@@ -348,19 +434,26 @@ describe("ProgramStatusCard muscle breakdown", () => {
     await user.click(screen.getByRole("button", { name: "Show where Biceps sets came from" }));
 
     expect(screen.getByTestId("muscle-breakdown-sheet")).toBeInTheDocument();
-    expect(screen.getByText("Biceps 4.1 / 8 sets this week")).toBeInTheDocument();
+    expect(screen.getByText("Biceps: 4.1 weighted / 8 target")).toBeInTheDocument();
     expect(
-      screen.getByText(/Values are weighted by how much each exercise trains the muscle\./)
+      screen.getByText(
+        "Weighted sets count toward your weekly target. Raw direct and indirect sets are structural context."
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Each row shows raw sets x exercise weighting = weighted contribution\./)
     ).toBeInTheDocument();
     expect(screen.getByText("Total weighted sets")).toBeInTheDocument();
-    expect(screen.getByText("2 direct, +5 indirect")).toBeInTheDocument();
+    expect(screen.getByText("2 raw direct sets x 1.0 = 2 weighted")).toBeInTheDocument();
+    expect(screen.getByText("3 raw indirect sets x 0.4 = 1.2 weighted")).toBeInTheDocument();
+    expect(screen.getByText("2 raw indirect sets x 0.45 = 0.9 weighted")).toBeInTheDocument();
+    expect(screen.getByText("Raw mapping: 2 direct")).toBeInTheDocument();
+    expect(screen.getByText("Raw mapping: 3 indirect")).toBeInTheDocument();
 
     const contributors = screen.getAllByTestId("muscle-breakdown-contributor");
     expect(within(contributors[0]!).getByText("EZ-Bar Curl")).toBeInTheDocument();
     expect(within(contributors[1]!).getByText("Barbell Row")).toBeInTheDocument();
     expect(within(contributors[2]!).getByText("Pull-Up")).toBeInTheDocument();
-    expect(screen.getByText("2 direct")).toBeInTheDocument();
-    expect(screen.getByText("3 indirect")).toBeInTheDocument();
   });
 });
 

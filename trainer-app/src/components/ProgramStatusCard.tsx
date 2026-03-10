@@ -31,6 +31,14 @@ function formatSetCount(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
+function formatMultiplier(value: number): string {
+  const rounded = Math.round(value * 100) / 100;
+  if (Number.isInteger(rounded) || Number.isInteger(rounded * 10)) {
+    return rounded.toFixed(1);
+  }
+  return rounded.toFixed(2);
+}
+
 function formatContributionContext(contribution: ProgramMuscleContribution): string | null {
   const parts: string[] = [];
   if (contribution.directSets && contribution.directSets > 0) {
@@ -59,32 +67,30 @@ function formatOpportunityStateLabel(
 ): string {
   switch (state) {
     case "high_opportunity":
-      return "Volume opportunity";
+      return "Today: room for more";
     case "moderate_opportunity":
-      return "Volume snapshot";
+      return "Today: optional";
     case "covered":
-      return "Volume covered";
+      return "Today: covered";
     case "deprioritize_today":
-      return "Saturation watch";
+      return "Today: go lighter";
     default:
-      return "Volume covered";
+      return "Today: covered";
   }
 }
 
-function getOpportunityStateClass(
-  state: ProgramVolumeRow["opportunityState"]
-): string {
+function getTodayAdvisoryClass(state: ProgramVolumeRow["opportunityState"]): string {
   switch (state) {
     case "high_opportunity":
-      return "bg-blue-50 text-blue-700 border-blue-200";
+      return "text-blue-700";
     case "moderate_opportunity":
-      return "bg-slate-100 text-slate-600 border-slate-200";
+      return "text-slate-600";
     case "covered":
-      return "bg-emerald-50 text-emerald-700 border-emerald-200";
+      return "text-emerald-700";
     case "deprioritize_today":
-      return "bg-amber-50 text-amber-700 border-amber-200";
+      return "text-amber-700";
     default:
-      return "bg-slate-100 text-slate-600 border-slate-200";
+      return "text-slate-600";
   }
 }
 
@@ -95,6 +101,51 @@ const STATUS_STYLE: Record<string, string> = {
   approaching_mrv: "bg-orange-50 text-orange-700 border-orange-200",
   at_mrv: "bg-red-50 text-red-700 border-red-200",
 };
+
+function formatWeeklyStatusLabel(row: ProgramVolumeRow, status: ReturnType<typeof volumeStatus>): string {
+  switch (status) {
+    case "below_mev":
+      return "Below MEV";
+    case "at_mev":
+      return row.effectiveSets >= row.target * 0.85 ? "Near target" : "In range";
+    case "optimal":
+      return "On target";
+    case "approaching_mrv":
+      return "Near MRV";
+    case "at_mrv":
+      return "At MRV";
+  }
+}
+
+function formatRawSetContext(directSets: number, indirectSets: number): string {
+  if (indirectSets > 0) {
+    return `Raw sets: ${directSets} direct, ${indirectSets} indirect`;
+  }
+  return `Raw sets: ${directSets} direct`;
+}
+
+function formatContributionFormula(contribution: ProgramMuscleContribution): string {
+  const mappingParts: string[] = [];
+  if (contribution.directSets && contribution.directSets > 0) {
+    mappingParts.push("direct");
+  }
+  if (contribution.indirectSets && contribution.indirectSets > 0) {
+    mappingParts.push("indirect");
+  }
+
+  const rawMapping =
+    mappingParts.length === 0
+      ? "raw sets"
+      : mappingParts.length === 2
+        ? "raw direct + indirect sets"
+        : `raw ${mappingParts[0]} sets`;
+  const multiplier =
+    contribution.performedSets > 0 ? contribution.effectiveSets / contribution.performedSets : 0;
+
+  return `${contribution.performedSets} ${rawMapping} x ${formatMultiplier(multiplier)} = ${formatSetCount(
+    contribution.effectiveSets
+  )} weighted`;
+}
 
 const BLOCK_BADGE_STYLE: Record<string, string> = {
   accumulation: "bg-blue-100 text-blue-700",
@@ -436,10 +487,11 @@ function ProgramStatusCardDefault({ initialData }: { initialData: ProgramDashboa
               : "Volume This Week"}
           </p>
           <p className="mt-0.5 text-xs text-slate-500">
-            Weighted effective sets vs weekly target (MEV to MAV).
+            Weighted sets count toward your weekly target. Raw direct and indirect sets are
+            context only.
           </p>
           <p className="mt-0.5 text-xs text-slate-400">
-            Raw direct and indirect sets are shown as context only.
+            MEV = minimum effective, MAV = productive upper range, MRV = recoverable ceiling.
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
@@ -481,7 +533,7 @@ function ProgramStatusCardDefault({ initialData }: { initialData: ProgramDashboa
             const status = volumeStatus(row);
             const cls = STATUS_STYLE[status];
             const barWidth =
-              row.mrv > 0 ? Math.min(100, Math.round((row.effectiveSets / row.mrv) * 100)) : 0;
+              row.target > 0 ? Math.min(100, Math.round((row.effectiveSets / row.target) * 100)) : 0;
             const hasBreakdown = Boolean(row.breakdown?.contributions.length);
             return (
               <button
@@ -504,24 +556,26 @@ function ProgramStatusCardDefault({ initialData }: { initialData: ProgramDashboa
               >
                 <p className="text-xs font-semibold">{row.muscle}</p>
                 <p className="mt-0.5 text-lg font-bold leading-none">
-                  {formatSetCount(row.effectiveSets)}
+                  {formatSetCount(row.effectiveSets)} weighted sets
                 </p>
-                <p className="text-xs opacity-75">target {row.target} sets</p>
+                <p className="text-xs opacity-75">target {row.target} weighted sets</p>
+                <div className="mt-1.5">
+                  <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium ${cls}`}>
+                    {formatWeeklyStatusLabel(row, status)}
+                  </span>
+                </div>
                 {!isHistorical ? (
-                  <div className="mt-1.5">
-                    <span
-                      className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium ${getOpportunityStateClass(
-                        row.opportunityState
-                      )}`}
-                    >
-                      {formatOpportunityStateLabel(row.opportunityState)}
-                    </span>
-                  </div>
+                  <p
+                    className={`mt-1 text-[11px] opacity-70 ${getTodayAdvisoryClass(
+                      row.opportunityState
+                    )}`}
+                  >
+                    {formatOpportunityStateLabel(row.opportunityState)}
+                  </p>
                 ) : null}
                 {row.directSets > 0 || row.indirectSets > 0 ? (
                   <p className="mt-0.5 text-xs opacity-65">
-                    {row.directSets} direct
-                    {row.indirectSets > 0 ? `, +${row.indirectSets} indirect` : ""}
+                    {formatRawSetContext(row.directSets, row.indirectSets)}
                   </p>
                 ) : null}
                 <div className="mt-2 h-1 w-full rounded-full bg-current opacity-20">
@@ -556,20 +610,21 @@ function ProgramStatusCardDefault({ initialData }: { initialData: ProgramDashboa
         {selectedBreakdown ? (
           <div data-testid="muscle-breakdown-sheet">
             <p className="text-sm font-semibold text-slate-900">
-              {selectedBreakdown.muscle} {formatSetCount(selectedBreakdown.effectiveSets)} /{" "}
-              {formatSetCount(selectedBreakdown.targetSets)} sets this week
+              {selectedBreakdown.muscle}: {formatSetCount(selectedBreakdown.effectiveSets)} weighted /{" "}
+              {formatSetCount(selectedBreakdown.targetSets)} target
             </p>
             <p className="mt-2 text-sm text-slate-600">
-              Sets are counted across all exercises that train the muscle.
+              Weighted sets count toward your weekly target. Raw direct and indirect sets are
+              structural context.
             </p>
             <p className="mt-1 text-sm text-slate-600">
-              Includes compound and isolation work. Values are weighted by how much each exercise
-              trains the muscle.
+              Each row shows raw sets x exercise weighting = weighted contribution.
             </p>
 
             <div className="mt-4 space-y-3">
               {selectedBreakdown.contributions.map((contribution) => {
                 const context = formatContributionContext(contribution);
+                const formula = formatContributionFormula(contribution);
                 return (
                   <div
                     key={contribution.exerciseId ?? contribution.exerciseName}
@@ -580,8 +635,9 @@ function ProgramStatusCardDefault({ initialData }: { initialData: ProgramDashboa
                       <p className="truncate text-sm font-medium text-slate-900">
                         {contribution.exerciseName}
                       </p>
+                      <p className="mt-0.5 text-xs text-slate-600">{formula}</p>
                       {context ? (
-                        <p className="mt-0.5 text-xs text-slate-500">{context}</p>
+                        <p className="mt-0.5 text-xs text-slate-500">Raw mapping: {context}</p>
                       ) : null}
                     </div>
                     <p className="shrink-0 text-sm font-semibold tabular-nums text-slate-900">

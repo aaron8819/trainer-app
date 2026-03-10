@@ -16,6 +16,10 @@ import {
   canResolveLoadForWarmupRamp,
 } from "./warmup-ramp";
 import { resolveProgressionAnchorStrategy } from "@/lib/progression/anchoring";
+import {
+  buildCanonicalProgressionEvaluationInput,
+  type CanonicalProgressionHistorySession,
+} from "@/lib/progression/canonical-progression-input";
 import type {
   Exercise,
   Goals,
@@ -319,11 +323,9 @@ function isDeloadPhaseEntry(entry: WorkoutHistoryEntry): boolean {
 }
 
 type WorkoutSetHistory = { setIndex: number; reps: number; rpe?: number; load?: number }[];
-type WorkoutSessionHistory = {
+type WorkoutSessionHistory = CanonicalProgressionHistorySession & {
   sets: WorkoutSetHistory;
-  confidence: number;
   selectionMode?: WorkoutHistoryEntry["selectionMode"];
-  confidenceNotes: string[];
 };
 
 function buildHistoryTopLoadIndex(historyIndex: Map<string, WorkoutSessionHistory[]>) {
@@ -484,12 +486,6 @@ function resolveLoadForExercise(
   const weightedHistoryModalLoad = historySessions
     ? resolveWeightedModalLoadAcrossHistory(historySessions)
     : undefined;
-  const historyConfidenceScale = historySessions
-    ? resolveProgressionHistoryConfidenceScale(historySessions)
-    : 1;
-  const confidenceNotes = historySessions
-    ? collectProgressionConfidenceNotes(historySessions)
-    : [];
   if (latestSets && latestSets.length > 0) {
     const latestSetsForDecision =
       useModalAnchoring &&
@@ -506,12 +502,19 @@ function resolveLoadForExercise(
     // Modal anchoring would return the back-off weight (more frequent) and produce a
     // phantom ~11% reduction on every session. Accessories keep modal anchoring.
     const anchorOverride = !useModalAnchoring ? getTopSessionLoad(latestSets) : undefined;
-    const decision = computeDoubleProgressionDecision(latestSetsForDecision, repRange, equipment, {
-      priorSessionCount: historySessions?.length ?? 1,
-      historyConfidenceScale,
-      confidenceReasons: confidenceNotes,
+    const progressionInput = buildCanonicalProgressionEvaluationInput({
+      lastSets: latestSetsForDecision,
+      repRange,
+      equipment,
+      historySessions,
       anchorOverride,
     });
+    const decision = computeDoubleProgressionDecision(
+      progressionInput.lastSets,
+      progressionInput.repRange,
+      progressionInput.equipment,
+      progressionInput.decisionOptions
+    );
     const anchorLoad = useModalAnchoring
       ? (decision?.anchorLoad ?? weightedHistoryModalLoad ?? getModalSessionLoad(latestSets))
       : getTopSessionLoad(latestSets);
@@ -918,25 +921,3 @@ function resolveWeightedModalLoadAcrossHistory(
   })[0]?.[0];
 }
 
-function resolveProgressionHistoryConfidenceScale(
-  sessions: WorkoutSessionHistory[]
-): number {
-  if (sessions.length <= 1) {
-    return 1;
-  }
-  const hasIntentHistory = sessions.some((session) => session.selectionMode === "INTENT");
-  if (!hasIntentHistory && sessions.every((session) => session.selectionMode === "MANUAL")) {
-    return 1;
-  }
-  const total = sessions.reduce(
-    (sum, session) => sum + Math.min(1, Math.max(0, session.confidence)),
-    0
-  );
-  return Number((total / sessions.length).toFixed(2));
-}
-
-function collectProgressionConfidenceNotes(
-  sessions: WorkoutSessionHistory[]
-): string[] {
-  return [...new Set(sessions.flatMap((session) => session.confidenceNotes ?? []))];
-}

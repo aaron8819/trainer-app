@@ -13,7 +13,7 @@ import {
   generateCoachMessages,
 } from "@/lib/engine/explainability";
 import { getEffectiveStimulusByMuscle } from "@/lib/engine/stimulus";
-import type { Exercise as EngineExercise, PrimaryGoal } from "@/lib/engine/types";
+import type { Exercise as EngineExercise, PrimaryGoal, WorkoutSelectionMode } from "@/lib/engine/types";
 import type { SelectionObjective, SelectionCandidate } from "@/lib/engine/selection-v2/types";
 import { loadCurrentBlockContext } from "./periodization";
 import { getRestSeconds } from "@/lib/engine/prescription";
@@ -46,6 +46,10 @@ import {
 } from "./explainability/query";
 import { loadMesocycleWeekMuscleVolume } from "./weekly-volume";
 import { isProgressionEligibleWorkout } from "@/lib/progression/progression-eligibility";
+import {
+  buildCanonicalProgressionEvaluationInput,
+  type CanonicalProgressionHistorySession,
+} from "@/lib/progression/canonical-progression-input";
 import { derivePerformedExerciseSemantics } from "@/lib/session-semantics/performed-exercise-semantics";
 
 const HISTORY_RECENCY_WINDOW_DAYS = 42;
@@ -780,30 +784,24 @@ async function loadLatestPerformedSetSummary(
     return null;
   }
 
-  const decision = computeDoubleProgressionDecision(
-    performedSemantics.signalSets,
+  const progressionInput = await buildExplainabilityCanonicalProgressionInput(
+    performedSemantics,
     repRange,
-    resolveProgressionEquipment(equipment),
+    equipment,
     {
-      anchorOverride: performedSemantics.anchorLoad ?? undefined,
-      priorSessionCount: await countPerformedHistorySessions(userId, exerciseId, workoutId),
-      historyConfidenceScale: await resolveExplainabilityHistoryConfidenceScale({
-        userId,
-        workoutId,
-        selectionMode: previous.workout.selectionMode ?? undefined,
-        scheduledDate: performedDate ?? undefined,
-        exerciseId,
-        performedLogs,
-      }),
-      confidenceReasons: await resolveExplainabilityConfidenceNotes({
-        userId,
-        workoutId,
-        selectionMode: previous.workout.selectionMode ?? undefined,
-        scheduledDate: performedDate ?? undefined,
-        exerciseId,
-        performedLogs,
-      }),
+      userId,
+      workoutId,
+      selectionMode: previous.workout.selectionMode ?? undefined,
+      scheduledDate: performedDate ?? undefined,
+      exerciseId,
+      performedLogs,
     }
+  );
+  const decision = computeDoubleProgressionDecision(
+    progressionInput.lastSets,
+    progressionInput.repRange,
+    progressionInput.equipment,
+    progressionInput.decisionOptions
   );
 
   return {
@@ -815,34 +813,11 @@ async function loadLatestPerformedSetSummary(
   };
 }
 
-async function countPerformedHistorySessions(
-  userId: string,
-  exerciseId: string,
-  excludeWorkoutId: string
-): Promise<number> {
-  let count = 0;
-  let scheduledBefore: Date | undefined;
-
-  while (true) {
-    const entry = await findLatestProgressionEligibleWorkoutExercise({
-      userId,
-      workoutId: excludeWorkoutId,
-      exerciseId,
-      scheduledBefore,
-    });
-    if (!entry) {
-      return count;
-    }
-    count += 1;
-    scheduledBefore = entry.workout.scheduledDate;
-  }
-}
-
 type ExplainabilityConfidenceInput = {
   userId: string;
   workoutId: string;
   exerciseId: string;
-  selectionMode?: string;
+  selectionMode?: WorkoutSelectionMode;
   scheduledDate?: Date;
   performedLogs: Array<{
     setIndex: number;
@@ -957,7 +932,7 @@ async function findLatestProgressionEligibleWorkoutExercise(input: {
   workoutId: string;
   exerciseId: string;
   scheduledBefore?: Date;
-  requiredSelectionMode?: string;
+  requiredSelectionMode?: WorkoutSelectionMode;
 }) {
   let scheduledBefore = input.scheduledBefore;
 
@@ -1122,17 +1097,17 @@ async function buildNextExposureDecision(
     return null;
   }
 
-  const progressionInputs = await resolveExplainabilityProgressionInputs(input);
-  const decision = computeDoubleProgressionDecision(
-    performedSemantics.signalSets,
+  const progressionInput = await buildExplainabilityCanonicalProgressionInput(
+    performedSemantics,
     repRange,
-    resolveProgressionEquipment(equipment),
-    {
-      anchorOverride: performedSemantics.anchorLoad ?? undefined,
-      priorSessionCount: progressionInputs.priorSessionCount,
-      historyConfidenceScale: progressionInputs.historyConfidenceScale,
-      confidenceReasons: progressionInputs.confidenceReasons,
-    }
+    equipment,
+    input
+  );
+  const decision = computeDoubleProgressionDecision(
+    progressionInput.lastSets,
+    progressionInput.repRange,
+    progressionInput.equipment,
+    progressionInput.decisionOptions
   );
   if (!decision) {
     return null;
@@ -1167,26 +1142,22 @@ async function buildNextExposureDecision(
   };
 }
 
-type ExplainabilityProgressionSession = {
-  selectionMode?: string;
-  confidence: number;
-  confidenceNotes: string[];
-};
-
-async function resolveExplainabilityProgressionInputs(
+async function buildExplainabilityCanonicalProgressionInput(
+  performedSemantics: NonNullable<ReturnType<typeof derivePerformedExerciseSemantics>>,
+  repRange: [number, number],
+  equipment: string[],
   input: ExplainabilityConfidenceInput
-): Promise<{
-  priorSessionCount: number;
-  historyConfidenceScale: number;
-  confidenceReasons: string[];
-}> {
-  const sessions = await loadExplainabilityProgressionSessions(input);
-  return {
-    priorSessionCount: sessions.length,
-    historyConfidenceScale: resolveExplainabilityProgressionHistoryScale(sessions),
-    confidenceReasons: collectExplainabilityProgressionConfidenceNotes(sessions),
-  };
+) {
+  return buildCanonicalProgressionEvaluationInput({
+    lastSets: performedSemantics.signalSets,
+    repRange,
+    equipment: resolveProgressionEquipment(equipment),
+    anchorOverride: performedSemantics.anchorLoad ?? undefined,
+    historySessions: await loadExplainabilityProgressionSessions(input),
+  });
 }
+
+type ExplainabilityProgressionSession = CanonicalProgressionHistorySession;
 
 async function loadExplainabilityProgressionSessions(
   input: ExplainabilityConfidenceInput
@@ -1243,29 +1214,6 @@ async function resolveExplainabilityProgressionSession(
     confidence,
     confidenceNotes,
   };
-}
-
-function resolveExplainabilityProgressionHistoryScale(
-  sessions: ExplainabilityProgressionSession[]
-): number {
-  if (sessions.length <= 1) {
-    return 1;
-  }
-  const hasIntentHistory = sessions.some((session) => session.selectionMode === "INTENT");
-  if (!hasIntentHistory && sessions.every((session) => session.selectionMode === "MANUAL")) {
-    return 1;
-  }
-  const total = sessions.reduce(
-    (sum, session) => sum + Math.min(1, Math.max(0, session.confidence)),
-    0
-  );
-  return Number((total / sessions.length).toFixed(2));
-}
-
-function collectExplainabilityProgressionConfidenceNotes(
-  sessions: ExplainabilityProgressionSession[]
-): string[] {
-  return [...new Set(sessions.flatMap((session) => session.confidenceNotes ?? []))];
 }
 
 function formatNextExposureReason(input: {

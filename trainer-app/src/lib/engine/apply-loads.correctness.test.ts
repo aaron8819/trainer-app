@@ -802,6 +802,96 @@ describe("applyLoads correctness", () => {
     expect(result.accessories[0].sets[0].targetLoad).toBe(42.5);
   });
 
+  it("holds accessory load when discounted MANUAL history collapses the increment", () => {
+    const cableRaise: Exercise = {
+      id: "discounted-manual-raise",
+      name: "Discounted Manual Raise",
+      movementPatterns: ["abduction"],
+      splitTags: ["push"],
+      jointStress: "low",
+      isMainLiftEligible: false,
+      isCompound: false,
+      fatigueCost: 1,
+      equipment: ["cable"],
+      primaryMuscles: ["Side Delts"],
+      repRangeMin: 8,
+      repRangeMax: 15,
+    };
+    const workout: WorkoutPlan = {
+      id: "w12",
+      scheduledDate: "2026-02-20T00:00:00.000Z",
+      warmup: [],
+      mainLifts: [],
+      accessories: [
+        {
+          id: "we12",
+          exercise: cableRaise,
+          orderIndex: 0,
+          isMainLift: false,
+          sets: [{ setIndex: 1, targetReps: 12, targetRpe: 8 }],
+        },
+      ],
+      estimatedMinutes: 20,
+    };
+
+    const result = applyLoads(workout, {
+      history: [
+        {
+          date: "2026-02-19T00:00:00.000Z",
+          completed: true,
+          status: "COMPLETED",
+          selectionMode: "MANUAL",
+          confidence: 0.3,
+          confidenceNotes: [
+            "MANUAL history was heavily discounted because it looked unreliable: every set reported the same RPE.",
+          ],
+          exercises: [
+            {
+              exerciseId: "discounted-manual-raise",
+              sets: [{ exerciseId: "discounted-manual-raise", setIndex: 1, reps: 12, rpe: 7, load: 40 }],
+            },
+          ],
+        },
+        {
+          date: "2026-02-18T00:00:00.000Z",
+          completed: true,
+          status: "COMPLETED",
+          selectionMode: "MANUAL",
+          confidence: 0.3,
+          confidenceNotes: [
+            "MANUAL history was heavily discounted because it looked unreliable: every set reported the same RPE.",
+          ],
+          exercises: [
+            {
+              exerciseId: "discounted-manual-raise",
+              sets: [{ exerciseId: "discounted-manual-raise", setIndex: 1, reps: 12, rpe: 7, load: 40 }],
+            },
+          ],
+        },
+        {
+          date: "2026-02-14T00:00:00.000Z",
+          completed: true,
+          status: "COMPLETED",
+          selectionMode: "INTENT",
+          confidence: 1,
+          confidenceNotes: ["Previous INTENT history kept full progression confidence."],
+          exercises: [
+            {
+              exerciseId: "discounted-manual-raise",
+              sets: [{ exerciseId: "discounted-manual-raise", setIndex: 1, reps: 12, rpe: 7, load: 40 }],
+            },
+          ],
+        },
+      ],
+      baselines: [],
+      exerciseById: { "discounted-manual-raise": cableRaise },
+      primaryGoal: "hypertrophy",
+      profile: { trainingAge: "intermediate" },
+    });
+
+    expect(result.accessories[0].sets[0].targetLoad).toBe(40);
+  });
+
   it("uses W4 accumulation history (not deload history) as baseline source on a new mesocycle start", () => {
     const result = applyLoads(baseWorkout, {
       history: [

@@ -13,6 +13,15 @@ export type ProgressionDecision = {
   path: ProgressionDecisionPath;
   decisionLog: string[];
 };
+export type DoubleProgressionDecisionOptions = {
+  priorSessionCount?: number;
+  historyConfidenceScale?: number;
+  confidenceReasons?: string[];
+  /** Override the anchor load instead of computing from modal distribution.
+   *  Used for main lifts (top set + back-offs) so progression anchors to the
+   *  top set rather than the more-frequent back-off weight. */
+  anchorOverride?: number;
+};
 
 export const PROGRESSION_CONFIG = {
   // Treat >=20% intra-session spread as unstable enough to trim outliers.
@@ -145,15 +154,7 @@ export function computeDoubleProgressionDecision(
   lastSets: ProgressionSet[],
   repRange: [number, number],
   equipment: ProgressionEquipment = "other",
-  options?: {
-    priorSessionCount?: number;
-    historyConfidenceScale?: number;
-    confidenceReasons?: string[];
-    /** Override the anchor load instead of computing from modal distribution.
-     *  Used for main lifts (top set + back-offs) so progression anchors to the
-     *  top set rather than the more-frequent back-off weight. */
-    anchorOverride?: number;
-  }
+  options?: DoubleProgressionDecisionOptions
 ): ProgressionDecision | undefined {
   const signalSets = lastSets.filter(
     (set) =>

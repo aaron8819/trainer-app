@@ -5,6 +5,7 @@ import {
   isAnalyticsPerformedWorkoutStatus,
 } from "@/lib/api/analytics-semantics";
 import { isPerformedHistoryEntry } from "@/lib/engine/history";
+import type { WorkoutHistoryEntry, WorkoutSelectionMode } from "@/lib/engine/types";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 import { WORKOUT_AUDIT_CONCLUSIONS } from "./conclusions";
 import type { AuditConclusionBlock } from "./types";
@@ -37,8 +38,8 @@ export type SequencingScenarioResult = {
 };
 
 export type AccountingClassificationInput = {
-  status: string;
-  selectionMode: "AUTO" | "INTENT" | "MANUAL";
+  status: WorkoutHistoryEntry["status"];
+  selectionMode: WorkoutSelectionMode;
   advancesSplit: boolean;
   optionalGapFill: boolean;
 };

@@ -1,6 +1,17 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import type { WorkoutHistoryEntry, WorkoutSelectionMode } from "@/lib/engine/types";
 import { parseArgs } from "./audit-cli-support";
+
+const WORKOUT_STATUSES: NonNullable<WorkoutHistoryEntry["status"]>[] = [
+  "PLANNED",
+  "IN_PROGRESS",
+  "PARTIAL",
+  "COMPLETED",
+  "SKIPPED",
+];
+
+const WORKOUT_SELECTION_MODES: WorkoutSelectionMode[] = ["AUTO", "MANUAL", "BONUS", "INTENT"];
 
 function parseBooleanFlag(value: string | boolean | undefined, fallback: boolean): boolean {
   if (typeof value === "boolean") {
@@ -18,12 +29,16 @@ async function main(): Promise<void> {
     "@/lib/audit/workout-audit/scenario-audits"
   );
 
+  const statusArg = typeof args.status === "string" ? args.status : "COMPLETED";
+  const selectionModeArg =
+    typeof args["selection-mode"] === "string" ? args["selection-mode"] : "MANUAL";
   const classification = {
-    status: typeof args.status === "string" ? args.status : "COMPLETED",
-    selectionMode:
-      typeof args["selection-mode"] === "string"
-        ? (args["selection-mode"] as "AUTO" | "INTENT" | "MANUAL")
-        : ("MANUAL" as const),
+    status: WORKOUT_STATUSES.includes(statusArg as NonNullable<WorkoutHistoryEntry["status"]>)
+      ? (statusArg as NonNullable<WorkoutHistoryEntry["status"]>)
+      : ("COMPLETED" as const),
+    selectionMode: WORKOUT_SELECTION_MODES.includes(selectionModeArg as WorkoutSelectionMode)
+      ? (selectionModeArg as WorkoutSelectionMode)
+      : ("MANUAL" as const),
     advancesSplit: parseBooleanFlag(args["advances-split"], false),
     optionalGapFill: parseBooleanFlag(args["optional-gap-fill"], true),
   };

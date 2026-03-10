@@ -239,6 +239,10 @@ function flattenGuidanceText(values: Array<string | null | undefined>) {
   return values.filter((value): value is string => Boolean(value)).join("\n").toLowerCase();
 }
 
+type WorkoutExerciseFindFirstArgs = {
+  where?: { workout?: { scheduledDate?: { lt?: Date }; selectionMode?: string } };
+};
+
 describe("golden-path completed workout regression", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -251,7 +255,7 @@ describe("golden-path completed workout regression", () => {
     mocks.loadExplainabilityExerciseLibrary.mockResolvedValue([]);
     mocks.workoutFindMany.mockResolvedValue([]);
     mocks.setLogAggregate.mockResolvedValue({ _max: { actualLoad: null, actualReps: null } });
-    mocks.workoutExerciseFindFirst.mockImplementation(async (args: any) => {
+    mocks.workoutExerciseFindFirst.mockImplementation(async (args: WorkoutExerciseFindFirstArgs) => {
       const scheduledBefore: Date | undefined = args?.where?.workout?.scheduledDate?.lt;
       const requiredSelectionMode: string | undefined = args?.where?.workout?.selectionMode;
       if (requiredSelectionMode && requiredSelectionMode !== "INTENT") {

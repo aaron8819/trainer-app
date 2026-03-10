@@ -1,4 +1,5 @@
-﻿# Repo root ignores (project lives under trainer-app)
+# Repo root ignores (project lives under trainer-app)
+/node_modules/
 /baselines.txt
 /exercisehistory.txt
 /workoutengine.txt

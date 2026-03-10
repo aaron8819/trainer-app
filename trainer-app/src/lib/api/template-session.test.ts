@@ -5,6 +5,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { exampleExerciseLibrary, exampleGoals, exampleUser } from "../engine/sample-data";
 import * as selectionV2 from "@/lib/engine/selection-v2";
+import type { Exercise } from "@/lib/engine/types";
 
 const mesocycleRoleFindManyMock = vi.fn();
 vi.mock("@/lib/db/prisma", () => ({
@@ -583,7 +584,7 @@ describe("generateSessionFromIntent", () => {
   });
 
   it("treats complete role lists as anchors and still supplements from opportunity inventory when deficits remain", async () => {
-    const customLibrary = [
+    const customLibrary: Exercise[] = [
       {
         id: "bench",
         name: "Bench Press",
@@ -1079,7 +1080,7 @@ describe("generateSessionFromIntent", () => {
   });
 
   it("repairs multi-target supplemental coverage when the base selection misses one target", async () => {
-    const customLibrary = [
+    const customLibrary: Exercise[] = [
       {
         id: "leg-curl",
         name: "Seated Leg Curl",
@@ -1134,7 +1135,7 @@ describe("generateSessionFromIntent", () => {
         .map((exercise, index) => ({
           exercise,
           proposedSets: 2,
-          volumeContribution: new Map([[exercise.primaryMuscles[0] as string, 2]]),
+          volumeContribution: new Map([[exercise.primaryMuscles?.[0] ?? "Hamstrings", 2]]),
           timeContribution: 8,
           scores: {
             deficitFill: 0.8 - index * 0.1,

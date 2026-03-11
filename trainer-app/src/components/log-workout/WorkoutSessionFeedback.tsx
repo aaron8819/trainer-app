@@ -1,20 +1,22 @@
 type WorkoutSessionFeedbackProps = {
   error: string | null;
   onDismissError: () => void;
-};
-
-const FEEDBACK_POSITION_STYLE = {
-  position: "fixed" as const,
-  bottom: "calc(var(--mobile-nav-height, 56px) + env(safe-area-inset-bottom, 0px) + 8px)",
-  left: "16px",
-  right: "16px",
-  zIndex: 50,
+  viewportBottomOffset?: number;
 };
 
 export function WorkoutSessionFeedback({
   error,
   onDismissError,
+  viewportBottomOffset = 0,
 }: WorkoutSessionFeedbackProps) {
+  const feedbackPositionStyle = {
+    position: "fixed" as const,
+    bottom: `calc(var(--mobile-nav-height, 56px) + env(safe-area-inset-bottom, 0px) + 8px + ${viewportBottomOffset}px)`,
+    left: "16px",
+    right: "16px",
+    zIndex: 50,
+  };
+
   return (
     <>
       {error ? (
@@ -23,7 +25,7 @@ export function WorkoutSessionFeedback({
           className="rounded-xl border border-rose-200 bg-rose-50 p-3 shadow-sm"
           role="alert"
           aria-live="assertive"
-          style={FEEDBACK_POSITION_STYLE}
+          style={feedbackPositionStyle}
         >
           <div className="flex items-center justify-between gap-3">
             <p className="text-xs text-rose-700">{error}</p>

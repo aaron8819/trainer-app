@@ -22,6 +22,7 @@ function LayoutHarness() {
         jump
       </button>
       <div data-testid="keyboard-open">{String(keyboardOpen)}</div>
+      <div data-testid="viewport-bottom-offset">{layout.visualViewportBottomOffset}</div>
     </div>
   );
 }
@@ -56,6 +57,7 @@ describe("useWorkoutSessionLayout", () => {
     let resizeHandler: (() => void) | undefined;
     const mockViewport = {
       height: 800,
+      offsetTop: 0,
       addEventListener: vi.fn((_event: string, handler: () => void) => {
         resizeHandler = handler;
       }),
@@ -75,6 +77,30 @@ describe("useWorkoutSessionLayout", () => {
       expect(screen.getByTestId("root")).toHaveStyle({ paddingBottom: "336px" });
       expect(HTMLElement.prototype.scrollIntoView).not.toHaveBeenCalled();
       expect(window.scrollTo).not.toHaveBeenCalled();
+    });
+  });
+
+  it("tracks non-keyboard visual viewport bottom offset separately from keyboard height", async () => {
+    let resizeHandler: (() => void) | undefined;
+    const mockViewport = {
+      height: 800,
+      offsetTop: 0,
+      addEventListener: vi.fn((_event: string, handler: () => void) => {
+        resizeHandler = handler;
+      }),
+      removeEventListener: vi.fn(),
+    };
+    Object.defineProperty(window, "visualViewport", { configurable: true, value: mockViewport });
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 800 });
+
+    render(<LayoutHarness />);
+    mockViewport.height = 760;
+    resizeHandler?.();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("keyboard-open")).toHaveTextContent("false");
+      expect(screen.getByTestId("viewport-bottom-offset")).toHaveTextContent("40");
+      expect(screen.getByTestId("root")).toHaveStyle({ paddingBottom: "env(safe-area-inset-bottom, 16px)" });
     });
   });
 });

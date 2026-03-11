@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
+import { useVisualViewportMetrics } from "@/lib/ui/use-visual-viewport-metrics";
 import { NavLink } from "./NavLink";
 
 const HomeIcon = () => (
@@ -72,6 +73,7 @@ const NAV_ITEMS = [
 export function AppNavigation() {
   const pathname = usePathname();
   const [isMobile, setIsMobile] = useState(false);
+  const { bottomOffset: visualViewportBottomOffset } = useVisualViewportMetrics();
 
   useEffect(() => {
     const mediaQuery = window.matchMedia("(max-width: 767px)");
@@ -90,7 +92,10 @@ export function AppNavigation() {
 
   if (isMobile) {
     return (
-      <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)]">
+      <nav
+        className="fixed left-0 right-0 z-50 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)]"
+        style={{ bottom: `${visualViewportBottomOffset}px` }}
+      >
         <div className="mx-auto flex h-[var(--mobile-nav-height)] max-w-5xl items-stretch justify-between px-1">
           {NAV_ITEMS.map((item) => (
             <NavLink

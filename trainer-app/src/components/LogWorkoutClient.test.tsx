@@ -167,10 +167,17 @@ async function openWorkoutOptions(user: ReturnType<typeof userEvent.setup>) {
 
 function setupVisualViewport(initialHeight = 800) {
   let resizeHandler: (() => void) | undefined;
+  let scrollHandler: (() => void) | undefined;
   const mockViewport = {
     height: initialHeight,
+    offsetTop: 0,
     addEventListener: vi.fn((_event: string, handler: () => void) => {
-      resizeHandler = handler;
+      if (_event === "resize") {
+        resizeHandler = handler;
+      }
+      if (_event === "scroll") {
+        scrollHandler = handler;
+      }
     }),
     removeEventListener: vi.fn(),
   };
@@ -181,6 +188,16 @@ function setupVisualViewport(initialHeight = 800) {
     setHeight(nextHeight: number) {
       mockViewport.height = nextHeight;
       resizeHandler?.();
+    },
+    setViewport(next: { height?: number; offsetTop?: number }) {
+      if (next.height != null) {
+        mockViewport.height = next.height;
+      }
+      if (next.offsetTop != null) {
+        mockViewport.offsetTop = next.offsetTop;
+      }
+      resizeHandler?.();
+      scrollHandler?.();
     },
   };
 }
@@ -288,6 +305,19 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     expect(loadInput.value).toBe("40");
   });
 
+  it("quantizes non-grid dumbbell loads to canonical 2.5-lb increments", async () => {
+    const user = userEvent.setup();
+    renderClient();
+
+    const loadInput = screen.getByLabelText("Load") as HTMLInputElement;
+    await user.click(loadInput);
+    await user.clear(loadInput);
+    await user.type(loadInput, "41.3");
+    fireEvent.blur(loadInput);
+
+    expect(loadInput.value).toBe("42.5");
+  });
+
   it("applies quick adjustments as exact deltas", async () => {
     const user = userEvent.setup();
     renderClient();
@@ -297,6 +327,32 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
 
     await user.click(screen.getByRole("button", { name: "-5" }));
     expect((screen.getByLabelText("Load") as HTMLInputElement).value).toBe("47.5");
+  });
+
+  it("persists and renders 52.5 dumbbell loads without snapping them down", async () => {
+    const user = userEvent.setup();
+    renderClient();
+
+    const loadInput = screen.getByLabelText("Load") as HTMLInputElement;
+    await user.click(loadInput);
+    await user.clear(loadInput);
+    await user.type(loadInput, "52.5");
+    fireEvent.blur(loadInput);
+    await user.click(screen.getByRole("button", { name: "Log set" }));
+    await user.click(screen.getByRole("button", { name: "Log set" }));
+    await user.click(screen.getByRole("button", { name: "Finish workout" }));
+    await user.click(screen.getByRole("button", { name: "Confirm" }));
+
+    await waitFor(() => {
+      expect(mockedLogSetRequest).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          workoutSetId: "set-1",
+          actualLoad: 52.5,
+        })
+      );
+      expect(screen.getAllByText(/52\.5 lbs each/)).toHaveLength(2);
+    });
   });
 
   it("blocks load-only performed sets before submit", async () => {
@@ -436,8 +492,11 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
 
     const finishBar = screen.getByTestId("workout-finish-bar");
     expect(finishBar).toHaveClass("fixed");
-    expect(finishBar.className).toContain("bottom-[calc(var(--mobile-nav-height)+env(safe-area-inset-bottom,0px))]");
+    expect(finishBar.className).toContain(
+      "bottom-[calc(var(--mobile-nav-height)+env(safe-area-inset-bottom,0px)+var(--workout-footer-viewport-offset,0px))]"
+    );
     expect(finishBar.style.bottom).toBe("");
+    expect(finishBar.style.getPropertyValue("--workout-footer-viewport-offset")).toBe("0px");
     expect(screen.getByRole("button", { name: "Finish workout" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "... Workout options" })).not.toBeInTheDocument();
     expect((container.firstChild as HTMLElement).style.paddingBottom).toContain("var(--mobile-nav-height)");
@@ -1566,8 +1625,11 @@ describe("L-2/L-3/L-1/T-1/T-3 — Layout and UX fixes", () => {
       expect(screen.getByTestId("rest-timer-hud")).toBeInTheDocument();
       expect(screen.getByTestId("workout-finish-bar")).toBeInTheDocument();
       expect(screen.getByTestId("workout-finish-bar").className).toContain(
-        "bottom-[calc(var(--mobile-nav-height)+env(safe-area-inset-bottom,0px))]"
+        "bottom-[calc(var(--mobile-nav-height)+env(safe-area-inset-bottom,0px)+var(--workout-footer-viewport-offset,0px))]"
       );
+      expect(
+        screen.getByTestId("workout-finish-bar").style.getPropertyValue("--workout-footer-viewport-offset")
+      ).toBe("0px");
       expect(root.style.paddingBottom).toContain("var(--mobile-nav-height)");
       expect(root.style.paddingBottom).toContain("88px");
     });
@@ -1578,6 +1640,25 @@ describe("L-2/L-3/L-1/T-1/T-3 — Layout and UX fixes", () => {
       expect(screen.getByTestId("workout-finish-bar")).toHaveStyle({ bottom: "320px" });
       expect(root).toHaveStyle({ paddingBottom: "408px" });
       expect(screen.getByRole("button", { name: "Finish workout" })).toBeInTheDocument();
+    });
+  });
+
+  it("bottom-fixed workout surfaces follow visual viewport drift when browser chrome shrinks without a keyboard", async () => {
+    const viewport = setupVisualViewport();
+    const user = userEvent.setup();
+    const { container } = render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
+    const root = container.firstChild as HTMLElement;
+
+    await logAllSets(user);
+
+    viewport.setViewport({ height: 760 });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("workout-finish-bar").style.bottom).toBe("");
+      expect(
+        screen.getByTestId("workout-finish-bar").style.getPropertyValue("--workout-footer-viewport-offset")
+      ).toBe("40px");
+      expect(root.style.paddingBottom).toContain("var(--mobile-nav-height)");
     });
   });
 });
@@ -1681,6 +1762,20 @@ describe("I-2/I-4/I-5/E-4/E-5/E-6/L-4/S-5 — Remaining low-priority fixes", () 
 
     await waitFor(() => {
       expect(screen.queryByTestId("completion-spinner")).not.toBeInTheDocument();
+    });
+  });
+
+  it("E-5: error snackbar follows visual viewport drift without treating it as keyboard state", async () => {
+    const viewport = setupVisualViewport();
+    mockedLogSetRequest.mockResolvedValueOnce({ data: null, error: "Shifted error" });
+
+    render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
+    viewport.setViewport({ height: 760 });
+    fireEvent.click(screen.getByRole("button", { name: "Log set" }));
+
+    await waitFor(() => {
+      const snackbar = screen.getByTestId("error-snackbar");
+      expect(snackbar.style.bottom).toContain("40px");
     });
   });
 

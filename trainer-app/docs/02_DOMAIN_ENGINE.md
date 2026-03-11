@@ -82,6 +82,7 @@ Sources of truth:
 ## Progression and load assignment
 - Progression math is implemented in `src/lib/engine/progression.ts`.
 - Load assignment and fallback logic are implemented in `src/lib/engine/apply-loads.ts`.
+- Canonical load quantization lives in `src/lib/units/load-quantization.ts`. Dumbbell display/storage flows must use that same 2.5 lb quantization rule through shared UI helpers in `src/lib/ui/load-display.ts`; UI formatting is not allowed to maintain a separate dumbbell snap policy.
 - Canonical progression-input assembly is centralized in `src/lib/progression/canonical-progression-input.ts` via `buildCanonicalProgressionEvaluationInput()`. That seam assembles the materially relevant `computeDoubleProgressionDecision()` payload (`anchorOverride`, `priorSessionCount`, `historyConfidenceScale`, and decision-log `confidenceReasons`) without owning progression math or UI formatting.
 - The live in-session autoreg hint is implemented separately in `src/lib/progression/load-coaching.ts` and called from `src/components/log-workout/useWorkoutSessionFlow.ts`. It is a current-session coaching/explainability seam only.
 - Historical training signals are mapped from persisted workouts/logs in `mapHistory()` within `src/lib/api/workout-context.ts`.
@@ -92,6 +93,7 @@ Sources of truth:
 - Progression outlier thresholds and sample-size confidence scaling are centralized in `PROGRESSION_CONFIG` (`src/lib/engine/progression.ts`) and emitted into progression decision logs.
 - Bodyweight working sets are canonicalized at write-time to `actualLoad=0` when `targetLoad=0`; `null` is not treated as canonical bodyweight load.
 - `estimateLoad()` in `src/lib/engine/apply-loads.ts` returns `undefined` (no estimate) for exercises whose equipment list includes `"bodyweight"` when no non-zero load history exists. This prevents phantom load assignments on hybrid bodyweight/machine exercises (e.g., Dip) on their first weighted use.
+- Donor-based first-time load estimation must reject invalid donors before scaling. In `src/lib/engine/apply-loads.ts`, donor paths exclude non-finite / `<= 0` donor loads, and they also exclude bodyweight or bodyweight-hybrid donors when the target exercise expects external load. This is a donor-validation guardrail, not a broader estimator retune.
 - Bodyweight progression is rep-driven only at `anchorLoad=0` in `computeDoubleProgressionDecision()`; the engine never auto-increments external load from `0` and logs `bodyweight exercise — rep progression only`.
 - Empty performed logs are invalid (`LOGGED_EMPTY` is rejected on write); unresolved sets should remain `MISSING` and are treated as unresolved during completion status resolution.
 - On first session of a new mesocycle (`accumulationSessionsCompleted=0` or explicit first-session flag), load anchoring history is sourced from accumulation history only: prefer week-4 accumulation, else highest available accumulation week, else any non-deload performed history; deload (`DELOAD`/`ACTIVE_DELOAD`) snapshots are excluded as baseline sources.

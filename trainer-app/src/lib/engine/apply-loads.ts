@@ -645,6 +645,7 @@ function estimateFromDonors(
   const targetEquipment = getLoadEquipment(target);
   const targetCompound = isCompound(target);
   const targetFatigue = target.fatigueCost ?? DEFAULT_FATIGUE_COST;
+  const targetExpectsExternalLoad = expectsExternalLoad(target);
 
   const targetPatterns = target.movementPatterns ?? [];
   const candidates: { score: number; load: number; name: string }[] = [];
@@ -657,6 +658,9 @@ function estimateFromDonors(
     const donorMuscles = getPrimaryMuscles(donor);
     const muscleOverlap = countOverlap(targetMuscles, donorMuscles);
     if (muscleOverlap === 0) {
+      continue;
+    }
+    if (!isValidExternalLoadDonor(donorLoad, donor, targetExpectsExternalLoad)) {
       continue;
     }
 
@@ -715,6 +719,7 @@ function estimateFromHistoryPatternDonors(
   const targetEquipment = getLoadEquipment(target);
   const targetJointStress = target.jointStress;
   const targetCompound = isCompound(target);
+  const targetExpectsExternalLoad = expectsExternalLoad(target);
   const candidates: { score: number; load: number }[] = [];
 
   for (const [donorId, donorLoad] of historyTopLoadIndex.entries()) {
@@ -725,6 +730,9 @@ function estimateFromHistoryPatternDonors(
     const donorPatterns = donor.movementPatterns ?? [];
     const patternOverlap = countOverlap(targetPatterns, donorPatterns);
     if (patternOverlap === 0) {
+      continue;
+    }
+    if (!isValidExternalLoadDonor(donorLoad, donor, targetExpectsExternalLoad)) {
       continue;
     }
 
@@ -768,6 +776,28 @@ function isUpperBodyExercise(exercise: Exercise) {
 
 function isCompound(exercise: Exercise) {
   return exercise.isCompound ?? false;
+}
+
+function hasBodyweightComponent(exercise: Exercise) {
+  return (exercise.equipment ?? []).includes("bodyweight");
+}
+
+function expectsExternalLoad(exercise: Exercise) {
+  return !hasBodyweightComponent(exercise);
+}
+
+function isValidExternalLoadDonor(
+  donorLoad: number,
+  donor: Exercise,
+  targetExpectsExternalLoad: boolean
+) {
+  if (!Number.isFinite(donorLoad) || donorLoad <= 0) {
+    return false;
+  }
+  if (targetExpectsExternalLoad && hasBodyweightComponent(donor)) {
+    return false;
+  }
+  return true;
 }
 
 function getLoadEquipment(exercise: Exercise): LoadEquipment {

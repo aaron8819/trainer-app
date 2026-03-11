@@ -686,6 +686,83 @@ describe("applyLoads correctness", () => {
     expect(result.accessories[0].sets[0].targetLoad).toBe(0);
   });
 
+  it("ignores 0 lb bodyweight donors when estimating first-time external machine loads", () => {
+    const dip: Exercise = {
+      id: "dip-bodyweight",
+      name: "Dip",
+      movementPatterns: ["vertical_push"],
+      splitTags: ["push"],
+      jointStress: "medium",
+      isMainLiftEligible: false,
+      isCompound: true,
+      fatigueCost: 3,
+      equipment: ["bodyweight", "machine"],
+      primaryMuscles: ["Chest", "Triceps", "Shoulders"],
+      repRangeMin: 6,
+      repRangeMax: 15,
+    };
+    const machineShoulderPress: Exercise = {
+      id: "machine-shoulder-press",
+      name: "Machine Shoulder Press",
+      movementPatterns: ["vertical_push"],
+      splitTags: ["push"],
+      jointStress: "medium",
+      isMainLiftEligible: false,
+      isCompound: true,
+      fatigueCost: 3,
+      equipment: ["machine"],
+      primaryMuscles: ["Shoulders", "Triceps"],
+      repRangeMin: 8,
+      repRangeMax: 15,
+    };
+    const workout: WorkoutPlan = {
+      id: "w13",
+      scheduledDate: "2026-02-20T00:00:00.000Z",
+      warmup: [],
+      mainLifts: [],
+      accessories: [
+        {
+          id: "we13",
+          exercise: machineShoulderPress,
+          orderIndex: 0,
+          isMainLift: false,
+          sets: [{ setIndex: 1, targetReps: 10, targetRpe: 8.5 }],
+        },
+      ],
+      estimatedMinutes: 20,
+    };
+
+    const result = applyLoads(workout, {
+      history: [
+        {
+          date: "2026-02-18T00:00:00.000Z",
+          completed: true,
+          status: "COMPLETED",
+          sessionIntent: "push",
+          exercises: [
+            {
+              exerciseId: "dip-bodyweight",
+              sets: [
+                { exerciseId: "dip-bodyweight", setIndex: 1, reps: 12, rpe: 8, load: 0 },
+                { exerciseId: "dip-bodyweight", setIndex: 2, reps: 10, rpe: 9, load: 0 },
+              ],
+            },
+          ],
+        },
+      ],
+      baselines: [],
+      exerciseById: {
+        "dip-bodyweight": dip,
+        "machine-shoulder-press": machineShoulderPress,
+      },
+      primaryGoal: "hypertrophy",
+      profile: { trainingAge: "intermediate" },
+      sessionIntent: "push",
+    });
+
+    expect(result.accessories[0].sets[0].targetLoad).toBe(60);
+  });
+
   it("weights MANUAL modal history at 0.7 vs INTENT when both exist", () => {
     const cableRaise: Exercise = {
       id: "cable-raise",

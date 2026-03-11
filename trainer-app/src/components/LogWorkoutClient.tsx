@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BonusExerciseSheet } from "@/components/BonusExerciseSheet";
 import { isDumbbellEquipment, toDisplayLoad, toStoredLoad } from "@/lib/ui/load-display";
-import { quantizeLoad } from "@/lib/units/load-quantization";
 import { useWorkoutLogState } from "@/components/log-workout/useWorkoutLogState";
 import type {
   ActiveSetDraftState,
@@ -89,8 +88,7 @@ function normalizeLoadInput(raw: string, isDumbbell: boolean): number | null {
     return null;
   }
 
-  const stored = toStoredLoad(toDisplayLoad(parsed, isDumbbell) ?? null, isDumbbell) ?? null;
-  return stored == null ? null : quantizeLoad(stored);
+  return toStoredLoad(parsed, isDumbbell) ?? null;
 }
 
 function formatQueueSetSummary(set: LogSetInput, isLogged: boolean, isDumbbell: boolean): string {
@@ -172,7 +170,14 @@ export default function LogWorkoutClient({
   const loggedSetIdsRef = useRef(loggedSetIds);
   const flatSetsRef = useRef(flatSets);
   const activeSetIds = useMemo(() => flatSets.map((item) => item.set.setId), [flatSets]);
-  const { keyboardOpen, keyboardHeight, activeSetPanelRef, sectionRefs, jumpToActiveSet } =
+  const {
+    keyboardOpen,
+    keyboardHeight,
+    visualViewportBottomOffset,
+    activeSetPanelRef,
+    sectionRefs,
+    jumpToActiveSet,
+  } =
     useWorkoutSessionLayout(restTimer ? timerHudHeight : 0);
 
   const { restTimerMuted, setRestTimerMuted } = usePersistedWorkoutSessionUi({
@@ -791,6 +796,7 @@ export default function LogWorkoutClient({
       <WorkoutSessionFeedback
         error={error}
         onDismissError={dismissError}
+        viewportBottomOffset={visualViewportBottomOffset}
       />
 
       <BonusExerciseSheet
@@ -820,7 +826,11 @@ export default function LogWorkoutClient({
       ) : null}
 
       {showFinishBar ? (
-        <WorkoutFooter sticky bottomOffset={finishBarBottomOffset}>
+        <WorkoutFooter
+          sticky
+          bottomOffset={finishBarBottomOffset}
+          viewportBottomOffset={visualViewportBottomOffset}
+        >
           <WorkoutSessionActions
             loggedCount={loggedCount}
             totalSets={totalSets}

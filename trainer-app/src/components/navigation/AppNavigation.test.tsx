@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppNavigation } from "./AppNavigation";
 
@@ -28,6 +28,38 @@ function renderDesktopNav(pathname: string) {
       removeEventListener: vi.fn(),
       dispatchEvent: vi.fn(),
     }),
+  });
+  return render(<AppNavigation />);
+}
+
+function renderMobileNav(
+  pathname: string,
+  options?: { innerHeight?: number; viewportHeight?: number; viewportOffsetTop?: number }
+) {
+  mockedUsePathname.mockReturnValue(pathname);
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    value: (query: string) => ({
+      matches: true,
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }),
+  });
+  Object.defineProperty(window, "innerHeight", {
+    configurable: true,
+    value: options?.innerHeight ?? 800,
+  });
+  Object.defineProperty(window, "visualViewport", {
+    configurable: true,
+    value: {
+      height: options?.viewportHeight ?? options?.innerHeight ?? 800,
+      offsetTop: options?.viewportOffsetTop ?? 0,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    },
   });
   return render(<AppNavigation />);
 }
@@ -77,5 +109,23 @@ describe("L-5 — AppNavigation active tab on /log paths", () => {
     renderDesktopNav("/program");
     const programLink = screen.getByRole("link", { name: /Program/ });
     expect(isActiveLink(programLink)).toBe(true);
+  });
+
+  it("applies visual viewport bottom compensation on mobile when browser chrome shrinks the viewport", async () => {
+    renderMobileNav("/", { innerHeight: 800, viewportHeight: 740 });
+
+    await waitFor(() => {
+      const nav = screen.getByRole("navigation");
+      expect(nav).toHaveStyle({ bottom: "60px" });
+    });
+  });
+
+  it("does not treat keyboard-height viewport shrink as mobile nav drift", async () => {
+    renderMobileNav("/", { innerHeight: 800, viewportHeight: 480 });
+
+    await waitFor(() => {
+      const nav = screen.getByRole("navigation");
+      expect(nav).toHaveStyle({ bottom: "0px" });
+    });
   });
 });

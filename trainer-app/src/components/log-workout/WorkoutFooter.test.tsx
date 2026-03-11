@@ -17,9 +17,10 @@ describe("WorkoutFooter", () => {
     const footer = screen.getByTestId("workout-finish-bar");
     expect(footer).toHaveClass("fixed");
     expect(footer.className).toContain(
-      "bottom-[calc(var(--mobile-nav-height)+env(safe-area-inset-bottom,0px))]"
+      "bottom-[calc(var(--mobile-nav-height)+env(safe-area-inset-bottom,0px)+var(--workout-footer-viewport-offset,0px))]"
     );
     expect(footer.style.bottom).toBe("");
+    expect(footer.style.getPropertyValue("--workout-footer-viewport-offset")).toBe("0px");
   });
 
   it("uses inline bottom offset only when an explicit keyboard offset is provided", () => {
@@ -31,5 +32,17 @@ describe("WorkoutFooter", () => {
 
     const footer = screen.getByTestId("workout-finish-bar");
     expect(footer.style.bottom).toBe("320px");
+  });
+
+  it("stores visual viewport drift in a CSS variable when keyboard is closed", () => {
+    render(
+      <WorkoutFooter sticky viewportBottomOffset={48}>
+        <button type="button">Finish workout</button>
+      </WorkoutFooter>
+    );
+
+    const footer = screen.getByTestId("workout-finish-bar");
+    expect(footer.style.bottom).toBe("");
+    expect(footer.style.getPropertyValue("--workout-footer-viewport-offset")).toBe("48px");
   });
 });

@@ -163,7 +163,7 @@ export function CompletedWorkoutReview({
                           set.actualReps != null ? `${set.actualReps} reps` : null,
                           set.actualLoad != null
                             ? isDumbbell
-                              ? `${set.actualLoad} lbs each`
+                              ? `${toDisplayLoad(set.actualLoad, true)} lbs each`
                               : `${set.actualLoad} lbs`
                             : null,
                           set.actualRpe != null ? `RPE ${set.actualRpe}` : null,

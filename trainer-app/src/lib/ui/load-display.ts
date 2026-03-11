@@ -1,3 +1,5 @@
+import { quantizeLoad } from "@/lib/units/load-quantization";
+
 /**
  * Utilities for displaying exercise loads consistently.
  *
@@ -5,16 +7,8 @@
  * Dumbbell exercises use per-dumbbell ("each") values.
  */
 
-const DUMBBELL_WEIGHTS = [
-  2.5, 5, 7.5, 10, 12.5, 15, 17.5, 20, 22.5, 25,
-  27.5, 30, 32.5, 35, 37.5, 40, 42.5, 45, 47.5, 50,
-  55, 60, 65, 70, 75, 80, 85, 90, 95, 100, 110,
-];
-
-function snapToDumbbell(lbs: number): number {
-  return DUMBBELL_WEIGHTS.reduce((prev, curr) =>
-    Math.abs(curr - lbs) < Math.abs(prev - lbs) ? curr : prev
-  );
+function normalizeDisplayLoad(lbs: number, isDumbbell: boolean): number {
+  return isDumbbell ? quantizeLoad(lbs) : lbs;
 }
 
 export function isDumbbellEquipment(equipment: string[] | undefined): boolean {
@@ -31,10 +25,8 @@ export function formatLoad(
   isBodyweight: boolean
 ): string | undefined {
   if (lbs != null) {
-    if (isDumbbell) {
-      return `${snapToDumbbell(lbs)} lbs each`;
-    }
-    return `${lbs} lbs`;
+    const displayLoad = normalizeDisplayLoad(lbs, isDumbbell);
+    return `${displayLoad} lbs${isDumbbell ? " each" : ""}`;
   }
   if (isBodyweight) {
     return "BW";
@@ -52,7 +44,7 @@ export function toDisplayLoad(
   isDumbbell: boolean
 ): number | null | undefined {
   if (lbs == null) return lbs;
-  return isDumbbell ? snapToDumbbell(lbs) : lbs;
+  return normalizeDisplayLoad(lbs, isDumbbell);
 }
 
 /**
@@ -65,9 +57,8 @@ export function toStoredLoad(
   displayLbs: number | null | undefined,
   isDumbbell: boolean
 ): number | null | undefined {
-  void isDumbbell;
   if (displayLbs == null) return displayLbs;
-  return displayLbs;
+  return normalizeDisplayLoad(displayLbs, isDumbbell);
 }
 
 /**
@@ -80,8 +71,8 @@ export function formatBaselineRange(
   isDumbbell: boolean
 ): string | undefined {
   if (min != null && max != null) {
-    const displayMin = isDumbbell ? snapToDumbbell(min) : min;
-    const displayMax = isDumbbell ? snapToDumbbell(max) : max;
+    const displayMin = normalizeDisplayLoad(min, isDumbbell);
+    const displayMax = normalizeDisplayLoad(max, isDumbbell);
     return `${displayMin}–${displayMax} lbs${isDumbbell ? " each" : ""}`;
   }
   return undefined;

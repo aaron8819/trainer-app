@@ -52,6 +52,7 @@ Sources of truth:
 - That hint is derived from the just-logged set plus the next unlogged set in the same exercise. It is not persisted and it is not a canonical progression artifact.
 - Canonical next-exposure load progression remains server-side in `src/lib/engine/apply-loads.ts` + `src/lib/engine/progression.ts`; the live cue must not redefine or override that logic.
 - Load-aware live cue copy may acknowledge `actualLoad` vs `targetLoad`, but it remains an explainability aid for the current session rather than a generator input.
+- Dumbbell load display/storage semantics must stay aligned with canonical `quantizeLoad()` in `src/lib/units/load-quantization.ts`. UI helpers in `src/lib/ui/load-display.ts` may format or convert per-hand values, but they must not maintain a separate dumbbell snap whitelist or alternate rounding policy.
 
 ## Canonical session-decision flow
 - Generation/finalization build the canonical session decision under `selectionMetadata.sessionDecisionReceipt` in `src/lib/api/template-session.ts`, with planning-critical seams in `src/lib/planning/session-opportunities.ts`, `src/lib/api/template-session/role-budgeting.ts`, and `src/lib/api/template-session/closure-actions.ts`.
@@ -138,6 +139,7 @@ SetLog / logged performance
   Future explainability changes should attach to one of those seams rather than adding new local policy forks inside the facade.
 - `WorkoutListSurfaceSummary` in `src/lib/ui/workout-list-items.ts` is the canonical workout/session summary read model for list surfaces. `/history`, `GET /api/workouts/history`, and the home-page Recent Workouts section should anchor on this shape rather than ad hoc row contracts.
 - Shared workout-list display semantics for those list surfaces now live with that contract in `src/lib/ui/workout-list-items.ts`: status labels/classes, intent labels, exercise/set count copy, and optional-session labeling are centralized there so Recent Workouts and History do not drift.
+- Mobile bottom-fixed surfaces use one shared visual-viewport seam in `src/lib/ui/use-visual-viewport-metrics.ts`. Global navigation and workout logging surfaces may consume its non-keyboard `bottomOffset` to track Safari visual-viewport drift, but they should not reintroduce one-off `visualViewport` listeners or separate drift heuristics.
 - Shared route-purpose/navigation metadata now lives in `src/lib/ui/app-surface-map.ts`. That metadata is a UI-navigation aid only; it does not own read-model semantics.
 - Persisted workout mesocycle snapshot columns (`mesocycleId`, `mesocycleWeekSnapshot`, `mesoSessionSnapshot`, `mesocyclePhaseSnapshot`) are canonical derived storage, but read-side consumers should normalize them before use:
   - engine/history readers use `mesocycleSnapshot` via `mapHistory()` in `src/lib/api/workout-context.ts`

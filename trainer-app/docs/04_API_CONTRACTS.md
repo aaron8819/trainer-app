@@ -73,7 +73,7 @@ Sources of truth:
 - Workout generation/save: `generateFromTemplateSchema`, `generateFromIntentSchema`, `saveWorkoutSchema`
 - Workout history query: `workoutHistoryQuerySchema` in `src/lib/validation.ts`; consumed by `GET /api/workouts/history`. Supports `intent`, `status` (comma-separated), `mesocycleId`, `from`/`to` date range, and cursor-based pagination (`cursor`, `take`). History items expose only a derived `sessionSnapshot` summary for week/session/phase badge rendering instead of parallel top-level snapshot fields in the response shape (`src/app/api/workouts/history/route.ts`).
 - Logging: `setLogSchema`
-- Dumbbell load contract: clients submit dumbbell `actualLoad` in per-hand units and `POST /api/logs/set` persists the provided per-hand value directly.
+- Dumbbell load contract: clients submit dumbbell `actualLoad` in per-hand units and `POST /api/logs/set` persists the provided per-hand value directly. Client read/write helpers must stay aligned with canonical 2.5 lb quantization in `src/lib/units/load-quantization.ts`; the API contract does not define a separate dumbbell snap whitelist.
 - Performed-set signal requirement: `POST /api/logs/set` returns 400 when a non-skipped set log supplies neither `actualReps` nor `actualRpe`. Unresolved sets must remain un-logged (missing) rather than being written as empty performed logs.
 - Bodyweight auto-normalization: when `targetLoad=0` and the set is not skipped, `actualLoad` is written as `0` even when the client omits it (`src/app/api/logs/set/route.ts`).
 - Templates: `createTemplateSchema`, `updateTemplateSchema`, `addExerciseToTemplateSchema`

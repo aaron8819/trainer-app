@@ -166,20 +166,27 @@ async function openWorkoutOptions(user: ReturnType<typeof userEvent.setup>) {
 }
 
 function setupVisualViewport(initialHeight = 800) {
-  let resizeHandler: (() => void) | undefined;
-  let scrollHandler: (() => void) | undefined;
+  const resizeHandlers = new Set<() => void>();
+  const scrollHandlers = new Set<() => void>();
   const mockViewport = {
     height: initialHeight,
     offsetTop: 0,
     addEventListener: vi.fn((_event: string, handler: () => void) => {
       if (_event === "resize") {
-        resizeHandler = handler;
+        resizeHandlers.add(handler);
       }
       if (_event === "scroll") {
-        scrollHandler = handler;
+        scrollHandlers.add(handler);
       }
     }),
-    removeEventListener: vi.fn(),
+    removeEventListener: vi.fn((_event: string, handler: () => void) => {
+      if (_event === "resize") {
+        resizeHandlers.delete(handler);
+      }
+      if (_event === "scroll") {
+        scrollHandlers.delete(handler);
+      }
+    }),
   };
   Object.defineProperty(window, "visualViewport", { configurable: true, value: mockViewport });
   Object.defineProperty(window, "innerHeight", { configurable: true, value: initialHeight });
@@ -187,7 +194,9 @@ function setupVisualViewport(initialHeight = 800) {
   return {
     setHeight(nextHeight: number) {
       mockViewport.height = nextHeight;
-      resizeHandler?.();
+      for (const handler of resizeHandlers) {
+        handler();
+      }
     },
     setViewport(next: { height?: number; offsetTop?: number }) {
       if (next.height != null) {
@@ -196,8 +205,12 @@ function setupVisualViewport(initialHeight = 800) {
       if (next.offsetTop != null) {
         mockViewport.offsetTop = next.offsetTop;
       }
-      resizeHandler?.();
-      scrollHandler?.();
+      for (const handler of resizeHandlers) {
+        handler();
+      }
+      for (const handler of scrollHandlers) {
+        handler();
+      }
     },
   };
 }
@@ -338,8 +351,8 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     await user.clear(loadInput);
     await user.type(loadInput, "52.5");
     fireEvent.blur(loadInput);
-    await user.click(screen.getByRole("button", { name: "Log set" }));
-    await user.click(screen.getByRole("button", { name: "Log set" }));
+    await clickResolvedSubmitButton(user);
+    await clickResolvedSubmitButton(user);
     await user.click(screen.getByRole("button", { name: "Finish workout" }));
     await user.click(screen.getByRole("button", { name: "Confirm" }));
 
@@ -1643,7 +1656,7 @@ describe("L-2/L-3/L-1/T-1/T-3 — Layout and UX fixes", () => {
     });
   });
 
-  it("bottom-fixed workout surfaces follow visual viewport drift when browser chrome shrinks without a keyboard", async () => {
+  it("completion dialog follows visual viewport drift when browser chrome shrinks without a keyboard", async () => {
     const viewport = setupVisualViewport();
     const user = userEvent.setup();
     const { container } = render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
@@ -1659,6 +1672,77 @@ describe("L-2/L-3/L-1/T-1/T-3 — Layout and UX fixes", () => {
         screen.getByTestId("workout-finish-bar").style.getPropertyValue("--workout-footer-viewport-offset")
       ).toBe("40px");
       expect(root.style.paddingBottom).toContain("var(--mobile-nav-height)");
+    });
+
+    await user.click(screen.getByRole("button", { name: "Finish workout" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("dialog", { name: "Workout completion confirmation" })).toHaveStyle({
+        bottom: "40px",
+      });
+    });
+  });
+
+  it("discard confirmation follows visual viewport drift when browser chrome shrinks without a keyboard", async () => {
+    const viewport = setupVisualViewport();
+    const user = userEvent.setup();
+    render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
+
+    await user.click(screen.getByRole("button", { name: "Log set" }));
+    await waitFor(() => expect(mockedLogSetRequest).toHaveBeenCalledTimes(1));
+
+    viewport.setViewport({ height: 760 });
+
+    await user.click(screen.getByRole("button", { name: /Set 1 OK 50 x 10 @8/ }));
+    const repsInput = await screen.findByLabelText("Reps");
+    await user.clear(repsInput);
+    await user.type(repsInput, "11");
+    await user.click(screen.getByRole("button", { name: "Return" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("dialog", { name: "Discard edit confirmation" })).toHaveStyle({
+        bottom: "40px",
+      });
+    });
+  });
+
+  it("keyboard viewport changes do not add fake bottom offset to the completion dialog", async () => {
+    const viewport = setupVisualViewport();
+    const user = userEvent.setup();
+    render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
+
+    await logAllSets(user);
+    viewport.setHeight(480);
+
+    await user.click(screen.getByRole("button", { name: "Finish workout" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("dialog", { name: "Workout completion confirmation" })).toHaveStyle({
+        bottom: "0px",
+      });
+    });
+  });
+
+  it("keyboard viewport changes do not add fake bottom offset to the discard confirmation", async () => {
+    const viewport = setupVisualViewport();
+    const user = userEvent.setup();
+    render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
+
+    await user.click(screen.getByRole("button", { name: "Log set" }));
+    await waitFor(() => expect(mockedLogSetRequest).toHaveBeenCalledTimes(1));
+
+    viewport.setHeight(480);
+
+    await user.click(screen.getByRole("button", { name: /Set 1 OK 50 x 10 @8/ }));
+    const repsInput = await screen.findByLabelText("Reps");
+    await user.clear(repsInput);
+    await user.type(repsInput, "11");
+    await user.click(screen.getByRole("button", { name: "Return" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("dialog", { name: "Discard edit confirmation" })).toHaveStyle({
+        bottom: "0px",
+      });
     });
   });
 });

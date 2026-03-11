@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useCallback } from "react";
+import { useVisualViewportMetrics } from "@/lib/ui/use-visual-viewport-metrics";
 
 type SlideUpSheetProps = {
   isOpen: boolean;
@@ -55,6 +56,33 @@ export function SlideUpSheet({ isOpen, onClose, title, children }: SlideUpSheetP
   if (!isOpen) return null;
 
   return (
+    <OpenSlideUpSheet
+      dialogRef={dialogRef}
+      handleBackdropClick={handleBackdropClick}
+      handleClose={handleClose}
+      title={title}
+    >
+      {children}
+    </OpenSlideUpSheet>
+  );
+}
+
+function OpenSlideUpSheet({
+  dialogRef,
+  handleBackdropClick,
+  handleClose,
+  title,
+  children,
+}: {
+  dialogRef: React.RefObject<HTMLDialogElement | null>;
+  handleBackdropClick: (event: React.MouseEvent<HTMLDialogElement>) => void;
+  handleClose: () => void;
+  title?: string;
+  children: React.ReactNode;
+}) {
+  const { bottomOffset } = useVisualViewportMetrics();
+
+  return (
     <dialog
       ref={dialogRef}
       onClick={handleBackdropClick}
@@ -64,7 +92,10 @@ export function SlideUpSheet({ isOpen, onClose, title, children }: SlideUpSheetP
       }
     >
       {/* Mobile: Slide-up sheet from bottom */}
-      <div className="flex h-full items-end md:items-center md:justify-center">
+      <div
+        className="flex h-full items-end md:items-center md:justify-center"
+        style={{ paddingBottom: `${bottomOffset}px` }}
+      >
         <div
           data-testid="slide-up-sheet-panel"
           className={

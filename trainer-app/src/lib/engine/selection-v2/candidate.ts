@@ -217,8 +217,17 @@ export function computeProposedSets(
 
   // G2: Training-age-aware set cap (KB §8)
   // Beginner 6-10 sets/week → smaller per-exercise cap; Advanced 16-25+ → larger cap
+  // Accessories are capped lower than main lifts to encourage volume distribution across
+  // multiple movements rather than loading all sets onto a single accessory exercise.
   const MAX_SETS_BY_AGE: Record<string, number> = { beginner: 4, intermediate: 5, advanced: 6 };
-  const MAX_SETS = MAX_SETS_BY_AGE[objective.trainingAge ?? "intermediate"] ?? 5;
+  const ACCESSORY_MAX_SETS_BY_AGE: Record<string, number> = {
+    beginner: 3,
+    intermediate: 4,
+    advanced: 4,
+  };
+  const MAX_SETS = isMainLift
+    ? (MAX_SETS_BY_AGE[objective.trainingAge ?? "intermediate"] ?? 5)
+    : (ACCESSORY_MAX_SETS_BY_AGE[objective.trainingAge ?? "intermediate"] ?? 4);
 
   // G3: Fat-loss goal multiplier (KB §8: reduce volume ~20-33% during caloric deficit)
   const goalMultiplier = objective.goals?.primary

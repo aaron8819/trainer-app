@@ -72,7 +72,7 @@ function makeExplanation(): WorkoutExplanation {
         "lat-pull",
         {
           action: "hold",
-          summary: "Next exposure: hold load for now.",
+          summary: "Next exposure: hold load.",
           reason: "Median reps stayed at 8 in the 8-12 band, so keep building reps before adding load.",
           anchorLoad: 40,
           repRange: { min: 8, max: 12 },
@@ -111,15 +111,16 @@ describe("buildPostWorkoutInsightsModel", () => {
     });
 
     expect(model.headline).toBe(
-      "Key lifts stayed on track, but nothing clearly earned a load jump yet."
+      "Key lifts point to a hold next time while reps keep building."
     );
-    expect(model.summary).toContain("next exposure still looks like a hold");
+    expect(model.summary).toContain("next exposure points to a hold");
     expect(model.overview.find((item) => item.label === "Next time")?.value).toContain(
       "Hold load on Lat Pulldown"
     );
     expect(model.overview.find((item) => item.label === "Next time")?.emphasized).toBe(true);
     expect(model.overview.some((item) => item.label === "Program impact")).toBe(false);
-    expect(model.keyLifts[0]?.nextTime).toContain("Next exposure: hold load for now.");
+    expect(model.keyLifts[0]?.badge).toBe("Hold next time");
+    expect(model.keyLifts[0]?.nextTime).toContain("Next exposure: hold load.");
     expect(model.keyLifts[0]?.todayContext).toContain("Today's written target moved from 35 lbs to 40 lbs");
     expect(model.programSignals[0]).toMatchObject({
       label: "Lats",

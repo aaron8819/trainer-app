@@ -576,8 +576,10 @@ describe("loadProgramDashboardData", () => {
     });
     expect(result.deloadReadiness?.reason).toContain("Front Delts");
     expect(result.deloadReadiness?.reason).toContain("Triceps");
-    expect(result.deloadReadiness?.reason).toContain("may be worth considering");
+    expect(result.deloadReadiness?.reason).toContain("Program-level recovery timing suggests");
+    expect(result.deloadReadiness?.reason).toContain("lighter week may be worth considering");
     expect(result.deloadReadiness?.reason).not.toContain("Consider taking a deload");
+    expect(result.deloadReadiness?.reason).not.toContain("Scheduled deload week");
   });
 
   it("fills missing trailing block coverage with a deload week for timeline continuity", async () => {

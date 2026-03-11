@@ -228,15 +228,15 @@ function DeloadBanner({ readiness }: { readiness: DeloadReadiness }) {
     recommended: "border-amber-200 bg-amber-50 text-amber-800",
     urgent: "border-red-200 bg-red-50 text-red-800",
   };
-  const icons: Record<DeloadReadiness["urgency"], string> = {
-    scheduled: "Blue",
-    recommended: "Watch",
-    urgent: "Alert",
+  const labels: Record<DeloadReadiness["urgency"], string> = {
+    scheduled: "Program timing",
+    recommended: "Program advisory",
+    urgent: "Program timing + advisory",
   };
 
   return (
     <div className={`rounded-xl border px-4 py-3 text-sm font-medium ${styles[readiness.urgency]}`}>
-      {icons[readiness.urgency]}: {readiness.reason}
+      {labels[readiness.urgency]}: {readiness.reason}
     </div>
   );
 }
@@ -336,7 +336,9 @@ function ProgramCardStatusRow({
             sessionsUntilDeload <= 3 ? "text-amber-700" : "text-slate-700"
           }`}
         >
-          {sessionsUntilDeload === 0 ? "Deload week" : `${sessionsUntilDeload} sessions until deload`}
+          {sessionsUntilDeload === 0
+            ? "Scheduled lighter week"
+            : `${sessionsUntilDeload} sessions until scheduled lighter week`}
         </p>
       ) : null}
     </div>

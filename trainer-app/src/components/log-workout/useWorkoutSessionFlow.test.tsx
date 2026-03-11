@@ -5,6 +5,7 @@ import * as workoutApi from "@/components/log-workout/api";
 import type { LogExerciseInput, NormalizedExercises } from "@/components/log-workout/types";
 import { useWorkoutSessionFlow } from "@/components/log-workout/useWorkoutSessionFlow";
 import { getNextUnloggedSetId } from "@/components/log-workout/useWorkoutLogState";
+import type { SaveWorkoutResponse, WorkoutStatus } from "@/lib/api/workout-save-contract";
 
 vi.mock("@/components/log-workout/api", () => ({
   logSetRequest: vi.fn(),
@@ -74,6 +75,30 @@ function parseNullableNumber(raw: string): number | null {
 
 function normalizeLoadInput(raw: string): number | null {
   return parseNullableNumber(raw);
+}
+
+function makeSaveWorkoutResponse(
+  workoutStatus: WorkoutStatus,
+  overrides: Partial<SaveWorkoutResponse & { baselineSummary?: unknown }> = {}
+) : Awaited<ReturnType<typeof workoutApi.saveWorkoutRequest>> {
+  const action: SaveWorkoutResponse["action"] =
+    workoutStatus === "SKIPPED"
+      ? "mark_skipped"
+      : workoutStatus === "PARTIAL"
+        ? "mark_partial"
+        : "mark_completed";
+
+  return {
+    data: {
+      status: "saved",
+      workoutId: "workout-1",
+      revision: 1,
+      workoutStatus,
+      action,
+      ...overrides,
+    },
+    error: null,
+  };
 }
 
 type HarnessCallbacks = {
@@ -218,10 +243,7 @@ describe("useWorkoutSessionFlow", () => {
   beforeEach(() => {
     mockedLogSetRequest.mockResolvedValue({ data: { status: "ok", wasCreated: true }, error: null });
     mockedDeleteSetLogRequest.mockResolvedValue({ data: { status: "ok" }, error: null });
-    mockedSaveWorkoutRequest.mockResolvedValue({
-      data: { status: "ok", workoutStatus: "COMPLETED" },
-      error: null,
-    });
+    mockedSaveWorkoutRequest.mockResolvedValue(makeSaveWorkoutResponse("COMPLETED"));
   });
 
   afterEach(() => {
@@ -277,10 +299,8 @@ describe("useWorkoutSessionFlow", () => {
 
   it("completes a workout and clears drafts/timer without reviving the removed baseline summary path", async () => {
     const callbacks = createCallbacks();
-    mockedSaveWorkoutRequest.mockResolvedValueOnce({
-      data: {
-        status: "ok",
-        workoutStatus: "COMPLETED",
+    mockedSaveWorkoutRequest.mockResolvedValueOnce(
+      makeSaveWorkoutResponse("COMPLETED", {
         baselineSummary: {
           context: "post-workout",
           evaluatedExercises: 1,
@@ -289,9 +309,8 @@ describe("useWorkoutSessionFlow", () => {
           items: [{ exerciseName: "Dumbbell Bench Press", newTopSetWeight: 55, reps: 11 }],
           skippedItems: [],
         },
-      },
-      error: null,
-    });
+      })
+    );
 
     render(<WorkoutSessionFlowHarness callbacks={callbacks} />);
     fireEvent.click(screen.getByRole("button", { name: "complete" }));
@@ -312,10 +331,9 @@ describe("useWorkoutSessionFlow", () => {
 
   it("keeps the logging flow active for partial saves", async () => {
     const callbacks = createCallbacks();
-    mockedSaveWorkoutRequest.mockResolvedValueOnce({
-      data: { status: "ok", workoutStatus: "PARTIAL" },
-      error: null,
-    });
+    mockedSaveWorkoutRequest.mockResolvedValueOnce(
+      makeSaveWorkoutResponse("PARTIAL", { action: "mark_partial" })
+    );
 
     render(<WorkoutSessionFlowHarness callbacks={callbacks} />);
     fireEvent.click(screen.getByRole("button", { name: "partial" }));
@@ -326,6 +344,32 @@ describe("useWorkoutSessionFlow", () => {
           workoutId: "workout-1",
           action: "mark_partial",
           status: "PARTIAL",
+        })
+      );
+      expect(callbacks.clearAllDraftsSpy).not.toHaveBeenCalled();
+      expect(screen.getByTestId("terminal-state")).toHaveTextContent("active");
+      expect(screen.getByTestId("timer-end")).toHaveTextContent("");
+      expect(screen.getByTestId("status")).toHaveTextContent(
+        "Workout saved as partial (some planned sets were unresolved)"
+      );
+    });
+  });
+
+  it("keeps the logging flow active when mark_completed persists as partial", async () => {
+    const callbacks = createCallbacks();
+    mockedSaveWorkoutRequest.mockResolvedValueOnce(
+      makeSaveWorkoutResponse("PARTIAL", { action: "mark_completed" })
+    );
+
+    render(<WorkoutSessionFlowHarness callbacks={callbacks} />);
+    fireEvent.click(screen.getByRole("button", { name: "complete" }));
+
+    await waitFor(() => {
+      expect(mockedSaveWorkoutRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          workoutId: "workout-1",
+          action: "mark_completed",
+          status: "COMPLETED",
         })
       );
       expect(callbacks.clearAllDraftsSpy).not.toHaveBeenCalled();

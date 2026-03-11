@@ -394,7 +394,7 @@ describe("generateWorkoutExplanation progression receipt", () => {
     expect(priorContext?.trigger).toBe("double_progression");
     expect(nextExposure).toMatchObject({
       action: "hold",
-      summary: "Next exposure: hold load for now.",
+      summary: "Next exposure: hold load.",
       anchorLoad: 40,
       medianReps: 8,
       modalRpe: 8,
@@ -455,7 +455,7 @@ describe("generateWorkoutExplanation progression receipt", () => {
     if ("error" in result) return;
 
     expect(result.progressionReceipts.get("ex1")?.trigger).toBe("double_progression");
-    expect(result.nextExposureDecisions.get("ex1")?.summary).toBe("Next exposure: hold load for now.");
+    expect(result.nextExposureDecisions.get("ex1")?.summary).toBe("Next exposure: hold load.");
     expect(result.nextExposureDecisions.get("ex1")?.reason).toContain("keep building reps before adding load");
   });
 
@@ -639,7 +639,7 @@ describe("generateWorkoutExplanation progression receipt", () => {
 
     expect(result.nextExposureDecisions.get("ex1")).toMatchObject({
       action: "hold",
-      summary: "Next exposure: hold load for now.",
+      summary: "Next exposure: hold load.",
       anchorLoad: 40,
       medianReps: 12,
       modalRpe: 7,
@@ -745,7 +745,7 @@ describe("generateWorkoutExplanation progression receipt", () => {
 
     expect(result.nextExposureDecisions.get("ex1")).toMatchObject({
       action: "increase",
-      summary: "Next exposure: likely increase load.",
+      summary: "Next exposure: increase load.",
       anchorLoad: 40,
       medianReps: 12,
       modalRpe: 7,
@@ -860,7 +860,7 @@ describe("generateWorkoutExplanation progression receipt", () => {
     );
     expect(result.nextExposureDecisions.get("ex1")).toMatchObject({
       action: "increase",
-      summary: "Next exposure: likely increase load.",
+      summary: "Next exposure: increase load.",
       anchorLoad: 45,
       medianReps: 12,
       modalRpe: 7,

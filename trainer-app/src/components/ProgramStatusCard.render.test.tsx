@@ -342,7 +342,7 @@ describe("ProgramStatusCard opportunity state", () => {
             deloadReadiness: {
               shouldDeload: true,
               urgency: "scheduled",
-              reason: "Deload week",
+              reason: "Scheduled lighter week in the plan.",
             },
           }
         ),
@@ -378,9 +378,44 @@ describe("ProgramStatusCard opportunity state", () => {
     expect(screen.getByText("Volume - Week 3 of 5")).toBeInTheDocument();
     expect(screen.getByText("Viewing Week 3 - read only")).toBeInTheDocument();
     expect(screen.getByText("Back")).toBeInTheDocument();
-    expect(screen.queryByText("3 sessions until deload")).not.toBeInTheDocument();
-    expect(screen.queryByText(/Deload week/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("3 sessions until scheduled lighter week")
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/Scheduled lighter week/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Today:/)).not.toBeInTheDocument();
+  });
+});
+
+describe("ProgramStatusCard lighter-week language", () => {
+  it("frames current-week recovery guidance as program timing or advisory copy", () => {
+    const data = buildCurrentWeekData([
+      withOpportunity({
+        muscle: "Chest",
+        effectiveSets: 4,
+        directSets: 4,
+        indirectSets: 0,
+        target: 10,
+        mev: 6,
+        mav: 16,
+        mrv: 22,
+      }),
+    ]);
+    data.sessionsUntilDeload = 0;
+    data.deloadReadiness = {
+      shouldDeload: true,
+      urgency: "recommended",
+      reason: "Program-level recovery timing suggests a lighter week may be worth considering.",
+    };
+
+    render(<ProgramStatusCard initialData={data} />);
+
+    expect(screen.getByText("Scheduled lighter week")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Program advisory: Program-level recovery timing suggests a lighter week may be worth considering."
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/^Deload week$/)).not.toBeInTheDocument();
   });
 });
 
@@ -478,7 +513,7 @@ describe("ProgramStatusCard homeCompact variant", () => {
     expect(screen.getByText("Strength-Hypertrophy")).toBeInTheDocument();
     expect(screen.getByText("Week 4 of 5")).toBeInTheDocument();
     expect(screen.getByText("0-1 RIR")).toBeInTheDocument();
-    expect(screen.getByText("3 sessions until deload")).toBeInTheDocument();
+    expect(screen.getByText("3 sessions until scheduled lighter week")).toBeInTheDocument();
     expect(screen.getByText("Build volume.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open program details" })).toHaveAttribute(
       "href",

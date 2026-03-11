@@ -34,6 +34,7 @@ import {
 } from "./status-machine";
 import { isStrictOptionalGapFillSession } from "@/lib/gap-fill/classifier";
 import { isStrictSupplementalDeficitSession } from "@/lib/session-semantics/supplemental-classifier";
+import type { SaveWorkoutResponse } from "@/lib/api/workout-save-contract";
 type JsonObject = Record<string, unknown>;
 
 function toObject(value: unknown): JsonObject {
@@ -609,11 +610,13 @@ export async function POST(request: Request) {
     throw error;
   }
 
-  return NextResponse.json({
+  const responseBody = {
     status: "saved",
     workoutId: parsed.data.workoutId,
     revision: persistedRevision,
     workoutStatus: finalStatus,
     action,
-  });
+  } satisfies SaveWorkoutResponse;
+
+  return NextResponse.json(responseBody);
 }

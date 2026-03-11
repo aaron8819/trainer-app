@@ -1,10 +1,11 @@
 import type { FilteredExerciseSummary } from "@/lib/engine/explainability";
+import type { SaveWorkoutResponse } from "@/lib/api/workout-save-contract";
+import type { WorkoutStatus } from "@/lib/api/workout-save-contract";
 import type { SaveableSelectionMetadata } from "@/lib/ui/selection-metadata";
 
 type ApiResult<T> = { data: T; error: null } | { data: null; error: string };
 
 type WorkoutSaveAction = "save_plan" | "mark_completed" | "mark_partial" | "mark_skipped";
-type WorkoutStatus = "PLANNED" | "IN_PROGRESS" | "PARTIAL" | "COMPLETED" | "SKIPPED";
 type WorkoutSelectionMode = "AUTO" | "MANUAL" | "BONUS" | "INTENT";
 type WorkoutSessionIntentDb = "PUSH" | "PULL" | "LEGS" | "UPPER" | "LOWER" | "FULL_BODY" | "BODY_PART";
 type WorkoutForcedSplit = "PUSH" | "PULL" | "LEGS" | "UPPER" | "LOWER" | "FULL_BODY";
@@ -89,12 +90,8 @@ export async function deleteSetLogRequest(workoutSetId: string): Promise<ApiResu
   return parseJsonResponse(response);
 }
 
-export async function saveWorkoutRequest(payload: SaveWorkoutRequestPayload): Promise<ApiResult<{
-  status: string;
+export async function saveWorkoutRequest(payload: SaveWorkoutRequestPayload): Promise<ApiResult<SaveWorkoutResponse & {
   baselineSummary?: unknown;
-  revision?: number;
-  workoutStatus?: string;
-  action?: string;
 }>> {
   const response = await fetch("/api/workouts/save", {
     method: "POST",

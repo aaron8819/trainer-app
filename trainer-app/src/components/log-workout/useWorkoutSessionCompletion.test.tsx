@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as workoutApi from "@/components/log-workout/api";
 import { useWorkoutSessionCompletion } from "@/components/log-workout/useWorkoutSessionCompletion";
+import type { SaveWorkoutResponse, WorkoutStatus } from "@/lib/api/workout-save-contract";
 
 vi.mock("@/components/log-workout/api", () => ({
   saveWorkoutRequest: vi.fn(),
@@ -100,12 +101,33 @@ function createCallbacks(): CompletionHarnessCallbacks {
   };
 }
 
+function makeSaveWorkoutResponse(
+  workoutStatus: WorkoutStatus,
+  overrides: Partial<SaveWorkoutResponse & { baselineSummary?: unknown }> = {}
+) : Awaited<ReturnType<typeof workoutApi.saveWorkoutRequest>> {
+  const action: SaveWorkoutResponse["action"] =
+    workoutStatus === "SKIPPED"
+      ? "mark_skipped"
+      : workoutStatus === "PARTIAL"
+        ? "mark_partial"
+        : "mark_completed";
+
+  return {
+    data: {
+      status: "saved",
+      workoutId: "workout-1",
+      revision: 1,
+      workoutStatus,
+      action,
+      ...overrides,
+    },
+    error: null,
+  };
+}
+
 describe("useWorkoutSessionCompletion", () => {
   beforeEach(() => {
-    mockedSaveWorkoutRequest.mockResolvedValue({
-      data: { status: "ok", workoutStatus: "COMPLETED" },
-      error: null,
-    });
+    mockedSaveWorkoutRequest.mockResolvedValue(makeSaveWorkoutResponse("COMPLETED"));
   });
 
   afterEach(() => {
@@ -115,10 +137,8 @@ describe("useWorkoutSessionCompletion", () => {
 
   it("owns terminal completion state without showing the removed baseline summary card path", async () => {
     const callbacks = createCallbacks();
-    mockedSaveWorkoutRequest.mockResolvedValueOnce({
-      data: {
-        status: "ok",
-        workoutStatus: "COMPLETED",
+    mockedSaveWorkoutRequest.mockResolvedValueOnce(
+      makeSaveWorkoutResponse("COMPLETED", {
         baselineSummary: {
           context: "post-workout",
           evaluatedExercises: 1,
@@ -127,9 +147,8 @@ describe("useWorkoutSessionCompletion", () => {
           items: [{ exerciseName: "Bench", newTopSetWeight: 55, reps: 11 }],
           skippedItems: [],
         },
-      },
-      error: null,
-    });
+      })
+    );
 
     render(<CompletionHarness callbacks={callbacks} />);
     fireEvent.click(screen.getByRole("button", { name: "open-complete" }));
@@ -152,6 +171,9 @@ describe("useWorkoutSessionCompletion", () => {
 
   it("owns skip confirmation state and submits skip reason", async () => {
     const callbacks = createCallbacks();
+    mockedSaveWorkoutRequest.mockResolvedValueOnce(
+      makeSaveWorkoutResponse("SKIPPED", { action: "mark_skipped" })
+    );
 
     render(<CompletionHarness callbacks={callbacks} />);
     fireEvent.click(screen.getByRole("button", { name: "toggle-skip" }));
@@ -174,10 +196,9 @@ describe("useWorkoutSessionCompletion", () => {
 
   it("keeps the session active for partial saves", async () => {
     const callbacks = createCallbacks();
-    mockedSaveWorkoutRequest.mockResolvedValueOnce({
-      data: { status: "ok", workoutStatus: "PARTIAL" },
-      error: null,
-    });
+    mockedSaveWorkoutRequest.mockResolvedValueOnce(
+      makeSaveWorkoutResponse("PARTIAL", { action: "mark_partial" })
+    );
 
     render(<CompletionHarness callbacks={callbacks} />);
     fireEvent.click(screen.getByRole("button", { name: "partial" }));
@@ -188,6 +209,32 @@ describe("useWorkoutSessionCompletion", () => {
           workoutId: "workout-1",
           action: "mark_partial",
           status: "PARTIAL",
+        })
+      );
+      expect(screen.getByTestId("terminal-state")).toHaveTextContent("active");
+      expect(screen.getByTestId("clear-drafts")).toHaveTextContent("0");
+      expect(screen.getByTestId("clear-timer")).toHaveTextContent("1");
+      expect(screen.getByTestId("show-status")).toHaveTextContent(
+        "Workout saved as partial (some planned sets were unresolved)"
+      );
+    });
+  });
+
+  it("keeps the session active when mark_completed persists as partial", async () => {
+    const callbacks = createCallbacks();
+    mockedSaveWorkoutRequest.mockResolvedValueOnce(
+      makeSaveWorkoutResponse("PARTIAL", { action: "mark_completed" })
+    );
+
+    render(<CompletionHarness callbacks={callbacks} />);
+    fireEvent.click(screen.getByRole("button", { name: "complete" }));
+
+    await waitFor(() => {
+      expect(mockedSaveWorkoutRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          workoutId: "workout-1",
+          action: "mark_completed",
+          status: "COMPLETED",
         })
       );
       expect(screen.getByTestId("terminal-state")).toHaveTextContent("active");

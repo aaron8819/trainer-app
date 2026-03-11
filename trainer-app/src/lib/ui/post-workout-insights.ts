@@ -8,6 +8,7 @@ import {
   getWeeklyMuscleStatus,
   type WeeklyMuscleStatus,
 } from "@/lib/ui/weekly-muscle-status";
+import { getCanonicalNextExposureCopy } from "@/lib/ui/next-exposure-copy";
 
 export type ReviewedExerciseMeta = {
   exerciseId: string;
@@ -27,6 +28,7 @@ export type PostWorkoutOverviewItem = {
 export type PostWorkoutKeyLiftInsight = {
   exerciseId: string;
   exerciseName: string;
+  action: NextExposureDecision["action"];
   badge: string;
   tone: PostWorkoutInsightTone;
   performed: string;
@@ -139,13 +141,7 @@ function toneForAction(action: NextExposureDecision["action"]): PostWorkoutInsig
 }
 
 function badgeForAction(action: NextExposureDecision["action"]): string {
-  if (action === "increase") {
-    return "Likely increase";
-  }
-  if (action === "decrease") {
-    return "Likely reduce";
-  }
-  return "Hold";
+  return getCanonicalNextExposureCopy(action).badge;
 }
 
 function describeVolumeSignal(status: WeeklyMuscleStatus, muscle: string): string {
@@ -245,6 +241,7 @@ function buildKeyLiftInsights(
       {
         exerciseId: exercise.exerciseId,
         exerciseName: exercise.exerciseName,
+        action: decision.action,
         badge: badgeForAction(decision.action),
         tone: toneForAction(decision.action),
         performed: describePerformedSignal(decision),
@@ -256,20 +253,21 @@ function buildKeyLiftInsights(
 }
 
 function buildHeadline(keyLifts: PostWorkoutKeyLiftInsight[]): string {
-  const increaseCount = keyLifts.filter((lift) => lift.badge === "Likely increase").length;
-  const decreaseCount = keyLifts.filter((lift) => lift.badge === "Likely reduce").length;
+  const increaseCount = keyLifts.filter((lift) => lift.action === "increase").length;
+  const decreaseCount = keyLifts.filter((lift) => lift.action === "decrease").length;
+  const holdCount = keyLifts.filter((lift) => lift.action === "hold").length;
 
   if (decreaseCount > 0) {
-    return "At least one key lift needs a more conservative next exposure.";
+    return "At least one key lift points to a reduction next time.";
   }
   if (increaseCount > 0 && increaseCount < keyLifts.length) {
-    return "Some key lifts are ready to move up, while others should stay put.";
+    return "Some key lifts point to an increase next time, while others should hold.";
   }
   if (increaseCount > 0) {
-    return "Key lift performance likely earned a load increase next time.";
+    return "Key lifts point to an increase next time.";
   }
-  if (keyLifts.length > 0) {
-    return "Key lifts stayed on track, but nothing clearly earned a load jump yet.";
+  if (holdCount > 0) {
+    return "Key lifts point to a hold next time while reps keep building.";
   }
   return "Session logged. Review the detailed set log below.";
 }
@@ -279,20 +277,20 @@ function buildSummary(
   programSignals: PostWorkoutProgramSignal[]
 ): string {
   const increaseNames = keyLifts
-    .filter((lift) => lift.badge === "Likely increase")
+    .filter((lift) => lift.action === "increase")
     .map((lift) => lift.exerciseName);
   const decreaseNames = keyLifts
-    .filter((lift) => lift.badge === "Likely reduce")
+    .filter((lift) => lift.action === "decrease")
     .map((lift) => lift.exerciseName);
 
   if (decreaseNames.length > 0) {
     return `Keep the next exposure conservative on ${formatExerciseNameList(decreaseNames)}.`;
   }
   if (increaseNames.length > 0) {
-    return `The next exposure can likely move up on ${formatExerciseNameList(increaseNames)} if setup and readiness feel normal.`;
+    return `The next exposure points to an increase on ${formatExerciseNameList(increaseNames)} if setup and readiness feel normal.`;
   }
   if (keyLifts.length > 0) {
-    return "The session moved forward, but the next exposure still looks like a hold while reps keep building.";
+    return "The next exposure points to a hold while reps keep building.";
   }
   if (programSignals.length > 0) {
     return programSignals[0].value;
@@ -305,33 +303,33 @@ function buildOverview(
   programSignals: PostWorkoutProgramSignal[]
 ): PostWorkoutOverviewItem[] {
   const increaseNames = keyLifts
-    .filter((lift) => lift.badge === "Likely increase")
+    .filter((lift) => lift.action === "increase")
     .map((lift) => lift.exerciseName);
   const holdNames = keyLifts
-    .filter((lift) => lift.badge === "Hold")
+    .filter((lift) => lift.action === "hold")
     .map((lift) => lift.exerciseName);
   const reduceNames = keyLifts
-    .filter((lift) => lift.badge === "Likely reduce")
+    .filter((lift) => lift.action === "decrease")
     .map((lift) => lift.exerciseName);
 
   const howItWent =
     reduceNames.length > 0
       ? `${reduceNames.length} key lift${reduceNames.length === 1 ? "" : "s"} came back with a caution signal.`
       : increaseNames.length > 0
-      ? `${increaseNames.length} key lift${increaseNames.length === 1 ? "" : "s"} likely earned more load next time.`
+      ? `${increaseNames.length} key lift${increaseNames.length === 1 ? "" : "s"} point${increaseNames.length === 1 ? "s" : ""} to an increase next time.`
       : holdNames.length > 0
-      ? `${holdNames.length} key lift${holdNames.length === 1 ? "" : "s"} stayed in hold territory.`
+      ? `${holdNames.length} key lift${holdNames.length === 1 ? "" : "s"} point${holdNames.length === 1 ? "s" : ""} to a hold next time.`
       : "No key-lift progression call was available.";
 
   const nextTime =
     reduceNames.length > 0
-      ? `Reduce load or re-check setup on ${formatExerciseNameList(reduceNames)} next time.`
+      ? `${getCanonicalNextExposureCopy("decrease").actionPhrase} on ${formatExerciseNameList(reduceNames)}.`
       : increaseNames.length > 0 && holdNames.length > 0
-      ? `Increase ${formatExerciseNameList(increaseNames)}; hold ${formatExerciseNameList(holdNames)}.`
+      ? `${getCanonicalNextExposureCopy("increase").actionPhrase} on ${formatExerciseNameList(increaseNames)}; ${getCanonicalNextExposureCopy("hold").actionPhrase.toLowerCase()} on ${formatExerciseNameList(holdNames)}.`
       : increaseNames.length > 0
-      ? `Increase load on ${formatExerciseNameList(increaseNames)} next time.`
+      ? `${getCanonicalNextExposureCopy("increase").actionPhrase} on ${formatExerciseNameList(increaseNames)}.`
       : holdNames.length > 0
-      ? `Hold load on ${formatExerciseNameList(holdNames)} and keep building reps.`
+      ? `${getCanonicalNextExposureCopy("hold").actionPhrase} on ${formatExerciseNameList(holdNames)} and keep building reps.`
       : "Use the detailed lift cards below for the next-exposure read.";
 
   return [

@@ -125,6 +125,26 @@ describe("exercise exposure", () => {
     );
   });
 
+  it("does not treat load-only rows as performed exposure stimulus", async () => {
+    mocks.workoutFindUnique.mockResolvedValue({
+      id: "workout-1",
+      status: "COMPLETED",
+      exercises: [
+        {
+          exercise: { name: "Bench Press" },
+          sets: [
+            { logs: [{ actualReps: null, actualRpe: null, actualLoad: 185, wasSkipped: false }] },
+          ],
+        },
+      ],
+    });
+
+    await updateExerciseExposure("user-1", "workout-1");
+
+    expect(mocks.workoutExerciseCount).not.toHaveBeenCalled();
+    expect(mocks.exerciseExposureUpsert).not.toHaveBeenCalled();
+  });
+
   it("preserves selection history for genuinely performed exercises", async () => {
     mocks.exerciseExposureFindMany.mockResolvedValue([
       {

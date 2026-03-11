@@ -51,6 +51,9 @@ import {
   type CanonicalProgressionHistorySession,
 } from "@/lib/progression/canonical-progression-input";
 import { derivePerformedExerciseSemantics } from "@/lib/session-semantics/performed-exercise-semantics";
+import { classifySetLog } from "@/lib/session-semantics/set-classification";
+import { resolveTargetRepRange } from "@/lib/session-semantics/target-evaluation";
+import { getCanonicalNextExposureCopy } from "@/lib/ui/next-exposure-copy";
 
 const HISTORY_RECENCY_WINDOW_DAYS = 42;
 const CANONICAL_RATIONALE_COMPONENT_KEYS = [
@@ -184,9 +187,13 @@ export async function generateWorkoutExplanation(
     prescriptionRationales.set(workoutExercise.exerciseId, rationale);
 
     const topSet = engineSets.find((set) => set.targetReps != null || set.targetRepRange != null);
-    const repRange: [number, number] = topSet?.targetRepRange
-      ? [topSet.targetRepRange.min, topSet.targetRepRange.max]
-      : [topSet?.targetReps ?? 8, topSet?.targetReps ?? 8];
+    const effectiveRepRange = resolveTargetRepRange({
+      targetReps: topSet?.targetReps,
+      targetRepRange: topSet?.targetRepRange,
+    });
+    const repRange: [number, number] = effectiveRepRange
+      ? [effectiveRepRange.min, effectiveRepRange.max]
+      : [8, 8];
     const isMainLiftEligible = workoutExercise.exercise.isMainLiftEligible ?? workoutExercise.isMainLift;
     const equipmentTypes = workoutExercise.exercise.exerciseEquipment.map((item) => item.equipment.type);
     const lastPerformed = await loadLatestPerformedSetSummary(
@@ -1122,12 +1129,7 @@ async function buildNextExposureDecision(
 
   return {
     action,
-    summary:
-      action === "increase"
-        ? "Next exposure: likely increase load."
-        : action === "decrease"
-        ? "Next exposure: likely reduce load."
-        : "Next exposure: hold load for now.",
+    summary: getCanonicalNextExposureCopy(action).summary,
     reason: formatNextExposureReason({
       action,
       repRange,
@@ -1328,7 +1330,7 @@ async function computeVolumeCompliance(
   const plannedEffectiveVolumeThisSession = new Map<string, number>();
   for (const we of workout.exercises) {
     const prescribedSets = we.sets.filter(
-      (s) => !s.logs[0]?.wasSkipped
+      (s) => !classifySetLog(s.logs[0]).isSkipped
     ).length;
     const exercise = exerciseById.get(we.exerciseId);
     if (!exercise || prescribedSets === 0) {

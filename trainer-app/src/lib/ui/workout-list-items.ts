@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { buildWorkoutSessionSnapshotSummary } from "./workout-session-snapshot";
+import { classifySetLog } from "@/lib/session-semantics/set-classification";
 import {
   formatGapFillMuscleList,
   isGapFillWorkout,
@@ -30,9 +31,14 @@ export const workoutListItemSelect = {
     select: {
       sets: {
         select: {
-          _count: {
+          logs: {
+            orderBy: { completedAt: "desc" },
+            take: 1,
             select: {
-              logs: { where: { wasSkipped: false } },
+              actualReps: true,
+              actualRpe: true,
+              actualLoad: true,
+              wasSkipped: true,
             },
           },
         },
@@ -127,7 +133,12 @@ export function formatWorkoutListLoggedSetsLabel(totalSetsLogged: number): strin
 }
 
 function countLoggedSets(row: WorkoutListItemRow): number {
-  return row.exercises.flatMap((exercise) => exercise.sets).reduce((sum, set) => sum + set._count.logs, 0);
+  return row.exercises
+    .flatMap((exercise) => exercise.sets)
+    .reduce((sum, set) => {
+      const latestLog = set.logs?.[0];
+      return sum + (latestLog && classifySetLog(latestLog).isPerformed ? 1 : 0);
+    }, 0);
 }
 
 export function buildWorkoutListSurfaceSummary(

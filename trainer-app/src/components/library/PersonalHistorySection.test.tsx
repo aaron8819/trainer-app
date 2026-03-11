@@ -30,17 +30,24 @@ describe("PersonalHistorySection", () => {
     );
   });
 
-  it("shows a weaker recent-trend label instead of strong improvement language", async () => {
+  it("frames history as descriptive logs rather than next-session progression guidance", async () => {
     render(<PersonalHistorySection exerciseId="bench" />);
 
     await waitFor(() => {
-      expect(screen.getByText("Recent top-set trend")).toBeInTheDocument();
+      expect(screen.getByText("Recent logged trend")).toBeInTheDocument();
     });
 
-    expect(screen.getByText("Higher than earlier recent logs")).toBeInTheDocument();
-    expect(screen.getByText("Best load: 225lb")).toBeInTheDocument();
+    expect(screen.getByText("Trending above earlier recent logs")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Descriptive history only. Use the workout review for next-session progression guidance."
+      )
+    ).toBeInTheDocument();
+    expect(screen.getByText("Recent logged best load: 225lb")).toBeInTheDocument();
+    expect(screen.getByText("Recent logged best reps: 10")).toBeInTheDocument();
     expect(screen.queryByText("Improving")).not.toBeInTheDocument();
     expect(screen.queryByText("Declining")).not.toBeInTheDocument();
     expect(screen.queryByText("Stable")).not.toBeInTheDocument();
+    expect(screen.queryByText(/next exposure/i)).not.toBeInTheDocument();
   });
 });

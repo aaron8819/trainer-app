@@ -47,11 +47,6 @@ export function useVisualViewportMetrics(): VisualViewportMetrics {
 
   useEffect(() => {
     if (!window.visualViewport) {
-      setMetrics({
-        keyboardOpen: false,
-        keyboardHeight: 0,
-        bottomOffset: 0,
-      });
       return;
     }
 

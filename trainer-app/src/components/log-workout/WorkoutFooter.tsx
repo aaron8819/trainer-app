@@ -13,9 +13,10 @@ export function WorkoutFooter({
   bottomOffset = 0,
   viewportBottomOffset = 0,
 }: Props) {
+  const viewportOffsetVar = "--workout-footer-viewport-offset" as const;
   const stickyStyle: CSSProperties | undefined = sticky
     ? ({
-        ["--workout-footer-viewport-offset" as "--workout-footer-viewport-offset"]: `${viewportBottomOffset}px`,
+        [viewportOffsetVar]: `${viewportBottomOffset}px`,
         ...(bottomOffset > 0 ? { bottom: `${bottomOffset}px` } : {}),
         paddingBottom:
           bottomOffset > 0 ? "0.75rem" : "max(0.75rem, env(safe-area-inset-bottom, 0px))",

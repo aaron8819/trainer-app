@@ -11,6 +11,7 @@ import {
   hasPerformedHistory,
   isPerformedWorkoutStatus,
 } from "@/lib/ui/session-overview";
+import { evaluateTargetReps } from "@/lib/session-semantics/target-evaluation";
 import { buildSessionSummaryModel } from "@/lib/ui/session-summary";
 import { getWorkoutDetailTitle, getWorkoutWorkflowState } from "@/lib/workout-workflow";
 
@@ -283,21 +284,27 @@ export default async function WorkoutDetailPage({
                       <div className="mt-3 grid gap-2 text-sm text-slate-600">
                         {exercise.sets.map((set) => {
                           const log = set.logs[0];
-                          const repDiff = hasPerformedStatus && log && !log.wasSkipped
-                            ? (log.actualReps ?? 0) - (set.targetReps ?? 0)
-                            : null;
+                          const repEvaluation =
+                            hasPerformedStatus && log && !log.wasSkipped
+                              ? evaluateTargetReps({
+                                  actualReps: log.actualReps,
+                                  targetReps: set.targetReps,
+                                  targetRepMin: set.targetRepMin,
+                                  targetRepMax: set.targetRepMax,
+                                })
+                              : null;
                           const loadMiss =
                             log?.actualLoad != null && set.targetLoad != null
                               ? log.actualLoad < set.targetLoad * 0.9
                               : false;
                           const actualColor =
-                            repDiff === null
+                            repEvaluation == null || repEvaluation.kind === "missing_actual" || repEvaluation.kind === "missing_target"
                               ? "text-slate-500"
-                              : repDiff >= 0 && !loadMiss
+                              : (repEvaluation.kind === "in_range" || repEvaluation.kind === "above") && !loadMiss
                               ? "text-emerald-700"
-                              : repDiff >= 0 && loadMiss
+                              : (repEvaluation.kind === "in_range" || repEvaluation.kind === "above") && loadMiss
                               ? "text-amber-700"
-                              : repDiff === -1
+                              : repEvaluation.kind === "below" && repEvaluation.deviation === -1
                               ? "text-amber-700"
                               : "text-rose-700";
 
@@ -327,7 +334,12 @@ export default async function WorkoutDetailPage({
                                         ]
                                           .filter(Boolean)
                                           .join(" | ")}
-                                    {!log.wasSkipped && repDiff !== null && repDiff >= 0 && !loadMiss ? " OK" : ""}
+                                    {!log.wasSkipped &&
+                                    repEvaluation != null &&
+                                    (repEvaluation.kind === "in_range" || repEvaluation.kind === "above") &&
+                                    !loadMiss
+                                      ? " OK"
+                                      : ""}
                                   </div>
                                   {loadMiss && !log.wasSkipped && log.actualLoad != null && set.targetLoad != null ? (
                                     <div className="mt-0.5 text-xs text-slate-500">

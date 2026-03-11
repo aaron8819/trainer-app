@@ -139,7 +139,7 @@ describe("WorkoutDetailPage", { timeout: 15000 }, () => {
           "lat-pull",
           {
             action: "hold",
-            summary: "Next exposure: hold load for now.",
+            summary: "Next exposure: hold load.",
             reason:
               "Median reps stayed at 8 in the 8-12 band, so keep building reps before adding load.",
             anchorLoad: 40,
@@ -205,11 +205,12 @@ describe("WorkoutDetailPage", { timeout: 15000 }, () => {
 
     expect(screen.getByText("Session outcome")).toBeInTheDocument();
     expect(
-      screen.getByText("Key lifts stayed on track, but nothing clearly earned a load jump yet.")
+      screen.getByText("Key lifts point to a hold next time while reps keep building.")
     ).toBeInTheDocument();
     expect(screen.getByText("Key lift takeaways")).toBeInTheDocument();
     expect(screen.getByText("Today's target context")).toBeInTheDocument();
-    expect(screen.getByText(/Next exposure: hold load for now\./)).toBeInTheDocument();
+    expect(screen.getByText(/Next exposure: hold load\./)).toBeInTheDocument();
     expect(screen.getAllByText("Program impact")).toHaveLength(1);
+    expect(screen.getByText(/Actual: 8 reps \| 40 lbs \| RPE 8 OK/)).toHaveClass("text-emerald-700");
   });
 });

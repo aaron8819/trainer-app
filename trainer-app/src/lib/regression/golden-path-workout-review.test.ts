@@ -371,7 +371,7 @@ describe("golden-path completed workout regression", () => {
 
     expect(nextExposureDecision).toMatchObject({
       action: canonicalAction,
-      summary: "Next exposure: hold load for now.",
+      summary: "Next exposure: hold load.",
       reason: "Median reps stayed at 8 in the 8-10 band, so keep building reps before adding load.",
       anchorLoad: canonicalDecision.anchorLoad,
       repRange: { min: 8, max: 10 },
@@ -398,15 +398,15 @@ describe("golden-path completed workout regression", () => {
     });
 
     expect(completionReviewModel.headline).toBe(
-      "Key lifts stayed on track, but nothing clearly earned a load jump yet."
+      "Key lifts point to a hold next time while reps keep building."
     );
     expect(completionReviewModel.summary).toBe(
-      "The session moved forward, but the next exposure still looks like a hold while reps keep building."
+      "The next exposure points to a hold while reps keep building."
     );
     expect(completionReviewModel.overview).toEqual([
       {
         label: "How it went",
-        value: "1 key lift stayed in hold territory.",
+        value: "1 key lift points to a hold next time.",
         tone: "neutral",
       },
       {
@@ -419,11 +419,11 @@ describe("golden-path completed workout regression", () => {
     expect(completionReviewModel.keyLifts[0]).toMatchObject({
       exerciseId: "barbell-row",
       exerciseName: "Barbell Row",
-      badge: "Hold",
+      badge: "Hold next time",
       performed: "Today's performed signal centered on 160 lbs at median 8 reps at modal RPE 8.",
       todayContext: "Today's written target moved from 150 lbs to 155 lbs (+3.3%).",
       nextTime:
-        "Next exposure: hold load for now. Median reps stayed at 8 in the 8-10 band, so keep building reps before adding load.",
+        "Next exposure: hold load. Median reps stayed at 8 in the 8-10 band, so keep building reps before adding load.",
     });
 
     expect(workoutReviewModel.headline).toBe(completionReviewModel.headline);

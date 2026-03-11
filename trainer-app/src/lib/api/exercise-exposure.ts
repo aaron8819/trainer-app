@@ -6,6 +6,7 @@
  */
 
 import { prisma } from "@/lib/db/prisma";
+import { classifySetLog } from "@/lib/session-semantics/set-classification";
 import { Prisma } from "@prisma/client";
 import type { RotationContext, PerformanceTrend } from "../engine/selection-v2/types";
 
@@ -22,14 +23,12 @@ function hasPerformedSet(
     logs: Array<{
       actualReps: number | null;
       actualRpe: number | null;
+      actualLoad?: number | null;
       wasSkipped: boolean;
     }>;
   }>
 ): boolean {
-  return sets.some((set) => {
-    const log = set.logs[0];
-    return Boolean(log) && log.wasSkipped !== true && (log.actualReps != null || log.actualRpe != null);
-  });
+  return sets.some((set) => classifySetLog(set.logs[0]).isPerformed);
 }
 
 /**
@@ -101,6 +100,7 @@ export async function updateExerciseExposure(
                 select: {
                   actualReps: true,
                   actualRpe: true,
+                  actualLoad: true,
                   wasSkipped: true,
                 },
               },
@@ -174,10 +174,7 @@ export async function updateExerciseExposure(
       .reduce(
         (sum, exercise) =>
           sum +
-          exercise.sets.filter((set) => {
-            const log = set.logs[0];
-            return Boolean(log) && log.wasSkipped !== true && (log.actualReps != null || log.actualRpe != null);
-          }).length,
+          exercise.sets.filter((set) => classifySetLog(set.logs[0]).isPerformed).length,
         0
       );
     const avgSetsPerWeek = Number((timesUsedL4W > 0 ? touchedSetCount / 4 : 0).toFixed(2));

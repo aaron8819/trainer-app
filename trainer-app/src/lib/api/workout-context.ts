@@ -21,6 +21,7 @@ import {
 } from "@prisma/client";
 import { mapLatestCheckIn, type CheckInRow } from "./checkin-staleness";
 import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-semantics";
+import { classifySetLog } from "@/lib/session-semantics/set-classification";
 import type {
   Constraints,
   EquipmentType,
@@ -294,15 +295,8 @@ export function mapHistory(workouts: WorkoutWithRelations[]): WorkoutHistoryEntr
           .map((m) => m.muscle.name) ?? [],
         sets: exercise.sets.flatMap((set) => {
           const log = set.logs[0];
-          if (!log || log.wasSkipped) {
-            return [];
-          }
-          const hasSignal =
-            log.actualReps != null || log.actualRpe != null || log.actualLoad != null;
-          if (!hasSignal) {
-            return [];
-          }
-          if (log.actualRpe != null && log.actualRpe < 6) {
+          const classification = classifySetLog(log);
+          if (!classification.isSignal) {
             return [];
           }
           return [

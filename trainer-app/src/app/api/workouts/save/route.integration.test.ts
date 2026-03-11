@@ -325,6 +325,15 @@ describe("POST /api/workouts/save", () => {
       const body = await response.json();
 
       expect(response.status).toBe(200);
+      expect(body).toEqual(
+        expect.objectContaining({
+          status: "saved",
+          workoutId: "workout-1",
+          revision: expect.any(Number),
+          workoutStatus: expect.any(String),
+          action: "save_plan",
+        })
+      );
       expect(body.action).toBe("save_plan");
       expect(body.workoutStatus).toBe("PLANNED");
 
@@ -364,6 +373,15 @@ describe("POST /api/workouts/save", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
+    expect(body).toEqual(
+      expect.objectContaining({
+        status: "saved",
+        workoutId: "workout-1",
+        revision: expect.any(Number),
+        workoutStatus: "COMPLETED",
+        action: "mark_completed",
+      })
+    );
     expect(body.workoutStatus).toBe("COMPLETED");
   });
 
@@ -1231,6 +1249,15 @@ describe("POST /api/workouts/save", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
+    expect(body).toEqual(
+      expect.objectContaining({
+        status: "saved",
+        workoutId: "workout-1",
+        revision: expect.any(Number),
+        workoutStatus: "PARTIAL",
+        action: "mark_completed",
+      })
+    );
     expect(body.workoutStatus).toBe("PARTIAL");
   });
 
@@ -1334,7 +1361,50 @@ describe("POST /api/workouts/save", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
+    expect(body).toEqual(
+      expect.objectContaining({
+        status: "saved",
+        workoutId: "workout-1",
+        revision: expect.any(Number),
+        workoutStatus: "PARTIAL",
+        action: "mark_completed",
+      })
+    );
     expect(body.workoutStatus).toBe("PARTIAL");
+  });
+
+  it.each([
+    ["mark_partial", "PARTIAL"],
+    ["mark_skipped", "SKIPPED"],
+  ] as const)("returns required workoutStatus for %s success responses", async (action, expectedStatus) => {
+    mocks.workoutFindUnique.mockResolvedValueOnce({
+      id: "workout-1",
+      userId: "user-1",
+      status: "IN_PROGRESS",
+      revision: 2,
+      mesocycleId: null,
+      selectionMetadata: buildCanonicalSelectionMetadata(),
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workoutId: "workout-1", action }),
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual(
+      expect.objectContaining({
+        status: "saved",
+        workoutId: "workout-1",
+        revision: expect.any(Number),
+        workoutStatus: expectedStatus,
+        action,
+      })
+    );
   });
 
   it("mark_completed rejects empty effective completion", async () => {

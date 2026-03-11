@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import LogWorkoutClient, { type LogExerciseInput } from "./LogWorkoutClient";
 import type { SectionedExercises } from "@/components/log-workout/types";
 import * as workoutApi from "@/components/log-workout/api";
+import type { SaveWorkoutResponse, WorkoutStatus } from "@/lib/api/workout-save-contract";
 
 vi.mock("next/link", () => ({
   default: ({ children, href, ...props }: { children: ReactNode; href: string }) => (
@@ -24,6 +25,30 @@ const mockedLogSetRequest = vi.mocked(workoutApi.logSetRequest);
 const mockedDeleteSetLogRequest = vi.mocked(workoutApi.deleteSetLogRequest);
 const mockedSaveWorkoutRequest = vi.mocked(workoutApi.saveWorkoutRequest);
 const mockedFetch = vi.fn();
+
+function makeSaveWorkoutResponse(
+  workoutStatus: WorkoutStatus,
+  overrides: Partial<SaveWorkoutResponse & { baselineSummary?: unknown }> = {}
+) : Awaited<ReturnType<typeof workoutApi.saveWorkoutRequest>> {
+  const action: SaveWorkoutResponse["action"] =
+    workoutStatus === "SKIPPED"
+      ? "mark_skipped"
+      : workoutStatus === "PARTIAL"
+        ? "mark_partial"
+        : "mark_completed";
+
+  return {
+    data: {
+      status: "saved",
+      workoutId: "workout-1",
+      revision: 1,
+      workoutStatus,
+      action,
+      ...overrides,
+    },
+    error: null,
+  };
+}
 
 function makeExplanationResponse() {
   return {
@@ -74,7 +99,7 @@ function makeExplanationResponse() {
     nextExposureDecisions: {
       "ex-1": {
         action: "hold",
-        summary: "Next exposure: hold load for now.",
+        summary: "Next exposure: hold load.",
         reason: "Median reps stayed at 10 in the 8-10 band, so keep building reps before adding load.",
         anchorLoad: 50,
         repRange: { min: 8, max: 10 },
@@ -219,7 +244,7 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
   beforeEach(() => {
     mockedLogSetRequest.mockResolvedValue({ data: { status: "ok", wasCreated: true }, error: null });
     mockedDeleteSetLogRequest.mockResolvedValue({ data: { status: "ok" }, error: null });
-    mockedSaveWorkoutRequest.mockResolvedValue({ data: { status: "ok", workoutStatus: "COMPLETED" }, error: null });
+    mockedSaveWorkoutRequest.mockResolvedValue(makeSaveWorkoutResponse("COMPLETED"));
     mockedFetch.mockResolvedValue({
       ok: true,
       json: async () => makeExplanationResponse(),
@@ -427,10 +452,8 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
 
   it("renders the post-workout insights and completion actions after finishing the workout", async () => {
     const user = userEvent.setup();
-    mockedSaveWorkoutRequest.mockResolvedValueOnce({
-      data: {
-        status: "ok",
-        workoutStatus: "COMPLETED",
+    mockedSaveWorkoutRequest.mockResolvedValueOnce(
+      makeSaveWorkoutResponse("COMPLETED", {
         baselineSummary: {
           context: "post-workout",
           evaluatedExercises: 1,
@@ -446,9 +469,8 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
           ],
           skippedItems: [],
         },
-      },
-      error: null,
-    });
+      })
+    );
 
     renderClient();
 
@@ -460,10 +482,10 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
       expect(screen.getByText("Session complete!")).toBeInTheDocument();
       expect(screen.getByText("Session outcome")).toBeInTheDocument();
       expect(
-        screen.getByText("Key lifts stayed on track, but nothing clearly earned a load jump yet.")
+        screen.getByText("Key lifts point to a hold next time while reps keep building.")
       ).toBeInTheDocument();
       expect(screen.getByText("Key lift takeaways")).toBeInTheDocument();
-      expect(screen.getByText(/Next exposure: hold load for now\./)).toBeInTheDocument();
+      expect(screen.getByText(/Next exposure: hold load\./)).toBeInTheDocument();
       expect(screen.getByRole("heading", { name: "Detailed set log" })).toBeInTheDocument();
       expect(screen.queryByText("Strength updates")).not.toBeInTheDocument();
       expect(
@@ -566,6 +588,9 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
 
   it("shows a clear skipped terminal state after skip confirmation", async () => {
     const user = userEvent.setup();
+    mockedSaveWorkoutRequest.mockResolvedValueOnce(
+      makeSaveWorkoutResponse("SKIPPED", { action: "mark_skipped" })
+    );
     renderClient();
 
     await user.click(screen.getByRole("button", { name: /Skip set/i }));
@@ -600,10 +625,9 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
 
   it("keeps the logging UI active after leave-for-now confirms a partial save", async () => {
     const user = userEvent.setup();
-    mockedSaveWorkoutRequest.mockResolvedValueOnce({
-      data: { status: "ok", workoutStatus: "PARTIAL" },
-      error: null,
-    });
+    mockedSaveWorkoutRequest.mockResolvedValueOnce(
+      makeSaveWorkoutResponse("PARTIAL", { action: "mark_partial" })
+    );
 
     renderClient();
 
@@ -624,6 +648,34 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
       expect(screen.getByRole("button", { name: /Log set|Update set/ })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "... Workout options" })).toBeInTheDocument();
       expect(screen.queryByText("Session complete!")).not.toBeInTheDocument();
+    });
+  });
+
+  it("does not render the completed review when mark_completed persists as partial", async () => {
+    const user = userEvent.setup();
+    mockedSaveWorkoutRequest.mockResolvedValueOnce(
+      makeSaveWorkoutResponse("PARTIAL", { action: "mark_completed" })
+    );
+
+    renderClient();
+
+    await logAllSets(user);
+    await user.click(screen.getByRole("button", { name: "Finish workout" }));
+    await user.click(screen.getByRole("button", { name: "Confirm" }));
+
+    await waitFor(() => {
+      expect(mockedSaveWorkoutRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          workoutId: "workout-1",
+          action: "mark_completed",
+          status: "COMPLETED",
+        })
+      );
+      expect(screen.queryByText("Session complete!")).not.toBeInTheDocument();
+      expect(screen.queryByText("Session outcome")).not.toBeInTheDocument();
+      expect(screen.queryByRole("link", { name: "View full review" })).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "+ Add Exercise" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Finish workout" })).toBeInTheDocument();
     });
   });
 
@@ -1080,7 +1132,7 @@ describe("4d - Active card edit mode", () => {
   beforeEach(() => {
     mockedLogSetRequest.mockResolvedValue({ data: { status: "ok", wasCreated: true }, error: null });
     mockedDeleteSetLogRequest.mockResolvedValue({ data: { status: "ok" }, error: null });
-    mockedSaveWorkoutRequest.mockResolvedValue({ data: { status: "ok", workoutStatus: "COMPLETED" }, error: null });
+    mockedSaveWorkoutRequest.mockResolvedValue(makeSaveWorkoutResponse("COMPLETED"));
     window.localStorage.clear();
     window.sessionStorage.clear();
     setupDialogMocks();
@@ -1343,7 +1395,7 @@ describe("Queue render stability", () => {
   beforeEach(() => {
     mockedLogSetRequest.mockResolvedValue({ data: { status: "ok", wasCreated: true }, error: null });
     mockedDeleteSetLogRequest.mockResolvedValue({ data: { status: "ok" }, error: null });
-    mockedSaveWorkoutRequest.mockResolvedValue({ data: { status: "ok", workoutStatus: "COMPLETED" }, error: null });
+    mockedSaveWorkoutRequest.mockResolvedValue(makeSaveWorkoutResponse("COMPLETED"));
     window.localStorage.clear();
     window.sessionStorage.clear();
     setupDialogMocks();
@@ -1426,7 +1478,7 @@ describe("4i - Exercise queue expansion stays user-controlled", () => {
   beforeEach(() => {
     mockedLogSetRequest.mockResolvedValue({ data: { status: "ok", wasCreated: true }, error: null });
     mockedDeleteSetLogRequest.mockResolvedValue({ data: { status: "ok" }, error: null });
-    mockedSaveWorkoutRequest.mockResolvedValue({ data: { status: "ok", workoutStatus: "COMPLETED" }, error: null });
+    mockedSaveWorkoutRequest.mockResolvedValue(makeSaveWorkoutResponse("COMPLETED"));
     window.localStorage.clear();
     window.sessionStorage.clear();
     setupDialogMocks();
@@ -1496,7 +1548,7 @@ describe("L-2/L-3/L-1/T-1/T-3 — Layout and UX fixes", () => {
   beforeEach(() => {
     mockedLogSetRequest.mockResolvedValue({ data: { status: "ok", wasCreated: true }, error: null });
     mockedDeleteSetLogRequest.mockResolvedValue({ data: { status: "ok" }, error: null });
-    mockedSaveWorkoutRequest.mockResolvedValue({ data: { status: "ok", workoutStatus: "COMPLETED" }, error: null });
+    mockedSaveWorkoutRequest.mockResolvedValue(makeSaveWorkoutResponse("COMPLETED"));
     window.localStorage.clear();
     window.sessionStorage.clear();
     setupDialogMocks();
@@ -1751,7 +1803,7 @@ describe("I-2/I-4/I-5/E-4/E-5/E-6/L-4/S-5 — Remaining low-priority fixes", () 
   beforeEach(() => {
     mockedLogSetRequest.mockResolvedValue({ data: { status: "ok", wasCreated: true }, error: null });
     mockedDeleteSetLogRequest.mockResolvedValue({ data: { status: "ok" }, error: null });
-    mockedSaveWorkoutRequest.mockResolvedValue({ data: { status: "ok", workoutStatus: "COMPLETED" }, error: null });
+    mockedSaveWorkoutRequest.mockResolvedValue(makeSaveWorkoutResponse("COMPLETED"));
     window.localStorage.clear();
     window.sessionStorage.clear();
     setupDialogMocks();
@@ -1819,7 +1871,9 @@ describe("I-2/I-4/I-5/E-4/E-5/E-6/L-4/S-5 — Remaining low-priority fixes", () 
 
   it("E-4: shows spinner in Confirm button while completion submitting", async () => {
     const user = userEvent.setup();
-    let resolveSave!: (val: { data: { status: string; workoutStatus: string }; error: null }) => void;
+    let resolveSave!: (
+      val: Awaited<ReturnType<typeof workoutApi.saveWorkoutRequest>>
+    ) => void;
     mockedSaveWorkoutRequest.mockImplementationOnce(
       () =>
         new Promise((resolve) => {
@@ -1842,7 +1896,7 @@ describe("I-2/I-4/I-5/E-4/E-5/E-6/L-4/S-5 — Remaining low-priority fixes", () 
       expect(screen.getByTestId("completion-spinner")).toBeInTheDocument();
     });
 
-    resolveSave({ data: { status: "ok", workoutStatus: "COMPLETED" }, error: null });
+    resolveSave(makeSaveWorkoutResponse("COMPLETED"));
 
     await waitFor(() => {
       expect(screen.queryByTestId("completion-spinner")).not.toBeInTheDocument();

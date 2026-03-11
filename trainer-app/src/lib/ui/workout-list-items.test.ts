@@ -60,10 +60,18 @@ describe("buildWorkoutListSurfaceSummary", () => {
       _count: { exercises: 2 },
       exercises: [
         {
-          sets: [{ _count: { logs: 2 } }, { _count: { logs: 1 } }],
+          sets: [
+            { logs: [{ actualReps: 8, actualRpe: 8, actualLoad: 135, wasSkipped: false }] },
+            { logs: [{ actualReps: 10, actualRpe: null, actualLoad: 95, wasSkipped: false }] },
+            { logs: [{ actualReps: null, actualRpe: null, actualLoad: 95, wasSkipped: false }] },
+          ],
         },
         {
-          sets: [{ _count: { logs: 3 } }],
+          sets: [
+            { logs: [{ actualReps: null, actualRpe: null, actualLoad: null, wasSkipped: true }] },
+            { logs: [{ actualReps: null, actualRpe: null, actualLoad: null, wasSkipped: false }] },
+            { logs: [{ actualReps: null, actualRpe: 7, actualLoad: null, wasSkipped: false }] },
+          ],
         },
       ],
     });
@@ -85,7 +93,7 @@ describe("buildWorkoutListSurfaceSummary", () => {
       isSupplementalDeficitSession: false,
       gapFillTargetMuscles: [],
       exerciseCount: 2,
-      totalSetsLogged: 6,
+      totalSetsLogged: 3,
     });
   });
 

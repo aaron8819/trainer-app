@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { saveWorkoutRequest } from "@/components/log-workout/api";
+import type { WorkoutStatus } from "@/lib/api/workout-save-contract";
 import type { CompletionAction } from "@/components/log-workout/types";
 
 export type WorkoutSessionFlowState = {
@@ -24,6 +25,18 @@ export type WorkoutSessionCompletionController = {
   toggleSkipOptions: () => void;
   setSkipReason: (value: string) => void;
 };
+
+function toTerminalState(workoutStatus: WorkoutStatus): WorkoutSessionFlowState["terminalState"] {
+  if (workoutStatus === "COMPLETED") {
+    return "completed";
+  }
+
+  if (workoutStatus === "SKIPPED") {
+    return "skipped";
+  }
+
+  return "active";
+}
 
 type UseWorkoutSessionCompletionParams = {
   workoutId: string;
@@ -96,6 +109,12 @@ export function useWorkoutSessionCompletion({
             showError(response.error);
             return;
           }
+          if (!response.data) {
+            showError("Failed to complete workout action");
+            return;
+          }
+
+          const terminalState = toTerminalState(response.data.workoutStatus);
 
           clearAllDrafts();
           clearTimer();
@@ -104,7 +123,7 @@ export function useWorkoutSessionCompletion({
             completionAction: null,
             pendingAction: null,
             showSkipOptions: false,
-            terminalState: "skipped",
+            terminalState,
           }));
           showStatus("Workout marked as skipped");
           return;
@@ -121,8 +140,14 @@ export function useWorkoutSessionCompletion({
           showError(response.error);
           return;
         }
+        if (!response.data) {
+          showError("Failed to complete workout action");
+          return;
+        }
 
-        if (resolvedAction === "mark_partial") {
+        const terminalState = toTerminalState(response.data.workoutStatus);
+
+        if (terminalState === "active") {
           clearTimer();
           setSessionFlow((prev) => ({
             ...prev,
@@ -141,9 +166,9 @@ export function useWorkoutSessionCompletion({
           completionAction: null,
           pendingAction: null,
           showSkipOptions: false,
-          terminalState: "completed",
+          terminalState,
         }));
-        showStatus("Workout marked as completed");
+        showStatus(terminalState === "completed" ? "Workout marked as completed" : "Workout marked as skipped");
       } catch {
         showError("Failed to complete workout action");
       } finally {

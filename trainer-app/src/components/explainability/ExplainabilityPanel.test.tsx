@@ -82,7 +82,7 @@ function makeExplanation(withDecisionLog: boolean): WorkoutExplanation {
         "ex1",
         {
           action: "hold",
-          summary: "Next exposure: hold load for now.",
+          summary: "Next exposure: hold load.",
           reason: "Median reps stayed below the top of the band, so keep building reps before adding load.",
           anchorLoad: 200,
           repRange: { min: 8, max: 10 },
@@ -249,7 +249,7 @@ describe("ExplainabilityPanel progression logic rendering", () => {
     await user.click(screen.getByRole("button", { name: /open drill-down/i }));
 
     expect(screen.getByText("Next exposure")).toBeInTheDocument();
-    expect(screen.getByText("Next exposure: hold load for now.")).toBeInTheDocument();
+    expect(screen.getByText("Next exposure: hold load.")).toBeInTheDocument();
     expect(screen.getByText("Today's target context")).toBeInTheDocument();
     expect(screen.getByText("Why this lift stayed in")).toBeInTheDocument();
     expect(screen.getByText("Top factors")).toBeInTheDocument();

@@ -344,6 +344,27 @@ describe("generateWorkoutExplanation – volumeCompliance", () => {
     expect(chestRow?.status).toBe("ON_TARGET");
   });
 
+  it("excludes skipped latest logs from planned effective volume", async () => {
+    mocks.workoutFindUnique.mockResolvedValue({
+      ...BASE_WORKOUT,
+      exercises: [
+        {
+          ...makeChestExercise(2),
+          sets: [
+            makeSet(1, [{ wasSkipped: false }]),
+            makeSet(2, [{ wasSkipped: true }]),
+          ],
+        },
+      ],
+    });
+
+    const result = await generateWorkoutExplanation("w1");
+    if ("error" in result) return;
+
+    const chestRow = result.volumeCompliance.find((r) => r.muscle === "Chest");
+    expect(chestRow?.plannedEffectiveVolumeThisSession).toBe(1);
+  });
+
   it("APPROACHING_MAV takes priority over OVER_TARGET at the boundary (projectedEffectiveVolume > 0.85*MAV)", async () => {
     // Chest: MAV=16, 0.85*MAV=13.6; prior=11, current=3 → projectedEffectiveVolume=14 > 13.6
     // weeklyTarget=13, projectedEffectiveVolume=14 > weeklyTarget → would be OVER_TARGET

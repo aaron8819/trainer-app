@@ -20,10 +20,10 @@ type HistoryData = {
 };
 
 const TREND_SUMMARIES: Record<string, { value: string; color: string }> = {
-  improving: { value: "Higher than earlier recent logs", color: "text-emerald-600" },
+  improving: { value: "Trending above earlier recent logs", color: "text-emerald-600" },
   stable: { value: "Close to earlier recent logs", color: "text-slate-600" },
-  declining: { value: "Lower than earlier recent logs", color: "text-amber-600" },
-  insufficient_data: { value: "Limited recent history", color: "text-slate-500" },
+  declining: { value: "Trending below earlier recent logs", color: "text-amber-600" },
+  insufficient_data: { value: "Limited recent log history", color: "text-slate-500" },
 };
 
 export function PersonalHistorySection({ exerciseId }: { exerciseId: string }) {
@@ -56,21 +56,26 @@ export function PersonalHistorySection({ exerciseId }: { exerciseId: string }) {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-3">
-        <div>
-          <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400">
-            Recent top-set trend
-          </p>
-          <p className={`text-xs font-semibold ${trend.color}`}>{trend.value}</p>
+      <div className="space-y-1.5">
+        <div className="flex items-center gap-3">
+          <div>
+            <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400">
+              Recent logged trend
+            </p>
+            <p className={`text-xs font-semibold ${trend.color}`}>{trend.value}</p>
+          </div>
+          <div className="flex gap-2 text-[10px] text-slate-500">
+            {data.personalBests.maxLoad !== null && (
+              <span>Recent logged best load: {data.personalBests.maxLoad}lb</span>
+            )}
+            {data.personalBests.maxReps !== null && (
+              <span>Recent logged best reps: {data.personalBests.maxReps}</span>
+            )}
+          </div>
         </div>
-        <div className="flex gap-2 text-[10px] text-slate-500">
-          {data.personalBests.maxLoad !== null && (
-            <span>Best load: {data.personalBests.maxLoad}lb</span>
-          )}
-          {data.personalBests.maxReps !== null && (
-            <span>Best reps: {data.personalBests.maxReps}</span>
-          )}
-        </div>
+        <p className="text-[10px] text-slate-500">
+          Descriptive history only. Use the workout review for next-session progression guidance.
+        </p>
       </div>
 
       {data.sessions.map((session, si) => (

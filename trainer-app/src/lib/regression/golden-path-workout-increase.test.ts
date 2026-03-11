@@ -355,7 +355,7 @@ describe("golden-path completed workout increase regression", () => {
 
     expect(nextExposureDecision).toMatchObject({
       action: "increase",
-      summary: "Next exposure: likely increase load.",
+      summary: "Next exposure: increase load.",
       reason: "Median reps reached the top of the 8-10 band at manageable effort (modal RPE 7) on 155 lbs.",
       anchorLoad: 155,
       repRange: { min: 8, max: 10 },
@@ -382,20 +382,20 @@ describe("golden-path completed workout increase regression", () => {
     });
 
     expect(completionReviewModel.headline).toBe(
-      "Key lift performance likely earned a load increase next time."
+      "Key lifts point to an increase next time."
     );
     expect(completionReviewModel.summary).toBe(
-      "The next exposure can likely move up on Barbell Row if setup and readiness feel normal."
+      "The next exposure points to an increase on Barbell Row if setup and readiness feel normal."
     );
     expect(completionReviewModel.overview).toEqual([
       {
         label: "How it went",
-        value: "1 key lift likely earned more load next time.",
+        value: "1 key lift points to an increase next time.",
         tone: "positive",
       },
       {
         label: "Next time",
-        value: "Increase load on Barbell Row next time.",
+        value: "Increase load on Barbell Row.",
         tone: "positive",
         emphasized: true,
       },
@@ -403,11 +403,11 @@ describe("golden-path completed workout increase regression", () => {
     expect(completionReviewModel.keyLifts[0]).toMatchObject({
       exerciseId: "barbell-row",
       exerciseName: "Barbell Row",
-      badge: "Likely increase",
+      badge: "Increase next time",
       performed: "Today's performed signal centered on 155 lbs at median 10 reps at modal RPE 7.",
       todayContext: "Today's written target moved from 150 lbs to 155 lbs (+3.3%).",
       nextTime:
-        "Next exposure: likely increase load. Median reps reached the top of the 8-10 band at manageable effort (modal RPE 7) on 155 lbs.",
+        "Next exposure: increase load. Median reps reached the top of the 8-10 band at manageable effort (modal RPE 7) on 155 lbs.",
     });
 
     expect(workoutReviewModel.headline).toBe(completionReviewModel.headline);
@@ -428,8 +428,8 @@ describe("golden-path completed workout increase regression", () => {
 
     expect(nextTimeText).not.toContain("hold load");
     expect(nextTimeText).not.toContain("stay put");
-    expect(nextTimeText).toContain("likely increase load");
-    expect(nextTimeText).toContain("increase load on barbell row next time");
-    expect(nextTimeText).toContain("likely move up on barbell row");
+    expect(nextTimeText).toContain("increase load");
+    expect(nextTimeText).toContain("increase load on barbell row");
+    expect(nextTimeText).toContain("points to an increase on barbell row");
   });
 });

@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { PostWorkoutInsights } from "@/components/post-workout/PostWorkoutInsights";
+import { classifySetLog } from "@/lib/session-semantics/set-classification";
 import { isDumbbellEquipment, toDisplayLoad } from "@/lib/ui/load-display";
+import { evaluateTargetReps } from "@/lib/session-semantics/target-evaluation";
 import { hydrateWorkoutExplanation, type WorkoutExplanationResponse } from "@/lib/ui/workout-explanation-response";
 import type { WorkoutExplanation } from "@/lib/engine/explainability";
 import type {
@@ -134,14 +136,24 @@ export function CompletedWorkoutReview({
                 <p className="font-medium text-slate-900">{exercise.name}</p>
                 <div className="mt-3 space-y-2">
                   {exercise.sets.map((set) => {
-                    const repDiff = (set.actualReps ?? 0) - (set.targetReps ?? 0);
+                    const classification = classifySetLog({
+                      actualReps: set.actualReps,
+                      actualLoad: set.actualLoad,
+                      actualRpe: set.actualRpe,
+                      wasSkipped: set.wasSkipped,
+                    });
+                    const repEvaluation = evaluateTargetReps({
+                      actualReps: set.actualReps,
+                      targetReps: set.targetReps,
+                      targetRepRange: set.targetRepRange,
+                    });
                     const actualColor = !set.wasLogged
                       ? "text-slate-400"
-                      : set.wasSkipped
+                      : classification.isSkipped
                       ? "text-slate-500"
-                      : repDiff >= 0
+                      : repEvaluation.kind === "in_range" || repEvaluation.kind === "above"
                       ? "text-emerald-700"
-                      : repDiff === -1
+                      : repEvaluation.kind === "below" && repEvaluation.deviation === -1
                       ? "text-amber-700"
                       : "text-rose-700";
                     const targetLabel = [
@@ -157,7 +169,7 @@ export function CompletedWorkoutReview({
                       .join(" | ");
                     const actualLabel = !set.wasLogged
                       ? "-"
-                      : set.wasSkipped
+                      : classification.isSkipped
                       ? "Skipped"
                       : [
                           set.actualReps != null ? `${set.actualReps} reps` : null,

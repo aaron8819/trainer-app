@@ -1,7 +1,7 @@
 # 01 Architecture
 
 Owner: Aaron  
-Last reviewed: 2026-03-10  
+Last reviewed: 2026-03-11  
 Purpose: Defines the current runtime architecture for the single-user local-first Trainer app and the boundaries between UI, API routes, orchestration, engine, and persistence.
 
 This doc covers:
@@ -74,10 +74,12 @@ SetLog / logged performance
 ```
 - `SetLog` is the raw authoritative performed-work source. Logged reps, load, RPE, and skip state remain the only authoritative set-level performance data (`src/app/api/logs/set/route.ts`, `src/lib/api/workout-context.ts`).
 - Workout save and status resolution are the authoritative performed-status and lifecycle-mutation boundary (`src/app/api/workouts/save/route.ts`, `src/app/api/workouts/save/status-machine.ts`, `src/app/api/workouts/save/lifecycle-contract.ts`).
+- `POST /api/workouts/save` now returns canonical `workoutStatus` on every success response via `src/lib/api/workout-save-contract.ts`. Client completion flows must treat `mark_completed` as intent only and derive terminal review state from the returned `workoutStatus`, not from the requested action.
 - `deriveSessionSemantics()` is the canonical session-level interpretation bridge. It does not own set-level progression math like modal load or anchor-load computation; it owns session-level meaning such as whether a workout is advancing, supplemental, or progression-eligible.
 - `selectionMetadata.sessionDecisionReceipt` remains the canonical stored generation/evidence context for read-side consumers.
 - Post-workout explanation is a read-side interpretation layer. It should consume canonical receipts, derived session semantics, and canonical progression outputs rather than independently re-authoring progression-relevant session behavior.
 - Shared next-exposure progression-input assembly now lives in `src/lib/progression/canonical-progression-input.ts`. Generation (`src/lib/engine/apply-loads.ts`) and explainability (`src/lib/api/explainability.ts`) both consume that seam before calling `computeDoubleProgressionDecision()`.
+- Shared canonical next-exposure wording now lives in `src/lib/ui/next-exposure-copy.ts`. Read-side surfaces that present canonical `NextExposureDecision.action` outcomes should format those actions through that seam rather than maintaining local wording ladders.
 - The completed-workout review path is also a shared read-side seam: live load coaching remains session-local, but explanation plus the `PostWorkoutInsights` model must stay semantically aligned with canonical progression for the same performed workout. Immediate completion review and `/workout/[id]` are separate presentation entries over the same read model, not separate progression interpreters.
 - The normal post-workout UX is a presentation layer over that same read-side data. The default completion/review path should lead with session outcome, key-lift takeaways, and prominent next-exposure guidance, with program-impact signals kept compact in their dedicated section, while `/workout/[id]/audit` remains the deeper verification surface over the same canonical explanation inputs.
 - Next workout generation and load progression remain canonical in generator/engine seams (`src/lib/engine/apply-loads.ts`, `src/lib/engine/progression.ts`, `src/lib/api/next-session.ts`).
@@ -148,6 +150,7 @@ SetLog / logged performance
 - Analytics routes under `src/app/api/analytics/**` remain surface-oriented projections rather than one shared read model, but they now share one explicit semantics helper in `src/lib/api/analytics-semantics.ts` for generated/performed/completed counting vocabulary and rolling-window descriptions. The stable shared boundary with the rest of the app is still the performed-workout / mesocycle-week semantics they reuse, not the full route payload shapes.
 - Surface-local formatting stays in the consuming UI when it does not change domain semantics: date formatting, compact vs full layouts, chart grouping, and tab/panel composition.
 - Exercise-library personal history is a descriptive read-side surface. Its recent-trend presentation should stay explicitly non-authoritative and must not claim canonical progression status unless it is rewired onto a canonical progression/read-review seam first (`src/components/library/PersonalHistorySection.tsx`, `src/lib/api/exercise-history.ts`).
+- Program timing/readiness chrome, dashboard opportunity tiles, and intra-session load coaching are also descriptive/advisory read-side surfaces. They may summarize current context, but they must not be presented as canonical next-session progression truth unless they are explicitly rewired onto canonical progression outputs first (`src/lib/api/program.ts`, `src/lib/api/opportunity.ts`, `src/lib/progression/load-coaching.ts`).
 
 ## Internal workout-audit harness boundaries
 - Canonical next-session derivation for both dashboard and audit flows is `loadNextWorkoutContext()` in `src/lib/api/next-session.ts`.

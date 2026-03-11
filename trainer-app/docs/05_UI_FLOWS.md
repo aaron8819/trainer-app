@@ -1,7 +1,7 @@
 # 05 UI Flows
 
 Owner: Aaron
-Last reviewed: 2026-03-10
+Last reviewed: 2026-03-11
 Purpose: Canonical reference for current UI routes and core user flows implemented in the Next.js App Router.
 
 This doc covers:
@@ -58,7 +58,8 @@ Route-purpose shorthand:
 - The rest timer is persisted per workout in session storage and re-synced when the user returns to the in-progress log page for the same workout.
 - Queue browsing stays scroll-neutral: tapping an exercise row only expands/collapses that row. Active-card auto-scroll is reserved for explicit set-chip targeting and live auto-advance after a set log.
 - If every set in the session is skipped, the footer completion path resolves through `mark_skipped` and the terminal state renders explicit skipped-session messaging with replacement/home actions instead of attempting a completed save path.
-- `mark_completed` can return `workoutStatus: PARTIAL` when unresolved sets remain; UI must treat this as a performed session result, not a hard error.
+- `mark_completed` is intent only. Save responses return canonical `workoutStatus`, and the logging flow must derive terminal UI state from that returned status.
+- `mark_completed` can return `workoutStatus: PARTIAL` when unresolved sets remain; UI must treat this as a performed session result, not a hard error, and must not render the completed review path for that downgraded outcome.
 - `mark_partial` is surfaced as a single footer-level "Leave for now" action once at least one set has been logged (`loggedCount > 0`). It persists a `PARTIAL` status without requiring all sets to be resolved first (`src/components/LogWorkoutClient.tsx`).
 - Plan writes remain non-terminal (`save_plan`) and do not finalize `COMPLETED|PARTIAL|SKIPPED`.
 - Log page now renders the same receipt-first session summary card used on workout detail by building a `SessionSummaryModel` from explainability context plus `selectionMetadata.sessionDecisionReceipt` (`src/app/log/[id]/page.tsx`, `src/lib/ui/session-summary.ts`, `src/components/explainability/SessionContextCard.tsx`).
@@ -71,6 +72,7 @@ Route-purpose shorthand:
 - `/workout/[id]` stays compact, but now leads with a post-workout hierarchy for performed sessions: `Session outcome` -> `Key lift takeaways` -> dedicated `Program impact` -> detailed set review, with `Next time` guidance emphasized in the summary and lift cards rather than repeated as a separate top-level program tile. This is the main user path and should answer "how it went / what it means / what happens next" before raw set-level trace.
 - Immediate completed-workout review follows the same hierarchy after save, then links into the full workout review page for the original workout structure, deeper exercise detail, and fuller session context.
 - Completion review and `/workout/[id]` both render their user-facing post-workout call through the same `PostWorkoutInsights` read model (`src/lib/ui/post-workout-insights.ts`). Completed-workout wording should stay aligned with canonical next-exposure behavior across both surfaces rather than letting the two review entry points drift independently.
+- Canonical next-exposure action wording on those review surfaces now flows through `src/lib/ui/next-exposure-copy.ts`. If a surface is presenting canonical `increase | hold | decrease` next-session meaning, it should consume that formatter instead of inventing local action copy.
 - Detailed explainability is intentionally separated into `/workout/[id]/audit`, which loads `WorkoutExplanation` and exposes the richer evidence panels for internal auditing (`src/app/workout/[id]/audit/page.tsx`, `src/components/WorkoutExplanation.tsx`, `src/components/explainability/ExplainabilityPanel.tsx`).
 - The audit page uses the same summary card at the top, then splits into a session-level scan and an exercise drill-down (`src/components/explainability/ExplainabilityPanel.tsx`, `src/components/explainability/ExerciseRationaleCard.tsx`).
 - Workout detail copy for prescription/load provenance now treats `PARTIAL` and `COMPLETED` as performed states through `src/lib/ui/session-overview.ts` and usage in `src/app/workout/[id]/page.tsx`.
@@ -92,7 +94,7 @@ Route-purpose shorthand:
 - `ProgramStatusCard` is mounted on both the home dashboard (`src/app/page.tsx`) and the `/program` page (`src/app/program/page.tsx`), replacing the prior inline server-rendered volume table on `/program`.
 - `/program` session history is no longer carried inside `ProgramDashboardData`; it is loaded independently from the canonical workout-list summary builder in `src/lib/ui/workout-list-items.ts`.
 - Recent Workouts (`src/components/RecentWorkouts.tsx`) and History (`src/components/HistoryClient.tsx`) now share the same workout-list summary contract and display helpers from `src/lib/ui/workout-list-items.ts` for status labels, intent labels, and exercise/set count copy. Both still render the same derived week/session badge from `sessionSnapshot` via `src/lib/ui/workout-session-snapshot.ts`. Planned workouts show this badge immediately upon plan-save because the save route now snapshots mesocycle context for new plan writes.
-- `/library` exercise detail keeps raw recent sessions and bests visible through `PersonalHistorySection`, but its trend copy is now explicitly descriptive (`Recent top-set trend`) rather than authoritative improvement-status labeling. That surface is for local history context, not canonical progression interpretation (`src/components/library/PersonalHistorySection.tsx`).
+- `/library` exercise detail keeps raw recent sessions and bests visible through `PersonalHistorySection`, but its trend copy is explicitly descriptive logged-history framing rather than authoritative improvement-status labeling. That surface is for local history context, not canonical progression interpretation (`src/components/library/PersonalHistorySection.tsx`).
 
 ## Optional gap-fill flow
 1. Dashboard/home support computes optional-session state (`loadHomeProgramSupport()` in `src/lib/api/program.ts`) with `anchorWeek`, suppression flags, and policy caps.

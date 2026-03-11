@@ -1,7 +1,7 @@
 # 04 API Contracts
 
 Owner: Aaron  
-Last reviewed: 2026-03-10
+Last reviewed: 2026-03-11
 Purpose: Canonical API contract map for App Router endpoints and payload validation boundaries.
 
 This doc covers:
@@ -89,6 +89,7 @@ Sources of truth:
   - `mark_partial` => finalize as `PARTIAL`.
   - `mark_skipped` => finalize as `SKIPPED`.
 - `save_plan` cannot finalize terminal statuses (`COMPLETED`, `PARTIAL`, `SKIPPED`); terminal `status` in a plan write is ignored and persisted status remains non-terminal/current.
+- Save success responses now require canonical `workoutStatus` through `src/lib/api/workout-save-contract.ts` and `src/components/log-workout/api.ts`. Clients must derive terminal UI state from the returned `workoutStatus`; `mark_completed` is a requested action, not authoritative completion truth by itself.
 - `save_plan` on a **new workout** (no existing record) now triggers a mesocycle snapshot lookup and writes `mesocycleWeekSnapshot` / `mesoSessionSnapshot` / `mesocyclePhaseSnapshot` - the same fields written on performed transition - so the week/session badge appears in Recent Workouts immediately upon plan save (`src/app/api/workouts/save/route.ts`). The performed-transition error gate (`ACTIVE_MESOCYCLE_NOT_FOUND`) is skipped for plan saves; missing active mesocycle is tolerated gracefully.
 - Those persisted mesocycle snapshot columns are canonical derived metadata for history badges and progression/explainability week context. UI/list contracts should consume only derived summaries (`sessionSnapshot`), while runtime history/progression consumers should use a normalized `mesocycleSnapshot` object rather than raw column mirrors.
 - Completion gating: `mark_completed` requires at least one performed non-skipped set log; otherwise route returns `409`.
@@ -162,6 +163,7 @@ Sources of truth:
 - Explanation-layer consumers should treat `deriveSessionSemantics()` plus canonical progression receipts/decision outputs as the source of session behavior. Explanation routes should not independently re-author session-level progression meaning that could drift from generator-owned next-exposure behavior.
 - `nextExposureDecisions` is a read-side interpretation layer only. Its progression verdict must be computed through `computeDoubleProgressionDecision()` using the same material confidence-sensitive inputs as canonical generation for that exercise (`anchorOverride`, `priorSessionCount`, `historyConfidenceScale`; `confidenceReasons` remains log-only).
 - User-facing review surfaces that consume this route, including immediate completion review and `/workout/[id]`, should preserve that same verdict through the shared `PostWorkoutInsights` model rather than translating a canonical `hold` into stronger progression language.
+- User-facing rendering of canonical `nextExposureDecisions[*].action` should route through `src/lib/ui/next-exposure-copy.ts`. Heuristic/advisory surfaces may describe context, but they should not define alternate canonical action wording for the same decision.
 - `confidence.missingSignals` now uses user-facing diagnostic labels rather than engine shorthand:
   - `same-day readiness check-in`
   - `receipt-backed cycle context`

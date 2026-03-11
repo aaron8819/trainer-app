@@ -1,7 +1,7 @@
 # 02 Domain Engine
 
 Owner: Aaron
-Last reviewed: 2026-03-09
+Last reviewed: 2026-03-11
 Purpose: Canonical reference for workout-generation domain logic, including selection, progression, periodization, readiness, and explainability.
 
 This doc covers:
@@ -84,6 +84,7 @@ Sources of truth:
 - Load assignment and fallback logic are implemented in `src/lib/engine/apply-loads.ts`.
 - Canonical load quantization lives in `src/lib/units/load-quantization.ts`. Dumbbell display/storage flows must use that same 2.5 lb quantization rule through shared UI helpers in `src/lib/ui/load-display.ts`; UI formatting is not allowed to maintain a separate dumbbell snap policy.
 - Canonical progression-input assembly is centralized in `src/lib/progression/canonical-progression-input.ts` via `buildCanonicalProgressionEvaluationInput()`. That seam assembles the materially relevant `computeDoubleProgressionDecision()` payload (`anchorOverride`, `priorSessionCount`, `historyConfidenceScale`, and decision-log `confidenceReasons`) without owning progression math or UI formatting.
+- Canonical read-side next-exposure wording is centralized separately in `src/lib/ui/next-exposure-copy.ts`. Surfaces rendering canonical `NextExposureDecision.action` outcomes should consume that formatter instead of inventing local progression-action ladders.
 - The live in-session autoreg hint is implemented separately in `src/lib/progression/load-coaching.ts` and called from `src/components/log-workout/useWorkoutSessionFlow.ts`. It is a current-session coaching/explainability seam only.
 - Historical training signals are mapped from persisted workouts/logs in `mapHistory()` within `src/lib/api/workout-context.ts`.
 - Performed-history filtering (not completed-only filtering) is canonical for load progression and plateau/deload checks via `filterPerformedHistory()` and `isPerformedHistoryEntry()` in `src/lib/engine/history.ts`.
@@ -110,11 +111,31 @@ SetLog / logged performance
 ```
 - `SetLog` is the raw authoritative performed-work source. Set-level facts such as reps, logged RPE, logged load, skipped state, and completion timestamps come from persisted set logs, not from explanation-layer inference.
 - Workout save and status resolution are the authoritative completion/state boundary. Performed status, unresolved-set handling, and lifecycle mutation are owned there, not by read-side explanation (`src/app/api/workouts/save/route.ts`, `src/app/api/workouts/save/status-machine.ts`).
+- Save-route success payloads now include canonical `workoutStatus`. `mark_completed` remains a requested terminal intent, but the persisted `workoutStatus` returned by save is the authoritative completion truth that clients must render against.
 - `deriveSessionSemantics()` is the canonical session-level interpretation bridge. It owns session-level meaning derived from persisted workout fields, including advancing/non-advancing interpretation, weekly-slot consumption, and progression-history eligibility.
 - `deriveSessionSemantics()` does not own set-level progression computations such as modal load, anchor load, rep summaries, or effort-classification math. Those remain in canonical progression/history/explainability seams such as `src/lib/engine/progression.ts`, `src/lib/engine/history.ts`, and `src/lib/api/explainability.ts`.
 - `selectionMetadata.sessionDecisionReceipt` is the canonical stored generation/evidence context. Read-side consumers should combine that receipt with derived session semantics rather than recreating missing session policy locally.
 - Post-workout explanation is a read-side interpretation surface. It may explain canonical behavior, but it should not redefine the behavior that generator/progression seams will use for the next exposure.
 - Canonical next-exposure progression remains server-side in `src/lib/engine/apply-loads.ts` and `src/lib/engine/progression.ts`.
+
+## Rep target interpretation
+- Canonical read-side rep-target interpretation lives in `src/lib/session-semantics/target-evaluation.ts`.
+- `resolveTargetRepRange()` is range-first by contract:
+  - prefer `targetRepRange`
+  - else fall back to `targetRepMin` + `targetRepMax`
+  - else fall back to point target `targetReps`
+- `evaluateTargetReps()` is the shared read-side helper for comparing actual reps against the effective target. Read-side review/explainability surfaces should not re-derive range vs point-target semantics locally.
+
+## Set-state classification
+- Canonical read-side set-state interpretation lives in `classifySetLog()` in `src/lib/session-semantics/set-classification.ts`.
+- The helper exists to prevent read-side drift around skipped, performed, resolved, and signal-bearing sets.
+- Canonical meanings:
+  - `isSkipped`: the set was explicitly skipped.
+  - `isResolved`: the set is no longer missing; it is either skipped or has any actual logged field.
+  - `isPerformed`: the set was actually performed and has meaningful performance evidence (`actualReps` or `actualRpe`) rather than just load-only metadata.
+  - `isSignal`: the performed set is eligible as progression signal under the configured RPE floor.
+  - `countsTowardVolume`: the set contributes to performed-volume accounting; today this is aligned with `isPerformed`.
+- Read-side consumers that need set interpretation should prefer `classifySetLog()` instead of open-coding skip/performed/resolved predicates.
 
 ## Periodization and readiness
 - Macro/meso/block logic lives in `src/lib/engine/periodization`.
@@ -162,6 +183,7 @@ SetLog / logged performance
   - save/status outputs for performed-state truth
   - `deriveSessionSemantics()` for session-level interpretation
   - canonical progression outputs/decision logs for next-exposure load behavior
+- When explanation needs to phrase canonical next-exposure action, it should route that wording through `src/lib/ui/next-exposure-copy.ts`. Heuristic or advisory surfaces must not invent stronger progression wording for the same decision shape.
 - Avoid local fallbacks that reinterpret session policy inside explainability copy or UI helpers. If a new explanation concept truly requires new canonical semantics, add that seam first rather than encoding it only in read-side copy.
 - Future seam rule: if the app ever needs a new canonical set-level post-workout interpretation layer, document and introduce it as a seam separate from `deriveSessionSemantics()`. Do not silently expand `deriveSessionSemantics()` from session-level policy into set-level progression math ownership.
 

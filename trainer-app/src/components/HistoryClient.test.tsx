@@ -319,7 +319,7 @@ describe("HistoryClient", () => {
       expect(screen.getByRole("link", { name: "Continue" })).toHaveAttribute("href", "/log/w4");
     });
 
-    it("PARTIAL row renders Review and Log links", () => {
+    it("PARTIAL row renders Review and Resume links", () => {
       render(
         <HistoryClient
           initialWorkouts={[makeWorkout({ id: "w5", status: "PARTIAL" })]}
@@ -329,7 +329,7 @@ describe("HistoryClient", () => {
         />
       );
       expect(screen.getByRole("link", { name: "Review" })).toHaveAttribute("href", "/workout/w5");
-      expect(screen.getByRole("link", { name: "Log" })).toHaveAttribute("href", "/log/w5");
+      expect(screen.getByRole("link", { name: "Resume" })).toHaveAttribute("href", "/log/w5");
     });
   });
 });

@@ -66,6 +66,25 @@ describe("WorkoutDetailPage", { timeout: 15000 }, () => {
     expect(screen.getByRole("link", { name: "Audit" })).toHaveAttribute("href", "/workout/workout-1/audit");
   });
 
+  it("renders a partial-specific title when the workout is reviewable and resumable", async () => {
+    mocks.workoutFindFirst.mockResolvedValue({
+      id: "workout-1",
+      userId: "user-1",
+      status: "PARTIAL",
+      estimatedMinutes: 55,
+      selectionMetadata: null,
+      sessionIntent: "PUSH",
+      exercises: [],
+    });
+
+    const { default: WorkoutDetailPage } = await import("./page");
+    const ui = await WorkoutDetailPage({ params: Promise.resolve({ id: "workout-1" }) });
+
+    render(ui);
+
+    expect(screen.getByText("Partial Session")).toBeInTheDocument();
+  });
+
   it("renders the post-workout insights hierarchy for performed workouts", async () => {
     mocks.generateWorkoutExplanation.mockResolvedValue({
       confidence: { level: "high", summary: "ok", missingSignals: [] },

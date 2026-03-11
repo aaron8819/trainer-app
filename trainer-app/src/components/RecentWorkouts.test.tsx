@@ -153,10 +153,10 @@ describe("IN_PROGRESS row", () => {
 });
 
 describe("PARTIAL row", () => {
-  it("renders both Review and Log", () => {
+  it("renders both Review and Resume", () => {
     renderRecent([makeWorkout({ status: "PARTIAL" })]);
     expect(screen.getByRole("link", { name: "Review" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Log" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Resume" })).toBeInTheDocument();
   });
 });
 

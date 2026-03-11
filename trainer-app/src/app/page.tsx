@@ -13,6 +13,7 @@ import {
   buildWorkoutListSurfaceSummary,
   workoutListItemSelect,
 } from "@/lib/ui/workout-list-items";
+import { getWorkoutWorkflowState } from "@/lib/workout-workflow";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -65,6 +66,7 @@ export default async function Home() {
   // Validate intent type for DashboardGenerateSection (typed prop).
   const nextSessionTyped = isSessionIntent(nextSession.intent) ? nextSession.intent : null;
   const existingWorkoutStatus = latestIncomplete?.status ?? null;
+  const existingWorkflow = getWorkoutWorkflowState(existingWorkoutStatus);
   const hasExistingWorkout = Boolean(nextSession.isExisting && nextSession.workoutId && latestIncomplete);
   const currentPhase = programData.activeMeso?.currentBlockType
     ? programData.activeMeso.currentBlockType.charAt(0).toUpperCase() +
@@ -74,13 +76,19 @@ export default async function Home() {
     ? `Week ${programData.currentWeek} • ${currentPhase ?? "Program"}`
     : "Generate your first session.";
   const existingWorkoutTitle =
-    existingWorkoutStatus === "planned" ? "Start Workout" : "Resume Workout";
+    existingWorkflow.kind === "planned"
+      ? "Start Workout"
+      : existingWorkflow.kind === "partial"
+      ? "Resume Partial Workout"
+      : "Resume Workout";
   const existingWorkoutDescription =
-    existingWorkoutStatus === "planned"
+    existingWorkflow.kind === "planned"
       ? "Your next workout is already planned and ready to log."
+      : existingWorkflow.kind === "partial"
+      ? "This session was partially logged. Review it or continue logging before generating anything new."
       : "Continue your latest incomplete session before generating anything new.";
   const existingWorkoutActionLabel =
-    existingWorkoutStatus === "planned" ? "Start logging" : "Continue logging";
+    existingWorkflow.kind === "planned" ? "Start logging" : "Continue logging";
 
   const recentList = recentWorkouts.map(buildWorkoutListSurfaceSummary);
 

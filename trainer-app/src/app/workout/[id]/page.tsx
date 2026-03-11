@@ -12,6 +12,7 @@ import {
   isPerformedWorkoutStatus,
 } from "@/lib/ui/session-overview";
 import { buildSessionSummaryModel } from "@/lib/ui/session-summary";
+import { getWorkoutDetailTitle, getWorkoutWorkflowState } from "@/lib/workout-workflow";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -127,8 +128,8 @@ export default async function WorkoutDetailPage({
   const selectionMetadata = parseExplainabilitySelectionMetadata(workout.selectionMetadata);
   const sessionDecisionReceipt = selectionMetadata.sessionDecisionReceipt;
   const hasPerformedStatus = isPerformedWorkoutStatus(workout.status);
-  const startLoggingHref =
-    workout.status !== "COMPLETED" && workout.status !== "SKIPPED" ? `/log/${workout.id}` : null;
+  const workflow = getWorkoutWorkflowState(workout.status);
+  const startLoggingHref = workflow.isResumable ? `/log/${workout.id}` : null;
   const hasHighSeverityInjury = injuries.some((injury) => injury.severity >= 3);
   const summary =
     explanation != null
@@ -175,11 +176,7 @@ export default async function WorkoutDetailPage({
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-sm uppercase tracking-wide text-slate-500">Workout</p>
-            <h1 className="page-title mt-1.5">
-              {workout.status === "COMPLETED" || workout.status === "PARTIAL"
-                ? "Session Review"
-                : "Session Overview"}
-            </h1>
+            <h1 className="page-title mt-1.5">{getWorkoutDetailTitle(workout.status)}</h1>
             <p className="mt-1.5 text-sm text-slate-600">Estimated {workout.estimatedMinutes ?? "--"} minutes</p>
           </div>
           <Link

@@ -193,6 +193,21 @@ const cableLateralRaise = exercise({
   isCompound: false,
 });
 
+const machineLateralRaise = exercise({
+  id: "machine-lateral-raise",
+  name: "Machine Lateral Raise",
+  movementPatterns: ["abduction"],
+  splitTags: ["push"],
+  primaryMuscles: ["Side Delts"],
+  secondaryMuscles: [],
+  equipment: ["machine"],
+  isMainLiftEligible: false,
+  isCompound: false,
+  stimulusProfile: {
+    side_delts: 1,
+  },
+});
+
 const overheadTriceps = exercise({
   id: "overhead-triceps-ext",
   name: "Overhead Triceps Extension",
@@ -1121,6 +1136,79 @@ function buildClosureDominantIsolationExpansionMappedContext(): MappedGeneration
   };
 }
 
+function buildAccessorySiblingSplitMappedContext(params?: {
+  sideDeltsTarget?: number;
+  includeSibling?: boolean;
+  avoidSibling?: boolean;
+}): MappedGenerationContext {
+  const sideDeltsTarget = params?.sideDeltsTarget ?? 6;
+  const includeSibling = params?.includeSibling ?? true;
+  const exerciseLibrary = includeSibling
+    ? [idbp, dip, cableLateralRaise, machineLateralRaise]
+    : [idbp, dip, cableLateralRaise];
+
+  return {
+    ...buildMappedContext(),
+    exerciseLibrary: exerciseLibrary as MappedGenerationContext["exerciseLibrary"],
+    rawExercises: exerciseLibrary.map(toPrisma) as unknown as MappedGenerationContext["rawExercises"],
+    history: [{
+      date: "2026-02-24T10:00:00.000Z",
+      completed: true,
+      status: "COMPLETED",
+      sessionIntent: "push",
+      mesocycleSnapshot: {
+        mesocycleId: "meso-prev",
+        week: 2,
+        session: 2,
+        phase: "ACCUMULATION",
+      },
+      exercises: [
+        {
+          exerciseId: "cable-lateral-raise",
+          sets: makeSets("cable-lateral-raise", 4, 15),
+        },
+      ],
+    }],
+    mappedPreferences: {
+      favoriteExerciseIds: [],
+      avoidExerciseIds: params?.avoidSibling ? ["machine-lateral-raise"] : [],
+    },
+    lifecycleVolumeTargets: {
+      Chest: 0,
+      Triceps: 0,
+      "Side Delts": sideDeltsTarget,
+      "Front Delts": 0,
+      "Upper Back": 0,
+      Lats: 0,
+      Biceps: 0,
+      "Rear Delts": 0,
+      Quads: 0,
+      Hamstrings: 0,
+      Glutes: 0,
+      Calves: 0,
+      Core: 0,
+      "Lower Back": 0,
+      Forearms: 0,
+      Adductors: 0,
+      Abductors: 0,
+      Abs: 0,
+    },
+    mesocycleRoleMapByIntent: {
+      push: new Map([
+        ["incline-db-bench", "CORE_COMPOUND"],
+        ["dip", "CORE_COMPOUND"],
+        ["cable-lateral-raise", "ACCESSORY"],
+      ]),
+      pull: new Map(),
+      legs: new Map(),
+      upper: new Map(),
+      lower: new Map(),
+      full_body: new Map(),
+      body_part: new Map(),
+    },
+  };
+}
+
 function getAllExerciseSets(
   workout: {
     mainLifts: { exercise: { id: string; name: string }; sets: { targetLoad?: number }[] }[];
@@ -1476,5 +1564,151 @@ describe("W3S1 Push regression — 4 engine bug fixes", () => {
     );
     expect(receipt?.closure.actions[0]?.exerciseId).not.toBe("cable-fly");
     expect(receipt?.closure.actions[0]?.exerciseId).not.toBe("dip");
+  });
+
+  it("splits an oversized lateral-raise prescription across a close sibling in the real push generator path", async () => {
+    loadMappedGenerationContextMock.mockResolvedValueOnce(
+      buildAccessorySiblingSplitMappedContext({ sideDeltsTarget: 6 })
+    );
+
+    const result = await generateSessionFromIntent("user-1", {
+      intent: "push",
+      plannerDiagnosticsMode: "debug",
+    });
+    if ("error" in result) {
+      throw new Error(`Unexpected error: ${result.error}`);
+    }
+
+    const receipt = result.selection.sessionDecisionReceipt?.plannerDiagnostics;
+    expect(getAllExerciseSets(result.workout, "cable-lateral-raise")?.length ?? 0).toBe(4);
+    expect(getAllExerciseSets(result.workout, "machine-lateral-raise")?.length ?? 0).toBe(2);
+    expect(result.selection.perExerciseSetTargets["cable-lateral-raise"]).toBe(4);
+    expect(result.selection.perExerciseSetTargets["machine-lateral-raise"]).toBe(2);
+    expect(receipt?.exercises["cable-lateral-raise"]?.assignedSetCount).toBe(4);
+    expect(receipt?.exercises["cable-lateral-raise"]?.isSetExpandedCarryover).toBe(false);
+    expect(receipt?.exercises["cable-lateral-raise"]?.closureSetDelta).toBe(0);
+    expect(receipt?.exercises["machine-lateral-raise"]?.assignedSetCount).toBe(2);
+    expect(receipt?.exercises["machine-lateral-raise"]?.isClosureAddition).toBe(false);
+    expect(receipt?.exercises["machine-lateral-raise"]?.closureSetDelta).toBe(0);
+  });
+
+  it("sizes the second lateral-raise sibling to the remaining deficit instead of overshooting to 4 plus 4", async () => {
+    loadMappedGenerationContextMock.mockResolvedValueOnce(
+      buildAccessorySiblingSplitMappedContext({ sideDeltsTarget: 6 })
+    );
+
+    const result = await generateSessionFromIntent("user-1", {
+      intent: "push",
+      plannerDiagnosticsMode: "debug",
+    });
+    if ("error" in result) {
+      throw new Error(`Unexpected error: ${result.error}`);
+    }
+
+    const receipt = result.selection.sessionDecisionReceipt?.plannerDiagnostics;
+    expect(receipt?.muscles["Side Delts"].deficitAfterRoleBudgeting).toBe(2);
+    expect(receipt?.muscles["Side Delts"].plannedEffectiveVolumeAfterClosure).toBe(6);
+    expect(receipt?.muscles["Side Delts"].finalRemainingDeficit).toBe(0);
+    expect(getAllExerciseSets(result.workout, "machine-lateral-raise")?.length ?? 0).toBe(2);
+  });
+
+  it("keeps the single accessory fallback explicit when no sibling exists", async () => {
+    loadMappedGenerationContextMock.mockResolvedValueOnce(
+      buildAccessorySiblingSplitMappedContext({ sideDeltsTarget: 8, includeSibling: false })
+    );
+
+    const result = await generateSessionFromIntent("user-1", {
+      intent: "push",
+      plannerDiagnosticsMode: "debug",
+    });
+    if ("error" in result) {
+      throw new Error(`Unexpected error: ${result.error}`);
+    }
+
+    expect(getAllExerciseSets(result.workout, "cable-lateral-raise")?.length ?? 0).toBe(6);
+    expect(getAllExerciseSets(result.workout, "machine-lateral-raise")).toBeNull();
+    expect(
+      result.selection.sessionDecisionReceipt?.plannerDiagnostics?.muscles["Side Delts"].finalRemainingDeficit
+    ).toBe(2);
+  });
+
+  it("does not split into a sibling that was removed by constraints", async () => {
+    loadMappedGenerationContextMock.mockResolvedValueOnce(
+      buildAccessorySiblingSplitMappedContext({
+        sideDeltsTarget: 8,
+        includeSibling: true,
+        avoidSibling: true,
+      })
+    );
+
+    const result = await generateSessionFromIntent("user-1", {
+      intent: "push",
+      plannerDiagnosticsMode: "debug",
+    });
+    if ("error" in result) {
+      throw new Error(`Unexpected error: ${result.error}`);
+    }
+
+    expect(getAllExerciseSets(result.workout, "cable-lateral-raise")?.length ?? 0).toBe(6);
+    expect(getAllExerciseSets(result.workout, "machine-lateral-raise")).toBeNull();
+  });
+
+  it("keeps close-sibling accessories at four sets each when a split path exists", async () => {
+    loadMappedGenerationContextMock.mockResolvedValueOnce(
+      buildAccessorySiblingSplitMappedContext({ sideDeltsTarget: 10 })
+    );
+
+    const result = await generateSessionFromIntent("user-1", {
+      intent: "push",
+      plannerDiagnosticsMode: "debug",
+    });
+    if ("error" in result) {
+      throw new Error(`Unexpected error: ${result.error}`);
+    }
+
+    expect(getAllExerciseSets(result.workout, "cable-lateral-raise")?.length ?? 0).toBe(4);
+    expect(getAllExerciseSets(result.workout, "machine-lateral-raise")?.length ?? 0).toBe(4);
+    expect(result.selection.perExerciseSetTargets["cable-lateral-raise"]).toBeLessThanOrEqual(4);
+    expect(result.selection.perExerciseSetTargets["machine-lateral-raise"]).toBeLessThanOrEqual(4);
+  });
+
+  it("leaves main-lift behavior unchanged while applying the accessory split pass", async () => {
+    loadMappedGenerationContextMock.mockResolvedValueOnce(
+      buildAccessorySiblingSplitMappedContext({ sideDeltsTarget: 10 })
+    );
+
+    const result = await generateSessionFromIntent("user-1", {
+      intent: "push",
+      plannerDiagnosticsMode: "debug",
+    });
+    if ("error" in result) {
+      throw new Error(`Unexpected error: ${result.error}`);
+    }
+
+    expect(getAllExerciseSets(result.workout, "incline-db-bench")?.length ?? 0).toBe(1);
+    expect(getAllExerciseSets(result.workout, "dip")?.length ?? 0).toBe(1);
+  });
+
+  it("keeps fulfillment accounting aligned with the final split set targets", async () => {
+    loadMappedGenerationContextMock.mockResolvedValueOnce(
+      buildAccessorySiblingSplitMappedContext({ sideDeltsTarget: 6 })
+    );
+
+    const result = await generateSessionFromIntent("user-1", {
+      intent: "push",
+      plannerDiagnosticsMode: "debug",
+    });
+    if ("error" in result) {
+      throw new Error(`Unexpected error: ${result.error}`);
+    }
+
+    const receipt = result.selection.sessionDecisionReceipt?.plannerDiagnostics;
+    expect(result.selection.perExerciseSetTargets).toMatchObject({
+      "cable-lateral-raise": 4,
+      "machine-lateral-raise": 2,
+    });
+    expect(receipt?.muscles["Side Delts"].plannedEffectiveVolumeAfterRoleBudgeting).toBe(4);
+    expect(receipt?.muscles["Side Delts"].plannedEffectiveVolumeAfterClosure).toBe(6);
+    expect(receipt?.muscles["Side Delts"].finalRemainingDeficit).toBe(0);
   });
 });

@@ -87,6 +87,24 @@ const CLOSURE_MIN_ACCEPTABLE_SCORE = 0;
 const CLOSURE_REDUNDANT_ACCESSORY_PENALTY_WEIGHT = 75;
 const CLOSURE_STACKED_ISOLATION_PENALTY_WEIGHT = 110;
 const CLOSURE_DEFAULT_CALF_SOFT_CAP = 9;
+const ACCESSORY_SPLIT_MAX_WORKING_SETS = 4;
+const ACCESSORY_SPLIT_IGNORED_NAME_TOKENS = new Set([
+  "cable",
+  "machine",
+  "dumbbell",
+  "db",
+  "barbell",
+  "smith",
+  "bodyweight",
+  "seated",
+  "standing",
+  "single",
+  "one",
+  "two",
+  "arm",
+  "unilateral",
+  "bilateral",
+]);
 
 function recordAssignedSessionVolume(
   assignedEffectiveByMuscleInSession: Map<string, number>,
@@ -196,6 +214,51 @@ function applyClosureExerciseDiagnostics(params: {
     }
     params.diagnostics[action.exerciseId] = existing;
   }
+}
+
+function reconcilePlannerExerciseDiagnosticsWithFinalSelection(params: {
+  diagnostics: Record<string, PlannerExerciseDiagnostic>;
+  preSplitSelection: SelectionOutput;
+  finalSelection: SelectionOutput;
+  exerciseById: Map<string, EngineExercise>;
+}) {
+  const rebuiltDiagnostics = buildPlannerExerciseDiagnostics(
+    params.finalSelection,
+    params.exerciseById
+  );
+  const changedExerciseIds = new Set(
+    [
+      ...Object.keys(params.preSplitSelection.perExerciseSetTargets),
+      ...Object.keys(params.finalSelection.perExerciseSetTargets),
+    ].filter(
+      (exerciseId) =>
+        (params.preSplitSelection.perExerciseSetTargets[exerciseId] ?? 0) !==
+        (params.finalSelection.perExerciseSetTargets[exerciseId] ?? 0)
+    )
+  );
+
+  for (const [exerciseId, rebuilt] of Object.entries(rebuiltDiagnostics)) {
+    const existing = params.diagnostics[exerciseId];
+    if (!existing) {
+      continue;
+    }
+
+    rebuilt.isRoleFixture = existing.isRoleFixture;
+    rebuilt.anchorUsed = existing.anchorUsed;
+    rebuilt.anchorBudgetDecision = existing.anchorBudgetDecision;
+    rebuilt.overshootAdjustmentsApplied = existing.overshootAdjustmentsApplied;
+
+    if (!changedExerciseIds.has(exerciseId)) {
+      rebuilt.isClosureAddition = existing.isClosureAddition;
+      rebuilt.isSetExpandedCarryover = existing.isSetExpandedCarryover;
+      rebuilt.closureSetDelta = existing.closureSetDelta;
+    }
+  }
+
+  for (const exerciseId of Object.keys(params.diagnostics)) {
+    delete params.diagnostics[exerciseId];
+  }
+  Object.assign(params.diagnostics, rebuiltDiagnostics);
 }
 
 function getNonAnchorOvershootTolerance(weeklyTarget: number): number {
@@ -377,6 +440,302 @@ function isSupplementalPreferredExercise(
   const isMainLift = isMainLiftExercise(exercise, objective);
   const fatigueCost = exercise.fatigueCost ?? 3;
   return !isMainLift && fatigueCost <= 3;
+}
+
+function isAccessorySplitEligibleExercise(
+  exercise: EngineExercise,
+  objective: ReturnType<typeof buildSelectionObjective>
+): boolean {
+  return !isMainLiftExercise(exercise, objective) && !(exercise.isCompound ?? false);
+}
+
+function normalizeAccessorySplitFamilyName(name: string): string {
+  return name
+    .split("(")[0]
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter((token) => token.length > 0)
+    .filter((token) => !ACCESSORY_SPLIT_IGNORED_NAME_TOKENS.has(token))
+    .join(" ")
+    .trim();
+}
+
+function getAccessorySplitFamilyKey(
+  exercise: EngineExercise,
+  objective: ReturnType<typeof buildSelectionObjective>
+): string | undefined {
+  if (!isAccessorySplitEligibleExercise(exercise, objective)) {
+    return undefined;
+  }
+
+  const dominantMuscles = getDominantStimulusMuscles(exercise);
+  if (dominantMuscles.length !== 1) {
+    return undefined;
+  }
+
+  const familyName = normalizeAccessorySplitFamilyName(exercise.name);
+  if (familyName.length === 0) {
+    return undefined;
+  }
+
+  return `${dominantMuscles[0]}::${familyName}`;
+}
+
+function applyAccessorySiblingSplitPass(params: {
+  objective: ReturnType<typeof buildSelectionObjective>;
+  selection: SelectionOutput;
+  exerciseById: Map<string, EngineExercise>;
+  candidatePool: EngineExercise[];
+}): { selection: SelectionOutput; tradeoffs: PlannerTradeoffDiagnostic[] } {
+  const selection: SelectionOutput = {
+    ...params.selection,
+    selectedExerciseIds: [...params.selection.selectedExerciseIds],
+    mainLiftIds: [...params.selection.mainLiftIds],
+    accessoryIds: [...params.selection.accessoryIds],
+    perExerciseSetTargets: { ...params.selection.perExerciseSetTargets },
+    rationale: { ...params.selection.rationale },
+  };
+  const tradeoffs: PlannerTradeoffDiagnostic[] = [];
+  const selectedIdSet = new Set(selection.selectedExerciseIds);
+  const familyPoolByKey = new Map<string, EngineExercise[]>();
+  const poolWithSelected = [
+    ...params.candidatePool,
+    ...selection.selectedExerciseIds
+      .map((exerciseId) => params.exerciseById.get(exerciseId))
+      .filter((exercise): exercise is EngineExercise => Boolean(exercise)),
+  ];
+
+  for (const exercise of poolWithSelected) {
+    if (getClosurePoolRejectionReason(exercise, params.objective)) {
+      continue;
+    }
+    const familyKey = getAccessorySplitFamilyKey(exercise, params.objective);
+    if (!familyKey) {
+      continue;
+    }
+    const family = familyPoolByKey.get(familyKey) ?? [];
+    if (!family.some((entry) => entry.id === exercise.id)) {
+      family.push(exercise);
+      familyPoolByKey.set(familyKey, family);
+    }
+  }
+
+  const processedFamilyKeys = new Set<string>();
+  for (const exerciseId of selection.selectedExerciseIds) {
+    const exercise = params.exerciseById.get(exerciseId);
+    if (!exercise) {
+      continue;
+    }
+    const familyKey = getAccessorySplitFamilyKey(exercise, params.objective);
+    if (!familyKey || processedFamilyKeys.has(familyKey)) {
+      continue;
+    }
+    processedFamilyKeys.add(familyKey);
+
+    const familyPool = familyPoolByKey.get(familyKey) ?? [];
+    if (familyPool.length <= 1) {
+      continue;
+    }
+
+    const dominantMuscleId = getDominantStimulusMuscles(exercise)[0];
+    const dominantMuscle = dominantMuscleId ? toMuscleLabel(dominantMuscleId) : undefined;
+    if (!dominantMuscle) {
+      continue;
+    }
+
+    const selectedFamilyIds = selection.selectedExerciseIds.filter((selectedFamilyId) => {
+      const selectedExercise = params.exerciseById.get(selectedFamilyId);
+      return selectedExercise != null &&
+        getAccessorySplitFamilyKey(selectedExercise, params.objective) === familyKey;
+    });
+    if (selectedFamilyIds.length === 0) {
+      continue;
+    }
+
+    const currentFamilyContribution = selectedFamilyIds.reduce((sum, selectedFamilyId) => {
+      const selectedExercise = params.exerciseById.get(selectedFamilyId);
+      const setCount = selection.perExerciseSetTargets[selectedFamilyId] ?? 0;
+      if (!selectedExercise || setCount <= 0) {
+        return sum;
+      }
+      return sum + (getEffectiveStimulusByMuscle(selectedExercise, setCount).get(dominantMuscle) ?? 0);
+    }, 0);
+    const weeklyTarget = params.objective.volumeContext.weeklyTarget.get(dominantMuscle) ?? 0;
+    const performed = params.objective.volumeContext.effectiveActual.get(dominantMuscle) ?? 0;
+    const nonFamilyContribution = selection.selectedExerciseIds.reduce((sum, selectedId) => {
+      if (selectedFamilyIds.includes(selectedId)) {
+        return sum;
+      }
+      const selectedExercise = params.exerciseById.get(selectedId);
+      const setCount = selection.perExerciseSetTargets[selectedId] ?? 0;
+      if (!selectedExercise || setCount <= 0) {
+        return sum;
+      }
+      return sum + (getEffectiveStimulusByMuscle(selectedExercise, setCount).get(dominantMuscle) ?? 0);
+    }, 0);
+    const familyContributionNeeded = Math.max(0, weeklyTarget - performed - nonFamilyContribution);
+    const hasOversizedSelected = selectedFamilyIds.some(
+      (selectedFamilyId) =>
+        (selection.perExerciseSetTargets[selectedFamilyId] ?? 0) > ACCESSORY_SPLIT_MAX_WORKING_SETS
+    );
+    const hasMaterialSingleExerciseExcess =
+      selectedFamilyIds.length === 1 &&
+      (selection.perExerciseSetTargets[selectedFamilyIds[0]] ?? 0) >
+        ACCESSORY_SPLIT_MAX_WORKING_SETS + 1;
+    const hasFamilyOvershoot =
+      currentFamilyContribution > familyContributionNeeded + CLOSURE_ACTION_SCORE_EPSILON;
+    if (selectedFamilyIds.length === 1 && !hasMaterialSingleExerciseExcess) {
+      continue;
+    }
+    if (!hasOversizedSelected && !hasFamilyOvershoot) {
+      continue;
+    }
+
+    const availableSlots = Math.max(
+      0,
+      params.objective.constraints.maxExercises - selection.selectedExerciseIds.length
+    );
+    const additionalExercises = familyPool
+      .filter((familyExercise) => !selectedIdSet.has(familyExercise.id))
+      .slice(0, availableSlots);
+    if (
+      selectedFamilyIds.length === 1 &&
+      hasOversizedSelected &&
+      additionalExercises.length === 0
+    ) {
+      continue;
+    }
+
+    const orderedFamilyExercises = [
+      ...selectedFamilyIds
+        .map((selectedFamilyId) => params.exerciseById.get(selectedFamilyId))
+        .filter((selectedExercise): selectedExercise is EngineExercise => Boolean(selectedExercise)),
+      ...additionalExercises,
+    ];
+    const totalCappedCapacity = orderedFamilyExercises.reduce((sum, familyExercise) => {
+      const contributionPerSet = getEffectiveStimulusByMuscle(familyExercise, 1).get(dominantMuscle) ?? 0;
+      return sum + contributionPerSet * ACCESSORY_SPLIT_MAX_WORKING_SETS;
+    }, 0);
+    const desiredFamilyContribution =
+      selectedFamilyIds.length === 1
+        ? Math.min(currentFamilyContribution, familyContributionNeeded)
+        : Math.min(currentFamilyContribution, familyContributionNeeded, totalCappedCapacity);
+    if (desiredFamilyContribution <= CLOSURE_ACTION_SCORE_EPSILON) {
+      continue;
+    }
+
+    let remainingContribution = desiredFamilyContribution;
+    const nextAssignments = new Map<string, number>();
+    for (const familyExercise of orderedFamilyExercises) {
+      if (remainingContribution <= CLOSURE_ACTION_SCORE_EPSILON) {
+        break;
+      }
+      const contributionPerSet = getEffectiveStimulusByMuscle(familyExercise, 1).get(dominantMuscle) ?? 0;
+      if (contributionPerSet <= 0) {
+        continue;
+      }
+      const desiredContributionForExercise = Math.min(
+        remainingContribution,
+        contributionPerSet * ACCESSORY_SPLIT_MAX_WORKING_SETS
+      );
+      const assignedSets = Math.min(
+        ACCESSORY_SPLIT_MAX_WORKING_SETS,
+        Math.max(
+          0,
+          Math.ceil(
+            (desiredContributionForExercise - CLOSURE_ACTION_SCORE_EPSILON) / contributionPerSet
+          )
+        )
+      );
+      if (assignedSets <= 0) {
+        continue;
+      }
+      nextAssignments.set(familyExercise.id, assignedSets);
+      remainingContribution = Math.max(
+        0,
+        remainingContribution - assignedSets * contributionPerSet
+      );
+    }
+    if (remainingContribution > CLOSURE_ACTION_SCORE_EPSILON) {
+      continue;
+    }
+
+    const changedAssignments = Array.from(
+      new Set([...selectedFamilyIds, ...nextAssignments.keys()])
+    ).filter(
+      (candidateExerciseId) =>
+        (selection.perExerciseSetTargets[candidateExerciseId] ?? 0) !==
+        (nextAssignments.get(candidateExerciseId) ?? 0)
+    );
+    if (changedAssignments.length === 0) {
+      continue;
+    }
+
+    for (const selectedFamilyId of selectedFamilyIds) {
+      const nextSetCount = nextAssignments.get(selectedFamilyId) ?? 0;
+      if (nextSetCount > 0) {
+        selection.perExerciseSetTargets[selectedFamilyId] = nextSetCount;
+        continue;
+      }
+      delete selection.perExerciseSetTargets[selectedFamilyId];
+      delete selection.rationale[selectedFamilyId];
+      selection.selectedExerciseIds = selection.selectedExerciseIds.filter(
+        (candidateExerciseId) => candidateExerciseId !== selectedFamilyId
+      );
+      selection.accessoryIds = selection.accessoryIds.filter(
+        (candidateExerciseId) => candidateExerciseId !== selectedFamilyId
+      );
+      selectedIdSet.delete(selectedFamilyId);
+    }
+    for (const familyExercise of additionalExercises) {
+      const nextSetCount = nextAssignments.get(familyExercise.id) ?? 0;
+      if (nextSetCount <= 0 || selectedIdSet.has(familyExercise.id)) {
+        continue;
+      }
+      selection.selectedExerciseIds.push(familyExercise.id);
+      selection.accessoryIds.push(familyExercise.id);
+      selection.perExerciseSetTargets[familyExercise.id] = nextSetCount;
+      selection.rationale[familyExercise.id] = {
+        score: 0,
+        components: {
+          deficitFill: 0,
+          rotationNovelty: 0,
+          sfrScore: 0,
+          lengthenedScore: 0,
+          movementNovelty: 0,
+          sraAlignment: 0,
+          userPreference: 0,
+        },
+        hardFilterPass: true,
+        selectedStep: "accessory_pick",
+        reason: `Added to split ${exercise.name} across a close sibling movement.`,
+      };
+      selectedIdSet.add(familyExercise.id);
+    }
+
+    const finalDistribution = selection.selectedExerciseIds
+      .filter((selectedFamilyId) => {
+        const selectedExercise = params.exerciseById.get(selectedFamilyId);
+        return selectedExercise != null &&
+          getAccessorySplitFamilyKey(selectedExercise, params.objective) === familyKey;
+      })
+      .map((selectedFamilyId) => {
+        const selectedExercise = params.exerciseById.get(selectedFamilyId);
+        return `${selectedExercise?.name ?? selectedFamilyId} ${selection.perExerciseSetTargets[selectedFamilyId] ?? 0}`;
+      })
+      .join(", ");
+    tradeoffs.push({
+      layer: "closure",
+      code: "accessory_sibling_split_rebalanced",
+      exerciseId: exercise.id,
+      muscle: dominantMuscle,
+      message: `${exercise.name} was redistributed across close sibling accessories to avoid an oversized single-accessory prescription. Final distribution: ${finalDistribution}.`,
+    });
+  }
+
+  return { selection, tradeoffs };
 }
 
 function coversSupplementalTargets(
@@ -2375,7 +2734,22 @@ export function generateSessionFromMappedContext(
       }),
     isMainLiftExercise,
   });
-  const selection = closureResult.selection;
+  const accessorySplitResult = applyAccessorySiblingSplitPass({
+    objective,
+    selection: closureResult.selection,
+    exerciseById,
+    candidatePool: closurePool,
+  });
+  const selection = accessorySplitResult.selection;
+  plannerTradeoffs.push(...accessorySplitResult.tradeoffs);
+  for (const [exerciseId, diagnostic] of Object.entries(
+    buildPlannerExerciseDiagnostics(selection, exerciseById)
+  )) {
+    plannerExerciseDiagnostics[exerciseId] = {
+      ...diagnostic,
+      ...plannerExerciseDiagnostics[exerciseId],
+    };
+  }
   const finalAssignedEffectiveByMuscleInSession = buildAssignedEffectiveByMuscleInSession(
     selection.perExerciseSetTargets,
     exerciseById
@@ -2390,6 +2764,12 @@ export function generateSessionFromMappedContext(
     plannerExerciseDiagnostics,
     selection.perExerciseSetTargets
   );
+  reconcilePlannerExerciseDiagnosticsWithFinalSelection({
+    diagnostics: plannerExerciseDiagnostics,
+    preSplitSelection: closureResult.selection,
+    finalSelection: selection,
+    exerciseById,
+  });
   const rescueOnlyPool = rescuePool.filter((exercise) =>
     !standardPool.some((standardExercise) => standardExercise.id === exercise.id)
   );

@@ -126,4 +126,48 @@ describe("buildPostWorkoutInsightsModel", () => {
       tone: "positive",
     });
   });
+
+  it("uses the dashboard weekly-status ladder for projected program impact copy", () => {
+    const explanation = makeExplanation();
+    explanation.volumeCompliance = [
+      {
+        muscle: "Front Delts",
+        performedEffectiveVolumeBeforeSession: 0,
+        plannedEffectiveVolumeThisSession: 9.6,
+        projectedEffectiveVolume: 9.6,
+        weeklyTarget: 7,
+        mev: 2,
+        mav: 7,
+        status: "OVER_MAV",
+      },
+      {
+        muscle: "Triceps",
+        performedEffectiveVolumeBeforeSession: 0,
+        plannedEffectiveVolumeThisSession: 12.5,
+        projectedEffectiveVolume: 12.5,
+        weeklyTarget: 12,
+        mev: 6,
+        mav: 12,
+        status: "OVER_MAV",
+      },
+    ];
+
+    const model = buildPostWorkoutInsightsModel({
+      explanation,
+      exercises: [],
+    });
+
+    expect(model.programSignals).toEqual([
+      {
+        label: "Front Delts",
+        value: "Front Delts is on target for the week after this session.",
+        tone: "positive",
+      },
+      {
+        label: "Triceps",
+        value: "Triceps is on target for the week after this session.",
+        tone: "positive",
+      },
+    ]);
+  });
 });

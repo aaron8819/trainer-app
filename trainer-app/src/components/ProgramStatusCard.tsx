@@ -10,6 +10,10 @@ import type {
   ProgramVolumeRow,
 } from "@/lib/api/program";
 import { SlideUpSheet } from "@/components/ui/SlideUpSheet";
+import {
+  formatWeeklyMuscleStatusLabel,
+  getWeeklyMuscleStatus,
+} from "@/lib/ui/weekly-muscle-status";
 
 type ProgramStatusCardVariant = "default" | "homeCompact";
 
@@ -50,18 +54,6 @@ function formatContributionContext(contribution: ProgramMuscleContribution): str
   return parts.length > 0 ? parts.join(", ") : null;
 }
 
-function volumeStatus(
-  row: ProgramVolumeRow
-): "below_mev" | "at_mev" | "optimal" | "approaching_mrv" | "at_mrv" {
-  const sets = row.effectiveSets;
-  if (row.mev === 0 && sets === 0) return "below_mev";
-  if (sets >= row.mrv) return "at_mrv";
-  if (sets >= row.mrv * 0.85) return "approaching_mrv";
-  if (sets >= row.target) return "optimal";
-  if (sets >= row.mev) return "at_mev";
-  return "below_mev";
-}
-
 function formatOpportunityStateLabel(
   state: ProgramVolumeRow["opportunityState"]
 ): string {
@@ -96,26 +88,12 @@ function getTodayAdvisoryClass(state: ProgramVolumeRow["opportunityState"]): str
 
 const STATUS_STYLE: Record<string, string> = {
   below_mev: "bg-slate-50 text-slate-500 border-slate-200",
-  at_mev: "bg-yellow-50 text-yellow-700 border-yellow-200",
-  optimal: "bg-green-50 text-green-700 border-green-200",
-  approaching_mrv: "bg-orange-50 text-orange-700 border-orange-200",
+  in_range: "bg-yellow-50 text-yellow-700 border-yellow-200",
+  near_target: "bg-yellow-50 text-yellow-700 border-yellow-200",
+  on_target: "bg-green-50 text-green-700 border-green-200",
+  near_mrv: "bg-orange-50 text-orange-700 border-orange-200",
   at_mrv: "bg-red-50 text-red-700 border-red-200",
 };
-
-function formatWeeklyStatusLabel(row: ProgramVolumeRow, status: ReturnType<typeof volumeStatus>): string {
-  switch (status) {
-    case "below_mev":
-      return "Below MEV";
-    case "at_mev":
-      return row.effectiveSets >= row.target * 0.85 ? "Near target" : "In range";
-    case "optimal":
-      return "On target";
-    case "approaching_mrv":
-      return "Near MRV";
-    case "at_mrv":
-      return "At MRV";
-  }
-}
 
 function formatRawSetContext(directSets: number, indirectSets: number): string {
   if (indirectSets > 0) {
@@ -530,7 +508,12 @@ function ProgramStatusCardDefault({ initialData }: { initialData: ProgramDashboa
           }`}
         >
           {relevantVolume.map((row) => {
-            const status = volumeStatus(row);
+            const status = getWeeklyMuscleStatus({
+              effectiveSets: row.effectiveSets,
+              target: row.target,
+              mev: row.mev,
+              mrv: row.mrv,
+            });
             const cls = STATUS_STYLE[status];
             const barWidth =
               row.target > 0 ? Math.min(100, Math.round((row.effectiveSets / row.target) * 100)) : 0;
@@ -561,7 +544,7 @@ function ProgramStatusCardDefault({ initialData }: { initialData: ProgramDashboa
                 <p className="text-xs opacity-75">target {row.target} weighted sets</p>
                 <div className="mt-1.5">
                   <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium ${cls}`}>
-                    {formatWeeklyStatusLabel(row, status)}
+                    {formatWeeklyMuscleStatusLabel(status)}
                   </span>
                 </div>
                 {!isHistorical ? (

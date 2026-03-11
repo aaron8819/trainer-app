@@ -1,9 +1,13 @@
 import type {
   NextExposureDecision,
-  VolumeComplianceStatus,
   WorkoutExplanation,
 } from "@/lib/engine/explainability";
 import type { ProgressionReceipt } from "@/lib/evidence/types";
+import { VOLUME_LANDMARKS } from "@/lib/engine/volume-landmarks";
+import {
+  getWeeklyMuscleStatus,
+  type WeeklyMuscleStatus,
+} from "@/lib/ui/weekly-muscle-status";
 
 export type ReviewedExerciseMeta = {
   exerciseId: string;
@@ -44,14 +48,13 @@ export type PostWorkoutInsightsModel = {
   programSignals: PostWorkoutProgramSignal[];
 };
 
-const VOLUME_STATUS_PRIORITY: Record<VolumeComplianceStatus, number> = {
-  OVER_MAV: 0,
-  AT_MAV: 1,
-  APPROACHING_MAV: 2,
-  UNDER_MEV: 3,
-  APPROACHING_TARGET: 4,
-  ON_TARGET: 5,
-  OVER_TARGET: 6,
+const VOLUME_STATUS_PRIORITY: Record<WeeklyMuscleStatus, number> = {
+  at_mrv: 0,
+  near_mrv: 1,
+  below_mev: 2,
+  in_range: 3,
+  near_target: 4,
+  on_target: 5,
 };
 
 function formatSignedPercent(value: number | null | undefined): string | null {
@@ -145,30 +148,28 @@ function badgeForAction(action: NextExposureDecision["action"]): string {
   return "Hold";
 }
 
-function describeVolumeSignal(status: VolumeComplianceStatus, muscle: string): string {
+function describeVolumeSignal(status: WeeklyMuscleStatus, muscle: string): string {
   switch (status) {
-    case "OVER_MAV":
-      return `${muscle} is projected above MAV after this session.`;
-    case "AT_MAV":
-      return `${muscle} is sitting right at MAV after this session.`;
-    case "APPROACHING_MAV":
-      return `${muscle} is getting close to MAV after this session.`;
-    case "OVER_TARGET":
-      return `${muscle} moved past this week's target after this session.`;
-    case "ON_TARGET":
+    case "at_mrv":
+      return `${muscle} is at MRV after this session.`;
+    case "near_mrv":
+      return `${muscle} is getting close to MRV after this session.`;
+    case "on_target":
       return `${muscle} is on target for the week after this session.`;
-    case "APPROACHING_TARGET":
+    case "near_target":
       return `${muscle} is close to this week's target after this session.`;
-    case "UNDER_MEV":
+    case "in_range":
+      return `${muscle} is in range for the week after this session.`;
+    case "below_mev":
       return `${muscle} is still below MEV after this session.`;
   }
 }
 
-function toneForVolumeStatus(status: VolumeComplianceStatus): PostWorkoutInsightTone {
-  if (status === "OVER_MAV" || status === "AT_MAV" || status === "APPROACHING_MAV" || status === "UNDER_MEV") {
+function toneForVolumeStatus(status: WeeklyMuscleStatus): PostWorkoutInsightTone {
+  if (status === "at_mrv" || status === "near_mrv" || status === "below_mev") {
     return "caution";
   }
-  if (status === "ON_TARGET" || status === "OVER_TARGET") {
+  if (status === "on_target") {
     return "positive";
   }
   return "neutral";
@@ -176,6 +177,25 @@ function toneForVolumeStatus(status: VolumeComplianceStatus): PostWorkoutInsight
 
 function buildProgramSignals(explanation: WorkoutExplanation): PostWorkoutProgramSignal[] {
   const volumeSignals = [...explanation.volumeCompliance]
+    .map((row) => {
+      const landmarks = VOLUME_LANDMARKS[row.muscle];
+      if (!landmarks) {
+        return null;
+      }
+
+      const status = getWeeklyMuscleStatus({
+        effectiveSets: row.projectedEffectiveVolume,
+        target: row.weeklyTarget,
+        mev: row.mev,
+        mrv: landmarks.mrv,
+      });
+
+      return {
+        muscle: row.muscle,
+        status,
+      };
+    })
+    .filter((row): row is { muscle: string; status: WeeklyMuscleStatus } => row !== null)
     .sort((left, right) => {
       const priorityDiff = VOLUME_STATUS_PRIORITY[left.status] - VOLUME_STATUS_PRIORITY[right.status];
       if (priorityDiff !== 0) {

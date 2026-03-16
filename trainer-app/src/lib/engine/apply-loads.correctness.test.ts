@@ -214,7 +214,7 @@ describe("applyLoads correctness", () => {
     expect(result.mainLifts[0].sets[0].targetLoad).toBe(205);
   });
 
-  it("applies canonical deload load reduction to both compounds and accessories", () => {
+  it("falls back to canonical deload load reduction when no accumulation history exists", () => {
     const deloadWorkout: WorkoutPlan = {
       id: "w-deload",
       scheduledDate: "2026-02-27T00:00:00.000Z",
@@ -285,7 +285,88 @@ describe("applyLoads correctness", () => {
     expect(result.accessories[0].sets[0].targetLoad).toBe(30);
   });
 
-  it("overrides prefilled target loads during deload so upstream callers cannot bypass the canonical load-down", () => {
+  it("anchors deload load-down to the last performed accumulation load instead of the progression candidate", () => {
+    const deloadWorkout: WorkoutPlan = {
+      id: "w-deload-accumulation-anchor",
+      scheduledDate: "2026-02-27T00:00:00.000Z",
+      warmup: [],
+      mainLifts: [
+        {
+          id: "we-deload-anchor-main",
+          exercise: bench,
+          orderIndex: 0,
+          isMainLift: true,
+          sets: [
+            { setIndex: 1, targetReps: 8, targetRpe: 5 },
+            { setIndex: 2, targetReps: 8, targetRpe: 5 },
+          ],
+        },
+      ],
+      accessories: [
+        {
+          id: "we-deload-anchor-accessory",
+          exercise: cableCurl,
+          orderIndex: 1,
+          isMainLift: false,
+          sets: [{ setIndex: 1, targetReps: 12, targetRpe: 5 }],
+        },
+      ],
+      estimatedMinutes: 30,
+    };
+
+    const result = applyLoads(deloadWorkout, {
+      history: [
+        {
+          date: "2026-02-22T00:00:00.000Z",
+          completed: true,
+          status: "COMPLETED",
+          sessionIntent: "push",
+          mesocycleSnapshot: { phase: "ACCUMULATION", week: 4 },
+          exercises: [
+            {
+              exerciseId: "bench",
+              sets: [
+                { exerciseId: "bench", setIndex: 1, reps: 10, rpe: 8, load: 200 },
+                { exerciseId: "bench", setIndex: 2, reps: 10, rpe: 8, load: 180 },
+              ],
+            },
+          ],
+        },
+        {
+          date: "2026-02-18T00:00:00.000Z",
+          completed: true,
+          status: "COMPLETED",
+          sessionIntent: "push",
+          mesocycleSnapshot: { phase: "ACCUMULATION", week: 3 },
+          exercises: [
+            {
+              exerciseId: "cable-curl",
+              sets: [
+                { exerciseId: "cable-curl", setIndex: 1, reps: 12, rpe: 8, load: 42 },
+                { exerciseId: "cable-curl", setIndex: 2, reps: 12, rpe: 8, load: 42 },
+              ],
+            },
+          ],
+        },
+      ],
+      baselines: [],
+      exerciseById: { bench, "cable-curl": cableCurl },
+      primaryGoal: "hypertrophy",
+      profile: { trainingAge: "intermediate" },
+      sessionIntent: "push",
+      periodization: {
+        rpeOffset: -2,
+        setMultiplier: 0.5,
+        backOffMultiplier: 0.75,
+        isDeload: true,
+      },
+    });
+
+    expect(result.mainLifts[0].sets.map((set) => set.targetLoad)).toEqual([150, 150]);
+    expect(result.accessories[0].sets[0].targetLoad).toBe(32.5);
+  });
+
+  it("overrides prefilled target loads during deload so upstream callers cannot bypass the accumulation-anchored load-down", () => {
     const prefilledDeload: WorkoutPlan = {
       id: "w-prefilled-deload",
       scheduledDate: "2026-02-27T00:00:00.000Z",
@@ -309,6 +390,7 @@ describe("applyLoads correctness", () => {
           date: "2026-02-20T00:00:00.000Z",
           completed: true,
           status: "COMPLETED",
+          mesocycleSnapshot: { phase: "ACCUMULATION", week: 4 },
           exercises: [
             {
               exerciseId: "bench",
@@ -332,7 +414,7 @@ describe("applyLoads correctness", () => {
       },
     });
 
-    expect(result.mainLifts[0].sets[0].targetLoad).toBe(155);
+    expect(result.mainLifts[0].sets[0].targetLoad).toBe(150);
   });
 
   it("uses same-pattern performed donor load for non-avoided swap instead of cold defaults", () => {

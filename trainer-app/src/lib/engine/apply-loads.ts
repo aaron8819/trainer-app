@@ -1,5 +1,6 @@
 import { computeDoubleProgressionDecision, computeNextLoad } from "./progression";
 import {
+  filterPerformanceHistory,
   filterProgressionHistory,
   resolveBaseSelectionModeConfidence,
   sortHistoryByDateDesc,
@@ -127,6 +128,7 @@ export function applyLoadsWithAudit(
   workout: WorkoutPlan,
   options: ApplyLoadsOptions
 ): { workout: WorkoutPlan; audit: ApplyLoadsAudit } {
+  const periodization = options.periodization;
   const historyIndex = buildHistoryIndex(options.history ?? [], {
     sessionIntent: options.sessionIntent,
     useNewMesocycleBaselineSource:
@@ -134,12 +136,16 @@ export function applyLoadsWithAudit(
       (options.accumulationSessionsCompleted ?? -1) === 0,
   });
   const historyTopLoadIndex = buildHistoryTopLoadIndex(historyIndex);
+  const accumulationHistoryIndex = periodization?.isDeload
+    ? buildAccumulationPerformanceHistoryIndex(options.history ?? [], {
+        sessionIntent: options.sessionIntent,
+      })
+    : new Map<string, WorkoutSessionHistory[]>();
   const preferredContext = getPreferredBaselineContext(options.primaryGoal);
   const baselineIndex = buildBaselineIndex(options.baselines ?? [], preferredContext);
   const baselineLoadIndex = buildBaselineLoadIndex(baselineIndex);
   const repRanges = getGoalRepRanges(options.primaryGoal);
   const trainingAge = options.profile?.trainingAge ?? "intermediate";
-  const periodization = options.periodization;
   const backOffMultiplier =
     periodization?.backOffMultiplier ?? getBackOffMultiplier(options.primaryGoal);
 
@@ -185,16 +191,19 @@ export function applyLoadsWithAudit(
     if (resolvedLoad.progressionTrace) {
       progressionTraces[exercise.id] = resolvedLoad.progressionTrace;
     }
+    const deloadReferenceLoad = periodization?.isDeload
+      ? resolveDeloadReferenceLoad(exercise, accumulationHistoryIndex.get(exercise.id))
+      : undefined;
     // Deload still resolves the canonical source load first; the lighter
     // deload prescription is applied here rather than upstream in generation.
     const load =
       periodization?.isDeload
-        ? (resolvedLoad.load ?? existingTopSetLoad)
+        ? (deloadReferenceLoad?.load ?? resolvedLoad.load ?? existingTopSetLoad)
         : (existingTopSetLoad ?? resolvedLoad.load);
     const loadSource =
       !periodization?.isDeload && existingTopSetLoad !== undefined
         ? "existing_target_load"
-        : resolvedLoad.source;
+        : (deloadReferenceLoad?.source ?? resolvedLoad.source);
 
     if (load === undefined) {
       return exerciseEntry.isMainLift
@@ -312,6 +321,21 @@ function buildHistoryIndex(history: WorkoutHistoryEntry[], options: BuildHistory
   const sourceEntries = options.useNewMesocycleBaselineSource
     ? selectNewMesocycleBaselineHistory(sorted)
     : sorted;
+  return buildSessionHistoryIndex(sourceEntries, options);
+}
+
+function buildAccumulationPerformanceHistoryIndex(
+  history: WorkoutHistoryEntry[],
+  options: Pick<BuildHistoryIndexOptions, "sessionIntent"> = {}
+) {
+  const sorted = sortHistoryByDateDesc(filterPerformanceHistory(history));
+  return buildSessionHistoryIndex(sorted.filter(isAccumulationPhaseEntry), options);
+}
+
+function buildSessionHistoryIndex(
+  sourceEntries: WorkoutHistoryEntry[],
+  options: Pick<BuildHistoryIndexOptions, "sessionIntent"> = {}
+) {
   const index = new Map<string, WorkoutSessionHistory[]>();
   for (const entry of sourceEntries) {
     if (options.sessionIntent && entry.sessionIntent !== options.sessionIntent) {
@@ -647,6 +671,26 @@ function resolveLoadForExercise(
     ),
     source: "estimate",
   };
+}
+
+function resolveDeloadReferenceLoad(
+  exercise: Exercise,
+  historySessions: WorkoutSessionHistory[] | undefined
+): { load: number; source: "history" } | undefined {
+  const latestAccumulationSets = historySessions?.[0]?.sets;
+  if (!latestAccumulationSets || latestAccumulationSets.length === 0) {
+    return undefined;
+  }
+
+  const load = shouldUseModalAnchoring(exercise)
+    ? getModalSessionLoad(latestAccumulationSets)
+    : getTopSessionLoad(latestAccumulationSets);
+
+  if (!Number.isFinite(load)) {
+    return undefined;
+  }
+
+  return { load: load as number, source: "history" };
 }
 
 function getTopSessionLoad(sets: WorkoutSetHistory): number | undefined {

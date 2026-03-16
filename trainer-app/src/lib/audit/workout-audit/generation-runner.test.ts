@@ -119,7 +119,7 @@ describe("runWorkoutAuditGeneration", () => {
       },
     };
 
-    await runWorkoutAuditGeneration(context);
+    const run = await runWorkoutAuditGeneration(context);
 
     expect(mocks.generateDeloadSessionFromIntent).toHaveBeenCalledWith("user-1", {
       intent: "legs",
@@ -127,5 +127,11 @@ describe("runWorkoutAuditGeneration", () => {
       plannerDiagnosticsMode: "debug",
     });
     expect(mocks.generateSessionFromIntent).not.toHaveBeenCalled();
+    expect(run.generationPath).toEqual({
+      requestedMode: "next-session",
+      executionMode: "active_deload_reroute",
+      generator: "generateDeloadSessionFromIntent",
+      reason: "active_mesocycle_state_active_deload",
+    });
   });
 });

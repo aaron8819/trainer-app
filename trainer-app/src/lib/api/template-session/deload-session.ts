@@ -32,6 +32,58 @@ function modalNumber(values: number[]): number | undefined {
   })[0][0];
 }
 
+function getPositiveLoggedLoads(sets: Array<{ logs: Array<{ actualLoad?: number | null }> }>): number[] {
+  return sets.flatMap((set) =>
+    set.logs.flatMap((log) =>
+      typeof log.actualLoad === "number" && log.actualLoad > 0 ? [log.actualLoad] : []
+    )
+  );
+}
+
+function getTopLoggedLoad(sets: Array<{ logs: Array<{ actualLoad?: number | null }> }>): number | undefined {
+  for (const set of sets) {
+    for (const log of set.logs) {
+      if (typeof log.actualLoad === "number" && log.actualLoad > 0) {
+        return log.actualLoad;
+      }
+    }
+  }
+  return undefined;
+}
+
+function resolveAccumulationAnchor(input: {
+  latestLoads: number[];
+  peakLoads: number[];
+  latestEntrySets: Array<{ logs: Array<{ actualLoad?: number | null }> }>;
+  isMainLift: boolean;
+}): {
+  anchoredLoad: number | null;
+  anchoredLoadSource: "peak_accumulation" | "latest_accumulation" | "none";
+} {
+  const latestAnchor = input.isMainLift
+    ? getTopLoggedLoad(input.latestEntrySets)
+    : modalNumber(input.latestLoads);
+  if (typeof latestAnchor === "number") {
+    return {
+      anchoredLoad: latestAnchor,
+      anchoredLoadSource: "latest_accumulation",
+    };
+  }
+
+  const peakAnchor = modalNumber(input.peakLoads);
+  if (typeof peakAnchor === "number") {
+    return {
+      anchoredLoad: peakAnchor,
+      anchoredLoadSource: "peak_accumulation",
+    };
+  }
+
+  return {
+    anchoredLoad: null,
+    anchoredLoadSource: "none",
+  };
+}
+
 function buildExerciseSetPlan(
   baselineSetCount: number,
   baselineReps: number,
@@ -150,6 +202,19 @@ export async function generateDeloadSessionFromIntentContext(
         .flatMap((set) => set.logs.map((log) => log.actualReps ?? 0))
         .filter((reps) => reps > 0)
     ) ?? 8;
+    const latestAccumulationLoads = latestExerciseEntry
+      ? getPositiveLoggedLoads(latestExerciseEntry.sets)
+      : [];
+    const peakAccumulationLoads = peakAccumulationSource
+      .flatMap((workout) => workout.exercises)
+      .filter((entry) => entry.exerciseId === exerciseId)
+      .flatMap((entry) => getPositiveLoggedLoads(entry.sets));
+    const accumulationAnchor = resolveAccumulationAnchor({
+      latestLoads: latestAccumulationLoads,
+      peakLoads: peakAccumulationLoads,
+      latestEntrySets: latestExerciseEntry?.sets ?? [],
+      isMainLift,
+    });
 
     const setPlan = buildExerciseSetPlan(
       Math.max(1, baselineSetCount),
@@ -175,10 +240,10 @@ export async function generateDeloadSessionFromIntentContext(
       baselineSetCount: Math.max(1, baselineSetCount),
       baselineRepAnchor: baselineReps,
       deloadSetCount: setPlan.length,
-      anchoredLoad: null,
-      anchoredLoadSource: "none",
-      peakAccumulationLoadCount: 0,
-      latestAccumulationLoadCount: 0,
+      anchoredLoad: accumulationAnchor.anchoredLoad,
+      anchoredLoadSource: accumulationAnchor.anchoredLoadSource,
+      peakAccumulationLoadCount: peakAccumulationLoads.length,
+      latestAccumulationLoadCount: latestAccumulationLoads.length,
     });
   }
 

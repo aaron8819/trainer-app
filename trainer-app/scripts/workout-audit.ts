@@ -42,7 +42,7 @@ async function main(): Promise<void> {
 
   const request: WorkoutAuditRequest = {
     mode:
-      (args.mode as "next-session" | "intent-preview" | undefined) ?? "next-session",
+      (args.mode as WorkoutAuditRequest["mode"] | undefined) ?? "future-week",
     userId: typeof args["user-id"] === "string" ? args["user-id"] : undefined,
     ownerEmail: typeof args.owner === "string" ? args.owner : undefined,
     intent: typeof args.intent === "string" ? (args.intent as SessionIntent) : undefined,
@@ -53,6 +53,13 @@ async function main(): Promise<void> {
             .map((entry) => entry.trim())
             .filter((entry) => entry.length > 0)
         : undefined,
+    week:
+      typeof args.week === "string" && Number.isFinite(Number(args.week))
+        ? Number(args.week)
+        : undefined,
+    mesocycleId: typeof args["mesocycle-id"] === "string" ? args["mesocycle-id"] : undefined,
+    workoutId: typeof args["workout-id"] === "string" ? args["workout-id"] : undefined,
+    exerciseId: typeof args["exercise-id"] === "string" ? args["exercise-id"] : undefined,
     plannerDiagnosticsMode: args.debug === true ? ("debug" as const) : ("standard" as const),
     sanitizationLevel: args.sanitization === "pii-safe" ? ("pii-safe" as const) : ("none" as const),
   };
@@ -67,32 +74,35 @@ async function main(): Promise<void> {
   );
 
   const { context, run } = result;
-  const artifact = serializer.buildWorkoutAuditArtifact(request, run);
+  const artifact = serializer.buildWorkoutAuditArtifact(request, run, {
+    capturedWarnings: warnings,
+  });
   const serialized = serializer.serializeWorkoutAuditArtifact(artifact);
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const intentSlug = context.generationInput.intent ? `-${slug(context.generationInput.intent)}` : "";
+  const intentSlug = context.generationInput?.intent ? `-${slug(context.generationInput.intent)}` : "";
   const fileName = `${timestamp}-${request.mode}${intentSlug}.json`;
   const outputDir = path.join(process.cwd(), "artifacts", "audits");
   await mkdir(outputDir, { recursive: true });
   const outputPath = path.join(outputDir, fileName);
   await writeFile(outputPath, serialized, "utf8");
 
-  const summary =
-    "error" in run.generationResult
-      ? `generation_error=${run.generationResult.error}`
-      : `selected=${run.generationResult.selection.selectedExerciseIds.length}`;
+  const summary = run.historicalWeek
+    ? `week=${run.historicalWeek.week} sessions=${run.historicalWeek.summary.sessionCount}`
+    : run.progressionAnchor
+      ? `exercise=${run.progressionAnchor.exerciseId} action=${run.progressionAnchor.trace.outcome.action}`
+      : !run.generationResult
+        ? "no_generation"
+        : "error" in run.generationResult
+          ? `generation_error=${run.generationResult.error}`
+          : `selected=${run.generationResult.selection.selectedExerciseIds.length}`;
 
   console.log(`[workout-audit] wrote ${outputPath}`);
   console.log(
-    `[workout-audit] mode=${request.mode} intent=${context.generationInput.intent} diagnostics=${context.plannerDiagnosticsMode} ${summary}`
+    `[workout-audit] mode=${context.mode} diagnostics=${context.plannerDiagnosticsMode} ${summary}`
   );
   console.log(`[workout-audit:conclusions] ${JSON.stringify(artifact.conclusions)}`);
-  printWarningSummary("workout-audit", {
-    blockingErrors: [...artifact.warningSummary.blockingErrors, ...warnings.blockingErrors],
-    semanticWarnings: [...artifact.warningSummary.semanticWarnings, ...warnings.semanticWarnings],
-    backgroundWarnings: warnings.backgroundWarnings,
-  });
+  printWarningSummary("workout-audit", artifact.warningSummary);
 }
 
 main().catch((error) => {

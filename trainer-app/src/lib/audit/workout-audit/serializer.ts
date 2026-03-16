@@ -1,4 +1,5 @@
 import { buildGenerationWarningSummary, WORKOUT_AUDIT_CONCLUSIONS } from "./conclusions";
+import { normalizeWorkoutAuditMode } from "./context-builder";
 import type { WorkoutAuditArtifact, WorkoutAuditRequest, WorkoutAuditRun } from "./types";
 
 function sortJson(value: unknown): unknown {
@@ -16,7 +17,14 @@ function sortJson(value: unknown): unknown {
 
 export function buildWorkoutAuditArtifact(
   request: WorkoutAuditRequest,
-  run: WorkoutAuditRun
+  run: WorkoutAuditRun,
+  options?: {
+    capturedWarnings?: {
+      blockingErrors: string[];
+      semanticWarnings: string[];
+      backgroundWarnings: string[];
+    };
+  }
 ): WorkoutAuditArtifact {
   const piiSafe = request.sanitizationLevel === "pii-safe";
   const sanitizedRequest: WorkoutAuditRequest = piiSafe
@@ -28,9 +36,10 @@ export function buildWorkoutAuditArtifact(
     : request;
 
   return {
-    version: 1,
+    version: 2,
     generatedAt: run.generatedAt,
-    mode: request.mode,
+    mode: normalizeWorkoutAuditMode(run.context.mode),
+    requestedMode: run.context.requestedMode ?? request.mode,
     source: piiSafe ? "pii-safe" : "live",
     conclusions: WORKOUT_AUDIT_CONCLUSIONS,
     identity: {
@@ -40,8 +49,13 @@ export function buildWorkoutAuditArtifact(
     request: sanitizedRequest,
     nextSession: run.context.nextSession,
     generation: run.generationResult,
+    sessionSnapshot: run.sessionSnapshot,
+    generationPath: run.generationPath,
+    historicalWeek: run.historicalWeek,
+    progressionAnchor: run.progressionAnchor,
     warningSummary: buildGenerationWarningSummary({
       generation: run.generationResult,
+      capturedWarnings: options?.capturedWarnings,
     }),
   };
 }

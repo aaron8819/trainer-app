@@ -146,7 +146,14 @@ describe("deload-session generation", () => {
     expect(result.trace.exercises.find((entry) => entry.exerciseId === "row")).toMatchObject({
       baselineSetCount: 4,
       deloadSetCount: 2,
-      anchoredLoadSource: "none",
+      anchoredLoad: 60,
+      anchoredLoadSource: "latest_accumulation",
+      latestAccumulationLoadCount: 4,
+    });
+    expect(result.trace.exercises.find((entry) => entry.exerciseId === "bench")).toMatchObject({
+      anchoredLoad: 200,
+      anchoredLoadSource: "peak_accumulation",
+      peakAccumulationLoadCount: 4,
     });
 
     expect(bench?.sets).toHaveLength(2);

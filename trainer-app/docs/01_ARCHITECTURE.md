@@ -163,7 +163,9 @@ SetLog / logged performance
 - Audit context normalization is owned by `src/lib/audit/workout-audit/context-builder.ts`, and generation dispatch is owned by `src/lib/audit/workout-audit/generation-runner.ts`.
 - Audit artifact assembly/serialization is owned by `src/lib/audit/workout-audit/serializer.ts` and persists JSON artifacts to `artifacts/audits/` via `scripts/workout-audit.ts`.
 - Bundled split/week sanity audit orchestration is owned by `src/lib/audit/workout-audit/bundle.ts` and persists compact summary artifacts to `artifacts/audits/split-sanity/` via `scripts/audit-split-sanity.ts`.
-- Audit generation modes currently supported are `next-session` and `intent-preview` (`src/lib/audit/workout-audit/types.ts`).
+- Canonical recurring workout-audit modes are `historical-week`, `future-week`, `deload`, and `progression-anchor` (`src/lib/audit/workout-audit/types.ts`).
+- Legacy request aliases `next-session` and `intent-preview` normalize into `future-week` in `src/lib/audit/workout-audit/context-builder.ts`.
+- Operational use of those modes belongs in `docs/09_AUDIT_PLAYBOOK.md`; direct DB-backed CLI validation belongs in `docs/08_AUDIT_CLI_DB_VALIDATION.md`.
 - The compact split-sanity layer is intentionally extraction-only over canonical session receipts: it reuses live intent-preview generation, summarizes `sessionDecisionReceipt` / planner diagnostics fields, and preserves optional rich per-intent artifacts for deep debugging.
 - Planner diagnostics persistence is mode-gated in the canonical session receipt:
   - canonical storage surface is `selectionMetadata.sessionDecisionReceipt.plannerDiagnostics`

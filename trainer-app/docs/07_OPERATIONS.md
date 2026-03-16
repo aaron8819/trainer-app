@@ -1,7 +1,7 @@
 # 07 Operations
 
 Owner: Aaron
-Last reviewed: 2026-03-09
+Last reviewed: 2026-03-16
 Purpose: Operational runbook for local development/runtime setup, migrations, seed, and verification for this single-user app.
 
 This doc covers:
@@ -45,8 +45,11 @@ Migration hygiene:
 - `npm run verify`: lint + type-check (`tsc --noEmit`) + `test:fast` + contracts
 - `npm run verify:exercise-library`: validates exercise library integrity
 - `npm run report:stimulus-coverage`: reports planner-eligible exercise stimulus-profile coverage and remaining centralized fallback usage
-- `npm run audit:workout -- --env-file .env.local --mode next-session --owner owner@local`: generate a structured workout-audit artifact with explicit preflight (`env_loaded`, `db_reachable`, `owner_resolved`) under `artifacts/audits/`
-- `npm run audit:workout -- --env-file .env.local --mode intent-preview --owner owner@local --intent push`: explicit-intent audit artifact
+- Recurring workout-audit workflow lives in `docs/09_AUDIT_PLAYBOOK.md`; direct DB-backed CLI validation lives in `docs/08_AUDIT_CLI_DB_VALIDATION.md`.
+- `npm run audit:workout -- --env-file .env.local --mode historical-week --user-id <user-id> --week <week> --mesocycle-id <mesocycle-id>`: completed-week audit artifact
+- `npm run audit:workout -- --env-file .env.local --mode future-week --user-id <user-id>`: next generated session / week artifact
+- `npm run audit:workout -- --env-file .env.local --mode deload --user-id <user-id> --intent pull`: explicit deload preview artifact
+- `npm run audit:workout -- --env-file .env.local --mode progression-anchor --user-id <user-id> --exercise-id <exercise-id> --workout-id <workout-id>`: single-exercise progression trace artifact
 - `npm run audit:split-sanity -- --env-file .env.local --owner owner@local --debug`: run bundled split sanity audit for `push,pull,legs` and write one compact summary artifact under `artifacts/audits/split-sanity/`
 - `npm run audit:sequencing`: emit the dedicated order-sensitivity matrix under `artifacts/audits/sequencing/`
 - `npm run audit:accounting -- --selection-mode MANUAL --status COMPLETED --advances-split false --optional-gap-fill true`: emit the focused accounting semantics audit under `artifacts/audits/accounting/`
@@ -57,6 +60,7 @@ Migration hygiene:
 - Add `--intents push,pull,legs` to override the default bundle and `--write-rich-artifacts` to also persist the full per-intent workout-audit JSON files under `artifacts/audits/split-sanity/rich/`
 - Add `--debug` when you need full layered planner diagnostics in the artifact/receipt. Default mode is compact `standard`.
 - Workout and split-sanity audit artifacts now include a top-level `conclusions` block that records the canonical runtime basis for next-session, weekly volume, recovery, progression, week-close, sequencing, and `advancesSplit` semantics.
+- Workout-audit artifacts also persist `warningSummary` with merged counts and warning messages; use the CLI summary for quick triage and the artifact for durable review.
 - Non-blocking warning noise is summarized as `blocking_errors`, `semantic_warnings`, and `background_warnings` in CLI output; use `--debug` to keep raw warning detail on stdout.
 - Split-sanity summary artifacts encode explicit verdict checks for:
   - block/week context presence and consistency

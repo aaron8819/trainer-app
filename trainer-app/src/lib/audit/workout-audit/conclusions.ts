@@ -51,22 +51,63 @@ export const WORKOUT_AUDIT_CONCLUSIONS: AuditConclusionBlock = {
 };
 
 export function buildGenerationWarningSummary(
-  artifact: Pick<WorkoutAuditArtifact, "generation">
-): AuditWarningSummary {
-  if ("error" in artifact.generation) {
-    return {
-      blockingErrors: [artifact.generation.error],
-      semanticWarnings: [],
-      backgroundWarnings: [],
+  artifact: Pick<WorkoutAuditArtifact, "generation"> & {
+    capturedWarnings?: {
+      blockingErrors: string[];
+      semanticWarnings: string[];
+      backgroundWarnings: string[];
     };
   }
+): AuditWarningSummary {
+  const generationWarnings =
+    !artifact.generation
+      ? {
+          blockingErrors: [],
+          semanticWarnings: [],
+          backgroundWarnings: [],
+        }
+      : "error" in artifact.generation
+        ? {
+            blockingErrors: [artifact.generation.error],
+            semanticWarnings: [],
+            backgroundWarnings: [],
+          }
+        : {
+            blockingErrors: [],
+            semanticWarnings: artifact.generation.sraWarnings.map(
+              (warning) =>
+                `${warning.muscle}: recovery=${warning.recoveryPercent}% last_trained_hours=${warning.lastTrainedHoursAgo}`
+            ),
+            backgroundWarnings: [],
+          };
+
+  const merged = {
+    blockingErrors: Array.from(
+      new Set([
+        ...generationWarnings.blockingErrors,
+        ...(artifact.capturedWarnings?.blockingErrors ?? []),
+      ])
+    ),
+    semanticWarnings: Array.from(
+      new Set([
+        ...generationWarnings.semanticWarnings,
+        ...(artifact.capturedWarnings?.semanticWarnings ?? []),
+      ])
+    ),
+    backgroundWarnings: Array.from(
+      new Set([
+        ...generationWarnings.backgroundWarnings,
+        ...(artifact.capturedWarnings?.backgroundWarnings ?? []),
+      ])
+    ),
+  };
 
   return {
-    blockingErrors: [],
-    semanticWarnings: artifact.generation.sraWarnings.map(
-      (warning) =>
-        `${warning.muscle}: recovery=${warning.recoveryPercent}% last_trained_hours=${warning.lastTrainedHoursAgo}`
-    ),
-    backgroundWarnings: [],
+    ...merged,
+    counts: {
+      blockingErrors: merged.blockingErrors.length,
+      semanticWarnings: merged.semanticWarnings.length,
+      backgroundWarnings: merged.backgroundWarnings.length,
+    },
   };
 }

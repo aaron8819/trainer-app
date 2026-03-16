@@ -2,8 +2,25 @@ import type { SessionIntent } from "@/lib/engine/session-types";
 import type { PlannerDiagnosticsMode } from "@/lib/evidence/types";
 import type { NextWorkoutContext } from "@/lib/api/next-session";
 import type { SessionGenerationResult } from "@/lib/api/template-session/types";
+import type {
+  ProgressionDecisionTrace,
+  SessionAuditMutationSummary,
+  SessionAuditSnapshot,
+} from "@/lib/evidence/session-audit-types";
 
-export type WorkoutAuditMode = "next-session" | "intent-preview";
+export type WorkoutAuditMode =
+  | "future-week"
+  | "historical-week"
+  | "deload"
+  | "progression-anchor"
+  | "next-session"
+  | "intent-preview";
+
+export type NormalizedWorkoutAuditMode =
+  | "future-week"
+  | "historical-week"
+  | "deload"
+  | "progression-anchor";
 
 export type AuditBasisDescriptor = {
   sourceModule: string;
@@ -25,6 +42,11 @@ export type AuditWarningSummary = {
   blockingErrors: string[];
   semanticWarnings: string[];
   backgroundWarnings: string[];
+  counts: {
+    blockingErrors: number;
+    semanticWarnings: number;
+    backgroundWarnings: number;
+  };
 };
 
 export type WorkoutAuditIdentity = {
@@ -38,32 +60,142 @@ export type WorkoutAuditRequest = {
   ownerEmail?: string;
   intent?: SessionIntent;
   targetMuscles?: string[];
+  week?: number;
+  mesocycleId?: string;
+  workoutId?: string;
+  exerciseId?: string;
   plannerDiagnosticsMode?: PlannerDiagnosticsMode;
   sanitizationLevel?: "none" | "pii-safe";
 };
 
 export type WorkoutAuditContext = {
   mode: WorkoutAuditMode;
+  requestedMode?: WorkoutAuditMode;
   userId: string;
   ownerEmail?: string;
   plannerDiagnosticsMode: PlannerDiagnosticsMode;
-  generationInput: {
+  generationInput?: {
     intent: SessionIntent;
     targetMuscles?: string[];
+    source?: "next-session" | "intent-preview" | "forced-deload";
   };
   nextSession?: NextWorkoutContext;
+  historicalWeek?: {
+    week: number;
+    mesocycleId?: string;
+  };
+  progressionAnchor?: {
+    workoutId?: string;
+    exerciseId: string;
+  };
+};
+
+export type WorkoutAuditGenerationPath = {
+  requestedMode: WorkoutAuditMode;
+  executionMode:
+    | "standard_generation"
+    | "explicit_deload_preview"
+    | "active_deload_reroute";
+  generator: "generateSessionFromIntent" | "generateDeloadSessionFromIntent";
+  reason:
+    | "standard_future_week_or_preview"
+    | "explicit_deload_mode"
+    | "active_mesocycle_state_active_deload";
+};
+
+export type HistoricalWeekAuditSession = {
+  workoutId: string;
+  scheduledDate: string;
+  status: string;
+  selectionMode?: string;
+  sessionIntent?: string;
+  snapshotSource: "persisted" | "reconstructed_saved_only";
+  sessionSnapshot: SessionAuditSnapshot;
+  progressionEvidence: {
+    countsTowardProgressionHistory: boolean;
+    countsTowardPerformanceHistory: boolean;
+    updatesProgressionAnchor: boolean;
+    reasonCodes: string[];
+  };
+  weekClose?: {
+    relevant: boolean;
+    relation: Array<"target_week" | "linked_selection_metadata" | "linked_optional_workout">;
+    weekCloseId: string;
+    targetWeek: number;
+    targetPhase: string;
+    status: string;
+    resolution: string | null;
+    workflowState: string;
+    deficitState: string;
+    remainingDeficitSets: number;
+    optionalWorkoutId?: string;
+    deficitSnapshotSummary?: {
+      totalDeficitSets: number;
+      qualifyingMuscleCount: number;
+      topTargetMuscles: string[];
+    };
+  };
+  reconciliation: SessionAuditMutationSummary;
+};
+
+export type HistoricalWeekAuditPayload = {
+  version: 1;
+  week: number;
+  mesocycleId?: string;
+  sessions: HistoricalWeekAuditSession[];
+  summary: {
+    sessionCount: number;
+    advancingCount: number;
+    gapFillCount: number;
+    supplementalCount: number;
+    deloadCount: number;
+    progressionEligibleCount: number;
+    progressionExcludedCount: number;
+    weekCloseRelevantCount: number;
+    persistedSnapshotCount: number;
+    reconstructedSnapshotCount: number;
+    mutationDriftCount: number;
+    statusCounts: Record<string, number>;
+    intentCounts: Record<string, number>;
+  };
+  comparabilityCoverage: {
+    comparableSessionCount: number;
+    missingGeneratedSnapshotCount: number;
+    persistedSnapshotCount: number;
+    reconstructedSnapshotCount: number;
+    generatedLayerCoverage: "full" | "partial" | "none";
+    limitations: string[];
+  };
+};
+
+export type ProgressionAnchorAuditPayload = {
+  version: 1;
+  workoutId: string;
+  exerciseId: string;
+  exerciseName: string;
+  scheduledDate: string;
+  selectionMode?: string;
+  sessionIntent?: string;
+  sessionSnapshotSource?: "persisted" | "reconstructed_saved_only";
+  sessionSnapshot?: SessionAuditSnapshot;
+  trace: ProgressionDecisionTrace;
 };
 
 export type WorkoutAuditRun = {
   context: WorkoutAuditContext;
   generatedAt: string;
-  generationResult: SessionGenerationResult;
+  generationResult?: SessionGenerationResult;
+  sessionSnapshot?: SessionAuditSnapshot;
+  generationPath?: WorkoutAuditGenerationPath;
+  historicalWeek?: HistoricalWeekAuditPayload;
+  progressionAnchor?: ProgressionAnchorAuditPayload;
 };
 
 export type WorkoutAuditArtifact = {
-  version: 1;
+  version: 2;
   generatedAt: string;
-  mode: WorkoutAuditMode;
+  mode: NormalizedWorkoutAuditMode;
+  requestedMode: WorkoutAuditMode;
   source: "live" | "pii-safe";
   conclusions: AuditConclusionBlock;
   identity: {
@@ -72,6 +204,10 @@ export type WorkoutAuditArtifact = {
   };
   request: WorkoutAuditRequest;
   nextSession?: NextWorkoutContext;
-  generation: SessionGenerationResult;
+  generation?: SessionGenerationResult;
+  sessionSnapshot?: SessionAuditSnapshot;
+  generationPath?: WorkoutAuditGenerationPath;
+  historicalWeek?: HistoricalWeekAuditPayload;
+  progressionAnchor?: ProgressionAnchorAuditPayload;
   warningSummary: AuditWarningSummary;
 };

@@ -128,6 +128,13 @@ export type DeloadExerciseTransformationTrace = {
   anchoredLoadSource: "peak_accumulation" | "latest_accumulation" | "none";
   peakAccumulationLoadCount: number;
   latestAccumulationLoadCount: number;
+  canonicalSourceLoad?: number | null;
+  canonicalSourceLoadSource?:
+    | "history"
+    | "baseline"
+    | "estimate"
+    | "existing_target_load"
+    | "none";
   resolvedLoadSource?: "history" | "baseline" | "estimate" | "existing_target_load" | "none";
   resolvedTopSetLoad?: number | null;
   resolvedBackoffLoad?: number | null;

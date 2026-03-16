@@ -461,6 +461,48 @@ export function buildSavedSessionAuditSnapshot(input: {
   };
 }
 
+export function resolvePersistedOrReconstructedSessionAuditSnapshot(input: {
+  selectionMetadata: unknown;
+  workoutId: string;
+  revision?: number;
+  status: string;
+  advancesSplit?: boolean | null;
+  selectionMode?: string | null;
+  sessionIntent?: string | null;
+  mesocycleId?: string | null;
+  mesocycleWeekSnapshot?: number | null;
+  mesoSessionSnapshot?: number | null;
+  mesocyclePhaseSnapshot?: string | null;
+}): {
+  sessionSnapshot: SessionAuditSnapshot;
+  snapshotSource: "persisted" | "reconstructed_saved_only";
+} {
+  const persistedSnapshot = readSessionAuditSnapshot(input.selectionMetadata);
+  if (persistedSnapshot) {
+    return {
+      sessionSnapshot: persistedSnapshot,
+      snapshotSource: "persisted",
+    };
+  }
+
+  return {
+    sessionSnapshot: buildSavedSessionAuditSnapshot({
+      selectionMetadata: input.selectionMetadata,
+      workoutId: input.workoutId,
+      revision: input.revision,
+      status: input.status,
+      advancesSplit: input.advancesSplit ?? true,
+      selectionMode: input.selectionMode,
+      sessionIntent: input.sessionIntent,
+      mesocycleId: input.mesocycleId,
+      mesocycleWeekSnapshot: input.mesocycleWeekSnapshot,
+      mesoSessionSnapshot: input.mesoSessionSnapshot,
+      mesocyclePhaseSnapshot: input.mesocyclePhaseSnapshot,
+    }),
+    snapshotSource: "reconstructed_saved_only",
+  };
+}
+
 export function buildSessionAuditMutationSummary(input: {
   snapshot: SessionAuditSnapshot;
   savedSelectionMode?: string | null;

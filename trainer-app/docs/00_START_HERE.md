@@ -29,6 +29,8 @@ Sources of truth:
 - `docs/05_UI_FLOWS.md`: App Router pages and major user flows
 - `docs/06_TESTING.md`: test strategy and run commands
 - `docs/07_OPERATIONS.md`: env, migrations, seed, verification, production hygiene
+- `docs/08_AUDIT_CLI_DB_VALIDATION.md`: direct DB-backed validation runbook for workout-audit CLI
+- `docs/09_AUDIT_PLAYBOOK.md`: recurring audit workflow and artifact-reading guide
 - `docs/contracts/runtime-contracts.json`: canonical enum/runtime contract values
 
 Reference-only docs:
@@ -40,7 +42,7 @@ Archived roadmap/design logs:
 - `docs/archive/10_WORKOUT_AUDIT_HARNESS_DESIGN.md`
 - `docs/archive/11_HYPERTROHPY_SESSION_GENERATION_ENGINE_REFACTOR`
 - These files are historical decision logs and implementation history, not active contract sources.
-- Durable outcomes from these docs are captured in canonical docs `01/02/04/05/06/07`.
+- Durable outcomes from these docs are captured in canonical docs `01/02/04/05/06/07/08/09`.
 
 ## Docs Review Checklist
 
@@ -56,6 +58,7 @@ Archived roadmap/design logs:
 - Generation/progression/readiness logic changes: update `docs/02_DOMAIN_ENGINE.md`
 - Route/navigation/user flow changes: update `docs/05_UI_FLOWS.md`
 - Operational or script changes: update `docs/07_OPERATIONS.md`
+- Audit workflow or artifact-interpretation changes: update `docs/08_AUDIT_CLI_DB_VALIDATION.md` and/or `docs/09_AUDIT_PLAYBOOK.md`
 - Test command/config changes: update `docs/06_TESTING.md`
 
 ### How to prevent contradictions
@@ -63,4 +66,4 @@ Archived roadmap/design logs:
 - Keep one canonical location per topic
 - Do not copy enum values into multiple files; reference `docs/contracts/runtime-contracts.json`
 - Prefer short invariants over speculative roadmap language
-- Before archiving roadmap/design docs, migrate durable invariants and contracts into canonical docs `01-07`.
+- Before archiving roadmap/design docs, migrate durable invariants and contracts into canonical docs `01-09`.

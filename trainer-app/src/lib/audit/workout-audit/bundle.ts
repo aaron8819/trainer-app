@@ -197,7 +197,7 @@ function getIntents(request: SplitSanityAuditRequest): SessionIntent[] {
 }
 
 function getReceipt(run: WorkoutAuditRun): SessionDecisionReceipt | undefined {
-  if ("error" in run.generationResult) {
+  if (!run.generationResult || "error" in run.generationResult) {
     return undefined;
   }
   return run.generationResult.selection.sessionDecisionReceipt;
@@ -218,7 +218,7 @@ function getTargetedMuscles(receipt: SessionDecisionReceipt | undefined): string
 }
 
 function sumWorkoutSets(run: WorkoutAuditRun): number {
-  if ("error" in run.generationResult) {
+  if (!run.generationResult || "error" in run.generationResult) {
     return 0;
   }
 
@@ -230,7 +230,7 @@ function sumWorkoutSets(run: WorkoutAuditRun): number {
 }
 
 function getPlannedExerciseNames(run: WorkoutAuditRun): string[] {
-  if ("error" in run.generationResult) {
+  if (!run.generationResult || "error" in run.generationResult) {
     return [];
   }
 
@@ -240,7 +240,7 @@ function getPlannedExerciseNames(run: WorkoutAuditRun): string[] {
 }
 
 function getExerciseCount(run: WorkoutAuditRun): number {
-  if ("error" in run.generationResult) {
+  if (!run.generationResult || "error" in run.generationResult) {
     return 0;
   }
 
@@ -286,7 +286,7 @@ function buildIntentSummary(
   intentRun: SplitSanityIntentRun,
   sourceArtifactPath?: string
 ): SplitSanityIntentSummary {
-  if ("error" in intentRun.run.generationResult) {
+  if (!intentRun.run.generationResult || "error" in intentRun.run.generationResult) {
     return {
       intent: intentRun.intent,
       status: "error",
@@ -300,7 +300,10 @@ function buildIntentSummary(
       rescueUsed: false,
       topTradeoffs: [],
       sourceArtifactPath,
-      error: intentRun.run.generationResult.error,
+      error:
+        intentRun.run.generationResult && "error" in intentRun.run.generationResult
+          ? intentRun.run.generationResult.error
+          : "generation result missing",
     };
   }
 
@@ -620,7 +623,7 @@ function buildSplitSanityWarningSummary(params: {
   checks: SplitSanityCheck[];
   suspiciousPatterns: string[];
 }): AuditWarningSummary {
-  return {
+  const summary = {
     blockingErrors: params.checks
       .filter((check) => check.status === "fail")
       .map((check) => `${check.code}: ${check.message}`),
@@ -630,6 +633,14 @@ function buildSplitSanityWarningSummary(params: {
     backgroundWarnings: params.suspiciousPatterns.filter(
       (pattern) => !params.checks.some((check) => `${check.code}: ${check.message}` === pattern)
     ),
+  };
+  return {
+    ...summary,
+    counts: {
+      blockingErrors: summary.blockingErrors.length,
+      semanticWarnings: summary.semanticWarnings.length,
+      backgroundWarnings: summary.backgroundWarnings.length,
+    },
   };
 }
 

@@ -1,8 +1,16 @@
 import type { AutoregulationResult } from "@/lib/api/autoregulation";
 import {
+  attachSessionAuditSnapshotToSelectionMetadata,
+  buildSessionAuditMutationSummary,
+  extractSessionAuditSnapshot,
+  readSessionAuditSnapshot,
+} from "@/lib/evidence/session-audit-snapshot";
+import {
   buildSessionDecisionReceipt,
   extractSessionDecisionReceipt,
 } from "@/lib/evidence/session-decision-receipt";
+import type { SessionAuditSnapshot } from "@/lib/evidence/session-audit-types";
+import type { SessionAuditMutationSummary } from "@/lib/evidence/session-audit-types";
 import type { SessionDecisionReceipt } from "@/lib/evidence/types";
 
 export type SaveableSelectionMetadata = {
@@ -11,6 +19,40 @@ export type SaveableSelectionMetadata = {
   perExerciseSetTargets?: Record<string, number>;
   weekCloseId?: string;
   sessionDecisionReceipt?: SessionDecisionReceipt;
+  sessionAuditSnapshot?: SessionAuditSnapshot;
+  workoutStructureState?: WorkoutStructureState;
+};
+
+export type WorkoutStructureExercise = {
+  exerciseId: string;
+  orderIndex: number;
+  section: "WARMUP" | "MAIN" | "ACCESSORY";
+  setCount: number;
+};
+
+export type WorkoutStructureState = {
+  version: 1;
+  lastReconciledAt: string;
+  currentExercises: WorkoutStructureExercise[];
+  reconciliation: SessionAuditMutationSummary;
+};
+
+type PersistedWorkoutStructureExerciseInput = {
+  exerciseId: string;
+  orderIndex: number;
+  section?: string | null;
+  sets: Array<{
+    setIndex: number;
+    targetReps?: number | null;
+    targetRepMin?: number | null;
+    targetRepMax?: number | null;
+    targetRpe?: number | null;
+    targetLoad?: number | null;
+    restSeconds?: number | null;
+  }>;
+  exercise?: {
+    name: string;
+  };
 };
 
 function toObject(value: unknown): Record<string, unknown> | null {
@@ -38,6 +80,90 @@ function toNumberRecord(value: unknown): Record<string, number> | undefined {
     (entry): entry is [string, number] => typeof entry[1] === "number" && Number.isFinite(entry[1])
   );
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
+function normalizeWorkoutSection(
+  value: unknown
+): WorkoutStructureExercise["section"] | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value.trim().toUpperCase();
+  if (normalized === "WARMUP" || normalized === "MAIN" || normalized === "ACCESSORY") {
+    return normalized;
+  }
+  return undefined;
+}
+
+function parseWorkoutStructureExercise(value: unknown): WorkoutStructureExercise | undefined {
+  const record = toObject(value);
+  const section = normalizeWorkoutSection(record?.section);
+  if (
+    !record ||
+    typeof record.exerciseId !== "string" ||
+    typeof record.orderIndex !== "number" ||
+    typeof record.setCount !== "number" ||
+    !Number.isFinite(record.setCount) ||
+    section == null
+  ) {
+    return undefined;
+  }
+
+  return {
+    exerciseId: record.exerciseId,
+    orderIndex: record.orderIndex,
+    section,
+    setCount: record.setCount,
+  };
+}
+
+function parseWorkoutStructureState(value: unknown): WorkoutStructureState | undefined {
+  const record = toObject(value);
+  if (
+    !record ||
+    record.version !== 1 ||
+    typeof record.lastReconciledAt !== "string" ||
+    !Array.isArray(record.currentExercises)
+  ) {
+    return undefined;
+  }
+
+  const reconciliationRecord = toObject(record.reconciliation);
+  if (
+    !reconciliationRecord ||
+    reconciliationRecord.version !== 1 ||
+    typeof reconciliationRecord.comparisonState !== "string" ||
+    typeof reconciliationRecord.hasDrift !== "boolean" ||
+    !Array.isArray(reconciliationRecord.changedFields) ||
+    !Array.isArray(reconciliationRecord.addedExerciseIds) ||
+    !Array.isArray(reconciliationRecord.removedExerciseIds) ||
+    !Array.isArray(reconciliationRecord.exercisesWithSetCountChanges) ||
+    !Array.isArray(reconciliationRecord.exercisesWithPrescriptionChanges)
+  ) {
+    return undefined;
+  }
+
+  return {
+    version: 1,
+    lastReconciledAt: record.lastReconciledAt,
+    currentExercises: record.currentExercises
+      .map(parseWorkoutStructureExercise)
+      .filter((entry): entry is WorkoutStructureExercise => Boolean(entry)),
+    reconciliation: reconciliationRecord as SessionAuditMutationSummary,
+  };
+}
+
+function toWorkoutStructureExercises(
+  exercises: PersistedWorkoutStructureExerciseInput[]
+): WorkoutStructureExercise[] {
+  return exercises
+    .map((exercise) => ({
+      exerciseId: exercise.exerciseId,
+      orderIndex: exercise.orderIndex,
+      section: normalizeWorkoutSection(exercise.section) ?? "ACCESSORY",
+      setCount: exercise.sets.length,
+    }))
+    .sort((left, right) => left.orderIndex - right.orderIndex);
 }
 
 export function sanitizeSelectionMetadataForSave(value: unknown): SaveableSelectionMetadata | undefined {
@@ -75,12 +201,77 @@ export function sanitizeSelectionMetadataForSave(value: unknown): SaveableSelect
     }
   }
 
+  const sessionAuditSnapshot = toObject(record.sessionAuditSnapshot);
+  if (sessionAuditSnapshot) {
+    const canonicalSnapshot = extractSessionAuditSnapshot({
+      sessionAuditSnapshot,
+    });
+    if (canonicalSnapshot) {
+      output.sessionAuditSnapshot = canonicalSnapshot;
+    }
+  }
+
+  const workoutStructureState = parseWorkoutStructureState(record.workoutStructureState);
+  if (workoutStructureState) {
+    output.workoutStructureState = workoutStructureState;
+  }
+
   return Object.keys(output).length > 0 ? output : {};
 }
 
 export function readWeekCloseIdFromSelectionMetadata(value: unknown): string | undefined {
   const record = toObject(value);
   return typeof record?.weekCloseId === "string" ? record.weekCloseId : undefined;
+}
+
+export function readWorkoutStructureState(
+  value: unknown
+): WorkoutStructureState | undefined {
+  const record = toObject(value);
+  return parseWorkoutStructureState(record?.workoutStructureState);
+}
+
+export function attachWorkoutStructureState(
+  selectionMetadata: unknown,
+  workoutStructureState: WorkoutStructureState
+): SaveableSelectionMetadata {
+  return {
+    ...(toObject(selectionMetadata) ?? {}),
+    workoutStructureState,
+  };
+}
+
+export function buildWorkoutStructureState(input: {
+  selectionMetadata: unknown;
+  selectionMode?: string | null;
+  sessionIntent?: string | null;
+  persistedExercises: PersistedWorkoutStructureExerciseInput[];
+  reconciledAt?: string | Date;
+}): WorkoutStructureState {
+  const snapshot = readSessionAuditSnapshot(input.selectionMetadata) ?? { version: 1 };
+  return {
+    version: 1,
+    lastReconciledAt:
+      input.reconciledAt instanceof Date
+        ? input.reconciledAt.toISOString()
+        : input.reconciledAt ?? new Date().toISOString(),
+    currentExercises: toWorkoutStructureExercises(input.persistedExercises),
+    reconciliation: buildSessionAuditMutationSummary({
+      snapshot,
+      savedSelectionMode: input.selectionMode,
+      savedSessionIntent: input.sessionIntent,
+      persistedExercises: input.persistedExercises.map((exercise) => ({
+        exerciseId: exercise.exerciseId,
+        orderIndex: exercise.orderIndex,
+        section: exercise.section,
+        isMainLift: normalizeWorkoutSection(exercise.section) === "MAIN",
+        exercise: {
+          name: exercise.exercise?.name ?? exercise.exerciseId,
+        },
+        sets: exercise.sets,
+      })),
+    }),
+  };
 }
 
 export function attachOptionalGapFillMetadata(
@@ -180,7 +371,7 @@ export function buildCanonicalSelectionMetadata(
   const record = toObject(value) ?? {};
   const priorReceipt = extractSessionDecisionReceipt(record);
 
-  return (
+  const output =
     sanitizeSelectionMetadataForSave({
       ...record,
       sessionDecisionReceipt: priorReceipt
@@ -204,6 +395,17 @@ export function buildCanonicalSelectionMetadata(
               : undefined,
           })
         : undefined,
-    }) ?? {}
-  );
+    }) ?? {};
+
+  if (record.sessionAuditSnapshot) {
+    const sessionAuditSnapshot = extractSessionAuditSnapshot(record);
+    if (sessionAuditSnapshot) {
+      return attachSessionAuditSnapshotToSelectionMetadata(
+        output,
+        sessionAuditSnapshot
+      ) as SaveableSelectionMetadata;
+    }
+  }
+
+  return output;
 }

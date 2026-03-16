@@ -1,5 +1,9 @@
 import type { SessionDecisionReceipt } from "@/lib/evidence/types";
 import { readSessionDecisionReceipt } from "@/lib/evidence/session-decision-receipt";
+import {
+  readWorkoutStructureState,
+  type WorkoutStructureState,
+} from "@/lib/ui/selection-metadata";
 type SelectionStep = "pin" | "anchor" | "main_pick" | "accessory_pick";
 
 export type ExplainabilityRationaleEntry = {
@@ -14,6 +18,7 @@ export type ExplainabilitySelectionMetadata = {
   selectedExerciseIds?: string[];
   perExerciseSetTargets?: Record<string, number>;
   sessionDecisionReceipt?: SessionDecisionReceipt;
+  workoutStructureState?: WorkoutStructureState;
 };
 
 type DriverLabel =
@@ -72,10 +77,12 @@ export function parseExplainabilitySelectionMetadata(
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return {
       sessionDecisionReceipt: readSessionDecisionReceipt(value),
+      workoutStructureState: readWorkoutStructureState(value),
     };
   }
   const parsed = value as Record<string, unknown>;
   const sessionDecisionReceipt = readSessionDecisionReceipt(value);
+  const workoutStructureState = readWorkoutStructureState(value);
   const rationale =
     parsed.rationale && typeof parsed.rationale === "object" && !Array.isArray(parsed.rationale)
       ? (parsed.rationale as Record<string, ExplainabilityRationaleEntry>)
@@ -95,6 +102,7 @@ export function parseExplainabilitySelectionMetadata(
     selectedExerciseIds,
     perExerciseSetTargets,
     sessionDecisionReceipt,
+    workoutStructureState,
   };
 }
 

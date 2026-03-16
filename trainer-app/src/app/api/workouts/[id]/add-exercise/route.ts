@@ -5,6 +5,10 @@ import { resolveOwner } from "@/lib/api/workout-context";
 import { getBaseTargetRpe } from "@/lib/engine/rules";
 import type { TrainingAge, PrimaryGoal } from "@/lib/engine/types";
 import { Prisma } from "@prisma/client";
+import {
+  attachWorkoutStructureState,
+  buildWorkoutStructureState,
+} from "@/lib/ui/selection-metadata";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -34,8 +38,8 @@ export async function POST(
   // Verify workout belongs to owner
   const workout = await prisma.workout.findFirst({
     where: { id: workoutId, userId: owner.id },
-    include: {
-      exercises: { select: { orderIndex: true } },
+    select: {
+      id: true,
     },
   });
   if (!workout) {
@@ -96,13 +100,25 @@ export async function POST(
 
   const createExerciseAtNextIndex = async () =>
     prisma.$transaction(async (tx) => {
+      const latestWorkout = await tx.workout.findUnique({
+        where: { id: workoutId },
+        select: {
+          selectionMetadata: true,
+          selectionMode: true,
+          sessionIntent: true,
+        },
+      });
+      if (!latestWorkout) {
+        throw new Error("WORKOUT_NOT_FOUND");
+      }
+
       const latest = await tx.workoutExercise.findFirst({
         where: { workoutId },
         orderBy: { orderIndex: "desc" },
         select: { orderIndex: true },
       });
       const nextOrderIndex = (latest?.orderIndex ?? -1) + 1;
-      return tx.workoutExercise.create({
+      const createdExercise = await tx.workoutExercise.create({
         data: {
           workoutId,
           exerciseId: exercise.id,
@@ -124,6 +140,53 @@ export async function POST(
           sets: { orderBy: { setIndex: "asc" } },
         },
       });
+
+      const persistedExercises = await tx.workoutExercise.findMany({
+        where: { workoutId },
+        orderBy: [{ orderIndex: "asc" }, { id: "asc" }],
+        select: {
+          exerciseId: true,
+          orderIndex: true,
+          section: true,
+          exercise: {
+            select: {
+              name: true,
+            },
+          },
+          sets: {
+            orderBy: { setIndex: "asc" },
+            select: {
+              setIndex: true,
+              targetReps: true,
+              targetRepMin: true,
+              targetRepMax: true,
+              targetRpe: true,
+              targetLoad: true,
+              restSeconds: true,
+            },
+          },
+        },
+      });
+
+      const workoutStructureState = buildWorkoutStructureState({
+        selectionMetadata: latestWorkout.selectionMetadata,
+        selectionMode: latestWorkout.selectionMode,
+        sessionIntent: latestWorkout.sessionIntent,
+        persistedExercises,
+      });
+
+      await tx.workout.update({
+        where: { id: workoutId },
+        data: {
+          revision: { increment: 1 },
+          selectionMetadata: attachWorkoutStructureState(
+            latestWorkout.selectionMetadata,
+            workoutStructureState
+          ) as Prisma.InputJsonValue,
+        },
+      });
+
+      return createdExercise;
     });
 
   let workoutExercise;
@@ -136,6 +199,9 @@ export async function POST(
     ) {
       workoutExercise = await createExerciseAtNextIndex();
     } else {
+      if (error instanceof Error && error.message === "WORKOUT_NOT_FOUND") {
+        return NextResponse.json({ error: "Workout not found" }, { status: 404 });
+      }
       throw error;
     }
   }

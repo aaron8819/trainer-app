@@ -13,7 +13,11 @@ import {
   attachSessionAuditSnapshotToSelectionMetadata,
   buildSavedSessionAuditSnapshot,
 } from "@/lib/evidence/session-audit-snapshot";
-import { readWeekCloseIdFromSelectionMetadata } from "@/lib/ui/selection-metadata";
+import {
+  attachWorkoutStructureState,
+  buildWorkoutStructureState,
+  readWeekCloseIdFromSelectionMetadata,
+} from "@/lib/ui/selection-metadata";
 import {
   transitionMesocycleStateInTransaction,
 } from "@/lib/api/mesocycle-lifecycle-state";
@@ -396,6 +400,30 @@ export async function POST(request: Request) {
             mesoSnapshot?.phase ?? existingWorkout?.mesocyclePhaseSnapshot,
         })
       );
+      if (hasExerciseRewrite) {
+        selectionMetadata = attachWorkoutStructureState(
+          selectionMetadata,
+          buildWorkoutStructureState({
+            selectionMetadata,
+            selectionMode: effectiveSelectionMode,
+            sessionIntent: effectiveSessionIntent,
+            persistedExercises: parsed.data.exercises!.map((exercise, exerciseIndex) => ({
+              exerciseId: exercise.exerciseId,
+              orderIndex: exerciseIndex,
+              section: exercise.section,
+              sets: exercise.sets.map((set) => ({
+                setIndex: set.setIndex,
+                targetReps: set.targetReps,
+                targetRepMin: set.targetRepRange?.min ?? null,
+                targetRepMax: set.targetRepRange?.max ?? null,
+                targetRpe: set.targetRpe ?? null,
+                targetLoad: set.targetLoad ?? null,
+                restSeconds: set.restSeconds ?? null,
+              })),
+            })),
+          })
+        );
+      }
 
       const workoutUpdateData = {
         scheduledDate,

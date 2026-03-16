@@ -57,6 +57,14 @@ export function SessionContextCard({ summary, startLoggingHref, defaultCollapsed
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <p className="text-base font-semibold text-slate-900">{summary.summary}</p>
+              {summary.truthNote ? (
+                <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide">
+                    {summary.truthNote.label}
+                  </p>
+                  <p className="mt-1 text-sm leading-5">{summary.truthNote.value}</p>
+                </div>
+              ) : null}
               <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-700">
                 {summary.tags.map((tag) => (
                   <span key={tag} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1">

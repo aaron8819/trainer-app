@@ -58,6 +58,7 @@ export default async function WorkoutAuditPage({
   const explanation = "error" in explanationResult ? null : explanationResult;
   const selectionMetadata = parseExplainabilitySelectionMetadata(workout.selectionMetadata);
   const sessionDecisionReceipt = selectionMetadata.sessionDecisionReceipt;
+  const workoutStructureState = selectionMetadata.workoutStructureState;
   const startLoggingHref =
     workout.status !== "COMPLETED" && workout.status !== "SKIPPED" ? `/log/${workout.id}` : null;
 
@@ -96,6 +97,7 @@ export default async function WorkoutAuditPage({
               sessionIntent={workout.sessionIntent}
               estimatedMinutes={workout.estimatedMinutes}
               startLoggingHref={startLoggingHref}
+              workoutStructureState={workoutStructureState}
             />
           ) : (
             <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800 sm:p-5">

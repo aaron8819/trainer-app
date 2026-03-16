@@ -230,4 +230,56 @@ describe("buildSessionSummaryModel", () => {
       }),
     ]));
   });
+
+  it("labels original-plan summaries when current saved structure drifted after generation", () => {
+    const summary = buildSessionSummaryModel({
+      context: makeContext(),
+      receipt: makeReceipt(),
+      sessionIntent: "PUSH",
+      workoutStructureState: {
+        version: 1,
+        lastReconciledAt: "2026-03-05T10:00:00.000Z",
+        currentExercises: [
+          {
+            exerciseId: "bench",
+            orderIndex: 0,
+            section: "MAIN",
+            setCount: 3,
+          },
+          {
+            exerciseId: "fly",
+            orderIndex: 1,
+            section: "ACCESSORY",
+            setCount: 3,
+          },
+        ],
+        reconciliation: {
+          version: 1,
+          comparisonState: "comparable",
+          hasDrift: true,
+          changedFields: ["exercise_added"],
+          addedExerciseIds: ["fly"],
+          removedExerciseIds: [],
+          exercisesWithSetCountChanges: [],
+          exercisesWithPrescriptionChanges: [],
+          generatedSelectionMode: "INTENT",
+          savedSelectionMode: "INTENT",
+          generatedSessionIntent: "push",
+          savedSessionIntent: "PUSH",
+          generatedSemanticsKind: "advancing",
+          savedSemanticsKind: "advancing",
+        },
+      },
+    });
+
+    expect(summary.title).toBe("Original plan context");
+    expect(summary.tags).toContain("Modified");
+    expect(summary.truthNote).toEqual(
+      expect.objectContaining({
+        label: "Current structure",
+        tone: "caution",
+      })
+    );
+    expect(summary.truthNote?.value).toContain("canonical saved workout");
+  });
 });

@@ -128,6 +128,7 @@ export default async function WorkoutDetailPage({
   const explanation = "error" in explanationResult ? null : explanationResult;
   const selectionMetadata = parseExplainabilitySelectionMetadata(workout.selectionMetadata);
   const sessionDecisionReceipt = selectionMetadata.sessionDecisionReceipt;
+  const workoutStructureState = selectionMetadata.workoutStructureState;
   const hasPerformedStatus = isPerformedWorkoutStatus(workout.status);
   const workflow = getWorkoutWorkflowState(workout.status);
   const startLoggingHref = workflow.isResumable ? `/log/${workout.id}` : null;
@@ -139,6 +140,7 @@ export default async function WorkoutDetailPage({
           receipt: sessionDecisionReceipt,
           sessionIntent: workout.sessionIntent,
           estimatedMinutes: workout.estimatedMinutes,
+          workoutStructureState,
         })
       : null;
 

@@ -69,4 +69,25 @@ describe("SessionContextCard", () => {
     expect(screen.getByText("Build pull work this week.")).toBeInTheDocument();
     expect(screen.getByText("Today's goal")).toBeInTheDocument();
   });
+
+  it("renders the truth note when the summary is original-plan-only", () => {
+    render(
+      <SessionContextCard
+        summary={{
+          ...summary,
+          title: "Original plan context",
+          truthNote: {
+            label: "Current structure",
+            value:
+              "Workout structure changed after generation. The exercise list on this page is the canonical saved workout; this card describes the original generated plan.",
+            tone: "caution",
+          },
+        }}
+      />
+    );
+
+    expect(screen.getByText("Original plan context")).toBeInTheDocument();
+    expect(screen.getByText("Current structure")).toBeInTheDocument();
+    expect(screen.getByText(/canonical saved workout/)).toBeInTheDocument();
+  });
 });

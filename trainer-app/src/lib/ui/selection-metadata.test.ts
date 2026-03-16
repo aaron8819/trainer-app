@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   attachSupplementalSessionMetadata,
+  buildWorkoutStructureState,
   buildCanonicalSelectionMetadata,
+  readWorkoutStructureState,
   sanitizeSelectionMetadataForSave,
 } from "./selection-metadata";
 
@@ -171,6 +173,122 @@ describe("buildCanonicalSelectionMetadata", () => {
       rationale: "Scaled session from recent readiness (signal 3.0h old)",
     });
     expect((result as Record<string, unknown>).autoregulation).toBeUndefined();
+  });
+});
+
+describe("workout structure reconciliation", () => {
+  const generatedSelectionMetadata = {
+    sessionAuditSnapshot: {
+      version: 1,
+      generated: {
+        selectionMode: "INTENT",
+        sessionIntent: "push",
+        exerciseCount: 1,
+        hardSetCount: 3,
+        exercises: [
+          {
+            exerciseId: "bench",
+            exerciseName: "Bench Press",
+            orderIndex: 0,
+            section: "main",
+            isMainLift: true,
+            prescribedSetCount: 3,
+            prescribedSets: [{ setIndex: 1, targetReps: 8, targetRpe: 8 }],
+          },
+        ],
+        semantics: {
+          kind: "advancing",
+          effectiveSelectionMode: "INTENT",
+          isDeload: false,
+          isStrictGapFill: false,
+          isStrictSupplemental: false,
+          advancesLifecycle: true,
+          consumesWeeklyScheduleIntent: true,
+          countsTowardCompliance: true,
+          countsTowardRecentStimulus: true,
+          countsTowardWeeklyVolume: true,
+          countsTowardProgressionHistory: true,
+          countsTowardPerformanceHistory: true,
+          updatesProgressionAnchor: true,
+          eligibleForUniqueIntentSubtraction: true,
+          reasons: [],
+          trace: {
+            advancesSplitInput: true,
+          },
+        },
+        traces: {
+          progression: {},
+        },
+      },
+    },
+  };
+
+  it("records current saved structure and drift when a mutation adds an exercise", () => {
+    const result = buildWorkoutStructureState({
+      selectionMetadata: generatedSelectionMetadata,
+      selectionMode: "INTENT",
+      sessionIntent: "PUSH",
+      reconciledAt: "2026-03-05T10:00:00.000Z",
+      persistedExercises: [
+        {
+          exerciseId: "bench",
+          orderIndex: 0,
+          section: "MAIN",
+          exercise: { name: "Bench Press" },
+          sets: [{ setIndex: 1, targetReps: 8 }],
+        },
+        {
+          exerciseId: "fly",
+          orderIndex: 1,
+          section: "ACCESSORY",
+          exercise: { name: "Cable Fly" },
+          sets: [{ setIndex: 1, targetReps: 12 }],
+        },
+      ],
+    });
+
+    expect(result.currentExercises).toEqual([
+      {
+        exerciseId: "bench",
+        orderIndex: 0,
+        section: "MAIN",
+        setCount: 1,
+      },
+      {
+        exerciseId: "fly",
+        orderIndex: 1,
+        section: "ACCESSORY",
+        setCount: 1,
+      },
+    ]);
+    expect(result.reconciliation.hasDrift).toBe(true);
+    expect(result.reconciliation.changedFields).toContain("exercise_added");
+    expect(result.reconciliation.addedExerciseIds).toEqual(["fly"]);
+  });
+
+  it("preserves canonical workoutStructureState during sanitization", () => {
+    const workoutStructureState = buildWorkoutStructureState({
+      selectionMetadata: generatedSelectionMetadata,
+      selectionMode: "INTENT",
+      sessionIntent: "PUSH",
+      persistedExercises: [
+        {
+          exerciseId: "bench",
+          orderIndex: 0,
+          section: "MAIN",
+          exercise: { name: "Bench Press" },
+          sets: [{ setIndex: 1, targetReps: 8 }],
+        },
+      ],
+    });
+
+    const result = sanitizeSelectionMetadataForSave({
+      workoutStructureState,
+      debugOnly: true,
+    });
+
+    expect(readWorkoutStructureState(result)).toEqual(workoutStructureState);
+    expect((result as Record<string, unknown>).debugOnly).toBeUndefined();
   });
 });
 

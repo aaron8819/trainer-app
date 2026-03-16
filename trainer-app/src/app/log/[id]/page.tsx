@@ -73,6 +73,7 @@ export default async function LogWorkoutPage({
   const explanation = "error" in explanationResult ? null : explanationResult;
   const selectionMetadata = parseExplainabilitySelectionMetadata(workout.selectionMetadata);
   const sessionDecisionReceipt = selectionMetadata.sessionDecisionReceipt;
+  const workoutStructureState = selectionMetadata.workoutStructureState;
   const lifecycleCurrentWeek = explanation?.sessionContext.progressionContext.weekInMesocycle ?? null;
   const displayWeek = workout.mesocycleWeekSnapshot ?? lifecycleCurrentWeek;
   const gapFillTargetMuscles = resolveGapFillTargetMuscles({
@@ -88,6 +89,7 @@ export default async function LogWorkoutPage({
           displayWeek,
           targetMuscles: gapFillTargetMuscles,
           estimatedMinutes: workout.estimatedMinutes,
+          workoutStructureState,
         })
       : null;
 

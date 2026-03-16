@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { WorkoutExplanation } from "@/lib/engine/explainability";
 import type { SessionDecisionReceipt } from "@/lib/evidence/types";
 import { buildSessionSummaryModel } from "@/lib/ui/session-summary";
+import type { WorkoutStructureState } from "@/lib/ui/selection-metadata";
 import {
   hydrateWorkoutExplanation,
   type WorkoutExplanationResponse,
@@ -17,6 +18,7 @@ type Props = {
   sessionIntent?: string | null;
   estimatedMinutes?: number | null;
   startLoggingHref?: string | null;
+  workoutStructureState?: WorkoutStructureState;
 };
 
 export function WorkoutExplanation({
@@ -26,6 +28,7 @@ export function WorkoutExplanation({
   sessionIntent,
   estimatedMinutes,
   startLoggingHref,
+  workoutStructureState,
 }: Props) {
   const [explanation, setExplanation] = useState<WorkoutExplanation | null>(serverExplanation ?? null);
   const [isLoading, setIsLoading] = useState(!serverExplanation);
@@ -97,6 +100,7 @@ export function WorkoutExplanation({
     receipt: sessionDecisionReceipt,
     sessionIntent,
     estimatedMinutes,
+    workoutStructureState,
   });
 
   return (

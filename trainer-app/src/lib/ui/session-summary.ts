@@ -1,5 +1,6 @@
 import type { SessionContext } from "@/lib/engine/explainability";
 import type { SessionDecisionReceipt } from "@/lib/evidence/types";
+import type { WorkoutStructureState } from "./selection-metadata";
 import {
   formatGapFillMuscleList,
   isGapFillWorkout,
@@ -19,6 +20,7 @@ export type SessionSummaryModel = {
   summary: string;
   tags: string[];
   items: SessionSummaryItem[];
+  truthNote?: SessionSummaryItem;
 };
 
 function isDeloadSession(receipt?: SessionDecisionReceipt): boolean {
@@ -220,9 +222,20 @@ export function buildSessionSummaryModel(input: {
   displayWeek?: number | null;
   targetMuscles?: string[];
   estimatedMinutes?: number | null;
+  workoutStructureState?: WorkoutStructureState;
 }): SessionSummaryModel {
-  const { context, receipt, selectionMode, sessionIntent, displayWeek, targetMuscles, estimatedMinutes } = input;
+  const {
+    context,
+    receipt,
+    selectionMode,
+    sessionIntent,
+    displayWeek,
+    targetMuscles,
+    estimatedMinutes,
+    workoutStructureState,
+  } = input;
   const isDeload = context.blockPhase.blockType === "deload" || isDeloadSession(receipt);
+  const hasStructureDrift = workoutStructureState?.reconciliation.hasDrift === true;
   const isGapFill = isGapFillWorkout({
     selectionMetadata: { sessionDecisionReceipt: receipt },
     selectionMode,
@@ -272,6 +285,9 @@ export function buildSessionSummaryModel(input: {
   }
 
   const tags = [sessionLabel, formatWeekTag({ context, receipt, displayWeek })];
+  if (hasStructureDrift) {
+    tags.splice(1, 0, "Modified");
+  }
   if (isDeload) {
     tags.splice(1, 0, "Deload");
   }
@@ -280,9 +296,17 @@ export function buildSessionSummaryModel(input: {
   }
 
   return {
-    title: "Why today looks like this",
+    title: hasStructureDrift ? "Original plan context" : "Why today looks like this",
     summary: buildSummaryText({ context, receipt, selectionMode, sessionIntent, targetMuscles }),
     tags,
     items,
+    truthNote: hasStructureDrift
+      ? {
+          label: "Current structure",
+          value:
+            "Workout structure changed after generation. The exercise list on this page is the canonical saved workout; this card describes the original generated plan.",
+          tone: "caution",
+        }
+      : undefined,
   };
 }

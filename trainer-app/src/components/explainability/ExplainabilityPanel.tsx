@@ -91,6 +91,7 @@ export function ExplainabilityPanel({
       hasHistory: receipt.lastPerformed != null,
     }))
     .filter((entry) => entry.decisionLog.length > 0);
+  const hasStructureDrift = Boolean(summary.truthNote);
   const plannerDiagnostics = sessionDecisionReceipt?.plannerDiagnostics;
   const plannerMuscleRows = plannerDiagnostics
     ? Object.entries(plannerDiagnostics.muscles).sort((left, right) => left[0].localeCompare(right[0]))
@@ -135,6 +136,15 @@ export function ExplainabilityPanel({
       <SessionContextCard summary={summary} startLoggingHref={startLoggingHref} />
 
       <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
+        {summary.truthNote ? (
+          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">
+              {summary.truthNote.label}
+            </p>
+            <p className="mt-1 text-sm text-amber-900">{summary.truthNote.value}</p>
+          </div>
+        ) : null}
+
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Audit guide</p>
@@ -195,7 +205,7 @@ export function ExplainabilityPanel({
             {progressionLogicRows.length > 0 ? (
               <div className="rounded-xl border border-slate-200 bg-white p-3">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Today&apos;s prescription trace
+                  {hasStructureDrift ? "Original prescription trace" : "Today's prescription trace"}
                 </p>
                 <div className="mt-3 space-y-3">
                   {progressionLogicRows.map((entry) => (
@@ -222,7 +232,7 @@ export function ExplainabilityPanel({
             {plannerDiagnostics ? (
               <div className="rounded-xl border border-slate-200 bg-white p-3">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Planner diagnostics
+                  {hasStructureDrift ? "Original planner diagnostics" : "Planner diagnostics"}
                 </p>
                 <div className="mt-3 space-y-3">
                   {plannerMuscleRows.length > 0 ? (

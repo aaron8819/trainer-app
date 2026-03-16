@@ -71,7 +71,7 @@ Sources of truth:
 
 ## Validation-backed contracts (examples)
 - Workout generation/save: `generateFromTemplateSchema`, `generateFromIntentSchema`, `saveWorkoutSchema`
-- Workout history query: `workoutHistoryQuerySchema` in `src/lib/validation.ts`; consumed by `GET /api/workouts/history`. Supports `intent`, `status` (comma-separated), `mesocycleId`, `from`/`to` date range, and cursor-based pagination (`cursor`, `take`). History items expose only a derived `sessionSnapshot` summary for week/session/phase badge rendering instead of parallel top-level snapshot fields in the response shape (`src/app/api/workouts/history/route.ts`).
+- Workout history query: `workoutHistoryQuerySchema` in `src/lib/validation.ts`; consumed by `GET /api/workouts/history`. Supports `intent`, `status` (comma-separated), `mesocycleId`, `from`/`to` date range, and cursor-based pagination (`cursor`, `take`). History items expose the derived workout-list summary contract for badge rendering, including `sessionSnapshot` for week/session/phase chrome and `isDeload` for explicit deload labeling, instead of parallel top-level snapshot fields in the response shape (`src/app/api/workouts/history/route.ts`).
 - Logging: `setLogSchema`
 - Dumbbell load contract: clients submit dumbbell `actualLoad` in per-hand units and `POST /api/logs/set` persists the provided per-hand value directly. Client read/write helpers must stay aligned with canonical 2.5 lb quantization in `src/lib/units/load-quantization.ts`; the API contract does not define a separate dumbbell snap whitelist.
 - Performed-set signal requirement: `POST /api/logs/set` returns 400 when a non-skipped set log supplies neither `actualReps` nor `actualRpe`. Unresolved sets must remain un-logged (missing) rather than being written as empty performed logs.
@@ -129,6 +129,7 @@ Sources of truth:
   - intent route returns `selectionMetadata`, carrying canonical `sessionDecisionReceipt`
   - template route returns `selectionMetadata`, carrying canonical `sessionDecisionReceipt`
 - Generation routes canonicalize receipt readiness/autoregulation fields through shared selection metadata helpers rather than returning ad hoc top-level session mirrors (`src/lib/ui/selection-metadata.ts`, `src/lib/api/template-session/types.ts`).
+- For deload generation, receipt-backed user messaging should describe recovery intent, lighter loads, and reduced volume without hard-coding a fixed percentage promise. The canonical receipt scope is the deload decision payload, especially `selectionMetadata.sessionDecisionReceipt.deloadDecision.appliedTo`.
 - Planning semantics behind those routes are centralized in `src/lib/planning/session-opportunities.ts`. Route contracts do not expose planner inventory mode directly; `standard`, `closure`, and `rescue` remain internal generation concepts selected by the orchestration layer.
 - `POST /api/workouts/generate-from-intent` request fields include optional gap-fill controls (`src/lib/validation.ts`, `src/lib/api/template-session/types.ts`):
   - `optionalGapFill?: boolean`

@@ -263,7 +263,7 @@ SetLog / logged performance
   - `accumulation`: rising weekly targets toward peak productive volume
   - `intensification`: continued but moderated rise/plateau based on block config
   - `realization`: intentional reduction from prior peak volume while intensity rises
-  - `deload`: explicit `~45%` of peak accumulation weekly volume target; the scheduled deload session transform separately keeps exercises/reps stable, cuts hard sets roughly in half, and lets the canonical load engine apply the lighter load prescription
+  - `deload`: explicit recovery-oriented reduction from peak accumulation weekly volume target; the scheduled deload session transform separately keeps exercises/reps stable, cuts hard sets roughly in half, and lets the canonical load engine apply the lighter load prescription
 - Realization reduction is explicit policy in `src/lib/engine/volume-targets.ts`, not a hidden post-hoc override. The current taper step is `-0.5` base realization reduction plus `volumeTarget` and `intensityBias` weights; for the default low-volume, strength-biased realization week that yields a `-1.15` progress step and therefore a `0.6167` week fraction relative to the prior productive peak.
 - When phase/block context is supplied, lifecycle prescription helpers now consume real block type and block-relative week:
   - `getRirTarget(..., phaseBlockContext?)`
@@ -297,6 +297,8 @@ SetLog / logged performance
   - keep reps stable for movement continuity
   - leave `targetLoad` unset in generation, then let `src/lib/engine/apply-loads.ts` apply the canonical lighter deload load
   - target low-fatigue effort through lifecycle deload RIR/RPE targeting
+  - user-facing receipts/explanations should describe lighter loads plus reduced volume for recovery, not promise a fixed percentage reduction
+  - deload does not reset progress; next-mesocycle baselines continue to anchor from accumulation history rather than deload performance
   - count toward compliance, recent stimulus, and weekly volume, while remaining excluded from progression anchors and canonical performance-history reads
 
 ## Explainability

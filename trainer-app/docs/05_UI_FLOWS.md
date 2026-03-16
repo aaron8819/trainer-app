@@ -29,7 +29,7 @@ Sources of truth:
 - `/analytics`: analytics dashboards (`src/app/analytics/page.tsx`)
 - `/templates`, `/templates/new`, `/templates/[id]/edit`: template management
 - `/library`: exercise library (`src/app/library/page.tsx`)
-- `/history`: paginated workout history with intent/date/mesocycle filters and derived week/session snapshot badges (`src/app/history/page.tsx`, `src/components/HistoryClient.tsx`)
+- `/history`: paginated workout history with intent/date/mesocycle filters, derived week/session snapshot badges, and explicit deload labeling (`src/app/history/page.tsx`, `src/components/HistoryClient.tsx`)
 - `/settings`: user settings (`src/app/settings/page.tsx`)
 - `/program`: mesocycle/block/program dashboard (`src/app/program/page.tsx`)
 
@@ -63,6 +63,7 @@ Route-purpose shorthand:
 - `mark_partial` is surfaced as a single footer-level "Leave for now" action once at least one set has been logged (`loggedCount > 0`). It persists a `PARTIAL` status without requiring all sets to be resolved first (`src/components/LogWorkoutClient.tsx`).
 - Plan writes remain non-terminal (`save_plan`) and do not finalize `COMPLETED|PARTIAL|SKIPPED`.
 - Log page now renders the same receipt-first session summary card used on workout detail by building a `SessionSummaryModel` from explainability context plus `selectionMetadata.sessionDecisionReceipt` (`src/app/log/[id]/page.tsx`, `src/lib/ui/session-summary.ts`, `src/components/explainability/SessionContextCard.tsx`).
+- Planned deload summaries are intentionally deload-first on both log and workout-detail surfaces: they show visible `Deload` labeling, frame the session as lighter recovery work, and reassure the user that the next mesocycle re-anchors from accumulation rather than deload (`src/lib/ui/session-summary.ts`).
 
 4. Review workout rationale
 - UI: `/workout/[id]` for the default user-facing session summary, `/workout/[id]/audit` for detailed explainability
@@ -70,8 +71,9 @@ Route-purpose shorthand:
 - The route boundary is canonical in `docs/01_ARCHITECTURE.md`; this flow doc only records the implemented UX.
 - Workout detail now renders the receipt-first session summary directly and no longer mounts the full explainability panel in the default flow (`src/app/workout/[id]/page.tsx`, `src/lib/ui/session-summary.ts`, `src/components/explainability/SessionContextCard.tsx`).
 - `/workout/[id]` stays compact, but now leads with a post-workout hierarchy for performed sessions: `Session outcome` -> `Key lift takeaways` -> dedicated `Program impact` -> detailed set review, with `Next time` guidance emphasized in the summary and lift cards rather than repeated as a separate top-level program tile. This is the main user path and should answer "how it went / what it means / what happens next" before raw set-level trace.
+- Deload completion review is a deliberate exception to normal progression-first framing: the primary takeaway should be crisp execution, low fatigue, and leaving fresher, not increase/hold/decrease judgment (`src/lib/ui/post-workout-insights.ts`).
 - Immediate completed-workout review follows the same hierarchy after save, then links into the full workout review page for the original workout structure, deeper exercise detail, and fuller session context.
-- Completion review and `/workout/[id]` both render their user-facing post-workout call through the same `PostWorkoutInsights` read model (`src/lib/ui/post-workout-insights.ts`). Completed-workout wording should stay aligned with canonical next-exposure behavior across both surfaces rather than letting the two review entry points drift independently.
+- Completion review and `/workout/[id]` both render their user-facing post-workout call through the same `PostWorkoutInsights` read model (`src/lib/ui/post-workout-insights.ts`). Completed-workout wording should stay aligned across both surfaces: normal sessions can reflect canonical next-exposure behavior, while deload sessions should remain recovery-first and avoid presenting increase/hold/decrease as the dominant interpretation.
 - Canonical next-exposure action wording on those review surfaces now flows through `src/lib/ui/next-exposure-copy.ts`. If a surface is presenting canonical `increase | hold | decrease` next-session meaning, it should consume that formatter instead of inventing local action copy.
 - Detailed explainability is intentionally separated into `/workout/[id]/audit`, which loads `WorkoutExplanation` and exposes the richer evidence panels for internal auditing (`src/app/workout/[id]/audit/page.tsx`, `src/components/WorkoutExplanation.tsx`, `src/components/explainability/ExplainabilityPanel.tsx`).
 - The audit page uses the same summary card at the top, then splits into a session-level scan and an exercise drill-down (`src/components/explainability/ExplainabilityPanel.tsx`, `src/components/explainability/ExerciseRationaleCard.tsx`).
@@ -93,7 +95,7 @@ Route-purpose shorthand:
 - `currentWeek`, `viewedWeek`, lifecycle RIR, and weekly volume targets are duration-aware: accumulation spans `durationWeeks - 1`, and the final week is deload instead of assuming a fixed 4+1 structure.
 - `ProgramStatusCard` is mounted on both the home dashboard (`src/app/page.tsx`) and the `/program` page (`src/app/program/page.tsx`), replacing the prior inline server-rendered volume table on `/program`.
 - `/program` session history is no longer carried inside `ProgramDashboardData`; it is loaded independently from the canonical workout-list summary builder in `src/lib/ui/workout-list-items.ts`.
-- Recent Workouts (`src/components/RecentWorkouts.tsx`) and History (`src/components/HistoryClient.tsx`) now share the same workout-list summary contract and display helpers from `src/lib/ui/workout-list-items.ts` for status labels, intent labels, and exercise/set count copy. Both still render the same derived week/session badge from `sessionSnapshot` via `src/lib/ui/workout-session-snapshot.ts`. Planned workouts show this badge immediately upon plan-save because the save route now snapshots mesocycle context for new plan writes.
+- Recent Workouts (`src/components/RecentWorkouts.tsx`) and History (`src/components/HistoryClient.tsx`) now share the same workout-list summary contract and display helpers from `src/lib/ui/workout-list-items.ts` for status labels, intent labels, exercise/set count copy, and explicit `Deload` badges. Both still render the same derived week/session badge from `sessionSnapshot` via `src/lib/ui/workout-session-snapshot.ts`. Planned workouts show this badge immediately upon plan-save because the save route now snapshots mesocycle context for new plan writes.
 - `/library` exercise detail keeps raw recent sessions and bests visible through `PersonalHistorySection`, but its trend copy is explicitly descriptive logged-history framing rather than authoritative improvement-status labeling. That surface is for local history context, not canonical progression interpretation (`src/components/library/PersonalHistorySection.tsx`).
 
 ## Optional gap-fill flow

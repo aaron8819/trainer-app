@@ -41,6 +41,7 @@ Canonical machine-readable values: `docs/contracts/runtime-contracts.json`.
 - Filtered/rejected intent exercises are persisted to `FilteredExercise` for later explainability rendering.
 - `Constraints` now persists scheduling constraints as `daysPerWeek` and `splitType` (no `sessionMinutes` field) in `prisma/schema.prisma`, and is mapped into runtime constraints in `src/lib/api/workout-context.ts`.
 - Workout rewrites are revision-guarded by `Workout.revision` in `prisma/schema.prisma` and route enforcement in `src/app/api/workouts/save/route.ts`.
+- Structural workout mutations also advance that revision. Planned workout rewrites and add-exercise mutations both persist updated reconciliation state and increment `Workout.revision`.
 - Exercise ordering is deterministic per workout via unique index `WorkoutExercise(workoutId, orderIndex)` in `prisma/schema.prisma` (materialized in baseline migration `prisma/migrations/20260222_baseline/migration.sql`).
 
 ## Mesocycle lifecycle fields
@@ -85,5 +86,10 @@ Canonical machine-readable values: `docs/contracts/runtime-contracts.json`.
 - `Workout.autoregulationLog`
 - These fields are retained in the schema for backward compatibility and historical inspection only.
 - Active runtime session-decision state is persisted under `Workout.selectionMetadata.sessionDecisionReceipt`, and `POST /api/workouts/save` no longer accepts these compatibility fields as write inputs.
+- Canonical mutation reconciliation state is persisted alongside the receipt under `Workout.selectionMetadata.workoutStructureState`. That record stores:
+  - current saved structure summary
+  - generated-vs-saved reconciliation
+  - reconciliation timestamp
+- `selectionMetadata.sessionDecisionReceipt` remains the original generated/evidence payload even after mutation; `workoutStructureState` is the saved-structure companion record rather than a receipt replacement.
 - Optional-session semantics are receipt-driven, not enum-driven. Supplemental deficit sessions and optional gap-fill sessions do not add new database enums; they are represented by canonical `selectionMetadata.sessionDecisionReceipt.exceptions` markers plus persisted `Workout.selectionMode`, `Workout.sessionIntent`, and `Workout.advancesSplit`.
 - Read-side consumers now centralize that interpretation in `src/lib/session-semantics/derive-session-semantics.ts`; no persisted `sessionKind` column or enum has been added.

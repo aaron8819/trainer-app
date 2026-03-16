@@ -122,6 +122,8 @@ SetLog / logged performance
 - `deriveSessionSemantics()` is the canonical session-level interpretation bridge. It owns session-level meaning derived from persisted workout fields, including advancing/non-advancing interpretation, weekly-slot consumption, and progression-history eligibility.
 - `deriveSessionSemantics()` does not own set-level progression computations such as modal load, anchor load, rep summaries, or effort-classification math. Those remain in canonical progression/history/explainability seams such as `src/lib/engine/progression.ts`, `src/lib/engine/history.ts`, and `src/lib/api/explainability.ts`.
 - `selectionMetadata.sessionDecisionReceipt` is the canonical stored generation/evidence context. Read-side consumers should combine that receipt with derived session semantics rather than recreating missing session policy locally.
+- `selectionMetadata.workoutStructureState` is the canonical persisted mutation-reconciliation context. It stores the current saved structure summary plus generated-vs-saved reconciliation, and mutation writers own keeping it current.
+- Original generation receipt truth and current saved-structure truth are intentionally distinct. Mutation reconciliation must not overwrite `sessionDecisionReceipt` to mimic the mutated workout.
 - Post-workout explanation is a read-side interpretation surface. It may explain canonical behavior, but it should not redefine the behavior that generator/progression seams will use for the next exposure.
 - Canonical next-exposure progression remains server-side in `src/lib/engine/apply-loads.ts` and `src/lib/engine/progression.ts`.
 
@@ -150,6 +152,7 @@ SetLog / logged performance
 - API orchestration for readiness and periodization endpoints lives in `src/lib/api/readiness.ts` and `src/lib/api/periodization.ts`.
 - Generation-facing phase/block resolution now lives in `src/lib/api/generation-phase-block-context.ts` and is loaded by `src/lib/api/template-session/context-loader.ts`. This is the canonical seam where persisted block definitions become generation/runtime `cycleContext`, including optional `blockDurationWeeks` for receipt-backed read-side consumers.
 - Session-decision ownership is receipt-first. The canonical flow is defined once in `docs/01_ARCHITECTURE.md`; domain logic here assumes session-level cycle/readiness context is carried only by `selectionMetadata.sessionDecisionReceipt` and parsed by `src/lib/evidence/session-decision-receipt.ts`.
+- Mutation truth alignment is persisted-first, not heuristic-first. Read-side summary/explainability surfaces should use `selectionMetadata.workoutStructureState` when deciding whether generated receipt context is still current or must be labeled as original-plan context.
 - Default readiness autoregulation policy is conservative down-regulation only (`allowUpRegulation=false`) unless explicitly overridden by policy input (`src/lib/engine/readiness/types.ts`, `src/lib/engine/readiness/autoregulate.ts`).
 
 ## Evidence and rule guardrails
@@ -167,6 +170,7 @@ SetLog / logged performance
 ## Session semantics model
 - Session semantics are split intentionally between write-side lifecycle contract and read-side interpretation.
 - Write-side lifecycle contract remains `Workout.advancesSplit`. Save/lifecycle mutation code should continue treating `advancesSplit !== false` as the only advancement gate (`src/app/api/workouts/save/lifecycle-contract.ts`, `src/app/api/workouts/save/route.ts`).
+- Structural mutation writers are also responsible for canonical reconciliation bookkeeping: when the saved workout structure changes, they must update `selectionMetadata.workoutStructureState` and bump `Workout.revision`.
 - Read-side policy is now centralized in `deriveSessionSemantics()` (`src/lib/session-semantics/derive-session-semantics.ts`). Readers should derive behavior from persisted fields rather than re-authoring ad hoc checks across progression, next-session, and planning paths.
 - Current derived kinds are `advancing`, `gap_fill`, `supplemental`, and `non_advancing_generic`.
 - The helper derives those semantics from existing persisted/runtime fields: `advancesSplit`, `selectionMode`, `sessionIntent`, `selectionMetadata`, and optional `templateId`.

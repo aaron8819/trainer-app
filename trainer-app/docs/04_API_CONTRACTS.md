@@ -80,6 +80,7 @@ Sources of truth:
 - Profile/readiness/analytics: `profileSetupSchema`, `readinessSignalSchema`, `analyticsSummarySchema`
 - `profileSetupSchema` no longer accepts `sessionMinutes`; profile setup persists `daysPerWeek` and optional `splitType` through `POST /api/profile/setup` (`src/lib/validation.ts`, `src/app/api/profile/setup/route.ts`).
 - Session-decision request/response ownership follows the canonical flow in `docs/01_ARCHITECTURE.md`: save and generation contracts carry `selectionMetadata.sessionDecisionReceipt`, and validation rejects removed top-level session mirrors / top-level autoregulation inputs (`src/lib/validation.ts`, `src/app/api/workouts/save/route.ts`).
+- Mutation reconciliation is part of the persisted workout contract, not a read-side convenience. Structural mutation writers persist `selectionMetadata.workoutStructureState` when saved workout structure diverges from the original generated plan.
 
 ## Workout save terminal transition contract
 - Route: `POST /api/workouts/save` (`src/app/api/workouts/save/route.ts`).
@@ -100,6 +101,11 @@ Sources of truth:
   - Lifecycle counters (`accumulationSessionsCompleted`, `deloadSessionsCompleted`) are incremented on any first transition to a performed status (`COMPLETED` or `PARTIAL`) atomically inside the save-workout transaction (`src/app/api/workouts/save/route.ts`); `transitionMesocycleState()` is then called post-transaction to apply threshold-based state transitions.
 - Lifecycle thresholds are duration-aware: accumulation completes after `(durationWeeks - 1) * sessionsPerWeek` performed sessions and deload completes after `sessionsPerWeek` performed sessions.
 - Save route persists session-level cycle context only inside `selectionMetadata.sessionDecisionReceipt`; `POST /api/workouts/save` rejects writes that omit the canonical receipt instead of synthesizing fallback state (`src/app/api/workouts/save/route.ts`).
+- Save-route exercise rewrites also persist canonical `selectionMetadata.workoutStructureState` and keep the original receipt intact. They do not rewrite `sessionDecisionReceipt` to match the new structure.
+- Structural mutation contract:
+  - `POST /api/workouts/save` with exercise rewrite updates `selectionMetadata.workoutStructureState`
+  - `POST /api/workouts/[id]/add-exercise` updates `selectionMetadata.workoutStructureState`
+  - structural mutations increment `Workout.revision`
 - Optional gap-fill enforcement is strictly scoped to the canonical triplet:
   - receipt marker `optional_gap_fill`
   - effective `selectionMode=INTENT`
@@ -130,6 +136,7 @@ Sources of truth:
   - intent route returns `selectionMetadata`, carrying canonical `sessionDecisionReceipt`
   - template route returns `selectionMetadata`, carrying canonical `sessionDecisionReceipt`
 - Generation routes canonicalize receipt readiness/autoregulation fields through shared selection metadata helpers rather than returning ad hoc top-level session mirrors (`src/lib/ui/selection-metadata.ts`, `src/lib/api/template-session/types.ts`).
+- Generation routes own original plan metadata. Mutation reconciliation is added later by write-side mutation paths when the saved workout structure changes.
 - For deload generation, receipt-backed user messaging should describe recovery intent, lighter loads, and reduced volume without hard-coding a fixed percentage promise. The canonical receipt scope is the deload decision payload, especially `selectionMetadata.sessionDecisionReceipt.deloadDecision.appliedTo`.
 - Planning semantics behind those routes are centralized in `src/lib/planning/session-opportunities.ts`. Route contracts do not expose planner inventory mode directly; `standard`, `closure`, and `rescue` remain internal generation concepts selected by the orchestration layer.
 - `POST /api/workouts/generate-from-intent` request fields include optional gap-fill controls (`src/lib/validation.ts`, `src/lib/api/template-session/types.ts`):

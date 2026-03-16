@@ -63,6 +63,7 @@ Route-purpose shorthand:
 - `mark_partial` is surfaced as a single footer-level "Leave for now" action once at least one set has been logged (`loggedCount > 0`). It persists a `PARTIAL` status without requiring all sets to be resolved first (`src/components/LogWorkoutClient.tsx`).
 - Plan writes remain non-terminal (`save_plan`) and do not finalize `COMPLETED|PARTIAL|SKIPPED`.
 - Log page now renders the same receipt-first session summary card used on workout detail by building a `SessionSummaryModel` from explainability context plus `selectionMetadata.sessionDecisionReceipt` (`src/app/log/[id]/page.tsx`, `src/lib/ui/session-summary.ts`, `src/components/explainability/SessionContextCard.tsx`).
+- That summary remains receipt-first only while generated plan truth still matches saved structure. When `selectionMetadata.workoutStructureState.reconciliation.hasDrift === true`, the card is relabeled as original-plan context and shows an explicit truth-boundary note that the visible exercise list is the canonical current workout.
 - Planned deload summaries are intentionally deload-first on both log and workout-detail surfaces: they show visible `Deload` labeling, frame the session as lighter recovery work, and reassure the user that the next mesocycle re-anchors from accumulation rather than deload (`src/lib/ui/session-summary.ts`).
 
 4. Review workout rationale
@@ -77,8 +78,9 @@ Route-purpose shorthand:
 - Canonical next-exposure action wording on those review surfaces now flows through `src/lib/ui/next-exposure-copy.ts`. If a surface is presenting canonical `increase | hold | decrease` next-session meaning, it should consume that formatter instead of inventing local action copy.
 - Detailed explainability is intentionally separated into `/workout/[id]/audit`, which loads `WorkoutExplanation` and exposes the richer evidence panels for internal auditing (`src/app/workout/[id]/audit/page.tsx`, `src/components/WorkoutExplanation.tsx`, `src/components/explainability/ExplainabilityPanel.tsx`).
 - The audit page uses the same summary card at the top, then splits into a session-level scan and an exercise drill-down (`src/components/explainability/ExplainabilityPanel.tsx`, `src/components/explainability/ExerciseRationaleCard.tsx`).
+- When mutation drift exists, audit-side planner and prescription surfaces are explicitly relabeled as original-plan evidence (`Original prescription trace`, `Original planner diagnostics`) instead of implying current saved-workout truth.
 - Workout detail copy for prescription/load provenance now treats `PARTIAL` and `COMPLETED` as performed states through `src/lib/ui/session-overview.ts` and usage in `src/app/workout/[id]/page.tsx`.
-- Workout detail and log pages both read session-level context through `parseExplainabilitySelectionMetadata()`, which is canonical-receipt only for `sessionDecisionReceipt` (`src/app/workout/[id]/page.tsx`, `src/app/log/[id]/page.tsx`, `src/lib/ui/explainability.ts`).
+- Workout detail and log pages both read session-level context through `parseExplainabilitySelectionMetadata()`, which now parses both `sessionDecisionReceipt` and `workoutStructureState` from canonical persisted `selectionMetadata` (`src/app/workout/[id]/page.tsx`, `src/app/log/[id]/page.tsx`, `src/lib/ui/explainability.ts`).
 
 5. Program and readiness loop
 - UI: `/program`, readiness components

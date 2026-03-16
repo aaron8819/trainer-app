@@ -18,6 +18,8 @@ const mocks = vi.hoisted(() => ({
 vi.mock("./context-builder", () => ({
   resolveWorkoutAuditIdentity: (...args: unknown[]) => mocks.resolveWorkoutAuditIdentity(...args),
   buildWorkoutAuditContext: (...args: unknown[]) => mocks.buildWorkoutAuditContext(...args),
+  normalizeWorkoutAuditMode: (mode: string) =>
+    mode === "next-session" || mode === "intent-preview" ? "future-week" : mode,
 }));
 
 vi.mock("./generation-runner", () => ({

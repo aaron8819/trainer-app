@@ -5,6 +5,10 @@ import { generateDeloadSessionFromTemplate, generateSessionFromTemplate } from "
 import { applyAutoregulation } from "@/lib/api/autoregulation";
 import { loadActiveMesocycle } from "@/lib/api/mesocycle-lifecycle";
 import type { GenerateFromTemplateResponse } from "@/lib/api/template-session/types";
+import {
+  attachSessionAuditSnapshotToSelectionMetadata,
+  buildGeneratedSessionAuditSnapshot,
+} from "@/lib/evidence/session-audit-snapshot";
 import { buildCanonicalSelectionMetadata } from "@/lib/ui/selection-metadata";
 
 export async function POST(request: Request) {
@@ -36,6 +40,20 @@ export async function POST(request: Request) {
   // Phase 3: Apply autoregulation
   const autoregulated = await applyAutoregulation(user.id, result.workout);
   const selectionMetadata = buildCanonicalSelectionMetadata(result.selection, autoregulated);
+  const sessionAuditSnapshot = buildGeneratedSessionAuditSnapshot({
+    workout: autoregulated.adjusted,
+    selectionMode: result.selectionMode,
+    sessionIntent: result.sessionIntent,
+    selectionMetadata,
+    advancesSplit: true,
+    filteredExercises: result.filteredExercises,
+    progressionTraces: result.audit?.progressionTraces,
+    deloadTrace: result.audit?.deloadTrace,
+  });
+  const responseSelectionMetadata = attachSessionAuditSnapshotToSelectionMetadata(
+    selectionMetadata,
+    sessionAuditSnapshot
+  );
 
   const response: GenerateFromTemplateResponse = {
     workout: autoregulated.adjusted,
@@ -45,7 +63,7 @@ export async function POST(request: Request) {
     volumePlanByMuscle: result.volumePlanByMuscle,
     selectionMode: result.selectionMode,
     sessionIntent: result.sessionIntent,
-    selectionMetadata,
+    selectionMetadata: responseSelectionMetadata,
   };
 
   return NextResponse.json(response);

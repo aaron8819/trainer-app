@@ -8,6 +8,10 @@ import type { FilteredExerciseSummary } from "@/lib/engine/explainability";
 import type { VolumePlanByMuscle } from "@/lib/engine/volume";
 import type { SaveableSelectionMetadata } from "@/lib/ui/selection-metadata";
 import type {
+  DeloadTransformationTrace,
+  ProgressionDecisionTrace,
+} from "@/lib/evidence/session-audit-types";
+import type {
   CycleContextSnapshot,
   DeloadDecision,
   SessionDecisionReceipt,
@@ -64,6 +68,10 @@ export type SessionGenerationResult =
         sessionDecisionReceipt?: SessionDecisionReceipt;
       };
       filteredExercises?: FilteredExerciseSummary[];
+      audit?: {
+        progressionTraces: Record<string, ProgressionDecisionTrace>;
+        deloadTrace?: DeloadTransformationTrace;
+      };
     }
   | { error: string };
 

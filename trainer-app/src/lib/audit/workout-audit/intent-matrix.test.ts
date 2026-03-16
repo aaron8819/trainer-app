@@ -104,7 +104,9 @@ async function runIntentPreview(intent: SessionIntent, plannerDiagnosticsMode: "
   return {
     run,
     receipt:
-      "error" in run.generationResult ? undefined : run.generationResult.selection.sessionDecisionReceipt,
+      !run.generationResult || "error" in run.generationResult
+        ? undefined
+        : run.generationResult.selection.sessionDecisionReceipt,
     artifactReceipt: serialized.generation?.selection?.sessionDecisionReceipt,
   };
 }
@@ -212,9 +214,14 @@ describe("workout audit intent-preview diagnostics matrix", () => {
       const standard = await runIntentPreview(intent, "standard");
       const debug = await runIntentPreview(intent, "debug");
 
-      expect("error" in standard.run.generationResult).toBe(false);
-      expect("error" in debug.run.generationResult).toBe(false);
-      if ("error" in standard.run.generationResult || "error" in debug.run.generationResult) {
+      expect(standard.run.generationResult && !("error" in standard.run.generationResult)).toBe(true);
+      expect(debug.run.generationResult && !("error" in debug.run.generationResult)).toBe(true);
+      if (
+        !standard.run.generationResult ||
+        !debug.run.generationResult ||
+        "error" in standard.run.generationResult ||
+        "error" in debug.run.generationResult
+      ) {
         return;
       }
 

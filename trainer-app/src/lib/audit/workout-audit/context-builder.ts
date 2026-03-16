@@ -1,6 +1,12 @@
 import { prisma } from "@/lib/db/prisma";
 import { loadNextWorkoutContext } from "@/lib/api/next-session";
-import type { WorkoutAuditContext, WorkoutAuditIdentity, WorkoutAuditRequest } from "./types";
+import type { SessionIntent } from "@/lib/engine/session-types";
+import type {
+  NormalizedWorkoutAuditMode,
+  WorkoutAuditContext,
+  WorkoutAuditIdentity,
+  WorkoutAuditRequest,
+} from "./types";
 
 export async function resolveWorkoutAuditIdentity(
   request: Pick<WorkoutAuditRequest, "userId" | "ownerEmail">
@@ -10,7 +16,7 @@ export async function resolveWorkoutAuditIdentity(
   }
 
   if (!request.ownerEmail) {
-    throw new Error("next-session and intent-preview audits require userId or ownerEmail");
+    throw new Error("audit requires userId or ownerEmail");
   }
 
   const user = await prisma.user.findUnique({
@@ -23,41 +29,112 @@ export async function resolveWorkoutAuditIdentity(
   return { userId: user.id, ownerEmail: user.email };
 }
 
+export function normalizeWorkoutAuditMode(
+  mode: WorkoutAuditRequest["mode"]
+): NormalizedWorkoutAuditMode {
+  if (mode === "next-session" || mode === "intent-preview") {
+    return "future-week";
+  }
+  return mode;
+}
+
 export async function buildWorkoutAuditContext(
   request: WorkoutAuditRequest
 ): Promise<WorkoutAuditContext> {
   const identity = await resolveWorkoutAuditIdentity(request);
   const plannerDiagnosticsMode = request.plannerDiagnosticsMode ?? "standard";
+  const mode = normalizeWorkoutAuditMode(request.mode);
 
-  if (request.mode === "next-session") {
-    const nextSession = await loadNextWorkoutContext(identity.userId);
-    if (!nextSession.intent) {
-      throw new Error("Unable to derive next-session intent from runtime context");
+  if (mode === "historical-week") {
+    if (!Number.isFinite(request.week)) {
+      throw new Error("historical-week mode requires --week");
     }
     return {
-      mode: "next-session",
+      mode,
+      requestedMode: request.mode,
+      userId: identity.userId,
+      ownerEmail: identity.ownerEmail,
+      plannerDiagnosticsMode,
+      historicalWeek: {
+        week: request.week as number,
+        mesocycleId: request.mesocycleId,
+      },
+    };
+  }
+
+  if (mode === "progression-anchor") {
+    if (!request.exerciseId) {
+      throw new Error("progression-anchor mode requires --exercise-id");
+    }
+    return {
+      mode,
+      requestedMode: request.mode,
+      userId: identity.userId,
+      ownerEmail: identity.ownerEmail,
+      plannerDiagnosticsMode,
+      progressionAnchor: {
+        workoutId: request.workoutId,
+        exerciseId: request.exerciseId,
+      },
+    };
+  }
+
+  if (mode === "deload") {
+    const nextSession = !request.intent
+      ? await loadNextWorkoutContext(identity.userId)
+      : undefined;
+    const intent = (request.intent ?? nextSession?.intent) as SessionIntent | undefined;
+    if (!intent) {
+      throw new Error("deload mode requires --intent or a derivable next-session intent");
+    }
+    return {
+      mode,
+      requestedMode: request.mode,
       userId: identity.userId,
       ownerEmail: identity.ownerEmail,
       plannerDiagnosticsMode,
       generationInput: {
-        intent: nextSession.intent as WorkoutAuditContext["generationInput"]["intent"],
+        intent,
+        targetMuscles: request.targetMuscles,
+        source: "forced-deload",
       },
       nextSession,
     };
   }
 
-  if (!request.intent) {
+  if (request.mode === "intent-preview" && !request.intent) {
     throw new Error("intent-preview mode requires intent");
   }
 
+  if (request.intent) {
+    return {
+      mode,
+      requestedMode: request.mode,
+      userId: identity.userId,
+      ownerEmail: identity.ownerEmail,
+      plannerDiagnosticsMode,
+      generationInput: {
+        intent: request.intent,
+        targetMuscles: request.targetMuscles,
+        source: "intent-preview",
+      },
+    };
+  }
+
+  const nextSession = await loadNextWorkoutContext(identity.userId);
+  if (!nextSession.intent) {
+    throw new Error("Unable to derive next-session intent from runtime context");
+  }
   return {
-    mode: "intent-preview",
+    mode,
+    requestedMode: request.mode,
     userId: identity.userId,
     ownerEmail: identity.ownerEmail,
     plannerDiagnosticsMode,
-    generationInput: {
-      intent: request.intent,
-      targetMuscles: request.targetMuscles,
-    },
-  };
-}
+      generationInput: {
+        intent: nextSession.intent as SessionIntent,
+        source: "next-session",
+      },
+      nextSession,
+    };
+  }

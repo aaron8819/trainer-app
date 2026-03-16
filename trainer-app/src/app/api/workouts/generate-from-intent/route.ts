@@ -7,6 +7,10 @@ import { loadActiveMesocycle } from "@/lib/api/mesocycle-lifecycle";
 import { findPendingWeekCloseForUser } from "@/lib/api/mesocycle-week-close";
 import type { GenerateFromIntentResponse } from "@/lib/api/template-session/types";
 import {
+  attachSessionAuditSnapshotToSelectionMetadata,
+  buildGeneratedSessionAuditSnapshot,
+} from "@/lib/evidence/session-audit-snapshot";
+import {
   attachOptionalGapFillMetadata,
   attachSupplementalSessionMetadata,
   buildCanonicalSelectionMetadata,
@@ -200,6 +204,22 @@ export async function POST(request: Request) {
     targetMuscles: generationInput.targetMuscles,
     anchorWeek: generationInput.anchorWeek,
   });
+  const sessionAuditSnapshot = buildGeneratedSessionAuditSnapshot({
+    workout: cappedWorkout,
+    selectionMode: result.selectionMode,
+    sessionIntent: result.sessionIntent,
+    selectionMetadata: finalSelectionMetadata,
+    targetMuscles: generationInput.targetMuscles,
+    advancesSplit:
+      shouldApplyOptionalGapFill || shouldApplySupplementalDeficitSession ? false : true,
+    filteredExercises: result.filteredExercises,
+    progressionTraces: result.audit?.progressionTraces,
+    deloadTrace: result.audit?.deloadTrace,
+  });
+  const responseSelectionMetadata = attachSessionAuditSnapshotToSelectionMetadata(
+    finalSelectionMetadata,
+    sessionAuditSnapshot
+  );
 
   const response: GenerateFromIntentResponse = {
     workout: cappedWorkout,
@@ -209,7 +229,7 @@ export async function POST(request: Request) {
     selectionMode: result.selectionMode,
     sessionIntent: result.sessionIntent,
     selectionSummary,
-    selectionMetadata: finalSelectionMetadata,
+    selectionMetadata: responseSelectionMetadata,
     filteredExercises: result.filteredExercises,
   };
 

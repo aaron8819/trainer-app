@@ -41,7 +41,7 @@ describe("buildWorkoutAuditContext", () => {
     });
 
     expect(context.userId).toBe("user-1");
-    expect(context.generationInput.intent).toBe("pull");
+    expect(context.generationInput!.intent).toBe("pull");
     expect(context.plannerDiagnosticsMode).toBe("standard");
     expect(context.nextSession?.source).toBe("rotation");
   });
@@ -63,8 +63,9 @@ describe("buildWorkoutAuditContext", () => {
       plannerDiagnosticsMode: "debug",
     });
 
-    expect(context.mode).toBe("intent-preview");
-    expect(context.generationInput.intent).toBe("push");
+    expect(context.mode).toBe("future-week");
+    expect(context.requestedMode).toBe("intent-preview");
+    expect(context.generationInput!.intent).toBe("push");
     expect(context.plannerDiagnosticsMode).toBe("debug");
   });
 });

@@ -120,9 +120,11 @@ async function runNextSessionAudit(intent: SessionIntent, plannerDiagnosticsMode
   };
   return {
     run,
-    resolvedIntent: context.generationInput.intent,
+    resolvedIntent: context.generationInput!.intent,
     receipt:
-      "error" in run.generationResult ? undefined : run.generationResult.selection.sessionDecisionReceipt,
+      !run.generationResult || "error" in run.generationResult
+        ? undefined
+        : run.generationResult.selection.sessionDecisionReceipt,
     artifactReceipt: serialized.generation?.selection?.sessionDecisionReceipt,
   };
 }
@@ -233,9 +235,14 @@ describe("workout audit next-session diagnostics matrix", () => {
       expect(standard.resolvedIntent).toBe(intent);
       expect(debug.resolvedIntent).toBe(intent);
 
-      expect("error" in standard.run.generationResult).toBe(false);
-      expect("error" in debug.run.generationResult).toBe(false);
-      if ("error" in standard.run.generationResult || "error" in debug.run.generationResult) {
+      expect(standard.run.generationResult && !("error" in standard.run.generationResult)).toBe(true);
+      expect(debug.run.generationResult && !("error" in debug.run.generationResult)).toBe(true);
+      if (
+        !standard.run.generationResult ||
+        !debug.run.generationResult ||
+        "error" in standard.run.generationResult ||
+        "error" in debug.run.generationResult
+      ) {
         return;
       }
 

@@ -215,4 +215,65 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
       },
     });
   });
+
+  it("rejects freeform adds for strict gap-fill sessions", async () => {
+    mocks.txWorkoutFindUnique.mockResolvedValueOnce({
+      selectionMetadata: {
+        sessionDecisionReceipt: {
+          version: 1,
+          cycleContext: {
+            weekInMeso: 4,
+            weekInBlock: 4,
+            phase: "accumulation",
+            blockType: "accumulation",
+            isDeload: false,
+            source: "computed",
+          },
+          lifecycleVolume: { source: "unknown" },
+          sorenessSuppressedMuscles: [],
+          deloadDecision: {
+            mode: "none",
+            reason: [],
+            reductionPercent: 0,
+            appliedTo: "none",
+          },
+          readiness: {
+            wasAutoregulated: false,
+            signalAgeHours: null,
+            fatigueScoreOverall: null,
+            intensityScaling: {
+              applied: false,
+              exerciseIds: [],
+              scaledUpCount: 0,
+              scaledDownCount: 0,
+            },
+          },
+          targetMuscles: ["rear delts"],
+          exceptions: [
+            {
+              code: "optional_gap_fill",
+              message: "Marked as optional gap-fill session.",
+            },
+          ],
+        },
+      },
+      selectionMode: "INTENT",
+      sessionIntent: "BODY_PART",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/workout-1/add-exercise", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ exerciseId: "fly" }),
+      }),
+      { params: Promise.resolve({ id: "workout-1" }) }
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: "Strict gap-fill sessions only allow constrained swaps, not freeform exercise adds.",
+    });
+    expect(mocks.txWorkoutExerciseCreate).not.toHaveBeenCalled();
+  });
 });

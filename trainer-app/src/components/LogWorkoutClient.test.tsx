@@ -623,6 +623,20 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     });
   });
 
+  it("replaces freeform add with constrained swap controls for gap-fill sessions", () => {
+    render(
+      <LogWorkoutClient
+        workoutId="workout-gap-fill"
+        exercises={makeGapFillSwapExercises()}
+        allowBonusExerciseAdd={false}
+        allowGapFillAccessorySwap={true}
+      />
+    );
+
+    expect(screen.queryByRole("button", { name: "+ Add Exercise" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Swap" })).toBeInTheDocument();
+  });
+
   it("keeps the logging UI active after leave-for-now confirms a partial save", async () => {
     const user = userEvent.setup();
     mockedSaveWorkoutRequest.mockResolvedValueOnce(
@@ -1000,21 +1014,6 @@ function makeThreeSetExercise(): LogExerciseInput[] {
   ];
 }
 
-function makeMixedRestExercise(): LogExerciseInput[] {
-  return [
-    {
-      workoutExerciseId: "ex-rest",
-      name: "Barbell Row",
-      equipment: ["barbell"],
-      isMainLift: true,
-      sets: [
-        { setId: "set-r1", setIndex: 1, targetReps: 8, targetLoad: 135, targetRpe: 8, restSeconds: 60 },
-        { setId: "set-r2", setIndex: 2, targetReps: 8, targetLoad: 135, targetRpe: 8, restSeconds: 180 },
-      ],
-    },
-  ];
-}
-
 function makeMultiSectionExercises(): SectionedExercises {
   return {
     warmup: [
@@ -1094,6 +1093,39 @@ function makeGapFillExercises(): SectionedExercises {
             setIndex: 2,
             targetReps: 12,
             targetLoad: 60,
+            targetRpe: 8,
+            restSeconds: 90,
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function makeGapFillSwapExercises(): SectionedExercises {
+  return {
+    warmup: [],
+    main: [],
+    accessory: [
+      {
+        workoutExerciseId: "ex-gap-swap",
+        name: "Cable Rear Delt Fly",
+        equipment: ["cable"],
+        isMainLift: false,
+        sets: [
+          {
+            setId: "set-gap-swap-1",
+            setIndex: 1,
+            targetReps: 15,
+            targetLoad: 25,
+            targetRpe: 8,
+            restSeconds: 90,
+          },
+          {
+            setId: "set-gap-swap-2",
+            setIndex: 2,
+            targetReps: 15,
+            targetLoad: 25,
             targetRpe: 8,
             restSeconds: 90,
           },

@@ -9,12 +9,15 @@ import type { ExerciseSection } from "@/components/log-workout/types";
 export type WorkoutQueueExerciseRowData = {
   exerciseId: string;
   exerciseName: string;
+  sessionNote?: string;
   loggedCount: number;
   totalSets: number;
   allSetsLogged: boolean;
   isExpanded: boolean;
   nextSetId: string | null;
   chips: ExerciseSetChip[];
+  canSwap: boolean;
+  isSwapping: boolean;
 };
 
 export type WorkoutQueueSectionData = {
@@ -36,6 +39,7 @@ type WorkoutExerciseQueueProps = {
   onToggleSection: (section: ExerciseSection) => void;
   onToggleExercise: (exerciseId: string, nextSetId: string | null) => void;
   onSelectSet: (setId: string) => void;
+  onSwapExercise?: (exerciseId: string) => void;
   onExerciseRowRender?: (exerciseId: string) => void;
 };
 
@@ -61,11 +65,13 @@ const ExerciseQueueRow = memo(
     row,
     onToggleExercise,
     onSelectSet,
+    onSwapExercise,
     onRender,
   }: {
     row: WorkoutQueueExerciseRowData;
     onToggleExercise: (exerciseId: string, nextSetId: string | null) => void;
     onSelectSet: (setId: string) => void;
+    onSwapExercise?: (exerciseId: string) => void;
     onRender?: (exerciseId: string) => void;
   }) {
     useEffect(() => {
@@ -77,21 +83,40 @@ const ExerciseQueueRow = memo(
         className="rounded-xl border border-slate-100"
         data-testid={`queue-row-${row.exerciseId}`}
       >
-        <button
-          className="flex min-h-11 w-full items-center justify-between px-3 py-2 text-left"
-          onClick={() => onToggleExercise(row.exerciseId, row.nextSetId)}
-          type="button"
-        >
-          <span className="text-sm font-medium">{row.exerciseName}</span>
-          <span
-            className={`text-xs ${
-              row.allSetsLogged ? "font-semibold text-emerald-700" : "text-slate-500"
-            }`}
+        <div className="flex min-h-11 items-center justify-between gap-3 px-3 py-2">
+          <button
+            className="min-w-0 flex-1 text-left"
+            onClick={() => onToggleExercise(row.exerciseId, row.nextSetId)}
+            type="button"
           >
-            {row.allSetsLogged ? "OK " : ""}
-            {row.loggedCount}/{row.totalSets}
+            <span className="block truncate text-sm font-medium">{row.exerciseName}</span>
+            {row.sessionNote ? (
+              <span className="mt-0.5 block truncate text-[11px] text-amber-700">
+                {row.sessionNote}
+              </span>
+            ) : null}
+          </button>
+          <span className="flex shrink-0 items-center gap-2">
+            {row.canSwap && onSwapExercise ? (
+              <button
+                className="inline-flex min-h-8 items-center justify-center rounded-full border border-slate-300 px-3 text-[11px] font-semibold text-slate-700 disabled:opacity-60"
+                disabled={row.isSwapping}
+                onClick={() => onSwapExercise(row.exerciseId)}
+                type="button"
+              >
+                {row.isSwapping ? "Swapping..." : "Swap"}
+              </button>
+            ) : null}
+            <span
+              className={`text-xs ${
+                row.allSetsLogged ? "font-semibold text-emerald-700" : "text-slate-500"
+              }`}
+            >
+              {row.allSetsLogged ? "OK " : ""}
+              {row.loggedCount}/{row.totalSets}
+            </span>
           </span>
-        </button>
+        </div>
         {row.isExpanded ? (
           <ExerciseSetChipsEditor
             chips={row.chips}
@@ -105,14 +130,18 @@ const ExerciseQueueRow = memo(
   (previous, next) =>
     previous.row.exerciseId === next.row.exerciseId &&
     previous.row.exerciseName === next.row.exerciseName &&
+    previous.row.sessionNote === next.row.sessionNote &&
     previous.row.loggedCount === next.row.loggedCount &&
     previous.row.totalSets === next.row.totalSets &&
     previous.row.allSetsLogged === next.row.allSetsLogged &&
     previous.row.isExpanded === next.row.isExpanded &&
     previous.row.nextSetId === next.row.nextSetId &&
+    previous.row.canSwap === next.row.canSwap &&
+    previous.row.isSwapping === next.row.isSwapping &&
     areChipsEqual(previous.row.chips, next.row.chips) &&
     previous.onToggleExercise === next.onToggleExercise &&
     previous.onSelectSet === next.onSelectSet &&
+    previous.onSwapExercise === next.onSwapExercise &&
     previous.onRender === next.onRender
 );
 
@@ -123,6 +152,7 @@ export function WorkoutExerciseQueue({
   onToggleSection,
   onToggleExercise,
   onSelectSet,
+  onSwapExercise,
   onExerciseRowRender,
 }: WorkoutExerciseQueueProps) {
   return (
@@ -173,6 +203,7 @@ export function WorkoutExerciseQueue({
                   row={row}
                   onToggleExercise={onToggleExercise}
                   onSelectSet={onSelectSet}
+                  onSwapExercise={onSwapExercise}
                   onRender={onExerciseRowRender}
                 />
               ))}

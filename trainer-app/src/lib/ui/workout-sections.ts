@@ -1,4 +1,5 @@
 import type { LogExerciseInput } from "@/components/log-workout/types";
+import { readGapFillExerciseSwapState } from "@/lib/ui/selection-metadata";
 
 type WorkoutExercise = {
   id: string;
@@ -33,10 +34,24 @@ type SectionedExercises = {
   accessory: LogExerciseInput[];
 };
 
-export function splitExercises(exercises: WorkoutExercise[]): SectionedExercises {
+function buildSwapNoteMap(selectionMetadata: unknown): Map<string, string> {
+  const swapState = readGapFillExerciseSwapState(selectionMetadata);
+  return new Map(
+    (swapState?.swaps ?? []).map((entry) => [
+      entry.workoutExerciseId,
+      `Swapped from ${entry.originalExerciseName}. Session-only; future progression stays exercise-specific.`,
+    ])
+  );
+}
+
+export function splitExercises(
+  exercises: WorkoutExercise[],
+  selectionMetadata?: unknown
+): SectionedExercises {
   const warmup: LogExerciseInput[] = [];
   const main: LogExerciseInput[] = [];
   const accessory: LogExerciseInput[] = [];
+  const swapNoteByWorkoutExerciseId = buildSwapNoteMap(selectionMetadata);
 
   const ordered = [...exercises].sort((a, b) => a.orderIndex - b.orderIndex);
 
@@ -46,6 +61,7 @@ export function splitExercises(exercises: WorkoutExercise[]): SectionedExercises
       name: exercise.exercise.name,
       equipment: (exercise.exercise.exerciseEquipment ?? []).map((item) => item.equipment.type),
       isMainLift: exercise.isMainLift,
+      sessionNote: swapNoteByWorkoutExerciseId.get(exercise.id),
       sets: exercise.sets.map((set) => ({
         ...(set.logs?.[0]
           ? {

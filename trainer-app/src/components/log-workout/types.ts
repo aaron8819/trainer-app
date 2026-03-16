@@ -18,6 +18,7 @@ export type LogExerciseInput = {
   equipment?: string[];
   isMainLift: boolean;
   section?: "WARMUP" | "MAIN" | "ACCESSORY";
+  sessionNote?: string;
   sets: LogSetInput[];
 };
 

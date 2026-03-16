@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BonusExerciseSheet } from "@/components/BonusExerciseSheet";
+import { GapFillExerciseSwapSheet } from "@/components/GapFillExerciseSwapSheet";
 import { isDumbbellEquipment, toDisplayLoad, toStoredLoad } from "@/lib/ui/load-display";
 import { useWorkoutLogState } from "@/components/log-workout/useWorkoutLogState";
 import type {
@@ -116,10 +117,14 @@ function formatQueueSetSummary(set: LogSetInput, isLogged: boolean, isDumbbell: 
 export default function LogWorkoutClient({
   workoutId,
   exercises,
+  allowBonusExerciseAdd = true,
+  allowGapFillAccessorySwap = false,
   onQueueExerciseRowRender,
 }: {
   workoutId: string;
   exercises: LogExerciseInput[] | SectionedExercises;
+  allowBonusExerciseAdd?: boolean;
+  allowGapFillAccessorySwap?: boolean;
   onQueueExerciseRowRender?: (exerciseId: string) => void;
 }) {
   const {
@@ -137,6 +142,7 @@ export default function LogWorkoutClient({
   } = useWorkoutLogState(exercises);
   const { restTimer, startTimer, clearTimer, restoreTimer, adjustTimer } = useRestTimerState(workoutId);
   const [showBonusSheet, setShowBonusSheet] = useState(false);
+  const [selectedSwapExerciseId, setSelectedSwapExerciseId] = useState<string | null>(null);
   const [activeCardMode, setActiveCardMode] = useState<ActiveCardMode>({ kind: "live" });
   const [showDiscardEditConfirm, setShowDiscardEditConfirm] = useState(false);
   const [timerHudHeight, setTimerHudHeight] = useState(0);
@@ -145,6 +151,15 @@ export default function LogWorkoutClient({
   const pendingEditExitActionRef = useRef<PendingEditExitAction | null>(null);
 
   const totalSets = flatSets.length;
+  const selectedSwapExercise = useMemo(() => {
+    for (const section of SECTION_ORDER) {
+      const match = data[section].find((exercise) => exercise.workoutExerciseId === selectedSwapExerciseId);
+      if (match) {
+        return match;
+      }
+    }
+    return null;
+  }, [data, selectedSwapExerciseId]);
   const satisfiedSetIds = useMemo(
     () =>
       new Set(
@@ -558,12 +573,19 @@ export default function LogWorkoutClient({
             return {
               exerciseId: exercise.workoutExerciseId,
               exerciseName: exercise.name,
+              sessionNote: exercise.sessionNote,
               loggedCount: loggedCountForExercise,
               totalSets: exercise.sets.length,
               allSetsLogged:
                 loggedCountForExercise === exercise.sets.length && exercise.sets.length > 0,
               isExpanded: expandedExerciseId === exercise.workoutExerciseId,
               nextSetId: nextSet?.setId ?? null,
+              canSwap:
+                allowGapFillAccessorySwap &&
+                section === "accessory" &&
+                !exercise.sessionNote &&
+                exercise.sets.every((set) => !satisfiedSetIds.has(set.setId)),
+              isSwapping: selectedSwapExerciseId === exercise.workoutExerciseId,
               chips: exercise.sets.map((set) => ({
                 setId: set.setId,
                 label: formatQueueSetSummary(
@@ -584,9 +606,10 @@ export default function LogWorkoutClient({
     data,
     expandedExerciseId,
     expandedSections,
-    isDumbbellExercise,
+    allowGapFillAccessorySwap,
     satisfiedSetIds,
     resolvedActiveSetId,
+    selectedSwapExerciseId,
     savingSetId,
   ]);
 
@@ -595,7 +618,8 @@ export default function LogWorkoutClient({
   }, [setExpandedSections]);
 
   const toggleQueueExercise = useCallback(
-    (exerciseId: string, _nextSetId: string | null) => {
+    (exerciseId: string, nextSetId: string | null) => {
+      void nextSetId;
       setExpandedExerciseId((prev) => (prev === exerciseId ? null : exerciseId));
     },
     [setExpandedExerciseId]
@@ -611,9 +635,13 @@ export default function LogWorkoutClient({
   const showFinishBar = !sessionTerminated && allSetsLogged;
   const finishBarBottomOffset = showFinishBar && keyboardHeight > 0 ? keyboardHeight : 0;
   const discardEditConfirmOpen = activeCardMode.kind === "edit" && showDiscardEditConfirm;
-  const resolvedActiveSetValues = activeSet
-    ? resolveDraftNumericValues(activeSet.set, activeSet.exercise)
-    : { actualReps: null, actualLoad: null, actualRpe: null };
+  const resolvedActiveSetValues = useMemo(
+    () =>
+      activeSet
+        ? resolveDraftNumericValues(activeSet.set, activeSet.exercise)
+        : { actualReps: null, actualLoad: null, actualRpe: null },
+    [activeSet, resolveDraftNumericValues]
+  );
   const submitActiveSet = useCallback(async () => {
     if (!activeSet) {
       return false;
@@ -655,6 +683,39 @@ export default function LogWorkoutClient({
       actions.addExercise(exercise);
     },
     [actions, setExpandedSections]
+  );
+  const handleSwapExercise = useCallback((exerciseId: string) => {
+    setSelectedSwapExerciseId(exerciseId);
+  }, []);
+  const handleSwapApplied = useCallback(
+    (exercise: LogExerciseInput) => {
+      setData((prev) => {
+        for (const section of SECTION_ORDER) {
+          const exerciseIndex = prev[section].findIndex(
+            (entry) => entry.workoutExerciseId === exercise.workoutExerciseId
+          );
+          if (exerciseIndex === -1) {
+            continue;
+          }
+
+          const nextSection = [...prev[section]];
+          nextSection[exerciseIndex] = {
+            ...exercise,
+            section: nextSection[exerciseIndex]?.section ?? exercise.section,
+          };
+
+          return {
+            ...prev,
+            [section]: nextSection,
+          };
+        }
+
+        return prev;
+      });
+      setExpandedSections((prev) => ({ ...prev, accessory: true }));
+      setExpandedExerciseId(exercise.workoutExerciseId);
+    },
+    [setData, setExpandedExerciseId, setExpandedSections]
   );
 
   const { hasPreviousSet, useSameAsLast } = useWorkoutSetHistoryActions({
@@ -753,12 +814,13 @@ export default function LogWorkoutClient({
             onToggleSection={toggleQueueSection}
             onToggleExercise={toggleQueueExercise}
             onSelectSet={handleQueueSetSelect}
+            onSwapExercise={handleSwapExercise}
             onExerciseRowRender={onQueueExerciseRowRender}
           />
         </ExerciseListPanel>
       ) : null}
 
-      {!sessionTerminated ? (
+      {!sessionTerminated && allowBonusExerciseAdd ? (
         <div className="flex justify-center">
           <button
             className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 px-5 text-sm font-semibold text-slate-700"
@@ -804,6 +866,13 @@ export default function LogWorkoutClient({
         onClose={() => setShowBonusSheet(false)}
         workoutId={workoutId}
         onAdd={handleAddExercise}
+      />
+      <GapFillExerciseSwapSheet
+        isOpen={selectedSwapExercise != null}
+        onClose={() => setSelectedSwapExerciseId(null)}
+        workoutId={workoutId}
+        exercise={selectedSwapExercise}
+        onSwap={handleSwapApplied}
       />
 
       {!sessionTerminated && !showFinishBar ? (

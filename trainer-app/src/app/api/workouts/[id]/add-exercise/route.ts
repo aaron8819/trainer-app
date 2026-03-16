@@ -9,6 +9,7 @@ import {
   attachWorkoutStructureState,
   buildWorkoutStructureState,
 } from "@/lib/ui/selection-metadata";
+import { isStrictOptionalGapFillSession } from "@/lib/gap-fill/classifier";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -111,6 +112,15 @@ export async function POST(
       if (!latestWorkout) {
         throw new Error("WORKOUT_NOT_FOUND");
       }
+      if (
+        isStrictOptionalGapFillSession({
+          selectionMetadata: latestWorkout.selectionMetadata,
+          selectionMode: latestWorkout.selectionMode,
+          sessionIntent: latestWorkout.sessionIntent,
+        })
+      ) {
+        throw new Error("GAP_FILL_BONUS_EXERCISE_BLOCKED");
+      }
 
       const latest = await tx.workoutExercise.findFirst({
         where: { workoutId },
@@ -201,6 +211,12 @@ export async function POST(
     } else {
       if (error instanceof Error && error.message === "WORKOUT_NOT_FOUND") {
         return NextResponse.json({ error: "Workout not found" }, { status: 404 });
+      }
+      if (error instanceof Error && error.message === "GAP_FILL_BONUS_EXERCISE_BLOCKED") {
+        return NextResponse.json(
+          { error: "Strict gap-fill sessions only allow constrained swaps, not freeform exercise adds." },
+          { status: 409 }
+        );
       }
       throw error;
     }

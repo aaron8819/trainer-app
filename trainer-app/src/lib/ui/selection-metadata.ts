@@ -21,6 +21,7 @@ export type SaveableSelectionMetadata = {
   sessionDecisionReceipt?: SessionDecisionReceipt;
   sessionAuditSnapshot?: SessionAuditSnapshot;
   workoutStructureState?: WorkoutStructureState;
+  gapFillExerciseSwapState?: GapFillExerciseSwapState;
 };
 
 export type WorkoutStructureExercise = {
@@ -35,6 +36,27 @@ export type WorkoutStructureState = {
   lastReconciledAt: string;
   currentExercises: WorkoutStructureExercise[];
   reconciliation: SessionAuditMutationSummary;
+};
+
+export type GapFillExerciseSwapRecord = {
+  version: 1;
+  workoutExerciseId: string;
+  originalExerciseId: string;
+  originalExerciseName: string;
+  swappedExerciseId: string;
+  swappedExerciseName: string;
+  allowedAt: string;
+  scope: "session_only";
+  allowedBy: "gap_fill_equivalent_accessory_swap";
+  targetMuscleOverlap: string[];
+  movementPatternOverlap: string[];
+  equipmentDemandStayedAtOrBelowOriginal: boolean;
+  fatigueDelta: number;
+};
+
+export type GapFillExerciseSwapState = {
+  version: 1;
+  swaps: GapFillExerciseSwapRecord[];
 };
 
 type PersistedWorkoutStructureExerciseInput = {
@@ -153,6 +175,56 @@ function parseWorkoutStructureState(value: unknown): WorkoutStructureState | und
   };
 }
 
+function parseGapFillExerciseSwapRecord(value: unknown): GapFillExerciseSwapRecord | undefined {
+  const record = toObject(value);
+  if (
+    !record ||
+    record.version !== 1 ||
+    typeof record.workoutExerciseId !== "string" ||
+    typeof record.originalExerciseId !== "string" ||
+    typeof record.originalExerciseName !== "string" ||
+    typeof record.swappedExerciseId !== "string" ||
+    typeof record.swappedExerciseName !== "string" ||
+    typeof record.allowedAt !== "string" ||
+    record.scope !== "session_only" ||
+    record.allowedBy !== "gap_fill_equivalent_accessory_swap" ||
+    typeof record.equipmentDemandStayedAtOrBelowOriginal !== "boolean" ||
+    typeof record.fatigueDelta !== "number"
+  ) {
+    return undefined;
+  }
+
+  return {
+    version: 1,
+    workoutExerciseId: record.workoutExerciseId,
+    originalExerciseId: record.originalExerciseId,
+    originalExerciseName: record.originalExerciseName,
+    swappedExerciseId: record.swappedExerciseId,
+    swappedExerciseName: record.swappedExerciseName,
+    allowedAt: record.allowedAt,
+    scope: "session_only",
+    allowedBy: "gap_fill_equivalent_accessory_swap",
+    targetMuscleOverlap: toStringArray(record.targetMuscleOverlap) ?? [],
+    movementPatternOverlap: toStringArray(record.movementPatternOverlap) ?? [],
+    equipmentDemandStayedAtOrBelowOriginal: record.equipmentDemandStayedAtOrBelowOriginal,
+    fatigueDelta: record.fatigueDelta,
+  };
+}
+
+function parseGapFillExerciseSwapState(value: unknown): GapFillExerciseSwapState | undefined {
+  const record = toObject(value);
+  if (!record || record.version !== 1 || !Array.isArray(record.swaps)) {
+    return undefined;
+  }
+
+  return {
+    version: 1,
+    swaps: record.swaps
+      .map(parseGapFillExerciseSwapRecord)
+      .filter((entry): entry is GapFillExerciseSwapRecord => Boolean(entry)),
+  };
+}
+
 function toWorkoutStructureExercises(
   exercises: PersistedWorkoutStructureExerciseInput[]
 ): WorkoutStructureExercise[] {
@@ -231,6 +303,13 @@ export function readWorkoutStructureState(
   return parseWorkoutStructureState(record?.workoutStructureState);
 }
 
+export function readGapFillExerciseSwapState(
+  value: unknown
+): GapFillExerciseSwapState | undefined {
+  const record = toObject(value);
+  return parseGapFillExerciseSwapState(record?.gapFillExerciseSwapState);
+}
+
 export function attachWorkoutStructureState(
   selectionMetadata: unknown,
   workoutStructureState: WorkoutStructureState
@@ -238,6 +317,22 @@ export function attachWorkoutStructureState(
   return {
     ...(toObject(selectionMetadata) ?? {}),
     workoutStructureState,
+  };
+}
+
+export function attachGapFillExerciseSwapRecord(
+  selectionMetadata: unknown,
+  swapRecord: GapFillExerciseSwapRecord
+): SaveableSelectionMetadata {
+  const existing = readGapFillExerciseSwapState(selectionMetadata);
+  const swaps = existing?.swaps ?? [];
+
+  return {
+    ...(toObject(selectionMetadata) ?? {}),
+    gapFillExerciseSwapState: {
+      version: 1,
+      swaps: [...swaps, swapRecord],
+    } satisfies GapFillExerciseSwapState,
   };
 }
 

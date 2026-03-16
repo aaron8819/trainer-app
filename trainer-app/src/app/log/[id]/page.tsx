@@ -8,6 +8,7 @@ import { parseExplainabilitySelectionMetadata } from "@/lib/ui/explainability";
 import { buildSessionSummaryModel } from "@/lib/ui/session-summary";
 import { splitExercises } from "@/lib/ui/workout-sections";
 import { resolveGapFillTargetMuscles } from "@/lib/ui/gap-fill";
+import { isStrictOptionalGapFillSession } from "@/lib/gap-fill/classifier";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -68,7 +69,7 @@ export default async function LogWorkoutPage({
     );
   }
 
-  const exercises = splitExercises(workout.exercises);
+  const exercises = splitExercises(workout.exercises, workout.selectionMetadata);
   const explanationResult = await generateWorkoutExplanation(workout.id);
   const explanation = "error" in explanationResult ? null : explanationResult;
   const selectionMetadata = parseExplainabilitySelectionMetadata(workout.selectionMetadata);
@@ -78,6 +79,11 @@ export default async function LogWorkoutPage({
   const displayWeek = workout.mesocycleWeekSnapshot ?? lifecycleCurrentWeek;
   const gapFillTargetMuscles = resolveGapFillTargetMuscles({
     selectionMetadata: workout.selectionMetadata,
+  });
+  const isStrictGapFill = isStrictOptionalGapFillSession({
+    selectionMetadata: workout.selectionMetadata,
+    selectionMode: workout.selectionMode,
+    sessionIntent: workout.sessionIntent,
   });
   const summary =
     explanation != null
@@ -112,7 +118,12 @@ export default async function LogWorkoutPage({
 
         {summary ? <SessionContextCard summary={summary} defaultCollapsed={true} /> : null}
 
-        <LogWorkoutClient workoutId={workout.id} exercises={exercises} />
+        <LogWorkoutClient
+          workoutId={workout.id}
+          exercises={exercises}
+          allowBonusExerciseAdd={!isStrictGapFill}
+          allowGapFillAccessorySwap={isStrictGapFill && workout.status === "PLANNED"}
+        />
       </div>
     </main>
   );

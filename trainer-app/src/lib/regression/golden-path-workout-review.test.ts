@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   workoutFindMany: vi.fn(),
   setLogAggregate: vi.fn(),
   workoutExerciseFindFirst: vi.fn(),
+  workoutExerciseFindMany: vi.fn(),
 }));
 
 vi.mock("@/lib/api/periodization", () => ({
@@ -107,6 +108,7 @@ vi.mock("@/lib/db/prisma", () => ({
     },
     workoutExercise: {
       findFirst: (...args: unknown[]) => mocks.workoutExerciseFindFirst(...args),
+      findMany: (...args: unknown[]) => mocks.workoutExerciseFindMany(...args),
     },
     mesocycle: {
       findUnique: vi.fn(),
@@ -255,6 +257,7 @@ describe("golden-path completed workout regression", () => {
     mocks.loadExplainabilityExerciseLibrary.mockResolvedValue([]);
     mocks.workoutFindMany.mockResolvedValue([]);
     mocks.setLogAggregate.mockResolvedValue({ _max: { actualLoad: null, actualReps: null } });
+    mocks.workoutExerciseFindMany.mockResolvedValue([]);
     mocks.workoutExerciseFindFirst.mockImplementation(async (args: WorkoutExerciseFindFirstArgs) => {
       const scheduledBefore: Date | undefined = args?.where?.workout?.scheduledDate?.lt;
       const requiredSelectionMode: string | undefined = args?.where?.workout?.selectionMode;
@@ -284,9 +287,9 @@ describe("golden-path completed workout regression", () => {
       hasPlannedBackoffTransition: true,
     });
     expect(performedSemantics?.signalSets).toEqual([
-      { reps: 9, load: 160, rpe: 8 },
-      { reps: 8, load: 150, rpe: 8 },
-      { reps: 8, load: 150, rpe: 8 },
+      { reps: 9, load: 160, rpe: 8, targetLoad: 155 },
+      { reps: 8, load: 150, rpe: 8, targetLoad: 145 },
+      { reps: 8, load: 150, rpe: 8, targetLoad: 145 },
     ]);
 
     const liveTopSetCue = getLoadRecommendation({
@@ -354,10 +357,10 @@ describe("golden-path completed workout regression", () => {
     expect(canonicalInput.repRange).toEqual([8, 10]);
     expect(canonicalDecision).toMatchObject({
       anchorLoad: 160,
-      nextLoad: 160,
-      path: "path_4",
+      nextLoad: 165,
+      path: "path_5_overshoot",
     });
-    expect(canonicalAction).toBe("hold");
+    expect(canonicalAction).toBe("increase");
 
     const explanation = await generateWorkoutExplanation("w-week4-pull");
 
@@ -371,8 +374,8 @@ describe("golden-path completed workout regression", () => {
 
     expect(nextExposureDecision).toMatchObject({
       action: canonicalAction,
-      summary: "Next exposure: hold load.",
-      reason: "Median reps stayed at 8 in the 8-10 band, so keep building reps before adding load.",
+      summary: "Next exposure: increase load.",
+      reason: "You beat the written load at manageable effort, so 160 lbs should not stay capped next time.",
       anchorLoad: canonicalDecision.anchorLoad,
       repRange: { min: 8, max: 10 },
       medianReps: performedSemantics.medianReps,
@@ -398,32 +401,32 @@ describe("golden-path completed workout regression", () => {
     });
 
     expect(completionReviewModel.headline).toBe(
-      "Key lifts point to a hold next time while reps keep building."
+      "Key lifts point to an increase next time."
     );
     expect(completionReviewModel.summary).toBe(
-      "The next exposure points to a hold while reps keep building."
+      "The next exposure points to an increase on Barbell Row if setup and readiness feel normal."
     );
     expect(completionReviewModel.overview).toEqual([
       {
         label: "How it went",
-        value: "1 key lift points to a hold next time.",
-        tone: "neutral",
+        value: "1 key lift points to an increase next time.",
+        tone: "positive",
       },
       {
         label: "Next time",
-        value: "Hold load on Barbell Row and keep building reps.",
-        tone: "neutral",
+        value: "Increase load on Barbell Row.",
+        tone: "positive",
         emphasized: true,
       },
     ]);
     expect(completionReviewModel.keyLifts[0]).toMatchObject({
       exerciseId: "barbell-row",
       exerciseName: "Barbell Row",
-      badge: "Hold next time",
+      badge: "Increase next time",
       performed: "Today's performed signal centered on 160 lbs at median 8 reps at modal RPE 8.",
       todayContext: "Today's written target moved from 150 lbs to 155 lbs (+3.3%).",
       nextTime:
-        "Next exposure: hold load. Median reps stayed at 8 in the 8-10 band, so keep building reps before adding load.",
+        "Next exposure: increase load. You beat the written load at manageable effort, so 160 lbs should not stay capped next time.",
     });
 
     expect(workoutReviewModel.headline).toBe(completionReviewModel.headline);
@@ -446,10 +449,10 @@ describe("golden-path completed workout regression", () => {
       ...workoutReviewModel.keyLifts.flatMap((item) => [item.badge, item.nextTime]),
     ]);
 
-    expect(guidanceText).not.toContain("likely increase");
-    expect(guidanceText).not.toContain("increase load");
-    expect(guidanceText).not.toContain("move up on");
-    expect(guidanceText).not.toContain("can likely move up");
-    expect(guidanceText).not.toContain("earned more load next time");
+    expect(guidanceText).not.toContain("hold load");
+    expect(guidanceText).not.toContain("keep building reps before adding load");
+    expect(guidanceText).toContain("increase load");
+    expect(guidanceText).toContain("increase load on barbell row");
+    expect(guidanceText).toContain("points to an increase on barbell row");
   });
 });

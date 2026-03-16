@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   workoutFindMany: vi.fn(),
   setLogAggregate: vi.fn(),
   workoutExerciseFindFirst: vi.fn(),
+  workoutExerciseFindMany: vi.fn(),
 }));
 
 vi.mock("@/lib/api/periodization", () => ({
@@ -107,6 +108,7 @@ vi.mock("@/lib/db/prisma", () => ({
     },
     workoutExercise: {
       findFirst: (...args: unknown[]) => mocks.workoutExerciseFindFirst(...args),
+      findMany: (...args: unknown[]) => mocks.workoutExerciseFindMany(...args),
     },
     mesocycle: {
       findUnique: vi.fn(),
@@ -249,6 +251,7 @@ describe("golden-path completed workout increase regression", () => {
     mocks.loadExplainabilityExerciseLibrary.mockResolvedValue([]);
     mocks.workoutFindMany.mockResolvedValue([]);
     mocks.setLogAggregate.mockResolvedValue({ _max: { actualLoad: null, actualReps: null } });
+    mocks.workoutExerciseFindMany.mockResolvedValue([]);
     mocks.workoutExerciseFindFirst.mockImplementation(async (args: WorkoutExerciseFindFirstArgs) => {
       const scheduledBefore: Date | undefined = args?.where?.workout?.scheduledDate?.lt;
       const requiredSelectionMode: string | undefined = args?.where?.workout?.selectionMode;
@@ -278,9 +281,9 @@ describe("golden-path completed workout increase regression", () => {
       hasPlannedBackoffTransition: true,
     });
     expect(performedSemantics?.signalSets).toEqual([
-      { reps: 10, load: 155, rpe: 7 },
-      { reps: 10, load: 150, rpe: 7 },
-      { reps: 9, load: 150, rpe: 7.5 },
+      { reps: 10, load: 155, rpe: 7, targetLoad: 155 },
+      { reps: 10, load: 150, rpe: 7, targetLoad: 145 },
+      { reps: 9, load: 150, rpe: 7.5, targetLoad: 145 },
     ]);
 
     const liveTopSetCue = getLoadRecommendation({

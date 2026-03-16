@@ -1,7 +1,7 @@
 # 02 Domain Engine
 
 Owner: Aaron
-Last reviewed: 2026-03-11
+Last reviewed: 2026-03-16
 Purpose: Canonical reference for workout-generation domain logic, including selection, progression, periodization, readiness, and explainability.
 
 This doc covers:
@@ -93,6 +93,7 @@ Sources of truth:
 - `computeDoubleProgressionDecision()` in `src/lib/engine/progression.ts` accepts an optional `anchorOverride` parameter. When provided it replaces the modal-load computation as the progression anchor. Used by `resolveLoadForExercise()` in `src/lib/engine/apply-loads.ts` to anchor main lifts (non-modal path) to the top-set load rather than the more-frequent back-off weight, preventing a phantom ~11% load reduction each session.
 - Progression outlier thresholds and sample-size confidence scaling are centralized in `PROGRESSION_CONFIG` (`src/lib/engine/progression.ts`) and emitted into progression decision logs.
 - Bodyweight working sets are canonicalized at write-time to `actualLoad=0` when `targetLoad=0`; `null` is not treated as canonical bodyweight load.
+- Scheduled deload load reduction is canonicalized in `src/lib/engine/apply-loads.ts`, not in deload generation. `src/lib/api/template-session/deload-session.ts` leaves `targetLoad` unset, and `applyLoads()` resolves the normal source load first, then applies the lighter deload prescription (currently ~25% down after canonical quantization).
 - `estimateLoad()` in `src/lib/engine/apply-loads.ts` returns `undefined` (no estimate) for exercises whose equipment list includes `"bodyweight"` when no non-zero load history exists. This prevents phantom load assignments on hybrid bodyweight/machine exercises (e.g., Dip) on their first weighted use.
 - Donor-based first-time load estimation must reject invalid donors before scaling. In `src/lib/engine/apply-loads.ts`, donor paths exclude non-finite / `<= 0` donor loads, and they also exclude bodyweight or bodyweight-hybrid donors when the target exercise expects external load. This is a donor-validation guardrail, not a broader estimator retune.
 - Bodyweight progression is rep-driven only at `anchorLoad=0` in `computeDoubleProgressionDecision()`; the engine never auto-increments external load from `0` and logs `bodyweight exercise — rep progression only`.
@@ -167,10 +168,13 @@ SetLog / logged performance
   - lifecycle-advancement interpretation for compatibility reads (`advancesLifecycle`)
   - weekly required-slot consumption (`consumesWeeklyScheduleIntent`)
   - progression anchor / progression explainability eligibility (`countsTowardProgressionHistory`)
+  - canonical performance-history eligibility (`countsTowardPerformanceHistory`)
+  - progression-anchor update eligibility (`updatesProgressionAnchor`)
   - unique-intent subtraction eligibility for remaining-week and next-session reads (`eligibleForUniqueIntentSubtraction`)
 - Current derived policy intentionally preserves existing behavior:
   - strict supplemental sessions are non-advancing and progression-ineligible
   - strict gap-fill sessions are non-advancing but progression-eligible
+  - scheduled deload sessions still count for compliance, recovery/recent stimulus, and weekly volume, but they are excluded from progression history, progression anchors, and canonical performance-history reads
   - generic non-advancing sessions remain progression-eligible unless a stricter classifier excludes them
   - `null` / `undefined` `advancesSplit` still default to advancing for backward compatibility
 - A persisted `sessionKind` enum was intentionally not added. The current system still has more semantic cases than a stable enum captures, including non-advancing but progression-eligible sessions. Adding an enum now would freeze an incomplete taxonomy into schema and migration contracts before runtime policy has settled.
@@ -259,7 +263,7 @@ SetLog / logged performance
   - `accumulation`: rising weekly targets toward peak productive volume
   - `intensification`: continued but moderated rise/plateau based on block config
   - `realization`: intentional reduction from prior peak volume while intensity rises
-  - `deload`: explicit `~45%` of peak accumulation volume
+  - `deload`: explicit `~45%` of peak accumulation weekly volume target; the scheduled deload session transform separately keeps exercises/reps stable, cuts hard sets roughly in half, and lets the canonical load engine apply the lighter load prescription
 - Realization reduction is explicit policy in `src/lib/engine/volume-targets.ts`, not a hidden post-hoc override. The current taper step is `-0.5` base realization reduction plus `volumeTarget` and `intensityBias` weights; for the default low-volume, strength-biased realization week that yields a `-1.15` progress step and therefore a `0.6167` week fraction relative to the prior productive peak.
 - When phase/block context is supplied, lifecycle prescription helpers now consume real block type and block-relative week:
   - `getRirTarget(..., phaseBlockContext?)`
@@ -287,6 +291,13 @@ SetLog / logged performance
   - `POST /api/workouts/generate-from-intent` (`src/app/api/workouts/generate-from-intent/route.ts`) routes to `generateDeloadSessionFromIntent()` when active mesocycle state is `ACTIVE_DELOAD`.
   - `POST /api/workouts/generate-from-template` (`src/app/api/workouts/generate-from-template/route.ts`) routes to `generateDeloadSessionFromTemplate()` when active mesocycle state is `ACTIVE_DELOAD`.
 - During `ACTIVE_DELOAD`, normal accumulation generation paths are unreachable from these routes.
+- Canonical scheduled deload contract:
+  - keep the exercise list continuous with accumulation and preserve core compounds
+  - reduce hard sets roughly 50% with floor safeguards (`1 -> 1`, `2 -> 1`, `3-4 -> 2`, `5-6 -> 3`)
+  - keep reps stable for movement continuity
+  - leave `targetLoad` unset in generation, then let `src/lib/engine/apply-loads.ts` apply the canonical lighter deload load
+  - target low-fatigue effort through lifecycle deload RIR/RPE targeting
+  - count toward compliance, recent stimulus, and weekly volume, while remaining excluded from progression anchors and canonical performance-history reads
 
 ## Explainability
 - Explainability domain modules are in `src/lib/engine/explainability`.

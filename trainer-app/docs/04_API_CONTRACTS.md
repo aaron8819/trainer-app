@@ -1,7 +1,7 @@
 # 04 API Contracts
 
 Owner: Aaron  
-Last reviewed: 2026-03-11
+Last reviewed: 2026-03-16
 Purpose: Canonical API contract map for App Router endpoints and payload validation boundaries.
 
 This doc covers:
@@ -112,10 +112,13 @@ Sources of truth:
 - Gate condition: when active mesocycle state is `ACTIVE_DELOAD`, both routes dispatch to deload generation and do not execute the normal accumulation generation path.
 - Deload generation implementation: `src/lib/api/template-session/deload-session.ts`.
 - Deload prescription contract:
-  - Exercise list is anchored to the final accumulation week/session history for the requested intent.
-  - Set volume is reduced to ~40-50% (`DELOAD_SET_FACTOR = 0.45`) with minimum set floor safeguards.
-  - Load anchoring comes from the final accumulation modal load selection logic.
+  - Exercise list stays continuous with accumulation for the requested intent, with core compounds preserved when possible.
+  - Hard sets are reduced roughly 50% with floor safeguards (`1 -> 1`, `2 -> 1`, `3-4 -> 2`, `5-6 -> 3`).
+  - Rep targets are maintained for movement continuity.
+  - Deload generation does not pre-populate `targetLoad`; canonical load assignment happens later in `src/lib/engine/apply-loads.ts`.
+  - The canonical load engine resolves the normal source load first, then applies the lighter deload prescription (currently about 25% down after quantization).
   - RIR target is deload band (`4-6`) via lifecycle RIR targeting.
+  - Deload sessions remain valid performed work for compliance and weekly-volume context, but they are excluded from progression eligibility, anchor updates, and canonical performance-history/explainability trend reads.
 - Default lifecycle hypertrophy RIR bands are duration-aware rather than fixed to a 4+1 template.
 
 ## Workout generation receipt contract

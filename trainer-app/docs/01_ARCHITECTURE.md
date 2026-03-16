@@ -1,7 +1,7 @@
 # 01 Architecture
 
 Owner: Aaron  
-Last reviewed: 2026-03-11  
+Last reviewed: 2026-03-16  
 Purpose: Defines the current runtime architecture for the single-user local-first Trainer app and the boundaries between UI, API routes, orchestration, engine, and persistence.
 
 This doc covers:
@@ -76,6 +76,7 @@ SetLog / logged performance
 - Workout save and status resolution are the authoritative performed-status and lifecycle-mutation boundary (`src/app/api/workouts/save/route.ts`, `src/app/api/workouts/save/status-machine.ts`, `src/app/api/workouts/save/lifecycle-contract.ts`).
 - `POST /api/workouts/save` now returns canonical `workoutStatus` on every success response via `src/lib/api/workout-save-contract.ts`. Client completion flows must treat `mark_completed` as intent only and derive terminal review state from the returned `workoutStatus`, not from the requested action.
 - `deriveSessionSemantics()` is the canonical session-level interpretation bridge. It does not own set-level progression math like modal load or anchor-load computation; it owns session-level meaning such as whether a workout is advancing, supplemental, or progression-eligible.
+- That same semantic layer also owns deload isolation: scheduled deload stays visible to performed-history, compliance, recovery, and weekly-volume reads, but it is excluded from progression anchors and performance-history consumers.
 - `selectionMetadata.sessionDecisionReceipt` remains the canonical stored generation/evidence context for read-side consumers.
 - Post-workout explanation is a read-side interpretation layer. It should consume canonical receipts, derived session semantics, and canonical progression outputs rather than independently re-authoring progression-relevant session behavior.
 - Shared next-exposure progression-input assembly now lives in `src/lib/progression/canonical-progression-input.ts`. Generation (`src/lib/engine/apply-loads.ts`) and explainability (`src/lib/api/explainability.ts`) both consume that seam before calling `computeDoubleProgressionDecision()`.

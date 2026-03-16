@@ -89,6 +89,7 @@ describe("buildWorkoutListSurfaceSummary", () => {
         session: 2,
         phase: "ACCUMULATION",
       },
+      isDeload: false,
       isGapFill: false,
       isSupplementalDeficitSession: false,
       gapFillTargetMuscles: [],
@@ -153,6 +154,7 @@ describe("buildWorkoutListSurfaceSummary", () => {
       session: 4,
       phase: "ACCUMULATION",
     });
+    expect(summary.isDeload).toBe(false);
     expect(summary.isGapFill).toBe(true);
     expect(summary.isSupplementalDeficitSession).toBe(false);
     expect(summary.gapFillTargetMuscles).toEqual(["front delts", "rear delts", "biceps"]);
@@ -219,6 +221,59 @@ describe("buildWorkoutListSurfaceSummary", () => {
     expect(summary.isGapFill).toBe(false);
     expect(summary.isSupplementalDeficitSession).toBe(true);
     expect(getWorkoutListPrimaryLabel(summary)).toBe("Body Part");
+  });
+
+  it("marks deload sessions explicitly for history and recent-workout surfaces", () => {
+    const summary = buildWorkoutListSurfaceSummary({
+      id: "workout-deload",
+      scheduledDate: new Date("2026-03-04T10:00:00.000Z"),
+      completedAt: new Date("2026-03-04T11:00:00.000Z"),
+      status: "COMPLETED",
+      selectionMode: "INTENT",
+      sessionIntent: "PULL",
+      mesocycleId: "meso-1",
+      mesocycleWeekSnapshot: 5,
+      mesoSessionSnapshot: 2,
+      mesocyclePhaseSnapshot: "DELOAD",
+      selectionMetadata: {
+        sessionDecisionReceipt: {
+          version: 1,
+          cycleContext: {
+            weekInMeso: 5,
+            weekInBlock: 1,
+            phase: "deload",
+            blockType: "deload",
+            isDeload: true,
+            source: "computed",
+          },
+          lifecycleVolume: { source: "unknown" },
+          sorenessSuppressedMuscles: [],
+          deloadDecision: {
+            mode: "scheduled",
+            reason: ["Scheduled deload week for this cycle phase."],
+            reductionPercent: 50,
+            appliedTo: "both",
+          },
+          readiness: {
+            wasAutoregulated: false,
+            signalAgeHours: null,
+            fatigueScoreOverall: null,
+            intensityScaling: {
+              applied: false,
+              exerciseIds: [],
+              scaledUpCount: 0,
+              scaledDownCount: 0,
+            },
+          },
+          exceptions: [],
+        },
+      },
+      mesocycle: { sessionsPerWeek: 3 },
+      _count: { exercises: 1 },
+      exercises: [{ sets: [] }],
+    });
+
+    expect(summary.isDeload).toBe(true);
   });
 });
 

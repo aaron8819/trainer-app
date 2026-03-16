@@ -24,6 +24,7 @@ function makeWorkout(
     sessionIntent: "PUSH",
     mesocycleId: null,
     sessionSnapshot: null,
+    isDeload: false,
     isGapFill: false,
     isSupplementalDeficitSession: false,
     gapFillTargetMuscles: [],
@@ -91,6 +92,23 @@ describe("gap-fill labels", () => {
     expect(screen.getByText("Front Delts, Rear Delts, Biceps")).toBeInTheDocument();
     expect(screen.getByText(/Wk3/)).toBeInTheDocument();
     expect(screen.queryByText("Supplemental")).not.toBeInTheDocument();
+  });
+});
+
+describe("deload labels", () => {
+  it("renders a Deload badge for deload sessions", () => {
+    renderRecent([
+      makeWorkout({
+        isDeload: true,
+        sessionSnapshot: buildWorkoutSessionSnapshotSummary({
+          week: 5,
+          session: 1,
+          phase: "DELOAD",
+        }),
+      }),
+    ]);
+
+    expect(screen.getByText("Deload")).toBeInTheDocument();
   });
 });
 

@@ -171,4 +171,67 @@ describe("buildPostWorkoutInsightsModel", () => {
       },
     ]);
   });
+
+  it("uses deload-first framing instead of progression-first messaging for deload sessions", () => {
+    const explanation = makeExplanation();
+    explanation.sessionContext.blockPhase.blockType = "deload";
+    explanation.progressionReceipts = new Map([
+      [
+        "lat-pull",
+        {
+          lastPerformed: {
+            reps: 12,
+            load: 35,
+            rpe: 8,
+            performedAt: "2026-02-18T00:00:00.000Z",
+          },
+          todayPrescription: {
+            reps: 10,
+            load: 30,
+            rpe: 5,
+          },
+          delta: {
+            load: -5,
+            loadPercent: -14.2857,
+            reps: -2,
+            rpe: -3,
+          },
+          trigger: "deload",
+          decisionLog: [],
+        },
+      ],
+    ]);
+
+    const model = buildPostWorkoutInsightsModel({
+      explanation,
+      exercises: [
+        {
+          exerciseId: "lat-pull",
+          exerciseName: "Lat Pulldown",
+          isMainLift: true,
+        },
+      ],
+    });
+
+    expect(model.headline).toBe("Deload logged. The win was crisp work with low fatigue.");
+    expect(model.summary).toContain("intentionally lighter");
+    expect(model.overview).toEqual([
+      expect.objectContaining({
+        label: "Deload focus",
+        value: expect.stringContaining("low fatigue"),
+      }),
+      expect.objectContaining({
+        label: "What comes next",
+        value: expect.stringContaining("re-anchors from your accumulation work"),
+        emphasized: true,
+      }),
+    ]);
+    expect(model.keyLifts[0]).toMatchObject({
+      badge: "Deload",
+      action: "deload",
+    });
+    expect(model.keyLifts[0]?.todayContext).toContain("intentionally lighter");
+    expect(model.keyLifts[0]?.nextTime).toContain("not a normal progression call");
+    expect(model.summary).not.toContain("next exposure points to");
+  });
 });

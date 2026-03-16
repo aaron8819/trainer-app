@@ -21,6 +21,13 @@ export type SessionSummaryModel = {
   items: SessionSummaryItem[];
 };
 
+function isDeloadSession(receipt?: SessionDecisionReceipt): boolean {
+  return Boolean(
+    receipt?.cycleContext.isDeload === true ||
+    (receipt?.deloadDecision != null && receipt.deloadDecision.mode !== "none")
+  );
+}
+
 function toTitleCase(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
 }
@@ -47,6 +54,14 @@ function formatWeekTag(input: {
 }
 
 function formatEffortTarget(receipt?: SessionDecisionReceipt): string {
+  if (isDeloadSession(receipt)) {
+    if (receipt?.lifecycleRirTarget) {
+      return `Keep reps crisp and leave ${receipt.lifecycleRirTarget.min}-${receipt.lifecycleRirTarget.max} reps in reserve on work sets.`;
+    }
+
+    return "Keep technique clean, stay well shy of failure, and finish fresher than you started.";
+  }
+
   if (receipt?.lifecycleRirTarget) {
     return `Leave ${receipt.lifecycleRirTarget.min}-${receipt.lifecycleRirTarget.max} reps in reserve on work sets.`;
   }
@@ -60,22 +75,33 @@ function formatDeloadValue(receipt?: SessionDecisionReceipt): SessionSummaryItem
     return null;
   }
 
-  const reductionTarget =
-    deload.appliedTo === "both"
-      ? "load and volume"
-      : deload.appliedTo === "load"
-      ? "load"
-      : deload.appliedTo === "volume"
-      ? "volume"
-      : "work";
   const reason = deload.reason[0]?.trim();
+  const contract =
+    deload.appliedTo === "both"
+      ? "Lighter loads and fewer hard sets are planned on purpose for recovery."
+      : deload.appliedTo === "load"
+        ? "Loads are lighter on purpose for recovery."
+        : deload.appliedTo === "volume"
+          ? "Hard-set volume is reduced on purpose for recovery."
+          : "Work is intentionally held back for recovery.";
 
   return {
     label: "Deload",
-    value: reason
-      ? `${toTitleCase(deload.mode)} deload. ${deload.reductionPercent}% less ${reductionTarget}. ${reason}`
-      : `${toTitleCase(deload.mode)} deload. ${deload.reductionPercent}% less ${reductionTarget}.`,
-    tone: "caution",
+    value: reason ? `${contract} ${reason}` : contract,
+    tone: "neutral",
+  };
+}
+
+function formatDeloadReassurance(receipt?: SessionDecisionReceipt): SessionSummaryItem | null {
+  if (!isDeloadSession(receipt)) {
+    return null;
+  }
+
+  return {
+    label: "Next block",
+    value:
+      "Progress is preserved. The next mesocycle re-anchors from your accumulation work, not from this deload week.",
+    tone: "positive",
   };
 }
 
@@ -142,6 +168,7 @@ function buildSummaryText(input: {
   targetMuscles?: string[];
 }): string {
   const { context, receipt, selectionMode, sessionIntent, targetMuscles } = input;
+  const isDeload = context.blockPhase.blockType === "deload" || isDeloadSession(receipt);
   const isGapFill = isGapFillWorkout({
     selectionMetadata: { sessionDecisionReceipt: receipt },
     selectionMode,
@@ -157,8 +184,8 @@ function buildSummaryText(input: {
   const soreness = receipt?.sorenessSuppressedMuscles ?? [];
   const readinessScaling = receipt?.readiness.intensityScaling;
 
-  if (deload && deload.mode !== "none") {
-    return `This ${intent} session is lighter on purpose so you can recover and keep training momentum.`;
+  if (isDeload || (deload && deload.mode !== "none")) {
+    return `This ${intent} session is a deload: lighter on purpose so you can recover, move crisply, and keep momentum.`;
   }
 
   if (readinessScaling?.applied) {
@@ -195,6 +222,7 @@ export function buildSessionSummaryModel(input: {
   estimatedMinutes?: number | null;
 }): SessionSummaryModel {
   const { context, receipt, selectionMode, sessionIntent, displayWeek, targetMuscles, estimatedMinutes } = input;
+  const isDeload = context.blockPhase.blockType === "deload" || isDeloadSession(receipt);
   const isGapFill = isGapFillWorkout({
     selectionMetadata: { sessionDecisionReceipt: receipt },
     selectionMode,
@@ -209,7 +237,9 @@ export function buildSessionSummaryModel(input: {
     {
       label: "Today's goal",
       value:
-        context.progressionContext.volumeProgression === "building"
+        isDeload
+          ? "Move cleanly, stay far from failure, and leave fresher than you came in."
+          : context.progressionContext.volumeProgression === "building"
           ? isGapFill
             ? gapFillTargetMuscles.length > 0
               ? `Close gaps for ${formatGapFillMuscleList(gapFillTargetMuscles).toLowerCase()} this week.`
@@ -236,7 +266,15 @@ export function buildSessionSummaryModel(input: {
     items.push(sorenessItem);
   }
 
+  const deloadReassurance = formatDeloadReassurance(receipt);
+  if (deloadReassurance) {
+    items.push(deloadReassurance);
+  }
+
   const tags = [sessionLabel, formatWeekTag({ context, receipt, displayWeek })];
+  if (isDeload) {
+    tags.splice(1, 0, "Deload");
+  }
   if (estimatedMinutes != null) {
     tags.push(`${estimatedMinutes} min`);
   }

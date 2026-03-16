@@ -208,12 +208,26 @@ describe("buildSessionSummaryModel", () => {
     });
 
     expect(summary.summary).toContain("lighter on purpose");
-    expect(summary.items).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ label: "Deload", value: expect.stringContaining("30% less load and volume") }),
-        expect.objectContaining({ label: "Volume held", value: expect.stringContaining("chest, front delts") }),
-        expect.objectContaining({ label: "Readiness", value: expect.stringContaining("2 scaled down") }),
-      ])
-    );
+    expect(summary.tags).toContain("Deload");
+    expect(summary.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        label: "Today's goal",
+        value: expect.stringContaining("stay far from failure"),
+      }),
+      expect.objectContaining({
+        label: "Target effort",
+        value: expect.stringContaining("leave 2-3 reps in reserve"),
+      }),
+      expect.objectContaining({
+        label: "Deload",
+        value: expect.stringContaining("Lighter loads and fewer hard sets"),
+      }),
+      expect.objectContaining({ label: "Volume held", value: expect.stringContaining("chest, front delts") }),
+      expect.objectContaining({ label: "Readiness", value: expect.stringContaining("2 scaled down") }),
+      expect.objectContaining({
+        label: "Next block",
+        value: expect.stringContaining("re-anchors from your accumulation work"),
+      }),
+    ]));
   });
 });

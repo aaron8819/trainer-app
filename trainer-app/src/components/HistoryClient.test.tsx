@@ -36,6 +36,7 @@ function makeWorkout(overrides: Partial<HistoryWorkoutItem> = {}): HistoryWorkou
     sessionIntent: "PUSH",
     mesocycleId: null,
     sessionSnapshot: null,
+    isDeload: false,
     isGapFill: false,
     isSupplementalDeficitSession: false,
     gapFillTargetMuscles: [],
@@ -131,6 +132,29 @@ describe("HistoryClient", () => {
     expect(screen.getByText("Supplemental")).toBeInTheDocument();
     expect(screen.getByText("Gap Fill")).toBeInTheDocument();
     expect(screen.getAllByText("Body Part")).toHaveLength(1);
+  });
+
+  it("renders a Deload badge on deload workouts", () => {
+    render(
+      <HistoryClient
+        initialWorkouts={[
+          makeWorkout({
+            id: "deload-1",
+            isDeload: true,
+            sessionSnapshot: buildWorkoutSessionSnapshotSummary({
+              week: 5,
+              session: 2,
+              phase: "DELOAD",
+            }),
+          }),
+        ]}
+        initialNextCursor={null}
+        initialTotalCount={1}
+        mesocycles={NO_MESOCYCLES}
+      />
+    );
+
+    expect(screen.getByText("Deload")).toBeInTheDocument();
   });
 
   // ── H2: filter resets list and re-fetches ─────────────────────────────────

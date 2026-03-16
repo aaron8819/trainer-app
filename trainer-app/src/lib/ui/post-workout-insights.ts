@@ -28,7 +28,7 @@ export type PostWorkoutOverviewItem = {
 export type PostWorkoutKeyLiftInsight = {
   exerciseId: string;
   exerciseName: string;
-  action: NextExposureDecision["action"];
+  action: NextExposureDecision["action"] | "deload";
   badge: string;
   tone: PostWorkoutInsightTone;
   performed: string;
@@ -124,13 +124,19 @@ function describeTodayTargetContext(receipt: ProgressionReceipt | undefined): st
     case "readiness_scale":
       return "Today's written target was adjusted to match the readiness signal on the day.";
     case "deload":
-      return "Today's written target was intentionally reduced for deload work.";
+      if (previousLoad != null && todayLoad != null) {
+        return `Today's written target was intentionally lighter for deload work, moving from ${formatLoad(previousLoad)} to ${formatLoad(todayLoad)}${deltaPercent ? ` (${deltaPercent})` : ""}.`;
+      }
+      return "Today's written target was intentionally lighter for deload work.";
     default:
       return "Today's written target stayed close to the plan because recent performed history was limited.";
   }
 }
 
-function toneForAction(action: NextExposureDecision["action"]): PostWorkoutInsightTone {
+function toneForAction(action: NextExposureDecision["action"] | "deload"): PostWorkoutInsightTone {
+  if (action === "deload") {
+    return "neutral";
+  }
   if (action === "increase") {
     return "positive";
   }
@@ -140,8 +146,21 @@ function toneForAction(action: NextExposureDecision["action"]): PostWorkoutInsig
   return "neutral";
 }
 
-function badgeForAction(action: NextExposureDecision["action"]): string {
+function badgeForAction(action: NextExposureDecision["action"] | "deload"): string {
+  if (action === "deload") {
+    return "Deload";
+  }
   return getCanonicalNextExposureCopy(action).badge;
+}
+
+function isDeloadWorkout(explanation: WorkoutExplanation): boolean {
+  if (explanation.sessionContext.blockPhase.blockType === "deload") {
+    return true;
+  }
+
+  return Array.from(explanation.progressionReceipts.values()).some(
+    (receipt) => receipt.trigger === "deload"
+  );
 }
 
 function describeVolumeSignal(status: WeeklyMuscleStatus, muscle: string): string {
@@ -225,6 +244,30 @@ function buildKeyLiftInsights(
   explanation: WorkoutExplanation,
   exercises: ReviewedExerciseMeta[]
 ): PostWorkoutKeyLiftInsight[] {
+  if (isDeloadWorkout(explanation)) {
+    const primary = exercises.filter((exercise) => exercise.isMainLift);
+    const selected = (primary.length > 0 ? primary : exercises).slice(0, 3);
+
+    return selected.map((exercise) => {
+      const decision = explanation.nextExposureDecisions.get(exercise.exerciseId);
+      const receipt = explanation.progressionReceipts.get(exercise.exerciseId);
+
+      return {
+        exerciseId: exercise.exerciseId,
+        exerciseName: exercise.exerciseName,
+        action: "deload",
+        badge: "Deload",
+        tone: "neutral",
+        performed: decision
+          ? describePerformedSignal(decision)
+          : "This lift was logged as intentionally lighter deload work.",
+        todayContext: describeTodayTargetContext(receipt),
+        nextTime:
+          "This session was for recovery, not a normal progression call. Next mesocycle baselines come from accumulation work, not this deload.",
+      };
+    });
+  }
+
   const withDecision = exercises.filter((exercise) =>
     explanation.nextExposureDecisions.has(exercise.exerciseId)
   );
@@ -253,6 +296,10 @@ function buildKeyLiftInsights(
 }
 
 function buildHeadline(keyLifts: PostWorkoutKeyLiftInsight[]): string {
+  if (keyLifts.some((lift) => lift.action === "deload")) {
+    return "Deload logged. The win was crisp work with low fatigue.";
+  }
+
   const increaseCount = keyLifts.filter((lift) => lift.action === "increase").length;
   const decreaseCount = keyLifts.filter((lift) => lift.action === "decrease").length;
   const holdCount = keyLifts.filter((lift) => lift.action === "hold").length;
@@ -276,6 +323,10 @@ function buildSummary(
   keyLifts: PostWorkoutKeyLiftInsight[],
   programSignals: PostWorkoutProgramSignal[]
 ): string {
+  if (keyLifts.some((lift) => lift.action === "deload")) {
+    return "This session stayed intentionally lighter so you could move cleanly, stay far from failure, and come out fresher for the next mesocycle.";
+  }
+
   const increaseNames = keyLifts
     .filter((lift) => lift.action === "increase")
     .map((lift) => lift.exerciseName);
@@ -298,10 +349,24 @@ function buildSummary(
   return "The session is logged and ready for a deeper review if you need it.";
 }
 
-function buildOverview(
-  keyLifts: PostWorkoutKeyLiftInsight[],
-  programSignals: PostWorkoutProgramSignal[]
-): PostWorkoutOverviewItem[] {
+function buildOverview(keyLifts: PostWorkoutKeyLiftInsight[]): PostWorkoutOverviewItem[] {
+  if (keyLifts.some((lift) => lift.action === "deload")) {
+    return [
+      {
+        label: "Deload focus",
+        value: "Crisp technique, low fatigue, and plenty in reserve were the right outcome today.",
+        tone: "positive",
+      },
+      {
+        label: "What comes next",
+        value:
+          "Progress is preserved. The next mesocycle re-anchors from your accumulation work, not from this deload.",
+        tone: "neutral",
+        emphasized: true,
+      },
+    ];
+  }
+
   const increaseNames = keyLifts
     .filter((lift) => lift.action === "increase")
     .map((lift) => lift.exerciseName);
@@ -357,7 +422,7 @@ export function buildPostWorkoutInsightsModel(input: {
   return {
     headline: buildHeadline(keyLifts),
     summary: buildSummary(keyLifts, programSignals),
-    overview: buildOverview(keyLifts, programSignals),
+    overview: buildOverview(keyLifts),
     keyLifts,
     programSignals,
   };

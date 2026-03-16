@@ -169,7 +169,7 @@ export function explainSetCount(
   let reason = `${count} sets for ${exerciseType}`;
 
   if (periodization?.isDeload) {
-    reason += " (deload week — reduced volume to promote recovery)";
+    reason += " (deload week - fewer hard sets so recovery stays ahead of fatigue)";
   } else if (blockPhase === "accumulation") {
     reason += " (accumulation phase — building volume and work capacity)";
   } else if (blockPhase === "intensification") {
@@ -301,7 +301,7 @@ export function explainLoadChoice(
 
   if (periodization?.isDeload) {
     const deloadPct = ((lastLoad - load) / lastLoad) * 100;
-    reason = `Reduced from ${lastLoad}kg (${deloadPct.toFixed(0)}% deload for recovery)`;
+    reason = `Reduced from ${lastLoad}kg (${deloadPct.toFixed(0)}% lighter) so this deload stays easier to recover from`;
   } else if (Math.abs(loadChange) < 0.5) {
     reason = `Maintained at ${load}kg (same as last session)`;
   } else if (loadChange > 0) {
@@ -359,7 +359,7 @@ export function explainRirTarget(
 
   // Deload
   if (periodization?.isDeload) {
-    reason = `${rir} RIR (deload week — reduced intensity for recovery)`;
+    reason = `${rir} RIR (deload week - stay well shy of failure and keep reps crisp)`;
   }
   // Block-aware progression
   else if (weekInBlock !== undefined) {
@@ -567,7 +567,7 @@ function determineProgressionType(
  */
 function formatProgressionContext(periodization: PeriodizationModifiers): string {
   if (periodization.isDeload) {
-    return "Deload week (50% volume reduction)";
+    return "Deload week (lighter loads, reduced volume)";
   }
 
   const setMult = periodization.setMultiplier;
@@ -583,3 +583,4 @@ function formatProgressionContext(periodization: PeriodizationModifiers): string
 
   return "Standard progression";
 }
+

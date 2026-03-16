@@ -122,6 +122,11 @@ export default async function ProgramPage() {
                               {snapshotLabel}
                             </span>
                           ) : null}
+                          {workout.isDeload ? (
+                            <span className="ml-2 rounded bg-sky-100 px-1.5 py-0.5 text-xs font-medium text-sky-800">
+                              Deload
+                            </span>
+                          ) : null}
                         </td>
                         <td className="px-4 py-2.5">{splitBadge(workout.sessionIntent)}</td>
                         <td className="px-4 py-2.5">

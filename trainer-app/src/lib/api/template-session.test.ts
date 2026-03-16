@@ -282,6 +282,7 @@ describe("generateSessionFromIntent", () => {
 
     expect(result.selection.sessionDecisionReceipt?.deloadDecision.mode).toBe("scheduled");
     expect(result.selection.sessionDecisionReceipt?.deloadDecision.reductionPercent).toBe(50);
+    expect(result.selection.sessionDecisionReceipt?.deloadDecision.appliedTo).toBe("both");
   });
 
   it("applies lifecycle RIR bands to session RPE progression (week 1 -> 2 -> 4)", async () => {

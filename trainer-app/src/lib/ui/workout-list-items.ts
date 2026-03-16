@@ -60,6 +60,7 @@ export type WorkoutListSurfaceSummary = {
   sessionIntent: string | null;
   mesocycleId: string | null;
   sessionSnapshot: ReturnType<typeof buildWorkoutSessionSnapshotSummary>;
+  isDeload: boolean;
   isGapFill?: boolean;
   isSupplementalDeficitSession?: boolean;
   gapFillTargetMuscles?: string[];
@@ -161,6 +162,10 @@ export function buildWorkoutListSurfaceSummary(
       ? null
       : row.mesoSessionSnapshot ?? null;
   const displayPhase = row.mesocyclePhaseSnapshot ?? receipt?.cycleContext.phase?.toUpperCase() ?? null;
+  const isDeload =
+    receipt?.cycleContext.isDeload === true ||
+    (receipt?.deloadDecision != null && receipt.deloadDecision.mode !== "none") ||
+    displayPhase === "DELOAD";
   const gapFillTargetMuscles = resolveGapFillTargetMuscles({
     selectionMetadata: row.selectionMetadata,
   });
@@ -178,6 +183,7 @@ export function buildWorkoutListSurfaceSummary(
       session: displaySession,
       phase: displayPhase,
     }),
+    isDeload,
     isGapFill,
     isSupplementalDeficitSession: isSupplementalDeficit,
     gapFillTargetMuscles,

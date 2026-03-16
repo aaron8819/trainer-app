@@ -11,8 +11,11 @@ import {
 } from "@/lib/engine/stimulus";
 import { loadTemplateDetail } from "./templates";
 import { loadMappedGenerationContext } from "./template-session/context-loader";
-import { runSessionGeneration, finalizePostLoadResult } from "./template-session/finalize-session";
-import { buildSessionDecisionReceipt } from "@/lib/evidence/session-decision-receipt";
+import {
+  finalizeDeloadSessionResult,
+  finalizePostLoadResult,
+  runSessionGeneration,
+} from "./template-session/finalize-session";
 import {
   buildSelectionObjective,
   mapSelectionResult,
@@ -2080,33 +2083,16 @@ export async function generateDeloadSessionFromTemplate(
     return deload;
   }
 
-  return {
+  return finalizeDeloadSessionResult({
+    mapped,
     workout: deload.workout,
+    selection: deload.selection,
     selectionMode: "AUTO",
     sessionIntent,
     templateId,
-    sraWarnings: [],
-    substitutions: [],
-    volumePlanByMuscle: {},
-    selection: {
-      ...deload.selection,
-      sessionDecisionReceipt: buildSessionDecisionReceipt({
-        cycleContext: mapped.cycleContext,
-        lifecycleRirTarget: mapped.lifecycleRirTarget,
-        lifecycleVolumeTargets: mapped.lifecycleVolumeTargets,
-        deloadDecision: {
-          mode: "scheduled",
-          reason: [deload.note],
-          reductionPercent: 50,
-          appliedTo: "volume",
-        },
-      }),
-    },
-    audit: {
-      progressionTraces: {},
-      deloadTrace: deload.trace,
-    },
-  };
+    note: deload.note,
+    deloadTrace: deload.trace,
+  });
 }
 
 export async function generateSessionFromIntent(
@@ -3018,33 +3004,14 @@ export async function generateDeloadSessionFromIntent(
     return deload;
   }
 
-  return {
+  return finalizeDeloadSessionResult({
+    mapped,
     workout: deload.workout,
+    selection: deload.selection,
     selectionMode: "INTENT",
     sessionIntent: input.intent,
-    templateId: undefined,
-    sraWarnings: [],
-    substitutions: [],
-    volumePlanByMuscle: {},
-    selection: {
-      ...deload.selection,
-      sessionDecisionReceipt: buildSessionDecisionReceipt({
-        cycleContext: mapped.cycleContext,
-        lifecycleRirTarget: mapped.lifecycleRirTarget,
-        lifecycleVolumeTargets: mapped.lifecycleVolumeTargets,
-        deloadDecision: {
-          mode: "scheduled",
-          reason: [deload.note],
-          reductionPercent: 50,
-          appliedTo: "volume",
-        },
-        plannerDiagnosticsMode: input.plannerDiagnosticsMode ?? "standard",
-      }),
-    },
-    filteredExercises: [],
-    audit: {
-      progressionTraces: {},
-      deloadTrace: deload.trace,
-    },
-  };
+    note: deload.note,
+    deloadTrace: deload.trace,
+    plannerDiagnosticsMode: input.plannerDiagnosticsMode,
+  });
 }

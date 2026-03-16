@@ -304,6 +304,11 @@ export default function HistoryClient({
                           {sessionSnapshotLabel}
                         </span>
                       ) : null}
+                      {workout.isDeload ? (
+                        <span className="ml-2 rounded bg-sky-100 px-1.5 py-0.5 text-xs font-medium text-sky-800">
+                          Deload
+                        </span>
+                      ) : null}
                       {workout.isSupplementalDeficitSession ? (
                         <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800">
                           Supplemental

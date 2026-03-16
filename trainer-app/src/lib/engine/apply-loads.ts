@@ -20,6 +20,7 @@ import {
   buildCanonicalProgressionEvaluationInput,
   type CanonicalProgressionHistorySession,
 } from "@/lib/progression/canonical-progression-input";
+import type { ProgressionDecisionTrace } from "@/lib/evidence/session-audit-types";
 import type {
   Exercise,
   Goals,
@@ -52,6 +53,10 @@ export type ApplyLoadsOptions = {
   sessionIntent?: SplitDay;
   accumulationSessionsCompleted?: number;
   isFirstSessionInMesocycle?: boolean;
+};
+
+export type ApplyLoadsAudit = {
+  progressionTraces: Record<string, ProgressionDecisionTrace>;
 };
 
 type LoadEquipment =
@@ -106,6 +111,13 @@ const EQUIPMENT_DEFAULTS: Record<LoadEquipment, number> = {
 };
 
 export function applyLoads(workout: WorkoutPlan, options: ApplyLoadsOptions): WorkoutPlan {
+  return applyLoadsWithAudit(workout, options).workout;
+}
+
+export function applyLoadsWithAudit(
+  workout: WorkoutPlan,
+  options: ApplyLoadsOptions
+): { workout: WorkoutPlan; audit: ApplyLoadsAudit } {
   const historyIndex = buildHistoryIndex(options.history ?? [], {
     sessionIntent: options.sessionIntent,
     useNewMesocycleBaselineSource:
@@ -124,6 +136,7 @@ export function applyLoads(workout: WorkoutPlan, options: ApplyLoadsOptions): Wo
 
   // Block-aware intensity multiplier (from periodization system v2)
   const intensityMultiplier = options.prescriptionModifiers?.intensityMultiplier ?? 1.0;
+  const progressionTraces: Record<string, ProgressionDecisionTrace> = {};
 
   const applyToExercise = (exerciseEntry: WorkoutPlan["mainLifts"][number]) => {
     const exercise = exerciseEntry.exercise;
@@ -143,9 +156,7 @@ export function applyLoads(workout: WorkoutPlan, options: ApplyLoadsOptions): Wo
     const existingTopSetLoad = setsWithRole.find((set) => set.setIndex === 1)?.targetLoad;
     const targetRpe =
       setsWithRole.find((set) => set.setIndex === 1)?.targetRpe ?? defaultTargetRpe;
-    const load =
-      existingTopSetLoad ??
-      resolveLoadForExercise(
+    const resolvedLoad = resolveLoadForExercise(
         exercise,
         historyIndex.get(exercise.id),
         baselineIndex.get(exercise.id),
@@ -161,6 +172,15 @@ export function applyLoads(workout: WorkoutPlan, options: ApplyLoadsOptions): Wo
         options.weekInBlock,
         preferredContext
       );
+    if (resolvedLoad.progressionTrace) {
+      progressionTraces[exercise.id] = resolvedLoad.progressionTrace;
+    }
+    // Deload still resolves the canonical source load first; the lighter
+    // deload prescription is applied here rather than upstream in generation.
+    const load =
+      periodization?.isDeload
+        ? (resolvedLoad.load ?? existingTopSetLoad)
+        : (existingTopSetLoad ?? resolvedLoad.load);
 
     if (load === undefined) {
       return exerciseEntry.isMainLift
@@ -168,19 +188,25 @@ export function applyLoads(workout: WorkoutPlan, options: ApplyLoadsOptions): Wo
         : { ...exerciseEntry, role: exerciseEntry.role ?? workingRole, sets: setsWithRole };
     }
 
-    if (exerciseEntry.isMainLift) {
-      if (periodization?.isDeload) {
-        const deloadLoad = roundToHalf(load * backOffMultiplier * intensityMultiplier);
-        return {
-          ...exerciseEntry,
-          role: exerciseEntry.role ?? workingRole,
-          sets: setsWithRole.map((set) =>
-            set.targetLoad !== undefined ? set : { ...set, targetLoad: deloadLoad }
-          ),
-          warmupSets: buildWarmupSets(deloadLoad, trainingAge),
-        };
-      }
+    if (periodization?.isDeload) {
+      const deloadLoad = roundToHalf(load * backOffMultiplier * intensityMultiplier);
+      const deloadSets = setsWithRole.map((set) => ({ ...set, targetLoad: deloadLoad }));
+      return exerciseEntry.isMainLift
+        ? {
+            ...exerciseEntry,
+            role: exerciseEntry.role ?? workingRole,
+            sets: deloadSets,
+            warmupSets: buildWarmupSets(deloadLoad, trainingAge),
+          }
+        : {
+            ...exerciseEntry,
+            role: exerciseEntry.role ?? workingRole,
+            sets: deloadSets,
+            warmupSets: undefined,
+          };
+    }
 
+    if (exerciseEntry.isMainLift) {
       const adjustedTopSetLoad = roundToHalf(load * intensityMultiplier);
       const updatedSets = setsWithRole.map((set) => {
         if (set.targetLoad !== undefined) {
@@ -222,10 +248,15 @@ export function applyLoads(workout: WorkoutPlan, options: ApplyLoadsOptions): Wo
   const accessories = workout.accessories.map(applyToExercise);
 
   return {
-    ...workout,
-    warmup,
-    mainLifts,
-    accessories,
+    workout: {
+      ...workout,
+      warmup,
+      mainLifts,
+      accessories,
+    },
+    audit: {
+      progressionTraces,
+    },
   };
 }
 
@@ -322,7 +353,13 @@ function isDeloadPhaseEntry(entry: WorkoutHistoryEntry): boolean {
   return phase === "DELOAD" || phase === "ACTIVE_DELOAD";
 }
 
-type WorkoutSetHistory = { setIndex: number; reps: number; rpe?: number; load?: number }[];
+type WorkoutSetHistory = {
+  setIndex: number;
+  reps: number;
+  rpe?: number;
+  load?: number;
+  targetLoad?: number;
+}[];
 type WorkoutSessionHistory = CanonicalProgressionHistorySession & {
   sets: WorkoutSetHistory;
   selectionMode?: WorkoutHistoryEntry["selectionMode"];
@@ -478,7 +515,7 @@ function resolveLoadForExercise(
   periodization: PeriodizationModifiers | undefined,
   weekInBlock: number | undefined,
   preferredContext: string
-): number | undefined {
+): { load?: number; progressionTrace?: ProgressionDecisionTrace } {
   const latestSetsRaw = historySessions?.[0]?.sets;
   const useModalAnchoring = shouldUseModalAnchoring(exercise);
   const latestSets =
@@ -520,10 +557,10 @@ function resolveLoadForExercise(
       : getTopSessionLoad(latestSets);
     const modalRpe = getModalSessionRpe(latestSetsForDecision);
     if (anchorLoad !== undefined && modalRpe !== undefined && modalRpe >= 9) {
-      return anchorLoad;
+      return { load: anchorLoad, progressionTrace: decision?.trace };
     }
     if (decision) {
-      return decision.nextLoad;
+      return { load: decision.nextLoad, progressionTrace: decision.trace };
     }
     const recentSessions =
       historySessions?.slice(1).map((session) =>
@@ -539,25 +576,29 @@ function resolveLoadForExercise(
       equipment,
     });
     if (computed !== undefined) {
-      return computed;
+      return { load: computed };
     }
   }
 
   if (baselineSelection !== undefined) {
-    return applyBaselineContextScaling(
-      baselineSelection.load,
-      baselineSelection.selectedContext,
-      preferredContext
-    );
+    return {
+      load: applyBaselineContextScaling(
+        baselineSelection.load,
+        baselineSelection.selectedContext,
+        preferredContext
+      ),
+    };
   }
 
-  return estimateLoad(
-    exercise,
-    baselineLoadIndex,
-    historyTopLoadIndex,
-    exerciseById,
-    weightKg
-  );
+  return {
+    load: estimateLoad(
+      exercise,
+      baselineLoadIndex,
+      historyTopLoadIndex,
+      exerciseById,
+      weightKg
+    ),
+  };
 }
 
 function getTopSessionLoad(sets: WorkoutSetHistory): number | undefined {

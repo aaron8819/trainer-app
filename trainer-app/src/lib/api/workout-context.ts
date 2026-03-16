@@ -264,14 +264,19 @@ export function mapHistory(workouts: WorkoutWithRelations[]): WorkoutHistoryEntr
       selectionMode: workout.selectionMode,
       sessionIntent: workout.sessionIntent,
       templateId: workout.templateId,
+      mesocyclePhase: workout.mesocyclePhaseSnapshot,
     });
 
+    // Keep deload sessions in performed history for compliance/volume context
+    // while marking them out of progression and performance reads.
     return {
       date: workout.scheduledDate.toISOString(),
       completed: workout.status === WorkoutStatus.COMPLETED,
       status: workout.status,
       advancesSplit: semantics.advancesLifecycle,
+      isDeload: semantics.isDeload,
       progressionEligible: semantics.countsTowardProgressionHistory,
+      performanceEligible: semantics.countsTowardPerformanceHistory,
       selectionMode: workout.selectionMode,
       sessionIntent: workout.sessionIntent
         ? (workout.sessionIntent.toLowerCase() as EngineSplitDay)
@@ -306,6 +311,7 @@ export function mapHistory(workouts: WorkoutWithRelations[]): WorkoutHistoryEntr
               reps: log.actualReps ?? 0,
               rpe: log.actualRpe ?? undefined,
               load: log.actualLoad ?? undefined,
+              targetLoad: set.targetLoad ?? undefined,
             },
           ];
         }),
@@ -369,7 +375,7 @@ export function mapHistory(workouts: WorkoutWithRelations[]): WorkoutHistoryEntr
       (entry as WorkoutHistoryEntry).anomalyFlags = anomalyFlags;
     }
 
-    if (entry.selectionMode === "INTENT") {
+    if (entry.selectionMode === "INTENT" && entry.performanceEligible !== false) {
       for (const exercise of entry.exercises) {
         const modalLoad = resolveExerciseModalLoad(exercise.sets);
         if (modalLoad != null) {

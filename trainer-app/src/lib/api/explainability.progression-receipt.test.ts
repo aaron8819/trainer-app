@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => {
   const workoutFindMany = vi.fn();
   const setLogAggregate = vi.fn();
   const workoutExerciseFindFirst = vi.fn();
+  const workoutExerciseFindMany = vi.fn();
 
   return {
     workoutFindUnique,
@@ -18,6 +19,7 @@ const mocks = vi.hoisted(() => {
     workoutFindMany,
     setLogAggregate,
     workoutExerciseFindFirst,
+    workoutExerciseFindMany,
   };
 });
 
@@ -38,6 +40,7 @@ vi.mock("@/lib/db/prisma", () => ({
     },
     workoutExercise: {
       findFirst: (...args: unknown[]) => mocks.workoutExerciseFindFirst(...args),
+      findMany: (...args: unknown[]) => mocks.workoutExerciseFindMany(...args),
     },
   },
 }));
@@ -167,6 +170,7 @@ describe("generateWorkoutExplanation progression receipt", () => {
     mocks.exerciseFindMany.mockResolvedValue([]);
     mocks.workoutFindMany.mockResolvedValue([]);
     mocks.setLogAggregate.mockResolvedValue({ _max: { actualLoad: null, actualReps: null } });
+    mocks.workoutExerciseFindMany.mockResolvedValue([]);
     mocks.workoutExerciseFindFirst.mockResolvedValue({
       workout: {
         scheduledDate: new Date("2026-02-18T00:00:00.000Z"),
@@ -752,6 +756,107 @@ describe("generateWorkoutExplanation progression receipt", () => {
     });
   });
 
+  it("explains earned next-exposure increases when performed load materially beats prescription", async () => {
+    mocks.workoutFindUnique.mockResolvedValueOnce({
+      id: "w1",
+      userId: "u1",
+      scheduledDate: new Date("2026-02-21T00:00:00.000Z"),
+      selectionMode: "INTENT",
+      sessionIntent: "LEGS",
+      selectionMetadata: {},
+      filteredExercises: [],
+      exercises: [
+        {
+          exerciseId: "ex1",
+          isMainLift: true,
+          exercise: {
+            id: "ex1",
+            name: "Back Squat",
+            movementPatterns: ["SQUAT"],
+            exerciseEquipment: [{ equipment: { type: "BARBELL" } }],
+            exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Quads" } }],
+          },
+          sets: [
+            {
+              setIndex: 1,
+              targetReps: 8,
+              targetRepMin: 6,
+              targetRepMax: 10,
+              targetRpe: 8,
+              targetLoad: 135,
+              restSeconds: 150,
+              logs: [{ actualReps: 8, actualLoad: 145, actualRpe: 7.5, wasSkipped: false }],
+            },
+            {
+              setIndex: 2,
+              targetReps: 8,
+              targetRepMin: 6,
+              targetRepMax: 10,
+              targetRpe: 8,
+              targetLoad: 135,
+              restSeconds: 150,
+              logs: [{ actualReps: 8, actualLoad: 145, actualRpe: 8, wasSkipped: false }],
+            },
+            {
+              setIndex: 3,
+              targetReps: 8,
+              targetRepMin: 6,
+              targetRepMax: 10,
+              targetRpe: 8,
+              targetLoad: 135,
+              restSeconds: 150,
+              logs: [{ actualReps: 7, actualLoad: 140, actualRpe: 8, wasSkipped: false }],
+            },
+          ],
+        },
+      ],
+    });
+    mocks.workoutExerciseFindFirst.mockImplementation(async (args: {
+      where?: { workout?: { scheduledDate?: { lt?: Date }; selectionMode?: string } };
+    }) => {
+      const scheduledBefore = args.where?.workout?.scheduledDate?.lt;
+      const requiredSelectionMode = args.where?.workout?.selectionMode;
+      const priorIntent = {
+        workout: {
+          scheduledDate: new Date("2026-02-18T00:00:00.000Z"),
+          selectionMode: "INTENT",
+          sessionIntent: "LEGS",
+          selectionMetadata: {},
+        },
+        sets: [
+          {
+            setIndex: 1,
+            logs: [{ actualReps: 8, actualLoad: 135, actualRpe: 8, wasSkipped: false }],
+          },
+          {
+            setIndex: 2,
+            logs: [{ actualReps: 8, actualLoad: 135, actualRpe: 8, wasSkipped: false }],
+          },
+        ],
+      };
+      if (requiredSelectionMode && requiredSelectionMode !== "INTENT") {
+        return null;
+      }
+      if (scheduledBefore && priorIntent.workout.scheduledDate.getTime() >= scheduledBefore.getTime()) {
+        return null;
+      }
+      return priorIntent;
+    });
+
+    const result = await generateWorkoutExplanation("w1");
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    expect(result.nextExposureDecisions.get("ex1")).toMatchObject({
+      action: "increase",
+      anchorLoad: 145,
+    });
+    expect(result.nextExposureDecisions.get("ex1")?.reason).toContain("beat the written load");
+    expect(result.nextExposureDecisions.get("ex1")?.decisionLog?.join(" | ")).toContain(
+      "Path 5 fired"
+    );
+  });
+
   it("keeps anchor-sensitive main-lift decisions aligned to the top set", async () => {
     const currentPerformedSets = [
       { setIndex: 1, actualReps: 12, actualLoad: 45, actualRpe: 7, wasSkipped: false },
@@ -971,6 +1076,80 @@ describe("generateWorkoutExplanation progression receipt", () => {
     const receipt = result.progressionReceipts.get("ex1");
     expect(receipt?.lastPerformed?.load).toBe(200);
     expect(receipt?.lastPerformed?.load).not.toBe(240);
+  });
+
+  it("excludes scheduled deload sessions from progression-facing explainability and falls back to accumulation history", async () => {
+    mocks.workoutExerciseFindFirst
+      .mockResolvedValueOnce({
+        workout: {
+          scheduledDate: new Date("2026-02-20T00:00:00.000Z"),
+          selectionMode: "INTENT",
+          sessionIntent: "PUSH",
+          mesocyclePhaseSnapshot: "DELOAD",
+          selectionMetadata: {
+            sessionDecisionReceipt: {
+              version: 1,
+              cycleContext: {
+                weekInMeso: 5,
+                weekInBlock: 1,
+                phase: "deload",
+                blockType: "deload",
+                isDeload: true,
+                source: "computed",
+              },
+              lifecycleVolume: { source: "unknown" },
+              sorenessSuppressedMuscles: [],
+              deloadDecision: {
+                mode: "scheduled",
+                reason: ["Scheduled deload week."],
+                reductionPercent: 50,
+                appliedTo: "volume",
+              },
+              readiness: {
+                wasAutoregulated: false,
+                signalAgeHours: null,
+                fatigueScoreOverall: null,
+                intensityScaling: {
+                  applied: false,
+                  exerciseIds: [],
+                  scaledUpCount: 0,
+                  scaledDownCount: 0,
+                },
+              },
+              exceptions: [],
+            },
+          },
+        },
+        sets: [
+          {
+            setIndex: 1,
+            logs: [{ actualReps: 8, actualLoad: 155, actualRpe: 5, wasSkipped: false }],
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        workout: {
+          scheduledDate: new Date("2026-02-18T00:00:00.000Z"),
+          selectionMode: "INTENT",
+          sessionIntent: "PUSH",
+          mesocyclePhaseSnapshot: "ACCUMULATION",
+          selectionMetadata: {},
+        },
+        sets: [
+          {
+            setIndex: 1,
+            logs: [{ actualReps: 8, actualLoad: 200, actualRpe: 8, wasSkipped: false }],
+          },
+        ],
+      });
+
+    const result = await generateWorkoutExplanation("w1");
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    const receipt = result.progressionReceipts.get("ex1");
+    expect(receipt?.lastPerformed?.load).toBe(200);
+    expect(receipt?.lastPerformed?.load).not.toBe(155);
   });
 
   it("does not drift optional gap-fill progression explainability behavior", async () => {

@@ -214,6 +214,127 @@ describe("applyLoads correctness", () => {
     expect(result.mainLifts[0].sets[0].targetLoad).toBe(205);
   });
 
+  it("applies canonical deload load reduction to both compounds and accessories", () => {
+    const deloadWorkout: WorkoutPlan = {
+      id: "w-deload",
+      scheduledDate: "2026-02-27T00:00:00.000Z",
+      warmup: [],
+      mainLifts: [
+        {
+          id: "we-deload-main",
+          exercise: bench,
+          orderIndex: 0,
+          isMainLift: true,
+          sets: [
+            { setIndex: 1, targetReps: 8, targetRpe: 5 },
+            { setIndex: 2, targetReps: 8, targetRpe: 5 },
+          ],
+        },
+      ],
+      accessories: [
+        {
+          id: "we-deload-accessory",
+          exercise: cableCurl,
+          orderIndex: 1,
+          isMainLift: false,
+          sets: [{ setIndex: 1, targetReps: 12, targetRpe: 5 }],
+        },
+      ],
+      estimatedMinutes: 30,
+    };
+
+    const result = applyLoads(deloadWorkout, {
+      history: [
+        {
+          date: "2026-02-20T00:00:00.000Z",
+          completed: true,
+          status: "COMPLETED",
+          sessionIntent: "push",
+          exercises: [
+            {
+              exerciseId: "bench",
+              sets: [
+                { exerciseId: "bench", setIndex: 1, reps: 10, rpe: 8, load: 200 },
+                { exerciseId: "bench", setIndex: 2, reps: 10, rpe: 8, load: 180 },
+              ],
+            },
+            {
+              exerciseId: "cable-curl",
+              sets: [
+                { exerciseId: "cable-curl", setIndex: 1, reps: 12, rpe: 8, load: 40 },
+                { exerciseId: "cable-curl", setIndex: 2, reps: 12, rpe: 8, load: 40 },
+              ],
+            },
+          ],
+        },
+      ],
+      baselines: [],
+      exerciseById: { bench, "cable-curl": cableCurl },
+      primaryGoal: "hypertrophy",
+      profile: { trainingAge: "intermediate" },
+      sessionIntent: "push",
+      periodization: {
+        rpeOffset: -2,
+        setMultiplier: 0.5,
+        backOffMultiplier: 0.75,
+        isDeload: true,
+      },
+    });
+
+    expect(result.mainLifts[0].sets.map((set) => set.targetLoad)).toEqual([155, 155]);
+    expect(result.accessories[0].sets[0].targetLoad).toBe(30);
+  });
+
+  it("overrides prefilled target loads during deload so upstream callers cannot bypass the canonical load-down", () => {
+    const prefilledDeload: WorkoutPlan = {
+      id: "w-prefilled-deload",
+      scheduledDate: "2026-02-27T00:00:00.000Z",
+      warmup: [],
+      mainLifts: [
+        {
+          id: "we-prefilled-deload",
+          exercise: bench,
+          orderIndex: 0,
+          isMainLift: true,
+          sets: [{ setIndex: 1, targetReps: 8, targetRpe: 5, targetLoad: 200 }],
+        },
+      ],
+      accessories: [],
+      estimatedMinutes: 20,
+    };
+
+    const result = applyLoads(prefilledDeload, {
+      history: [
+        {
+          date: "2026-02-20T00:00:00.000Z",
+          completed: true,
+          status: "COMPLETED",
+          exercises: [
+            {
+              exerciseId: "bench",
+              sets: [
+                { exerciseId: "bench", setIndex: 1, reps: 10, rpe: 8, load: 200 },
+                { exerciseId: "bench", setIndex: 2, reps: 10, rpe: 8, load: 180 },
+              ],
+            },
+          ],
+        },
+      ],
+      baselines: [],
+      exerciseById: { bench },
+      primaryGoal: "hypertrophy",
+      profile: { trainingAge: "intermediate" },
+      periodization: {
+        rpeOffset: -2,
+        setMultiplier: 0.5,
+        backOffMultiplier: 0.75,
+        isDeload: true,
+      },
+    });
+
+    expect(result.mainLifts[0].sets[0].targetLoad).toBe(155);
+  });
+
   it("uses same-pattern performed donor load for non-avoided swap instead of cold defaults", () => {
     const swapped = applyLoads(accessorySwapWorkout, {
       history: [
@@ -495,6 +616,67 @@ describe("applyLoads correctness", () => {
     });
 
     expect(result.mainLifts[0].sets[0].targetLoad).toBe(190);
+  });
+
+  it("promotes the next written load when prior performed sets materially overshot prescription", () => {
+    const squat: Exercise = {
+      id: "back-squat",
+      name: "Back Squat",
+      movementPatterns: ["squat"],
+      splitTags: ["legs"],
+      jointStress: "high",
+      isMainLiftEligible: true,
+      isCompound: true,
+      fatigueCost: 4,
+      equipment: ["barbell", "rack"],
+      primaryMuscles: ["Quads"],
+      repRangeMin: 5,
+      repRangeMax: 10,
+    };
+    const workout: WorkoutPlan = {
+      id: "w-overshoot",
+      scheduledDate: "2026-02-20T00:00:00.000Z",
+      warmup: [],
+      mainLifts: [
+        {
+          id: "we-overshoot",
+          exercise: squat,
+          orderIndex: 0,
+          isMainLift: true,
+          sets: [{ setIndex: 1, targetReps: 8, targetRpe: 8 }],
+        },
+      ],
+      accessories: [],
+      estimatedMinutes: 35,
+    };
+
+    const result = applyLoads(workout, {
+      history: [
+        {
+          date: "2026-02-19T00:00:00.000Z",
+          completed: true,
+          status: "COMPLETED",
+          sessionIntent: "legs",
+          exercises: [
+            {
+              exerciseId: "back-squat",
+              sets: [
+                { exerciseId: "back-squat", setIndex: 1, reps: 8, rpe: 7.5, load: 145, targetLoad: 135 },
+                { exerciseId: "back-squat", setIndex: 2, reps: 8, rpe: 8, load: 145, targetLoad: 135 },
+                { exerciseId: "back-squat", setIndex: 3, reps: 7, rpe: 8, load: 140, targetLoad: 135 },
+              ],
+            },
+          ],
+        },
+      ],
+      baselines: [],
+      exerciseById: { "back-squat": squat },
+      primaryGoal: "hypertrophy",
+      profile: { trainingAge: "intermediate" },
+      sessionIntent: "legs",
+    });
+
+    expect(result.mainLifts[0].sets[0].targetLoad).toBe(150);
   });
 
   it("uses conservative modal anchor when prior session has high load variance", () => {

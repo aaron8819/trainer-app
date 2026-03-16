@@ -2098,9 +2098,13 @@ export async function generateDeloadSessionFromTemplate(
           mode: "scheduled",
           reason: [deload.note],
           reductionPercent: 50,
-          appliedTo: "both",
+          appliedTo: "volume",
         },
       }),
+    },
+    audit: {
+      progressionTraces: {},
+      deloadTrace: deload.trace,
     },
   };
 }
@@ -3032,11 +3036,15 @@ export async function generateDeloadSessionFromIntent(
           mode: "scheduled",
           reason: [deload.note],
           reductionPercent: 50,
-          appliedTo: "both",
+          appliedTo: "volume",
         },
         plannerDiagnosticsMode: input.plannerDiagnosticsMode ?? "standard",
       }),
     },
     filteredExercises: [],
+    audit: {
+      progressionTraces: {},
+      deloadTrace: deload.trace,
+    },
   };
 }

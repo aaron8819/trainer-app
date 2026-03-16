@@ -218,6 +218,7 @@ export type SetLog = {
   reps: number;
   rpe?: number;
   load?: number;
+  targetLoad?: number;
 };
 
 export type WorkoutHistoryEntry = {
@@ -225,7 +226,9 @@ export type WorkoutHistoryEntry = {
   completed: boolean;
   status?: "PLANNED" | "IN_PROGRESS" | "PARTIAL" | "COMPLETED" | "SKIPPED";
   advancesSplit?: boolean;
+  isDeload?: boolean;
   progressionEligible?: boolean;
+  performanceEligible?: boolean;
   forcedSplit?: SplitDay;
   sessionIntent?: SplitDay;
   selectionMode?: WorkoutSelectionMode;

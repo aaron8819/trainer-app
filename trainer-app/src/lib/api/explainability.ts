@@ -53,6 +53,7 @@ import {
 import { derivePerformedExerciseSemantics } from "@/lib/session-semantics/performed-exercise-semantics";
 import { classifySetLog } from "@/lib/session-semantics/set-classification";
 import { resolveTargetRepRange } from "@/lib/session-semantics/target-evaluation";
+import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-semantics";
 import { getCanonicalNextExposureCopy } from "@/lib/ui/next-exposure-copy";
 
 const HISTORY_RECENCY_WINDOW_DAYS = 42;
@@ -68,6 +69,22 @@ const CANONICAL_RATIONALE_COMPONENT_KEYS = [
 
 function roundToTenth(value: number): number {
   return Math.round(value * 10) / 10;
+}
+
+function countsTowardCanonicalPerformanceHistory(input: {
+  advancesSplit?: boolean | null;
+  selectionMetadata?: unknown;
+  selectionMode?: string | null;
+  sessionIntent?: string | null;
+  mesocyclePhaseSnapshot?: string | null;
+}): boolean {
+  return deriveSessionSemantics({
+    advancesSplit: input.advancesSplit,
+    selectionMetadata: input.selectionMetadata,
+    selectionMode: input.selectionMode,
+    sessionIntent: input.sessionIntent,
+    mesocyclePhase: input.mesocyclePhaseSnapshot,
+  }).countsTowardPerformanceHistory;
 }
 
 export async function generateWorkoutExplanation(
@@ -497,14 +514,26 @@ async function loadHistoricalEffectiveSetTotals(
       },
     },
     orderBy: { scheduledDate: "desc" },
-    take: 6,
+    take: 12,
   });
 
-  if (workouts.length === 0 && sessionIntent) {
+  const canonicalWorkouts = workouts
+    .filter((workout) =>
+      countsTowardCanonicalPerformanceHistory({
+        advancesSplit: workout.advancesSplit,
+        selectionMetadata: workout.selectionMetadata,
+        selectionMode: workout.selectionMode,
+        sessionIntent: workout.sessionIntent,
+        mesocyclePhaseSnapshot: workout.mesocyclePhaseSnapshot,
+      })
+    )
+    .slice(0, 6);
+
+  if (canonicalWorkouts.length === 0 && sessionIntent) {
     return loadHistoricalEffectiveSetTotals(userId, currentDate, excludeWorkoutId, exerciseById);
   }
 
-  return workouts.map((entry) => computeWorkoutEffectiveSets(entry.exercises, exerciseById));
+  return canonicalWorkouts.map((entry) => computeWorkoutEffectiveSets(entry.exercises, exerciseById));
 }
 
 function buildPlannedMaxByExercise(
@@ -549,49 +578,67 @@ async function loadHistoricalExercisePerformance(
   exerciseIds: string[],
   excludeWorkoutId: string
 ): Promise<Map<string, { maxLoad: number | null; maxReps: number | null }>> {
-  const output = new Map<string, { maxLoad: number | null; maxReps: number | null }>();
-  await Promise.all(
-    exerciseIds.map(async (exerciseId) => {
-      const loadMax = await prisma.setLog.aggregate({
-        _max: { actualLoad: true },
-        where: {
-          workoutSet: {
-            workoutExercise: {
-              exerciseId,
-              workout: {
-                userId,
-                status: { in: [...PERFORMED_WORKOUT_STATUSES] },
-                id: { not: excludeWorkoutId },
-              },
-            },
-          },
-          wasSkipped: false,
-          actualLoad: { not: null },
-        },
-      });
-      const repsMax = await prisma.setLog.aggregate({
-        _max: { actualReps: true },
-        where: {
-          workoutSet: {
-            workoutExercise: {
-              exerciseId,
-              workout: {
-                userId,
-                status: { in: [...PERFORMED_WORKOUT_STATUSES] },
-                id: { not: excludeWorkoutId },
-              },
-            },
-          },
-          wasSkipped: false,
-          actualReps: { not: null },
-        },
-      });
-      output.set(exerciseId, {
-        maxLoad: loadMax._max.actualLoad ?? null,
-        maxReps: repsMax._max.actualReps ?? null,
-      });
-    })
+  const output = new Map<string, { maxLoad: number | null; maxReps: number | null }>(
+    exerciseIds.map((exerciseId) => [exerciseId, { maxLoad: null, maxReps: null }])
   );
+  const rows = await prisma.workoutExercise.findMany({
+    where: {
+      exerciseId: { in: exerciseIds },
+      workout: {
+        userId,
+        status: { in: [...PERFORMED_WORKOUT_STATUSES] },
+        id: { not: excludeWorkoutId },
+      },
+    },
+    include: {
+      workout: {
+        select: {
+          advancesSplit: true,
+          selectionMetadata: true,
+          selectionMode: true,
+          sessionIntent: true,
+          mesocyclePhaseSnapshot: true,
+        },
+      },
+      sets: {
+        include: {
+          logs: { orderBy: { completedAt: "desc" }, take: 1 },
+        },
+      },
+    },
+  });
+
+  for (const row of rows) {
+    if (
+      !countsTowardCanonicalPerformanceHistory({
+        advancesSplit: row.workout.advancesSplit,
+        selectionMetadata: row.workout.selectionMetadata,
+        selectionMode: row.workout.selectionMode,
+        sessionIntent: row.workout.sessionIntent,
+        mesocyclePhaseSnapshot: row.workout.mesocyclePhaseSnapshot,
+      })
+    ) {
+      continue;
+    }
+
+    const current = output.get(row.exerciseId) ?? { maxLoad: null, maxReps: null };
+    for (const set of row.sets) {
+      const latest = set.logs[0];
+      if (!latest || latest.wasSkipped) {
+        continue;
+      }
+      if (latest.actualLoad != null) {
+        current.maxLoad =
+          current.maxLoad == null ? latest.actualLoad : Math.max(current.maxLoad, latest.actualLoad);
+      }
+      if (latest.actualReps != null) {
+        current.maxReps =
+          current.maxReps == null ? latest.actualReps : Math.max(current.maxReps, latest.actualReps);
+      }
+    }
+    output.set(row.exerciseId, current);
+  }
+
   return output;
 }
 
@@ -781,6 +828,7 @@ async function loadLatestPerformedSetSummary(
     isMainLiftEligible,
     sets: previous.sets.map((set) => ({
       setIndex: set.setIndex,
+      targetLoad: set.targetLoad,
       actualLoad: set.logs[0]?.actualLoad ?? null,
       actualReps: set.logs[0]?.actualReps ?? null,
       actualRpe: set.logs[0]?.actualRpe ?? null,
@@ -965,6 +1013,7 @@ async function findLatestProgressionEligibleWorkoutExercise(input: {
             selectionMode: true,
             sessionIntent: true,
             selectionMetadata: true,
+            mesocyclePhaseSnapshot: true,
           },
         },
         sets: {
@@ -991,6 +1040,7 @@ async function findLatestProgressionEligibleWorkoutExercise(input: {
         selectionMetadata: candidate.workout.selectionMetadata,
         selectionMode: candidate.workout.selectionMode,
         sessionIntent: candidate.workout.sessionIntent,
+        mesocyclePhase: candidate.workout.mesocyclePhaseSnapshot,
       })
     ) {
       return candidate;
@@ -1132,6 +1182,7 @@ async function buildNextExposureDecision(
     summary: getCanonicalNextExposureCopy(action).summary,
     reason: formatNextExposureReason({
       action,
+      decisionPath: decision.path,
       repRange,
       medianReps: performedSemantics.medianReps,
       modalRpe: performedSemantics.modalRpe,
@@ -1141,6 +1192,7 @@ async function buildNextExposureDecision(
     repRange: { min: repRange[0], max: repRange[1] },
     modalRpe: performedSemantics.modalRpe,
     medianReps: performedSemantics.medianReps,
+    decisionLog: decision.decisionLog,
   };
 }
 
@@ -1220,6 +1272,7 @@ async function resolveExplainabilityProgressionSession(
 
 function formatNextExposureReason(input: {
   action: NextExposureDecision["action"];
+  decisionPath?: string;
   repRange: [number, number];
   medianReps: number | null;
   modalRpe: number | null;
@@ -1231,6 +1284,9 @@ function formatNextExposureReason(input: {
   const modalRpeLabel = input.modalRpe != null ? input.modalRpe : "n/a";
 
   if (input.action === "increase") {
+    if (input.decisionPath === "path_5_overshoot") {
+      return `You beat the written load at manageable effort, so ${input.anchorLoad} lbs should not stay capped next time.`;
+    }
     return `Median reps reached the top of the ${repBand} band at manageable effort (modal RPE ${modalRpeLabel}) on ${input.anchorLoad} lbs.`;
   }
   if (input.action === "decrease") {

@@ -130,6 +130,7 @@ describe("mapHistory", () => {
       setIndex: 1,
       reps: 8,
       load: 185,
+      targetLoad: 185,
     });
     expect(history[0].mesocycleSnapshot).toEqual({
       week: 4,
@@ -246,6 +247,7 @@ describe("mapHistory", () => {
       reps: 12,
       rpe: 8,
       load: 20,
+      targetLoad: 20,
     });
   });
 
@@ -453,5 +455,128 @@ describe("mapHistory", () => {
     expect(history[0].status).toBe("COMPLETED");
     expect(history[0].progressionEligible).toBe(false);
     expect(history[0].exercises[0].sets).toHaveLength(1);
+  });
+
+  it("marks scheduled deload sessions as performed but excludes them from progression and performance history", () => {
+    const history = mapHistory([
+      {
+        id: "w-deload",
+        userId: "u1",
+        templateId: null,
+        scheduledDate: new Date("2026-02-28T00:00:00.000Z"),
+        completedAt: new Date("2026-02-28T01:00:00.000Z"),
+        status: WorkoutStatus.COMPLETED,
+        estimatedMinutes: 35,
+        notes: null,
+        selectionMode: "INTENT",
+        sessionIntent: "PUSH",
+        selectionMetadata: {
+          sessionDecisionReceipt: {
+            version: 1,
+            cycleContext: {
+              weekInMeso: 5,
+              weekInBlock: 1,
+              phase: "deload",
+              blockType: "deload",
+              isDeload: true,
+              source: "computed",
+            },
+            lifecycleVolume: {
+              source: "unknown",
+            },
+            sorenessSuppressedMuscles: [],
+            deloadDecision: {
+              mode: "scheduled",
+              reason: ["Scheduled deload week."],
+              reductionPercent: 50,
+              appliedTo: "volume",
+            },
+            readiness: {
+              wasAutoregulated: false,
+              signalAgeHours: null,
+              fatigueScoreOverall: null,
+              intensityScaling: {
+                applied: false,
+                exerciseIds: [],
+                scaledUpCount: 0,
+                scaledDownCount: 0,
+              },
+            },
+            exceptions: [],
+          },
+        },
+        revision: 1,
+        forcedSplit: null,
+        advancesSplit: true,
+        trainingBlockId: null,
+        weekInBlock: null,
+        mesocycleWeekSnapshot: 5,
+        mesoSessionSnapshot: 1,
+        mesocyclePhaseSnapshot: "DELOAD",
+        exercises: [
+          {
+            id: "we-deload",
+            workoutId: "w-deload",
+            exerciseId: "bench",
+            orderIndex: 0,
+            section: "MAIN",
+            isMainLift: true,
+            movementPatterns: [],
+            notes: null,
+            exercise: {
+              id: "bench",
+              name: "Bench Press",
+              movementPatterns: [],
+              splitTags: [],
+              jointStress: "MEDIUM",
+              isMainLiftEligible: true,
+              isCompound: true,
+              fatigueCost: 3,
+              stimulusBias: [],
+              contraindications: null,
+              timePerSetSec: 120,
+              sfrScore: 3,
+              lengthPositionScore: 3,
+              difficulty: "INTERMEDIATE",
+              isUnilateral: false,
+              repRangeMin: 5,
+              repRangeMax: 12,
+              exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Chest", sraHours: 48 } }],
+            },
+            sets: [
+              {
+                id: "s-deload",
+                workoutExerciseId: "we-deload",
+                setIndex: 1,
+                targetReps: 8,
+                targetRepMin: null,
+                targetRepMax: null,
+                targetRpe: 5,
+                targetLoad: 155,
+                restSeconds: 120,
+                logs: [
+                  {
+                    id: "l-deload",
+                    workoutSetId: "s-deload",
+                    actualReps: 8,
+                    actualRpe: 5,
+                    actualLoad: 155,
+                    completedAt: new Date(),
+                    notes: null,
+                    wasSkipped: false,
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      } as never,
+    ]);
+
+    expect(history).toHaveLength(1);
+    expect(history[0].isDeload).toBe(true);
+    expect(history[0].progressionEligible).toBe(false);
+    expect(history[0].performanceEligible).toBe(false);
+    expect(history[0].advancesSplit).toBe(true);
   });
 });

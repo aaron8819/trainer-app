@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => {
   const workoutFindMany = vi.fn();
   const setLogAggregate = vi.fn();
   const workoutExerciseFindFirst = vi.fn();
+  const workoutExerciseFindMany = vi.fn();
   const mesocleFindUnique = vi.fn();
 
   return {
@@ -17,6 +18,7 @@ const mocks = vi.hoisted(() => {
     workoutFindMany,
     setLogAggregate,
     workoutExerciseFindFirst,
+    workoutExerciseFindMany,
     mesocleFindUnique,
   };
 });
@@ -38,6 +40,7 @@ vi.mock("@/lib/db/prisma", () => ({
     },
     workoutExercise: {
       findFirst: (...args: unknown[]) => mocks.workoutExerciseFindFirst(...args),
+      findMany: (...args: unknown[]) => mocks.workoutExerciseFindMany(...args),
     },
     mesocycle: {
       findUnique: (...args: unknown[]) => mocks.mesocleFindUnique(...args),
@@ -231,6 +234,7 @@ describe("generateWorkoutExplanation – volumeCompliance", () => {
     mocks.exerciseFindMany.mockResolvedValue([]);
     mocks.setLogAggregate.mockResolvedValue({ _max: { actualLoad: null, actualReps: null } });
     mocks.workoutExerciseFindFirst.mockResolvedValue(null);
+    mocks.workoutExerciseFindMany.mockResolvedValue([]);
 
     // Default mesocycle: 4-week accumulation
     mocks.mesocleFindUnique.mockResolvedValue({

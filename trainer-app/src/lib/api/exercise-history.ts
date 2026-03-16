@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db/prisma";
 import { WorkoutStatus } from "@prisma/client";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
+import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-semantics";
 
 export type ExerciseSession = {
   date: string;
@@ -35,9 +36,18 @@ export async function loadExerciseHistory(
       },
     },
     orderBy: { workout: { scheduledDate: "desc" } },
-    take: limit,
+    take: Math.max(limit * 4, limit + 6),
     include: {
-      workout: { select: { scheduledDate: true } },
+      workout: {
+        select: {
+          scheduledDate: true,
+          selectionMetadata: true,
+          selectionMode: true,
+          sessionIntent: true,
+          advancesSplit: true,
+          mesocyclePhaseSnapshot: true,
+        },
+      },
       sets: {
         orderBy: { setIndex: "asc" },
         include: { logs: { orderBy: { completedAt: "desc" }, take: 1 } },
@@ -45,21 +55,32 @@ export async function loadExerciseHistory(
     },
   });
 
-  const sessions: ExerciseSession[] = workoutExercises.map((we) => ({
-    date: we.workout.scheduledDate.toISOString(),
-    sets: we.sets.flatMap((set) => {
-      const log = set.logs[0];
-      if (!log || log.wasSkipped) {
-        return [];
-      }
-      return {
-        setIndex: set.setIndex,
-        reps: log.actualReps ?? 0,
-        load: log.actualLoad ?? null,
-        rpe: log.actualRpe ?? null,
-      };
-    }),
-  }));
+  const sessions: ExerciseSession[] = workoutExercises
+    .filter((we) =>
+      deriveSessionSemantics({
+        advancesSplit: we.workout.advancesSplit,
+        selectionMetadata: we.workout.selectionMetadata,
+        selectionMode: we.workout.selectionMode,
+        sessionIntent: we.workout.sessionIntent,
+        mesocyclePhase: we.workout.mesocyclePhaseSnapshot,
+      }).countsTowardPerformanceHistory
+    )
+    .map((we) => ({
+      date: we.workout.scheduledDate.toISOString(),
+      sets: we.sets.flatMap((set) => {
+        const log = set.logs[0];
+        if (!log || log.wasSkipped) {
+          return [];
+        }
+        return {
+          setIndex: set.setIndex,
+          reps: log.actualReps ?? 0,
+          load: log.actualLoad ?? null,
+          rpe: log.actualRpe ?? null,
+        };
+      }),
+    }))
+    .slice(0, limit);
 
   const personalBests = computePersonalBests(sessions);
   const trend = computeTrend(sessions);

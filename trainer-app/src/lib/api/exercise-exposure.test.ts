@@ -195,4 +195,101 @@ describe("exercise exposure", () => {
       })
     );
   });
+
+  it("ignores deload sessions when deriving performance trend", async () => {
+    mocks.exerciseExposureFindMany.mockResolvedValue([
+      {
+        exerciseName: "Bench Press",
+        lastUsedAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000),
+        timesUsedL12W: 4,
+      },
+    ]);
+    mocks.workoutExerciseFindMany.mockResolvedValue([
+      {
+        workout: {
+          completedAt: new Date("2026-02-22T00:00:00.000Z"),
+          selectionMetadata: {
+            sessionDecisionReceipt: {
+              version: 1,
+              cycleContext: {
+                weekInMeso: 5,
+                weekInBlock: 1,
+                phase: "deload",
+                blockType: "deload",
+                isDeload: true,
+                source: "computed",
+              },
+              lifecycleVolume: { source: "unknown" },
+              sorenessSuppressedMuscles: [],
+              deloadDecision: {
+                mode: "scheduled",
+                reason: ["Scheduled deload week."],
+                reductionPercent: 50,
+                appliedTo: "volume",
+              },
+              readiness: {
+                wasAutoregulated: false,
+                signalAgeHours: null,
+                fatigueScoreOverall: null,
+                intensityScaling: {
+                  applied: false,
+                  exerciseIds: [],
+                  scaledUpCount: 0,
+                  scaledDownCount: 0,
+                },
+              },
+              exceptions: [],
+            },
+          },
+          selectionMode: "INTENT",
+          sessionIntent: "PUSH",
+          advancesSplit: true,
+          mesocyclePhaseSnapshot: "DELOAD",
+        },
+        sets: [{ logs: [{ actualLoad: 155, actualReps: 8 }] }],
+      },
+      {
+        workout: {
+          completedAt: new Date("2026-02-15T00:00:00.000Z"),
+          selectionMetadata: {},
+          selectionMode: "INTENT",
+          sessionIntent: "PUSH",
+          advancesSplit: true,
+          mesocyclePhaseSnapshot: "ACCUMULATION",
+        },
+        sets: [{ logs: [{ actualLoad: 190, actualReps: 8 }] }],
+      },
+      {
+        workout: {
+          completedAt: new Date("2026-02-08T00:00:00.000Z"),
+          selectionMetadata: {},
+          selectionMode: "INTENT",
+          sessionIntent: "PUSH",
+          advancesSplit: true,
+          mesocyclePhaseSnapshot: "ACCUMULATION",
+        },
+        sets: [{ logs: [{ actualLoad: 185, actualReps: 8 }] }],
+      },
+      {
+        workout: {
+          completedAt: new Date("2026-02-01T00:00:00.000Z"),
+          selectionMetadata: {},
+          selectionMode: "INTENT",
+          sessionIntent: "PUSH",
+          advancesSplit: true,
+          mesocyclePhaseSnapshot: "ACCUMULATION",
+        },
+        sets: [{ logs: [{ actualLoad: 180, actualReps: 8 }] }],
+      },
+    ]);
+
+    const result = await loadExerciseExposure("user-1");
+
+    expect(result.get("Bench Press")).toEqual(
+      expect.objectContaining({
+        usageCount: 4,
+        trend: "improving",
+      })
+    );
+  });
 });

@@ -57,9 +57,15 @@ describe("deriveSessionSemantics", () => {
       })
     ).toMatchObject({
       kind: "advancing",
+      isDeload: false,
       advancesLifecycle: true,
       consumesWeeklyScheduleIntent: true,
+      countsTowardCompliance: true,
+      countsTowardRecentStimulus: true,
+      countsTowardWeeklyVolume: true,
       countsTowardProgressionHistory: true,
+      countsTowardPerformanceHistory: true,
+      updatesProgressionAnchor: true,
       eligibleForUniqueIntentSubtraction: true,
     });
   });
@@ -74,10 +80,16 @@ describe("deriveSessionSemantics", () => {
       })
     ).toMatchObject({
       kind: "gap_fill",
+      isDeload: false,
       isStrictGapFill: true,
       advancesLifecycle: false,
       consumesWeeklyScheduleIntent: false,
+      countsTowardCompliance: true,
+      countsTowardRecentStimulus: true,
+      countsTowardWeeklyVolume: true,
       countsTowardProgressionHistory: true,
+      countsTowardPerformanceHistory: true,
+      updatesProgressionAnchor: true,
       eligibleForUniqueIntentSubtraction: false,
     });
   });
@@ -92,10 +104,16 @@ describe("deriveSessionSemantics", () => {
       })
     ).toMatchObject({
       kind: "supplemental",
+      isDeload: false,
       isStrictSupplemental: true,
       advancesLifecycle: false,
       consumesWeeklyScheduleIntent: false,
+      countsTowardCompliance: true,
+      countsTowardRecentStimulus: true,
+      countsTowardWeeklyVolume: true,
       countsTowardProgressionHistory: false,
+      countsTowardPerformanceHistory: false,
+      updatesProgressionAnchor: false,
       eligibleForUniqueIntentSubtraction: false,
     });
   });
@@ -110,11 +128,17 @@ describe("deriveSessionSemantics", () => {
       })
     ).toMatchObject({
       kind: "non_advancing_generic",
+      isDeload: false,
       isStrictGapFill: false,
       isStrictSupplemental: false,
       advancesLifecycle: false,
       consumesWeeklyScheduleIntent: false,
+      countsTowardCompliance: true,
+      countsTowardRecentStimulus: true,
+      countsTowardWeeklyVolume: true,
       countsTowardProgressionHistory: true,
+      countsTowardPerformanceHistory: true,
+      updatesProgressionAnchor: true,
       eligibleForUniqueIntentSubtraction: false,
     });
   });
@@ -135,5 +159,62 @@ describe("deriveSessionSemantics", () => {
         sessionIntent: "PUSH",
       }).advancesLifecycle
     ).toBe(true);
+  });
+
+  it("marks scheduled deload sessions as compliance-valid but progression/performance-ineligible", () => {
+    expect(
+      deriveSessionSemantics({
+        advancesSplit: true,
+        selectionMode: "INTENT",
+        sessionIntent: "PUSH",
+        selectionMetadata: {
+          sessionDecisionReceipt: {
+            version: 1,
+            cycleContext: {
+              weekInMeso: 5,
+              weekInBlock: 1,
+              phase: "deload",
+              blockType: "deload",
+              isDeload: true,
+              source: "computed",
+            },
+            lifecycleVolume: {
+              source: "unknown",
+            },
+            sorenessSuppressedMuscles: [],
+            deloadDecision: {
+              mode: "scheduled",
+              reason: ["Scheduled deload week."],
+              reductionPercent: 50,
+              appliedTo: "volume",
+            },
+            readiness: {
+              wasAutoregulated: false,
+              signalAgeHours: null,
+              fatigueScoreOverall: null,
+              intensityScaling: {
+                applied: false,
+                exerciseIds: [],
+                scaledUpCount: 0,
+                scaledDownCount: 0,
+              },
+            },
+            exceptions: [],
+          },
+        },
+      })
+    ).toMatchObject({
+      kind: "advancing",
+      isDeload: true,
+      advancesLifecycle: true,
+      consumesWeeklyScheduleIntent: true,
+      countsTowardCompliance: true,
+      countsTowardRecentStimulus: true,
+      countsTowardWeeklyVolume: true,
+      countsTowardProgressionHistory: false,
+      countsTowardPerformanceHistory: false,
+      updatesProgressionAnchor: false,
+      eligibleForUniqueIntentSubtraction: true,
+    });
   });
 });

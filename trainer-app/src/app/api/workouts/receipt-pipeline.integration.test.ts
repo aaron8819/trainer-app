@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => {
   const exerciseFindMany = vi.fn();
   const setLogAggregate = vi.fn();
   const workoutExerciseFindFirst = vi.fn();
+  const workoutExerciseFindMany = vi.fn();
   const txWorkoutFindUnique = vi.fn();
   const txWorkoutUpsert = vi.fn();
   const txWorkoutExerciseFindMany = vi.fn();
@@ -78,6 +79,7 @@ const mocks = vi.hoisted(() => {
     },
     workoutExercise: {
       findFirst: (...args: unknown[]) => workoutExerciseFindFirst(...args),
+      findMany: (...args: unknown[]) => workoutExerciseFindMany(...args),
     },
     mesocycle: {
       findUnique: vi.fn(),
@@ -97,6 +99,7 @@ const mocks = vi.hoisted(() => {
     exerciseFindMany,
     setLogAggregate,
     workoutExerciseFindFirst,
+    workoutExerciseFindMany,
     txWorkoutFindUnique,
     txWorkoutUpsert,
     txWorkoutExerciseFindMany,
@@ -366,6 +369,7 @@ describe("canonical session decision receipt pipeline", () => {
     mocks.exerciseFindMany.mockResolvedValue([]);
     mocks.setLogAggregate.mockResolvedValue({ _max: { actualLoad: null, actualReps: null } });
     mocks.workoutExerciseFindFirst.mockResolvedValue(null);
+    mocks.workoutExerciseFindMany.mockResolvedValue([]);
   });
 
   it("keeps the receipt canonical across generate, save, and explainability", async () => {

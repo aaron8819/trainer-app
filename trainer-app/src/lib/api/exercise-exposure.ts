@@ -7,6 +7,7 @@
 
 import { prisma } from "@/lib/db/prisma";
 import { classifySetLog } from "@/lib/session-semantics/set-classification";
+import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-semantics";
 import { Prisma } from "@prisma/client";
 import type { RotationContext, PerformanceTrend } from "../engine/selection-v2/types";
 
@@ -245,6 +246,11 @@ export async function assessPerformanceTrend(
       workout: {
         select: {
           completedAt: true,
+          selectionMetadata: true,
+          selectionMode: true,
+          sessionIntent: true,
+          advancesSplit: true,
+          mesocyclePhaseSnapshot: true,
         },
       },
       sets: {
@@ -267,16 +273,27 @@ export async function assessPerformanceTrend(
         completedAt: "desc",
       },
     },
-    take: 6,
+    take: 12,
   });
+  const canonicalPerformanceSessions = recentSessions
+    .filter((session) =>
+      deriveSessionSemantics({
+        advancesSplit: session.workout.advancesSplit,
+        selectionMetadata: session.workout.selectionMetadata,
+        selectionMode: session.workout.selectionMode,
+        sessionIntent: session.workout.sessionIntent,
+        mesocyclePhase: session.workout.mesocyclePhaseSnapshot,
+      }).countsTowardPerformanceHistory
+    )
+    .slice(0, 6);
 
-  if (recentSessions.length < 3) {
+  if (canonicalPerformanceSessions.length < 3) {
     return "improving"; // Insufficient data, default to improving
   }
 
   // Estimate 1RM for each session (best set)
   const estimated1RMs: number[] = [];
-  for (const session of recentSessions.reverse()) {
+  for (const session of canonicalPerformanceSessions.reverse()) {
     // reverse to get chronological order
     const bestSet = session.sets.reduce(
       (best: number, set: { logs: { actualLoad: number | null; actualReps: number | null }[] }) => {

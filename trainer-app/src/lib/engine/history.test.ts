@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { filterPerformedHistory, filterProgressionHistory } from "./history";
+import { filterPerformanceHistory, filterPerformedHistory, filterProgressionHistory } from "./history";
 import type { WorkoutHistoryEntry } from "./types";
 
 describe("filterPerformedHistory", () => {
@@ -46,5 +46,31 @@ describe("filterProgressionHistory", () => {
     expect(filterPerformedHistory(history)).toHaveLength(2);
     expect(filterProgressionHistory(history)).toHaveLength(1);
     expect(filterProgressionHistory(history)[0].date).toBe("2026-02-22T00:00:00.000Z");
+  });
+});
+
+describe("filterPerformanceHistory", () => {
+  it("keeps deload sessions in performed history but excludes them from canonical performance history", () => {
+    const history: WorkoutHistoryEntry[] = [
+      {
+        date: "2026-02-21T00:00:00.000Z",
+        completed: true,
+        status: "COMPLETED",
+        isDeload: true,
+        performanceEligible: false,
+        exercises: [],
+      },
+      {
+        date: "2026-02-22T00:00:00.000Z",
+        completed: true,
+        status: "COMPLETED",
+        performanceEligible: true,
+        exercises: [],
+      },
+    ];
+
+    expect(filterPerformedHistory(history)).toHaveLength(2);
+    expect(filterPerformanceHistory(history)).toHaveLength(1);
+    expect(filterPerformanceHistory(history)[0].date).toBe("2026-02-22T00:00:00.000Z");
   });
 });

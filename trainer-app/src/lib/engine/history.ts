@@ -86,6 +86,12 @@ export function filterProgressionHistory(
   return filterPerformedHistory(history).filter((entry) => entry.progressionEligible !== false);
 }
 
+export function filterPerformanceHistory(
+  history: WorkoutHistoryEntry[]
+): WorkoutHistoryEntry[] {
+  return filterPerformedHistory(history).filter((entry) => entry.performanceEligible !== false);
+}
+
 export function getMostRecentHistoryEntry(
   history: WorkoutHistoryEntry[]
 ): WorkoutHistoryEntry | undefined {

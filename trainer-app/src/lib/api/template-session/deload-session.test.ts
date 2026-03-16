@@ -31,7 +31,7 @@ describe("deload-session generation", () => {
     vi.clearAllMocks();
   });
 
-  it("builds deload sets at 40-50%, keeps anchored load, and applies RIR 4-6 (RPE ~5)", async () => {
+  it("keeps exercise continuity, cuts sets roughly in half, and leaves load assignment to the canonical engine", async () => {
     const latestAccumWorkout = {
       exercises: [
         {
@@ -52,6 +52,7 @@ describe("deload-session generation", () => {
         exercises: [
           {
             exerciseId: "row",
+            isMainLift: true,
             sets: [
               { logs: [{ actualLoad: 60 }] },
               { logs: [{ actualLoad: 60 }] },
@@ -59,10 +60,20 @@ describe("deload-session generation", () => {
               { logs: [{ actualLoad: 60 }] },
             ],
           },
+          {
+            exerciseId: "bench",
+            isMainLift: true,
+            sets: [
+              { logs: [{ actualReps: 8, actualLoad: 200 }] },
+              { logs: [{ actualReps: 8, actualLoad: 200 }] },
+              { logs: [{ actualReps: 8, actualLoad: 180 }] },
+              { logs: [{ actualReps: 8, actualLoad: 180 }] },
+            ],
+          },
         ],
       },
     ]);
-    mocks.roleFindMany.mockResolvedValue([{ exerciseId: "row" }]);
+    mocks.roleFindMany.mockResolvedValue([{ exerciseId: "row" }, { exerciseId: "bench" }]);
 
     const result = await generateDeloadSessionFromIntentContext(
       "user-1",
@@ -80,6 +91,19 @@ describe("deload-session generation", () => {
             equipment: ["machine"],
             primaryMuscles: ["Upper Back"],
             secondaryMuscles: ["Biceps"],
+          },
+          {
+            id: "bench",
+            name: "Bench Press",
+            movementPatterns: ["horizontal_push"],
+            splitTags: ["push"],
+            jointStress: "medium",
+            isMainLiftEligible: true,
+            isCompound: true,
+            fatigueCost: 4,
+            equipment: ["barbell"],
+            primaryMuscles: ["Chest"],
+            secondaryMuscles: ["Triceps"],
           },
         ],
         activeMesocycle: {
@@ -108,9 +132,131 @@ describe("deload-session generation", () => {
 
     expect("error" in result).toBe(false);
     if ("error" in result) return;
-    const sets = result.workout.mainLifts[0].sets;
-    expect(sets.length).toBe(2); // ceil(4 * 0.45)=2
-    expect(sets[0].targetLoad).toBe(60);
-    expect(sets[0].targetRpe).toBe(4.5);
+    expect(result.workout.notes).toContain("lighter loads assigned canonically");
+    expect(result.note).toContain("canonical load engine");
+
+    const row = result.workout.mainLifts.find((entry) => entry.exercise.id === "row");
+    const bench = result.workout.mainLifts.find((entry) => entry.exercise.id === "bench");
+
+    expect(row?.sets).toHaveLength(2);
+    expect(row?.sets[0].targetReps).toBe(10);
+    expect(row?.sets[0].targetLoad).toBeUndefined();
+    expect(row?.sets[0].targetRpe).toBe(4.5);
+    expect(result.trace.targetRpe).toBe(4.5);
+    expect(result.trace.exercises.find((entry) => entry.exerciseId === "row")).toMatchObject({
+      baselineSetCount: 4,
+      deloadSetCount: 2,
+      anchoredLoadSource: "none",
+    });
+
+    expect(bench?.sets).toHaveLength(2);
+    expect(bench?.sets[0].targetReps).toBe(8);
+    expect(bench?.sets[0].targetLoad).toBeUndefined();
+  });
+
+  it("handles 2-set and 1-set deload edge cases without inventing extra work", async () => {
+    mocks.workoutFindFirst.mockResolvedValue({
+      exercises: [
+        {
+          exerciseId: "two-set-row",
+          isMainLift: true,
+          sets: [
+            { logs: [{ actualReps: 10, actualLoad: 70 }] },
+            { logs: [{ actualReps: 10, actualLoad: 70 }] },
+          ],
+        },
+        {
+          exerciseId: "one-set-curl",
+          isMainLift: false,
+          sets: [{ logs: [{ actualReps: 12, actualLoad: 25 }] }],
+        },
+      ],
+    });
+    mocks.workoutFindMany.mockResolvedValue([
+      {
+        exercises: [
+          {
+            exerciseId: "two-set-row",
+            isMainLift: true,
+            sets: [
+              { logs: [{ actualReps: 10, actualLoad: 70 }] },
+              { logs: [{ actualReps: 10, actualLoad: 70 }] },
+            ],
+          },
+          {
+            exerciseId: "one-set-curl",
+            isMainLift: false,
+            sets: [{ logs: [{ actualReps: 12, actualLoad: 25 }] }],
+          },
+        ],
+      },
+    ]);
+    mocks.roleFindMany.mockResolvedValue([{ exerciseId: "two-set-row" }]);
+
+    const result = await generateDeloadSessionFromIntentContext(
+      "user-1",
+      {
+        exerciseLibrary: [
+          {
+            id: "two-set-row",
+            name: "Row",
+            movementPatterns: ["horizontal_pull"],
+            splitTags: ["pull"],
+            jointStress: "medium",
+            isMainLiftEligible: true,
+            isCompound: true,
+            fatigueCost: 3,
+            equipment: ["machine"],
+            primaryMuscles: ["Upper Back"],
+            secondaryMuscles: ["Biceps"],
+          },
+          {
+            id: "one-set-curl",
+            name: "Curl",
+            movementPatterns: ["flexion"],
+            splitTags: ["pull"],
+            jointStress: "low",
+            isMainLiftEligible: false,
+            isCompound: false,
+            fatigueCost: 1,
+            equipment: ["cable"],
+            primaryMuscles: ["Biceps"],
+            secondaryMuscles: [],
+          },
+        ],
+        activeMesocycle: {
+          id: "meso-1",
+          state: "ACTIVE_DELOAD",
+          accumulationSessionsCompleted: 12,
+          deloadSessionsCompleted: 0,
+          sessionsPerWeek: 3,
+          macroCycleId: "macro",
+          mesoNumber: 1,
+          startWeek: 0,
+          durationWeeks: 5,
+          focus: "hypertrophy",
+          volumeTarget: "MODERATE",
+          intensityBias: "HYPERTROPHY",
+          completedSessions: 12,
+          splitType: "PPL",
+          daysPerWeek: 3,
+          isActive: true,
+          volumeRampConfig: {},
+          rirBandConfig: {},
+        },
+      } as never,
+      "pull"
+    );
+
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    const row = result.workout.mainLifts.find((entry) => entry.exercise.id === "two-set-row");
+    const curl = result.workout.accessories.find((entry) => entry.exercise.id === "one-set-curl");
+
+    expect(row?.sets).toHaveLength(1);
+    expect(curl?.sets).toHaveLength(1);
+    expect(row?.sets[0].targetLoad).toBeUndefined();
+    expect(curl?.sets[0].targetLoad).toBeUndefined();
   });
 });

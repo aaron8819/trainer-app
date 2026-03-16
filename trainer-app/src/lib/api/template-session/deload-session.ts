@@ -4,10 +4,20 @@ import type { SessionIntent, SelectionOutput } from "@/lib/engine/session-types"
 import type { WorkoutExercise, WorkoutPlan } from "@/lib/engine/types";
 import { getDeloadWeek, getPeakAccumulationWeek, getRirTarget } from "@/lib/api/mesocycle-lifecycle";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
+import type { DeloadTransformationTrace } from "@/lib/evidence/session-audit-types";
 import type { MappedGenerationContext } from "./types";
 
-const DELOAD_SET_FACTOR = 0.45;
-const DELOAD_MIN_SETS = 2;
+const DELOAD_SET_FACTOR = 0.5;
+
+function resolveDeloadSetCount(baselineSetCount: number): number {
+  if (baselineSetCount <= 1) {
+    return 1;
+  }
+  if (baselineSetCount === 2) {
+    return 1;
+  }
+  return Math.max(2, Math.ceil(baselineSetCount * DELOAD_SET_FACTOR));
+}
 
 function modalNumber(values: number[]): number | undefined {
   const freq = new Map<number, number>();
@@ -25,16 +35,14 @@ function modalNumber(values: number[]): number | undefined {
 function buildExerciseSetPlan(
   baselineSetCount: number,
   baselineReps: number,
-  baselineLoad: number | undefined,
   targetRpe: number,
   isMainLift: boolean
 ): WorkoutExercise["sets"] {
-  const setCount = Math.max(DELOAD_MIN_SETS, Math.ceil(baselineSetCount * DELOAD_SET_FACTOR));
+  const setCount = resolveDeloadSetCount(baselineSetCount);
   return Array.from({ length: setCount }, (_, index) => ({
     setIndex: index + 1,
     targetReps: baselineReps,
     targetRpe,
-    targetLoad: baselineLoad,
     role: isMainLift ? "main" : "accessory",
   }));
 }
@@ -43,7 +51,10 @@ export async function generateDeloadSessionFromIntentContext(
   userId: string,
   mapped: MappedGenerationContext,
   sessionIntent: SessionIntent
-): Promise<{ workout: WorkoutPlan; selection: SelectionOutput; note: string } | { error: string }> {
+): Promise<
+  | { workout: WorkoutPlan; selection: SelectionOutput; note: string; trace: DeloadTransformationTrace }
+  | { error: string }
+> {
   const activeMesocycle = mapped.activeMesocycle;
   if (!activeMesocycle) {
     return { error: "No active mesocycle found for deload generation." };
@@ -121,48 +132,53 @@ export async function generateDeloadSessionFromIntentContext(
   const targetRpe = 10 - (rirTarget.min + rirTarget.max) / 2;
 
   const workoutExercises: WorkoutExercise[] = [];
+  const traceExercises: DeloadTransformationTrace["exercises"] = [];
   for (const [orderIndex, exerciseId] of orderedExerciseIds.entries()) {
     const exercise = exerciseById.get(exerciseId);
     if (!exercise) continue;
 
     const latestExerciseEntry = latestAccumWorkout.exercises.find((entry) => entry.exerciseId === exerciseId);
-    const isMainLift = latestExerciseEntry?.isMainLift ?? coreIds.has(exerciseId);
-    const baselineSetCount = latestExerciseEntry?.sets.length ?? 4;
+    const baselineExerciseEntry =
+      latestExerciseEntry ??
+      peakAccumulationSource
+        .flatMap((workout) => workout.exercises)
+        .find((entry) => entry.exerciseId === exerciseId);
+    const isMainLift = baselineExerciseEntry?.isMainLift ?? coreIds.has(exerciseId);
+    const baselineSetCount = baselineExerciseEntry?.sets.length ?? 4;
     const baselineReps = modalNumber(
-      (latestExerciseEntry?.sets ?? [])
+      (baselineExerciseEntry?.sets ?? [])
         .flatMap((set) => set.logs.map((log) => log.actualReps ?? 0))
         .filter((reps) => reps > 0)
     ) ?? 8;
 
-    const peakAccumulationLoads = peakAccumulationSource.flatMap((workout) =>
-      workout.exercises
-        .filter((entry) => entry.exerciseId === exerciseId)
-        .flatMap((entry) =>
-          entry.sets
-            .flatMap((set) => set.logs)
-            .map((log) => log.actualLoad ?? 0)
-            .filter((load) => load > 0)
-        )
+    const setPlan = buildExerciseSetPlan(
+      Math.max(1, baselineSetCount),
+      baselineReps,
+      Number(targetRpe.toFixed(1)),
+      isMainLift
     );
-    const latestLoads = (latestExerciseEntry?.sets ?? [])
-      .flatMap((set) => set.logs)
-      .map((log) => log.actualLoad ?? 0)
-      .filter((load) => load > 0);
-    const anchoredLoad = modalNumber(peakAccumulationLoads.length > 0 ? peakAccumulationLoads : latestLoads);
 
+    // Leave targetLoad unset so canonical prescription can apply the deload
+    // load-down instead of carrying accumulation-era loads forward.
     workoutExercises.push({
       id: createId(),
       exercise,
       orderIndex,
       isMainLift,
       role: isMainLift ? "main" : "accessory",
-      sets: buildExerciseSetPlan(
-        Math.max(1, baselineSetCount),
-        baselineReps,
-        anchoredLoad,
-        Number(targetRpe.toFixed(1)),
-        isMainLift
-      ),
+      sets: setPlan,
+    });
+    traceExercises.push({
+      exerciseId,
+      exerciseName: exercise.name,
+      isMainLift,
+      baselineSetCount: Math.max(1, baselineSetCount),
+      baselineRepAnchor: baselineReps,
+      deloadSetCount: setPlan.length,
+      anchoredLoad: null,
+      anchoredLoadSource: "none",
+      peakAccumulationLoadCount: 0,
+      latestAccumulationLoadCount: 0,
     });
   }
 
@@ -176,7 +192,7 @@ export async function generateDeloadSessionFromIntentContext(
     mainLifts,
     accessories,
     estimatedMinutes,
-    notes: "Lifecycle-deload: fixed exercise list, 45% peak-accumulation volume, anchored accumulation loads.",
+    notes: "Lifecycle-deload: fixed exercise list, roughly half the hard sets, lighter loads assigned canonically at prescription time.",
   };
 
   const perExerciseSetTargets = Object.fromEntries(
@@ -191,10 +207,20 @@ export async function generateDeloadSessionFromIntentContext(
     rationale: {},
     volumePlanByMuscle: {},
   };
+  const trace: DeloadTransformationTrace = {
+    version: 1,
+    sessionIntent,
+    targetRpe: Number(targetRpe.toFixed(1)),
+    setFactor: DELOAD_SET_FACTOR,
+    minSets: 1,
+    exerciseCount: traceExercises.length,
+    exercises: traceExercises,
+  };
 
   return {
     workout,
     selection,
-    note: "Deload gate enforced from ACTIVE_DELOAD mesocycle state.",
+    note: "Scheduled deload week: keep the exercise list stable, cut hard sets roughly in half, and assign lighter loads through the canonical load engine.",
+    trace,
   };
 }

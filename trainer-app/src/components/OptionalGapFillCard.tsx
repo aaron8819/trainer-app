@@ -20,11 +20,25 @@ export function OptionalGapFillCard({ gapFill }: OptionalGapFillCardProps) {
   const [error, setError] = useState<string | null>(null);
 
   const targetWeek = gapFill.targetWeek ?? gapFill.anchorWeek;
-  if (!gapFill.eligible || targetWeek == null || !gapFill.weekCloseId) {
+  if (!gapFill.visible || targetWeek == null || !gapFill.weekCloseId) {
     return null;
   }
 
   const summaryRows = gapFill.deficitSummary.slice(0, 3);
+  const canGenerateGapFill = gapFill.eligible && gapFill.workflowState === "PENDING_OPTIONAL_GAP_FILL";
+  const hasLinkedWorkout = Boolean(gapFill.linkedWorkout);
+  const title =
+    gapFill.workflowState === "COMPLETED"
+      ? `Week ${targetWeek} workflow complete`
+      : `Gap-fill for Week ${targetWeek}`;
+  const description =
+    summaryRows.length > 0
+      ? summaryRows.map((row) => `${row.muscle} (${row.deficit} sets)`).join(", ")
+      : "Focus target muscles are available.";
+  const helperText =
+    gapFill.workflowState === "COMPLETED"
+      ? "Training targets are still short even though the week workflow is already complete."
+      : "Completing the optional gap-fill will close the workflow, but any remaining deficit will stay visible.";
 
   const handleGenerateGapFill = async () => {
     if (gapFill.linkedWorkout) {
@@ -112,29 +126,29 @@ export function OptionalGapFillCard({ gapFill }: OptionalGapFillCardProps) {
   return (
     <div className="rounded-2xl border border-amber-200 bg-amber-50/40 p-5">
       <h3 className="text-sm font-semibold uppercase tracking-wide text-amber-700">
-        Optional Gap-Fill
+        {gapFill.workflowState === "COMPLETED" ? "Week Close" : "Optional Gap-Fill"}
       </h3>
-      <p className="mt-2 text-lg font-semibold text-slate-900">Gap-fill for Week {targetWeek}</p>
-      <p className="mt-2 text-sm text-slate-700">
-        {summaryRows.length > 0
-          ? summaryRows.map((row) => `${row.muscle} (${row.deficit} sets)`).join(", ")
-          : "Focus target muscles are available."}
-      </p>
+      <p className="mt-2 text-lg font-semibold text-slate-900">{title}</p>
+      <p className="mt-2 text-sm text-slate-700">{description}</p>
       <p className="mt-2 text-xs text-amber-800">
-        Starting Week {targetWeek + 1} will hide this gap-fill.
+        {helperText}
       </p>
-      <button
-        type="button"
-        className="mt-4 inline-flex min-h-11 items-center justify-center rounded-full bg-slate-900 px-5 py-2 text-sm font-semibold text-white disabled:opacity-60"
-        onClick={handleGenerateGapFill}
-        disabled={loading}
-      >
-        {loading
-          ? "Generating..."
-          : gapFill.linkedWorkout
-            ? "Open gap-fill"
-            : "Generate gap-fill"}
-      </button>
+      {canGenerateGapFill || hasLinkedWorkout ? (
+        <button
+          type="button"
+          className="mt-4 inline-flex min-h-11 items-center justify-center rounded-full bg-slate-900 px-5 py-2 text-sm font-semibold text-white disabled:opacity-60"
+          onClick={handleGenerateGapFill}
+          disabled={loading}
+        >
+          {loading
+            ? "Generating..."
+            : gapFill.linkedWorkout
+              ? gapFill.workflowState === "COMPLETED"
+                ? "Review gap-fill"
+                : "Open gap-fill"
+              : "Generate gap-fill"}
+        </button>
+      ) : null}
       {error ? <p className="mt-2 text-sm text-rose-600">{error}</p> : null}
     </div>
   );

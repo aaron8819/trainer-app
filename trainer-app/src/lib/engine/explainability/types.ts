@@ -32,6 +32,7 @@ export type NextExposureDecision = {
   repRange: { min: number; max: number };
   modalRpe: number | null;
   medianReps: number | null;
+  decisionLog?: string[];
 };
 
 export type ExplainabilityConfidence = {

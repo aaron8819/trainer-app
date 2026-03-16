@@ -226,6 +226,11 @@ describe("mesocycle week close", () => {
     expect(mocks.transitionMesocycleStateInTransaction).toHaveBeenCalledWith(mocks.tx, "meso-1");
     expect(result.status).toBe("RESOLVED");
     expect(result.advancedLifecycle).toBe(true);
+    expect(result.weekCloseState).toMatchObject({
+      workflowState: "COMPLETED",
+      deficitState: "CLOSED",
+      remainingDeficitSets: 0,
+    });
   });
 
   it("creates a pending row and does not advance lifecycle when deficits remain", async () => {
@@ -276,6 +281,10 @@ describe("mesocycle week close", () => {
     expect(mocks.transitionMesocycleStateInTransaction).not.toHaveBeenCalled();
     expect(result.status).toBe("PENDING_OPTIONAL_GAP_FILL");
     expect(result.advancedLifecycle).toBe(false);
+    expect(result.weekCloseState).toMatchObject({
+      workflowState: "PENDING_OPTIONAL_GAP_FILL",
+      deficitState: "OPEN",
+    });
   });
 
   it("rejects closing a new week while another week-close is pending", async () => {
@@ -302,6 +311,33 @@ describe("mesocycle week close", () => {
     mocks.weekCloseFindFirst.mockResolvedValueOnce({
       id: "wc-1",
       optionalWorkoutId: "workout-gap",
+      targetWeek: 1,
+      targetPhase: "ACCUMULATION",
+      deficitSnapshotJson: {
+        version: 1,
+        policy: {
+          requiredSessionsPerWeek: 3,
+          maxOptionalGapFillSessionsPerWeek: 1,
+          maxGeneratedHardSets: 12,
+          maxGeneratedExercises: 4,
+        },
+        summary: {
+          totalDeficitSets: 4,
+          qualifyingMuscleCount: 1,
+          topTargetMuscles: ["Chest"],
+        },
+        muscles: [{ muscle: "Chest", target: 12, actual: 8, deficit: 4 }],
+      },
+      mesocycle: {
+        id: "meso-1",
+        durationWeeks: 5,
+        sessionsPerWeek: 3,
+        startWeek: 0,
+        macroCycle: {
+          startDate: new Date("2026-03-01T00:00:00.000Z"),
+          userId: "user-1",
+        },
+      },
     });
     mocks.weekCloseFindUnique
       .mockResolvedValueOnce({
@@ -309,6 +345,23 @@ describe("mesocycle week close", () => {
         mesocycleId: "meso-1",
         status: "PENDING_OPTIONAL_GAP_FILL",
         resolution: null,
+        targetWeek: 1,
+        targetPhase: "ACCUMULATION",
+        deficitSnapshotJson: {
+          version: 1,
+          policy: {
+            requiredSessionsPerWeek: 3,
+            maxOptionalGapFillSessionsPerWeek: 1,
+            maxGeneratedHardSets: 12,
+            maxGeneratedExercises: 4,
+          },
+          summary: {
+            totalDeficitSets: 4,
+            qualifyingMuscleCount: 1,
+            topTargetMuscles: ["Chest"],
+          },
+          muscles: [{ muscle: "Chest", target: 12, actual: 8, deficit: 4 }],
+        },
       });
 
     const result = await resolveWeekCloseOnOptionalGapFillCompletion(mocks.tx as never, {
@@ -328,18 +381,39 @@ describe("mesocycle week close", () => {
     expect(mocks.transitionMesocycleStateInTransaction).toHaveBeenCalledWith(mocks.tx, "meso-1");
     expect(result.outcome).toBe("resolved");
     expect(result.resolution).toBe("GAP_FILL_COMPLETED");
+    expect(result.weekCloseState).toMatchObject({
+      workflowState: "COMPLETED",
+      deficitState: "PARTIAL",
+      remainingDeficitSets: expect.any(Number),
+    });
   });
 
   it("rejects optional gap-fill completion when the linked row is already resolved", async () => {
     mocks.weekCloseFindFirst.mockResolvedValueOnce({
       id: "wc-1",
       optionalWorkoutId: "workout-gap",
+      targetWeek: 1,
+      targetPhase: "ACCUMULATION",
+      deficitSnapshotJson: null,
+      mesocycle: {
+        id: "meso-1",
+        durationWeeks: 5,
+        sessionsPerWeek: 3,
+        startWeek: 0,
+        macroCycle: {
+          startDate: new Date("2026-03-01T00:00:00.000Z"),
+          userId: "user-1",
+        },
+      },
     });
     mocks.weekCloseFindUnique.mockResolvedValueOnce({
       id: "wc-1",
       mesocycleId: "meso-1",
       status: "RESOLVED",
       resolution: "GAP_FILL_DISMISSED",
+      targetWeek: 1,
+      targetPhase: "ACCUMULATION",
+      deficitSnapshotJson: null,
     });
 
     await expect(
@@ -357,12 +431,46 @@ describe("mesocycle week close", () => {
         mesocycleId: "meso-1",
         status: "PENDING_OPTIONAL_GAP_FILL",
         resolution: null,
+        targetWeek: 1,
+        targetPhase: "ACCUMULATION",
+        deficitSnapshotJson: {
+          version: 1,
+          policy: {
+            requiredSessionsPerWeek: 3,
+            maxOptionalGapFillSessionsPerWeek: 1,
+            maxGeneratedHardSets: 12,
+            maxGeneratedExercises: 4,
+          },
+          summary: {
+            totalDeficitSets: 2,
+            qualifyingMuscleCount: 1,
+            topTargetMuscles: ["Chest"],
+          },
+          muscles: [{ muscle: "Chest", target: 12, actual: 10, deficit: 2 }],
+        },
       })
       .mockResolvedValueOnce({
         id: "wc-1",
         mesocycleId: "meso-1",
         status: "RESOLVED",
         resolution: "GAP_FILL_DISMISSED",
+        targetWeek: 1,
+        targetPhase: "ACCUMULATION",
+        deficitSnapshotJson: {
+          version: 1,
+          policy: {
+            requiredSessionsPerWeek: 3,
+            maxOptionalGapFillSessionsPerWeek: 1,
+            maxGeneratedHardSets: 12,
+            maxGeneratedExercises: 4,
+          },
+          summary: {
+            totalDeficitSets: 2,
+            qualifyingMuscleCount: 1,
+            topTargetMuscles: ["Chest"],
+          },
+          muscles: [{ muscle: "Chest", target: 12, actual: 10, deficit: 2 }],
+        },
       });
 
     const first = await dismissPendingWeekClose(mocks.tx as never, { weekCloseId: "wc-1" });
@@ -373,6 +481,21 @@ describe("mesocycle week close", () => {
       mesocycleId: "meso-1",
       status: "RESOLVED",
       resolution: "GAP_FILL_DISMISSED",
+      deficitSnapshotJson: {
+        version: 1,
+        policy: {
+          requiredSessionsPerWeek: 3,
+          maxOptionalGapFillSessionsPerWeek: 1,
+          maxGeneratedHardSets: 12,
+          maxGeneratedExercises: 4,
+        },
+        summary: {
+          totalDeficitSets: 2,
+          qualifyingMuscleCount: 1,
+          topTargetMuscles: ["Chest"],
+        },
+        muscles: [{ muscle: "Chest", target: 12, actual: 10, deficit: 2 }],
+      },
     });
 
     const second = await dismissPendingWeekClose(mocks.tx as never, { weekCloseId: "wc-1" });
@@ -392,6 +515,21 @@ describe("mesocycle week close", () => {
       status: "PENDING_OPTIONAL_GAP_FILL",
       resolution: null,
       targetWeek: 1,
+      deficitSnapshotJson: {
+        version: 1,
+        policy: {
+          requiredSessionsPerWeek: 3,
+          maxOptionalGapFillSessionsPerWeek: 1,
+          maxGeneratedHardSets: 12,
+          maxGeneratedExercises: 4,
+        },
+        summary: {
+          totalDeficitSets: 4,
+          qualifyingMuscleCount: 1,
+          topTargetMuscles: ["Chest"],
+        },
+        muscles: [{ muscle: "Chest", target: 12, actual: 8, deficit: 4 }],
+      },
     });
     mocks.weekCloseUpdateMany.mockResolvedValueOnce({ count: 1 });
     mocks.weekCloseFindUnique.mockResolvedValueOnce({
@@ -399,6 +537,23 @@ describe("mesocycle week close", () => {
       mesocycleId: "meso-1",
       status: "PENDING_OPTIONAL_GAP_FILL",
       resolution: null,
+      targetWeek: 1,
+      targetPhase: "ACCUMULATION",
+      deficitSnapshotJson: {
+        version: 1,
+        policy: {
+          requiredSessionsPerWeek: 3,
+          maxOptionalGapFillSessionsPerWeek: 1,
+          maxGeneratedHardSets: 12,
+          maxGeneratedExercises: 4,
+        },
+        summary: {
+          totalDeficitSets: 4,
+          qualifyingMuscleCount: 1,
+          topTargetMuscles: ["Chest"],
+        },
+        muscles: [{ muscle: "Chest", target: 12, actual: 8, deficit: 4 }],
+      },
     });
 
     const result = await autoDismissPendingWeekCloseOnForwardProgress(mocks.tx as never, {
@@ -409,6 +564,7 @@ describe("mesocycle week close", () => {
     expect(result.outcome).toBe("resolved");
     expect(result.resolution).toBe("AUTO_DISMISSED");
     expect(mocks.transitionMesocycleStateInTransaction).toHaveBeenCalledTimes(1);
+    expect(result.weekCloseState?.deficitState).toBe("PARTIAL");
   });
 
   it("links an optional workout to a pending week-close row idempotently", async () => {

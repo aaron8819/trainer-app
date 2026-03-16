@@ -13,11 +13,16 @@ vi.mock("next/navigation", () => ({
 function buildGapFill(overrides: Partial<GapFillSupportData> = {}): GapFillSupportData {
   return {
     eligible: true,
+    visible: true,
     reason: null,
     weekCloseId: "wc-1",
     anchorWeek: 3,
     targetWeek: 3,
     targetPhase: "ACCUMULATION",
+    resolution: null,
+    workflowState: "PENDING_OPTIONAL_GAP_FILL",
+    deficitState: "OPEN",
+    remainingDeficitSets: 11,
     targetMuscles: ["front delts", "rear delts", "biceps"],
     deficitSummary: [
       { muscle: "Front Delts", target: 5, actual: 0, deficit: 5 },
@@ -42,7 +47,7 @@ describe("OptionalGapFillCard", () => {
   });
 
   it("does not render when gapFill is ineligible", () => {
-    const { container } = render(<OptionalGapFillCard gapFill={buildGapFill({ eligible: false })} />);
+    const { container } = render(<OptionalGapFillCard gapFill={buildGapFill({ visible: false })} />);
     expect(container).toBeEmptyDOMElement();
   });
 
@@ -160,5 +165,24 @@ describe("OptionalGapFillCard", () => {
 
     expect(fetchMock).not.toHaveBeenCalled();
     expect(pushMock).toHaveBeenCalledWith("/log/w-gap-existing");
+  });
+
+  it("surfaces partial training closure after workflow completion without a generate CTA", () => {
+    render(
+      <OptionalGapFillCard
+        gapFill={buildGapFill({
+          eligible: false,
+          workflowState: "COMPLETED",
+          deficitState: "PARTIAL",
+          resolution: "GAP_FILL_COMPLETED",
+          linkedWorkout: null,
+        })}
+      />
+    );
+
+    expect(screen.getByText("Week Close")).toBeInTheDocument();
+    expect(screen.getByText("Week 3 workflow complete")).toBeInTheDocument();
+    expect(screen.getByText(/Training targets are still short/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /generate gap-fill/i })).not.toBeInTheDocument();
   });
 });

@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => {
   const workoutFindFirst = vi.fn();
   const mesocycleUpdate = vi.fn();
   const getCurrentMesoWeekFn = vi.fn(() => 1);
-  const findPendingWeekCloseForUser = vi.fn();
+  const findRelevantWeekCloseForUser = vi.fn();
   const loadRecentMuscleStimulus = vi.fn(async (_client, input: { targetByMuscle: Record<string, number> }) =>
     Object.fromEntries(
       Object.keys(input.targetByMuscle).map((muscle) => [
@@ -34,7 +34,7 @@ const mocks = vi.hoisted(() => {
     workoutFindFirst,
     mesocycleUpdate,
     getCurrentMesoWeekFn,
-    findPendingWeekCloseForUser,
+    findRelevantWeekCloseForUser,
     loadRecentMuscleStimulus,
     getLatestReadinessSignal,
     prisma: {
@@ -52,7 +52,7 @@ vi.mock("./mesocycle-lifecycle-math", async (importOriginal) => {
   return { ...original, getCurrentMesoWeek: mocks.getCurrentMesoWeekFn };
 });
 vi.mock("./mesocycle-week-close", () => ({
-  findPendingWeekCloseForUser: (...args: unknown[]) => mocks.findPendingWeekCloseForUser(...args),
+  findRelevantWeekCloseForUser: (...args: unknown[]) => mocks.findRelevantWeekCloseForUser(...args),
 }));
 vi.mock("./recent-muscle-stimulus", () => ({
   loadRecentMuscleStimulus: mocks.loadRecentMuscleStimulus,
@@ -136,7 +136,7 @@ function setupDashboardMocks(
   mocks.workoutFindMany.mockResolvedValue([]);
   mocks.workoutFindFirst.mockResolvedValue(null);
   mocks.getCurrentMesoWeekFn.mockReturnValue(week);
-  mocks.findPendingWeekCloseForUser.mockResolvedValue(null);
+  mocks.findRelevantWeekCloseForUser.mockResolvedValue(null);
 }
 
 describe("computeMesoWeekStart", () => {
@@ -750,12 +750,13 @@ describe("loadHomeProgramSupport", () => {
         scheduledDate: new Date("2026-03-08T00:00:00.000Z"),
       },
     ]);
-    mocks.findPendingWeekCloseForUser.mockResolvedValueOnce({
+    mocks.findRelevantWeekCloseForUser.mockResolvedValueOnce({
       id: "wc-1",
       mesocycleId: "meso-1",
       targetWeek: 1,
       targetPhase: "ACCUMULATION",
       status: "PENDING_OPTIONAL_GAP_FILL",
+      resolution: null,
       deficitSnapshot: {
         version: 1,
         policy: {
@@ -774,6 +775,17 @@ describe("loadHomeProgramSupport", () => {
           { muscle: "Biceps", target: 8, actual: 6, deficit: 2 },
         ],
       },
+      weekCloseState: {
+        workflowState: "PENDING_OPTIONAL_GAP_FILL",
+        deficitState: "OPEN",
+        remainingDeficitSets: 6,
+        remainingQualifyingMuscleCount: 2,
+        remainingTopTargetMuscles: ["Chest", "Biceps"],
+        remainingMuscles: [
+          { muscle: "Chest", target: 12, actual: 8, deficit: 4 },
+          { muscle: "Biceps", target: 8, actual: 6, deficit: 2 },
+        ],
+      },
       optionalWorkout: null,
     });
 
@@ -785,6 +797,9 @@ describe("loadHomeProgramSupport", () => {
     expect(result.gapFill.targetPhase).toBe("ACCUMULATION");
     expect(result.gapFill.reason).toBeNull();
     expect(result.gapFill.eligible).toBe(true);
+    expect(result.gapFill.visible).toBe(true);
+    expect(result.gapFill.workflowState).toBe("PENDING_OPTIONAL_GAP_FILL");
+    expect(result.gapFill.deficitState).toBe("OPEN");
     expect(result.gapFill.targetMuscles).toEqual(["Chest", "Biceps"]);
     expect(result.gapFill.linkedWorkout).toBeNull();
   });
@@ -810,12 +825,13 @@ describe("loadHomeProgramSupport", () => {
         scheduledDate: new Date("2026-03-29T00:00:00.000Z"),
       },
     ]);
-    mocks.findPendingWeekCloseForUser.mockResolvedValueOnce({
+    mocks.findRelevantWeekCloseForUser.mockResolvedValueOnce({
       id: "wc-4",
       mesocycleId: "meso-1",
       targetWeek: 4,
       targetPhase: "ACCUMULATION",
       status: "PENDING_OPTIONAL_GAP_FILL",
+      resolution: null,
       deficitSnapshot: {
         version: 1,
         policy: {
@@ -830,6 +846,14 @@ describe("loadHomeProgramSupport", () => {
           topTargetMuscles: ["Front Delts"],
         },
         muscles: [{ muscle: "Front Delts", target: 5, actual: 1, deficit: 4 }],
+      },
+      weekCloseState: {
+        workflowState: "PENDING_OPTIONAL_GAP_FILL",
+        deficitState: "OPEN",
+        remainingDeficitSets: 4,
+        remainingQualifyingMuscleCount: 1,
+        remainingTopTargetMuscles: ["Front Delts"],
+        remainingMuscles: [{ muscle: "Front Delts", target: 5, actual: 1, deficit: 4 }],
       },
       optionalWorkout: null,
     });
@@ -860,12 +884,13 @@ describe("loadHomeProgramSupport", () => {
         scheduledDate: new Date("2026-03-29T00:00:00.000Z"),
       },
     ]);
-    mocks.findPendingWeekCloseForUser.mockResolvedValueOnce({
+    mocks.findRelevantWeekCloseForUser.mockResolvedValueOnce({
       id: "wc-4",
       mesocycleId: "meso-1",
       targetWeek: 4,
       targetPhase: "ACCUMULATION",
       status: "PENDING_OPTIONAL_GAP_FILL",
+      resolution: null,
       deficitSnapshot: {
         version: 1,
         policy: {
@@ -880,6 +905,14 @@ describe("loadHomeProgramSupport", () => {
           topTargetMuscles: ["Chest"],
         },
         muscles: [{ muscle: "Chest", target: 12, actual: 8, deficit: 4 }],
+      },
+      weekCloseState: {
+        workflowState: "PENDING_OPTIONAL_GAP_FILL",
+        deficitState: "OPEN",
+        remainingDeficitSets: 4,
+        remainingQualifyingMuscleCount: 1,
+        remainingTopTargetMuscles: ["Chest"],
+        remainingMuscles: [{ muscle: "Chest", target: 12, actual: 8, deficit: 4 }],
       },
       optionalWorkout: {
         id: "w-gap-fill",
@@ -898,17 +931,96 @@ describe("loadHomeProgramSupport", () => {
     expect(result.gapFill.weekCloseId).toBe("wc-4");
   });
 
+  it("keeps partial deficit truth visible after workflow completion closes the week-close row", async () => {
+    setupDashboardMocks(
+      {
+        state: "ACTIVE_DELOAD",
+        sessionsPerWeek: 3,
+        accumulationSessionsCompleted: 12,
+        deloadSessionsCompleted: 0,
+      },
+      5
+    );
+    mocks.workoutFindMany.mockResolvedValueOnce([]);
+    mocks.findRelevantWeekCloseForUser.mockResolvedValueOnce({
+      id: "wc-4",
+      mesocycleId: "meso-1",
+      targetWeek: 4,
+      targetPhase: "ACCUMULATION",
+      status: "RESOLVED",
+      resolution: "GAP_FILL_COMPLETED",
+      deficitSnapshot: {
+        version: 1,
+        policy: {
+          requiredSessionsPerWeek: 3,
+          maxOptionalGapFillSessionsPerWeek: 1,
+          maxGeneratedHardSets: 12,
+          maxGeneratedExercises: 4,
+        },
+        summary: {
+          totalDeficitSets: 8,
+          qualifyingMuscleCount: 2,
+          topTargetMuscles: ["Chest", "Side Delts"],
+        },
+        muscles: [
+          { muscle: "Chest", target: 12, actual: 8, deficit: 4 },
+          { muscle: "Side Delts", target: 10, actual: 6, deficit: 4 },
+        ],
+        outcome: {
+          workflowState: "COMPLETED",
+          deficitState: "PARTIAL",
+          remainingDeficitSets: 5,
+          remainingQualifyingMuscleCount: 2,
+          remainingTopTargetMuscles: ["Chest", "Side Delts"],
+          remainingMuscles: [
+            { muscle: "Chest", target: 12, actual: 9, deficit: 3 },
+            { muscle: "Side Delts", target: 10, actual: 8, deficit: 2 },
+          ],
+        },
+      },
+      weekCloseState: {
+        workflowState: "COMPLETED",
+        deficitState: "PARTIAL",
+        remainingDeficitSets: 5,
+        remainingQualifyingMuscleCount: 2,
+        remainingTopTargetMuscles: ["Chest", "Side Delts"],
+        remainingMuscles: [
+          { muscle: "Chest", target: 12, actual: 9, deficit: 3 },
+          { muscle: "Side Delts", target: 10, actual: 8, deficit: 2 },
+        ],
+      },
+      optionalWorkout: {
+        id: "w-gap-fill",
+        status: "COMPLETED",
+        scheduledDate: new Date("2026-03-25T00:00:00.000Z"),
+      },
+    });
+
+    const result = await loadHomeProgramSupport("user-1");
+
+    expect(result.gapFill.visible).toBe(true);
+    expect(result.gapFill.eligible).toBe(false);
+    expect(result.gapFill.workflowState).toBe("COMPLETED");
+    expect(result.gapFill.deficitState).toBe("PARTIAL");
+    expect(result.gapFill.remainingDeficitSets).toBe(5);
+    expect(result.gapFill.deficitSummary).toEqual([
+      { muscle: "Chest", target: 12, actual: 9, deficit: 3 },
+      { muscle: "Side Delts", target: 10, actual: 8, deficit: 2 },
+    ]);
+  });
+
   it("returns ineligible support when no pending week-close exists", async () => {
     setupDashboardMocks();
     mocks.constraintsFindUnique.mockResolvedValue({
       weeklySchedule: ["PUSH", "PULL", "LEGS"],
     });
     mocks.workoutFindMany.mockResolvedValueOnce([]);
-    mocks.findPendingWeekCloseForUser.mockResolvedValueOnce(null);
+    mocks.findRelevantWeekCloseForUser.mockResolvedValueOnce(null);
 
     const result = await loadHomeProgramSupport("user-1");
 
     expect(result.gapFill.eligible).toBe(false);
+    expect(result.gapFill.visible).toBe(false);
     expect(result.gapFill.reason).toBe("no_pending_week_close");
     expect(result.gapFill.weekCloseId).toBeNull();
   });

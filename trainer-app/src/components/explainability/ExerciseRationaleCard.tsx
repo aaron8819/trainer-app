@@ -96,6 +96,11 @@ export function ExerciseRationaleCard({
                 Anchor {nextExposureDecision.anchorLoad ?? "n/a"} | median reps{" "}
                 {nextExposureDecision.medianReps ?? "n/a"} | modal RPE {nextExposureDecision.modalRpe ?? "n/a"}
               </p>
+              {nextExposureDecision.decisionLog && nextExposureDecision.decisionLog.length > 0 ? (
+                <p className="mt-1 text-xs text-emerald-900">
+                  {nextExposureDecision.decisionLog[nextExposureDecision.decisionLog.length - 1]}
+                </p>
+              ) : null}
             </div>
           ) : null}
 

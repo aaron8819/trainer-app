@@ -1183,6 +1183,7 @@ async function buildNextExposureDecision(
     reason: formatNextExposureReason({
       action,
       decisionPath: decision.path,
+      decisionLog: decision.decisionLog,
       repRange,
       medianReps: performedSemantics.medianReps,
       modalRpe: performedSemantics.modalRpe,
@@ -1273,6 +1274,7 @@ async function resolveExplainabilityProgressionSession(
 function formatNextExposureReason(input: {
   action: NextExposureDecision["action"];
   decisionPath?: string;
+  decisionLog?: string[];
   repRange: [number, number];
   medianReps: number | null;
   modalRpe: number | null;
@@ -1285,12 +1287,21 @@ function formatNextExposureReason(input: {
 
   if (input.action === "increase") {
     if (input.decisionPath === "path_5_overshoot") {
-      return `You beat the written load at manageable effort, so ${input.anchorLoad} lbs should not stay capped next time.`;
+      return input.modalRpe != null && input.modalRpe > 8
+        ? `You beat the written load across enough working sets to earn a one-step increase, even at modal RPE ${modalRpeLabel}.`
+        : `You beat the written load at manageable effort, so ${input.anchorLoad} lbs should not stay capped next time.`;
     }
     return `Median reps reached the top of the ${repBand} band at manageable effort (modal RPE ${modalRpeLabel}) on ${input.anchorLoad} lbs.`;
   }
   if (input.action === "decrease") {
     return `Effort looked too high to keep ${input.anchorLoad} lbs moving productively next time.`;
+  }
+  const overshootGateMessage = input.decisionLog
+    ?.slice()
+    .reverse()
+    .find((entry) => entry.startsWith("Overshoot gate:"));
+  if (overshootGateMessage) {
+    return overshootGateMessage.replace(/^Overshoot gate:\s*/, "");
   }
   if (input.modalRpe != null && input.modalRpe >= 9) {
     return `Effort was already high at modal RPE ${modalRpeLabel}, so ${input.anchorLoad} lbs should hold.`;

@@ -51,6 +51,7 @@ export function derivePerformedExerciseSemantics(input: {
       reps: set.actualReps as number,
       load: set.actualLoad as number,
       rpe: set.actualRpe ?? undefined,
+      targetLoad: set.targetLoad ?? undefined,
     }));
 
   if (signalSets.length === 0) {

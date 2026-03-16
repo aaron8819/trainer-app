@@ -48,6 +48,14 @@ describe("POST /api/mesocycles/week-close/[id]/dismiss", () => {
       weekCloseId: "wc-1",
       status: "RESOLVED",
       resolution: "GAP_FILL_DISMISSED",
+      weekCloseState: {
+        workflowState: "COMPLETED",
+        deficitState: "PARTIAL",
+        remainingDeficitSets: 4,
+        remainingQualifyingMuscleCount: 1,
+        remainingTopTargetMuscles: ["Chest"],
+        remainingMuscles: [{ muscle: "Chest", target: 12, actual: 8, deficit: 4 }],
+      },
       advancedLifecycle: true,
       outcome: "resolved",
     });
@@ -66,6 +74,10 @@ describe("POST /api/mesocycles/week-close/[id]/dismiss", () => {
       weekCloseId: "wc-1",
       status: "RESOLVED",
       resolution: "GAP_FILL_DISMISSED",
+      weekCloseState: expect.objectContaining({
+        workflowState: "COMPLETED",
+        deficitState: "PARTIAL",
+      }),
       advancedLifecycle: true,
       outcome: "resolved",
     });
@@ -77,6 +89,14 @@ describe("POST /api/mesocycles/week-close/[id]/dismiss", () => {
       weekCloseId: "wc-1",
       status: "RESOLVED",
       resolution: "GAP_FILL_DISMISSED",
+      weekCloseState: {
+        workflowState: "COMPLETED",
+        deficitState: "PARTIAL",
+        remainingDeficitSets: 4,
+        remainingQualifyingMuscleCount: 1,
+        remainingTopTargetMuscles: ["Chest"],
+        remainingMuscles: [{ muscle: "Chest", target: 12, actual: 8, deficit: 4 }],
+      },
       advancedLifecycle: false,
       outcome: "already_resolved",
     });

@@ -2,16 +2,24 @@ import { DELOAD_THRESHOLDS, PLATEAU_CRITERIA } from "./rules";
 import type { TrainingAge, WorkoutHistoryEntry } from "./types";
 import { roundLoad } from "./utils";
 import { isPerformedHistoryEntry } from "./history";
+import type { ProgressionDecisionTrace } from "@/lib/evidence/session-audit-types";
 
-export type ProgressionSet = { reps: number; rpe?: number; load?: number };
+export type ProgressionSet = { reps: number; rpe?: number; load?: number; targetLoad?: number };
 type HistorySet = WorkoutHistoryEntry["exercises"][number]["sets"][number];
 export type ProgressionEquipment = "barbell" | "dumbbell" | "cable" | "other";
-export type ProgressionDecisionPath = "path_1" | "path_2" | "path_3" | "path_4" | "fallback_hold";
+export type ProgressionDecisionPath =
+  | "path_1"
+  | "path_2"
+  | "path_3"
+  | "path_4"
+  | "path_5_overshoot"
+  | "fallback_hold";
 export type ProgressionDecision = {
   nextLoad: number;
   anchorLoad: number;
   path: ProgressionDecisionPath;
   decisionLog: string[];
+  trace: ProgressionDecisionTrace;
 };
 export type DoubleProgressionDecisionOptions = {
   priorSessionCount?: number;
@@ -36,6 +44,15 @@ export const PROGRESSION_CONFIG = {
   minSessionsForPlateauEvidence: 3,
   // Treat <=1% e1RM drift as effectively flat rather than meaningful progress.
   plateauImprovementEpsilon: 0.01,
+  // Earned-overshoot progression still requires controlled effort.
+  overshootStandardRpeCeiling: 8,
+  // Slightly harder sessions can still earn an increase if the evidence is stronger.
+  overshootControlledRpeCeiling: 8.5,
+  // Single-set overshoots are too easy to game; require session-level evidence.
+  minOvershootSetCount: 2,
+  // The relaxed 8.5-RPE lane needs broad coverage across the target-bearing sets.
+  overshootControlledCoverageRatio: 0.75,
+  overshootControlledMinSetCount: 3,
 } as const;
 const EFFECTIVE_RPE_MIN = 6;
 
@@ -205,6 +222,8 @@ export function computeDoubleProgressionDecision(
   const sampleConfidenceScale = resolveSampleSizeConfidenceScale(options?.priorSessionCount);
   const historyConfidenceScale = clampConfidenceScale(options?.historyConfidenceScale);
   const progressionConfidenceScale = Number((sampleConfidenceScale * historyConfidenceScale).toFixed(2));
+  const anchorSource =
+    options?.anchorOverride !== undefined ? "top_set_override" : "conservative_modal";
 
   if (hasHighVariance) {
     decisionLog.push(
@@ -222,6 +241,10 @@ export function computeDoubleProgressionDecision(
   }
 
   if (anchorLoad === 0) {
+    const reasonCode =
+      medianReps >= topOfRange
+        ? "bodyweight_top_of_range_hold"
+        : "bodyweight_hold_for_reps";
     decisionLog.push("bodyweight exercise — rep progression only");
     if (medianReps >= topOfRange) {
       decisionLog.push(
@@ -237,6 +260,30 @@ export function computeDoubleProgressionDecision(
       anchorLoad: 0,
       path: "fallback_hold",
       decisionLog,
+      trace: buildProgressionDecisionTrace({
+        anchorLoad: 0,
+        nextLoad: 0,
+        path: "fallback_hold",
+        decisionLog,
+        anchorSource,
+        signalSetCount: signalSets.length,
+        effectiveSetCount: effectiveSets.length,
+        trimmedSetCount: signalSets.length - effectiveSets.length,
+        hasHighVariance,
+        minLoad,
+        maxLoad,
+        medianLoad,
+        priorSessionCount: options?.priorSessionCount ?? 0,
+        sampleConfidenceScale,
+        historyConfidenceScale,
+        progressionConfidenceScale,
+        confidenceReasons: options?.confidenceReasons ?? [],
+        repRange,
+        equipment,
+        medianReps,
+        modalRpe: modalRpe ?? null,
+        reasonCodes: ["bodyweight_rep_progression_only", reasonCode],
+      }),
     };
   }
 
@@ -247,6 +294,30 @@ export function computeDoubleProgressionDecision(
       anchorLoad,
       path: "path_1",
       decisionLog,
+      trace: buildProgressionDecisionTrace({
+        anchorLoad,
+        nextLoad: roundLoad(anchorLoad),
+        path: "path_1",
+        decisionLog,
+        anchorSource,
+        signalSetCount: signalSets.length,
+        effectiveSetCount: effectiveSets.length,
+        trimmedSetCount: signalSets.length - effectiveSets.length,
+        hasHighVariance,
+        minLoad,
+        maxLoad,
+        medianLoad,
+        priorSessionCount: options?.priorSessionCount ?? 0,
+        sampleConfidenceScale,
+        historyConfidenceScale,
+        progressionConfidenceScale,
+        confidenceReasons: options?.confidenceReasons ?? [],
+        repRange,
+        equipment,
+        medianReps,
+        modalRpe,
+        reasonCodes: ["high_fatigue_hold"],
+      }),
     };
   }
 
@@ -256,33 +327,287 @@ export function computeDoubleProgressionDecision(
       decisionLog.push(
         `Path 2 fired: modal RPE <= 7 and median reps reached top of range. Increment +${(increment * progressionConfidenceScale).toFixed(1)}.`
       );
-      return { nextLoad, anchorLoad, path: "path_2", decisionLog };
+      return {
+        nextLoad,
+        anchorLoad,
+        path: "path_2",
+        decisionLog,
+        trace: buildProgressionDecisionTrace({
+          anchorLoad,
+          nextLoad,
+          path: "path_2",
+          decisionLog,
+          anchorSource,
+          signalSetCount: signalSets.length,
+          effectiveSetCount: effectiveSets.length,
+          trimmedSetCount: signalSets.length - effectiveSets.length,
+          hasHighVariance,
+          minLoad,
+          maxLoad,
+          medianLoad,
+          priorSessionCount: options?.priorSessionCount ?? 0,
+          sampleConfidenceScale,
+          historyConfidenceScale,
+          progressionConfidenceScale,
+          confidenceReasons: options?.confidenceReasons ?? [],
+          repRange,
+          equipment,
+          medianReps,
+          modalRpe,
+          reasonCodes: ["top_of_range_reached", "low_effort_progression"],
+        }),
+      };
     }
     if (modalRpe == null || (modalRpe > 7 && modalRpe <= 8)) {
       const nextLoad = roundLoad(anchorLoad + increment * progressionConfidenceScale);
       decisionLog.push(
         `Path 3 fired: modal RPE in 7-8 range and median reps reached top of range. Increment +${(increment * progressionConfidenceScale).toFixed(1)}.`
       );
-      return { nextLoad, anchorLoad, path: "path_3", decisionLog };
+      return {
+        nextLoad,
+        anchorLoad,
+        path: "path_3",
+        decisionLog,
+        trace: buildProgressionDecisionTrace({
+          anchorLoad,
+          nextLoad,
+          path: "path_3",
+          decisionLog,
+          anchorSource,
+          signalSetCount: signalSets.length,
+          effectiveSetCount: effectiveSets.length,
+          trimmedSetCount: signalSets.length - effectiveSets.length,
+          hasHighVariance,
+          minLoad,
+          maxLoad,
+          medianLoad,
+          priorSessionCount: options?.priorSessionCount ?? 0,
+          sampleConfidenceScale,
+          historyConfidenceScale,
+          progressionConfidenceScale,
+          confidenceReasons: options?.confidenceReasons ?? [],
+          repRange,
+          equipment,
+          medianReps,
+          modalRpe: modalRpe ?? null,
+          reasonCodes: ["top_of_range_reached", "moderate_effort_progression"],
+        }),
+      };
     }
+  }
+
+  const overshootEvidence = resolvePrescribedLoadOvershoot({
+    sets: effectiveSets,
+    increment,
+  });
+  const overshootEvaluation = evaluatePrescribedLoadOvershoot({
+    overshootEvidence,
+    modalRpe,
+    hasHighVariance,
+  });
+  if (
+    overshootEvaluation?.qualified === true &&
+    medianReps >= repRange[0]
+  ) {
+    const overshootEvidenceDetail = overshootEvidence;
+    if (!overshootEvidenceDetail) {
+      throw new Error("Overshoot evaluation qualified without evidence.");
+    }
+    const nextLoad = roundLoad(anchorLoad + increment * progressionConfidenceScale);
+    decisionLog.push(
+      overshootEvaluation.tier === "controlled_hard"
+        ? `Path 5 fired: performed load beat prescription on ${overshootEvidenceDetail.qualifyingSetCount}/${overshootEvidenceDetail.targetBearingSetCount} signal sets by at least ${increment} lbs, and the broader coverage justified progression even at RPE ${modalRpe ?? "n/a"}. Increment +${(increment * progressionConfidenceScale).toFixed(1)}.`
+        : `Path 5 fired: performed load beat prescription on ${overshootEvidenceDetail.qualifyingSetCount}/${overshootEvidenceDetail.targetBearingSetCount} signal sets by at least ${increment} lbs while effort stayed manageable. Increment +${(increment * progressionConfidenceScale).toFixed(1)}.`
+    );
+    return {
+      nextLoad,
+      anchorLoad,
+      path: "path_5_overshoot",
+      decisionLog,
+      trace: buildProgressionDecisionTrace({
+        anchorLoad,
+        nextLoad,
+        path: "path_5_overshoot",
+        decisionLog,
+        anchorSource,
+        signalSetCount: signalSets.length,
+        effectiveSetCount: effectiveSets.length,
+        trimmedSetCount: signalSets.length - effectiveSets.length,
+        hasHighVariance,
+        minLoad,
+        maxLoad,
+        medianLoad,
+        priorSessionCount: options?.priorSessionCount ?? 0,
+        sampleConfidenceScale,
+        historyConfidenceScale,
+        progressionConfidenceScale,
+        confidenceReasons: options?.confidenceReasons ?? [],
+        repRange,
+        equipment,
+        medianReps,
+        modalRpe: modalRpe ?? null,
+        reasonCodes: [
+          "performed_above_prescription",
+          overshootEvaluation.tier === "controlled_hard"
+            ? "controlled_hard_overshoot_progression"
+            : "manageable_effort_progression",
+        ],
+      }),
+    };
   }
 
   if (modalRpe != null && modalRpe >= 7 && modalRpe <= 8 && medianReps < topOfRange) {
     decisionLog.push("Path 4 fired: modal RPE in 7-8 range but reps below top. Hold load and target rep progression.");
+    if (overshootEvaluation?.qualified === false) {
+      decisionLog.push(overshootEvaluation.message);
+    }
     return {
       nextLoad: roundLoad(anchorLoad),
       anchorLoad,
       path: "path_4",
       decisionLog,
+      trace: buildProgressionDecisionTrace({
+        anchorLoad,
+        nextLoad: roundLoad(anchorLoad),
+        path: "path_4",
+        decisionLog,
+        anchorSource,
+        signalSetCount: signalSets.length,
+        effectiveSetCount: effectiveSets.length,
+        trimmedSetCount: signalSets.length - effectiveSets.length,
+        hasHighVariance,
+        minLoad,
+        maxLoad,
+        medianLoad,
+        priorSessionCount: options?.priorSessionCount ?? 0,
+        sampleConfidenceScale,
+        historyConfidenceScale,
+        progressionConfidenceScale,
+        confidenceReasons: options?.confidenceReasons ?? [],
+        repRange,
+        equipment,
+        medianReps,
+        modalRpe,
+        reasonCodes: [
+          "below_top_of_range_hold",
+          "rep_progression_targeted",
+          ...(overshootEvaluation?.qualified === false ? [overshootEvaluation.reasonCode] : []),
+        ],
+      }),
     };
   }
 
   decisionLog.push("Fallback hold: progression conditions not met.");
+  if (overshootEvaluation?.qualified === false) {
+    decisionLog.push(overshootEvaluation.message);
+  }
   return {
     nextLoad: roundLoad(anchorLoad),
     anchorLoad,
     path: "fallback_hold",
     decisionLog,
+    trace: buildProgressionDecisionTrace({
+      anchorLoad,
+      nextLoad: roundLoad(anchorLoad),
+      path: "fallback_hold",
+      decisionLog,
+      anchorSource,
+      signalSetCount: signalSets.length,
+      effectiveSetCount: effectiveSets.length,
+      trimmedSetCount: signalSets.length - effectiveSets.length,
+      hasHighVariance,
+      minLoad,
+      maxLoad,
+      medianLoad,
+      priorSessionCount: options?.priorSessionCount ?? 0,
+      sampleConfidenceScale,
+      historyConfidenceScale,
+      progressionConfidenceScale,
+      confidenceReasons: options?.confidenceReasons ?? [],
+      repRange,
+      equipment,
+      medianReps,
+      modalRpe: modalRpe ?? null,
+      reasonCodes: [
+        "progression_conditions_not_met",
+        ...(overshootEvaluation?.qualified === false ? [overshootEvaluation.reasonCode] : []),
+      ],
+    }),
+  };
+}
+
+function buildProgressionDecisionTrace(input: {
+  anchorLoad: number;
+  nextLoad: number;
+  path: ProgressionDecisionPath;
+  decisionLog: string[];
+  anchorSource: "top_set_override" | "conservative_modal";
+  signalSetCount: number;
+  effectiveSetCount: number;
+  trimmedSetCount: number;
+  hasHighVariance: boolean;
+  minLoad: number;
+  maxLoad: number;
+  medianLoad: number;
+  priorSessionCount: number;
+  sampleConfidenceScale: number;
+  historyConfidenceScale: number;
+  progressionConfidenceScale: number;
+  confidenceReasons: string[];
+  repRange: [number, number];
+  equipment: ProgressionEquipment;
+  medianReps: number;
+  modalRpe: number | null;
+  reasonCodes: string[];
+}): ProgressionDecisionTrace {
+  return {
+    version: 1,
+    decisionSource: "double_progression",
+    repRange: {
+      min: input.repRange[0],
+      max: input.repRange[1],
+    },
+    equipment: input.equipment,
+    anchor: {
+      source: input.anchorSource,
+      overrideApplied: input.anchorSource === "top_set_override",
+      anchorLoad: input.anchorLoad,
+      signalSetCount: input.signalSetCount,
+      effectiveSetCount: input.effectiveSetCount,
+      trimmedSetCount: input.trimmedSetCount,
+      highVarianceDetected: input.hasHighVariance,
+      minSignalLoad: input.minLoad,
+      maxSignalLoad: input.maxLoad,
+      medianSignalLoad: input.medianLoad,
+    },
+    confidence: {
+      priorSessionCount: input.priorSessionCount,
+      sampleScale: input.sampleConfidenceScale,
+      historyScale: input.historyConfidenceScale,
+      combinedScale: input.progressionConfidenceScale,
+      reasons: input.confidenceReasons,
+    },
+    metrics: {
+      medianReps: Number(input.medianReps.toFixed(1)),
+      modalRpe: input.modalRpe,
+      nextLoad: input.nextLoad,
+      loadDelta: Number((input.nextLoad - input.anchorLoad).toFixed(2)),
+    },
+    outcome: {
+      path: input.path,
+      action:
+        input.nextLoad > input.anchorLoad
+          ? "increase"
+          : input.nextLoad < input.anchorLoad
+            ? "decrease"
+            : "hold",
+      reasonCodes: [
+        ...input.reasonCodes,
+        ...(input.anchorSource === "top_set_override" ? ["anchor_override_applied"] : []),
+        ...(input.hasHighVariance ? ["high_variance_trim_applied"] : []),
+      ],
+    },
+    decisionLog: [...input.decisionLog],
   };
 }
 
@@ -394,6 +719,136 @@ function resolveIncrementByEquipment(equipment: ProgressionEquipment): number {
   if (equipment === "dumbbell") return 2.5;
   if (equipment === "cable") return 2.5;
   return 2.5;
+}
+
+function resolvePrescribedLoadOvershoot(input: {
+  sets: ProgressionSet[];
+  increment: number;
+}):
+  | {
+      qualifyingSetCount: number;
+      targetBearingSetCount: number;
+      standardRequiredSetCount: number;
+      controlledRequiredSetCount: number;
+    }
+  | null {
+  const targetBearingSets = input.sets.filter(
+    (set) =>
+      Number.isFinite(set.load) &&
+      (set.load ?? 0) >= 0 &&
+      Number.isFinite(set.targetLoad) &&
+      (set.targetLoad ?? 0) >= 0
+  );
+  if (targetBearingSets.length === 0) {
+    return null;
+  }
+
+  const qualifyingSetCount = targetBearingSets.filter(
+    (set) => (set.load as number) - (set.targetLoad as number) >= input.increment
+  ).length;
+  if (qualifyingSetCount === 0) {
+    return null;
+  }
+  const requiredSetCount = Math.max(
+    PROGRESSION_CONFIG.minOvershootSetCount,
+    Math.ceil(targetBearingSets.length / 2)
+  );
+  const controlledRequiredSetCount = Math.min(
+    targetBearingSets.length,
+    Math.max(
+      PROGRESSION_CONFIG.overshootControlledMinSetCount,
+      Math.ceil(targetBearingSets.length * PROGRESSION_CONFIG.overshootControlledCoverageRatio)
+    )
+  );
+
+  return {
+    qualifyingSetCount,
+    targetBearingSetCount: targetBearingSets.length,
+    standardRequiredSetCount: requiredSetCount,
+    controlledRequiredSetCount,
+  };
+}
+
+function evaluatePrescribedLoadOvershoot(input: {
+  overshootEvidence:
+    | {
+        qualifyingSetCount: number;
+        targetBearingSetCount: number;
+        standardRequiredSetCount: number;
+        controlledRequiredSetCount: number;
+      }
+    | null;
+  modalRpe?: number;
+  hasHighVariance: boolean;
+}):
+  | {
+      qualified: true;
+      tier: "standard" | "controlled_hard";
+    }
+  | {
+      qualified: false;
+      reasonCode:
+        | "overshoot_blocked_by_effort"
+        | "overshoot_blocked_by_variance"
+        | "overshoot_blocked_by_coverage";
+      message: string;
+    }
+  | null {
+  const evidence = input.overshootEvidence;
+  if (!evidence) {
+    return null;
+  }
+
+  if (
+    (input.modalRpe == null || input.modalRpe <= PROGRESSION_CONFIG.overshootStandardRpeCeiling) &&
+    evidence.qualifyingSetCount >= evidence.standardRequiredSetCount
+  ) {
+    return { qualified: true, tier: "standard" };
+  }
+
+  if (
+    input.modalRpe != null &&
+    input.modalRpe <= PROGRESSION_CONFIG.overshootControlledRpeCeiling &&
+    !input.hasHighVariance &&
+    evidence.qualifyingSetCount >= evidence.controlledRequiredSetCount
+  ) {
+    return { qualified: true, tier: "controlled_hard" };
+  }
+
+  if (
+    input.modalRpe != null &&
+    input.modalRpe > PROGRESSION_CONFIG.overshootControlledRpeCeiling
+  ) {
+    return {
+      qualified: false,
+      reasonCode: "overshoot_blocked_by_effort",
+      message: `Overshoot gate: you beat the written load, but modal RPE ${input.modalRpe} was too high to earn an increase.`,
+    };
+  }
+
+  if (
+    input.modalRpe != null &&
+    input.modalRpe > PROGRESSION_CONFIG.overshootStandardRpeCeiling &&
+    input.hasHighVariance
+  ) {
+    return {
+      qualified: false,
+      reasonCode: "overshoot_blocked_by_variance",
+      message:
+        "Overshoot gate: 8.5-RPE overshoot only progresses when load execution stays stable, and this session required variance trimming.",
+    };
+  }
+
+  const requiredSetCount =
+    input.modalRpe != null &&
+    input.modalRpe > PROGRESSION_CONFIG.overshootStandardRpeCeiling
+      ? evidence.controlledRequiredSetCount
+      : evidence.standardRequiredSetCount;
+  return {
+    qualified: false,
+    reasonCode: "overshoot_blocked_by_coverage",
+    message: `Overshoot gate: ${evidence.qualifyingSetCount}/${evidence.targetBearingSetCount} target-bearing sets beat prescription, but ${requiredSetCount} were required at this effort level.`,
+  };
 }
 
 function resolveConservativeModalLoad(sets: ProgressionSet[]): number | undefined {

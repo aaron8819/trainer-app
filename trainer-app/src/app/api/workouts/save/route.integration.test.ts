@@ -267,6 +267,7 @@ describe("POST /api/workouts/save", () => {
       weekCloseId: null,
       status: null,
       resolution: null,
+      weekCloseState: null,
       advancedLifecycle: false,
       outcome: "not_found",
     });
@@ -274,6 +275,11 @@ describe("POST /api/workouts/save", () => {
       weekCloseId: "wc-1",
       status: "RESOLVED",
       resolution: "NO_GAP_FILL_NEEDED",
+      weekCloseState: {
+        workflowState: "COMPLETED",
+        deficitState: "CLOSED",
+        remainingDeficitSets: 0,
+      },
       deficitSnapshot: {
         version: 1,
         policy: {
@@ -296,6 +302,11 @@ describe("POST /api/workouts/save", () => {
       weekCloseId: "wc-1",
       status: "RESOLVED",
       resolution: "GAP_FILL_COMPLETED",
+      weekCloseState: {
+        workflowState: "COMPLETED",
+        deficitState: "PARTIAL",
+        remainingDeficitSets: 4,
+      },
       advancedLifecycle: false,
       outcome: "resolved",
     });
@@ -622,6 +633,11 @@ describe("POST /api/workouts/save", () => {
       weekCloseId: "wc-1",
       status: "PENDING_OPTIONAL_GAP_FILL",
       resolution: null,
+      weekCloseState: {
+        workflowState: "PENDING_OPTIONAL_GAP_FILL",
+        deficitState: "OPEN",
+        remainingDeficitSets: 4,
+      },
       deficitSnapshot: {
         version: 1,
         policy: {
@@ -649,6 +665,15 @@ describe("POST /api/workouts/save", () => {
     );
 
     expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      weekClose: {
+        weekCloseId: "wc-1",
+        resolution: null,
+        workflowState: "PENDING_OPTIONAL_GAP_FILL",
+        deficitState: "OPEN",
+        remainingDeficitSets: 4,
+      },
+    });
     expect(mocks.evaluateWeekCloseAtBoundary).toHaveBeenCalledWith(mocks.tx, {
       userId: "user-1",
       mesocycle: {
@@ -2043,6 +2068,15 @@ describe("POST /api/workouts/save", () => {
     );
 
     expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      weekClose: {
+        weekCloseId: "wc-1",
+        resolution: "GAP_FILL_COMPLETED",
+        workflowState: "COMPLETED",
+        deficitState: "PARTIAL",
+        remainingDeficitSets: 4,
+      },
+    });
     expect(mocks.linkOptionalWorkoutToWeekClose).toHaveBeenCalledWith(mocks.tx, {
       weekCloseId: "wc-1",
       workoutId: "workout-gap",

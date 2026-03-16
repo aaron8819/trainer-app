@@ -49,6 +49,7 @@ export async function POST(
   return NextResponse.json({
     status: result.status,
     resolution: result.resolution,
+    weekCloseState: result.weekCloseState,
     advancedLifecycle: result.advancedLifecycle,
     outcome: result.outcome,
     weekCloseId: result.weekCloseId,

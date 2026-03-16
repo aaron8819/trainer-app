@@ -57,6 +57,15 @@ export type ApplyLoadsOptions = {
 
 export type ApplyLoadsAudit = {
   progressionTraces: Record<string, ProgressionDecisionTrace>;
+  resolvedLoads: Record<
+    string,
+    {
+      source: "history" | "baseline" | "estimate" | "existing_target_load";
+      canonicalSourceLoad: number | null;
+      resolvedTopSetLoad: number | null;
+      resolvedSetLoads: number[];
+    }
+  >;
 };
 
 type LoadEquipment =
@@ -137,6 +146,7 @@ export function applyLoadsWithAudit(
   // Block-aware intensity multiplier (from periodization system v2)
   const intensityMultiplier = options.prescriptionModifiers?.intensityMultiplier ?? 1.0;
   const progressionTraces: Record<string, ProgressionDecisionTrace> = {};
+  const resolvedLoads: ApplyLoadsAudit["resolvedLoads"] = {};
 
   const applyToExercise = (exerciseEntry: WorkoutPlan["mainLifts"][number]) => {
     const exercise = exerciseEntry.exercise;
@@ -181,6 +191,10 @@ export function applyLoadsWithAudit(
       periodization?.isDeload
         ? (resolvedLoad.load ?? existingTopSetLoad)
         : (existingTopSetLoad ?? resolvedLoad.load);
+    const loadSource =
+      !periodization?.isDeload && existingTopSetLoad !== undefined
+        ? "existing_target_load"
+        : resolvedLoad.source;
 
     if (load === undefined) {
       return exerciseEntry.isMainLift
@@ -191,7 +205,7 @@ export function applyLoadsWithAudit(
     if (periodization?.isDeload) {
       const deloadLoad = roundToHalf(load * backOffMultiplier * intensityMultiplier);
       const deloadSets = setsWithRole.map((set) => ({ ...set, targetLoad: deloadLoad }));
-      return exerciseEntry.isMainLift
+      const updatedEntry = exerciseEntry.isMainLift
         ? {
             ...exerciseEntry,
             role: exerciseEntry.role ?? workingRole,
@@ -204,6 +218,15 @@ export function applyLoadsWithAudit(
             sets: deloadSets,
             warmupSets: undefined,
           };
+      resolvedLoads[exercise.id] = {
+        source: loadSource,
+        canonicalSourceLoad: load,
+        resolvedTopSetLoad: deloadSets[0]?.targetLoad ?? null,
+        resolvedSetLoads: deloadSets.flatMap((set) =>
+          typeof set.targetLoad === "number" ? [set.targetLoad] : []
+        ),
+      };
+      return updatedEntry;
     }
 
     if (exerciseEntry.isMainLift) {
@@ -212,21 +235,30 @@ export function applyLoadsWithAudit(
         if (set.targetLoad !== undefined) {
           return set;
         }
-        if (set.setIndex === 1) {
-          return { ...set, targetLoad: adjustedTopSetLoad };
-        }
-        return { ...set, targetLoad: roundToHalf(adjustedTopSetLoad * backOffMultiplier) };
-      });
-      return {
+          if (set.setIndex === 1) {
+            return { ...set, targetLoad: adjustedTopSetLoad };
+          }
+          return { ...set, targetLoad: roundToHalf(adjustedTopSetLoad * backOffMultiplier) };
+        });
+      const updatedEntry = {
         ...exerciseEntry,
         role: exerciseEntry.role ?? workingRole,
         sets: updatedSets,
         warmupSets: buildWarmupSets(adjustedTopSetLoad, trainingAge),
       };
+      resolvedLoads[exercise.id] = {
+        source: loadSource,
+        canonicalSourceLoad: load,
+        resolvedTopSetLoad: updatedSets[0]?.targetLoad ?? null,
+        resolvedSetLoads: updatedSets.flatMap((set) =>
+          typeof set.targetLoad === "number" ? [set.targetLoad] : []
+        ),
+      };
+      return updatedEntry;
     }
 
     const adjustedAccessoryLoad = roundToHalf(load * intensityMultiplier);
-    return {
+    const updatedEntry = {
       ...exerciseEntry,
       role: exerciseEntry.role ?? workingRole,
       sets: setsWithRole.map((set) =>
@@ -234,6 +266,15 @@ export function applyLoadsWithAudit(
       ),
       warmupSets: undefined,
     };
+    resolvedLoads[exercise.id] = {
+      source: loadSource,
+      canonicalSourceLoad: load,
+      resolvedTopSetLoad: adjustedAccessoryLoad,
+      resolvedSetLoads: updatedEntry.sets.flatMap((set) =>
+        typeof set.targetLoad === "number" ? [set.targetLoad] : []
+      ),
+    };
+    return updatedEntry;
   };
 
   const warmup = workout.warmup.map((exercise) => ({
@@ -256,6 +297,7 @@ export function applyLoadsWithAudit(
     },
     audit: {
       progressionTraces,
+      resolvedLoads,
     },
   };
 }
@@ -515,7 +557,11 @@ function resolveLoadForExercise(
   periodization: PeriodizationModifiers | undefined,
   weekInBlock: number | undefined,
   preferredContext: string
-): { load?: number; progressionTrace?: ProgressionDecisionTrace } {
+): {
+  load?: number;
+  progressionTrace?: ProgressionDecisionTrace;
+  source: "history" | "baseline" | "estimate";
+} {
   const latestSetsRaw = historySessions?.[0]?.sets;
   const useModalAnchoring = shouldUseModalAnchoring(exercise);
   const latestSets =
@@ -557,10 +603,10 @@ function resolveLoadForExercise(
       : getTopSessionLoad(latestSets);
     const modalRpe = getModalSessionRpe(latestSetsForDecision);
     if (anchorLoad !== undefined && modalRpe !== undefined && modalRpe >= 9) {
-      return { load: anchorLoad, progressionTrace: decision?.trace };
+      return { load: anchorLoad, progressionTrace: decision?.trace, source: "history" };
     }
     if (decision) {
-      return { load: decision.nextLoad, progressionTrace: decision.trace };
+      return { load: decision.nextLoad, progressionTrace: decision.trace, source: "history" };
     }
     const recentSessions =
       historySessions?.slice(1).map((session) =>
@@ -574,11 +620,11 @@ function resolveLoadForExercise(
       isDeloadWeek: periodization?.isDeload,
       recentSessions,
       equipment,
-    });
-    if (computed !== undefined) {
-      return { load: computed };
+      });
+      if (computed !== undefined) {
+        return { load: computed, source: "history" };
+      }
     }
-  }
 
   if (baselineSelection !== undefined) {
     return {
@@ -587,6 +633,7 @@ function resolveLoadForExercise(
         baselineSelection.selectedContext,
         preferredContext
       ),
+      source: "baseline",
     };
   }
 
@@ -598,6 +645,7 @@ function resolveLoadForExercise(
       exerciseById,
       weightKg
     ),
+    source: "estimate",
   };
 }
 

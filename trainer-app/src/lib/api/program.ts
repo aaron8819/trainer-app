@@ -13,7 +13,11 @@ import {
   getWeeklyVolumeTarget,
 } from "./mesocycle-lifecycle-math";
 import { loadNextWorkoutContext } from "./next-session";
-import { findPendingWeekCloseForUser } from "./mesocycle-week-close";
+import {
+  findRelevantWeekCloseForUser,
+  type WeekCloseDeficitState,
+  type WeekCloseWorkflowState,
+} from "./mesocycle-week-close";
 import {
   loadMesocycleWeekMuscleVolume,
   type WeeklyMuscleExerciseContribution,
@@ -110,11 +114,16 @@ export type GapFillPolicy = {
 
 export type GapFillSupportData = {
   eligible: boolean;
+  visible: boolean;
   reason: string | null;
   weekCloseId: string | null;
   anchorWeek: number | null;
   targetWeek: number | null;
   targetPhase: "ACCUMULATION" | "DELOAD" | null;
+  resolution: "NO_GAP_FILL_NEEDED" | "GAP_FILL_COMPLETED" | "GAP_FILL_DISMISSED" | "AUTO_DISMISSED" | null;
+  workflowState: WeekCloseWorkflowState | null;
+  deficitState: WeekCloseDeficitState | null;
+  remainingDeficitSets: number;
   targetMuscles: string[];
   deficitSummary: GapFillDeficitRow[];
   alreadyUsedThisWeek: boolean;
@@ -410,13 +419,14 @@ export async function loadHomeProgramSupport(userId: string): Promise<HomeProgra
     lastSessionSkipped = latestForIntent?.status === "SKIPPED";
   }
 
-  const pendingWeekClose = activeMesocycle
-    ? await findPendingWeekCloseForUser({
+  const relevantWeekClose = activeMesocycle
+    ? await findRelevantWeekCloseForUser({
         userId,
         mesocycleId: activeMesocycle.id,
       })
     : null;
-  const deficitSnapshot = pendingWeekClose?.deficitSnapshot;
+  const deficitSnapshot = relevantWeekClose?.deficitSnapshot;
+  const weekCloseState = relevantWeekClose?.weekCloseState;
   const policy: GapFillPolicy = {
     requiredSessionsPerWeek: Math.max(
       1,
@@ -428,34 +438,42 @@ export async function loadHomeProgramSupport(userId: string): Promise<HomeProgra
     maxGeneratedExercises: deficitSnapshot?.policy.maxGeneratedExercises ?? 4,
   };
   const deficitSummary: GapFillDeficitRow[] =
-    deficitSnapshot?.muscles.slice(0, 3).map((row) => ({
+    (weekCloseState?.remainingMuscles ?? deficitSnapshot?.muscles ?? []).slice(0, 3).map((row) => ({
       muscle: row.muscle,
       target: row.target,
       actual: row.actual,
       deficit: row.deficit,
-    })) ?? [];
+    }));
   const targetMuscles =
+    weekCloseState?.remainingTopTargetMuscles?.filter(Boolean) ??
     deficitSnapshot?.summary.topTargetMuscles?.filter(Boolean) ??
     deficitSummary.map((row) => row.muscle);
-  const linkedWorkout = pendingWeekClose?.optionalWorkout
+  const linkedWorkout = relevantWeekClose?.optionalWorkout
     ? {
-        id: pendingWeekClose.optionalWorkout.id,
-        status: pendingWeekClose.optionalWorkout.status,
+        id: relevantWeekClose.optionalWorkout.id,
+        status: relevantWeekClose.optionalWorkout.status,
       }
     : null;
+  const canGenerateGapFill =
+    relevantWeekClose?.status === "PENDING_OPTIONAL_GAP_FILL" && targetMuscles.length > 0;
 
   const gapFill: GapFillSupportData = {
-    eligible: Boolean(pendingWeekClose?.id && targetMuscles.length > 0),
+    eligible: canGenerateGapFill,
+    visible: Boolean(relevantWeekClose?.id && (weekCloseState?.deficitState ?? null) !== "CLOSED"),
     reason:
-      !pendingWeekClose
+      !relevantWeekClose
         ? "no_pending_week_close"
         : targetMuscles.length === 0
           ? "missing_deficit_snapshot"
           : null,
-    weekCloseId: pendingWeekClose?.id ?? null,
-    anchorWeek: pendingWeekClose?.targetWeek ?? null,
-    targetWeek: pendingWeekClose?.targetWeek ?? null,
-    targetPhase: pendingWeekClose?.targetPhase ?? null,
+    weekCloseId: relevantWeekClose?.id ?? null,
+    anchorWeek: relevantWeekClose?.targetWeek ?? null,
+    targetWeek: relevantWeekClose?.targetWeek ?? null,
+    targetPhase: relevantWeekClose?.targetPhase ?? null,
+    resolution: relevantWeekClose?.resolution ?? null,
+    workflowState: weekCloseState?.workflowState ?? null,
+    deficitState: weekCloseState?.deficitState ?? null,
+    remainingDeficitSets: weekCloseState?.remainingDeficitSets ?? 0,
     targetMuscles,
     deficitSummary,
     alreadyUsedThisWeek: false,

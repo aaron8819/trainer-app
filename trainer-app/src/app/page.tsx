@@ -162,7 +162,7 @@ export default async function Home() {
         </section>
 
         <section className="mt-8 space-y-6 md:mt-10">
-          {homeProgram.gapFill.eligible ? <OptionalGapFillCard gapFill={homeProgram.gapFill} /> : null}
+          {homeProgram.gapFill.visible ? <OptionalGapFillCard gapFill={homeProgram.gapFill} /> : null}
         </section>
 
         <section className="mt-8 md:mt-10">

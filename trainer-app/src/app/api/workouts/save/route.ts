@@ -4,11 +4,15 @@ import { saveWorkoutSchema } from "@/lib/validation";
 import { resolveOwner } from "@/lib/api/workout-context";
 import { WorkoutStatus, Prisma } from "@prisma/client";
 import { updateExerciseExposure } from "@/lib/api/exercise-exposure";
-import { ADVANCEMENT_WORKOUT_STATUSES, PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
+import { ADVANCEMENT_WORKOUT_STATUSES } from "@/lib/workout-status";
 import {
   extractSessionDecisionReceipt,
   normalizeSelectionMetadataWithReceipt,
 } from "@/lib/evidence/session-decision-receipt";
+import {
+  attachSessionAuditSnapshotToSelectionMetadata,
+  buildSavedSessionAuditSnapshot,
+} from "@/lib/evidence/session-audit-snapshot";
 import { readWeekCloseIdFromSelectionMetadata } from "@/lib/ui/selection-metadata";
 import {
   transitionMesocycleStateInTransaction,
@@ -51,10 +55,6 @@ function mergeSelectionMetadata(base: unknown, overrides: unknown): JsonObject {
   };
 }
 
-function isPerformedWorkoutStatus(status: PersistedStatus | string | null | undefined): boolean {
-  return Boolean(status) && (PERFORMED_WORKOUT_STATUSES as readonly string[]).includes(status as string);
-}
-
 function isLifecycleAdvancementStatus(status: PersistedStatus | string | null | undefined): boolean {
   return Boolean(status) && (ADVANCEMENT_WORKOUT_STATUSES as readonly string[]).includes(status as string);
 }
@@ -84,6 +84,33 @@ function resolveGapFillSnapshot(input: {
   };
 }
 
+function buildWeekCloseResponse(result: {
+  weekCloseId: string | null;
+  resolution:
+    | "NO_GAP_FILL_NEEDED"
+    | "GAP_FILL_COMPLETED"
+    | "GAP_FILL_DISMISSED"
+    | "AUTO_DISMISSED"
+    | null;
+  weekCloseState: {
+    workflowState: "PENDING_OPTIONAL_GAP_FILL" | "COMPLETED";
+    deficitState: "OPEN" | "PARTIAL" | "CLOSED";
+    remainingDeficitSets: number;
+  } | null;
+} | null) {
+  if (!result) {
+    return undefined;
+  }
+
+  return {
+    weekCloseId: result.weekCloseId,
+    resolution: result.resolution,
+    workflowState: result.weekCloseState?.workflowState ?? null,
+    deficitState: result.weekCloseState?.deficitState ?? null,
+    remainingDeficitSets: result.weekCloseState?.remainingDeficitSets ?? null,
+  };
+}
+
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
   const parsed = saveWorkoutSchema.safeParse(body);
@@ -110,6 +137,17 @@ export async function POST(request: Request) {
   let persistedRevision = 1;
   let finalStatus: PersistedStatus = (parsed.data.status ?? WorkoutStatus.PLANNED) as PersistedStatus;
   let didCompleteTransition = false;
+  let weekCloseResult:
+    | {
+        weekCloseId: string | null;
+        resolution: "NO_GAP_FILL_NEEDED" | "GAP_FILL_COMPLETED" | "GAP_FILL_DISMISSED" | "AUTO_DISMISSED" | null;
+        weekCloseState: {
+          workflowState: "PENDING_OPTIONAL_GAP_FILL" | "COMPLETED";
+          deficitState: "OPEN" | "PARTIAL" | "CLOSED";
+          remainingDeficitSets: number;
+        } | null;
+      }
+    | null = null;
   const incomingSelectionMetadata = toObject(parsed.data.selectionMetadata);
 
   try {
@@ -162,7 +200,7 @@ export async function POST(request: Request) {
       if (!receipt?.cycleContext) {
         throw new Error("WORKOUT_SELECTION_METADATA_REQUIRED");
       }
-      const selectionMetadata = normalizeSelectionMetadataWithReceipt({
+      let selectionMetadata = normalizeSelectionMetadataWithReceipt({
         selectionMetadata: effectiveSelectionMetadata,
         cycleContext: receipt.cycleContext,
       });
@@ -341,6 +379,23 @@ export async function POST(request: Request) {
           }
         }
       }
+      selectionMetadata = attachSessionAuditSnapshotToSelectionMetadata(
+        selectionMetadata,
+        buildSavedSessionAuditSnapshot({
+          selectionMetadata,
+          workoutId,
+          revision: existingWorkout?.revision,
+          status: finalStatus,
+          advancesSplit: effectiveAdvancesSplit,
+          selectionMode: effectiveSelectionMode,
+          sessionIntent: effectiveSessionIntent,
+          mesocycleId: resolvedMesocycleId,
+          mesocycleWeekSnapshot: mesoSnapshot?.week ?? existingWorkout?.mesocycleWeekSnapshot,
+          mesoSessionSnapshot: mesoSnapshot?.session ?? existingWorkout?.mesoSessionSnapshot,
+          mesocyclePhaseSnapshot:
+            mesoSnapshot?.phase ?? existingWorkout?.mesocyclePhaseSnapshot,
+        })
+      );
 
       const workoutUpdateData = {
         scheduledDate,
@@ -431,7 +486,7 @@ export async function POST(request: Request) {
           sessionsPerWeek: resolvedMesocycle!.sessionsPerWeek,
         });
         if (boundaryProgression.crossesBoundary && !isOptionalGapFill) {
-          await evaluateWeekCloseAtBoundary(tx, {
+          const boundaryResult = await evaluateWeekCloseAtBoundary(tx, {
             userId: user.id,
             mesocycle: {
               id: resolvedMesocycle!.id,
@@ -445,6 +500,11 @@ export async function POST(request: Request) {
             targetWeek: boundaryProgression.targetWeek!,
             targetPhase: "ACCUMULATION",
           });
+          weekCloseResult = {
+            weekCloseId: boundaryResult.weekCloseId,
+            resolution: boundaryResult.resolution,
+            weekCloseState: boundaryResult.weekCloseState,
+          };
         } else {
           const autoDismissResult = !isOptionalGapFill
             ? await autoDismissPendingWeekCloseOnForwardProgress(tx, {
@@ -452,6 +512,13 @@ export async function POST(request: Request) {
                 workoutWeek: mesoSnapshot?.week,
               })
             : null;
+          if (autoDismissResult && autoDismissResult.weekCloseId) {
+            weekCloseResult = {
+              weekCloseId: autoDismissResult.weekCloseId,
+              resolution: autoDismissResult.resolution,
+              weekCloseState: autoDismissResult.weekCloseState,
+            };
+          }
           if (
             !autoDismissResult ||
             autoDismissResult.outcome === "not_found" ||
@@ -466,10 +533,15 @@ export async function POST(request: Request) {
         finalStatus === "COMPLETED" &&
         existingWorkout?.status !== WorkoutStatus.COMPLETED
       ) {
-        await resolveWeekCloseOnOptionalGapFillCompletion(tx, {
+        const resolvedWeekClose = await resolveWeekCloseOnOptionalGapFillCompletion(tx, {
           workoutId: workout.id,
           weekCloseId: linkedWeekCloseId,
         });
+        weekCloseResult = {
+          weekCloseId: resolvedWeekClose.weekCloseId,
+          resolution: resolvedWeekClose.resolution,
+          weekCloseState: resolvedWeekClose.weekCloseState,
+        };
       }
       if (
         finalStatus === "COMPLETED" &&
@@ -610,12 +682,19 @@ export async function POST(request: Request) {
     throw error;
   }
 
+  const weekCloseResponse = buildWeekCloseResponse(weekCloseResult);
+
   const responseBody = {
     status: "saved",
     workoutId: parsed.data.workoutId,
     revision: persistedRevision,
     workoutStatus: finalStatus,
     action,
+    ...(weekCloseResponse
+      ? {
+          weekClose: weekCloseResponse,
+        }
+      : {}),
   } satisfies SaveWorkoutResponse;
 
   return NextResponse.json(responseBody);

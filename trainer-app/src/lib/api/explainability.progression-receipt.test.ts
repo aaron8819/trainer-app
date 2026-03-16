@@ -857,6 +857,132 @@ describe("generateWorkoutExplanation progression receipt", () => {
     );
   });
 
+  it("explains why 8.5-RPE overshoot still holds when set coverage is not strong enough", async () => {
+    mocks.workoutFindUnique.mockResolvedValueOnce({
+      id: "w1",
+      userId: "u1",
+      scheduledDate: new Date("2026-02-21T00:00:00.000Z"),
+      selectionMode: "INTENT",
+      sessionIntent: "LEGS",
+      selectionMetadata: {},
+      filteredExercises: [],
+      exercises: [
+        {
+          exerciseId: "ex1",
+          isMainLift: true,
+          exercise: {
+            id: "ex1",
+            name: "Back Squat",
+            movementPatterns: ["SQUAT"],
+            exerciseEquipment: [{ equipment: { type: "BARBELL" } }],
+            exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Quads" } }],
+          },
+          sets: [
+            {
+              setIndex: 1,
+              targetReps: 8,
+              targetRepMin: 6,
+              targetRepMax: 10,
+              targetRpe: 8,
+              targetLoad: 135,
+              restSeconds: 150,
+              logs: [{ actualReps: 6, actualLoad: 145, actualRpe: 8.5, wasSkipped: false }],
+            },
+            {
+              setIndex: 2,
+              targetReps: 8,
+              targetRepMin: 6,
+              targetRepMax: 10,
+              targetRpe: 8,
+              targetLoad: 135,
+              restSeconds: 150,
+              logs: [{ actualReps: 7, actualLoad: 145, actualRpe: 8.5, wasSkipped: false }],
+            },
+            {
+              setIndex: 3,
+              targetReps: 8,
+              targetRepMin: 6,
+              targetRepMax: 10,
+              targetRpe: 8,
+              targetLoad: 120,
+              restSeconds: 150,
+              logs: [{ actualReps: 7, actualLoad: 135, actualRpe: 8.5, wasSkipped: false }],
+            },
+            {
+              setIndex: 4,
+              targetReps: 8,
+              targetRepMin: 6,
+              targetRepMax: 10,
+              targetRpe: 8,
+              targetLoad: 120,
+              restSeconds: 150,
+              logs: [{ actualReps: 7, actualLoad: 120, actualRpe: 8.5, wasSkipped: false }],
+            },
+            {
+              setIndex: 5,
+              targetReps: 8,
+              targetRepMin: 6,
+              targetRepMax: 10,
+              targetRpe: 8,
+              targetLoad: 120,
+              restSeconds: 150,
+              logs: [{ actualReps: 7, actualLoad: 120, actualRpe: 8.5, wasSkipped: false }],
+            },
+          ],
+        },
+      ],
+    });
+    mocks.workoutExerciseFindFirst.mockImplementation(async (args: {
+      where?: { workout?: { scheduledDate?: { lt?: Date }; selectionMode?: string } };
+    }) => {
+      const scheduledBefore = args.where?.workout?.scheduledDate?.lt;
+      const requiredSelectionMode = args.where?.workout?.selectionMode;
+      const priorIntent = {
+        workout: {
+          scheduledDate: new Date("2026-02-18T00:00:00.000Z"),
+          selectionMode: "INTENT",
+          sessionIntent: "LEGS",
+          selectionMetadata: {},
+        },
+        sets: [
+          {
+            setIndex: 1,
+            targetLoad: 135,
+            logs: [{ actualReps: 8, actualLoad: 135, actualRpe: 8, wasSkipped: false }],
+          },
+          {
+            setIndex: 2,
+            targetLoad: 120,
+            logs: [{ actualReps: 8, actualLoad: 120, actualRpe: 8, wasSkipped: false }],
+          },
+        ],
+      };
+      if (requiredSelectionMode && requiredSelectionMode !== "INTENT") {
+        return null;
+      }
+      if (scheduledBefore && priorIntent.workout.scheduledDate.getTime() >= scheduledBefore.getTime()) {
+        return null;
+      }
+      return priorIntent;
+    });
+
+    const result = await generateWorkoutExplanation("w1");
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    expect(result.nextExposureDecisions.get("ex1")).toMatchObject({
+      action: "hold",
+      anchorLoad: 145,
+      modalRpe: 8.5,
+    });
+    expect(result.nextExposureDecisions.get("ex1")?.reason).toContain(
+      "3/5 target-bearing sets beat prescription, but 4 were required"
+    );
+    expect(result.nextExposureDecisions.get("ex1")?.decisionLog?.join(" | ")).toContain(
+      "Overshoot gate:"
+    );
+  });
+
   it("keeps anchor-sensitive main-lift decisions aligned to the top set", async () => {
     const currentPerformedSets = [
       { setIndex: 1, actualReps: 12, actualLoad: 45, actualRpe: 7, wasSkipped: false },

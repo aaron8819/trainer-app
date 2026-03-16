@@ -21,6 +21,18 @@ export type WeekCloseDeficitSnapshotMuscle = {
   deficit: number;
 };
 
+export type WeekCloseWorkflowState = "PENDING_OPTIONAL_GAP_FILL" | "COMPLETED";
+export type WeekCloseDeficitState = "OPEN" | "PARTIAL" | "CLOSED";
+
+export type WeekCloseOutcomeSnapshot = {
+  workflowState: WeekCloseWorkflowState;
+  deficitState: WeekCloseDeficitState;
+  remainingDeficitSets: number;
+  remainingQualifyingMuscleCount: number;
+  remainingTopTargetMuscles: string[];
+  remainingMuscles: WeekCloseDeficitSnapshotMuscle[];
+};
+
 export type WeekCloseDeficitSnapshot = {
   version: 1;
   policy: WeekClosePolicySnapshot;
@@ -30,7 +42,10 @@ export type WeekCloseDeficitSnapshot = {
     topTargetMuscles: string[];
   };
   muscles: WeekCloseDeficitSnapshotMuscle[];
+  outcome?: WeekCloseOutcomeSnapshot;
 };
+
+export type WeekCloseDisplayState = WeekCloseOutcomeSnapshot;
 
 export type PendingWeekCloseRecord = {
   id: string;
@@ -38,7 +53,25 @@ export type PendingWeekCloseRecord = {
   targetWeek: number;
   targetPhase: MesocyclePhase;
   status: "PENDING_OPTIONAL_GAP_FILL";
+  resolution: null;
   deficitSnapshot: WeekCloseDeficitSnapshot | null;
+  weekCloseState: WeekCloseDisplayState;
+  optionalWorkout: {
+    id: string;
+    status: WorkoutStatus;
+    scheduledDate: Date;
+  } | null;
+};
+
+export type WeekCloseRecord = {
+  id: string;
+  mesocycleId: string;
+  targetWeek: number;
+  targetPhase: MesocyclePhase;
+  status: "PENDING_OPTIONAL_GAP_FILL" | "RESOLVED";
+  resolution: MesocycleWeekCloseResolution | null;
+  deficitSnapshot: WeekCloseDeficitSnapshot | null;
+  weekCloseState: WeekCloseDisplayState;
   optionalWorkout: {
     id: string;
     status: WorkoutStatus;
@@ -90,6 +123,45 @@ async function loadWeekMuscleVolume(tx: Tx, input: {
   return Object.fromEntries(
     Object.entries(weeklyVolume).map(([muscle, row]) => [muscle, row.effectiveSets])
   );
+}
+
+function deriveWeekCloseDeficitState(
+  workflowState: WeekCloseWorkflowState,
+  snapshot: Pick<WeekCloseDeficitSnapshot, "summary" | "muscles">
+): WeekCloseDeficitState {
+  if (snapshot.summary.totalDeficitSets <= 0 || snapshot.muscles.length === 0) {
+    return "CLOSED";
+  }
+  return workflowState === "PENDING_OPTIONAL_GAP_FILL" ? "OPEN" : "PARTIAL";
+}
+
+function buildWeekCloseOutcomeSnapshot(input: {
+  workflowState: WeekCloseWorkflowState;
+  snapshot: Pick<WeekCloseDeficitSnapshot, "summary" | "muscles">;
+}): WeekCloseOutcomeSnapshot {
+  return {
+    workflowState: input.workflowState,
+    deficitState: deriveWeekCloseDeficitState(input.workflowState, input.snapshot),
+    remainingDeficitSets: input.snapshot.summary.totalDeficitSets,
+    remainingQualifyingMuscleCount: input.snapshot.summary.qualifyingMuscleCount,
+    remainingTopTargetMuscles: input.snapshot.summary.topTargetMuscles,
+    remainingMuscles: input.snapshot.muscles,
+  };
+}
+
+function withWeekCloseOutcome(
+  snapshot: WeekCloseDeficitSnapshot,
+  workflowState: WeekCloseWorkflowState,
+  outcomeSource?: Pick<WeekCloseDeficitSnapshot, "summary" | "muscles">
+): WeekCloseDeficitSnapshot {
+  const source = outcomeSource ?? snapshot;
+  return {
+    ...snapshot,
+    outcome: buildWeekCloseOutcomeSnapshot({
+      workflowState,
+      snapshot: source,
+    }),
+  };
 }
 
 export async function buildWeekCloseDeficitSnapshot(tx: Tx, input: {
@@ -170,6 +242,7 @@ export async function evaluateWeekCloseAtBoundary(tx: Tx, input: {
   status: "PENDING_OPTIONAL_GAP_FILL" | "RESOLVED";
   resolution: MesocycleWeekCloseResolution | null;
   deficitSnapshot: WeekCloseDeficitSnapshot;
+  weekCloseState: WeekCloseDisplayState;
   advancedLifecycle: boolean;
 }> {
   const existingPending = await tx.mesocycleWeekClose.findFirst({
@@ -193,6 +266,10 @@ export async function evaluateWeekCloseAtBoundary(tx: Tx, input: {
     });
 
   const hasDeficits = deficitSnapshot.summary.qualifyingMuscleCount > 0;
+  const snapshotWithOutcome = withWeekCloseOutcome(
+    deficitSnapshot,
+    hasDeficits ? "PENDING_OPTIONAL_GAP_FILL" : "COMPLETED"
+  );
   const now = new Date();
   const row = await tx.mesocycleWeekClose.upsert({
     where: {
@@ -206,14 +283,14 @@ export async function evaluateWeekCloseAtBoundary(tx: Tx, input: {
           targetPhase: input.targetPhase ?? "ACCUMULATION",
           status: "PENDING_OPTIONAL_GAP_FILL",
           resolution: null,
-          deficitSnapshotJson: deficitSnapshot as Prisma.InputJsonValue,
+          deficitSnapshotJson: snapshotWithOutcome as Prisma.InputJsonValue,
           resolvedAt: null,
         }
       : {
           targetPhase: input.targetPhase ?? "ACCUMULATION",
           status: "RESOLVED",
           resolution: "NO_GAP_FILL_NEEDED",
-          deficitSnapshotJson: deficitSnapshot as Prisma.InputJsonValue,
+          deficitSnapshotJson: snapshotWithOutcome as Prisma.InputJsonValue,
           resolvedAt: now,
         },
     create: {
@@ -222,7 +299,7 @@ export async function evaluateWeekCloseAtBoundary(tx: Tx, input: {
       targetPhase: input.targetPhase ?? "ACCUMULATION",
       status: hasDeficits ? "PENDING_OPTIONAL_GAP_FILL" : "RESOLVED",
       resolution: hasDeficits ? undefined : "NO_GAP_FILL_NEEDED",
-      deficitSnapshotJson: deficitSnapshot as Prisma.InputJsonValue,
+      deficitSnapshotJson: snapshotWithOutcome as Prisma.InputJsonValue,
       resolvedAt: hasDeficits ? undefined : now,
     },
     select: {
@@ -242,7 +319,12 @@ export async function evaluateWeekCloseAtBoundary(tx: Tx, input: {
     weekCloseId: row.id,
     status: row.status,
     resolution: row.resolution,
-    deficitSnapshot,
+    deficitSnapshot: snapshotWithOutcome,
+    weekCloseState: deriveWeekCloseDisplayState({
+      status: row.status,
+      resolution: row.resolution,
+      deficitSnapshot: snapshotWithOutcome,
+    }),
     advancedLifecycle,
   };
 }
@@ -254,6 +336,13 @@ export async function findPendingWeekCloseForMesocycle(tx: Tx, mesocycleId: stri
       status: "PENDING_OPTIONAL_GAP_FILL",
     },
     orderBy: { targetWeek: "asc" },
+    select: {
+      id: true,
+      targetWeek: true,
+      status: true,
+      resolution: true,
+      deficitSnapshotJson: true,
+    },
   });
 }
 
@@ -266,6 +355,84 @@ export function readWeekCloseDeficitSnapshot(value: unknown): WeekCloseDeficitSn
     return null;
   }
   return candidate as WeekCloseDeficitSnapshot;
+}
+
+export function deriveWeekCloseDisplayState(input: {
+  status: "PENDING_OPTIONAL_GAP_FILL" | "RESOLVED" | null | undefined;
+  resolution: MesocycleWeekCloseResolution | null | undefined;
+  deficitSnapshot: WeekCloseDeficitSnapshot | null | undefined;
+}): WeekCloseDisplayState {
+  const workflowState: WeekCloseWorkflowState =
+    input.status === "PENDING_OPTIONAL_GAP_FILL" ? "PENDING_OPTIONAL_GAP_FILL" : "COMPLETED";
+  if (input.deficitSnapshot?.outcome) {
+    return input.deficitSnapshot.outcome;
+  }
+
+  if (input.deficitSnapshot) {
+    if (workflowState === "COMPLETED" && input.resolution === "NO_GAP_FILL_NEEDED") {
+      return buildWeekCloseOutcomeSnapshot({
+        workflowState,
+        snapshot: {
+          summary: {
+            totalDeficitSets: 0,
+            qualifyingMuscleCount: 0,
+            topTargetMuscles: [],
+          },
+          muscles: [],
+        },
+      });
+    }
+    return buildWeekCloseOutcomeSnapshot({
+      workflowState,
+      snapshot: input.deficitSnapshot,
+    });
+  }
+
+  return {
+    workflowState,
+    deficitState:
+      workflowState === "PENDING_OPTIONAL_GAP_FILL"
+        ? "OPEN"
+        : input.resolution === "NO_GAP_FILL_NEEDED"
+        ? "CLOSED"
+        : "PARTIAL",
+    remainingDeficitSets: 0,
+    remainingQualifyingMuscleCount: 0,
+    remainingTopTargetMuscles: [],
+    remainingMuscles: [],
+  };
+}
+
+function mapWeekCloseRecord(row: {
+  id: string;
+  mesocycleId: string;
+  targetWeek: number;
+  targetPhase: MesocyclePhase;
+  status: "PENDING_OPTIONAL_GAP_FILL" | "RESOLVED";
+  resolution: MesocycleWeekCloseResolution | null;
+  deficitSnapshotJson: unknown;
+  optionalWorkout: {
+    id: string;
+    status: WorkoutStatus;
+    scheduledDate: Date;
+  } | null;
+}): WeekCloseRecord {
+  const deficitSnapshot = readWeekCloseDeficitSnapshot(row.deficitSnapshotJson);
+  return {
+    id: row.id,
+    mesocycleId: row.mesocycleId,
+    targetWeek: row.targetWeek,
+    targetPhase: row.targetPhase,
+    status: row.status,
+    resolution: row.resolution,
+    deficitSnapshot,
+    weekCloseState: deriveWeekCloseDisplayState({
+      status: row.status,
+      resolution: row.resolution,
+      deficitSnapshot,
+    }),
+    optionalWorkout: row.optionalWorkout,
+  };
 }
 
 export async function findPendingWeekCloseForUser(input: {
@@ -291,6 +458,7 @@ export async function findPendingWeekCloseForUser(input: {
       targetWeek: true,
       targetPhase: true,
       status: true,
+      resolution: true,
       deficitSnapshotJson: true,
       optionalWorkout: {
         select: {
@@ -306,21 +474,72 @@ export async function findPendingWeekCloseForUser(input: {
     return null;
   }
 
-  return {
-    id: row.id,
-    mesocycleId: row.mesocycleId,
-    targetWeek: row.targetWeek,
-    targetPhase: row.targetPhase,
-    status: "PENDING_OPTIONAL_GAP_FILL",
-    deficitSnapshot: readWeekCloseDeficitSnapshot(row.deficitSnapshotJson),
-    optionalWorkout: row.optionalWorkout,
-  };
+  return mapWeekCloseRecord(row) as PendingWeekCloseRecord;
+}
+
+export async function findRelevantWeekCloseForUser(input: {
+  userId: string;
+  mesocycleId: string;
+}): Promise<WeekCloseRecord | null> {
+  const baseWhere = {
+    mesocycleId: input.mesocycleId,
+    mesocycle: {
+      macroCycle: {
+        userId: input.userId,
+      },
+    },
+  } as const;
+
+  const select = {
+    id: true,
+    mesocycleId: true,
+    targetWeek: true,
+    targetPhase: true,
+    status: true,
+    resolution: true,
+    deficitSnapshotJson: true,
+    optionalWorkout: {
+      select: {
+        id: true,
+        status: true,
+        scheduledDate: true,
+      },
+    },
+  } as const;
+
+  const pending = await prisma.mesocycleWeekClose.findFirst({
+    where: {
+      ...baseWhere,
+      status: "PENDING_OPTIONAL_GAP_FILL",
+    },
+    orderBy: { targetWeek: "desc" },
+    select,
+  });
+  if (pending) {
+    return mapWeekCloseRecord(pending);
+  }
+
+  const resolved = await prisma.mesocycleWeekClose.findFirst({
+    where: {
+      ...baseWhere,
+      status: "RESOLVED",
+    },
+    orderBy: [{ targetWeek: "desc" }, { resolvedAt: "desc" }],
+    select,
+  });
+  if (!resolved) {
+    return null;
+  }
+
+  const mapped = mapWeekCloseRecord(resolved);
+  return mapped.weekCloseState.deficitState === "PARTIAL" ? mapped : null;
 }
 
 export type WeekCloseResolutionResult = {
   weekCloseId: string | null;
   status: "PENDING_OPTIONAL_GAP_FILL" | "RESOLVED" | null;
   resolution: MesocycleWeekCloseResolution | null;
+  weekCloseState: WeekCloseDisplayState | null;
   advancedLifecycle: boolean;
   outcome: "resolved" | "already_resolved" | "not_found" | "not_applicable";
 };
@@ -331,6 +550,7 @@ async function resolveWeekCloseIfPending(
     weekCloseId: string;
     resolution: MesocycleWeekCloseResolution;
     throwIfAlreadyResolved?: boolean;
+    deficitSnapshot?: WeekCloseDeficitSnapshot | null;
   }
 ): Promise<WeekCloseResolutionResult> {
   const existing = await tx.mesocycleWeekClose.findUnique({
@@ -340,6 +560,9 @@ async function resolveWeekCloseIfPending(
       mesocycleId: true,
       status: true,
       resolution: true,
+      targetWeek: true,
+      targetPhase: true,
+      deficitSnapshotJson: true,
     },
   });
 
@@ -348,6 +571,7 @@ async function resolveWeekCloseIfPending(
       weekCloseId: null,
       status: null,
       resolution: null,
+      weekCloseState: null,
       advancedLifecycle: false,
       outcome: "not_found",
     };
@@ -361,11 +585,20 @@ async function resolveWeekCloseIfPending(
       weekCloseId: existing.id,
       status: existing.status,
       resolution: existing.resolution,
+      weekCloseState: deriveWeekCloseDisplayState({
+        status: existing.status,
+        resolution: existing.resolution,
+        deficitSnapshot: readWeekCloseDeficitSnapshot(existing.deficitSnapshotJson),
+      }),
       advancedLifecycle: false,
       outcome: "already_resolved",
     };
   }
 
+  const existingSnapshot = readWeekCloseDeficitSnapshot(existing.deficitSnapshotJson);
+  const resolvedSnapshot =
+    input.deficitSnapshot ??
+    (existingSnapshot ? withWeekCloseOutcome(existingSnapshot, "COMPLETED") : null);
   const resolvedAt = new Date();
   const updateResult = await tx.mesocycleWeekClose.updateMany({
     where: {
@@ -376,6 +609,9 @@ async function resolveWeekCloseIfPending(
       status: "RESOLVED",
       resolution: input.resolution,
       resolvedAt,
+      ...(resolvedSnapshot
+        ? { deficitSnapshotJson: resolvedSnapshot as Prisma.InputJsonValue }
+        : {}),
     },
   });
 
@@ -386,6 +622,7 @@ async function resolveWeekCloseIfPending(
         id: true,
         status: true,
         resolution: true,
+        deficitSnapshotJson: true,
       },
     });
 
@@ -397,6 +634,11 @@ async function resolveWeekCloseIfPending(
         weekCloseId: current?.id ?? existing.id,
         status: current?.status ?? null,
         resolution: current?.resolution ?? null,
+        weekCloseState: deriveWeekCloseDisplayState({
+          status: current?.status ?? null,
+          resolution: current?.resolution ?? null,
+          deficitSnapshot: readWeekCloseDeficitSnapshot(current?.deficitSnapshotJson),
+        }),
         advancedLifecycle: false,
         outcome: current ? "already_resolved" : "not_found",
       };
@@ -408,6 +650,11 @@ async function resolveWeekCloseIfPending(
     weekCloseId: existing.id,
     status: "RESOLVED",
     resolution: input.resolution,
+    weekCloseState: deriveWeekCloseDisplayState({
+      status: "RESOLVED",
+      resolution: input.resolution,
+      deficitSnapshot: resolvedSnapshot,
+    }),
     advancedLifecycle: transition.advanced,
     outcome: "resolved",
   };
@@ -472,6 +719,23 @@ export async function resolveWeekCloseOnOptionalGapFillCompletion(
           select: {
             id: true,
             optionalWorkoutId: true,
+            targetWeek: true,
+            targetPhase: true,
+            deficitSnapshotJson: true,
+            mesocycle: {
+              select: {
+                id: true,
+                durationWeeks: true,
+                sessionsPerWeek: true,
+                startWeek: true,
+                macroCycle: {
+                  select: {
+                    startDate: true,
+                    userId: true,
+                  },
+                },
+              },
+            },
           },
         })
       : await tx.mesocycleWeekClose.findFirst({
@@ -479,6 +743,23 @@ export async function resolveWeekCloseOnOptionalGapFillCompletion(
           select: {
             id: true,
             optionalWorkoutId: true,
+            targetWeek: true,
+            targetPhase: true,
+            deficitSnapshotJson: true,
+            mesocycle: {
+              select: {
+                id: true,
+                durationWeeks: true,
+                sessionsPerWeek: true,
+                startWeek: true,
+                macroCycle: {
+                  select: {
+                    startDate: true,
+                    userId: true,
+                  },
+                },
+              },
+            },
           },
         });
 
@@ -487,6 +768,7 @@ export async function resolveWeekCloseOnOptionalGapFillCompletion(
       weekCloseId: null,
       status: null,
       resolution: null,
+      weekCloseState: null,
       advancedLifecycle: false,
       outcome: "not_found",
     };
@@ -505,15 +787,38 @@ export async function resolveWeekCloseOnOptionalGapFillCompletion(
       weekCloseId: linked.id,
       status: null,
       resolution: null,
+      weekCloseState: null,
       advancedLifecycle: false,
       outcome: "not_applicable",
     };
   }
 
+  const persistedSnapshot = readWeekCloseDeficitSnapshot(linked.deficitSnapshotJson);
+  const recomputedSnapshot = await buildWeekCloseDeficitSnapshot(tx, {
+    userId: linked.mesocycle.macroCycle.userId,
+    mesocycle: {
+      id: linked.mesocycle.id,
+      durationWeeks: linked.mesocycle.durationWeeks,
+      sessionsPerWeek: linked.mesocycle.sessionsPerWeek,
+      startWeek: linked.mesocycle.startWeek ?? 0,
+      macroCycle: {
+        startDate: linked.mesocycle.macroCycle.startDate,
+      },
+    },
+    targetWeek: linked.targetWeek,
+    policy: persistedSnapshot?.policy,
+  });
+  const resolvedSnapshot = withWeekCloseOutcome(
+    persistedSnapshot ?? recomputedSnapshot,
+    "COMPLETED",
+    recomputedSnapshot
+  );
+
   return resolveWeekCloseIfPending(tx, {
     weekCloseId: linked.id,
     resolution: "GAP_FILL_COMPLETED",
     throwIfAlreadyResolved: true,
+    deficitSnapshot: resolvedSnapshot,
   });
 }
 
@@ -541,6 +846,7 @@ export async function autoDismissPendingWeekCloseOnForwardProgress(
       weekCloseId: null,
       status: null,
       resolution: null,
+      weekCloseState: null,
       advancedLifecycle: false,
       outcome: "not_applicable",
     };
@@ -548,10 +854,18 @@ export async function autoDismissPendingWeekCloseOnForwardProgress(
 
   const pending = await findPendingWeekCloseForMesocycle(tx, input.mesocycleId);
   if (!pending || input.workoutWeek <= pending.targetWeek) {
+    const pendingSnapshot = readWeekCloseDeficitSnapshot(pending?.deficitSnapshotJson);
     return {
       weekCloseId: pending?.id ?? null,
       status: pending?.status ?? null,
       resolution: pending?.resolution ?? null,
+      weekCloseState: pending
+        ? deriveWeekCloseDisplayState({
+            status: pending.status,
+            resolution: pending.resolution,
+            deficitSnapshot: pendingSnapshot,
+          })
+        : null,
       advancedLifecycle: false,
       outcome: pending ? "not_applicable" : "not_found",
     };

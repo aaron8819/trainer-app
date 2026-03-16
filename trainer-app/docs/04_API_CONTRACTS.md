@@ -90,6 +90,7 @@ Sources of truth:
   - `mark_skipped` => finalize as `SKIPPED`.
 - `save_plan` cannot finalize terminal statuses (`COMPLETED`, `PARTIAL`, `SKIPPED`); terminal `status` in a plan write is ignored and persisted status remains non-terminal/current.
 - Save success responses now require canonical `workoutStatus` through `src/lib/api/workout-save-contract.ts` and `src/components/log-workout/api.ts`. Clients must derive terminal UI state from the returned `workoutStatus`; `mark_completed` is a requested action, not authoritative completion truth by itself.
+- Save success responses may also include `weekClose`, with `weekCloseId`, compatibility `resolution`, canonical `workflowState`, canonical `deficitState`, and `remainingDeficitSets`. Consumers that surface week-close state should treat `workflowState` + `deficitState` as truth and use `resolution` only as a backward-compatible mirror.
 - `save_plan` on a **new workout** (no existing record) now triggers a mesocycle snapshot lookup and writes `mesocycleWeekSnapshot` / `mesoSessionSnapshot` / `mesocyclePhaseSnapshot` - the same fields written on performed transition - so the week/session badge appears in Recent Workouts immediately upon plan save (`src/app/api/workouts/save/route.ts`). The performed-transition error gate (`ACTIVE_MESOCYCLE_NOT_FOUND`) is skipped for plan saves; missing active mesocycle is tolerated gracefully.
 - Those persisted mesocycle snapshot columns are canonical derived metadata for history badges and progression/explainability week context. UI/list contracts should consume only derived summaries (`sessionSnapshot`), while runtime history/progression consumers should use a normalized `mesocycleSnapshot` object rather than raw column mirrors.
 - Completion gating: `mark_completed` requires at least one performed non-skipped set log; otherwise route returns `409`.
@@ -156,6 +157,14 @@ Sources of truth:
 ## Week-close deficit snapshot notes
 - Pending week-close rows returned through `findPendingWeekCloseForUser()` in `src/lib/api/mesocycle-week-close.ts` still serialize `deficitSnapshot.muscles[]` as `{ muscle, target, actual, deficit }`.
 - After the weekly-volume unification, `actual` and `deficit` in that snapshot are based on weighted effective weekly volume from `loadMesocycleWeekMuscleVolume()` in `src/lib/api/weekly-volume.ts`, not primary-only direct-set counts.
+- Canonical user-visible week-close reads should use `findRelevantWeekCloseForUser()` rather than only pending rows, because resolved rows remain visible while `deficitState === PARTIAL`.
+- Week-close truth model:
+  - `workflowState=PENDING_OPTIONAL_GAP_FILL`: optional gap-fill workflow is still actionable
+  - `workflowState=COMPLETED`: workflow is handled or no longer actionable
+  - `deficitState=OPEN`: deficit remains and workflow is still pending
+  - `deficitState=PARTIAL`: workflow is complete but weighted weekly deficit still remains
+  - `deficitState=CLOSED`: no qualifying weekly deficit remains
+- `resolution=NO_GAP_FILL_NEEDED` is the only resolution that implies deficit closure by itself. `GAP_FILL_COMPLETED`, `GAP_FILL_DISMISSED`, and `AUTO_DISMISSED` must not be interpreted as equivalent to `deficitState=CLOSED`.
 
 ## Workout explanation response contract
 - Route: `GET /api/workouts/[id]/explanation` (`src/app/api/workouts/[id]/explanation/route.ts`).
@@ -166,6 +175,7 @@ Sources of truth:
 - Route responsibilities are documented canonically in `docs/01_ARCHITECTURE.md`; this section only records payload shape.
 - Explanation-layer consumers should treat `deriveSessionSemantics()` plus canonical progression receipts/decision outputs as the source of session behavior. Explanation routes should not independently re-author session-level progression meaning that could drift from generator-owned next-exposure behavior.
 - `nextExposureDecisions` is a read-side interpretation layer only. Its progression verdict must be computed through `computeDoubleProgressionDecision()` using the same material confidence-sensitive inputs as canonical generation for that exercise (`anchorOverride`, `priorSessionCount`, `historyConfidenceScale`; `confidenceReasons` remains log-only).
+- `nextExposureDecisions` also depend on preserved prescribed-load evidence. `targetLoad` must survive context/history mapping so explainability can justify overshoot-based increases or overshoot-block reasons against the same canonical inputs used by generation.
 - User-facing review surfaces that consume this route, including immediate completion review and `/workout/[id]`, should preserve that same verdict through the shared `PostWorkoutInsights` model rather than translating a canonical `hold` into stronger progression language.
 - User-facing rendering of canonical `nextExposureDecisions[*].action` should route through `src/lib/ui/next-exposure-copy.ts`. Heuristic/advisory surfaces may describe context, but they should not define alternate canonical action wording for the same decision.
 - `confidence.missingSignals` now uses user-facing diagnostic labels rather than engine shorthand:

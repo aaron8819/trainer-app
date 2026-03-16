@@ -1,7 +1,7 @@
 # 05 UI Flows
 
 Owner: Aaron
-Last reviewed: 2026-03-11
+Last reviewed: 2026-03-16
 Purpose: Canonical reference for current UI routes and core user flows implemented in the Next.js App Router.
 
 This doc covers:
@@ -100,7 +100,10 @@ Route-purpose shorthand:
 
 ## Optional gap-fill flow
 1. Dashboard/home support computes optional-session state (`loadHomeProgramSupport()` in `src/lib/api/program.ts`) with `anchorWeek`, suppression flags, and policy caps.
-2. UI shows the optional gap-fill card only when eligible (`src/components/OptionalGapFillCard.tsx`).
+2. UI shows the optional gap-fill card when the relevant week-close is still visible, not only when generation is still eligible (`src/components/OptionalGapFillCard.tsx`).
+  - `visible=true` means the week-close should still be shown because deficit truth remains user-relevant.
+  - `eligible=true` means the user can still generate or reopen the optional gap-fill workflow.
+  - A resolved row may therefore remain visible with `workflowState=COMPLETED` and `deficitState=PARTIAL`.
 3. Generate action calls `POST /api/workouts/generate-from-intent` with:
   - `intent=body_part`
   - `optionalGapFill=true`
@@ -110,11 +113,14 @@ Route-purpose shorthand:
   The route resolves the authoritative pending week-close row and injects `optionalGapFillContext.targetWeek` server-side before planner generation (`src/app/api/workouts/generate-from-intent/route.ts`, `src/lib/api/template-session.ts`).
   Generated response metadata is normalized through `attachOptionalGapFillMetadata()` before save so the client keeps canonical `selectionMetadata.weekCloseId`, `targetMuscles`, and `optional_gap_fill` receipt marker without UI-local metadata forks (`src/components/OptionalGapFillCard.tsx`, `src/lib/ui/selection-metadata.ts`).
 4. Save action calls `POST /api/workouts/save` with `advancesSplit=false` semantics enforced server-side by strict triplet classification.
+  Save responses may include a `weekClose` summary payload; the UI should read `workflowState` and `deficitState` directly instead of collapsing to `resolution`.
 5. Disappearance rules:
   - Next-week `PLANNED` carryover does not hide prior-week optional gap-fill.
   - Started carryover (`IN_PROGRESS`/`PARTIAL`) suppresses prior-week optional gap-fill.
+  - Resolved week-close remains visible while `deficitState !== CLOSED`.
   6. Labels and week/session mapping:
     - list/log summary labels use canonical strict classifier for `Gap Fill` title + muscles subtext
+    - card copy must preserve the truth split: workflow can be complete while training targets remain partially unmet
     - week/session badge uses snapshot-first semantics, so optional session renders as anchor `Wk:S` (sessions-per-week + 1 slot)
 
 ## Supplemental deficit flow

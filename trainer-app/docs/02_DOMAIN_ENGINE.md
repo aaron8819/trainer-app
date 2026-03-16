@@ -90,6 +90,12 @@ Sources of truth:
 - Performed-history filtering (not completed-only filtering) is canonical for load progression and plateau/deload checks via `filterPerformedHistory()` and `isPerformedHistoryEntry()` in `src/lib/engine/history.ts`.
 - Effective-reps filtering is enforced at signal derivation: sets logged below `RPE 6` are excluded from modal-load and progression anchoring (data is still persisted).
 - Intermediate double-progression decision tree is enforced for load updates (hold at high fatigue; progress load only when reps/RPE thresholds are met; use conservative anchoring under high intra-session load variance).
+- Earned progression also has a controlled overshoot lane in `computeDoubleProgressionDecision()` when performed load materially beats prescribed `targetLoad` across enough target-bearing sets. The engine still owns anchor selection and caps this path to one increment.
+- Overshoot gating is tiered:
+  - standard lane: `modalRpe <= 8.0` with the normal overshoot evidence minimum
+  - controlled-hard lane: `modalRpe <= 8.5` only when overshoot coverage is stronger (`>= 75%` of target-bearing sets, minimum `3` when available) and no high-variance trim was required
+  - `modalRpe > 8.5` still holds on the overshoot path
+- Canonical progression inputs must therefore preserve prescribed `targetLoad` through history/context mapping (`src/lib/api/workout-context.ts`, `src/lib/session-semantics/performed-exercise-semantics.ts`, `src/lib/engine/apply-loads.ts`).
 - `computeDoubleProgressionDecision()` in `src/lib/engine/progression.ts` accepts an optional `anchorOverride` parameter. When provided it replaces the modal-load computation as the progression anchor. Used by `resolveLoadForExercise()` in `src/lib/engine/apply-loads.ts` to anchor main lifts (non-modal path) to the top-set load rather than the more-frequent back-off weight, preventing a phantom ~11% load reduction each session.
 - Progression outlier thresholds and sample-size confidence scaling are centralized in `PROGRESSION_CONFIG` (`src/lib/engine/progression.ts`) and emitted into progression decision logs.
 - Bodyweight working sets are canonicalized at write-time to `actualLoad=0` when `targetLoad=0`; `null` is not treated as canonical bodyweight load.
@@ -195,6 +201,7 @@ SetLog / logged performance
 - Optional sessions reuse canonical INTENT generation (`intent=body_part`) and do not introduce a separate optimizer path (`src/lib/api/template-session.ts`).
 - Pending week-close context is canonical for gap-fill week anchoring. `generateSessionFromIntent()` now passes `optionalGapFillContext.targetWeek` into `loadMappedGenerationContext()` so generation resolves the anchored `weekInMeso` from the pending week-close row, then derives block-relative `weekInBlock` from the active `TrainingBlock` when available (`src/lib/api/template-session.ts`, `src/lib/api/template-session/context-loader.ts`, `src/lib/api/generation-phase-block-context.ts`).
 - Optional gap-fill now uses the explicit `rescue` inventory layer from `SessionOpportunityDefinition`. This is the current bridge between week-close deficit snapshots and controlled rescue access without rewriting the planner into a long-horizon system.
+- Week-close truth is dual-state rather than single-resolution: `workflowState` says whether the optional gap-fill workflow is still pending, and `deficitState` says whether the weekly deficit is `OPEN`, `PARTIAL`, or `CLOSED`. Optional gap-fill completion can therefore leave `workflowState=COMPLETED` while `deficitState=PARTIAL`.
 - Supplemental deficit sessions reuse the same BODY_PART INTENT generation route, but they are user-invoked rather than week-close-driven. The allowed UI path is `IntentWorkoutCard -> POST /api/workouts/generate-from-intent -> POST /api/workouts/save`, with backend-owned receipt stamping (`src/components/IntentWorkoutCard.tsx`, `src/app/api/workouts/generate-from-intent/route.ts`).
 - Gap-fill policy read model is surfaced by `loadHomeProgramSupport()` (`src/lib/api/program.ts`) with fields:
   - `requiredSessionsPerWeek`
@@ -318,6 +325,7 @@ SetLog / logged performance
 - Explainability is strictly receipt-first: it reads session-level cycle/readiness context only from `selectionMetadata.sessionDecisionReceipt`, and missing canonical receipt means missing session-level evidence (`src/lib/evidence/session-decision-receipt.ts`, `src/lib/api/explainability.ts`, `src/lib/ui/explainability.ts`). When canonical receipt cycle context includes `weekInBlock` and `blockDurationWeeks`, read-side summary/explainability copy should prefer block-relative semantics over mesocycle-relative wording.
 - Progression receipts only use recent performed evidence (42-day recency window) when loading `lastPerformed` in `loadLatestPerformedSetSummary()` within `src/lib/api/explainability.ts`.
 - Progression receipts include a decision log summarizing which load-progression rule path fired and why.
+- Overshoot-based receipts must surface whether `path_5_overshoot` earned the increase or why it was blocked (`effort`, `coverage`, or `variance`) so read-side explanation stays aligned with canonical progression.
 - Explainability renders per-exercise progression decision logs in the Evidence tab under `Progression Logic` when logs are available.
 - Workout explanations include per-muscle weekly volume compliance (`WorkoutExplanation.volumeCompliance` in `src/lib/engine/explainability/types.ts`), computed by `computeVolumeCompliance()` in `src/lib/api/explainability.ts`. Per-muscle compliance is annotated with `VolumeComplianceStatus` — one of `OVER_MAV | AT_MAV | APPROACHING_MAV | OVER_TARGET | ON_TARGET | APPROACHING_TARGET | UNDER_MEV` — and carries projected weekly totals against week-specific targets.
 

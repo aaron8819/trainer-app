@@ -100,6 +100,7 @@ Sources of truth:
 - Progression outlier thresholds and sample-size confidence scaling are centralized in `PROGRESSION_CONFIG` (`src/lib/engine/progression.ts`) and emitted into progression decision logs.
 - Bodyweight working sets are canonicalized at write-time to `actualLoad=0` when `targetLoad=0`; `null` is not treated as canonical bodyweight load.
 - Scheduled deload load reduction is canonicalized in `src/lib/engine/apply-loads.ts`, not in deload generation. `src/lib/api/template-session/deload-session.ts` leaves `targetLoad` unset, and `applyLoads()` anchors deload load-down to the most recent performed accumulation load for that exercise, then applies the lighter deload prescription with the existing multiplier and canonical quantization. If no accumulation-phase history exists, it falls back to the normal canonical source-load resolver.
+- Shared deload defaults are centralized in `src/lib/deload/semantics.ts`. That module is the canonical source for deload phase detection, deload target effort (`RPE 4.5` from `5-6 RIR`), hard-set reduction defaults, decision reduction percent, and progression-history exclusion policy.
 - `estimateLoad()` in `src/lib/engine/apply-loads.ts` returns `undefined` (no estimate) for exercises whose equipment list includes `"bodyweight"` when no non-zero load history exists. This prevents phantom load assignments on hybrid bodyweight/machine exercises (e.g., Dip) on their first weighted use.
 - Donor-based first-time load estimation must reject invalid donors before scaling. In `src/lib/engine/apply-loads.ts`, donor paths exclude non-finite / `<= 0` donor loads, and they also exclude bodyweight or bodyweight-hybrid donors when the target exercise expects external load. This is a donor-validation guardrail, not a broader estimator retune.
 - Bodyweight progression is rep-driven only at `anchorLoad=0` in `computeDoubleProgressionDecision()`; the engine never auto-increments external load from `0` and logs `bodyweight exercise — rep progression only`.
@@ -307,9 +308,9 @@ SetLog / logged performance
   - reduce hard sets roughly 50% with floor safeguards (`1 -> 1`, `2 -> 1`, `3-4 -> 2`, `5-6 -> 3`)
   - keep reps stable for movement continuity
   - leave `targetLoad` unset in generation, then let `src/lib/engine/apply-loads.ts` apply the canonical lighter deload load
-  - target low-fatigue effort through lifecycle deload RIR/RPE targeting
+  - target low-fatigue effort through canonical deload targeting (`5-6 RIR`, approximately `RPE 4.5`)
   - user-facing receipts/explanations should describe lighter loads plus reduced volume for recovery, not promise a fixed percentage reduction
-  - deload does not reset progress; next-mesocycle baselines continue to anchor from accumulation history rather than deload performance
+  - deload does not count toward progression history and does not reset progress; next block re-anchors from accumulation work rather than deload performance
   - count toward compliance, recent stimulus, and weekly volume, while remaining excluded from progression anchors and canonical performance-history reads
 
 ## Explainability

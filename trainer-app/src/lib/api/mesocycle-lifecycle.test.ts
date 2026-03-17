@@ -61,6 +61,11 @@ import {
   initializeNextMesocycle,
   transitionMesocycleState,
 } from "./mesocycle-lifecycle";
+import {
+  CANONICAL_DELOAD_RIR_TARGET,
+  CANONICAL_DELOAD_SET_TARGETS,
+  CANONICAL_DELOAD_VOLUME_FRACTION,
+} from "@/lib/deload/semantics";
 
 describe("mesocycle-lifecycle", () => {
   beforeEach(() => {
@@ -441,7 +446,7 @@ describe("mesocycle-lifecycle", () => {
     const meso = { durationWeeks: 5 };
     const w4 = getWeeklyVolumeTarget(meso, "Lats", 4);
     const w5 = getWeeklyVolumeTarget(meso, "Lats", 5);
-    expect(w5).toBe(Math.round(w4 * 0.45));
+    expect(w5).toBe(Math.round(w4 * CANONICAL_DELOAD_VOLUME_FRACTION));
   });
 
   it("uses real block context to preserve the default 5-week target path", () => {
@@ -572,7 +577,7 @@ describe("mesocycle-lifecycle", () => {
     expect(getRirTarget(meso, 1)).toEqual({ min: 3, max: 4 });
     expect(getRirTarget(meso, 2)).toEqual({ min: 2, max: 3 });
     expect(getRirTarget(meso, 3)).toEqual({ min: 1, max: 2 });
-    expect(getRirTarget(meso, 4)).toEqual({ min: 5, max: 6 });
+    expect(getRirTarget(meso, 4)).toEqual(CANONICAL_DELOAD_RIR_TARGET);
   });
 
   it("returns corrected default RIR bands for a 5-week mesocycle", () => {
@@ -585,7 +590,7 @@ describe("mesocycle-lifecycle", () => {
     expect(getRirTarget(meso, 2)).toEqual({ min: 2, max: 3 });
     expect(getRirTarget(meso, 3)).toEqual({ min: 1, max: 2 });
     expect(getRirTarget(meso, 4)).toEqual({ min: 0, max: 1 });
-    expect(getRirTarget(meso, 5)).toEqual({ min: 5, max: 6 });
+    expect(getRirTarget(meso, 5)).toEqual(CANONICAL_DELOAD_RIR_TARGET);
   });
 
   it("preserves current 5-week hypertrophy RIR and set progression when using the default block definitions", () => {
@@ -633,7 +638,7 @@ describe("mesocycle-lifecycle", () => {
         blockDurationWeeks: 1,
         isDeload: true,
       })
-    ).toEqual({ min: 5, max: 6 });
+    ).toEqual(CANONICAL_DELOAD_RIR_TARGET);
 
     expect(
       getLifecycleSetTargets(5, 1, false, {
@@ -674,7 +679,7 @@ describe("mesocycle-lifecycle", () => {
         blockDurationWeeks: 1,
         isDeload: true,
       })
-    ).toEqual({ main: 2, accessory: 1 });
+    ).toEqual(CANONICAL_DELOAD_SET_TARGETS);
   });
 
   it("returns corrected default RIR bands for a 6-week mesocycle", () => {
@@ -688,7 +693,7 @@ describe("mesocycle-lifecycle", () => {
     expect(getRirTarget(meso, 3)).toEqual({ min: 1, max: 2 });
     expect(getRirTarget(meso, 4)).toEqual({ min: 0, max: 1 });
     expect(getRirTarget(meso, 5)).toEqual({ min: 0, max: 1 });
-    expect(getRirTarget(meso, 6)).toEqual({ min: 5, max: 6 });
+    expect(getRirTarget(meso, 6)).toEqual(CANONICAL_DELOAD_RIR_TARGET);
   });
 
   it("returns explicit 5-week hypertrophy set targets", () => {
@@ -696,7 +701,7 @@ describe("mesocycle-lifecycle", () => {
     expect(getLifecycleSetTargets(5, 2)).toEqual({ main: 4, accessory: 3 });
     expect(getLifecycleSetTargets(5, 3)).toEqual({ main: 5, accessory: 4 });
     expect(getLifecycleSetTargets(5, 4)).toEqual({ main: 5, accessory: 5 });
-    expect(getLifecycleSetTargets(5, 5, true)).toEqual({ main: 2, accessory: 1 });
+    expect(getLifecycleSetTargets(5, 5, true)).toEqual(CANONICAL_DELOAD_SET_TARGETS);
   });
 
   it("initializeNextMesocycle carries CORE_COMPOUND only and resets counters", async () => {

@@ -120,6 +120,14 @@ describe("buildProgressionAnchorAuditPayload", () => {
         phase: "ACCUMULATION",
       },
     });
+    expect(payload.canonicalSemantics).toEqual({
+      sourceLayer: "saved",
+      phase: "ACCUMULATION",
+      isDeload: false,
+      countsTowardProgressionHistory: true,
+      countsTowardPerformanceHistory: true,
+      updatesProgressionAnchor: true,
+    });
     expect(payload.trace.outcome.action).toBeTypeOf("string");
   });
 });

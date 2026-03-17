@@ -51,6 +51,7 @@ Sources of truth:
 - `ProgramDashboardData.volumeThisWeek` rows now expose canonical weighted weekly actuals as `effectiveSets`, with `directSets` and `indirectSets` retained as contextual/debug fields only (`src/lib/api/program.ts`, `src/components/ProgramStatusCard.tsx`).
 - `ProgramDashboardData.volumeThisWeek` rows also expose dashboard-only opportunity fields: `opportunityScore`, `opportunityState`, and `opportunityRationale` (`src/lib/api/program.ts`). These are computed from canonical weekly target pressure plus a recent weighted-stimulus adapter in `src/lib/api/recent-muscle-stimulus.ts`, with optional downward-only modulation from fresh readiness signals via `src/lib/api/readiness.ts`.
 - Those opportunity and deload-readiness fields are advisory snapshot outputs for the dashboard card. They are intentionally weaker than canonical next-session generation/explainability semantics and should not be presented as authoritative progression decisions.
+- `ProgramDashboardData.coachingCue` and `ProgramDashboardData.deloadReadiness` are descriptive dashboard framing only. Canonical deload policy still lives in `src/lib/deload/semantics.ts` and generator/session receipts.
 - Historical `GET /api/program?week=N` responses still carry those opportunity fields, but the current UI only renders `opportunityState` for the live current week because opportunity currently uses present recency/readiness context rather than a historical as-of timestamp.
 - `ProgramDashboardData.deloadReadiness` saturation logic now keys off weighted `effectiveSets` rather than primary-only direct sets (`src/lib/api/program.ts`, `src/lib/api/weekly-volume.ts`).
 
@@ -124,7 +125,7 @@ Sources of truth:
   - Rep targets are maintained for movement continuity.
   - Deload generation does not pre-populate `targetLoad`; canonical load assignment happens later in `src/lib/engine/apply-loads.ts`.
   - The canonical load engine resolves the normal source load first, then applies the lighter deload prescription (currently about 25% down after quantization).
-  - RIR target is deload band (`4-6`) via lifecycle RIR targeting.
+  - Canonical deload effort target is `5-6 RIR` (approximately `RPE 4.5`) via shared deload semantics and lifecycle targeting.
   - Deload sessions remain valid performed work for compliance and weekly-volume context, but they are excluded from progression eligibility, anchor updates, and canonical performance-history/explainability trend reads.
 - Default lifecycle hypertrophy RIR bands are duration-aware rather than fixed to a 4+1 template.
 
@@ -153,6 +154,11 @@ Sources of truth:
   - week-close-context injection (`optionalGapFillContext.targetWeek`) before planner context loading (`src/app/api/workouts/generate-from-intent/route.ts`, `src/lib/api/template-session.ts`)
 - Week-close ownership is canonical for optional gap-fill. Runtime optional gap-fill generation depends on a pending `MesocycleWeekClose` row and links the generated workout back to that row via `selectionMetadata.weekCloseId`; audit and repair tooling may detect or reconcile legacy data that predates that ownership contract, but they do not change the runtime route semantics.
 - Within that shared generation path, optional gap-fill currently enters the planner through the explicit `rescue` inventory layer on `SessionOpportunityDefinition` rather than widening standard inventory eligibility for all `body_part` requests.
+- Workout-audit artifacts now expose additive normalized canonical semantics alongside snapshots:
+  - top-level `canonicalSemantics` when a session snapshot is present
+  - per-session `historicalWeek.sessions[*].canonicalSemantics`
+  - `progressionAnchor.canonicalSemantics`
+  This block is the stable artifact-facing summary for `phase`, `isDeload`, `countsTowardProgressionHistory`, `countsTowardPerformanceHistory`, and `updatesProgressionAnchor`.
 - Canonical receipt fields for gap-fill payloads:
   - `selectionMetadata.sessionDecisionReceipt.exceptions` contains `optional_gap_fill`
   - `selectionMetadata.sessionDecisionReceipt.targetMuscles` carries chosen muscles

@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { AUDIT_RECONSTRUCTION_GUARDRAIL } from "./constants";
 import { buildWorkoutAuditArtifact } from "./serializer";
 import type { WorkoutAuditRun } from "./types";
 
 const baseRun: WorkoutAuditRun = {
   context: {
-    mode: "next-session",
+    mode: "future-week",
     requestedMode: "next-session",
     userId: "user-1",
     ownerEmail: "owner@test.local",
@@ -100,6 +101,68 @@ describe("buildWorkoutAuditArtifact", () => {
     expect(artifact.warningSummary.counts.blockingErrors).toBe(1);
   });
 
+  it("adds normalized canonical semantics when a session snapshot is available", () => {
+    const artifact = buildWorkoutAuditArtifact(
+      {
+        mode: "future-week",
+        userId: "user-1",
+      },
+      {
+        ...baseRun,
+        sessionSnapshot: {
+          version: 1,
+          generated: {
+            selectionMode: "INTENT",
+            sessionIntent: "push",
+            cycleContext: {
+              weekInMeso: 5,
+              weekInBlock: 1,
+              phase: "deload",
+              blockType: "deload",
+              isDeload: true,
+              source: "computed",
+            },
+            semantics: {
+              kind: "advancing",
+              effectiveSelectionMode: "INTENT",
+              isDeload: true,
+              isStrictGapFill: false,
+              isStrictSupplemental: false,
+              advancesLifecycle: true,
+              consumesWeeklyScheduleIntent: true,
+              countsTowardCompliance: true,
+              countsTowardRecentStimulus: true,
+              countsTowardWeeklyVolume: true,
+              countsTowardProgressionHistory: false,
+              countsTowardPerformanceHistory: false,
+              updatesProgressionAnchor: false,
+              eligibleForUniqueIntentSubtraction: true,
+              reasons: [],
+              trace: {
+                advancesSplitInput: true,
+              },
+            },
+            exerciseCount: 0,
+            hardSetCount: 0,
+            exercises: [],
+            traces: {
+              progression: {},
+            },
+          },
+        },
+      }
+    );
+
+    expect(artifact.canonicalSemantics).toEqual({
+      sourceLayer: "generated",
+      phase: "deload",
+      isDeload: true,
+      countsTowardProgressionHistory: false,
+      countsTowardPerformanceHistory: false,
+      updatesProgressionAnchor: false,
+    });
+  });
+
   it("persists merged captured warnings and generation path metadata", () => {
     const artifact = buildWorkoutAuditArtifact(
       {
@@ -162,5 +225,77 @@ describe("buildWorkoutAuditArtifact", () => {
       semanticWarnings: 2,
       backgroundWarnings: 1,
     });
+  });
+
+  it("adds do-not-reconstruct guardrails for saved-only legacy audit coverage", () => {
+    const artifact = buildWorkoutAuditArtifact(
+      {
+        mode: "progression-anchor",
+        userId: "user-1",
+        exerciseId: "exercise-1",
+      },
+      {
+        ...baseRun,
+        context: {
+          ...baseRun.context,
+          mode: "progression-anchor",
+          requestedMode: "progression-anchor",
+          generationInput: undefined,
+        },
+        generationResult: undefined,
+        progressionAnchor: {
+          version: 1,
+          workoutId: "workout-1",
+          exerciseId: "exercise-1",
+          exerciseName: "Bench Press",
+          scheduledDate: "2026-03-04T00:00:00.000Z",
+          sessionSnapshotSource: "reconstructed_saved_only",
+          trace: {
+            version: 1,
+            decisionSource: "double_progression",
+            repRange: {
+              min: 8,
+              max: 10,
+            },
+            equipment: "barbell",
+            anchor: {
+              source: "conservative_modal",
+              overrideApplied: false,
+              anchorLoad: 200,
+              signalSetCount: 1,
+              effectiveSetCount: 1,
+              trimmedSetCount: 0,
+              highVarianceDetected: false,
+              minSignalLoad: 200,
+              maxSignalLoad: 200,
+              medianSignalLoad: 200,
+            },
+            confidence: {
+              priorSessionCount: 0,
+              sampleScale: 1,
+              historyScale: 1,
+              combinedScale: 1,
+              reasons: [],
+            },
+            metrics: {
+              medianReps: 8,
+              modalRpe: 8,
+              nextLoad: 200,
+              loadDelta: 0,
+            },
+            outcome: {
+              path: "fallback_hold",
+              action: "hold",
+              reasonCodes: ["no_change"],
+            },
+            decisionLog: [],
+          },
+        },
+      }
+    );
+
+    expect(artifact.warningSummary.semanticWarnings).toContain(
+      `${AUDIT_RECONSTRUCTION_GUARDRAIL} Progression-anchor coverage is using a saved-only reconstructed snapshot.`
+    );
   });
 });

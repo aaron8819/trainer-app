@@ -82,6 +82,8 @@ export async function loadExerciseHistory(
     }))
     .slice(0, limit);
 
+  // This surface is descriptive history only. Canonical next-session
+  // progression still comes from the progression engine and receipts.
   const personalBests = computePersonalBests(sessions);
   const trend = computeTrend(sessions);
 

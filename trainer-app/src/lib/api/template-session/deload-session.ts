@@ -2,22 +2,15 @@ import { prisma } from "@/lib/db/prisma";
 import { createId } from "@/lib/engine/utils";
 import type { SessionIntent, SelectionOutput } from "@/lib/engine/session-types";
 import type { WorkoutExercise, WorkoutPlan } from "@/lib/engine/types";
-import { getDeloadWeek, getPeakAccumulationWeek, getRirTarget } from "@/lib/api/mesocycle-lifecycle";
+import { getPeakAccumulationWeek } from "@/lib/api/mesocycle-lifecycle";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
+import {
+  CANONICAL_DELOAD_SET_MULTIPLIER,
+  getCanonicalDeloadTargetRpe,
+  resolveCanonicalDeloadSetCount,
+} from "@/lib/deload/semantics";
 import type { DeloadTransformationTrace } from "@/lib/evidence/session-audit-types";
 import type { MappedGenerationContext } from "./types";
-
-const DELOAD_SET_FACTOR = 0.5;
-
-function resolveDeloadSetCount(baselineSetCount: number): number {
-  if (baselineSetCount <= 1) {
-    return 1;
-  }
-  if (baselineSetCount === 2) {
-    return 1;
-  }
-  return Math.max(2, Math.ceil(baselineSetCount * DELOAD_SET_FACTOR));
-}
 
 function modalNumber(values: number[]): number | undefined {
   const freq = new Map<number, number>();
@@ -90,7 +83,7 @@ function buildExerciseSetPlan(
   targetRpe: number,
   isMainLift: boolean
 ): WorkoutExercise["sets"] {
-  const setCount = resolveDeloadSetCount(baselineSetCount);
+  const setCount = resolveCanonicalDeloadSetCount(baselineSetCount);
   return Array.from({ length: setCount }, (_, index) => ({
     setIndex: index + 1,
     targetReps: baselineReps,
@@ -180,8 +173,7 @@ export async function generateDeloadSessionFromIntentContext(
 
   const exerciseById = new Map(mapped.exerciseLibrary.map((exercise) => [exercise.id, exercise]));
   const peakAccumulationSource = week4Workouts.length > 0 ? week4Workouts : [latestAccumWorkout];
-  const rirTarget = getRirTarget(activeMesocycle, getDeloadWeek(activeMesocycle.durationWeeks));
-  const targetRpe = 10 - (rirTarget.min + rirTarget.max) / 2;
+  const targetRpe = getCanonicalDeloadTargetRpe();
 
   const workoutExercises: WorkoutExercise[] = [];
   const traceExercises: DeloadTransformationTrace["exercises"] = [];
@@ -276,7 +268,7 @@ export async function generateDeloadSessionFromIntentContext(
     version: 1,
     sessionIntent,
     targetRpe: Number(targetRpe.toFixed(1)),
-    setFactor: DELOAD_SET_FACTOR,
+    setFactor: CANONICAL_DELOAD_SET_MULTIPLIER,
     minSets: 1,
     exerciseCount: traceExercises.length,
     exercises: traceExercises,

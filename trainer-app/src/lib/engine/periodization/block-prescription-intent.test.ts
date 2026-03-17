@@ -4,6 +4,11 @@ import {
   getLifecycleSetTargets,
   getRirTarget,
 } from "@/lib/api/mesocycle-lifecycle";
+import {
+  CANONICAL_DELOAD_RIR_TARGET,
+  CANONICAL_DELOAD_SET_MULTIPLIER,
+  CANONICAL_DELOAD_SET_TARGETS,
+} from "@/lib/deload/semantics";
 
 import { getPrescriptionModifiers } from "./block-config";
 import { buildBlockPrescriptionIntent } from "./block-prescription-intent";
@@ -65,9 +70,9 @@ describe("block-prescription-intent", () => {
 
     const intent = buildBlockPrescriptionIntent(profile);
 
-    expect(intent.rirTarget).toEqual({ min: 5, max: 6 });
-    expect(intent.setTargets).toEqual({ main: 2, accessory: 1 });
-    expect(intent.setMultiplier).toBe(0.5);
+    expect(intent.rirTarget).toEqual(CANONICAL_DELOAD_RIR_TARGET);
+    expect(intent.setTargets).toEqual(CANONICAL_DELOAD_SET_TARGETS);
+    expect(intent.setMultiplier).toBe(CANONICAL_DELOAD_SET_MULTIPLIER);
     expect(intent.modifiers).toEqual(
       getPrescriptionModifiers(profile.blockType, profile.weekInBlock, profile.blockDurationWeeks)
     );

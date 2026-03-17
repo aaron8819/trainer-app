@@ -1,4 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  CANONICAL_DELOAD_SET_MULTIPLIER,
+  getCanonicalDeloadTargetRpe,
+} from "@/lib/deload/semantics";
 
 const mocks = vi.hoisted(() => {
   const workoutFindFirst = vi.fn();
@@ -141,8 +145,9 @@ describe("deload-session generation", () => {
     expect(row?.sets).toHaveLength(2);
     expect(row?.sets[0].targetReps).toBe(10);
     expect(row?.sets[0].targetLoad).toBeUndefined();
-    expect(row?.sets[0].targetRpe).toBe(4.5);
-    expect(result.trace.targetRpe).toBe(4.5);
+    expect(row?.sets[0].targetRpe).toBe(getCanonicalDeloadTargetRpe());
+    expect(result.trace.targetRpe).toBe(getCanonicalDeloadTargetRpe());
+    expect(result.trace.setFactor).toBe(CANONICAL_DELOAD_SET_MULTIPLIER);
     expect(result.trace.exercises.find((entry) => entry.exerciseId === "row")).toMatchObject({
       baselineSetCount: 4,
       deloadSetCount: 2,

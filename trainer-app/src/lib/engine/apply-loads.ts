@@ -33,6 +33,9 @@ import type {
 } from "./types";
 import type { PrescriptionModifiers } from "./periodization/types";
 import { quantizeLoad } from "@/lib/units/load-quantization";
+import {
+  isCanonicalDeloadPhase,
+} from "@/lib/deload/semantics";
 
 export type BaselineInput = {
   exerciseId: string;
@@ -415,8 +418,7 @@ function isAccumulationPhaseEntry(entry: WorkoutHistoryEntry): boolean {
 }
 
 function isDeloadPhaseEntry(entry: WorkoutHistoryEntry): boolean {
-  const phase = getMesocyclePhaseSnapshot(entry);
-  return phase === "DELOAD" || phase === "ACTIVE_DELOAD";
+  return isCanonicalDeloadPhase(getMesocyclePhaseSnapshot(entry));
 }
 
 type WorkoutSetHistory = {

@@ -1,5 +1,6 @@
 import type { SessionContext } from "@/lib/engine/explainability";
 import type { SessionDecisionReceipt } from "@/lib/evidence/types";
+import { isCanonicalDeloadReceipt } from "@/lib/deload/semantics";
 import type { WorkoutStructureState } from "./selection-metadata";
 import {
   formatGapFillMuscleList,
@@ -23,11 +24,8 @@ export type SessionSummaryModel = {
   truthNote?: SessionSummaryItem;
 };
 
-function isDeloadSession(receipt?: SessionDecisionReceipt): boolean {
-  return Boolean(
-    receipt?.cycleContext.isDeload === true ||
-    (receipt?.deloadDecision != null && receipt.deloadDecision.mode !== "none")
-  );
+function hasCanonicalDeloadSignal(receipt?: SessionDecisionReceipt): boolean {
+  return isCanonicalDeloadReceipt(receipt);
 }
 
 function toTitleCase(value: string): string {
@@ -56,12 +54,12 @@ function formatWeekTag(input: {
 }
 
 function formatEffortTarget(receipt?: SessionDecisionReceipt): string {
-  if (isDeloadSession(receipt)) {
+  if (hasCanonicalDeloadSignal(receipt)) {
     if (receipt?.lifecycleRirTarget) {
-      return `Keep reps crisp and leave ${receipt.lifecycleRirTarget.min}-${receipt.lifecycleRirTarget.max} reps in reserve on work sets.`;
+      return `Keep reps crisp and leave ${receipt.lifecycleRirTarget.min}-${receipt.lifecycleRirTarget.max} reps in reserve on work sets. If the written load feels too heavy to stay there, reduce the weight.`;
     }
 
-    return "Keep technique clean, stay well shy of failure, and finish fresher than you started.";
+    return "Keep technique clean, stay well shy of failure, and finish fresher than you started. If the written load feels too heavy for that, reduce the weight.";
   }
 
   if (receipt?.lifecycleRirTarget) {
@@ -71,7 +69,7 @@ function formatEffortTarget(receipt?: SessionDecisionReceipt): string {
   return "Use the written targets and stop before grindy reps.";
 }
 
-function formatDeloadValue(receipt?: SessionDecisionReceipt): SessionSummaryItem | null {
+function formatDescriptiveDeloadValue(receipt?: SessionDecisionReceipt): SessionSummaryItem | null {
   const deload = receipt?.deloadDecision;
   if (!deload || deload.mode === "none") {
     return null;
@@ -94,15 +92,17 @@ function formatDeloadValue(receipt?: SessionDecisionReceipt): SessionSummaryItem
   };
 }
 
-function formatDeloadReassurance(receipt?: SessionDecisionReceipt): SessionSummaryItem | null {
-  if (!isDeloadSession(receipt)) {
+function formatDescriptiveDeloadReassurance(
+  receipt?: SessionDecisionReceipt
+): SessionSummaryItem | null {
+  if (!hasCanonicalDeloadSignal(receipt)) {
     return null;
   }
 
   return {
-    label: "Next block",
+    label: "Progression history",
     value:
-      "Progress is preserved. The next mesocycle re-anchors from your accumulation work, not from this deload week.",
+      "Does not count toward progression history. Next block re-anchors from accumulation work, not this deload.",
     tone: "positive",
   };
 }
@@ -170,7 +170,10 @@ function buildSummaryText(input: {
   targetMuscles?: string[];
 }): string {
   const { context, receipt, selectionMode, sessionIntent, targetMuscles } = input;
-  const isDeload = context.blockPhase.blockType === "deload" || isDeloadSession(receipt);
+  // This card is descriptive framing for the current plan context. Canonical
+  // decisions still live in the saved workout + receipt payload.
+  const isDeload =
+    context.blockPhase.blockType === "deload" || hasCanonicalDeloadSignal(receipt);
   const isGapFill = isGapFillWorkout({
     selectionMetadata: { sessionDecisionReceipt: receipt },
     selectionMode,
@@ -234,7 +237,8 @@ export function buildSessionSummaryModel(input: {
     estimatedMinutes,
     workoutStructureState,
   } = input;
-  const isDeload = context.blockPhase.blockType === "deload" || isDeloadSession(receipt);
+  const isDeload =
+    context.blockPhase.blockType === "deload" || hasCanonicalDeloadSignal(receipt);
   const hasStructureDrift = workoutStructureState?.reconciliation.hasDrift === true;
   const isGapFill = isGapFillWorkout({
     selectionMetadata: { sessionDecisionReceipt: receipt },
@@ -269,7 +273,7 @@ export function buildSessionSummaryModel(input: {
     formatReadinessValue(context, receipt),
   ];
 
-  const deloadItem = formatDeloadValue(receipt);
+  const deloadItem = formatDescriptiveDeloadValue(receipt);
   if (deloadItem) {
     items.push(deloadItem);
   }
@@ -279,7 +283,7 @@ export function buildSessionSummaryModel(input: {
     items.push(sorenessItem);
   }
 
-  const deloadReassurance = formatDeloadReassurance(receipt);
+  const deloadReassurance = formatDescriptiveDeloadReassurance(receipt);
   if (deloadReassurance) {
     items.push(deloadReassurance);
   }

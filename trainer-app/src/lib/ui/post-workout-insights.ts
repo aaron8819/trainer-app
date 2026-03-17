@@ -153,7 +153,7 @@ function badgeForAction(action: NextExposureDecision["action"] | "deload"): stri
   return getCanonicalNextExposureCopy(action).badge;
 }
 
-function isDeloadWorkout(explanation: WorkoutExplanation): boolean {
+function hasCanonicalDeloadContext(explanation: WorkoutExplanation): boolean {
   if (explanation.sessionContext.blockPhase.blockType === "deload") {
     return true;
   }
@@ -190,7 +190,9 @@ function toneForVolumeStatus(status: WeeklyMuscleStatus): PostWorkoutInsightTone
   return "neutral";
 }
 
-function buildProgramSignals(explanation: WorkoutExplanation): PostWorkoutProgramSignal[] {
+function buildDescriptiveProgramSignals(
+  explanation: WorkoutExplanation
+): PostWorkoutProgramSignal[] {
   const volumeSignals = [...explanation.volumeCompliance]
     .map((row) => {
       const landmarks = VOLUME_LANDMARKS[row.muscle];
@@ -240,11 +242,11 @@ function buildProgramSignals(explanation: WorkoutExplanation): PostWorkoutProgra
   return volumeSignals;
 }
 
-function buildKeyLiftInsights(
+function buildDescriptiveKeyLiftInsights(
   explanation: WorkoutExplanation,
   exercises: ReviewedExerciseMeta[]
 ): PostWorkoutKeyLiftInsight[] {
-  if (isDeloadWorkout(explanation)) {
+  if (hasCanonicalDeloadContext(explanation)) {
     const primary = exercises.filter((exercise) => exercise.isMainLift);
     const selected = (primary.length > 0 ? primary : exercises).slice(0, 3);
 
@@ -263,7 +265,7 @@ function buildKeyLiftInsights(
           : "This lift was logged as intentionally lighter deload work.",
         todayContext: describeTodayTargetContext(receipt),
         nextTime:
-          "This session was for recovery, not a normal progression call. Next mesocycle baselines come from accumulation work, not this deload.",
+          "This session does not count toward progression history. Next block re-anchors from accumulation work, not this deload.",
       };
     });
   }
@@ -360,7 +362,7 @@ function buildOverview(keyLifts: PostWorkoutKeyLiftInsight[]): PostWorkoutOvervi
       {
         label: "What comes next",
         value:
-          "Progress is preserved. The next mesocycle re-anchors from your accumulation work, not from this deload.",
+          "Does not count toward progression history. Next block re-anchors from accumulation work, not this deload.",
         tone: "neutral",
         emphasized: true,
       },
@@ -416,8 +418,11 @@ export function buildPostWorkoutInsightsModel(input: {
   explanation: WorkoutExplanation;
   exercises: ReviewedExerciseMeta[];
 }): PostWorkoutInsightsModel {
-  const keyLifts = buildKeyLiftInsights(input.explanation, input.exercises);
-  const programSignals = buildProgramSignals(input.explanation);
+  const keyLifts = buildDescriptiveKeyLiftInsights(
+    input.explanation,
+    input.exercises
+  );
+  const programSignals = buildDescriptiveProgramSignals(input.explanation);
 
   return {
     headline: buildHeadline(keyLifts),

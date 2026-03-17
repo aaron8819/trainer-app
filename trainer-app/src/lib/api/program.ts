@@ -149,7 +149,9 @@ export async function loadCapabilityFlags(userId: string): Promise<CapabilityFla
   };
 }
 
-export function computeDeloadReadiness(
+// Advisory dashboard framing only. This does not replace canonical
+// generation/progression decisions.
+export function computeAdvisoryDeloadReadiness(
   currentWeek: number,
   durationWeeks: number,
   volumeRows: ProgramVolumeRow[]
@@ -275,7 +277,7 @@ function formatRirTarget(rirTarget: { min: number; max: number } | null | undefi
   return `${rirTarget.min}-${rirTarget.max} RIR`;
 }
 
-function getCoachingCueForBlockType(
+function getDescriptiveCoachingCueForBlockType(
   blockType: string | null,
   rirTarget?: { min: number; max: number } | null
 ): string {
@@ -350,7 +352,7 @@ export async function loadActiveBlockPhase(userId: string): Promise<ActiveBlockP
     weekInMeso,
     mesoDurationWeeks: meso.durationWeeks,
     sessionsUntilDeload,
-    coachingCue: getCoachingCueForBlockType(blockType, rirTarget),
+    coachingCue: getDescriptiveCoachingCueForBlockType(blockType, rirTarget),
   };
 }
 
@@ -729,7 +731,11 @@ export async function loadProgramDashboardData(
       ? getRirTarget(mesoRecord, effectiveViewWeek, viewedPhaseProfile)
       : null;
   const deloadReadiness = mesoRecord
-    ? computeDeloadReadiness(currentWeek, mesoRecord.durationWeeks, liveCurrentWeekVolume)
+    ? computeAdvisoryDeloadReadiness(
+        currentWeek,
+        mesoRecord.durationWeeks,
+        liveCurrentWeekVolume
+      )
     : null;
 
   const mesoBlocks: ProgramMesoBlock[] = mesoRecord ? normalizedBlocks.map((block) => ({
@@ -757,7 +763,7 @@ export async function loadProgramDashboardData(
     volumeThisWeek,
     deloadReadiness,
     rirTarget,
-    coachingCue: getCoachingCueForBlockType(viewedBlockType, rirTarget),
+    coachingCue: getDescriptiveCoachingCueForBlockType(viewedBlockType, rirTarget),
   };
 }
 

@@ -9,6 +9,13 @@ import {
 } from "@/lib/engine/periodization/block-prescription-intent";
 import type { BlockType } from "@/lib/engine/periodization/types";
 import { getBackOffMultiplier, type PeriodizationModifiers } from "@/lib/engine/rules";
+import {
+  CANONICAL_DELOAD_BACKOFF_MULTIPLIER,
+  CANONICAL_DELOAD_RIR_TARGET,
+  CANONICAL_DELOAD_SET_MULTIPLIER,
+  CANONICAL_DELOAD_SET_TARGETS,
+  CANONICAL_DELOAD_VOLUME_FRACTION,
+} from "@/lib/deload/semantics";
 import type { PrimaryGoal } from "@/lib/engine/types";
 
 type MuscleLandmark = {
@@ -84,9 +91,6 @@ type WeeklyScheduleEntry = {
   intent: string;
   scheduleIndex: number;
 };
-
-const DEFAULT_DELOAD_RIR: RirTarget = { min: 5, max: 6 };
-const DEFAULT_DELOAD_SET_TARGETS: LifecycleSetTargets = { main: 2, accessory: 1 };
 
 // Explicit mapping from normalized snake_case keys to VOLUME_LANDMARKS Title Case keys.
 // Must be exhaustive for all muscles in VOLUME_LANDMARKS.
@@ -203,10 +207,10 @@ function buildHypertrophyWeekProfile(
   const accumulationWeeks = getAccumulationWeeks(durationWeeks);
   if (isDeload) {
     return {
-      rirTarget: DEFAULT_DELOAD_RIR,
-      setTargets: DEFAULT_DELOAD_SET_TARGETS,
-      setMultiplier: 0.5,
-      volumeFraction: 0.45,
+      rirTarget: CANONICAL_DELOAD_RIR_TARGET,
+      setTargets: CANONICAL_DELOAD_SET_TARGETS,
+      setMultiplier: CANONICAL_DELOAD_SET_MULTIPLIER,
+      volumeFraction: CANONICAL_DELOAD_VOLUME_FRACTION,
     };
   }
 
@@ -445,7 +449,7 @@ export function getRirTarget(
   }
   const deloadWeek = getDeloadWeek(mesocycle.durationWeeks);
   if (week >= deloadWeek || mesocycle.state === "ACTIVE_DELOAD" || mesocycle.state === "COMPLETED") {
-    return DEFAULT_DELOAD_RIR;
+    return CANONICAL_DELOAD_RIR_TARGET;
   }
   return buildHypertrophyWeekProfile(mesocycle.durationWeeks, week, false).rirTarget;
 }
@@ -482,13 +486,15 @@ export function buildLifecyclePeriodization(
         ? getBlockAwareSetMultiplier(input.phaseBlockContext)
         : hypertrophyProfile.setMultiplier
       : isDeload
-        ? 0.5
+        ? CANONICAL_DELOAD_SET_MULTIPLIER
         : 1.0;
 
   return {
     rpeOffset: 0,
     setMultiplier,
-    backOffMultiplier: isDeload ? 0.75 : getBackOffMultiplier(input.primaryGoal),
+    backOffMultiplier: isDeload
+      ? CANONICAL_DELOAD_BACKOFF_MULTIPLIER
+      : getBackOffMultiplier(input.primaryGoal),
     isDeload,
     weekInBlock: input.phaseBlockContext?.weekInBlock ?? boundedWeek,
     accumulationWeeks,
@@ -499,7 +505,7 @@ export function buildLifecyclePeriodization(
           ? getBlockAwareSetTargets(input.phaseBlockContext)
           : hypertrophyProfile.setTargets
         : isDeload
-          ? DEFAULT_DELOAD_SET_TARGETS
+          ? CANONICAL_DELOAD_SET_TARGETS
           : undefined,
   };
 }

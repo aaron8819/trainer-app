@@ -1,4 +1,10 @@
 import type { BlockType, PrescriptionModifiers } from "./types";
+import {
+  CANONICAL_DELOAD_INTENSITY_MULTIPLIER,
+  CANONICAL_DELOAD_RIR_TARGET,
+  CANONICAL_DELOAD_SET_MULTIPLIER,
+  CANONICAL_DELOAD_SET_TARGETS,
+} from "@/lib/deload/semantics";
 
 export type BlockPrescriptionProfileContext = {
   blockType: BlockType;
@@ -17,9 +23,6 @@ export type BlockPrescriptionIntent = {
   modifiers: PrescriptionModifiers;
 };
 
-const DEFAULT_DELOAD_RIR: BlockPrescriptionRirTarget = { min: 5, max: 6 };
-const DEFAULT_DELOAD_SET_TARGETS: BlockPrescriptionSetTargets = { main: 2, accessory: 1 };
-
 function resolveTier<T>(weekInBlock: number, tiers: readonly T[]): T {
   const index = Math.max(0, Math.min(tiers.length - 1, weekInBlock - 1));
   return tiers[index] ?? tiers[0];
@@ -33,12 +36,12 @@ export function buildBlockPrescriptionIntent(
 
   if (context.isDeload || context.blockType === "deload") {
     return {
-      rirTarget: DEFAULT_DELOAD_RIR,
-      setTargets: DEFAULT_DELOAD_SET_TARGETS,
-      setMultiplier: 0.5,
+      rirTarget: CANONICAL_DELOAD_RIR_TARGET,
+      setTargets: CANONICAL_DELOAD_SET_TARGETS,
+      setMultiplier: CANONICAL_DELOAD_SET_MULTIPLIER,
       modifiers: {
-        volumeMultiplier: 0.5,
-        intensityMultiplier: 0.7,
+        volumeMultiplier: CANONICAL_DELOAD_SET_MULTIPLIER,
+        intensityMultiplier: CANONICAL_DELOAD_INTENSITY_MULTIPLIER,
         rirAdjustment: 3,
         restMultiplier: 0.8,
       },

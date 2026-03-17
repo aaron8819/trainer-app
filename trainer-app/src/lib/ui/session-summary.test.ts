@@ -219,14 +219,18 @@ describe("buildSessionSummaryModel", () => {
         value: expect.stringContaining("leave 2-3 reps in reserve"),
       }),
       expect.objectContaining({
+        label: "Target effort",
+        value: expect.stringContaining("reduce the weight"),
+      }),
+      expect.objectContaining({
         label: "Deload",
         value: expect.stringContaining("Lighter loads and fewer hard sets"),
       }),
       expect.objectContaining({ label: "Volume held", value: expect.stringContaining("chest, front delts") }),
       expect.objectContaining({ label: "Readiness", value: expect.stringContaining("2 scaled down") }),
       expect.objectContaining({
-        label: "Next block",
-        value: expect.stringContaining("re-anchors from your accumulation work"),
+        label: "Progression history",
+        value: expect.stringContaining("Does not count toward progression history"),
       }),
     ]));
   });

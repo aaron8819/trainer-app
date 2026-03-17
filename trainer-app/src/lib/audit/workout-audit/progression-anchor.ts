@@ -6,7 +6,9 @@ import { derivePerformedExerciseSemantics } from "@/lib/session-semantics/perfor
 import { resolveTargetRepRange } from "@/lib/session-semantics/target-evaluation";
 import { isProgressionEligibleWorkout } from "@/lib/progression/progression-eligibility";
 import { resolvePersistedOrReconstructedSessionAuditSnapshot } from "@/lib/evidence/session-audit-snapshot";
+import { resolveAuditCanonicalSemantics } from "./canonical-semantics";
 import type { ProgressionAnchorAuditPayload } from "./types";
+import { PROGRESSION_ANCHOR_AUDIT_PAYLOAD_VERSION } from "./constants";
 
 function resolveProgressionEquipment(
   equipment: string[]
@@ -174,9 +176,10 @@ export async function buildProgressionAnchorAuditPayload(input: {
       mesoSessionSnapshot: current.workout.mesoSessionSnapshot,
       mesocyclePhaseSnapshot: current.workout.mesocyclePhaseSnapshot,
     });
+  const canonicalSemantics = resolveAuditCanonicalSemantics(sessionSnapshot);
 
   return {
-    version: 1,
+    version: PROGRESSION_ANCHOR_AUDIT_PAYLOAD_VERSION,
     workoutId: current.workout.id,
     exerciseId: current.exerciseId,
     exerciseName: current.exercise.name,
@@ -185,6 +188,7 @@ export async function buildProgressionAnchorAuditPayload(input: {
     sessionIntent: current.workout.sessionIntent ?? undefined,
     sessionSnapshotSource: snapshotSource,
     sessionSnapshot,
+    canonicalSemantics,
     trace: decision.trace,
   };
 }

@@ -1,4 +1,8 @@
 import { describe, expect, it } from "vitest";
+import {
+  CANONICAL_DELOAD_DECISION_REDUCTION_PERCENT,
+  CANONICAL_DELOAD_HISTORY_POLICY,
+} from "@/lib/deload/semantics";
 
 import { deriveSessionSemantics } from "./derive-session-semantics";
 
@@ -185,7 +189,7 @@ describe("deriveSessionSemantics", () => {
             deloadDecision: {
               mode: "scheduled",
               reason: ["Scheduled deload week."],
-              reductionPercent: 50,
+              reductionPercent: CANONICAL_DELOAD_DECISION_REDUCTION_PERCENT,
               appliedTo: "volume",
             },
             readiness: {
@@ -211,9 +215,11 @@ describe("deriveSessionSemantics", () => {
       countsTowardCompliance: true,
       countsTowardRecentStimulus: true,
       countsTowardWeeklyVolume: true,
-      countsTowardProgressionHistory: false,
-      countsTowardPerformanceHistory: false,
-      updatesProgressionAnchor: false,
+      countsTowardProgressionHistory:
+        CANONICAL_DELOAD_HISTORY_POLICY.countsTowardProgressionHistory,
+      countsTowardPerformanceHistory:
+        CANONICAL_DELOAD_HISTORY_POLICY.countsTowardPerformanceHistory,
+      updatesProgressionAnchor: CANONICAL_DELOAD_HISTORY_POLICY.updatesProgressionAnchor,
       eligibleForUniqueIntentSubtraction: true,
     });
   });

@@ -7,6 +7,10 @@ import {
   resolveGapFillTargetMuscles,
 } from "./gap-fill";
 import { readSessionDecisionReceipt } from "@/lib/evidence/session-decision-receipt";
+import {
+  isCanonicalDeloadPhase,
+  isCanonicalDeloadReceipt,
+} from "@/lib/deload/semantics";
 import { isStrictSupplementalDeficitSession } from "@/lib/session-semantics/supplemental-classifier";
 
 export const workoutListItemSelect = {
@@ -162,10 +166,7 @@ export function buildWorkoutListSurfaceSummary(
       ? null
       : row.mesoSessionSnapshot ?? null;
   const displayPhase = row.mesocyclePhaseSnapshot ?? receipt?.cycleContext.phase?.toUpperCase() ?? null;
-  const isDeload =
-    receipt?.cycleContext.isDeload === true ||
-    (receipt?.deloadDecision != null && receipt.deloadDecision.mode !== "none") ||
-    displayPhase === "DELOAD";
+  const isDeload = isCanonicalDeloadReceipt(receipt) || isCanonicalDeloadPhase(displayPhase);
   const gapFillTargetMuscles = resolveGapFillTargetMuscles({
     selectionMetadata: row.selectionMetadata,
   });

@@ -225,6 +225,14 @@ describe("buildHistoricalWeekAuditPayload", () => {
     expect(payload.sessions[0]).toMatchObject({
       workoutId: "workout-1",
       snapshotSource: "persisted",
+      canonicalSemantics: {
+        sourceLayer: "saved",
+        phase: "DELOAD",
+        isDeload: true,
+        countsTowardProgressionHistory: false,
+        countsTowardPerformanceHistory: false,
+        updatesProgressionAnchor: false,
+      },
       progressionEvidence: {
         countsTowardProgressionHistory: false,
         updatesProgressionAnchor: false,
@@ -294,6 +302,13 @@ describe("buildHistoricalWeekAuditPayload", () => {
     });
 
     expect(payload.sessions[0]?.snapshotSource).toBe("reconstructed_saved_only");
+    expect(payload.sessions[0]?.canonicalSemantics).toMatchObject({
+      sourceLayer: "saved",
+      phase: "ACCUMULATION",
+      isDeload: false,
+      countsTowardProgressionHistory: true,
+      updatesProgressionAnchor: true,
+    });
     expect(payload.sessions[0]?.reconciliation.comparisonState).toBe("missing_generated_snapshot");
     expect(payload.comparabilityCoverage).toEqual({
       comparableSessionCount: 0,
@@ -302,8 +317,8 @@ describe("buildHistoricalWeekAuditPayload", () => {
       reconstructedSnapshotCount: 1,
       generatedLayerCoverage: "none",
       limitations: [
-        "1 session(s) are missing generated-layer snapshots, so generated-vs-saved drift and generation-time traces are unavailable for those legacy workouts.",
-        "1 session(s) were reconstructed from saved workout state only.",
+        "1 session(s) are affected. Generated-layer snapshots are missing for some legacy workouts, so generated-vs-saved drift and generation-time traces are unavailable for those sessions.",
+        "1 session(s) were reconstructed from saved workout state only. [audit-guardrail:do-not-reconstruct] Do not reconstruct generated-layer truth from saved workout state; treat saved-only coverage as saved-state semantics only.",
       ],
     });
   });

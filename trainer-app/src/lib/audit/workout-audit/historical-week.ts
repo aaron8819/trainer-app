@@ -8,7 +8,13 @@ import {
   readWeekCloseDeficitSnapshot,
 } from "@/lib/api/mesocycle-week-close";
 import { readWeekCloseIdFromSelectionMetadata } from "@/lib/ui/selection-metadata";
+import { resolveAuditCanonicalSemantics } from "./canonical-semantics";
 import type { HistoricalWeekAuditPayload, HistoricalWeekAuditSession } from "./types";
+import {
+  AUDIT_RECONSTRUCTION_GUARDRAIL,
+  HISTORICAL_WEEK_AUDIT_PAYLOAD_VERSION,
+  HISTORICAL_WEEK_MISSING_GENERATED_LAYER_LIMITATION,
+} from "./constants";
 
 type RelevantWeekCloseRow = {
   id: string;
@@ -221,10 +227,13 @@ export async function buildHistoricalWeekAuditPayload(input: {
         mesocyclePhaseSnapshot: workout.mesocyclePhaseSnapshot,
       });
     const semantics = sessionSnapshot.saved?.semantics ?? sessionSnapshot.generated?.semantics;
+    const canonicalSemantics = resolveAuditCanonicalSemantics(sessionSnapshot);
     const progressionEvidence = {
-      countsTowardProgressionHistory: semantics?.countsTowardProgressionHistory ?? false,
-      countsTowardPerformanceHistory: semantics?.countsTowardPerformanceHistory ?? false,
-      updatesProgressionAnchor: semantics?.updatesProgressionAnchor ?? false,
+      countsTowardProgressionHistory:
+        canonicalSemantics?.countsTowardProgressionHistory ?? false,
+      countsTowardPerformanceHistory:
+        canonicalSemantics?.countsTowardPerformanceHistory ?? false,
+      updatesProgressionAnchor: canonicalSemantics?.updatesProgressionAnchor ?? false,
       reasonCodes: semantics?.reasons.map((reason) => reason.code) ?? [],
     };
 
@@ -236,6 +245,14 @@ export async function buildHistoricalWeekAuditPayload(input: {
       sessionIntent: workout.sessionIntent ?? undefined,
       snapshotSource,
       sessionSnapshot,
+      canonicalSemantics: canonicalSemantics ?? {
+        sourceLayer: "none",
+        phase: workout.mesocyclePhaseSnapshot,
+        isDeload: false,
+        countsTowardProgressionHistory: false,
+        countsTowardPerformanceHistory: false,
+        updatesProgressionAnchor: false,
+      },
       progressionEvidence,
       weekClose: resolveHistoricalWeekClose({
         workout,
@@ -317,17 +334,17 @@ export async function buildHistoricalWeekAuditPayload(input: {
   const limitations: string[] = [];
   if (missingGeneratedSnapshotCount > 0) {
     limitations.push(
-      `${missingGeneratedSnapshotCount} session(s) are missing generated-layer snapshots, so generated-vs-saved drift and generation-time traces are unavailable for those legacy workouts.`
+      `${missingGeneratedSnapshotCount} session(s) are affected. ${HISTORICAL_WEEK_MISSING_GENERATED_LAYER_LIMITATION}`
     );
   }
   if (reconstructedSnapshotCount > 0) {
     limitations.push(
-      `${reconstructedSnapshotCount} session(s) were reconstructed from saved workout state only.`
+      `${reconstructedSnapshotCount} session(s) were reconstructed from saved workout state only. ${AUDIT_RECONSTRUCTION_GUARDRAIL}`
     );
   }
 
   return {
-    version: 1,
+    version: HISTORICAL_WEEK_AUDIT_PAYLOAD_VERSION,
     week: input.week,
     mesocycleId: input.mesocycleId,
     sessions,

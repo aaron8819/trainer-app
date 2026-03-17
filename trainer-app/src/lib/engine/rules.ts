@@ -1,4 +1,9 @@
 import type { PrimaryGoal, TrainingAge } from "./types";
+import {
+  CANONICAL_DELOAD_BACKOFF_MULTIPLIER,
+  CANONICAL_DELOAD_RPE_CAP,
+  CANONICAL_DELOAD_SET_MULTIPLIER,
+} from "@/lib/deload/semantics";
 
 export const FAT_LOSS_SET_MULTIPLIER = 0.75;
 
@@ -40,7 +45,7 @@ const TRAINING_AGE_RPE_OFFSETS: Record<
   advanced: { early: -1.5, middle: -0.5, late: 1.0 },
 };
 
-export const DELOAD_RPE_CAP = 6.0;
+export const DELOAD_RPE_CAP = CANONICAL_DELOAD_RPE_CAP;
 
 export type PeriodizationModifiers = {
   rpeOffset: number;
@@ -101,8 +106,8 @@ export function getMesocyclePeriodization(
   if (config.isDeload) {
     return {
       rpeOffset: -2.0,
-      setMultiplier: 0.5,
-      backOffMultiplier: 0.75,
+      setMultiplier: CANONICAL_DELOAD_SET_MULTIPLIER,
+      backOffMultiplier: CANONICAL_DELOAD_BACKOFF_MULTIPLIER,
       isDeload: true,
     };
   }

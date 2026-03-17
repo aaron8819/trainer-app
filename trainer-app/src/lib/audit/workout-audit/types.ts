@@ -7,20 +7,15 @@ import type {
   SessionAuditMutationSummary,
   SessionAuditSnapshot,
 } from "@/lib/evidence/session-audit-types";
-
-export type WorkoutAuditMode =
-  | "future-week"
-  | "historical-week"
-  | "deload"
-  | "progression-anchor"
-  | "next-session"
-  | "intent-preview";
-
-export type NormalizedWorkoutAuditMode =
-  | "future-week"
-  | "historical-week"
-  | "deload"
-  | "progression-anchor";
+import {
+  HISTORICAL_WEEK_AUDIT_PAYLOAD_VERSION,
+  PROGRESSION_ANCHOR_AUDIT_PAYLOAD_VERSION,
+  WORKOUT_AUDIT_ARTIFACT_VERSION,
+} from "./constants";
+import type {
+  WorkoutAuditCanonicalMode,
+  WorkoutAuditRequestMode,
+} from "./constants";
 
 export type AuditBasisDescriptor = {
   sourceModule: string;
@@ -55,7 +50,7 @@ export type WorkoutAuditIdentity = {
 };
 
 export type WorkoutAuditRequest = {
-  mode: WorkoutAuditMode;
+  mode: WorkoutAuditRequestMode;
   userId?: string;
   ownerEmail?: string;
   intent?: SessionIntent;
@@ -69,8 +64,8 @@ export type WorkoutAuditRequest = {
 };
 
 export type WorkoutAuditContext = {
-  mode: WorkoutAuditMode;
-  requestedMode?: WorkoutAuditMode;
+  mode: WorkoutAuditCanonicalMode;
+  requestedMode?: WorkoutAuditRequestMode;
   userId: string;
   ownerEmail?: string;
   plannerDiagnosticsMode: PlannerDiagnosticsMode;
@@ -91,7 +86,7 @@ export type WorkoutAuditContext = {
 };
 
 export type WorkoutAuditGenerationPath = {
-  requestedMode: WorkoutAuditMode;
+  requestedMode: WorkoutAuditRequestMode;
   executionMode:
     | "standard_generation"
     | "explicit_deload_preview"
@@ -103,6 +98,15 @@ export type WorkoutAuditGenerationPath = {
     | "active_mesocycle_state_active_deload";
 };
 
+export type AuditCanonicalSemantics = {
+  sourceLayer: "saved" | "generated" | "none";
+  phase: string | null;
+  isDeload: boolean;
+  countsTowardProgressionHistory: boolean;
+  countsTowardPerformanceHistory: boolean;
+  updatesProgressionAnchor: boolean;
+};
+
 export type HistoricalWeekAuditSession = {
   workoutId: string;
   scheduledDate: string;
@@ -111,6 +115,7 @@ export type HistoricalWeekAuditSession = {
   sessionIntent?: string;
   snapshotSource: "persisted" | "reconstructed_saved_only";
   sessionSnapshot: SessionAuditSnapshot;
+  canonicalSemantics: AuditCanonicalSemantics;
   progressionEvidence: {
     countsTowardProgressionHistory: boolean;
     countsTowardPerformanceHistory: boolean;
@@ -139,7 +144,7 @@ export type HistoricalWeekAuditSession = {
 };
 
 export type HistoricalWeekAuditPayload = {
-  version: 1;
+  version: typeof HISTORICAL_WEEK_AUDIT_PAYLOAD_VERSION;
   week: number;
   mesocycleId?: string;
   sessions: HistoricalWeekAuditSession[];
@@ -169,7 +174,7 @@ export type HistoricalWeekAuditPayload = {
 };
 
 export type ProgressionAnchorAuditPayload = {
-  version: 1;
+  version: typeof PROGRESSION_ANCHOR_AUDIT_PAYLOAD_VERSION;
   workoutId: string;
   exerciseId: string;
   exerciseName: string;
@@ -178,6 +183,7 @@ export type ProgressionAnchorAuditPayload = {
   sessionIntent?: string;
   sessionSnapshotSource?: "persisted" | "reconstructed_saved_only";
   sessionSnapshot?: SessionAuditSnapshot;
+  canonicalSemantics?: AuditCanonicalSemantics;
   trace: ProgressionDecisionTrace;
 };
 
@@ -192,10 +198,10 @@ export type WorkoutAuditRun = {
 };
 
 export type WorkoutAuditArtifact = {
-  version: 2;
+  version: typeof WORKOUT_AUDIT_ARTIFACT_VERSION;
   generatedAt: string;
-  mode: NormalizedWorkoutAuditMode;
-  requestedMode: WorkoutAuditMode;
+  mode: WorkoutAuditCanonicalMode;
+  requestedMode: WorkoutAuditRequestMode;
   source: "live" | "pii-safe";
   conclusions: AuditConclusionBlock;
   identity: {
@@ -206,6 +212,7 @@ export type WorkoutAuditArtifact = {
   nextSession?: NextWorkoutContext;
   generation?: SessionGenerationResult;
   sessionSnapshot?: SessionAuditSnapshot;
+  canonicalSemantics?: AuditCanonicalSemantics;
   generationPath?: WorkoutAuditGenerationPath;
   historicalWeek?: HistoricalWeekAuditPayload;
   progressionAnchor?: ProgressionAnchorAuditPayload;

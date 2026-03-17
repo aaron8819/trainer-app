@@ -1,18 +1,31 @@
 import { buildGenerationWarningSummary, WORKOUT_AUDIT_CONCLUSIONS } from "./conclusions";
-import { normalizeWorkoutAuditMode } from "./context-builder";
 import type { WorkoutAuditArtifact, WorkoutAuditRequest, WorkoutAuditRun } from "./types";
+import {
+  AUDIT_RECONSTRUCTION_GUARDRAIL,
+  WORKOUT_AUDIT_ARTIFACT_VERSION,
+} from "./constants";
+import {
+  getSerializedArtifactSizeBytes,
+  serializeStableJson,
+} from "./artifact-serialization";
+import { resolveAuditCanonicalSemantics } from "./canonical-semantics";
 
-function sortJson(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(sortJson);
+function getArtifactGuardrailWarnings(run: WorkoutAuditRun): string[] {
+  const warnings: string[] = [];
+
+  if (run.progressionAnchor?.sessionSnapshotSource === "reconstructed_saved_only") {
+    warnings.push(
+      `${AUDIT_RECONSTRUCTION_GUARDRAIL} Progression-anchor coverage is using a saved-only reconstructed snapshot.`
+    );
   }
-  if (value && typeof value === "object") {
-    const entries = Object.entries(value as Record<string, unknown>)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, entry]) => [key, sortJson(entry)] as const);
-    return Object.fromEntries(entries);
+
+  if ((run.historicalWeek?.comparabilityCoverage.reconstructedSnapshotCount ?? 0) > 0) {
+    warnings.push(
+      `${AUDIT_RECONSTRUCTION_GUARDRAIL} Historical-week coverage includes saved-only reconstructed sessions.`
+    );
   }
-  return value;
+
+  return warnings;
 }
 
 export function buildWorkoutAuditArtifact(
@@ -35,10 +48,12 @@ export function buildWorkoutAuditArtifact(
       }
     : request;
 
+  const guardrailWarnings = getArtifactGuardrailWarnings(run);
+
   return {
-    version: 2,
+    version: WORKOUT_AUDIT_ARTIFACT_VERSION,
     generatedAt: run.generatedAt,
-    mode: normalizeWorkoutAuditMode(run.context.mode),
+    mode: run.context.mode,
     requestedMode: run.context.requestedMode ?? request.mode,
     source: piiSafe ? "pii-safe" : "live",
     conclusions: WORKOUT_AUDIT_CONCLUSIONS,
@@ -50,12 +65,14 @@ export function buildWorkoutAuditArtifact(
     nextSession: run.context.nextSession,
     generation: run.generationResult,
     sessionSnapshot: run.sessionSnapshot,
+    canonicalSemantics: resolveAuditCanonicalSemantics(run.sessionSnapshot),
     generationPath: run.generationPath,
     historicalWeek: run.historicalWeek,
     progressionAnchor: run.progressionAnchor,
     warningSummary: buildGenerationWarningSummary({
       generation: run.generationResult,
       capturedWarnings: options?.capturedWarnings,
+      additionalSemanticWarnings: guardrailWarnings,
     }),
   };
 }
@@ -63,5 +80,23 @@ export function buildWorkoutAuditArtifact(
 export function serializeWorkoutAuditArtifact(
   artifact: WorkoutAuditArtifact
 ): string {
-  return JSON.stringify(sortJson(artifact), null, 2);
+  return serializeStableJson(artifact);
+}
+
+export function createWorkoutAuditArtifactOutput(
+  request: WorkoutAuditRequest,
+  run: WorkoutAuditRun,
+  options?: Parameters<typeof buildWorkoutAuditArtifact>[2]
+): {
+  artifact: WorkoutAuditArtifact;
+  serialized: string;
+  sizeBytes: number;
+} {
+  const artifact = buildWorkoutAuditArtifact(request, run, options);
+  const serialized = serializeWorkoutAuditArtifact(artifact);
+  return {
+    artifact,
+    serialized,
+    sizeBytes: getSerializedArtifactSizeBytes(serialized),
+  };
 }

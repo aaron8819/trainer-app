@@ -222,7 +222,7 @@ describe("buildPostWorkoutInsightsModel", () => {
       }),
       expect.objectContaining({
         label: "What comes next",
-        value: expect.stringContaining("re-anchors from your accumulation work"),
+        value: expect.stringContaining("re-anchors from accumulation work"),
         emphasized: true,
       }),
     ]);
@@ -231,7 +231,7 @@ describe("buildPostWorkoutInsightsModel", () => {
       action: "deload",
     });
     expect(model.keyLifts[0]?.todayContext).toContain("intentionally lighter");
-    expect(model.keyLifts[0]?.nextTime).toContain("not a normal progression call");
+    expect(model.keyLifts[0]?.nextTime).toContain("does not count toward progression history");
     expect(model.summary).not.toContain("next exposure points to");
   });
 });

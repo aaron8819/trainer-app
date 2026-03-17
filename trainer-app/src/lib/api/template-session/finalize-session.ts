@@ -8,6 +8,7 @@ import { applyLoadsWithAudit } from "@/lib/engine/apply-loads";
 import { buildSessionDecisionReceipt } from "@/lib/evidence/session-decision-receipt";
 import type { DeloadTransformationTrace } from "@/lib/evidence/session-audit-types";
 import type { PlannerDiagnosticsMode } from "@/lib/evidence/types";
+import { buildCanonicalDeloadDecision } from "@/lib/deload/semantics";
 import type { MappedGenerationContext, SessionGenerationResult } from "./types";
 
 export function runSessionGeneration(
@@ -239,12 +240,7 @@ export function finalizeDeloadSessionResult(input: {
         lifecycleRirTarget: input.mapped.lifecycleRirTarget,
         lifecycleVolumeTargets: input.mapped.lifecycleVolumeTargets,
         sorenessSuppressedMuscles: input.mapped.sorenessSuppressedMuscles,
-        deloadDecision: {
-          mode: "scheduled",
-          reason: [input.note],
-          reductionPercent: 50,
-          appliedTo: "both",
-        },
+        deloadDecision: buildCanonicalDeloadDecision("scheduled", [input.note]),
         plannerDiagnosticsMode: input.plannerDiagnosticsMode ?? "standard",
       }),
       volumePlanByMuscle,

@@ -7,6 +7,11 @@ import type {
   SessionAuditSemanticsReason,
   SessionAuditSemanticsTrace,
 } from "@/lib/evidence/session-audit-types";
+import {
+  CANONICAL_DELOAD_HISTORY_POLICY,
+  isCanonicalDeloadPhase,
+  isCanonicalDeloadReceipt,
+} from "@/lib/deload/semantics";
 import { isStrictSupplementalDeficitSession } from "@/lib/session-semantics/supplemental-classifier";
 
 export type DerivedSessionKind =
@@ -51,14 +56,10 @@ function isDeloadSession(input: SessionSemanticsInput): boolean {
   const receipt = readSessionDecisionReceipt(input.selectionMetadata);
   const cycleContext = receipt?.cycleContext;
   const phase = normalizePhase(cycleContext?.phase ?? input.mesocyclePhase);
-  const blockType = normalizePhase(cycleContext?.blockType);
 
   return (
-    (receipt?.deloadDecision != null && receipt.deloadDecision.mode !== "none") ||
-    cycleContext?.isDeload === true ||
-    phase === "DELOAD" ||
-    phase === "ACTIVE_DELOAD" ||
-    blockType === "DELOAD"
+    isCanonicalDeloadReceipt(receipt) ||
+    isCanonicalDeloadPhase(phase)
   );
 }
 
@@ -131,9 +132,15 @@ export function deriveSessionSemantics(
 
   // Deload remains a real performed session for compliance, recent stimulus,
   // and weekly volume, but it never becomes a progression/performance anchor.
-  const countsTowardProgressionHistory = !isStrictSupplemental && !isDeload;
-  const countsTowardPerformanceHistory = !isStrictSupplemental && !isDeload;
-  const updatesProgressionAnchor = !isStrictSupplemental && !isDeload;
+  const countsTowardProgressionHistory =
+    !isStrictSupplemental &&
+    (isDeload ? CANONICAL_DELOAD_HISTORY_POLICY.countsTowardProgressionHistory : true);
+  const countsTowardPerformanceHistory =
+    !isStrictSupplemental &&
+    (isDeload ? CANONICAL_DELOAD_HISTORY_POLICY.countsTowardPerformanceHistory : true);
+  const updatesProgressionAnchor =
+    !isStrictSupplemental &&
+    (isDeload ? CANONICAL_DELOAD_HISTORY_POLICY.updatesProgressionAnchor : true);
 
   if (!countsTowardProgressionHistory) {
     reasons.push(
@@ -200,9 +207,15 @@ export function deriveSessionSemantics(
     isStrictSupplemental,
     advancesLifecycle,
     consumesWeeklyScheduleIntent: advancesLifecycle,
-    countsTowardCompliance: true,
-    countsTowardRecentStimulus: true,
-    countsTowardWeeklyVolume: true,
+    countsTowardCompliance: isDeload
+      ? CANONICAL_DELOAD_HISTORY_POLICY.countsTowardCompliance
+      : true,
+    countsTowardRecentStimulus: isDeload
+      ? CANONICAL_DELOAD_HISTORY_POLICY.countsTowardRecentStimulus
+      : true,
+    countsTowardWeeklyVolume: isDeload
+      ? CANONICAL_DELOAD_HISTORY_POLICY.countsTowardWeeklyVolume
+      : true,
     countsTowardProgressionHistory,
     countsTowardPerformanceHistory,
     updatesProgressionAnchor,

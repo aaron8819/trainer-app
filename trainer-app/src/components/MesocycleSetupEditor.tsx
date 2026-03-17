@@ -9,7 +9,7 @@ import {
   getAllowedIntentsForSplit,
   type NextCycleCarryForwardConflict,
   type NextCycleSeedDraft,
-} from "@/lib/api/mesocycle-handoff";
+} from "@/lib/api/mesocycle-handoff-contract";
 
 type MesocycleSetupEditorProps = {
   mesocycleId: string;

@@ -170,7 +170,7 @@ Sources of truth:
 ## Week-close deficit snapshot notes
 - Pending week-close rows returned through `findPendingWeekCloseForUser()` in `src/lib/api/mesocycle-week-close.ts` still serialize `deficitSnapshot.muscles[]` as `{ muscle, target, actual, deficit }`.
 - After the weekly-volume unification, `actual` and `deficit` in that snapshot are based on weighted effective weekly volume from `loadMesocycleWeekMuscleVolume()` in `src/lib/api/weekly-volume.ts`, not primary-only direct-set counts.
-- Canonical user-visible week-close reads should use `findRelevantWeekCloseForUser()` rather than only pending rows, because resolved rows remain visible while `deficitState === PARTIAL`.
+- `findRelevantWeekCloseForUser()` is the canonical broad selector for relevant week-close truth, rather than a direct UI-visibility contract. Surfaces with current-week semantics must additionally scope that row to the active/displayed week before rendering. This allows resolved rows to remain queryable while `deficitState === PARTIAL` without leaking prior-week state into current-week UI.
 - Week-close truth model:
   - `workflowState=PENDING_OPTIONAL_GAP_FILL`: optional gap-fill workflow is still actionable
   - `workflowState=COMPLETED`: workflow is handled or no longer actionable

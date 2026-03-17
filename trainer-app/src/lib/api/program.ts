@@ -253,7 +253,7 @@ function normalizeMesoBlocks(input: {
 function resolveBlockTypeForWeek(input: {
   mesoStartWeek: number;
   weekInMeso: number;
-  mesoState: "ACTIVE_ACCUMULATION" | "ACTIVE_DELOAD" | "COMPLETED";
+  mesoState: "ACTIVE_ACCUMULATION" | "ACTIVE_DELOAD" | "AWAITING_HANDOFF" | "COMPLETED";
   blocks: ProgramBlockRecord[];
 }): string | null {
   const absoluteWeek = input.mesoStartWeek + input.weekInMeso - 1;
@@ -266,7 +266,7 @@ function resolveBlockTypeForWeek(input: {
   if (normalizedBlockType) {
     return normalizedBlockType;
   }
-  if (input.mesoState === "ACTIVE_DELOAD") {
+  if (input.mesoState === "ACTIVE_DELOAD" || input.mesoState === "AWAITING_HANDOFF") {
     return "deload";
   }
   return null;
@@ -377,6 +377,27 @@ async function loadMesoWeekMuscleVolume(
   });
 }
 
+function isWeekCloseVisibleOnHome(input: {
+  activeMesocycleId: string | null;
+  activeWeek: number | null;
+  relevantWeekClose:
+    | {
+        mesocycleId: string;
+        targetWeek: number;
+      }
+    | null
+    | undefined;
+}): boolean {
+  if (!input.relevantWeekClose || !input.activeMesocycleId || input.activeWeek == null) {
+    return false;
+  }
+
+  return (
+    input.relevantWeekClose.mesocycleId === input.activeMesocycleId &&
+    input.relevantWeekClose.targetWeek === input.activeWeek
+  );
+}
+
 export async function loadHomeProgramSupport(userId: string): Promise<HomeProgramSupportData> {
   const [nextWorkoutContext, activeMesocycle] = await Promise.all([
     loadNextWorkoutContext(userId),
@@ -398,6 +419,7 @@ export async function loadHomeProgramSupport(userId: string): Promise<HomeProgra
       },
     }),
   ]);
+  const activeWeek = activeMesocycle ? getCurrentMesoWeek(activeMesocycle) : null;
   const nextSession: NextSessionData = {
     intent: nextWorkoutContext.intent,
     workoutId: nextWorkoutContext.existingWorkoutId,
@@ -456,15 +478,28 @@ export async function loadHomeProgramSupport(userId: string): Promise<HomeProgra
         status: relevantWeekClose.optionalWorkout.status,
       }
     : null;
+  const isRelevantToActiveHomeWeek = isWeekCloseVisibleOnHome({
+    activeMesocycleId: activeMesocycle?.id ?? null,
+    activeWeek,
+    relevantWeekClose,
+  });
   const canGenerateGapFill =
-    relevantWeekClose?.status === "PENDING_OPTIONAL_GAP_FILL" && targetMuscles.length > 0;
+    isRelevantToActiveHomeWeek &&
+    relevantWeekClose?.status === "PENDING_OPTIONAL_GAP_FILL" &&
+    targetMuscles.length > 0;
 
   const gapFill: GapFillSupportData = {
     eligible: canGenerateGapFill,
-    visible: Boolean(relevantWeekClose?.id && (weekCloseState?.deficitState ?? null) !== "CLOSED"),
+    visible:
+      isRelevantToActiveHomeWeek &&
+      Boolean(relevantWeekClose?.id && (weekCloseState?.deficitState ?? null) !== "CLOSED"),
     reason:
       !relevantWeekClose
         ? "no_pending_week_close"
+        : !isRelevantToActiveHomeWeek
+          ? "out_of_scope_for_active_week"
+        : (weekCloseState?.deficitState ?? null) === "CLOSED"
+          ? null
         : targetMuscles.length === 0
           ? "missing_deficit_snapshot"
           : null,

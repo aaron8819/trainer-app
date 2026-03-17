@@ -103,10 +103,11 @@ Route-purpose shorthand:
 
 ## Optional gap-fill flow
 1. Dashboard/home support computes optional-session state (`loadHomeProgramSupport()` in `src/lib/api/program.ts`) with `anchorWeek`, suppression flags, and policy caps.
+  - Home is an active-week operational surface. It renders week-close support only when the selected row matches both the active mesocycle and the active home week.
 2. UI shows the optional gap-fill card when the relevant week-close is still visible, not only when generation is still eligible (`src/components/OptionalGapFillCard.tsx`).
-  - `visible=true` means the week-close should still be shown because deficit truth remains user-relevant.
-  - `eligible=true` means the user can still generate or reopen the optional gap-fill workflow.
-  - A resolved row may therefore remain visible with `workflowState=COMPLETED` and `deficitState=PARTIAL`.
+  - `visible=true` means the same-week week-close should still be shown because deficit truth remains user-relevant.
+  - `eligible=true` means the same-week row can still generate or reopen the optional gap-fill workflow.
+  - A resolved same-week row may therefore remain visible with `workflowState=COMPLETED` and `deficitState=PARTIAL`.
 3. Generate action calls `POST /api/workouts/generate-from-intent` with:
   - `intent=body_part`
   - `optionalGapFill=true`
@@ -118,9 +119,9 @@ Route-purpose shorthand:
 4. Save action calls `POST /api/workouts/save` with `advancesSplit=false` semantics enforced server-side by strict triplet classification.
   Save responses may include a `weekClose` summary payload; the UI should read `workflowState` and `deficitState` directly instead of collapsing to `resolution`.
 5. Disappearance rules:
-  - Next-week `PLANNED` carryover does not hide prior-week optional gap-fill.
-  - Started carryover (`IN_PROGRESS`/`PARTIAL`) suppresses prior-week optional gap-fill.
-  - Resolved week-close remains visible while `deficitState !== CLOSED`.
+  - Advancing into a new active week suppresses prior-week week-close/gap-fill support on Home.
+  - Same-week resolved week-close remains visible while `deficitState !== CLOSED`.
+  - Same-week `deficitState=CLOSED` suppresses the card.
   6. Labels and week/session mapping:
     - list/log summary labels use canonical strict classifier for `Gap Fill` title + muscles subtext
     - card copy must preserve the truth split: workflow can be complete while training targets remain partially unmet

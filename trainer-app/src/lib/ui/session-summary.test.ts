@@ -234,7 +234,7 @@ describe("buildSessionSummaryModel", () => {
       sessionIntent: "PUSH",
     });
 
-    expect(summary.summary).toContain("lighter on purpose");
+    expect(summary.summary).toContain("redundant accessory overlap is trimmed");
     expect(summary.tags).toContain("Deload");
     expect(summary.items).toEqual(expect.arrayContaining([
       expect.objectContaining({
@@ -250,8 +250,12 @@ describe("buildSessionSummaryModel", () => {
         value: expect.stringContaining("reduce the weight"),
       }),
       expect.objectContaining({
+        label: "Structure",
+        value: expect.stringContaining("overlapping accessory variants are trimmed first"),
+      }),
+      expect.objectContaining({
         label: "Deload",
-        value: expect.stringContaining("Lighter loads and fewer hard sets"),
+        value: expect.stringContaining("Main lifts stay in"),
       }),
       expect.objectContaining({ label: "Volume held", value: expect.stringContaining("chest, front delts") }),
       expect.objectContaining({ label: "Readiness", value: expect.stringContaining("2 scaled down") }),

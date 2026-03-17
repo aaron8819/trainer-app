@@ -1,6 +1,13 @@
 import type { SessionContext } from "@/lib/engine/explainability";
 import type { SessionDecisionReceipt } from "@/lib/evidence/types";
-import { isCanonicalDeloadReceipt } from "@/lib/deload/semantics";
+import {
+  getCanonicalDeloadContractText,
+  getCanonicalDeloadEffortText,
+  getCanonicalDeloadGoalText,
+  getCanonicalDeloadStructureText,
+  getCanonicalDeloadSummaryText,
+  isCanonicalDeloadReceipt,
+} from "@/lib/deload/semantics";
 import type { WorkoutStructureState } from "./selection-metadata";
 import {
   formatGapFillMuscleList,
@@ -59,11 +66,9 @@ function formatWeekTag(input: {
 
 function formatEffortTarget(receipt?: SessionDecisionReceipt): string {
   if (hasCanonicalDeloadSignal(receipt)) {
-    if (receipt?.lifecycleRirTarget) {
-      return `Keep reps crisp and leave ${receipt.lifecycleRirTarget.min}-${receipt.lifecycleRirTarget.max} reps in reserve on work sets. If the written load feels too heavy to stay there, reduce the weight.`;
-    }
-
-    return "Keep technique clean, stay well shy of failure, and finish fresher than you started. If the written load feels too heavy for that, reduce the weight.";
+    return getCanonicalDeloadEffortText({
+      lifecycleRirTarget: receipt?.lifecycleRirTarget,
+    });
   }
 
   if (receipt?.lifecycleRirTarget) {
@@ -80,14 +85,7 @@ function formatDescriptiveDeloadValue(receipt?: SessionDecisionReceipt): Session
   }
 
   const reason = deload.reason[0]?.trim();
-  const contract =
-    deload.appliedTo === "both"
-      ? "Lighter loads and fewer hard sets are planned on purpose for recovery."
-      : deload.appliedTo === "load"
-        ? "Loads are lighter on purpose for recovery."
-        : deload.appliedTo === "volume"
-          ? "Hard-set volume is reduced on purpose for recovery."
-          : "Work is intentionally held back for recovery.";
+  const contract = getCanonicalDeloadContractText();
 
   return {
     label: "Deload",
@@ -197,7 +195,7 @@ function buildSummaryText(input: {
   const readinessScaling = receipt?.readiness.intensityScaling;
 
   if (isDeload || (deload && deload.mode !== "none")) {
-    return `This ${sessionIdentity} session is a deload: lighter on purpose so you can recover, move crisply, and keep momentum.`;
+    return getCanonicalDeloadSummaryText();
   }
 
   if (readinessScaling?.applied) {
@@ -266,7 +264,7 @@ export function buildSessionSummaryModel(input: {
       label: "Today's goal",
       value:
         isDeload
-          ? "Move cleanly, stay far from failure, and leave fresher than you came in."
+          ? getCanonicalDeloadGoalText()
           : context.progressionContext.volumeProgression === "building"
           ? isGapFill
             ? gapFillTargetMuscles.length > 0
@@ -297,6 +295,13 @@ export function buildSessionSummaryModel(input: {
   ];
 
   const deloadItem = formatDescriptiveDeloadValue(receipt);
+  if (deloadItem) {
+    items.push({
+      label: "Structure",
+      value: getCanonicalDeloadStructureText(),
+    });
+  }
+
   if (deloadItem) {
     items.push(deloadItem);
   }

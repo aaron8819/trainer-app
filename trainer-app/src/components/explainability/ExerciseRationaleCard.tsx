@@ -6,6 +6,7 @@ import type {
   NextExposureDecision,
 } from "@/lib/engine/explainability";
 import type { ProgressionReceipt } from "@/lib/evidence/types";
+import { getCanonicalDeloadProgressionTriggerText } from "@/lib/deload/semantics";
 import { PrescriptionDetails } from "./PrescriptionDetails";
 
 type Props = {
@@ -214,7 +215,7 @@ function formatTrigger(trigger: ProgressionReceipt["trigger"]): string {
     case "hold":
       return "Recent performance supported writing the same target for today.";
     case "deload":
-      return "Today's written target was reduced because this session is in deload mode.";
+      return getCanonicalDeloadProgressionTriggerText();
     case "readiness_scale":
       return "Today's written target was adjusted to match readiness.";
     default:

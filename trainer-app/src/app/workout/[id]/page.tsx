@@ -15,6 +15,7 @@ import { formatSessionIdentityLabel } from "@/lib/ui/session-identity";
 import { evaluateTargetReps } from "@/lib/session-semantics/target-evaluation";
 import { buildSessionSummaryModel } from "@/lib/ui/session-summary";
 import { getWorkoutDetailTitle, getWorkoutWorkflowState } from "@/lib/workout-workflow";
+import { getCanonicalDeloadProgressionTriggerText } from "@/lib/deload/semantics";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -55,7 +56,7 @@ const formatProgressionCall = (trigger?: string | null) => {
     case "hold":
       return "Today's written target held your prior session anchor.";
     case "deload":
-      return "Today's written target was reduced for deload work.";
+      return getCanonicalDeloadProgressionTriggerText();
     case "readiness_scale":
       return "Today's written target was adjusted for readiness.";
     default:

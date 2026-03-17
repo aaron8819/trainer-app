@@ -5,7 +5,9 @@ import type { WorkoutExercise, WorkoutPlan } from "@/lib/engine/types";
 import { getPeakAccumulationWeek } from "@/lib/api/mesocycle-lifecycle";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 import {
+  applyCanonicalDeloadStructurePolicy,
   CANONICAL_DELOAD_SET_MULTIPLIER,
+  getCanonicalDeloadWorkoutNote,
   getCanonicalDeloadTargetRpe,
   resolveCanonicalDeloadSetCount,
 } from "@/lib/deload/semantics";
@@ -153,15 +155,12 @@ export async function generateDeloadSessionFromIntentContext(
     orderBy: [{ scheduledDate: "desc" }, { id: "desc" }],
   });
 
-  const coreRows = await prisma.mesocycleExerciseRole.findMany({
-    where: {
-      mesocycleId: activeMesocycle.id,
-      role: "CORE_COMPOUND",
-      sessionIntent: intentDb as never,
-    },
-    select: { exerciseId: true },
-  });
-  const coreIds = new Set(coreRows.map((row) => row.exerciseId));
+  const intentRoleMap = mapped.mesocycleRoleMapByIntent?.[sessionIntent] ?? new Map();
+  const coreIds = new Set(
+    [...intentRoleMap.entries()]
+      .filter(([, role]) => role === "CORE_COMPOUND")
+      .map(([exerciseId]) => exerciseId)
+  );
 
   const baselineExerciseIds = latestAccumWorkout.exercises.map((exercise) => exercise.exerciseId);
   const orderedExerciseIds = [...baselineExerciseIds];
@@ -175,8 +174,29 @@ export async function generateDeloadSessionFromIntentContext(
   const peakAccumulationSource = week4Workouts.length > 0 ? week4Workouts : [latestAccumWorkout];
   const targetRpe = getCanonicalDeloadTargetRpe();
 
-  const workoutExercises: WorkoutExercise[] = [];
-  const traceExercises: DeloadTransformationTrace["exercises"] = [];
+  const baselineExerciseDetails = new Map<
+    string,
+    {
+      exerciseId: string;
+      exerciseName: string;
+      orderIndex: number;
+      isMainLift: boolean;
+      mesocycleRole?: "CORE_COMPOUND" | "ACCESSORY";
+      isCompound?: boolean;
+      movementPatterns: typeof mapped.exerciseLibrary[number]["movementPatterns"];
+      primaryMuscles: string[];
+      secondaryMuscles: string[];
+      fatigueCost?: number;
+      jointStress?: typeof mapped.exerciseLibrary[number]["jointStress"];
+      baselineSetCount: number;
+      baselineRepAnchor: number;
+      anchoredLoad: number | null;
+      anchoredLoadSource: "peak_accumulation" | "latest_accumulation" | "none";
+      peakAccumulationLoadCount: number;
+      latestAccumulationLoadCount: number;
+    }
+  >();
+
   for (const [orderIndex, exerciseId] of orderedExerciseIds.entries()) {
     const exercise = exerciseById.get(exerciseId);
     if (!exercise) continue;
@@ -187,7 +207,10 @@ export async function generateDeloadSessionFromIntentContext(
       peakAccumulationSource
         .flatMap((workout) => workout.exercises)
         .find((entry) => entry.exerciseId === exerciseId);
-    const isMainLift = baselineExerciseEntry?.isMainLift ?? coreIds.has(exerciseId);
+    const mesocycleRole = intentRoleMap.get(exerciseId);
+    const isMainLift =
+      baselineExerciseEntry?.isMainLift ??
+      (mesocycleRole != null ? mesocycleRole === "CORE_COMPOUND" : coreIds.has(exerciseId));
     const baselineSetCount = baselineExerciseEntry?.sets.length ?? 4;
     const baselineReps = modalNumber(
       (baselineExerciseEntry?.sets ?? [])
@@ -208,30 +231,20 @@ export async function generateDeloadSessionFromIntentContext(
       isMainLift,
     });
 
-    const setPlan = buildExerciseSetPlan(
-      Math.max(1, baselineSetCount),
-      baselineReps,
-      Number(targetRpe.toFixed(1)),
-      isMainLift
-    );
-
-    // Leave targetLoad unset so canonical prescription can apply the deload
-    // load-down instead of carrying accumulation-era loads forward.
-    workoutExercises.push({
-      id: createId(),
-      exercise,
-      orderIndex,
-      isMainLift,
-      role: isMainLift ? "main" : "accessory",
-      sets: setPlan,
-    });
-    traceExercises.push({
+    baselineExerciseDetails.set(exerciseId, {
       exerciseId,
       exerciseName: exercise.name,
+      orderIndex,
       isMainLift,
+      mesocycleRole,
+      isCompound: exercise.isCompound,
+      movementPatterns: exercise.movementPatterns,
+      primaryMuscles: exercise.primaryMuscles ?? [],
+      secondaryMuscles: exercise.secondaryMuscles ?? [],
+      fatigueCost: exercise.fatigueCost,
+      jointStress: exercise.jointStress,
       baselineSetCount: Math.max(1, baselineSetCount),
       baselineRepAnchor: baselineReps,
-      deloadSetCount: setPlan.length,
       anchoredLoad: accumulationAnchor.anchoredLoad,
       anchoredLoadSource: accumulationAnchor.anchoredLoadSource,
       peakAccumulationLoadCount: peakAccumulationLoads.length,
@@ -239,9 +252,53 @@ export async function generateDeloadSessionFromIntentContext(
     });
   }
 
+  const structuralPolicy = applyCanonicalDeloadStructurePolicy([...baselineExerciseDetails.values()]);
+
+  const workoutExercises: WorkoutExercise[] = [];
+  const traceExercises: DeloadTransformationTrace["exercises"] = [];
+  for (const keptExercise of structuralPolicy.keptExercises) {
+    const detail = baselineExerciseDetails.get(keptExercise.exerciseId);
+    const exercise = exerciseById.get(keptExercise.exerciseId);
+    if (!detail || !exercise) {
+      continue;
+    }
+
+    const setPlan = buildExerciseSetPlan(
+      detail.baselineSetCount,
+      detail.baselineRepAnchor,
+      Number(targetRpe.toFixed(1)),
+      keptExercise.isMainLift
+    );
+
+    workoutExercises.push({
+      id: createId(),
+      exercise,
+      orderIndex: detail.orderIndex,
+      isMainLift: keptExercise.isMainLift,
+      role: keptExercise.isMainLift ? "main" : "accessory",
+      sets: setPlan,
+    });
+    traceExercises.push({
+      exerciseId: detail.exerciseId,
+      exerciseName: detail.exerciseName,
+      isMainLift: keptExercise.isMainLift,
+      baselineSetCount: detail.baselineSetCount,
+      baselineRepAnchor: detail.baselineRepAnchor,
+      deloadSetCount: setPlan.length,
+      redundancyBucket: keptExercise.redundancyBucket,
+      structuralDecisionCode: keptExercise.reasonCode,
+      structuralDecision: keptExercise.reason,
+      anchoredLoad: detail.anchoredLoad,
+      anchoredLoadSource: detail.anchoredLoadSource,
+      peakAccumulationLoadCount: detail.peakAccumulationLoadCount,
+      latestAccumulationLoadCount: detail.latestAccumulationLoadCount,
+    });
+  }
+
   const mainLifts = workoutExercises.filter((entry) => entry.isMainLift);
   const accessories = workoutExercises.filter((entry) => !entry.isMainLift);
   const estimatedMinutes = Math.max(30, workoutExercises.reduce((sum, ex) => sum + ex.sets.length * 3, 0));
+  const note = getCanonicalDeloadWorkoutNote();
   const workout: WorkoutPlan = {
     id: createId(),
     scheduledDate: new Date().toISOString(),
@@ -249,7 +306,7 @@ export async function generateDeloadSessionFromIntentContext(
     mainLifts,
     accessories,
     estimatedMinutes,
-    notes: "Lifecycle-deload: fixed exercise list, roughly half the hard sets, lighter loads assigned canonically at prescription time.",
+    notes: note,
   };
 
   const perExerciseSetTargets = Object.fromEntries(
@@ -271,13 +328,28 @@ export async function generateDeloadSessionFromIntentContext(
     setFactor: CANONICAL_DELOAD_SET_MULTIPLIER,
     minSets: 1,
     exerciseCount: traceExercises.length,
+    baselineExerciseCount: structuralPolicy.policy.baselineExerciseCount,
+    baselineHardSetCount: structuralPolicy.policy.baselineHardSetCount,
+    keptExerciseCount: structuralPolicy.policy.keptExerciseCount,
+    keptHardSetCount: traceExercises.reduce((sum, exercise) => sum + exercise.deloadSetCount, 0),
+    maxAccessoryCount: structuralPolicy.policy.maxAccessoryCount,
     exercises: traceExercises,
+    trimmedExercises: structuralPolicy.droppedExercises.map((exercise) => ({
+      exerciseId: exercise.exerciseId,
+      exerciseName: exercise.exerciseName,
+      isMainLift: exercise.isMainLift,
+      baselineSetCount: exercise.baselineSetCount,
+      baselineRepAnchor: exercise.baselineRepAnchor,
+      redundancyBucket: exercise.redundancyBucket,
+      structuralDecisionCode: exercise.reasonCode,
+      structuralDecision: exercise.reason,
+    })),
   };
 
   return {
     workout,
     selection,
-    note: "Scheduled deload week: keep the exercise list stable, cut hard sets roughly in half, and assign lighter loads through the canonical load engine.",
+    note,
     trace,
   };
 }

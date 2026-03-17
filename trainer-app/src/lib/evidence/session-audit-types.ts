@@ -1,4 +1,5 @@
 import type { CycleContextSnapshot, DeloadDecision } from "./types";
+import type { CanonicalDeloadStructureReasonCode } from "@/lib/deload/semantics";
 
 export type SessionAuditVersion = 1;
 
@@ -124,6 +125,9 @@ export type DeloadExerciseTransformationTrace = {
   baselineSetCount: number;
   baselineRepAnchor: number;
   deloadSetCount: number;
+  redundancyBucket?: string;
+  structuralDecisionCode?: CanonicalDeloadStructureReasonCode;
+  structuralDecision?: string;
   anchoredLoad: number | null;
   anchoredLoadSource: "peak_accumulation" | "latest_accumulation" | "none";
   peakAccumulationLoadCount: number;
@@ -141,6 +145,20 @@ export type DeloadExerciseTransformationTrace = {
   resolvedSetLoads?: number[];
 };
 
+export type DeloadTrimmedExerciseTrace = {
+  exerciseId: string;
+  exerciseName: string;
+  isMainLift: boolean;
+  baselineSetCount: number;
+  baselineRepAnchor: number;
+  redundancyBucket: string;
+  structuralDecisionCode: Exclude<
+    CanonicalDeloadStructureReasonCode,
+    "preserved_main_lift" | "kept_unique_accessory_coverage"
+  >;
+  structuralDecision: string;
+};
+
 export type DeloadTransformationTrace = {
   version: SessionAuditVersion;
   sessionIntent: string;
@@ -148,7 +166,13 @@ export type DeloadTransformationTrace = {
   setFactor: number;
   minSets: number;
   exerciseCount: number;
+  baselineExerciseCount?: number;
+  baselineHardSetCount?: number;
+  keptExerciseCount?: number;
+  keptHardSetCount?: number;
+  maxAccessoryCount?: number;
   exercises: DeloadExerciseTransformationTrace[];
+  trimmedExercises?: DeloadTrimmedExerciseTrace[];
 };
 
 export type SessionAuditGeneratedState = {

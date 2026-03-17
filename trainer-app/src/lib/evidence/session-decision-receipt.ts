@@ -12,6 +12,7 @@ import type {
   SessionDecisionReceipt,
   SessionDecisionVolumeTargetSource,
 } from "./types";
+import { getCanonicalDeloadReason } from "@/lib/deload/semantics";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -845,19 +846,11 @@ function buildExceptions(input: {
     });
   }
   if (input.deloadDecision.mode !== "none") {
-    const deloadScope =
-      input.deloadDecision.appliedTo === "both"
-        ? "lighter loads and reduced volume"
-        : input.deloadDecision.appliedTo === "load"
-          ? "lighter loads"
-          : input.deloadDecision.appliedTo === "volume"
-            ? "reduced volume"
-            : "lighter work";
     output.push({
       code: "deload",
       message:
         input.deloadDecision.reason[0] ??
-        `Applied ${input.deloadDecision.mode} deload with ${deloadScope} for recovery.`,
+        getCanonicalDeloadReason(input.deloadDecision.mode),
     });
   }
   if (input.intensityScaling.applied) {

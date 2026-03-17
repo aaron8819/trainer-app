@@ -29,6 +29,7 @@ import {
 import {
   buildCanonicalDeloadDecision,
   buildNoDeloadDecision,
+  getCanonicalDeloadReason,
 } from "@/lib/deload/semantics";
 const STRICT_STIMULUS_COVERAGE_ENV = "STRICT_STIMULUS_PROFILE_COVERAGE";
 const CLEANUP_STRICT_STIMULUS_COVERAGE_ENV = "CLEANUP_STRICT_STIMULUS_PROFILE_COVERAGE";
@@ -278,9 +279,7 @@ export function buildMappedGenerationContextFromSnapshot(
   const deloadDecision: DeloadDecision = effectivePeriodization.isDeload
     ? buildCanonicalDeloadDecision(
         adaptiveDeload ? "reactive" : "scheduled",
-        adaptiveDeload
-          ? ["Reactive deload triggered by performed-history fatigue/plateau signal."]
-          : ["Scheduled deload week for this cycle phase."]
+        [getCanonicalDeloadReason(adaptiveDeload ? "reactive" : "scheduled")]
       )
     : buildNoDeloadDecision();
 

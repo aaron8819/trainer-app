@@ -10,6 +10,7 @@ import {
   runAuditPreflight,
 } from "./audit-cli-support";
 import type { WorkoutAuditRequest } from "@/lib/audit/workout-audit/types";
+import { WORKOUT_AUDIT_SIZE_LIMIT_BYTES } from "@/lib/audit/workout-audit/constants";
 import type { SessionIntent } from "@/lib/engine/session-types";
 
 function slug(value: string): string {
@@ -74,12 +75,12 @@ async function main(): Promise<void> {
   );
 
   const { context, run } = result;
-  const artifact = serializer.buildWorkoutAuditArtifact(request, run, {
+  const output = serializer.createWorkoutAuditArtifactOutput(request, run, {
     capturedWarnings: warnings,
   });
-  const serialized = serializer.serializeWorkoutAuditArtifact(artifact);
+  const { artifact, serialized, sizeBytes } = output;
 
-  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const timestamp = artifact.generatedAt.replace(/[:.]/g, "-");
   const intentSlug = context.generationInput?.intent ? `-${slug(context.generationInput.intent)}` : "";
   const fileName = `${timestamp}-${request.mode}${intentSlug}.json`;
   const outputDir = path.join(process.cwd(), "artifacts", "audits");
@@ -101,8 +102,14 @@ async function main(): Promise<void> {
   console.log(
     `[workout-audit] mode=${context.mode} diagnostics=${context.plannerDiagnosticsMode} ${summary}`
   );
+  console.log(`[workout-audit] size_bytes=${sizeBytes}`);
   console.log(`[workout-audit:conclusions] ${JSON.stringify(artifact.conclusions)}`);
   printWarningSummary("workout-audit", artifact.warningSummary);
+  if (sizeBytes > WORKOUT_AUDIT_SIZE_LIMIT_BYTES) {
+    console.warn(
+      `[workout-audit] artifact_size_exceeded size_bytes=${sizeBytes} limit_bytes=${WORKOUT_AUDIT_SIZE_LIMIT_BYTES}`
+    );
+  }
 }
 
 main().catch((error) => {

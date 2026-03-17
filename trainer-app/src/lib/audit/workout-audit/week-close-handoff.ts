@@ -13,6 +13,7 @@ import { isStrictOptionalGapFillSession } from "@/lib/gap-fill/classifier";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 import { WORKOUT_AUDIT_CONCLUSIONS } from "./conclusions";
 import { resolveWorkoutAuditIdentity } from "./context-builder";
+import { WEEK_CLOSE_HANDOFF_AUDIT_ARTIFACT_VERSION } from "./constants";
 import type { WorkoutAuditIdentity, WorkoutAuditRequest } from "./types";
 
 type SupportedWeekCloseResolution =
@@ -120,7 +121,7 @@ export type WeekCloseBoundaryRow = {
 };
 
 export type WeekCloseHandoffAuditArtifact = {
-  version: 1;
+  version: typeof WEEK_CLOSE_HANDOFF_AUDIT_ARTIFACT_VERSION;
   auditType: "week-close-handoff";
   generatedAt: string;
   source: "live" | "pii-safe";
@@ -896,7 +897,7 @@ export async function runWeekCloseHandoffAudit(
   });
 
   return {
-    version: 1,
+    version: WEEK_CLOSE_HANDOFF_AUDIT_ARTIFACT_VERSION,
     auditType: "week-close-handoff",
     generatedAt: new Date().toISOString(),
     source: request.sanitizationLevel === "pii-safe" ? "pii-safe" : "live",

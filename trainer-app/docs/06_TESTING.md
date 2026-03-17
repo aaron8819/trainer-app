@@ -26,7 +26,7 @@ Sources of truth:
 - `npm run test:watch`: watch mode
 - `npm run test:fast`: focused fast subset
 - `npm run test:slow`: slow simulation suite opt-in
-- `npm run test:audit:matrix`: workout-audit diagnostics matrix regression sweep (`intent-preview` + `next-session` across intents)
+- `npm run test:audit:matrix`: workout-audit diagnostics matrix regression sweep across canonical `future-week` flows (`derived next-session context` + `explicit intent`)
 - `npm run test -- src/lib/audit/workout-audit/bundle.test.ts`: focused split-sanity audit summary/verdict coverage
 - `npm run test -- src/lib/audit/workout-audit/scenario-audits.test.ts`: focused sequencing/accounting audit coverage
 - `npm run test -- src/lib/audit/workout-audit/week-close-handoff.test.ts`: focused week-close handoff and historical mixed-contract detector coverage
@@ -91,12 +91,12 @@ Sources of truth:
 - Bundled split-sanity audit coverage: `src/lib/audit/workout-audit/bundle.test.ts` verifies compact summary emission, optional rich-artifact emission, and automatic failure when unresolved same-intent deficits remain with `futureCapacity=0`.
 - Week-close handoff audit coverage: `src/lib/audit/workout-audit/week-close-handoff.test.ts` verifies boundary-aware conclusions for final advancing-session ownership handoff, optional gap-fill eligibility basis, and `historical_mixed_contract_state` detection only when a strict optional gap-fill workout exists without a persisted week-close owner.
 - Audit diagnostics matrix coverage:
-  - `src/lib/audit/workout-audit/intent-matrix.test.ts`
-  - `src/lib/audit/workout-audit/next-session-intent-matrix.test.ts`
+  - `src/lib/audit/workout-audit/future-week-explicit-intent-matrix.test.ts`
+  - `src/lib/audit/workout-audit/future-week-derived-intent-matrix.test.ts`
   - Matrix assertions keep standard/debug selection parity while verifying diagnostics gating for closure candidate trace persistence.
 
 ## Audit commands
-- `npm run audit:workout -- --env-file .env.local --mode next-session --owner owner@local`: owner-scoped next-session artifact with preflight and conclusion blocks
+- `npm run audit:workout -- --env-file .env.local --mode future-week --owner owner@local`: canonical owner-scoped future-week artifact with preflight and conclusion blocks
 - `npm run audit:sequencing`: emits the focused sequencing audit artifact under `artifacts/audits/sequencing/`
 - `npm run audit:accounting -- --env-file .env.local --owner owner@local --selection-mode MANUAL --status COMPLETED --advances-split false --optional-gap-fill true`: emits the focused accounting semantics artifact under `artifacts/audits/accounting/`
 - `npm run audit:week-close-handoff -- --env-file .env.local --owner owner@local --target-week 3`: emits the boundary-aware week-close handoff artifact for one concrete owner/week
@@ -109,7 +109,7 @@ Sources of truth:
   - anchor week is pinned in both persisted snapshot and receipt cycle context
   - program week-volume queries are week-bounded and snapshot-aware (no cross-week leak)
 - Fixture location:
-  - `src/lib/audit/workout-audit/fixtures/optional-gap-fill-body-part.intent-preview.json`
+  - `src/lib/audit/workout-audit/fixtures/optional-gap-fill-body-part.future-week-explicit-intent.json`
 - Focused test files:
   - `src/app/api/workouts/save/route.integration.test.ts`
   - `src/app/api/workouts/save/lifecycle-contract.test.ts`

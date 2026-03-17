@@ -81,9 +81,13 @@ function getClosureRecord(value: unknown): unknown {
   return (value as { plannerDiagnostics?: { closure?: unknown } } | undefined)?.plannerDiagnostics?.closure;
 }
 
-async function runIntentPreview(intent: SessionIntent, plannerDiagnosticsMode: "standard" | "debug") {
+async function runExplicitIntentFutureWeek(
+  intent: SessionIntent,
+  plannerDiagnosticsMode: "standard" | "debug"
+) {
   const context: WorkoutAuditContext = {
-    mode: "intent-preview",
+    mode: "future-week",
+    requestedMode: "future-week",
     userId: "user-1",
     plannerDiagnosticsMode,
     generationInput: { intent },
@@ -91,7 +95,7 @@ async function runIntentPreview(intent: SessionIntent, plannerDiagnosticsMode: "
   const run = await runWorkoutAuditGeneration(context);
   const artifact = buildWorkoutAuditArtifact(
     {
-      mode: "intent-preview",
+      mode: "future-week",
       userId: "user-1",
       intent,
       plannerDiagnosticsMode,
@@ -111,7 +115,7 @@ async function runIntentPreview(intent: SessionIntent, plannerDiagnosticsMode: "
   };
 }
 
-describe("workout audit intent-preview diagnostics matrix", () => {
+describe("workout audit explicit-intent future-week diagnostics matrix", () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
@@ -211,8 +215,8 @@ describe("workout audit intent-preview diagnostics matrix", () => {
   it.each(MATRIX_INTENTS)(
     "keeps planning output stable and gates closure candidates by diagnostics mode for %s",
     async (intent) => {
-      const standard = await runIntentPreview(intent, "standard");
-      const debug = await runIntentPreview(intent, "debug");
+      const standard = await runExplicitIntentFutureWeek(intent, "standard");
+      const debug = await runExplicitIntentFutureWeek(intent, "debug");
 
       expect(standard.run.generationResult && !("error" in standard.run.generationResult)).toBe(true);
       expect(debug.run.generationResult && !("error" in debug.run.generationResult)).toBe(true);

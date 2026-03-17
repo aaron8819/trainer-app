@@ -14,6 +14,7 @@ Invariants:
 - This playbook is operational guidance, not a second source of runtime semantics.
 - Runtime truth lives in the canonical audit artifacts plus the owning code seams referenced here.
 - When artifact output conflicts with prose, trust the artifact and the code owner it points to.
+- Environment setup, DB preflight, and direct CLI validation commands live in `docs/08_AUDIT_CLI_DB_VALIDATION.md`.
 
 Sources of truth:
 - `trainer-app/scripts/workout-audit.ts`
@@ -97,6 +98,7 @@ Escalate when:
 When to use it:
 - upcoming session preview
 - recurring "what will the system generate next?" checks
+- explicit intent checks through the same canonical mode plus `--intent`
 - confirming whether an upcoming session is standard or deload-rerouted
 
 Primary questions it answers:
@@ -109,6 +111,12 @@ Command pattern:
 
 ```powershell
 npm run audit:workout -- --env-file .env.local --mode future-week --user-id <user-id>
+```
+
+Explicit-intent variant:
+
+```powershell
+npm run audit:workout -- --env-file .env.local --mode future-week --user-id <user-id> --intent <intent>
 ```
 
 Inspect first:
@@ -351,6 +359,7 @@ Canonical runtime truth remains in:
 - session snapshot / trace schemas in `src/lib/evidence/session-audit-types.ts`
 - architecture boundaries in `docs/01_ARCHITECTURE.md`
 - engine semantics in `docs/02_DOMAIN_ENGINE.md`
+- internal serialization/diff helpers remain code-only maintenance utilities and are not part of the user-facing CLI contract
 
 Boundary rules:
 - do not silently replace canonical artifact truth with coaching interpretation

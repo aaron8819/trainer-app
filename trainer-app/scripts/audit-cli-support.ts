@@ -25,6 +25,28 @@ export type AuditWarningBuckets = {
   backgroundWarnings: string[];
 };
 
+type WarningBucket = keyof AuditWarningBuckets;
+
+type WarningClassificationRule = {
+  bucket: WarningBucket;
+  patterns: string[];
+};
+
+const WARNING_CLASSIFICATION_RULES: WarningClassificationRule[] = [
+  {
+    bucket: "semanticWarnings",
+    patterns: [
+      "[template-session]",
+      "Section/role mismatch",
+      "[stimulus-profile:coverage]",
+    ],
+  },
+  {
+    bucket: "backgroundWarnings",
+    patterns: ["[stimulus-profile:fallback]"],
+  },
+];
+
 export function parseArgs(argv: string[]): AuditCliArgs {
   const output: AuditCliArgs = {};
   for (let index = 0; index < argv.length; index += 1) {
@@ -166,18 +188,18 @@ export function assertAuditPreflight(prefix: string, preflight: AuditPreflight):
   );
 }
 
-function classifyWarning(rawMessage: string): keyof AuditWarningBuckets {
+export function classifyWarning(rawMessage: string): WarningBucket {
   const message = rawMessage.trim();
   if (!message) {
     return "backgroundWarnings";
   }
-  if (
-    message.includes("[template-session]") ||
-    message.includes("Section/role mismatch") ||
-    message.includes("[stimulus-profile:coverage]")
-  ) {
-    return "semanticWarnings";
+
+  for (const rule of WARNING_CLASSIFICATION_RULES) {
+    if (rule.patterns.some((pattern) => message.includes(pattern))) {
+      return rule.bucket;
+    }
   }
+
   return "backgroundWarnings";
 }
 

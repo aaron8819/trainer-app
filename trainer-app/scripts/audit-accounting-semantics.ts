@@ -2,6 +2,10 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { WorkoutHistoryEntry, WorkoutSelectionMode } from "@/lib/engine/types";
 import { parseArgs } from "./audit-cli-support";
+import {
+  ACCOUNTING_AUDIT_ARTIFACT_VERSION,
+} from "@/lib/audit/workout-audit/constants";
+import { serializeStableJson } from "@/lib/audit/workout-audit/artifact-serialization";
 
 const WORKOUT_STATUSES: NonNullable<WorkoutHistoryEntry["status"]>[] = [
   "PLANNED",
@@ -45,7 +49,7 @@ async function main(): Promise<void> {
 
   const result = analyzeAccountingClassification(classification);
   const artifact = {
-    version: 1 as const,
+    version: ACCOUNTING_AUDIT_ARTIFACT_VERSION,
     auditType: "accounting-semantics" as const,
     generatedAt: new Date().toISOString(),
     conclusions: buildScenarioConclusions(),
@@ -63,7 +67,7 @@ async function main(): Promise<void> {
     outputDir,
     `${artifact.generatedAt.replace(/[:.]/g, "-")}-accounting-semantics.json`
   );
-  await writeFile(outputPath, JSON.stringify(artifact, null, 2), "utf8");
+  await writeFile(outputPath, serializeStableJson(artifact), "utf8");
 
   console.log(`[accounting-audit] wrote ${outputPath}`);
   console.log(`[accounting-audit:conclusions] ${JSON.stringify(artifact.conclusions)}`);

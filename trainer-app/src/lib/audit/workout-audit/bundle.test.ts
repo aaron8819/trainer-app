@@ -18,8 +18,6 @@ const mocks = vi.hoisted(() => ({
 vi.mock("./context-builder", () => ({
   resolveWorkoutAuditIdentity: (...args: unknown[]) => mocks.resolveWorkoutAuditIdentity(...args),
   buildWorkoutAuditContext: (...args: unknown[]) => mocks.buildWorkoutAuditContext(...args),
-  normalizeWorkoutAuditMode: (mode: string) =>
-    mode === "next-session" || mode === "intent-preview" ? "future-week" : mode,
 }));
 
 vi.mock("./generation-runner", () => ({
@@ -203,7 +201,8 @@ function buildReceipt(options?: {
 function buildRun(intent: "push" | "pull" | "legs", receiptOverrides?: Parameters<typeof buildReceipt>[0]): WorkoutAuditRun {
   return {
     context: {
-      mode: "intent-preview",
+      mode: "future-week",
+      requestedMode: "future-week",
       userId: "user-1",
       ownerEmail: "owner@test.local",
       plannerDiagnosticsMode: "debug",

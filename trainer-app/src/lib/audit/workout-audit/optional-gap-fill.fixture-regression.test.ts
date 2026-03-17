@@ -16,7 +16,7 @@ type OptionalGapFillFixture = {
 function loadFixture(): OptionalGapFillFixture {
   const fixturePath = path.join(
     process.cwd(),
-    "src/lib/audit/workout-audit/fixtures/optional-gap-fill-body-part.intent-preview.json"
+    "src/lib/audit/workout-audit/fixtures/optional-gap-fill-body-part.future-week-explicit-intent.json"
   );
   return JSON.parse(readFileSync(fixturePath, "utf8")) as OptionalGapFillFixture;
 }

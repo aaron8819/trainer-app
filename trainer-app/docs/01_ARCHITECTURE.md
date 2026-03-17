@@ -166,9 +166,9 @@ SetLog / logged performance
 - Bundled split/week sanity audit orchestration is owned by `src/lib/audit/workout-audit/bundle.ts` and persists compact summary artifacts to `artifacts/audits/split-sanity/` via `scripts/audit-split-sanity.ts`.
 - Canonical recurring workout-audit modes are `historical-week`, `future-week`, `deload`, and `progression-anchor` (`src/lib/audit/workout-audit/types.ts`).
 - Audit artifacts now expose an additive `canonicalSemantics` block derived from persisted/generated session snapshots. That field is the stable audit-facing summary for `phase`, `isDeload`, `countsTowardProgressionHistory`, `countsTowardPerformanceHistory`, and `updatesProgressionAnchor` (`src/lib/audit/workout-audit/canonical-semantics.ts`, `src/lib/audit/workout-audit/types.ts`).
-- Legacy request aliases `next-session` and `intent-preview` normalize into `future-week` in `src/lib/audit/workout-audit/context-builder.ts`.
+- The canonical recurring workout-audit mode for generated-session inspection is `future-week`; use `--intent` when you need an explicit intent-specific run.
 - Operational use of those modes belongs in `docs/09_AUDIT_PLAYBOOK.md`; direct DB-backed CLI validation belongs in `docs/08_AUDIT_CLI_DB_VALIDATION.md`.
-- The compact split-sanity layer is intentionally extraction-only over canonical session receipts: it reuses live intent-preview generation, summarizes `sessionDecisionReceipt` / planner diagnostics fields, and preserves optional rich per-intent artifacts for deep debugging.
+- The compact split-sanity layer is intentionally extraction-only over canonical session receipts: it reuses canonical `future-week` generation with explicit intents, summarizes `sessionDecisionReceipt` / planner diagnostics fields, and preserves optional rich per-intent artifacts for deep debugging.
 - Planner diagnostics persistence is mode-gated in the canonical session receipt:
   - canonical storage surface is `selectionMetadata.sessionDecisionReceipt.plannerDiagnostics`
   - the planner emits one layered diagnostics object spanning `opportunity`, `anchor`, `standard`, `supplemental`, `closure`, `rescue`, and `outcome`, alongside the existing `muscles` and `exercises` summaries

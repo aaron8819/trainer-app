@@ -15,12 +15,13 @@ import type {
   PlannerTradeoffDiagnostic,
 } from "@/lib/planner-diagnostics/types";
 import {
-  buildWorkoutAuditArtifact,
-  serializeWorkoutAuditArtifact,
+  createWorkoutAuditArtifactOutput,
 } from "./serializer";
 import { WORKOUT_AUDIT_CONCLUSIONS } from "./conclusions";
 import { buildWorkoutAuditContext, resolveWorkoutAuditIdentity } from "./context-builder";
 import { runWorkoutAuditGeneration } from "./generation-runner";
+import { serializeStableJson } from "./artifact-serialization";
+import { SPLIT_SANITY_AUDIT_ARTIFACT_VERSION } from "./constants";
 import type {
   AuditConclusionBlock,
   AuditWarningSummary,
@@ -122,7 +123,7 @@ export type SplitSanityAuditRequest = Pick<
 };
 
 export type SplitSanityAuditArtifact = {
-  version: 1;
+  version: typeof SPLIT_SANITY_AUDIT_ARTIFACT_VERSION;
   auditType: "split-sanity";
   generatedAt: string;
   source: "live" | "pii-safe";
@@ -168,22 +169,8 @@ type SplitSanityWriteResult = {
   richArtifactPaths: Partial<Record<SessionIntent, string>>;
 };
 
-function sortJson(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(sortJson);
-  }
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>)
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, entry]) => [key, sortJson(entry)] as const)
-    );
-  }
-  return value;
-}
-
 function serializeSplitSanityAuditArtifact(artifact: SplitSanityAuditArtifact): string {
-  return JSON.stringify(sortJson(artifact), null, 2);
+  return serializeStableJson(artifact);
 }
 
 function slug(value: string): string {
@@ -485,7 +472,7 @@ function buildChecks(params: {
       ? {
           code: "cycle_context_consistent",
           status: "pass",
-          message: "All successful intent previews agree on the active block/week context.",
+          message: "All successful explicit-intent future-week runs agree on the active block/week context.",
         }
       : {
           code: "cycle_context_consistent",
@@ -591,7 +578,7 @@ function buildChecks(params: {
       ? {
           code: "rescue_not_used",
           status: "pass",
-          message: "No bundled intent preview required rescue inventory.",
+          message: "No bundled explicit-intent future-week run required rescue inventory.",
         }
       : {
           code: "rescue_not_used",
@@ -695,7 +682,7 @@ export async function runSplitSanityAudit(
   const intentRuns: SplitSanityIntentRun[] = [];
   for (const intent of intents) {
     const workoutRequest: WorkoutAuditRequest = {
-      mode: "intent-preview",
+      mode: "future-week",
       userId: identity.userId,
       ownerEmail: identity.ownerEmail,
       intent,
@@ -755,7 +742,7 @@ export function buildSplitSanityAuditArtifact(params: {
   });
 
   return {
-    version: 1,
+    version: SPLIT_SANITY_AUDIT_ARTIFACT_VERSION,
     auditType: "split-sanity",
     generatedAt: params.run.generatedAt,
     source: params.request.sanitizationLevel === "pii-safe" ? "pii-safe" : "live",
@@ -810,10 +797,13 @@ export async function writeSplitSanityAuditArtifacts(params: {
     await mkdir(richOutputDir, { recursive: true });
 
     for (const intentRun of run.intentRuns) {
-      const fileName = `${timestamp}-${ownerSlug}-intent-preview-${slug(intentRun.intent)}.json`;
+      const fileName = `${timestamp}-${ownerSlug}-future-week-explicit-intent-${slug(intentRun.intent)}.json`;
       const outputPath = path.join(richOutputDir, fileName);
-      const artifact = buildWorkoutAuditArtifact(intentRun.request, intentRun.run);
-      await writeFile(outputPath, serializeWorkoutAuditArtifact(artifact), "utf8");
+      const { serialized } = createWorkoutAuditArtifactOutput(
+        intentRun.request,
+        intentRun.run
+      );
+      await writeFile(outputPath, serialized, "utf8");
       richArtifactPaths[intentRun.intent] = outputPath;
     }
   }

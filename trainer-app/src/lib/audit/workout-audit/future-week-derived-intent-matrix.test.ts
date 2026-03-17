@@ -89,7 +89,10 @@ function getClosureRecord(value: unknown): unknown {
   return (value as { plannerDiagnostics?: { closure?: unknown } } | undefined)?.plannerDiagnostics?.closure;
 }
 
-async function runNextSessionAudit(intent: SessionIntent, plannerDiagnosticsMode: "standard" | "debug") {
+async function runDerivedFutureWeekAudit(
+  intent: SessionIntent,
+  plannerDiagnosticsMode: "standard" | "debug"
+) {
   loadNextWorkoutContextMock.mockResolvedValueOnce({
     intent,
     existingWorkoutId: null,
@@ -102,14 +105,14 @@ async function runNextSessionAudit(intent: SessionIntent, plannerDiagnosticsMode
   });
 
   const context = await buildWorkoutAuditContext({
-    mode: "next-session",
+    mode: "future-week",
     userId: "user-1",
     plannerDiagnosticsMode,
   });
   const run = await runWorkoutAuditGeneration(context);
   const artifact = buildWorkoutAuditArtifact(
     {
-      mode: "next-session",
+      mode: "future-week",
       userId: "user-1",
       plannerDiagnosticsMode,
     },
@@ -129,7 +132,7 @@ async function runNextSessionAudit(intent: SessionIntent, plannerDiagnosticsMode
   };
 }
 
-describe("workout audit next-session diagnostics matrix", () => {
+describe("workout audit derived future-week diagnostics matrix", () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
@@ -227,10 +230,10 @@ describe("workout audit next-session diagnostics matrix", () => {
   });
 
   it.each(MATRIX_INTENTS)(
-    "keeps planning output stable and gates closure candidates by diagnostics mode for next-session %s",
+    "keeps planning output stable and gates closure candidates by diagnostics mode for derived future-week %s",
     async (intent) => {
-      const standard = await runNextSessionAudit(intent, "standard");
-      const debug = await runNextSessionAudit(intent, "debug");
+      const standard = await runDerivedFutureWeekAudit(intent, "standard");
+      const debug = await runDerivedFutureWeekAudit(intent, "debug");
 
       expect(standard.resolvedIntent).toBe(intent);
       expect(debug.resolvedIntent).toBe(intent);

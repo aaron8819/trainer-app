@@ -56,9 +56,10 @@ describe("runWorkoutAuditGeneration", () => {
     mocks.generateDeloadSessionFromIntent.mockResolvedValue(okGenerationResult);
   });
 
-  it("forwards standard diagnostics mode for next-session path", async () => {
+  it("forwards standard diagnostics mode for derived future-week path", async () => {
     const context: WorkoutAuditContext = {
-      mode: "next-session",
+      mode: "future-week",
+      requestedMode: "future-week",
       userId: "user-1",
       plannerDiagnosticsMode: "standard",
       generationInput: { intent: "legs" },
@@ -83,9 +84,10 @@ describe("runWorkoutAuditGeneration", () => {
     });
   });
 
-  it("forwards debug diagnostics mode for intent-preview path", async () => {
+  it("forwards debug diagnostics mode for explicit-intent future-week path", async () => {
     const context: WorkoutAuditContext = {
-      mode: "intent-preview",
+      mode: "future-week",
+      requestedMode: "future-week",
       userId: "user-1",
       plannerDiagnosticsMode: "debug",
       generationInput: { intent: "push", targetMuscles: ["Chest"] },
@@ -103,7 +105,8 @@ describe("runWorkoutAuditGeneration", () => {
   it("uses deload generation path when active mesocycle is deload", async () => {
     mocks.loadActiveMesocycle.mockResolvedValue({ state: "ACTIVE_DELOAD" });
     const context: WorkoutAuditContext = {
-      mode: "next-session",
+      mode: "future-week",
+      requestedMode: "future-week",
       userId: "user-1",
       plannerDiagnosticsMode: "debug",
       generationInput: { intent: "legs" },
@@ -128,7 +131,7 @@ describe("runWorkoutAuditGeneration", () => {
     });
     expect(mocks.generateSessionFromIntent).not.toHaveBeenCalled();
     expect(run.generationPath).toEqual({
-      requestedMode: "next-session",
+      requestedMode: "future-week",
       executionMode: "active_deload_reroute",
       generator: "generateDeloadSessionFromIntent",
       reason: "active_mesocycle_state_active_deload",

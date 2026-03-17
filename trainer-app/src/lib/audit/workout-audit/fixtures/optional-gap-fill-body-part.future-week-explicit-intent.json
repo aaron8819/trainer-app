@@ -1,6 +1,6 @@
 {
-  "fixture": "optional-gap-fill-body-part.intent-preview",
-  "mode": "intent-preview",
+  "fixture": "optional-gap-fill-body-part.future-week-explicit-intent",
+  "mode": "future-week",
   "anchorWeek": 3,
   "selectionMode": "INTENT",
   "sessionIntent": "BODY_PART",

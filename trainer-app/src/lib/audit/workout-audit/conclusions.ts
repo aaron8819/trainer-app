@@ -57,6 +57,7 @@ export function buildGenerationWarningSummary(
       semanticWarnings: string[];
       backgroundWarnings: string[];
     };
+    additionalSemanticWarnings?: string[];
   }
 ): AuditWarningSummary {
   const generationWarnings =
@@ -91,6 +92,7 @@ export function buildGenerationWarningSummary(
     semanticWarnings: Array.from(
       new Set([
         ...generationWarnings.semanticWarnings,
+        ...(artifact.additionalSemanticWarnings ?? []),
         ...(artifact.capturedWarnings?.semanticWarnings ?? []),
       ])
     ),

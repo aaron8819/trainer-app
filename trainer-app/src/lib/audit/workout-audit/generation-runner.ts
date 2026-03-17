@@ -6,7 +6,6 @@ import {
 import {
   buildGeneratedSessionAuditSnapshot,
 } from "@/lib/evidence/session-audit-snapshot";
-import { normalizeWorkoutAuditMode } from "./context-builder";
 import { buildHistoricalWeekAuditPayload } from "./historical-week";
 import { buildProgressionAnchorAuditPayload } from "./progression-anchor";
 import type { WorkoutAuditContext, WorkoutAuditRun } from "./types";
@@ -14,7 +13,7 @@ import type { WorkoutAuditContext, WorkoutAuditRun } from "./types";
 export async function runWorkoutAuditGeneration(
   context: WorkoutAuditContext
 ): Promise<WorkoutAuditRun> {
-  const mode = normalizeWorkoutAuditMode(context.mode);
+  const mode = context.mode;
 
   if (mode === "historical-week") {
     return {

@@ -22,7 +22,7 @@ describe("buildWorkoutAuditContext", () => {
     vi.clearAllMocks();
   });
 
-  it("builds next-session context from ownerEmail and derived next intent", async () => {
+  it("builds future-week context from ownerEmail and derived next intent", async () => {
     mocks.userFindUnique.mockResolvedValue({ id: "user-1", email: "owner@test.local" });
     mocks.loadNextWorkoutContext.mockResolvedValue({
       intent: "pull",
@@ -36,7 +36,7 @@ describe("buildWorkoutAuditContext", () => {
     });
 
     const context = await buildWorkoutAuditContext({
-      mode: "next-session",
+      mode: "future-week",
       ownerEmail: "owner@test.local",
     });
 
@@ -46,26 +46,18 @@ describe("buildWorkoutAuditContext", () => {
     expect(context.nextSession?.source).toBe("rotation");
   });
 
-  it("throws for intent-preview when intent is missing", async () => {
-    await expect(
-      buildWorkoutAuditContext({
-        mode: "intent-preview",
-        userId: "user-1",
-      })
-    ).rejects.toThrow("intent-preview mode requires intent");
-  });
-
-  it("uses explicit debug diagnostics mode for intent-preview", async () => {
+  it("uses explicit debug diagnostics mode for future-week with an explicit intent", async () => {
     const context = await buildWorkoutAuditContext({
-      mode: "intent-preview",
+      mode: "future-week",
       userId: "user-1",
       intent: "push",
       plannerDiagnosticsMode: "debug",
     });
 
     expect(context.mode).toBe("future-week");
-    expect(context.requestedMode).toBe("intent-preview");
+    expect(context.requestedMode).toBe("future-week");
     expect(context.generationInput!.intent).toBe("push");
+    expect(context.generationInput!.source).toBe("explicit-intent");
     expect(context.plannerDiagnosticsMode).toBe("debug");
   });
 });

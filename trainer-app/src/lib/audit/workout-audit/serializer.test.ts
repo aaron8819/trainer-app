@@ -6,7 +6,7 @@ import type { WorkoutAuditRun } from "./types";
 const baseRun: WorkoutAuditRun = {
   context: {
     mode: "future-week",
-    requestedMode: "next-session",
+    requestedMode: "future-week",
     userId: "user-1",
     ownerEmail: "owner@test.local",
     plannerDiagnosticsMode: "standard",
@@ -42,7 +42,7 @@ describe("buildWorkoutAuditArtifact", () => {
   it("keeps identity fields in live mode", () => {
     const artifact = buildWorkoutAuditArtifact(
       {
-        mode: "next-session",
+        mode: "future-week",
         userId: "user-1",
         ownerEmail: "owner@test.local",
         sanitizationLevel: "none",
@@ -69,7 +69,7 @@ describe("buildWorkoutAuditArtifact", () => {
   it("redacts identity fields in pii-safe mode", () => {
     const artifact = buildWorkoutAuditArtifact(
       {
-        mode: "next-session",
+        mode: "future-week",
         userId: "user-1",
         ownerEmail: "owner@test.local",
         sanitizationLevel: "pii-safe",
@@ -87,7 +87,7 @@ describe("buildWorkoutAuditArtifact", () => {
   it("classifies generation errors as blocking warnings", () => {
     const artifact = buildWorkoutAuditArtifact(
       {
-        mode: "next-session",
+        mode: "future-week",
         userId: "user-1",
       },
       {

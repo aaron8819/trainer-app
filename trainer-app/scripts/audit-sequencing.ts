@@ -1,6 +1,10 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "./audit-cli-support";
+import {
+  SEQUENCING_AUDIT_ARTIFACT_VERSION,
+} from "@/lib/audit/workout-audit/constants";
+import { serializeStableJson } from "@/lib/audit/workout-audit/artifact-serialization";
 import type { SessionIntent } from "@/lib/engine/session-types";
 
 async function main(): Promise<void> {
@@ -35,7 +39,7 @@ async function main(): Promise<void> {
   });
 
   const artifact = {
-    version: 1 as const,
+    version: SEQUENCING_AUDIT_ARTIFACT_VERSION,
     auditType: "sequencing-sensitivity" as const,
     generatedAt: new Date().toISOString(),
     conclusions: buildScenarioConclusions(),
@@ -53,7 +57,7 @@ async function main(): Promise<void> {
     outputDir,
     `${artifact.generatedAt.replace(/[:.]/g, "-")}-sequencing-sensitivity.json`
   );
-  await writeFile(outputPath, JSON.stringify(artifact, null, 2), "utf8");
+  await writeFile(outputPath, serializeStableJson(artifact), "utf8");
 
   console.log(`[sequencing-audit] wrote ${outputPath}`);
   console.log(`[sequencing-audit:conclusions] ${JSON.stringify(artifact.conclusions)}`);

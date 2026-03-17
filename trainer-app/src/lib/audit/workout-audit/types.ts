@@ -72,7 +72,7 @@ export type WorkoutAuditContext = {
   generationInput?: {
     intent: SessionIntent;
     targetMuscles?: string[];
-    source?: "next-session" | "intent-preview" | "forced-deload";
+    source?: "derived-next-session" | "explicit-intent" | "forced-deload";
   };
   nextSession?: NextWorkoutContext;
   historicalWeek?: {

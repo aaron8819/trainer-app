@@ -2,7 +2,6 @@ import { prisma } from "@/lib/db/prisma";
 import { loadNextWorkoutContext } from "@/lib/api/next-session";
 import type { SessionIntent } from "@/lib/engine/session-types";
 import type {
-  NormalizedWorkoutAuditMode,
   WorkoutAuditContext,
   WorkoutAuditIdentity,
   WorkoutAuditRequest,
@@ -29,21 +28,12 @@ export async function resolveWorkoutAuditIdentity(
   return { userId: user.id, ownerEmail: user.email };
 }
 
-export function normalizeWorkoutAuditMode(
-  mode: WorkoutAuditRequest["mode"]
-): NormalizedWorkoutAuditMode {
-  if (mode === "next-session" || mode === "intent-preview") {
-    return "future-week";
-  }
-  return mode;
-}
-
 export async function buildWorkoutAuditContext(
   request: WorkoutAuditRequest
 ): Promise<WorkoutAuditContext> {
   const identity = await resolveWorkoutAuditIdentity(request);
   const plannerDiagnosticsMode = request.plannerDiagnosticsMode ?? "standard";
-  const mode = normalizeWorkoutAuditMode(request.mode);
+  const mode = request.mode;
 
   if (mode === "historical-week") {
     if (!Number.isFinite(request.week)) {
@@ -102,10 +92,6 @@ export async function buildWorkoutAuditContext(
     };
   }
 
-  if (request.mode === "intent-preview" && !request.intent) {
-    throw new Error("intent-preview mode requires intent");
-  }
-
   if (request.intent) {
     return {
       mode,
@@ -116,7 +102,7 @@ export async function buildWorkoutAuditContext(
       generationInput: {
         intent: request.intent,
         targetMuscles: request.targetMuscles,
-        source: "intent-preview",
+        source: "explicit-intent",
       },
     };
   }
@@ -131,10 +117,10 @@ export async function buildWorkoutAuditContext(
     userId: identity.userId,
     ownerEmail: identity.ownerEmail,
     plannerDiagnosticsMode,
-      generationInput: {
-        intent: nextSession.intent as SessionIntent,
-        source: "next-session",
-      },
-      nextSession,
-    };
-  }
+    generationInput: {
+      intent: nextSession.intent as SessionIntent,
+      source: "derived-next-session",
+    },
+    nextSession,
+  };
+}

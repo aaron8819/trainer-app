@@ -1,7 +1,8 @@
 # Audit CLI DB Validation
 
 Use this together with `docs/09_AUDIT_PLAYBOOK.md`.
-- This file is the narrow direct-CLI validation runbook.
+- This file is the narrow DB-backed validation runbook for the unified `npm run audit:workout` entrypoint.
+- It covers environment prerequisites, preflight, and exact commands against a real database.
 - The recurring operational workflow, field-reading order, red flags, and escalation rules live in `docs/09_AUDIT_PLAYBOOK.md`.
 
 Use this when validating the audit foundation against a real database instead of mocked unit inputs.
@@ -18,7 +19,7 @@ Use this when validating the audit foundation against a real database instead of
 ## Preflight
 
 ```powershell
-npm exec tsx -- scripts/workout-audit.ts --mode historical-week --user-id <user-id> --week <week>
+npm run audit:workout -- --mode historical-week --user-id <user-id> --week <week>
 ```
 
 The command should print the audit preflight block and write an artifact under `artifacts/audits/`.
@@ -28,28 +29,36 @@ The command should print the audit preflight block and write an artifact under `
 Historical week:
 
 ```powershell
-npm exec tsx -- scripts/workout-audit.ts --mode historical-week --user-id <user-id> --week <week> --mesocycle-id <mesocycle-id>
+npm run audit:workout -- --mode historical-week --user-id <user-id> --week <week> --mesocycle-id <mesocycle-id>
 ```
 
 Future week:
 
 ```powershell
-npm exec tsx -- scripts/workout-audit.ts --mode future-week --user-id <user-id>
+npm run audit:workout -- --mode future-week --user-id <user-id>
+```
+
+Future week for one explicit intent:
+
+```powershell
+npm run audit:workout -- --mode future-week --user-id <user-id> --intent pull
 ```
 
 Forced deload preview:
 
 ```powershell
-npm exec tsx -- scripts/workout-audit.ts --mode deload --user-id <user-id> --intent pull
+npm run audit:workout -- --mode deload --user-id <user-id> --intent pull
 ```
 
 Progression / anchor trace:
 
 ```powershell
-npm exec tsx -- scripts/workout-audit.ts --mode progression-anchor --user-id <user-id> --exercise-id <exercise-id> --workout-id <workout-id>
+npm run audit:workout -- --mode progression-anchor --user-id <user-id> --exercise-id <exercise-id> --workout-id <workout-id>
 ```
 
 ## What To Inspect
+
+Use this section as a quick validation smoke-check only. Full artifact interpretation order belongs in `docs/09_AUDIT_PLAYBOOK.md`.
 
 - `historicalWeek.sessions[*].sessionSnapshot`
 - `historicalWeek.sessions[*].progressionEvidence`

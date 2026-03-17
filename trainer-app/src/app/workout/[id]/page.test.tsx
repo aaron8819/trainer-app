@@ -72,7 +72,46 @@ describe("WorkoutDetailPage", { timeout: 15000 }, () => {
       userId: "user-1",
       status: "PARTIAL",
       estimatedMinutes: 55,
-      selectionMetadata: null,
+      selectionMetadata: {
+        sessionDecisionReceipt: {
+          version: 1,
+          cycleContext: {
+            weekInMeso: 2,
+            weekInBlock: 2,
+            phase: "accumulation",
+            blockType: "accumulation",
+            isDeload: false,
+            source: "computed",
+          },
+          sessionSlot: {
+            slotId: "push_b",
+            intent: "push",
+            sequenceIndex: 1,
+            sequenceLength: 4,
+            source: "mesocycle_slot_sequence",
+          },
+          lifecycleVolume: { source: "unknown" },
+          sorenessSuppressedMuscles: [],
+          deloadDecision: {
+            mode: "none",
+            reason: [],
+            reductionPercent: 0,
+            appliedTo: "none",
+          },
+          readiness: {
+            wasAutoregulated: false,
+            signalAgeHours: null,
+            fatigueScoreOverall: null,
+            intensityScaling: {
+              applied: false,
+              exerciseIds: [],
+              scaledUpCount: 0,
+              scaledDownCount: 0,
+            },
+          },
+          exceptions: [],
+        },
+      },
       sessionIntent: "PUSH",
       exercises: [],
     });
@@ -83,6 +122,7 @@ describe("WorkoutDetailPage", { timeout: 15000 }, () => {
     render(ui);
 
     expect(screen.getByText("Partial Session")).toBeInTheDocument();
+    expect(screen.getByText("Push 2 • Estimated 55 minutes")).toBeInTheDocument();
   });
 
   it("renders the post-workout insights hierarchy for performed workouts", async () => {

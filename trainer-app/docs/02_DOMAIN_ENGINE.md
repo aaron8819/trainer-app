@@ -1,7 +1,7 @@
 # 02 Domain Engine
 
 Owner: Aaron
-Last reviewed: 2026-03-16
+Last reviewed: 2026-03-17
 Purpose: Canonical reference for workout-generation domain logic, including selection, progression, periodization, readiness, and explainability.
 
 This doc covers:
@@ -267,7 +267,7 @@ SetLog / logged performance
 - Facade: `src/lib/api/mesocycle-lifecycle.ts`.
 - Math module: `src/lib/api/mesocycle-lifecycle-math.ts` (week derivation, RIR targets, lifecycle volume targets).
 - State module: `src/lib/api/mesocycle-lifecycle-state.ts` (state transitions + next-mesocycle initialization).
-- `transitionMesocycleState(mesocycleId)`: transitions state (`ACTIVE_ACCUMULATION` -> `ACTIVE_DELOAD` -> `COMPLETED`) and initializes the next mesocycle when deload is complete.
+- `transitionMesocycleState(mesocycleId)`: transitions state (`ACTIVE_ACCUMULATION` -> `ACTIVE_DELOAD` -> `AWAITING_HANDOFF`) and freezes handoff artifacts when deload is complete. It no longer creates the successor mesocycle automatically.
 - `getCurrentMesoWeek(mesocycle)`: derives effective lifecycle week from `state`, `durationWeeks`, `accumulationSessionsCompleted`, and `sessionsPerWeek`. Accumulation weeks are `durationWeeks - 1`; the final week is deload.
 - `getWeeklyVolumeTarget(mesocycle, muscleGroup, week, options?)`: returns lifecycle week-specific target sets from landmarks plus the canonical weekly target profile. Landmark values (MEV/MAV/MRV) are sourced from `VOLUME_LANDMARKS` in `src/lib/engine/volume-landmarks.ts`. The default canonical block-aware path is `mesocycle.blocks` when ordered block coverage is present; `options.blockContext` remains the higher-precedence seam for generation when week anchoring or forced context must override the raw mesocycle row. When block data is unavailable or incomplete, it falls back to duration-only lifecycle interpolation.
 - Analytics outcome review for the active mesocycle week is a read-only comparison layer built from `getWeeklyVolumeTarget(...)` + `loadMesocycleWeekMuscleVolume(...)`. It does not own alternate stimulus math or alternate target interpolation (`src/lib/api/muscle-outcome-review.ts`).
@@ -282,6 +282,20 @@ SetLog / logged performance
   - `getLifecycleSetTargets(..., phaseBlockContext?)`
   - `buildLifecyclePeriodization({ ..., phaseBlockContext })`
   This preserves current default 4/5/6-week behavior under the existing default block definitions while making generation materially block-aware.
+- Handoff semantics are now explicit and split across dedicated seams:
+  - `enterMesocycleHandoffInTransaction()` freezes `handoffSummaryJson` and seeds editable `nextSeedDraftJson`
+  - `loadMesocycleReview()` reads frozen handoff facts plus live derived closeout metrics
+  - `loadMesocycleSetupFromPrisma()` reads the mutable setup draft against the frozen recommendation
+  - `acceptMesocycleHandoffInTransaction()` is the only canonical path that creates the successor mesocycle
+- Acceptance semantics are transactionally strict:
+  - sanitize the draft against the frozen recommendation envelope
+  - reject `keep` carry-forward selections whose original `sessionIntent` no longer exists after split/session edits
+  - create the successor mesocycle with reset lifecycle counters
+  - persist canonical `slotSequenceJson` from the accepted ordered-flexible slot sequence
+  - carry forward only `keep` selections
+  - update `Constraints.daysPerWeek`, `splitType`, and `weeklySchedule`
+  - mark the source mesocycle `COMPLETED`
+- `slotSequenceJson` is now the canonical runtime session-order contract for accepted mesocycles. Runtime sequencing, remaining-week planning, UI labeling, and explainability should prefer `slotId + intent`; `weeklySchedule` subtraction remains compatibility-only for legacy mesocycles without persisted slot identity.
 - Block-aware prescription semantics are now authored in one shared seam: `src/lib/engine/periodization/block-prescription-intent.ts`.
   - Inputs: `blockType`, `weekInBlock`, `blockDurationWeeks`, `isDeload`
   - Outputs: canonical `rirTarget`, `setTargets`, `setMultiplier`, plus compatibility `modifiers`
@@ -295,7 +309,7 @@ SetLog / logged performance
   - Weekly volume target shape remains owned by `src/lib/engine/volume-targets.ts`
   - Weekly effort/set intent remains owned by `src/lib/engine/periodization/block-prescription-intent.ts`
   - Generator/prescription consumers should read those seams, not reinterpret block policy locally
-- `initializeNextMesocycle(completedMesocycle)`: closes current mesocycle, creates next active mesocycle with reset lifecycle counters, and carries forward core exercise roles.
+- Direct next-mesocycle initialization is intentionally fenced behind the explicit handoff contract. Callers must not bypass acceptance by creating successors directly from lifecycle state helpers.
 
 ## Deload generation path
 - Deload generation has a separate pipeline in `src/lib/api/template-session/deload-session.ts`.

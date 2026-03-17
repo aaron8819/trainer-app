@@ -411,7 +411,7 @@ export function useActiveSetDraftState({
   );
 
   const setRpeValue = useCallback(
-    (setId: string, rawValue: string, options?: { commit?: boolean }) => {
+    (setId: string, rawValue: string) => {
       updateDraftBuffer(setId, "rpe", rawValue);
     },
     [updateDraftBuffer]

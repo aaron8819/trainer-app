@@ -1,7 +1,7 @@
 # 05 UI Flows
 
 Owner: Aaron
-Last reviewed: 2026-03-16
+Last reviewed: 2026-03-17
 Purpose: Canonical reference for current UI routes and core user flows implemented in the Next.js App Router.
 
 This doc covers:
@@ -32,6 +32,8 @@ Sources of truth:
 - `/history`: paginated workout history with intent/date/mesocycle filters, derived week/session snapshot badges, and explicit deload labeling (`src/app/history/page.tsx`, `src/components/HistoryClient.tsx`)
 - `/settings`: user settings (`src/app/settings/page.tsx`)
 - `/program`: mesocycle/block/program dashboard (`src/app/program/page.tsx`)
+- `/mesocycles/[id]/review`: mesocycle closeout review with frozen handoff summary plus live derived review metrics (`src/app/mesocycles/[id]/review/page.tsx`)
+- `/mesocycles/[id]/setup`: editable next-cycle setup for a pending handoff draft (`src/app/mesocycles/[id]/setup/page.tsx`)
 
 Route-purpose shorthand:
 - `/` = today’s operational dashboard
@@ -49,6 +51,8 @@ Route-purpose shorthand:
 - UI entry points: dashboard/template/intent components
 - APIs: `POST /api/workouts/generate-from-template`, `POST /api/workouts/generate-from-intent`, `POST /api/workouts/save`
 - `IntentWorkoutCard` and `GenerateFromTemplateCard` consume shared generation response types and pass session-level context through the canonical `selectionMetadata.sessionDecisionReceipt` flow described in `docs/01_ARCHITECTURE.md` (`src/components/IntentWorkoutCard.tsx`, `src/components/GenerateFromTemplateCard.tsx`, `src/components/log-workout/api.ts`).
+- While a mesocycle handoff is pending, Home and Program replace generation/program controls with review CTAs, and the generation routes return `409` rather than silently creating training against a closed mesocycle boundary.
+- Normal generation is now slot-aware. Home presets generation using the current runtime slot recommendation, and successful generation stamps canonical `sessionSlot` receipt metadata when the generated session matches the active slot recommendation (`src/app/page.tsx`, `src/app/api/workouts/generate-from-intent/route.ts`, `src/app/api/workouts/generate-from-template/route.ts`).
 
 3. Log sets and complete workout
 - UI: `/log/[id]`, `LogWorkoutClient`
@@ -65,6 +69,7 @@ Route-purpose shorthand:
 - Log page now renders the same receipt-first session summary card used on workout detail by building a `SessionSummaryModel` from explainability context plus `selectionMetadata.sessionDecisionReceipt` (`src/app/log/[id]/page.tsx`, `src/lib/ui/session-summary.ts`, `src/components/explainability/SessionContextCard.tsx`).
 - That summary remains receipt-first only while generated plan truth still matches saved structure. When `selectionMetadata.workoutStructureState.reconciliation.hasDrift === true`, the card is relabeled as original-plan context and shows an explicit truth-boundary note that the visible exercise list is the canonical current workout.
 - Planned deload summaries are intentionally deload-first on both log and workout-detail surfaces: they show visible `Deload` labeling, frame the session as lighter recovery work, and reassure the user that the next mesocycle re-anchors from accumulation rather than deload (`src/lib/ui/session-summary.ts`).
+- Log/save/resume is explicitly fenced once a workout belongs to a closed mesocycle. Workouts under `AWAITING_HANDOFF` or `COMPLETED` remain reviewable, but the log page renders the closed-state reason and write routes reject further set logs or save attempts (`src/app/log/[id]/page.tsx`, `src/lib/workout-workflow.ts`, `src/app/api/logs/set/route.ts`, `src/app/api/workouts/save/route.ts`).
 
 4. Review workout rationale
 - UI: `/workout/[id]` for the default user-facing session summary, `/workout/[id]/audit` for detailed explainability
@@ -83,7 +88,26 @@ Route-purpose shorthand:
 - Workout detail copy for prescription/load provenance now treats `PARTIAL` and `COMPLETED` as performed states through `src/lib/ui/session-overview.ts` and usage in `src/app/workout/[id]/page.tsx`.
 - Workout detail and log pages both read session-level context through `parseExplainabilitySelectionMetadata()`, which now parses both `sessionDecisionReceipt` and `workoutStructureState` from canonical persisted `selectionMetadata` (`src/app/workout/[id]/page.tsx`, `src/app/log/[id]/page.tsx`, `src/lib/ui/explainability.ts`).
 
-5. Program and readiness loop
+5. Mesocycle closeout and next-cycle acceptance
+- UI entries: `/`, `/program`, `/mesocycles/[id]/review`, `/mesocycles/[id]/setup`
+- APIs: `PATCH /api/mesocycles/[id]/draft`, `POST /api/mesocycles/[id]/accept-next-cycle`
+- When the last deload session closes the mesocycle, Home and Program switch into an explicit handoff state instead of auto-rolling into the next mesocycle (`src/app/page.tsx`, `src/app/program/page.tsx`).
+- `/mesocycles/[id]/review` is the closeout review page:
+  - frozen handoff summary at the top
+  - live derived adherence/progression/volume review recomputed from workouts tagged to that mesocycle
+  - recommended next-cycle seed shown as frozen recommendation, not mutable truth
+- `/mesocycles/[id]/setup` is distinct from review:
+  - the frozen recommendation remains visible for comparison
+  - the editable draft is mutable and saved back to `nextSeedDraftJson`
+  - the setup editor exposes ordered-flexible slot editing, split/session-count changes, and carry-forward action changes
+  - invalid `keep` carry-forwards are previewed inline when split/session edits remove their original session intent
+- Acceptance flow semantics:
+  - save draft first if needed
+  - call `POST /api/mesocycles/[id]/accept-next-cycle`
+  - on success, return to `/program` with the new active mesocycle created
+- Historical closeout remains reviewable after acceptance. Once the source mesocycle is `COMPLETED`, review stays available but setup editing is no longer surfaced.
+
+6. Program and readiness loop
 - UI: `/program`, readiness components
 - APIs: `/api/program`, `/api/readiness/submit`, `/api/stalls`, `/api/periodization/macro`
 - Dashboard training status is rendered by `ProgramStatusCard` (`src/components/ProgramStatusCard.tsx`), a client component that replaces the former `TrainingStatusCard`. It supports historical week navigation: clicking a week pill fetches `GET /api/program?week=N` and re-renders the selected dashboard payload for that week without a full-page reload.
@@ -95,10 +119,12 @@ Route-purpose shorthand:
 - The per-muscle breakdown sheet explains weighted accounting explicitly: weighted sets count toward the weekly target, raw direct/indirect sets remain structural context, and each contributor row renders `raw sets x exercise weighting = weighted contribution` using the shared weekly-volume read model.
 - Historical `ProgramStatusCard` browsing now renders block badge, week/progress chrome, `rirTarget`, coaching cue, and volume rows from the same selected payload. Live-only deload countdown/banner chrome is intentionally hidden while browsing history because deload readiness remains a current-week signal.
 - The home page loads next-session / resume-workout helpers separately through `loadHomeProgramSupport()` (`src/lib/api/program.ts`) instead of treating them as part of the shared dashboard-card contract.
+- Home and Program both hard-stop into handoff UI when a mesocycle is `AWAITING_HANDOFF`. The normal dashboard and cycle controls are replaced with review/setup entry points until the next cycle is explicitly accepted.
 - `currentWeek`, `viewedWeek`, lifecycle RIR, and weekly volume targets are duration-aware: accumulation spans `durationWeeks - 1`, and the final week is deload instead of assuming a fixed 4+1 structure.
 - `ProgramStatusCard` is mounted on both the home dashboard (`src/app/page.tsx`) and the `/program` page (`src/app/program/page.tsx`), replacing the prior inline server-rendered volume table on `/program`.
 - `/program` session history is no longer carried inside `ProgramDashboardData`; it is loaded independently from the canonical workout-list summary builder in `src/lib/ui/workout-list-items.ts`.
 - Recent Workouts (`src/components/RecentWorkouts.tsx`) and History (`src/components/HistoryClient.tsx`) now share the same workout-list summary contract and display helpers from `src/lib/ui/workout-list-items.ts` for status labels, intent labels, exercise/set count copy, and explicit `Deload` badges. Both still render the same derived week/session badge from `sessionSnapshot` via `src/lib/ui/workout-session-snapshot.ts`. Planned workouts show this badge immediately upon plan-save because the save route now snapshots mesocycle context for new plan writes.
+- Slot-aware session labeling is now shared across Home, History, workout detail, and session summary surfaces. UI labels prefer `slotId + intent` when present so repeated intents stay distinguishable (`src/lib/ui/session-identity.ts`, `src/lib/ui/session-summary.ts`, `src/lib/ui/workout-list-items.ts`).
 - `/library` exercise detail keeps raw recent sessions and bests visible through `PersonalHistorySection`, but its trend copy is explicitly descriptive logged-history framing rather than authoritative improvement-status labeling. That surface is for local history context, not canonical progression interpretation (`src/components/library/PersonalHistorySection.tsx`).
 
 ## Optional gap-fill flow
@@ -152,7 +178,7 @@ Route-purpose shorthand:
   - workout lists and history surfaces render the session as `Supplemental`
   - the normal intent/session summary still reflects the BODY_PART intent, but optional-session labeling comes from the strict supplemental classifier (`src/components/RecentWorkouts.tsx`, `src/components/HistoryClient.tsx`, `src/lib/ui/workout-list-items.ts`)
 
-6. Analytics review
+7. Analytics review
 - UI: `/analytics`
 - APIs: `GET /api/analytics/summary`, `GET /api/analytics/volume`, `GET /api/analytics/muscle-outcomes`, `GET /api/analytics/recovery`, `GET /api/analytics/templates`
 - The analytics overview now consumes `GET /api/analytics/summary` directly to show training-consistency metrics first (`this week`, `4-week average`, `training streak`, `weeks at target`), with workout totals and selection-mode telemetry demoted to secondary context (`src/app/analytics/page.tsx`, `src/components/analytics/AnalyticsSummaryPanel.tsx`).
@@ -167,7 +193,7 @@ Route-purpose shorthand:
 - Dashboard opportunity is a separate abstraction from analytics stimulus recency: it is driven by weekly target pressure, recent local weighted stimulus, and optional fresh readiness modulation rather than raw recovery percent.
 - Template analytics now distinguishes generated, performed, and completed template workouts instead of treating one completion percentage as the only usage signal.
 
-7. Cross-surface navigation simplification
+8. Cross-surface navigation simplification
 - Primary navigation now includes `/program` in addition to `/`, `/history`, and `/analytics` (`src/components/navigation/AppNavigation.tsx`).
 - Shared surface-purpose metadata lives in `src/lib/ui/app-surface-map.ts`, and `SurfaceGuideCard` uses it to show adjacent surfaces without duplicating route-purpose copy in multiple page-local implementations (`src/components/SurfaceGuideCard.tsx`).
 - Home keeps the operational actions for “what should I do now?”, while `/program`, `/history`, and `/analytics` each include a short cross-linking guide to reinforce “where should I go next?” without duplicating the home dashboard’s operational role.

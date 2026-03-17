@@ -4,12 +4,14 @@ import { resolveOwner } from "@/lib/api/workout-context";
 import { generateDeloadSessionFromTemplate, generateSessionFromTemplate } from "@/lib/api/template-session";
 import { applyAutoregulation } from "@/lib/api/autoregulation";
 import { loadActiveMesocycle } from "@/lib/api/mesocycle-lifecycle";
+import { loadPendingMesocycleHandoff } from "@/lib/api/mesocycle-handoff";
+import { loadNextWorkoutContext } from "@/lib/api/next-session";
 import type { GenerateFromTemplateResponse } from "@/lib/api/template-session/types";
 import {
   attachSessionAuditSnapshotToSelectionMetadata,
   buildGeneratedSessionAuditSnapshot,
 } from "@/lib/evidence/session-audit-snapshot";
-import { buildCanonicalSelectionMetadata } from "@/lib/ui/selection-metadata";
+import { attachSessionSlotMetadata, buildCanonicalSelectionMetadata } from "@/lib/ui/selection-metadata";
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
@@ -24,13 +26,26 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
 
+  const pendingHandoff = await loadPendingMesocycleHandoff(user.id);
+  if (pendingHandoff) {
+    return NextResponse.json(
+      {
+        error: "Mesocycle handoff pending.",
+        handoff: pendingHandoff,
+      },
+      { status: 409 }
+    );
+  }
+
   const activeMesocycle = await loadActiveMesocycle(user.id);
+  const nextWorkoutContext = await loadNextWorkoutContext(user.id);
   const result =
     activeMesocycle?.state === "ACTIVE_DELOAD"
       ? await generateDeloadSessionFromTemplate(user.id, parsed.data.templateId)
       : await generateSessionFromTemplate(user.id, parsed.data.templateId, {
           pinnedExerciseIds: parsed.data.pinnedExerciseIds,
           autoFillUnpinned: parsed.data.autoFillUnpinned,
+          slotId: parsed.data.slotId,
         });
 
   if ("error" in result) {
@@ -39,7 +54,23 @@ export async function POST(request: Request) {
 
   // Phase 3: Apply autoregulation
   const autoregulated = await applyAutoregulation(user.id, result.workout);
-  const selectionMetadata = buildCanonicalSelectionMetadata(result.selection, autoregulated);
+  const selectionMetadata = attachSessionSlotMetadata(
+    buildCanonicalSelectionMetadata(result.selection, autoregulated),
+    nextWorkoutContext.source === "rotation" &&
+      nextWorkoutContext.intent === result.sessionIntent &&
+      nextWorkoutContext.slotId &&
+      nextWorkoutContext.slotSequenceIndex != null &&
+      nextWorkoutContext.slotSource &&
+      (parsed.data.slotId == null || parsed.data.slotId === nextWorkoutContext.slotId)
+      ? {
+          slotId: nextWorkoutContext.slotId,
+          intent: result.sessionIntent,
+          sequenceIndex: nextWorkoutContext.slotSequenceIndex,
+          sequenceLength: activeMesocycle?.sessionsPerWeek,
+          source: nextWorkoutContext.slotSource,
+        }
+      : undefined
+  );
   const sessionAuditSnapshot = buildGeneratedSessionAuditSnapshot({
     workout: autoregulated.adjusted,
     selectionMode: result.selectionMode,

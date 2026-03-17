@@ -65,6 +65,9 @@ describe("runWorkoutAuditGeneration", () => {
       generationInput: { intent: "legs" },
       nextSession: {
         intent: "legs",
+        slotId: "legs_a",
+        slotSequenceIndex: 2,
+        slotSource: "legacy_weekly_schedule",
         existingWorkoutId: null,
         isExisting: false,
         source: "rotation",
@@ -112,6 +115,9 @@ describe("runWorkoutAuditGeneration", () => {
       generationInput: { intent: "legs" },
       nextSession: {
         intent: "legs",
+        slotId: "legs_a",
+        slotSequenceIndex: 0,
+        slotSource: "legacy_weekly_schedule",
         existingWorkoutId: "w-in-progress",
         isExisting: true,
         source: "existing_incomplete",

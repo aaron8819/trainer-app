@@ -20,6 +20,7 @@ export type WorkoutMesocycleSnapshot = {
   week: number;
   session?: number | null;
   phase?: string | null;
+  slotId?: string | null;
 };
 
 /**

@@ -4,6 +4,7 @@ import { resolveOwner } from "@/lib/api/workout-context";
 import { WorkoutExplanation } from "@/components/WorkoutExplanation";
 import { prisma } from "@/lib/db/prisma";
 import { parseExplainabilitySelectionMetadata } from "@/lib/ui/explainability";
+import { getWorkoutWorkflowState } from "@/lib/workout-workflow";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -35,9 +36,16 @@ export default async function WorkoutAuditPage({
     select: {
       id: true,
       status: true,
+      mesocycleId: true,
       sessionIntent: true,
       estimatedMinutes: true,
       selectionMetadata: true,
+      mesocycle: {
+        select: {
+          state: true,
+          isActive: true,
+        },
+      },
     },
   });
 
@@ -59,8 +67,12 @@ export default async function WorkoutAuditPage({
   const selectionMetadata = parseExplainabilitySelectionMetadata(workout.selectionMetadata);
   const sessionDecisionReceipt = selectionMetadata.sessionDecisionReceipt;
   const workoutStructureState = selectionMetadata.workoutStructureState;
-  const startLoggingHref =
-    workout.status !== "COMPLETED" && workout.status !== "SKIPPED" ? `/log/${workout.id}` : null;
+  const workflow = getWorkoutWorkflowState(workout.status, {
+    mesocycleId: workout.mesocycleId,
+    mesocycleState: workout.mesocycle?.state ?? null,
+    mesocycleIsActive: workout.mesocycle?.isActive ?? null,
+  });
+  const startLoggingHref = workflow.isResumable ? `/log/${workout.id}` : null;
 
   return (
     <main className="min-h-screen bg-white text-slate-900">

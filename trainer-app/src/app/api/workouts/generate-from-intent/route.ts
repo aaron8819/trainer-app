@@ -4,7 +4,9 @@ import { resolveOwner } from "@/lib/api/workout-context";
 import { generateDeloadSessionFromIntent, generateSessionFromIntent } from "@/lib/api/template-session";
 import { applyAutoregulation } from "@/lib/api/autoregulation";
 import { loadActiveMesocycle } from "@/lib/api/mesocycle-lifecycle";
+import { loadPendingMesocycleHandoff } from "@/lib/api/mesocycle-handoff";
 import { findPendingWeekCloseForUser } from "@/lib/api/mesocycle-week-close";
+import { loadNextWorkoutContext } from "@/lib/api/next-session";
 import type { GenerateFromIntentResponse } from "@/lib/api/template-session/types";
 import {
   attachSessionAuditSnapshotToSelectionMetadata,
@@ -12,6 +14,7 @@ import {
 } from "@/lib/evidence/session-audit-snapshot";
 import {
   attachOptionalGapFillMetadata,
+  attachSessionSlotMetadata,
   attachSupplementalSessionMetadata,
   buildCanonicalSelectionMetadata,
 } from "@/lib/ui/selection-metadata";
@@ -83,7 +86,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
 
+  const pendingHandoff = await loadPendingMesocycleHandoff(user.id);
+  if (pendingHandoff) {
+    return NextResponse.json(
+      {
+        error: "Mesocycle handoff pending.",
+        handoff: pendingHandoff,
+      },
+      { status: 409 }
+    );
+  }
+
   const activeMesocycle = await loadActiveMesocycle(user.id);
+  const nextWorkoutContext = await loadNextWorkoutContext(user.id);
   const shouldApplyOptionalGapFill =
     parsed.data.optionalGapFill === true && parsed.data.intent === "body_part";
   const shouldApplySupplementalDeficitSession =
@@ -140,9 +155,10 @@ export async function POST(request: Request) {
     };
   }
 
-  const generationInput = shouldApplyOptionalGapFill && canonicalGapFill
+      const generationInput = shouldApplyOptionalGapFill && canonicalGapFill
     ? {
         ...parsed.data,
+        slotId: parsed.data.slotId,
         targetMuscles: canonicalGapFill.targetMuscles,
         weekCloseId: canonicalGapFill.weekCloseId,
         optionalGapFillContext: {
@@ -199,7 +215,23 @@ export async function POST(request: Request) {
     targetMuscles: generationInput.targetMuscles,
     weekCloseId: generationInput.weekCloseId,
   });
-  const finalSelectionMetadata = attachSupplementalSessionMetadata(markedSelectionMetadata, {
+  const slotStampedSelectionMetadata = attachSessionSlotMetadata(markedSelectionMetadata, (
+    nextWorkoutContext.source === "rotation" &&
+    nextWorkoutContext.intent === result.sessionIntent &&
+    nextWorkoutContext.slotId &&
+    nextWorkoutContext.slotSequenceIndex != null &&
+    nextWorkoutContext.slotSource &&
+    (parsed.data.slotId == null || parsed.data.slotId === nextWorkoutContext.slotId)
+  )
+    ? {
+        slotId: nextWorkoutContext.slotId,
+        intent: result.sessionIntent,
+        sequenceIndex: nextWorkoutContext.slotSequenceIndex,
+        sequenceLength: activeMesocycle?.sessionsPerWeek,
+        source: nextWorkoutContext.slotSource,
+      }
+    : undefined);
+  const finalSelectionMetadata = attachSupplementalSessionMetadata(slotStampedSelectionMetadata, {
     enabled: shouldApplySupplementalDeficitSession,
     targetMuscles: generationInput.targetMuscles,
     anchorWeek: generationInput.anchorWeek,

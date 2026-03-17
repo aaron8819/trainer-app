@@ -9,10 +9,12 @@ import {
   loadHomeProgramSupport,
   loadProgramDashboardData,
 } from "@/lib/api/program";
+import { loadPendingMesocycleHandoff } from "@/lib/api/mesocycle-handoff";
 import {
   buildWorkoutListSurfaceSummary,
   workoutListItemSelect,
 } from "@/lib/ui/workout-list-items";
+import { formatSessionIdentityLabel } from "@/lib/ui/session-identity";
 import { getWorkoutWorkflowState } from "@/lib/workout-workflow";
 
 export const dynamic = "force-dynamic";
@@ -36,7 +38,7 @@ function isSessionIntent(value: string | null): value is SessionIntent {
 export default async function Home() {
   const owner = await resolveOwner();
 
-  const [latestCompleted, recentWorkouts, programData, homeProgram] =
+  const [latestCompleted, recentWorkouts, pendingHandoff] =
     await Promise.all([
       prisma.workout.findFirst({
         where: { userId: owner.id, status: "COMPLETED" },
@@ -49,20 +51,104 @@ export default async function Home() {
         take: 6,
         select: workoutListItemSelect,
       }),
+      loadPendingMesocycleHandoff(owner.id),
+    ]);
+
+  if (pendingHandoff) {
+    const recentList = recentWorkouts.map(buildWorkoutListSurfaceSummary);
+
+    return (
+      <main className="min-h-screen bg-white text-slate-900">
+        <div className="page-shell max-w-5xl">
+          <header className="mb-8 md:mb-10">
+            <p className="text-sm uppercase tracking-wide text-slate-500">Personal AI Trainer</p>
+            <h1 className="page-title mt-2">Mesocycle Handoff</h1>
+            <p className="mt-2 text-sm text-slate-500">
+              Your last mesocycle is complete. Review the handoff and explicitly accept the next cycle before generating more training.
+            </p>
+          </header>
+
+          <section className="rounded-2xl border border-amber-300 bg-amber-50 p-6 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">
+              Action Required
+            </p>
+            <h2 className="mt-2 text-2xl font-semibold">
+              Meso {pendingHandoff.mesoNumber}: {pendingHandoff.focus}
+            </h2>
+            <p className="mt-2 text-sm text-slate-700">
+              Training is paused at the mesocycle boundary. No new active mesocycle exists yet.
+            </p>
+            <div className="mt-4 flex flex-wrap gap-3">
+              <Link
+                href={`/mesocycles/${pendingHandoff.mesocycleId}/review`}
+                className="inline-flex min-h-11 items-center justify-center rounded-full bg-slate-900 px-5 py-2 text-sm font-semibold text-white"
+              >
+                Review handoff
+              </Link>
+              <Link
+                href="/program"
+                className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 px-5 py-2 text-sm font-semibold text-slate-900"
+              >
+                Program status
+              </Link>
+            </div>
+          </section>
+
+          <section className="mt-8 md:mt-10">
+            <div className="rounded-2xl border border-slate-200 p-5">
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Latest Log</h3>
+              <p className="mt-3 text-lg font-semibold">
+                {latestCompleted ? "Last completed" : "No completed logs"}
+              </p>
+              <p className="mt-2 text-sm text-slate-600">
+                {latestCompleted
+                  ? new Date(latestCompleted.completedAt ?? latestCompleted.scheduledDate).toLocaleDateString()
+                  : "Complete a workout to see logs"}
+              </p>
+              {latestCompleted ? (
+                <Link
+                  className="mt-3 inline-block text-sm font-semibold text-slate-900"
+                  href={`/log/${latestCompleted.id}`}
+                >
+                  Review log
+                </Link>
+              ) : (
+                <span className="mt-3 inline-block text-sm text-slate-500">No logs yet</span>
+              )}
+            </div>
+          </section>
+
+          <RecentWorkouts recentWorkouts={recentList} />
+        </div>
+      </main>
+    );
+  }
+
+  const [programData, homeProgram] =
+    await Promise.all([
       loadProgramDashboardData(owner.id),
       loadHomeProgramSupport(owner.id),
     ]);
 
   const latestIncomplete = homeProgram.latestIncomplete;
 
-  const formatSessionIntent = (intent: string) =>
-    intent
-      .split("_")
-      .filter(Boolean)
-      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-      .join(" ");
-
   const nextSession = homeProgram.nextSession;
+  const nextSessionLabel = nextSession.intent
+    ? formatSessionIdentityLabel({
+        intent: nextSession.intent,
+        slotId: nextSession.slotId,
+      })
+    : null;
+  const nextSessionTiming =
+    nextSession.weekInMeso != null && nextSession.sessionInWeek != null
+      ? `Week ${nextSession.weekInMeso} • Session ${nextSession.sessionInWeek}`
+      : null;
+  const nextSessionReason =
+    nextSession.slotSource === "mesocycle_slot_sequence"
+      ? "This is the next unfinished session in your current weekly order."
+      : nextSession.slotSource === "legacy_weekly_schedule"
+      ? "This is the next unfinished session based on your saved weekly schedule."
+      : "This is the recommended next session.";
   // Validate intent type for DashboardGenerateSection (typed prop).
   const nextSessionTyped = isSessionIntent(nextSession.intent) ? nextSession.intent : null;
   const existingWorkoutStatus = latestIncomplete?.status ?? null;
@@ -110,10 +196,13 @@ export default async function Home() {
                 Today&apos;s Action
               </p>
               <h2 className="mt-2 text-2xl font-semibold">{existingWorkoutTitle}</h2>
-              {nextSession.intent ? (
+              {nextSessionLabel ? (
                 <p className="mt-2 text-sm text-slate-500">
-                  Next: {formatSessionIntent(nextSession.intent)}
+                  Next due: {nextSessionLabel}
                 </p>
+              ) : null}
+              {nextSessionTiming ? (
+                <p className="mt-1 text-xs text-slate-500">{nextSessionTiming}</p>
               ) : null}
               <p className="mt-2 text-slate-600">{existingWorkoutDescription}</p>
               <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -134,6 +223,7 @@ export default async function Home() {
           ) : (
             <DashboardGenerateSection
               initialIntent={nextSessionTyped ?? undefined}
+              initialSlotId={nextSession.slotId}
             />
           )}
 
@@ -143,18 +233,19 @@ export default async function Home() {
                 Next Session
               </h2>
               <p className="mt-3 text-lg font-semibold">
-                {nextSession.intent
-                  ? `Next: ${formatSessionIntent(nextSession.intent)}`
-                  : "No session intent"}
+                {nextSessionLabel ?? "No session intent"}
               </p>
-              {homeProgram.lastSessionSkipped && nextSession.intent ? (
+              {nextSessionTiming ? (
+                <p className="mt-1 text-xs text-slate-500">{nextSessionTiming}</p>
+              ) : null}
+              {homeProgram.lastSessionSkipped && nextSession.intent && !nextSession.slotId ? (
                 <p className="mt-1 text-xs text-slate-500">
-                  You skipped your last {formatSessionIntent(nextSession.intent)} session.
+                  You skipped your last {formatSessionIdentityLabel({ intent: nextSession.intent })} session.
                 </p>
               ) : null}
               <p className="mt-2 text-sm text-slate-600">
-                {nextSession.intent
-                  ? "The generator above is preset to this recommendation."
+                {nextSessionLabel
+                  ? `${nextSessionReason} The generator above is preset to this recommendation.`
                   : "Set up weekly schedule to unlock a recommended next session."}
               </p>
             </div>

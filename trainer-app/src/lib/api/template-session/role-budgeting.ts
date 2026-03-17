@@ -275,7 +275,6 @@ export function resolveRoleFixtureSetTarget(
     weeklyTarget - (performedThisWeek + assignedInSession + reservedFloorForRemaining)
   );
   const remainingWeek = objective.volumeContext.remainingWeek;
-  const futureCapacity = remainingWeek?.futureCapacity.get(anchorMuscle) ?? 0;
   const requiredNow = remainingWeek?.requiredNow.get(anchorMuscle) ?? anchorRemaining;
   const deferredCarry = Math.max(0, anchorRemaining - requiredNow);
   const planningAdjustedRemaining = Math.min(

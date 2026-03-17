@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => {
   const resolveOwner = vi.fn();
   const loadActiveMesocycle = vi.fn();
+  const loadPendingMesocycleHandoff = vi.fn();
+  const loadNextWorkoutContext = vi.fn();
   const findPendingWeekCloseForUser = vi.fn();
   const generateSessionFromIntent = vi.fn();
   const generateDeloadSessionFromIntent = vi.fn();
@@ -11,6 +13,8 @@ const mocks = vi.hoisted(() => {
   return {
     resolveOwner,
     loadActiveMesocycle,
+    loadPendingMesocycleHandoff,
+    loadNextWorkoutContext,
     findPendingWeekCloseForUser,
     generateSessionFromIntent,
     generateDeloadSessionFromIntent,
@@ -24,6 +28,14 @@ vi.mock("@/lib/api/workout-context", () => ({
 
 vi.mock("@/lib/api/mesocycle-lifecycle", () => ({
   loadActiveMesocycle: (...args: unknown[]) => mocks.loadActiveMesocycle(...args),
+}));
+
+vi.mock("@/lib/api/mesocycle-handoff", () => ({
+  loadPendingMesocycleHandoff: (...args: unknown[]) => mocks.loadPendingMesocycleHandoff(...args),
+}));
+
+vi.mock("@/lib/api/next-session", () => ({
+  loadNextWorkoutContext: (...args: unknown[]) => mocks.loadNextWorkoutContext(...args),
 }));
 
 vi.mock("@/lib/api/mesocycle-week-close", () => ({
@@ -46,6 +58,20 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.resolveOwner.mockResolvedValue({ id: "user-1" });
+    mocks.loadPendingMesocycleHandoff.mockResolvedValue(null);
+    mocks.loadNextWorkoutContext.mockResolvedValue({
+      intent: "push",
+      slotId: "push_a",
+      slotSequenceIndex: 0,
+      slotSource: "mesocycle_slot_sequence",
+      existingWorkoutId: null,
+      isExisting: false,
+      source: "rotation",
+      weekInMeso: 2,
+      sessionInWeek: 1,
+      derivationTrace: [],
+      selectedIncompleteStatus: null,
+    });
     mocks.findPendingWeekCloseForUser.mockResolvedValue(null);
     mocks.applyAutoregulation.mockImplementation(async (_userId, workout) => ({
       adjusted: workout,
@@ -57,6 +83,33 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
       rationale: null,
       wasAutoregulated: false,
     }));
+  });
+
+  it("rejects generation while mesocycle handoff is pending", async () => {
+    mocks.loadPendingMesocycleHandoff.mockResolvedValue({
+      mesocycleId: "meso-1",
+      mesoNumber: 1,
+      focus: "Hypertrophy",
+      closedAt: "2026-03-10T00:00:00.000Z",
+      summary: null,
+      draft: null,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/generate-from-intent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ intent: "pull" }),
+      })
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "Mesocycle handoff pending.",
+      handoff: expect.objectContaining({ mesocycleId: "meso-1" }),
+    });
+    expect(mocks.loadActiveMesocycle).not.toHaveBeenCalled();
+    expect(mocks.generateSessionFromIntent).not.toHaveBeenCalled();
   });
 
   it("returns deload prescription path when active mesocycle state is ACTIVE_DELOAD", async () => {
@@ -184,6 +237,12 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
     expect(body.selection).toBeUndefined();
     expect(body.autoregulation).toBeUndefined();
     expect(body.selectionMetadata.sessionDecisionReceipt.version).toBe(1);
+    expect(body.selectionMetadata.sessionDecisionReceipt.sessionSlot).toEqual({
+      slotId: "push_a",
+      intent: "push",
+      sequenceIndex: 0,
+      source: "mesocycle_slot_sequence",
+    });
   });
 
   it("rejects supplemental deficit generation for non-body_part intents", async () => {
@@ -304,6 +363,7 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
         expect.objectContaining({ code: "supplemental_deficit_session" }),
       ])
     );
+    expect(body.selectionMetadata.sessionDecisionReceipt.sessionSlot).toBeUndefined();
   });
 
   it("pins receipt week from the pending week-close row and preserves marker + weekCloseId", async () => {

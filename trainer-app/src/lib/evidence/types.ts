@@ -13,6 +13,14 @@ export type CycleContextSnapshot = {
   source: "computed" | "fallback";
 };
 
+export type SessionSlotSnapshot = {
+  slotId: string;
+  intent: string;
+  sequenceIndex: number;
+  sequenceLength?: number;
+  source: "mesocycle_slot_sequence" | "legacy_weekly_schedule";
+};
+
 export type DeloadDecisionMode = "none" | "scheduled" | "reactive" | "readiness";
 
 export type DeloadDecisionAppliedTo = "none" | "volume" | "load" | "both";
@@ -58,6 +66,7 @@ export type PlannerDiagnosticsMode = "standard" | "debug";
 export type SessionDecisionReceipt = {
   version: 1;
   cycleContext: CycleContextSnapshot;
+  sessionSlot?: SessionSlotSnapshot;
   targetMuscles?: string[];
   lifecycleRirTarget?: LifecycleRirTarget;
   lifecycleVolume: {

@@ -42,6 +42,7 @@ export const generateFromTemplateSchema = z.object({
   templateId: z.string(),
   pinnedExerciseIds: z.array(z.string()).optional(),
   autoFillUnpinned: z.boolean().optional(),
+  slotId: z.string().optional(),
 });
 
 export const sessionIntentSchema = z.enum([
@@ -55,10 +56,13 @@ export const sessionIntentSchema = z.enum([
 ]);
 
 export const workoutSessionIntentDbSchema = z.enum(WORKOUT_SESSION_INTENT_DB_VALUES);
+export const splitTypeDbSchema = z.enum(["PPL", "UPPER_LOWER", "FULL_BODY", "CUSTOM"]);
+export const mesocycleExerciseRoleTypeSchema = z.enum(["CORE_COMPOUND", "ACCESSORY"]);
 
 export const generateFromIntentSchema = z
   .object({
     intent: sessionIntentSchema,
+    slotId: z.string().optional(),
     targetMuscles: z.array(z.string()).optional(),
     anchorWeek: z.number().int().min(1).optional(),
     weekCloseId: z.string().optional(),
@@ -344,4 +348,29 @@ export const workoutHistoryQuerySchema = z.object({
   to: z.string().optional(),
   cursor: z.string().optional(),
   take: z.coerce.number().int().min(1).max(50).default(20),
+});
+
+export const nextCycleSeedSlotSchema = z.object({
+  slotId: z.string().min(1).max(40),
+  intent: workoutSessionIntentDbSchema,
+});
+
+export const nextCycleCarryForwardSelectionSchema = z.object({
+  exerciseId: z.string(),
+  exerciseName: z.string().min(1).max(120),
+  sessionIntent: workoutSessionIntentDbSchema,
+  role: mesocycleExerciseRoleTypeSchema,
+  action: z.enum(["keep", "rotate", "drop"]),
+});
+
+export const nextCycleSeedDraftUpdateSchema = z.object({
+  sourceMesocycleId: z.string(),
+  structure: z.object({
+    splitType: splitTypeDbSchema,
+    sessionsPerWeek: z.number().int().min(1).max(7),
+    daysPerWeek: z.number().int().min(1).max(7),
+    sequenceMode: z.literal("ordered_flexible"),
+    slots: z.array(nextCycleSeedSlotSchema).min(1).max(7),
+  }),
+  carryForwardSelections: z.array(nextCycleCarryForwardSelectionSchema),
 });

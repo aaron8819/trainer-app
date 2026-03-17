@@ -34,7 +34,10 @@ function makeWorkout(overrides: Partial<HistoryWorkoutItem> = {}): HistoryWorkou
     status: "COMPLETED",
     selectionMode: "INTENT",
     sessionIntent: "PUSH",
+    sessionIdentityLabel: "Push",
     mesocycleId: null,
+    mesocycleState: null,
+    mesocycleIsActive: null,
     sessionSnapshot: null,
     isDeload: false,
     isGapFill: false,
@@ -112,6 +115,7 @@ describe("HistoryClient", () => {
           makeWorkout({
             id: "supp-1",
             sessionIntent: "BODY_PART",
+            sessionIdentityLabel: "Body Part",
             isSupplementalDeficitSession: true,
             exerciseCount: 7,
           }),
@@ -132,6 +136,25 @@ describe("HistoryClient", () => {
     expect(screen.getByText("Supplemental")).toBeInTheDocument();
     expect(screen.getByText("Gap Fill")).toBeInTheDocument();
     expect(screen.getAllByText("Body Part")).toHaveLength(1);
+  });
+
+  it("renders slot-aware session identity labels when present", () => {
+    render(
+      <HistoryClient
+        initialWorkouts={[
+          makeWorkout({
+            id: "upper-2",
+            sessionIntent: "UPPER",
+            sessionIdentityLabel: "Upper 2",
+          }),
+        ]}
+        initialNextCursor={null}
+        initialTotalCount={1}
+        mesocycles={NO_MESOCYCLES}
+      />
+    );
+
+    expect(screen.getByText("Upper 2")).toBeInTheDocument();
   });
 
   it("renders a Deload badge on deload workouts", () => {
@@ -354,6 +377,27 @@ describe("HistoryClient", () => {
       );
       expect(screen.getByRole("link", { name: "Review" })).toHaveAttribute("href", "/workout/w5");
       expect(screen.getByRole("link", { name: "Resume" })).toHaveAttribute("href", "/log/w5");
+    });
+
+    it("PARTIAL rows from closed mesocycles render Review only", () => {
+      render(
+        <HistoryClient
+          initialWorkouts={[
+            makeWorkout({
+              id: "w6",
+              status: "PARTIAL",
+              mesocycleId: "meso-1",
+              mesocycleState: "COMPLETED",
+              mesocycleIsActive: false,
+            }),
+          ]}
+          initialNextCursor={null}
+          initialTotalCount={1}
+          mesocycles={NO_MESOCYCLES}
+        />
+      );
+      expect(screen.getByRole("link", { name: "Review" })).toHaveAttribute("href", "/workout/w6");
+      expect(screen.queryByRole("link", { name: "Resume" })).not.toBeInTheDocument();
     });
   });
 });

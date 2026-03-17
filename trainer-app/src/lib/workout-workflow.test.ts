@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  getClosedMesocycleWorkoutFenceReason,
   getWorkoutDetailTitle,
   getWorkoutWorkflowState,
 } from "./workout-workflow";
@@ -12,6 +13,7 @@ describe("workout workflow semantics", () => {
       isResumable: true,
       isTerminalForWorkflow: false,
       isPerformedForAnalytics: true,
+      resumeBlockedReason: null,
     });
   });
 
@@ -27,6 +29,7 @@ describe("workout workflow semantics", () => {
       isResumable: false,
       isTerminalForWorkflow: true,
       isPerformedForAnalytics: true,
+      resumeBlockedReason: null,
     });
   });
 
@@ -37,7 +40,33 @@ describe("workout workflow semantics", () => {
       isResumable: false,
       isTerminalForWorkflow: true,
       isPerformedForAnalytics: false,
+      resumeBlockedReason: null,
     });
+  });
+
+  it("fences resumable statuses when the workout belongs to a closed mesocycle", () => {
+    expect(
+      getWorkoutWorkflowState("PARTIAL", {
+        mesocycleId: "meso-1",
+        mesocycleState: "COMPLETED",
+        mesocycleIsActive: false,
+      })
+    ).toEqual({
+      kind: "partial",
+      isReviewable: true,
+      isResumable: false,
+      isTerminalForWorkflow: false,
+      isPerformedForAnalytics: true,
+      resumeBlockedReason:
+        "This workout belongs to a completed mesocycle and can no longer be resumed.",
+    });
+    expect(
+      getClosedMesocycleWorkoutFenceReason({
+        mesocycleId: "meso-1",
+        mesocycleState: "AWAITING_HANDOFF",
+        mesocycleIsActive: false,
+      })
+    ).toMatch(/handoff pending/i);
   });
 
   it("derives detail titles from workflow state instead of raw terminal/performed checks", () => {

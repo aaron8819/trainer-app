@@ -1497,6 +1497,87 @@ describe("POST /api/workouts/save", () => {
     expect(mocks.transitionMesocycleStateInTransaction).not.toHaveBeenCalled();
   });
 
+  it("returns 409 before lifecycle mutation when a workout belongs to an awaiting-handoff mesocycle", async () => {
+    mocks.workoutFindUnique.mockResolvedValueOnce({
+      id: "workout-1",
+      userId: "user-1",
+      status: "PLANNED",
+      revision: 1,
+      mesocycleId: "meso-1",
+      selectionMetadata: buildCanonicalSelectionMetadata(),
+    });
+    mocks.tx.mesocycle.findUnique.mockResolvedValueOnce({
+      id: "meso-1",
+      state: "AWAITING_HANDOFF",
+      durationWeeks: 5,
+      accumulationSessionsCompleted: 12,
+      deloadSessionsCompleted: 3,
+      sessionsPerWeek: 3,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutId: "workout-1",
+          notes: "should fail cleanly",
+        }),
+      })
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "Mesocycle handoff is pending; workout saves are closed until the next cycle is accepted.",
+    });
+    expect(mocks.workoutUpsert).not.toHaveBeenCalled();
+    expect(mocks.tx.mesocycle.update).not.toHaveBeenCalled();
+    expect(mocks.transitionMesocycleStateInTransaction).not.toHaveBeenCalled();
+  });
+
+  it("returns 409 before lifecycle mutation when a workout belongs to a completed mesocycle", async () => {
+    mocks.workoutFindUnique
+      .mockResolvedValueOnce({
+        id: "workout-1",
+        userId: "user-1",
+        status: "PLANNED",
+        revision: 1,
+        mesocycleId: "meso-1",
+        selectionMetadata: buildCanonicalSelectionMetadata(),
+      })
+      .mockResolvedValueOnce({
+        exercises: [
+          {
+            sets: [{ logs: [{ wasSkipped: false, actualReps: 8, actualRpe: 8, actualLoad: 135 }] }],
+          },
+        ],
+      });
+    mocks.tx.mesocycle.findUnique.mockResolvedValueOnce({
+      id: "meso-1",
+      state: "COMPLETED",
+      durationWeeks: 5,
+      accumulationSessionsCompleted: 12,
+      deloadSessionsCompleted: 3,
+      sessionsPerWeek: 3,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workoutId: "workout-1", action: "mark_completed" }),
+      })
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "Mesocycle is archived as completed; workout saves are closed.",
+    });
+    expect(mocks.workoutUpdateMany).not.toHaveBeenCalled();
+    expect(mocks.tx.mesocycle.update).not.toHaveBeenCalled();
+    expect(mocks.transitionMesocycleStateInTransaction).not.toHaveBeenCalled();
+  });
+
   it("cannot bypass rewrite gating via inferred action", async () => {
     mocks.workoutFindUnique.mockResolvedValueOnce({
       id: "workout-1",
@@ -2217,7 +2298,23 @@ describe("POST /api/workouts/save", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(mocks.tx.mesocycle.findUnique).not.toHaveBeenCalled();
+    expect(mocks.tx.mesocycle.findUnique).toHaveBeenCalledWith({
+      where: { id: "meso-1" },
+      select: {
+        id: true,
+        state: true,
+        durationWeeks: true,
+        accumulationSessionsCompleted: true,
+        deloadSessionsCompleted: true,
+        sessionsPerWeek: true,
+        startWeek: true,
+        macroCycle: {
+          select: {
+            startDate: true,
+          },
+        },
+      },
+    });
     expect(mocks.tx.mesocycle.update).not.toHaveBeenCalled();
     expect(mocks.transitionMesocycleStateInTransaction).not.toHaveBeenCalled();
 

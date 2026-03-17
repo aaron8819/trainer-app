@@ -57,26 +57,6 @@ function isBodyweightExercise(exercise: LogExerciseInput): boolean {
   return (exercise.equipment ?? []).some((item) => item.toLowerCase() === "bodyweight");
 }
 
-function isDumbbellExercise(exercise: LogExerciseInput): boolean {
-  return (exercise.equipment ?? []).some((item) => item.toLowerCase() === "dumbbell");
-}
-
-function toInputNumberString(value: number | null | undefined): string {
-  if (value == null) return "";
-  return String(value);
-}
-
-function parseNullableNumber(raw: string): number | null {
-  const normalized = raw.trim();
-  if (!normalized) return null;
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function normalizeLoadInput(raw: string): number | null {
-  return parseNullableNumber(raw);
-}
-
 function makeSaveWorkoutResponse(
   workoutStatus: WorkoutStatus,
   overrides: Partial<SaveWorkoutResponse & { baselineSummary?: unknown }> = {}
@@ -169,17 +149,13 @@ function WorkoutSessionFlowHarness({
     },
     clearTimer: () => setRestTimer(null),
     restoreTimer: (snapshot) => setRestTimer(snapshot),
-    clearDraft: callbacks.clearDraft,
-    clearAllDrafts: callbacks.clearAllDrafts,
-    clearDraftInputBuffers: callbacks.clearDraftInputBuffers,
-    setFieldPrefilled: (setId, field, value) => callbacks.setFieldPrefilled(setId, field, value),
-    updateSetFields,
-    isBodyweightExercise,
-    isDumbbellExercise,
-    toInputNumberString,
-    parseNullableNumber,
-    normalizeLoadInput,
-  });
+      clearDraft: callbacks.clearDraft,
+      clearAllDrafts: callbacks.clearAllDrafts,
+      clearDraftInputBuffers: callbacks.clearDraftInputBuffers,
+      setFieldPrefilled: (setId, field, value) => callbacks.setFieldPrefilled(setId, field, value),
+      updateSetFields,
+      isBodyweightExercise,
+    });
 
   return (
     <div>

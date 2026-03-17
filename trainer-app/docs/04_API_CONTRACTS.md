@@ -1,7 +1,7 @@
 # 04 API Contracts
 
 Owner: Aaron  
-Last reviewed: 2026-03-16
+Last reviewed: 2026-03-17
 Purpose: Canonical API contract map for App Router endpoints and payload validation boundaries.
 
 This doc covers:
@@ -11,7 +11,7 @@ This doc covers:
 
 Invariants:
 - Validation schemas in `src/lib/validation.ts` are canonical for request payloads.
-- Enum contract values are canonical in `docs/contracts/runtime-contracts.json` and verified by script.
+- Validation-backed workout enum contract values are canonical in `docs/contracts/runtime-contracts.json` and verified by script.
 - API docs should reference schemas and route files, not duplicate large inline contracts.
 
 Sources of truth:
@@ -33,7 +33,7 @@ Sources of truth:
 ## API route groups
 - Workouts: `src/app/api/workouts/**` (generate-from-intent, generate-from-template, save, `GET /api/workouts/history`)
 - Logging: `src/app/api/logs/set/route.ts`
-- Mesocycles: `GET /api/mesocycles` (`src/app/api/mesocycles/route.ts`) - returns list of user mesocycles with state, durationWeeks, startDate, isActive
+- Mesocycles: `GET /api/mesocycles` (`src/app/api/mesocycles/route.ts`) plus handoff endpoints `PATCH /api/mesocycles/[id]/draft` and `POST /api/mesocycles/[id]/accept-next-cycle`
 - Program/periodization/readiness: `src/app/api/program/route.ts`, `src/app/api/periodization/macro/route.ts`, `src/app/api/readiness/submit/route.ts`, `src/app/api/stalls/route.ts`
 - Templates: `src/app/api/templates/**`
 - Exercises and preferences: `src/app/api/exercises/**`, `src/app/api/preferences/route.ts`
@@ -54,6 +54,7 @@ Sources of truth:
 - `ProgramDashboardData.coachingCue` and `ProgramDashboardData.deloadReadiness` are descriptive dashboard framing only. Canonical deload policy still lives in `src/lib/deload/semantics.ts` and generator/session receipts.
 - Historical `GET /api/program?week=N` responses still carry those opportunity fields, but the current UI only renders `opportunityState` for the live current week because opportunity currently uses present recency/readiness context rather than a historical as-of timestamp.
 - `ProgramDashboardData.deloadReadiness` saturation logic now keys off weighted `effectiveSets` rather than primary-only direct sets (`src/lib/api/program.ts`, `src/lib/api/weekly-volume.ts`).
+- `GET /api/program` and `PATCH /api/program` now return `409` with `{ error: "Mesocycle handoff pending.", handoff }` while any mesocycle is in `AWAITING_HANDOFF`. Program controls are intentionally blocked until the next cycle is explicitly accepted.
 
 ## Analytics response notes
 - Shared analytics semantics helpers now live in `src/lib/api/analytics-semantics.ts`. That helper is the canonical source for analytics counting vocabulary (`generated`, `performed`, `completed`) and explicit time-window descriptors (`all_time`, `rolling_days`, `rolling_iso_weeks`, `date_range`).
@@ -74,6 +75,7 @@ Sources of truth:
 - Workout generation/save: `generateFromTemplateSchema`, `generateFromIntentSchema`, `saveWorkoutSchema`
 - Workout history query: `workoutHistoryQuerySchema` in `src/lib/validation.ts`; consumed by `GET /api/workouts/history`. Supports `intent`, `status` (comma-separated), `mesocycleId`, `from`/`to` date range, and cursor-based pagination (`cursor`, `take`). History items expose the derived workout-list summary contract for badge rendering, including `sessionSnapshot` for week/session/phase chrome and `isDeload` for explicit deload labeling, instead of parallel top-level snapshot fields in the response shape (`src/app/api/workouts/history/route.ts`).
 - Logging: `setLogSchema`
+- Mesocycle handoff draft editing: `nextCycleSeedDraftUpdateSchema`
 - Dumbbell load contract: clients submit dumbbell `actualLoad` in per-hand units and `POST /api/logs/set` persists the provided per-hand value directly. Client read/write helpers must stay aligned with canonical 2.5 lb quantization in `src/lib/units/load-quantization.ts`; the API contract does not define a separate dumbbell snap whitelist.
 - Performed-set signal requirement: `POST /api/logs/set` returns 400 when a non-skipped set log supplies neither `actualReps` nor `actualRpe`. Unresolved sets must remain un-logged (missing) rather than being written as empty performed logs.
 - Bodyweight auto-normalization: when `targetLoad=0` and the set is not skipped, `actualLoad` is written as `0` even when the client omits it (`src/app/api/logs/set/route.ts`).
@@ -82,6 +84,22 @@ Sources of truth:
 - `profileSetupSchema` no longer accepts `sessionMinutes`; profile setup persists `daysPerWeek` and optional `splitType` through `POST /api/profile/setup` (`src/lib/validation.ts`, `src/app/api/profile/setup/route.ts`).
 - Session-decision request/response ownership follows the canonical flow in `docs/01_ARCHITECTURE.md`: save and generation contracts carry `selectionMetadata.sessionDecisionReceipt`, and validation rejects removed top-level session mirrors / top-level autoregulation inputs (`src/lib/validation.ts`, `src/app/api/workouts/save/route.ts`).
 - Mutation reconciliation is part of the persisted workout contract, not a read-side convenience. Structural mutation writers persist `selectionMetadata.workoutStructureState` when saved workout structure diverges from the original generated plan.
+
+## Mesocycle handoff route contract
+- `PATCH /api/mesocycles/[id]/draft` (`src/app/api/mesocycles/[id]/draft/route.ts`)
+  - state gate: target mesocycle must exist for the owner and be in `AWAITING_HANDOFF`
+  - request payload: `nextCycleSeedDraftUpdateSchema`
+  - success: `{ ok: true, handoff }` with the updated pending handoff payload
+  - conflict behavior:
+    - `409` when handoff is not pending
+    - `409` when `keep` carry-forward selections no longer match any session intent in the edited split/session structure
+  - validation behavior:
+    - `400` when the draft payload is structurally invalid
+- `POST /api/mesocycles/[id]/accept-next-cycle` (`src/app/api/mesocycles/[id]/accept-next-cycle/route.ts`)
+  - state gate: target mesocycle must exist for the owner, be in `AWAITING_HANDOFF`, and have a readable stored draft
+  - success: `{ ok: true, priorMesocycleId, nextMesocycle }`
+  - acceptance semantics are transactional: sanitize the stored draft, create the successor mesocycle, persist `slotSequenceJson`, copy allowed carry-forward roles, update `Constraints`, then mark the source mesocycle `COMPLETED`
+  - `409` when handoff is not pending, the draft is missing, or carry-forward keep selections are no longer compatible with the edited split/session structure
 
 ## Workout save terminal transition contract
 - Route: `POST /api/workouts/save` (`src/app/api/workouts/save/route.ts`).
@@ -99,8 +117,9 @@ Sources of truth:
 - Mesocycle snapshots are duration-aware: `mesocycleWeekSnapshot` is derived from `durationWeeks`, `accumulationSessionsCompleted`, and `sessionsPerWeek`, and `mesoSessionSnapshot` during deload is capped by `sessionsPerWeek` rather than a fixed `3`.
 - Mesocycle lifecycle counter increment split:
   - Performed-signal readers use `COMPLETED` + `PARTIAL` (`src/lib/workout-status.ts`).
-  - Lifecycle counters (`accumulationSessionsCompleted`, `deloadSessionsCompleted`) are incremented on any first transition to a performed status (`COMPLETED` or `PARTIAL`) atomically inside the save-workout transaction (`src/app/api/workouts/save/route.ts`); `transitionMesocycleState()` is then called post-transaction to apply threshold-based state transitions.
+- Lifecycle counters (`accumulationSessionsCompleted`, `deloadSessionsCompleted`) are incremented on any first transition to a performed status (`COMPLETED` or `PARTIAL`) atomically inside the save-workout transaction (`src/app/api/workouts/save/route.ts`); `transitionMesocycleState()` is then called post-transaction to apply threshold-based state transitions.
 - Lifecycle thresholds are duration-aware: accumulation completes after `(durationWeeks - 1) * sessionsPerWeek` performed sessions and deload completes after `sessionsPerWeek` performed sessions.
+- Deload completion now transitions the source mesocycle into `AWAITING_HANDOFF`; it does not auto-create the successor. Successor creation is reserved for `POST /api/mesocycles/[id]/accept-next-cycle`.
 - Save route persists session-level cycle context only inside `selectionMetadata.sessionDecisionReceipt`; `POST /api/workouts/save` rejects writes that omit the canonical receipt instead of synthesizing fallback state (`src/app/api/workouts/save/route.ts`).
 - Save-route exercise rewrites also persist canonical `selectionMetadata.workoutStructureState` and keep the original receipt intact. They do not rewrite `sessionDecisionReceipt` to match the new structure.
 - Structural mutation contract:
@@ -112,6 +131,10 @@ Sources of truth:
   - effective `selectionMode=INTENT`
   - `sessionIntent=BODY_PART`
   When true, save forces `advancesSplit=false`, blocks lifecycle counter updates/state transition, and allows `mesocycleWeekSnapshot` anchor override. Non-triplet payloads use normal lifecycle behavior.
+- Closed-mesocycle fencing:
+  - `POST /api/workouts/save` returns `409` for workouts whose parent mesocycle is `AWAITING_HANDOFF` or `COMPLETED`
+  - `POST /api/logs/set` and `DELETE /api/logs/set` return `409` for the same closed-mesocycle cases
+  - workflow/UI resume logic should treat those workouts as non-resumable rather than retrying writes
 
 ## Deload gate contract
 - Routes:
@@ -138,6 +161,8 @@ Sources of truth:
   - template route returns `selectionMetadata`, carrying canonical `sessionDecisionReceipt`
 - Generation routes canonicalize receipt readiness/autoregulation fields through shared selection metadata helpers rather than returning ad hoc top-level session mirrors (`src/lib/ui/selection-metadata.ts`, `src/lib/api/template-session/types.ts`).
 - Generation routes own original plan metadata. Mutation reconciliation is added later by write-side mutation paths when the saved workout structure changes.
+- Both generation routes now return `409` with `{ error: "Mesocycle handoff pending.", handoff }` when the prior mesocycle is closed into `AWAITING_HANDOFF` and no successor has been accepted yet.
+- Both generation routes accept optional `slotId` input and stamp canonical `selectionMetadata.sessionDecisionReceipt.sessionSlot` when the generated session matches the current runtime slot recommendation. That receipt snapshot carries `slotId`, `intent`, `sequenceIndex`, optional `sequenceLength`, and `source`.
 - For deload generation, receipt-backed user messaging should describe recovery intent, lighter loads, and reduced volume without hard-coding a fixed percentage promise. The canonical receipt scope is the deload decision payload, especially `selectionMetadata.sessionDecisionReceipt.deloadDecision.appliedTo`.
 - Planning semantics behind those routes are centralized in `src/lib/planning/session-opportunities.ts`. Route contracts do not expose planner inventory mode directly; `standard`, `closure`, and `rescue` remain internal generation concepts selected by the orchestration layer.
 - `POST /api/workouts/generate-from-intent` request fields include optional gap-fill controls (`src/lib/validation.ts`, `src/lib/api/template-session/types.ts`):

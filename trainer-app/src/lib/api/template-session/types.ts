@@ -34,10 +34,12 @@ import type { GenerationPhaseBlockContext } from "@/lib/api/generation-phase-blo
 export type GenerateTemplateSessionParams = {
   pinnedExerciseIds?: string[];
   autoFillUnpinned?: boolean;
+  slotId?: string;
 };
 
 export type GenerateIntentSessionInput = {
   intent: SessionIntent;
+  slotId?: string;
   targetMuscles?: string[];
   anchorWeek?: number;
   weekCloseId?: string;

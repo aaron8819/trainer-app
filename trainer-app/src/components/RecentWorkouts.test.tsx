@@ -22,7 +22,10 @@ function makeWorkout(
     status: "COMPLETED",
     selectionMode: "INTENT",
     sessionIntent: "PUSH",
+    sessionIdentityLabel: "Push",
     mesocycleId: null,
+    mesocycleState: null,
+    mesocycleIsActive: null,
     sessionSnapshot: null,
     isDeload: false,
     isGapFill: false,
@@ -117,6 +120,7 @@ describe("supplemental labels", () => {
     renderRecent([
       makeWorkout({
         sessionIntent: "BODY_PART",
+        sessionIdentityLabel: "Body Part",
         isSupplementalDeficitSession: true,
       }),
     ]);
@@ -129,11 +133,25 @@ describe("supplemental labels", () => {
     renderRecent([
       makeWorkout({
         sessionIntent: "BODY_PART",
+        sessionIdentityLabel: "Body Part",
       }),
     ]);
 
     expect(screen.getByText("Body Part")).toBeInTheDocument();
     expect(screen.queryByText("Supplemental")).not.toBeInTheDocument();
+  });
+});
+
+describe("slot-aware labels", () => {
+  it("renders slot-aware session identity when present", () => {
+    renderRecent([
+      makeWorkout({
+        sessionIntent: "UPPER",
+        sessionIdentityLabel: "Upper 2",
+      }),
+    ]);
+
+    expect(screen.getByText("Upper 2")).toBeInTheDocument();
   });
 });
 
@@ -175,6 +193,19 @@ describe("PARTIAL row", () => {
     renderRecent([makeWorkout({ status: "PARTIAL" })]);
     expect(screen.getByRole("link", { name: "Review" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Resume" })).toBeInTheDocument();
+  });
+
+  it("removes Resume for partial workouts from closed mesocycles", () => {
+    renderRecent([
+      makeWorkout({
+        status: "PARTIAL",
+        mesocycleId: "meso-1",
+        mesocycleState: "COMPLETED",
+        mesocycleIsActive: false,
+      }),
+    ]);
+    expect(screen.getByRole("link", { name: "Review" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Resume" })).not.toBeInTheDocument();
   });
 });
 

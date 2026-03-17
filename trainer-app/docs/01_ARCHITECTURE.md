@@ -1,7 +1,7 @@
 # 01 Architecture
 
 Owner: Aaron  
-Last reviewed: 2026-03-16  
+Last reviewed: 2026-03-17  
 Purpose: Defines the current runtime architecture for the single-user local-first Trainer app and the boundaries between UI, API routes, orchestration, engine, and persistence.
 
 This doc covers:
@@ -13,7 +13,7 @@ Invariants:
 - Runtime identity is owner-scoped via `resolveOwner()`.
 - App routes and API routes are the only external app surface.
 - Engine logic is pure/domain-focused under `src/lib/engine`; DB access lives in API/orchestration.
-- Mesocycle lifecycle ownership is split into math/state modules behind the `src/lib/api/mesocycle-lifecycle.ts` facade.
+- Mesocycle lifecycle ownership is split across lifecycle math/state, handoff, review, setup, and slot-runtime seams under `src/lib/api`.
 
 Sources of truth:
 - `trainer-app/src/lib/api/workout-context.ts`
@@ -37,7 +37,7 @@ Sources of truth:
 - All major pages and API flows resolve the owner before loading/writing data.
 
 ## App surface
-- UI pages are defined in `src/app/**/page.tsx` (dashboard, onboarding, workout/log detail, analytics, templates, library, settings, program).
+- UI pages are defined in `src/app/**/page.tsx` (dashboard, onboarding, workout/log detail, analytics, templates, library, settings, program, mesocycle review/setup).
 - API routes are defined in `src/app/api/**/route.ts` and validated through `src/lib/validation.ts` where applicable.
 
 ## Data and control flow (high level)
@@ -100,7 +100,20 @@ SetLog / logged performance
 - Remaining-week planning (`src/lib/api/template-session/remaining-week-planner.ts`), selection targeting (`src/lib/api/template-session/selection-adapter.ts`), and intent filtering (`src/lib/api/template-session/intent-filters.ts`) all consume the same opportunity layer.
 
 ## Lifecycle ownership and data entities
-- Lifecycle state transitions (`ACTIVE_ACCUMULATION` -> `ACTIVE_DELOAD` -> `COMPLETED`) are executed through `transitionMesocycleState()` via `src/lib/api/mesocycle-lifecycle.ts` (state module: `src/lib/api/mesocycle-lifecycle-state.ts`), invoked from `src/app/api/workouts/save/route.ts` after first transition into a performed status.
+- Lifecycle state transitions (`ACTIVE_ACCUMULATION` -> `ACTIVE_DELOAD` -> `AWAITING_HANDOFF` -> `COMPLETED`) are executed through `transitionMesocycleState()` via `src/lib/api/mesocycle-lifecycle.ts` (state module: `src/lib/api/mesocycle-lifecycle-state.ts`), invoked from `src/app/api/workouts/save/route.ts` after first transition into a performed status.
+- Deload completion no longer auto-creates the successor mesocycle. The lifecycle transition only closes the source mesocycle into `AWAITING_HANDOFF` and freezes handoff artifacts through `enterMesocycleHandoffInTransaction()` in `src/lib/api/mesocycle-handoff.ts`.
+- Handoff ownership is intentionally split:
+  - frozen closeout summary + recommended next-cycle seed: `handoffSummaryJson` on the closed mesocycle
+  - editable pending draft: `nextSeedDraftJson` on the same closed mesocycle while state is `AWAITING_HANDOFF`
+  - live closeout review read model: `src/lib/api/mesocycle-review.ts`
+  - editable setup read model: `src/lib/api/mesocycle-setup.ts`
+- Successor creation is an explicit acceptance action only. `acceptMesocycleHandoffInTransaction()` sanitizes the pending draft, creates the next active mesocycle transactionally, persists its slot sequence, carries forward allowed roles, updates `Constraints`, and then marks the source mesocycle `COMPLETED`.
+- `slotSequenceJson` on the accepted successor mesocycle is the canonical runtime slot authority. `Constraints.weeklySchedule` remains the compatibility/fallback schedule for legacy mesocycles that do not yet have a persisted slot sequence.
+- Slot-aware runtime sequencing now resolves the next advancing session through `slotId + intent`, not raw intent alone. Canonical ownership is split between the persisted slot contract in `src/lib/api/mesocycle-slot-contract.ts` and runtime sequencing in `src/lib/api/mesocycle-slot-runtime.ts`.
+- Closed-mesocycle write/resume fencing is enforced at the workflow/write boundary, not in UI-local heuristics:
+  - workout saves: `src/app/api/workouts/save/lifecycle-contract.ts`
+  - set logging: `src/app/api/logs/set/route.ts`
+  - resume/detail gating: `src/lib/workout-workflow.ts`
 - Lifecycle-derived targeting helpers (`getCurrentMesoWeek()`, `getWeeklyVolumeTarget()`, `getRirTarget()`) are consumed through the lifecycle facade (math module: `src/lib/api/mesocycle-lifecycle-math.ts`). For weekly volume targets, the canonical input is now the mesocycle's ordered `blocks` timeline when present; generation may still pass explicit phase/block profile context from `src/lib/api/generation-phase-block-context.ts` when it needs anchored or overridden week semantics.
 - Weekly volume interpolation is centralized in `src/lib/engine/volume-targets.ts` and consumed by lifecycle math/engine volume services. The canonical target path is now `Mesocycle.blocks or explicit blockContext -> buildWeeklyVolumeTargetProfile() -> interpolateWeeklyVolumeTarget() -> getWeeklyVolumeTarget() -> generation/planning/read models`, with duration-only interpolation retained only as a fallback when block coverage is missing or incomplete.
 - `MesocycleExerciseRole` is a first-class data-layer entity for intent-scoped exercise role continuity (`CORE_COMPOUND` / `ACCESSORY`) across mesocycle lifecycle events.
@@ -137,7 +150,8 @@ SetLog / logged performance
 ## Canonical read-side boundaries
 - `ProgramDashboardData` in `src/lib/api/program.ts` is the canonical program dashboard read model for the shared `ProgramStatusCard` mounted on `/` and `/program`. It owns mesocycle header/timeline state, current vs viewed week, viewed block chrome (`viewedBlockType`), lifecycle RIR target, deload/readiness cue, and mesocycle-week volume rows. Historical browsing should render from the full selected payload rather than mixing current-week chrome with past-week volume rows. Dashboard `rirTarget` and phase coaching copy now resolve through the same block-aware prescription seam used by generation (`resolvePhaseBlockProfile() -> getRirTarget()`), so the dashboard does not maintain an independent week-to-RIR mapping. Per-muscle rows now also carry dashboard-only opportunity metadata (`opportunityScore`, `opportunityState`, `opportunityRationale`) derived from canonical weekly weighted volume, recent local weighted stimulus, and optional fresh readiness modulation. That metadata is advisory dashboard framing only, not canonical next-session guidance or a generator-owned decision contract. It is not the canonical contract for generic workout-history lists.
 - Home-page operational helpers that are not part of the shared dashboard card contract live separately in `loadHomeProgramSupport()` in `src/lib/api/program.ts`. `loadHomeProgramSupport()` consumes `loadNextWorkoutContext()` from `src/lib/api/next-session.ts`, which is the canonical next-session derivation service shared with the audit harness.
-- `loadNextWorkoutContext()` is receipt-agnostic and remains lifecycle-safe: lifecycle counters still derive canonical `week/session`, while next advancing `intent` now derives from `constraints.weeklySchedule minus performed intents whose derived session semantics still consume a weekly schedule slot`. That subtraction path is only authoritative for unique-intent weekly schedules; repeated-intent schedules still fall back to canonical slot math until the data model exposes slot identity beyond raw intent.
+- `loadNextWorkoutContext()` is receipt-agnostic and remains lifecycle-safe, but it now checks pending mesocycle handoff first. When a mesocycle is in `AWAITING_HANDOFF`, the canonical next-workout source is `handoff_pending` and generation/resume suggestions are intentionally suppressed until the next cycle is accepted.
+- For active mesocycles, `loadNextWorkoutContext()` now resolves the next advancing session through the persisted runtime slot sequence when `slotSequenceJson` exists. `constraints.weeklySchedule minus performed intents` is retained only as a fallback for legacy mesocycles that do not yet have persisted slot identity.
 - Read-side explanation and summary layers must consume derived semantics or canonical decision outputs. They should not independently recompute progression-relevant session meaning unless there is a strong reason and the new seam is documented as canonical first.
 - `src/lib/api/explainability.ts` remains a facade, not a free-form policy layer. Within explainability, canonical seam ownership is:
   - `query.ts`: load persisted workout/history/evidence inputs

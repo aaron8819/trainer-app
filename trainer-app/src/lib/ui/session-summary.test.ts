@@ -180,6 +180,33 @@ describe("buildSessionSummaryModel", () => {
     expect(summary.tags).not.toContain("Intensification week 4");
   });
 
+  it("surfaces slot-aware identity in tags and detail items when a session slot is saved", () => {
+    const summary = buildSessionSummaryModel({
+      context: makeContext(),
+      receipt: makeReceipt({
+        sessionSlot: {
+          slotId: "upper_b",
+          intent: "upper",
+          sequenceIndex: 2,
+          sequenceLength: 4,
+          source: "mesocycle_slot_sequence",
+        },
+      }),
+      sessionIntent: "UPPER",
+    });
+
+    expect(summary.summary).toContain("upper 2 session");
+    expect(summary.tags).toContain("Upper 2");
+    expect(summary.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: "Session identity",
+          value: "Second upper session in your current weekly order.",
+        }),
+      ])
+    );
+  });
+
   it("surfaces deload, soreness hold, and readiness scaling through the same summary", () => {
     const summary = buildSessionSummaryModel({
       context: makeContext(),

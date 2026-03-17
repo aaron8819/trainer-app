@@ -22,6 +22,7 @@ import {
 import { mapLatestCheckIn, type CheckInRow } from "./checkin-staleness";
 import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-semantics";
 import { classifySetLog } from "@/lib/session-semantics/set-classification";
+import { readSessionSlotSnapshot } from "@/lib/evidence/session-decision-receipt";
 import type {
   Constraints,
   EquipmentType,
@@ -266,6 +267,7 @@ export function mapHistory(workouts: WorkoutWithRelations[]): WorkoutHistoryEntr
       templateId: workout.templateId,
       mesocyclePhase: workout.mesocyclePhaseSnapshot,
     });
+    const sessionSlot = readSessionSlotSnapshot(workout.selectionMetadata);
 
     // Keep deload sessions in performed history for compliance/volume context
     // while marking them out of progression and performance reads.
@@ -291,6 +293,7 @@ export function mapHistory(workouts: WorkoutWithRelations[]): WorkoutHistoryEntr
               week: workout.mesocycleWeekSnapshot,
               session: workout.mesoSessionSnapshot,
               phase: workout.mesocyclePhaseSnapshot,
+              slotId: sessionSlot?.slotId ?? null,
             }
           : undefined,
       exercises: workout.exercises.map((exercise) => ({

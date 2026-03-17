@@ -7,7 +7,6 @@ import {
   buildBlockPrescriptionIntent,
   type BlockPrescriptionProfileContext,
 } from "@/lib/engine/periodization/block-prescription-intent";
-import type { BlockType } from "@/lib/engine/periodization/types";
 import { getBackOffMultiplier, type PeriodizationModifiers } from "@/lib/engine/rules";
 import {
   CANONICAL_DELOAD_BACKOFF_MULTIPLIER,
@@ -35,14 +34,14 @@ type HypertrophyWeekProfile = {
 };
 
 type WeekDerivationInput = {
-  state: "ACTIVE_ACCUMULATION" | "ACTIVE_DELOAD" | "COMPLETED";
+  state: "ACTIVE_ACCUMULATION" | "ACTIVE_DELOAD" | "AWAITING_HANDOFF" | "COMPLETED";
   accumulationSessionsCompleted: number;
   sessionsPerWeek: number;
   durationWeeks: number;
 };
 
 type SessionDerivationInput = {
-  state: "ACTIVE_ACCUMULATION" | "ACTIVE_DELOAD" | "COMPLETED";
+  state: "ACTIVE_ACCUMULATION" | "ACTIVE_DELOAD" | "AWAITING_HANDOFF" | "COMPLETED";
   accumulationSessionsCompleted: number;
   deloadSessionsCompleted: number;
   sessionsPerWeek: number;
@@ -63,7 +62,7 @@ type VolumeTargetInput = {
 };
 
 type RirTargetInput = {
-  state: "ACTIVE_ACCUMULATION" | "ACTIVE_DELOAD" | "COMPLETED";
+  state: "ACTIVE_ACCUMULATION" | "ACTIVE_DELOAD" | "AWAITING_HANDOFF" | "COMPLETED";
   durationWeeks: number;
 };
 
@@ -290,7 +289,9 @@ export function deriveCurrentMesocycleSession(
 ): CanonicalMesocycleSession {
   const sessionsPerWeek = Math.max(1, mesocycle.sessionsPerWeek);
   const shouldUseDeloadPhase =
-    mesocycle.state === "ACTIVE_DELOAD" || mesocycle.state === "COMPLETED";
+    mesocycle.state === "ACTIVE_DELOAD" ||
+    mesocycle.state === "AWAITING_HANDOFF" ||
+    mesocycle.state === "COMPLETED";
 
   if (shouldUseDeloadPhase) {
     return {
@@ -448,7 +449,12 @@ export function getRirTarget(
     return getBlockAwareRirTarget(phaseBlockContext);
   }
   const deloadWeek = getDeloadWeek(mesocycle.durationWeeks);
-  if (week >= deloadWeek || mesocycle.state === "ACTIVE_DELOAD" || mesocycle.state === "COMPLETED") {
+  if (
+    week >= deloadWeek ||
+    mesocycle.state === "ACTIVE_DELOAD" ||
+    mesocycle.state === "AWAITING_HANDOFF" ||
+    mesocycle.state === "COMPLETED"
+  ) {
     return CANONICAL_DELOAD_RIR_TARGET;
   }
   return buildHypertrophyWeekProfile(mesocycle.durationWeeks, week, false).rirTarget;

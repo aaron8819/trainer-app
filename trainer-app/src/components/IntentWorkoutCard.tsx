@@ -5,6 +5,10 @@ import { useEffect, useMemo, useState } from "react";
 import type { GenerateFromIntentResponse } from "@/lib/api/template-session/types";
 import type { SaveWorkoutRequestPayload } from "@/components/log-workout/api";
 import { isStrictSupplementalDeficitSession } from "@/lib/session-semantics/supplemental-classifier";
+import {
+  formatSessionIdentityDescription,
+  formatSessionIdentityLabel,
+} from "@/lib/ui/session-identity";
 
 type SessionIntent = "push" | "pull" | "legs" | "upper" | "lower" | "full_body" | "body_part";
 
@@ -88,9 +92,13 @@ function parseTargetMuscles(input: string): string[] {
 
 type IntentWorkoutCardProps = {
   initialIntent?: SessionIntent;
+  initialSlotId?: string | null;
 };
 
-export function IntentWorkoutCard({ initialIntent = "push" }: IntentWorkoutCardProps) {
+export function IntentWorkoutCard({
+  initialIntent = "push",
+  initialSlotId = null,
+}: IntentWorkoutCardProps) {
   const [intent, setIntent] = useState<SessionIntent>(initialIntent);
   const [targetMusclesInput, setTargetMusclesInput] = useState("");
   const [supplementalMode, setSupplementalMode] = useState(false);
@@ -129,6 +137,7 @@ export function IntentWorkoutCard({ initialIntent = "push" }: IntentWorkoutCardP
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         intent,
+        slotId: intent === initialIntent ? initialSlotId : undefined,
         targetMuscles: intent === "body_part" ? targetMuscles : undefined,
         supplementalDeficitSession: intent === "body_part" ? supplementalMode : undefined,
       }),
@@ -210,6 +219,25 @@ export function IntentWorkoutCard({ initialIntent = "push" }: IntentWorkoutCardP
   const readinessPreview = generatedMetadata?.selectionMetadata?.sessionDecisionReceipt?.readiness;
   const showReadinessPreview =
     Boolean(readinessPreview?.rationale) || readinessPreview?.signalAgeHours != null;
+  const generatedSessionSlot = generatedMetadata?.selectionMetadata?.sessionDecisionReceipt?.sessionSlot;
+  const generatedSessionLabel = generatedSessionSlot
+    ? formatSessionIdentityLabel({
+        intent: generatedSessionSlot.intent,
+        slotId: generatedSessionSlot.slotId,
+      })
+    : null;
+  const generatedSessionDescription = generatedSessionSlot
+    ? formatSessionIdentityDescription({
+        intent: generatedSessionSlot.intent,
+        slotId: generatedSessionSlot.slotId,
+      })
+    : null;
+  const recommendedSessionLabel = initialSlotId
+    ? formatSessionIdentityLabel({
+        intent: initialIntent,
+        slotId: initialSlotId,
+      })
+    : null;
 
   return (
     <div className="w-full min-w-0 rounded-2xl border border-slate-200 p-5 shadow-sm sm:p-6">
@@ -217,6 +245,11 @@ export function IntentWorkoutCard({ initialIntent = "push" }: IntentWorkoutCardP
       <p className="mt-2 text-slate-600">
         Pick an intent and generate a session. Use Templates for fixed, reusable sessions.
       </p>
+      {recommendedSessionLabel ? (
+        <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+          Recommended next session: <span className="font-semibold text-slate-900">{recommendedSessionLabel}</span>
+        </div>
+      ) : null}
 
       <div className="mt-4 grid gap-3">
         <label className="flex flex-col gap-2">
@@ -334,6 +367,15 @@ export function IntentWorkoutCard({ initialIntent = "push" }: IntentWorkoutCardP
 
       {workout ? (
         <div className="mt-6 space-y-4">
+          {generatedSessionLabel ? (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-sm text-slate-500">Session</p>
+              <p className="text-lg font-semibold text-slate-900">{generatedSessionLabel}</p>
+              {generatedSessionDescription ? (
+                <p className="mt-1 text-sm text-slate-600">{generatedSessionDescription}</p>
+              ) : null}
+            </div>
+          ) : null}
           <div className="rounded-xl border border-slate-200 p-4">
             <p className="text-sm text-slate-500">Estimated time</p>
             <p className="text-lg font-semibold">{workout.estimatedMinutes} minutes</p>

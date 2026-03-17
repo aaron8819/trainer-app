@@ -267,6 +267,71 @@ describe("buildSelectionObjective continuity bias", () => {
     expect(objective.volumeContext.remainingWeek?.futureSlotCounts.get("legs")).toBe(1);
   });
 
+  it("uses persisted slot ids to keep duplicate-intent future slots unambiguous", () => {
+    const history: WorkoutHistoryEntry[] = [
+      {
+        date: new Date().toISOString(),
+        completed: true,
+        status: "COMPLETED",
+        sessionIntent: "upper",
+        mesocycleSnapshot: {
+          week: 2,
+          session: 1,
+          mesocycleId: "meso-1",
+          slotId: "upper_a",
+        },
+        exercises: [
+          {
+            exerciseId: "tbar-row",
+            sets: [{ exerciseId: "tbar-row", setIndex: 1, reps: 10, load: 135 }],
+          },
+        ],
+      },
+      {
+        date: new Date(Date.now() + 1000).toISOString(),
+        completed: true,
+        status: "COMPLETED",
+        sessionIntent: "lower",
+        mesocycleSnapshot: {
+          week: 2,
+          session: 2,
+          mesocycleId: "meso-1",
+          slotId: "lower_a",
+        },
+        exercises: [
+          {
+            exerciseId: "tbar-row",
+            sets: [{ exerciseId: "tbar-row", setIndex: 1, reps: 10, load: 135 }],
+          },
+        ],
+      },
+    ];
+
+    const mapped = makeMappedContext(history);
+    mapped.activeMesocycle = {
+      id: "meso-1",
+      slotSequenceJson: {
+        version: 1,
+        source: "handoff_draft",
+        sequenceMode: "ordered_flexible",
+        slots: [
+          { slotId: "upper_a", intent: "UPPER" },
+          { slotId: "lower_a", intent: "LOWER" },
+          { slotId: "upper_b", intent: "UPPER" },
+          { slotId: "lower_b", intent: "LOWER" },
+        ],
+      },
+    } as unknown as MappedGenerationContext["activeMesocycle"];
+    mapped.mappedConstraints.weeklySchedule = ["upper", "lower", "upper", "lower"];
+
+    const objective = buildSelectionObjective(mapped, "upper", undefined, {
+      sessionSlotId: "upper_b",
+    });
+
+    expect(objective.volumeContext.remainingWeek?.futureSlots).toEqual(["lower"]);
+    expect(objective.volumeContext.remainingWeek?.futureSlotCounts.get("lower")).toBe(1);
+  });
+
   it("builds effectiveActual from the shared stimulus helper instead of binary primary credit", () => {
     const recentDate = new Date().toISOString();
     const history: WorkoutHistoryEntry[] = [

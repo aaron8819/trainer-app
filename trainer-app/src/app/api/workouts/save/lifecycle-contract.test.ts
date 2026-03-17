@@ -7,8 +7,10 @@ vi.mock("@/lib/api/mesocycle-lifecycle-math", () => ({
 }));
 
 import {
+  assertMesocycleAllowsWorkoutSave,
   buildPerformedLifecycleCounterUpdate,
   deriveSaveRouteMesoSnapshot,
+  getClosedMesocycleSaveFenceReason,
   resolvePersistedAdvancesSplit,
   shouldAdvanceLifecycleForPerformedTransition,
 } from "./lifecycle-contract";
@@ -62,6 +64,19 @@ describe("save lifecycle contract", () => {
       completedSessions: { increment: 1 },
       deloadSessionsCompleted: { increment: 1 },
     });
+  });
+
+  it("fences workout saves for closed mesocycles before lifecycle mutation", () => {
+    expect(getClosedMesocycleSaveFenceReason("AWAITING_HANDOFF")).toMatch(/handoff is pending/i);
+    expect(getClosedMesocycleSaveFenceReason("COMPLETED")).toMatch(/archived as completed/i);
+    expect(getClosedMesocycleSaveFenceReason("ACTIVE_ACCUMULATION")).toBeNull();
+    expect(() => assertMesocycleAllowsWorkoutSave("AWAITING_HANDOFF")).toThrow(
+      "MESOCYCLE_WORKOUT_SAVE_BLOCKED:AWAITING_HANDOFF"
+    );
+    expect(() => assertMesocycleAllowsWorkoutSave("COMPLETED")).toThrow(
+      "MESOCYCLE_WORKOUT_SAVE_BLOCKED:COMPLETED"
+    );
+    expect(() => assertMesocycleAllowsWorkoutSave("ACTIVE_DELOAD")).not.toThrow();
   });
 
   it("derives deterministic save snapshots for identical mesocycle inputs", () => {

@@ -133,9 +133,11 @@ describe("mapHistory", () => {
       targetLoad: 185,
     });
     expect(history[0].mesocycleSnapshot).toEqual({
+      mesocycleId: undefined,
       week: 4,
       session: 2,
       phase: "ACCUMULATION",
+      slotId: null,
     });
   });
 

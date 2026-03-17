@@ -153,7 +153,7 @@ describe("POST /api/workouts/delete", () => {
     expect(response.status).toBe(409);
     await expect(response.json()).resolves.toEqual({
       error:
-        "Cannot delete a historical workout from a completed mesocycle after rollover finalized lifecycle history.",
+        "Cannot delete a historical workout from a completed mesocycle after closeout finalized lifecycle history.",
     });
     expect(mocks.workoutExerciseFindMany).not.toHaveBeenCalled();
     expect(mocks.workoutDelete).not.toHaveBeenCalled();

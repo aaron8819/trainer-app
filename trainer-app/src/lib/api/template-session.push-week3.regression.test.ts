@@ -459,7 +459,7 @@ const seatedCalf = exercise({
 // ---------------------------------------------------------------------------
 
 const w2s2PushHistory: WorkoutHistoryEntry = {
-  date: "2026-02-24T10:00:00.000Z",
+  date: daysAgoIso(6),
   completed: true,
   status: "COMPLETED",
   sessionIntent: "push",
@@ -512,7 +512,7 @@ const w2s2PushHistory: WorkoutHistoryEntry = {
 };
 
 const w3s1PushHistory: WorkoutHistoryEntry = {
-  date: "2026-03-03T10:00:00.000Z",
+  date: daysAgoIso(1),
   completed: true,
   status: "COMPLETED",
   sessionIntent: "push",
@@ -553,7 +553,7 @@ function makeSets(exerciseId: string, count: number, load: number) {
 }
 
 function buildMappedContext(): MappedGenerationContext {
-  const recentExposureDate = new Date("2026-02-24T10:00:00.000Z");
+  const recentExposureDate = new Date(daysAgoIso(6));
   return {
     mappedProfile: {
       id: "user-1",
@@ -689,8 +689,8 @@ function buildWeek3Session2MappedContext(): MappedGenerationContext {
 }
 
 function buildChestAnchorBudgetMappedContext(): MappedGenerationContext {
-  const tricepsHeavyHistory: WorkoutHistoryEntry = {
-    date: "2026-03-03T10:00:00.000Z",
+    const tricepsHeavyHistory: WorkoutHistoryEntry = {
+      date: daysAgoIso(1),
     completed: true,
     status: "COMPLETED",
     sessionIntent: "push",
@@ -1148,11 +1148,11 @@ function buildAccessorySiblingSplitMappedContext(params?: {
     : [idbp, dip, cableLateralRaise];
 
   return {
-    ...buildMappedContext(),
-    exerciseLibrary: exerciseLibrary as MappedGenerationContext["exerciseLibrary"],
-    rawExercises: exerciseLibrary.map(toPrisma) as unknown as MappedGenerationContext["rawExercises"],
-    history: [{
-      date: "2026-02-24T10:00:00.000Z",
+      ...buildMappedContext(),
+      exerciseLibrary: exerciseLibrary as MappedGenerationContext["exerciseLibrary"],
+      rawExercises: exerciseLibrary.map(toPrisma) as unknown as MappedGenerationContext["rawExercises"],
+      history: [{
+        date: daysAgoIso(6),
       completed: true,
       status: "COMPLETED",
       sessionIntent: "push",
@@ -1712,3 +1712,6 @@ describe("W3S1 Push regression — 4 engine bug fixes", () => {
     expect(receipt?.muscles["Side Delts"].finalRemainingDeficit).toBe(0);
   });
 });
+function daysAgoIso(days: number): string {
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+}

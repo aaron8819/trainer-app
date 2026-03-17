@@ -20,6 +20,13 @@ describe("IntentWorkoutCard", () => {
           isDeload: false,
           source: "computed",
         },
+        sessionSlot: {
+          slotId: "body_part_a",
+          intent: "body_part",
+          sequenceIndex: 0,
+          sequenceLength: 1,
+          source: "mesocycle_slot_sequence",
+        },
         lifecycleVolume: { source: "unknown" },
         sorenessSuppressedMuscles: [],
         deloadDecision: {
@@ -96,6 +103,9 @@ describe("IntentWorkoutCard", () => {
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
+
+    expect(screen.getByText("Session")).toBeInTheDocument();
+    expect(screen.getByText("Body Part 1")).toBeInTheDocument();
 
     const generateCall = fetchMock.mock.calls[0];
     expect(generateCall[0]).toBe("/api/workouts/generate-from-intent");

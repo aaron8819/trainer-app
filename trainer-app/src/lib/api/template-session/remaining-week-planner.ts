@@ -5,6 +5,10 @@ import type { SessionIntent } from "@/lib/engine/session-types";
 import { getSessionMuscleOpportunityWeight } from "@/lib/planning/session-opportunities";
 import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-semantics";
 import type { MappedGenerationContext } from "./types";
+import {
+  buildRemainingFutureSlotsFromRuntime,
+  readRuntimeSlotSequence,
+} from "@/lib/api/mesocycle-slot-runtime";
 
 function toCountMap(intents: SessionIntent[]): Map<SessionIntent, number> {
   const counts = new Map<SessionIntent, number>();
@@ -59,6 +63,15 @@ function buildRemainingFutureSlots(
   return remaining;
 }
 
+function getPerformedSlotSnapshot(
+  entry: MappedGenerationContext["history"][number]
+): { slotId?: string | null; intent?: string | null } {
+  return {
+    slotId: entry.mesocycleSnapshot?.slotId,
+    intent: getPerformedIntentKey(entry) ?? null,
+  };
+}
+
 function getIntentOpportunityWeight(
   muscle: Muscle,
   intent: SessionIntent
@@ -100,6 +113,7 @@ function getFutureCapacityFactor(
 export function buildRemainingWeekVolumeContext(params: {
   mapped: MappedGenerationContext;
   sessionIntent: SessionIntent;
+  sessionSlotId?: string;
   weeklyTarget: Map<Muscle, number>;
   effectiveActual: Map<Muscle, number>;
   fatigueState: FatigueState;
@@ -140,7 +154,50 @@ export function buildRemainingWeekVolumeContext(params: {
     .map(getPerformedIntentKey)
     .filter((intent): intent is SessionIntent => Boolean(intent));
 
-  const futureSlots = buildRemainingFutureSlots(weeklySchedule, currentWeekPerformedIntents, sessionIntent);
+  const currentWeekPerformedSlotSnapshots = filterPerformedHistory(mapped.history)
+    .filter((entry) =>
+      deriveSessionSemantics({
+        advancesSplit: entry.advancesSplit,
+      }).eligibleForUniqueIntentSubtraction
+    )
+    .filter((entry) => {
+      const snapshot = entry.mesocycleSnapshot;
+      if (!snapshot) {
+        return false;
+      }
+      if (snapshot.week !== mapped.lifecycleWeek) {
+        return false;
+      }
+      if (mapped.activeMesocycle?.id && snapshot.mesocycleId && snapshot.mesocycleId !== mapped.activeMesocycle.id) {
+        return false;
+      }
+      return true;
+    })
+    .sort((left, right) => {
+      const leftSession = left.mesocycleSnapshot?.session ?? Number.POSITIVE_INFINITY;
+      const rightSession = right.mesocycleSnapshot?.session ?? Number.POSITIVE_INFINITY;
+      if (leftSession !== rightSession) {
+        return leftSession - rightSession;
+      }
+      return new Date(left.date).getTime() - new Date(right.date).getTime();
+    })
+    .map(getPerformedSlotSnapshot);
+
+  const runtimeSlotSequence = readRuntimeSlotSequence({
+    slotSequenceJson: mapped.activeMesocycle?.slotSequenceJson,
+    weeklySchedule,
+  });
+  const runtimeFutureSlots = buildRemainingFutureSlotsFromRuntime({
+    slotSequenceJson: mapped.activeMesocycle?.slotSequenceJson,
+    weeklySchedule,
+    performedAdvancingSlotsThisWeek: currentWeekPerformedSlotSnapshots,
+    currentSlotId: params.sessionSlotId,
+    currentIntent: sessionIntent,
+  });
+  const futureSlots =
+    runtimeSlotSequence.slots.length > 0
+      ? runtimeFutureSlots.map((slot) => slot.intent as SessionIntent)
+      : buildRemainingFutureSlots(weeklySchedule, currentWeekPerformedIntents, sessionIntent);
   const futureSlotCounts = toCountMap(futureSlots);
   const futureCapacityFactor = getFutureCapacityFactor(mapped, fatigueState, futureSlots.length);
   const futureCapacity = new Map<Muscle, number>();

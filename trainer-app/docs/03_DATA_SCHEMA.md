@@ -1,7 +1,7 @@
 # 03 Data Schema
 
 Owner: Aaron  
-Last reviewed: 2026-03-09  
+Last reviewed: 2026-03-17  
 Purpose: Canonical data-model reference for runtime persistence used by workout generation, logging, templates, analytics, readiness, and periodization.
 
 This doc covers:
@@ -13,6 +13,7 @@ Invariants:
 - `prisma/schema.prisma` is canonical for all model and enum definitions.
 - `Workout.status`, `Workout.selectionMode`, and `WorkoutExercise.section` must stay aligned with runtime contracts.
 - `SetLog.workoutSetId` is unique, so set logging is one log record per set.
+- Mesocycle handoff state, frozen handoff artifacts, editable next-cycle draft, and accepted slot sequence all persist on `Mesocycle`.
 
 Sources of truth:
 - `trainer-app/prisma/schema.prisma`
@@ -32,8 +33,9 @@ Sources of truth:
 - `WorkoutSelectionMode`: `AUTO`, `MANUAL`, `BONUS`, `INTENT`
 - `WorkoutSessionIntent`: `PUSH`, `PULL`, `LEGS`, `UPPER`, `LOWER`, `FULL_BODY`, `BODY_PART`
 - `WorkoutExerciseSection`: `WARMUP`, `MAIN`, `ACCESSORY`
+- `MesocycleState`: `ACTIVE_ACCUMULATION`, `ACTIVE_DELOAD`, `AWAITING_HANDOFF`, `COMPLETED`
 
-Canonical machine-readable values: `docs/contracts/runtime-contracts.json`.
+Canonical machine-readable values in `docs/contracts/runtime-contracts.json` currently cover the validation-backed workout enums above. `MesocycleState` remains schema-owned in `prisma/schema.prisma`.
 
 ## Behavioral schema notes
 - Workout saves rewrite workout exercises/sets when exercise payload is supplied (`/api/workouts/save`).
@@ -43,6 +45,7 @@ Canonical machine-readable values: `docs/contracts/runtime-contracts.json`.
 - Workout rewrites are revision-guarded by `Workout.revision` in `prisma/schema.prisma` and route enforcement in `src/app/api/workouts/save/route.ts`.
 - Structural workout mutations also advance that revision. Planned workout rewrites and add-exercise mutations both persist updated reconciliation state and increment `Workout.revision`.
 - Exercise ordering is deterministic per workout via unique index `WorkoutExercise(workoutId, orderIndex)` in `prisma/schema.prisma` (materialized in baseline migration `prisma/migrations/20260222_baseline/migration.sql`).
+- Workouts tied to a non-active mesocycle remain readable, but save/log/resume is fenced at the route/workflow layer when the parent mesocycle is `AWAITING_HANDOFF` or `COMPLETED` (`src/app/api/workouts/save/lifecycle-contract.ts`, `src/app/api/logs/set/route.ts`, `src/lib/workout-workflow.ts`).
 
 ## Mesocycle lifecycle fields
 - `Mesocycle.state` (`MesocycleState`)
@@ -53,6 +56,16 @@ Canonical machine-readable values: `docs/contracts/runtime-contracts.json`.
 - `Mesocycle.splitType`
 - `Mesocycle.volumeRampConfig` (JSONB in Postgres)
 - `Mesocycle.rirBandConfig` (JSONB in Postgres)
+- `Mesocycle.closedAt`
+- `Mesocycle.handoffSummaryJson`
+- `Mesocycle.nextSeedDraftJson`
+- `Mesocycle.slotSequenceJson`
+
+Lifecycle/handoff meanings:
+- `AWAITING_HANDOFF` means the prior mesocycle is closed, reviewable, and no successor mesocycle has been created yet.
+- `handoffSummaryJson` stores the frozen closeout snapshot: terminal lifecycle facts, final training structure, carry-forward recommendations, and the original recommended next-cycle seed.
+- `nextSeedDraftJson` stores the mutable pending setup draft while the mesocycle is in `AWAITING_HANDOFF`. It is not editable once the mesocycle is archived as `COMPLETED`.
+- `slotSequenceJson` stores the accepted ordered-flexible slot sequence on the successor mesocycle and is the canonical runtime authority for slot-aware sequencing.
 
 ## Training block fields
 - `TrainingBlock.mesocycleId`
@@ -80,6 +93,7 @@ Canonical machine-readable values: `docs/contracts/runtime-contracts.json`.
 - `Workout.mesocyclePhaseSnapshot`
 - `Workout.mesoSessionSnapshot`
 - `trainingBlockId` / `weekInBlock` remain compatibility-oriented persisted context on the workout row; the canonical generation-time phase/block context is assembled from active `MacroCycle -> Mesocycle -> TrainingBlock` rows and stamped into `selectionMetadata.sessionDecisionReceipt.cycleContext`.
+- Slot-aware runtime identity is persisted alongside those snapshots in `Workout.selectionMetadata.sessionDecisionReceipt.sessionSlot`. That receipt snapshot carries `slotId`, `intent`, `sequenceIndex`, and `source` for the generated session.
 
 ## Compatibility-only workout fields
 - `Workout.wasAutoregulated`
@@ -93,3 +107,4 @@ Canonical machine-readable values: `docs/contracts/runtime-contracts.json`.
 - `selectionMetadata.sessionDecisionReceipt` remains the original generated/evidence payload even after mutation; `workoutStructureState` is the saved-structure companion record rather than a receipt replacement.
 - Optional-session semantics are receipt-driven, not enum-driven. Supplemental deficit sessions and optional gap-fill sessions do not add new database enums; they are represented by canonical `selectionMetadata.sessionDecisionReceipt.exceptions` markers plus persisted `Workout.selectionMode`, `Workout.sessionIntent`, and `Workout.advancesSplit`.
 - Read-side consumers now centralize that interpretation in `src/lib/session-semantics/derive-session-semantics.ts`; no persisted `sessionKind` column or enum has been added.
+- Next-cycle carry-forward compatibility is draft-validated rather than schema-enforced: if split/session edits remove a slot intent, `keep` selections for that prior intent are rejected before acceptance (`src/lib/api/mesocycle-handoff.ts`).

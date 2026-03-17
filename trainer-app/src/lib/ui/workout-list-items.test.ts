@@ -56,7 +56,7 @@ describe("buildWorkoutListSurfaceSummary", () => {
           exceptions: [],
         },
       },
-      mesocycle: { sessionsPerWeek: 3 },
+      mesocycle: { sessionsPerWeek: 3, state: "ACTIVE_ACCUMULATION", isActive: true },
       _count: { exercises: 2 },
       exercises: [
         {
@@ -83,7 +83,10 @@ describe("buildWorkoutListSurfaceSummary", () => {
       status: "COMPLETED",
       selectionMode: "INTENT",
       sessionIntent: "PUSH",
+      sessionIdentityLabel: "Push",
       mesocycleId: "meso-1",
+      mesocycleState: "ACTIVE_ACCUMULATION",
+      mesocycleIsActive: true,
       sessionSnapshot: {
         week: 3,
         session: 2,
@@ -144,7 +147,7 @@ describe("buildWorkoutListSurfaceSummary", () => {
           exceptions: [{ code: "optional_gap_fill", message: "Marked as optional gap-fill session." }],
         },
       },
-      mesocycle: { sessionsPerWeek: 3 },
+      mesocycle: { sessionsPerWeek: 3, state: "ACTIVE_ACCUMULATION", isActive: true },
       _count: { exercises: 1 },
       exercises: [{ sets: [] }],
     });
@@ -160,6 +163,67 @@ describe("buildWorkoutListSurfaceSummary", () => {
     expect(summary.gapFillTargetMuscles).toEqual(["front delts", "rear delts", "biceps"]);
     expect(getWorkoutListPrimaryLabel(summary)).toBe("Gap Fill");
     expect(getWorkoutListSecondaryLabel(summary)).toBe("Front Delts, Rear Delts, Biceps");
+  });
+
+  it("uses slot-aware identity labels when a saved receipt includes a session slot", () => {
+    const summary = buildWorkoutListSurfaceSummary({
+      id: "workout-upper-2",
+      scheduledDate: new Date("2026-03-04T10:00:00.000Z"),
+      completedAt: null,
+      status: "PLANNED",
+      selectionMode: "INTENT",
+      sessionIntent: "UPPER",
+      mesocycleId: "meso-1",
+      mesocycleWeekSnapshot: 2,
+      mesoSessionSnapshot: 3,
+      mesocyclePhaseSnapshot: "ACCUMULATION",
+      selectionMetadata: {
+        sessionDecisionReceipt: {
+          version: 1,
+          cycleContext: {
+            weekInMeso: 2,
+            weekInBlock: 2,
+            phase: "accumulation",
+            blockType: "accumulation",
+            isDeload: false,
+            source: "computed",
+          },
+          sessionSlot: {
+            slotId: "upper_b",
+            intent: "upper",
+            sequenceIndex: 2,
+            sequenceLength: 4,
+            source: "mesocycle_slot_sequence",
+          },
+          lifecycleVolume: { source: "unknown" },
+          sorenessSuppressedMuscles: [],
+          deloadDecision: {
+            mode: "none",
+            reason: [],
+            reductionPercent: 0,
+            appliedTo: "none",
+          },
+          readiness: {
+            wasAutoregulated: false,
+            signalAgeHours: null,
+            fatigueScoreOverall: null,
+            intensityScaling: {
+              applied: false,
+              exerciseIds: [],
+              scaledUpCount: 0,
+              scaledDownCount: 0,
+            },
+          },
+          exceptions: [],
+        },
+      },
+      mesocycle: { sessionsPerWeek: 4, state: "ACTIVE_ACCUMULATION", isActive: true },
+      _count: { exercises: 1 },
+      exercises: [{ sets: [] }],
+    });
+
+    expect(summary.sessionIdentityLabel).toBe("Upper 2");
+    expect(getWorkoutListPrimaryLabel(summary)).toBe("Upper 2");
   });
 
   it("marks strict supplemental deficit sessions without changing body-part primary labeling", () => {
@@ -213,7 +277,7 @@ describe("buildWorkoutListSurfaceSummary", () => {
           ],
         },
       },
-      mesocycle: { sessionsPerWeek: 3 },
+      mesocycle: { sessionsPerWeek: 3, state: "ACTIVE_ACCUMULATION", isActive: true },
       _count: { exercises: 1 },
       exercises: [{ sets: [] }],
     });
@@ -268,7 +332,7 @@ describe("buildWorkoutListSurfaceSummary", () => {
           exceptions: [],
         },
       },
-      mesocycle: { sessionsPerWeek: 3 },
+      mesocycle: { sessionsPerWeek: 3, state: "ACTIVE_DELOAD", isActive: true },
       _count: { exercises: 1 },
       exercises: [{ sets: [] }],
     });

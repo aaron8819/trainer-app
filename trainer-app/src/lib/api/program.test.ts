@@ -690,12 +690,35 @@ describe("loadHomeProgramSupport", () => {
 
     expect(result.nextSession).toEqual({
       intent: "legs",
+      slotId: null,
+      slotSource: null,
+      weekInMeso: null,
+      sessionInWeek: null,
       workoutId: "w-planned",
       isExisting: true,
     });
     expect(result.latestIncomplete).toEqual({
       id: "w-planned",
       status: "planned",
+    });
+  });
+
+  it("scopes resumable incomplete-workout lookup to the active mesocycle or unscoped workouts", async () => {
+    setupDashboardMocks();
+    mocks.constraintsFindUnique.mockResolvedValue({
+      weeklySchedule: ["PUSH", "PULL", "LEGS"],
+    });
+    mocks.workoutFindMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    mocks.workoutFindFirst.mockResolvedValueOnce(null);
+
+    await loadHomeProgramSupport("user-1");
+
+    expect(mocks.workoutFindMany.mock.calls[0]?.[0]?.where).toMatchObject({
+      userId: "user-1",
+      status: { in: ["IN_PROGRESS", "PARTIAL", "PLANNED"] },
+      OR: [{ mesocycleId: null }, { mesocycle: { isActive: true } }],
     });
   });
 
@@ -710,6 +733,10 @@ describe("loadHomeProgramSupport", () => {
 
     expect(result.nextSession).toEqual({
       intent: "pull",
+      slotId: "pull_a",
+      slotSource: "legacy_weekly_schedule",
+      weekInMeso: 3,
+      sessionInWeek: 2,
       workoutId: null,
       isExisting: false,
     });

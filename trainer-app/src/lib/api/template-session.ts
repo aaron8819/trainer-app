@@ -2134,6 +2134,7 @@ export function generateSessionFromMappedContext(
 ): SessionGenerationResult {
   const objective = buildSelectionObjective(mapped, input.intent, input.targetMuscles, {
     supplementalPlannerProfile: input.supplementalPlannerProfile,
+    sessionSlotId: input.slotId,
   });
   const isDeloadSession = mapped.effectivePeriodization.isDeload;
   const roleMap = mapped.mesocycleRoleMapByIntent[input.intent];

@@ -46,7 +46,9 @@ describe("POST /api/logs/set", () => {
     mocks.workoutSetFindFirst.mockResolvedValue({
       id: "set-1",
       targetLoad: 185,
-      workoutExercise: { workout: { id: "workout-1", status: "PLANNED" } },
+      workoutExercise: {
+        workout: { id: "workout-1", status: "PLANNED", mesocycleId: null, mesocycle: null },
+      },
     });
     mocks.setLogUpsert.mockResolvedValue({ id: "log-1" });
     mocks.workoutUpdate.mockResolvedValue({ id: "workout-1", status: "IN_PROGRESS" });
@@ -116,7 +118,9 @@ describe("POST /api/logs/set", () => {
     mocks.workoutSetFindFirst.mockResolvedValueOnce({
       id: "set-bw",
       targetLoad: 0,
-      workoutExercise: { workout: { id: "workout-1", status: "PLANNED" } },
+      workoutExercise: {
+        workout: { id: "workout-1", status: "PLANNED", mesocycleId: null, mesocycle: null },
+      },
     });
     mocks.setLogFindUnique.mockResolvedValue(null);
 
@@ -180,5 +184,39 @@ describe("POST /api/logs/set", () => {
       error: "Load alone will not save. Add reps or RPE, or skip the set.",
     });
     expect(mocks.setLogUpsert).not.toHaveBeenCalled();
+  });
+
+  it("blocks set logging when the workout belongs to a closed mesocycle", async () => {
+    mocks.workoutSetFindFirst.mockResolvedValueOnce({
+      id: "set-1",
+      targetLoad: 185,
+      workoutExercise: {
+        workout: {
+          id: "workout-1",
+          status: "PLANNED",
+          mesocycleId: "meso-1",
+          mesocycle: { state: "COMPLETED", isActive: false },
+        },
+      },
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/logs/set", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutSetId: "set-1",
+          actualReps: 8,
+          actualRpe: 8,
+        }),
+      })
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "This workout belongs to a completed mesocycle and can no longer be resumed.",
+    });
+    expect(mocks.setLogUpsert).not.toHaveBeenCalled();
+    expect(mocks.workoutUpdate).not.toHaveBeenCalled();
   });
 });

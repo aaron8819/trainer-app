@@ -4,6 +4,10 @@ import { useState } from "react";
 import type { WorkoutExplanation, VolumeComplianceStatus } from "@/lib/engine/explainability";
 import type { SessionSummaryModel } from "@/lib/ui/session-summary";
 import type { SessionDecisionReceipt } from "@/lib/evidence/types";
+import {
+  formatSessionIdentityDescription,
+  formatSessionIdentityLabel,
+} from "@/lib/ui/session-identity";
 import { SessionContextCard } from "./SessionContextCard";
 import { CoachMessageCard } from "./CoachMessageCard";
 import { ExerciseRationaleCard } from "./ExerciseRationaleCard";
@@ -102,8 +106,27 @@ export function ExplainabilityPanel({
       )
     : [];
   const plannerClosureCandidates = plannerDiagnostics?.closure.firstIterationCandidates ?? [];
+  const sessionIdentityNote = sessionDecisionReceipt?.sessionSlot
+    ? formatSessionIdentityDescription({
+        intent: sessionDecisionReceipt.sessionSlot.intent,
+        slotId: sessionDecisionReceipt.sessionSlot.slotId,
+      }) ??
+      `${formatSessionIdentityLabel({
+        intent: sessionDecisionReceipt.sessionSlot.intent,
+        slotId: sessionDecisionReceipt.sessionSlot.slotId,
+      })} session in your current weekly order.`
+    : null;
 
   const evidenceChecklist = [
+    ...(sessionIdentityNote
+      ? [
+          {
+            label: "Session identity",
+            value: sessionIdentityNote,
+            tone: "border-slate-200 bg-slate-50",
+          },
+        ]
+      : []),
     {
       label: "Evidence quality",
       value: explanation.confidence.summary,

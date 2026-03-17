@@ -11,6 +11,7 @@ import {
   hasPerformedHistory,
   isPerformedWorkoutStatus,
 } from "@/lib/ui/session-overview";
+import { formatSessionIdentityLabel } from "@/lib/ui/session-identity";
 import { evaluateTargetReps } from "@/lib/session-semantics/target-evaluation";
 import { buildSessionSummaryModel } from "@/lib/ui/session-summary";
 import { getWorkoutDetailTitle, getWorkoutWorkflowState } from "@/lib/workout-workflow";
@@ -86,6 +87,12 @@ export default async function WorkoutDetailPage({
   const workout = await prisma.workout.findFirst({
     where: { id: resolvedParams.id, userId: owner.id },
     include: {
+      mesocycle: {
+        select: {
+          state: true,
+          isActive: true,
+        },
+      },
       exercises: {
         orderBy: { orderIndex: "asc" },
         include: {
@@ -129,8 +136,16 @@ export default async function WorkoutDetailPage({
   const selectionMetadata = parseExplainabilitySelectionMetadata(workout.selectionMetadata);
   const sessionDecisionReceipt = selectionMetadata.sessionDecisionReceipt;
   const workoutStructureState = selectionMetadata.workoutStructureState;
+  const sessionIdentityLabel = formatSessionIdentityLabel({
+    intent: workout.sessionIntent,
+    slotId: sessionDecisionReceipt?.sessionSlot?.slotId ?? null,
+  });
   const hasPerformedStatus = isPerformedWorkoutStatus(workout.status);
-  const workflow = getWorkoutWorkflowState(workout.status);
+  const workflow = getWorkoutWorkflowState(workout.status, {
+    mesocycleId: workout.mesocycleId,
+    mesocycleState: workout.mesocycle?.state ?? null,
+    mesocycleIsActive: workout.mesocycle?.isActive ?? null,
+  });
   const startLoggingHref = workflow.isResumable ? `/log/${workout.id}` : null;
   const hasHighSeverityInjury = injuries.some((injury) => injury.severity >= 3);
   const summary =
@@ -180,7 +195,9 @@ export default async function WorkoutDetailPage({
           <div>
             <p className="text-sm uppercase tracking-wide text-slate-500">Workout</p>
             <h1 className="page-title mt-1.5">{getWorkoutDetailTitle(workout.status)}</h1>
-            <p className="mt-1.5 text-sm text-slate-600">Estimated {workout.estimatedMinutes ?? "--"} minutes</p>
+            <p className="mt-1.5 text-sm text-slate-600">
+              {sessionIdentityLabel} • Estimated {workout.estimatedMinutes ?? "--"} minutes
+            </p>
           </div>
           <Link
             className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-slate-200 bg-slate-50 px-5 py-2 text-sm font-semibold text-slate-700 sm:w-auto"
@@ -202,6 +219,12 @@ export default async function WorkoutDetailPage({
             />
           ) : summary ? (
             <SessionContextCard summary={summary} startLoggingHref={startLoggingHref} />
+          ) : null}
+
+          {workflow.resumeBlockedReason ? (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              {workflow.resumeBlockedReason}
+            </div>
           ) : null}
 
           {sectionedExercises

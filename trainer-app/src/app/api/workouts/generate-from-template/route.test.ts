@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => {
   const resolveOwner = vi.fn();
   const loadActiveMesocycle = vi.fn();
+  const loadPendingMesocycleHandoff = vi.fn();
+  const loadNextWorkoutContext = vi.fn();
   const generateSessionFromTemplate = vi.fn();
   const generateDeloadSessionFromTemplate = vi.fn();
   const applyAutoregulation = vi.fn();
@@ -10,6 +12,8 @@ const mocks = vi.hoisted(() => {
   return {
     resolveOwner,
     loadActiveMesocycle,
+    loadPendingMesocycleHandoff,
+    loadNextWorkoutContext,
     generateSessionFromTemplate,
     generateDeloadSessionFromTemplate,
     applyAutoregulation,
@@ -22,6 +26,14 @@ vi.mock("@/lib/api/workout-context", () => ({
 
 vi.mock("@/lib/api/mesocycle-lifecycle", () => ({
   loadActiveMesocycle: (...args: unknown[]) => mocks.loadActiveMesocycle(...args),
+}));
+
+vi.mock("@/lib/api/mesocycle-handoff", () => ({
+  loadPendingMesocycleHandoff: (...args: unknown[]) => mocks.loadPendingMesocycleHandoff(...args),
+}));
+
+vi.mock("@/lib/api/next-session", () => ({
+  loadNextWorkoutContext: (...args: unknown[]) => mocks.loadNextWorkoutContext(...args),
 }));
 
 vi.mock("@/lib/api/template-session", () => ({
@@ -41,6 +53,20 @@ describe("POST /api/workouts/generate-from-template", () => {
     vi.clearAllMocks();
     mocks.resolveOwner.mockResolvedValue({ id: "user-1" });
     mocks.loadActiveMesocycle.mockResolvedValue(null);
+    mocks.loadPendingMesocycleHandoff.mockResolvedValue(null);
+    mocks.loadNextWorkoutContext.mockResolvedValue({
+      intent: "push",
+      slotId: "push_a",
+      slotSequenceIndex: 0,
+      slotSource: "mesocycle_slot_sequence",
+      existingWorkoutId: null,
+      isExisting: false,
+      source: "rotation",
+      weekInMeso: 2,
+      sessionInWeek: 1,
+      derivationTrace: [],
+      selectedIncompleteStatus: null,
+    });
     mocks.applyAutoregulation.mockImplementation(async (_userId, workout) => ({
       adjusted: workout,
       applied: false,
@@ -51,6 +77,33 @@ describe("POST /api/workouts/generate-from-template", () => {
       rationale: null,
       wasAutoregulated: false,
     }));
+  });
+
+  it("rejects generation while mesocycle handoff is pending", async () => {
+    mocks.loadPendingMesocycleHandoff.mockResolvedValue({
+      mesocycleId: "meso-1",
+      mesoNumber: 1,
+      focus: "Hypertrophy",
+      closedAt: "2026-03-10T00:00:00.000Z",
+      summary: null,
+      draft: null,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/generate-from-template", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ templateId: "template-1" }),
+      })
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "Mesocycle handoff pending.",
+      handoff: expect.objectContaining({ mesocycleId: "meso-1" }),
+    });
+    expect(mocks.loadActiveMesocycle).not.toHaveBeenCalled();
+    expect(mocks.generateSessionFromTemplate).not.toHaveBeenCalled();
   });
 
   it("returns canonical selectionMetadata for template generation", async () => {
@@ -135,5 +188,11 @@ describe("POST /api/workouts/generate-from-template", () => {
     expect(body.selection).toBeUndefined();
     expect(body.autoregulation).toBeUndefined();
     expect(body.selectionMetadata.sessionDecisionReceipt.version).toBe(1);
+    expect(body.selectionMetadata.sessionDecisionReceipt.sessionSlot).toEqual({
+      slotId: "push_a",
+      intent: "push",
+      sequenceIndex: 0,
+      source: "mesocycle_slot_sequence",
+    });
   });
 });

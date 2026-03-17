@@ -117,6 +117,13 @@ const receipt: SessionDecisionReceipt = {
     isDeload: false,
     source: "computed",
   },
+  sessionSlot: {
+    slotId: "upper_b",
+    intent: "upper",
+    sequenceIndex: 2,
+    sequenceLength: 4,
+    source: "mesocycle_slot_sequence",
+  },
   lifecycleVolume: {
     targets: { Chest: 12 },
     source: "lifecycle",
@@ -294,6 +301,8 @@ describe("ExplainabilityPanel progression logic rendering", () => {
     expect(screen.getByText(/anchor budget:/)).toBeInTheDocument();
     expect(screen.getByText(/overshoot adjustments:/)).toBeInTheDocument();
     expect(screen.getByText(/limiting muscles Triceps/)).toBeInTheDocument();
+    expect(screen.getByText("Session identity")).toBeInTheDocument();
+    expect(screen.getByText("Second upper session in your current weekly order.")).toBeInTheDocument();
     expect(screen.getByText("Closure candidate trace")).toBeInTheDocument();
     expect(screen.getAllByText("Bench Press").length).toBeGreaterThan(0);
     expect(screen.getByText(/filtered movement_pattern_cap/)).toBeInTheDocument();

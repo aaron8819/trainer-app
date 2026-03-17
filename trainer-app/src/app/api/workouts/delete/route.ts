@@ -35,8 +35,7 @@ export async function POST(request: Request) {
   if (workout.mesocycle && !workout.mesocycle.isActive && workout.mesocycle.state === "COMPLETED") {
     return NextResponse.json(
       {
-        error:
-          "Cannot delete a historical workout from a completed mesocycle after rollover finalized lifecycle history.",
+        error: "Cannot delete a historical workout from a completed mesocycle after closeout finalized lifecycle history.",
       },
       { status: 409 }
     );

@@ -15,11 +15,13 @@ const mocks = vi.hoisted(() => {
   const loadCurrentBlockContext = vi.fn();
   const workoutFindUnique = vi.fn();
   const workoutFindMany = vi.fn();
+  const constraintsFindUnique = vi.fn();
   const readinessFindMany = vi.fn();
   const exerciseFindMany = vi.fn();
   const setLogAggregate = vi.fn();
   const workoutExerciseFindFirst = vi.fn();
   const workoutExerciseFindMany = vi.fn();
+  const mesocycleFindFirst = vi.fn();
   const txWorkoutFindUnique = vi.fn();
   const txWorkoutUpsert = vi.fn();
   const txWorkoutExerciseFindMany = vi.fn();
@@ -68,6 +70,9 @@ const mocks = vi.hoisted(() => {
       findUnique: (...args: unknown[]) => workoutFindUnique(...args),
       findMany: (...args: unknown[]) => workoutFindMany(...args),
     },
+    constraints: {
+      findUnique: (...args: unknown[]) => constraintsFindUnique(...args),
+    },
     readinessSignal: {
       findMany: (...args: unknown[]) => readinessFindMany(...args),
     },
@@ -82,6 +87,7 @@ const mocks = vi.hoisted(() => {
       findMany: (...args: unknown[]) => workoutExerciseFindMany(...args),
     },
     mesocycle: {
+      findFirst: (...args: unknown[]) => mesocycleFindFirst(...args),
       findUnique: vi.fn(),
     },
   };
@@ -95,11 +101,13 @@ const mocks = vi.hoisted(() => {
     loadCurrentBlockContext,
     workoutFindUnique,
     workoutFindMany,
+    constraintsFindUnique,
     readinessFindMany,
     exerciseFindMany,
     setLogAggregate,
     workoutExerciseFindFirst,
     workoutExerciseFindMany,
+    mesocycleFindFirst,
     txWorkoutFindUnique,
     txWorkoutUpsert,
     txWorkoutExerciseFindMany,
@@ -365,6 +373,8 @@ describe("canonical session decision receipt pipeline", () => {
       ],
     }));
     mocks.workoutFindMany.mockResolvedValue([]);
+    mocks.constraintsFindUnique.mockResolvedValue(null);
+    mocks.mesocycleFindFirst.mockResolvedValue(null);
     mocks.readinessFindMany.mockResolvedValue([]);
     mocks.exerciseFindMany.mockResolvedValue([]);
     mocks.setLogAggregate.mockResolvedValue({ _max: { actualLoad: null, actualReps: null } });

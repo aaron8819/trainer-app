@@ -403,16 +403,12 @@ export default function LogWorkoutClient({
     restoreTimer,
     clearDraft,
     clearAllDrafts,
-    clearDraftInputBuffers,
-    setFieldPrefilled,
-    updateSetFields,
-    isBodyweightExercise,
-    isDumbbellExercise,
-    toInputNumberString,
-    parseNullableNumber,
-    normalizeLoadInput,
-    onAdvanceSet: jumpToActiveSet,
-  });
+      clearDraftInputBuffers,
+      setFieldPrefilled,
+      updateSetFields,
+      isBodyweightExercise,
+      onAdvanceSet: jumpToActiveSet,
+    });
 
   useEffect(() => {
     if (activeCardMode.kind !== "edit") {

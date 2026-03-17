@@ -4,15 +4,22 @@ import { getWorkoutWorkflowState } from "@/lib/workout-workflow";
 export type WorkoutRowActionItem = {
   id: string;
   status: string;
+  mesocycleId?: string | null;
+  mesocycleState?: string | null;
+  mesocycleIsActive?: boolean | null;
 };
 
 const ACTION_LINK_CLASS =
   "inline-flex min-h-10 items-center rounded-full px-2 text-sm font-semibold text-slate-900";
 
 export function WorkoutRowActions({ workout }: { workout: WorkoutRowActionItem }) {
-  const workflow = getWorkoutWorkflowState(workout.status);
+  const workflow = getWorkoutWorkflowState(workout.status, {
+    mesocycleId: workout.mesocycleId,
+    mesocycleState: workout.mesocycleState,
+    mesocycleIsActive: workout.mesocycleIsActive,
+  });
 
-  if (workflow.kind === "planned") {
+  if (workflow.kind === "planned" && workflow.isResumable) {
     return (
       <Link className={ACTION_LINK_CLASS} href={`/log/${workout.id}`}>
         Log
@@ -20,7 +27,7 @@ export function WorkoutRowActions({ workout }: { workout: WorkoutRowActionItem }
     );
   }
 
-  if (workflow.kind === "in_progress") {
+  if (workflow.kind === "in_progress" && workflow.isResumable) {
     return (
       <Link className={ACTION_LINK_CLASS} href={`/log/${workout.id}`}>
         Continue
@@ -28,7 +35,7 @@ export function WorkoutRowActions({ workout }: { workout: WorkoutRowActionItem }
     );
   }
 
-  if (workflow.kind === "partial") {
+  if (workflow.kind === "partial" && workflow.isResumable) {
     return (
       <>
         <Link className={ACTION_LINK_CLASS} href={`/workout/${workout.id}`}>
@@ -43,7 +50,7 @@ export function WorkoutRowActions({ workout }: { workout: WorkoutRowActionItem }
 
   return (
     <Link className={ACTION_LINK_CLASS} href={`/workout/${workout.id}`}>
-      View
+      {workflow.kind === "partial" ? "Review" : "View"}
     </Link>
   );
 }

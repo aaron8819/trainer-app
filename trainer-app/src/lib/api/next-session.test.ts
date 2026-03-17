@@ -8,6 +8,7 @@ describe("resolveNextWorkoutContext", () => {
     deloadSessionsCompleted: 0,
     sessionsPerWeek: 3,
     state: "ACTIVE_ACCUMULATION" as const,
+    slotSequenceJson: null,
   };
 
   it("prefers the highest-priority incomplete workout over rotation intent", () => {
@@ -34,6 +35,7 @@ describe("resolveNextWorkoutContext", () => {
     expect(context.isExisting).toBe(true);
     expect(context.existingWorkoutId).toBe("in-progress-later");
     expect(context.intent).toBe("push");
+    expect(context.slotId).toBeNull();
     expect(context.weekInMeso).toBeNull();
     expect(context.sessionInWeek).toBeNull();
   });
@@ -49,6 +51,7 @@ describe("resolveNextWorkoutContext", () => {
     expect(context.isExisting).toBe(false);
     expect(context.existingWorkoutId).toBeNull();
     expect(context.intent).toBe("pull");
+    expect(context.slotId).toBe("pull_a");
     expect(context.weekInMeso).toBe(3);
     expect(context.sessionInWeek).toBe(2);
   });
@@ -62,6 +65,7 @@ describe("resolveNextWorkoutContext", () => {
 
     expect(context.source).toBe("rotation");
     expect(context.intent).toBe("upper");
+    expect(context.slotId).toBeNull();
     expect(context.weekInMeso).toBeNull();
     expect(context.sessionInWeek).toBeNull();
   });
@@ -78,6 +82,7 @@ describe("resolveNextWorkoutContext", () => {
 
     expect(first).toEqual(second);
     expect(first.intent).toBe("pull");
+    expect(first.slotId).toBe("pull_a");
     expect(first.weekInMeso).toBe(3);
     expect(first.sessionInWeek).toBe(2);
   });
@@ -95,6 +100,7 @@ describe("resolveNextWorkoutContext", () => {
 
     expect(context.source).toBe("rotation");
     expect(context.intent).toBe("push");
+    expect(context.slotId).toBe("push_a");
     expect(context.weekInMeso).toBe(3);
     expect(context.sessionInWeek).toBe(2);
   });
@@ -111,6 +117,7 @@ describe("resolveNextWorkoutContext", () => {
     });
 
     expect(context.intent).toBe("legs");
+    expect(context.slotId).toBe("legs_a");
     expect(context.weekInMeso).toBe(3);
     expect(context.sessionInWeek).toBe(3);
   });
@@ -127,6 +134,7 @@ describe("resolveNextWorkoutContext", () => {
     });
 
     expect(context.intent).toBe("push");
+    expect(context.slotId).toBe("push_a");
     expect(context.weekInMeso).toBe(3);
     expect(context.sessionInWeek).toBe(3);
   });
@@ -143,6 +151,7 @@ describe("resolveNextWorkoutContext", () => {
     });
 
     expect(context.intent).toBe("push");
+    expect(context.slotId).toBe("push_a");
     expect(context.weekInMeso).toBe(3);
     expect(context.sessionInWeek).toBe(3);
   });
@@ -159,5 +168,65 @@ describe("resolveNextWorkoutContext", () => {
     });
 
     expect(context.intent).toBe("push");
+  });
+
+  it("uses persisted slot ids to disambiguate duplicate-intent sequences", () => {
+    const context = resolveNextWorkoutContext({
+      mesocycle: {
+        ...baseMeso,
+        sessionsPerWeek: 4,
+        accumulationSessionsCompleted: 10,
+        slotSequenceJson: {
+          version: 1,
+          source: "handoff_draft",
+          sequenceMode: "ordered_flexible",
+          slots: [
+            { slotId: "upper_a", intent: "UPPER" },
+            { slotId: "lower_a", intent: "LOWER" },
+            { slotId: "upper_b", intent: "UPPER" },
+            { slotId: "lower_b", intent: "LOWER" },
+          ],
+        },
+      },
+      weeklySchedule: ["UPPER", "LOWER", "UPPER", "LOWER"],
+      incompleteWorkouts: [],
+      performedAdvancingIntentsThisWeek: ["upper", "lower"],
+      performedAdvancingSlotIdsThisWeek: ["upper_a", "lower_a"],
+    });
+
+    expect(context.intent).toBe("upper");
+    expect(context.slotId).toBe("upper_b");
+    expect(context.slotSequenceIndex).toBe(2);
+    expect(context.weekInMeso).toBe(3);
+    expect(context.sessionInWeek).toBe(3);
+  });
+
+  it("falls back to canonical session index when persisted slot ids are missing", () => {
+    const context = resolveNextWorkoutContext({
+      mesocycle: {
+        ...baseMeso,
+        sessionsPerWeek: 4,
+        accumulationSessionsCompleted: 10,
+        slotSequenceJson: {
+          version: 1,
+          source: "handoff_draft",
+          sequenceMode: "ordered_flexible",
+          slots: [
+            { slotId: "upper_a", intent: "UPPER" },
+            { slotId: "lower_a", intent: "LOWER" },
+            { slotId: "upper_b", intent: "UPPER" },
+            { slotId: "lower_b", intent: "LOWER" },
+          ],
+        },
+      },
+      weeklySchedule: ["UPPER", "LOWER", "UPPER", "LOWER"],
+      incompleteWorkouts: [],
+      performedAdvancingIntentsThisWeek: ["upper", "lower"],
+      performedAdvancingSlotIdsThisWeek: [],
+    });
+
+    expect(context.intent).toBe("upper");
+    expect(context.slotId).toBe("upper_b");
+    expect(context.slotSequenceIndex).toBe(2);
   });
 });

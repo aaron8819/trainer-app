@@ -28,9 +28,11 @@ import {
   resolveWeekCloseOnOptionalGapFillCompletion,
 } from "@/lib/api/mesocycle-week-close";
 import {
+  assertMesocycleAllowsWorkoutSave,
   buildPerformedLifecycleCounterUpdate,
   deriveAccumulationBoundaryAfterPerformedSave,
   deriveSaveRouteMesoSnapshot,
+  getClosedMesocycleSaveFenceReason,
   resolvePersistedAdvancesSplit,
   shouldAdvanceLifecycleForPerformedTransition,
   type SaveRouteMesocycle,
@@ -302,10 +304,14 @@ export async function POST(request: Request) {
         shouldAdvanceLifecycleForPerformedTransition(effectiveAdvancesSplit);
       // Also snapshot on initial plan-save so the label appears immediately in Recent Workouts.
       const shouldSetPlannedMesoSnapshot = action === "save_plan" && !existingWorkout;
+      const shouldResolveMesocycleForSaveFence =
+        Boolean(existingWorkout?.mesocycleId) ||
+        shouldTransitionPerformed ||
+        shouldSetPlannedMesoSnapshot;
       let resolvedMesocycleId = existingWorkout?.mesocycleId ?? null;
       let resolvedMesocycle: SaveRouteMesocycle | null = null;
 
-      if (shouldTransitionPerformed || shouldSetPlannedMesoSnapshot) {
+      if (shouldResolveMesocycleForSaveFence) {
         if (resolvedMesocycleId) {
           resolvedMesocycle = await tx.mesocycle.findUnique({
             where: { id: resolvedMesocycleId },
@@ -346,6 +352,10 @@ export async function POST(request: Request) {
             },
           });
           resolvedMesocycleId = resolvedMesocycle?.id ?? null;
+        }
+
+        if (resolvedMesocycle) {
+          assertMesocycleAllowsWorkoutSave(resolvedMesocycle.state);
         }
 
         if (shouldTransitionPerformed && (!resolvedMesocycleId || !resolvedMesocycle)) {
@@ -680,6 +690,24 @@ export async function POST(request: Request) {
     if (error instanceof Error && error.message === "WORKOUT_COMPLETION_EMPTY") {
       return NextResponse.json(
         { error: "Cannot mark completed without at least one performed (non-skipped) set log." },
+        { status: 409 }
+      );
+    }
+    if (
+      error instanceof Error &&
+      error.message.startsWith("MESOCYCLE_WORKOUT_SAVE_BLOCKED:")
+    ) {
+      const state = error.message.split(":")[1] as
+        | "ACTIVE_ACCUMULATION"
+        | "ACTIVE_DELOAD"
+        | "AWAITING_HANDOFF"
+        | "COMPLETED";
+      return NextResponse.json(
+        {
+          error:
+            getClosedMesocycleSaveFenceReason(state) ??
+            "Mesocycle is closed to workout saves.",
+        },
         { status: 409 }
       );
     }

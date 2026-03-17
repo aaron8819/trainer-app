@@ -1,6 +1,10 @@
 import { deriveCurrentMesocycleSession } from "@/lib/api/mesocycle-lifecycle-math";
 
-export type SaveRouteMesocycleState = "ACTIVE_ACCUMULATION" | "ACTIVE_DELOAD" | "COMPLETED";
+export type SaveRouteMesocycleState =
+  | "ACTIVE_ACCUMULATION"
+  | "ACTIVE_DELOAD"
+  | "AWAITING_HANDOFF"
+  | "COMPLETED";
 
 export type SaveRouteMesocycle = {
   id: string;
@@ -20,6 +24,28 @@ export type SaveRouteMesoSnapshot = {
   phase: "ACCUMULATION" | "DELOAD";
   session: number;
 };
+
+export function getClosedMesocycleSaveFenceReason(
+  state: SaveRouteMesocycleState
+): string | null {
+  switch (state) {
+    case "AWAITING_HANDOFF":
+      return "Mesocycle handoff is pending; workout saves are closed until the next cycle is accepted.";
+    case "COMPLETED":
+      return "Mesocycle is archived as completed; workout saves are closed.";
+    default:
+      return null;
+  }
+}
+
+export function assertMesocycleAllowsWorkoutSave(
+  state: SaveRouteMesocycleState
+): void {
+  const reason = getClosedMesocycleSaveFenceReason(state);
+  if (reason) {
+    throw new Error(`MESOCYCLE_WORKOUT_SAVE_BLOCKED:${state}`);
+  }
+}
 
 export function deriveSaveRouteMesoSnapshot(
   mesocycle: SaveRouteMesocycle
@@ -41,6 +67,10 @@ export function buildPerformedLifecycleCounterUpdate(
   accumulationSessionsCompleted?: { increment: 1 };
   deloadSessionsCompleted?: { increment: 1 };
 } {
+  if (state === "AWAITING_HANDOFF" || state === "COMPLETED") {
+    throw new Error(`Cannot advance lifecycle counters for mesocycle state ${state}`);
+  }
+
   return state === "ACTIVE_DELOAD"
     ? {
         completedSessions: { increment: 1 },

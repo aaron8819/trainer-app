@@ -50,10 +50,6 @@ type UseWorkoutSessionFlowParams = {
   setFieldPrefilled: (setId: string, field: SetPrefilledField, value: boolean) => void;
   updateSetFields: (setId: string, updater: (set: LogSetInput) => LogSetInput) => void;
   isBodyweightExercise: (exercise: LogExerciseInput) => boolean;
-  isDumbbellExercise: (exercise: LogExerciseInput) => boolean;
-  toInputNumberString: (value: number | null | undefined) => string;
-  parseNullableNumber: (raw: string) => number | null;
-  normalizeLoadInput: (raw: string, isDumbbell: boolean) => number | null;
   onAdvanceSet?: () => void;
 };
 
@@ -87,10 +83,6 @@ export function useWorkoutSessionFlow({
   setFieldPrefilled,
   updateSetFields,
   isBodyweightExercise,
-  isDumbbellExercise,
-  toInputNumberString,
-  parseNullableNumber,
-  normalizeLoadInput,
   onAdvanceSet,
 }: UseWorkoutSessionFlowParams) {
   const [savingSetId, setSavingSetId] = useState<string | null>(null);

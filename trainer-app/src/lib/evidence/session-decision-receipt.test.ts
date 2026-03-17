@@ -38,6 +38,12 @@ describe("readSessionDecisionReceipt", () => {
           isDeload: false,
           source: "computed",
         },
+        sessionSlot: {
+          slotId: "upper_b",
+          intent: "upper",
+          sequenceIndex: 2,
+          source: "mesocycle_slot_sequence",
+        },
         lifecycleRirTarget: { min: 2, max: 3 },
         lifecycleVolume: {
           targets: { Chest: 16 },
@@ -282,6 +288,12 @@ describe("readSessionDecisionReceipt", () => {
     });
 
     expect(receipt?.cycleContext.weekInMeso).toBe(4);
+    expect(receipt?.sessionSlot).toEqual({
+      slotId: "upper_b",
+      intent: "upper",
+      sequenceIndex: 2,
+      source: "mesocycle_slot_sequence",
+    });
     expect(receipt?.cycleContext.blockDurationWeeks).toBe(3);
     expect(receipt?.lifecycleRirTarget).toEqual({ min: 2, max: 3 });
     expect(receipt?.lifecycleVolume.targets).toEqual({ Chest: 16 });
@@ -330,6 +342,12 @@ describe("readSessionDecisionReceipt", () => {
         blockType: "accumulation",
         isDeload: false,
         source: "computed",
+      },
+      sessionSlot: {
+        slotId: "pull_a",
+        intent: "pull",
+        sequenceIndex: 1,
+        source: "legacy_weekly_schedule",
       },
       plannerDiagnostics: {
         standard: {
@@ -415,6 +433,12 @@ describe("readSessionDecisionReceipt", () => {
     });
 
     expect(receipt.plannerDiagnosticsMode).toBe("standard");
+    expect(receipt.sessionSlot).toEqual({
+      slotId: "pull_a",
+      intent: "pull",
+      sequenceIndex: 1,
+      source: "legacy_weekly_schedule",
+    });
     expect(receipt.plannerDiagnostics?.standard?.candidates).toBeUndefined();
     expect(receipt.plannerDiagnostics?.supplemental?.candidates).toBeUndefined();
     expect(receipt.plannerDiagnostics?.closure.firstIterationCandidates).toBeUndefined();

@@ -75,6 +75,10 @@ export type DeloadReadiness = {
 
 export type NextSessionData = {
   intent: string | null;
+  slotId: string | null;
+  slotSource: "mesocycle_slot_sequence" | "legacy_weekly_schedule" | null;
+  weekInMeso: number | null;
+  sessionInWeek: number | null;
   workoutId: string | null;
   isExisting: boolean;
 };
@@ -422,6 +426,10 @@ export async function loadHomeProgramSupport(userId: string): Promise<HomeProgra
   const activeWeek = activeMesocycle ? getCurrentMesoWeek(activeMesocycle) : null;
   const nextSession: NextSessionData = {
     intent: nextWorkoutContext.intent,
+    slotId: nextWorkoutContext.slotId,
+    slotSource: nextWorkoutContext.slotSource,
+    weekInMeso: nextWorkoutContext.weekInMeso,
+    sessionInWeek: nextWorkoutContext.sessionInWeek,
     workoutId: nextWorkoutContext.existingWorkoutId,
     isExisting: nextWorkoutContext.isExisting,
   };

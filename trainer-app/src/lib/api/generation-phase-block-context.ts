@@ -29,7 +29,7 @@ export type GenerationPhaseBlockContext = {
 export type PhaseBlockProfileResolutionInput = {
   mesocycleStartWeek: number;
   mesocycleLength: number;
-  mesocycleState: "ACTIVE_ACCUMULATION" | "ACTIVE_DELOAD" | "COMPLETED";
+  mesocycleState: "ACTIVE_ACCUMULATION" | "ACTIVE_DELOAD" | "AWAITING_HANDOFF" | "COMPLETED";
   blocks: ReadonlyArray<{
     blockType: string;
     startWeek: number;
@@ -68,6 +68,7 @@ function resolveFallbackProfile(input: {
     input.forceAccumulation === true
       ? false
       : input.activeMesocycle?.state === "ACTIVE_DELOAD" ||
+        input.activeMesocycle?.state === "AWAITING_HANDOFF" ||
         input.activeMesocycle?.state === "COMPLETED";
   const blockType = isDeload ? "deload" : "accumulation";
   const weekInBlock = isDeload ? 1 : lifecycleWeek;

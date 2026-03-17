@@ -6,6 +6,7 @@ import type {
   DeloadDecision,
   LifecycleRirTarget,
   PlannerDiagnosticsMode,
+  SessionSlotSnapshot,
   SessionDecisionException,
   SessionDecisionReadinessScaling,
   SessionDecisionReceipt,
@@ -51,6 +52,32 @@ function parseStringArray(value: unknown): string[] {
 function parseOptionalStringArray(value: unknown): string[] | undefined {
   const parsed = parseStringArray(value);
   return parsed.length > 0 ? parsed : undefined;
+}
+
+function parseSessionSlotSnapshot(value: unknown): SessionSlotSnapshot | undefined {
+  const record = toObject(value);
+  if (
+    !record ||
+    typeof record.slotId !== "string" ||
+    typeof record.intent !== "string" ||
+    typeof record.sequenceIndex !== "number" ||
+    !Number.isFinite(record.sequenceIndex) ||
+    (record.source !== "mesocycle_slot_sequence" &&
+      record.source !== "legacy_weekly_schedule")
+  ) {
+    return undefined;
+  }
+
+  return {
+    slotId: record.slotId,
+    intent: record.intent,
+    sequenceIndex: record.sequenceIndex,
+    sequenceLength:
+      typeof record.sequenceLength === "number" && Number.isFinite(record.sequenceLength)
+        ? record.sequenceLength
+        : undefined,
+    source: record.source,
+  };
 }
 
 export function parseCycleContextSnapshot(value: unknown): CycleContextSnapshot | undefined {
@@ -516,7 +543,6 @@ function parsePlannerDiagnostics(value: unknown): PlannerDiagnostics | undefined
     | "full_body"
     | "body_part";
   type ParsedOpportunityCharacter = "upper" | "lower" | "full_body" | "specialized";
-  type ParsedInventoryKind = "standard" | "closure" | "rescue";
   type ParsedPlannerLayer = "anchor" | "standard" | "supplemental" | "closure" | "rescue";
 
   const opportunityRecord = toObject(record.opportunity);
@@ -851,6 +877,7 @@ function buildExceptions(input: {
 
 export function buildSessionDecisionReceipt(input: {
   cycleContext: CycleContextSnapshot;
+  sessionSlot?: SessionSlotSnapshot;
   targetMuscles?: string[];
   lifecycleRirTarget?: LifecycleRirTarget;
   lifecycleVolumeTargets?: Record<string, number>;
@@ -878,6 +905,7 @@ export function buildSessionDecisionReceipt(input: {
   return {
     version: 1,
     cycleContext: input.cycleContext,
+    sessionSlot: input.sessionSlot,
     targetMuscles: parseOptionalStringArray(input.targetMuscles),
     lifecycleRirTarget: input.lifecycleRirTarget,
     lifecycleVolume: {
@@ -925,6 +953,7 @@ function parsePersistedReceipt(value: unknown): SessionDecisionReceipt | undefin
   return {
     version: 1,
     cycleContext,
+    sessionSlot: parseSessionSlotSnapshot(record.sessionSlot),
     targetMuscles: parseOptionalStringArray(record.targetMuscles),
     lifecycleRirTarget: parseLifecycleRirTarget(record.lifecycleRirTarget),
     lifecycleVolume: {
@@ -988,6 +1017,12 @@ export function readSessionDecisionReceipt(
   return extractSessionDecisionReceipt(selectionMetadata);
 }
 
+export function readSessionSlotSnapshot(
+  selectionMetadata: unknown
+): SessionSlotSnapshot | undefined {
+  return readSessionDecisionReceipt(selectionMetadata)?.sessionSlot;
+}
+
 export function normalizeSelectionMetadataWithReceipt(input: {
   selectionMetadata: unknown;
   cycleContext: CycleContextSnapshot;
@@ -999,6 +1034,7 @@ export function normalizeSelectionMetadataWithReceipt(input: {
     ...record,
     sessionDecisionReceipt: buildSessionDecisionReceipt({
       cycleContext: input.cycleContext,
+      sessionSlot: existingReceipt?.sessionSlot,
       targetMuscles: existingReceipt?.targetMuscles,
       lifecycleRirTarget: existingReceipt?.lifecycleRirTarget,
       lifecycleVolumeTargets: existingReceipt?.lifecycleVolume.targets,

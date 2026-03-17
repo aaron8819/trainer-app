@@ -38,6 +38,22 @@ function getMostRecentPerformedIntentEntry(
   );
 }
 
+function isCurrentLifecycleWeekEntry(
+  entry: WorkoutHistoryEntry | undefined,
+  mapped: MappedGenerationContext
+): boolean {
+  const snapshot = entry?.mesocycleSnapshot;
+  if (!snapshot || !mapped.activeMesocycle?.id) {
+    return false;
+  }
+
+  if (snapshot.week !== mapped.lifecycleWeek) {
+    return false;
+  }
+
+  return !snapshot.mesocycleId || snapshot.mesocycleId === mapped.activeMesocycle.id;
+}
+
 function applyContinuityWeightBias(
   baseWeights: SelectionObjective["weights"],
   hasContinuityHistory: boolean
@@ -110,6 +126,7 @@ export function buildSelectionObjective(
   targetMuscles?: string[],
   options?: {
     supplementalPlannerProfile?: boolean;
+    sessionSlotId?: string;
   }
 ): SelectionObjective {
   const fatigueState = deriveFatigueState(mapped.history, mapped.mappedCheckIn);
@@ -163,8 +180,17 @@ export function buildSelectionObjective(
   const recentPerformedIntentExerciseIds = new Set(
     recentPerformedIntentEntry?.exercises.map((exercise) => exercise.exerciseId) ?? []
   );
+  const useContinuitySetCarryover =
+    !supplementalPlannerProfile &&
+    recentPerformedIntentEntry != null &&
+    !isCurrentLifecycleWeekEntry(recentPerformedIntentEntry, mapped);
   const continuityMinSetsByExerciseId = new Map(
-    recentPerformedIntentEntry?.exercises.map((exercise) => [exercise.exerciseId, exercise.sets.length]) ?? []
+    useContinuitySetCarryover
+      ? recentPerformedIntentEntry.exercises.map((exercise) => [
+          exercise.exerciseId,
+          exercise.sets.length,
+        ])
+      : []
   );
   const weights = applyContinuityWeightBias(
     { ...DEFAULT_SELECTION_WEIGHTS },
@@ -222,6 +248,7 @@ export function buildSelectionObjective(
   const remainingWeek = buildRemainingWeekVolumeContext({
     mapped,
     sessionIntent,
+    sessionSlotId: options?.sessionSlotId,
     weeklyTarget,
     effectiveActual,
     fatigueState,

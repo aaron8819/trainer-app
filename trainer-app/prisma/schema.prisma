@@ -196,6 +196,7 @@ enum AdaptationType {
 enum MesocycleState {
   ACTIVE_ACCUMULATION
   ACTIVE_DELOAD
+  AWAITING_HANDOFF
   COMPLETED
 }
 
@@ -629,6 +630,10 @@ model Mesocycle {
   volumeRampConfig              Json?
   rirBandConfig                 Json?
   isActive                      Boolean        @default(false) // true for the current meso
+  closedAt                      DateTime?
+  handoffSummaryJson            Json?
+  nextSeedDraftJson             Json?
+  slotSequenceJson              Json?
 
   blocks        TrainingBlock[]
   workouts      Workout[]
@@ -639,6 +644,7 @@ model Mesocycle {
   @@index([macroCycleId])
   @@index([macroCycleId, isActive])
   @@index([macroCycleId, isActive, state])
+  @@index([macroCycleId, state])
 }
 
 model MesocycleWeekClose {

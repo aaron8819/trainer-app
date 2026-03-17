@@ -7,6 +7,7 @@ import {
   resolveGapFillTargetMuscles,
 } from "./gap-fill";
 import { readSessionDecisionReceipt } from "@/lib/evidence/session-decision-receipt";
+import { formatSessionIdentityLabel } from "./session-identity";
 import {
   isCanonicalDeloadPhase,
   isCanonicalDeloadReceipt,
@@ -28,6 +29,8 @@ export const workoutListItemSelect = {
   mesocycle: {
     select: {
       sessionsPerWeek: true,
+      state: true,
+      isActive: true,
     },
   },
   _count: { select: { exercises: true } },
@@ -62,7 +65,10 @@ export type WorkoutListSurfaceSummary = {
   status: string;
   selectionMode: string | null;
   sessionIntent: string | null;
+  sessionIdentityLabel: string;
   mesocycleId: string | null;
+  mesocycleState: string | null;
+  mesocycleIsActive: boolean | null;
   sessionSnapshot: ReturnType<typeof buildWorkoutSessionSnapshotSummary>;
   isDeload: boolean;
   isGapFill?: boolean;
@@ -107,8 +113,10 @@ export function formatWorkoutListIntentLabel(intent: string | null | undefined):
     .join(" ");
 }
 
-export function getWorkoutListPrimaryLabel(workout: Pick<WorkoutListSurfaceSummary, "isGapFill" | "sessionIntent">): string {
-  return workout.isGapFill ? "Gap Fill" : formatWorkoutListIntentLabel(workout.sessionIntent);
+export function getWorkoutListPrimaryLabel(
+  workout: Pick<WorkoutListSurfaceSummary, "isGapFill" | "sessionIntent" | "sessionIdentityLabel">
+): string {
+  return workout.isGapFill ? "Gap Fill" : workout.sessionIdentityLabel;
 }
 
 export function getWorkoutListSecondaryLabel(workout: Pick<WorkoutListSurfaceSummary, "isGapFill" | "gapFillTargetMuscles">): string | null {
@@ -160,6 +168,10 @@ export function buildWorkoutListSurfaceSummary(
     sessionIntent: row.sessionIntent,
   });
   const receipt = readSessionDecisionReceipt(row.selectionMetadata);
+  const sessionIdentityLabel = formatSessionIdentityLabel({
+    intent: row.sessionIntent ?? receipt?.sessionSlot?.intent ?? null,
+    slotId: receipt?.sessionSlot?.slotId ?? null,
+  });
   const displayWeek = row.mesocycleWeekSnapshot ?? receipt?.cycleContext.weekInMeso ?? null;
   const displaySession =
     displayWeek == null
@@ -178,7 +190,10 @@ export function buildWorkoutListSurfaceSummary(
     status: row.status,
     selectionMode: row.selectionMode,
     sessionIntent: row.sessionIntent ?? null,
+    sessionIdentityLabel,
     mesocycleId: row.mesocycleId ?? null,
+    mesocycleState: row.mesocycle?.state ?? null,
+    mesocycleIsActive: row.mesocycle?.isActive ?? null,
     sessionSnapshot: buildWorkoutSessionSnapshotSummary({
       week: displayWeek,
       session: displaySession,

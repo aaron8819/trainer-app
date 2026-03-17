@@ -7,6 +7,10 @@ import {
   isGapFillWorkout,
   resolveGapFillTargetMuscles,
 } from "./gap-fill";
+import {
+  formatSessionIdentityDescription,
+  formatSessionIdentityLabel,
+} from "./session-identity";
 
 export type SessionSummaryTone = "neutral" | "positive" | "caution";
 
@@ -184,21 +188,24 @@ function buildSummaryText(input: {
     persistedTargetMuscles: targetMuscles,
   });
   const musclesLabel = formatGapFillMuscleList(gapFillMuscles).toLowerCase();
-  const intent = formatIntent(sessionIntent).toLowerCase();
+  const sessionIdentity = formatSessionIdentityLabel({
+    intent: sessionIntent,
+    slotId: receipt?.sessionSlot?.slotId,
+  }).toLowerCase();
   const deload = receipt?.deloadDecision;
   const soreness = receipt?.sorenessSuppressedMuscles ?? [];
   const readinessScaling = receipt?.readiness.intensityScaling;
 
   if (isDeload || (deload && deload.mode !== "none")) {
-    return `This ${intent} session is a deload: lighter on purpose so you can recover, move crisply, and keep momentum.`;
+    return `This ${sessionIdentity} session is a deload: lighter on purpose so you can recover, move crisply, and keep momentum.`;
   }
 
   if (readinessScaling?.applied) {
-    return `This ${intent} session keeps the day moving, with effort scaled to match today's readiness.`;
+    return `This ${sessionIdentity} session keeps the day moving, with effort scaled to match today's readiness.`;
   }
 
   if (soreness.length > 0) {
-    return `This ${intent} session keeps the main goal intact while holding back work where soreness is still high.`;
+    return `This ${sessionIdentity} session keeps the main goal intact while holding back work where soreness is still high.`;
   }
   if (isGapFill) {
     return musclesLabel.length > 0
@@ -207,14 +214,14 @@ function buildSummaryText(input: {
   }
 
   if (context.progressionContext.volumeProgression === "building") {
-    return `This ${intent} session is set up to build workload without pushing to failure.`;
+    return `This ${sessionIdentity} session is set up to build workload without pushing to failure.`;
   }
 
   if (context.progressionContext.volumeProgression === "maintaining") {
-    return `This ${intent} session holds your current workload steady and repeatable.`;
+    return `This ${sessionIdentity} session holds your current workload steady and repeatable.`;
   }
 
-  return `This ${intent} session keeps effort controlled while you move through the current block.`;
+  return `This ${sessionIdentity} session keeps effort controlled while you move through the current block.`;
 }
 
 export function buildSessionSummaryModel(input: {
@@ -249,7 +256,11 @@ export function buildSessionSummaryModel(input: {
     selectionMetadata: { targetMuscles, sessionDecisionReceipt: receipt },
     persistedTargetMuscles: targetMuscles,
   });
-  const sessionLabel = isGapFill ? "Gap Fill" : formatIntent(sessionIntent);
+  const sessionIdentityLabel = formatSessionIdentityLabel({
+    intent: sessionIntent,
+    slotId: receipt?.sessionSlot?.slotId,
+  });
+  const sessionLabel = isGapFill ? "Gap Fill" : sessionIdentityLabel;
   const items: SessionSummaryItem[] = [
     {
       label: "Today's goal",
@@ -266,6 +277,18 @@ export function buildSessionSummaryModel(input: {
           ? `Hold ${formatIntent(sessionIntent).toLowerCase()} work steady this week.`
           : "Keep the session lighter while recovery catches up.",
     },
+    ...(isGapFill || !receipt?.sessionSlot
+      ? []
+      : [
+          {
+            label: "Session identity",
+            value:
+              formatSessionIdentityDescription({
+                intent: sessionIntent,
+                slotId: receipt.sessionSlot.slotId,
+              }) ?? `${sessionIdentityLabel} session in your current weekly order.`,
+          } satisfies SessionSummaryItem,
+        ]),
     {
       label: "Target effort",
       value: formatEffortTarget(receipt),

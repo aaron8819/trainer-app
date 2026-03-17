@@ -6,6 +6,7 @@ import { z } from "zod";
 import { WorkoutStatus } from "@prisma/client";
 import { quantizeLoad } from "@/lib/units/load-quantization";
 import { getSetValidity } from "@/lib/logging/setValidity";
+import { getClosedMesocycleWorkoutFenceReason } from "@/lib/workout-workflow";
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
@@ -34,6 +35,13 @@ export async function POST(request: Request) {
               select: {
                 id: true,
                 status: true,
+                mesocycleId: true,
+                mesocycle: {
+                  select: {
+                    state: true,
+                    isActive: true,
+                  },
+                },
               },
             },
           },
@@ -43,6 +51,14 @@ export async function POST(request: Request) {
 
     if (!setRecord) {
       return { error: "Workout set not found" as const };
+    }
+    const blockedReason = getClosedMesocycleWorkoutFenceReason({
+      mesocycleId: setRecord.workoutExercise.workout.mesocycleId,
+      mesocycleState: setRecord.workoutExercise.workout.mesocycle?.state ?? null,
+      mesocycleIsActive: setRecord.workoutExercise.workout.mesocycle?.isActive ?? null,
+    });
+    if (blockedReason) {
+      return { error: blockedReason, status: 409 as const };
     }
     const wasSkipped = parsed.data.wasSkipped ?? false;
     const normalizedActualLoad =
@@ -109,7 +125,12 @@ export async function POST(request: Request) {
   });
 
   if ("error" in outcome) {
-    const status = outcome.error === "Workout set not found" ? 404 : 400;
+    const status =
+      "status" in outcome
+        ? outcome.status
+        : outcome.error === "Workout set not found"
+          ? 404
+          : 400;
     return NextResponse.json({ error: outcome.error }, { status });
   }
 
@@ -143,11 +164,36 @@ export async function DELETE(request: Request) {
         id: parsed.data.workoutSetId,
         workoutExercise: { workout: { userId: owner.id } },
       },
-      select: { id: true },
+      select: {
+        id: true,
+        workoutExercise: {
+          select: {
+            workout: {
+              select: {
+                mesocycleId: true,
+                mesocycle: {
+                  select: {
+                    state: true,
+                    isActive: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
     });
 
     if (!setRecord) {
       return { error: "Workout set not found" as const };
+    }
+    const blockedReason = getClosedMesocycleWorkoutFenceReason({
+      mesocycleId: setRecord.workoutExercise.workout.mesocycleId,
+      mesocycleState: setRecord.workoutExercise.workout.mesocycle?.state ?? null,
+      mesocycleIsActive: setRecord.workoutExercise.workout.mesocycle?.isActive ?? null,
+    });
+    if (blockedReason) {
+      return { error: blockedReason, status: 409 as const };
     }
 
     await tx.setLog.deleteMany({
@@ -158,7 +204,8 @@ export async function DELETE(request: Request) {
   });
 
   if ("error" in deleted) {
-    return NextResponse.json({ error: deleted.error }, { status: 404 });
+    const status = "status" in deleted ? deleted.status : 404;
+    return NextResponse.json({ error: deleted.error }, { status });
   }
 
   return NextResponse.json({ status: "deleted" });

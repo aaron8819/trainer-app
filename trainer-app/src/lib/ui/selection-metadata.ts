@@ -11,7 +11,7 @@ import {
 } from "@/lib/evidence/session-decision-receipt";
 import type { SessionAuditSnapshot } from "@/lib/evidence/session-audit-types";
 import type { SessionAuditMutationSummary } from "@/lib/evidence/session-audit-types";
-import type { SessionDecisionReceipt } from "@/lib/evidence/types";
+import type { SessionDecisionReceipt, SessionSlotSnapshot } from "@/lib/evidence/types";
 
 export type SaveableSelectionMetadata = {
   rationale?: Record<string, unknown>;
@@ -459,6 +459,47 @@ export function attachSupplementalSessionMetadata(
   };
 }
 
+export function attachSessionSlotMetadata(
+  selectionMetadata: SaveableSelectionMetadata,
+  sessionSlot: SessionSlotSnapshot | undefined
+): SaveableSelectionMetadata {
+  if (!sessionSlot) {
+    return selectionMetadata;
+  }
+
+  const receipt = selectionMetadata.sessionDecisionReceipt;
+  if (!receipt) {
+    return selectionMetadata;
+  }
+
+  return {
+    ...selectionMetadata,
+    sessionDecisionReceipt: buildSessionDecisionReceipt({
+      cycleContext: receipt.cycleContext,
+      sessionSlot,
+      targetMuscles: receipt.targetMuscles,
+      lifecycleRirTarget: receipt.lifecycleRirTarget,
+      lifecycleVolumeTargets: receipt.lifecycleVolume.targets,
+      sorenessSuppressedMuscles: receipt.sorenessSuppressedMuscles,
+      deloadDecision: receipt.deloadDecision,
+      plannerDiagnostics: receipt.plannerDiagnostics,
+      plannerDiagnosticsMode: receipt.plannerDiagnosticsMode ?? "standard",
+      additionalExceptions: receipt.exceptions.filter(
+        (entry) =>
+          entry.code === "optional_gap_fill" ||
+          entry.code === "supplemental_deficit_session"
+      ),
+      autoregulation: {
+        wasAutoregulated: receipt.readiness.wasAutoregulated,
+        signalAgeHours: receipt.readiness.signalAgeHours,
+        fatigueScoreOverall: receipt.readiness.fatigueScoreOverall,
+        rationale: receipt.readiness.rationale,
+        intensityScaling: receipt.readiness.intensityScaling,
+      },
+    }),
+  };
+}
+
 export function buildCanonicalSelectionMetadata(
   value: unknown,
   autoregulation?: AutoregulationResult
@@ -472,6 +513,7 @@ export function buildCanonicalSelectionMetadata(
       sessionDecisionReceipt: priorReceipt
         ? buildSessionDecisionReceipt({
             cycleContext: priorReceipt.cycleContext,
+            sessionSlot: priorReceipt.sessionSlot,
             targetMuscles: priorReceipt.targetMuscles,
             lifecycleRirTarget: priorReceipt.lifecycleRirTarget,
             lifecycleVolumeTargets: priorReceipt.lifecycleVolume.targets,

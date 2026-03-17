@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => {
   const txMesoFindUnique = vi.fn();
   const txMesoUpdate = vi.fn();
   const txMesoCreate = vi.fn();
+  const txConstraintsFindUnique = vi.fn();
   const txTrainingBlockCreateMany = vi.fn();
   const txRoleFindMany = vi.fn();
   const txRoleCreateMany = vi.fn();
@@ -18,6 +19,9 @@ const mocks = vi.hoisted(() => {
       },
       trainingBlock: {
         createMany: txTrainingBlockCreateMany,
+      },
+      constraints: {
+        findUnique: txConstraintsFindUnique,
       },
       mesocycleExerciseRole: {
         findMany: txRoleFindMany,
@@ -32,6 +36,7 @@ const mocks = vi.hoisted(() => {
     txMesoFindUnique,
     txMesoUpdate,
     txMesoCreate,
+    txConstraintsFindUnique,
     txTrainingBlockCreateMany,
     txRoleFindMany,
     txRoleCreateMany,
@@ -117,14 +122,26 @@ describe("mesocycle-lifecycle", () => {
     );
   });
 
-  it("transitions ACTIVE_DELOAD to COMPLETED at session 3 and initializes next mesocycle", async () => {
+  it("transitions ACTIVE_DELOAD to AWAITING_HANDOFF at session 3 and persists handoff artifacts", async () => {
     // Save transaction has already incremented deloadSessionsCompleted to 3; transitionMesocycleState reads 3 >= threshold.
     mocks.txMesoFindUnique.mockResolvedValue({
       id: "m1",
       state: "ACTIVE_DELOAD",
+      macroCycleId: "macro-1",
+      mesoNumber: 1,
+      startWeek: 0,
+      focus: "Hypertrophy",
+      volumeTarget: "MODERATE",
+      intensityBias: "HYPERTROPHY",
+      isActive: true,
       accumulationSessionsCompleted: 12,
       deloadSessionsCompleted: 3,
+      durationWeeks: 5,
       sessionsPerWeek: 3,
+      daysPerWeek: 3,
+      splitType: "PPL",
+      macroCycle: { userId: "user-1" },
+      blocks: [],
     });
     mocks.txMesoUpdate.mockResolvedValue({
       id: "m1",
@@ -135,36 +152,36 @@ describe("mesocycle-lifecycle", () => {
       focus: "Hypertrophy",
       volumeTarget: "MODERATE",
       intensityBias: "HYPERTROPHY",
-      isActive: true,
-      state: "COMPLETED",
+      isActive: false,
+      state: "AWAITING_HANDOFF",
       accumulationSessionsCompleted: 12,
       deloadSessionsCompleted: 3,
       sessionsPerWeek: 3,
       daysPerWeek: 3,
       splitType: "PPL",
+      closedAt: new Date("2026-03-10T00:00:00.000Z"),
+      handoffSummaryJson: { version: 1 },
+      nextSeedDraftJson: { version: 1 },
     });
-
-    mocks.txMesoFindUnique.mockResolvedValue({
-      id: "m1",
-      macroCycleId: "macro-1",
-      mesoNumber: 1,
-      startWeek: 0,
-      durationWeeks: 5,
-      focus: "Hypertrophy",
-      volumeTarget: "MODERATE",
-      intensityBias: "HYPERTROPHY",
-      sessionsPerWeek: 3,
-      daysPerWeek: 3,
-      splitType: "PPL",
-      blocks: [],
+    mocks.txConstraintsFindUnique.mockResolvedValue({
+      weeklySchedule: ["PUSH", "PULL", "LEGS"],
     });
-    mocks.txMesoCreate.mockResolvedValue({ id: "m2" });
     mocks.txRoleFindMany.mockResolvedValue([]);
 
     const updated = await transitionMesocycleState("m1");
-    expect(updated.state).toBe("COMPLETED");
-    expect(mocks.transaction).toHaveBeenCalledTimes(2);
-    expect(mocks.txMesoCreate).toHaveBeenCalledTimes(1);
+    expect(updated.state).toBe("AWAITING_HANDOFF");
+    expect(mocks.transaction).toHaveBeenCalledTimes(1);
+    expect(mocks.txMesoCreate).not.toHaveBeenCalled();
+    expect(mocks.txMesoUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          state: "AWAITING_HANDOFF",
+          isActive: false,
+          handoffSummaryJson: expect.objectContaining({ version: 1 }),
+          nextSeedDraftJson: expect.objectContaining({ version: 1 }),
+        }),
+      })
+    );
   });
 
   it("no-ops transition for already COMPLETED mesocycle", async () => {
@@ -180,6 +197,24 @@ describe("mesocycle-lifecycle", () => {
 
     const updated = await transitionMesocycleState("m1");
     expect(updated.state).toBe("COMPLETED");
+    expect(mocks.txMesoUpdate).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledOnce();
+    warnSpy.mockRestore();
+  });
+
+  it("no-ops transition for already AWAITING_HANDOFF mesocycle", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mocks.txMesoFindUnique.mockResolvedValue({
+      id: "m1",
+      state: "AWAITING_HANDOFF",
+      accumulationSessionsCompleted: 12,
+      deloadSessionsCompleted: 3,
+      durationWeeks: 5,
+      sessionsPerWeek: 3,
+    });
+
+    const updated = await transitionMesocycleState("m1");
+    expect(updated.state).toBe("AWAITING_HANDOFF");
     expect(mocks.txMesoUpdate).not.toHaveBeenCalled();
     expect(warnSpy).toHaveBeenCalledOnce();
     warnSpy.mockRestore();
@@ -704,81 +739,25 @@ describe("mesocycle-lifecycle", () => {
     expect(getLifecycleSetTargets(5, 5, true)).toEqual(CANONICAL_DELOAD_SET_TARGETS);
   });
 
-  it("initializeNextMesocycle carries CORE_COMPOUND only and resets counters", async () => {
-    mocks.txMesoFindUnique.mockResolvedValue({
-      id: "m1",
-      macroCycleId: "macro-1",
-      mesoNumber: 3,
-      startWeek: 10,
-      durationWeeks: 5,
-      focus: "Hypertrophy",
-      volumeTarget: "MODERATE",
-      intensityBias: "HYPERTROPHY",
-      sessionsPerWeek: 3,
-      daysPerWeek: 3,
-      splitType: "PPL",
-      blocks: [],
-    });
-    mocks.txMesoCreate.mockResolvedValue({
-      id: "m4",
-      state: "ACTIVE_ACCUMULATION",
-      accumulationSessionsCompleted: 0,
-      deloadSessionsCompleted: 0,
-    });
-    mocks.txRoleFindMany.mockResolvedValue([
-      { exerciseId: "bench", sessionIntent: "PUSH", role: "CORE_COMPOUND" },
-      { exerciseId: "row", sessionIntent: "PULL", role: "CORE_COMPOUND" },
-    ]);
-
-    const next = await initializeNextMesocycle({
-      id: "m1",
-      macroCycleId: "macro-1",
-      mesoNumber: 3,
-      durationWeeks: 5,
-      focus: "Hypertrophy",
-      volumeTarget: "MODERATE",
-      intensityBias: "HYPERTROPHY",
-      isActive: true,
-      state: "COMPLETED",
-      accumulationSessionsCompleted: 12,
-      deloadSessionsCompleted: 3,
-      sessionsPerWeek: 3,
-      daysPerWeek: 3,
-      splitType: "PPL",
-    } as never);
-
-    expect(next.id).toBe("m4");
-    expect(mocks.txMesoUpdate).toHaveBeenCalledWith({
-      where: { id: "m1" },
-      data: { isActive: false },
-    });
-    expect(mocks.txMesoCreate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          state: "ACTIVE_ACCUMULATION",
-          accumulationSessionsCompleted: 0,
-          deloadSessionsCompleted: 0,
-          isActive: true,
-        }),
-      })
-    );
-    expect(mocks.txRoleCreateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: [
-          expect.objectContaining({
-            mesocycleId: "m4",
-            exerciseId: "bench",
-            role: "CORE_COMPOUND",
-            addedInWeek: 1,
-          }),
-          expect.objectContaining({
-            mesocycleId: "m4",
-            exerciseId: "row",
-            role: "CORE_COMPOUND",
-            addedInWeek: 1,
-          }),
-        ],
-      })
-    );
+  it("initializeNextMesocycle is fenced so callers cannot bypass the handoff contract", async () => {
+    await expect(
+      initializeNextMesocycle({
+        id: "m1",
+        macroCycleId: "macro-1",
+        mesoNumber: 3,
+        durationWeeks: 5,
+        focus: "Hypertrophy",
+        volumeTarget: "MODERATE",
+        intensityBias: "HYPERTROPHY",
+        isActive: true,
+        state: "COMPLETED",
+        accumulationSessionsCompleted: 12,
+        deloadSessionsCompleted: 3,
+        sessionsPerWeek: 3,
+        daysPerWeek: 3,
+        splitType: "PPL",
+      } as never)
+    ).rejects.toThrow("MESOCYCLE_HANDOFF_REQUIRED");
+    expect(mocks.transaction).not.toHaveBeenCalled();
   });
 });

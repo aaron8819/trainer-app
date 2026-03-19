@@ -25,7 +25,7 @@ import {
   type NextCycleSeedSlot,
   type NextCycleSlotId,
 } from "./mesocycle-handoff-contract";
-import { buildMesocycleSlotSequence, type MesocycleSlotSequence } from "./mesocycle-slot-contract";
+import { projectSuccessorMesocycle } from "./mesocycle-handoff-projection";
 
 export {
   buildOrderedFlexibleSlots,
@@ -179,10 +179,6 @@ const COMPATIBLE_KEEP_INTENT_REMAPS: Partial<
     LEGS: "LOWER",
   },
 };
-
-function buildSlotSequence(draft: NextCycleSeedDraft): MesocycleSlotSequence {
-  return buildMesocycleSlotSequence(draft.structure.slots);
-}
 
 function canonicalCarryForwardSelectionKey(selection: {
   exerciseId: string;
@@ -681,34 +677,47 @@ export async function acceptMesocycleHandoffInTransaction(
     sourceMesocycleId: source.id,
     fallbackDraft: summary.recommendedNextSeed,
   });
-
-  const next = await tx.mesocycle.create({
-    data: {
+  const projection = projectSuccessorMesocycle({
+    source: {
       macroCycleId: source.macroCycleId,
-      mesoNumber: source.mesoNumber + 1,
-      startWeek: source.startWeek + source.durationWeeks,
+      mesoNumber: source.mesoNumber,
+      startWeek: source.startWeek,
       durationWeeks: source.durationWeeks,
       focus: source.focus,
       volumeTarget: source.volumeTarget,
       intensityBias: source.intensityBias,
+      blocks: source.blocks,
+    },
+    draft,
+  });
+
+  const next = await tx.mesocycle.create({
+    data: {
+      macroCycleId: projection.mesocycle.macroCycleId,
+      mesoNumber: projection.mesocycle.mesoNumber,
+      startWeek: projection.mesocycle.startWeek,
+      durationWeeks: projection.mesocycle.durationWeeks,
+      focus: projection.mesocycle.focus,
+      volumeTarget: projection.mesocycle.volumeTarget,
+      intensityBias: projection.mesocycle.intensityBias,
       isActive: true,
       state: "ACTIVE_ACCUMULATION",
       accumulationSessionsCompleted: 0,
       deloadSessionsCompleted: 0,
-      sessionsPerWeek: draft.structure.sessionsPerWeek,
-      daysPerWeek: draft.structure.daysPerWeek,
-      splitType: draft.structure.splitType,
-      slotSequenceJson: buildSlotSequence(draft) as Prisma.InputJsonValue,
+      sessionsPerWeek: projection.mesocycle.sessionsPerWeek,
+      daysPerWeek: projection.mesocycle.daysPerWeek,
+      splitType: projection.mesocycle.splitType,
+      slotSequenceJson: projection.mesocycle.slotSequence as Prisma.InputJsonValue,
     },
   });
 
-  if (source.blocks.length > 0) {
+  if (projection.trainingBlocks.length > 0) {
     await tx.trainingBlock.createMany({
-      data: source.blocks.map((block) => ({
+      data: projection.trainingBlocks.map((block) => ({
         mesocycleId: next.id,
         blockNumber: block.blockNumber,
         blockType: block.blockType,
-        startWeek: block.startWeek + source.durationWeeks,
+        startWeek: block.startWeek,
         durationWeeks: block.durationWeeks,
         volumeTarget: block.volumeTarget,
         intensityBias: block.intensityBias,
@@ -717,15 +726,14 @@ export async function acceptMesocycleHandoffInTransaction(
     });
   }
 
-  const keptSelections = draft.carryForwardSelections.filter((selection) => selection.action === "keep");
-  if (keptSelections.length > 0) {
+  if (projection.carriedForwardRoles.length > 0) {
     await tx.mesocycleExerciseRole.createMany({
-      data: keptSelections.map((selection) => ({
+      data: projection.carriedForwardRoles.map((selection) => ({
         mesocycleId: next.id,
         exerciseId: selection.exerciseId,
         sessionIntent: selection.sessionIntent,
         role: selection.role,
-        addedInWeek: 1,
+        addedInWeek: selection.addedInWeek,
       })),
       skipDuplicates: true,
     });
@@ -734,15 +742,15 @@ export async function acceptMesocycleHandoffInTransaction(
   await tx.constraints.upsert({
     where: { userId: source.macroCycle.userId },
     update: {
-      daysPerWeek: draft.structure.daysPerWeek,
-      splitType: draft.structure.splitType,
-      weeklySchedule: draft.structure.slots.map((slot) => slot.intent),
+      daysPerWeek: projection.mesocycle.daysPerWeek,
+      splitType: projection.mesocycle.splitType,
+      weeklySchedule: projection.mesocycle.weeklySchedule,
     },
     create: {
       userId: source.macroCycle.userId,
-      daysPerWeek: draft.structure.daysPerWeek,
-      splitType: draft.structure.splitType,
-      weeklySchedule: draft.structure.slots.map((slot) => slot.intent),
+      daysPerWeek: projection.mesocycle.daysPerWeek,
+      splitType: projection.mesocycle.splitType,
+      weeklySchedule: projection.mesocycle.weeklySchedule,
     },
   });
 

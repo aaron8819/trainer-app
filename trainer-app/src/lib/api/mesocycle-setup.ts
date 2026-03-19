@@ -5,6 +5,10 @@ import {
   type NextCycleSeedDraft,
   type PendingMesocycleHandoff,
 } from "./mesocycle-handoff";
+import {
+  buildSuccessorMesocyclePreview,
+  type SuccessorMesocyclePreview,
+} from "./mesocycle-handoff-projection";
 
 export type MesocycleSetupCarryForwardRow = {
   exerciseId: string;
@@ -30,17 +34,7 @@ export type MesocycleSetupReadModel = {
     carryForwardChangedCount: number;
   };
   carryForwardRows: MesocycleSetupCarryForwardRow[];
-  preview: {
-    splitType: string;
-    sessionsPerWeek: number;
-    slotSequence: Array<{
-      slotId: string;
-      intent: string;
-    }>;
-    keepCount: number;
-    rotateCount: number;
-    dropCount: number;
-  };
+  preview: SuccessorMesocyclePreview;
 };
 
 function buildCarryForwardRow(
@@ -99,20 +93,6 @@ function buildDrift(input: {
   };
 }
 
-function buildPreview(draft: NextCycleSeedDraft) {
-  return {
-    splitType: draft.structure.splitType,
-    sessionsPerWeek: draft.structure.sessionsPerWeek,
-    slotSequence: draft.structure.slots.map((slot) => ({
-      slotId: slot.slotId,
-      intent: slot.intent,
-    })),
-    keepCount: draft.carryForwardSelections.filter((selection) => selection.action === "keep").length,
-    rotateCount: draft.carryForwardSelections.filter((selection) => selection.action === "rotate").length,
-    dropCount: draft.carryForwardSelections.filter((selection) => selection.action === "drop").length,
-  };
-}
-
 function mapPendingHandoffToSetup(
   handoff: PendingMesocycleHandoff | null
 ): MesocycleSetupReadModel | null {
@@ -150,7 +130,11 @@ function mapPendingHandoffToSetup(
       carryForwardRows,
     }),
     carryForwardRows,
-    preview: buildPreview(currentDraft),
+    preview: buildSuccessorMesocyclePreview({
+      currentMesoNumber: handoff.mesoNumber,
+      focus: handoff.focus,
+      draft: currentDraft,
+    }),
   };
 }
 

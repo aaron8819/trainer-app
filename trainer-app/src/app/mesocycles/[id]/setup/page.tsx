@@ -39,6 +39,8 @@ export default async function MesocycleSetupPage({ params }: { params: Params })
 
         <MesocycleSetupEditor
           mesocycleId={setup.mesocycleId}
+          mesoNumber={setup.mesoNumber}
+          focus={setup.focus}
           recommendedDraft={setup.recommendedDraft}
           initialDraft={setup.currentDraft}
         />

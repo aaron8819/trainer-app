@@ -10,9 +10,12 @@ import {
   type NextCycleCarryForwardConflict,
   type NextCycleSeedDraft,
 } from "@/lib/api/mesocycle-handoff-contract";
+import { buildSuccessorMesocyclePreview } from "@/lib/api/mesocycle-handoff-projection";
 
 type MesocycleSetupEditorProps = {
   mesocycleId: string;
+  mesoNumber: number;
+  focus: string;
   recommendedDraft: NextCycleSeedDraft;
   initialDraft: NextCycleSeedDraft;
 };
@@ -96,14 +99,6 @@ function buildDraftDrift(input: {
   };
 }
 
-function buildPreview(draft: NextCycleSeedDraft) {
-  return {
-    keepCount: draft.carryForwardSelections.filter((selection) => selection.action === "keep").length,
-    rotateCount: draft.carryForwardSelections.filter((selection) => selection.action === "rotate").length,
-    dropCount: draft.carryForwardSelections.filter((selection) => selection.action === "drop").length,
-  };
-}
-
 function buildCarryForwardConflictKey(conflict: {
   exerciseId: string;
   sessionIntent: WorkoutSessionIntent;
@@ -124,6 +119,10 @@ function buildCarryForwardConflictSummary(
 
 function buildCarryForwardConflictRowMessage(conflict: NextCycleCarryForwardConflict): string {
   return `This draft does not include the ${INTENT_LABELS[conflict.sessionIntent]} session type for this keep. Change it to Rotate or Drop to continue.`;
+}
+
+function formatRoleLabel(value: string): string {
+  return value.toLowerCase().replaceAll("_", " ");
 }
 
 function nextDraftForSessions(
@@ -189,6 +188,8 @@ function nextDraftForSplit(
 
 export function MesocycleSetupEditor({
   mesocycleId,
+  mesoNumber,
+  focus,
   recommendedDraft,
   initialDraft,
 }: MesocycleSetupEditorProps) {
@@ -199,12 +200,21 @@ export function MesocycleSetupEditor({
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [accepting, setAccepting] = useState(false);
+  const [showSuccessorPreview, setShowSuccessorPreview] = useState(false);
 
   const drift = useMemo(
     () => buildDraftDrift({ recommendedDraft, currentDraft: draft }),
     [draft, recommendedDraft]
   );
-  const preview = useMemo(() => buildPreview(draft), [draft]);
+  const preview = useMemo(
+    () =>
+      buildSuccessorMesocyclePreview({
+        currentMesoNumber: mesoNumber,
+        focus,
+        draft,
+      }),
+    [draft, focus, mesoNumber]
+  );
   const carryForwardConflicts = useMemo(
     () =>
       findIncompatibleCarryForwardKeeps({
@@ -560,40 +570,112 @@ export function MesocycleSetupEditor({
 
       <section className="rounded-2xl border border-slate-200 p-6">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Summary preview
+          Successor preview
         </p>
-        <h2 className="mt-2 text-xl font-semibold">If you accept now</h2>
+        <div className="mt-2 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <h2 className="text-xl font-semibold">Preview next cycle</h2>
+            <p className="mt-2 text-sm text-slate-600">
+              This is a read-only preview of what Accept would create from the current draft. No
+              mesocycle has been created yet.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="inline-flex h-11 items-center justify-center rounded-full border border-slate-300 px-5 text-sm font-semibold text-slate-900"
+            aria-expanded={showSuccessorPreview}
+            onClick={() => setShowSuccessorPreview((current) => !current)}
+          >
+            {showSuccessorPreview ? "Hide preview" : "Show preview"}
+          </button>
+        </div>
         <p className="mt-2 text-sm text-slate-600">
-          The next mesocycle will start as {draft.structure.sessionsPerWeek}x/week{" "}
-          {formatSplitType(draft.structure.splitType)} with this ordered slot sequence.
+          {preview.title} would start as {preview.sessionsPerWeek}x/week{" "}
+          {formatSplitType(preview.splitType)}.
         </p>
-        <div className="mt-5 grid gap-4 lg:grid-cols-[1.05fr_0.95fr]">
-          <div className="rounded-2xl bg-slate-50 p-5">
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Sequence</h3>
-            <div className="mt-4 grid gap-2 sm:grid-cols-2">
-              {draft.structure.slots.map((slot, index) => (
-                <div key={slot.slotId} className="rounded-xl border border-slate-200 bg-white p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Slot {index + 1}
-                  </p>
-                  <p className="mt-1 font-medium text-slate-900">{INTENT_LABELS[slot.intent]}</p>
-                  <p className="mt-1 text-xs text-slate-500">{slot.slotId.replace("_", " ")}</p>
-                </div>
-              ))}
+        <div className="mt-4 rounded-2xl bg-slate-50 p-5">
+          <p className="text-sm font-medium text-slate-900">
+            {preview.keepCount} keep / {preview.rotateCount} rotate / {preview.dropCount} drop
+          </p>
+          <p className="mt-2 text-sm text-slate-600">
+            Ordered-flexible slot order and kept carry-forward exercises come from the same
+            canonical successor projection used on accept.
+          </p>
+        </div>
+
+        {showSuccessorPreview ? (
+          <div className="mt-5 grid gap-4 lg:grid-cols-[1.05fr_0.95fr]">
+            <div className="rounded-2xl bg-slate-50 p-5">
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+                Mesocycle
+              </h3>
+              <p className="mt-4 text-lg font-semibold text-slate-900">{preview.title}</p>
+              <p className="mt-2 text-sm text-slate-700">Focus: {preview.focus}</p>
+              <p className="mt-2 text-sm text-slate-700">
+                Split: {formatSplitType(preview.splitType)}
+              </p>
+              <p className="mt-2 text-sm text-slate-700">
+                Frequency: {preview.sessionsPerWeek} sessions per week
+              </p>
+              <p className="mt-2 text-sm text-slate-700">
+                Starting point stays conservative productive and still excludes deload from the
+                next baseline.
+              </p>
+            </div>
+            <div className="rounded-2xl bg-slate-50 p-5">
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+                Session slots
+              </h3>
+              <div className="mt-4 grid gap-3">
+                {preview.slotSequence.map((slot, index) => (
+                  <div key={`${slot.slotId}:${index}`} className="rounded-xl border border-slate-200 bg-white p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Slot {index + 1}
+                        </p>
+                        <p className="mt-1 font-medium text-slate-900">{INTENT_LABELS[slot.intent]}</p>
+                        <p className="mt-1 text-xs text-slate-500">{slot.slotId.replace("_", " ")}</p>
+                      </div>
+                      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                        {slot.carriedForwardExerciseCount} carried forward
+                      </p>
+                    </div>
+
+                    {slot.sharedWithSlotId && slot.carriedForwardExerciseCount > 0 ? (
+                      <p className="mt-4 text-sm text-slate-600">
+                        This repeated {INTENT_LABELS[slot.intent]} slot shares the same
+                        carry-forward pool as {slot.sharedWithSlotId.replace("_", " ")} because
+                        handoff keeps are stored at the intent level.
+                      </p>
+                    ) : slot.exercises.length > 0 ? (
+                      <div className="mt-4 space-y-2">
+                        {slot.exercises.map((exercise) => (
+                          <div
+                            key={`${slot.slotId}:${exercise.exerciseId}:${exercise.role}`}
+                            className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
+                          >
+                            <p className="text-sm font-medium text-slate-900">
+                              {exercise.exerciseName}
+                            </p>
+                            <p className="mt-1 text-xs text-slate-500">
+                              {formatRoleLabel(exercise.role)}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="mt-4 text-sm text-slate-600">
+                        No exercises are being carried forward into this slot from the current
+                        draft.
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
-          <div className="rounded-2xl bg-slate-50 p-5">
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-              Carry-forward mix
-            </h3>
-            <p className="mt-4 text-sm text-slate-700">
-              {preview.keepCount} keep • {preview.rotateCount} rotate • {preview.dropCount} drop
-            </p>
-            <p className="mt-2 text-sm text-slate-700">
-              Default starting point stays conservative productive, excluding deload from baseline.
-            </p>
-          </div>
-        </div>
+        ) : null}
 
         <div className="mt-6 flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
           <button

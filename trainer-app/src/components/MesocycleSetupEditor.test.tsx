@@ -62,6 +62,8 @@ describe("MesocycleSetupEditor", () => {
     render(
       <MesocycleSetupEditor
         mesocycleId="meso-1"
+        mesoNumber={1}
+        focus="Upper Hypertrophy"
         recommendedDraft={buildDraft()}
         initialDraft={buildDraft()}
       />
@@ -95,6 +97,8 @@ describe("MesocycleSetupEditor", () => {
     render(
       <MesocycleSetupEditor
         mesocycleId="meso-1"
+        mesoNumber={1}
+        focus="Upper Hypertrophy"
         recommendedDraft={buildDraft()}
         initialDraft={buildDraft()}
       />
@@ -119,6 +123,8 @@ describe("MesocycleSetupEditor", () => {
     render(
       <MesocycleSetupEditor
         mesocycleId="meso-1"
+        mesoNumber={1}
+        focus="Upper Hypertrophy"
         recommendedDraft={buildDraft()}
         initialDraft={buildDraft()}
       />
@@ -132,5 +138,33 @@ describe("MesocycleSetupEditor", () => {
     ).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save draft" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Accept and create next cycle" })).toBeEnabled();
+  });
+
+  it("renders the shared successor preview as a read-only expandable section", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <MesocycleSetupEditor
+        mesocycleId="meso-1"
+        mesoNumber={1}
+        focus="Upper Hypertrophy"
+        recommendedDraft={buildDraft()}
+        initialDraft={buildDraft()}
+      />
+    );
+
+    expect(screen.getByText("Meso 2 - Upper Hypertrophy would start as 4x/week Upper / Lower.")).toBeInTheDocument();
+    expect(screen.getByText("1 keep / 1 rotate / 0 drop")).toBeInTheDocument();
+    expect(screen.queryByText("Session slots")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Show preview" }));
+
+    expect(screen.getByText("This is a read-only preview of what Accept would create from the current draft. No mesocycle has been created yet.")).toBeInTheDocument();
+    expect(screen.getAllByText("Bench Press")).toHaveLength(2);
+    expect(
+      screen.getByText(
+        "This repeated Upper slot shares the same carry-forward pool as upper a because handoff keeps are stored at the intent level."
+      )
+    ).toBeInTheDocument();
   });
 });

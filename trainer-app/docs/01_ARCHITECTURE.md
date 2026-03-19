@@ -107,6 +107,7 @@ SetLog / logged performance
   - editable pending draft: `nextSeedDraftJson` on the same closed mesocycle while state is `AWAITING_HANDOFF`
   - live closeout review read model: `src/lib/api/mesocycle-review.ts`
   - editable setup read model: `src/lib/api/mesocycle-setup.ts`
+  - canonical successor slot-plan projection from the stored handoff draft: `src/lib/api/mesocycle-handoff-slot-plan-projection.ts`
 - Successor creation is an explicit acceptance action only. `acceptMesocycleHandoffInTransaction()` sanitizes the pending draft, creates the next active mesocycle transactionally, persists its slot sequence, carries forward allowed roles, updates `Constraints`, and then marks the source mesocycle `COMPLETED`.
 - `slotSequenceJson` on the accepted successor mesocycle is the canonical runtime slot authority. `Constraints.weeklySchedule` remains the compatibility/fallback schedule for legacy mesocycles that do not yet have a persisted slot sequence.
 - Slot-aware runtime sequencing now resolves the next advancing session through `slotId + intent`, not raw intent alone. Canonical ownership is split between the persisted slot contract in `src/lib/api/mesocycle-slot-contract.ts` and runtime sequencing in `src/lib/api/mesocycle-slot-runtime.ts`.

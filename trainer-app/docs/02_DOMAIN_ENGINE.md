@@ -33,6 +33,7 @@ Sources of truth:
 - Intent and template generation both rely on engine-level session construction and selection primitives.
 - Selection-v2 beam search implementation is under `src/lib/engine/selection-v2`.
 - Template session orchestration bridges API data to engine inputs in `src/lib/api/template-session.ts`, with planning semantics centralized in `src/lib/planning/session-opportunities.ts` and dedicated seams in `src/lib/api/template-session/role-budgeting.ts` and `src/lib/api/template-session/closure-actions.ts`.
+- The canonical advancing pre-load composition seam now lives in `composeIntentSessionFromMappedContext()` within `src/lib/api/template-session.ts`. That helper reuses the normal intent-generation stack through `buildSelectionObjective()` and `runSessionGeneration()` but intentionally stops before load assignment, receipt building, and response-only metadata so handoff slot-plan projection can reuse the same selection logic without forking it.
 - `MANUAL` selection mode bypasses mesocycle continuity enforcement by design; continuity pinning only applies to auto/intention-generated sessions.
 - For `INTENT` generation, active mesocycle roles are continuity anchors, not full workout cages. Role fixtures are budgeted first, but complete role-list sessions may still supplement from opportunity-compatible inventory when deficits or minimum composition constraints remain unresolved.
 - When a mesocycle role exists, section/main-accessory mapping is role-driven:

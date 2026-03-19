@@ -77,6 +77,23 @@ export type SessionGenerationResult =
     }
   | { error: string };
 
+export type PreLoadSessionGenerationResult = {
+  workout: WorkoutPlan;
+  templateId?: string;
+  selectionMode: "AUTO" | "INTENT";
+  sessionIntent: SessionIntent;
+  sraWarnings: SraWarning[];
+  substitutions: SubstitutionSuggestion[];
+  droppedAccessoryExerciseIds: string[];
+  selection: SelectionOutput;
+};
+
+export type IntentSessionCompositionResult = {
+  generation: PreLoadSessionGenerationResult;
+  filteredExercises: FilteredExerciseSummary[];
+  intentionallyDroppedAccessoryRoleIds: string[];
+};
+
 export type WorkoutGenerationSelectionSummary = {
   selectedCount: number;
   pinnedCount: number;

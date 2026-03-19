@@ -171,6 +171,40 @@ async function loadMesocycleRoleRows(
     : [];
 }
 
+export async function loadPreloadedGenerationSnapshot(
+  userId: string,
+  options?: {
+    activeMesocycle?: Awaited<ReturnType<typeof loadActiveMesocycle>>;
+    anchorWeek?: number;
+    weekCloseContext?: { targetWeek: number };
+    forceAccumulation?: boolean;
+  }
+): Promise<PreloadedGenerationSnapshot> {
+  const activeMesocycle =
+    options?.activeMesocycle === undefined
+      ? await loadActiveMesocycle(userId)
+      : options.activeMesocycle;
+  const lifecycleWeek = resolveLifecycleWeek(activeMesocycle, options);
+  const [context, rotationContext, mesocycleRoleRows, phaseBlockContext] = await Promise.all([
+    loadWorkoutContext(userId),
+    loadExerciseExposure(userId),
+    loadMesocycleRoleRows(activeMesocycle?.id),
+    loadGenerationPhaseBlockContext(userId, {
+      activeMesocycle,
+      weekInMeso: lifecycleWeek,
+      forceAccumulation: options?.forceAccumulation === true,
+    }),
+  ]);
+
+  return {
+    context,
+    activeMesocycle,
+    rotationContext,
+    mesocycleRoleRows,
+    phaseBlockContext,
+  };
+}
+
 export function buildMappedGenerationContextFromSnapshot(
   userId: string,
   snapshot: PreloadedGenerationSnapshot,
@@ -336,28 +370,10 @@ export async function loadMappedGenerationContext(
     forceAccumulation?: boolean;
   }
 ): Promise<MappedGenerationContext> {
-  const context = await loadWorkoutContext(userId);
-  const activeMesocycle = await loadActiveMesocycle(userId);
-  const lifecycleWeek = resolveLifecycleWeek(activeMesocycle, options);
-  const [rotationContext, mesocycleRoleRows, phaseBlockContext] = await Promise.all([
-    loadExerciseExposure(userId),
-    loadMesocycleRoleRows(activeMesocycle?.id),
-    loadGenerationPhaseBlockContext(userId, {
-      activeMesocycle,
-      weekInMeso: lifecycleWeek,
-      forceAccumulation: options?.forceAccumulation === true,
-    }),
-  ]);
-
+  const snapshot = await loadPreloadedGenerationSnapshot(userId, options);
   return buildMappedGenerationContextFromSnapshot(
     userId,
-    {
-      context,
-      activeMesocycle,
-      rotationContext,
-      mesocycleRoleRows,
-      phaseBlockContext,
-    },
+    snapshot,
     options
   );
 }

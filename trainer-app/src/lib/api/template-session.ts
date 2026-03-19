@@ -56,6 +56,7 @@ import {
 import type {
   GenerateIntentSessionInput,
   GenerateTemplateSessionParams,
+  IntentSessionCompositionResult,
   MappedGenerationContext,
   SessionGenerationResult,
 } from "./template-session/types";
@@ -2128,10 +2129,10 @@ export async function generateSessionFromIntent(
   return generateSessionFromMappedContext(mapped, input);
 }
 
-export function generateSessionFromMappedContext(
+export function composeIntentSessionFromMappedContext(
   mapped: MappedGenerationContext,
   input: GenerateIntentSessionInput
-): SessionGenerationResult {
+): IntentSessionCompositionResult | { error: string } {
   const objective = buildSelectionObjective(mapped, input.intent, input.targetMuscles, {
     supplementalPlannerProfile: input.supplementalPlannerProfile,
     sessionSlotId: input.slotId,
@@ -2960,26 +2961,43 @@ export function generateSessionFromMappedContext(
     }
   }
 
-  const intentionallyDroppedAccessoryRoleIds = Array.from(pinnedRoleIds).filter(
-    (exerciseId) =>
-      roleMap.get(exerciseId) === "ACCESSORY" &&
-      !selection.selectedExerciseIds.includes(exerciseId)
-  );
-  if (intentionallyDroppedAccessoryRoleIds.length > 0) {
+  return {
+    generation: result,
+    filteredExercises,
+    intentionallyDroppedAccessoryRoleIds: Array.from(pinnedRoleIds).filter(
+      (exerciseId) =>
+        roleMap.get(exerciseId) === "ACCESSORY" &&
+        !selection.selectedExerciseIds.includes(exerciseId)
+    ),
+  };
+}
+
+export function generateSessionFromMappedContext(
+  mapped: MappedGenerationContext,
+  input: GenerateIntentSessionInput
+): SessionGenerationResult {
+  const composed = composeIntentSessionFromMappedContext(mapped, input);
+  if ("error" in composed) {
+    return composed;
+  }
+
+  const filteredExercises = [...composed.filteredExercises];
+  if (composed.intentionallyDroppedAccessoryRoleIds.length > 0) {
     const byId = new Map(mapped.exerciseLibrary.map((exercise) => [exercise.id, exercise]));
-    for (const exerciseId of intentionallyDroppedAccessoryRoleIds) {
+    for (const exerciseId of composed.intentionallyDroppedAccessoryRoleIds) {
       const exercise = byId.get(exerciseId);
       filteredExercises.push({
         exerciseId,
         exerciseName: exercise?.name ?? exerciseId,
         reason: "weekly_budget_exhausted",
-        userFriendlyMessage: "Excluded because this week's remaining volume budget was already allocated.",
+        userFriendlyMessage:
+          "Excluded because this week's remaining volume budget was already allocated.",
       });
     }
   }
 
   return finalizePostLoadResult(
-    result,
+    composed.generation,
     mapped,
     filteredExercises,
     input.plannerDiagnosticsMode ?? "standard"

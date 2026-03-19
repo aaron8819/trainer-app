@@ -124,8 +124,8 @@ export default async function MesocycleReviewPage({ params }: { params: Params }
           </p>
           <h1 className="page-title mt-2">Meso {review.mesoNumber} complete</h1>
           <p className="mt-2 text-sm text-slate-600">
-            Closeout review for {review.focus}. Frozen handoff facts stay separate from live review
-            analytics recomputed from workouts tagged to this mesocycle.
+            Closeout review for {review.focus}. Frozen handoff facts stay separate from the
+            recomputed analysis built from workouts tagged to this mesocycle.
           </p>
         </header>
 
@@ -175,12 +175,12 @@ export default async function MesocycleReviewPage({ params }: { params: Params }
 
         <section className="mt-8 rounded-2xl border border-slate-200 p-6">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Derived live from mesocycle workouts
+            Recomputed analysis
           </p>
           <h2 className="mt-2 text-xl font-semibold">What improved</h2>
           <p className="mt-2 text-sm text-slate-600">
             These metrics are recomputed from {review.derived.scopedWorkoutCount} workouts scoped by{" "}
-            <code>mesocycleId</code>. No active-cycle readers are used here.
+            <code>mesocycleId</code>. Recomputing them does not change the stored handoff results.
           </p>
 
           <div className="mt-5 grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
@@ -273,12 +273,13 @@ export default async function MesocycleReviewPage({ params }: { params: Params }
 
         <section className="mt-8 rounded-2xl border border-slate-200 p-6">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Derived live from mesocycle workouts
+            Recomputed analysis
           </p>
           <h2 className="mt-2 text-xl font-semibold">Muscle / volume summary</h2>
           <p className="mt-2 text-sm text-slate-600">
             Targets are canonical weekly targets summed across this mesocycle. Actuals are weighted
-            effective sets recomputed from mesocycle-scoped workouts.
+            effective sets recomputed from mesocycle-scoped workouts. This table is informational
+            only and does not alter the frozen handoff.
           </p>
 
           <div className="mt-5 overflow-x-auto">
@@ -341,8 +342,8 @@ export default async function MesocycleReviewPage({ params }: { params: Params }
           </p>
           <h2 className="mt-2 text-xl font-semibold">Carry-forward recommendations</h2>
           <p className="mt-2 text-sm text-slate-600">
-            This stays intentionally small: the frozen handoff stores recommendation calls, while
-            the detailed review above is recomputed live.
+            This stays intentionally small: the frozen handoff stores these recommendation calls,
+            while the detailed review above is recomputed separately.
           </p>
 
           <div className="mt-5 grid gap-4 lg:grid-cols-3">

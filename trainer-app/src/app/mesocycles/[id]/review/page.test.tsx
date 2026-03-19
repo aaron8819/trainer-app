@@ -153,8 +153,10 @@ describe("MesocycleReviewPage", () => {
     expect(screen.getByRole("heading", { name: "Meso 3 complete" })).toBeInTheDocument();
     expect(screen.getByText("Pending Handoff Review")).toBeInTheDocument();
     expect(screen.getAllByText("Frozen handoff summary")).toHaveLength(2);
-    expect(screen.getAllByText("Derived live from mesocycle workouts")).toHaveLength(2);
-    expect(screen.getByText(/No active-cycle readers are used here/i)).toBeInTheDocument();
+    expect(screen.getAllByText("Recomputed analysis")).toHaveLength(2);
+    expect(
+      screen.getByText(/Recomputing them does not change the stored handoff results/i)
+    ).toBeInTheDocument();
     expect(screen.getAllByText("Bench Press").length).toBeGreaterThan(0);
     expect(screen.getByText(/Default recommendation: 4x\/week Upper \/ Lower/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Review and edit next-cycle setup" })).toHaveAttribute(

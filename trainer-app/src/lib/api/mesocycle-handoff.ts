@@ -170,6 +170,16 @@ function buildRecommendedSlots(): NextCycleSeedSlot[] {
   });
 }
 
+const COMPATIBLE_KEEP_INTENT_REMAPS: Partial<
+  Record<SplitType, Partial<Record<WorkoutSessionIntent, WorkoutSessionIntent>>>
+> = {
+  UPPER_LOWER: {
+    PUSH: "UPPER",
+    PULL: "UPPER",
+    LEGS: "LOWER",
+  },
+};
+
 function buildSlotSequence(draft: NextCycleSeedDraft): MesocycleSlotSequence {
   return buildMesocycleSlotSequence(draft.structure.slots);
 }
@@ -180,6 +190,63 @@ function canonicalCarryForwardSelectionKey(selection: {
   role: MesocycleExerciseRoleType;
 }): string {
   return `${selection.exerciseId}:${selection.sessionIntent}:${selection.role}`;
+}
+
+function normalizeCarryForwardSelectionsForDraft(input: {
+  splitType: SplitType;
+  carryForwardSelections: NextCycleCarryForwardSelection[];
+}): NextCycleCarryForwardSelection[] {
+  const compatibleRemaps = COMPATIBLE_KEEP_INTENT_REMAPS[input.splitType];
+  if (!compatibleRemaps) {
+    return input.carryForwardSelections;
+  }
+
+  const proposedKeyCounts = new Map<string, number>();
+  for (const selection of input.carryForwardSelections) {
+    const remappedIntent =
+      selection.action === "keep" ? compatibleRemaps[selection.sessionIntent] : undefined;
+    const proposedKey = canonicalCarryForwardSelectionKey({
+      exerciseId: selection.exerciseId,
+      sessionIntent: remappedIntent ?? selection.sessionIntent,
+      role: selection.role,
+    });
+    proposedKeyCounts.set(proposedKey, (proposedKeyCounts.get(proposedKey) ?? 0) + 1);
+  }
+
+  return input.carryForwardSelections.map((selection) => {
+    if (selection.action !== "keep") {
+      return selection;
+    }
+
+    const remappedIntent = compatibleRemaps[selection.sessionIntent];
+    if (!remappedIntent) {
+      return selection;
+    }
+
+    const proposedKey = canonicalCarryForwardSelectionKey({
+      exerciseId: selection.exerciseId,
+      sessionIntent: remappedIntent,
+      role: selection.role,
+    });
+    if ((proposedKeyCounts.get(proposedKey) ?? 0) > 1) {
+      return selection;
+    }
+
+    return {
+      ...selection,
+      sessionIntent: remappedIntent,
+    };
+  });
+}
+
+function normalizeNextCycleSeedDraft(draft: NextCycleSeedDraft): NextCycleSeedDraft {
+  return {
+    ...draft,
+    carryForwardSelections: normalizeCarryForwardSelectionsForDraft({
+      splitType: draft.structure.splitType,
+      carryForwardSelections: draft.carryForwardSelections,
+    }),
+  };
 }
 
 function validateSlotIntentsForSplit(splitType: SplitType, intents: WorkoutSessionIntent[]): boolean {
@@ -305,7 +372,7 @@ function buildRecommendedNextSeed(input: {
   createdAt: Date;
   roles: HandoffRoleRow[];
 }): NextCycleSeedDraft {
-  return {
+  return normalizeNextCycleSeedDraft({
     version: 1,
     sourceMesocycleId: input.sourceMesocycleId,
     createdAt: input.createdAt.toISOString(),
@@ -322,7 +389,7 @@ function buildRecommendedNextSeed(input: {
       excludeDeload: true,
     },
     carryForwardSelections: input.roles.map(toCarryForwardSelection),
-  };
+  });
 }
 
 function buildHandoffSummary(input: {
@@ -359,12 +426,19 @@ function buildHandoffSummary(input: {
 
 export function readNextCycleSeedDraft(value: unknown): NextCycleSeedDraft | null {
   const parsed = nextCycleSeedDraftJsonSchema.safeParse(value);
-  return parsed.success ? parsed.data : null;
+  return parsed.success ? normalizeNextCycleSeedDraft(parsed.data) : null;
 }
 
 export function readMesocycleHandoffSummary(value: unknown): MesocycleHandoffSummary | null {
   const parsed = mesocycleHandoffSummaryJsonSchema.safeParse(value);
-  return parsed.success ? parsed.data : null;
+  if (!parsed.success) {
+    return null;
+  }
+
+  return {
+    ...parsed.data,
+    recommendedNextSeed: normalizeNextCycleSeedDraft(parsed.data.recommendedNextSeed),
+  };
 }
 
 export async function loadPendingMesocycleHandoff(userId: string): Promise<PendingMesocycleHandoff | null> {

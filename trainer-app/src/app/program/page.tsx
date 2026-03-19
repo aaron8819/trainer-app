@@ -73,7 +73,7 @@ export default async function ProgramPage() {
         <div className="page-shell max-w-5xl">
           <h1 className="page-title">My Program</h1>
           <p className="mt-1.5 text-sm text-slate-600">
-            Program controls are paused until you explicitly accept the next mesocycle.
+            Training is paused while the handoff is pending.
           </p>
 
           <section className="mt-5">
@@ -88,7 +88,8 @@ export default async function ProgramPage() {
               Meso {pendingHandoff.mesoNumber}: {pendingHandoff.focus}
             </h2>
             <p className="mt-2 text-sm text-slate-700">
-              The prior mesocycle is frozen and reviewable, but no new active mesocycle exists yet. Generation and cycle controls stay blocked until the next cycle is explicitly accepted.
+              Review the frozen handoff, make any setup edits you want, then accept the next cycle
+              to resume generation and program controls.
             </p>
             <div className="mt-4 flex flex-wrap gap-3">
               <Link

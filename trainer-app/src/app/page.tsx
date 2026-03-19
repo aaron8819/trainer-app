@@ -64,7 +64,8 @@ export default async function Home() {
             <p className="text-sm uppercase tracking-wide text-slate-500">Personal AI Trainer</p>
             <h1 className="page-title mt-2">Mesocycle Handoff</h1>
             <p className="mt-2 text-sm text-slate-500">
-              Your last mesocycle is complete. Review the handoff and explicitly accept the next cycle before generating more training.
+              Your last mesocycle is complete. Review the handoff, make any setup edits you want,
+              and accept the next cycle to continue.
             </p>
           </header>
 
@@ -76,7 +77,7 @@ export default async function Home() {
               Meso {pendingHandoff.mesoNumber}: {pendingHandoff.focus}
             </h2>
             <p className="mt-2 text-sm text-slate-700">
-              Training is paused at the mesocycle boundary. No new active mesocycle exists yet.
+              Training is paused. Review and accept your next cycle to continue.
             </p>
             <div className="mt-4 flex flex-wrap gap-3">
               <Link

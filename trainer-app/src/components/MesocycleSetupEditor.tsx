@@ -116,14 +116,14 @@ function buildCarryForwardConflictSummary(
   conflicts: NextCycleCarryForwardConflict[]
 ): string {
   if (conflicts.length === 1) {
-    return `${conflicts[0]!.exerciseName} can no longer be kept because this draft no longer includes the ${INTENT_LABELS[conflicts[0]!.sessionIntent]} session type.`;
+    return `${conflicts[0]!.exerciseName} can no longer be kept because this draft does not include the ${INTENT_LABELS[conflicts[0]!.sessionIntent]} session type.`;
   }
 
-  return `${conflicts.length} kept exercises no longer match the edited split. Each one needs its original session type to stay in the draft.`;
+  return `${conflicts.length} kept exercises no longer match this draft. Set them to Rotate or Drop to continue.`;
 }
 
 function buildCarryForwardConflictRowMessage(conflict: NextCycleCarryForwardConflict): string {
-  return `This draft no longer includes the ${INTENT_LABELS[conflict.sessionIntent]} session type, so this exercise cannot stay on Keep. Change it to Rotate or Drop, or add ${INTENT_LABELS[conflict.sessionIntent]} back to the split.`;
+  return `This draft does not include the ${INTENT_LABELS[conflict.sessionIntent]} session type for this keep. Change it to Rotate or Drop to continue.`;
 }
 
 function nextDraftForSessions(
@@ -233,6 +233,27 @@ export function MesocycleSetupEditor({
     setStatus(null);
     setError(null);
     setDraft(recipe);
+  };
+
+  const fixAllCarryForwardConflicts = () => {
+    if (!hasCarryForwardConflicts) {
+      return;
+    }
+
+    const conflictKeys = new Set(
+      carryForwardConflicts.map((conflict) => buildCarryForwardConflictKey(conflict))
+    );
+    updateDraft((current) => ({
+      ...current,
+      carryForwardSelections: current.carryForwardSelections.map((selection) =>
+        conflictKeys.has(buildCarryForwardConflictKey(selection))
+          ? {
+              ...selection,
+              action: "rotate",
+            }
+          : selection
+      ),
+    }));
   };
 
   const saveDraft = async (): Promise<boolean> => {
@@ -348,7 +369,7 @@ export function MesocycleSetupEditor({
           </p>
           <h2 className="mt-2 text-xl font-semibold">Current editable setup</h2>
           <p className="mt-2 text-sm text-slate-600">
-            Save changes into <code>nextSeedDraftJson</code> before you accept the next cycle.
+            Save changes now, or accept the next cycle to save them as part of the handoff.
           </p>
           <div className="mt-4 rounded-xl bg-slate-50 p-4 text-sm text-slate-700">
             {drift.matchesRecommendation ? (
@@ -459,8 +480,15 @@ export function MesocycleSetupEditor({
             <p className="font-semibold">Carry-forward conflicts need to be resolved before save or accept.</p>
             <p className="mt-1">{buildCarryForwardConflictSummary(carryForwardConflicts)}</p>
             <p className="mt-2 text-rose-800">
-              Change the affected exercises to Rotate or Drop, or restore the missing session type in the split.
+              Set the conflicting keeps to Rotate or Drop to continue. You can fine-tune them after that.
             </p>
+            <button
+              type="button"
+              className="mt-3 inline-flex h-10 items-center justify-center rounded-full border border-rose-300 bg-white px-4 text-sm font-semibold text-rose-900"
+              onClick={fixAllCarryForwardConflicts}
+            >
+              Fix all conflicts
+            </button>
           </div>
         ) : null}
         <div className="mt-5 space-y-3">
@@ -584,7 +612,9 @@ export function MesocycleSetupEditor({
           >
             {accepting ? "Starting..." : "Accept and create next cycle"}
           </button>
-          {isDirty ? <span className="text-sm text-amber-700">Unsaved changes</span> : null}
+          {isDirty ? (
+            <span className="text-sm text-amber-700">Changes will be saved on accept.</span>
+          ) : null}
           {hasCarryForwardConflicts ? (
             <span className="text-sm text-rose-700">
               Resolve {carryForwardConflicts.length} carry-forward conflict

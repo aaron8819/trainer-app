@@ -74,17 +74,19 @@ describe("MesocycleSetupEditor", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        "Bench Press can no longer be kept because this draft no longer includes the Upper session type."
+        "Bench Press can no longer be kept because this draft does not include the Upper session type."
       )
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        "This draft no longer includes the Upper session type, so this exercise cannot stay on Keep. Change it to Rotate or Drop, or add Upper back to the split."
+        "This draft does not include the Upper session type for this keep. Change it to Rotate or Drop to continue."
       )
     ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Fix all conflicts" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save draft" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Accept and create next cycle" })).toBeDisabled();
     expect(screen.getByText("Resolve 1 carry-forward conflict to save or accept.")).toBeInTheDocument();
+    expect(screen.getByText("Changes will be saved on accept.")).toBeInTheDocument();
   });
 
   it("re-enables save and accept after the conflicting keep action is resolved", async () => {
@@ -109,5 +111,26 @@ describe("MesocycleSetupEditor", () => {
     expect(
       screen.queryByText("Resolve 1 carry-forward conflict to save or accept.")
     ).not.toBeInTheDocument();
+  });
+
+  it("can bulk-fix all current carry-forward conflicts", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <MesocycleSetupEditor
+        mesocycleId="meso-1"
+        recommendedDraft={buildDraft()}
+        initialDraft={buildDraft()}
+      />
+    );
+
+    await user.selectOptions(screen.getByLabelText("Split type"), "PPL");
+    await user.click(screen.getByRole("button", { name: "Fix all conflicts" }));
+
+    expect(
+      screen.queryByText("Carry-forward conflicts need to be resolved before save or accept.")
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save draft" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Accept and create next cycle" })).toBeEnabled();
   });
 });

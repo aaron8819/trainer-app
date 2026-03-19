@@ -7,10 +7,11 @@ import {
   readMesocycleHandoffSummary,
   readNextCycleSeedDraft,
   sanitizeNextCycleSeedDraft,
+  type NextCycleSeedDraft,
   updateMesocycleHandoffDraftInTransaction,
 } from "./mesocycle-handoff";
 
-function buildRecommendedDraft() {
+function buildRecommendedDraft(): NextCycleSeedDraft {
   return {
     version: 1 as const,
     sourceMesocycleId: "meso-1",
@@ -51,7 +52,7 @@ function buildRecommendedDraft() {
   };
 }
 
-function buildHandoffSummaryJson(draft = buildRecommendedDraft()) {
+function buildHandoffSummaryJson(draft: NextCycleSeedDraft = buildRecommendedDraft()) {
   return {
     version: 1 as const,
     mesocycleId: "meso-1",
@@ -195,6 +196,50 @@ describe("handoff readers", () => {
   it("rejects version-only JSON that does not satisfy the handoff contract shape", () => {
     expect(readNextCycleSeedDraft({ version: 1 })).toBeNull();
     expect(readMesocycleHandoffSummary({ version: 1 })).toBeNull();
+  });
+
+  it("auto-remaps obvious keep selections when reading upper/lower next-cycle drafts", () => {
+    const staleDraft: NextCycleSeedDraft = {
+      ...buildRecommendedDraft(),
+      carryForwardSelections: [
+        {
+          exerciseId: "bench",
+          exerciseName: "Bench Press",
+          sessionIntent: "PUSH" as const,
+          role: "CORE_COMPOUND" as const,
+          action: "keep" as const,
+        },
+        {
+          exerciseId: "row",
+          exerciseName: "Chest-Supported Row",
+          sessionIntent: "PULL" as const,
+          role: "ACCESSORY" as const,
+          action: "keep" as const,
+        },
+        {
+          exerciseId: "split-squat",
+          exerciseName: "Split Squat",
+          sessionIntent: "LEGS" as const,
+          role: "ACCESSORY" as const,
+          action: "keep" as const,
+        },
+      ],
+    };
+
+    expect(readNextCycleSeedDraft(staleDraft)?.carryForwardSelections).toEqual([
+      expect.objectContaining({ exerciseName: "Bench Press", sessionIntent: "UPPER" }),
+      expect.objectContaining({ exerciseName: "Chest-Supported Row", sessionIntent: "UPPER" }),
+      expect.objectContaining({ exerciseName: "Split Squat", sessionIntent: "LOWER" }),
+    ]);
+
+    expect(
+      readMesocycleHandoffSummary(buildHandoffSummaryJson(staleDraft))?.recommendedNextSeed
+        .carryForwardSelections
+    ).toEqual([
+      expect.objectContaining({ exerciseName: "Bench Press", sessionIntent: "UPPER" }),
+      expect.objectContaining({ exerciseName: "Chest-Supported Row", sessionIntent: "UPPER" }),
+      expect.objectContaining({ exerciseName: "Split Squat", sessionIntent: "LOWER" }),
+    ]);
   });
 
   it("loads completed archives as reviewable but not editable handoff state", async () => {

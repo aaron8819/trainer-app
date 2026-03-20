@@ -10,6 +10,7 @@ import type { VolumePlanByMuscle } from "@/lib/engine/volume";
 import { getSessionMuscleOpportunityWeight } from "@/lib/planning/session-opportunities";
 import type { MappedGenerationContext } from "./types";
 import { buildRemainingWeekVolumeContext } from "./remaining-week-planner";
+import { readRuntimeSlotSequence } from "@/lib/api/mesocycle-slot-runtime";
 
 const CONTINUITY_USER_PREFERENCE_WEIGHT = 0.35;
 const CONTINUITY_MIN_ROTATION_WEIGHT = 0.01;
@@ -31,10 +32,29 @@ export const SUPPLEMENTAL_SESSION_CAPS = {
 
 function getMostRecentPerformedIntentEntry(
   history: WorkoutHistoryEntry[],
-  sessionIntent: SessionIntent
+  sessionIntent: SessionIntent,
+  options?: {
+    mapped?: MappedGenerationContext;
+    excludeCurrentLifecycleWeek?: boolean;
+  }
 ): WorkoutHistoryEntry | undefined {
   return sortHistoryByDateDesc(filterPerformedHistory(history)).find(
-    (entry) => entry.sessionIntent === sessionIntent || entry.forcedSplit === sessionIntent
+    (entry) =>
+      (entry.sessionIntent === sessionIntent || entry.forcedSplit === sessionIntent) &&
+      !(
+        options?.excludeCurrentLifecycleWeek &&
+        options.mapped &&
+        isCurrentLifecycleWeekEntry(entry, options.mapped)
+      )
+  );
+}
+
+function getMostRecentPerformedSlotEntry(
+  history: WorkoutHistoryEntry[],
+  slotId: string
+): WorkoutHistoryEntry | undefined {
+  return sortHistoryByDateDesc(filterPerformedHistory(history)).find(
+    (entry) => entry.mesocycleSnapshot?.slotId === slotId
   );
 }
 
@@ -52,6 +72,48 @@ function isCurrentLifecycleWeekEntry(
   }
 
   return !snapshot.mesocycleId || snapshot.mesocycleId === mapped.activeMesocycle.id;
+}
+
+function hasPersistedSessionSlotIdentity(
+  mapped: MappedGenerationContext,
+  sessionSlotId: string | undefined
+): sessionSlotId is string {
+  const normalizedSlotId = sessionSlotId?.trim();
+  if (!normalizedSlotId) {
+    return false;
+  }
+
+  const runtimeSlotSequence = readRuntimeSlotSequence({
+    slotSequenceJson: mapped.activeMesocycle?.slotSequenceJson,
+    weeklySchedule: mapped.mappedConstraints.weeklySchedule,
+  });
+
+  return (
+    runtimeSlotSequence.hasPersistedSequence &&
+    runtimeSlotSequence.slots.some((slot) => slot.slotId === normalizedSlotId)
+  );
+}
+
+function getContinuitySourceEntry(params: {
+  mapped: MappedGenerationContext;
+  sessionIntent: SessionIntent;
+  sessionSlotId?: string;
+}): WorkoutHistoryEntry | undefined {
+  const { mapped, sessionIntent, sessionSlotId } = params;
+
+  if (hasPersistedSessionSlotIdentity(mapped, sessionSlotId)) {
+    const sameSlotEntry = getMostRecentPerformedSlotEntry(mapped.history, sessionSlotId);
+    if (sameSlotEntry) {
+      return sameSlotEntry;
+    }
+
+    return getMostRecentPerformedIntentEntry(mapped.history, sessionIntent, {
+      mapped,
+      excludeCurrentLifecycleWeek: true,
+    });
+  }
+
+  return getMostRecentPerformedIntentEntry(mapped.history, sessionIntent);
 }
 
 function applyContinuityWeightBias(
@@ -176,7 +238,11 @@ export function buildSelectionObjective(
     }
   }
 
-  const recentPerformedIntentEntry = getMostRecentPerformedIntentEntry(mapped.history, sessionIntent);
+  const recentPerformedIntentEntry = getContinuitySourceEntry({
+    mapped,
+    sessionIntent,
+    sessionSlotId: options?.sessionSlotId,
+  });
   const recentPerformedIntentExerciseIds = new Set(
     recentPerformedIntentEntry?.exercises.map((exercise) => exercise.exerciseId) ?? []
   );

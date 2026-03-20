@@ -4,6 +4,7 @@ import {
   SESSION_CAPS,
   SUPPLEMENTAL_SESSION_CAPS,
 } from "./selection-adapter";
+import { DEFAULT_SELECTION_WEIGHTS } from "@/lib/engine/selection-v2";
 import type { MappedGenerationContext } from "./types";
 import type { WorkoutHistoryEntry, Exercise } from "@/lib/engine/types";
 
@@ -166,6 +167,78 @@ describe("buildSelectionObjective continuity bias", () => {
     expect(objective.constraints.lifecycleSetTargets).toEqual({ main: 4, accessory: 3 });
   });
 
+  it("prefers prior same-slot continuity over a more recent same-intent different slot", () => {
+    const history: WorkoutHistoryEntry[] = [
+      {
+        date: "2026-03-12T01:40:25.252Z",
+        completed: true,
+        status: "COMPLETED",
+        sessionIntent: "upper",
+        mesocycleSnapshot: {
+          week: 2,
+          session: 1,
+          mesocycleId: "meso-1",
+          slotId: "upper_a",
+        },
+        exercises: [
+          {
+            exerciseId: "machine-chest-press",
+            sets: [{ exerciseId: "machine-chest-press", setIndex: 1, reps: 10, load: 180 }],
+          },
+        ],
+      },
+      {
+        date: "2026-03-05T01:40:25.252Z",
+        completed: true,
+        status: "COMPLETED",
+        sessionIntent: "upper",
+        mesocycleSnapshot: {
+          week: 1,
+          session: 3,
+          mesocycleId: "meso-1",
+          slotId: "upper_b",
+        },
+        exercises: [
+          {
+            exerciseId: "incline-db-press",
+            sets: [
+              { exerciseId: "incline-db-press", setIndex: 1, reps: 10, load: 70 },
+              { exerciseId: "incline-db-press", setIndex: 2, reps: 9, load: 70 },
+            ],
+          },
+        ],
+      },
+    ];
+
+    const mapped = makeMappedContext(history);
+    mapped.activeMesocycle = {
+      id: "meso-1",
+      slotSequenceJson: {
+        version: 1,
+        source: "handoff_draft",
+        sequenceMode: "ordered_flexible",
+        slots: [
+          { slotId: "upper_a", intent: "UPPER" },
+          { slotId: "lower_a", intent: "LOWER" },
+          { slotId: "upper_b", intent: "UPPER" },
+          { slotId: "lower_b", intent: "LOWER" },
+        ],
+      },
+    } as unknown as MappedGenerationContext["activeMesocycle"];
+    mapped.mappedConstraints.weeklySchedule = ["upper", "lower", "upper", "lower"];
+
+    const objective = buildSelectionObjective(mapped, "upper", undefined, {
+      sessionSlotId: "upper_b",
+    });
+
+    expect(objective.constraints.preferredContinuityExerciseIds?.has("incline-db-press")).toBe(true);
+    expect(objective.constraints.preferredContinuityExerciseIds?.has("machine-chest-press")).toBe(false);
+    expect(objective.preferences.favoriteExerciseIds.has("incline-db-press")).toBe(true);
+    expect(objective.preferences.favoriteExerciseIds.has("machine-chest-press")).toBe(false);
+    expect(objective.constraints.continuityMinSetsByExerciseId?.get("incline-db-press")).toBe(2);
+    expect(objective.constraints.continuityMinSetsByExerciseId?.has("machine-chest-press")).toBe(false);
+  });
+
   it("uses lifecycle weekly volume target for pull musculature (week 2 back = 12)", () => {
     const objective = buildSelectionObjective(makeMappedContext([]), "pull");
     expect(objective.volumeContext.weeklyTarget.get("Lats")).toBe(12);
@@ -267,7 +340,60 @@ describe("buildSelectionObjective continuity bias", () => {
     expect(objective.volumeContext.remainingWeek?.futureSlotCounts.get("legs")).toBe(1);
   });
 
-  it("uses persisted slot ids to keep duplicate-intent future slots unambiguous", () => {
+  it("does not let a current-week upper_a workout become continuity favorites bias for upper_b", () => {
+    const history: WorkoutHistoryEntry[] = [
+      {
+        date: "2026-03-12T01:40:25.252Z",
+        completed: true,
+        status: "COMPLETED",
+        sessionIntent: "upper",
+        mesocycleSnapshot: {
+          week: 2,
+          session: 1,
+          mesocycleId: "meso-1",
+          slotId: "upper_a",
+        },
+        exercises: [
+          {
+            exerciseId: "machine-chest-press",
+            sets: [{ exerciseId: "machine-chest-press", setIndex: 1, reps: 10, load: 180 }],
+          },
+        ],
+      },
+    ];
+
+    const mapped = makeMappedContext(history);
+    mapped.activeMesocycle = {
+      id: "meso-1",
+      slotSequenceJson: {
+        version: 1,
+        source: "handoff_draft",
+        sequenceMode: "ordered_flexible",
+        slots: [
+          { slotId: "upper_a", intent: "UPPER" },
+          { slotId: "lower_a", intent: "LOWER" },
+          { slotId: "upper_b", intent: "UPPER" },
+          { slotId: "lower_b", intent: "LOWER" },
+        ],
+      },
+    } as unknown as MappedGenerationContext["activeMesocycle"];
+    mapped.mappedConstraints.weeklySchedule = ["upper", "lower", "upper", "lower"];
+
+    const objective = buildSelectionObjective(mapped, "upper", undefined, {
+      sessionSlotId: "upper_b",
+    });
+
+    expect(objective.constraints.preferredContinuityExerciseIds?.size).toBe(0);
+    expect(objective.constraints.continuityMinSetsByExerciseId?.size).toBe(0);
+    expect(objective.preferences.favoriteExerciseIds.has("machine-chest-press")).toBe(false);
+    expect(objective.weights.userPreference).toBeCloseTo(DEFAULT_SELECTION_WEIGHTS.userPreference, 6);
+    expect(objective.weights.rotationNovelty).toBeCloseTo(
+      DEFAULT_SELECTION_WEIGHTS.rotationNovelty,
+      6
+    );
+  });
+
+  it("uses persisted slot ids to keep duplicate-intent future slots unambiguous without same-week repeated-slot continuity carryover", () => {
     const history: WorkoutHistoryEntry[] = [
       {
         date: new Date().toISOString(),
@@ -282,8 +408,8 @@ describe("buildSelectionObjective continuity bias", () => {
         },
         exercises: [
           {
-            exerciseId: "tbar-row",
-            sets: [{ exerciseId: "tbar-row", setIndex: 1, reps: 10, load: 135 }],
+            exerciseId: "machine-chest-press",
+            sets: [{ exerciseId: "machine-chest-press", setIndex: 1, reps: 10, load: 180 }],
           },
         ],
       },
@@ -330,6 +456,8 @@ describe("buildSelectionObjective continuity bias", () => {
 
     expect(objective.volumeContext.remainingWeek?.futureSlots).toEqual(["lower"]);
     expect(objective.volumeContext.remainingWeek?.futureSlotCounts.get("lower")).toBe(1);
+    expect(objective.constraints.preferredContinuityExerciseIds?.size).toBe(0);
+    expect(objective.preferences.favoriteExerciseIds.has("machine-chest-press")).toBe(false);
   });
 
   it("builds effectiveActual from the shared stimulus helper instead of binary primary credit", () => {

@@ -1,7 +1,12 @@
 import { buildCandidate, computeProposedSets, selectExercisesOptimized } from "@/lib/engine/selection-v2";
 import type { SelectionOutput } from "@/lib/engine/session-types";
 import type { TemplateExerciseInput } from "@/lib/engine/template-session";
-import type { Exercise as EngineExercise, Muscle, MuscleId } from "@/lib/engine/types";
+import type {
+  Exercise as EngineExercise,
+  MovementPatternV2,
+  Muscle,
+  MuscleId,
+} from "@/lib/engine/types";
 import { summarizeFilteredExercises } from "@/lib/engine/explainability";
 import {
   getEffectiveStimulusByMuscle,
@@ -67,6 +72,7 @@ import {
   getSessionAnchorPolicy,
   type SessionInventoryKind,
 } from "@/lib/planning/session-opportunities";
+import { readRuntimeSlotSequence } from "@/lib/api/mesocycle-slot-runtime";
 
 export type { GenerateIntentSessionInput } from "./template-session/types";
 
@@ -196,6 +202,12 @@ const CLOSURE_REDUNDANT_ACCESSORY_PENALTY_WEIGHT = 75;
 const CLOSURE_STACKED_ISOLATION_PENALTY_WEIGHT = 110;
 const CLOSURE_DEFAULT_CALF_SOFT_CAP = 9;
 const ACCESSORY_SPLIT_MAX_WORKING_SETS = 4;
+const DIRECTIONAL_MOVEMENT_PATTERNS: readonly MovementPatternV2[] = [
+  "horizontal_push",
+  "vertical_push",
+  "horizontal_pull",
+  "vertical_pull",
+] as const;
 const ACCESSORY_SPLIT_IGNORED_NAME_TOKENS = new Set([
   "cable",
   "machine",
@@ -213,6 +225,8 @@ const ACCESSORY_SPLIT_IGNORED_NAME_TOKENS = new Set([
   "unilateral",
   "bilateral",
 ]);
+
+type DirectionalExerciseSide = "press" | "pull";
 
 function recordAssignedSessionVolume(
   assignedEffectiveByMuscleInSession: Map<string, number>,
@@ -841,6 +855,550 @@ function applyAccessorySiblingSplitPass(params: {
       muscle: dominantMuscle,
       message: `${exercise.name} was redistributed across close sibling accessories to avoid an oversized single-accessory prescription. Final distribution: ${finalDistribution}.`,
     });
+  }
+
+  return { selection, tradeoffs };
+}
+
+function getPrimaryDirectionalPattern(
+  exercise: Pick<EngineExercise, "movementPatterns">
+): MovementPatternV2 | undefined {
+  return DIRECTIONAL_MOVEMENT_PATTERNS.find((pattern) =>
+    (exercise.movementPatterns ?? []).includes(pattern)
+  );
+}
+
+function getDirectionalExerciseSide(
+  exercise: Pick<EngineExercise, "movementPatterns">
+): DirectionalExerciseSide | undefined {
+  const pattern = getPrimaryDirectionalPattern(exercise);
+  if (pattern === "horizontal_push" || pattern === "vertical_push") {
+    return "press";
+  }
+  if (pattern === "horizontal_pull" || pattern === "vertical_pull") {
+    return "pull";
+  }
+  return undefined;
+}
+
+function cloneSelectionOutput(selection: SelectionOutput): SelectionOutput {
+  return {
+    ...selection,
+    selectedExerciseIds: [...selection.selectedExerciseIds],
+    mainLiftIds: [...selection.mainLiftIds],
+    accessoryIds: [...selection.accessoryIds],
+    perExerciseSetTargets: { ...selection.perExerciseSetTargets },
+    rationale: { ...selection.rationale },
+  };
+}
+
+function syncSelectionIntentDiagnostic(selection: SelectionOutput): void {
+  if (selection.intentDiagnostics) {
+    selection.intentDiagnostics = {
+      ...selection.intentDiagnostics,
+      selectedCount: selection.selectedExerciseIds.length,
+    };
+  }
+}
+
+function isSelectedAccessoryExercise(
+  selection: SelectionOutput,
+  exerciseId: string
+): boolean {
+  return selection.accessoryIds.includes(exerciseId);
+}
+
+function compareRemovalPriority(params: {
+  leftExerciseId: string;
+  rightExerciseId: string;
+  selection: SelectionOutput;
+  exerciseById: Map<string, EngineExercise>;
+}): number {
+  const leftIsAccessory = isSelectedAccessoryExercise(params.selection, params.leftExerciseId);
+  const rightIsAccessory = isSelectedAccessoryExercise(params.selection, params.rightExerciseId);
+  if (leftIsAccessory !== rightIsAccessory) {
+    return leftIsAccessory ? -1 : 1;
+  }
+
+  const leftScore = params.selection.rationale[params.leftExerciseId]?.score ?? 0;
+  const rightScore = params.selection.rationale[params.rightExerciseId]?.score ?? 0;
+  if (leftScore !== rightScore) {
+    return leftScore - rightScore;
+  }
+
+  const leftFatigue = params.exerciseById.get(params.leftExerciseId)?.fatigueCost ?? 3;
+  const rightFatigue = params.exerciseById.get(params.rightExerciseId)?.fatigueCost ?? 3;
+  if (leftFatigue !== rightFatigue) {
+    return rightFatigue - leftFatigue;
+  }
+
+  return params.leftExerciseId.localeCompare(params.rightExerciseId);
+}
+
+function canRemoveSelectedExercise(params: {
+  selection: SelectionOutput;
+  objective: ReturnType<typeof buildSelectionObjective>;
+  exerciseId: string;
+}): boolean {
+  const { selection, objective, exerciseId } = params;
+  if (!selection.selectedExerciseIds.includes(exerciseId)) {
+    return false;
+  }
+
+  const nextSelectedCount = selection.selectedExerciseIds.length - 1;
+  if (nextSelectedCount < objective.constraints.minExercises) {
+    return false;
+  }
+
+  const nextMainLiftCount =
+    selection.mainLiftIds.length - (selection.mainLiftIds.includes(exerciseId) ? 1 : 0);
+  if (nextMainLiftCount < (objective.constraints.minMainLifts ?? 0)) {
+    return false;
+  }
+
+  const nextAccessoryCount =
+    selection.accessoryIds.length - (selection.accessoryIds.includes(exerciseId) ? 1 : 0);
+  if (nextAccessoryCount < (objective.constraints.minAccessories ?? 0)) {
+    return false;
+  }
+
+  return true;
+}
+
+function removeSelectedExercise(selection: SelectionOutput, exerciseId: string): void {
+  selection.selectedExerciseIds = selection.selectedExerciseIds.filter((candidateId) => candidateId !== exerciseId);
+  selection.mainLiftIds = selection.mainLiftIds.filter((candidateId) => candidateId !== exerciseId);
+  selection.accessoryIds = selection.accessoryIds.filter((candidateId) => candidateId !== exerciseId);
+  delete selection.perExerciseSetTargets[exerciseId];
+  delete selection.rationale[exerciseId];
+  syncSelectionIntentDiagnostic(selection);
+}
+
+function replaceSelectedExercise(params: {
+  selection: SelectionOutput;
+  exerciseById: Map<string, EngineExercise>;
+  objective: ReturnType<typeof buildSelectionObjective>;
+  fromExerciseId: string;
+  toExercise: EngineExercise;
+  reason: string;
+}): void {
+  const { selection, objective, fromExerciseId, toExercise, reason } = params;
+  const priorSetTarget = selection.perExerciseSetTargets[fromExerciseId] ?? computeProposedSets(toExercise, objective);
+  const priorRationale = selection.rationale[fromExerciseId];
+  const replacedMainLift = selection.mainLiftIds.includes(fromExerciseId);
+  const replacedAccessory = selection.accessoryIds.includes(fromExerciseId);
+
+  selection.selectedExerciseIds = selection.selectedExerciseIds.map((exerciseId) =>
+    exerciseId === fromExerciseId ? toExercise.id : exerciseId
+  );
+  selection.mainLiftIds = selection.mainLiftIds.filter((exerciseId) => exerciseId !== fromExerciseId);
+  selection.accessoryIds = selection.accessoryIds.filter((exerciseId) => exerciseId !== fromExerciseId);
+  if (replacedMainLift) {
+    selection.mainLiftIds.push(toExercise.id);
+  } else if (replacedAccessory || !isMainLiftExercise(toExercise, objective)) {
+    selection.accessoryIds.push(toExercise.id);
+  } else {
+    selection.mainLiftIds.push(toExercise.id);
+  }
+  delete selection.perExerciseSetTargets[fromExerciseId];
+  delete selection.rationale[fromExerciseId];
+  selection.perExerciseSetTargets[toExercise.id] = priorSetTarget;
+  selection.rationale[toExercise.id] = priorRationale
+    ? {
+        ...priorRationale,
+        reason,
+      }
+    : {
+        score: 0,
+        components: {},
+        hardFilterPass: true,
+        selectedStep: "accessory_pick",
+        reason,
+      };
+  syncSelectionIntentDiagnostic(selection);
+}
+
+function isFrontDeltIsolationExercise(
+  exercise: EngineExercise,
+  objective: ReturnType<typeof buildSelectionObjective>
+): boolean {
+  return (
+    !isMainLiftExercise(exercise, objective) &&
+    !(exercise.isCompound ?? false) &&
+    getDominantStimulusMuscles(exercise).includes("front_delts")
+  );
+}
+
+function hasPressingCompoundFrontDeltCoverage(params: {
+  selection: SelectionOutput;
+  exerciseById: Map<string, EngineExercise>;
+  objective: ReturnType<typeof buildSelectionObjective>;
+  excludeExerciseId?: string;
+}): boolean {
+  return params.selection.selectedExerciseIds.some((exerciseId) => {
+    if (exerciseId === params.excludeExerciseId) {
+      return false;
+    }
+    const exercise = params.exerciseById.get(exerciseId);
+    if (!exercise) {
+      return false;
+    }
+    if (!(isMainLiftExercise(exercise, params.objective) || (exercise.isCompound ?? false))) {
+      return false;
+    }
+    const side = getDirectionalExerciseSide(exercise);
+    if (side !== "press") {
+      return false;
+    }
+    return (getEffectiveStimulusByMuscleId(exercise, 1).get("front_delts") ?? 0) > CLOSURE_ACTION_SCORE_EPSILON;
+  });
+}
+
+function getRepeatedIntentSlotDirectionalPreference(params: {
+  mapped: MappedGenerationContext;
+  sessionIntent: GenerateIntentSessionInput["intent"];
+  slotId?: string;
+}):
+  | {
+      occurrenceIndex: number;
+      totalSlots: number;
+      preferredPushPattern?: MovementPatternV2;
+      preferredPullPattern?: MovementPatternV2;
+    }
+  | undefined {
+  const normalizedSlotId = params.slotId?.trim();
+  if (!normalizedSlotId) {
+    return undefined;
+  }
+
+  const runtimeSlotSequence = readRuntimeSlotSequence({
+    slotSequenceJson: params.mapped.activeMesocycle?.slotSequenceJson,
+    weeklySchedule: params.mapped.mappedConstraints.weeklySchedule,
+  });
+  const sameIntentSlots = runtimeSlotSequence.slots.filter((slot) => slot.intent === params.sessionIntent);
+  if (sameIntentSlots.length <= 1) {
+    return undefined;
+  }
+
+  const occurrenceIndex = sameIntentSlots.findIndex((slot) => slot.slotId === normalizedSlotId);
+  if (occurrenceIndex < 0) {
+    return undefined;
+  }
+
+  const prefersVertical = occurrenceIndex % 2 === 1;
+  switch (params.sessionIntent) {
+    case "upper":
+      return {
+        occurrenceIndex,
+        totalSlots: sameIntentSlots.length,
+        preferredPushPattern: prefersVertical ? "vertical_push" : "horizontal_push",
+        preferredPullPattern: prefersVertical ? "vertical_pull" : "horizontal_pull",
+      };
+    case "push":
+      return {
+        occurrenceIndex,
+        totalSlots: sameIntentSlots.length,
+        preferredPushPattern: prefersVertical ? "vertical_push" : "horizontal_push",
+      };
+    case "pull":
+      return {
+        occurrenceIndex,
+        totalSlots: sameIntentSlots.length,
+        preferredPullPattern: prefersVertical ? "vertical_pull" : "horizontal_pull",
+      };
+    default:
+      return undefined;
+  }
+}
+
+function findDirectionalReplacementCandidate(params: {
+  selection: SelectionOutput;
+  exerciseById: Map<string, EngineExercise>;
+  objective: ReturnType<typeof buildSelectionObjective>;
+  pinnedExerciseIds: Set<string>;
+  candidatePool: EngineExercise[];
+  removedExerciseId: string;
+  preferredPattern: MovementPatternV2;
+  side: DirectionalExerciseSide;
+}): EngineExercise | undefined {
+  const removedExercise = params.exerciseById.get(params.removedExerciseId);
+  if (!removedExercise) {
+    return undefined;
+  }
+
+  const selectedWithoutRemoved = params.selection.selectedExerciseIds
+    .filter((exerciseId) => exerciseId !== params.removedExerciseId)
+    .map((exerciseId) => params.exerciseById.get(exerciseId))
+    .filter((exercise): exercise is EngineExercise => Boolean(exercise));
+  const selectedWithoutRemovedIds = new Set(
+    params.selection.selectedExerciseIds.filter((exerciseId) => exerciseId !== params.removedExerciseId)
+  );
+  const removedDominantMuscles = new Set(getDominantStimulusMuscles(removedExercise));
+  const removedIsMainLift = isMainLiftExercise(removedExercise, params.objective);
+
+  return [...params.candidatePool]
+    .filter((candidate) => candidate.id !== params.removedExerciseId)
+    .filter((candidate) => !selectedWithoutRemovedIds.has(candidate.id))
+    .filter((candidate) => !params.pinnedExerciseIds.has(candidate.id))
+    .filter((candidate) => getDirectionalExerciseSide(candidate) === params.side)
+    .filter((candidate) => getPrimaryDirectionalPattern(candidate) === params.preferredPattern)
+    .filter((candidate) => isMainLiftExercise(candidate, params.objective) === removedIsMainLift)
+    .filter((candidate) => !sharesBaseExerciseName(selectedWithoutRemoved, candidate))
+    .sort((left, right) => {
+      const leftSharesDominant = getDominantStimulusMuscles(left).some((muscle) =>
+        removedDominantMuscles.has(muscle)
+      );
+      const rightSharesDominant = getDominantStimulusMuscles(right).some((muscle) =>
+        removedDominantMuscles.has(muscle)
+      );
+      if (leftSharesDominant !== rightSharesDominant) {
+        return leftSharesDominant ? -1 : 1;
+      }
+
+      const leftCompound = left.isCompound === removedExercise.isCompound;
+      const rightCompound = right.isCompound === removedExercise.isCompound;
+      if (leftCompound !== rightCompound) {
+        return leftCompound ? -1 : 1;
+      }
+
+      const leftSfr = left.sfrScore ?? 0;
+      const rightSfr = right.sfrScore ?? 0;
+      if (leftSfr !== rightSfr) {
+        return rightSfr - leftSfr;
+      }
+
+      const leftFatigue = left.fatigueCost ?? 3;
+      const rightFatigue = right.fatigueCost ?? 3;
+      if (leftFatigue !== rightFatigue) {
+        return leftFatigue - rightFatigue;
+      }
+
+      return left.name.localeCompare(right.name);
+    })[0];
+}
+
+function applySlotAwareDiversificationPass(params: {
+  mapped: MappedGenerationContext;
+  objective: ReturnType<typeof buildSelectionObjective>;
+  selection: SelectionOutput;
+  exerciseById: Map<string, EngineExercise>;
+  candidatePool: EngineExercise[];
+  pinnedExerciseIds: Set<string>;
+  sessionIntent: GenerateIntentSessionInput["intent"];
+  sessionSlotId?: string;
+}): { selection: SelectionOutput; tradeoffs: PlannerTradeoffDiagnostic[] } {
+  const selection = cloneSelectionOutput(params.selection);
+  const tradeoffs: PlannerTradeoffDiagnostic[] = [];
+
+  const sortRemovableIds = (exerciseIds: string[]): string[] =>
+    [...exerciseIds].sort((leftExerciseId, rightExerciseId) =>
+      compareRemovalPriority({
+        leftExerciseId,
+        rightExerciseId,
+        selection,
+        exerciseById: params.exerciseById,
+      })
+    );
+
+  const removeIfSafe = (exerciseId: string, code: string, message: string): boolean => {
+    if (
+      params.pinnedExerciseIds.has(exerciseId) ||
+      !canRemoveSelectedExercise({
+        selection,
+        objective: params.objective,
+        exerciseId,
+      })
+    ) {
+      return false;
+    }
+
+    removeSelectedExercise(selection, exerciseId);
+    tradeoffs.push({
+      layer: "closure",
+      code,
+      exerciseId,
+      message,
+    });
+    return true;
+  };
+
+  const frontDeltIsolationIds = sortRemovableIds(
+    selection.accessoryIds.filter((exerciseId) => {
+      if (params.pinnedExerciseIds.has(exerciseId)) {
+        return false;
+      }
+      const exercise = params.exerciseById.get(exerciseId);
+      if (!exercise || !isFrontDeltIsolationExercise(exercise, params.objective)) {
+        return false;
+      }
+      return hasPressingCompoundFrontDeltCoverage({
+        selection,
+        exerciseById: params.exerciseById,
+        objective: params.objective,
+        excludeExerciseId: exerciseId,
+      });
+    })
+  );
+  for (const frontDeltIsolationId of frontDeltIsolationIds) {
+    const exercise = params.exerciseById.get(frontDeltIsolationId);
+    if (!exercise) {
+      continue;
+    }
+    removeIfSafe(
+      frontDeltIsolationId,
+      "front_delt_isolation_trimmed",
+      `${exercise.name} was trimmed because pressing compounds already cover front delts in this session.`
+    );
+  }
+
+  const duplicateAccessoryBuckets = new Map<MovementPatternV2, string[]>();
+  for (const accessoryId of selection.accessoryIds) {
+    if (params.pinnedExerciseIds.has(accessoryId)) {
+      continue;
+    }
+    const exercise = params.exerciseById.get(accessoryId);
+    const pattern = exercise ? getPrimaryDirectionalPattern(exercise) : undefined;
+    if (!exercise || !pattern) {
+      continue;
+    }
+    const bucket = duplicateAccessoryBuckets.get(pattern) ?? [];
+    bucket.push(accessoryId);
+    duplicateAccessoryBuckets.set(pattern, bucket);
+  }
+  for (const [pattern, duplicateIds] of duplicateAccessoryBuckets) {
+    if (duplicateIds.length <= 1) {
+      continue;
+    }
+    const sortedIds = sortRemovableIds(duplicateIds);
+    for (const duplicateId of sortedIds.slice(0, -1)) {
+      const exercise = params.exerciseById.get(duplicateId);
+      if (!exercise) {
+        continue;
+      }
+      removeIfSafe(
+        duplicateId,
+        "directional_accessory_overlap_trimmed",
+        `${exercise.name} was trimmed to reduce redundant ${pattern.replace("_", " ")} accessory overlap in the same session.`
+      );
+    }
+  }
+
+  const hingeAccessoryIds = sortRemovableIds(
+    selection.accessoryIds.filter((exerciseId) => {
+      if (params.pinnedExerciseIds.has(exerciseId)) {
+        return false;
+      }
+      const exercise = params.exerciseById.get(exerciseId);
+      return Boolean(exercise?.movementPatterns?.includes("hinge"));
+    })
+  );
+  for (const hingeAccessoryId of hingeAccessoryIds.slice(0, -1)) {
+    const exercise = params.exerciseById.get(hingeAccessoryId);
+    if (!exercise) {
+      continue;
+    }
+    removeIfSafe(
+      hingeAccessoryId,
+      "hinge_accessory_overlap_trimmed",
+      `${exercise.name} was trimmed to avoid stacking multiple accessory hinge patterns in one session.`
+    );
+  }
+
+  const slotPreference = getRepeatedIntentSlotDirectionalPreference({
+    mapped: params.mapped,
+    sessionIntent: params.sessionIntent,
+    slotId: params.sessionSlotId,
+  });
+
+  const applyDirectionalPreference = (
+    side: DirectionalExerciseSide,
+    preferredPattern: MovementPatternV2 | undefined
+  ) => {
+    if (!preferredPattern) {
+      return;
+    }
+
+    const getSelectedDirectionalIds = () =>
+      selection.selectedExerciseIds.filter((exerciseId) => {
+        const exercise = params.exerciseById.get(exerciseId);
+        return exercise != null && getDirectionalExerciseSide(exercise) === side;
+      });
+    const getSelectedPreferredIds = () =>
+      getSelectedDirectionalIds().filter((exerciseId) => {
+        const exercise = params.exerciseById.get(exerciseId);
+        return exercise != null && getPrimaryDirectionalPattern(exercise) === preferredPattern;
+      });
+    const getSelectedNonPreferredRemovableIds = () =>
+      sortRemovableIds(
+        getSelectedDirectionalIds().filter((exerciseId) => {
+          if (params.pinnedExerciseIds.has(exerciseId)) {
+            return false;
+          }
+          const exercise = params.exerciseById.get(exerciseId);
+          return exercise != null && getPrimaryDirectionalPattern(exercise) !== preferredPattern;
+        })
+      );
+
+    if (getSelectedDirectionalIds().length <= 1) {
+      return;
+    }
+
+    if (getSelectedPreferredIds().length === 0) {
+      const replacementTargetId = getSelectedNonPreferredRemovableIds()[0];
+      if (replacementTargetId) {
+        const replacement = findDirectionalReplacementCandidate({
+          selection,
+          exerciseById: params.exerciseById,
+          objective: params.objective,
+          pinnedExerciseIds: params.pinnedExerciseIds,
+          candidatePool: params.candidatePool,
+          removedExerciseId: replacementTargetId,
+          preferredPattern,
+          side,
+        });
+        if (replacement) {
+          const replacedExercise = params.exerciseById.get(replacementTargetId);
+          replaceSelectedExercise({
+            selection,
+            exerciseById: params.exerciseById,
+            objective: params.objective,
+            fromExerciseId: replacementTargetId,
+            toExercise: replacement,
+            reason: `slot_directional_preference:${preferredPattern}`,
+          });
+          tradeoffs.push({
+            layer: "closure",
+            code: "slot_directional_replacement",
+            exerciseId: replacement.id,
+            message: `${replacedExercise?.name ?? replacementTargetId} was replaced with ${replacement.name} to diversify the ${params.sessionSlotId ?? params.sessionIntent} slot toward ${preferredPattern.replace("_", " ")} work.`,
+          });
+        }
+      }
+    }
+
+    if (getSelectedPreferredIds().length === 0) {
+      return;
+    }
+
+    for (const nonPreferredId of getSelectedNonPreferredRemovableIds()) {
+      const exercise = params.exerciseById.get(nonPreferredId);
+      if (!exercise) {
+        continue;
+      }
+      if (getSelectedPreferredIds().length === 0) {
+        break;
+      }
+      removeIfSafe(
+        nonPreferredId,
+        "slot_directional_overlap_trimmed",
+        `${exercise.name} was trimmed so ${params.sessionSlotId ?? params.sessionIntent} keeps the ${preferredPattern.replace("_", " ")} emphasis instead of converging with the other same-intent slot.`
+      );
+    }
+  };
+
+  if (slotPreference) {
+    applyDirectionalPreference("press", slotPreference.preferredPushPattern);
+    applyDirectionalPreference("pull", slotPreference.preferredPullPattern);
   }
 
   return { selection, tradeoffs };
@@ -2836,8 +3394,19 @@ export function composeIntentSessionFromMappedContext(
     exerciseById,
     candidatePool: closurePool,
   });
-  const selection = accessorySplitResult.selection;
+  const diversificationResult = applySlotAwareDiversificationPass({
+    mapped,
+    objective,
+    selection: accessorySplitResult.selection,
+    exerciseById,
+    candidatePool: closurePool,
+    pinnedExerciseIds: pinnedRoleIds,
+    sessionIntent: input.intent,
+    sessionSlotId: input.slotId,
+  });
+  const selection = diversificationResult.selection;
   plannerTradeoffs.push(...accessorySplitResult.tradeoffs);
+  plannerTradeoffs.push(...diversificationResult.tradeoffs);
   for (const [exerciseId, diagnostic] of Object.entries(
     buildPlannerExerciseDiagnostics(selection, exerciseById)
   )) {

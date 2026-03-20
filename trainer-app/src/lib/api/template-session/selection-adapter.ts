@@ -8,10 +8,14 @@ import { VOLUME_LANDMARKS, MUSCLE_SPLIT_MAP, computeWeeklyVolumeTarget } from "@
 import { filterPerformedHistory, sortHistoryByDateDesc } from "@/lib/engine/history";
 import type { VolumePlanByMuscle } from "@/lib/engine/volume";
 import { getSessionMuscleOpportunityWeight } from "@/lib/planning/session-opportunities";
-import { resolveSessionSlotProfile } from "@/lib/planning/session-slot-profile";
+import { resolveSessionSlotPolicy } from "@/lib/planning/session-slot-profile";
+import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-semantics";
 import type { MappedGenerationContext } from "./types";
 import { buildRemainingWeekVolumeContext } from "./remaining-week-planner";
-import { readRuntimeSlotSequence } from "@/lib/api/mesocycle-slot-runtime";
+import {
+  buildRemainingFutureSlotsFromRuntime,
+  readRuntimeSlotSequence,
+} from "@/lib/api/mesocycle-slot-runtime";
 
 const CONTINUITY_USER_PREFERENCE_WEIGHT = 0.35;
 const CONTINUITY_MIN_ROTATION_WEIGHT = 0.01;
@@ -115,6 +119,42 @@ function getContinuitySourceEntry(params: {
   }
 
   return getMostRecentPerformedIntentEntry(mapped.history, sessionIntent);
+}
+
+function getCurrentWeekPerformedAdvancingSlotSnapshots(
+  mapped: MappedGenerationContext
+): Array<{ slotId?: string | null; intent?: string | null }> {
+  return filterPerformedHistory(mapped.history)
+    .filter((entry) =>
+      deriveSessionSemantics({
+        advancesSplit: entry.advancesSplit,
+      }).eligibleForUniqueIntentSubtraction
+    )
+    .filter((entry) => {
+      const snapshot = entry.mesocycleSnapshot;
+      if (!snapshot) {
+        return false;
+      }
+      if (snapshot.week !== mapped.lifecycleWeek) {
+        return false;
+      }
+      if (mapped.activeMesocycle?.id && snapshot.mesocycleId && snapshot.mesocycleId !== mapped.activeMesocycle.id) {
+        return false;
+      }
+      return true;
+    })
+    .sort((left, right) => {
+      const leftSession = left.mesocycleSnapshot?.session ?? Number.POSITIVE_INFINITY;
+      const rightSession = right.mesocycleSnapshot?.session ?? Number.POSITIVE_INFINITY;
+      if (leftSession !== rightSession) {
+        return leftSession - rightSession;
+      }
+      return new Date(left.date).getTime() - new Date(right.date).getTime();
+    })
+    .map((entry) => ({
+      slotId: entry.mesocycleSnapshot?.slotId,
+      intent: entry.sessionIntent ?? entry.forcedSplit ?? null,
+    }));
 }
 
 function applyContinuityWeightBias(
@@ -312,22 +352,29 @@ export function buildSelectionObjective(
     }
   }
 
-  const remainingWeek = buildRemainingWeekVolumeContext({
-    mapped,
-    sessionIntent,
-    sessionSlotId: options?.sessionSlotId,
-    weeklyTarget,
-    effectiveActual,
-    fatigueState,
-  });
   const runtimeSlotSequence = readRuntimeSlotSequence({
     slotSequenceJson: mapped.activeMesocycle?.slotSequenceJson,
     weeklySchedule: mapped.mappedConstraints.weeklySchedule,
   });
-  const slotProfile = resolveSessionSlotProfile({
+  const slotPolicy = resolveSessionSlotPolicy({
     sessionIntent,
     slotId: options?.sessionSlotId,
     slotSequence: runtimeSlotSequence,
+    futureSlots: buildRemainingFutureSlotsFromRuntime({
+      slotSequenceJson: mapped.activeMesocycle?.slotSequenceJson,
+      weeklySchedule: mapped.mappedConstraints.weeklySchedule,
+      performedAdvancingSlotsThisWeek: getCurrentWeekPerformedAdvancingSlotSnapshots(mapped),
+      currentSlotId: options?.sessionSlotId,
+      currentIntent: sessionIntent,
+    }),
+  });
+  const remainingWeek = buildRemainingWeekVolumeContext({
+    mapped,
+    sessionIntent,
+    slotPolicy,
+    weeklyTarget,
+    effectiveActual,
+    fatigueState,
   });
 
   const constraints: SelectionObjective["constraints"] = {
@@ -383,7 +430,7 @@ export function buildSelectionObjective(
       avoidExerciseIds: new Set(mapped.mappedPreferences?.avoidExerciseIds ?? []),
     },
     blockContext: mapped.blockContext ?? undefined,
-    slotProfile: slotProfile ?? undefined,
+    slotPolicy,
     goals: mapped.mappedGoals,
     trainingAge: mapped.mappedProfile.trainingAge,
     sessionIntent,

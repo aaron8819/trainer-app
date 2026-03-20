@@ -15,7 +15,7 @@ import type {
   SelectionPreferences,
   SelectionObjective,
 } from "./types";
-import type { SessionSlotProfile } from "@/lib/planning/session-slot-profile";
+import type { SessionSlotCompoundBias } from "@/lib/planning/session-slot-profile";
 
 
 /**
@@ -280,15 +280,15 @@ function normalizeMuscleName(muscle: string): string {
 
 export function scoreCompoundSlotProfileAlignment(
   exercise: Exercise,
-  slotProfile: SessionSlotProfile | undefined
+  compoundBias: SessionSlotCompoundBias | undefined
 ): number {
-  if (!slotProfile || !(exercise.isCompound ?? false)) {
+  if (!compoundBias || !(exercise.isCompound ?? false)) {
     return 0;
   }
 
-  const preferredPatterns = slotProfile.compoundBias?.preferredMovementPatterns ?? [];
+  const preferredPatterns = compoundBias.preferredMovementPatterns ?? [];
   const preferredPrimaryMuscles = new Set(
-    (slotProfile.compoundBias?.preferredPrimaryMuscles ?? []).map(normalizeMuscleName)
+    (compoundBias.preferredPrimaryMuscles ?? []).map(normalizeMuscleName)
   );
 
   const directives: boolean[] = [];

@@ -489,7 +489,7 @@ describe("buildSelectionObjective continuity bias", () => {
     expect(objective.preferences.favoriteExerciseIds.has("machine-chest-press")).toBe(false);
   });
 
-  it("resolves a canonical repeated-slot profile into the selection objective", () => {
+  it("resolves the canonical slot policy into the selection objective", () => {
     const mapped = makeMappedContext([], {
       weeklySchedule: ["upper", "lower", "upper", "lower"],
       lifecycleVolumeTargets: {
@@ -521,9 +521,10 @@ describe("buildSelectionObjective continuity bias", () => {
       sessionSlotId: "lower_b",
     });
 
-    expect(objective.slotProfile).toEqual({
+    expect(objective.slotPolicy?.currentSession).toEqual({
       sessionIntent: "lower",
       slotId: "lower_b",
+      sequenceIndex: 3,
       repeatedSlot: {
         occurrenceIndex: 1,
         totalSlots: 2,
@@ -533,6 +534,11 @@ describe("buildSelectionObjective continuity bias", () => {
         preferredPrimaryMuscles: ["Hamstrings", "Glutes"],
       },
     });
+    expect(objective.slotPolicy?.futurePlanning.futureSlots.map((slot) => slot.slotId)).toEqual([
+      "upper_a",
+      "lower_a",
+      "upper_b",
+    ]);
   });
 
   it("gives repeated upper slots distinct upstream compound spines when valid alternatives exist", () => {

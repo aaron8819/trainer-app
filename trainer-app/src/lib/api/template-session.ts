@@ -72,8 +72,6 @@ import {
   getSessionAnchorPolicy,
   type SessionInventoryKind,
 } from "@/lib/planning/session-opportunities";
-import { resolveSessionSlotProfile } from "@/lib/planning/session-slot-profile";
-import { readRuntimeSlotSequence } from "@/lib/api/mesocycle-slot-runtime";
 
 export type { GenerateIntentSessionInput } from "./template-session/types";
 
@@ -1056,9 +1054,7 @@ function hasPressingCompoundFrontDeltCoverage(params: {
 }
 
 function getRepeatedIntentSlotDirectionalPreference(params: {
-  mapped: MappedGenerationContext;
-  sessionIntent: GenerateIntentSessionInput["intent"];
-  slotId?: string;
+  objective: ReturnType<typeof buildSelectionObjective>;
 }):
   | {
       occurrenceIndex: number;
@@ -1067,19 +1063,11 @@ function getRepeatedIntentSlotDirectionalPreference(params: {
       preferredPullPattern?: MovementPatternV2;
     }
   | undefined {
-  const runtimeSlotSequence = readRuntimeSlotSequence({
-    slotSequenceJson: params.mapped.activeMesocycle?.slotSequenceJson,
-    weeklySchedule: params.mapped.mappedConstraints.weeklySchedule,
-  });
-  const slotProfile = resolveSessionSlotProfile({
-    sessionIntent: params.sessionIntent,
-    slotId: params.slotId,
-    slotSequence: runtimeSlotSequence,
-  });
-  if (!slotProfile) {
+  const currentSession = params.objective.slotPolicy?.currentSession;
+  if (!currentSession?.repeatedSlot) {
     return undefined;
   }
-  const preferredPatterns = slotProfile.compoundBias?.preferredMovementPatterns ?? [];
+  const preferredPatterns = currentSession.compoundBias?.preferredMovementPatterns ?? [];
   const preferredPushPattern = preferredPatterns.find(
     (pattern): pattern is Extract<MovementPatternV2, "horizontal_push" | "vertical_push"> =>
       pattern === "horizontal_push" || pattern === "vertical_push"
@@ -1094,8 +1082,8 @@ function getRepeatedIntentSlotDirectionalPreference(params: {
   }
 
   return {
-    occurrenceIndex: slotProfile.repeatedSlot.occurrenceIndex,
-    totalSlots: slotProfile.repeatedSlot.totalSlots,
+    occurrenceIndex: currentSession.repeatedSlot.occurrenceIndex,
+    totalSlots: currentSession.repeatedSlot.totalSlots,
     preferredPushPattern,
     preferredPullPattern,
   };
@@ -1295,9 +1283,7 @@ function applySlotAwareDiversificationPass(params: {
   }
 
   const slotPreference = getRepeatedIntentSlotDirectionalPreference({
-    mapped: params.mapped,
-    sessionIntent: params.sessionIntent,
-    slotId: params.sessionSlotId,
+    objective: params.objective,
   });
 
   const applyDirectionalPreference = (

@@ -8,7 +8,7 @@
 import type { Exercise, Muscle, Goals, TrainingAge } from "../types";
 import type { BlockContext } from "../periodization/types";
 import type { SessionIntent } from "../session-types";
-import type { SessionSlotProfile } from "@/lib/planning/session-slot-profile";
+import type { SessionSlotPolicy } from "@/lib/planning/session-slot-profile";
 
 // ============================================================================
 // Selection Objective (Input to Optimizer)
@@ -49,9 +49,9 @@ export interface SelectionObjective {
   blockContext?: BlockContext;
 
   /**
-   * Canonical repeated-slot planning profile, if the current session resolves to one.
+   * Canonical slot-policy planning context for the current session and future slots.
    */
-  slotProfile?: SessionSlotProfile;
+  slotPolicy?: SessionSlotPolicy;
 
   /**
    * User preferences

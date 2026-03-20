@@ -89,7 +89,10 @@ export function buildCandidate(
     movementNovelty: scoreMovementNovelty(exercise, objective, []),
     sraAlignment: scoreSRAAlignment(exercise, objective.sraContext),
     userPreference: scoreUserPreference(exercise, objective.preferences),
-    slotProfileAlignment: scoreCompoundSlotProfileAlignment(exercise, objective.slotProfile),
+    slotProfileAlignment: scoreCompoundSlotProfileAlignment(
+      exercise,
+      objective.slotPolicy?.currentSession?.compoundBias
+    ),
   };
 
   // Compute weighted total score

@@ -157,6 +157,11 @@ function formatScoreReason(key: string, value: number, candidate: SelectionCandi
       if (value >= 0.5) return "Partially matches this slot's planned compound emphasis";
       return "";
 
+    case "sessionShapeAlignment":
+      if (value >= 1.0) return "Matches this slot's planned accessory emphasis";
+      if (value >= 0.5) return "Partially matches this slot's planned accessory emphasis";
+      return "";
+
     default:
       return "";
   }

@@ -18,6 +18,17 @@ export type SessionSlotCompoundBias = {
   preferredPrimaryMuscles?: string[];
 };
 
+export type SessionSlotShapeId =
+  | "upper_horizontal_balanced"
+  | "upper_vertical_balanced"
+  | "lower_squat_dominant"
+  | "lower_hinge_dominant";
+
+export type SessionSlotShape = {
+  id: SessionSlotShapeId;
+  preferredAccessoryPrimaryMuscles: string[];
+};
+
 export type SessionSlotCompoundLaneKey = "press" | "pull" | "primary";
 
 export type SessionSlotCompoundLaneTier = "preferred" | "compatible" | "fallback_only";
@@ -50,6 +61,7 @@ export type SessionSlotPolicySlot = {
   repeatedSlot?: RepeatedSlotMetadata;
   compoundBias?: SessionSlotCompoundBias;
   compoundControl?: SessionSlotCompoundControl;
+  sessionShape?: SessionSlotShape;
 };
 
 export type SessionSlotPolicy = {
@@ -173,6 +185,38 @@ function resolveCompoundControl(
   }
 }
 
+function resolveSessionShape(
+  sessionIntent: SessionIntent,
+  occurrenceIndex: number
+): SessionSlotShape | undefined {
+  const prefersVertical = occurrenceIndex % 2 === 1;
+
+  switch (sessionIntent) {
+    case "upper":
+      return prefersVertical
+        ? {
+            id: "upper_vertical_balanced",
+            preferredAccessoryPrimaryMuscles: ["Lats", "Front Delts", "Side Delts"],
+          }
+        : {
+            id: "upper_horizontal_balanced",
+            preferredAccessoryPrimaryMuscles: ["Chest", "Upper Back", "Rear Delts"],
+          };
+    case "lower":
+      return prefersVertical
+        ? {
+            id: "lower_hinge_dominant",
+            preferredAccessoryPrimaryMuscles: ["Hamstrings", "Glutes"],
+          }
+        : {
+            id: "lower_squat_dominant",
+            preferredAccessoryPrimaryMuscles: ["Quads"],
+          };
+    default:
+      return undefined;
+  }
+}
+
 function supportsRepeatedSlotProfiles(intent: SessionIntent): boolean {
   return intent === "upper" || intent === "lower" || intent === "push" || intent === "pull";
 }
@@ -230,6 +274,10 @@ function buildPolicySlot(params: {
     compoundControl:
       repeatedSlot != null
         ? resolveCompoundControl(params.sessionIntent, repeatedSlot.occurrenceIndex)
+        : undefined,
+    sessionShape:
+      repeatedSlot != null
+        ? resolveSessionShape(params.sessionIntent, repeatedSlot.occurrenceIndex)
         : undefined,
   };
 }

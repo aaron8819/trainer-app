@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { computeProposedSets } from "./candidate";
+import { buildCandidate, computeProposedSets } from "./candidate";
 import type { SelectionObjective } from "./types";
 import type { Exercise } from "../types";
 
@@ -73,5 +73,61 @@ describe("candidate evidence guardrails", () => {
     const proposedSets = computeProposedSets(exercise, buildObjective());
 
     expect(proposedSets).toBe(6);
+  });
+
+  it("adds a soft accessory bias from the canonical repeated-slot session shape", () => {
+    const chestAccessory: Exercise = {
+      id: "cable-fly",
+      name: "Cable Fly",
+      movementPatterns: ["isolation"],
+      splitTags: ["push"],
+      jointStress: "low",
+      isMainLiftEligible: false,
+      isCompound: false,
+      fatigueCost: 1,
+      sfrScore: 4,
+      lengthPositionScore: 4,
+      equipment: ["cable"],
+      primaryMuscles: ["Chest"],
+      secondaryMuscles: [],
+    };
+    const tricepsAccessory: Exercise = {
+      id: "triceps-pressdown",
+      name: "Triceps Pressdown",
+      movementPatterns: ["extension", "isolation"],
+      splitTags: ["push"],
+      jointStress: "low",
+      isMainLiftEligible: false,
+      isCompound: false,
+      fatigueCost: 1,
+      sfrScore: 4,
+      lengthPositionScore: 4,
+      equipment: ["cable"],
+      primaryMuscles: ["Triceps"],
+      secondaryMuscles: [],
+    };
+    const objective = buildObjective({
+      slotPolicy: {
+        currentSession: {
+          sessionIntent: "upper",
+          slotId: "upper_a",
+          sequenceIndex: 0,
+          sessionShape: {
+            id: "upper_horizontal_balanced",
+            preferredAccessoryPrimaryMuscles: ["Chest", "Upper Back", "Rear Delts"],
+          },
+        },
+        futurePlanning: {
+          futureSlots: [],
+        },
+      },
+    });
+
+    const chestCandidate = buildCandidate(chestAccessory, objective);
+    const tricepsCandidate = buildCandidate(tricepsAccessory, objective);
+
+    expect(chestCandidate.scores.sessionShapeAlignment).toBe(1);
+    expect(tricepsCandidate.scores.sessionShapeAlignment).toBe(0);
+    expect(chestCandidate.totalScore).toBeGreaterThan(tricepsCandidate.totalScore);
   });
 });

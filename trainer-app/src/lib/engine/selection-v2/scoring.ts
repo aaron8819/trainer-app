@@ -15,7 +15,10 @@ import type {
   SelectionPreferences,
   SelectionObjective,
 } from "./types";
-import type { SessionSlotCompoundBias } from "@/lib/planning/session-slot-profile";
+import type {
+  SessionSlotCompoundBias,
+  SessionSlotShape,
+} from "@/lib/planning/session-slot-profile";
 
 
 /**
@@ -310,4 +313,34 @@ export function scoreCompoundSlotProfileAlignment(
   }
 
   return directives.filter(Boolean).length / directives.length;
+}
+
+export function scoreSessionShapeAlignment(
+  exercise: Exercise,
+  sessionShape: SessionSlotShape | undefined
+): number {
+  if (!sessionShape || (exercise.isCompound ?? false)) {
+    return 0;
+  }
+
+  const preferredPrimaryMuscles = new Set(
+    sessionShape.preferredAccessoryPrimaryMuscles.map(normalizeMuscleName)
+  );
+  if (preferredPrimaryMuscles.size === 0) {
+    return 0;
+  }
+
+  const primaryMuscles = exercise.primaryMuscles ?? [];
+  if (primaryMuscles.length === 0) {
+    return 0;
+  }
+
+  const matchingPrimaryCount = primaryMuscles.filter((muscle) =>
+    preferredPrimaryMuscles.has(normalizeMuscleName(muscle))
+  ).length;
+  if (matchingPrimaryCount === 0) {
+    return 0;
+  }
+
+  return matchingPrimaryCount / primaryMuscles.length;
 }

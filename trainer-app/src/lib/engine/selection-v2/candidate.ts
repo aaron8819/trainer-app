@@ -21,11 +21,13 @@ import {
   scoreSRAAlignment,
   scoreUserPreference,
   scoreCompoundSlotProfileAlignment,
+  scoreSessionShapeAlignment,
 } from "./scoring";
 import { getGoalRepRanges, getGoalSetMultiplier } from "../rules";
 import { getRestSeconds, REST_SECONDS } from "../prescription";
 
 const COMPOUND_SLOT_PROFILE_ALIGNMENT_WEIGHT = 0.18;
+const SESSION_SHAPE_ALIGNMENT_WEIGHT = 0.12;
 
 function buildDeficitScoringContribution(
   exercise: Exercise,
@@ -93,6 +95,10 @@ export function buildCandidate(
       exercise,
       objective.slotPolicy?.currentSession?.compoundBias
     ),
+    sessionShapeAlignment: scoreSessionShapeAlignment(
+      exercise,
+      objective.slotPolicy?.currentSession?.sessionShape
+    ),
   };
 
   // Compute weighted total score
@@ -104,7 +110,8 @@ export function buildCandidate(
     scores.movementNovelty * objective.weights.movementDiversity +
     scores.sraAlignment * objective.weights.sraReadiness +
     scores.userPreference * objective.weights.userPreference +
-    (scores.slotProfileAlignment ?? 0) * COMPOUND_SLOT_PROFILE_ALIGNMENT_WEIGHT;
+    (scores.slotProfileAlignment ?? 0) * COMPOUND_SLOT_PROFILE_ALIGNMENT_WEIGHT +
+    (scores.sessionShapeAlignment ?? 0) * SESSION_SHAPE_ALIGNMENT_WEIGHT;
 
   return {
     exercise,

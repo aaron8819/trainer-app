@@ -506,6 +506,7 @@ export function mapSelectionResult(
           sraAlignment: candidate.scores.sraAlignment,
           userPreference: candidate.scores.userPreference,
           slotProfileAlignment: candidate.scores.slotProfileAlignment ?? 0,
+          sessionShapeAlignment: candidate.scores.sessionShapeAlignment ?? 0,
         },
         hardFilterPass: true,
         selectedStep: "accessory_pick",

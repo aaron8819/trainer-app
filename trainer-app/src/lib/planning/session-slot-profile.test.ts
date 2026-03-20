@@ -48,6 +48,10 @@ describe("resolveSessionSlotPolicy", () => {
       compoundBias: {
         preferredMovementPatterns: ["horizontal_push", "horizontal_pull"],
       },
+      sessionShape: {
+        id: "upper_horizontal_balanced",
+        preferredAccessoryPrimaryMuscles: ["Chest", "Upper Back", "Rear Delts"],
+      },
       compoundControl: {
         lanes: [
           {
@@ -82,6 +86,10 @@ describe("resolveSessionSlotPolicy", () => {
       },
       compoundBias: {
         preferredMovementPatterns: ["vertical_push", "vertical_pull"],
+      },
+      sessionShape: {
+        id: "upper_vertical_balanced",
+        preferredAccessoryPrimaryMuscles: ["Lats", "Front Delts", "Side Delts"],
       },
       compoundControl: {
         lanes: [
@@ -121,6 +129,10 @@ describe("resolveSessionSlotPolicy", () => {
         preferredMovementPatterns: ["squat"],
         preferredPrimaryMuscles: ["Quads"],
       },
+      sessionShape: {
+        id: "lower_squat_dominant",
+        preferredAccessoryPrimaryMuscles: ["Quads"],
+      },
       compoundControl: {
         lanes: [
           {
@@ -151,6 +163,10 @@ describe("resolveSessionSlotPolicy", () => {
       compoundBias: {
         preferredMovementPatterns: ["hinge"],
         preferredPrimaryMuscles: ["Hamstrings", "Glutes"],
+      },
+      sessionShape: {
+        id: "lower_hinge_dominant",
+        preferredAccessoryPrimaryMuscles: ["Hamstrings", "Glutes"],
       },
       compoundControl: {
         lanes: [
@@ -213,6 +229,10 @@ describe("resolveSessionSlotPolicy", () => {
           preferredMovementPatterns: ["squat"],
           preferredPrimaryMuscles: ["Quads"],
         },
+        sessionShape: {
+          id: "lower_squat_dominant",
+          preferredAccessoryPrimaryMuscles: ["Quads"],
+        },
         compoundControl: {
           lanes: [
             {
@@ -235,6 +255,10 @@ describe("resolveSessionSlotPolicy", () => {
         },
         compoundBias: {
           preferredMovementPatterns: ["vertical_push", "vertical_pull"],
+        },
+        sessionShape: {
+          id: "upper_vertical_balanced",
+          preferredAccessoryPrimaryMuscles: ["Lats", "Front Delts", "Side Delts"],
         },
         compoundControl: {
           lanes: [

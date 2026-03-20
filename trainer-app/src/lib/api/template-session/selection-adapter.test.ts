@@ -533,6 +533,10 @@ describe("buildSelectionObjective continuity bias", () => {
         preferredMovementPatterns: ["hinge"],
         preferredPrimaryMuscles: ["Hamstrings", "Glutes"],
       },
+      sessionShape: {
+        id: "lower_hinge_dominant",
+        preferredAccessoryPrimaryMuscles: ["Hamstrings", "Glutes"],
+      },
       compoundControl: {
         lanes: [
           {
@@ -642,6 +646,52 @@ describe("buildSelectionObjective continuity bias", () => {
       ["press", "preferred"],
       ["pull", "preferred"],
     ]);
+  });
+
+  it("threads distinct repeated-slot session-shape refinement through the selection objective", () => {
+    const mapped = makeMappedContext([], {
+      weeklySchedule: ["upper", "lower", "upper", "lower"],
+      lifecycleVolumeTargets: {
+        Chest: 10,
+        Lats: 10,
+        "Upper Back": 10,
+        "Front Delts": 8,
+        "Rear Delts": 8,
+        "Side Delts": 8,
+        Biceps: 8,
+        Triceps: 8,
+      },
+    });
+    mapped.activeMesocycle = {
+      id: "meso-1",
+      slotSequenceJson: {
+        version: 1,
+        source: "handoff_draft",
+        sequenceMode: "ordered_flexible",
+        slots: [
+          { slotId: "upper_a", intent: "UPPER" },
+          { slotId: "lower_a", intent: "LOWER" },
+          { slotId: "upper_b", intent: "UPPER" },
+          { slotId: "lower_b", intent: "LOWER" },
+        ],
+      },
+    } as unknown as MappedGenerationContext["activeMesocycle"];
+
+    const upperAObjective = buildSelectionObjective(mapped, "upper", undefined, {
+      sessionSlotId: "upper_a",
+    });
+    const upperBObjective = buildSelectionObjective(mapped, "upper", undefined, {
+      sessionSlotId: "upper_b",
+    });
+
+    expect(upperAObjective.slotPolicy?.currentSession?.sessionShape).toEqual({
+      id: "upper_horizontal_balanced",
+      preferredAccessoryPrimaryMuscles: ["Chest", "Upper Back", "Rear Delts"],
+    });
+    expect(upperBObjective.slotPolicy?.currentSession?.sessionShape).toEqual({
+      id: "upper_vertical_balanced",
+      preferredAccessoryPrimaryMuscles: ["Lats", "Front Delts", "Side Delts"],
+    });
   });
 
   it("gives repeated upper slots distinct upstream compound spines when valid alternatives exist", () => {

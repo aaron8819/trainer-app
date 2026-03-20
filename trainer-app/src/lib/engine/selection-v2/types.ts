@@ -321,6 +321,9 @@ export interface CandidateScores {
 
   /** Alignment to the canonical repeated-slot compound profile */
   slotProfileAlignment?: number;
+
+  /** Alignment to the canonical repeated-slot accessory/session-shape refinement */
+  sessionShapeAlignment?: number;
 }
 
 // ============================================================================

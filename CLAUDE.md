@@ -1,190 +1,109 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+## Repo Scope
+- Most active code lives in `trainer-app/`. Run app, test, Prisma, and audit commands from that directory.
+- This repo is a single-user, local-first personal training app built with Next.js App Router, Prisma, and Postgres.
+- The fastest canonical doc entry point is `trainer-app/docs/00_START_HERE.md`.
 
-## Project Layout
+## Repo Map
+- `trainer-app/src/app`: App Router pages and route handlers only.
+- `trainer-app/src/app/api/**/route.ts`: request parsing, validation, owner resolution, and orchestration entrypoints.
+- `trainer-app/src/lib/api`: DB-backed orchestration, read models, lifecycle, and runtime composition.
+- `trainer-app/src/lib/engine`: pure generation/progression/periodization/readiness logic. Keep persistence out.
+- `trainer-app/src/lib/session-semantics`, `src/lib/progression`, `src/lib/ui`, `src/lib/audit`: shared semantic seams.
+- `trainer-app/prisma`: schema, migrations, seed, and one-off repair/backfill scripts.
+- `trainer-app/docs/01-09`: canonical runtime docs. `docs/archive/` is historical context, not active contract truth.
 
-The app lives in the `trainer-app/` subdirectory. **All commands below must be run from `trainer-app/`.**
+## Explore Before Editing
+- Do not change code until you have identified the owning seam, read the current route/page, the owning `src/lib/*` implementation, and the nearby tests.
+- Start with `trainer-app/docs/00_START_HERE.md`, then read the owning canonical doc for the seam you are changing.
+- Confirm an existing canonical helper does not already own the behavior before adding or moving logic.
+- Use `rg` first. Typical passes:
+- `rg "<feature|symbol|state>" trainer-app/src trainer-app/docs`
+- `rg --files trainer-app/src | rg "<feature>"`
+- `rg --files trainer-app/src -g "*.test.ts" -g "*.test.tsx" | rg "<feature>"`
 
-```bash
-cd trainer-app
-```
+## Canonical Boundaries
+- Resolve runtime identity via `resolveOwner()` in `trainer-app/src/lib/api/workout-context.ts`. Do not add alternate user-resolution paths in app routes.
+- Keep route handlers thin. Business logic belongs in `src/lib/api`; pure decision logic belongs in `src/lib/engine`.
+- `selectionMetadata.sessionDecisionReceipt` is the canonical stored session-decision/evidence payload. Do not introduce parallel top-level mirrors for session context.
+- `deriveSessionSemantics()` is the owner for session-level meaning such as advancing vs non-advancing, progression-history eligibility, and slot consumption.
+- `loadNextWorkoutContext()` is the canonical next-session derivation seam.
+- Mesocycle lifecycle transitions belong in `mesocycle-lifecycle*` and `mesocycle-handoff*`, not in page/UI heuristics.
+- Closed-mesocycle save/log/resume fences belong at route/workflow contracts, not client-only checks.
+- Validation-backed enum/runtime contract values are centralized in `trainer-app/docs/contracts/runtime-contracts.json` and `trainer-app/src/lib/validation.ts`.
 
-## Commands
+## Search-First Workflow
+- Locate all callsites of a symbol or behavior before modifying it.
+- If a behavior appears in generation, save, explainability, review, and history, assume there is already a canonical seam and find it first.
+- For read-side/UI work, prefer extending an existing read model in `src/lib/api` or `src/lib/ui` instead of recomputing domain semantics inside components.
+- Treat nearby `*.test.ts` and `*.test.tsx` files as the contract: read them before changing behavior, then update them when behavior changes.
 
-```bash
-npm run dev              # Start Next.js dev server (http://localhost:3000)
-npm run build            # Production build
-npm run lint             # ESLint
-npm test                 # Run all tests (Vitest, once)
-npm run test:watch       # Run tests in watch mode
-npx vitest run src/lib/engine/engine.test.ts              # Run a single test file
-npx vitest run -t "test name substring"                   # Run tests matching a name
-npm run prisma:generate  # Generate Prisma client (also runs on postinstall)
-npm run prisma:studio    # Visual DB browser
-npm run db:seed          # Seed exercises, equipment, muscles, aliases
-npm run export:ppl-options  # Export PPL options from DB
-```
+## Change Safety Rules
+- Do not introduce a second source of truth.
+- Do not move logic across `src/app`, `src/lib/api`, and `src/lib/engine` without a clear ownership reason.
+- Do not introduce new enums, flags, or booleans for domain meaning if a canonical semantic helper already exists.
+- If a value is persisted and treated as canonical, derive from it instead of recomputing it elsewhere.
 
-## Architecture
+## Debugging Workflow
+- Reproduce with the smallest focused test first, then widen only as needed.
+- Default loop:
+- run a focused Vitest file for the changed seam
+- run related route/integration tests if the change crosses API boundaries
+- run `npm run verify` when you touch shared contracts, lifecycle, generation, or broadly reused helpers
+- For generation/lifecycle questions, use the audit CLI before inventing debug code. Start with `trainer-app/docs/09_AUDIT_PLAYBOOK.md`.
+- Useful commands from `trainer-app/`:
+- `npm run test -- <path>`
+- `npm run test:fast`
+- `npm run verify`
+- `npm run verify:contracts`
+- `npm run audit:workout -- --env-file .env.local --mode future-week --owner owner@local`
+- `npm run audit:week-close-handoff -- --env-file .env.local --owner owner@local --target-week <n>`
 
-**Trainer App** is a workout generation engine wrapped in a Next.js full-stack app. It generates PPL (push/pull/legs) workouts based on user profile, goals, constraints, injuries, and session readiness.
+## Domain Semantics That Matter Often
+- The app is receipt-first: generation, save, explainability, workout review, and audits all rely on the persisted session decision receipt.
+- Mesocycle lifecycle is explicit: `ACTIVE_ACCUMULATION -> ACTIVE_DELOAD -> AWAITING_HANDOFF -> COMPLETED`.
+- Deload completion closes into `AWAITING_HANDOFF`; successor mesocycles are created only by explicit accept-next-cycle flow.
+- Optional gap-fill and supplemental deficit sessions are intentionally non-advancing. Their meaning is reconstructed from persisted fields plus canonical classifiers, not new workout enums.
+- `advancesSplit` is a write-side contract. Read-side consumers should derive session meaning via canonical semantics helpers rather than ad hoc booleans.
 
-### Stack
+## Validation Expectations
+- If you change API contracts, receipt shape, or validation enums, update tests and run `npm run verify:contracts`.
+- If you change shared engine/api seams, run the focused tests plus `npm run verify`.
+- If you change Prisma schema or migrations, run `npm run prisma:generate` and keep migration state in sync before trusting runtime behavior.
+- Standalone Prisma scripts in this repo must follow the adapter pattern documented in `trainer-app/docs/07_OPERATIONS.md`; do not use bare `new PrismaClient()` here.
 
-Next.js 16 (App Router) · React 19 · TypeScript (strict mode) · Prisma 7 + PostgreSQL (Supabase) · Zustand · Tailwind CSS 4 · Vitest · Zod 4
+## Definition of Done
+- The behavior is implemented in the correct canonical seam, not patched into an incidental consumer.
+- All callsites of modified symbols or behaviors have been reviewed for consistency.
+- No duplicate or conflicting semantics were introduced across route, orchestration, engine, UI, or audit layers.
+- Existing affected tests pass, and changed behavior is covered by new or updated nearby tests.
+- `npm run verify` is run when shared seams, lifecycle, generation, validation, or contracts are touched.
+- Docs are updated when behavior or contracts change, after the code and tests reflect the final behavior.
 
-### Key Architectural Boundaries
+## Docs Updates
+- When behavior changes, update the canonical doc for that seam in `trainer-app/docs/`, not an archive note.
+- Common mappings:
+- engine/generation/progression/readiness: `docs/02_DOMAIN_ENGINE.md`
+- schema/migrations/runtime persistence: `docs/03_DATA_SCHEMA.md`
+- route payloads/contracts: `docs/04_API_CONTRACTS.md`
+- page flow or review/setup UX: `docs/05_UI_FLOWS.md`
+- test strategy/commands: `docs/06_TESTING.md`
+- operational scripts or repair flows: `docs/07_OPERATIONS.md`
+- audit workflow or artifact interpretation: `docs/08_AUDIT_CLI_DB_VALIDATION.md` or `docs/09_AUDIT_PLAYBOOK.md`
+- Do not duplicate enum lists across multiple prose files; use the canonical contract docs.
+- Do not update docs as a substitute for verifying behavior in code and tests first.
 
-**The engine is pure.** `src/lib/engine/` contains no database access and produces deterministic output given the same inputs + seed. See [docs/architecture.md](trainer-app/docs/architecture.md) for the full engine behavior spec, module map, and generation flow.
+## Common Failure Modes
+- Adding new logic in a consumer instead of extending the canonical seam.
+- Recomputing domain semantics in UI/components instead of shared `src/lib/*` helpers.
+- Introducing parallel state to `selectionMetadata.sessionDecisionReceipt`.
+- Putting business logic in routes instead of `src/lib/api`.
+- Changing behavior without reading the nearby tests that already define the contract.
 
-| Layer | Location | Responsibility |
-|-------|----------|---------------|
-| Engine | `src/lib/engine/` | Exercise selection, volume prescription, load assignment, timeboxing, periodization. **No DB, no Prisma, no I/O.** |
-| API/Context | `src/lib/api/` | DB queries, mapping DB models -> engine types, orchestrating load assignment with DB history |
-| Routes | `src/app/api/` | Thin HTTP handlers, Zod validation via `safeParse` |
-| UI | `src/app/` + `src/components/` | Pages and interactive components |
-| Validation | `src/lib/validation.ts` | Zod schemas shared across routes |
-| DB | `src/lib/db/prisma.ts` | Singleton Prisma client with PrismaPg adapter |
-
-**When to use which layer:**
-- `src/lib/engine/` — Pure computation only. If you need data from the database, accept it as a parameter.
-- `src/lib/api/` — Data loading, DB-to-engine mapping, anything that touches Prisma.
-- `src/app/api/` — Thin HTTP route handlers. Parse request with Zod, call into `src/lib/api/`, return `NextResponse.json()`.
-
-### Anti-Patterns (Don't Do These)
-
-- **Don't add DB/Prisma imports to `src/lib/engine/`**. The engine must stay pure. Pass data in as parameters.
-- **Don't add a `setType` field** to distinguish top sets from back-off sets. This is inferred from `setIndex`.
-- **Don't reset the split queue weekly**. The PPL rotation is perpetual across weeks.
-- **Don't use `Math.random()` in engine code**. Use the seeded PRNG (`random.ts`) so tests are deterministic.
-- **Don't bypass Zod validation in route handlers**. Always use `schema.safeParse(body)` and return 400 on failure.
-- **Don't put business logic in route files** (`src/app/api/`). Route files should be thin — delegate to `src/lib/api/` or `src/lib/engine/`.
-- **Don't weaken volume spike caps or load progression guardrails** without explicit instruction.
-- **Don't select CORE/MOBILITY/PREHAB/CONDITIONING as general accessories**. They only appear in explicit warmup/finisher blocks.
-- **Don't derive structured data from exercise names** (e.g., regex on name to infer movement patterns). Use explicit fields on each exercise definition.
-- **Don't use `filtering.ts` or `pick-accessories-by-slot.ts`** - Deleted in ADR-041. Use `selection-v2` for all exercise selection.
-
-## Conventions
-
-### TypeScript
-
-- **Strict mode is on** (`"strict": true` in tsconfig). Do not weaken it.
-- Engine types use `type` aliases (not `interface`) — see `src/lib/engine/types.ts`. Follow this pattern.
-- Engine types use lowercase string unions (`"push" | "pull" | "legs"`); Prisma enums use UPPER_CASE (`PUSH`, `PULL`, `LEGS`). The `map*` functions in `src/lib/api/workout-context.ts` bridge between them.
-- Use `@/*` path alias for imports (maps to `./src/*`).
-
-### Validation
-
-- All API input validation uses Zod schemas in `src/lib/validation.ts`.
-- Use `schema.safeParse(body)` in route handlers — never trust raw input.
-- When adding a new API endpoint, add its Zod schema to `validation.ts`.
-
-### Error Handling
-
-- Route handlers catch `request.json()` failures: `await request.json().catch(() => ({}))`.
-- Validation failures return `{ error: string }` with status 400.
-- Missing entities return status 404.
-- DB writes that span multiple tables use `prisma.$transaction()` (see `save/route.ts`).
-- The engine does not throw — it degrades gracefully (e.g., returns fewer accessories if pool is limited).
-
-## Testing
-
-Tests live alongside source in `src/lib/engine/*.test.ts` and `src/lib/api/*.test.ts`. Engine tests use deterministic seeded PRNG for reproducibility.
-
-**When to write tests:**
-- Any change to `src/lib/engine/` must have test coverage. The engine is pure, so tests are straightforward.
-- Use the existing fixture builders (`exampleUser`, `exampleGoals`, `exampleConstraints`, `exampleExerciseLibrary` from `sample-data.ts`) and `buildHistory()` helpers.
-- For end-to-end engine behavior, see `engine.integration.test.ts` for patterns covering `generateWorkout` + `applyLoads`.
-- API route handlers are not currently unit-tested — the engine tests provide coverage for the logic.
-
-## Key Documentation
-
-See [docs/index.md](trainer-app/docs/index.md) for the full documentation map.
-
-- `docs/architecture.md` — Engine behavior, guarantees, generation flow, module map (source of truth)
-- `docs/decisions.md` — Architectural Decision Records
-- `docs/data-model.md` — Complete DB schema reference
-- `docs/seeded-data.md` — Baseline exercise catalog
-- `prisma/schema.prisma` — Database schema
-
-**When to read docs** (before starting work):
-- Changing engine behavior or adding engine modules → read `docs/architecture.md`
-- Changing DB schema or adding models → read `docs/data-model.md`
-- Adding or modifying exercises in seed data → read `docs/seeded-data.md`
-- Making an architectural decision (new pattern, new module, changing a constraint) → read `docs/decisions.md`
-
-**When to update docs** (after completing work):
-- Changed engine behavior, added/removed modules, or modified guarantees → update `docs/architecture.md`
-- Changed DB schema → update `docs/data-model.md`
-- Changed seed data → update `docs/seeded-data.md`
-- Made an architectural decision worth recording → append to `docs/decisions.md`
-
-## Database
-
-Prisma with PostgreSQL via Supabase. Env vars in `.env` (see `.env.example`). Path alias: `@/*` maps to `./src/*`.
-
-Profile stores height in inches (`heightIn`) and weight in pounds (`weightLb`). The engine receives these converted to metric (`heightCm`, `weightKg`) via `mapProfile()`.
-
-### Prisma Command Reference
-
-**Everyday commands:**
-```bash
-npm run prisma:generate          # Regenerate client after schema changes
-npx prisma migrate status        # Check for pending migrations
-npx prisma migrate deploy        # Apply all pending migrations
-npx prisma migrate dev --name x  # Create + apply new migration (dev only)
-npm run prisma:studio            # Visual DB browser (opens in browser)
-npm run db:seed                  # Seed exercises, equipment, muscles, aliases
-```
-
-**Inspecting the actual database:**
-```bash
-npx prisma db pull --print                       # Introspect DB → print schema (best way to check actual DB state)
-npx prisma db pull --print | grep -A 20 'model Exercise'  # Check a specific table
-```
-
-**Manual SQL execution:**
-```bash
-# Run a SQL file (DDL/DML only — no query results returned):
-npx prisma db execute --file path/to/file.sql
-
-# Run inline SQL (DDL/DML only — no query results returned):
-echo "ALTER TABLE ..." | npx prisma db execute --stdin
-```
-
-**Recovery commands (when things go wrong):**
-```bash
-# Manually apply a migration file then mark it as applied:
-npx prisma db execute --file prisma/migrations/<dir>/migration.sql
-npx prisma migrate resolve --applied <dir>
-
-# Mark a failed migration as rolled back (to retry):
-npx prisma migrate resolve --rolled-back <dir>
-```
-
-### Prisma Gotchas
-
-- **`db execute` is write-only.** It runs DDL/DML but does NOT return query results. SELECT statements execute silently with no output. Use `db pull --print` to inspect DB state instead.
-- **`migrate status` checks the tracking table, not actual DB state.** A migration can be marked "applied" even if individual SQL statements within it failed (e.g., `ADD CONSTRAINT` fails on duplicate rows). If something seems wrong, use `db pull --print` to see what columns/constraints actually exist.
-- **`predev` auto-generates.** `npm run dev` runs `prisma generate` automatically, so the Prisma client is always fresh on dev server start. If you get stale column errors mid-session, restart the dev server.
-- **Stale client → cryptic errors.** "The column `(not available)` does not exist" means the Prisma client doesn't match the DB. Fix: `npm run prisma:generate` then restart the dev server.
-- **Upsert requires DB-level constraints.** `prisma.x.upsert()` uses ON CONFLICT, which requires the unique constraint to actually exist in the DB — not just in `schema.prisma`.
-
-### Migration Workflow
-
-**After schema changes (creating new migrations):**
-```bash
-# 1. Edit prisma/schema.prisma
-npx prisma migrate dev --name descriptive_name  # 2. Create + apply
-npm run prisma:generate                          # 3. Regenerate client
-# 4. Commit both schema.prisma AND the migration SQL file
-```
-
-**After pulling code with new migrations:**
-```bash
-npx prisma migrate deploy    # Apply pending migrations
-npm run prisma:generate      # Regenerate client
-```
-
-See `.claude/patterns.md` for learned workflow patterns and preferences.
+## Avoid
+- Do not add new session-policy mirrors outside `selectionMetadata.sessionDecisionReceipt`.
+- Do not scatter advancing/gap-fill/supplemental/deload policy across routes, UI, analytics, and history when a shared semantic seam already exists.
+- Do not bypass `resolveOwner()` in app surfaces.
+- Do not create UI-local progression or lifecycle rules that can drift from `src/lib/api` and `src/lib/engine`.
+- Do not treat `docs/archive/` as current contract truth.

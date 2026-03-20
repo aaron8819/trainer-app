@@ -5,6 +5,7 @@ import {
 } from "@/lib/api/mesocycle-lifecycle-math";
 import {
   resolveMesocycleSlotContract,
+  type NormalizedMesocycleSlot,
 } from "./mesocycle-slot-contract";
 
 type MesocycleState = "ACTIVE_ACCUMULATION" | "ACTIVE_DELOAD" | "AWAITING_HANDOFF" | "COMPLETED";
@@ -17,11 +18,7 @@ type SessionDerivationInput = {
   durationWeeks: number;
 };
 
-export type RuntimeSessionSlot = {
-  slotId: string;
-  intent: string;
-  sequenceIndex: number;
-};
+export type RuntimeSessionSlot = NormalizedMesocycleSlot;
 
 export type RuntimeSlotSequence = {
   slots: RuntimeSessionSlot[];

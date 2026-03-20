@@ -18,6 +18,7 @@ import {
   attachSupplementalSessionMetadata,
   buildCanonicalSelectionMetadata,
 } from "@/lib/ui/selection-metadata";
+import type { SessionSlotSnapshot } from "@/lib/evidence/types";
 
 type PlannedExercise = GenerateFromIntentResponse["workout"]["mainLifts"][number];
 type PlannedSet = PlannedExercise["sets"][number];
@@ -70,6 +71,39 @@ function applyGapFillCaps(input: {
     ...input.workout,
     mainLifts,
     accessories,
+  };
+}
+
+function resolveAdvancingSlotSnapshot(input: {
+  nextWorkoutContext: Awaited<ReturnType<typeof loadNextWorkoutContext>>;
+  requestedIntent: string;
+  explicitSlotId?: string;
+  sequenceLength?: number;
+}): SessionSlotSnapshot | undefined {
+  const explicitSlotId = input.explicitSlotId?.trim();
+  const nextWorkoutContext = input.nextWorkoutContext;
+  if (
+    nextWorkoutContext.source !== "rotation" ||
+    nextWorkoutContext.intent !== input.requestedIntent ||
+    !nextWorkoutContext.slotId ||
+    nextWorkoutContext.slotSequenceIndex == null ||
+    !nextWorkoutContext.slotSource ||
+    (explicitSlotId != null &&
+      explicitSlotId.length > 0 &&
+      explicitSlotId !== nextWorkoutContext.slotId)
+  ) {
+    return undefined;
+  }
+
+  return {
+    slotId: nextWorkoutContext.slotId,
+    intent: input.requestedIntent,
+    sequenceIndex: nextWorkoutContext.slotSequenceIndex,
+    sequenceLength:
+      input.sequenceLength ??
+      nextWorkoutContext.slotSequenceLength ??
+      undefined,
+    source: nextWorkoutContext.slotSource,
   };
 }
 
@@ -155,7 +189,17 @@ export async function POST(request: Request) {
     };
   }
 
-      const generationInput = shouldApplyOptionalGapFill && canonicalGapFill
+  const advancingSlot =
+    shouldApplyOptionalGapFill || shouldApplySupplementalDeficitSession
+      ? undefined
+      : resolveAdvancingSlotSnapshot({
+          nextWorkoutContext,
+          requestedIntent: parsed.data.intent,
+          explicitSlotId: parsed.data.slotId,
+          sequenceLength: activeMesocycle?.sessionsPerWeek,
+        });
+
+  const generationInput = shouldApplyOptionalGapFill && canonicalGapFill
     ? {
         ...parsed.data,
         slotId: parsed.data.slotId,
@@ -170,6 +214,7 @@ export async function POST(request: Request) {
       }
     : {
         ...parsed.data,
+        advancingSlot,
         ...(shouldApplySupplementalDeficitSession
           ? {
               supplementalPlannerProfile: true,
@@ -215,22 +260,10 @@ export async function POST(request: Request) {
     targetMuscles: generationInput.targetMuscles,
     weekCloseId: generationInput.weekCloseId,
   });
-  const slotStampedSelectionMetadata = attachSessionSlotMetadata(markedSelectionMetadata, (
-    nextWorkoutContext.source === "rotation" &&
-    nextWorkoutContext.intent === result.sessionIntent &&
-    nextWorkoutContext.slotId &&
-    nextWorkoutContext.slotSequenceIndex != null &&
-    nextWorkoutContext.slotSource &&
-    (parsed.data.slotId == null || parsed.data.slotId === nextWorkoutContext.slotId)
-  )
-    ? {
-        slotId: nextWorkoutContext.slotId,
-        intent: result.sessionIntent,
-        sequenceIndex: nextWorkoutContext.slotSequenceIndex,
-        sequenceLength: activeMesocycle?.sessionsPerWeek,
-        source: nextWorkoutContext.slotSource,
-      }
-    : undefined);
+  const slotStampedSelectionMetadata = attachSessionSlotMetadata(
+    markedSelectionMetadata,
+    advancingSlot
+  );
   const finalSelectionMetadata = attachSupplementalSessionMetadata(slotStampedSelectionMetadata, {
     enabled: shouldApplySupplementalDeficitSession,
     targetMuscles: generationInput.targetMuscles,

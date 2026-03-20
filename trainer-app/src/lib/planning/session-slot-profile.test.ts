@@ -41,6 +41,8 @@ describe("resolveSessionSlotPolicy", () => {
       sessionIntent: "upper",
       slotId: "upper_a",
       sequenceIndex: 0,
+      slotArchetype: "upper_horizontal_balanced",
+      continuityScope: "slot",
       repeatedSlot: {
         occurrenceIndex: 0,
         totalSlots: 2,
@@ -82,6 +84,8 @@ describe("resolveSessionSlotPolicy", () => {
       sessionIntent: "upper",
       slotId: "upper_b",
       sequenceIndex: 2,
+      slotArchetype: "upper_vertical_balanced",
+      continuityScope: "slot",
       repeatedSlot: {
         occurrenceIndex: 1,
         totalSlots: 2,
@@ -127,6 +131,8 @@ describe("resolveSessionSlotPolicy", () => {
       sessionIntent: "lower",
       slotId: "lower_a",
       sequenceIndex: 1,
+      slotArchetype: "lower_squat_dominant",
+      continuityScope: "slot",
       repeatedSlot: {
         occurrenceIndex: 0,
         totalSlots: 2,
@@ -166,6 +172,8 @@ describe("resolveSessionSlotPolicy", () => {
       sessionIntent: "lower",
       slotId: "lower_b",
       sequenceIndex: 3,
+      slotArchetype: "lower_hinge_dominant",
+      continuityScope: "slot",
       repeatedSlot: {
         occurrenceIndex: 1,
         totalSlots: 2,
@@ -216,6 +224,8 @@ describe("resolveSessionSlotPolicy", () => {
       sessionIntent: "full_body",
       slotId: "full_body_a",
       sequenceIndex: 0,
+      slotArchetype: "full_body_standard",
+      continuityScope: "slot",
     });
   });
 
@@ -235,6 +245,8 @@ describe("resolveSessionSlotPolicy", () => {
         sessionIntent: "lower",
         slotId: "lower_a",
         sequenceIndex: 1,
+        slotArchetype: "lower_squat_dominant",
+        continuityScope: "slot",
         repeatedSlot: {
           occurrenceIndex: 0,
           totalSlots: 2,
@@ -267,6 +279,8 @@ describe("resolveSessionSlotPolicy", () => {
         sessionIntent: "upper",
         slotId: "upper_b",
         sequenceIndex: 2,
+        slotArchetype: "upper_vertical_balanced",
+        continuityScope: "slot",
         repeatedSlot: {
           occurrenceIndex: 1,
           totalSlots: 2,

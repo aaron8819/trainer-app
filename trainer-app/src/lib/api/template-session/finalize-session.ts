@@ -7,7 +7,7 @@ import type { FilteredExerciseSummary } from "@/lib/engine/explainability";
 import { applyLoadsWithAudit } from "@/lib/engine/apply-loads";
 import { buildSessionDecisionReceipt } from "@/lib/evidence/session-decision-receipt";
 import type { DeloadTransformationTrace } from "@/lib/evidence/session-audit-types";
-import type { PlannerDiagnosticsMode } from "@/lib/evidence/types";
+import type { PlannerDiagnosticsMode, SessionSlotSnapshot } from "@/lib/evidence/types";
 import { buildCanonicalDeloadDecision } from "@/lib/deload/semantics";
 import type { MappedGenerationContext, SessionGenerationResult } from "./types";
 
@@ -139,7 +139,8 @@ export function finalizePostLoadResult(
   },
   mapped: MappedGenerationContext,
   filteredExercises?: FilteredExerciseSummary[],
-  plannerDiagnosticsMode: PlannerDiagnosticsMode = "standard"
+  plannerDiagnosticsMode: PlannerDiagnosticsMode = "standard",
+  sessionSlot?: SessionSlotSnapshot
 ): SessionGenerationResult {
   const exerciseById = Object.fromEntries(
     mapped.exerciseLibrary.map((exercise) => [exercise.id, exercise])
@@ -169,6 +170,7 @@ export function finalizePostLoadResult(
     : withLoads;
   const sessionDecisionReceipt = buildSessionDecisionReceipt({
     cycleContext: mapped.cycleContext,
+    sessionSlot,
     lifecycleRirTarget: mapped.lifecycleRirTarget,
     lifecycleVolumeTargets: mapped.lifecycleVolumeTargets,
     sorenessSuppressedMuscles: mapped.sorenessSuppressedMuscles,

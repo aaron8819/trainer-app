@@ -16,6 +16,7 @@ import type {
   DeloadDecision,
   SessionDecisionReceipt,
   PlannerDiagnosticsMode,
+  SessionSlotSnapshot,
 } from "@/lib/evidence/types";
 import type {
   loadWorkoutContext,
@@ -40,6 +41,7 @@ export type GenerateTemplateSessionParams = {
 export type GenerateIntentSessionInput = {
   intent: SessionIntent;
   slotId?: string;
+  advancingSlot?: SessionSlotSnapshot;
   targetMuscles?: string[];
   anchorWeek?: number;
   weekCloseId?: string;

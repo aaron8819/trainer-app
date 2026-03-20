@@ -34,6 +34,8 @@ export async function buildWorkoutAuditContext(
   const identity = await resolveWorkoutAuditIdentity(request);
   const plannerDiagnosticsMode = request.plannerDiagnosticsMode ?? "standard";
   const mode = request.mode;
+  const shouldLoadNextSession =
+    mode === "future-week" || mode === "deload";
 
   if (mode === "historical-week") {
     if (!Number.isFinite(request.week)) {
@@ -70,7 +72,7 @@ export async function buildWorkoutAuditContext(
   }
 
   if (mode === "deload") {
-    const nextSession = !request.intent
+    const nextSession = shouldLoadNextSession
       ? await loadNextWorkoutContext(identity.userId)
       : undefined;
     const intent = (request.intent ?? nextSession?.intent) as SessionIntent | undefined;
@@ -92,6 +94,10 @@ export async function buildWorkoutAuditContext(
     };
   }
 
+  const nextSession = shouldLoadNextSession
+    ? await loadNextWorkoutContext(identity.userId)
+    : undefined;
+
   if (request.intent) {
     return {
       mode,
@@ -104,11 +110,11 @@ export async function buildWorkoutAuditContext(
         targetMuscles: request.targetMuscles,
         source: "explicit-intent",
       },
+      nextSession,
     };
   }
 
-  const nextSession = await loadNextWorkoutContext(identity.userId);
-  if (!nextSession.intent) {
+  if (!nextSession?.intent) {
     throw new Error("Unable to derive next-session intent from runtime context");
   }
   return {

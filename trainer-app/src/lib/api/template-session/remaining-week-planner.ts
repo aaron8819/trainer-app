@@ -125,6 +125,7 @@ export function buildRemainingWeekVolumeContext(params: {
       sessionIntent: intent,
       slotId: `${intent}_${sequenceIndex}`,
       sequenceIndex,
+      continuityScope: "intent" as const,
     }));
   const futureSlots = futurePolicySlots.map((slot) => slot.sessionIntent);
   const futureSlotCounts = toCountMap(futureSlots);

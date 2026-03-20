@@ -132,10 +132,122 @@ describe("projectSuccessorMesocycle", () => {
       source: "handoff_draft",
       sequenceMode: "ordered_flexible",
       slots: [
-        { slotId: "upper_a", intent: "UPPER" },
-        { slotId: "lower_a", intent: "LOWER" },
-        { slotId: "upper_b", intent: "UPPER" },
-        { slotId: "lower_b", intent: "LOWER" },
+        {
+          slotId: "upper_a",
+          intent: "UPPER",
+          authoredSemantics: {
+            slotArchetype: "upper_horizontal_balanced",
+            primaryLaneContract: {
+              mode: "lane_control",
+              lanes: [
+                {
+                  key: "press",
+                  preferredMovementPatterns: ["horizontal_push"],
+                  compatibleMovementPatterns: [],
+                  fallbackOnlyMovementPatterns: ["vertical_push"],
+                },
+                {
+                  key: "pull",
+                  preferredMovementPatterns: ["horizontal_pull"],
+                  compatibleMovementPatterns: [],
+                  fallbackOnlyMovementPatterns: ["vertical_pull"],
+                },
+              ],
+            },
+            supportCoverageContract: {
+              preferredAccessoryPrimaryMuscles: ["Chest", "Upper Back", "Rear Delts"],
+              requiredMovementPatterns: ["vertical_pull"],
+              avoidDuplicatePatterns: ["horizontal_pull"],
+            },
+            continuityScope: "slot",
+          },
+        },
+        {
+          slotId: "lower_a",
+          intent: "LOWER",
+          authoredSemantics: {
+            slotArchetype: "lower_squat_dominant",
+            primaryLaneContract: {
+              mode: "lane_control",
+              lanes: [
+                {
+                  key: "primary",
+                  preferredMovementPatterns: ["squat"],
+                  compatibleMovementPatterns: [],
+                  fallbackOnlyMovementPatterns: ["hinge"],
+                  preferredPrimaryMuscles: ["Quads"],
+                },
+              ],
+            },
+            supportCoverageContract: {
+              preferredAccessoryPrimaryMuscles: ["Quads"],
+              requiredMovementPatterns: ["hinge"],
+              avoidDuplicatePatterns: ["squat"],
+              supportPenaltyPatterns: ["hinge"],
+              maxPreferredSupportPerPattern: 1,
+            },
+            continuityScope: "slot",
+          },
+        },
+        {
+          slotId: "upper_b",
+          intent: "UPPER",
+          authoredSemantics: {
+            slotArchetype: "upper_vertical_balanced",
+            primaryLaneContract: {
+              mode: "lane_control",
+              lanes: [
+                {
+                  key: "press",
+                  preferredMovementPatterns: ["vertical_push"],
+                  compatibleMovementPatterns: [],
+                  fallbackOnlyMovementPatterns: ["horizontal_push"],
+                },
+                {
+                  key: "pull",
+                  preferredMovementPatterns: ["vertical_pull"],
+                  compatibleMovementPatterns: [],
+                  fallbackOnlyMovementPatterns: ["horizontal_pull"],
+                },
+              ],
+            },
+            supportCoverageContract: {
+              preferredAccessoryPrimaryMuscles: ["Lats", "Front Delts", "Side Delts"],
+              requiredMovementPatterns: ["horizontal_pull"],
+              avoidDuplicatePatterns: ["vertical_pull"],
+              supportPenaltyPatterns: ["vertical_push"],
+              maxPreferredSupportPerPattern: 1,
+            },
+            continuityScope: "slot",
+          },
+        },
+        {
+          slotId: "lower_b",
+          intent: "LOWER",
+          authoredSemantics: {
+            slotArchetype: "lower_hinge_dominant",
+            primaryLaneContract: {
+              mode: "lane_control",
+              lanes: [
+                {
+                  key: "primary",
+                  preferredMovementPatterns: ["hinge"],
+                  compatibleMovementPatterns: [],
+                  fallbackOnlyMovementPatterns: ["squat"],
+                  preferredPrimaryMuscles: ["Hamstrings", "Glutes"],
+                },
+              ],
+            },
+            supportCoverageContract: {
+              preferredAccessoryPrimaryMuscles: ["Hamstrings", "Glutes"],
+              requiredMovementPatterns: ["squat"],
+              avoidDuplicatePatterns: ["hinge"],
+              supportPenaltyPatterns: ["squat"],
+              maxPreferredSupportPerPattern: 1,
+            },
+            continuityScope: "slot",
+          },
+        },
       ],
     });
     expect(projection.carriedForwardRoles).toEqual([

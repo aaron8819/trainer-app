@@ -114,6 +114,7 @@ describe("candidate evidence guardrails", () => {
           sessionIntent: "upper",
           slotId: "upper_a",
           sequenceIndex: 0,
+          continuityScope: "slot",
           sessionShape: {
             id: "upper_horizontal_balanced",
             preferredAccessoryPrimaryMuscles: ["Chest", "Upper Back", "Rear Delts"],

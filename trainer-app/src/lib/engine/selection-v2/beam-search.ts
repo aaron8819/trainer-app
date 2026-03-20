@@ -119,23 +119,6 @@ function wouldSatisfyStructure(
   return true;
 }
 
-function getMovementPatternCap(): number {
-  return 2;
-}
-
-function wouldViolateMovementPatternCap(
-  state: BeamState,
-  candidate: SelectionCandidate
-): boolean {
-  const candidatePatterns = candidate.exercise.movementPatterns ?? [];
-  return candidatePatterns.some((pattern) => {
-    const count = state.selected.filter((s) =>
-      (s.exercise.movementPatterns ?? []).includes(pattern)
-    ).length;
-    return count >= getMovementPatternCap();
-  });
-}
-
 function shouldRejectLowSetAccessory(
   state: BeamState,
   candidate: SelectionCandidate,
@@ -172,7 +155,6 @@ function hasRemainingDeficitFillingOption(
     if (candidate.exercise.id === excludedCandidateId) continue;
     if (selectedIds.has(candidate.exercise.id)) continue;
     if (candidate.scores.deficitFill <= 0) continue;
-    if (wouldViolateMovementPatternCap(state, candidate)) continue;
     if (!wouldSatisfyStructure(state, candidate, objective)) continue;
 
     const mergedVolume = mergeVolume(state.volumeFilled, candidate.volumeContribution);
@@ -351,7 +333,6 @@ function hasRemainingCompoundLaneOption(
         )
     );
     if (!fillsMissingLane) continue;
-    if (wouldViolateMovementPatternCap(state, candidate)) continue;
     if (!wouldSatisfyStructure(state, candidate, objective)) continue;
 
     const mergedVolume = mergeVolume(state.volumeFilled, candidate.volumeContribution);
@@ -470,9 +451,6 @@ export function beamSearch(
           continue;
         }
 
-        if (wouldViolateMovementPatternCap(state, candidate)) {
-          continue;
-        }
         if (sharesBaseExerciseName(state.selected, candidate)) {
           rejectedMap.set(candidate.exercise.id, "dominated_by_better_option");
           continue;

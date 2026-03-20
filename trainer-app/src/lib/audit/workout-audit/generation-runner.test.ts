@@ -67,6 +67,7 @@ describe("runWorkoutAuditGeneration", () => {
         intent: "legs",
         slotId: "legs_a",
         slotSequenceIndex: 2,
+        slotSequenceLength: 4,
         slotSource: "legacy_weekly_schedule",
         existingWorkoutId: null,
         isExisting: false,
@@ -81,6 +82,13 @@ describe("runWorkoutAuditGeneration", () => {
     await runWorkoutAuditGeneration(context);
 
     expect(mocks.generateSessionFromIntent).toHaveBeenCalledWith("user-1", {
+      advancingSlot: {
+        slotId: "legs_a",
+        intent: "legs",
+        sequenceIndex: 2,
+        sequenceLength: 4,
+        source: "legacy_weekly_schedule",
+      },
       intent: "legs",
       targetMuscles: undefined,
       plannerDiagnosticsMode: "standard",
@@ -117,6 +125,7 @@ describe("runWorkoutAuditGeneration", () => {
         intent: "legs",
         slotId: "legs_a",
         slotSequenceIndex: 0,
+        slotSequenceLength: 4,
         slotSource: "legacy_weekly_schedule",
         existingWorkoutId: "w-in-progress",
         isExisting: true,

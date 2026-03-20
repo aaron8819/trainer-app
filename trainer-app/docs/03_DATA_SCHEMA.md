@@ -66,7 +66,7 @@ Lifecycle/handoff meanings:
 - `AWAITING_HANDOFF` means the prior mesocycle is closed, reviewable, and no successor mesocycle has been created yet.
 - `handoffSummaryJson` stores the frozen closeout snapshot: terminal lifecycle facts, final training structure, carry-forward recommendations, and the original recommended next-cycle seed.
 - `nextSeedDraftJson` stores the mutable pending setup draft while the mesocycle is in `AWAITING_HANDOFF`. It is not editable once the mesocycle is archived as `COMPLETED`.
-- `slotSequenceJson` stores the accepted ordered-flexible slot sequence on the successor mesocycle and is the canonical runtime authority for slot-aware sequencing.
+- `slotSequenceJson` stores the accepted ordered-flexible slot sequence on the successor mesocycle and is the canonical runtime authority for slot-aware sequencing. Each persisted slot may now carry authored slot semantics alongside placement using the additive contract fields `slotArchetype`, `primaryLaneContract`, `supportCoverageContract`, and `continuityScope`.
 - `slotPlanSeedJson` stores the accepted minimal slot-plan seeds on the successor mesocycle as ordered `slotId -> exercises[{ exerciseId, role }]` data derived from the canonical raw handoff slot-plan projection. It must align with persisted `slotSequenceJson` slot ids and is the canonical runtime composition source for seeded mesocycles until the user explicitly edits a generated workout.
 
 ## Training block fields

@@ -27,6 +27,7 @@ export type NextWorkoutContext = {
   intent: string | null;
   slotId: string | null;
   slotSequenceIndex: number | null;
+  slotSequenceLength: number | null;
   slotSource: "mesocycle_slot_sequence" | "legacy_weekly_schedule" | null;
   existingWorkoutId: string | null;
   isExisting: boolean;
@@ -114,6 +115,7 @@ export function resolveNextWorkoutContext(input: {
       intent: topIncomplete.sessionIntent?.toLowerCase() ?? null,
       slotId: incompleteSlot?.slotId ?? null,
       slotSequenceIndex: incompleteSlot?.sequenceIndex ?? null,
+      slotSequenceLength: incompleteSlot?.sequenceLength ?? null,
       slotSource: incompleteSlot?.source ?? null,
       existingWorkoutId: topIncomplete.id,
       isExisting: true,
@@ -135,6 +137,7 @@ export function resolveNextWorkoutContext(input: {
     intent: fallbackIntent,
     slotId: derived?.slotId ?? null,
     slotSequenceIndex: derived?.slotSequenceIndex ?? null,
+    slotSequenceLength: slotContract.slots.length > 0 ? slotContract.slots.length : null,
     slotSource: derived?.slotSource ?? null,
     existingWorkoutId: null,
     isExisting: false,
@@ -155,6 +158,7 @@ export async function loadNextWorkoutContext(
       intent: null,
       slotId: null,
       slotSequenceIndex: null,
+      slotSequenceLength: null,
       slotSource: null,
       existingWorkoutId: null,
       isExisting: false,

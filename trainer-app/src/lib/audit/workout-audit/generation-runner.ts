@@ -3,12 +3,37 @@ import {
   generateDeloadSessionFromIntent,
   generateSessionFromIntent,
 } from "@/lib/api/template-session";
+import type { SessionSlotSnapshot } from "@/lib/evidence/types";
 import {
   buildGeneratedSessionAuditSnapshot,
 } from "@/lib/evidence/session-audit-snapshot";
 import { buildHistoricalWeekAuditPayload } from "./historical-week";
 import { buildProgressionAnchorAuditPayload } from "./progression-anchor";
 import type { WorkoutAuditContext, WorkoutAuditRun } from "./types";
+
+function resolveAdvancingSlotSnapshot(
+  context: WorkoutAuditContext
+): SessionSlotSnapshot | undefined {
+  const nextSession = context.nextSession;
+  if (
+    !nextSession ||
+    nextSession.source !== "rotation" ||
+    !nextSession.slotId ||
+    nextSession.slotSequenceIndex == null ||
+    !nextSession.slotSource ||
+    nextSession.intent !== context.generationInput?.intent
+  ) {
+    return undefined;
+  }
+
+  return {
+    slotId: nextSession.slotId,
+    intent: nextSession.intent,
+    sequenceIndex: nextSession.slotSequenceIndex,
+    sequenceLength: nextSession.slotSequenceLength ?? undefined,
+    source: nextSession.slotSource,
+  };
+}
 
 export async function runWorkoutAuditGeneration(
   context: WorkoutAuditContext
@@ -44,6 +69,7 @@ export async function runWorkoutAuditGeneration(
     mode === "future-week" ? await loadActiveMesocycle(context.userId) : null;
   const useDeloadGeneration =
     mode === "deload" || activeMesocycle?.state === "ACTIVE_DELOAD";
+  const advancingSlot = resolveAdvancingSlotSnapshot(context);
   const generationResult =
     useDeloadGeneration
       ? await generateDeloadSessionFromIntent(context.userId, {
@@ -54,6 +80,7 @@ export async function runWorkoutAuditGeneration(
       : await generateSessionFromIntent(context.userId, {
           intent: generationInput.intent,
           targetMuscles: generationInput.targetMuscles,
+          advancingSlot,
           plannerDiagnosticsMode: context.plannerDiagnosticsMode,
         });
   const generationPath =

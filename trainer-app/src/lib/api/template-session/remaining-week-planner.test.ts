@@ -99,6 +99,7 @@ describe("buildRemainingWeekVolumeContext", () => {
         sessionIntent: "lower",
         slotId: "lower_a",
         sequenceIndex: 1,
+        continuityScope: "slot",
         repeatedSlot: {
           occurrenceIndex: 0,
           totalSlots: 2,
@@ -114,6 +115,7 @@ describe("buildRemainingWeekVolumeContext", () => {
             sessionIntent: "lower",
             slotId: "lower_b",
             sequenceIndex: 3,
+            continuityScope: "slot",
             repeatedSlot: {
               occurrenceIndex: 1,
               totalSlots: 2,

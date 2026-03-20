@@ -15,6 +15,7 @@ import {
   isExerciseAllowedForAnyCompoundLaneSatisfaction,
   resolveSessionSlotCompoundLaneState,
   resolveSessionSlotPolicy,
+  type SessionSlotPolicySlot,
 } from "@/lib/planning/session-slot-profile";
 import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-semantics";
 import type { MappedGenerationContext } from "./types";
@@ -110,10 +111,14 @@ function getContinuitySourceEntry(params: {
   mapped: MappedGenerationContext;
   sessionIntent: SessionIntent;
   sessionSlotId?: string;
+  sessionSlotPolicy?: SessionSlotPolicySlot | null;
 }): WorkoutHistoryEntry | undefined {
-  const { mapped, sessionIntent, sessionSlotId } = params;
+  const { mapped, sessionIntent, sessionSlotId, sessionSlotPolicy } = params;
 
-  if (hasPersistedSessionSlotIdentity(mapped, sessionSlotId)) {
+  if (
+    sessionSlotPolicy?.continuityScope === "slot" &&
+    hasPersistedSessionSlotIdentity(mapped, sessionSlotId)
+  ) {
     const sameSlotEntry = getMostRecentPerformedSlotEntry(mapped.history, sessionSlotId);
     if (sameSlotEntry) {
       return sameSlotEntry;
@@ -275,6 +280,22 @@ export function buildSelectionObjective(
     getSessionMuscleOpportunityWeight(sessionIntent, muscle, {
       targetMuscles: normalizedTargets.size > 0 ? Array.from(normalizedTargets) : targetMuscles,
     }) > 0;
+  const runtimeSlotSequence = readRuntimeSlotSequence({
+    slotSequenceJson: mapped.activeMesocycle?.slotSequenceJson,
+    weeklySchedule: mapped.mappedConstraints.weeklySchedule,
+  });
+  const slotPolicy = resolveSessionSlotPolicy({
+    sessionIntent,
+    slotId: options?.sessionSlotId,
+    slotSequence: runtimeSlotSequence,
+    futureSlots: buildRemainingFutureSlotsFromRuntime({
+      slotSequenceJson: mapped.activeMesocycle?.slotSequenceJson,
+      weeklySchedule: mapped.mappedConstraints.weeklySchedule,
+      performedAdvancingSlotsThisWeek: getCurrentWeekPerformedAdvancingSlotSnapshots(mapped),
+      currentSlotId: options?.sessionSlotId,
+      currentIntent: sessionIntent,
+    }),
+  });
 
   const volumeCeiling = new Map<Muscle, number>();
   for (const [muscle] of Object.entries(MUSCLE_SPLIT_MAP)) {
@@ -290,6 +311,7 @@ export function buildSelectionObjective(
     mapped,
     sessionIntent,
     sessionSlotId: options?.sessionSlotId,
+    sessionSlotPolicy: slotPolicy.currentSession,
   });
   const weeklyTarget = new Map<Muscle, number>();
   const weeklyActual = new Map<Muscle, number>();
@@ -340,22 +362,6 @@ export function buildSelectionObjective(
     }
   }
 
-  const runtimeSlotSequence = readRuntimeSlotSequence({
-    slotSequenceJson: mapped.activeMesocycle?.slotSequenceJson,
-    weeklySchedule: mapped.mappedConstraints.weeklySchedule,
-  });
-  const slotPolicy = resolveSessionSlotPolicy({
-    sessionIntent,
-    slotId: options?.sessionSlotId,
-    slotSequence: runtimeSlotSequence,
-    futureSlots: buildRemainingFutureSlotsFromRuntime({
-      slotSequenceJson: mapped.activeMesocycle?.slotSequenceJson,
-      weeklySchedule: mapped.mappedConstraints.weeklySchedule,
-      performedAdvancingSlotsThisWeek: getCurrentWeekPerformedAdvancingSlotSnapshots(mapped),
-      currentSlotId: options?.sessionSlotId,
-      currentIntent: sessionIntent,
-    }),
-  });
   const userAvoids = new Set(mapped.mappedPreferences?.avoidExerciseIds ?? []);
   const resolvedCompoundControl = resolveSessionSlotCompoundLaneState({
     slot: slotPolicy.currentSession,

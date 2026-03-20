@@ -1,11 +1,20 @@
 import type { SessionIntent } from "@/lib/engine/session-types";
 import type { MovementPatternV2 } from "@/lib/engine/types";
 import { parseSessionIntent } from "./session-opportunities";
+import {
+  resolveLegacySlotSemanticsFallback,
+  type MesocycleSlotArchetype,
+  type MesocycleSlotAuthoredSemantics,
+  type MesocycleSlotPrimaryLaneContract,
+  type MesocycleSlotSupportCoverageContract,
+  type MesocycleSlotContinuityScope,
+} from "@/lib/api/mesocycle-slot-contract";
 
 type SlotSequenceEntry = {
   slotId: string;
   intent: string;
   sequenceIndex?: number;
+  authoredSemantics?: MesocycleSlotAuthoredSemantics;
 };
 
 type RepeatedSlotMetadata = {
@@ -62,6 +71,8 @@ export type SessionSlotPolicySlot = {
   sessionIntent: SessionIntent;
   slotId: string;
   sequenceIndex: number;
+  slotArchetype?: MesocycleSlotArchetype;
+  continuityScope: MesocycleSlotContinuityScope;
   repeatedSlot?: RepeatedSlotMetadata;
   compoundBias?: SessionSlotCompoundBias;
   compoundControl?: SessionSlotCompoundControl;
@@ -81,158 +92,25 @@ function normalizeIntent(intent: string): string {
 
 function normalizeSlotEntries(
   slots: readonly SlotSequenceEntry[]
-): Array<{ slotId: string; intent: SessionIntent; sequenceIndex: number }> {
-  return slots
-    .map((slot, index) => {
+): Array<{
+  slotId: string;
+  intent: SessionIntent;
+  sequenceIndex: number;
+  authoredSemantics?: MesocycleSlotAuthoredSemantics;
+}> {
+  return slots.flatMap((slot, index) => {
       const intent = parseSessionIntent(slot.intent);
       const slotId = slot.slotId?.trim();
       if (!intent || !slotId) {
-        return null;
+        return [];
       }
-      return {
+      return [{
         slotId,
         intent,
         sequenceIndex: slot.sequenceIndex ?? index,
-      };
-    })
-    .filter((slot): slot is { slotId: string; intent: SessionIntent; sequenceIndex: number } =>
-      Boolean(slot)
-    );
-}
-
-function resolveCompoundBias(
-  sessionIntent: SessionIntent,
-  occurrenceIndex: number
-): SessionSlotCompoundBias | undefined {
-  const prefersVertical = occurrenceIndex % 2 === 1;
-
-  switch (sessionIntent) {
-    case "upper":
-      return {
-        preferredMovementPatterns: prefersVertical
-          ? ["vertical_push", "vertical_pull"]
-          : ["horizontal_push", "horizontal_pull"],
-      };
-    case "push":
-      return {
-        preferredMovementPatterns: [prefersVertical ? "vertical_push" : "horizontal_push"],
-      };
-    case "pull":
-      return {
-        preferredMovementPatterns: [prefersVertical ? "vertical_pull" : "horizontal_pull"],
-      };
-    case "lower":
-      return prefersVertical
-        ? {
-            preferredMovementPatterns: ["hinge"],
-            preferredPrimaryMuscles: ["Hamstrings", "Glutes"],
-          }
-        : {
-            preferredMovementPatterns: ["squat"],
-            preferredPrimaryMuscles: ["Quads"],
-          };
-    default:
-      return undefined;
-  }
-}
-
-function resolveCompoundControl(
-  sessionIntent: SessionIntent,
-  occurrenceIndex: number
-): SessionSlotCompoundControl | undefined {
-  const prefersVertical = occurrenceIndex % 2 === 1;
-
-  switch (sessionIntent) {
-    case "upper":
-      return {
-        lanes: [
-          {
-            key: "press",
-            preferredMovementPatterns: [prefersVertical ? "vertical_push" : "horizontal_push"],
-            compatibleMovementPatterns: [],
-            fallbackOnlyMovementPatterns: [prefersVertical ? "horizontal_push" : "vertical_push"],
-          },
-          {
-            key: "pull",
-            preferredMovementPatterns: [prefersVertical ? "vertical_pull" : "horizontal_pull"],
-            compatibleMovementPatterns: [],
-            fallbackOnlyMovementPatterns: [prefersVertical ? "horizontal_pull" : "vertical_pull"],
-          },
-        ],
-      };
-    case "lower":
-      return prefersVertical
-        ? {
-            lanes: [
-              {
-                key: "primary",
-                preferredMovementPatterns: ["hinge"],
-                compatibleMovementPatterns: [],
-                fallbackOnlyMovementPatterns: ["squat"],
-                preferredPrimaryMuscles: ["Hamstrings", "Glutes"],
-              },
-            ],
-          }
-        : {
-            lanes: [
-              {
-                key: "primary",
-                preferredMovementPatterns: ["squat"],
-                compatibleMovementPatterns: [],
-                fallbackOnlyMovementPatterns: ["hinge"],
-                preferredPrimaryMuscles: ["Quads"],
-              },
-            ],
-          };
-    default:
-      return undefined;
-  }
-}
-
-function resolveSessionShape(
-  sessionIntent: SessionIntent,
-  occurrenceIndex: number
-): SessionSlotShape | undefined {
-  const prefersVertical = occurrenceIndex % 2 === 1;
-
-  switch (sessionIntent) {
-    case "upper":
-      return prefersVertical
-        ? {
-            id: "upper_vertical_balanced",
-            preferredAccessoryPrimaryMuscles: ["Lats", "Front Delts", "Side Delts"],
-            requiredMovementPatterns: ["horizontal_pull"],
-            avoidDuplicatePatterns: ["vertical_pull"],
-            supportPenaltyPatterns: ["vertical_push"],
-            maxPreferredSupportPerPattern: 1,
-          }
-        : {
-            id: "upper_horizontal_balanced",
-            preferredAccessoryPrimaryMuscles: ["Chest", "Upper Back", "Rear Delts"],
-            requiredMovementPatterns: ["vertical_pull"],
-            avoidDuplicatePatterns: ["horizontal_pull"],
-          };
-    case "lower":
-      return prefersVertical
-        ? {
-            id: "lower_hinge_dominant",
-            preferredAccessoryPrimaryMuscles: ["Hamstrings", "Glutes"],
-            requiredMovementPatterns: ["squat"],
-            avoidDuplicatePatterns: ["hinge"],
-            supportPenaltyPatterns: ["squat"],
-            maxPreferredSupportPerPattern: 1,
-          }
-        : {
-            id: "lower_squat_dominant",
-            preferredAccessoryPrimaryMuscles: ["Quads"],
-            requiredMovementPatterns: ["hinge"],
-            avoidDuplicatePatterns: ["squat"],
-            supportPenaltyPatterns: ["hinge"],
-            maxPreferredSupportPerPattern: 1,
-          };
-    default:
-      return undefined;
-  }
+        authoredSemantics: slot.authoredSemantics,
+      }];
+    });
 }
 
 function supportsRepeatedSlotProfiles(intent: SessionIntent): boolean {
@@ -240,7 +118,12 @@ function supportsRepeatedSlotProfiles(intent: SessionIntent): boolean {
 }
 
 function resolveRepeatedSlotMetadata(params: {
-  slotSequence: Array<{ slotId: string; intent: SessionIntent; sequenceIndex: number }>;
+  slotSequence: Array<{
+    slotId: string;
+    intent: SessionIntent;
+    sequenceIndex: number;
+    authoredSemantics?: MesocycleSlotAuthoredSemantics;
+  }>;
   sessionIntent: SessionIntent;
   slotId: string;
 }): RepeatedSlotMetadata | undefined {
@@ -266,8 +149,105 @@ function resolveRepeatedSlotMetadata(params: {
   };
 }
 
+function resolveCompoundBiasFromPrimaryLaneContract(
+  contract: MesocycleSlotPrimaryLaneContract
+): SessionSlotCompoundBias | undefined {
+  if (!contract) {
+    return undefined;
+  }
+
+  if (contract.mode === "bias_only") {
+    return {
+      preferredMovementPatterns: [...contract.preferredMovementPatterns],
+      ...(contract.preferredPrimaryMuscles
+        ? { preferredPrimaryMuscles: contract.preferredPrimaryMuscles }
+        : {}),
+    };
+  }
+
+  const preferredMovementPatterns = contract.lanes.flatMap((lane) => lane.preferredMovementPatterns);
+  const preferredPrimaryMuscles = contract.lanes.flatMap((lane) => lane.preferredPrimaryMuscles ?? []);
+
+  return {
+    preferredMovementPatterns,
+    ...(preferredPrimaryMuscles.length > 0
+      ? { preferredPrimaryMuscles: preferredPrimaryMuscles }
+      : {}),
+  };
+}
+
+function resolveCompoundControlFromPrimaryLaneContract(
+  contract: MesocycleSlotPrimaryLaneContract
+): SessionSlotCompoundControl | undefined {
+  if (!contract || contract.mode !== "lane_control") {
+    return undefined;
+  }
+
+  return {
+    lanes: contract.lanes.map((lane) => ({
+      key: lane.key,
+      preferredMovementPatterns: [...lane.preferredMovementPatterns],
+      compatibleMovementPatterns: [...lane.compatibleMovementPatterns],
+      fallbackOnlyMovementPatterns: [...lane.fallbackOnlyMovementPatterns],
+      ...(lane.preferredPrimaryMuscles
+        ? { preferredPrimaryMuscles: lane.preferredPrimaryMuscles }
+        : {}),
+    })),
+  };
+}
+
+function resolveSessionShapeId(
+  slotArchetype: MesocycleSlotArchetype
+): SessionSlotShapeId | undefined {
+  switch (slotArchetype) {
+    case "upper_horizontal_balanced":
+    case "upper_vertical_balanced":
+    case "lower_squat_dominant":
+    case "lower_hinge_dominant":
+      return slotArchetype;
+    default:
+      return undefined;
+  }
+}
+
+function resolveSessionShapeFromSupportCoverage(
+  slotArchetype: MesocycleSlotArchetype | undefined,
+  supportCoverageContract: MesocycleSlotSupportCoverageContract
+): SessionSlotShape | undefined {
+  if (!slotArchetype || !supportCoverageContract) {
+    return undefined;
+  }
+
+  const id = resolveSessionShapeId(slotArchetype);
+  if (!id) {
+    return undefined;
+  }
+
+  return {
+    id,
+    preferredAccessoryPrimaryMuscles: [...supportCoverageContract.preferredAccessoryPrimaryMuscles],
+    ...(supportCoverageContract.requiredMovementPatterns
+      ? { requiredMovementPatterns: supportCoverageContract.requiredMovementPatterns }
+      : {}),
+    ...(supportCoverageContract.avoidDuplicatePatterns
+      ? { avoidDuplicatePatterns: supportCoverageContract.avoidDuplicatePatterns }
+      : {}),
+    ...(supportCoverageContract.supportPenaltyPatterns
+      ? { supportPenaltyPatterns: supportCoverageContract.supportPenaltyPatterns }
+      : {}),
+    ...(supportCoverageContract.maxPreferredSupportPerPattern != null
+      ? { maxPreferredSupportPerPattern: supportCoverageContract.maxPreferredSupportPerPattern }
+      : {}),
+  };
+}
+
 function buildPolicySlot(params: {
-  slotSequence: Array<{ slotId: string; intent: SessionIntent; sequenceIndex: number }>;
+  slotSequence: Array<{
+    slotId: string;
+    intent: SessionIntent;
+    sequenceIndex: number;
+    authoredSemantics?: MesocycleSlotAuthoredSemantics;
+  }>;
   sessionIntent: SessionIntent;
   slotId: string;
 }): SessionSlotPolicySlot | null {
@@ -279,24 +259,36 @@ function buildPolicySlot(params: {
   }
 
   const repeatedSlot = resolveRepeatedSlotMetadata(params);
+  const authoredSemantics =
+    slotEntry.authoredSemantics ??
+    resolveLegacySlotSemanticsFallback({
+      slots: params.slotSequence,
+      slotId: params.slotId,
+      intent: params.sessionIntent,
+    });
+  const compoundBias = resolveCompoundBiasFromPrimaryLaneContract(
+    authoredSemantics?.primaryLaneContract ?? null
+  );
+  const compoundControl = resolveCompoundControlFromPrimaryLaneContract(
+    authoredSemantics?.primaryLaneContract ?? null
+  );
+  const sessionShape = resolveSessionShapeFromSupportCoverage(
+    authoredSemantics?.slotArchetype,
+    authoredSemantics?.supportCoverageContract ?? null
+  );
 
   return {
     sessionIntent: params.sessionIntent,
     slotId: params.slotId,
     sequenceIndex: slotEntry.sequenceIndex,
-    repeatedSlot,
-    compoundBias:
-      repeatedSlot != null
-        ? resolveCompoundBias(params.sessionIntent, repeatedSlot.occurrenceIndex)
-        : undefined,
-    compoundControl:
-      repeatedSlot != null
-        ? resolveCompoundControl(params.sessionIntent, repeatedSlot.occurrenceIndex)
-        : undefined,
-    sessionShape:
-      repeatedSlot != null
-        ? resolveSessionShape(params.sessionIntent, repeatedSlot.occurrenceIndex)
-        : undefined,
+    continuityScope: authoredSemantics?.continuityScope ?? "slot",
+    ...(authoredSemantics?.slotArchetype
+      ? { slotArchetype: authoredSemantics.slotArchetype }
+      : {}),
+    ...(repeatedSlot ? { repeatedSlot } : {}),
+    ...(compoundBias ? { compoundBias } : {}),
+    ...(compoundControl ? { compoundControl } : {}),
+    ...(sessionShape ? { sessionShape } : {}),
   };
 }
 

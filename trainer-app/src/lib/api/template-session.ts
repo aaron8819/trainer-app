@@ -74,8 +74,50 @@ import {
   type SessionInventoryKind,
 } from "@/lib/planning/session-opportunities";
 import { isExerciseAllowedForAnyCompoundLaneSatisfaction } from "@/lib/planning/session-slot-profile";
+import { resolveMesocycleSlotContract } from "./mesocycle-slot-contract";
+import type { SessionSlotSnapshot } from "@/lib/evidence/types";
 
 export type { GenerateIntentSessionInput } from "./template-session/types";
+
+function resolveInputSessionSlotId(input: GenerateIntentSessionInput): string | undefined {
+  return input.slotId?.trim() || input.advancingSlot?.slotId;
+}
+
+function resolveGenerationSessionSlotSnapshot(
+  mapped: MappedGenerationContext,
+  input: GenerateIntentSessionInput
+): SessionSlotSnapshot | undefined {
+  const explicitSlotId = input.slotId?.trim();
+  const advancingSlot = input.advancingSlot;
+  const targetSlotId = explicitSlotId || advancingSlot?.slotId;
+  if (!targetSlotId) {
+    return undefined;
+  }
+
+  const slotContract = resolveMesocycleSlotContract({
+    slotSequenceJson: mapped.activeMesocycle?.slotSequenceJson,
+    weeklySchedule: mapped.mappedConstraints.weeklySchedule,
+  });
+  const matchedSlot = slotContract.slots.find(
+    (slot) => slot.slotId === targetSlotId && slot.intent === input.intent
+  );
+
+  if (matchedSlot) {
+    return {
+      slotId: matchedSlot.slotId,
+      intent: matchedSlot.intent,
+      sequenceIndex: matchedSlot.sequenceIndex,
+      sequenceLength: slotContract.slots.length > 0 ? slotContract.slots.length : undefined,
+      source: slotContract.source,
+    };
+  }
+
+  if (advancingSlot && advancingSlot.slotId === targetSlotId && advancingSlot.intent === input.intent) {
+    return advancingSlot;
+  }
+
+  return undefined;
+}
 
 function buildSeededSelectionFromWorkout(input: {
   sessionIntent: GenerateIntentSessionInput["intent"];
@@ -127,10 +169,11 @@ function composeSeededIntentSessionFromMappedContext(
   mapped: MappedGenerationContext,
   input: GenerateIntentSessionInput
 ): IntentSessionCompositionResult | { error: string } | null {
+  const sessionSlotId = resolveInputSessionSlotId(input);
   const seededSlotPlan = resolveRequiredSeededSlotPlan({
     mapped,
     sessionIntent: input.intent,
-    slotId: input.slotId,
+    slotId: sessionSlotId,
   });
   if (!seededSlotPlan) {
     return null;
@@ -1188,108 +1231,6 @@ function hasPressingCompoundFrontDeltCoverage(params: {
   });
 }
 
-function getRepeatedIntentSlotDirectionalPreference(params: {
-  objective: ReturnType<typeof buildSelectionObjective>;
-}):
-  | {
-      occurrenceIndex: number;
-      totalSlots: number;
-      preferredPushPattern?: MovementPatternV2;
-      preferredPullPattern?: MovementPatternV2;
-    }
-  | undefined {
-  const currentSession = params.objective.slotPolicy?.currentSession;
-  if (!currentSession?.repeatedSlot) {
-    return undefined;
-  }
-  const preferredPatterns = currentSession.compoundBias?.preferredMovementPatterns ?? [];
-  const preferredPushPattern = preferredPatterns.find(
-    (pattern): pattern is Extract<MovementPatternV2, "horizontal_push" | "vertical_push"> =>
-      pattern === "horizontal_push" || pattern === "vertical_push"
-  );
-  const preferredPullPattern = preferredPatterns.find(
-    (pattern): pattern is Extract<MovementPatternV2, "horizontal_pull" | "vertical_pull"> =>
-      pattern === "horizontal_pull" || pattern === "vertical_pull"
-  );
-
-  if (!preferredPushPattern && !preferredPullPattern) {
-    return undefined;
-  }
-
-  return {
-    occurrenceIndex: currentSession.repeatedSlot.occurrenceIndex,
-    totalSlots: currentSession.repeatedSlot.totalSlots,
-    preferredPushPattern,
-    preferredPullPattern,
-  };
-}
-
-function findDirectionalReplacementCandidate(params: {
-  selection: SelectionOutput;
-  exerciseById: Map<string, EngineExercise>;
-  objective: ReturnType<typeof buildSelectionObjective>;
-  pinnedExerciseIds: Set<string>;
-  candidatePool: EngineExercise[];
-  removedExerciseId: string;
-  preferredPattern: MovementPatternV2;
-  side: DirectionalExerciseSide;
-}): EngineExercise | undefined {
-  const removedExercise = params.exerciseById.get(params.removedExerciseId);
-  if (!removedExercise) {
-    return undefined;
-  }
-
-  const selectedWithoutRemoved = params.selection.selectedExerciseIds
-    .filter((exerciseId) => exerciseId !== params.removedExerciseId)
-    .map((exerciseId) => params.exerciseById.get(exerciseId))
-    .filter((exercise): exercise is EngineExercise => Boolean(exercise));
-  const selectedWithoutRemovedIds = new Set(
-    params.selection.selectedExerciseIds.filter((exerciseId) => exerciseId !== params.removedExerciseId)
-  );
-  const removedDominantMuscles = new Set(getDominantStimulusMuscles(removedExercise));
-  const removedIsMainLift = isMainLiftExercise(removedExercise, params.objective);
-
-  return [...params.candidatePool]
-    .filter((candidate) => candidate.id !== params.removedExerciseId)
-    .filter((candidate) => !selectedWithoutRemovedIds.has(candidate.id))
-    .filter((candidate) => !params.pinnedExerciseIds.has(candidate.id))
-    .filter((candidate) => getDirectionalExerciseSide(candidate) === params.side)
-    .filter((candidate) => getPrimaryDirectionalPattern(candidate) === params.preferredPattern)
-    .filter((candidate) => isMainLiftExercise(candidate, params.objective) === removedIsMainLift)
-    .filter((candidate) => !sharesBaseExerciseName(selectedWithoutRemoved, candidate))
-    .sort((left, right) => {
-      const leftSharesDominant = getDominantStimulusMuscles(left).some((muscle) =>
-        removedDominantMuscles.has(muscle)
-      );
-      const rightSharesDominant = getDominantStimulusMuscles(right).some((muscle) =>
-        removedDominantMuscles.has(muscle)
-      );
-      if (leftSharesDominant !== rightSharesDominant) {
-        return leftSharesDominant ? -1 : 1;
-      }
-
-      const leftCompound = left.isCompound === removedExercise.isCompound;
-      const rightCompound = right.isCompound === removedExercise.isCompound;
-      if (leftCompound !== rightCompound) {
-        return leftCompound ? -1 : 1;
-      }
-
-      const leftSfr = left.sfrScore ?? 0;
-      const rightSfr = right.sfrScore ?? 0;
-      if (leftSfr !== rightSfr) {
-        return rightSfr - leftSfr;
-      }
-
-      const leftFatigue = left.fatigueCost ?? 3;
-      const rightFatigue = right.fatigueCost ?? 3;
-      if (leftFatigue !== rightFatigue) {
-        return leftFatigue - rightFatigue;
-      }
-
-      return left.name.localeCompare(right.name);
-    })[0];
-}
-
 function applySlotAwareDiversificationPass(params: {
   mapped: MappedGenerationContext;
   objective: ReturnType<typeof buildSelectionObjective>;
@@ -1362,101 +1303,6 @@ function applySlotAwareDiversificationPass(params: {
       "front_delt_isolation_trimmed",
       `${exercise.name} was trimmed because pressing compounds already cover front delts in this session.`
     );
-  }
-
-  const slotPreference = getRepeatedIntentSlotDirectionalPreference({
-    objective: params.objective,
-  });
-
-  const applyDirectionalPreference = (
-    side: DirectionalExerciseSide,
-    preferredPattern: MovementPatternV2 | undefined
-  ) => {
-    if (!preferredPattern) {
-      return;
-    }
-
-    const getSelectedDirectionalIds = () =>
-      selection.selectedExerciseIds.filter((exerciseId) => {
-        const exercise = params.exerciseById.get(exerciseId);
-        return exercise != null && getDirectionalExerciseSide(exercise) === side;
-      });
-    const getSelectedPreferredIds = () =>
-      getSelectedDirectionalIds().filter((exerciseId) => {
-        const exercise = params.exerciseById.get(exerciseId);
-        return exercise != null && getPrimaryDirectionalPattern(exercise) === preferredPattern;
-      });
-    const getSelectedNonPreferredRemovableIds = () =>
-      sortRemovableIds(
-        getSelectedDirectionalIds().filter((exerciseId) => {
-          if (params.pinnedExerciseIds.has(exerciseId)) {
-            return false;
-          }
-          const exercise = params.exerciseById.get(exerciseId);
-          return exercise != null && getPrimaryDirectionalPattern(exercise) !== preferredPattern;
-        })
-      );
-
-    if (getSelectedDirectionalIds().length <= 1) {
-      return;
-    }
-
-    if (getSelectedPreferredIds().length === 0) {
-      const replacementTargetId = getSelectedNonPreferredRemovableIds()[0];
-      if (replacementTargetId) {
-        const replacement = findDirectionalReplacementCandidate({
-          selection,
-          exerciseById: params.exerciseById,
-          objective: params.objective,
-          pinnedExerciseIds: params.pinnedExerciseIds,
-          candidatePool: params.candidatePool,
-          removedExerciseId: replacementTargetId,
-          preferredPattern,
-          side,
-        });
-        if (replacement) {
-          const replacedExercise = params.exerciseById.get(replacementTargetId);
-          replaceSelectedExercise({
-            selection,
-            exerciseById: params.exerciseById,
-            objective: params.objective,
-            fromExerciseId: replacementTargetId,
-            toExercise: replacement,
-            reason: `slot_directional_preference:${preferredPattern}`,
-          });
-          tradeoffs.push({
-            layer: "closure",
-            code: "slot_directional_replacement",
-            exerciseId: replacement.id,
-            message: `${replacedExercise?.name ?? replacementTargetId} was replaced with ${replacement.name} to diversify the ${params.sessionSlotId ?? params.sessionIntent} slot toward ${preferredPattern.replace("_", " ")} work.`,
-          });
-        }
-      }
-    }
-
-    if (getSelectedPreferredIds().length === 0) {
-      return;
-    }
-
-    for (const nonPreferredId of getSelectedNonPreferredRemovableIds()) {
-      const exercise = params.exerciseById.get(nonPreferredId);
-      if (!exercise) {
-        continue;
-      }
-      if (getSelectedPreferredIds().length === 0) {
-        break;
-      }
-      removeIfSafe(
-        nonPreferredId,
-        "slot_directional_overlap_trimmed",
-        `${exercise.name} was trimmed so ${params.sessionSlotId ?? params.sessionIntent} keeps the ${preferredPattern.replace("_", " ")} emphasis instead of converging with the other same-intent slot.`
-      );
-    }
-  };
-
-  if (slotPreference) {
-    applyDirectionalPreference("press", slotPreference.preferredPushPattern);
-    applyDirectionalPreference("pull", slotPreference.preferredPullPattern);
   }
 
   const sessionShape = getCurrentSessionShape(params.objective);
@@ -2985,9 +2831,10 @@ export function composeIntentSessionFromMappedContext(
   mapped: MappedGenerationContext,
   input: GenerateIntentSessionInput
 ): IntentSessionCompositionResult | { error: string } {
+  const sessionSlotId = resolveInputSessionSlotId(input);
   const objective = buildSelectionObjective(mapped, input.intent, input.targetMuscles, {
     supplementalPlannerProfile: input.supplementalPlannerProfile,
-    sessionSlotId: input.slotId,
+    sessionSlotId,
   });
   const isDeloadSession = mapped.effectivePeriodization.isDeload;
   const planningInventoryKind = getSessionPlanningInventoryKind(input);
@@ -3597,7 +3444,7 @@ export function composeIntentSessionFromMappedContext(
     candidatePool: closurePool,
     pinnedExerciseIds: pinnedRoleIds,
     sessionIntent: input.intent,
-    sessionSlotId: input.slotId,
+    sessionSlotId,
   });
   const selection = diversificationResult.selection;
   plannerTradeoffs.push(...accessorySplitResult.tradeoffs);
@@ -3844,12 +3691,24 @@ export function generateSessionFromMappedContext(
   mapped: MappedGenerationContext,
   input: GenerateIntentSessionInput
 ): SessionGenerationResult {
-  const seededComposed = composeSeededIntentSessionFromMappedContext(mapped, input);
-  if (seededComposed && "error" in seededComposed) {
-    return seededComposed;
+  const resolvedSessionSlot = resolveGenerationSessionSlotSnapshot(mapped, input);
+  const normalizedInput =
+    resolvedSessionSlot || input.advancingSlot
+      ? {
+          ...input,
+          slotId: resolvedSessionSlot?.slotId ?? input.slotId ?? input.advancingSlot?.slotId,
+        }
+      : input;
+  const normalizedSeededComposed = composeSeededIntentSessionFromMappedContext(
+    mapped,
+    normalizedInput
+  );
+  if (normalizedSeededComposed && "error" in normalizedSeededComposed) {
+    return normalizedSeededComposed;
   }
 
-  const composed = seededComposed ?? composeIntentSessionFromMappedContext(mapped, input);
+  const composed =
+    normalizedSeededComposed ?? composeIntentSessionFromMappedContext(mapped, normalizedInput);
   if ("error" in composed) {
     return composed;
   }
@@ -3873,7 +3732,8 @@ export function generateSessionFromMappedContext(
     composed.generation,
     mapped,
     filteredExercises,
-    input.plannerDiagnosticsMode ?? "standard"
+    input.plannerDiagnosticsMode ?? "standard",
+    resolvedSessionSlot
   );
 }
 

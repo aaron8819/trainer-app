@@ -500,9 +500,36 @@ describe("handoff draft persistence", () => {
             source: "handoff_draft",
             sequenceMode: "ordered_flexible",
             slots: [
-              { slotId: "push_a", intent: "PUSH" },
-              { slotId: "pull_a", intent: "PULL" },
-              { slotId: "legs_a", intent: "LEGS" },
+              {
+                slotId: "push_a",
+                intent: "PUSH",
+                authoredSemantics: {
+                  slotArchetype: "push_standard",
+                  primaryLaneContract: null,
+                  supportCoverageContract: null,
+                  continuityScope: "slot",
+                },
+              },
+              {
+                slotId: "pull_a",
+                intent: "PULL",
+                authoredSemantics: {
+                  slotArchetype: "pull_standard",
+                  primaryLaneContract: null,
+                  supportCoverageContract: null,
+                  continuityScope: "slot",
+                },
+              },
+              {
+                slotId: "legs_a",
+                intent: "LEGS",
+                authoredSemantics: {
+                  slotArchetype: "legs_standard",
+                  primaryLaneContract: null,
+                  supportCoverageContract: null,
+                  continuityScope: "slot",
+                },
+              },
             ],
           },
           slotPlanSeedJson: {
@@ -644,7 +671,18 @@ describe("handoff draft persistence", () => {
             version: 1,
             source: "handoff_draft",
             sequenceMode: "ordered_flexible",
-            slots: [{ slotId: "body_part_a", intent: "BODY_PART" }],
+            slots: [
+              {
+                slotId: "body_part_a",
+                intent: "BODY_PART",
+                authoredSemantics: {
+                  slotArchetype: "body_part_standard",
+                  primaryLaneContract: null,
+                  supportCoverageContract: null,
+                  continuityScope: "slot",
+                },
+              },
+            ],
           },
         }),
       })

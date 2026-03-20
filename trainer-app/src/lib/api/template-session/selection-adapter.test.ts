@@ -525,6 +525,8 @@ describe("buildSelectionObjective continuity bias", () => {
       sessionIntent: "lower",
       slotId: "lower_b",
       sequenceIndex: 3,
+      slotArchetype: "lower_hinge_dominant",
+      continuityScope: "slot",
       repeatedSlot: {
         occurrenceIndex: 1,
         totalSlots: 2,

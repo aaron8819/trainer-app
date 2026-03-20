@@ -371,22 +371,14 @@ describe("generateSessionFromIntent", () => {
     }
   });
 
-  it("caps lower sessions at one accessory hinge representative", async () => {
+  it("lower_b avoids hinge duplication while keeping knee-dominant coverage when viable", async () => {
     const customLibrary: Exercise[] = [
       makeCustomExercise({
-        id: "back-squat",
-        name: "Back Squat",
-        movementPatterns: ["squat"],
-        splitTags: ["legs"],
-        primaryMuscles: ["Quads", "Glutes"],
-      }),
-      makeCustomExercise({
-        id: "stiff-legged-deadlift",
-        name: "Stiff-Legged Deadlift",
+        id: "romanian-deadlift",
+        name: "Romanian Deadlift",
         movementPatterns: ["hinge"],
         splitTags: ["legs"],
         primaryMuscles: ["Hamstrings", "Glutes"],
-        isMainLiftEligible: false,
       }),
       makeCustomExercise({
         id: "good-morning",
@@ -407,6 +399,14 @@ describe("generateSessionFromIntent", () => {
         isMainLiftEligible: false,
       }),
       makeCustomExercise({
+        id: "leg-press",
+        name: "Leg Press",
+        movementPatterns: ["squat"],
+        splitTags: ["legs"],
+        primaryMuscles: ["Quads", "Glutes"],
+        isMainLiftEligible: false,
+      }),
+      makeCustomExercise({
         id: "leg-curl",
         name: "Seated Leg Curl",
         movementPatterns: ["isolation"],
@@ -418,6 +418,43 @@ describe("generateSessionFromIntent", () => {
       }),
     ];
     mapExercisesMock.mockReturnValue(customLibrary);
+    mapConstraintsMock.mockReturnValue({
+      daysPerWeek: 4,
+      splitType: "upper_lower",
+      weeklySchedule: ["upper", "lower", "upper", "lower"],
+    });
+    loadWorkoutContextMock.mockResolvedValue({
+      profile: { id: "profile" },
+      goals: { primaryGoal: "HYPERTROPHY", secondaryGoal: "NONE" },
+      constraints: {
+        daysPerWeek: 4,
+        splitType: "UPPER_LOWER",
+        weeklySchedule: ["UPPER", "LOWER", "UPPER", "LOWER"],
+      },
+      injuries: [],
+      exercises: customLibrary.map((exercise) => ({ id: exercise.id })),
+      workouts: [],
+      preferences: null,
+      checkIns: [],
+    });
+    loadActiveMesocycleMock.mockResolvedValue({
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION",
+      accumulationSessionsCompleted: 6,
+      durationWeeks: 5,
+      sessionsPerWeek: 4,
+      slotSequenceJson: {
+        version: 1,
+        source: "handoff_draft",
+        sequenceMode: "ordered_flexible",
+        slots: [
+          { slotId: "upper_a", intent: "UPPER" },
+          { slotId: "lower_a", intent: "LOWER" },
+          { slotId: "upper_b", intent: "UPPER" },
+          { slotId: "lower_b", intent: "LOWER" },
+        ],
+      },
+    });
 
     const selectSpy = vi
       .spyOn(selectionV2, "selectExercisesOptimized")
@@ -432,7 +469,10 @@ describe("generateSessionFromIntent", () => {
       );
 
     try {
-      const result = await generateSessionFromIntent("user-1", { intent: "lower", slotId: "lower_a" });
+      const result = await generateSessionFromIntent("user-1", {
+        intent: "lower",
+        slotId: "lower_b",
+      });
       expect("error" in result).toBe(false);
       if ("error" in result) return;
 
@@ -440,12 +480,13 @@ describe("generateSessionFromIntent", () => {
         entry.exercise.movementPatterns.includes("hinge")
       );
       expect(hingeAccessories.length).toBeLessThanOrEqual(1);
+      expect(result.workout.accessories.map((entry) => entry.exercise.id)).toContain("leg-press");
     } finally {
       selectSpy.mockRestore();
     }
   });
 
-  it("reduces duplicate horizontal-pull accessory overlap in the same session", async () => {
+  it("upper_a avoids duplicate rows and keeps complementary pull coverage when viable", async () => {
     const customLibrary: Exercise[] = [
       makeCustomExercise({
         id: "bench",
@@ -467,80 +508,6 @@ describe("generateSessionFromIntent", () => {
       makeCustomExercise({
         id: "seated-row",
         name: "Seated Cable Row",
-        movementPatterns: ["horizontal_pull"],
-        splitTags: ["pull"],
-        primaryMuscles: ["Upper Back", "Lats"],
-        secondaryMuscles: ["Biceps"],
-        isMainLiftEligible: false,
-      }),
-      makeCustomExercise({
-        id: "lat-pulldown",
-        name: "Lat Pulldown",
-        movementPatterns: ["vertical_pull"],
-        splitTags: ["pull"],
-        primaryMuscles: ["Lats"],
-        secondaryMuscles: ["Biceps"],
-        isMainLiftEligible: false,
-        isCompound: false,
-        fatigueCost: 2,
-      }),
-    ];
-    mapExercisesMock.mockReturnValue(customLibrary);
-
-    const selectSpy = vi
-      .spyOn(selectionV2, "selectExercisesOptimized")
-      .mockReturnValue(
-        buildMockSelectionResult([
-          customLibrary[0]!,
-          customLibrary[1]!,
-          customLibrary[2]!,
-          customLibrary[3]!,
-        ])
-      );
-
-    try {
-      const result = await generateSessionFromIntent("user-1", { intent: "upper" });
-      expect("error" in result).toBe(false);
-      if ("error" in result) return;
-
-      const horizontalPullAccessories = result.workout.accessories.filter((entry) =>
-        entry.exercise.movementPatterns.includes("horizontal_pull")
-      );
-      expect(horizontalPullAccessories).toHaveLength(1);
-    } finally {
-      selectSpy.mockRestore();
-    }
-  });
-
-  it("differentiates repeated upper slots by trimming toward opposite press/pull directions", async () => {
-    const customLibrary: Exercise[] = [
-      makeCustomExercise({
-        id: "machine-chest-press",
-        name: "Machine Chest Press",
-        movementPatterns: ["horizontal_push"],
-        splitTags: ["push"],
-        primaryMuscles: ["Chest"],
-        secondaryMuscles: ["Triceps", "Front Delts"],
-      }),
-      makeCustomExercise({
-        id: "incline-db-press",
-        name: "Incline Dumbbell Press",
-        movementPatterns: ["vertical_push"],
-        splitTags: ["push"],
-        primaryMuscles: ["Chest", "Front Delts"],
-        secondaryMuscles: ["Triceps"],
-      }),
-      makeCustomExercise({
-        id: "dumbbell-ohp",
-        name: "Dumbbell Overhead Press",
-        movementPatterns: ["vertical_push"],
-        splitTags: ["push"],
-        primaryMuscles: ["Front Delts"],
-        secondaryMuscles: ["Triceps", "Chest"],
-      }),
-      makeCustomExercise({
-        id: "tbar-row",
-        name: "T-Bar Row",
         movementPatterns: ["horizontal_pull"],
         splitTags: ["pull"],
         primaryMuscles: ["Upper Back", "Lats"],
@@ -600,30 +567,342 @@ describe("generateSessionFromIntent", () => {
 
     const selectSpy = vi
       .spyOn(selectionV2, "selectExercisesOptimized")
-      .mockImplementation(() =>
+      .mockReturnValue(
         buildMockSelectionResult([
           customLibrary[0]!,
           customLibrary[1]!,
           customLibrary[2]!,
           customLibrary[3]!,
-          customLibrary[4]!,
         ])
       );
 
     try {
-      const upperA = await generateSessionFromIntent("user-1", { intent: "upper", slotId: "upper_a" });
-      const upperB = await generateSessionFromIntent("user-1", { intent: "upper", slotId: "upper_b" });
+      const result = await generateSessionFromIntent("user-1", {
+        intent: "upper",
+        slotId: "upper_a",
+      });
+      expect("error" in result).toBe(false);
+      if ("error" in result) return;
 
-      expect("error" in upperA).toBe(false);
-      expect("error" in upperB).toBe(false);
-      if ("error" in upperA || "error" in upperB) return;
+      const horizontalPullAccessories = result.workout.accessories.filter((entry) =>
+        entry.exercise.movementPatterns.includes("horizontal_pull")
+      );
+      expect(horizontalPullAccessories).toHaveLength(1);
+      expect(result.workout.accessories.map((entry) => entry.exercise.id)).toContain("lat-pulldown");
+    } finally {
+      selectSpy.mockRestore();
+    }
+  });
 
-      expect(upperA.selection.selectedExerciseIds).not.toEqual(upperB.selection.selectedExerciseIds);
-      expect(upperA.selection.selectedExerciseIds).toContain("machine-chest-press");
-      expect(upperA.selection.selectedExerciseIds).toContain("tbar-row");
-      expect(upperB.selection.selectedExerciseIds).toContain("incline-db-press");
-      expect(upperB.selection.selectedExerciseIds).toContain("lat-pulldown");
-      expect(upperB.selection.selectedExerciseIds).not.toContain("machine-chest-press");
+  it("upper_b includes at least one horizontal pull when viable", async () => {
+    const customLibrary: Exercise[] = [
+      makeCustomExercise({
+        id: "incline-db-press",
+        name: "Incline Dumbbell Press",
+        movementPatterns: ["vertical_push"],
+        splitTags: ["push"],
+        primaryMuscles: ["Chest", "Front Delts"],
+        secondaryMuscles: ["Triceps"],
+      }),
+      makeCustomExercise({
+        id: "tbar-row",
+        name: "T-Bar Row",
+        movementPatterns: ["horizontal_pull"],
+        splitTags: ["pull"],
+        primaryMuscles: ["Upper Back", "Lats"],
+        secondaryMuscles: ["Biceps"],
+        isMainLiftEligible: false,
+      }),
+      makeCustomExercise({
+        id: "lat-pulldown",
+        name: "Lat Pulldown",
+        movementPatterns: ["vertical_pull"],
+        splitTags: ["pull"],
+        primaryMuscles: ["Lats"],
+        secondaryMuscles: ["Biceps"],
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 2,
+      }),
+      makeCustomExercise({
+        id: "lateral-raise",
+        name: "Lateral Raise",
+        movementPatterns: ["isolation"],
+        splitTags: ["push"],
+        primaryMuscles: ["Side Delts"],
+        secondaryMuscles: [],
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 1,
+      }),
+    ];
+    mapExercisesMock.mockReturnValue(customLibrary);
+    mapConstraintsMock.mockReturnValue({
+      daysPerWeek: 4,
+      splitType: "upper_lower",
+      weeklySchedule: ["upper", "lower", "upper", "lower"],
+    });
+    loadWorkoutContextMock.mockResolvedValue({
+      profile: { id: "profile" },
+      goals: { primaryGoal: "HYPERTROPHY", secondaryGoal: "NONE" },
+      constraints: {
+        daysPerWeek: 4,
+        splitType: "UPPER_LOWER",
+        weeklySchedule: ["UPPER", "LOWER", "UPPER", "LOWER"],
+      },
+      injuries: [],
+      exercises: customLibrary.map((exercise) => ({ id: exercise.id })),
+      workouts: [],
+      preferences: null,
+      checkIns: [],
+    });
+    loadActiveMesocycleMock.mockResolvedValue({
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION",
+      accumulationSessionsCompleted: 6,
+      durationWeeks: 5,
+      sessionsPerWeek: 4,
+      slotSequenceJson: {
+        version: 1,
+        source: "handoff_draft",
+        sequenceMode: "ordered_flexible",
+        slots: [
+          { slotId: "upper_a", intent: "UPPER" },
+          { slotId: "lower_a", intent: "LOWER" },
+          { slotId: "upper_b", intent: "UPPER" },
+          { slotId: "lower_b", intent: "LOWER" },
+        ],
+      },
+    });
+
+    const selectSpy = vi
+      .spyOn(selectionV2, "selectExercisesOptimized")
+      .mockImplementation(() =>
+        buildMockSelectionResult([
+          customLibrary[0]!,
+          customLibrary[2]!,
+          customLibrary[3]!,
+        ])
+      );
+
+    try {
+      const result = await generateSessionFromIntent("user-1", {
+        intent: "upper",
+        slotId: "upper_b",
+      });
+
+      expect("error" in result).toBe(false);
+      if ("error" in result) return;
+
+      expect(
+        result.workout.accessories.some((entry) =>
+          entry.exercise.movementPatterns.includes("horizontal_pull")
+        )
+      ).toBe(true);
+      expect(result.selection.selectedExerciseIds).toContain("tbar-row");
+    } finally {
+      selectSpy.mockRestore();
+    }
+  });
+
+  it("lower_a avoids excessive quad stacking when hinge support is viable", async () => {
+    const customLibrary: Exercise[] = [
+      makeCustomExercise({
+        id: "back-squat",
+        name: "Back Squat",
+        movementPatterns: ["squat"],
+        splitTags: ["legs"],
+        primaryMuscles: ["Quads", "Glutes"],
+      }),
+      makeCustomExercise({
+        id: "hack-squat",
+        name: "Hack Squat",
+        movementPatterns: ["squat"],
+        splitTags: ["legs"],
+        primaryMuscles: ["Quads", "Glutes"],
+        isMainLiftEligible: false,
+      }),
+      makeCustomExercise({
+        id: "leg-press",
+        name: "Leg Press",
+        movementPatterns: ["squat"],
+        splitTags: ["legs"],
+        primaryMuscles: ["Quads", "Glutes"],
+        isMainLiftEligible: false,
+      }),
+      makeCustomExercise({
+        id: "back-extension",
+        name: "Back Extension",
+        movementPatterns: ["hinge"],
+        splitTags: ["legs"],
+        primaryMuscles: ["Hamstrings"],
+        secondaryMuscles: ["Glutes", "Lower Back"],
+        isMainLiftEligible: false,
+      }),
+    ];
+    mapExercisesMock.mockReturnValue(customLibrary);
+    mapConstraintsMock.mockReturnValue({
+      daysPerWeek: 4,
+      splitType: "upper_lower",
+      weeklySchedule: ["upper", "lower", "upper", "lower"],
+    });
+    loadWorkoutContextMock.mockResolvedValue({
+      profile: { id: "profile" },
+      goals: { primaryGoal: "HYPERTROPHY", secondaryGoal: "NONE" },
+      constraints: {
+        daysPerWeek: 4,
+        splitType: "UPPER_LOWER",
+        weeklySchedule: ["UPPER", "LOWER", "UPPER", "LOWER"],
+      },
+      injuries: [],
+      exercises: customLibrary.map((exercise) => ({ id: exercise.id })),
+      workouts: [],
+      preferences: null,
+      checkIns: [],
+    });
+    loadActiveMesocycleMock.mockResolvedValue({
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION",
+      accumulationSessionsCompleted: 6,
+      durationWeeks: 5,
+      sessionsPerWeek: 4,
+      slotSequenceJson: {
+        version: 1,
+        source: "handoff_draft",
+        sequenceMode: "ordered_flexible",
+        slots: [
+          { slotId: "upper_a", intent: "UPPER" },
+          { slotId: "lower_a", intent: "LOWER" },
+          { slotId: "upper_b", intent: "UPPER" },
+          { slotId: "lower_b", intent: "LOWER" },
+        ],
+      },
+    });
+
+    const selectSpy = vi
+      .spyOn(selectionV2, "selectExercisesOptimized")
+      .mockReturnValue(
+        buildMockSelectionResult([
+          customLibrary[0]!,
+          customLibrary[1]!,
+          customLibrary[2]!,
+          customLibrary[3]!,
+        ])
+      );
+
+    try {
+      const result = await generateSessionFromIntent("user-1", {
+        intent: "lower",
+        slotId: "lower_a",
+      });
+      expect("error" in result).toBe(false);
+      if ("error" in result) return;
+
+      const squatAccessories = result.workout.accessories.filter((entry) =>
+        entry.exercise.movementPatterns.includes("squat")
+      );
+      expect(squatAccessories.length).toBeLessThanOrEqual(1);
+      expect(result.selection.selectedExerciseIds).toContain("back-extension");
+    } finally {
+      selectSpy.mockRestore();
+    }
+  });
+
+  it("falls back cleanly when required session-shape coverage is not viable", async () => {
+    const customLibrary: Exercise[] = [
+      makeCustomExercise({
+        id: "incline-db-press",
+        name: "Incline Dumbbell Press",
+        movementPatterns: ["vertical_push"],
+        splitTags: ["push"],
+        primaryMuscles: ["Chest", "Front Delts"],
+        secondaryMuscles: ["Triceps"],
+      }),
+      makeCustomExercise({
+        id: "lat-pulldown",
+        name: "Lat Pulldown",
+        movementPatterns: ["vertical_pull"],
+        splitTags: ["pull"],
+        primaryMuscles: ["Lats"],
+        secondaryMuscles: ["Biceps"],
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 2,
+      }),
+      makeCustomExercise({
+        id: "lateral-raise",
+        name: "Lateral Raise",
+        movementPatterns: ["isolation"],
+        splitTags: ["push"],
+        primaryMuscles: ["Side Delts"],
+        secondaryMuscles: [],
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 1,
+      }),
+    ];
+    mapExercisesMock.mockReturnValue(customLibrary);
+    mapConstraintsMock.mockReturnValue({
+      daysPerWeek: 4,
+      splitType: "upper_lower",
+      weeklySchedule: ["upper", "lower", "upper", "lower"],
+    });
+    loadWorkoutContextMock.mockResolvedValue({
+      profile: { id: "profile" },
+      goals: { primaryGoal: "HYPERTROPHY", secondaryGoal: "NONE" },
+      constraints: {
+        daysPerWeek: 4,
+        splitType: "UPPER_LOWER",
+        weeklySchedule: ["UPPER", "LOWER", "UPPER", "LOWER"],
+      },
+      injuries: [],
+      exercises: customLibrary.map((exercise) => ({ id: exercise.id })),
+      workouts: [],
+      preferences: null,
+      checkIns: [],
+    });
+    loadActiveMesocycleMock.mockResolvedValue({
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION",
+      accumulationSessionsCompleted: 6,
+      durationWeeks: 5,
+      sessionsPerWeek: 4,
+      slotSequenceJson: {
+        version: 1,
+        source: "handoff_draft",
+        sequenceMode: "ordered_flexible",
+        slots: [
+          { slotId: "upper_a", intent: "UPPER" },
+          { slotId: "lower_a", intent: "LOWER" },
+          { slotId: "upper_b", intent: "UPPER" },
+          { slotId: "lower_b", intent: "LOWER" },
+        ],
+      },
+    });
+
+    const selectSpy = vi
+      .spyOn(selectionV2, "selectExercisesOptimized")
+      .mockReturnValue(
+        buildMockSelectionResult([
+          customLibrary[0]!,
+          customLibrary[1]!,
+          customLibrary[2]!,
+        ])
+      );
+
+    try {
+      const result = await generateSessionFromIntent("user-1", {
+        intent: "upper",
+        slotId: "upper_b",
+      });
+      expect("error" in result).toBe(false);
+      if ("error" in result) return;
+
+      expect(result.selection.selectedExerciseIds).toEqual([
+        "incline-db-press",
+        "lat-pulldown",
+        "lateral-raise",
+      ]);
     } finally {
       selectSpy.mockRestore();
     }

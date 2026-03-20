@@ -317,30 +317,62 @@ export function scoreCompoundSlotProfileAlignment(
 
 export function scoreSessionShapeAlignment(
   exercise: Exercise,
-  sessionShape: SessionSlotShape | undefined
+  sessionShape: SessionSlotShape | undefined,
+  objective?: Pick<SelectionObjective, "constraints">,
+  alreadySelected: Exercise[] = []
 ): number {
-  if (!sessionShape || (exercise.isCompound ?? false)) {
+  const isMainLift =
+    (exercise.isMainLiftEligible ?? false) &&
+    !(objective?.constraints.demotedFromMainLift?.has(exercise.id) ?? false);
+  if (!sessionShape || isMainLift) {
     return 0;
   }
 
+  const scores: number[] = [];
   const preferredPrimaryMuscles = new Set(
     sessionShape.preferredAccessoryPrimaryMuscles.map(normalizeMuscleName)
   );
-  if (preferredPrimaryMuscles.size === 0) {
+  if (preferredPrimaryMuscles.size > 0) {
+    const primaryMuscles = exercise.primaryMuscles ?? [];
+    const matchingPrimaryCount = primaryMuscles.filter((muscle) =>
+      preferredPrimaryMuscles.has(normalizeMuscleName(muscle))
+    ).length;
+    scores.push(
+      primaryMuscles.length > 0 ? matchingPrimaryCount / primaryMuscles.length : 0
+    );
+  }
+
+  const selectedPatterns = new Set(
+    alreadySelected.flatMap((selectedExercise) => selectedExercise.movementPatterns ?? [])
+  );
+  const requiredMovementPatterns = sessionShape.requiredMovementPatterns ?? [];
+  if (requiredMovementPatterns.length > 0) {
+    const missingRequiredPatterns = requiredMovementPatterns.filter(
+      (pattern) => !selectedPatterns.has(pattern)
+    );
+    scores.push(
+      missingRequiredPatterns.length === 0
+        ? 1
+        : missingRequiredPatterns.some((pattern) =>
+              (exercise.movementPatterns ?? []).includes(pattern)
+            )
+          ? 1
+          : 0
+    );
+  }
+
+  const avoidDuplicatePatterns = sessionShape.avoidDuplicatePatterns ?? [];
+  if (avoidDuplicatePatterns.length > 0) {
+    const duplicatesTrackedPattern = avoidDuplicatePatterns.some(
+      (pattern) =>
+        selectedPatterns.has(pattern) && (exercise.movementPatterns ?? []).includes(pattern)
+    );
+    scores.push(duplicatesTrackedPattern ? 0 : 1);
+  }
+
+  if (scores.length === 0) {
     return 0;
   }
 
-  const primaryMuscles = exercise.primaryMuscles ?? [];
-  if (primaryMuscles.length === 0) {
-    return 0;
-  }
-
-  const matchingPrimaryCount = primaryMuscles.filter((muscle) =>
-    preferredPrimaryMuscles.has(normalizeMuscleName(muscle))
-  ).length;
-  if (matchingPrimaryCount === 0) {
-    return 0;
-  }
-
-  return matchingPrimaryCount / primaryMuscles.length;
+  return scores.reduce((sum, score) => sum + score, 0) / scores.length;
 }

@@ -115,6 +115,8 @@ describe("candidate evidence guardrails", () => {
           sessionShape: {
             id: "upper_horizontal_balanced",
             preferredAccessoryPrimaryMuscles: ["Chest", "Upper Back", "Rear Delts"],
+            requiredMovementPatterns: ["vertical_pull"],
+            avoidDuplicatePatterns: ["horizontal_pull"],
           },
         },
         futurePlanning: {
@@ -126,8 +128,10 @@ describe("candidate evidence guardrails", () => {
     const chestCandidate = buildCandidate(chestAccessory, objective);
     const tricepsCandidate = buildCandidate(tricepsAccessory, objective);
 
-    expect(chestCandidate.scores.sessionShapeAlignment).toBe(1);
-    expect(tricepsCandidate.scores.sessionShapeAlignment).toBe(0);
-    expect(chestCandidate.totalScore).toBeGreaterThan(tricepsCandidate.totalScore);
+    expect(chestCandidate.scores.sessionShapeAlignment).toBeCloseTo(2 / 3, 6);
+    expect(tricepsCandidate.scores.sessionShapeAlignment).toBeCloseTo(1 / 3, 6);
+    expect(chestCandidate.scores.sessionShapeAlignment).toBeGreaterThan(
+      tricepsCandidate.scores.sessionShapeAlignment ?? 0
+    );
   });
 });

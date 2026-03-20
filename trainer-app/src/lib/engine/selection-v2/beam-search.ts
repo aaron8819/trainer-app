@@ -23,9 +23,13 @@ import type {
   RejectionReason,
 } from "./types";
 import { BEAM_TIEBREAKER_EPSILON } from "./types";
-import { mergeVolume } from "./candidate";
+import { mergeVolume, SESSION_SHAPE_ALIGNMENT_WEIGHT } from "./candidate";
 import { generateRationale } from "./rationale";
-import { scoreMovementNovelty, scoreDeficitFillDynamic } from "./scoring";
+import {
+  scoreMovementNovelty,
+  scoreDeficitFillDynamic,
+  scoreSessionShapeAlignment,
+} from "./scoring";
 import {
   isExerciseAllowedForCompoundLaneSatisfaction,
   type SessionSlotCompoundLaneKey,
@@ -585,6 +589,15 @@ export function beamSearch(
         const noveltyAdjustment =
           objective.weights.movementDiversity *
           (dynamicNovelty - candidate.scores.movementNovelty);
+        const dynamicSessionShapeAlignment = scoreSessionShapeAlignment(
+          candidate.exercise,
+          objective.slotPolicy?.currentSession?.sessionShape,
+          objective,
+          alreadySelected
+        );
+        const sessionShapeAdjustment =
+          SESSION_SHAPE_ALIGNMENT_WEIGHT *
+          (dynamicSessionShapeAlignment - (candidate.scores.sessionShapeAlignment ?? 0));
 
         // Dynamic deficit fill: re-score against current beam's volume state so that
         // exercises filling *remaining* deficits score higher than those targeting
@@ -607,6 +620,7 @@ export function beamSearch(
         const adjustedScore =
           candidate.totalScore +
           noveltyAdjustment +
+          sessionShapeAdjustment +
           deficitFillAdjustment -
           movementPatternPenalty -
           mainLiftPatternDuplicatePenalty;

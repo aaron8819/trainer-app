@@ -493,19 +493,6 @@ function sharesBaseExerciseName(
   });
 }
 
-function wouldViolateMovementPatternCap(
-  selectedExercises: Array<Pick<EngineExercise, "movementPatterns">>,
-  candidate: Pick<EngineExercise, "movementPatterns">
-): boolean {
-  const candidatePatterns = candidate.movementPatterns ?? [];
-  return candidatePatterns.some((pattern) => {
-    const count = selectedExercises.filter((exercise) =>
-      (exercise.movementPatterns ?? []).includes(pattern)
-    ).length;
-    return count >= 2;
-  });
-}
-
 function getClosurePoolRejectionReason(
   exercise: Pick<EngineExercise, "id">,
   objective: ReturnType<typeof buildSelectionObjective>
@@ -882,6 +869,152 @@ function getDirectionalExerciseSide(
   return undefined;
 }
 
+function getCurrentSessionShape(
+  objective: ReturnType<typeof buildSelectionObjective>
+) {
+  return objective.slotPolicy?.currentSession?.sessionShape;
+}
+
+function getMovementPatternSet(
+  exercises: Array<Pick<EngineExercise, "movementPatterns">>
+): Set<MovementPatternV2> {
+  const patterns = new Set<MovementPatternV2>();
+  for (const exercise of exercises) {
+    for (const pattern of exercise.movementPatterns ?? []) {
+      patterns.add(pattern);
+    }
+  }
+  return patterns;
+}
+
+function exerciseMatchesAnyMovementPattern(
+  exercise: Pick<EngineExercise, "movementPatterns">,
+  patterns: readonly MovementPatternV2[]
+): boolean {
+  return patterns.some((pattern) => (exercise.movementPatterns ?? []).includes(pattern));
+}
+
+function getMissingSessionShapeRequiredPatternsForExercises(params: {
+  objective: ReturnType<typeof buildSelectionObjective>;
+  exercises: Array<Pick<EngineExercise, "movementPatterns">>;
+}): MovementPatternV2[] {
+  const sessionShape = getCurrentSessionShape(params.objective);
+  const requiredMovementPatterns = sessionShape?.requiredMovementPatterns ?? [];
+  if (requiredMovementPatterns.length === 0) {
+    return [];
+  }
+
+  const selectedPatterns = getMovementPatternSet(params.exercises);
+  return requiredMovementPatterns.filter((pattern) => !selectedPatterns.has(pattern));
+}
+
+function getMissingSessionShapeRequiredPatterns(params: {
+  objective: ReturnType<typeof buildSelectionObjective>;
+  selection: SelectionOutput;
+  exerciseById: Map<string, EngineExercise>;
+  excludeExerciseId?: string;
+}): MovementPatternV2[] {
+  return getMissingSessionShapeRequiredPatternsForExercises({
+    objective: params.objective,
+    exercises: params.selection.selectedExerciseIds
+      .filter((exerciseId) => exerciseId !== params.excludeExerciseId)
+      .map((exerciseId) => params.exerciseById.get(exerciseId))
+      .filter((exercise): exercise is EngineExercise => Boolean(exercise)),
+  });
+}
+
+function duplicatesSessionShapeAvoidedPattern(params: {
+  objective: ReturnType<typeof buildSelectionObjective>;
+  exercise: Pick<EngineExercise, "movementPatterns">;
+  selectedExercises: Array<Pick<EngineExercise, "movementPatterns">>;
+}): boolean {
+  const sessionShape = getCurrentSessionShape(params.objective);
+  const avoidDuplicatePatterns = sessionShape?.avoidDuplicatePatterns ?? [];
+  if (avoidDuplicatePatterns.length === 0) {
+    return false;
+  }
+
+  const selectedPatterns = getMovementPatternSet(params.selectedExercises);
+  return avoidDuplicatePatterns.some(
+    (pattern) =>
+      selectedPatterns.has(pattern) && (params.exercise.movementPatterns ?? []).includes(pattern)
+  );
+}
+
+function isSessionShapeAccessoryCandidate(
+  exercise: EngineExercise,
+  objective: ReturnType<typeof buildSelectionObjective>
+): boolean {
+  return !isMainLiftExercise(exercise, objective);
+}
+
+function formatMovementPattern(pattern: MovementPatternV2): string {
+  return pattern.replace(/_/g, " ");
+}
+
+function findSessionShapeAccessoryReplacementCandidate(params: {
+  selection: SelectionOutput;
+  exerciseById: Map<string, EngineExercise>;
+  objective: ReturnType<typeof buildSelectionObjective>;
+  pinnedExerciseIds: Set<string>;
+  candidatePool: EngineExercise[];
+  removedExerciseId: string;
+  requiredPattern: MovementPatternV2;
+}): EngineExercise | undefined {
+  const selectedWithoutRemoved = params.selection.selectedExerciseIds
+    .filter((exerciseId) => exerciseId !== params.removedExerciseId)
+    .map((exerciseId) => params.exerciseById.get(exerciseId))
+    .filter((exercise): exercise is EngineExercise => Boolean(exercise));
+  const selectedWithoutRemovedIds = new Set(
+    params.selection.selectedExerciseIds.filter((exerciseId) => exerciseId !== params.removedExerciseId)
+  );
+  const assignedEffectiveByMuscleInSession = buildAssignedEffectiveByMuscleInSession(
+    params.selection.perExerciseSetTargets,
+    params.exerciseById
+  );
+  const closureObjective = buildClosureObjective(
+    params.objective,
+    assignedEffectiveByMuscleInSession
+  );
+
+  return [...params.candidatePool]
+    .filter((candidate) => candidate.id !== params.removedExerciseId)
+    .filter((candidate) => !selectedWithoutRemovedIds.has(candidate.id))
+    .filter((candidate) => !params.pinnedExerciseIds.has(candidate.id))
+    .filter((candidate) => isSessionShapeAccessoryCandidate(candidate, params.objective))
+    .filter((candidate) =>
+      (candidate.movementPatterns ?? []).includes(params.requiredPattern)
+    )
+    .filter((candidate) => !sharesBaseExerciseName(selectedWithoutRemoved, candidate))
+    .sort((left, right) => {
+      const leftCandidate = buildCandidate(
+        left,
+        closureObjective,
+        computeProposedSets(left, closureObjective)
+      );
+      const rightCandidate = buildCandidate(
+        right,
+        closureObjective,
+        computeProposedSets(right, closureObjective)
+      );
+      const alignmentDelta =
+        (rightCandidate.scores.sessionShapeAlignment ?? 0) -
+        (leftCandidate.scores.sessionShapeAlignment ?? 0);
+      if (Math.abs(alignmentDelta) > CLOSURE_ACTION_SCORE_EPSILON) {
+        return alignmentDelta;
+      }
+      const scoreDelta = rightCandidate.totalScore - leftCandidate.totalScore;
+      if (Math.abs(scoreDelta) > CLOSURE_ACTION_SCORE_EPSILON) {
+        return scoreDelta;
+      }
+      const fatigueDelta = (left.fatigueCost ?? 3) - (right.fatigueCost ?? 3);
+      if (fatigueDelta !== 0) {
+        return fatigueDelta;
+      }
+      return left.name.localeCompare(right.name);
+    })[0];
+}
+
 function cloneSelectionOutput(selection: SelectionOutput): SelectionOutput {
   return {
     ...selection,
@@ -1231,59 +1364,6 @@ function applySlotAwareDiversificationPass(params: {
     );
   }
 
-  const duplicateAccessoryBuckets = new Map<MovementPatternV2, string[]>();
-  for (const accessoryId of selection.accessoryIds) {
-    if (params.pinnedExerciseIds.has(accessoryId)) {
-      continue;
-    }
-    const exercise = params.exerciseById.get(accessoryId);
-    const pattern = exercise ? getPrimaryDirectionalPattern(exercise) : undefined;
-    if (!exercise || !pattern) {
-      continue;
-    }
-    const bucket = duplicateAccessoryBuckets.get(pattern) ?? [];
-    bucket.push(accessoryId);
-    duplicateAccessoryBuckets.set(pattern, bucket);
-  }
-  for (const [pattern, duplicateIds] of duplicateAccessoryBuckets) {
-    if (duplicateIds.length <= 1) {
-      continue;
-    }
-    const sortedIds = sortRemovableIds(duplicateIds);
-    for (const duplicateId of sortedIds.slice(0, -1)) {
-      const exercise = params.exerciseById.get(duplicateId);
-      if (!exercise) {
-        continue;
-      }
-      removeIfSafe(
-        duplicateId,
-        "directional_accessory_overlap_trimmed",
-        `${exercise.name} was trimmed to reduce redundant ${pattern.replace("_", " ")} accessory overlap in the same session.`
-      );
-    }
-  }
-
-  const hingeAccessoryIds = sortRemovableIds(
-    selection.accessoryIds.filter((exerciseId) => {
-      if (params.pinnedExerciseIds.has(exerciseId)) {
-        return false;
-      }
-      const exercise = params.exerciseById.get(exerciseId);
-      return Boolean(exercise?.movementPatterns?.includes("hinge"));
-    })
-  );
-  for (const hingeAccessoryId of hingeAccessoryIds.slice(0, -1)) {
-    const exercise = params.exerciseById.get(hingeAccessoryId);
-    if (!exercise) {
-      continue;
-    }
-    removeIfSafe(
-      hingeAccessoryId,
-      "hinge_accessory_overlap_trimmed",
-      `${exercise.name} was trimmed to avoid stacking multiple accessory hinge patterns in one session.`
-    );
-  }
-
   const slotPreference = getRepeatedIntentSlotDirectionalPreference({
     objective: params.objective,
   });
@@ -1377,6 +1457,97 @@ function applySlotAwareDiversificationPass(params: {
   if (slotPreference) {
     applyDirectionalPreference("press", slotPreference.preferredPushPattern);
     applyDirectionalPreference("pull", slotPreference.preferredPullPattern);
+  }
+
+  const sessionShape = getCurrentSessionShape(params.objective);
+  if (sessionShape) {
+    for (const requiredPattern of sessionShape.requiredMovementPatterns ?? []) {
+      const missingRequiredPatterns = getMissingSessionShapeRequiredPatterns({
+        objective: params.objective,
+        selection,
+        exerciseById: params.exerciseById,
+      });
+      if (!missingRequiredPatterns.includes(requiredPattern)) {
+        continue;
+      }
+
+      const removableAccessoryId = sortRemovableIds(
+        selection.accessoryIds.filter((exerciseId) => !params.pinnedExerciseIds.has(exerciseId))
+      )[0];
+      if (!removableAccessoryId) {
+        continue;
+      }
+
+      const replacement = findSessionShapeAccessoryReplacementCandidate({
+        selection,
+        exerciseById: params.exerciseById,
+        objective: params.objective,
+        pinnedExerciseIds: params.pinnedExerciseIds,
+        candidatePool: params.candidatePool,
+        removedExerciseId: removableAccessoryId,
+        requiredPattern,
+      });
+      if (!replacement) {
+        continue;
+      }
+
+      const replacedExercise = params.exerciseById.get(removableAccessoryId);
+      replaceSelectedExercise({
+        selection,
+        exerciseById: params.exerciseById,
+        objective: params.objective,
+        fromExerciseId: removableAccessoryId,
+        toExercise: replacement,
+        reason: `session_shape_required_pattern:${requiredPattern}`,
+      });
+      tradeoffs.push({
+        layer: "closure",
+        code: "session_shape_required_pattern_replacement",
+        exerciseId: replacement.id,
+        message: `${replacedExercise?.name ?? removableAccessoryId} was replaced with ${replacement.name} so ${params.sessionSlotId ?? params.sessionIntent} keeps ${formatMovementPattern(requiredPattern)} coverage when viable.`,
+      });
+    }
+
+    for (const duplicatePattern of sessionShape.avoidDuplicatePatterns ?? []) {
+      const removableDuplicateIds = sortRemovableIds(
+        selection.accessoryIds.filter((exerciseId) => {
+          if (params.pinnedExerciseIds.has(exerciseId)) {
+            return false;
+          }
+          const exercise = params.exerciseById.get(exerciseId);
+          return Boolean(exercise?.movementPatterns?.includes(duplicatePattern));
+        })
+      );
+      for (const duplicateId of removableDuplicateIds) {
+        const duplicateCount = selection.selectedExerciseIds.filter((exerciseId) => {
+          const exercise = params.exerciseById.get(exerciseId);
+          return Boolean(exercise?.movementPatterns?.includes(duplicatePattern));
+        }).length;
+        if (duplicateCount <= 1) {
+          break;
+        }
+
+        const missingRequiredAfterRemoval = getMissingSessionShapeRequiredPatterns({
+          objective: params.objective,
+          selection,
+          exerciseById: params.exerciseById,
+          excludeExerciseId: duplicateId,
+        });
+        if (missingRequiredAfterRemoval.length > 0) {
+          continue;
+        }
+
+        const exercise = params.exerciseById.get(duplicateId);
+        if (!exercise) {
+          continue;
+        }
+        removeIfSafe(
+          duplicateId,
+          "session_shape_duplicate_pattern_trimmed",
+          `${exercise.name} was trimmed to avoid duplicating ${formatMovementPattern(duplicatePattern)} coverage once that pattern was already represented in this slot.`
+        );
+      }
+    }
   }
 
   return { selection, tradeoffs };
@@ -2305,6 +2476,29 @@ function evaluateClosureAction(
       : dominantDeficitReduction > CLOSURE_ACTION_SCORE_EPSILON
         ? dominantDeficitReduction * dominantDeficitAdvantage * 60
         : -dominantDeficitAdvantage * 90;
+  const missingRequiredPatterns = getMissingSessionShapeRequiredPatternsForExercises({
+    objective,
+    exercises: selectedExercises,
+  });
+  const coversMissingRequiredPattern =
+    !isMainLiftExercise(exercise, objective) &&
+    missingRequiredPatterns.length > 0 &&
+    exerciseMatchesAnyMovementPattern(exercise, missingRequiredPatterns);
+  const duplicateAvoidedPattern =
+    !isMainLiftExercise(exercise, objective) &&
+    duplicatesSessionShapeAvoidedPattern({
+      objective,
+      exercise,
+      selectedExercises,
+    });
+  const sessionShapeRequiredPatternBonus =
+    dominantDeficit != null && coversMissingRequiredPattern
+      ? dominantDeficit.remainingDeficit * 45
+      : 0;
+  const sessionShapeDuplicatePenalty =
+    dominantDeficit != null && duplicateAvoidedPattern && !coversMissingRequiredPattern
+      ? dominantDeficit.remainingDeficit * 45
+      : 0;
 
   return {
     action: {
@@ -2320,9 +2514,11 @@ function evaluateClosureAction(
         redundantAccessoryPenalty +
       stackedIsolationPenalty * -1 +
       dominantDeficitPriorityAdjustment -
+      sessionShapeDuplicatePenalty +
       collateralOvershoot * 25 -
       fatigueCost +
       urgencyWeightedReduction * 35 +
+      sessionShapeRequiredPatternBonus +
       totalScore +
       accessoryBias,
     },
@@ -2490,18 +2686,6 @@ function selectBestClosureAction(params: {
         proposedSets,
         dominantDeficit
       );
-      if (
-        wouldViolateMovementPatternCap(selectedExercises, exercise) &&
-        materialDominantContribution <= CLOSURE_ACTION_SCORE_EPSILON
-      ) {
-        candidateDiagnostics.push({
-          ...baseCandidate,
-          setDelta: proposedSets,
-          dominantDeficitContribution: roundPlannerValue(materialDominantContribution),
-          rejectionReason: "movement_pattern_cap",
-        });
-        continue;
-      }
 
       const candidate = buildCandidate(exercise, closureObjective, proposedSets);
       const evaluation = evaluateClosureAction(

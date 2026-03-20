@@ -536,6 +536,8 @@ describe("buildSelectionObjective continuity bias", () => {
       sessionShape: {
         id: "lower_hinge_dominant",
         preferredAccessoryPrimaryMuscles: ["Hamstrings", "Glutes"],
+        requiredMovementPatterns: ["squat"],
+        avoidDuplicatePatterns: ["hinge"],
       },
       compoundControl: {
         lanes: [
@@ -687,10 +689,14 @@ describe("buildSelectionObjective continuity bias", () => {
     expect(upperAObjective.slotPolicy?.currentSession?.sessionShape).toEqual({
       id: "upper_horizontal_balanced",
       preferredAccessoryPrimaryMuscles: ["Chest", "Upper Back", "Rear Delts"],
+      requiredMovementPatterns: ["vertical_pull"],
+      avoidDuplicatePatterns: ["horizontal_pull"],
     });
     expect(upperBObjective.slotPolicy?.currentSession?.sessionShape).toEqual({
       id: "upper_vertical_balanced",
       preferredAccessoryPrimaryMuscles: ["Lats", "Front Delts", "Side Delts"],
+      requiredMovementPatterns: ["horizontal_pull"],
+      avoidDuplicatePatterns: ["vertical_pull"],
     });
   });
 

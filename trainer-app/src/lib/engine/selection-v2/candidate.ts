@@ -27,7 +27,7 @@ import { getGoalRepRanges, getGoalSetMultiplier } from "../rules";
 import { getRestSeconds, REST_SECONDS } from "../prescription";
 
 const COMPOUND_SLOT_PROFILE_ALIGNMENT_WEIGHT = 0.18;
-const SESSION_SHAPE_ALIGNMENT_WEIGHT = 0.12;
+export const SESSION_SHAPE_ALIGNMENT_WEIGHT = 0.12;
 
 function buildDeficitScoringContribution(
   exercise: Exercise,
@@ -97,7 +97,8 @@ export function buildCandidate(
     ),
     sessionShapeAlignment: scoreSessionShapeAlignment(
       exercise,
-      objective.slotPolicy?.currentSession?.sessionShape
+      objective.slotPolicy?.currentSession?.sessionShape,
+      objective
     ),
   };
 

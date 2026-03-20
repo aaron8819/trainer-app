@@ -51,6 +51,8 @@ describe("resolveSessionSlotPolicy", () => {
       sessionShape: {
         id: "upper_horizontal_balanced",
         preferredAccessoryPrimaryMuscles: ["Chest", "Upper Back", "Rear Delts"],
+        requiredMovementPatterns: ["vertical_pull"],
+        avoidDuplicatePatterns: ["horizontal_pull"],
       },
       compoundControl: {
         lanes: [
@@ -90,6 +92,8 @@ describe("resolveSessionSlotPolicy", () => {
       sessionShape: {
         id: "upper_vertical_balanced",
         preferredAccessoryPrimaryMuscles: ["Lats", "Front Delts", "Side Delts"],
+        requiredMovementPatterns: ["horizontal_pull"],
+        avoidDuplicatePatterns: ["vertical_pull"],
       },
       compoundControl: {
         lanes: [
@@ -132,6 +136,8 @@ describe("resolveSessionSlotPolicy", () => {
       sessionShape: {
         id: "lower_squat_dominant",
         preferredAccessoryPrimaryMuscles: ["Quads"],
+        requiredMovementPatterns: ["hinge"],
+        avoidDuplicatePatterns: ["squat"],
       },
       compoundControl: {
         lanes: [
@@ -167,6 +173,8 @@ describe("resolveSessionSlotPolicy", () => {
       sessionShape: {
         id: "lower_hinge_dominant",
         preferredAccessoryPrimaryMuscles: ["Hamstrings", "Glutes"],
+        requiredMovementPatterns: ["squat"],
+        avoidDuplicatePatterns: ["hinge"],
       },
       compoundControl: {
         lanes: [
@@ -232,6 +240,8 @@ describe("resolveSessionSlotPolicy", () => {
         sessionShape: {
           id: "lower_squat_dominant",
           preferredAccessoryPrimaryMuscles: ["Quads"],
+          requiredMovementPatterns: ["hinge"],
+          avoidDuplicatePatterns: ["squat"],
         },
         compoundControl: {
           lanes: [
@@ -259,6 +269,8 @@ describe("resolveSessionSlotPolicy", () => {
         sessionShape: {
           id: "upper_vertical_balanced",
           preferredAccessoryPrimaryMuscles: ["Lats", "Front Delts", "Side Delts"],
+          requiredMovementPatterns: ["horizontal_pull"],
+          avoidDuplicatePatterns: ["vertical_pull"],
         },
         compoundControl: {
           lanes: [

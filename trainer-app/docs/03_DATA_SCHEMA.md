@@ -86,6 +86,7 @@ Lifecycle/handoff meanings:
 - `MesocycleExerciseRole.sessionIntent`
 - `MesocycleExerciseRole.role` (`MesocycleExerciseRoleType`)
 - `MesocycleExerciseRole.addedInWeek`
+- `MesocycleExerciseRole` remains the fallback/projection continuity registry: unseeded runtime composition, explicit continuity metadata, and successor slot-plan projection may still read it, but accepted seeded supported runtime composition is owned by `Mesocycle.slotPlanSeedJson`, not these rows.
 
 ## Workout mesocycle snapshots
 - `Workout.trainingBlockId`

@@ -106,7 +106,8 @@ function auditSectionRoleMismatches(
 ) {
   // Historical workout sections are receipts, not the canonical mesocycle-role registry.
   // Keep mismatches visible for auditability, but do not let them rewrite role fixtures at read time.
-  // Planning/generation must continue to use mesocycleExerciseRole rows as the canonical source.
+  // MesocycleExerciseRole rows now support unseeded fallback, continuity metadata, and successor projection.
+  // Seeded supported runtime composition is owned separately by slotPlanSeedJson plus slot-runtime resolution.
   for (const workout of workouts) {
     if (!workout.sessionIntent) continue;
     const intent = dbIntentToSessionIntent(workout.sessionIntent);

@@ -30,6 +30,22 @@ export type ResolvedSeededSlotPlan = {
   templateExercises: TemplateExerciseInput[];
 };
 
+function buildUnresolvableSeededSlotPlanError(input: {
+  sessionIntent: SessionIntent;
+  slotId?: string;
+}): { error: string } {
+  const explicitSlotId = input.slotId?.trim();
+  if (explicitSlotId) {
+    return {
+      error: `Persisted slot plan seed could not be resolved for slot ${explicitSlotId}.`,
+    };
+  }
+
+  return {
+    error: `Persisted slot plan seed could not be resolved for intent ${input.sessionIntent}.`,
+  };
+}
+
 function isRecord(value: unknown): value is JsonRecord {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -154,7 +170,7 @@ function deriveCurrentSeededRuntimeSlot(
   };
 }
 
-export function resolveSeededSlotPlan(input: {
+function resolveSeededSlotPlan(input: {
   mapped: MappedGenerationContext;
   sessionIntent: SessionIntent;
   slotId?: string;
@@ -228,4 +244,24 @@ export function resolveSeededSlotPlan(input: {
       mesocycleRole: exercise.role,
     })),
   };
+}
+
+function shouldUseSeededSlotPlanRuntime(input: {
+  mapped: MappedGenerationContext;
+  sessionIntent: SessionIntent;
+}): boolean {
+  return input.sessionIntent !== "body_part" && Boolean(input.mapped.activeMesocycle?.slotPlanSeedJson);
+}
+
+export function resolveRequiredSeededSlotPlan(input: {
+  mapped: MappedGenerationContext;
+  sessionIntent: SessionIntent;
+  slotId?: string;
+}): ResolvedSeededSlotPlan | null | { error: string } {
+  if (!shouldUseSeededSlotPlanRuntime(input)) {
+    return null;
+  }
+
+  const resolved = resolveSeededSlotPlan(input);
+  return resolved ?? buildUnresolvableSeededSlotPlanError(input);
 }

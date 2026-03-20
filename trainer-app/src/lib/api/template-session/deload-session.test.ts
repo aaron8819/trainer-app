@@ -361,6 +361,67 @@ describe("deload-session generation", () => {
     });
   });
 
+  it("does not fall back to legacy mesocycle roles when a seeded deload slot-plan seed is unresolvable", async () => {
+    mocks.workoutFindFirst.mockResolvedValue({
+      exercises: [
+        {
+          exerciseId: "row",
+          isMainLift: true,
+          sets: Array.from({ length: 4 }, () => ({ logs: [{ actualReps: 8, actualLoad: 160 }] })),
+        },
+      ],
+    });
+    mocks.workoutFindMany.mockResolvedValue([]);
+
+    const result = await generateDeloadSessionFromIntentContext(
+      "user-1",
+      makeMappedContext({
+        exerciseLibrary: [
+          {
+            id: "row",
+            name: "Row",
+            movementPatterns: ["horizontal_pull"],
+            splitTags: ["pull"],
+            jointStress: "medium",
+            isMainLiftEligible: true,
+            isCompound: true,
+            fatigueCost: 3,
+            equipment: ["machine"],
+            primaryMuscles: ["Upper Back"],
+            secondaryMuscles: ["Biceps"],
+          },
+        ],
+        roleMapByIntent: {
+          pull: [["row", "CORE_COMPOUND"]],
+        },
+        slotSequenceJson: {
+          version: 1,
+          source: "handoff_draft",
+          sequenceMode: "ordered_flexible",
+          slots: [
+            { slotId: "push_a", intent: "PUSH" },
+            { slotId: "pull_a", intent: "PULL" },
+          ],
+        },
+        slotPlanSeedJson: {
+          version: 1,
+          source: "handoff_slot_plan_projection",
+          slots: [
+            {
+              slotId: "push_a",
+              exercises: [{ exerciseId: "row", role: "CORE_COMPOUND" }],
+            },
+          ],
+        },
+      }),
+      "pull"
+    );
+
+    expect(result).toEqual({
+      error: "Persisted slot plan seed could not be resolved for intent pull.",
+    });
+  });
+
   it("trims redundant push-day press overlap and duplicate lateral raise buckets before applying set deloads", async () => {
     mocks.workoutFindFirst.mockResolvedValue({
       exercises: [

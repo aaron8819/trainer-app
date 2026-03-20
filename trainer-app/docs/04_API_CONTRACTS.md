@@ -115,7 +115,7 @@ Sources of truth:
   - state gate: target mesocycle must exist for the owner, be in `AWAITING_HANDOFF`, and have a readable stored draft
   - success: `{ ok: true, priorMesocycleId, nextMesocycle }`
   - acceptance semantics are transactional: sanitize the stored draft, reuse the shared handoff projection source seam, create the successor mesocycle, persist `slotSequenceJson`, persist aligned minimal `slotPlanSeedJson` from the raw canonical handoff slot-plan projection when available, copy allowed carry-forward roles, update `Constraints`, then mark the source mesocycle `COMPLETED`
-  - `slotPlanSeedJson` is persistence-only in this phase: it stores ordered `slotId -> exercises[{ exerciseId, role }]` data and does not come from setup display DTOs
+  - `slotPlanSeedJson` stores ordered `slotId -> exercises[{ exerciseId, role }]` data from the raw canonical handoff slot-plan projection, remains distinct from setup display DTOs, and becomes the canonical seeded runtime composition source for supported accepted mesocycles
   - unsupported raw slot-plan projection cases such as current `BODY_PART` projection limits do not change accept behavior yet; acceptance still succeeds without persisting `slotPlanSeedJson`
   - `409` when handoff is not pending, the draft is missing, or carry-forward keep selections are no longer compatible with the edited split/session structure
 

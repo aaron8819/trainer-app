@@ -13,7 +13,7 @@ import {
 } from "@/lib/deload/semantics";
 import type { DeloadTransformationTrace } from "@/lib/evidence/session-audit-types";
 import type { MappedGenerationContext } from "./types";
-import { resolveSeededSlotPlan } from "./slot-plan-seed";
+import { resolveRequiredSeededSlotPlan } from "./slot-plan-seed";
 
 function modalNumber(values: number[]): number | undefined {
   const freq = new Map<number, number>();
@@ -156,13 +156,7 @@ export async function generateDeloadSessionFromIntentContext(
     orderBy: [{ scheduledDate: "desc" }, { id: "desc" }],
   });
 
-  const intentRoleMap = mapped.mesocycleRoleMapByIntent?.[sessionIntent] ?? new Map();
-  const coreIds = new Set(
-    [...intentRoleMap.entries()]
-      .filter(([, role]) => role === "CORE_COMPOUND")
-      .map(([exerciseId]) => exerciseId)
-  );
-  const seededSlotPlan = resolveSeededSlotPlan({
+  const seededSlotPlan = resolveRequiredSeededSlotPlan({
     mapped,
     sessionIntent,
   });
@@ -174,12 +168,24 @@ export async function generateDeloadSessionFromIntentContext(
     seededSlotPlan && !("error" in seededSlotPlan)
       ? seededSlotPlan.exercises
       : null;
+  const seededRoleById = new Map(
+    (orderedSeedExercises ?? []).map((exercise) => [exercise.exerciseId, exercise.role] as const)
+  );
+  const fallbackRoleMap =
+    orderedSeedExercises == null
+      ? mapped.mesocycleRoleMapByIntent?.[sessionIntent] ?? new Map<string, "CORE_COMPOUND" | "ACCESSORY">()
+      : new Map<string, "CORE_COMPOUND" | "ACCESSORY">();
+  const fallbackCoreIds = new Set(
+    [...fallbackRoleMap.entries()]
+      .filter(([, role]) => role === "CORE_COMPOUND")
+      .map(([exerciseId]) => exerciseId)
+  );
   const orderedExerciseIds = orderedSeedExercises
     ? orderedSeedExercises.map((exercise) => exercise.exerciseId)
     : (() => {
         const baselineExerciseIds = latestAccumWorkout.exercises.map((exercise) => exercise.exerciseId);
         const fallbackOrderedExerciseIds = [...baselineExerciseIds];
-        for (const coreId of coreIds) {
+        for (const coreId of fallbackCoreIds) {
           if (!fallbackOrderedExerciseIds.includes(coreId)) {
             fallbackOrderedExerciseIds.push(coreId);
           }
@@ -225,12 +231,12 @@ export async function generateDeloadSessionFromIntentContext(
         .flatMap((workout) => workout.exercises)
         .find((entry) => entry.exerciseId === exerciseId);
     const mesocycleRole =
-      orderedSeedExercises?.find((exercise) => exercise.exerciseId === exerciseId)?.role ??
-      intentRoleMap.get(exerciseId);
+      seededRoleById.get(exerciseId) ??
+      fallbackRoleMap.get(exerciseId);
     const isMainLift =
       mesocycleRole != null
         ? mesocycleRole === "CORE_COMPOUND"
-        : baselineExerciseEntry?.isMainLift ?? coreIds.has(exerciseId);
+        : baselineExerciseEntry?.isMainLift ?? fallbackCoreIds.has(exerciseId);
     const baselineSetCount = baselineExerciseEntry?.sets.length ?? 4;
     const baselineReps = modalNumber(
       (baselineExerciseEntry?.sets ?? [])

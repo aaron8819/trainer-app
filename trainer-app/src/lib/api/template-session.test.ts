@@ -405,6 +405,49 @@ describe("generateSessionFromIntent", () => {
     }
   });
 
+  it("does not fall back to legacy intent composition when a seeded mesocycle has an unresolvable slot-plan seed", async () => {
+    loadActiveMesocycleMock.mockResolvedValue({
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION",
+      accumulationSessionsCompleted: 3,
+      durationWeeks: 5,
+      slotSequenceJson: {
+        version: 1,
+        source: "handoff_draft",
+        sequenceMode: "ordered_flexible",
+        slots: [
+          { slotId: "upper_a", intent: "UPPER" },
+          { slotId: "lower_a", intent: "LOWER" },
+        ],
+      },
+      slotPlanSeedJson: {
+        version: 1,
+        source: "handoff_slot_plan_projection",
+        slots: [
+          {
+            slotId: "upper_a",
+            exercises: [{ exerciseId: "bench", role: "CORE_COMPOUND" }],
+          },
+        ],
+      },
+    });
+    mesocycleRoleFindManyMock.mockResolvedValue([
+      { exerciseId: "bench", role: "CORE_COMPOUND", sessionIntent: "LOWER" },
+    ]);
+
+    const selectSpy = vi.spyOn(selectionV2, "selectExercisesOptimized");
+    try {
+      const result = await generateSessionFromIntent("user-1", { intent: "lower" });
+
+      expect(result).toEqual({
+        error: "Persisted slot plan seed could not be resolved for intent lower.",
+      });
+      expect(selectSpy).not.toHaveBeenCalled();
+    } finally {
+      selectSpy.mockRestore();
+    }
+  });
+
   it("requires targetMuscles for body_part intent", async () => {
     const result = await generateSessionFromIntent("user-1", { intent: "body_part" });
 

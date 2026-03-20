@@ -53,7 +53,7 @@ import {
   mapTemplateExercises,
   resolveTemplateSessionIntent,
 } from "./template-session/plan-assembly";
-import { resolveSeededSlotPlan } from "./template-session/slot-plan-seed";
+import { resolveRequiredSeededSlotPlan } from "./template-session/slot-plan-seed";
 import type {
   GenerateIntentSessionInput,
   GenerateTemplateSessionParams,
@@ -120,7 +120,7 @@ function composeSeededIntentSessionFromMappedContext(
   mapped: MappedGenerationContext,
   input: GenerateIntentSessionInput
 ): IntentSessionCompositionResult | { error: string } | null {
-  const seededSlotPlan = resolveSeededSlotPlan({
+  const seededSlotPlan = resolveRequiredSeededSlotPlan({
     mapped,
     sessionIntent: input.intent,
     slotId: input.slotId,

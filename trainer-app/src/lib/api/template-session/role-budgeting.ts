@@ -3,6 +3,12 @@ import { VOLUME_LANDMARKS } from "@/lib/engine/volume-landmarks";
 import { getEffectiveStimulusByMuscleId, toMuscleLabel } from "@/lib/engine/stimulus";
 import { getSessionAnchorPolicy } from "@/lib/planning/session-opportunities";
 import {
+  getExerciseCompoundLaneClassifications,
+  isExerciseAllowedForAnyCompoundLaneSatisfaction,
+  isExerciseAllowedForCompoundLaneSatisfaction,
+  type SessionSlotCompoundLaneKey,
+} from "@/lib/planning/session-slot-profile";
+import {
   resolveRoleFixtureAnchor,
   type RoleAnchor,
 } from "./role-anchor-policy";
@@ -44,6 +50,94 @@ export function roleOrderedIds(
     .filter(([, role]) => role === "ACCESSORY")
     .map(([exerciseId]) => exerciseId);
   return [...core, ...accessory];
+}
+
+function isCoreCompoundRole(
+  role: "CORE_COMPOUND" | "ACCESSORY" | undefined
+): role is "CORE_COMPOUND" {
+  return role === "CORE_COMPOUND";
+}
+
+function isMainLiftCompoundExercise(
+  exercise: Pick<EngineExercise, "isCompound" | "isMainLiftEligible">
+): boolean {
+  return (exercise.isCompound ?? false) && (exercise.isMainLiftEligible ?? false);
+}
+
+export function resolveSlotAwareRoleMap(params: {
+  roleMap: Map<string, "CORE_COMPOUND" | "ACCESSORY">;
+  exerciseById: Map<string, EngineExercise>;
+  candidatePool: EngineExercise[];
+  objective: SelectionObjective;
+}): Map<string, "CORE_COMPOUND" | "ACCESSORY"> {
+  if (!params.objective.resolvedCompoundControl) {
+    return new Map(params.roleMap);
+  }
+
+  const resolvedRoleMap = new Map(params.roleMap);
+  const hasAllowedMainLiftCandidateForLane = (
+    laneKey: SessionSlotCompoundLaneKey,
+    excludedExerciseId: string
+  ): boolean =>
+    params.candidatePool.some(
+      (candidate) =>
+        candidate.id !== excludedExerciseId &&
+        isMainLiftCompoundExercise(candidate) &&
+        isExerciseAllowedForCompoundLaneSatisfaction(
+          params.objective.resolvedCompoundControl,
+          laneKey,
+          candidate
+        )
+    );
+
+  for (const [exerciseId, role] of params.roleMap.entries()) {
+    if (!isCoreCompoundRole(role)) {
+      continue;
+    }
+
+    const exercise = params.exerciseById.get(exerciseId);
+    if (!exercise || !isMainLiftCompoundExercise(exercise)) {
+      continue;
+    }
+    if (
+      isExerciseAllowedForAnyCompoundLaneSatisfaction(
+        params.objective.resolvedCompoundControl,
+        exercise
+      )
+    ) {
+      continue;
+    }
+
+    const laneClassifications = getExerciseCompoundLaneClassifications(
+      params.objective.resolvedCompoundControl,
+      exercise
+    );
+    const hasAllowedAlternative = laneClassifications.some((classification) =>
+      hasAllowedMainLiftCandidateForLane(classification.key, exerciseId)
+    );
+
+    if (laneClassifications.length === 0) {
+      const hasAnyAllowedAlternative = params.candidatePool.some(
+        (candidate) =>
+          candidate.id !== exerciseId &&
+          isMainLiftCompoundExercise(candidate) &&
+          isExerciseAllowedForAnyCompoundLaneSatisfaction(
+            params.objective.resolvedCompoundControl,
+            candidate
+          )
+      );
+      if (hasAnyAllowedAlternative) {
+        resolvedRoleMap.delete(exerciseId);
+      }
+      continue;
+    }
+
+    if (hasAllowedAlternative) {
+      resolvedRoleMap.delete(exerciseId);
+    }
+  }
+
+  return resolvedRoleMap;
 }
 
 function getLifecycleRoleSetTarget(

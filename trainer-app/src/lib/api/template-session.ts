@@ -43,6 +43,7 @@ import type {
 import {
   buildRemainingRoleFixturesByAnchor,
   removeRemainingRoleFixture,
+  resolveSlotAwareRoleMap,
   resolveRoleFixtureSetTarget,
   roleOrderedIds,
   type RoleFixtureBudgetDecision,
@@ -72,6 +73,7 @@ import {
   getSessionAnchorPolicy,
   type SessionInventoryKind,
 } from "@/lib/planning/session-opportunities";
+import { isExerciseAllowedForAnyCompoundLaneSatisfaction } from "@/lib/planning/session-slot-profile";
 
 export type { GenerateIntentSessionInput } from "./template-session/types";
 
@@ -1947,6 +1949,20 @@ function buildClosureObjective(
   };
 }
 
+function isExerciseAllowedByClosureSlotLaneGuardrail(
+  objective: ReturnType<typeof buildSelectionObjective>,
+  exercise: Pick<EngineExercise, "isCompound" | "movementPatterns" | "primaryMuscles">
+): boolean {
+  if (!(exercise.isCompound ?? false) || !objective.resolvedCompoundControl) {
+    return true;
+  }
+
+  return isExerciseAllowedForAnyCompoundLaneSatisfaction(
+    objective.resolvedCompoundControl,
+    exercise
+  );
+}
+
 function getSessionPlanningInventoryKind(
   input: Pick<GenerateIntentSessionInput, "optionalGapFill" | "optionalGapFillContext">
 ): Extract<SessionInventoryKind, "standard" | "rescue"> {
@@ -2408,31 +2424,38 @@ function selectBestClosureAction(params: {
     "Calves"
   );
 
-    if (selection.selectedExerciseIds.length < maxExercises) {
-      for (const exercise of filteredPool) {
-        const baseCandidate: PlannerClosureCandidateDiagnostic = {
-          exerciseId: exercise.id,
-          exerciseName: exercise.name,
-          kind: "add",
-          setDelta: 0,
-          dominantDeficitMuscleId,
-          dominantDeficitRemaining: roundPlannerValue(dominantDeficit.remainingDeficit),
-          dominantDeficitContribution: 0,
-          decision: "rejected",
-          score: null,
-        };
-        const hardConstraintRejection = getClosurePoolRejectionReason(exercise, objective);
-        if (hardConstraintRejection) {
-          candidateDiagnostics.push({
-            ...baseCandidate,
-            rejectionReason: hardConstraintRejection,
-          });
-          continue;
-        }
-        if (selectedIds.has(exercise.id)) {
-          candidateDiagnostics.push({ ...baseCandidate, rejectionReason: "already_selected" });
-          continue;
-        }
+  if (selection.selectedExerciseIds.length < maxExercises) {
+    for (const exercise of filteredPool) {
+      const baseCandidate: PlannerClosureCandidateDiagnostic = {
+        exerciseId: exercise.id,
+        exerciseName: exercise.name,
+        kind: "add",
+        setDelta: 0,
+        dominantDeficitMuscleId,
+        dominantDeficitRemaining: roundPlannerValue(dominantDeficit.remainingDeficit),
+        dominantDeficitContribution: 0,
+        decision: "rejected",
+        score: null,
+      };
+      const hardConstraintRejection = getClosurePoolRejectionReason(exercise, objective);
+      if (hardConstraintRejection) {
+        candidateDiagnostics.push({
+          ...baseCandidate,
+          rejectionReason: hardConstraintRejection,
+        });
+        continue;
+      }
+      if (selectedIds.has(exercise.id)) {
+        candidateDiagnostics.push({ ...baseCandidate, rejectionReason: "already_selected" });
+        continue;
+      }
+      if (!isExerciseAllowedByClosureSlotLaneGuardrail(objective, exercise)) {
+        candidateDiagnostics.push({
+          ...baseCandidate,
+          rejectionReason: "slot_lane_guardrail",
+        });
+        continue;
+      }
       if (
         isMainLiftExercise(exercise, objective) &&
         selection.mainLiftIds.length >= maxMainLifts
@@ -2564,6 +2587,13 @@ function selectBestClosureAction(params: {
       candidateDiagnostics.push({
         ...baseCandidate,
         rejectionReason: "muscle_session_soft_cap_reached",
+      });
+      continue;
+    }
+    if (!isExerciseAllowedByClosureSlotLaneGuardrail(objective, exercise)) {
+      candidateDiagnostics.push({
+        ...baseCandidate,
+        rejectionReason: "slot_lane_guardrail",
       });
       continue;
     }
@@ -2776,24 +2806,6 @@ export function composeIntentSessionFromMappedContext(
     sessionSlotId: input.slotId,
   });
   const isDeloadSession = mapped.effectivePeriodization.isDeload;
-  const roleMap = mapped.mesocycleRoleMapByIntent[input.intent];
-  const hasRegisteredRoles = roleMap.size > 0;
-  const hasCoreCompoundRoles = Array.from(roleMap.values()).some((role) => role === "CORE_COMPOUND");
-  const hasAccessoryRoles = Array.from(roleMap.values()).some((role) => role === "ACCESSORY");
-  const isServerDerivedRoleListComplete = hasCoreCompoundRoles && hasAccessoryRoles;
-  const allowNonRoleAutoFill =
-    !isServerDerivedRoleListComplete || input.roleListIncomplete === true;
-  const pinnedRoleIds = new Set(Array.from(roleMap.keys()));
-  const pinnedCoreIds = new Set(
-    Array.from(roleMap.entries())
-      .filter(([, role]) => role === "CORE_COMPOUND")
-      .map(([exerciseId]) => exerciseId)
-  );
-  const coreCompoundRoleCount = pinnedCoreIds.size;
-  if (coreCompoundRoleCount > 0) {
-    objective.constraints.maxMainLifts = 0;
-    objective.constraints.minMainLifts = 0;
-  }
   const planningInventoryKind = getSessionPlanningInventoryKind(input);
   const closureInventoryKind: SessionInventoryKind =
     planningInventoryKind === "rescue" ? "rescue" : "closure";
@@ -2831,6 +2843,29 @@ export function composeIntentSessionFromMappedContext(
   });
 
   const exerciseById = new Map(mapped.exerciseLibrary.map((exercise) => [exercise.id, exercise]));
+  const roleMap = resolveSlotAwareRoleMap({
+    roleMap: mapped.mesocycleRoleMapByIntent[input.intent],
+    exerciseById,
+    candidatePool: filteredPool,
+    objective,
+  });
+  const hasRegisteredRoles = roleMap.size > 0;
+  const hasCoreCompoundRoles = Array.from(roleMap.values()).some((role) => role === "CORE_COMPOUND");
+  const hasAccessoryRoles = Array.from(roleMap.values()).some((role) => role === "ACCESSORY");
+  const isServerDerivedRoleListComplete = hasCoreCompoundRoles && hasAccessoryRoles;
+  const allowNonRoleAutoFill =
+    !isServerDerivedRoleListComplete || input.roleListIncomplete === true;
+  const pinnedRoleIds = new Set(Array.from(roleMap.keys()));
+  const pinnedCoreIds = new Set(
+    Array.from(roleMap.entries())
+      .filter(([, role]) => role === "CORE_COMPOUND")
+      .map(([exerciseId]) => exerciseId)
+  );
+  const coreCompoundRoleCount = pinnedCoreIds.size;
+  if (coreCompoundRoleCount > 0) {
+    objective.constraints.maxMainLifts = 0;
+    objective.constraints.minMainLifts = 0;
+  }
   const anchorPolicy = getSessionAnchorPolicy(input.intent);
   const plannerTradeoffs: PlannerTradeoffDiagnostic[] = [];
   const plannerExerciseDiagnostics: Record<string, PlannerExerciseDiagnostic> = {};

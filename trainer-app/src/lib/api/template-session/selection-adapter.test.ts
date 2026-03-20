@@ -533,11 +533,114 @@ describe("buildSelectionObjective continuity bias", () => {
         preferredMovementPatterns: ["hinge"],
         preferredPrimaryMuscles: ["Hamstrings", "Glutes"],
       },
+      compoundControl: {
+        lanes: [
+          {
+            key: "primary",
+            preferredMovementPatterns: ["hinge"],
+            compatibleMovementPatterns: [],
+            fallbackOnlyMovementPatterns: ["squat"],
+            preferredPrimaryMuscles: ["Hamstrings", "Glutes"],
+          },
+        ],
+      },
     });
     expect(objective.slotPolicy?.futurePlanning.futureSlots.map((slot) => slot.slotId)).toEqual([
       "upper_a",
       "lower_a",
       "upper_b",
+    ]);
+  });
+
+  it("drops out-of-lane compound continuity favorites when viable in-lane options exist", () => {
+    const exerciseLibrary = [
+      makeExercise("bench", "Bench Press", ["horizontal_push"], ["push"], ["Chest"], ["Triceps", "Front Delts"]),
+      makeExercise("ohp", "Overhead Press", ["vertical_push"], ["push"], ["Chest", "Front Delts"], ["Triceps"]),
+      makeExercise("row", "Chest-Supported Row", ["horizontal_pull"], ["pull"], ["Lats", "Upper Back"], ["Biceps"]),
+      makeExercise("pulldown", "Lat Pulldown", ["vertical_pull"], ["pull"], ["Lats"], ["Biceps"]),
+      makeExercise("rear-delt", "Rear Delt Fly", ["isolation"], ["pull"], ["Rear Delts"], [], {
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 2,
+      }),
+      makeExercise("lateral", "Lateral Raise", ["isolation"], ["push"], ["Side Delts"], [], {
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 2,
+      }),
+      makeExercise("curl", "Cable Curl", ["isolation"], ["pull"], ["Biceps"], [], {
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 2,
+      }),
+      makeExercise("triceps", "Triceps Pressdown", ["isolation"], ["push"], ["Triceps"], [], {
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 2,
+      }),
+    ];
+    const history: WorkoutHistoryEntry[] = [
+      {
+        date: "2026-03-05T01:40:25.252Z",
+        completed: true,
+        status: "COMPLETED",
+        sessionIntent: "upper",
+        mesocycleSnapshot: {
+          week: 1,
+          session: 3,
+          mesocycleId: "meso-1",
+          slotId: "upper_b",
+        },
+        exercises: [
+          {
+            exerciseId: "bench",
+            sets: [
+              { exerciseId: "bench", setIndex: 1, reps: 8, load: 185 },
+              { exerciseId: "bench", setIndex: 2, reps: 8, load: 185 },
+            ],
+          },
+        ],
+      },
+    ];
+    const mapped = makeMappedContext(history, {
+      exerciseLibrary,
+      weeklySchedule: ["upper", "lower", "upper", "lower"],
+      lifecycleVolumeTargets: {
+        Chest: 10,
+        Lats: 10,
+        "Upper Back": 10,
+        Biceps: 8,
+        "Front Delts": 8,
+        "Rear Delts": 8,
+        "Side Delts": 8,
+        Triceps: 8,
+      },
+    });
+    mapped.activeMesocycle = {
+      id: "meso-1",
+      slotSequenceJson: {
+        version: 1,
+        source: "handoff_draft",
+        sequenceMode: "ordered_flexible",
+        slots: [
+          { slotId: "upper_a", intent: "UPPER" },
+          { slotId: "lower_a", intent: "LOWER" },
+          { slotId: "upper_b", intent: "UPPER" },
+          { slotId: "lower_b", intent: "LOWER" },
+        ],
+      },
+    } as unknown as MappedGenerationContext["activeMesocycle"];
+
+    const objective = buildSelectionObjective(mapped, "upper", undefined, {
+      sessionSlotId: "upper_b",
+    });
+
+    expect(objective.constraints.preferredContinuityExerciseIds?.has("bench")).toBe(false);
+    expect(objective.preferences.favoriteExerciseIds.has("bench")).toBe(false);
+    expect(objective.constraints.continuityMinSetsByExerciseId?.has("bench")).toBe(false);
+    expect(objective.resolvedCompoundControl?.lanes.map((lane) => [lane.key, lane.activeTier])).toEqual([
+      ["press", "preferred"],
+      ["pull", "preferred"],
     ]);
   });
 

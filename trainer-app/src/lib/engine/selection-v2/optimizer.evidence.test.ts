@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Exercise } from "../types";
 import type { SelectionObjective } from "./types";
 
-function buildObjective(): SelectionObjective {
+function buildObjective(overrides?: Partial<SelectionObjective>): SelectionObjective {
   return {
     constraints: {
       volumeFloor: new Map(),
@@ -39,6 +39,7 @@ function buildObjective(): SelectionObjective {
     goals: { primary: "hypertrophy", secondary: "none", isStrengthFocused: false, isHypertrophyFocused: true },
     trainingAge: "intermediate",
     sessionIntent: "push",
+    ...overrides,
   };
 }
 
@@ -115,5 +116,99 @@ describe("selection optimizer evidence guardrails", () => {
     expect(
       result.rejected.some((entry: { exercise: Exercise }) => entry.exercise.id === "oh-tri-ext")
     ).toBe(true);
+  });
+
+  it("enforces resolved compound-lane satisfaction before accepting fallback compounds", async () => {
+    vi.doUnmock("./beam-search");
+    const { selectExercisesOptimized } = await import("./optimizer");
+
+    const pool: Exercise[] = [
+      {
+        id: "bench",
+        name: "Bench Press",
+        movementPatterns: ["horizontal_push"],
+        splitTags: ["push"],
+        jointStress: "medium",
+        isMainLiftEligible: true,
+        isCompound: true,
+        fatigueCost: 4,
+        sfrScore: 5,
+        lengthPositionScore: 4,
+        equipment: ["barbell"],
+        primaryMuscles: ["Chest"],
+        secondaryMuscles: ["Triceps"],
+      },
+      {
+        id: "ohp",
+        name: "Overhead Press",
+        movementPatterns: ["vertical_push"],
+        splitTags: ["push"],
+        jointStress: "medium",
+        isMainLiftEligible: true,
+        isCompound: true,
+        fatigueCost: 4,
+        sfrScore: 3,
+        lengthPositionScore: 3,
+        equipment: ["barbell"],
+        primaryMuscles: ["Front Delts", "Chest"],
+        secondaryMuscles: ["Triceps"],
+      },
+      {
+        id: "lateral",
+        name: "Lateral Raise",
+        movementPatterns: ["isolation"],
+        splitTags: ["push"],
+        jointStress: "low",
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 1,
+        sfrScore: 4,
+        lengthPositionScore: 3,
+        equipment: ["cable"],
+        primaryMuscles: ["Side Delts"],
+        secondaryMuscles: [],
+      },
+    ];
+
+    const result = selectExercisesOptimized(
+      pool,
+      buildObjective({
+        constraints: {
+          ...buildObjective().constraints,
+          minExercises: 2,
+          maxExercises: 2,
+          minMainLifts: 1,
+          maxMainLifts: 2,
+          minAccessories: 0,
+        },
+        volumeContext: {
+          weeklyTarget: new Map([
+            ["Chest", 10],
+            ["Front Delts", 10],
+          ]),
+          weeklyActual: new Map(),
+          effectiveActual: new Map(),
+        },
+        resolvedCompoundControl: {
+          lanes: [
+            {
+              key: "press",
+              preferredMovementPatterns: ["vertical_push"],
+              compatibleMovementPatterns: [],
+              fallbackOnlyMovementPatterns: ["horizontal_push"],
+              activeTier: "preferred",
+              viableCandidateCountByTier: {
+                preferred: 1,
+                compatible: 0,
+                fallback_only: 1,
+              },
+            },
+          ],
+        },
+      })
+    );
+
+    expect(result.selected.map((candidate) => candidate.exercise.id)).toContain("ohp");
+    expect(result.constraintsSatisfied).toBe(true);
   });
 });

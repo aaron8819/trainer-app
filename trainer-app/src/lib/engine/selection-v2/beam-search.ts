@@ -26,6 +26,10 @@ import { BEAM_TIEBREAKER_EPSILON } from "./types";
 import { mergeVolume } from "./candidate";
 import { generateRationale } from "./rationale";
 import { scoreMovementNovelty, scoreDeficitFillDynamic } from "./scoring";
+import {
+  isExerciseAllowedForCompoundLaneSatisfaction,
+  type SessionSlotCompoundLaneKey,
+} from "@/lib/planning/session-slot-profile";
 
 function isMainLiftCandidate(
   candidate: SelectionCandidate,
@@ -252,6 +256,109 @@ function hasGenuinePrimaryMuscleDeficit(
   return remainingDeficit > candidateContribution;
 }
 
+function getRequiredCompoundLaneKeys(
+  objective: SelectionObjective
+): SessionSlotCompoundLaneKey[] {
+  return (
+    objective.resolvedCompoundControl?.lanes
+      .filter((lane) => lane.activeTier != null)
+      .map((lane) => lane.key) ?? []
+  );
+}
+
+function getSatisfiedCompoundLaneKeys(
+  selected: SelectionCandidate[],
+  objective: SelectionObjective
+): Set<SessionSlotCompoundLaneKey> {
+  const satisfied = new Set<SessionSlotCompoundLaneKey>();
+  for (const laneKey of getRequiredCompoundLaneKeys(objective)) {
+    const hasAllowedExercise = selected.some((candidate) =>
+      isExerciseAllowedForCompoundLaneSatisfaction(
+        objective.resolvedCompoundControl,
+        laneKey,
+        candidate.exercise
+      )
+    );
+    if (hasAllowedExercise) {
+      satisfied.add(laneKey);
+    }
+  }
+  return satisfied;
+}
+
+function fillsMissingCompoundLaneRequirement(
+  state: BeamState,
+  candidate: SelectionCandidate,
+  objective: SelectionObjective
+): boolean {
+  const satisfiedLaneKeys = getSatisfiedCompoundLaneKeys(state.selected, objective);
+  return getRequiredCompoundLaneKeys(objective).some(
+    (laneKey) =>
+      !satisfiedLaneKeys.has(laneKey) &&
+      isExerciseAllowedForCompoundLaneSatisfaction(
+        objective.resolvedCompoundControl,
+        laneKey,
+        candidate.exercise
+      )
+  );
+}
+
+function wouldPreserveCompoundLaneProgress(
+  state: BeamState,
+  candidate: SelectionCandidate,
+  objective: SelectionObjective
+): boolean {
+  const requiredLaneKeys = getRequiredCompoundLaneKeys(objective);
+  if (requiredLaneKeys.length === 0) {
+    return true;
+  }
+
+  const nextSelected = [...state.selected, candidate];
+  const unresolvedLaneCount = requiredLaneKeys.filter(
+    (laneKey) => !getSatisfiedCompoundLaneKeys(nextSelected, objective).has(laneKey)
+  ).length;
+  const remainingSlots = objective.constraints.maxExercises - nextSelected.length;
+  return remainingSlots >= unresolvedLaneCount;
+}
+
+function hasRemainingCompoundLaneOption(
+  state: BeamState,
+  candidates: SelectionCandidate[],
+  objective: SelectionObjective,
+  excludedCandidateId: string
+): boolean {
+  const requiredLaneKeys = getRequiredCompoundLaneKeys(objective);
+  if (requiredLaneKeys.length === 0 || state.selected.length >= objective.constraints.maxExercises) {
+    return false;
+  }
+
+  const satisfiedLaneKeys = getSatisfiedCompoundLaneKeys(state.selected, objective);
+  const selectedIds = new Set(state.selected.map((candidate) => candidate.exercise.id));
+  for (const candidate of candidates) {
+    if (candidate.exercise.id === excludedCandidateId) continue;
+    if (selectedIds.has(candidate.exercise.id)) continue;
+    const fillsMissingLane = requiredLaneKeys.some(
+      (laneKey) =>
+        !satisfiedLaneKeys.has(laneKey) &&
+        isExerciseAllowedForCompoundLaneSatisfaction(
+          objective.resolvedCompoundControl,
+          laneKey,
+          candidate.exercise
+        )
+    );
+    if (!fillsMissingLane) continue;
+    if (wouldViolateMovementPatternCap(state, candidate)) continue;
+    if (!wouldSatisfyStructure(state, candidate, objective)) continue;
+
+    const mergedVolume = mergeVolume(state.volumeFilled, candidate.volumeContribution);
+    if (exceedsCeiling(mergedVolume, objective.constraints.volumeCeiling)) continue;
+
+    return true;
+  }
+
+  return false;
+}
+
 /**
  * Execute beam search to find optimal exercise combination
  *
@@ -315,6 +422,11 @@ export function beamSearch(
           continue;
         }
 
+        if (!wouldPreserveCompoundLaneProgress(state, candidate, objective)) {
+          rejectedMap.set(candidate.exercise.id, "structure_constraint_violated");
+          continue;
+        }
+
         if (shouldRejectLowSetAccessory(state, candidate, candidates, objective)) {
           rejectedMap.set(candidate.exercise.id, "dominated_by_better_option");
           continue;
@@ -326,7 +438,15 @@ export function beamSearch(
         ).length;
         const minMainLifts = objective.constraints.minMainLifts ?? 0;
         const fillsMainLiftRequirement = candidateIsMainLift && mainLiftsSelected < minMainLifts;
-        const candidateHasDeficit = candidate.scores.deficitFill > 0 || fillsMainLiftRequirement;
+        const fillsCompoundLaneRequirement = fillsMissingCompoundLaneRequirement(
+          state,
+          candidate,
+          objective
+        );
+        const candidateHasDeficit =
+          candidate.scores.deficitFill > 0 ||
+          fillsMainLiftRequirement ||
+          fillsCompoundLaneRequirement;
         if (!candidateHasDeficit && state.selected.length >= objective.constraints.minExercises) {
           rejectedMap.set(candidate.exercise.id, "dominated_by_better_option");
           continue;
@@ -334,6 +454,13 @@ export function beamSearch(
         if (
           !candidateHasDeficit &&
           hasRemainingDeficitFillingOption(state, candidates, objective, candidate.exercise.id)
+        ) {
+          rejectedMap.set(candidate.exercise.id, "dominated_by_better_option");
+          continue;
+        }
+        if (
+          !fillsCompoundLaneRequirement &&
+          hasRemainingCompoundLaneOption(state, candidates, objective, candidate.exercise.id)
         ) {
           rejectedMap.set(candidate.exercise.id, "dominated_by_better_option");
           continue;
@@ -530,6 +657,9 @@ export function beamSearch(
   // Enforce structural constraints (main lifts + accessories balance)
   finalBeam = enforceStructuralConstraints(finalBeam, candidates, objective, rejectedMap);
 
+  // Enforce authoritative compound-lane satisfaction for repeated-slot sessions.
+  finalBeam = enforceCompoundLaneSatisfaction(finalBeam, candidates, objective, rejectedMap);
+
   // Enforce continuity from most-recent same-intent performed session when feasible.
   finalBeam = enforceContinuityExercises(finalBeam, candidates, objective, rejectedMap);
 
@@ -715,6 +845,137 @@ function enforceStructuralConstraints(
   return augmentedBeam;
 }
 
+function enforceCompoundLaneSatisfaction(
+  beam: BeamState,
+  candidates: SelectionCandidate[],
+  objective: SelectionObjective,
+  rejectedMap: Map<string, RejectionReason>
+): BeamState {
+  const requiredLaneKeys = getRequiredCompoundLaneKeys(objective);
+  if (requiredLaneKeys.length === 0) {
+    return beam;
+  }
+
+  const augmentedBeam: BeamState = {
+    selected: [...beam.selected],
+    volumeFilled: new Map(beam.volumeFilled),
+    timeUsed: beam.timeUsed,
+    score: beam.score,
+    favoritesCount: beam.favoritesCount,
+  };
+
+  for (const laneKey of requiredLaneKeys) {
+    if (getSatisfiedCompoundLaneKeys(augmentedBeam.selected, objective).has(laneKey)) {
+      continue;
+    }
+
+    const selectedIds = new Set(augmentedBeam.selected.map((selected) => selected.exercise.id));
+    const laneCandidates = candidates
+      .filter((candidate) => !selectedIds.has(candidate.exercise.id))
+      .filter((candidate) =>
+        isExerciseAllowedForCompoundLaneSatisfaction(
+          objective.resolvedCompoundControl,
+          laneKey,
+          candidate.exercise
+        )
+      )
+      .sort((a, b) => b.totalScore - a.totalScore);
+
+    for (const candidate of laneCandidates) {
+      if (
+        canAddCandidate(augmentedBeam, candidate, candidates, objective, rejectedMap, {
+          allowNonDeficitCandidate: true,
+        })
+      ) {
+        addCandidateToBeam(augmentedBeam, candidate);
+        break;
+      }
+
+      if (trySwapForCompoundLane(augmentedBeam, candidate, laneKey, candidates, objective, rejectedMap)) {
+        break;
+      }
+    }
+  }
+
+  return augmentedBeam;
+}
+
+function trySwapForCompoundLane(
+  beam: BeamState,
+  laneCandidate: SelectionCandidate,
+  laneKey: SessionSlotCompoundLaneKey,
+  candidates: SelectionCandidate[],
+  objective: SelectionObjective,
+  rejectedMap: Map<string, RejectionReason>
+): boolean {
+  const requiredLaneKeys = getRequiredCompoundLaneKeys(objective);
+  const selectedByScore = [...beam.selected].sort((a, b) => a.totalScore - b.totalScore);
+
+  for (const selected of selectedByScore) {
+    const nextSelected = beam.selected.filter(
+      (candidate) => candidate.exercise.id !== selected.exercise.id
+    );
+    const mainLiftCount = nextSelected.filter((candidate) =>
+      isMainLiftCandidate(candidate, objective)
+    ).length;
+    const accessoryCount = nextSelected.filter(
+      (candidate) => !isMainLiftCandidate(candidate, objective)
+    ).length;
+    if (mainLiftCount < (objective.constraints.minMainLifts ?? 0)) {
+      continue;
+    }
+    if (accessoryCount < (objective.constraints.minAccessories ?? 0)) {
+      continue;
+    }
+
+    const nextSatisfiedLaneKeys = getSatisfiedCompoundLaneKeys(nextSelected, objective);
+    const preservesOtherSatisfiedLanes = requiredLaneKeys.every(
+      (requiredLaneKey) =>
+        requiredLaneKey === laneKey ||
+        !getSatisfiedCompoundLaneKeys(beam.selected, objective).has(requiredLaneKey) ||
+        nextSatisfiedLaneKeys.has(requiredLaneKey)
+    );
+    if (!preservesOtherSatisfiedLanes) {
+      continue;
+    }
+
+    const tempBeam: BeamState = {
+      selected: nextSelected,
+      volumeFilled: new Map(),
+      timeUsed: 0,
+      score: 0,
+      favoritesCount: 0,
+    };
+    for (const candidate of tempBeam.selected) {
+      tempBeam.volumeFilled = mergeVolume(tempBeam.volumeFilled, candidate.volumeContribution);
+      tempBeam.timeUsed += candidate.timeContribution;
+      tempBeam.score += candidate.totalScore;
+      if (objective.preferences.favoriteExerciseIds.has(candidate.exercise.id)) {
+        tempBeam.favoritesCount += 1;
+      }
+    }
+
+    if (
+      !canAddCandidate(tempBeam, laneCandidate, candidates, objective, rejectedMap, {
+        allowNonDeficitCandidate: true,
+      })
+    ) {
+      continue;
+    }
+
+    addCandidateToBeam(tempBeam, laneCandidate);
+    beam.selected = tempBeam.selected;
+    beam.volumeFilled = tempBeam.volumeFilled;
+    beam.timeUsed = tempBeam.timeUsed;
+    beam.score = tempBeam.score;
+    beam.favoritesCount = tempBeam.favoritesCount;
+    rejectedMap.set(selected.exercise.id, "dominated_by_better_option");
+    return true;
+  }
+
+  return false;
+}
+
 function enforceContinuityExercises(
   beam: BeamState,
   candidates: SelectionCandidate[],
@@ -885,6 +1146,10 @@ function canAddCandidate(
     rejectedMap.set(candidate.exercise.id, "structure_constraint_violated");
     return false;
   }
+  if (!wouldPreserveCompoundLaneProgress(beam, candidate, objective)) {
+    rejectedMap.set(candidate.exercise.id, "structure_constraint_violated");
+    return false;
+  }
 
   // Merge volume
   const newVolumeFilled = mergeVolume(beam.volumeFilled, candidate.volumeContribution);
@@ -906,10 +1171,23 @@ function canAddCandidate(
   }
 
   const hasDeficit = candidate.scores.deficitFill > 0;
+  const fillsCompoundLaneRequirement = fillsMissingCompoundLaneRequirement(
+    beam,
+    candidate,
+    objective
+  );
   if (
     !options?.allowNonDeficitCandidate &&
     !hasDeficit &&
+    !fillsCompoundLaneRequirement &&
     hasRemainingDeficitFillingOption(beam, candidates, objective, candidate.exercise.id)
+  ) {
+    rejectedMap.set(candidate.exercise.id, "dominated_by_better_option");
+    return false;
+  }
+  if (
+    !fillsCompoundLaneRequirement &&
+    hasRemainingCompoundLaneOption(beam, candidates, objective, candidate.exercise.id)
   ) {
     rejectedMap.set(candidate.exercise.id, "dominated_by_better_option");
     return false;
@@ -1052,8 +1330,14 @@ function buildResult(
     mainLiftCount >= minMainLifts &&
     mainLiftCount <= maxMainLifts &&
     accessoryCount >= minAccessories;
+  const meetsCompoundLaneConstraints = getRequiredCompoundLaneKeys(objective).every((laneKey) =>
+    getSatisfiedCompoundLaneKeys(selected, objective).has(laneKey)
+  );
   const constraintsSatisfied =
-    meetsMinExercises && meetsVolumeFloor && meetsStructuralConstraints;
+    meetsMinExercises &&
+    meetsVolumeFloor &&
+    meetsStructuralConstraints &&
+    meetsCompoundLaneConstraints;
 
   // Annotate selected candidates with marginal deficitFill for rationale.
   // Simulate sequential selection so each exercise shows what it contributed

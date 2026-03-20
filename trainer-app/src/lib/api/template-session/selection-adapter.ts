@@ -7,8 +7,15 @@ import type { SelectionOutput, SessionIntent } from "@/lib/engine/session-types"
 import { VOLUME_LANDMARKS, MUSCLE_SPLIT_MAP, computeWeeklyVolumeTarget } from "@/lib/engine/volume-landmarks";
 import { filterPerformedHistory, sortHistoryByDateDesc } from "@/lib/engine/history";
 import type { VolumePlanByMuscle } from "@/lib/engine/volume";
-import { getSessionMuscleOpportunityWeight } from "@/lib/planning/session-opportunities";
-import { resolveSessionSlotPolicy } from "@/lib/planning/session-slot-profile";
+import {
+  filterPoolForSessionInventory,
+  getSessionMuscleOpportunityWeight,
+} from "@/lib/planning/session-opportunities";
+import {
+  isExerciseAllowedForAnyCompoundLaneSatisfaction,
+  resolveSessionSlotCompoundLaneState,
+  resolveSessionSlotPolicy,
+} from "@/lib/planning/session-slot-profile";
 import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-semantics";
 import type { MappedGenerationContext } from "./types";
 import { buildRemainingWeekVolumeContext } from "./remaining-week-planner";
@@ -284,25 +291,6 @@ export function buildSelectionObjective(
     sessionIntent,
     sessionSlotId: options?.sessionSlotId,
   });
-  const recentPerformedIntentExerciseIds = new Set(
-    recentPerformedIntentEntry?.exercises.map((exercise) => exercise.exerciseId) ?? []
-  );
-  const useContinuitySetCarryover =
-    !supplementalPlannerProfile &&
-    recentPerformedIntentEntry != null &&
-    !isCurrentLifecycleWeekEntry(recentPerformedIntentEntry, mapped);
-  const continuityMinSetsByExerciseId = new Map(
-    useContinuitySetCarryover
-      ? recentPerformedIntentEntry.exercises.map((exercise) => [
-          exercise.exerciseId,
-          exercise.sets.length,
-        ])
-      : []
-  );
-  const weights = applyContinuityWeightBias(
-    { ...DEFAULT_SELECTION_WEIGHTS },
-    !supplementalPlannerProfile && recentPerformedIntentExerciseIds.size > 0
-  );
   const weeklyTarget = new Map<Muscle, number>();
   const weeklyActual = new Map<Muscle, number>();
   const effectiveActual = new Map<Muscle, number>();
@@ -368,6 +356,51 @@ export function buildSelectionObjective(
       currentIntent: sessionIntent,
     }),
   });
+  const userAvoids = new Set(mapped.mappedPreferences?.avoidExerciseIds ?? []);
+  const resolvedCompoundControl = resolveSessionSlotCompoundLaneState({
+    slot: slotPolicy.currentSession,
+    candidates: filterPoolForSessionInventory(
+      mapped.exerciseLibrary,
+      sessionIntent,
+      "standard",
+      targetMuscles
+    ),
+    getExercise: (exercise) => exercise,
+    isCandidateViable: (exercise) =>
+      (exercise.isCompound ?? false) &&
+      !painConflictIds.has(exercise.id) &&
+      !userAvoids.has(exercise.id),
+  });
+  const isAllowedCompoundContinuityExercise = (exerciseId: string): boolean => {
+    const exercise = mapped.exerciseLibrary.find((entry) => entry.id === exerciseId);
+    if (!exercise) {
+      return true;
+    }
+    if (!(exercise.isCompound ?? false) || !resolvedCompoundControl) {
+      return true;
+    }
+    return isExerciseAllowedForAnyCompoundLaneSatisfaction(resolvedCompoundControl, exercise);
+  };
+  const recentPerformedIntentExerciseIds = new Set(
+    (recentPerformedIntentEntry?.exercises.map((exercise) => exercise.exerciseId) ?? []).filter(
+      isAllowedCompoundContinuityExercise
+    )
+  );
+  const useContinuitySetCarryover =
+    !supplementalPlannerProfile &&
+    recentPerformedIntentEntry != null &&
+    !isCurrentLifecycleWeekEntry(recentPerformedIntentEntry, mapped);
+  const continuityMinSetsByExerciseId = new Map(
+    useContinuitySetCarryover
+      ? recentPerformedIntentEntry.exercises
+          .filter((exercise) => isAllowedCompoundContinuityExercise(exercise.exerciseId))
+          .map((exercise) => [exercise.exerciseId, exercise.sets.length])
+      : []
+  );
+  const weights = applyContinuityWeightBias(
+    { ...DEFAULT_SELECTION_WEIGHTS },
+    !supplementalPlannerProfile && recentPerformedIntentExerciseIds.size > 0
+  );
   const remainingWeek = buildRemainingWeekVolumeContext({
     mapped,
     sessionIntent,
@@ -381,7 +414,7 @@ export function buildSelectionObjective(
     volumeFloor: new Map(),
     volumeCeiling,
     painConflicts: painConflictIds,
-    userAvoids: new Set(mapped.mappedPreferences?.avoidExerciseIds ?? []),
+    userAvoids,
     minExercises: supplementalPlannerProfile ? supplementalMinExercises : SESSION_CAPS.minExercises,
     maxExercises: supplementalPlannerProfile ? supplementalMaxExercises : SESSION_CAPS.maxExercises,
     minMainLifts: sessionIntent === "body_part" ? 0 : 1,
@@ -427,10 +460,11 @@ export function buildSelectionObjective(
         ...(mapped.mappedPreferences?.favoriteExerciseIds ?? []),
         ...recentPerformedIntentExerciseIds,
       ]),
-      avoidExerciseIds: new Set(mapped.mappedPreferences?.avoidExerciseIds ?? []),
+      avoidExerciseIds: userAvoids,
     },
     blockContext: mapped.blockContext ?? undefined,
     slotPolicy,
+    resolvedCompoundControl: resolvedCompoundControl ?? undefined,
     goals: mapped.mappedGoals,
     trainingAge: mapped.mappedProfile.trainingAge,
     sessionIntent,

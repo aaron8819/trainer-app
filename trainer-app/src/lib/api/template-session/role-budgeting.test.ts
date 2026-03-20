@@ -5,6 +5,7 @@ import type { MappedGenerationContext } from "./types";
 import { buildSelectionObjective } from "./selection-adapter";
 import {
   buildRemainingRoleFixturesByAnchor,
+  resolveSlotAwareRoleMap,
   resolveRoleFixtureSetTarget,
 } from "./role-budgeting";
 
@@ -182,5 +183,64 @@ describe("role budgeting with remaining-week planning", () => {
     expect(closableLaterDecision.plannedSets).toBeLessThan(scarceDecision.plannedSets);
     expect(scarceDecision.plannedSets).toBe(5);
     expect(closableLaterDecision.plannedSets).toBe(2);
+  });
+
+  it("subordinates out-of-lane core compound roles when viable in-lane alternatives exist", () => {
+    const mapped = makeMappedContext(["upper", "lower", "upper", "lower"]);
+    const bench: Exercise = {
+      ...makeExercise("bench", "Bench Press", ["Chest"], ["Front Delts", "Triceps"]),
+      movementPatterns: ["horizontal_push"],
+      splitTags: ["push"],
+    };
+    const row: Exercise = {
+      ...makeExercise("row", "Chest Supported Row", ["Lats", "Upper Back"], ["Biceps"]),
+      movementPatterns: ["horizontal_pull"],
+      splitTags: ["pull"],
+    };
+    const ohp: Exercise = {
+      ...makeExercise("ohp", "Overhead Press", ["Chest", "Front Delts"], ["Triceps"]),
+      movementPatterns: ["vertical_push"],
+      splitTags: ["push"],
+    };
+    const pulldown: Exercise = {
+      ...makeExercise("pulldown", "Lat Pulldown", ["Lats"], ["Biceps"]),
+      movementPatterns: ["vertical_pull"],
+      splitTags: ["pull"],
+    };
+    mapped.exerciseLibrary = [bench, row, ohp, pulldown] as MappedGenerationContext["exerciseLibrary"];
+    mapped.mappedConstraints.splitType = "upper_lower";
+    mapped.activeMesocycle = {
+      id: "meso-1",
+      slotSequenceJson: {
+        version: 1,
+        source: "handoff_draft",
+        sequenceMode: "ordered_flexible",
+        slots: [
+          { slotId: "upper_a", intent: "UPPER" },
+          { slotId: "lower_a", intent: "LOWER" },
+          { slotId: "upper_b", intent: "UPPER" },
+          { slotId: "lower_b", intent: "LOWER" },
+        ],
+      },
+    } as unknown as MappedGenerationContext["activeMesocycle"];
+    mapped.mesocycleRoleMapByIntent.upper = new Map([
+      ["bench", "CORE_COMPOUND"],
+      ["row", "CORE_COMPOUND"],
+    ]);
+
+    const objective = buildSelectionObjective(mapped, "upper", undefined, {
+      sessionSlotId: "upper_b",
+    });
+    const effectiveRoleMap = resolveSlotAwareRoleMap({
+      roleMap: mapped.mesocycleRoleMapByIntent.upper,
+      exerciseById: new Map(
+        mapped.exerciseLibrary.map((exercise) => [exercise.id, exercise as Exercise])
+      ),
+      candidatePool: mapped.exerciseLibrary as Exercise[],
+      objective,
+    });
+
+    expect(effectiveRoleMap.has("bench")).toBe(false);
+    expect(effectiveRoleMap.has("row")).toBe(false);
   });
 });

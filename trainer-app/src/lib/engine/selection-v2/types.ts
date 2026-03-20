@@ -8,7 +8,10 @@
 import type { Exercise, Muscle, Goals, TrainingAge } from "../types";
 import type { BlockContext } from "../periodization/types";
 import type { SessionIntent } from "../session-types";
-import type { SessionSlotPolicy } from "@/lib/planning/session-slot-profile";
+import type {
+  SessionSlotPolicy,
+  SessionSlotResolvedCompoundControl,
+} from "@/lib/planning/session-slot-profile";
 
 // ============================================================================
 // Selection Objective (Input to Optimizer)
@@ -52,6 +55,11 @@ export interface SelectionObjective {
    * Canonical slot-policy planning context for the current session and future slots.
    */
   slotPolicy?: SessionSlotPolicy;
+
+  /**
+   * Consumer-resolved current-session compound-lane control derived from the canonical slot policy.
+   */
+  resolvedCompoundControl?: SessionSlotResolvedCompoundControl;
 
   /**
    * User preferences

@@ -1,11 +1,26 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  classifyExerciseForCompoundLane,
   getFutureSlotOpportunityBias,
+  isExerciseAllowedForAnyCompoundLaneSatisfaction,
+  isExerciseAllowedForCompoundLaneSatisfaction,
+  resolveSessionSlotCompoundLaneState,
   resolveSessionSlotPolicy,
 } from "./session-slot-profile";
+import type { MovementPatternV2 } from "@/lib/engine/types";
 
 describe("resolveSessionSlotPolicy", () => {
+  const makeCompoundCandidate = (input: {
+    id: string;
+    movementPatterns: MovementPatternV2[];
+    primaryMuscles: string[];
+    isCompound?: boolean;
+  }) => ({
+    ...input,
+    isCompound: input.isCompound ?? true,
+  });
+
   const slotSequence = {
     slots: [
       { slotId: "upper_a", intent: "upper", sequenceIndex: 0 },
@@ -33,6 +48,22 @@ describe("resolveSessionSlotPolicy", () => {
       compoundBias: {
         preferredMovementPatterns: ["horizontal_push", "horizontal_pull"],
       },
+      compoundControl: {
+        lanes: [
+          {
+            key: "press",
+            preferredMovementPatterns: ["horizontal_push"],
+            compatibleMovementPatterns: [],
+            fallbackOnlyMovementPatterns: ["vertical_push"],
+          },
+          {
+            key: "pull",
+            preferredMovementPatterns: ["horizontal_pull"],
+            compatibleMovementPatterns: [],
+            fallbackOnlyMovementPatterns: ["vertical_pull"],
+          },
+        ],
+      },
     });
 
     expect(
@@ -51,6 +82,22 @@ describe("resolveSessionSlotPolicy", () => {
       },
       compoundBias: {
         preferredMovementPatterns: ["vertical_push", "vertical_pull"],
+      },
+      compoundControl: {
+        lanes: [
+          {
+            key: "press",
+            preferredMovementPatterns: ["vertical_push"],
+            compatibleMovementPatterns: [],
+            fallbackOnlyMovementPatterns: ["horizontal_push"],
+          },
+          {
+            key: "pull",
+            preferredMovementPatterns: ["vertical_pull"],
+            compatibleMovementPatterns: [],
+            fallbackOnlyMovementPatterns: ["horizontal_pull"],
+          },
+        ],
       },
     });
   });
@@ -74,6 +121,17 @@ describe("resolveSessionSlotPolicy", () => {
         preferredMovementPatterns: ["squat"],
         preferredPrimaryMuscles: ["Quads"],
       },
+      compoundControl: {
+        lanes: [
+          {
+            key: "primary",
+            preferredMovementPatterns: ["squat"],
+            compatibleMovementPatterns: [],
+            fallbackOnlyMovementPatterns: ["hinge"],
+            preferredPrimaryMuscles: ["Quads"],
+          },
+        ],
+      },
     });
 
     expect(
@@ -93,6 +151,17 @@ describe("resolveSessionSlotPolicy", () => {
       compoundBias: {
         preferredMovementPatterns: ["hinge"],
         preferredPrimaryMuscles: ["Hamstrings", "Glutes"],
+      },
+      compoundControl: {
+        lanes: [
+          {
+            key: "primary",
+            preferredMovementPatterns: ["hinge"],
+            compatibleMovementPatterns: [],
+            fallbackOnlyMovementPatterns: ["squat"],
+            preferredPrimaryMuscles: ["Hamstrings", "Glutes"],
+          },
+        ],
       },
     });
   });
@@ -144,6 +213,17 @@ describe("resolveSessionSlotPolicy", () => {
           preferredMovementPatterns: ["squat"],
           preferredPrimaryMuscles: ["Quads"],
         },
+        compoundControl: {
+          lanes: [
+            {
+              key: "primary",
+              preferredMovementPatterns: ["squat"],
+              compatibleMovementPatterns: [],
+              fallbackOnlyMovementPatterns: ["hinge"],
+              preferredPrimaryMuscles: ["Quads"],
+            },
+          ],
+        },
       },
       {
         sessionIntent: "upper",
@@ -155,6 +235,22 @@ describe("resolveSessionSlotPolicy", () => {
         },
         compoundBias: {
           preferredMovementPatterns: ["vertical_push", "vertical_pull"],
+        },
+        compoundControl: {
+          lanes: [
+            {
+              key: "press",
+              preferredMovementPatterns: ["vertical_push"],
+              compatibleMovementPatterns: [],
+              fallbackOnlyMovementPatterns: ["horizontal_push"],
+            },
+            {
+              key: "pull",
+              preferredMovementPatterns: ["vertical_pull"],
+              compatibleMovementPatterns: [],
+              fallbackOnlyMovementPatterns: ["horizontal_pull"],
+            },
+          ],
         },
       },
     ]);
@@ -174,5 +270,184 @@ describe("resolveSessionSlotPolicy", () => {
 
     expect(getFutureSlotOpportunityBias("Hamstrings", lowerB)).toBeGreaterThan(1);
     expect(getFutureSlotOpportunityBias("Quads", lowerB)).toBe(1);
+  });
+
+  it("resolves per-lane active tiers and allowed exercises from the canonical contract", () => {
+    const slot = resolveSessionSlotPolicy({
+      sessionIntent: "upper",
+      slotId: "upper_b",
+      slotSequence,
+    }).currentSession;
+
+    expect(slot).not.toBeNull();
+    if (!slot) {
+      return;
+    }
+
+    const compoundControl = resolveSessionSlotCompoundLaneState({
+      slot,
+      candidates: [
+        makeCompoundCandidate({
+          id: "ohp",
+          movementPatterns: ["vertical_push"],
+          primaryMuscles: ["Chest", "Front Delts"],
+        }),
+        makeCompoundCandidate({
+          id: "bench",
+          movementPatterns: ["horizontal_push"],
+          primaryMuscles: ["Chest"],
+        }),
+        makeCompoundCandidate({
+          id: "pulldown",
+          movementPatterns: ["vertical_pull"],
+          primaryMuscles: ["Lats"],
+        }),
+      ],
+      getExercise: (candidate) => candidate,
+      isCandidateViable: () => true,
+    });
+
+    expect(compoundControl).not.toBeNull();
+    expect(compoundControl?.lanes).toEqual([
+      {
+        key: "press",
+        preferredMovementPatterns: ["vertical_push"],
+        compatibleMovementPatterns: [],
+        fallbackOnlyMovementPatterns: ["horizontal_push"],
+        activeTier: "preferred",
+        viableCandidateCountByTier: {
+          preferred: 1,
+          compatible: 0,
+          fallback_only: 1,
+        },
+      },
+      {
+        key: "pull",
+        preferredMovementPatterns: ["vertical_pull"],
+        compatibleMovementPatterns: [],
+        fallbackOnlyMovementPatterns: ["horizontal_pull"],
+        activeTier: "preferred",
+        viableCandidateCountByTier: {
+          preferred: 1,
+          compatible: 0,
+          fallback_only: 0,
+        },
+      },
+    ]);
+
+    expect(
+      isExerciseAllowedForCompoundLaneSatisfaction(compoundControl, "press", {
+        movementPatterns: ["vertical_push"],
+        primaryMuscles: ["Chest"],
+        isCompound: true,
+      })
+    ).toBe(true);
+    expect(
+      isExerciseAllowedForCompoundLaneSatisfaction(compoundControl, "press", {
+        movementPatterns: ["horizontal_push"],
+        primaryMuscles: ["Chest"],
+        isCompound: true,
+      })
+    ).toBe(false);
+    expect(
+      isExerciseAllowedForAnyCompoundLaneSatisfaction(compoundControl, {
+        movementPatterns: ["vertical_pull"],
+        primaryMuscles: ["Lats"],
+        isCompound: true,
+      })
+    ).toBe(true);
+  });
+
+  it("falls back per lane when higher tiers are not viable", () => {
+    const slot = resolveSessionSlotPolicy({
+      sessionIntent: "upper",
+      slotId: "upper_b",
+      slotSequence,
+    }).currentSession;
+
+    expect(slot).not.toBeNull();
+    if (!slot) {
+      return;
+    }
+
+    const compoundControl = resolveSessionSlotCompoundLaneState({
+      slot,
+      candidates: [
+        makeCompoundCandidate({
+          id: "bench",
+          movementPatterns: ["horizontal_push"],
+          primaryMuscles: ["Chest"],
+        }),
+        makeCompoundCandidate({
+          id: "pulldown",
+          movementPatterns: ["vertical_pull"],
+          primaryMuscles: ["Lats"],
+        }),
+      ],
+      getExercise: (candidate) => candidate,
+      isCandidateViable: () => true,
+    });
+
+    expect(compoundControl?.lanes).toEqual([
+      {
+        key: "press",
+        preferredMovementPatterns: ["vertical_push"],
+        compatibleMovementPatterns: [],
+        fallbackOnlyMovementPatterns: ["horizontal_push"],
+        activeTier: "fallback_only",
+        viableCandidateCountByTier: {
+          preferred: 0,
+          compatible: 0,
+          fallback_only: 1,
+        },
+      },
+      {
+        key: "pull",
+        preferredMovementPatterns: ["vertical_pull"],
+        compatibleMovementPatterns: [],
+        fallbackOnlyMovementPatterns: ["horizontal_pull"],
+        activeTier: "preferred",
+        viableCandidateCountByTier: {
+          preferred: 1,
+          compatible: 0,
+          fallback_only: 0,
+        },
+      },
+    ]);
+  });
+
+  it("classifies exercises into preferred and fallback-only tiers", () => {
+    const slot = resolveSessionSlotPolicy({
+      sessionIntent: "lower",
+      slotId: "lower_b",
+      slotSequence,
+    }).currentSession;
+
+    expect(slot?.compoundControl?.lanes[0]).toBeDefined();
+    const lane = slot?.compoundControl?.lanes[0];
+    if (!lane) {
+      return;
+    }
+
+    expect(
+      classifyExerciseForCompoundLane(
+        {
+          movementPatterns: ["hinge"],
+          primaryMuscles: ["Hamstrings"],
+          isCompound: true,
+        },
+        lane
+      )
+    ).toBe("preferred");
+    expect(
+      classifyExerciseForCompoundLane(
+        {
+          movementPatterns: ["squat"],
+          primaryMuscles: ["Quads"],
+          isCompound: true,
+        },
+        lane
+      )
+    ).toBe("fallback_only");
   });
 });

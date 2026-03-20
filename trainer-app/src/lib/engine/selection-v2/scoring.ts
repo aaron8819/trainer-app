@@ -281,6 +281,15 @@ function normalizeMuscleName(muscle: string): string {
   return muscle.trim().toLowerCase();
 }
 
+function countSelectedPatternMatches(
+  selectedExercises: Exercise[],
+  pattern: NonNullable<Exercise["movementPatterns"]>[number]
+): number {
+  return selectedExercises.filter((selectedExercise) =>
+    (selectedExercise.movementPatterns ?? []).includes(pattern)
+  ).length;
+}
+
 export function scoreCompoundSlotProfileAlignment(
   exercise: Exercise,
   compoundBias: SessionSlotCompoundBias | undefined
@@ -368,6 +377,18 @@ export function scoreSessionShapeAlignment(
         selectedPatterns.has(pattern) && (exercise.movementPatterns ?? []).includes(pattern)
     );
     scores.push(duplicatesTrackedPattern ? 0 : 1);
+  }
+
+  const supportPenaltyPatterns = sessionShape.supportPenaltyPatterns ?? [];
+  const maxPreferredSupportPerPattern = sessionShape.maxPreferredSupportPerPattern ?? 1;
+  if (supportPenaltyPatterns.length > 0 && maxPreferredSupportPerPattern > 0) {
+    const exceedsSupportBudget = supportPenaltyPatterns.some((pattern) => {
+      if (!(exercise.movementPatterns ?? []).includes(pattern)) {
+        return false;
+      }
+      return countSelectedPatternMatches(alreadySelected, pattern) >= maxPreferredSupportPerPattern;
+    });
+    scores.push(exceedsSupportBudget ? 0 : 1);
   }
 
   if (scores.length === 0) {

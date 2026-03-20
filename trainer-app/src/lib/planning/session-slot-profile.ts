@@ -29,6 +29,8 @@ export type SessionSlotShape = {
   preferredAccessoryPrimaryMuscles: string[];
   requiredMovementPatterns?: MovementPatternV2[];
   avoidDuplicatePatterns?: MovementPatternV2[];
+  supportPenaltyPatterns?: MovementPatternV2[];
+  maxPreferredSupportPerPattern?: number;
 };
 
 export type SessionSlotCompoundLaneKey = "press" | "pull" | "primary";
@@ -201,6 +203,8 @@ function resolveSessionShape(
             preferredAccessoryPrimaryMuscles: ["Lats", "Front Delts", "Side Delts"],
             requiredMovementPatterns: ["horizontal_pull"],
             avoidDuplicatePatterns: ["vertical_pull"],
+            supportPenaltyPatterns: ["vertical_push"],
+            maxPreferredSupportPerPattern: 1,
           }
         : {
             id: "upper_horizontal_balanced",
@@ -215,12 +219,16 @@ function resolveSessionShape(
             preferredAccessoryPrimaryMuscles: ["Hamstrings", "Glutes"],
             requiredMovementPatterns: ["squat"],
             avoidDuplicatePatterns: ["hinge"],
+            supportPenaltyPatterns: ["squat"],
+            maxPreferredSupportPerPattern: 1,
           }
         : {
             id: "lower_squat_dominant",
             preferredAccessoryPrimaryMuscles: ["Quads"],
             requiredMovementPatterns: ["hinge"],
             avoidDuplicatePatterns: ["squat"],
+            supportPenaltyPatterns: ["hinge"],
+            maxPreferredSupportPerPattern: 1,
           };
     default:
       return undefined;

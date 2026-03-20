@@ -94,6 +94,8 @@ describe("resolveSessionSlotPolicy", () => {
         preferredAccessoryPrimaryMuscles: ["Lats", "Front Delts", "Side Delts"],
         requiredMovementPatterns: ["horizontal_pull"],
         avoidDuplicatePatterns: ["vertical_pull"],
+        supportPenaltyPatterns: ["vertical_push"],
+        maxPreferredSupportPerPattern: 1,
       },
       compoundControl: {
         lanes: [
@@ -138,6 +140,8 @@ describe("resolveSessionSlotPolicy", () => {
         preferredAccessoryPrimaryMuscles: ["Quads"],
         requiredMovementPatterns: ["hinge"],
         avoidDuplicatePatterns: ["squat"],
+        supportPenaltyPatterns: ["hinge"],
+        maxPreferredSupportPerPattern: 1,
       },
       compoundControl: {
         lanes: [
@@ -175,6 +179,8 @@ describe("resolveSessionSlotPolicy", () => {
         preferredAccessoryPrimaryMuscles: ["Hamstrings", "Glutes"],
         requiredMovementPatterns: ["squat"],
         avoidDuplicatePatterns: ["hinge"],
+        supportPenaltyPatterns: ["squat"],
+        maxPreferredSupportPerPattern: 1,
       },
       compoundControl: {
         lanes: [
@@ -242,6 +248,8 @@ describe("resolveSessionSlotPolicy", () => {
           preferredAccessoryPrimaryMuscles: ["Quads"],
           requiredMovementPatterns: ["hinge"],
           avoidDuplicatePatterns: ["squat"],
+          supportPenaltyPatterns: ["hinge"],
+          maxPreferredSupportPerPattern: 1,
         },
         compoundControl: {
           lanes: [
@@ -271,6 +279,8 @@ describe("resolveSessionSlotPolicy", () => {
           preferredAccessoryPrimaryMuscles: ["Lats", "Front Delts", "Side Delts"],
           requiredMovementPatterns: ["horizontal_pull"],
           avoidDuplicatePatterns: ["vertical_pull"],
+          supportPenaltyPatterns: ["vertical_push"],
+          maxPreferredSupportPerPattern: 1,
         },
         compoundControl: {
           lanes: [

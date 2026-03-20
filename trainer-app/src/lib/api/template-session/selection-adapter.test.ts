@@ -538,6 +538,8 @@ describe("buildSelectionObjective continuity bias", () => {
         preferredAccessoryPrimaryMuscles: ["Hamstrings", "Glutes"],
         requiredMovementPatterns: ["squat"],
         avoidDuplicatePatterns: ["hinge"],
+        supportPenaltyPatterns: ["squat"],
+        maxPreferredSupportPerPattern: 1,
       },
       compoundControl: {
         lanes: [
@@ -697,6 +699,8 @@ describe("buildSelectionObjective continuity bias", () => {
       preferredAccessoryPrimaryMuscles: ["Lats", "Front Delts", "Side Delts"],
       requiredMovementPatterns: ["horizontal_pull"],
       avoidDuplicatePatterns: ["vertical_pull"],
+      supportPenaltyPatterns: ["vertical_push"],
+      maxPreferredSupportPerPattern: 1,
     });
   });
 
@@ -898,6 +902,7 @@ describe("buildSelectionObjective continuity bias", () => {
     expect(countSelectedCompoundPattern(constrainedLowerB, "squat")).toBeGreaterThan(0);
     expect(countSelectedCompoundPattern(constrainedLowerB, "hinge")).toBe(0);
   });
+
 
   it("builds effectiveActual from the shared stimulus helper instead of binary primary credit", () => {
     const recentDate = new Date().toISOString();

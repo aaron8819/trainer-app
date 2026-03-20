@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import { buildCandidate, computeProposedSets } from "./candidate";
+import { scoreSessionShapeAlignment } from "./scoring";
 import type { SelectionObjective } from "./types";
 import type { Exercise } from "../types";
+import type { SessionSlotShape } from "@/lib/planning/session-slot-profile";
 
 function buildObjective(overrides?: Partial<SelectionObjective>): SelectionObjective {
   return {
@@ -133,5 +135,205 @@ describe("candidate evidence guardrails", () => {
     expect(chestCandidate.scores.sessionShapeAlignment).toBeGreaterThan(
       tricepsCandidate.scores.sessionShapeAlignment ?? 0
     );
+  });
+
+  it("soft-penalizes support-pattern overages after the preferred support budget is filled", () => {
+    const verticalPressAccessory: Exercise = {
+      id: "machine-shoulder-press",
+      name: "Machine Shoulder Press",
+      movementPatterns: ["vertical_push"],
+      splitTags: ["push"],
+      jointStress: "medium",
+      isMainLiftEligible: false,
+      isCompound: false,
+      fatigueCost: 2,
+      sfrScore: 4,
+      lengthPositionScore: 3,
+      equipment: ["machine"],
+      primaryMuscles: ["Front Delts", "Side Delts"],
+      secondaryMuscles: ["Triceps"],
+    };
+    const existingVerticalPress: Exercise = {
+      id: "incline-db-press",
+      name: "Incline Dumbbell Press",
+      movementPatterns: ["vertical_push"],
+      splitTags: ["push"],
+      jointStress: "medium",
+      isMainLiftEligible: true,
+      isCompound: true,
+      fatigueCost: 3,
+      sfrScore: 4,
+      lengthPositionScore: 3,
+      equipment: ["dumbbell"],
+      primaryMuscles: ["Chest", "Front Delts"],
+      secondaryMuscles: ["Triceps"],
+    };
+
+    const objective = buildObjective();
+    const sessionShape: SessionSlotShape = {
+      id: "upper_vertical_balanced",
+      preferredAccessoryPrimaryMuscles: ["Lats", "Front Delts", "Side Delts"],
+      requiredMovementPatterns: ["horizontal_pull"],
+      avoidDuplicatePatterns: ["vertical_pull"],
+      supportPenaltyPatterns: ["vertical_push"],
+      maxPreferredSupportPerPattern: 1,
+    };
+
+    const baselineScore = scoreSessionShapeAlignment(
+      verticalPressAccessory,
+      sessionShape,
+      objective
+    );
+    const penalizedScore = scoreSessionShapeAlignment(
+      verticalPressAccessory,
+      sessionShape,
+      objective,
+      [existingVerticalPress]
+    );
+
+    expect(baselineScore).toBeCloseTo(0.75, 6);
+    expect(penalizedScore).toBeCloseTo(0.5, 6);
+    expect(penalizedScore).toBeLessThan(baselineScore);
+  });
+
+  it("penalizes redundant hinge support on lower_a after one hinge is already selected", () => {
+    const hingeAccessory: Exercise = {
+      id: "back-extension",
+      name: "Back Extension",
+      movementPatterns: ["hinge"],
+      splitTags: ["legs"],
+      jointStress: "low",
+      isMainLiftEligible: false,
+      isCompound: false,
+      fatigueCost: 2,
+      sfrScore: 4,
+      lengthPositionScore: 3,
+      equipment: ["machine"],
+      primaryMuscles: ["Hamstrings"],
+      secondaryMuscles: ["Glutes"],
+    };
+    const existingHingeAccessory: Exercise = {
+      ...hingeAccessory,
+      id: "good-morning",
+      name: "Good Morning",
+      isCompound: true,
+    };
+    const objective = buildObjective({ sessionIntent: "lower" });
+    const sessionShape: SessionSlotShape = {
+      id: "lower_squat_dominant",
+      preferredAccessoryPrimaryMuscles: ["Quads"],
+      requiredMovementPatterns: ["hinge"],
+      avoidDuplicatePatterns: ["squat"],
+      supportPenaltyPatterns: ["hinge"],
+      maxPreferredSupportPerPattern: 1,
+    };
+
+    const baselineScore = scoreSessionShapeAlignment(hingeAccessory, sessionShape, objective);
+    const penalizedScore = scoreSessionShapeAlignment(
+      hingeAccessory,
+      sessionShape,
+      objective,
+      [existingHingeAccessory]
+    );
+
+    expect(baselineScore).toBeCloseTo(0.75, 6);
+    expect(penalizedScore).toBeCloseTo(0.5, 6);
+    expect(penalizedScore).toBeLessThan(baselineScore);
+  });
+
+  it("lightly penalizes extra quad-pattern support on lower_b after one squat already exists", () => {
+    const squatAccessory: Exercise = {
+      id: "leg-press",
+      name: "Leg Press",
+      movementPatterns: ["squat"],
+      splitTags: ["legs"],
+      jointStress: "medium",
+      isMainLiftEligible: false,
+      isCompound: false,
+      fatigueCost: 2,
+      sfrScore: 4,
+      lengthPositionScore: 3,
+      equipment: ["machine"],
+      primaryMuscles: ["Quads", "Glutes"],
+      secondaryMuscles: [],
+    };
+    const existingSquatAccessory: Exercise = {
+      ...squatAccessory,
+      id: "hack-squat",
+      name: "Hack Squat",
+    };
+    const objective = buildObjective({ sessionIntent: "lower" });
+    const sessionShape: SessionSlotShape = {
+      id: "lower_hinge_dominant",
+      preferredAccessoryPrimaryMuscles: ["Hamstrings", "Glutes"],
+      requiredMovementPatterns: ["squat"],
+      avoidDuplicatePatterns: ["hinge"],
+      supportPenaltyPatterns: ["squat"],
+      maxPreferredSupportPerPattern: 1,
+    };
+
+    const baselineScore = scoreSessionShapeAlignment(squatAccessory, sessionShape, objective);
+    const penalizedScore = scoreSessionShapeAlignment(
+      squatAccessory,
+      sessionShape,
+      objective,
+      [existingSquatAccessory]
+    );
+
+    expect(baselineScore).toBeCloseTo(0.875, 6);
+    expect(penalizedScore).toBeCloseTo(0.625, 6);
+    expect(penalizedScore).toBeLessThan(baselineScore);
+  });
+
+  it("keeps fallback behavior soft instead of hard-blocking over-budget support", () => {
+    const verticalPressAccessory: Exercise = {
+      id: "machine-shoulder-press",
+      name: "Machine Shoulder Press",
+      movementPatterns: ["vertical_push"],
+      splitTags: ["push"],
+      jointStress: "medium",
+      isMainLiftEligible: false,
+      isCompound: false,
+      fatigueCost: 2,
+      sfrScore: 4,
+      lengthPositionScore: 3,
+      equipment: ["machine"],
+      primaryMuscles: ["Front Delts", "Side Delts"],
+      secondaryMuscles: ["Triceps"],
+    };
+    const existingVerticalPress: Exercise = {
+      id: "incline-db-press",
+      name: "Incline Dumbbell Press",
+      movementPatterns: ["vertical_push"],
+      splitTags: ["push"],
+      jointStress: "medium",
+      isMainLiftEligible: true,
+      isCompound: true,
+      fatigueCost: 3,
+      sfrScore: 4,
+      lengthPositionScore: 3,
+      equipment: ["dumbbell"],
+      primaryMuscles: ["Chest", "Front Delts"],
+      secondaryMuscles: ["Triceps"],
+    };
+    const objective = buildObjective();
+    const sessionShape: SessionSlotShape = {
+      id: "upper_vertical_balanced",
+      preferredAccessoryPrimaryMuscles: ["Lats", "Front Delts", "Side Delts"],
+      requiredMovementPatterns: ["horizontal_pull"],
+      avoidDuplicatePatterns: ["vertical_pull"],
+      supportPenaltyPatterns: ["vertical_push"],
+      maxPreferredSupportPerPattern: 1,
+    };
+
+    const penalizedScore = scoreSessionShapeAlignment(
+      verticalPressAccessory,
+      sessionShape,
+      objective,
+      [existingVerticalPress]
+    );
+
+    expect(penalizedScore).toBeGreaterThan(0);
+    expect(penalizedScore).toBeLessThan(0.75);
   });
 });

@@ -72,6 +72,7 @@ import {
   getSessionAnchorPolicy,
   type SessionInventoryKind,
 } from "@/lib/planning/session-opportunities";
+import { resolveSessionSlotProfile } from "@/lib/planning/session-slot-profile";
 import { readRuntimeSlotSequence } from "@/lib/api/mesocycle-slot-runtime";
 
 export type { GenerateIntentSessionInput } from "./template-session/types";
@@ -1066,49 +1067,38 @@ function getRepeatedIntentSlotDirectionalPreference(params: {
       preferredPullPattern?: MovementPatternV2;
     }
   | undefined {
-  const normalizedSlotId = params.slotId?.trim();
-  if (!normalizedSlotId) {
-    return undefined;
-  }
-
   const runtimeSlotSequence = readRuntimeSlotSequence({
     slotSequenceJson: params.mapped.activeMesocycle?.slotSequenceJson,
     weeklySchedule: params.mapped.mappedConstraints.weeklySchedule,
   });
-  const sameIntentSlots = runtimeSlotSequence.slots.filter((slot) => slot.intent === params.sessionIntent);
-  if (sameIntentSlots.length <= 1) {
+  const slotProfile = resolveSessionSlotProfile({
+    sessionIntent: params.sessionIntent,
+    slotId: params.slotId,
+    slotSequence: runtimeSlotSequence,
+  });
+  if (!slotProfile) {
+    return undefined;
+  }
+  const preferredPatterns = slotProfile.compoundBias?.preferredMovementPatterns ?? [];
+  const preferredPushPattern = preferredPatterns.find(
+    (pattern): pattern is Extract<MovementPatternV2, "horizontal_push" | "vertical_push"> =>
+      pattern === "horizontal_push" || pattern === "vertical_push"
+  );
+  const preferredPullPattern = preferredPatterns.find(
+    (pattern): pattern is Extract<MovementPatternV2, "horizontal_pull" | "vertical_pull"> =>
+      pattern === "horizontal_pull" || pattern === "vertical_pull"
+  );
+
+  if (!preferredPushPattern && !preferredPullPattern) {
     return undefined;
   }
 
-  const occurrenceIndex = sameIntentSlots.findIndex((slot) => slot.slotId === normalizedSlotId);
-  if (occurrenceIndex < 0) {
-    return undefined;
-  }
-
-  const prefersVertical = occurrenceIndex % 2 === 1;
-  switch (params.sessionIntent) {
-    case "upper":
-      return {
-        occurrenceIndex,
-        totalSlots: sameIntentSlots.length,
-        preferredPushPattern: prefersVertical ? "vertical_push" : "horizontal_push",
-        preferredPullPattern: prefersVertical ? "vertical_pull" : "horizontal_pull",
-      };
-    case "push":
-      return {
-        occurrenceIndex,
-        totalSlots: sameIntentSlots.length,
-        preferredPushPattern: prefersVertical ? "vertical_push" : "horizontal_push",
-      };
-    case "pull":
-      return {
-        occurrenceIndex,
-        totalSlots: sameIntentSlots.length,
-        preferredPullPattern: prefersVertical ? "vertical_pull" : "horizontal_pull",
-      };
-    default:
-      return undefined;
-  }
+  return {
+    occurrenceIndex: slotProfile.repeatedSlot.occurrenceIndex,
+    totalSlots: slotProfile.repeatedSlot.totalSlots,
+    preferredPushPattern,
+    preferredPullPattern,
+  };
 }
 
 function findDirectionalReplacementCandidate(params: {

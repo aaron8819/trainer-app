@@ -152,6 +152,11 @@ function formatScoreReason(key: string, value: number, candidate: SelectionCandi
       if (value >= 0.7) return "Novel movement pattern";
       return "";
 
+    case "slotProfileAlignment":
+      if (value >= 1.0) return "Matches this slot's planned compound emphasis";
+      if (value >= 0.5) return "Partially matches this slot's planned compound emphasis";
+      return "";
+
     default:
       return "";
   }

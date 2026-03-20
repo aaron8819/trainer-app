@@ -432,6 +432,9 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     expect(upperA?.exercises.map((exercise) => exercise.exerciseId)).not.toEqual(
       upperB?.exercises.map((exercise) => exercise.exerciseId)
     );
+    expect(lowerA?.exercises.map((exercise) => exercise.exerciseId)).not.toEqual(
+      lowerB?.exercises.map((exercise) => exercise.exerciseId)
+    );
   });
 
   it("fails clearly for unsupported BODY_PART successor slots", () => {

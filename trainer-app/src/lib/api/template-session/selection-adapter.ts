@@ -8,6 +8,7 @@ import { VOLUME_LANDMARKS, MUSCLE_SPLIT_MAP, computeWeeklyVolumeTarget } from "@
 import { filterPerformedHistory, sortHistoryByDateDesc } from "@/lib/engine/history";
 import type { VolumePlanByMuscle } from "@/lib/engine/volume";
 import { getSessionMuscleOpportunityWeight } from "@/lib/planning/session-opportunities";
+import { resolveSessionSlotProfile } from "@/lib/planning/session-slot-profile";
 import type { MappedGenerationContext } from "./types";
 import { buildRemainingWeekVolumeContext } from "./remaining-week-planner";
 import { readRuntimeSlotSequence } from "@/lib/api/mesocycle-slot-runtime";
@@ -319,6 +320,15 @@ export function buildSelectionObjective(
     effectiveActual,
     fatigueState,
   });
+  const runtimeSlotSequence = readRuntimeSlotSequence({
+    slotSequenceJson: mapped.activeMesocycle?.slotSequenceJson,
+    weeklySchedule: mapped.mappedConstraints.weeklySchedule,
+  });
+  const slotProfile = resolveSessionSlotProfile({
+    sessionIntent,
+    slotId: options?.sessionSlotId,
+    slotSequence: runtimeSlotSequence,
+  });
 
   const constraints: SelectionObjective["constraints"] = {
     volumeFloor: new Map(),
@@ -373,6 +383,7 @@ export function buildSelectionObjective(
       avoidExerciseIds: new Set(mapped.mappedPreferences?.avoidExerciseIds ?? []),
     },
     blockContext: mapped.blockContext ?? undefined,
+    slotProfile: slotProfile ?? undefined,
     goals: mapped.mappedGoals,
     trainingAge: mapped.mappedProfile.trainingAge,
     sessionIntent,
@@ -413,6 +424,7 @@ export function mapSelectionResult(
           movementNovelty: candidate.scores.movementNovelty,
           sraAlignment: candidate.scores.sraAlignment,
           userPreference: candidate.scores.userPreference,
+          slotProfileAlignment: candidate.scores.slotProfileAlignment ?? 0,
         },
         hardFilterPass: true,
         selectedStep: "accessory_pick",

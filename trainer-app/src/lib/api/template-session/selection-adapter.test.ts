@@ -5,6 +5,7 @@ import {
   SUPPLEMENTAL_SESSION_CAPS,
 } from "./selection-adapter";
 import { DEFAULT_SELECTION_WEIGHTS } from "@/lib/engine/selection-v2";
+import { selectExercisesOptimized } from "@/lib/engine/selection-v2";
 import type { MappedGenerationContext } from "./types";
 import type { WorkoutHistoryEntry, Exercise } from "@/lib/engine/types";
 
@@ -14,7 +15,8 @@ function makeExercise(
   movementPatterns: Exercise["movementPatterns"],
   splitTags: Exercise["splitTags"],
   primaryMuscles: string[],
-  secondaryMuscles: string[] = []
+  secondaryMuscles: string[] = [],
+  options?: Partial<Pick<Exercise, "isMainLiftEligible" | "isCompound" | "fatigueCost" | "equipment">>
 ): Exercise {
   return {
     id,
@@ -22,10 +24,10 @@ function makeExercise(
     movementPatterns,
     splitTags,
     jointStress: "medium",
-    isMainLiftEligible: true,
-    isCompound: true,
-    fatigueCost: 3,
-    equipment: ["machine"],
+    isMainLiftEligible: options?.isMainLiftEligible ?? true,
+    isCompound: options?.isCompound ?? true,
+    fatigueCost: options?.fatigueCost ?? 3,
+    equipment: options?.equipment ?? ["machine"],
     primaryMuscles,
     secondaryMuscles,
     sfrScore: 3,
@@ -33,8 +35,16 @@ function makeExercise(
   };
 }
 
-function makeMappedContext(history: WorkoutHistoryEntry[]): MappedGenerationContext {
-  const exerciseLibrary = [
+function makeMappedContext(
+  history: WorkoutHistoryEntry[],
+  options?: {
+    exerciseLibrary?: Exercise[];
+    weeklySchedule?: MappedGenerationContext["mappedConstraints"]["weeklySchedule"];
+    splitType?: MappedGenerationContext["mappedConstraints"]["splitType"];
+    lifecycleVolumeTargets?: MappedGenerationContext["lifecycleVolumeTargets"];
+  }
+): MappedGenerationContext {
+  const exerciseLibrary = options?.exerciseLibrary ?? [
     makeExercise("tbar-row", "T-Bar Row", ["horizontal_pull"], ["pull"], ["Lats", "Upper Back"], ["Biceps"]),
     makeExercise("cable-pullover", "Cable Pullover", ["vertical_pull"], ["pull"], ["Lats"]),
     makeExercise("barbell-row", "Barbell Row", ["horizontal_pull"], ["pull"], ["Lats", "Upper Back"], ["Biceps"]),
@@ -55,8 +65,8 @@ function makeMappedContext(history: WorkoutHistoryEntry[]): MappedGenerationCont
     },
     mappedConstraints: {
       daysPerWeek: 4,
-      splitType: "upper_lower",
-      weeklySchedule: ["push", "pull", "legs", "pull"],
+      splitType: options?.splitType ?? "upper_lower",
+      weeklySchedule: options?.weeklySchedule ?? ["push", "pull", "legs", "pull"],
     },
     mappedCheckIn: undefined,
     mappedPreferences: undefined,
@@ -67,7 +77,7 @@ function makeMappedContext(history: WorkoutHistoryEntry[]): MappedGenerationCont
     weekInBlock: 2,
     lifecycleWeek: 2,
     lifecycleRirTarget: { min: 2, max: 3 },
-    lifecycleVolumeTargets: {
+    lifecycleVolumeTargets: options?.lifecycleVolumeTargets ?? {
       Lats: 12,
       "Upper Back": 12,
       Biceps: 10,
@@ -110,6 +120,25 @@ function makeMappedContext(history: WorkoutHistoryEntry[]): MappedGenerationCont
       body_part: new Map(),
     },
   };
+}
+
+function countSelectedCompoundPattern(
+  selected: ReturnType<typeof selectExercisesOptimized>,
+  pattern: NonNullable<Exercise["movementPatterns"]>[number]
+): number {
+  return selected.selected.filter(
+    (candidate) =>
+      (candidate.exercise.isCompound ?? false) &&
+      (candidate.exercise.movementPatterns ?? []).includes(pattern)
+  ).length;
+}
+
+function selectedCompoundPatterns(
+  selected: ReturnType<typeof selectExercisesOptimized>
+): NonNullable<Exercise["movementPatterns"]>[number][] {
+  return selected.selected
+    .filter((candidate) => candidate.exercise.isCompound ?? false)
+    .flatMap((candidate) => candidate.exercise.movementPatterns ?? []);
 }
 
 describe("buildSelectionObjective continuity bias", () => {
@@ -458,6 +487,251 @@ describe("buildSelectionObjective continuity bias", () => {
     expect(objective.volumeContext.remainingWeek?.futureSlotCounts.get("lower")).toBe(1);
     expect(objective.constraints.preferredContinuityExerciseIds?.size).toBe(0);
     expect(objective.preferences.favoriteExerciseIds.has("machine-chest-press")).toBe(false);
+  });
+
+  it("resolves a canonical repeated-slot profile into the selection objective", () => {
+    const mapped = makeMappedContext([], {
+      weeklySchedule: ["upper", "lower", "upper", "lower"],
+      lifecycleVolumeTargets: {
+        Chest: 10,
+        Lats: 10,
+        "Upper Back": 10,
+        Biceps: 8,
+        Quads: 10,
+        Hamstrings: 10,
+        Glutes: 10,
+      },
+    });
+    mapped.activeMesocycle = {
+      id: "meso-1",
+      slotSequenceJson: {
+        version: 1,
+        source: "handoff_draft",
+        sequenceMode: "ordered_flexible",
+        slots: [
+          { slotId: "upper_a", intent: "UPPER" },
+          { slotId: "lower_a", intent: "LOWER" },
+          { slotId: "upper_b", intent: "UPPER" },
+          { slotId: "lower_b", intent: "LOWER" },
+        ],
+      },
+    } as unknown as MappedGenerationContext["activeMesocycle"];
+
+    const objective = buildSelectionObjective(mapped, "lower", undefined, {
+      sessionSlotId: "lower_b",
+    });
+
+    expect(objective.slotProfile).toEqual({
+      sessionIntent: "lower",
+      slotId: "lower_b",
+      repeatedSlot: {
+        occurrenceIndex: 1,
+        totalSlots: 2,
+      },
+      compoundBias: {
+        preferredMovementPatterns: ["hinge"],
+        preferredPrimaryMuscles: ["Hamstrings", "Glutes"],
+      },
+    });
+  });
+
+  it("gives repeated upper slots distinct upstream compound spines when valid alternatives exist", () => {
+    const exerciseLibrary = [
+      makeExercise("bench", "Bench Press", ["horizontal_push"], ["push"], ["Chest"], ["Triceps", "Front Delts"]),
+      makeExercise("incline", "Incline Press", ["vertical_push"], ["push"], ["Chest", "Front Delts"], ["Triceps"]),
+      makeExercise("row", "Chest-Supported Row", ["horizontal_pull"], ["pull"], ["Lats", "Upper Back"], ["Biceps"]),
+      makeExercise("pulldown", "Lat Pulldown", ["vertical_pull"], ["pull"], ["Lats"], ["Biceps"]),
+      makeExercise("rear-delt", "Rear Delt Fly", ["isolation"], ["pull"], ["Rear Delts"], [], {
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 2,
+      }),
+      makeExercise("curl", "Cable Curl", ["isolation"], ["pull"], ["Biceps"], [], {
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 2,
+      }),
+      makeExercise("lateral", "Lateral Raise", ["isolation"], ["push"], ["Side Delts"], [], {
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 2,
+      }),
+      makeExercise("triceps", "Triceps Pressdown", ["isolation"], ["push"], ["Triceps"], [], {
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 2,
+      }),
+    ];
+    const mapped = makeMappedContext([], {
+      exerciseLibrary,
+      weeklySchedule: ["upper", "lower", "upper", "lower"],
+      lifecycleVolumeTargets: {
+        Chest: 10,
+        Lats: 10,
+        "Upper Back": 10,
+        Biceps: 8,
+        "Front Delts": 8,
+        "Rear Delts": 8,
+        "Side Delts": 8,
+        Triceps: 8,
+      },
+    });
+    mapped.activeMesocycle = {
+      id: "meso-1",
+      slotSequenceJson: {
+        version: 1,
+        source: "handoff_draft",
+        sequenceMode: "ordered_flexible",
+        slots: [
+          { slotId: "upper_a", intent: "UPPER" },
+          { slotId: "lower_a", intent: "LOWER" },
+          { slotId: "upper_b", intent: "UPPER" },
+          { slotId: "lower_b", intent: "LOWER" },
+        ],
+      },
+    } as unknown as MappedGenerationContext["activeMesocycle"];
+
+    const upperAObjective = buildSelectionObjective(mapped, "upper", undefined, {
+      sessionSlotId: "upper_a",
+    });
+    const upperBObjective = buildSelectionObjective(mapped, "upper", undefined, {
+      sessionSlotId: "upper_b",
+    });
+
+    const upperA = selectExercisesOptimized(exerciseLibrary, upperAObjective);
+    const upperB = selectExercisesOptimized(exerciseLibrary, upperBObjective);
+
+    expect(countSelectedCompoundPattern(upperA, "horizontal_push")).toBeGreaterThan(0);
+    expect(countSelectedCompoundPattern(upperA, "horizontal_pull")).toBeGreaterThan(0);
+    expect(countSelectedCompoundPattern(upperB, "vertical_push")).toBeGreaterThan(0);
+    expect(countSelectedCompoundPattern(upperB, "vertical_pull")).toBeGreaterThan(0);
+    expect(
+      upperA.selected
+        .filter((candidate) => candidate.exercise.isCompound ?? false)
+        .map((candidate) => candidate.exercise.id)
+    ).not.toEqual(
+      upperB.selected
+        .filter((candidate) => candidate.exercise.isCompound ?? false)
+        .map((candidate) => candidate.exercise.id)
+    );
+  });
+
+  it("trends lower_a squat-dominant and lower_b hinge-dominant when valid alternatives exist", () => {
+    const exerciseLibrary = [
+      makeExercise("back-squat", "Back Squat", ["squat"], ["legs"], ["Quads", "Glutes"]),
+      makeExercise("hack-squat", "Hack Squat", ["squat"], ["legs"], ["Quads", "Glutes"], [], {
+        isMainLiftEligible: false,
+      }),
+      makeExercise("rdl", "Romanian Deadlift", ["hinge"], ["legs"], ["Hamstrings", "Glutes"]),
+      makeExercise("hip-thrust", "Hip Thrust", ["hinge"], ["legs"], ["Glutes", "Hamstrings"], [], {
+        isMainLiftEligible: false,
+      }),
+      makeExercise("leg-curl", "Leg Curl", ["isolation"], ["legs"], ["Hamstrings"], [], {
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 2,
+      }),
+      makeExercise("leg-extension", "Leg Extension", ["isolation"], ["legs"], ["Quads"], [], {
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 2,
+      }),
+      makeExercise("calf-raise", "Calf Raise", ["isolation"], ["legs"], ["Calves"], [], {
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 2,
+      }),
+    ];
+    const mapped = makeMappedContext([], {
+      exerciseLibrary,
+      weeklySchedule: ["upper", "lower", "upper", "lower"],
+      lifecycleVolumeTargets: {
+        Quads: 10,
+        Hamstrings: 10,
+        Glutes: 10,
+        Calves: 6,
+      },
+    });
+    mapped.activeMesocycle = {
+      id: "meso-1",
+      slotSequenceJson: {
+        version: 1,
+        source: "handoff_draft",
+        sequenceMode: "ordered_flexible",
+        slots: [
+          { slotId: "upper_a", intent: "UPPER" },
+          { slotId: "lower_a", intent: "LOWER" },
+          { slotId: "upper_b", intent: "UPPER" },
+          { slotId: "lower_b", intent: "LOWER" },
+        ],
+      },
+    } as unknown as MappedGenerationContext["activeMesocycle"];
+
+    const lowerA = selectExercisesOptimized(
+      exerciseLibrary,
+      buildSelectionObjective(mapped, "lower", undefined, { sessionSlotId: "lower_a" })
+    );
+    const lowerB = selectExercisesOptimized(
+      exerciseLibrary,
+      buildSelectionObjective(mapped, "lower", undefined, { sessionSlotId: "lower_b" })
+    );
+
+    expect(selectedCompoundPatterns(lowerA).slice(0, 2)).toEqual(["squat", "squat"]);
+    expect(selectedCompoundPatterns(lowerB).slice(0, 2)).toEqual(["hinge", "hinge"]);
+  });
+
+  it("falls back cleanly when the preferred repeated-slot compound pattern is unavailable", () => {
+    const exerciseLibrary = [
+      makeExercise("back-squat", "Back Squat", ["squat"], ["legs"], ["Quads", "Glutes"]),
+      makeExercise("leg-curl", "Leg Curl", ["isolation"], ["legs"], ["Hamstrings"], [], {
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 2,
+      }),
+      makeExercise("leg-extension", "Leg Extension", ["isolation"], ["legs"], ["Quads"], [], {
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 2,
+      }),
+      makeExercise("calf-raise", "Calf Raise", ["isolation"], ["legs"], ["Calves"], [], {
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 2,
+      }),
+    ];
+    const mapped = makeMappedContext([], {
+      exerciseLibrary,
+      weeklySchedule: ["upper", "lower", "upper", "lower"],
+      lifecycleVolumeTargets: {
+        Quads: 10,
+        Hamstrings: 10,
+        Glutes: 10,
+        Calves: 6,
+      },
+    });
+    mapped.activeMesocycle = {
+      id: "meso-1",
+      slotSequenceJson: {
+        version: 1,
+        source: "handoff_draft",
+        sequenceMode: "ordered_flexible",
+        slots: [
+          { slotId: "upper_a", intent: "UPPER" },
+          { slotId: "lower_a", intent: "LOWER" },
+          { slotId: "upper_b", intent: "UPPER" },
+          { slotId: "lower_b", intent: "LOWER" },
+        ],
+      },
+    } as unknown as MappedGenerationContext["activeMesocycle"];
+
+    const constrainedLowerB = selectExercisesOptimized(
+      exerciseLibrary,
+      buildSelectionObjective(mapped, "lower", undefined, { sessionSlotId: "lower_b" })
+    );
+
+    expect(constrainedLowerB.constraintsSatisfied).toBe(true);
+    expect(countSelectedCompoundPattern(constrainedLowerB, "squat")).toBeGreaterThan(0);
+    expect(countSelectedCompoundPattern(constrainedLowerB, "hinge")).toBe(0);
   });
 
   it("builds effectiveActual from the shared stimulus helper instead of binary primary credit", () => {

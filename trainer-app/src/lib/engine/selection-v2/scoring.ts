@@ -15,6 +15,7 @@ import type {
   SelectionPreferences,
   SelectionObjective,
 } from "./types";
+import type { SessionSlotProfile } from "@/lib/planning/session-slot-profile";
 
 
 /**
@@ -271,4 +272,42 @@ export function scoreUserPreference(
 
   // Neutral
   return 0.5;
+}
+
+function normalizeMuscleName(muscle: string): string {
+  return muscle.trim().toLowerCase();
+}
+
+export function scoreCompoundSlotProfileAlignment(
+  exercise: Exercise,
+  slotProfile: SessionSlotProfile | undefined
+): number {
+  if (!slotProfile || !(exercise.isCompound ?? false)) {
+    return 0;
+  }
+
+  const preferredPatterns = slotProfile.compoundBias?.preferredMovementPatterns ?? [];
+  const preferredPrimaryMuscles = new Set(
+    (slotProfile.compoundBias?.preferredPrimaryMuscles ?? []).map(normalizeMuscleName)
+  );
+
+  const directives: boolean[] = [];
+  if (preferredPatterns.length > 0) {
+    directives.push(
+      preferredPatterns.some((pattern) => (exercise.movementPatterns ?? []).includes(pattern))
+    );
+  }
+  if (preferredPrimaryMuscles.size > 0) {
+    directives.push(
+      (exercise.primaryMuscles ?? []).some((muscle) =>
+        preferredPrimaryMuscles.has(normalizeMuscleName(muscle))
+      )
+    );
+  }
+
+  if (directives.length === 0) {
+    return 0;
+  }
+
+  return directives.filter(Boolean).length / directives.length;
 }

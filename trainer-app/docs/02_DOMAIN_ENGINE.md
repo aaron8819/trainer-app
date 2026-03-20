@@ -1,7 +1,7 @@
 # 02 Domain Engine
 
 Owner: Aaron
-Last reviewed: 2026-03-17
+Last reviewed: 2026-03-19
 Purpose: Canonical reference for workout-generation domain logic, including selection, progression, periodization, readiness, and explainability.
 
 This doc covers:
@@ -293,10 +293,12 @@ SetLog / logged performance
   - reject `keep` carry-forward selections whose original `sessionIntent` no longer exists after split/session edits
   - create the successor mesocycle with reset lifecycle counters
   - persist canonical `slotSequenceJson` from the accepted ordered-flexible slot sequence
+  - persist `slotPlanSeedJson` from the shared raw handoff slot-plan projection when that projection succeeds
   - carry forward only `keep` selections
   - update `Constraints.daysPerWeek`, `splitType`, and `weeklySchedule`
   - mark the source mesocycle `COMPLETED`
 - `slotSequenceJson` is now the canonical runtime session-order contract for accepted mesocycles. Runtime sequencing, remaining-week planning, UI labeling, and explainability should prefer `slotId + intent`; `weeklySchedule` subtraction remains compatibility-only for legacy mesocycles without persisted slot identity.
+- `slotPlanSeedJson` is persistence-only for now: it stores minimal `slotId -> ordered exercises[{ exerciseId, role }]` seeds from the canonical raw handoff projection, aligned to `slotSequenceJson`, and is not yet consumed by runtime/UI paths.
 - Block-aware prescription semantics are now authored in one shared seam: `src/lib/engine/periodization/block-prescription-intent.ts`.
   - Inputs: `blockType`, `weekInBlock`, `blockDurationWeeks`, `isDeload`
   - Outputs: canonical `rirTarget`, `setTargets`, `setMultiplier`, plus compatibility `modifiers`

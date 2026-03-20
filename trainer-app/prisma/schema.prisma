@@ -634,6 +634,7 @@ model Mesocycle {
   handoffSummaryJson            Json?
   nextSeedDraftJson             Json?
   slotSequenceJson              Json?
+  slotPlanSeedJson              Json?
 
   blocks        TrainingBlock[]
   workouts      Workout[]

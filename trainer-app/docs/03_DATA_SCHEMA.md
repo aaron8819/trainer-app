@@ -1,7 +1,7 @@
 # 03 Data Schema
 
 Owner: Aaron  
-Last reviewed: 2026-03-17  
+Last reviewed: 2026-03-19  
 Purpose: Canonical data-model reference for runtime persistence used by workout generation, logging, templates, analytics, readiness, and periodization.
 
 This doc covers:
@@ -13,7 +13,7 @@ Invariants:
 - `prisma/schema.prisma` is canonical for all model and enum definitions.
 - `Workout.status`, `Workout.selectionMode`, and `WorkoutExercise.section` must stay aligned with runtime contracts.
 - `SetLog.workoutSetId` is unique, so set logging is one log record per set.
-- Mesocycle handoff state, frozen handoff artifacts, editable next-cycle draft, and accepted slot sequence all persist on `Mesocycle`.
+- Mesocycle handoff state, frozen handoff artifacts, editable next-cycle draft, accepted slot sequence, and accepted slot-plan seeds all persist on `Mesocycle`.
 
 Sources of truth:
 - `trainer-app/prisma/schema.prisma`
@@ -60,12 +60,14 @@ Canonical machine-readable values in `docs/contracts/runtime-contracts.json` cur
 - `Mesocycle.handoffSummaryJson`
 - `Mesocycle.nextSeedDraftJson`
 - `Mesocycle.slotSequenceJson`
+- `Mesocycle.slotPlanSeedJson`
 
 Lifecycle/handoff meanings:
 - `AWAITING_HANDOFF` means the prior mesocycle is closed, reviewable, and no successor mesocycle has been created yet.
 - `handoffSummaryJson` stores the frozen closeout snapshot: terminal lifecycle facts, final training structure, carry-forward recommendations, and the original recommended next-cycle seed.
 - `nextSeedDraftJson` stores the mutable pending setup draft while the mesocycle is in `AWAITING_HANDOFF`. It is not editable once the mesocycle is archived as `COMPLETED`.
 - `slotSequenceJson` stores the accepted ordered-flexible slot sequence on the successor mesocycle and is the canonical runtime authority for slot-aware sequencing.
+- `slotPlanSeedJson` stores the accepted minimal slot-plan seeds on the successor mesocycle as ordered `slotId -> exercises[{ exerciseId, role }]` data derived from the canonical raw handoff slot-plan projection. It must align with persisted `slotSequenceJson` slot ids and is persistence-only for now.
 
 ## Training block fields
 - `TrainingBlock.mesocycleId`

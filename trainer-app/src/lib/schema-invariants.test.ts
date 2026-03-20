@@ -19,4 +19,9 @@ describe("prisma schema invariants", () => {
   it("enforces single SetLog per workoutSetId for upsert idempotency", () => {
     expect(schema).toMatch(/model\s+SetLog[\s\S]*?workoutSetId\s+String\s+@unique/);
   });
+
+  it("persists mesocycle slot-plan seeds separately from slot sequencing", () => {
+    expect(schema).toMatch(/model\s+Mesocycle[\s\S]*?slotSequenceJson\s+Json\?/);
+    expect(schema).toMatch(/model\s+Mesocycle[\s\S]*?slotPlanSeedJson\s+Json\?/);
+  });
 });

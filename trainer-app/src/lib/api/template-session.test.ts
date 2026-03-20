@@ -188,10 +188,285 @@ describe("generateSessionFromIntent", () => {
     }
   );
 
+  it("uses persisted slotPlanSeedJson only for seeded next-slot composition", async () => {
+    loadWorkoutContextMock.mockResolvedValue({
+      profile: { id: "profile" },
+      goals: { primaryGoal: "HYPERTROPHY", secondaryGoal: "NONE" },
+      constraints: {
+        daysPerWeek: 4,
+        splitType: "UPPER_LOWER",
+        weeklySchedule: ["UPPER", "LOWER", "UPPER", "LOWER"],
+      },
+      injuries: [],
+      exercises: [
+        { id: "bench" },
+        { id: "row" },
+        { id: "incline-db-press" },
+        { id: "lat-pulldown" },
+      ],
+      workouts: [
+        {
+          id: "w-upper-a",
+          scheduledDate: new Date("2026-03-08T00:00:00.000Z"),
+          status: "COMPLETED",
+          advancesSplit: true,
+          selectionMode: "INTENT",
+          sessionIntent: "UPPER",
+          forcedSplit: null,
+          templateId: null,
+          selectionMetadata: {
+            sessionDecisionReceipt: {
+              version: 1,
+              sessionSlot: {
+                slotId: "upper_a",
+                intent: "upper",
+                sequenceIndex: 0,
+                source: "mesocycle_slot_sequence",
+              },
+            },
+          },
+          mesocycleId: "meso-1",
+          mesocycleWeekSnapshot: 3,
+          mesoSessionSnapshot: 1,
+          mesocyclePhaseSnapshot: "ACCUMULATION",
+          exercises: [],
+        },
+        {
+          id: "w-lower-a",
+          scheduledDate: new Date("2026-03-09T00:00:00.000Z"),
+          status: "COMPLETED",
+          advancesSplit: true,
+          selectionMode: "INTENT",
+          sessionIntent: "LOWER",
+          forcedSplit: null,
+          templateId: null,
+          selectionMetadata: {
+            sessionDecisionReceipt: {
+              version: 1,
+              sessionSlot: {
+                slotId: "lower_a",
+                intent: "lower",
+                sequenceIndex: 1,
+                source: "mesocycle_slot_sequence",
+              },
+            },
+          },
+          mesocycleId: "meso-1",
+          mesocycleWeekSnapshot: 3,
+          mesoSessionSnapshot: 2,
+          mesocyclePhaseSnapshot: "ACCUMULATION",
+          exercises: [],
+        },
+      ],
+      preferences: null,
+      checkIns: [],
+    });
+    mapConstraintsMock.mockReturnValue({
+      daysPerWeek: 4,
+      splitType: "upper_lower",
+      weeklySchedule: ["upper", "lower", "upper", "lower"],
+    });
+    mapExercisesMock.mockReturnValue([
+      {
+        id: "bench",
+        name: "Bench Press",
+        movementPatterns: ["horizontal_push"],
+        splitTags: ["upper"],
+        jointStress: "medium",
+        isMainLiftEligible: true,
+        isCompound: true,
+        fatigueCost: 4,
+        equipment: ["barbell"],
+        primaryMuscles: ["Chest"],
+        secondaryMuscles: ["Triceps"],
+        sfrScore: 4,
+        lengthPositionScore: 3,
+      },
+      {
+        id: "row",
+        name: "Chest Supported Row",
+        movementPatterns: ["horizontal_pull"],
+        splitTags: ["upper"],
+        jointStress: "medium",
+        isMainLiftEligible: true,
+        isCompound: true,
+        fatigueCost: 4,
+        equipment: ["machine"],
+        primaryMuscles: ["Upper Back"],
+        secondaryMuscles: ["Biceps"],
+        sfrScore: 4,
+        lengthPositionScore: 3,
+      },
+      {
+        id: "incline-db-press",
+        name: "Incline Dumbbell Press",
+        movementPatterns: ["horizontal_push"],
+        splitTags: ["upper"],
+        jointStress: "medium",
+        isMainLiftEligible: true,
+        isCompound: true,
+        fatigueCost: 4,
+        equipment: ["dumbbell"],
+        primaryMuscles: ["Chest"],
+        secondaryMuscles: ["Front Delts", "Triceps"],
+        sfrScore: 4,
+        lengthPositionScore: 4,
+      },
+      {
+        id: "lat-pulldown",
+        name: "Lat Pulldown",
+        movementPatterns: ["vertical_pull"],
+        splitTags: ["upper"],
+        jointStress: "low",
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 2,
+        equipment: ["cable"],
+        primaryMuscles: ["Lats"],
+        secondaryMuscles: ["Biceps"],
+        sfrScore: 4,
+        lengthPositionScore: 3,
+      },
+    ]);
+    loadActiveMesocycleMock.mockResolvedValue({
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION",
+      accumulationSessionsCompleted: 10,
+      deloadSessionsCompleted: 0,
+      durationWeeks: 5,
+      sessionsPerWeek: 4,
+      slotSequenceJson: {
+        version: 1,
+        source: "handoff_draft",
+        sequenceMode: "ordered_flexible",
+        slots: [
+          { slotId: "upper_a", intent: "UPPER" },
+          { slotId: "lower_a", intent: "LOWER" },
+          { slotId: "upper_b", intent: "UPPER" },
+          { slotId: "lower_b", intent: "LOWER" },
+        ],
+      },
+      slotPlanSeedJson: {
+        version: 1,
+        source: "handoff_slot_plan_projection",
+        slots: [
+          {
+            slotId: "upper_a",
+            exercises: [
+              { exerciseId: "bench", role: "CORE_COMPOUND" },
+              { exerciseId: "row", role: "ACCESSORY" },
+            ],
+          },
+          {
+            slotId: "lower_a",
+            exercises: [{ exerciseId: "bench", role: "CORE_COMPOUND" }],
+          },
+          {
+            slotId: "upper_b",
+            exercises: [
+              { exerciseId: "incline-db-press", role: "CORE_COMPOUND" },
+              { exerciseId: "lat-pulldown", role: "ACCESSORY" },
+            ],
+          },
+          {
+            slotId: "lower_b",
+            exercises: [{ exerciseId: "row", role: "CORE_COMPOUND" }],
+          },
+        ],
+      },
+    });
+    mesocycleRoleFindManyMock.mockResolvedValue([
+      { exerciseId: "bench", role: "CORE_COMPOUND", sessionIntent: "UPPER" },
+      { exerciseId: "row", role: "ACCESSORY", sessionIntent: "UPPER" },
+    ]);
+
+    const selectSpy = vi.spyOn(selectionV2, "selectExercisesOptimized");
+    try {
+      const result = await generateSessionFromIntent("user-1", { intent: "upper" });
+
+      expect("error" in result).toBe(false);
+      if ("error" in result) return;
+
+      expect(selectSpy).not.toHaveBeenCalled();
+      expect(result.selection.selectedExerciseIds).toEqual([
+        "incline-db-press",
+        "lat-pulldown",
+      ]);
+      expect(result.workout.mainLifts.map((entry) => entry.exercise.id)).toEqual([
+        "incline-db-press",
+      ]);
+      expect(result.workout.accessories.map((entry) => entry.exercise.id)).toEqual([
+        "lat-pulldown",
+      ]);
+      expect(result.selection.sessionDecisionReceipt).toBeDefined();
+      expect(result.audit?.progressionTraces).toBeDefined();
+    } finally {
+      selectSpy.mockRestore();
+    }
+  });
+
   it("requires targetMuscles for body_part intent", async () => {
     const result = await generateSessionFromIntent("user-1", { intent: "body_part" });
 
     expect(result).toEqual({ error: "targetMuscles is required when intent is body_part" });
+  });
+
+  it("keeps body_part generation on the legacy fallback path even when the mesocycle is seeded", async () => {
+    loadActiveMesocycleMock.mockResolvedValue({
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION",
+      accumulationSessionsCompleted: 3,
+      durationWeeks: 5,
+      slotPlanSeedJson: {
+        version: 1,
+        source: "handoff_slot_plan_projection",
+        slots: [
+          {
+            slotId: "push_a",
+            exercises: [{ exerciseId: "squat", role: "CORE_COMPOUND" }],
+          },
+        ],
+      },
+    });
+
+    const selectSpy = vi.spyOn(selectionV2, "selectExercisesOptimized");
+    try {
+      const result = await generateSessionFromIntent("user-1", {
+        intent: "body_part",
+        targetMuscles: ["Chest"],
+      });
+
+      expect("error" in result).toBe(false);
+      if ("error" in result) return;
+
+      expect(selectSpy).toHaveBeenCalled();
+      expect(result.selection.intentDiagnostics?.intent).toBe("body_part");
+    } finally {
+      selectSpy.mockRestore();
+    }
+  });
+
+  it("keeps unseeded mesocycles on the legacy intent-selection path", async () => {
+    loadActiveMesocycleMock.mockResolvedValue({
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION",
+      accumulationSessionsCompleted: 3,
+      durationWeeks: 5,
+      slotPlanSeedJson: null,
+    });
+
+    const selectSpy = vi.spyOn(selectionV2, "selectExercisesOptimized");
+    try {
+      const result = await generateSessionFromIntent("user-1", { intent: "push" });
+
+      expect("error" in result).toBe(false);
+      if ("error" in result) return;
+
+      expect(selectSpy).toHaveBeenCalled();
+      expect(result.selection.intentDiagnostics?.intent).toBe("push");
+    } finally {
+      selectSpy.mockRestore();
+    }
   });
 
   it("returns body_part diagnostics including selected target muscles", async () => {

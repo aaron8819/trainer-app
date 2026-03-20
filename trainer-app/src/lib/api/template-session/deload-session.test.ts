@@ -49,6 +49,8 @@ function makeMappedContext(input: {
   roleMapByIntent?: Partial<
     Record<SessionIntent, Array<[string, "CORE_COMPOUND" | "ACCESSORY"]>>
   >;
+  slotSequenceJson?: unknown;
+  slotPlanSeedJson?: unknown;
 }) {
   return {
     exerciseLibrary: input.exerciseLibrary,
@@ -72,7 +74,15 @@ function makeMappedContext(input: {
       isActive: true,
       volumeRampConfig: {},
       rirBandConfig: {},
+      slotSequenceJson: input.slotSequenceJson ?? null,
+      slotPlanSeedJson: input.slotPlanSeedJson ?? null,
     },
+    mappedConstraints: {
+      daysPerWeek: 3,
+      splitType: "ppl",
+      weeklySchedule: ["push", "pull", "legs"],
+    },
+    history: [],
   } as never;
 }
 
@@ -197,6 +207,158 @@ describe("deload-session generation", () => {
     expect(bench?.sets).toHaveLength(2);
     expect(bench?.sets[0].targetReps).toBe(8);
     expect(bench?.sets[0].targetLoad).toBeUndefined();
+  });
+
+  it("uses persisted slotPlanSeedJson for seeded deload composition before applying canonical deload transforms", async () => {
+    mocks.workoutFindFirst.mockResolvedValue({
+      exercises: [
+        {
+          exerciseId: "row",
+          isMainLift: true,
+          sets: Array.from({ length: 4 }, () => ({ logs: [{ actualReps: 8, actualLoad: 160 }] })),
+        },
+        {
+          exerciseId: "curl",
+          isMainLift: false,
+          sets: Array.from({ length: 3 }, () => ({ logs: [{ actualReps: 12, actualLoad: 35 }] })),
+        },
+      ],
+    });
+    mocks.workoutFindMany.mockResolvedValue([
+      {
+        exercises: [
+          {
+            exerciseId: "lat-pulldown",
+            isMainLift: true,
+            sets: Array.from({ length: 4 }, () => ({ logs: [{ actualReps: 10, actualLoad: 140 }] })),
+          },
+          {
+            exerciseId: "rear-delt-fly",
+            isMainLift: false,
+            sets: Array.from({ length: 3 }, () => ({ logs: [{ actualReps: 15, actualLoad: 25 }] })),
+          },
+        ],
+      },
+    ]);
+
+    const result = await generateDeloadSessionFromIntentContext(
+      "user-1",
+      makeMappedContext({
+        exerciseLibrary: [
+          {
+            id: "row",
+            name: "Row",
+            movementPatterns: ["horizontal_pull"],
+            splitTags: ["pull"],
+            jointStress: "medium",
+            isMainLiftEligible: true,
+            isCompound: true,
+            fatigueCost: 3,
+            equipment: ["machine"],
+            primaryMuscles: ["Upper Back"],
+            secondaryMuscles: ["Biceps"],
+          },
+          {
+            id: "curl",
+            name: "Curl",
+            movementPatterns: ["flexion"],
+            splitTags: ["pull"],
+            jointStress: "low",
+            isMainLiftEligible: false,
+            isCompound: false,
+            fatigueCost: 1,
+            equipment: ["cable"],
+            primaryMuscles: ["Biceps"],
+            secondaryMuscles: [],
+          },
+          {
+            id: "lat-pulldown",
+            name: "Lat Pulldown",
+            movementPatterns: ["vertical_pull"],
+            splitTags: ["pull"],
+            jointStress: "medium",
+            isMainLiftEligible: true,
+            isCompound: true,
+            fatigueCost: 3,
+            equipment: ["cable"],
+            primaryMuscles: ["Lats"],
+            secondaryMuscles: ["Biceps"],
+          },
+          {
+            id: "rear-delt-fly",
+            name: "Rear Delt Fly",
+            movementPatterns: ["isolation"],
+            splitTags: ["pull"],
+            jointStress: "low",
+            isMainLiftEligible: false,
+            isCompound: false,
+            fatigueCost: 1,
+            equipment: ["machine"],
+            primaryMuscles: ["Rear Delts"],
+            secondaryMuscles: [],
+          },
+        ],
+        roleMapByIntent: {
+          pull: [
+            ["row", "CORE_COMPOUND"],
+            ["curl", "ACCESSORY"],
+          ],
+        },
+        slotSequenceJson: {
+          version: 1,
+          source: "handoff_draft",
+          sequenceMode: "ordered_flexible",
+          slots: [
+            { slotId: "push_a", intent: "PUSH" },
+            { slotId: "pull_a", intent: "PULL" },
+            { slotId: "legs_a", intent: "LEGS" },
+          ],
+        },
+        slotPlanSeedJson: {
+          version: 1,
+          source: "handoff_slot_plan_projection",
+          slots: [
+            {
+              slotId: "push_a",
+              exercises: [{ exerciseId: "row", role: "CORE_COMPOUND" }],
+            },
+            {
+              slotId: "pull_a",
+              exercises: [
+                { exerciseId: "lat-pulldown", role: "CORE_COMPOUND" },
+                { exerciseId: "rear-delt-fly", role: "ACCESSORY" },
+              ],
+            },
+            {
+              slotId: "legs_a",
+              exercises: [{ exerciseId: "curl", role: "ACCESSORY" }],
+            },
+          ],
+        },
+      }),
+      "pull"
+    );
+
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    expect(result.workout.mainLifts.map((entry) => entry.exercise.id)).toEqual([
+      "lat-pulldown",
+    ]);
+    expect(result.workout.accessories.map((entry) => entry.exercise.id)).toEqual([
+      "rear-delt-fly",
+    ]);
+    expect(result.workout.mainLifts.map((entry) => entry.exercise.id)).not.toContain("row");
+    expect(result.workout.accessories.map((entry) => entry.exercise.id)).not.toContain("curl");
+    expect(result.trace.exercises.find((entry) => entry.exerciseId === "lat-pulldown")).toMatchObject({
+      anchoredLoad: 140,
+      anchoredLoadSource: "peak_accumulation",
+      deloadSetCount: 2,
+    });
+    expect(result.trace.exercises.find((entry) => entry.exerciseId === "rear-delt-fly")).toMatchObject({
+      anchoredLoad: 25,
+      anchoredLoadSource: "peak_accumulation",
+    });
   });
 
   it("trims redundant push-day press overlap and duplicate lateral raise buckets before applying set deloads", async () => {

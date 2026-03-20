@@ -13,6 +13,7 @@ import {
 } from "@/lib/deload/semantics";
 import type { DeloadTransformationTrace } from "@/lib/evidence/session-audit-types";
 import type { MappedGenerationContext } from "./types";
+import { resolveSeededSlotPlan } from "./slot-plan-seed";
 
 function modalNumber(values: number[]): number | undefined {
   const freq = new Map<number, number>();
@@ -161,14 +162,30 @@ export async function generateDeloadSessionFromIntentContext(
       .filter(([, role]) => role === "CORE_COMPOUND")
       .map(([exerciseId]) => exerciseId)
   );
-
-  const baselineExerciseIds = latestAccumWorkout.exercises.map((exercise) => exercise.exerciseId);
-  const orderedExerciseIds = [...baselineExerciseIds];
-  for (const coreId of coreIds) {
-    if (!orderedExerciseIds.includes(coreId)) {
-      orderedExerciseIds.push(coreId);
-    }
+  const seededSlotPlan = resolveSeededSlotPlan({
+    mapped,
+    sessionIntent,
+  });
+  if (seededSlotPlan && "error" in seededSlotPlan) {
+    return seededSlotPlan;
   }
+
+  const orderedSeedExercises =
+    seededSlotPlan && !("error" in seededSlotPlan)
+      ? seededSlotPlan.exercises
+      : null;
+  const orderedExerciseIds = orderedSeedExercises
+    ? orderedSeedExercises.map((exercise) => exercise.exerciseId)
+    : (() => {
+        const baselineExerciseIds = latestAccumWorkout.exercises.map((exercise) => exercise.exerciseId);
+        const fallbackOrderedExerciseIds = [...baselineExerciseIds];
+        for (const coreId of coreIds) {
+          if (!fallbackOrderedExerciseIds.includes(coreId)) {
+            fallbackOrderedExerciseIds.push(coreId);
+          }
+        }
+        return fallbackOrderedExerciseIds;
+      })();
 
   const exerciseById = new Map(mapped.exerciseLibrary.map((exercise) => [exercise.id, exercise]));
   const peakAccumulationSource = week4Workouts.length > 0 ? week4Workouts : [latestAccumWorkout];
@@ -207,10 +224,13 @@ export async function generateDeloadSessionFromIntentContext(
       peakAccumulationSource
         .flatMap((workout) => workout.exercises)
         .find((entry) => entry.exerciseId === exerciseId);
-    const mesocycleRole = intentRoleMap.get(exerciseId);
+    const mesocycleRole =
+      orderedSeedExercises?.find((exercise) => exercise.exerciseId === exerciseId)?.role ??
+      intentRoleMap.get(exerciseId);
     const isMainLift =
-      baselineExerciseEntry?.isMainLift ??
-      (mesocycleRole != null ? mesocycleRole === "CORE_COMPOUND" : coreIds.has(exerciseId));
+      mesocycleRole != null
+        ? mesocycleRole === "CORE_COMPOUND"
+        : baselineExerciseEntry?.isMainLift ?? coreIds.has(exerciseId);
     const baselineSetCount = baselineExerciseEntry?.sets.length ?? 4;
     const baselineReps = modalNumber(
       (baselineExerciseEntry?.sets ?? [])

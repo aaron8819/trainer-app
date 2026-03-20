@@ -298,7 +298,7 @@ SetLog / logged performance
   - update `Constraints.daysPerWeek`, `splitType`, and `weeklySchedule`
   - mark the source mesocycle `COMPLETED`
 - `slotSequenceJson` is now the canonical runtime session-order contract for accepted mesocycles. Runtime sequencing, remaining-week planning, UI labeling, and explainability should prefer `slotId + intent`; `weeklySchedule` subtraction remains compatibility-only for legacy mesocycles without persisted slot identity.
-- `slotPlanSeedJson` is persistence-only for now: it stores minimal `slotId -> ordered exercises[{ exerciseId, role }]` seeds from the canonical raw handoff projection, aligned to `slotSequenceJson`, and is not yet consumed by runtime/UI paths.
+- `slotPlanSeedJson` is now the canonical runtime composition source for seeded mesocycles. `generateSessionFromMappedContext()` and `generateDeloadSessionFromIntentContext()` resolve the current slot from persisted runtime slot sequencing, then compose only from `slotPlanSeedJson` for seeded supported intents; legacy intent/role reselection remains fallback-only for unseeded mesocycles and unsupported paths such as `body_part`.
 - Block-aware prescription semantics are now authored in one shared seam: `src/lib/engine/periodization/block-prescription-intent.ts`.
   - Inputs: `blockType`, `weekInBlock`, `blockDurationWeeks`, `isDeload`
   - Outputs: canonical `rirTarget`, `setTargets`, `setMultiplier`, plus compatibility `modifiers`
@@ -321,7 +321,7 @@ SetLog / logged performance
   - `POST /api/workouts/generate-from-template` (`src/app/api/workouts/generate-from-template/route.ts`) routes to `generateDeloadSessionFromTemplate()` when active mesocycle state is `ACTIVE_DELOAD`.
 - During `ACTIVE_DELOAD`, normal accumulation generation paths are unreachable from these routes.
 - Canonical scheduled deload contract:
-  - keep the exercise list continuous with accumulation and preserve core compounds
+  - for seeded mesocycles, take the exercise list from persisted `slotPlanSeedJson`; for unseeded mesocycles, keep the existing accumulation-history continuity fallback
   - reduce hard sets roughly 50% with floor safeguards (`1 -> 1`, `2 -> 1`, `3-4 -> 2`, `5-6 -> 3`)
   - keep reps stable for movement continuity
   - leave `targetLoad` unset in generation, then let `src/lib/engine/apply-loads.ts` apply the canonical lighter deload load

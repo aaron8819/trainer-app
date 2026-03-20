@@ -53,6 +53,7 @@ import {
   mapTemplateExercises,
   resolveTemplateSessionIntent,
 } from "./template-session/plan-assembly";
+import { resolveSeededSlotPlan } from "./template-session/slot-plan-seed";
 import type {
   GenerateIntentSessionInput,
   GenerateTemplateSessionParams,
@@ -68,6 +69,109 @@ import {
 } from "@/lib/planning/session-opportunities";
 
 export type { GenerateIntentSessionInput } from "./template-session/types";
+
+function buildSeededSelectionFromWorkout(input: {
+  sessionIntent: GenerateIntentSessionInput["intent"];
+  templateExercises: TemplateExerciseInput[];
+  workout: IntentSessionCompositionResult["generation"]["workout"];
+  targetMuscles?: string[];
+}): SelectionOutput {
+  const workoutExerciseIds = new Set(
+    [...input.workout.mainLifts, ...input.workout.accessories].map((exercise) => exercise.exercise.id)
+  );
+  const selectedExerciseIds = input.templateExercises
+    .map((exercise) => exercise.exercise.id)
+    .filter((exerciseId) => workoutExerciseIds.has(exerciseId));
+
+  return {
+    selectedExerciseIds,
+    mainLiftIds: input.workout.mainLifts.map((exercise) => exercise.exercise.id),
+    accessoryIds: input.workout.accessories.map((exercise) => exercise.exercise.id),
+    perExerciseSetTargets: Object.fromEntries(
+      [...input.workout.mainLifts, ...input.workout.accessories].map((exercise) => [
+        exercise.exercise.id,
+        exercise.sets.length,
+      ])
+    ),
+    volumePlanByMuscle: {},
+    rationale: Object.fromEntries(
+      selectedExerciseIds.map((exerciseId) => [
+        exerciseId,
+        {
+          score: 1,
+          components: { slotPlanSeed: 1 },
+          hardFilterPass: true,
+          selectedStep: "anchor" as const,
+          reason: "persisted_slot_plan_seed",
+        },
+      ])
+    ),
+    intentDiagnostics: {
+      intent: input.sessionIntent,
+      targetMuscles: input.targetMuscles ?? [],
+      alignedRatio: 1,
+      minAlignedRatio: 1,
+      selectedCount: selectedExerciseIds.length,
+    },
+  };
+}
+
+function composeSeededIntentSessionFromMappedContext(
+  mapped: MappedGenerationContext,
+  input: GenerateIntentSessionInput
+): IntentSessionCompositionResult | { error: string } | null {
+  const seededSlotPlan = resolveSeededSlotPlan({
+    mapped,
+    sessionIntent: input.intent,
+    slotId: input.slotId,
+  });
+  if (!seededSlotPlan) {
+    return null;
+  }
+  if ("error" in seededSlotPlan) {
+    return seededSlotPlan;
+  }
+
+  const generation = runSessionGeneration(mapped, seededSlotPlan.templateExercises, {
+    sessionIntent: seededSlotPlan.intent,
+    selectionMode: "INTENT",
+    setCountOverrides: {},
+    mainLiftSlotCap: seededSlotPlan.exercises.filter((exercise) => exercise.role === "CORE_COMPOUND").length,
+    selection: {
+      selectedExerciseIds: seededSlotPlan.templateExercises.map((exercise) => exercise.exercise.id),
+      mainLiftIds: [],
+      accessoryIds: [],
+      perExerciseSetTargets: {},
+      rationale: {},
+      volumePlanByMuscle: {},
+      intentDiagnostics: {
+        intent: seededSlotPlan.intent,
+        targetMuscles: input.targetMuscles ?? [],
+        alignedRatio: 1,
+        minAlignedRatio: 1,
+        selectedCount: seededSlotPlan.templateExercises.length,
+      },
+    },
+    isStrict: false,
+  });
+  if ("error" in generation) {
+    return generation;
+  }
+
+  return {
+    generation: {
+      ...generation,
+      selection: buildSeededSelectionFromWorkout({
+        sessionIntent: seededSlotPlan.intent,
+        templateExercises: seededSlotPlan.templateExercises,
+        workout: generation.workout,
+        targetMuscles: input.targetMuscles,
+      }),
+    },
+    filteredExercises: [],
+    intentionallyDroppedAccessoryRoleIds: [],
+  };
+}
 
 function sortPinnedFirst(
   allIds: string[],
@@ -2976,7 +3080,12 @@ export function generateSessionFromMappedContext(
   mapped: MappedGenerationContext,
   input: GenerateIntentSessionInput
 ): SessionGenerationResult {
-  const composed = composeIntentSessionFromMappedContext(mapped, input);
+  const seededComposed = composeSeededIntentSessionFromMappedContext(mapped, input);
+  if (seededComposed && "error" in seededComposed) {
+    return seededComposed;
+  }
+
+  const composed = seededComposed ?? composeIntentSessionFromMappedContext(mapped, input);
   if ("error" in composed) {
     return composed;
   }

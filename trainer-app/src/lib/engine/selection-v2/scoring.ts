@@ -20,6 +20,8 @@ import type {
   SessionSlotShape,
 } from "@/lib/planning/session-slot-profile";
 
+const POST_COVERAGE_SUPPORT_OVERBUDGET_PENALTY = 0.2;
+
 
 /**
  * Score how well this exercise fills volume deficits
@@ -355,6 +357,9 @@ export function scoreSessionShapeAlignment(
     alreadySelected.flatMap((selectedExercise) => selectedExercise.movementPatterns ?? [])
   );
   const requiredMovementPatterns = sessionShape.requiredMovementPatterns ?? [];
+  const requiredCoverageSatisfied =
+    requiredMovementPatterns.length > 0 &&
+    requiredMovementPatterns.every((pattern) => selectedPatterns.has(pattern));
   if (requiredMovementPatterns.length > 0) {
     const missingRequiredPatterns = requiredMovementPatterns.filter(
       (pattern) => !selectedPatterns.has(pattern)
@@ -381,6 +386,7 @@ export function scoreSessionShapeAlignment(
 
   const supportPenaltyPatterns = sessionShape.supportPenaltyPatterns ?? [];
   const maxPreferredSupportPerPattern = sessionShape.maxPreferredSupportPerPattern ?? 1;
+  let applyPostCoverageSupportOverbudgetPenalty = false;
   if (supportPenaltyPatterns.length > 0 && maxPreferredSupportPerPattern > 0) {
     const exceedsSupportBudget = supportPenaltyPatterns.some((pattern) => {
       if (!(exercise.movementPatterns ?? []).includes(pattern)) {
@@ -389,11 +395,18 @@ export function scoreSessionShapeAlignment(
       return countSelectedPatternMatches(alreadySelected, pattern) >= maxPreferredSupportPerPattern;
     });
     scores.push(exceedsSupportBudget ? 0 : 1);
+    applyPostCoverageSupportOverbudgetPenalty =
+      exceedsSupportBudget && requiredCoverageSatisfied;
   }
 
   if (scores.length === 0) {
     return 0;
   }
 
-  return scores.reduce((sum, score) => sum + score, 0) / scores.length;
+  const baseScore = scores.reduce((sum, score) => sum + score, 0) / scores.length;
+  if (!applyPostCoverageSupportOverbudgetPenalty) {
+    return baseScore;
+  }
+
+  return Math.max(0, baseScore - POST_COVERAGE_SUPPORT_OVERBUDGET_PENALTY);
 }

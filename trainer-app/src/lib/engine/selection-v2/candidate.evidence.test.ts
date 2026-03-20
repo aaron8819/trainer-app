@@ -169,6 +169,21 @@ describe("candidate evidence guardrails", () => {
       primaryMuscles: ["Chest", "Front Delts"],
       secondaryMuscles: ["Triceps"],
     };
+    const existingHorizontalPull: Exercise = {
+      id: "chest-supported-row",
+      name: "Chest Supported Row",
+      movementPatterns: ["horizontal_pull"],
+      splitTags: ["pull"],
+      jointStress: "low",
+      isMainLiftEligible: false,
+      isCompound: false,
+      fatigueCost: 2,
+      sfrScore: 4,
+      lengthPositionScore: 3,
+      equipment: ["machine"],
+      primaryMuscles: ["Upper Back"],
+      secondaryMuscles: ["Biceps"],
+    };
 
     const objective = buildObjective();
     const sessionShape: SessionSlotShape = {
@@ -189,11 +204,11 @@ describe("candidate evidence guardrails", () => {
       verticalPressAccessory,
       sessionShape,
       objective,
-      [existingVerticalPress]
+      [existingVerticalPress, existingHorizontalPull]
     );
 
     expect(baselineScore).toBeCloseTo(0.75, 6);
-    expect(penalizedScore).toBeCloseTo(0.5, 6);
+    expect(penalizedScore).toBeCloseTo(0.55, 6);
     expect(penalizedScore).toBeLessThan(baselineScore);
   });
 
@@ -238,7 +253,7 @@ describe("candidate evidence guardrails", () => {
     );
 
     expect(baselineScore).toBeCloseTo(0.75, 6);
-    expect(penalizedScore).toBeCloseTo(0.5, 6);
+    expect(penalizedScore).toBeCloseTo(0.3, 6);
     expect(penalizedScore).toBeLessThan(baselineScore);
   });
 
@@ -282,8 +297,61 @@ describe("candidate evidence guardrails", () => {
     );
 
     expect(baselineScore).toBeCloseTo(0.875, 6);
-    expect(penalizedScore).toBeCloseTo(0.625, 6);
+    expect(penalizedScore).toBeCloseTo(0.425, 6);
     expect(penalizedScore).toBeLessThan(baselineScore);
+  });
+
+  it("still favors the first hinge support on lower_a before required coverage is satisfied", () => {
+    const hingeAccessory: Exercise = {
+      id: "back-extension",
+      name: "Back Extension",
+      movementPatterns: ["hinge"],
+      splitTags: ["legs"],
+      jointStress: "low",
+      isMainLiftEligible: false,
+      isCompound: false,
+      fatigueCost: 2,
+      sfrScore: 4,
+      lengthPositionScore: 3,
+      equipment: ["machine"],
+      primaryMuscles: ["Hamstrings"],
+      secondaryMuscles: ["Glutes"],
+    };
+    const kneeFlexionAccessory: Exercise = {
+      id: "leg-curl",
+      name: "Leg Curl",
+      movementPatterns: ["flexion"],
+      splitTags: ["legs"],
+      jointStress: "low",
+      isMainLiftEligible: false,
+      isCompound: false,
+      fatigueCost: 1,
+      sfrScore: 4,
+      lengthPositionScore: 4,
+      equipment: ["machine"],
+      primaryMuscles: ["Hamstrings"],
+      secondaryMuscles: [],
+    };
+    const objective = buildObjective({ sessionIntent: "lower" });
+    const sessionShape: SessionSlotShape = {
+      id: "lower_squat_dominant",
+      preferredAccessoryPrimaryMuscles: ["Quads"],
+      requiredMovementPatterns: ["hinge"],
+      avoidDuplicatePatterns: ["squat"],
+      supportPenaltyPatterns: ["hinge"],
+      maxPreferredSupportPerPattern: 1,
+    };
+
+    const hingeScore = scoreSessionShapeAlignment(hingeAccessory, sessionShape, objective);
+    const kneeFlexionScore = scoreSessionShapeAlignment(
+      kneeFlexionAccessory,
+      sessionShape,
+      objective
+    );
+
+    expect(hingeScore).toBeCloseTo(0.75, 6);
+    expect(kneeFlexionScore).toBeCloseTo(0.5, 6);
+    expect(hingeScore).toBeGreaterThan(kneeFlexionScore);
   });
 
   it("keeps fallback behavior soft instead of hard-blocking over-budget support", () => {
@@ -317,6 +385,21 @@ describe("candidate evidence guardrails", () => {
       primaryMuscles: ["Chest", "Front Delts"],
       secondaryMuscles: ["Triceps"],
     };
+    const existingHorizontalPull: Exercise = {
+      id: "chest-supported-row",
+      name: "Chest Supported Row",
+      movementPatterns: ["horizontal_pull"],
+      splitTags: ["pull"],
+      jointStress: "low",
+      isMainLiftEligible: false,
+      isCompound: false,
+      fatigueCost: 2,
+      sfrScore: 4,
+      lengthPositionScore: 3,
+      equipment: ["machine"],
+      primaryMuscles: ["Upper Back"],
+      secondaryMuscles: ["Biceps"],
+    };
     const objective = buildObjective();
     const sessionShape: SessionSlotShape = {
       id: "upper_vertical_balanced",
@@ -331,10 +414,10 @@ describe("candidate evidence guardrails", () => {
       verticalPressAccessory,
       sessionShape,
       objective,
-      [existingVerticalPress]
+      [existingVerticalPress, existingHorizontalPull]
     );
 
     expect(penalizedScore).toBeGreaterThan(0);
-    expect(penalizedScore).toBeLessThan(0.75);
+    expect(penalizedScore).toBeCloseTo(0.55, 6);
   });
 });

@@ -1,7 +1,7 @@
 # 04 API Contracts
 
 Owner: Aaron  
-Last reviewed: 2026-03-17
+Last reviewed: 2026-03-19
 Purpose: Canonical API contract map for App Router endpoints and payload validation boundaries.
 
 This doc covers:
@@ -86,6 +86,22 @@ Sources of truth:
 - Mutation reconciliation is part of the persisted workout contract, not a read-side convenience. Structural mutation writers persist `selectionMetadata.workoutStructureState` when saved workout structure diverges from the original generated plan.
 
 ## Mesocycle handoff route contract
+- `POST /api/mesocycles/[id]/setup-preview` (`src/app/api/mesocycles/[id]/setup-preview/route.ts`)
+  - state gate: target mesocycle must exist for the owner and be in `AWAITING_HANDOFF`
+  - request payload: `nextCycleSeedDraftUpdateSchema`
+  - success: `{ ok: true, preview }`
+  - preview ownership:
+    - server sanitizes the ephemeral draft through the same handoff-draft rules used by persistence
+    - preview and accept load projection inputs from the same handoff-owned source seam: `loadHandoffSourceMesocycle()` narrowed through `toHandoffProjectionSource()` in `src/lib/api/mesocycle-handoff.ts`
+    - server preview composition flows through `loadMesocycleSetupPreviewFromPrisma()` in `src/lib/api/mesocycle-setup.ts`
+    - projected slot session plans come from the canonical handoff-owned slot-plan projection seam in `src/lib/api/mesocycle-handoff-slot-plan-projection.ts`
+    - `preview.slotPlanProjection` is the narrow canonical projected slot-plan payload; `preview.display.projectedSlotPlans` is display-only decoration for setup UI labels and exercise names
+    - route does not persist `nextSeedDraftJson`
+  - conflict behavior:
+    - `409` when handoff is not pending
+    - `409` when `keep` carry-forward selections no longer match any session intent in the edited split/session structure
+  - validation behavior:
+    - `400` when the draft payload is structurally invalid
 - `PATCH /api/mesocycles/[id]/draft` (`src/app/api/mesocycles/[id]/draft/route.ts`)
   - state gate: target mesocycle must exist for the owner and be in `AWAITING_HANDOFF`
   - request payload: `nextCycleSeedDraftUpdateSchema`
@@ -98,7 +114,9 @@ Sources of truth:
 - `POST /api/mesocycles/[id]/accept-next-cycle` (`src/app/api/mesocycles/[id]/accept-next-cycle/route.ts`)
   - state gate: target mesocycle must exist for the owner, be in `AWAITING_HANDOFF`, and have a readable stored draft
   - success: `{ ok: true, priorMesocycleId, nextMesocycle }`
-  - acceptance semantics are transactional: sanitize the stored draft, create the successor mesocycle, persist `slotSequenceJson`, copy allowed carry-forward roles, update `Constraints`, then mark the source mesocycle `COMPLETED`
+  - acceptance semantics are transactional: sanitize the stored draft, reuse the shared handoff projection source seam, create the successor mesocycle, persist `slotSequenceJson`, persist aligned minimal `slotPlanSeedJson` from the raw canonical handoff slot-plan projection when available, copy allowed carry-forward roles, update `Constraints`, then mark the source mesocycle `COMPLETED`
+  - `slotPlanSeedJson` is persistence-only in this phase: it stores ordered `slotId -> exercises[{ exerciseId, role }]` data and does not come from setup display DTOs
+  - unsupported raw slot-plan projection cases such as current `BODY_PART` projection limits do not change accept behavior yet; acceptance still succeeds without persisting `slotPlanSeedJson`
   - `409` when handoff is not pending, the draft is missing, or carry-forward keep selections are no longer compatible with the edited split/session structure
 
 ## Workout save terminal transition contract

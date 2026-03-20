@@ -101,6 +101,10 @@ Route-purpose shorthand:
   - the editable draft is mutable and saved back to `nextSeedDraftJson`
   - the setup editor exposes ordered-flexible slot editing, split/session-count changes, and carry-forward action changes
   - invalid `keep` carry-forwards are previewed inline when split/session edits remove their original session intent
+  - next-cycle preview is server-owned: the page loads initial preview data from `loadMesocycleSetupFromPrisma()` and client-side draft edits refresh preview through `POST /api/mesocycles/[id]/setup-preview` without persisting the draft first
+  - expanded preview slot plans are real projected successor session plans from the canonical handoff slot-plan projection seam, not UI-local carry-forward composition
+  - setup preview now carries a narrow canonical `slotPlanProjection` payload plus separate display-only slot labels and exercise-name decoration; UI reads the decorated display block but does not own slot-plan composition
+  - repeated-slot labels in setup preview derive from canonical ordered slot-contract sequencing, not from parsing slot-id suffixes
 - Acceptance flow semantics:
   - save draft first if needed
   - call `POST /api/mesocycles/[id]/accept-next-cycle`

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { SplitType, WorkoutSessionIntent } from "@prisma/client";
 import {
@@ -10,14 +10,13 @@ import {
   type NextCycleCarryForwardConflict,
   type NextCycleSeedDraft,
 } from "@/lib/api/mesocycle-handoff-contract";
-import { buildSuccessorMesocyclePreview } from "@/lib/api/mesocycle-handoff-projection";
+import type { MesocycleSetupPreview } from "@/lib/api/mesocycle-setup";
 
 type MesocycleSetupEditorProps = {
   mesocycleId: string;
-  mesoNumber: number;
-  focus: string;
   recommendedDraft: NextCycleSeedDraft;
   initialDraft: NextCycleSeedDraft;
+  initialPreview: MesocycleSetupPreview;
 };
 
 const SPLIT_OPTIONS: Array<{ value: SplitType; label: string }> = [
@@ -188,10 +187,9 @@ function nextDraftForSplit(
 
 export function MesocycleSetupEditor({
   mesocycleId,
-  mesoNumber,
-  focus,
   recommendedDraft,
   initialDraft,
+  initialPreview,
 }: MesocycleSetupEditorProps) {
   const router = useRouter();
   const [draft, setDraft] = useState(initialDraft);
@@ -201,19 +199,13 @@ export function MesocycleSetupEditor({
   const [saving, setSaving] = useState(false);
   const [accepting, setAccepting] = useState(false);
   const [showSuccessorPreview, setShowSuccessorPreview] = useState(false);
+  const [preview, setPreview] = useState(initialPreview);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
 
   const drift = useMemo(
     () => buildDraftDrift({ recommendedDraft, currentDraft: draft }),
     [draft, recommendedDraft]
-  );
-  const preview = useMemo(
-    () =>
-      buildSuccessorMesocyclePreview({
-        currentMesoNumber: mesoNumber,
-        focus,
-        draft,
-      }),
-    [draft, focus, mesoNumber]
   );
   const carryForwardConflicts = useMemo(
     () =>
@@ -236,6 +228,69 @@ export function MesocycleSetupEditor({
   const hasCarryForwardConflicts = carryForwardConflicts.length > 0;
   const isDirty = buildComparableDraftSnapshot(draft) !== buildComparableDraftSnapshot(lastSavedDraft);
   const allowedIntents = getAllowedIntentsForSplit(draft.structure.splitType);
+  const initialDraftSnapshot = buildComparableDraftSnapshot(initialDraft);
+
+  useEffect(() => {
+    const draftSnapshot = buildComparableDraftSnapshot(draft);
+
+    if (hasCarryForwardConflicts) {
+      setPreviewLoading(false);
+      setPreviewError(null);
+      return;
+    }
+
+    if (draftSnapshot === initialDraftSnapshot) {
+      setPreview(initialPreview);
+      setPreviewLoading(false);
+      setPreviewError(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(async () => {
+      setPreviewLoading(true);
+      setPreviewError(null);
+
+      try {
+        const response = await fetch(`/api/mesocycles/${mesocycleId}/setup-preview`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sourceMesocycleId: draft.sourceMesocycleId,
+            structure: draft.structure,
+            carryForwardSelections: draft.carryForwardSelections,
+          }),
+          signal: controller.signal,
+        });
+        const body = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          if (!controller.signal.aborted) {
+            setPreviewError(body.error ?? "Failed to refresh preview.");
+          }
+          return;
+        }
+
+        if (!controller.signal.aborted && body.preview) {
+          setPreview(body.preview as MesocycleSetupPreview);
+          setPreviewError(null);
+        }
+      } catch {
+        if (!controller.signal.aborted) {
+          setPreviewError("Failed to refresh preview.");
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setPreviewLoading(false);
+        }
+      }
+    }, 150);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timeoutId);
+    };
+  }, [draft, hasCarryForwardConflicts, initialDraftSnapshot, initialPreview, mesocycleId]);
 
   const updateDraft = (
     recipe: NextCycleSeedDraft | ((current: NextCycleSeedDraft) => NextCycleSeedDraft)
@@ -524,7 +579,7 @@ export function MesocycleSetupEditor({
                   <div>
                     <p className="font-medium text-slate-900">{selection.exerciseName}</p>
                     <p className="mt-1 text-sm text-slate-600">
-                      {INTENT_LABELS[selection.sessionIntent]} • {selection.role.toLowerCase().replace("_", " ")}
+                      {INTENT_LABELS[selection.sessionIntent]} / {selection.role.toLowerCase().replace("_", " ")}
                     </p>
                     <p className="mt-1 text-xs text-slate-500">
                       System recommendation: {recommended?.action ?? "rotate"}
@@ -590,17 +645,32 @@ export function MesocycleSetupEditor({
           </button>
         </div>
         <p className="mt-2 text-sm text-slate-600">
-          {preview.title} would start as {preview.sessionsPerWeek}x/week{" "}
-          {formatSplitType(preview.splitType)}.
+          {hasCarryForwardConflicts
+            ? "Resolve carry-forward conflicts to refresh the canonical server preview for this draft."
+            : `${preview.summary.title} would start as ${preview.summary.sessionsPerWeek}x/week ${formatSplitType(preview.summary.splitType)}.`}
         </p>
         <div className="mt-4 rounded-2xl bg-slate-50 p-5">
-          <p className="text-sm font-medium text-slate-900">
-            {preview.keepCount} keep / {preview.rotateCount} rotate / {preview.dropCount} drop
-          </p>
-          <p className="mt-2 text-sm text-slate-600">
-            Ordered-flexible slot order and kept carry-forward exercises come from the same
-            canonical successor projection used on accept.
-          </p>
+          {hasCarryForwardConflicts ? (
+            <p className="text-sm text-rose-800">
+              Preview refresh is paused until the current draft is valid.
+            </p>
+          ) : (
+            <>
+              <p className="text-sm font-medium text-slate-900">
+                {preview.summary.keepCount} keep / {preview.summary.rotateCount} rotate /{" "}
+                {preview.summary.dropCount} drop
+              </p>
+              <p className="mt-2 text-sm text-slate-600">
+                Slot session plans come from the canonical server-owned handoff projection seam.
+              </p>
+              {previewLoading ? (
+                <p className="mt-2 text-sm text-slate-500">Refreshing preview from server...</p>
+              ) : null}
+              {previewError ? (
+                <p className="mt-2 text-sm text-rose-700">{previewError}</p>
+              ) : null}
+            </>
+          )}
         </div>
 
         {showSuccessorPreview ? (
@@ -609,13 +679,13 @@ export function MesocycleSetupEditor({
               <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
                 Mesocycle
               </h3>
-              <p className="mt-4 text-lg font-semibold text-slate-900">{preview.title}</p>
-              <p className="mt-2 text-sm text-slate-700">Focus: {preview.focus}</p>
+              <p className="mt-4 text-lg font-semibold text-slate-900">{preview.summary.title}</p>
+              <p className="mt-2 text-sm text-slate-700">Focus: {preview.summary.focus}</p>
               <p className="mt-2 text-sm text-slate-700">
-                Split: {formatSplitType(preview.splitType)}
+                Split: {formatSplitType(preview.summary.splitType)}
               </p>
               <p className="mt-2 text-sm text-slate-700">
-                Frequency: {preview.sessionsPerWeek} sessions per week
+                Frequency: {preview.summary.sessionsPerWeek} sessions per week
               </p>
               <p className="mt-2 text-sm text-slate-700">
                 Starting point stays conservative productive and still excludes deload from the
@@ -626,53 +696,57 @@ export function MesocycleSetupEditor({
               <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
                 Session slots
               </h3>
-              <div className="mt-4 grid gap-3">
-                {preview.slotSequence.map((slot, index) => (
-                  <div key={`${slot.slotId}:${index}`} className="rounded-xl border border-slate-200 bg-white p-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          Slot {index + 1}
+              {hasCarryForwardConflicts ? (
+                <p className="mt-4 text-sm text-rose-800">
+                  Resolve carry-forward conflicts to view the canonical server slot-plan preview.
+                </p>
+              ) : previewError ? (
+                <p className="mt-4 text-sm text-rose-800">{previewError}</p>
+              ) : preview.slotPlanError ? (
+                <p className="mt-4 text-sm text-rose-800">{preview.slotPlanError}</p>
+              ) : (
+                <div className="mt-4 grid gap-3">
+                  {preview.display.projectedSlotPlans.map((slot) => (
+                    <div key={slot.slotId} className="rounded-xl border border-slate-200 bg-white p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                            {slot.slotId.replace("_", " ")}
+                          </p>
+                          <p className="mt-1 font-medium text-slate-900">{slot.label}</p>
+                          <p className="mt-1 text-xs text-slate-500">{INTENT_LABELS[slot.intent]}</p>
+                        </div>
+                        <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                          {slot.exercises.length} projected exercise
+                          {slot.exercises.length === 1 ? "" : "s"}
                         </p>
-                        <p className="mt-1 font-medium text-slate-900">{INTENT_LABELS[slot.intent]}</p>
-                        <p className="mt-1 text-xs text-slate-500">{slot.slotId.replace("_", " ")}</p>
                       </div>
-                      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                        {slot.carriedForwardExerciseCount} carried forward
-                      </p>
-                    </div>
 
-                    {slot.sharedWithSlotId && slot.carriedForwardExerciseCount > 0 ? (
-                      <p className="mt-4 text-sm text-slate-600">
-                        This repeated {INTENT_LABELS[slot.intent]} slot shares the same
-                        carry-forward pool as {slot.sharedWithSlotId.replace("_", " ")} because
-                        handoff keeps are stored at the intent level.
-                      </p>
-                    ) : slot.exercises.length > 0 ? (
-                      <div className="mt-4 space-y-2">
-                        {slot.exercises.map((exercise) => (
-                          <div
-                            key={`${slot.slotId}:${exercise.exerciseId}:${exercise.role}`}
-                            className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
-                          >
-                            <p className="text-sm font-medium text-slate-900">
-                              {exercise.exerciseName}
-                            </p>
-                            <p className="mt-1 text-xs text-slate-500">
-                              {formatRoleLabel(exercise.role)}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="mt-4 text-sm text-slate-600">
-                        No exercises are being carried forward into this slot from the current
-                        draft.
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </div>
+                      {slot.exercises.length > 0 ? (
+                        <div className="mt-4 space-y-2">
+                          {slot.exercises.map((exercise) => (
+                            <div
+                              key={`${slot.slotId}:${exercise.exerciseId}:${exercise.role}`}
+                              className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
+                            >
+                              <p className="text-sm font-medium text-slate-900">
+                                {exercise.exerciseName}
+                              </p>
+                              <p className="mt-1 text-xs text-slate-500">
+                                {formatRoleLabel(exercise.role)}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="mt-4 text-sm text-slate-600">
+                          This projected session is currently empty for the active draft.
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         ) : null}

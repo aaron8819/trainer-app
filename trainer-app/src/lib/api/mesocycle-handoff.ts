@@ -25,7 +25,15 @@ import {
   type NextCycleSeedSlot,
   type NextCycleSlotId,
 } from "./mesocycle-handoff-contract";
-import { projectSuccessorMesocycle } from "./mesocycle-handoff-projection";
+import {
+  projectSuccessorMesocycle,
+  type SuccessorMesocycleProjectionSource,
+} from "./mesocycle-handoff-projection";
+import {
+  buildMesocycleSlotPlanSeed,
+  projectSuccessorSlotPlansFromSnapshot,
+} from "./mesocycle-handoff-slot-plan-projection";
+import { loadPreloadedGenerationSnapshot } from "./template-session/context-loader";
 
 export {
   buildOrderedFlexibleSlots,
@@ -45,6 +53,9 @@ export type {
 
 type Tx = Prisma.TransactionClient;
 type ClosedMesocycleArchiveReader =
+  | Pick<Prisma.TransactionClient, "mesocycle">
+  | Pick<typeof prisma, "mesocycle">;
+type HandoffSourceMesocycleReader =
   | Pick<Prisma.TransactionClient, "mesocycle">
   | Pick<typeof prisma, "mesocycle">;
 
@@ -547,8 +558,36 @@ function mapClosedArchiveRow(row: PendingHandoffRow | null): ClosedMesocycleArch
   };
 }
 
-async function loadHandoffSourceMesocycle(tx: Tx, mesocycleId: string): Promise<HandoffSourceMesocycle> {
-  const source = await tx.mesocycle.findUnique({
+export function toHandoffProjectionSource(
+  source: Pick<
+    HandoffSourceMesocycle,
+    | "macroCycleId"
+    | "mesoNumber"
+    | "startWeek"
+    | "durationWeeks"
+    | "focus"
+    | "volumeTarget"
+    | "intensityBias"
+    | "blocks"
+  >
+): SuccessorMesocycleProjectionSource {
+  return {
+    macroCycleId: source.macroCycleId,
+    mesoNumber: source.mesoNumber,
+    startWeek: source.startWeek,
+    durationWeeks: source.durationWeeks,
+    focus: source.focus,
+    volumeTarget: source.volumeTarget,
+    intensityBias: source.intensityBias,
+    blocks: source.blocks,
+  };
+}
+
+export async function loadHandoffSourceMesocycle(
+  reader: HandoffSourceMesocycleReader,
+  mesocycleId: string
+): Promise<HandoffSourceMesocycle> {
+  const source = await reader.mesocycle.findUnique({
     where: { id: mesocycleId },
     select: {
       id: true,
@@ -647,6 +686,30 @@ export async function enterMesocycleHandoffInTransaction(
   });
 }
 
+async function buildAcceptedMesocycleSlotPlanSeed(input: {
+  userId: string;
+  source: SuccessorMesocycleProjectionSource;
+  draft: NextCycleSeedDraft;
+  slotSequence: ReturnType<typeof projectSuccessorMesocycle>["mesocycle"]["slotSequence"];
+}) {
+  const snapshot = await loadPreloadedGenerationSnapshot(input.userId);
+  const slotPlanProjection = projectSuccessorSlotPlansFromSnapshot({
+    userId: input.userId,
+    source: input.source,
+    draft: input.draft,
+    snapshot,
+  });
+
+  if ("error" in slotPlanProjection) {
+    return null;
+  }
+
+  return buildMesocycleSlotPlanSeed({
+    slotSequence: input.slotSequence,
+    slotPlans: slotPlanProjection.slotPlans,
+  });
+}
+
 export async function acceptMesocycleHandoffInTransaction(
   tx: Tx,
   mesocycleId: string
@@ -677,18 +740,16 @@ export async function acceptMesocycleHandoffInTransaction(
     sourceMesocycleId: source.id,
     fallbackDraft: summary.recommendedNextSeed,
   });
+  const projectionSource = toHandoffProjectionSource(source);
   const projection = projectSuccessorMesocycle({
-    source: {
-      macroCycleId: source.macroCycleId,
-      mesoNumber: source.mesoNumber,
-      startWeek: source.startWeek,
-      durationWeeks: source.durationWeeks,
-      focus: source.focus,
-      volumeTarget: source.volumeTarget,
-      intensityBias: source.intensityBias,
-      blocks: source.blocks,
-    },
+    source: projectionSource,
     draft,
+  });
+  const slotPlanSeed = await buildAcceptedMesocycleSlotPlanSeed({
+    userId: source.macroCycle.userId,
+    source: projectionSource,
+    draft,
+    slotSequence: projection.mesocycle.slotSequence,
   });
 
   const next = await tx.mesocycle.create({
@@ -708,6 +769,9 @@ export async function acceptMesocycleHandoffInTransaction(
       daysPerWeek: projection.mesocycle.daysPerWeek,
       splitType: projection.mesocycle.splitType,
       slotSequenceJson: projection.mesocycle.slotSequence as Prisma.InputJsonValue,
+      ...(slotPlanSeed
+        ? { slotPlanSeedJson: slotPlanSeed as Prisma.InputJsonValue }
+        : {}),
     },
   });
 

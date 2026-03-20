@@ -1,6 +1,6 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MesocycleSetupEditor } from "./MesocycleSetupEditor";
 
 vi.mock("next/navigation", () => ({
@@ -12,6 +12,21 @@ vi.mock("next/navigation", () => ({
 
 afterEach(() => {
   cleanup();
+  vi.clearAllMocks();
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
+
+beforeEach(() => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        preview: buildPreview(),
+      }),
+    })
+  );
 });
 
 function buildDraft() {
@@ -55,6 +70,117 @@ function buildDraft() {
   };
 }
 
+function buildPreview(overrides?: Partial<{
+  summary: Partial<{
+    title: string;
+    focus: string;
+    mesoNumber: number;
+    splitType: "UPPER_LOWER" | "PPL" | "FULL_BODY" | "CUSTOM";
+    sessionsPerWeek: number;
+    daysPerWeek: number;
+    keepCount: number;
+    rotateCount: number;
+    dropCount: number;
+  }>;
+  slotPlanProjection: {
+    slotPlans: Array<{
+      slotId: string;
+      intent: "UPPER" | "LOWER" | "PUSH" | "PULL" | "LEGS" | "FULL_BODY" | "BODY_PART";
+      exercises: Array<{
+        exerciseId: string;
+        role: "CORE_COMPOUND" | "ACCESSORY";
+      }>;
+    }>;
+  } | null;
+  display: {
+    projectedSlotPlans: Array<{
+      slotId: string;
+      intent: "UPPER" | "LOWER" | "PUSH" | "PULL" | "LEGS" | "FULL_BODY" | "BODY_PART";
+      label: string;
+      exercises: Array<{
+        exerciseId: string;
+        exerciseName: string;
+        role: "CORE_COMPOUND" | "ACCESSORY";
+      }>;
+    }>;
+  };
+  slotPlanError: string | null;
+}>) {
+  const defaultDisplaySlots = [
+    {
+      slotId: "upper_a",
+      intent: "UPPER" as const,
+      label: "Upper 1",
+      exercises: [
+        {
+          exerciseId: "bench",
+          exerciseName: "Bench Press",
+          role: "CORE_COMPOUND" as const,
+        },
+        {
+          exerciseId: "row",
+          exerciseName: "Chest-Supported Row",
+          role: "ACCESSORY" as const,
+        },
+      ],
+    },
+    {
+      slotId: "lower_a",
+      intent: "LOWER" as const,
+      label: "Lower 1",
+      exercises: [],
+    },
+    {
+      slotId: "upper_b",
+      intent: "UPPER" as const,
+      label: "Upper 2",
+      exercises: [
+        {
+          exerciseId: "bench",
+          exerciseName: "Bench Press",
+          role: "CORE_COMPOUND" as const,
+        },
+      ],
+    },
+    {
+      slotId: "lower_b",
+      intent: "LOWER" as const,
+      label: "Lower 2",
+      exercises: [],
+    },
+  ];
+
+  return {
+    summary: {
+      title: "Meso 2 - Upper Hypertrophy",
+      focus: "Upper Hypertrophy",
+      mesoNumber: 2,
+      splitType: "UPPER_LOWER" as const,
+      sessionsPerWeek: 4,
+      daysPerWeek: 4,
+      slotSequence: [],
+      keepCount: 1,
+      rotateCount: 1,
+      dropCount: 0,
+      ...overrides?.summary,
+    },
+    slotPlanProjection: overrides?.slotPlanProjection ?? {
+      slotPlans: defaultDisplaySlots.map((slot) => ({
+        slotId: slot.slotId,
+        intent: slot.intent,
+        exercises: slot.exercises.map((exercise) => ({
+          exerciseId: exercise.exerciseId,
+          role: exercise.role,
+        })),
+      })),
+    },
+    display: overrides?.display ?? {
+      projectedSlotPlans: defaultDisplaySlots,
+    },
+    slotPlanError: overrides?.slotPlanError ?? null,
+  };
+}
+
 describe("MesocycleSetupEditor", () => {
   it("previews carry-forward conflicts immediately when the split removes a kept exercise intent", async () => {
     const user = userEvent.setup();
@@ -62,10 +188,9 @@ describe("MesocycleSetupEditor", () => {
     render(
       <MesocycleSetupEditor
         mesocycleId="meso-1"
-        mesoNumber={1}
-        focus="Upper Hypertrophy"
         recommendedDraft={buildDraft()}
         initialDraft={buildDraft()}
+        initialPreview={buildPreview()}
       />
     );
 
@@ -97,10 +222,9 @@ describe("MesocycleSetupEditor", () => {
     render(
       <MesocycleSetupEditor
         mesocycleId="meso-1"
-        mesoNumber={1}
-        focus="Upper Hypertrophy"
         recommendedDraft={buildDraft()}
         initialDraft={buildDraft()}
+        initialPreview={buildPreview()}
       />
     );
 
@@ -123,10 +247,9 @@ describe("MesocycleSetupEditor", () => {
     render(
       <MesocycleSetupEditor
         mesocycleId="meso-1"
-        mesoNumber={1}
-        focus="Upper Hypertrophy"
         recommendedDraft={buildDraft()}
         initialDraft={buildDraft()}
+        initialPreview={buildPreview()}
       />
     );
 
@@ -140,16 +263,80 @@ describe("MesocycleSetupEditor", () => {
     expect(screen.getByRole("button", { name: "Accept and create next cycle" })).toBeEnabled();
   });
 
-  it("renders the shared successor preview as a read-only expandable section", async () => {
+  it("renders and refreshes the server-owned successor preview as a read-only section", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        preview: buildPreview({
+          summary: {
+            sessionsPerWeek: 3,
+            daysPerWeek: 3,
+          },
+          slotPlanProjection: {
+            slotPlans: [
+              {
+                slotId: "upper_a",
+                intent: "UPPER",
+                exercises: [{ exerciseId: "bench", role: "CORE_COMPOUND" }],
+              },
+              {
+                slotId: "lower_a",
+                intent: "LOWER",
+                exercises: [],
+              },
+              {
+                slotId: "upper_b",
+                intent: "UPPER",
+                exercises: [{ exerciseId: "row", role: "ACCESSORY" }],
+              },
+            ],
+          },
+          display: {
+            projectedSlotPlans: [
+              {
+                slotId: "upper_a",
+                intent: "UPPER",
+                label: "Upper 1",
+                exercises: [
+                  {
+                    exerciseId: "bench",
+                    exerciseName: "Bench Press",
+                    role: "CORE_COMPOUND",
+                  },
+                ],
+              },
+              {
+                slotId: "lower_a",
+                intent: "LOWER",
+                label: "Lower 1",
+                exercises: [],
+              },
+              {
+                slotId: "upper_b",
+                intent: "UPPER",
+                label: "Upper 2",
+                exercises: [
+                  {
+                    exerciseId: "row",
+                    exerciseName: "Chest-Supported Row",
+                    role: "ACCESSORY",
+                  },
+                ],
+              },
+            ],
+          },
+        }),
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
     const user = userEvent.setup();
 
     render(
       <MesocycleSetupEditor
         mesocycleId="meso-1"
-        mesoNumber={1}
-        focus="Upper Hypertrophy"
         recommendedDraft={buildDraft()}
         initialDraft={buildDraft()}
+        initialPreview={buildPreview()}
       />
     );
 
@@ -157,14 +344,28 @@ describe("MesocycleSetupEditor", () => {
     expect(screen.getByText("1 keep / 1 rotate / 0 drop")).toBeInTheDocument();
     expect(screen.queryByText("Session slots")).not.toBeInTheDocument();
 
+    await user.clear(screen.getByLabelText("Sessions per week"));
+    await user.type(screen.getByLabelText("Sessions per week"), "3");
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/mesocycles/meso-1/setup-preview",
+        expect.objectContaining({
+          method: "POST",
+        })
+      );
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByText("Meso 2 - Upper Hypertrophy would start as 3x/week Upper / Lower.")
+      ).toBeInTheDocument();
+    });
+
     await user.click(screen.getByRole("button", { name: "Show preview" }));
 
     expect(screen.getByText("This is a read-only preview of what Accept would create from the current draft. No mesocycle has been created yet.")).toBeInTheDocument();
-    expect(screen.getAllByText("Bench Press")).toHaveLength(2);
-    expect(
-      screen.getByText(
-        "This repeated Upper slot shares the same carry-forward pool as upper a because handoff keeps are stored at the intent level."
-      )
-    ).toBeInTheDocument();
+    expect(screen.getByText("Upper 1")).toBeInTheDocument();
+    expect(screen.getByText("Upper 2")).toBeInTheDocument();
+    expect(screen.getByText("Chest-Supported Row")).toBeInTheDocument();
   });
 });

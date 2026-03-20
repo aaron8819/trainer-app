@@ -1,14 +1,28 @@
+import { prisma } from "@/lib/db/prisma";
 import {
+  loadHandoffSourceMesocycle,
   loadPendingMesocycleHandoffById,
   type HandoffCarryForwardRecommendation,
   type NextCycleCarryForwardSelection,
   type NextCycleSeedDraft,
   type PendingMesocycleHandoff,
+  sanitizeNextCycleSeedDraft,
+  toHandoffProjectionSource,
 } from "./mesocycle-handoff";
 import {
   buildSuccessorMesocyclePreview,
   type SuccessorMesocyclePreview,
 } from "./mesocycle-handoff-projection";
+import {
+  projectSuccessorSlotPlansFromSnapshot,
+  type SuccessorSlotPlanProjection,
+} from "./mesocycle-handoff-slot-plan-projection";
+import {
+  buildMesocycleSlotSequence,
+  resolveMesocycleSlotContract,
+} from "./mesocycle-slot-contract";
+import { loadPreloadedGenerationSnapshot } from "./template-session/context-loader";
+import { formatSessionIntentLabel } from "@/lib/ui/session-identity";
 
 export type MesocycleSetupCarryForwardRow = {
   exerciseId: string;
@@ -34,7 +48,29 @@ export type MesocycleSetupReadModel = {
     carryForwardChangedCount: number;
   };
   carryForwardRows: MesocycleSetupCarryForwardRow[];
-  preview: SuccessorMesocyclePreview;
+  preview: MesocycleSetupPreview;
+};
+
+export type MesocycleSetupPreviewSlotExercise = {
+  exerciseId: string;
+  exerciseName: string;
+  role: NextCycleCarryForwardSelection["role"];
+};
+
+export type MesocycleSetupPreviewDisplaySlotPlan = {
+  slotId: string;
+  intent: NextCycleCarryForwardSelection["sessionIntent"];
+  label: string;
+  exercises: MesocycleSetupPreviewSlotExercise[];
+};
+
+export type MesocycleSetupPreview = {
+  summary: SuccessorMesocyclePreview;
+  slotPlanProjection: SuccessorSlotPlanProjection | null;
+  display: {
+    projectedSlotPlans: MesocycleSetupPreviewDisplaySlotPlan[];
+  };
+  slotPlanError: string | null;
 };
 
 function buildCarryForwardRow(
@@ -94,10 +130,11 @@ function buildDrift(input: {
 }
 
 function mapPendingHandoffToSetup(
-  handoff: PendingMesocycleHandoff | null
-): MesocycleSetupReadModel | null {
-  if (!handoff?.summary) {
-    return null;
+  handoff: PendingMesocycleHandoff,
+  preview: MesocycleSetupPreview
+): MesocycleSetupReadModel {
+  if (!handoff.summary) {
+    throw new Error("MESOCYCLE_HANDOFF_SUMMARY_MISSING");
   }
 
   const recommendedDraft = handoff.summary.recommendedNextSeed;
@@ -130,12 +167,119 @@ function mapPendingHandoffToSetup(
       carryForwardRows,
     }),
     carryForwardRows,
-    preview: buildSuccessorMesocyclePreview({
-      currentMesoNumber: handoff.mesoNumber,
-      focus: handoff.focus,
-      draft: currentDraft,
-    }),
+    preview,
   };
+}
+
+function formatSlotPlanProjectionError(error: string): string {
+  return error.split(":").slice(1).join(":").trim() || error;
+}
+
+function mapPreviewDisplaySlotPlans(input: {
+  exerciseNameById: Map<string, string>;
+  slotPlanProjection: SuccessorSlotPlanProjection;
+}): MesocycleSetupPreviewDisplaySlotPlan[] {
+  const slotPlanById = new Map(
+    input.slotPlanProjection.slotPlans.map((slotPlan) => [slotPlan.slotId, slotPlan])
+  );
+  const resolvedSlots = resolveMesocycleSlotContract({
+    slotSequenceJson: buildMesocycleSlotSequence(
+      input.slotPlanProjection.slotPlans.map((slotPlan) => ({
+        slotId: slotPlan.slotId,
+        intent: slotPlan.intent,
+      }))
+    ),
+    weeklySchedule: [],
+  }).slots;
+  const intentCounts = new Map<string, number>();
+
+  return resolvedSlots.flatMap((resolvedSlot) => {
+    const slotPlan = slotPlanById.get(resolvedSlot.slotId);
+    if (!slotPlan) {
+      return [];
+    }
+
+    const nextIntentCount = (intentCounts.get(resolvedSlot.intent) ?? 0) + 1;
+    intentCounts.set(resolvedSlot.intent, nextIntentCount);
+
+    return [
+      {
+        slotId: slotPlan.slotId,
+        intent: slotPlan.intent,
+        label: `${formatSessionIntentLabel(resolvedSlot.intent)} ${nextIntentCount}`,
+        exercises: slotPlan.exercises.map((exercise) => ({
+          exerciseId: exercise.exerciseId,
+          exerciseName: input.exerciseNameById.get(exercise.exerciseId) ?? exercise.exerciseId,
+          role: exercise.role,
+        })),
+      },
+    ];
+  });
+}
+
+async function buildMesocycleSetupPreview(input: {
+  userId: string;
+  handoff: PendingMesocycleHandoff;
+  draft: unknown;
+}): Promise<MesocycleSetupPreview> {
+  const currentDraft = sanitizeNextCycleSeedDraft({
+    draft: input.draft,
+    sourceMesocycleId: input.handoff.mesocycleId,
+    fallbackDraft: input.handoff.summary!.recommendedNextSeed,
+  });
+  const [projectionSource, snapshot] = await Promise.all([
+    loadHandoffSourceMesocycle(prisma, input.handoff.mesocycleId),
+    loadPreloadedGenerationSnapshot(input.userId),
+  ]);
+  const summary = buildSuccessorMesocyclePreview({
+    currentMesoNumber: input.handoff.mesoNumber,
+    focus: input.handoff.focus,
+    draft: currentDraft,
+  });
+  const slotPlanProjection = projectSuccessorSlotPlansFromSnapshot({
+    userId: input.userId,
+    source: toHandoffProjectionSource(projectionSource),
+    draft: currentDraft,
+    snapshot,
+  });
+  const exerciseNameById = new Map(
+    snapshot.context.exercises.map((exercise) => [exercise.id, exercise.name])
+  );
+
+  return {
+    summary,
+    slotPlanProjection: "error" in slotPlanProjection ? null : slotPlanProjection,
+    display: {
+      projectedSlotPlans:
+        "error" in slotPlanProjection
+          ? []
+          : mapPreviewDisplaySlotPlans({
+              exerciseNameById,
+              slotPlanProjection,
+            }),
+    },
+    slotPlanError:
+      "error" in slotPlanProjection
+        ? formatSlotPlanProjectionError(slotPlanProjection.error)
+        : null,
+  };
+}
+
+export async function loadMesocycleSetupPreviewFromPrisma(input: {
+  userId: string;
+  mesocycleId: string;
+  draft?: unknown;
+}): Promise<MesocycleSetupPreview | null> {
+  const handoff = await loadPendingMesocycleHandoffById(input.userId, input.mesocycleId);
+  if (!handoff?.summary) {
+    return null;
+  }
+
+  return buildMesocycleSetupPreview({
+    userId: input.userId,
+    handoff,
+    draft: input.draft ?? handoff.draft ?? handoff.summary.recommendedNextSeed,
+  });
 }
 
 export async function loadMesocycleSetupFromPrisma(input: {
@@ -143,5 +287,15 @@ export async function loadMesocycleSetupFromPrisma(input: {
   mesocycleId: string;
 }): Promise<MesocycleSetupReadModel | null> {
   const handoff = await loadPendingMesocycleHandoffById(input.userId, input.mesocycleId);
-  return mapPendingHandoffToSetup(handoff);
+  if (!handoff?.summary) {
+    return null;
+  }
+
+  const preview = await buildMesocycleSetupPreview({
+    userId: input.userId,
+    handoff,
+    draft: handoff.draft ?? handoff.summary.recommendedNextSeed,
+  });
+
+  return mapPendingHandoffToSetup(handoff, preview);
 }

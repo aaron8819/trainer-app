@@ -29,6 +29,7 @@ import {
   projectSuccessorMesocycle,
   type SuccessorMesocycleProjectionSource,
 } from "./mesocycle-handoff-projection";
+import type { MesocycleSlotSequence } from "./mesocycle-slot-contract";
 
 export type ProjectedSuccessorSlotPlanExercise = {
   exerciseId: string;
@@ -45,11 +46,54 @@ export type SuccessorSlotPlanProjection = {
   slotPlans: ProjectedSuccessorSlotPlan[];
 };
 
+export type MesocycleSlotPlanSeed = {
+  version: 1;
+  source: "handoff_slot_plan_projection";
+  slots: Array<{
+    slotId: string;
+    exercises: ProjectedSuccessorSlotPlanExercise[];
+  }>;
+};
+
 type SyntheticProjectionContext = {
   mapped: MappedGenerationContext;
   mesocycleId: string;
   lifecycleWeek: number;
 };
+
+function slotIdsAlignWithSlotSequence(input: {
+  slotSequence: MesocycleSlotSequence;
+  slotPlans: ReadonlyArray<ProjectedSuccessorSlotPlan>;
+}): boolean {
+  const sequenceSlotIds = input.slotSequence.slots.map((slot) => slot.slotId);
+  const projectedSlotIds = input.slotPlans.map((slot) => slot.slotId);
+
+  return (
+    sequenceSlotIds.length === projectedSlotIds.length &&
+    sequenceSlotIds.every((slotId, index) => projectedSlotIds[index] === slotId)
+  );
+}
+
+export function buildMesocycleSlotPlanSeed(input: {
+  slotSequence: MesocycleSlotSequence;
+  slotPlans: ReadonlyArray<ProjectedSuccessorSlotPlan>;
+}): MesocycleSlotPlanSeed {
+  if (!slotIdsAlignWithSlotSequence(input)) {
+    throw new Error("MESOCYCLE_SLOT_PLAN_SEED_ALIGNMENT_INVALID");
+  }
+
+  return {
+    version: 1,
+    source: "handoff_slot_plan_projection",
+    slots: input.slotPlans.map((slotPlan) => ({
+      slotId: slotPlan.slotId,
+      exercises: slotPlan.exercises.map((exercise) => ({
+        exerciseId: exercise.exerciseId,
+        role: exercise.role,
+      })),
+    })),
+  };
+}
 
 function toSessionIntent(intent: WorkoutSessionIntent) {
   return intent.toLowerCase() as SessionIntent;
@@ -187,6 +231,7 @@ function buildSyntheticProjectionContext(input: {
     closedAt: null,
     handoffSummaryJson: null,
     nextSeedDraftJson: null,
+    slotPlanSeedJson: null,
   } as unknown as NonNullable<PreloadedGenerationSnapshot["activeMesocycle"]>;
   const phaseBlockContext = resolveGenerationPhaseBlockContext({
     macroCycle,

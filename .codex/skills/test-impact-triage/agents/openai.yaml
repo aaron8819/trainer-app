@@ -1,0 +1,4 @@
+interface:
+  display_name: "Test Impact Triage"
+  short_description: "Choose the minimum verification stack"
+  default_prompt: "Use $test-impact-triage to decide the minimum sufficient verification for this trainer-app change."

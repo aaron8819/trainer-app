@@ -73,6 +73,15 @@ type ClosedMesocycleArchiveReader =
 type HandoffSourceMesocycleReader =
   | Pick<Prisma.TransactionClient, "mesocycle">
   | Pick<typeof prisma, "mesocycle">;
+type PendingHandoffArtifactReader =
+  | Pick<
+      Prisma.TransactionClient,
+      "mesocycle" | "mesocycleExerciseRole" | "constraints" | "workout" | "readinessSignal"
+    >
+  | Pick<
+      typeof prisma,
+      "mesocycle" | "mesocycleExerciseRole" | "constraints" | "workout" | "readinessSignal"
+    >;
 
 type HandoffSourceMesocycle = {
   id: string;
@@ -141,6 +150,16 @@ type PendingHandoffRow = {
   handoffSummaryJson: unknown;
   nextSeedDraftJson: unknown;
 };
+
+const pendingHandoffRowSelect = {
+  id: true,
+  state: true,
+  mesoNumber: true,
+  focus: true,
+  closedAt: true,
+  handoffSummaryJson: true,
+  nextSeedDraftJson: true,
+} satisfies Prisma.MesocycleSelect;
 
 export type PendingMesocycleHandoff = {
   mesocycleId: string;
@@ -895,6 +914,127 @@ function resolveRecommendedArtifactsForPendingHandoff(input: {
   });
 }
 
+async function loadRecommendedArtifactsForPendingHandoff(input: {
+  reader: PendingHandoffArtifactReader;
+  source: HandoffSourceMesocycle;
+  summary: MesocycleHandoffSummary | null;
+}): Promise<{
+  constraints: HandoffConstraintsRow | null;
+  recommendedDesign: NextMesocycleDesign;
+  recommendedNextSeed: NextCycleSeedDraft;
+  carryForwardRecommendations: HandoffCarryForwardRecommendation[];
+}> {
+  const roles = await loadHandoffRoleRows(input.reader as Tx, input.source.id);
+  const candidateExerciseIds = Array.from(new Set(roles.map((role) => role.exerciseId)));
+  const [constraints, workouts, latestReadiness] = await Promise.all([
+    input.reader.constraints.findUnique({
+      where: { userId: input.source.macroCycle.userId },
+      select: { weeklySchedule: true, daysPerWeek: true, splitType: true },
+    }),
+    loadHandoffWorkoutRows(input.reader as Tx, {
+      mesocycleId: input.source.id,
+      candidateExerciseIds,
+    }),
+    getLatestReadinessSignalForReader(input.reader as Tx, input.source.macroCycle.userId),
+  ]);
+
+  const recommended =
+    input.summary != null
+      ? resolveRecommendedArtifactsForPendingHandoff({
+          summary: input.summary,
+          source: input.source,
+          constraints,
+          roles,
+          workouts,
+          latestReadiness,
+        })
+      : buildRecommendedArtifacts({
+          source: input.source,
+          constraints,
+          roles,
+          workouts,
+          latestReadiness,
+        });
+
+  return {
+    constraints,
+    ...recommended,
+  };
+}
+
+function shouldRefreshPendingHandoffArtifacts(input: {
+  row: PendingHandoffRow;
+  summary: MesocycleHandoffSummary | null;
+  draft: NextCycleSeedDraft | null;
+}): boolean {
+  if (input.row.state !== "AWAITING_HANDOFF") {
+    return false;
+  }
+  if (!input.summary || !input.draft) {
+    return true;
+  }
+  if (!input.summary.recommendedDesign) {
+    return true;
+  }
+  if (input.summary.carryForwardRecommendations.length === 0) {
+    return true;
+  }
+  return false;
+}
+
+async function refreshPendingHandoffArtifactsIfNeeded(
+  reader: PendingHandoffArtifactReader,
+  row: PendingHandoffRow | null
+): Promise<PendingHandoffRow | null> {
+  if (!row || row.state !== "AWAITING_HANDOFF") {
+    return row;
+  }
+
+  const summary = readMesocycleHandoffSummary(row.handoffSummaryJson);
+  const storedDraft = readNextCycleSeedDraft(row.nextSeedDraftJson);
+  if (!shouldRefreshPendingHandoffArtifacts({ row, summary, draft: storedDraft })) {
+    return row;
+  }
+
+  const source = await loadHandoffSourceMesocycle(reader, row.id);
+  const recommended = await loadRecommendedArtifactsForPendingHandoff({
+    reader,
+    source,
+    summary,
+  });
+  const refreshedDraft =
+    storedDraft != null
+      ? (() => {
+          try {
+            return sanitizeNextCycleSeedDraft({
+              draft: storedDraft,
+              sourceMesocycleId: source.id,
+              fallbackDraft: recommended.recommendedNextSeed,
+            });
+          } catch {
+            return recommended.recommendedNextSeed;
+          }
+        })()
+      : recommended.recommendedNextSeed;
+  const refreshedSummary = buildHandoffSummary({
+    mesocycle: source,
+    closedAt: row.closedAt ?? new Date(),
+    weeklySequence: recommended.constraints?.weeklySchedule ?? [],
+    carryForwardRecommendations: recommended.carryForwardRecommendations,
+    recommendedDesign: recommended.recommendedDesign,
+    recommendedNextSeed: recommended.recommendedNextSeed,
+  });
+
+  return reader.mesocycle.update({
+    where: { id: row.id },
+    data: {
+      handoffSummaryJson: refreshedSummary as Prisma.InputJsonValue,
+      nextSeedDraftJson: refreshedDraft as Prisma.InputJsonValue,
+    },
+    select: pendingHandoffRowSelect,
+  }) as Promise<PendingHandoffRow>;
+}
+
 export function readNextCycleSeedDraft(value: unknown): NextCycleSeedDraft | null {
   const parsed = nextCycleSeedDraftJsonSchema.safeParse(value);
   if (!parsed.success) {
@@ -932,18 +1072,11 @@ export async function loadPendingMesocycleHandoff(userId: string): Promise<Pendi
       macroCycle: { userId },
     },
     orderBy: [{ closedAt: "desc" }, { mesoNumber: "desc" }],
-    select: {
-      id: true,
-      state: true,
-      mesoNumber: true,
-      focus: true,
-      closedAt: true,
-      handoffSummaryJson: true,
-      nextSeedDraftJson: true,
-    },
+    select: pendingHandoffRowSelect,
   });
+  const refreshed = await refreshPendingHandoffArtifactsIfNeeded(prisma, row);
 
-  return mapPendingHandoffRow(row);
+  return mapPendingHandoffRow(refreshed);
 }
 
 export async function loadPendingMesocycleHandoffById(
@@ -956,18 +1089,11 @@ export async function loadPendingMesocycleHandoffById(
       state: "AWAITING_HANDOFF",
       macroCycle: { userId },
     },
-    select: {
-      id: true,
-      state: true,
-      mesoNumber: true,
-      focus: true,
-      closedAt: true,
-      handoffSummaryJson: true,
-      nextSeedDraftJson: true,
-    },
+    select: pendingHandoffRowSelect,
   });
+  const refreshed = await refreshPendingHandoffArtifactsIfNeeded(prisma, row);
 
-  return mapPendingHandoffRow(row);
+  return mapPendingHandoffRow(refreshed);
 }
 
 export async function loadClosedMesocycleArchive(
@@ -1233,21 +1359,16 @@ export async function acceptMesocycleHandoffInTransaction(
   const source = await loadHandoffSourceMesocycle(tx, mesocycleId);
   const pendingRow = await tx.mesocycle.findUnique({
     where: { id: mesocycleId },
-    select: {
-      id: true,
-      state: true,
-      handoffSummaryJson: true,
-      nextSeedDraftJson: true,
-      closedAt: true,
-    },
+    select: pendingHandoffRowSelect,
   });
+  const refreshedPendingRow = await refreshPendingHandoffArtifactsIfNeeded(tx, pendingRow);
 
-  if (!pendingRow || pendingRow.state !== "AWAITING_HANDOFF") {
+  if (!refreshedPendingRow || refreshedPendingRow.state !== "AWAITING_HANDOFF") {
     throw new Error("MESOCYCLE_HANDOFF_NOT_PENDING");
   }
 
-  const summary = readMesocycleHandoffSummary(pendingRow.handoffSummaryJson);
-  const storedDraft = readNextCycleSeedDraft(pendingRow.nextSeedDraftJson);
+  const summary = readMesocycleHandoffSummary(refreshedPendingRow.handoffSummaryJson);
+  const storedDraft = readNextCycleSeedDraft(refreshedPendingRow.nextSeedDraftJson);
   if (!summary || !storedDraft) {
     throw new Error("MESOCYCLE_HANDOFF_DRAFT_MISSING");
   }
@@ -1389,29 +1510,22 @@ export async function updateMesocycleHandoffDraftInTransaction(
 ): Promise<PendingMesocycleHandoff> {
   const pendingRow = await tx.mesocycle.findUnique({
     where: { id: input.mesocycleId },
-    select: {
-      id: true,
-      state: true,
-      mesoNumber: true,
-      focus: true,
-      closedAt: true,
-      handoffSummaryJson: true,
-      nextSeedDraftJson: true,
-    },
+    select: pendingHandoffRowSelect,
   });
+  const refreshedPendingRow = await refreshPendingHandoffArtifactsIfNeeded(tx, pendingRow);
 
-  if (!pendingRow || pendingRow.state !== "AWAITING_HANDOFF") {
+  if (!refreshedPendingRow || refreshedPendingRow.state !== "AWAITING_HANDOFF") {
     throw new Error("MESOCYCLE_HANDOFF_NOT_PENDING");
   }
 
-  const summary = readMesocycleHandoffSummary(pendingRow.handoffSummaryJson);
+  const summary = readMesocycleHandoffSummary(refreshedPendingRow.handoffSummaryJson);
   if (!summary) {
     throw new Error("MESOCYCLE_HANDOFF_SUMMARY_MISSING");
   }
 
   const sanitizedDraft = sanitizeNextCycleSeedDraft({
     draft: input.draft,
-    sourceMesocycleId: pendingRow.id,
+    sourceMesocycleId: refreshedPendingRow.id,
     fallbackDraft:
       summary.recommendedNextSeed ??
       (() => {
@@ -1420,19 +1534,11 @@ export async function updateMesocycleHandoffDraftInTransaction(
   });
 
   const updated = await tx.mesocycle.update({
-    where: { id: pendingRow.id },
+    where: { id: refreshedPendingRow.id },
     data: {
       nextSeedDraftJson: sanitizedDraft as Prisma.InputJsonValue,
     },
-    select: {
-      id: true,
-      state: true,
-      mesoNumber: true,
-      focus: true,
-      closedAt: true,
-      handoffSummaryJson: true,
-      nextSeedDraftJson: true,
-    },
+    select: pendingHandoffRowSelect,
   });
 
   const mapped = mapPendingHandoffRow(updated);

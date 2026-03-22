@@ -1,6 +1,7 @@
 import type { SplitType, WorkoutSessionIntent } from "@prisma/client";
 import {
   buildOrderedFlexibleSlots,
+  getAllowedIntentsForSplit,
   type GenesisPolicyBranchResult,
   type GenesisPolicyContext,
   remapCompatibleCarryForwardIntent,
@@ -17,6 +18,8 @@ import {
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
+
+const MAX_ACCESSORY_KEEPS_PER_SLOT = 2;
 
 function resolveRecommendedSessionsPerWeek(
   context: GenesisPolicyContext
@@ -116,14 +119,54 @@ function resolveStartingPoint(): GenesisPolicyBranchResult<NextMesocycleStarting
   };
 }
 
+function resolveCompatibleWeeklyScheduleOrder(input: {
+  context: GenesisPolicyContext;
+  splitType: SplitType;
+  sessionsPerWeek: number;
+}): GenesisPolicyBranchResult<WorkoutSessionIntent[] | undefined> {
+  if (input.context.preferences.preferredSessionsPerWeekSource !== "weekly_schedule_length") {
+    return {
+      decision: undefined,
+      reasonCodes: [],
+      signalQuality: "medium",
+    };
+  }
+
+  const weeklySchedule = input.context.sourceTopology.weeklySequence.slice(0, input.sessionsPerWeek);
+  if (weeklySchedule.length !== input.sessionsPerWeek) {
+    return {
+      decision: undefined,
+      reasonCodes: [],
+      signalQuality: "medium",
+    };
+  }
+
+  const allowedIntents = new Set(getAllowedIntentsForSplit(input.splitType));
+  if (!weeklySchedule.every((intent) => allowedIntents.has(intent))) {
+    return {
+      decision: undefined,
+      reasonCodes: [],
+      signalQuality: "medium",
+    };
+  }
+
+  return {
+    decision: weeklySchedule,
+    reasonCodes: ["explicit_weekly_schedule_order_honored"],
+    signalQuality: "high",
+  };
+}
+
 function toDesignSlotStructure(input: {
   splitType: SplitType;
   sessionsPerWeek: number;
   daysPerWeek: number;
+  intents?: WorkoutSessionIntent[];
 }): NextMesocycleDesign["structure"] {
   const slots = buildOrderedFlexibleSlots({
     splitType: input.splitType,
     sessionsPerWeek: input.sessionsPerWeek,
+    intents: input.intents,
   });
   const slotSequence = buildMesocycleSlotSequence(slots);
 
@@ -302,6 +345,97 @@ function buildCarryForwardDecision(input: {
   };
 }
 
+type PendingCarryForwardDecision = {
+  candidate: GenesisPolicyContext["carryForwardCandidateEvidence"][number];
+  decision: NextMesocycleCarryForwardDecision;
+};
+
+function compareAccessoryKeepStrength(
+  left: PendingCarryForwardDecision,
+  right: PendingCarryForwardDecision
+): number {
+  const leftHasReceiptSlot = Boolean(left.candidate.evidence.latestSourceSlotId);
+  const rightHasReceiptSlot = Boolean(right.candidate.evidence.latestSourceSlotId);
+  if (leftHasReceiptSlot !== rightHasReceiptSlot) {
+    return leftHasReceiptSlot ? -1 : 1;
+  }
+
+  if (
+    left.candidate.evidence.advancingExposureCount !== right.candidate.evidence.advancingExposureCount
+  ) {
+    return right.candidate.evidence.advancingExposureCount - left.candidate.evidence.advancingExposureCount;
+  }
+
+  if (left.candidate.evidence.exposureCount !== right.candidate.evidence.exposureCount) {
+    return right.candidate.evidence.exposureCount - left.candidate.evidence.exposureCount;
+  }
+
+  const leftPerformedAt = left.candidate.evidence.latestPerformedAt
+    ? Date.parse(left.candidate.evidence.latestPerformedAt)
+    : Number.NEGATIVE_INFINITY;
+  const rightPerformedAt = right.candidate.evidence.latestPerformedAt
+    ? Date.parse(right.candidate.evidence.latestPerformedAt)
+    : Number.NEGATIVE_INFINITY;
+  if (leftPerformedAt !== rightPerformedAt) {
+    return rightPerformedAt - leftPerformedAt;
+  }
+
+  return left.candidate.exerciseName.localeCompare(right.candidate.exerciseName);
+}
+
+function capAccessoryCarryForwardKeeps(input: {
+  structure: NextMesocycleDesign["structure"];
+  pendingDecisions: PendingCarryForwardDecision[];
+}): NextMesocycleCarryForwardDecision[] {
+  const accessoryKeepCapacityByIntent = new Map<WorkoutSessionIntent, number>();
+  for (const slot of input.structure.slots) {
+    accessoryKeepCapacityByIntent.set(
+      slot.intent,
+      (accessoryKeepCapacityByIntent.get(slot.intent) ?? 0) + MAX_ACCESSORY_KEEPS_PER_SLOT
+    );
+  }
+
+  const rotatedKeys = new Set<string>();
+  for (const [intent, capacity] of accessoryKeepCapacityByIntent.entries()) {
+    const protectedKeeps = input.pendingDecisions.filter(
+      ({ candidate, decision }) =>
+        decision.action === "keep" &&
+        decision.role === "ACCESSORY" &&
+        decision.targetIntent === intent &&
+        candidate.anchorLevel !== "none"
+    );
+    const cappedCandidates = input.pendingDecisions
+      .filter(
+        ({ candidate, decision }) =>
+          decision.action === "keep" &&
+          decision.role === "ACCESSORY" &&
+          decision.targetIntent === intent &&
+          candidate.anchorLevel === "none"
+      )
+      .sort(compareAccessoryKeepStrength);
+    const remainingCapacity = Math.max(0, capacity - protectedKeeps.length);
+
+    for (const cappedCandidate of cappedCandidates.slice(remainingCapacity)) {
+      rotatedKeys.add(`${cappedCandidate.candidate.exerciseId}:${cappedCandidate.candidate.role}`);
+    }
+  }
+
+  return input.pendingDecisions.map(({ candidate, decision }) => {
+    if (!rotatedKeys.has(`${candidate.exerciseId}:${candidate.role}`)) {
+      return decision;
+    }
+
+    return {
+      ...decision,
+      action: "rotate",
+      targetIntent: undefined,
+      targetSlotId: undefined,
+      signalQuality: "medium",
+      reasonCodes: ["accessory_rotation_slot_capacity_cap", ...decision.reasonCodes],
+    };
+  });
+}
+
 export function designNextMesocycle(context: GenesisPolicyContext): NextMesocycleDesign {
   const designedAt = new Date().toISOString();
   const profile = resolveSourceProfile(context);
@@ -311,18 +445,29 @@ export function designNextMesocycle(context: GenesisPolicyContext): NextMesocycl
     preferences: context.preferences,
   });
   const startingPoint = resolveStartingPoint();
+  const scheduleOrder = resolveCompatibleWeeklyScheduleOrder({
+    context,
+    splitType: split.decision,
+    sessionsPerWeek: frequency.decision,
+  });
   const structure = toDesignSlotStructure({
     splitType: split.decision,
     sessionsPerWeek: frequency.decision,
     daysPerWeek: frequency.decision,
+    intents: scheduleOrder.decision,
   });
-  const carryForwardDecisions = context.carryForwardCandidateEvidence.map((candidate) =>
-    buildCarryForwardDecision({
+  const pendingDecisions = context.carryForwardCandidateEvidence.map((candidate) => ({
+    candidate,
+    decision: buildCarryForwardDecision({
       context,
       structure,
       candidate,
-    }).decision
-  );
+    }).decision,
+  }));
+  const carryForwardDecisions = capAccessoryCarryForwardKeeps({
+    structure,
+    pendingDecisions,
+  });
 
   return {
     version: 1,
@@ -337,9 +482,13 @@ export function designNextMesocycle(context: GenesisPolicyContext): NextMesocycl
     explainability: {
       profileReasonCodes: profile.reasonCodes,
       profileSignalQuality: profile.signalQuality,
-      structureReasonCodes: [...frequency.reasonCodes, ...split.reasonCodes],
+      structureReasonCodes: [...frequency.reasonCodes, ...split.reasonCodes, ...scheduleOrder.reasonCodes],
       structureSignalQuality:
-        frequency.signalQuality === "high" || split.signalQuality === "high" ? "high" : "medium",
+        frequency.signalQuality === "high" ||
+        split.signalQuality === "high" ||
+        scheduleOrder.signalQuality === "high"
+          ? "high"
+          : "medium",
       startingPointReasonCodes: startingPoint.reasonCodes,
       startingPointSignalQuality: startingPoint.signalQuality,
     },

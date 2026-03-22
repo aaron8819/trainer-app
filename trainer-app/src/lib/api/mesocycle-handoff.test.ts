@@ -664,6 +664,7 @@ describe("enterMesocycleHandoffInTransaction", () => {
                 structureReasonCodes: [
                   "preferred_frequency_honored",
                   "preferred_split_honored",
+                  "explicit_weekly_schedule_order_honored",
                 ],
                 structureSignalQuality: "high",
               }),
@@ -933,6 +934,328 @@ describe("handoff draft persistence", () => {
       expect.objectContaining({
         update: expect.objectContaining({
           weeklySchedule: ["PUSH", "PULL", "LEGS"],
+        }),
+      })
+    );
+  });
+
+  it("refreshes stale pending handoff artifacts before accept sanitizes the stored draft", async () => {
+    const staleDraft = {
+      ...buildRecommendedDraft(),
+      structure: {
+        splitType: "PPL" as const,
+        sessionsPerWeek: 3,
+        daysPerWeek: 3,
+        sequenceMode: "ordered_flexible" as const,
+        slots: [
+          { slotId: "push_a", intent: "PUSH" as const },
+          { slotId: "pull_a", intent: "PULL" as const },
+          { slotId: "legs_a", intent: "LEGS" as const },
+        ],
+      },
+      carryForwardSelections: [
+        {
+          exerciseId: "bench",
+          exerciseName: "Bench Press",
+          sessionIntent: "PUSH" as const,
+          role: "CORE_COMPOUND" as const,
+          action: "keep" as const,
+        },
+        {
+          exerciseId: "row",
+          exerciseName: "Chest-Supported Row",
+          sessionIntent: "PULL" as const,
+          role: "ACCESSORY" as const,
+          action: "rotate" as const,
+        },
+      ],
+    };
+    const staleSummary = {
+      ...buildHandoffSummaryJson(staleDraft),
+      recommendedDesign: undefined,
+    };
+    mocks.loadPreloadedGenerationSnapshot.mockResolvedValue({
+      context: {},
+    });
+    mocks.projectSuccessorSlotPlansFromSnapshot.mockReturnValue({
+      slotPlans: [
+        {
+          slotId: "upper_a",
+          intent: "UPPER",
+          exercises: [{ exerciseId: "bench", role: "CORE_COMPOUND" }],
+        },
+        {
+          slotId: "lower_a",
+          intent: "LOWER",
+          exercises: [{ exerciseId: "squat", role: "CORE_COMPOUND" }],
+        },
+        {
+          slotId: "upper_b",
+          intent: "UPPER",
+          exercises: [{ exerciseId: "row", role: "ACCESSORY" }],
+        },
+        {
+          slotId: "lower_b",
+          intent: "LOWER",
+          exercises: [{ exerciseId: "split-squat", role: "ACCESSORY" }],
+        },
+      ],
+    });
+
+    const mesocycleFindUnique = vi
+      .fn()
+      .mockResolvedValueOnce({
+        id: "meso-1",
+        macroCycleId: "macro-1",
+        mesoNumber: 1,
+        startWeek: 0,
+        durationWeeks: 5,
+        focus: "Upper Hypertrophy",
+        volumeTarget: "HIGH",
+        intensityBias: "HYPERTROPHY",
+        sessionsPerWeek: 4,
+        daysPerWeek: 4,
+        splitType: "UPPER_LOWER",
+        accumulationSessionsCompleted: 8,
+        deloadSessionsCompleted: 1,
+        slotSequenceJson: {
+          version: 1,
+          source: "handoff_draft",
+          sequenceMode: "ordered_flexible",
+          slots: [
+            { slotId: "upper_a", intent: "UPPER" },
+            { slotId: "lower_a", intent: "LOWER" },
+            { slotId: "upper_b", intent: "UPPER" },
+            { slotId: "lower_b", intent: "LOWER" },
+          ],
+        },
+        blocks: [],
+        macroCycle: { userId: "user-1" },
+      })
+      .mockResolvedValueOnce({
+        id: "meso-1",
+        state: "AWAITING_HANDOFF",
+        mesoNumber: 1,
+        focus: "Upper Hypertrophy",
+        closedAt: new Date("2026-04-01T00:00:00.000Z"),
+        handoffSummaryJson: staleSummary,
+        nextSeedDraftJson: staleDraft,
+      })
+      .mockResolvedValueOnce({
+        id: "meso-1",
+        macroCycleId: "macro-1",
+        mesoNumber: 1,
+        startWeek: 0,
+        durationWeeks: 5,
+        focus: "Upper Hypertrophy",
+        volumeTarget: "HIGH",
+        intensityBias: "HYPERTROPHY",
+        sessionsPerWeek: 4,
+        daysPerWeek: 4,
+        splitType: "UPPER_LOWER",
+        accumulationSessionsCompleted: 8,
+        deloadSessionsCompleted: 1,
+        slotSequenceJson: {
+          version: 1,
+          source: "handoff_draft",
+          sequenceMode: "ordered_flexible",
+          slots: [
+            { slotId: "upper_a", intent: "UPPER" },
+            { slotId: "lower_a", intent: "LOWER" },
+            { slotId: "upper_b", intent: "UPPER" },
+            { slotId: "lower_b", intent: "LOWER" },
+          ],
+        },
+        blocks: [],
+        macroCycle: { userId: "user-1" },
+      });
+    const mesocycleUpdate = vi
+      .fn()
+      .mockResolvedValueOnce({
+        id: "meso-1",
+        state: "AWAITING_HANDOFF",
+        mesoNumber: 1,
+        focus: "Upper Hypertrophy",
+        closedAt: new Date("2026-04-01T00:00:00.000Z"),
+        handoffSummaryJson: {
+          ...staleSummary,
+          carryForwardRecommendations: [
+            {
+              exerciseId: "bench",
+              exerciseName: "Bench Press",
+              sessionIntent: "UPPER",
+              role: "CORE_COMPOUND",
+              recommendation: "keep",
+              signalQuality: "high",
+              reasonCodes: ["required_anchor_continuity_supported_by_receipt_slot"],
+            },
+            {
+              exerciseId: "row",
+              exerciseName: "Chest-Supported Row",
+              sessionIntent: "UPPER",
+              role: "ACCESSORY",
+              recommendation: "rotate",
+              signalQuality: "medium",
+              reasonCodes: ["carry_forward_rotation_ambiguous_slot_target"],
+            },
+          ],
+          recommendedNextSeed: buildRecommendedDraft(),
+          recommendedDesign: buildRecommendedDesign(),
+        },
+        nextSeedDraftJson: buildRecommendedDraft(),
+      })
+      .mockResolvedValueOnce({ id: "meso-1", state: "COMPLETED" });
+    const mesocycleCreate = vi.fn().mockResolvedValue({
+      id: "meso-2",
+      state: "ACTIVE_ACCUMULATION",
+      mesoNumber: 2,
+    });
+
+    await expect(
+      acceptMesocycleHandoffInTransaction(
+        {
+          mesocycle: {
+            findUnique: mesocycleFindUnique,
+            update: mesocycleUpdate,
+            create: mesocycleCreate,
+          },
+          mesocycleExerciseRole: {
+            findMany: vi.fn().mockResolvedValue([
+              {
+                exerciseId: "bench",
+                sessionIntent: "UPPER",
+                role: "CORE_COMPOUND",
+                exercise: { name: "Bench Press" },
+              },
+              {
+                exerciseId: "row",
+                sessionIntent: "UPPER",
+                role: "ACCESSORY",
+                exercise: { name: "Chest-Supported Row" },
+              },
+            ]),
+            createMany: vi.fn(),
+          },
+          constraints: {
+            findUnique: vi.fn().mockResolvedValue({
+              weeklySchedule: ["UPPER", "LOWER", "UPPER", "LOWER"],
+              daysPerWeek: 4,
+              splitType: "UPPER_LOWER",
+            }),
+            upsert: vi.fn(),
+          },
+          workout: {
+            findMany: vi.fn().mockResolvedValue([
+              {
+                scheduledDate: new Date("2026-03-24T00:00:00.000Z"),
+                completedAt: new Date("2026-03-24T01:00:00.000Z"),
+                status: "COMPLETED",
+                sessionIntent: "UPPER",
+                selectionMode: "AUTO",
+                selectionMetadata: {
+                  sessionDecisionReceipt: {
+                    version: 1,
+                    cycleContext: {
+                      weekInMeso: 4,
+                      weekInBlock: 4,
+                      phase: "ACCUMULATION",
+                      blockType: "accumulation",
+                      isDeload: false,
+                      source: "computed",
+                    },
+                    sessionSlot: {
+                      slotId: "upper_a",
+                      intent: "UPPER",
+                      sequenceIndex: 0,
+                      source: "mesocycle_slot_sequence",
+                    },
+                    deloadDecision: {
+                      mode: "none",
+                      reason: [],
+                      reductionPercent: 0,
+                      appliedTo: "none",
+                    },
+                    lifecycleVolume: {
+                      source: "lifecycle",
+                    },
+                    readiness: {
+                      wasAutoregulated: false,
+                      signalAgeHours: 6,
+                      fatigueScoreOverall: 0.72,
+                      intensityScaling: {
+                        applied: false,
+                        exerciseIds: [],
+                        scaledUpCount: 0,
+                        scaledDownCount: 0,
+                      },
+                    },
+                    plannerDiagnosticsMode: "standard",
+                    exceptions: [],
+                  },
+                },
+                advancesSplit: true,
+                mesocyclePhaseSnapshot: "ACCUMULATION",
+                exercises: [{ exerciseId: "bench" }, { exerciseId: "row" }],
+              },
+            ]),
+          },
+          readinessSignal: {
+            findFirst: vi.fn().mockResolvedValue({
+              timestamp: new Date("2026-03-24T06:00:00.000Z"),
+              userId: "user-1",
+              whoopRecovery: null,
+              whoopStrain: null,
+              whoopHrv: null,
+              whoopSleepQuality: null,
+              whoopSleepHours: null,
+              subjectiveReadiness: 4,
+              subjectiveMotivation: 4,
+              subjectiveSoreness: {},
+              subjectiveStress: 2,
+              performanceRpeDeviation: 0,
+              performanceStalls: 0,
+              performanceCompliance: 1,
+            }),
+          },
+          trainingBlock: {
+            createMany: vi.fn(),
+          },
+        } as never,
+        "meso-1"
+      )
+    ).resolves.toMatchObject({
+      id: "meso-2",
+      state: "ACTIVE_ACCUMULATION",
+      mesoNumber: 2,
+    });
+
+    expect(mesocycleUpdate).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          handoffSummaryJson: expect.objectContaining({
+            recommendedDesign: expect.any(Object),
+            recommendedNextSeed: expect.objectContaining({
+              structure: expect.objectContaining({
+                splitType: "UPPER_LOWER",
+              }),
+            }),
+          }),
+          nextSeedDraftJson: expect.objectContaining({
+            structure: expect.objectContaining({
+              splitType: "UPPER_LOWER",
+            }),
+            carryForwardSelections: [
+              expect.objectContaining({
+                exerciseId: "bench",
+                sessionIntent: "UPPER",
+              }),
+              expect.objectContaining({
+                exerciseId: "row",
+                sessionIntent: "UPPER",
+              }),
+            ],
+          }),
         }),
       })
     );

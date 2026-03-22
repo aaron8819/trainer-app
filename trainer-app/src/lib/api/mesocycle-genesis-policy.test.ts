@@ -154,6 +154,52 @@ describe("designNextMesocycle", () => {
     expect(design.explainability.structureSignalQuality).toBe("medium");
   });
 
+  it("uses explicit compatible weekly schedule order for authored slots", () => {
+    const design = designNextMesocycle(
+      buildContext({
+        preferences: {
+          preferredSessionsPerWeek: 4,
+          preferredSessionsPerWeekSource: "weekly_schedule_length",
+          preferredSplitType: "UPPER_LOWER",
+          preferredSplitTypeSource: "constraints_split_type",
+        },
+        sourceTopology: {
+          splitType: "UPPER_LOWER",
+          sessionsPerWeek: 4,
+          daysPerWeek: 4,
+          weeklySequence: ["LOWER", "UPPER", "LOWER", "UPPER"],
+          slotSource: "persisted_slot_sequence",
+          hasPersistedSlotSequence: true,
+          slots: [
+            { slotId: "lower_a", intent: "LOWER", sequenceIndex: 0 },
+            { slotId: "upper_a", intent: "UPPER", sequenceIndex: 1 },
+            { slotId: "lower_b", intent: "LOWER", sequenceIndex: 2 },
+            { slotId: "upper_b", intent: "UPPER", sequenceIndex: 3 },
+          ],
+          repeatedIntents: ["LOWER", "UPPER"],
+        },
+      })
+    );
+
+    expect(design.structure.slots.map((slot) => slot.intent)).toEqual([
+      "LOWER",
+      "UPPER",
+      "LOWER",
+      "UPPER",
+    ]);
+    expect(design.structure.slots.map((slot) => slot.slotId)).toEqual([
+      "lower_a",
+      "upper_a",
+      "lower_b",
+      "upper_b",
+    ]);
+    expect(design.explainability.structureReasonCodes).toEqual([
+      "preferred_frequency_honored",
+      "preferred_split_honored",
+      "explicit_weekly_schedule_order_honored",
+    ]);
+  });
+
   it("distinguishes evidence-backed keep decisions from fallback carry-forward decisions", () => {
     const design = designNextMesocycle(
       buildContext({
@@ -271,6 +317,121 @@ describe("designNextMesocycle", () => {
         reasonCodes: ["accessory_drop_no_mesocycle_exposure"],
       }),
     ]);
+  });
+
+  it("caps accessory keeps per authored slot and rotates the weakest overflow candidates", () => {
+    const design = designNextMesocycle(
+      buildContext({
+        carryForwardCandidateEvidence: [
+          {
+            exerciseId: "bench",
+            exerciseName: "Bench Press",
+            role: "CORE_COMPOUND",
+            priorIntent: "UPPER",
+            priorSlotId: "upper_a",
+            anchorLevel: "required",
+            evidence: {
+              exposureCount: 4,
+              advancingExposureCount: 4,
+              latestPerformedAt: "2026-04-05T00:00:00.000Z",
+              latestSourceIntent: "UPPER",
+              latestSourceSlotId: "upper_a",
+              latestSemanticsKind: "advancing",
+            },
+          },
+          {
+            exerciseId: "cable-row",
+            exerciseName: "Cable Row",
+            role: "ACCESSORY",
+            priorIntent: "UPPER",
+            anchorLevel: "none",
+            evidence: {
+              exposureCount: 4,
+              advancingExposureCount: 4,
+              latestPerformedAt: "2026-04-05T00:00:00.000Z",
+              latestSourceIntent: "UPPER",
+              latestSourceSlotId: "upper_a",
+              latestSemanticsKind: "advancing",
+            },
+          },
+          {
+            exerciseId: "lat-pulldown",
+            exerciseName: "Lat Pulldown",
+            role: "ACCESSORY",
+            priorIntent: "UPPER",
+            anchorLevel: "none",
+            evidence: {
+              exposureCount: 4,
+              advancingExposureCount: 4,
+              latestPerformedAt: "2026-04-04T00:00:00.000Z",
+              latestSourceIntent: "UPPER",
+              latestSourceSlotId: "upper_b",
+              latestSemanticsKind: "advancing",
+            },
+          },
+          {
+            exerciseId: "lateral-raise",
+            exerciseName: "Lateral Raise",
+            role: "ACCESSORY",
+            priorIntent: "UPPER",
+            anchorLevel: "none",
+            evidence: {
+              exposureCount: 4,
+              advancingExposureCount: 4,
+              latestPerformedAt: "2026-04-03T00:00:00.000Z",
+              latestSourceIntent: "UPPER",
+              latestSemanticsKind: "advancing",
+            },
+          },
+          {
+            exerciseId: "face-pull",
+            exerciseName: "Face Pull",
+            role: "ACCESSORY",
+            priorIntent: "UPPER",
+            anchorLevel: "none",
+            evidence: {
+              exposureCount: 3,
+              advancingExposureCount: 3,
+              latestPerformedAt: "2026-04-02T00:00:00.000Z",
+              latestSourceIntent: "UPPER",
+              latestSemanticsKind: "advancing",
+            },
+          },
+          {
+            exerciseId: "curl",
+            exerciseName: "Cable Curl",
+            role: "ACCESSORY",
+            priorIntent: "UPPER",
+            anchorLevel: "none",
+            evidence: {
+              exposureCount: 2,
+              advancingExposureCount: 2,
+              latestPerformedAt: "2026-04-01T00:00:00.000Z",
+              latestSourceIntent: "UPPER",
+              latestSemanticsKind: "advancing",
+            },
+          },
+        ],
+      })
+    );
+
+    expect(
+      design.carryForward.decisions.filter(
+        (decision) => decision.role === "ACCESSORY" && decision.action === "keep"
+      )
+    ).toHaveLength(4);
+    expect(
+      design.carryForward.decisions.find((decision) => decision.exerciseId === "curl")
+    ).toEqual(
+      expect.objectContaining({
+        action: "rotate",
+        signalQuality: "medium",
+        reasonCodes: [
+          "accessory_rotation_slot_capacity_cap",
+          "accessory_continuity_supported_by_advancing_exposure",
+        ],
+      })
+    );
   });
 
   it("falls back to intent-level targeting when repeated-slot mapping is not exact", () => {

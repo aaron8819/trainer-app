@@ -295,7 +295,9 @@ SetLog / logged performance
 - Phase 1 genesis explainability is branch-accurate by contract:
   - structure recommendation reason codes now reflect the actual preferred-vs-default branch that fired
   - preferred split/frequency signals from current handoff constraints are honored when present and still capped by hard availability constraints
+  - when current handoff constraints provide an explicit compatible `weeklySchedule`, genesis uses that authored order for the recommended ordered-flexible slot sequence and records `explicit_weekly_schedule_order_honored`
   - carry-forward branch outputs now persist `reasonCodes` plus `signalQuality`, where `high` is reserved for concrete evidence-driven branches and `medium` marks fallback/default behavior
+  - accessory continuity keeps are intentionally capped by authored slot capacity during genesis recommendation so seed drafts and slot-plan projection do not preserve every eligible accessory by default; overflow accessories rotate with `accessory_rotation_slot_capacity_cap`
 - Acceptance semantics are transactionally strict:
   - sanitize the draft against the frozen recommendation envelope
   - reject `keep` carry-forward selections whose original `sessionIntent` no longer exists after split/session edits

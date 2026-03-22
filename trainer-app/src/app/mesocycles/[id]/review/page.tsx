@@ -124,8 +124,8 @@ export default async function MesocycleReviewPage({ params }: { params: Params }
           </p>
           <h1 className="page-title mt-2">Meso {review.mesoNumber} complete</h1>
           <p className="mt-2 text-sm text-slate-600">
-            Closeout review for {review.focus}. Frozen handoff facts stay separate from the
-            recomputed analysis built from workouts tagged to this mesocycle.
+            Closeout review for {review.focus}. The frozen recommendation is the canonical handoff
+            design decision, and the analysis below explains the closeout without redefining it.
           </p>
         </header>
 
@@ -175,12 +175,13 @@ export default async function MesocycleReviewPage({ params }: { params: Params }
 
         <section className="mt-8 rounded-2xl border border-slate-200 p-6">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Recomputed analysis
+            Closeout analysis
           </p>
           <h2 className="mt-2 text-xl font-semibold">What improved</h2>
           <p className="mt-2 text-sm text-slate-600">
-            These metrics are recomputed from {review.derived.scopedWorkoutCount} workouts scoped by{" "}
-            <code>mesocycleId</code>. Recomputing them does not change the stored handoff results.
+            These metrics are recalculated from {review.derived.scopedWorkoutCount} workouts scoped
+            by <code>mesocycleId</code> to explain the closeout. They do not change the frozen
+            recommendation saved at handoff.
           </p>
 
           <div className="mt-5 grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
@@ -273,7 +274,7 @@ export default async function MesocycleReviewPage({ params }: { params: Params }
 
         <section className="mt-8 rounded-2xl border border-slate-200 p-6">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Recomputed analysis
+            Closeout analysis
           </p>
           <h2 className="mt-2 text-xl font-semibold">Muscle / volume summary</h2>
           <p className="mt-2 text-sm text-slate-600">
@@ -340,10 +341,10 @@ export default async function MesocycleReviewPage({ params }: { params: Params }
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
             Frozen handoff summary
           </p>
-          <h2 className="mt-2 text-xl font-semibold">Carry-forward recommendations</h2>
+          <h2 className="mt-2 text-xl font-semibold">Carry-forward policy decisions</h2>
           <p className="mt-2 text-sm text-slate-600">
-            This stays intentionally small: the frozen handoff stores these recommendation calls,
-            while the detailed review above is recomputed separately.
+            These are the canonical carry-forward actions saved at handoff. Setup preview and
+            accept continue from this same stored policy output.
           </p>
 
           <div className="mt-5 grid gap-4 lg:grid-cols-3">
@@ -384,22 +385,50 @@ export default async function MesocycleReviewPage({ params }: { params: Params }
               : "Historical closeout"}
           </p>
           <h2 className="mt-2 text-xl font-semibold">
-            {review.archive.isEditableHandoff ? "Recommended next cycle" : "Archived handoff recommendation"}
+            {review.archive.isEditableHandoff
+              ? "Canonical handoff recommendation"
+              : "Archived handoff recommendation"}
           </h2>
           <p className="mt-2 text-sm text-slate-700">
-            Default recommendation: {recommendedNextCycle.structure.sessionsPerWeek}x/week{" "}
-            {formatSplitType(recommendedNextCycle.structure.splitType)}.
+            {review.recommendation.summary}
           </p>
           <p className="mt-2 text-sm text-slate-600">
-            Ordered-flexible means the slot order stays fixed, but you can slide sessions across the
-            week without changing the sequence.
+            Setup preview and accept both continue from this same stored design basis.
           </p>
 
           <div className="mt-5 grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
             <div className="rounded-2xl bg-slate-50 p-5">
               <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+                Why this recommendation was made
+              </h3>
+              <div className="mt-4 space-y-3 text-sm text-slate-700">
+                {review.recommendation.structureReasons.length > 0 ? (
+                  review.recommendation.structureReasons.map((reason) => (
+                    <p key={reason}>{reason}</p>
+                  ))
+                ) : (
+                  <p>This handoff recommendation remains the canonical stored design decision.</p>
+                )}
+              </div>
+              {review.recommendation.startingPointReasons.length > 0 ? (
+                <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Starting point basis
+                  </p>
+                  <div className="mt-3 space-y-2 text-sm text-slate-700">
+                    {review.recommendation.startingPointReasons.map((reason) => (
+                      <p key={reason}>{reason}</p>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="rounded-2xl bg-slate-50 p-5">
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
                 Slot order
               </h3>
+              <p className="mt-4 text-sm text-slate-700">{review.recommendation.slotOrderSummary}</p>
               <div className="mt-4 grid gap-2 sm:grid-cols-2">
                 {recommendedNextCycle.structure.slots.map((slot, index) => (
                   <div key={slot.slotId} className="rounded-xl border border-slate-200 bg-white p-4">
@@ -411,28 +440,17 @@ export default async function MesocycleReviewPage({ params }: { params: Params }
                   </div>
                 ))}
               </div>
-            </div>
-
-            <div className="rounded-2xl bg-slate-50 p-5">
-              <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-                Starting point
-              </h3>
               <p className="mt-4 text-sm text-slate-700">
-                Volume preset: <span className="font-medium">conservative productive</span>
+                {review.recommendation.carryForwardSummary}
               </p>
-              <p className="mt-2 text-sm text-slate-700">
-                Baseline: use peak accumulation first, otherwise highest non-deload accumulation week.
-              </p>
-              <p className="mt-2 text-sm text-slate-700">
-                Carry forward keeps:{" "}
-                <span className="font-medium">
-                  {
-                    recommendedNextCycle.carryForwardSelections.filter(
-                      (selection) => selection.action === "keep"
-                    ).length
-                  }
-                </span>
-              </p>
+              <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Starting point
+                </p>
+                <p className="mt-3 text-sm text-slate-700">
+                  {review.recommendation.startingPointSummary}
+                </p>
+              </div>
             </div>
           </div>
 
@@ -442,7 +460,7 @@ export default async function MesocycleReviewPage({ params }: { params: Params }
             </h3>
             <p className="mt-2 text-sm text-slate-600">
               {review.archive.isEditableHandoff
-                ? "Continue into setup to compare the frozen recommendation against the mutable draft, make changes if you want them, then accept the next cycle."
+                ? "Continue into setup to edit the pending draft and review the projected next-cycle setup built from this same canonical recommendation."
                 : "This mesocycle is already archived as historical closeout. The frozen recommendation stays reviewable here, but the editable handoff workflow is no longer available."}
             </p>
             {review.archive.isEditableHandoff ? (

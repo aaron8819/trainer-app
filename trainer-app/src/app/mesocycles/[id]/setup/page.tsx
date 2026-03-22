@@ -32,15 +32,17 @@ export default async function MesocycleSetupPage({ params }: { params: Params })
           <p className="mt-4 text-sm uppercase tracking-wide text-slate-500">Next-Cycle Setup</p>
           <h1 className="page-title mt-2">Meso {setup.mesoNumber} handoff setup</h1>
           <p className="mt-2 text-sm text-slate-600">
-            The system recommendation stays frozen. This screen only edits the pending draft before
-            you accept the next mesocycle.
+            This screen edits the pending setup draft that starts from the frozen system
+            recommendation. The preview is the server projection of your current draft against that
+            same handoff baseline.
           </p>
         </header>
 
         <MesocycleSetupEditor
           mesocycleId={setup.mesocycleId}
-          recommendedDraft={setup.recommendedDraft}
-          initialDraft={setup.currentDraft}
+          recommendation={setup.recommendation}
+          frozenRecommendationDraft={setup.frozenRecommendationDraft}
+          initialDraft={setup.editableDraft}
           initialPreview={setup.preview}
         />
       </div>

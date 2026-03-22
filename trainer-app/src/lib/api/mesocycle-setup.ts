@@ -27,6 +27,10 @@ import {
 } from "./mesocycle-slot-contract";
 import { loadPreloadedGenerationSnapshot } from "./template-session/context-loader";
 import { formatSessionIntentLabel } from "@/lib/ui/session-identity";
+import {
+  buildFrozenRecommendationPresentation,
+  type FrozenRecommendationPresentation,
+} from "./mesocycle-handoff-presentation";
 
 export type MesocycleSetupCarryForwardRow = {
   exerciseId: string;
@@ -44,14 +48,15 @@ export type MesocycleSetupReadModel = {
   mesoNumber: number;
   focus: string;
   closedAt: string | null;
-  recommendedDraft: NextCycleSeedDraft;
-  currentDraft: NextCycleSeedDraft;
+  frozenRecommendationDraft: NextCycleSeedDraft;
+  editableDraft: NextCycleSeedDraft;
+  recommendation: FrozenRecommendationPresentation;
   drift: {
     matchesRecommendation: boolean;
     changedFields: string[];
     carryForwardChangedCount: number;
   };
-  carryForwardRows: MesocycleSetupCarryForwardRow[];
+  carryForwardRecommendations: MesocycleSetupCarryForwardRow[];
   preview: MesocycleSetupPreview;
 };
 
@@ -163,14 +168,18 @@ function mapPendingHandoffToSetup(
     mesoNumber: handoff.mesoNumber,
     focus: handoff.focus,
     closedAt: handoff.closedAt,
-    recommendedDraft,
-    currentDraft,
+    frozenRecommendationDraft: recommendedDraft,
+    editableDraft: currentDraft,
+    recommendation: buildFrozenRecommendationPresentation({
+      recommendationDraft: recommendedDraft,
+      recommendedDesign: handoff.summary.recommendedDesign,
+    }),
     drift: buildDrift({
       recommendedDraft,
       currentDraft,
       carryForwardRows,
     }),
-    carryForwardRows,
+    carryForwardRecommendations: carryForwardRows,
     preview,
   };
 }

@@ -88,6 +88,17 @@ function buildReview(overrides?: Record<string, unknown>) {
         carryForwardSelections: [{ action: "keep" }],
       },
     },
+    recommendation: {
+      summary:
+        "4x/week Upper / Lower. This frozen recommendation is the evidence-based design baseline saved at handoff close.",
+      structureReasons: ["Upper / lower was selected for a four-plus-session schedule."],
+      carryForwardSummary: "Carry-forward decisions at handoff: 1 keep, 1 rotate, 0 drop.",
+      slotOrderSummary:
+        "Ordered-flexible keeps the slot order fixed while still allowing week-to-week scheduling flexibility.",
+      startingPointSummary:
+        "The next cycle re-enters accumulation from a conservative baseline chosen from the closeout evidence, rather than carrying deload forward.",
+      startingPointReasons: ["The next cycle re-enters accumulation conservatively after the deload boundary."],
+    },
     derived: {
       scopedWorkoutCount: 10,
       performedWorkoutCount: 9,
@@ -153,12 +164,15 @@ describe("MesocycleReviewPage", () => {
     expect(screen.getByRole("heading", { name: "Meso 3 complete" })).toBeInTheDocument();
     expect(screen.getByText("Pending Handoff Review")).toBeInTheDocument();
     expect(screen.getAllByText("Frozen handoff summary")).toHaveLength(2);
-    expect(screen.getAllByText("Recomputed analysis")).toHaveLength(2);
+    expect(screen.getAllByText("Closeout analysis")).toHaveLength(2);
     expect(
-      screen.getByText(/Recomputing them does not change the stored handoff results/i)
+      screen.getByText(/They do not change the frozen recommendation saved at handoff/i)
     ).toBeInTheDocument();
     expect(screen.getAllByText("Bench Press").length).toBeGreaterThan(0);
-    expect(screen.getByText(/Default recommendation: 4x\/week Upper \/ Lower/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/This frozen recommendation is the evidence-based design baseline saved at handoff close/i)
+    ).toBeInTheDocument();
+    expect(screen.getByText("Carry-forward policy decisions")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Review and edit next-cycle setup" })).toHaveAttribute(
       "href",
       "/mesocycles/meso-1/setup"

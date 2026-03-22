@@ -47,9 +47,17 @@ describe("MesocycleSetupPage", () => {
     mocks.loadMesocycleSetupFromPrisma.mockResolvedValue({
       mesocycleId: "meso-1",
       mesoNumber: 3,
-      recommendedDraft: { version: 1 },
-      currentDraft: { version: 1 },
-      carryForwardRows: [],
+      frozenRecommendationDraft: { version: 1 },
+      editableDraft: { version: 1 },
+      recommendation: {
+        summary: "summary",
+        structureReasons: [],
+        carryForwardSummary: "carry",
+        slotOrderSummary: "slots",
+        startingPointSummary: "start",
+        startingPointReasons: [],
+      },
+      carryForwardRecommendations: [],
     });
   });
 
@@ -66,7 +74,9 @@ describe("MesocycleSetupPage", () => {
 
     expect(screen.getByRole("heading", { name: "Meso 3 handoff setup" })).toBeInTheDocument();
     expect(
-      screen.getByText(/The system recommendation stays frozen. This screen only edits the pending draft/i)
+      screen.getByText(
+        /This screen edits the pending setup draft that starts from the frozen system recommendation/i
+      )
     ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Back to review" })).toHaveAttribute(
       "href",

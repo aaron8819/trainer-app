@@ -10,11 +10,13 @@ import {
   type NextCycleCarryForwardConflict,
   type NextCycleSeedDraft,
 } from "@/lib/api/mesocycle-handoff-contract";
+import type { FrozenRecommendationPresentation } from "@/lib/api/mesocycle-handoff-presentation";
 import type { MesocycleSetupPreview } from "@/lib/api/mesocycle-setup";
 
 type MesocycleSetupEditorProps = {
   mesocycleId: string;
-  recommendedDraft: NextCycleSeedDraft;
+  recommendation: FrozenRecommendationPresentation;
+  frozenRecommendationDraft: NextCycleSeedDraft;
   initialDraft: NextCycleSeedDraft;
   initialPreview: MesocycleSetupPreview;
 };
@@ -187,7 +189,8 @@ function nextDraftForSplit(
 
 export function MesocycleSetupEditor({
   mesocycleId,
-  recommendedDraft,
+  recommendation,
+  frozenRecommendationDraft,
   initialDraft,
   initialPreview,
 }: MesocycleSetupEditorProps) {
@@ -204,8 +207,8 @@ export function MesocycleSetupEditor({
   const [previewError, setPreviewError] = useState<string | null>(null);
 
   const drift = useMemo(
-    () => buildDraftDrift({ recommendedDraft, currentDraft: draft }),
-    [draft, recommendedDraft]
+    () => buildDraftDrift({ recommendedDraft: frozenRecommendationDraft, currentDraft: draft }),
+    [draft, frozenRecommendationDraft]
   );
   const carryForwardConflicts = useMemo(
     () =>
@@ -405,13 +408,24 @@ export function MesocycleSetupEditor({
           <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">
             Frozen system recommendation
           </p>
-          <h2 className="mt-2 text-xl font-semibold">Conservative default</h2>
+          <h2 className="mt-2 text-xl font-semibold">Evidence-based design baseline</h2>
           <p className="mt-2 text-sm text-slate-700">
-            {recommendedDraft.structure.sessionsPerWeek}x/week {formatSplitType(recommendedDraft.structure.splitType)}.
-            This is the system recommendation saved at handoff close.
+            {recommendation.summary}
           </p>
+          {recommendation.structureReasons.length > 0 ? (
+            <div className="mt-4 rounded-xl border border-amber-200 bg-white/80 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Why the system recommended this design
+              </p>
+              <div className="mt-3 space-y-2 text-sm text-slate-700">
+                {recommendation.structureReasons.map((reason) => (
+                  <p key={reason}>{reason}</p>
+                ))}
+              </div>
+            </div>
+          ) : null}
           <div className="mt-4 grid gap-2 sm:grid-cols-2">
-            {recommendedDraft.structure.slots.map((slot, index) => (
+            {frozenRecommendationDraft.structure.slots.map((slot, index) => (
               <div key={slot.slotId} className="rounded-xl border border-amber-200 bg-white/80 p-4">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Slot {index + 1}
@@ -422,26 +436,29 @@ export function MesocycleSetupEditor({
             ))}
           </div>
           <p className="mt-4 text-sm text-slate-600">
-            Carry forward:{" "}
-            {recommendedDraft.carryForwardSelections.filter((selection) => selection.action === "keep").length} keep,{" "}
-            {recommendedDraft.carryForwardSelections.filter((selection) => selection.action === "rotate").length} rotate.
+            {recommendation.carryForwardSummary}
+          </p>
+          <p className="mt-2 text-sm text-slate-600">
+            {recommendation.startingPointSummary}
           </p>
         </div>
 
         <div className="rounded-2xl border border-slate-200 p-6">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Mutable draft
+            Editable override draft
           </p>
-          <h2 className="mt-2 text-xl font-semibold">Current editable setup</h2>
+          <h2 className="mt-2 text-xl font-semibold">Draft override inputs</h2>
           <p className="mt-2 text-sm text-slate-600">
-            Save changes now, or accept the next cycle to save them as part of the handoff.
+            Edit the pending setup draft here. This draft is your override of the frozen system
+            recommendation. Preview and Accept both continue from the current draft against the
+            same handoff baseline.
           </p>
           <div className="mt-4 rounded-xl bg-slate-50 p-4 text-sm text-slate-700">
             {drift.matchesRecommendation ? (
               <p>Current draft still matches the system recommendation.</p>
             ) : (
               <p>
-                Draft differs from recommendation: {drift.changedFields.join(", ")}.
+                Current draft overrides the system recommendation for: {drift.changedFields.join(", ")}.
                 {drift.carryForwardChangedCount > 0
                   ? ` ${drift.carryForwardChangedCount} carry-forward actions changed.`
                   : ""}
@@ -488,10 +505,10 @@ export function MesocycleSetupEditor({
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
           Training structure
         </p>
-        <h2 className="mt-2 text-xl font-semibold">Ordered flexible slot sequence</h2>
+        <h2 className="mt-2 text-xl font-semibold">Editable slot order</h2>
         <p className="mt-2 text-sm text-slate-600">
-          The order stays fixed, but the week can stay flexible. Change the intent in each slot if
-          you want a different sequence.
+          {recommendation.slotOrderSummary} Change the intent in each slot only if you want a
+          different next-cycle sequence than the system recommendation.
         </p>
         <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {draft.structure.slots.map((slot, index) => (
@@ -538,7 +555,8 @@ export function MesocycleSetupEditor({
         </p>
         <h2 className="mt-2 text-xl font-semibold">Keep, rotate, or drop</h2>
         <p className="mt-2 text-sm text-slate-600">
-          The recommendation stays visible. Your draft only changes the action taken for the next cycle.
+          These are the evidence-based carry-forward decisions saved at handoff. Your draft can
+          override what happens before the next cycle is accepted.
         </p>
         {hasCarryForwardConflicts ? (
           <div className="mt-5 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">
@@ -558,7 +576,7 @@ export function MesocycleSetupEditor({
         ) : null}
         <div className="mt-5 space-y-3">
           {draft.carryForwardSelections.map((selection) => {
-            const recommended = recommendedDraft.carryForwardSelections.find(
+            const recommended = frozenRecommendationDraft.carryForwardSelections.find(
               (item) =>
                 item.exerciseId === selection.exerciseId &&
                 item.sessionIntent === selection.sessionIntent &&
@@ -582,7 +600,7 @@ export function MesocycleSetupEditor({
                       {INTENT_LABELS[selection.sessionIntent]} / {selection.role.toLowerCase().replace("_", " ")}
                     </p>
                     <p className="mt-1 text-xs text-slate-500">
-                      System recommendation: {recommended?.action ?? "rotate"}
+                      System decision: {recommended?.action ?? "rotate"} from handoff evidence
                     </p>
                     {conflict ? (
                       <p className="mt-2 text-sm text-rose-800">
@@ -625,14 +643,14 @@ export function MesocycleSetupEditor({
 
       <section className="rounded-2xl border border-slate-200 p-6">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Successor preview
+          Setup preview
         </p>
         <div className="mt-2 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <h2 className="text-xl font-semibold">Preview next cycle</h2>
+            <h2 className="text-xl font-semibold">Projected next-cycle setup</h2>
             <p className="mt-2 text-sm text-slate-600">
-              This is a read-only preview of what Accept would create from the current draft. No
-              mesocycle has been created yet.
+              This is the server-owned projection of what Accept would create from the current
+              draft. No mesocycle has been created yet.
             </p>
           </div>
           <button
@@ -646,8 +664,8 @@ export function MesocycleSetupEditor({
         </div>
         <p className="mt-2 text-sm text-slate-600">
           {hasCarryForwardConflicts
-            ? "Resolve carry-forward conflicts to refresh the canonical server preview for this draft."
-            : `${preview.summary.title} would start as ${preview.summary.sessionsPerWeek}x/week ${formatSplitType(preview.summary.splitType)}.`}
+            ? "Resolve carry-forward conflicts to refresh the server projection for this draft."
+            : `${preview.summary.title} is currently projected from this draft as ${preview.summary.sessionsPerWeek}x/week ${formatSplitType(preview.summary.splitType)}.`}
         </p>
         <div className="mt-4 rounded-2xl bg-slate-50 p-5">
           {hasCarryForwardConflicts ? (
@@ -661,7 +679,8 @@ export function MesocycleSetupEditor({
                 {preview.summary.dropCount} drop
               </p>
               <p className="mt-2 text-sm text-slate-600">
-                Slot session plans come from the canonical server-owned handoff projection seam.
+                Session plans in this preview are projected server-side from the same handoff
+                baseline used by Accept.
               </p>
               {previewLoading ? (
                 <p className="mt-2 text-sm text-slate-500">Refreshing preview from server...</p>
@@ -688,8 +707,7 @@ export function MesocycleSetupEditor({
                 Frequency: {preview.summary.sessionsPerWeek} sessions per week
               </p>
               <p className="mt-2 text-sm text-slate-700">
-                Starting point stays conservative productive and still excludes deload from the
-                next baseline.
+                {recommendation.startingPointSummary}
               </p>
             </div>
             <div className="rounded-2xl bg-slate-50 p-5">
@@ -698,7 +716,7 @@ export function MesocycleSetupEditor({
               </h3>
               {hasCarryForwardConflicts ? (
                 <p className="mt-4 text-sm text-rose-800">
-                  Resolve carry-forward conflicts to view the canonical server slot-plan preview.
+                  Resolve carry-forward conflicts to view the projected server slot-plan preview.
                 </p>
               ) : previewError ? (
                 <p className="mt-4 text-sm text-rose-800">{previewError}</p>
@@ -769,7 +787,9 @@ export function MesocycleSetupEditor({
             {accepting ? "Starting..." : "Accept and create next cycle"}
           </button>
           {isDirty ? (
-            <span className="text-sm text-amber-700">Changes will be saved on accept.</span>
+            <span className="text-sm text-amber-700">
+              Accept will save the current setup draft before creating the next cycle.
+            </span>
           ) : null}
           {hasCarryForwardConflicts ? (
             <span className="text-sm text-rose-700">

@@ -181,6 +181,20 @@ function buildPreview(overrides?: Partial<{
   };
 }
 
+function buildRecommendation() {
+  return {
+    summary:
+      "4x/week Upper / Lower. This frozen recommendation is the evidence-based design baseline saved at handoff close.",
+    structureReasons: ["Upper / lower was selected for a four-plus-session schedule."],
+    carryForwardSummary: "Carry-forward decisions at handoff: 1 keep, 1 rotate, 0 drop.",
+    slotOrderSummary:
+      "Ordered-flexible keeps the slot order fixed while still allowing week-to-week scheduling flexibility.",
+    startingPointSummary:
+      "The next cycle re-enters accumulation from a conservative baseline chosen from the closeout evidence, rather than carrying deload forward.",
+    startingPointReasons: ["The next cycle re-enters accumulation conservatively after the deload boundary."],
+  };
+}
+
 describe("MesocycleSetupEditor", () => {
   it("previews carry-forward conflicts immediately when the split removes a kept exercise intent", async () => {
     const user = userEvent.setup();
@@ -188,7 +202,8 @@ describe("MesocycleSetupEditor", () => {
     render(
       <MesocycleSetupEditor
         mesocycleId="meso-1"
-        recommendedDraft={buildDraft()}
+        recommendation={buildRecommendation()}
+        frozenRecommendationDraft={buildDraft()}
         initialDraft={buildDraft()}
         initialPreview={buildPreview()}
       />
@@ -213,7 +228,9 @@ describe("MesocycleSetupEditor", () => {
     expect(screen.getByRole("button", { name: "Save draft" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Accept and create next cycle" })).toBeDisabled();
     expect(screen.getByText("Resolve 1 carry-forward conflict to save or accept.")).toBeInTheDocument();
-    expect(screen.getByText("Changes will be saved on accept.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Accept will save the current setup draft before creating the next cycle.")
+    ).toBeInTheDocument();
   });
 
   it("re-enables save and accept after the conflicting keep action is resolved", async () => {
@@ -222,7 +239,8 @@ describe("MesocycleSetupEditor", () => {
     render(
       <MesocycleSetupEditor
         mesocycleId="meso-1"
-        recommendedDraft={buildDraft()}
+        recommendation={buildRecommendation()}
+        frozenRecommendationDraft={buildDraft()}
         initialDraft={buildDraft()}
         initialPreview={buildPreview()}
       />
@@ -247,7 +265,8 @@ describe("MesocycleSetupEditor", () => {
     render(
       <MesocycleSetupEditor
         mesocycleId="meso-1"
-        recommendedDraft={buildDraft()}
+        recommendation={buildRecommendation()}
+        frozenRecommendationDraft={buildDraft()}
         initialDraft={buildDraft()}
         initialPreview={buildPreview()}
       />
@@ -334,13 +353,23 @@ describe("MesocycleSetupEditor", () => {
     render(
       <MesocycleSetupEditor
         mesocycleId="meso-1"
-        recommendedDraft={buildDraft()}
+        recommendation={buildRecommendation()}
+        frozenRecommendationDraft={buildDraft()}
         initialDraft={buildDraft()}
         initialPreview={buildPreview()}
       />
     );
 
-    expect(screen.getByText("Meso 2 - Upper Hypertrophy would start as 4x/week Upper / Lower.")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "4x/week Upper / Lower. This frozen recommendation is the evidence-based design baseline saved at handoff close."
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Meso 2 - Upper Hypertrophy is currently projected from this draft as 4x/week Upper / Lower."
+      )
+    ).toBeInTheDocument();
     expect(screen.getByText("1 keep / 1 rotate / 0 drop")).toBeInTheDocument();
     expect(screen.queryByText("Session slots")).not.toBeInTheDocument();
 
@@ -357,13 +386,19 @@ describe("MesocycleSetupEditor", () => {
     });
     await waitFor(() => {
       expect(
-        screen.getByText("Meso 2 - Upper Hypertrophy would start as 3x/week Upper / Lower.")
+        screen.getByText(
+          "Meso 2 - Upper Hypertrophy is currently projected from this draft as 3x/week Upper / Lower."
+        )
       ).toBeInTheDocument();
     });
 
     await user.click(screen.getByRole("button", { name: "Show preview" }));
 
-    expect(screen.getByText("This is a read-only preview of what Accept would create from the current draft. No mesocycle has been created yet.")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "This is the server-owned projection of what Accept would create from the current draft. No mesocycle has been created yet."
+      )
+    ).toBeInTheDocument();
     expect(screen.getByText("Upper 1")).toBeInTheDocument();
     expect(screen.getByText("Upper 2")).toBeInTheDocument();
     expect(screen.getByText("Chest-Supported Row")).toBeInTheDocument();

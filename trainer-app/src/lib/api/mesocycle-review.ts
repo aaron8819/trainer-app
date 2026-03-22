@@ -9,6 +9,10 @@ import {
   type ClosedMesocycleArchive,
   type MesocycleHandoffSummary,
 } from "./mesocycle-handoff";
+import {
+  buildFrozenRecommendationPresentation,
+  type FrozenRecommendationPresentation,
+} from "./mesocycle-handoff-presentation";
 import { getWeeklyVolumeTarget } from "./mesocycle-lifecycle-math";
 import { classifyMuscleOutcome, type MuscleOutcomeStatus } from "./muscle-outcome-review";
 import { countCompletedSets } from "./weekly-volume";
@@ -148,6 +152,7 @@ export type MesocycleReviewData = {
     isEditableHandoff: boolean;
   };
   frozenSummary: MesocycleHandoffSummary;
+  recommendation: FrozenRecommendationPresentation;
   derived: {
     scopedWorkoutCount: number;
     performedWorkoutCount: number;
@@ -729,6 +734,10 @@ export async function loadMesocycleReview(
       isEditableHandoff: archive.isEditableHandoff,
     },
     frozenSummary: archive.summary,
+    recommendation: buildFrozenRecommendationPresentation({
+      recommendationDraft: archive.summary.recommendedNextSeed,
+      recommendedDesign: archive.summary.recommendedDesign,
+    }),
     derived: {
       scopedWorkoutCount: workouts.length,
       performedWorkoutCount: workouts.filter((workout) => isPerformedWorkoutStatus(workout.status)).length,

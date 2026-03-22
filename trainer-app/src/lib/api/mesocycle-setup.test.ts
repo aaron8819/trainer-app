@@ -249,6 +249,9 @@ describe("mesocycle setup preview", () => {
 
     expect(setup).toMatchObject({
       mesocycleId: "meso-1",
+      recommendation: {
+        summary: expect.stringContaining("evidence-based design baseline"),
+      },
       preview: {
         display: {
           projectedSlotPlans: [
@@ -302,7 +305,7 @@ describe("mesocycle setup preview", () => {
     });
 
     expect(setup).toMatchObject({
-      carryForwardRows: [
+      carryForwardRecommendations: [
         {
           exerciseId: "row",
           recommendedAction: "drop",

@@ -1,17 +1,9 @@
-import type {
-  AdaptationType,
-  BlockType,
-  IntensityBias,
-  MesocycleExerciseRoleType,
-  SplitType,
-  VolumeTarget,
-  WorkoutSessionIntent,
-} from "@prisma/client";
+import type { SplitType } from "@prisma/client";
 import {
   buildOrderedFlexibleSlots,
+  type GenesisPolicyBranchResult,
+  type GenesisPolicyContext,
   remapCompatibleCarryForwardIntent,
-  type NextCycleConstraintsInput,
-  type NextCyclePreferencesInput,
   type NextCycleSeedDraft,
   type NextMesocycleCarryForwardDecision,
   type NextMesocycleDesign,
@@ -22,81 +14,105 @@ import {
   type MesocycleSlotAuthoredSemantics,
 } from "./mesocycle-slot-contract";
 
-export type NextMesocycleDesignInput = {
-  sourceMesocycleId: string;
-  source: {
-    focus: string;
-    durationWeeks: number;
-    volumeTarget: VolumeTarget;
-    intensityBias: IntensityBias;
-    blocks: Array<{
-      blockNumber: number;
-      blockType: BlockType;
-      durationWeeks: number;
-      volumeTarget: VolumeTarget;
-      intensityBias: IntensityBias;
-      adaptationType: AdaptationType;
-    }>;
-  };
-  constraints: NextCycleConstraintsInput;
-  preferences: NextCyclePreferencesInput;
-  carryForwardCandidates: Array<{
-    exerciseId: string;
-    exerciseName: string;
-    role: MesocycleExerciseRoleType;
-    priorIntent: WorkoutSessionIntent;
-    priorSlotId?: string;
-    anchorLevel: "required" | "preferred" | "none";
-  }>;
-};
-
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
 
-function resolveRecommendedSessionsPerWeek(input: {
-  constraints: NextCycleConstraintsInput;
-  preferences: NextCyclePreferencesInput;
-}): number {
+function resolveRecommendedSessionsPerWeek(
+  context: GenesisPolicyContext
+): GenesisPolicyBranchResult<number> {
   const hardCap = Math.max(
     1,
     Math.min(
       7,
-      input.constraints.maxSessionsPerWeek ?? input.constraints.availableDaysPerWeek
+      context.constraints.maxSessionsPerWeek ?? context.constraints.availableDaysPerWeek
     )
   );
 
-  if (typeof input.preferences.preferredSessionsPerWeek === "number") {
-    return clamp(input.preferences.preferredSessionsPerWeek, 1, hardCap);
+  if (typeof context.preferences.preferredSessionsPerWeek === "number") {
+    const clamped = clamp(context.preferences.preferredSessionsPerWeek, 1, hardCap);
+    return {
+      decision: clamped,
+      reasonCodes: [
+        clamped === context.preferences.preferredSessionsPerWeek
+          ? "preferred_frequency_honored"
+          : "preferred_frequency_capped_by_constraints",
+      ],
+      signalQuality: "high",
+    };
   }
 
-  return Math.min(4, hardCap);
+  return {
+    decision: Math.min(4, hardCap),
+    reasonCodes: ["default_frequency_cap_applied"],
+    signalQuality: "medium",
+  };
 }
 
 function resolveRecommendedSplitType(input: {
   sessionsPerWeek: number;
-  preferences: NextCyclePreferencesInput;
-}): SplitType {
+  preferences: GenesisPolicyContext["preferences"];
+}): GenesisPolicyBranchResult<SplitType> {
   if (input.preferences.preferredSplitType) {
-    return input.preferences.preferredSplitType;
+    return {
+      decision: input.preferences.preferredSplitType,
+      reasonCodes: [
+        input.preferences.preferredSplitTypeSource === "weekly_schedule_topology"
+          ? "weekly_schedule_split_preference_honored"
+          : "preferred_split_honored",
+      ],
+      signalQuality: "high",
+    };
   }
 
   if (input.sessionsPerWeek >= 4) {
-    return "UPPER_LOWER";
+    return {
+      decision: "UPPER_LOWER",
+      reasonCodes: ["default_upper_lower_for_four_plus_sessions"],
+      signalQuality: "medium",
+    };
   }
 
   if (input.sessionsPerWeek === 3) {
-    return "PPL";
+    return {
+      decision: "PPL",
+      reasonCodes: ["default_ppl_for_three_sessions"],
+      signalQuality: "medium",
+    };
   }
 
-  return "FULL_BODY";
+  return {
+    decision: "FULL_BODY",
+    reasonCodes: ["default_full_body_for_low_frequency"],
+    signalQuality: "medium",
+  };
 }
 
-function getDefaultStartingPoint(): NextMesocycleStartingPoint {
+function resolveSourceProfile(
+  context: GenesisPolicyContext
+): GenesisPolicyBranchResult<NextMesocycleDesign["profile"]> {
   return {
-    volumeEntry: "conservative",
-    baselineSource: "accumulation_preferred",
-    allowNonDeloadFallback: true,
+    decision: {
+      focus: context.sourceProfile.focus,
+      durationWeeks: context.sourceProfile.durationWeeks,
+      volumeTarget: context.sourceProfile.volumeTarget,
+      intensityBias: context.sourceProfile.intensityBias,
+      blocks: context.sourceProfile.blocks,
+    },
+    reasonCodes: ["carry_forward_mesocycle_profile_default"],
+    signalQuality: "medium",
+  };
+}
+
+function resolveStartingPoint(): GenesisPolicyBranchResult<NextMesocycleStartingPoint> {
+  return {
+    decision: {
+      volumeEntry: "conservative",
+      baselineSource: "accumulation_preferred",
+      allowNonDeloadFallback: true,
+    },
+    reasonCodes: ["conservative_entry_after_deload_boundary"],
+    signalQuality: "medium",
   };
 }
 
@@ -126,12 +142,13 @@ function toDesignSlotStructure(input: {
 
 function buildCarryForwardDecision(input: {
   splitType: SplitType;
-  candidate: NextMesocycleDesignInput["carryForwardCandidates"][number];
-}): NextMesocycleCarryForwardDecision {
+  candidate: GenesisPolicyContext["carryForwardCandidateEvidence"][number];
+}): GenesisPolicyBranchResult<NextMesocycleCarryForwardDecision> {
   const action =
     input.candidate.anchorLevel === "required" || input.candidate.role === "CORE_COMPOUND"
       ? "keep"
       : "rotate";
+  const hasReceiptBackedSlotEvidence = Boolean(input.candidate.evidence.latestSourceSlotId);
   const targetIntent =
     action === "keep"
       ? remapCompatibleCarryForwardIntent({
@@ -140,68 +157,103 @@ function buildCarryForwardDecision(input: {
         })
       : undefined;
 
+  if (action === "keep") {
+    const reasonCodes =
+      input.candidate.anchorLevel === "required"
+        ? [
+            hasReceiptBackedSlotEvidence
+              ? "required_anchor_continuity_supported_by_receipt_slot"
+              : "required_anchor_continuity_fallback",
+          ]
+        : [
+            hasReceiptBackedSlotEvidence
+              ? "core_compound_continuity_supported_by_receipt_slot"
+              : "core_compound_continuity_fallback",
+          ];
+
+    return {
+      decision: {
+        exerciseId: input.candidate.exerciseId,
+        role: input.candidate.role,
+        priorIntent: input.candidate.priorIntent,
+        priorSlotId: input.candidate.priorSlotId ?? input.candidate.evidence.latestSourceSlotId,
+        action,
+        targetIntent,
+        signalQuality: hasReceiptBackedSlotEvidence ? "high" : "medium",
+        reasonCodes,
+      },
+      reasonCodes,
+      signalQuality: hasReceiptBackedSlotEvidence ? "high" : "medium",
+    };
+  }
+
+  const reasonCodes =
+    input.candidate.evidence.exposureCount > 0
+      ? ["accessory_rotation_fallback_pending_action_refinement"]
+      : ["accessory_rotation_default"];
+
   return {
-    exerciseId: input.candidate.exerciseId,
-    role: input.candidate.role,
-    priorIntent: input.candidate.priorIntent,
-    priorSlotId: input.candidate.priorSlotId,
-    action,
-    targetIntent,
-    reasonCodes:
-      action === "keep"
-        ? ["core_compound_continuity"]
-        : ["accessory_rotation_default"],
+    decision: {
+      exerciseId: input.candidate.exerciseId,
+      role: input.candidate.role,
+      priorIntent: input.candidate.priorIntent,
+      priorSlotId: input.candidate.priorSlotId ?? input.candidate.evidence.latestSourceSlotId,
+      action,
+      targetIntent,
+      signalQuality: "medium",
+      reasonCodes,
+    },
+    reasonCodes,
+    signalQuality: "medium",
   };
 }
 
-export function designNextMesocycle(input: NextMesocycleDesignInput): NextMesocycleDesign {
+export function designNextMesocycle(context: GenesisPolicyContext): NextMesocycleDesign {
   const designedAt = new Date().toISOString();
-  const sessionsPerWeek = resolveRecommendedSessionsPerWeek({
-    constraints: input.constraints,
-    preferences: input.preferences,
+  const profile = resolveSourceProfile(context);
+  const frequency = resolveRecommendedSessionsPerWeek(context);
+  const split = resolveRecommendedSplitType({
+    sessionsPerWeek: frequency.decision,
+    preferences: context.preferences,
   });
-  const splitType = resolveRecommendedSplitType({
-    sessionsPerWeek,
-    preferences: input.preferences,
-  });
+  const startingPoint = resolveStartingPoint();
   const structure = toDesignSlotStructure({
-    splitType,
-    sessionsPerWeek,
-    daysPerWeek: sessionsPerWeek,
+    splitType: split.decision,
+    sessionsPerWeek: frequency.decision,
+    daysPerWeek: frequency.decision,
   });
+  const carryForwardDecisions = context.carryForwardCandidateEvidence.map((candidate) =>
+    buildCarryForwardDecision({
+      splitType: structure.splitType,
+      candidate,
+    }).decision
+  );
 
   return {
     version: 1,
     designedAt,
-    sourceMesocycleId: input.sourceMesocycleId,
-    profile: {
-      focus: input.source.focus,
-      durationWeeks: input.source.durationWeeks,
-      volumeTarget: input.source.volumeTarget,
-      intensityBias: input.source.intensityBias,
-      blocks: input.source.blocks,
-    },
+    sourceMesocycleId: context.sourceProfile.sourceMesocycleId,
+    profile: profile.decision,
     structure,
     carryForward: {
-      decisions: input.carryForwardCandidates.map((candidate) =>
-        buildCarryForwardDecision({
-          splitType: structure.splitType,
-          candidate,
-        })
-      ),
+      decisions: carryForwardDecisions,
     },
-    startingPoint: getDefaultStartingPoint(),
+    startingPoint: startingPoint.decision,
     explainability: {
-      profileReasonCodes: ["carry_forward_mesocycle_profile_default"],
-      structureReasonCodes: ["upper_lower_default_frequency_cap"],
-      startingPointReasonCodes: ["conservative_entry_after_deload_boundary"],
+      profileReasonCodes: profile.reasonCodes,
+      profileSignalQuality: profile.signalQuality,
+      structureReasonCodes: [...frequency.reasonCodes, ...split.reasonCodes],
+      structureSignalQuality:
+        frequency.signalQuality === "high" || split.signalQuality === "high" ? "high" : "medium",
+      startingPointReasonCodes: startingPoint.reasonCodes,
+      startingPointSignalQuality: startingPoint.signalQuality,
     },
   };
 }
 
 export function buildRecommendedDraftFromDesign(input: {
   design: NextMesocycleDesign;
-  carryForwardCandidates: NextMesocycleDesignInput["carryForwardCandidates"];
+  carryForwardCandidateEvidence: GenesisPolicyContext["carryForwardCandidateEvidence"];
 }): NextCycleSeedDraft {
   const decisionByExercise = new Map(
     input.design.carryForward.decisions.map((decision) => [
@@ -225,7 +277,7 @@ export function buildRecommendedDraftFromDesign(input: {
       })),
     },
     startingPoint: input.design.startingPoint,
-    carryForwardSelections: input.carryForwardCandidates.map((candidate) => {
+    carryForwardSelections: input.carryForwardCandidateEvidence.map((candidate) => {
       const decision = decisionByExercise.get(
         `${candidate.exerciseId}:${candidate.priorIntent}:${candidate.role}`
       );
@@ -288,6 +340,7 @@ export function applyDraftOverridesToDesign(input: {
           action: selection.action,
           targetIntent: selection.action === "keep" ? selection.sessionIntent : undefined,
           targetSlotId: undefined,
+          signalQuality: baseDecision?.signalQuality ?? "medium",
           reasonCodes: baseDecision?.reasonCodes ?? [],
         };
       }),
@@ -332,14 +385,18 @@ export function buildFallbackDesignFromDraft(input: {
         priorIntent: selection.sessionIntent,
         action: selection.action,
         targetIntent: selection.action === "keep" ? selection.sessionIntent : undefined,
+        signalQuality: "medium",
         reasonCodes: [],
       })),
     },
     startingPoint: input.draft.startingPoint,
     explainability: {
       profileReasonCodes: [],
+      profileSignalQuality: "medium",
       structureReasonCodes: ["legacy_pending_handoff_fallback"],
+      structureSignalQuality: "medium",
       startingPointReasonCodes: [],
+      startingPointSignalQuality: "medium",
     },
   };
 }

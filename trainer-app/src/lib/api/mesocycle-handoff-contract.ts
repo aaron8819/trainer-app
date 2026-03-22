@@ -34,6 +34,85 @@ export type NextCyclePreferencesInput = {
   preferredSessionsPerWeek?: number;
 };
 
+export type GenesisPolicySignalQuality = "high" | "medium";
+
+export type GenesisPolicyBranchResult<TDecision> = {
+  decision: TDecision;
+  reasonCodes: string[];
+  signalQuality: GenesisPolicySignalQuality;
+};
+
+export type GenesisPolicyContext = {
+  sourceProfile: {
+    sourceMesocycleId: string;
+    focus: string;
+    durationWeeks: number;
+    volumeTarget: VolumeTarget;
+    intensityBias: IntensityBias;
+    blocks: Array<{
+      blockNumber: number;
+      blockType: BlockType;
+      durationWeeks: number;
+      volumeTarget: VolumeTarget;
+      intensityBias: IntensityBias;
+      adaptationType: AdaptationType;
+    }>;
+  };
+  constraints: NextCycleConstraintsInput;
+  preferences: NextCyclePreferencesInput & {
+    preferredSplitTypeSource?: "constraints_split_type" | "weekly_schedule_topology";
+    preferredSessionsPerWeekSource?: "constraints_days_per_week" | "weekly_schedule_length";
+  };
+  sourceTopology: {
+    splitType: SplitType;
+    sessionsPerWeek: number;
+    daysPerWeek: number;
+    weeklySequence: WorkoutSessionIntent[];
+    slotSource: "persisted_slot_sequence" | "legacy_weekly_schedule";
+    hasPersistedSlotSequence: boolean;
+    slots: Array<{
+      slotId: string;
+      intent: WorkoutSessionIntent;
+      sequenceIndex: number;
+    }>;
+    repeatedIntents: WorkoutSessionIntent[];
+  };
+  closeoutEvidence: {
+    scheduledSessions: number;
+    performedSessions: number;
+    completedSessions: number;
+    advancingSessions: number;
+    nonAdvancingPerformedSessions: number;
+    adherenceRate: number | null;
+    completionRate: number | null;
+    terminalDeloadPerformed: boolean;
+    latestReadiness: {
+      readiness: 1 | 2 | 3 | 4 | 5;
+      signalAgeHours: number;
+    } | null;
+  };
+  carryForwardCandidateEvidence: Array<{
+    exerciseId: string;
+    exerciseName: string;
+    role: MesocycleExerciseRoleType;
+    priorIntent: WorkoutSessionIntent;
+    priorSlotId?: string;
+    anchorLevel: "required" | "preferred" | "none";
+    evidence: {
+      exposureCount: number;
+      advancingExposureCount: number;
+      latestPerformedAt: string | null;
+      latestSourceIntent?: WorkoutSessionIntent;
+      latestSourceSlotId?: string;
+      latestSemanticsKind?:
+        | "advancing"
+        | "gap_fill"
+        | "supplemental"
+        | "non_advancing_generic";
+    };
+  }>;
+};
+
 export type NextMesocycleStartingPoint = {
   volumeEntry: "conservative";
   baselineSource: "accumulation_preferred";
@@ -48,6 +127,7 @@ export type NextMesocycleCarryForwardDecision = {
   action: "keep" | "rotate" | "drop";
   targetIntent?: WorkoutSessionIntent;
   targetSlotId?: string;
+  signalQuality: GenesisPolicySignalQuality;
   reasonCodes: string[];
 };
 
@@ -86,8 +166,11 @@ export type NextMesocycleDesign = {
   startingPoint: NextMesocycleStartingPoint;
   explainability: {
     profileReasonCodes: string[];
+    profileSignalQuality: GenesisPolicySignalQuality;
     structureReasonCodes: string[];
+    structureSignalQuality: GenesisPolicySignalQuality;
     startingPointReasonCodes: string[];
+    startingPointSignalQuality: GenesisPolicySignalQuality;
   };
 };
 

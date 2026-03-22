@@ -7,17 +7,22 @@ import type {
   Prisma,
   SplitType,
   VolumeTarget,
+  WorkoutStatus,
   WorkoutSessionIntent,
 } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { nextCycleSeedDraftUpdateSchema } from "@/lib/validation";
+import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-semantics";
+import { readSessionSlotSnapshot } from "@/lib/evidence/session-decision-receipt";
+import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 import {
   buildOrderedFlexibleSlots,
   findIncompatibleCarryForwardKeeps,
   formatCarryForwardConflictMessage,
   getAllowedIntentsForSplit,
   remapCompatibleCarryForwardIntent,
+  type GenesisPolicyContext,
   type HandoffCarryForwardRecommendation,
   type MesocycleHandoffSummary,
   type NextCycleCarryForwardConflict,
@@ -31,7 +36,6 @@ import {
   applyDraftOverridesToDesign,
   buildRecommendedDraftFromDesign,
   designNextMesocycle,
-  type NextMesocycleDesignInput,
 } from "./mesocycle-genesis-policy";
 import {
   projectSuccessorMesocycle,
@@ -41,6 +45,8 @@ import {
   buildMesocycleSlotPlanSeed,
   projectSuccessorSlotPlansFromSnapshot,
 } from "./mesocycle-handoff-slot-plan-projection";
+import { resolveMesocycleSlotContract } from "./mesocycle-slot-contract";
+import { getLatestReadinessSignalForReader, getSignalAgeHours } from "./readiness";
 import { loadPreloadedGenerationSnapshot } from "./template-session/context-loader";
 
 export {
@@ -82,6 +88,7 @@ type HandoffSourceMesocycle = {
   splitType: SplitType;
   accumulationSessionsCompleted: number;
   deloadSessionsCompleted: number;
+  slotSequenceJson: unknown;
   blocks: Array<{
     blockNumber: number;
     blockType: BlockType;
@@ -103,6 +110,26 @@ type HandoffRoleRow = {
   exercise: {
     name: string;
   };
+};
+
+type HandoffWorkoutRow = {
+  scheduledDate: Date;
+  completedAt: Date | null;
+  status: WorkoutStatus;
+  sessionIntent: WorkoutSessionIntent | null;
+  selectionMode: string | null;
+  selectionMetadata: unknown;
+  advancesSplit: boolean;
+  mesocyclePhaseSnapshot: string | null;
+  exercises: Array<{
+    exerciseId: string;
+  }>;
+};
+
+type HandoffConstraintsRow = {
+  weeklySchedule: WorkoutSessionIntent[];
+  daysPerWeek: number;
+  splitType: SplitType;
 };
 
 type PendingHandoffRow = {
@@ -218,6 +245,7 @@ const nextMesocycleDesignJsonSchema = z.object({
           .enum(["PUSH", "PULL", "LEGS", "UPPER", "LOWER", "FULL_BODY", "BODY_PART"])
           .optional(),
         targetSlotId: z.string().optional(),
+        signalQuality: z.enum(["high", "medium"]).optional(),
         reasonCodes: z.array(z.string()),
       })
     ),
@@ -225,8 +253,11 @@ const nextMesocycleDesignJsonSchema = z.object({
   startingPoint: nextMesocycleStartingPointJsonSchema,
   explainability: z.object({
     profileReasonCodes: z.array(z.string()),
+    profileSignalQuality: z.enum(["high", "medium"]).optional(),
     structureReasonCodes: z.array(z.string()),
+    structureSignalQuality: z.enum(["high", "medium"]).optional(),
     startingPointReasonCodes: z.array(z.string()),
+    startingPointSignalQuality: z.enum(["high", "medium"]).optional(),
   }),
 });
 
@@ -417,16 +448,210 @@ export function sanitizeNextCycleSeedDraft(input: {
   };
 }
 
-function toGenesisCarryForwardCandidate(
-  row: HandoffRoleRow
-): NextMesocycleDesignInput["carryForwardCandidates"][number] {
+function isPerformedWorkoutStatus(status: WorkoutStatus): boolean {
+  return (PERFORMED_WORKOUT_STATUSES as readonly string[]).includes(status);
+}
+
+function inferPreferredSplitTypeFromWeeklySchedule(
+  weeklySchedule: WorkoutSessionIntent[]
+): SplitType | undefined {
+  if (weeklySchedule.length === 0) {
+    return undefined;
+  }
+
+  if (weeklySchedule.every((intent) => intent === "UPPER" || intent === "LOWER")) {
+    return "UPPER_LOWER";
+  }
+
+  if (weeklySchedule.every((intent) => intent === "PUSH" || intent === "PULL" || intent === "LEGS")) {
+    return "PPL";
+  }
+
+  if (weeklySchedule.every((intent) => intent === "FULL_BODY")) {
+    return "FULL_BODY";
+  }
+
+  return undefined;
+}
+
+function buildSourceTopology(input: {
+  source: HandoffSourceMesocycle;
+  weeklySchedule: WorkoutSessionIntent[];
+}): GenesisPolicyContext["sourceTopology"] {
+  const slotContract = resolveMesocycleSlotContract({
+    slotSequenceJson: input.source.slotSequenceJson,
+    weeklySchedule: input.weeklySchedule,
+  });
+  const repeatedIntentCounts = new Map<WorkoutSessionIntent, number>();
+  for (const slot of slotContract.slots) {
+    const intent = slot.intent.toUpperCase() as WorkoutSessionIntent;
+    repeatedIntentCounts.set(intent, (repeatedIntentCounts.get(intent) ?? 0) + 1);
+  }
+
   return {
-    exerciseId: row.exerciseId,
-    exerciseName: row.exercise.name,
-    role: row.role,
-    priorIntent: row.sessionIntent,
-    anchorLevel: row.role === "CORE_COMPOUND" ? "required" : "none",
+    splitType: input.source.splitType,
+    sessionsPerWeek: input.source.sessionsPerWeek,
+    daysPerWeek: input.source.daysPerWeek,
+    weeklySequence:
+      input.weeklySchedule.length > 0
+        ? input.weeklySchedule
+        : slotContract.slots.map((slot) => slot.intent.toUpperCase() as WorkoutSessionIntent),
+    slotSource:
+      slotContract.source === "mesocycle_slot_sequence"
+        ? "persisted_slot_sequence"
+        : "legacy_weekly_schedule",
+    hasPersistedSlotSequence: slotContract.hasPersistedSequence,
+    slots: slotContract.slots.map((slot) => ({
+      slotId: slot.slotId,
+      intent: slot.intent.toUpperCase() as WorkoutSessionIntent,
+      sequenceIndex: slot.sequenceIndex,
+    })),
+    repeatedIntents: Array.from(repeatedIntentCounts.entries())
+      .filter(([, count]) => count > 1)
+      .map(([intent]) => intent),
   };
+}
+
+function buildCloseoutEvidence(input: {
+  workouts: HandoffWorkoutRow[];
+  latestReadiness: Awaited<ReturnType<typeof getLatestReadinessSignalForReader>>;
+}): GenesisPolicyContext["closeoutEvidence"] {
+  const performedWorkouts = input.workouts
+    .filter((workout) => isPerformedWorkoutStatus(workout.status))
+    .map((workout) => ({
+      workout,
+      semantics: deriveSessionSemantics({
+        advancesSplit: workout.advancesSplit,
+        selectionMetadata: workout.selectionMetadata,
+        selectionMode: workout.selectionMode,
+        sessionIntent: workout.sessionIntent,
+        mesocyclePhase: workout.mesocyclePhaseSnapshot,
+      }),
+    }));
+  const completedSessions = performedWorkouts.filter(
+    ({ workout }) => workout.status === "COMPLETED"
+  ).length;
+  const advancingSessions = performedWorkouts.filter(
+    ({ semantics }) => semantics.advancesLifecycle
+  ).length;
+
+  return {
+    scheduledSessions: input.workouts.length,
+    performedSessions: performedWorkouts.length,
+    completedSessions,
+    advancingSessions,
+    nonAdvancingPerformedSessions: Math.max(0, performedWorkouts.length - advancingSessions),
+    adherenceRate:
+      input.workouts.length > 0 ? performedWorkouts.length / input.workouts.length : null,
+    completionRate:
+      input.workouts.length > 0 ? completedSessions / input.workouts.length : null,
+    terminalDeloadPerformed: performedWorkouts.some(({ semantics }) => semantics.isDeload),
+    latestReadiness: input.latestReadiness
+      ? {
+          readiness: input.latestReadiness.subjective.readiness,
+          signalAgeHours: getSignalAgeHours(input.latestReadiness),
+        }
+      : null,
+  };
+}
+
+function buildCarryForwardCandidateEvidence(input: {
+  roles: HandoffRoleRow[];
+  workouts: HandoffWorkoutRow[];
+}): GenesisPolicyContext["carryForwardCandidateEvidence"] {
+  const evidenceByKey = new Map<
+    string,
+    {
+      exposureCount: number;
+      advancingExposureCount: number;
+      latestPerformedAt: string | null;
+      latestSourceIntent?: WorkoutSessionIntent;
+      latestSourceSlotId?: string;
+      latestSemanticsKind?:
+        | "advancing"
+        | "gap_fill"
+        | "supplemental"
+        | "non_advancing_generic";
+      latestTimestamp: number;
+    }
+  >();
+
+  for (const workout of input.workouts) {
+    if (!isPerformedWorkoutStatus(workout.status)) {
+      continue;
+    }
+
+    const semantics = deriveSessionSemantics({
+      advancesSplit: workout.advancesSplit,
+      selectionMetadata: workout.selectionMetadata,
+      selectionMode: workout.selectionMode,
+      sessionIntent: workout.sessionIntent,
+      mesocyclePhase: workout.mesocyclePhaseSnapshot,
+    });
+    const sessionSlot = readSessionSlotSnapshot(workout.selectionMetadata);
+    const performedAt = (workout.completedAt ?? workout.scheduledDate).toISOString();
+    const performedTimestamp = new Date(performedAt).getTime();
+
+    for (const workoutExercise of workout.exercises) {
+      const intent = (sessionSlot?.intent ?? workout.sessionIntent ?? null) as WorkoutSessionIntent | null;
+      if (!intent) {
+        continue;
+      }
+
+      const roleMatches = input.roles.filter(
+        (role) =>
+          role.exerciseId === workoutExercise.exerciseId && role.sessionIntent === intent
+      );
+
+      for (const role of roleMatches) {
+        const key = `${role.exerciseId}:${role.sessionIntent}:${role.role}`;
+        const existing = evidenceByKey.get(key);
+        const nextExposureCount = (existing?.exposureCount ?? 0) + 1;
+        const nextAdvancingExposureCount =
+          (existing?.advancingExposureCount ?? 0) + (semantics.advancesLifecycle ? 1 : 0);
+        const isNewer = !existing || performedTimestamp >= existing.latestTimestamp;
+        evidenceByKey.set(key, {
+          exposureCount: nextExposureCount,
+          advancingExposureCount: nextAdvancingExposureCount,
+          latestPerformedAt: isNewer ? performedAt : existing.latestPerformedAt,
+          latestSourceIntent: isNewer ? intent : existing.latestSourceIntent,
+          latestSourceSlotId: isNewer ? sessionSlot?.slotId : existing.latestSourceSlotId,
+          latestSemanticsKind: isNewer ? semantics.kind : existing.latestSemanticsKind,
+          latestTimestamp: isNewer ? performedTimestamp : existing.latestTimestamp,
+        });
+      }
+    }
+  }
+
+  return input.roles.map((row) => {
+    const evidence =
+      evidenceByKey.get(`${row.exerciseId}:${row.sessionIntent}:${row.role}`) ?? {
+        exposureCount: 0,
+        advancingExposureCount: 0,
+        latestPerformedAt: null,
+        latestSourceIntent: undefined,
+        latestSourceSlotId: undefined,
+        latestSemanticsKind: undefined,
+        latestTimestamp: 0,
+      };
+
+    return {
+      exerciseId: row.exerciseId,
+      exerciseName: row.exercise.name,
+      role: row.role,
+      priorIntent: row.sessionIntent,
+      priorSlotId: evidence.latestSourceSlotId,
+      anchorLevel: row.role === "CORE_COMPOUND" ? "required" : "none",
+      evidence: {
+        exposureCount: evidence.exposureCount,
+        advancingExposureCount: evidence.advancingExposureCount,
+        latestPerformedAt: evidence.latestPerformedAt,
+        latestSourceIntent: evidence.latestSourceIntent,
+        latestSourceSlotId: evidence.latestSourceSlotId,
+        latestSemanticsKind: evidence.latestSemanticsKind,
+      },
+    };
+  });
 }
 
 function buildCarryForwardRecommendations(input: {
@@ -450,20 +675,36 @@ function buildCarryForwardRecommendations(input: {
       sessionIntent: row.sessionIntent,
       role: row.role,
       recommendation,
-      signalQuality: recommendation === "keep" ? "high" : "medium",
+      signalQuality: decision?.signalQuality ?? "medium",
       reasonCodes: decision?.reasonCodes ?? [],
     };
   });
 }
 
-function buildGenesisPolicyInput(input: {
+function buildGenesisPolicyContext(input: {
   source: HandoffSourceMesocycle;
-  availableDaysPerWeek: number;
+  constraints: HandoffConstraintsRow | null;
   roles: HandoffRoleRow[];
-}): NextMesocycleDesignInput {
+  workouts: HandoffWorkoutRow[];
+  latestReadiness: Awaited<ReturnType<typeof getLatestReadinessSignalForReader>>;
+}): GenesisPolicyContext {
+  const weeklySchedule = input.constraints?.weeklySchedule ?? [];
+  const sourceTopology = buildSourceTopology({
+    source: input.source,
+    weeklySchedule,
+  });
+  const preferredSessionsPerWeek =
+    weeklySchedule.length > 0
+      ? weeklySchedule.length
+      : input.constraints?.daysPerWeek;
+  const preferredSplitType =
+    input.constraints?.splitType && input.constraints.splitType !== "CUSTOM"
+      ? input.constraints.splitType
+      : inferPreferredSplitTypeFromWeeklySchedule(weeklySchedule);
+
   return {
-    sourceMesocycleId: input.source.id,
-    source: {
+    sourceProfile: {
+      sourceMesocycleId: input.source.id,
       focus: input.source.focus,
       durationWeeks: input.source.durationWeeks,
       volumeTarget: input.source.volumeTarget,
@@ -478,32 +719,63 @@ function buildGenesisPolicyInput(input: {
       })),
     },
     constraints: {
-      availableDaysPerWeek: input.availableDaysPerWeek,
+      availableDaysPerWeek: input.constraints?.daysPerWeek ?? input.source.daysPerWeek,
     },
-    preferences: {},
-    carryForwardCandidates: input.roles.map(toGenesisCarryForwardCandidate),
+    preferences: {
+      ...(preferredSplitType ? { preferredSplitType } : {}),
+      ...(preferredSplitType
+        ? {
+            preferredSplitTypeSource:
+              input.constraints?.splitType && input.constraints.splitType !== "CUSTOM"
+                ? ("constraints_split_type" as const)
+                : ("weekly_schedule_topology" as const),
+          }
+        : {}),
+      ...(typeof preferredSessionsPerWeek === "number" ? { preferredSessionsPerWeek } : {}),
+      ...(typeof preferredSessionsPerWeek === "number"
+        ? {
+            preferredSessionsPerWeekSource:
+              weeklySchedule.length > 0
+                ? ("weekly_schedule_length" as const)
+                : ("constraints_days_per_week" as const),
+          }
+        : {}),
+    },
+    sourceTopology,
+    closeoutEvidence: buildCloseoutEvidence({
+      workouts: input.workouts,
+      latestReadiness: input.latestReadiness,
+    }),
+    carryForwardCandidateEvidence: buildCarryForwardCandidateEvidence({
+      roles: input.roles,
+      workouts: input.workouts,
+    }),
   };
 }
 
 function buildRecommendedArtifacts(input: {
   source: HandoffSourceMesocycle;
-  availableDaysPerWeek: number;
+  constraints: HandoffConstraintsRow | null;
   roles: HandoffRoleRow[];
+  workouts: HandoffWorkoutRow[];
+  latestReadiness: Awaited<ReturnType<typeof getLatestReadinessSignalForReader>>;
 }): {
+  policyContext: GenesisPolicyContext;
   recommendedDesign: NextMesocycleDesign;
   recommendedNextSeed: NextCycleSeedDraft;
   carryForwardRecommendations: HandoffCarryForwardRecommendation[];
 } {
-  const policyInput = buildGenesisPolicyInput(input);
-  const recommendedDesign = designNextMesocycle(policyInput);
+  const policyContext = buildGenesisPolicyContext(input);
+  const recommendedDesign = designNextMesocycle(policyContext);
   const recommendedNextSeed = normalizeNextCycleSeedDraft(
     buildRecommendedDraftFromDesign({
       design: recommendedDesign,
-      carryForwardCandidates: policyInput.carryForwardCandidates,
+      carryForwardCandidateEvidence: policyContext.carryForwardCandidateEvidence,
     })
   );
 
   return {
+    policyContext,
     recommendedDesign,
     recommendedNextSeed,
     carryForwardRecommendations: buildCarryForwardRecommendations({
@@ -567,11 +839,31 @@ function normalizeStartingPoint(
   };
 }
 
+function normalizeRecommendedDesign(design: NextMesocycleDesign): NextMesocycleDesign {
+  return {
+    ...design,
+    carryForward: {
+      decisions: design.carryForward.decisions.map((decision) => ({
+        ...decision,
+        signalQuality: decision.signalQuality ?? "medium",
+      })),
+    },
+    explainability: {
+      ...design.explainability,
+      profileSignalQuality: design.explainability.profileSignalQuality ?? "medium",
+      structureSignalQuality: design.explainability.structureSignalQuality ?? "medium",
+      startingPointSignalQuality: design.explainability.startingPointSignalQuality ?? "medium",
+    },
+  };
+}
+
 function resolveRecommendedArtifactsForPendingHandoff(input: {
   summary: MesocycleHandoffSummary;
   source: HandoffSourceMesocycle;
+  constraints: HandoffConstraintsRow | null;
   roles: HandoffRoleRow[];
-  availableDaysPerWeek: number;
+  workouts: HandoffWorkoutRow[];
+  latestReadiness: Awaited<ReturnType<typeof getLatestReadinessSignalForReader>>;
 }): {
   recommendedDesign: NextMesocycleDesign;
   recommendedNextSeed: NextCycleSeedDraft;
@@ -580,22 +872,26 @@ function resolveRecommendedArtifactsForPendingHandoff(input: {
   if (input.summary.recommendedDesign && input.summary.recommendedNextSeed) {
     return {
       recommendedDesign: input.summary.recommendedDesign,
-      recommendedNextSeed: input.summary.recommendedNextSeed,
-      carryForwardRecommendations:
+        recommendedNextSeed: input.summary.recommendedNextSeed,
+        carryForwardRecommendations:
         input.summary.carryForwardRecommendations.length > 0
           ? input.summary.carryForwardRecommendations
           : buildRecommendedArtifacts({
               source: input.source,
-              availableDaysPerWeek: input.availableDaysPerWeek,
+              constraints: input.constraints,
               roles: input.roles,
+              workouts: input.workouts,
+              latestReadiness: input.latestReadiness,
             }).carryForwardRecommendations,
     };
   }
 
   return buildRecommendedArtifacts({
     source: input.source,
-    availableDaysPerWeek: input.availableDaysPerWeek,
+    constraints: input.constraints,
     roles: input.roles,
+    workouts: input.workouts,
+    latestReadiness: input.latestReadiness,
   });
 }
 
@@ -623,7 +919,9 @@ export function readMesocycleHandoffSummary(value: unknown): MesocycleHandoffSum
       ...parsed.data.recommendedNextSeed,
       startingPoint: normalizeStartingPoint(parsed.data.recommendedNextSeed.startingPoint),
     }),
-    recommendedDesign: parsed.data.recommendedDesign as NextMesocycleDesign | undefined,
+    recommendedDesign: parsed.data.recommendedDesign
+      ? normalizeRecommendedDesign(parsed.data.recommendedDesign as NextMesocycleDesign)
+      : undefined,
   };
 }
 
@@ -782,6 +1080,7 @@ export async function loadHandoffSourceMesocycle(
       splitType: true,
       accumulationSessionsCompleted: true,
       deloadSessionsCompleted: true,
+      slotSequenceJson: true,
       blocks: {
         orderBy: { blockNumber: "asc" },
         select: {
@@ -831,19 +1130,27 @@ export async function enterMesocycleHandoffInTransaction(
   mesocycleId: string
 ): Promise<Mesocycle> {
   const source = await loadHandoffSourceMesocycle(tx, mesocycleId);
-  const [constraints, roles] = await Promise.all([
+  const roles = await loadHandoffRoleRows(tx, mesocycleId);
+  const candidateExerciseIds = Array.from(new Set(roles.map((role) => role.exerciseId)));
+  const [constraints, workouts, latestReadiness] = await Promise.all([
     tx.constraints.findUnique({
       where: { userId: source.macroCycle.userId },
-      select: { weeklySchedule: true, daysPerWeek: true },
+      select: { weeklySchedule: true, daysPerWeek: true, splitType: true },
     }),
-    loadHandoffRoleRows(tx, mesocycleId),
+    loadHandoffWorkoutRows(tx, {
+      mesocycleId,
+      candidateExerciseIds,
+    }),
+    getLatestReadinessSignalForReader(tx, source.macroCycle.userId),
   ]);
 
   const closedAt = new Date();
   const recommended = buildRecommendedArtifacts({
     source,
-    availableDaysPerWeek: constraints?.daysPerWeek ?? source.daysPerWeek,
+    constraints,
     roles,
+    workouts,
+    latestReadiness,
   });
   const handoffSummary = buildHandoffSummary({
     mesocycle: source,
@@ -862,6 +1169,35 @@ export async function enterMesocycleHandoffInTransaction(
       closedAt,
       handoffSummaryJson: handoffSummary as Prisma.InputJsonValue,
       nextSeedDraftJson: recommended.recommendedNextSeed as Prisma.InputJsonValue,
+    },
+  });
+}
+
+async function loadHandoffWorkoutRows(
+  tx: Tx,
+  input: { mesocycleId: string; candidateExerciseIds: string[] }
+): Promise<HandoffWorkoutRow[]> {
+  return tx.workout.findMany({
+    where: { mesocycleId: input.mesocycleId },
+    orderBy: [{ scheduledDate: "desc" }],
+    select: {
+      scheduledDate: true,
+      completedAt: true,
+      status: true,
+      sessionIntent: true,
+      selectionMode: true,
+      selectionMetadata: true,
+      advancesSplit: true,
+      mesocyclePhaseSnapshot: true,
+      exercises: {
+        where:
+          input.candidateExerciseIds.length > 0
+            ? { exerciseId: { in: input.candidateExerciseIds } }
+            : undefined,
+        select: {
+          exerciseId: true,
+        },
+      },
     },
   });
 }
@@ -922,18 +1258,30 @@ export async function acceptMesocycleHandoffInTransaction(
           recommendedNextSeed: summary.recommendedNextSeed,
           carryForwardRecommendations: summary.carryForwardRecommendations,
         }
-      : resolveRecommendedArtifactsForPendingHandoff({
-          summary,
-          source,
-          roles: await loadHandoffRoleRows(tx, mesocycleId),
-          availableDaysPerWeek:
-            (
-              await tx.constraints.findUnique({
-                where: { userId: source.macroCycle.userId },
-                select: { daysPerWeek: true },
-              })
-            )?.daysPerWeek ?? source.daysPerWeek,
-        });
+      : await (async () => {
+          const roles = await loadHandoffRoleRows(tx, mesocycleId);
+          const candidateExerciseIds = Array.from(new Set(roles.map((role) => role.exerciseId)));
+          const [constraints, workouts, latestReadiness] = await Promise.all([
+            tx.constraints.findUnique({
+              where: { userId: source.macroCycle.userId },
+              select: { weeklySchedule: true, daysPerWeek: true, splitType: true },
+            }),
+            loadHandoffWorkoutRows(tx, {
+              mesocycleId,
+              candidateExerciseIds,
+            }),
+            getLatestReadinessSignalForReader(tx, source.macroCycle.userId),
+          ]);
+
+          return resolveRecommendedArtifactsForPendingHandoff({
+            summary,
+            source,
+            constraints,
+            roles,
+            workouts,
+            latestReadiness,
+          });
+        })();
   const draft = sanitizeNextCycleSeedDraft({
     draft: storedDraft,
     sourceMesocycleId: source.id,

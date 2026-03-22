@@ -21,6 +21,7 @@ vi.mock("./mesocycle-handoff-slot-plan-projection", async (importOriginal) => {
 
 import {
   acceptMesocycleHandoffInTransaction,
+  enterMesocycleHandoffInTransaction,
   findIncompatibleCarryForwardKeeps,
   formatCarryForwardConflictMessage,
   loadClosedMesocycleArchive,
@@ -177,6 +178,7 @@ function buildRecommendedDesign(): NextMesocycleDesign {
           priorIntent: "UPPER",
           action: "keep",
           targetIntent: "UPPER",
+          signalQuality: "high",
           reasonCodes: ["core_compound_continuity"],
         },
         {
@@ -184,6 +186,7 @@ function buildRecommendedDesign(): NextMesocycleDesign {
           role: "ACCESSORY",
           priorIntent: "UPPER",
           action: "rotate",
+          signalQuality: "medium",
           reasonCodes: ["accessory_rotation_default"],
         },
       ],
@@ -195,8 +198,11 @@ function buildRecommendedDesign(): NextMesocycleDesign {
     },
     explainability: {
       profileReasonCodes: ["carry_forward_mesocycle_profile_default"],
+      profileSignalQuality: "medium",
       structureReasonCodes: ["upper_lower_default_frequency_cap"],
+      structureSignalQuality: "medium",
       startingPointReasonCodes: ["conservative_entry_after_deload_boundary"],
+      startingPointSignalQuality: "medium",
     },
   };
 }
@@ -486,6 +492,186 @@ describe("handoff readers", () => {
       isEditableHandoff: false,
       draft: null,
     });
+  });
+});
+
+describe("enterMesocycleHandoffInTransaction", () => {
+  it("persists returned structure and carry-forward reason/signal outputs into the frozen summary", async () => {
+    const findUnique = vi.fn().mockResolvedValue({
+      id: "meso-1",
+      macroCycleId: "macro-1",
+      mesoNumber: 1,
+      startWeek: 0,
+      durationWeeks: 5,
+      focus: "Upper Hypertrophy",
+      volumeTarget: "HIGH",
+      intensityBias: "HYPERTROPHY",
+      sessionsPerWeek: 4,
+      daysPerWeek: 4,
+      splitType: "UPPER_LOWER",
+      accumulationSessionsCompleted: 8,
+      deloadSessionsCompleted: 1,
+      slotSequenceJson: {
+        version: 1,
+        source: "handoff_draft",
+        sequenceMode: "ordered_flexible",
+        slots: [
+          { slotId: "upper_a", intent: "UPPER" },
+          { slotId: "lower_a", intent: "LOWER" },
+          { slotId: "upper_b", intent: "UPPER" },
+          { slotId: "lower_b", intent: "LOWER" },
+        ],
+      },
+      blocks: [],
+      macroCycle: { userId: "user-1" },
+    });
+    const update = vi.fn().mockResolvedValue({ id: "meso-1", state: "AWAITING_HANDOFF" });
+    const roleFindMany = vi.fn().mockResolvedValue([
+      {
+        exerciseId: "bench",
+        sessionIntent: "UPPER",
+        role: "CORE_COMPOUND",
+        exercise: { name: "Bench Press" },
+      },
+      {
+        exerciseId: "row",
+        sessionIntent: "UPPER",
+        role: "ACCESSORY",
+        exercise: { name: "Chest-Supported Row" },
+      },
+    ]);
+    const constraintsFindUnique = vi.fn().mockResolvedValue({
+      weeklySchedule: ["PUSH", "PULL", "LEGS", "PUSH", "PULL"],
+      daysPerWeek: 5,
+      splitType: "PPL",
+    });
+    const workoutFindMany = vi.fn().mockResolvedValue([
+      {
+        scheduledDate: new Date("2026-03-24T00:00:00.000Z"),
+        completedAt: new Date("2026-03-24T01:00:00.000Z"),
+        status: "COMPLETED",
+        sessionIntent: "UPPER",
+        selectionMode: "AUTO",
+        selectionMetadata: {
+          sessionDecisionReceipt: {
+            version: 1,
+            cycleContext: {
+              weekInMeso: 4,
+              weekInBlock: 4,
+              phase: "ACCUMULATION",
+              blockType: "accumulation",
+              isDeload: false,
+              source: "computed",
+            },
+            sessionSlot: {
+              slotId: "upper_a",
+              intent: "UPPER",
+              sequenceIndex: 0,
+              source: "mesocycle_slot_sequence",
+            },
+            deloadDecision: {
+              mode: "none",
+              reason: [],
+              reductionPercent: 0,
+              appliedTo: "none",
+            },
+            lifecycleVolume: {
+              source: "lifecycle",
+            },
+            readiness: {
+              wasAutoregulated: false,
+              signalAgeHours: 6,
+              fatigueScoreOverall: 0.72,
+              intensityScaling: {
+                applied: false,
+                exerciseIds: [],
+                scaledUpCount: 0,
+                scaledDownCount: 0,
+              },
+            },
+            plannerDiagnosticsMode: "standard",
+            exceptions: [],
+          },
+        },
+        advancesSplit: true,
+        mesocyclePhaseSnapshot: "ACCUMULATION",
+        exercises: [{ exerciseId: "bench" }, { exerciseId: "row" }],
+      },
+    ]);
+    const readinessFindFirst = vi.fn().mockResolvedValue({
+      timestamp: new Date("2026-03-24T06:00:00.000Z"),
+      userId: "user-1",
+      whoopRecovery: null,
+      whoopStrain: null,
+      whoopHrv: null,
+      whoopSleepQuality: null,
+      whoopSleepHours: null,
+      subjectiveReadiness: 4,
+      subjectiveMotivation: 4,
+      subjectiveSoreness: {},
+      subjectiveStress: 2,
+      performanceRpeDeviation: 0,
+      performanceStalls: 0,
+      performanceCompliance: 1,
+    });
+
+    await enterMesocycleHandoffInTransaction(
+      {
+        mesocycle: {
+          findUnique,
+          update,
+        },
+        mesocycleExerciseRole: {
+          findMany: roleFindMany,
+        },
+        constraints: {
+          findUnique: constraintsFindUnique,
+        },
+        workout: {
+          findMany: workoutFindMany,
+        },
+        readinessSignal: {
+          findFirst: readinessFindFirst,
+        },
+      } as never,
+      "meso-1"
+    );
+
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          handoffSummaryJson: expect.objectContaining({
+            carryForwardRecommendations: [
+              expect.objectContaining({
+                exerciseId: "bench",
+                recommendation: "keep",
+                signalQuality: "high",
+                reasonCodes: ["required_anchor_continuity_supported_by_receipt_slot"],
+              }),
+              expect.objectContaining({
+                exerciseId: "row",
+                recommendation: "rotate",
+                signalQuality: "medium",
+                reasonCodes: ["accessory_rotation_fallback_pending_action_refinement"],
+              }),
+            ],
+            recommendedDesign: expect.objectContaining({
+              structure: expect.objectContaining({
+                sessionsPerWeek: 5,
+                splitType: "PPL",
+              }),
+              explainability: expect.objectContaining({
+                structureReasonCodes: [
+                  "preferred_frequency_honored",
+                  "preferred_split_honored",
+                ],
+                structureSignalQuality: "high",
+              }),
+            }),
+          }),
+        }),
+      })
+    );
   });
 });
 

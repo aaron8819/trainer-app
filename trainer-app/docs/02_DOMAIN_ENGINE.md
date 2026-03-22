@@ -291,6 +291,11 @@ SetLog / logged performance
   - `loadMesocycleReview()` reads frozen handoff facts plus live derived closeout metrics
   - `loadMesocycleSetupFromPrisma()` reads the mutable setup draft against the frozen recommendation
   - `acceptMesocycleHandoffInTransaction()` is the only canonical path that creates the successor mesocycle
+- Mesocycle genesis recommendation ownership remains in `src/lib/api/mesocycle-genesis-policy.ts`, but live evidence normalization now happens once in `enterMesocycleHandoffInTransaction()` through a single `GenesisPolicyContext`. That context carries policy-relevant source profile, constraints, normalized split/frequency preferences, source slot topology, mesocycle closeout/adherence evidence, latest readiness, and receipt-backed carry-forward candidate evidence rather than raw Prisma rows.
+- Phase 1 genesis explainability is branch-accurate by contract:
+  - structure recommendation reason codes now reflect the actual preferred-vs-default branch that fired
+  - preferred split/frequency signals from current handoff constraints are honored when present and still capped by hard availability constraints
+  - carry-forward branch outputs now persist `reasonCodes` plus `signalQuality`, where `high` is reserved for concrete evidence-driven branches and `medium` marks fallback/default behavior
 - Acceptance semantics are transactionally strict:
   - sanitize the draft against the frozen recommendation envelope
   - reject `keep` carry-forward selections whose original `sessionIntent` no longer exists after split/session edits

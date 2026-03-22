@@ -8,6 +8,11 @@ import type {
   PerformanceSignals,
   WhoopData,
 } from "@/lib/engine/readiness/types";
+import type { Prisma } from "@prisma/client";
+
+type ReadinessSignalReader =
+  | Pick<typeof prisma, "readinessSignal">
+  | Pick<Prisma.TransactionClient, "readinessSignal">;
 
 /**
  * Compute performance signals from recent workout history
@@ -132,20 +137,25 @@ export async function computePerformanceSignals(
 export async function getLatestReadinessSignal(
   userId: string
 ): Promise<ReadinessSignal | null> {
-  const signal = await prisma.readinessSignal.findFirst({
-    where: { userId },
-    orderBy: { timestamp: "desc" },
-  });
+  return getLatestReadinessSignalForReader(prisma, userId);
+}
 
-  if (!signal) return null;
-
-  // Check staleness (Phase 3.5): signals > 48 hours old are expired
-  const ageMs = new Date().getTime() - signal.timestamp.getTime();
-  if (ageMs > SIGNAL_STALENESS_THRESHOLD_MS) {
-    return null; // Expired - caller will fall back to default fatigue score
-  }
-
-  // Map DB model to engine type
+function mapReadinessSignalRecord(signal: {
+  timestamp: Date;
+  userId: string;
+  whoopRecovery: number | null;
+  whoopStrain: number | null;
+  whoopHrv: number | null;
+  whoopSleepQuality: number | null;
+  whoopSleepHours: number | null;
+  subjectiveReadiness: number;
+  subjectiveMotivation: number;
+  subjectiveSoreness: unknown;
+  subjectiveStress: number | null;
+  performanceRpeDeviation: number;
+  performanceStalls: number;
+  performanceCompliance: number;
+}): ReadinessSignal {
   return {
     timestamp: signal.timestamp,
     userId: signal.userId,
@@ -173,6 +183,26 @@ export async function getLatestReadinessSignal(
       volumeComplianceRate: signal.performanceCompliance,
     },
   };
+}
+
+export async function getLatestReadinessSignalForReader(
+  reader: ReadinessSignalReader,
+  userId: string
+): Promise<ReadinessSignal | null> {
+  const signal = await reader.readinessSignal.findFirst({
+    where: { userId },
+    orderBy: { timestamp: "desc" },
+  });
+
+  if (!signal) return null;
+
+  // Check staleness (Phase 3.5): signals > 48 hours old are expired
+  const ageMs = new Date().getTime() - signal.timestamp.getTime();
+  if (ageMs > SIGNAL_STALENESS_THRESHOLD_MS) {
+    return null; // Expired - caller will fall back to default fatigue score
+  }
+
+  return mapReadinessSignalRecord(signal);
 }
 
 /**

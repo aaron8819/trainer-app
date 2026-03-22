@@ -190,7 +190,7 @@ const handoffCarryForwardRecommendationSchema = z.object({
   exerciseName: z.string().min(1),
   sessionIntent: z.enum(["PUSH", "PULL", "LEGS", "UPPER", "LOWER", "FULL_BODY", "BODY_PART"]),
   role: z.enum(["CORE_COMPOUND", "ACCESSORY"]),
-  recommendation: z.enum(["keep", "rotate"]),
+  recommendation: z.enum(["keep", "rotate", "drop"]),
   signalQuality: z.enum(["high", "medium"]),
   reasonCodes: z.array(z.string()),
 });
@@ -667,7 +667,7 @@ function buildCarryForwardRecommendations(input: {
 
   return input.roles.map((row) => {
     const decision = decisionByKey.get(`${row.exerciseId}:${row.sessionIntent}:${row.role}`);
-    const recommendation = decision?.action === "keep" ? "keep" : "rotate";
+    const recommendation = decision?.action ?? "rotate";
 
     return {
       exerciseId: row.exerciseId,

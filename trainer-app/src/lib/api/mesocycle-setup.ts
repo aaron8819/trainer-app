@@ -33,7 +33,7 @@ export type MesocycleSetupCarryForwardRow = {
   exerciseName: string;
   sessionIntent: string;
   role: string;
-  recommendedAction: "keep" | "rotate";
+  recommendedAction: "keep" | "rotate" | "drop";
   draftAction: "keep" | "rotate" | "drop";
   signalQuality: "high" | "medium";
   reasonCodes: string[];

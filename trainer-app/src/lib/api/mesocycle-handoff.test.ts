@@ -652,7 +652,7 @@ describe("enterMesocycleHandoffInTransaction", () => {
                 exerciseId: "row",
                 recommendation: "rotate",
                 signalQuality: "medium",
-                reasonCodes: ["accessory_rotation_fallback_pending_action_refinement"],
+                reasonCodes: ["carry_forward_rotation_ambiguous_slot_target"],
               }),
             ],
             recommendedDesign: expect.objectContaining({

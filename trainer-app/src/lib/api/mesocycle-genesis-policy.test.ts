@@ -184,6 +184,7 @@ describe("designNextMesocycle", () => {
               exposureCount: 2,
               advancingExposureCount: 2,
               latestPerformedAt: "2026-03-29T00:00:00.000Z",
+              latestSemanticsKind: "advancing",
             },
           },
           {
@@ -201,6 +202,31 @@ describe("designNextMesocycle", () => {
               latestSemanticsKind: "advancing",
             },
           },
+          {
+            exerciseId: "raise",
+            exerciseName: "Lateral Raise",
+            role: "ACCESSORY",
+            priorIntent: "UPPER",
+            anchorLevel: "none",
+            evidence: {
+              exposureCount: 1,
+              advancingExposureCount: 1,
+              latestPerformedAt: "2026-04-01T00:00:00.000Z",
+              latestSemanticsKind: "advancing",
+            },
+          },
+          {
+            exerciseId: "fly",
+            exerciseName: "Cable Fly",
+            role: "ACCESSORY",
+            priorIntent: "UPPER",
+            anchorLevel: "none",
+            evidence: {
+              exposureCount: 0,
+              advancingExposureCount: 0,
+              latestPerformedAt: null,
+            },
+          },
         ],
       })
     );
@@ -209,20 +235,84 @@ describe("designNextMesocycle", () => {
       expect.objectContaining({
         exerciseId: "bench",
         action: "keep",
+        targetSlotId: "upper_a",
         signalQuality: "high",
-        reasonCodes: ["required_anchor_continuity_supported_by_receipt_slot"],
+        reasonCodes: [
+          "required_anchor_continuity_supported_by_receipt_slot",
+          "repeated_slot_target_mapped_from_prior_slot",
+        ],
       }),
       expect.objectContaining({
         exerciseId: "squat",
         action: "keep",
-        signalQuality: "medium",
-        reasonCodes: ["required_anchor_continuity_fallback"],
+        signalQuality: "high",
+        reasonCodes: ["required_anchor_continuity_supported_by_advancing_exposure"],
       }),
       expect.objectContaining({
         exerciseId: "curl",
+        action: "keep",
+        targetSlotId: "upper_b",
+        signalQuality: "high",
+        reasonCodes: [
+          "accessory_continuity_supported_by_receipt_slot",
+          "repeated_slot_target_mapped_from_prior_slot",
+        ],
+      }),
+      expect.objectContaining({
+        exerciseId: "raise",
         action: "rotate",
         signalQuality: "medium",
-        reasonCodes: ["accessory_rotation_fallback_pending_action_refinement"],
+        reasonCodes: ["carry_forward_rotation_ambiguous_slot_target"],
+      }),
+      expect.objectContaining({
+        exerciseId: "fly",
+        action: "drop",
+        signalQuality: "high",
+        reasonCodes: ["accessory_drop_no_mesocycle_exposure"],
+      }),
+    ]);
+  });
+
+  it("falls back to intent-level targeting when repeated-slot mapping is not exact", () => {
+    const design = designNextMesocycle(
+      buildContext({
+        constraints: {
+          availableDaysPerWeek: 2,
+        },
+        preferences: {
+          preferredSessionsPerWeek: 2,
+          preferredSessionsPerWeekSource: "constraints_days_per_week",
+          preferredSplitType: "UPPER_LOWER",
+          preferredSplitTypeSource: "constraints_split_type",
+        },
+        carryForwardCandidateEvidence: [
+          {
+            exerciseId: "bench",
+            exerciseName: "Bench Press",
+            role: "CORE_COMPOUND",
+            priorIntent: "UPPER",
+            priorSlotId: "upper_b",
+            anchorLevel: "required",
+            evidence: {
+              exposureCount: 3,
+              advancingExposureCount: 3,
+              latestPerformedAt: "2026-04-01T00:00:00.000Z",
+              latestSourceIntent: "UPPER",
+              latestSourceSlotId: "upper_b",
+              latestSemanticsKind: "advancing",
+            },
+          },
+        ],
+      })
+    );
+
+    expect(design.carryForward.decisions).toEqual([
+      expect.objectContaining({
+        exerciseId: "bench",
+        action: "keep",
+        targetIntent: "UPPER",
+        targetSlotId: undefined,
+        reasonCodes: ["required_anchor_continuity_supported_by_receipt_slot"],
       }),
     ]);
   });

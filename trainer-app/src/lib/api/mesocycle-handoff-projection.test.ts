@@ -115,6 +115,62 @@ describe("buildSuccessorMesocyclePreview", () => {
       }),
     ]);
   });
+
+  it("respects explicit repeated-slot targets before falling back to shared intent pools", () => {
+    const design = buildDesign();
+    design.carryForward.decisions = [
+      {
+        ...design.carryForward.decisions[0],
+        targetIntent: "UPPER",
+        targetSlotId: "upper_b",
+      },
+      design.carryForward.decisions[1],
+      {
+        exerciseId: "split-squat",
+        role: "ACCESSORY",
+        priorIntent: "LOWER",
+        action: "keep",
+        targetIntent: "LOWER",
+        targetSlotId: "lower_a",
+        signalQuality: "high",
+        reasonCodes: ["accessory_continuity_supported_by_receipt_slot"],
+      },
+    ];
+
+    const preview = buildSuccessorMesocyclePreview({
+      currentMesoNumber: 1,
+      focus: "Upper Hypertrophy",
+      design,
+      draft: buildDraft(),
+    });
+
+    expect(preview.slotSequence).toEqual([
+      expect.objectContaining({
+        slotId: "upper_a",
+        carriedForwardExerciseCount: 0,
+        sharedWithSlotId: null,
+        exercises: [],
+      }),
+      expect.objectContaining({
+        slotId: "lower_a",
+        carriedForwardExerciseCount: 1,
+        sharedWithSlotId: null,
+        exercises: [expect.objectContaining({ exerciseName: "Split Squat" })],
+      }),
+      expect.objectContaining({
+        slotId: "upper_b",
+        carriedForwardExerciseCount: 1,
+        sharedWithSlotId: null,
+        exercises: [expect.objectContaining({ exerciseName: "Bench Press" })],
+      }),
+      expect.objectContaining({
+        slotId: "lower_b",
+        carriedForwardExerciseCount: 0,
+        sharedWithSlotId: null,
+        exercises: [],
+      }),
+    ]);
+  });
 });
 
 describe("projectSuccessorMesocycle", () => {

@@ -200,7 +200,7 @@ export type HandoffCarryForwardRecommendation = {
   exerciseName: string;
   sessionIntent: WorkoutSessionIntent;
   role: MesocycleExerciseRoleType;
-  recommendation: "keep" | "rotate";
+  recommendation: "keep" | "rotate" | "drop";
   signalQuality: "high" | "medium";
   reasonCodes: string[];
 };

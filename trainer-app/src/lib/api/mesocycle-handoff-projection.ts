@@ -147,7 +147,7 @@ export function buildSuccessorMesocyclePreview(input: {
         },
       ])
   );
-  const firstSlotIdByIntent = new Map<WorkoutSessionIntent, string>();
+  const firstPooledSlotIdByIntent = new Map<WorkoutSessionIntent, string>();
 
   return {
     title: buildPreviewTitle(input.currentMesoNumber, input.focus),
@@ -157,7 +157,23 @@ export function buildSuccessorMesocyclePreview(input: {
     sessionsPerWeek: input.design.structure.sessionsPerWeek,
     daysPerWeek: input.design.structure.daysPerWeek,
     slotSequence: input.design.structure.slots.map((slot) => {
-      const decisionsForSlot = keptSelections.filter((selection) => selection.targetIntent === slot.intent);
+      const targetedSelections = keptSelections.filter(
+        (selection) => selection.targetSlotId === slot.slotId
+      );
+      const pooledSelections = keptSelections.filter(
+        (selection) => !selection.targetSlotId && selection.targetIntent === slot.intent
+      );
+      const pooledSharedWithSlotId =
+        pooledSelections.length > 0 ? (firstPooledSlotIdByIntent.get(slot.intent) ?? null) : null;
+      if (pooledSelections.length > 0 && !pooledSharedWithSlotId) {
+        firstPooledSlotIdByIntent.set(slot.intent, slot.slotId);
+      }
+      const decisionsForSlot =
+        targetedSelections.length > 0
+          ? targetedSelections
+          : pooledSharedWithSlotId
+            ? []
+            : pooledSelections;
       const exercises = sortExercisesForPreview(
         decisionsForSlot
           .flatMap((selection) => {
@@ -168,16 +184,12 @@ export function buildSuccessorMesocyclePreview(input: {
             return display ? [display] : [];
           })
       );
-      const sharedWithSlotId = firstSlotIdByIntent.get(slot.intent) ?? null;
-
-      if (!sharedWithSlotId) {
-        firstSlotIdByIntent.set(slot.intent, slot.slotId);
-      }
+      const sharedWithSlotId = targetedSelections.length > 0 ? null : pooledSharedWithSlotId;
 
       return {
         slotId: slot.slotId,
         intent: slot.intent,
-        carriedForwardExerciseCount: decisionsForSlot.length,
+        carriedForwardExerciseCount: targetedSelections.length + pooledSelections.length,
         sharedWithSlotId,
         exercises: sharedWithSlotId ? [] : exercises,
       };

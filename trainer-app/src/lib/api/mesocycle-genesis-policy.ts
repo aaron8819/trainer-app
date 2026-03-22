@@ -1,4 +1,4 @@
-import type { SplitType } from "@prisma/client";
+import type { SplitType, WorkoutSessionIntent } from "@prisma/client";
 import {
   buildOrderedFlexibleSlots,
   type GenesisPolicyBranchResult,
@@ -140,71 +140,165 @@ function toDesignSlotStructure(input: {
   };
 }
 
+function hasAdvancingContinuityEvidence(
+  candidate: GenesisPolicyContext["carryForwardCandidateEvidence"][number]
+): boolean {
+  return (
+    candidate.evidence.advancingExposureCount > 0 &&
+    candidate.evidence.latestSemanticsKind === "advancing"
+  );
+}
+
+function hasHighConfidenceAccessoryContinuity(
+  candidate: GenesisPolicyContext["carryForwardCandidateEvidence"][number]
+): boolean {
+  return hasAdvancingContinuityEvidence(candidate) && candidate.evidence.advancingExposureCount >= 2;
+}
+
+function resolveUnambiguousRepeatedSlotTarget(input: {
+  context: GenesisPolicyContext;
+  structure: NextMesocycleDesign["structure"];
+  candidate: GenesisPolicyContext["carryForwardCandidateEvidence"][number];
+  targetIntent: WorkoutSessionIntent;
+}): string | undefined {
+  const priorSlotId = input.candidate.priorSlotId ?? input.candidate.evidence.latestSourceSlotId;
+  if (!priorSlotId || input.candidate.priorIntent !== input.targetIntent) {
+    return undefined;
+  }
+
+  const sourceSlots = input.context.sourceTopology.slots.filter(
+    (slot) => slot.intent === input.targetIntent
+  );
+  const targetSlots = input.structure.slots.filter((slot) => slot.intent === input.targetIntent);
+  if (sourceSlots.length <= 1 || targetSlots.length <= 1 || sourceSlots.length !== targetSlots.length) {
+    return undefined;
+  }
+
+  const sourceIndex = sourceSlots.findIndex((slot) => slot.slotId === priorSlotId);
+  if (sourceIndex < 0) {
+    return undefined;
+  }
+
+  return targetSlots[sourceIndex]?.slotId;
+}
+
 function buildCarryForwardDecision(input: {
-  splitType: SplitType;
+  context: GenesisPolicyContext;
+  structure: NextMesocycleDesign["structure"];
   candidate: GenesisPolicyContext["carryForwardCandidateEvidence"][number];
 }): GenesisPolicyBranchResult<NextMesocycleCarryForwardDecision> {
-  const action =
-    input.candidate.anchorLevel === "required" || input.candidate.role === "CORE_COMPOUND"
-      ? "keep"
-      : "rotate";
   const hasReceiptBackedSlotEvidence = Boolean(input.candidate.evidence.latestSourceSlotId);
+  const hasAdvancingEvidence = hasAdvancingContinuityEvidence(input.candidate);
   const targetIntent =
-    action === "keep"
-      ? remapCompatibleCarryForwardIntent({
-          splitType: input.splitType,
-          sessionIntent: input.candidate.priorIntent,
-        })
-      : undefined;
+    remapCompatibleCarryForwardIntent({
+      splitType: input.structure.splitType,
+      sessionIntent: input.candidate.priorIntent,
+    });
+  const priorSlotId = input.candidate.priorSlotId ?? input.candidate.evidence.latestSourceSlotId;
+
+  let action: NextMesocycleCarryForwardDecision["action"];
+  let signalQuality: GenesisPolicyBranchResult<NextMesocycleCarryForwardDecision>["signalQuality"];
+  let reasonCodes: string[];
+
+  if (input.candidate.anchorLevel === "required") {
+    action = "keep";
+    if (hasReceiptBackedSlotEvidence) {
+      signalQuality = "high";
+      reasonCodes = ["required_anchor_continuity_supported_by_receipt_slot"];
+    } else if (hasAdvancingEvidence) {
+      signalQuality = "high";
+      reasonCodes = ["required_anchor_continuity_supported_by_advancing_exposure"];
+    } else {
+      signalQuality = "medium";
+      reasonCodes = ["required_anchor_continuity_fallback"];
+    }
+  } else if (
+    input.candidate.role === "CORE_COMPOUND" &&
+    hasAdvancingEvidence
+  ) {
+    action = "keep";
+    signalQuality = "high";
+    reasonCodes = [
+      hasReceiptBackedSlotEvidence
+        ? "core_compound_continuity_supported_by_receipt_slot"
+        : "core_compound_continuity_supported_by_advancing_exposure",
+    ];
+  } else if (
+    input.candidate.role === "ACCESSORY" &&
+    hasHighConfidenceAccessoryContinuity(input.candidate)
+  ) {
+    action = "keep";
+    signalQuality = "high";
+    reasonCodes = [
+      hasReceiptBackedSlotEvidence
+        ? "accessory_continuity_supported_by_receipt_slot"
+        : "accessory_continuity_supported_by_advancing_exposure",
+    ];
+  } else if (
+    input.candidate.role === "ACCESSORY" &&
+    input.candidate.evidence.exposureCount === 0 &&
+    input.candidate.evidence.latestPerformedAt === null
+  ) {
+    action = "drop";
+    signalQuality = "high";
+    reasonCodes = ["accessory_drop_no_mesocycle_exposure"];
+  } else {
+    action = "rotate";
+    signalQuality = "medium";
+    if (
+      input.candidate.role === "ACCESSORY" &&
+      input.candidate.evidence.exposureCount > 0 &&
+      input.candidate.evidence.advancingExposureCount === 0
+    ) {
+      reasonCodes = ["accessory_rotation_non_advancing_only"];
+    } else if (hasAdvancingEvidence) {
+      reasonCodes = ["carry_forward_rotation_ambiguous_slot_target"];
+    } else {
+      reasonCodes = ["carry_forward_rotation_fallback"];
+    }
+  }
 
   if (action === "keep") {
-    const reasonCodes =
-      input.candidate.anchorLevel === "required"
-        ? [
-            hasReceiptBackedSlotEvidence
-              ? "required_anchor_continuity_supported_by_receipt_slot"
-              : "required_anchor_continuity_fallback",
-          ]
-        : [
-            hasReceiptBackedSlotEvidence
-              ? "core_compound_continuity_supported_by_receipt_slot"
-              : "core_compound_continuity_fallback",
-          ];
+    const targetSlotId = resolveUnambiguousRepeatedSlotTarget({
+      context: input.context,
+      structure: input.structure,
+      candidate: input.candidate,
+      targetIntent,
+    });
+    const resolvedReasonCodes = targetSlotId
+      ? [...reasonCodes, "repeated_slot_target_mapped_from_prior_slot"]
+      : reasonCodes;
 
     return {
       decision: {
         exerciseId: input.candidate.exerciseId,
         role: input.candidate.role,
         priorIntent: input.candidate.priorIntent,
-        priorSlotId: input.candidate.priorSlotId ?? input.candidate.evidence.latestSourceSlotId,
+        priorSlotId,
         action,
         targetIntent,
-        signalQuality: hasReceiptBackedSlotEvidence ? "high" : "medium",
-        reasonCodes,
+        targetSlotId,
+        signalQuality,
+        reasonCodes: resolvedReasonCodes,
       },
-      reasonCodes,
-      signalQuality: hasReceiptBackedSlotEvidence ? "high" : "medium",
+      reasonCodes: resolvedReasonCodes,
+      signalQuality,
     };
   }
-
-  const reasonCodes =
-    input.candidate.evidence.exposureCount > 0
-      ? ["accessory_rotation_fallback_pending_action_refinement"]
-      : ["accessory_rotation_default"];
 
   return {
     decision: {
       exerciseId: input.candidate.exerciseId,
       role: input.candidate.role,
       priorIntent: input.candidate.priorIntent,
-      priorSlotId: input.candidate.priorSlotId ?? input.candidate.evidence.latestSourceSlotId,
+      priorSlotId,
       action,
-      targetIntent,
-      signalQuality: "medium",
+      targetIntent: undefined,
+      signalQuality,
       reasonCodes,
     },
     reasonCodes,
-    signalQuality: "medium",
+    signalQuality,
   };
 }
 
@@ -224,7 +318,8 @@ export function designNextMesocycle(context: GenesisPolicyContext): NextMesocycl
   });
   const carryForwardDecisions = context.carryForwardCandidateEvidence.map((candidate) =>
     buildCarryForwardDecision({
-      splitType: structure.splitType,
+      context,
+      structure,
       candidate,
     }).decision
   );
@@ -339,7 +434,15 @@ export function applyDraftOverridesToDesign(input: {
           priorSlotId: baseDecision?.priorSlotId,
           action: selection.action,
           targetIntent: selection.action === "keep" ? selection.sessionIntent : undefined,
-          targetSlotId: undefined,
+          targetSlotId:
+            selection.action === "keep" &&
+            baseDecision?.targetSlotId &&
+            input.draft.structure.slots.some(
+              (slot) =>
+                slot.slotId === baseDecision.targetSlotId && slot.intent === selection.sessionIntent
+            )
+              ? baseDecision.targetSlotId
+              : undefined,
           signalQuality: baseDecision?.signalQuality ?? "medium",
           reasonCodes: baseDecision?.reasonCodes ?? [],
         };

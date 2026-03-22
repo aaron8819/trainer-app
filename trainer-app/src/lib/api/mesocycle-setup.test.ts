@@ -260,4 +260,61 @@ describe("mesocycle setup preview", () => {
       },
     });
   });
+
+  it("preserves drop recommendations in the setup read model without coercing them to rotate", async () => {
+    const draft = {
+      ...buildDraft(),
+      carryForwardSelections: [
+        {
+          exerciseId: "row",
+          exerciseName: "Chest-Supported Row",
+          sessionIntent: "UPPER" as const,
+          role: "ACCESSORY" as const,
+          action: "drop" as const,
+        },
+      ],
+    };
+    mocks.loadPendingMesocycleHandoffById.mockResolvedValueOnce({
+      mesocycleId: "meso-1",
+      mesoNumber: 1,
+      focus: "Upper Hypertrophy",
+      closedAt: "2026-04-01T00:00:00.000Z",
+      summary: {
+        recommendedNextSeed: draft,
+        carryForwardRecommendations: [
+          {
+            exerciseId: "row",
+            exerciseName: "Chest-Supported Row",
+            sessionIntent: "UPPER",
+            role: "ACCESSORY",
+            recommendation: "drop",
+            signalQuality: "high",
+            reasonCodes: ["accessory_drop_no_mesocycle_exposure"],
+          },
+        ],
+      },
+      draft,
+    });
+
+    const setup = await loadMesocycleSetupFromPrisma({
+      userId: "user-1",
+      mesocycleId: "meso-1",
+    });
+
+    expect(setup).toMatchObject({
+      carryForwardRows: [
+        {
+          exerciseId: "row",
+          recommendedAction: "drop",
+          draftAction: "drop",
+          signalQuality: "high",
+          reasonCodes: ["accessory_drop_no_mesocycle_exposure"],
+        },
+      ],
+      drift: {
+        matchesRecommendation: true,
+        carryForwardChangedCount: 0,
+      },
+    });
+  });
 });

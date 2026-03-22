@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import {
   assertAuditPreflight,
   captureAuditWarnings,
@@ -12,14 +13,36 @@ import {
 import type { WorkoutAuditRequest } from "@/lib/audit/workout-audit/types";
 import { WORKOUT_AUDIT_SIZE_LIMIT_BYTES } from "@/lib/audit/workout-audit/constants";
 import type { SessionIntent } from "@/lib/engine/session-types";
+import {
+  parseSessionIntent,
+  SESSION_INTENT_KEYS,
+} from "@/lib/planning/session-opportunities";
 
 function slug(value: string): string {
   return value.replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").toLowerCase();
 }
 
+export function normalizeAuditIntentArg(intent: string | undefined): SessionIntent | undefined {
+  if (typeof intent !== "string") {
+    return undefined;
+  }
+
+  const normalized = parseSessionIntent(intent);
+  if (normalized) {
+    return normalized;
+  }
+
+  throw new Error(
+    `Invalid --intent value "${intent}". Expected one of: ${SESSION_INTENT_KEYS.join(", ")}.`
+  );
+}
+
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const env = loadAuditEnv(typeof args["env-file"] === "string" ? args["env-file"] : undefined);
+  const normalizedIntent = normalizeAuditIntentArg(
+    typeof args.intent === "string" ? args.intent : undefined
+  );
 
   const [{ resolveWorkoutAuditIdentity, buildWorkoutAuditContext }, { prisma }, generationRunner, serializer] =
     await Promise.all([
@@ -46,7 +69,7 @@ async function main(): Promise<void> {
       (args.mode as WorkoutAuditRequest["mode"] | undefined) ?? "future-week",
     userId: typeof args["user-id"] === "string" ? args["user-id"] : undefined,
     ownerEmail: typeof args.owner === "string" ? args.owner : undefined,
-    intent: typeof args.intent === "string" ? (args.intent as SessionIntent) : undefined,
+    intent: normalizedIntent,
     targetMuscles:
       typeof args["target-muscles"] === "string"
         ? args["target-muscles"]
@@ -112,8 +135,13 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((error) => {
-  const message = error instanceof Error ? error.message : String(error);
-  console.error(`[workout-audit] ${message}`);
-  process.exitCode = 1;
-});
+const isMainModule =
+  Boolean(process.argv[1]) && import.meta.url === pathToFileURL(process.argv[1]!).href;
+
+if (isMainModule) {
+  main().catch((error) => {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[workout-audit] ${message}`);
+    process.exitCode = 1;
+  });
+}

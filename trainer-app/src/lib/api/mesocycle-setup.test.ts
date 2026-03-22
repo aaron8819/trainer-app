@@ -51,9 +51,9 @@ function buildDraft() {
       ],
     },
     startingPoint: {
-      volumePreset: "conservative_productive" as const,
-      baselineRule: "peak_accumulation_else_highest_accumulation_else_non_deload" as const,
-      excludeDeload: true as const,
+      volumeEntry: "conservative" as const,
+      baselineSource: "accumulation_preferred" as const,
+      allowNonDeloadFallback: true as const,
     },
     carryForwardSelections: [
       {

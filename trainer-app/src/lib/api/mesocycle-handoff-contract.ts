@@ -1,8 +1,13 @@
 import type {
+  AdaptationType,
+  BlockType,
+  IntensityBias,
   MesocycleExerciseRoleType,
   SplitType,
+  VolumeTarget,
   WorkoutSessionIntent,
 } from "@prisma/client";
+import type { MesocycleSlotAuthoredSemantics } from "./mesocycle-slot-contract";
 
 export type NextCycleSlotId = string;
 
@@ -17,6 +22,73 @@ export type NextCycleCarryForwardSelection = {
   sessionIntent: WorkoutSessionIntent;
   role: MesocycleExerciseRoleType;
   action: "keep" | "rotate" | "drop";
+};
+
+export type NextCycleConstraintsInput = {
+  availableDaysPerWeek: number;
+  maxSessionsPerWeek?: number;
+};
+
+export type NextCyclePreferencesInput = {
+  preferredSplitType?: SplitType;
+  preferredSessionsPerWeek?: number;
+};
+
+export type NextMesocycleStartingPoint = {
+  volumeEntry: "conservative";
+  baselineSource: "accumulation_preferred";
+  allowNonDeloadFallback: true;
+};
+
+export type NextMesocycleCarryForwardDecision = {
+  exerciseId: string;
+  role: MesocycleExerciseRoleType;
+  priorIntent: WorkoutSessionIntent;
+  priorSlotId?: string;
+  action: "keep" | "rotate" | "drop";
+  targetIntent?: WorkoutSessionIntent;
+  targetSlotId?: string;
+  reasonCodes: string[];
+};
+
+export type NextMesocycleDesign = {
+  version: 1;
+  designedAt: string;
+  sourceMesocycleId: string;
+  profile: {
+    focus: string;
+    durationWeeks: number;
+    volumeTarget: VolumeTarget;
+    intensityBias: IntensityBias;
+    blocks: Array<{
+      blockNumber: number;
+      blockType: BlockType;
+      durationWeeks: number;
+      volumeTarget: VolumeTarget;
+      intensityBias: IntensityBias;
+      adaptationType: AdaptationType;
+    }>;
+  };
+  structure: {
+    splitType: SplitType;
+    sessionsPerWeek: number;
+    daysPerWeek: number;
+    sequenceMode: "ordered_flexible";
+    slots: Array<{
+      slotId: NextCycleSlotId;
+      intent: WorkoutSessionIntent;
+      authoredSemantics: MesocycleSlotAuthoredSemantics;
+    }>;
+  };
+  carryForward: {
+    decisions: NextMesocycleCarryForwardDecision[];
+  };
+  startingPoint: NextMesocycleStartingPoint;
+  explainability: {
+    profileReasonCodes: string[];
+    structureReasonCodes: string[];
+    startingPointReasonCodes: string[];
+  };
 };
 
 export type NextCycleCarryForwardConflict = Pick<
@@ -36,11 +108,7 @@ export type NextCycleSeedDraft = {
     sequenceMode: "ordered_flexible";
     slots: NextCycleSeedSlot[];
   };
-  startingPoint: {
-    volumePreset: "conservative_productive";
-    baselineRule: "peak_accumulation_else_highest_accumulation_else_non_deload";
-    excludeDeload: true;
-  };
+  startingPoint: NextMesocycleStartingPoint;
   carryForwardSelections: NextCycleCarryForwardSelection[];
 };
 
@@ -76,6 +144,7 @@ export type MesocycleHandoffSummary = {
   };
   carryForwardRecommendations: HandoffCarryForwardRecommendation[];
   recommendedNextSeed: NextCycleSeedDraft;
+  recommendedDesign?: NextMesocycleDesign;
 };
 
 const SPLIT_INTENT_PATTERNS: Record<SplitType, WorkoutSessionIntent[]> = {
@@ -92,8 +161,25 @@ const ALLOWED_INTENTS_BY_SPLIT: Record<SplitType, WorkoutSessionIntent[]> = {
   CUSTOM: ["PUSH", "PULL", "LEGS", "UPPER", "LOWER", "FULL_BODY", "BODY_PART"],
 };
 
+const COMPATIBLE_KEEP_INTENT_REMAPS: Partial<
+  Record<SplitType, Partial<Record<WorkoutSessionIntent, WorkoutSessionIntent>>>
+> = {
+  UPPER_LOWER: {
+    PUSH: "UPPER",
+    PULL: "UPPER",
+    LEGS: "LOWER",
+  },
+};
+
 export function getAllowedIntentsForSplit(splitType: SplitType): WorkoutSessionIntent[] {
   return [...ALLOWED_INTENTS_BY_SPLIT[splitType]];
+}
+
+export function remapCompatibleCarryForwardIntent(input: {
+  splitType: SplitType;
+  sessionIntent: WorkoutSessionIntent;
+}): WorkoutSessionIntent {
+  return COMPATIBLE_KEEP_INTENT_REMAPS[input.splitType]?.[input.sessionIntent] ?? input.sessionIntent;
 }
 
 export function findIncompatibleCarryForwardKeeps(input: {

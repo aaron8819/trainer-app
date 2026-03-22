@@ -14,6 +14,7 @@ vi.mock("./template-session", async (importOriginal) => {
 });
 
 import type { NextCycleSeedDraft } from "./mesocycle-handoff-contract";
+import { buildFallbackDesignFromDraft } from "./mesocycle-genesis-policy";
 import {
   projectSuccessorSlotPlansFromSnapshot,
 } from "./mesocycle-handoff-slot-plan-projection";
@@ -284,9 +285,9 @@ function buildDraft(): NextCycleSeedDraft {
       ],
     },
     startingPoint: {
-      volumePreset: "conservative_productive",
-      baselineRule: "peak_accumulation_else_highest_accumulation_else_non_deload",
-      excludeDeload: true,
+      volumeEntry: "conservative",
+      baselineSource: "accumulation_preferred",
+      allowNonDeloadFallback: true,
     },
     carryForwardSelections: [
       {
@@ -346,12 +347,44 @@ function buildSource() {
   };
 }
 
+function buildDesign(draft: NextCycleSeedDraft = buildDraft()) {
+  return buildFallbackDesignFromDraft({
+    sourceMesocycleId: "meso-1",
+    designedAt: draft.createdAt,
+    profile: {
+      focus: "Upper Lower Hypertrophy",
+      durationWeeks: 5,
+      volumeTarget: "HIGH",
+      intensityBias: "HYPERTROPHY",
+      blocks: [
+        {
+          blockNumber: 1,
+          blockType: "ACCUMULATION",
+          durationWeeks: 4,
+          volumeTarget: "HIGH",
+          intensityBias: "HYPERTROPHY",
+          adaptationType: "MYOFIBRILLAR_HYPERTROPHY",
+        },
+        {
+          blockNumber: 2,
+          blockType: "DELOAD",
+          durationWeeks: 1,
+          volumeTarget: "LOW",
+          intensityBias: "HYPERTROPHY",
+          adaptationType: "RECOVERY",
+        },
+      ],
+    },
+    draft,
+  });
+}
+
 describe("projectSuccessorSlotPlansFromSnapshot", () => {
   it("is deterministic for the same snapshot and draft inputs", () => {
     const input = {
       userId: "user-1",
       source: buildSource(),
-      draft: buildDraft(),
+      design: buildDesign(),
       snapshot: buildSnapshot(),
       now: new Date("2026-03-19T12:00:00.000Z"),
     };
@@ -366,7 +399,7 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     const projected = projectSuccessorSlotPlansFromSnapshot({
       userId: "user-1",
       source: buildSource(),
-      draft: buildDraft(),
+      design: buildDesign(),
       snapshot: buildSnapshot(),
       now: new Date("2026-03-19T12:00:00.000Z"),
     });
@@ -396,7 +429,7 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     const projected = projectSuccessorSlotPlansFromSnapshot({
       userId: "user-1",
       source: buildSource(),
-      draft: buildDraft(),
+      design: buildDesign(),
       snapshot: buildSnapshot(),
       now: new Date("2026-03-19T12:00:00.000Z"),
     });
@@ -412,7 +445,7 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     const projected = projectSuccessorSlotPlansFromSnapshot({
       userId: "user-1",
       source: buildSource(),
-      draft: buildDraft(),
+      design: buildDesign(),
       snapshot: buildSnapshot(),
       now: new Date("2026-03-19T12:00:00.000Z"),
     });
@@ -453,7 +486,7 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     const projected = projectSuccessorSlotPlansFromSnapshot({
       userId: "user-1",
       source: buildSource(),
-      draft: bodyPartDraft,
+      design: buildDesign(bodyPartDraft),
       snapshot: buildSnapshot(),
       now: new Date("2026-03-19T12:00:00.000Z"),
     });

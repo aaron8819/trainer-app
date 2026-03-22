@@ -504,7 +504,11 @@ function buildLegacySlots(weeklySchedule: readonly string[]): NormalizedMesocycl
 }
 
 export function buildMesocycleSlotSequence(
-  slots: ReadonlyArray<{ slotId: string; intent: WorkoutSessionIntent }>
+  slots: ReadonlyArray<{
+    slotId: string;
+    intent: WorkoutSessionIntent;
+    authoredSemantics?: MesocycleSlotAuthoredSemantics;
+  }>
 ): MesocycleSlotSequence {
   const normalizedSlots = normalizeSlotEntries(slots);
 
@@ -515,11 +519,13 @@ export function buildMesocycleSlotSequence(
     slots: normalizedSlots.map((slot) => ({
       slotId: slot.slotId,
       intent: slot.intent.toUpperCase() as WorkoutSessionIntent,
-      authoredSemantics: buildAuthoredSlotSemanticsFromSequence({
-        slots: normalizedSlots,
-        slotId: slot.slotId,
-        intent: slot.intent,
-      }),
+      authoredSemantics:
+        slots.find((entry) => entry.slotId === slot.slotId)?.authoredSemantics ??
+        buildAuthoredSlotSemanticsFromSequence({
+          slots: normalizedSlots,
+          slotId: slot.slotId,
+          intent: slot.intent,
+        }),
     })),
   };
 }

@@ -10,6 +10,10 @@ import {
   toHandoffProjectionSource,
 } from "./mesocycle-handoff";
 import {
+  applyDraftOverridesToDesign,
+  buildFallbackDesignFromDraft,
+} from "./mesocycle-genesis-policy";
+import {
   buildSuccessorMesocyclePreview,
   type SuccessorMesocyclePreview,
 } from "./mesocycle-handoff-projection";
@@ -231,15 +235,40 @@ async function buildMesocycleSetupPreview(input: {
     loadHandoffSourceMesocycle(prisma, input.handoff.mesocycleId),
     loadPreloadedGenerationSnapshot(input.userId),
   ]);
+  const resolvedDesign = input.handoff.summary?.recommendedDesign
+    ? applyDraftOverridesToDesign({
+        design: input.handoff.summary.recommendedDesign,
+        draft: currentDraft,
+      })
+    : buildFallbackDesignFromDraft({
+        sourceMesocycleId: input.handoff.mesocycleId,
+        designedAt: currentDraft.updatedAt ?? currentDraft.createdAt,
+        profile: {
+          focus: projectionSource.focus,
+          durationWeeks: projectionSource.durationWeeks,
+          volumeTarget: projectionSource.volumeTarget,
+          intensityBias: projectionSource.intensityBias,
+          blocks: projectionSource.blocks.map((block) => ({
+            blockNumber: block.blockNumber,
+            blockType: block.blockType,
+            durationWeeks: block.durationWeeks,
+            volumeTarget: block.volumeTarget,
+            intensityBias: block.intensityBias,
+            adaptationType: block.adaptationType,
+          })),
+        },
+        draft: currentDraft,
+      });
   const summary = buildSuccessorMesocyclePreview({
     currentMesoNumber: input.handoff.mesoNumber,
     focus: input.handoff.focus,
+    design: resolvedDesign,
     draft: currentDraft,
   });
   const slotPlanProjection = projectSuccessorSlotPlansFromSnapshot({
     userId: input.userId,
     source: toHandoffProjectionSource(projectionSource),
-    draft: currentDraft,
+    design: resolvedDesign,
     snapshot,
   });
   const exerciseNameById = new Map(

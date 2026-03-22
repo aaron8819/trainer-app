@@ -24,7 +24,7 @@ import {
 import type { MappedGenerationContext } from "./template-session/types";
 import type { SessionIntent } from "@/lib/engine/session-types";
 import { composeIntentSessionFromMappedContext } from "./template-session";
-import type { NextCycleSeedDraft } from "./mesocycle-handoff-contract";
+import type { NextMesocycleDesign } from "./mesocycle-handoff-contract";
 import {
   projectSuccessorMesocycle,
   type SuccessorMesocycleProjectionSource,
@@ -181,13 +181,13 @@ function buildSyntheticSuccessorMacroCycle(input: {
 function buildSyntheticProjectionContext(input: {
   userId: string;
   source: SuccessorMesocycleProjectionSource;
-  draft: NextCycleSeedDraft;
+  design: NextMesocycleDesign;
   snapshot: PreloadedGenerationSnapshot;
   now: Date;
 }): SyntheticProjectionContext {
   const projection = projectSuccessorMesocycle({
     source: input.source,
-    draft: input.draft,
+    design: input.design,
   });
   const mesocycleId = `${projection.mesocycle.macroCycleId}:handoff-projection:${projection.mesocycle.mesoNumber}`;
   const macroCycle = buildSyntheticSuccessorMacroCycle({
@@ -350,7 +350,7 @@ function applyProjectedSlotToMappedContext(input: {
 export function projectSuccessorSlotPlansFromSnapshot(input: {
   userId: string;
   source: SuccessorMesocycleProjectionSource;
-  draft: NextCycleSeedDraft;
+  design: NextMesocycleDesign;
   snapshot: PreloadedGenerationSnapshot;
   now?: Date;
 }): SuccessorSlotPlanProjection | { error: string } {
@@ -359,7 +359,7 @@ export function projectSuccessorSlotPlansFromSnapshot(input: {
     now: input.now ?? new Date(),
   });
   const slotPlans: ProjectedSuccessorSlotPlan[] = [];
-  const slotSequence = input.draft.structure.slots;
+  const slotSequence = input.design.structure.slots;
   const projectionNow = input.now ?? new Date();
 
   for (const [index, slot] of slotSequence.entries()) {

@@ -87,9 +87,9 @@ describe("loadMesocycleReview", () => {
             ],
           },
           startingPoint: {
-            volumePreset: "conservative_productive",
-            baselineRule: "peak_accumulation_else_highest_accumulation_else_non_deload",
-            excludeDeload: true,
+            volumeEntry: "conservative",
+            baselineSource: "accumulation_preferred",
+            allowNonDeloadFallback: true,
           },
           carryForwardSelections: [
             {
@@ -290,9 +290,9 @@ describe("loadMesocycleReview", () => {
                     ],
                   },
                   startingPoint: {
-                    volumePreset: "conservative_productive",
-                    baselineRule: "peak_accumulation_else_highest_accumulation_else_non_deload",
-                    excludeDeload: true,
+                    volumeEntry: "conservative",
+                    baselineSource: "accumulation_preferred",
+                    allowNonDeloadFallback: true,
                   },
                   carryForwardSelections: [],
                 },

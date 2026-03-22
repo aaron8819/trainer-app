@@ -17,14 +17,22 @@ import {
   findIncompatibleCarryForwardKeeps,
   formatCarryForwardConflictMessage,
   getAllowedIntentsForSplit,
+  remapCompatibleCarryForwardIntent,
   type HandoffCarryForwardRecommendation,
   type MesocycleHandoffSummary,
   type NextCycleCarryForwardConflict,
   type NextCycleCarryForwardSelection,
   type NextCycleSeedDraft,
+  type NextMesocycleDesign,
   type NextCycleSeedSlot,
   type NextCycleSlotId,
 } from "./mesocycle-handoff-contract";
+import {
+  applyDraftOverridesToDesign,
+  buildRecommendedDraftFromDesign,
+  designNextMesocycle,
+  type NextMesocycleDesignInput,
+} from "./mesocycle-genesis-policy";
 import {
   projectSuccessorMesocycle,
   type SuccessorMesocycleProjectionSource,
@@ -46,6 +54,7 @@ export type {
   MesocycleHandoffSummary,
   NextCycleCarryForwardConflict,
   NextCycleCarryForwardSelection,
+  NextMesocycleDesign,
   NextCycleSeedDraft,
   NextCycleSeedSlot,
   NextCycleSlotId,
@@ -127,15 +136,26 @@ export type ClosedMesocycleArchive = {
   draft: NextCycleSeedDraft | null;
 };
 
+const nextMesocycleStartingPointJsonSchema = z.object({
+  volumeEntry: z.literal("conservative"),
+  baselineSource: z.literal("accumulation_preferred"),
+  allowNonDeloadFallback: z.literal(true),
+});
+
+const legacyNextMesocycleStartingPointJsonSchema = z.object({
+  volumePreset: z.literal("conservative_productive"),
+  baselineRule: z.literal("peak_accumulation_else_highest_accumulation_else_non_deload"),
+  excludeDeload: z.literal(true),
+});
+
 const nextCycleSeedDraftJsonSchema = nextCycleSeedDraftUpdateSchema.extend({
   version: z.literal(1),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime().optional(),
-  startingPoint: z.object({
-    volumePreset: z.literal("conservative_productive"),
-    baselineRule: z.literal("peak_accumulation_else_highest_accumulation_else_non_deload"),
-    excludeDeload: z.literal(true),
-  }),
+  startingPoint: z.union([
+    nextMesocycleStartingPointJsonSchema,
+    legacyNextMesocycleStartingPointJsonSchema,
+  ]),
 });
 
 const handoffCarryForwardRecommendationSchema = z.object({
@@ -146,6 +166,68 @@ const handoffCarryForwardRecommendationSchema = z.object({
   recommendation: z.enum(["keep", "rotate"]),
   signalQuality: z.enum(["high", "medium"]),
   reasonCodes: z.array(z.string()),
+});
+
+const nextMesocycleDesignJsonSchema = z.object({
+  version: z.literal(1),
+  designedAt: z.string().datetime(),
+  sourceMesocycleId: z.string(),
+  profile: z.object({
+    focus: z.string().min(1),
+    durationWeeks: z.number().int().min(1),
+    volumeTarget: z.string(),
+    intensityBias: z.string(),
+    blocks: z.array(
+      z.object({
+        blockNumber: z.number().int().min(1),
+        blockType: z.string(),
+        durationWeeks: z.number().int().min(1),
+        volumeTarget: z.string(),
+        intensityBias: z.string(),
+        adaptationType: z.string(),
+      })
+    ),
+  }),
+  structure: z.object({
+    splitType: z.enum(["PPL", "UPPER_LOWER", "FULL_BODY", "CUSTOM"]),
+    sessionsPerWeek: z.number().int().min(1).max(7),
+    daysPerWeek: z.number().int().min(1).max(7),
+    sequenceMode: z.literal("ordered_flexible"),
+    slots: z.array(
+      z.object({
+        slotId: z.string().min(1),
+        intent: z.enum(["PUSH", "PULL", "LEGS", "UPPER", "LOWER", "FULL_BODY", "BODY_PART"]),
+        authoredSemantics: z.object({
+          slotArchetype: z.string(),
+          continuityScope: z.enum(["slot", "intent"]),
+          primaryLaneContract: z.unknown().nullable(),
+          supportCoverageContract: z.unknown().nullable(),
+        }),
+      })
+    ),
+  }),
+  carryForward: z.object({
+    decisions: z.array(
+      z.object({
+        exerciseId: z.string(),
+        role: z.enum(["CORE_COMPOUND", "ACCESSORY"]),
+        priorIntent: z.enum(["PUSH", "PULL", "LEGS", "UPPER", "LOWER", "FULL_BODY", "BODY_PART"]),
+        priorSlotId: z.string().optional(),
+        action: z.enum(["keep", "rotate", "drop"]),
+        targetIntent: z
+          .enum(["PUSH", "PULL", "LEGS", "UPPER", "LOWER", "FULL_BODY", "BODY_PART"])
+          .optional(),
+        targetSlotId: z.string().optional(),
+        reasonCodes: z.array(z.string()),
+      })
+    ),
+  }),
+  startingPoint: nextMesocycleStartingPointJsonSchema,
+  explainability: z.object({
+    profileReasonCodes: z.array(z.string()),
+    structureReasonCodes: z.array(z.string()),
+    startingPointReasonCodes: z.array(z.string()),
+  }),
 });
 
 const mesocycleHandoffSummaryJsonSchema = z.object({
@@ -171,25 +253,9 @@ const mesocycleHandoffSummaryJsonSchema = z.object({
     ),
   }),
   carryForwardRecommendations: z.array(handoffCarryForwardRecommendationSchema),
-  recommendedNextSeed: nextCycleSeedDraftJsonSchema,
+  recommendedNextSeed: nextCycleSeedDraftJsonSchema.optional(),
+  recommendedDesign: nextMesocycleDesignJsonSchema.optional(),
 });
-
-function buildRecommendedSlots(): NextCycleSeedSlot[] {
-  return buildOrderedFlexibleSlots({
-    splitType: "UPPER_LOWER",
-    sessionsPerWeek: 4,
-  });
-}
-
-const COMPATIBLE_KEEP_INTENT_REMAPS: Partial<
-  Record<SplitType, Partial<Record<WorkoutSessionIntent, WorkoutSessionIntent>>>
-> = {
-  UPPER_LOWER: {
-    PUSH: "UPPER",
-    PULL: "UPPER",
-    LEGS: "LOWER",
-  },
-};
 
 function canonicalCarryForwardSelectionKey(selection: {
   exerciseId: string;
@@ -203,15 +269,15 @@ function normalizeCarryForwardSelectionsForDraft(input: {
   splitType: SplitType;
   carryForwardSelections: NextCycleCarryForwardSelection[];
 }): NextCycleCarryForwardSelection[] {
-  const compatibleRemaps = COMPATIBLE_KEEP_INTENT_REMAPS[input.splitType];
-  if (!compatibleRemaps) {
-    return input.carryForwardSelections;
-  }
-
   const proposedKeyCounts = new Map<string, number>();
   for (const selection of input.carryForwardSelections) {
     const remappedIntent =
-      selection.action === "keep" ? compatibleRemaps[selection.sessionIntent] : undefined;
+      selection.action === "keep"
+        ? remapCompatibleCarryForwardIntent({
+            splitType: input.splitType,
+            sessionIntent: selection.sessionIntent,
+          })
+        : undefined;
     const proposedKey = canonicalCarryForwardSelectionKey({
       exerciseId: selection.exerciseId,
       sessionIntent: remappedIntent ?? selection.sessionIntent,
@@ -225,8 +291,11 @@ function normalizeCarryForwardSelectionsForDraft(input: {
       return selection;
     }
 
-    const remappedIntent = compatibleRemaps[selection.sessionIntent];
-    if (!remappedIntent) {
+    const remappedIntent = remapCompatibleCarryForwardIntent({
+      splitType: input.splitType,
+      sessionIntent: selection.sessionIntent,
+    });
+    if (remappedIntent === selection.sessionIntent) {
       return selection;
     }
 
@@ -348,62 +417,108 @@ export function sanitizeNextCycleSeedDraft(input: {
   };
 }
 
-function toCarryForwardSelection(row: HandoffRoleRow): NextCycleCarryForwardSelection {
+function toGenesisCarryForwardCandidate(
+  row: HandoffRoleRow
+): NextMesocycleDesignInput["carryForwardCandidates"][number] {
   return {
     exerciseId: row.exerciseId,
     exerciseName: row.exercise.name,
-    sessionIntent: row.sessionIntent,
     role: row.role,
-    action: row.role === "CORE_COMPOUND" ? "keep" : "rotate",
+    priorIntent: row.sessionIntent,
+    anchorLevel: row.role === "CORE_COMPOUND" ? "required" : "none",
   };
 }
 
-function toCarryForwardRecommendation(row: HandoffRoleRow): HandoffCarryForwardRecommendation {
-  const recommendation = row.role === "CORE_COMPOUND" ? "keep" : "rotate";
-  return {
-    exerciseId: row.exerciseId,
-    exerciseName: row.exercise.name,
-    sessionIntent: row.sessionIntent,
-    role: row.role,
-    recommendation,
-    signalQuality: row.role === "CORE_COMPOUND" ? "high" : "medium",
-    reasonCodes:
-      row.role === "CORE_COMPOUND"
-        ? ["core_compound_continuity"]
-        : ["accessory_rotation_default"],
-  };
-}
-
-function buildRecommendedNextSeed(input: {
-  sourceMesocycleId: string;
-  createdAt: Date;
+function buildCarryForwardRecommendations(input: {
+  design: NextMesocycleDesign;
   roles: HandoffRoleRow[];
-}): NextCycleSeedDraft {
-  return normalizeNextCycleSeedDraft({
-    version: 1,
-    sourceMesocycleId: input.sourceMesocycleId,
-    createdAt: input.createdAt.toISOString(),
-    structure: {
-      splitType: "UPPER_LOWER",
-      sessionsPerWeek: 4,
-      daysPerWeek: 4,
-      sequenceMode: "ordered_flexible",
-      slots: buildRecommendedSlots(),
-    },
-    startingPoint: {
-      volumePreset: "conservative_productive",
-      baselineRule: "peak_accumulation_else_highest_accumulation_else_non_deload",
-      excludeDeload: true,
-    },
-    carryForwardSelections: input.roles.map(toCarryForwardSelection),
+}): HandoffCarryForwardRecommendation[] {
+  const decisionByKey = new Map(
+    input.design.carryForward.decisions.map((decision) => [
+      `${decision.exerciseId}:${decision.priorIntent}:${decision.role}`,
+      decision,
+    ])
+  );
+
+  return input.roles.map((row) => {
+    const decision = decisionByKey.get(`${row.exerciseId}:${row.sessionIntent}:${row.role}`);
+    const recommendation = decision?.action === "keep" ? "keep" : "rotate";
+
+    return {
+      exerciseId: row.exerciseId,
+      exerciseName: row.exercise.name,
+      sessionIntent: row.sessionIntent,
+      role: row.role,
+      recommendation,
+      signalQuality: recommendation === "keep" ? "high" : "medium",
+      reasonCodes: decision?.reasonCodes ?? [],
+    };
   });
+}
+
+function buildGenesisPolicyInput(input: {
+  source: HandoffSourceMesocycle;
+  availableDaysPerWeek: number;
+  roles: HandoffRoleRow[];
+}): NextMesocycleDesignInput {
+  return {
+    sourceMesocycleId: input.source.id,
+    source: {
+      focus: input.source.focus,
+      durationWeeks: input.source.durationWeeks,
+      volumeTarget: input.source.volumeTarget,
+      intensityBias: input.source.intensityBias,
+      blocks: input.source.blocks.map((block) => ({
+        blockNumber: block.blockNumber,
+        blockType: block.blockType,
+        durationWeeks: block.durationWeeks,
+        volumeTarget: block.volumeTarget,
+        intensityBias: block.intensityBias,
+        adaptationType: block.adaptationType,
+      })),
+    },
+    constraints: {
+      availableDaysPerWeek: input.availableDaysPerWeek,
+    },
+    preferences: {},
+    carryForwardCandidates: input.roles.map(toGenesisCarryForwardCandidate),
+  };
+}
+
+function buildRecommendedArtifacts(input: {
+  source: HandoffSourceMesocycle;
+  availableDaysPerWeek: number;
+  roles: HandoffRoleRow[];
+}): {
+  recommendedDesign: NextMesocycleDesign;
+  recommendedNextSeed: NextCycleSeedDraft;
+  carryForwardRecommendations: HandoffCarryForwardRecommendation[];
+} {
+  const policyInput = buildGenesisPolicyInput(input);
+  const recommendedDesign = designNextMesocycle(policyInput);
+  const recommendedNextSeed = normalizeNextCycleSeedDraft(
+    buildRecommendedDraftFromDesign({
+      design: recommendedDesign,
+      carryForwardCandidates: policyInput.carryForwardCandidates,
+    })
+  );
+
+  return {
+    recommendedDesign,
+    recommendedNextSeed,
+    carryForwardRecommendations: buildCarryForwardRecommendations({
+      design: recommendedDesign,
+      roles: input.roles,
+    }),
+  };
 }
 
 function buildHandoffSummary(input: {
   mesocycle: HandoffSourceMesocycle;
   closedAt: Date;
   weeklySequence: WorkoutSessionIntent[];
-  roles: HandoffRoleRow[];
+  carryForwardRecommendations: HandoffCarryForwardRecommendation[];
+  recommendedDesign: NextMesocycleDesign;
   recommendedNextSeed: NextCycleSeedDraft;
 }): MesocycleHandoffSummary {
   return {
@@ -426,25 +541,89 @@ function buildHandoffSummary(input: {
       daysPerWeek: input.mesocycle.daysPerWeek,
       weeklySequence: input.weeklySequence,
     },
-    carryForwardRecommendations: input.roles.map(toCarryForwardRecommendation),
+    carryForwardRecommendations: input.carryForwardRecommendations,
     recommendedNextSeed: input.recommendedNextSeed,
+    recommendedDesign: input.recommendedDesign,
   };
+}
+
+function normalizeStartingPoint(
+  value:
+    | NextCycleSeedDraft["startingPoint"]
+    | {
+        volumePreset: "conservative_productive";
+        baselineRule: "peak_accumulation_else_highest_accumulation_else_non_deload";
+        excludeDeload: true;
+      }
+): NextCycleSeedDraft["startingPoint"] {
+  if ("volumeEntry" in value) {
+    return value;
+  }
+
+  return {
+    volumeEntry: "conservative",
+    baselineSource: "accumulation_preferred",
+    allowNonDeloadFallback: true,
+  };
+}
+
+function resolveRecommendedArtifactsForPendingHandoff(input: {
+  summary: MesocycleHandoffSummary;
+  source: HandoffSourceMesocycle;
+  roles: HandoffRoleRow[];
+  availableDaysPerWeek: number;
+}): {
+  recommendedDesign: NextMesocycleDesign;
+  recommendedNextSeed: NextCycleSeedDraft;
+  carryForwardRecommendations: HandoffCarryForwardRecommendation[];
+} {
+  if (input.summary.recommendedDesign && input.summary.recommendedNextSeed) {
+    return {
+      recommendedDesign: input.summary.recommendedDesign,
+      recommendedNextSeed: input.summary.recommendedNextSeed,
+      carryForwardRecommendations:
+        input.summary.carryForwardRecommendations.length > 0
+          ? input.summary.carryForwardRecommendations
+          : buildRecommendedArtifacts({
+              source: input.source,
+              availableDaysPerWeek: input.availableDaysPerWeek,
+              roles: input.roles,
+            }).carryForwardRecommendations,
+    };
+  }
+
+  return buildRecommendedArtifacts({
+    source: input.source,
+    availableDaysPerWeek: input.availableDaysPerWeek,
+    roles: input.roles,
+  });
 }
 
 export function readNextCycleSeedDraft(value: unknown): NextCycleSeedDraft | null {
   const parsed = nextCycleSeedDraftJsonSchema.safeParse(value);
-  return parsed.success ? normalizeNextCycleSeedDraft(parsed.data) : null;
+  if (!parsed.success) {
+    return null;
+  }
+
+  return normalizeNextCycleSeedDraft({
+    ...parsed.data,
+    startingPoint: normalizeStartingPoint(parsed.data.startingPoint),
+  });
 }
 
 export function readMesocycleHandoffSummary(value: unknown): MesocycleHandoffSummary | null {
   const parsed = mesocycleHandoffSummaryJsonSchema.safeParse(value);
-  if (!parsed.success) {
+  if (!parsed.success || !parsed.data.recommendedNextSeed) {
     return null;
   }
 
   return {
     ...parsed.data,
-    recommendedNextSeed: normalizeNextCycleSeedDraft(parsed.data.recommendedNextSeed),
+    recommendedNextSeed: normalizeNextCycleSeedDraft({
+      ...parsed.data.recommendedNextSeed,
+      startingPoint: normalizeStartingPoint(parsed.data.recommendedNextSeed.startingPoint),
+    }),
+    recommendedDesign: parsed.data.recommendedDesign as NextMesocycleDesign | undefined,
   };
 }
 
@@ -655,23 +834,24 @@ export async function enterMesocycleHandoffInTransaction(
   const [constraints, roles] = await Promise.all([
     tx.constraints.findUnique({
       where: { userId: source.macroCycle.userId },
-      select: { weeklySchedule: true },
+      select: { weeklySchedule: true, daysPerWeek: true },
     }),
     loadHandoffRoleRows(tx, mesocycleId),
   ]);
 
   const closedAt = new Date();
-  const recommendedNextSeed = buildRecommendedNextSeed({
-    sourceMesocycleId: source.id,
-    createdAt: closedAt,
+  const recommended = buildRecommendedArtifacts({
+    source,
+    availableDaysPerWeek: constraints?.daysPerWeek ?? source.daysPerWeek,
     roles,
   });
   const handoffSummary = buildHandoffSummary({
     mesocycle: source,
     closedAt,
     weeklySequence: constraints?.weeklySchedule ?? [],
-    roles,
-    recommendedNextSeed,
+    carryForwardRecommendations: recommended.carryForwardRecommendations,
+    recommendedDesign: recommended.recommendedDesign,
+    recommendedNextSeed: recommended.recommendedNextSeed,
   });
 
   return tx.mesocycle.update({
@@ -681,7 +861,7 @@ export async function enterMesocycleHandoffInTransaction(
       isActive: false,
       closedAt,
       handoffSummaryJson: handoffSummary as Prisma.InputJsonValue,
-      nextSeedDraftJson: recommendedNextSeed as Prisma.InputJsonValue,
+      nextSeedDraftJson: recommended.recommendedNextSeed as Prisma.InputJsonValue,
     },
   });
 }
@@ -689,14 +869,14 @@ export async function enterMesocycleHandoffInTransaction(
 async function buildAcceptedMesocycleSlotPlanSeed(input: {
   userId: string;
   source: SuccessorMesocycleProjectionSource;
-  draft: NextCycleSeedDraft;
+  design: NextMesocycleDesign;
   slotSequence: ReturnType<typeof projectSuccessorMesocycle>["mesocycle"]["slotSequence"];
 }) {
   const snapshot = await loadPreloadedGenerationSnapshot(input.userId);
   const slotPlanProjection = projectSuccessorSlotPlansFromSnapshot({
     userId: input.userId,
     source: input.source,
-    draft: input.draft,
+    design: input.design,
     snapshot,
   });
 
@@ -735,20 +915,43 @@ export async function acceptMesocycleHandoffInTransaction(
   if (!summary || !storedDraft) {
     throw new Error("MESOCYCLE_HANDOFF_DRAFT_MISSING");
   }
+  const recommended =
+    summary.recommendedDesign && summary.recommendedNextSeed
+      ? {
+          recommendedDesign: summary.recommendedDesign,
+          recommendedNextSeed: summary.recommendedNextSeed,
+          carryForwardRecommendations: summary.carryForwardRecommendations,
+        }
+      : resolveRecommendedArtifactsForPendingHandoff({
+          summary,
+          source,
+          roles: await loadHandoffRoleRows(tx, mesocycleId),
+          availableDaysPerWeek:
+            (
+              await tx.constraints.findUnique({
+                where: { userId: source.macroCycle.userId },
+                select: { daysPerWeek: true },
+              })
+            )?.daysPerWeek ?? source.daysPerWeek,
+        });
   const draft = sanitizeNextCycleSeedDraft({
     draft: storedDraft,
     sourceMesocycleId: source.id,
-    fallbackDraft: summary.recommendedNextSeed,
+    fallbackDraft: recommended.recommendedNextSeed,
+  });
+  const design = applyDraftOverridesToDesign({
+    design: recommended.recommendedDesign,
+    draft,
   });
   const projectionSource = toHandoffProjectionSource(source);
   const projection = projectSuccessorMesocycle({
     source: projectionSource,
-    draft,
+    design,
   });
   const slotPlanSeed = await buildAcceptedMesocycleSlotPlanSeed({
     userId: source.macroCycle.userId,
     source: projectionSource,
-    draft,
+    design,
     slotSequence: projection.mesocycle.slotSequence,
   });
 
@@ -861,7 +1064,11 @@ export async function updateMesocycleHandoffDraftInTransaction(
   const sanitizedDraft = sanitizeNextCycleSeedDraft({
     draft: input.draft,
     sourceMesocycleId: pendingRow.id,
-    fallbackDraft: summary.recommendedNextSeed,
+    fallbackDraft:
+      summary.recommendedNextSeed ??
+      (() => {
+        throw new Error("MESOCYCLE_HANDOFF_SUMMARY_MISSING");
+      })(),
   });
 
   const updated = await tx.mesocycle.update({

@@ -28,9 +28,178 @@ import {
   readNextCycleSeedDraft,
   sanitizeNextCycleSeedDraft,
   toHandoffProjectionSource,
+  type NextMesocycleDesign,
   type NextCycleSeedDraft,
   updateMesocycleHandoffDraftInTransaction,
 } from "./mesocycle-handoff";
+
+function buildRecommendedDesign(): NextMesocycleDesign {
+  return {
+    version: 1,
+    designedAt: "2026-04-01T00:00:00.000Z",
+    sourceMesocycleId: "meso-1",
+    profile: {
+      focus: "Upper Hypertrophy",
+      durationWeeks: 5,
+      volumeTarget: "HIGH",
+      intensityBias: "HYPERTROPHY",
+      blocks: [],
+    },
+    structure: {
+      splitType: "UPPER_LOWER",
+      sessionsPerWeek: 4,
+      daysPerWeek: 4,
+      sequenceMode: "ordered_flexible",
+      slots: [
+        {
+          slotId: "upper_a",
+          intent: "UPPER",
+          authoredSemantics: {
+            slotArchetype: "upper_horizontal_balanced",
+            primaryLaneContract: {
+              mode: "lane_control",
+              lanes: [
+                {
+                  key: "press",
+                  preferredMovementPatterns: ["horizontal_push"],
+                  compatibleMovementPatterns: [],
+                  fallbackOnlyMovementPatterns: ["vertical_push"],
+                },
+                {
+                  key: "pull",
+                  preferredMovementPatterns: ["horizontal_pull"],
+                  compatibleMovementPatterns: [],
+                  fallbackOnlyMovementPatterns: ["vertical_pull"],
+                },
+              ],
+            },
+            supportCoverageContract: {
+              preferredAccessoryPrimaryMuscles: ["Chest", "Upper Back", "Rear Delts"],
+              requiredMovementPatterns: ["vertical_pull"],
+              avoidDuplicatePatterns: ["horizontal_pull"],
+            },
+            continuityScope: "slot",
+          },
+        },
+        {
+          slotId: "lower_a",
+          intent: "LOWER",
+          authoredSemantics: {
+            slotArchetype: "lower_squat_dominant",
+            primaryLaneContract: {
+              mode: "lane_control",
+              lanes: [
+                {
+                  key: "primary",
+                  preferredMovementPatterns: ["squat"],
+                  compatibleMovementPatterns: [],
+                  fallbackOnlyMovementPatterns: ["hinge"],
+                  preferredPrimaryMuscles: ["Quads"],
+                },
+              ],
+            },
+            supportCoverageContract: {
+              preferredAccessoryPrimaryMuscles: ["Quads"],
+              requiredMovementPatterns: ["hinge"],
+              avoidDuplicatePatterns: ["squat"],
+              supportPenaltyPatterns: ["hinge"],
+              maxPreferredSupportPerPattern: 1,
+            },
+            continuityScope: "slot",
+          },
+        },
+        {
+          slotId: "upper_b",
+          intent: "UPPER",
+          authoredSemantics: {
+            slotArchetype: "upper_vertical_balanced",
+            primaryLaneContract: {
+              mode: "lane_control",
+              lanes: [
+                {
+                  key: "press",
+                  preferredMovementPatterns: ["vertical_push"],
+                  compatibleMovementPatterns: [],
+                  fallbackOnlyMovementPatterns: ["horizontal_push"],
+                },
+                {
+                  key: "pull",
+                  preferredMovementPatterns: ["vertical_pull"],
+                  compatibleMovementPatterns: [],
+                  fallbackOnlyMovementPatterns: ["horizontal_pull"],
+                },
+              ],
+            },
+            supportCoverageContract: {
+              preferredAccessoryPrimaryMuscles: ["Lats", "Front Delts", "Side Delts"],
+              requiredMovementPatterns: ["horizontal_pull"],
+              avoidDuplicatePatterns: ["vertical_pull"],
+              supportPenaltyPatterns: ["vertical_push"],
+              maxPreferredSupportPerPattern: 1,
+            },
+            continuityScope: "slot",
+          },
+        },
+        {
+          slotId: "lower_b",
+          intent: "LOWER",
+          authoredSemantics: {
+            slotArchetype: "lower_hinge_dominant",
+            primaryLaneContract: {
+              mode: "lane_control",
+              lanes: [
+                {
+                  key: "primary",
+                  preferredMovementPatterns: ["hinge"],
+                  compatibleMovementPatterns: [],
+                  fallbackOnlyMovementPatterns: ["squat"],
+                  preferredPrimaryMuscles: ["Hamstrings", "Glutes"],
+                },
+              ],
+            },
+            supportCoverageContract: {
+              preferredAccessoryPrimaryMuscles: ["Hamstrings", "Glutes"],
+              requiredMovementPatterns: ["squat"],
+              avoidDuplicatePatterns: ["hinge"],
+              supportPenaltyPatterns: ["squat"],
+              maxPreferredSupportPerPattern: 1,
+            },
+            continuityScope: "slot",
+          },
+        },
+      ],
+    },
+    carryForward: {
+      decisions: [
+        {
+          exerciseId: "bench",
+          role: "CORE_COMPOUND",
+          priorIntent: "UPPER",
+          action: "keep",
+          targetIntent: "UPPER",
+          reasonCodes: ["core_compound_continuity"],
+        },
+        {
+          exerciseId: "row",
+          role: "ACCESSORY",
+          priorIntent: "UPPER",
+          action: "rotate",
+          reasonCodes: ["accessory_rotation_default"],
+        },
+      ],
+    },
+    startingPoint: {
+      volumeEntry: "conservative",
+      baselineSource: "accumulation_preferred",
+      allowNonDeloadFallback: true,
+    },
+    explainability: {
+      profileReasonCodes: ["carry_forward_mesocycle_profile_default"],
+      structureReasonCodes: ["upper_lower_default_frequency_cap"],
+      startingPointReasonCodes: ["conservative_entry_after_deload_boundary"],
+    },
+  };
+}
 
 function buildRecommendedDraft(): NextCycleSeedDraft {
   return {
@@ -50,9 +219,9 @@ function buildRecommendedDraft(): NextCycleSeedDraft {
       ],
     },
     startingPoint: {
-      volumePreset: "conservative_productive" as const,
-      baselineRule: "peak_accumulation_else_highest_accumulation_else_non_deload" as const,
-      excludeDeload: true as const,
+      volumeEntry: "conservative" as const,
+      baselineSource: "accumulation_preferred" as const,
+      allowNonDeloadFallback: true as const,
     },
     carryForwardSelections: [
       {
@@ -115,6 +284,7 @@ function buildHandoffSummaryJson(draft: NextCycleSeedDraft = buildRecommendedDra
       },
     ],
     recommendedNextSeed: draft,
+    recommendedDesign: buildRecommendedDesign(),
   };
 }
 

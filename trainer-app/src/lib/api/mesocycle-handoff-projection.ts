@@ -8,8 +8,8 @@ import type {
   WorkoutSessionIntent,
 } from "@prisma/client";
 import type {
-  NextCycleCarryForwardSelection,
   NextCycleSeedDraft,
+  NextMesocycleDesign,
 } from "./mesocycle-handoff-contract";
 import {
   buildMesocycleSlotSequence,
@@ -100,7 +100,11 @@ function buildPreviewTitle(currentMesoNumber: number, focus: string): string {
 }
 
 function sortExercisesForPreview(
-  selections: ReadonlyArray<NextCycleCarryForwardSelection>
+  selections: ReadonlyArray<{
+    exerciseId: string;
+    exerciseName: string;
+    role: MesocycleExerciseRoleType;
+  }>
 ): SuccessorMesocyclePreviewSlotExercise[] {
   const rolePriority: Record<MesocycleExerciseRoleType, number> = {
     CORE_COMPOUND: 0,
@@ -125,10 +129,23 @@ function sortExercisesForPreview(
 export function buildSuccessorMesocyclePreview(input: {
   currentMesoNumber: number;
   focus: string;
-  draft: NextCycleSeedDraft;
+  design: NextMesocycleDesign;
+  draft?: NextCycleSeedDraft;
 }): SuccessorMesocyclePreview {
-  const keptSelections = input.draft.carryForwardSelections.filter(
-    (selection) => selection.action === "keep"
+  const keptSelections = input.design.carryForward.decisions.filter(
+    (decision) => decision.action === "keep"
+  );
+  const keptSelectionDisplay = new Map(
+    (input.draft?.carryForwardSelections ?? [])
+      .filter((selection) => selection.action === "keep")
+      .map((selection) => [
+        `${selection.exerciseId}:${selection.role}:${selection.sessionIntent}`,
+        {
+          exerciseId: selection.exerciseId,
+          exerciseName: selection.exerciseName,
+          role: selection.role,
+        },
+      ])
   );
   const firstSlotIdByIntent = new Map<WorkoutSessionIntent, string>();
 
@@ -136,12 +153,20 @@ export function buildSuccessorMesocyclePreview(input: {
     title: buildPreviewTitle(input.currentMesoNumber, input.focus),
     focus: input.focus,
     mesoNumber: input.currentMesoNumber + 1,
-    splitType: input.draft.structure.splitType,
-    sessionsPerWeek: input.draft.structure.sessionsPerWeek,
-    daysPerWeek: input.draft.structure.daysPerWeek,
-    slotSequence: input.draft.structure.slots.map((slot) => {
+    splitType: input.design.structure.splitType,
+    sessionsPerWeek: input.design.structure.sessionsPerWeek,
+    daysPerWeek: input.design.structure.daysPerWeek,
+    slotSequence: input.design.structure.slots.map((slot) => {
+      const decisionsForSlot = keptSelections.filter((selection) => selection.targetIntent === slot.intent);
       const exercises = sortExercisesForPreview(
-        keptSelections.filter((selection) => selection.sessionIntent === slot.intent)
+        decisionsForSlot
+          .flatMap((selection) => {
+            const display = keptSelectionDisplay.get(
+              `${selection.exerciseId}:${selection.role}:${selection.targetIntent}`
+            );
+
+            return display ? [display] : [];
+          })
       );
       const sharedWithSlotId = firstSlotIdByIntent.get(slot.intent) ?? null;
 
@@ -152,62 +177,65 @@ export function buildSuccessorMesocyclePreview(input: {
       return {
         slotId: slot.slotId,
         intent: slot.intent,
-        carriedForwardExerciseCount: exercises.length,
+        carriedForwardExerciseCount: decisionsForSlot.length,
         sharedWithSlotId,
         exercises: sharedWithSlotId ? [] : exercises,
       };
     }),
     keepCount: keptSelections.length,
-    rotateCount: input.draft.carryForwardSelections.filter(
-      (selection) => selection.action === "rotate"
-    ).length,
-    dropCount: input.draft.carryForwardSelections.filter(
-      (selection) => selection.action === "drop"
-    ).length,
+    rotateCount: input.design.carryForward.decisions.filter((decision) => decision.action === "rotate").length,
+    dropCount: input.design.carryForward.decisions.filter((decision) => decision.action === "drop").length,
   };
 }
 
 export function projectSuccessorMesocycle(input: {
   source: SuccessorMesocycleProjectionSource;
-  draft: NextCycleSeedDraft;
+  design: NextMesocycleDesign;
+  draft?: NextCycleSeedDraft;
 }): SuccessorMesocycleProjection {
-  const carriedForwardRoles = input.draft.carryForwardSelections
-    .filter((selection) => selection.action === "keep")
-    .map((selection) => ({
-      exerciseId: selection.exerciseId,
-      sessionIntent: selection.sessionIntent,
-      role: selection.role,
+  const carriedForwardRoles = input.design.carryForward.decisions
+    .filter((decision) => decision.action === "keep" && decision.targetIntent)
+    .map((decision) => ({
+      exerciseId: decision.exerciseId,
+      sessionIntent: decision.targetIntent!,
+      role: decision.role,
       addedInWeek: 1 as const,
     }));
+  let nextBlockStartWeek = input.source.startWeek + input.source.durationWeeks;
 
   return {
     mesocycle: {
       macroCycleId: input.source.macroCycleId,
       mesoNumber: input.source.mesoNumber + 1,
       startWeek: input.source.startWeek + input.source.durationWeeks,
-      durationWeeks: input.source.durationWeeks,
-      focus: input.source.focus,
-      volumeTarget: input.source.volumeTarget,
-      intensityBias: input.source.intensityBias,
-      splitType: input.draft.structure.splitType,
-      sessionsPerWeek: input.draft.structure.sessionsPerWeek,
-      daysPerWeek: input.draft.structure.daysPerWeek,
-      weeklySchedule: input.draft.structure.slots.map((slot) => slot.intent),
-      slotSequence: buildMesocycleSlotSequence(input.draft.structure.slots),
+      durationWeeks: input.design.profile.durationWeeks,
+      focus: input.design.profile.focus,
+      volumeTarget: input.design.profile.volumeTarget,
+      intensityBias: input.design.profile.intensityBias,
+      splitType: input.design.structure.splitType,
+      sessionsPerWeek: input.design.structure.sessionsPerWeek,
+      daysPerWeek: input.design.structure.daysPerWeek,
+      weeklySchedule: input.design.structure.slots.map((slot) => slot.intent),
+      slotSequence: buildMesocycleSlotSequence(input.design.structure.slots),
     },
     carriedForwardRoles,
-    trainingBlocks: input.source.blocks.map((block) => ({
-      blockNumber: block.blockNumber,
-      blockType: block.blockType,
-      startWeek: block.startWeek + input.source.durationWeeks,
-      durationWeeks: block.durationWeeks,
-      volumeTarget: block.volumeTarget,
-      intensityBias: block.intensityBias,
-      adaptationType: block.adaptationType,
-    })),
+    trainingBlocks: input.design.profile.blocks.map((block) => {
+      const projectedBlock = {
+        blockNumber: block.blockNumber,
+        blockType: block.blockType,
+        startWeek: nextBlockStartWeek,
+        durationWeeks: block.durationWeeks,
+        volumeTarget: block.volumeTarget,
+        intensityBias: block.intensityBias,
+        adaptationType: block.adaptationType,
+      };
+      nextBlockStartWeek += block.durationWeeks;
+      return projectedBlock;
+    }),
     preview: buildSuccessorMesocyclePreview({
       currentMesoNumber: input.source.mesoNumber,
-      focus: input.source.focus,
+      focus: input.design.profile.focus,
+      design: input.design,
       draft: input.draft,
     }),
   };

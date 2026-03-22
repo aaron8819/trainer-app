@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { NextCycleSeedDraft } from "./mesocycle-handoff-contract";
+import { buildFallbackDesignFromDraft } from "./mesocycle-genesis-policy";
 import {
   buildSuccessorMesocyclePreview,
   projectSuccessorMesocycle,
@@ -23,9 +24,9 @@ function buildDraft(): NextCycleSeedDraft {
       ],
     },
     startingPoint: {
-      volumePreset: "conservative_productive",
-      baselineRule: "peak_accumulation_else_highest_accumulation_else_non_deload",
-      excludeDeload: true,
+      volumeEntry: "conservative",
+      baselineSource: "accumulation_preferred",
+      allowNonDeloadFallback: true,
     },
     carryForwardSelections: [
       {
@@ -53,11 +54,36 @@ function buildDraft(): NextCycleSeedDraft {
   };
 }
 
+function buildDesign() {
+  return buildFallbackDesignFromDraft({
+    sourceMesocycleId: "meso-1",
+    designedAt: "2026-04-01T00:00:00.000Z",
+    profile: {
+      focus: "Upper Hypertrophy",
+      durationWeeks: 5,
+      volumeTarget: "HIGH",
+      intensityBias: "HYPERTROPHY",
+      blocks: [
+        {
+          blockNumber: 1,
+          blockType: "ACCUMULATION",
+          durationWeeks: 4,
+          volumeTarget: "HIGH",
+          intensityBias: "HYPERTROPHY",
+          adaptationType: "MYOFIBRILLAR_HYPERTROPHY",
+        },
+      ],
+    },
+    draft: buildDraft(),
+  });
+}
+
 describe("buildSuccessorMesocyclePreview", () => {
   it("keeps repeated intents honest by sharing intent-level carry-forward pools", () => {
     const preview = buildSuccessorMesocyclePreview({
       currentMesoNumber: 1,
       focus: "Upper Hypertrophy",
+      design: buildDesign(),
       draft: buildDraft(),
     });
 
@@ -114,6 +140,7 @@ describe("projectSuccessorMesocycle", () => {
           },
         ],
       },
+      design: buildDesign(),
       draft: buildDraft(),
     });
 

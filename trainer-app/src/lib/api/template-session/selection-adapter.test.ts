@@ -693,7 +693,7 @@ describe("buildSelectionObjective continuity bias", () => {
     expect(upperAObjective.slotPolicy?.currentSession?.sessionShape).toEqual({
       id: "upper_horizontal_balanced",
       preferredAccessoryPrimaryMuscles: ["Chest", "Upper Back", "Rear Delts"],
-      requiredMovementPatterns: ["vertical_pull"],
+      requiredMovementPatterns: ["vertical_pull", "horizontal_pull"],
       avoidDuplicatePatterns: ["horizontal_pull"],
     });
     expect(upperBObjective.slotPolicy?.currentSession?.sessionShape).toEqual({

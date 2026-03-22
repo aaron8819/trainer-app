@@ -705,6 +705,115 @@ describe("generateSessionFromIntent", () => {
     }
   });
 
+  it("upper_a keeps horizontal pull coverage even when only a vertical pull compound is available", async () => {
+    const customLibrary: Exercise[] = [
+      makeCustomExercise({
+        id: "incline-db-press",
+        name: "Incline Dumbbell Press",
+        movementPatterns: ["vertical_push"],
+        splitTags: ["push"],
+        primaryMuscles: ["Chest", "Front Delts"],
+        secondaryMuscles: ["Triceps"],
+      }),
+      makeCustomExercise({
+        id: "lat-pulldown",
+        name: "Lat Pulldown",
+        movementPatterns: ["vertical_pull"],
+        splitTags: ["pull"],
+        primaryMuscles: ["Lats"],
+        secondaryMuscles: ["Biceps"],
+      }),
+      makeCustomExercise({
+        id: "machine-row",
+        name: "Machine Row",
+        movementPatterns: ["horizontal_pull"],
+        splitTags: ["pull"],
+        primaryMuscles: ["Upper Back", "Lats"],
+        secondaryMuscles: ["Biceps"],
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 2,
+      }),
+      makeCustomExercise({
+        id: "lateral-raise",
+        name: "Lateral Raise",
+        movementPatterns: ["isolation"],
+        splitTags: ["push"],
+        primaryMuscles: ["Side Delts"],
+        secondaryMuscles: [],
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 1,
+      }),
+      makeCustomExercise({
+        id: "triceps-pressdown",
+        name: "Triceps Pressdown",
+        movementPatterns: ["isolation"],
+        splitTags: ["push"],
+        primaryMuscles: ["Triceps"],
+        secondaryMuscles: [],
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 1,
+      }),
+    ];
+    mapExercisesMock.mockReturnValue(customLibrary);
+    mapConstraintsMock.mockReturnValue({
+      daysPerWeek: 4,
+      splitType: "upper_lower",
+      weeklySchedule: ["upper", "lower", "upper", "lower"],
+    });
+    loadWorkoutContextMock.mockResolvedValue({
+      profile: { id: "profile" },
+      goals: { primaryGoal: "HYPERTROPHY", secondaryGoal: "NONE" },
+      constraints: {
+        daysPerWeek: 4,
+        splitType: "UPPER_LOWER",
+        weeklySchedule: ["UPPER", "LOWER", "UPPER", "LOWER"],
+      },
+      injuries: [],
+      exercises: customLibrary.map((exercise) => ({ id: exercise.id })),
+      workouts: [],
+      preferences: null,
+      checkIns: [],
+    });
+    loadActiveMesocycleMock.mockResolvedValue({
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION",
+      accumulationSessionsCompleted: 6,
+      durationWeeks: 5,
+      sessionsPerWeek: 4,
+      slotSequenceJson: {
+        version: 1,
+        source: "handoff_draft",
+        sequenceMode: "ordered_flexible",
+        slots: [
+          { slotId: "upper_a", intent: "UPPER" },
+          { slotId: "lower_a", intent: "LOWER" },
+          { slotId: "upper_b", intent: "UPPER" },
+          { slotId: "lower_b", intent: "LOWER" },
+        ],
+      },
+    });
+
+    const result = await generateSessionFromIntent("user-1", {
+      intent: "upper",
+      slotId: "upper_a",
+    });
+
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    expect(result.selection.selectedExerciseIds).toContain("machine-row");
+    expect(result.selection.selectedExerciseIds).toContain("lat-pulldown");
+    expect(
+      result.selection.selectedExerciseIds.some((exerciseId) => {
+        const exercise = customLibrary.find((entry) => entry.id === exerciseId);
+        return exercise?.movementPatterns.includes("horizontal_pull") ?? false;
+      })
+    ).toBe(true);
+  });
+
   it("lower_a avoids excessive quad stacking when hinge support is viable", async () => {
     const customLibrary: Exercise[] = [
       makeCustomExercise({

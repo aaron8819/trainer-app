@@ -12,7 +12,7 @@
  * - Empirically: ~2-3ms on modern CPU
  */
 
-import type { Muscle } from "../types";
+import type { MovementPatternV2, Muscle } from "../types";
 import type {
   SelectionCandidate,
   SelectionObjective,
@@ -344,6 +344,181 @@ function hasRemainingCompoundLaneOption(
   return false;
 }
 
+function exerciseMatchesMovementPattern(
+  candidate: SelectionCandidate,
+  pattern: MovementPatternV2
+): boolean {
+  return (candidate.exercise.movementPatterns ?? []).includes(pattern);
+}
+
+function getRequiredSessionShapePatterns(
+  objective: SelectionObjective,
+  candidates: SelectionCandidate[]
+): MovementPatternV2[] {
+  const requiredPatterns =
+    objective.slotPolicy?.currentSession?.sessionShape?.requiredMovementPatterns ?? [];
+  if (requiredPatterns.length === 0) {
+    return [];
+  }
+
+  return requiredPatterns.filter((pattern, index) => {
+    if (requiredPatterns.indexOf(pattern) !== index) {
+      return false;
+    }
+    return candidates.some((candidate) => exerciseMatchesMovementPattern(candidate, pattern));
+  });
+}
+
+function getSatisfiedSessionShapePatterns(
+  selected: SelectionCandidate[],
+  requiredPatterns: readonly MovementPatternV2[]
+): Set<MovementPatternV2> {
+  const satisfied = new Set<MovementPatternV2>();
+  for (const pattern of requiredPatterns) {
+    if (selected.some((candidate) => exerciseMatchesMovementPattern(candidate, pattern))) {
+      satisfied.add(pattern);
+    }
+  }
+  return satisfied;
+}
+
+function fillsMissingSessionShapeRequirement(
+  state: BeamState,
+  candidate: SelectionCandidate,
+  objective: SelectionObjective,
+  candidates: SelectionCandidate[]
+): boolean {
+  const requiredPatterns = getRequiredSessionShapePatterns(objective, candidates);
+  if (requiredPatterns.length === 0) {
+    return false;
+  }
+
+  const satisfiedPatterns = getSatisfiedSessionShapePatterns(state.selected, requiredPatterns);
+  return requiredPatterns.some(
+    (pattern) =>
+      !satisfiedPatterns.has(pattern) && exerciseMatchesMovementPattern(candidate, pattern)
+  );
+}
+
+function getMinimumCandidatesNeededForPatternCoverage(
+  patterns: readonly MovementPatternV2[],
+  candidates: SelectionCandidate[]
+): number {
+  if (patterns.length === 0) {
+    return 0;
+  }
+
+  const fullMask = (1 << patterns.length) - 1;
+  const bestCounts = Array<number>(fullMask + 1).fill(Number.POSITIVE_INFINITY);
+  bestCounts[0] = 0;
+
+  for (const candidate of candidates) {
+    const coverageMask = patterns.reduce((mask, pattern, index) => {
+      return exerciseMatchesMovementPattern(candidate, pattern) ? mask | (1 << index) : mask;
+    }, 0);
+    if (coverageMask === 0) {
+      continue;
+    }
+
+    for (let mask = fullMask; mask >= 0; mask -= 1) {
+      if (!Number.isFinite(bestCounts[mask])) {
+        continue;
+      }
+      const nextMask = mask | coverageMask;
+      bestCounts[nextMask] = Math.min(bestCounts[nextMask], bestCounts[mask] + 1);
+    }
+  }
+
+  return bestCounts[fullMask];
+}
+
+function wouldPreserveSessionShapeCoverageProgress(
+  state: BeamState,
+  candidate: SelectionCandidate,
+  candidates: SelectionCandidate[],
+  objective: SelectionObjective
+): boolean {
+  const requiredPatterns = getRequiredSessionShapePatterns(objective, candidates);
+  if (requiredPatterns.length === 0) {
+    return true;
+  }
+
+  const nextSelected = [...state.selected, candidate];
+  const satisfiedPatterns = getSatisfiedSessionShapePatterns(nextSelected, requiredPatterns);
+  const unresolvedPatterns = requiredPatterns.filter((pattern) => !satisfiedPatterns.has(pattern));
+  if (unresolvedPatterns.length === 0) {
+    return true;
+  }
+
+  const remainingSlots = objective.constraints.maxExercises - nextSelected.length;
+  if (remainingSlots <= 0) {
+    return false;
+  }
+
+  const nextState: BeamState = {
+    selected: nextSelected,
+    volumeFilled: new Map(),
+    timeUsed: 0,
+    score: 0,
+    favoritesCount: 0,
+  };
+  const selectedIds = new Set(nextSelected.map((selectedCandidate) => selectedCandidate.exercise.id));
+  const remainingCandidates = candidates.filter((remainingCandidate) => {
+    if (selectedIds.has(remainingCandidate.exercise.id)) {
+      return false;
+    }
+    return wouldSatisfyStructure(nextState, remainingCandidate, objective);
+  });
+
+  return (
+    getMinimumCandidatesNeededForPatternCoverage(unresolvedPatterns, remainingCandidates) <=
+    remainingSlots
+  );
+}
+
+function hasRemainingSessionShapeCoverageOption(
+  state: BeamState,
+  candidates: SelectionCandidate[],
+  objective: SelectionObjective,
+  excludedCandidateId: string
+): boolean {
+  const requiredPatterns = getRequiredSessionShapePatterns(objective, candidates);
+  if (requiredPatterns.length === 0 || state.selected.length >= objective.constraints.maxExercises) {
+    return false;
+  }
+
+  const satisfiedPatterns = getSatisfiedSessionShapePatterns(state.selected, requiredPatterns);
+  const unresolvedPatterns = requiredPatterns.filter((pattern) => !satisfiedPatterns.has(pattern));
+  if (unresolvedPatterns.length === 0) {
+    return false;
+  }
+
+  const selectedIds = new Set(state.selected.map((selectedCandidate) => selectedCandidate.exercise.id));
+  const remainingCandidates = candidates.filter((candidate) => {
+    if (candidate.exercise.id === excludedCandidateId) {
+      return false;
+    }
+    if (selectedIds.has(candidate.exercise.id)) {
+      return false;
+    }
+    if (!wouldSatisfyStructure(state, candidate, objective)) {
+      return false;
+    }
+
+    const mergedVolume = mergeVolume(state.volumeFilled, candidate.volumeContribution);
+    return !exceedsCeiling(mergedVolume, objective.constraints.volumeCeiling);
+  });
+  if (remainingCandidates.length === 0) {
+    return false;
+  }
+
+  const remainingSlots = objective.constraints.maxExercises - state.selected.length;
+  return (
+    getMinimumCandidatesNeededForPatternCoverage(unresolvedPatterns, remainingCandidates) <=
+    remainingSlots
+  );
+}
+
 /**
  * Execute beam search to find optimal exercise combination
  *
@@ -411,6 +586,10 @@ export function beamSearch(
           rejectedMap.set(candidate.exercise.id, "structure_constraint_violated");
           continue;
         }
+        if (!wouldPreserveSessionShapeCoverageProgress(state, candidate, candidates, objective)) {
+          rejectedMap.set(candidate.exercise.id, "structure_constraint_violated");
+          continue;
+        }
 
         if (shouldRejectLowSetAccessory(state, candidate, candidates, objective)) {
           rejectedMap.set(candidate.exercise.id, "dominated_by_better_option");
@@ -428,10 +607,17 @@ export function beamSearch(
           candidate,
           objective
         );
+        const fillsSessionShapeRequirement = fillsMissingSessionShapeRequirement(
+          state,
+          candidate,
+          objective,
+          candidates
+        );
         const candidateHasDeficit =
           candidate.scores.deficitFill > 0 ||
           fillsMainLiftRequirement ||
-          fillsCompoundLaneRequirement;
+          fillsCompoundLaneRequirement ||
+          fillsSessionShapeRequirement;
         if (!candidateHasDeficit && state.selected.length >= objective.constraints.minExercises) {
           rejectedMap.set(candidate.exercise.id, "dominated_by_better_option");
           continue;
@@ -446,6 +632,18 @@ export function beamSearch(
         if (
           !fillsCompoundLaneRequirement &&
           hasRemainingCompoundLaneOption(state, candidates, objective, candidate.exercise.id)
+        ) {
+          rejectedMap.set(candidate.exercise.id, "dominated_by_better_option");
+          continue;
+        }
+        if (
+          !fillsSessionShapeRequirement &&
+          hasRemainingSessionShapeCoverageOption(
+            state,
+            candidates,
+            objective,
+            candidate.exercise.id
+          )
         ) {
           rejectedMap.set(candidate.exercise.id, "dominated_by_better_option");
           continue;
@@ -651,6 +849,9 @@ export function beamSearch(
 
   // Enforce authoritative compound-lane satisfaction for repeated-slot sessions.
   finalBeam = enforceCompoundLaneSatisfaction(finalBeam, candidates, objective, rejectedMap);
+
+  // Enforce required session-shape movement-pattern coverage during selection when viable.
+  finalBeam = enforceSessionShapeRequiredCoverage(finalBeam, candidates, objective, rejectedMap);
 
   // Enforce continuity from most-recent same-intent performed session when feasible.
   finalBeam = enforceContinuityExercises(finalBeam, candidates, objective, rejectedMap);
@@ -892,6 +1093,65 @@ function enforceCompoundLaneSatisfaction(
   return augmentedBeam;
 }
 
+function enforceSessionShapeRequiredCoverage(
+  beam: BeamState,
+  candidates: SelectionCandidate[],
+  objective: SelectionObjective,
+  rejectedMap: Map<string, RejectionReason>
+): BeamState {
+  const requiredPatterns = getRequiredSessionShapePatterns(objective, candidates);
+  if (requiredPatterns.length === 0) {
+    return beam;
+  }
+
+  const augmentedBeam: BeamState = {
+    selected: [...beam.selected],
+    volumeFilled: new Map(beam.volumeFilled),
+    timeUsed: beam.timeUsed,
+    score: beam.score,
+    favoritesCount: beam.favoritesCount,
+  };
+
+  for (const pattern of requiredPatterns) {
+    if (getSatisfiedSessionShapePatterns(augmentedBeam.selected, requiredPatterns).has(pattern)) {
+      continue;
+    }
+
+    const selectedIds = new Set(augmentedBeam.selected.map((selected) => selected.exercise.id));
+    const patternCandidates = candidates
+      .filter((candidate) => !selectedIds.has(candidate.exercise.id))
+      .filter((candidate) => exerciseMatchesMovementPattern(candidate, pattern))
+      .sort((a, b) => b.totalScore - a.totalScore);
+
+    for (const candidate of patternCandidates) {
+      if (
+        canAddCandidate(augmentedBeam, candidate, candidates, objective, rejectedMap, {
+          allowNonDeficitCandidate: true,
+        })
+      ) {
+        addCandidateToBeam(augmentedBeam, candidate);
+        break;
+      }
+
+      if (
+        trySwapForSessionShapePattern(
+          augmentedBeam,
+          candidate,
+          pattern,
+          requiredPatterns,
+          candidates,
+          objective,
+          rejectedMap
+        )
+      ) {
+        break;
+      }
+    }
+  }
+
+  return augmentedBeam;
+}
+
 function trySwapForCompoundLane(
   beam: BeamState,
   laneCandidate: SelectionCandidate,
@@ -962,6 +1222,99 @@ function trySwapForCompoundLane(
     beam.score = tempBeam.score;
     beam.favoritesCount = tempBeam.favoritesCount;
     rejectedMap.set(selected.exercise.id, "dominated_by_better_option");
+    return true;
+  }
+
+  return false;
+}
+
+function trySwapForSessionShapePattern(
+  beam: BeamState,
+  patternCandidate: SelectionCandidate,
+  pattern: MovementPatternV2,
+  requiredPatterns: readonly MovementPatternV2[],
+  candidates: SelectionCandidate[],
+  objective: SelectionObjective,
+  rejectedMap: Map<string, RejectionReason>
+): boolean {
+  const requiredLaneKeys = getRequiredCompoundLaneKeys(objective);
+  const satisfiedPatternsBefore = getSatisfiedSessionShapePatterns(beam.selected, requiredPatterns);
+  const selectedByScore = [...beam.selected].sort((a, b) => a.totalScore - b.totalScore);
+
+  for (const selected of selectedByScore) {
+    const nextSelected = beam.selected.filter(
+      (candidate) => candidate.exercise.id !== selected.exercise.id
+    );
+    const mainLiftCount = nextSelected.filter((candidate) =>
+      isMainLiftCandidate(candidate, objective)
+    ).length;
+    const accessoryCount = nextSelected.filter(
+      (candidate) => !isMainLiftCandidate(candidate, objective)
+    ).length;
+    if (mainLiftCount < (objective.constraints.minMainLifts ?? 0)) {
+      continue;
+    }
+    if (accessoryCount < (objective.constraints.minAccessories ?? 0)) {
+      continue;
+    }
+
+    const nextSatisfiedLaneKeys = getSatisfiedCompoundLaneKeys(nextSelected, objective);
+    const preservesSatisfiedLanes = requiredLaneKeys.every(
+      (laneKey) =>
+        !getSatisfiedCompoundLaneKeys(beam.selected, objective).has(laneKey) ||
+        nextSatisfiedLaneKeys.has(laneKey) ||
+        isExerciseAllowedForCompoundLaneSatisfaction(
+          objective.resolvedCompoundControl,
+          laneKey,
+          patternCandidate.exercise
+        )
+    );
+    if (!preservesSatisfiedLanes) {
+      continue;
+    }
+
+    const nextSatisfiedPatterns = getSatisfiedSessionShapePatterns(nextSelected, requiredPatterns);
+    const preservesOtherRequiredPatterns = requiredPatterns.every(
+      (requiredPattern) =>
+        requiredPattern === pattern ||
+        !satisfiedPatternsBefore.has(requiredPattern) ||
+        nextSatisfiedPatterns.has(requiredPattern) ||
+        exerciseMatchesMovementPattern(patternCandidate, requiredPattern)
+    );
+    if (!preservesOtherRequiredPatterns) {
+      continue;
+    }
+
+    const tempBeam: BeamState = {
+      selected: nextSelected,
+      volumeFilled: new Map(),
+      timeUsed: 0,
+      score: 0,
+      favoritesCount: 0,
+    };
+    for (const candidate of tempBeam.selected) {
+      tempBeam.volumeFilled = mergeVolume(tempBeam.volumeFilled, candidate.volumeContribution);
+      tempBeam.timeUsed += candidate.timeContribution;
+      tempBeam.score += candidate.totalScore;
+      if (objective.preferences.favoriteExerciseIds.has(candidate.exercise.id)) {
+        tempBeam.favoritesCount += 1;
+      }
+    }
+
+    if (
+      !canAddCandidate(tempBeam, patternCandidate, candidates, objective, rejectedMap, {
+        allowNonDeficitCandidate: true,
+      })
+    ) {
+      continue;
+    }
+
+    addCandidateToBeam(tempBeam, patternCandidate);
+    beam.selected = tempBeam.selected;
+    beam.volumeFilled = tempBeam.volumeFilled;
+    beam.timeUsed = tempBeam.timeUsed;
+    beam.score = tempBeam.score;
+    beam.favoritesCount = tempBeam.favoritesCount;
     return true;
   }
 
@@ -1142,6 +1495,10 @@ function canAddCandidate(
     rejectedMap.set(candidate.exercise.id, "structure_constraint_violated");
     return false;
   }
+  if (!wouldPreserveSessionShapeCoverageProgress(beam, candidate, candidates, objective)) {
+    rejectedMap.set(candidate.exercise.id, "structure_constraint_violated");
+    return false;
+  }
 
   // Merge volume
   const newVolumeFilled = mergeVolume(beam.volumeFilled, candidate.volumeContribution);
@@ -1168,10 +1525,17 @@ function canAddCandidate(
     candidate,
     objective
   );
+  const fillsSessionShapeRequirement = fillsMissingSessionShapeRequirement(
+    beam,
+    candidate,
+    objective,
+    candidates
+  );
   if (
     !options?.allowNonDeficitCandidate &&
     !hasDeficit &&
     !fillsCompoundLaneRequirement &&
+    !fillsSessionShapeRequirement &&
     hasRemainingDeficitFillingOption(beam, candidates, objective, candidate.exercise.id)
   ) {
     rejectedMap.set(candidate.exercise.id, "dominated_by_better_option");
@@ -1180,6 +1544,13 @@ function canAddCandidate(
   if (
     !fillsCompoundLaneRequirement &&
     hasRemainingCompoundLaneOption(beam, candidates, objective, candidate.exercise.id)
+  ) {
+    rejectedMap.set(candidate.exercise.id, "dominated_by_better_option");
+    return false;
+  }
+  if (
+    !fillsSessionShapeRequirement &&
+    hasRemainingSessionShapeCoverageOption(beam, candidates, objective, candidate.exercise.id)
   ) {
     rejectedMap.set(candidate.exercise.id, "dominated_by_better_option");
     return false;
@@ -1325,11 +1696,15 @@ function buildResult(
   const meetsCompoundLaneConstraints = getRequiredCompoundLaneKeys(objective).every((laneKey) =>
     getSatisfiedCompoundLaneKeys(selected, objective).has(laneKey)
   );
+  const meetsSessionShapeConstraints = getRequiredSessionShapePatterns(objective, allCandidates).every(
+    (pattern) => getSatisfiedSessionShapePatterns(selected, [pattern]).has(pattern)
+  );
   const constraintsSatisfied =
     meetsMinExercises &&
     meetsVolumeFloor &&
     meetsStructuralConstraints &&
-    meetsCompoundLaneConstraints;
+    meetsCompoundLaneConstraints &&
+    meetsSessionShapeConstraints;
 
   // Annotate selected candidates with marginal deficitFill for rationale.
   // Simulate sequential selection so each exercise shows what it contributed

@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => {
   const txTrainingBlockCreateMany = vi.fn();
   const txRoleFindMany = vi.fn();
   const txRoleCreateMany = vi.fn();
+  const txWorkoutFindMany = vi.fn();
+  const txReadinessFindFirst = vi.fn();
   const transaction = vi.fn(async (callback: (tx: unknown) => Promise<unknown>) =>
     callback({
       mesocycle: {
@@ -27,6 +29,12 @@ const mocks = vi.hoisted(() => {
         findMany: txRoleFindMany,
         createMany: txRoleCreateMany,
       },
+      workout: {
+        findMany: txWorkoutFindMany,
+      },
+      readinessSignal: {
+        findFirst: txReadinessFindFirst,
+      },
     })
   );
 
@@ -40,6 +48,8 @@ const mocks = vi.hoisted(() => {
     txTrainingBlockCreateMany,
     txRoleFindMany,
     txRoleCreateMany,
+    txWorkoutFindMany,
+    txReadinessFindFirst,
     transaction,
     prisma: {
       mesocycle: {
@@ -167,6 +177,8 @@ describe("mesocycle-lifecycle", () => {
       weeklySchedule: ["PUSH", "PULL", "LEGS"],
     });
     mocks.txRoleFindMany.mockResolvedValue([]);
+    mocks.txWorkoutFindMany.mockResolvedValue([]);
+    mocks.txReadinessFindFirst.mockResolvedValue(null);
 
     const updated = await transitionMesocycleState("m1");
     expect(updated.state).toBe("AWAITING_HANDOFF");

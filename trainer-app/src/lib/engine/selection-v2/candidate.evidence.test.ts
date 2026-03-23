@@ -176,7 +176,7 @@ describe("candidate evidence guardrails", () => {
       splitTags: ["pull"],
       jointStress: "low",
       isMainLiftEligible: false,
-      isCompound: false,
+      isCompound: true,
       fatigueCost: 2,
       sfrScore: 4,
       lengthPositionScore: 3,
@@ -220,7 +220,7 @@ describe("candidate evidence guardrails", () => {
       splitTags: ["legs"],
       jointStress: "low",
       isMainLiftEligible: false,
-      isCompound: false,
+      isCompound: true,
       fatigueCost: 2,
       sfrScore: 4,
       lengthPositionScore: 3,
@@ -265,7 +265,7 @@ describe("candidate evidence guardrails", () => {
       splitTags: ["legs"],
       jointStress: "medium",
       isMainLiftEligible: false,
-      isCompound: false,
+      isCompound: true,
       fatigueCost: 2,
       sfrScore: 4,
       lengthPositionScore: 3,
@@ -309,7 +309,7 @@ describe("candidate evidence guardrails", () => {
       splitTags: ["legs"],
       jointStress: "low",
       isMainLiftEligible: false,
-      isCompound: false,
+      isCompound: true,
       fatigueCost: 2,
       sfrScore: 4,
       lengthPositionScore: 3,
@@ -392,7 +392,7 @@ describe("candidate evidence guardrails", () => {
       splitTags: ["pull"],
       jointStress: "low",
       isMainLiftEligible: false,
-      isCompound: false,
+      isCompound: true,
       fatigueCost: 2,
       sfrScore: 4,
       lengthPositionScore: 3,
@@ -419,5 +419,94 @@ describe("candidate evidence guardrails", () => {
 
     expect(penalizedScore).toBeGreaterThan(0);
     expect(penalizedScore).toBeCloseTo(0.55, 6);
+  });
+
+  it("only gives required-coverage credit to compound pattern matches", () => {
+    const verticalPressAccessory: Exercise = {
+      id: "machine-shoulder-press",
+      name: "Machine Shoulder Press",
+      movementPatterns: ["vertical_push"],
+      splitTags: ["push"],
+      jointStress: "medium",
+      isMainLiftEligible: false,
+      isCompound: false,
+      fatigueCost: 2,
+      sfrScore: 4,
+      lengthPositionScore: 3,
+      equipment: ["machine"],
+      primaryMuscles: ["Front Delts", "Side Delts"],
+      secondaryMuscles: ["Triceps"],
+    };
+    const existingVerticalPress: Exercise = {
+      id: "incline-db-press",
+      name: "Incline Dumbbell Press",
+      movementPatterns: ["vertical_push"],
+      splitTags: ["push"],
+      jointStress: "medium",
+      isMainLiftEligible: true,
+      isCompound: true,
+      fatigueCost: 3,
+      sfrScore: 4,
+      lengthPositionScore: 3,
+      equipment: ["dumbbell"],
+      primaryMuscles: ["Chest", "Front Delts"],
+      secondaryMuscles: ["Triceps"],
+    };
+    const supportiveHorizontalPull: Exercise = {
+      id: "face-pull",
+      name: "Face Pull",
+      movementPatterns: ["horizontal_pull"],
+      splitTags: ["pull"],
+      jointStress: "low",
+      isMainLiftEligible: false,
+      isCompound: false,
+      fatigueCost: 2,
+      sfrScore: 4,
+      lengthPositionScore: 4,
+      equipment: ["cable"],
+      primaryMuscles: ["Rear Delts"],
+      secondaryMuscles: ["Upper Back"],
+    };
+    const compoundHorizontalPull: Exercise = {
+      id: "chest-supported-row",
+      name: "Chest Supported Row",
+      movementPatterns: ["horizontal_pull"],
+      splitTags: ["pull"],
+      jointStress: "low",
+      isMainLiftEligible: false,
+      isCompound: true,
+      fatigueCost: 2,
+      sfrScore: 4,
+      lengthPositionScore: 3,
+      equipment: ["machine"],
+      primaryMuscles: ["Upper Back"],
+      secondaryMuscles: ["Biceps"],
+    };
+    const objective = buildObjective();
+    const sessionShape: SessionSlotShape = {
+      id: "upper_vertical_balanced",
+      preferredAccessoryPrimaryMuscles: ["Lats", "Front Delts", "Side Delts"],
+      requiredMovementPatterns: ["horizontal_pull"],
+      avoidDuplicatePatterns: ["vertical_pull"],
+      supportPenaltyPatterns: ["vertical_push"],
+      maxPreferredSupportPerPattern: 1,
+    };
+
+    const scoreWithSupportiveMatch = scoreSessionShapeAlignment(
+      verticalPressAccessory,
+      sessionShape,
+      objective,
+      [existingVerticalPress, supportiveHorizontalPull]
+    );
+    const scoreWithCompoundMatch = scoreSessionShapeAlignment(
+      verticalPressAccessory,
+      sessionShape,
+      objective,
+      [existingVerticalPress, compoundHorizontalPull]
+    );
+
+    expect(scoreWithSupportiveMatch).toBeCloseTo(0.5, 6);
+    expect(scoreWithCompoundMatch).toBeCloseTo(0.55, 6);
+    expect(scoreWithCompoundMatch).toBeGreaterThan(scoreWithSupportiveMatch);
   });
 });

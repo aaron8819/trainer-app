@@ -73,7 +73,10 @@ import {
   getSessionAnchorPolicy,
   type SessionInventoryKind,
 } from "@/lib/planning/session-opportunities";
-import { isExerciseAllowedForAnyCompoundLaneSatisfaction } from "@/lib/planning/session-slot-profile";
+import {
+  doesExerciseSatisfyRequiredSessionShapePattern,
+  isExerciseAllowedForAnyCompoundLaneSatisfaction,
+} from "@/lib/planning/session-slot-profile";
 import { resolveMesocycleSlotContract } from "./mesocycle-slot-contract";
 import type { SessionSlotSnapshot } from "@/lib/evidence/types";
 
@@ -930,16 +933,9 @@ function getMovementPatternSet(
   return patterns;
 }
 
-function exerciseMatchesAnyMovementPattern(
-  exercise: Pick<EngineExercise, "movementPatterns">,
-  patterns: readonly MovementPatternV2[]
-): boolean {
-  return patterns.some((pattern) => (exercise.movementPatterns ?? []).includes(pattern));
-}
-
 function getMissingSessionShapeRequiredPatternsForExercises(params: {
   objective: ReturnType<typeof buildSelectionObjective>;
-  exercises: Array<Pick<EngineExercise, "movementPatterns">>;
+  exercises: Array<Pick<EngineExercise, "movementPatterns" | "isCompound">>;
 }): MovementPatternV2[] {
   const sessionShape = getCurrentSessionShape(params.objective);
   const requiredMovementPatterns = sessionShape?.requiredMovementPatterns ?? [];
@@ -947,8 +943,12 @@ function getMissingSessionShapeRequiredPatternsForExercises(params: {
     return [];
   }
 
-  const selectedPatterns = getMovementPatternSet(params.exercises);
-  return requiredMovementPatterns.filter((pattern) => !selectedPatterns.has(pattern));
+  return requiredMovementPatterns.filter(
+    (pattern) =>
+      !params.exercises.some((exercise) =>
+        doesExerciseSatisfyRequiredSessionShapePattern(exercise, pattern)
+      )
+  );
 }
 
 function getMissingSessionShapeRequiredPatterns(params: {
@@ -1026,7 +1026,7 @@ function findSessionShapeAccessoryReplacementCandidate(params: {
     .filter((candidate) => !params.pinnedExerciseIds.has(candidate.id))
     .filter((candidate) => isSessionShapeAccessoryCandidate(candidate, params.objective))
     .filter((candidate) =>
-      (candidate.movementPatterns ?? []).includes(params.requiredPattern)
+      doesExerciseSatisfyRequiredSessionShapePattern(candidate, params.requiredPattern)
     )
     .filter((candidate) => !sharesBaseExerciseName(selectedWithoutRemoved, candidate))
     .sort((left, right) => {
@@ -2329,7 +2329,9 @@ function evaluateClosureAction(
   const coversMissingRequiredPattern =
     !isMainLiftExercise(exercise, objective) &&
     missingRequiredPatterns.length > 0 &&
-    exerciseMatchesAnyMovementPattern(exercise, missingRequiredPatterns);
+    missingRequiredPatterns.some((pattern) =>
+      doesExerciseSatisfyRequiredSessionShapePattern(exercise, pattern)
+    );
   const duplicateAvoidedPattern =
     !isMainLiftExercise(exercise, objective) &&
     duplicatesSessionShapeAvoidedPattern({

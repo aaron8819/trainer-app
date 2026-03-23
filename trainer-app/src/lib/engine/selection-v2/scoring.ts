@@ -19,6 +19,7 @@ import type {
   SessionSlotCompoundBias,
   SessionSlotShape,
 } from "@/lib/planning/session-slot-profile";
+import { doesExerciseSatisfyRequiredSessionShapePattern } from "@/lib/planning/session-slot-profile";
 
 const POST_COVERAGE_SUPPORT_OVERBUDGET_PENALTY = 0.2;
 
@@ -359,16 +360,23 @@ export function scoreSessionShapeAlignment(
   const requiredMovementPatterns = sessionShape.requiredMovementPatterns ?? [];
   const requiredCoverageSatisfied =
     requiredMovementPatterns.length > 0 &&
-    requiredMovementPatterns.every((pattern) => selectedPatterns.has(pattern));
+    requiredMovementPatterns.every((pattern) =>
+      alreadySelected.some((selectedExercise) =>
+        doesExerciseSatisfyRequiredSessionShapePattern(selectedExercise, pattern)
+      )
+    );
   if (requiredMovementPatterns.length > 0) {
     const missingRequiredPatterns = requiredMovementPatterns.filter(
-      (pattern) => !selectedPatterns.has(pattern)
+      (pattern) =>
+        !alreadySelected.some((selectedExercise) =>
+          doesExerciseSatisfyRequiredSessionShapePattern(selectedExercise, pattern)
+        )
     );
     scores.push(
       missingRequiredPatterns.length === 0
         ? 1
         : missingRequiredPatterns.some((pattern) =>
-              (exercise.movementPatterns ?? []).includes(pattern)
+              doesExerciseSatisfyRequiredSessionShapePattern(exercise, pattern)
             )
           ? 1
           : 0

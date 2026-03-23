@@ -486,7 +486,7 @@ describe("generateSessionFromIntent", () => {
     }
   });
 
-  it("upper_a avoids duplicate rows and keeps complementary pull coverage when viable", async () => {
+  it("upper_a avoids duplicate rows and keeps complementary primary pull coverage when viable", async () => {
     const customLibrary: Exercise[] = [
       makeCustomExercise({
         id: "bench",
@@ -522,7 +522,7 @@ describe("generateSessionFromIntent", () => {
         primaryMuscles: ["Lats"],
         secondaryMuscles: ["Biceps"],
         isMainLiftEligible: false,
-        isCompound: false,
+        isCompound: true,
         fatigueCost: 2,
       }),
     ];

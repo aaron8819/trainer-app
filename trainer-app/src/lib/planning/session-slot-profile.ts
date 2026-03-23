@@ -362,6 +362,14 @@ type CompoundLaneExercise = Pick<
   "movementPatterns" | "primaryMuscles" | "isCompound"
 >;
 
+type RequiredSessionShapeCoverageExercise = Pick<
+  {
+    movementPatterns?: MovementPatternV2[];
+    isCompound?: boolean;
+  },
+  "movementPatterns" | "isCompound"
+>;
+
 function matchesAnyMovementPattern(
   exercise: Pick<CompoundLaneExercise, "movementPatterns">,
   patterns: readonly MovementPatternV2[]
@@ -371,6 +379,22 @@ function matchesAnyMovementPattern(
   }
 
   return patterns.some((pattern) => (exercise.movementPatterns ?? []).includes(pattern));
+}
+
+export function isExerciseEligibleForRequiredSessionShapeCoverage(
+  exercise: RequiredSessionShapeCoverageExercise
+): boolean {
+  return exercise.isCompound ?? false;
+}
+
+export function doesExerciseSatisfyRequiredSessionShapePattern(
+  exercise: RequiredSessionShapeCoverageExercise,
+  pattern: MovementPatternV2
+): boolean {
+  return (
+    isExerciseEligibleForRequiredSessionShapeCoverage(exercise) &&
+    (exercise.movementPatterns ?? []).includes(pattern)
+  );
 }
 
 export function classifyExerciseForCompoundLane(

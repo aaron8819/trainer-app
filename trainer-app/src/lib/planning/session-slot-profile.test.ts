@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   classifyExerciseForCompoundLane,
+  doesExerciseSatisfyRequiredSessionShapePattern,
   getFutureSlotOpportunityBias,
   isExerciseAllowedForAnyCompoundLaneSatisfaction,
   isExerciseAllowedForCompoundLaneSatisfaction,
@@ -509,5 +510,27 @@ describe("resolveSessionSlotPolicy", () => {
         lane
       )
     ).toBe("fallback_only");
+  });
+
+  it("treats only compound exercises as required session-shape coverage satisfiers", () => {
+    expect(
+      doesExerciseSatisfyRequiredSessionShapePattern(
+        {
+          movementPatterns: ["horizontal_pull"],
+          isCompound: true,
+        },
+        "horizontal_pull"
+      )
+    ).toBe(true);
+
+    expect(
+      doesExerciseSatisfyRequiredSessionShapePattern(
+        {
+          movementPatterns: ["horizontal_pull"],
+          isCompound: false,
+        },
+        "horizontal_pull"
+      )
+    ).toBe(false);
   });
 });

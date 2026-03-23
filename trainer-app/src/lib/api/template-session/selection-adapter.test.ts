@@ -787,6 +787,71 @@ describe("buildSelectionObjective continuity bias", () => {
     );
   });
 
+  it("requires a compound horizontal pull to satisfy upper_b coverage when one is viable", () => {
+    const exerciseLibrary = [
+      makeExercise("incline", "Incline Press", ["vertical_push"], ["push"], ["Chest", "Front Delts"], ["Triceps"]),
+      makeExercise("pulldown", "Lat Pulldown", ["vertical_pull"], ["pull"], ["Lats"], ["Biceps"]),
+      makeExercise("row", "Chest-Supported Row", ["horizontal_pull"], ["pull"], ["Lats", "Upper Back"], ["Biceps"], {
+        isMainLiftEligible: false,
+      }),
+      makeExercise("face-pull", "Face Pull", ["horizontal_pull"], ["pull"], ["Rear Delts"], ["Upper Back"], {
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 2,
+      }),
+      makeExercise("lateral", "Lateral Raise", ["isolation"], ["push"], ["Side Delts"], [], {
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 2,
+      }),
+      makeExercise("triceps", "Triceps Pressdown", ["isolation"], ["push"], ["Triceps"], [], {
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 2,
+      }),
+    ];
+    const mapped = makeMappedContext([], {
+      exerciseLibrary,
+      weeklySchedule: ["upper", "lower", "upper", "lower"],
+      lifecycleVolumeTargets: {
+        Chest: 10,
+        Lats: 10,
+        "Upper Back": 10,
+        Biceps: 8,
+        "Front Delts": 8,
+        "Rear Delts": 8,
+        "Side Delts": 8,
+        Triceps: 8,
+      },
+    });
+    mapped.activeMesocycle = {
+      id: "meso-1",
+      slotSequenceJson: {
+        version: 1,
+        source: "handoff_draft",
+        sequenceMode: "ordered_flexible",
+        slots: [
+          { slotId: "upper_a", intent: "UPPER" },
+          { slotId: "lower_a", intent: "LOWER" },
+          { slotId: "upper_b", intent: "UPPER" },
+          { slotId: "lower_b", intent: "LOWER" },
+        ],
+      },
+    } as unknown as MappedGenerationContext["activeMesocycle"];
+
+    const upperB = selectExercisesOptimized(
+      exerciseLibrary,
+      buildSelectionObjective(mapped, "upper", undefined, { sessionSlotId: "upper_b" })
+    );
+
+    const selectedIds = new Set(upperB.selected.map((candidate) => candidate.exercise.id));
+
+    expect(upperB.constraintsSatisfied).toBe(true);
+    expect(selectedIds.has("row")).toBe(true);
+    expect(countSelectedCompoundPattern(upperB, "horizontal_pull")).toBeGreaterThan(0);
+    expect(selectedIds.has("face-pull") && !selectedIds.has("row")).toBe(false);
+  });
+
   it("trends lower_a squat-dominant and lower_b hinge-dominant when valid alternatives exist", () => {
     const exerciseLibrary = [
       makeExercise("back-squat", "Back Squat", ["squat"], ["legs"], ["Quads", "Glutes"]),

@@ -31,6 +31,7 @@ import {
   scoreSessionShapeAlignment,
 } from "./scoring";
 import {
+  doesExerciseSatisfyRequiredSessionShapePattern,
   isExerciseAllowedForCompoundLaneSatisfaction,
   type SessionSlotCompoundLaneKey,
 } from "@/lib/planning/session-slot-profile";
@@ -344,11 +345,11 @@ function hasRemainingCompoundLaneOption(
   return false;
 }
 
-function exerciseMatchesMovementPattern(
+function exerciseMatchesRequiredSessionShapePattern(
   candidate: SelectionCandidate,
   pattern: MovementPatternV2
 ): boolean {
-  return (candidate.exercise.movementPatterns ?? []).includes(pattern);
+  return doesExerciseSatisfyRequiredSessionShapePattern(candidate.exercise, pattern);
 }
 
 function getRequiredSessionShapePatterns(
@@ -365,7 +366,7 @@ function getRequiredSessionShapePatterns(
     if (requiredPatterns.indexOf(pattern) !== index) {
       return false;
     }
-    return candidates.some((candidate) => exerciseMatchesMovementPattern(candidate, pattern));
+    return candidates.some((candidate) => exerciseMatchesRequiredSessionShapePattern(candidate, pattern));
   });
 }
 
@@ -375,7 +376,7 @@ function getSatisfiedSessionShapePatterns(
 ): Set<MovementPatternV2> {
   const satisfied = new Set<MovementPatternV2>();
   for (const pattern of requiredPatterns) {
-    if (selected.some((candidate) => exerciseMatchesMovementPattern(candidate, pattern))) {
+    if (selected.some((candidate) => exerciseMatchesRequiredSessionShapePattern(candidate, pattern))) {
       satisfied.add(pattern);
     }
   }
@@ -396,7 +397,8 @@ function fillsMissingSessionShapeRequirement(
   const satisfiedPatterns = getSatisfiedSessionShapePatterns(state.selected, requiredPatterns);
   return requiredPatterns.some(
     (pattern) =>
-      !satisfiedPatterns.has(pattern) && exerciseMatchesMovementPattern(candidate, pattern)
+      !satisfiedPatterns.has(pattern) &&
+      exerciseMatchesRequiredSessionShapePattern(candidate, pattern)
   );
 }
 
@@ -414,7 +416,9 @@ function getMinimumCandidatesNeededForPatternCoverage(
 
   for (const candidate of candidates) {
     const coverageMask = patterns.reduce((mask, pattern, index) => {
-      return exerciseMatchesMovementPattern(candidate, pattern) ? mask | (1 << index) : mask;
+      return exerciseMatchesRequiredSessionShapePattern(candidate, pattern)
+        ? mask | (1 << index)
+        : mask;
     }, 0);
     if (coverageMask === 0) {
       continue;
@@ -1120,7 +1124,7 @@ function enforceSessionShapeRequiredCoverage(
     const selectedIds = new Set(augmentedBeam.selected.map((selected) => selected.exercise.id));
     const patternCandidates = candidates
       .filter((candidate) => !selectedIds.has(candidate.exercise.id))
-      .filter((candidate) => exerciseMatchesMovementPattern(candidate, pattern))
+      .filter((candidate) => exerciseMatchesRequiredSessionShapePattern(candidate, pattern))
       .sort((a, b) => b.totalScore - a.totalScore);
 
     for (const candidate of patternCandidates) {
@@ -1279,7 +1283,7 @@ function trySwapForSessionShapePattern(
         requiredPattern === pattern ||
         !satisfiedPatternsBefore.has(requiredPattern) ||
         nextSatisfiedPatterns.has(requiredPattern) ||
-        exerciseMatchesMovementPattern(patternCandidate, requiredPattern)
+        exerciseMatchesRequiredSessionShapePattern(patternCandidate, requiredPattern)
     );
     if (!preservesOtherRequiredPatterns) {
       continue;

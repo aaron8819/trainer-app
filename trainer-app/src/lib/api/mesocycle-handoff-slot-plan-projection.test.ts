@@ -461,13 +461,57 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     expect(upperA?.exercises.map((exercise) => exercise.exerciseId)).toContain("bench");
     expect(upperB?.exercises.map((exercise) => exercise.exerciseId)).toContain("bench");
     expect(lowerA?.exercises.map((exercise) => exercise.exerciseId)).toContain("squat");
-    expect(lowerB?.exercises.map((exercise) => exercise.exerciseId)).toContain("squat");
+    expect(
+      (lowerB?.exercises.map((exercise) => exercise.exerciseId) ?? []).some((exerciseId) =>
+        ["rdl", "hack-squat", "hip-thrust"].includes(exerciseId)
+      )
+    ).toBe(true);
     expect(upperA?.exercises.map((exercise) => exercise.exerciseId)).not.toEqual(
       upperB?.exercises.map((exercise) => exercise.exerciseId)
     );
     expect(lowerA?.exercises.map((exercise) => exercise.exerciseId)).not.toEqual(
       lowerB?.exercises.map((exercise) => exercise.exerciseId)
     );
+  });
+
+  it("keeps upper_b on a compound horizontal pull when only a supportive accessory shares that pattern", () => {
+    const snapshot = buildSnapshot();
+    snapshot.context.exercises.push(
+      makeRawExercise({
+        id: "face-pull",
+        name: "Face Pull",
+        movementPatterns: ["horizontal_pull"],
+        splitTags: ["pull"],
+        equipment: ["CABLE"],
+        primaryMuscles: ["Rear Delts"],
+        secondaryMuscles: ["Upper Back"],
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 2,
+      }) as never
+    );
+
+    const projected = projectSuccessorSlotPlansFromSnapshot({
+      userId: "user-1",
+      source: buildSource(),
+      design: buildDesign(),
+      snapshot,
+      now: new Date("2026-03-19T12:00:00.000Z"),
+    });
+
+    expect("error" in projected).toBe(false);
+    if ("error" in projected) return;
+
+    const upperB = projected.slotPlans.find((slot) => slot.slotId === "upper_b");
+    const upperBExerciseIds = upperB?.exercises.map((exercise) => exercise.exerciseId) ?? [];
+
+    expect(
+      upperBExerciseIds.some((exerciseId) => ["row", "seated-row"].includes(exerciseId))
+    ).toBe(true);
+    expect(
+      !upperBExerciseIds.includes("face-pull") ||
+        upperBExerciseIds.some((exerciseId) => ["row", "seated-row"].includes(exerciseId))
+    ).toBe(true);
   });
 
   it("fails clearly for unsupported BODY_PART successor slots", () => {

@@ -14,10 +14,9 @@ import {
   buildSavedSessionAuditSnapshot,
 } from "@/lib/evidence/session-audit-snapshot";
 import {
-  attachWorkoutStructureState,
-  buildWorkoutStructureState,
   readWeekCloseIdFromSelectionMetadata,
 } from "@/lib/ui/selection-metadata";
+import { reconcileRuntimeEditSelectionMetadata } from "@/lib/api/runtime-edit-reconciliation";
 import {
   transitionMesocycleStateInTransaction,
 } from "@/lib/api/mesocycle-lifecycle-state";
@@ -411,28 +410,29 @@ export async function POST(request: Request) {
         })
       );
       if (hasExerciseRewrite) {
-        selectionMetadata = attachWorkoutStructureState(
+        const persistedExercises = parsed.data.exercises!.map((exercise, exerciseIndex) => ({
+          exerciseId: exercise.exerciseId,
+          orderIndex: exerciseIndex,
+          section: exercise.section,
+          sets: exercise.sets.map((set) => ({
+            setIndex: set.setIndex,
+            targetReps: set.targetReps,
+            targetRepMin: set.targetRepRange?.min ?? null,
+            targetRepMax: set.targetRepRange?.max ?? null,
+            targetRpe: set.targetRpe ?? null,
+            targetLoad: set.targetLoad ?? null,
+            restSeconds: set.restSeconds ?? null,
+          })),
+        }));
+        selectionMetadata = reconcileRuntimeEditSelectionMetadata({
           selectionMetadata,
-          buildWorkoutStructureState({
-            selectionMetadata,
-            selectionMode: effectiveSelectionMode,
-            sessionIntent: effectiveSessionIntent,
-            persistedExercises: parsed.data.exercises!.map((exercise, exerciseIndex) => ({
-              exerciseId: exercise.exerciseId,
-              orderIndex: exerciseIndex,
-              section: exercise.section,
-              sets: exercise.sets.map((set) => ({
-                setIndex: set.setIndex,
-                targetReps: set.targetReps,
-                targetRepMin: set.targetRepRange?.min ?? null,
-                targetRepMax: set.targetRepRange?.max ?? null,
-                targetRpe: set.targetRpe ?? null,
-                targetLoad: set.targetLoad ?? null,
-                restSeconds: set.restSeconds ?? null,
-              })),
-            })),
-          })
-        );
+          selectionMode: effectiveSelectionMode,
+          sessionIntent: effectiveSessionIntent,
+          persistedExercises,
+          mutation: {
+            kind: "rewrite_structure",
+          },
+        }).nextSelectionMetadata;
       }
 
       const workoutUpdateData = {

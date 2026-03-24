@@ -3,12 +3,11 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { resolveOwner } from "@/lib/api/workout-context";
+import { reconcileRuntimeEditSelectionMetadata } from "@/lib/api/runtime-edit-reconciliation";
 import { isStrictOptionalGapFillSession } from "@/lib/gap-fill/classifier";
 import { buildGapFillSwapCandidates } from "@/lib/gap-fill/exercise-swap";
 import {
   attachGapFillExerciseSwapRecord,
-  attachWorkoutStructureState,
-  buildWorkoutStructureState,
   readGapFillExerciseSwapState,
 } from "@/lib/ui/selection-metadata";
 import { resolveGapFillTargetMuscles } from "@/lib/ui/gap-fill";
@@ -328,29 +327,34 @@ export async function POST(
       fatigueDelta: selectedCandidate.compatibility.fatigueDelta,
     });
 
-    selectionMetadata = attachWorkoutStructureState(
+    selectionMetadata = reconcileRuntimeEditSelectionMetadata({
       selectionMetadata,
-      buildWorkoutStructureState({
-        selectionMetadata,
-        selectionMode: latestWorkout.selectionMode,
-        sessionIntent: latestWorkout.sessionIntent,
-        persistedExercises: persistedExercises.map((exercise) => ({
-          exerciseId: exercise.exerciseId,
-          orderIndex: exercise.orderIndex,
-          section: exercise.section,
-          exercise: exercise.exercise,
-          sets: exercise.sets.map((set) => ({
-            setIndex: set.setIndex,
-            targetReps: set.targetReps,
-            targetRepMin: set.targetRepMin,
-            targetRepMax: set.targetRepMax,
-            targetRpe: set.targetRpe,
-            targetLoad: set.targetLoad,
-            restSeconds: set.restSeconds,
-          })),
+      selectionMode: latestWorkout.selectionMode,
+      sessionIntent: latestWorkout.sessionIntent,
+      persistedExercises: persistedExercises.map((exercise) => ({
+        exerciseId: exercise.exerciseId,
+        orderIndex: exercise.orderIndex,
+        section: exercise.section,
+        exercise: exercise.exercise,
+        sets: exercise.sets.map((set) => ({
+          setIndex: set.setIndex,
+          targetReps: set.targetReps,
+          targetRepMin: set.targetRepMin,
+          targetRepMax: set.targetRepMax,
+          targetRpe: set.targetRpe,
+          targetLoad: set.targetLoad,
+          restSeconds: set.restSeconds,
         })),
-      })
-    );
+      })),
+      mutation: {
+        kind: "replace_exercise",
+        workoutExerciseId: context.workoutExercise.id,
+        fromExerciseId: context.workoutExercise.exerciseId,
+        toExerciseId: replacementExercise.id,
+        reason: "gap_fill_equivalent_accessory_swap",
+        setCount: updatedWorkoutExercise.sets.length,
+      },
+    }).nextSelectionMetadata;
 
     await tx.workout.update({
       where: { id: context.workout.id },

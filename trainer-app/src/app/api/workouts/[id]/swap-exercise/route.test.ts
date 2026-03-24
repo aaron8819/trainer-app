@@ -425,6 +425,29 @@ describe("POST /api/workouts/[id]/swap-exercise", () => {
                 }),
               ],
             }),
+            runtimeEditReconciliation: expect.objectContaining({
+              version: 1,
+              directives: {
+                continuityAlias: "none",
+                progressionAlias: "none",
+                futureSessionGeneration: "ignore",
+                futureSeedCarryForward: "ignore",
+              },
+              ops: [
+                expect.objectContaining({
+                  kind: "replace_exercise",
+                  source: "api_workouts_swap_exercise",
+                  scope: "current_workout_only",
+                  facts: {
+                    workoutExerciseId: "we-1",
+                    fromExerciseId: "rear-delt-fly",
+                    toExerciseId: "machine-rear-delt-fly",
+                    reason: "gap_fill_equivalent_accessory_swap",
+                    setCount: 2,
+                  },
+                }),
+              ],
+            }),
             workoutStructureState: expect.objectContaining({
               reconciliation: expect.objectContaining({
                 hasDrift: true,

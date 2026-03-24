@@ -190,6 +190,28 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
       data: {
         revision: { increment: 1 },
         selectionMetadata: expect.objectContaining({
+          runtimeEditReconciliation: expect.objectContaining({
+            version: 1,
+            directives: {
+              continuityAlias: "none",
+              progressionAlias: "none",
+              futureSessionGeneration: "ignore",
+              futureSeedCarryForward: "ignore",
+            },
+            ops: [
+              expect.objectContaining({
+                kind: "add_exercise",
+                source: "api_workouts_add_exercise",
+                scope: "current_workout_only",
+                facts: {
+                  exerciseId: "fly",
+                  orderIndex: 1,
+                  section: "ACCESSORY",
+                  setCount: 1,
+                },
+              }),
+            ],
+          }),
           workoutStructureState: expect.objectContaining({
             currentExercises: [
               {

@@ -147,6 +147,58 @@ function buildCanonicalSelectionMetadata(overrides?: Record<string, unknown>) {
   };
 }
 
+function buildGeneratedSnapshotSelectionMetadata() {
+  return buildCanonicalSelectionMetadata({
+    sessionAuditSnapshot: {
+      version: 1,
+      generated: {
+        selectionMode: "INTENT",
+        sessionIntent: "push",
+        exerciseCount: 1,
+        hardSetCount: 3,
+        exercises: [
+          {
+            exerciseId: "bench",
+            exerciseName: "Bench Press",
+            orderIndex: 0,
+            section: "main",
+            isMainLift: true,
+            prescribedSetCount: 3,
+            prescribedSets: [
+              { setIndex: 1, targetReps: 8, targetRpe: 8 },
+              { setIndex: 2, targetReps: 8, targetRpe: 8 },
+              { setIndex: 3, targetReps: 8, targetRpe: 8 },
+            ],
+          },
+        ],
+        semantics: {
+          kind: "advancing",
+          effectiveSelectionMode: "INTENT",
+          isDeload: false,
+          isStrictGapFill: false,
+          isStrictSupplemental: false,
+          advancesLifecycle: true,
+          consumesWeeklyScheduleIntent: true,
+          countsTowardCompliance: true,
+          countsTowardRecentStimulus: true,
+          countsTowardWeeklyVolume: true,
+          countsTowardProgressionHistory: true,
+          countsTowardPerformanceHistory: true,
+          updatesProgressionAnchor: true,
+          eligibleForUniqueIntentSubtraction: true,
+          reasons: [],
+          trace: {
+            advancesSplitInput: true,
+          },
+        },
+        traces: {
+          progression: {},
+        },
+      },
+    },
+  });
+}
+
 function buildOptionalGapFillSelectionMetadata() {
   return buildCanonicalSelectionMetadata({
     sessionDecisionReceipt: {
@@ -1676,6 +1728,105 @@ describe("POST /api/workouts/save", () => {
 
     const upsert = mocks.workoutUpsert.mock.calls[0][0];
     expect(upsert.update.revision).toEqual({ increment: 1 });
+  });
+
+  it("persists rewrite_structure runtime edit facts when a save rewrite drifts from the generated workout", async () => {
+    const selectionMetadata = buildGeneratedSnapshotSelectionMetadata();
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutId: "workout-1",
+          selectionMetadata,
+          exercises: [
+            {
+              section: "MAIN",
+              exerciseId: "bench",
+              sets: [{ setIndex: 1, targetReps: 8 }],
+            },
+            {
+              section: "ACCESSORY",
+              exerciseId: "fly",
+              sets: [{ setIndex: 1, targetReps: 12 }],
+            },
+          ],
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+
+    const upsert = mocks.workoutUpsert.mock.calls[0][0];
+    expect(upsert.create.selectionMetadata).toEqual(
+      expect.objectContaining({
+        runtimeEditReconciliation: expect.objectContaining({
+          version: 1,
+          directives: {
+            continuityAlias: "none",
+            progressionAlias: "none",
+            futureSessionGeneration: "ignore",
+            futureSeedCarryForward: "ignore",
+          },
+          ops: [
+            expect.objectContaining({
+              kind: "rewrite_structure",
+              source: "api_workouts_save",
+              scope: "current_workout_only",
+              facts: expect.objectContaining({
+                changedFields: expect.arrayContaining([
+                  "exercise_added",
+                  "exercise_set_count_changed",
+                  "exercise_prescription_changed",
+                ]),
+                addedExerciseIds: ["fly"],
+              }),
+            }),
+          ],
+        }),
+      })
+    );
+  });
+
+  it("does not append rewrite_structure when save is structurally identical to the generated workout", async () => {
+    const selectionMetadata = buildGeneratedSnapshotSelectionMetadata();
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutId: "workout-1",
+          selectionMetadata,
+          exercises: [
+            {
+              section: "MAIN",
+              exerciseId: "bench",
+              sets: [
+                { setIndex: 1, targetReps: 8, targetRpe: 8 },
+                { setIndex: 2, targetReps: 8, targetRpe: 8 },
+                { setIndex: 3, targetReps: 8, targetRpe: 8 },
+              ],
+            },
+          ],
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+
+    const upsert = mocks.workoutUpsert.mock.calls[0][0];
+    const createMetadata = upsert.create.selectionMetadata as Record<string, unknown>;
+
+    expect(createMetadata.workoutStructureState).toEqual(
+      expect.objectContaining({
+        reconciliation: expect.objectContaining({
+          hasDrift: false,
+        }),
+      })
+    );
+    expect(createMetadata.runtimeEditReconciliation).toBeUndefined();
   });
 
   it("rejects save_plan when canonical receipt metadata is missing", async () => {

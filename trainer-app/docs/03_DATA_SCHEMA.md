@@ -104,11 +104,19 @@ Lifecycle/handoff meanings:
 - `Workout.autoregulationLog`
 - These fields are retained in the schema for backward compatibility and historical inspection only.
 - Active runtime session-decision state is persisted under `Workout.selectionMetadata.sessionDecisionReceipt`, and `POST /api/workouts/save` no longer accepts these compatibility fields as write inputs.
-- Canonical mutation reconciliation state is persisted alongside the receipt under `Workout.selectionMetadata.workoutStructureState`. That record stores:
+- Canonical mutation reconciliation state is persisted alongside the receipt under two additive fields:
+  - `Workout.selectionMetadata.workoutStructureState`
+  - `Workout.selectionMetadata.runtimeEditReconciliation`
+- `workoutStructureState` stores:
   - current saved structure summary
   - generated-vs-saved reconciliation
   - reconciliation timestamp
-- `selectionMetadata.sessionDecisionReceipt` remains the original generated/evidence payload even after mutation; `workoutStructureState` is the saved-structure companion record rather than a receipt replacement.
+- `runtimeEditReconciliation` stores:
+  - `version`
+  - `lastReconciledAt`
+  - `ops[]` with v1 kinds `add_exercise`, `replace_exercise`, `rewrite_structure`
+  - conservative directives `{ continuityAlias: "none", progressionAlias: "none", futureSessionGeneration: "ignore", futureSeedCarryForward: "ignore" }`
+- `selectionMetadata.sessionDecisionReceipt` remains the original generated/evidence payload even after mutation; `workoutStructureState` and `runtimeEditReconciliation` are additive companion records rather than receipt replacements.
 - Optional-session semantics are receipt-driven, not enum-driven. Supplemental deficit sessions and optional gap-fill sessions do not add new database enums; they are represented by canonical `selectionMetadata.sessionDecisionReceipt.exceptions` markers plus persisted `Workout.selectionMode`, `Workout.sessionIntent`, and `Workout.advancesSplit`.
 - Read-side consumers now centralize that interpretation in `src/lib/session-semantics/derive-session-semantics.ts`; no persisted `sessionKind` column or enum has been added.
 - Next-cycle carry-forward compatibility is draft-validated rather than schema-enforced: if split/session edits remove a slot intent, `keep` selections for that prior intent are rejected before acceptance (`src/lib/api/mesocycle-handoff.ts`).

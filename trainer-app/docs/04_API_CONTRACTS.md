@@ -83,7 +83,7 @@ Sources of truth:
 - Profile/readiness/analytics: `profileSetupSchema`, `readinessSignalSchema`, `analyticsSummarySchema`
 - `profileSetupSchema` no longer accepts `sessionMinutes`; profile setup persists `daysPerWeek` and optional `splitType` through `POST /api/profile/setup` (`src/lib/validation.ts`, `src/app/api/profile/setup/route.ts`).
 - Session-decision request/response ownership follows the canonical flow in `docs/01_ARCHITECTURE.md`: save and generation contracts carry `selectionMetadata.sessionDecisionReceipt`, and validation rejects removed top-level session mirrors / top-level autoregulation inputs (`src/lib/validation.ts`, `src/app/api/workouts/save/route.ts`).
-- Mutation reconciliation is part of the persisted workout contract, not a read-side convenience. Structural mutation writers persist `selectionMetadata.workoutStructureState` when saved workout structure diverges from the original generated plan.
+- Mutation reconciliation is part of the persisted workout contract, not a read-side convenience. Structural mutation writers persist `selectionMetadata.workoutStructureState`, and the canonical write-side seam in `src/lib/api/runtime-edit-reconciliation.ts` may also append `selectionMetadata.runtimeEditReconciliation` edit facts for supported runtime mutations.
 
 ## Mesocycle handoff route contract
 - `POST /api/mesocycles/[id]/setup-preview` (`src/app/api/mesocycles/[id]/setup-preview/route.ts`)
@@ -140,10 +140,11 @@ Sources of truth:
 - Lifecycle thresholds are duration-aware: accumulation completes after `(durationWeeks - 1) * sessionsPerWeek` performed sessions and deload completes after `sessionsPerWeek` performed sessions.
 - Deload completion now transitions the source mesocycle into `AWAITING_HANDOFF`; it does not auto-create the successor. Successor creation is reserved for `POST /api/mesocycles/[id]/accept-next-cycle`.
 - Save route persists session-level cycle context only inside `selectionMetadata.sessionDecisionReceipt`; `POST /api/workouts/save` rejects writes that omit the canonical receipt instead of synthesizing fallback state (`src/app/api/workouts/save/route.ts`).
-- Save-route exercise rewrites also persist canonical `selectionMetadata.workoutStructureState` and keep the original receipt intact. They do not rewrite `sessionDecisionReceipt` to match the new structure.
+- Save-route exercise rewrites also persist canonical `selectionMetadata.workoutStructureState`, may append `selectionMetadata.runtimeEditReconciliation`, and keep the original receipt intact. They do not rewrite `sessionDecisionReceipt` to match the new structure.
 - Structural mutation contract:
-  - `POST /api/workouts/save` with exercise rewrite updates `selectionMetadata.workoutStructureState`
-  - `POST /api/workouts/[id]/add-exercise` updates `selectionMetadata.workoutStructureState`
+  - `POST /api/workouts/save` with exercise rewrite updates `selectionMetadata.workoutStructureState` and appends `runtimeEditReconciliation.rewrite_structure` only when the saved structure drifts from the generated snapshot
+  - `POST /api/workouts/[id]/add-exercise` updates `selectionMetadata.workoutStructureState` and appends `runtimeEditReconciliation.add_exercise`
+  - `POST /api/workouts/[id]/swap-exercise` preserves `gapFillExerciseSwapState`, updates `selectionMetadata.workoutStructureState`, and appends `runtimeEditReconciliation.replace_exercise`
   - structural mutations increment `Workout.revision`
 - Optional gap-fill enforcement is strictly scoped to the canonical triplet:
   - receipt marker `optional_gap_fill`

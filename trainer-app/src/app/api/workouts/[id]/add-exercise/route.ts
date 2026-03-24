@@ -2,13 +2,10 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { resolveOwner } from "@/lib/api/workout-context";
+import { reconcileRuntimeEditSelectionMetadata } from "@/lib/api/runtime-edit-reconciliation";
 import { getBaseTargetRpe } from "@/lib/engine/rules";
 import type { TrainingAge, PrimaryGoal } from "@/lib/engine/types";
 import { Prisma } from "@prisma/client";
-import {
-  attachWorkoutStructureState,
-  buildWorkoutStructureState,
-} from "@/lib/ui/selection-metadata";
 import { isStrictOptionalGapFillSession } from "@/lib/gap-fill/classifier";
 
 export const dynamic = "force-dynamic";
@@ -178,21 +175,25 @@ export async function POST(
         },
       });
 
-      const workoutStructureState = buildWorkoutStructureState({
+      const selectionMetadata = reconcileRuntimeEditSelectionMetadata({
         selectionMetadata: latestWorkout.selectionMetadata,
         selectionMode: latestWorkout.selectionMode,
         sessionIntent: latestWorkout.sessionIntent,
         persistedExercises,
-      });
+        mutation: {
+          kind: "add_exercise",
+          exerciseId: exercise.id,
+          orderIndex: nextOrderIndex,
+          section: "ACCESSORY",
+          setCount: createdExercise.sets.length,
+        },
+      }).nextSelectionMetadata;
 
       await tx.workout.update({
         where: { id: workoutId },
         data: {
           revision: { increment: 1 },
-          selectionMetadata: attachWorkoutStructureState(
-            latestWorkout.selectionMetadata,
-            workoutStructureState
-          ) as Prisma.InputJsonValue,
+          selectionMetadata: selectionMetadata as Prisma.InputJsonValue,
         },
       });
 

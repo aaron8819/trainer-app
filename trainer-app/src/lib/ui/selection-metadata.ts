@@ -21,6 +21,7 @@ export type SaveableSelectionMetadata = {
   sessionDecisionReceipt?: SessionDecisionReceipt;
   sessionAuditSnapshot?: SessionAuditSnapshot;
   workoutStructureState?: WorkoutStructureState;
+  runtimeEditReconciliation?: RuntimeEditReconciliation;
   gapFillExerciseSwapState?: GapFillExerciseSwapState;
 };
 
@@ -59,7 +60,74 @@ export type GapFillExerciseSwapState = {
   swaps: GapFillExerciseSwapRecord[];
 };
 
-type PersistedWorkoutStructureExerciseInput = {
+export type RuntimeEditDirectiveState = {
+  continuityAlias: "none";
+  progressionAlias: "none";
+  futureSessionGeneration: "ignore";
+  futureSeedCarryForward: "ignore";
+};
+
+export type RuntimeEditOperationSource =
+  | "api_workouts_add_exercise"
+  | "api_workouts_swap_exercise"
+  | "api_workouts_save";
+
+export type RuntimeEditOperationScope = "current_workout_only";
+
+export type RuntimeEditAddExerciseOperation = {
+  kind: "add_exercise";
+  source: "api_workouts_add_exercise";
+  appliedAt: string;
+  scope: "current_workout_only";
+  facts: {
+    exerciseId: string;
+    orderIndex: number;
+    section: "WARMUP" | "MAIN" | "ACCESSORY";
+    setCount: number;
+  };
+};
+
+export type RuntimeEditReplaceExerciseOperation = {
+  kind: "replace_exercise";
+  source: "api_workouts_swap_exercise";
+  appliedAt: string;
+  scope: "current_workout_only";
+  facts: {
+    workoutExerciseId: string;
+    fromExerciseId: string;
+    toExerciseId: string;
+    reason: "gap_fill_equivalent_accessory_swap";
+    setCount: number;
+  };
+};
+
+export type RuntimeEditRewriteStructureOperation = {
+  kind: "rewrite_structure";
+  source: "api_workouts_save";
+  appliedAt: string;
+  scope: "current_workout_only";
+  facts: {
+    changedFields: SessionAuditMutationSummary["changedFields"];
+    addedExerciseIds: string[];
+    removedExerciseIds: string[];
+    exercisesWithSetCountChanges: string[];
+    exercisesWithPrescriptionChanges: string[];
+  };
+};
+
+export type RuntimeEditOperation =
+  | RuntimeEditAddExerciseOperation
+  | RuntimeEditReplaceExerciseOperation
+  | RuntimeEditRewriteStructureOperation;
+
+export type RuntimeEditReconciliation = {
+  version: 1;
+  lastReconciledAt: string;
+  ops: RuntimeEditOperation[];
+  directives: RuntimeEditDirectiveState;
+};
+
+export type PersistedWorkoutStructureExerciseInput = {
   exerciseId: string;
   orderIndex: number;
   section?: string | null;
@@ -225,6 +293,170 @@ function parseGapFillExerciseSwapState(value: unknown): GapFillExerciseSwapState
   };
 }
 
+function parseRuntimeEditDirectiveState(value: unknown): RuntimeEditDirectiveState | undefined {
+  const record = toObject(value);
+  if (
+    !record ||
+    record.continuityAlias !== "none" ||
+    record.progressionAlias !== "none" ||
+    record.futureSessionGeneration !== "ignore" ||
+    record.futureSeedCarryForward !== "ignore"
+  ) {
+    return undefined;
+  }
+
+  return {
+    continuityAlias: "none",
+    progressionAlias: "none",
+    futureSessionGeneration: "ignore",
+    futureSeedCarryForward: "ignore",
+  };
+}
+
+function parseRuntimeEditOperation(value: unknown): RuntimeEditOperation | undefined {
+  const record = toObject(value);
+  if (
+    !record ||
+    typeof record.appliedAt !== "string" ||
+    record.scope !== "current_workout_only"
+  ) {
+    return undefined;
+  }
+
+  const facts = toObject(record.facts);
+  if (!facts) {
+    return undefined;
+  }
+
+  if (
+    record.kind === "add_exercise" &&
+    record.source === "api_workouts_add_exercise"
+  ) {
+    const section = normalizeWorkoutSection(facts.section);
+    if (
+      typeof facts.exerciseId !== "string" ||
+      typeof facts.orderIndex !== "number" ||
+      typeof facts.setCount !== "number" ||
+      !Number.isFinite(facts.setCount) ||
+      section == null
+    ) {
+      return undefined;
+    }
+
+    return {
+      kind: "add_exercise",
+      source: "api_workouts_add_exercise",
+      appliedAt: record.appliedAt,
+      scope: "current_workout_only",
+      facts: {
+        exerciseId: facts.exerciseId,
+        orderIndex: facts.orderIndex,
+        section,
+        setCount: facts.setCount,
+      },
+    };
+  }
+
+  if (
+    record.kind === "replace_exercise" &&
+    record.source === "api_workouts_swap_exercise"
+  ) {
+    if (
+      typeof facts.workoutExerciseId !== "string" ||
+      typeof facts.fromExerciseId !== "string" ||
+      typeof facts.toExerciseId !== "string" ||
+      facts.reason !== "gap_fill_equivalent_accessory_swap" ||
+      typeof facts.setCount !== "number" ||
+      !Number.isFinite(facts.setCount)
+    ) {
+      return undefined;
+    }
+
+    return {
+      kind: "replace_exercise",
+      source: "api_workouts_swap_exercise",
+      appliedAt: record.appliedAt,
+      scope: "current_workout_only",
+      facts: {
+        workoutExerciseId: facts.workoutExerciseId,
+        fromExerciseId: facts.fromExerciseId,
+        toExerciseId: facts.toExerciseId,
+        reason: "gap_fill_equivalent_accessory_swap",
+        setCount: facts.setCount,
+      },
+    };
+  }
+
+  if (
+    record.kind === "rewrite_structure" &&
+    record.source === "api_workouts_save"
+  ) {
+    const changedFields = Array.isArray(facts.changedFields)
+      ? facts.changedFields.filter((entry): entry is SessionAuditMutationSummary["changedFields"][number] =>
+          typeof entry === "string"
+        )
+      : null;
+    const addedExerciseIds = toStringArray(facts.addedExerciseIds);
+    const removedExerciseIds = toStringArray(facts.removedExerciseIds);
+    const exercisesWithSetCountChanges = toStringArray(facts.exercisesWithSetCountChanges);
+    const exercisesWithPrescriptionChanges = toStringArray(
+      facts.exercisesWithPrescriptionChanges
+    );
+
+    if (
+      changedFields == null ||
+      !Array.isArray(facts.addedExerciseIds) ||
+      !Array.isArray(facts.removedExerciseIds) ||
+      !Array.isArray(facts.exercisesWithSetCountChanges) ||
+      !Array.isArray(facts.exercisesWithPrescriptionChanges)
+    ) {
+      return undefined;
+    }
+
+    return {
+      kind: "rewrite_structure",
+      source: "api_workouts_save",
+      appliedAt: record.appliedAt,
+      scope: "current_workout_only",
+      facts: {
+        changedFields,
+        addedExerciseIds: addedExerciseIds ?? [],
+        removedExerciseIds: removedExerciseIds ?? [],
+        exercisesWithSetCountChanges: exercisesWithSetCountChanges ?? [],
+        exercisesWithPrescriptionChanges: exercisesWithPrescriptionChanges ?? [],
+      },
+    };
+  }
+
+  return undefined;
+}
+
+function parseRuntimeEditReconciliation(value: unknown): RuntimeEditReconciliation | undefined {
+  const record = toObject(value);
+  if (
+    !record ||
+    record.version !== 1 ||
+    typeof record.lastReconciledAt !== "string" ||
+    !Array.isArray(record.ops)
+  ) {
+    return undefined;
+  }
+
+  const directives = parseRuntimeEditDirectiveState(record.directives);
+  if (!directives) {
+    return undefined;
+  }
+
+  return {
+    version: 1,
+    lastReconciledAt: record.lastReconciledAt,
+    ops: record.ops
+      .map(parseRuntimeEditOperation)
+      .filter((entry): entry is RuntimeEditOperation => Boolean(entry)),
+    directives,
+  };
+}
+
 function toWorkoutStructureExercises(
   exercises: PersistedWorkoutStructureExerciseInput[]
 ): WorkoutStructureExercise[] {
@@ -288,6 +520,13 @@ export function sanitizeSelectionMetadataForSave(value: unknown): SaveableSelect
     output.workoutStructureState = workoutStructureState;
   }
 
+  const runtimeEditReconciliation = parseRuntimeEditReconciliation(
+    record.runtimeEditReconciliation
+  );
+  if (runtimeEditReconciliation) {
+    output.runtimeEditReconciliation = runtimeEditReconciliation;
+  }
+
   return Object.keys(output).length > 0 ? output : {};
 }
 
@@ -308,6 +547,13 @@ export function readGapFillExerciseSwapState(
 ): GapFillExerciseSwapState | undefined {
   const record = toObject(value);
   return parseGapFillExerciseSwapState(record?.gapFillExerciseSwapState);
+}
+
+export function readRuntimeEditReconciliation(
+  value: unknown
+): RuntimeEditReconciliation | undefined {
+  const record = toObject(value);
+  return parseRuntimeEditReconciliation(record?.runtimeEditReconciliation);
 }
 
 export function attachWorkoutStructureState(
@@ -333,6 +579,16 @@ export function attachGapFillExerciseSwapRecord(
       version: 1,
       swaps: [...swaps, swapRecord],
     } satisfies GapFillExerciseSwapState,
+  };
+}
+
+export function attachRuntimeEditReconciliation(
+  selectionMetadata: unknown,
+  runtimeEditReconciliation: RuntimeEditReconciliation
+): SaveableSelectionMetadata {
+  return {
+    ...(toObject(selectionMetadata) ?? {}),
+    runtimeEditReconciliation,
   };
 }
 

@@ -4,6 +4,7 @@ import {
   attachSupplementalSessionMetadata,
   buildWorkoutStructureState,
   buildCanonicalSelectionMetadata,
+  readRuntimeEditReconciliation,
   readWorkoutStructureState,
   sanitizeSelectionMetadataForSave,
 } from "./selection-metadata";
@@ -288,6 +289,41 @@ describe("workout structure reconciliation", () => {
     });
 
     expect(readWorkoutStructureState(result)).toEqual(workoutStructureState);
+    expect((result as Record<string, unknown>).debugOnly).toBeUndefined();
+  });
+
+  it("preserves canonical runtimeEditReconciliation during sanitization", () => {
+    const runtimeEditReconciliation = {
+      version: 1 as const,
+      lastReconciledAt: "2026-03-23T10:00:00.000Z",
+      directives: {
+        continuityAlias: "none" as const,
+        progressionAlias: "none" as const,
+        futureSessionGeneration: "ignore" as const,
+        futureSeedCarryForward: "ignore" as const,
+      },
+      ops: [
+        {
+          kind: "add_exercise" as const,
+          source: "api_workouts_add_exercise" as const,
+          appliedAt: "2026-03-23T10:00:00.000Z",
+          scope: "current_workout_only" as const,
+          facts: {
+            exerciseId: "fly",
+            orderIndex: 1,
+            section: "ACCESSORY" as const,
+            setCount: 3,
+          },
+        },
+      ],
+    };
+
+    const result = sanitizeSelectionMetadataForSave({
+      runtimeEditReconciliation,
+      debugOnly: true,
+    });
+
+    expect(readRuntimeEditReconciliation(result)).toEqual(runtimeEditReconciliation);
     expect((result as Record<string, unknown>).debugOnly).toBeUndefined();
   });
 });

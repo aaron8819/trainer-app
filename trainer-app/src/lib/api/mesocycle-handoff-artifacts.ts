@@ -10,6 +10,7 @@ import type {
 } from "@prisma/client";
 import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-semantics";
 import { readSessionSlotSnapshot } from "@/lib/evidence/session-decision-receipt";
+import { readRuntimeEditReconciliation } from "@/lib/ui/selection-metadata";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 import {
   buildOrderedFlexibleSlots,
@@ -183,6 +184,13 @@ function isPerformedWorkoutStatus(status: WorkoutStatus): boolean {
   return (PERFORMED_WORKOUT_STATUSES as readonly string[]).includes(status);
 }
 
+function shouldIgnoreWorkoutForCarryForwardEvidence(selectionMetadata: unknown): boolean {
+  return (
+    readRuntimeEditReconciliation(selectionMetadata)?.directives.futureSeedCarryForward ===
+    "ignore"
+  );
+}
+
 function inferPreferredSplitTypeFromWeeklySchedule(
   weeklySchedule: WorkoutSessionIntent[]
 ): SplitType | undefined {
@@ -307,6 +315,9 @@ function buildCarryForwardCandidateEvidence(input: {
 
   for (const workout of input.workouts) {
     if (!isPerformedWorkoutStatus(workout.status)) {
+      continue;
+    }
+    if (shouldIgnoreWorkoutForCarryForwardEvidence(workout.selectionMetadata)) {
       continue;
     }
 

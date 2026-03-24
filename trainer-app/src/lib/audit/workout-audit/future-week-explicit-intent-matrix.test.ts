@@ -5,8 +5,34 @@ import type { WorkoutAuditContext } from "./types";
 import { buildWorkoutAuditArtifact, serializeWorkoutAuditArtifact } from "./serializer";
 
 const mesocycleRoleFindManyMock = vi.fn();
+const macroCycleFindFirstMock = vi.fn();
+const genericFindFirstMock = vi.fn();
 vi.mock("@/lib/db/prisma", () => ({
   prisma: {
+    macroCycle: {
+      findFirst: (...args: unknown[]) => macroCycleFindFirstMock(...args),
+    },
+    workoutTemplate: {
+      findFirst: (...args: unknown[]) => genericFindFirstMock(...args),
+    },
+    mesocycle: {
+      findFirst: (...args: unknown[]) => genericFindFirstMock(...args),
+    },
+    workout: {
+      findFirst: (...args: unknown[]) => genericFindFirstMock(...args),
+    },
+    userIntegration: {
+      findFirst: (...args: unknown[]) => genericFindFirstMock(...args),
+    },
+    readinessSignal: {
+      findFirst: (...args: unknown[]) => genericFindFirstMock(...args),
+    },
+    workoutExercise: {
+      findFirst: (...args: unknown[]) => genericFindFirstMock(...args),
+    },
+    mesocycleWeekClose: {
+      findFirst: (...args: unknown[]) => genericFindFirstMock(...args),
+    },
     mesocycleExerciseRole: {
       findMany: (...args: unknown[]) => mesocycleRoleFindManyMock(...args),
     },
@@ -143,10 +169,14 @@ describe("workout audit explicit-intent future-week diagnostics matrix", () => {
     mapCheckInMock.mockReturnValue(undefined);
     applyLoadsMock.mockImplementation((workout: unknown) => workout);
     loadExerciseExposureMock.mockResolvedValue(new Map());
+    macroCycleFindFirstMock.mockResolvedValue(null);
+    genericFindFirstMock.mockResolvedValue(null);
     loadActiveMesocycleMock.mockResolvedValue({
       id: "meso-1",
       state: "ACTIVE_ACCUMULATION",
       accumulationSessionsCompleted: 3,
+      deloadSessionsCompleted: 0,
+      sessionsPerWeek: 3,
       durationWeeks: 5,
     });
     getCurrentMesoWeekMock.mockReturnValue(2);

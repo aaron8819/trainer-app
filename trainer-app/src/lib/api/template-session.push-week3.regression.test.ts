@@ -1489,7 +1489,15 @@ describe("W3S1 Push regression — 4 engine bug fixes", () => {
       })
     );
     expect(getAllExerciseSets(result.workout, "patterned-cable-fly")?.length ?? 0).toBeGreaterThan(0);
-    expect(getAllExerciseSets(result.workout, "patterned-machine-lateral-raise")).toBeNull();
+    expect(
+      receipt?.closure.actions.some((action) => action.exerciseId === "patterned-machine-lateral-raise")
+    ).toBe(false);
+    expect(
+      receipt?.exercises["patterned-machine-lateral-raise"]?.isClosureAddition ?? false
+    ).toBe(false);
+    expect(
+      receipt?.exercises["patterned-machine-lateral-raise"]?.closureSetDelta ?? 0
+    ).toBe(0);
     expect(
       receipt?.muscles.Chest.plannedEffectiveVolumeAfterClosure
     ).toBeGreaterThan(receipt?.muscles.Chest.plannedEffectiveVolumeAfterRoleBudgeting ?? 0);

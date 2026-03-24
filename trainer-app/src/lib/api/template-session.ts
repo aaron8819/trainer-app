@@ -1367,6 +1367,48 @@ function isRedundantAccessoryClosureCandidate(params: {
   });
 }
 
+function hasExpandableSelectedAccessorySibling(params: {
+  exercise: EngineExercise;
+  selection: SelectionOutput;
+  exerciseById: Map<string, EngineExercise>;
+  objective: ReturnType<typeof buildSelectionObjective>;
+}): boolean {
+  const { exercise, selection, exerciseById, objective } = params;
+  if (isMainLiftExercise(exercise, objective) || (exercise.isCompound ?? false)) {
+    return false;
+  }
+
+  const candidatePatterns = new Set(exercise.movementPatterns ?? []);
+  const candidateFocus = new Set(getDominantStimulusMuscles(exercise));
+  if (candidatePatterns.size === 0 || candidateFocus.size === 0) {
+    return false;
+  }
+
+  return selection.selectedExerciseIds.some((selectedExerciseId) => {
+    const selectedExercise = exerciseById.get(selectedExerciseId);
+    if (!selectedExercise || selectedExercise.id === exercise.id) {
+      return false;
+    }
+    if (isMainLiftExercise(selectedExercise, objective) || (selectedExercise.isCompound ?? false)) {
+      return false;
+    }
+
+    const currentSets = selection.perExerciseSetTargets[selectedExerciseId] ?? 0;
+    if (currentSets <= 0 || currentSets >= ACCESSORY_MAX_WORKING_SETS) {
+      return false;
+    }
+
+    const sharesPattern = (selectedExercise.movementPatterns ?? []).some((pattern) =>
+      candidatePatterns.has(pattern)
+    );
+    if (!sharesPattern) {
+      return false;
+    }
+
+    return getDominantStimulusMuscles(selectedExercise).some((muscle) => candidateFocus.has(muscle));
+  });
+}
+
 function getMaterialContributionToDeficit(
   exercise: EngineExercise,
   setCount: number,
@@ -1735,15 +1777,29 @@ function selectBestClosureAction(params: {
         candidateDiagnostics.push({ ...baseCandidate, rejectionReason: "main_lift_cap_reached" });
         continue;
       }
-      if (sharesBaseExerciseName(selectedExercises, exercise)) {
-        candidateDiagnostics.push({ ...baseCandidate, rejectionReason: "duplicate_base_name" });
-        continue;
-      }
-      const proposedSets = computeProposedSets(exercise, closureObjective);
-      if (proposedSets <= 0) {
-        candidateDiagnostics.push({ ...baseCandidate, rejectionReason: "no_proposed_sets" });
-        continue;
-      }
+        if (sharesBaseExerciseName(selectedExercises, exercise)) {
+          candidateDiagnostics.push({ ...baseCandidate, rejectionReason: "duplicate_base_name" });
+          continue;
+        }
+        if (
+          hasExpandableSelectedAccessorySibling({
+            exercise,
+            selection,
+            exerciseById,
+            objective,
+          })
+        ) {
+          candidateDiagnostics.push({
+            ...baseCandidate,
+            rejectionReason: "prefer_existing_sibling_expansion",
+          });
+          continue;
+        }
+        const proposedSets = computeProposedSets(exercise, closureObjective);
+        if (proposedSets <= 0) {
+          candidateDiagnostics.push({ ...baseCandidate, rejectionReason: "no_proposed_sets" });
+          continue;
+        }
       if (
         calfSetSoftCap != null &&
         (exercise.primaryMuscles ?? []).includes("Calves") &&

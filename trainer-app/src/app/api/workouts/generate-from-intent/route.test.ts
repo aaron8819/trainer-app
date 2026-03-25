@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => {
   const loadActiveMesocycle = vi.fn();
   const loadPendingMesocycleHandoff = vi.fn();
   const loadNextWorkoutContext = vi.fn();
+  const loadRequestedAdvancingSlotSnapshot = vi.fn();
   const findPendingWeekCloseForUser = vi.fn();
   const generateSessionFromIntent = vi.fn();
   const generateDeloadSessionFromIntent = vi.fn();
@@ -15,6 +16,7 @@ const mocks = vi.hoisted(() => {
     loadActiveMesocycle,
     loadPendingMesocycleHandoff,
     loadNextWorkoutContext,
+    loadRequestedAdvancingSlotSnapshot,
     findPendingWeekCloseForUser,
     generateSessionFromIntent,
     generateDeloadSessionFromIntent,
@@ -36,6 +38,8 @@ vi.mock("@/lib/api/mesocycle-handoff", () => ({
 
 vi.mock("@/lib/api/next-session", () => ({
   loadNextWorkoutContext: (...args: unknown[]) => mocks.loadNextWorkoutContext(...args),
+  loadRequestedAdvancingSlotSnapshot: (...args: unknown[]) =>
+    mocks.loadRequestedAdvancingSlotSnapshot(...args),
 }));
 
 vi.mock("@/lib/api/mesocycle-week-close", () => ({
@@ -72,6 +76,7 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
       derivationTrace: [],
       selectedIncompleteStatus: null,
     });
+    mocks.loadRequestedAdvancingSlotSnapshot.mockResolvedValue(undefined);
     mocks.findPendingWeekCloseForUser.mockResolvedValue(null);
     mocks.applyAutoregulation.mockImplementation(async (_userId, workout) => ({
       adjusted: workout,
@@ -154,8 +159,14 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
     expect(body.workout.mainLifts[0].sets[0].targetRpe).toBe(5);
   });
 
-  it("returns receipt-first selection metadata without top-level autoregulation", async () => {
+  it("persists the in-order advancing seeded session slot in receipt metadata", async () => {
     mocks.loadActiveMesocycle.mockResolvedValue(null);
+    mocks.loadRequestedAdvancingSlotSnapshot.mockResolvedValue({
+      slotId: "push_a",
+      intent: "push",
+      sequenceIndex: 0,
+      source: "mesocycle_slot_sequence",
+    });
     mocks.generateSessionFromIntent.mockResolvedValue({
       workout: {
         id: "w2",
@@ -237,10 +248,152 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
     expect(body.selection).toBeUndefined();
     expect(body.autoregulation).toBeUndefined();
     expect(body.selectionMetadata.sessionDecisionReceipt.version).toBe(1);
+    expect(mocks.generateSessionFromIntent).toHaveBeenCalledWith(
+      "user-1",
+      expect.objectContaining({
+        intent: "push",
+        advancingSlot: expect.objectContaining({
+          slotId: "push_a",
+          intent: "push",
+          sequenceIndex: 0,
+        }),
+      })
+    );
     expect(body.selectionMetadata.sessionDecisionReceipt.sessionSlot).toEqual({
       slotId: "push_a",
       intent: "push",
       sequenceIndex: 0,
+      source: "mesocycle_slot_sequence",
+    });
+  });
+
+  it("persists the off-order advancing seeded session slot in receipt metadata", async () => {
+    mocks.loadActiveMesocycle.mockResolvedValue({ id: "meso-1", state: "ACTIVE_ACCUMULATION" });
+    mocks.loadNextWorkoutContext.mockResolvedValue({
+      intent: "upper",
+      slotId: "upper_a",
+      slotSequenceIndex: 0,
+      slotSequenceLength: 4,
+      slotSource: "mesocycle_slot_sequence",
+      existingWorkoutId: null,
+      isExisting: false,
+      source: "rotation",
+      weekInMeso: 1,
+      sessionInWeek: 1,
+      derivationTrace: [],
+      selectedIncompleteStatus: null,
+    });
+    mocks.loadRequestedAdvancingSlotSnapshot.mockResolvedValue({
+      slotId: "lower_a",
+      intent: "lower",
+      sequenceIndex: 1,
+      sequenceLength: 4,
+      source: "mesocycle_slot_sequence",
+    });
+    mocks.generateSessionFromIntent.mockResolvedValue({
+      workout: {
+        id: "w-off-order",
+        scheduledDate: new Date("2026-03-03T00:00:00.000Z").toISOString(),
+        warmup: [],
+        mainLifts: [
+          {
+            id: "we-lower-1",
+            exercise: { id: "ex-lower-1", name: "Hack Squat" },
+            isMainLift: true,
+            orderIndex: 0,
+            sets: [{ setIndex: 1, targetReps: 8, targetLoad: 225, targetRpe: 8 }],
+          },
+        ],
+        accessories: [],
+        estimatedMinutes: 45,
+      },
+      selectionMode: "INTENT",
+      sessionIntent: "lower",
+      sraWarnings: [],
+      substitutions: [],
+      volumePlanByMuscle: {},
+      selection: {
+        selectedExerciseIds: ["ex-lower-1"],
+        mainLiftIds: ["ex-lower-1"],
+        accessoryIds: [],
+        perExerciseSetTargets: { "ex-lower-1": 3 },
+        rationale: {},
+        volumePlanByMuscle: {},
+        sessionDecisionReceipt: {
+          version: 1,
+          cycleContext: {
+            weekInMeso: 1,
+            weekInBlock: 1,
+            mesocycleLength: 5,
+            phase: "accumulation",
+            blockType: "accumulation",
+            isDeload: false,
+            source: "computed",
+          },
+          lifecycleVolume: {
+            source: "unknown",
+          },
+          sorenessSuppressedMuscles: [],
+          deloadDecision: {
+            mode: "none",
+            reason: [],
+            reductionPercent: 0,
+            appliedTo: "none",
+          },
+          readiness: {
+            wasAutoregulated: false,
+            signalAgeHours: null,
+            fatigueScoreOverall: null,
+            intensityScaling: {
+              applied: false,
+              exerciseIds: [],
+              scaledUpCount: 0,
+              scaledDownCount: 0,
+            },
+          },
+          exceptions: [],
+        },
+      },
+      filteredExercises: [],
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/generate-from-intent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ intent: "lower" }),
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(mocks.loadRequestedAdvancingSlotSnapshot).toHaveBeenCalledWith({
+      userId: "user-1",
+      requestedIntent: "lower",
+      explicitSlotId: undefined,
+      nextWorkoutContext: expect.objectContaining({
+        source: "rotation",
+        intent: "upper",
+        slotId: "upper_a",
+      }),
+    });
+    expect(mocks.generateSessionFromIntent).toHaveBeenCalledWith(
+      "user-1",
+      expect.objectContaining({
+        intent: "lower",
+        advancingSlot: expect.objectContaining({
+          slotId: "lower_a",
+          intent: "lower",
+          sequenceIndex: 1,
+          sequenceLength: 4,
+        }),
+      })
+    );
+    expect(body.selectionMetadata.sessionDecisionReceipt.sessionSlot).toEqual({
+      slotId: "lower_a",
+      intent: "lower",
+      sequenceIndex: 1,
+      sequenceLength: 4,
       source: "mesocycle_slot_sequence",
     });
   });

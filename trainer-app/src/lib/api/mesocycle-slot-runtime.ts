@@ -147,12 +147,10 @@ function consumeFirstMatchingSlot(
   }
 }
 
-export function buildRemainingFutureSlotsFromRuntime(input: {
+export function buildRemainingRuntimeSlotsFromPerformed(input: {
   slotSequenceJson?: unknown;
   weeklySchedule?: readonly string[];
   performedAdvancingSlotsThisWeek?: ReadonlyArray<{ slotId?: string | null; intent?: string | null }>;
-  currentSlotId?: string | null;
-  currentIntent: string;
 }): RuntimeSessionSlot[] {
   const slotSequence = readRuntimeSlotSequence({
     slotSequenceJson: input.slotSequenceJson,
@@ -163,6 +161,22 @@ export function buildRemainingFutureSlotsFromRuntime(input: {
   for (const performed of input.performedAdvancingSlotsThisWeek ?? []) {
     consumeFirstMatchingSlot(remaining, performed.slotId, performed.intent);
   }
+
+  return remaining;
+}
+
+export function buildRemainingFutureSlotsFromRuntime(input: {
+  slotSequenceJson?: unknown;
+  weeklySchedule?: readonly string[];
+  performedAdvancingSlotsThisWeek?: ReadonlyArray<{ slotId?: string | null; intent?: string | null }>;
+  currentSlotId?: string | null;
+  currentIntent: string;
+}): RuntimeSessionSlot[] {
+  const remaining = buildRemainingRuntimeSlotsFromPerformed({
+    slotSequenceJson: input.slotSequenceJson,
+    weeklySchedule: input.weeklySchedule,
+    performedAdvancingSlotsThisWeek: input.performedAdvancingSlotsThisWeek,
+  });
 
   consumeFirstMatchingSlot(remaining, input.currentSlotId, input.currentIntent);
   return remaining;

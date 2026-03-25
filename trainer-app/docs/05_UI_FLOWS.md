@@ -52,7 +52,7 @@ Route-purpose shorthand:
 - APIs: `POST /api/workouts/generate-from-template`, `POST /api/workouts/generate-from-intent`, `POST /api/workouts/save`
 - `IntentWorkoutCard` and `GenerateFromTemplateCard` consume shared generation response types and pass session-level context through the canonical `selectionMetadata.sessionDecisionReceipt` flow described in `docs/01_ARCHITECTURE.md` (`src/components/IntentWorkoutCard.tsx`, `src/components/GenerateFromTemplateCard.tsx`, `src/components/log-workout/api.ts`).
 - While a mesocycle handoff is pending, Home and Program replace generation/program controls with review CTAs, and the generation routes return `409` rather than silently creating training against a closed mesocycle boundary.
-- Normal generation is now slot-aware. Home presets generation using the current runtime slot recommendation, and successful generation stamps canonical `sessionSlot` receipt metadata when the generated session matches the active slot recommendation (`src/app/page.tsx`, `src/app/api/workouts/generate-from-intent/route.ts`, `src/app/api/workouts/generate-from-template/route.ts`).
+- Normal generation is now slot-aware. Home presets generation using the current runtime slot recommendation, and successful generation stamps canonical `sessionSlot` receipt metadata from truthful runtime slot identity for advancing seeded sessions, including off-order explicit-intent generation when the requested intent maps to an unresolved slot (`src/app/page.tsx`, `src/app/api/workouts/generate-from-intent/route.ts`, `src/app/api/workouts/generate-from-template/route.ts`).
 
 3. Log sets and complete workout
 - UI: `/log/[id]`, `LogWorkoutClient`

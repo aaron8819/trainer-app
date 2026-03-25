@@ -5,11 +5,13 @@ import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-s
 import { deriveCurrentMesocycleSession } from "./mesocycle-lifecycle-math";
 import { loadPendingMesocycleHandoff } from "./mesocycle-handoff";
 import {
+  buildRemainingRuntimeSlotsFromPerformed,
   deriveNextRuntimeSlotSession,
   readRuntimeSlotSequence,
 } from "./mesocycle-slot-runtime";
 import { resolveMesocycleSlotContract } from "./mesocycle-slot-contract";
 import { readSessionSlotSnapshot } from "@/lib/evidence/session-decision-receipt";
+import type { SessionSlotSnapshot } from "@/lib/evidence/types";
 
 type MesoSessionInput = {
   id?: string;
@@ -46,6 +48,18 @@ type IncompleteWorkoutCandidate = {
   selectionMetadata?: unknown;
 };
 
+type PerformedAdvancingWorkoutCandidate = {
+  advancesSplit: boolean | null;
+  selectionMetadata?: unknown;
+  selectionMode: string | null;
+  sessionIntent: string | null;
+};
+
+type AdvancingPerformedSlot = {
+  slotId?: string | null;
+  intent?: string | null;
+};
+
 const INCOMPLETE_STATUSES: WorkoutStatus[] = [
   "IN_PROGRESS",
   "PARTIAL",
@@ -68,6 +82,97 @@ function pickTopIncompleteWorkout(
     }
     return left.scheduledDate.getTime() - right.scheduledDate.getTime();
   })[0] ?? null;
+}
+
+function buildAdvancingPerformedSlots(
+  workouts: PerformedAdvancingWorkoutCandidate[]
+): AdvancingPerformedSlot[] {
+  return workouts
+    .filter((workout) =>
+      deriveSessionSemantics({
+        advancesSplit: workout.advancesSplit,
+        selectionMetadata: workout.selectionMetadata,
+        selectionMode: workout.selectionMode,
+        sessionIntent: workout.sessionIntent,
+      }).consumesWeeklyScheduleIntent
+    )
+    .map((workout) => ({
+      slotId: readSessionSlotSnapshot(workout.selectionMetadata)?.slotId ?? null,
+      intent: workout.sessionIntent?.toLowerCase() ?? null,
+    }));
+}
+
+function toSessionSlotSnapshot(input: {
+  slotId: string;
+  intent: string;
+  sequenceIndex: number;
+  sequenceLength?: number;
+  source: "mesocycle_slot_sequence" | "legacy_weekly_schedule";
+}): SessionSlotSnapshot {
+  return {
+    slotId: input.slotId,
+    intent: input.intent,
+    sequenceIndex: input.sequenceIndex,
+    sequenceLength: input.sequenceLength,
+    source: input.source,
+  };
+}
+
+export function resolveRequestedAdvancingSlotSnapshot(input: {
+  nextWorkoutSource: NextWorkoutSource;
+  requestedIntent: string;
+  explicitSlotId?: string;
+  slotSequenceJson?: unknown;
+  weeklySchedule: string[];
+  performedAdvancingSlotsThisWeek?: AdvancingPerformedSlot[];
+}): SessionSlotSnapshot | undefined {
+  const requestedIntent = input.requestedIntent.trim().toLowerCase();
+  if (!requestedIntent) {
+    return undefined;
+  }
+
+  const slotSequence = readRuntimeSlotSequence({
+    slotSequenceJson: input.slotSequenceJson,
+    weeklySchedule: input.weeklySchedule,
+  });
+  const sequenceLength = slotSequence.slots.length > 0 ? slotSequence.slots.length : undefined;
+  const explicitSlotId = input.explicitSlotId?.trim();
+
+  if (explicitSlotId) {
+    const explicitMatch = slotSequence.slots.find(
+      (slot) => slot.slotId === explicitSlotId && slot.intent === requestedIntent
+    );
+    return explicitMatch
+      ? toSessionSlotSnapshot({
+          slotId: explicitMatch.slotId,
+          intent: explicitMatch.intent,
+          sequenceIndex: explicitMatch.sequenceIndex,
+          sequenceLength,
+          source: slotSequence.source,
+        })
+      : undefined;
+  }
+
+  if (input.nextWorkoutSource !== "rotation") {
+    return undefined;
+  }
+
+  const remainingSlots = buildRemainingRuntimeSlotsFromPerformed({
+    slotSequenceJson: input.slotSequenceJson,
+    weeklySchedule: input.weeklySchedule,
+    performedAdvancingSlotsThisWeek: input.performedAdvancingSlotsThisWeek,
+  });
+  const matchedSlot = remainingSlots.find((slot) => slot.intent === requestedIntent);
+
+  return matchedSlot
+    ? toSessionSlotSnapshot({
+        slotId: matchedSlot.slotId,
+        intent: matchedSlot.intent,
+        sequenceIndex: matchedSlot.sequenceIndex,
+        sequenceLength,
+        source: slotSequence.source,
+      })
+    : undefined;
 }
 
 export function resolveNextWorkoutContext(input: {
@@ -226,6 +331,7 @@ export async function loadNextWorkoutContext(
           },
         })
       : [];
+  const performedAdvancingSlotsThisWeek = buildAdvancingPerformedSlots(rawPerformedAdvancingThisWeek);
   const runtimeSlotSequence = readRuntimeSlotSequence({
     slotSequenceJson: mesocycle?.slotSequenceJson,
     weeklySchedule,
@@ -241,30 +347,72 @@ export async function loadNextWorkoutContext(
       sessionIntent: workout.sessionIntent?.toLowerCase() ?? null,
       selectionMetadata: workout.selectionMetadata,
     })),
-    performedAdvancingSlotIdsThisWeek: rawPerformedAdvancingThisWeek
-      .filter((workout) =>
-        deriveSessionSemantics({
-          advancesSplit: workout.advancesSplit,
-          selectionMetadata: workout.selectionMetadata,
-          selectionMode: workout.selectionMode,
-          sessionIntent: workout.sessionIntent,
-        }).consumesWeeklyScheduleIntent
-      )
-      .map((workout) => readSessionSlotSnapshot(workout.selectionMetadata)?.slotId ?? null)
+    performedAdvancingSlotIdsThisWeek: performedAdvancingSlotsThisWeek
+      .map((workout) => workout.slotId ?? null)
       .filter(
         (slotId): slotId is string =>
           Boolean(slotId) && runtimeSlotSequence.slots.some((slot) => slot.slotId === slotId)
       ),
-    performedAdvancingIntentsThisWeek: rawPerformedAdvancingThisWeek
-      .filter((workout) =>
-        deriveSessionSemantics({
-          advancesSplit: workout.advancesSplit,
-          selectionMetadata: workout.selectionMetadata,
-          selectionMode: workout.selectionMode,
-          sessionIntent: workout.sessionIntent,
-        }).consumesWeeklyScheduleIntent
-      )
-      .map((workout) => workout.sessionIntent?.toLowerCase() ?? null)
+    performedAdvancingIntentsThisWeek: performedAdvancingSlotsThisWeek
+      .map((workout) => workout.intent ?? null)
       .filter((intent): intent is string => Boolean(intent)),
+  });
+}
+
+export async function loadRequestedAdvancingSlotSnapshot(input: {
+  userId: string;
+  requestedIntent: string;
+  explicitSlotId?: string;
+  nextWorkoutContext?: Pick<NextWorkoutContext, "source">;
+}): Promise<SessionSlotSnapshot | undefined> {
+  const nextWorkoutContext =
+    input.nextWorkoutContext ?? (await loadNextWorkoutContext(input.userId));
+  const [mesocycle, constraints] = await Promise.all([
+    prisma.mesocycle.findFirst({
+      where: { macroCycle: { userId: input.userId }, isActive: true },
+      select: {
+        id: true,
+        durationWeeks: true,
+        accumulationSessionsCompleted: true,
+        deloadSessionsCompleted: true,
+        sessionsPerWeek: true,
+        state: true,
+        slotSequenceJson: true,
+      },
+    }),
+    prisma.constraints.findUnique({
+      where: { userId: input.userId },
+      select: { weeklySchedule: true },
+    }),
+  ]);
+  const weeklySchedule = (constraints?.weeklySchedule ?? []).map((intent) => intent as string);
+  const currentSession = mesocycle ? deriveCurrentMesocycleSession(mesocycle) : null;
+  const rawPerformedAdvancingThisWeek =
+    mesocycle && currentSession
+      ? await prisma.workout.findMany({
+          where: {
+            userId: input.userId,
+            mesocycleId: mesocycle.id,
+            mesocycleWeekSnapshot: currentSession.week,
+            status: { in: [...PERFORMED_WORKOUT_STATUSES] as WorkoutStatus[] },
+            sessionIntent: { not: null },
+          },
+          orderBy: [{ mesoSessionSnapshot: "asc" }, { scheduledDate: "asc" }],
+          select: {
+            advancesSplit: true,
+            selectionMetadata: true,
+            selectionMode: true,
+            sessionIntent: true,
+          },
+        })
+      : [];
+
+  return resolveRequestedAdvancingSlotSnapshot({
+    nextWorkoutSource: nextWorkoutContext.source,
+    requestedIntent: input.requestedIntent,
+    explicitSlotId: input.explicitSlotId,
+    slotSequenceJson: mesocycle?.slotSequenceJson,
+    weeklySchedule,
+    performedAdvancingSlotsThisWeek: buildAdvancingPerformedSlots(rawPerformedAdvancingThisWeek),
   });
 }

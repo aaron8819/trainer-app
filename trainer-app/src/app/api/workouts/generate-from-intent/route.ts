@@ -6,7 +6,10 @@ import { applyAutoregulation } from "@/lib/api/autoregulation";
 import { loadActiveMesocycle } from "@/lib/api/mesocycle-lifecycle";
 import { loadPendingMesocycleHandoff } from "@/lib/api/mesocycle-handoff";
 import { findPendingWeekCloseForUser } from "@/lib/api/mesocycle-week-close";
-import { loadNextWorkoutContext } from "@/lib/api/next-session";
+import {
+  loadNextWorkoutContext,
+  loadRequestedAdvancingSlotSnapshot,
+} from "@/lib/api/next-session";
 import type { GenerateFromIntentResponse } from "@/lib/api/template-session/types";
 import {
   attachSessionAuditSnapshotToSelectionMetadata,
@@ -18,7 +21,6 @@ import {
   attachSupplementalSessionMetadata,
   buildCanonicalSelectionMetadata,
 } from "@/lib/ui/selection-metadata";
-import type { SessionSlotSnapshot } from "@/lib/evidence/types";
 
 type PlannedExercise = GenerateFromIntentResponse["workout"]["mainLifts"][number];
 type PlannedSet = PlannedExercise["sets"][number];
@@ -71,39 +73,6 @@ function applyGapFillCaps(input: {
     ...input.workout,
     mainLifts,
     accessories,
-  };
-}
-
-function resolveAdvancingSlotSnapshot(input: {
-  nextWorkoutContext: Awaited<ReturnType<typeof loadNextWorkoutContext>>;
-  requestedIntent: string;
-  explicitSlotId?: string;
-  sequenceLength?: number;
-}): SessionSlotSnapshot | undefined {
-  const explicitSlotId = input.explicitSlotId?.trim();
-  const nextWorkoutContext = input.nextWorkoutContext;
-  if (
-    nextWorkoutContext.source !== "rotation" ||
-    nextWorkoutContext.intent !== input.requestedIntent ||
-    !nextWorkoutContext.slotId ||
-    nextWorkoutContext.slotSequenceIndex == null ||
-    !nextWorkoutContext.slotSource ||
-    (explicitSlotId != null &&
-      explicitSlotId.length > 0 &&
-      explicitSlotId !== nextWorkoutContext.slotId)
-  ) {
-    return undefined;
-  }
-
-  return {
-    slotId: nextWorkoutContext.slotId,
-    intent: input.requestedIntent,
-    sequenceIndex: nextWorkoutContext.slotSequenceIndex,
-    sequenceLength:
-      input.sequenceLength ??
-      nextWorkoutContext.slotSequenceLength ??
-      undefined,
-    source: nextWorkoutContext.slotSource,
   };
 }
 
@@ -192,11 +161,11 @@ export async function POST(request: Request) {
   const advancingSlot =
     shouldApplyOptionalGapFill || shouldApplySupplementalDeficitSession
       ? undefined
-      : resolveAdvancingSlotSnapshot({
-          nextWorkoutContext,
+      : await loadRequestedAdvancingSlotSnapshot({
+          userId: user.id,
           requestedIntent: parsed.data.intent,
           explicitSlotId: parsed.data.slotId,
-          sequenceLength: activeMesocycle?.sessionsPerWeek,
+          nextWorkoutContext,
         });
 
   const generationInput = shouldApplyOptionalGapFill && canonicalGapFill

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { resolveNextWorkoutContext } from "./next-session";
+import {
+  resolveNextWorkoutContext,
+  resolveRequestedAdvancingSlotSnapshot,
+} from "./next-session";
 
 describe("resolveNextWorkoutContext", () => {
   const baseMeso = {
@@ -228,5 +231,62 @@ describe("resolveNextWorkoutContext", () => {
     expect(context.intent).toBe("upper");
     expect(context.slotId).toBe("upper_b");
     expect(context.slotSequenceIndex).toBe(2);
+  });
+
+  it("resolves the earliest unresolved off-order slot for the requested advancing intent", () => {
+    const slot = resolveRequestedAdvancingSlotSnapshot({
+      nextWorkoutSource: "rotation",
+      requestedIntent: "lower",
+      slotSequenceJson: {
+        version: 1,
+        source: "handoff_draft",
+        sequenceMode: "ordered_flexible",
+        slots: [
+          { slotId: "upper_a", intent: "UPPER" },
+          { slotId: "lower_a", intent: "LOWER" },
+          { slotId: "upper_b", intent: "UPPER" },
+          { slotId: "lower_b", intent: "LOWER" },
+        ],
+      },
+      weeklySchedule: ["UPPER", "LOWER", "UPPER", "LOWER"],
+      performedAdvancingSlotsThisWeek: [],
+    });
+
+    expect(slot).toEqual({
+      slotId: "lower_a",
+      intent: "lower",
+      sequenceIndex: 1,
+      sequenceLength: 4,
+      source: "mesocycle_slot_sequence",
+    });
+  });
+
+  it("lets downstream sequencing treat a persisted off-order slot as consumed", () => {
+    const context = resolveNextWorkoutContext({
+      mesocycle: {
+        ...baseMeso,
+        sessionsPerWeek: 4,
+        accumulationSessionsCompleted: 9,
+        slotSequenceJson: {
+          version: 1,
+          source: "handoff_draft",
+          sequenceMode: "ordered_flexible",
+          slots: [
+            { slotId: "upper_a", intent: "UPPER" },
+            { slotId: "lower_a", intent: "LOWER" },
+            { slotId: "upper_b", intent: "UPPER" },
+            { slotId: "lower_b", intent: "LOWER" },
+          ],
+        },
+      },
+      weeklySchedule: ["UPPER", "LOWER", "UPPER", "LOWER"],
+      incompleteWorkouts: [],
+      performedAdvancingIntentsThisWeek: ["lower"],
+      performedAdvancingSlotIdsThisWeek: ["lower_a"],
+    });
+
+    expect(context.intent).toBe("upper");
+    expect(context.slotId).toBe("upper_a");
+    expect(context.slotSequenceIndex).toBe(0);
   });
 });

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Audit Workflow"
+  short_description: "Choose and interpret Trainer audit harness workflows"
+  default_prompt: "Use this skill to choose the correct Trainer audit mode, verify runtime targeting, interpret artifacts truthfully, and recommend the minimum sufficient next step."

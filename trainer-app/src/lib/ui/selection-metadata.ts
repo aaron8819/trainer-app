@@ -69,6 +69,7 @@ export type RuntimeEditDirectiveState = {
 
 export type RuntimeEditOperationSource =
   | "api_workouts_add_exercise"
+  | "api_workouts_add_set"
   | "api_workouts_swap_exercise"
   | "api_workouts_save";
 
@@ -101,6 +102,20 @@ export type RuntimeEditReplaceExerciseOperation = {
   };
 };
 
+export type RuntimeEditAddSetOperation = {
+  kind: "add_set";
+  source: "api_workouts_add_set";
+  appliedAt: string;
+  scope: "current_workout_only";
+  facts: {
+    workoutExerciseId: string;
+    exerciseId: string;
+    workoutSetId: string;
+    setIndex: number;
+    clonedFromSetIndex: number;
+  };
+};
+
 export type RuntimeEditRewriteStructureOperation = {
   kind: "rewrite_structure";
   source: "api_workouts_save";
@@ -117,6 +132,7 @@ export type RuntimeEditRewriteStructureOperation = {
 
 export type RuntimeEditOperation =
   | RuntimeEditAddExerciseOperation
+  | RuntimeEditAddSetOperation
   | RuntimeEditReplaceExerciseOperation
   | RuntimeEditRewriteStructureOperation;
 
@@ -358,6 +374,37 @@ function parseRuntimeEditOperation(value: unknown): RuntimeEditOperation | undef
   }
 
   if (
+    record.kind === "add_set" &&
+    record.source === "api_workouts_add_set"
+  ) {
+    if (
+      typeof facts.workoutExerciseId !== "string" ||
+      typeof facts.exerciseId !== "string" ||
+      typeof facts.workoutSetId !== "string" ||
+      typeof facts.setIndex !== "number" ||
+      !Number.isFinite(facts.setIndex) ||
+      typeof facts.clonedFromSetIndex !== "number" ||
+      !Number.isFinite(facts.clonedFromSetIndex)
+    ) {
+      return undefined;
+    }
+
+    return {
+      kind: "add_set",
+      source: "api_workouts_add_set",
+      appliedAt: record.appliedAt,
+      scope: "current_workout_only",
+      facts: {
+        workoutExerciseId: facts.workoutExerciseId,
+        exerciseId: facts.exerciseId,
+        workoutSetId: facts.workoutSetId,
+        setIndex: facts.setIndex,
+        clonedFromSetIndex: facts.clonedFromSetIndex,
+      },
+    };
+  }
+
+  if (
     record.kind === "replace_exercise" &&
     record.source === "api_workouts_swap_exercise"
   ) {
@@ -554,6 +601,18 @@ export function readRuntimeEditReconciliation(
 ): RuntimeEditReconciliation | undefined {
   const record = toObject(value);
   return parseRuntimeEditReconciliation(record?.runtimeEditReconciliation);
+}
+
+export function readRuntimeAddedSetIds(selectionMetadata: unknown): Set<string> {
+  const runtimeEditReconciliation = readRuntimeEditReconciliation(selectionMetadata);
+  return new Set(
+    (runtimeEditReconciliation?.ops ?? [])
+      .filter(
+        (operation): operation is RuntimeEditAddSetOperation =>
+          operation.kind === "add_set"
+      )
+      .map((operation) => operation.facts.workoutSetId)
+  );
 }
 
 export function attachWorkoutStructureState(

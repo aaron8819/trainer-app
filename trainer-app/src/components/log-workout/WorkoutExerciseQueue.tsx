@@ -7,6 +7,7 @@ import { formatSectionLabel } from "@/components/log-workout/useWorkoutLogState"
 import type { ExerciseSection } from "@/components/log-workout/types";
 
 export type WorkoutQueueExerciseRowData = {
+  section: ExerciseSection;
   exerciseId: string;
   exerciseName: string;
   sessionNote?: string;
@@ -16,6 +17,8 @@ export type WorkoutQueueExerciseRowData = {
   isExpanded: boolean;
   nextSetId: string | null;
   chips: ExerciseSetChip[];
+  canAddSet: boolean;
+  isAddingSet: boolean;
   canSwap: boolean;
   isSwapping: boolean;
 };
@@ -39,6 +42,7 @@ type WorkoutExerciseQueueProps = {
   onToggleSection: (section: ExerciseSection) => void;
   onToggleExercise: (exerciseId: string, nextSetId: string | null) => void;
   onSelectSet: (setId: string) => void;
+  onAddSet?: (exerciseId: string, section: ExerciseSection) => void;
   onSwapExercise?: (exerciseId: string) => void;
   onExerciseRowRender?: (exerciseId: string) => void;
 };
@@ -65,12 +69,14 @@ const ExerciseQueueRow = memo(
     row,
     onToggleExercise,
     onSelectSet,
+    onAddSet,
     onSwapExercise,
     onRender,
   }: {
     row: WorkoutQueueExerciseRowData;
     onToggleExercise: (exerciseId: string, nextSetId: string | null) => void;
     onSelectSet: (setId: string) => void;
+    onAddSet?: (exerciseId: string, section: ExerciseSection) => void;
     onSwapExercise?: (exerciseId: string) => void;
     onRender?: (exerciseId: string) => void;
   }) {
@@ -97,6 +103,16 @@ const ExerciseQueueRow = memo(
             ) : null}
           </button>
           <span className="flex shrink-0 items-center gap-2">
+            {row.canAddSet && onAddSet ? (
+              <button
+                className="inline-flex min-h-8 items-center justify-center rounded-full border border-slate-300 px-3 text-[11px] font-semibold text-slate-700 disabled:opacity-60"
+                disabled={row.isAddingSet}
+                onClick={() => onAddSet(row.exerciseId, row.section)}
+                type="button"
+              >
+                {row.isAddingSet ? "Adding..." : "+ Add set"}
+              </button>
+            ) : null}
             {row.canSwap && onSwapExercise ? (
               <button
                 className="inline-flex min-h-8 items-center justify-center rounded-full border border-slate-300 px-3 text-[11px] font-semibold text-slate-700 disabled:opacity-60"
@@ -128,6 +144,7 @@ const ExerciseQueueRow = memo(
     );
   },
   (previous, next) =>
+    previous.row.section === next.row.section &&
     previous.row.exerciseId === next.row.exerciseId &&
     previous.row.exerciseName === next.row.exerciseName &&
     previous.row.sessionNote === next.row.sessionNote &&
@@ -136,11 +153,14 @@ const ExerciseQueueRow = memo(
     previous.row.allSetsLogged === next.row.allSetsLogged &&
     previous.row.isExpanded === next.row.isExpanded &&
     previous.row.nextSetId === next.row.nextSetId &&
+    previous.row.canAddSet === next.row.canAddSet &&
+    previous.row.isAddingSet === next.row.isAddingSet &&
     previous.row.canSwap === next.row.canSwap &&
     previous.row.isSwapping === next.row.isSwapping &&
     areChipsEqual(previous.row.chips, next.row.chips) &&
     previous.onToggleExercise === next.onToggleExercise &&
     previous.onSelectSet === next.onSelectSet &&
+    previous.onAddSet === next.onAddSet &&
     previous.onSwapExercise === next.onSwapExercise &&
     previous.onRender === next.onRender
 );
@@ -152,6 +172,7 @@ export function WorkoutExerciseQueue({
   onToggleSection,
   onToggleExercise,
   onSelectSet,
+  onAddSet,
   onSwapExercise,
   onExerciseRowRender,
 }: WorkoutExerciseQueueProps) {
@@ -203,6 +224,7 @@ export function WorkoutExerciseQueue({
                   row={row}
                   onToggleExercise={onToggleExercise}
                   onSelectSet={onSelectSet}
+                  onAddSet={onAddSet}
                   onSwapExercise={onSwapExercise}
                   onRender={onExerciseRowRender}
                 />

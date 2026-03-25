@@ -1,8 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
-import { deleteSetLogRequest, logSetRequest } from "@/components/log-workout/api";
+import {
+  addSetToExerciseRequest,
+  deleteSetLogRequest,
+  logSetRequest,
+} from "@/components/log-workout/api";
 import { getNextUnloggedSetId, resolveRestSeconds } from "@/components/log-workout/useWorkoutLogState";
 import type { RestTimerSnapshot } from "@/components/log-workout/useRestTimerState";
 import {
@@ -26,6 +30,7 @@ export type WorkoutSessionActions = {
   logSet: (setId: string, overrides?: Partial<LogSetInput>) => Promise<boolean>;
   undo: () => Promise<void>;
   addExercise: (exercise: LogExerciseInput) => void;
+  addSet: (workoutExerciseId: string) => Promise<boolean>;
 };
 
 type SetPrefilledField = keyof PrefilledFieldState;
@@ -86,6 +91,7 @@ export function useWorkoutSessionFlow({
   onAdvanceSet,
 }: UseWorkoutSessionFlowParams) {
   const [savingSetId, setSavingSetId] = useState<string | null>(null);
+  const [addingSetExerciseId, setAddingSetExerciseId] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [undoSnapshot, setUndoSnapshot] = useState<UndoSnapshot | null>(null);
@@ -390,6 +396,58 @@ export function useWorkoutSessionFlow({
     [setActiveSetId, setData]
   );
 
+  const handleAddSet = useCallback(
+    async (workoutExerciseId: string): Promise<boolean> => {
+      clearFeedback();
+      setAddingSetExerciseId(workoutExerciseId);
+
+      try {
+        const response = await addSetToExerciseRequest({
+          workoutId,
+          workoutExerciseId,
+        });
+
+        if (response.error) {
+          showError(response.error);
+          return false;
+        }
+
+        const nextSet = response.data.set;
+        setData((prev) => {
+          for (const section of Object.keys(prev) as Array<keyof NormalizedExercises>) {
+            const exerciseIndex = prev[section].findIndex(
+              (exercise) => exercise.workoutExerciseId === workoutExerciseId
+            );
+            if (exerciseIndex === -1) {
+              continue;
+            }
+
+            const nextSection = [...prev[section]];
+            const exercise = nextSection[exerciseIndex];
+            nextSection[exerciseIndex] = {
+              ...exercise,
+              sets: [...exercise.sets, nextSet],
+            };
+
+            return {
+              ...prev,
+              [section]: nextSection,
+            };
+          }
+
+          return prev;
+        });
+        setActiveSetId(nextSet.setId);
+        setAutoregHint(null);
+        showStatus("Extra set added.");
+        return true;
+      } finally {
+        setAddingSetExerciseId(null);
+      }
+    },
+    [clearFeedback, setActiveSetId, setData, showError, showStatus, workoutId]
+  );
+
   const completion: WorkoutSessionCompletionController = useWorkoutSessionCompletion({
     workoutId,
     totalSets,
@@ -401,13 +459,18 @@ export function useWorkoutSessionFlow({
     showError,
     showStatus,
   });
-  const actions: WorkoutSessionActions = {
-    logSet: handleLogSet,
-    undo: handleUndo,
-    addExercise: handleAddExercise,
-  };
+  const actions = useMemo<WorkoutSessionActions>(
+    () => ({
+      logSet: handleLogSet,
+      undo: handleUndo,
+      addExercise: handleAddExercise,
+      addSet: handleAddSet,
+    }),
+    [handleAddExercise, handleAddSet, handleLogSet, handleUndo]
+  );
 
   return {
+    addingSetExerciseId,
     savingSetId,
     status,
     error,

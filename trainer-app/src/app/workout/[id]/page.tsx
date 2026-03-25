@@ -11,6 +11,7 @@ import {
   hasPerformedHistory,
   isPerformedWorkoutStatus,
 } from "@/lib/ui/session-overview";
+import { readRuntimeAddedSetIds } from "@/lib/ui/selection-metadata";
 import { formatSessionIdentityLabel } from "@/lib/ui/session-identity";
 import { evaluateTargetReps } from "@/lib/session-semantics/target-evaluation";
 import { buildSessionSummaryModel } from "@/lib/ui/session-summary";
@@ -137,6 +138,7 @@ export default async function WorkoutDetailPage({
   const selectionMetadata = parseExplainabilitySelectionMetadata(workout.selectionMetadata);
   const sessionDecisionReceipt = selectionMetadata.sessionDecisionReceipt;
   const workoutStructureState = selectionMetadata.workoutStructureState;
+  const runtimeAddedSetIds = readRuntimeAddedSetIds(workout.selectionMetadata);
   const sessionIdentityLabel = formatSessionIdentityLabel({
     intent: workout.sessionIntent,
     slotId: sessionDecisionReceipt?.sessionSlot?.slotId ?? null,
@@ -337,7 +339,14 @@ export default async function WorkoutDetailPage({
                           return (
                             <div key={set.id} className="rounded-lg bg-slate-50 px-3 py-2">
                               <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                                <span>{set.setIndex === 1 ? "Top set" : `Set ${set.setIndex}`}</span>
+                                <span className="flex items-center gap-2">
+                                  <span>{set.setIndex === 1 ? "Top set" : `Set ${set.setIndex}`}</span>
+                                  {runtimeAddedSetIds.has(set.id) ? (
+                                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                                      Extra set
+                                    </span>
+                                  ) : null}
+                                </span>
                                 <span className="text-slate-700">
                                   {formatTargetRepDisplay(set)}
                                   {formatLoad(set.targetLoad, isDumbbellExercise, isBodyweightExercise)

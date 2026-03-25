@@ -1,5 +1,8 @@
 import type { LogExerciseInput } from "@/components/log-workout/types";
-import { readGapFillExerciseSwapState } from "@/lib/ui/selection-metadata";
+import {
+  readGapFillExerciseSwapState,
+  readRuntimeAddedSetIds,
+} from "@/lib/ui/selection-metadata";
 
 type WorkoutExercise = {
   id: string;
@@ -52,6 +55,7 @@ export function splitExercises(
   const main: LogExerciseInput[] = [];
   const accessory: LogExerciseInput[] = [];
   const swapNoteByWorkoutExerciseId = buildSwapNoteMap(selectionMetadata);
+  const runtimeAddedSetIds = readRuntimeAddedSetIds(selectionMetadata);
 
   const ordered = [...exercises].sort((a, b) => a.orderIndex - b.orderIndex);
 
@@ -73,6 +77,7 @@ export function splitExercises(
           : {}),
         setId: set.id,
         setIndex: set.setIndex,
+        isRuntimeAdded: runtimeAddedSetIds.has(set.id),
         targetReps: set.targetReps,
         targetRepRange:
           set.targetRepMin != null && set.targetRepMax != null

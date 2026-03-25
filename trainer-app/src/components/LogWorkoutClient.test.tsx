@@ -16,11 +16,13 @@ vi.mock("next/link", () => ({
 }));
 
 vi.mock("@/components/log-workout/api", () => ({
+  addSetToExerciseRequest: vi.fn(),
   logSetRequest: vi.fn(),
   deleteSetLogRequest: vi.fn(),
   saveWorkoutRequest: vi.fn(),
 }));
 
+const mockedAddSetToExerciseRequest = vi.mocked(workoutApi.addSetToExerciseRequest);
 const mockedLogSetRequest = vi.mocked(workoutApi.logSetRequest);
 const mockedDeleteSetLogRequest = vi.mocked(workoutApi.deleteSetLogRequest);
 const mockedSaveWorkoutRequest = vi.mocked(workoutApi.saveWorkoutRequest);
@@ -242,6 +244,20 @@ function setupVisualViewport(initialHeight = 800) {
 
 describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
   beforeEach(() => {
+    mockedAddSetToExerciseRequest.mockResolvedValue({
+      data: {
+        set: {
+          setId: "set-3",
+          setIndex: 3,
+          targetReps: 10,
+          targetLoad: 50,
+          targetRpe: 8,
+          restSeconds: 90,
+          isRuntimeAdded: true,
+        },
+      },
+      error: null,
+    });
     mockedLogSetRequest.mockResolvedValue({ data: { status: "ok", wasCreated: true }, error: null });
     mockedDeleteSetLogRequest.mockResolvedValue({ data: { status: "ok" }, error: null });
     mockedSaveWorkoutRequest.mockResolvedValue(makeSaveWorkoutResponse("COMPLETED"));
@@ -536,6 +552,34 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     expect(screen.queryByRole("button", { name: "... Workout options" })).not.toBeInTheDocument();
     expect((container.firstChild as HTMLElement).style.paddingBottom).toContain("var(--mobile-nav-height)");
     expect((container.firstChild as HTMLElement).style.paddingBottom).toContain("88px");
+  });
+
+  it("appends an extra set to an existing exercise and requires it before finishing", async () => {
+    const user = userEvent.setup();
+    renderClient();
+
+    await logAllSets(user);
+    await waitFor(() => expect(screen.getByTestId("workout-finish-bar")).toBeInTheDocument());
+
+    await user.click(screen.getByRole("button", { name: "+ Add set" }));
+
+    await waitFor(() => {
+      expect(mockedAddSetToExerciseRequest).toHaveBeenCalledWith({
+        workoutId: "workout-1",
+        workoutExerciseId: "ex-1",
+      });
+      expect(screen.getByRole("button", { name: /Set 3 Extra set/ })).toBeInTheDocument();
+      expect(screen.getByText(/Set 3 of 3 · Extra set/)).toBeInTheDocument();
+      expect(screen.getByText("1 sets remaining")).toBeInTheDocument();
+      expect(screen.queryByTestId("workout-finish-bar")).not.toBeInTheDocument();
+    });
+
+    await clickResolvedSubmitButton(user);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("workout-finish-bar")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Finish workout" })).toBeInTheDocument();
+    });
   });
 
   it("counts skipped sets as satisfied and routes the footer CTA to skip", async () => {

@@ -1,6 +1,7 @@
 export type LogSetInput = {
   setId: string;
   setIndex: number;
+  isRuntimeAdded?: boolean;
   targetReps: number;
   targetRepRange?: { min: number; max: number };
   targetLoad?: number | null;
@@ -87,6 +88,7 @@ export type AutoregHint = {
 
 export type CompletedWorkoutSetSummary = {
   setIndex: number;
+  isRuntimeAdded?: boolean;
   targetReps: number;
   targetRepRange?: { min: number; max: number };
   targetLoad?: number | null;

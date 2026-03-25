@@ -93,15 +93,16 @@ function normalizeLoadInput(raw: string, isDumbbell: boolean): number | null {
 }
 
 function formatQueueSetSummary(set: LogSetInput, isLogged: boolean, isDumbbell: boolean): string {
+  const setPrefix = set.isRuntimeAdded ? `Set ${set.setIndex} Extra set` : `Set ${set.setIndex}`;
   if (!isLogged) {
-    return `Set ${set.setIndex}`;
+    return setPrefix;
   }
 
   if (set.wasSkipped) {
-    return `Set ${set.setIndex} skipped`;
+    return `${setPrefix} skipped`;
   }
 
-  const parts: string[] = [`Set ${set.setIndex} OK`];
+  const parts: string[] = [`${setPrefix} OK`];
   if (set.actualLoad != null && set.actualReps != null) {
     parts.push(`${toDisplayLoad(set.actualLoad, isDumbbell) ?? set.actualLoad} x ${set.actualReps}`);
   } else if (set.actualReps != null) {
@@ -230,6 +231,7 @@ export default function LogWorkoutClient({
           section,
           sets: exercise.sets.map((set) => ({
             setIndex: set.setIndex,
+            isRuntimeAdded: set.isRuntimeAdded,
             targetReps: set.targetReps,
             targetRepRange: set.targetRepRange,
             targetLoad: set.targetLoad,
@@ -380,6 +382,7 @@ export default function LogWorkoutClient({
   );
 
   const {
+    addingSetExerciseId,
     savingSetId,
     status,
     error,
@@ -409,6 +412,8 @@ export default function LogWorkoutClient({
       isBodyweightExercise,
       onAdvanceSet: jumpToActiveSet,
     });
+  const addExerciseAction = actions.addExercise;
+  const addSetAction = actions.addSet;
 
   useEffect(() => {
     if (activeCardMode.kind !== "edit") {
@@ -567,6 +572,7 @@ export default function LogWorkoutClient({
               exercise.sets.find((set) => !satisfiedSetIds.has(set.setId)) ?? exercise.sets[0] ?? null;
 
             return {
+              section,
               exerciseId: exercise.workoutExerciseId,
               exerciseName: exercise.name,
               sessionNote: exercise.sessionNote,
@@ -581,6 +587,8 @@ export default function LogWorkoutClient({
                 section === "accessory" &&
                 !exercise.sessionNote &&
                 exercise.sets.every((set) => !satisfiedSetIds.has(set.setId)),
+              canAddSet: true,
+              isAddingSet: addingSetExerciseId === exercise.workoutExerciseId,
               isSwapping: selectedSwapExerciseId === exercise.workoutExerciseId,
               chips: exercise.sets.map((set) => ({
                 setId: set.setId,
@@ -606,6 +614,7 @@ export default function LogWorkoutClient({
     satisfiedSetIds,
     resolvedActiveSetId,
     selectedSwapExerciseId,
+    addingSetExerciseId,
     savingSetId,
   ]);
 
@@ -676,13 +685,23 @@ export default function LogWorkoutClient({
   const handleAddExercise = useCallback(
     (exercise: LogExerciseInput) => {
       setExpandedSections((prev) => ({ ...prev, accessory: true }));
-      actions.addExercise(exercise);
+      addExerciseAction(exercise);
     },
-    [actions, setExpandedSections]
+    [addExerciseAction, setExpandedSections]
   );
   const handleSwapExercise = useCallback((exerciseId: string) => {
     setSelectedSwapExerciseId(exerciseId);
   }, []);
+  const handleAddSet = useCallback(
+    (exerciseId: string, section: ExerciseSection) => {
+      requestEditModeExit(() => {
+        setExpandedSections((prev) => ({ ...prev, [section]: true }));
+        setExpandedExerciseId(exerciseId);
+        void addSetAction(exerciseId);
+      });
+    },
+    [addSetAction, requestEditModeExit, setExpandedExerciseId, setExpandedSections]
+  );
   const handleSwapApplied = useCallback(
     (exercise: LogExerciseInput) => {
       setData((prev) => {
@@ -810,6 +829,7 @@ export default function LogWorkoutClient({
             onToggleSection={toggleQueueSection}
             onToggleExercise={toggleQueueExercise}
             onSelectSet={handleQueueSetSelect}
+            onAddSet={handleAddSet}
             onSwapExercise={handleSwapExercise}
             onExerciseRowRender={onQueueExerciseRowRender}
           />

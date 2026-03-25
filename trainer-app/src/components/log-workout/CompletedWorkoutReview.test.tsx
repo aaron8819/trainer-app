@@ -91,4 +91,40 @@ describe("CompletedWorkoutReview", () => {
 
     expect(screen.getByText("Skipped")).toHaveClass("text-slate-500");
   });
+
+  it("labels runtime-added sets explicitly from persisted provenance", () => {
+    render(
+      <CompletedWorkoutReview
+        workoutId="workout-1"
+        totalSets={1}
+        loggedCount={1}
+        rpeAdherence={null}
+        performanceSummary={[
+          {
+            exerciseId: "ex-1",
+            name: "Lat Pulldown",
+            equipment: ["cable"],
+            isMainLift: false,
+            section: "main",
+            sets: [
+              {
+                setIndex: 3,
+                isRuntimeAdded: true,
+                targetReps: 12,
+                targetLoad: 40,
+                targetRpe: 8,
+                actualReps: 12,
+                actualLoad: 40,
+                actualRpe: 8,
+                wasLogged: true,
+                wasSkipped: false,
+              },
+            ],
+          },
+        ]}
+      />
+    );
+
+    expect(screen.getByText("Extra set")).toBeInTheDocument();
+  });
 });

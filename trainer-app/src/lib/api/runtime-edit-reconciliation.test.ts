@@ -112,6 +112,57 @@ describe("reconcileRuntimeEditSelectionMetadata", () => {
     expect(result.workoutStructureState.reconciliation.changedFields).toContain("exercise_added");
   });
 
+  it("records add_set ops with explicit set provenance", () => {
+    const result = reconcileRuntimeEditSelectionMetadata({
+      selectionMetadata: generatedSelectionMetadata,
+      selectionMode: "INTENT",
+      sessionIntent: "push",
+      reconciledAt: "2026-03-23T10:00:00.000Z",
+      persistedExercises: [
+        {
+          exerciseId: "bench",
+          orderIndex: 0,
+          section: "MAIN",
+          exercise: { name: "Bench Press" },
+          sets: [
+            { setIndex: 1, targetReps: 8, targetRpe: 8 },
+            { setIndex: 2, targetReps: 8, targetRpe: 8 },
+            { setIndex: 3, targetReps: 8, targetRpe: 8 },
+            { setIndex: 4, targetReps: 8, targetRpe: 8 },
+          ],
+        },
+      ],
+      mutation: {
+        kind: "add_set",
+        workoutExerciseId: "we-1",
+        exerciseId: "bench",
+        workoutSetId: "set-4",
+        setIndex: 4,
+        clonedFromSetIndex: 3,
+      },
+    });
+
+    expect(result.appendedOpKind).toBe("add_set");
+    expect(result.runtimeEditReconciliation?.ops).toEqual([
+      {
+        kind: "add_set",
+        source: "api_workouts_add_set",
+        appliedAt: "2026-03-23T10:00:00.000Z",
+        scope: "current_workout_only",
+        facts: {
+          workoutExerciseId: "we-1",
+          exerciseId: "bench",
+          workoutSetId: "set-4",
+          setIndex: 4,
+          clonedFromSetIndex: 3,
+        },
+      },
+    ]);
+    expect(result.workoutStructureState.reconciliation.changedFields).toContain(
+      "exercise_set_count_changed"
+    );
+  });
+
   it("records replace_exercise ops with route-known reason values only", () => {
     const result = reconcileRuntimeEditSelectionMetadata({
       selectionMetadata: generatedSelectionMetadata,

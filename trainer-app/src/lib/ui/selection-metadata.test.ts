@@ -4,6 +4,7 @@ import {
   attachSupplementalSessionMetadata,
   buildWorkoutStructureState,
   buildCanonicalSelectionMetadata,
+  readRuntimeAddedSetIds,
   readRuntimeEditReconciliation,
   readWorkoutStructureState,
   sanitizeSelectionMetadataForSave,
@@ -325,6 +326,52 @@ describe("workout structure reconciliation", () => {
 
     expect(readRuntimeEditReconciliation(result)).toEqual(runtimeEditReconciliation);
     expect((result as Record<string, unknown>).debugOnly).toBeUndefined();
+  });
+
+  it("reads runtime-added set ids from explicit add_set provenance only", () => {
+    const runtimeEditReconciliation = {
+      version: 1 as const,
+      lastReconciledAt: "2026-03-23T10:00:00.000Z",
+      directives: {
+        continuityAlias: "none" as const,
+        progressionAlias: "none" as const,
+        futureSessionGeneration: "ignore" as const,
+        futureSeedCarryForward: "ignore" as const,
+      },
+      ops: [
+        {
+          kind: "add_set" as const,
+          source: "api_workouts_add_set" as const,
+          appliedAt: "2026-03-23T10:00:00.000Z",
+          scope: "current_workout_only" as const,
+          facts: {
+            workoutExerciseId: "we-1",
+            exerciseId: "bench",
+            workoutSetId: "set-4",
+            setIndex: 4,
+            clonedFromSetIndex: 3,
+          },
+        },
+        {
+          kind: "add_exercise" as const,
+          source: "api_workouts_add_exercise" as const,
+          appliedAt: "2026-03-23T10:00:00.000Z",
+          scope: "current_workout_only" as const,
+          facts: {
+            exerciseId: "fly",
+            orderIndex: 1,
+            section: "ACCESSORY" as const,
+            setCount: 3,
+          },
+        },
+      ],
+    };
+
+    expect(
+      readRuntimeAddedSetIds({
+        runtimeEditReconciliation,
+      })
+    ).toEqual(new Set(["set-4"]));
   });
 });
 

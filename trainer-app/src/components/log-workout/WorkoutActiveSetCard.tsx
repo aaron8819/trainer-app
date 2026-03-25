@@ -200,7 +200,8 @@ export function WorkoutActiveSetCard({
           <div className="min-w-0">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-700">Editing</p>
             <p className="truncate text-sm font-semibold text-amber-900">
-              {editingSetLabel ?? `Set ${activeSet.set.setIndex}`} - {activeSet.exercise.name}
+              {editingSetLabel ?? `Set ${activeSet.set.setIndex}`}
+              {activeSet.set.isRuntimeAdded ? " Extra set" : ""} - {activeSet.exercise.name}
             </p>
           </div>
           <button
@@ -223,6 +224,7 @@ export function WorkoutActiveSetCard({
         <h2 className="text-base font-semibold leading-snug">{activeSet.exercise.name}</h2>
         <p className="mt-0.5 text-xs text-slate-400">
           {activeSet.sectionLabel} · Set {activeSet.set.setIndex} of {activeSet.exercise.sets.length}
+          {activeSet.set.isRuntimeAdded ? " · Extra set" : ""}
         </p>
         <p className="mt-0.5 text-xs font-medium text-slate-600">
           {formatTargetReps(activeSet.set)}

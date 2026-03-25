@@ -27,6 +27,14 @@ export type RuntimeEditMutation =
       setCount: number;
     }
   | {
+      kind: "add_set";
+      workoutExerciseId: string;
+      exerciseId: string;
+      workoutSetId: string;
+      setIndex: number;
+      clonedFromSetIndex: number;
+    }
+  | {
       kind: "replace_exercise";
       workoutExerciseId: string;
       fromExerciseId: string;
@@ -98,6 +106,22 @@ function buildRuntimeEditOperation(input: {
         orderIndex: input.mutation.orderIndex,
         section: input.mutation.section,
         setCount: input.mutation.setCount,
+      },
+    };
+  }
+
+  if (input.mutation.kind === "add_set") {
+    return {
+      kind: "add_set",
+      source: "api_workouts_add_set",
+      appliedAt: input.appliedAt,
+      scope: "current_workout_only",
+      facts: {
+        workoutExerciseId: input.mutation.workoutExerciseId,
+        exerciseId: input.mutation.exerciseId,
+        workoutSetId: input.mutation.workoutSetId,
+        setIndex: input.mutation.setIndex,
+        clonedFromSetIndex: input.mutation.clonedFromSetIndex,
       },
     };
   }

@@ -253,4 +253,84 @@ describe("WorkoutDetailPage", { timeout: 15000 }, () => {
     expect(screen.getAllByText("Program impact")).toHaveLength(1);
     expect(screen.getByText(/Actual: 8 reps \| 40 lbs \| RPE 8 OK/)).toHaveClass("text-emerald-700");
   });
+
+  it("labels runtime-added sets explicitly on workout detail surfaces", async () => {
+    mocks.workoutFindFirst.mockResolvedValue({
+      id: "workout-1",
+      userId: "user-1",
+      status: "COMPLETED",
+      estimatedMinutes: 55,
+      selectionMetadata: {
+        runtimeEditReconciliation: {
+          version: 1,
+          lastReconciledAt: "2026-03-24T10:00:00.000Z",
+          directives: {
+            continuityAlias: "none",
+            progressionAlias: "none",
+            futureSessionGeneration: "ignore",
+            futureSeedCarryForward: "ignore",
+          },
+          ops: [
+            {
+              kind: "add_set",
+              source: "api_workouts_add_set",
+              appliedAt: "2026-03-24T10:00:00.000Z",
+              scope: "current_workout_only",
+              facts: {
+                workoutExerciseId: "we-1",
+                exerciseId: "lat-pull",
+                workoutSetId: "set-2",
+                setIndex: 2,
+                clonedFromSetIndex: 1,
+              },
+            },
+          ],
+        },
+      },
+      sessionIntent: "PULL",
+      exercises: [
+        {
+          id: "we-1",
+          orderIndex: 0,
+          exerciseId: "lat-pull",
+          isMainLift: true,
+          section: "MAIN",
+          exercise: {
+            name: "Lat Pulldown",
+            jointStress: "MEDIUM",
+            exerciseEquipment: [{ equipment: { type: "CABLE" } }],
+          },
+          sets: [
+            {
+              id: "set-1",
+              setIndex: 1,
+              targetReps: 10,
+              targetRepMin: 8,
+              targetRepMax: 12,
+              targetLoad: 40,
+              targetRpe: 8,
+              logs: [{ actualReps: 10, actualLoad: 40, actualRpe: 8, wasSkipped: false }],
+            },
+            {
+              id: "set-2",
+              setIndex: 2,
+              targetReps: 10,
+              targetRepMin: 8,
+              targetRepMax: 12,
+              targetLoad: 40,
+              targetRpe: 8,
+              logs: [{ actualReps: 9, actualLoad: 40, actualRpe: 8, wasSkipped: false }],
+            },
+          ],
+        },
+      ],
+    });
+
+    const { default: WorkoutDetailPage } = await import("./page");
+    const ui = await WorkoutDetailPage({ params: Promise.resolve({ id: "workout-1" }) });
+
+    render(ui);
+
+    expect(screen.getByText("Extra set")).toBeInTheDocument();
+  });
 });

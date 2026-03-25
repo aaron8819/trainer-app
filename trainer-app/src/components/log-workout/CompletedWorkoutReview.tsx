@@ -185,7 +185,14 @@ export function CompletedWorkoutReview({
                     return (
                       <div key={set.setIndex} className="rounded-lg bg-slate-50 px-3 py-2">
                         <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-xs">
-                          <span className="font-medium text-slate-700">Set {set.setIndex}</span>
+                          <span className="flex items-center gap-2 font-medium text-slate-700">
+                            <span>Set {set.setIndex}</span>
+                            {set.isRuntimeAdded ? (
+                              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                                Extra set
+                              </span>
+                            ) : null}
+                          </span>
                           <span className="min-w-0 text-slate-500">{targetLabel}</span>
                         </div>
                         <div className={`mt-0.5 text-xs font-medium ${actualColor}`}>{actualLabel}</div>

@@ -90,6 +90,33 @@ export async function deleteSetLogRequest(workoutSetId: string): Promise<ApiResu
   return parseJsonResponse(response);
 }
 
+export async function addSetToExerciseRequest(payload: {
+  workoutId: string;
+  workoutExerciseId: string;
+}): Promise<
+  ApiResult<{
+    set: {
+      setId: string;
+      setIndex: number;
+      targetReps: number;
+      targetRepRange?: { min: number; max: number };
+      targetLoad?: number | null;
+      targetRpe?: number | null;
+      restSeconds?: number | null;
+      isRuntimeAdded: true;
+    };
+  }>
+> {
+  const response = await fetch(
+    `/api/workouts/${payload.workoutId}/exercises/${payload.workoutExerciseId}/add-set`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    }
+  );
+  return parseJsonResponse(response);
+}
+
 export async function saveWorkoutRequest(payload: SaveWorkoutRequestPayload): Promise<ApiResult<SaveWorkoutResponse & {
   baselineSummary?: unknown;
 }>> {

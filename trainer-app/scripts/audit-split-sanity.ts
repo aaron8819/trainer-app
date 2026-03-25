@@ -1,5 +1,6 @@
 import {
   assertAuditPreflight,
+  buildResolvedAuditIdentityRequest,
   captureAuditWarnings,
   loadAuditEnv,
   parseArgs,
@@ -32,10 +33,10 @@ async function main(): Promise<void> {
   preflight.status.env_loaded = env.envLoaded;
   printAuditPreflight("split-sanity-audit", preflight);
   assertAuditPreflight("split-sanity-audit", preflight);
+  const identityRequest = buildResolvedAuditIdentityRequest(args, preflight);
 
   const request: SplitSanityAuditRequest = {
-    userId: typeof args["user-id"] === "string" ? args["user-id"] : undefined,
-    ownerEmail: typeof args.owner === "string" ? args.owner : undefined,
+    ...identityRequest,
     intents:
       typeof args.intents === "string"
         ? args.intents

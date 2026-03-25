@@ -2,6 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
   assertAuditPreflight,
+  buildResolvedAuditIdentityRequest,
   loadAuditEnv,
   parseArgs,
   printAuditPreflight,
@@ -43,10 +44,10 @@ async function main(): Promise<void> {
   preflight.status.env_loaded = env.envLoaded;
   printAuditPreflight("week-close-handoff", preflight);
   assertAuditPreflight("week-close-handoff", preflight);
+  const identityRequest = buildResolvedAuditIdentityRequest(args, preflight);
 
   const request = {
-    userId: typeof args["user-id"] === "string" ? args["user-id"] : undefined,
-    ownerEmail: typeof args.owner === "string" ? args.owner : undefined,
+    ...identityRequest,
     targetWeek: parseInteger(args["target-week"]),
     previewOptionalGapFill: args["skip-preview"] === true ? false : true,
     sanitizationLevel: args.sanitization === "pii-safe" ? ("pii-safe" as const) : ("none" as const),

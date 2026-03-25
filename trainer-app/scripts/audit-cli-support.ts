@@ -15,6 +15,12 @@ export type AuditPreflight = {
   dbHost: string | null;
   ownerEmail: string | null;
   resolvedUserId: string | null;
+  ownerSource:
+    | "user-id-flag"
+    | "owner-flag"
+    | "env-default"
+    | "fallback-default"
+    | null;
   status: AuditPreflightStatus;
   failures: string[];
 };
@@ -103,6 +109,31 @@ export function sanitizeDatabaseHost(connectionString: string | undefined): stri
   }
 }
 
+export function buildResolvedAuditIdentityRequest(
+  args: AuditCliArgs,
+  preflight: Pick<AuditPreflight, "ownerEmail" | "resolvedUserId">
+): { userId?: string; ownerEmail?: string } {
+  const explicitUserId = typeof args["user-id"] === "string" ? args["user-id"] : undefined;
+  if (explicitUserId) {
+    return { userId: explicitUserId };
+  }
+
+  const explicitOwnerEmail = typeof args.owner === "string" ? args.owner : undefined;
+  if (explicitOwnerEmail) {
+    return { ownerEmail: explicitOwnerEmail };
+  }
+
+  if (preflight.ownerEmail) {
+    return { ownerEmail: preflight.ownerEmail };
+  }
+
+  if (preflight.resolvedUserId) {
+    return { userId: preflight.resolvedUserId };
+  }
+
+  return {};
+}
+
 export async function runAuditPreflight(input: {
   args: AuditCliArgs;
   resolveIdentity: (request: {
@@ -120,6 +151,11 @@ export async function runAuditPreflight(input: {
     dbHost: sanitizeDatabaseHost(process.env.DATABASE_URL),
     ownerEmail,
     resolvedUserId: explicitUserId,
+    ownerSource: explicitUserId
+      ? "user-id-flag"
+      : ownerEmail
+        ? "owner-flag"
+        : null,
     status: {
       env_loaded: Boolean(process.env.DATABASE_URL),
       db_reachable: false,
@@ -143,10 +179,24 @@ export async function runAuditPreflight(input: {
   }
 
   try {
-    const identity = await input.resolveIdentity({
-      userId: explicitUserId ?? undefined,
-      ownerEmail: ownerEmail ?? undefined,
-    });
+    const identity =
+      explicitUserId || ownerEmail
+        ? await input.resolveIdentity({
+            userId: explicitUserId ?? undefined,
+            ownerEmail: ownerEmail ?? undefined,
+          })
+        : await (async () => {
+            const { resolveOwner } = await import("@/lib/api/workout-context");
+            const owner = await resolveOwner();
+            preflight.ownerSource =
+              typeof process.env.OWNER_EMAIL === "string" && process.env.OWNER_EMAIL.trim().length > 0
+                ? "env-default"
+                : "fallback-default";
+            return {
+              userId: owner.id,
+              ownerEmail: owner.email,
+            };
+          })();
     preflight.ownerEmail = identity.ownerEmail ?? ownerEmail;
     preflight.resolvedUserId = identity.userId;
     preflight.status.owner_resolved = true;
@@ -165,7 +215,14 @@ export function printAuditPreflight(prefix: string, preflight: AuditPreflight): 
       db_host: preflight.dbHost,
       owner_email: preflight.ownerEmail,
       resolved_user_id: preflight.resolvedUserId,
+      owner_source: preflight.ownerSource,
       ...preflight.status,
+    })}`
+  );
+  console.log(
+    `[${prefix}:owner] ${JSON.stringify({
+      resolved_owner: preflight.ownerEmail ?? preflight.resolvedUserId,
+      source: preflight.ownerSource,
     })}`
   );
 

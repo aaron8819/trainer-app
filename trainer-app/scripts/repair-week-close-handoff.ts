@@ -1,4 +1,11 @@
-import { parseArgs, loadAuditEnv, printAuditPreflight, assertAuditPreflight, runAuditPreflight } from "./audit-cli-support";
+import {
+  parseArgs,
+  loadAuditEnv,
+  printAuditPreflight,
+  assertAuditPreflight,
+  runAuditPreflight,
+  buildResolvedAuditIdentityRequest,
+} from "./audit-cli-support";
 
 function parseBooleanFlag(value: string | boolean | undefined): boolean {
   return value === true || value === "true" || value === "1";
@@ -44,10 +51,10 @@ async function main(): Promise<void> {
   preflight.status.env_loaded = env.envLoaded;
   printAuditPreflight("repair-week-close-handoff", preflight);
   assertAuditPreflight("repair-week-close-handoff", preflight);
+  const identityRequest = buildResolvedAuditIdentityRequest(args, preflight);
 
   const request = {
-    userId: typeof args["user-id"] === "string" ? args["user-id"] : undefined,
-    ownerEmail: typeof args.owner === "string" ? args.owner : undefined,
+    ...identityRequest,
     targetWeek: parseInteger(args["target-week"]),
     previewOptionalGapFill: false,
     sanitizationLevel: "none" as const,

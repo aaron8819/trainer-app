@@ -3,6 +3,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   assertAuditPreflight,
+  buildResolvedAuditIdentityRequest,
   captureAuditWarnings,
   loadAuditEnv,
   parseArgs,
@@ -63,12 +64,12 @@ async function main(): Promise<void> {
   preflight.status.env_loaded = env.envLoaded;
   printAuditPreflight("workout-audit", preflight);
   assertAuditPreflight("workout-audit", preflight);
+  const identityRequest = buildResolvedAuditIdentityRequest(args, preflight);
 
   const request: WorkoutAuditRequest = {
     mode:
       (args.mode as WorkoutAuditRequest["mode"] | undefined) ?? "future-week",
-    userId: typeof args["user-id"] === "string" ? args["user-id"] : undefined,
-    ownerEmail: typeof args.owner === "string" ? args.owner : undefined,
+    ...identityRequest,
     intent: normalizedIntent,
     targetMuscles:
       typeof args["target-muscles"] === "string"

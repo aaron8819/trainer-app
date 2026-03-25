@@ -24,6 +24,7 @@
         "audit:split-sanity": "tsx scripts/audit-split-sanity.ts",
         "audit:week-close-handoff": "tsx scripts/audit-week-close-handoff.ts",
         "repair:week-close-handoff": "tsx scripts/repair-week-close-handoff.ts",
+        "repair:historical-session-slot-receipts": "tsx prisma/repair-historical-session-slot-receipts.ts",
         "audit:sequencing": "tsx scripts/audit-sequencing.ts",
         "audit:accounting": "tsx scripts/audit-accounting-semantics.ts",
         "audit:exercise-classification": "tsx scripts/audit-exercise-classification.ts",

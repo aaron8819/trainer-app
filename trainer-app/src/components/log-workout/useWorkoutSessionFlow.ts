@@ -411,6 +411,10 @@ export function useWorkoutSessionFlow({
           showError(response.error);
           return false;
         }
+        if (!response.data) {
+          showError("Failed to add set");
+          return false;
+        }
 
         const nextSet = response.data.set;
         setData((prev) => {

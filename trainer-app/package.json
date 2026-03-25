@@ -19,6 +19,8 @@
         "postinstall": "prisma generate",
         "verify:exercise-library": "tsx scripts/verify-exercise-library.ts",
         "audit:workout": "tsx scripts/workout-audit.ts",
+        "audit:week": "tsx scripts/workout-audit.ts --env-file .env.local --mode projected-week-volume",
+        "audit:week:debug": "tsx scripts/workout-audit.ts --env-file .env.local --mode projected-week-volume --operator-debug",
         "audit:split-sanity": "tsx scripts/audit-split-sanity.ts",
         "audit:week-close-handoff": "tsx scripts/audit-week-close-handoff.ts",
         "repair:week-close-handoff": "tsx scripts/repair-week-close-handoff.ts",

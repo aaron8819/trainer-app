@@ -157,6 +157,26 @@ Command pattern:
 npm run audit:workout -- --env-file .env.local --mode projected-week-volume --user-id <user-id>
 ```
 
+Fast operator loop:
+
+```powershell
+npm run audit:week
+```
+
+- Uses `.env.local`
+- Uses the same app-default owner resolution path as the rest of the audit CLI when no owner flags are supplied
+- Prints a compact verdict before the artifact path so routine current-week checks do not require opening JSON first
+
+Debug operator loop:
+
+```powershell
+npm run audit:week:debug
+```
+
+- Uses the same canonical `projected-week-volume` path as `npm run audit:week`
+- Keeps the same owner resolution and artifact write path
+- Expands the CLI with full below-MEV and below-target-only detail, warning text, projection notes, and projected session order before you open JSON
+
 Inspect first:
 - `projectedWeekVolume.currentWeek`
 - `projectedWeekVolume.projectionNotes`
@@ -280,12 +300,25 @@ Escalate when:
 6. Escalate if routing, warnings, or semantics are inconsistent with live mesocycle state.
 
 ### Current-week volume coverage review
-1. Run `projected-week-volume`.
-2. Confirm `currentWeek` matches the intended active week and phase.
-3. Read `projectionNotes` before interpreting the rest.
-4. Scan `projectedSessions` in order and confirm slot ids/intents look right.
-5. Read `fullWeekByMuscle` for projected full-week target / MEV / MAV comparisons.
-6. Escalate if slot order, chaining, or the generation-centric incomplete-workout note makes the answer insufficient.
+1. Run `npm run audit:week` for the common operator path, or run `projected-week-volume` directly when you need custom flags.
+2. Read the CLI summary first:
+   - `below_mev`
+   - `below_target_only`
+   - `over_mav`
+   - `over_target_only`
+   - `recommendation`
+3. If the summary recommends inspection, run `npm run audit:week:debug` before opening the artifact.
+4. In debug output, read:
+   - full `below_mev` rows
+   - full `below_target_only` rows
+   - `projection_note[*]`
+   - warning detail lines
+   - `projected_session_order`
+5. Then confirm `currentWeek` matches the intended active week and phase.
+6. Read `projectionNotes` before interpreting the rest.
+7. Scan `projectedSessions` in order and confirm slot ids/intents look right.
+8. Read `fullWeekByMuscle` for projected full-week target / MEV / MAV comparisons.
+9. Escalate if slot order, chaining, or the generation-centric incomplete-workout note makes the answer insufficient.
 
 ### Deload week review
 1. Run `deload` for the target intent.

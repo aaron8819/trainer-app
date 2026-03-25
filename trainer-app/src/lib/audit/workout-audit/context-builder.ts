@@ -54,6 +54,19 @@ export async function buildWorkoutAuditContext(
     };
   }
 
+  if (mode === "projected-week-volume") {
+    return {
+      mode,
+      requestedMode: request.mode,
+      userId: identity.userId,
+      ownerEmail: identity.ownerEmail,
+      plannerDiagnosticsMode,
+      projectedWeekVolume: {
+        enabled: true,
+      },
+    };
+  }
+
   if (mode === "progression-anchor") {
     if (!request.exerciseId) {
       throw new Error("progression-anchor mode requires --exercise-id");

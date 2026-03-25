@@ -1,6 +1,10 @@
 import type { SessionIntent } from "@/lib/engine/session-types";
 import type { PlannerDiagnosticsMode } from "@/lib/evidence/types";
 import type { NextWorkoutContext } from "@/lib/api/next-session";
+import type {
+  ProjectedWeekVolumeMuscleRow,
+  ProjectedWeekVolumeSessionSummary,
+} from "@/lib/api/projected-week-volume";
 import type { SessionGenerationResult } from "@/lib/api/template-session/types";
 import type {
   ProgressionDecisionTrace,
@@ -9,6 +13,7 @@ import type {
 } from "@/lib/evidence/session-audit-types";
 import {
   HISTORICAL_WEEK_AUDIT_PAYLOAD_VERSION,
+  PROJECTED_WEEK_VOLUME_AUDIT_PAYLOAD_VERSION,
   PROGRESSION_ANCHOR_AUDIT_PAYLOAD_VERSION,
   WORKOUT_AUDIT_ARTIFACT_VERSION,
 } from "./constants";
@@ -78,6 +83,9 @@ export type WorkoutAuditContext = {
   historicalWeek?: {
     week: number;
     mesocycleId?: string;
+  };
+  projectedWeekVolume?: {
+    enabled: true;
   };
   progressionAnchor?: {
     workoutId?: string;
@@ -187,6 +195,27 @@ export type ProgressionAnchorAuditPayload = {
   trace: ProgressionDecisionTrace;
 };
 
+export type ProjectedWeekVolumeAuditPayload = {
+  version: typeof PROJECTED_WEEK_VOLUME_AUDIT_PAYLOAD_VERSION;
+  currentWeek: {
+    mesocycleId: string;
+    week: number;
+    phase: string;
+    blockType: string | null;
+  };
+  projectionNotes: string[];
+  completedVolumeByMuscle: Record<
+    string,
+    {
+      directSets: number;
+      indirectSets: number;
+      effectiveSets: number;
+    }
+  >;
+  projectedSessions: ProjectedWeekVolumeSessionSummary[];
+  fullWeekByMuscle: ProjectedWeekVolumeMuscleRow[];
+};
+
 export type WorkoutAuditRun = {
   context: WorkoutAuditContext;
   generatedAt: string;
@@ -194,6 +223,7 @@ export type WorkoutAuditRun = {
   sessionSnapshot?: SessionAuditSnapshot;
   generationPath?: WorkoutAuditGenerationPath;
   historicalWeek?: HistoricalWeekAuditPayload;
+  projectedWeekVolume?: ProjectedWeekVolumeAuditPayload;
   progressionAnchor?: ProgressionAnchorAuditPayload;
 };
 
@@ -215,6 +245,7 @@ export type WorkoutAuditArtifact = {
   canonicalSemantics?: AuditCanonicalSemantics;
   generationPath?: WorkoutAuditGenerationPath;
   historicalWeek?: HistoricalWeekAuditPayload;
+  projectedWeekVolume?: ProjectedWeekVolumeAuditPayload;
   progressionAnchor?: ProgressionAnchorAuditPayload;
   warningSummary: AuditWarningSummary;
 };

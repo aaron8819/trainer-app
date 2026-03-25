@@ -114,6 +114,8 @@ async function main(): Promise<void> {
 
   const summary = run.historicalWeek
     ? `week=${run.historicalWeek.week} sessions=${run.historicalWeek.summary.sessionCount}`
+    : run.projectedWeekVolume
+      ? `week=${run.projectedWeekVolume.currentWeek.week} projected_sessions=${run.projectedWeekVolume.projectedSessions.length}`
     : run.progressionAnchor
       ? `exercise=${run.progressionAnchor.exerciseId} action=${run.progressionAnchor.trace.outcome.action}`
       : !run.generationResult

@@ -60,4 +60,23 @@ describe("buildWorkoutAuditContext", () => {
     expect(context.generationInput!.source).toBe("explicit-intent");
     expect(context.plannerDiagnosticsMode).toBe("debug");
   });
+
+  it("builds projected-week-volume context without requiring next-session intent derivation", async () => {
+    const context = await buildWorkoutAuditContext({
+      mode: "projected-week-volume",
+      userId: "user-1",
+      plannerDiagnosticsMode: "debug",
+    });
+
+    expect(context).toMatchObject({
+      mode: "projected-week-volume",
+      requestedMode: "projected-week-volume",
+      userId: "user-1",
+      plannerDiagnosticsMode: "debug",
+      projectedWeekVolume: {
+        enabled: true,
+      },
+    });
+    expect(mocks.loadNextWorkoutContext).not.toHaveBeenCalled();
+  });
 });

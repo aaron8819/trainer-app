@@ -3,10 +3,12 @@ import type { WorkoutAuditContext } from "./types";
 
 const mocks = vi.hoisted(() => {
   const loadActiveMesocycle = vi.fn();
+  const loadProjectedWeekVolumeReport = vi.fn();
   const generateSessionFromIntent = vi.fn();
   const generateDeloadSessionFromIntent = vi.fn();
   return {
     loadActiveMesocycle,
+    loadProjectedWeekVolumeReport,
     generateSessionFromIntent,
     generateDeloadSessionFromIntent,
   };
@@ -14,6 +16,11 @@ const mocks = vi.hoisted(() => {
 
 vi.mock("@/lib/api/mesocycle-lifecycle", () => ({
   loadActiveMesocycle: (...args: unknown[]) => mocks.loadActiveMesocycle(...args),
+}));
+
+vi.mock("@/lib/api/projected-week-volume", () => ({
+  loadProjectedWeekVolumeReport: (...args: unknown[]) =>
+    mocks.loadProjectedWeekVolumeReport(...args),
 }));
 
 vi.mock("@/lib/api/template-session", () => ({
@@ -52,6 +59,18 @@ describe("runWorkoutAuditGeneration", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.loadActiveMesocycle.mockResolvedValue({ state: "ACTIVE_ACCUMULATION" });
+    mocks.loadProjectedWeekVolumeReport.mockResolvedValue({
+      currentWeek: {
+        mesocycleId: "meso-1",
+        week: 2,
+        phase: "accumulation",
+        blockType: "accumulation",
+      },
+      projectionNotes: [],
+      completedVolumeByMuscle: {},
+      projectedSessions: [],
+      fullWeekByMuscle: [],
+    });
     mocks.generateSessionFromIntent.mockResolvedValue(okGenerationResult);
     mocks.generateDeloadSessionFromIntent.mockResolvedValue(okGenerationResult);
   });
@@ -150,6 +169,34 @@ describe("runWorkoutAuditGeneration", () => {
       executionMode: "active_deload_reroute",
       generator: "generateDeloadSessionFromIntent",
       reason: "active_mesocycle_state_active_deload",
+    });
+  });
+
+  it("routes projected-week-volume through the canonical reporting helper without touching future-week generation", async () => {
+    const context: WorkoutAuditContext = {
+      mode: "projected-week-volume",
+      requestedMode: "projected-week-volume",
+      userId: "user-1",
+      plannerDiagnosticsMode: "debug",
+      projectedWeekVolume: {
+        enabled: true,
+      },
+    };
+
+    const run = await runWorkoutAuditGeneration(context);
+
+    expect(mocks.loadProjectedWeekVolumeReport).toHaveBeenCalledWith({
+      userId: "user-1",
+      plannerDiagnosticsMode: "debug",
+    });
+    expect(mocks.generateSessionFromIntent).not.toHaveBeenCalled();
+    expect(mocks.generateDeloadSessionFromIntent).not.toHaveBeenCalled();
+    expect(run.projectedWeekVolume).toMatchObject({
+      version: 1,
+      currentWeek: {
+        mesocycleId: "meso-1",
+        week: 2,
+      },
     });
   });
 });

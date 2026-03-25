@@ -1,4 +1,5 @@
 import { loadActiveMesocycle } from "@/lib/api/mesocycle-lifecycle";
+import { loadProjectedWeekVolumeReport } from "@/lib/api/projected-week-volume";
 import {
   generateDeloadSessionFromIntent,
   generateSessionFromIntent,
@@ -7,6 +8,7 @@ import type { SessionSlotSnapshot } from "@/lib/evidence/types";
 import {
   buildGeneratedSessionAuditSnapshot,
 } from "@/lib/evidence/session-audit-snapshot";
+import { PROJECTED_WEEK_VOLUME_AUDIT_PAYLOAD_VERSION } from "./constants";
 import { buildHistoricalWeekAuditPayload } from "./historical-week";
 import { buildProgressionAnchorAuditPayload } from "./progression-anchor";
 import type { WorkoutAuditContext, WorkoutAuditRun } from "./types";
@@ -61,6 +63,22 @@ export async function runWorkoutAuditGeneration(
         workoutId: context.progressionAnchor?.workoutId,
         exerciseId: context.progressionAnchor!.exerciseId,
       }),
+    };
+  }
+
+  if (mode === "projected-week-volume") {
+    const projectedWeekVolume = await loadProjectedWeekVolumeReport({
+      userId: context.userId,
+      plannerDiagnosticsMode: context.plannerDiagnosticsMode,
+    });
+
+    return {
+      context,
+      generatedAt: new Date().toISOString(),
+      projectedWeekVolume: {
+        version: PROJECTED_WEEK_VOLUME_AUDIT_PAYLOAD_VERSION,
+        ...projectedWeekVolume,
+      },
     };
   }
 

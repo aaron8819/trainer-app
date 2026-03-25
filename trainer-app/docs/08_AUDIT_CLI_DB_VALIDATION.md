@@ -38,6 +38,12 @@ Future week:
 npm run audit:workout -- --mode future-week --user-id <user-id>
 ```
 
+Projected current week volume:
+
+```powershell
+npm run audit:workout -- --mode projected-week-volume --user-id <user-id>
+```
+
 Future week for one explicit intent:
 
 ```powershell
@@ -66,6 +72,8 @@ Use this section as a quick validation smoke-check only. Full artifact interpret
 - `historicalWeek.sessions[*].reconciliation`
 - `sessionSnapshot.generated.traces.progression`
 - `sessionSnapshot.generated.traces.deload`
+- `projectedWeekVolume.projectedSessions[*].projectedContributionByMuscle`
+- `projectedWeekVolume.fullWeekByMuscle[*]`
 
 ## Expected Hardening Checks
 
@@ -73,3 +81,4 @@ Use this section as a quick validation smoke-check only. Full artifact interpret
 - Historical week entries expose whether a session counted toward progression history without reading code.
 - Historical week entries surface linked or target-week-close state when relevant.
 - Reconciliation reports generated-vs-saved drift without flattening the generated/saved layers.
+- Projected-week-volume separates completed weighted volume from projected next-session, projected remaining-week, and projected full-week totals.

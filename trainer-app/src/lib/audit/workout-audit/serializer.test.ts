@@ -51,7 +51,7 @@ describe("buildWorkoutAuditArtifact", () => {
     );
 
     expect(artifact.source).toBe("live");
-    expect(artifact.version).toBe(2);
+    expect(artifact.version).toBe(3);
     expect(artifact.mode).toBe("future-week");
     expect(artifact.identity.userId).toBe("user-1");
     expect(artifact.identity.ownerEmail).toBe("owner@test.local");
@@ -297,5 +297,55 @@ describe("buildWorkoutAuditArtifact", () => {
     expect(artifact.warningSummary.semanticWarnings).toContain(
       `${AUDIT_RECONSTRUCTION_GUARDRAIL} Progression-anchor coverage is using a saved-only reconstructed snapshot.`
     );
+  });
+
+  it("serializes projected-week-volume payloads without changing unrelated audit fields", () => {
+    const artifact = buildWorkoutAuditArtifact(
+      {
+        mode: "projected-week-volume",
+        userId: "user-1",
+      },
+      {
+        ...baseRun,
+        context: {
+          mode: "projected-week-volume",
+          requestedMode: "projected-week-volume",
+          userId: "user-1",
+          plannerDiagnosticsMode: "standard",
+          projectedWeekVolume: {
+            enabled: true,
+          },
+        },
+        generationResult: undefined,
+        projectedWeekVolume: {
+          version: 1,
+          currentWeek: {
+            mesocycleId: "meso-1",
+            week: 2,
+            phase: "accumulation",
+            blockType: "accumulation",
+          },
+          projectionNotes: [],
+          completedVolumeByMuscle: {},
+          projectedSessions: [],
+          fullWeekByMuscle: [],
+        },
+      }
+    );
+
+    expect(artifact.mode).toBe("projected-week-volume");
+    expect(artifact.projectedWeekVolume).toMatchObject({
+      version: 1,
+      currentWeek: {
+        mesocycleId: "meso-1",
+        week: 2,
+      },
+    });
+    expect(artifact.generation).toBeUndefined();
+    expect(artifact.warningSummary.counts).toEqual({
+      blockingErrors: 0,
+      semanticWarnings: 0,
+      backgroundWarnings: 0,
+    });
   });
 });

@@ -40,6 +40,7 @@ This playbook is designed to answer:
 - what the audit system generated or reconstructed
 - whether a session counted toward progression history or was excluded
 - whether a future-week request used the normal path or rerouted through deload
+- whether the full current week is projected to hit weekly muscle volume targets
 - why a progression decision increased, held, or decreased
 - whether warnings, week-close state, or generated-vs-saved drift require follow-up
 
@@ -136,6 +137,46 @@ Escalate when:
 - the path or semantics contradict the live mesocycle state
 - the artifact does not explain a meaningful session exclusion or forced deload path
 - warnings suggest structural planner issues rather than isolated library noise
+
+### `projected-week-volume`
+
+When to use it:
+- full current-week volume coverage review
+- "will this week hit target / MEV / MAV?" checks
+- remaining-slot planning review when a next-session snapshot is not enough
+
+Primary questions it answers:
+- how much weighted volume is already completed this week
+- what each remaining advancing slot is projected to add
+- what the projected full-week total is for each muscle
+- how projected full-week totals compare against weekly target, MEV, and MAV
+
+Command pattern:
+
+```powershell
+npm run audit:workout -- --env-file .env.local --mode projected-week-volume --user-id <user-id>
+```
+
+Inspect first:
+- `projectedWeekVolume.currentWeek`
+- `projectedWeekVolume.projectionNotes`
+- `projectedWeekVolume.projectedSessions`
+- `projectedWeekVolume.fullWeekByMuscle`
+
+Important interpretation rule:
+- this mode is intentionally generation-centric
+- if a persisted incomplete workout exists, the artifact documents that it was ignored and the report projects remaining advancing slots from canonical performed runtime state rather than trying to reuse incomplete saved-state structure
+
+Common red flags:
+- projected session order does not match runtime slot order
+- `projectedSessions[0].isNext` does not align with the expected next advancing slot
+- `fullWeekByMuscle` suggests major under-target or over-MAV outcomes that contradict the chained projected sessions
+- projection notes indicate an ignored incomplete workout when you expected saved-state continuation
+
+Escalate when:
+- runtime slot order looks wrong for ordered-flexible repeated intents
+- projected later sessions appear to ignore earlier projected-slot contributions
+- a saved incomplete workout is the real source of truth you need, since this mode intentionally does not redesign around that case
 
 ### `deload`
 
@@ -238,6 +279,14 @@ Escalate when:
 5. If `isDeload=true`, inspect the deload trace immediately.
 6. Escalate if routing, warnings, or semantics are inconsistent with live mesocycle state.
 
+### Current-week volume coverage review
+1. Run `projected-week-volume`.
+2. Confirm `currentWeek` matches the intended active week and phase.
+3. Read `projectionNotes` before interpreting the rest.
+4. Scan `projectedSessions` in order and confirm slot ids/intents look right.
+5. Read `fullWeekByMuscle` for projected full-week target / MEV / MAV comparisons.
+6. Escalate if slot order, chaining, or the generation-centric incomplete-workout note makes the answer insufficient.
+
 ### Deload week review
 1. Run `deload` for the target intent.
 2. Confirm `sessionSnapshot.generated.semantics.isDeload=true`.
@@ -271,6 +320,11 @@ Read these fields in this order unless the audit type says otherwise.
   - `explicit_deload_preview`
   - `active_deload_reroute`
 - Use this before interpreting the rest of a `future-week` or `deload` artifact.
+
+### `projectionNotes`
+- Present for `projected-week-volume`.
+- Read this before trusting a full-week projection when runtime state contains incomplete workouts.
+- The key question is whether the report is answering the generation-centric runtime-slot question you intended to ask.
 
 ### `comparabilityCoverage`
 - Historical-week-only summary for persisted vs reconstructed coverage.
@@ -371,6 +425,7 @@ Boundary rules:
 - Run the narrowest audit mode that matches the question.
 - Read `warningSummary` first.
 - For generated modes, read `generationPath` before interpreting the rest.
+- For `projected-week-volume`, read `projectionNotes` before trusting the full-week answer.
 - For historical-week, read `comparabilityCoverage` before trusting drift analysis.
 - Use `sessionSnapshot` as the main evidence record.
 - Use `progressionEvidence` for quick inclusion/exclusion triage.

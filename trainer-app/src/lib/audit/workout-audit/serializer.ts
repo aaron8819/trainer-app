@@ -68,6 +68,7 @@ export function buildWorkoutAuditArtifact(
     canonicalSemantics: resolveAuditCanonicalSemantics(run.sessionSnapshot),
     generationPath: run.generationPath,
     historicalWeek: run.historicalWeek,
+    projectedWeekVolume: run.projectedWeekVolume,
     progressionAnchor: run.progressionAnchor,
     warningSummary: buildGenerationWarningSummary({
       generation: run.generationResult,

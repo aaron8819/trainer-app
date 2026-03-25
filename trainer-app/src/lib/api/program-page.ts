@@ -2,6 +2,10 @@ import type { WorkoutStatus } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { readSessionSlotSnapshot } from "@/lib/evidence/session-decision-receipt";
 import { formatSessionIdentityLabel } from "@/lib/ui/session-identity";
+import {
+  summarizeWeeklyMuscleStatuses,
+  type WeeklyMuscleStatusSummary,
+} from "@/lib/ui/weekly-muscle-status";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 import {
   buildAdvancingPerformedSlots,
@@ -22,9 +26,7 @@ import {
 } from "./program";
 import {
   classifyMuscleOutcome,
-  loadWeeklyMuscleOutcomeFromPrisma,
   type MuscleOutcomeStatus,
-  type WeeklyMuscleOutcomeReview,
 } from "./muscle-outcome-review";
 import { loadProjectedWeekVolumeReport } from "./projected-week-volume";
 
@@ -123,8 +125,7 @@ export type ProgramPageData = {
   weekCompletionOutlook: ProgramWeekCompletionOutlook | null;
   volumeDetails: {
     dashboard: ProgramDashboardData;
-    currentWeekOutcome: WeeklyMuscleOutcomeReview | null;
-    currentWeekOutcomeSummary: ProgramOutcomeSummary | null;
+    currentWeekStatusSummary: WeeklyMuscleStatusSummary | null;
   };
   advancedActions: {
     availableActions: Array<"deload" | "extend_phase" | "reset">;
@@ -489,9 +490,8 @@ async function loadCurrentWeekPlan(input: {
 }
 
 export async function loadProgramPageData(userId: string): Promise<ProgramPageData> {
-  const [dashboard, currentWeekOutcome, activeMesocycle, nextWorkoutContext] = await Promise.all([
+  const [dashboard, activeMesocycle, nextWorkoutContext] = await Promise.all([
     loadProgramDashboardData(userId),
-    loadWeeklyMuscleOutcomeFromPrisma(userId),
     prisma.mesocycle.findFirst({
       where: { macroCycle: { userId }, isActive: true },
       select: {
@@ -549,9 +549,8 @@ export async function loadProgramPageData(userId: string): Promise<ProgramPageDa
     weekCompletionOutlook,
     volumeDetails: {
       dashboard,
-      currentWeekOutcome,
-      currentWeekOutcomeSummary: currentWeekOutcome
-        ? buildOutcomeSummary(currentWeekOutcome.rows)
+      currentWeekStatusSummary: dashboard.volumeThisWeek.length
+        ? summarizeWeeklyMuscleStatuses(dashboard.volumeThisWeek)
         : null,
     },
     advancedActions: {

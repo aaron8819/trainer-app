@@ -178,22 +178,13 @@ describe("ProgramPage", () => {
           rirTarget: { min: 2, max: 3 },
           coachingCue: "Build volume with crisp execution.",
         },
-        currentWeekOutcome: {
-          mesocycleId: "meso-1",
-          week: 2,
-          weekStart: "2026-03-02",
-          rows: [
-            { status: "meaningfully_low" },
-            { status: "on_target" },
-            { status: "slightly_high" },
-          ],
-        },
-        currentWeekOutcomeSummary: {
-          meaningfullyLow: 1,
-          slightlyLow: 0,
-          onTarget: 1,
-          slightlyHigh: 1,
-          meaningfullyHigh: 0,
+        currentWeekStatusSummary: {
+          below_mev: 1,
+          in_range: 0,
+          near_target: 1,
+          on_target: 1,
+          near_mrv: 0,
+          at_mrv: 0,
         },
       },
       advancedActions: {
@@ -219,6 +210,9 @@ describe("ProgramPage", () => {
     expect(screen.getByRole("heading", { name: "Ordered weekly slots" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Projected week landing" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Weighted weekly volume" })).toBeInTheDocument();
+    expect(screen.getByText("1 Below MEV")).toBeInTheDocument();
+    expect(screen.getByText("1 Near target")).toBeInTheDocument();
+    expect(screen.getByText("1 On target")).toBeInTheDocument();
     expect(
       screen.getByText(
         "If you complete the remaining planned sessions this week, you will likely land here."

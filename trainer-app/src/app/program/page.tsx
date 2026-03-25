@@ -2,6 +2,11 @@ import Link from "next/link";
 import { resolveOwner } from "@/lib/api/workout-context";
 import { loadPendingMesocycleHandoff } from "@/lib/api/mesocycle-handoff";
 import { loadProgramPageData, type ProgramCurrentWeekPlanRow } from "@/lib/api/program-page";
+import {
+  formatWeeklyMuscleStatusLabel,
+  type WeeklyMuscleStatus,
+  type WeeklyMuscleStatusSummary,
+} from "@/lib/ui/weekly-muscle-status";
 import { CycleAnchorControls } from "@/components/CycleAnchorControls";
 import { ProgramStatusCard } from "@/components/ProgramStatusCard";
 import { WeekCompletionOutlookSection } from "./WeekCompletionOutlookSection";
@@ -58,31 +63,24 @@ function formatPlanStateLabel(value: ProgramCurrentWeekPlanRow["state"]): string
 function OutcomeSummaryChips({
   summary,
 }: {
-  summary: {
-    meaningfullyLow: number;
-    slightlyLow: number;
-    onTarget: number;
-    slightlyHigh: number;
-    meaningfullyHigh: number;
-  };
+  summary: WeeklyMuscleStatusSummary;
 }) {
+  const badges: Array<{ status: WeeklyMuscleStatus; className: string }> = [
+    { status: "below_mev", className: "bg-slate-100 px-3 py-1 text-slate-700" },
+    { status: "in_range", className: "bg-yellow-50 px-3 py-1 text-yellow-700" },
+    { status: "near_target", className: "bg-yellow-50 px-3 py-1 text-yellow-700" },
+    { status: "on_target", className: "bg-emerald-50 px-3 py-1 text-emerald-700" },
+    { status: "near_mrv", className: "bg-orange-50 px-3 py-1 text-orange-700" },
+    { status: "at_mrv", className: "bg-red-50 px-3 py-1 text-red-700" },
+  ];
+
   return (
     <div className="flex flex-wrap gap-2 text-xs font-medium text-slate-700">
-      <span className="rounded-full bg-rose-50 px-3 py-1 text-rose-700">
-        {summary.meaningfullyLow} meaningfully low
-      </span>
-      <span className="rounded-full bg-amber-50 px-3 py-1 text-amber-700">
-        {summary.slightlyLow} slightly low
-      </span>
-      <span className="rounded-full bg-emerald-50 px-3 py-1 text-emerald-700">
-        {summary.onTarget} on target
-      </span>
-      <span className="rounded-full bg-sky-50 px-3 py-1 text-sky-700">
-        {summary.slightlyHigh} slightly high
-      </span>
-      <span className="rounded-full bg-indigo-50 px-3 py-1 text-indigo-700">
-        {summary.meaningfullyHigh} meaningfully high
-      </span>
+      {badges.map((badge) => (
+        <span key={badge.status} className={`rounded-full ${badge.className}`}>
+          {summary[badge.status]} {formatWeeklyMuscleStatusLabel(badge.status)}
+        </span>
+      ))}
     </div>
   );
 }
@@ -335,9 +333,9 @@ export default async function ProgramPage() {
                 signals above.
               </p>
 
-              {data.volumeDetails.currentWeekOutcomeSummary ? (
+              {data.volumeDetails.currentWeekStatusSummary ? (
                 <div className="mt-3">
-                  <OutcomeSummaryChips summary={data.volumeDetails.currentWeekOutcomeSummary} />
+                  <OutcomeSummaryChips summary={data.volumeDetails.currentWeekStatusSummary} />
                 </div>
               ) : null}
 

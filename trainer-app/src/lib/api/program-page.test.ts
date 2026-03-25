@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   const loadProgramDashboardData = vi.fn();
-  const loadWeeklyMuscleOutcomeFromPrisma = vi.fn();
   const loadProjectedWeekVolumeReport = vi.fn();
   const loadNextWorkoutContext = vi.fn();
   const mesocycleFindFirst = vi.fn();
@@ -11,7 +10,6 @@ const mocks = vi.hoisted(() => {
 
   return {
     loadProgramDashboardData,
-    loadWeeklyMuscleOutcomeFromPrisma,
     loadProjectedWeekVolumeReport,
     loadNextWorkoutContext,
     mesocycleFindFirst,
@@ -42,8 +40,6 @@ vi.mock("./muscle-outcome-review", async (importOriginal) => {
   const original = await importOriginal<typeof import("./muscle-outcome-review")>();
   return {
     ...original,
-    loadWeeklyMuscleOutcomeFromPrisma: (...args: unknown[]) =>
-      mocks.loadWeeklyMuscleOutcomeFromPrisma(...args),
   };
 });
 
@@ -153,16 +149,50 @@ describe("loadProgramPageData", () => {
       viewedWeek: 2,
       viewedBlockType: "accumulation",
       sessionsUntilDeload: 6,
-      volumeThisWeek: [],
+      volumeThisWeek: [
+        {
+          muscle: "Chest",
+          effectiveSets: 4,
+          directSets: 4,
+          indirectSets: 0,
+          target: 10,
+          mev: 6,
+          mav: 16,
+          mrv: 22,
+          opportunityScore: 0,
+          opportunityState: "high_opportunity",
+          opportunityRationale: "Below target in this snapshot, with recovery room for more work.",
+        },
+        {
+          muscle: "Biceps",
+          effectiveSets: 8,
+          directSets: 8,
+          indirectSets: 0,
+          target: 8,
+          mev: 4,
+          mav: 14,
+          mrv: 18,
+          opportunityScore: 0,
+          opportunityState: "covered",
+          opportunityRationale: "Weekly target is already covered in this volume snapshot.",
+        },
+        {
+          muscle: "Quads",
+          effectiveSets: 18,
+          directSets: 18,
+          indirectSets: 0,
+          target: 10,
+          mev: 6,
+          mav: 16,
+          mrv: 20,
+          opportunityScore: 0,
+          opportunityState: "deprioritize_today",
+          opportunityRationale: "Recent weighted stimulus is already high for this muscle.",
+        },
+      ],
       deloadReadiness: null,
       rirTarget: { min: 2, max: 3 },
       coachingCue: "Build volume with crisp execution.",
-    });
-    mocks.loadWeeklyMuscleOutcomeFromPrisma.mockResolvedValue({
-      mesocycleId: "meso-1",
-      week: 2,
-      weekStart: "2026-03-02",
-      rows: [{ muscle: "Chest", status: "on_target" }],
     });
     mocks.loadProjectedWeekVolumeReport.mockResolvedValue({
       currentWeek: {
@@ -360,15 +390,13 @@ describe("loadProgramPageData", () => {
         },
       ],
     });
-    expect(result.volumeDetails.currentWeekOutcome).toMatchObject({
-      week: 2,
-    });
-    expect(result.volumeDetails.currentWeekOutcomeSummary).toEqual({
-      meaningfullyLow: 0,
-      slightlyLow: 0,
-      onTarget: 1,
-      slightlyHigh: 0,
-      meaningfullyHigh: 0,
+    expect(result.volumeDetails.currentWeekStatusSummary).toEqual({
+      below_mev: 1,
+      in_range: 0,
+      near_target: 0,
+      on_target: 1,
+      near_mrv: 1,
+      at_mrv: 0,
     });
     expect(result.advancedActions.availableActions).toEqual(["deload", "extend_phase", "reset"]);
   });

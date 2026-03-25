@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   formatWeeklyMuscleStatusLabel,
   getWeeklyMuscleStatus,
+  summarizeWeeklyMuscleStatuses,
 } from "./weekly-muscle-status";
 
 describe("weekly muscle status", () => {
@@ -68,5 +69,25 @@ describe("weekly muscle status", () => {
     expect(formatWeeklyMuscleStatusLabel("on_target")).toBe("On target");
     expect(formatWeeklyMuscleStatusLabel("near_mrv")).toBe("Near MRV");
     expect(formatWeeklyMuscleStatusLabel("at_mrv")).toBe("At MRV");
+  });
+
+  it("summarizes the same status buckets used by the volume cards", () => {
+    expect(
+      summarizeWeeklyMuscleStatuses([
+        { effectiveSets: 0, target: 7, mev: 2, mrv: 14 },
+        { effectiveSets: 5, target: 7, mev: 2, mrv: 14 },
+        { effectiveSets: 6, target: 7, mev: 2, mrv: 14 },
+        { effectiveSets: 7, target: 7, mev: 2, mrv: 14 },
+        { effectiveSets: 11.9, target: 7, mev: 2, mrv: 14 },
+        { effectiveSets: 14, target: 7, mev: 2, mrv: 14 },
+      ])
+    ).toEqual({
+      below_mev: 1,
+      in_range: 1,
+      near_target: 1,
+      on_target: 1,
+      near_mrv: 1,
+      at_mrv: 1,
+    });
   });
 });

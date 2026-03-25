@@ -231,6 +231,7 @@ export default function LogWorkoutClient({
           exerciseId: exercise.workoutExerciseId,
           name: exercise.name,
           equipment: exercise.equipment,
+          isRuntimeAdded: exercise.isRuntimeAdded,
           isMainLift: exercise.isMainLift,
           section,
           sets: exercise.sets.map((set) => ({
@@ -579,6 +580,7 @@ export default function LogWorkoutClient({
               section,
               exerciseId: exercise.workoutExerciseId,
               exerciseName: exercise.name,
+              isRuntimeAdded: exercise.isRuntimeAdded ?? false,
               sessionNote: exercise.sessionNote,
               loggedCount: loggedCountForExercise,
               totalSets: exercise.sets.length,

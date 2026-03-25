@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { resolveOwner } from "@/lib/api/workout-context";
+import { resolveRuntimeAddedAccessoryDefaults } from "@/lib/api/runtime-added-exercise-defaults";
 import { reconcileRuntimeEditSelectionMetadata } from "@/lib/api/runtime-edit-reconciliation";
-import { getBaseTargetRpe } from "@/lib/engine/rules";
+import { RUNTIME_ADDED_EXERCISE_SESSION_NOTE } from "@/lib/ui/selection-metadata";
 import type { TrainingAge, PrimaryGoal } from "@/lib/engine/types";
 import { Prisma } from "@prisma/client";
 import { isStrictOptionalGapFillSession } from "@/lib/gap-fill/classifier";
@@ -81,20 +82,8 @@ export async function POST(
 
   // Use last logged load as the starting target — keeps prescription grounded in reality
   const targetLoad = recentSet?.actualLoad ?? null;
-
-  // Compute RPE from user's goal + training age instead of hardcoding 8
   const trainingAge = (profile?.trainingAge?.toLowerCase() as TrainingAge) ?? "intermediate";
   const primaryGoal = (goals?.primaryGoal?.toLowerCase() as PrimaryGoal) ?? "hypertrophy";
-  const targetRpe = getBaseTargetRpe(primaryGoal, trainingAge);
-
-  // Determine target reps from exercise rep range
-  const targetReps = Math.round((exercise.repRangeMin + exercise.repRangeMax) / 2);
-  const targetRepMin = exercise.repRangeMin;
-  const targetRepMax = exercise.repRangeMax;
-
-  // Training-age-aware set count: advanced users handle more volume per KB §8
-  const setCount = profile?.trainingAge === "ADVANCED" ? 4 : 3;
-  const setIndices = Array.from({ length: setCount }, (_, i) => i + 1);
 
   const createExerciseAtNextIndex = async () =>
     prisma.$transaction(async (tx) => {
@@ -104,6 +93,23 @@ export async function POST(
           selectionMetadata: true,
           selectionMode: true,
           sessionIntent: true,
+          exercises: {
+            orderBy: [{ orderIndex: "asc" }, { id: "asc" }],
+            select: {
+              orderIndex: true,
+              section: true,
+              sets: {
+                orderBy: { setIndex: "asc" },
+                select: {
+                  targetReps: true,
+                  targetRepMin: true,
+                  targetRepMax: true,
+                  targetRpe: true,
+                  restSeconds: true,
+                },
+              },
+            },
+          },
         },
       });
       if (!latestWorkout) {
@@ -125,20 +131,34 @@ export async function POST(
         select: { orderIndex: true },
       });
       const nextOrderIndex = (latest?.orderIndex ?? -1) + 1;
+      const defaults = resolveRuntimeAddedAccessoryDefaults({
+        exercise: {
+          repRangeMin: exercise.repRangeMin,
+          repRangeMax: exercise.repRangeMax,
+          fatigueCost: exercise.fatigueCost,
+          isCompound: exercise.isCompound,
+        },
+        selectionMetadata: latestWorkout.selectionMetadata,
+        currentExercises: latestWorkout.exercises,
+        trainingAge,
+        primaryGoal,
+      });
+      const setIndices = Array.from({ length: defaults.setCount }, (_, i) => i + 1);
       const createdExercise = await tx.workoutExercise.create({
         data: {
           workoutId,
           exerciseId: exercise.id,
           orderIndex: nextOrderIndex,
-          section: "ACCESSORY",
-          isMainLift: false,
+          section: defaults.section,
+          isMainLift: defaults.isMainLift,
           sets: {
             create: setIndices.map((setIndex) => ({
               setIndex,
-              targetReps,
-              targetRepMin,
-              targetRepMax,
-              targetRpe,
+              targetReps: defaults.targetReps,
+              targetRepMin: defaults.targetRepMin,
+              targetRepMax: defaults.targetRepMax,
+              targetRpe: defaults.targetRpe,
+              restSeconds: defaults.restSeconds,
               ...(targetLoad !== null ? { targetLoad } : {}),
             })),
           },
@@ -182,10 +202,12 @@ export async function POST(
         persistedExercises,
         mutation: {
           kind: "add_exercise",
+          workoutExerciseId: createdExercise.id,
           exerciseId: exercise.id,
           orderIndex: nextOrderIndex,
-          section: "ACCESSORY",
+          section: defaults.section,
           setCount: createdExercise.sets.length,
+          prescriptionSource: defaults.prescriptionSource,
         },
       }).nextSelectionMetadata;
 
@@ -228,8 +250,10 @@ export async function POST(
     workoutExerciseId: workoutExercise.id,
     name: exercise.name,
     equipment: exercise.exerciseEquipment.map((eq) => eq.equipment.type),
+    isRuntimeAdded: true as const,
     isMainLift: false,
     section: "ACCESSORY" as const,
+    sessionNote: RUNTIME_ADDED_EXERCISE_SESSION_NOTE,
     sets: workoutExercise.sets.map((set) => ({
       setId: set.id,
       setIndex: set.setIndex,
@@ -240,6 +264,7 @@ export async function POST(
           : undefined,
       targetLoad: set.targetLoad,
       targetRpe: set.targetRpe,
+      restSeconds: set.restSeconds,
     })),
   };
 

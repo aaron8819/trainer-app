@@ -134,6 +134,44 @@ describe("CompletedWorkoutReview", () => {
     expect(screen.getByText("Extra set")).toBeInTheDocument();
   });
 
+  it("labels runtime-added exercises explicitly in the completed review", () => {
+    render(
+      <CompletedWorkoutReview
+        workoutId="workout-1"
+        totalSets={1}
+        loggedCount={1}
+        rpeAdherence={null}
+        sessionIdentityLabel="Upper 2"
+        sessionTechnicalLabel="Slot ID: upper_b"
+        performanceSummary={[
+          {
+            exerciseId: "ex-1",
+            name: "Pec Deck",
+            equipment: ["machine"],
+            isRuntimeAdded: true,
+            isMainLift: false,
+            section: "accessory",
+            sets: [
+              {
+                setIndex: 1,
+                targetReps: 12,
+                targetLoad: 80,
+                targetRpe: 6.5,
+                actualReps: 12,
+                actualLoad: 80,
+                actualRpe: 7,
+                wasLogged: true,
+                wasSkipped: false,
+              },
+            ],
+          },
+        ]}
+      />
+    );
+
+    expect(screen.getByText("Added exercise")).toBeInTheDocument();
+  });
+
   it("renders the canonical session identity and slot id when provided", () => {
     render(
       <CompletedWorkoutReview

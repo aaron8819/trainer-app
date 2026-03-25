@@ -8,6 +8,7 @@
 import { prisma } from "@/lib/db/prisma";
 import { classifySetLog } from "@/lib/session-semantics/set-classification";
 import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-semantics";
+import { readRuntimeAddedExerciseIds } from "@/lib/ui/selection-metadata";
 import { Prisma } from "@prisma/client";
 import type { RotationContext, PerformanceTrend } from "../engine/selection-v2/types";
 
@@ -30,6 +31,43 @@ function hasPerformedSet(
   }>
 ): boolean {
   return sets.some((set) => classifySetLog(set.logs[0]).isPerformed);
+}
+
+function isRuntimeAddedWorkoutExercise(
+  selectionMetadata: unknown,
+  workoutExerciseId: string
+): boolean {
+  return readRuntimeAddedExerciseIds(selectionMetadata).has(workoutExerciseId);
+}
+
+async function countRecentNonRuntimeAddedWorkoutExercises(input: {
+  userId: string;
+  exerciseName: string;
+  completedAtGte: Date;
+}): Promise<number> {
+  const rows = await prisma.workoutExercise.findMany({
+    where: {
+      exercise: { name: input.exerciseName },
+      sets: { some: { logs: { some: performedSetLogWhere } } },
+      workout: {
+        userId: input.userId,
+        status: "COMPLETED",
+        completedAt: { gte: input.completedAtGte },
+      },
+    },
+    select: {
+      id: true,
+      workout: {
+        select: {
+          selectionMetadata: true,
+        },
+      },
+    },
+  });
+
+  return rows.filter(
+    (row) => !isRuntimeAddedWorkoutExercise(row.workout.selectionMetadata, row.id)
+  ).length;
 }
 
 /**
@@ -127,7 +165,11 @@ export async function updateExerciseExposure(
   const touchedExerciseNames = [
     ...new Set(
       workout.exercises
-        .filter((exercise) => hasPerformedSet(exercise.sets))
+        .filter(
+          (exercise) =>
+            hasPerformedSet(exercise.sets) &&
+            !isRuntimeAddedWorkoutExercise(workout.selectionMetadata, exercise.id)
+        )
         .map((exercise) => exercise.exercise.name)
     ),
   ];
@@ -135,43 +177,29 @@ export async function updateExerciseExposure(
   // Recompute true rolling-window usage for every touched exercise.
   for (const exerciseName of touchedExerciseNames) {
     const [timesUsedL4W, timesUsedL8W, timesUsedL12W] = await Promise.all([
-      prisma.workoutExercise.count({
-        where: {
-          exercise: { name: exerciseName },
-          sets: { some: { logs: { some: performedSetLogWhere } } },
-          workout: {
-            userId,
-            status: "COMPLETED",
-            completedAt: { gte: window4w },
-          },
-        },
+      countRecentNonRuntimeAddedWorkoutExercises({
+        userId,
+        exerciseName,
+        completedAtGte: window4w,
       }),
-      prisma.workoutExercise.count({
-        where: {
-          exercise: { name: exerciseName },
-          sets: { some: { logs: { some: performedSetLogWhere } } },
-          workout: {
-            userId,
-            status: "COMPLETED",
-            completedAt: { gte: window8w },
-          },
-        },
+      countRecentNonRuntimeAddedWorkoutExercises({
+        userId,
+        exerciseName,
+        completedAtGte: window8w,
       }),
-      prisma.workoutExercise.count({
-        where: {
-          exercise: { name: exerciseName },
-          sets: { some: { logs: { some: performedSetLogWhere } } },
-          workout: {
-            userId,
-            status: "COMPLETED",
-            completedAt: { gte: window12w },
-          },
-        },
+      countRecentNonRuntimeAddedWorkoutExercises({
+        userId,
+        exerciseName,
+        completedAtGte: window12w,
       }),
     ]);
 
     const touchedSetCount = workout.exercises
-      .filter((exercise) => exercise.exercise.name === exerciseName)
+      .filter(
+        (exercise) =>
+          exercise.exercise.name === exerciseName &&
+          !isRuntimeAddedWorkoutExercise(workout.selectionMetadata, exercise.id)
+      )
       .reduce(
         (sum, exercise) =>
           sum +
@@ -276,6 +304,10 @@ export async function assessPerformanceTrend(
     take: 12,
   });
   const canonicalPerformanceSessions = recentSessions
+    .filter(
+      (session) =>
+        !isRuntimeAddedWorkoutExercise(session.workout.selectionMetadata, session.id)
+    )
     .filter((session) =>
       deriveSessionSemantics({
         advancesSplit: session.workout.advancesSplit,

@@ -333,4 +333,75 @@ describe("WorkoutDetailPage", { timeout: 15000 }, () => {
 
     expect(screen.getByText("Extra set")).toBeInTheDocument();
   });
+
+  it("labels runtime-added exercises explicitly on workout detail surfaces", async () => {
+    mocks.workoutFindFirst.mockResolvedValue({
+      id: "workout-1",
+      userId: "user-1",
+      status: "COMPLETED",
+      estimatedMinutes: 55,
+      selectionMetadata: {
+        runtimeEditReconciliation: {
+          version: 1,
+          lastReconciledAt: "2026-03-24T10:00:00.000Z",
+          directives: {
+            continuityAlias: "none",
+            progressionAlias: "none",
+            futureSessionGeneration: "ignore",
+            futureSeedCarryForward: "ignore",
+          },
+          ops: [
+            {
+              kind: "add_exercise",
+              source: "api_workouts_add_exercise",
+              appliedAt: "2026-03-24T10:00:00.000Z",
+              scope: "current_workout_only",
+              facts: {
+                workoutExerciseId: "we-added",
+                exerciseId: "pec-deck",
+                orderIndex: 1,
+                section: "ACCESSORY",
+                setCount: 2,
+                prescriptionSource: "session_accessory_defaults",
+              },
+            },
+          ],
+        },
+      },
+      sessionIntent: "PULL",
+      exercises: [
+        {
+          id: "we-added",
+          orderIndex: 0,
+          exerciseId: "pec-deck",
+          isMainLift: false,
+          section: "ACCESSORY",
+          exercise: {
+            name: "Pec Deck",
+            jointStress: "LOW",
+            exerciseEquipment: [{ equipment: { type: "MACHINE" } }],
+          },
+          sets: [
+            {
+              id: "set-1",
+              setIndex: 1,
+              targetReps: 12,
+              targetRepMin: 10,
+              targetRepMax: 14,
+              targetLoad: 80,
+              targetRpe: 6.5,
+              logs: [{ actualReps: 12, actualLoad: 80, actualRpe: 7, wasSkipped: false }],
+            },
+          ],
+        },
+      ],
+    });
+
+    const { default: WorkoutDetailPage } = await import("./page");
+    const ui = await WorkoutDetailPage({ params: Promise.resolve({ id: "workout-1" }) });
+
+    render(ui);
+
+    expect(screen.getByText("Added exercise")).toBeInTheDocument();
+  });
 });

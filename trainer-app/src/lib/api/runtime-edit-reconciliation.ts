@@ -21,10 +21,14 @@ const CONSERVATIVE_RUNTIME_EDIT_DIRECTIVES: RuntimeEditDirectiveState = {
 export type RuntimeEditMutation =
   | {
       kind: "add_exercise";
+      workoutExerciseId: string;
       exerciseId: string;
       orderIndex: number;
       section: "WARMUP" | "MAIN" | "ACCESSORY";
       setCount: number;
+      prescriptionSource:
+        | "session_accessory_defaults"
+        | "generic_accessory_fallback";
     }
   | {
       kind: "add_set";
@@ -102,10 +106,12 @@ function buildRuntimeEditOperation(input: {
       appliedAt: input.appliedAt,
       scope: "current_workout_only",
       facts: {
+        workoutExerciseId: input.mutation.workoutExerciseId,
         exerciseId: input.mutation.exerciseId,
         orderIndex: input.mutation.orderIndex,
         section: input.mutation.section,
         setCount: input.mutation.setCount,
+        prescriptionSource: input.mutation.prescriptionSource,
       },
     };
   }

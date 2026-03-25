@@ -715,6 +715,7 @@ async function loadHandoffWorkoutRows(
             ? { exerciseId: { in: input.candidateExerciseIds } }
             : undefined,
         select: {
+          id: true,
           exerciseId: true,
         },
       },

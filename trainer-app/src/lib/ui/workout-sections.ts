@@ -1,7 +1,9 @@
 import type { LogExerciseInput } from "@/components/log-workout/types";
 import {
   readGapFillExerciseSwapState,
+  readRuntimeAddedExerciseIds,
   readRuntimeAddedSetIds,
+  RUNTIME_ADDED_EXERCISE_SESSION_NOTE,
 } from "@/lib/ui/selection-metadata";
 
 type WorkoutExercise = {
@@ -55,6 +57,7 @@ export function splitExercises(
   const main: LogExerciseInput[] = [];
   const accessory: LogExerciseInput[] = [];
   const swapNoteByWorkoutExerciseId = buildSwapNoteMap(selectionMetadata);
+  const runtimeAddedExerciseIds = readRuntimeAddedExerciseIds(selectionMetadata);
   const runtimeAddedSetIds = readRuntimeAddedSetIds(selectionMetadata);
 
   const ordered = [...exercises].sort((a, b) => a.orderIndex - b.orderIndex);
@@ -64,8 +67,13 @@ export function splitExercises(
       workoutExerciseId: exercise.id,
       name: exercise.exercise.name,
       equipment: (exercise.exercise.exerciseEquipment ?? []).map((item) => item.equipment.type),
+      isRuntimeAdded: runtimeAddedExerciseIds.has(exercise.id),
       isMainLift: exercise.isMainLift,
-      sessionNote: swapNoteByWorkoutExerciseId.get(exercise.id),
+      sessionNote:
+        swapNoteByWorkoutExerciseId.get(exercise.id) ??
+        (runtimeAddedExerciseIds.has(exercise.id)
+          ? RUNTIME_ADDED_EXERCISE_SESSION_NOTE
+          : undefined),
       sets: exercise.sets.map((set) => ({
         ...(set.logs?.[0]
           ? {

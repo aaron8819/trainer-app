@@ -5,11 +5,13 @@ import {
 } from "@/components/log-workout/ExerciseSetChipsEditor";
 import { formatSectionLabel } from "@/components/log-workout/useWorkoutLogState";
 import type { ExerciseSection } from "@/components/log-workout/types";
+import { RUNTIME_ADDED_EXERCISE_BADGE_LABEL } from "@/lib/ui/selection-metadata";
 
 export type WorkoutQueueExerciseRowData = {
   section: ExerciseSection;
   exerciseId: string;
   exerciseName: string;
+  isRuntimeAdded: boolean;
   sessionNote?: string;
   loggedCount: number;
   totalSets: number;
@@ -96,6 +98,11 @@ const ExerciseQueueRow = memo(
             type="button"
           >
             <span className="block truncate text-sm font-medium">{row.exerciseName}</span>
+            {row.isRuntimeAdded ? (
+              <span className="mt-1 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                {RUNTIME_ADDED_EXERCISE_BADGE_LABEL}
+              </span>
+            ) : null}
             {row.sessionNote ? (
               <span className="mt-0.5 block truncate text-[11px] text-amber-700">
                 {row.sessionNote}
@@ -146,6 +153,7 @@ const ExerciseQueueRow = memo(
     previous.row.section === next.row.section &&
     previous.row.exerciseId === next.row.exerciseId &&
     previous.row.exerciseName === next.row.exerciseName &&
+    previous.row.isRuntimeAdded === next.row.isRuntimeAdded &&
     previous.row.sessionNote === next.row.sessionNote &&
     previous.row.loggedCount === next.row.loggedCount &&
     previous.row.totalSets === next.row.totalSets &&

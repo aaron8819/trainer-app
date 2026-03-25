@@ -459,6 +459,172 @@ describe("mapHistory", () => {
     expect(history[0].exercises[0].sets).toHaveLength(1);
   });
 
+  it("excludes runtime-added exercises from future planning history while leaving the workout entry intact", () => {
+    const history = mapHistory([
+      {
+        id: "w-runtime-added",
+        userId: "u1",
+        templateId: null,
+        scheduledDate: new Date("2026-03-10T00:00:00.000Z"),
+        completedAt: new Date("2026-03-10T01:00:00.000Z"),
+        status: WorkoutStatus.COMPLETED,
+        estimatedMinutes: 45,
+        notes: null,
+        selectionMode: "INTENT",
+        sessionIntent: "PUSH",
+        selectionMetadata: {
+          runtimeEditReconciliation: {
+            version: 1,
+            lastReconciledAt: "2026-03-10T01:00:00.000Z",
+            directives: {
+              continuityAlias: "none",
+              progressionAlias: "none",
+              futureSessionGeneration: "ignore",
+              futureSeedCarryForward: "ignore",
+            },
+            ops: [
+              {
+                kind: "add_exercise",
+                source: "api_workouts_add_exercise",
+                appliedAt: "2026-03-10T00:30:00.000Z",
+                scope: "current_workout_only",
+                facts: {
+                  workoutExerciseId: "we-runtime-added",
+                  exerciseId: "pec-deck",
+                  orderIndex: 1,
+                  section: "ACCESSORY",
+                  setCount: 2,
+                  prescriptionSource: "session_accessory_defaults",
+                },
+              },
+            ],
+          },
+        },
+        revision: 1,
+        forcedSplit: null,
+        advancesSplit: true,
+        trainingBlockId: null,
+        weekInBlock: null,
+        exercises: [
+          {
+            id: "we-planned",
+            workoutId: "w-runtime-added",
+            exerciseId: "bench",
+            orderIndex: 0,
+            section: "MAIN",
+            isMainLift: true,
+            movementPatterns: [],
+            notes: null,
+            exercise: {
+              id: "bench",
+              name: "Bench Press",
+              movementPatterns: [],
+              splitTags: [],
+              jointStress: "MEDIUM",
+              isMainLiftEligible: true,
+              isCompound: true,
+              fatigueCost: 3,
+              stimulusBias: [],
+              contraindications: null,
+              timePerSetSec: 120,
+              sfrScore: 3,
+              lengthPositionScore: 3,
+              difficulty: "INTERMEDIATE",
+              isUnilateral: false,
+              repRangeMin: 5,
+              repRangeMax: 12,
+              exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Chest", sraHours: 48 } }],
+            },
+            sets: [
+              {
+                id: "s-planned",
+                workoutExerciseId: "we-planned",
+                setIndex: 1,
+                targetReps: 8,
+                targetRepMin: null,
+                targetRepMax: null,
+                targetRpe: 8,
+                targetLoad: 185,
+                restSeconds: 180,
+                logs: [
+                  {
+                    id: "l-planned",
+                    workoutSetId: "s-planned",
+                    actualReps: 8,
+                    actualRpe: 8,
+                    actualLoad: 185,
+                    completedAt: new Date(),
+                    notes: null,
+                    wasSkipped: false,
+                  },
+                ],
+              },
+            ],
+          },
+          {
+            id: "we-runtime-added",
+            workoutId: "w-runtime-added",
+            exerciseId: "pec-deck",
+            orderIndex: 1,
+            section: "ACCESSORY",
+            isMainLift: false,
+            movementPatterns: [],
+            notes: null,
+            exercise: {
+              id: "pec-deck",
+              name: "Pec Deck",
+              movementPatterns: [],
+              splitTags: [],
+              jointStress: "LOW",
+              isMainLiftEligible: false,
+              isCompound: false,
+              fatigueCost: 2,
+              stimulusBias: [],
+              contraindications: null,
+              timePerSetSec: 90,
+              sfrScore: 3,
+              lengthPositionScore: 3,
+              difficulty: "INTERMEDIATE",
+              isUnilateral: false,
+              repRangeMin: 10,
+              repRangeMax: 15,
+              exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Chest", sraHours: 48 } }],
+            },
+            sets: [
+              {
+                id: "s-runtime-added",
+                workoutExerciseId: "we-runtime-added",
+                setIndex: 1,
+                targetReps: 12,
+                targetRepMin: 10,
+                targetRepMax: 15,
+                targetRpe: 6.5,
+                targetLoad: 80,
+                restSeconds: 90,
+                logs: [
+                  {
+                    id: "l-runtime-added",
+                    workoutSetId: "s-runtime-added",
+                    actualReps: 12,
+                    actualRpe: 7,
+                    actualLoad: 80,
+                    completedAt: new Date(),
+                    notes: null,
+                    wasSkipped: false,
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      } as never,
+    ]);
+
+    expect(history).toHaveLength(1);
+    expect(history[0].exercises).toHaveLength(1);
+    expect(history[0].exercises[0]?.exerciseId).toBe("bench");
+  });
+
   it("marks scheduled deload sessions as performed but excludes them from progression and performance history", () => {
     const history = mapHistory([
       {

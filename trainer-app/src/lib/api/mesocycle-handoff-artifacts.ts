@@ -10,7 +10,10 @@ import type {
 } from "@prisma/client";
 import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-semantics";
 import { readSessionSlotSnapshot } from "@/lib/evidence/session-decision-receipt";
-import { readRuntimeEditReconciliation } from "@/lib/ui/selection-metadata";
+import {
+  readRuntimeAddedExerciseIds,
+  readRuntimeEditReconciliation,
+} from "@/lib/ui/selection-metadata";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 import {
   buildOrderedFlexibleSlots,
@@ -72,6 +75,7 @@ export type HandoffArtifactWorkoutRow = {
   advancesSplit: boolean;
   mesocyclePhaseSnapshot: string | null;
   exercises: Array<{
+    id: string;
     exerciseId: string;
   }>;
 };
@@ -329,10 +333,16 @@ function buildCarryForwardCandidateEvidence(input: {
       mesocyclePhase: workout.mesocyclePhaseSnapshot,
     });
     const sessionSlot = readSessionSlotSnapshot(workout.selectionMetadata);
+    const runtimeAddedExerciseIds = readRuntimeAddedExerciseIds(
+      workout.selectionMetadata
+    );
     const performedAt = (workout.completedAt ?? workout.scheduledDate).toISOString();
     const performedTimestamp = new Date(performedAt).getTime();
 
     for (const workoutExercise of workout.exercises) {
+      if (runtimeAddedExerciseIds.has(workoutExercise.id)) {
+        continue;
+      }
       const intent = (sessionSlot?.intent ?? workout.sessionIntent ?? null) as WorkoutSessionIntent | null;
       if (!intent) {
         continue;

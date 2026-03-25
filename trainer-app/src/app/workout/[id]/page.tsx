@@ -11,7 +11,11 @@ import {
   hasPerformedHistory,
   isPerformedWorkoutStatus,
 } from "@/lib/ui/session-overview";
-import { readRuntimeAddedSetIds } from "@/lib/ui/selection-metadata";
+import {
+  RUNTIME_ADDED_EXERCISE_BADGE_LABEL,
+  readRuntimeAddedExerciseIds,
+  readRuntimeAddedSetIds,
+} from "@/lib/ui/selection-metadata";
 import {
   formatSessionIdentityLabel,
   formatSessionSlotTechnicalLabel,
@@ -141,6 +145,7 @@ export default async function WorkoutDetailPage({
   const selectionMetadata = parseExplainabilitySelectionMetadata(workout.selectionMetadata);
   const sessionDecisionReceipt = selectionMetadata.sessionDecisionReceipt;
   const workoutStructureState = selectionMetadata.workoutStructureState;
+  const runtimeAddedExerciseIds = readRuntimeAddedExerciseIds(workout.selectionMetadata);
   const runtimeAddedSetIds = readRuntimeAddedSetIds(workout.selectionMetadata);
   const sessionIdentityLabel = formatSessionIdentityLabel({
     intent: workout.sessionIntent,
@@ -282,7 +287,14 @@ export default async function WorkoutDetailPage({
                     <div key={exercise.id} className="rounded-2xl border border-slate-200 p-4 sm:p-5">
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                         <div>
-                          <h3 className="text-lg font-semibold">{exercise.exercise.name}</h3>
+                          <div className="flex items-center gap-2">
+                            <h3 className="text-lg font-semibold">{exercise.exercise.name}</h3>
+                            {runtimeAddedExerciseIds.has(exercise.id) ? (
+                              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                                {RUNTIME_ADDED_EXERCISE_BADGE_LABEL}
+                              </span>
+                            ) : null}
+                          </div>
                           <p className="mt-1 text-sm leading-6 text-slate-600">
                             {hasBackOff ? (
                               <>

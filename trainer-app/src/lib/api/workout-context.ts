@@ -23,6 +23,7 @@ import { mapLatestCheckIn, type CheckInRow } from "./checkin-staleness";
 import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-semantics";
 import { classifySetLog } from "@/lib/session-semantics/set-classification";
 import { readSessionSlotSnapshot } from "@/lib/evidence/session-decision-receipt";
+import { readRuntimeAddedExerciseIds } from "@/lib/ui/selection-metadata";
 import type {
   Constraints,
   EquipmentType,
@@ -268,6 +269,9 @@ export function mapHistory(workouts: WorkoutWithRelations[]): WorkoutHistoryEntr
       mesocyclePhase: workout.mesocyclePhaseSnapshot,
     });
     const sessionSlot = readSessionSlotSnapshot(workout.selectionMetadata);
+    const runtimeAddedExerciseIds = readRuntimeAddedExerciseIds(
+      workout.selectionMetadata
+    );
 
     // Keep deload sessions in performed history for compliance/volume context
     // while marking them out of progression and performance reads.
@@ -296,29 +300,32 @@ export function mapHistory(workouts: WorkoutWithRelations[]): WorkoutHistoryEntr
               slotId: sessionSlot?.slotId ?? null,
             }
           : undefined,
-      exercises: workout.exercises.map((exercise) => ({
-        exerciseId: exercise.exerciseId,
-        primaryMuscles: exercise.exercise.exerciseMuscles
-          ?.filter((m) => m.role === "PRIMARY")
-          .map((m) => m.muscle.name) ?? [],
-        sets: exercise.sets.flatMap((set) => {
-          const log = set.logs[0];
-          const classification = classifySetLog(log);
-          if (!classification.isSignal) {
-            return [];
-          }
-          return [
-            {
-              exerciseId: exercise.exerciseId,
-              setIndex: set.setIndex,
-              reps: log.actualReps ?? 0,
-              rpe: log.actualRpe ?? undefined,
-              load: log.actualLoad ?? undefined,
-              targetLoad: set.targetLoad ?? undefined,
-            },
-          ];
-        }),
-      })),
+      exercises: workout.exercises
+        .filter((exercise) => !runtimeAddedExerciseIds.has(exercise.id))
+        .map((exercise) => ({
+          exerciseId: exercise.exerciseId,
+          primaryMuscles:
+            exercise.exercise.exerciseMuscles
+              ?.filter((m) => m.role === "PRIMARY")
+              .map((m) => m.muscle.name) ?? [],
+          sets: exercise.sets.flatMap((set) => {
+            const log = set.logs[0];
+            const classification = classifySetLog(log);
+            if (!classification.isSignal) {
+              return [];
+            }
+            return [
+              {
+                exerciseId: exercise.exerciseId,
+                setIndex: set.setIndex,
+                reps: log.actualReps ?? 0,
+                rpe: log.actualRpe ?? undefined,
+                load: log.actualLoad ?? undefined,
+                targetLoad: set.targetLoad ?? undefined,
+              },
+            ];
+          }),
+        })),
     };
   });
 

@@ -8,6 +8,7 @@ import { isDumbbellEquipment, toDisplayLoad } from "@/lib/ui/load-display";
 import { evaluateTargetReps } from "@/lib/session-semantics/target-evaluation";
 import { hydrateWorkoutExplanation, type WorkoutExplanationResponse } from "@/lib/ui/workout-explanation-response";
 import type { WorkoutExplanation } from "@/lib/engine/explainability";
+import { RUNTIME_ADDED_EXERCISE_BADGE_LABEL } from "@/lib/ui/selection-metadata";
 import type {
   CompletedWorkoutExerciseSummary,
   RpeAdherenceSummary,
@@ -143,7 +144,14 @@ export function CompletedWorkoutReview({
                 key={exercise.exerciseId}
                 className="rounded-2xl border border-slate-200 bg-white p-4"
               >
-                <p className="font-medium text-slate-900">{exercise.name}</p>
+                <div className="flex items-center gap-2">
+                  <p className="font-medium text-slate-900">{exercise.name}</p>
+                  {exercise.isRuntimeAdded ? (
+                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                      {RUNTIME_ADDED_EXERCISE_BADGE_LABEL}
+                    </span>
+                  ) : null}
+                </div>
                 <div className="mt-3 space-y-2">
                   {exercise.sets.map((set) => {
                     const classification = classifySetLog({

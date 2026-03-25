@@ -81,10 +81,14 @@ export type RuntimeEditAddExerciseOperation = {
   appliedAt: string;
   scope: "current_workout_only";
   facts: {
+    workoutExerciseId?: string;
     exerciseId: string;
     orderIndex: number;
     section: "WARMUP" | "MAIN" | "ACCESSORY";
     setCount: number;
+    prescriptionSource?:
+      | "session_accessory_defaults"
+      | "generic_accessory_fallback";
   };
 };
 
@@ -142,6 +146,10 @@ export type RuntimeEditReconciliation = {
   ops: RuntimeEditOperation[];
   directives: RuntimeEditDirectiveState;
 };
+
+export const RUNTIME_ADDED_EXERCISE_BADGE_LABEL = "Added exercise";
+export const RUNTIME_ADDED_EXERCISE_SESSION_NOTE =
+  "Added during workout. Session-only; future planning ignores it.";
 
 export type PersistedWorkoutStructureExerciseInput = {
   exerciseId: string;
@@ -365,10 +373,17 @@ function parseRuntimeEditOperation(value: unknown): RuntimeEditOperation | undef
       appliedAt: record.appliedAt,
       scope: "current_workout_only",
       facts: {
+        ...(typeof facts.workoutExerciseId === "string"
+          ? { workoutExerciseId: facts.workoutExerciseId }
+          : {}),
         exerciseId: facts.exerciseId,
         orderIndex: facts.orderIndex,
         section,
         setCount: facts.setCount,
+        ...((facts.prescriptionSource === "session_accessory_defaults" ||
+          facts.prescriptionSource === "generic_accessory_fallback")
+          ? { prescriptionSource: facts.prescriptionSource }
+          : {}),
       },
     };
   }
@@ -612,6 +627,19 @@ export function readRuntimeAddedSetIds(selectionMetadata: unknown): Set<string> 
           operation.kind === "add_set"
       )
       .map((operation) => operation.facts.workoutSetId)
+  );
+}
+
+export function readRuntimeAddedExerciseIds(selectionMetadata: unknown): Set<string> {
+  const runtimeEditReconciliation = readRuntimeEditReconciliation(selectionMetadata);
+  return new Set(
+    (runtimeEditReconciliation?.ops ?? [])
+      .filter(
+        (operation): operation is RuntimeEditAddExerciseOperation =>
+          operation.kind === "add_exercise" &&
+          typeof operation.facts.workoutExerciseId === "string"
+      )
+      .map((operation) => operation.facts.workoutExerciseId as string)
   );
 }
 

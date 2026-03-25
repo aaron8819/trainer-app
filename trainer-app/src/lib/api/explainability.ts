@@ -55,6 +55,7 @@ import { classifySetLog } from "@/lib/session-semantics/set-classification";
 import { resolveTargetRepRange } from "@/lib/session-semantics/target-evaluation";
 import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-semantics";
 import { getCanonicalNextExposureCopy } from "@/lib/ui/next-exposure-copy";
+import { readRuntimeAddedExerciseIds } from "@/lib/ui/selection-metadata";
 
 const HISTORY_RECENCY_WINDOW_DAYS = 42;
 const CANONICAL_RATIONALE_COMPONENT_KEYS = [
@@ -154,6 +155,9 @@ export async function generateWorkoutExplanation(
   const prescriptionRationales = new Map();
   const progressionReceipts = new Map<string, ProgressionReceipt>();
   const nextExposureDecisions = new Map<string, NextExposureDecision>();
+  const runtimeAddedExerciseIds = readRuntimeAddedExerciseIds(
+    workout.selectionMetadata
+  );
   const explanationPeriodization = buildExplanationPeriodization({
     blockContext,
     weekInMeso,
@@ -202,6 +206,10 @@ export async function generateWorkoutExplanation(
     });
 
     prescriptionRationales.set(workoutExercise.exerciseId, rationale);
+
+    if (runtimeAddedExerciseIds.has(workoutExercise.id)) {
+      continue;
+    }
 
     const topSet = engineSets.find((set) => set.targetReps != null || set.targetRepRange != null);
     const effectiveRepRange = resolveTargetRepRange({
@@ -1036,6 +1044,7 @@ async function findLatestProgressionEligibleWorkoutExercise(input: {
     }
 
     if (
+      !readRuntimeAddedExerciseIds(candidate.workout.selectionMetadata).has(candidate.id) &&
       isProgressionEligibleWorkout({
         selectionMetadata: candidate.workout.selectionMetadata,
         selectionMode: candidate.workout.selectionMode,

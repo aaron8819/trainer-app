@@ -6,14 +6,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   const workoutFindUnique = vi.fn();
-  const workoutExerciseCount = vi.fn();
   const workoutExerciseFindMany = vi.fn();
   const exerciseExposureUpsert = vi.fn();
   const exerciseExposureFindMany = vi.fn();
 
   return {
     workoutFindUnique,
-    workoutExerciseCount,
     workoutExerciseFindMany,
     exerciseExposureUpsert,
     exerciseExposureFindMany,
@@ -22,7 +20,6 @@ const mocks = vi.hoisted(() => {
         findUnique: workoutFindUnique,
       },
       workoutExercise: {
-        count: workoutExerciseCount,
         findMany: workoutExerciseFindMany,
       },
       exerciseExposure: {
@@ -48,8 +45,10 @@ describe("exercise exposure", () => {
     mocks.workoutFindUnique.mockResolvedValue({
       id: "workout-1",
       status: "COMPLETED",
+      selectionMetadata: {},
       exercises: [
         {
+          id: "we-1",
           exercise: { name: "Cable Curl" },
           sets: [
             { logs: [] },
@@ -61,7 +60,7 @@ describe("exercise exposure", () => {
 
     await updateExerciseExposure("user-1", "workout-1");
 
-    expect(mocks.workoutExerciseCount).not.toHaveBeenCalled();
+    expect(mocks.workoutExerciseFindMany).not.toHaveBeenCalled();
     expect(mocks.exerciseExposureUpsert).not.toHaveBeenCalled();
   });
 
@@ -69,8 +68,10 @@ describe("exercise exposure", () => {
     mocks.workoutFindUnique.mockResolvedValue({
       id: "workout-1",
       status: "COMPLETED",
+      selectionMetadata: {},
       exercises: [
         {
+          id: "we-bench",
           exercise: { name: "Bench Press" },
           sets: [
             { logs: [{ actualReps: 8, actualRpe: 8, wasSkipped: false }] },
@@ -78,20 +79,33 @@ describe("exercise exposure", () => {
           ],
         },
         {
+          id: "we-curl",
           exercise: { name: "Cable Curl" },
           sets: [{ logs: [] }],
         },
       ],
     });
-    mocks.workoutExerciseCount
-      .mockResolvedValueOnce(2)
-      .mockResolvedValueOnce(3)
-      .mockResolvedValueOnce(4);
+    mocks.workoutExerciseFindMany
+      .mockResolvedValueOnce([
+        { id: "w4", workout: { selectionMetadata: {} } },
+        { id: "w5", workout: { selectionMetadata: {} } },
+      ])
+      .mockResolvedValueOnce([
+        { id: "w6", workout: { selectionMetadata: {} } },
+        { id: "w7", workout: { selectionMetadata: {} } },
+        { id: "w8", workout: { selectionMetadata: {} } },
+      ])
+      .mockResolvedValueOnce([
+        { id: "w9", workout: { selectionMetadata: {} } },
+        { id: "w10", workout: { selectionMetadata: {} } },
+        { id: "w11", workout: { selectionMetadata: {} } },
+        { id: "w12", workout: { selectionMetadata: {} } },
+      ]);
 
     await updateExerciseExposure("user-1", "workout-1");
 
-    expect(mocks.workoutExerciseCount).toHaveBeenCalledTimes(3);
-    for (const call of mocks.workoutExerciseCount.mock.calls) {
+    expect(mocks.workoutExerciseFindMany).toHaveBeenCalledTimes(3);
+    for (const call of mocks.workoutExerciseFindMany.mock.calls) {
       expect(call[0].where.exercise.name).toBe("Bench Press");
       expect(call[0].where.sets).toEqual({
         some: {
@@ -125,12 +139,61 @@ describe("exercise exposure", () => {
     );
   });
 
+  it("ignores runtime-added exercises when updating exposure windows", async () => {
+    mocks.workoutFindUnique.mockResolvedValue({
+      id: "workout-1",
+      status: "COMPLETED",
+      selectionMetadata: {
+        runtimeEditReconciliation: {
+          version: 1,
+          lastReconciledAt: "2026-03-23T10:00:00.000Z",
+          directives: {
+            continuityAlias: "none",
+            progressionAlias: "none",
+            futureSessionGeneration: "ignore",
+            futureSeedCarryForward: "ignore",
+          },
+          ops: [
+            {
+              kind: "add_exercise",
+              source: "api_workouts_add_exercise",
+              appliedAt: "2026-03-23T10:00:00.000Z",
+              scope: "current_workout_only",
+              facts: {
+                workoutExerciseId: "we-runtime-added",
+                exerciseId: "pec-deck",
+                orderIndex: 1,
+                section: "ACCESSORY",
+                setCount: 2,
+                prescriptionSource: "session_accessory_defaults",
+              },
+            },
+          ],
+        },
+      },
+      exercises: [
+        {
+          id: "we-runtime-added",
+          exercise: { name: "Pec Deck" },
+          sets: [{ logs: [{ actualReps: 12, actualRpe: 7, wasSkipped: false }] }],
+        },
+      ],
+    });
+
+    await updateExerciseExposure("user-1", "workout-1");
+
+    expect(mocks.workoutExerciseFindMany).not.toHaveBeenCalled();
+    expect(mocks.exerciseExposureUpsert).not.toHaveBeenCalled();
+  });
+
   it("does not treat load-only rows as performed exposure stimulus", async () => {
     mocks.workoutFindUnique.mockResolvedValue({
       id: "workout-1",
       status: "COMPLETED",
+      selectionMetadata: {},
       exercises: [
         {
+          id: "we-bench",
           exercise: { name: "Bench Press" },
           sets: [
             { logs: [{ actualReps: null, actualRpe: null, actualLoad: 185, wasSkipped: false }] },
@@ -141,7 +204,7 @@ describe("exercise exposure", () => {
 
     await updateExerciseExposure("user-1", "workout-1");
 
-    expect(mocks.workoutExerciseCount).not.toHaveBeenCalled();
+    expect(mocks.workoutExerciseFindMany).not.toHaveBeenCalled();
     expect(mocks.exerciseExposureUpsert).not.toHaveBeenCalled();
   });
 
@@ -155,15 +218,18 @@ describe("exercise exposure", () => {
     ]);
     mocks.workoutExerciseFindMany.mockResolvedValue([
       {
-        workout: { completedAt: new Date("2026-02-15T00:00:00.000Z") },
+        id: "we-1",
+        workout: { completedAt: new Date("2026-02-15T00:00:00.000Z"), selectionMetadata: {} },
         sets: [{ logs: [{ actualLoad: 190, actualReps: 8 }] }],
       },
       {
-        workout: { completedAt: new Date("2026-02-08T00:00:00.000Z") },
+        id: "we-2",
+        workout: { completedAt: new Date("2026-02-08T00:00:00.000Z"), selectionMetadata: {} },
         sets: [{ logs: [{ actualLoad: 185, actualReps: 8 }] }],
       },
       {
-        workout: { completedAt: new Date("2026-02-01T00:00:00.000Z") },
+        id: "we-3",
+        workout: { completedAt: new Date("2026-02-01T00:00:00.000Z"), selectionMetadata: {} },
         sets: [{ logs: [{ actualLoad: 180, actualReps: 8 }] }],
       },
     ]);
@@ -196,7 +262,7 @@ describe("exercise exposure", () => {
     );
   });
 
-  it("ignores deload sessions when deriving performance trend", async () => {
+  it("ignores deload and runtime-added sessions when deriving performance trend", async () => {
     mocks.exerciseExposureFindMany.mockResolvedValue([
       {
         exerciseName: "Bench Press",
@@ -206,6 +272,46 @@ describe("exercise exposure", () => {
     ]);
     mocks.workoutExerciseFindMany.mockResolvedValue([
       {
+        id: "we-runtime-added",
+        workout: {
+          completedAt: new Date("2026-02-24T00:00:00.000Z"),
+          selectionMetadata: {
+            runtimeEditReconciliation: {
+              version: 1,
+              lastReconciledAt: "2026-02-24T00:00:00.000Z",
+              directives: {
+                continuityAlias: "none",
+                progressionAlias: "none",
+                futureSessionGeneration: "ignore",
+                futureSeedCarryForward: "ignore",
+              },
+              ops: [
+                {
+                  kind: "add_exercise",
+                  source: "api_workouts_add_exercise",
+                  appliedAt: "2026-02-24T00:00:00.000Z",
+                  scope: "current_workout_only",
+                  facts: {
+                    workoutExerciseId: "we-runtime-added",
+                    exerciseId: "bench",
+                    orderIndex: 1,
+                    section: "ACCESSORY",
+                    setCount: 2,
+                    prescriptionSource: "session_accessory_defaults",
+                  },
+                },
+              ],
+            },
+          },
+          selectionMode: "INTENT",
+          sessionIntent: "PUSH",
+          advancesSplit: true,
+          mesocyclePhaseSnapshot: "ACCUMULATION",
+        },
+        sets: [{ logs: [{ actualLoad: 200, actualReps: 8 }] }],
+      },
+      {
+        id: "we-deload",
         workout: {
           completedAt: new Date("2026-02-22T00:00:00.000Z"),
           selectionMetadata: {
@@ -249,6 +355,7 @@ describe("exercise exposure", () => {
         sets: [{ logs: [{ actualLoad: 155, actualReps: 8 }] }],
       },
       {
+        id: "we-1",
         workout: {
           completedAt: new Date("2026-02-15T00:00:00.000Z"),
           selectionMetadata: {},
@@ -260,6 +367,7 @@ describe("exercise exposure", () => {
         sets: [{ logs: [{ actualLoad: 190, actualReps: 8 }] }],
       },
       {
+        id: "we-2",
         workout: {
           completedAt: new Date("2026-02-08T00:00:00.000Z"),
           selectionMetadata: {},
@@ -271,6 +379,7 @@ describe("exercise exposure", () => {
         sets: [{ logs: [{ actualLoad: 185, actualReps: 8 }] }],
       },
       {
+        id: "we-3",
         workout: {
           completedAt: new Date("2026-02-01T00:00:00.000Z"),
           selectionMetadata: {},

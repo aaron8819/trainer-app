@@ -334,6 +334,40 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     expect(mockedLogSetRequest).not.toHaveBeenCalled();
   });
 
+  it("shows the added exercise label in the queue for runtime-added exercises", () => {
+    render(
+      <LogWorkoutClient
+        workoutId="workout-1"
+        exercises={[
+          {
+            workoutExerciseId: "ex-added",
+            name: "Pec Deck",
+            equipment: ["machine"],
+            isRuntimeAdded: true,
+            isMainLift: false,
+            section: "ACCESSORY",
+            sessionNote: "Added during workout. Session-only; future planning ignores it.",
+            sets: [
+              {
+                setId: "set-added-1",
+                setIndex: 1,
+                targetReps: 12,
+                targetLoad: 80,
+                targetRpe: 6.5,
+                restSeconds: 90,
+              },
+            ],
+          },
+        ]}
+      />
+    );
+
+    expect(screen.getByText("Added exercise")).toBeInTheDocument();
+    expect(
+      screen.getByText("Added during workout. Session-only; future planning ignores it.")
+    ).toBeInTheDocument();
+  });
+
   it("does not snap dumbbell load while typing", async () => {
     const user = userEvent.setup();
     renderClient();

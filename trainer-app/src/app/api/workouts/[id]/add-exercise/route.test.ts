@@ -66,11 +66,108 @@ vi.mock("@/lib/api/workout-context", () => ({
   resolveOwner: vi.fn(async () => ({ id: "user-1" })),
 }));
 
-vi.mock("@/lib/engine/rules", () => ({
-  getBaseTargetRpe: vi.fn(() => 8),
-}));
-
 import { POST } from "./route";
+
+const canonicalReceipt = {
+  version: 1 as const,
+  cycleContext: {
+    weekInMeso: 2,
+    weekInBlock: 2,
+    phase: "accumulation" as const,
+    blockType: "accumulation" as const,
+    isDeload: false,
+    mesocycleLength: 5,
+    source: "computed" as const,
+  },
+  lifecycleRirTarget: { min: 3, max: 4 },
+  lifecycleVolume: { source: "lifecycle" as const },
+  sorenessSuppressedMuscles: [],
+  deloadDecision: {
+    mode: "none" as const,
+    reason: [],
+    reductionPercent: 0,
+    appliedTo: "none" as const,
+  },
+  readiness: {
+    wasAutoregulated: false,
+    signalAgeHours: null,
+    fatigueScoreOverall: null,
+    intensityScaling: {
+      applied: false,
+      exerciseIds: [],
+      scaledUpCount: 0,
+      scaledDownCount: 0,
+    },
+  },
+  exceptions: [],
+};
+
+function buildWorkoutSelectionMetadata(overrides?: Record<string, unknown>) {
+  return {
+    sessionDecisionReceipt: canonicalReceipt,
+    sessionAuditSnapshot: {
+      version: 1,
+      generated: {
+        selectionMode: "INTENT",
+        sessionIntent: "push",
+        exerciseCount: 2,
+        hardSetCount: 6,
+        exercises: [
+          {
+            exerciseId: "bench",
+            exerciseName: "Bench Press",
+            orderIndex: 0,
+            section: "main",
+            isMainLift: true,
+            prescribedSetCount: 3,
+            prescribedSets: [{ setIndex: 1, targetReps: 8, targetRpe: 6.5, restSeconds: 180 }],
+          },
+          {
+            exerciseId: "pressdown",
+            exerciseName: "Rope Pressdown",
+            orderIndex: 1,
+            section: "accessory",
+            isMainLift: false,
+            prescribedSetCount: 3,
+            prescribedSets: [
+              {
+                setIndex: 1,
+                targetReps: 12,
+                targetRepRange: { min: 12, max: 15 },
+                targetRpe: 6.5,
+                restSeconds: 90,
+              },
+            ],
+          },
+        ],
+        semantics: {
+          kind: "advancing",
+          effectiveSelectionMode: "INTENT",
+          isDeload: false,
+          isStrictGapFill: false,
+          isStrictSupplemental: false,
+          advancesLifecycle: true,
+          consumesWeeklyScheduleIntent: true,
+          countsTowardCompliance: true,
+          countsTowardRecentStimulus: true,
+          countsTowardWeeklyVolume: true,
+          countsTowardProgressionHistory: true,
+          countsTowardPerformanceHistory: true,
+          updatesProgressionAnchor: true,
+          eligibleForUniqueIntentSubtraction: true,
+          reasons: [],
+          trace: {
+            advancesSplitInput: true,
+          },
+        },
+        traces: {
+          progression: {},
+        },
+      },
+    },
+    ...(overrides ?? {}),
+  };
+}
 
 describe("POST /api/workouts/[id]/add-exercise", () => {
   beforeEach(() => {
@@ -84,61 +181,46 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
       name: "Cable Fly",
       repRangeMin: 10,
       repRangeMax: 14,
+      fatigueCost: 2,
+      isCompound: false,
       exerciseEquipment: [{ equipment: { type: "CABLE" } }],
     });
     mocks.profileFindUnique.mockResolvedValue({ trainingAge: "INTERMEDIATE" });
     mocks.goalsFindUnique.mockResolvedValue({ primaryGoal: "HYPERTROPHY" });
     mocks.setLogFindFirst.mockResolvedValue({ actualLoad: 35 });
     mocks.txWorkoutFindUnique.mockResolvedValue({
-      selectionMetadata: {
-        sessionAuditSnapshot: {
-          version: 1,
-          generated: {
-            selectionMode: "INTENT",
-            sessionIntent: "push",
-            exerciseCount: 1,
-            hardSetCount: 3,
-            exercises: [
-              {
-                exerciseId: "bench",
-                exerciseName: "Bench Press",
-                orderIndex: 0,
-                section: "main",
-                isMainLift: true,
-                prescribedSetCount: 3,
-                prescribedSets: [{ setIndex: 1, targetReps: 8, targetRpe: 8 }],
-              },
-            ],
-            semantics: {
-              kind: "advancing",
-              effectiveSelectionMode: "INTENT",
-              isDeload: false,
-              isStrictGapFill: false,
-              isStrictSupplemental: false,
-              advancesLifecycle: true,
-              consumesWeeklyScheduleIntent: true,
-              countsTowardCompliance: true,
-              countsTowardRecentStimulus: true,
-              countsTowardWeeklyVolume: true,
-              countsTowardProgressionHistory: true,
-              countsTowardPerformanceHistory: true,
-              updatesProgressionAnchor: true,
-              eligibleForUniqueIntentSubtraction: true,
-              reasons: [],
-              trace: {
-                advancesSplitInput: true,
-              },
-            },
-            traces: {
-              progression: {},
-            },
-          },
-        },
-      },
+      selectionMetadata: buildWorkoutSelectionMetadata(),
       selectionMode: "INTENT",
       sessionIntent: "PUSH",
+      exercises: [
+        {
+          orderIndex: 0,
+          section: "MAIN",
+          sets: [{ targetReps: 8, targetRepMin: 6, targetRepMax: 10, targetRpe: 6.5, restSeconds: 180 }],
+        },
+        {
+          orderIndex: 1,
+          section: "ACCESSORY",
+          sets: [
+            {
+              targetReps: 12,
+              targetRepMin: 12,
+              targetRepMax: 15,
+              targetRpe: 6.5,
+              restSeconds: 90,
+            },
+            {
+              targetReps: 12,
+              targetRepMin: 12,
+              targetRepMax: 15,
+              targetRpe: 6.5,
+              restSeconds: 90,
+            },
+          ],
+        },
+      ],
     });
-    mocks.txWorkoutExerciseFindFirst.mockResolvedValue({ orderIndex: 0 });
+    mocks.txWorkoutExerciseFindFirst.mockResolvedValue({ orderIndex: 1 });
     mocks.txWorkoutExerciseCreate.mockResolvedValue({
       id: "we-2",
       sets: [
@@ -146,10 +228,21 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
           id: "set-1",
           setIndex: 1,
           targetReps: 12,
-          targetRepMin: 10,
+          targetRepMin: 12,
           targetRepMax: 14,
           targetLoad: 35,
-          targetRpe: 8,
+          targetRpe: 6.5,
+          restSeconds: 90,
+        },
+        {
+          id: "set-2",
+          setIndex: 2,
+          targetReps: 12,
+          targetRepMin: 12,
+          targetRepMax: 14,
+          targetLoad: 35,
+          targetRpe: 6.5,
+          restSeconds: 90,
         },
       ],
     });
@@ -159,19 +252,65 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
         orderIndex: 0,
         section: "MAIN",
         exercise: { name: "Bench Press" },
-        sets: [{ setIndex: 1, targetReps: 8, targetRepMin: 6, targetRepMax: 10, targetRpe: 8, targetLoad: 185 }],
+        sets: [
+          {
+            setIndex: 1,
+            targetReps: 8,
+            targetRepMin: 6,
+            targetRepMax: 10,
+            targetRpe: 6.5,
+            targetLoad: 185,
+            restSeconds: 180,
+          },
+        ],
+      },
+      {
+        exerciseId: "pressdown",
+        orderIndex: 1,
+        section: "ACCESSORY",
+        exercise: { name: "Rope Pressdown" },
+        sets: [
+          {
+            setIndex: 1,
+            targetReps: 12,
+            targetRepMin: 12,
+            targetRepMax: 15,
+            targetRpe: 6.5,
+            targetLoad: 50,
+            restSeconds: 90,
+          },
+        ],
       },
       {
         exerciseId: "fly",
-        orderIndex: 1,
+        orderIndex: 2,
         section: "ACCESSORY",
         exercise: { name: "Cable Fly" },
-        sets: [{ setIndex: 1, targetReps: 12, targetRepMin: 10, targetRepMax: 14, targetRpe: 8, targetLoad: 35 }],
+        sets: [
+          {
+            setIndex: 1,
+            targetReps: 12,
+            targetRepMin: 12,
+            targetRepMax: 14,
+            targetRpe: 6.5,
+            targetLoad: 35,
+            restSeconds: 90,
+          },
+          {
+            setIndex: 2,
+            targetReps: 12,
+            targetRepMin: 12,
+            targetRepMax: 15,
+            targetRpe: 6.5,
+            targetLoad: 35,
+            restSeconds: 90,
+          },
+        ],
       },
     ]);
   });
 
-  it("reconciles selection metadata against the saved structure when a bonus exercise is added", async () => {
+  it("inherits current session accessory defaults and persists canonical runtime-added provenance", async () => {
     const response = await POST(
       new Request("http://localhost/api/workouts/workout-1/add-exercise", {
         method: "POST",
@@ -184,93 +323,221 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.exercise.name).toBe("Cable Fly");
+    expect(mocks.txWorkoutExerciseCreate).toHaveBeenCalledWith({
+      data: {
+        workoutId: "workout-1",
+        exerciseId: "fly",
+        orderIndex: 2,
+        section: "ACCESSORY",
+        isMainLift: false,
+        sets: {
+          create: [
+            {
+              setIndex: 1,
+              targetReps: 12,
+              targetRepMin: 12,
+              targetRepMax: 14,
+              targetRpe: 6.5,
+              restSeconds: 90,
+              targetLoad: 35,
+            },
+            {
+              setIndex: 2,
+              targetReps: 12,
+              targetRepMin: 12,
+              targetRepMax: 14,
+              targetRpe: 6.5,
+              restSeconds: 90,
+              targetLoad: 35,
+            },
+          ],
+        },
+      },
+      include: {
+        sets: { orderBy: { setIndex: "asc" } },
+      },
+    });
+    expect(body.exercise).toMatchObject({
+      workoutExerciseId: "we-2",
+      name: "Cable Fly",
+      isRuntimeAdded: true,
+      sessionNote: "Added during workout. Session-only; future planning ignores it.",
+    });
     expect(mocks.txWorkoutUpdate).toHaveBeenCalledWith({
       where: { id: "workout-1" },
       data: {
         revision: { increment: 1 },
         selectionMetadata: expect.objectContaining({
+          sessionDecisionReceipt: canonicalReceipt,
           runtimeEditReconciliation: expect.objectContaining({
-            version: 1,
-            directives: {
-              continuityAlias: "none",
-              progressionAlias: "none",
-              futureSessionGeneration: "ignore",
-              futureSeedCarryForward: "ignore",
-            },
             ops: [
               expect.objectContaining({
                 kind: "add_exercise",
-                source: "api_workouts_add_exercise",
-                scope: "current_workout_only",
                 facts: {
+                  workoutExerciseId: "we-2",
                   exerciseId: "fly",
-                  orderIndex: 1,
+                  orderIndex: 2,
                   section: "ACCESSORY",
-                  setCount: 1,
+                  setCount: 2,
+                  prescriptionSource: "session_accessory_defaults",
                 },
               }),
             ],
-          }),
-          workoutStructureState: expect.objectContaining({
-            currentExercises: [
-              {
-                exerciseId: "bench",
-                orderIndex: 0,
-                section: "MAIN",
-                setCount: 1,
-              },
-              {
-                exerciseId: "fly",
-                orderIndex: 1,
-                section: "ACCESSORY",
-                setCount: 1,
-              },
-            ],
-            reconciliation: expect.objectContaining({
-              hasDrift: true,
-              changedFields: expect.arrayContaining(["exercise_added"]),
-              addedExerciseIds: ["fly"],
-            }),
           }),
         }),
       },
     });
   });
 
+  it("falls back to receipt lifecycle context when no current accessory pattern exists", async () => {
+    mocks.txWorkoutFindUnique.mockResolvedValueOnce({
+      selectionMetadata: buildWorkoutSelectionMetadata({
+        sessionAuditSnapshot: undefined,
+      }),
+      selectionMode: "INTENT",
+      sessionIntent: "PUSH",
+      exercises: [],
+    });
+    mocks.txWorkoutExerciseFindFirst.mockResolvedValueOnce({ orderIndex: 0 });
+    mocks.txWorkoutExerciseCreate.mockResolvedValueOnce({
+      id: "we-3",
+      sets: [
+        {
+          id: "set-3",
+          setIndex: 1,
+          targetReps: 12,
+          targetRepMin: 10,
+          targetRepMax: 14,
+          targetLoad: 35,
+          targetRpe: 6.5,
+          restSeconds: 90,
+        },
+        {
+          id: "set-4",
+          setIndex: 2,
+          targetReps: 12,
+          targetRepMin: 10,
+          targetRepMax: 14,
+          targetLoad: 35,
+          targetRpe: 6.5,
+          restSeconds: 90,
+        },
+        {
+          id: "set-5",
+          setIndex: 3,
+          targetReps: 12,
+          targetRepMin: 10,
+          targetRepMax: 14,
+          targetLoad: 35,
+          targetRpe: 6.5,
+          restSeconds: 90,
+        },
+      ],
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/workout-1/add-exercise", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ exerciseId: "fly" }),
+      }),
+      { params: Promise.resolve({ id: "workout-1" }) }
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.txWorkoutExerciseCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          sets: {
+            create: expect.arrayContaining([
+              expect.objectContaining({
+                targetRpe: 6.5,
+                targetRepMin: 10,
+                targetRepMax: 14,
+                restSeconds: 90,
+              }),
+            ]),
+          },
+        }),
+      })
+    );
+    expect(mocks.txWorkoutUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          selectionMetadata: expect.objectContaining({
+            runtimeEditReconciliation: expect.objectContaining({
+              ops: [
+                expect.objectContaining({
+                  facts: expect.objectContaining({
+                    prescriptionSource: "session_accessory_defaults",
+                  }),
+                }),
+              ],
+            }),
+          }),
+        }),
+      })
+    );
+  });
+
+  it("uses generic accessory fallback only when canonical session context is unavailable", async () => {
+    mocks.txWorkoutFindUnique.mockResolvedValueOnce({
+      selectionMetadata: {},
+      selectionMode: "INTENT",
+      sessionIntent: "PUSH",
+      exercises: [],
+    });
+    mocks.txWorkoutExerciseFindFirst.mockResolvedValueOnce({ orderIndex: 0 });
+
+    await POST(
+      new Request("http://localhost/api/workouts/workout-1/add-exercise", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ exerciseId: "fly" }),
+      }),
+      { params: Promise.resolve({ id: "workout-1" }) }
+    );
+
+    expect(mocks.txWorkoutExerciseCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          sets: {
+            create: expect.arrayContaining([
+              expect.objectContaining({
+                targetRpe: 8,
+                targetRepMin: 10,
+                targetRepMax: 14,
+                restSeconds: 90,
+              }),
+            ]),
+          },
+        }),
+      })
+    );
+    expect(mocks.txWorkoutUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          selectionMetadata: expect.objectContaining({
+            runtimeEditReconciliation: expect.objectContaining({
+              ops: [
+                expect.objectContaining({
+                  facts: expect.objectContaining({
+                    prescriptionSource: "generic_accessory_fallback",
+                  }),
+                }),
+              ],
+            }),
+          }),
+        }),
+      })
+    );
+  });
+
   it("rejects freeform adds for strict gap-fill sessions", async () => {
     mocks.txWorkoutFindUnique.mockResolvedValueOnce({
       selectionMetadata: {
         sessionDecisionReceipt: {
-          version: 1,
-          cycleContext: {
-            weekInMeso: 4,
-            weekInBlock: 4,
-            phase: "accumulation",
-            blockType: "accumulation",
-            isDeload: false,
-            source: "computed",
-          },
-          lifecycleVolume: { source: "unknown" },
-          sorenessSuppressedMuscles: [],
-          deloadDecision: {
-            mode: "none",
-            reason: [],
-            reductionPercent: 0,
-            appliedTo: "none",
-          },
-          readiness: {
-            wasAutoregulated: false,
-            signalAgeHours: null,
-            fatigueScoreOverall: null,
-            intensityScaling: {
-              applied: false,
-              exerciseIds: [],
-              scaledUpCount: 0,
-              scaledDownCount: 0,
-            },
-          },
-          targetMuscles: ["rear delts"],
+          ...canonicalReceipt,
           exceptions: [
             {
               code: "optional_gap_fill",
@@ -281,6 +548,7 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
       },
       selectionMode: "INTENT",
       sessionIntent: "BODY_PART",
+      exercises: [],
     });
 
     const response = await POST(

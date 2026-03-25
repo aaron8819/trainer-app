@@ -77,10 +77,12 @@ describe("reconcileRuntimeEditSelectionMetadata", () => {
       ],
       mutation: {
         kind: "add_exercise",
+        workoutExerciseId: "we-2",
         exerciseId: "fly",
         orderIndex: 1,
         section: "ACCESSORY",
         setCount: 1,
+        prescriptionSource: "session_accessory_defaults",
       },
     });
 
@@ -101,10 +103,12 @@ describe("reconcileRuntimeEditSelectionMetadata", () => {
           appliedAt: "2026-03-23T10:00:00.000Z",
           scope: "current_workout_only",
           facts: {
+            workoutExerciseId: "we-2",
             exerciseId: "fly",
             orderIndex: 1,
             section: "ACCESSORY",
             setCount: 1,
+            prescriptionSource: "session_accessory_defaults",
           },
         },
       ],

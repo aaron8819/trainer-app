@@ -4,6 +4,7 @@ import {
   attachSupplementalSessionMetadata,
   buildWorkoutStructureState,
   buildCanonicalSelectionMetadata,
+  readRuntimeAddedExerciseIds,
   readRuntimeAddedSetIds,
   readRuntimeEditReconciliation,
   readWorkoutStructureState,
@@ -310,10 +311,12 @@ describe("workout structure reconciliation", () => {
           appliedAt: "2026-03-23T10:00:00.000Z",
           scope: "current_workout_only" as const,
           facts: {
+            workoutExerciseId: "we-2",
             exerciseId: "fly",
             orderIndex: 1,
             section: "ACCESSORY" as const,
             setCount: 3,
+            prescriptionSource: "session_accessory_defaults" as const,
           },
         },
       ],
@@ -358,10 +361,12 @@ describe("workout structure reconciliation", () => {
           appliedAt: "2026-03-23T10:00:00.000Z",
           scope: "current_workout_only" as const,
           facts: {
+            workoutExerciseId: "we-2",
             exerciseId: "fly",
             orderIndex: 1,
             section: "ACCESSORY" as const,
             setCount: 3,
+            prescriptionSource: "session_accessory_defaults" as const,
           },
         },
       ],
@@ -372,6 +377,54 @@ describe("workout structure reconciliation", () => {
         runtimeEditReconciliation,
       })
     ).toEqual(new Set(["set-4"]));
+  });
+
+  it("reads runtime-added exercise ids from explicit add_exercise provenance only", () => {
+    const runtimeEditReconciliation = {
+      version: 1 as const,
+      lastReconciledAt: "2026-03-23T10:00:00.000Z",
+      directives: {
+        continuityAlias: "none" as const,
+        progressionAlias: "none" as const,
+        futureSessionGeneration: "ignore" as const,
+        futureSeedCarryForward: "ignore" as const,
+      },
+      ops: [
+        {
+          kind: "add_exercise" as const,
+          source: "api_workouts_add_exercise" as const,
+          appliedAt: "2026-03-23T10:00:00.000Z",
+          scope: "current_workout_only" as const,
+          facts: {
+            workoutExerciseId: "we-2",
+            exerciseId: "fly",
+            orderIndex: 1,
+            section: "ACCESSORY" as const,
+            setCount: 3,
+            prescriptionSource: "session_accessory_defaults" as const,
+          },
+        },
+        {
+          kind: "add_set" as const,
+          source: "api_workouts_add_set" as const,
+          appliedAt: "2026-03-23T10:00:00.000Z",
+          scope: "current_workout_only" as const,
+          facts: {
+            workoutExerciseId: "we-2",
+            exerciseId: "fly",
+            workoutSetId: "set-4",
+            setIndex: 4,
+            clonedFromSetIndex: 3,
+          },
+        },
+      ],
+    };
+
+    expect(
+      readRuntimeAddedExerciseIds({
+        runtimeEditReconciliation,
+      })
+    ).toEqual(new Set(["we-2"]));
   });
 });
 

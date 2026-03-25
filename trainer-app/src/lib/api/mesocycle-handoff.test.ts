@@ -595,7 +595,10 @@ describe("enterMesocycleHandoffInTransaction", () => {
         },
         advancesSplit: true,
         mesocyclePhaseSnapshot: "ACCUMULATION",
-        exercises: [{ exerciseId: "bench" }, { exerciseId: "row" }],
+        exercises: [
+          { id: "we-bench-1", exerciseId: "bench" },
+          { id: "we-row-1", exerciseId: "row" },
+        ],
       },
     ]);
     const readinessFindFirst = vi.fn().mockResolvedValue({
@@ -787,10 +790,12 @@ describe("enterMesocycleHandoffInTransaction", () => {
                 appliedAt: "2026-03-24T01:00:00.000Z",
                 scope: "current_workout_only",
                 facts: {
+                  workoutExerciseId: "we-row-2",
                   exerciseId: "row",
                   orderIndex: 1,
                   section: "ACCESSORY",
                   setCount: 3,
+                  prescriptionSource: "session_accessory_defaults",
                 },
               },
             ],
@@ -798,7 +803,10 @@ describe("enterMesocycleHandoffInTransaction", () => {
         },
         advancesSplit: true,
         mesocyclePhaseSnapshot: "ACCUMULATION",
-        exercises: [{ exerciseId: "bench" }, { exerciseId: "row" }],
+        exercises: [
+          { id: "we-bench-2", exerciseId: "bench" },
+          { id: "we-row-2", exerciseId: "row" },
+        ],
       },
     ]);
     const readinessFindFirst = vi.fn().mockResolvedValue({
@@ -1384,7 +1392,10 @@ describe("handoff draft persistence", () => {
                 },
                 advancesSplit: true,
                 mesocyclePhaseSnapshot: "ACCUMULATION",
-                exercises: [{ exerciseId: "bench" }, { exerciseId: "row" }],
+                exercises: [
+                  { id: "we-bench-3", exerciseId: "bench" },
+                  { id: "we-row-3", exerciseId: "row" },
+                ],
               },
             ]),
           },

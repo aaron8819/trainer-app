@@ -36,11 +36,18 @@ export type SessionSlotShapeId =
 export type SessionSlotShape = {
   id: SessionSlotShapeId;
   preferredAccessoryPrimaryMuscles: string[];
+  protectedWeekOneCoverageMuscles?: ProtectedWeekOneCoverageMuscle[];
   requiredMovementPatterns?: MovementPatternV2[];
   avoidDuplicatePatterns?: MovementPatternV2[];
   supportPenaltyPatterns?: MovementPatternV2[];
   maxPreferredSupportPerPattern?: number;
 };
+
+export type ProtectedWeekOneCoverageMuscle =
+  | "Chest"
+  | "Triceps"
+  | "Hamstrings"
+  | "Calves";
 
 export type SessionSlotCompoundLaneKey = "press" | "pull" | "primary";
 
@@ -226,6 +233,12 @@ function resolveSessionShapeFromSupportCoverage(
   return {
     id,
     preferredAccessoryPrimaryMuscles: [...supportCoverageContract.preferredAccessoryPrimaryMuscles],
+    ...(supportCoverageContract.protectedWeekOneCoverageMuscles
+      ? {
+          protectedWeekOneCoverageMuscles:
+            supportCoverageContract.protectedWeekOneCoverageMuscles as ProtectedWeekOneCoverageMuscle[],
+        }
+      : {}),
     ...(supportCoverageContract.requiredMovementPatterns
       ? { requiredMovementPatterns: supportCoverageContract.requiredMovementPatterns }
       : {}),
@@ -241,6 +254,98 @@ function resolveSessionShapeFromSupportCoverage(
   };
 }
 
+function normalizeMuscleLabel(muscle: string): string {
+  return muscle.trim().toLowerCase();
+}
+
+export function getProtectedWeekOneCoverageObligations(
+  slot: Pick<SessionSlotPolicySlot, "sessionShape" | "slotArchetype"> | null | undefined
+): ProtectedWeekOneCoverageMuscle[] {
+  const directObligations = slot?.sessionShape?.protectedWeekOneCoverageMuscles;
+  if (directObligations && directObligations.length > 0) {
+    return Array.from(new Set(directObligations));
+  }
+
+  switch (slot?.slotArchetype) {
+    case "upper_horizontal_balanced":
+      return ["Chest", "Triceps"];
+    case "upper_vertical_balanced":
+      return ["Triceps"];
+    case "lower_hinge_dominant":
+      return ["Hamstrings", "Calves"];
+    case "lower_squat_dominant":
+      return ["Calves"];
+    default:
+      return [];
+  }
+}
+
+function getProtectedWeekOneCoverageCompatibility(
+  slot: Pick<SessionSlotPolicySlot, "sessionShape" | "slotArchetype"> | null | undefined
+): ProtectedWeekOneCoverageMuscle[] {
+  switch (slot?.slotArchetype) {
+    case "upper_horizontal_balanced":
+      return ["Chest", "Triceps"];
+    case "upper_vertical_balanced":
+      return ["Chest", "Triceps"];
+    case "lower_squat_dominant":
+      return ["Hamstrings", "Calves"];
+    case "lower_hinge_dominant":
+      return ["Hamstrings", "Calves"];
+    default:
+      return getProtectedWeekOneCoverageObligations(slot);
+  }
+}
+
+export function getProjectionRepairCompatibleMuscles(
+  slot: Pick<SessionSlotPolicySlot, "sessionShape" | "slotArchetype"> | null | undefined,
+  protectedMuscles: readonly string[]
+): ProtectedWeekOneCoverageMuscle[] {
+  const allowedByArchetype = getProtectedWeekOneCoverageCompatibility(slot);
+
+  if (allowedByArchetype.length === 0 || protectedMuscles.length === 0) {
+    return [];
+  }
+
+  const protectedSet = new Set(protectedMuscles.map(normalizeMuscleLabel));
+  return allowedByArchetype.filter((muscle, index) => {
+    if (allowedByArchetype.indexOf(muscle) !== index) {
+      return false;
+    }
+    return protectedSet.has(normalizeMuscleLabel(muscle));
+  });
+}
+
+function appendProjectionRepairMusclesToSessionShape(input: {
+  sessionShape: SessionSlotShape | undefined;
+  slot: Pick<SessionSlotPolicySlot, "sessionShape" | "slotArchetype"> | null | undefined;
+  projectionRepairMuscles?: readonly string[];
+}): SessionSlotShape | undefined {
+  if (!input.sessionShape || !input.projectionRepairMuscles || input.projectionRepairMuscles.length === 0) {
+    return input.sessionShape;
+  }
+
+  const compatibleRepairMuscles = getProjectionRepairCompatibleMuscles(
+    input.slot,
+    input.projectionRepairMuscles
+  );
+  if (compatibleRepairMuscles.length === 0) {
+    return input.sessionShape;
+  }
+
+  const preferredAccessoryPrimaryMuscles = Array.from(
+    new Set([
+      ...compatibleRepairMuscles,
+      ...input.sessionShape.preferredAccessoryPrimaryMuscles,
+    ])
+  );
+
+  return {
+    ...input.sessionShape,
+    preferredAccessoryPrimaryMuscles,
+  };
+}
+
 function buildPolicySlot(params: {
   slotSequence: Array<{
     slotId: string;
@@ -250,6 +355,7 @@ function buildPolicySlot(params: {
   }>;
   sessionIntent: SessionIntent;
   slotId: string;
+  projectionRepairMuscles?: readonly string[];
 }): SessionSlotPolicySlot | null {
   const slotEntry = params.slotSequence.find(
     (slot) => slot.slotId === params.slotId && slot.intent === params.sessionIntent
@@ -272,10 +378,16 @@ function buildPolicySlot(params: {
   const compoundControl = resolveCompoundControlFromPrimaryLaneContract(
     authoredSemantics?.primaryLaneContract ?? null
   );
-  const sessionShape = resolveSessionShapeFromSupportCoverage(
-    authoredSemantics?.slotArchetype,
-    authoredSemantics?.supportCoverageContract ?? null
-  );
+  const sessionShape = appendProjectionRepairMusclesToSessionShape({
+    sessionShape: resolveSessionShapeFromSupportCoverage(
+      authoredSemantics?.slotArchetype,
+      authoredSemantics?.supportCoverageContract ?? null
+    ),
+    slot: {
+      slotArchetype: authoredSemantics?.slotArchetype,
+    },
+    projectionRepairMuscles: params.projectionRepairMuscles,
+  });
 
   return {
     sessionIntent: params.sessionIntent,
@@ -295,6 +407,7 @@ function buildPolicySlot(params: {
 export function resolveSessionSlotPolicy(input: {
   sessionIntent: SessionIntent;
   slotId?: string;
+  projectionRepairMuscles?: readonly string[];
   slotSequence: {
     slots: readonly SlotSequenceEntry[];
   };
@@ -308,6 +421,7 @@ export function resolveSessionSlotPolicy(input: {
           slotSequence: normalizedSlotSequence,
           sessionIntent: input.sessionIntent,
           slotId: normalizedSlotId,
+          projectionRepairMuscles: input.projectionRepairMuscles,
         })
       : null;
 
@@ -335,22 +449,50 @@ export function resolveSessionSlotPolicy(input: {
 }
 
 const FUTURE_SLOT_PREFERRED_PRIMARY_MULTIPLIER = 1.15;
+const FUTURE_SLOT_PROTECTED_COVERAGE_MULTIPLIER = 1.3;
+const FUTURE_SLOT_PROTECTED_FALLBACK_MULTIPLIER = 0.65;
 
 export function getFutureSlotOpportunityBias(
   muscle: string,
   slot: SessionSlotPolicySlot
 ): number {
-  const preferredPrimaryMuscles = slot.compoundBias?.preferredPrimaryMuscles ?? [];
-  if (preferredPrimaryMuscles.length === 0) {
-    return 1;
+  const normalizedMuscle = normalizeMuscleLabel(muscle);
+  const protectedCoverageMuscles = getProtectedWeekOneCoverageObligations(slot).map(
+    normalizeMuscleLabel
+  );
+  const protectedCompatibleMuscles = getProtectedWeekOneCoverageCompatibility(slot).map(
+    normalizeMuscleLabel
+  );
+  if (
+    ["chest", "triceps", "hamstrings", "calves"].includes(normalizedMuscle)
+  ) {
+    if (protectedCompatibleMuscles.length === 0) {
+      return 0;
+    }
+    if (!protectedCompatibleMuscles.includes(normalizedMuscle)) {
+      return 0;
+    }
+    if (!protectedCoverageMuscles.includes(normalizedMuscle)) {
+      return FUTURE_SLOT_PROTECTED_FALLBACK_MULTIPLIER;
+    }
   }
 
-  const normalizedMuscle = muscle.trim().toLowerCase();
-  return preferredPrimaryMuscles.some(
+  const preferredPrimaryMuscles = slot.compoundBias?.preferredPrimaryMuscles ?? [];
+  if (preferredPrimaryMuscles.length === 0) {
+    return protectedCoverageMuscles.includes(normalizedMuscle)
+      ? FUTURE_SLOT_PROTECTED_COVERAGE_MULTIPLIER
+      : 1;
+  }
+
+  const preferredBias = preferredPrimaryMuscles.some(
     (preferredMuscle) => preferredMuscle.trim().toLowerCase() === normalizedMuscle
   )
     ? FUTURE_SLOT_PREFERRED_PRIMARY_MULTIPLIER
     : 1;
+
+  return protectedCoverageMuscles.includes(normalizedMuscle)
+    ? Math.max(preferredBias, FUTURE_SLOT_PROTECTED_COVERAGE_MULTIPLIER)
+    : preferredBias;
 }
 
 type CompoundLaneExercise = Pick<

@@ -2121,6 +2121,7 @@ export function composeIntentSessionFromMappedContext(
   const objective = buildSelectionObjective(mapped, input.intent, input.targetMuscles, {
     supplementalPlannerProfile: input.supplementalPlannerProfile,
     sessionSlotId,
+    projectionRepairMuscles: input.projectionRepairMuscles,
   });
   const isDeloadSession = mapped.effectivePeriodization.isDeload;
   const planningInventoryKind = getSessionPlanningInventoryKind(input);

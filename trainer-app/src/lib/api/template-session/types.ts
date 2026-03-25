@@ -43,6 +43,7 @@ export type GenerateIntentSessionInput = {
   slotId?: string;
   advancingSlot?: SessionSlotSnapshot;
   targetMuscles?: string[];
+  projectionRepairMuscles?: string[];
   anchorWeek?: number;
   weekCloseId?: string;
   optionalGapFillContext?: {

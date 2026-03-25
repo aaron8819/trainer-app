@@ -4,6 +4,7 @@ import {
   classifyExerciseForCompoundLane,
   doesExerciseSatisfyRequiredSessionShapePattern,
   getFutureSlotOpportunityBias,
+  getProjectionRepairCompatibleMuscles,
   isExerciseAllowedForAnyCompoundLaneSatisfaction,
   isExerciseAllowedForCompoundLaneSatisfaction,
   resolveSessionSlotCompoundLaneState,
@@ -53,9 +54,12 @@ describe("resolveSessionSlotPolicy", () => {
       },
       sessionShape: {
         id: "upper_horizontal_balanced",
-        preferredAccessoryPrimaryMuscles: ["Chest", "Upper Back", "Rear Delts"],
+        preferredAccessoryPrimaryMuscles: ["Chest", "Triceps"],
+        protectedWeekOneCoverageMuscles: ["Chest", "Triceps"],
         requiredMovementPatterns: ["vertical_pull", "horizontal_pull"],
         avoidDuplicatePatterns: ["horizontal_pull"],
+        supportPenaltyPatterns: ["horizontal_pull", "vertical_pull"],
+        maxPreferredSupportPerPattern: 1,
       },
       compoundControl: {
         lanes: [
@@ -96,10 +100,11 @@ describe("resolveSessionSlotPolicy", () => {
       },
       sessionShape: {
         id: "upper_vertical_balanced",
-        preferredAccessoryPrimaryMuscles: ["Lats", "Front Delts", "Side Delts"],
+        preferredAccessoryPrimaryMuscles: ["Chest", "Triceps", "Side Delts"],
+        protectedWeekOneCoverageMuscles: ["Chest", "Triceps"],
         requiredMovementPatterns: ["horizontal_pull"],
         avoidDuplicatePatterns: ["vertical_pull"],
-        supportPenaltyPatterns: ["vertical_push"],
+        supportPenaltyPatterns: ["vertical_push", "vertical_pull"],
         maxPreferredSupportPerPattern: 1,
       },
       compoundControl: {
@@ -144,7 +149,8 @@ describe("resolveSessionSlotPolicy", () => {
       },
       sessionShape: {
         id: "lower_squat_dominant",
-        preferredAccessoryPrimaryMuscles: ["Quads"],
+        preferredAccessoryPrimaryMuscles: ["Quads", "Calves"],
+        protectedWeekOneCoverageMuscles: ["Calves"],
         requiredMovementPatterns: ["hinge"],
         avoidDuplicatePatterns: ["squat"],
         supportPenaltyPatterns: ["hinge"],
@@ -185,7 +191,8 @@ describe("resolveSessionSlotPolicy", () => {
       },
       sessionShape: {
         id: "lower_hinge_dominant",
-        preferredAccessoryPrimaryMuscles: ["Hamstrings", "Glutes"],
+        preferredAccessoryPrimaryMuscles: ["Hamstrings", "Calves", "Glutes"],
+        protectedWeekOneCoverageMuscles: ["Hamstrings", "Calves"],
         requiredMovementPatterns: ["squat"],
         avoidDuplicatePatterns: ["hinge"],
         supportPenaltyPatterns: ["squat"],
@@ -258,7 +265,8 @@ describe("resolveSessionSlotPolicy", () => {
         },
         sessionShape: {
           id: "lower_squat_dominant",
-          preferredAccessoryPrimaryMuscles: ["Quads"],
+          preferredAccessoryPrimaryMuscles: ["Quads", "Calves"],
+          protectedWeekOneCoverageMuscles: ["Calves"],
           requiredMovementPatterns: ["hinge"],
           avoidDuplicatePatterns: ["squat"],
           supportPenaltyPatterns: ["hinge"],
@@ -291,10 +299,11 @@ describe("resolveSessionSlotPolicy", () => {
         },
         sessionShape: {
           id: "upper_vertical_balanced",
-          preferredAccessoryPrimaryMuscles: ["Lats", "Front Delts", "Side Delts"],
+          preferredAccessoryPrimaryMuscles: ["Chest", "Triceps", "Side Delts"],
+          protectedWeekOneCoverageMuscles: ["Chest", "Triceps"],
           requiredMovementPatterns: ["horizontal_pull"],
           avoidDuplicatePatterns: ["vertical_pull"],
-          supportPenaltyPatterns: ["vertical_push"],
+          supportPenaltyPatterns: ["vertical_push", "vertical_pull"],
           maxPreferredSupportPerPattern: 1,
         },
         compoundControl: {
@@ -331,6 +340,61 @@ describe("resolveSessionSlotPolicy", () => {
 
     expect(getFutureSlotOpportunityBias("Hamstrings", lowerB)).toBeGreaterThan(1);
     expect(getFutureSlotOpportunityBias("Quads", lowerB)).toBe(1);
+  });
+
+  it("exposes only slot-compatible protected repair muscles", () => {
+    const upperA = resolveSessionSlotPolicy({
+      sessionIntent: "upper",
+      slotId: "upper_a",
+      slotSequence,
+    }).currentSession;
+    const upperB = resolveSessionSlotPolicy({
+      sessionIntent: "upper",
+      slotId: "upper_b",
+      slotSequence,
+    }).currentSession;
+    const lowerA = resolveSessionSlotPolicy({
+      sessionIntent: "lower",
+      slotId: "lower_a",
+      slotSequence,
+    }).currentSession;
+    const lowerB = resolveSessionSlotPolicy({
+      sessionIntent: "lower",
+      slotId: "lower_b",
+      slotSequence,
+    }).currentSession;
+
+    expect(
+      getProjectionRepairCompatibleMuscles(upperA, ["Chest", "Triceps", "Hamstrings", "Calves"])
+    ).toEqual(["Chest", "Triceps"]);
+    expect(
+      getProjectionRepairCompatibleMuscles(upperB, ["Chest", "Triceps", "Hamstrings", "Calves"])
+    ).toEqual(["Chest", "Triceps"]);
+    expect(
+      getProjectionRepairCompatibleMuscles(lowerA, ["Chest", "Triceps", "Hamstrings", "Calves"])
+    ).toEqual(["Hamstrings", "Calves"]);
+    expect(
+      getProjectionRepairCompatibleMuscles(lowerB, ["Chest", "Triceps", "Hamstrings", "Calves"])
+    ).toEqual(["Hamstrings", "Calves"]);
+  });
+
+  it("prioritizes protected coverage muscles on the current slot session shape only when requested", () => {
+    const policy = resolveSessionSlotPolicy({
+      sessionIntent: "upper",
+      slotId: "upper_b",
+      projectionRepairMuscles: ["Chest", "Triceps", "Hamstrings", "Calves"],
+      slotSequence,
+      futureSlots: [{ slotId: "lower_b", intent: "lower", sequenceIndex: 3 }],
+    });
+
+    expect(policy.currentSession?.sessionShape?.preferredAccessoryPrimaryMuscles).toEqual([
+      "Chest",
+      "Triceps",
+      "Side Delts",
+    ]);
+    expect(
+      policy.futurePlanning.futureSlots[0]?.sessionShape?.preferredAccessoryPrimaryMuscles
+    ).toEqual(["Hamstrings", "Calves", "Glutes"]);
   });
 
   it("resolves per-lane active tiers and allowed exercises from the canonical contract", () => {

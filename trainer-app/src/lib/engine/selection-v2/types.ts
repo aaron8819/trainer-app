@@ -67,6 +67,12 @@ export interface SelectionObjective {
   preferences: SelectionPreferences;
 
   /**
+   * Projection-only protected-coverage repair muscles used by handoff slot-plan repair.
+   * No-op for normal runtime generation.
+   */
+  projectionRepairMuscles?: Set<Muscle>;
+
+  /**
    * Training goals (for rep range estimation and set-count multiplier)
    */
   goals?: Goals;

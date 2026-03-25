@@ -28,6 +28,7 @@ import { getRestSeconds, REST_SECONDS } from "../prescription";
 
 const COMPOUND_SLOT_PROFILE_ALIGNMENT_WEIGHT = 0.18;
 export const SESSION_SHAPE_ALIGNMENT_WEIGHT = 0.12;
+const PROJECTION_REPAIR_ALIGNMENT_WEIGHT = 0.35;
 
 function buildDeficitScoringContribution(
   exercise: Exercise,
@@ -60,6 +61,22 @@ function buildDeficitScoringContribution(
   }
 
   return filtered;
+}
+
+function scoreProjectionRepairAlignment(
+  contribution: VolumeContribution,
+  projectionRepairMuscles: SelectionObjective["projectionRepairMuscles"]
+): number {
+  if (!projectionRepairMuscles || projectionRepairMuscles.size === 0) {
+    return 0;
+  }
+
+  const coveredMuscles = Array.from(contribution.entries()).filter(
+    ([muscle, effectiveSets]) => projectionRepairMuscles.has(muscle) && effectiveSets > 0
+  );
+  return coveredMuscles.length > 0
+    ? coveredMuscles.length / projectionRepairMuscles.size
+    : 0;
 }
 
 /**
@@ -112,7 +129,9 @@ export function buildCandidate(
     scores.sraAlignment * objective.weights.sraReadiness +
     scores.userPreference * objective.weights.userPreference +
     (scores.slotProfileAlignment ?? 0) * COMPOUND_SLOT_PROFILE_ALIGNMENT_WEIGHT +
-    (scores.sessionShapeAlignment ?? 0) * SESSION_SHAPE_ALIGNMENT_WEIGHT;
+    (scores.sessionShapeAlignment ?? 0) * SESSION_SHAPE_ALIGNMENT_WEIGHT +
+    scoreProjectionRepairAlignment(volumeContribution, objective.projectionRepairMuscles) *
+      PROJECTION_REPAIR_ALIGNMENT_WEIGHT;
 
   return {
     exercise,

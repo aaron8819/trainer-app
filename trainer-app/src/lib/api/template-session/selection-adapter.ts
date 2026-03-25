@@ -242,6 +242,7 @@ export function buildSelectionObjective(
   options?: {
     supplementalPlannerProfile?: boolean;
     sessionSlotId?: string;
+    projectionRepairMuscles?: string[];
   }
 ): SelectionObjective {
   const fatigueState = deriveFatigueState(mapped.history, mapped.mappedCheckIn);
@@ -267,7 +268,13 @@ export function buildSelectionObjective(
 
   const normalizedTargets = new Set((targetMuscles ?? []).map((muscle) => muscle.trim().toLowerCase()));
   const supplementalPlannerProfile = options?.supplementalPlannerProfile === true;
+  const projectionCoverageExtraExerciseBudget =
+    options?.projectionRepairMuscles && options.projectionRepairMuscles.length > 0 ? 1 : 0;
   const targetCount = normalizedTargets.size || (targetMuscles?.length ?? 0);
+  const projectionMultiTargetExtraExerciseBudget =
+    options?.projectionRepairMuscles && options.projectionRepairMuscles.length > 0 && targetCount > 1
+      ? 1
+      : 0;
   const supplementalMinExercises =
     targetCount > 1
       ? SUPPLEMENTAL_SESSION_CAPS.minExercisesMultiTarget
@@ -287,6 +294,7 @@ export function buildSelectionObjective(
   const slotPolicy = resolveSessionSlotPolicy({
     sessionIntent,
     slotId: options?.sessionSlotId,
+    projectionRepairMuscles: options?.projectionRepairMuscles,
     slotSequence: runtimeSlotSequence,
     futureSlots: buildRemainingFutureSlotsFromRuntime({
       slotSequenceJson: mapped.activeMesocycle?.slotSequenceJson,
@@ -422,7 +430,11 @@ export function buildSelectionObjective(
     painConflicts: painConflictIds,
     userAvoids,
     minExercises: supplementalPlannerProfile ? supplementalMinExercises : SESSION_CAPS.minExercises,
-    maxExercises: supplementalPlannerProfile ? supplementalMaxExercises : SESSION_CAPS.maxExercises,
+    maxExercises: supplementalPlannerProfile
+      ? supplementalMaxExercises
+      : SESSION_CAPS.maxExercises +
+        projectionCoverageExtraExerciseBudget +
+        projectionMultiTargetExtraExerciseBudget,
     minMainLifts: sessionIntent === "body_part" ? 0 : 1,
     maxMainLifts: supplementalPlannerProfile ? 0 : 3,
     minAccessories: supplementalPlannerProfile ? 1 : 2,
@@ -474,6 +486,7 @@ export function buildSelectionObjective(
     goals: mapped.mappedGoals,
     trainingAge: mapped.mappedProfile.trainingAge,
     sessionIntent,
+    projectionRepairMuscles: new Set((options?.projectionRepairMuscles ?? []) as Muscle[]),
   };
 }
 

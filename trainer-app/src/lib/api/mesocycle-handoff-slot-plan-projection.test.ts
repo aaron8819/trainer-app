@@ -267,6 +267,64 @@ function buildSnapshot(): PreloadedGenerationSnapshot {
   } as unknown as PreloadedGenerationSnapshot;
 }
 
+function buildRepairSensitiveSnapshot(): PreloadedGenerationSnapshot {
+  const snapshot = buildSnapshot();
+  snapshot.context.exercises.push(
+    makeRawExercise({
+      id: "triceps-pressdown",
+      name: "Cable Triceps Pressdown",
+      movementPatterns: ["isolation"],
+      splitTags: ["push"],
+      equipment: ["CABLE"],
+      primaryMuscles: ["Triceps"],
+      isMainLiftEligible: false,
+      isCompound: false,
+      fatigueCost: 1,
+    }) as never,
+    makeRawExercise({
+      id: "seated-calf-raise",
+      name: "Seated Calf Raise",
+      movementPatterns: ["isolation"],
+      splitTags: ["legs"],
+      equipment: ["MACHINE"],
+      primaryMuscles: ["Calves"],
+      isMainLiftEligible: false,
+      isCompound: false,
+      fatigueCost: 1,
+    }) as never,
+    makeRawExercise({
+      id: "donkey-calf-raise",
+      name: "Donkey Calf Raise",
+      movementPatterns: ["isolation"],
+      splitTags: ["legs"],
+      equipment: ["MACHINE"],
+      primaryMuscles: ["Calves"],
+      isMainLiftEligible: false,
+      isCompound: false,
+      fatigueCost: 1,
+    }) as never
+  );
+  return snapshot;
+}
+
+function buildProtectedCoverageSatisfiedSnapshot(): PreloadedGenerationSnapshot {
+  const snapshot = buildRepairSensitiveSnapshot();
+  snapshot.context.exercises.push(
+    makeRawExercise({
+      id: "overhead-triceps-extension",
+      name: "Overhead Triceps Extension",
+      movementPatterns: ["isolation"],
+      splitTags: ["push"],
+      equipment: ["CABLE"],
+      primaryMuscles: ["Triceps"],
+      isMainLiftEligible: false,
+      isCompound: false,
+      fatigueCost: 1,
+    }) as never
+  );
+  return snapshot;
+}
+
 function buildDraft(): NextCycleSeedDraft {
   return {
     version: 1,
@@ -379,6 +437,28 @@ function buildDesign(draft: NextCycleSeedDraft = buildDraft()) {
   });
 }
 
+function buildRepairSensitiveDraft(): NextCycleSeedDraft {
+  const draft = buildDraft();
+  return {
+    ...draft,
+    carryForwardSelections: draft.carryForwardSelections.filter(
+      (selection) => selection.exerciseId !== "row"
+    ),
+  };
+}
+
+function getProjectedSlotPlans(
+  projected: ReturnType<typeof projectSuccessorSlotPlansFromSnapshot>
+) {
+  return "error" in projected ? projected.slotPlans ?? [] : projected.slotPlans;
+}
+
+function getProtectedCoverageDiagnostics(
+  projected: ReturnType<typeof projectSuccessorSlotPlansFromSnapshot>
+) {
+  return projected.diagnostics?.protectedCoverage;
+}
+
 describe("projectSuccessorSlotPlansFromSnapshot", () => {
   it("is deterministic for the same snapshot and draft inputs", () => {
     const input = {
@@ -404,13 +484,11 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
       now: new Date("2026-03-19T12:00:00.000Z"),
     });
 
-    expect("error" in projected).toBe(false);
-    if ("error" in projected) return;
-
-    const upperA = projected.slotPlans.find((slot) => slot.slotId === "upper_a");
-    const upperB = projected.slotPlans.find((slot) => slot.slotId === "upper_b");
-    const lowerA = projected.slotPlans.find((slot) => slot.slotId === "lower_a");
-    const lowerB = projected.slotPlans.find((slot) => slot.slotId === "lower_b");
+    const slotPlans = getProjectedSlotPlans(projected);
+    const upperA = slotPlans.find((slot) => slot.slotId === "upper_a");
+    const upperB = slotPlans.find((slot) => slot.slotId === "upper_b");
+    const lowerA = slotPlans.find((slot) => slot.slotId === "lower_a");
+    const lowerB = slotPlans.find((slot) => slot.slotId === "lower_b");
 
     expect(upperA?.exercises.length).toBeGreaterThan(0);
     expect(upperB?.exercises.length).toBeGreaterThan(0);
@@ -426,7 +504,7 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
   it("reuses the extracted generation seam for each projected slot", () => {
     composeIntentSessionFromMappedContextSpy.mockClear();
 
-    const projected = projectSuccessorSlotPlansFromSnapshot({
+    projectSuccessorSlotPlansFromSnapshot({
       userId: "user-1",
       source: buildSource(),
       design: buildDesign(),
@@ -434,11 +512,25 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
       now: new Date("2026-03-19T12:00:00.000Z"),
     });
 
-    expect("error" in projected).toBe(false);
-    expect(composeIntentSessionFromMappedContextSpy).toHaveBeenCalledTimes(4);
+    expect(composeIntentSessionFromMappedContextSpy).toHaveBeenCalledTimes(14);
     expect(
       composeIntentSessionFromMappedContextSpy.mock.calls.map(([, input]) => input.slotId)
-    ).toEqual(["upper_a", "lower_a", "upper_b", "lower_b"]);
+    ).toEqual([
+      "upper_a",
+      "upper_a",
+      "upper_a",
+      "upper_a",
+      "lower_a",
+      "lower_a",
+      "upper_b",
+      "upper_b",
+      "upper_b",
+      "upper_b",
+      "lower_b",
+      "lower_b",
+      "lower_b",
+      "lower_b",
+    ]);
   });
 
   it("keeps later duplicate-intent slots sensitive to earlier projected work", () => {
@@ -450,13 +542,11 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
       now: new Date("2026-03-19T12:00:00.000Z"),
     });
 
-    expect("error" in projected).toBe(false);
-    if ("error" in projected) return;
-
-    const upperA = projected.slotPlans.find((slot) => slot.slotId === "upper_a");
-    const upperB = projected.slotPlans.find((slot) => slot.slotId === "upper_b");
-    const lowerA = projected.slotPlans.find((slot) => slot.slotId === "lower_a");
-    const lowerB = projected.slotPlans.find((slot) => slot.slotId === "lower_b");
+    const slotPlans = getProjectedSlotPlans(projected);
+    const upperA = slotPlans.find((slot) => slot.slotId === "upper_a");
+    const upperB = slotPlans.find((slot) => slot.slotId === "upper_b");
+    const lowerA = slotPlans.find((slot) => slot.slotId === "lower_a");
+    const lowerB = slotPlans.find((slot) => slot.slotId === "lower_b");
 
     expect(upperA?.exercises.map((exercise) => exercise.exerciseId)).toContain("bench");
     expect(upperB?.exercises.map((exercise) => exercise.exerciseId)).toContain("bench");
@@ -499,10 +589,7 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
       now: new Date("2026-03-19T12:00:00.000Z"),
     });
 
-    expect("error" in projected).toBe(false);
-    if ("error" in projected) return;
-
-    const upperB = projected.slotPlans.find((slot) => slot.slotId === "upper_b");
+    const upperB = getProjectedSlotPlans(projected).find((slot) => slot.slotId === "upper_b");
     const upperBExerciseIds = upperB?.exercises.map((exercise) => exercise.exerciseId) ?? [];
 
     expect(
@@ -539,5 +626,132 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
       error:
         "MESOCYCLE_HANDOFF_SLOT_PLAN_UNSUPPORTED: BODY_PART slot body_part_a requires target muscles for deterministic projection.",
     });
+  });
+
+  it("constructs against protected coverage obligations and improves protected coverage when compatibility is available", async () => {
+    const input = {
+      userId: "user-1",
+      source: buildSource(),
+      design: buildDesign(buildRepairSensitiveDraft()),
+      snapshot: buildRepairSensitiveSnapshot(),
+      now: new Date("2026-03-19T12:00:00.000Z"),
+    };
+
+    const repaired = projectSuccessorSlotPlansFromSnapshot(input);
+
+    vi.resetModules();
+    vi.doMock("@/lib/planning/session-slot-profile", async (importOriginal) => {
+      const original =
+        await importOriginal<typeof import("@/lib/planning/session-slot-profile")>();
+      return {
+        ...original,
+        getProjectionRepairCompatibleMuscles: () => [],
+      };
+    });
+    const { projectSuccessorSlotPlansFromSnapshot: projectWithoutRepairCompatibility } =
+      await import("./mesocycle-handoff-slot-plan-projection");
+    const unrepaired = projectWithoutRepairCompatibility(input);
+    vi.resetModules();
+    vi.doUnmock("@/lib/planning/session-slot-profile");
+
+    const repairedDiagnostics = getProtectedCoverageDiagnostics(repaired);
+    const unrepairedDiagnostics = getProtectedCoverageDiagnostics(unrepaired);
+    expect(repairedDiagnostics?.slotRepairMuscles).toEqual(
+      expect.objectContaining({
+        upper_a: expect.arrayContaining(["Chest", "Triceps"]),
+        lower_b: expect.arrayContaining(["Calves"]),
+      })
+    );
+    const repairedMevShortfall =
+      repairedDiagnostics?.afterRepair.muscles.reduce(
+        (sum, row) => sum + row.deficitToMev,
+        0
+      ) ?? 0;
+    const unrepairedMevShortfall =
+      unrepairedDiagnostics?.afterRepair.muscles.reduce(
+        (sum, row) => sum + row.deficitToMev,
+        0
+      ) ?? 0;
+    expect(repairedMevShortfall).toBeLessThan(unrepairedMevShortfall);
+    expect(
+      (repairedDiagnostics?.afterRepair.muscles.find((row) => row.muscle === "Calves")
+        ?.projectedEffectiveSets ?? 0)
+    ).toBeGreaterThan(
+      unrepairedDiagnostics?.afterRepair.muscles.find((row) => row.muscle === "Calves")
+        ?.projectedEffectiveSets ?? 0
+    );
+
+    const repairedSlotPlans = getProjectedSlotPlans(repaired);
+    const upperA = repairedSlotPlans.find((slot) => slot.slotId === "upper_a");
+    const upperB = repairedSlotPlans.find((slot) => slot.slotId === "upper_b");
+    const lowerA = repairedSlotPlans.find((slot) => slot.slotId === "lower_a");
+    const lowerB = repairedSlotPlans.find((slot) => slot.slotId === "lower_b");
+
+    expect(upperA?.exercises.map((exercise) => exercise.exerciseId)).not.toEqual(
+      upperB?.exercises.map((exercise) => exercise.exerciseId)
+    );
+    expect(lowerA?.exercises.map((exercise) => exercise.exerciseId)).not.toEqual(
+      lowerB?.exercises.map((exercise) => exercise.exerciseId)
+    );
+    expect(
+      upperB?.exercises.some((exercise) => ["row", "seated-row", "pulldown"].includes(exercise.exerciseId))
+    ).toBe(true);
+    expect(
+      lowerB?.exercises.some((exercise) =>
+        ["rdl", "hack-squat", "leg-curl", "hip-thrust"].includes(exercise.exerciseId)
+      )
+    ).toBe(true);
+  });
+
+  it("returns a constructor failure with diagnostics when protected viability still cannot be satisfied", async () => {
+    const projected = projectSuccessorSlotPlansFromSnapshot({
+      userId: "user-1",
+      source: buildSource(),
+      design: buildDesign(),
+      snapshot: buildSnapshot(),
+      now: new Date("2026-03-19T12:00:00.000Z"),
+    });
+
+    expect("error" in projected).toBe(true);
+    if (!("error" in projected)) return;
+
+    expect(projected.error).toContain("MESOCYCLE_HANDOFF_SLOT_PLAN_PROTECTED_COVERAGE_UNSATISFIED");
+    expect(projected.slotPlans?.length).toBe(4);
+    expect(projected.diagnostics?.protectedCoverage.unresolvedProtectedMuscles.length).toBeGreaterThan(0);
+  });
+
+  it("accepts the seed when the constructed week clears protected viability", async () => {
+    vi.resetModules();
+    vi.doMock("@/lib/engine/volume-landmarks", async (importOriginal) => {
+      const original =
+        await importOriginal<typeof import("@/lib/engine/volume-landmarks")>();
+      return {
+        ...original,
+        VOLUME_LANDMARKS: {
+          ...original.VOLUME_LANDMARKS,
+          Chest: { ...original.VOLUME_LANDMARKS.Chest, mev: 6 },
+          Triceps: { ...original.VOLUME_LANDMARKS.Triceps, mev: 3 },
+          Hamstrings: { ...original.VOLUME_LANDMARKS.Hamstrings, mev: 4 },
+          Calves: { ...original.VOLUME_LANDMARKS.Calves, mev: 4 },
+        },
+      };
+    });
+    const { projectSuccessorSlotPlansFromSnapshot: projectWithLoweredMevTrigger } =
+      await import("./mesocycle-handoff-slot-plan-projection");
+    const projected = projectWithLoweredMevTrigger({
+      userId: "user-1",
+      source: buildSource(),
+      design: buildDesign(buildRepairSensitiveDraft()),
+      snapshot: buildProtectedCoverageSatisfiedSnapshot(),
+      now: new Date("2026-03-19T12:00:00.000Z"),
+    });
+    vi.resetModules();
+    vi.doUnmock("@/lib/engine/volume-landmarks");
+
+    expect("error" in projected).toBe(false);
+    if ("error" in projected) return;
+
+    expect(projected.diagnostics?.protectedCoverage.attemptedRepair).toBe(false);
+    expect(projected.diagnostics?.protectedCoverage.unresolvedProtectedMuscles).toEqual([]);
   });
 });

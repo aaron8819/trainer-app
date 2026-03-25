@@ -8,6 +8,15 @@ import type {
 } from "@prisma/client";
 import type { WorkoutExercise, WorkoutHistoryEntry, WorkoutPlan } from "@/lib/engine/types";
 import type { MacroCycle, Mesocycle as EngineMesocycle } from "@/lib/engine/periodization/types";
+import { VOLUME_LANDMARKS } from "@/lib/engine/volume-landmarks";
+import { getEffectiveStimulusByMuscle } from "@/lib/engine/stimulus";
+import {
+  doesExerciseSatisfyRequiredSessionShapePattern,
+  getProtectedWeekOneCoverageObligations,
+  getProjectionRepairCompatibleMuscles,
+  resolveSessionSlotPolicy,
+  type ProtectedWeekOneCoverageMuscle,
+} from "@/lib/planning/session-slot-profile";
 import {
   mapAdaptationType,
   mapBlockType,
@@ -30,6 +39,7 @@ import {
   type SuccessorMesocycleProjectionSource,
 } from "./mesocycle-handoff-projection";
 import type { MesocycleSlotSequence } from "./mesocycle-slot-contract";
+import { getWeeklyVolumeTarget } from "./mesocycle-lifecycle";
 
 export type ProjectedSuccessorSlotPlanExercise = {
   exerciseId: string;
@@ -44,6 +54,22 @@ export type ProjectedSuccessorSlotPlan = {
 
 export type SuccessorSlotPlanProjection = {
   slotPlans: ProjectedSuccessorSlotPlan[];
+  diagnostics?: {
+    protectedCoverage: {
+      beforeRepair: ProtectedWeekOneCoverageEvaluation;
+      afterRepair: ProtectedWeekOneCoverageEvaluation;
+      attemptedRepair: boolean;
+      repairedSlotIds: string[];
+      slotRepairMuscles: Record<string, ProtectedWeekOneCoverageMuscle[]>;
+      unresolvedProtectedMuscles: ProtectedWeekOneCoverageMuscle[];
+    };
+  };
+};
+
+type FailedSuccessorSlotPlanProjection = {
+  error: string;
+  slotPlans?: ProjectedSuccessorSlotPlan[];
+  diagnostics?: SuccessorSlotPlanProjection["diagnostics"];
 };
 
 export type MesocycleSlotPlanSeed = {
@@ -60,6 +86,37 @@ type SyntheticProjectionContext = {
   mesocycleId: string;
   lifecycleWeek: number;
 };
+
+type ProjectedSlotWorkout = {
+  slotPlan: ProjectedSuccessorSlotPlan;
+  workout: WorkoutPlan;
+  projectedContributionByMuscle: Map<string, number>;
+  repairMuscles: ProtectedWeekOneCoverageMuscle[];
+};
+
+type ProtectedWeekOneCoverageRow = {
+  muscle: ProtectedWeekOneCoverageMuscle;
+  mev: number;
+  weeklyTarget: number;
+  projectedEffectiveSets: number;
+  deficitToMev: number;
+  deficitToTarget: number;
+  belowMev: boolean;
+  compatibleSlotIds: string[];
+};
+
+type ProtectedWeekOneCoverageEvaluation = {
+  muscles: ProtectedWeekOneCoverageRow[];
+  deficitsBelowMev: ProtectedWeekOneCoverageRow[];
+  unresolvedProtectedMuscles: ProtectedWeekOneCoverageMuscle[];
+};
+
+const PROTECTED_WEEK_ONE_COVERAGE_MUSCLES: ProtectedWeekOneCoverageMuscle[] = [
+  "Chest",
+  "Triceps",
+  "Hamstrings",
+  "Calves",
+];
 
 function slotIdsAlignWithSlotSequence(input: {
   slotSequence: MesocycleSlotSequence;
@@ -97,6 +154,106 @@ export function buildMesocycleSlotPlanSeed(input: {
 
 function toSessionIntent(intent: WorkoutSessionIntent) {
   return intent.toLowerCase() as SessionIntent;
+}
+
+function roundToTenth(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
+function computeWorkoutContributionByMuscle(workout: WorkoutPlan): Map<string, number> {
+  const contributionByMuscle = new Map<string, number>();
+
+  for (const exercise of [...workout.mainLifts, ...workout.accessories]) {
+    const setCount = exercise.sets.length;
+    if (setCount <= 0) {
+      continue;
+    }
+
+    for (const [muscle, effectiveSets] of getEffectiveStimulusByMuscle(
+      exercise.exercise,
+      setCount
+    )) {
+      contributionByMuscle.set(
+        muscle,
+        (contributionByMuscle.get(muscle) ?? 0) + effectiveSets
+      );
+    }
+  }
+
+  return contributionByMuscle;
+}
+
+function buildSlotSequenceEntries(
+  slotSequence: ReadonlyArray<{
+    slotId: string;
+    intent: WorkoutSessionIntent;
+    authoredSemantics?: MesocycleSlotSequence["slots"][number]["authoredSemantics"];
+  }>
+) {
+  return slotSequence.map((slot, sequenceIndex) => ({
+    slotId: slot.slotId,
+    intent: slot.intent,
+    sequenceIndex,
+    authoredSemantics: slot.authoredSemantics,
+  }));
+}
+
+function evaluateProtectedWeekOneCoverage(input: {
+  projectedSlots: ReadonlyArray<ProjectedSlotWorkout>;
+  activeMesocycle: NonNullable<MappedGenerationContext["activeMesocycle"]>;
+  slotSequence: ReadonlyArray<{
+    slotId: string;
+    intent: WorkoutSessionIntent;
+    authoredSemantics?: MesocycleSlotSequence["slots"][number]["authoredSemantics"];
+  }>;
+}): ProtectedWeekOneCoverageEvaluation {
+  const projectedTotals = new Map<string, number>();
+  const slotSequenceEntries = buildSlotSequenceEntries(input.slotSequence);
+
+  for (const projectedSlot of input.projectedSlots) {
+    for (const [muscle, effectiveSets] of projectedSlot.projectedContributionByMuscle) {
+      projectedTotals.set(muscle, (projectedTotals.get(muscle) ?? 0) + effectiveSets);
+    }
+  }
+
+  const muscles = PROTECTED_WEEK_ONE_COVERAGE_MUSCLES.map((muscle) => {
+    const slotCompatibility = input.slotSequence
+      .map((slot) => {
+        const slotPolicy = resolveSessionSlotPolicy({
+          sessionIntent: toSessionIntent(slot.intent),
+          slotId: slot.slotId,
+          slotSequence: {
+            slots: slotSequenceEntries,
+          },
+        }).currentSession;
+        const compatibleMuscles = getProjectionRepairCompatibleMuscles(slotPolicy, [muscle]);
+        return compatibleMuscles.includes(muscle) ? slot.slotId : null;
+      })
+      .filter((slotId): slotId is string => Boolean(slotId));
+    const mev = VOLUME_LANDMARKS[muscle].mev;
+    const weeklyTarget = getWeeklyVolumeTarget(input.activeMesocycle, muscle, 1);
+    const projectedEffectiveSets = projectedTotals.get(muscle) ?? 0;
+    const deficitToMev = Math.max(0, mev - projectedEffectiveSets);
+    const deficitToTarget = Math.max(0, weeklyTarget - projectedEffectiveSets);
+
+    return {
+      muscle,
+      mev,
+      weeklyTarget,
+      projectedEffectiveSets: roundToTenth(projectedEffectiveSets),
+      deficitToMev: roundToTenth(deficitToMev),
+      deficitToTarget: roundToTenth(deficitToTarget),
+      belowMev: deficitToMev > 0,
+      compatibleSlotIds: slotCompatibility,
+    } satisfies ProtectedWeekOneCoverageRow;
+  });
+
+  const deficitsBelowMev = muscles.filter((muscle) => muscle.belowMev);
+  return {
+    muscles,
+    deficitsBelowMev,
+    unresolvedProtectedMuscles: deficitsBelowMev.map((muscle) => muscle.muscle),
+  };
 }
 
 function toMacroPrimaryGoal(
@@ -257,11 +414,15 @@ function buildSyntheticProjectionContext(input: {
         },
         activeMesocycle: syntheticActiveMesocycle,
         rotationContext: new Map(input.snapshot.rotationContext),
-        mesocycleRoleRows: projection.carriedForwardRoles.map((selection) => ({
-          exerciseId: selection.exerciseId,
-          role: selection.role,
-          sessionIntent: selection.sessionIntent,
-        })),
+        // Seed projection keeps compound continuity anchored, but leaves accessory
+        // allocation flexible so Week 1 coverage can be constructed before persistence.
+        mesocycleRoleRows: projection.carriedForwardRoles
+          .filter((selection) => selection.role === "CORE_COMPOUND")
+          .map((selection) => ({
+            exerciseId: selection.exerciseId,
+            role: selection.role,
+            sessionIntent: selection.sessionIntent,
+          })),
         phaseBlockContext,
       },
       { anchorWeek: 1 }
@@ -347,20 +508,196 @@ function applyProjectedSlotToMappedContext(input: {
   }
 }
 
-export function projectSuccessorSlotPlansFromSnapshot(input: {
+function scoreProtectedCoverageContribution(input: {
+  contributionByMuscle: Map<string, number>;
+  protectedMuscles: readonly ProtectedWeekOneCoverageMuscle[];
+}) {
+  const coveredMuscleCount = input.protectedMuscles.filter(
+    (muscle) => (input.contributionByMuscle.get(muscle) ?? 0) > 0
+  ).length;
+  const totalCoverage = input.protectedMuscles.reduce(
+    (sum, muscle) => sum + (input.contributionByMuscle.get(muscle) ?? 0),
+    0
+  );
+
+  return {
+    coveredMuscleCount,
+    totalCoverage,
+  };
+}
+
+function preservesSlotIdentity(input: {
+  slotPolicy: ReturnType<typeof resolveSessionSlotPolicy>["currentSession"];
+  workout: WorkoutPlan;
+}) {
+  const slotPolicy = input.slotPolicy;
+  if (!slotPolicy) {
+    return true;
+  }
+
+  const allExercises = [...input.workout.mainLifts, ...input.workout.accessories].map(
+    (exercise) => exercise.exercise
+  );
+  const requiredMovementPatterns = slotPolicy.sessionShape?.requiredMovementPatterns ?? [];
+  if (
+    requiredMovementPatterns.some(
+      (pattern) =>
+        !allExercises.some((exercise) =>
+          doesExerciseSatisfyRequiredSessionShapePattern(exercise, pattern)
+        )
+    )
+  ) {
+    return false;
+  }
+
+  const preferredCompoundPatterns = slotPolicy.compoundBias?.preferredMovementPatterns ?? [];
+  if (preferredCompoundPatterns.length === 0) {
+    return true;
+  }
+
+  return allExercises.some(
+    (exercise) =>
+      (exercise.isCompound ?? false) &&
+      (exercise.movementPatterns ?? []).some((pattern) =>
+        preferredCompoundPatterns.includes(pattern)
+      )
+  );
+}
+
+function sumProtectedDeficitToMev(rows: ReadonlyArray<ProtectedWeekOneCoverageRow>) {
+  return roundToTenth(rows.reduce((sum, row) => sum + row.deficitToMev, 0));
+}
+
+function selectBestProjectedSlotComposition(input: {
+  candidateWorkouts: Array<{
+    workout: WorkoutPlan;
+    protectedMuscles: readonly ProtectedWeekOneCoverageMuscle[];
+  }>;
+  prioritizedProtectedMuscles: readonly ProtectedWeekOneCoverageMuscle[];
+  slotPolicy: ReturnType<typeof resolveSessionSlotPolicy>["currentSession"];
+  projectedSlots: ReadonlyArray<ProjectedSlotWorkout>;
+  activeMesocycle: NonNullable<MappedGenerationContext["activeMesocycle"]>;
+  slotSequence: ReadonlyArray<{
+    slotId: string;
+    intent: WorkoutSessionIntent;
+    authoredSemantics?: MesocycleSlotSequence["slots"][number]["authoredSemantics"];
+  }>;
+  slotId: string;
+  intent: WorkoutSessionIntent;
+}): WorkoutPlan {
+  const prioritizedMuscleSet = new Set(input.prioritizedProtectedMuscles);
+  let bestCandidate = input.candidateWorkouts[0];
+  let bestEvaluation: {
+    relevantDeficitCount: number;
+    relevantDeficitToMev: number;
+    totalDeficitCount: number;
+    totalDeficitToMev: number;
+    coverage: ReturnType<typeof scoreProtectedCoverageContribution>;
+  } | null = null;
+
+  for (const candidate of input.candidateWorkouts) {
+    if (
+      candidate !== input.candidateWorkouts[0] &&
+      !preservesSlotIdentity({ slotPolicy: input.slotPolicy, workout: candidate.workout })
+    ) {
+      continue;
+    }
+
+    const projectedContributionByMuscle = computeWorkoutContributionByMuscle(candidate.workout);
+    const hypotheticalEvaluation = evaluateProtectedWeekOneCoverage({
+      projectedSlots: [
+        ...input.projectedSlots,
+        {
+          slotPlan: mapProjectedWorkoutToSlotPlan({
+            slotId: input.slotId,
+            intent: input.intent,
+            workout: candidate.workout,
+          }),
+          workout: candidate.workout,
+          projectedContributionByMuscle,
+          repairMuscles: [...candidate.protectedMuscles],
+        },
+      ],
+      activeMesocycle: input.activeMesocycle,
+      slotSequence: input.slotSequence,
+    });
+    const relevantDeficits = hypotheticalEvaluation.deficitsBelowMev.filter((row) =>
+      prioritizedMuscleSet.has(row.muscle)
+    );
+    const coverage = scoreProtectedCoverageContribution({
+      contributionByMuscle: projectedContributionByMuscle,
+      protectedMuscles: input.prioritizedProtectedMuscles,
+    });
+    const evaluationSummary = {
+      relevantDeficitCount: relevantDeficits.length,
+      relevantDeficitToMev: sumProtectedDeficitToMev(relevantDeficits),
+      totalDeficitCount: hypotheticalEvaluation.deficitsBelowMev.length,
+      totalDeficitToMev: sumProtectedDeficitToMev(hypotheticalEvaluation.deficitsBelowMev),
+      coverage,
+    };
+
+    if (
+      !bestEvaluation ||
+      evaluationSummary.relevantDeficitCount < bestEvaluation.relevantDeficitCount ||
+      (evaluationSummary.relevantDeficitCount === bestEvaluation.relevantDeficitCount &&
+        evaluationSummary.relevantDeficitToMev < bestEvaluation.relevantDeficitToMev) ||
+      (evaluationSummary.relevantDeficitCount === bestEvaluation.relevantDeficitCount &&
+        evaluationSummary.relevantDeficitToMev === bestEvaluation.relevantDeficitToMev &&
+        evaluationSummary.totalDeficitCount < bestEvaluation.totalDeficitCount) ||
+      (evaluationSummary.relevantDeficitCount === bestEvaluation.relevantDeficitCount &&
+        evaluationSummary.relevantDeficitToMev === bestEvaluation.relevantDeficitToMev &&
+        evaluationSummary.totalDeficitCount === bestEvaluation.totalDeficitCount &&
+        evaluationSummary.totalDeficitToMev < bestEvaluation.totalDeficitToMev) ||
+      (evaluationSummary.relevantDeficitCount === bestEvaluation.relevantDeficitCount &&
+        evaluationSummary.relevantDeficitToMev === bestEvaluation.relevantDeficitToMev &&
+        evaluationSummary.totalDeficitCount === bestEvaluation.totalDeficitCount &&
+        evaluationSummary.totalDeficitToMev === bestEvaluation.totalDeficitToMev &&
+        evaluationSummary.coverage.coveredMuscleCount > bestEvaluation.coverage.coveredMuscleCount) ||
+      (evaluationSummary.relevantDeficitCount === bestEvaluation.relevantDeficitCount &&
+        evaluationSummary.relevantDeficitToMev === bestEvaluation.relevantDeficitToMev &&
+        evaluationSummary.totalDeficitCount === bestEvaluation.totalDeficitCount &&
+        evaluationSummary.totalDeficitToMev === bestEvaluation.totalDeficitToMev &&
+        evaluationSummary.coverage.coveredMuscleCount ===
+          bestEvaluation.coverage.coveredMuscleCount &&
+        evaluationSummary.coverage.totalCoverage > bestEvaluation.coverage.totalCoverage)
+    ) {
+      bestCandidate = candidate;
+      bestEvaluation = evaluationSummary;
+    }
+  }
+
+  return bestCandidate.workout;
+}
+
+function projectSlotPlansPass(input: {
   userId: string;
   source: SuccessorMesocycleProjectionSource;
   design: NextMesocycleDesign;
   snapshot: PreloadedGenerationSnapshot;
-  now?: Date;
-}): SuccessorSlotPlanProjection | { error: string } {
+  projectionNow: Date;
+}):
+  | {
+      projectedSlots: ProjectedSlotWorkout[];
+      slotRepairMuscles: Record<string, ProtectedWeekOneCoverageMuscle[]>;
+      activeMesocycle: NonNullable<MappedGenerationContext["activeMesocycle"]>;
+    }
+  | { error: string } {
   const projectionContext = buildSyntheticProjectionContext({
-    ...input,
-    now: input.now ?? new Date(),
+    userId: input.userId,
+    source: input.source,
+    design: input.design,
+    snapshot: input.snapshot,
+    now: input.projectionNow,
   });
-  const slotPlans: ProjectedSuccessorSlotPlan[] = [];
+  const activeMesocycle = projectionContext.mapped.activeMesocycle;
+  if (!activeMesocycle) {
+    return { error: "MESOCYCLE_HANDOFF_SLOT_PLAN_PROJECTION_FAILED:missing_active_mesocycle" };
+  }
+
   const slotSequence = input.design.structure.slots;
-  const projectionNow = input.now ?? new Date();
+  const projectedSlots: ProjectedSlotWorkout[] = [];
+  const slotRepairMuscles: Record<string, ProtectedWeekOneCoverageMuscle[]> = {};
+  const slotSequenceEntries = buildSlotSequenceEntries(slotSequence);
 
   for (const [index, slot] of slotSequence.entries()) {
     if (slot.intent === "BODY_PART") {
@@ -369,30 +706,188 @@ export function projectSuccessorSlotPlansFromSnapshot(input: {
       };
     }
 
+    const currentEvaluation = evaluateProtectedWeekOneCoverage({
+      projectedSlots,
+      activeMesocycle,
+      slotSequence,
+    });
+    const slotPolicy = resolveSessionSlotPolicy({
+      sessionIntent: toSessionIntent(slot.intent),
+      slotId: slot.slotId,
+      slotSequence: {
+        slots: slotSequenceEntries,
+      },
+    }).currentSession;
+    const slotProtectedCoverageMuscles = getProtectedWeekOneCoverageObligations(slotPolicy);
+    const futurePrimaryProtectedMuscles = new Set(
+      slotSequence.slice(index + 1).flatMap((futureSlot) =>
+        getProtectedWeekOneCoverageObligations(
+          resolveSessionSlotPolicy({
+            sessionIntent: toSessionIntent(futureSlot.intent),
+            slotId: futureSlot.slotId,
+            slotSequence: {
+              slots: slotSequenceEntries,
+            },
+          }).currentSession
+        )
+      )
+    );
+    const projectionRepairMuscles = getProjectionRepairCompatibleMuscles(
+      slotPolicy,
+      currentEvaluation.unresolvedProtectedMuscles
+    ).filter(
+      (muscle) =>
+        slotProtectedCoverageMuscles.includes(muscle) ||
+        !futurePrimaryProtectedMuscles.has(muscle)
+    );
+
     const composed = composeIntentSessionFromMappedContext(projectionContext.mapped, {
       intent: toSessionIntent(slot.intent),
       slotId: slot.slotId,
+      roleListIncomplete: true,
+      ...(projectionRepairMuscles.length > 0
+        ? { projectionRepairMuscles }
+        : {}),
     });
     if ("error" in composed) {
       return {
         error: `MESOCYCLE_HANDOFF_SLOT_PLAN_PROJECTION_FAILED:${slot.slotId}:${composed.error}`,
       };
     }
-
-    const slotPlan = mapProjectedWorkoutToSlotPlan({
+    const candidateWorkouts: Array<{
+      workout: WorkoutPlan;
+      protectedMuscles: readonly ProtectedWeekOneCoverageMuscle[];
+    }> = [
+      {
+        workout: composed.generation.workout,
+        protectedMuscles: projectionRepairMuscles,
+      },
+    ];
+    if (projectionRepairMuscles.length > 1) {
+      const focusedComposed = composeIntentSessionFromMappedContext(projectionContext.mapped, {
+        intent: toSessionIntent(slot.intent),
+        slotId: slot.slotId,
+        roleListIncomplete: true,
+        projectionRepairMuscles,
+        targetMuscles: projectionRepairMuscles,
+      });
+      if (!("error" in focusedComposed)) {
+        candidateWorkouts.push({
+          workout: focusedComposed.generation.workout,
+          protectedMuscles: projectionRepairMuscles,
+        });
+      }
+    }
+    for (const muscle of projectionRepairMuscles) {
+      const focusedSingleMuscle = composeIntentSessionFromMappedContext(projectionContext.mapped, {
+        intent: toSessionIntent(slot.intent),
+        slotId: slot.slotId,
+        roleListIncomplete: true,
+        projectionRepairMuscles: [muscle],
+        targetMuscles: [muscle],
+      });
+      if (!("error" in focusedSingleMuscle)) {
+        candidateWorkouts.push({
+          workout: focusedSingleMuscle.generation.workout,
+          protectedMuscles: [muscle],
+        });
+      }
+    }
+    const selectedWorkout = selectBestProjectedSlotComposition({
+      candidateWorkouts,
+      prioritizedProtectedMuscles: projectionRepairMuscles,
+      slotPolicy,
+      projectedSlots,
+      activeMesocycle,
+      slotSequence,
       slotId: slot.slotId,
       intent: slot.intent,
-      workout: composed.generation.workout,
     });
-    slotPlans.push(slotPlan);
+
+    const candidateProjectedSlot: ProjectedSlotWorkout = {
+      slotPlan: mapProjectedWorkoutToSlotPlan({
+        slotId: slot.slotId,
+        intent: slot.intent,
+        workout: selectedWorkout,
+      }),
+      workout: selectedWorkout,
+      projectedContributionByMuscle: computeWorkoutContributionByMuscle(selectedWorkout),
+      repairMuscles: projectionRepairMuscles,
+    };
+    projectedSlots.push(candidateProjectedSlot);
+    if (slotProtectedCoverageMuscles.length > 0) {
+      slotRepairMuscles[slot.slotId] = slotProtectedCoverageMuscles;
+    }
     applyProjectedSlotToMappedContext({
       context: projectionContext,
-      workout: composed.generation.workout,
-      slotPlan,
+      workout: candidateProjectedSlot.workout,
+      slotPlan: candidateProjectedSlot.slotPlan,
       sessionNumber: index + 1,
-      projectedAt: new Date(projectionNow.getTime() + index * 60_000),
+      projectedAt: new Date(input.projectionNow.getTime() + index * 60_000),
     });
   }
 
-  return { slotPlans };
+  return {
+    projectedSlots,
+    slotRepairMuscles,
+    activeMesocycle,
+  };
+}
+
+export function projectSuccessorSlotPlansFromSnapshot(input: {
+  userId: string;
+  source: SuccessorMesocycleProjectionSource;
+  design: NextMesocycleDesign;
+  snapshot: PreloadedGenerationSnapshot;
+  now?: Date;
+}): SuccessorSlotPlanProjection | FailedSuccessorSlotPlanProjection {
+  const projectionNow = input.now ?? new Date();
+  const pass = projectSlotPlansPass({
+    userId: input.userId,
+    source: input.source,
+    design: input.design,
+    snapshot: input.snapshot,
+    projectionNow,
+  });
+  if ("error" in pass) {
+    return pass;
+  }
+
+  const finalEvaluation = evaluateProtectedWeekOneCoverage({
+    projectedSlots: pass.projectedSlots,
+    activeMesocycle: pass.activeMesocycle,
+    slotSequence: input.design.structure.slots,
+  });
+  if (finalEvaluation.deficitsBelowMev.length > 0) {
+    return {
+      error:
+        "MESOCYCLE_HANDOFF_SLOT_PLAN_PROTECTED_COVERAGE_UNSATISFIED:" +
+        finalEvaluation.unresolvedProtectedMuscles.join(","),
+      slotPlans: pass.projectedSlots.map((projectedSlot) => projectedSlot.slotPlan),
+      diagnostics: {
+        protectedCoverage: {
+          beforeRepair: finalEvaluation,
+          afterRepair: finalEvaluation,
+          attemptedRepair: false,
+          repairedSlotIds: [],
+          slotRepairMuscles: pass.slotRepairMuscles,
+          unresolvedProtectedMuscles: finalEvaluation.unresolvedProtectedMuscles,
+        },
+      },
+    };
+  }
+
+  return {
+    slotPlans: pass.projectedSlots.map((projectedSlot) => projectedSlot.slotPlan),
+    diagnostics: {
+      protectedCoverage: {
+        beforeRepair: finalEvaluation,
+        afterRepair: finalEvaluation,
+        attemptedRepair: false,
+        repairedSlotIds: [],
+        slotRepairMuscles: pass.slotRepairMuscles,
+        unresolvedProtectedMuscles: finalEvaluation.unresolvedProtectedMuscles,
+      },
+    },
+  };
 }

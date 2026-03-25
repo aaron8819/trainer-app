@@ -537,7 +537,8 @@ describe("buildSelectionObjective continuity bias", () => {
       },
       sessionShape: {
         id: "lower_hinge_dominant",
-        preferredAccessoryPrimaryMuscles: ["Hamstrings", "Glutes"],
+        preferredAccessoryPrimaryMuscles: ["Hamstrings", "Calves", "Glutes"],
+        protectedWeekOneCoverageMuscles: ["Hamstrings", "Calves"],
         requiredMovementPatterns: ["squat"],
         avoidDuplicatePatterns: ["hinge"],
         supportPenaltyPatterns: ["squat"],
@@ -692,16 +693,20 @@ describe("buildSelectionObjective continuity bias", () => {
 
     expect(upperAObjective.slotPolicy?.currentSession?.sessionShape).toEqual({
       id: "upper_horizontal_balanced",
-      preferredAccessoryPrimaryMuscles: ["Chest", "Upper Back", "Rear Delts"],
+      preferredAccessoryPrimaryMuscles: ["Chest", "Triceps"],
+      protectedWeekOneCoverageMuscles: ["Chest", "Triceps"],
       requiredMovementPatterns: ["vertical_pull", "horizontal_pull"],
       avoidDuplicatePatterns: ["horizontal_pull"],
+      supportPenaltyPatterns: ["horizontal_pull", "vertical_pull"],
+      maxPreferredSupportPerPattern: 1,
     });
     expect(upperBObjective.slotPolicy?.currentSession?.sessionShape).toEqual({
       id: "upper_vertical_balanced",
-      preferredAccessoryPrimaryMuscles: ["Lats", "Front Delts", "Side Delts"],
+      preferredAccessoryPrimaryMuscles: ["Chest", "Triceps", "Side Delts"],
+      protectedWeekOneCoverageMuscles: ["Chest", "Triceps"],
       requiredMovementPatterns: ["horizontal_pull"],
       avoidDuplicatePatterns: ["vertical_pull"],
-      supportPenaltyPatterns: ["vertical_push"],
+      supportPenaltyPatterns: ["vertical_push", "vertical_pull"],
       maxPreferredSupportPerPattern: 1,
     });
   });

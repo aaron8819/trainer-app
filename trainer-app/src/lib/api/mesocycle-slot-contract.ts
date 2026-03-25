@@ -44,6 +44,7 @@ export type MesocycleSlotPrimaryLaneContract =
 
 export type MesocycleSlotSupportCoverageContract = {
   preferredAccessoryPrimaryMuscles: string[];
+  protectedWeekOneCoverageMuscles?: string[];
   requiredMovementPatterns?: MovementPatternV2[];
   avoidDuplicatePatterns?: MovementPatternV2[];
   supportPenaltyPatterns?: MovementPatternV2[];
@@ -167,16 +168,20 @@ function buildUpperRepeatedSemantics(prefersVertical: boolean): MesocycleSlotAut
     },
     supportCoverageContract: prefersVertical
       ? {
-          preferredAccessoryPrimaryMuscles: ["Lats", "Front Delts", "Side Delts"],
+          preferredAccessoryPrimaryMuscles: ["Chest", "Triceps", "Side Delts"],
+          protectedWeekOneCoverageMuscles: ["Chest", "Triceps"],
           requiredMovementPatterns: ["horizontal_pull"],
           avoidDuplicatePatterns: ["vertical_pull"],
-          supportPenaltyPatterns: ["vertical_push"],
+          supportPenaltyPatterns: ["vertical_push", "vertical_pull"],
           maxPreferredSupportPerPattern: 1,
         }
       : {
-          preferredAccessoryPrimaryMuscles: ["Chest", "Upper Back", "Rear Delts"],
+          preferredAccessoryPrimaryMuscles: ["Chest", "Triceps"],
+          protectedWeekOneCoverageMuscles: ["Chest", "Triceps"],
           requiredMovementPatterns: ["vertical_pull", "horizontal_pull"],
           avoidDuplicatePatterns: ["horizontal_pull"],
+          supportPenaltyPatterns: ["horizontal_pull", "vertical_pull"],
+          maxPreferredSupportPerPattern: 1,
         },
     continuityScope: "slot",
   };
@@ -201,14 +206,16 @@ function buildLowerRepeatedSemantics(prefersVertical: boolean): MesocycleSlotAut
     },
     supportCoverageContract: prefersVertical
       ? {
-          preferredAccessoryPrimaryMuscles: ["Hamstrings", "Glutes"],
+          preferredAccessoryPrimaryMuscles: ["Hamstrings", "Calves", "Glutes"],
+          protectedWeekOneCoverageMuscles: ["Hamstrings", "Calves"],
           requiredMovementPatterns: ["squat"],
           avoidDuplicatePatterns: ["hinge"],
           supportPenaltyPatterns: ["squat"],
           maxPreferredSupportPerPattern: 1,
         }
       : {
-          preferredAccessoryPrimaryMuscles: ["Quads"],
+          preferredAccessoryPrimaryMuscles: ["Quads", "Calves"],
+          protectedWeekOneCoverageMuscles: ["Calves"],
           requiredMovementPatterns: ["hinge"],
           avoidDuplicatePatterns: ["squat"],
           supportPenaltyPatterns: ["hinge"],

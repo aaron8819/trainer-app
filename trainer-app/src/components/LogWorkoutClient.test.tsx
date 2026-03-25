@@ -561,7 +561,12 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     await logAllSets(user);
     await waitFor(() => expect(screen.getByTestId("workout-finish-bar")).toBeInTheDocument());
 
-    await user.click(screen.getByRole("button", { name: "+ Add set" }));
+    const queueRow = screen.getByTestId("queue-row-ex-1");
+    expect(
+      within(screen.getByTestId("exercise-set-chip-list")).getByRole("button", { name: "+ Add set" })
+    ).toBeInTheDocument();
+
+    await user.click(within(queueRow).getByRole("button", { name: "+ Add set" }));
 
     await waitFor(() => {
       expect(mockedAddSetToExerciseRequest).toHaveBeenCalledWith({

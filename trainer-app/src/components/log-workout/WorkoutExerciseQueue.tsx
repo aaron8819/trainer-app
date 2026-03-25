@@ -103,16 +103,6 @@ const ExerciseQueueRow = memo(
             ) : null}
           </button>
           <span className="flex shrink-0 items-center gap-2">
-            {row.canAddSet && onAddSet ? (
-              <button
-                className="inline-flex min-h-8 items-center justify-center rounded-full border border-slate-300 px-3 text-[11px] font-semibold text-slate-700 disabled:opacity-60"
-                disabled={row.isAddingSet}
-                onClick={() => onAddSet(row.exerciseId, row.section)}
-                type="button"
-              >
-                {row.isAddingSet ? "Adding..." : "+ Add set"}
-              </button>
-            ) : null}
             {row.canSwap && onSwapExercise ? (
               <button
                 className="inline-flex min-h-8 items-center justify-center rounded-full border border-slate-300 px-3 text-[11px] font-semibold text-slate-700 disabled:opacity-60"
@@ -138,6 +128,15 @@ const ExerciseQueueRow = memo(
             chips={row.chips}
             hasLoggedSets={row.loggedCount > 0}
             onSelectSet={onSelectSet}
+            trailingAction={
+              row.canAddSet && onAddSet
+                ? {
+                    label: row.isAddingSet ? "Adding..." : "+ Add set",
+                    disabled: row.isAddingSet,
+                    onClick: () => onAddSet(row.exerciseId, row.section),
+                  }
+                : undefined
+            }
           />
         ) : null}
       </div>

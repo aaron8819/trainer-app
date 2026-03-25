@@ -10,12 +10,18 @@ type ExerciseSetChipsEditorProps = {
   chips: ExerciseSetChip[];
   hasLoggedSets: boolean;
   onSelectSet: (setId: string) => void;
+  trailingAction?: {
+    label: string;
+    disabled?: boolean;
+    onClick: () => void;
+  };
 };
 
 export function ExerciseSetChipsEditor({
   chips,
   hasLoggedSets,
   onSelectSet,
+  trailingAction,
 }: ExerciseSetChipsEditorProps) {
   return (
     <div className="border-t border-slate-100 p-3">
@@ -24,7 +30,7 @@ export function ExerciseSetChipsEditor({
           Dark chip is the selected set. Logged chips reopen the active card in edit mode.
         </p>
       ) : null}
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2" data-testid="exercise-set-chip-list">
         {chips.map((chip) => (
           <button
             key={chip.setId}
@@ -41,6 +47,16 @@ export function ExerciseSetChipsEditor({
             {chip.label}
           </button>
         ))}
+        {trailingAction ? (
+          <button
+            className="inline-flex min-h-11 items-center justify-center rounded-full border border-dashed border-slate-300 bg-slate-50 px-3 text-xs font-semibold text-slate-700 disabled:opacity-60"
+            disabled={trailingAction.disabled}
+            onClick={trailingAction.onClick}
+            type="button"
+          >
+            {trailingAction.label}
+          </button>
+        ) : null}
       </div>
     </div>
   );

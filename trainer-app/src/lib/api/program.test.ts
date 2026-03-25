@@ -691,6 +691,8 @@ describe("loadHomeProgramSupport", () => {
     expect(result.nextSession).toEqual({
       intent: "legs",
       slotId: null,
+      slotSequenceIndex: null,
+      slotSequenceLength: null,
       slotSource: null,
       weekInMeso: null,
       sessionInWeek: null,
@@ -734,6 +736,8 @@ describe("loadHomeProgramSupport", () => {
     expect(result.nextSession).toEqual({
       intent: "pull",
       slotId: "pull_a",
+      slotSequenceIndex: 1,
+      slotSequenceLength: 3,
       slotSource: "legacy_weekly_schedule",
       weekInMeso: 3,
       sessionInWeek: 2,

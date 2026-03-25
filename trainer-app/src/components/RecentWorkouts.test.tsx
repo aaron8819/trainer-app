@@ -228,3 +228,22 @@ describe("sort order", () => {
     expect(allLinks.indexOf(viewLink)).toBeLessThan(allLinks.indexOf(logLink));
   });
 });
+
+describe("preview mode", () => {
+  it("hides count and delete actions for the Home preview", () => {
+    render(
+      <RecentWorkouts
+        recentWorkouts={[makeWorkout()]}
+        heading="Recent Activity"
+        showCount={false}
+        showDeleteActions={false}
+        viewAllLabel="Open History"
+      />
+    );
+
+    expect(screen.getByRole("heading", { name: "Recent Activity" })).toBeInTheDocument();
+    expect(screen.queryByText("1 workout")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open History" })).toBeInTheDocument();
+  });
+});

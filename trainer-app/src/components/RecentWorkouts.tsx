@@ -19,9 +19,19 @@ import {
 
 type Props = {
   recentWorkouts: WorkoutListSurfaceSummary[];
+  heading?: string;
+  showCount?: boolean;
+  showDeleteActions?: boolean;
+  viewAllLabel?: string;
 };
 
-export default function RecentWorkouts({ recentWorkouts }: Props) {
+export default function RecentWorkouts({
+  recentWorkouts,
+  heading = "Recent Workouts",
+  showCount = true,
+  showDeleteActions = true,
+  viewAllLabel = "View all",
+}: Props) {
   const router = useRouter();
 
   const handleDeleted = () => {
@@ -33,11 +43,11 @@ export default function RecentWorkouts({ recentWorkouts }: Props) {
   return (
     <section className="mt-10">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Recent Workouts</h2>
+        <h2 className="text-lg font-semibold">{heading}</h2>
         <div className="flex items-center gap-3">
-          <span className="text-sm text-slate-500">{countLabel}</span>
+          {showCount ? <span className="text-sm text-slate-500">{countLabel}</span> : null}
           <Link className="text-sm font-semibold text-slate-900" href="/history">
-            View all
+            {viewAllLabel}
           </Link>
         </div>
       </div>
@@ -96,7 +106,9 @@ export default function RecentWorkouts({ recentWorkouts }: Props) {
                     {getWorkoutListStatusLabel(workout.status)}
                   </span>
                   <WorkoutRowActions workout={workout} />
-                  <DeleteWorkoutButton workoutId={workout.id} onDeleted={handleDeleted} />
+                  {showDeleteActions ? (
+                    <DeleteWorkoutButton workoutId={workout.id} onDeleted={handleDeleted} />
+                  ) : null}
                 </div>
               </div>
             );

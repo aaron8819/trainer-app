@@ -1,11 +1,33 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { IntentWorkoutCard } from "./IntentWorkoutCard";
 
 describe("IntentWorkoutCard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("renders the recommended-session reason metadata when provided", () => {
+    render(
+      <IntentWorkoutCard
+        initialIntent="lower"
+        initialSlotId="lower_a"
+        recommendedReasonLabel="Next in sequence"
+        recommendedReasonDetail="Nothing earlier is still open, so Lower 1 is next this week."
+      />
+    );
+
+    expect(screen.getByText("Recommended next session:")).toBeInTheDocument();
+    expect(screen.getByText("Lower 1")).toBeInTheDocument();
+    expect(screen.getByText("Next in sequence")).toBeInTheDocument();
+    expect(
+      screen.getByText("Nothing earlier is still open, so Lower 1 is next this week.")
+    ).toBeInTheDocument();
   });
 
   it("round-trips supplemental deficit metadata unchanged and saves as non-advancing", async () => {

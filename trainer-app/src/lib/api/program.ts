@@ -76,6 +76,8 @@ export type DeloadReadiness = {
 export type NextSessionData = {
   intent: string | null;
   slotId: string | null;
+  slotSequenceIndex: number | null;
+  slotSequenceLength: number | null;
   slotSource: "mesocycle_slot_sequence" | "legacy_weekly_schedule" | null;
   weekInMeso: number | null;
   sessionInWeek: number | null;
@@ -427,6 +429,8 @@ export async function loadHomeProgramSupport(userId: string): Promise<HomeProgra
   const nextSession: NextSessionData = {
     intent: nextWorkoutContext.intent,
     slotId: nextWorkoutContext.slotId,
+    slotSequenceIndex: nextWorkoutContext.slotSequenceIndex,
+    slotSequenceLength: nextWorkoutContext.slotSequenceLength,
     slotSource: nextWorkoutContext.slotSource,
     weekInMeso: nextWorkoutContext.weekInMeso,
     sessionInWeek: nextWorkoutContext.sessionInWeek,
@@ -810,7 +814,7 @@ export async function loadProgramDashboardData(
   };
 }
 
-export type CycleAnchorAction = "deload" | "extend_phase" | "skip_phase" | "reset";
+export type CycleAnchorAction = "deload" | "extend_phase" | "reset";
 
 export async function applyCycleAnchor(userId: string, action: CycleAnchorAction): Promise<void> {
   const meso = await prisma.mesocycle.findFirst({
@@ -849,9 +853,6 @@ export async function applyCycleAnchor(userId: string, action: CycleAnchorAction
         where: { id: meso.id },
         data: { durationWeeks: meso.durationWeeks + 1 },
       });
-      break;
-    }
-    case "skip_phase": {
       break;
     }
     case "reset": {

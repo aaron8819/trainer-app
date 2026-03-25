@@ -93,11 +93,15 @@ function parseTargetMuscles(input: string): string[] {
 type IntentWorkoutCardProps = {
   initialIntent?: SessionIntent;
   initialSlotId?: string | null;
+  recommendedReasonLabel?: string | null;
+  recommendedReasonDetail?: string | null;
 };
 
 export function IntentWorkoutCard({
   initialIntent = "push",
   initialSlotId = null,
+  recommendedReasonLabel = null,
+  recommendedReasonDetail = null,
 }: IntentWorkoutCardProps) {
   const [intent, setIntent] = useState<SessionIntent>(initialIntent);
   const [targetMusclesInput, setTargetMusclesInput] = useState("");
@@ -247,7 +251,16 @@ export function IntentWorkoutCard({
       </p>
       {recommendedSessionLabel ? (
         <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-          Recommended next session: <span className="font-semibold text-slate-900">{recommendedSessionLabel}</span>
+          <p>
+            Recommended next session:{" "}
+            <span className="font-semibold text-slate-900">{recommendedSessionLabel}</span>
+          </p>
+          {recommendedReasonLabel ? (
+            <p className="mt-1 font-medium text-slate-800">{recommendedReasonLabel}</p>
+          ) : null}
+          {recommendedReasonDetail ? (
+            <p className="mt-1 text-xs text-slate-600">{recommendedReasonDetail}</p>
+          ) : null}
         </div>
       ) : null}
 

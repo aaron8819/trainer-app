@@ -208,7 +208,6 @@ function buildLowerRepeatedSemantics(prefersVertical: boolean): MesocycleSlotAut
       ? {
           preferredAccessoryPrimaryMuscles: ["Hamstrings", "Calves", "Glutes"],
           protectedWeekOneCoverageMuscles: ["Hamstrings", "Calves"],
-          requiredMovementPatterns: ["squat"],
           avoidDuplicatePatterns: ["hinge"],
           supportPenaltyPatterns: ["squat"],
           maxPreferredSupportPerPattern: 1,

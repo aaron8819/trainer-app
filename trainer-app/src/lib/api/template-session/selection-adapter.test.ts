@@ -539,7 +539,6 @@ describe("buildSelectionObjective continuity bias", () => {
         id: "lower_hinge_dominant",
         preferredAccessoryPrimaryMuscles: ["Hamstrings", "Calves", "Glutes"],
         protectedWeekOneCoverageMuscles: ["Hamstrings", "Calves"],
-        requiredMovementPatterns: ["squat"],
         avoidDuplicatePatterns: ["hinge"],
         supportPenaltyPatterns: ["squat"],
         maxPreferredSupportPerPattern: 1,

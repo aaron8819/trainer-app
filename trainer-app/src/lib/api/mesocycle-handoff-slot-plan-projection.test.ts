@@ -325,6 +325,16 @@ function buildProtectedCoverageSatisfiedSnapshot(): PreloadedGenerationSnapshot 
   return snapshot;
 }
 
+function buildNoHingeCompoundSnapshot(): PreloadedGenerationSnapshot {
+  const snapshot = buildSnapshot();
+  snapshot.context.exercises = snapshot.context.exercises.filter(
+    (exercise) =>
+      !(exercise.isCompound ?? false) ||
+      !(exercise.movementPatterns ?? []).includes("hinge" as (typeof exercise.movementPatterns)[number])
+  );
+  return snapshot;
+}
+
 function buildDraft(): NextCycleSeedDraft {
   return {
     version: 1,
@@ -562,6 +572,36 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     expect(lowerA?.exercises.map((exercise) => exercise.exerciseId)).not.toEqual(
       lowerB?.exercises.map((exercise) => exercise.exerciseId)
     );
+  });
+
+  it("persists lower_b with a hinge-led core anchor when a hinge compound is viable", () => {
+    const projected = projectSuccessorSlotPlansFromSnapshot({
+      userId: "user-1",
+      source: buildSource(),
+      design: buildDesign(),
+      snapshot: buildSnapshot(),
+      now: new Date("2026-03-19T12:00:00.000Z"),
+    });
+
+    const lowerB = getProjectedSlotPlans(projected).find((slot) => slot.slotId === "lower_b");
+    const firstCoreCompound = lowerB?.exercises.find((exercise) => exercise.role === "CORE_COMPOUND");
+
+    expect(firstCoreCompound?.exerciseId).toBe("rdl");
+  });
+
+  it("allows lower_b squat fallback when no hinge compound anchor is viable", () => {
+    const projected = projectSuccessorSlotPlansFromSnapshot({
+      userId: "user-1",
+      source: buildSource(),
+      design: buildDesign(),
+      snapshot: buildNoHingeCompoundSnapshot(),
+      now: new Date("2026-03-19T12:00:00.000Z"),
+    });
+
+    const lowerB = getProjectedSlotPlans(projected).find((slot) => slot.slotId === "lower_b");
+    const firstCoreCompound = lowerB?.exercises.find((exercise) => exercise.role === "CORE_COMPOUND");
+
+    expect(firstCoreCompound?.exerciseId).toBe("squat");
   });
 
   it("keeps upper_b on a compound horizontal pull when only a supportive accessory shares that pattern", () => {

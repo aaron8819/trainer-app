@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
 }
 
 const cycleAnchorSchema = z.object({
-  action: z.enum(["deload", "extend_phase", "skip_phase", "reset"]),
+  action: z.enum(["deload", "extend_phase", "reset"]),
 });
 
 export async function PATCH(request: NextRequest) {

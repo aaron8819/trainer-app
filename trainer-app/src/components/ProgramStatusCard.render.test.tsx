@@ -526,3 +526,29 @@ describe("ProgramStatusCard homeCompact variant", () => {
     expect(screen.queryByLabelText("View previous week")).not.toBeInTheDocument();
   });
 });
+
+describe("ProgramStatusCard volumeOnly variant", () => {
+  it("keeps the weekly volume grid but hides the duplicated mesocycle chrome and coaching cue", () => {
+    const data = buildCurrentWeekData([
+      withOpportunity({
+        muscle: "Chest",
+        effectiveSets: 4,
+        directSets: 4,
+        indirectSets: 0,
+        target: 10,
+        mev: 6,
+        mav: 16,
+        mrv: 22,
+      }),
+    ]);
+
+    render(<ProgramStatusCard initialData={data} variant="volumeOnly" />);
+
+    expect(screen.getByText("Volume This Week")).toBeInTheDocument();
+    expect(screen.getByText("Chest")).toBeInTheDocument();
+    expect(screen.queryByText("Mesocycle Timeline")).not.toBeInTheDocument();
+    expect(screen.queryByText("Week 4 of 5")).not.toBeInTheDocument();
+    expect(screen.queryByText("3 sessions until scheduled lighter week")).not.toBeInTheDocument();
+    expect(screen.queryByText("Build volume.")).not.toBeInTheDocument();
+  });
+});

@@ -1,71 +1,95 @@
 import Link from "next/link";
 import { resolveOwner } from "@/lib/api/workout-context";
-import { prisma } from "@/lib/db/prisma";
-import { loadProgramDashboardData } from "@/lib/api/program";
 import { loadPendingMesocycleHandoff } from "@/lib/api/mesocycle-handoff";
+import { loadProgramPageData, type ProgramCurrentWeekPlanRow } from "@/lib/api/program-page";
 import { CycleAnchorControls } from "@/components/CycleAnchorControls";
 import { ProgramStatusCard } from "@/components/ProgramStatusCard";
-import { SurfaceGuideCard } from "@/components/SurfaceGuideCard";
-import {
-  buildWorkoutListSurfaceSummary,
-  getWorkoutListPrimaryLabel,
-  workoutListItemSelect,
-} from "@/lib/ui/workout-list-items";
-import { formatWorkoutSessionSnapshotLabel } from "@/lib/ui/workout-session-snapshot";
+import { WeekCompletionOutlookSection } from "./WeekCompletionOutlookSection";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const runtime = "nodejs";
 
-function formatSessionDate(iso: string) {
-  return new Date(iso).toLocaleDateString("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-  });
+const CURRENT_WEEK_PLAN_STATE_STYLE: Record<ProgramCurrentWeekPlanRow["state"], string> = {
+  completed: "border-emerald-200 bg-emerald-50/80 text-emerald-800",
+  next: "border-blue-300 bg-white text-blue-900 shadow-sm ring-1 ring-blue-200/80",
+  remaining: "border-slate-200 bg-slate-50/80 text-slate-700",
+};
+
+function formatBlockLabel(value: string | null): string {
+  if (!value) {
+    return "Program";
+  }
+
+  return value
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
 }
 
-function splitBadge(intent: string | null, label?: string | null) {
-  const map: Record<string, string> = {
-    push: "bg-blue-50 text-blue-700",
-    pull: "bg-indigo-50 text-indigo-700",
-    legs: "bg-green-50 text-green-700",
-    upper: "bg-purple-50 text-purple-700",
-    lower: "bg-teal-50 text-teal-700",
-    full_body: "bg-amber-50 text-amber-700",
-    body_part: "bg-slate-50 text-slate-700",
+function formatWorkoutStatusLabel(value: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+
+  return value
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function formatProjectedSetCount(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+function formatPlanStateLabel(value: ProgramCurrentWeekPlanRow["state"]): string {
+  switch (value) {
+    case "next":
+      return "Next up";
+    case "completed":
+      return "Completed";
+    default:
+      return "Remaining";
+  }
+}
+
+function OutcomeSummaryChips({
+  summary,
+}: {
+  summary: {
+    meaningfullyLow: number;
+    slightlyLow: number;
+    onTarget: number;
+    slightlyHigh: number;
+    meaningfullyHigh: number;
   };
-  const displayLabel = label ?? intent?.replace("_", " ") ?? "-";
-  const cls = (intent ? map[intent] : null) ?? "bg-slate-50 text-slate-600";
+}) {
   return (
-    <span className={`rounded px-2 py-0.5 text-xs font-medium capitalize ${cls}`}>{displayLabel}</span>
+    <div className="flex flex-wrap gap-2 text-xs font-medium text-slate-700">
+      <span className="rounded-full bg-rose-50 px-3 py-1 text-rose-700">
+        {summary.meaningfullyLow} meaningfully low
+      </span>
+      <span className="rounded-full bg-amber-50 px-3 py-1 text-amber-700">
+        {summary.slightlyLow} slightly low
+      </span>
+      <span className="rounded-full bg-emerald-50 px-3 py-1 text-emerald-700">
+        {summary.onTarget} on target
+      </span>
+      <span className="rounded-full bg-sky-50 px-3 py-1 text-sky-700">
+        {summary.slightlyHigh} slightly high
+      </span>
+      <span className="rounded-full bg-indigo-50 px-3 py-1 text-indigo-700">
+        {summary.meaningfullyHigh} meaningfully high
+      </span>
+    </div>
   );
-}
-
-function workoutStatusDot(status: string) {
-  const map: Record<string, string> = {
-    completed: "bg-green-500",
-    skipped: "bg-red-400",
-    planned: "bg-slate-300",
-    in_progress: "bg-yellow-400",
-    partial: "bg-orange-400",
-  };
-  return <span className={`inline-block size-2 rounded-full ${map[status] ?? "bg-slate-300"}`} />;
 }
 
 export default async function ProgramPage() {
   const user = await resolveOwner();
-  const [pendingHandoff, recentWorkouts] = await Promise.all([
-    loadPendingMesocycleHandoff(user.id),
-    prisma.workout.findMany({
-      where: { userId: user.id },
-      orderBy: { scheduledDate: "desc" },
-      take: 10,
-      select: workoutListItemSelect,
-    }),
-  ]);
-
-  const sessionHistory = recentWorkouts.map(buildWorkoutListSurfaceSummary);
+  const pendingHandoff = await loadPendingMesocycleHandoff(user.id);
 
   if (pendingHandoff) {
     return (
@@ -75,10 +99,6 @@ export default async function ProgramPage() {
           <p className="mt-1.5 text-sm text-slate-600">
             Training is paused while the handoff is pending.
           </p>
-
-          <section className="mt-5">
-            <SurfaceGuideCard current="program" />
-          </section>
 
           <section className="mt-6 rounded-2xl border border-amber-300 bg-amber-50 p-6">
             <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">
@@ -106,168 +126,245 @@ export default async function ProgramPage() {
               </Link>
             </div>
           </section>
-
-          <section className="mt-6 pb-8">
-            <h2 className="text-base font-semibold sm:text-lg">Session History</h2>
-            <p className="mt-1 text-sm text-slate-500">Last 10 sessions.</p>
-
-            {sessionHistory.length > 0 ? (
-              <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      <th className="px-4 py-2.5">Date</th>
-                      <th className="px-4 py-2.5">Split</th>
-                      <th className="px-4 py-2.5">Status</th>
-                      <th className="px-4 py-2.5 text-right">Summary</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sessionHistory.map((workout, idx) => {
-                      const status = workout.status.toLowerCase();
-                      const snapshotLabel = formatWorkoutSessionSnapshotLabel(workout.sessionSnapshot);
-
-                      return (
-                        <tr
-                          key={workout.id}
-                          className={`border-b border-slate-100 last:border-0 ${idx % 2 === 0 ? "" : "bg-slate-50/50"}`}
-                        >
-                          <td className="px-4 py-2.5">
-                            <Link
-                              href={`/workout/${workout.id}`}
-                              className="font-medium text-slate-900 hover:text-blue-600"
-                            >
-                              {formatSessionDate(workout.scheduledDate)}
-                            </Link>
-                            {snapshotLabel ? (
-                              <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600">
-                                {snapshotLabel}
-                              </span>
-                            ) : null}
-                            {workout.isDeload ? (
-                              <span className="ml-2 rounded bg-sky-100 px-1.5 py-0.5 text-xs font-medium text-sky-800">
-                                Deload
-                              </span>
-                            ) : null}
-                          </td>
-                          <td className="px-4 py-2.5">
-                            {splitBadge(workout.sessionIntent, getWorkoutListPrimaryLabel(workout))}
-                          </td>
-                          <td className="px-4 py-2.5">
-                            <span className="flex items-center gap-1.5">
-                              {workoutStatusDot(status)}
-                              <span className="capitalize text-slate-700">
-                                {status.replace("_", " ")}
-                              </span>
-                            </span>
-                          </td>
-                          <td className="px-4 py-2.5 text-right text-slate-600">
-                            {workout.exerciseCount} ex / {workout.totalSetsLogged} sets
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <p className="mt-3 text-sm text-slate-500">No sessions logged yet.</p>
-            )}
-          </section>
         </div>
       </main>
     );
   }
 
-  const data = await loadProgramDashboardData(user.id);
+  const data = await loadProgramPageData(user.id);
 
   return (
     <main className="min-h-screen bg-white text-slate-900">
-      <div className="page-shell max-w-5xl">
+      <div className="page-shell max-w-5xl pb-8">
         <h1 className="page-title">My Program</h1>
         <p className="mt-1.5 text-sm text-slate-600">
-          Live mesocycle state and current-week decision support. Use History for past sessions and Analytics for longer-term trends.
+          Active mesocycle overview and current-week structure. Use History for past sessions and
+          Analytics for longer-term trends.
         </p>
 
-        <section className="mt-5">
-          <SurfaceGuideCard current="program" />
-        </section>
-
-        <section className="mt-6">
-          <ProgramStatusCard initialData={data} />
-        </section>
-
-        <section className="mt-4">
-          <CycleAnchorControls />
-        </section>
-
-        <section className="mt-6 pb-8">
-          <h2 className="text-base font-semibold sm:text-lg">Session History</h2>
-          <p className="mt-1 text-sm text-slate-500">Last 10 sessions.</p>
-
-          {sessionHistory.length > 0 ? (
-            <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    <th className="px-4 py-2.5">Date</th>
-                    <th className="px-4 py-2.5">Split</th>
-                    <th className="px-4 py-2.5">Status</th>
-                    <th className="px-4 py-2.5 text-right">Summary</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sessionHistory.map((workout, idx) => {
-                    const status = workout.status.toLowerCase();
-                    const snapshotLabel = formatWorkoutSessionSnapshotLabel(workout.sessionSnapshot);
-
-                    return (
-                      <tr
-                        key={workout.id}
-                        className={`border-b border-slate-100 last:border-0 ${idx % 2 === 0 ? "" : "bg-slate-50/50"}`}
-                      >
-                        <td className="px-4 py-2.5">
-                          <Link
-                            href={`/workout/${workout.id}`}
-                            className="font-medium text-slate-900 hover:text-blue-600"
-                          >
-                            {formatSessionDate(workout.scheduledDate)}
-                          </Link>
-                          {snapshotLabel ? (
-                            <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600">
-                              {snapshotLabel}
-                            </span>
-                          ) : null}
-                          {workout.isDeload ? (
-                            <span className="ml-2 rounded bg-sky-100 px-1.5 py-0.5 text-xs font-medium text-sky-800">
-                              Deload
-                            </span>
-                          ) : null}
-                        </td>
-                        <td className="px-4 py-2.5">
-                          {splitBadge(workout.sessionIntent, getWorkoutListPrimaryLabel(workout))}
-                        </td>
-                        <td className="px-4 py-2.5">
-                          <span className="flex items-center gap-1.5">
-                            {workoutStatusDot(status)}
-                            <span className="capitalize text-slate-700">
-                              {status.replace("_", " ")}
-                            </span>
-                          </span>
-                        </td>
-                        <td className="px-4 py-2.5 text-right text-slate-600">
-                          {workout.exerciseCount} ex / {workout.totalSetsLogged} sets
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+        {data.overview ? (
+          <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Active Mesocycle
+                </p>
+                <h2 className="mt-1 text-2xl font-semibold text-slate-900">
+                  Meso {data.overview.mesoNumber}: {data.overview.focus}
+                </h2>
+                <p className="mt-2 text-sm text-slate-600">{data.overview.coachingCue}</p>
+              </div>
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700">
+                {formatBlockLabel(data.overview.currentBlockType)}
+              </span>
             </div>
-          ) : (
-            <p className="mt-3 text-sm text-slate-500">No sessions logged yet.</p>
-          )}
-        </section>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Week</p>
+                <p className="mt-2 text-xl font-semibold text-slate-900">
+                  {data.overview.currentWeek} / {data.overview.durationWeeks}
+                </p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Progress
+                </p>
+                <p className="mt-2 text-xl font-semibold text-slate-900">
+                  {data.overview.percentComplete}%
+                </p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Target RIR
+                </p>
+                <p className="mt-2 text-xl font-semibold text-slate-900">
+                  {data.overview.rirTarget
+                    ? `${data.overview.rirTarget.min}-${data.overview.rirTarget.max}`
+                    : "n/a"}
+                </p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Lighter Week
+                </p>
+                <p className="mt-2 text-xl font-semibold text-slate-900">
+                  {data.overview.sessionsUntilDeload === 0
+                    ? "Scheduled"
+                    : `${data.overview.sessionsUntilDeload} away`}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-5 h-2 w-full rounded-full bg-slate-200">
+              <div
+                className="h-2 rounded-full bg-slate-900 transition-all"
+                style={{ width: `${data.overview.percentComplete}%` }}
+              />
+            </div>
+
+            {data.overview.blocks.length > 0 ? (
+              <div className="mt-5 flex flex-wrap gap-2">
+                {data.overview.blocks.map((block) => {
+                  const endWeek = block.startWeek + block.durationWeeks - 1;
+                  return (
+                    <span
+                      key={`${block.blockType}:${block.startWeek}`}
+                      className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700"
+                    >
+                      {formatBlockLabel(block.blockType)} W{block.startWeek}
+                      {endWeek > block.startWeek ? `-${endWeek}` : ""}
+                    </span>
+                  );
+                })}
+              </div>
+            ) : null}
+          </section>
+        ) : (
+          <section className="mt-6">
+            <ProgramStatusCard initialData={data.volumeDetails.dashboard} />
+          </section>
+        )}
+
+        {data.currentWeekPlan ? (
+          <section className="mt-7 rounded-3xl border-2 border-blue-200 bg-gradient-to-b from-blue-50 via-white to-white p-5 shadow-sm sm:p-6">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">
+                  Current Week Plan
+                </p>
+                <h2 className="mt-1 text-2xl font-semibold text-slate-900">
+                  Ordered weekly slots
+                </h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  Follow the next slot first, then use the projection below to understand the
+                  full-week consequence.
+                </p>
+              </div>
+              <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-800">
+                Week {data.currentWeekPlan.week}
+              </span>
+            </div>
+
+            <div className="mt-5 grid gap-3">
+              {data.currentWeekPlan.slots.map((slot) => {
+                const workoutStatusLabel = formatWorkoutStatusLabel(slot.linkedWorkoutStatus);
+                const nextSessionImpact =
+                  slot.state === "next" ? data.currentWeekPlan.nextSessionImpact : null;
+                return (
+                  <div
+                    key={slot.slotId}
+                    className={`rounded-2xl border px-4 py-4 transition-colors sm:px-5 ${CURRENT_WEEK_PLAN_STATE_STYLE[slot.state]}`}
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-base font-semibold text-slate-900">{slot.label}</p>
+                          {slot.state === "next" ? (
+                            <span className="rounded-full bg-blue-100 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-blue-800">
+                              Primary
+                            </span>
+                          ) : null}
+                        </div>
+                        <p className="mt-1 text-xs text-slate-600">
+                          Session {slot.sessionInWeek} of {data.currentWeekPlan.slots.length}
+                        </p>
+                        {workoutStatusLabel ? (
+                          <p className="mt-1 text-xs text-slate-600">Workout: {workoutStatusLabel}</p>
+                        ) : null}
+                        {nextSessionImpact ? (
+                          <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5">
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-700">
+                              Impact
+                            </p>
+                            <p className="mt-1 text-sm font-medium text-slate-900">
+                              {nextSessionImpact.summaryLabel.replace(
+                                "Next session impact: likely increases ",
+                                "This session will increase "
+                              )}
+                            </p>
+                            <p className="mt-1 text-xs text-slate-600">
+                              {nextSessionImpact.topMuscles
+                                .map(
+                                  (muscle) =>
+                                    `${muscle.muscle} ${formatProjectedSetCount(
+                                      muscle.projectedEffectiveSets
+                                    )}`
+                                )
+                                .join(" • ")}
+                            </p>
+                          </div>
+                        ) : null}
+                      </div>
+                      <div className="flex items-center gap-2 self-start">
+                        <span className="rounded-full border border-current px-2.5 py-1 text-xs font-semibold">
+                          {formatPlanStateLabel(slot.state)}
+                        </span>
+                        {slot.linkedWorkoutId ? (
+                          <Link
+                            href={`/workout/${slot.linkedWorkoutId}`}
+                            className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-900 transition-colors hover:border-slate-400"
+                          >
+                            Open workout
+                          </Link>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        ) : null}
+
+        {data.weekCompletionOutlook ? (
+          <WeekCompletionOutlookSection outlook={data.weekCompletionOutlook} />
+        ) : null}
+
+        {data.overview ? (
+          <section className="mt-8">
+            <div className="rounded-3xl border border-slate-200 bg-slate-50/80 p-4 sm:p-5">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Volume Details
+              </p>
+              <h2 className="mt-1 text-lg font-semibold text-slate-900">
+                Weighted weekly volume
+              </h2>
+              <p className="mt-2 text-sm text-slate-600">
+                Use this as supporting diagnostic detail after checking the plan and projection
+                signals above.
+              </p>
+
+              {data.volumeDetails.currentWeekOutcomeSummary ? (
+                <div className="mt-3">
+                  <OutcomeSummaryChips summary={data.volumeDetails.currentWeekOutcomeSummary} />
+                </div>
+              ) : null}
+
+              <div className="mt-4">
+                <ProgramStatusCard initialData={data.volumeDetails.dashboard} variant="volumeOnly" />
+              </div>
+            </div>
+          </section>
+        ) : null}
+
+        {data.overview ? (
+          <section className="mt-8">
+            <details className="rounded-2xl border border-slate-200 bg-white p-5">
+              <summary className="cursor-pointer list-none text-sm font-semibold uppercase tracking-wide text-slate-500">
+                Advanced Cycle Actions
+              </summary>
+              <p className="mt-3 text-sm text-slate-600">
+                Manual mesocycle adjustments live here so the main Program flow stays focused on
+                understanding the active week.
+              </p>
+              <CycleAnchorControls
+                availableActions={data.advancedActions.availableActions}
+                showHeading={false}
+              />
+            </details>
+          </section>
+        ) : null}
       </div>
     </main>
   );

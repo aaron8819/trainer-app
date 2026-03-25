@@ -15,7 +15,7 @@ import {
   getWeeklyMuscleStatus,
 } from "@/lib/ui/weekly-muscle-status";
 
-type ProgramStatusCardVariant = "default" | "homeCompact";
+type ProgramStatusCardVariant = "default" | "homeCompact" | "volumeOnly";
 
 export function getVolumeDotClass(
   effectiveSets: number,
@@ -381,7 +381,13 @@ function ProgramStatusCardCompact({ initialData }: { initialData: ProgramDashboa
   );
 }
 
-function ProgramStatusCardDefault({ initialData }: { initialData: ProgramDashboardData }) {
+function ProgramStatusCardDefault({
+  initialData,
+  showOverviewChrome = true,
+}: {
+  initialData: ProgramDashboardData;
+  showOverviewChrome?: boolean;
+}) {
   const [activeData, setActiveData] = useState(initialData);
   const [loading, setLoading] = useState(false);
   const [selectedMuscle, setSelectedMuscle] = useState<string | null>(null);
@@ -425,6 +431,7 @@ function ProgramStatusCardDefault({ initialData }: { initialData: ProgramDashboa
     return <ProgramStatusEmptyState />;
   }
 
+  const isVolumeOnly = !showOverviewChrome;
   const blockType = viewedBlockType ?? activeMeso.currentBlockType ?? "accumulation";
   const relevantVolume = activeData.volumeThisWeek.filter(
     (v) => v.mev > 0 || v.target > 0 || v.effectiveSets > 0
@@ -433,44 +440,56 @@ function ProgramStatusCardDefault({ initialData }: { initialData: ProgramDashboa
   const selectedBreakdown = selectedRow?.breakdown ?? null;
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
-      <ProgramCardHeader
-        mesoNumber={activeMeso.mesoNumber}
-        focus={activeMeso.focus}
-        blockType={blockType}
-      />
-      <ProgramCardProgress
-        blockType={blockType}
-        currentWeek={viewedWeek}
-        durationWeeks={durationWeeks}
-      />
-      <MesocycleTimeline
-        blocks={activeMeso.blocks}
-        currentWeek={viewedWeek}
-        durationWeeks={durationWeeks}
-      />
-      <ProgramCardStatusRow
-        rirTarget={rirTarget}
-        sessionsUntilDeload={isHistorical ? null : sessionsUntilDeload}
-      />
-      {!isHistorical && deloadReadiness?.shouldDeload ? (
-        <div className="mt-3">
-          <DeloadBanner readiness={deloadReadiness} />
-        </div>
+    <div
+      className={`rounded-2xl border bg-white ${
+        isVolumeOnly
+          ? "border-slate-100/90 p-3 shadow-none sm:p-4"
+          : "border-slate-200 p-4 sm:p-5"
+      }`}
+    >
+      {showOverviewChrome ? (
+        <>
+          <ProgramCardHeader
+            mesoNumber={activeMeso.mesoNumber}
+            focus={activeMeso.focus}
+            blockType={blockType}
+          />
+          <ProgramCardProgress
+            blockType={blockType}
+            currentWeek={viewedWeek}
+            durationWeeks={durationWeeks}
+          />
+          <MesocycleTimeline
+            blocks={activeMeso.blocks}
+            currentWeek={viewedWeek}
+            durationWeeks={durationWeeks}
+          />
+          <ProgramCardStatusRow
+            rirTarget={rirTarget}
+            sessionsUntilDeload={isHistorical ? null : sessionsUntilDeload}
+          />
+          {!isHistorical && deloadReadiness?.shouldDeload ? (
+            <div className="mt-3">
+              <DeloadBanner readiness={deloadReadiness} />
+            </div>
+          ) : null}
+        </>
       ) : null}
 
-      <div className="mt-5 flex items-start justify-between gap-2">
+      <div
+        className={`${showOverviewChrome ? "mt-5" : ""} flex items-start justify-between gap-2`}
+      >
         <div>
-          <p className="text-sm font-semibold text-slate-900">
+          <p className={`${isVolumeOnly ? "text-sm" : "text-sm"} font-semibold text-slate-900`}>
             {isHistorical
               ? `Volume - Week ${viewedWeek} of ${durationWeeks}`
               : "Volume This Week"}
           </p>
-          <p className="mt-0.5 text-xs text-slate-500">
+          <p className={`mt-0.5 text-xs ${isVolumeOnly ? "text-slate-400" : "text-slate-500"}`}>
             Weighted sets count toward your weekly target. Raw direct and indirect sets are
             context only.
           </p>
-          <p className="mt-0.5 text-xs text-slate-400">
+          <p className={`mt-0.5 text-xs ${isVolumeOnly ? "text-slate-400" : "text-slate-400"}`}>
             MEV = minimum effective, MAV = productive upper range, MRV = recoverable ceiling.
           </p>
         </div>
@@ -505,7 +524,9 @@ function ProgramStatusCardDefault({ initialData }: { initialData: ProgramDashboa
 
       {relevantVolume.length > 0 ? (
         <div
-          className={`mt-3 grid grid-cols-2 gap-2 transition-opacity sm:grid-cols-3 lg:grid-cols-4 ${
+          className={`mt-3 grid ${
+            isVolumeOnly ? "grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3" : "grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4"
+          } transition-opacity ${
             loading ? "opacity-50" : ""
           }`}
         >
@@ -535,17 +556,23 @@ function ProgramStatusCardDefault({ initialData }: { initialData: ProgramDashboa
                     ? `Show where ${row.muscle} sets came from`
                     : `${row.muscle} weekly volume`
                 }
-                className={`rounded-xl border p-3 text-left ${cls} ${
+                className={`rounded-xl border text-left ${cls} ${
+                  isVolumeOnly ? "p-2.5" : "p-3"
+                } ${
                   hasBreakdown ? "transition-shadow hover:shadow-sm" : "cursor-default"
                 }`}
               >
-                <p className="text-xs font-semibold">{row.muscle}</p>
-                <p className="mt-0.5 text-lg font-bold leading-none">
+                <p className={`${isVolumeOnly ? "text-[11px]" : "text-xs"} font-semibold`}>
+                  {row.muscle}
+                </p>
+                <p className={`mt-0.5 ${isVolumeOnly ? "text-base" : "text-lg"} font-bold leading-none`}>
                   {formatSetCount(row.effectiveSets)} weighted sets
                 </p>
                 <p className="text-xs opacity-75">target {row.target} weighted sets</p>
                 <div className="mt-1.5">
-                  <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium ${cls}`}>
+                  <span
+                    className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium ${cls}`}
+                  >
                     {formatWeeklyMuscleStatusLabel(status)}
                   </span>
                 </div>
@@ -583,7 +610,7 @@ function ProgramStatusCardDefault({ initialData }: { initialData: ProgramDashboa
         <p className="mt-3 text-sm text-slate-500">No volume data for this week.</p>
       )}
 
-      {coachingCue ? (
+      {coachingCue && showOverviewChrome ? (
         <p className="mt-4 text-xs italic text-slate-600">{coachingCue}</p>
       ) : null}
 
@@ -655,7 +682,7 @@ export function ProgramStatusCard({
     return <ProgramStatusCardCompact initialData={initialData} />;
   }
 
-  return <ProgramStatusCardDefault initialData={initialData} />;
+  return <ProgramStatusCardDefault initialData={initialData} showOverviewChrome={variant !== "volumeOnly"} />;
 }
 
 export default ProgramStatusCard;

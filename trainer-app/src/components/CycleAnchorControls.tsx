@@ -3,23 +3,27 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-type Action = "deload" | "extend_phase" | "skip_phase" | "reset";
+type Action = "deload" | "extend_phase" | "reset";
 
 const ACTION_LABELS: Record<Action, string> = {
   deload: "Take a deload",
   extend_phase: "Extend this phase (+1 wk)",
-  skip_phase: "Skip ahead one week",
   reset: "Reset mesocycle",
 };
 
 const ACTION_DESCRIPTIONS: Record<Action, string> = {
   deload: "Marks the next session as a deload — lighter loads and reduced volume.",
   extend_phase: "Adds one more week to the current phase before advancing.",
-  skip_phase: "Advances your session count by one full training week.",
   reset: "Resets session count to week 1. Use if you're starting fresh.",
 };
 
-export function CycleAnchorControls() {
+export function CycleAnchorControls({
+  availableActions = ["deload", "extend_phase", "reset"],
+  showHeading = true,
+}: {
+  availableActions?: Action[];
+  showHeading?: boolean;
+}) {
   const [confirming, setConfirming] = useState<Action | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -45,9 +49,11 @@ export function CycleAnchorControls() {
 
   return (
     <div className="mt-4">
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Adjust Cycle</p>
+      {showHeading ? (
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Adjust Cycle</p>
+      ) : null}
       <div className="mt-2 flex flex-wrap gap-2">
-        {(["deload", "extend_phase", "skip_phase", "reset"] as Action[]).map((action) => (
+        {availableActions.map((action) => (
           <button
             key={action}
             type="button"

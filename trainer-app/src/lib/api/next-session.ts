@@ -48,14 +48,14 @@ type IncompleteWorkoutCandidate = {
   selectionMetadata?: unknown;
 };
 
-type PerformedAdvancingWorkoutCandidate = {
+export type PerformedAdvancingWorkoutCandidate = {
   advancesSplit: boolean | null;
   selectionMetadata?: unknown;
   selectionMode: string | null;
   sessionIntent: string | null;
 };
 
-type AdvancingPerformedSlot = {
+export type AdvancingPerformedSlot = {
   slotId?: string | null;
   intent?: string | null;
 };
@@ -84,7 +84,7 @@ function pickTopIncompleteWorkout(
   })[0] ?? null;
 }
 
-function buildAdvancingPerformedSlots(
+export function buildAdvancingPerformedSlots(
   workouts: PerformedAdvancingWorkoutCandidate[]
 ): AdvancingPerformedSlot[] {
   return workouts

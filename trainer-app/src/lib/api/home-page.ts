@@ -2,7 +2,6 @@ import { prisma } from "@/lib/db/prisma";
 import {
   buildWorkoutListSurfaceSummary,
   formatWorkoutListIntentLabel,
-  getWorkoutListPrimaryLabel,
   getWorkoutListSecondaryLabel,
   type WorkoutListSurfaceSummary,
   workoutListItemSelect,
@@ -226,9 +225,6 @@ function buildContinuitySummary(input: {
   decision: HomeDecisionSummary | null;
   homeProgram: HomeProgramSupportData | null;
 }): HomeContinuitySummary {
-  const lastCompletedLabel = input.lastCompleted
-    ? getWorkoutListPrimaryLabel(input.lastCompleted)
-    : null;
   const lastCompletedDescriptor = input.lastCompleted
     ? buildSessionDescriptor(input.lastCompleted)
     : null;

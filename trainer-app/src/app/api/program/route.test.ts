@@ -1,3 +1,4 @@
+import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
@@ -38,7 +39,7 @@ describe("PATCH /api/program", () => {
 
   it("rejects the removed skip_phase action", async () => {
     const response = await PATCH(
-      new Request("http://localhost/api/program", {
+      new NextRequest("http://localhost/api/program", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "skip_phase" }),

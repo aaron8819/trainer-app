@@ -243,16 +243,22 @@ function buildWeekCompletionOutlook(input: {
 
       return left.muscle.localeCompare(right.muscle);
     });
+  const rowsWithoutPercentDelta = rows.map((row) => ({
+    muscle: row.muscle,
+    status: row.status,
+    projectedFullWeekEffectiveSets: row.projectedFullWeekEffectiveSets,
+    targetSets: row.targetSets,
+    delta: row.delta,
+  }));
 
-  const defaultRows = rows
+  const defaultRows = rowsWithoutPercentDelta
     .filter((row) => row.status !== "on_target")
-    .slice(0, 4)
-    .map(({ percentDelta: _percentDelta, ...row }) => row);
+    .slice(0, 4);
 
   return {
     assumptionLabel: "If you complete the remaining planned sessions this week, you will likely land here.",
     summary: buildOutcomeSummary(rows),
-    rows: rows.map(({ percentDelta: _percentDelta, ...row }) => row),
+    rows: rowsWithoutPercentDelta,
     defaultRows,
   };
 }

@@ -3,6 +3,8 @@ type SessionIdentityInput = {
   slotId?: string | null;
 };
 
+type SessionSlotSource = "mesocycle_slot_sequence" | "legacy_weekly_schedule" | null | undefined;
+
 function toTitleCase(value: string): string {
   return value
     .split("_")
@@ -107,4 +109,29 @@ export function formatSessionIdentityDescription(input: SessionIdentityInput): s
   }
 
   return `${formatOrdinalWord(slotOrdinal)} ${intentLabel} session in your current weekly order.`;
+}
+
+export function formatSessionSlotTechnicalLabel(slotId?: string | null): string | null {
+  const resolvedSlotId = slotId?.trim() || null;
+  if (!resolvedSlotId) {
+    return null;
+  }
+
+  return `Slot ID: ${resolvedSlotId}`;
+}
+
+export function formatSessionSlotTechnicalDescription(input: {
+  slotId?: string | null;
+  source?: SessionSlotSource;
+}): string | null {
+  const resolvedSlotId = input.slotId?.trim() || null;
+  if (!resolvedSlotId) {
+    return null;
+  }
+
+  if (input.source === "legacy_weekly_schedule") {
+    return `Canonical slot ID ${resolvedSlotId} from your saved weekly schedule.`;
+  }
+
+  return `Canonical slot ID ${resolvedSlotId} from your ordered weekly slot sequence.`;
 }

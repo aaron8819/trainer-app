@@ -8,7 +8,10 @@ import { parseExplainabilitySelectionMetadata } from "@/lib/ui/explainability";
 import { buildSessionSummaryModel } from "@/lib/ui/session-summary";
 import { splitExercises } from "@/lib/ui/workout-sections";
 import { resolveGapFillTargetMuscles } from "@/lib/ui/gap-fill";
-import { formatSessionIdentityLabel } from "@/lib/ui/session-identity";
+import {
+  formatSessionIdentityLabel,
+  formatSessionSlotTechnicalLabel,
+} from "@/lib/ui/session-identity";
 import { isStrictOptionalGapFillSession } from "@/lib/gap-fill/classifier";
 import { getWorkoutWorkflowState } from "@/lib/workout-workflow";
 
@@ -117,6 +120,9 @@ export default async function LogWorkoutPage({
     intent: workout.sessionIntent,
     slotId: sessionDecisionReceipt?.sessionSlot?.slotId ?? null,
   });
+  const sessionTechnicalLabel = formatSessionSlotTechnicalLabel(
+    sessionDecisionReceipt?.sessionSlot?.slotId ?? null
+  );
   const lifecycleCurrentWeek = explanation?.sessionContext.progressionContext.weekInMesocycle ?? null;
   const displayWeek = workout.mesocycleWeekSnapshot ?? lifecycleCurrentWeek;
   const gapFillTargetMuscles = resolveGapFillTargetMuscles({
@@ -149,7 +155,9 @@ export default async function LogWorkoutPage({
             <p className="text-sm uppercase tracking-wide text-slate-500">Log Session</p>
             <h1 className="page-title mt-1.5">Workout Log</h1>
             <p className="mt-1.5 text-sm text-slate-600">
-              {sessionIdentityLabel} • Tap to log each set quickly.
+              {sessionIdentityLabel}
+              {sessionTechnicalLabel ? ` | ${sessionTechnicalLabel}` : ""}
+              {" | Tap to log each set quickly."}
             </p>
           </div>
           <Link
@@ -167,6 +175,8 @@ export default async function LogWorkoutPage({
           exercises={exercises}
           allowBonusExerciseAdd={!isStrictGapFill}
           allowGapFillAccessorySwap={isStrictGapFill && workout.status === "PLANNED"}
+          sessionIdentityLabel={sessionIdentityLabel}
+          sessionTechnicalLabel={sessionTechnicalLabel}
         />
       </div>
     </main>

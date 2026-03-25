@@ -27,6 +27,8 @@ describe("CompletedWorkoutReview", () => {
         totalSets={1}
         loggedCount={1}
         rpeAdherence={null}
+        sessionIdentityLabel="Upper 2"
+        sessionTechnicalLabel="Slot ID: upper_b"
         performanceSummary={[
           {
             exerciseId: "ex-1",
@@ -63,6 +65,8 @@ describe("CompletedWorkoutReview", () => {
         totalSets={1}
         loggedCount={1}
         rpeAdherence={null}
+        sessionIdentityLabel="Upper 2"
+        sessionTechnicalLabel="Slot ID: upper_b"
         performanceSummary={[
           {
             exerciseId: "ex-1",
@@ -99,6 +103,8 @@ describe("CompletedWorkoutReview", () => {
         totalSets={1}
         loggedCount={1}
         rpeAdherence={null}
+        sessionIdentityLabel="Upper 2"
+        sessionTechnicalLabel="Slot ID: upper_b"
         performanceSummary={[
           {
             exerciseId: "ex-1",
@@ -126,5 +132,21 @@ describe("CompletedWorkoutReview", () => {
     );
 
     expect(screen.getByText("Extra set")).toBeInTheDocument();
+  });
+
+  it("renders the canonical session identity and slot id when provided", () => {
+    render(
+      <CompletedWorkoutReview
+        workoutId="workout-1"
+        totalSets={1}
+        loggedCount={1}
+        rpeAdherence={null}
+        sessionIdentityLabel="Upper 2"
+        sessionTechnicalLabel="Slot ID: upper_b"
+        performanceSummary={[]}
+      />
+    );
+
+    expect(screen.getByText("Upper 2 | Slot ID: upper_b")).toBeInTheDocument();
   });
 });

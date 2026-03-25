@@ -203,6 +203,10 @@ describe("buildSessionSummaryModel", () => {
           label: "Session identity",
           value: "Second upper session in your current weekly order.",
         }),
+        expect.objectContaining({
+          label: "Slot ID",
+          value: "Canonical slot ID upper_b from your ordered weekly slot sequence.",
+        }),
       ])
     );
   });

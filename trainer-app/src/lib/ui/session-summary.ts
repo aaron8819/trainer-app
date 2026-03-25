@@ -17,6 +17,7 @@ import {
 import {
   formatSessionIdentityDescription,
   formatSessionIdentityLabel,
+  formatSessionSlotTechnicalDescription,
 } from "./session-identity";
 
 export type SessionSummaryTone = "neutral" | "positive" | "caution";
@@ -285,6 +286,14 @@ export function buildSessionSummaryModel(input: {
                 intent: sessionIntent,
                 slotId: receipt.sessionSlot.slotId,
               }) ?? `${sessionIdentityLabel} session in your current weekly order.`,
+          } satisfies SessionSummaryItem,
+          {
+            label: "Slot ID",
+            value:
+              formatSessionSlotTechnicalDescription({
+                slotId: receipt.sessionSlot.slotId,
+                source: receipt.sessionSlot.source,
+              }) ?? `Canonical slot ID ${receipt.sessionSlot.slotId}.`,
           } satisfies SessionSummaryItem,
         ]),
     {

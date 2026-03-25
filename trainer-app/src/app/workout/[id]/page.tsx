@@ -12,7 +12,10 @@ import {
   isPerformedWorkoutStatus,
 } from "@/lib/ui/session-overview";
 import { readRuntimeAddedSetIds } from "@/lib/ui/selection-metadata";
-import { formatSessionIdentityLabel } from "@/lib/ui/session-identity";
+import {
+  formatSessionIdentityLabel,
+  formatSessionSlotTechnicalLabel,
+} from "@/lib/ui/session-identity";
 import { evaluateTargetReps } from "@/lib/session-semantics/target-evaluation";
 import { buildSessionSummaryModel } from "@/lib/ui/session-summary";
 import { getWorkoutDetailTitle, getWorkoutWorkflowState } from "@/lib/workout-workflow";
@@ -143,6 +146,9 @@ export default async function WorkoutDetailPage({
     intent: workout.sessionIntent,
     slotId: sessionDecisionReceipt?.sessionSlot?.slotId ?? null,
   });
+  const sessionTechnicalLabel = formatSessionSlotTechnicalLabel(
+    sessionDecisionReceipt?.sessionSlot?.slotId ?? null
+  );
   const hasPerformedStatus = isPerformedWorkoutStatus(workout.status);
   const workflow = getWorkoutWorkflowState(workout.status, {
     mesocycleId: workout.mesocycleId,
@@ -199,7 +205,9 @@ export default async function WorkoutDetailPage({
             <p className="text-sm uppercase tracking-wide text-slate-500">Workout</p>
             <h1 className="page-title mt-1.5">{getWorkoutDetailTitle(workout.status)}</h1>
             <p className="mt-1.5 text-sm text-slate-600">
-              {sessionIdentityLabel} • Estimated {workout.estimatedMinutes ?? "--"} minutes
+              {sessionIdentityLabel}
+              {sessionTechnicalLabel ? ` | ${sessionTechnicalLabel}` : ""}
+              {` | Estimated ${workout.estimatedMinutes ?? "--"} minutes`}
             </p>
           </div>
           <Link

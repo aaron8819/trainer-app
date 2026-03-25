@@ -7,7 +7,9 @@ import {
   formatWorkoutListExerciseLabel,
   formatWorkoutListIntentLabel,
   formatWorkoutListLoggedSetsLabel,
+  getWorkoutListDebugLabel,
   getWorkoutListPrimaryLabel,
+  getWorkoutListSecondaryLabel,
   getWorkoutListStatusClasses,
   getWorkoutListStatusLabel,
   WORKOUT_LIST_STATUS_OPTIONS,
@@ -290,6 +292,8 @@ export default function HistoryClient({
               const sessionSnapshotLabel = formatWorkoutSessionSnapshotLabel(
                 workout.sessionSnapshot
               );
+              const secondaryLabel = getWorkoutListSecondaryLabel(workout);
+              const debugLabel = getWorkoutListDebugLabel(workout);
 
               return (
                 <div
@@ -315,6 +319,12 @@ export default function HistoryClient({
                         </span>
                       ) : null}
                     </p>
+                    {secondaryLabel ? (
+                      <p className="mt-1 text-xs text-slate-600">{secondaryLabel}</p>
+                    ) : null}
+                    {debugLabel ? (
+                      <p className="mt-1 text-xs text-slate-500">{debugLabel}</p>
+                    ) : null}
                     <p className="mt-1 text-xs text-slate-500">
                       {new Date(workout.scheduledDate).toLocaleDateString()} |{" "}
                       {formatWorkoutListExerciseLabel(workout.exerciseCount)} |{" "}

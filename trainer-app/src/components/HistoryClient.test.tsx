@@ -35,6 +35,8 @@ function makeWorkout(overrides: Partial<HistoryWorkoutItem> = {}): HistoryWorkou
     selectionMode: "INTENT",
     sessionIntent: "PUSH",
     sessionIdentityLabel: "Push",
+    sessionSlotId: null,
+    sessionTechnicalLabel: null,
     mesocycleId: null,
     mesocycleState: null,
     mesocycleIsActive: null,
@@ -146,6 +148,8 @@ describe("HistoryClient", () => {
             id: "upper-2",
             sessionIntent: "UPPER",
             sessionIdentityLabel: "Upper 2",
+            sessionSlotId: "upper_b",
+            sessionTechnicalLabel: "Slot ID: upper_b",
           }),
         ]}
         initialNextCursor={null}
@@ -155,6 +159,7 @@ describe("HistoryClient", () => {
     );
 
     expect(screen.getByText("Upper 2")).toBeInTheDocument();
+    expect(screen.getByText("Slot ID: upper_b")).toBeInTheDocument();
   });
 
   it("renders a Deload badge on deload workouts", () => {

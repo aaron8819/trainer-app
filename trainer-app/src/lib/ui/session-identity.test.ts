@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   formatSessionIdentityDescription,
   formatSessionIdentityLabel,
+  formatSessionSlotTechnicalDescription,
+  formatSessionSlotTechnicalLabel,
   formatSessionIntentLabel,
 } from "./session-identity";
 
@@ -24,5 +26,21 @@ describe("session identity helpers", () => {
     expect(
       formatSessionIdentityDescription({ intent: "UPPER", slotId: "upper_b" })
     ).toBe("Second upper session in your current weekly order.");
+  });
+
+  it("formats technical slot labels from canonical slot ids", () => {
+    expect(formatSessionSlotTechnicalLabel("upper_b")).toBe("Slot ID: upper_b");
+    expect(
+      formatSessionSlotTechnicalDescription({
+        slotId: "upper_b",
+        source: "mesocycle_slot_sequence",
+      })
+    ).toBe("Canonical slot ID upper_b from your ordered weekly slot sequence.");
+    expect(
+      formatSessionSlotTechnicalDescription({
+        slotId: "upper_b",
+        source: "legacy_weekly_schedule",
+      })
+    ).toBe("Canonical slot ID upper_b from your saved weekly schedule.");
   });
 });

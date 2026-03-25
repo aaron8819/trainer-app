@@ -7,7 +7,10 @@ import {
   resolveGapFillTargetMuscles,
 } from "./gap-fill";
 import { readSessionDecisionReceipt } from "@/lib/evidence/session-decision-receipt";
-import { formatSessionIdentityLabel } from "./session-identity";
+import {
+  formatSessionIdentityLabel,
+  formatSessionSlotTechnicalLabel,
+} from "./session-identity";
 import {
   isCanonicalDeloadPhase,
   isCanonicalDeloadReceipt,
@@ -66,6 +69,8 @@ export type WorkoutListSurfaceSummary = {
   selectionMode: string | null;
   sessionIntent: string | null;
   sessionIdentityLabel: string;
+  sessionSlotId: string | null;
+  sessionTechnicalLabel: string | null;
   mesocycleId: string | null;
   mesocycleState: string | null;
   mesocycleIsActive: boolean | null;
@@ -129,6 +134,12 @@ export function getWorkoutListSecondaryLabel(workout: Pick<WorkoutListSurfaceSum
   return formatGapFillMuscleList(workout.gapFillTargetMuscles);
 }
 
+export function getWorkoutListDebugLabel(
+  workout: Pick<WorkoutListSurfaceSummary, "sessionTechnicalLabel">
+): string | null {
+  return workout.sessionTechnicalLabel;
+}
+
 export function getWorkoutListStatusLabel(status: string): string {
   return WORKOUT_LIST_STATUS_LABELS[status] ?? status;
 }
@@ -168,10 +179,12 @@ export function buildWorkoutListSurfaceSummary(
     sessionIntent: row.sessionIntent,
   });
   const receipt = readSessionDecisionReceipt(row.selectionMetadata);
+  const sessionSlotId = receipt?.sessionSlot?.slotId ?? null;
   const sessionIdentityLabel = formatSessionIdentityLabel({
     intent: row.sessionIntent ?? receipt?.sessionSlot?.intent ?? null,
-    slotId: receipt?.sessionSlot?.slotId ?? null,
+    slotId: sessionSlotId,
   });
+  const sessionTechnicalLabel = formatSessionSlotTechnicalLabel(sessionSlotId);
   const displayWeek = row.mesocycleWeekSnapshot ?? receipt?.cycleContext.weekInMeso ?? null;
   const displaySession =
     displayWeek == null
@@ -191,6 +204,8 @@ export function buildWorkoutListSurfaceSummary(
     selectionMode: row.selectionMode,
     sessionIntent: row.sessionIntent ?? null,
     sessionIdentityLabel,
+    sessionSlotId,
+    sessionTechnicalLabel,
     mesocycleId: row.mesocycleId ?? null,
     mesocycleState: row.mesocycle?.state ?? null,
     mesocycleIsActive: row.mesocycle?.isActive ?? null,

@@ -4,6 +4,7 @@ import {
   formatWorkoutListExerciseLabel,
   formatWorkoutListIntentLabel,
   formatWorkoutListLoggedSetsLabel,
+  getWorkoutListDebugLabel,
   getWorkoutListPrimaryLabel,
   getWorkoutListSecondaryLabel,
   getWorkoutListStatusClasses,
@@ -84,6 +85,8 @@ describe("buildWorkoutListSurfaceSummary", () => {
       selectionMode: "INTENT",
       sessionIntent: "PUSH",
       sessionIdentityLabel: "Push",
+      sessionSlotId: null,
+      sessionTechnicalLabel: null,
       mesocycleId: "meso-1",
       mesocycleState: "ACTIVE_ACCUMULATION",
       mesocycleIsActive: true,
@@ -223,7 +226,10 @@ describe("buildWorkoutListSurfaceSummary", () => {
     });
 
     expect(summary.sessionIdentityLabel).toBe("Upper 2");
+    expect(summary.sessionSlotId).toBe("upper_b");
+    expect(summary.sessionTechnicalLabel).toBe("Slot ID: upper_b");
     expect(getWorkoutListPrimaryLabel(summary)).toBe("Upper 2");
+    expect(getWorkoutListDebugLabel(summary)).toBe("Slot ID: upper_b");
   });
 
   it("marks strict supplemental deficit sessions without changing body-part primary labeling", () => {

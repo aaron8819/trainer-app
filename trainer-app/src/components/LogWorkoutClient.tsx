@@ -121,12 +121,16 @@ export default function LogWorkoutClient({
   allowBonusExerciseAdd = true,
   allowGapFillAccessorySwap = false,
   onQueueExerciseRowRender,
+  sessionIdentityLabel,
+  sessionTechnicalLabel,
 }: {
   workoutId: string;
   exercises: LogExerciseInput[] | SectionedExercises;
   allowBonusExerciseAdd?: boolean;
   allowGapFillAccessorySwap?: boolean;
   onQueueExerciseRowRender?: (exerciseId: string) => void;
+  sessionIdentityLabel?: string | null;
+  sessionTechnicalLabel?: string | null;
 }) {
   const {
     data,
@@ -854,6 +858,8 @@ export default function LogWorkoutClient({
           loggedCount={loggedCount}
           performanceSummary={performanceSummary}
           rpeAdherence={rpeAdherence}
+          sessionIdentityLabel={sessionIdentityLabel}
+          sessionTechnicalLabel={sessionTechnicalLabel}
           totalSets={totalSets}
         />
       ) : null}

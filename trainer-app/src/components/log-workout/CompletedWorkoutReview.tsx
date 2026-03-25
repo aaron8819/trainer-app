@@ -29,6 +29,8 @@ type CompletedWorkoutReviewProps = {
   loggedCount: number;
   rpeAdherence: RpeAdherenceSummary | null;
   performanceSummary: CompletedWorkoutExerciseSummary[];
+  sessionIdentityLabel?: string | null;
+  sessionTechnicalLabel?: string | null;
 };
 
 export function CompletedWorkoutReview({
@@ -37,6 +39,8 @@ export function CompletedWorkoutReview({
   loggedCount,
   rpeAdherence,
   performanceSummary,
+  sessionIdentityLabel,
+  sessionTechnicalLabel,
 }: CompletedWorkoutReviewProps) {
   const [explanation, setExplanation] = useState<WorkoutExplanation | null>(null);
   const [isLoadingExplanation, setIsLoadingExplanation] = useState(true);
@@ -79,6 +83,12 @@ export function CompletedWorkoutReview({
         <p className="mt-1 text-sm text-emerald-800">
           Your sets are saved. Here&apos;s the short read on what today means.
         </p>
+        {sessionIdentityLabel ? (
+          <p className="mt-2 text-sm text-emerald-800">
+            {sessionIdentityLabel}
+            {sessionTechnicalLabel ? ` | ${sessionTechnicalLabel}` : ""}
+          </p>
+        ) : null}
         <div className="mt-3 grid grid-cols-2 gap-4">
           <div>
             <p className="text-xs text-emerald-700">Sets logged</p>

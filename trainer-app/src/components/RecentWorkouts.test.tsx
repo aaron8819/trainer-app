@@ -23,6 +23,8 @@ function makeWorkout(
     selectionMode: "INTENT",
     sessionIntent: "PUSH",
     sessionIdentityLabel: "Push",
+    sessionSlotId: null,
+    sessionTechnicalLabel: null,
     mesocycleId: null,
     mesocycleState: null,
     mesocycleIsActive: null,
@@ -148,10 +150,13 @@ describe("slot-aware labels", () => {
       makeWorkout({
         sessionIntent: "UPPER",
         sessionIdentityLabel: "Upper 2",
+        sessionSlotId: "upper_b",
+        sessionTechnicalLabel: "Slot ID: upper_b",
       }),
     ]);
 
     expect(screen.getByText("Upper 2")).toBeInTheDocument();
+    expect(screen.getByText("Slot ID: upper_b")).toBeInTheDocument();
   });
 });
 

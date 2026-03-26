@@ -422,16 +422,6 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
           targetRpe: 6.5,
           restSeconds: 90,
         },
-        {
-          id: "set-5",
-          setIndex: 3,
-          targetReps: 12,
-          targetRepMin: 10,
-          targetRepMax: 14,
-          targetLoad: 35,
-          targetRpe: 6.5,
-          restSeconds: 90,
-        },
       ],
     });
 
@@ -449,14 +439,22 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
       expect.objectContaining({
         data: expect.objectContaining({
           sets: {
-            create: expect.arrayContaining([
+            create: [
               expect.objectContaining({
+                setIndex: 1,
                 targetRpe: 6.5,
                 targetRepMin: 10,
                 targetRepMax: 14,
                 restSeconds: 90,
               }),
-            ]),
+              expect.objectContaining({
+                setIndex: 2,
+                targetRpe: 6.5,
+                targetRepMin: 10,
+                targetRepMax: 14,
+                restSeconds: 90,
+              }),
+            ],
           },
         }),
       })

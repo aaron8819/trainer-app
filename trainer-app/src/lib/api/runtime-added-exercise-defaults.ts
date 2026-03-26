@@ -46,6 +46,8 @@ export type RuntimeAddedAccessoryDefaults = {
     | "generic_accessory_fallback";
 };
 
+const RUNTIME_ADDED_ACCESSORY_SET_COUNT = 2;
+
 type AccessoryPattern = {
   setCount?: number;
   targetReps?: number;
@@ -181,7 +183,6 @@ export function resolveRuntimeAddedAccessoryDefaults(
     primaryGoal: input.primaryGoal,
   });
   const genericTargetRpe = getBaseTargetRpe(input.primaryGoal, input.trainingAge);
-  const genericSetCount = input.trainingAge === "advanced" ? 4 : 3;
   const fallbackRestSeconds = resolveFallbackRestSeconds(
     input.exercise,
     resolvedRepRange.targetReps
@@ -208,7 +209,8 @@ export function resolveRuntimeAddedAccessoryDefaults(
   return {
     section: "ACCESSORY",
     isMainLift: false,
-    setCount: Math.max(1, Math.round(pattern?.setCount ?? genericSetCount)),
+    // Runtime-added accessories are top-up work, so keep set count intentionally conservative.
+    setCount: RUNTIME_ADDED_ACCESSORY_SET_COUNT,
     targetReps,
     targetRepMin,
     targetRepMax,

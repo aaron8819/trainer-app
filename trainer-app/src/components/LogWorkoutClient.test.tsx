@@ -393,6 +393,37 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     expect(loadInput.value).toBe("40");
   });
 
+  it("does not treat mixed barbell+dumbbell metadata as dumbbell-style logging UI", () => {
+    render(
+      <LogWorkoutClient
+        workoutId="workout-1"
+        exercises={[
+          {
+            workoutExerciseId: "ex-mixed",
+            name: "Stiff-Legged Deadlift",
+            equipment: ["barbell", "dumbbell"],
+            isMainLift: true,
+            section: "MAIN",
+            sets: [
+              {
+                setId: "set-mixed-1",
+                setIndex: 1,
+                targetReps: 8,
+                targetLoad: 185,
+                targetRpe: 8,
+                restSeconds: 120,
+              },
+            ],
+          },
+        ]}
+      />
+    );
+
+    expect(screen.getByLabelText("Load")).toBeInTheDocument();
+    expect(screen.getByText("Load (lbs)")).toBeInTheDocument();
+    expect(screen.queryByText("Load per dumbbell (lbs)")).not.toBeInTheDocument();
+  });
+
   it("quantizes non-grid dumbbell loads to canonical 2.5-lb increments", async () => {
     const user = userEvent.setup();
     renderClient();

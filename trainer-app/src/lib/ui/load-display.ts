@@ -11,8 +11,15 @@ function normalizeDisplayLoad(lbs: number, isDumbbell: boolean): number {
   return isDumbbell ? quantizeLoad(lbs) : lbs;
 }
 
+const NON_DUMBBELL_FREE_WEIGHT_EQUIPMENT = new Set(["barbell", "ez_bar", "trap_bar"]);
+
 export function isDumbbellEquipment(equipment: string[] | undefined): boolean {
-  return (equipment ?? []).some((e) => e.toLowerCase() === "dumbbell");
+  const normalized = (equipment ?? []).map((item) => item.trim().toLowerCase());
+  if (!normalized.includes("dumbbell")) {
+    return false;
+  }
+
+  return !normalized.some((item) => NON_DUMBBELL_FREE_WEIGHT_EQUIPMENT.has(item));
 }
 
 /**

@@ -33,6 +33,7 @@ Sources of truth:
 ## API route groups
 - Workouts: `src/app/api/workouts/**` (generate-from-intent, generate-from-template, save, `GET /api/workouts/history`)
 - Logging: `src/app/api/logs/set/route.ts`
+- Logging support reads: `GET /api/workouts/[id]/logging-weekly-volume-check` (`src/app/api/workouts/[id]/logging-weekly-volume-check/route.ts`)
 - Mesocycles: `GET /api/mesocycles` (`src/app/api/mesocycles/route.ts`) plus handoff endpoints `PATCH /api/mesocycles/[id]/draft` and `POST /api/mesocycles/[id]/accept-next-cycle`
 - Program/periodization/readiness: `src/app/api/program/route.ts`, `src/app/api/periodization/macro/route.ts`, `src/app/api/readiness/submit/route.ts`, `src/app/api/stalls/route.ts`
 - Templates: `src/app/api/templates/**`
@@ -75,6 +76,12 @@ Sources of truth:
 - Workout generation/save: `generateFromTemplateSchema`, `generateFromIntentSchema`, `saveWorkoutSchema`
 - Workout history query: `workoutHistoryQuerySchema` in `src/lib/validation.ts`; consumed by `GET /api/workouts/history`. Supports `intent`, `status` (comma-separated), `mesocycleId`, `from`/`to` date range, and cursor-based pagination (`cursor`, `take`). History items expose the derived workout-list summary contract for badge rendering, including `sessionSnapshot` for week/session/phase chrome and `isDeload` for explicit deload labeling, instead of parallel top-level snapshot fields in the response shape (`src/app/api/workouts/history/route.ts`).
 - Logging: `setLogSchema`
+- `GET /api/workouts/[id]/logging-weekly-volume-check` is a read-only logging support contract owned by `src/lib/api/logging-weekly-volume-guidance.ts`. It is intentionally narrow:
+  - request identity comes from the route param plus `resolveOwner()`
+  - response returns `shouldShow`, active week identity when available, and flagged-muscle rows only
+  - each row carries `doneNow`, `projectedRemainingWeek`, `projectedEndOfWeek`, `weeklyTarget`, `deltaToTarget`, weekly-status badge fields, and low-opinion top-up copy
+  - projection is server-owned and uses the canonical equation `performed baseline excluding current workout + persisted current-workout actuals so far + projected remaining week`
+  - current-workout actuals are recomputed from persisted workout structure and logged non-skipped sets, including runtime-added sets and runtime-added exercises
 - Mesocycle handoff draft editing: `nextCycleSeedDraftUpdateSchema`
 - Dumbbell load contract: clients submit dumbbell `actualLoad` in per-hand units and `POST /api/logs/set` persists the provided per-hand value directly. Client read/write helpers must stay aligned with canonical 2.5 lb quantization in `src/lib/units/load-quantization.ts`; the API contract does not define a separate dumbbell snap whitelist.
 - Performed-set signal requirement: `POST /api/logs/set` returns 400 when a non-skipped set log supplies neither `actualReps` nor `actualRpe`. Unresolved sets must remain un-logged (missing) rather than being written as empty performed logs.

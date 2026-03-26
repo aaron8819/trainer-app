@@ -1,4 +1,5 @@
 import type { FilteredExerciseSummary } from "@/lib/engine/explainability";
+import type { LoggingWeeklyVolumeGuidance } from "@/lib/api/logging-weekly-volume-guidance";
 import type { SaveWorkoutResponse } from "@/lib/api/workout-save-contract";
 import type { WorkoutStatus } from "@/lib/api/workout-save-contract";
 import type { SaveableSelectionMetadata } from "@/lib/ui/selection-metadata";
@@ -124,6 +125,16 @@ export async function saveWorkoutRequest(payload: SaveWorkoutRequestPayload): Pr
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
+  });
+  return parseJsonResponse(response);
+}
+
+export async function loadWeeklyVolumeCheckRequest(
+  workoutId: string
+): Promise<ApiResult<LoggingWeeklyVolumeGuidance>> {
+  const response = await fetch(`/api/workouts/${workoutId}/logging-weekly-volume-check`, {
+    method: "GET",
+    cache: "no-store",
   });
   return parseJsonResponse(response);
 }

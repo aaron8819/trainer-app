@@ -2,9 +2,8 @@ import type { Prisma } from "@prisma/client";
 import { WorkoutStatus } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { VOLUME_LANDMARKS } from "@/lib/engine/volume-landmarks";
-import { getEffectiveStimulusByMuscle } from "@/lib/engine/stimulus";
 import type { SessionIntent } from "@/lib/engine/session-types";
-import type { WorkoutHistoryEntry, WorkoutPlan } from "@/lib/engine/types";
+import type { WorkoutPlan } from "@/lib/engine/types";
 import { readSessionSlotSnapshot } from "@/lib/evidence/session-decision-receipt";
 import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-semantics";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
@@ -14,17 +13,15 @@ import {
 } from "./mesocycle-slot-runtime";
 import { deriveCurrentMesocycleSession, getWeeklyVolumeTarget } from "./mesocycle-lifecycle";
 import { loadNextWorkoutContext } from "./next-session";
-import { finalizeDeloadSessionResult } from "./template-session/finalize-session";
 import {
+  appendWorkoutHistoryEntryToMappedContext,
   buildMappedGenerationContextFromSnapshot,
+  buildProjectedWorkoutHistoryEntry,
+  computeWorkoutContributionByMuscle,
+  generateProjectedSession,
+  listWorkoutExerciseNames,
   loadPreloadedGenerationSnapshot,
-} from "./template-session/context-loader";
-import { generateDeloadSessionFromIntentContext } from "./template-session/deload-session";
-import { generateSessionFromMappedContext } from "./template-session";
-import type {
-  MappedGenerationContext,
-  SessionGenerationResult,
-} from "./template-session/types";
+} from "./projected-week-volume-shared";
 import { loadMesocycleWeekMuscleVolume } from "./weekly-volume";
 
 type ProjectedWeekVolumeByMuscle = {
@@ -98,35 +95,6 @@ function countWorkoutSets(workout: WorkoutPlan): number {
   return [...workout.mainLifts, ...workout.accessories].reduce(
     (sum, exercise) => sum + exercise.sets.length,
     0
-  );
-}
-
-function computeWorkoutContributionByMuscle(
-  workout: WorkoutPlan
-): Record<string, number> {
-  const byMuscle = new Map<string, number>();
-
-  for (const exercise of [...workout.mainLifts, ...workout.accessories]) {
-    const setCount = exercise.sets.length;
-    if (setCount <= 0) {
-      continue;
-    }
-
-    for (const [muscle, effectiveSets] of getEffectiveStimulusByMuscle(
-      exercise.exercise,
-      setCount
-    )) {
-      byMuscle.set(
-        muscle,
-        roundToTenth((byMuscle.get(muscle) ?? 0) + effectiveSets)
-      );
-    }
-  }
-
-  return Object.fromEntries(
-    Array.from(byMuscle.entries()).sort(([left], [right]) =>
-      left.localeCompare(right)
-    )
   );
 }
 
@@ -223,94 +191,6 @@ function buildFullWeekRows(input: {
       }
       return left.muscle.localeCompare(right.muscle);
     });
-}
-
-function appendProjectedWorkoutToMappedContext(input: {
-  mapped: MappedGenerationContext;
-  workout: WorkoutPlan;
-  slotId: string | null;
-  intent: SessionIntent;
-  week: number;
-  sessionNumber: number;
-  projectedAt: Date;
-}): void {
-  const projectedHistoryEntry: WorkoutHistoryEntry = {
-    date: input.projectedAt.toISOString(),
-    completed: true,
-    status: "COMPLETED",
-    advancesSplit: true,
-    progressionEligible: true,
-    performanceEligible: true,
-    selectionMode: "INTENT",
-    sessionIntent: input.intent,
-    mesocycleSnapshot: {
-      mesocycleId: input.mapped.activeMesocycle?.id,
-      week: input.week,
-      session: input.sessionNumber,
-      phase: input.mapped.cycleContext.phase,
-      slotId: input.slotId,
-    },
-    exercises: [...input.workout.mainLifts, ...input.workout.accessories].map(
-      (exercise) => ({
-        exerciseId: exercise.exercise.id,
-        primaryMuscles: exercise.exercise.primaryMuscles ?? [],
-        sets: exercise.sets.map((set) => ({
-          exerciseId: exercise.exercise.id,
-          setIndex: set.setIndex,
-          reps: set.targetReps,
-          rpe: set.targetRpe,
-          targetLoad: set.targetLoad,
-        })),
-      })
-    ),
-  };
-
-  input.mapped.history = [...input.mapped.history, projectedHistoryEntry];
-  for (const exercise of [...input.workout.mainLifts, ...input.workout.accessories]) {
-    const previous = input.mapped.rotationContext.get(exercise.exercise.name);
-    input.mapped.rotationContext.set(exercise.exercise.name, {
-      lastUsed: input.projectedAt,
-      weeksAgo: 0,
-      usageCount: (previous?.usageCount ?? 0) + 1,
-      trend: previous?.trend ?? "improving",
-    });
-  }
-}
-
-async function generateProjectedSession(input: {
-  userId: string;
-  mapped: MappedGenerationContext;
-  intent: SessionIntent;
-  slotId: string | null;
-  plannerDiagnosticsMode: "standard" | "debug";
-}): Promise<SessionGenerationResult> {
-  if (input.mapped.activeMesocycle?.state === "ACTIVE_DELOAD") {
-    const deload = await generateDeloadSessionFromIntentContext(
-      input.userId,
-      input.mapped,
-      input.intent
-    );
-    if ("error" in deload) {
-      return deload;
-    }
-
-    return finalizeDeloadSessionResult({
-      mapped: input.mapped,
-      workout: deload.workout,
-      selection: deload.selection,
-      selectionMode: "INTENT",
-      sessionIntent: input.intent,
-      note: deload.note,
-      deloadTrace: deload.trace,
-      plannerDiagnosticsMode: input.plannerDiagnosticsMode,
-    });
-  }
-
-  return generateSessionFromMappedContext(input.mapped, {
-    intent: input.intent,
-    slotId: input.slotId ?? undefined,
-    plannerDiagnosticsMode: input.plannerDiagnosticsMode,
-  });
 }
 
 async function loadActiveMesocycleForProjection(
@@ -477,14 +357,20 @@ export async function loadProjectedWeekVolumeReport(input: {
       projectedContributionByMuscle,
     });
 
-    appendProjectedWorkoutToMappedContext({
+    const projectedAt = new Date(projectionStartTime.getTime() + index * 60_000);
+    appendWorkoutHistoryEntryToMappedContext({
       mapped,
-      workout: generation.workout,
-      slotId: slot.slotId ?? null,
-      intent: slot.intent as SessionIntent,
-      week: currentWeek,
-      sessionNumber: nextRuntimeSlot.session + index,
-      projectedAt: new Date(projectionStartTime.getTime() + index * 60_000),
+      historyEntry: buildProjectedWorkoutHistoryEntry({
+        mapped,
+        workout: generation.workout,
+        slotId: slot.slotId ?? null,
+        intent: slot.intent as SessionIntent,
+        week: currentWeek,
+        sessionNumber: nextRuntimeSlot.session + index,
+        occurredAt: projectedAt,
+      }),
+      occurredAt: projectedAt,
+      rotationExerciseNames: listWorkoutExerciseNames(generation.workout),
     });
   }
 

@@ -32,6 +32,7 @@ import { WorkoutFooter } from "@/components/log-workout/WorkoutFooter";
 import { WorkoutSessionFeedback } from "@/components/log-workout/WorkoutSessionFeedback";
 import { WorkoutSessionActions } from "@/components/log-workout/WorkoutSessionActions";
 import { WorkoutTimerHud } from "@/components/log-workout/WorkoutTimerHud";
+import { WeeklyVolumeCheck } from "@/components/log-workout/WeeklyVolumeCheck";
 import { useActiveSetDraftState } from "@/components/log-workout/useActiveSetDraftState";
 import { usePersistedWorkoutSessionUi } from "@/components/log-workout/usePersistedWorkoutSessionUi";
 import { useRestTimerState } from "@/components/log-workout/useRestTimerState";
@@ -644,6 +645,46 @@ export default function LogWorkoutClient({
     autoregHint.exerciseId === activeSet.exercise.workoutExerciseId;
   const sessionTerminated = completion.completed || completion.skipped;
   const showFinishBar = !sessionTerminated && allSetsLogged;
+  const plannedSetSummary = useMemo(() => {
+    let plannedTotal = 0;
+    let plannedResolved = 0;
+
+    for (const item of flatSets) {
+      if (item.exercise.isRuntimeAdded || item.set.isRuntimeAdded) {
+        continue;
+      }
+
+      plannedTotal += 1;
+      if (satisfiedSetIds.has(item.set.setId)) {
+        plannedResolved += 1;
+      }
+    }
+
+    return {
+      plannedTotal,
+      plannedResolved,
+      plannedCheckpointReached:
+        plannedTotal > 0 && plannedResolved === plannedTotal,
+    };
+  }, [flatSets, satisfiedSetIds]);
+  const showWeeklyVolumeCheck =
+    !sessionTerminated && plannedSetSummary.plannedCheckpointReached;
+  const weeklyVolumeRefreshKey = useMemo(
+    () =>
+      JSON.stringify(
+        flatSets.map((item) => ({
+          exerciseId: item.exercise.workoutExerciseId,
+          exerciseRuntimeAdded: item.exercise.isRuntimeAdded ?? false,
+          setId: item.set.setId,
+          setRuntimeAdded: item.set.isRuntimeAdded ?? false,
+          actualReps: item.set.actualReps ?? null,
+          actualLoad: item.set.actualLoad ?? null,
+          actualRpe: item.set.actualRpe ?? null,
+          wasSkipped: item.set.wasSkipped ?? false,
+        }))
+      ),
+    [flatSets]
+  );
   const finishBarBottomOffset = showFinishBar && keyboardHeight > 0 ? keyboardHeight : 0;
   const discardEditConfirmOpen = activeCardMode.kind === "edit" && showDiscardEditConfirm;
   const resolvedActiveSetValues = useMemo(
@@ -900,6 +941,14 @@ export default function LogWorkoutClient({
       />
 
       {!sessionTerminated && !showFinishBar ? (
+        <>
+          {showWeeklyVolumeCheck ? (
+            <WeeklyVolumeCheck
+              workoutId={workoutId}
+              visible={showWeeklyVolumeCheck}
+              refreshKey={weeklyVolumeRefreshKey}
+            />
+          ) : null}
         <WorkoutSessionActions
           loggedCount={loggedCount}
           totalSets={totalSets}
@@ -916,31 +965,41 @@ export default function LogWorkoutClient({
           onSkipReasonChange={completion.setSkipReason}
           onConfirmSkip={() => completion.openConfirm("mark_skipped")}
         />
+        </>
       ) : null}
 
       {showFinishBar ? (
-        <WorkoutFooter
-          sticky
-          bottomOffset={finishBarBottomOffset}
-          viewportBottomOffset={visualViewportBottomOffset}
-        >
-          <WorkoutSessionActions
-            loggedCount={loggedCount}
-            totalSets={totalSets}
-            completed={completion.completed}
-            skipped={completion.skipped}
-            showFinishBar={showFinishBar}
-            finishActionLabel={allSetsSkipped ? "Skip workout" : "Finish workout"}
-            showSkipOptions={completion.state.showSkipOptions}
-            skipReason={completion.state.skipReason}
-            sessionActionPending={completion.pending}
-            onFinish={() => completion.openConfirm("mark_completed")}
-            onLeaveForNow={() => completion.openConfirm("mark_partial")}
-            onToggleSkipOptions={completion.toggleSkipOptions}
-            onSkipReasonChange={completion.setSkipReason}
-            onConfirmSkip={() => completion.openConfirm("mark_skipped")}
-          />
-        </WorkoutFooter>
+        <>
+          {showWeeklyVolumeCheck ? (
+            <WeeklyVolumeCheck
+              workoutId={workoutId}
+              visible={showWeeklyVolumeCheck}
+              refreshKey={weeklyVolumeRefreshKey}
+            />
+          ) : null}
+          <WorkoutFooter
+            sticky
+            bottomOffset={finishBarBottomOffset}
+            viewportBottomOffset={visualViewportBottomOffset}
+          >
+            <WorkoutSessionActions
+              loggedCount={loggedCount}
+              totalSets={totalSets}
+              completed={completion.completed}
+              skipped={completion.skipped}
+              showFinishBar={showFinishBar}
+              finishActionLabel={allSetsSkipped ? "Skip workout" : "Finish workout"}
+              showSkipOptions={completion.state.showSkipOptions}
+              skipReason={completion.state.skipReason}
+              sessionActionPending={completion.pending}
+              onFinish={() => completion.openConfirm("mark_completed")}
+              onLeaveForNow={() => completion.openConfirm("mark_partial")}
+              onToggleSkipOptions={completion.toggleSkipOptions}
+              onSkipReasonChange={completion.setSkipReason}
+              onConfirmSkip={() => completion.openConfirm("mark_skipped")}
+            />
+          </WorkoutFooter>
+        </>
       ) : null}
 
       {discardEditConfirmOpen ? (

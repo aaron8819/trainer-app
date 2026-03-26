@@ -20,12 +20,14 @@ vi.mock("@/components/log-workout/api", () => ({
   logSetRequest: vi.fn(),
   deleteSetLogRequest: vi.fn(),
   saveWorkoutRequest: vi.fn(),
+  loadWeeklyVolumeCheckRequest: vi.fn(),
 }));
 
 const mockedAddSetToExerciseRequest = vi.mocked(workoutApi.addSetToExerciseRequest);
 const mockedLogSetRequest = vi.mocked(workoutApi.logSetRequest);
 const mockedDeleteSetLogRequest = vi.mocked(workoutApi.deleteSetLogRequest);
 const mockedSaveWorkoutRequest = vi.mocked(workoutApi.saveWorkoutRequest);
+const mockedLoadWeeklyVolumeCheckRequest = vi.mocked(workoutApi.loadWeeklyVolumeCheckRequest);
 const mockedFetch = vi.fn();
 
 function makeSaveWorkoutResponse(
@@ -122,6 +124,58 @@ function makeExplanationResponse() {
         status: "ON_TARGET",
       },
     ],
+  };
+}
+
+function makeWeeklyVolumeCheckResponse(
+  overrides: Partial<{
+    shouldShow: boolean;
+    rows: Array<{
+      muscle: string;
+      doneNow: number;
+      projectedRemainingWeek: number;
+      projectedEndOfWeek: number;
+      weeklyTarget: number;
+      deltaToTarget: number;
+      mev: number;
+      mav: number;
+      mrv: number;
+      status: "below_mev" | "in_range" | "near_target" | "on_target" | "near_mrv" | "at_mrv";
+      statusLabel: string;
+      topUpHint: string | null;
+    }>;
+  }> = {}
+) {
+  return {
+    data: {
+      workoutId: "workout-1",
+      currentWeek: {
+        mesocycleId: "meso-1",
+        week: 1,
+        phase: "accumulation",
+        blockType: "accumulation",
+      },
+      shouldShow: overrides.shouldShow ?? true,
+      rows:
+        overrides.rows ??
+        [
+          {
+            muscle: "Chest",
+            doneNow: 6,
+            projectedRemainingWeek: 2,
+            projectedEndOfWeek: 8,
+            weeklyTarget: 10,
+            deltaToTarget: -2,
+            mev: 8,
+            mav: 16,
+            mrv: 20,
+            status: "below_mev",
+            statusLabel: "Below MEV",
+            topUpHint: "Likely needs ~1-2 more hard sets",
+          },
+        ],
+    },
+    error: null,
   };
 }
 
@@ -261,6 +315,7 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     mockedLogSetRequest.mockResolvedValue({ data: { status: "ok", wasCreated: true }, error: null });
     mockedDeleteSetLogRequest.mockResolvedValue({ data: { status: "ok" }, error: null });
     mockedSaveWorkoutRequest.mockResolvedValue(makeSaveWorkoutResponse("COMPLETED"));
+    mockedLoadWeeklyVolumeCheckRequest.mockResolvedValue(makeWeeklyVolumeCheckResponse());
     mockedFetch.mockResolvedValue({
       ok: true,
       json: async () => makeExplanationResponse(),
@@ -518,6 +573,124 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
 
     expect(screen.getByRole("dialog", { name: "Workout completion confirmation" })).toBeInTheDocument();
     expect(mockedSaveWorkoutRequest).not.toHaveBeenCalled();
+  });
+
+  it("keeps the weekly volume check hidden before the planned-work checkpoint", () => {
+    renderClient();
+
+    expect(screen.queryByTestId("weekly-volume-check")).not.toBeInTheDocument();
+    expect(mockedLoadWeeklyVolumeCheckRequest).not.toHaveBeenCalled();
+  });
+
+  it("shows the weekly volume check above the finish bar at the checkpoint", async () => {
+    const user = userEvent.setup();
+    renderClient();
+
+    await logAllSets(user);
+
+    const card = await screen.findByTestId("weekly-volume-check");
+    const finishBar = screen.getByTestId("workout-finish-bar");
+
+    expect(mockedLoadWeeklyVolumeCheckRequest).toHaveBeenCalledWith("workout-1");
+    expect(card.compareDocumentPosition(finishBar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("shows only flagged muscles in the weekly volume check", async () => {
+    const user = userEvent.setup();
+    mockedLoadWeeklyVolumeCheckRequest.mockResolvedValueOnce(
+      makeWeeklyVolumeCheckResponse({
+        rows: [
+          {
+            muscle: "Chest",
+            doneNow: 6,
+            projectedRemainingWeek: 2,
+            projectedEndOfWeek: 8,
+            weeklyTarget: 10,
+            deltaToTarget: -2,
+            mev: 8,
+            mav: 16,
+            mrv: 20,
+            status: "below_mev",
+            statusLabel: "Below MEV",
+            topUpHint: "Likely needs ~1-2 more hard sets",
+          },
+        ],
+      })
+    );
+
+    renderClient();
+    await logAllSets(user);
+
+    await screen.findByTestId("weekly-volume-check");
+    expect(screen.getByTestId("weekly-volume-row-Chest")).toBeInTheDocument();
+    expect(screen.queryByTestId("weekly-volume-row-Quads")).not.toBeInTheDocument();
+  });
+
+  it("refreshes the weekly volume check after a top-up add-set action and keeps finishing non-blocking", async () => {
+    const user = userEvent.setup();
+    mockedLoadWeeklyVolumeCheckRequest.mockReset();
+    mockedLoadWeeklyVolumeCheckRequest
+      .mockResolvedValueOnce(
+        makeWeeklyVolumeCheckResponse({
+          rows: [
+            {
+              muscle: "Chest",
+              doneNow: 6,
+              projectedRemainingWeek: 2,
+              projectedEndOfWeek: 8,
+              weeklyTarget: 10,
+              deltaToTarget: -2,
+              mev: 8,
+              mav: 16,
+              mrv: 20,
+              status: "below_mev",
+              statusLabel: "Below MEV",
+              topUpHint: "Likely needs ~1-2 more hard sets",
+            },
+          ],
+        })
+      )
+      .mockResolvedValueOnce(
+        makeWeeklyVolumeCheckResponse({
+          rows: [
+            {
+              muscle: "Chest",
+              doneNow: 7,
+              projectedRemainingWeek: 2,
+              projectedEndOfWeek: 9,
+              weeklyTarget: 10,
+              deltaToTarget: -1,
+              mev: 8,
+              mav: 16,
+              mrv: 20,
+              status: "near_target",
+              statusLabel: "Near target",
+              topUpHint: "Likely needs ~1 more hard set",
+            },
+          ],
+        })
+      )
+      .mockResolvedValue(makeWeeklyVolumeCheckResponse({ rows: [] }));
+
+    renderClient();
+    await logAllSets(user);
+
+    await screen.findByText(/Likely needs ~1-2 more hard sets/);
+    await user.click(screen.getByRole("button", { name: "+ Add set" }));
+
+    await screen.findByText(/Likely needs ~1 more hard set/);
+    expect(screen.getByTestId("weekly-volume-check")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Log set" }));
+    await screen.findByText(/no muscles are currently projected below target/i);
+    await user.click(screen.getByRole("button", { name: "Finish workout" }));
+    await user.click(screen.getByRole("button", { name: "Confirm" }));
+
+    await waitFor(() => {
+      expect(mockedSaveWorkoutRequest).toHaveBeenCalledWith(
+        expect.objectContaining({ workoutId: "workout-1", action: "mark_completed" })
+      );
+    });
   });
 
   it("does not call completion API when confirmation is canceled", async () => {

@@ -645,6 +645,8 @@ export default function LogWorkoutClient({
     autoregHint.exerciseId === activeSet.exercise.workoutExerciseId;
   const sessionTerminated = completion.completed || completion.skipped;
   const showFinishBar = !sessionTerminated && allSetsLogged;
+  const shouldShowActiveEditor =
+    !sessionTerminated && activeSet != null && (activeCardMode.kind === "edit" || !allSetsLogged);
   const plannedSetSummary = useMemo(() => {
     let plannedTotal = 0;
     let plannedResolved = 0;
@@ -742,12 +744,21 @@ export default function LogWorkoutClient({
   const handleAddSet = useCallback(
     (exerciseId: string, section: ExerciseSection) => {
       requestEditModeExit(() => {
+        exitEditMode({ restoreLiveSet: false, discardChanges: true });
+        setActiveSetId(null);
         setExpandedSections((prev) => ({ ...prev, [section]: true }));
         setExpandedExerciseId(exerciseId);
         void addSetAction(exerciseId);
       });
     },
-    [addSetAction, requestEditModeExit, setExpandedExerciseId, setExpandedSections]
+    [
+      addSetAction,
+      exitEditMode,
+      requestEditModeExit,
+      setActiveSetId,
+      setExpandedExerciseId,
+      setExpandedSections,
+    ]
   );
   const handleSwapApplied = useCallback(
     (exercise: LogExerciseInput) => {
@@ -847,7 +858,7 @@ export default function LogWorkoutClient({
         />
       ) : null}
 
-      {!sessionTerminated && activeSet && !allSetsLogged ? (
+      {shouldShowActiveEditor ? (
         <ActiveSetPanel>
           <WorkoutActiveSetCard
             activeSet={activeSet}

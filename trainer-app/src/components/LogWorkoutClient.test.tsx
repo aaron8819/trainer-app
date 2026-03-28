@@ -825,6 +825,99 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     });
   });
 
+  it("keeps append targeting on the new runtime-added set when triggered from edit mode", async () => {
+    const user = userEvent.setup();
+    mockedAddSetToExerciseRequest
+      .mockResolvedValueOnce({
+        data: {
+          set: {
+            setId: "set-3",
+            setIndex: 3,
+            targetReps: 10,
+            targetLoad: 50,
+            targetRpe: 8,
+            restSeconds: 90,
+            isRuntimeAdded: true,
+          },
+        },
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: {
+          set: {
+            setId: "set-4",
+            setIndex: 4,
+            targetReps: 10,
+            targetLoad: 50,
+            targetRpe: 8,
+            restSeconds: 90,
+            isRuntimeAdded: true,
+          },
+        },
+        error: null,
+      });
+    renderClient();
+
+    await logAllSets(user);
+    await waitFor(() => expect(screen.getByTestId("workout-finish-bar")).toBeInTheDocument());
+
+    const queueRow = screen.getByTestId("queue-row-ex-1");
+
+    await user.click(screen.getByRole("button", { name: /Set 1 OK 50 x 10 @8/ }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("active-set-edit-banner")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Update set" })).toBeInTheDocument();
+    });
+
+    await user.click(within(queueRow).getByRole("button", { name: "+ Add set" }));
+
+    await waitFor(() => {
+      expect(mockedAddSetToExerciseRequest).toHaveBeenNthCalledWith(1, {
+        workoutId: "workout-1",
+        workoutExerciseId: "ex-1",
+      });
+      expect(screen.queryByTestId("active-set-edit-banner")).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Set 3 Extra set/ })).toBeInTheDocument();
+      expect(screen.getByText(/Set 3 of 3/)).toBeInTheDocument();
+      expect(screen.queryByTestId("workout-finish-bar")).not.toBeInTheDocument();
+    });
+
+    await clickResolvedSubmitButton(user);
+
+    await waitFor(() => {
+      expect(mockedLogSetRequest).toHaveBeenNthCalledWith(
+        3,
+        expect.objectContaining({
+          workoutSetId: "set-3",
+          wasSkipped: false,
+        })
+      );
+      expect(screen.getByRole("button", { name: /Set 3 Extra set OK 50 x 10 @8/ })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Set 3 Extra set skipped/i })).not.toBeInTheDocument();
+      expect(screen.getByTestId("workout-finish-bar")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: /Set 1 OK 50 x 10 @8/ }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("active-set-edit-banner")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Update set" })).toBeInTheDocument();
+    });
+
+    await user.click(within(queueRow).getByRole("button", { name: "+ Add set" }));
+
+    await waitFor(() => {
+      expect(mockedAddSetToExerciseRequest).toHaveBeenNthCalledWith(2, {
+        workoutId: "workout-1",
+        workoutExerciseId: "ex-1",
+      });
+      expect(screen.queryByTestId("active-set-edit-banner")).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Set 4 Extra set/ })).toBeInTheDocument();
+      expect(screen.getByText(/Set 4 of 4/)).toBeInTheDocument();
+    });
+  });
+
   it("counts skipped sets as satisfied and routes the footer CTA to skip", async () => {
     const user = userEvent.setup();
     renderClient();

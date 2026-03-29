@@ -56,6 +56,7 @@ import { resolveTargetRepRange } from "@/lib/session-semantics/target-evaluation
 import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-semantics";
 import { getCanonicalNextExposureCopy } from "@/lib/ui/next-exposure-copy";
 import { readRuntimeAddedExerciseIds } from "@/lib/ui/selection-metadata";
+import { readSessionAuditSnapshot } from "@/lib/evidence/session-audit-snapshot";
 
 const HISTORY_RECENCY_WINDOW_DAYS = 42;
 const CANONICAL_RATIONALE_COMPONENT_KEYS = [
@@ -67,6 +68,8 @@ const CANONICAL_RATIONALE_COMPONENT_KEYS = [
   "sraAlignment",
   "userPreference",
 ] as const;
+
+type GeneratedProgressionEvidence = "confirmed" | "absent" | "unknown";
 
 function roundToTenth(value: number): number {
   return Math.round(value * 10) / 10;
@@ -158,6 +161,7 @@ export async function generateWorkoutExplanation(
   const runtimeAddedExerciseIds = readRuntimeAddedExerciseIds(
     workout.selectionMetadata
   );
+  const sessionAuditSnapshot = readSessionAuditSnapshot(workout.selectionMetadata);
   const explanationPeriodization = buildExplanationPeriodization({
     blockContext,
     weekInMeso,
@@ -243,13 +247,18 @@ export async function generateWorkoutExplanation(
       })),
     });
     const isReadinessScaled = sessionEvidence.readinessScaledExerciseIds.has(workoutExercise.exerciseId);
+    const generatedProgressionEvidence = resolveGeneratedProgressionEvidence(
+      sessionAuditSnapshot,
+      workoutExercise.exerciseId
+    );
     progressionReceipts.set(
       workoutExercise.exerciseId,
       buildProgressionReceipt(
         lastPerformed,
         todayPrescription,
         sessionEvidence.deloadDecision,
-        isReadinessScaled
+        isReadinessScaled,
+        generatedProgressionEvidence
       )
     );
     const nextExposureDecision = await buildNextExposureDecision(
@@ -1103,27 +1112,49 @@ function summarizeTodayTopSet(
   };
 }
 
+function resolveGeneratedProgressionEvidence(
+  sessionAuditSnapshot: ReturnType<typeof readSessionAuditSnapshot>,
+  exerciseId: string
+): GeneratedProgressionEvidence {
+  const generated = sessionAuditSnapshot?.generated;
+  if (!generated) {
+    return "unknown";
+  }
+
+  const generatedExerciseIds = new Set(generated.exercises.map((exercise) => exercise.exerciseId));
+  if (!generatedExerciseIds.has(exerciseId)) {
+    return "unknown";
+  }
+
+  return generated.traces.progression[exerciseId] ? "confirmed" : "absent";
+}
+
 function buildProgressionReceipt(
   lastPerformed: (ProgressionSetSummary & { decisionLog?: string[] }) | null,
   todayPrescription: ProgressionSetSummary | null,
   deloadDecision: DeloadDecision | null,
-  readinessScaled: boolean
+  readinessScaled: boolean,
+  generatedProgressionEvidence: GeneratedProgressionEvidence
 ): ProgressionReceipt {
+  const effectiveLastPerformed =
+    generatedProgressionEvidence === "absent" && deloadDecision?.mode !== "none"
+      ? null
+      : lastPerformed;
   const loadDelta =
-    lastPerformed?.load != null && todayPrescription?.load != null
-      ? todayPrescription.load - lastPerformed.load
+    effectiveLastPerformed?.load != null && todayPrescription?.load != null
+      ? todayPrescription.load - effectiveLastPerformed.load
       : null;
   const loadPercent =
-    loadDelta != null && lastPerformed?.load && lastPerformed.load > 0
-      ? (loadDelta / lastPerformed.load) * 100
+    loadDelta != null && effectiveLastPerformed?.load && effectiveLastPerformed.load > 0
+      ? (loadDelta / effectiveLastPerformed.load) * 100
       : null;
   const repsDelta =
-    lastPerformed?.reps != null && todayPrescription?.reps != null
-      ? todayPrescription.reps - lastPerformed.reps
+    effectiveLastPerformed?.reps != null && todayPrescription?.reps != null
+      ? todayPrescription.reps - effectiveLastPerformed.reps
       : null;
   const rpeDelta =
-    lastPerformed?.rpe != null && todayPrescription?.rpe != null
-      ? todayPrescription.rpe - lastPerformed.rpe
+    effectiveLastPerformed?.rpe != null && todayPrescription?.rpe != null
+      ? todayPrescription.rpe - effectiveLastPerformed.rpe
       : null;
 
   let trigger: ProgressionReceipt["trigger"] = "insufficient_data";
@@ -1131,16 +1162,16 @@ function buildProgressionReceipt(
     trigger = "deload";
   } else if (readinessScaled) {
     trigger = "readiness_scale";
-  } else if (todayPrescription?.load == null || lastPerformed?.load == null) {
+  } else if (todayPrescription?.load == null || effectiveLastPerformed?.load == null) {
     trigger = "insufficient_data";
-  } else if (todayPrescription.load > lastPerformed.load) {
+  } else if (todayPrescription.load > effectiveLastPerformed.load) {
     trigger = "double_progression";
   } else {
     trigger = "hold";
   }
 
   return {
-    lastPerformed,
+    lastPerformed: effectiveLastPerformed,
     todayPrescription,
     delta: {
       load: loadDelta,
@@ -1149,7 +1180,7 @@ function buildProgressionReceipt(
       rpe: rpeDelta,
     },
     trigger,
-    decisionLog: lastPerformed?.decisionLog,
+    decisionLog: effectiveLastPerformed?.decisionLog,
   };
 }
 

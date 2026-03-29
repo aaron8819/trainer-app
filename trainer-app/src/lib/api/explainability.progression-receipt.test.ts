@@ -128,6 +128,110 @@ import {
   normalizeStoredSelectionRationaleComponents,
 } from "./explainability";
 
+const generatedSemanticsSnapshot = {
+  kind: "advancing",
+  effectiveSelectionMode: "INTENT",
+  isDeload: false,
+  isStrictGapFill: false,
+  isStrictSupplemental: false,
+  advancesLifecycle: true,
+  consumesWeeklyScheduleIntent: true,
+  countsTowardCompliance: true,
+  countsTowardRecentStimulus: true,
+  countsTowardWeeklyVolume: true,
+  countsTowardProgressionHistory: true,
+  countsTowardPerformanceHistory: true,
+  updatesProgressionAnchor: true,
+  eligibleForUniqueIntentSubtraction: true,
+  reasons: [],
+  trace: {
+    advancesSplitInput: true,
+  },
+} as const;
+
+function buildGeneratedProgressionTrace(input: {
+  anchorLoad: number;
+  nextLoad: number;
+  anchorSource: "top_set_override" | "conservative_modal";
+  action: "increase" | "hold" | "decrease";
+  path: "path_3" | "fallback_hold";
+}) {
+  return {
+    version: 1,
+    decisionSource: "double_progression",
+    repRange: { min: 8, max: 12 },
+    equipment: input.anchorSource === "top_set_override" ? "barbell" : "cable",
+    anchor: {
+      source: input.anchorSource,
+      overrideApplied: input.anchorSource === "top_set_override",
+      anchorLoad: input.anchorLoad,
+      signalSetCount: 2,
+      effectiveSetCount: 2,
+      trimmedSetCount: 0,
+      highVarianceDetected: false,
+      minSignalLoad: input.anchorLoad,
+      maxSignalLoad: input.anchorLoad,
+      medianSignalLoad: input.anchorLoad,
+    },
+    confidence: {
+      priorSessionCount: 1,
+      sampleScale: 1,
+      historyScale: 1,
+      combinedScale: 1,
+      reasons: ["Used direct history"],
+    },
+    metrics: {
+      medianReps: 10,
+      modalRpe: 8,
+      nextLoad: input.nextLoad,
+      loadDelta: input.nextLoad - input.anchorLoad,
+    },
+    outcome: {
+      path: input.path,
+      action: input.action,
+      reasonCodes: ["test"],
+    },
+    decisionLog: ["Used direct history"],
+  } as const;
+}
+
+function buildGeneratedSelectionMetadata(input: {
+  exerciseId?: string;
+  exerciseName?: string;
+  isMainLift?: boolean;
+  section?: "main" | "accessory";
+  sessionIntent?: string;
+  progressionTrace?: Record<string, unknown>;
+}) {
+  const exerciseId = input.exerciseId ?? "ex1";
+  return {
+    sessionAuditSnapshot: {
+      version: 1,
+      generated: {
+        selectionMode: "INTENT",
+        sessionIntent: input.sessionIntent ?? "push",
+        exerciseCount: 1,
+        hardSetCount: 3,
+        exercises: [
+          {
+            exerciseId,
+            exerciseName: input.exerciseName ?? "Bench Press",
+            orderIndex: 0,
+            section: input.section ?? "main",
+            isMainLift: input.isMainLift ?? true,
+            prescribedSetCount: 3,
+            prescribedSets: [{ setIndex: 1, targetReps: 8, targetRpe: 8 }],
+          },
+        ],
+        semantics: generatedSemanticsSnapshot,
+        traces: {
+          progression: input.progressionTrace ?? {},
+        },
+      },
+    },
+  };
+}
+
 describe("generateWorkoutExplanation progression receipt", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -323,6 +427,278 @@ describe("generateWorkoutExplanation progression receipt", () => {
     expect(receipt?.todayPrescription?.load).toBe(200);
     expect(receipt?.lastPerformed?.load).toBe(200);
     expect(receipt?.trigger).toBe("hold");
+  });
+
+  it("keeps same-intent accessory readout history-backed when the generated trace confirms anchoring", async () => {
+    mocks.workoutFindUnique.mockResolvedValueOnce({
+      id: "w1",
+      userId: "u1",
+      scheduledDate: new Date("2026-03-28T00:00:00.000Z"),
+      sessionIntent: "UPPER",
+      selectionMetadata: buildGeneratedSelectionMetadata({
+        isMainLift: false,
+        section: "accessory",
+        sessionIntent: "upper",
+        exerciseName: "Face Pull",
+        progressionTrace: {
+          ex1: buildGeneratedProgressionTrace({
+            anchorLoad: 35,
+            nextLoad: 35,
+            anchorSource: "conservative_modal",
+            action: "hold",
+            path: "fallback_hold",
+          }),
+        },
+      }),
+      filteredExercises: [],
+      exercises: [
+        {
+          exerciseId: "ex1",
+          isMainLift: false,
+          exercise: {
+            id: "ex1",
+            name: "Face Pull",
+            movementPatterns: ["HORIZONTAL_PULL"],
+            exerciseEquipment: [{ equipment: { type: "CABLE" } }],
+            exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Rear Delts" } }],
+          },
+          sets: [
+            {
+              setIndex: 1,
+              targetReps: 12,
+              targetRepMin: 10,
+              targetRepMax: 15,
+              targetRpe: 8,
+              targetLoad: 35,
+              restSeconds: 90,
+              logs: [],
+            },
+          ],
+        },
+      ],
+    });
+    mocks.workoutExerciseFindFirst.mockResolvedValueOnce({
+      workout: {
+        scheduledDate: new Date("2026-03-25T00:00:00.000Z"),
+        selectionMode: "INTENT",
+        sessionIntent: "UPPER",
+        selectionMetadata: {},
+      },
+      sets: [
+        {
+          setIndex: 1,
+          logs: [{ actualReps: 12, actualLoad: 35, actualRpe: 8, wasSkipped: false }],
+        },
+        {
+          setIndex: 2,
+          logs: [{ actualReps: 12, actualLoad: 35, actualRpe: 8, wasSkipped: false }],
+        },
+      ],
+    });
+
+    const result = await generateWorkoutExplanation("w1");
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    const receipt = result.progressionReceipts.get("ex1");
+    expect(receipt?.lastPerformed?.load).toBe(35);
+    expect(receipt?.trigger).toBe("hold");
+    expect(receipt?.decisionLog?.length).toBeGreaterThan(0);
+  });
+
+  it("does not label a cross-intent accessory estimate path as anchored when the generated trace is absent", async () => {
+    mocks.workoutFindUnique.mockResolvedValueOnce({
+      id: "w1",
+      userId: "u1",
+      scheduledDate: new Date("2026-03-28T00:00:00.000Z"),
+      sessionIntent: "UPPER",
+      selectionMetadata: buildGeneratedSelectionMetadata({
+        isMainLift: false,
+        section: "accessory",
+        sessionIntent: "upper",
+        exerciseName: "Chest-Supported Dumbbell Row",
+      }),
+      filteredExercises: [],
+      exercises: [
+        {
+          exerciseId: "ex1",
+          isMainLift: false,
+          exercise: {
+            id: "ex1",
+            name: "Chest-Supported Dumbbell Row",
+            movementPatterns: ["HORIZONTAL_PULL"],
+            exerciseEquipment: [{ equipment: { type: "DUMBBELL" } }],
+            exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Upper Back" } }],
+          },
+          sets: [
+            {
+              setIndex: 1,
+              targetReps: 10,
+              targetRepMin: 8,
+              targetRepMax: 12,
+              targetRpe: 8,
+              targetLoad: 22.5,
+              restSeconds: 120,
+              logs: [],
+            },
+          ],
+        },
+      ],
+    });
+    mocks.workoutExerciseFindFirst.mockResolvedValueOnce({
+      workout: {
+        scheduledDate: new Date("2026-02-23T00:00:00.000Z"),
+        selectionMode: "INTENT",
+        sessionIntent: "PULL",
+        selectionMetadata: {},
+      },
+      sets: [
+        {
+          setIndex: 1,
+          logs: [{ actualReps: 10, actualLoad: 90, actualRpe: 8, wasSkipped: false }],
+        },
+      ],
+    });
+
+    const result = await generateWorkoutExplanation("w1");
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    const receipt = result.progressionReceipts.get("ex1");
+    expect(receipt?.lastPerformed).toBeNull();
+    expect(receipt?.trigger).toBe("insufficient_data");
+    expect(receipt?.decisionLog).toBeUndefined();
+  });
+
+  it("does not label a cold/default accessory as double progression just because older cross-intent history exists", async () => {
+    mocks.workoutFindUnique.mockResolvedValueOnce({
+      id: "w1",
+      userId: "u1",
+      scheduledDate: new Date("2026-03-28T00:00:00.000Z"),
+      sessionIntent: "UPPER",
+      selectionMetadata: buildGeneratedSelectionMetadata({
+        isMainLift: false,
+        section: "accessory",
+        sessionIntent: "upper",
+        exerciseName: "Machine Lateral Raise",
+      }),
+      filteredExercises: [],
+      exercises: [
+        {
+          exerciseId: "ex1",
+          isMainLift: false,
+          exercise: {
+            id: "ex1",
+            name: "Machine Lateral Raise",
+            movementPatterns: ["SHOULDER_ABDUCTION"],
+            exerciseEquipment: [{ equipment: { type: "MACHINE" } }],
+            exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Side Delts" } }],
+          },
+          sets: [
+            {
+              setIndex: 1,
+              targetReps: 12,
+              targetRepMin: 10,
+              targetRepMax: 15,
+              targetRpe: 8,
+              targetLoad: 60,
+              restSeconds: 90,
+              logs: [],
+            },
+          ],
+        },
+      ],
+    });
+    mocks.workoutExerciseFindFirst.mockResolvedValueOnce({
+      workout: {
+        scheduledDate: new Date("2026-03-11T00:00:00.000Z"),
+        selectionMode: "INTENT",
+        sessionIntent: "PUSH",
+        selectionMetadata: {},
+      },
+      sets: [
+        {
+          setIndex: 1,
+          logs: [{ actualReps: 12, actualLoad: 40, actualRpe: 8, wasSkipped: false }],
+        },
+      ],
+    });
+
+    const result = await generateWorkoutExplanation("w1");
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    const receipt = result.progressionReceipts.get("ex1");
+    expect(receipt?.lastPerformed).toBeNull();
+    expect(receipt?.trigger).toBe("insufficient_data");
+  });
+
+  it("keeps main-lift readout unchanged when a generated progression trace confirms the anchor", async () => {
+    mocks.workoutFindUnique.mockResolvedValueOnce({
+      id: "w1",
+      userId: "u1",
+      scheduledDate: new Date("2026-02-21T00:00:00.000Z"),
+      sessionIntent: "PUSH",
+      selectionMetadata: buildGeneratedSelectionMetadata({
+        progressionTrace: {
+          ex1: buildGeneratedProgressionTrace({
+            anchorLoad: 200,
+            nextLoad: 205,
+            anchorSource: "top_set_override",
+            action: "increase",
+            path: "path_3",
+          }),
+        },
+      }),
+      filteredExercises: [],
+      exercises: [
+        {
+          exerciseId: "ex1",
+          isMainLift: true,
+          exercise: {
+            id: "ex1",
+            name: "Bench Press",
+            movementPatterns: ["HORIZONTAL_PUSH"],
+            exerciseEquipment: [{ equipment: { type: "BARBELL" } }],
+            exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Chest" } }],
+          },
+          sets: [
+            {
+              setIndex: 1,
+              targetReps: 8,
+              targetRepMin: null,
+              targetRepMax: null,
+              targetRpe: 8,
+              targetLoad: 205,
+              restSeconds: 150,
+              logs: [],
+            },
+          ],
+        },
+      ],
+    });
+    mocks.workoutExerciseFindFirst.mockResolvedValueOnce({
+      workout: {
+        scheduledDate: new Date("2026-02-18T00:00:00.000Z"),
+        selectionMode: "INTENT",
+        sessionIntent: "PUSH",
+        selectionMetadata: {},
+      },
+      sets: [
+        {
+          setIndex: 1,
+          logs: [{ actualReps: 8, actualLoad: 200, actualRpe: 8, wasSkipped: false }],
+        },
+      ],
+    });
+
+    const result = await generateWorkoutExplanation("w1");
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    const receipt = result.progressionReceipts.get("ex1");
+    expect(receipt?.lastPerformed?.load).toBe(200);
+    expect(receipt?.trigger).toBe("double_progression");
   });
 
   it("aligns nextExposureDecision to a canonical hold on the audited week-4 pull case", async () => {

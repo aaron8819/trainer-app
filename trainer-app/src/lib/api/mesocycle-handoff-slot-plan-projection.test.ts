@@ -760,6 +760,67 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     expect(projected.diagnostics?.protectedCoverage.unresolvedProtectedMuscles.length).toBeGreaterThan(0);
   });
 
+  it("still rejects the seed when lowered MEV would clear but practical protected week-one targets remain underbuilt", async () => {
+    vi.resetModules();
+    vi.doMock("@/lib/engine/volume-landmarks", async (importOriginal) => {
+      const original =
+        await importOriginal<typeof import("@/lib/engine/volume-landmarks")>();
+      return {
+        ...original,
+        VOLUME_LANDMARKS: {
+          ...original.VOLUME_LANDMARKS,
+          Chest: { ...original.VOLUME_LANDMARKS.Chest, mev: 2 },
+          "Side Delts": { ...original.VOLUME_LANDMARKS["Side Delts"], mev: 1 },
+          Triceps: { ...original.VOLUME_LANDMARKS.Triceps, mev: 1 },
+          Hamstrings: { ...original.VOLUME_LANDMARKS.Hamstrings, mev: 2 },
+          Calves: { ...original.VOLUME_LANDMARKS.Calves, mev: 2 },
+        },
+      };
+    });
+    vi.doMock("./mesocycle-lifecycle", async (importOriginal) => {
+      const original =
+        await importOriginal<typeof import("./mesocycle-lifecycle")>();
+      return {
+        ...original,
+        getWeeklyVolumeTarget: (
+          _mesocycle: unknown,
+          muscle: string
+        ) => {
+          switch (muscle) {
+            case "Chest":
+            case "Side Delts":
+            case "Triceps":
+            case "Hamstrings":
+            case "Calves":
+              return 8;
+            default:
+              return 0;
+          }
+        },
+      };
+    });
+    const { projectSuccessorSlotPlansFromSnapshot: projectWithTargetFloor } =
+      await import("./mesocycle-handoff-slot-plan-projection");
+    const projected = projectWithTargetFloor({
+      userId: "user-1",
+      source: buildSource(),
+      design: buildDesign(buildRepairSensitiveDraft()),
+      snapshot: buildRepairSensitiveSnapshot(),
+      now: new Date("2026-03-19T12:00:00.000Z"),
+    });
+    vi.resetModules();
+    vi.doUnmock("@/lib/engine/volume-landmarks");
+    vi.doUnmock("./mesocycle-lifecycle");
+
+    expect("error" in projected).toBe(true);
+    if (!("error" in projected)) return;
+
+    expect(projected.error).toContain("MESOCYCLE_HANDOFF_SLOT_PLAN_PROTECTED_COVERAGE_UNSATISFIED");
+    expect(projected.diagnostics?.protectedCoverage.unresolvedProtectedMuscles).toEqual(
+      expect.arrayContaining(["Triceps", "Hamstrings"])
+    );
+  });
+
   it("accepts the seed when the constructed week clears protected viability", async () => {
     vi.resetModules();
     vi.doMock("@/lib/engine/volume-landmarks", async (importOriginal) => {

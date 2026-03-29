@@ -98,16 +98,20 @@ type ProtectedWeekOneCoverageRow = {
   muscle: ProtectedWeekOneCoverageMuscle;
   mev: number;
   weeklyTarget: number;
+  practicalFloor: number;
   projectedEffectiveSets: number;
   deficitToMev: number;
   deficitToTarget: number;
+  deficitToPracticalFloor: number;
   belowMev: boolean;
+  belowPracticalFloor: boolean;
   compatibleSlotIds: string[];
 };
 
 type ProtectedWeekOneCoverageEvaluation = {
   muscles: ProtectedWeekOneCoverageRow[];
   deficitsBelowMev: ProtectedWeekOneCoverageRow[];
+  deficitsBelowPracticalFloor: ProtectedWeekOneCoverageRow[];
   unresolvedProtectedMuscles: ProtectedWeekOneCoverageMuscle[];
 };
 
@@ -232,27 +236,34 @@ function evaluateProtectedWeekOneCoverage(input: {
       .filter((slotId): slotId is string => Boolean(slotId));
     const mev = VOLUME_LANDMARKS[muscle].mev;
     const weeklyTarget = getWeeklyVolumeTarget(input.activeMesocycle, muscle, 1);
+    const practicalFloor = Math.max(mev, weeklyTarget);
     const projectedEffectiveSets = projectedTotals.get(muscle) ?? 0;
     const deficitToMev = Math.max(0, mev - projectedEffectiveSets);
     const deficitToTarget = Math.max(0, weeklyTarget - projectedEffectiveSets);
+    const deficitToPracticalFloor = Math.max(0, practicalFloor - projectedEffectiveSets);
 
     return {
       muscle,
       mev,
       weeklyTarget,
+      practicalFloor: roundToTenth(practicalFloor),
       projectedEffectiveSets: roundToTenth(projectedEffectiveSets),
       deficitToMev: roundToTenth(deficitToMev),
       deficitToTarget: roundToTenth(deficitToTarget),
+      deficitToPracticalFloor: roundToTenth(deficitToPracticalFloor),
       belowMev: deficitToMev > 0,
+      belowPracticalFloor: deficitToPracticalFloor > 0,
       compatibleSlotIds: slotCompatibility,
     } satisfies ProtectedWeekOneCoverageRow;
   });
 
   const deficitsBelowMev = muscles.filter((muscle) => muscle.belowMev);
+  const deficitsBelowPracticalFloor = muscles.filter((muscle) => muscle.belowPracticalFloor);
   return {
     muscles,
     deficitsBelowMev,
-    unresolvedProtectedMuscles: deficitsBelowMev.map((muscle) => muscle.muscle),
+    deficitsBelowPracticalFloor,
+    unresolvedProtectedMuscles: deficitsBelowPracticalFloor.map((muscle) => muscle.muscle),
   };
 }
 
@@ -564,8 +575,10 @@ function preservesSlotIdentity(input: {
   );
 }
 
-function sumProtectedDeficitToMev(rows: ReadonlyArray<ProtectedWeekOneCoverageRow>) {
-  return roundToTenth(rows.reduce((sum, row) => sum + row.deficitToMev, 0));
+function sumProtectedDeficitToPracticalFloor(
+  rows: ReadonlyArray<ProtectedWeekOneCoverageRow>
+) {
+  return roundToTenth(rows.reduce((sum, row) => sum + row.deficitToPracticalFloor, 0));
 }
 
 function selectBestProjectedSlotComposition(input: {
@@ -589,9 +602,9 @@ function selectBestProjectedSlotComposition(input: {
   let bestCandidate = input.candidateWorkouts[0];
   let bestEvaluation: {
     relevantDeficitCount: number;
-    relevantDeficitToMev: number;
+    relevantDeficitToPracticalFloor: number;
     totalDeficitCount: number;
-    totalDeficitToMev: number;
+    totalDeficitToPracticalFloor: number;
     coverage: ReturnType<typeof scoreProtectedCoverageContribution>;
   } | null = null;
 
@@ -621,7 +634,7 @@ function selectBestProjectedSlotComposition(input: {
       activeMesocycle: input.activeMesocycle,
       slotSequence: input.slotSequence,
     });
-    const relevantDeficits = hypotheticalEvaluation.deficitsBelowMev.filter((row) =>
+    const relevantDeficits = hypotheticalEvaluation.deficitsBelowPracticalFloor.filter((row) =>
       prioritizedMuscleSet.has(row.muscle)
     );
     const coverage = scoreProtectedCoverageContribution({
@@ -630,9 +643,11 @@ function selectBestProjectedSlotComposition(input: {
     });
     const evaluationSummary = {
       relevantDeficitCount: relevantDeficits.length,
-      relevantDeficitToMev: sumProtectedDeficitToMev(relevantDeficits),
-      totalDeficitCount: hypotheticalEvaluation.deficitsBelowMev.length,
-      totalDeficitToMev: sumProtectedDeficitToMev(hypotheticalEvaluation.deficitsBelowMev),
+      relevantDeficitToPracticalFloor: sumProtectedDeficitToPracticalFloor(relevantDeficits),
+      totalDeficitCount: hypotheticalEvaluation.deficitsBelowPracticalFloor.length,
+      totalDeficitToPracticalFloor: sumProtectedDeficitToPracticalFloor(
+        hypotheticalEvaluation.deficitsBelowPracticalFloor
+      ),
       coverage,
     };
 
@@ -640,23 +655,31 @@ function selectBestProjectedSlotComposition(input: {
       !bestEvaluation ||
       evaluationSummary.relevantDeficitCount < bestEvaluation.relevantDeficitCount ||
       (evaluationSummary.relevantDeficitCount === bestEvaluation.relevantDeficitCount &&
-        evaluationSummary.relevantDeficitToMev < bestEvaluation.relevantDeficitToMev) ||
+        evaluationSummary.relevantDeficitToPracticalFloor <
+          bestEvaluation.relevantDeficitToPracticalFloor) ||
       (evaluationSummary.relevantDeficitCount === bestEvaluation.relevantDeficitCount &&
-        evaluationSummary.relevantDeficitToMev === bestEvaluation.relevantDeficitToMev &&
+        evaluationSummary.relevantDeficitToPracticalFloor ===
+          bestEvaluation.relevantDeficitToPracticalFloor &&
         evaluationSummary.totalDeficitCount < bestEvaluation.totalDeficitCount) ||
       (evaluationSummary.relevantDeficitCount === bestEvaluation.relevantDeficitCount &&
-        evaluationSummary.relevantDeficitToMev === bestEvaluation.relevantDeficitToMev &&
+        evaluationSummary.relevantDeficitToPracticalFloor ===
+          bestEvaluation.relevantDeficitToPracticalFloor &&
         evaluationSummary.totalDeficitCount === bestEvaluation.totalDeficitCount &&
-        evaluationSummary.totalDeficitToMev < bestEvaluation.totalDeficitToMev) ||
+        evaluationSummary.totalDeficitToPracticalFloor <
+          bestEvaluation.totalDeficitToPracticalFloor) ||
       (evaluationSummary.relevantDeficitCount === bestEvaluation.relevantDeficitCount &&
-        evaluationSummary.relevantDeficitToMev === bestEvaluation.relevantDeficitToMev &&
+        evaluationSummary.relevantDeficitToPracticalFloor ===
+          bestEvaluation.relevantDeficitToPracticalFloor &&
         evaluationSummary.totalDeficitCount === bestEvaluation.totalDeficitCount &&
-        evaluationSummary.totalDeficitToMev === bestEvaluation.totalDeficitToMev &&
+        evaluationSummary.totalDeficitToPracticalFloor ===
+          bestEvaluation.totalDeficitToPracticalFloor &&
         evaluationSummary.coverage.coveredMuscleCount > bestEvaluation.coverage.coveredMuscleCount) ||
       (evaluationSummary.relevantDeficitCount === bestEvaluation.relevantDeficitCount &&
-        evaluationSummary.relevantDeficitToMev === bestEvaluation.relevantDeficitToMev &&
+        evaluationSummary.relevantDeficitToPracticalFloor ===
+          bestEvaluation.relevantDeficitToPracticalFloor &&
         evaluationSummary.totalDeficitCount === bestEvaluation.totalDeficitCount &&
-        evaluationSummary.totalDeficitToMev === bestEvaluation.totalDeficitToMev &&
+        evaluationSummary.totalDeficitToPracticalFloor ===
+          bestEvaluation.totalDeficitToPracticalFloor &&
         evaluationSummary.coverage.coveredMuscleCount ===
           bestEvaluation.coverage.coveredMuscleCount &&
         evaluationSummary.coverage.totalCoverage > bestEvaluation.coverage.totalCoverage)
@@ -858,7 +881,7 @@ export function projectSuccessorSlotPlansFromSnapshot(input: {
     activeMesocycle: pass.activeMesocycle,
     slotSequence: input.design.structure.slots,
   });
-  if (finalEvaluation.deficitsBelowMev.length > 0) {
+  if (finalEvaluation.deficitsBelowPracticalFloor.length > 0) {
     return {
       error:
         "MESOCYCLE_HANDOFF_SLOT_PLAN_PROTECTED_COVERAGE_UNSATISFIED:" +

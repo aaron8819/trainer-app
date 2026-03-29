@@ -51,6 +51,7 @@ describe("resolveSessionSlotPolicy", () => {
       },
       compoundBias: {
         preferredMovementPatterns: ["horizontal_push", "horizontal_pull"],
+        preferredPrimaryMuscles: ["Chest"],
       },
       sessionShape: {
         id: "upper_horizontal_balanced",
@@ -68,6 +69,7 @@ describe("resolveSessionSlotPolicy", () => {
             preferredMovementPatterns: ["horizontal_push"],
             compatibleMovementPatterns: [],
             fallbackOnlyMovementPatterns: ["vertical_push"],
+            preferredPrimaryMuscles: ["Chest"],
           },
           {
             key: "pull",
@@ -97,6 +99,7 @@ describe("resolveSessionSlotPolicy", () => {
       },
       compoundBias: {
         preferredMovementPatterns: ["vertical_push", "vertical_pull"],
+        preferredPrimaryMuscles: ["Chest"],
       },
       sessionShape: {
         id: "upper_vertical_balanced",
@@ -114,6 +117,7 @@ describe("resolveSessionSlotPolicy", () => {
             preferredMovementPatterns: ["vertical_push"],
             compatibleMovementPatterns: [],
             fallbackOnlyMovementPatterns: ["horizontal_push"],
+            preferredPrimaryMuscles: ["Chest"],
           },
           {
             key: "pull",
@@ -295,6 +299,7 @@ describe("resolveSessionSlotPolicy", () => {
         },
         compoundBias: {
           preferredMovementPatterns: ["vertical_push", "vertical_pull"],
+          preferredPrimaryMuscles: ["Chest"],
         },
         sessionShape: {
           id: "upper_vertical_balanced",
@@ -312,6 +317,7 @@ describe("resolveSessionSlotPolicy", () => {
               preferredMovementPatterns: ["vertical_push"],
               compatibleMovementPatterns: [],
               fallbackOnlyMovementPatterns: ["horizontal_push"],
+              preferredPrimaryMuscles: ["Chest"],
             },
             {
               key: "pull",
@@ -364,16 +370,102 @@ describe("resolveSessionSlotPolicy", () => {
     }).currentSession;
 
     expect(
-      getProjectionRepairCompatibleMuscles(upperA, ["Chest", "Triceps", "Hamstrings", "Calves"])
-    ).toEqual(["Chest", "Triceps"]);
+      getProjectionRepairCompatibleMuscles(
+        upperA,
+        ["Chest", "Side Delts", "Triceps", "Hamstrings", "Calves"]
+      )
+    ).toEqual(["Chest", "Triceps", "Side Delts"]);
     expect(
-      getProjectionRepairCompatibleMuscles(upperB, ["Chest", "Triceps", "Hamstrings", "Calves"])
+      getProjectionRepairCompatibleMuscles(upperB, ["Chest", "Side Delts", "Triceps", "Hamstrings", "Calves"])
     ).toEqual(["Chest", "Triceps"]);
     expect(
       getProjectionRepairCompatibleMuscles(lowerA, ["Chest", "Triceps", "Hamstrings", "Calves"])
     ).toEqual(["Hamstrings", "Calves"]);
     expect(
       getProjectionRepairCompatibleMuscles(lowerB, ["Chest", "Triceps", "Hamstrings", "Calves"])
+    ).toEqual(["Hamstrings", "Calves"]);
+  });
+
+  it("falls back to stronger protected coverage by archetype when authored support coverage is sparse", () => {
+    const legacyLikeSlotSequence = {
+      slots: [
+        {
+          slotId: "upper_a",
+          intent: "upper",
+          sequenceIndex: 0,
+          authoredSemantics: {
+            slotArchetype: "upper_horizontal_balanced" as const,
+            continuityScope: "slot" as const,
+            primaryLaneContract: null,
+            supportCoverageContract: {
+              preferredAccessoryPrimaryMuscles: ["Chest", "Upper Back", "Rear Delts"],
+            },
+          },
+        },
+        {
+          slotId: "lower_a",
+          intent: "lower",
+          sequenceIndex: 1,
+          authoredSemantics: {
+            slotArchetype: "lower_squat_dominant" as const,
+            continuityScope: "slot" as const,
+            primaryLaneContract: null,
+            supportCoverageContract: {
+              preferredAccessoryPrimaryMuscles: ["Quads"],
+            },
+          },
+        },
+        {
+          slotId: "upper_b",
+          intent: "upper",
+          sequenceIndex: 2,
+          authoredSemantics: {
+            slotArchetype: "upper_vertical_balanced" as const,
+            continuityScope: "slot" as const,
+            primaryLaneContract: null,
+            supportCoverageContract: {
+              preferredAccessoryPrimaryMuscles: ["Lats", "Front Delts", "Side Delts"],
+            },
+          },
+        },
+        {
+          slotId: "lower_b",
+          intent: "lower",
+          sequenceIndex: 3,
+          authoredSemantics: {
+            slotArchetype: "lower_hinge_dominant" as const,
+            continuityScope: "slot" as const,
+            primaryLaneContract: null,
+            supportCoverageContract: {
+              preferredAccessoryPrimaryMuscles: ["Hamstrings", "Glutes"],
+            },
+          },
+        },
+      ],
+    };
+
+    const upperB = resolveSessionSlotPolicy({
+      sessionIntent: "upper",
+      slotId: "upper_b",
+      slotSequence: legacyLikeSlotSequence,
+    }).currentSession;
+    const lowerB = resolveSessionSlotPolicy({
+      sessionIntent: "lower",
+      slotId: "lower_b",
+      slotSequence: legacyLikeSlotSequence,
+    }).currentSession;
+
+    expect(
+      getProjectionRepairCompatibleMuscles(
+        upperB,
+        ["Chest", "Side Delts", "Triceps", "Hamstrings", "Calves"]
+      )
+    ).toEqual(["Chest", "Triceps"]);
+    expect(
+      getProjectionRepairCompatibleMuscles(
+        lowerB,
+        ["Chest", "Side Delts", "Triceps", "Hamstrings", "Calves"]
+      )
     ).toEqual(["Hamstrings", "Calves"]);
   });
 
@@ -438,6 +530,7 @@ describe("resolveSessionSlotPolicy", () => {
         preferredMovementPatterns: ["vertical_push"],
         compatibleMovementPatterns: [],
         fallbackOnlyMovementPatterns: ["horizontal_push"],
+        preferredPrimaryMuscles: ["Chest"],
         activeTier: "preferred",
         viableCandidateCountByTier: {
           preferred: 1,
@@ -518,6 +611,7 @@ describe("resolveSessionSlotPolicy", () => {
         preferredMovementPatterns: ["vertical_push"],
         compatibleMovementPatterns: [],
         fallbackOnlyMovementPatterns: ["horizontal_push"],
+        preferredPrimaryMuscles: ["Chest"],
         activeTier: "fallback_only",
         viableCandidateCountByTier: {
           preferred: 0,
@@ -573,6 +667,41 @@ describe("resolveSessionSlotPolicy", () => {
         lane
       )
     ).toBe("fallback_only");
+  });
+
+  it("demotes preferred-pattern compounds when they miss the lane's preferred primary muscle", () => {
+    const slot = resolveSessionSlotPolicy({
+      sessionIntent: "upper",
+      slotId: "upper_b",
+      slotSequence,
+    }).currentSession;
+
+    expect(slot?.compoundControl?.lanes[0]).toBeDefined();
+    const lane = slot?.compoundControl?.lanes[0];
+    if (!lane) {
+      return;
+    }
+
+    expect(
+      classifyExerciseForCompoundLane(
+        {
+          movementPatterns: ["vertical_push"],
+          primaryMuscles: ["Front Delts"],
+          isCompound: true,
+        },
+        lane
+      )
+    ).toBe("compatible");
+    expect(
+      classifyExerciseForCompoundLane(
+        {
+          movementPatterns: ["vertical_push"],
+          primaryMuscles: ["Chest", "Front Delts"],
+          isCompound: true,
+        },
+        lane
+      )
+    ).toBe("preferred");
   });
 
   it("treats only compound exercises as required session-shape coverage satisfiers", () => {

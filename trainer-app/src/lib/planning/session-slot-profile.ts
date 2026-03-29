@@ -270,7 +270,7 @@ export function getProtectedWeekOneCoverageObligations(
     case "upper_horizontal_balanced":
       return ["Chest", "Triceps"];
     case "upper_vertical_balanced":
-      return ["Triceps"];
+      return ["Chest", "Triceps"];
     case "lower_hinge_dominant":
       return ["Hamstrings", "Calves"];
     case "lower_squat_dominant":
@@ -523,6 +523,26 @@ function matchesAnyMovementPattern(
   return patterns.some((pattern) => (exercise.movementPatterns ?? []).includes(pattern));
 }
 
+function matchesPreferredPrimaryMuscle(
+  exercise: Pick<CompoundLaneExercise, "primaryMuscles">,
+  preferredPrimaryMuscles: readonly string[] | undefined
+): boolean {
+  if (!preferredPrimaryMuscles || preferredPrimaryMuscles.length === 0) {
+    return true;
+  }
+
+  const exercisePrimaryMuscles = new Set(
+    (exercise.primaryMuscles ?? []).map(normalizeMuscleLabel)
+  );
+  if (exercisePrimaryMuscles.size === 0) {
+    return false;
+  }
+
+  return preferredPrimaryMuscles.some((muscle) =>
+    exercisePrimaryMuscles.has(normalizeMuscleLabel(muscle))
+  );
+}
+
 export function isExerciseEligibleForRequiredSessionShapeCoverage(
   exercise: RequiredSessionShapeCoverageExercise
 ): boolean {
@@ -548,7 +568,9 @@ export function classifyExerciseForCompoundLane(
   }
 
   if (matchesAnyMovementPattern(exercise, lane.preferredMovementPatterns)) {
-    return "preferred";
+    return matchesPreferredPrimaryMuscle(exercise, lane.preferredPrimaryMuscles)
+      ? "preferred"
+      : "compatible";
   }
   if (matchesAnyMovementPattern(exercise, lane.compatibleMovementPatterns)) {
     return "compatible";

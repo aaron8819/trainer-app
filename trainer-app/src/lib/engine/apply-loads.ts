@@ -11,6 +11,7 @@ import {
   getGoalRepRanges,
   type PeriodizationModifiers,
 } from "./rules";
+import { resolveSetTargetReps } from "./prescription";
 import { getPrimaryMuscles } from "./utils";
 import {
   buildWarmupSetsFromTopSet,
@@ -89,6 +90,9 @@ const FATIGUE_SCALE_MAX = 0.9;
 const BASELINE_SCALE_STRENGTH_TO_VOLUME = 0.78;
 const BASELINE_SCALE_VOLUME_TO_STRENGTH = 1.12;
 const EFFECTIVE_RPE_MIN = 6;
+const CROSS_INTENT_MAIN_LIFT_MIGRATION_DISCOUNT = 0.85;
+const CROSS_INTENT_MAIN_LIFT_ESTIMATE_CAP_MULTIPLIER = 1.25;
+const CROSS_INTENT_RPE_LOAD_ADJUSTMENT_PER_POINT = 0.04;
 
 const BASE_BODYWEIGHT_RATIO: Record<LoadEquipment, { compound: number; isolation: number }> = {
   barbell: { compound: 0.65, isolation: 0.35 },
@@ -138,6 +142,11 @@ export function applyLoadsWithAudit(
       options.isFirstSessionInMesocycle === true ||
       (options.accumulationSessionsCompleted ?? -1) === 0,
   });
+  const crossIntentHistoryIndex = buildHistoryIndex(options.history ?? [], {
+    useNewMesocycleBaselineSource:
+      options.isFirstSessionInMesocycle === true ||
+      (options.accumulationSessionsCompleted ?? -1) === 0,
+  });
   const historyTopLoadIndex = buildHistoryTopLoadIndex(historyIndex);
   const accumulationHistoryIndex = periodization?.isDeload
     ? buildAccumulationPerformanceHistoryIndex(options.history ?? [], {
@@ -173,23 +182,30 @@ export function applyLoadsWithAudit(
         : 0);
     const repRange = exerciseEntry.isMainLift ? repRanges.main : repRanges.accessory;
     const existingTopSetLoad = setsWithRole.find((set) => set.setIndex === 1)?.targetLoad;
+    const representativeTopSet = setsWithRole.find((set) => set.setIndex === 1) ?? setsWithRole[0];
+    const targetTopSetReps = representativeTopSet
+      ? resolveSetTargetReps(representativeTopSet)
+      : undefined;
     const targetRpe =
       setsWithRole.find((set) => set.setIndex === 1)?.targetRpe ?? defaultTargetRpe;
     const resolvedLoad = resolveLoadForExercise(
         exercise,
         historyIndex.get(exercise.id),
+        crossIntentHistoryIndex.get(exercise.id),
         baselineIndex.get(exercise.id),
         baselineLoadIndex,
         historyTopLoadIndex,
         options.exerciseById,
         options.profile?.weightKg,
         repRange,
+        targetTopSetReps,
         targetRpe,
         trainingAge,
         isUpperBodyExercise(exercise),
         periodization,
         options.weekInBlock,
-        preferredContext
+        preferredContext,
+        options.sessionIntent
       );
     if (resolvedLoad.progressionTrace) {
       progressionTraces[exercise.id] = resolvedLoad.progressionTrace;
@@ -359,6 +375,7 @@ function buildSessionHistoryIndex(
         sets: exercise.sets,
         confidence: entryConfidence,
         selectionMode: entry.selectionMode,
+        sessionIntent: entry.sessionIntent,
         confidenceNotes: entry.confidenceNotes ?? [],
       });
     }
@@ -431,6 +448,7 @@ type WorkoutSetHistory = {
 type WorkoutSessionHistory = CanonicalProgressionHistorySession & {
   sets: WorkoutSetHistory;
   selectionMode?: WorkoutHistoryEntry["selectionMode"];
+  sessionIntent?: WorkoutHistoryEntry["sessionIntent"];
 };
 
 function buildHistoryTopLoadIndex(historyIndex: Map<string, WorkoutSessionHistory[]>) {
@@ -571,18 +589,21 @@ function resolveBaselineLoad(baseline: BaselineInput): number | undefined {
 function resolveLoadForExercise(
   exercise: Exercise,
   historySessions: WorkoutSessionHistory[] | undefined,
+  crossIntentHistorySessions: WorkoutSessionHistory[] | undefined,
   baselineSelection: BaselineSelection | undefined,
   baselineLoadIndex: Map<string, number>,
   historyTopLoadIndex: Map<string, number>,
   exerciseById: Record<string, Exercise>,
   weightKg: number | undefined,
   repRange: [number, number],
+  targetReps: number | undefined,
   targetRpe: number,
   trainingAge: UserProfile["trainingAge"],
   isUpperBody: boolean,
   periodization: PeriodizationModifiers | undefined,
   weekInBlock: number | undefined,
-  preferredContext: string
+  preferredContext: string,
+  sessionIntent: SplitDay | undefined
 ): {
   load?: number;
   progressionTrace?: ProgressionDecisionTrace;
@@ -652,6 +673,27 @@ function resolveLoadForExercise(
       }
     }
 
+  const estimatedLoad = estimateLoad(
+    exercise,
+    baselineLoadIndex,
+    historyTopLoadIndex,
+    exerciseById,
+    weightKg
+  );
+
+  const crossIntentFallbackLoad = resolveCrossIntentMainLiftFallbackLoad({
+    exercise,
+    sameIntentHistorySessions: historySessions,
+    crossIntentHistorySessions,
+    sessionIntent,
+    targetReps,
+    targetRpe,
+    estimatedLoad,
+  });
+  if (crossIntentFallbackLoad !== undefined) {
+    return { load: crossIntentFallbackLoad, source: "history" };
+  }
+
   if (baselineSelection !== undefined) {
     return {
       load: applyBaselineContextScaling(
@@ -664,13 +706,7 @@ function resolveLoadForExercise(
   }
 
   return {
-    load: estimateLoad(
-      exercise,
-      baselineLoadIndex,
-      historyTopLoadIndex,
-      exerciseById,
-      weightKg
-    ),
+    load: estimatedLoad,
     source: "estimate",
   };
 }
@@ -696,13 +732,20 @@ function resolveDeloadReferenceLoad(
 }
 
 function getTopSessionLoad(sets: WorkoutSetHistory): number | undefined {
+  const topSet = getTopSignalSet(sets);
+  return topSet?.load;
+}
+
+function getTopSignalSet(
+  sets: WorkoutSetHistory
+): WorkoutSetHistory[number] | undefined {
   const sorted = [...sets].sort((a, b) => a.setIndex - b.setIndex);
   for (const set of sorted) {
     if (set.rpe != null && set.rpe < EFFECTIVE_RPE_MIN) {
       continue;
     }
     if (Number.isFinite(set.load) && (set.load ?? 0) >= 0) {
-      return set.load as number;
+      return set;
     }
   }
   return undefined;
@@ -765,6 +808,87 @@ function estimateLoad(
     return Math.max(estimate, 10);
   }
   return estimate;
+}
+
+function resolveCrossIntentMainLiftFallbackLoad(input: {
+  exercise: Exercise;
+  sameIntentHistorySessions: WorkoutSessionHistory[] | undefined;
+  crossIntentHistorySessions: WorkoutSessionHistory[] | undefined;
+  sessionIntent: SplitDay | undefined;
+  targetReps: number | undefined;
+  targetRpe: number;
+  estimatedLoad: number | undefined;
+}): number | undefined {
+  if (shouldUseModalAnchoring(input.exercise)) {
+    return undefined;
+  }
+  if ((input.sameIntentHistorySessions?.length ?? 0) > 0) {
+    return undefined;
+  }
+  if (!input.sessionIntent || !Number.isFinite(input.targetReps) || (input.targetReps ?? 0) <= 0) {
+    return undefined;
+  }
+
+  const crossIntentSession = input.crossIntentHistorySessions?.find(
+    (session) =>
+      session.sessionIntent != null &&
+      session.sessionIntent !== input.sessionIntent
+  );
+  if (!crossIntentSession) {
+    return undefined;
+  }
+
+  const topSet = getTopSignalSet(crossIntentSession.sets);
+  if (!topSet?.load || !Number.isFinite(topSet.reps) || topSet.reps <= 0) {
+    return undefined;
+  }
+
+  const translatedLoad = translateLoadToTargetContext({
+    priorLoad: topSet.load,
+    priorReps: topSet.reps,
+    priorRpe: topSet.rpe,
+    targetReps: input.targetReps as number,
+    targetRpe: input.targetRpe,
+  });
+  if (!Number.isFinite(translatedLoad) || translatedLoad <= 0) {
+    return undefined;
+  }
+
+  const conservativeLoad = roundToHalf(
+    translatedLoad * CROSS_INTENT_MAIN_LIFT_MIGRATION_DISCOUNT
+  );
+  if (input.estimatedLoad == null || !Number.isFinite(input.estimatedLoad) || input.estimatedLoad <= 0) {
+    return conservativeLoad;
+  }
+
+  const estimateFloor = roundToHalf(input.estimatedLoad);
+  const estimateCap = roundToHalf(
+    input.estimatedLoad * CROSS_INTENT_MAIN_LIFT_ESTIMATE_CAP_MULTIPLIER
+  );
+  return Math.max(estimateFloor, Math.min(conservativeLoad, estimateCap));
+}
+
+function translateLoadToTargetContext(input: {
+  priorLoad: number;
+  priorReps: number;
+  priorRpe?: number;
+  targetReps: number;
+  targetRpe: number;
+}): number {
+  const estimatedOneRepMax = input.priorLoad * (1 + input.priorReps / 30);
+  const repTranslatedLoad = estimatedOneRepMax / (1 + input.targetReps / 30);
+
+  if (!Number.isFinite(input.priorRpe) || !Number.isFinite(input.targetRpe)) {
+    return repTranslatedLoad;
+  }
+
+  const rpeDelta = input.targetRpe - (input.priorRpe as number);
+  const effortScale = clamp(
+    1 + rpeDelta * CROSS_INTENT_RPE_LOAD_ADJUSTMENT_PER_POINT,
+    0.75,
+    1.25
+  );
+  return repTranslatedLoad * effortScale;
 }
 
 function estimateFromDonors(

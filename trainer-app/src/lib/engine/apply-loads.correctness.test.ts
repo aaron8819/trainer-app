@@ -3,7 +3,7 @@
  * Why it matters: Load progression must reward actual performance and ignore unperformed/planned history.
  */
 import { describe, expect, it } from "vitest";
-import { applyLoads } from "./apply-loads";
+import { applyLoads, applyLoadsWithAudit } from "./apply-loads";
 import type { Exercise, WorkoutHistoryEntry, WorkoutPlan } from "./types";
 
 const bench: Exercise = {
@@ -51,6 +51,51 @@ const bayesianCurl: Exercise = {
   repRangeMax: 15,
 };
 
+const dumbbellOverheadPress: Exercise = {
+  id: "db-ohp",
+  name: "Dumbbell Overhead Press",
+  movementPatterns: ["vertical_push"],
+  splitTags: ["push"],
+  jointStress: "medium",
+  isMainLiftEligible: true,
+  isCompound: true,
+  fatigueCost: 3,
+  equipment: ["dumbbell", "bench"],
+  primaryMuscles: ["Front Delts", "Triceps"],
+  repRangeMin: 6,
+  repRangeMax: 10,
+};
+
+const beltSquat: Exercise = {
+  id: "belt-squat",
+  name: "Belt Squat",
+  movementPatterns: ["squat"],
+  splitTags: ["legs"],
+  jointStress: "medium",
+  isMainLiftEligible: true,
+  isCompound: true,
+  fatigueCost: 3,
+  equipment: ["machine"],
+  primaryMuscles: ["Quads", "Glutes"],
+  repRangeMin: 6,
+  repRangeMax: 12,
+};
+
+const backSquat: Exercise = {
+  id: "back-squat",
+  name: "Barbell Back Squat",
+  movementPatterns: ["squat"],
+  splitTags: ["legs"],
+  jointStress: "high",
+  isMainLiftEligible: true,
+  isCompound: true,
+  fatigueCost: 4,
+  equipment: ["barbell", "rack"],
+  primaryMuscles: ["Quads", "Glutes"],
+  repRangeMin: 5,
+  repRangeMax: 10,
+};
+
 const baseWorkout: WorkoutPlan = {
   id: "w1",
   scheduledDate: "2026-02-20T00:00:00.000Z",
@@ -90,6 +135,68 @@ const accessorySwapWorkout: WorkoutPlan = {
     },
   ],
   estimatedMinutes: 30,
+};
+
+const upperMainLiftWorkout: WorkoutPlan = {
+  id: "w-upper-main",
+  scheduledDate: "2026-03-28T00:00:00.000Z",
+  warmup: [],
+  mainLifts: [
+    {
+      id: "we-upper-main",
+      exercise: dumbbellOverheadPress,
+      orderIndex: 0,
+      isMainLift: true,
+      sets: [
+        { setIndex: 1, targetReps: 10, targetRpe: 6.5 },
+        { setIndex: 2, targetReps: 10, targetRpe: 6.5 },
+        { setIndex: 3, targetReps: 10, targetRpe: 6.5 },
+      ],
+    },
+  ],
+  accessories: [],
+  estimatedMinutes: 35,
+};
+
+const upperAccessoryWorkout: WorkoutPlan = {
+  id: "w-upper-accessory",
+  scheduledDate: "2026-03-28T00:00:00.000Z",
+  warmup: [],
+  mainLifts: [],
+  accessories: [
+    {
+      id: "we-upper-accessory",
+      exercise: cableCurl,
+      orderIndex: 0,
+      isMainLift: false,
+      sets: [
+        { setIndex: 1, targetReps: 12, targetRpe: 8 },
+        { setIndex: 2, targetReps: 12, targetRpe: 8 },
+      ],
+    },
+  ],
+  estimatedMinutes: 20,
+};
+
+const lowerMainLiftWorkout: WorkoutPlan = {
+  id: "w-lower-main",
+  scheduledDate: "2026-03-26T00:00:00.000Z",
+  warmup: [],
+  mainLifts: [
+    {
+      id: "we-lower-main",
+      exercise: beltSquat,
+      orderIndex: 0,
+      isMainLift: true,
+      sets: [
+        { setIndex: 1, targetReps: 10, targetRpe: 6.5 },
+        { setIndex: 2, targetReps: 10, targetRpe: 6.5 },
+        { setIndex: 3, targetReps: 10, targetRpe: 6.5 },
+      ],
+    },
+  ],
+  accessories: [],
+  estimatedMinutes: 35,
 };
 
 function makeHistory(completed: boolean): WorkoutHistoryEntry[] {
@@ -1141,6 +1248,153 @@ describe("applyLoads correctness", () => {
     });
 
     expect(result.accessories[0].sets[0].targetLoad).toBe(42.5);
+  });
+
+  it("keeps same-intent exact main-lift history as the winning source over cross-intent fallback", () => {
+    const result = applyLoadsWithAudit(upperMainLiftWorkout, {
+      history: [
+        {
+          date: "2026-03-27T00:00:00.000Z",
+          completed: true,
+          status: "COMPLETED",
+          sessionIntent: "upper",
+          exercises: [
+            {
+              exerciseId: "db-ohp",
+              sets: [
+                { exerciseId: "db-ohp", setIndex: 1, reps: 10, rpe: 7, load: 40 },
+                { exerciseId: "db-ohp", setIndex: 2, reps: 10, rpe: 7, load: 40 },
+                { exerciseId: "db-ohp", setIndex: 3, reps: 10, rpe: 7, load: 40 },
+              ],
+            },
+          ],
+        },
+        {
+          date: "2026-03-20T00:00:00.000Z",
+          completed: true,
+          status: "COMPLETED",
+          sessionIntent: "push",
+          exercises: [
+            {
+              exerciseId: "db-ohp",
+              sets: [
+                { exerciseId: "db-ohp", setIndex: 1, reps: 7, rpe: 8.5, load: 55 },
+                { exerciseId: "db-ohp", setIndex: 2, reps: 7, rpe: 8.5, load: 55 },
+              ],
+            },
+          ],
+        },
+      ],
+      baselines: [],
+      exerciseById: { "db-ohp": dumbbellOverheadPress },
+      primaryGoal: "hypertrophy",
+      profile: { trainingAge: "intermediate" },
+      sessionIntent: "upper",
+    });
+
+    expect(result.audit.resolvedLoads["db-ohp"]?.source).toBe("history");
+    expect(result.workout.mainLifts[0].sets[0].targetLoad).toBe(42.5);
+    expect(result.workout.mainLifts[0].sets[1].targetLoad).toBe(37.5);
+  });
+
+  it("uses a conservative exact cross-intent main-lift fallback during split migration instead of dropping to a cold estimate", () => {
+    const result = applyLoadsWithAudit(upperMainLiftWorkout, {
+      history: [
+        {
+          date: "2026-03-20T00:00:00.000Z",
+          completed: true,
+          status: "COMPLETED",
+          sessionIntent: "push",
+          exercises: [
+            {
+              exerciseId: "db-ohp",
+              sets: [
+                { exerciseId: "db-ohp", setIndex: 1, reps: 7, rpe: 8.5, load: 45 },
+                { exerciseId: "db-ohp", setIndex: 2, reps: 7, rpe: 8, load: 45 },
+                { exerciseId: "db-ohp", setIndex: 3, reps: 7, rpe: 8, load: 45 },
+                { exerciseId: "db-ohp", setIndex: 4, reps: 7, rpe: 8.5, load: 45 },
+              ],
+            },
+          ],
+        },
+      ],
+      baselines: [],
+      exerciseById: { "db-ohp": dumbbellOverheadPress },
+      primaryGoal: "hypertrophy",
+      profile: { trainingAge: "intermediate" },
+      sessionIntent: "upper",
+    });
+
+    const topLoad = result.workout.mainLifts[0].sets[0].targetLoad ?? 0;
+    expect(result.audit.resolvedLoads["db-ohp"]?.source).toBe("history");
+    expect(topLoad).toBe(25);
+    expect(topLoad).toBeGreaterThan(20);
+    expect(topLoad).toBeLessThan(45);
+    expect(result.workout.mainLifts[0].sets[1].targetLoad).toBe(22.5);
+    expect(result.workout.mainLifts[0].sets[0].targetRpe).toBe(6.5);
+  });
+
+  it("does not broaden donor pooling globally when only cross-intent non-exact history exists", () => {
+    const result = applyLoadsWithAudit(lowerMainLiftWorkout, {
+      history: [
+        {
+          date: "2026-03-20T00:00:00.000Z",
+          completed: true,
+          status: "COMPLETED",
+          sessionIntent: "legs",
+          exercises: [
+            {
+              exerciseId: "back-squat",
+              sets: [
+                { exerciseId: "back-squat", setIndex: 1, reps: 8, rpe: 7.5, load: 185 },
+                { exerciseId: "back-squat", setIndex: 2, reps: 8, rpe: 7.5, load: 185 },
+              ],
+            },
+          ],
+        },
+      ],
+      baselines: [],
+      exerciseById: {
+        "belt-squat": beltSquat,
+        "back-squat": backSquat,
+      },
+      primaryGoal: "hypertrophy",
+      profile: { trainingAge: "intermediate" },
+      sessionIntent: "lower",
+    });
+
+    expect(result.audit.resolvedLoads["belt-squat"]?.source).toBe("estimate");
+    expect(result.workout.mainLifts[0].sets[0].targetLoad).toBe(60);
+  });
+
+  it("keeps accessories on the existing estimate path when only cross-intent exact history exists", () => {
+    const result = applyLoadsWithAudit(upperAccessoryWorkout, {
+      history: [
+        {
+          date: "2026-03-20T00:00:00.000Z",
+          completed: true,
+          status: "COMPLETED",
+          sessionIntent: "pull",
+          exercises: [
+            {
+              exerciseId: "cable-curl",
+              sets: [
+                { exerciseId: "cable-curl", setIndex: 1, reps: 12, rpe: 8, load: 30 },
+                { exerciseId: "cable-curl", setIndex: 2, reps: 12, rpe: 8, load: 30 },
+              ],
+            },
+          ],
+        },
+      ],
+      baselines: [],
+      exerciseById: { "cable-curl": cableCurl },
+      primaryGoal: "hypertrophy",
+      profile: { trainingAge: "intermediate" },
+      sessionIntent: "upper",
+    });
+
+    expect(result.audit.resolvedLoads["cable-curl"]?.source).toBe("estimate");
+    expect(result.workout.accessories[0].sets[0].targetLoad).toBe(40);
   });
 
   it("holds accessory load when discounted MANUAL history collapses the increment", () => {

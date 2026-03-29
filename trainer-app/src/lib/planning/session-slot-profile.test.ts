@@ -374,7 +374,7 @@ describe("resolveSessionSlotPolicy", () => {
         upperA,
         ["Chest", "Side Delts", "Triceps", "Hamstrings", "Calves"]
       )
-    ).toEqual(["Chest", "Triceps", "Side Delts"]);
+    ).toEqual(["Chest", "Triceps"]);
     expect(
       getProjectionRepairCompatibleMuscles(upperB, ["Chest", "Side Delts", "Triceps", "Hamstrings", "Calves"])
     ).toEqual(["Chest", "Triceps"]);

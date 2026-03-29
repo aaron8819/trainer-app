@@ -320,6 +320,17 @@ function buildProtectedCoverageSatisfiedSnapshot(): PreloadedGenerationSnapshot 
       isMainLiftEligible: false,
       isCompound: false,
       fatigueCost: 1,
+    }) as never,
+    makeRawExercise({
+      id: "seated-leg-curl",
+      name: "Seated Leg Curl",
+      movementPatterns: ["isolation"],
+      splitTags: ["legs"],
+      equipment: ["MACHINE"],
+      primaryMuscles: ["Hamstrings"],
+      isMainLiftEligible: false,
+      isCompound: false,
+      fatigueCost: 1,
     }) as never
   );
   return snapshot;
@@ -713,13 +724,8 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
         0
       ) ?? 0;
     expect(repairedMevShortfall).toBeLessThan(unrepairedMevShortfall);
-    expect(
-      (repairedDiagnostics?.afterRepair.muscles.find((row) => row.muscle === "Calves")
-        ?.projectedEffectiveSets ?? 0)
-    ).toBeGreaterThan(
-      unrepairedDiagnostics?.afterRepair.muscles.find((row) => row.muscle === "Calves")
-        ?.projectedEffectiveSets ?? 0
-    );
+    expect(repairedDiagnostics?.afterRepair.unresolvedProtectedMuscles).not.toContain("Triceps");
+    expect(unrepairedDiagnostics?.afterRepair.unresolvedProtectedMuscles).toContain("Triceps");
 
     const repairedSlotPlans = getProjectedSlotPlans(repaired);
     const upperA = repairedSlotPlans.find((slot) => slot.slotId === "upper_a");
@@ -817,11 +823,11 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
 
     expect(projected.error).toContain("MESOCYCLE_HANDOFF_SLOT_PLAN_PROTECTED_COVERAGE_UNSATISFIED");
     expect(projected.diagnostics?.protectedCoverage.unresolvedProtectedMuscles).toEqual(
-      expect.arrayContaining(["Triceps", "Hamstrings"])
+      expect.arrayContaining(["Hamstrings", "Calves"])
     );
   });
 
-  it("accepts the seed when the constructed week clears protected viability", async () => {
+  it("still rejects the seed when extra triceps options are present but hamstring protected viability remains unsatisfied", async () => {
     vi.resetModules();
     vi.doMock("@/lib/engine/volume-landmarks", async (importOriginal) => {
       const original =
@@ -832,8 +838,32 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
           ...original.VOLUME_LANDMARKS,
           Chest: { ...original.VOLUME_LANDMARKS.Chest, mev: 6 },
           Triceps: { ...original.VOLUME_LANDMARKS.Triceps, mev: 3 },
-          Hamstrings: { ...original.VOLUME_LANDMARKS.Hamstrings, mev: 4 },
+          Hamstrings: { ...original.VOLUME_LANDMARKS.Hamstrings, mev: 2 },
           Calves: { ...original.VOLUME_LANDMARKS.Calves, mev: 4 },
+        },
+      };
+    });
+    vi.doMock("./mesocycle-lifecycle", async (importOriginal) => {
+      const original =
+        await importOriginal<typeof import("./mesocycle-lifecycle")>();
+      return {
+        ...original,
+        getWeeklyVolumeTarget: (
+          _mesocycle: unknown,
+          muscle: string
+        ) => {
+          switch (muscle) {
+            case "Chest":
+              return 8;
+            case "Triceps":
+              return 6;
+            case "Hamstrings":
+              return 4;
+            case "Calves":
+              return 6;
+            default:
+              return 0;
+          }
         },
       };
     });
@@ -848,11 +878,15 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     });
     vi.resetModules();
     vi.doUnmock("@/lib/engine/volume-landmarks");
+    vi.doUnmock("./mesocycle-lifecycle");
 
-    expect("error" in projected).toBe(false);
-    if ("error" in projected) return;
+    expect("error" in projected).toBe(true);
+    if (!("error" in projected)) return;
 
+    expect(projected.error).toContain("MESOCYCLE_HANDOFF_SLOT_PLAN_PROTECTED_COVERAGE_UNSATISFIED");
     expect(projected.diagnostics?.protectedCoverage.attemptedRepair).toBe(false);
-    expect(projected.diagnostics?.protectedCoverage.unresolvedProtectedMuscles).toEqual([]);
+    expect(projected.diagnostics?.protectedCoverage.unresolvedProtectedMuscles).toEqual(
+      expect.arrayContaining(["Hamstrings"])
+    );
   });
 });

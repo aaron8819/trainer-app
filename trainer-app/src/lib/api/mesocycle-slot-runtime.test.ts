@@ -13,7 +13,19 @@ describe("mesocycle-slot-runtime", () => {
         source: "handoff_draft",
         sequenceMode: "ordered_flexible",
         slots: [
-          { slotId: "upper_a", intent: "UPPER" },
+          {
+            slotId: "upper_a",
+            intent: "UPPER",
+            authoredSemantics: {
+              slotArchetype: "upper_horizontal_balanced",
+              primaryLaneContract: null,
+              supportCoverageContract: {
+                preferredAccessoryPrimaryMuscles: ["Chest", "Triceps"],
+                protectedWeekOneCoverageMuscles: ["Chest", "Triceps"],
+              },
+              continuityScope: "slot",
+            },
+          },
           { slotId: "lower_a", intent: "LOWER" },
         ],
       },
@@ -22,7 +34,20 @@ describe("mesocycle-slot-runtime", () => {
 
     expect(slotSequence).toEqual({
       slots: [
-        { slotId: "upper_a", intent: "upper", sequenceIndex: 0 },
+        {
+          slotId: "upper_a",
+          intent: "upper",
+          sequenceIndex: 0,
+          authoredSemantics: {
+            slotArchetype: "upper_horizontal_balanced",
+            primaryLaneContract: null,
+            supportCoverageContract: {
+              preferredAccessoryPrimaryMuscles: ["Chest", "Triceps"],
+              protectedWeekOneCoverageMuscles: ["Chest", "Triceps"],
+            },
+            continuityScope: "slot",
+          },
+        },
         { slotId: "lower_a", intent: "lower", sequenceIndex: 1 },
       ],
       source: "mesocycle_slot_sequence",

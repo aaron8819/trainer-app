@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { exampleExerciseLibrary, exampleGoals, exampleUser } from "../engine/sample-data";
 import * as selectionV2 from "@/lib/engine/selection-v2";
 import type { Exercise } from "@/lib/engine/types";
+import { getEffectiveStimulusByMuscle } from "@/lib/engine/stimulus";
 
 const mesocycleRoleFindManyMock = vi.fn();
 vi.mock("@/lib/db/prisma", () => ({
@@ -86,6 +87,7 @@ function makeCustomExercise(input: {
   equipment?: Exercise["equipment"];
   sfrScore?: number;
   lengthPositionScore?: number;
+  stimulusProfile?: Exercise["stimulusProfile"];
 }): Exercise {
   return {
     id: input.id,
@@ -99,6 +101,7 @@ function makeCustomExercise(input: {
     equipment: input.equipment ?? ["machine"],
     primaryMuscles: input.primaryMuscles,
     secondaryMuscles: input.secondaryMuscles ?? [],
+    stimulusProfile: input.stimulusProfile,
     sfrScore: input.sfrScore ?? 4,
     lengthPositionScore: input.lengthPositionScore ?? 3,
   };
@@ -132,6 +135,63 @@ function buildMockSelectionResult(selected: Exercise[]) {
       perExercise: new Map(selected.map((exercise) => [exercise.id, `selected ${exercise.name}`])),
     },
   };
+}
+
+function getSelectedMuscleEffectiveSets(params: {
+  selectedExerciseIds: string[];
+  perExerciseSetTargets: Record<string, number>;
+  exerciseLibrary: Exercise[];
+  muscle: string;
+}): number {
+  return params.selectedExerciseIds.reduce((total, exerciseId) => {
+    const exercise = params.exerciseLibrary.find((entry) => entry.id === exerciseId);
+    if (!exercise) {
+      return total;
+    }
+    const setCount = params.perExerciseSetTargets[exerciseId] ?? 0;
+    return total + (getEffectiveStimulusByMuscle(exercise, setCount).get(params.muscle) ?? 0);
+  }, 0);
+}
+
+function primeUpperLowerSlotGeneration(customLibrary: Exercise[]) {
+  mapExercisesMock.mockReturnValue(customLibrary);
+  mapConstraintsMock.mockReturnValue({
+    daysPerWeek: 4,
+    splitType: "upper_lower",
+    weeklySchedule: ["upper", "lower", "upper", "lower"],
+  });
+  loadWorkoutContextMock.mockResolvedValue({
+    profile: { id: "profile" },
+    goals: { primaryGoal: "HYPERTROPHY", secondaryGoal: "NONE" },
+    constraints: {
+      daysPerWeek: 4,
+      splitType: "UPPER_LOWER",
+      weeklySchedule: ["UPPER", "LOWER", "UPPER", "LOWER"],
+    },
+    injuries: [],
+    exercises: customLibrary.map((exercise) => ({ id: exercise.id })),
+    workouts: [],
+    preferences: null,
+    checkIns: [],
+  });
+  loadActiveMesocycleMock.mockResolvedValue({
+    id: "meso-1",
+    state: "ACTIVE_ACCUMULATION",
+    accumulationSessionsCompleted: 6,
+    durationWeeks: 5,
+    sessionsPerWeek: 4,
+    slotSequenceJson: {
+      version: 1,
+      source: "handoff_draft",
+      sequenceMode: "ordered_flexible",
+      slots: [
+        { slotId: "upper_a", intent: "UPPER" },
+        { slotId: "lower_a", intent: "LOWER" },
+        { slotId: "upper_b", intent: "UPPER" },
+        { slotId: "lower_b", intent: "LOWER" },
+      ],
+    },
+  });
 }
 
 describe("generateSessionFromIntent", () => {
@@ -700,6 +760,369 @@ describe("generateSessionFromIntent", () => {
         )
       ).toBe(true);
       expect(result.selection.selectedExerciseIds).toContain("tbar-row");
+    } finally {
+      selectSpy.mockRestore();
+    }
+  });
+
+  it("uses closure to add a true side-delt repair accessory for focused upper_b projection repair", async () => {
+    const customLibrary: Exercise[] = [
+      makeCustomExercise({
+        id: "machine-shoulder-press",
+        name: "Machine Shoulder Press",
+        movementPatterns: ["vertical_push"],
+        splitTags: ["push"],
+        primaryMuscles: ["Front Delts"],
+        secondaryMuscles: ["Triceps", "Side Delts"],
+        stimulusProfile: {
+          front_delts: 1,
+          triceps: 0.35,
+          side_delts: 0.2,
+        },
+      }),
+      makeCustomExercise({
+        id: "lat-pulldown",
+        name: "Lat Pulldown",
+        movementPatterns: ["vertical_pull"],
+        splitTags: ["pull"],
+        primaryMuscles: ["Lats"],
+        secondaryMuscles: ["Biceps"],
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 2,
+      }),
+      makeCustomExercise({
+        id: "chest-supported-row",
+        name: "Chest-Supported Row",
+        movementPatterns: ["horizontal_pull"],
+        splitTags: ["pull"],
+        primaryMuscles: ["Upper Back", "Lats"],
+        secondaryMuscles: ["Biceps"],
+        isMainLiftEligible: false,
+      }),
+      makeCustomExercise({
+        id: "face-pull",
+        name: "Face Pull",
+        movementPatterns: ["horizontal_pull"],
+        splitTags: ["pull"],
+        primaryMuscles: ["Rear Delts"],
+        secondaryMuscles: ["Upper Back"],
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 1,
+      }),
+      makeCustomExercise({
+        id: "machine-lateral-raise",
+        name: "Machine Lateral Raise",
+        movementPatterns: ["isolation"],
+        splitTags: ["push"],
+        primaryMuscles: ["Side Delts"],
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 1,
+        stimulusProfile: {
+          side_delts: 1,
+        },
+      }),
+      makeCustomExercise({
+        id: "cable-lateral-raise",
+        name: "Cable Lateral Raise",
+        movementPatterns: ["isolation"],
+        splitTags: ["push"],
+        primaryMuscles: ["Side Delts"],
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 1,
+        stimulusProfile: {
+          side_delts: 1,
+        },
+      }),
+    ];
+    primeUpperLowerSlotGeneration(customLibrary);
+    getWeeklyVolumeTargetMock.mockImplementation((_, muscle: string) => {
+      switch (muscle) {
+        case "Side Delts":
+          return 8;
+        case "Front Delts":
+          return 4;
+        case "Lats":
+          return 4;
+        case "Upper Back":
+          return 4;
+        case "Rear Delts":
+          return 3;
+        default:
+          return 0;
+      }
+    });
+
+    const selectSpy = vi
+      .spyOn(selectionV2, "selectExercisesOptimized")
+      .mockReturnValue(
+        buildMockSelectionResult([
+          customLibrary[0]!,
+          customLibrary[1]!,
+          customLibrary[2]!,
+          customLibrary[3]!,
+        ])
+      );
+
+    try {
+      const result = await generateSessionFromIntent("user-1", {
+        intent: "upper",
+        slotId: "upper_b",
+        roleListIncomplete: true,
+        targetMuscles: ["Side Delts"],
+        projectionRepairMuscles: ["Side Delts"],
+        plannerDiagnosticsMode: "debug",
+      });
+
+      expect("error" in result).toBe(false);
+      if ("error" in result) return;
+
+      expect(selectSpy).toHaveBeenCalledTimes(1);
+      expect(result.selection.selectedExerciseIds).toEqual(
+        expect.arrayContaining(["machine-lateral-raise"])
+      );
+      expect(
+        getSelectedMuscleEffectiveSets({
+          selectedExerciseIds: result.selection.selectedExerciseIds,
+          perExerciseSetTargets: result.selection.perExerciseSetTargets,
+          exerciseLibrary: customLibrary,
+          muscle: "Side Delts",
+        })
+      ).toBeGreaterThan(2);
+      expect(result.selection.sessionDecisionReceipt?.plannerDiagnostics?.closure.used).toBe(true);
+      expect(
+        result.selection.sessionDecisionReceipt?.plannerDiagnostics?.closure.winningAction?.exerciseId
+      ).toMatch(/lateral-raise$/);
+    } finally {
+      selectSpy.mockRestore();
+    }
+  });
+
+  it("leaves ordinary upper_b composition unchanged when no focused repair muscles are requested", async () => {
+    const customLibrary: Exercise[] = [
+      makeCustomExercise({
+        id: "machine-shoulder-press",
+        name: "Machine Shoulder Press",
+        movementPatterns: ["vertical_push"],
+        splitTags: ["push"],
+        primaryMuscles: ["Front Delts"],
+        secondaryMuscles: ["Triceps", "Side Delts"],
+        stimulusProfile: {
+          front_delts: 1,
+          triceps: 0.35,
+          side_delts: 0.2,
+        },
+      }),
+      makeCustomExercise({
+        id: "lat-pulldown",
+        name: "Lat Pulldown",
+        movementPatterns: ["vertical_pull"],
+        splitTags: ["pull"],
+        primaryMuscles: ["Lats"],
+        secondaryMuscles: ["Biceps"],
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 2,
+      }),
+      makeCustomExercise({
+        id: "chest-supported-row",
+        name: "Chest-Supported Row",
+        movementPatterns: ["horizontal_pull"],
+        splitTags: ["pull"],
+        primaryMuscles: ["Upper Back", "Lats"],
+        secondaryMuscles: ["Biceps"],
+        isMainLiftEligible: false,
+      }),
+      makeCustomExercise({
+        id: "face-pull",
+        name: "Face Pull",
+        movementPatterns: ["horizontal_pull"],
+        splitTags: ["pull"],
+        primaryMuscles: ["Rear Delts"],
+        secondaryMuscles: ["Upper Back"],
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 1,
+      }),
+      makeCustomExercise({
+        id: "machine-lateral-raise",
+        name: "Machine Lateral Raise",
+        movementPatterns: ["isolation"],
+        splitTags: ["push"],
+        primaryMuscles: ["Side Delts"],
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 1,
+        stimulusProfile: {
+          side_delts: 1,
+        },
+      }),
+    ];
+    primeUpperLowerSlotGeneration(customLibrary);
+    getWeeklyVolumeTargetMock.mockImplementation((_, muscle: string) => {
+      switch (muscle) {
+        case "Front Delts":
+          return 2;
+        case "Lats":
+          return 4;
+        case "Upper Back":
+          return 2;
+        case "Rear Delts":
+          return 2;
+        case "Side Delts":
+          return 0;
+        default:
+          return 0;
+      }
+    });
+
+    const selectSpy = vi
+      .spyOn(selectionV2, "selectExercisesOptimized")
+      .mockReturnValue(
+        buildMockSelectionResult([
+          customLibrary[0]!,
+          customLibrary[1]!,
+          customLibrary[2]!,
+          customLibrary[3]!,
+        ])
+      );
+
+    try {
+      const result = await generateSessionFromIntent("user-1", {
+        intent: "upper",
+        slotId: "upper_b",
+        roleListIncomplete: true,
+        plannerDiagnosticsMode: "debug",
+      });
+
+      expect("error" in result).toBe(false);
+      if ("error" in result) return;
+
+      expect(selectSpy).toHaveBeenCalledTimes(1);
+      expect(result.selection.selectedExerciseIds).not.toContain("machine-lateral-raise");
+      expect(result.selection.sessionDecisionReceipt?.plannerDiagnostics?.closure.used).toBe(false);
+    } finally {
+      selectSpy.mockRestore();
+    }
+  });
+
+  it("keeps focused chest repair behavior intact for upper_b projection repair", async () => {
+    const customLibrary: Exercise[] = [
+      makeCustomExercise({
+        id: "incline-db-press",
+        name: "Incline Dumbbell Press",
+        movementPatterns: ["vertical_push"],
+        splitTags: ["push"],
+        primaryMuscles: ["Chest", "Front Delts"],
+        secondaryMuscles: ["Triceps"],
+        stimulusProfile: {
+          chest: 0.6,
+          front_delts: 0.5,
+          triceps: 0.35,
+        },
+      }),
+      makeCustomExercise({
+        id: "lat-pulldown",
+        name: "Lat Pulldown",
+        movementPatterns: ["vertical_pull"],
+        splitTags: ["pull"],
+        primaryMuscles: ["Lats"],
+        secondaryMuscles: ["Biceps"],
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 2,
+      }),
+      makeCustomExercise({
+        id: "chest-supported-row",
+        name: "Chest-Supported Row",
+        movementPatterns: ["horizontal_pull"],
+        splitTags: ["pull"],
+        primaryMuscles: ["Upper Back", "Lats"],
+        secondaryMuscles: ["Biceps"],
+        isMainLiftEligible: false,
+      }),
+      makeCustomExercise({
+        id: "cable-fly",
+        name: "Cable Fly",
+        movementPatterns: ["isolation"],
+        splitTags: ["push"],
+        primaryMuscles: ["Chest"],
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 1,
+        stimulusProfile: {
+          chest: 1,
+        },
+      }),
+      makeCustomExercise({
+        id: "machine-lateral-raise",
+        name: "Machine Lateral Raise",
+        movementPatterns: ["isolation"],
+        splitTags: ["push"],
+        primaryMuscles: ["Side Delts"],
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 1,
+        stimulusProfile: {
+          side_delts: 1,
+        },
+      }),
+    ];
+    primeUpperLowerSlotGeneration(customLibrary);
+    getWeeklyVolumeTargetMock.mockImplementation((_, muscle: string) => {
+      switch (muscle) {
+        case "Chest":
+          return 8;
+        case "Lats":
+          return 4;
+        case "Upper Back":
+          return 4;
+        case "Side Delts":
+          return 3;
+        default:
+          return 0;
+      }
+    });
+
+    const selectSpy = vi
+      .spyOn(selectionV2, "selectExercisesOptimized")
+      .mockReturnValue(
+        buildMockSelectionResult([
+          customLibrary[0]!,
+          customLibrary[1]!,
+          customLibrary[2]!,
+        ])
+      );
+
+    try {
+      const result = await generateSessionFromIntent("user-1", {
+        intent: "upper",
+        slotId: "upper_b",
+        roleListIncomplete: true,
+        targetMuscles: ["Chest"],
+        projectionRepairMuscles: ["Chest"],
+        plannerDiagnosticsMode: "debug",
+      });
+
+      expect("error" in result).toBe(false);
+      if ("error" in result) return;
+
+      expect(selectSpy).toHaveBeenCalledTimes(1);
+      expect(result.selection.selectedExerciseIds).toContain("cable-fly");
+      expect(
+        getSelectedMuscleEffectiveSets({
+          selectedExerciseIds: result.selection.selectedExerciseIds,
+          perExerciseSetTargets: result.selection.perExerciseSetTargets,
+          exerciseLibrary: customLibrary,
+          muscle: "Chest",
+        })
+      ).toBeGreaterThan(3);
+      expect(
+        result.selection.sessionDecisionReceipt?.plannerDiagnostics?.closure.winningAction?.exerciseId
+      ).toBe("cable-fly");
     } finally {
       selectSpy.mockRestore();
     }

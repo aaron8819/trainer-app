@@ -1062,14 +1062,27 @@ function getCriticalMuscles(
   sessionIntent: GenerateIntentSessionInput["intent"],
   targetMuscles?: string[]
 ): Muscle[] {
-  if (sessionIntent === "body_part") {
-    return Array.from(
-      new Set(
-        (targetMuscles ?? [])
-          .map((muscle) => muscle as Muscle)
-          .filter((muscle) => (objective.volumeContext.weeklyTarget.get(muscle) ?? 0) > 0)
-      )
-    ).sort((left, right) => left.localeCompare(right));
+  const allowUpperRepairFocus =
+    sessionIntent === "upper" &&
+    ((objective.projectionRepairMuscles?.size ?? 0) > 0 || (targetMuscles?.length ?? 0) > 0);
+  const indexedWeeklyTargets = new Map(
+    Array.from(objective.volumeContext.weeklyTarget.keys()).map((muscle) => [
+      muscle.trim().toLowerCase(),
+      muscle,
+    ])
+  );
+  const focusedMuscles = Array.from(
+    new Set([
+      ...Array.from(objective.projectionRepairMuscles ?? []),
+      ...(sessionIntent === "body_part" || allowUpperRepairFocus ? targetMuscles ?? [] : []),
+    ])
+  )
+    .map((muscle) => indexedWeeklyTargets.get(muscle.trim().toLowerCase()))
+    .filter((muscle): muscle is Muscle => Boolean(muscle))
+    .filter((muscle) => (objective.volumeContext.weeklyTarget.get(muscle) ?? 0) > 0)
+    .sort((left, right) => left.localeCompare(right));
+  if (focusedMuscles.length > 0) {
+    return focusedMuscles;
   }
 
   return Array.from(objective.volumeContext.weeklyTarget.entries())

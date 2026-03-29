@@ -157,6 +157,7 @@ function buildUpperRepeatedSemantics(prefersVertical: boolean): MesocycleSlotAut
           preferredMovementPatterns: [prefersVertical ? "vertical_push" : "horizontal_push"],
           compatibleMovementPatterns: [],
           fallbackOnlyMovementPatterns: [prefersVertical ? "horizontal_push" : "vertical_push"],
+          preferredPrimaryMuscles: ["Chest"],
         },
         {
           key: "pull",
@@ -457,6 +458,9 @@ function parseSupportCoverageContract(value: unknown): MesocycleSlotSupportCover
 
   return {
     preferredAccessoryPrimaryMuscles: record.preferredAccessoryPrimaryMuscles,
+    protectedWeekOneCoverageMuscles: isStringArray(record.protectedWeekOneCoverageMuscles)
+      ? record.protectedWeekOneCoverageMuscles
+      : undefined,
     requiredMovementPatterns: isMovementPatternArray(record.requiredMovementPatterns)
       ? record.requiredMovementPatterns
       : undefined,

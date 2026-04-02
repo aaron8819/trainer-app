@@ -24,6 +24,7 @@ const MIN_NON_ANCHOR_OVERSHOOT_TOLERANCE = 1.0;
 const NON_ANCHOR_OVERSHOOT_TOLERANCE_FRACTION = 0.1;
 const MAX_ADAPTIVE_COLLATERAL_ALLOWANCE_FRACTION = 0.6;
 const COLLATERAL_COUPLING_ALLOWANCE_FACTOR = 1.0;
+const PREFERRED_SUPPORT_ACCESSORY_MIN_CURRENT_SLOT_FRACTION = 0.5;
 
 type SelectionObjective = ReturnType<typeof buildSelectionObjective>;
 
@@ -182,6 +183,10 @@ function roundPlannerValue(value: number): number {
   return Math.round(value * 1000) / 1000;
 }
 
+function normalizeMuscleName(muscle: string): string {
+  return muscle.trim().toLowerCase();
+}
+
 function getNonAnchorOvershootTolerance(weeklyTarget: number): number {
   return Math.max(
     MIN_NON_ANCHOR_OVERSHOOT_TOLERANCE,
@@ -233,6 +238,31 @@ function getRoleDeferredDeficitCarryFraction(
   return role === "CORE_COMPOUND"
     ? anchorPolicy.coreDeferredDeficitCarryFraction
     : anchorPolicy.accessoryDeferredDeficitCarryFraction;
+}
+
+function shouldKeepPreferredUpperSupportAccessoryCurrent(input: {
+  objective: SelectionObjective;
+  role: "CORE_COMPOUND" | "ACCESSORY" | undefined;
+  anchorMuscle: string;
+}): boolean {
+  if (input.role !== "ACCESSORY") {
+    return false;
+  }
+
+  const currentSlot = input.objective.slotPolicy?.currentSession;
+  if (!currentSlot || currentSlot.sessionIntent !== "upper") {
+    return false;
+  }
+
+  if (!(input.objective.volumeContext.remainingWeek?.futureSlots ?? []).includes("upper")) {
+    return false;
+  }
+
+  const preferredSupportMuscles =
+    currentSlot.sessionShape?.preferredAccessoryPrimaryMuscles ?? [];
+  return preferredSupportMuscles.some(
+    (muscle) => normalizeMuscleName(muscle) === normalizeMuscleName(input.anchorMuscle)
+  );
 }
 
 export function buildRemainingRoleFixturesByAnchor(
@@ -371,10 +401,26 @@ export function resolveRoleFixtureSetTarget(
   const remainingWeek = objective.volumeContext.remainingWeek;
   const requiredNow = remainingWeek?.requiredNow.get(anchorMuscle) ?? anchorRemaining;
   const deferredCarry = Math.max(0, anchorRemaining - requiredNow);
-  const planningAdjustedRemaining = Math.min(
+  let planningAdjustedRemaining = Math.min(
     anchorRemaining,
     requiredNow + deferredCarry * getRoleDeferredDeficitCarryFraction(sessionIntent, role)
   );
+  if (
+    shouldKeepPreferredUpperSupportAccessoryCurrent({
+      objective,
+      role,
+      anchorMuscle,
+    })
+  ) {
+    const preferredSupportFloorSets = Math.max(
+      minimumViableSets,
+      Math.ceil(desiredSetTarget * PREFERRED_SUPPORT_ACCESSORY_MIN_CURRENT_SLOT_FRACTION)
+    );
+    planningAdjustedRemaining = Math.max(
+      planningAdjustedRemaining,
+      Math.min(anchorRemaining, preferredSupportFloorSets * anchorContributionPerSet)
+    );
+  }
   const anchorConstrainedContinuousSets = Math.min(
     desiredSetTarget,
     planningAdjustedRemaining / anchorContributionPerSet

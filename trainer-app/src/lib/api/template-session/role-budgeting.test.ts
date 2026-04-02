@@ -243,4 +243,116 @@ describe("role budgeting with remaining-week planning", () => {
     expect(effectiveRoleMap.has("bench")).toBe(false);
     expect(effectiveRoleMap.has("row")).toBe(false);
   });
+
+  it("keeps preferred upper support accessories meaningful when a later upper slot still exists", () => {
+    const mapped = makeMappedContext(["upper", "lower", "upper", "lower"]);
+    mapped.mappedConstraints.splitType = "upper_lower";
+    mapped.activeMesocycle = {
+      id: "meso-1",
+      slotSequenceJson: {
+        version: 1,
+        source: "handoff_draft",
+        sequenceMode: "ordered_flexible",
+        slots: [
+          { slotId: "upper_a", intent: "UPPER" },
+          { slotId: "lower_a", intent: "LOWER" },
+          { slotId: "upper_b", intent: "UPPER" },
+          { slotId: "lower_b", intent: "LOWER" },
+        ],
+      },
+    } as unknown as MappedGenerationContext["activeMesocycle"];
+    mapped.lifecycleVolumeTargets = {
+      ...mapped.lifecycleVolumeTargets,
+      Chest: 12,
+      Triceps: 10,
+      Lats: 12,
+    };
+
+    const cableFly: Exercise = {
+      ...makeExercise("cable-fly", "Cable Fly", ["Chest"]),
+      movementPatterns: ["isolation"],
+      splitTags: ["push"],
+      isMainLiftEligible: false,
+      isCompound: false,
+      fatigueCost: 1,
+    };
+    const pulldown: Exercise = {
+      ...makeExercise("lat-pulldown", "Lat Pulldown", ["Lats"], ["Biceps"]),
+      movementPatterns: ["vertical_pull"],
+      splitTags: ["pull"],
+      isMainLiftEligible: false,
+      isCompound: false,
+      fatigueCost: 2,
+    };
+    mapped.exerciseLibrary = [cableFly, pulldown] as MappedGenerationContext["exerciseLibrary"];
+
+    const preferredObjective = buildSelectionObjective(mapped, "upper", undefined, {
+      sessionSlotId: "upper_a",
+    });
+    preferredObjective.volumeContext.effectiveActual.set("Chest", 8);
+    preferredObjective.volumeContext.effectiveActual.set("Lats", 8);
+    preferredObjective.volumeContext.remainingWeek = {
+      futureSlots: ["lower", "upper", "lower"],
+      futureSlotCounts: new Map([
+        ["lower", 2],
+        ["upper", 1],
+      ]),
+      futureCapacityFactor: 1,
+      futureCapacity: new Map([
+        ["Chest", 6],
+        ["Lats", 6],
+      ]),
+      requiredNow: new Map([
+        ["Chest", 0],
+        ["Lats", 0],
+      ]),
+      urgency: new Map([
+        ["Chest", 1],
+        ["Lats", 1],
+      ]),
+    };
+
+    const preferredRoleMap = new Map([[cableFly.id, "ACCESSORY" as const]]);
+    const genericRoleMap = new Map([[pulldown.id, "ACCESSORY" as const]]);
+    const preferredDecision = resolveRoleFixtureSetTarget(
+      cableFly,
+      cableFly.id,
+      4,
+      preferredObjective,
+      "upper",
+      false,
+      { Chest: 12, Triceps: 10, Lats: 12 },
+      new Map(),
+      buildRemainingRoleFixturesByAnchor(
+        [cableFly.id],
+        new Map([[cableFly.id, cableFly]]),
+        preferredRoleMap,
+        preferredObjective,
+        "upper"
+      ),
+      "ACCESSORY"
+    );
+    const nonPreferredDecision = resolveRoleFixtureSetTarget(
+      pulldown,
+      pulldown.id,
+      4,
+      preferredObjective,
+      "upper",
+      false,
+      { Chest: 12, Triceps: 10, Lats: 12 },
+      new Map(),
+      buildRemainingRoleFixturesByAnchor(
+        [pulldown.id],
+        new Map([[pulldown.id, pulldown]]),
+        genericRoleMap,
+        preferredObjective,
+        "upper"
+      ),
+      "ACCESSORY"
+    );
+
+    expect(preferredDecision.plannedSets).toBe(2);
+    expect(nonPreferredDecision.plannedSets).toBe(1);
+    expect(preferredDecision.plannedSets).toBeGreaterThan(nonPreferredDecision.plannedSets);
+  });
 });

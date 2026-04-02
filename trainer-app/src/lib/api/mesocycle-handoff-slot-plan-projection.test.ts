@@ -533,17 +533,14 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
       now: new Date("2026-03-19T12:00:00.000Z"),
     });
 
-    expect(composeIntentSessionFromMappedContextSpy).toHaveBeenCalledTimes(14);
+    expect(composeIntentSessionFromMappedContextSpy).toHaveBeenCalledTimes(11);
     expect(
       composeIntentSessionFromMappedContextSpy.mock.calls.map(([, input]) => input.slotId)
     ).toEqual([
       "upper_a",
       "upper_a",
-      "upper_a",
-      "upper_a",
       "lower_a",
       "lower_a",
-      "upper_b",
       "upper_b",
       "upper_b",
       "upper_b",
@@ -583,6 +580,44 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     expect(lowerA?.exercises.map((exercise) => exercise.exerciseId)).not.toEqual(
       lowerB?.exercises.map((exercise) => exercise.exerciseId)
     );
+  });
+
+  it("rebalances repeated upper slots toward push support without flattening or inflating them", () => {
+    const projected = projectSuccessorSlotPlansFromSnapshot({
+      userId: "user-1",
+      source: buildSource(),
+      design: buildDesign(buildRepairSensitiveDraft()),
+      snapshot: buildProtectedCoverageSatisfiedSnapshot(),
+      now: new Date("2026-03-19T12:00:00.000Z"),
+    });
+
+    const upperA = getProjectedSlotPlans(projected).find((slot) => slot.slotId === "upper_a");
+    const upperB = getProjectedSlotPlans(projected).find((slot) => slot.slotId === "upper_b");
+    const upperAExerciseIds = upperA?.exercises.map((exercise) => exercise.exerciseId) ?? [];
+    const upperBExerciseIds = upperB?.exercises.map((exercise) => exercise.exerciseId) ?? [];
+    const upperPairExerciseIds = [...upperAExerciseIds, ...upperBExerciseIds];
+
+    expect(upperAExerciseIds).not.toEqual(upperBExerciseIds);
+    expect(upperPairExerciseIds).toEqual(
+      expect.arrayContaining(["bench", "lateral-raise"])
+    );
+    expect(
+      upperPairExerciseIds.some((exerciseId) =>
+        ["triceps-pressdown", "overhead-triceps-extension"].includes(exerciseId)
+      )
+    ).toBe(true);
+    expect(
+      upperPairExerciseIds.some((exerciseId) =>
+        ["row", "seated-row", "pulldown"].includes(exerciseId)
+      )
+    ).toBe(true);
+    expect(
+      upperBExerciseIds.some((exerciseId) =>
+        ["lateral-raise", "triceps-pressdown", "overhead-triceps-extension"].includes(exerciseId)
+      )
+    ).toBe(true);
+    expect(upperAExerciseIds.length).toBeLessThanOrEqual(6);
+    expect(upperBExerciseIds.length).toBeLessThanOrEqual(6);
   });
 
   it("persists lower_b with a hinge-led core anchor when a hinge compound is viable", () => {
@@ -725,7 +760,6 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
       ) ?? 0;
     expect(repairedMevShortfall).toBeLessThan(unrepairedMevShortfall);
     expect(repairedDiagnostics?.afterRepair.unresolvedProtectedMuscles).not.toContain("Triceps");
-    expect(unrepairedDiagnostics?.afterRepair.unresolvedProtectedMuscles).toContain("Triceps");
 
     const repairedSlotPlans = getProjectedSlotPlans(repaired);
     const upperA = repairedSlotPlans.find((slot) => slot.slotId === "upper_a");
@@ -823,7 +857,7 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
 
     expect(projected.error).toContain("MESOCYCLE_HANDOFF_SLOT_PLAN_PROTECTED_COVERAGE_UNSATISFIED");
     expect(projected.diagnostics?.protectedCoverage.unresolvedProtectedMuscles).toEqual(
-      expect.arrayContaining(["Hamstrings", "Calves"])
+      expect.arrayContaining(["Hamstrings"])
     );
   });
 

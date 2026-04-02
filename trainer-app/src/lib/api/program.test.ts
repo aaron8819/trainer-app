@@ -288,6 +288,57 @@ describe("loadProgramDashboardData", () => {
       });
     });
 
+    it("uses the unified exposed scope so Core absorbs Abs and broader muscles stay visible when they have stimulus", async () => {
+      setupDashboardMocks();
+      mocks.workoutFindMany.mockResolvedValueOnce([
+        {
+          id: "w1",
+          exercises: [
+            {
+              exercise: {
+                id: "plank",
+                name: "Custom Core Move",
+                aliases: [],
+                exerciseMuscles: [
+                  { role: "PRIMARY", muscle: { name: "Abs" } },
+                  { role: "SECONDARY", muscle: { name: "Lower Back" } },
+                ],
+              },
+              sets: Array.from({ length: 2 }, () => ({ logs: [{ wasSkipped: false }] })),
+            },
+            {
+              exercise: {
+                id: "adductor-machine",
+                name: "Custom Adductor Move",
+                aliases: [],
+                exerciseMuscles: [
+                  { role: "PRIMARY", muscle: { name: "Adductors" } },
+                  { role: "SECONDARY", muscle: { name: "Forearms" } },
+                ],
+              },
+              sets: [{ logs: [{ wasSkipped: false }] }],
+            },
+          ],
+        },
+      ]);
+
+      const result = await loadProgramDashboardData("user-1");
+      const muscles = result.volumeThisWeek.map((row) => row.muscle);
+
+      expect(muscles).toEqual(
+        expect.arrayContaining(["Core", "Lower Back", "Adductors", "Forearms"])
+      );
+      expect(muscles).not.toContain("Abs");
+      expect(result.volumeThisWeek.find((row) => row.muscle === "Core")).toMatchObject({
+        directSets: 2,
+        effectiveSets: 2,
+      });
+      expect(result.volumeThisWeek.find((row) => row.muscle === "Lower Back")).toMatchObject({
+        indirectSets: 2,
+        effectiveSets: 0.6,
+      });
+    });
+
     it("threads opportunity fields onto dashboard muscle rows", async () => {
       setupDashboardMocks();
       mocks.loadRecentMuscleStimulus.mockResolvedValueOnce({

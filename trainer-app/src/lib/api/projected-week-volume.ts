@@ -1,7 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { WorkoutStatus } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
-import { VOLUME_LANDMARKS } from "@/lib/engine/volume-landmarks";
+import { getExposedVolumeLandmarkEntries } from "@/lib/engine/volume-landmarks";
 import type { SessionIntent } from "@/lib/engine/session-types";
 import type { WorkoutPlan } from "@/lib/engine/types";
 import { readSessionSlotSnapshot } from "@/lib/evidence/session-decision-receipt";
@@ -142,7 +142,7 @@ function buildFullWeekRows(input: {
     mergeContributionTotals(remainingWeekContribution, session.projectedContributionByMuscle);
   }
 
-  return Object.entries(VOLUME_LANDMARKS)
+  return getExposedVolumeLandmarkEntries()
     .map(([muscle, landmarks]) => {
       const completedEffectiveSets =
         input.completedVolumeByMuscle[muscle]?.effectiveSets ?? 0;

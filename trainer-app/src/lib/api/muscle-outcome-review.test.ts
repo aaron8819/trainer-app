@@ -170,4 +170,53 @@ describe("loadWeeklyMuscleOutcome", () => {
     expect(result?.week).toBe(5);
     expect(result?.rows.find((row) => row.muscle === "Lats")?.targetSets).toBe(13);
   });
+
+  it("uses the exposed scope so Core absorbs Abs and broader muscles still surface when present", async () => {
+    const mesocycleFindFirst = vi.fn().mockResolvedValue({
+      id: "meso-1",
+      durationWeeks: 5,
+      startWeek: 0,
+      state: "ACTIVE_ACCUMULATION",
+      accumulationSessionsCompleted: 3,
+      deloadSessionsCompleted: 0,
+      sessionsPerWeek: 3,
+      macroCycle: { startDate: new Date("2026-03-02T00:00:00.000Z") },
+    });
+    const workoutFindMany = vi.fn().mockResolvedValue([
+      {
+        id: "workout-1",
+        exercises: [
+          {
+            exercise: {
+              id: "plank",
+              name: "Plank",
+              aliases: [],
+              exerciseMuscles: [
+                { role: "PRIMARY", muscle: { name: "Abs" } },
+                { role: "SECONDARY", muscle: { name: "Lower Back" } },
+              ],
+            },
+            sets: Array.from({ length: 2 }, () => ({ logs: [{ wasSkipped: false }] })),
+          },
+        ],
+      },
+    ]);
+
+    const result = await loadWeeklyMuscleOutcome(
+      {
+        mesocycle: { findFirst: mesocycleFindFirst },
+        workout: { findMany: workoutFindMany },
+      } as never,
+      "user-1"
+    );
+
+    expect(result?.rows.map((row) => row.muscle)).toContain("Core");
+    expect(result?.rows.map((row) => row.muscle)).toContain("Lower Back");
+    expect(result?.rows.map((row) => row.muscle)).not.toContain("Abs");
+    expect(result?.rows.find((row) => row.muscle === "Core")).toMatchObject({
+      actualEffectiveSets: 3.6,
+      contributingExerciseCount: 1,
+      topContributors: [{ exerciseName: "Plank", effectiveSets: 3.6 }],
+    });
+  });
 });

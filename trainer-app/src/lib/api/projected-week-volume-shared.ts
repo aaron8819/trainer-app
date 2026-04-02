@@ -1,4 +1,5 @@
 import { getEffectiveStimulusByMuscle } from "@/lib/engine/stimulus";
+import { normalizeExposedMuscle } from "@/lib/engine/volume-landmarks";
 import type { SessionIntent } from "@/lib/engine/session-types";
 import type { WorkoutHistoryEntry, WorkoutPlan } from "@/lib/engine/types";
 import { finalizeDeloadSessionResult } from "./template-session/finalize-session";
@@ -39,9 +40,10 @@ export function computeWorkoutContributionByMuscle(
       exercise.exercise,
       setCount
     )) {
+      const exposedMuscle = normalizeExposedMuscle(muscle);
       byMuscle.set(
-        muscle,
-        roundToTenth((byMuscle.get(muscle) ?? 0) + effectiveSets)
+        exposedMuscle,
+        roundToTenth((byMuscle.get(exposedMuscle) ?? 0) + effectiveSets)
       );
     }
   }

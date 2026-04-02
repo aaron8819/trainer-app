@@ -334,4 +334,54 @@ describe("loadProjectedWeekVolumeReport", () => {
       deltaToTarget: -4,
     });
   });
+
+  it("uses the exposed scope for projection rows so Core absorbs Abs and broader muscles remain visible", async () => {
+    mocks.loadMesocycleWeekMuscleVolume.mockResolvedValue({
+      Core: { directSets: 2, indirectSets: 0, effectiveSets: 2 },
+      "Lower Back": { directSets: 0, indirectSets: 2, effectiveSets: 0.6 },
+    });
+    mocks.generateSessionFromMappedContext
+      .mockReset()
+      .mockReturnValueOnce({
+        workout: buildWorkout(["Abs"]),
+        selection: {},
+        selectionMode: "INTENT",
+        sessionIntent: "upper",
+        sraWarnings: [],
+        substitutions: [],
+        volumePlanByMuscle: {},
+      })
+      .mockReturnValueOnce({
+        workout: buildWorkout(["Forearms"]),
+        selection: {},
+        selectionMode: "INTENT",
+        sessionIntent: "lower",
+        sraWarnings: [],
+        substitutions: [],
+        volumePlanByMuscle: {},
+      });
+    mocks.getWeeklyVolumeTarget.mockImplementation(
+      (_mesocycle: unknown, muscle: string) => {
+        if (muscle === "Core") return 4;
+        if (muscle === "Lower Back") return 1;
+        return 0;
+      }
+    );
+
+    const report = await loadProjectedWeekVolumeReport({
+      userId: "user-1",
+      plannerDiagnosticsMode: "standard",
+    });
+
+    expect(report.projectedSessions[0]?.projectedContributionByMuscle).toEqual({ Core: 1 });
+    expect(report.fullWeekByMuscle.map((row) => row.muscle)).toEqual(
+      expect.arrayContaining(["Core", "Lower Back", "Forearms"])
+    );
+    expect(report.fullWeekByMuscle.map((row) => row.muscle)).not.toContain("Abs");
+    expect(report.fullWeekByMuscle.find((row) => row.muscle === "Core")).toMatchObject({
+      completedEffectiveSets: 2,
+      projectedNextSessionEffectiveSets: 1,
+      projectedFullWeekEffectiveSets: 3,
+    });
+  });
 });

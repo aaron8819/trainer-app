@@ -1,6 +1,9 @@
 import type { MesocyclePhase, Prisma, WorkoutStatus } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
-import { VOLUME_LANDMARKS } from "@/lib/engine/volume-landmarks";
+import {
+  getExposedVolumeLandmarkEntries,
+  normalizeExposedMuscle,
+} from "@/lib/engine/volume-landmarks";
 import { getEffectiveStimulusByMuscle } from "@/lib/engine/stimulus";
 import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-semantics";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
@@ -521,12 +524,20 @@ function buildMuscleVolumeSummary(
         continue;
       }
 
-      const primaryMuscles = workoutExercise.exercise.exerciseMuscles
+      const primaryMuscles = Array.from(
+        new Set(
+          workoutExercise.exercise.exerciseMuscles
         .filter((mapping) => mapping.role === "PRIMARY")
-        .map((mapping) => mapping.muscle.name);
-      const secondaryMuscles = workoutExercise.exercise.exerciseMuscles
+        .map((mapping) => normalizeExposedMuscle(mapping.muscle.name))
+        )
+      );
+      const secondaryMuscles = Array.from(
+        new Set(
+          workoutExercise.exercise.exerciseMuscles
         .filter((mapping) => mapping.role === "SECONDARY")
-        .map((mapping) => mapping.muscle.name);
+        .map((mapping) => normalizeExposedMuscle(mapping.muscle.name))
+        )
+      );
 
       const effectiveContribution = getEffectiveStimulusByMuscle(
         {
@@ -540,7 +551,8 @@ function buildMuscleVolumeSummary(
       );
 
       for (const [muscle, effectiveSets] of effectiveContribution) {
-        const row = getOrCreateMuscleAccumulator(actualByMuscle, muscle);
+        const exposedMuscle = normalizeExposedMuscle(muscle);
+        const row = getOrCreateMuscleAccumulator(actualByMuscle, exposedMuscle);
         row.effectiveSets += effectiveSets;
         const contribution = getOrCreateContributionAccumulator(
           row,
@@ -552,8 +564,8 @@ function buildMuscleVolumeSummary(
     }
   }
 
-  return Object.keys(VOLUME_LANDMARKS)
-    .map((muscle) => {
+  return getExposedVolumeLandmarkEntries()
+    .map(([muscle]) => {
       let targetSets = 0;
       for (let week = 1; week <= mesocycle.durationWeeks; week += 1) {
         targetSets += getWeeklyVolumeTarget(mesocycle, muscle, week);

@@ -1,6 +1,9 @@
 import { Prisma, WorkoutStatus } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
-import { VOLUME_LANDMARKS } from "@/lib/engine/volume-landmarks";
+import {
+  getExposedVolumeLandmarkEntries,
+  normalizeExposedMuscle,
+} from "@/lib/engine/volume-landmarks";
 import type { SessionIntent } from "@/lib/engine/session-types";
 import { getEffectiveStimulusByMuscle } from "@/lib/engine/stimulus";
 import type { WorkoutHistoryEntry } from "@/lib/engine/types";
@@ -224,9 +227,10 @@ function computeWorkoutActualContributionByMuscle(
       },
       completedSets
     )) {
+      const exposedMuscle = normalizeExposedMuscle(muscle);
       byMuscle.set(
-        muscle,
-        roundToTenth((byMuscle.get(muscle) ?? 0) + effectiveSets)
+        exposedMuscle,
+        roundToTenth((byMuscle.get(exposedMuscle) ?? 0) + effectiveSets)
       );
     }
   }
@@ -333,7 +337,7 @@ function buildGuidanceRows(input: {
   doneNowByMuscle: Map<string, number>;
   projectedRemainingByMuscle: Map<string, number>;
 }): LoggingWeeklyVolumeGuidanceRow[] {
-  return Object.entries(VOLUME_LANDMARKS)
+  return getExposedVolumeLandmarkEntries()
     .map(([muscle, landmarks]) => {
       const doneNow = roundToTenth(input.doneNowByMuscle.get(muscle) ?? 0);
       const projectedRemainingWeek = roundToTenth(

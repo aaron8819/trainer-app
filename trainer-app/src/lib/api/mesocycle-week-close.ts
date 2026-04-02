@@ -1,6 +1,9 @@
 import type { MesocyclePhase, MesocycleWeekCloseResolution, Prisma, WorkoutStatus } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
-import { VOLUME_LANDMARKS } from "@/lib/engine/volume-landmarks";
+import {
+  getExposedVolumeLandmarkEntries,
+  normalizeExposedMuscle,
+} from "@/lib/engine/volume-landmarks";
 import { getWeeklyVolumeTarget } from "./mesocycle-lifecycle-math";
 import { transitionMesocycleStateInTransaction } from "./mesocycle-lifecycle-state";
 import { loadMesocycleWeekMuscleVolume } from "./weekly-volume";
@@ -103,6 +106,81 @@ const DEFAULT_POLICY: WeekClosePolicySnapshot = {
   maxGeneratedExercises: 4,
 };
 
+function roundToTenth(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
+function summarizeWeekCloseMuscles(muscles: WeekCloseDeficitSnapshotMuscle[]) {
+  return {
+    totalDeficitSets: roundToTenth(muscles.reduce((sum, row) => sum + row.deficit, 0)),
+    qualifyingMuscleCount: muscles.length,
+    topTargetMuscles: muscles.slice(0, 3).map((row) => row.muscle),
+  };
+}
+
+function normalizeWeekCloseMuscleRows(
+  muscles: WeekCloseDeficitSnapshotMuscle[]
+): WeekCloseDeficitSnapshotMuscle[] {
+  const merged = new Map<string, WeekCloseDeficitSnapshotMuscle>();
+
+  for (const row of muscles) {
+    const muscle = normalizeExposedMuscle(row.muscle);
+    const existing = merged.get(muscle);
+    if (existing) {
+      existing.target = roundToTenth(existing.target + row.target);
+      existing.actual = roundToTenth(existing.actual + row.actual);
+      existing.deficit = roundToTenth(existing.deficit + row.deficit);
+      continue;
+    }
+
+    merged.set(muscle, {
+      muscle,
+      target: roundToTenth(row.target),
+      actual: roundToTenth(row.actual),
+      deficit: roundToTenth(row.deficit),
+    });
+  }
+
+  return Array.from(merged.values()).sort((left, right) => {
+    if (right.deficit !== left.deficit) {
+      return right.deficit - left.deficit;
+    }
+    return left.muscle.localeCompare(right.muscle);
+  });
+}
+
+function normalizeWeekCloseDeficitSnapshot(
+  snapshot: WeekCloseDeficitSnapshot
+): WeekCloseDeficitSnapshot {
+  const muscles = normalizeWeekCloseMuscleRows(snapshot.muscles);
+  const summary = summarizeWeekCloseMuscles(muscles);
+
+  const outcome = snapshot.outcome
+    ? (() => {
+        const remainingMuscles = normalizeWeekCloseMuscleRows(snapshot.outcome.remainingMuscles);
+        const remainingSummary = summarizeWeekCloseMuscles(remainingMuscles);
+        return {
+          ...snapshot.outcome,
+          deficitState: deriveWeekCloseDeficitState(snapshot.outcome.workflowState, {
+            summary: remainingSummary,
+            muscles: remainingMuscles,
+          }),
+          remainingDeficitSets: remainingSummary.totalDeficitSets,
+          remainingQualifyingMuscleCount: remainingSummary.qualifyingMuscleCount,
+          remainingTopTargetMuscles: remainingSummary.topTargetMuscles,
+          remainingMuscles,
+        } satisfies WeekCloseOutcomeSnapshot;
+      })()
+    : undefined;
+
+  return {
+    ...snapshot,
+    summary,
+    muscles,
+    ...(outcome ? { outcome } : {}),
+  };
+}
+
 function computeMesoWeekStart(input: {
   macroStartDate: Date;
   mesocycleStartWeek: number;
@@ -187,7 +265,7 @@ export async function buildWeekCloseDeficitSnapshot(tx: Tx, input: {
     weekStart,
   });
 
-  const muscles = Object.entries(VOLUME_LANDMARKS)
+  const muscles = getExposedVolumeLandmarkEntries()
     .map(([muscle, landmarks]) => {
       const actual = actualByMuscle[muscle] ?? 0;
       const target = getWeeklyVolumeTarget(input.mesocycle, muscle, input.targetWeek);
@@ -354,7 +432,7 @@ export function readWeekCloseDeficitSnapshot(value: unknown): WeekCloseDeficitSn
   if (candidate.version !== 1 || !candidate.policy || !candidate.summary || !Array.isArray(candidate.muscles)) {
     return null;
   }
-  return candidate as WeekCloseDeficitSnapshot;
+  return normalizeWeekCloseDeficitSnapshot(candidate as WeekCloseDeficitSnapshot);
 }
 
 export function deriveWeekCloseDisplayState(input: {

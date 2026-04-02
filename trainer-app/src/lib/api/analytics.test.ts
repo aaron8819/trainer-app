@@ -48,4 +48,36 @@ describe("buildWeeklyMuscleVolumeSeries", () => {
       },
     ]);
   });
+
+  it("uses the exposed scope so rolling analytics emits Core instead of Abs", () => {
+    const result = buildWeeklyMuscleVolumeSeries([
+      {
+        scheduledDate: new Date("2026-03-03T10:00:00.000Z"),
+        exercises: [
+          {
+            exercise: {
+              id: "plank",
+              name: "Plank",
+              aliases: [],
+              exerciseMuscles: [
+                { role: "PRIMARY", muscle: { name: "Abs" } },
+                { role: "SECONDARY", muscle: { name: "Lower Back" } },
+              ],
+            },
+            sets: Array.from({ length: 2 }, () => ({ logs: [{ wasSkipped: false }] })),
+          },
+        ],
+      },
+    ]);
+
+    expect(result).toEqual([
+      {
+        weekStart: "2026-03-02",
+        muscles: {
+          Core: { directSets: 2, indirectSets: 0, effectiveSets: 3.6 },
+          "Lower Back": { directSets: 0, indirectSets: 2, effectiveSets: 0 },
+        },
+      },
+    ]);
+  });
 });

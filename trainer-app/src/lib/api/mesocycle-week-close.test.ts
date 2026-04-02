@@ -45,6 +45,7 @@ import {
   evaluateWeekCloseAtBoundary,
   isAccumulationWeekBoundary,
   linkOptionalWorkoutToWeekClose,
+  readWeekCloseDeficitSnapshot,
   resolveWeekCloseOnOptionalGapFillCompletion,
 } from "./mesocycle-week-close";
 
@@ -181,6 +182,96 @@ describe("mesocycle week close", () => {
     const tricepsRow = snapshot.muscles.find((row) => row.muscle === "Triceps");
     expect(tricepsRow?.actual).toBeCloseTo(0.9, 6);
     expect(tricepsRow?.deficit).toBeGreaterThan(0);
+  });
+
+  it("emits the exposed scope so Core absorbs Abs and no separate Abs deficit row remains", async () => {
+    mocks.workoutFindMany.mockResolvedValue([
+      {
+        exercises: [
+          {
+            exercise: {
+              id: "plank",
+              name: "Plank",
+              aliases: [],
+              exerciseMuscles: [
+                { role: "PRIMARY", muscle: { name: "Abs" } },
+                { role: "SECONDARY", muscle: { name: "Lower Back" } },
+              ],
+            },
+            sets: [
+              { logs: [{ wasSkipped: false }] },
+              { logs: [{ wasSkipped: false }] },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    const snapshot = await buildWeekCloseDeficitSnapshot(mocks.tx as never, {
+      userId: "user-1",
+      mesocycle: {
+        id: "meso-1",
+        durationWeeks: 5,
+        sessionsPerWeek: 3,
+        startWeek: 0,
+        macroCycle: {
+          startDate: new Date("2026-03-01T00:00:00.000Z"),
+        },
+      },
+      targetWeek: 2,
+    });
+
+    expect(snapshot.muscles.map((row) => row.muscle)).toContain("Core");
+    expect(snapshot.muscles.map((row) => row.muscle)).toContain("Lower Back");
+    expect(snapshot.muscles.map((row) => row.muscle)).not.toContain("Abs");
+    const coreRow = snapshot.muscles.find((row) => row.muscle === "Core");
+    expect(coreRow?.actual).toBeCloseTo(3.6, 6);
+    expect(coreRow?.deficit).toBeCloseTo(0.4, 6);
+  });
+
+  it("normalizes persisted week-close snapshots on read so legacy Abs rows collapse into Core", () => {
+    const snapshot = readWeekCloseDeficitSnapshot({
+      version: 1,
+      policy: {
+        requiredSessionsPerWeek: 3,
+        maxOptionalGapFillSessionsPerWeek: 1,
+        maxGeneratedHardSets: 12,
+        maxGeneratedExercises: 4,
+      },
+      summary: {
+        totalDeficitSets: 5,
+        qualifyingMuscleCount: 2,
+        topTargetMuscles: ["Core", "Abs"],
+      },
+      muscles: [
+        { muscle: "Core", target: 4, actual: 1, deficit: 3 },
+        { muscle: "Abs", target: 3, actual: 1.5, deficit: 1.5 },
+      ],
+      outcome: {
+        workflowState: "COMPLETED",
+        deficitState: "PARTIAL",
+        remainingDeficitSets: 5,
+        remainingQualifyingMuscleCount: 2,
+        remainingTopTargetMuscles: ["Core", "Abs"],
+        remainingMuscles: [
+          { muscle: "Core", target: 4, actual: 1, deficit: 3 },
+          { muscle: "Abs", target: 3, actual: 1.5, deficit: 1.5 },
+        ],
+      },
+    });
+
+    expect(snapshot?.summary).toEqual({
+      totalDeficitSets: 4.5,
+      qualifyingMuscleCount: 1,
+      topTargetMuscles: ["Core"],
+    });
+    expect(snapshot?.muscles).toEqual([
+      { muscle: "Core", target: 7, actual: 2.5, deficit: 4.5 },
+    ]);
+    expect(snapshot?.outcome?.remainingMuscles).toEqual([
+      { muscle: "Core", target: 7, actual: 2.5, deficit: 4.5 },
+    ]);
+    expect(snapshot?.outcome?.remainingTopTargetMuscles).toEqual(["Core"]);
   });
 
   it("creates a resolved row and advances lifecycle when no deficits remain", async () => {

@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { WorkoutStatus } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { getEffectiveStimulusByMuscle } from "@/lib/engine/stimulus";
+import { normalizeExposedMuscle } from "@/lib/engine/volume-landmarks";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 
 type WorkoutReader = Pick<Prisma.TransactionClient, "workout"> | Pick<typeof prisma, "workout">;
@@ -82,6 +83,21 @@ function getOrCreateContributionRow(
   };
   row.contributionMap.set(key, created);
   return created;
+}
+
+function normalizeExposedMuscleList(muscles: string[]): string[] {
+  return Array.from(new Set(muscles.map((muscle) => normalizeExposedMuscle(muscle))));
+}
+
+function normalizeEffectiveContributionByMuscle(
+  contribution: Map<string, number>
+): Map<string, number> {
+  const normalized = new Map<string, number>();
+  for (const [muscle, effectiveSets] of contribution) {
+    const exposedMuscle = normalizeExposedMuscle(muscle);
+    normalized.set(exposedMuscle, (normalized.get(exposedMuscle) ?? 0) + effectiveSets);
+  }
+  return normalized;
 }
 
 function finalizeWeeklyMuscleVolumeMap(
@@ -173,12 +189,16 @@ export async function loadMesocycleWeekMuscleVolume(
         continue;
       }
 
-      const primaryMuscles = workoutExercise.exercise.exerciseMuscles
+      const primaryMuscles = normalizeExposedMuscleList(
+        workoutExercise.exercise.exerciseMuscles
         .filter((mapping) => mapping.role === "PRIMARY")
-        .map((mapping) => mapping.muscle.name);
-      const secondaryMuscles = workoutExercise.exercise.exerciseMuscles
+        .map((mapping) => mapping.muscle.name)
+      );
+      const secondaryMuscles = normalizeExposedMuscleList(
+        workoutExercise.exercise.exerciseMuscles
         .filter((mapping) => mapping.role === "SECONDARY")
-        .map((mapping) => mapping.muscle.name);
+        .map((mapping) => mapping.muscle.name)
+      );
 
       for (const muscle of primaryMuscles) {
         getOrCreateMuscleRow(muscles, muscle).directSets += completedSets;
@@ -187,15 +207,17 @@ export async function loadMesocycleWeekMuscleVolume(
         getOrCreateMuscleRow(muscles, muscle).indirectSets += completedSets;
       }
 
-      const effectiveContribution = getEffectiveStimulusByMuscle(
-        {
-          id: workoutExercise.exercise.id ?? workoutExercise.exercise.name ?? "unknown-exercise",
-          name: workoutExercise.exercise.name ?? workoutExercise.exercise.id ?? "Unknown Exercise",
-          primaryMuscles,
-          secondaryMuscles,
-          aliases: (workoutExercise.exercise.aliases ?? []).map((alias) => alias.alias),
-        },
-        completedSets
+      const effectiveContribution = normalizeEffectiveContributionByMuscle(
+        getEffectiveStimulusByMuscle(
+          {
+            id: workoutExercise.exercise.id ?? workoutExercise.exercise.name ?? "unknown-exercise",
+            name: workoutExercise.exercise.name ?? workoutExercise.exercise.id ?? "Unknown Exercise",
+            primaryMuscles,
+            secondaryMuscles,
+            aliases: (workoutExercise.exercise.aliases ?? []).map((alias) => alias.alias),
+          },
+          completedSets
+        )
       );
       for (const [muscle, effectiveSets] of effectiveContribution) {
         const row = getOrCreateMuscleRow(muscles, muscle);

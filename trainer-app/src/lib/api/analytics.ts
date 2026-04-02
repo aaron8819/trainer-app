@@ -1,6 +1,9 @@
 import { prisma } from "@/lib/db/prisma";
 import { WorkoutStatus } from "@prisma/client";
-import { VOLUME_LANDMARKS } from "@/lib/engine/volume-landmarks";
+import {
+  getExposedVolumeLandmarkEntries,
+  normalizeExposedMuscle,
+} from "@/lib/engine/volume-landmarks";
 import { getEffectiveStimulusByMuscle } from "@/lib/engine/stimulus";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 import { countCompletedSets } from "@/lib/api/weekly-volume";
@@ -64,12 +67,20 @@ export function buildWeeklyMuscleVolumeSeries(
       const completedSets = countCompletedSets(we.sets);
       if (completedSets === 0) continue;
 
-      const primaryMuscles = we.exercise.exerciseMuscles
+      const primaryMuscles = Array.from(
+        new Set(
+          we.exercise.exerciseMuscles
         .filter((m) => m.role === "PRIMARY")
-        .map((m) => m.muscle.name);
-      const secondaryMuscles = we.exercise.exerciseMuscles
+        .map((m) => normalizeExposedMuscle(m.muscle.name))
+        )
+      );
+      const secondaryMuscles = Array.from(
+        new Set(
+          we.exercise.exerciseMuscles
         .filter((m) => m.role === "SECONDARY")
-        .map((m) => m.muscle.name);
+        .map((m) => normalizeExposedMuscle(m.muscle.name))
+        )
+      );
 
       for (const muscle of primaryMuscles) {
         getOrCreateWeekMuscleRow(weekData, muscle).directSets += completedSets;
@@ -91,7 +102,8 @@ export function buildWeeklyMuscleVolumeSeries(
       );
 
       for (const [muscle, effectiveSets] of effectiveContribution) {
-        getOrCreateWeekMuscleRow(weekData, muscle).effectiveSets += effectiveSets;
+        const exposedMuscle = normalizeExposedMuscle(muscle);
+        getOrCreateWeekMuscleRow(weekData, exposedMuscle).effectiveSets += effectiveSets;
       }
     }
   }
@@ -150,7 +162,7 @@ export function getVolumeLandmarks(): Record<
   { mv: number; mev: number; mav: number; mrv: number }
 > {
   const result: Record<string, { mv: number; mev: number; mav: number; mrv: number }> = {};
-  for (const [muscle, lm] of Object.entries(VOLUME_LANDMARKS)) {
+  for (const [muscle, lm] of getExposedVolumeLandmarkEntries()) {
     result[muscle] = { mv: lm.mv, mev: lm.mev, mav: lm.mav, mrv: lm.mrv };
   }
   return result;

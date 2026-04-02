@@ -5,7 +5,10 @@
 
 import { WorkoutSessionIntent } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
-import { VOLUME_LANDMARKS } from "@/lib/engine/volume-landmarks";
+import {
+  VOLUME_LANDMARKS,
+  getExposedVolumeLandmarkEntries,
+} from "@/lib/engine/volume-landmarks";
 import { getLatestReadinessSignal } from "./readiness";
 import {
   getCurrentMesoWeek,
@@ -558,23 +561,7 @@ function buildProgramVolumeRows(input: {
   weekMuscles: Record<string, WeeklyMuscleVolumeRow>;
 }): ProgramVolumeRow[] {
   const { mesoRecord, week, weekMuscles } = input;
-  const researchBackedMuscles = new Set([
-    "Chest",
-    "Lats",
-    "Upper Back",
-    "Front Delts",
-    "Side Delts",
-    "Rear Delts",
-    "Quads",
-    "Hamstrings",
-    "Glutes",
-    "Biceps",
-    "Triceps",
-    "Calves",
-  ]);
-
-  return Object.entries(VOLUME_LANDMARKS)
-    .filter(([muscle]) => researchBackedMuscles.has(muscle))
+  return getExposedVolumeLandmarkEntries()
     .map(([muscle, landmarks]) => {
       const data = weekMuscles[muscle] ?? { directSets: 0, indirectSets: 0, effectiveSets: 0 };
       const target = mesoRecord ? getWeeklyVolumeTarget(mesoRecord, muscle, week) : landmarks.mev;

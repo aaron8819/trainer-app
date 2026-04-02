@@ -391,6 +391,50 @@ describe("loadLoggingWeeklyVolumeGuidance", () => {
     });
   });
 
+  it("uses the exposed scope so Core absorbs Abs and no separate Abs row is emitted", async () => {
+    mocks.workoutFindFirst.mockResolvedValue(
+      buildWorkout({
+        exercises: [
+          {
+            id: "workout-ex-1",
+            exerciseId: "exercise-1",
+            name: "Plank",
+            primaryMuscle: "Abs",
+            setIds: ["set-1", "set-2"],
+            loggedSetIds: ["set-1", "set-2"],
+          },
+        ],
+      })
+    );
+    mocks.loadMesocycleWeekMuscleVolume.mockResolvedValue({});
+    mocks.computeWorkoutContributionByMuscle
+      .mockReturnValueOnce({ "Lower Back": 1 })
+      .mockReturnValueOnce({});
+    mocks.getWeeklyVolumeTarget.mockImplementation(
+      (_mesocycle: unknown, muscle: string) => {
+        if (muscle === "Core") return 4;
+        if (muscle === "Lower Back") return 2;
+        return 0;
+      }
+    );
+
+    const result = await loadLoggingWeeklyVolumeGuidance({
+      userId: "user-1",
+      workoutId: "workout-1",
+    });
+
+    expect(result.rows.map((row) => row.muscle)).toEqual(
+      expect.arrayContaining(["Core", "Lower Back"])
+    );
+    expect(result.rows.map((row) => row.muscle)).not.toContain("Abs");
+    expect(result.rows.find((row) => row.muscle === "Core")).toMatchObject({
+      doneNow: 2,
+      projectedRemainingWeek: 0,
+      projectedEndOfWeek: 2,
+      weeklyTarget: 4,
+    });
+  });
+
   it("counts runtime-added sets toward current actuals and treats the last session of the week as having no projected remainder", async () => {
     mocks.workoutFindFirst.mockResolvedValue(
       buildWorkout({

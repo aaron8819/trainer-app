@@ -32,6 +32,27 @@ export const VOLUME_LANDMARKS: Record<string, VolumeLandmarks> = {
   "Abs":         { mv: 0,  mev: 0,  mav: 10, mrv: 16, sraHours: 36 },
 };
 
+const EXPOSED_MUSCLE_ALIAS_MAP: Record<string, string> = {
+  Abs: "Core",
+};
+
+const EXPOSED_VOLUME_LANDMARK_ENTRIES = Object.freeze(
+  Object.entries(VOLUME_LANDMARKS).flatMap(([muscle, landmarks]) => {
+    const exposedMuscle = EXPOSED_MUSCLE_ALIAS_MAP[muscle] ?? muscle;
+    return exposedMuscle === muscle ? ([[muscle, landmarks]] as const) : [];
+  })
+);
+
+export function normalizeExposedMuscle(muscle: string): string {
+  return EXPOSED_MUSCLE_ALIAS_MAP[muscle] ?? muscle;
+}
+
+export function getExposedVolumeLandmarkEntries(): ReadonlyArray<
+  readonly [string, VolumeLandmarks]
+> {
+  return EXPOSED_VOLUME_LANDMARK_ENTRIES;
+}
+
 /**
  * Compute the weekly volume target (sets) for a muscle from the canonical weekly
  * target profile. When ordered block coverage is present, target shape is derived

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { VOLUME_LANDMARKS, computeWeeklyVolumeTarget } from "./volume-landmarks";
+import {
+  VOLUME_LANDMARKS,
+  computeWeeklyVolumeTarget,
+  getExposedVolumeLandmarkEntries,
+  normalizeExposedMuscle,
+} from "./volume-landmarks";
 
 describe("computeWeeklyVolumeTarget", () => {
   it("returns MEV at week 1 and MAV at the last accumulation week", () => {
@@ -46,5 +51,16 @@ describe("computeWeeklyVolumeTarget", () => {
       expect(w3, `${muscle} w3>=w2`).toBeGreaterThanOrEqual(w2);
       expect(w4, `${muscle} w4>=w3`).toBeGreaterThanOrEqual(w3);
     }
+  });
+
+  it("defines one exposed scope that folds Abs into Core without dropping broader muscles", () => {
+    const exposedMuscles = getExposedVolumeLandmarkEntries().map(([muscle]) => muscle);
+
+    expect(normalizeExposedMuscle("Abs")).toBe("Core");
+    expect(exposedMuscles).toContain("Core");
+    expect(exposedMuscles).not.toContain("Abs");
+    expect(exposedMuscles).toEqual(
+      expect.arrayContaining(["Forearms", "Adductors", "Abductors", "Lower Back"])
+    );
   });
 });

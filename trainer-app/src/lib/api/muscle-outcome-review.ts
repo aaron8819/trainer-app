@@ -1,6 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
-import { VOLUME_LANDMARKS } from "@/lib/engine/volume-landmarks";
+import { getExposedVolumeLandmarkEntries } from "@/lib/engine/volume-landmarks";
 import { getCurrentMesoWeek, getWeeklyVolumeTarget } from "./mesocycle-lifecycle-math";
 import {
   loadMesocycleWeekMuscleVolume,
@@ -201,8 +201,8 @@ export async function loadWeeklyMuscleOutcome(
   });
 
   const rows = sortOutcomeRows(
-    Object.keys(VOLUME_LANDMARKS)
-      .map((muscle) => {
+    getExposedVolumeLandmarkEntries()
+      .map(([muscle]) => {
         const targetSets = getWeeklyVolumeTarget(activeMesocycle, muscle, currentWeek);
         const weeklyRow = weeklyVolume[muscle];
         return buildMuscleOutcomeRow(muscle, targetSets, weeklyRow);

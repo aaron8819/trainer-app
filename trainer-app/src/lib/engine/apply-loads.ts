@@ -84,6 +84,11 @@ type LoadEquipment =
   | "bodyweight"
   | "other";
 
+type CrossIntentFallbackPolicy = {
+  migrationDiscount: number;
+  estimateCapMultiplier: number;
+};
+
 const DEFAULT_FATIGUE_COST = 3;
 const FATIGUE_SCALE_MIN = 0.45;
 const FATIGUE_SCALE_MAX = 0.9;
@@ -93,6 +98,7 @@ const EFFECTIVE_RPE_MIN = 6;
 const CROSS_INTENT_MAIN_LIFT_MIGRATION_DISCOUNT = 0.85;
 const CROSS_INTENT_MAIN_LIFT_ESTIMATE_CAP_MULTIPLIER = 1.25;
 const CROSS_INTENT_RPE_LOAD_ADJUSTMENT_PER_POINT = 0.04;
+const CALIBRATED_HINGE_NAME_TOKENS = ["stiff", "sldl", "romanian", "rdl"];
 
 const BASE_BODYWEIGHT_RATIO: Record<LoadEquipment, { compound: number; isolation: number }> = {
   barbell: { compound: 0.65, isolation: 0.35 },
@@ -854,18 +860,45 @@ function resolveCrossIntentMainLiftFallbackLoad(input: {
     return undefined;
   }
 
-  const conservativeLoad = roundToHalf(
-    translatedLoad * CROSS_INTENT_MAIN_LIFT_MIGRATION_DISCOUNT
-  );
+  const fallbackPolicy = resolveCrossIntentFallbackPolicy(input.exercise);
+  const conservativeLoad = roundToHalf(translatedLoad * fallbackPolicy.migrationDiscount);
   if (input.estimatedLoad == null || !Number.isFinite(input.estimatedLoad) || input.estimatedLoad <= 0) {
     return conservativeLoad;
   }
 
   const estimateFloor = roundToHalf(input.estimatedLoad);
   const estimateCap = roundToHalf(
-    input.estimatedLoad * CROSS_INTENT_MAIN_LIFT_ESTIMATE_CAP_MULTIPLIER
+    input.estimatedLoad * fallbackPolicy.estimateCapMultiplier
   );
   return Math.max(estimateFloor, Math.min(conservativeLoad, estimateCap));
+}
+
+function resolveCrossIntentFallbackPolicy(exercise: Exercise): CrossIntentFallbackPolicy {
+  if (isTargetedBarbellLowerBodyLift(exercise)) {
+    return {
+      migrationDiscount: 0.95,
+      estimateCapMultiplier: 3,
+    };
+  }
+
+  if (isTargetedDumbbellPress(exercise)) {
+    return {
+      migrationDiscount: 0.95,
+      estimateCapMultiplier: 3,
+    };
+  }
+
+  if (isTargetedMachineLowerBodyLift(exercise)) {
+    return {
+      migrationDiscount: 0.92,
+      estimateCapMultiplier: 3,
+    };
+  }
+
+  return {
+    migrationDiscount: CROSS_INTENT_MAIN_LIFT_MIGRATION_DISCOUNT,
+    estimateCapMultiplier: CROSS_INTENT_MAIN_LIFT_ESTIMATE_CAP_MULTIPLIER,
+  };
 }
 
 function translateLoadToTargetContext(input: {
@@ -1031,6 +1064,47 @@ function isUpperBodyExercise(exercise: Exercise) {
   return !(exercise.movementPatterns ?? []).some((pattern) =>
     lowerBodyPatterns.includes(pattern)
   );
+}
+
+function isLowerBodyLoadPattern(exercise: Exercise) {
+  return (exercise.movementPatterns ?? []).some((pattern) =>
+    pattern === "squat" || pattern === "hinge" || pattern === "lunge"
+  );
+}
+
+function isTargetedDumbbellPress(exercise: Exercise) {
+  return (
+    getLoadEquipment(exercise) === "dumbbell" &&
+    (exercise.movementPatterns ?? []).some(
+      (pattern) => pattern === "horizontal_push" || pattern === "vertical_push"
+    )
+  );
+}
+
+function isTargetedMachineLowerBodyLift(exercise: Exercise) {
+  return (
+    getLoadEquipment(exercise) === "machine" &&
+    isCompound(exercise) &&
+    isLowerBodyLoadPattern(exercise)
+  );
+}
+
+function isTargetedBarbellLowerBodyLift(exercise: Exercise) {
+  if (getLoadEquipment(exercise) !== "barbell") {
+    return false;
+  }
+
+  const patterns = exercise.movementPatterns ?? [];
+  if (patterns.includes("squat")) {
+    return true;
+  }
+
+  if (!patterns.includes("hinge")) {
+    return false;
+  }
+
+  const label = `${exercise.id} ${exercise.name}`.toLowerCase();
+  return !CALIBRATED_HINGE_NAME_TOKENS.some((token) => label.includes(token));
 }
 
 function isCompound(exercise: Exercise) {

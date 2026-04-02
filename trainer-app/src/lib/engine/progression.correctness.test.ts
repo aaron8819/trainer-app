@@ -140,6 +140,25 @@ describe("progression correctness", () => {
     expect(decision?.decisionLog.join(" | ")).toContain("performed load beat prescription");
   });
 
+  it("uses the bounded catch-up lane when exact same-exercise overshoot is broad and clearly under-translated", () => {
+    const decision = computeDoubleProgressionDecision(
+      [
+        { reps: 8, rpe: 7.5, load: 155, targetLoad: 145 },
+        { reps: 8, rpe: 7.5, load: 155, targetLoad: 145 },
+        { reps: 7, rpe: 8, load: 155, targetLoad: 145 },
+        { reps: 7, rpe: 8, load: 155, targetLoad: 145 },
+      ],
+      [6, 10],
+      "barbell",
+      { anchorOverride: 155, priorSessionCount: 3 }
+    );
+
+    expect(decision?.path).toBe("path_5_overshoot");
+    expect(decision?.nextLoad).toBe(165);
+    expect(decision?.decisionLog.join(" | ")).toContain("Catch-up lane fired");
+    expect(decision?.trace.outcome.reasonCodes).toContain("same_exercise_catch_up_progression");
+  });
+
   it("earns an increase at RPE 8.5 when overshoot coverage is broad and load execution stays stable", () => {
     const decision = computeDoubleProgressionDecision(
       [
@@ -229,6 +248,9 @@ describe("progression correctness", () => {
     expect(PROGRESSION_CONFIG.minOvershootSetCount).toBe(2);
     expect(PROGRESSION_CONFIG.overshootControlledCoverageRatio).toBe(0.75);
     expect(PROGRESSION_CONFIG.overshootControlledMinSetCount).toBe(3);
+    expect(PROGRESSION_CONFIG.catchUpRpeCeiling).toBe(8);
+    expect(PROGRESSION_CONFIG.catchUpMinSetCount).toBe(4);
+    expect(PROGRESSION_CONFIG.catchUpMedianGapMultiplier).toBe(2);
   });
 
   it("triggers deload on a sustained low-readiness streak", () => {

@@ -96,6 +96,36 @@ const backSquat: Exercise = {
   repRangeMax: 10,
 };
 
+const latPulldown: Exercise = {
+  id: "lat-pulldown",
+  name: "Lat Pulldown",
+  movementPatterns: ["vertical_pull"],
+  splitTags: ["pull"],
+  jointStress: "medium",
+  isMainLiftEligible: true,
+  isCompound: true,
+  fatigueCost: 3,
+  equipment: ["cable"],
+  primaryMuscles: ["Lats", "Upper Back"],
+  repRangeMin: 6,
+  repRangeMax: 12,
+};
+
+const stiffLegDeadlift: Exercise = {
+  id: "sldl",
+  name: "Stiff-Leg Deadlift",
+  movementPatterns: ["hinge"],
+  splitTags: ["legs"],
+  jointStress: "high",
+  isMainLiftEligible: true,
+  isCompound: true,
+  fatigueCost: 4,
+  equipment: ["barbell"],
+  primaryMuscles: ["Hamstrings", "Glutes"],
+  repRangeMin: 6,
+  repRangeMax: 10,
+};
+
 const baseWorkout: WorkoutPlan = {
   id: "w1",
   scheduledDate: "2026-02-20T00:00:00.000Z",
@@ -1297,7 +1327,7 @@ describe("applyLoads correctness", () => {
     expect(result.workout.mainLifts[0].sets[1].targetLoad).toBe(37.5);
   });
 
-  it("uses a conservative exact cross-intent main-lift fallback during split migration instead of dropping to a cold estimate", () => {
+  it("corrects DB OHP undercalling on exact cross-intent fallback without jumping past prior performance", () => {
     const result = applyLoadsWithAudit(upperMainLiftWorkout, {
       history: [
         {
@@ -1327,11 +1357,96 @@ describe("applyLoads correctness", () => {
 
     const topLoad = result.workout.mainLifts[0].sets[0].targetLoad ?? 0;
     expect(result.audit.resolvedLoads["db-ohp"]?.source).toBe("history");
-    expect(topLoad).toBe(25);
-    expect(topLoad).toBeGreaterThan(20);
+    expect(topLoad).toBe(37.5);
+    expect(topLoad).toBeGreaterThan(25);
     expect(topLoad).toBeLessThan(45);
-    expect(result.workout.mainLifts[0].sets[1].targetLoad).toBe(22.5);
+    expect(result.workout.mainLifts[0].sets[1].targetLoad).toBe(32.5);
     expect(result.workout.mainLifts[0].sets[0].targetRpe).toBe(6.5);
+  });
+
+  it("corrects back squat undercalling on exact cross-intent fallback", () => {
+    const workout: WorkoutPlan = {
+      id: "w-back-squat-fallback",
+      scheduledDate: "2026-03-28T00:00:00.000Z",
+      warmup: [],
+      mainLifts: [
+        {
+          id: "we-back-squat-fallback",
+          exercise: backSquat,
+          orderIndex: 0,
+          isMainLift: true,
+          sets: [
+            { setIndex: 1, targetReps: 10, targetRpe: 6.5 },
+            { setIndex: 2, targetReps: 10, targetRpe: 6.5 },
+            { setIndex: 3, targetReps: 10, targetRpe: 6.5 },
+          ],
+        },
+      ],
+      accessories: [],
+      estimatedMinutes: 40,
+    };
+
+    const result = applyLoadsWithAudit(workout, {
+      history: [
+        {
+          date: "2026-03-20T00:00:00.000Z",
+          completed: true,
+          status: "COMPLETED",
+          sessionIntent: "legs",
+          exercises: [
+            {
+              exerciseId: "back-squat",
+              sets: [
+                { exerciseId: "back-squat", setIndex: 1, reps: 8, rpe: 7.5, load: 185 },
+                { exerciseId: "back-squat", setIndex: 2, reps: 8, rpe: 7.5, load: 185 },
+              ],
+            },
+          ],
+        },
+      ],
+      baselines: [],
+      exerciseById: { "back-squat": backSquat },
+      primaryGoal: "hypertrophy",
+      profile: { trainingAge: "intermediate" },
+      sessionIntent: "lower",
+    });
+
+    expect(result.audit.resolvedLoads["back-squat"]?.source).toBe("history");
+    expect(result.workout.mainLifts[0].sets[0].targetLoad).toBe(160);
+    expect(result.workout.mainLifts[0].sets[1].targetLoad).toBe(140);
+  });
+
+  it("improves belt squat exact cross-intent fallback while keeping it bounded below the prior top set", () => {
+    const result = applyLoadsWithAudit(lowerMainLiftWorkout, {
+      history: [
+        {
+          date: "2026-03-20T00:00:00.000Z",
+          completed: true,
+          status: "COMPLETED",
+          sessionIntent: "legs",
+          exercises: [
+            {
+              exerciseId: "belt-squat",
+              sets: [
+                { exerciseId: "belt-squat", setIndex: 1, reps: 8, rpe: 7.5, load: 180 },
+                { exerciseId: "belt-squat", setIndex: 2, reps: 8, rpe: 7.5, load: 180 },
+                { exerciseId: "belt-squat", setIndex: 3, reps: 8, rpe: 8, load: 180 },
+              ],
+            },
+          ],
+        },
+      ],
+      baselines: [],
+      exerciseById: { "belt-squat": beltSquat },
+      primaryGoal: "hypertrophy",
+      profile: { trainingAge: "intermediate" },
+      sessionIntent: "lower",
+    });
+
+    expect(result.audit.resolvedLoads["belt-squat"]?.source).toBe("history");
+    expect(result.workout.mainLifts[0].sets[0].targetLoad).toBe(150);
+    expect(result.workout.mainLifts[0].sets[0].targetLoad).toBeLessThan(180);
+    expect(result.workout.mainLifts[0].sets[1].targetLoad).toBe(132.5);
   });
 
   it("does not broaden donor pooling globally when only cross-intent non-exact history exists", () => {
@@ -1365,6 +1480,106 @@ describe("applyLoads correctness", () => {
 
     expect(result.audit.resolvedLoads["belt-squat"]?.source).toBe("estimate");
     expect(result.workout.mainLifts[0].sets[0].targetLoad).toBe(60);
+  });
+
+  it("keeps pulldown fallback on the default conservative path", () => {
+    const workout: WorkoutPlan = {
+      id: "w-pulldown-fallback",
+      scheduledDate: "2026-03-28T00:00:00.000Z",
+      warmup: [],
+      mainLifts: [
+        {
+          id: "we-pulldown-fallback",
+          exercise: latPulldown,
+          orderIndex: 0,
+          isMainLift: true,
+          sets: [
+            { setIndex: 1, targetReps: 10, targetRpe: 6.5 },
+            { setIndex: 2, targetReps: 10, targetRpe: 6.5 },
+          ],
+        },
+      ],
+      accessories: [],
+      estimatedMinutes: 30,
+    };
+
+    const result = applyLoadsWithAudit(workout, {
+      history: [
+        {
+          date: "2026-03-20T00:00:00.000Z",
+          completed: true,
+          status: "COMPLETED",
+          sessionIntent: "pull",
+          exercises: [
+            {
+              exerciseId: "lat-pulldown",
+              sets: [
+                { exerciseId: "lat-pulldown", setIndex: 1, reps: 8, rpe: 7.5, load: 120 },
+                { exerciseId: "lat-pulldown", setIndex: 2, reps: 8, rpe: 7.5, load: 120 },
+              ],
+            },
+          ],
+        },
+      ],
+      baselines: [],
+      exerciseById: { "lat-pulldown": latPulldown },
+      primaryGoal: "hypertrophy",
+      profile: { trainingAge: "intermediate" },
+      sessionIntent: "upper",
+    });
+
+    expect(result.audit.resolvedLoads["lat-pulldown"]?.source).toBe("history");
+    expect(result.workout.mainLifts[0].sets[0].targetLoad).toBe(50);
+  });
+
+  it("keeps SLDL on the previous conservative fallback behavior", () => {
+    const workout: WorkoutPlan = {
+      id: "w-sldl-fallback",
+      scheduledDate: "2026-03-28T00:00:00.000Z",
+      warmup: [],
+      mainLifts: [
+        {
+          id: "we-sldl-fallback",
+          exercise: stiffLegDeadlift,
+          orderIndex: 0,
+          isMainLift: true,
+          sets: [
+            { setIndex: 1, targetReps: 10, targetRpe: 6.5 },
+            { setIndex: 2, targetReps: 10, targetRpe: 6.5 },
+          ],
+        },
+      ],
+      accessories: [],
+      estimatedMinutes: 35,
+    };
+
+    const result = applyLoadsWithAudit(workout, {
+      history: [
+        {
+          date: "2026-03-20T00:00:00.000Z",
+          completed: true,
+          status: "COMPLETED",
+          sessionIntent: "legs",
+          exercises: [
+            {
+              exerciseId: "sldl",
+              sets: [
+                { exerciseId: "sldl", setIndex: 1, reps: 8, rpe: 7.5, load: 185 },
+                { exerciseId: "sldl", setIndex: 2, reps: 8, rpe: 7.5, load: 185 },
+              ],
+            },
+          ],
+        },
+      ],
+      baselines: [],
+      exerciseById: { sldl: stiffLegDeadlift },
+      primaryGoal: "hypertrophy",
+      profile: { trainingAge: "intermediate" },
+      sessionIntent: "lower",
+    });
+
+    expect(result.audit.resolvedLoads["sldl"]?.source).toBe("history");
+    expect(result.workout.mainLifts[0].sets[0].targetLoad).toBe(82.5);
   });
 
   it("keeps accessories on the existing estimate path when only cross-intent exact history exists", () => {

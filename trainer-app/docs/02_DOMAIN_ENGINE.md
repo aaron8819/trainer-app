@@ -86,6 +86,7 @@ Sources of truth:
 ## Progression and load assignment
 - Progression math is implemented in `src/lib/engine/progression.ts`.
 - Load assignment and fallback logic are implemented in `src/lib/engine/apply-loads.ts`.
+- Exact cross-intent same-exercise fallback remains intentionally conservative in `src/lib/engine/apply-loads.ts`, but the calibration is now targeted instead of global: barbell squat-dominant lower-body lifts, dumbbell pressing, and machine lower-body compounds get a less-discounted translation/cap than the default fallback path, while rows, pulldowns, and calibrated SLDL/RDL-style hinges stay on the prior conservative policy.
 - Canonical load quantization lives in `src/lib/units/load-quantization.ts`. Dumbbell display/storage flows must use that same 2.5 lb quantization rule through shared UI helpers in `src/lib/ui/load-display.ts`; UI formatting is not allowed to maintain a separate dumbbell snap policy.
 - Canonical progression-input assembly is centralized in `src/lib/progression/canonical-progression-input.ts` via `buildCanonicalProgressionEvaluationInput()`. That seam assembles the materially relevant `computeDoubleProgressionDecision()` payload (`anchorOverride`, `priorSessionCount`, `historyConfidenceScale`, and decision-log `confidenceReasons`) without owning progression math or UI formatting.
 - Canonical read-side next-exposure wording is centralized separately in `src/lib/ui/next-exposure-copy.ts`. Surfaces rendering canonical `NextExposureDecision.action` outcomes should consume that formatter instead of inventing local progression-action ladders.
@@ -94,7 +95,7 @@ Sources of truth:
 - Performed-history filtering (not completed-only filtering) is canonical for load progression and plateau/deload checks via `filterPerformedHistory()` and `isPerformedHistoryEntry()` in `src/lib/engine/history.ts`.
 - Effective-reps filtering is enforced at signal derivation: sets logged below `RPE 6` are excluded from modal-load and progression anchoring (data is still persisted).
 - Intermediate double-progression decision tree is enforced for load updates (hold at high fatigue; progress load only when reps/RPE thresholds are met; use conservative anchoring under high intra-session load variance).
-- Earned progression also has a controlled overshoot lane in `computeDoubleProgressionDecision()` when performed load materially beats prescribed `targetLoad` across enough target-bearing sets. The engine still owns anchor selection and caps this path to one increment.
+- Earned progression also has a controlled overshoot lane in `computeDoubleProgressionDecision()` when performed load materially beats prescribed `targetLoad` across enough target-bearing sets. The engine still owns anchor selection; the normal overshoot path stays single-increment, while a bounded catch-up lane can add one extra increment only when exact same-exercise evidence is broad, stable, and still at valid RPE.
 - Overshoot gating is tiered:
   - standard lane: `modalRpe <= 8.0` with the normal overshoot evidence minimum
   - controlled-hard lane: `modalRpe <= 8.5` only when overshoot coverage is stronger (`>= 75%` of target-bearing sets, minimum `3` when available) and no high-variance trim was required

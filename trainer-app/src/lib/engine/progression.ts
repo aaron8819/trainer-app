@@ -53,6 +53,10 @@ export const PROGRESSION_CONFIG = {
   // The relaxed 8.5-RPE lane needs broad coverage across the target-bearing sets.
   overshootControlledCoverageRatio: 0.75,
   overshootControlledMinSetCount: 3,
+  // Catch-up is only allowed when the under-translation signal is both broad and well-controlled.
+  catchUpRpeCeiling: 8,
+  catchUpMinSetCount: 4,
+  catchUpMedianGapMultiplier: 2,
 } as const;
 const EFFECTIVE_RPE_MIN = 6;
 
@@ -413,12 +417,25 @@ export function computeDoubleProgressionDecision(
     if (!overshootEvidenceDetail) {
       throw new Error("Overshoot evaluation qualified without evidence.");
     }
-    const nextLoad = roundLoad(anchorLoad + increment * progressionConfidenceScale);
+    const catchUpEvaluation = evaluateCatchUpProgression({
+      overshootEvidence: overshootEvidenceDetail,
+      modalRpe,
+      hasHighVariance,
+      increment,
+      priorSessionCount: options?.priorSessionCount ?? 0,
+    });
+    const scaledIncrement = increment * progressionConfidenceScale;
+    const nextLoad = catchUpEvaluation
+      ? roundLoad(anchorLoad + scaledIncrement + increment)
+      : roundLoad(anchorLoad + scaledIncrement);
     decisionLog.push(
       overshootEvaluation.tier === "controlled_hard"
-        ? `Path 5 fired: performed load beat prescription on ${overshootEvidenceDetail.qualifyingSetCount}/${overshootEvidenceDetail.targetBearingSetCount} signal sets by at least ${increment} lbs, and the broader coverage justified progression even at RPE ${modalRpe ?? "n/a"}. Increment +${(increment * progressionConfidenceScale).toFixed(1)}.`
-        : `Path 5 fired: performed load beat prescription on ${overshootEvidenceDetail.qualifyingSetCount}/${overshootEvidenceDetail.targetBearingSetCount} signal sets by at least ${increment} lbs while effort stayed manageable. Increment +${(increment * progressionConfidenceScale).toFixed(1)}.`
+        ? `Path 5 fired: performed load beat prescription on ${overshootEvidenceDetail.qualifyingSetCount}/${overshootEvidenceDetail.targetBearingSetCount} signal sets by at least ${increment} lbs, and the broader coverage justified progression even at RPE ${modalRpe ?? "n/a"}. Increment +${(nextLoad - anchorLoad).toFixed(1)}.`
+        : `Path 5 fired: performed load beat prescription on ${overshootEvidenceDetail.qualifyingSetCount}/${overshootEvidenceDetail.targetBearingSetCount} signal sets by at least ${increment} lbs while effort stayed manageable. Increment +${(nextLoad - anchorLoad).toFixed(1)}.`
     );
+    if (catchUpEvaluation) {
+      decisionLog.push(catchUpEvaluation.message);
+    }
     return {
       nextLoad,
       anchorLoad,
@@ -451,6 +468,7 @@ export function computeDoubleProgressionDecision(
           overshootEvaluation.tier === "controlled_hard"
             ? "controlled_hard_overshoot_progression"
             : "manageable_effort_progression",
+          ...(catchUpEvaluation ? ["same_exercise_catch_up_progression"] : []),
         ],
       }),
     };
@@ -730,6 +748,7 @@ function resolvePrescribedLoadOvershoot(input: {
       targetBearingSetCount: number;
       standardRequiredSetCount: number;
       controlledRequiredSetCount: number;
+      medianOvershootGap: number;
     }
   | null {
   const targetBearingSets = input.sets.filter(
@@ -743,9 +762,10 @@ function resolvePrescribedLoadOvershoot(input: {
     return null;
   }
 
-  const qualifyingSetCount = targetBearingSets.filter(
-    (set) => (set.load as number) - (set.targetLoad as number) >= input.increment
-  ).length;
+  const qualifyingOvershootGaps = targetBearingSets
+    .map((set) => (set.load as number) - (set.targetLoad as number))
+    .filter((gap) => gap >= input.increment);
+  const qualifyingSetCount = qualifyingOvershootGaps.length;
   if (qualifyingSetCount === 0) {
     return null;
   }
@@ -766,6 +786,7 @@ function resolvePrescribedLoadOvershoot(input: {
     targetBearingSetCount: targetBearingSets.length,
     standardRequiredSetCount: requiredSetCount,
     controlledRequiredSetCount,
+    medianOvershootGap: median(qualifyingOvershootGaps),
   };
 }
 
@@ -776,6 +797,7 @@ function evaluatePrescribedLoadOvershoot(input: {
         targetBearingSetCount: number;
         standardRequiredSetCount: number;
         controlledRequiredSetCount: number;
+        medianOvershootGap: number;
       }
     | null;
   modalRpe?: number;
@@ -848,6 +870,52 @@ function evaluatePrescribedLoadOvershoot(input: {
     qualified: false,
     reasonCode: "overshoot_blocked_by_coverage",
     message: `Overshoot gate: ${evidence.qualifyingSetCount}/${evidence.targetBearingSetCount} target-bearing sets beat prescription, but ${requiredSetCount} were required at this effort level.`,
+  };
+}
+
+function evaluateCatchUpProgression(input: {
+  overshootEvidence: {
+    qualifyingSetCount: number;
+    targetBearingSetCount: number;
+    standardRequiredSetCount: number;
+    controlledRequiredSetCount: number;
+    medianOvershootGap: number;
+  };
+  modalRpe?: number;
+  hasHighVariance: boolean;
+  increment: number;
+  priorSessionCount: number;
+}):
+  | {
+      message: string;
+    }
+  | null {
+  if (input.priorSessionCount < 1) {
+    return null;
+  }
+  if (input.modalRpe == null || input.modalRpe > PROGRESSION_CONFIG.catchUpRpeCeiling) {
+    return null;
+  }
+  if (input.hasHighVariance) {
+    return null;
+  }
+  if (input.overshootEvidence.targetBearingSetCount < PROGRESSION_CONFIG.catchUpMinSetCount) {
+    return null;
+  }
+  if (input.overshootEvidence.qualifyingSetCount < input.overshootEvidence.controlledRequiredSetCount) {
+    return null;
+  }
+  if (
+    input.overshootEvidence.medianOvershootGap <
+    input.increment * PROGRESSION_CONFIG.catchUpMedianGapMultiplier
+  ) {
+    return null;
+  }
+
+  return {
+    message:
+      `Catch-up lane fired: exact same-exercise overshoot stayed stable at valid RPE, and the median gap above prescription ` +
+      `(${input.overshootEvidence.medianOvershootGap.toFixed(1)} lbs) justified one extra bounded increment.`,
   };
 }
 

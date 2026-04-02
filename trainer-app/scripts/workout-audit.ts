@@ -288,6 +288,37 @@ export function buildProjectedWeekDebugSummary(input: {
   return lines;
 }
 
+export function buildWeeklyRetroOperatorSummary(input: {
+  artifact: Pick<WorkoutAuditArtifact, "weeklyRetro">;
+}): string[] | null {
+  const weeklyRetro = input.artifact.weeklyRetro;
+  if (!weeklyRetro) {
+    return null;
+  }
+
+  const underTargetRows = weeklyRetro.volumeTargeting.muscles
+    .filter(
+      (row) => row.status === "below_mev" || row.status === "under_target_only"
+    )
+    .sort((left, right) => left.deltaToTarget - right.deltaToTarget)
+    .slice(0, 4)
+    .map((row) => `${row.muscle} (${formatSignedSetDelta(row.deltaToTarget)})`)
+    .join(", ");
+  const interventions =
+    weeklyRetro.interventions
+      .slice(0, 3)
+      .map((entry) => entry.kind)
+      .join(", ") || "none";
+  const recommendation = weeklyRetro.recommendedPriorities[0] ?? "no_further_action";
+
+  return [
+    `[workout-audit:retro] load_calibration=${weeklyRetro.loadCalibration.status} comparable_sessions=${weeklyRetro.loadCalibration.comparableSessionCount} drift_sessions=${weeklyRetro.loadCalibration.driftSessionCount} legacy_limited=${weeklyRetro.loadCalibration.legacyLimitedSessionCount}`,
+    `[workout-audit:retro] under_target=${underTargetRows || "none"}`,
+    `[workout-audit:retro] interventions=${interventions}`,
+    `[workout-audit:retro] recommendation=${recommendation}`,
+  ];
+}
+
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const env = loadAuditEnv(typeof args["env-file"] === "string" ? args["env-file"] : undefined);
@@ -364,6 +395,8 @@ async function main(): Promise<void> {
 
   const summary = run.historicalWeek
     ? `week=${run.historicalWeek.week} sessions=${run.historicalWeek.summary.sessionCount}`
+    : run.weeklyRetro
+      ? `week=${run.weeklyRetro.week} recommendations=${run.weeklyRetro.recommendedPriorities.length}`
     : run.projectedWeekVolume
       ? `week=${run.projectedWeekVolume.currentWeek.week} projected_sessions=${run.projectedWeekVolume.projectedSessions.length}`
     : run.progressionAnchor
@@ -384,6 +417,14 @@ async function main(): Promise<void> {
   });
   if (projectedWeekSummary) {
     for (const line of projectedWeekSummary) {
+      console.log(line);
+    }
+  }
+  const weeklyRetroSummary = buildWeeklyRetroOperatorSummary({
+    artifact,
+  });
+  if (weeklyRetroSummary) {
+    for (const line of weeklyRetroSummary) {
       console.log(line);
     }
   }

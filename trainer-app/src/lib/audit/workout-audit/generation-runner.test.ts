@@ -6,11 +6,13 @@ const mocks = vi.hoisted(() => {
   const loadProjectedWeekVolumeReport = vi.fn();
   const generateSessionFromIntent = vi.fn();
   const generateDeloadSessionFromIntent = vi.fn();
+  const buildWeeklyRetroAuditPayload = vi.fn();
   return {
     loadActiveMesocycle,
     loadProjectedWeekVolumeReport,
     generateSessionFromIntent,
     generateDeloadSessionFromIntent,
+    buildWeeklyRetroAuditPayload,
   };
 });
 
@@ -27,6 +29,11 @@ vi.mock("@/lib/api/template-session", () => ({
   generateSessionFromIntent: (...args: unknown[]) => mocks.generateSessionFromIntent(...args),
   generateDeloadSessionFromIntent: (...args: unknown[]) =>
     mocks.generateDeloadSessionFromIntent(...args),
+}));
+
+vi.mock("./weekly-retro", () => ({
+  buildWeeklyRetroAuditPayload: (...args: unknown[]) =>
+    mocks.buildWeeklyRetroAuditPayload(...args),
 }));
 
 import { runWorkoutAuditGeneration } from "./generation-runner";
@@ -70,6 +77,56 @@ describe("runWorkoutAuditGeneration", () => {
       completedVolumeByMuscle: {},
       projectedSessions: [],
       fullWeekByMuscle: [],
+    });
+    mocks.buildWeeklyRetroAuditPayload.mockResolvedValue({
+      version: 1,
+      week: 2,
+      mesocycleId: "meso-1",
+      executiveSummary: {
+        status: "stable",
+        generatedLayerCoverage: "full",
+        sessionCount: 3,
+        advancingSessionCount: 3,
+        progressionEligibleCount: 3,
+        progressionExcludedCount: 0,
+        driftSessionCount: 0,
+        belowMevCount: 0,
+        underTargetCount: 0,
+        overMavCount: 0,
+        slotIdentityIssueCount: 0,
+        highlights: [],
+      },
+      loadCalibration: {
+        status: "aligned",
+        comparableSessionCount: 3,
+        driftSessionCount: 0,
+        prescriptionChangeCount: 0,
+        selectionDriftCount: 0,
+        legacyLimitedSessionCount: 0,
+        highlightedSessions: [],
+      },
+      slotBalance: {
+        status: "balanced",
+        advancingSessionCount: 3,
+        identifiedSlotCount: 3,
+        missingSlotIdentityCount: 0,
+        duplicateSlotCount: 0,
+        intentMismatchCount: 0,
+        missingSlotIdentityWorkoutIds: [],
+        duplicateSlots: [],
+        intentMismatches: [],
+      },
+      volumeTargeting: {
+        status: "within_expected_band",
+        belowMev: [],
+        underTargetOnly: [],
+        overMav: [],
+        overTargetOnly: [],
+        muscles: [],
+      },
+      interventions: [],
+      rootCauses: [],
+      recommendedPriorities: [],
     });
     mocks.generateSessionFromIntent.mockResolvedValue(okGenerationResult);
     mocks.generateDeloadSessionFromIntent.mockResolvedValue(okGenerationResult);
@@ -197,6 +254,34 @@ describe("runWorkoutAuditGeneration", () => {
         mesocycleId: "meso-1",
         week: 2,
       },
+    });
+  });
+
+  it("routes weekly-retro through the composed audit builder without touching generation helpers", async () => {
+    const context: WorkoutAuditContext = {
+      mode: "weekly-retro",
+      requestedMode: "weekly-retro",
+      userId: "user-1",
+      plannerDiagnosticsMode: "standard",
+      weeklyRetro: {
+        week: 2,
+        mesocycleId: "meso-1",
+      },
+    };
+
+    const run = await runWorkoutAuditGeneration(context);
+
+    expect(mocks.buildWeeklyRetroAuditPayload).toHaveBeenCalledWith({
+      userId: "user-1",
+      week: 2,
+      mesocycleId: "meso-1",
+    });
+    expect(mocks.generateSessionFromIntent).not.toHaveBeenCalled();
+    expect(mocks.generateDeloadSessionFromIntent).not.toHaveBeenCalled();
+    expect(run.weeklyRetro).toMatchObject({
+      version: 1,
+      week: 2,
+      mesocycleId: "meso-1",
     });
   });
 });

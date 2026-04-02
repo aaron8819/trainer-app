@@ -11,6 +11,7 @@ import {
 import { PROJECTED_WEEK_VOLUME_AUDIT_PAYLOAD_VERSION } from "./constants";
 import { buildHistoricalWeekAuditPayload } from "./historical-week";
 import { buildProgressionAnchorAuditPayload } from "./progression-anchor";
+import { buildWeeklyRetroAuditPayload } from "./weekly-retro";
 import type { WorkoutAuditContext, WorkoutAuditRun } from "./types";
 
 function resolveAdvancingSlotSnapshot(
@@ -62,6 +63,18 @@ export async function runWorkoutAuditGeneration(
         userId: context.userId,
         workoutId: context.progressionAnchor?.workoutId,
         exerciseId: context.progressionAnchor!.exerciseId,
+      }),
+    };
+  }
+
+  if (mode === "weekly-retro") {
+    return {
+      context,
+      generatedAt: new Date().toISOString(),
+      weeklyRetro: await buildWeeklyRetroAuditPayload({
+        userId: context.userId,
+        week: context.weeklyRetro!.week,
+        mesocycleId: context.weeklyRetro!.mesocycleId,
       }),
     };
   }

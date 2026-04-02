@@ -5,7 +5,7 @@ Last reviewed: 2026-03-16
 Purpose: Canonical operational playbook for recurring workout-audit CLI use. This doc tells operators and maintainers which audit to run, what to inspect first, what counts as a red flag, and when to escalate into deeper code-level investigation.
 
 This doc covers:
-- Recurring operational use of `historical-week`, `future-week`, `deload`, and `progression-anchor`
+- Recurring operational use of `historical-week`, `weekly-retro`, `future-week`, `deload`, and `progression-anchor`
 - Default audit workflows for common review scenarios
 - Artifact-reading guidance for the current audit JSON vocabulary
 - Red flags, escalation triggers, and legacy-data caveats
@@ -32,6 +32,7 @@ Sources of truth:
 
 Use this playbook when you need a fast, repeatable audit of:
 - a completed training week
+- a retrospective actual-vs-target week audit
 - the next generated session or week path
 - a deload preview or live deload routing path
 - a suspicious progression / anchor decision for one exercise
@@ -39,6 +40,7 @@ Use this playbook when you need a fast, repeatable audit of:
 This playbook is designed to answer:
 - what the audit system generated or reconstructed
 - whether a session counted toward progression history or was excluded
+- whether a completed week's actual slot usage, reconciliation drift, and weekly volume landed where expected
 - whether a future-week request used the normal path or rerouted through deload
 - whether the full current week is projected to hit weekly muscle volume targets
 - why a progression decision increased, held, or decreased
@@ -93,6 +95,51 @@ Escalate when:
 - week-close state looks wrong relative to the actual completed week
 - drift exists but the saved workout should have matched the generated plan
 - legacy reconstruction is masking the exact question you need answered
+
+### `weekly-retro`
+
+When to use it:
+- retrospective weekly review after the week is complete or materially settled
+- actual-vs-target weekly volume review using performed volume instead of projection
+- slot-balance and receipt-integrity review for advancing sessions
+- compact follow-up prioritization when historical-week alone is too session-by-session
+
+Primary questions it answers:
+- whether saved-vs-generated reconciliation drift weakens load-calibration confidence
+- whether advancing sessions carried usable canonical slot identity
+- how actual weekly effective volume landed against weekly target, MEV, and MAV
+- which read-side follow-ups deserve attention first
+
+Command pattern:
+
+```powershell
+npm run audit:workout -- --env-file .env.local --mode weekly-retro --user-id <user-id> --week <week> --mesocycle-id <mesocycle-id>
+```
+
+Fast operator loop:
+
+```powershell
+npm run audit:week:retro -- --user-id <user-id> --week <week> --mesocycle-id <mesocycle-id>
+```
+
+Inspect first:
+- `weeklyRetro.executiveSummary`
+- `weeklyRetro.loadCalibration`
+- `weeklyRetro.slotBalance`
+- `weeklyRetro.volumeTargeting`
+- `weeklyRetro.recommendedPriorities`
+
+Common red flags:
+- `loadCalibration.status !== "aligned"` when you expected clean comparable modern coverage
+- `slotBalance.missingSlotIdentityCount > 0` or `slotBalance.duplicateSlotCount > 0`
+- `volumeTargeting.belowMev.length > 0`
+- `rootCauses[*].code` points at reconciliation drift or legacy coverage gaps you did not expect
+
+Escalate when:
+- slot identity receipts are missing or duplicated for advancing sessions
+- reconciliation drift changes the meaning of the week enough that actual-vs-target conclusions are suspect
+- actual completed volume still lands below MEV or above MAV after reading the top contributors
+- legacy saved-only reconstruction prevents a trustworthy retrospective answer
 
 ### `future-week`
 
@@ -290,6 +337,20 @@ Escalate when:
 5. Scan `sessions[*].weekClose` for unresolved or surprising state.
 6. Scan `sessions[*].reconciliation` for drift.
 7. Escalate if exclusions, deficits, drift, or legacy limitations prevent a confident answer.
+
+### Retrospective week audit
+1. Run `weekly-retro`, or `npm run audit:week:retro -- --user-id <user-id> --week <week> --mesocycle-id <mesocycle-id>` for the common operator shortcut.
+2. Read the CLI summary first:
+   - `load_calibration`
+   - `under_target`
+   - `interventions`
+   - `recommendation`
+3. Open `weeklyRetro.executiveSummary` and confirm the artifact is scoped to the intended week and mesocycle.
+4. Read `weeklyRetro.loadCalibration` before trusting actual-vs-target conclusions.
+5. Read `weeklyRetro.slotBalance` and resolve any missing or duplicate slot identity first.
+6. Read `weeklyRetro.volumeTargeting` for actual weekly target / MEV / MAV comparisons and contributor context.
+7. Follow `weeklyRetro.recommendedPriorities` in order.
+8. Escalate if slot integrity, reconciliation drift, or legacy coverage limitations make the retrospective answer unreliable.
 
 ### Upcoming week preview
 1. Run `future-week`.

@@ -2,12 +2,14 @@ export const WORKOUT_AUDIT_CANONICAL_MODES = [
   "future-week",
   "projected-week-volume",
   "historical-week",
+  "weekly-retro",
   "deload",
   "progression-anchor",
 ] as const;
 
 export const WORKOUT_AUDIT_ARTIFACT_VERSION = 3 as const;
 export const HISTORICAL_WEEK_AUDIT_PAYLOAD_VERSION = 1 as const;
+export const WEEKLY_RETRO_AUDIT_PAYLOAD_VERSION = 1 as const;
 export const PROGRESSION_ANCHOR_AUDIT_PAYLOAD_VERSION = 1 as const;
 export const PROJECTED_WEEK_VOLUME_AUDIT_PAYLOAD_VERSION = 1 as const;
 export const SPLIT_SANITY_AUDIT_ARTIFACT_VERSION = 1 as const;

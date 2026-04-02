@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildProjectedWeekDebugSummary,
   buildProjectedWeekOperatorSummary,
+  buildWeeklyRetroOperatorSummary,
   normalizeAuditIntentArg,
 } from "../../../../scripts/workout-audit";
 
@@ -317,6 +318,174 @@ describe("buildProjectedWeekDebugSummary", () => {
       "[workout-audit:week:debug] blocking_warning=none",
       "[workout-audit:week:debug] semantic_warning=none",
       "[workout-audit:week:debug] background_warning=none",
+    ]);
+  });
+});
+
+describe("buildWeeklyRetroOperatorSummary", () => {
+  it("prints a compact weekly-retro verdict from the composed artifact payload", () => {
+    const summary = buildWeeklyRetroOperatorSummary({
+      artifact: {
+        weeklyRetro: {
+          version: 1,
+          week: 3,
+          mesocycleId: "meso-1",
+          executiveSummary: {
+            status: "attention_required",
+            generatedLayerCoverage: "partial",
+            sessionCount: 3,
+            advancingSessionCount: 3,
+            progressionEligibleCount: 2,
+            progressionExcludedCount: 1,
+            driftSessionCount: 1,
+            belowMevCount: 1,
+            underTargetCount: 2,
+            overMavCount: 0,
+            slotIdentityIssueCount: 1,
+            highlights: [],
+          },
+          loadCalibration: {
+            status: "attention_required",
+            comparableSessionCount: 2,
+            driftSessionCount: 1,
+            prescriptionChangeCount: 1,
+            selectionDriftCount: 1,
+            legacyLimitedSessionCount: 1,
+            highlightedSessions: [],
+          },
+          slotBalance: {
+            status: "attention_required",
+            advancingSessionCount: 3,
+            identifiedSlotCount: 2,
+            missingSlotIdentityCount: 1,
+            duplicateSlotCount: 0,
+            intentMismatchCount: 0,
+            missingSlotIdentityWorkoutIds: ["workout-2"],
+            duplicateSlots: [],
+            intentMismatches: [],
+          },
+          volumeTargeting: {
+            status: "attention_required",
+            belowMev: ["Chest"],
+            underTargetOnly: ["Calves"],
+            overMav: [],
+            overTargetOnly: [],
+            muscles: [
+              {
+                muscle: "Chest",
+                actualEffectiveSets: 6,
+                weeklyTarget: 10,
+                mev: 8,
+                mav: 16,
+                deltaToTarget: -4,
+                deltaToMev: -2,
+                deltaToMav: -10,
+                status: "below_mev",
+                topContributors: [],
+              },
+              {
+                muscle: "Calves",
+                actualEffectiveSets: 8,
+                weeklyTarget: 9,
+                mev: 8,
+                mav: 14,
+                deltaToTarget: -1,
+                deltaToMev: 0,
+                deltaToMav: -6,
+                status: "under_target_only",
+                topContributors: [],
+              },
+            ],
+          },
+          interventions: [
+            {
+              priority: "high",
+              kind: "slot_identity",
+              summary: "Repair missing slot receipts.",
+              evidence: [],
+            },
+            {
+              priority: "medium",
+              kind: "volume_deficit",
+              summary: "Inspect deficit muscles.",
+              evidence: [],
+            },
+          ],
+          rootCauses: [],
+          recommendedPriorities: ["Repair missing slot receipts."],
+        },
+      },
+    });
+
+    expect(summary).toEqual([
+      "[workout-audit:retro] load_calibration=attention_required comparable_sessions=2 drift_sessions=1 legacy_limited=1",
+      "[workout-audit:retro] under_target=Chest (-4.0), Calves (-1.0)",
+      "[workout-audit:retro] interventions=slot_identity, volume_deficit",
+      "[workout-audit:retro] recommendation=Repair missing slot receipts.",
+    ]);
+  });
+
+  it("prints explicit no-action markers when the weekly-retro payload is quiet", () => {
+    const summary = buildWeeklyRetroOperatorSummary({
+      artifact: {
+        weeklyRetro: {
+          version: 1,
+          week: 2,
+          mesocycleId: "meso-1",
+          executiveSummary: {
+            status: "stable",
+            generatedLayerCoverage: "full",
+            sessionCount: 3,
+            advancingSessionCount: 3,
+            progressionEligibleCount: 3,
+            progressionExcludedCount: 0,
+            driftSessionCount: 0,
+            belowMevCount: 0,
+            underTargetCount: 0,
+            overMavCount: 0,
+            slotIdentityIssueCount: 0,
+            highlights: [],
+          },
+          loadCalibration: {
+            status: "aligned",
+            comparableSessionCount: 3,
+            driftSessionCount: 0,
+            prescriptionChangeCount: 0,
+            selectionDriftCount: 0,
+            legacyLimitedSessionCount: 0,
+            highlightedSessions: [],
+          },
+          slotBalance: {
+            status: "balanced",
+            advancingSessionCount: 3,
+            identifiedSlotCount: 3,
+            missingSlotIdentityCount: 0,
+            duplicateSlotCount: 0,
+            intentMismatchCount: 0,
+            missingSlotIdentityWorkoutIds: [],
+            duplicateSlots: [],
+            intentMismatches: [],
+          },
+          volumeTargeting: {
+            status: "within_expected_band",
+            belowMev: [],
+            underTargetOnly: [],
+            overMav: [],
+            overTargetOnly: [],
+            muscles: [],
+          },
+          interventions: [],
+          rootCauses: [],
+          recommendedPriorities: [],
+        },
+      },
+    });
+
+    expect(summary).toEqual([
+      "[workout-audit:retro] load_calibration=aligned comparable_sessions=3 drift_sessions=0 legacy_limited=0",
+      "[workout-audit:retro] under_target=none",
+      "[workout-audit:retro] interventions=none",
+      "[workout-audit:retro] recommendation=no_further_action",
     ]);
   });
 });

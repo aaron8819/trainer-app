@@ -21,6 +21,7 @@
         "audit:workout": "tsx scripts/workout-audit.ts",
         "audit:week": "tsx scripts/workout-audit.ts --env-file .env.local --mode projected-week-volume",
         "audit:week:debug": "tsx scripts/workout-audit.ts --env-file .env.local --mode projected-week-volume --operator-debug",
+        "audit:week:retro": "tsx scripts/workout-audit.ts --env-file .env.local --mode weekly-retro",
         "audit:split-sanity": "tsx scripts/audit-split-sanity.ts",
         "audit:week-close-handoff": "tsx scripts/audit-week-close-handoff.ts",
         "repair:week-close-handoff": "tsx scripts/repair-week-close-handoff.ts",

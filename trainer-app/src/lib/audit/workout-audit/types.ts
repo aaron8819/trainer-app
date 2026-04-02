@@ -15,6 +15,7 @@ import {
   HISTORICAL_WEEK_AUDIT_PAYLOAD_VERSION,
   PROJECTED_WEEK_VOLUME_AUDIT_PAYLOAD_VERSION,
   PROGRESSION_ANCHOR_AUDIT_PAYLOAD_VERSION,
+  WEEKLY_RETRO_AUDIT_PAYLOAD_VERSION,
   WORKOUT_AUDIT_ARTIFACT_VERSION,
 } from "./constants";
 import type {
@@ -83,6 +84,10 @@ export type WorkoutAuditContext = {
   historicalWeek?: {
     week: number;
     mesocycleId?: string;
+  };
+  weeklyRetro?: {
+    week: number;
+    mesocycleId: string;
   };
   projectedWeekVolume?: {
     enabled: true;
@@ -195,6 +200,112 @@ export type ProgressionAnchorAuditPayload = {
   trace: ProgressionDecisionTrace;
 };
 
+export type WeeklyRetroAuditVolumeRow = {
+  muscle: string;
+  actualEffectiveSets: number;
+  weeklyTarget: number;
+  mev: number;
+  mav: number;
+  deltaToTarget: number;
+  deltaToMev: number;
+  deltaToMav: number;
+  status:
+    | "below_mev"
+    | "under_target_only"
+    | "within_target_band"
+    | "over_target_only"
+    | "over_mav";
+  topContributors: Array<{
+    exerciseId?: string;
+    exerciseName: string;
+    effectiveSets: number;
+    performedSets: number;
+  }>;
+};
+
+export type WeeklyRetroAuditPayload = {
+  version: typeof WEEKLY_RETRO_AUDIT_PAYLOAD_VERSION;
+  week: number;
+  mesocycleId: string;
+  executiveSummary: {
+    status: "stable" | "attention_required";
+    generatedLayerCoverage: HistoricalWeekAuditPayload["comparabilityCoverage"]["generatedLayerCoverage"];
+    sessionCount: number;
+    advancingSessionCount: number;
+    progressionEligibleCount: number;
+    progressionExcludedCount: number;
+    driftSessionCount: number;
+    belowMevCount: number;
+    underTargetCount: number;
+    overMavCount: number;
+    slotIdentityIssueCount: number;
+    highlights: string[];
+  };
+  loadCalibration: {
+    status: "aligned" | "limited_by_legacy_coverage" | "attention_required";
+    comparableSessionCount: number;
+    driftSessionCount: number;
+    prescriptionChangeCount: number;
+    selectionDriftCount: number;
+    legacyLimitedSessionCount: number;
+    highlightedSessions: Array<{
+      workoutId: string;
+      changedFields: string[];
+    }>;
+  };
+  slotBalance: {
+    status: "balanced" | "attention_required";
+    advancingSessionCount: number;
+    identifiedSlotCount: number;
+    missingSlotIdentityCount: number;
+    duplicateSlotCount: number;
+    intentMismatchCount: number;
+    missingSlotIdentityWorkoutIds: string[];
+    duplicateSlots: Array<{
+      slotId: string;
+      workoutIds: string[];
+    }>;
+    intentMismatches: Array<{
+      workoutId: string;
+      sessionIntent?: string;
+      slotIntent: string;
+      slotId: string;
+    }>;
+  };
+  volumeTargeting: {
+    status: "within_expected_band" | "attention_required";
+    belowMev: string[];
+    underTargetOnly: string[];
+    overMav: string[];
+    overTargetOnly: string[];
+    muscles: WeeklyRetroAuditVolumeRow[];
+  };
+  interventions: Array<{
+    priority: "high" | "medium" | "low";
+    kind:
+      | "slot_identity"
+      | "mutation_drift"
+      | "legacy_coverage"
+      | "volume_deficit"
+      | "volume_overshoot";
+    summary: string;
+    evidence: string[];
+  }>;
+  rootCauses: Array<{
+    code:
+      | "slot_identity_gap"
+      | "slot_identity_duplicate"
+      | "slot_identity_intent_mismatch"
+      | "mutation_drift"
+      | "legacy_coverage_gap"
+      | "below_mev"
+      | "over_mav";
+    summary: string;
+    evidence: string[];
+  }>;
+  recommendedPriorities: string[];
+};
+
 export type ProjectedWeekVolumeAuditPayload = {
   version: typeof PROJECTED_WEEK_VOLUME_AUDIT_PAYLOAD_VERSION;
   currentWeek: {
@@ -223,6 +334,7 @@ export type WorkoutAuditRun = {
   sessionSnapshot?: SessionAuditSnapshot;
   generationPath?: WorkoutAuditGenerationPath;
   historicalWeek?: HistoricalWeekAuditPayload;
+  weeklyRetro?: WeeklyRetroAuditPayload;
   projectedWeekVolume?: ProjectedWeekVolumeAuditPayload;
   progressionAnchor?: ProgressionAnchorAuditPayload;
 };
@@ -245,6 +357,7 @@ export type WorkoutAuditArtifact = {
   canonicalSemantics?: AuditCanonicalSemantics;
   generationPath?: WorkoutAuditGenerationPath;
   historicalWeek?: HistoricalWeekAuditPayload;
+  weeklyRetro?: WeeklyRetroAuditPayload;
   projectedWeekVolume?: ProjectedWeekVolumeAuditPayload;
   progressionAnchor?: ProgressionAnchorAuditPayload;
   warningSummary: AuditWarningSummary;

@@ -44,6 +44,12 @@ Projected current week volume:
 npm run audit:workout -- --mode projected-week-volume --user-id <user-id>
 ```
 
+Retrospective completed-week volume and slot review:
+
+```powershell
+npm run audit:workout -- --mode weekly-retro --user-id <user-id> --week <week> --mesocycle-id <mesocycle-id>
+```
+
 Future week for one explicit intent:
 
 ```powershell

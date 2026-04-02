@@ -79,4 +79,25 @@ describe("buildWorkoutAuditContext", () => {
     });
     expect(mocks.loadNextWorkoutContext).not.toHaveBeenCalled();
   });
+
+  it("builds weekly-retro context from explicit week and mesocycle inputs without loading next-session", async () => {
+    const context = await buildWorkoutAuditContext({
+      mode: "weekly-retro",
+      userId: "user-1",
+      week: 3,
+      mesocycleId: "meso-1",
+    });
+
+    expect(context).toMatchObject({
+      mode: "weekly-retro",
+      requestedMode: "weekly-retro",
+      userId: "user-1",
+      plannerDiagnosticsMode: "standard",
+      weeklyRetro: {
+        week: 3,
+        mesocycleId: "meso-1",
+      },
+    });
+    expect(mocks.loadNextWorkoutContext).not.toHaveBeenCalled();
+  });
 });

@@ -54,6 +54,26 @@ export async function buildWorkoutAuditContext(
     };
   }
 
+  if (mode === "weekly-retro") {
+    if (!Number.isFinite(request.week)) {
+      throw new Error("weekly-retro mode requires --week");
+    }
+    if (!request.mesocycleId) {
+      throw new Error("weekly-retro mode requires --mesocycle-id");
+    }
+    return {
+      mode,
+      requestedMode: request.mode,
+      userId: identity.userId,
+      ownerEmail: identity.ownerEmail,
+      plannerDiagnosticsMode,
+      weeklyRetro: {
+        week: request.week as number,
+        mesocycleId: request.mesocycleId,
+      },
+    };
+  }
+
   if (mode === "projected-week-volume") {
     return {
       mode,

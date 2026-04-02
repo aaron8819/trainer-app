@@ -248,6 +248,9 @@ const CLOSURE_ACTION_SCORE_EPSILON = 1e-6;
 const CLOSURE_MIN_ACCEPTABLE_SCORE = 0;
 const CLOSURE_REDUNDANT_ACCESSORY_PENALTY_WEIGHT = 75;
 const CLOSURE_STACKED_ISOLATION_PENALTY_WEIGHT = 110;
+const CLOSURE_DIRECT_DOMINANT_REPAIR_BONUS_WEIGHT = 22;
+const CLOSURE_DOMINANT_AUTHORITY_DEFERRAL_PENALTY_WEIGHT = 28;
+const CLOSURE_EXISTING_SIBLING_EXPANSION_PENALTY_WEIGHT = 18;
 const CLOSURE_DEFAULT_CALF_SOFT_CAP = 9;
 
 function recordAssignedSessionVolume(
@@ -470,6 +473,13 @@ type CriticalMuscleDeficit = {
   urgencyMultiplier?: number;
   requiredNow?: number;
   futureCapacity?: number;
+};
+
+type DominantDeficitAuthority = {
+  pressureScore: number;
+  requiresClosureNow: boolean;
+  futureCapacityExhausted: boolean;
+  clearlyDominant: boolean;
 };
 
 type ClosureAction = {
@@ -1434,6 +1444,64 @@ function getMaterialContributionToDeficit(
   return Math.min(deficit.remainingDeficit, contribution);
 }
 
+function getDeficitMuscleId(deficit: Pick<CriticalMuscleDeficit, "muscle">): MuscleId | undefined {
+  return toMuscleId(deficit.muscle) ?? (deficit.muscle as MuscleId | undefined);
+}
+
+function isDirectRepairExerciseForDeficit(
+  exercise: EngineExercise,
+  deficit: CriticalMuscleDeficit | undefined
+): boolean {
+  const deficitMuscleId = deficit ? getDeficitMuscleId(deficit) : undefined;
+  if (!deficitMuscleId) {
+    return false;
+  }
+  return getDominantStimulusMuscles(exercise).includes(deficitMuscleId);
+}
+
+function getDominantDeficitAuthority(
+  unresolvedCriticalDeficits: CriticalMuscleDeficit[]
+): DominantDeficitAuthority {
+  const dominantDeficit = unresolvedCriticalDeficits[0];
+  const alternateDeficit = unresolvedCriticalDeficits[1];
+  if (!dominantDeficit) {
+    return {
+      pressureScore: 0,
+      requiresClosureNow: false,
+      futureCapacityExhausted: false,
+      clearlyDominant: false,
+    };
+  }
+
+  const dominantNeed =
+    dominantDeficit.remainingDeficit * (dominantDeficit.urgencyMultiplier ?? 1);
+  const alternateNeed =
+    (alternateDeficit?.remainingDeficit ?? 0) * (alternateDeficit?.urgencyMultiplier ?? 1);
+  const clearlyDominant =
+    dominantNeed >
+    alternateNeed +
+      Math.max(
+        dominantDeficit.tolerance,
+        alternateDeficit?.tolerance ?? 0,
+        1
+      ) +
+      CLOSURE_ACTION_SCORE_EPSILON;
+  const requiresClosureNow = (dominantDeficit.requiredNow ?? 0) > CLOSURE_ACTION_SCORE_EPSILON;
+  const futureCapacityExhausted =
+    (dominantDeficit.futureCapacity ?? 0) <= CLOSURE_ACTION_SCORE_EPSILON;
+  const pressureScore =
+    (requiresClosureNow ? 1 : 0) +
+    (futureCapacityExhausted ? 1 : 0) +
+    (clearlyDominant ? 1 : 0);
+
+  return {
+    pressureScore,
+    requiresClosureNow,
+    futureCapacityExhausted,
+    clearlyDominant,
+  };
+}
+
 function buildSelectedIsolationCoverageByMuscle(params: {
   selection: SelectionOutput;
   exerciseById: Map<string, EngineExercise>;
@@ -1474,7 +1542,8 @@ function evaluateClosureAction(
   selectedExercises: EngineExercise[],
   selectedIsolationCoverageByMuscle: Map<Muscle, number>,
   totalScore: number,
-  kind: "add" | "expand"
+  kind: "add" | "expand",
+  preferExistingSiblingExpansion: boolean
 ): { action?: ClosureAction; rejectionReason?: string } {
   let deficitReduction = 0;
   let dominantDeficitReduction = 0;
@@ -1483,6 +1552,7 @@ function evaluateClosureAction(
   const projectedTotals = buildProjectedEffectiveTotals(objective, assignedEffectiveByMuscleInSession);
   const unresolvedByMuscle = new Map(unresolvedCriticalDeficits.map((entry) => [entry.muscle, entry]));
   const dominantDeficit = unresolvedCriticalDeficits[0];
+  const dominantDeficitAuthority = getDominantDeficitAuthority(unresolvedCriticalDeficits);
 
   for (const [muscle, effectiveSets] of contribution) {
     if (effectiveSets <= 0) {
@@ -1545,6 +1615,7 @@ function evaluateClosureAction(
 
   const fatigueCost = (exercise.fatigueCost ?? 0) * setDelta;
   const accessoryBias = isMainLiftExercise(exercise, objective) ? 0 : 0.1;
+  const directDominantRepair = isDirectRepairExerciseForDeficit(exercise, dominantDeficit);
   const dominantDeficitContribution =
     dominantDeficit != null ? contribution.get(dominantDeficit.muscle) ?? 0 : 0;
   const nextDeficit = unresolvedCriticalDeficits[1];
@@ -1630,6 +1701,29 @@ function evaluateClosureAction(
     dominantDeficit != null && duplicateAvoidedPattern && !coversMissingRequiredPattern
       ? dominantDeficit.remainingDeficit * 45
       : 0;
+  const directDominantRepairBonus =
+    directDominantRepair &&
+    dominantDeficitReduction > CLOSURE_ACTION_SCORE_EPSILON &&
+    dominantDeficitAuthority.pressureScore > 0
+      ? dominantDeficitReduction *
+        dominantDeficitAuthority.pressureScore *
+        CLOSURE_DIRECT_DOMINANT_REPAIR_BONUS_WEIGHT
+      : 0;
+  const dominantAuthorityDeferralPenalty =
+    dominantDeficitAuthority.pressureScore > 0 &&
+    dominantDeficitReduction <= CLOSURE_ACTION_SCORE_EPSILON &&
+    dominantDeficit != null
+      ? dominantDeficit.remainingDeficit *
+        dominantDeficitAuthority.pressureScore *
+        CLOSURE_DOMINANT_AUTHORITY_DEFERRAL_PENALTY_WEIGHT
+      : 0;
+  const siblingExpansionPenalty =
+    kind === "add" &&
+    preferExistingSiblingExpansion &&
+    (!directDominantRepair || dominantDeficitAuthority.pressureScore === 0)
+      ? CLOSURE_EXISTING_SIBLING_EXPANSION_PENALTY_WEIGHT *
+        Math.max(dominantDeficitReduction, 1)
+      : 0;
 
   return {
     action: {
@@ -1645,11 +1739,14 @@ function evaluateClosureAction(
         redundantAccessoryPenalty +
       stackedIsolationPenalty * -1 +
       dominantDeficitPriorityAdjustment -
+      dominantAuthorityDeferralPenalty -
       sessionShapeDuplicatePenalty +
       collateralOvershoot * 25 -
       fatigueCost +
       urgencyWeightedReduction * 35 +
       sessionShapeRequiredPatternBonus +
+      directDominantRepairBonus -
+      siblingExpansionPenalty +
       totalScore +
       accessoryBias,
     },
@@ -1688,6 +1785,74 @@ function compareClosureActions(left: ClosureAction, right: ClosureAction): numbe
   }
 
   return left.exerciseId.localeCompare(right.exerciseId);
+}
+
+function buildProtectedCleanupRepairExerciseIds(params: {
+  objective: ReturnType<typeof buildSelectionObjective>;
+  selection: SelectionOutput;
+  exerciseById: Map<string, EngineExercise>;
+  sessionIntent: GenerateIntentSessionInput["intent"];
+  targetMuscles?: string[];
+  closureActions: PlannerClosureActionDiagnostic[];
+}): Set<string> {
+  const protectedExerciseIds = new Set<string>();
+  if (params.closureActions.length === 0) {
+    return protectedExerciseIds;
+  }
+
+  const unresolvedDeficits = getCriticalMuscleDeficits(
+    params.objective,
+    buildAssignedEffectiveByMuscleInSession(params.selection.perExerciseSetTargets, params.exerciseById),
+    params.sessionIntent,
+    params.targetMuscles
+  ).filter((entry) => entry.remainingDeficit > entry.tolerance);
+  if (unresolvedDeficits.length === 0) {
+    return protectedExerciseIds;
+  }
+
+  const unresolvedMuscles = new Set(unresolvedDeficits.map((entry) => entry.muscle));
+  const directRepairAccessoryIdsByMuscle = new Map<Muscle, string[]>();
+  for (const exerciseId of params.selection.selectedExerciseIds) {
+    const exercise = params.exerciseById.get(exerciseId);
+    if (!exercise || isMainLiftExercise(exercise, params.objective) || (exercise.isCompound ?? false)) {
+      continue;
+    }
+    const directRepairMuscles = getDominantStimulusMuscles(exercise)
+      .map((muscleId) => toMuscleLabel(muscleId))
+      .filter((muscle): muscle is Muscle => unresolvedMuscles.has(muscle));
+    for (const muscle of directRepairMuscles) {
+      const current = directRepairAccessoryIdsByMuscle.get(muscle) ?? [];
+      current.push(exerciseId);
+      directRepairAccessoryIdsByMuscle.set(muscle, current);
+    }
+  }
+
+  for (const action of params.closureActions) {
+    if (action.kind !== "add") {
+      continue;
+    }
+    const exercise = params.exerciseById.get(action.exerciseId);
+    if (!exercise || isMainLiftExercise(exercise, params.objective) || (exercise.isCompound ?? false)) {
+      continue;
+    }
+
+    const protectsUnresolvedMuscle = getDominantStimulusMuscles(exercise)
+      .map((muscleId) => toMuscleLabel(muscleId))
+      .some((muscle) => {
+        if (!unresolvedMuscles.has(muscle)) {
+          return false;
+        }
+        const repairIds = Array.from(
+          new Set(directRepairAccessoryIdsByMuscle.get(muscle) ?? [])
+        );
+        return repairIds.length === 1 && repairIds[0] === action.exerciseId;
+      });
+    if (protectsUnresolvedMuscle) {
+      protectedExerciseIds.add(action.exerciseId);
+    }
+  }
+
+  return protectedExerciseIds;
 }
 
 function selectBestClosureAction(params: {
@@ -1738,6 +1903,7 @@ function selectBestClosureAction(params: {
   }
   const dominantDeficitMuscleId =
     toMuscleId(dominantDeficit.muscle) ?? (dominantDeficit.muscle as MuscleId | undefined);
+  const dominantDeficitAuthority = getDominantDeficitAuthority(unresolvedCriticalDeficits);
   const candidateDiagnostics: PlannerClosureCandidateDiagnostic[] = [];
   const selectedIsolationCoverageByMuscle = buildSelectedIsolationCoverageByMuscle({
     selection,
@@ -1794,13 +1960,19 @@ function selectBestClosureAction(params: {
           candidateDiagnostics.push({ ...baseCandidate, rejectionReason: "duplicate_base_name" });
           continue;
         }
+        const preferExistingSiblingExpansion = hasExpandableSelectedAccessorySibling({
+          exercise,
+          selection,
+          exerciseById,
+          objective,
+        });
+        const directDominantRepairCandidate = isDirectRepairExerciseForDeficit(
+          exercise,
+          dominantDeficit
+        );
         if (
-          hasExpandableSelectedAccessorySibling({
-            exercise,
-            selection,
-            exerciseById,
-            objective,
-          })
+          preferExistingSiblingExpansion &&
+          !directDominantRepairCandidate
         ) {
           candidateDiagnostics.push({
             ...baseCandidate,
@@ -1843,7 +2015,9 @@ function selectBestClosureAction(params: {
         selectedExercises,
         selectedIsolationCoverageByMuscle,
         candidate.totalScore,
-        "add"
+        "add",
+        preferExistingSiblingExpansion &&
+          !(directDominantRepairCandidate && dominantDeficitAuthority.pressureScore > 0)
       );
       if (evaluation.action) {
         actions.push(evaluation.action);
@@ -1938,7 +2112,8 @@ function selectBestClosureAction(params: {
       selectedExercises,
       selectedIsolationCoverageByMuscle,
       candidate.totalScore,
-      "expand"
+      "expand",
+      false
     );
     if (evaluation.action) {
       actions.push(evaluation.action);
@@ -2730,12 +2905,21 @@ export function composeIntentSessionFromMappedContext(
     }),
     isMainLiftExercise,
   });
+  const protectedCleanupRepairExerciseIds = buildProtectedCleanupRepairExerciseIds({
+    objective,
+    selection: closureResult.selection,
+    exerciseById,
+    sessionIntent: input.intent,
+    targetMuscles: input.targetMuscles,
+    closureActions: closureResult.actions,
+  });
   const cleanupResult = applyPostClosureCleanup({
     objective,
     selection: closureResult.selection,
     exerciseById,
     candidatePool: closurePool,
     pinnedExerciseIds: pinnedRoleIds,
+    protectedExerciseIds: protectedCleanupRepairExerciseIds,
     sessionIntent: input.intent,
     sessionSlotId,
   });

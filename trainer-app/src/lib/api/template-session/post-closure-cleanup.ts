@@ -50,6 +50,7 @@ export type PostClosureCleanupInput = {
   exerciseById: Map<string, EngineExercise>;
   candidatePool: EngineExercise[];
   pinnedExerciseIds: Set<string>;
+  protectedExerciseIds?: Set<string>;
   sessionIntent: SessionIntent;
   sessionSlotId?: string;
 };
@@ -105,6 +106,7 @@ function applyAccessorySiblingSplitPass(params: {
   selection: SelectionOutput;
   exerciseById: Map<string, EngineExercise>;
   candidatePool: EngineExercise[];
+  protectedExerciseIds?: Set<string>;
 }): PostClosureCleanupResult {
   const selection: SelectionOutput = {
     ...params.selection,
@@ -168,6 +170,13 @@ function applyAccessorySiblingSplitPass(params: {
         getAccessorySplitFamilyKey(selectedExercise, params.objective) === familyKey;
     });
     if (selectedFamilyIds.length === 0) {
+      continue;
+    }
+    if (
+      selectedFamilyIds.some((selectedFamilyId) =>
+        params.protectedExerciseIds?.has(selectedFamilyId) ?? false
+      )
+    ) {
       continue;
     }
 
@@ -655,6 +664,7 @@ function applySlotAwareDiversificationPass(params: PostClosureCleanupInput): Pos
   const removeIfSafe = (exerciseId: string, code: string, message: string): boolean => {
     if (
       params.pinnedExerciseIds.has(exerciseId) ||
+      params.protectedExerciseIds?.has(exerciseId) === true ||
       !canRemoveSelectedExercise({
         selection,
         objective: params.objective,
@@ -803,6 +813,7 @@ export function applyPostClosureCleanup(params: PostClosureCleanupInput): PostCl
     selection: params.selection,
     exerciseById: params.exerciseById,
     candidatePool: params.candidatePool,
+    protectedExerciseIds: params.protectedExerciseIds,
   });
 
   const diversificationResult = applySlotAwareDiversificationPass({

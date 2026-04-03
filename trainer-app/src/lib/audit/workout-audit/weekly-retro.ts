@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
-import { VOLUME_LANDMARKS } from "@/lib/engine/volume-landmarks";
+import { getExposedVolumeLandmarkEntries } from "@/lib/engine/volume-landmarks";
 import { readSessionSlotSnapshot } from "@/lib/evidence/session-decision-receipt";
 import { getWeeklyVolumeTarget } from "@/lib/api/mesocycle-lifecycle-math";
 import { loadMesocycleWeekMuscleVolume } from "@/lib/api/weekly-volume";
@@ -167,7 +167,7 @@ export async function buildWeeklyRetroAuditPayload(input: {
     .map(([slotId, workoutIds]) => ({ slotId, workoutIds }))
     .sort((left, right) => left.slotId.localeCompare(right.slotId));
 
-  const volumeRows: WeeklyRetroAuditVolumeRow[] = Object.entries(VOLUME_LANDMARKS)
+  const volumeRows: WeeklyRetroAuditVolumeRow[] = getExposedVolumeLandmarkEntries()
     .map(([muscle, landmark]) => {
       const actualRow = weeklyVolume[muscle];
       const actualEffectiveSets = actualRow?.effectiveSets ?? 0;

@@ -423,4 +423,215 @@ describe("writeSplitSanityAuditArtifacts", () => {
       "no_stranded_zero_capacity_deficits: Same-intent future capacity is exhausted for some muscles; unresolved deficits will rely on canonical week-close / optional gap-fill handling."
     );
   });
+
+  it("normalizes split-sanity summaries and rich artifacts to the exposed muscle scope", async () => {
+    const run = buildRun("push");
+    if (!run.generationResult || "error" in run.generationResult) {
+      throw new Error("expected successful generation result");
+    }
+
+    run.generationResult.selection.sessionDecisionReceipt = {
+      ...buildReceipt(),
+      targetMuscles: ["Abs", "Core"],
+      lifecycleVolume: {
+        targets: {
+          Abs: 7,
+          Core: 8,
+        },
+        source: "lifecycle",
+      },
+      plannerDiagnostics: {
+        ...buildReceipt().plannerDiagnostics,
+        opportunity: {
+          ...buildReceipt().plannerDiagnostics!.opportunity!,
+          targetMuscles: ["Abs", "Core"],
+          currentSessionMuscleOpportunity: {
+            Abs: {
+              sessionOpportunityWeight: 1,
+              weeklyTarget: 7,
+              performedEffectiveVolumeBeforeSession: 1,
+              startingDeficit: 6,
+              weeklyOpportunityUnits: 1,
+              futureOpportunityUnits: 1,
+              futureCapacity: 1,
+              requiredNow: 1,
+              urgencyMultiplier: 1.1,
+            },
+            Core: {
+              sessionOpportunityWeight: 2,
+              weeklyTarget: 8,
+              performedEffectiveVolumeBeforeSession: 2,
+              startingDeficit: 6,
+              weeklyOpportunityUnits: 2,
+              futureOpportunityUnits: 2,
+              futureCapacity: 2,
+              requiredNow: 2,
+              urgencyMultiplier: 1.4,
+            },
+          },
+        },
+        muscles: {
+          Abs: {
+            weeklyTarget: 7,
+            performedEffectiveVolumeBeforeSession: 1,
+            plannedEffectiveVolumeAfterRoleBudgeting: 2,
+            projectedEffectiveVolumeAfterRoleBudgeting: 3,
+            deficitAfterRoleBudgeting: 4,
+            plannedEffectiveVolumeAfterClosure: 3,
+            projectedEffectiveVolumeAfterClosure: 4,
+            finalRemainingDeficit: 3,
+          },
+          Core: {
+            weeklyTarget: 8,
+            performedEffectiveVolumeBeforeSession: 2,
+            plannedEffectiveVolumeAfterRoleBudgeting: 3,
+            projectedEffectiveVolumeAfterRoleBudgeting: 4,
+            deficitAfterRoleBudgeting: 4,
+            plannedEffectiveVolumeAfterClosure: 4,
+            projectedEffectiveVolumeAfterClosure: 5,
+            finalRemainingDeficit: 3,
+          },
+        },
+        exercises: {
+          crunch: {
+            exerciseId: "crunch",
+            exerciseName: "Cable Crunch",
+            assignedSetCount: 4,
+            stimulusVector: {
+              Abs: 2,
+              Core: 1,
+            },
+            anchorUsed: {
+              kind: "muscle",
+              muscle: "Abs",
+            },
+            isRoleFixture: false,
+            isClosureAddition: false,
+            isSetExpandedCarryover: false,
+            closureSetDelta: 0,
+          },
+        },
+        closure: {
+          actions: [],
+        },
+        rescue: {
+          eligible: false,
+          used: false,
+          reason: "not_needed",
+          rescueOnlyCandidateCount: 0,
+          rescueOnlyExerciseIds: [],
+          selectedExerciseIds: [],
+        },
+        outcome: {
+          layersUsed: ["anchor"],
+          startingDeficits: {
+            Abs: {
+              weeklyTarget: 7,
+              performedEffectiveVolumeBeforeSession: 1,
+              plannedEffectiveVolume: 0,
+              projectedEffectiveVolume: 1,
+              remainingDeficit: 6,
+            },
+            Core: {
+              weeklyTarget: 8,
+              performedEffectiveVolumeBeforeSession: 2,
+              plannedEffectiveVolume: 0,
+              projectedEffectiveVolume: 2,
+              remainingDeficit: 6,
+            },
+          },
+          deficitsAfterBaseSession: {},
+          deficitsAfterSupplementation: {},
+          deficitsAfterClosure: {
+            Abs: {
+              weeklyTarget: 7,
+              performedEffectiveVolumeBeforeSession: 1,
+              plannedEffectiveVolume: 2,
+              projectedEffectiveVolume: 3,
+              remainingDeficit: 4,
+            },
+            Core: {
+              weeklyTarget: 8,
+              performedEffectiveVolumeBeforeSession: 2,
+              plannedEffectiveVolume: 3,
+              projectedEffectiveVolume: 4,
+              remainingDeficit: 4,
+            },
+          },
+          unresolvedDeficits: ["Abs", "Core"],
+          keyTradeoffs: [
+            {
+              layer: "closure",
+              code: "keep_core",
+              message: "Core work preserved.",
+              muscle: "Abs",
+            },
+          ],
+        },
+      },
+    };
+
+    mocks.runWorkoutAuditGeneration.mockResolvedValue(run);
+
+    const result = await writeSplitSanityAuditArtifacts({
+      request: {
+        userId: "user-1",
+        intents: ["push"],
+        plannerDiagnosticsMode: "debug",
+      },
+      outputDir: tempDir,
+      writeRichArtifacts: true,
+    });
+
+    expect(result.artifact.intentSummaries[0]?.targetedMuscles).toEqual(["Core"]);
+    expect(result.artifact.intentSummaries[0]?.unresolvedDeficits).toEqual([
+      {
+        muscle: "Core",
+        remainingDeficit: 8,
+        weeklyTarget: 15,
+        projectedEffectiveVolume: 7,
+        futureCapacity: 3,
+        requiredNow: 3,
+      },
+    ]);
+    expect(result.artifact.weeklyTargetsSnapshot).toEqual([
+      {
+        muscle: "Core",
+        currentTarget: 15,
+        priorTarget: 10,
+        deltaVsPrior: 5,
+      },
+    ]);
+
+    const richArtifactPath = result.richArtifactPaths.push;
+    expect(richArtifactPath).toBeTruthy();
+    const richJson = JSON.parse(await readFile(richArtifactPath!, "utf8")) as {
+      generation?: {
+        selection?: {
+          sessionDecisionReceipt?: {
+            targetMuscles?: string[];
+            lifecycleVolume?: { targets?: Record<string, number> };
+            plannerDiagnostics?: {
+              outcome?: {
+                unresolvedDeficits?: string[];
+              };
+            };
+          };
+        };
+      };
+    };
+
+    expect(richJson.generation?.selection?.sessionDecisionReceipt?.targetMuscles).toEqual([
+      "Core",
+    ]);
+    expect(
+      richJson.generation?.selection?.sessionDecisionReceipt?.lifecycleVolume?.targets
+    ).toEqual({
+      Core: 15,
+    });
+    expect(
+      richJson.generation?.selection?.sessionDecisionReceipt?.plannerDiagnostics?.outcome
+        ?.unresolvedDeficits
+    ).toEqual(["Core"]);
+  });
 });

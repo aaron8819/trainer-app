@@ -19,6 +19,7 @@ import {
 } from "./serializer";
 import { WORKOUT_AUDIT_CONCLUSIONS } from "./conclusions";
 import { buildWorkoutAuditContext, resolveWorkoutAuditIdentity } from "./context-builder";
+import { normalizeSessionDecisionReceiptForAudit } from "./exposed-muscles";
 import { runWorkoutAuditGeneration } from "./generation-runner";
 import { serializeStableJson } from "./artifact-serialization";
 import { SPLIT_SANITY_AUDIT_ARTIFACT_VERSION } from "./constants";
@@ -187,7 +188,9 @@ function getReceipt(run: WorkoutAuditRun): SessionDecisionReceipt | undefined {
   if (!run.generationResult || "error" in run.generationResult) {
     return undefined;
   }
-  return run.generationResult.selection.sessionDecisionReceipt;
+  return normalizeSessionDecisionReceiptForAudit(
+    run.generationResult.selection.sessionDecisionReceipt
+  );
 }
 
 function getTargetedMuscles(receipt: SessionDecisionReceipt | undefined): string[] {

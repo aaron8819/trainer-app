@@ -9,6 +9,10 @@ import {
   serializeStableJson,
 } from "./artifact-serialization";
 import { resolveAuditCanonicalSemantics } from "./canonical-semantics";
+import {
+  normalizeExposedMuscleListForAudit,
+  normalizeSessionGenerationResultForAudit,
+} from "./exposed-muscles";
 
 function getArtifactGuardrailWarnings(run: WorkoutAuditRun): string[] {
   const warnings: string[] = [];
@@ -40,13 +44,16 @@ export function buildWorkoutAuditArtifact(
   }
 ): WorkoutAuditArtifact {
   const piiSafe = request.sanitizationLevel === "pii-safe";
-  const sanitizedRequest: WorkoutAuditRequest = piiSafe
-    ? {
-        ...request,
-        userId: undefined,
-        ownerEmail: undefined,
-      }
-    : request;
+  const sanitizedRequest: WorkoutAuditRequest = {
+    ...request,
+    ...(piiSafe
+      ? {
+          userId: undefined,
+          ownerEmail: undefined,
+        }
+      : {}),
+    targetMuscles: normalizeExposedMuscleListForAudit(request.targetMuscles),
+  };
 
   const guardrailWarnings = getArtifactGuardrailWarnings(run);
 
@@ -63,7 +70,7 @@ export function buildWorkoutAuditArtifact(
     },
     request: sanitizedRequest,
     nextSession: run.context.nextSession,
-    generation: run.generationResult,
+    generation: normalizeSessionGenerationResultForAudit(run.generationResult),
     sessionSnapshot: run.sessionSnapshot,
     canonicalSemantics: resolveAuditCanonicalSemantics(run.sessionSnapshot),
     generationPath: run.generationPath,

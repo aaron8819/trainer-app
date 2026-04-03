@@ -84,6 +84,305 @@ describe("buildWorkoutAuditArtifact", () => {
     expect(artifact.request.ownerEmail).toBeUndefined();
   });
 
+  it("normalizes outward-facing muscle scope in rich generation artifacts", () => {
+    const artifact = buildWorkoutAuditArtifact(
+      {
+        mode: "future-week",
+        userId: "user-1",
+        targetMuscles: ["Abs", "Core", "Chest"],
+      },
+      {
+        ...baseRun,
+        generationResult: {
+          ...baseRun.generationResult!,
+          volumePlanByMuscle: {
+            Abs: 2,
+            Core: 1,
+            Chest: 5,
+          },
+          selection: {
+            ...baseRun.generationResult!.selection,
+            volumePlanByMuscle: {
+              Abs: 3,
+              Core: 1,
+            },
+            sessionDecisionReceipt: {
+              version: 1,
+              cycleContext: {
+                weekInMeso: 3,
+                weekInBlock: 3,
+                phase: "accumulation",
+                blockType: "accumulation",
+                isDeload: false,
+                source: "computed",
+              },
+              targetMuscles: ["Abs", "Core", "Chest"],
+              lifecycleVolume: {
+                targets: {
+                  Abs: 7,
+                  Core: 8,
+                  Chest: 14,
+                },
+                source: "lifecycle",
+              },
+              sorenessSuppressedMuscles: ["Abs", "Core"],
+              deloadDecision: {
+                mode: "none",
+                reason: [],
+                reductionPercent: 0,
+                appliedTo: "none",
+              },
+              plannerDiagnosticsMode: "debug",
+              plannerDiagnostics: {
+                opportunity: {
+                  opportunityKey: "upper",
+                  sessionIntent: "upper",
+                  sessionCharacter: "upper",
+                  planningInventoryKind: "standard",
+                  closureInventoryKind: "closure",
+                  targetMuscles: ["Abs", "Core"],
+                  currentSessionMuscleOpportunity: {
+                    Abs: {
+                      sessionOpportunityWeight: 1,
+                      weeklyTarget: 7,
+                      performedEffectiveVolumeBeforeSession: 1,
+                      startingDeficit: 6,
+                      futureOpportunityUnits: 1,
+                      weeklyOpportunityUnits: 2,
+                      futureCapacity: 1,
+                      requiredNow: 2,
+                      urgencyMultiplier: 1.2,
+                    },
+                    Core: {
+                      sessionOpportunityWeight: 2,
+                      weeklyTarget: 8,
+                      performedEffectiveVolumeBeforeSession: 2,
+                      startingDeficit: 6,
+                      futureOpportunityUnits: 2,
+                      weeklyOpportunityUnits: 3,
+                      futureCapacity: 2,
+                      requiredNow: 1,
+                      urgencyMultiplier: 1.5,
+                    },
+                  },
+                },
+                muscles: {
+                  Abs: {
+                    weeklyTarget: 7,
+                    performedEffectiveVolumeBeforeSession: 1,
+                    plannedEffectiveVolumeAfterRoleBudgeting: 2,
+                    projectedEffectiveVolumeAfterRoleBudgeting: 3,
+                    deficitAfterRoleBudgeting: 4,
+                    plannedEffectiveVolumeAfterClosure: 4,
+                    projectedEffectiveVolumeAfterClosure: 5,
+                    finalRemainingDeficit: 2,
+                  },
+                  Core: {
+                    weeklyTarget: 8,
+                    performedEffectiveVolumeBeforeSession: 2,
+                    plannedEffectiveVolumeAfterRoleBudgeting: 3,
+                    projectedEffectiveVolumeAfterRoleBudgeting: 4,
+                    deficitAfterRoleBudgeting: 4,
+                    plannedEffectiveVolumeAfterClosure: 5,
+                    projectedEffectiveVolumeAfterClosure: 6,
+                    finalRemainingDeficit: 2,
+                  },
+                },
+                exercises: {
+                  crunch: {
+                    exerciseId: "crunch",
+                    exerciseName: "Cable Crunch",
+                    assignedSetCount: 4,
+                    stimulusVector: {
+                      Abs: 2,
+                      Core: 1,
+                    },
+                    anchorUsed: {
+                      kind: "muscle",
+                      muscle: "Abs",
+                    },
+                    isRoleFixture: false,
+                    isClosureAddition: false,
+                    isSetExpandedCarryover: false,
+                    closureSetDelta: 0,
+                  },
+                },
+                closure: {
+                  actions: [],
+                },
+                outcome: {
+                  layersUsed: ["anchor", "closure"],
+                  startingDeficits: {
+                    Abs: {
+                      weeklyTarget: 7,
+                      performedEffectiveVolumeBeforeSession: 1,
+                      plannedEffectiveVolume: 0,
+                      projectedEffectiveVolume: 1,
+                      remainingDeficit: 6,
+                    },
+                    Core: {
+                      weeklyTarget: 8,
+                      performedEffectiveVolumeBeforeSession: 2,
+                      plannedEffectiveVolume: 0,
+                      projectedEffectiveVolume: 2,
+                      remainingDeficit: 6,
+                    },
+                  },
+                  deficitsAfterBaseSession: {},
+                  deficitsAfterSupplementation: {},
+                  deficitsAfterClosure: {
+                    Abs: {
+                      weeklyTarget: 7,
+                      performedEffectiveVolumeBeforeSession: 1,
+                      plannedEffectiveVolume: 2,
+                      projectedEffectiveVolume: 3,
+                      remainingDeficit: 4,
+                    },
+                    Core: {
+                      weeklyTarget: 8,
+                      performedEffectiveVolumeBeforeSession: 2,
+                      plannedEffectiveVolume: 3,
+                      projectedEffectiveVolume: 4,
+                      remainingDeficit: 4,
+                    },
+                  },
+                  unresolvedDeficits: ["Abs", "Core"],
+                  keyTradeoffs: [
+                    {
+                      layer: "closure",
+                      code: "core_tradeoff",
+                      message: "Core work was preserved.",
+                      muscle: "Abs",
+                    },
+                  ],
+                },
+              },
+              readiness: {
+                wasAutoregulated: false,
+                signalAgeHours: null,
+                fatigueScoreOverall: null,
+                intensityScaling: {
+                  applied: false,
+                  exerciseIds: [],
+                  scaledUpCount: 0,
+                  scaledDownCount: 0,
+                },
+              },
+              exceptions: [],
+            },
+          },
+        },
+      }
+    );
+
+    expect(artifact.request.targetMuscles).toEqual(["Core", "Chest"]);
+    expect(artifact.generation?.volumePlanByMuscle).toEqual({
+      Chest: 5,
+      Core: 3,
+    });
+    expect(artifact.generation?.selection.volumePlanByMuscle).toEqual({
+      Core: 4,
+    });
+    expect(
+      artifact.generation?.selection.sessionDecisionReceipt?.lifecycleVolume.targets
+    ).toEqual({
+      Chest: 14,
+      Core: 15,
+    });
+    expect(artifact.generation?.selection.sessionDecisionReceipt?.targetMuscles).toEqual([
+      "Core",
+      "Chest",
+    ]);
+    expect(
+      artifact.generation?.selection.sessionDecisionReceipt?.sorenessSuppressedMuscles
+    ).toEqual(["Core"]);
+    expect(
+      artifact.generation?.selection.sessionDecisionReceipt?.plannerDiagnostics?.opportunity
+        ?.currentSessionMuscleOpportunity
+    ).toEqual({
+      Core: {
+        sessionOpportunityWeight: 3,
+        weeklyTarget: 15,
+        performedEffectiveVolumeBeforeSession: 3,
+        startingDeficit: 12,
+        futureOpportunityUnits: 3,
+        weeklyOpportunityUnits: 5,
+        futureCapacity: 3,
+        requiredNow: 3,
+        urgencyMultiplier: 1.5,
+      },
+    });
+    expect(
+      artifact.generation?.selection.sessionDecisionReceipt?.plannerDiagnostics?.muscles
+    ).toEqual({
+      Core: {
+        weeklyTarget: 15,
+        performedEffectiveVolumeBeforeSession: 3,
+        plannedEffectiveVolumeAfterRoleBudgeting: 5,
+        projectedEffectiveVolumeAfterRoleBudgeting: 7,
+        deficitAfterRoleBudgeting: 8,
+        plannedEffectiveVolumeAfterClosure: 9,
+        projectedEffectiveVolumeAfterClosure: 11,
+        finalRemainingDeficit: 4,
+      },
+    });
+    expect(
+      artifact.generation?.selection.sessionDecisionReceipt?.plannerDiagnostics?.exercises.crunch
+        .stimulusVector
+    ).toEqual({
+      Core: 3,
+    });
+    expect(
+      artifact.generation?.selection.sessionDecisionReceipt?.plannerDiagnostics?.exercises.crunch
+        .anchorUsed
+    ).toEqual({
+      kind: "muscle",
+      muscle: "Core",
+    });
+    expect(
+      artifact.generation?.selection.sessionDecisionReceipt?.plannerDiagnostics?.outcome
+        ?.startingDeficits
+    ).toEqual({
+      Core: {
+        weeklyTarget: 15,
+        performedEffectiveVolumeBeforeSession: 3,
+        plannedEffectiveVolume: 0,
+        projectedEffectiveVolume: 3,
+        remainingDeficit: 12,
+      },
+    });
+    expect(
+      artifact.generation?.selection.sessionDecisionReceipt?.plannerDiagnostics?.outcome
+        ?.deficitsAfterClosure
+    ).toEqual({
+      Core: {
+        weeklyTarget: 15,
+        performedEffectiveVolumeBeforeSession: 3,
+        plannedEffectiveVolume: 5,
+        projectedEffectiveVolume: 7,
+        remainingDeficit: 8,
+      },
+    });
+    expect(
+      artifact.generation?.selection.sessionDecisionReceipt?.plannerDiagnostics?.outcome
+        ?.unresolvedDeficits
+    ).toEqual(["Core"]);
+    expect(
+      artifact.generation?.selection.sessionDecisionReceipt?.plannerDiagnostics?.outcome
+        ?.keyTradeoffs
+    ).toEqual([
+      {
+        layer: "closure",
+        code: "core_tradeoff",
+        message: "Core work was preserved.",
+        muscle: "Core",
+      },
+    ]);
+    expect(
+      artifact.generation?.selection.sessionDecisionReceipt?.plannerDiagnostics?.muscles.Abs
+    ).toBeUndefined();
+  });
+
   it("classifies generation errors as blocking warnings", () => {
     const artifact = buildWorkoutAuditArtifact(
       {

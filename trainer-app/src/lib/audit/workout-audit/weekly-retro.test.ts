@@ -296,4 +296,58 @@ describe("buildWeeklyRetroAuditPayload", () => {
       "Repair missing session-slot receipts before trusting slot-balance conclusions."
     );
   });
+
+  it("uses the exposed muscle scope so Core absorbs Abs and no separate Abs row is emitted", async () => {
+    mocks.loadMesocycleWeekMuscleVolume.mockResolvedValue({
+      Core: {
+        directSets: 2,
+        indirectSets: 0,
+        effectiveSets: 2,
+        contributions: [
+          {
+            exerciseId: "crunch",
+            exerciseName: "Cable Crunch",
+            effectiveSets: 2,
+            performedSets: 2,
+          },
+        ],
+      },
+    });
+    mocks.getWeeklyVolumeTarget.mockImplementation(
+      (_mesocycle: unknown, muscle: string) => {
+        if (muscle === "Core") {
+          return 8;
+        }
+        if (muscle === "Abs") {
+          return 7;
+        }
+        return 0;
+      }
+    );
+
+    const payload = await buildWeeklyRetroAuditPayload({
+      userId: "user-1",
+      week: 3,
+      mesocycleId: "meso-1",
+    });
+
+    const muscles = payload.volumeTargeting.muscles.map((row) => row.muscle);
+    expect(muscles).toContain("Core");
+    expect(muscles).not.toContain("Abs");
+    expect(payload.volumeTargeting.underTargetOnly).toContain("Core");
+    expect(payload.volumeTargeting.underTargetOnly).not.toContain("Abs");
+    expect(payload.volumeTargeting.muscles.find((row) => row.muscle === "Core")).toMatchObject({
+      actualEffectiveSets: 2,
+      weeklyTarget: 8,
+      deltaToTarget: -6,
+      topContributors: [
+        {
+          exerciseId: "crunch",
+          exerciseName: "Cable Crunch",
+          effectiveSets: 2,
+          performedSets: 2,
+        },
+      ],
+    });
+  });
 });

@@ -533,7 +533,7 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
       now: new Date("2026-03-19T12:00:00.000Z"),
     });
 
-    expect(composeIntentSessionFromMappedContextSpy).toHaveBeenCalledTimes(11);
+    expect(composeIntentSessionFromMappedContextSpy).toHaveBeenCalledTimes(14);
     expect(
       composeIntentSessionFromMappedContextSpy.mock.calls.map(([, input]) => input.slotId)
     ).toEqual([
@@ -541,9 +541,12 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
       "upper_a",
       "lower_a",
       "lower_a",
+      "lower_a",
       "upper_b",
       "upper_b",
       "upper_b",
+      "lower_b",
+      "lower_b",
       "lower_b",
       "lower_b",
       "lower_b",
@@ -633,6 +636,30 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     const firstCoreCompound = lowerB?.exercises.find((exercise) => exercise.role === "CORE_COMPOUND");
 
     expect(firstCoreCompound?.exerciseId).toBe("rdl");
+  });
+
+  it("keeps lower_b hinge-led while adding one meaningful quad-support option without inflating the slot", () => {
+    const projected = projectSuccessorSlotPlansFromSnapshot({
+      userId: "user-1",
+      source: buildSource(),
+      design: buildDesign(buildRepairSensitiveDraft()),
+      snapshot: buildProtectedCoverageSatisfiedSnapshot(),
+      now: new Date("2026-03-19T12:00:00.000Z"),
+    });
+
+    const slotPlans = getProjectedSlotPlans(projected);
+    const lowerA = slotPlans.find((slot) => slot.slotId === "lower_a");
+    const lowerB = slotPlans.find((slot) => slot.slotId === "lower_b");
+    const lowerBExerciseIds = lowerB?.exercises.map((exercise) => exercise.exerciseId) ?? [];
+
+    expect(lowerBExerciseIds[0]).toBe("rdl");
+    expect(
+      lowerBExerciseIds.some((exerciseId) =>
+        ["hack-squat", "leg-extension"].includes(exerciseId)
+      )
+    ).toBe(true);
+    expect(lowerBExerciseIds).not.toEqual(lowerA?.exercises.map((exercise) => exercise.exerciseId));
+    expect(lowerBExerciseIds.length).toBeLessThanOrEqual(6);
   });
 
   it("allows lower_b squat fallback when no hinge compound anchor is viable", () => {
@@ -872,7 +899,7 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
           ...original.VOLUME_LANDMARKS,
           Chest: { ...original.VOLUME_LANDMARKS.Chest, mev: 6 },
           Triceps: { ...original.VOLUME_LANDMARKS.Triceps, mev: 3 },
-          Hamstrings: { ...original.VOLUME_LANDMARKS.Hamstrings, mev: 2 },
+          Hamstrings: { ...original.VOLUME_LANDMARKS.Hamstrings, mev: 6 },
           Calves: { ...original.VOLUME_LANDMARKS.Calves, mev: 4 },
         },
       };
@@ -892,7 +919,7 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
             case "Triceps":
               return 6;
             case "Hamstrings":
-              return 4;
+              return 10;
             case "Calves":
               return 6;
             default:
@@ -903,11 +930,15 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     });
     const { projectSuccessorSlotPlansFromSnapshot: projectWithLoweredMevTrigger } =
       await import("./mesocycle-handoff-slot-plan-projection");
+    const snapshot = buildProtectedCoverageSatisfiedSnapshot();
+    snapshot.context.exercises = snapshot.context.exercises.filter(
+      (exercise) => !["leg-curl", "seated-leg-curl"].includes(exercise.id)
+    );
     const projected = projectWithLoweredMevTrigger({
       userId: "user-1",
       source: buildSource(),
       design: buildDesign(buildRepairSensitiveDraft()),
-      snapshot: buildProtectedCoverageSatisfiedSnapshot(),
+      snapshot,
       now: new Date("2026-03-19T12:00:00.000Z"),
     });
     vi.resetModules();

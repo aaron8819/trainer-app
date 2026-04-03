@@ -12,8 +12,10 @@ import { VOLUME_LANDMARKS } from "@/lib/engine/volume-landmarks";
 import { getEffectiveStimulusByMuscle } from "@/lib/engine/stimulus";
 import {
   doesExerciseSatisfyRequiredSessionShapePattern,
+  getProjectionPreferredSupportMuscles,
   getProtectedWeekOneCoverageObligations,
   getProjectionRepairCompatibleMuscles,
+  getProjectionSoftPreferredSupportMuscles,
   resolveSessionSlotPolicy,
   type ProtectedWeekOneCoverageMuscle,
 } from "@/lib/planning/session-slot-profile";
@@ -541,30 +543,6 @@ function normalizeMuscleName(muscle: string): string {
   return muscle.trim().toLowerCase();
 }
 
-function getUpperPreferredSupportMuscles(
-  slotPolicy: ReturnType<typeof resolveSessionSlotPolicy>["currentSession"]
-): string[] {
-  if (!slotPolicy || slotPolicy.sessionIntent !== "upper") {
-    return [];
-  }
-
-  return Array.from(
-    new Set(slotPolicy.sessionShape?.preferredAccessoryPrimaryMuscles ?? [])
-  );
-}
-
-function getUpperSoftPreferredSupportMuscles(input: {
-  slotPolicy: ReturnType<typeof resolveSessionSlotPolicy>["currentSession"];
-  protectedMuscles: readonly ProtectedWeekOneCoverageMuscle[];
-}): string[] {
-  const protectedMuscleSet = new Set(
-    input.protectedMuscles.map((muscle) => normalizeMuscleName(muscle))
-  );
-  return getUpperPreferredSupportMuscles(input.slotPolicy).filter(
-    (muscle) => !protectedMuscleSet.has(normalizeMuscleName(muscle))
-  );
-}
-
 function scorePreferredSupportContribution(input: {
   contributionByMuscle: Map<string, number>;
   preferredMuscles: readonly string[];
@@ -665,7 +643,7 @@ function selectBestProjectedSlotComposition(input: {
   intent: WorkoutSessionIntent;
 }): WorkoutPlan {
   const prioritizedMuscleSet = new Set(input.prioritizedProtectedMuscles);
-  const preferredSupportMuscles = getUpperPreferredSupportMuscles(input.slotPolicy);
+  const preferredSupportMuscles = getProjectionPreferredSupportMuscles(input.slotPolicy);
   let bestCandidate = input.candidateWorkouts[0];
   let bestEvaluation: {
     relevantDeficitCount: number;
@@ -895,9 +873,9 @@ function projectSlotPlansPass(input: {
         slotProtectedCoverageMuscles.includes(muscle) ||
         !futurePrimaryProtectedMuscles.has(muscle)
     );
-    const preferredSupportTargetMuscles = getUpperPreferredSupportMuscles(slotPolicy);
-    const softPreferredSupportTargetMuscles = getUpperSoftPreferredSupportMuscles({
-      slotPolicy,
+    const preferredSupportTargetMuscles = getProjectionPreferredSupportMuscles(slotPolicy);
+    const softPreferredSupportTargetMuscles = getProjectionSoftPreferredSupportMuscles({
+      slot: slotPolicy,
       protectedMuscles: slotProtectedCoverageMuscles,
     });
     const useStructuralUpperTargeting = slotPolicy?.sessionIntent === "upper";

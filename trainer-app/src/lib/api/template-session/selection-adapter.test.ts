@@ -537,8 +537,9 @@ describe("buildSelectionObjective continuity bias", () => {
       },
       sessionShape: {
         id: "lower_hinge_dominant",
-        preferredAccessoryPrimaryMuscles: ["Hamstrings", "Calves", "Glutes"],
+        preferredAccessoryPrimaryMuscles: ["Quads", "Calves"],
         protectedWeekOneCoverageMuscles: ["Hamstrings", "Calves"],
+        requiredMovementPatterns: ["squat"],
         avoidDuplicatePatterns: ["hinge"],
         supportPenaltyPatterns: ["squat"],
         maxPreferredSupportPerPattern: 1,
@@ -918,6 +919,11 @@ describe("buildSelectionObjective continuity bias", () => {
 
     expect(selectedCompoundPatterns(lowerA).slice(0, 2)).toEqual(["squat", "squat"]);
     expect(selectedCompoundPatterns(lowerB).slice(0, 2)).toEqual(["hinge", "hinge"]);
+    expect(
+      lowerB.selected.some((candidate) =>
+        (candidate.exercise.primaryMuscles ?? []).includes("Quads")
+      )
+    ).toBe(true);
   });
 
   it("falls back cleanly when the preferred repeated-slot compound pattern is unavailable", () => {

@@ -195,8 +195,9 @@ describe("resolveSessionSlotPolicy", () => {
       },
       sessionShape: {
         id: "lower_hinge_dominant",
-        preferredAccessoryPrimaryMuscles: ["Hamstrings", "Calves", "Glutes"],
+        preferredAccessoryPrimaryMuscles: ["Quads", "Calves"],
         protectedWeekOneCoverageMuscles: ["Hamstrings", "Calves"],
+        requiredMovementPatterns: ["squat"],
         avoidDuplicatePatterns: ["hinge"],
         supportPenaltyPatterns: ["squat"],
         maxPreferredSupportPerPattern: 1,
@@ -485,7 +486,7 @@ describe("resolveSessionSlotPolicy", () => {
     ]);
     expect(
       policy.futurePlanning.futureSlots[0]?.sessionShape?.preferredAccessoryPrimaryMuscles
-    ).toEqual(["Hamstrings", "Calves", "Glutes"]);
+    ).toEqual(["Quads", "Calves"]);
   });
 
   it("resolves per-lane active tiers and allowed exercises from the canonical contract", () => {

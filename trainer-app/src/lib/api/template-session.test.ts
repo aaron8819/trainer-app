@@ -539,7 +539,11 @@ describe("generateSessionFromIntent", () => {
       const hingeAccessories = result.workout.accessories.filter((entry) =>
         entry.exercise.movementPatterns.includes("hinge")
       );
+      const quadAccessories = result.workout.accessories.filter((entry) =>
+        (entry.exercise.primaryMuscles ?? []).includes("Quads")
+      );
       expect(hingeAccessories.length).toBeLessThanOrEqual(1);
+      expect(quadAccessories).toHaveLength(1);
       expect(result.workout.accessories.map((entry) => entry.exercise.id)).toContain("leg-press");
     } finally {
       selectSpy.mockRestore();

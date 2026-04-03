@@ -316,6 +316,38 @@ export function getProjectionRepairCompatibleMuscles(
   });
 }
 
+export function getProjectionPreferredSupportMuscles(
+  slot:
+    | Pick<SessionSlotPolicySlot, "sessionShape">
+    | null
+    | undefined
+): string[] {
+  return Array.from(new Set(slot?.sessionShape?.preferredAccessoryPrimaryMuscles ?? []));
+}
+
+export function getProjectionSoftPreferredSupportMuscles(input: {
+  slot:
+    | Pick<SessionSlotPolicySlot, "sessionShape" | "compoundBias">
+    | null
+    | undefined;
+  protectedMuscles: readonly string[];
+}): string[] {
+  const protectedMuscleSet = new Set(
+    input.protectedMuscles.map(normalizeMuscleLabel)
+  );
+  const primaryLaneMuscleSet = new Set(
+    (input.slot?.compoundBias?.preferredPrimaryMuscles ?? []).map(normalizeMuscleLabel)
+  );
+
+  return getProjectionPreferredSupportMuscles(input.slot).filter((muscle) => {
+    const normalizedMuscle = normalizeMuscleLabel(muscle);
+    return (
+      !protectedMuscleSet.has(normalizedMuscle) &&
+      !primaryLaneMuscleSet.has(normalizedMuscle)
+    );
+  });
+}
+
 function appendProjectionRepairMusclesToSessionShape(input: {
   sessionShape: SessionSlotShape | undefined;
   slot: Pick<SessionSlotPolicySlot, "sessionShape" | "slotArchetype"> | null | undefined;

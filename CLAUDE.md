@@ -23,12 +23,20 @@
 - `rg --files trainer-app/src | rg "<feature>"`
 - `rg --files trainer-app/src -g "*.test.ts" -g "*.test.tsx" | rg "<feature>"`
 
+## Skills (mandatory usage)
+- Use `seam-locator` before any change where ownership is not obvious
+- Use `architecture-guard` before and during all non-trivial code edits
+- Use `workout-generation-audit` for any non-trivial change that can affect generated or projected training output.
+- Use `implementation-planner` before any non-trivial change that requires more than one edit step or touches multiple files, seams, tests, routes, docs, or verification commands.
+- Use `receipt-integrity` for any change that touches `selectionMetadata.sessionDecisionReceipt`, receipt-backed meaning, or consumers that depend on persisted session-decision context.
+
 ## Canonical Boundaries
 - Resolve runtime identity via `resolveOwner()` in `trainer-app/src/lib/api/workout-context.ts`. Do not add alternate user-resolution paths in app routes.
 - Keep route handlers thin. Business logic belongs in `src/lib/api`; pure decision logic belongs in `src/lib/engine`.
 - `selectionMetadata.sessionDecisionReceipt` is the canonical stored session-decision/evidence payload. Do not introduce parallel top-level mirrors for session context.
 - `deriveSessionSemantics()` is the owner for session-level meaning such as advancing vs non-advancing, progression-history eligibility, and slot consumption.
 - `loadNextWorkoutContext()` is the canonical next-session derivation seam.
+- For accepted mesocycles with supported intents, runtime exercise composition is owned by `Mesocycle.slotPlanSeedJson` plus canonical slot-runtime resolution. Do not reintroduce `MesocycleExerciseRole`, raw intent composition, or UI-local heuristics as a second seeded runtime source of truth.
 - Mesocycle lifecycle transitions belong in `mesocycle-lifecycle*` and `mesocycle-handoff*`, not in page/UI heuristics.
 - Closed-mesocycle save/log/resume fences belong at route/workflow contracts, not client-only checks.
 - Validation-backed enum/runtime contract values are centralized in `trainer-app/docs/contracts/runtime-contracts.json` and `trainer-app/src/lib/validation.ts`.
@@ -106,4 +114,5 @@
 - Do not scatter advancing/gap-fill/supplemental/deload policy across routes, UI, analytics, and history when a shared semantic seam already exists.
 - Do not bypass `resolveOwner()` in app surfaces.
 - Do not create UI-local progression or lifecycle rules that can drift from `src/lib/api` and `src/lib/engine`.
+- Do not treat `MesocycleExerciseRole` as the seeded runtime composition source for supported accepted mesocycles; it is fallback/projection-only after the slot-plan migration.
 - Do not treat `docs/archive/` as current contract truth.

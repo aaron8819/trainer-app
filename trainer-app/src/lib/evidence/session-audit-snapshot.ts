@@ -101,9 +101,40 @@ function parseProgressionTraceRecord(value: unknown): Record<string, Progression
         return [];
       }
 
-      return [[exerciseId, item as unknown as ProgressionDecisionTrace]];
+      return [[exerciseId, normalizeProgressionTrace(item)]];
     })
   );
+}
+
+function normalizeProgressionTrace(value: JsonRecord): ProgressionDecisionTrace {
+  const anchor = toObject(value.anchor) ?? {};
+  const outcome = toObject(value.outcome) ?? {};
+  const normalizedAnchorSource =
+    anchor.source === "top_set_override" ? "working_set" : anchor.source;
+  const normalizedReasonCodes = Array.isArray(outcome.reasonCodes)
+    ? outcome.reasonCodes.map((reason) =>
+        reason === "anchor_override_applied" ? "working_set_anchor_applied" : reason
+      )
+    : [];
+
+  return {
+    ...(value as unknown as ProgressionDecisionTrace),
+    anchor: {
+      ...(anchor as unknown as ProgressionDecisionTrace["anchor"]),
+      source:
+        normalizedAnchorSource === "working_set" || normalizedAnchorSource === "conservative_modal"
+          ? normalizedAnchorSource
+          : "conservative_modal",
+      workingSetApplied:
+        typeof anchor.workingSetApplied === "boolean"
+          ? anchor.workingSetApplied
+          : normalizedAnchorSource === "working_set",
+    },
+    outcome: {
+      ...(outcome as unknown as ProgressionDecisionTrace["outcome"]),
+      reasonCodes: normalizedReasonCodes,
+    },
+  };
 }
 
 function parseDeloadTrace(value: unknown): DeloadTransformationTrace | undefined {

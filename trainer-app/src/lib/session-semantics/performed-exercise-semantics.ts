@@ -1,7 +1,10 @@
 import type { ProgressionSet } from "@/lib/engine/progression";
 import {
+  derivePlannedLoadStructure,
   resolveProgressionAnchorStrategy,
+  resolveWorkingSetLoad,
   type ProgressionAnchorStrategy,
+  type PlannedLoadStructure,
 } from "@/lib/progression/anchoring";
 
 const EFFECTIVE_RPE_MIN = 6;
@@ -15,18 +18,17 @@ export type PerformedExerciseSetInput = {
   wasSkipped?: boolean;
 };
 
-export type PlannedSetStructure = "straight_sets" | "top_set_backoff" | "insufficient_data";
+export type PlannedSetStructure = PlannedLoadStructure;
 
 export type PerformedExerciseSemantics = {
   signalSets: ProgressionSet[];
   anchorStrategy: ProgressionAnchorStrategy;
   anchorLoad: number | null;
+  workingSetLoad: number | null;
   medianReps: number | null;
   modalRpe: number | null;
-  topSetLoad: number | null;
-  backoffLoad: number | null;
   plannedSetStructure: PlannedSetStructure;
-  hasPlannedBackoffTransition: boolean;
+  hasUniformTargetLoad: boolean;
 };
 
 export function derivePerformedExerciseSemantics(input: {
@@ -58,89 +60,38 @@ export function derivePerformedExerciseSemantics(input: {
     return null;
   }
 
-  const signalEntries = input.sets.filter(
-    (set) =>
-      !set.wasSkipped &&
-      Number.isFinite(set.actualReps) &&
-      (set.actualReps ?? 0) > 0 &&
-      Number.isFinite(set.actualLoad) &&
-      (set.actualLoad ?? 0) >= 0 &&
-      (set.actualRpe == null || set.actualRpe >= EFFECTIVE_RPE_MIN)
-  );
-
-  const topSetLoad = resolveTopSessionLoad(signalEntries);
-  const backoffLoad = resolveBackoffLoad(signalEntries, topSetLoad);
-  const modalLoad = resolveModalLoad(signalSets);
-  const anchorLoad = anchorStrategy === "top_set" ? topSetLoad : modalLoad;
+  const workingSetLoad = resolveWorkingSetLoad({
+    isMainLiftEligible: input.isMainLiftEligible,
+    sets: input.sets.map((set) => ({
+      setIndex: set.setIndex,
+      load: set.actualLoad,
+      targetLoad: set.targetLoad,
+      rpe: set.actualRpe,
+    })),
+  });
 
   return {
     signalSets,
     anchorStrategy,
-    anchorLoad,
+    anchorLoad: workingSetLoad,
+    workingSetLoad,
     medianReps: resolveMedian(signalSets.map((set) => set.reps)),
     modalRpe: resolveModalRpe(signalSets),
-    topSetLoad,
-    backoffLoad,
     plannedSetStructure,
-    hasPlannedBackoffTransition: plannedSetStructure === "top_set_backoff",
+    hasUniformTargetLoad: plannedSetStructure === "uniform_working_sets",
   };
 }
 
 export function derivePlannedSetStructure(
-  sets: Array<Pick<PerformedExerciseSetInput, "setIndex" | "targetLoad">>
+  sets: Array<Pick<PerformedExerciseSetInput, "setIndex" | "targetLoad" | "actualLoad">>
 ): PlannedSetStructure {
-  const ordered = [...sets]
-    .filter((set) => Number.isFinite(set.targetLoad))
-    .sort((left, right) => left.setIndex - right.setIndex);
-  if (ordered.length < 2) {
-    return "insufficient_data";
-  }
-
-  const firstLoad = ordered[0]?.targetLoad ?? null;
-  const hasLowerLaterLoad = ordered.slice(1).some((set) => (set.targetLoad ?? 0) < (firstLoad ?? 0));
-  return hasLowerLaterLoad ? "top_set_backoff" : "straight_sets";
-}
-
-function resolveTopSessionLoad(sets: PerformedExerciseSetInput[]): number | null {
-  const ordered = [...sets].sort((left, right) => left.setIndex - right.setIndex);
-  for (const set of ordered) {
-    if (Number.isFinite(set.actualLoad) && (set.actualLoad ?? 0) >= 0) {
-      return set.actualLoad as number;
-    }
-  }
-  return null;
-}
-
-function resolveBackoffLoad(
-  sets: PerformedExerciseSetInput[],
-  topSetLoad: number | null
-): number | null {
-  if (topSetLoad == null) {
-    return null;
-  }
-  const laterLoads = sets
-    .filter(
-      (set) =>
-        set.setIndex > 1 &&
-        Number.isFinite(set.actualLoad) &&
-        (set.actualLoad ?? 0) >= 0 &&
-        (set.actualLoad as number) < topSetLoad
-    )
-    .map((set) => set.actualLoad as number);
-  if (laterLoads.length === 0) {
-    return null;
-  }
-  return resolveModalNumber(laterLoads);
-}
-
-function resolveModalLoad(sets: ProgressionSet[]): number | null {
-  const loads = sets
-    .map((set) => set.load)
-    .filter((load): load is number => load != null && Number.isFinite(load) && load >= 0);
-  if (loads.length === 0) {
-    return null;
-  }
-  return resolveModalNumber(loads);
+  return derivePlannedLoadStructure(
+    sets.map((set) => ({
+      setIndex: set.setIndex,
+      targetLoad: set.targetLoad,
+      load: set.actualLoad,
+    }))
+  );
 }
 
 function resolveModalRpe(sets: ProgressionSet[]): number | null {

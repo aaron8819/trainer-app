@@ -93,7 +93,7 @@ describe("progression correctness", () => {
       ],
       [6, 10],
       "barbell",
-      { anchorOverride: 120, priorSessionCount: 3 }
+      { workingSetLoad: 120, priorSessionCount: 3 }
     );
 
     expect(decision?.path).toBe("fallback_hold");
@@ -101,7 +101,7 @@ describe("progression correctness", () => {
     expect(decision?.decisionLog.join(" | ")).toContain("median reps=7.0, rep-range top=10");
     expect(decision?.trace.outcome.action).toBe("hold");
     expect(decision?.trace.outcome.reasonCodes).toContain("progression_conditions_not_met");
-    expect(decision?.trace.outcome.reasonCodes).toContain("anchor_override_applied");
+    expect(decision?.trace.outcome.reasonCodes).toContain("working_set_anchor_applied");
   });
 
   it("holds load even after overshooting prescription when fatigue is already high", () => {
@@ -131,7 +131,7 @@ describe("progression correctness", () => {
       ],
       [6, 10],
       "barbell",
-      { anchorOverride: 145, priorSessionCount: 3 }
+      { workingSetLoad: 145, priorSessionCount: 3 }
     );
 
     expect(decision?.path).toBe("path_5_overshoot");
@@ -150,7 +150,7 @@ describe("progression correctness", () => {
       ],
       [6, 10],
       "barbell",
-      { anchorOverride: 155, priorSessionCount: 3 }
+      { workingSetLoad: 155, priorSessionCount: 3 }
     );
 
     expect(decision?.path).toBe("path_5_overshoot");
@@ -170,7 +170,7 @@ describe("progression correctness", () => {
       ],
       [6, 10],
       "barbell",
-      { anchorOverride: 145, priorSessionCount: 3 }
+      { workingSetLoad: 145, priorSessionCount: 3 }
     );
 
     expect(decision?.path).toBe("path_5_overshoot");
@@ -188,7 +188,7 @@ describe("progression correctness", () => {
       ],
       [6, 10],
       "barbell",
-      { anchorOverride: 145, priorSessionCount: 3 }
+      { workingSetLoad: 145, priorSessionCount: 3 }
     );
 
     expect(decision?.path).toBe("path_4");
@@ -208,7 +208,7 @@ describe("progression correctness", () => {
       ],
       [6, 10],
       "barbell",
-      { anchorOverride: 145, priorSessionCount: 3 }
+      { workingSetLoad: 145, priorSessionCount: 3 }
     );
 
     expect(decision?.path).toBe("fallback_hold");

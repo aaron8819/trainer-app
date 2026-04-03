@@ -25,10 +25,9 @@ export type DoubleProgressionDecisionOptions = {
   priorSessionCount?: number;
   historyConfidenceScale?: number;
   confidenceReasons?: string[];
-  /** Override the anchor load instead of computing from modal distribution.
-   *  Used for main lifts (top set + back-offs) so progression anchors to the
-   *  top set rather than the more-frequent back-off weight. */
-  anchorOverride?: number;
+  /** Canonical working-set load for this exposure when the caller has already
+   *  resolved the representative working load. */
+  workingSetLoad?: number;
 };
 
 export const PROGRESSION_CONFIG = {
@@ -211,8 +210,8 @@ export function computeDoubleProgressionDecision(
   const effectiveSets = trimmedSets.length > 0 ? trimmedSets : signalSets;
 
   const anchorLoad =
-    options?.anchorOverride !== undefined
-      ? options.anchorOverride
+    options?.workingSetLoad !== undefined
+      ? options.workingSetLoad
       : resolveConservativeModalLoad(effectiveSets);
   if (anchorLoad == null) {
     return undefined;
@@ -227,7 +226,7 @@ export function computeDoubleProgressionDecision(
   const historyConfidenceScale = clampConfidenceScale(options?.historyConfidenceScale);
   const progressionConfidenceScale = Number((sampleConfidenceScale * historyConfidenceScale).toFixed(2));
   const anchorSource =
-    options?.anchorOverride !== undefined ? "top_set_override" : "conservative_modal";
+    options?.workingSetLoad !== undefined ? "working_set" : "conservative_modal";
 
   if (hasHighVariance) {
     decisionLog.push(
@@ -559,7 +558,7 @@ function buildProgressionDecisionTrace(input: {
   nextLoad: number;
   path: ProgressionDecisionPath;
   decisionLog: string[];
-  anchorSource: "top_set_override" | "conservative_modal";
+  anchorSource: "working_set" | "conservative_modal";
   signalSetCount: number;
   effectiveSetCount: number;
   trimmedSetCount: number;
@@ -588,7 +587,7 @@ function buildProgressionDecisionTrace(input: {
     equipment: input.equipment,
     anchor: {
       source: input.anchorSource,
-      overrideApplied: input.anchorSource === "top_set_override",
+      workingSetApplied: input.anchorSource === "working_set",
       anchorLoad: input.anchorLoad,
       signalSetCount: input.signalSetCount,
       effectiveSetCount: input.effectiveSetCount,
@@ -621,7 +620,7 @@ function buildProgressionDecisionTrace(input: {
             : "hold",
       reasonCodes: [
         ...input.reasonCodes,
-        ...(input.anchorSource === "top_set_override" ? ["anchor_override_applied"] : []),
+        ...(input.anchorSource === "working_set" ? ["working_set_anchor_applied"] : []),
         ...(input.hasHighVariance ? ["high_variance_trim_applied"] : []),
       ],
     },

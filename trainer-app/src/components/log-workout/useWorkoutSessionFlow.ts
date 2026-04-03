@@ -24,7 +24,6 @@ import type {
 } from "@/components/log-workout/types";
 import { getSetValidity } from "@/lib/logging/setValidity";
 import { getLoadRecommendation } from "@/lib/progression/load-coaching";
-import { derivePlannedSetStructure } from "@/lib/session-semantics/performed-exercise-semantics";
 
 export type WorkoutSessionActions = {
   logSet: (setId: string, overrides?: Partial<LogSetInput>) => Promise<boolean>;
@@ -269,15 +268,6 @@ export function useWorkoutSessionFlow({
             rir: 10 - normalizedSet.actualRpe,
             actualLoad: normalizedSet.actualLoad,
             targetLoad: nextExerciseSet.set.targetLoad,
-            plannedBackoffTransition:
-              derivePlannedSetStructure(
-                targetSet.exercise.sets.map((set) => ({
-                  setIndex: set.setIndex,
-                  targetLoad: set.targetLoad,
-                }))
-              ) === "top_set_backoff" &&
-              targetSet.set.setIndex === 1 &&
-              nextExerciseSet.set.setIndex > targetSet.set.setIndex,
             repRange,
             targetRir: 10 - nextExerciseSet.set.targetRpe,
           });

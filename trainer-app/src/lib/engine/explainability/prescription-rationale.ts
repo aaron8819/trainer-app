@@ -67,9 +67,9 @@ export function explainPrescriptionRationale(
     blockDurationWeeks,
   } = context;
 
-  // Get top set for representative prescription
-  const topSet = [...sets].sort((a, b) => a.setIndex - b.setIndex)[0];
-  if (!topSet) {
+  // Use the first prescribed working set as the representative prescription summary.
+  const representativeSet = [...sets].sort((a, b) => a.setIndex - b.setIndex)[0];
+  if (!representativeSet) {
     throw new Error("No sets provided for prescription rationale");
   }
 
@@ -83,23 +83,23 @@ export function explainPrescriptionRationale(
   );
 
   const repRationale = explainRepTarget(
-    topSet.targetReps ?? topSet.targetRepRange?.min ?? 8,
+    representativeSet.targetReps ?? representativeSet.targetRepRange?.min ?? 8,
     goals.primary,
     isMainLift,
     context.exerciseRepRange
   );
 
   const loadRationale = explainLoadChoice(
-    topSet.targetLoad,
+    representativeSet.targetLoad,
     context.lastSessionLoad,
     context.lastSessionReps,
-    topSet.targetReps ?? topSet.targetRepRange?.min,
+    representativeSet.targetReps ?? representativeSet.targetRepRange?.min,
     profile.trainingAge,
     periodization
   );
 
   const rirRationale = explainRirTarget(
-    topSet.targetRpe,
+    representativeSet.targetRpe,
     weekInMesocycle,
     weekInBlock,
     blockDurationWeeks,
@@ -113,14 +113,14 @@ export function explainPrescriptionRationale(
     context.restSeconds,
     exercise,
     isMainLift,
-    topSet.targetReps ?? topSet.targetRepRange?.min
+    representativeSet.targetReps ?? representativeSet.targetRepRange?.min
   );
 
   // Build overall narrative
-  const reps = topSet.targetReps ?? topSet.targetRepRange?.min ?? 8;
+  const reps = representativeSet.targetReps ?? representativeSet.targetRepRange?.min ?? 8;
   const unit = context.weightUnit ?? "lbs";
-  const load = topSet.targetLoad ? `${topSet.targetLoad}${unit}` : "BW";
-  const rir = topSet.targetRpe ? 10 - topSet.targetRpe : 2;
+  const load = representativeSet.targetLoad ? `${representativeSet.targetLoad}${unit}` : "BW";
+  const rir = representativeSet.targetRpe ? 10 - representativeSet.targetRpe : 2;
   const rest = context.restSeconds ? formatRestDuration(context.restSeconds) : "2 min";
 
   const overallNarrative = `${sets.length}×${reps} @ ${load}, ${rir} RIR, ${rest} rest — ${setRationale.blockContext.toLowerCase()}`;

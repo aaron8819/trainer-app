@@ -80,8 +80,8 @@ export type ProgressionDecisionTrace = {
   };
   equipment: "barbell" | "dumbbell" | "cable" | "other";
   anchor: {
-    source: "top_set_override" | "conservative_modal";
-    overrideApplied: boolean;
+    source: "working_set" | "conservative_modal";
+    workingSetApplied: boolean;
     anchorLoad: number;
     signalSetCount: number;
     effectiveSetCount: number;

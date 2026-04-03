@@ -260,7 +260,7 @@ describe("buildWorkoutAuditArtifact", () => {
             equipment: "barbell",
             anchor: {
               source: "conservative_modal",
-              overrideApplied: false,
+              workingSetApplied: false,
               anchorLoad: 200,
               signalSetCount: 1,
               effectiveSetCount: 1,

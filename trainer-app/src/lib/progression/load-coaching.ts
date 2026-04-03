@@ -3,7 +3,6 @@ export type LoadRecommendationInput = {
   rir?: number | null;
   actualLoad?: number | null;
   targetLoad?: number | null;
-  plannedBackoffTransition?: boolean;
   repRange: { min: number; max: number };
   targetRir: number;
 };
@@ -16,37 +15,17 @@ export type LoadRecommendation =
 const LOAD_EPSILON = 1e-6;
 
 export function getLoadRecommendation(input: LoadRecommendationInput): LoadRecommendation | null {
-  const { reps, rir, actualLoad, targetLoad, plannedBackoffTransition, repRange, targetRir } = input;
+  const { reps, rir, actualLoad, targetLoad, repRange, targetRir } = input;
   if (reps == null || rir == null) {
     return null;
   }
 
   const isAbovePrescribedLoad =
-    !plannedBackoffTransition &&
     actualLoad != null &&
     targetLoad != null &&
     Number.isFinite(actualLoad) &&
     Number.isFinite(targetLoad) &&
     actualLoad > targetLoad + LOAD_EPSILON;
-
-  if (plannedBackoffTransition) {
-    if (reps < repRange.min && rir <= targetRir - 1) {
-      return {
-        action: "decrease",
-        message: "That top set ran hard. Next set is a planned back-off, so reduce load as written.",
-      };
-    }
-    if (reps >= repRange.max && rir >= targetRir + 1) {
-      return {
-        action: "hold",
-        message: "Top set moved well. Next set is a planned back-off, so reduce load as written.",
-      };
-    }
-    return {
-      action: "hold",
-      message: "Next set is a planned back-off. Reduce load as written and keep technique stable.",
-    };
-  }
 
   if (reps >= repRange.max && rir >= targetRir + 1) {
     return { action: "increase", message: "Set felt easier than target. Consider +2.5 lbs for next set." };

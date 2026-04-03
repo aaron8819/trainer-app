@@ -6,7 +6,7 @@ import {
 } from "./performed-exercise-semantics";
 
 describe("derivePerformedExerciseSemantics", () => {
-  it("anchors main-lift semantics to the top set load and summarizes effort", () => {
+  it("anchors main-lift semantics to one representative working-set load and summarizes effort", () => {
     const semantics = derivePerformedExerciseSemantics({
       isMainLiftEligible: true,
       sets: [
@@ -17,14 +17,13 @@ describe("derivePerformedExerciseSemantics", () => {
     });
 
     expect(semantics).toMatchObject({
-      anchorStrategy: "top_set",
+      anchorStrategy: "working_set",
       anchorLoad: 70,
+      workingSetLoad: 70,
       medianReps: 10,
       modalRpe: 8,
-      topSetLoad: 70,
-      backoffLoad: 60,
-      plannedSetStructure: "top_set_backoff",
-      hasPlannedBackoffTransition: true,
+      plannedSetStructure: "variable_working_sets",
+      hasUniformTargetLoad: false,
     });
   });
 
@@ -42,10 +41,11 @@ describe("derivePerformedExerciseSemantics", () => {
     expect(semantics).toMatchObject({
       anchorStrategy: "modal",
       anchorLoad: 40,
+      workingSetLoad: 40,
       medianReps: 10,
       modalRpe: 8,
-      plannedSetStructure: "straight_sets",
-      hasPlannedBackoffTransition: false,
+      plannedSetStructure: "variable_working_sets",
+      hasUniformTargetLoad: false,
     });
   });
 
@@ -69,22 +69,22 @@ describe("derivePerformedExerciseSemantics", () => {
 });
 
 describe("derivePlannedSetStructure", () => {
-  it("classifies a planned top-set to backoff transition", () => {
+  it("classifies non-uniform planned loads as variable working sets", () => {
     expect(
       derivePlannedSetStructure([
         { setIndex: 1, targetLoad: 70 },
         { setIndex: 2, targetLoad: 60 },
         { setIndex: 3, targetLoad: 60 },
       ])
-    ).toBe("top_set_backoff");
+    ).toBe("variable_working_sets");
   });
 
-  it("classifies stable loads as straight sets", () => {
+  it("classifies stable loads as uniform working sets", () => {
     expect(
       derivePlannedSetStructure([
         { setIndex: 1, targetLoad: 50 },
         { setIndex: 2, targetLoad: 50 },
       ])
-    ).toBe("straight_sets");
+    ).toBe("uniform_working_sets");
   });
 });

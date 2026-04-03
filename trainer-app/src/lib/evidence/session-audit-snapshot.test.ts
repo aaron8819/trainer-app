@@ -90,8 +90,8 @@ describe("session-audit-snapshot", () => {
           repRange: { min: 6, max: 8 },
           equipment: "barbell",
           anchor: {
-            source: "top_set_override",
-            overrideApplied: true,
+            source: "working_set",
+            workingSetApplied: true,
             anchorLoad: 200,
             signalSetCount: 3,
             effectiveSetCount: 3,
@@ -149,6 +149,90 @@ describe("session-audit-snapshot", () => {
       status: "COMPLETED",
       advancesSplit: true,
     });
+  });
+
+  it("normalizes legacy progression trace vocabulary when reading persisted snapshots", () => {
+    const snapshot = readSessionAuditSnapshot({
+      sessionAuditSnapshot: {
+        version: 1,
+        generated: {
+          selectionMode: "INTENT",
+          sessionIntent: "PUSH",
+          semantics: {
+            kind: "advancing",
+            effectiveSelectionMode: "INTENT",
+            isDeload: false,
+            isStrictGapFill: false,
+            isStrictSupplemental: false,
+            advancesLifecycle: true,
+            consumesWeeklyScheduleIntent: true,
+            countsTowardCompliance: true,
+            countsTowardRecentStimulus: true,
+            countsTowardWeeklyVolume: true,
+            countsTowardProgressionHistory: true,
+            countsTowardPerformanceHistory: true,
+            updatesProgressionAnchor: true,
+            eligibleForUniqueIntentSubtraction: true,
+            reasons: [],
+            trace: {
+              advancesSplitInput: true,
+            },
+          },
+          exerciseCount: 0,
+          hardSetCount: 0,
+          exercises: [],
+          traces: {
+            progression: {
+              bench: {
+                version: 1,
+                decisionSource: "double_progression",
+                repRange: { min: 6, max: 8 },
+                equipment: "barbell",
+                anchor: {
+                  source: "top_set_override",
+                  overrideApplied: true,
+                  anchorLoad: 200,
+                  signalSetCount: 3,
+                  effectiveSetCount: 3,
+                  trimmedSetCount: 0,
+                  highVarianceDetected: false,
+                  minSignalLoad: 200,
+                  maxSignalLoad: 200,
+                  medianSignalLoad: 200,
+                },
+                confidence: {
+                  priorSessionCount: 3,
+                  sampleScale: 1,
+                  historyScale: 1,
+                  combinedScale: 1,
+                  reasons: [],
+                },
+                metrics: {
+                  medianReps: 8,
+                  modalRpe: 8,
+                  nextLoad: 205,
+                  loadDelta: 5,
+                },
+                outcome: {
+                  path: "path_3",
+                  action: "increase",
+                  reasonCodes: ["top_of_range_reached", "anchor_override_applied"],
+                },
+                decisionLog: ["Path 3 fired"],
+              },
+            },
+          },
+        },
+      },
+    });
+
+    expect(snapshot?.generated?.traces.progression.bench.anchor).toMatchObject({
+      source: "working_set",
+      workingSetApplied: true,
+    });
+    expect(snapshot?.generated?.traces.progression.bench.outcome.reasonCodes).toContain(
+      "working_set_anchor_applied"
+    );
   });
 
   it("emits gap-fill and supplemental semantics traces from canonical markers", () => {

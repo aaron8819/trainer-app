@@ -5,8 +5,8 @@
  *        Cap at MAIN_LIFT_MAX_WORKING_SETS=5 when role=CORE_COMPOUND.
  * Fix 2: Dip bodyweight load — hybrid equipment [bodyweight, machine] was falling
  *        through to the machine floor (10 lbs) when there was no load history.
- * Fix 3: Main lift anchor — progression anchored to back-off weight (modal=40) instead
- *        of top set (45), producing a phantom −11.1% "hold" every session.
+ * Fix 3: Main lift anchor — progression anchored to the lighter repeated load (40)
+ *        instead of the representative working load (45), producing a phantom −11.1% "hold" every session.
  * Fix 4: Float display — Forearms showing 8.999... sets. Fixed in SessionContextCard +
  *        explainability.ts (no engine test; verified via code inspection).
  */
@@ -454,7 +454,7 @@ const seatedCalf = exercise({
 
 // ---------------------------------------------------------------------------
 // W2S2 Push history (the bug scenario)
-// IDBP: 1 top set @ 45 lbs + 4 back-off sets @ 40 lbs, all rpe=8, reps=8
+// IDBP legacy history: 1 heavier opening set @ 45 lbs + 4 lighter sets @ 40 lbs, all rpe=8, reps=8
 // Dip:  5 sets @ load=0 (bodyweight), rpe=8, reps=8
 // ---------------------------------------------------------------------------
 
@@ -1324,10 +1324,9 @@ describe("W3S1 Push regression — 4 engine bug fixes", () => {
     }
   });
 
-  it("Fix 3: IDBP top set targetLoad ≥ 40 (anchored to top set 45, not back-off modal 40)", async () => {
-    // W2S2: setIndex=1 @ 45 lbs (top), setIndex=2-5 @ 40 lbs (back-offs)
-    // Without anchorOverride: resolveConservativeModalLoad returns 40 → Path 4 hold at 40 → -11.1%
-    // With anchorOverride=45: Path 4 fires but holds at 45 → no phantom reduction
+  it("Fix 3: IDBP working sets stay uniform and avoid the lighter legacy anchor", async () => {
+    // W2S2 legacy history: setIndex=1 @ 45 lbs, setIndex=2-5 @ 40 lbs.
+    // The new path resolves one representative working load and applies it uniformly.
     const result = await generateSessionFromIntent("user-1", { intent: "push" });
     if ("error" in result) {
       throw new Error(`Unexpected error: ${result.error}`);
@@ -1336,13 +1335,18 @@ describe("W3S1 Push regression — 4 engine bug fixes", () => {
     if (!idbpSets || idbpSets.length === 0) {
       throw new Error("IDBP not present in workout");
     }
-    // All sets should have load ≥ 40 — no phantom reduction below the back-off weight
+    // All working sets should stay at or above the lighter legacy repeated load.
     for (const set of idbpSets) {
       if (set.targetLoad !== undefined) {
         expect(set.targetLoad).toBeGreaterThanOrEqual(40);
       }
     }
-    // The top set (first working set) should be ≥ 45 (anchored to top set load)
+    // The generated working-set prescription should now be uniform.
+    const uniformWorkingLoads = idbpSets
+      .map((set) => set.targetLoad)
+      .filter((load): load is number => load !== undefined);
+    expect(new Set(uniformWorkingLoads).size).toBeLessThanOrEqual(1);
+    // The first working set should stay anchored to the representative 45-lb working load.
     const firstSetLoad = idbpSets[0]?.targetLoad;
     if (firstSetLoad !== undefined) {
       expect(firstSetLoad).toBeGreaterThanOrEqual(45);

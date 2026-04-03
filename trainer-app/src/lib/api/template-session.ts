@@ -236,7 +236,7 @@ function sortPinnedFirst(
   return [...pinned, ...unpinned];
 }
 
-// Hard cap on working sets for CORE_COMPOUND main lifts (1 top + back-offs).
+// Hard cap on working sets for CORE_COMPOUND main lifts.
 // Prevents the continuity ramp from exceeding what's prescribed by resolveSetCount.
 const MAIN_LIFT_MAX_WORKING_SETS = 5;
 const ACCESSORY_MAX_WORKING_SETS = 6;

@@ -1247,7 +1247,7 @@ async function buildExplainabilityCanonicalProgressionInput(
     lastSets: performedSemantics.signalSets,
     repRange,
     equipment: resolveProgressionEquipment(equipment),
-    anchorOverride: performedSemantics.anchorLoad ?? undefined,
+    workingSetLoad: performedSemantics.workingSetLoad ?? undefined,
     historySessions: await loadExplainabilityProgressionSessions(input),
   });
 }

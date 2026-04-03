@@ -137,16 +137,16 @@ const currentPerformedSets = [
   },
   {
     setIndex: 2,
-    targetLoad: 145,
-    actualLoad: 150,
+    targetLoad: 155,
+    actualLoad: 155,
     actualReps: 10,
     actualRpe: 7,
     wasSkipped: false,
   },
   {
     setIndex: 3,
-    targetLoad: 145,
-    actualLoad: 150,
+    targetLoad: 155,
+    actualLoad: 155,
     actualReps: 9,
     actualRpe: 7.5,
     wasSkipped: false,
@@ -273,17 +273,16 @@ describe("golden-path completed workout increase regression", () => {
 
     expect(performedSemantics).toMatchObject({
       anchorLoad: 155,
+      workingSetLoad: 155,
       medianReps: 10,
       modalRpe: 7,
-      topSetLoad: 155,
-      backoffLoad: 150,
-      plannedSetStructure: "top_set_backoff",
-      hasPlannedBackoffTransition: true,
+      plannedSetStructure: "uniform_working_sets",
+      hasUniformTargetLoad: true,
     });
     expect(performedSemantics?.signalSets).toEqual([
       { reps: 10, load: 155, rpe: 7, targetLoad: 155 },
-      { reps: 10, load: 150, rpe: 7, targetLoad: 145 },
-      { reps: 9, load: 150, rpe: 7.5, targetLoad: 145 },
+      { reps: 10, load: 155, rpe: 7, targetLoad: 155 },
+      { reps: 9, load: 155, rpe: 7.5, targetLoad: 155 },
     ]);
 
     const liveTopSetCue = getLoadRecommendation({
@@ -294,12 +293,11 @@ describe("golden-path completed workout increase regression", () => {
       repRange: { min: 8, max: 10 },
       targetRir: 2,
     });
-    const liveBackoffCue = getLoadRecommendation({
+    const liveNextSetCue = getLoadRecommendation({
       reps: 10,
       rir: 3,
       actualLoad: 155,
       targetLoad: 155,
-      plannedBackoffTransition: true,
       repRange: { min: 8, max: 10 },
       targetRir: 2,
     });
@@ -308,16 +306,16 @@ describe("golden-path completed workout increase regression", () => {
       action: "increase",
       message: "Set felt easier than target. Consider +2.5 lbs for next set.",
     });
-    expect(liveBackoffCue).toEqual({
-      action: "hold",
-      message: "Top set moved well. Next set is a planned back-off, so reduce load as written.",
+    expect(liveNextSetCue).toEqual({
+      action: "increase",
+      message: "Set felt easier than target. Consider +2.5 lbs for next set.",
     });
 
     const canonicalInput = buildCanonicalProgressionEvaluationInput({
       lastSets: performedSemantics?.signalSets ?? [],
       repRange: [8, 10],
       equipment: "barbell",
-      anchorOverride: performedSemantics?.anchorLoad ?? undefined,
+      workingSetLoad: performedSemantics?.workingSetLoad ?? undefined,
       historySessions: [
         {
           selectionMode: "INTENT",
@@ -338,7 +336,7 @@ describe("golden-path completed workout increase regression", () => {
       canonicalInput.decisionOptions
     );
 
-    expect(canonicalInput.context.anchorOverride).toBe(155);
+    expect(canonicalInput.context.workingSetLoad).toBe(155);
     expect(canonicalInput.repRange).toEqual([8, 10]);
     expect(canonicalDecision).toMatchObject({
       anchorLoad: 155,

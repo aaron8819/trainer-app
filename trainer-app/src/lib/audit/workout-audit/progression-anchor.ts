@@ -149,7 +149,7 @@ export async function buildProgressionAnchorAuditPayload(input: {
     equipment: resolveProgressionEquipment(
       current.exercise.exerciseEquipment.map((entry) => entry.equipment.type)
     ),
-    anchorOverride: performedSemantics.anchorLoad ?? undefined,
+    workingSetLoad: performedSemantics.workingSetLoad ?? undefined,
     historySessions: priorEligibleRows.map(buildHistorySession),
   });
   const decision = computeDoubleProgressionDecision(

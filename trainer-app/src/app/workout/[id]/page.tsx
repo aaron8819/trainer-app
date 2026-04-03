@@ -252,15 +252,11 @@ export default async function WorkoutDetailPage({
                   const isBodyweightExercise = hasBodyweightEquipment(exercise.exercise);
                   const isDumbbellExercise = hasDumbbellEquipment(exercise.exercise);
                   const targetLoad = exercise.sets[0]?.targetLoad;
-                  const topSetLoadDisplay = formatLoad(targetLoad, isDumbbellExercise, isBodyweightExercise);
-                  const backOffSets = exercise.sets.slice(1);
-                  const hasBackOff =
-                    backOffSets.length > 0 &&
-                    (backOffSets[0]?.targetReps !== exercise.sets[0]?.targetReps ||
-                      backOffSets[0]?.targetLoad !== exercise.sets[0]?.targetLoad);
-                  const backOffLoadDisplay = hasBackOff
-                    ? formatLoad(backOffSets[0]?.targetLoad, isDumbbellExercise, isBodyweightExercise)
-                    : null;
+                  const workingLoadDisplay = formatLoad(
+                    targetLoad,
+                    isDumbbellExercise,
+                    isBodyweightExercise
+                  );
 
                   const progressionReceipt = explanation?.progressionReceipts.get(exercise.exerciseId);
                   const loadNote = getLoadProvenanceNote({
@@ -296,23 +292,11 @@ export default async function WorkoutDetailPage({
                             ) : null}
                           </div>
                           <p className="mt-1 text-sm leading-6 text-slate-600">
-                            {hasBackOff ? (
-                              <>
-                                {`Top set: ${formatTargetRepDisplay(exercise.sets[0])}`}
-                                {topSetLoadDisplay ? ` | ${topSetLoadDisplay}` : ""}
-                                {exercise.sets[0]?.targetRpe ? ` | RPE ${exercise.sets[0].targetRpe}` : ""}
-                                {` + ${backOffSets.length}x back-off`}
-                                {backOffLoadDisplay
-                                  ? `: ${formatTargetRepDisplay(backOffSets[0])} | ${backOffLoadDisplay}`
-                                  : ""}
-                              </>
-                            ) : (
-                              <>
-                                {`${exercise.sets.length} sets - ${formatTargetRepDisplay(exercise.sets[0])}`}
-                                {topSetLoadDisplay ? ` | ${topSetLoadDisplay}` : ""}
-                                {exercise.sets[0]?.targetRpe ? ` | RPE ${exercise.sets[0].targetRpe}` : ""}
-                              </>
-                            )}
+                            <>
+                              {`${exercise.sets.length} sets - ${formatTargetRepDisplay(exercise.sets[0])}`}
+                              {workingLoadDisplay ? ` | ${workingLoadDisplay}` : ""}
+                              {exercise.sets[0]?.targetRpe ? ` | RPE ${exercise.sets[0].targetRpe}` : ""}
+                            </>
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
@@ -360,7 +344,7 @@ export default async function WorkoutDetailPage({
                             <div key={set.id} className="rounded-lg bg-slate-50 px-3 py-2">
                               <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
                                 <span className="flex items-center gap-2">
-                                  <span>{set.setIndex === 1 ? "Top set" : `Set ${set.setIndex}`}</span>
+                                  <span>{`Set ${set.setIndex}`}</span>
                                   {runtimeAddedSetIds.has(set.id) ? (
                                     <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
                                       Extra set

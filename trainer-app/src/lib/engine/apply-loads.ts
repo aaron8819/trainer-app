@@ -17,7 +17,10 @@ import {
   buildWarmupSetsFromTopSet,
   canResolveLoadForWarmupRamp,
 } from "./warmup-ramp";
-import { resolveProgressionAnchorStrategy } from "@/lib/progression/anchoring";
+import {
+  resolveProgressionAnchorStrategy,
+  resolveWorkingSetLoad,
+} from "@/lib/progression/anchoring";
 import {
   buildCanonicalProgressionEvaluationInput,
   type CanonicalProgressionHistorySession,
@@ -264,21 +267,27 @@ export function applyLoadsWithAudit(
     }
 
     if (exerciseEntry.isMainLift) {
-      const adjustedTopSetLoad = roundToHalf(load * intensityMultiplier);
+      const adjustedWorkingLoad = roundToHalf(load * intensityMultiplier);
+      const useUniformWorkingLoads = shouldUseUniformWorkingLoads({
+        primaryGoal: options.primaryGoal,
+      });
       const updatedSets = setsWithRole.map((set) => {
         if (set.targetLoad !== undefined) {
           return set;
         }
-          if (set.setIndex === 1) {
-            return { ...set, targetLoad: adjustedTopSetLoad };
-          }
-          return { ...set, targetLoad: roundToHalf(adjustedTopSetLoad * backOffMultiplier) };
-        });
+        if (useUniformWorkingLoads || set.setIndex === 1) {
+          return { ...set, targetLoad: adjustedWorkingLoad };
+        }
+        return {
+          ...set,
+          targetLoad: roundToHalf(adjustedWorkingLoad * backOffMultiplier),
+        };
+      });
       const updatedEntry = {
         ...exerciseEntry,
         role: exerciseEntry.role ?? workingRole,
         sets: updatedSets,
-        warmupSets: buildWarmupSets(adjustedTopSetLoad, trainingAge),
+        warmupSets: buildWarmupSets(adjustedWorkingLoad, trainingAge),
       };
       resolvedLoads[exercise.id] = {
         source: loadSource,
@@ -634,16 +643,23 @@ function resolveLoadForExercise(
           )
         : latestSets;
     const equipment = getPrimaryProgressionEquipment(exercise);
-    // For main lifts (top set + back-offs), anchor progression to the top set load.
-    // Modal anchoring would return the back-off weight (more frequent) and produce a
-    // phantom ~11% reduction on every session. Accessories keep modal anchoring.
-    const anchorOverride = !useModalAnchoring ? getTopSessionLoad(latestSets) : undefined;
+    const workingSetLoad = !useModalAnchoring
+      ? resolveWorkingSetLoad({
+          isMainLiftEligible: exercise.isMainLiftEligible,
+          sets: latestSets.map((set) => ({
+            setIndex: set.setIndex,
+            load: set.load,
+            targetLoad: set.targetLoad,
+            rpe: set.rpe,
+          })),
+        }) ?? undefined
+      : undefined;
     const progressionInput = buildCanonicalProgressionEvaluationInput({
       lastSets: latestSetsForDecision,
       repRange,
       equipment,
       historySessions,
-      anchorOverride,
+      workingSetLoad,
     });
     const decision = computeDoubleProgressionDecision(
       progressionInput.lastSets,
@@ -653,7 +669,7 @@ function resolveLoadForExercise(
     );
     const anchorLoad = useModalAnchoring
       ? (decision?.anchorLoad ?? weightedHistoryModalLoad ?? getModalSessionLoad(latestSets))
-      : getTopSessionLoad(latestSets);
+      : workingSetLoad;
     const modalRpe = getModalSessionRpe(latestSetsForDecision);
     if (anchorLoad !== undefined && modalRpe !== undefined && modalRpe >= 9) {
       return { load: anchorLoad, progressionTrace: decision?.trace, source: "history" };
@@ -728,33 +744,21 @@ function resolveDeloadReferenceLoad(
 
   const load = shouldUseModalAnchoring(exercise)
     ? getModalSessionLoad(latestAccumulationSets)
-    : getTopSessionLoad(latestAccumulationSets);
+    : resolveWorkingSetLoad({
+        isMainLiftEligible: exercise.isMainLiftEligible,
+        sets: latestAccumulationSets.map((set) => ({
+          setIndex: set.setIndex,
+          load: set.load,
+          targetLoad: set.targetLoad,
+          rpe: set.rpe,
+        })),
+      });
 
   if (!Number.isFinite(load)) {
     return undefined;
   }
 
   return { load: load as number, source: "history" };
-}
-
-function getTopSessionLoad(sets: WorkoutSetHistory): number | undefined {
-  const topSet = getTopSignalSet(sets);
-  return topSet?.load;
-}
-
-function getTopSignalSet(
-  sets: WorkoutSetHistory
-): WorkoutSetHistory[number] | undefined {
-  const sorted = [...sets].sort((a, b) => a.setIndex - b.setIndex);
-  for (const set of sorted) {
-    if (set.rpe != null && set.rpe < EFFECTIVE_RPE_MIN) {
-      continue;
-    }
-    if (Number.isFinite(set.load) && (set.load ?? 0) >= 0) {
-      return set;
-    }
-  }
-  return undefined;
 }
 
 function getPrimaryProgressionEquipment(exercise: Exercise): "barbell" | "dumbbell" | "cable" | "other" {
@@ -844,15 +848,40 @@ function resolveCrossIntentMainLiftFallbackLoad(input: {
     return undefined;
   }
 
-  const topSet = getTopSignalSet(crossIntentSession.sets);
-  if (!topSet?.load || !Number.isFinite(topSet.reps) || topSet.reps <= 0) {
+  const orderedSignalSets = [...crossIntentSession.sets]
+    .filter(
+      (set) =>
+        Number.isFinite(set.load) &&
+        (set.load ?? 0) > 0 &&
+        Number.isFinite(set.reps) &&
+        set.reps > 0 &&
+        (set.rpe == null || set.rpe >= EFFECTIVE_RPE_MIN)
+    )
+    .sort((left, right) => left.setIndex - right.setIndex);
+  const representativeSet = orderedSignalSets[0];
+  const representativeWorkingLoad = resolveWorkingSetLoad({
+    isMainLiftEligible: input.exercise.isMainLiftEligible,
+    sets: orderedSignalSets.map((set) => ({
+      setIndex: set.setIndex,
+      load: set.load,
+      targetLoad: set.targetLoad,
+      rpe: set.rpe,
+    })),
+  });
+  if (
+    !representativeSet ||
+    !Number.isFinite(representativeSet.reps) ||
+    representativeSet.reps <= 0 ||
+    !Number.isFinite(representativeWorkingLoad) ||
+    (representativeWorkingLoad ?? 0) <= 0
+  ) {
     return undefined;
   }
 
   const translatedLoad = translateLoadToTargetContext({
-    priorLoad: topSet.load,
-    priorReps: topSet.reps,
-    priorRpe: topSet.rpe,
+    priorLoad: representativeWorkingLoad as number,
+    priorReps: representativeSet.reps,
+    priorRpe: representativeSet.rpe,
     targetReps: input.targetReps as number,
     targetRpe: input.targetRpe,
   });
@@ -1211,6 +1240,12 @@ function getEquipmentDefault(exercise: Exercise) {
 
 function roundToHalf(value: number) {
   return quantizeLoad(value);
+}
+
+function shouldUseUniformWorkingLoads(input: {
+  primaryGoal: Goals["primary"];
+}) {
+  return input.primaryGoal === "hypertrophy";
 }
 
 function buildWarmupSets(

@@ -1324,7 +1324,7 @@ describe("applyLoads correctness", () => {
 
     expect(result.audit.resolvedLoads["db-ohp"]?.source).toBe("history");
     expect(result.workout.mainLifts[0].sets[0].targetLoad).toBe(42.5);
-    expect(result.workout.mainLifts[0].sets[1].targetLoad).toBe(37.5);
+    expect(result.workout.mainLifts[0].sets[1].targetLoad).toBe(42.5);
   });
 
   it("corrects DB OHP undercalling on exact cross-intent fallback without jumping past prior performance", () => {
@@ -1360,7 +1360,7 @@ describe("applyLoads correctness", () => {
     expect(topLoad).toBe(37.5);
     expect(topLoad).toBeGreaterThan(25);
     expect(topLoad).toBeLessThan(45);
-    expect(result.workout.mainLifts[0].sets[1].targetLoad).toBe(32.5);
+    expect(result.workout.mainLifts[0].sets[1].targetLoad).toBe(37.5);
     expect(result.workout.mainLifts[0].sets[0].targetRpe).toBe(6.5);
   });
 
@@ -1413,10 +1413,10 @@ describe("applyLoads correctness", () => {
 
     expect(result.audit.resolvedLoads["back-squat"]?.source).toBe("history");
     expect(result.workout.mainLifts[0].sets[0].targetLoad).toBe(160);
-    expect(result.workout.mainLifts[0].sets[1].targetLoad).toBe(140);
+    expect(result.workout.mainLifts[0].sets[1].targetLoad).toBe(160);
   });
 
-  it("improves belt squat exact cross-intent fallback while keeping it bounded below the prior top set", () => {
+  it("improves belt squat exact cross-intent fallback while keeping it bounded below the prior working load", () => {
     const result = applyLoadsWithAudit(lowerMainLiftWorkout, {
       history: [
         {
@@ -1446,7 +1446,7 @@ describe("applyLoads correctness", () => {
     expect(result.audit.resolvedLoads["belt-squat"]?.source).toBe("history");
     expect(result.workout.mainLifts[0].sets[0].targetLoad).toBe(150);
     expect(result.workout.mainLifts[0].sets[0].targetLoad).toBeLessThan(180);
-    expect(result.workout.mainLifts[0].sets[1].targetLoad).toBe(132.5);
+    expect(result.workout.mainLifts[0].sets[1].targetLoad).toBe(150);
   });
 
   it("does not broaden donor pooling globally when only cross-intent non-exact history exists", () => {
@@ -1886,7 +1886,7 @@ describe("applyLoads correctness", () => {
 
     const zeroBasedTop = zeroBased.mainLifts[0].sets[0].targetLoad;
     const oneBasedTop = oneBased.mainLifts[0].sets[0].targetLoad;
-    // Both should progress above 200 (top set RPE 7.5 → double progression)
+    // Both should progress above 200 (working-set RPE 7.5 -> double progression)
     expect(zeroBasedTop).toBeGreaterThan(200);
     expect(zeroBasedTop).toBe(oneBasedTop);
   });

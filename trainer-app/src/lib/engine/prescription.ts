@@ -133,15 +133,16 @@ function prescribeMainLiftSets(
   const blockProgress = periodization
     ? Math.min(1, Math.max(0, (boundedWeekInBlock - 1) / Math.max(1, accumulationWeeks - 1)))
     : 0;
-  const topSetReps = Math.round(
+  const workingSetReps = Math.round(
     effectiveMain[1] - blockProgress * (effectiveMain[1] - effectiveMain[0])
   );
+  const usesUniformWorkingSets = goals.primary === "hypertrophy" || periodization?.isDeload === true;
   const backOffReps = Math.min(
     effectiveMain[1],
-    topSetReps + (BACK_OFF_REP_BUMP_BY_TRAINING_AGE[trainingAge] ?? 0)
+    workingSetReps + (BACK_OFF_REP_BUMP_BY_TRAINING_AGE[trainingAge] ?? 0)
   );
   const targetRpe = resolveTargetRpe(
-    topSetReps,
+    workingSetReps,
     trainingAge,
     goals,
     fatigueState,
@@ -150,10 +151,10 @@ function prescribeMainLiftSets(
     mesocycleRole
   );
 
-  if (periodization?.isDeload) {
+  if (usesUniformWorkingSets) {
     return Array.from({ length: setCount }, (_, index) => ({
       setIndex: index + 1,
-      targetReps: topSetReps,
+      targetReps: workingSetReps,
       targetRpe,
       targetLoad: undefined,
     }));
@@ -161,7 +162,7 @@ function prescribeMainLiftSets(
 
   return Array.from({ length: setCount }, (_, index) => ({
     setIndex: index + 1,
-    targetReps: index === 0 ? topSetReps : backOffReps,
+    targetReps: index === 0 ? workingSetReps : backOffReps,
     targetRpe,
     targetLoad: undefined,
   }));

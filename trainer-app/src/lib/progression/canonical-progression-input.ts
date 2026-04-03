@@ -17,7 +17,7 @@ export type CanonicalProgressionEvaluationInput = {
   equipment: ProgressionEquipment;
   decisionOptions: DoubleProgressionDecisionOptions;
   context: {
-    anchorOverride?: number;
+    workingSetLoad?: number;
     priorSessionCount: number;
     historyConfidenceScale: number;
     confidenceReasons: string[];
@@ -28,7 +28,7 @@ export function buildCanonicalProgressionEvaluationInput(input: {
   lastSets: ProgressionSet[];
   repRange: [number, number];
   equipment: ProgressionEquipment;
-  anchorOverride?: number;
+  workingSetLoad?: number;
   historySessions?: CanonicalProgressionHistorySession[];
 }): CanonicalProgressionEvaluationInput {
   const historySessions = input.historySessions ?? [];
@@ -43,13 +43,13 @@ export function buildCanonicalProgressionEvaluationInput(input: {
     repRange: input.repRange,
     equipment: input.equipment,
     decisionOptions: {
-      anchorOverride: input.anchorOverride,
+      workingSetLoad: input.workingSetLoad,
       priorSessionCount,
       historyConfidenceScale,
       confidenceReasons,
     },
     context: {
-      anchorOverride: input.anchorOverride,
+      workingSetLoad: input.workingSetLoad,
       priorSessionCount,
       historyConfidenceScale,
       confidenceReasons,

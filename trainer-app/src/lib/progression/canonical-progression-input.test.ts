@@ -7,11 +7,11 @@ describe("buildCanonicalProgressionEvaluationInput", () => {
       lastSets: [{ reps: 12, rpe: 7, load: 40 }],
       repRange: [8, 12],
       equipment: "cable",
-      anchorOverride: 40,
+      workingSetLoad: 40,
     });
 
     expect(input.decisionOptions).toEqual({
-      anchorOverride: 40,
+      workingSetLoad: 40,
       priorSessionCount: 1,
       historyConfidenceScale: 1,
       confidenceReasons: [],
@@ -23,7 +23,7 @@ describe("buildCanonicalProgressionEvaluationInput", () => {
       lastSets: [{ reps: 12, rpe: 7, load: 40 }],
       repRange: [8, 12],
       equipment: "cable",
-      anchorOverride: 40,
+      workingSetLoad: 40,
       historySessions: [
         {
           selectionMode: "MANUAL",
@@ -55,6 +55,7 @@ describe("buildCanonicalProgressionEvaluationInput", () => {
     });
 
     expect(input.context.priorSessionCount).toBe(4);
+    expect(input.context.workingSetLoad).toBe(40);
     expect(input.context.historyConfidenceScale).toBe(0.47);
     expect(input.context.confidenceReasons).toEqual([
       "MANUAL history was heavily discounted because it looked unreliable: every set reported the same RPE.",

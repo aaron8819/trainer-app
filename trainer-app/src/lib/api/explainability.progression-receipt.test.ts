@@ -152,7 +152,7 @@ const generatedSemanticsSnapshot = {
 function buildGeneratedProgressionTrace(input: {
   anchorLoad: number;
   nextLoad: number;
-  anchorSource: "top_set_override" | "conservative_modal";
+  anchorSource: "working_set" | "conservative_modal";
   action: "increase" | "hold" | "decrease";
   path: "path_3" | "fallback_hold";
 }) {
@@ -160,10 +160,10 @@ function buildGeneratedProgressionTrace(input: {
     version: 1,
     decisionSource: "double_progression",
     repRange: { min: 8, max: 12 },
-    equipment: input.anchorSource === "top_set_override" ? "barbell" : "cable",
+    equipment: input.anchorSource === "working_set" ? "barbell" : "cable",
     anchor: {
       source: input.anchorSource,
-      overrideApplied: input.anchorSource === "top_set_override",
+      workingSetApplied: input.anchorSource === "working_set",
       anchorLoad: input.anchorLoad,
       signalSetCount: 2,
       effectiveSetCount: 2,
@@ -644,7 +644,7 @@ describe("generateWorkoutExplanation progression receipt", () => {
           ex1: buildGeneratedProgressionTrace({
             anchorLoad: 200,
             nextLoad: 205,
-            anchorSource: "top_set_override",
+            anchorSource: "working_set",
             action: "increase",
             path: "path_3",
           }),
@@ -853,7 +853,7 @@ describe("generateWorkoutExplanation progression receipt", () => {
       lastSets: performedSemantics?.signalSets ?? [],
       repRange: [8, 12],
       equipment: "cable",
-      anchorOverride: performedSemantics?.anchorLoad ?? undefined,
+      workingSetLoad: performedSemantics?.workingSetLoad ?? undefined,
       historySessions: [
         {
           selectionMode: "MANUAL",
@@ -1040,7 +1040,7 @@ describe("generateWorkoutExplanation progression receipt", () => {
       [8, 12],
       "cable",
       {
-        anchorOverride: performedSemantics?.anchorLoad ?? undefined,
+        workingSetLoad: performedSemantics?.workingSetLoad ?? undefined,
         priorSessionCount: 2,
         historyConfidenceScale: 1,
       }
@@ -1471,7 +1471,7 @@ describe("generateWorkoutExplanation progression receipt", () => {
     );
   });
 
-  it("keeps anchor-sensitive main-lift decisions aligned to the top set", async () => {
+  it("keeps anchor-sensitive main-lift decisions aligned to the representative working set", async () => {
     const currentPerformedSets = [
       { setIndex: 1, actualReps: 12, actualLoad: 45, actualRpe: 7, wasSkipped: false },
       { setIndex: 2, actualReps: 12, actualLoad: 40, actualRpe: 7, wasSkipped: false },
@@ -1486,7 +1486,7 @@ describe("generateWorkoutExplanation progression receipt", () => {
       [8, 12],
       "barbell",
       {
-        anchorOverride: performedSemantics?.anchorLoad ?? undefined,
+        workingSetLoad: performedSemantics?.workingSetLoad ?? undefined,
         priorSessionCount: 2,
         historyConfidenceScale: 1,
       }

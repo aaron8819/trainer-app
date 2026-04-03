@@ -67,20 +67,19 @@ describe("load coaching", () => {
     });
   });
 
-  it("treats a top-set to backoff transition as planned instead of a false overshoot", () => {
+  it("does not preserve legacy heavier-then-lighter coaching once working sets are uniform", () => {
     const recommendation = getLoadRecommendation({
       reps: 6,
       rir: 0.5,
       actualLoad: 115,
       targetLoad: 105,
-      plannedBackoffTransition: true,
       repRange: { min: 7, max: 7 },
       targetRir: 1.5,
     });
 
     expect(recommendation).toEqual({
       action: "decrease",
-      message: "That top set ran hard. Next set is a planned back-off, so reduce load as written.",
+      message: "Heavier load overshot the target. Drop back toward the prescribed load.",
     });
   });
 

@@ -137,16 +137,16 @@ const currentPerformedSets = [
   },
   {
     setIndex: 2,
-    targetLoad: 145,
-    actualLoad: 150,
+    targetLoad: 155,
+    actualLoad: 160,
     actualReps: 8,
     actualRpe: 8,
     wasSkipped: false,
   },
   {
     setIndex: 3,
-    targetLoad: 145,
-    actualLoad: 150,
+    targetLoad: 155,
+    actualLoad: 160,
     actualReps: 8,
     actualRpe: 8,
     wasSkipped: false,
@@ -279,17 +279,16 @@ describe("golden-path completed workout regression", () => {
 
     expect(performedSemantics).toMatchObject({
       anchorLoad: 160,
+      workingSetLoad: 160,
       medianReps: 8,
       modalRpe: 8,
-      topSetLoad: 160,
-      backoffLoad: 150,
-      plannedSetStructure: "top_set_backoff",
-      hasPlannedBackoffTransition: true,
+      plannedSetStructure: "uniform_working_sets",
+      hasUniformTargetLoad: true,
     });
     expect(performedSemantics?.signalSets).toEqual([
       { reps: 9, load: 160, rpe: 8, targetLoad: 155 },
-      { reps: 8, load: 150, rpe: 8, targetLoad: 145 },
-      { reps: 8, load: 150, rpe: 8, targetLoad: 145 },
+      { reps: 8, load: 160, rpe: 8, targetLoad: 155 },
+      { reps: 8, load: 160, rpe: 8, targetLoad: 155 },
     ]);
 
     const liveTopSetCue = getLoadRecommendation({
@@ -300,12 +299,11 @@ describe("golden-path completed workout regression", () => {
       repRange: { min: 8, max: 10 },
       targetRir: 2,
     });
-    const liveBackoffCue = getLoadRecommendation({
+    const liveNextSetCue = getLoadRecommendation({
       reps: 9,
       rir: 2,
       actualLoad: 160,
       targetLoad: 155,
-      plannedBackoffTransition: true,
       repRange: { min: 8, max: 10 },
       targetRir: 2,
     });
@@ -315,16 +313,17 @@ describe("golden-path completed workout regression", () => {
       message:
         "You're above the prescribed load. Keep it if technique stays stable; formal progression is evaluated across the full session.",
     });
-    expect(liveBackoffCue).toEqual({
+    expect(liveNextSetCue).toEqual({
       action: "hold",
-      message: "Next set is a planned back-off. Reduce load as written and keep technique stable.",
+      message:
+        "You're above the prescribed load. Keep it if technique stays stable; formal progression is evaluated across the full session.",
     });
 
     const canonicalInput = buildCanonicalProgressionEvaluationInput({
       lastSets: performedSemantics?.signalSets ?? [],
       repRange: [8, 10],
       equipment: "barbell",
-      anchorOverride: performedSemantics?.anchorLoad ?? undefined,
+      workingSetLoad: performedSemantics?.workingSetLoad ?? undefined,
       historySessions: [
         {
           selectionMode: "INTENT",
@@ -353,7 +352,7 @@ describe("golden-path completed workout regression", () => {
         ? "decrease"
         : "hold";
 
-    expect(canonicalInput.context.anchorOverride).toBe(160);
+    expect(canonicalInput.context.workingSetLoad).toBe(160);
     expect(canonicalInput.repRange).toEqual([8, 10]);
     expect(canonicalDecision).toMatchObject({
       anchorLoad: 160,
@@ -436,7 +435,7 @@ describe("golden-path completed workout regression", () => {
 
     const guidanceText = flattenGuidanceText([
       liveTopSetCue?.message,
-      liveBackoffCue?.message,
+      liveNextSetCue?.message,
       nextExposureDecision?.summary,
       nextExposureDecision?.reason,
       completionReviewModel.headline,

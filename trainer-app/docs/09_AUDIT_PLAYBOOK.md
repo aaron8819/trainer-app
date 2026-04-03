@@ -320,7 +320,7 @@ Common red flags:
 - `outcome.reasonCodes` do not match the observed performed session
 - `sessionSnapshotSource="reconstructed_saved_only"` when you expected a persisted modern snapshot
 - confidence is heavily discounted without an obvious reason
-- anchor source or anchor load looks incompatible with the performed top-set evidence
+- anchor source or anchor load looks incompatible with the representative performed working-set evidence
 
 Escalate when:
 - the decision path still looks wrong after reading `reasonCodes` and `decisionLog`

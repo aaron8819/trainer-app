@@ -621,8 +621,8 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
         ["row", "seated-row", "pulldown"].includes(exerciseId)
       )
     ).toBe(true);
-    expect(upperAExerciseIds.length).toBeLessThanOrEqual(7);
-    expect(upperBExerciseIds.length).toBeLessThanOrEqual(7);
+    expect(upperAExerciseIds.length).toBeLessThanOrEqual(6);
+    expect(upperBExerciseIds.length).toBeLessThanOrEqual(6);
   });
 
   it("forwards protected repair muscles into upper-slot projection candidates", () => {

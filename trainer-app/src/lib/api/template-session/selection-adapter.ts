@@ -268,13 +268,7 @@ export function buildSelectionObjective(
 
   const normalizedTargets = new Set((targetMuscles ?? []).map((muscle) => muscle.trim().toLowerCase()));
   const supplementalPlannerProfile = options?.supplementalPlannerProfile === true;
-  const projectionCoverageExtraExerciseBudget =
-    options?.projectionRepairMuscles && options.projectionRepairMuscles.length > 0 ? 1 : 0;
   const targetCount = normalizedTargets.size || (targetMuscles?.length ?? 0);
-  const projectionMultiTargetExtraExerciseBudget =
-    options?.projectionRepairMuscles && options.projectionRepairMuscles.length > 0 && targetCount > 1
-      ? 1
-      : 0;
   const supplementalMinExercises =
     targetCount > 1
       ? SUPPLEMENTAL_SESSION_CAPS.minExercisesMultiTarget
@@ -432,9 +426,7 @@ export function buildSelectionObjective(
     minExercises: supplementalPlannerProfile ? supplementalMinExercises : SESSION_CAPS.minExercises,
     maxExercises: supplementalPlannerProfile
       ? supplementalMaxExercises
-      : SESSION_CAPS.maxExercises +
-        projectionCoverageExtraExerciseBudget +
-        projectionMultiTargetExtraExerciseBudget,
+      : SESSION_CAPS.maxExercises,
     minMainLifts: sessionIntent === "body_part" ? 0 : 1,
     maxMainLifts: supplementalPlannerProfile ? 0 : 3,
     minAccessories: supplementalPlannerProfile ? 1 : 2,

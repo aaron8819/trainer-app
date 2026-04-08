@@ -311,6 +311,15 @@ describe("buildSelectionObjective continuity bias", () => {
     expect(supplementalObjective.constraints.supplementalPlannerProfile).toBe(true);
   });
 
+  it("keeps projection repair inside the standard session exercise cap", () => {
+    const objective = buildSelectionObjective(makeMappedContext([]), "upper", ["Chest", "Triceps"], {
+      sessionSlotId: "upper_a",
+      projectionRepairMuscles: ["Chest", "Triceps"],
+    });
+
+    expect(objective.constraints.maxExercises).toBe(SESSION_CAPS.maxExercises);
+  });
+
   it("derives a remaining-week context from schedule order and current-week performed sessions", () => {
     const history: WorkoutHistoryEntry[] = [
       {

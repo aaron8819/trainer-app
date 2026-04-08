@@ -715,11 +715,27 @@ function selectBestProjectedSlotComposition(input: {
       (evaluationSummary.relevantDeficitCount === bestEvaluation.relevantDeficitCount &&
         evaluationSummary.relevantDeficitToPracticalFloor ===
           bestEvaluation.relevantDeficitToPracticalFloor &&
+        evaluationSummary.coverage.coveredMuscleCount > bestEvaluation.coverage.coveredMuscleCount) ||
+      (evaluationSummary.relevantDeficitCount === bestEvaluation.relevantDeficitCount &&
+        evaluationSummary.relevantDeficitToPracticalFloor ===
+          bestEvaluation.relevantDeficitToPracticalFloor &&
+        evaluationSummary.coverage.coveredMuscleCount ===
+          bestEvaluation.coverage.coveredMuscleCount &&
+        evaluationSummary.coverage.totalCoverage > bestEvaluation.coverage.totalCoverage) ||
+      (evaluationSummary.relevantDeficitCount === bestEvaluation.relevantDeficitCount &&
+        evaluationSummary.relevantDeficitToPracticalFloor ===
+          bestEvaluation.relevantDeficitToPracticalFloor &&
+        evaluationSummary.coverage.coveredMuscleCount ===
+          bestEvaluation.coverage.coveredMuscleCount &&
+        evaluationSummary.coverage.totalCoverage === bestEvaluation.coverage.totalCoverage &&
         evaluationSummary.preferredSupportCoverage.coveredMuscleCount >
           bestEvaluation.preferredSupportCoverage.coveredMuscleCount) ||
       (evaluationSummary.relevantDeficitCount === bestEvaluation.relevantDeficitCount &&
         evaluationSummary.relevantDeficitToPracticalFloor ===
           bestEvaluation.relevantDeficitToPracticalFloor &&
+        evaluationSummary.coverage.coveredMuscleCount ===
+          bestEvaluation.coverage.coveredMuscleCount &&
+        evaluationSummary.coverage.totalCoverage === bestEvaluation.coverage.totalCoverage &&
         evaluationSummary.preferredSupportCoverage.coveredMuscleCount ===
           bestEvaluation.preferredSupportCoverage.coveredMuscleCount &&
         evaluationSummary.preferredSupportCoverage.totalCoverage >
@@ -727,6 +743,9 @@ function selectBestProjectedSlotComposition(input: {
       (evaluationSummary.relevantDeficitCount === bestEvaluation.relevantDeficitCount &&
         evaluationSummary.relevantDeficitToPracticalFloor ===
           bestEvaluation.relevantDeficitToPracticalFloor &&
+        evaluationSummary.coverage.coveredMuscleCount ===
+          bestEvaluation.coverage.coveredMuscleCount &&
+        evaluationSummary.coverage.totalCoverage === bestEvaluation.coverage.totalCoverage &&
         evaluationSummary.preferredSupportCoverage.coveredMuscleCount ===
           bestEvaluation.preferredSupportCoverage.coveredMuscleCount &&
         evaluationSummary.preferredSupportCoverage.totalCoverage ===
@@ -735,6 +754,9 @@ function selectBestProjectedSlotComposition(input: {
       (evaluationSummary.relevantDeficitCount === bestEvaluation.relevantDeficitCount &&
         evaluationSummary.relevantDeficitToPracticalFloor ===
           bestEvaluation.relevantDeficitToPracticalFloor &&
+        evaluationSummary.coverage.coveredMuscleCount ===
+          bestEvaluation.coverage.coveredMuscleCount &&
+        evaluationSummary.coverage.totalCoverage === bestEvaluation.coverage.totalCoverage &&
         evaluationSummary.preferredSupportCoverage.coveredMuscleCount ===
           bestEvaluation.preferredSupportCoverage.coveredMuscleCount &&
         evaluationSummary.preferredSupportCoverage.totalCoverage ===
@@ -745,6 +767,9 @@ function selectBestProjectedSlotComposition(input: {
       (evaluationSummary.relevantDeficitCount === bestEvaluation.relevantDeficitCount &&
         evaluationSummary.relevantDeficitToPracticalFloor ===
           bestEvaluation.relevantDeficitToPracticalFloor &&
+        evaluationSummary.coverage.coveredMuscleCount ===
+          bestEvaluation.coverage.coveredMuscleCount &&
+        evaluationSummary.coverage.totalCoverage === bestEvaluation.coverage.totalCoverage &&
         evaluationSummary.preferredSupportCoverage.coveredMuscleCount ===
           bestEvaluation.preferredSupportCoverage.coveredMuscleCount &&
         evaluationSummary.preferredSupportCoverage.totalCoverage ===
@@ -756,43 +781,18 @@ function selectBestProjectedSlotComposition(input: {
       (evaluationSummary.relevantDeficitCount === bestEvaluation.relevantDeficitCount &&
         evaluationSummary.relevantDeficitToPracticalFloor ===
           bestEvaluation.relevantDeficitToPracticalFloor &&
-        evaluationSummary.preferredSupportCoverage.coveredMuscleCount ===
-          bestEvaluation.preferredSupportCoverage.coveredMuscleCount &&
-        evaluationSummary.preferredSupportCoverage.totalCoverage ===
-          bestEvaluation.preferredSupportCoverage.totalCoverage &&
-        evaluationSummary.totalDeficitCount === bestEvaluation.totalDeficitCount &&
-        evaluationSummary.totalDeficitToPracticalFloor ===
-          bestEvaluation.totalDeficitToPracticalFloor &&
-        evaluationSummary.exerciseCount === bestEvaluation.exerciseCount &&
-        evaluationSummary.workingSetCount < bestEvaluation.workingSetCount) ||
-      (evaluationSummary.relevantDeficitCount === bestEvaluation.relevantDeficitCount &&
-        evaluationSummary.relevantDeficitToPracticalFloor ===
-          bestEvaluation.relevantDeficitToPracticalFloor &&
-        evaluationSummary.preferredSupportCoverage.coveredMuscleCount ===
-          bestEvaluation.preferredSupportCoverage.coveredMuscleCount &&
-        evaluationSummary.preferredSupportCoverage.totalCoverage ===
-          bestEvaluation.preferredSupportCoverage.totalCoverage &&
-        evaluationSummary.totalDeficitCount === bestEvaluation.totalDeficitCount &&
-        evaluationSummary.totalDeficitToPracticalFloor ===
-          bestEvaluation.totalDeficitToPracticalFloor &&
-        evaluationSummary.exerciseCount === bestEvaluation.exerciseCount &&
-        evaluationSummary.workingSetCount === bestEvaluation.workingSetCount &&
-        evaluationSummary.coverage.coveredMuscleCount > bestEvaluation.coverage.coveredMuscleCount) ||
-      (evaluationSummary.relevantDeficitCount === bestEvaluation.relevantDeficitCount &&
-        evaluationSummary.relevantDeficitToPracticalFloor ===
-          bestEvaluation.relevantDeficitToPracticalFloor &&
-        evaluationSummary.preferredSupportCoverage.coveredMuscleCount ===
-          bestEvaluation.preferredSupportCoverage.coveredMuscleCount &&
-        evaluationSummary.preferredSupportCoverage.totalCoverage ===
-          bestEvaluation.preferredSupportCoverage.totalCoverage &&
-        evaluationSummary.totalDeficitCount === bestEvaluation.totalDeficitCount &&
-        evaluationSummary.totalDeficitToPracticalFloor ===
-          bestEvaluation.totalDeficitToPracticalFloor &&
-        evaluationSummary.exerciseCount === bestEvaluation.exerciseCount &&
-        evaluationSummary.workingSetCount === bestEvaluation.workingSetCount &&
         evaluationSummary.coverage.coveredMuscleCount ===
           bestEvaluation.coverage.coveredMuscleCount &&
-        evaluationSummary.coverage.totalCoverage > bestEvaluation.coverage.totalCoverage)
+        evaluationSummary.coverage.totalCoverage === bestEvaluation.coverage.totalCoverage &&
+        evaluationSummary.preferredSupportCoverage.coveredMuscleCount ===
+          bestEvaluation.preferredSupportCoverage.coveredMuscleCount &&
+        evaluationSummary.preferredSupportCoverage.totalCoverage ===
+          bestEvaluation.preferredSupportCoverage.totalCoverage &&
+        evaluationSummary.totalDeficitCount === bestEvaluation.totalDeficitCount &&
+        evaluationSummary.totalDeficitToPracticalFloor ===
+          bestEvaluation.totalDeficitToPracticalFloor &&
+        evaluationSummary.exerciseCount === bestEvaluation.exerciseCount &&
+        evaluationSummary.workingSetCount < bestEvaluation.workingSetCount)
     ) {
       bestCandidate = candidate;
       bestEvaluation = evaluationSummary;
@@ -879,14 +879,11 @@ function projectSlotPlansPass(input: {
       protectedMuscles: slotProtectedCoverageMuscles,
     });
     const useStructuralUpperTargeting = slotPolicy?.sessionIntent === "upper";
-
     const composed = composeIntentSessionFromMappedContext(projectionContext.mapped, {
       intent: toSessionIntent(slot.intent),
       slotId: slot.slotId,
       roleListIncomplete: true,
-      ...(projectionRepairMuscles.length > 0 && !useStructuralUpperTargeting
-        ? { projectionRepairMuscles }
-        : {}),
+      ...(projectionRepairMuscles.length > 0 ? { projectionRepairMuscles } : {}),
     });
     if ("error" in composed) {
       return {
@@ -951,7 +948,7 @@ function projectSlotPlansPass(input: {
         });
       }
     }
-    for (const muscle of useStructuralUpperTargeting ? [] : projectionRepairMuscles) {
+    for (const muscle of projectionRepairMuscles) {
       const focusedSingleMuscle = composeIntentSessionFromMappedContext(projectionContext.mapped, {
         intent: toSessionIntent(slot.intent),
         slotId: slot.slotId,

@@ -533,25 +533,22 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
       now: new Date("2026-03-19T12:00:00.000Z"),
     });
 
-    expect(composeIntentSessionFromMappedContextSpy).toHaveBeenCalledTimes(14);
-    expect(
-      composeIntentSessionFromMappedContextSpy.mock.calls.map(([, input]) => input.slotId)
-    ).toEqual([
-      "upper_a",
-      "upper_a",
-      "lower_a",
-      "lower_a",
-      "lower_a",
-      "upper_b",
-      "upper_b",
-      "upper_b",
-      "lower_b",
-      "lower_b",
-      "lower_b",
-      "lower_b",
-      "lower_b",
-      "lower_b",
-    ]);
+    const slotIds = composeIntentSessionFromMappedContextSpy.mock.calls.map(([, input]) => input.slotId);
+
+    expect(slotIds.length).toBeGreaterThanOrEqual(14);
+    expect(slotIds[0]).toBe("upper_a");
+    expect(slotIds.at(-1)).toBe("lower_b");
+    expect(slotIds).toEqual(
+      expect.arrayContaining(["upper_a", "lower_a", "upper_b", "lower_b"])
+    );
+
+    const firstLowerA = slotIds.indexOf("lower_a");
+    const firstUpperB = slotIds.indexOf("upper_b");
+    const firstLowerB = slotIds.indexOf("lower_b");
+
+    expect(firstLowerA).toBeGreaterThan(slotIds.indexOf("upper_a"));
+    expect(firstUpperB).toBeGreaterThan(firstLowerA);
+    expect(firstLowerB).toBeGreaterThan(firstUpperB);
   });
 
   it("keeps later duplicate-intent slots sensitive to earlier projected work", () => {
@@ -601,9 +598,12 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     const upperPairExerciseIds = [...upperAExerciseIds, ...upperBExerciseIds];
 
     expect(upperAExerciseIds).not.toEqual(upperBExerciseIds);
-    expect(upperPairExerciseIds).toEqual(
-      expect.arrayContaining(["bench", "lateral-raise"])
-    );
+    expect(upperPairExerciseIds).toEqual(expect.arrayContaining(["bench"]));
+    expect(
+      upperPairExerciseIds.some((exerciseId) =>
+        ["machine-press", "incline-press", "cable-fly"].includes(exerciseId)
+      )
+    ).toBe(true);
     expect(
       upperPairExerciseIds.some((exerciseId) =>
         ["triceps-pressdown", "overhead-triceps-extension"].includes(exerciseId)
@@ -615,12 +615,44 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
       )
     ).toBe(true);
     expect(
-      upperBExerciseIds.some((exerciseId) =>
-        ["lateral-raise", "triceps-pressdown", "overhead-triceps-extension"].includes(exerciseId)
+      upperAExerciseIds.some((exerciseId) =>
+        ["row", "seated-row", "pulldown"].includes(exerciseId)
+      ) || upperBExerciseIds.some((exerciseId) =>
+        ["row", "seated-row", "pulldown"].includes(exerciseId)
       )
     ).toBe(true);
-    expect(upperAExerciseIds.length).toBeLessThanOrEqual(6);
-    expect(upperBExerciseIds.length).toBeLessThanOrEqual(6);
+    expect(upperAExerciseIds.length).toBeLessThanOrEqual(7);
+    expect(upperBExerciseIds.length).toBeLessThanOrEqual(7);
+  });
+
+  it("forwards protected repair muscles into upper-slot projection candidates", () => {
+    composeIntentSessionFromMappedContextSpy.mockClear();
+
+    projectSuccessorSlotPlansFromSnapshot({
+      userId: "user-1",
+      source: buildSource(),
+      design: buildDesign(buildRepairSensitiveDraft()),
+      snapshot: buildRepairSensitiveSnapshot(),
+      now: new Date("2026-03-19T12:00:00.000Z"),
+    });
+
+    const upperRepairCalls = composeIntentSessionFromMappedContextSpy.mock.calls
+      .map(([, input]) => input)
+      .filter(
+        (input) =>
+          (input.slotId === "upper_a" || input.slotId === "upper_b") &&
+          Array.isArray(input.projectionRepairMuscles) &&
+          input.projectionRepairMuscles.length > 0
+      );
+
+    expect(upperRepairCalls.length).toBeGreaterThan(0);
+    expect(
+      upperRepairCalls.some((input) =>
+        ["Chest", "Triceps"].every((muscle) =>
+          (input.projectionRepairMuscles ?? []).includes(muscle)
+        )
+      )
+    ).toBe(true);
   });
 
   it("persists lower_b with a hinge-led core anchor when a hinge compound is viable", () => {

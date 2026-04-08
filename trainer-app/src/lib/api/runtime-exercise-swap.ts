@@ -1,33 +1,33 @@
-type SwapExerciseProfile = {
+type RuntimeExerciseSwapProfile = {
   id: string;
   name: string;
-  isMainLiftEligible?: boolean | null;
   fatigueCost?: number | null;
   movementPatterns?: string[] | null;
   primaryMuscles?: string[] | null;
   equipment?: string[] | null;
 };
 
-export type GapFillSwapEligibility = {
-  targetMuscleOverlap: string[];
+export type RuntimeExerciseSwapEligibility = {
+  primaryMuscleOverlap: string[];
   movementPatternOverlap: string[];
   equipmentDemandStayedAtOrBelowOriginal: boolean;
   fatigueDelta: number;
   score: number;
 };
 
-export type GapFillSwapCandidate = {
+export type RuntimeExerciseSwapCandidate = {
   exerciseId: string;
   exerciseName: string;
   primaryMuscles: string[];
   equipment: string[];
-  compatibility: GapFillSwapEligibility;
+  compatibility: RuntimeExerciseSwapEligibility;
   reason: string;
 };
 
 const GUIDED_EQUIPMENT = new Set(["machine", "cable", "band", "sled"]);
 const FREE_WEIGHT_EQUIPMENT = new Set(["dumbbell", "kettlebell"]);
 const TECHNICAL_EQUIPMENT = new Set(["barbell", "ez_bar", "trap_bar", "rack"]);
+const SUPPORTED_PULL_PATTERNS = new Set(["horizontal_pull", "vertical_pull"]);
 
 function normalizeList(values: string[] | null | undefined): string[] {
   return (values ?? [])
@@ -40,7 +40,7 @@ function intersect(left: string[], right: string[]): string[] {
   return left.filter((value) => rightSet.has(value));
 }
 
-function resolveEquipmentDemand(exercise: SwapExerciseProfile): number {
+function resolveEquipmentDemand(exercise: RuntimeExerciseSwapProfile): number {
   const equipment = normalizeList(exercise.equipment);
   let demand = 0;
 
@@ -57,62 +57,62 @@ function resolveEquipmentDemand(exercise: SwapExerciseProfile): number {
   return demand;
 }
 
-function buildReason(input: {
-  targetMuscleOverlap: string[];
-  movementPatternOverlap: string[];
-  fatigueDelta: number;
-  equipmentDemandStayedAtOrBelowOriginal: boolean;
-}): string {
+function buildReason(input: RuntimeExerciseSwapEligibility): string {
   const muscleText =
-    input.targetMuscleOverlap.length > 0
-      ? input.targetMuscleOverlap.join(", ")
-      : "the planned target muscles";
-  const movementText =
+    input.primaryMuscleOverlap.length > 0
+      ? input.primaryMuscleOverlap.join(", ")
+      : "the same pull musculature";
+  const patternText =
     input.movementPatternOverlap.length > 0
       ? input.movementPatternOverlap.join(", ")
-      : "the planned movement pattern";
+      : "the same pull pattern";
   const fatigueText =
     input.fatigueDelta === 0
       ? "keeps fatigue flat"
       : `reduces fatigue by ${Math.abs(input.fatigueDelta)}`;
   const equipmentText = input.equipmentDemandStayedAtOrBelowOriginal
-    ? "does not escalate equipment demand"
-    : "changes equipment demand";
+    ? "without raising equipment complexity"
+    : "with a different equipment demand";
 
-  return `Covers ${muscleText}, matches ${movementText}, ${fatigueText}, and ${equipmentText}.`;
+  return `Keeps ${muscleText}, matches ${patternText}, and ${fatigueText} ${equipmentText}.`;
 }
 
-export function evaluateGapFillSwapEligibility(input: {
-  current: SwapExerciseProfile;
-  candidate: SwapExerciseProfile;
-  targetMuscles?: string[] | null;
-}): GapFillSwapEligibility | null {
+export function isSupportedRuntimeExerciseSwapPattern(
+  movementPatterns: string[] | null | undefined
+): boolean {
+  return normalizeList(movementPatterns).some((pattern) =>
+    SUPPORTED_PULL_PATTERNS.has(pattern)
+  );
+}
+
+export function evaluateRuntimeExerciseSwapEligibility(input: {
+  current: RuntimeExerciseSwapProfile;
+  candidate: RuntimeExerciseSwapProfile;
+}): RuntimeExerciseSwapEligibility | null {
   if (input.current.id === input.candidate.id) {
-    return null;
-  }
-  if (input.candidate.isMainLiftEligible) {
     return null;
   }
 
   const currentPrimary = normalizeList(input.current.primaryMuscles);
   const candidatePrimary = normalizeList(input.candidate.primaryMuscles);
-  const currentPatterns = normalizeList(input.current.movementPatterns);
-  const candidatePatterns = normalizeList(input.candidate.movementPatterns);
-  const targetMuscles = normalizeList(input.targetMuscles);
+  const currentPatterns = normalizeList(input.current.movementPatterns).filter((pattern) =>
+    SUPPORTED_PULL_PATTERNS.has(pattern)
+  );
+  const candidatePatterns = normalizeList(input.candidate.movementPatterns).filter((pattern) =>
+    SUPPORTED_PULL_PATTERNS.has(pattern)
+  );
 
-  const primaryOverlap = intersect(currentPrimary, candidatePrimary);
-  if (primaryOverlap.length === 0) {
+  if (currentPatterns.length === 0 || candidatePatterns.length === 0) {
+    return null;
+  }
+
+  const primaryMuscleOverlap = intersect(currentPrimary, candidatePrimary);
+  if (primaryMuscleOverlap.length === 0) {
     return null;
   }
 
   const movementPatternOverlap = intersect(currentPatterns, candidatePatterns);
   if (movementPatternOverlap.length === 0) {
-    return null;
-  }
-
-  const targetMuscleOverlap =
-    targetMuscles.length > 0 ? intersect(candidatePrimary, targetMuscles) : primaryOverlap;
-  if (targetMuscles.length > 0 && targetMuscleOverlap.length === 0) {
     return null;
   }
 
@@ -128,43 +128,42 @@ export function evaluateGapFillSwapEligibility(input: {
   }
 
   return {
-    targetMuscleOverlap,
+    primaryMuscleOverlap,
     movementPatternOverlap,
     equipmentDemandStayedAtOrBelowOriginal,
     fatigueDelta,
     score:
-      targetMuscleOverlap.length * 6 +
-      primaryOverlap.length * 5 +
+      primaryMuscleOverlap.length * 5 +
       movementPatternOverlap.length * 4 +
       Math.max(0, Math.abs(fatigueDelta)),
   };
 }
 
-export function buildGapFillSwapCandidates(input: {
-  current: SwapExerciseProfile;
-  candidates: SwapExerciseProfile[];
-  targetMuscles?: string[] | null;
+export function buildRuntimeExerciseSwapCandidates(input: {
+  current: RuntimeExerciseSwapProfile;
+  candidates: RuntimeExerciseSwapProfile[];
   limit?: number;
-}): GapFillSwapCandidate[] {
+}): RuntimeExerciseSwapCandidate[] {
   return input.candidates
     .flatMap((candidate) => {
-      const compatibility = evaluateGapFillSwapEligibility({
+      const compatibility = evaluateRuntimeExerciseSwapEligibility({
         current: input.current,
         candidate,
-        targetMuscles: input.targetMuscles,
       });
       if (!compatibility) {
         return [];
       }
 
-      return [{
-        exerciseId: candidate.id,
-        exerciseName: candidate.name,
-        primaryMuscles: normalizeList(candidate.primaryMuscles),
-        equipment: normalizeList(candidate.equipment),
-        compatibility,
-        reason: buildReason(compatibility),
-      }];
+      return [
+        {
+          exerciseId: candidate.id,
+          exerciseName: candidate.name,
+          primaryMuscles: normalizeList(candidate.primaryMuscles),
+          equipment: normalizeList(candidate.equipment),
+          compatibility,
+          reason: buildReason(compatibility),
+        } satisfies RuntimeExerciseSwapCandidate,
+      ];
     })
     .sort((left, right) => {
       if (right.compatibility.score !== left.compatibility.score) {

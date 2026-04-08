@@ -164,6 +164,50 @@ describe("CompletedWorkoutReview", () => {
     expect(screen.getByText("Added exercise")).toBeInTheDocument();
   });
 
+  it("reports swapped exercises as replacements instead of extras", () => {
+    render(
+      <CompletedWorkoutReview
+        workoutId="workout-1"
+        rpeAdherence={null}
+        sessionIdentityLabel="Upper 2"
+        sessionTechnicalLabel="Slot ID: upper_b"
+        performanceSummary={[
+          {
+            exerciseId: "ex-1",
+            name: "Chest-Supported Dumbbell Row",
+            equipment: ["dumbbell"],
+            isSwapped: true,
+            isMainLift: false,
+            section: "main",
+            sessionNote:
+              "Swapped from T-Bar Row. Session-only; future progression stays exercise-specific.",
+            sets: [
+              {
+                setIndex: 1,
+                targetReps: 10,
+                targetLoad: 27.5,
+                targetRpe: 8,
+                actualReps: 10,
+                actualLoad: 27.5,
+                actualRpe: 8,
+                wasLogged: true,
+                wasSkipped: false,
+              },
+            ],
+          },
+        ]}
+      />
+    );
+
+    expect(screen.getByText("Swapped")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Swapped from T-Bar Row. Session-only; future progression stays exercise-specific."
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Added exercise")).not.toBeInTheDocument();
+  });
+
   it("renders the canonical session identity and slot id when provided", () => {
     render(
       <CompletedWorkoutReview

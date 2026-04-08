@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import type { LogExerciseInput } from "@/components/log-workout/types";
 import { SlideUpSheet } from "@/components/ui/SlideUpSheet";
 
-type GapFillSwapCandidate = {
+type RuntimeExerciseSwapCandidate = {
   exerciseId: string;
   exerciseName: string;
   primaryMuscles: string[];
@@ -20,14 +20,14 @@ type Props = {
   onSwap: (exercise: LogExerciseInput) => void;
 };
 
-export function GapFillExerciseSwapSheet({
+export function RuntimeExerciseSwapSheet({
   isOpen,
   onClose,
   workoutId,
   exercise,
   onSwap,
 }: Props) {
-  const [candidates, setCandidates] = useState<GapFillSwapCandidate[]>([]);
+  const [candidates, setCandidates] = useState<RuntimeExerciseSwapCandidate[]>([]);
   const [loading, setLoading] = useState(false);
   const [swappingId, setSwappingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -99,8 +99,8 @@ export function GapFillExerciseSwapSheet({
     >
       <div className="space-y-4">
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
-          Strict gap-fill only. Swaps are session-local, stay accessory-only, and keep the replacement
-          exercise on its own progression history.
+          Narrow runtime swap. This keeps the planned slot, replaces the exercise in-place for this
+          session, and keeps future progression exercise-specific to the replacement.
         </div>
 
         {loading ? <p className="text-sm text-slate-500">Finding constrained equivalents...</p> : null}

@@ -17,7 +17,9 @@ export type LogExerciseInput = {
   workoutExerciseId: string;
   name: string;
   equipment?: string[];
+  movementPatterns?: string[];
   isRuntimeAdded?: boolean;
+  isSwapped?: boolean;
   isMainLift: boolean;
   section?: "WARMUP" | "MAIN" | "ACCESSORY";
   sessionNote?: string;
@@ -105,9 +107,11 @@ export type CompletedWorkoutExerciseSummary = {
   exerciseId: string;
   name: string;
   equipment?: string[];
+  isSwapped?: boolean;
   isRuntimeAdded?: boolean;
   isMainLift: boolean;
   section: ExerciseSection;
+  sessionNote?: string;
   sets: CompletedWorkoutSetSummary[];
 };
 

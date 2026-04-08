@@ -6,6 +6,7 @@ import {
   type PersistedWorkoutStructureExerciseInput,
   type RuntimeEditDirectiveState,
   type RuntimeEditOperation,
+  type RuntimeExerciseReplaceReason,
   type RuntimeEditReconciliation,
   type SaveableSelectionMetadata,
   type WorkoutStructureState,
@@ -42,8 +43,10 @@ export type RuntimeEditMutation =
       kind: "replace_exercise";
       workoutExerciseId: string;
       fromExerciseId: string;
+      fromExerciseName: string;
       toExerciseId: string;
-      reason: "gap_fill_equivalent_accessory_swap";
+      toExerciseName: string;
+      reason: RuntimeExerciseReplaceReason;
       setCount: number;
     }
   | {
@@ -141,7 +144,9 @@ function buildRuntimeEditOperation(input: {
       facts: {
         workoutExerciseId: input.mutation.workoutExerciseId,
         fromExerciseId: input.mutation.fromExerciseId,
+        fromExerciseName: input.mutation.fromExerciseName,
         toExerciseId: input.mutation.toExerciseId,
+        toExerciseName: input.mutation.toExerciseName,
         reason: input.mutation.reason,
         setCount: input.mutation.setCount,
       },

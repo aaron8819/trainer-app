@@ -1003,13 +1003,13 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     });
   });
 
-  it("replaces freeform add with constrained swap controls for gap-fill sessions", () => {
+  it("shows constrained swap controls when runtime swap is enabled for an eligible exercise", () => {
     render(
       <LogWorkoutClient
         workoutId="workout-gap-fill"
         exercises={makeGapFillSwapExercises()}
         allowBonusExerciseAdd={false}
-        allowGapFillAccessorySwap={true}
+        allowRuntimeExerciseSwap={true}
       />
     );
 
@@ -1489,25 +1489,26 @@ function makeGapFillSwapExercises(): SectionedExercises {
     accessory: [
       {
         workoutExerciseId: "ex-gap-swap",
-        name: "Cable Rear Delt Fly",
-        equipment: ["cable"],
+        name: "T-Bar Row",
+        equipment: ["barbell"],
+        movementPatterns: ["horizontal_pull"],
         isMainLift: false,
         sets: [
           {
             setId: "set-gap-swap-1",
             setIndex: 1,
-            targetReps: 15,
-            targetLoad: 25,
+            targetReps: 10,
+            targetLoad: 120,
             targetRpe: 8,
-            restSeconds: 90,
+            restSeconds: 120,
           },
           {
             setId: "set-gap-swap-2",
             setIndex: 2,
-            targetReps: 15,
-            targetLoad: 25,
+            targetReps: 10,
+            targetLoad: 120,
             targetRpe: 8,
-            restSeconds: 90,
+            restSeconds: 120,
           },
         ],
       },

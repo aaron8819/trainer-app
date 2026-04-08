@@ -625,6 +625,122 @@ describe("mapHistory", () => {
     expect(history[0].exercises[0]?.exerciseId).toBe("bench");
   });
 
+  it("keeps swapped replacements on the replacement exercise history instead of treating them as extras", () => {
+    const history = mapHistory([
+      {
+        id: "w-runtime-swap",
+        userId: "u1",
+        templateId: null,
+        scheduledDate: new Date("2026-03-12T00:00:00.000Z"),
+        completedAt: new Date("2026-03-12T01:00:00.000Z"),
+        status: WorkoutStatus.COMPLETED,
+        estimatedMinutes: 50,
+        notes: null,
+        selectionMode: "INTENT",
+        sessionIntent: "PULL",
+        selectionMetadata: {
+          runtimeEditReconciliation: {
+            version: 1,
+            lastReconciledAt: "2026-03-12T01:00:00.000Z",
+            directives: {
+              continuityAlias: "none",
+              progressionAlias: "none",
+              futureSessionGeneration: "ignore",
+              futureSeedCarryForward: "ignore",
+            },
+            ops: [
+              {
+                kind: "replace_exercise",
+                source: "api_workouts_swap_exercise",
+                appliedAt: "2026-03-12T00:20:00.000Z",
+                scope: "current_workout_only",
+                facts: {
+                  workoutExerciseId: "we-row",
+                  fromExerciseId: "t-bar-row",
+                  fromExerciseName: "T-Bar Row",
+                  toExerciseId: "chest-supported-db-row",
+                  toExerciseName: "Chest-Supported Dumbbell Row",
+                  reason: "equipment_availability_equivalent_pull_swap",
+                  setCount: 1,
+                },
+              },
+            ],
+          },
+        },
+        revision: 1,
+        forcedSplit: null,
+        advancesSplit: true,
+        trainingBlockId: null,
+        weekInBlock: null,
+        exercises: [
+          {
+            id: "we-row",
+            workoutId: "w-runtime-swap",
+            exerciseId: "chest-supported-db-row",
+            orderIndex: 0,
+            section: "MAIN",
+            isMainLift: false,
+            movementPatterns: [],
+            notes: null,
+            exercise: {
+              id: "chest-supported-db-row",
+              name: "Chest-Supported Dumbbell Row",
+              movementPatterns: [],
+              splitTags: [],
+              jointStress: "LOW",
+              isMainLiftEligible: false,
+              isCompound: true,
+              fatigueCost: 2,
+              stimulusBias: [],
+              contraindications: null,
+              timePerSetSec: 120,
+              sfrScore: 3,
+              lengthPositionScore: 3,
+              difficulty: "INTERMEDIATE",
+              isUnilateral: false,
+              repRangeMin: 8,
+              repRangeMax: 12,
+              exerciseMuscles: [
+                { role: "PRIMARY", muscle: { name: "Lats", sraHours: 48 } },
+              ],
+            },
+            sets: [
+              {
+                id: "s-row",
+                workoutExerciseId: "we-row",
+                setIndex: 1,
+                targetReps: 10,
+                targetRepMin: 8,
+                targetRepMax: 12,
+                targetRpe: 8,
+                targetLoad: 27.5,
+                restSeconds: 120,
+                logs: [
+                  {
+                    id: "l-row",
+                    workoutSetId: "s-row",
+                    actualReps: 10,
+                    actualRpe: 8,
+                    actualLoad: 27.5,
+                    completedAt: new Date(),
+                    notes: null,
+                    wasSkipped: false,
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      } as never,
+    ]);
+
+    expect(history).toHaveLength(1);
+    expect(history[0].exercises).toHaveLength(1);
+    expect(history[0].exercises[0]).toMatchObject({
+      exerciseId: "chest-supported-db-row",
+    });
+  });
+
   it("marks scheduled deload sessions as performed but excludes them from progression and performance history", () => {
     const history = mapHistory([
       {

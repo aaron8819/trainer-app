@@ -4,13 +4,15 @@ import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { resolveOwner } from "@/lib/api/workout-context";
 import { reconcileRuntimeEditSelectionMetadata } from "@/lib/api/runtime-edit-reconciliation";
-import { isStrictOptionalGapFillSession } from "@/lib/gap-fill/classifier";
-import { buildGapFillSwapCandidates } from "@/lib/gap-fill/exercise-swap";
 import {
-  attachGapFillExerciseSwapRecord,
-  readGapFillExerciseSwapState,
+  formatRuntimeExerciseSwapNote,
+  readRuntimeAddedExerciseIds,
+  readRuntimeReplacedExercises,
 } from "@/lib/ui/selection-metadata";
-import { resolveGapFillTargetMuscles } from "@/lib/ui/gap-fill";
+import {
+  buildRuntimeExerciseSwapCandidates,
+  isSupportedRuntimeExerciseSwapPattern,
+} from "@/lib/api/runtime-exercise-swap";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -23,7 +25,6 @@ const swapExerciseSchema = z.object({
 type ExerciseRecord = {
   id: string;
   name: string;
-  isMainLiftEligible: boolean;
   fatigueCost: number;
   movementPatterns: string[];
   exerciseEquipment: Array<{ equipment: { type: string } }>;
@@ -34,7 +35,6 @@ function mapSwapProfile(exercise: ExerciseRecord) {
   return {
     id: exercise.id,
     name: exercise.name,
-    isMainLiftEligible: exercise.isMainLiftEligible,
     fatigueCost: exercise.fatigueCost,
     movementPatterns: exercise.movementPatterns.map((pattern) => pattern.toLowerCase()),
     primaryMuscles: exercise.exerciseMuscles
@@ -42,6 +42,10 @@ function mapSwapProfile(exercise: ExerciseRecord) {
       .map((entry) => entry.muscle.name.toLowerCase()),
     equipment: exercise.exerciseEquipment.map((entry) => entry.equipment.type.toLowerCase()),
   };
+}
+
+function isOpenWorkoutStatus(status: string) {
+  return status === "PLANNED" || status === "IN_PROGRESS" || status === "PARTIAL";
 }
 
 async function loadSwapContext(input: {
@@ -63,18 +67,8 @@ async function loadSwapContext(input: {
     return { error: "Workout not found" as const };
   }
 
-  if (
-    !isStrictOptionalGapFillSession({
-      selectionMetadata: workout.selectionMetadata,
-      selectionMode: workout.selectionMode,
-      sessionIntent: workout.sessionIntent,
-    })
-  ) {
-    return { error: "Gap-fill swaps are only available for strict optional gap-fill sessions." as const };
-  }
-
-  if (workout.status !== "PLANNED") {
-    return { error: "Gap-fill swaps are only available before logging starts." as const };
+  if (!isOpenWorkoutStatus(workout.status)) {
+    return { error: "Exercise swaps are only available while the workout is still open." as const };
   }
 
   const workoutExercise = await prisma.workoutExercise.findFirst({
@@ -102,25 +96,32 @@ async function loadSwapContext(input: {
     return { error: "Workout exercise not found" as const };
   }
 
-  if (workoutExercise.isMainLift || workoutExercise.section !== "ACCESSORY") {
-    return { error: "Only accessory gap-fill exercises can be swapped." as const };
+  if (readRuntimeAddedExerciseIds(workout.selectionMetadata).has(workoutExercise.id)) {
+    return { error: "Runtime-added exercises cannot be swapped." as const };
+  }
+
+  if (
+    !isSupportedRuntimeExerciseSwapPattern(
+      workoutExercise.exercise.movementPatterns
+    )
+  ) {
+    return {
+      error: "Only narrow horizontal-pull and vertical-pull swaps are supported right now." as const,
+    };
   }
 
   if (workoutExercise.sets.some((set) => set.logs[0] != null)) {
     return { error: "Logged exercises cannot be swapped." as const };
   }
 
-  const existingSwapState = readGapFillExerciseSwapState(workout.selectionMetadata);
-  if (existingSwapState?.swaps.some((entry) => entry.workoutExerciseId === workoutExercise.id)) {
+  const existingSwaps = readRuntimeReplacedExercises(workout.selectionMetadata);
+  if (existingSwaps.has(workoutExercise.id)) {
     return { error: "This exercise has already been swapped for the session." as const };
   }
 
   return {
     workout,
     workoutExercise,
-    targetMuscles: resolveGapFillTargetMuscles({
-      selectionMetadata: workout.selectionMetadata,
-    }),
   };
 }
 
@@ -156,10 +157,9 @@ export async function GET(
     orderBy: { name: "asc" },
   });
 
-  const candidates = buildGapFillSwapCandidates({
+  const candidates = buildRuntimeExerciseSwapCandidates({
     current: mapSwapProfile(context.workoutExercise.exercise as ExerciseRecord),
     candidates: exercises.map((exercise) => mapSwapProfile(exercise as ExerciseRecord)),
-    targetMuscles: context.targetMuscles,
   });
 
   return NextResponse.json({ candidates });
@@ -226,17 +226,16 @@ export async function POST(
     return NextResponse.json({ error: "Replacement exercise not found" }, { status: 404 });
   }
 
-  const candidates = buildGapFillSwapCandidates({
+  const candidates = buildRuntimeExerciseSwapCandidates({
     current: mapSwapProfile(context.workoutExercise.exercise as ExerciseRecord),
     candidates: exercisePool.map((exercise) => mapSwapProfile(exercise as ExerciseRecord)),
-    targetMuscles: context.targetMuscles,
   });
   const selectedCandidate = candidates.find(
     (candidate) => candidate.exerciseId === replacementExercise.id
   );
   if (!selectedCandidate) {
     return NextResponse.json(
-      { error: "Replacement exercise is not an eligible gap-fill swap." },
+      { error: "Replacement exercise is not an eligible runtime pull swap." },
       { status: 409 }
     );
   }
@@ -310,25 +309,8 @@ export async function POST(
       },
     });
 
-    let selectionMetadata = attachGapFillExerciseSwapRecord(latestWorkout.selectionMetadata, {
-      version: 1,
-      workoutExerciseId: context.workoutExercise.id,
-      originalExerciseId: context.workoutExercise.exerciseId,
-      originalExerciseName: context.workoutExercise.exercise.name,
-      swappedExerciseId: replacementExercise.id,
-      swappedExerciseName: replacementExercise.name,
-      allowedAt: new Date().toISOString(),
-      scope: "session_only",
-      allowedBy: "gap_fill_equivalent_accessory_swap",
-      targetMuscleOverlap: selectedCandidate.compatibility.targetMuscleOverlap,
-      movementPatternOverlap: selectedCandidate.compatibility.movementPatternOverlap,
-      equipmentDemandStayedAtOrBelowOriginal:
-        selectedCandidate.compatibility.equipmentDemandStayedAtOrBelowOriginal,
-      fatigueDelta: selectedCandidate.compatibility.fatigueDelta,
-    });
-
-    selectionMetadata = reconcileRuntimeEditSelectionMetadata({
-      selectionMetadata,
+    const selectionMetadata = reconcileRuntimeEditSelectionMetadata({
+      selectionMetadata: latestWorkout.selectionMetadata,
       selectionMode: latestWorkout.selectionMode,
       sessionIntent: latestWorkout.sessionIntent,
       persistedExercises: persistedExercises.map((exercise) => ({
@@ -350,8 +332,10 @@ export async function POST(
         kind: "replace_exercise",
         workoutExerciseId: context.workoutExercise.id,
         fromExerciseId: context.workoutExercise.exerciseId,
+        fromExerciseName: context.workoutExercise.exercise.name,
         toExerciseId: replacementExercise.id,
-        reason: "gap_fill_equivalent_accessory_swap",
+        toExerciseName: replacementExercise.name,
+        reason: "equipment_availability_equivalent_pull_swap",
         setCount: updatedWorkoutExercise.sets.length,
       },
     }).nextSelectionMetadata;
@@ -381,9 +365,14 @@ export async function POST(
       workoutExerciseId: swapResult.id,
       name: replacementExercise.name,
       equipment: replacementExercise.exerciseEquipment.map((entry) => entry.equipment.type),
-      isMainLift: false,
-      section: "ACCESSORY" as const,
-      sessionNote: `Swapped from ${context.workoutExercise.exercise.name}. Session-only; future progression stays exercise-specific.`,
+      movementPatterns: replacementExercise.movementPatterns.map((pattern) => pattern.toLowerCase()),
+      isMainLift: context.workoutExercise.isMainLift,
+      isSwapped: true,
+      section: context.workoutExercise.section,
+      sessionNote: formatRuntimeExerciseSwapNote({
+        fromExerciseName: context.workoutExercise.exercise.name,
+        fromExerciseId: context.workoutExercise.exerciseId,
+      }),
       sets: swapResult.sets.map((set) => ({
         setId: set.id,
         setIndex: set.setIndex,

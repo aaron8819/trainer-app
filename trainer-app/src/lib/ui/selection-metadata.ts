@@ -67,6 +67,10 @@ export type RuntimeEditDirectiveState = {
   futureSeedCarryForward: "ignore";
 };
 
+export type RuntimeExerciseReplaceReason =
+  | "gap_fill_equivalent_accessory_swap"
+  | "equipment_availability_equivalent_pull_swap";
+
 export type RuntimeEditOperationSource =
   | "api_workouts_add_exercise"
   | "api_workouts_add_set"
@@ -100,8 +104,10 @@ export type RuntimeEditReplaceExerciseOperation = {
   facts: {
     workoutExerciseId: string;
     fromExerciseId: string;
+    fromExerciseName?: string;
     toExerciseId: string;
-    reason: "gap_fill_equivalent_accessory_swap";
+    toExerciseName?: string;
+    reason: RuntimeExerciseReplaceReason;
     setCount: number;
   };
 };
@@ -150,6 +156,17 @@ export type RuntimeEditReconciliation = {
 export const RUNTIME_ADDED_EXERCISE_BADGE_LABEL = "Added exercise";
 export const RUNTIME_ADDED_EXERCISE_SESSION_NOTE =
   "Added during workout. Session-only; future planning ignores it.";
+export const SWAPPED_EXERCISE_BADGE_LABEL = "Swapped";
+
+export type RuntimeReplacedExerciseSummary = {
+  workoutExerciseId: string;
+  fromExerciseId: string;
+  fromExerciseName?: string;
+  toExerciseId: string;
+  toExerciseName?: string;
+  reason: RuntimeExerciseReplaceReason;
+  setCount: number;
+};
 
 export type PersistedWorkoutStructureExerciseInput = {
   exerciseId: string;
@@ -427,7 +444,8 @@ function parseRuntimeEditOperation(value: unknown): RuntimeEditOperation | undef
       typeof facts.workoutExerciseId !== "string" ||
       typeof facts.fromExerciseId !== "string" ||
       typeof facts.toExerciseId !== "string" ||
-      facts.reason !== "gap_fill_equivalent_accessory_swap" ||
+      (facts.reason !== "gap_fill_equivalent_accessory_swap" &&
+        facts.reason !== "equipment_availability_equivalent_pull_swap") ||
       typeof facts.setCount !== "number" ||
       !Number.isFinite(facts.setCount)
     ) {
@@ -442,8 +460,14 @@ function parseRuntimeEditOperation(value: unknown): RuntimeEditOperation | undef
       facts: {
         workoutExerciseId: facts.workoutExerciseId,
         fromExerciseId: facts.fromExerciseId,
+        ...(typeof facts.fromExerciseName === "string"
+          ? { fromExerciseName: facts.fromExerciseName }
+          : {}),
         toExerciseId: facts.toExerciseId,
-        reason: "gap_fill_equivalent_accessory_swap",
+        ...(typeof facts.toExerciseName === "string"
+          ? { toExerciseName: facts.toExerciseName }
+          : {}),
+        reason: facts.reason,
         setCount: facts.setCount,
       },
     };
@@ -641,6 +665,40 @@ export function readRuntimeAddedExerciseIds(selectionMetadata: unknown): Set<str
       )
       .map((operation) => operation.facts.workoutExerciseId as string)
   );
+}
+
+export function readRuntimeReplacedExercises(
+  selectionMetadata: unknown
+): Map<string, RuntimeReplacedExerciseSummary> {
+  const runtimeEditReconciliation = readRuntimeEditReconciliation(selectionMetadata);
+
+  return new Map(
+    (runtimeEditReconciliation?.ops ?? [])
+      .filter(
+        (operation): operation is RuntimeEditReplaceExerciseOperation =>
+          operation.kind === "replace_exercise"
+      )
+      .map((operation) => [
+        operation.facts.workoutExerciseId,
+        {
+          workoutExerciseId: operation.facts.workoutExerciseId,
+          fromExerciseId: operation.facts.fromExerciseId,
+          fromExerciseName: operation.facts.fromExerciseName,
+          toExerciseId: operation.facts.toExerciseId,
+          toExerciseName: operation.facts.toExerciseName,
+          reason: operation.facts.reason,
+          setCount: operation.facts.setCount,
+        } satisfies RuntimeReplacedExerciseSummary,
+      ])
+  );
+}
+
+export function formatRuntimeExerciseSwapNote(
+  replacement: Pick<RuntimeReplacedExerciseSummary, "fromExerciseName" | "fromExerciseId">
+): string {
+  return `Swapped from ${
+    replacement.fromExerciseName ?? replacement.fromExerciseId
+  }. Session-only; future progression stays exercise-specific.`;
 }
 
 export function attachWorkoutStructureState(

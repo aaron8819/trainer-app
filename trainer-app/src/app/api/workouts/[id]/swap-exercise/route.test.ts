@@ -77,86 +77,47 @@ describe("POST /api/workouts/[id]/swap-exercise", () => {
 
     mocks.workoutFindFirst.mockResolvedValue({
       id: "workout-1",
-      status: "PLANNED",
+      status: "IN_PROGRESS",
       selectionMode: "INTENT",
-      sessionIntent: "BODY_PART",
+      sessionIntent: "PULL",
       selectionMetadata: {
-        sessionDecisionReceipt: {
-          version: 1,
-          cycleContext: {
-            weekInMeso: 4,
-            weekInBlock: 4,
-            phase: "accumulation",
-            blockType: "accumulation",
-            isDeload: false,
-            source: "computed",
-          },
-          lifecycleVolume: { source: "unknown" },
-          sorenessSuppressedMuscles: [],
-          deloadDecision: {
-            mode: "none",
-            reason: [],
-            reductionPercent: 0,
-            appliedTo: "none",
-          },
-          readiness: {
-            wasAutoregulated: false,
-            signalAgeHours: null,
-            fatigueScoreOverall: null,
-            intensityScaling: {
-              applied: false,
-              exerciseIds: [],
-              scaledUpCount: 0,
-              scaledDownCount: 0,
-            },
-          },
-          targetMuscles: ["rear delts"],
-          exceptions: [
-            {
-              code: "optional_gap_fill",
-              message: "Marked as optional gap-fill session.",
-            },
-          ],
-        },
         sessionAuditSnapshot: {
           version: 1,
           generated: {
             selectionMode: "INTENT",
-            sessionIntent: "BODY_PART",
+            sessionIntent: "PULL",
             exerciseCount: 1,
             hardSetCount: 3,
             exercises: [
               {
-                exerciseId: "rear-delt-fly",
-                exerciseName: "Rear Delt Fly",
+                exerciseId: "t-bar-row",
+                exerciseName: "T-Bar Row",
                 orderIndex: 0,
-                section: "accessory",
+                section: "main",
                 isMainLift: false,
-                prescribedSetCount: 3,
-                prescribedSets: [{ setIndex: 1, targetReps: 15, targetRpe: 8 }],
+                prescribedSetCount: 2,
+                prescribedSets: [{ setIndex: 1, targetReps: 10, targetRpe: 8 }],
               },
             ],
             semantics: {
-              kind: "gap_fill",
+              kind: "advancing",
               effectiveSelectionMode: "INTENT",
               isDeload: false,
-              isStrictGapFill: true,
+              isStrictGapFill: false,
               isStrictSupplemental: false,
-              advancesLifecycle: false,
-              consumesWeeklyScheduleIntent: false,
+              advancesLifecycle: true,
+              consumesWeeklyScheduleIntent: true,
               countsTowardCompliance: true,
               countsTowardRecentStimulus: true,
               countsTowardWeeklyVolume: true,
               countsTowardProgressionHistory: true,
               countsTowardPerformanceHistory: true,
               updatesProgressionAnchor: true,
-              eligibleForUniqueIntentSubtraction: false,
+              eligibleForUniqueIntentSubtraction: true,
               reasons: [],
-              trace: { advancesSplitInput: false },
+              trace: { advancesSplitInput: true },
             },
-            traces: {
-              progression: {},
-            },
+            traces: { progression: {} },
           },
         },
       },
@@ -165,17 +126,19 @@ describe("POST /api/workouts/[id]/swap-exercise", () => {
     mocks.workoutExerciseFindFirst.mockResolvedValue({
       id: "we-1",
       workoutId: "workout-1",
-      exerciseId: "rear-delt-fly",
-      section: "ACCESSORY",
+      exerciseId: "t-bar-row",
+      section: "MAIN",
       isMainLift: false,
       exercise: {
-        id: "rear-delt-fly",
-        name: "Rear Delt Fly",
-        isMainLiftEligible: false,
-        fatigueCost: 2,
-        movementPatterns: ["ISOLATION"],
-        exerciseEquipment: [{ equipment: { type: "CABLE" } }],
-        exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Rear Delts" } }],
+        id: "t-bar-row",
+        name: "T-Bar Row",
+        fatigueCost: 3,
+        movementPatterns: ["HORIZONTAL_PULL"],
+        exerciseEquipment: [{ equipment: { type: "BARBELL" } }],
+        exerciseMuscles: [
+          { role: "PRIMARY", muscle: { name: "Lats" } },
+          { role: "PRIMARY", muscle: { name: "Upper Back" } },
+        ],
       },
       sets: [
         { id: "set-1", setIndex: 1, logs: [] },
@@ -184,127 +147,96 @@ describe("POST /api/workouts/[id]/swap-exercise", () => {
     });
 
     mocks.exerciseFindUnique.mockResolvedValue({
-      id: "machine-rear-delt-fly",
-      name: "Machine Rear Delt Fly",
-      repRangeMin: 12,
-      repRangeMax: 20,
-      movementPatterns: ["ISOLATION"],
-      exerciseEquipment: [{ equipment: { type: "MACHINE" } }],
-      exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Rear Delts" } }],
+      id: "chest-supported-db-row",
+      name: "Chest-Supported Dumbbell Row",
+      repRangeMin: 8,
+      repRangeMax: 12,
+      movementPatterns: ["HORIZONTAL_PULL"],
+      exerciseEquipment: [{ equipment: { type: "DUMBBELL" } }],
+      exerciseMuscles: [
+        { role: "PRIMARY", muscle: { name: "Lats" } },
+        { role: "PRIMARY", muscle: { name: "Upper Back" } },
+      ],
     });
 
     mocks.exerciseFindMany.mockResolvedValue([
       {
-        id: "rear-delt-fly",
-        name: "Rear Delt Fly",
-        isMainLiftEligible: false,
-        fatigueCost: 2,
-        movementPatterns: ["ISOLATION"],
-        exerciseEquipment: [{ equipment: { type: "CABLE" } }],
-        exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Rear Delts" } }],
-      },
-      {
-        id: "machine-rear-delt-fly",
-        name: "Machine Rear Delt Fly",
-        isMainLiftEligible: false,
-        fatigueCost: 2,
-        movementPatterns: ["ISOLATION"],
-        exerciseEquipment: [{ equipment: { type: "MACHINE" } }],
-        exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Rear Delts" } }],
-      },
-      {
-        id: "upright-row",
-        name: "Upright Row",
-        isMainLiftEligible: false,
+        id: "t-bar-row",
+        name: "T-Bar Row",
         fatigueCost: 3,
-        movementPatterns: ["VERTICAL_PULL"],
+        movementPatterns: ["HORIZONTAL_PULL"],
         exerciseEquipment: [{ equipment: { type: "BARBELL" } }],
-        exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Traps" } }],
+        exerciseMuscles: [
+          { role: "PRIMARY", muscle: { name: "Lats" } },
+          { role: "PRIMARY", muscle: { name: "Upper Back" } },
+        ],
+      },
+      {
+        id: "chest-supported-db-row",
+        name: "Chest-Supported Dumbbell Row",
+        fatigueCost: 2,
+        movementPatterns: ["HORIZONTAL_PULL"],
+        exerciseEquipment: [{ equipment: { type: "DUMBBELL" } }],
+        exerciseMuscles: [
+          { role: "PRIMARY", muscle: { name: "Lats" } },
+          { role: "PRIMARY", muscle: { name: "Upper Back" } },
+        ],
+      },
+      {
+        id: "lat-pulldown",
+        name: "Lat Pulldown",
+        fatigueCost: 2,
+        movementPatterns: ["VERTICAL_PULL"],
+        exerciseEquipment: [{ equipment: { type: "CABLE" } }],
+        exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Lats" } }],
       },
     ]);
 
-    mocks.setLogFindFirst.mockResolvedValue({ actualLoad: 45 });
+    mocks.setLogFindFirst.mockResolvedValue({ actualLoad: 27.5 });
     mocks.txWorkoutFindUnique.mockResolvedValue({
       selectionMetadata: {
-        sessionDecisionReceipt: {
-          version: 1,
-          cycleContext: {
-            weekInMeso: 4,
-            weekInBlock: 4,
-            phase: "accumulation",
-            blockType: "accumulation",
-            isDeload: false,
-            source: "computed",
-          },
-          lifecycleVolume: { source: "unknown" },
-          sorenessSuppressedMuscles: [],
-          deloadDecision: {
-            mode: "none",
-            reason: [],
-            reductionPercent: 0,
-            appliedTo: "none",
-          },
-          readiness: {
-            wasAutoregulated: false,
-            signalAgeHours: null,
-            fatigueScoreOverall: null,
-            intensityScaling: {
-              applied: false,
-              exerciseIds: [],
-              scaledUpCount: 0,
-              scaledDownCount: 0,
-            },
-          },
-          targetMuscles: ["rear delts"],
-          exceptions: [
-            {
-              code: "optional_gap_fill",
-              message: "Marked as optional gap-fill session.",
-            },
-          ],
-        },
         sessionAuditSnapshot: {
           version: 1,
           generated: {
             selectionMode: "INTENT",
-            sessionIntent: "BODY_PART",
+            sessionIntent: "PULL",
             exerciseCount: 1,
             hardSetCount: 2,
             exercises: [
               {
-                exerciseId: "rear-delt-fly",
-                exerciseName: "Rear Delt Fly",
+                exerciseId: "t-bar-row",
+                exerciseName: "T-Bar Row",
                 orderIndex: 0,
-                section: "accessory",
+                section: "main",
                 isMainLift: false,
                 prescribedSetCount: 2,
-                prescribedSets: [{ setIndex: 1, targetReps: 15, targetRpe: 8 }],
+                prescribedSets: [{ setIndex: 1, targetReps: 10, targetRpe: 8 }],
               },
             ],
             semantics: {
-              kind: "gap_fill",
+              kind: "advancing",
               effectiveSelectionMode: "INTENT",
               isDeload: false,
-              isStrictGapFill: true,
+              isStrictGapFill: false,
               isStrictSupplemental: false,
-              advancesLifecycle: false,
-              consumesWeeklyScheduleIntent: false,
+              advancesLifecycle: true,
+              consumesWeeklyScheduleIntent: true,
               countsTowardCompliance: true,
               countsTowardRecentStimulus: true,
               countsTowardWeeklyVolume: true,
               countsTowardProgressionHistory: true,
               countsTowardPerformanceHistory: true,
               updatesProgressionAnchor: true,
-              eligibleForUniqueIntentSubtraction: false,
+              eligibleForUniqueIntentSubtraction: true,
               reasons: [],
-              trace: { advancesSplitInput: false },
+              trace: { advancesSplitInput: true },
             },
             traces: { progression: {} },
           },
         },
       },
       selectionMode: "INTENT",
-      sessionIntent: "BODY_PART",
+      sessionIntent: "PULL",
     });
     mocks.txWorkoutExerciseUpdate.mockResolvedValue({
       id: "we-1",
@@ -316,30 +248,30 @@ describe("POST /api/workouts/[id]/swap-exercise", () => {
     mocks.txWorkoutExerciseFindMany.mockResolvedValue([
       {
         id: "we-1",
-        exerciseId: "machine-rear-delt-fly",
+        exerciseId: "chest-supported-db-row",
         orderIndex: 0,
-        section: "ACCESSORY",
-        exercise: { name: "Machine Rear Delt Fly" },
+        section: "MAIN",
+        exercise: { name: "Chest-Supported Dumbbell Row" },
         sets: [
           {
             id: "set-1",
             setIndex: 1,
-            targetReps: 16,
-            targetRepMin: 12,
-            targetRepMax: 20,
+            targetReps: 10,
+            targetRepMin: 8,
+            targetRepMax: 12,
             targetRpe: 8,
-            targetLoad: 45,
-            restSeconds: 90,
+            targetLoad: 27.5,
+            restSeconds: 120,
           },
           {
             id: "set-2",
             setIndex: 2,
-            targetReps: 16,
-            targetRepMin: 12,
-            targetRepMax: 20,
+            targetReps: 10,
+            targetRepMin: 8,
+            targetRepMax: 12,
             targetRpe: 8,
-            targetLoad: 45,
-            restSeconds: 90,
+            targetLoad: 27.5,
+            restSeconds: 120,
           },
         ],
       },
@@ -350,33 +282,33 @@ describe("POST /api/workouts/[id]/swap-exercise", () => {
         {
           id: "set-1",
           setIndex: 1,
-          targetReps: 16,
-          targetRepMin: 12,
-          targetRepMax: 20,
+          targetReps: 10,
+          targetRepMin: 8,
+          targetRepMax: 12,
           targetRpe: 8,
-          targetLoad: 45,
+          targetLoad: 27.5,
         },
         {
           id: "set-2",
           setIndex: 2,
-          targetReps: 16,
-          targetRepMin: 12,
-          targetRepMax: 20,
+          targetReps: 10,
+          targetRepMin: 8,
+          targetRepMax: 12,
           targetRpe: 8,
-          targetLoad: 45,
+          targetLoad: 27.5,
         },
       ],
     });
   });
 
-  it("swaps a strict gap-fill accessory, reanchors targets to the replacement, and records canonical swap metadata", async () => {
+  it("replaces a planned pull exercise in place, keeps completion on the same slot row, and records canonical replacement metadata", async () => {
     const response = await POST(
       new Request("http://localhost/api/workouts/workout-1/swap-exercise", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           workoutExerciseId: "we-1",
-          replacementExerciseId: "machine-rear-delt-fly",
+          replacementExerciseId: "chest-supported-db-row",
         }),
       }),
       { params: Promise.resolve({ id: "workout-1" }) }
@@ -385,13 +317,19 @@ describe("POST /api/workouts/[id]/swap-exercise", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.exercise.name).toBe("Machine Rear Delt Fly");
-    expect(body.exercise.sessionNote).toContain("future progression stays exercise-specific");
+    expect(body.exercise).toMatchObject({
+      workoutExerciseId: "we-1",
+      name: "Chest-Supported Dumbbell Row",
+      isSwapped: true,
+      isMainLift: false,
+      section: "MAIN",
+      sessionNote: "Swapped from T-Bar Row. Session-only; future progression stays exercise-specific.",
+    });
     expect(mocks.txWorkoutExerciseUpdate).toHaveBeenCalledWith({
       where: { id: "we-1" },
       data: {
-        exerciseId: "machine-rear-delt-fly",
-        movementPatterns: ["ISOLATION"],
+        exerciseId: "chest-supported-db-row",
+        movementPatterns: ["HORIZONTAL_PULL"],
       },
       include: {
         sets: { orderBy: { setIndex: "asc" } },
@@ -401,10 +339,10 @@ describe("POST /api/workouts/[id]/swap-exercise", () => {
     expect(mocks.txWorkoutSetUpdate).toHaveBeenNthCalledWith(1, {
       where: { id: "set-1" },
       data: {
-        targetReps: 16,
-        targetRepMin: 12,
-        targetRepMax: 20,
-        targetLoad: 45,
+        targetReps: 10,
+        targetRepMin: 8,
+        targetRepMax: 12,
+        targetLoad: 27.5,
       },
     });
     expect(mocks.txWorkoutUpdate).toHaveBeenCalledWith(
@@ -413,18 +351,6 @@ describe("POST /api/workouts/[id]/swap-exercise", () => {
         data: expect.objectContaining({
           revision: { increment: 1 },
           selectionMetadata: expect.objectContaining({
-            gapFillExerciseSwapState: expect.objectContaining({
-              swaps: [
-                expect.objectContaining({
-                  workoutExerciseId: "we-1",
-                  originalExerciseId: "rear-delt-fly",
-                  swappedExerciseId: "machine-rear-delt-fly",
-                  targetMuscleOverlap: ["rear delts"],
-                  movementPatternOverlap: ["isolation"],
-                  fatigueDelta: 0,
-                }),
-              ],
-            }),
             runtimeEditReconciliation: expect.objectContaining({
               version: 1,
               directives: {
@@ -440,9 +366,11 @@ describe("POST /api/workouts/[id]/swap-exercise", () => {
                   scope: "current_workout_only",
                   facts: {
                     workoutExerciseId: "we-1",
-                    fromExerciseId: "rear-delt-fly",
-                    toExerciseId: "machine-rear-delt-fly",
-                    reason: "gap_fill_equivalent_accessory_swap",
+                    fromExerciseId: "t-bar-row",
+                    fromExerciseName: "T-Bar Row",
+                    toExerciseId: "chest-supported-db-row",
+                    toExerciseName: "Chest-Supported Dumbbell Row",
+                    reason: "equipment_availability_equivalent_pull_swap",
                     setCount: 2,
                   },
                 }),

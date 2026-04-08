@@ -115,8 +115,10 @@ Lifecycle/handoff meanings:
   - `version`
   - `lastReconciledAt`
   - `ops[]` with v1 kinds `add_exercise`, `replace_exercise`, `rewrite_structure`
+  - `replace_exercise` facts keep `workoutExerciseId`, original/replacement exercise ids, original/replacement names, the route-known reason, and `setCount`
   - conservative directives `{ continuityAlias: "none", progressionAlias: "none", futureSessionGeneration: "ignore", futureSeedCarryForward: "ignore" }`
 - `selectionMetadata.sessionDecisionReceipt` remains the original generated/evidence payload even after mutation; `workoutStructureState` and `runtimeEditReconciliation` are additive companion records rather than receipt replacements.
+- Runtime swaps do not create a second workout row or an extra-exercise record. The canonical execution shape is an in-place `WorkoutExercise.exerciseId` replacement plus the persisted `replace_exercise` ledger fact above, which keeps slot/session identity stable while preserving auditability of the original programmed exercise.
 - Optional-session semantics are receipt-driven, not enum-driven. Supplemental deficit sessions and optional gap-fill sessions do not add new database enums; they are represented by canonical `selectionMetadata.sessionDecisionReceipt.exceptions` markers plus persisted `Workout.selectionMode`, `Workout.sessionIntent`, and `Workout.advancesSplit`.
 - Read-side consumers now centralize that interpretation in `src/lib/session-semantics/derive-session-semantics.ts`; no persisted `sessionKind` column or enum has been added.
 - Next-cycle carry-forward compatibility is draft-validated rather than schema-enforced: if split/session edits remove a slot intent, `keep` selections for that prior intent are rejected before acceptance (`src/lib/api/mesocycle-handoff.ts`).

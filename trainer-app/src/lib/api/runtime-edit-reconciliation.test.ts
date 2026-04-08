@@ -186,8 +186,10 @@ describe("reconcileRuntimeEditSelectionMetadata", () => {
         kind: "replace_exercise",
         workoutExerciseId: "we-1",
         fromExerciseId: "bench",
+        fromExerciseName: "Bench Press",
         toExerciseId: "incline-press",
-        reason: "gap_fill_equivalent_accessory_swap",
+        toExerciseName: "Incline Press",
+        reason: "equipment_availability_equivalent_pull_swap",
         setCount: 2,
       },
     });
@@ -202,8 +204,10 @@ describe("reconcileRuntimeEditSelectionMetadata", () => {
         facts: {
           workoutExerciseId: "we-1",
           fromExerciseId: "bench",
+          fromExerciseName: "Bench Press",
           toExerciseId: "incline-press",
-          reason: "gap_fill_equivalent_accessory_swap",
+          toExerciseName: "Incline Press",
+          reason: "equipment_availability_equivalent_pull_swap",
           setCount: 2,
         },
       },

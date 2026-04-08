@@ -174,7 +174,7 @@ export default async function LogWorkoutPage({
           workoutId={workout.id}
           exercises={exercises}
           allowBonusExerciseAdd={!isStrictGapFill}
-          allowGapFillAccessorySwap={isStrictGapFill && workout.status === "PLANNED"}
+          allowRuntimeExerciseSwap={workflow.isResumable}
           sessionIdentityLabel={sessionIdentityLabel}
           sessionTechnicalLabel={sessionTechnicalLabel}
         />

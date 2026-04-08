@@ -404,4 +404,82 @@ describe("WorkoutDetailPage", { timeout: 15000 }, () => {
 
     expect(screen.getByText("Added exercise")).toBeInTheDocument();
   });
+
+  it("labels swapped exercises explicitly on workout detail surfaces", async () => {
+    mocks.workoutFindFirst.mockResolvedValue({
+      id: "workout-1",
+      userId: "user-1",
+      status: "COMPLETED",
+      estimatedMinutes: 55,
+      selectionMetadata: {
+        runtimeEditReconciliation: {
+          version: 1,
+          lastReconciledAt: "2026-03-24T10:00:00.000Z",
+          directives: {
+            continuityAlias: "none",
+            progressionAlias: "none",
+            futureSessionGeneration: "ignore",
+            futureSeedCarryForward: "ignore",
+          },
+          ops: [
+            {
+              kind: "replace_exercise",
+              source: "api_workouts_swap_exercise",
+              appliedAt: "2026-03-24T10:00:00.000Z",
+              scope: "current_workout_only",
+              facts: {
+                workoutExerciseId: "we-row",
+                fromExerciseId: "t-bar-row",
+                fromExerciseName: "T-Bar Row",
+                toExerciseId: "chest-supported-db-row",
+                toExerciseName: "Chest-Supported Dumbbell Row",
+                reason: "equipment_availability_equivalent_pull_swap",
+                setCount: 2,
+              },
+            },
+          ],
+        },
+      },
+      sessionIntent: "PULL",
+      exercises: [
+        {
+          id: "we-row",
+          orderIndex: 0,
+          exerciseId: "chest-supported-db-row",
+          isMainLift: false,
+          section: "MAIN",
+          exercise: {
+            name: "Chest-Supported Dumbbell Row",
+            jointStress: "LOW",
+            exerciseEquipment: [{ equipment: { type: "DUMBBELL" } }],
+          },
+          sets: [
+            {
+              id: "set-1",
+              setIndex: 1,
+              targetReps: 10,
+              targetRepMin: 8,
+              targetRepMax: 12,
+              targetLoad: 27.5,
+              targetRpe: 8,
+              logs: [{ actualReps: 10, actualLoad: 27.5, actualRpe: 8, wasSkipped: false }],
+            },
+          ],
+        },
+      ],
+    });
+
+    const { default: WorkoutDetailPage } = await import("./page");
+    const ui = await WorkoutDetailPage({ params: Promise.resolve({ id: "workout-1" }) });
+
+    render(ui);
+
+    expect(screen.getByText("Swapped")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Swapped from T-Bar Row. Session-only; future progression stays exercise-specific."
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Added exercise")).not.toBeInTheDocument();
+  });
 });

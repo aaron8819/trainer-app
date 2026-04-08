@@ -1,8 +1,9 @@
 import type { LogExerciseInput } from "@/components/log-workout/types";
 import {
-  readGapFillExerciseSwapState,
+  formatRuntimeExerciseSwapNote,
   readRuntimeAddedExerciseIds,
   readRuntimeAddedSetIds,
+  readRuntimeReplacedExercises,
   RUNTIME_ADDED_EXERCISE_SESSION_NOTE,
 } from "@/lib/ui/selection-metadata";
 
@@ -13,6 +14,7 @@ type WorkoutExercise = {
   section?: "WARMUP" | "MAIN" | "ACCESSORY" | null;
   exercise: {
     name: string;
+    movementPatterns?: string[] | null;
     exerciseEquipment?: { equipment: { type: string } }[];
   };
   sets: {
@@ -40,13 +42,17 @@ type SectionedExercises = {
 };
 
 function buildSwapNoteMap(selectionMetadata: unknown): Map<string, string> {
-  const swapState = readGapFillExerciseSwapState(selectionMetadata);
+  const swapState = readRuntimeReplacedExercises(selectionMetadata);
   return new Map(
-    (swapState?.swaps ?? []).map((entry) => [
+    Array.from(swapState.values()).map((entry) => [
       entry.workoutExerciseId,
-      `Swapped from ${entry.originalExerciseName}. Session-only; future progression stays exercise-specific.`,
+      formatRuntimeExerciseSwapNote(entry),
     ])
   );
+}
+
+function buildSwappedExerciseIdSet(selectionMetadata: unknown): Set<string> {
+  return new Set(readRuntimeReplacedExercises(selectionMetadata).keys());
 }
 
 export function splitExercises(
@@ -57,6 +63,7 @@ export function splitExercises(
   const main: LogExerciseInput[] = [];
   const accessory: LogExerciseInput[] = [];
   const swapNoteByWorkoutExerciseId = buildSwapNoteMap(selectionMetadata);
+  const swappedExerciseIds = buildSwappedExerciseIdSet(selectionMetadata);
   const runtimeAddedExerciseIds = readRuntimeAddedExerciseIds(selectionMetadata);
   const runtimeAddedSetIds = readRuntimeAddedSetIds(selectionMetadata);
 
@@ -67,7 +74,11 @@ export function splitExercises(
       workoutExerciseId: exercise.id,
       name: exercise.exercise.name,
       equipment: (exercise.exercise.exerciseEquipment ?? []).map((item) => item.equipment.type),
+      movementPatterns: (exercise.exercise.movementPatterns ?? []).map((pattern) =>
+        pattern.toLowerCase()
+      ),
       isRuntimeAdded: runtimeAddedExerciseIds.has(exercise.id),
+      isSwapped: swappedExerciseIds.has(exercise.id),
       isMainLift: exercise.isMainLift,
       sessionNote:
         swapNoteByWorkoutExerciseId.get(exercise.id) ??

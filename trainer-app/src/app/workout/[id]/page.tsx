@@ -12,9 +12,12 @@ import {
   isPerformedWorkoutStatus,
 } from "@/lib/ui/session-overview";
 import {
+  formatRuntimeExerciseSwapNote,
   RUNTIME_ADDED_EXERCISE_BADGE_LABEL,
   readRuntimeAddedExerciseIds,
   readRuntimeAddedSetIds,
+  readRuntimeReplacedExercises,
+  SWAPPED_EXERCISE_BADGE_LABEL,
 } from "@/lib/ui/selection-metadata";
 import {
   formatSessionIdentityLabel,
@@ -147,6 +150,7 @@ export default async function WorkoutDetailPage({
   const workoutStructureState = selectionMetadata.workoutStructureState;
   const runtimeAddedExerciseIds = readRuntimeAddedExerciseIds(workout.selectionMetadata);
   const runtimeAddedSetIds = readRuntimeAddedSetIds(workout.selectionMetadata);
+  const runtimeReplacedExercises = readRuntimeReplacedExercises(workout.selectionMetadata);
   const sessionIdentityLabel = formatSessionIdentityLabel({
     intent: workout.sessionIntent,
     slotId: sessionDecisionReceipt?.sessionSlot?.slotId ?? null,
@@ -274,6 +278,7 @@ export default async function WorkoutDetailPage({
                       : exercise.section === "MAIN" || exercise.isMainLift
                       ? "Main lift"
                       : "Accessory";
+                  const replacement = runtimeReplacedExercises.get(exercise.id);
                   const loadDeltaLabel =
                     progressionReceipt?.delta.loadPercent != null
                       ? `${progressionReceipt.delta.loadPercent >= 0 ? "+" : ""}${progressionReceipt.delta.loadPercent.toFixed(1)}% load`
@@ -285,7 +290,11 @@ export default async function WorkoutDetailPage({
                         <div>
                           <div className="flex items-center gap-2">
                             <h3 className="text-lg font-semibold">{exercise.exercise.name}</h3>
-                            {runtimeAddedExerciseIds.has(exercise.id) ? (
+                            {replacement ? (
+                              <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-700">
+                                {SWAPPED_EXERCISE_BADGE_LABEL}
+                              </span>
+                            ) : runtimeAddedExerciseIds.has(exercise.id) ? (
                               <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
                                 {RUNTIME_ADDED_EXERCISE_BADGE_LABEL}
                               </span>
@@ -298,6 +307,11 @@ export default async function WorkoutDetailPage({
                               {exercise.sets[0]?.targetRpe ? ` | RPE ${exercise.sets[0].targetRpe}` : ""}
                             </>
                           </p>
+                          {replacement ? (
+                            <p className="mt-1 text-xs text-sky-700">
+                              {formatRuntimeExerciseSwapNote(replacement)}
+                            </p>
+                          ) : null}
                         </div>
                         <div className="flex items-center gap-2">
                           <span className="text-xs uppercase tracking-wide text-slate-500">{roleLabel}</span>

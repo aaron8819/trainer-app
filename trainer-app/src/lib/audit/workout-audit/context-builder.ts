@@ -87,6 +87,19 @@ export async function buildWorkoutAuditContext(
     };
   }
 
+  if (mode === "active-mesocycle-slot-reseed") {
+    return {
+      mode,
+      requestedMode: request.mode,
+      userId: identity.userId,
+      ownerEmail: identity.ownerEmail,
+      plannerDiagnosticsMode,
+      activeMesocycleSlotReseed: {
+        enabled: true,
+      },
+    };
+  }
+
   if (mode === "progression-anchor") {
     if (!request.exerciseId) {
       throw new Error("progression-anchor mode requires --exercise-id");

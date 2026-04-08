@@ -7,12 +7,14 @@ const mocks = vi.hoisted(() => {
   const generateSessionFromIntent = vi.fn();
   const generateDeloadSessionFromIntent = vi.fn();
   const buildWeeklyRetroAuditPayload = vi.fn();
+  const buildActiveMesocycleSlotReseedAuditPayload = vi.fn();
   return {
     loadActiveMesocycle,
     loadProjectedWeekVolumeReport,
     generateSessionFromIntent,
     generateDeloadSessionFromIntent,
     buildWeeklyRetroAuditPayload,
+    buildActiveMesocycleSlotReseedAuditPayload,
   };
 });
 
@@ -34,6 +36,11 @@ vi.mock("@/lib/api/template-session", () => ({
 vi.mock("./weekly-retro", () => ({
   buildWeeklyRetroAuditPayload: (...args: unknown[]) =>
     mocks.buildWeeklyRetroAuditPayload(...args),
+}));
+
+vi.mock("./active-mesocycle-slot-reseed", () => ({
+  buildActiveMesocycleSlotReseedAuditPayload: (...args: unknown[]) =>
+    mocks.buildActiveMesocycleSlotReseedAuditPayload(...args),
 }));
 
 import { runWorkoutAuditGeneration } from "./generation-runner";
@@ -127,6 +134,48 @@ describe("runWorkoutAuditGeneration", () => {
       interventions: [],
       rootCauses: [],
       recommendedPriorities: [],
+    });
+    mocks.buildActiveMesocycleSlotReseedAuditPayload.mockResolvedValue({
+      version: 1,
+      activeMesocycle: {
+        mesocycleId: "meso-1",
+        mesoNumber: 3,
+        state: "ACTIVE_ACCUMULATION",
+        week: 3,
+        splitType: "UPPER_LOWER",
+        targetSlotIds: ["upper_a", "upper_b"],
+      },
+      executiveSummary: ["Verdict: safe_to_apply_bounded_reseed."],
+      persistedSeedResolution: {
+        sourceModule: "slot-plan-seed.ts",
+        sourceFunction: "readPersistedSeedSlots",
+        runtimeRule: "normalize persisted slot seed",
+      },
+      freshReprojection: {
+        sourceModule: "mesocycle-handoff-slot-plan-projection.ts",
+        sourceFunction: "projectSuccessorSlotPlansFromSnapshot",
+        runtimeRule: "reproject candidate slot seed",
+      },
+      candidateSessionEvaluation: {
+        sourceModule: "projected-week-volume-shared.ts",
+        sourceFunction: "generateProjectedSession",
+        runtimeRule: "generate candidate seeded sessions",
+      },
+      diffArtifactDescription: "upper-slot dry-run diff",
+      slotDiffs: [],
+      aggregateMuscleDiff: [],
+      flags: {
+        improvesChestSupport: true,
+        improvesTricepsSupport: true,
+        preservesRowAndVerticalPullWhereAppropriate: true,
+        avoidsNewObviousOvershoot: true,
+        preservesSlotIdentity: true,
+        materiallyChangesExerciseSelection: true,
+      },
+      recommendation: {
+        verdict: "safe_to_apply_bounded_reseed",
+        reasons: ["push support improved"],
+      },
     });
     mocks.generateSessionFromIntent.mockResolvedValue(okGenerationResult);
     mocks.generateDeloadSessionFromIntent.mockResolvedValue(okGenerationResult);
@@ -282,6 +331,37 @@ describe("runWorkoutAuditGeneration", () => {
       version: 1,
       week: 2,
       mesocycleId: "meso-1",
+    });
+  });
+
+  it("routes active-mesocycle-slot-reseed through the dry-run audit builder without touching generation helpers", async () => {
+    const context: WorkoutAuditContext = {
+      mode: "active-mesocycle-slot-reseed",
+      requestedMode: "active-mesocycle-slot-reseed",
+      userId: "user-1",
+      plannerDiagnosticsMode: "debug",
+      activeMesocycleSlotReseed: {
+        enabled: true,
+      },
+    };
+
+    const run = await runWorkoutAuditGeneration(context);
+
+    expect(mocks.buildActiveMesocycleSlotReseedAuditPayload).toHaveBeenCalledWith({
+      userId: "user-1",
+      plannerDiagnosticsMode: "debug",
+    });
+    expect(mocks.generateSessionFromIntent).not.toHaveBeenCalled();
+    expect(mocks.generateDeloadSessionFromIntent).not.toHaveBeenCalled();
+    expect(run.activeMesocycleSlotReseed).toMatchObject({
+      version: 1,
+      activeMesocycle: {
+        mesocycleId: "meso-1",
+        week: 3,
+      },
+      recommendation: {
+        verdict: "safe_to_apply_bounded_reseed",
+      },
     });
   });
 });

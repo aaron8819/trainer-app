@@ -152,6 +152,40 @@ function formatMuscleContributorSessions(input: {
   return contributors.length > 0 ? contributors.join(", ") : "none";
 }
 
+function formatBooleanFlag(value: boolean): string {
+  return value ? "yes" : "no";
+}
+
+export function buildActiveMesocycleSlotReseedSummary(input: {
+  artifact: Pick<WorkoutAuditArtifact, "activeMesocycleSlotReseed">;
+  outputPath: string;
+}): string[] | null {
+  const payload = input.artifact.activeMesocycleSlotReseed;
+  if (!payload) {
+    return null;
+  }
+
+  const chestDelta =
+    payload.aggregateMuscleDiff.find((row) => row.muscle === "Chest")?.delta ?? 0;
+  const tricepsDelta =
+    payload.aggregateMuscleDiff.find((row) => row.muscle === "Triceps")?.delta ?? 0;
+  const sideDeltDelta =
+    payload.aggregateMuscleDiff.find((row) => row.muscle === "Side Delts")?.delta ?? 0;
+  const changedSlots =
+    payload.slotDiffs
+      .filter((slot) => slot.exerciseDiff.added.length > 0 || slot.exerciseDiff.removed.length > 0)
+      .map((slot) => slot.slotId)
+      .join(", ") || "none";
+
+  return [
+    `[workout-audit:reseed] mesocycle=${payload.activeMesocycle.mesocycleId} week=${payload.activeMesocycle.week} verdict=${payload.recommendation.verdict}`,
+    `[workout-audit:reseed] slots=${payload.activeMesocycle.targetSlotIds.join(", ")} changed_slots=${changedSlots}`,
+    `[workout-audit:reseed] push_delta=Chest:${formatSignedSetDelta(chestDelta)}, Triceps:${formatSignedSetDelta(tricepsDelta)}, Side Delts:${formatSignedSetDelta(sideDeltDelta)}`,
+    `[workout-audit:reseed] guards=slot_identity:${formatBooleanFlag(payload.flags.preservesSlotIdentity)} row_vertical_pull:${formatBooleanFlag(payload.flags.preservesRowAndVerticalPullWhereAppropriate)} overshoot_clear:${formatBooleanFlag(payload.flags.avoidsNewObviousOvershoot)}`,
+    `[workout-audit:reseed] artifact=${input.outputPath}`,
+  ];
+}
+
 export function buildProjectedWeekOperatorSummary(input: {
   artifact: Pick<WorkoutAuditArtifact, "projectedWeekVolume" | "warningSummary">;
   outputPath: string;
@@ -399,9 +433,11 @@ async function main(): Promise<void> {
       ? `week=${run.weeklyRetro.week} recommendations=${run.weeklyRetro.recommendedPriorities.length}`
     : run.projectedWeekVolume
       ? `week=${run.projectedWeekVolume.currentWeek.week} projected_sessions=${run.projectedWeekVolume.projectedSessions.length}`
-    : run.progressionAnchor
-      ? `exercise=${run.progressionAnchor.exerciseId} action=${run.progressionAnchor.trace.outcome.action}`
-      : !run.generationResult
+      : run.activeMesocycleSlotReseed
+        ? `week=${run.activeMesocycleSlotReseed.activeMesocycle.week} verdict=${run.activeMesocycleSlotReseed.recommendation.verdict}`
+      : run.progressionAnchor
+        ? `exercise=${run.progressionAnchor.exerciseId} action=${run.progressionAnchor.trace.outcome.action}`
+        : !run.generationResult
         ? "no_generation"
         : "error" in run.generationResult
           ? `generation_error=${run.generationResult.error}`
@@ -425,6 +461,15 @@ async function main(): Promise<void> {
   });
   if (weeklyRetroSummary) {
     for (const line of weeklyRetroSummary) {
+      console.log(line);
+    }
+  }
+  const activeMesocycleSlotReseedSummary = buildActiveMesocycleSlotReseedSummary({
+    artifact,
+    outputPath,
+  });
+  if (activeMesocycleSlotReseedSummary) {
+    for (const line of activeMesocycleSlotReseedSummary) {
       console.log(line);
     }
   }

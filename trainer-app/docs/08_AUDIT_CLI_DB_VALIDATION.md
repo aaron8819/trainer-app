@@ -44,6 +44,12 @@ Projected current week volume:
 npm run audit:workout -- --mode projected-week-volume --user-id <user-id>
 ```
 
+Active mesocycle dry-run upper-slot reseed audit:
+
+```powershell
+npm run audit:workout -- --mode active-mesocycle-slot-reseed --owner <owner-email>
+```
+
 Retrospective completed-week volume and slot review:
 
 ```powershell

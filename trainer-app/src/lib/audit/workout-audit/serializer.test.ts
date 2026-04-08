@@ -51,7 +51,7 @@ describe("buildWorkoutAuditArtifact", () => {
     );
 
     expect(artifact.source).toBe("live");
-    expect(artifact.version).toBe(3);
+    expect(artifact.version).toBe(4);
     expect(artifact.mode).toBe("future-week");
     expect(artifact.identity.userId).toBe("user-1");
     expect(artifact.identity.ownerEmail).toBe("owner@test.local");
@@ -646,5 +646,82 @@ describe("buildWorkoutAuditArtifact", () => {
       semanticWarnings: 0,
       backgroundWarnings: 0,
     });
+  });
+
+  it("serializes active-mesocycle-slot-reseed payloads without attaching generation fields", () => {
+    const artifact = buildWorkoutAuditArtifact(
+      {
+        mode: "active-mesocycle-slot-reseed",
+        userId: "user-1",
+      },
+      {
+        ...baseRun,
+        context: {
+          mode: "active-mesocycle-slot-reseed",
+          requestedMode: "active-mesocycle-slot-reseed",
+          userId: "user-1",
+          plannerDiagnosticsMode: "standard",
+          activeMesocycleSlotReseed: {
+            enabled: true,
+          },
+        },
+        generationResult: undefined,
+        activeMesocycleSlotReseed: {
+          version: 1,
+          activeMesocycle: {
+            mesocycleId: "meso-1",
+            mesoNumber: 3,
+            state: "ACTIVE_ACCUMULATION",
+            week: 3,
+            splitType: "UPPER_LOWER",
+            targetSlotIds: ["upper_a", "upper_b"],
+          },
+          executiveSummary: ["Verdict: safe_to_apply_bounded_reseed."],
+          persistedSeedResolution: {
+            sourceModule: "slot-plan-seed.ts",
+            sourceFunction: "readPersistedSeedSlots",
+            runtimeRule: "normalize persisted slot seed",
+          },
+          freshReprojection: {
+            sourceModule: "mesocycle-handoff-slot-plan-projection.ts",
+            sourceFunction: "projectSuccessorSlotPlansFromSnapshot",
+            runtimeRule: "reproject candidate slot seed",
+          },
+          candidateSessionEvaluation: {
+            sourceModule: "projected-week-volume-shared.ts",
+            sourceFunction: "generateProjectedSession",
+            runtimeRule: "generate candidate seeded sessions",
+          },
+          diffArtifactDescription: "upper-slot dry-run diff",
+          slotDiffs: [],
+          aggregateMuscleDiff: [],
+          flags: {
+            improvesChestSupport: true,
+            improvesTricepsSupport: true,
+            preservesRowAndVerticalPullWhereAppropriate: true,
+            avoidsNewObviousOvershoot: true,
+            preservesSlotIdentity: true,
+            materiallyChangesExerciseSelection: true,
+          },
+          recommendation: {
+            verdict: "safe_to_apply_bounded_reseed",
+            reasons: ["push support improved"],
+          },
+        },
+      }
+    );
+
+    expect(artifact.mode).toBe("active-mesocycle-slot-reseed");
+    expect(artifact.activeMesocycleSlotReseed).toMatchObject({
+      version: 1,
+      activeMesocycle: {
+        mesocycleId: "meso-1",
+        week: 3,
+      },
+      recommendation: {
+        verdict: "safe_to_apply_bounded_reseed",
+      },
+    });
+    expect(artifact.generation).toBeUndefined();
   });
 });

@@ -10,12 +10,12 @@ type JsonRecord = Record<string, unknown>;
 
 type SeedRole = "CORE_COMPOUND" | "ACCESSORY";
 
-type NormalizedSeededSlotExercise = {
+export type NormalizedSeededSlotExercise = {
   exerciseId: string;
   role: SeedRole;
 };
 
-type NormalizedSeededSlot = {
+export type NormalizedSeededSlot = {
   slotId: string;
   intent: SessionIntent;
   sequenceIndex: number;
@@ -54,7 +54,7 @@ function isSeedRole(value: unknown): value is SeedRole {
   return value === "CORE_COMPOUND" || value === "ACCESSORY";
 }
 
-function readPersistedSeedSlots(input: {
+export function readPersistedSeedSlots(input: {
   slotPlanSeedJson?: unknown;
   mapped: MappedGenerationContext;
 }): NormalizedSeededSlot[] | null {

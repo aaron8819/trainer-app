@@ -6,6 +6,7 @@ Purpose: Canonical operational playbook for recurring workout-audit CLI use. Thi
 
 This doc covers:
 - Recurring operational use of `historical-week`, `weekly-retro`, `future-week`, `deload`, and `progression-anchor`
+- Active-mesocycle dry-run reseed review for bounded slot-seed repair
 - Default audit workflows for common review scenarios
 - Artifact-reading guidance for the current audit JSON vocabulary
 - Red flags, escalation triggers, and legacy-data caveats
@@ -245,6 +246,47 @@ Escalate when:
 - projected later sessions appear to ignore earlier projected-slot contributions
 - a saved incomplete workout is the real source of truth you need, since this mode intentionally does not redesign around that case
 
+### `active-mesocycle-slot-reseed`
+
+When to use it:
+- dry-run review of a bounded active-cycle slot-seed repair
+- compare persisted seeded upper-slot composition against a fresh reprojection
+- answer whether a bounded reseed is safe before any mutation is approved
+
+Primary questions it answers:
+- what would change in `upper_a` / `upper_b` if current projection logic rebuilt the seed today
+- whether chest / triceps support improves materially
+- whether row / vertical-pull support and slot identity stay intact
+- whether the result is `safe_to_apply_bounded_reseed`, `not_safe_to_apply`, or `needs_projection_fix_first`
+
+Command pattern:
+
+```powershell
+npm run audit:workout -- --env-file .env.local --mode active-mesocycle-slot-reseed --owner <owner-email>
+```
+
+Inspect first:
+- `activeMesocycleSlotReseed.executiveSummary`
+- `activeMesocycleSlotReseed.recommendation`
+- `activeMesocycleSlotReseed.flags`
+- `activeMesocycleSlotReseed.aggregateMuscleDiff`
+- `activeMesocycleSlotReseed.slotDiffs[*].exerciseDiff`
+- `activeMesocycleSlotReseed.slotDiffs[*].setDiffByExercise`
+- `activeMesocycleSlotReseed.slotDiffs[*].warnings`
+
+Common red flags:
+- `recommendation.verdict="needs_projection_fix_first"`
+- `flags.improvesChestSupport=false` and `flags.improvesTricepsSupport=false`
+- `flags.preservesSlotIdentity=false`
+- `flags.preservesRowAndVerticalPullWhereAppropriate=false`
+- `flags.avoidsNewObviousOvershoot=false`
+
+Escalate when:
+- the candidate projection still cannot satisfy protected chest / triceps coverage
+- push-support muscles do not improve or side-delt support regresses materially
+- the candidate changes exercises but keeps the same or worse push support
+- row / vertical-pull support survives only by breaking slot-policy identity
+
 ### `deload`
 
 When to use it:
@@ -381,6 +423,15 @@ Escalate when:
 8. Read `fullWeekByMuscle` for projected full-week target / MEV / MAV comparisons.
 9. Escalate if slot order, chaining, or the generation-centric incomplete-workout note makes the answer insufficient.
 
+### Active seeded-slot reseed review
+1. Run `active-mesocycle-slot-reseed`.
+2. Read `executiveSummary` and `recommendation` first.
+3. Confirm the artifact is scoped to the intended active mesocycle and `upper_a` / `upper_b`.
+4. Read `flags` before trusting the candidate diff.
+5. Read `aggregateMuscleDiff` for chest / triceps / side-delt movement.
+6. Inspect each `slotDiffs[*]` row for exercise swaps, set-count changes, and warnings.
+7. Escalate immediately if the verdict is `needs_projection_fix_first` or if slot-identity / pull-support guards fail.
+
 ### Deload week review
 1. Run `deload` for the target intent.
 2. Confirm `sessionSnapshot.generated.semantics.isDeload=true`.
@@ -419,6 +470,11 @@ Read these fields in this order unless the audit type says otherwise.
 - Present for `projected-week-volume`.
 - Read this before trusting a full-week projection when runtime state contains incomplete workouts.
 - The key question is whether the report is answering the generation-centric runtime-slot question you intended to ask.
+
+### `activeMesocycleSlotReseed.recommendation`
+- Present for `active-mesocycle-slot-reseed`.
+- This is the top-line dry-run verdict for bounded reseed safety.
+- `needs_projection_fix_first` means the current canonical projection path still fails a gating coverage condition even before mutation is considered.
 
 ### `comparabilityCoverage`
 - Historical-week-only summary for persisted vs reconstructed coverage.

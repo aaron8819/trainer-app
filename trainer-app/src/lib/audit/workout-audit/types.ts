@@ -12,6 +12,7 @@ import type {
   SessionAuditSnapshot,
 } from "@/lib/evidence/session-audit-types";
 import {
+  ACTIVE_MESOCYCLE_SLOT_RESEED_AUDIT_PAYLOAD_VERSION,
   HISTORICAL_WEEK_AUDIT_PAYLOAD_VERSION,
   PROJECTED_WEEK_VOLUME_AUDIT_PAYLOAD_VERSION,
   PROGRESSION_ANCHOR_AUDIT_PAYLOAD_VERSION,
@@ -90,6 +91,9 @@ export type WorkoutAuditContext = {
     mesocycleId: string;
   };
   projectedWeekVolume?: {
+    enabled: true;
+  };
+  activeMesocycleSlotReseed?: {
     enabled: true;
   };
   progressionAnchor?: {
@@ -327,6 +331,126 @@ export type ProjectedWeekVolumeAuditPayload = {
   fullWeekByMuscle: ProjectedWeekVolumeMuscleRow[];
 };
 
+export type ActiveMesocycleSlotReseedRecommendation =
+  | "safe_to_apply_bounded_reseed"
+  | "not_safe_to_apply"
+  | "needs_projection_fix_first";
+
+export type ActiveMesocycleSlotReseedExerciseSeedRow = {
+  exerciseId: string;
+  exerciseName: string;
+  role: "CORE_COMPOUND" | "ACCESSORY";
+};
+
+export type ActiveMesocycleSlotReseedSessionExerciseRow = {
+  exerciseId: string;
+  exerciseName: string;
+  role: "CORE_COMPOUND" | "ACCESSORY";
+  setCount: number;
+  movementPatterns: string[];
+  primaryMuscles: string[];
+};
+
+export type ActiveMesocycleSlotReseedMuscleDiffRow = {
+  muscle: string;
+  before: number;
+  after: number;
+  delta: number;
+};
+
+export type ActiveMesocycleSlotReseedSetDiffRow = {
+  exerciseId: string;
+  exerciseName: string;
+  beforeSetCount: number;
+  afterSetCount: number;
+  delta: number;
+};
+
+export type ActiveMesocycleSlotReseedIdentityCharacterization = {
+  slotArchetype: string | null;
+  continuityScope: string | null;
+  requiredMovementPatterns: string[];
+  preferredAccessoryPrimaryMuscles: string[];
+  protectedCoverageMuscles: string[];
+  preservesSlotIdentity: boolean;
+  hasCompoundRow: boolean;
+  hasCompoundVerticalPull: boolean;
+};
+
+export type ActiveMesocycleSlotReseedSlotDiff = {
+  slotId: string;
+  intent: string;
+  sequenceIndex: number;
+  persistedSeedExercises: ActiveMesocycleSlotReseedExerciseSeedRow[];
+  candidateSeedExercises: ActiveMesocycleSlotReseedExerciseSeedRow[];
+  exerciseDiff: {
+    added: ActiveMesocycleSlotReseedExerciseSeedRow[];
+    removed: ActiveMesocycleSlotReseedExerciseSeedRow[];
+    retained: ActiveMesocycleSlotReseedExerciseSeedRow[];
+  };
+  persistedSession: {
+    exerciseCount: number;
+    totalSets: number;
+    estimatedMinutes: number | null;
+    exercises: ActiveMesocycleSlotReseedSessionExerciseRow[];
+    muscleContributionByMuscle: Record<string, number>;
+    characterization: ActiveMesocycleSlotReseedIdentityCharacterization;
+  };
+  candidateSession: {
+    exerciseCount: number;
+    totalSets: number;
+    estimatedMinutes: number | null;
+    exercises: ActiveMesocycleSlotReseedSessionExerciseRow[];
+    muscleContributionByMuscle: Record<string, number>;
+    characterization: ActiveMesocycleSlotReseedIdentityCharacterization;
+  };
+  setDiffByExercise: ActiveMesocycleSlotReseedSetDiffRow[];
+  muscleContributionDiff: ActiveMesocycleSlotReseedMuscleDiffRow[];
+  estimatedMinutesDiff: {
+    before: number | null;
+    after: number | null;
+    delta: number | null;
+  };
+  flags: {
+    improvesChestSupport: boolean;
+    improvesTricepsSupport: boolean;
+    preservesRowAndVerticalPullWhereAppropriate: boolean;
+    avoidsNewObviousOvershoot: boolean;
+  };
+  warnings: string[];
+};
+
+export type ActiveMesocycleSlotReseedAuditPayload = {
+  version: typeof ACTIVE_MESOCYCLE_SLOT_RESEED_AUDIT_PAYLOAD_VERSION;
+  activeMesocycle: {
+    mesocycleId: string;
+    mesoNumber: number;
+    state: string;
+    week: number;
+    splitType: string;
+    targetSlotIds: string[];
+  };
+  executiveSummary: string[];
+  persistedSeedResolution: AuditBasisDescriptor;
+  freshReprojection: AuditBasisDescriptor;
+  candidateSessionEvaluation: AuditBasisDescriptor;
+  diffArtifactDescription: string;
+  slotDiffs: ActiveMesocycleSlotReseedSlotDiff[];
+  aggregateMuscleDiff: ActiveMesocycleSlotReseedMuscleDiffRow[];
+  flags: {
+    improvesChestSupport: boolean;
+    improvesTricepsSupport: boolean;
+    preservesRowAndVerticalPullWhereAppropriate: boolean;
+    avoidsNewObviousOvershoot: boolean;
+    preservesSlotIdentity: boolean;
+    materiallyChangesExerciseSelection: boolean;
+  };
+  recommendation: {
+    verdict: ActiveMesocycleSlotReseedRecommendation;
+    reasons: string[];
+  };
+};
+
 export type WorkoutAuditRun = {
   context: WorkoutAuditContext;
   generatedAt: string;
@@ -336,6 +460,7 @@ export type WorkoutAuditRun = {
   historicalWeek?: HistoricalWeekAuditPayload;
   weeklyRetro?: WeeklyRetroAuditPayload;
   projectedWeekVolume?: ProjectedWeekVolumeAuditPayload;
+  activeMesocycleSlotReseed?: ActiveMesocycleSlotReseedAuditPayload;
   progressionAnchor?: ProgressionAnchorAuditPayload;
 };
 
@@ -359,6 +484,7 @@ export type WorkoutAuditArtifact = {
   historicalWeek?: HistoricalWeekAuditPayload;
   weeklyRetro?: WeeklyRetroAuditPayload;
   projectedWeekVolume?: ProjectedWeekVolumeAuditPayload;
+  activeMesocycleSlotReseed?: ActiveMesocycleSlotReseedAuditPayload;
   progressionAnchor?: ProgressionAnchorAuditPayload;
   warningSummary: AuditWarningSummary;
 };

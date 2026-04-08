@@ -9,6 +9,7 @@ import {
   buildGeneratedSessionAuditSnapshot,
 } from "@/lib/evidence/session-audit-snapshot";
 import { PROJECTED_WEEK_VOLUME_AUDIT_PAYLOAD_VERSION } from "./constants";
+import { buildActiveMesocycleSlotReseedAuditPayload } from "./active-mesocycle-slot-reseed";
 import { buildHistoricalWeekAuditPayload } from "./historical-week";
 import { buildProgressionAnchorAuditPayload } from "./progression-anchor";
 import { buildWeeklyRetroAuditPayload } from "./weekly-retro";
@@ -92,6 +93,17 @@ export async function runWorkoutAuditGeneration(
         version: PROJECTED_WEEK_VOLUME_AUDIT_PAYLOAD_VERSION,
         ...projectedWeekVolume,
       },
+    };
+  }
+
+  if (mode === "active-mesocycle-slot-reseed") {
+    return {
+      context,
+      generatedAt: new Date().toISOString(),
+      activeMesocycleSlotReseed: await buildActiveMesocycleSlotReseedAuditPayload({
+        userId: context.userId,
+        plannerDiagnosticsMode: context.plannerDiagnosticsMode,
+      }),
     };
   }
 

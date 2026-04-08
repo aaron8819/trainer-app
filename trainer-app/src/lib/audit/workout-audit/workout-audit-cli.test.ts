@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildActiveMesocycleSlotReseedSummary,
   buildProjectedWeekDebugSummary,
   buildProjectedWeekOperatorSummary,
   buildWeeklyRetroOperatorSummary,
@@ -486,6 +487,131 @@ describe("buildWeeklyRetroOperatorSummary", () => {
       "[workout-audit:retro] under_target=none",
       "[workout-audit:retro] interventions=none",
       "[workout-audit:retro] recommendation=no_further_action",
+    ]);
+  });
+});
+
+describe("buildActiveMesocycleSlotReseedSummary", () => {
+  it("prints a compact reseed verdict with push deltas and guard flags", () => {
+    const summary = buildActiveMesocycleSlotReseedSummary({
+      artifact: {
+        activeMesocycleSlotReseed: {
+          version: 1,
+          activeMesocycle: {
+            mesocycleId: "meso-1",
+            mesoNumber: 3,
+            state: "ACTIVE_ACCUMULATION",
+            week: 3,
+            splitType: "UPPER_LOWER",
+            targetSlotIds: ["upper_a", "upper_b"],
+          },
+          executiveSummary: ["Verdict: safe_to_apply_bounded_reseed."],
+          persistedSeedResolution: {
+            sourceModule: "slot-plan-seed.ts",
+            sourceFunction: "readPersistedSeedSlots",
+            runtimeRule: "normalize persisted slot seed",
+          },
+          freshReprojection: {
+            sourceModule: "mesocycle-handoff-slot-plan-projection.ts",
+            sourceFunction: "projectSuccessorSlotPlansFromSnapshot",
+            runtimeRule: "reproject candidate slot seed",
+          },
+          candidateSessionEvaluation: {
+            sourceModule: "projected-week-volume-shared.ts",
+            sourceFunction: "generateProjectedSession",
+            runtimeRule: "generate candidate seeded sessions",
+          },
+          diffArtifactDescription: "upper-slot dry-run diff",
+          slotDiffs: [
+            {
+              slotId: "upper_a",
+              intent: "upper",
+              sequenceIndex: 0,
+              persistedSeedExercises: [],
+              candidateSeedExercises: [],
+              exerciseDiff: {
+                added: [{ exerciseId: "fly", exerciseName: "Cable Fly", role: "ACCESSORY" }],
+                removed: [{ exerciseId: "curl", exerciseName: "Cable Curl", role: "ACCESSORY" }],
+                retained: [],
+              },
+              persistedSession: {
+                exerciseCount: 5,
+                totalSets: 15,
+                estimatedMinutes: 45,
+                exercises: [],
+                muscleContributionByMuscle: { Chest: 2 },
+                characterization: {
+                  slotArchetype: "upper_horizontal_balanced",
+                  continuityScope: "slot",
+                  requiredMovementPatterns: ["vertical_pull", "horizontal_pull"],
+                  preferredAccessoryPrimaryMuscles: ["Chest", "Triceps"],
+                  protectedCoverageMuscles: ["Chest", "Triceps"],
+                  preservesSlotIdentity: true,
+                  hasCompoundRow: true,
+                  hasCompoundVerticalPull: true,
+                },
+              },
+              candidateSession: {
+                exerciseCount: 5,
+                totalSets: 16,
+                estimatedMinutes: 47,
+                exercises: [],
+                muscleContributionByMuscle: { Chest: 3.5 },
+                characterization: {
+                  slotArchetype: "upper_horizontal_balanced",
+                  continuityScope: "slot",
+                  requiredMovementPatterns: ["vertical_pull", "horizontal_pull"],
+                  preferredAccessoryPrimaryMuscles: ["Chest", "Triceps"],
+                  protectedCoverageMuscles: ["Chest", "Triceps"],
+                  preservesSlotIdentity: true,
+                  hasCompoundRow: true,
+                  hasCompoundVerticalPull: true,
+                },
+              },
+              setDiffByExercise: [],
+              muscleContributionDiff: [],
+              estimatedMinutesDiff: {
+                before: 45,
+                after: 47,
+                delta: 2,
+              },
+              flags: {
+                improvesChestSupport: true,
+                improvesTricepsSupport: true,
+                preservesRowAndVerticalPullWhereAppropriate: true,
+                avoidsNewObviousOvershoot: true,
+              },
+              warnings: [],
+            },
+          ],
+          aggregateMuscleDiff: [
+            { muscle: "Chest", before: 3, after: 5, delta: 2 },
+            { muscle: "Triceps", before: 2, after: 3.5, delta: 1.5 },
+            { muscle: "Side Delts", before: 1, after: 2, delta: 1 },
+          ],
+          flags: {
+            improvesChestSupport: true,
+            improvesTricepsSupport: true,
+            preservesRowAndVerticalPullWhereAppropriate: true,
+            avoidsNewObviousOvershoot: true,
+            preservesSlotIdentity: true,
+            materiallyChangesExerciseSelection: true,
+          },
+          recommendation: {
+            verdict: "safe_to_apply_bounded_reseed",
+            reasons: ["push support improved"],
+          },
+        },
+      },
+      outputPath: "C:\\artifacts\\reseed.json",
+    });
+
+    expect(summary).toEqual([
+      "[workout-audit:reseed] mesocycle=meso-1 week=3 verdict=safe_to_apply_bounded_reseed",
+      "[workout-audit:reseed] slots=upper_a, upper_b changed_slots=upper_a",
+      "[workout-audit:reseed] push_delta=Chest:+2.0, Triceps:+1.5, Side Delts:+1.0",
+      "[workout-audit:reseed] guards=slot_identity:yes row_vertical_pull:yes overshoot_clear:yes",
+      "[workout-audit:reseed] artifact=C:\\artifacts\\reseed.json",
     ]);
   });
 });

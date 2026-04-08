@@ -581,7 +581,7 @@ function countWorkoutWorkingSets(workout: WorkoutPlan): number {
   );
 }
 
-function preservesSlotIdentity(input: {
+export function preservesSlotIdentity(input: {
   slotPolicy: ReturnType<typeof resolveSessionSlotPolicy>["currentSession"];
   workout: WorkoutPlan;
 }) {

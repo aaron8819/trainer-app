@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BonusExerciseSheet } from "@/components/BonusExerciseSheet";
-import { GapFillExerciseSwapSheet } from "@/components/GapFillExerciseSwapSheet";
+import { RuntimeExerciseSwapSheet } from "@/components/RuntimeExerciseSwapSheet";
 import { isDumbbellEquipment, toDisplayLoad, toStoredLoad } from "@/lib/ui/load-display";
 import { useWorkoutLogState } from "@/components/log-workout/useWorkoutLogState";
 import type {
@@ -76,6 +76,12 @@ function isDumbbellExercise(exercise: LogExerciseInput): boolean {
   return isDumbbellEquipment(exercise.equipment);
 }
 
+function supportsRuntimeExerciseSwap(exercise: LogExerciseInput): boolean {
+  return (exercise.movementPatterns ?? []).some(
+    (pattern) => pattern === "horizontal_pull" || pattern === "vertical_pull"
+  );
+}
+
 function toInputNumberString(value: number | null | undefined): string {
   if (value == null) {
     return "";
@@ -120,7 +126,7 @@ export default function LogWorkoutClient({
   workoutId,
   exercises,
   allowBonusExerciseAdd = true,
-  allowGapFillAccessorySwap = false,
+  allowRuntimeExerciseSwap = false,
   onQueueExerciseRowRender,
   sessionIdentityLabel,
   sessionTechnicalLabel,
@@ -128,7 +134,7 @@ export default function LogWorkoutClient({
   workoutId: string;
   exercises: LogExerciseInput[] | SectionedExercises;
   allowBonusExerciseAdd?: boolean;
-  allowGapFillAccessorySwap?: boolean;
+  allowRuntimeExerciseSwap?: boolean;
   onQueueExerciseRowRender?: (exerciseId: string) => void;
   sessionIdentityLabel?: string | null;
   sessionTechnicalLabel?: string | null;
@@ -232,9 +238,11 @@ export default function LogWorkoutClient({
           exerciseId: exercise.workoutExerciseId,
           name: exercise.name,
           equipment: exercise.equipment,
+          isSwapped: exercise.isSwapped,
           isRuntimeAdded: exercise.isRuntimeAdded,
           isMainLift: exercise.isMainLift,
           section,
+          sessionNote: exercise.sessionNote,
           sets: exercise.sets.map((set) => ({
             setIndex: set.setIndex,
             isRuntimeAdded: set.isRuntimeAdded,
@@ -590,9 +598,10 @@ export default function LogWorkoutClient({
               isExpanded: expandedExerciseId === exercise.workoutExerciseId,
               nextSetId: nextSet?.setId ?? null,
               canSwap:
-                allowGapFillAccessorySwap &&
-                section === "accessory" &&
-                !exercise.sessionNote &&
+                allowRuntimeExerciseSwap &&
+                !exercise.isRuntimeAdded &&
+                !exercise.isSwapped &&
+                supportsRuntimeExerciseSwap(exercise) &&
                 exercise.sets.every((set) => !satisfiedSetIds.has(set.setId)),
               canAddSet: true,
               isAddingSet: addingSetExerciseId === exercise.workoutExerciseId,
@@ -617,7 +626,7 @@ export default function LogWorkoutClient({
     data,
     expandedExerciseId,
     expandedSections,
-    allowGapFillAccessorySwap,
+    allowRuntimeExerciseSwap,
     satisfiedSetIds,
     resolvedActiveSetId,
     selectedSwapExerciseId,
@@ -909,12 +918,10 @@ export default function LogWorkoutClient({
       {completion.completed ? (
         <CompletedWorkoutReview
           workoutId={workoutId}
-          loggedCount={loggedCount}
           performanceSummary={performanceSummary}
           rpeAdherence={rpeAdherence}
           sessionIdentityLabel={sessionIdentityLabel}
           sessionTechnicalLabel={sessionTechnicalLabel}
-          totalSets={totalSets}
         />
       ) : null}
 
@@ -943,7 +950,7 @@ export default function LogWorkoutClient({
         workoutId={workoutId}
         onAdd={handleAddExercise}
       />
-      <GapFillExerciseSwapSheet
+      <RuntimeExerciseSwapSheet
         isOpen={selectedSwapExercise != null}
         onClose={() => setSelectedSwapExerciseId(null)}
         workoutId={workoutId}

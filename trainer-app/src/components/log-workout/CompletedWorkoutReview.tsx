@@ -7,8 +7,12 @@ import { classifySetLog } from "@/lib/session-semantics/set-classification";
 import { isDumbbellEquipment, toDisplayLoad } from "@/lib/ui/load-display";
 import { evaluateTargetReps } from "@/lib/session-semantics/target-evaluation";
 import { hydrateWorkoutExplanation, type WorkoutExplanationResponse } from "@/lib/ui/workout-explanation-response";
+import { buildWorkoutExecutionSummary } from "@/lib/ui/workout-execution-summary";
 import type { WorkoutExplanation } from "@/lib/engine/explainability";
-import { RUNTIME_ADDED_EXERCISE_BADGE_LABEL } from "@/lib/ui/selection-metadata";
+import {
+  RUNTIME_ADDED_EXERCISE_BADGE_LABEL,
+  SWAPPED_EXERCISE_BADGE_LABEL,
+} from "@/lib/ui/selection-metadata";
 import type {
   CompletedWorkoutExerciseSummary,
   RpeAdherenceSummary,
@@ -26,8 +30,6 @@ function formatRepTarget(
 
 type CompletedWorkoutReviewProps = {
   workoutId: string;
-  totalSets: number;
-  loggedCount: number;
   rpeAdherence: RpeAdherenceSummary | null;
   performanceSummary: CompletedWorkoutExerciseSummary[];
   sessionIdentityLabel?: string | null;
@@ -36,8 +38,6 @@ type CompletedWorkoutReviewProps = {
 
 export function CompletedWorkoutReview({
   workoutId,
-  totalSets,
-  loggedCount,
   rpeAdherence,
   performanceSummary,
   sessionIdentityLabel,
@@ -45,6 +45,7 @@ export function CompletedWorkoutReview({
 }: CompletedWorkoutReviewProps) {
   const [explanation, setExplanation] = useState<WorkoutExplanation | null>(null);
   const [isLoadingExplanation, setIsLoadingExplanation] = useState(true);
+  const executionSummary = buildWorkoutExecutionSummary(performanceSummary);
 
   useEffect(() => {
     let mounted = true;
@@ -90,28 +91,39 @@ export function CompletedWorkoutReview({
             {sessionTechnicalLabel ? ` | ${sessionTechnicalLabel}` : ""}
           </p>
         ) : null}
-        <div className="mt-3 grid grid-cols-2 gap-4">
+        <div className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-4">
           <div>
-            <p className="text-xs text-emerald-700">Sets logged</p>
+            <p className="text-xs text-emerald-700">Planned sets</p>
+            <p className="text-2xl font-bold text-emerald-900">{executionSummary.plannedSetCount}</p>
+            <p className="text-xs text-emerald-600">Non-extra written work</p>
+          </div>
+          <div>
+            <p className="text-xs text-emerald-700">Completed sets</p>
+            <p className="text-2xl font-bold text-emerald-900">{executionSummary.completedSetCount}</p>
+            <p className="text-xs text-emerald-600">Actually performed</p>
+          </div>
+          <div>
+            <p className="text-xs text-emerald-700">Skipped sets</p>
+            <p className="text-2xl font-bold text-emerald-900">{executionSummary.skippedSetCount}</p>
+            <p className="text-xs text-emerald-600">Planned but not performed</p>
+          </div>
+          <div>
+            <p className="text-xs text-emerald-700">Extra sets</p>
+            <p className="text-2xl font-bold text-emerald-900">{executionSummary.extraSetCount}</p>
+            <p className="text-xs text-emerald-600">Completed outside plan</p>
+          </div>
+        </div>
+        {rpeAdherence ? (
+          <div className="mt-4">
+            <p className="text-xs text-emerald-700">RPE adherence</p>
             <p className="text-2xl font-bold text-emerald-900">
-              {totalSets > 0 ? Math.round((loggedCount / totalSets) * 100) : 0}%
+              {Math.round((rpeAdherence.adherent / rpeAdherence.total) * 100)}%
             </p>
             <p className="text-xs text-emerald-600">
-              {loggedCount}/{totalSets} sets
+              {rpeAdherence.adherent}/{rpeAdherence.total} on target
             </p>
           </div>
-          {rpeAdherence ? (
-            <div>
-              <p className="text-xs text-emerald-700">RPE adherence</p>
-              <p className="text-2xl font-bold text-emerald-900">
-                {Math.round((rpeAdherence.adherent / rpeAdherence.total) * 100)}%
-              </p>
-              <p className="text-xs text-emerald-600">
-                {rpeAdherence.adherent}/{rpeAdherence.total} on target
-              </p>
-            </div>
-          ) : null}
-        </div>
+        ) : null}
       </section>
 
       {isLoadingExplanation ? (
@@ -146,12 +158,19 @@ export function CompletedWorkoutReview({
               >
                 <div className="flex items-center gap-2">
                   <p className="font-medium text-slate-900">{exercise.name}</p>
-                  {exercise.isRuntimeAdded ? (
+                  {exercise.isSwapped ? (
+                    <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-700">
+                      {SWAPPED_EXERCISE_BADGE_LABEL}
+                    </span>
+                  ) : exercise.isRuntimeAdded ? (
                     <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
                       {RUNTIME_ADDED_EXERCISE_BADGE_LABEL}
                     </span>
                   ) : null}
                 </div>
+                {exercise.sessionNote ? (
+                  <p className="mt-1 text-xs text-sky-700">{exercise.sessionNote}</p>
+                ) : null}
                 <div className="mt-3 space-y-2">
                   {exercise.sets.map((set) => {
                     const classification = classifySetLog({

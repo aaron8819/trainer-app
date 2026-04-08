@@ -265,6 +265,20 @@ Command pattern:
 npm run audit:workout -- --env-file .env.local --mode active-mesocycle-slot-reseed --owner <owner-email>
 ```
 
+Bounded apply variant:
+
+```powershell
+npm run audit:workout -- --env-file .env.local --mode active-mesocycle-slot-reseed --owner <owner-email> --apply-bounded-reseed
+```
+
+Apply guardrails:
+- the command writes only the current active mesocycle
+- only `upper_a` / `upper_b` are eligible
+- the persisted diff artifact is still emitted before mutation
+- apply is allowed only when `recommendation.verdict="safe_to_apply_bounded_reseed"`
+- `needs_projection_fix_first` and `not_safe_to_apply` are hard stops
+- lower-slot seeds, runtime hot patching, and non-active mesocycles stay out of scope
+
 Inspect first:
 - `activeMesocycleSlotReseed.executiveSummary`
 - `activeMesocycleSlotReseed.recommendation`

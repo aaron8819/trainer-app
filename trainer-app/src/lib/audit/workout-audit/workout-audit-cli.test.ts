@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildActiveMesocycleSlotReseedApplySummary,
   buildActiveMesocycleSlotReseedSummary,
   buildProjectedWeekDebugSummary,
   buildProjectedWeekOperatorSummary,
@@ -613,5 +614,27 @@ describe("buildActiveMesocycleSlotReseedSummary", () => {
       "[workout-audit:reseed] guards=slot_identity:yes row_vertical_pull:yes overshoot_clear:yes",
       "[workout-audit:reseed] artifact=C:\\artifacts\\reseed.json",
     ]);
+  });
+});
+
+describe("buildActiveMesocycleSlotReseedApplySummary", () => {
+  it("prints a compact bounded-apply outcome for the reseed operator flow", () => {
+    const summary = buildActiveMesocycleSlotReseedApplySummary({
+      result: {
+        mesocycleId: "meso-1",
+        targetSlotIds: ["upper_a", "upper_b"],
+        changedSlotIds: ["upper_a"],
+        applied: true,
+      },
+    });
+
+    expect(summary).toEqual([
+      "[workout-audit:reseed:apply] mesocycle=meso-1 applied=yes changed_slots=upper_a",
+      "[workout-audit:reseed:apply] targeted_slots=upper_a, upper_b",
+    ]);
+  });
+
+  it("returns null when no apply result is available", () => {
+    expect(buildActiveMesocycleSlotReseedApplySummary({ result: null })).toBeNull();
   });
 });

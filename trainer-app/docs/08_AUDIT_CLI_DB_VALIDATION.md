@@ -50,6 +50,16 @@ Active mesocycle dry-run upper-slot reseed audit:
 npm run audit:workout -- --mode active-mesocycle-slot-reseed --owner <owner-email>
 ```
 
+Active mesocycle bounded upper-slot reseed apply:
+
+```powershell
+npm run audit:workout -- --mode active-mesocycle-slot-reseed --owner <owner-email> --apply-bounded-reseed
+```
+
+- The apply path is server-side only and mutates only the active mesocycle's persisted `upper_a` / `upper_b` seed entries.
+- The command still emits the dry-run diff artifact first, then applies only when the live verdict is exactly `safe_to_apply_bounded_reseed`.
+- `needs_projection_fix_first` and `not_safe_to_apply` remain hard stop verdicts.
+
 Retrospective completed-week volume and slot review:
 
 ```powershell

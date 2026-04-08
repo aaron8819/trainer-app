@@ -2,6 +2,7 @@ import type { WorkoutSessionIntent } from "@prisma/client";
 import { deriveCurrentMesocycleSession } from "@/lib/api/mesocycle-lifecycle";
 import {
   buildMesocycleSlotPlanSeed,
+  type MesocycleSlotPlanSeed,
   preservesSlotIdentity,
   projectSuccessorSlotPlansFromSnapshot,
 } from "@/lib/api/mesocycle-handoff-slot-plan-projection";
@@ -40,6 +41,13 @@ import type {
 const TARGET_SLOT_IDS = ["upper_a", "upper_b"] as const;
 const PUSH_SUPPORT_MUSCLES = ["Chest", "Triceps", "Side Delts"] as const;
 const PULL_SUPPORT_MUSCLES = ["Lats", "Upper Back", "Rear Delts", "Biceps"] as const;
+
+export type ActiveMesocycleSlotReseedEvaluation = {
+  auditPayload: ActiveMesocycleSlotReseedAuditPayload;
+  activeMesocycleId: string;
+  candidateSlotPlanSeed: MesocycleSlotPlanSeed | null;
+  targetSlotIds: string[];
+};
 
 function roundToTenth(value: number): number {
   return Math.round(value * 10) / 10;
@@ -546,10 +554,10 @@ function buildSlotDiff(input: {
   };
 }
 
-export async function buildActiveMesocycleSlotReseedAuditPayload(input: {
+export async function evaluateActiveMesocycleSlotReseed(input: {
   userId: string;
   plannerDiagnosticsMode?: "standard" | "debug";
-}): Promise<ActiveMesocycleSlotReseedAuditPayload> {
+}): Promise<ActiveMesocycleSlotReseedEvaluation> {
   const plannerDiagnosticsMode = input.plannerDiagnosticsMode ?? "standard";
   const snapshot = await loadPreloadedGenerationSnapshot(input.userId);
   const activeMesocycle = snapshot.activeMesocycle;
@@ -598,7 +606,7 @@ export async function buildActiveMesocycleSlotReseedAuditPayload(input: {
       verdict: "needs_projection_fix_first" as const,
       reasons: [projectionError ?? "Candidate projection did not return any slot plans."],
     };
-    return {
+    const auditPayload = {
       version: ACTIVE_MESOCYCLE_SLOT_RESEED_AUDIT_PAYLOAD_VERSION,
       activeMesocycle: {
         mesocycleId: activeMesocycle.id,
@@ -641,6 +649,12 @@ export async function buildActiveMesocycleSlotReseedAuditPayload(input: {
         materiallyChangesExerciseSelection: false,
       },
       recommendation,
+    };
+    return {
+      auditPayload,
+      activeMesocycleId: activeMesocycle.id,
+      candidateSlotPlanSeed: null,
+      targetSlotIds: [...TARGET_SLOT_IDS],
     };
   }
 
@@ -732,7 +746,7 @@ export async function buildActiveMesocycleSlotReseedAuditPayload(input: {
     aggregateMuscleDiff,
   });
 
-  return {
+  const auditPayload = {
     version: ACTIVE_MESOCYCLE_SLOT_RESEED_AUDIT_PAYLOAD_VERSION,
     activeMesocycle: {
       mesocycleId: activeMesocycle.id,
@@ -769,4 +783,18 @@ export async function buildActiveMesocycleSlotReseedAuditPayload(input: {
     flags: aggregateFlags,
     recommendation,
   };
+  return {
+    auditPayload,
+    activeMesocycleId: activeMesocycle.id,
+    candidateSlotPlanSeed: candidateSeed,
+    targetSlotIds: [...TARGET_SLOT_IDS],
+  };
+}
+
+export async function buildActiveMesocycleSlotReseedAuditPayload(input: {
+  userId: string;
+  plannerDiagnosticsMode?: "standard" | "debug";
+}): Promise<ActiveMesocycleSlotReseedAuditPayload> {
+  const evaluation = await evaluateActiveMesocycleSlotReseed(input);
+  return evaluation.auditPayload;
 }

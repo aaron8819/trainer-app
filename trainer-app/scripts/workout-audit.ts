@@ -186,6 +186,26 @@ export function buildActiveMesocycleSlotReseedSummary(input: {
   ];
 }
 
+export function buildActiveMesocycleSlotReseedApplySummary(input: {
+  result:
+    | {
+        mesocycleId: string;
+        targetSlotIds: string[];
+        changedSlotIds: string[];
+        applied: boolean;
+      }
+    | null;
+}): string[] | null {
+  if (!input.result) {
+    return null;
+  }
+
+  return [
+    `[workout-audit:reseed:apply] mesocycle=${input.result.mesocycleId} applied=${input.result.applied ? "yes" : "no"} changed_slots=${input.result.changedSlotIds.join(", ") || "none"}`,
+    `[workout-audit:reseed:apply] targeted_slots=${input.result.targetSlotIds.join(", ")}`,
+  ];
+}
+
 export function buildProjectedWeekOperatorSummary(input: {
   artifact: Pick<WorkoutAuditArtifact, "projectedWeekVolume" | "warningSummary">;
   outputPath: string;
@@ -355,6 +375,7 @@ export function buildWeeklyRetroOperatorSummary(input: {
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
+  const shouldApplyBoundedReseed = args["apply-bounded-reseed"] === true;
   const env = loadAuditEnv(typeof args["env-file"] === "string" ? args["env-file"] : undefined);
   const normalizedIntent = normalizeAuditIntentArg(
     typeof args.intent === "string" ? args.intent : undefined
@@ -403,6 +424,9 @@ async function main(): Promise<void> {
     plannerDiagnosticsMode: args.debug === true ? ("debug" as const) : ("standard" as const),
     sanitizationLevel: args.sanitization === "pii-safe" ? ("pii-safe" as const) : ("none" as const),
   };
+  if (shouldApplyBoundedReseed && request.mode !== "active-mesocycle-slot-reseed") {
+    throw new Error("--apply-bounded-reseed requires --mode active-mesocycle-slot-reseed");
+  }
 
   const { result, warnings } = await captureAuditWarnings(
     async () => {
@@ -470,6 +494,33 @@ async function main(): Promise<void> {
   });
   if (activeMesocycleSlotReseedSummary) {
     for (const line of activeMesocycleSlotReseedSummary) {
+      console.log(line);
+    }
+  }
+  let activeMesocycleSlotReseedApplySummary: string[] | null = null;
+  if (shouldApplyBoundedReseed) {
+    const [{ evaluateActiveMesocycleSlotReseed }, { applyActiveMesocycleBoundedUpperSlotReseed }] =
+      await Promise.all([
+        import("@/lib/audit/workout-audit/active-mesocycle-slot-reseed"),
+        import("@/lib/api/active-mesocycle-slot-reseed-apply"),
+      ]);
+    const evaluation = await evaluateActiveMesocycleSlotReseed({
+      userId: context.userId,
+      plannerDiagnosticsMode: context.plannerDiagnosticsMode,
+    });
+    const applyResult = await applyActiveMesocycleBoundedUpperSlotReseed({
+      userId: context.userId,
+      activeMesocycleId: evaluation.activeMesocycleId,
+      candidateSlotPlanSeedJson: evaluation.candidateSlotPlanSeed,
+      targetSlotIds: evaluation.targetSlotIds,
+      dryRunVerdict: evaluation.auditPayload.recommendation.verdict,
+    });
+    activeMesocycleSlotReseedApplySummary = buildActiveMesocycleSlotReseedApplySummary({
+      result: applyResult,
+    });
+  }
+  if (activeMesocycleSlotReseedApplySummary) {
+    for (const line of activeMesocycleSlotReseedApplySummary) {
       console.log(line);
     }
   }

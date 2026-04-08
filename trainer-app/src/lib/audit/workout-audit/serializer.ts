@@ -44,6 +44,7 @@ export function buildWorkoutAuditArtifact(
   }
 ): WorkoutAuditArtifact {
   const piiSafe = request.sanitizationLevel === "pii-safe";
+  const normalizedGeneration = normalizeSessionGenerationResultForAudit(run.generationResult);
   const sanitizedRequest: WorkoutAuditRequest = {
     ...request,
     ...(piiSafe
@@ -70,7 +71,7 @@ export function buildWorkoutAuditArtifact(
     },
     request: sanitizedRequest,
     nextSession: run.context.nextSession,
-    generation: normalizeSessionGenerationResultForAudit(run.generationResult),
+    generation: normalizedGeneration,
     sessionSnapshot: run.sessionSnapshot,
     canonicalSemantics: resolveAuditCanonicalSemantics(run.sessionSnapshot),
     generationPath: run.generationPath,
@@ -80,7 +81,7 @@ export function buildWorkoutAuditArtifact(
     activeMesocycleSlotReseed: run.activeMesocycleSlotReseed,
     progressionAnchor: run.progressionAnchor,
     warningSummary: buildGenerationWarningSummary({
-      generation: run.generationResult,
+      generation: normalizedGeneration,
       capturedWarnings: options?.capturedWarnings,
       additionalSemanticWarnings: guardrailWarnings,
     }),

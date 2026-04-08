@@ -8,7 +8,6 @@ import {
   loadActiveMesocycle,
 } from "@/lib/api/mesocycle-lifecycle";
 import type { SessionIntent } from "@/lib/engine/session-types";
-import type { SessionDecisionReceipt } from "@/lib/evidence/types";
 import type {
   PlannerDeficitSnapshot,
   PlannerOpportunityMuscleDiagnostic,
@@ -19,7 +18,10 @@ import {
 } from "./serializer";
 import { WORKOUT_AUDIT_CONCLUSIONS } from "./conclusions";
 import { buildWorkoutAuditContext, resolveWorkoutAuditIdentity } from "./context-builder";
-import { normalizeSessionDecisionReceiptForAudit } from "./exposed-muscles";
+import {
+  normalizeSessionDecisionReceiptForAudit,
+  type AuditSessionDecisionReceipt,
+} from "./exposed-muscles";
 import { runWorkoutAuditGeneration } from "./generation-runner";
 import { serializeStableJson } from "./artifact-serialization";
 import { SPLIT_SANITY_AUDIT_ARTIFACT_VERSION } from "./constants";
@@ -184,7 +186,7 @@ function getIntents(request: SplitSanityAuditRequest): SessionIntent[] {
   return deduped;
 }
 
-function getReceipt(run: WorkoutAuditRun): SessionDecisionReceipt | undefined {
+function getReceipt(run: WorkoutAuditRun): AuditSessionDecisionReceipt | undefined {
   if (!run.generationResult || "error" in run.generationResult) {
     return undefined;
   }
@@ -193,13 +195,13 @@ function getReceipt(run: WorkoutAuditRun): SessionDecisionReceipt | undefined {
   );
 }
 
-function getTargetedMuscles(receipt: SessionDecisionReceipt | undefined): string[] {
+function getTargetedMuscles(receipt: AuditSessionDecisionReceipt | undefined): string[] {
   const explicit = receipt?.targetMuscles?.filter((entry) => entry.trim().length > 0) ?? [];
   if (explicit.length > 0) {
     return [...explicit].sort((left, right) => left.localeCompare(right));
   }
 
-  const currentSessionMuscleOpportunity =
+  const currentSessionMuscleOpportunity: Record<string, PlannerOpportunityMuscleDiagnostic> =
     receipt?.plannerDiagnostics?.opportunity?.currentSessionMuscleOpportunity ?? {};
   return Object.entries(currentSessionMuscleOpportunity)
     .filter(([, value]) => (value.sessionOpportunityWeight ?? 0) > 0)
@@ -421,7 +423,7 @@ function buildChecks(params: {
 }): SplitSanityCheck[] {
   const successfulReceipts = params.run.intentRuns
     .map((intentRun) => getReceipt(intentRun.run))
-    .filter((receipt): receipt is SessionDecisionReceipt => Boolean(receipt));
+    .filter((receipt): receipt is AuditSessionDecisionReceipt => Boolean(receipt));
   const firstReceipt = successfulReceipts[0];
   const currentWeek = firstReceipt?.cycleContext.weekInMeso ?? params.run.phaseContext.weekInMeso ?? null;
   const blockType = firstReceipt?.cycleContext.blockType ?? params.run.phaseContext.profile.blockType ?? null;
@@ -655,7 +657,7 @@ function buildSuspiciousPatterns(params: {
 
 function buildMesocycleContext(
   run: SplitSanityAuditRun,
-  firstReceipt: SessionDecisionReceipt | undefined
+  firstReceipt: AuditSessionDecisionReceipt | undefined
 ): SplitSanityMesocycleContext {
   return {
     mesocycleId: run.activeMesocycle?.id ?? null,
@@ -714,7 +716,7 @@ export function buildSplitSanityAuditArtifact(params: {
 }): SplitSanityAuditArtifact {
   const firstReceipt = params.run.intentRuns
     .map((intentRun) => getReceipt(intentRun.run))
-    .find((receipt): receipt is SessionDecisionReceipt => Boolean(receipt));
+    .find((receipt): receipt is AuditSessionDecisionReceipt => Boolean(receipt));
 
   const intentSummaries = params.run.intentRuns.map((intentRun) =>
     buildIntentSummary(intentRun, params.richArtifactPaths?.[intentRun.intent])

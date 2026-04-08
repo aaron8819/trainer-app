@@ -1,4 +1,6 @@
 import type { SessionGenerationResult } from "@/lib/api/template-session/types";
+import type { VolumePlanByMuscle } from "@/lib/engine/volume";
+import { toMuscleId, toMuscleLabel } from "@/lib/engine/stimulus";
 import { normalizeExposedMuscle } from "@/lib/engine/volume-landmarks";
 import type { SessionDecisionReceipt } from "@/lib/evidence/types";
 import type {
@@ -15,6 +17,66 @@ import type {
 } from "@/lib/planner-diagnostics/types";
 
 type NumericMuscleMap = Record<string, number>;
+type SuccessfulSessionGenerationResult = Exclude<SessionGenerationResult, { error: string }>;
+
+export type AuditPlannerRoleAnchor =
+  | { kind: "muscle"; muscle: string }
+  | { kind: "movement_pattern"; movementPattern: string };
+
+export type AuditPlannerAnchorFixtureDiagnostic = Omit<
+  PlannerAnchorFixtureDiagnostic,
+  "anchor"
+> & {
+  anchor?: AuditPlannerRoleAnchor;
+};
+
+export type AuditPlannerClosureCandidateDiagnostic = Omit<
+  PlannerClosureCandidateDiagnostic,
+  "dominantDeficitMuscleId"
+> & {
+  dominantDeficitMuscleId?: string;
+};
+
+export type AuditPlannerExerciseDiagnostic = Omit<
+  PlannerExerciseDiagnostic,
+  "anchorUsed"
+> & {
+  stimulusVector: NumericMuscleMap;
+  anchorUsed?: AuditPlannerRoleAnchor;
+};
+
+export type AuditPlannerDiagnostics = Omit<
+  PlannerDiagnostics,
+  "anchor" | "exercises" | "closure"
+> & {
+  anchor?: Omit<NonNullable<PlannerDiagnostics["anchor"]>, "fixtures"> & {
+    fixtures: AuditPlannerAnchorFixtureDiagnostic[];
+  };
+  exercises: Record<string, AuditPlannerExerciseDiagnostic>;
+  closure: Omit<PlannerDiagnostics["closure"], "firstIterationCandidates"> & {
+    firstIterationCandidates?: AuditPlannerClosureCandidateDiagnostic[];
+  };
+};
+
+export type AuditSessionDecisionReceipt = Omit<
+  SessionDecisionReceipt,
+  "plannerDiagnostics"
+> & {
+  plannerDiagnostics?: AuditPlannerDiagnostics;
+};
+
+export type AuditSessionGenerationResult =
+  | { error: string }
+  | (Omit<SuccessfulSessionGenerationResult, "volumePlanByMuscle" | "selection"> & {
+      volumePlanByMuscle: NumericMuscleMap;
+      selection: Omit<
+        SuccessfulSessionGenerationResult["selection"],
+        "volumePlanByMuscle" | "sessionDecisionReceipt"
+      > & {
+        volumePlanByMuscle: NumericMuscleMap;
+        sessionDecisionReceipt?: AuditSessionDecisionReceipt;
+      };
+    });
 
 function sumOptionalNumber(left?: number, right?: number): number | undefined {
   if (left == null && right == null) {
@@ -23,13 +85,19 @@ function sumOptionalNumber(left?: number, right?: number): number | undefined {
   return (left ?? 0) + (right ?? 0);
 }
 
+function normalizeAuditMuscleKey(muscle: string): string {
+  const canonicalMuscleId = toMuscleId(muscle);
+  const displayMuscle = canonicalMuscleId ? toMuscleLabel(canonicalMuscleId) : muscle;
+  return normalizeExposedMuscle(displayMuscle);
+}
+
 export function normalizeExposedMuscleListForAudit(
   muscles: string[] | undefined
 ): string[] | undefined {
   if (!muscles) {
     return undefined;
   }
-  return Array.from(new Set(muscles.map((muscle) => normalizeExposedMuscle(muscle))));
+  return Array.from(new Set(muscles.map((muscle) => normalizeAuditMuscleKey(muscle))));
 }
 
 export function normalizeNumericMuscleMapForAudit(
@@ -41,22 +109,37 @@ export function normalizeNumericMuscleMapForAudit(
 
   const normalized: NumericMuscleMap = {};
   for (const [muscle, value] of Object.entries(record)) {
-    const exposedMuscle = normalizeExposedMuscle(muscle);
+    const exposedMuscle = normalizeAuditMuscleKey(muscle);
     normalized[exposedMuscle] = (normalized[exposedMuscle] ?? 0) + value;
+  }
+  return normalized;
+}
+
+export function normalizeVolumePlanByMuscleForAudit(
+  record: VolumePlanByMuscle | undefined
+): NumericMuscleMap | undefined {
+  if (!record) {
+    return undefined;
+  }
+
+  const normalized: NumericMuscleMap = {};
+  for (const [muscle, plan] of Object.entries(record)) {
+    const exposedMuscle = normalizeAuditMuscleKey(muscle);
+    normalized[exposedMuscle] = (normalized[exposedMuscle] ?? 0) + plan.planned;
   }
   return normalized;
 }
 
 function normalizePlannerRoleAnchorForAudit(
   anchor: PlannerRoleAnchor | undefined
-): PlannerRoleAnchor | undefined {
+): AuditPlannerRoleAnchor | undefined {
   if (!anchor || anchor.kind !== "muscle") {
     return anchor;
   }
 
   return {
     ...anchor,
-    muscle: normalizeExposedMuscle(anchor.muscle),
+    muscle: normalizeAuditMuscleKey(anchor.muscle),
   };
 }
 
@@ -112,7 +195,7 @@ function normalizePlannerOpportunityMuscleMapForAudit(
 
   const normalized: Record<string, PlannerOpportunityMuscleDiagnostic> = {};
   for (const [muscle, diagnostic] of Object.entries(record)) {
-    const exposedMuscle = normalizeExposedMuscle(muscle);
+    const exposedMuscle = normalizeAuditMuscleKey(muscle);
     normalized[exposedMuscle] = mergePlannerOpportunityMuscleDiagnostic(
       normalized[exposedMuscle],
       diagnostic
@@ -158,7 +241,7 @@ function normalizePlannerMuscleMapForAudit(
 
   const normalized: Record<string, PlannerMuscleDiagnostic> = {};
   for (const [muscle, diagnostic] of Object.entries(record)) {
-    const exposedMuscle = normalizeExposedMuscle(muscle);
+    const exposedMuscle = normalizeAuditMuscleKey(muscle);
     normalized[exposedMuscle] = mergePlannerMuscleDiagnostic(
       normalized[exposedMuscle],
       diagnostic
@@ -192,7 +275,7 @@ function normalizePlannerDeficitMapForAudit(
 
   const normalized: Record<string, PlannerDeficitSnapshot> = {};
   for (const [muscle, snapshot] of Object.entries(record)) {
-    const exposedMuscle = normalizeExposedMuscle(muscle);
+    const exposedMuscle = normalizeAuditMuscleKey(muscle);
     normalized[exposedMuscle] = mergePlannerDeficitSnapshot(
       normalized[exposedMuscle],
       snapshot
@@ -203,7 +286,7 @@ function normalizePlannerDeficitMapForAudit(
 
 function normalizePlannerExerciseDiagnosticForAudit(
   diagnostic: PlannerExerciseDiagnostic
-): PlannerExerciseDiagnostic {
+): AuditPlannerExerciseDiagnostic {
   return {
     ...diagnostic,
     stimulusVector:
@@ -217,7 +300,7 @@ function normalizePlannerExerciseDiagnosticForAudit(
 
 function normalizePlannerExerciseMapForAudit(
   record: Record<string, PlannerExerciseDiagnostic> | undefined
-): Record<string, PlannerExerciseDiagnostic> | undefined {
+): Record<string, AuditPlannerExerciseDiagnostic> | undefined {
   if (!record) {
     return undefined;
   }
@@ -232,7 +315,7 @@ function normalizePlannerExerciseMapForAudit(
 
 function normalizePlannerAnchorFixtureForAudit(
   fixture: PlannerAnchorFixtureDiagnostic
-): PlannerAnchorFixtureDiagnostic {
+): AuditPlannerAnchorFixtureDiagnostic {
   return {
     ...fixture,
     anchor: normalizePlannerRoleAnchorForAudit(fixture.anchor),
@@ -244,11 +327,11 @@ function normalizePlannerAnchorFixtureForAudit(
 
 function normalizePlannerClosureCandidateForAudit(
   candidate: PlannerClosureCandidateDiagnostic
-): PlannerClosureCandidateDiagnostic {
+): AuditPlannerClosureCandidateDiagnostic {
   return {
     ...candidate,
     dominantDeficitMuscleId: candidate.dominantDeficitMuscleId
-      ? normalizeExposedMuscle(candidate.dominantDeficitMuscleId)
+      ? normalizeAuditMuscleKey(candidate.dominantDeficitMuscleId)
       : undefined,
   };
 }
@@ -258,13 +341,13 @@ function normalizePlannerTradeoffForAudit(
 ): PlannerTradeoffDiagnostic {
   return {
     ...tradeoff,
-    muscle: tradeoff.muscle ? normalizeExposedMuscle(tradeoff.muscle) : undefined,
+    muscle: tradeoff.muscle ? normalizeAuditMuscleKey(tradeoff.muscle) : undefined,
   };
 }
 
 function normalizePlannerDiagnosticsForAudit(
   diagnostics: PlannerDiagnostics | undefined
-): PlannerDiagnostics | undefined {
+): AuditPlannerDiagnostics | undefined {
   if (!diagnostics) {
     return undefined;
   }
@@ -321,7 +404,7 @@ function normalizePlannerDiagnosticsForAudit(
 
 export function normalizeSessionDecisionReceiptForAudit(
   receipt: SessionDecisionReceipt | undefined
-): SessionDecisionReceipt | undefined {
+): AuditSessionDecisionReceipt | undefined {
   if (!receipt) {
     return undefined;
   }
@@ -341,7 +424,7 @@ export function normalizeSessionDecisionReceiptForAudit(
 
 export function normalizeSessionGenerationResultForAudit(
   generationResult: SessionGenerationResult | undefined
-): SessionGenerationResult | undefined {
+): AuditSessionGenerationResult | undefined {
   if (!generationResult || "error" in generationResult) {
     return generationResult;
   }
@@ -349,11 +432,11 @@ export function normalizeSessionGenerationResultForAudit(
   return {
     ...generationResult,
     volumePlanByMuscle:
-      normalizeNumericMuscleMapForAudit(generationResult.volumePlanByMuscle) ?? {},
+      normalizeVolumePlanByMuscleForAudit(generationResult.volumePlanByMuscle) ?? {},
     selection: {
       ...generationResult.selection,
       volumePlanByMuscle:
-        normalizeNumericMuscleMapForAudit(generationResult.selection.volumePlanByMuscle) ?? {},
+        normalizeVolumePlanByMuscleForAudit(generationResult.selection.volumePlanByMuscle) ?? {},
       sessionDecisionReceipt: normalizeSessionDecisionReceiptForAudit(
         generationResult.selection.sessionDecisionReceipt
       ),

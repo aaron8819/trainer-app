@@ -11,6 +11,7 @@ import type {
   SessionAuditMutationSummary,
   SessionAuditSnapshot,
 } from "@/lib/evidence/session-audit-types";
+import type { AuditSessionGenerationResult } from "./exposed-muscles";
 import {
   ACTIVE_MESOCYCLE_SLOT_RESEED_AUDIT_PAYLOAD_VERSION,
   HISTORICAL_WEEK_AUDIT_PAYLOAD_VERSION,
@@ -477,7 +478,7 @@ export type WorkoutAuditArtifact = {
   };
   request: WorkoutAuditRequest;
   nextSession?: NextWorkoutContext;
-  generation?: SessionGenerationResult;
+  generation?: AuditSessionGenerationResult;
   sessionSnapshot?: SessionAuditSnapshot;
   canonicalSemantics?: AuditCanonicalSemantics;
   generationPath?: WorkoutAuditGenerationPath;

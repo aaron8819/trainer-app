@@ -38,6 +38,16 @@ const baseRun: WorkoutAuditRun = {
   },
 };
 
+function expectSuccessfulGeneration(
+  artifact: ReturnType<typeof buildWorkoutAuditArtifact>
+) {
+  const generation = artifact.generation;
+  if (!generation || "error" in generation) {
+    throw new Error("expected successful generation artifact");
+  }
+  return generation;
+}
+
 describe("buildWorkoutAuditArtifact", () => {
   it("keeps identity fields in live mode", () => {
     const artifact = buildWorkoutAuditArtifact(
@@ -85,6 +95,11 @@ describe("buildWorkoutAuditArtifact", () => {
   });
 
   it("normalizes outward-facing muscle scope in rich generation artifacts", () => {
+    const baseGenerationResult = baseRun.generationResult;
+    if (!baseGenerationResult || "error" in baseGenerationResult) {
+      throw new Error("expected successful base generation fixture");
+    }
+
     const artifact = buildWorkoutAuditArtifact(
       {
         mode: "future-week",
@@ -94,17 +109,17 @@ describe("buildWorkoutAuditArtifact", () => {
       {
         ...baseRun,
         generationResult: {
-          ...baseRun.generationResult!,
+          ...baseGenerationResult,
           volumePlanByMuscle: {
-            Abs: 2,
-            Core: 1,
-            Chest: 5,
+            Abs: { target: 0, planned: 2, delta: -2 },
+            Core: { target: 0, planned: 1, delta: -1 },
+            Chest: { target: 0, planned: 5, delta: -5 },
           },
           selection: {
-            ...baseRun.generationResult!.selection,
+            ...baseGenerationResult.selection,
             volumePlanByMuscle: {
-              Abs: 3,
-              Core: 1,
+              Abs: { target: 0, planned: 3, delta: -3 },
+              Core: { target: 0, planned: 1, delta: -1 },
             },
             sessionDecisionReceipt: {
               version: 1,
@@ -199,7 +214,7 @@ describe("buildWorkoutAuditArtifact", () => {
                     },
                     anchorUsed: {
                       kind: "muscle",
-                      muscle: "Abs",
+                      muscle: "abs",
                     },
                     isRoleFixture: false,
                     isClosureAddition: false,
@@ -275,29 +290,31 @@ describe("buildWorkoutAuditArtifact", () => {
       }
     );
 
+    const generation = expectSuccessfulGeneration(artifact);
+
     expect(artifact.request.targetMuscles).toEqual(["Core", "Chest"]);
-    expect(artifact.generation?.volumePlanByMuscle).toEqual({
+    expect(generation.volumePlanByMuscle).toEqual({
       Chest: 5,
       Core: 3,
     });
-    expect(artifact.generation?.selection.volumePlanByMuscle).toEqual({
+    expect(generation.selection.volumePlanByMuscle).toEqual({
       Core: 4,
     });
     expect(
-      artifact.generation?.selection.sessionDecisionReceipt?.lifecycleVolume.targets
+      generation.selection.sessionDecisionReceipt?.lifecycleVolume.targets
     ).toEqual({
       Chest: 14,
       Core: 15,
     });
-    expect(artifact.generation?.selection.sessionDecisionReceipt?.targetMuscles).toEqual([
+    expect(generation.selection.sessionDecisionReceipt?.targetMuscles).toEqual([
       "Core",
       "Chest",
     ]);
     expect(
-      artifact.generation?.selection.sessionDecisionReceipt?.sorenessSuppressedMuscles
+      generation.selection.sessionDecisionReceipt?.sorenessSuppressedMuscles
     ).toEqual(["Core"]);
     expect(
-      artifact.generation?.selection.sessionDecisionReceipt?.plannerDiagnostics?.opportunity
+      generation.selection.sessionDecisionReceipt?.plannerDiagnostics?.opportunity
         ?.currentSessionMuscleOpportunity
     ).toEqual({
       Core: {
@@ -313,7 +330,7 @@ describe("buildWorkoutAuditArtifact", () => {
       },
     });
     expect(
-      artifact.generation?.selection.sessionDecisionReceipt?.plannerDiagnostics?.muscles
+      generation.selection.sessionDecisionReceipt?.plannerDiagnostics?.muscles
     ).toEqual({
       Core: {
         weeklyTarget: 15,
@@ -327,20 +344,20 @@ describe("buildWorkoutAuditArtifact", () => {
       },
     });
     expect(
-      artifact.generation?.selection.sessionDecisionReceipt?.plannerDiagnostics?.exercises.crunch
+      generation.selection.sessionDecisionReceipt?.plannerDiagnostics?.exercises.crunch
         .stimulusVector
     ).toEqual({
       Core: 3,
     });
     expect(
-      artifact.generation?.selection.sessionDecisionReceipt?.plannerDiagnostics?.exercises.crunch
+      generation.selection.sessionDecisionReceipt?.plannerDiagnostics?.exercises.crunch
         .anchorUsed
     ).toEqual({
       kind: "muscle",
       muscle: "Core",
     });
     expect(
-      artifact.generation?.selection.sessionDecisionReceipt?.plannerDiagnostics?.outcome
+      generation.selection.sessionDecisionReceipt?.plannerDiagnostics?.outcome
         ?.startingDeficits
     ).toEqual({
       Core: {
@@ -352,7 +369,7 @@ describe("buildWorkoutAuditArtifact", () => {
       },
     });
     expect(
-      artifact.generation?.selection.sessionDecisionReceipt?.plannerDiagnostics?.outcome
+      generation.selection.sessionDecisionReceipt?.plannerDiagnostics?.outcome
         ?.deficitsAfterClosure
     ).toEqual({
       Core: {
@@ -364,11 +381,11 @@ describe("buildWorkoutAuditArtifact", () => {
       },
     });
     expect(
-      artifact.generation?.selection.sessionDecisionReceipt?.plannerDiagnostics?.outcome
+      generation.selection.sessionDecisionReceipt?.plannerDiagnostics?.outcome
         ?.unresolvedDeficits
     ).toEqual(["Core"]);
     expect(
-      artifact.generation?.selection.sessionDecisionReceipt?.plannerDiagnostics?.outcome
+      generation.selection.sessionDecisionReceipt?.plannerDiagnostics?.outcome
         ?.keyTradeoffs
     ).toEqual([
       {
@@ -379,7 +396,7 @@ describe("buildWorkoutAuditArtifact", () => {
       },
     ]);
     expect(
-      artifact.generation?.selection.sessionDecisionReceipt?.plannerDiagnostics?.muscles.Abs
+      generation.selection.sessionDecisionReceipt?.plannerDiagnostics?.muscles.Abs
     ).toBeUndefined();
   });
 

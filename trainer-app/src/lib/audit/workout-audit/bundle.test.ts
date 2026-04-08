@@ -503,7 +503,7 @@ describe("writeSplitSanityAuditArtifacts", () => {
             },
             anchorUsed: {
               kind: "muscle",
-              muscle: "Abs",
+              muscle: "abs",
             },
             isRoleFixture: false,
             isClosureAddition: false,

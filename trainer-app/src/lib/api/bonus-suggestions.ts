@@ -2,10 +2,14 @@ import { prisma } from "@/lib/db/prisma";
 import { VOLUME_LANDMARKS, MUSCLE_SPLIT_MAP } from "@/lib/engine/volume-landmarks";
 
 export type BonusSuggestion = {
+  muscle: string | null;
   exerciseId: string;
   exerciseName: string;
   primaryMuscles: string[];
   equipment: string[];
+  sets: number;
+  reps: string | null;
+  rationale: string;
   reason: string;
   suggestedSets: number;
   suggestedLoad: number | null;
@@ -16,8 +20,8 @@ export async function getBonusSuggestions(
   userId: string
 ): Promise<BonusSuggestion[]> {
   // Load workout to determine split and current exercise set
-  const workout = await prisma.workout.findUnique({
-    where: { id: workoutId },
+  const workout = await prisma.workout.findFirst({
+    where: { id: workoutId, userId },
     include: {
       exercises: {
         select: {
@@ -138,10 +142,14 @@ export async function getBonusSuggestions(
     const suggestedLoad = null;
 
     suggestions.push({
+      muscle: matchingMuscle ?? null,
       exerciseId: exercise.id,
       exerciseName: exercise.name,
       primaryMuscles: primaryMuscleNames,
       equipment: exercise.exerciseEquipment.map((eq) => eq.equipment.type),
+      sets: 3,
+      reps: null,
+      rationale: muscleInfo?.reason ?? `Good choice for ${matchingMuscle}`,
       reason: muscleInfo?.reason ?? `Good choice for ${matchingMuscle}`,
       suggestedSets: 3,
       suggestedLoad,

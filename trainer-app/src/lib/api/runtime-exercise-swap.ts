@@ -1,4 +1,4 @@
-type RuntimeExerciseSwapProfile = {
+export type RuntimeExerciseSwapProfile = {
   id: string;
   name: string;
   fatigueCost?: number | null;

@@ -155,7 +155,8 @@ Sources of truth:
   - `GET /api/exercises/search?q=<query>&limit=<n>` returns a bounded ranked shortlist for typed exercise discovery and must not be treated as a preview/defaults surface
   - `POST /api/workouts/[id]/add-exercise-preview` returns the canonical runtime-added accessory preview for requested exercise ids using the same server-owned defaults seam as the add-exercise mutation; the Add Exercise sheet consumes this read path and must not invent local default copy
   - `POST /api/workouts/[id]/add-exercise` updates `selectionMetadata.workoutStructureState` and appends `runtimeEditReconciliation.add_exercise`
-  - `POST /api/workouts/[id]/swap-exercise` preserves `gapFillExerciseSwapState`, updates `selectionMetadata.workoutStructureState`, and appends `runtimeEditReconciliation.replace_exercise`
+  - `GET /api/workouts/[id]/swap-exercise-preview?workoutExerciseId=<id>&exerciseId=<candidate>` returns the canonical swap preview payload from the same server-owned swap seam used by mutation; preview and commit must resolve the same replacement prescription, including set ids, rep targets, load hint, target RPE, and rest
+  - `POST /api/workouts/[id]/swap-exercise` preserves `gapFillExerciseSwapState`, updates `selectionMetadata.workoutStructureState`, appends `runtimeEditReconciliation.replace_exercise`, and returns the same resolved swap payload shape used by the preview route
   - structural mutations increment `Workout.revision`
 - Optional gap-fill enforcement is strictly scoped to the canonical triplet:
   - receipt marker `optional_gap_fill`

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LogExerciseInput } from "@/components/log-workout/types";
 import { SlideUpSheet } from "@/components/ui/SlideUpSheet";
 import type { RuntimeExerciseSwapExercisePayload } from "@/lib/api/runtime-exercise-swap-service";
@@ -34,15 +34,44 @@ export function RuntimeExerciseSwapSheet({
   exercise,
   onSwap,
 }: Props) {
-  const [candidates, setCandidates] = useState<RuntimeExerciseSwapCandidate[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [initialCandidates, setInitialCandidates] = useState<RuntimeExerciseSwapCandidate[]>([]);
+  const [visibleCandidates, setVisibleCandidates] = useState<RuntimeExerciseSwapCandidate[]>([]);
+  const [loadingInitial, setLoadingInitial] = useState(false);
+  const [loadingSearch, setLoadingSearch] = useState(false);
   const [swappingId, setSwappingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
   const [previewStateByExerciseId, setPreviewStateByExerciseId] = useState<
     Record<string, SwapPreviewState>
   >({});
   const requestedPreviewIdsRef = useRef<Set<string>>(new Set());
   const previewScopeRef = useRef(0);
+  const searchQueryRef = useRef("");
+  const trimmedSearchQuery = useMemo(() => searchQuery.trim(), [searchQuery]);
+
+  useEffect(() => {
+    searchQueryRef.current = trimmedSearchQuery;
+  }, [trimmedSearchQuery]);
+
+  const buildCandidatesUrl = useCallback(
+    (query?: string) => {
+      if (!exercise) {
+        return null;
+      }
+
+      const params = new URLSearchParams({
+        workoutExerciseId: exercise.workoutExerciseId,
+      });
+
+      if (query && query.trim().length > 0) {
+        params.set("q", query.trim());
+        params.set("limit", "8");
+      }
+
+      return `/api/workouts/${workoutId}/swap-exercise?${params.toString()}`;
+    },
+    [exercise, workoutId]
+  );
 
   const loadPreview = useCallback(
     async (replacementExerciseId: string, force = false) => {
@@ -143,43 +172,136 @@ export function RuntimeExerciseSwapSheet({
       return;
     }
 
-    setLoading(true);
+    const candidatesUrl = buildCandidatesUrl();
+    if (!candidatesUrl) {
+      return;
+    }
+
+    let cancelled = false;
+    setLoadingInitial(true);
+    setLoadingSearch(false);
     setError(null);
-    setCandidates([]);
+    setSearchQuery("");
+    searchQueryRef.current = "";
+    setInitialCandidates([]);
+    setVisibleCandidates([]);
     setPreviewStateByExerciseId({});
     previewScopeRef.current += 1;
     requestedPreviewIdsRef.current = new Set();
 
-    fetch(
-      `/api/workouts/${workoutId}/swap-exercise?workoutExerciseId=${encodeURIComponent(
-        exercise.workoutExerciseId
-      )}`,
-      {
+    fetch(candidatesUrl, {
         cache: "no-store",
-      }
-    )
+      })
       .then(async (response) => {
         const body = await response.json().catch(() => ({}));
         if (!response.ok) {
           throw new Error(body.error ?? "Failed to load swap candidates.");
         }
-        setCandidates(body.candidates ?? []);
+        if (cancelled) {
+          return;
+        }
+
+        const nextCandidates = Array.isArray(body.candidates)
+          ? (body.candidates as RuntimeExerciseSwapCandidate[])
+          : [];
+        setInitialCandidates(nextCandidates);
+        if (searchQueryRef.current.length === 0) {
+          setVisibleCandidates(nextCandidates);
+        }
       })
       .catch((fetchError: unknown) => {
+        if (cancelled) {
+          return;
+        }
+
         setError(fetchError instanceof Error ? fetchError.message : "Failed to load swap candidates.");
       })
-      .finally(() => setLoading(false));
-  }, [exercise, isOpen, workoutId]);
+      .finally(() => {
+        if (!cancelled) {
+          setLoadingInitial(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [buildCandidatesUrl, exercise, isOpen]);
 
   useEffect(() => {
-    if (!isOpen || !exercise || candidates.length === 0) {
+    if (!isOpen || !exercise) {
       return;
     }
 
-    candidates.forEach((candidate) => {
+    if (trimmedSearchQuery.length === 0) {
+      setVisibleCandidates(initialCandidates);
+      setLoadingSearch(false);
+      return;
+    }
+
+    if (trimmedSearchQuery.length < 2) {
+      setVisibleCandidates(initialCandidates);
+      setLoadingSearch(false);
+      return;
+    }
+
+    const candidatesUrl = buildCandidatesUrl(trimmedSearchQuery);
+    if (!candidatesUrl) {
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => {
+      setLoadingSearch(true);
+      setError(null);
+
+      fetch(candidatesUrl, {
+        cache: "no-store",
+        signal: controller.signal,
+      })
+        .then(async (response) => {
+          const body = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            throw new Error(body.error ?? "Failed to search swap candidates.");
+          }
+          setVisibleCandidates(
+            Array.isArray(body.candidates)
+              ? (body.candidates as RuntimeExerciseSwapCandidate[])
+              : []
+          );
+        })
+        .catch((searchError) => {
+          if (
+            controller.signal.aborted ||
+            (searchError instanceof DOMException && searchError.name === "AbortError")
+          ) {
+            return;
+          }
+
+          setVisibleCandidates([]);
+          setError(searchError instanceof Error ? searchError.message : "Failed to search swap candidates.");
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) {
+            setLoadingSearch(false);
+          }
+        });
+    }, 150);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      controller.abort();
+    };
+  }, [buildCandidatesUrl, exercise, initialCandidates, isOpen, trimmedSearchQuery]);
+
+  useEffect(() => {
+    if (!isOpen || !exercise || visibleCandidates.length === 0) {
+      return;
+    }
+
+    visibleCandidates.forEach((candidate) => {
       void loadPreview(candidate.exerciseId);
     });
-  }, [candidates, exercise, isOpen, loadPreview]);
+  }, [exercise, isOpen, loadPreview, visibleCandidates]);
 
   const handleSwap = async (replacementExerciseId: string) => {
     if (!exercise) {
@@ -228,13 +350,46 @@ export function RuntimeExerciseSwapSheet({
           session, and keeps future progression exercise-specific to the replacement.
         </div>
 
-        {loading ? <p className="text-sm text-slate-500">Finding constrained equivalents...</p> : null}
+        <div className="space-y-2">
+          <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+            Search eligible swaps
+          </p>
+          <input
+            className="min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-base"
+            type="search"
+            placeholder="Search by name, alias, muscle, or equipment..."
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            autoCapitalize="none"
+            autoCorrect="off"
+            enterKeyHint="search"
+            spellCheck={false}
+          />
+        </div>
 
-        {!loading && candidates.length === 0 ? (
+        {loadingInitial ? <p className="text-sm text-slate-500">Finding constrained equivalents...</p> : null}
+
+        {!loadingInitial && trimmedSearchQuery.length === 1 ? (
+          <p className="text-sm text-slate-500">Type at least 2 letters to search eligible swaps.</p>
+        ) : null}
+
+        {loadingSearch ? <p className="text-sm text-slate-500">Searching eligible swaps...</p> : null}
+
+        {!loadingInitial &&
+        !loadingSearch &&
+        trimmedSearchQuery.length === 0 &&
+        visibleCandidates.length === 0 ? (
           <p className="text-sm text-slate-500">No safe swap candidates were found for this exercise.</p>
         ) : null}
 
-        {candidates.map((candidate) => {
+        {!loadingInitial &&
+        !loadingSearch &&
+        trimmedSearchQuery.length >= 2 &&
+        visibleCandidates.length === 0 ? (
+          <p className="text-sm text-slate-500">No eligible swaps matched that search.</p>
+        ) : null}
+
+        {visibleCandidates.map((candidate) => {
           const previewState = previewStateByExerciseId[candidate.exerciseId];
           const preview = previewState?.status === "ready" ? previewState.preview : null;
           const confirmDisabled = swappingId !== null || previewState?.status !== "ready";

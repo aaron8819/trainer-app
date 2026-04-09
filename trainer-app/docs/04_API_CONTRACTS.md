@@ -84,6 +84,12 @@ Sources of truth:
   - each row carries `doneNow`, `projectedRemainingWeek`, `projectedEndOfWeek`, `weeklyTarget`, `deltaToTarget`, weekly-status badge fields, and low-opinion top-up copy
   - projection is server-owned and uses the canonical equation `performed baseline excluding current workout + persisted current-workout actuals so far + projected remaining week`
   - current-workout actuals are recomputed from persisted workout structure and logged non-skipped sets, including runtime-added sets and runtime-added exercises
+- `GET /api/workouts/[id]/bonus-suggestions` remains a read-only, non-persistent shortlist endpoint for the Add Exercise sheet.
+  - request identity comes from the route param plus `resolveOwner()`
+  - non-closeout workouts preserve the legacy shortlist owner in `src/lib/api/bonus-suggestions.ts`
+  - closeout workouts branch on the canonical `closeout_session` receipt marker and delegate to `src/lib/api/closeout-suggestions.ts`
+  - closeout ranking is server-owned and deterministic: projected deficit is `max(0, target - projectedLanding)`, deficits under `2.0` are ignored, deficits `>= 3.5` sort ahead of lower tiers, and the response is capped to the remaining closeout budget (`4` exercises / `8` sets total, `4` sets per muscle)
+  - closeout suggestions stay advisory only; they are not persisted and they reuse the runtime-added accessory preview seam for set/rep framing rather than inventing a second prescription owner
 - Mesocycle handoff draft editing: `nextCycleSeedDraftUpdateSchema`
 - Dumbbell load contract: clients submit dumbbell `actualLoad` in per-hand units and `POST /api/logs/set` persists the provided per-hand value directly. Client read/write helpers must stay aligned with canonical 2.5 lb quantization in `src/lib/units/load-quantization.ts`; the API contract does not define a separate dumbbell snap whitelist.
 - Performed-set signal requirement: `POST /api/logs/set` returns 400 when a non-skipped set log supplies neither `actualReps` nor `actualRpe`. Unresolved sets must remain un-logged (missing) rather than being written as empty performed logs.
@@ -153,6 +159,8 @@ Sources of truth:
 - Structural mutation contract:
   - `POST /api/workouts/save` with exercise rewrite updates `selectionMetadata.workoutStructureState` and appends `runtimeEditReconciliation.rewrite_structure` only when the saved structure drifts from the generated snapshot
   - `GET /api/exercises/search?q=<query>&limit=<n>` returns a bounded ranked shortlist for typed exercise discovery and must not be treated as a preview/defaults surface
+  - `GET /api/workouts/[id]/swap-exercise?workoutExerciseId=<id>` returns the ranked initial eligible swap shortlist for the current source exercise
+  - `GET /api/workouts/[id]/swap-exercise?workoutExerciseId=<id>&q=<query>&limit=<n>` returns a bounded typed-search shortlist narrowed within the same server-enforced eligible replacement universe; search relevance is server-owned and the final candidate list is still filtered by canonical runtime swap eligibility before it reaches the client
   - `POST /api/workouts/[id]/add-exercise-preview` returns the canonical runtime-added accessory preview for requested exercise ids using the same server-owned defaults seam as the add-exercise mutation; the Add Exercise sheet consumes this read path and must not invent local default copy
   - `POST /api/workouts/[id]/add-exercise` updates `selectionMetadata.workoutStructureState` and appends `runtimeEditReconciliation.add_exercise`
   - `GET /api/workouts/[id]/swap-exercise-preview?workoutExerciseId=<id>&exerciseId=<candidate>` returns the canonical swap preview payload from the same server-owned swap seam used by mutation; preview and commit must resolve the same replacement prescription, including set ids, rep targets, load hint, target RPE, and rest

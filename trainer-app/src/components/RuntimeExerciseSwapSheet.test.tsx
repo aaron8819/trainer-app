@@ -25,6 +25,25 @@ function createFetchMock() {
       parsedUrl.pathname === "/api/workouts/workout-1/swap-exercise" &&
       init?.method == null
     ) {
+      const query = parsedUrl.searchParams.get("q");
+
+      if (query === "machine") {
+        return {
+          ok: true,
+          json: async () => ({
+            candidates: [
+              {
+                exerciseId: "machine-row",
+                exerciseName: "Machine Row",
+                primaryMuscles: ["lats", "upper back"],
+                equipment: ["machine"],
+                reason: "Keeps lats, matches horizontal pull, and reduces setup demands.",
+              },
+            ],
+          }),
+        };
+      }
+
       return {
         ok: true,
         json: async () => ({
@@ -113,6 +132,37 @@ function createFetchMock() {
                   targetReps: 12,
                   targetRepRange: { min: 10, max: 14 },
                   targetLoad: null,
+                  targetRpe: 7,
+                  restSeconds: 90,
+                },
+              ],
+            },
+          }),
+        };
+      }
+
+      if (candidateId === "machine-row") {
+        return {
+          ok: true,
+          json: async () => ({
+            exercise: {
+              workoutExerciseId: "we-1",
+              exerciseId: "machine-row",
+              name: "Machine Row",
+              equipment: ["MACHINE"],
+              movementPatterns: ["horizontal_pull"],
+              isMainLift: false,
+              isSwapped: true,
+              section: "MAIN",
+              sessionNote:
+                "Swapped from T-Bar Row. Session-only; future progression stays exercise-specific.",
+              sets: [
+                {
+                  setId: "set-1",
+                  setIndex: 1,
+                  targetReps: 12,
+                  targetRepRange: { min: 10, max: 14 },
+                  targetLoad: 90,
                   targetRpe: 7,
                   restSeconds: 90,
                 },
@@ -384,5 +434,50 @@ describe("RuntimeExerciseSwapSheet", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Preview route failed.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Preview required" })).toBeDisabled();
+  });
+
+  it("uses the same server-backed route for typed narrowing and only preview-hydrates visible search results", async () => {
+    const fetchMock = createFetchMock();
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <RuntimeExerciseSwapSheet
+        isOpen
+        onClose={vi.fn()}
+        workoutId="workout-1"
+        exercise={{ workoutExerciseId: "we-1", name: "T-Bar Row" }}
+        onSwap={vi.fn()}
+      />
+    );
+
+    expect(await screen.findAllByText("Post-swap prescription")).toHaveLength(2);
+
+    fireEvent.change(screen.getByPlaceholderText("Search by name, alias, muscle, or equipment..."), {
+      target: { value: "machine" },
+    });
+
+    expect(await screen.findByText("Machine Row")).toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.some(
+        ([requestUrl]) =>
+          String(requestUrl) ===
+          "/api/workouts/workout-1/swap-exercise?workoutExerciseId=we-1&q=machine&limit=8"
+      )
+    ).toBe(true);
+    expect(
+      fetchMock.mock.calls.some(([requestUrl]) => String(requestUrl).startsWith("/api/exercises/search"))
+    ).toBe(false);
+
+    const machinePreviewCalls = fetchMock.mock.calls.filter(
+      ([requestUrl]) =>
+        String(requestUrl).startsWith("/api/workouts/workout-1/swap-exercise-preview?") &&
+        String(requestUrl).includes("exerciseId=machine-row")
+    );
+    expect(machinePreviewCalls).toHaveLength(1);
+
+    const previewCallsAfterSearch = fetchMock.mock.calls.filter(([requestUrl]) =>
+      String(requestUrl).startsWith("/api/workouts/workout-1/swap-exercise-preview?")
+    );
+    expect(previewCallsAfterSearch).toHaveLength(3);
   });
 });

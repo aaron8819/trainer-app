@@ -60,6 +60,51 @@ describe("/api/workouts/[id]/swap-exercise route", () => {
       workoutId: "workout-1",
       workoutExerciseId: "we-1",
       userId: "user-1",
+      query: "",
+      limit: 5,
+    });
+  });
+
+  it("forwards typed search parameters to the shared swap discovery seam", async () => {
+    mocks.resolveRuntimeExerciseSwapCandidates.mockResolvedValue([
+      {
+        exerciseId: "cable-row",
+        exerciseName: "Cable Row",
+        primaryMuscles: ["lats", "upper back"],
+        equipment: ["cable"],
+        compatibility: {
+          primaryMuscleOverlap: ["lats", "upper back"],
+          movementPatternOverlap: ["horizontal_pull"],
+          equipmentDemandStayedAtOrBelowOriginal: true,
+          fatigueDelta: -1,
+          score: 11,
+        },
+        reason: "Keeps lats, upper back, matches horizontal_pull, and reduces fatigue by 1 without raising equipment complexity.",
+      },
+    ]);
+
+    const response = await GET(
+      new Request(
+        "http://localhost/api/workouts/workout-1/swap-exercise?workoutExerciseId=we-1&q=row&limit=9"
+      ),
+      { params: Promise.resolve({ id: "workout-1" }) }
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      candidates: [
+        expect.objectContaining({
+          exerciseId: "cable-row",
+          exerciseName: "Cable Row",
+        }),
+      ],
+    });
+    expect(mocks.resolveRuntimeExerciseSwapCandidates).toHaveBeenCalledWith({
+      workoutId: "workout-1",
+      workoutExerciseId: "we-1",
+      userId: "user-1",
+      query: "row",
+      limit: 9,
     });
   });
 

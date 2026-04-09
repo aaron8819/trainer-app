@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { reconcileRuntimeEditSelectionMetadata } from "@/lib/api/runtime-edit-reconciliation";
+import { searchExerciseLibrary } from "@/lib/api/exercise-library";
 import {
   buildRuntimeExerciseSwapCandidates,
   isSupportedRuntimeExerciseSwapPattern,
@@ -68,6 +69,11 @@ type PersistedExerciseRecord = {
     restSeconds: number | null;
   }>;
 };
+
+const DEFAULT_SWAP_SUGGESTION_LIMIT = 5;
+const DEFAULT_SWAP_SEARCH_LIMIT = 8;
+const SWAP_SEARCH_SCAN_MULTIPLIER = 6;
+const MIN_SWAP_SEARCH_SCAN_LIMIT = 24;
 
 export type RuntimeExerciseSwapPreviewSet = {
   setId: string;
@@ -299,6 +305,46 @@ async function loadExercisePool(): Promise<ExerciseRecord[]> {
   });
 }
 
+async function loadExercisePoolByIds(exerciseIds: string[]): Promise<ExerciseRecord[]> {
+  if (exerciseIds.length === 0) {
+    return [];
+  }
+
+  const exercisePool = await prisma.exercise.findMany({
+    where: {
+      id: {
+        in: exerciseIds,
+      },
+    },
+    include: {
+      exerciseEquipment: { include: { equipment: true } },
+      exerciseMuscles: { include: { muscle: true } },
+    },
+  });
+
+  const exerciseById = new Map(exercisePool.map((exercise) => [exercise.id, exercise]));
+  return exerciseIds.flatMap((exerciseId) => {
+    const exercise = exerciseById.get(exerciseId);
+    return exercise ? [exercise] : [];
+  });
+}
+
+async function loadSearchMatchedExercisePool(input: {
+  query: string;
+  limit: number;
+}): Promise<ExerciseRecord[]> {
+  const searchScanLimit = Math.max(
+    MIN_SWAP_SEARCH_SCAN_LIMIT,
+    input.limit * SWAP_SEARCH_SCAN_MULTIPLIER
+  );
+  const searchResults = await searchExerciseLibrary(input.query, searchScanLimit);
+  if (searchResults.length === 0) {
+    return [];
+  }
+
+  return loadExercisePoolByIds(searchResults.map((result) => result.id));
+}
+
 async function loadRecentExerciseLoad(input: {
   userId: string;
   exerciseId: string;
@@ -430,13 +476,47 @@ export async function resolveRuntimeExerciseSwapCandidates(input: {
   workoutId: string;
   workoutExerciseId: string;
   userId: string;
+  query?: string;
+  limit?: number;
 }): Promise<RuntimeExerciseSwapCandidate[]> {
   const context = await loadRuntimeExerciseSwapContext(input);
+  const trimmedQuery = input.query?.trim() ?? "";
+  const limit =
+    input.limit ??
+    (trimmedQuery.length > 0 ? DEFAULT_SWAP_SEARCH_LIMIT : DEFAULT_SWAP_SUGGESTION_LIMIT);
+
+  if (trimmedQuery.length > 0 && trimmedQuery.length < 2) {
+    return [];
+  }
+
+  if (trimmedQuery.length >= 2) {
+    const searchMatchedExercisePool = await loadSearchMatchedExercisePool({
+      query: trimmedQuery,
+      limit,
+    });
+    const searchMatchedCandidates = buildRuntimeExerciseSwapCandidates({
+      current: mapSwapProfile(context.workoutExercise.exercise),
+      candidates: searchMatchedExercisePool.map(mapSwapProfile),
+      limit: searchMatchedExercisePool.length,
+    });
+    const candidateByExerciseId = new Map(
+      searchMatchedCandidates.map((candidate) => [candidate.exerciseId, candidate])
+    );
+
+    return searchMatchedExercisePool
+      .flatMap((exercise) => {
+        const candidate = candidateByExerciseId.get(exercise.id);
+        return candidate ? [candidate] : [];
+      })
+      .slice(0, limit);
+  }
+
   const exercisePool = await loadExercisePool();
 
   return buildRuntimeExerciseSwapCandidates({
     current: mapSwapProfile(context.workoutExercise.exercise),
     candidates: exercisePool.map(mapSwapProfile),
+    limit,
   });
 }
 

@@ -41,6 +41,8 @@ const mocks = vi.hoisted(() => {
     $transaction: vi.fn(async (callback: (trx: typeof tx) => Promise<unknown>) => callback(tx)),
   };
 
+  const searchExerciseLibrary = vi.fn();
+
   return {
     prisma,
     workoutFindFirst,
@@ -52,6 +54,7 @@ const mocks = vi.hoisted(() => {
     txWorkoutExerciseUpdate,
     txWorkoutExerciseFindMany,
     txWorkoutSetUpdate,
+    searchExerciseLibrary,
   };
 });
 
@@ -59,8 +62,13 @@ vi.mock("@/lib/db/prisma", () => ({
   prisma: mocks.prisma,
 }));
 
+vi.mock("@/lib/api/exercise-library", () => ({
+  searchExerciseLibrary: mocks.searchExerciseLibrary,
+}));
+
 import {
   applyRuntimeExerciseSwap,
+  resolveRuntimeExerciseSwapCandidates,
   resolveRuntimeExerciseSwapPreview,
 } from "./runtime-exercise-swap-service";
 
@@ -188,8 +196,22 @@ describe("runtime exercise swap service", () => {
         exerciseEquipment: [{ equipment: { type: "CABLE" } }],
         exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Lats" } }],
       },
+      {
+        id: "cable-row",
+        name: "Cable Row",
+        fatigueCost: 2,
+        repRangeMin: 10,
+        repRangeMax: 14,
+        movementPatterns: ["HORIZONTAL_PULL"],
+        exerciseEquipment: [{ equipment: { type: "CABLE" } }],
+        exerciseMuscles: [
+          { role: "PRIMARY", muscle: { name: "Lats" } },
+          { role: "PRIMARY", muscle: { name: "Upper Back" } },
+        ],
+      },
     ]);
 
+    mocks.searchExerciseLibrary.mockResolvedValue([]);
     mocks.setLogFindFirst.mockResolvedValue({ actualLoad: 27.5 });
     mocks.txWorkoutFindUnique.mockResolvedValue({
       selectionMetadata: {
@@ -374,5 +396,102 @@ describe("runtime exercise swap service", () => {
         }),
       })
     );
+  });
+
+  it("keeps the ranked shortlist for initial discovery", async () => {
+    const candidates = await resolveRuntimeExerciseSwapCandidates({
+      workoutId: "workout-1",
+      workoutExerciseId: "we-1",
+      userId: "user-1",
+    });
+
+    expect(candidates.map((candidate) => candidate.exerciseId)).toEqual([
+      "cable-row",
+      "chest-supported-db-row",
+    ]);
+    expect(mocks.searchExerciseLibrary).not.toHaveBeenCalled();
+    expect(mocks.exerciseFindMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses server-backed typed search and filters results back through swap eligibility", async () => {
+    mocks.searchExerciseLibrary.mockResolvedValue([
+      {
+        id: "cable-row",
+        name: "Cable Row",
+        primaryMuscles: ["Lats", "Upper Back"],
+        equipment: ["CABLE"],
+      },
+      {
+        id: "unsupported-curl",
+        name: "Cable Curl",
+        primaryMuscles: ["Biceps"],
+        equipment: ["CABLE"],
+      },
+      {
+        id: "chest-supported-db-row",
+        name: "Chest-Supported Dumbbell Row",
+        primaryMuscles: ["Lats", "Upper Back"],
+        equipment: ["DUMBBELL"],
+      },
+    ]);
+    mocks.exerciseFindMany.mockResolvedValue([
+      {
+        id: "cable-row",
+        name: "Cable Row",
+        fatigueCost: 2,
+        repRangeMin: 10,
+        repRangeMax: 14,
+        movementPatterns: ["HORIZONTAL_PULL"],
+        exerciseEquipment: [{ equipment: { type: "CABLE" } }],
+        exerciseMuscles: [
+          { role: "PRIMARY", muscle: { name: "Lats" } },
+          { role: "PRIMARY", muscle: { name: "Upper Back" } },
+        ],
+      },
+      {
+        id: "unsupported-curl",
+        name: "Cable Curl",
+        fatigueCost: 2,
+        repRangeMin: 8,
+        repRangeMax: 12,
+        movementPatterns: ["ISOLATION"],
+        exerciseEquipment: [{ equipment: { type: "CABLE" } }],
+        exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Biceps" } }],
+      },
+      {
+        id: "chest-supported-db-row",
+        name: "Chest-Supported Dumbbell Row",
+        fatigueCost: 2,
+        repRangeMin: 8,
+        repRangeMax: 12,
+        movementPatterns: ["HORIZONTAL_PULL"],
+        exerciseEquipment: [{ equipment: { type: "DUMBBELL" } }],
+        exerciseMuscles: [
+          { role: "PRIMARY", muscle: { name: "Lats" } },
+          { role: "PRIMARY", muscle: { name: "Upper Back" } },
+        ],
+      },
+    ]);
+
+    const candidates = await resolveRuntimeExerciseSwapCandidates({
+      workoutId: "workout-1",
+      workoutExerciseId: "we-1",
+      userId: "user-1",
+      query: "row",
+      limit: 8,
+    });
+
+    expect(mocks.searchExerciseLibrary).toHaveBeenCalledWith("row", 48);
+    expect(candidates).toEqual([
+      expect.objectContaining({
+        exerciseId: "cable-row",
+        exerciseName: "Cable Row",
+      }),
+      expect.objectContaining({
+        exerciseId: "chest-supported-db-row",
+        exerciseName: "Chest-Supported Dumbbell Row",
+      }),
+    ]);
+    expect(candidates.some((candidate) => candidate.exerciseId === "unsupported-curl")).toBe(false);
   });
 });

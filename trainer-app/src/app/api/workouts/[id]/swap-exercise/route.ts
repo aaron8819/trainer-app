@@ -15,6 +15,19 @@ const swapExerciseSchema = z.object({
   replacementExerciseId: z.string().min(1),
 });
 
+function parseLimit(rawLimit: string | null, fallback: number): number {
+  if (rawLimit == null) {
+    return fallback;
+  }
+
+  const parsedLimit = Number(rawLimit);
+  if (!Number.isFinite(parsedLimit)) {
+    return fallback;
+  }
+
+  return Math.min(12, Math.max(1, Math.floor(parsedLimit)));
+}
+
 function toErrorResponse(error: unknown) {
   if (isRuntimeExerciseSwapError(error)) {
     return NextResponse.json({ error: error.message }, { status: error.status });
@@ -29,7 +42,10 @@ export async function GET(
 ) {
   const resolvedParams = await params;
   const workoutId = resolvedParams?.id;
-  const workoutExerciseId = new URL(request.url).searchParams.get("workoutExerciseId");
+  const searchParams = new URL(request.url).searchParams;
+  const workoutExerciseId = searchParams.get("workoutExerciseId");
+  const query = searchParams.get("q")?.trim() ?? "";
+  const limit = parseLimit(searchParams.get("limit"), query.length > 0 ? 8 : 5);
 
   if (!workoutId || !workoutExerciseId) {
     return NextResponse.json({ error: "Missing workout id or workoutExerciseId" }, { status: 400 });
@@ -42,6 +58,8 @@ export async function GET(
       workoutId,
       workoutExerciseId,
       userId: owner.id,
+      query,
+      limit,
     });
 
     return NextResponse.json({ candidates });

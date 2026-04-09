@@ -12,6 +12,7 @@ import {
   isCanonicalDeloadPhase,
   isCanonicalDeloadReceipt,
 } from "@/lib/deload/semantics";
+import { isCloseoutSession } from "@/lib/session-semantics/closeout-classifier";
 import { isStrictSupplementalDeficitSession } from "@/lib/session-semantics/supplemental-classifier";
 
 export type DerivedSessionKind =
@@ -35,6 +36,7 @@ export type SessionSemantics = {
   isDeload: boolean;
   isStrictGapFill: boolean;
   isStrictSupplemental: boolean;
+  isCloseout: boolean;
   advancesLifecycle: boolean;
   consumesWeeklyScheduleIntent: boolean;
   countsTowardCompliance: boolean;
@@ -84,9 +86,10 @@ export function deriveSessionSemantics(
     selectionMode: input.selectionMode,
     sessionIntent: input.sessionIntent,
   });
+  const isCloseout = isCloseoutSession(input.selectionMetadata);
   const isDeload = isDeloadSession(input);
 
-  const advancesLifecycle = input.advancesSplit !== false;
+  const advancesLifecycle = !isCloseout && input.advancesSplit !== false;
   const reasons: SessionAuditSemanticsReason[] = [];
 
   let kind: DerivedSessionKind = "non_advancing_generic";
@@ -108,6 +111,14 @@ export function deriveSessionSemantics(
     kind = "advancing";
   }
 
+  if (isCloseout) {
+    reasons.push({
+      code: "closeout_marker",
+      message:
+        "Canonical closeout marker is present, so the session stays non-advancing and progression-anchor neutral.",
+    });
+  }
+
   reasons.push(
     advancesLifecycle
       ? {
@@ -118,7 +129,9 @@ export function deriveSessionSemantics(
       : {
           code: "advances_split_false",
           message:
-            "advancesSplit=false keeps the session from consuming an advancing schedule slot.",
+            isCloseout
+              ? "Closeout classification forces non-advancing semantics even when the incoming payload could otherwise advance."
+              : "advancesSplit=false keeps the session from consuming an advancing schedule slot.",
         }
   );
 
@@ -134,12 +147,14 @@ export function deriveSessionSemantics(
   // and weekly volume, but it never becomes a progression/performance anchor.
   const countsTowardProgressionHistory =
     !isStrictSupplemental &&
+    !isCloseout &&
     (isDeload ? CANONICAL_DELOAD_HISTORY_POLICY.countsTowardProgressionHistory : true);
   const countsTowardPerformanceHistory =
     !isStrictSupplemental &&
     (isDeload ? CANONICAL_DELOAD_HISTORY_POLICY.countsTowardPerformanceHistory : true);
   const updatesProgressionAnchor =
     !isStrictSupplemental &&
+    !isCloseout &&
     (isDeload ? CANONICAL_DELOAD_HISTORY_POLICY.updatesProgressionAnchor : true);
 
   if (!countsTowardProgressionHistory) {
@@ -150,6 +165,12 @@ export function deriveSessionSemantics(
             message:
               "Supplemental sessions stay visible to workload history but are excluded from canonical progression history.",
           }
+        : isCloseout
+          ? {
+              code: "progression_history_excluded_for_closeout",
+              message:
+                "Closeout sessions count toward weekly volume but are excluded from canonical progression history.",
+            }
         : {
             code: "progression_history_excluded_for_deload",
             message:
@@ -182,6 +203,12 @@ export function deriveSessionSemantics(
             message:
               "Supplemental sessions cannot become the canonical progression anchor for the next exposure.",
           }
+        : isCloseout
+          ? {
+              code: "progression_anchor_excluded_for_closeout",
+              message:
+                "Closeout sessions cannot become the canonical progression anchor for the next exposure.",
+            }
         : {
             code: "progression_anchor_excluded_for_deload",
             message:
@@ -205,6 +232,7 @@ export function deriveSessionSemantics(
     isDeload,
     isStrictGapFill,
     isStrictSupplemental,
+    isCloseout,
     advancesLifecycle,
     consumesWeeklyScheduleIntent: advancesLifecycle,
     countsTowardCompliance: isDeload

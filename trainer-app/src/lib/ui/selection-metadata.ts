@@ -556,6 +556,17 @@ function toWorkoutStructureExercises(
     .sort((left, right) => left.orderIndex - right.orderIndex);
 }
 
+function readRetainedReceiptExceptions(
+  receipt: SessionDecisionReceipt
+): SessionDecisionReceipt["exceptions"] {
+  return receipt.exceptions.filter(
+    (entry) =>
+      entry.code === "optional_gap_fill" ||
+      entry.code === "supplemental_deficit_session" ||
+      entry.code === "closeout_session"
+  );
+}
+
 export function sanitizeSelectionMetadataForSave(value: unknown): SaveableSelectionMetadata | undefined {
   const record = toObject(value);
   if (!record) {
@@ -860,6 +871,57 @@ export function attachSupplementalSessionMetadata(
   };
 }
 
+export function attachCloseoutSessionMetadata(
+  selectionMetadata: SaveableSelectionMetadata,
+  input: {
+    enabled: boolean;
+    weekCloseId?: string;
+  }
+): SaveableSelectionMetadata {
+  if (!input.enabled) {
+    return selectionMetadata;
+  }
+
+  const receipt = selectionMetadata.sessionDecisionReceipt;
+  if (!receipt) {
+    return selectionMetadata;
+  }
+
+  const retainedExceptions = readRetainedReceiptExceptions(receipt);
+  const hasMarker = retainedExceptions.some((entry) => entry.code === "closeout_session");
+
+  return {
+    ...selectionMetadata,
+    ...(input.weekCloseId ? { weekCloseId: input.weekCloseId } : {}),
+    sessionDecisionReceipt: buildSessionDecisionReceipt({
+      cycleContext: receipt.cycleContext,
+      targetMuscles: receipt.targetMuscles,
+      lifecycleRirTarget: receipt.lifecycleRirTarget,
+      lifecycleVolumeTargets: receipt.lifecycleVolume.targets,
+      sorenessSuppressedMuscles: receipt.sorenessSuppressedMuscles,
+      deloadDecision: receipt.deloadDecision,
+      plannerDiagnostics: receipt.plannerDiagnostics,
+      plannerDiagnosticsMode: receipt.plannerDiagnosticsMode ?? "standard",
+      additionalExceptions: hasMarker
+        ? retainedExceptions
+        : [
+            ...retainedExceptions,
+            {
+              code: "closeout_session",
+              message: "Marked as closeout session.",
+            },
+          ],
+      autoregulation: {
+        wasAutoregulated: receipt.readiness.wasAutoregulated,
+        signalAgeHours: receipt.readiness.signalAgeHours,
+        fatigueScoreOverall: receipt.readiness.fatigueScoreOverall,
+        rationale: receipt.readiness.rationale,
+        intensityScaling: receipt.readiness.intensityScaling,
+      },
+    }),
+  };
+}
+
 export function attachSessionSlotMetadata(
   selectionMetadata: SaveableSelectionMetadata,
   sessionSlot: SessionSlotSnapshot | undefined
@@ -870,6 +932,9 @@ export function attachSessionSlotMetadata(
 
   const receipt = selectionMetadata.sessionDecisionReceipt;
   if (!receipt) {
+    return selectionMetadata;
+  }
+  if (receipt.exceptions.some((entry) => entry.code === "closeout_session")) {
     return selectionMetadata;
   }
 
@@ -885,11 +950,7 @@ export function attachSessionSlotMetadata(
       deloadDecision: receipt.deloadDecision,
       plannerDiagnostics: receipt.plannerDiagnostics,
       plannerDiagnosticsMode: receipt.plannerDiagnosticsMode ?? "standard",
-      additionalExceptions: receipt.exceptions.filter(
-        (entry) =>
-          entry.code === "optional_gap_fill" ||
-          entry.code === "supplemental_deficit_session"
-      ),
+      additionalExceptions: readRetainedReceiptExceptions(receipt),
       autoregulation: {
         wasAutoregulated: receipt.readiness.wasAutoregulated,
         signalAgeHours: receipt.readiness.signalAgeHours,
@@ -922,15 +983,17 @@ export function buildCanonicalSelectionMetadata(
             deloadDecision: priorReceipt.deloadDecision,
             plannerDiagnostics: priorReceipt.plannerDiagnostics,
             plannerDiagnosticsMode: "standard",
-            autoregulation: autoregulation
-              ? {
-                  wasAutoregulated: autoregulation.wasAutoregulated,
-                  signalAgeHours: autoregulation.signalAgeHours,
-                  fatigueScoreOverall: autoregulation.fatigueScore?.overall ?? null,
-                  rationale: autoregulation.rationale,
-                  modifications: autoregulation.modifications,
-                }
-              : undefined,
+            additionalExceptions: readRetainedReceiptExceptions(priorReceipt),
+            autoregulation:
+              autoregulation
+                ? {
+                    wasAutoregulated: autoregulation.wasAutoregulated,
+                    signalAgeHours: autoregulation.signalAgeHours,
+                    fatigueScoreOverall: autoregulation.fatigueScore?.overall ?? null,
+                    rationale: autoregulation.rationale,
+                    modifications: autoregulation.modifications,
+                  }
+                : undefined,
           })
         : undefined,
     }) ?? {};

@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => {
   const evaluateWeekCloseAtBoundary = vi.fn();
   const linkOptionalWorkoutToWeekClose = vi.fn();
   const resolveWeekCloseOnOptionalGapFillCompletion = vi.fn();
+  const updateExerciseExposure = vi.fn();
 
   const tx = {
     workout: {
@@ -72,6 +73,7 @@ const mocks = vi.hoisted(() => {
     evaluateWeekCloseAtBoundary,
     linkOptionalWorkoutToWeekClose,
     resolveWeekCloseOnOptionalGapFillCompletion,
+    updateExerciseExposure,
   };
 });
 
@@ -84,7 +86,7 @@ vi.mock("@/lib/api/workout-context", () => ({
 }));
 
 vi.mock("@/lib/api/exercise-exposure", () => ({
-  updateExerciseExposure: vi.fn(async () => undefined),
+  updateExerciseExposure: mocks.updateExerciseExposure,
 }));
 
 vi.mock("@/lib/api/mesocycle-lifecycle-state", async (importOriginal) => {
@@ -276,6 +278,54 @@ function buildSupplementalDeficitSelectionMetadata() {
   });
 }
 
+function buildCloseoutSelectionMetadata() {
+  return buildCanonicalSelectionMetadata({
+    weekCloseId: "week-close-1",
+    sessionDecisionReceipt: {
+      version: 1,
+      cycleContext: {
+        weekInMeso: 4,
+        weekInBlock: 4,
+        phase: "accumulation",
+        blockType: "accumulation",
+        isDeload: false,
+        source: "computed",
+      },
+      sessionSlot: {
+        slotId: "upper_b",
+        intent: "upper",
+        sequenceIndex: 2,
+        source: "mesocycle_slot_sequence",
+      },
+      lifecycleVolume: { source: "unknown" },
+      sorenessSuppressedMuscles: [],
+      deloadDecision: {
+        mode: "none",
+        reason: [],
+        reductionPercent: 0,
+        appliedTo: "none",
+      },
+      readiness: {
+        wasAutoregulated: false,
+        signalAgeHours: null,
+        fatigueScoreOverall: null,
+        intensityScaling: {
+          applied: false,
+          exerciseIds: [],
+          scaledUpCount: 0,
+          scaledDownCount: 0,
+        },
+      },
+      exceptions: [
+        {
+          code: "closeout_session",
+          message: "Marked as closeout session.",
+        },
+      ],
+    },
+  });
+}
+
 describe("POST /api/workouts/save", () => {
   beforeEach(() => {
     mocks.workoutFindUnique.mockReset();
@@ -289,6 +339,7 @@ describe("POST /api/workouts/save", () => {
     mocks.evaluateWeekCloseAtBoundary.mockReset();
     mocks.linkOptionalWorkoutToWeekClose.mockReset();
     mocks.resolveWeekCloseOnOptionalGapFillCompletion.mockReset();
+    mocks.updateExerciseExposure.mockReset();
     mocks.tx.mesocycle.findUnique.mockReset();
     mocks.tx.mesocycle.findFirst.mockReset();
     mocks.tx.mesocycle.update.mockReset();
@@ -362,6 +413,7 @@ describe("POST /api/workouts/save", () => {
       advancedLifecycle: false,
       outcome: "resolved",
     });
+    mocks.updateExerciseExposure.mockResolvedValue(undefined);
   });
 
   it.each(["COMPLETED", "PARTIAL", "SKIPPED"] as const)(
@@ -2212,6 +2264,55 @@ describe("POST /api/workouts/save", () => {
     expect(mocks.transitionMesocycleStateInTransaction).not.toHaveBeenCalled();
   });
 
+  it("persists closeout planned saves with advancesSplit=false and strips receipt slot identity", async () => {
+    mocks.tx.mesocycle.findFirst.mockResolvedValueOnce({
+      id: "meso-active",
+      state: "ACTIVE_ACCUMULATION",
+      durationWeeks: 5,
+      accumulationSessionsCompleted: 7,
+      deloadSessionsCompleted: 0,
+      sessionsPerWeek: 3,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutId: "workout-closeout",
+          selectionMode: "MANUAL",
+          sessionIntent: "PUSH",
+          advancesSplit: true,
+          selectionMetadata: buildCloseoutSelectionMetadata(),
+          exercises: [
+            {
+              section: "MAIN",
+              exerciseId: "bench",
+              sets: [{ setIndex: 1, targetReps: 12 }],
+            },
+          ],
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+
+    const upsert = mocks.workoutUpsert.mock.calls[0][0];
+    const receipt = (upsert.create.selectionMetadata as Record<string, unknown>)
+      .sessionDecisionReceipt as Record<string, unknown>;
+    expect(upsert.create.advancesSplit).toBe(false);
+    expect(upsert.update.advancesSplit).toBe(false);
+    expect((upsert.create.selectionMetadata as Record<string, unknown>).weekCloseId).toBe(
+      "week-close-1"
+    );
+    expect(receipt.sessionSlot).toBeUndefined();
+    expect(
+      (receipt.exceptions as Array<{ code: string }>).map((entry) => entry.code)
+    ).toContain("closeout_session");
+    expect(mocks.tx.mesocycle.update).not.toHaveBeenCalled();
+    expect(mocks.transitionMesocycleStateInTransaction).not.toHaveBeenCalled();
+  });
+
   it("preserves the supplemental marker on later save/update flows", async () => {
     mocks.workoutFindUnique.mockResolvedValueOnce({
       id: "workout-supp",
@@ -2252,6 +2353,63 @@ describe("POST /api/workouts/save", () => {
     expect((receipt.exceptions as Array<{ code: string }>).map((entry) => entry.code)).toContain(
       "supplemental_deficit_session"
     );
+  });
+
+  it("completes closeout sessions without lifecycle or exposure/progression updates", async () => {
+    mocks.workoutFindUnique
+      .mockResolvedValueOnce({
+        id: "workout-closeout",
+        userId: "user-1",
+        status: "PLANNED",
+        revision: 1,
+        mesocycleId: "meso-1",
+        advancesSplit: false,
+        selectionMode: "MANUAL",
+        sessionIntent: "PUSH",
+        selectionMetadata: buildCloseoutSelectionMetadata(),
+      })
+      .mockResolvedValueOnce({
+        exercises: [
+          {
+            sets: [{ logs: [{ wasSkipped: false, actualReps: 8, actualRpe: 8, actualLoad: 135 }] }],
+          },
+        ],
+      });
+    mocks.tx.mesocycle.findUnique.mockResolvedValueOnce({
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION",
+      durationWeeks: 5,
+      accumulationSessionsCompleted: 7,
+      deloadSessionsCompleted: 0,
+      sessionsPerWeek: 3,
+    });
+    mocks.workoutUpsert.mockResolvedValueOnce({
+      id: "workout-closeout",
+      revision: 2,
+      mesocycleId: "meso-1",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutId: "workout-closeout",
+          action: "mark_completed",
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+
+    const upsert = mocks.workoutUpsert.mock.calls[0][0];
+    const receipt = (upsert.update.selectionMetadata as Record<string, unknown>)
+      .sessionDecisionReceipt as Record<string, unknown>;
+    expect(upsert.update.advancesSplit).toBe(false);
+    expect(receipt.sessionSlot).toBeUndefined();
+    expect(mocks.tx.mesocycle.update).not.toHaveBeenCalled();
+    expect(mocks.transitionMesocycleStateInTransaction).not.toHaveBeenCalled();
+    expect(mocks.updateExerciseExposure).not.toHaveBeenCalled();
   });
 
   it("resolves a linked optional gap-fill completion once and advances once transactionally", async () => {

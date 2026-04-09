@@ -8,12 +8,15 @@ export type SessionAuditSemanticsReasonCode =
   | "advances_split_false"
   | "strict_gap_fill_marker"
   | "strict_supplemental_marker"
+  | "closeout_marker"
   | "deload_session"
   | "progression_history_excluded_for_supplemental"
+  | "progression_history_excluded_for_closeout"
   | "progression_history_excluded_for_deload"
   | "performance_history_excluded_for_supplemental"
   | "performance_history_excluded_for_deload"
   | "progression_anchor_excluded_for_supplemental"
+  | "progression_anchor_excluded_for_closeout"
   | "progression_anchor_excluded_for_deload";
 
 export type SessionAuditSemanticsReason = {
@@ -34,6 +37,7 @@ export type SessionAuditSemanticsSnapshot = {
   isDeload: boolean;
   isStrictGapFill: boolean;
   isStrictSupplemental: boolean;
+  isCloseout?: boolean;
   advancesLifecycle: boolean;
   consumesWeeklyScheduleIntent: boolean;
   countsTowardCompliance: boolean;

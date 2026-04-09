@@ -54,7 +54,8 @@ export type SessionDecisionExceptionCode =
   | "deload"
   | "readiness_scale"
   | "optional_gap_fill"
-  | "supplemental_deficit_session";
+  | "supplemental_deficit_session"
+  | "closeout_session";
 
 export type SessionDecisionException = {
   code: SessionDecisionExceptionCode;

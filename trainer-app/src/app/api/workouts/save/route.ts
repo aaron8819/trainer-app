@@ -14,6 +14,7 @@ import {
   buildSavedSessionAuditSnapshot,
 } from "@/lib/evidence/session-audit-snapshot";
 import {
+  attachCloseoutSessionMetadata,
   readWeekCloseIdFromSelectionMetadata,
 } from "@/lib/ui/selection-metadata";
 import { reconcileRuntimeEditSelectionMetadata } from "@/lib/api/runtime-edit-reconciliation";
@@ -42,6 +43,7 @@ import {
   type PersistedStatus,
 } from "./status-machine";
 import { isStrictOptionalGapFillSession } from "@/lib/gap-fill/classifier";
+import { isCloseoutSession } from "@/lib/session-semantics/closeout-classifier";
 import { isStrictSupplementalDeficitSession } from "@/lib/session-semantics/supplemental-classifier";
 import type { SaveWorkoutResponse } from "@/lib/api/workout-save-contract";
 type JsonObject = Record<string, unknown>;
@@ -142,6 +144,7 @@ export async function POST(request: Request) {
   let persistedRevision = 1;
   let finalStatus: PersistedStatus = (parsed.data.status ?? WorkoutStatus.PLANNED) as PersistedStatus;
   let didCompleteTransition = false;
+  let shouldUpdateExerciseExposure = false;
   let weekCloseResult:
     | {
         weekCloseId: string | null;
@@ -209,6 +212,13 @@ export async function POST(request: Request) {
         selectionMetadata: effectiveSelectionMetadata,
         cycleContext: receipt.cycleContext,
       });
+      const isCloseout = isCloseoutSession(selectionMetadata);
+      if (isCloseout) {
+        selectionMetadata = attachCloseoutSessionMetadata(selectionMetadata, {
+          enabled: true,
+          weekCloseId: readWeekCloseIdFromSelectionMetadata(selectionMetadata),
+        });
+      }
       const linkedWeekCloseId = readWeekCloseIdFromSelectionMetadata(selectionMetadata);
       const effectiveSelectionMode =
         parsed.data.selectionMode ??
@@ -294,7 +304,8 @@ export async function POST(request: Request) {
         persistedAdvancesSplit: existingWorkout?.advancesSplit,
         requestAdvancesSplit: parsed.data.advancesSplit,
       });
-      const forcesAdvancesSplitFalse = isOptionalGapFill || isSupplementalDeficitSession;
+      const forcesAdvancesSplitFalse =
+        isOptionalGapFill || isSupplementalDeficitSession || isCloseout;
       const effectiveAdvancesSplit = forcesAdvancesSplitFalse
         ? false
         : (resolvedAdvancesSplit ?? true);
@@ -587,6 +598,7 @@ export async function POST(request: Request) {
         (!shouldAdvanceLifecycleTransition || wonLifecycleTransition)
       ) {
         didCompleteTransition = true;
+        shouldUpdateExerciseExposure = !isCloseout;
       }
 
       if (hasExerciseRewrite) {
@@ -652,7 +664,7 @@ export async function POST(request: Request) {
     });
 
     // Update exercise exposure for rotation tracking (outside transaction)
-    if (didCompleteTransition && finalStatus === "COMPLETED") {
+    if (didCompleteTransition && finalStatus === "COMPLETED" && shouldUpdateExerciseExposure) {
       try {
         await updateExerciseExposure(user.id, workoutId);
       } catch (exposureError) {

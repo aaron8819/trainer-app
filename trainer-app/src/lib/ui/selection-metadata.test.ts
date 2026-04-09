@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  attachCloseoutSessionMetadata,
   attachSupplementalSessionMetadata,
   buildWorkoutStructureState,
   buildCanonicalSelectionMetadata,
@@ -500,6 +501,89 @@ describe("attachSupplementalSessionMetadata", () => {
       attachSupplementalSessionMetadata(metadata, {
         enabled: false,
         targetMuscles: ["Chest"],
+      })
+    ).toBe(metadata);
+  });
+});
+
+describe("attachCloseoutSessionMetadata", () => {
+  it("stamps weekClose ownership, preserves retained exceptions, and strips slot identity", () => {
+    const result = attachCloseoutSessionMetadata(
+      {
+        sessionDecisionReceipt: {
+          version: 1,
+          cycleContext: {
+            weekInMeso: 2,
+            weekInBlock: 2,
+            phase: "accumulation",
+            blockType: "accumulation",
+            isDeload: false,
+            source: "computed",
+          },
+          sessionSlot: {
+            slotId: "upper_b",
+            intent: "upper",
+            sequenceIndex: 2,
+            source: "mesocycle_slot_sequence",
+          },
+          lifecycleVolume: {
+            source: "unknown",
+          },
+          sorenessSuppressedMuscles: [],
+          deloadDecision: {
+            mode: "none",
+            reason: [],
+            reductionPercent: 0,
+            appliedTo: "none",
+          },
+          readiness: {
+            wasAutoregulated: false,
+            signalAgeHours: null,
+            fatigueScoreOverall: null,
+            intensityScaling: {
+              applied: false,
+              exerciseIds: [],
+              scaledUpCount: 0,
+              scaledDownCount: 0,
+            },
+          },
+          exceptions: [
+            {
+              code: "optional_gap_fill",
+              message: "Marked as optional gap-fill session.",
+            },
+          ],
+        },
+      },
+      {
+        enabled: true,
+        weekCloseId: "week-close-1",
+      }
+    );
+
+    expect(result.weekCloseId).toBe("week-close-1");
+    expect(result.sessionDecisionReceipt?.sessionSlot).toBeUndefined();
+    expect(result.sessionDecisionReceipt?.exceptions).toEqual([
+      {
+        code: "optional_gap_fill",
+        message: "Marked as optional gap-fill session.",
+      },
+      {
+        code: "closeout_session",
+        message: "Marked as closeout session.",
+      },
+    ]);
+  });
+
+  it("does not stamp closeout metadata when disabled", () => {
+    const metadata = {
+      selectedExerciseIds: ["bench"],
+    };
+
+    expect(
+      attachCloseoutSessionMetadata(metadata, {
+        enabled: false,
+        weekCloseId: "week-close-1",
       })
     ).toBe(metadata);
   });

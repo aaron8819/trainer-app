@@ -147,6 +147,32 @@ describe("deriveSessionSemantics", () => {
     });
   });
 
+  it("classifies closeout sessions as non-advancing weekly-volume work without progression anchoring", () => {
+    expect(
+      deriveSessionSemantics({
+        advancesSplit: true,
+        selectionMode: "MANUAL",
+        sessionIntent: "PUSH",
+        selectionMetadata: buildMetadata("closeout_session"),
+      })
+    ).toMatchObject({
+      kind: "non_advancing_generic",
+      isDeload: false,
+      isStrictGapFill: false,
+      isStrictSupplemental: false,
+      isCloseout: true,
+      advancesLifecycle: false,
+      consumesWeeklyScheduleIntent: false,
+      countsTowardCompliance: true,
+      countsTowardRecentStimulus: true,
+      countsTowardWeeklyVolume: true,
+      countsTowardProgressionHistory: false,
+      countsTowardPerformanceHistory: true,
+      updatesProgressionAnchor: false,
+      eligibleForUniqueIntentSubtraction: false,
+    });
+  });
+
   it("treats null and undefined advancesSplit as advancing for compatibility", () => {
     expect(
       deriveSessionSemantics({

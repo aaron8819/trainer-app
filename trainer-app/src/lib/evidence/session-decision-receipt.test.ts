@@ -538,6 +538,10 @@ describe("readSessionDecisionReceipt", () => {
               message: "Marked as supplemental deficit session.",
             },
             {
+              code: "closeout_session",
+              message: "Marked as closeout session.",
+            },
+            {
               code: "unexpected_exception_code",
               message: "should be dropped",
             },
@@ -558,6 +562,36 @@ describe("readSessionDecisionReceipt", () => {
       (
         readSessionDecisionReceipt(normalized)?.exceptions.map((entry) => entry.code) ?? []
       )
-    ).toEqual(["optional_gap_fill", "supplemental_deficit_session"]);
+    ).toEqual(["optional_gap_fill", "supplemental_deficit_session", "closeout_session"]);
+  });
+
+  it("round-trips the closeout exception marker safely", () => {
+    const receipt = buildSessionDecisionReceipt({
+      cycleContext: {
+        weekInMeso: 3,
+        weekInBlock: 3,
+        phase: "accumulation",
+        blockType: "accumulation",
+        isDeload: false,
+        source: "computed",
+      },
+      additionalExceptions: [
+        {
+          code: "closeout_session",
+          message: "Marked as closeout session.",
+        },
+      ],
+    });
+
+    const parsed = readSessionDecisionReceipt({
+      sessionDecisionReceipt: receipt,
+    });
+
+    expect(parsed?.exceptions).toEqual([
+      {
+        code: "closeout_session",
+        message: "Marked as closeout session.",
+      },
+    ]);
   });
 });

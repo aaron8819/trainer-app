@@ -38,6 +38,7 @@ Sources of truth:
 - Program/periodization/readiness: `src/app/api/program/route.ts`, `src/app/api/periodization/macro/route.ts`, `src/app/api/readiness/submit/route.ts`, `src/app/api/stalls/route.ts`
 - Templates: `src/app/api/templates/**`
 - Exercises and preferences: `src/app/api/exercises/**`, `src/app/api/preferences/route.ts`
+  - `GET /api/exercises/search?q=<query>&limit=<n>` is the bounded typed-search route for discovery surfaces such as Add Exercise. Ranking is server-owned in `src/lib/api/exercise-library.ts` and may combine name, alias, muscle, muscle-group, and equipment signals; it is intentionally separate from full-library hydration reads.
 - Analytics: `src/app/api/analytics/**`
 - Profile/session support: `src/app/api/profile/setup/route.ts`, `src/app/api/session-checkins/route.ts`
 
@@ -150,6 +151,7 @@ Sources of truth:
 - Save-route exercise rewrites also persist canonical `selectionMetadata.workoutStructureState`, may append `selectionMetadata.runtimeEditReconciliation`, and keep the original receipt intact. They do not rewrite `sessionDecisionReceipt` to match the new structure.
 - Structural mutation contract:
   - `POST /api/workouts/save` with exercise rewrite updates `selectionMetadata.workoutStructureState` and appends `runtimeEditReconciliation.rewrite_structure` only when the saved structure drifts from the generated snapshot
+  - `GET /api/exercises/search?q=<query>&limit=<n>` returns a bounded ranked shortlist for typed exercise discovery and must not be treated as a preview/defaults surface
   - `POST /api/workouts/[id]/add-exercise-preview` returns the canonical runtime-added accessory preview for requested exercise ids using the same server-owned defaults seam as the add-exercise mutation; the Add Exercise sheet consumes this read path and must not invent local default copy
   - `POST /api/workouts/[id]/add-exercise` updates `selectionMetadata.workoutStructureState` and appends `runtimeEditReconciliation.add_exercise`
   - `POST /api/workouts/[id]/swap-exercise` preserves `gapFillExerciseSwapState`, updates `selectionMetadata.workoutStructureState`, and appends `runtimeEditReconciliation.replace_exercise`
@@ -159,6 +161,10 @@ Sources of truth:
   - effective `selectionMode=INTENT`
   - `sessionIntent=BODY_PART`
   When true, save forces `advancesSplit=false`, blocks lifecycle counter updates/state transition, and allows `mesocycleWeekSnapshot` anchor override. Non-triplet payloads use normal lifecycle behavior.
+- Closeout enforcement is receipt-scoped, not enum-scoped:
+  - receipt marker `closeout_session`
+  - additive `selectionMetadata.weekCloseId` may carry the owning closeout/week-close context
+  When true, save strips any receipt `sessionSlot`, forces `advancesSplit=false`, skips lifecycle advancement, and keeps the session out of canonical progression-anchor updates while still preserving weekly-volume semantics through `deriveSessionSemantics()`.
 - Closed-mesocycle fencing:
   - `POST /api/workouts/save` returns `409` for workouts whose parent mesocycle is `AWAITING_HANDOFF` or `COMPLETED`
   - `POST /api/logs/set` and `DELETE /api/logs/set` return `409` for the same closed-mesocycle cases

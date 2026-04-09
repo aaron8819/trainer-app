@@ -981,7 +981,8 @@ function parsePersistedReceipt(value: unknown): SessionDecisionReceipt | undefin
             item.code !== "deload" &&
             item.code !== "readiness_scale" &&
             item.code !== "optional_gap_fill" &&
-            item.code !== "supplemental_deficit_session"
+            item.code !== "supplemental_deficit_session" &&
+            item.code !== "closeout_session"
           ) {
             return [];
           }
@@ -1039,7 +1040,8 @@ export function normalizeSelectionMetadataWithReceipt(input: {
         existingReceipt?.exceptions.filter(
           (entry) =>
             entry.code === "optional_gap_fill" ||
-            entry.code === "supplemental_deficit_session"
+            entry.code === "supplemental_deficit_session" ||
+            entry.code === "closeout_session"
         ) ?? [],
       autoregulation: existingReceipt
         ? {

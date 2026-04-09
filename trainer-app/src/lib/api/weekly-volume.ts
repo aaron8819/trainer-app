@@ -3,6 +3,7 @@ import { WorkoutStatus } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { getEffectiveStimulusByMuscle } from "@/lib/engine/stimulus";
 import { normalizeExposedMuscle } from "@/lib/engine/volume-landmarks";
+import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-semantics";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 
 type WorkoutReader = Pick<Prisma.TransactionClient, "workout"> | Pick<typeof prisma, "workout">;
@@ -183,6 +184,17 @@ export async function loadMesocycleWeekMuscleVolume(
 
   const muscles: Record<string, WeeklyMuscleVolumeAccumulator> = {};
   for (const workout of workouts) {
+    const semantics = deriveSessionSemantics({
+      advancesSplit: workout.advancesSplit,
+      selectionMetadata: workout.selectionMetadata,
+      selectionMode: workout.selectionMode,
+      sessionIntent: workout.sessionIntent,
+      mesocyclePhase: workout.mesocyclePhaseSnapshot,
+    });
+    if (!semantics.countsTowardWeeklyVolume) {
+      continue;
+    }
+
     for (const workoutExercise of workout.exercises) {
       const completedSets = countCompletedSets(workoutExercise.sets);
       if (completedSets <= 0) {

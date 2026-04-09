@@ -170,6 +170,16 @@ describe("loadProjectedWeekVolumeReport", () => {
         selectionMode: "INTENT",
         sessionIntent: "UPPER",
       },
+      {
+        advancesSplit: false,
+        selectionMetadata: {
+          sessionDecisionReceipt: {
+            exceptions: [{ code: "closeout_session", message: "Marked as closeout session." }],
+          },
+        },
+        selectionMode: "MANUAL",
+        sessionIntent: null,
+      },
     ]);
     mocks.loadPreloadedGenerationSnapshot.mockResolvedValue({
       activeMesocycle: { id: "meso-1", state: "ACTIVE_ACCUMULATION" },

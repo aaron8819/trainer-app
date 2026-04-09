@@ -3,7 +3,7 @@
  * Shared by the API route and the server-component page to avoid HTTP round-trips.
  */
 
-import { WorkoutSessionIntent } from "@prisma/client";
+import { WorkoutSessionIntent, WorkoutStatus } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import {
   VOLUME_LANDMARKS,
@@ -29,6 +29,7 @@ import {
 import { loadRecentMuscleStimulus } from "./recent-muscle-stimulus";
 import { computeMuscleOpportunity, type OpportunityState } from "./opportunity";
 import { resolvePhaseBlockProfile } from "./generation-phase-block-context";
+import { isCloseoutSession } from "@/lib/session-semantics/closeout-classifier";
 
 export type ProgramMesoBlock = {
   blockType: string;
@@ -105,6 +106,7 @@ export type HomeProgramSupportData = {
   lastSessionSkipped: boolean;
   latestIncomplete: { id: string; status: string } | null;
   gapFill: GapFillSupportData;
+  closeout: CloseoutSupportData;
 };
 
 export type GapFillDeficitRow = {
@@ -139,6 +141,14 @@ export type GapFillSupportData = {
   suppressedByStartedNextWeek: boolean;
   linkedWorkout: { id: string; status: string } | null;
   policy: GapFillPolicy;
+};
+
+export type CloseoutSupportData = {
+  visible: boolean;
+  workoutId: string | null;
+  status: string | null;
+  targetWeek: number | null;
+  isIncomplete: boolean;
 };
 
 export type CapabilityFlags = {
@@ -407,6 +417,49 @@ function isWeekCloseVisibleOnHome(input: {
   );
 }
 
+type CloseoutWorkoutCandidate = {
+  id: string;
+  status: WorkoutStatus;
+  scheduledDate: Date;
+  selectionMetadata: unknown;
+};
+
+const CLOSEOUT_STATUS_PRIORITY: Record<WorkoutStatus, number> = {
+  IN_PROGRESS: 0,
+  PARTIAL: 1,
+  PLANNED: 2,
+  COMPLETED: 3,
+  SKIPPED: 4,
+};
+
+export function buildCurrentWeekCloseoutSupport(input: {
+  workouts: CloseoutWorkoutCandidate[];
+  targetWeek: number | null;
+}): CloseoutSupportData {
+  const closeout = [...input.workouts]
+    .filter((workout) => isCloseoutSession(workout.selectionMetadata))
+    .sort((left, right) => {
+      const leftPriority = CLOSEOUT_STATUS_PRIORITY[left.status] ?? 99;
+      const rightPriority = CLOSEOUT_STATUS_PRIORITY[right.status] ?? 99;
+      if (leftPriority !== rightPriority) {
+        return leftPriority - rightPriority;
+      }
+
+      return left.scheduledDate.getTime() - right.scheduledDate.getTime();
+    })[0] ?? null;
+
+  return {
+    visible: Boolean(closeout),
+    workoutId: closeout?.id ?? null,
+    status: closeout?.status.toLowerCase() ?? null,
+    targetWeek: closeout ? input.targetWeek : null,
+    isIncomplete:
+      closeout?.status === "PLANNED" ||
+      closeout?.status === "IN_PROGRESS" ||
+      closeout?.status === "PARTIAL",
+  };
+}
+
 export async function loadHomeProgramSupport(userId: string): Promise<HomeProgramSupportData> {
   const [nextWorkoutContext, activeMesocycle] = await Promise.all([
     loadNextWorkoutContext(userId),
@@ -414,6 +467,7 @@ export async function loadHomeProgramSupport(userId: string): Promise<HomeProgra
       where: { macroCycle: { userId }, isActive: true },
       select: {
         id: true,
+        startWeek: true,
         durationWeeks: true,
         sessionsPerWeek: true,
         accumulationSessionsCompleted: true,
@@ -464,6 +518,37 @@ export async function loadHomeProgramSupport(userId: string): Promise<HomeProgra
         mesocycleId: activeMesocycle.id,
       })
     : null;
+  const currentWeekCloseoutRows =
+    activeMesocycle && activeWeek != null
+      ? await (() => {
+          const mesoStart = new Date(activeMesocycle.macroCycle.startDate);
+          mesoStart.setDate(mesoStart.getDate() + activeMesocycle.startWeek * 7);
+          const weekStart = computeMesoWeekStart(mesoStart, activeWeek);
+          const weekEnd = new Date(weekStart);
+          weekEnd.setDate(weekEnd.getDate() + 7);
+
+          return prisma.workout.findMany({
+            where: {
+              userId,
+              mesocycleId: activeMesocycle.id,
+              OR: [
+                { mesocycleWeekSnapshot: activeWeek },
+                {
+                  mesocycleWeekSnapshot: null,
+                  scheduledDate: { gte: weekStart, lt: weekEnd },
+                },
+              ],
+            },
+            orderBy: [{ scheduledDate: "asc" }, { id: "asc" }],
+            select: {
+              id: true,
+              status: true,
+              scheduledDate: true,
+              selectionMetadata: true,
+            },
+          });
+        })()
+      : [];
   const deficitSnapshot = relevantWeekClose?.deficitSnapshot;
   const weekCloseState = relevantWeekClose?.weekCloseState;
   const policy: GapFillPolicy = {
@@ -533,12 +618,17 @@ export async function loadHomeProgramSupport(userId: string): Promise<HomeProgra
     linkedWorkout,
     policy,
   };
+  const closeout = buildCurrentWeekCloseoutSupport({
+    workouts: currentWeekCloseoutRows,
+    targetWeek: activeWeek,
+  });
 
   return {
     nextSession,
     lastSessionSkipped,
     latestIncomplete,
     gapFill,
+    closeout,
   };
 }
 

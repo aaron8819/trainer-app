@@ -139,4 +139,47 @@ describe("loadMesocycleWeekMuscleVolume", () => {
     });
     expect(result.Abs).toBeUndefined();
   });
+
+  it("includes performed closeout sessions in actual weekly volume totals", async () => {
+    const findMany = vi.fn().mockResolvedValue([
+      {
+        id: "workout-closeout",
+        advancesSplit: false,
+        selectionMode: "MANUAL",
+        sessionIntent: null,
+        selectionMetadata: {
+          sessionDecisionReceipt: {
+            exceptions: [{ code: "closeout_session", message: "Marked as closeout session." }],
+          },
+        },
+        mesocyclePhaseSnapshot: "ACCUMULATION",
+        exercises: [
+          {
+            exercise: {
+              id: "curl",
+              name: "EZ-Bar Curl",
+              aliases: [],
+              exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Biceps" } }],
+            },
+            sets: Array.from({ length: 2 }, () => ({ logs: [{ wasSkipped: false }] })),
+          },
+        ],
+      },
+    ]);
+
+    const result = await loadMesocycleWeekMuscleVolume(
+      { workout: { findMany } } as never,
+      {
+        userId: "user-1",
+        mesocycleId: "meso-1",
+        targetWeek: 1,
+        weekStart: new Date("2026-03-02T00:00:00.000Z"),
+      }
+    );
+
+    expect(result.Biceps).toMatchObject({
+      directSets: 2,
+      effectiveSets: 2,
+    });
+  });
 });

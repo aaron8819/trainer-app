@@ -1015,6 +1015,143 @@ describe("loadHomeProgramSupport", () => {
     expect(result.gapFill.weekCloseId).toBe("wc-4");
   });
 
+  it("surfaces a same-week closeout separately from next-session support", async () => {
+    setupDashboardMocks(
+      {
+        state: "ACTIVE_ACCUMULATION",
+        sessionsPerWeek: 3,
+        accumulationSessionsCompleted: 9,
+      },
+      4
+    );
+    mocks.constraintsFindUnique.mockResolvedValue({
+      weeklySchedule: ["PUSH", "PULL", "LEGS"],
+    });
+    mocks.workoutFindMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          id: "workout-closeout",
+          status: "PLANNED",
+          scheduledDate: new Date("2026-03-25T00:00:00.000Z"),
+          selectionMetadata: {
+            sessionDecisionReceipt: {
+              version: 1,
+              cycleContext: {
+                weekInMeso: 4,
+                weekInBlock: 4,
+                phase: "accumulation",
+                blockType: "accumulation",
+                isDeload: false,
+                source: "computed",
+              },
+              lifecycleVolume: { source: "unknown" },
+              sorenessSuppressedMuscles: [],
+              deloadDecision: {
+                mode: "none",
+                reason: [],
+                reductionPercent: 0,
+                appliedTo: "none",
+              },
+              readiness: {
+                wasAutoregulated: false,
+                signalAgeHours: null,
+                fatigueScoreOverall: null,
+                intensityScaling: {
+                  applied: false,
+                  exerciseIds: [],
+                  scaledUpCount: 0,
+                  scaledDownCount: 0,
+                },
+              },
+              exceptions: [{ code: "closeout_session", message: "Marked as closeout session." }],
+            },
+          },
+        },
+      ]);
+
+    const result = await loadHomeProgramSupport("user-1");
+
+    expect(result.nextSession.intent).toBe("push");
+    expect(result.latestIncomplete).toBeNull();
+    expect(result.closeout).toEqual({
+      visible: true,
+      workoutId: "workout-closeout",
+      status: "planned",
+      targetWeek: 4,
+      isIncomplete: true,
+    });
+  });
+
+  it("keeps a skipped closeout visible without turning it into next-session work", async () => {
+    setupDashboardMocks(
+      {
+        state: "ACTIVE_ACCUMULATION",
+        sessionsPerWeek: 3,
+        accumulationSessionsCompleted: 9,
+      },
+      4
+    );
+    mocks.constraintsFindUnique.mockResolvedValue({
+      weeklySchedule: ["PUSH", "PULL", "LEGS"],
+    });
+    mocks.workoutFindMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          id: "workout-closeout",
+          status: "SKIPPED",
+          scheduledDate: new Date("2026-03-25T00:00:00.000Z"),
+          selectionMetadata: {
+            sessionDecisionReceipt: {
+              version: 1,
+              cycleContext: {
+                weekInMeso: 4,
+                weekInBlock: 4,
+                phase: "accumulation",
+                blockType: "accumulation",
+                isDeload: false,
+                source: "computed",
+              },
+              lifecycleVolume: { source: "unknown" },
+              sorenessSuppressedMuscles: [],
+              deloadDecision: {
+                mode: "none",
+                reason: [],
+                reductionPercent: 0,
+                appliedTo: "none",
+              },
+              readiness: {
+                wasAutoregulated: false,
+                signalAgeHours: null,
+                fatigueScoreOverall: null,
+                intensityScaling: {
+                  applied: false,
+                  exerciseIds: [],
+                  scaledUpCount: 0,
+                  scaledDownCount: 0,
+                },
+              },
+              exceptions: [{ code: "closeout_session", message: "Marked as closeout session." }],
+            },
+          },
+        },
+      ]);
+
+    const result = await loadHomeProgramSupport("user-1");
+
+    expect(result.nextSession.intent).toBe("push");
+    expect(result.closeout).toEqual({
+      visible: true,
+      workoutId: "workout-closeout",
+      status: "skipped",
+      targetWeek: 4,
+      isIncomplete: false,
+    });
+  });
+
   it("keeps a same-week resolved partial row visible on home while leaving generation disabled", async () => {
     setupDashboardMocks(
       {

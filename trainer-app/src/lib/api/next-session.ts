@@ -74,28 +74,38 @@ const STATUS_PRIORITY: Record<string, number> = {
 function pickTopIncompleteWorkout(
   workouts: IncompleteWorkoutCandidate[]
 ): IncompleteWorkoutCandidate | null {
-  return [...workouts].sort((left, right) => {
+  return [...workouts]
+    .filter(
+      (workout) =>
+        !deriveSessionSemantics({
+          selectionMetadata: workout.selectionMetadata,
+          sessionIntent: workout.sessionIntent,
+        }).isCloseout
+    )
+    .sort((left, right) => {
     const leftPriority = STATUS_PRIORITY[left.status] ?? 3;
     const rightPriority = STATUS_PRIORITY[right.status] ?? 3;
     if (leftPriority !== rightPriority) {
       return leftPriority - rightPriority;
     }
     return left.scheduledDate.getTime() - right.scheduledDate.getTime();
-  })[0] ?? null;
+    })[0] ?? null;
 }
 
 export function buildAdvancingPerformedSlots(
   workouts: PerformedAdvancingWorkoutCandidate[]
 ): AdvancingPerformedSlot[] {
   return workouts
-    .filter((workout) =>
-      deriveSessionSemantics({
+    .filter((workout) => {
+      const semantics = deriveSessionSemantics({
         advancesSplit: workout.advancesSplit,
         selectionMetadata: workout.selectionMetadata,
         selectionMode: workout.selectionMode,
         sessionIntent: workout.sessionIntent,
-      }).consumesWeeklyScheduleIntent
-    )
+      });
+
+      return !semantics.isCloseout && semantics.consumesWeeklyScheduleIntent;
+    })
     .map((workout) => ({
       slotId: readSessionSlotSnapshot(workout.selectionMetadata)?.slotId ?? null,
       intent: workout.sessionIntent?.toLowerCase() ?? null,

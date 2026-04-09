@@ -172,6 +172,7 @@ describe("Home page", () => {
         nextDueLabel: "Lower 1",
         nextDueDescriptor: "First lower session this week",
       },
+      closeout: null,
       headerContext: "Week 2 - Accumulation",
       recentActivity: [],
     });
@@ -203,5 +204,118 @@ describe("Home page", () => {
     ).toBeInTheDocument();
     expect(screen.queryByText("Explore")).not.toBeInTheDocument();
     expect(screen.queryByText("Next Session")).not.toBeInTheDocument();
+  });
+
+  it("renders a separate closeout card without replacing the main next-session surface", async () => {
+    mocks.loadHomePageData.mockResolvedValueOnce({
+      pendingHandoff: null,
+      programData: {
+        activeMeso: {
+          mesoNumber: 2,
+          focus: "Strength-Hypertrophy",
+          durationWeeks: 5,
+          completedSessions: 4,
+          volumeTarget: "moderate",
+          currentBlockType: "accumulation",
+          blocks: [],
+        },
+        currentWeek: 2,
+        viewedWeek: 2,
+        viewedBlockType: "accumulation",
+        sessionsUntilDeload: 6,
+        volumeThisWeek: [],
+        deloadReadiness: null,
+        rirTarget: { min: 2, max: 3 },
+        coachingCue: "Build volume with crisp execution.",
+      },
+      homeProgram: {
+        nextSession: {
+          intent: "lower",
+          slotId: "lower_a",
+          slotSequenceIndex: 1,
+          slotSequenceLength: 4,
+          slotSource: "mesocycle_slot_sequence",
+          weekInMeso: 2,
+          sessionInWeek: 2,
+          workoutId: null,
+          isExisting: false,
+        },
+        lastSessionSkipped: false,
+        latestIncomplete: null,
+        gapFill: {
+          eligible: false,
+          visible: false,
+          reason: "no_pending_week_close",
+          weekCloseId: null,
+          anchorWeek: null,
+          targetWeek: null,
+          targetPhase: null,
+          resolution: null,
+          workflowState: null,
+          deficitState: null,
+          remainingDeficitSets: 0,
+          targetMuscles: [],
+          deficitSummary: [],
+          alreadyUsedThisWeek: false,
+          suppressedByStartedNextWeek: false,
+          linkedWorkout: null,
+          policy: {
+            requiredSessionsPerWeek: 4,
+            maxOptionalGapFillSessionsPerWeek: 1,
+            maxGeneratedHardSets: 12,
+            maxGeneratedExercises: 4,
+          },
+        },
+        closeout: {
+          visible: true,
+          workoutId: "workout-closeout",
+          status: "planned",
+          targetWeek: 2,
+          isIncomplete: true,
+        },
+      },
+      decision: {
+        nextSessionLabel: "Lower 1",
+        nextSessionDescription: "First lower session this week",
+        nextSessionReasonLabel: "Next in sequence",
+        nextSessionReason: "Nothing earlier is still open, so Lower 1 is next this week.",
+        activeWeekLabel: "Week 2 - Session 2 of 4",
+      },
+      continuity: {
+        summary: null,
+        lastCompleted: null,
+        lastCompletedDescriptor: null,
+        nextDueLabel: "Lower 1",
+        nextDueDescriptor: "First lower session this week",
+      },
+      closeout: {
+        workoutId: "workout-closeout",
+        status: "planned",
+        statusLabel: "Planned",
+        detail:
+          "Optional manual closeout work for this week. It can add actual weekly volume without becoming your next canonical session.",
+        actionHref: "/log/workout-closeout",
+        actionLabel: "Open closeout",
+      },
+      headerContext: "Week 2 - Accumulation",
+      recentActivity: [],
+    });
+
+    const { default: HomePage } = await import("./page");
+    const ui = await HomePage();
+
+    render(ui);
+
+    expect(screen.getAllByText("Closeout")[0]).toBeInTheDocument();
+    expect(screen.getByText(/Optional manual closeout work for this week/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open closeout" })).toHaveAttribute(
+      "href",
+      "/log/workout-closeout"
+    );
+    expect(
+      screen.getByText(
+        "DashboardGenerateSection:lower:lower_a:Next in sequence:Nothing earlier is still open, so Lower 1 is next this week."
+      )
+    ).toBeInTheDocument();
   });
 });

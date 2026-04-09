@@ -15,6 +15,7 @@ import {
   isCanonicalDeloadPhase,
   isCanonicalDeloadReceipt,
 } from "@/lib/deload/semantics";
+import { isCloseoutSession } from "@/lib/session-semantics/closeout-classifier";
 import { isStrictSupplementalDeficitSession } from "@/lib/session-semantics/supplemental-classifier";
 
 export const workoutListItemSelect = {
@@ -77,6 +78,7 @@ export type WorkoutListSurfaceSummary = {
   sessionSnapshot: ReturnType<typeof buildWorkoutSessionSnapshotSummary>;
   isDeload: boolean;
   isGapFill?: boolean;
+  isCloseout?: boolean;
   isSupplementalDeficitSession?: boolean;
   gapFillTargetMuscles?: string[];
   exerciseCount: number;
@@ -119,12 +121,29 @@ export function formatWorkoutListIntentLabel(intent: string | null | undefined):
 }
 
 export function getWorkoutListPrimaryLabel(
-  workout: Pick<WorkoutListSurfaceSummary, "isGapFill" | "sessionIntent" | "sessionIdentityLabel">
+  workout: Pick<
+    WorkoutListSurfaceSummary,
+    "isGapFill" | "isCloseout" | "sessionIntent" | "sessionIdentityLabel"
+  >
 ): string {
-  return workout.isGapFill ? "Gap Fill" : workout.sessionIdentityLabel;
+  if (workout.isGapFill) {
+    return "Gap Fill";
+  }
+
+  if (workout.isCloseout) {
+    return "Closeout";
+  }
+
+  return workout.sessionIdentityLabel;
 }
 
-export function getWorkoutListSecondaryLabel(workout: Pick<WorkoutListSurfaceSummary, "isGapFill" | "gapFillTargetMuscles">): string | null {
+export function getWorkoutListSecondaryLabel(
+  workout: Pick<WorkoutListSurfaceSummary, "isGapFill" | "isCloseout" | "gapFillTargetMuscles">
+): string | null {
+  if (workout.isCloseout) {
+    return "Optional manual closeout work";
+  }
+
   if (!workout.isGapFill) {
     return null;
   }
@@ -173,13 +192,14 @@ export function buildWorkoutListSurfaceSummary(
     selectionMode: row.selectionMode,
     sessionIntent: row.sessionIntent,
   });
+  const isCloseout = isCloseoutSession(row.selectionMetadata);
   const isSupplementalDeficit = isStrictSupplementalDeficitSession({
     selectionMetadata: row.selectionMetadata,
     selectionMode: row.selectionMode,
     sessionIntent: row.sessionIntent,
   });
   const receipt = readSessionDecisionReceipt(row.selectionMetadata);
-  const sessionSlotId = receipt?.sessionSlot?.slotId ?? null;
+  const sessionSlotId = isCloseout ? null : (receipt?.sessionSlot?.slotId ?? null);
   const sessionIdentityLabel = formatSessionIdentityLabel({
     intent: row.sessionIntent ?? receipt?.sessionSlot?.intent ?? null,
     slotId: sessionSlotId,
@@ -216,6 +236,7 @@ export function buildWorkoutListSurfaceSummary(
     }),
     isDeload,
     isGapFill,
+    isCloseout,
     isSupplementalDeficitSession: isSupplementalDeficit,
     gapFillTargetMuscles,
     exerciseCount: row._count.exercises,

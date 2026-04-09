@@ -18,8 +18,10 @@ import {
   readRuntimeSlotSequence,
 } from "./mesocycle-slot-runtime";
 import {
+  buildCurrentWeekCloseoutSupport,
   computeMesoWeekStart,
   loadProgramDashboardData,
+  type CloseoutSupportData,
   type DeloadReadiness,
   type ProgramDashboardData,
   type ProgramMesoBlock,
@@ -29,6 +31,7 @@ import {
   type MuscleOutcomeStatus,
 } from "./muscle-outcome-review";
 import { loadProjectedWeekVolumeReport } from "./projected-week-volume";
+import { isCloseoutSession } from "@/lib/session-semantics/closeout-classifier";
 
 type ActiveProgramPageMesocycle = {
   id: string;
@@ -91,6 +94,15 @@ export type ProgramCurrentWeekPlan = {
   nextSessionImpact: ProgramNextSessionImpact | null;
 };
 
+export type ProgramCloseoutSummary = {
+  workoutId: string;
+  status: string;
+  statusLabel: string;
+  detail: string;
+  actionHref: string;
+  actionLabel: string;
+};
+
 export type ProgramNextSessionImpact = {
   slotLabel: string;
   topMuscles: Array<{
@@ -122,6 +134,7 @@ export type ProgramWeekCompletionOutlook = {
 export type ProgramPageData = {
   overview: ProgramPageOverview | null;
   currentWeekPlan: ProgramCurrentWeekPlan | null;
+  closeout: ProgramCloseoutSummary | null;
   weekCompletionOutlook: ProgramWeekCompletionOutlook | null;
   volumeDetails: {
     dashboard: ProgramDashboardData;
@@ -308,6 +321,10 @@ function buildSlotWorkoutLookup(
   const bySlotId = new Map<string, { id: string; status: string; priority: number }>();
 
   for (const workout of workouts) {
+    if (isCloseoutSession(workout.selectionMetadata)) {
+      continue;
+    }
+
     const slotId = readSessionSlotSnapshot(workout.selectionMetadata)?.slotId ?? null;
     if (!slotId) {
       continue;
@@ -330,6 +347,63 @@ function buildSlotWorkoutLookup(
       { id: workout.id, status: workout.status },
     ])
   );
+}
+
+function formatCloseoutStatusLabel(value: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+
+  return value
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function buildProgramCloseoutSummary(
+  closeout: CloseoutSupportData
+): ProgramCloseoutSummary | null {
+  if (!closeout.visible || !closeout.workoutId || !closeout.status) {
+    return null;
+  }
+
+  const normalizedStatus = closeout.status.trim().toUpperCase();
+  const statusLabel = formatCloseoutStatusLabel(normalizedStatus) ?? "Unknown";
+
+  if (normalizedStatus === "COMPLETED") {
+    return {
+      workoutId: closeout.workoutId,
+      status: closeout.status,
+      statusLabel,
+      detail:
+        "Completed closeout is part of this week's actual landing, but it does not extend the remaining canonical slot plan.",
+      actionHref: `/workout/${closeout.workoutId}`,
+      actionLabel: "Review closeout",
+    };
+  }
+
+  if (normalizedStatus === "SKIPPED") {
+    return {
+      workoutId: closeout.workoutId,
+      status: closeout.status,
+      statusLabel,
+      detail:
+        "Skipped closeout stays separate from the slot map and leaves next-session continuity unchanged.",
+      actionHref: `/workout/${closeout.workoutId}`,
+      actionLabel: "View closeout",
+    };
+  }
+
+  return {
+    workoutId: closeout.workoutId,
+    status: closeout.status,
+    statusLabel,
+    detail:
+      "Optional manual closeout work. It counts toward actual weekly volume once performed, but it is not a remaining slot.",
+    actionHref: `/log/${closeout.workoutId}`,
+    actionLabel: "Open closeout",
+  };
 }
 
 function resolveNextSlotId(input: {
@@ -466,7 +540,10 @@ async function loadCurrentWeekPlan(input: {
   currentWeek: number;
   activeMesocycle: ActiveProgramPageMesocycle;
   nextWorkoutContext: NextWorkoutContext;
-}): Promise<ProgramCurrentWeekPlan | null> {
+}): Promise<{
+  plan: ProgramCurrentWeekPlan | null;
+  closeout: ProgramCloseoutSummary | null;
+}> {
   const [constraints, currentWeekWorkouts] = await Promise.all([
     prisma.constraints.findUnique({
       where: { userId: input.userId },
@@ -486,13 +563,21 @@ async function loadCurrentWeekPlan(input: {
     })(),
   ]);
 
-  return buildProgramCurrentWeekPlan({
-    week: input.currentWeek,
-    slotSequenceJson: input.activeMesocycle.slotSequenceJson,
-    weeklySchedule: (constraints?.weeklySchedule ?? []).map((intent) => intent.toLowerCase()),
-    currentWeekWorkouts,
-    nextWorkoutContext: input.nextWorkoutContext,
-  });
+  return {
+    plan: buildProgramCurrentWeekPlan({
+      week: input.currentWeek,
+      slotSequenceJson: input.activeMesocycle.slotSequenceJson,
+      weeklySchedule: (constraints?.weeklySchedule ?? []).map((intent) => intent.toLowerCase()),
+      currentWeekWorkouts,
+      nextWorkoutContext: input.nextWorkoutContext,
+    }),
+    closeout: buildProgramCloseoutSummary(
+      buildCurrentWeekCloseoutSupport({
+        workouts: currentWeekWorkouts,
+        targetWeek: input.currentWeek,
+      })
+    ),
+  };
 }
 
 export async function loadProgramPageData(userId: string): Promise<ProgramPageData> {
@@ -518,7 +603,7 @@ export async function loadProgramPageData(userId: string): Promise<ProgramPageDa
   ]);
 
   const overview = buildProgramPageOverview(dashboard);
-  const currentWeekPlan =
+  const currentWeekSurface =
     activeMesocycle && dashboard.activeMeso
       ? await loadCurrentWeekPlan({
           userId,
@@ -527,6 +612,8 @@ export async function loadProgramPageData(userId: string): Promise<ProgramPageDa
           nextWorkoutContext,
         })
       : null;
+  const currentWeekPlan = currentWeekSurface?.plan ?? null;
+  const closeout = currentWeekSurface?.closeout ?? null;
   const projectedWeekReport =
     activeMesocycle && dashboard.activeMeso
       ? await loadProjectedWeekVolumeReport({ userId })
@@ -552,6 +639,7 @@ export async function loadProgramPageData(userId: string): Promise<ProgramPageDa
           nextSessionImpact,
         }
       : null,
+    closeout,
     weekCompletionOutlook,
     volumeDetails: {
       dashboard,

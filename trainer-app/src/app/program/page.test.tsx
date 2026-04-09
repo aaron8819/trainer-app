@@ -94,6 +94,7 @@ describe("ProgramPage", () => {
           summaryLabel: "Next session impact: likely increases Lats, Upper Back, Rear Delts",
         },
       },
+      closeout: null,
       weekCompletionOutlook: {
         assumptionLabel:
           "If you complete the remaining planned sessions this week, you will likely land here.",
@@ -256,5 +257,90 @@ describe("ProgramPage", () => {
     expect(screen.queryByText("Next Views")).not.toBeInTheDocument();
     expect(screen.queryByText("Session History")).not.toBeInTheDocument();
     expect(screen.queryByText(/skip_phase/i)).not.toBeInTheDocument();
+  });
+
+  it("renders closeout separately from the ordered slot map", async () => {
+    mocks.loadProgramPageData.mockResolvedValueOnce({
+      overview: {
+        mesoNumber: 2,
+        focus: "Strength-Hypertrophy",
+        currentBlockType: "accumulation",
+        durationWeeks: 5,
+        currentWeek: 2,
+        percentComplete: 40,
+        blocks: [{ blockType: "accumulation", startWeek: 1, durationWeeks: 5 }],
+        rirTarget: { min: 2, max: 3 },
+        sessionsUntilDeload: 6,
+        deloadReadiness: null,
+        coachingCue: "Build volume with crisp execution.",
+      },
+      currentWeekPlan: {
+        week: 2,
+        slots: [
+          {
+            slotId: "upper_a",
+            label: "Upper 1",
+            sessionInWeek: 1,
+            state: "next",
+            linkedWorkoutId: "w-next",
+            linkedWorkoutStatus: "planned",
+          },
+        ],
+        nextSessionImpact: null,
+      },
+      closeout: {
+        workoutId: "workout-closeout",
+        status: "planned",
+        statusLabel: "Planned",
+        detail:
+          "Optional manual closeout work. It counts toward actual weekly volume once performed, but it is not a remaining slot.",
+        actionHref: "/log/workout-closeout",
+        actionLabel: "Open closeout",
+      },
+      weekCompletionOutlook: null,
+      volumeDetails: {
+        dashboard: {
+          activeMeso: {
+            mesoNumber: 2,
+            focus: "Strength-Hypertrophy",
+            durationWeeks: 5,
+            completedSessions: 4,
+            volumeTarget: "moderate",
+            currentBlockType: "accumulation",
+            blocks: [],
+          },
+          currentWeek: 2,
+          viewedWeek: 2,
+          viewedBlockType: "accumulation",
+          sessionsUntilDeload: 6,
+          volumeThisWeek: [],
+          deloadReadiness: null,
+          rirTarget: { min: 2, max: 3 },
+          coachingCue: "Build volume with crisp execution.",
+        },
+        currentWeekStatusSummary: null,
+      },
+      advancedActions: {
+        availableActions: ["deload", "extend_phase", "reset"],
+      },
+    });
+
+    const { default: ProgramPage } = await import("./page");
+    const ui = await ProgramPage();
+
+    render(ui);
+
+    expect(screen.getByRole("heading", { name: "Ordered weekly slots" })).toBeInTheDocument();
+    expect(screen.getAllByText("Closeout")[0]).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Optional manual closeout work. It counts toward actual weekly volume once performed, but it is not a remaining slot."
+      )
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open closeout" })).toHaveAttribute(
+      "href",
+      "/log/workout-closeout"
+    );
+    expect(screen.getAllByText(/Upper 1/)).toHaveLength(1);
   });
 });

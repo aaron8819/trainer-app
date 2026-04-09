@@ -27,14 +27,18 @@ vi.mock("@/lib/db/prisma", () => ({
   prisma: mocks.prisma,
 }));
 
-vi.mock("./program", () => ({
-  loadProgramDashboardData: (...args: unknown[]) => mocks.loadProgramDashboardData(...args),
-  computeMesoWeekStart: (date: Date, week: number) => {
-    const next = new Date(date);
-    next.setDate(next.getDate() + (week - 1) * 7);
-    return next;
-  },
-}));
+vi.mock("./program", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./program")>();
+  return {
+    ...actual,
+    loadProgramDashboardData: (...args: unknown[]) => mocks.loadProgramDashboardData(...args),
+    computeMesoWeekStart: (date: Date, week: number) => {
+      const next = new Date(date);
+      next.setDate(next.getDate() + (week - 1) * 7);
+      return next;
+    },
+  };
+});
 
 vi.mock("./muscle-outcome-review", async (importOriginal) => {
   const original = await importOriginal<typeof import("./muscle-outcome-review")>();
@@ -128,6 +132,111 @@ describe("buildProgramCurrentWeekPlan", () => {
         },
       ],
     });
+  });
+
+  it("does not let a closeout workout appear as an extra slot row or linked slot workout", () => {
+    const slotSequenceJson = buildMesocycleSlotSequence([
+      { slotId: "upper_a", intent: "UPPER" },
+      { slotId: "lower_a", intent: "LOWER" },
+      { slotId: "upper_b", intent: "UPPER" },
+    ]);
+
+    const result = buildProgramCurrentWeekPlan({
+      week: 2,
+      slotSequenceJson,
+      weeklySchedule: [],
+      currentWeekWorkouts: [
+        {
+          id: "closeout-planned",
+          status: "PLANNED",
+          scheduledDate: new Date("2026-03-02T00:00:00.000Z"),
+          sessionIntent: null,
+          selectionMode: "MANUAL",
+          selectionMetadata: {
+            sessionDecisionReceipt: {
+              version: 1,
+              cycleContext: {
+                weekInMeso: 2,
+                weekInBlock: 2,
+                phase: "accumulation",
+                blockType: "accumulation",
+                isDeload: false,
+                source: "computed",
+              },
+              sessionSlot: {
+                slotId: "upper_a",
+                intent: "upper",
+                sequenceIndex: 0,
+                sequenceLength: 3,
+                source: "mesocycle_slot_sequence",
+              },
+              lifecycleVolume: { source: "unknown" },
+              sorenessSuppressedMuscles: [],
+              deloadDecision: {
+                mode: "none",
+                reason: [],
+                reductionPercent: 0,
+                appliedTo: "none",
+              },
+              readiness: {
+                wasAutoregulated: false,
+                signalAgeHours: null,
+                fatigueScoreOverall: null,
+                intensityScaling: {
+                  applied: false,
+                  exerciseIds: [],
+                  scaledUpCount: 0,
+                  scaledDownCount: 0,
+                },
+              },
+              exceptions: [{ code: "closeout_session", message: "Marked as closeout session." }],
+            },
+          },
+          advancesSplit: false,
+        },
+      ],
+      nextWorkoutContext: {
+        intent: "upper",
+        slotId: "upper_a",
+        slotSequenceIndex: 0,
+        slotSequenceLength: 3,
+        slotSource: "mesocycle_slot_sequence",
+        existingWorkoutId: null,
+        isExisting: false,
+        source: "rotation",
+        weekInMeso: 2,
+        sessionInWeek: 1,
+        derivationTrace: [],
+        selectedIncompleteStatus: null,
+      },
+    });
+
+    expect(result?.slots).toEqual([
+      {
+        slotId: "upper_a",
+        label: "Upper 1",
+        sessionInWeek: 1,
+        state: "next",
+        linkedWorkoutId: null,
+        linkedWorkoutStatus: null,
+      },
+      {
+        slotId: "lower_a",
+        label: "Lower 1",
+        sessionInWeek: 2,
+        state: "remaining",
+        linkedWorkoutId: null,
+        linkedWorkoutStatus: null,
+      },
+      {
+        slotId: "upper_b",
+        label: "Upper 2",
+        sessionInWeek: 3,
+        state: "remaining",
+        linkedWorkoutId: null,
+        linkedWorkoutStatus: null,
+      },
+    ]);
   });
 });
 
@@ -282,6 +391,47 @@ describe("loadProgramPageData", () => {
         },
         advancesSplit: true,
       },
+      {
+        id: "closeout-planned",
+        status: "PLANNED",
+        scheduledDate: new Date("2026-03-03T00:00:00.000Z"),
+        sessionIntent: null,
+        selectionMode: "MANUAL",
+        selectionMetadata: {
+          sessionDecisionReceipt: {
+            version: 1,
+            cycleContext: {
+              weekInMeso: 2,
+              weekInBlock: 2,
+              phase: "accumulation",
+              blockType: "accumulation",
+              isDeload: false,
+              source: "computed",
+            },
+            lifecycleVolume: { source: "unknown" },
+            sorenessSuppressedMuscles: [],
+            deloadDecision: {
+              mode: "none",
+              reason: [],
+              reductionPercent: 0,
+              appliedTo: "none",
+            },
+            readiness: {
+              wasAutoregulated: false,
+              signalAgeHours: null,
+              fatigueScoreOverall: null,
+              intensityScaling: {
+                applied: false,
+                exerciseIds: [],
+                scaledUpCount: 0,
+                scaledDownCount: 0,
+              },
+            },
+            exceptions: [{ code: "closeout_session", message: "Marked as closeout session." }],
+          },
+        },
+        advancesSplit: false,
+      },
     ]);
     mocks.loadNextWorkoutContext.mockResolvedValue({
       intent: "upper",
@@ -347,6 +497,15 @@ describe("loadProgramPageData", () => {
         ],
         summaryLabel: "Next session impact: likely increases Chest",
       },
+    });
+    expect(result.closeout).toEqual({
+      workoutId: "closeout-planned",
+      status: "planned",
+      statusLabel: "Planned",
+      detail:
+        "Optional manual closeout work. It counts toward actual weekly volume once performed, but it is not a remaining slot.",
+      actionHref: "/log/closeout-planned",
+      actionLabel: "Open closeout",
     });
     expect(result.weekCompletionOutlook).toEqual({
       assumptionLabel: "If you complete the remaining planned sessions this week, you will likely land here.",

@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db/prisma";
 import {
   buildWorkoutListSurfaceSummary,
   formatWorkoutListIntentLabel,
+  getWorkoutListStatusLabel,
   getWorkoutListSecondaryLabel,
   type WorkoutListSurfaceSummary,
   workoutListItemSelect,
@@ -34,12 +35,22 @@ export type HomeContinuitySummary = {
   nextDueDescriptor: string | null;
 };
 
+export type HomeCloseoutSummary = {
+  workoutId: string;
+  status: string;
+  statusLabel: string;
+  detail: string;
+  actionHref: string;
+  actionLabel: string;
+};
+
 export type HomePageData = {
   pendingHandoff: Awaited<ReturnType<typeof loadPendingMesocycleHandoff>>;
   programData: ProgramDashboardData | null;
   homeProgram: HomeProgramSupportData | null;
   decision: HomeDecisionSummary | null;
   continuity: HomeContinuitySummary | null;
+  closeout: HomeCloseoutSummary | null;
   headerContext: string;
   recentActivity: WorkoutListSurfaceSummary[];
 };
@@ -161,6 +172,7 @@ function buildSessionDescriptor(
   session: Pick<
     WorkoutListSurfaceSummary,
     | "isGapFill"
+    | "isCloseout"
     | "gapFillTargetMuscles"
     | "isSupplementalDeficitSession"
     | "isDeload"
@@ -171,6 +183,10 @@ function buildSessionDescriptor(
   if (session.isGapFill) {
     const muscles = getWorkoutListSecondaryLabel(session);
     return muscles ? `Optional gap-fill session for ${muscles}` : "Optional gap-fill session";
+  }
+
+  if (session.isCloseout) {
+    return "Optional manual closeout work";
   }
 
   if (session.isSupplementalDeficitSession) {
@@ -242,6 +258,49 @@ function buildContinuitySummary(input: {
   };
 }
 
+function buildHomeCloseoutSummary(
+  homeProgram: HomeProgramSupportData | null
+): HomeCloseoutSummary | null {
+  const closeout = homeProgram?.closeout;
+  if (!closeout?.visible || !closeout.workoutId || !closeout.status) {
+    return null;
+  }
+
+  const normalizedStatus = closeout.status.trim().toUpperCase();
+  const statusLabel = getWorkoutListStatusLabel(normalizedStatus);
+
+  if (normalizedStatus === "COMPLETED") {
+    return {
+      workoutId: closeout.workoutId,
+      status: closeout.status,
+      statusLabel,
+      detail: "Completed closeout counts toward this week's actual volume without changing the next-session plan.",
+      actionHref: `/workout/${closeout.workoutId}`,
+      actionLabel: "Review closeout",
+    };
+  }
+
+  if (normalizedStatus === "SKIPPED") {
+    return {
+      workoutId: closeout.workoutId,
+      status: closeout.status,
+      statusLabel,
+      detail: "Skipped closeout stays visible for this week, but it does not change continuity or the canonical slot plan.",
+      actionHref: `/workout/${closeout.workoutId}`,
+      actionLabel: "View closeout",
+    };
+  }
+
+  return {
+    workoutId: closeout.workoutId,
+    status: closeout.status,
+    statusLabel,
+    detail: "Optional manual closeout work for this week. It can add actual weekly volume without becoming your next canonical session.",
+    actionHref: `/log/${closeout.workoutId}`,
+    actionLabel: "Open closeout",
+  };
+}
+
 export async function loadHomePageData(userId: string): Promise<HomePageData> {
   const [pendingHandoff, latestCompletedRow, recentActivityRows] = await Promise.all([
     loadPendingMesocycleHandoff(userId),
@@ -274,6 +333,7 @@ export async function loadHomePageData(userId: string): Promise<HomePageData> {
         decision: null,
         homeProgram: null,
       }),
+      closeout: null,
       headerContext: "Training is paused until you accept the next cycle.",
       recentActivity,
     };
@@ -295,6 +355,7 @@ export async function loadHomePageData(userId: string): Promise<HomePageData> {
       decision,
       homeProgram,
     }),
+    closeout: buildHomeCloseoutSummary(homeProgram),
     headerContext: buildHeaderContext(programData),
     recentActivity,
   };

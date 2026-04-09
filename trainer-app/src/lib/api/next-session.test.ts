@@ -43,6 +43,64 @@ describe("resolveNextWorkoutContext", () => {
     expect(context.sessionInWeek).toBeNull();
   });
 
+  it("ignores closeout workouts when selecting the next canonical incomplete session", () => {
+    const context = resolveNextWorkoutContext({
+      mesocycle: baseMeso,
+      weeklySchedule: ["PUSH", "PULL", "LEGS"],
+      incompleteWorkouts: [
+        {
+          id: "closeout-planned",
+          status: "PLANNED",
+          scheduledDate: new Date("2026-03-01T00:00:00.000Z"),
+          sessionIntent: null,
+          selectionMetadata: {
+            sessionDecisionReceipt: {
+              version: 1,
+              cycleContext: {
+                weekInMeso: 3,
+                weekInBlock: 3,
+                phase: "accumulation",
+                blockType: "accumulation",
+                isDeload: false,
+                source: "computed",
+              },
+              lifecycleVolume: { source: "unknown" },
+              sorenessSuppressedMuscles: [],
+              deloadDecision: {
+                mode: "none",
+                reason: [],
+                reductionPercent: 0,
+                appliedTo: "none",
+              },
+              readiness: {
+                wasAutoregulated: false,
+                signalAgeHours: null,
+                fatigueScoreOverall: null,
+                intensityScaling: {
+                  applied: false,
+                  exerciseIds: [],
+                  scaledUpCount: 0,
+                  scaledDownCount: 0,
+                },
+              },
+              exceptions: [{ code: "closeout_session", message: "Marked as closeout session." }],
+            },
+          },
+        },
+        {
+          id: "push-planned",
+          status: "PLANNED",
+          scheduledDate: new Date("2026-03-02T00:00:00.000Z"),
+          sessionIntent: "push",
+        },
+      ],
+    });
+
+    expect(context.source).toBe("existing_incomplete");
+    expect(context.existingWorkoutId).toBe("push-planned");
+    expect(context.intent).toBe("push");
+  });
+
   it("falls back to rotation when no incomplete workout exists", () => {
     const context = resolveNextWorkoutContext({
       mesocycle: baseMeso,

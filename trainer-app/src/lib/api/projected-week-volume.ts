@@ -244,14 +244,16 @@ async function loadPerformedAdvancingSlots(input: {
   });
 
   return workouts
-    .filter((workout) =>
-      deriveSessionSemantics({
+    .filter((workout) => {
+      const semantics = deriveSessionSemantics({
         advancesSplit: workout.advancesSplit,
         selectionMetadata: workout.selectionMetadata,
         selectionMode: workout.selectionMode,
         sessionIntent: workout.sessionIntent,
-      }).consumesWeeklyScheduleIntent
-    )
+      });
+
+      return !semantics.isCloseout && semantics.consumesWeeklyScheduleIntent;
+    })
     .map((workout) => ({
       slotId: readSessionSlotSnapshot(workout.selectionMetadata)?.slotId ?? null,
       intent: workout.sessionIntent?.toLowerCase() ?? null,

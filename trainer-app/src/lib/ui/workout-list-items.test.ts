@@ -97,6 +97,7 @@ describe("buildWorkoutListSurfaceSummary", () => {
       },
       isDeload: false,
       isGapFill: false,
+      isCloseout: false,
       isSupplementalDeficitSession: false,
       gapFillTargetMuscles: [],
       exerciseCount: 2,
@@ -162,10 +163,80 @@ describe("buildWorkoutListSurfaceSummary", () => {
     });
     expect(summary.isDeload).toBe(false);
     expect(summary.isGapFill).toBe(true);
+    expect(summary.isCloseout).toBe(false);
     expect(summary.isSupplementalDeficitSession).toBe(false);
     expect(summary.gapFillTargetMuscles).toEqual(["front delts", "rear delts", "biceps"]);
     expect(getWorkoutListPrimaryLabel(summary)).toBe("Gap Fill");
     expect(getWorkoutListSecondaryLabel(summary)).toBe("Front Delts, Rear Delts, Biceps");
+  });
+
+  it("labels closeout sessions explicitly and ignores stale slot identity for list surfaces", () => {
+    const summary = buildWorkoutListSurfaceSummary({
+      id: "workout-closeout",
+      scheduledDate: new Date("2026-03-04T10:00:00.000Z"),
+      completedAt: null,
+      status: "PLANNED",
+      selectionMode: "MANUAL",
+      sessionIntent: null,
+      mesocycleId: "meso-1",
+      mesocycleWeekSnapshot: 3,
+      mesoSessionSnapshot: 4,
+      mesocyclePhaseSnapshot: "ACCUMULATION",
+      selectionMetadata: {
+        sessionDecisionReceipt: {
+          version: 1,
+          cycleContext: {
+            weekInMeso: 3,
+            weekInBlock: 3,
+            phase: "accumulation",
+            blockType: "accumulation",
+            isDeload: false,
+            source: "computed",
+          },
+          sessionSlot: {
+            slotId: "upper_a",
+            intent: "upper",
+            sequenceIndex: 0,
+            sequenceLength: 4,
+            source: "mesocycle_slot_sequence",
+          },
+          lifecycleVolume: { source: "unknown" },
+          sorenessSuppressedMuscles: [],
+          deloadDecision: {
+            mode: "none",
+            reason: [],
+            reductionPercent: 0,
+            appliedTo: "none",
+          },
+          readiness: {
+            wasAutoregulated: false,
+            signalAgeHours: null,
+            fatigueScoreOverall: null,
+            intensityScaling: {
+              applied: false,
+              exerciseIds: [],
+              scaledUpCount: 0,
+              scaledDownCount: 0,
+            },
+          },
+          exceptions: [
+            {
+              code: "closeout_session",
+              message: "Marked as closeout session.",
+            },
+          ],
+        },
+      },
+      mesocycle: { sessionsPerWeek: 3, state: "ACTIVE_ACCUMULATION", isActive: true },
+      _count: { exercises: 1 },
+      exercises: [{ sets: [] }],
+    });
+
+    expect(summary.isCloseout).toBe(true);
+    expect(summary.sessionSlotId).toBeNull();
+    expect(summary.sessionTechnicalLabel).toBeNull();
+    expect(getWorkoutListPrimaryLabel(summary)).toBe("Closeout");
+    expect(getWorkoutListSecondaryLabel(summary)).toBe("Optional manual closeout work");
   });
 
   it("uses slot-aware identity labels when a saved receipt includes a session slot", () => {
@@ -289,6 +360,7 @@ describe("buildWorkoutListSurfaceSummary", () => {
     });
 
     expect(summary.isGapFill).toBe(false);
+    expect(summary.isCloseout).toBe(false);
     expect(summary.isSupplementalDeficitSession).toBe(true);
     expect(getWorkoutListPrimaryLabel(summary)).toBe("Body Part");
   });

@@ -209,6 +209,13 @@ describe("loadHomePageData", () => {
           maxGeneratedExercises: 4,
         },
       },
+      closeout: {
+        visible: false,
+        workoutId: null,
+        status: null,
+        targetWeek: null,
+        isIncomplete: false,
+      },
     });
   });
 
@@ -230,6 +237,7 @@ describe("loadHomePageData", () => {
       nextDueDescriptor: "First lower session this week",
       summary: null,
     });
+    expect(result.closeout).toBeNull();
     expect(result.recentActivity).toHaveLength(3);
     expect(mocks.workoutFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -299,6 +307,13 @@ describe("loadHomePageData", () => {
           maxGeneratedExercises: 4,
         },
       },
+      closeout: {
+        visible: false,
+        workoutId: null,
+        status: null,
+        targetWeek: null,
+        isIncomplete: false,
+      },
     });
 
     const result = await loadHomePageData("user-1");
@@ -307,6 +322,71 @@ describe("loadHomePageData", () => {
       nextSessionLabel: "Lower 1",
       nextSessionReasonLabel: "Up next",
       nextSessionReason: "A planned workout already exists, so you can start logging right away.",
+    });
+  });
+
+  it("adds a separate closeout summary without altering the canonical next-session decision", async () => {
+    mocks.loadHomeProgramSupport.mockResolvedValue({
+      nextSession: {
+        intent: "lower",
+        slotId: "lower_a",
+        slotSequenceIndex: 1,
+        slotSequenceLength: 4,
+        slotSource: "mesocycle_slot_sequence",
+        weekInMeso: 2,
+        sessionInWeek: 2,
+        workoutId: null,
+        isExisting: false,
+      },
+      lastSessionSkipped: false,
+      latestIncomplete: null,
+      gapFill: {
+        eligible: false,
+        visible: false,
+        reason: "no_pending_week_close",
+        weekCloseId: null,
+        anchorWeek: null,
+        targetWeek: null,
+        targetPhase: null,
+        resolution: null,
+        workflowState: null,
+        deficitState: null,
+        remainingDeficitSets: 0,
+        targetMuscles: [],
+        deficitSummary: [],
+        alreadyUsedThisWeek: false,
+        suppressedByStartedNextWeek: false,
+        linkedWorkout: null,
+        policy: {
+          requiredSessionsPerWeek: 4,
+          maxOptionalGapFillSessionsPerWeek: 1,
+          maxGeneratedHardSets: 12,
+          maxGeneratedExercises: 4,
+        },
+      },
+      closeout: {
+        visible: true,
+        workoutId: "workout-closeout",
+        status: "planned",
+        targetWeek: 2,
+        isIncomplete: true,
+      },
+    });
+
+    const result = await loadHomePageData("user-1");
+
+    expect(result.decision).toMatchObject({
+      nextSessionLabel: "Lower 1",
+      nextSessionReasonLabel: "Next in sequence",
+    });
+    expect(result.closeout).toEqual({
+      workoutId: "workout-closeout",
+      status: "planned",
+      statusLabel: "Planned",
+      detail:
+        "Optional manual closeout work for this week. It can add actual weekly volume without becoming your next canonical session.",
+      actionHref: "/log/workout-closeout",
+      actionLabel: "Open closeout",
     });
   });
 });

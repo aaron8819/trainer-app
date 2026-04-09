@@ -114,6 +114,7 @@ export default async function Home() {
   const homeProgram = homePage.homeProgram;
   const decision = homePage.decision;
   const continuity = homePage.continuity;
+  const closeout = homePage.closeout;
 
   if (!programData || !homeProgram || !decision || !continuity) {
     return null;
@@ -277,6 +278,30 @@ export default async function Home() {
         ) : null}
 
         <section className="mt-8 space-y-6 md:mt-10">
+          {closeout ? (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">
+                    Closeout
+                  </p>
+                  <p className="mt-2 text-lg font-semibold text-slate-900">Closeout</p>
+                  <p className="mt-2 text-sm text-slate-700">{closeout.detail}</p>
+                </div>
+                <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700">
+                  {closeout.statusLabel}
+                </span>
+              </div>
+              <div className="mt-4">
+                <Link
+                  className="inline-flex min-h-11 items-center justify-center rounded-full border border-amber-300 bg-white px-5 py-2 text-sm font-semibold text-slate-900"
+                  href={closeout.actionHref}
+                >
+                  {closeout.actionLabel}
+                </Link>
+              </div>
+            </div>
+          ) : null}
           {homeProgram.gapFill.visible ? <OptionalGapFillCard gapFill={homeProgram.gapFill} /> : null}
         </section>
 

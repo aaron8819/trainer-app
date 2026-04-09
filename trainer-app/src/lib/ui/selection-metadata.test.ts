@@ -9,6 +9,7 @@ import {
   readRuntimeAddedSetIds,
   readRuntimeEditReconciliation,
   readWorkoutStructureState,
+  type SaveableSelectionMetadata,
   sanitizeSelectionMetadataForSave,
 } from "./selection-metadata";
 
@@ -576,7 +577,7 @@ describe("attachCloseoutSessionMetadata", () => {
   });
 
   it("is a no-op when already marked closeout for the same context", () => {
-    const metadata = {
+    const metadata: SaveableSelectionMetadata = {
       weekCloseId: "week-close-1",
       sessionDecisionReceipt: {
         version: 1,
@@ -616,7 +617,7 @@ describe("attachCloseoutSessionMetadata", () => {
           },
         ],
       },
-    } as const;
+    };
 
     expect(
       attachCloseoutSessionMetadata(metadata, {

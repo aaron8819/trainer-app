@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   const workoutFindMany = vi.fn();
+  const workoutCreate = vi.fn();
   const weekCloseFindFirst = vi.fn();
   const weekCloseFindUnique = vi.fn();
   const weekCloseUpsert = vi.fn();
@@ -10,6 +11,7 @@ const mocks = vi.hoisted(() => {
 
   return {
     workoutFindMany,
+    workoutCreate,
     weekCloseFindFirst,
     weekCloseFindUnique,
     weekCloseUpsert,
@@ -18,6 +20,7 @@ const mocks = vi.hoisted(() => {
     tx: {
       workout: {
         findMany: workoutFindMany,
+        create: workoutCreate,
       },
       mesocycleWeekClose: {
         findFirst: weekCloseFindFirst,
@@ -41,6 +44,7 @@ vi.mock("./mesocycle-lifecycle-state", async (importOriginal) => {
 import {
   autoDismissPendingWeekCloseOnForwardProgress,
   buildWeekCloseDeficitSnapshot,
+  createCloseoutSessionForWeek,
   dismissPendingWeekClose,
   evaluateWeekCloseAtBoundary,
   isAccumulationWeekBoundary,
@@ -53,6 +57,63 @@ describe("mesocycle week close", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.workoutFindMany.mockResolvedValue([]);
+    mocks.workoutCreate.mockResolvedValue({
+      id: "workout-closeout-1",
+      userId: "user-1",
+      scheduledDate: new Date("2026-04-09T12:00:00.000Z"),
+      status: "PLANNED",
+      selectionMode: "MANUAL",
+      sessionIntent: null,
+      selectionMetadata: {
+        weekCloseId: "wc-1",
+        sessionDecisionReceipt: {
+          version: 1,
+          cycleContext: {
+            weekInMeso: 4,
+            weekInBlock: 4,
+            blockDurationWeeks: 4,
+            mesocycleLength: 5,
+            phase: "accumulation",
+            blockType: "accumulation",
+            isDeload: false,
+            source: "computed",
+          },
+          lifecycleVolume: {
+            source: "unknown",
+          },
+          sorenessSuppressedMuscles: [],
+          deloadDecision: {
+            mode: "none",
+            reason: [],
+            reductionPercent: 0,
+            appliedTo: "none",
+          },
+          readiness: {
+            wasAutoregulated: false,
+            signalAgeHours: null,
+            fatigueScoreOverall: null,
+            intensityScaling: {
+              applied: false,
+              exerciseIds: [],
+              scaledUpCount: 0,
+              scaledDownCount: 0,
+            },
+          },
+          exceptions: [
+            {
+              code: "closeout_session",
+              message: "Marked as closeout session.",
+            },
+          ],
+        },
+      },
+      advancesSplit: false,
+      mesocycleId: "meso-1",
+      mesocycleWeekSnapshot: 4,
+      mesocyclePhaseSnapshot: "ACCUMULATION",
+      mesoSessionSnapshot: 4,
+      revision: 1,
+    });
     mocks.weekCloseFindFirst.mockResolvedValue(null);
     mocks.weekCloseFindUnique.mockResolvedValue(null);
     mocks.weekCloseUpsert.mockResolvedValue({
@@ -396,6 +457,200 @@ describe("mesocycle week close", () => {
         targetWeek: 2,
       })
     ).rejects.toThrow("PENDING_WEEK_CLOSE_EXISTS");
+  });
+
+  it("creates a closeout scaffold for the active accumulation week without slot identity", async () => {
+    mocks.weekCloseFindFirst.mockResolvedValueOnce({
+      id: "wc-1",
+      targetWeek: 4,
+      targetPhase: "ACCUMULATION",
+      mesocycle: {
+        id: "meso-1",
+        isActive: true,
+        state: "ACTIVE_ACCUMULATION",
+        durationWeeks: 5,
+        accumulationSessionsCompleted: 10,
+        deloadSessionsCompleted: 0,
+        sessionsPerWeek: 3,
+        startWeek: 0,
+        blocks: [
+          {
+            blockType: "ACCUMULATION",
+            startWeek: 3,
+            durationWeeks: 4,
+          },
+        ],
+      },
+    });
+
+    const result = await createCloseoutSessionForWeek(mocks.tx as never, {
+      userId: "user-1",
+      weekCloseId: "wc-1",
+    });
+
+    expect(result).toMatchObject({
+      id: "workout-closeout-1",
+      status: "PLANNED",
+      selectionMode: "MANUAL",
+      sessionIntent: null,
+      advancesSplit: false,
+      mesocycleId: "meso-1",
+      mesocycleWeekSnapshot: 4,
+      mesocyclePhaseSnapshot: "ACCUMULATION",
+      mesoSessionSnapshot: 4,
+    });
+
+    const createArgs = mocks.workoutCreate.mock.calls[0][0];
+    const selectionMetadata = createArgs.data.selectionMetadata as {
+      weekCloseId?: string;
+      sessionDecisionReceipt?: {
+        cycleContext?: {
+          weekInMeso?: number;
+          weekInBlock?: number;
+          isDeload?: boolean;
+        };
+        sessionSlot?: unknown;
+        exceptions?: Array<{ code: string }>;
+      };
+    };
+    expect(createArgs.data.advancesSplit).toBe(false);
+    expect(createArgs.data.mesoSessionSnapshot).toBe(4);
+    expect(selectionMetadata.weekCloseId).toBe("wc-1");
+    expect(selectionMetadata.sessionDecisionReceipt?.cycleContext).toMatchObject({
+      weekInMeso: 4,
+      weekInBlock: 1,
+      isDeload: false,
+    });
+    expect(selectionMetadata.sessionDecisionReceipt?.sessionSlot).toBeUndefined();
+    expect(
+      selectionMetadata.sessionDecisionReceipt?.exceptions?.map((entry) => entry.code)
+    ).toContain("closeout_session");
+  });
+
+  it("rejects closeout creation when a closeout already exists for the same week", async () => {
+    mocks.weekCloseFindFirst.mockResolvedValueOnce({
+      id: "wc-1",
+      targetWeek: 4,
+      targetPhase: "ACCUMULATION",
+      mesocycle: {
+        id: "meso-1",
+        isActive: true,
+        state: "ACTIVE_ACCUMULATION",
+        durationWeeks: 5,
+        accumulationSessionsCompleted: 10,
+        deloadSessionsCompleted: 0,
+        sessionsPerWeek: 3,
+        startWeek: 0,
+        blocks: [],
+      },
+    });
+    mocks.workoutFindMany.mockResolvedValueOnce([
+      {
+        id: "workout-closeout-existing",
+        mesocycleWeekSnapshot: 4,
+        selectionMetadata: {
+          weekCloseId: "wc-1",
+          sessionDecisionReceipt: {
+            version: 1,
+            cycleContext: {
+              weekInMeso: 4,
+              weekInBlock: 4,
+              phase: "accumulation",
+              blockType: "accumulation",
+              isDeload: false,
+              source: "computed",
+            },
+            lifecycleVolume: { source: "unknown" },
+            sorenessSuppressedMuscles: [],
+            deloadDecision: {
+              mode: "none",
+              reason: [],
+              reductionPercent: 0,
+              appliedTo: "none",
+            },
+            readiness: {
+              wasAutoregulated: false,
+              signalAgeHours: null,
+              fatigueScoreOverall: null,
+              intensityScaling: {
+                applied: false,
+                exerciseIds: [],
+                scaledUpCount: 0,
+                scaledDownCount: 0,
+              },
+            },
+            exceptions: [
+              {
+                code: "closeout_session",
+                message: "Marked as closeout session.",
+              },
+            ],
+          },
+        },
+      },
+    ]);
+
+    await expect(
+      createCloseoutSessionForWeek(mocks.tx as never, {
+        userId: "user-1",
+        weekCloseId: "wc-1",
+      })
+    ).rejects.toThrow("CLOSEOUT_ALREADY_EXISTS_FOR_WEEK");
+    expect(mocks.workoutCreate).not.toHaveBeenCalled();
+  });
+
+  it("rejects closeout creation when the week-close is not for the current active week", async () => {
+    mocks.weekCloseFindFirst.mockResolvedValueOnce({
+      id: "wc-1",
+      targetWeek: 3,
+      targetPhase: "ACCUMULATION",
+      mesocycle: {
+        id: "meso-1",
+        isActive: true,
+        state: "ACTIVE_ACCUMULATION",
+        durationWeeks: 5,
+        accumulationSessionsCompleted: 10,
+        deloadSessionsCompleted: 0,
+        sessionsPerWeek: 3,
+        startWeek: 0,
+        blocks: [],
+      },
+    });
+
+    await expect(
+      createCloseoutSessionForWeek(mocks.tx as never, {
+        userId: "user-1",
+        weekCloseId: "wc-1",
+      })
+    ).rejects.toThrow("CLOSEOUT_ACTIVE_WEEK_REQUIRED");
+    expect(mocks.workoutCreate).not.toHaveBeenCalled();
+  });
+
+  it("rejects closeout creation for deload weeks", async () => {
+    mocks.weekCloseFindFirst.mockResolvedValueOnce({
+      id: "wc-1",
+      targetWeek: 5,
+      targetPhase: "DELOAD",
+      mesocycle: {
+        id: "meso-1",
+        isActive: true,
+        state: "ACTIVE_ACCUMULATION",
+        durationWeeks: 5,
+        accumulationSessionsCompleted: 10,
+        deloadSessionsCompleted: 0,
+        sessionsPerWeek: 3,
+        startWeek: 0,
+        blocks: [],
+      },
+    });
+
+    await expect(
+      createCloseoutSessionForWeek(mocks.tx as never, {
+        userId: "user-1",
+        weekCloseId: "wc-1",
+      })
+    ).rejects.toThrow("CLOSEOUT_DELOAD_WEEK_FORBIDDEN");
+    expect(mocks.workoutCreate).not.toHaveBeenCalled();
   });
 
   it("resolves a linked optional gap-fill completion once and advances lifecycle once", async () => {

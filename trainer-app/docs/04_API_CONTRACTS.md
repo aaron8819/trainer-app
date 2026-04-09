@@ -35,6 +35,7 @@ Sources of truth:
 - Logging: `src/app/api/logs/set/route.ts`
 - Logging support reads: `GET /api/workouts/[id]/logging-weekly-volume-check` (`src/app/api/workouts/[id]/logging-weekly-volume-check/route.ts`)
 - Mesocycles: `GET /api/mesocycles` (`src/app/api/mesocycles/route.ts`) plus handoff endpoints `PATCH /api/mesocycles/[id]/draft` and `POST /api/mesocycles/[id]/accept-next-cycle`
+- Week-close workflow: `POST /api/mesocycles/week-close/[id]/dismiss` and `POST /api/mesocycles/week-close/[id]/closeout`
 - Program/periodization/readiness: `src/app/api/program/route.ts`, `src/app/api/periodization/macro/route.ts`, `src/app/api/readiness/submit/route.ts`, `src/app/api/stalls/route.ts`
 - Templates: `src/app/api/templates/**`
 - Exercises and preferences: `src/app/api/exercises/**`, `src/app/api/preferences/route.ts`
@@ -238,6 +239,7 @@ Sources of truth:
   - `deficitState=PARTIAL`: workflow is complete but weighted weekly deficit still remains
   - `deficitState=CLOSED`: no qualifying weekly deficit remains
 - `resolution=NO_GAP_FILL_NEEDED` is the only resolution that implies deficit closure by itself. `GAP_FILL_COMPLETED`, `GAP_FILL_DISMISSED`, and `AUTO_DISMISSED` must not be interpreted as equivalent to `deficitState=CLOSED`.
+- `POST /api/mesocycles/week-close/[id]/closeout` is the canonical server-owned closeout creation path. The route resolves owner identity and delegates to `createCloseoutSessionForWeek()` in `src/lib/api/mesocycle-week-close.ts`, which validates the user-owned week-close row against the current active accumulation week, rejects deload or duplicate closeouts, and creates a slotless `PLANNED` scaffold workout with `selectionMode=MANUAL`, `advancesSplit=false`, `selectionMetadata.weekCloseId`, and the canonical `closeout_session` receipt marker.
 
 ## Workout explanation response contract
 - Route: `GET /api/workouts/[id]/explanation` (`src/app/api/workouts/[id]/explanation/route.ts`).

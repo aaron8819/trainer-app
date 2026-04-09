@@ -1,9 +1,26 @@
-import type { MesocyclePhase, MesocycleWeekCloseResolution, Prisma, WorkoutStatus } from "@prisma/client";
+import type {
+  MesocyclePhase,
+  MesocycleWeekCloseResolution,
+  Prisma,
+  WorkoutSelectionMode,
+  WorkoutSessionIntent,
+  WorkoutStatus,
+} from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
+import { buildSessionDecisionReceipt } from "@/lib/evidence/session-decision-receipt";
+import type { CycleContextSnapshot } from "@/lib/evidence/types";
 import {
   getExposedVolumeLandmarkEntries,
   normalizeExposedMuscle,
 } from "@/lib/engine/volume-landmarks";
+import { isCloseoutSession } from "@/lib/session-semantics/closeout-classifier";
+import {
+  attachCloseoutSessionMetadata,
+  buildCanonicalSelectionMetadata,
+  readWeekCloseIdFromSelectionMetadata,
+} from "@/lib/ui/selection-metadata";
+import { resolvePhaseBlockProfile } from "./generation-phase-block-context";
+import { getCurrentMesoWeek } from "./mesocycle-lifecycle-math";
 import { getWeeklyVolumeTarget } from "./mesocycle-lifecycle-math";
 import { transitionMesocycleStateInTransaction } from "./mesocycle-lifecycle-state";
 import { loadMesocycleWeekMuscleVolume } from "./weekly-volume";
@@ -189,6 +206,76 @@ function computeMesoWeekStart(input: {
   const date = new Date(input.macroStartDate);
   date.setDate(date.getDate() + (input.mesocycleStartWeek + input.targetWeek - 1) * 7);
   return date;
+}
+
+function buildCloseoutCycleContext(input: {
+  mesocycleStartWeek: number;
+  mesocycleLength: number;
+  mesocycleState: "ACTIVE_ACCUMULATION" | "ACTIVE_DELOAD" | "AWAITING_HANDOFF" | "COMPLETED";
+  blocks: Array<{
+    blockType: string;
+    startWeek: number;
+    durationWeeks: number;
+  }>;
+  targetWeek: number;
+}): CycleContextSnapshot {
+  const absoluteWeek = input.mesocycleStartWeek + input.targetWeek - 1;
+  const hasMatchingBlock = input.blocks.some((candidate) => {
+    const blockEndWeek = candidate.startWeek + candidate.durationWeeks;
+    return absoluteWeek >= candidate.startWeek && absoluteWeek < blockEndWeek;
+  });
+  const phaseProfile = resolvePhaseBlockProfile({
+    mesocycleStartWeek: input.mesocycleStartWeek,
+    mesocycleLength: input.mesocycleLength,
+    mesocycleState: input.mesocycleState,
+    weekInMeso: input.targetWeek,
+    blocks: input.blocks.map((block) => ({
+      blockType: block.blockType.toLowerCase(),
+      startWeek: block.startWeek,
+      durationWeeks: block.durationWeeks,
+    })),
+  });
+
+  return {
+    weekInMeso: input.targetWeek,
+    weekInBlock: phaseProfile.weekInBlock,
+    blockDurationWeeks: phaseProfile.blockDurationWeeks,
+    mesocycleLength: input.mesocycleLength,
+    phase: phaseProfile.blockType,
+    blockType: phaseProfile.blockType,
+    isDeload: phaseProfile.isDeload,
+    source: hasMatchingBlock ? "computed" : "fallback",
+  };
+}
+
+function buildCloseoutSelectionMetadata(input: {
+  cycleContext: CycleContextSnapshot;
+  weekCloseId: string;
+}) {
+  return attachCloseoutSessionMetadata(
+    buildCanonicalSelectionMetadata({
+      weekCloseId: input.weekCloseId,
+      sessionDecisionReceipt: buildSessionDecisionReceipt({
+        cycleContext: input.cycleContext,
+        sorenessSuppressedMuscles: [],
+        deloadDecision: {
+          mode: "none",
+          reason: [],
+          reductionPercent: 0,
+          appliedTo: "none",
+        },
+        autoregulation: {
+          wasAutoregulated: false,
+          signalAgeHours: null,
+          fatigueScoreOverall: null,
+        },
+      }),
+    }),
+    {
+      enabled: true,
+      weekCloseId: input.weekCloseId,
+    }
+  );
 }
 
 async function loadWeekMuscleVolume(tx: Tx, input: {
@@ -621,6 +708,154 @@ export type WeekCloseResolutionResult = {
   advancedLifecycle: boolean;
   outcome: "resolved" | "already_resolved" | "not_found" | "not_applicable";
 };
+
+export type CreatedCloseoutWorkout = {
+  id: string;
+  userId: string;
+  scheduledDate: Date;
+  status: WorkoutStatus;
+  selectionMode: WorkoutSelectionMode;
+  sessionIntent: WorkoutSessionIntent | null;
+  selectionMetadata: unknown;
+  advancesSplit: boolean;
+  mesocycleId: string | null;
+  mesocycleWeekSnapshot: number | null;
+  mesocyclePhaseSnapshot: MesocyclePhase | null;
+  mesoSessionSnapshot: number | null;
+  revision: number;
+};
+
+export async function createCloseoutSessionForWeek(
+  tx: Tx,
+  input: {
+    userId: string;
+    weekCloseId: string;
+  }
+): Promise<CreatedCloseoutWorkout> {
+  const weekClose = await tx.mesocycleWeekClose.findFirst({
+    where: {
+      id: input.weekCloseId,
+      mesocycle: {
+        macroCycle: {
+          userId: input.userId,
+        },
+      },
+    },
+    select: {
+      id: true,
+      targetWeek: true,
+      targetPhase: true,
+      mesocycle: {
+        select: {
+          id: true,
+          isActive: true,
+          state: true,
+          durationWeeks: true,
+          accumulationSessionsCompleted: true,
+          deloadSessionsCompleted: true,
+          sessionsPerWeek: true,
+          startWeek: true,
+          blocks: {
+            select: {
+              blockType: true,
+              startWeek: true,
+              durationWeeks: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!weekClose) {
+    throw new Error("WEEK_CLOSE_NOT_FOUND");
+  }
+
+  const activeMesocycle = weekClose.mesocycle;
+  if (!activeMesocycle.isActive || activeMesocycle.state !== "ACTIVE_ACCUMULATION") {
+    throw new Error("CLOSEOUT_ACTIVE_MESOCYCLE_REQUIRED");
+  }
+
+  if (weekClose.targetPhase === "DELOAD") {
+    throw new Error("CLOSEOUT_DELOAD_WEEK_FORBIDDEN");
+  }
+
+  const activeWeek = getCurrentMesoWeek({
+    state: activeMesocycle.state,
+    accumulationSessionsCompleted: activeMesocycle.accumulationSessionsCompleted,
+    sessionsPerWeek: activeMesocycle.sessionsPerWeek,
+    durationWeeks: activeMesocycle.durationWeeks,
+  });
+  if (weekClose.targetWeek !== activeWeek) {
+    throw new Error("CLOSEOUT_ACTIVE_WEEK_REQUIRED");
+  }
+
+  const cycleContext = buildCloseoutCycleContext({
+    mesocycleStartWeek: activeMesocycle.startWeek ?? 0,
+    mesocycleLength: activeMesocycle.durationWeeks,
+    mesocycleState: activeMesocycle.state,
+    blocks: activeMesocycle.blocks,
+    targetWeek: weekClose.targetWeek,
+  });
+  if (cycleContext.isDeload) {
+    throw new Error("CLOSEOUT_DELOAD_WEEK_FORBIDDEN");
+  }
+
+  const existingWorkouts = await tx.workout.findMany({
+    where: {
+      userId: input.userId,
+      mesocycleId: activeMesocycle.id,
+    },
+    select: {
+      id: true,
+      mesocycleWeekSnapshot: true,
+      selectionMetadata: true,
+    },
+  });
+  const existingCloseout = existingWorkouts.find(
+    (workout) =>
+      isCloseoutSession(workout.selectionMetadata) &&
+      (readWeekCloseIdFromSelectionMetadata(workout.selectionMetadata) === weekClose.id ||
+        workout.mesocycleWeekSnapshot === weekClose.targetWeek)
+  );
+  if (existingCloseout) {
+    throw new Error("CLOSEOUT_ALREADY_EXISTS_FOR_WEEK");
+  }
+
+  return tx.workout.create({
+    data: {
+      userId: input.userId,
+      scheduledDate: new Date(),
+      status: "PLANNED",
+      selectionMode: "MANUAL",
+      sessionIntent: null,
+      selectionMetadata: buildCloseoutSelectionMetadata({
+        cycleContext,
+        weekCloseId: weekClose.id,
+      }) as Prisma.InputJsonValue,
+      advancesSplit: false,
+      mesocycleId: activeMesocycle.id,
+      mesocycleWeekSnapshot: weekClose.targetWeek,
+      mesocyclePhaseSnapshot: "ACCUMULATION",
+      mesoSessionSnapshot: Math.max(1, activeMesocycle.sessionsPerWeek) + 1,
+    },
+    select: {
+      id: true,
+      userId: true,
+      scheduledDate: true,
+      status: true,
+      selectionMode: true,
+      sessionIntent: true,
+      selectionMetadata: true,
+      advancesSplit: true,
+      mesocycleId: true,
+      mesocycleWeekSnapshot: true,
+      mesocyclePhaseSnapshot: true,
+      mesoSessionSnapshot: true,
+      revision: true,
+    },
+  });
+}
 
 async function resolveWeekCloseIfPending(
   tx: Tx,

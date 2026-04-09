@@ -99,8 +99,10 @@ export function BonusExerciseSheet({ isOpen, onClose, workoutId, onAdd }: Props)
   useEffect(() => {
     if (!isOpen) return;
 
+    setSearchQuery("");
     setLoadingSuggestions(true);
     setError(null);
+    setAddingId(null);
     setPreviewByExerciseId({});
     requestedPreviewIdsRef.current = new Set();
     fetch(`/api/workouts/${workoutId}/bonus-suggestions`)
@@ -174,7 +176,7 @@ export function BonusExerciseSheet({ isOpen, onClose, workoutId, onAdd }: Props)
 
   return (
     <SlideUpSheet isOpen={isOpen} onClose={onClose} title="Add Exercise">
-      <div className="space-y-5">
+      <div className="space-y-5 pb-1">
         {/* Recommended section */}
         <div>
           <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">
@@ -208,7 +210,7 @@ export function BonusExerciseSheet({ isOpen, onClose, workoutId, onAdd }: Props)
                       ) : null}
                     </div>
                     <button
-                      className="inline-flex shrink-0 min-h-9 items-center justify-center rounded-full bg-slate-900 px-4 text-xs font-semibold text-white disabled:opacity-60"
+                      className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full bg-slate-900 px-5 text-sm font-semibold text-white disabled:opacity-60"
                       onClick={() => handleAdd(suggestion.exerciseId)}
                       disabled={addingId !== null}
                       type="button"
@@ -228,11 +230,15 @@ export function BonusExerciseSheet({ isOpen, onClose, workoutId, onAdd }: Props)
             Browse all exercises
           </p>
           <input
-            className="mt-3 min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-            type="text"
+            className="mt-3 min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-base"
+            type="search"
             placeholder="Search by name or muscle group..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
+            autoCapitalize="none"
+            autoCorrect="off"
+            enterKeyHint="search"
+            spellCheck={false}
           />
           {loadingAll && searchQuery.trim().length > 0 ? (
             <p className="mt-3 text-sm text-slate-500">Loading exercises...</p>
@@ -255,7 +261,7 @@ export function BonusExerciseSheet({ isOpen, onClose, workoutId, onAdd }: Props)
                     ) : null}
                   </div>
                   <button
-                    className="inline-flex shrink-0 min-h-9 items-center justify-center rounded-full bg-slate-900 px-4 text-xs font-semibold text-white disabled:opacity-60"
+                    className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full bg-slate-900 px-5 text-sm font-semibold text-white disabled:opacity-60"
                     onClick={() => handleAdd(exercise.id)}
                     disabled={addingId !== null}
                     type="button"

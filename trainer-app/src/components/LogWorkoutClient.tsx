@@ -82,6 +82,19 @@ function supportsRuntimeExerciseSwap(exercise: LogExerciseInput): boolean {
   );
 }
 
+function resolveExerciseSection(section?: LogExerciseInput["section"]): ExerciseSection | null {
+  if (section === "WARMUP") {
+    return "warmup";
+  }
+  if (section === "MAIN") {
+    return "main";
+  }
+  if (section === "ACCESSORY") {
+    return "accessory";
+  }
+  return null;
+}
+
 function toInputNumberString(value: number | null | undefined): string {
   if (value == null) {
     return "";
@@ -783,6 +796,15 @@ export default function LogWorkoutClient({
   );
   const handleSwapApplied = useCallback(
     (exercise: LogExerciseInput) => {
+      const resolvedSection =
+        SECTION_ORDER.find((section) =>
+          data[section].some((entry) => entry.workoutExerciseId === exercise.workoutExerciseId)
+        ) ??
+        resolveExerciseSection(exercise.section) ??
+        "accessory";
+      const nextActiveSetId =
+        exercise.sets.find((set) => !isSetSatisfied(set))?.setId ?? exercise.sets[0]?.setId ?? null;
+
       setData((prev) => {
         for (const section of SECTION_ORDER) {
           const exerciseIndex = prev[section].findIndex(
@@ -806,10 +828,17 @@ export default function LogWorkoutClient({
 
         return prev;
       });
-      setExpandedSections((prev) => ({ ...prev, accessory: true }));
+      if (activeCardModeRef.current.kind === "edit") {
+        exitEditMode({ restoreLiveSet: false, discardChanges: false });
+      }
+      setExpandedSections((prev) => ({ ...prev, [resolvedSection]: true }));
       setExpandedExerciseId(exercise.workoutExerciseId);
+      if (nextActiveSetId) {
+        setActiveSetId(nextActiveSetId);
+      }
+      jumpToActiveSet();
     },
-    [setData, setExpandedExerciseId, setExpandedSections]
+    [data, exitEditMode, jumpToActiveSet, setActiveSetId, setData, setExpandedExerciseId, setExpandedSections]
   );
 
   const { hasPreviousSet, useSameAsLast } = useWorkoutSetHistoryActions({

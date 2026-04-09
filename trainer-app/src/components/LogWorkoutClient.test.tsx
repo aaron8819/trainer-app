@@ -1163,6 +1163,220 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     expect(screen.getByRole("button", { name: "Swap" })).toBeInTheDocument();
   });
 
+  it("returns to the swapped active logging context after a runtime exercise swap", async () => {
+    const user = userEvent.setup();
+    const scrollIntoViewSpy = vi.fn();
+    const scrollToSpy = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoViewSpy,
+    });
+    Object.defineProperty(window, "scrollTo", {
+      configurable: true,
+      value: scrollToSpy,
+    });
+    mockedFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const parsedUrl = new URL(String(input), "http://localhost");
+
+      if (
+        parsedUrl.pathname === "/api/workouts/workout-1/swap-exercise" &&
+        init?.method == null
+      ) {
+        return {
+          ok: true,
+          json: async () => ({
+            candidates: [
+              {
+                exerciseId: "chest-supported-db-row",
+                exerciseName: "Chest-Supported Dumbbell Row",
+                primaryMuscles: ["lats", "upper back"],
+                equipment: ["dumbbell"],
+                reason: "Keeps the slot intent while reducing setup friction.",
+              },
+            ],
+          }),
+        };
+      }
+
+      if (parsedUrl.pathname === "/api/workouts/workout-1/swap-exercise-preview") {
+        return {
+          ok: true,
+          json: async () => ({
+            exercise: {
+              workoutExerciseId: "ex-swap",
+              exerciseId: "chest-supported-db-row",
+              name: "Chest-Supported Dumbbell Row",
+              equipment: ["DUMBBELL"],
+              movementPatterns: ["horizontal_pull"],
+              isMainLift: false,
+              isSwapped: true,
+              section: "MAIN",
+              sessionNote:
+                "Swapped from T-Bar Row. Session-only; future progression stays exercise-specific.",
+              sets: [
+                {
+                  setId: "set-swap-1",
+                  setIndex: 1,
+                  targetReps: 10,
+                  targetRepRange: { min: 8, max: 12 },
+                  targetLoad: 27.5,
+                  targetRpe: 8,
+                  restSeconds: 120,
+                },
+                {
+                  setId: "set-swap-2",
+                  setIndex: 2,
+                  targetReps: 10,
+                  targetRepRange: { min: 8, max: 12 },
+                  targetLoad: 27.5,
+                  targetRpe: 8,
+                  restSeconds: 120,
+                },
+              ],
+            },
+          }),
+        };
+      }
+
+      if (
+        parsedUrl.pathname === "/api/workouts/workout-1/swap-exercise" &&
+        init?.method === "POST"
+      ) {
+        return {
+          ok: true,
+          json: async () => ({
+            exercise: {
+              workoutExerciseId: "ex-swap",
+              exerciseId: "chest-supported-db-row",
+              name: "Chest-Supported Dumbbell Row",
+              equipment: ["DUMBBELL"],
+              movementPatterns: ["horizontal_pull"],
+              isMainLift: false,
+              isSwapped: true,
+              section: "MAIN",
+              sessionNote:
+                "Swapped from T-Bar Row. Session-only; future progression stays exercise-specific.",
+              sets: [
+                {
+                  setId: "set-swap-1",
+                  setIndex: 1,
+                  targetReps: 10,
+                  targetRepRange: { min: 8, max: 12 },
+                  targetLoad: 27.5,
+                  targetRpe: 8,
+                  restSeconds: 120,
+                },
+                {
+                  setId: "set-swap-2",
+                  setIndex: 2,
+                  targetReps: 10,
+                  targetRepRange: { min: 8, max: 12 },
+                  targetLoad: 27.5,
+                  targetRpe: 8,
+                  restSeconds: 120,
+                },
+              ],
+            },
+          }),
+        };
+      }
+
+      throw new Error(`Unhandled fetch: ${String(input)}`);
+    });
+
+    render(
+      <LogWorkoutClient
+        workoutId="workout-1"
+        exercises={{
+          warmup: [],
+          main: [
+            {
+              workoutExerciseId: "ex-bench",
+              name: "Bench Press",
+              equipment: ["barbell"],
+              isMainLift: true,
+              sets: [
+                {
+                  setId: "set-bench-1",
+                  setIndex: 1,
+                  targetReps: 8,
+                  targetLoad: 135,
+                  targetRpe: 8,
+                  restSeconds: 120,
+                },
+                {
+                  setId: "set-bench-2",
+                  setIndex: 2,
+                  targetReps: 8,
+                  targetLoad: 135,
+                  targetRpe: 8,
+                  restSeconds: 120,
+                },
+              ],
+            },
+            {
+              workoutExerciseId: "ex-swap",
+              name: "T-Bar Row",
+              equipment: ["barbell"],
+              movementPatterns: ["horizontal_pull"],
+              isMainLift: false,
+              section: "MAIN",
+              sets: [
+                {
+                  setId: "set-swap-1",
+                  setIndex: 1,
+                  targetReps: 10,
+                  targetLoad: 120,
+                  targetRpe: 8,
+                  restSeconds: 120,
+                },
+                {
+                  setId: "set-swap-2",
+                  setIndex: 2,
+                  targetReps: 10,
+                  targetLoad: 120,
+                  targetRpe: 8,
+                  restSeconds: 120,
+                },
+              ],
+            },
+          ],
+          accessory: [],
+        }}
+        allowRuntimeExerciseSwap={true}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: "Log set" }));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Set 1 OK 135 x 8 @8/ })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Swap" }));
+    expect(await screen.findByText("Post-swap prescription")).toBeInTheDocument();
+
+    scrollIntoViewSpy.mockClear();
+    scrollToSpy.mockClear();
+
+    await user.click(screen.getByRole("button", { name: "Use swap" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Chest-Supported Dumbbell Row" })).toBeInTheDocument();
+      expect(screen.getByText(/Set 1 of 2/)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Log set" })).toBeInTheDocument();
+      expect(scrollIntoViewSpy).toHaveBeenCalled();
+      expect(scrollToSpy).toHaveBeenCalled();
+    });
+
+    const swappedRow = screen.getByTestId("queue-row-ex-swap");
+    expect(within(swappedRow).getByTestId("exercise-set-chip-list")).toBeInTheDocument();
+    expect(
+      within(swappedRow).getByText(
+        "Swapped from T-Bar Row. Session-only; future progression stays exercise-specific."
+      )
+    ).toBeInTheDocument();
+  });
+
   it("keeps the logging UI active after leave-for-now confirms a partial save", async () => {
     const user = userEvent.setup();
     mockedSaveWorkoutRequest.mockResolvedValueOnce(

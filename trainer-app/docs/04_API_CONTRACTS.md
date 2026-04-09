@@ -150,6 +150,7 @@ Sources of truth:
 - Save-route exercise rewrites also persist canonical `selectionMetadata.workoutStructureState`, may append `selectionMetadata.runtimeEditReconciliation`, and keep the original receipt intact. They do not rewrite `sessionDecisionReceipt` to match the new structure.
 - Structural mutation contract:
   - `POST /api/workouts/save` with exercise rewrite updates `selectionMetadata.workoutStructureState` and appends `runtimeEditReconciliation.rewrite_structure` only when the saved structure drifts from the generated snapshot
+  - `POST /api/workouts/[id]/add-exercise-preview` returns the canonical runtime-added accessory preview for requested exercise ids using the same server-owned defaults seam as the add-exercise mutation; the Add Exercise sheet consumes this read path and must not invent local default copy
   - `POST /api/workouts/[id]/add-exercise` updates `selectionMetadata.workoutStructureState` and appends `runtimeEditReconciliation.add_exercise`
   - `POST /api/workouts/[id]/swap-exercise` preserves `gapFillExerciseSwapState`, updates `selectionMetadata.workoutStructureState`, and appends `runtimeEditReconciliation.replace_exercise`
   - structural mutations increment `Workout.revision`

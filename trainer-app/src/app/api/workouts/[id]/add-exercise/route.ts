@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { resolveOwner } from "@/lib/api/workout-context";
-import { resolveRuntimeAddedAccessoryDefaults } from "@/lib/api/runtime-added-exercise-defaults";
+import { buildRuntimeAddedExercisePreview } from "@/lib/api/runtime-added-exercise-preview";
 import { reconcileRuntimeEditSelectionMetadata } from "@/lib/api/runtime-edit-reconciliation";
 import { RUNTIME_ADDED_EXERCISE_SESSION_NOTE } from "@/lib/ui/selection-metadata";
 import type { TrainingAge, PrimaryGoal } from "@/lib/engine/types";
@@ -131,34 +131,38 @@ export async function POST(
         select: { orderIndex: true },
       });
       const nextOrderIndex = (latest?.orderIndex ?? -1) + 1;
-      const defaults = resolveRuntimeAddedAccessoryDefaults({
+      const preview = buildRuntimeAddedExercisePreview({
         exercise: {
+          id: exercise.id,
+          name: exercise.name,
           repRangeMin: exercise.repRangeMin,
           repRangeMax: exercise.repRangeMax,
           fatigueCost: exercise.fatigueCost,
           isCompound: exercise.isCompound,
+          equipment: exercise.exerciseEquipment.map((eq) => eq.equipment.type),
         },
+        targetLoad,
         selectionMetadata: latestWorkout.selectionMetadata,
         currentExercises: latestWorkout.exercises,
         trainingAge,
         primaryGoal,
       });
-      const setIndices = Array.from({ length: defaults.setCount }, (_, i) => i + 1);
+      const setIndices = Array.from({ length: preview.setCount }, (_, i) => i + 1);
       const createdExercise = await tx.workoutExercise.create({
         data: {
           workoutId,
           exerciseId: exercise.id,
           orderIndex: nextOrderIndex,
-          section: defaults.section,
-          isMainLift: defaults.isMainLift,
+          section: preview.section,
+          isMainLift: preview.isMainLift,
           sets: {
             create: setIndices.map((setIndex) => ({
               setIndex,
-              targetReps: defaults.targetReps,
-              targetRepMin: defaults.targetRepMin,
-              targetRepMax: defaults.targetRepMax,
-              targetRpe: defaults.targetRpe,
-              restSeconds: defaults.restSeconds,
+              targetReps: preview.targetReps,
+              targetRepMin: preview.targetRepRange.min,
+              targetRepMax: preview.targetRepRange.max,
+              targetRpe: preview.targetRpe,
+              restSeconds: preview.restSeconds,
               ...(targetLoad !== null ? { targetLoad } : {}),
             })),
           },
@@ -205,9 +209,9 @@ export async function POST(
           workoutExerciseId: createdExercise.id,
           exerciseId: exercise.id,
           orderIndex: nextOrderIndex,
-          section: defaults.section,
+          section: preview.section,
           setCount: createdExercise.sets.length,
-          prescriptionSource: defaults.prescriptionSource,
+          prescriptionSource: preview.prescriptionSource,
         },
       }).nextSelectionMetadata;
 

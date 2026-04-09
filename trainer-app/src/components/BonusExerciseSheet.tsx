@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SlideUpSheet } from "@/components/ui/SlideUpSheet";
 import type { LogExerciseInput } from "@/components/log-workout/types";
 import type { BonusSuggestion } from "@/lib/api/bonus-suggestions";
+import type { RuntimeAddedExercisePreview } from "@/lib/api/runtime-added-exercise-preview";
 
 type ExerciseSearchResult = {
   id: string;
@@ -25,8 +26,74 @@ export function BonusExerciseSheet({ isOpen, onClose, workoutId, onAdd }: Props)
   const [searchQuery, setSearchQuery] = useState("");
   const [allExercises, setAllExercises] = useState<ExerciseSearchResult[]>([]);
   const [loadingAll, setLoadingAll] = useState(false);
+  const [previewByExerciseId, setPreviewByExerciseId] = useState<Record<string, RuntimeAddedExercisePreview>>({});
   const [addingId, setAddingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const requestedPreviewIdsRef = useRef<Set<string>>(new Set());
+
+  const loadPreviews = useCallback(
+    async (exerciseIds: string[]) => {
+      const nextExerciseIds = [...new Set(exerciseIds.filter(Boolean))].filter(
+        (exerciseId) => !requestedPreviewIdsRef.current.has(exerciseId)
+      );
+      if (nextExerciseIds.length === 0) {
+        return;
+      }
+
+      nextExerciseIds.forEach((exerciseId) => requestedPreviewIdsRef.current.add(exerciseId));
+
+      try {
+        const res = await fetch(`/api/workouts/${workoutId}/add-exercise-preview`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ exerciseIds: nextExerciseIds }),
+        });
+        if (!res.ok) {
+          return;
+        }
+
+        const data = await res.json().catch(() => ({}));
+        const previews = Array.isArray(data.previews)
+          ? (data.previews as RuntimeAddedExercisePreview[])
+          : [];
+        if (previews.length === 0) {
+          return;
+        }
+
+        setPreviewByExerciseId((prev) => ({
+          ...prev,
+          ...Object.fromEntries(previews.map((preview) => [preview.exerciseId, preview])),
+        }));
+      } catch {
+        // Keep the sheet usable even if preview hydration fails.
+      }
+    },
+    [workoutId]
+  );
+
+  function formatRestSeconds(restSeconds: number): string {
+    if (restSeconds % 60 === 0) {
+      const minutes = restSeconds / 60;
+      return `${minutes} min rest`;
+    }
+    return `${restSeconds} sec rest`;
+  }
+
+  function formatPreviewSummary(preview: RuntimeAddedExercisePreview): string {
+    const parts = [
+      `${preview.setCount} sets`,
+      preview.targetRepRange.min === preview.targetRepRange.max
+        ? `${preview.targetRepRange.min} reps`
+        : `${preview.targetRepRange.min}-${preview.targetRepRange.max} reps`,
+      `RPE ${preview.targetRpe}`,
+      formatRestSeconds(preview.restSeconds),
+    ];
+    if (preview.targetLoad != null) {
+      parts.push(`Load hint ${preview.targetLoad} lbs`);
+    }
+
+    return parts.join(" · ");
+  }
 
   // Fetch suggestions and full exercise list when sheet opens
   useEffect(() => {
@@ -34,10 +101,14 @@ export function BonusExerciseSheet({ isOpen, onClose, workoutId, onAdd }: Props)
 
     setLoadingSuggestions(true);
     setError(null);
+    setPreviewByExerciseId({});
+    requestedPreviewIdsRef.current = new Set();
     fetch(`/api/workouts/${workoutId}/bonus-suggestions`)
       .then((res) => res.json())
       .then((data: { suggestions?: BonusSuggestion[] }) => {
-        setSuggestions(data.suggestions ?? []);
+        const nextSuggestions = data.suggestions ?? [];
+        setSuggestions(nextSuggestions);
+        void loadPreviews(nextSuggestions.map((suggestion) => suggestion.exerciseId));
       })
       .catch(() => setError("Could not load suggestions"))
       .finally(() => setLoadingSuggestions(false));
@@ -52,7 +123,7 @@ export function BonusExerciseSheet({ isOpen, onClose, workoutId, onAdd }: Props)
         .catch(() => setError("Could not load exercise library"))
         .finally(() => setLoadingAll(false));
     }
-  }, [isOpen, workoutId, allExercises.length]);
+  }, [isOpen, workoutId, allExercises.length, loadPreviews]);
 
   // Filter exercises by search query (computed, not state)
   const displayResults = useMemo(() => {
@@ -66,6 +137,14 @@ export function BonusExerciseSheet({ isOpen, onClose, workoutId, onAdd }: Props)
       )
       .slice(0, 20);
   }, [searchQuery, allExercises]);
+
+  useEffect(() => {
+    if (!isOpen || displayResults.length === 0) {
+      return;
+    }
+
+    void loadPreviews(displayResults.map((exercise) => exercise.id));
+  }, [displayResults, isOpen, loadPreviews]);
 
   const handleAdd = async (exerciseId: string) => {
     setAddingId(exerciseId);
@@ -122,15 +201,11 @@ export function BonusExerciseSheet({ isOpen, onClose, workoutId, onAdd }: Props)
                           : ""}
                       </p>
                       <p className="mt-1 text-xs text-amber-700">{suggestion.reason}</p>
-                      {suggestion.suggestedLoad ? (
+                      {previewByExerciseId[suggestion.exerciseId] ? (
                         <p className="mt-0.5 text-xs text-slate-500">
-                          Suggested: {suggestion.suggestedSets} sets · {suggestion.suggestedLoad} lbs · RPE 8
+                          Preview: {formatPreviewSummary(previewByExerciseId[suggestion.exerciseId])}
                         </p>
-                      ) : (
-                        <p className="mt-0.5 text-xs text-slate-500">
-                          {suggestion.suggestedSets} sets · RPE 8
-                        </p>
-                      )}
+                      ) : null}
                     </div>
                     <button
                       className="inline-flex shrink-0 min-h-9 items-center justify-center rounded-full bg-slate-900 px-4 text-xs font-semibold text-white disabled:opacity-60"
@@ -173,6 +248,11 @@ export function BonusExerciseSheet({ isOpen, onClose, workoutId, onAdd }: Props)
                     <p className="mt-0.5 text-xs text-slate-500">
                       {(exercise.primaryMuscles ?? []).slice(0, 2).join(", ")}
                     </p>
+                    {previewByExerciseId[exercise.id] ? (
+                      <p className="mt-1 text-xs text-slate-500">
+                        Preview: {formatPreviewSummary(previewByExerciseId[exercise.id])}
+                      </p>
+                    ) : null}
                   </div>
                   <button
                     className="inline-flex shrink-0 min-h-9 items-center justify-center rounded-full bg-slate-900 px-4 text-xs font-semibold text-white disabled:opacity-60"

@@ -3,6 +3,15 @@ import { mapExercises } from "./workout-context";
 import { suggestSubstitutes } from "@/lib/engine/substitution";
 import type { ExerciseDetail, ExerciseListItem } from "@/lib/exercise-library/types";
 import { resolveExercisePreferenceState } from "./exercise-preferences";
+import {
+  normalizeSearchText,
+  rankExerciseSearchResults,
+  resolveEquipmentSearchTypes,
+  resolveMuscleSearchNames,
+  tokenizeSearchText,
+  type ExerciseSearchResult,
+} from "@/lib/exercise-library/search";
+import { EquipmentType, Prisma } from "@prisma/client";
 
 function splitAndSortMuscles(exercise: {
   exerciseMuscles: { role: string; muscle: { name: string } }[];
@@ -29,6 +38,86 @@ async function loadSubstitutionPool() {
     },
     orderBy: { name: "asc" },
   });
+}
+
+export async function searchExerciseLibrary(
+  query: string,
+  limit = 8
+): Promise<ExerciseSearchResult[]> {
+  const normalizedQuery = normalizeSearchText(query);
+  if (normalizedQuery.length < 2) {
+    return [];
+  }
+
+  const queryTokens = tokenizeSearchText(normalizedQuery).slice(0, 4);
+  const equipmentTypes = resolveEquipmentSearchTypes(normalizedQuery).filter((value): value is EquipmentType =>
+    Object.values(EquipmentType).includes(value as EquipmentType)
+  );
+  const muscleNames = resolveMuscleSearchNames(normalizedQuery);
+
+  const orFilters: Prisma.ExerciseWhereInput[] = [
+    { name: { contains: normalizedQuery, mode: "insensitive" } },
+    { aliases: { some: { alias: { contains: normalizedQuery, mode: "insensitive" } } } },
+  ];
+
+  for (const token of queryTokens) {
+    orFilters.push(
+      { name: { contains: token, mode: "insensitive" } },
+      { aliases: { some: { alias: { contains: token, mode: "insensitive" } } } },
+      { exerciseMuscles: { some: { muscle: { name: { contains: token, mode: "insensitive" } } } } }
+    );
+  }
+
+  if (equipmentTypes.length > 0) {
+    orFilters.push({
+      exerciseEquipment: {
+        some: {
+          equipment: {
+            type: { in: equipmentTypes },
+          },
+        },
+      },
+    });
+  }
+
+  if (muscleNames.length > 0) {
+    orFilters.push({
+      exerciseMuscles: {
+        some: {
+          muscle: {
+            name: { in: muscleNames },
+          },
+        },
+      },
+    });
+  }
+
+  const exercises = await prisma.exercise.findMany({
+    where: { OR: orFilters },
+    include: {
+      aliases: true,
+      exerciseEquipment: { include: { equipment: true } },
+      exerciseMuscles: { include: { muscle: true } },
+    },
+    orderBy: { name: "asc" },
+    take: 150,
+  });
+
+  return rankExerciseSearchResults(
+    exercises.map((exercise) => {
+      const { primaryMuscles, secondaryMuscles } = splitAndSortMuscles(exercise);
+      return {
+        id: exercise.id,
+        name: exercise.name,
+        aliases: exercise.aliases.map((alias) => alias.alias),
+        primaryMuscles,
+        secondaryMuscles,
+        equipment: exercise.exerciseEquipment.map((entry) => entry.equipment.type),
+      };
+    }),
+    normalizedQuery,
+    limit
+  );
 }
 
 export async function loadExerciseLibrary(userId?: string): Promise<ExerciseListItem[]> {

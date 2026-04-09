@@ -5,13 +5,7 @@ import { SlideUpSheet } from "@/components/ui/SlideUpSheet";
 import type { LogExerciseInput } from "@/components/log-workout/types";
 import type { BonusSuggestion } from "@/lib/api/bonus-suggestions";
 import type { RuntimeAddedExercisePreview } from "@/lib/api/runtime-added-exercise-preview";
-
-type ExerciseSearchResult = {
-  id: string;
-  name: string;
-  primaryMuscles: string[];
-  equipment: string[];
-};
+import type { ExerciseSearchResult } from "@/lib/exercise-library/search";
 
 type Props = {
   isOpen: boolean;
@@ -24,12 +18,13 @@ export function BonusExerciseSheet({ isOpen, onClose, workoutId, onAdd }: Props)
   const [suggestions, setSuggestions] = useState<BonusSuggestion[]>([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [allExercises, setAllExercises] = useState<ExerciseSearchResult[]>([]);
-  const [loadingAll, setLoadingAll] = useState(false);
+  const [searchResults, setSearchResults] = useState<ExerciseSearchResult[]>([]);
+  const [loadingSearch, setLoadingSearch] = useState(false);
   const [previewByExerciseId, setPreviewByExerciseId] = useState<Record<string, RuntimeAddedExercisePreview>>({});
   const [addingId, setAddingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const requestedPreviewIdsRef = useRef<Set<string>>(new Set());
+  const trimmedSearchQuery = useMemo(() => searchQuery.trim(), [searchQuery]);
 
   const loadPreviews = useCallback(
     async (exerciseIds: string[]) => {
@@ -95,12 +90,14 @@ export function BonusExerciseSheet({ isOpen, onClose, workoutId, onAdd }: Props)
     return parts.join(" · ");
   }
 
-  // Fetch suggestions and full exercise list when sheet opens
+  // Fetch the immediate shortlist when the sheet opens. Typed search stays server-backed.
   useEffect(() => {
     if (!isOpen) return;
 
     setSearchQuery("");
+    setSearchResults([]);
     setLoadingSuggestions(true);
+    setLoadingSearch(false);
     setError(null);
     setAddingId(null);
     setPreviewByExerciseId({});
@@ -114,39 +111,66 @@ export function BonusExerciseSheet({ isOpen, onClose, workoutId, onAdd }: Props)
       })
       .catch(() => setError("Could not load suggestions"))
       .finally(() => setLoadingSuggestions(false));
-
-    if (allExercises.length === 0) {
-      setLoadingAll(true);
-      fetch("/api/exercises")
-        .then((res) => res.json())
-        .then((data: { exercises?: ExerciseSearchResult[] }) => {
-          setAllExercises(data.exercises ?? []);
-        })
-        .catch(() => setError("Could not load exercise library"))
-        .finally(() => setLoadingAll(false));
-    }
-  }, [isOpen, workoutId, allExercises.length, loadPreviews]);
-
-  // Filter exercises by search query (computed, not state)
-  const displayResults = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (q.length === 0) return [];
-    return allExercises
-      .filter(
-        (ex) =>
-          ex.name.toLowerCase().includes(q) ||
-          (ex.primaryMuscles ?? []).some((m) => m.toLowerCase().includes(q))
-      )
-      .slice(0, 20);
-  }, [searchQuery, allExercises]);
+  }, [isOpen, workoutId, loadPreviews]);
 
   useEffect(() => {
-    if (!isOpen || displayResults.length === 0) {
+    if (!isOpen) {
       return;
     }
 
-    void loadPreviews(displayResults.map((exercise) => exercise.id));
-  }, [displayResults, isOpen, loadPreviews]);
+    if (trimmedSearchQuery.length < 2) {
+      setSearchResults([]);
+      setLoadingSearch(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => {
+      setLoadingSearch(true);
+      setError(null);
+
+      fetch(`/api/exercises/search?q=${encodeURIComponent(trimmedSearchQuery)}&limit=8`, {
+        signal: controller.signal,
+      })
+        .then(async (res) => {
+          if (!res.ok) {
+            throw new Error("SEARCH_FAILED");
+          }
+
+          const data = (await res.json().catch(() => ({}))) as { results?: ExerciseSearchResult[] };
+          setSearchResults(Array.isArray(data.results) ? data.results : []);
+        })
+        .catch((searchError) => {
+          if (
+            controller.signal.aborted ||
+            (searchError instanceof DOMException && searchError.name === "AbortError")
+          ) {
+            return;
+          }
+
+          setSearchResults([]);
+          setError("Could not search exercises");
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) {
+            setLoadingSearch(false);
+          }
+        });
+    }, 150);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      controller.abort();
+    };
+  }, [isOpen, trimmedSearchQuery]);
+
+  useEffect(() => {
+    if (!isOpen || searchResults.length === 0) {
+      return;
+    }
+
+    void loadPreviews(searchResults.map((exercise) => exercise.id));
+  }, [searchResults, isOpen, loadPreviews]);
 
   const handleAdd = async (exerciseId: string) => {
     setAddingId(exerciseId);
@@ -232,7 +256,7 @@ export function BonusExerciseSheet({ isOpen, onClose, workoutId, onAdd }: Props)
           <input
             className="mt-3 min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-base"
             type="search"
-            placeholder="Search by name or muscle group..."
+            placeholder="Search by name, alias, muscle, or equipment..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             autoCapitalize="none"
@@ -240,11 +264,13 @@ export function BonusExerciseSheet({ isOpen, onClose, workoutId, onAdd }: Props)
             enterKeyHint="search"
             spellCheck={false}
           />
-          {loadingAll && searchQuery.trim().length > 0 ? (
-            <p className="mt-3 text-sm text-slate-500">Loading exercises...</p>
-          ) : displayResults.length > 0 ? (
+          {trimmedSearchQuery.length === 1 ? (
+            <p className="mt-3 text-sm text-slate-500">Type at least 2 letters to search.</p>
+          ) : loadingSearch ? (
+            <p className="mt-3 text-sm text-slate-500">Searching exercises...</p>
+          ) : searchResults.length > 0 ? (
             <div className="mt-3 space-y-2">
-              {displayResults.map((exercise) => (
+              {searchResults.map((exercise) => (
                 <div
                   key={exercise.id}
                   className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3"
@@ -271,7 +297,7 @@ export function BonusExerciseSheet({ isOpen, onClose, workoutId, onAdd }: Props)
                 </div>
               ))}
             </div>
-          ) : searchQuery.trim().length > 0 ? (
+          ) : trimmedSearchQuery.length >= 2 ? (
             <p className="mt-3 text-sm text-slate-500">No exercises found.</p>
           ) : null}
         </div>

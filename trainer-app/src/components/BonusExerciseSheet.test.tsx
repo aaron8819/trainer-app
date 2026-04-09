@@ -5,8 +5,9 @@ import { BonusExerciseSheet } from "./BonusExerciseSheet";
 function createFetchMock() {
   return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
+    const parsedUrl = new URL(url, "http://localhost");
 
-    if (url === "/api/workouts/workout-1/bonus-suggestions") {
+    if (parsedUrl.pathname === "/api/workouts/workout-1/bonus-suggestions") {
       return {
         ok: true,
         json: async () => ({
@@ -25,29 +26,28 @@ function createFetchMock() {
       };
     }
 
-    if (url === "/api/exercises") {
+    if (parsedUrl.pathname === "/api/exercises/search") {
+      const query = parsedUrl.searchParams.get("q");
+
       return {
         ok: true,
         json: async () => ({
-          exercises: [
-            {
-              id: "fly",
-              name: "Cable Fly",
-              primaryMuscles: ["Chest"],
-              equipment: ["CABLE"],
-            },
-            {
-              id: "row",
-              name: "Cable Row",
-              primaryMuscles: ["Back"],
-              equipment: ["CABLE"],
-            },
-          ],
+          results:
+            query === "row"
+              ? [
+                  {
+                    id: "row",
+                    name: "Cable Row",
+                    primaryMuscles: ["Back"],
+                    equipment: ["CABLE"],
+                  },
+                ]
+              : [],
         }),
       };
     }
 
-    if (url === "/api/workouts/workout-1/add-exercise-preview") {
+    if (parsedUrl.pathname === "/api/workouts/workout-1/add-exercise-preview") {
       const body = JSON.parse(String(init?.body ?? "{}")) as { exerciseIds?: string[] };
       return {
         ok: true,
@@ -64,7 +64,7 @@ function createFetchMock() {
                   setCount: 2,
                   targetReps: 12,
                   targetRepRange: { min: 10, max: 14 },
-                  targetLoad: 35,
+                  targetLoad: 35 as number | null,
                   targetRpe: 6.5,
                   restSeconds: 90,
                   prescriptionSource: "session_accessory_defaults",
@@ -83,7 +83,7 @@ function createFetchMock() {
                   setCount: 2,
                   targetReps: 9,
                   targetRepRange: { min: 8, max: 10 },
-                  targetLoad: null,
+                  targetLoad: null as number | null,
                   targetRpe: 7,
                   restSeconds: 120,
                   prescriptionSource: "session_accessory_defaults",
@@ -97,7 +97,7 @@ function createFetchMock() {
       };
     }
 
-    if (url === "/api/workouts/workout-1/add-exercise") {
+    if (parsedUrl.pathname === "/api/workouts/workout-1/add-exercise") {
       return {
         ok: true,
         json: async () => ({
@@ -176,11 +176,26 @@ describe("BonusExerciseSheet", () => {
 
     expect(await screen.findByText(/Preview:\s*2 sets/)).toBeInTheDocument();
 
-    fireEvent.change(screen.getByPlaceholderText("Search by name or muscle group..."), {
+    fireEvent.change(screen.getByPlaceholderText("Search by name, alias, muscle, or equipment..."), {
       target: { value: "row" },
     });
 
     expect(await screen.findByText(/Cable Row/)).toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.some(([requestUrl]) => String(requestUrl) === "/api/exercises")
+    ).toBe(false);
+    expect(
+      fetchMock.mock.calls.some(
+        ([requestUrl]) => String(requestUrl) === "/api/exercises/search?q=row&limit=8"
+      )
+    ).toBe(true);
+
+    const searchPreviewCall = fetchMock.mock.calls.find(
+      ([requestUrl, requestInit]) =>
+        String(requestUrl) === "/api/workouts/workout-1/add-exercise-preview" &&
+        String(requestInit?.body).includes("\"row\"")
+    );
+    expect(searchPreviewCall).toBeTruthy();
 
     fireEvent.click(screen.getAllByRole("button", { name: "Add" })[0]);
 
@@ -223,7 +238,7 @@ describe("BonusExerciseSheet", () => {
 
     await screen.findByRole("button", { name: "Add" });
 
-    const searchInput = screen.getByPlaceholderText("Search by name or muscle group...");
+    const searchInput = screen.getByPlaceholderText("Search by name, alias, muscle, or equipment...");
     expect(searchInput).toHaveAttribute("type", "search");
     expect(searchInput).toHaveAttribute("enterkeyhint", "search");
     expect(searchInput).toHaveAttribute("autocapitalize", "none");
@@ -253,7 +268,9 @@ describe("BonusExerciseSheet", () => {
 
     await screen.findByRole("button", { name: "Add" });
 
-    const searchInput = screen.getByPlaceholderText("Search by name or muscle group...") as HTMLInputElement;
+    const searchInput = screen.getByPlaceholderText(
+      "Search by name, alias, muscle, or equipment..."
+    ) as HTMLInputElement;
     fireEvent.change(searchInput, { target: { value: "row" } });
     await screen.findByText(/Cable Row/);
     expect(searchInput.value).toBe("row");
@@ -276,7 +293,9 @@ describe("BonusExerciseSheet", () => {
       />
     );
 
-    const reopenedInput = screen.getByPlaceholderText("Search by name or muscle group...") as HTMLInputElement;
+    const reopenedInput = screen.getByPlaceholderText(
+      "Search by name, alias, muscle, or equipment..."
+    ) as HTMLInputElement;
     await waitFor(() => {
       expect(reopenedInput.value).toBe("");
     });

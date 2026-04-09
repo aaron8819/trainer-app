@@ -742,10 +742,22 @@ export default function LogWorkoutClient({
 
   const handleAddExercise = useCallback(
     (exercise: LogExerciseInput) => {
-      setExpandedSections((prev) => ({ ...prev, accessory: true }));
-      addExerciseAction(exercise);
+      requestEditModeExit(() => {
+        exitEditMode({ restoreLiveSet: false, discardChanges: true });
+        setExpandedSections((prev) => ({ ...prev, accessory: true }));
+        setExpandedExerciseId(exercise.workoutExerciseId);
+        addExerciseAction(exercise);
+        jumpToActiveSet();
+      });
     },
-    [addExerciseAction, setExpandedSections]
+    [
+      addExerciseAction,
+      exitEditMode,
+      jumpToActiveSet,
+      requestEditModeExit,
+      setExpandedExerciseId,
+      setExpandedSections,
+    ]
   );
   const handleSwapExercise = useCallback((exerciseId: string) => {
     setSelectedSwapExerciseId(exerciseId);

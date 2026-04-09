@@ -423,6 +423,152 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     ).toBeInTheDocument();
   });
 
+  it("returns to the new active logging context after adding an exercise", async () => {
+    const user = userEvent.setup();
+    const scrollIntoViewSpy = vi.fn();
+    const scrollToSpy = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoViewSpy,
+    });
+    Object.defineProperty(window, "scrollTo", {
+      configurable: true,
+      value: scrollToSpy,
+    });
+    mockedFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+
+      if (url === "/api/workouts/workout-1/bonus-suggestions") {
+        return {
+          ok: true,
+          json: async () => ({
+            suggestions: [
+              {
+                exerciseId: "fly",
+                exerciseName: "Cable Fly",
+                primaryMuscles: ["Chest"],
+                equipment: ["CABLE"],
+                reason: "Chest has room to grow",
+                suggestedSets: 2,
+                suggestedLoad: 35,
+              },
+            ],
+          }),
+        };
+      }
+
+      if (url === "/api/exercises") {
+        return {
+          ok: true,
+          json: async () => ({
+            exercises: [
+              {
+                id: "fly",
+                name: "Cable Fly",
+                primaryMuscles: ["Chest"],
+                equipment: ["CABLE"],
+              },
+            ],
+          }),
+        };
+      }
+
+      if (url === "/api/workouts/workout-1/add-exercise-preview") {
+        const body = JSON.parse(String(init?.body ?? "{}")) as { exerciseIds?: string[] };
+        return {
+          ok: true,
+          json: async () => ({
+            previews: (body.exerciseIds ?? []).map((exerciseId) => ({
+              exerciseId,
+              exerciseName: "Cable Fly",
+              equipment: ["CABLE"],
+              section: "ACCESSORY",
+              isMainLift: false,
+              setCount: 2,
+              targetReps: 12,
+              targetRepRange: { min: 10, max: 14 },
+              targetLoad: 35,
+              targetRpe: 6.5,
+              restSeconds: 90,
+              prescriptionSource: "session_accessory_defaults",
+            })),
+          }),
+        };
+      }
+
+      if (url === "/api/workouts/workout-1/add-exercise") {
+        return {
+          ok: true,
+          json: async () => ({
+            exercise: {
+              workoutExerciseId: "ex-added",
+              name: "Cable Fly",
+              equipment: ["CABLE"],
+              isRuntimeAdded: true,
+              isMainLift: false,
+              section: "ACCESSORY",
+              sessionNote: "Added during workout. Session-only; future planning ignores it.",
+              sets: [
+                {
+                  setId: "set-added-1",
+                  setIndex: 1,
+                  targetReps: 12,
+                  targetRepRange: { min: 10, max: 14 },
+                  targetLoad: 35,
+                  targetRpe: 6.5,
+                  restSeconds: 90,
+                },
+                {
+                  setId: "set-added-2",
+                  setIndex: 2,
+                  targetReps: 12,
+                  targetRepRange: { min: 10, max: 14 },
+                  targetLoad: 35,
+                  targetRpe: 6.5,
+                  restSeconds: 90,
+                },
+              ],
+            },
+          }),
+        };
+      }
+
+      throw new Error(`Unhandled fetch: ${url}`);
+    });
+
+    renderClient();
+
+    await user.click(screen.getByRole("button", { name: "Log set" }));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Set 1 OK 50 x 10 @8/ })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: /Set 1 OK 50 x 10 @8/ }));
+    await waitFor(() => {
+      expect(screen.getByTestId("active-set-edit-banner")).toBeInTheDocument();
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    scrollIntoViewSpy.mockClear();
+    scrollToSpy.mockClear();
+
+    await user.click(screen.getByRole("button", { name: "+ Add Exercise" }));
+    await screen.findByText("Cable Fly");
+    await user.click(screen.getByRole("button", { name: "Add" }));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("active-set-edit-banner")).not.toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Cable Fly" })).toBeInTheDocument();
+      expect(screen.getByText(/Set 1 of 2/)).toBeInTheDocument();
+      expect(scrollIntoViewSpy).toHaveBeenCalled();
+      expect(scrollToSpy).toHaveBeenCalled();
+    });
+
+    const addedRow = screen.getByTestId("queue-row-ex-added");
+    expect(within(addedRow).getByTestId("exercise-set-chip-list")).toBeInTheDocument();
+    expect(within(addedRow).getByRole("button", { name: /Set 1/ })).toBeInTheDocument();
+  });
+
   it("does not snap dumbbell load while typing", async () => {
     const user = userEvent.setup();
     renderClient();

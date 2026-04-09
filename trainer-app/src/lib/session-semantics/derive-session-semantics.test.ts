@@ -167,7 +167,7 @@ describe("deriveSessionSemantics", () => {
       countsTowardRecentStimulus: true,
       countsTowardWeeklyVolume: true,
       countsTowardProgressionHistory: false,
-      countsTowardPerformanceHistory: true,
+      countsTowardPerformanceHistory: false,
       updatesProgressionAnchor: false,
       eligibleForUniqueIntentSubtraction: false,
     });

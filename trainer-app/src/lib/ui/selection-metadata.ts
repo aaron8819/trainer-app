@@ -889,6 +889,13 @@ export function attachCloseoutSessionMetadata(
 
   const retainedExceptions = readRetainedReceiptExceptions(receipt);
   const hasMarker = retainedExceptions.some((entry) => entry.code === "closeout_session");
+  const existingWeekCloseId = readWeekCloseIdFromSelectionMetadata(selectionMetadata);
+  if (
+    hasMarker &&
+    (input.weekCloseId == null || input.weekCloseId === existingWeekCloseId)
+  ) {
+    return selectionMetadata;
+  }
 
   return {
     ...selectionMetadata,

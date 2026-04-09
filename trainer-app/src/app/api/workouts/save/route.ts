@@ -62,6 +62,67 @@ function mergeSelectionMetadata(base: unknown, overrides: unknown): JsonObject {
   };
 }
 
+function stripCloseoutSlotIdentity(selectionMetadata: unknown): JsonObject {
+  const record = toObject(selectionMetadata);
+  const { sessionSlot: _legacySessionSlot, ...withoutTopLevelSlot } = record;
+  const receipt = extractSessionDecisionReceipt(withoutTopLevelSlot);
+  if (!receipt?.sessionSlot) {
+    return withoutTopLevelSlot;
+  }
+
+  const { sessionSlot: _receiptSessionSlot, ...receiptWithoutSlot } = receipt;
+  return {
+    ...withoutTopLevelSlot,
+    sessionDecisionReceipt: receiptWithoutSlot,
+  };
+}
+
+async function assertValidCloseoutWeekCloseContext(tx: Prisma.TransactionClient, input: {
+  userId: string;
+  weekCloseId?: string;
+  mesocycleId: string | null;
+  mesocycleWeekSnapshot?: number | null;
+  receiptWeekInMeso?: number | null;
+}): Promise<void> {
+  if (!input.weekCloseId) {
+    throw new Error("CLOSEOUT_WEEK_CLOSE_REQUIRED");
+  }
+  if (!input.mesocycleId) {
+    throw new Error("CLOSEOUT_WEEK_CLOSE_INVALID");
+  }
+
+  const snapshotWeek = input.mesocycleWeekSnapshot ?? null;
+  const receiptWeek = input.receiptWeekInMeso ?? null;
+  if (snapshotWeek != null && receiptWeek != null && snapshotWeek !== receiptWeek) {
+    throw new Error("CLOSEOUT_WEEK_CLOSE_INVALID");
+  }
+
+  const targetWeek = snapshotWeek ?? receiptWeek;
+  if (targetWeek == null) {
+    throw new Error("CLOSEOUT_WEEK_CLOSE_INVALID");
+  }
+
+  const linkedWeekClose = await tx.mesocycleWeekClose.findFirst({
+    where: {
+      id: input.weekCloseId,
+      mesocycleId: input.mesocycleId,
+      targetWeek,
+      mesocycle: {
+        macroCycle: {
+          userId: input.userId,
+        },
+      },
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (!linkedWeekClose) {
+    throw new Error("CLOSEOUT_WEEK_CLOSE_INVALID");
+  }
+}
+
 function isLifecycleAdvancementStatus(status: PersistedStatus | string | null | undefined): boolean {
   return Boolean(status) && (ADVANCEMENT_WORKOUT_STATUSES as readonly string[]).includes(status as string);
 }
@@ -214,6 +275,7 @@ export async function POST(request: Request) {
       });
       const isCloseout = isCloseoutSession(selectionMetadata);
       if (isCloseout) {
+        selectionMetadata = stripCloseoutSlotIdentity(selectionMetadata);
         selectionMetadata = attachCloseoutSessionMetadata(selectionMetadata, {
           enabled: true,
           weekCloseId: readWeekCloseIdFromSelectionMetadata(selectionMetadata),
@@ -403,6 +465,19 @@ export async function POST(request: Request) {
           }
         }
       }
+      if (isCloseout) {
+        await assertValidCloseoutWeekCloseContext(tx, {
+          userId: user.id,
+          weekCloseId: linkedWeekCloseId,
+          mesocycleId: resolvedMesocycleId,
+          mesocycleWeekSnapshot:
+            mesoSnapshot?.week ?? existingWorkout?.mesocycleWeekSnapshot ?? null,
+          receiptWeekInMeso: receipt.cycleContext.weekInMeso ?? null,
+        });
+      }
+      if (isCloseout) {
+        selectionMetadata = stripCloseoutSlotIdentity(selectionMetadata);
+      }
       selectionMetadata = attachSessionAuditSnapshotToSelectionMetadata(
         selectionMetadata,
         buildSavedSessionAuditSnapshot({
@@ -444,6 +519,9 @@ export async function POST(request: Request) {
             kind: "rewrite_structure",
           },
         }).nextSelectionMetadata;
+      }
+      if (isCloseout) {
+        selectionMetadata = stripCloseoutSlotIdentity(selectionMetadata);
       }
 
       const workoutUpdateData = {
@@ -681,6 +759,16 @@ export async function POST(request: Request) {
     if (error instanceof Error && error.message === "WORKOUT_SELECTION_METADATA_REQUIRED") {
       return NextResponse.json(
         { error: "Canonical selectionMetadata.sessionDecisionReceipt is required." },
+        { status: 409 }
+      );
+    }
+    if (
+      error instanceof Error &&
+      (error.message === "CLOSEOUT_WEEK_CLOSE_REQUIRED" ||
+        error.message === "CLOSEOUT_WEEK_CLOSE_INVALID")
+    ) {
+      return NextResponse.json(
+        { error: "Closeout session requires a valid weekCloseId for the current mesocycle week." },
         { status: 409 }
       );
     }

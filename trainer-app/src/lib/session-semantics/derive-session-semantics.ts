@@ -151,6 +151,7 @@ export function deriveSessionSemantics(
     (isDeload ? CANONICAL_DELOAD_HISTORY_POLICY.countsTowardProgressionHistory : true);
   const countsTowardPerformanceHistory =
     !isStrictSupplemental &&
+    !isCloseout &&
     (isDeload ? CANONICAL_DELOAD_HISTORY_POLICY.countsTowardPerformanceHistory : true);
   const updatesProgressionAnchor =
     !isStrictSupplemental &&
@@ -187,6 +188,12 @@ export function deriveSessionSemantics(
             message:
               "Supplemental sessions do not contribute to canonical performance-history reads.",
           }
+        : isCloseout
+          ? {
+              code: "performance_history_excluded_for_closeout",
+              message:
+                "Closeout sessions do not contribute to canonical performance-history reads.",
+            }
         : {
             code: "performance_history_excluded_for_deload",
             message:
@@ -234,7 +241,7 @@ export function deriveSessionSemantics(
     isStrictSupplemental,
     isCloseout,
     advancesLifecycle,
-    consumesWeeklyScheduleIntent: advancesLifecycle,
+    consumesWeeklyScheduleIntent: isCloseout ? false : advancesLifecycle,
     countsTowardCompliance: isDeload
       ? CANONICAL_DELOAD_HISTORY_POLICY.countsTowardCompliance
       : true,

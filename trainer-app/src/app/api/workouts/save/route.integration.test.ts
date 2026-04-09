@@ -343,6 +343,8 @@ describe("POST /api/workouts/save", () => {
     mocks.tx.mesocycle.findUnique.mockReset();
     mocks.tx.mesocycle.findFirst.mockReset();
     mocks.tx.mesocycle.update.mockReset();
+    mocks.tx.mesocycleWeekClose.findFirst.mockReset();
+    mocks.tx.mesocycleWeekClose.findUnique.mockReset();
     mocks.workoutFindUnique.mockResolvedValue(null);
     mocks.workoutUpdateMany.mockResolvedValue({ count: 1 });
     mocks.workoutUpsert.mockResolvedValue({ id: "workout-1", revision: 1 });
@@ -414,6 +416,8 @@ describe("POST /api/workouts/save", () => {
       outcome: "resolved",
     });
     mocks.updateExerciseExposure.mockResolvedValue(undefined);
+    mocks.tx.mesocycleWeekClose.findFirst.mockResolvedValue(null);
+    mocks.tx.mesocycleWeekClose.findUnique.mockResolvedValue(null);
   });
 
   it.each(["COMPLETED", "PARTIAL", "SKIPPED"] as const)(
@@ -2229,7 +2233,7 @@ describe("POST /api/workouts/save", () => {
       id: "meso-active",
       state: "ACTIVE_ACCUMULATION",
       durationWeeks: 5,
-      accumulationSessionsCompleted: 7,
+      accumulationSessionsCompleted: 9,
       deloadSessionsCompleted: 0,
       sessionsPerWeek: 3,
     });
@@ -2265,11 +2269,12 @@ describe("POST /api/workouts/save", () => {
   });
 
   it("persists closeout planned saves with advancesSplit=false and strips receipt slot identity", async () => {
+    mocks.tx.mesocycleWeekClose.findFirst.mockResolvedValueOnce({ id: "week-close-1" });
     mocks.tx.mesocycle.findFirst.mockResolvedValueOnce({
       id: "meso-active",
       state: "ACTIVE_ACCUMULATION",
       durationWeeks: 5,
-      accumulationSessionsCompleted: 7,
+      accumulationSessionsCompleted: 9,
       deloadSessionsCompleted: 0,
       sessionsPerWeek: 3,
     });
@@ -2309,8 +2314,115 @@ describe("POST /api/workouts/save", () => {
     expect(
       (receipt.exceptions as Array<{ code: string }>).map((entry) => entry.code)
     ).toContain("closeout_session");
+    expect(
+      Object.prototype.hasOwnProperty.call(
+        upsert.create.selectionMetadata as Record<string, unknown>,
+        "sessionSlot"
+      )
+    ).toBe(false);
     expect(mocks.tx.mesocycle.update).not.toHaveBeenCalled();
     expect(mocks.transitionMesocycleStateInTransaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects closeout saves when weekCloseId is missing or invalid for the current week context", async () => {
+    mocks.tx.mesocycle.findFirst.mockResolvedValueOnce({
+      id: "meso-active",
+      state: "ACTIVE_ACCUMULATION",
+      durationWeeks: 5,
+      accumulationSessionsCompleted: 7,
+      deloadSessionsCompleted: 0,
+      sessionsPerWeek: 3,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutId: "workout-closeout",
+          selectionMode: "MANUAL",
+          sessionIntent: "PUSH",
+          advancesSplit: true,
+          selectionMetadata: {
+            ...buildCloseoutSelectionMetadata(),
+            weekCloseId: "week-close-missing",
+          },
+          exercises: [
+            {
+              section: "MAIN",
+              exerciseId: "bench",
+              sets: [{ setIndex: 1, targetReps: 12 }],
+            },
+          ],
+        }),
+      })
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "Closeout session requires a valid weekCloseId for the current mesocycle week.",
+    });
+    expect(mocks.workoutUpsert).not.toHaveBeenCalled();
+  });
+
+  it("keeps closeout metadata idempotent across repeated saves", async () => {
+    mocks.workoutFindUnique.mockResolvedValueOnce({
+      id: "workout-closeout",
+      userId: "user-1",
+      status: "PLANNED",
+      revision: 1,
+      mesocycleId: "meso-1",
+      advancesSplit: false,
+      selectionMode: "MANUAL",
+      sessionIntent: "PUSH",
+      selectionMetadata: {
+        ...buildCloseoutSelectionMetadata(),
+        sessionSlot: {
+          slotId: "stale-top-level-slot",
+        },
+      },
+    });
+    mocks.tx.mesocycle.findUnique.mockResolvedValueOnce({
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION",
+      durationWeeks: 5,
+      accumulationSessionsCompleted: 9,
+      deloadSessionsCompleted: 0,
+      sessionsPerWeek: 3,
+    });
+    mocks.tx.mesocycleWeekClose.findFirst.mockResolvedValueOnce({ id: "week-close-1" });
+    mocks.workoutUpsert.mockResolvedValueOnce({
+      id: "workout-closeout",
+      revision: 2,
+      mesocycleId: "meso-1",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutId: "workout-closeout",
+          selectionMode: "MANUAL",
+          sessionIntent: "PUSH",
+          notes: "repeat save",
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+
+    const upsert = mocks.workoutUpsert.mock.calls[0][0];
+    const selectionMetadata = upsert.update.selectionMetadata as Record<string, unknown>;
+    const receipt = selectionMetadata.sessionDecisionReceipt as Record<string, unknown>;
+    expect(selectionMetadata.weekCloseId).toBe("week-close-1");
+    expect(Object.prototype.hasOwnProperty.call(selectionMetadata, "sessionSlot")).toBe(false);
+    expect(receipt.sessionSlot).toBeUndefined();
+    expect(
+      (receipt.exceptions as Array<{ code: string }>).filter(
+        (entry) => entry.code === "closeout_session"
+      )
+    ).toHaveLength(1);
   });
 
   it("preserves the supplemental marker on later save/update flows", async () => {
@@ -2356,6 +2468,7 @@ describe("POST /api/workouts/save", () => {
   });
 
   it("completes closeout sessions without lifecycle or exposure/progression updates", async () => {
+    mocks.tx.mesocycleWeekClose.findFirst.mockResolvedValueOnce({ id: "week-close-1" });
     mocks.workoutFindUnique
       .mockResolvedValueOnce({
         id: "workout-closeout",
@@ -2379,7 +2492,7 @@ describe("POST /api/workouts/save", () => {
       id: "meso-1",
       state: "ACTIVE_ACCUMULATION",
       durationWeeks: 5,
-      accumulationSessionsCompleted: 7,
+      accumulationSessionsCompleted: 9,
       deloadSessionsCompleted: 0,
       sessionsPerWeek: 3,
     });

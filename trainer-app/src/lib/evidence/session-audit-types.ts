@@ -14,6 +14,7 @@ export type SessionAuditSemanticsReasonCode =
   | "progression_history_excluded_for_closeout"
   | "progression_history_excluded_for_deload"
   | "performance_history_excluded_for_supplemental"
+  | "performance_history_excluded_for_closeout"
   | "performance_history_excluded_for_deload"
   | "progression_anchor_excluded_for_supplemental"
   | "progression_anchor_excluded_for_closeout"

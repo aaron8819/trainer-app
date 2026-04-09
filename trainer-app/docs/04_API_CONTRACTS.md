@@ -164,7 +164,7 @@ Sources of truth:
 - Closeout enforcement is receipt-scoped, not enum-scoped:
   - receipt marker `closeout_session`
   - additive `selectionMetadata.weekCloseId` may carry the owning closeout/week-close context
-  When true, save strips any receipt `sessionSlot`, forces `advancesSplit=false`, skips lifecycle advancement, and keeps the session out of canonical progression-anchor updates while still preserving weekly-volume semantics through `deriveSessionSemantics()`.
+  When true, save requires a valid user-owned `weekCloseId` for the canonical mesocycle week context, strips both any top-level `selectionMetadata.sessionSlot` and receipt `sessionDecisionReceipt.sessionSlot`, forces `advancesSplit=false`, skips lifecycle advancement, and keeps the session out of canonical progression/performance-history anchors while still preserving weekly-volume semantics through `deriveSessionSemantics()`.
 - Closed-mesocycle fencing:
   - `POST /api/workouts/save` returns `409` for workouts whose parent mesocycle is `AWAITING_HANDOFF` or `COMPLETED`
   - `POST /api/logs/set` and `DELETE /api/logs/set` return `409` for the same closed-mesocycle cases

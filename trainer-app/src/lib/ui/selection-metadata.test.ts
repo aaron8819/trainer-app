@@ -575,6 +575,57 @@ describe("attachCloseoutSessionMetadata", () => {
     ]);
   });
 
+  it("is a no-op when already marked closeout for the same context", () => {
+    const metadata = {
+      weekCloseId: "week-close-1",
+      sessionDecisionReceipt: {
+        version: 1,
+        cycleContext: {
+          weekInMeso: 2,
+          weekInBlock: 2,
+          phase: "accumulation",
+          blockType: "accumulation",
+          isDeload: false,
+          source: "computed",
+        },
+        lifecycleVolume: {
+          source: "unknown",
+        },
+        sorenessSuppressedMuscles: [],
+        deloadDecision: {
+          mode: "none",
+          reason: [],
+          reductionPercent: 0,
+          appliedTo: "none",
+        },
+        readiness: {
+          wasAutoregulated: false,
+          signalAgeHours: null,
+          fatigueScoreOverall: null,
+          intensityScaling: {
+            applied: false,
+            exerciseIds: [],
+            scaledUpCount: 0,
+            scaledDownCount: 0,
+          },
+        },
+        exceptions: [
+          {
+            code: "closeout_session",
+            message: "Marked as closeout session.",
+          },
+        ],
+      },
+    } as const;
+
+    expect(
+      attachCloseoutSessionMetadata(metadata, {
+        enabled: true,
+        weekCloseId: "week-close-1",
+      })
+    ).toBe(metadata);
+  });
+
   it("does not stamp closeout metadata when disabled", () => {
     const metadata = {
       selectedExerciseIds: ["bench"],

@@ -208,6 +208,38 @@ function makeExercises(): LogExerciseInput[] {
   ];
 }
 
+function makeResumeNormalizationExercises(): LogExerciseInput[] {
+  return [
+    {
+      workoutExerciseId: "ex-1",
+      name: "Dumbbell Bench Press",
+      equipment: ["dumbbell"],
+      isMainLift: true,
+      sets: [
+        {
+          setId: "set-1",
+          setIndex: 1,
+          targetReps: 10,
+          targetLoad: 50,
+          targetRpe: 8,
+          restSeconds: 90,
+          actualReps: 10,
+          actualLoad: 50,
+          actualRpe: 8,
+        },
+        {
+          setId: "set-2",
+          setIndex: 2,
+          targetReps: 10,
+          targetLoad: 50,
+          targetRpe: 8,
+          restSeconds: 90,
+        },
+      ],
+    },
+  ];
+}
+
 function renderClient() {
   return render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
 }
@@ -1601,6 +1633,40 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
 
     await waitFor(() => {
       expect(screen.getByText(/Set 2 of 2/)).toBeInTheDocument();
+    });
+  });
+
+  it("normalizes remount back to the live set after a logged historical set was opened in edit mode", async () => {
+    const user = userEvent.setup();
+    const { unmount } = renderClient();
+
+    await user.click(screen.getByRole("button", { name: "Log set" }));
+    await waitFor(() => expect(mockedLogSetRequest).toHaveBeenCalledTimes(1));
+
+    await user.click(screen.getByRole("button", { name: /Set 1 OK 50 x 10 @8/ }));
+    await waitFor(() => {
+      expect(screen.getByTestId("active-set-edit-banner")).toBeInTheDocument();
+      expect(screen.getByText(/Set 1 - Dumbbell Bench Press/)).toBeInTheDocument();
+    });
+
+    unmount();
+    renderClient();
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("active-set-edit-banner")).not.toBeInTheDocument();
+      expect(screen.getByText(/Set 2 of 2/)).toBeInTheDocument();
+    });
+  });
+
+  it("ignores legacy stored logged-set resume targets and restores the next live set", async () => {
+    window.sessionStorage.setItem("workout_active_set_workout-1", "set-1");
+
+    render(<LogWorkoutClient workoutId="workout-1" exercises={makeResumeNormalizationExercises()} />);
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("active-set-edit-banner")).not.toBeInTheDocument();
+      expect(screen.getByText(/Set 2 of 2/)).toBeInTheDocument();
+      expect(screen.getByText("1/2 logged")).toBeInTheDocument();
     });
   });
 

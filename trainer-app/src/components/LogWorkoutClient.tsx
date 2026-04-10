@@ -210,6 +210,17 @@ export default function LogWorkoutClient({
   const loggedSetIdsRef = useRef(loggedSetIds);
   const flatSetsRef = useRef(flatSets);
   const activeSetIds = useMemo(() => flatSets.map((item) => item.set.setId), [flatSets]);
+  const resumableSetIds = useMemo(
+    () => flatSets.filter((item) => !loggedSetIds.has(item.set.setId)).map((item) => item.set.setId),
+    [flatSets, loggedSetIds]
+  );
+  const resumeTargetSetId = useMemo(() => {
+    if (activeCardMode.kind === "edit") {
+      return activeCardMode.returnSetId;
+    }
+
+    return resolvedActiveSetId && resumableSetIds.includes(resolvedActiveSetId) ? resolvedActiveSetId : null;
+  }, [activeCardMode, resolvedActiveSetId, resumableSetIds]);
   const {
     keyboardOpen,
     keyboardHeight,
@@ -222,8 +233,8 @@ export default function LogWorkoutClient({
 
   const { restTimerMuted, setRestTimerMuted } = usePersistedWorkoutSessionUi({
     workoutId,
-    activeSetIds,
-    resolvedActiveSetId,
+    resumableSetIds,
+    resumeTargetSetId,
     setActiveSetId,
   });
 

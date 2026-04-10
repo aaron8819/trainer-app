@@ -11,13 +11,13 @@ function getActiveSetStorageKey(workoutId: string): string {
 
 export function usePersistedWorkoutSessionUi({
   workoutId,
-  activeSetIds,
-  resolvedActiveSetId,
+  resumableSetIds,
+  resumeTargetSetId,
   setActiveSetId,
 }: {
   workoutId: string;
-  activeSetIds: string[];
-  resolvedActiveSetId: string | null;
+  resumableSetIds: string[];
+  resumeTargetSetId: string | null;
   setActiveSetId: (setId: string | null) => void;
 }) {
   const [restTimerMuted, setRestTimerMuted] = useState(
@@ -38,25 +38,25 @@ export function usePersistedWorkoutSessionUi({
     if (restoredActiveSetRef.current) {
       return;
     }
-    if (activeSetIds.length === 0) {
+    if (resumableSetIds.length === 0) {
       return;
     }
     const storedSetId = window.sessionStorage.getItem(activeSetStorageKey);
-    if (!storedSetId || !activeSetIds.includes(storedSetId)) {
+    if (!storedSetId || !resumableSetIds.includes(storedSetId)) {
       restoredActiveSetRef.current = true;
       return;
     }
     restoredActiveSetRef.current = true;
     setActiveSetId(storedSetId);
-  }, [activeSetIds, activeSetStorageKey, setActiveSetId]);
+  }, [activeSetStorageKey, resumableSetIds, setActiveSetId]);
 
   useEffect(() => {
-    if (!resolvedActiveSetId) {
+    if (!resumeTargetSetId) {
       window.sessionStorage.removeItem(activeSetStorageKey);
       return;
     }
-    window.sessionStorage.setItem(activeSetStorageKey, resolvedActiveSetId);
-  }, [activeSetStorageKey, resolvedActiveSetId]);
+    window.sessionStorage.setItem(activeSetStorageKey, resumeTargetSetId);
+  }, [activeSetStorageKey, resumeTargetSetId]);
 
   return {
     restTimerMuted,

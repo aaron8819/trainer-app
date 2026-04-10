@@ -10,7 +10,10 @@ export const runtime = "nodejs";
 
 function toErrorResponse(error: unknown) {
   if (isRuntimeExerciseSwapError(error)) {
-    return NextResponse.json({ error: error.message }, { status: error.status });
+    return NextResponse.json(
+      { error: error.message, code: error.code },
+      { status: error.status },
+    );
   }
 
   throw error;
@@ -18,7 +21,7 @@ function toErrorResponse(error: unknown) {
 
 export async function GET(
   request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const resolvedParams = await params;
   const workoutId = resolvedParams?.id;
@@ -29,7 +32,7 @@ export async function GET(
   if (!workoutId || !workoutExerciseId || !replacementExerciseId) {
     return NextResponse.json(
       { error: "Missing workout id, workoutExerciseId, or exerciseId" },
-      { status: 400 }
+      { status: 400 },
     );
   }
 

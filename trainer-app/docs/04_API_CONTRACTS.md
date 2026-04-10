@@ -166,6 +166,7 @@ Sources of truth:
   - `DELETE /api/workouts/[id]/exercises/[exerciseId]` removes only runtime-added workout exercises that belong to the resolved owner and have no logged `SetLog` rows, deletes the child `WorkoutSet` rows plus `WorkoutExercise`, updates `selectionMetadata.workoutStructureState`, appends `runtimeEditReconciliation.remove_exercise`, and increments `Workout.revision`
   - `GET /api/workouts/[id]/swap-exercise-preview?workoutExerciseId=<id>&exerciseId=<candidate>` returns the canonical swap preview payload from the same server-owned swap seam used by mutation; preview and commit must resolve the same replacement prescription, including set ids, rep targets, load hint, target RPE, and rest
   - `POST /api/workouts/[id]/swap-exercise` preserves `gapFillExerciseSwapState`, updates `selectionMetadata.workoutStructureState`, appends `runtimeEditReconciliation.replace_exercise`, and returns the same resolved swap payload shape used by the preview route
+  - Swap route errors include a stable server-owned `code` alongside `error`, including strict logged-state blockers for partially and fully logged source exercises.
   - structural mutations increment `Workout.revision`
 - Optional gap-fill enforcement is strictly scoped to the canonical triplet:
   - receipt marker `optional_gap_fill`

@@ -10,7 +10,8 @@ vi.mock("@/lib/api/workout-context", () => ({
 }));
 
 vi.mock("@/lib/api/runtime-exercise-swap-service", () => ({
-  resolveRuntimeExerciseSwapCandidates: mocks.resolveRuntimeExerciseSwapCandidates,
+  resolveRuntimeExerciseSwapCandidates:
+    mocks.resolveRuntimeExerciseSwapCandidates,
   applyRuntimeExerciseSwap: mocks.applyRuntimeExerciseSwap,
   isRuntimeExerciseSwapError: (error: unknown) =>
     error instanceof Error &&
@@ -38,13 +39,16 @@ describe("/api/workouts/[id]/swap-exercise route", () => {
           fatigueDelta: -1,
           score: 11,
         },
-        reason: "Keeps lats, upper back, matches horizontal_pull, and reduces fatigue by 1 without raising equipment complexity.",
+        reason:
+          "Keeps lats, upper back, matches horizontal_pull, and reduces fatigue by 1 without raising equipment complexity.",
       },
     ]);
 
     const response = await GET(
-      new Request("http://localhost/api/workouts/workout-1/swap-exercise?workoutExerciseId=we-1"),
-      { params: Promise.resolve({ id: "workout-1" }) }
+      new Request(
+        "http://localhost/api/workouts/workout-1/swap-exercise?workoutExerciseId=we-1",
+      ),
+      { params: Promise.resolve({ id: "workout-1" }) },
     );
 
     expect(response.status).toBe(200);
@@ -65,6 +69,31 @@ describe("/api/workouts/[id]/swap-exercise route", () => {
     });
   });
 
+  it("returns canonical swap error codes from the service", async () => {
+    mocks.resolveRuntimeExerciseSwapCandidates.mockRejectedValue(
+      Object.assign(
+        new Error("Partially logged exercises cannot be swapped."),
+        {
+          status: 409,
+          code: "PARTIALLY_LOGGED_EXERCISE_BLOCKED",
+        },
+      ),
+    );
+
+    const response = await GET(
+      new Request(
+        "http://localhost/api/workouts/workout-1/swap-exercise?workoutExerciseId=we-1",
+      ),
+      { params: Promise.resolve({ id: "workout-1" }) },
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: "Partially logged exercises cannot be swapped.",
+      code: "PARTIALLY_LOGGED_EXERCISE_BLOCKED",
+    });
+  });
+
   it("forwards typed search parameters to the shared swap discovery seam", async () => {
     mocks.resolveRuntimeExerciseSwapCandidates.mockResolvedValue([
       {
@@ -79,15 +108,16 @@ describe("/api/workouts/[id]/swap-exercise route", () => {
           fatigueDelta: -1,
           score: 11,
         },
-        reason: "Keeps lats, upper back, matches horizontal_pull, and reduces fatigue by 1 without raising equipment complexity.",
+        reason:
+          "Keeps lats, upper back, matches horizontal_pull, and reduces fatigue by 1 without raising equipment complexity.",
       },
     ]);
 
     const response = await GET(
       new Request(
-        "http://localhost/api/workouts/workout-1/swap-exercise?workoutExerciseId=we-1&q=row&limit=9"
+        "http://localhost/api/workouts/workout-1/swap-exercise?workoutExerciseId=we-1&q=row&limit=9",
       ),
-      { params: Promise.resolve({ id: "workout-1" }) }
+      { params: Promise.resolve({ id: "workout-1" }) },
     );
 
     expect(response.status).toBe(200);
@@ -118,7 +148,8 @@ describe("/api/workouts/[id]/swap-exercise route", () => {
       isMainLift: false,
       isSwapped: true,
       section: "MAIN",
-      sessionNote: "Swapped from T-Bar Row. Session-only; future progression stays exercise-specific.",
+      sessionNote:
+        "Swapped from T-Bar Row. Session-only; future progression stays exercise-specific.",
       sets: [
         {
           setId: "set-1",
@@ -141,7 +172,7 @@ describe("/api/workouts/[id]/swap-exercise route", () => {
           replacementExerciseId: "chest-supported-db-row",
         }),
       }),
-      { params: Promise.resolve({ id: "workout-1" }) }
+      { params: Promise.resolve({ id: "workout-1" }) },
     );
 
     expect(response.status).toBe(200);

@@ -30,7 +30,10 @@ function parseLimit(rawLimit: string | null, fallback: number): number {
 
 function toErrorResponse(error: unknown) {
   if (isRuntimeExerciseSwapError(error)) {
-    return NextResponse.json({ error: error.message }, { status: error.status });
+    return NextResponse.json(
+      { error: error.message, code: error.code },
+      { status: error.status },
+    );
   }
 
   throw error;
@@ -38,7 +41,7 @@ function toErrorResponse(error: unknown) {
 
 export async function GET(
   request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const resolvedParams = await params;
   const workoutId = resolvedParams?.id;
@@ -48,7 +51,10 @@ export async function GET(
   const limit = parseLimit(searchParams.get("limit"), query.length > 0 ? 8 : 5);
 
   if (!workoutId || !workoutExerciseId) {
-    return NextResponse.json({ error: "Missing workout id or workoutExerciseId" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Missing workout id or workoutExerciseId" },
+      { status: 400 },
+    );
   }
 
   const owner = await resolveOwner();
@@ -70,7 +76,7 @@ export async function GET(
 
 export async function POST(
   request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const resolvedParams = await params;
   if (!resolvedParams?.id) {
@@ -80,7 +86,10 @@ export async function POST(
   const body = await request.json().catch(() => ({}));
   const parsed = swapExerciseSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Invalid request body" },
+      { status: 400 },
+    );
   }
 
   const owner = await resolveOwner();

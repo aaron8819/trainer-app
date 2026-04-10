@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => {
   const workoutFindFirst = vi.fn();
   const workoutExerciseFindFirst = vi.fn();
+  const workoutExerciseFindMany = vi.fn();
   const exerciseFindMany = vi.fn();
   const setLogFindFirst = vi.fn();
   const txWorkoutFindUnique = vi.fn();
@@ -31,6 +32,7 @@ const mocks = vi.hoisted(() => {
     },
     workoutExercise: {
       findFirst: workoutExerciseFindFirst,
+      findMany: workoutExerciseFindMany,
     },
     exercise: {
       findMany: exerciseFindMany,
@@ -38,7 +40,9 @@ const mocks = vi.hoisted(() => {
     setLog: {
       findFirst: setLogFindFirst,
     },
-    $transaction: vi.fn(async (callback: (trx: typeof tx) => Promise<unknown>) => callback(tx)),
+    $transaction: vi.fn(
+      async (callback: (trx: typeof tx) => Promise<unknown>) => callback(tx),
+    ),
   };
 
   const searchExerciseLibrary = vi.fn();
@@ -47,6 +51,7 @@ const mocks = vi.hoisted(() => {
     prisma,
     workoutFindFirst,
     workoutExerciseFindFirst,
+    workoutExerciseFindMany,
     exerciseFindMany,
     setLogFindFirst,
     txWorkoutFindUnique,
@@ -81,6 +86,7 @@ describe("runtime exercise swap service", () => {
       status: "IN_PROGRESS",
       selectionMode: "INTENT",
       sessionIntent: "PULL",
+      exercises: [{ id: "we-1", exerciseId: "t-bar-row" }],
       selectionMetadata: {
         sessionAuditSnapshot: {
           version: 1,
@@ -134,6 +140,9 @@ describe("runtime exercise swap service", () => {
         id: "t-bar-row",
         name: "T-Bar Row",
         fatigueCost: 3,
+        jointStress: "MEDIUM",
+        isMainLiftEligible: false,
+        isCompound: true,
         movementPatterns: ["HORIZONTAL_PULL"],
         exerciseEquipment: [{ equipment: { type: "BARBELL" } }],
         exerciseMuscles: [
@@ -164,6 +173,9 @@ describe("runtime exercise swap service", () => {
         id: "t-bar-row",
         name: "T-Bar Row",
         fatigueCost: 3,
+        jointStress: "MEDIUM",
+        isMainLiftEligible: false,
+        isCompound: true,
         repRangeMin: 8,
         repRangeMax: 12,
         movementPatterns: ["HORIZONTAL_PULL"],
@@ -177,6 +189,9 @@ describe("runtime exercise swap service", () => {
         id: "chest-supported-db-row",
         name: "Chest-Supported Dumbbell Row",
         fatigueCost: 2,
+        jointStress: "LOW",
+        isMainLiftEligible: false,
+        isCompound: true,
         repRangeMin: 8,
         repRangeMax: 12,
         movementPatterns: ["HORIZONTAL_PULL"],
@@ -190,6 +205,9 @@ describe("runtime exercise swap service", () => {
         id: "lat-pulldown",
         name: "Lat Pulldown",
         fatigueCost: 2,
+        jointStress: "LOW",
+        isMainLiftEligible: false,
+        isCompound: true,
         repRangeMin: 8,
         repRangeMax: 12,
         movementPatterns: ["VERTICAL_PULL"],
@@ -200,6 +218,9 @@ describe("runtime exercise swap service", () => {
         id: "cable-row",
         name: "Cable Row",
         fatigueCost: 2,
+        jointStress: "LOW",
+        isMainLiftEligible: false,
+        isCompound: true,
         repRangeMin: 10,
         repRangeMax: 14,
         movementPatterns: ["HORIZONTAL_PULL"],
@@ -212,6 +233,7 @@ describe("runtime exercise swap service", () => {
     ]);
 
     mocks.searchExerciseLibrary.mockResolvedValue([]);
+    mocks.workoutExerciseFindMany.mockResolvedValue([]);
     mocks.setLogFindFirst.mockResolvedValue({ actualLoad: 27.5 });
     mocks.txWorkoutFindUnique.mockResolvedValue({
       selectionMetadata: {
@@ -307,7 +329,8 @@ describe("runtime exercise swap service", () => {
       isSwapped: true,
       isMainLift: false,
       section: "MAIN",
-      sessionNote: "Swapped from T-Bar Row. Session-only; future progression stays exercise-specific.",
+      sessionNote:
+        "Swapped from T-Bar Row. Session-only; future progression stays exercise-specific.",
       sets: [
         {
           setId: "set-1",
@@ -389,12 +412,15 @@ describe("runtime exercise swap service", () => {
             workoutStructureState: expect.objectContaining({
               reconciliation: expect.objectContaining({
                 hasDrift: true,
-                changedFields: expect.arrayContaining(["exercise_added", "exercise_removed"]),
+                changedFields: expect.arrayContaining([
+                  "exercise_added",
+                  "exercise_removed",
+                ]),
               }),
             }),
           }),
         }),
-      })
+      }),
     );
   });
 
@@ -409,6 +435,9 @@ describe("runtime exercise swap service", () => {
         id: "t-bar-row",
         name: "T-Bar Row",
         fatigueCost: 3,
+        jointStress: "MEDIUM",
+        isMainLiftEligible: false,
+        isCompound: true,
         movementPatterns: ["HORIZONTAL_PULL"],
         exerciseEquipment: [{ equipment: { type: "BARBELL" } }],
         exerciseMuscles: [
@@ -469,7 +498,9 @@ describe("runtime exercise swap service", () => {
       userId: "user-1",
     };
 
-    await expect(resolveRuntimeExerciseSwapPreview(input)).resolves.toMatchObject({
+    await expect(
+      resolveRuntimeExerciseSwapPreview(input),
+    ).resolves.toMatchObject({
       section: "MAIN",
     });
     await expect(applyRuntimeExerciseSwap(input)).resolves.toMatchObject({
@@ -487,6 +518,7 @@ describe("runtime exercise swap service", () => {
     expect(candidates.map((candidate) => candidate.exerciseId)).toEqual([
       "cable-row",
       "chest-supported-db-row",
+      "lat-pulldown",
     ]);
     expect(mocks.searchExerciseLibrary).not.toHaveBeenCalled();
     expect(mocks.exerciseFindMany).toHaveBeenCalledTimes(1);
@@ -518,6 +550,9 @@ describe("runtime exercise swap service", () => {
         id: "cable-row",
         name: "Cable Row",
         fatigueCost: 2,
+        jointStress: "LOW",
+        isMainLiftEligible: false,
+        isCompound: true,
         repRangeMin: 10,
         repRangeMax: 14,
         movementPatterns: ["HORIZONTAL_PULL"],
@@ -531,6 +566,9 @@ describe("runtime exercise swap service", () => {
         id: "unsupported-curl",
         name: "Cable Curl",
         fatigueCost: 2,
+        jointStress: "LOW",
+        isMainLiftEligible: false,
+        isCompound: false,
         repRangeMin: 8,
         repRangeMax: 12,
         movementPatterns: ["ISOLATION"],
@@ -541,6 +579,9 @@ describe("runtime exercise swap service", () => {
         id: "chest-supported-db-row",
         name: "Chest-Supported Dumbbell Row",
         fatigueCost: 2,
+        jointStress: "LOW",
+        isMainLiftEligible: false,
+        isCompound: true,
         repRangeMin: 8,
         repRangeMax: 12,
         movementPatterns: ["HORIZONTAL_PULL"],
@@ -571,6 +612,283 @@ describe("runtime exercise swap service", () => {
         exerciseName: "Chest-Supported Dumbbell Row",
       }),
     ]);
-    expect(candidates.some((candidate) => candidate.exerciseId === "unsupported-curl")).toBe(false);
+    expect(
+      candidates.some(
+        (candidate) => candidate.exerciseId === "unsupported-curl",
+      ),
+    ).toBe(false);
+  });
+
+  it("swaps an unlogged main lift only to a main-lift eligible movement-family match", async () => {
+    mocks.workoutFindFirst.mockResolvedValueOnce({
+      id: "workout-1",
+      status: "IN_PROGRESS",
+      selectionMode: "INTENT",
+      sessionIntent: "PUSH",
+      exercises: [{ id: "we-1", exerciseId: "barbell-bench-press" }],
+      selectionMetadata: {},
+    });
+    mocks.workoutExerciseFindFirst.mockResolvedValueOnce({
+      id: "we-1",
+      workoutId: "workout-1",
+      exerciseId: "barbell-bench-press",
+      section: "MAIN",
+      isMainLift: true,
+      exercise: {
+        id: "barbell-bench-press",
+        name: "Barbell Bench Press",
+        fatigueCost: 4,
+        jointStress: "HIGH",
+        isMainLiftEligible: true,
+        isCompound: true,
+        movementPatterns: ["HORIZONTAL_PUSH"],
+        exerciseEquipment: [{ equipment: { type: "BARBELL" } }],
+        exerciseMuscles: [
+          { role: "PRIMARY", muscle: { name: "Chest" } },
+          { role: "PRIMARY", muscle: { name: "Triceps" } },
+        ],
+      },
+      sets: [
+        {
+          id: "set-1",
+          setIndex: 1,
+          targetRpe: 8,
+          restSeconds: 180,
+          logs: [],
+        },
+      ],
+    });
+    mocks.exerciseFindMany.mockResolvedValueOnce([
+      {
+        id: "barbell-bench-press",
+        name: "Barbell Bench Press",
+        fatigueCost: 4,
+        jointStress: "HIGH",
+        isMainLiftEligible: true,
+        isCompound: true,
+        repRangeMin: 5,
+        repRangeMax: 8,
+        movementPatterns: ["HORIZONTAL_PUSH"],
+        exerciseEquipment: [{ equipment: { type: "BARBELL" } }],
+        exerciseMuscles: [
+          { role: "PRIMARY", muscle: { name: "Chest" } },
+          { role: "PRIMARY", muscle: { name: "Triceps" } },
+        ],
+      },
+      {
+        id: "dumbbell-bench-press",
+        name: "Dumbbell Bench Press",
+        fatigueCost: 3,
+        jointStress: "MEDIUM",
+        isMainLiftEligible: true,
+        isCompound: true,
+        repRangeMin: 6,
+        repRangeMax: 10,
+        movementPatterns: ["HORIZONTAL_PUSH"],
+        exerciseEquipment: [{ equipment: { type: "DUMBBELL" } }],
+        exerciseMuscles: [
+          { role: "PRIMARY", muscle: { name: "Chest" } },
+          { role: "PRIMARY", muscle: { name: "Triceps" } },
+        ],
+      },
+      {
+        id: "pec-deck",
+        name: "Pec Deck",
+        fatigueCost: 1,
+        jointStress: "LOW",
+        isMainLiftEligible: false,
+        isCompound: false,
+        repRangeMin: 10,
+        repRangeMax: 15,
+        movementPatterns: ["ISOLATION"],
+        exerciseEquipment: [{ equipment: { type: "MACHINE" } }],
+        exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Chest" } }],
+      },
+    ]);
+
+    await expect(
+      resolveRuntimeExerciseSwapPreview({
+        workoutId: "workout-1",
+        workoutExerciseId: "we-1",
+        replacementExerciseId: "dumbbell-bench-press",
+        userId: "user-1",
+      }),
+    ).resolves.toMatchObject({
+      workoutExerciseId: "we-1",
+      exerciseId: "dumbbell-bench-press",
+      isMainLift: true,
+      sets: [{ targetReps: 8, targetRepRange: { min: 6, max: 10 } }],
+    });
+  });
+
+  it("blocks partially logged source exercises with a reason code", async () => {
+    mocks.workoutExerciseFindFirst.mockResolvedValueOnce({
+      id: "we-1",
+      workoutId: "workout-1",
+      exerciseId: "t-bar-row",
+      section: "MAIN",
+      isMainLift: false,
+      exercise: {
+        id: "t-bar-row",
+        name: "T-Bar Row",
+        fatigueCost: 3,
+        jointStress: "MEDIUM",
+        isMainLiftEligible: false,
+        isCompound: true,
+        movementPatterns: ["HORIZONTAL_PULL"],
+        exerciseEquipment: [{ equipment: { type: "BARBELL" } }],
+        exerciseMuscles: [
+          { role: "PRIMARY", muscle: { name: "Lats" } },
+          { role: "PRIMARY", muscle: { name: "Upper Back" } },
+        ],
+      },
+      sets: [
+        {
+          id: "set-1",
+          setIndex: 1,
+          targetRpe: 8,
+          restSeconds: 120,
+          logs: [{ id: "log-1" }],
+        },
+        {
+          id: "set-2",
+          setIndex: 2,
+          targetRpe: 8,
+          restSeconds: 120,
+          logs: [],
+        },
+      ],
+    });
+
+    await expect(
+      resolveRuntimeExerciseSwapCandidates({
+        workoutId: "workout-1",
+        workoutExerciseId: "we-1",
+        userId: "user-1",
+      }),
+    ).rejects.toMatchObject({ code: "PARTIALLY_LOGGED_EXERCISE_BLOCKED" });
+  });
+
+  it("blocks fully logged source exercises with a reason code", async () => {
+    mocks.workoutExerciseFindFirst.mockResolvedValueOnce({
+      id: "we-1",
+      workoutId: "workout-1",
+      exerciseId: "t-bar-row",
+      section: "MAIN",
+      isMainLift: false,
+      exercise: {
+        id: "t-bar-row",
+        name: "T-Bar Row",
+        fatigueCost: 3,
+        jointStress: "MEDIUM",
+        isMainLiftEligible: false,
+        isCompound: true,
+        movementPatterns: ["HORIZONTAL_PULL"],
+        exerciseEquipment: [{ equipment: { type: "BARBELL" } }],
+        exerciseMuscles: [
+          { role: "PRIMARY", muscle: { name: "Lats" } },
+          { role: "PRIMARY", muscle: { name: "Upper Back" } },
+        ],
+      },
+      sets: [
+        {
+          id: "set-1",
+          setIndex: 1,
+          targetRpe: 8,
+          restSeconds: 120,
+          logs: [{ id: "log-1" }],
+        },
+        {
+          id: "set-2",
+          setIndex: 2,
+          targetRpe: 8,
+          restSeconds: 120,
+          logs: [{ id: "log-2" }],
+        },
+      ],
+    });
+
+    await expect(
+      resolveRuntimeExerciseSwapCandidates({
+        workoutId: "workout-1",
+        workoutExerciseId: "we-1",
+        userId: "user-1",
+      }),
+    ).rejects.toMatchObject({ code: "FULLY_LOGGED_EXERCISE_BLOCKED" });
+  });
+
+  it("blocks replacement exercises that already exist elsewhere in the workout", async () => {
+    mocks.workoutFindFirst.mockResolvedValueOnce({
+      id: "workout-1",
+      status: "IN_PROGRESS",
+      selectionMode: "INTENT",
+      sessionIntent: "PULL",
+      exercises: [
+        { id: "we-1", exerciseId: "t-bar-row" },
+        { id: "we-2", exerciseId: "cable-row" },
+      ],
+      selectionMetadata: {},
+    });
+
+    const candidates = await resolveRuntimeExerciseSwapCandidates({
+      workoutId: "workout-1",
+      workoutExerciseId: "we-1",
+      userId: "user-1",
+    });
+
+    expect(candidates.map((candidate) => candidate.exerciseId)).toEqual([
+      "chest-supported-db-row",
+      "lat-pulldown",
+    ]);
+
+    mocks.workoutFindFirst.mockResolvedValueOnce({
+      id: "workout-1",
+      status: "IN_PROGRESS",
+      selectionMode: "INTENT",
+      sessionIntent: "PULL",
+      exercises: [
+        { id: "we-1", exerciseId: "t-bar-row" },
+        { id: "we-2", exerciseId: "cable-row" },
+      ],
+      selectionMetadata: {},
+    });
+
+    await expect(
+      resolveRuntimeExerciseSwapPreview({
+        workoutId: "workout-1",
+        workoutExerciseId: "we-1",
+        replacementExerciseId: "cable-row",
+        userId: "user-1",
+      }),
+    ).rejects.toMatchObject({ code: "REPLACEMENT_NOT_ELIGIBLE" });
+  });
+
+  it("returns an empty shortlist when no safe candidates exist", async () => {
+    mocks.exerciseFindMany.mockResolvedValueOnce([
+      {
+        id: "t-bar-row",
+        name: "T-Bar Row",
+        fatigueCost: 3,
+        jointStress: "MEDIUM",
+        isMainLiftEligible: false,
+        isCompound: true,
+        repRangeMin: 8,
+        repRangeMax: 12,
+        movementPatterns: ["HORIZONTAL_PULL"],
+        exerciseEquipment: [{ equipment: { type: "BARBELL" } }],
+        exerciseMuscles: [
+          { role: "PRIMARY", muscle: { name: "Lats" } },
+          { role: "PRIMARY", muscle: { name: "Upper Back" } },
+        ],
+      },
+    ]);
+
+    await expect(
+      resolveRuntimeExerciseSwapCandidates({
+        workoutId: "workout-1",
+        workoutExerciseId: "we-1",
+        userId: "user-1",
+      }),
+    ).resolves.toEqual([]);
   });
 });

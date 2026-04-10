@@ -64,13 +64,15 @@ function mergeSelectionMetadata(base: unknown, overrides: unknown): JsonObject {
 
 function stripCloseoutSlotIdentity(selectionMetadata: unknown): JsonObject {
   const record = toObject(selectionMetadata);
-  const { sessionSlot: _legacySessionSlot, ...withoutTopLevelSlot } = record;
+  const withoutTopLevelSlot = { ...record };
+  delete withoutTopLevelSlot.sessionSlot;
   const receipt = extractSessionDecisionReceipt(withoutTopLevelSlot);
   if (!receipt?.sessionSlot) {
     return withoutTopLevelSlot;
   }
 
-  const { sessionSlot: _receiptSessionSlot, ...receiptWithoutSlot } = receipt;
+  const receiptWithoutSlot = { ...receipt };
+  delete receiptWithoutSlot.sessionSlot;
   return {
     ...withoutTopLevelSlot,
     sessionDecisionReceipt: receiptWithoutSlot,

@@ -57,7 +57,7 @@ type SwapContext = {
 type PersistedExerciseRecord = {
   exerciseId: string;
   orderIndex: number;
-  section: string;
+  section: string | null;
   exercise: { name: string };
   sets: Array<{
     setIndex: number;
@@ -160,6 +160,16 @@ function buildTargetRepRange(exercise: ExerciseRecord) {
     : undefined;
 }
 
+function normalizeWorkoutSection(
+  section: string | null | undefined
+): RuntimeExerciseSwapExercisePayload["section"] {
+  const normalized = section?.trim().toUpperCase();
+  if (normalized === "WARMUP" || normalized === "ACCESSORY") {
+    return normalized;
+  }
+  return "MAIN";
+}
+
 function toPreviewExercise(input: {
   context: SwapContext;
   replacementExercise: ExerciseRecord;
@@ -178,7 +188,7 @@ function toPreviewExercise(input: {
     ),
     isMainLift: input.context.workoutExercise.isMainLift,
     isSwapped: true,
-    section: input.context.workoutExercise.section,
+    section: normalizeWorkoutSection(input.context.workoutExercise.section),
     sessionNote: formatRuntimeExerciseSwapNote({
       fromExerciseName: input.context.workoutExercise.exercise.name,
       fromExerciseId: input.context.workoutExercise.exerciseId,
@@ -443,7 +453,7 @@ function mapPersistedExercises(
 ): Array<{
   exerciseId: string;
   orderIndex: number;
-  section: string;
+  section: RuntimeExerciseSwapExercisePayload["section"];
   exercise: { name: string };
   sets: Array<{
     setIndex: number;
@@ -458,7 +468,7 @@ function mapPersistedExercises(
   return persistedExercises.map((exercise) => ({
     exerciseId: exercise.exerciseId,
     orderIndex: exercise.orderIndex,
-    section: exercise.section,
+    section: normalizeWorkoutSection(exercise.section),
     exercise: exercise.exercise,
     sets: exercise.sets.map((set) => ({
       setIndex: set.setIndex,

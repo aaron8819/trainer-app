@@ -398,6 +398,85 @@ describe("runtime exercise swap service", () => {
     );
   });
 
+  it("normalizes nullable sections back to MAIN", async () => {
+    mocks.workoutExerciseFindFirst.mockResolvedValueOnce({
+      id: "we-1",
+      workoutId: "workout-1",
+      exerciseId: "t-bar-row",
+      section: null,
+      isMainLift: false,
+      exercise: {
+        id: "t-bar-row",
+        name: "T-Bar Row",
+        fatigueCost: 3,
+        movementPatterns: ["HORIZONTAL_PULL"],
+        exerciseEquipment: [{ equipment: { type: "BARBELL" } }],
+        exerciseMuscles: [
+          { role: "PRIMARY", muscle: { name: "Lats" } },
+          { role: "PRIMARY", muscle: { name: "Upper Back" } },
+        ],
+      },
+      sets: [
+        {
+          id: "set-1",
+          setIndex: 1,
+          targetRpe: 8,
+          restSeconds: 120,
+          logs: [],
+        },
+        {
+          id: "set-2",
+          setIndex: 2,
+          targetRpe: 8,
+          restSeconds: 120,
+          logs: [],
+        },
+      ],
+    });
+    mocks.txWorkoutExerciseFindMany.mockResolvedValueOnce([
+      {
+        exerciseId: "chest-supported-db-row",
+        orderIndex: 0,
+        section: null,
+        exercise: { name: "Chest-Supported Dumbbell Row" },
+        sets: [
+          {
+            setIndex: 1,
+            targetReps: 10,
+            targetRepMin: 8,
+            targetRepMax: 12,
+            targetRpe: 8,
+            targetLoad: 27.5,
+            restSeconds: 120,
+          },
+          {
+            setIndex: 2,
+            targetReps: 10,
+            targetRepMin: 8,
+            targetRepMax: 12,
+            targetRpe: 8,
+            targetLoad: 27.5,
+            restSeconds: 120,
+          },
+        ],
+      },
+    ]);
+
+    const input = {
+      workoutId: "workout-1",
+      workoutExerciseId: "we-1",
+      replacementExerciseId: "chest-supported-db-row",
+      userId: "user-1",
+    };
+
+    await expect(resolveRuntimeExerciseSwapPreview(input)).resolves.toMatchObject({
+      section: "MAIN",
+    });
+    await expect(applyRuntimeExerciseSwap(input)).resolves.toMatchObject({
+      section: "MAIN",
+    });
+  });
+
   it("keeps the ranked shortlist for initial discovery", async () => {
     const candidates = await resolveRuntimeExerciseSwapCandidates({
       workoutId: "workout-1",

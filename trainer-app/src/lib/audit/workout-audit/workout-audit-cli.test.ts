@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildActiveMesocycleSlotReseedApplySummary,
   buildActiveMesocycleSlotReseedSummary,
+  buildCurrentWeekAuditOperatorSummary,
   buildProjectedWeekDebugSummary,
   buildProjectedWeekOperatorSummary,
   buildWeeklyRetroOperatorSummary,
@@ -321,6 +322,76 @@ describe("buildProjectedWeekDebugSummary", () => {
       "[workout-audit:week:debug] semantic_warning=none",
       "[workout-audit:week:debug] background_warning=none",
     ]);
+  });
+});
+
+describe("buildCurrentWeekAuditOperatorSummary", () => {
+  it("prints current-week guidance when the projected-week artifact carries the evaluation layer", () => {
+    const summary = buildCurrentWeekAuditOperatorSummary({
+      artifact: {
+        projectedWeekVolume: {
+          version: 1,
+          currentWeek: {
+            mesocycleId: "meso-1",
+            week: 4,
+            phase: "accumulation",
+            blockType: "accumulation",
+          },
+          projectionNotes: [],
+          completedVolumeByMuscle: {},
+          projectedSessions: [],
+          fullWeekByMuscle: [],
+          currentWeekAudit: {
+            belowMEV: ["Chest"],
+            overMAV: ["Glutes"],
+            underTargetClusters: [{ muscle: "Chest", deficit: 6 }],
+            fatigueRisks: ["Glutes projects 2.0 sets over MAV"],
+          },
+          interventionHints: [
+            {
+              muscle: "Chest",
+              suggestedSets: 2,
+              reason: "Projected 2.0 sets below MEV",
+            },
+          ],
+          sessionRisks: [
+            {
+              slotId: "lower_b",
+              issue: "projected duration 85 min exceeds ~80 min",
+            },
+          ],
+        },
+      },
+    });
+
+    expect(summary).toEqual([
+      "[workout-audit:current-week] below_mev=Chest under_target_clusters=Chest (-6.0) over_mav=Glutes",
+      "[workout-audit:current-week] fatigue_risks=Glutes projects 2.0 sets over MAV",
+      "[workout-audit:current-week] intervention_hints=Chest:2 sets (Projected 2.0 sets below MEV)",
+      "[workout-audit:current-week] session_risks=lower_b: projected duration 85 min exceeds ~80 min",
+    ]);
+  });
+
+  it("returns null for plain projected-week-volume artifacts", () => {
+    const summary = buildCurrentWeekAuditOperatorSummary({
+      artifact: {
+        projectedWeekVolume: {
+          version: 1,
+          currentWeek: {
+            mesocycleId: "meso-1",
+            week: 3,
+            phase: "accumulation",
+            blockType: "accumulation",
+          },
+          projectionNotes: [],
+          completedVolumeByMuscle: {},
+          projectedSessions: [],
+          fullWeekByMuscle: [],
+        },
+      },
+    });
+
+    expect(summary).toBeNull();
   });
 });
 

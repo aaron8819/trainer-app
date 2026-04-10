@@ -74,7 +74,7 @@ export async function buildWorkoutAuditContext(
     };
   }
 
-  if (mode === "projected-week-volume") {
+  if (mode === "projected-week-volume" || mode === "current-week-audit") {
     return {
       mode,
       requestedMode: request.mode,

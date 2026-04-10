@@ -354,6 +354,30 @@ export type ProjectedWeekVolumeAuditPayload = {
   >;
   projectedSessions: ProjectedWeekVolumeSessionSummary[];
   fullWeekByMuscle: ProjectedWeekVolumeMuscleRow[];
+  currentWeekAudit?: CurrentWeekAuditEvaluation;
+  interventionHints?: CurrentWeekAuditInterventionHint[];
+  sessionRisks?: CurrentWeekAuditSessionRisk[];
+};
+
+export type CurrentWeekAuditEvaluation = {
+  belowMEV: string[];
+  overMAV: string[];
+  underTargetClusters: Array<{
+    muscle: string;
+    deficit: number;
+  }>;
+  fatigueRisks: string[];
+};
+
+export type CurrentWeekAuditInterventionHint = {
+  muscle: string;
+  suggestedSets: number;
+  reason: string;
+};
+
+export type CurrentWeekAuditSessionRisk = {
+  slotId: string;
+  issue: string;
 };
 
 export type ActiveMesocycleSlotReseedRecommendation =

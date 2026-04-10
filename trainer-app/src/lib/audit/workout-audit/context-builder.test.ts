@@ -80,6 +80,25 @@ describe("buildWorkoutAuditContext", () => {
     expect(mocks.loadNextWorkoutContext).not.toHaveBeenCalled();
   });
 
+  it("builds current-week-audit context through the projected-week path without loading next-session", async () => {
+    const context = await buildWorkoutAuditContext({
+      mode: "current-week-audit",
+      userId: "user-1",
+      plannerDiagnosticsMode: "debug",
+    });
+
+    expect(context).toMatchObject({
+      mode: "current-week-audit",
+      requestedMode: "current-week-audit",
+      userId: "user-1",
+      plannerDiagnosticsMode: "debug",
+      projectedWeekVolume: {
+        enabled: true,
+      },
+    });
+    expect(mocks.loadNextWorkoutContext).not.toHaveBeenCalled();
+  });
+
   it("builds weekly-retro context from explicit week and mesocycle inputs without loading next-session", async () => {
     const context = await buildWorkoutAuditContext({
       mode: "weekly-retro",

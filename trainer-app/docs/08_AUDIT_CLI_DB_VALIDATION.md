@@ -44,6 +44,12 @@ Projected current week volume:
 npm run audit:workout -- --mode projected-week-volume --user-id <user-id>
 ```
 
+Current-week pre-execution guidance:
+
+```powershell
+npm run audit:workout -- --mode current-week-audit --user-id <user-id>
+```
+
 Active mesocycle dry-run upper-slot reseed audit:
 
 ```powershell
@@ -95,6 +101,9 @@ Use this section as a quick validation smoke-check only. Full artifact interpret
 - `sessionSnapshot.generated.traces.progression`
 - `sessionSnapshot.generated.traces.deload`
 - `projectedWeekVolume.projectedSessions[*].projectedContributionByMuscle`
+- `projectedWeekVolume.currentWeekAudit`
+- `projectedWeekVolume.interventionHints`
+- `projectedWeekVolume.sessionRisks`
 - `projectedWeekVolume.fullWeekByMuscle[*]`
 
 ## Expected Hardening Checks

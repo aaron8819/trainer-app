@@ -1,6 +1,7 @@
 export const WORKOUT_AUDIT_CANONICAL_MODES = [
   "future-week",
   "projected-week-volume",
+  "current-week-audit",
   "active-mesocycle-slot-reseed",
   "historical-week",
   "weekly-retro",

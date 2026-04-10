@@ -186,7 +186,7 @@ SetLog / logged performance
 - Audit context normalization is owned by `src/lib/audit/workout-audit/context-builder.ts`, and generation dispatch is owned by `src/lib/audit/workout-audit/generation-runner.ts`.
 - Audit artifact assembly/serialization is owned by `src/lib/audit/workout-audit/serializer.ts` and persists JSON artifacts to `artifacts/audits/` via `scripts/workout-audit.ts`.
 - Bundled split/week sanity audit orchestration is owned by `src/lib/audit/workout-audit/bundle.ts` and persists compact summary artifacts to `artifacts/audits/split-sanity/` via `scripts/audit-split-sanity.ts`.
-- Canonical recurring workout-audit modes are `historical-week`, `weekly-retro`, `future-week`, `deload`, and `progression-anchor` (`src/lib/audit/workout-audit/types.ts`).
+- Canonical recurring workout-audit modes are `historical-week`, `weekly-retro`, `future-week`, `projected-week-volume`, `current-week-audit`, `deload`, and `progression-anchor` (`src/lib/audit/workout-audit/types.ts`).
 - Audit artifacts now expose an additive `canonicalSemantics` block derived from persisted/generated session snapshots. That field is the stable audit-facing summary for `phase`, `isDeload`, `countsTowardProgressionHistory`, `countsTowardPerformanceHistory`, and `updatesProgressionAnchor` (`src/lib/audit/workout-audit/canonical-semantics.ts`, `src/lib/audit/workout-audit/types.ts`).
 - The canonical recurring workout-audit mode for generated-session inspection is `future-week`; use `--intent` when you need an explicit intent-specific run.
 - Operational use of those modes belongs in `docs/09_AUDIT_PLAYBOOK.md`; direct DB-backed CLI validation belongs in `docs/08_AUDIT_CLI_DB_VALIDATION.md`.

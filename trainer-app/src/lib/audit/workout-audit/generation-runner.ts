@@ -10,6 +10,7 @@ import {
 } from "@/lib/evidence/session-audit-snapshot";
 import { PROJECTED_WEEK_VOLUME_AUDIT_PAYLOAD_VERSION } from "./constants";
 import { buildActiveMesocycleSlotReseedAuditPayload } from "./active-mesocycle-slot-reseed";
+import { buildCurrentWeekAuditEvaluation } from "./current-week-audit";
 import { buildHistoricalWeekAuditPayload } from "./historical-week";
 import { buildProgressionAnchorAuditPayload } from "./progression-anchor";
 import { buildWeeklyRetroAuditPayload } from "./weekly-retro";
@@ -80,18 +81,26 @@ export async function runWorkoutAuditGeneration(
     };
   }
 
-  if (mode === "projected-week-volume") {
+  if (mode === "projected-week-volume" || mode === "current-week-audit") {
     const projectedWeekVolume = await loadProjectedWeekVolumeReport({
       userId: context.userId,
       plannerDiagnosticsMode: context.plannerDiagnosticsMode,
     });
+    const payload = {
+      version: PROJECTED_WEEK_VOLUME_AUDIT_PAYLOAD_VERSION,
+      ...projectedWeekVolume,
+    };
+    const currentWeekAuditFields =
+      mode === "current-week-audit"
+        ? buildCurrentWeekAuditEvaluation(payload)
+        : {};
 
     return {
       context,
       generatedAt: new Date().toISOString(),
       projectedWeekVolume: {
-        version: PROJECTED_WEEK_VOLUME_AUDIT_PAYLOAD_VERSION,
-        ...projectedWeekVolume,
+        ...payload,
+        ...currentWeekAuditFields,
       },
     };
   }

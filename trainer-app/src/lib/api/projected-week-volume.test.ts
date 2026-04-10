@@ -312,6 +312,8 @@ describe("loadProjectedWeekVolumeReport", () => {
         isNext: true,
         exerciseCount: 1,
         totalSets: 1,
+        estimatedMinutes: 45,
+        movementPatternCounts: {},
         projectedContributionByMuscle: { Chest: 1 },
       },
       {
@@ -320,6 +322,8 @@ describe("loadProjectedWeekVolumeReport", () => {
         isNext: false,
         exerciseCount: 1,
         totalSets: 1,
+        estimatedMinutes: 45,
+        movementPatternCounts: {},
         projectedContributionByMuscle: { Quads: 1 },
       },
     ]);

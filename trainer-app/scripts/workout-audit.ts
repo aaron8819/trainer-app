@@ -152,6 +152,32 @@ function formatMuscleContributorSessions(input: {
   return contributors.length > 0 ? contributors.join(", ") : "none";
 }
 
+function formatCurrentWeekUnderTargetClusters(
+  clusters: NonNullable<ProjectedWeekVolumeAuditPayload["currentWeekAudit"]>["underTargetClusters"],
+  limit = 4
+): string {
+  if (clusters.length === 0) {
+    return "none";
+  }
+
+  const visible = clusters
+    .slice(0, limit)
+    .map((cluster) => `${cluster.muscle} (-${cluster.deficit.toFixed(1)})`)
+    .join(", ");
+  const remaining = clusters.length - limit;
+  return remaining > 0 ? `${visible}, +${remaining} more` : visible;
+}
+
+function formatCurrentWeekList(values: string[], limit = 4): string {
+  if (values.length === 0) {
+    return "none";
+  }
+
+  const visible = values.slice(0, limit).join(", ");
+  const remaining = values.length - limit;
+  return remaining > 0 ? `${visible}, +${remaining} more` : visible;
+}
+
 function formatBooleanFlag(value: boolean): string {
   return value ? "yes" : "no";
 }
@@ -342,6 +368,32 @@ export function buildProjectedWeekDebugSummary(input: {
   return lines;
 }
 
+export function buildCurrentWeekAuditOperatorSummary(input: {
+  artifact: Pick<WorkoutAuditArtifact, "projectedWeekVolume">;
+}): string[] | null {
+  const projectedWeekVolume = input.artifact.projectedWeekVolume;
+  const currentWeekAudit = projectedWeekVolume?.currentWeekAudit;
+  if (!projectedWeekVolume || !currentWeekAudit) {
+    return null;
+  }
+
+  const interventionHints =
+    projectedWeekVolume.interventionHints
+      ?.map((hint) => `${hint.muscle}:${hint.suggestedSets} sets (${hint.reason})`)
+      .join("; ") || "none";
+  const sessionRisks =
+    projectedWeekVolume.sessionRisks
+      ?.map((risk) => `${risk.slotId}: ${risk.issue}`)
+      .join("; ") || "none";
+
+  return [
+    `[workout-audit:current-week] below_mev=${formatCurrentWeekList(currentWeekAudit.belowMEV)} under_target_clusters=${formatCurrentWeekUnderTargetClusters(currentWeekAudit.underTargetClusters)} over_mav=${formatCurrentWeekList(currentWeekAudit.overMAV)}`,
+    `[workout-audit:current-week] fatigue_risks=${formatCurrentWeekList(currentWeekAudit.fatigueRisks, 3)}`,
+    `[workout-audit:current-week] intervention_hints=${interventionHints}`,
+    `[workout-audit:current-week] session_risks=${sessionRisks}`,
+  ];
+}
+
 export function buildWeeklyRetroOperatorSummary(input: {
   artifact: Pick<WorkoutAuditArtifact, "weeklyRetro">;
 }): string[] | null {
@@ -477,6 +529,14 @@ async function main(): Promise<void> {
   });
   if (projectedWeekSummary) {
     for (const line of projectedWeekSummary) {
+      console.log(line);
+    }
+  }
+  const currentWeekAuditSummary = buildCurrentWeekAuditOperatorSummary({
+    artifact,
+  });
+  if (currentWeekAuditSummary) {
+    for (const line of currentWeekAuditSummary) {
       console.log(line);
     }
   }

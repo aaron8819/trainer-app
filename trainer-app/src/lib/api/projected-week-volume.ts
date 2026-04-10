@@ -3,7 +3,7 @@ import { WorkoutStatus } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { getExposedVolumeLandmarkEntries } from "@/lib/engine/volume-landmarks";
 import type { SessionIntent } from "@/lib/engine/session-types";
-import type { WorkoutPlan } from "@/lib/engine/types";
+import type { MovementPatternV2, WorkoutPlan } from "@/lib/engine/types";
 import { readSessionSlotSnapshot } from "@/lib/evidence/session-decision-receipt";
 import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-semantics";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
@@ -36,6 +36,8 @@ export type ProjectedWeekVolumeSessionSummary = {
   isNext: boolean;
   exerciseCount: number;
   totalSets: number;
+  estimatedMinutes?: number | null;
+  movementPatternCounts?: Record<string, number>;
   projectedContributionByMuscle: Record<string, number>;
 };
 
@@ -95,6 +97,20 @@ function countWorkoutSets(workout: WorkoutPlan): number {
   return [...workout.mainLifts, ...workout.accessories].reduce(
     (sum, exercise) => sum + exercise.sets.length,
     0
+  );
+}
+
+function countWorkoutMovementPatterns(workout: WorkoutPlan): Record<string, number> {
+  const counts = new Map<MovementPatternV2, number>();
+
+  for (const workoutExercise of [...workout.mainLifts, ...workout.accessories]) {
+    for (const pattern of workoutExercise.exercise.movementPatterns ?? []) {
+      counts.set(pattern, (counts.get(pattern) ?? 0) + 1);
+    }
+  }
+
+  return Object.fromEntries(
+    Array.from(counts.entries()).sort(([left], [right]) => left.localeCompare(right))
   );
 }
 
@@ -356,6 +372,8 @@ export async function loadProjectedWeekVolumeReport(input: {
       isNext: index === 0,
       exerciseCount: countWorkoutExercises(generation.workout),
       totalSets: countWorkoutSets(generation.workout),
+      estimatedMinutes: generation.workout.estimatedMinutes ?? null,
+      movementPatternCounts: countWorkoutMovementPatterns(generation.workout),
       projectedContributionByMuscle,
     });
 

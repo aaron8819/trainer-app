@@ -665,6 +665,64 @@ describe("buildWorkoutAuditArtifact", () => {
     });
   });
 
+  it("serializes current-week-audit payloads as projected-week output plus guidance fields", () => {
+    const artifact = buildWorkoutAuditArtifact(
+      {
+        mode: "current-week-audit",
+        userId: "user-1",
+      },
+      {
+        ...baseRun,
+        context: {
+          mode: "current-week-audit",
+          requestedMode: "current-week-audit",
+          userId: "user-1",
+          plannerDiagnosticsMode: "standard",
+          projectedWeekVolume: {
+            enabled: true,
+          },
+        },
+        generationResult: undefined,
+        projectedWeekVolume: {
+          version: 1,
+          currentWeek: {
+            mesocycleId: "meso-1",
+            week: 4,
+            phase: "accumulation",
+            blockType: "accumulation",
+          },
+          projectionNotes: [],
+          completedVolumeByMuscle: {},
+          projectedSessions: [],
+          fullWeekByMuscle: [],
+          currentWeekAudit: {
+            belowMEV: [],
+            overMAV: ["Glutes"],
+            underTargetClusters: [],
+            fatigueRisks: ["Glutes projects 2.0 sets over MAV"],
+          },
+          interventionHints: [],
+          sessionRisks: [],
+        },
+      }
+    );
+
+    expect(artifact.mode).toBe("current-week-audit");
+    expect(artifact.projectedWeekVolume).toMatchObject({
+      version: 1,
+      currentWeek: {
+        mesocycleId: "meso-1",
+        week: 4,
+      },
+      currentWeekAudit: {
+        overMAV: ["Glutes"],
+      },
+      interventionHints: [],
+      sessionRisks: [],
+    });
+    expect(artifact.generation).toBeUndefined();
+  });
+
   it("serializes active-mesocycle-slot-reseed payloads without attaching generation fields", () => {
     const artifact = buildWorkoutAuditArtifact(
       {

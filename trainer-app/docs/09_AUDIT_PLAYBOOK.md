@@ -5,7 +5,7 @@ Last reviewed: 2026-03-16
 Purpose: Canonical operational playbook for recurring workout-audit CLI use. This doc tells operators and maintainers which audit to run, what to inspect first, what counts as a red flag, and when to escalate into deeper code-level investigation.
 
 This doc covers:
-- Recurring operational use of `historical-week`, `weekly-retro`, `future-week`, `deload`, and `progression-anchor`
+- Recurring operational use of `historical-week`, `weekly-retro`, `future-week`, `projected-week-volume`, `current-week-audit`, `deload`, and `progression-anchor`
 - Active-mesocycle dry-run reseed review for bounded slot-seed repair
 - Default audit workflows for common review scenarios
 - Artifact-reading guidance for the current audit JSON vocabulary
@@ -44,6 +44,7 @@ This playbook is designed to answer:
 - whether a completed week's actual slot usage, reconciliation drift, and weekly volume landed where expected
 - whether a future-week request used the normal path or rerouted through deload
 - whether the full current week is projected to hit weekly muscle volume targets
+- whether the current week needs small pre-execution adjustment guidance before any sessions start
 - why a progression decision increased, held, or decreased
 - whether warnings, week-close state, or generated-vs-saved drift require follow-up
 
@@ -247,6 +248,49 @@ Escalate when:
 - projected later sessions appear to ignore earlier projected-slot contributions
 - a saved incomplete workout is the real source of truth you need, since this mode intentionally does not redesign around that case
 
+### `current-week-audit`
+
+When to use it:
+- pre-execution current-week decision support before any planned sessions have started
+- "if I run this week as-is, what happens?" checks
+- bounded adjustment review when the full-week projection already answers the volume landing question but needs operator guidance
+
+Primary questions it answers:
+- which projected muscles are below MEV
+- which meaningful under-target clusters are at least 3 effective sets short
+- which muscles are over MAV, with fatigue risks limited to glutes, lower back, and high systemic-fatigue patterns
+- whether any audit-only 2-3 set intervention hints are warranted
+- whether projected sessions carry long-duration, redundant-pattern, or upper/full-body pull-vs-push imbalance risks
+
+Command pattern:
+
+```powershell
+npm run audit:workout -- --env-file .env.local --mode current-week-audit --owner <owner-email>
+```
+
+Inspect first:
+- `projectedWeekVolume.currentWeek`
+- `projectedWeekVolume.fullWeekByMuscle`
+- `projectedWeekVolume.currentWeekAudit`
+- `projectedWeekVolume.interventionHints`
+- `projectedWeekVolume.sessionRisks`
+
+Important interpretation rule:
+- this mode reuses the canonical `projected-week-volume` pipeline
+- `currentWeekAudit`, `interventionHints`, and `sessionRisks` are audit-only guidance fields; they do not mutate mesocycles, modify slot plans, or feed generation/runtime policy
+- use it before session execution; if sessions are already in progress or completed, read the projection notes and consider `projected-week-volume` or `weekly-retro` depending on the question
+
+Common red flags:
+- `currentWeekAudit.belowMEV.length > 0`
+- `currentWeekAudit.underTargetClusters[*].deficit >= 3`
+- `currentWeekAudit.overMAV` includes fatigue-sensitive muscles
+- `sessionRisks` reports long sessions, redundant pattern stacking, or pull-vs-push imbalance in an upper/full-body slot
+
+Escalate when:
+- the guidance contradicts `fullWeekByMuscle`
+- hints suggest additions for muscles already near MAV
+- session risks point at a repeated slot-shape issue across the week rather than an isolated audit readout
+
 ### `active-mesocycle-slot-reseed`
 
 When to use it:
@@ -439,6 +483,14 @@ Escalate when:
 8. Read `fullWeekByMuscle` for projected full-week target / MEV / MAV comparisons.
 9. Escalate if slot order, chaining, or the generation-centric incomplete-workout note makes the answer insufficient.
 
+### Current-week pre-execution guidance
+1. Run `npm run audit:workout -- --env-file .env.local --mode current-week-audit --owner <owner-email>`.
+2. Confirm `projectedWeekVolume.currentWeek` matches the intended active week and phase.
+3. Read `projectedWeekVolume.currentWeekAudit` for below-MEV, over-MAV, meaningful under-target clusters, and fatigue risks.
+4. Read `projectedWeekVolume.interventionHints`; suggestions are bounded audit guidance only and should stay at 2-3 sets.
+5. Read `projectedWeekVolume.sessionRisks` for long sessions, redundant pattern stacking, and upper/full-body pull-vs-push imbalance.
+6. Confirm the unchanged projection landing in `projectedWeekVolume.fullWeekByMuscle` before acting on guidance.
+
 ### Active seeded-slot reseed review
 1. Run `active-mesocycle-slot-reseed`.
 2. Read `executiveSummary` and `recommendation` first.
@@ -483,9 +535,14 @@ Read these fields in this order unless the audit type says otherwise.
 - Use this before interpreting the rest of a `future-week` or `deload` artifact.
 
 ### `projectionNotes`
-- Present for `projected-week-volume`.
+- Present for `projected-week-volume` and `current-week-audit`.
 - Read this before trusting a full-week projection when runtime state contains incomplete workouts.
 - The key question is whether the report is answering the generation-centric runtime-slot question you intended to ask.
+
+### `currentWeekAudit`
+- Present for `current-week-audit`.
+- Read it after confirming `currentWeek` and `projectionNotes`.
+- It is an audit-only evaluation layer over `fullWeekByMuscle` and `projectedSessions`, not generation policy.
 
 ### `activeMesocycleSlotReseed.recommendation`
 - Present for `active-mesocycle-slot-reseed`.
@@ -591,7 +648,8 @@ Boundary rules:
 - Run the narrowest audit mode that matches the question.
 - Read `warningSummary` first.
 - For generated modes, read `generationPath` before interpreting the rest.
-- For `projected-week-volume`, read `projectionNotes` before trusting the full-week answer.
+- For `projected-week-volume` and `current-week-audit`, read `projectionNotes` before trusting the full-week answer.
+- For `current-week-audit`, confirm `currentWeekAudit`, `interventionHints`, and `sessionRisks` agree with `fullWeekByMuscle` and `projectedSessions`.
 - For historical-week, read `comparabilityCoverage` before trusting drift analysis.
 - Use `sessionSnapshot` as the main evidence record.
 - Use `progressionEvidence` for quick inclusion/exclusion triage.

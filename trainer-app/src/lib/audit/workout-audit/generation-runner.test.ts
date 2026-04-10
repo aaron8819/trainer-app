@@ -304,6 +304,96 @@ describe("runWorkoutAuditGeneration", () => {
         week: 2,
       },
     });
+    expect(run.projectedWeekVolume?.currentWeekAudit).toBeUndefined();
+  });
+
+  it("routes current-week-audit through projection and attaches audit-only guidance", async () => {
+    mocks.loadProjectedWeekVolumeReport.mockResolvedValueOnce({
+      currentWeek: {
+        mesocycleId: "meso-1",
+        week: 4,
+        phase: "accumulation",
+        blockType: "accumulation",
+      },
+      projectionNotes: [],
+      completedVolumeByMuscle: {},
+      projectedSessions: [
+        {
+          slotId: "upper_b",
+          intent: "upper",
+          isNext: true,
+          exerciseCount: 6,
+          totalSets: 18,
+          estimatedMinutes: 65,
+          movementPatternCounts: {
+            horizontal_pull: 3,
+            vertical_pull: 1,
+            horizontal_push: 1,
+          },
+          projectedContributionByMuscle: { Lats: 4 },
+        },
+      ],
+      fullWeekByMuscle: [
+        {
+          muscle: "Chest",
+          completedEffectiveSets: 0,
+          projectedNextSessionEffectiveSets: 3,
+          projectedRemainingWeekEffectiveSets: 3,
+          projectedFullWeekEffectiveSets: 6,
+          weeklyTarget: 12,
+          mev: 8,
+          mav: 16,
+          deltaToTarget: -6,
+          deltaToMev: -2,
+          deltaToMav: -10,
+        },
+      ],
+    });
+    const context: WorkoutAuditContext = {
+      mode: "current-week-audit",
+      requestedMode: "current-week-audit",
+      userId: "user-1",
+      plannerDiagnosticsMode: "debug",
+      projectedWeekVolume: {
+        enabled: true,
+      },
+    };
+
+    const run = await runWorkoutAuditGeneration(context);
+
+    expect(mocks.loadProjectedWeekVolumeReport).toHaveBeenCalledWith({
+      userId: "user-1",
+      plannerDiagnosticsMode: "debug",
+    });
+    expect(mocks.generateSessionFromIntent).not.toHaveBeenCalled();
+    expect(mocks.generateDeloadSessionFromIntent).not.toHaveBeenCalled();
+    expect(run.projectedWeekVolume).toMatchObject({
+      version: 1,
+      currentWeek: {
+        mesocycleId: "meso-1",
+        week: 4,
+      },
+      currentWeekAudit: {
+        belowMEV: ["Chest"],
+        underTargetClusters: [{ muscle: "Chest", deficit: 6 }],
+      },
+      interventionHints: [
+        {
+          muscle: "Chest",
+          suggestedSets: 2,
+        },
+      ],
+      sessionRisks: [
+        {
+          slotId: "upper_b",
+          issue: "redundant pattern stacking: horizontal pull appears 3 times",
+        },
+        {
+          slotId: "upper_b",
+          issue: "excessive pull vs push imbalance: pull-pattern exercises 4 vs push 1",
+        },
+      ],
+    });
   });
 
   it("routes weekly-retro through the composed audit builder without touching generation helpers", async () => {

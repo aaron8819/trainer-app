@@ -782,12 +782,18 @@ export default function LogWorkoutClient({
         setActiveSetId(null);
         setExpandedSections((prev) => ({ ...prev, [section]: true }));
         setExpandedExerciseId(exerciseId);
-        void addSetAction(exerciseId);
+        void (async () => {
+          const success = await addSetAction(exerciseId);
+          if (success) {
+            jumpToActiveSet();
+          }
+        })();
       });
     },
     [
       addSetAction,
       exitEditMode,
+      jumpToActiveSet,
       requestEditModeExit,
       setActiveSetId,
       setExpandedExerciseId,

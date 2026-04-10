@@ -971,6 +971,55 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     });
   });
 
+  it("returns to the new active logging context after adding a set", async () => {
+    const user = userEvent.setup();
+    const scrollIntoViewSpy = vi.fn();
+    const scrollToSpy = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoViewSpy,
+    });
+    Object.defineProperty(window, "scrollTo", {
+      configurable: true,
+      value: scrollToSpy,
+    });
+
+    renderClient();
+
+    await user.click(screen.getByRole("button", { name: "Log set" }));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Set 1 OK 50 x 10 @8/ })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: /Set 1 OK 50 x 10 @8/ }));
+    await waitFor(() => {
+      expect(screen.getByTestId("active-set-edit-banner")).toBeInTheDocument();
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    scrollIntoViewSpy.mockClear();
+    scrollToSpy.mockClear();
+
+    const queueRow = screen.getByTestId("queue-row-ex-1");
+    await user.click(within(queueRow).getByRole("button", { name: "+ Add set" }));
+
+    await waitFor(() => {
+      expect(mockedAddSetToExerciseRequest).toHaveBeenCalledWith({
+        workoutId: "workout-1",
+        workoutExerciseId: "ex-1",
+      });
+      expect(screen.queryByTestId("active-set-edit-banner")).not.toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Dumbbell Bench Press" })).toBeInTheDocument();
+      expect(screen.getByText(/Set 3 of 3 .*Extra set/)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Log set" })).toBeInTheDocument();
+      expect(scrollIntoViewSpy).toHaveBeenCalled();
+      expect(scrollToSpy).toHaveBeenCalled();
+    });
+
+    expect(within(queueRow).getByTestId("exercise-set-chip-list")).toBeInTheDocument();
+    expect(within(queueRow).getByRole("button", { name: /Set 3 Extra set/ })).toBeInTheDocument();
+  });
+
   it("keeps append targeting on the new runtime-added set when triggered from edit mode", async () => {
     const user = userEvent.setup();
     mockedAddSetToExerciseRequest

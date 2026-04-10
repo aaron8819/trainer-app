@@ -8,11 +8,13 @@ import { getNextUnloggedSetId } from "@/components/log-workout/useWorkoutLogStat
 import type { SaveWorkoutResponse, WorkoutStatus } from "@/lib/api/workout-save-contract";
 
 vi.mock("@/components/log-workout/api", () => ({
+  addSetToExerciseRequest: vi.fn(),
   logSetRequest: vi.fn(),
   deleteSetLogRequest: vi.fn(),
   saveWorkoutRequest: vi.fn(),
 }));
 
+const mockedAddSetToExerciseRequest = vi.mocked(workoutApi.addSetToExerciseRequest);
 const mockedLogSetRequest = vi.mocked(workoutApi.logSetRequest);
 const mockedDeleteSetLogRequest = vi.mocked(workoutApi.deleteSetLogRequest);
 const mockedSaveWorkoutRequest = vi.mocked(workoutApi.saveWorkoutRequest);
@@ -162,6 +164,9 @@ function WorkoutSessionFlowHarness({
       <button onClick={() => void hook.actions.logSet("set-1")} type="button">
         log-first
       </button>
+      <button onClick={() => void hook.actions.addSet("ex-1")} type="button">
+        add-set
+      </button>
       <button onClick={() => void hook.actions.undo()} type="button">
         undo
       </button>
@@ -192,6 +197,7 @@ function WorkoutSessionFlowHarness({
       <div data-testid="set-1-reps">{data.main[0]?.sets[0]?.actualReps ?? ""}</div>
       <div data-testid="set-1-load">{data.main[0]?.sets[0]?.actualLoad ?? ""}</div>
       <div data-testid="set-1-rpe">{data.main[0]?.sets[0]?.actualRpe ?? ""}</div>
+      <div data-testid="set-ids">{data.main[0]?.sets.map((set) => set.setId).join(",") ?? ""}</div>
       <div data-testid="next-unlogged">{getNextUnloggedSetId(flatSets, loggedSetIds, "set-1") ?? ""}</div>
     </div>
   );
@@ -217,6 +223,20 @@ describe("useWorkoutSessionFlow", () => {
   }
 
   beforeEach(() => {
+    mockedAddSetToExerciseRequest.mockResolvedValue({
+      data: {
+        set: {
+          setId: "set-3",
+          setIndex: 3,
+          targetReps: 10,
+          targetLoad: 50,
+          targetRpe: 8,
+          restSeconds: 120,
+          isRuntimeAdded: true,
+        },
+      },
+      error: null,
+    });
     mockedLogSetRequest.mockResolvedValue({ data: { status: "ok", wasCreated: true }, error: null });
     mockedDeleteSetLogRequest.mockResolvedValue({ data: { status: "ok" }, error: null });
     mockedSaveWorkoutRequest.mockResolvedValue(makeSaveWorkoutResponse("COMPLETED"));
@@ -253,6 +273,23 @@ describe("useWorkoutSessionFlow", () => {
     expect(callbacks.clearDraftSpy).toHaveBeenCalledWith("set-1");
     expect(callbacks.clearDraftInputBuffersSpy).toHaveBeenCalledWith("set-1");
     expect(callbacks.setFieldPrefilledSpy).toHaveBeenCalledTimes(3);
+  });
+
+  it("adds a set, appends it to the exercise, and makes the new set active", async () => {
+    const callbacks = createCallbacks();
+
+    render(<WorkoutSessionFlowHarness callbacks={callbacks} />);
+    fireEvent.click(screen.getByRole("button", { name: "add-set" }));
+
+    await waitFor(() => {
+      expect(mockedAddSetToExerciseRequest).toHaveBeenCalledWith({
+        workoutId: "workout-1",
+        workoutExerciseId: "ex-1",
+      });
+      expect(screen.getByTestId("set-ids")).toHaveTextContent("set-1,set-2,set-3");
+      expect(screen.getByTestId("active-set-id")).toHaveTextContent("set-3");
+      expect(screen.getByTestId("status")).toHaveTextContent("Extra set added.");
+    });
   });
 
   it("undoes a created set log and restores the previous rest timer", async () => {

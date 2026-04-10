@@ -357,10 +357,10 @@ describe("getCloseoutSuggestions", () => {
           projectedNextSessionEffectiveSets: 0,
           projectedRemainingWeekEffectiveSets: 0,
           projectedFullWeekEffectiveSets: 5,
-          weeklyTarget: 9,
+          weeklyTarget: 8,
           mev: 6,
           mav: 14,
-          deltaToTarget: -4,
+          deltaToTarget: -3,
           deltaToMev: -1,
           deltaToMav: -9,
         },
@@ -456,5 +456,108 @@ describe("getCloseoutSuggestions", () => {
 
     expect(suggestions).toEqual([]);
     expect(mocks.exerciseFindMany).not.toHaveBeenCalled();
+  });
+
+  it("falls back to recent candidates when a deficit muscle has no non-recent pool", async () => {
+    mocks.workoutFindFirst.mockResolvedValue(
+      buildWorkout({
+        exercises: [
+          {
+            id: "we-1",
+            orderIndex: 0,
+            exerciseId: "existing-chest",
+            name: "Machine Chest Fly",
+            primaryMuscles: ["Chest"],
+            setCount: 2,
+          },
+          {
+            id: "we-2",
+            orderIndex: 1,
+            exerciseId: "existing-triceps",
+            name: "Rope Pressdown",
+            primaryMuscles: ["Triceps"],
+            setCount: 2,
+          },
+          {
+            id: "we-3",
+            orderIndex: 2,
+            exerciseId: "curl",
+            name: "Cable Curl",
+            primaryMuscles: ["Forearms"],
+            setCount: 2,
+          },
+        ],
+      })
+    );
+    mocks.loadProjectedWeekVolumeReport.mockResolvedValue({
+      currentWeek: {
+        mesocycleId: "meso-1",
+        week: 1,
+        phase: "accumulation",
+        blockType: "accumulation",
+      },
+      projectionNotes: [],
+      completedVolumeByMuscle: {},
+      projectedSessions: [],
+      fullWeekByMuscle: [
+        {
+          muscle: "Biceps",
+          completedEffectiveSets: 2,
+          projectedNextSessionEffectiveSets: 0,
+          projectedRemainingWeekEffectiveSets: 0,
+          projectedFullWeekEffectiveSets: 4,
+          weeklyTarget: 8,
+          mev: 6,
+          mav: 14,
+          deltaToTarget: -4,
+          deltaToMev: -2,
+          deltaToMav: -10,
+        },
+      ],
+    });
+    mocks.loadMesocycleWeekMuscleVolume.mockResolvedValue({
+      Biceps: { directSets: 2, indirectSets: 0, effectiveSets: 2 },
+    });
+    mocks.exerciseExposureFindMany.mockResolvedValue([
+      { exerciseName: "Cable Curl" },
+      { exerciseName: "Heavy Hammer Curl" },
+      { exerciseName: "Preacher Curl" },
+    ]);
+    mocks.exerciseFindMany.mockResolvedValue([
+      buildExercise({
+        id: "curl",
+        name: "Cable Curl",
+        primaryMuscles: ["Biceps"],
+        fatigueCost: 2,
+      }),
+      buildExercise({
+        id: "hammer-curl-heavy",
+        name: "Heavy Hammer Curl",
+        primaryMuscles: ["Biceps"],
+        fatigueCost: 5,
+      }),
+      buildExercise({
+        id: "preacher-curl",
+        name: "Preacher Curl",
+        primaryMuscles: ["Biceps"],
+        fatigueCost: 2,
+      }),
+    ]);
+
+    const suggestions = await getCloseoutSuggestions({
+      workoutId: "workout-closeout",
+      userId: "user-1",
+    });
+
+    expect(suggestions).toHaveLength(1);
+    expect(suggestions[0]).toMatchObject({
+      muscle: "Biceps",
+      exerciseId: "preacher-curl",
+      sets: 2,
+    });
+    expect(suggestions.find((suggestion) => suggestion.exerciseId === "curl")).toBeUndefined();
+    expect(
+      suggestions.find((suggestion) => suggestion.exerciseId === "hammer-curl-heavy")
+    ).toBeUndefined();
   });
 });

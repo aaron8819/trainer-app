@@ -248,6 +248,28 @@ function compareExercisesForMuscle(
   return left.id.localeCompare(right.id);
 }
 
+function selectCandidateForMuscle(input: {
+  targetMuscle: string;
+  exercises: CandidateExercise[];
+  selectedExerciseIds: Set<string>;
+  recentlyUsedNames: Set<string>;
+}): CandidateExercise | undefined {
+  const pool = input.exercises
+    .filter((exercise) => !input.selectedExerciseIds.has(exercise.id))
+    .filter((exercise) => toPrimaryMuscles(exercise.exerciseMuscles).includes(input.targetMuscle));
+
+  const strictCandidate = [...pool]
+    .filter((exercise) => !input.recentlyUsedNames.has(exercise.name))
+    .sort((left, right) => compareExercisesForMuscle(input.targetMuscle, left, right))[0];
+  if (strictCandidate) {
+    return strictCandidate;
+  }
+
+  return [...pool].sort((left, right) =>
+    compareExercisesForMuscle(input.targetMuscle, left, right)
+  )[0];
+}
+
 function formatRepRange(min: number, max: number): string {
   return min === max ? String(min) : `${min}-${max}`;
 }
@@ -428,9 +450,6 @@ export async function getCloseoutSuggestions(input: {
     if (currentCoverage.exerciseNames.has(exercise.name)) {
       return false;
     }
-    if (recentlyUsedNames.has(exercise.name)) {
-      return false;
-    }
 
     return (exercise.fatigueCost ?? MAX_FATIGUE_COST) <= MAX_FATIGUE_COST;
   });
@@ -456,10 +475,12 @@ export async function getCloseoutSuggestions(input: {
       continue;
     }
 
-    const candidate = filteredExercises
-      .filter((exercise) => !selectedExerciseIds.has(exercise.id))
-      .filter((exercise) => toPrimaryMuscles(exercise.exerciseMuscles).includes(deficit.muscle))
-      .sort((left, right) => compareExercisesForMuscle(deficit.muscle, left, right))[0];
+    const candidate = selectCandidateForMuscle({
+      targetMuscle: deficit.muscle,
+      exercises: filteredExercises,
+      selectedExerciseIds,
+      recentlyUsedNames,
+    });
 
     if (!candidate) {
       continue;

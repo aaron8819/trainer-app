@@ -930,7 +930,7 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     });
   });
 
-  it("keeps leave-for-now in the workout options sheet while a workout is in progress", async () => {
+  it("shows leave-for-now directly after the first logged set while keeping skip in the options sheet", async () => {
     const user = userEvent.setup();
     renderClient();
 
@@ -938,12 +938,12 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     expect(screen.queryByRole("button", { name: "Finish workout" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Log set" }));
+    expect(screen.getByRole("button", { name: "Leave for now" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "... Workout options" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Finish workout" })).not.toBeInTheDocument();
 
     await openWorkoutOptions(user);
 
-    expect(screen.getByRole("button", { name: "Leave for now" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Skip workout" })).toBeInTheDocument();
   });
 
@@ -964,6 +964,7 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     );
     expect(finishBar.style.bottom).toBe("");
     expect(finishBar.style.getPropertyValue("--workout-footer-viewport-offset")).toBe("0px");
+    expect(screen.getByRole("button", { name: "Leave for now" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Finish workout" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "... Workout options" })).not.toBeInTheDocument();
     expect((container.firstChild as HTMLElement).style.paddingBottom).toContain("var(--mobile-nav-height)");
@@ -1467,7 +1468,6 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     renderClient();
 
     await user.click(screen.getByRole("button", { name: "Log set" }));
-    await openWorkoutOptions(user);
     await user.click(screen.getByRole("button", { name: "Leave for now" }));
     await user.click(screen.getByRole("button", { name: "Confirm" }));
 

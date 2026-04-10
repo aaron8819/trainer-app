@@ -38,6 +38,7 @@ export function WorkoutSessionActions({
   onConfirmSkip,
 }: WorkoutSessionActionsProps) {
   const [optionsOpen, setOptionsOpen] = useState(false);
+  const canLeaveForNow = loggedCount > 0;
 
   if (skipped) {
     return (
@@ -56,7 +57,17 @@ export function WorkoutSessionActions({
   return (
     <>
       {!showFinishBar ? (
-        <div className="flex justify-center">
+        <div className="flex flex-wrap justify-center gap-3">
+          {canLeaveForNow ? (
+            <button
+              className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 px-5 text-sm font-semibold text-slate-700 disabled:opacity-60"
+              onClick={onLeaveForNow}
+              disabled={sessionActionPending}
+              type="button"
+            >
+              Leave for now
+            </button>
+          ) : null}
           <button
             className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 px-5 text-sm font-semibold text-slate-700 disabled:opacity-60"
             onClick={() => setOptionsOpen(true)}
@@ -71,19 +82,8 @@ export function WorkoutSessionActions({
       <SlideUpSheet isOpen={optionsOpen} onClose={() => setOptionsOpen(false)} title="Workout options">
         <div className="space-y-4">
           <p className="text-sm text-slate-600">
-            {loggedCount}/{totalSets} sets logged. Rare session actions live here so logging stays primary.
+            {loggedCount}/{totalSets} sets logged. Skip controls live here so logging stays primary.
           </p>
-          <button
-            className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-slate-300 px-6 py-2 text-sm font-semibold text-slate-700 disabled:opacity-60"
-            onClick={() => {
-              setOptionsOpen(false);
-              onLeaveForNow();
-            }}
-            disabled={sessionActionPending}
-            type="button"
-          >
-            Leave for now
-          </button>
           <div className="rounded-2xl border border-rose-200 bg-rose-50 p-3">
             <button
               className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-rose-300 px-6 py-2 text-sm font-semibold text-rose-700 disabled:opacity-60"
@@ -129,14 +129,26 @@ export function WorkoutSessionActions({
       </SlideUpSheet>
 
       {showFinishBar ? (
-        <button
-          className="inline-flex min-h-14 w-full items-center justify-center rounded-full bg-slate-900 px-6 py-3 text-base font-semibold text-white disabled:opacity-60"
-          onClick={onFinish}
-          disabled={sessionActionPending}
-          type="button"
-        >
-          {finishActionLabel}
-        </button>
+        <div className="flex flex-col gap-3 sm:flex-row">
+          {canLeaveForNow ? (
+            <button
+              className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-slate-300 px-6 py-2 text-sm font-semibold text-slate-700 disabled:opacity-60 sm:w-auto sm:px-5"
+              onClick={onLeaveForNow}
+              disabled={sessionActionPending}
+              type="button"
+            >
+              Leave for now
+            </button>
+          ) : null}
+          <button
+            className="inline-flex min-h-14 w-full items-center justify-center rounded-full bg-slate-900 px-6 py-3 text-base font-semibold text-white disabled:opacity-60"
+            onClick={onFinish}
+            disabled={sessionActionPending}
+            type="button"
+          >
+            {finishActionLabel}
+          </button>
+        </div>
       ) : null}
     </>
   );

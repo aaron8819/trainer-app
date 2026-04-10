@@ -53,6 +53,7 @@ export function useSetDraft({
   const [savingDraftSetId, setSavingDraftSetId] = useState<string | null>(null);
   const [lastSavedDraft, setLastSavedDraft] = useState<SavedDraftStatus>(null);
   const saveTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const pendingDraftsRef = useRef<Record<string, SetDraftBuffers>>({});
   const restoredOnceRef = useRef<Set<string>>(new Set());
   const stableSetIds = useMemo(() => Array.from(new Set(setIds)), [setIds]);
   const stableSetIdsKey = useMemo(() => stableSetIds.join("|"), [stableSetIds]);
@@ -95,34 +96,104 @@ export function useSetDraft({
     return () => clearTimeout(syncTimeout);
   }, [onRestore, stableSetIdsKey, workoutId]);
 
+  const persistDraft = useCallback(
+    (setId: string, values: SetDraftBuffers, options?: { updateState?: boolean }) => {
+      const payload: DraftPayload = {
+        reps: values.reps ?? "",
+        load: values.load ?? "",
+        rpe: values.rpe ?? "",
+        savedAt: Date.now(),
+      };
+      window.localStorage.setItem(getDraftKey(workoutId, setId), JSON.stringify(payload));
+      delete pendingDraftsRef.current[setId];
+      delete saveTimersRef.current[setId];
+      if (options?.updateState === false) {
+        return;
+      }
+      setSavingDraftSetId((prev) => (prev === setId ? null : prev));
+      setLastSavedDraft({ setId, savedAt: payload.savedAt });
+    },
+    [workoutId]
+  );
+
+  const flushDraft = useCallback(
+    (setId: string, options?: { updateState?: boolean }) => {
+      const timer = saveTimersRef.current[setId];
+      if (timer) {
+        clearTimeout(timer);
+        delete saveTimersRef.current[setId];
+      }
+      const pendingDraft = pendingDraftsRef.current[setId];
+      if (!pendingDraft) {
+        if (options?.updateState === false) {
+          return;
+        }
+        setSavingDraftSetId((prev) => (prev === setId ? null : prev));
+        return;
+      }
+      persistDraft(setId, pendingDraft, options);
+    },
+    [persistDraft]
+  );
+
+  const flushAllDrafts = useCallback(
+    (options?: { updateState?: boolean }) => {
+      const pendingSetIds = new Set([
+        ...Object.keys(saveTimersRef.current),
+        ...Object.keys(pendingDraftsRef.current),
+      ]);
+      pendingSetIds.forEach((setId) => flushDraft(setId, options));
+    },
+    [flushDraft]
+  );
+
   useEffect(() => {
-    return () => {
-      Object.values(saveTimersRef.current).forEach((timer) => clearTimeout(timer));
-      saveTimersRef.current = {};
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        flushAllDrafts();
+      }
     };
-  }, []);
+
+    const handlePageHide = () => {
+      flushAllDrafts();
+    };
+
+    const handleFocusOut = (event: FocusEvent) => {
+      const target = event.target;
+      if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)) {
+        return;
+      }
+      flushAllDrafts();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    document.addEventListener("focusout", handleFocusOut, true);
+    window.addEventListener("pagehide", handlePageHide);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      document.removeEventListener("focusout", handleFocusOut, true);
+      window.removeEventListener("pagehide", handlePageHide);
+      flushAllDrafts({ updateState: false });
+    };
+  }, [flushAllDrafts]);
 
   const saveDraft = useCallback(
     (setId: string, values: SetDraftBuffers) => {
-      const key = getDraftKey(workoutId, setId);
       if (saveTimersRef.current[setId]) {
         clearTimeout(saveTimersRef.current[setId]);
       }
+      pendingDraftsRef.current[setId] = {
+        reps: values.reps ?? "",
+        load: values.load ?? "",
+        rpe: values.rpe ?? "",
+      };
       setSavingDraftSetId(setId);
       saveTimersRef.current[setId] = setTimeout(() => {
-        const payload: DraftPayload = {
-          reps: values.reps ?? "",
-          load: values.load ?? "",
-          rpe: values.rpe ?? "",
-          savedAt: Date.now(),
-        };
-        window.localStorage.setItem(key, JSON.stringify(payload));
-        delete saveTimersRef.current[setId];
-        setSavingDraftSetId((prev) => (prev === setId ? null : prev));
-        setLastSavedDraft({ setId, savedAt: payload.savedAt });
+        flushDraft(setId);
       }, DRAFT_WRITE_DEBOUNCE_MS);
     },
-    [workoutId]
+    [flushDraft]
   );
 
   const clearDraft = useCallback(
@@ -132,6 +203,7 @@ export function useSetDraft({
         clearTimeout(timer);
         delete saveTimersRef.current[setId];
       }
+      delete pendingDraftsRef.current[setId];
       window.localStorage.removeItem(getDraftKey(workoutId, setId));
       restoredOnceRef.current.delete(`${workoutId}:${setId}`);
       setSavingDraftSetId((prev) => (prev === setId ? null : prev));
@@ -152,6 +224,7 @@ export function useSetDraft({
         clearTimeout(timer);
         delete saveTimersRef.current[setId];
       }
+      delete pendingDraftsRef.current[setId];
       window.localStorage.removeItem(getDraftKey(workoutId, setId));
       restoredOnceRef.current.delete(`${workoutId}:${setId}`);
     });

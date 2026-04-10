@@ -212,9 +212,12 @@ describe("loadHomePageData", () => {
       closeout: {
         visible: false,
         workoutId: null,
+        weekCloseId: null,
         status: null,
         targetWeek: null,
         isIncomplete: false,
+        isPriorWeek: false,
+        canCreate: false,
       },
     });
   });
@@ -310,9 +313,12 @@ describe("loadHomePageData", () => {
       closeout: {
         visible: false,
         workoutId: null,
+        weekCloseId: null,
         status: null,
         targetWeek: null,
         isIncomplete: false,
+        isPriorWeek: false,
+        canCreate: false,
       },
     });
 
@@ -367,9 +373,12 @@ describe("loadHomePageData", () => {
       closeout: {
         visible: true,
         workoutId: "workout-closeout",
+        weekCloseId: null,
         status: "planned",
         targetWeek: 2,
         isIncomplete: true,
+        isPriorWeek: false,
+        canCreate: false,
       },
     });
 
@@ -380,6 +389,7 @@ describe("loadHomePageData", () => {
       nextSessionReasonLabel: "Next in sequence",
     });
     expect(result.closeout).toEqual({
+      title: "Closeout",
       workoutId: "workout-closeout",
       status: "planned",
       statusLabel: "Planned",
@@ -387,6 +397,75 @@ describe("loadHomePageData", () => {
         "Optional manual closeout work for this week. It can add actual weekly volume without becoming your next canonical session.",
       actionHref: "/log/workout-closeout",
       actionLabel: "Open closeout",
+    });
+  });
+
+  it("adds a previous-week create closeout summary without altering the canonical next-session decision", async () => {
+    mocks.loadHomeProgramSupport.mockResolvedValue({
+      nextSession: {
+        intent: "upper",
+        slotId: "upper_a",
+        slotSequenceIndex: 0,
+        slotSequenceLength: 4,
+        slotSource: "mesocycle_slot_sequence",
+        weekInMeso: 4,
+        sessionInWeek: 1,
+        workoutId: null,
+        isExisting: false,
+      },
+      lastSessionSkipped: false,
+      latestIncomplete: null,
+      gapFill: {
+        eligible: false,
+        visible: false,
+        reason: "out_of_scope_for_active_week",
+        weekCloseId: "wc-3",
+        anchorWeek: 3,
+        targetWeek: 3,
+        targetPhase: "ACCUMULATION",
+        resolution: null,
+        workflowState: "PENDING_OPTIONAL_GAP_FILL",
+        deficitState: "OPEN",
+        remainingDeficitSets: 4,
+        targetMuscles: ["Chest"],
+        deficitSummary: [{ muscle: "Chest", target: 12, actual: 8, deficit: 4 }],
+        alreadyUsedThisWeek: false,
+        suppressedByStartedNextWeek: false,
+        linkedWorkout: null,
+        policy: {
+          requiredSessionsPerWeek: 4,
+          maxOptionalGapFillSessionsPerWeek: 1,
+          maxGeneratedHardSets: 12,
+          maxGeneratedExercises: 4,
+        },
+      },
+      closeout: {
+        visible: true,
+        workoutId: null,
+        weekCloseId: "wc-3",
+        status: null,
+        targetWeek: 3,
+        isIncomplete: false,
+        isPriorWeek: true,
+        canCreate: true,
+      },
+    });
+
+    const result = await loadHomePageData("user-1");
+
+    expect(result.decision).toMatchObject({
+      nextSessionLabel: "Upper 1",
+      activeWeekLabel: "Week 4 - Session 1 of 4",
+    });
+    expect(result.closeout).toEqual({
+      title: "Week 3 Closeout (Optional)",
+      workoutId: null,
+      status: "available",
+      statusLabel: "Available",
+      detail:
+        "Week 3 closeout is still available after rollover. It remains optional and does not change Week 4 continuity.",
+      actionHref: "/api/mesocycles/week-close/wc-3/closeout",
+      actionLabel: "Create Week 3 closeout",
     });
   });
 });

@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => {
   const loadProgramDashboardData = vi.fn();
   const loadProjectedWeekVolumeReport = vi.fn();
   const loadNextWorkoutContext = vi.fn();
+  const findRelevantWeekCloseForUser = vi.fn();
   const mesocycleFindFirst = vi.fn();
   const constraintsFindUnique = vi.fn();
   const workoutFindMany = vi.fn();
@@ -12,6 +13,7 @@ const mocks = vi.hoisted(() => {
     loadProgramDashboardData,
     loadProjectedWeekVolumeReport,
     loadNextWorkoutContext,
+    findRelevantWeekCloseForUser,
     mesocycleFindFirst,
     constraintsFindUnique,
     workoutFindMany,
@@ -59,6 +61,10 @@ vi.mock("./next-session", async (importOriginal) => {
     loadNextWorkoutContext: (...args: unknown[]) => mocks.loadNextWorkoutContext(...args),
   };
 });
+
+vi.mock("./mesocycle-week-close", () => ({
+  findRelevantWeekCloseForUser: (...args: unknown[]) => mocks.findRelevantWeekCloseForUser(...args),
+}));
 
 import { buildMesocycleSlotSequence } from "./mesocycle-slot-contract";
 import { buildProgramCurrentWeekPlan, loadProgramPageData } from "./program-page";
@@ -371,6 +377,7 @@ describe("loadProgramPageData", () => {
     mocks.constraintsFindUnique.mockResolvedValue({
       weeklySchedule: ["UPPER", "LOWER", "UPPER"],
     });
+    mocks.findRelevantWeekCloseForUser.mockResolvedValue(null);
     mocks.workoutFindMany.mockResolvedValue([
       {
         id: "planned-upper",
@@ -499,6 +506,7 @@ describe("loadProgramPageData", () => {
       },
     });
     expect(result.closeout).toEqual({
+      title: "Closeout",
       workoutId: "closeout-planned",
       status: "planned",
       statusLabel: "Planned",
@@ -558,5 +566,96 @@ describe("loadProgramPageData", () => {
       at_mrv: 0,
     });
     expect(result.advancedActions.availableActions).toEqual(["deload", "extend_phase", "reset"]);
+  });
+
+  it("surfaces a previous-week closeout create action without adding it to the current week slot map", async () => {
+    mocks.loadProgramDashboardData.mockResolvedValue({
+      activeMeso: {
+        mesoNumber: 2,
+        focus: "Strength-Hypertrophy",
+        durationWeeks: 5,
+        completedSessions: 12,
+        volumeTarget: "moderate",
+        currentBlockType: "accumulation",
+        blocks: [{ blockType: "accumulation", startWeek: 1, durationWeeks: 4 }],
+      },
+      currentWeek: 4,
+      viewedWeek: 4,
+      viewedBlockType: "accumulation",
+      sessionsUntilDeload: 4,
+      volumeThisWeek: [],
+      deloadReadiness: null,
+      rirTarget: { min: 0, max: 1 },
+      coachingCue: "Hold quality as volume peaks.",
+    });
+    mocks.mesocycleFindFirst.mockResolvedValue({
+      id: "meso-1",
+      startWeek: 0,
+      durationWeeks: 5,
+      accumulationSessionsCompleted: 12,
+      deloadSessionsCompleted: 0,
+      sessionsPerWeek: 4,
+      state: "ACTIVE_ACCUMULATION",
+      slotSequenceJson: buildMesocycleSlotSequence([
+        { slotId: "upper_a", intent: "UPPER" },
+        { slotId: "lower_a", intent: "LOWER" },
+        { slotId: "upper_b", intent: "UPPER" },
+        { slotId: "lower_b", intent: "LOWER" },
+      ]),
+      macroCycle: { startDate: new Date("2026-03-02T00:00:00.000Z") },
+    });
+    mocks.loadNextWorkoutContext.mockResolvedValue({
+      intent: "upper",
+      slotId: "upper_a",
+      slotSequenceIndex: 0,
+      slotSequenceLength: 4,
+      slotSource: "mesocycle_slot_sequence",
+      existingWorkoutId: null,
+      isExisting: false,
+      source: "rotation",
+      weekInMeso: 4,
+      sessionInWeek: 1,
+      derivationTrace: [],
+      selectedIncompleteStatus: null,
+    });
+    mocks.findRelevantWeekCloseForUser.mockResolvedValue({
+      id: "wc-3",
+      mesocycleId: "meso-1",
+      targetWeek: 3,
+      targetPhase: "ACCUMULATION",
+      status: "PENDING_OPTIONAL_GAP_FILL",
+      resolution: null,
+      deficitSnapshot: null,
+      weekCloseState: {
+        workflowState: "PENDING_OPTIONAL_GAP_FILL",
+        deficitState: "OPEN",
+        remainingDeficitSets: 4,
+        remainingQualifyingMuscleCount: 1,
+        remainingTopTargetMuscles: ["Chest"],
+        remainingMuscles: [{ muscle: "Chest", target: 12, actual: 8, deficit: 4 }],
+      },
+      optionalWorkout: null,
+    });
+    mocks.workoutFindMany.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+
+    const result = await loadProgramPageData("user-1");
+
+    expect(result.currentWeekPlan?.week).toBe(4);
+    expect(result.currentWeekPlan?.slots.map((slot) => slot.label)).toEqual([
+      "Upper 1",
+      "Lower 1",
+      "Upper 2",
+      "Lower 2",
+    ]);
+    expect(result.closeout).toEqual({
+      title: "Week 3 Closeout (Optional)",
+      workoutId: null,
+      status: "available",
+      statusLabel: "Available",
+      detail:
+        "Week 3 closeout is still available after rollover. It stays separate from Week 4 and does not become a slot.",
+      actionHref: "/api/mesocycles/week-close/wc-3/closeout",
+      actionLabel: "Create Week 3 closeout",
+    });
   });
 });

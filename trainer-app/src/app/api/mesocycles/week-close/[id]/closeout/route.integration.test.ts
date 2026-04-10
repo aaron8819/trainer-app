@@ -32,7 +32,7 @@ vi.mock("@/lib/api/mesocycle-week-close", async (importOriginal) => {
   };
 });
 
-import { POST } from "./route";
+import { GET, POST } from "./route";
 
 describe("POST /api/mesocycles/week-close/[id]/closeout", () => {
   beforeEach(() => {
@@ -115,6 +115,22 @@ describe("POST /api/mesocycles/week-close/[id]/closeout", () => {
     });
   });
 
+  it("creates a closeout scaffold and redirects to logging for link-based creation", async () => {
+    const response = await GET(
+      new Request("http://localhost/api/mesocycles/week-close/wc-1/closeout", {
+        method: "GET",
+      }),
+      { params: Promise.resolve({ id: "wc-1" }) }
+    );
+
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toBe("http://localhost/log/workout-closeout-1");
+    expect(mocks.createCloseoutSessionForWeek).toHaveBeenCalledWith(mocks.tx, {
+      userId: "user-1",
+      weekCloseId: "wc-1",
+    });
+  });
+
   it("returns 404 when the week-close row is not found for the user", async () => {
     mocks.createCloseoutSessionForWeek.mockRejectedValueOnce(new Error("WEEK_CLOSE_NOT_FOUND"));
 
@@ -145,7 +161,7 @@ describe("POST /api/mesocycles/week-close/[id]/closeout", () => {
 
     expect(response.status).toBe(409);
     await expect(response.json()).resolves.toMatchObject({
-      error: "A closeout session already exists for this active week.",
+      error: "A closeout session already exists for this closeout window.",
     });
   });
 });

@@ -20,12 +20,14 @@ import {
 import {
   buildCurrentWeekCloseoutSupport,
   computeMesoWeekStart,
+  isCloseoutWeekInScope,
   loadProgramDashboardData,
   type CloseoutSupportData,
   type DeloadReadiness,
   type ProgramDashboardData,
   type ProgramMesoBlock,
 } from "./program";
+import { findRelevantWeekCloseForUser } from "./mesocycle-week-close";
 import {
   classifyMuscleOutcome,
   type MuscleOutcomeStatus,
@@ -95,13 +97,22 @@ export type ProgramCurrentWeekPlan = {
 };
 
 export type ProgramCloseoutSummary = {
-  workoutId: string;
+  title: string;
+  workoutId: string | null;
   status: string;
   statusLabel: string;
   detail: string;
   actionHref: string;
   actionLabel: string;
 };
+
+function formatCloseoutTitle(
+  closeout: Pick<CloseoutSupportData, "isPriorWeek" | "targetWeek">
+): string {
+  return closeout.isPriorWeek && closeout.targetWeek != null
+    ? `Week ${closeout.targetWeek} Closeout (Optional)`
+    : "Closeout";
+}
 
 export type ProgramNextSessionImpact = {
   slotLabel: string;
@@ -364,8 +375,32 @@ function formatCloseoutStatusLabel(value: string | null): string | null {
 function buildProgramCloseoutSummary(
   closeout: CloseoutSupportData
 ): ProgramCloseoutSummary | null {
-  if (!closeout.visible || !closeout.workoutId || !closeout.status) {
+  if (!closeout.visible) {
     return null;
+  }
+
+  const title = formatCloseoutTitle(closeout);
+
+  if (!closeout.workoutId || !closeout.status) {
+    if (!closeout.canCreate || !closeout.weekCloseId || closeout.targetWeek == null) {
+      return null;
+    }
+
+    const currentWeekLabel =
+      closeout.isPriorWeek ? `Week ${closeout.targetWeek + 1}` : "this week";
+
+    return {
+      title,
+      workoutId: null,
+      status: "available",
+      statusLabel: "Available",
+      detail: closeout.isPriorWeek
+        ? `Week ${closeout.targetWeek} closeout is still available after rollover. It stays separate from ${currentWeekLabel} and does not become a slot.`
+        : "Optional manual closeout work is available for this week. It stays separate from the canonical slot plan.",
+      actionHref: `/api/mesocycles/week-close/${closeout.weekCloseId}/closeout`,
+      actionLabel:
+        closeout.isPriorWeek ? `Create Week ${closeout.targetWeek} closeout` : "Create closeout",
+    };
   }
 
   const normalizedStatus = closeout.status.trim().toUpperCase();
@@ -373,11 +408,14 @@ function buildProgramCloseoutSummary(
 
   if (normalizedStatus === "COMPLETED") {
     return {
+      title,
       workoutId: closeout.workoutId,
       status: closeout.status,
       statusLabel,
       detail:
-        "Completed closeout is part of this week's actual landing, but it does not extend the remaining canonical slot plan.",
+        closeout.isPriorWeek && closeout.targetWeek != null
+          ? `Completed Week ${closeout.targetWeek} closeout is part of that week's actual landing, but it does not extend your current slot plan.`
+          : "Completed closeout is part of this week's actual landing, but it does not extend the remaining canonical slot plan.",
       actionHref: `/workout/${closeout.workoutId}`,
       actionLabel: "Review closeout",
     };
@@ -385,22 +423,28 @@ function buildProgramCloseoutSummary(
 
   if (normalizedStatus === "SKIPPED") {
     return {
+      title,
       workoutId: closeout.workoutId,
       status: closeout.status,
       statusLabel,
       detail:
-        "Skipped closeout stays separate from the slot map and leaves next-session continuity unchanged.",
+        closeout.isPriorWeek && closeout.targetWeek != null
+          ? `Skipped Week ${closeout.targetWeek} closeout stays separate from your current slot map and leaves continuity unchanged.`
+          : "Skipped closeout stays separate from the slot map and leaves next-session continuity unchanged.",
       actionHref: `/workout/${closeout.workoutId}`,
       actionLabel: "View closeout",
     };
   }
 
   return {
+    title,
     workoutId: closeout.workoutId,
     status: closeout.status,
     statusLabel,
     detail:
-      "Optional manual closeout work. It counts toward actual weekly volume once performed, but it is not a remaining slot.",
+      closeout.isPriorWeek && closeout.targetWeek != null
+        ? `Optional manual closeout work for Week ${closeout.targetWeek}. It counts toward that week's actual volume once performed, but it is not part of your current slot map.`
+        : "Optional manual closeout work. It counts toward actual weekly volume once performed, but it is not a remaining slot.",
     actionHref: `/log/${closeout.workoutId}`,
     actionLabel: "Open closeout",
   };
@@ -540,27 +584,41 @@ async function loadCurrentWeekPlan(input: {
   currentWeek: number;
   activeMesocycle: ActiveProgramPageMesocycle;
   nextWorkoutContext: NextWorkoutContext;
+  closeoutTargetWeek: number | null;
+  weekCloseId: string | null;
+  weekCloseStatus: "PENDING_OPTIONAL_GAP_FILL" | "RESOLVED" | null;
 }): Promise<{
   plan: ProgramCurrentWeekPlan | null;
   closeout: ProgramCloseoutSummary | null;
 }> {
-  const [constraints, currentWeekWorkouts] = await Promise.all([
+  const mesoStart = new Date(input.activeMesocycle.macroCycle.startDate);
+  mesoStart.setDate(mesoStart.getDate() + input.activeMesocycle.startWeek * 7);
+  const currentWeekStart = computeMesoWeekStart(mesoStart, input.currentWeek);
+  const closeoutTargetWeek = input.closeoutTargetWeek ?? input.currentWeek;
+  const closeoutWeekStart =
+    closeoutTargetWeek === input.currentWeek
+      ? currentWeekStart
+      : computeMesoWeekStart(mesoStart, closeoutTargetWeek);
+
+  const [constraints, currentWeekWorkouts, closeoutWeekWorkouts] = await Promise.all([
     prisma.constraints.findUnique({
       where: { userId: input.userId },
       select: { weeklySchedule: true },
     }),
-    (() => {
-      const mesoStart = new Date(input.activeMesocycle.macroCycle.startDate);
-      mesoStart.setDate(mesoStart.getDate() + input.activeMesocycle.startWeek * 7);
-      const weekStart = computeMesoWeekStart(mesoStart, input.currentWeek);
-
-      return loadCurrentWeekWorkouts({
-        userId: input.userId,
-        mesocycleId: input.activeMesocycle.id,
-        week: input.currentWeek,
-        weekStart,
-      });
-    })(),
+    loadCurrentWeekWorkouts({
+      userId: input.userId,
+      mesocycleId: input.activeMesocycle.id,
+      week: input.currentWeek,
+      weekStart: currentWeekStart,
+    }),
+    closeoutTargetWeek === input.currentWeek
+      ? Promise.resolve(null)
+      : loadCurrentWeekWorkouts({
+          userId: input.userId,
+          mesocycleId: input.activeMesocycle.id,
+          week: closeoutTargetWeek,
+          weekStart: closeoutWeekStart,
+        }),
   ]);
 
   return {
@@ -573,8 +631,11 @@ async function loadCurrentWeekPlan(input: {
     }),
     closeout: buildProgramCloseoutSummary(
       buildCurrentWeekCloseoutSupport({
-        workouts: currentWeekWorkouts,
-        targetWeek: input.currentWeek,
+        workouts: closeoutWeekWorkouts ?? currentWeekWorkouts,
+        activeWeek: input.currentWeek,
+        targetWeek: closeoutTargetWeek,
+        weekCloseId: input.weekCloseId,
+        weekCloseStatus: input.weekCloseStatus,
       })
     ),
   };
@@ -603,6 +664,23 @@ export async function loadProgramPageData(userId: string): Promise<ProgramPageDa
   ]);
 
   const overview = buildProgramPageOverview(dashboard);
+  const relevantWeekClose = activeMesocycle
+    ? await findRelevantWeekCloseForUser({
+        userId,
+        mesocycleId: activeMesocycle.id,
+      })
+    : null;
+  const closeoutTargetWeek =
+    activeMesocycle &&
+    isCloseoutWeekInScope({
+      activeWeek: dashboard.currentWeek,
+      targetWeek:
+        relevantWeekClose?.mesocycleId === activeMesocycle.id
+          ? relevantWeekClose.targetWeek
+          : null,
+    })
+      ? relevantWeekClose?.targetWeek ?? null
+      : dashboard.currentWeek;
   const currentWeekSurface =
     activeMesocycle && dashboard.activeMeso
       ? await loadCurrentWeekPlan({
@@ -610,6 +688,11 @@ export async function loadProgramPageData(userId: string): Promise<ProgramPageDa
           currentWeek: dashboard.currentWeek,
           activeMesocycle,
           nextWorkoutContext,
+          closeoutTargetWeek,
+          weekCloseId:
+            relevantWeekClose?.targetWeek === closeoutTargetWeek ? relevantWeekClose.id : null,
+          weekCloseStatus:
+            relevantWeekClose?.targetWeek === closeoutTargetWeek ? relevantWeekClose.status : null,
         })
       : null;
   const currentWeekPlan = currentWeekSurface?.plan ?? null;

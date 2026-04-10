@@ -289,6 +289,7 @@ describe("ProgramPage", () => {
         nextSessionImpact: null,
       },
       closeout: {
+        title: "Closeout",
         workoutId: "workout-closeout",
         status: "planned",
         statusLabel: "Planned",

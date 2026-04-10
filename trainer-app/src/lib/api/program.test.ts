@@ -1078,9 +1078,76 @@ describe("loadHomeProgramSupport", () => {
     expect(result.closeout).toEqual({
       visible: true,
       workoutId: "workout-closeout",
+      weekCloseId: null,
       status: "planned",
       targetWeek: 4,
       isIncomplete: true,
+      isPriorWeek: false,
+      canCreate: false,
+    });
+  });
+
+  it("surfaces a createable previous-week closeout after rollover without changing next-session support", async () => {
+    setupDashboardMocks(
+      {
+        state: "ACTIVE_ACCUMULATION",
+        sessionsPerWeek: 3,
+        accumulationSessionsCompleted: 10,
+      },
+      4
+    );
+    mocks.constraintsFindUnique.mockResolvedValue({
+      weeklySchedule: ["PUSH", "PULL", "LEGS"],
+    });
+    mocks.workoutFindMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    mocks.findRelevantWeekCloseForUser.mockResolvedValueOnce({
+      id: "wc-3",
+      mesocycleId: "meso-1",
+      targetWeek: 3,
+      targetPhase: "ACCUMULATION",
+      status: "PENDING_OPTIONAL_GAP_FILL",
+      resolution: null,
+      deficitSnapshot: {
+        version: 1,
+        policy: {
+          requiredSessionsPerWeek: 3,
+          maxOptionalGapFillSessionsPerWeek: 1,
+          maxGeneratedHardSets: 12,
+          maxGeneratedExercises: 4,
+        },
+        summary: {
+          totalDeficitSets: 4,
+          qualifyingMuscleCount: 1,
+          topTargetMuscles: ["Chest"],
+        },
+        muscles: [{ muscle: "Chest", target: 12, actual: 8, deficit: 4 }],
+      },
+      weekCloseState: {
+        workflowState: "PENDING_OPTIONAL_GAP_FILL",
+        deficitState: "OPEN",
+        remainingDeficitSets: 4,
+        remainingQualifyingMuscleCount: 1,
+        remainingTopTargetMuscles: ["Chest"],
+        remainingMuscles: [{ muscle: "Chest", target: 12, actual: 8, deficit: 4 }],
+      },
+      optionalWorkout: null,
+    });
+
+    const result = await loadHomeProgramSupport("user-1");
+
+    expect(result.nextSession.weekInMeso).toBe(4);
+    expect(result.closeout).toEqual({
+      visible: true,
+      workoutId: null,
+      weekCloseId: "wc-3",
+      status: null,
+      targetWeek: 3,
+      isIncomplete: false,
+      isPriorWeek: true,
+      canCreate: true,
     });
   });
 
@@ -1146,9 +1213,12 @@ describe("loadHomeProgramSupport", () => {
     expect(result.closeout).toEqual({
       visible: true,
       workoutId: "workout-closeout",
+      weekCloseId: null,
       status: "skipped",
       targetWeek: 4,
       isIncomplete: false,
+      isPriorWeek: false,
+      canCreate: false,
     });
   });
 

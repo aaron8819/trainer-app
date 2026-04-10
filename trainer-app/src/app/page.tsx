@@ -285,7 +285,7 @@ export default async function Home() {
                   <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">
                     Closeout
                   </p>
-                  <p className="mt-2 text-lg font-semibold text-slate-900">Closeout</p>
+                  <p className="mt-2 text-lg font-semibold text-slate-900">{closeout.title}</p>
                   <p className="mt-2 text-sm text-slate-700">{closeout.detail}</p>
                 </div>
                 <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700">
@@ -296,6 +296,7 @@ export default async function Home() {
                 <Link
                   className="inline-flex min-h-11 items-center justify-center rounded-full border border-amber-300 bg-white px-5 py-2 text-sm font-semibold text-slate-900"
                   href={closeout.actionHref}
+                  prefetch={false}
                 >
                   {closeout.actionLabel}
                 </Link>

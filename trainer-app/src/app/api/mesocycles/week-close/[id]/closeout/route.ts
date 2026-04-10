@@ -4,6 +4,43 @@ import { createCloseoutSessionForWeek } from "@/lib/api/mesocycle-week-close";
 import { resolveOwner } from "@/lib/api/workout-context";
 import { prisma } from "@/lib/db/prisma";
 
+async function createCloseoutForRequest(input: {
+  userId: string;
+  weekCloseId: string;
+}) {
+  return prisma.$transaction((tx) =>
+    createCloseoutSessionForWeek(tx, {
+      userId: input.userId,
+      weekCloseId: input.weekCloseId,
+    })
+  );
+}
+
+function buildCloseoutErrorResponse(error: Error) {
+  if (error.message === "WEEK_CLOSE_NOT_FOUND") {
+    return NextResponse.json({ error: "Week-close window not found" }, { status: 404 });
+  }
+
+  if (
+    error.message === "CLOSEOUT_ACTIVE_MESOCYCLE_REQUIRED" ||
+    error.message === "CLOSEOUT_ACTIVE_WEEK_REQUIRED" ||
+    error.message === "CLOSEOUT_DELOAD_WEEK_FORBIDDEN" ||
+    error.message === "CLOSEOUT_ALREADY_EXISTS_FOR_WEEK"
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          error.message === "CLOSEOUT_ALREADY_EXISTS_FOR_WEEK"
+            ? "A closeout session already exists for this closeout window."
+            : "Closeout session creation is only allowed for the current or previous accumulation week in the active mesocycle.",
+      },
+      { status: 409 }
+    );
+  }
+
+  throw error;
+}
+
 export async function POST(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -19,40 +56,45 @@ export async function POST(
   }
 
   try {
-    const workout = await prisma.$transaction((tx) =>
-      createCloseoutSessionForWeek(tx, {
-        userId: user.id,
-        weekCloseId: id,
-      })
-    );
+    const workout = await createCloseoutForRequest({
+      userId: user.id,
+      weekCloseId: id,
+    });
 
     return NextResponse.json({ workout }, { status: 201 });
   } catch (error) {
     if (!(error instanceof Error)) {
       throw error;
     }
+    return buildCloseoutErrorResponse(error);
+  }
+}
 
-    if (error.message === "WEEK_CLOSE_NOT_FOUND") {
-      return NextResponse.json({ error: "Week-close window not found" }, { status: 404 });
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const user = await resolveOwner();
+  if (!user) {
+    return NextResponse.json({ error: "User not found" }, { status: 404 });
+  }
+
+  const { id } = await params;
+  if (!id) {
+    return NextResponse.json({ error: "Week-close id required" }, { status: 400 });
+  }
+
+  try {
+    const workout = await createCloseoutForRequest({
+      userId: user.id,
+      weekCloseId: id,
+    });
+
+    return NextResponse.redirect(new URL(`/log/${workout.id}`, request.url), { status: 303 });
+  } catch (error) {
+    if (!(error instanceof Error)) {
+      throw error;
     }
-
-    if (
-      error.message === "CLOSEOUT_ACTIVE_MESOCYCLE_REQUIRED" ||
-      error.message === "CLOSEOUT_ACTIVE_WEEK_REQUIRED" ||
-      error.message === "CLOSEOUT_DELOAD_WEEK_FORBIDDEN" ||
-      error.message === "CLOSEOUT_ALREADY_EXISTS_FOR_WEEK"
-    ) {
-      return NextResponse.json(
-        {
-          error:
-            error.message === "CLOSEOUT_ALREADY_EXISTS_FOR_WEEK"
-              ? "A closeout session already exists for this active week."
-              : "Closeout session creation is only allowed for the current active accumulation week.",
-        },
-        { status: 409 }
-      );
-    }
-
-    throw error;
+    return buildCloseoutErrorResponse(error);
   }
 }

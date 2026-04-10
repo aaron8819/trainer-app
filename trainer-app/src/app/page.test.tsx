@@ -269,9 +269,12 @@ describe("Home page", () => {
         closeout: {
           visible: true,
           workoutId: "workout-closeout",
+          weekCloseId: null,
           status: "planned",
           targetWeek: 2,
           isIncomplete: true,
+          isPriorWeek: false,
+          canCreate: false,
         },
       },
       decision: {
@@ -289,6 +292,7 @@ describe("Home page", () => {
         nextDueDescriptor: "First lower session this week",
       },
       closeout: {
+        title: "Closeout",
         workoutId: "workout-closeout",
         status: "planned",
         statusLabel: "Planned",

@@ -146,9 +146,12 @@ export type GapFillSupportData = {
 export type CloseoutSupportData = {
   visible: boolean;
   workoutId: string | null;
+  weekCloseId: string | null;
   status: string | null;
   targetWeek: number | null;
   isIncomplete: boolean;
+  isPriorWeek: boolean;
+  canCreate: boolean;
 };
 
 export type CapabilityFlags = {
@@ -417,6 +420,17 @@ function isWeekCloseVisibleOnHome(input: {
   );
 }
 
+export function isCloseoutWeekInScope(input: {
+  activeWeek: number | null;
+  targetWeek: number | null;
+}): boolean {
+  if (input.activeWeek == null || input.targetWeek == null) {
+    return false;
+  }
+
+  return input.targetWeek === input.activeWeek || input.targetWeek === input.activeWeek - 1;
+}
+
 type CloseoutWorkoutCandidate = {
   id: string;
   status: WorkoutStatus;
@@ -434,7 +448,10 @@ const CLOSEOUT_STATUS_PRIORITY: Record<WorkoutStatus, number> = {
 
 export function buildCurrentWeekCloseoutSupport(input: {
   workouts: CloseoutWorkoutCandidate[];
+  activeWeek: number | null;
   targetWeek: number | null;
+  weekCloseId: string | null;
+  weekCloseStatus: "PENDING_OPTIONAL_GAP_FILL" | "RESOLVED" | null;
 }): CloseoutSupportData {
   const closeout = [...input.workouts]
     .filter((workout) => isCloseoutSession(workout.selectionMetadata))
@@ -448,15 +465,29 @@ export function buildCurrentWeekCloseoutSupport(input: {
       return left.scheduledDate.getTime() - right.scheduledDate.getTime();
     })[0] ?? null;
 
+  const canCreate =
+    !closeout &&
+    input.targetWeek != null &&
+    input.weekCloseStatus === "PENDING_OPTIONAL_GAP_FILL" &&
+    Boolean(input.weekCloseId);
+  const resolvedTargetWeek = closeout || canCreate ? input.targetWeek : null;
+  const isPriorWeek =
+    input.activeWeek != null &&
+    resolvedTargetWeek != null &&
+    resolvedTargetWeek < input.activeWeek;
+
   return {
-    visible: Boolean(closeout),
+    visible: Boolean(closeout) || canCreate,
     workoutId: closeout?.id ?? null,
+    weekCloseId: input.weekCloseId,
     status: closeout?.status.toLowerCase() ?? null,
-    targetWeek: closeout ? input.targetWeek : null,
+    targetWeek: resolvedTargetWeek,
     isIncomplete:
       closeout?.status === "PLANNED" ||
       closeout?.status === "IN_PROGRESS" ||
       closeout?.status === "PARTIAL",
+    isPriorWeek,
+    canCreate,
   };
 }
 
@@ -518,12 +549,23 @@ export async function loadHomeProgramSupport(userId: string): Promise<HomeProgra
         mesocycleId: activeMesocycle.id,
       })
     : null;
+  const closeoutTargetWeek =
+    activeMesocycle &&
+    isCloseoutWeekInScope({
+      activeWeek,
+      targetWeek:
+        relevantWeekClose?.mesocycleId === activeMesocycle.id
+          ? relevantWeekClose.targetWeek
+          : null,
+    })
+      ? relevantWeekClose?.targetWeek ?? null
+      : activeWeek;
   const currentWeekCloseoutRows =
-    activeMesocycle && activeWeek != null
+    activeMesocycle && closeoutTargetWeek != null
       ? await (() => {
           const mesoStart = new Date(activeMesocycle.macroCycle.startDate);
           mesoStart.setDate(mesoStart.getDate() + activeMesocycle.startWeek * 7);
-          const weekStart = computeMesoWeekStart(mesoStart, activeWeek);
+          const weekStart = computeMesoWeekStart(mesoStart, closeoutTargetWeek);
           const weekEnd = new Date(weekStart);
           weekEnd.setDate(weekEnd.getDate() + 7);
 
@@ -532,7 +574,7 @@ export async function loadHomeProgramSupport(userId: string): Promise<HomeProgra
               userId,
               mesocycleId: activeMesocycle.id,
               OR: [
-                { mesocycleWeekSnapshot: activeWeek },
+                { mesocycleWeekSnapshot: closeoutTargetWeek },
                 {
                   mesocycleWeekSnapshot: null,
                   scheduledDate: { gte: weekStart, lt: weekEnd },
@@ -620,7 +662,12 @@ export async function loadHomeProgramSupport(userId: string): Promise<HomeProgra
   };
   const closeout = buildCurrentWeekCloseoutSupport({
     workouts: currentWeekCloseoutRows,
-    targetWeek: activeWeek,
+    activeWeek,
+    targetWeek: closeoutTargetWeek ?? null,
+    weekCloseId:
+      relevantWeekClose?.targetWeek === closeoutTargetWeek ? relevantWeekClose.id : null,
+    weekCloseStatus:
+      relevantWeekClose?.targetWeek === closeoutTargetWeek ? relevantWeekClose.status : null,
   });
 
   return {

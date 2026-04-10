@@ -786,7 +786,9 @@ export async function createCloseoutSessionForWeek(
     sessionsPerWeek: activeMesocycle.sessionsPerWeek,
     durationWeeks: activeMesocycle.durationWeeks,
   });
-  if (weekClose.targetWeek !== activeWeek) {
+  const isSupportedCloseoutWeek =
+    weekClose.targetWeek === activeWeek || weekClose.targetWeek === activeWeek - 1;
+  if (!isSupportedCloseoutWeek) {
     throw new Error("CLOSEOUT_ACTIVE_WEEK_REQUIRED");
   }
 

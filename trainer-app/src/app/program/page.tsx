@@ -323,7 +323,7 @@ export default async function ProgramPage() {
                 <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">
                   Closeout
                 </p>
-                <h2 className="mt-1 text-xl font-semibold text-slate-900">Closeout</h2>
+                <h2 className="mt-1 text-xl font-semibold text-slate-900">{closeout.title}</h2>
                 <p className="mt-2 text-sm text-slate-700">{closeout.detail}</p>
               </div>
               <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700">
@@ -334,6 +334,7 @@ export default async function ProgramPage() {
               <Link
                 href={closeout.actionHref}
                 className="inline-flex min-h-11 items-center justify-center rounded-full border border-amber-300 bg-white px-5 py-2 text-sm font-semibold text-slate-900"
+                prefetch={false}
               >
                 {closeout.actionLabel}
               </Link>

@@ -527,6 +527,70 @@ describe("mesocycle week close", () => {
     ).toContain("closeout_session");
   });
 
+  it("creates a closeout scaffold for the previous accumulation week after rollover", async () => {
+    mocks.weekCloseFindFirst.mockResolvedValueOnce({
+      id: "wc-1",
+      targetWeek: 3,
+      targetPhase: "ACCUMULATION",
+      mesocycle: {
+        id: "meso-1",
+        isActive: true,
+        state: "ACTIVE_ACCUMULATION",
+        durationWeeks: 5,
+        accumulationSessionsCompleted: 10,
+        deloadSessionsCompleted: 0,
+        sessionsPerWeek: 3,
+        startWeek: 0,
+        blocks: [
+          {
+            blockType: "ACCUMULATION",
+            startWeek: 1,
+            durationWeeks: 4,
+          },
+        ],
+      },
+    });
+    mocks.workoutCreate.mockResolvedValueOnce({
+      id: "workout-closeout-1",
+      userId: "user-1",
+      scheduledDate: new Date("2026-04-09T12:00:00.000Z"),
+      status: "PLANNED",
+      selectionMode: "MANUAL",
+      sessionIntent: null,
+      selectionMetadata: { weekCloseId: "wc-1" },
+      advancesSplit: false,
+      mesocycleId: "meso-1",
+      mesocycleWeekSnapshot: 3,
+      mesocyclePhaseSnapshot: "ACCUMULATION",
+      mesoSessionSnapshot: 4,
+      revision: 1,
+    });
+
+    const result = await createCloseoutSessionForWeek(mocks.tx as never, {
+      userId: "user-1",
+      weekCloseId: "wc-1",
+    });
+
+    expect(result).toMatchObject({
+      id: "workout-closeout-1",
+      advancesSplit: false,
+      mesocycleId: "meso-1",
+      mesocycleWeekSnapshot: 3,
+      mesocyclePhaseSnapshot: "ACCUMULATION",
+    });
+    expect(mocks.workoutCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          advancesSplit: false,
+          mesocycleId: "meso-1",
+          mesocycleWeekSnapshot: 3,
+          mesocyclePhaseSnapshot: "ACCUMULATION",
+          mesoSessionSnapshot: 4,
+        }),
+      })
+    );
+  });
+
   it("rejects closeout creation when a closeout already exists for the same week", async () => {
     mocks.weekCloseFindFirst.mockResolvedValueOnce({
       id: "wc-1",
@@ -599,10 +663,10 @@ describe("mesocycle week close", () => {
     expect(mocks.workoutCreate).not.toHaveBeenCalled();
   });
 
-  it("rejects closeout creation when the week-close is not for the current active week", async () => {
+  it("rejects closeout creation when the week-close is older than the previous active week", async () => {
     mocks.weekCloseFindFirst.mockResolvedValueOnce({
       id: "wc-1",
-      targetWeek: 3,
+      targetWeek: 2,
       targetPhase: "ACCUMULATION",
       mesocycle: {
         id: "meso-1",

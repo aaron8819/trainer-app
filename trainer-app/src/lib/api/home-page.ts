@@ -36,13 +36,22 @@ export type HomeContinuitySummary = {
 };
 
 export type HomeCloseoutSummary = {
-  workoutId: string;
+  title: string;
+  workoutId: string | null;
   status: string;
   statusLabel: string;
   detail: string;
   actionHref: string;
   actionLabel: string;
 };
+
+function formatCloseoutTitle(
+  closeout: Pick<HomeProgramSupportData["closeout"], "isPriorWeek" | "targetWeek">
+): string {
+  return closeout.isPriorWeek && closeout.targetWeek != null
+    ? `Week ${closeout.targetWeek} Closeout (Optional)`
+    : "Closeout";
+}
 
 export type HomePageData = {
   pendingHandoff: Awaited<ReturnType<typeof loadPendingMesocycleHandoff>>;
@@ -263,18 +272,42 @@ function buildHomeCloseoutSummary(
 ): HomeCloseoutSummary | null {
   const closeout = homeProgram?.closeout;
   if (!closeout?.visible || !closeout.workoutId || !closeout.status) {
-    return null;
+    if (!closeout?.visible || !closeout?.canCreate || !closeout.weekCloseId || closeout.targetWeek == null) {
+      return null;
+    }
+
+    const title = formatCloseoutTitle(closeout);
+    const nextWeekLabel =
+      closeout.isPriorWeek ? `Week ${closeout.targetWeek + 1}` : "your next week";
+
+    return {
+      title,
+      workoutId: null,
+      status: "available",
+      statusLabel: "Available",
+      detail: closeout.isPriorWeek
+        ? `Week ${closeout.targetWeek} closeout is still available after rollover. It remains optional and does not change ${nextWeekLabel} continuity.`
+        : "Optional manual closeout work is still available for this week. It does not replace your canonical next session.",
+      actionHref: `/api/mesocycles/week-close/${closeout.weekCloseId}/closeout`,
+      actionLabel:
+        closeout.isPriorWeek ? `Create Week ${closeout.targetWeek} closeout` : "Create closeout",
+    };
   }
 
   const normalizedStatus = closeout.status.trim().toUpperCase();
   const statusLabel = getWorkoutListStatusLabel(normalizedStatus);
+  const title = formatCloseoutTitle(closeout);
 
   if (normalizedStatus === "COMPLETED") {
     return {
+      title,
       workoutId: closeout.workoutId,
       status: closeout.status,
       statusLabel,
-      detail: "Completed closeout counts toward this week's actual volume without changing the next-session plan.",
+      detail:
+        closeout.isPriorWeek && closeout.targetWeek != null
+          ? `Completed Week ${closeout.targetWeek} closeout counts toward that week's actual volume without changing your current next-session plan.`
+          : "Completed closeout counts toward this week's actual volume without changing the next-session plan.",
       actionHref: `/workout/${closeout.workoutId}`,
       actionLabel: "Review closeout",
     };
@@ -282,20 +315,28 @@ function buildHomeCloseoutSummary(
 
   if (normalizedStatus === "SKIPPED") {
     return {
+      title,
       workoutId: closeout.workoutId,
       status: closeout.status,
       statusLabel,
-      detail: "Skipped closeout stays visible for this week, but it does not change continuity or the canonical slot plan.",
+      detail:
+        closeout.isPriorWeek && closeout.targetWeek != null
+          ? `Skipped Week ${closeout.targetWeek} closeout stays separate from your current week and does not change continuity.`
+          : "Skipped closeout stays visible for this week, but it does not change continuity or the canonical slot plan.",
       actionHref: `/workout/${closeout.workoutId}`,
       actionLabel: "View closeout",
     };
   }
 
   return {
+    title,
     workoutId: closeout.workoutId,
     status: closeout.status,
     statusLabel,
-    detail: "Optional manual closeout work for this week. It can add actual weekly volume without becoming your next canonical session.",
+    detail:
+      closeout.isPriorWeek && closeout.targetWeek != null
+        ? `Optional manual closeout work for Week ${closeout.targetWeek}. It can add actual volume to that week without becoming part of your current slot plan.`
+        : "Optional manual closeout work for this week. It can add actual weekly volume without becoming your next canonical session.",
     actionHref: `/log/${closeout.workoutId}`,
     actionLabel: "Open closeout",
   };

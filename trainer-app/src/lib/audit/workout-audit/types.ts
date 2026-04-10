@@ -1,5 +1,5 @@
 import type { SessionIntent } from "@/lib/engine/session-types";
-import type { PlannerDiagnosticsMode } from "@/lib/evidence/types";
+import type { PlannerDiagnosticsMode, SessionSlotSnapshot } from "@/lib/evidence/types";
 import type { NextWorkoutContext } from "@/lib/api/next-session";
 import type {
   ProjectedWeekVolumeMuscleRow,
@@ -228,6 +228,26 @@ export type WeeklyRetroAuditVolumeRow = {
   }>;
 };
 
+export type WeeklyRetroAuditSessionExecutionRow = {
+  workoutId: string;
+  scheduledDate: string;
+  status: string;
+  selectionMode?: string;
+  sessionIntent?: string;
+  snapshotSource: HistoricalWeekAuditSession["snapshotSource"];
+  semanticKind?: "advancing" | "gap_fill" | "supplemental" | "non_advancing_generic";
+  consumesWeeklyScheduleIntent: boolean;
+  isCloseout: boolean;
+  isDeload: boolean;
+  slot?: SessionSlotSnapshot;
+  mesocycleSnapshot?: NonNullable<HistoricalWeekAuditSession["sessionSnapshot"]["saved"]>["mesocycleSnapshot"];
+  cycleContext?: NonNullable<HistoricalWeekAuditSession["sessionSnapshot"]["generated"]>["cycleContext"];
+  canonicalSemantics: HistoricalWeekAuditSession["canonicalSemantics"];
+  progressionEvidence: HistoricalWeekAuditSession["progressionEvidence"];
+  weekClose?: HistoricalWeekAuditSession["weekClose"];
+  reconciliation: HistoricalWeekAuditSession["reconciliation"];
+};
+
 export type WeeklyRetroAuditPayload = {
   version: typeof WEEKLY_RETRO_AUDIT_PAYLOAD_VERSION;
   week: number;
@@ -257,6 +277,10 @@ export type WeeklyRetroAuditPayload = {
       workoutId: string;
       changedFields: string[];
     }>;
+  };
+  sessionExecution: {
+    summary: HistoricalWeekAuditPayload["summary"];
+    sessions: WeeklyRetroAuditSessionExecutionRow[];
   };
   slotBalance: {
     status: "balanced" | "attention_required";

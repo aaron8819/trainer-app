@@ -58,14 +58,40 @@ describe("buildWeeklyRetroAuditPayload", () => {
       sessions: [
         {
           workoutId: "workout-1",
+          scheduledDate: "2026-03-15T00:00:00.000Z",
+          status: "COMPLETED",
           sessionIntent: "PUSH",
+          selectionMode: "INTENT",
+          snapshotSource: "persisted",
           sessionSnapshot: {
             saved: {
+              mesocycleSnapshot: {
+                mesocycleId: "meso-1",
+                week: 3,
+                session: 1,
+                phase: "accumulation",
+              },
               semantics: {
                 kind: "advancing",
+                isCloseout: false,
+                isDeload: false,
                 consumesWeeklyScheduleIntent: true,
               },
             },
+          },
+          canonicalSemantics: {
+            sourceLayer: "saved",
+            phase: "accumulation",
+            isDeload: false,
+            countsTowardProgressionHistory: true,
+            countsTowardPerformanceHistory: true,
+            updatesProgressionAnchor: true,
+          },
+          progressionEvidence: {
+            countsTowardProgressionHistory: true,
+            countsTowardPerformanceHistory: true,
+            updatesProgressionAnchor: true,
+            reasonCodes: ["advances_split_true"],
           },
           reconciliation: {
             hasDrift: true,
@@ -74,14 +100,34 @@ describe("buildWeeklyRetroAuditPayload", () => {
         },
         {
           workoutId: "workout-2",
+          scheduledDate: "2026-03-16T00:00:00.000Z",
+          status: "COMPLETED",
           sessionIntent: "PULL",
+          selectionMode: "INTENT",
+          snapshotSource: "reconstructed_saved_only",
           sessionSnapshot: {
             saved: {
               semantics: {
                 kind: "advancing",
+                isCloseout: false,
+                isDeload: false,
                 consumesWeeklyScheduleIntent: true,
               },
             },
+          },
+          canonicalSemantics: {
+            sourceLayer: "saved",
+            phase: "accumulation",
+            isDeload: false,
+            countsTowardProgressionHistory: true,
+            countsTowardPerformanceHistory: true,
+            updatesProgressionAnchor: true,
+          },
+          progressionEvidence: {
+            countsTowardProgressionHistory: true,
+            countsTowardPerformanceHistory: true,
+            updatesProgressionAnchor: true,
+            reasonCodes: ["advances_split_true"],
           },
           reconciliation: {
             hasDrift: false,
@@ -90,14 +136,34 @@ describe("buildWeeklyRetroAuditPayload", () => {
         },
         {
           workoutId: "workout-3",
+          scheduledDate: "2026-03-17T00:00:00.000Z",
+          status: "COMPLETED",
           sessionIntent: "LEGS",
+          selectionMode: "INTENT",
+          snapshotSource: "persisted",
           sessionSnapshot: {
             saved: {
               semantics: {
                 kind: "advancing",
+                isCloseout: false,
+                isDeload: false,
                 consumesWeeklyScheduleIntent: true,
               },
             },
+          },
+          canonicalSemantics: {
+            sourceLayer: "saved",
+            phase: "accumulation",
+            isDeload: false,
+            countsTowardProgressionHistory: false,
+            countsTowardPerformanceHistory: true,
+            updatesProgressionAnchor: false,
+          },
+          progressionEvidence: {
+            countsTowardProgressionHistory: false,
+            countsTowardPerformanceHistory: true,
+            updatesProgressionAnchor: false,
+            reasonCodes: ["advances_split_true"],
           },
           reconciliation: {
             hasDrift: false,
@@ -107,11 +173,23 @@ describe("buildWeeklyRetroAuditPayload", () => {
       ],
       summary: {
         sessionCount: 3,
+        advancingCount: 3,
+        gapFillCount: 0,
+        supplementalCount: 0,
+        deloadCount: 0,
         progressionEligibleCount: 2,
         progressionExcludedCount: 1,
+        weekCloseRelevantCount: 0,
+        persistedSnapshotCount: 2,
+        reconstructedSnapshotCount: 1,
+        mutationDriftCount: 1,
+        statusCounts: { COMPLETED: 3 },
+        intentCounts: { PUSH: 1, PULL: 1, LEGS: 1 },
       },
       comparabilityCoverage: {
         comparableSessionCount: 2,
+        missingGeneratedSnapshotCount: 1,
+        persistedSnapshotCount: 2,
         reconstructedSnapshotCount: 1,
         generatedLayerCoverage: "partial",
         limitations: ["1 session lacks generated-layer coverage."],
@@ -238,6 +316,47 @@ describe("buildWeeklyRetroAuditPayload", () => {
       prescriptionChangeCount: 1,
       selectionDriftCount: 1,
       legacyLimitedSessionCount: 1,
+    });
+    expect(payload.sessionExecution).toMatchObject({
+      summary: {
+        sessionCount: 3,
+        advancingCount: 3,
+        progressionEligibleCount: 2,
+        progressionExcludedCount: 1,
+      },
+      sessions: [
+        {
+          workoutId: "workout-1",
+          status: "COMPLETED",
+          sessionIntent: "PUSH",
+          semanticKind: "advancing",
+          consumesWeeklyScheduleIntent: true,
+          slot: {
+            slotId: "slot-1",
+            intent: "push",
+          },
+          progressionEvidence: {
+            countsTowardProgressionHistory: true,
+            updatesProgressionAnchor: true,
+          },
+          reconciliation: {
+            hasDrift: true,
+            changedFields: ["exercise_prescription_changed", "selection_mode"],
+          },
+        },
+        {
+          workoutId: "workout-2",
+          snapshotSource: "reconstructed_saved_only",
+          slot: undefined,
+        },
+        {
+          workoutId: "workout-3",
+          progressionEvidence: {
+            countsTowardProgressionHistory: false,
+            updatesProgressionAnchor: false,
+          },
+        },
+      ],
     });
     expect(payload.slotBalance).toEqual({
       status: "attention_required",

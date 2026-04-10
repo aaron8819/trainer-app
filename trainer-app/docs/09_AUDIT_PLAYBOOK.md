@@ -126,6 +126,7 @@ npm run audit:week:retro -- --user-id <user-id> --week <week> --mesocycle-id <me
 Inspect first:
 - `weeklyRetro.executiveSummary`
 - `weeklyRetro.loadCalibration`
+- `weeklyRetro.sessionExecution`
 - `weeklyRetro.slotBalance`
 - `weeklyRetro.volumeTargeting`
 - `weeklyRetro.recommendedPriorities`
@@ -403,10 +404,11 @@ Escalate when:
    - `recommendation`
 3. Open `weeklyRetro.executiveSummary` and confirm the artifact is scoped to the intended week and mesocycle.
 4. Read `weeklyRetro.loadCalibration` before trusting actual-vs-target conclusions.
-5. Read `weeklyRetro.slotBalance` and resolve any missing or duplicate slot identity first.
-6. Read `weeklyRetro.volumeTargeting` for actual weekly target / MEV / MAV comparisons and contributor context.
-7. Follow `weeklyRetro.recommendedPriorities` in order.
-8. Escalate if slot integrity, reconciliation drift, or legacy coverage limitations make the retrospective answer unreliable.
+5. Read `weeklyRetro.sessionExecution` for compact completed/skipped status, slot identity, progression eligibility, week-close visibility, and reconciliation context before drilling into historical-week.
+6. Read `weeklyRetro.slotBalance` and resolve any missing or duplicate slot identity first.
+7. Read `weeklyRetro.volumeTargeting` for actual weekly target / MEV / MAV comparisons and contributor context.
+8. Follow `weeklyRetro.recommendedPriorities` in order.
+9. Escalate if slot integrity, reconciliation drift, or legacy coverage limitations make the retrospective answer unreliable.
 
 ### Upcoming week preview
 1. Run `future-week`.

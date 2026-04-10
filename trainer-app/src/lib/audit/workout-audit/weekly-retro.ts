@@ -8,6 +8,7 @@ import { buildHistoricalWeekAuditPayload } from "./historical-week";
 import type {
   HistoricalWeekAuditSession,
   WeeklyRetroAuditPayload,
+  WeeklyRetroAuditSessionExecutionRow,
   WeeklyRetroAuditVolumeRow,
 } from "./types";
 
@@ -36,6 +37,34 @@ function resolveSessionSemantics(session: HistoricalWeekAuditSession) {
 
 function normalizeIntent(intent: string | undefined): string | undefined {
   return typeof intent === "string" ? intent.trim().toLowerCase() : undefined;
+}
+
+function buildSessionExecutionRows(input: {
+  sessions: HistoricalWeekAuditSession[];
+  slotIdentityByWorkoutId: Map<string, ReturnType<typeof readSessionSlotSnapshot>>;
+}): WeeklyRetroAuditSessionExecutionRow[] {
+  return input.sessions.map((session) => {
+    const semantics = resolveSessionSemantics(session);
+    return {
+      workoutId: session.workoutId,
+      scheduledDate: session.scheduledDate,
+      status: session.status,
+      selectionMode: session.selectionMode,
+      sessionIntent: session.sessionIntent,
+      snapshotSource: session.snapshotSource,
+      semanticKind: semantics?.kind,
+      consumesWeeklyScheduleIntent: semantics?.consumesWeeklyScheduleIntent ?? false,
+      isCloseout: semantics?.isCloseout ?? false,
+      isDeload: semantics?.isDeload ?? false,
+      slot: input.slotIdentityByWorkoutId.get(session.workoutId),
+      mesocycleSnapshot: session.sessionSnapshot.saved?.mesocycleSnapshot,
+      cycleContext: session.sessionSnapshot.generated?.cycleContext,
+      canonicalSemantics: session.canonicalSemantics,
+      progressionEvidence: session.progressionEvidence,
+      weekClose: session.weekClose,
+      reconciliation: session.reconciliation,
+    };
+  });
 }
 
 function sortVolumeRows(
@@ -127,6 +156,10 @@ export async function buildWeeklyRetroAuditPayload(input: {
   const slotIdentityByWorkoutId = new Map(
     slotIdentityRows.map((row) => [row.id, readSessionSlotSnapshot(row.selectionMetadata)])
   );
+  const sessionExecutionRows = buildSessionExecutionRows({
+    sessions: historicalWeek.sessions,
+    slotIdentityByWorkoutId,
+  });
   const advancingSessions = historicalWeek.sessions.filter(
     (session) => resolveSessionSemantics(session)?.consumesWeeklyScheduleIntent === true
   );
@@ -450,6 +483,10 @@ export async function buildWeeklyRetroAuditPayload(input: {
         workoutId: session.workoutId,
         changedFields: [...session.reconciliation.changedFields],
       })),
+    },
+    sessionExecution: {
+      summary: historicalWeek.summary,
+      sessions: sessionExecutionRows,
     },
     slotBalance: {
       status: slotIdentityIssueCount > 0 ? "attention_required" : "balanced",

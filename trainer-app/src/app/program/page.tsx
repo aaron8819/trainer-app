@@ -326,8 +326,8 @@ export default async function ProgramPage() {
                 Weighted weekly volume
               </h2>
               <p className="mt-2 text-sm text-slate-600">
-                Use this as supporting diagnostic detail after checking the plan and projection
-                signals above.
+                Review active or historical volume here. Program overview, slots, closeout, and
+                projected landing above stay anchored to the active week.
               </p>
 
               <div className="mt-4">

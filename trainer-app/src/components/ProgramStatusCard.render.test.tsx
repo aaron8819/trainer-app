@@ -374,10 +374,11 @@ describe("ProgramStatusCard opportunity state", () => {
 
     expect(fetchMock).toHaveBeenCalledWith("/api/program?week=3");
     expect(screen.getByText("intensification")).toBeInTheDocument();
+    expect(screen.getByText("Target RIR viewed week")).toBeInTheDocument();
     expect(screen.getByText("2-3 RIR")).toBeInTheDocument();
     expect(screen.getByText("Push load, not fatigue.")).toBeInTheDocument();
-    expect(screen.getByText("Volume - Week 3 of 5")).toBeInTheDocument();
-    expect(screen.getByText("Viewing Week 3 - read only")).toBeInTheDocument();
+    expect(screen.getByText("Volume - Week 3 (Read-only)")).toBeInTheDocument();
+    expect(screen.getByText("Viewing historical volume for Week 3. Read-only.")).toBeInTheDocument();
     expect(screen.getByText("Back")).toBeInTheDocument();
     expect(
       screen.queryByText("3 sessions until scheduled lighter week")
@@ -410,6 +411,7 @@ describe("ProgramStatusCard lighter-week language", () => {
 
     render(<ProgramStatusCard initialData={data} />);
 
+    expect(screen.getByText("Target RIR active week")).toBeInTheDocument();
     expect(screen.getByText("Scheduled lighter week")).toBeInTheDocument();
     expect(
       screen.getByText(
@@ -522,7 +524,7 @@ describe("ProgramStatusCard homeCompact variant", () => {
     );
 
     expect(screen.queryByText("Mesocycle Timeline")).not.toBeInTheDocument();
-    expect(screen.queryByText("Volume This Week")).not.toBeInTheDocument();
+    expect(screen.queryByText("Volume - Week 3 (Read-only)")).not.toBeInTheDocument();
     expect(screen.queryByText("Front Delts")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("View previous week")).not.toBeInTheDocument();
   });
@@ -545,7 +547,8 @@ describe("ProgramStatusCard volumeOnly variant", () => {
 
     render(<ProgramStatusCard initialData={data} variant="volumeOnly" />);
 
-    expect(screen.getByText("Volume This Week")).toBeInTheDocument();
+    expect(screen.getByText("Volume - Week 4 (Active week)")).toBeInTheDocument();
+    expect(screen.getByText("Historical review here is volume-only.")).toBeInTheDocument();
     expect(screen.getByText("Chest")).toBeInTheDocument();
     expect(screen.queryByText("Mesocycle Timeline")).not.toBeInTheDocument();
     expect(screen.queryByText("Week 4 of 5")).not.toBeInTheDocument();
@@ -613,7 +616,7 @@ describe("ProgramStatusCard volumeOnly variant", () => {
       />
     );
 
-    expect(screen.getByText("Volume This Week")).toBeInTheDocument();
+    expect(screen.getByText("Volume - Week 4 (Active week)")).toBeInTheDocument();
     expect(screen.getByText("1 Below MEV")).toBeInTheDocument();
     expect(screen.getByText("1 On target")).toBeInTheDocument();
     expect(screen.getByText("Chest")).toBeInTheDocument();
@@ -621,10 +624,11 @@ describe("ProgramStatusCard volumeOnly variant", () => {
 
     await user.click(screen.getByRole("button", { name: "View previous week" }));
     await waitFor(() => {
-      expect(screen.getByText("Volume - Week 3 of 5")).toBeInTheDocument();
+      expect(screen.getByText("Volume - Week 3 (Read-only)")).toBeInTheDocument();
     });
 
     expect(fetchMock).toHaveBeenCalledWith("/api/program?week=3");
+    expect(screen.getByText("Viewing historical volume for Week 3. Read-only.")).toBeInTheDocument();
     expect(screen.getByText("1 In range")).toBeInTheDocument();
     expect(screen.getByText("1 Near MRV")).toBeInTheDocument();
     expect(screen.getByText("0 Below MEV")).toBeInTheDocument();
@@ -636,7 +640,7 @@ describe("ProgramStatusCard volumeOnly variant", () => {
 
     await user.click(screen.getByRole("button", { name: "View next week" }));
     await waitFor(() => {
-      expect(screen.getByText("Volume This Week")).toBeInTheDocument();
+      expect(screen.getByText("Volume - Week 4 (Active week)")).toBeInTheDocument();
     });
 
     expect(screen.getByText("1 Below MEV")).toBeInTheDocument();

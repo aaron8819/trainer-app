@@ -355,16 +355,18 @@ function ProgramCardProgress({
 function ProgramCardStatusRow({
   rirTarget,
   sessionsUntilDeload,
+  rirLabel = "Target RIR active week",
 }: {
   rirTarget: ProgramDashboardData["rirTarget"];
   sessionsUntilDeload?: number | null;
+  rirLabel?: string;
 }) {
   return (
     <div className="mt-4 flex flex-wrap items-center gap-3">
       {rirTarget ? (
         <div className="rounded-xl border border-slate-200 px-3 py-1.5">
           <p className="text-[10px] uppercase tracking-wide text-slate-500">
-            Target RIR this week
+            {rirLabel}
           </p>
           <p className="mt-0.5 text-sm font-semibold text-slate-900">
             {rirTarget.min}-{rirTarget.max} RIR
@@ -479,6 +481,12 @@ function ProgramStatusCardDefault({
   );
   const selectedRow = relevantVolume.find((row) => row.muscle === selectedMuscle) ?? null;
   const selectedBreakdown = selectedRow?.breakdown ?? null;
+  const volumeHeading = isHistorical
+    ? `Volume - Week ${viewedWeek} (Read-only)`
+    : `Volume - Week ${viewedWeek} (Active week)`;
+  const volumeScopeCopy = isVolumeOnly
+    ? "Historical review here is volume-only."
+    : "Weighted sets count toward your weekly target. Raw direct and indirect sets are context only.";
 
   return (
     <div
@@ -508,6 +516,7 @@ function ProgramStatusCardDefault({
           <ProgramCardStatusRow
             rirTarget={rirTarget}
             sessionsUntilDeload={isHistorical ? null : sessionsUntilDeload}
+            rirLabel={isHistorical ? "Target RIR viewed week" : "Target RIR active week"}
           />
           {!isHistorical && deloadReadiness?.shouldDeload ? (
             <div className="mt-3">
@@ -522,13 +531,10 @@ function ProgramStatusCardDefault({
       >
         <div>
           <p className={`${isVolumeOnly ? "text-sm" : "text-sm"} font-semibold text-slate-900`}>
-            {isHistorical
-              ? `Volume - Week ${viewedWeek} of ${durationWeeks}`
-              : "Volume This Week"}
+            {volumeHeading}
           </p>
           <p className={`mt-0.5 text-xs ${isVolumeOnly ? "text-slate-400" : "text-slate-500"}`}>
-            Weighted sets count toward your weekly target. Raw direct and indirect sets are
-            context only.
+            {volumeScopeCopy}
           </p>
           <p className={`mt-0.5 text-xs ${isVolumeOnly ? "text-slate-400" : "text-slate-400"}`}>
             MEV = minimum effective, MAV = productive upper range, MRV = recoverable ceiling.
@@ -559,7 +565,7 @@ function ProgramStatusCardDefault({
 
       {isHistorical ? (
         <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700">
-          Viewing Week {viewedWeek} - read only
+          Viewing historical volume for Week {viewedWeek}. Read-only.
         </div>
       ) : null}
 

@@ -205,6 +205,11 @@ describe("ProgramPage", () => {
     expect(screen.getByRole("heading", { name: "Weighted weekly volume" })).toBeInTheDocument();
     expect(
       screen.getByText(
+        "Review active or historical volume here. Program overview, slots, closeout, and projected landing above stay anchored to the active week."
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
         "If you complete the remaining planned sessions this week, you will likely land here."
       )
     ).toBeInTheDocument();

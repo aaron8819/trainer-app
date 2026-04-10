@@ -74,6 +74,7 @@ export type RuntimeExerciseReplaceReason =
 export type RuntimeEditOperationSource =
   | "api_workouts_add_exercise"
   | "api_workouts_add_set"
+  | "api_workouts_remove_exercise"
   | "api_workouts_swap_exercise"
   | "api_workouts_save";
 
@@ -126,6 +127,20 @@ export type RuntimeEditAddSetOperation = {
   };
 };
 
+export type RuntimeEditRemoveExerciseOperation = {
+  kind: "remove_exercise";
+  source: "api_workouts_remove_exercise";
+  appliedAt: string;
+  scope: "current_workout_only";
+  facts: {
+    workoutExerciseId: string;
+    exerciseId: string;
+    orderIndex: number;
+    section: "WARMUP" | "MAIN" | "ACCESSORY";
+    setCount: number;
+  };
+};
+
 export type RuntimeEditRewriteStructureOperation = {
   kind: "rewrite_structure";
   source: "api_workouts_save";
@@ -143,6 +158,7 @@ export type RuntimeEditRewriteStructureOperation = {
 export type RuntimeEditOperation =
   | RuntimeEditAddExerciseOperation
   | RuntimeEditAddSetOperation
+  | RuntimeEditRemoveExerciseOperation
   | RuntimeEditReplaceExerciseOperation
   | RuntimeEditRewriteStructureOperation;
 
@@ -437,6 +453,38 @@ function parseRuntimeEditOperation(value: unknown): RuntimeEditOperation | undef
   }
 
   if (
+    record.kind === "remove_exercise" &&
+    record.source === "api_workouts_remove_exercise"
+  ) {
+    const section = normalizeWorkoutSection(facts.section);
+    if (
+      typeof facts.workoutExerciseId !== "string" ||
+      typeof facts.exerciseId !== "string" ||
+      typeof facts.orderIndex !== "number" ||
+      !Number.isFinite(facts.orderIndex) ||
+      typeof facts.setCount !== "number" ||
+      !Number.isFinite(facts.setCount) ||
+      section == null
+    ) {
+      return undefined;
+    }
+
+    return {
+      kind: "remove_exercise",
+      source: "api_workouts_remove_exercise",
+      appliedAt: record.appliedAt,
+      scope: "current_workout_only",
+      facts: {
+        workoutExerciseId: facts.workoutExerciseId,
+        exerciseId: facts.exerciseId,
+        orderIndex: facts.orderIndex,
+        section,
+        setCount: facts.setCount,
+      },
+    };
+  }
+
+  if (
     record.kind === "replace_exercise" &&
     record.source === "api_workouts_swap_exercise"
   ) {
@@ -667,15 +715,21 @@ export function readRuntimeAddedSetIds(selectionMetadata: unknown): Set<string> 
 
 export function readRuntimeAddedExerciseIds(selectionMetadata: unknown): Set<string> {
   const runtimeEditReconciliation = readRuntimeEditReconciliation(selectionMetadata);
-  return new Set(
-    (runtimeEditReconciliation?.ops ?? [])
-      .filter(
-        (operation): operation is RuntimeEditAddExerciseOperation =>
-          operation.kind === "add_exercise" &&
-          typeof operation.facts.workoutExerciseId === "string"
-      )
-      .map((operation) => operation.facts.workoutExerciseId as string)
-  );
+  const addedExerciseIds = new Set<string>();
+
+  for (const operation of runtimeEditReconciliation?.ops ?? []) {
+    if (
+      operation.kind === "add_exercise" &&
+      typeof operation.facts.workoutExerciseId === "string"
+    ) {
+      addedExerciseIds.add(operation.facts.workoutExerciseId);
+    }
+    if (operation.kind === "remove_exercise") {
+      addedExerciseIds.delete(operation.facts.workoutExerciseId);
+    }
+  }
+
+  return addedExerciseIds;
 }
 
 export function readRuntimeReplacedExercises(

@@ -23,6 +23,8 @@ export type WorkoutQueueExerciseRowData = {
   isAddingSet: boolean;
   canSwap: boolean;
   isSwapping: boolean;
+  canRemove: boolean;
+  isRemoving: boolean;
 };
 
 export type WorkoutQueueSectionData = {
@@ -46,6 +48,7 @@ type WorkoutExerciseQueueProps = {
   onSelectSet: (setId: string) => void;
   onAddSet?: (exerciseId: string, section: ExerciseSection) => void;
   onSwapExercise?: (exerciseId: string) => void;
+  onRemoveExercise?: (exerciseId: string) => void;
   onExerciseRowRender?: (exerciseId: string) => void;
 };
 
@@ -73,6 +76,7 @@ const ExerciseQueueRow = memo(
     onSelectSet,
     onAddSet,
     onSwapExercise,
+    onRemoveExercise,
     onRender,
   }: {
     row: WorkoutQueueExerciseRowData;
@@ -80,6 +84,7 @@ const ExerciseQueueRow = memo(
     onSelectSet: (setId: string) => void;
     onAddSet?: (exerciseId: string, section: ExerciseSection) => void;
     onSwapExercise?: (exerciseId: string) => void;
+    onRemoveExercise?: (exerciseId: string) => void;
     onRender?: (exerciseId: string) => void;
   }) {
     useEffect(() => {
@@ -110,6 +115,16 @@ const ExerciseQueueRow = memo(
             ) : null}
           </button>
           <span className="flex shrink-0 items-center gap-2">
+            {row.canRemove && onRemoveExercise ? (
+              <button
+                className="inline-flex min-h-8 items-center justify-center rounded-full border border-red-200 px-3 text-[11px] font-semibold text-red-700 disabled:opacity-60"
+                disabled={row.isRemoving}
+                onClick={() => onRemoveExercise(row.exerciseId)}
+                type="button"
+              >
+                {row.isRemoving ? "Removing..." : "Remove"}
+              </button>
+            ) : null}
             {row.canSwap && onSwapExercise ? (
               <button
                 className="inline-flex min-h-8 items-center justify-center rounded-full border border-slate-300 px-3 text-[11px] font-semibold text-slate-700 disabled:opacity-60"
@@ -164,11 +179,14 @@ const ExerciseQueueRow = memo(
     previous.row.isAddingSet === next.row.isAddingSet &&
     previous.row.canSwap === next.row.canSwap &&
     previous.row.isSwapping === next.row.isSwapping &&
+    previous.row.canRemove === next.row.canRemove &&
+    previous.row.isRemoving === next.row.isRemoving &&
     areChipsEqual(previous.row.chips, next.row.chips) &&
     previous.onToggleExercise === next.onToggleExercise &&
     previous.onSelectSet === next.onSelectSet &&
     previous.onAddSet === next.onAddSet &&
     previous.onSwapExercise === next.onSwapExercise &&
+    previous.onRemoveExercise === next.onRemoveExercise &&
     previous.onRender === next.onRender
 );
 
@@ -181,6 +199,7 @@ export function WorkoutExerciseQueue({
   onSelectSet,
   onAddSet,
   onSwapExercise,
+  onRemoveExercise,
   onExerciseRowRender,
 }: WorkoutExerciseQueueProps) {
   return (
@@ -233,6 +252,7 @@ export function WorkoutExerciseQueue({
                   onSelectSet={onSelectSet}
                   onAddSet={onAddSet}
                   onSwapExercise={onSwapExercise}
+                  onRemoveExercise={onRemoveExercise}
                   onRender={onExerciseRowRender}
                 />
               ))}

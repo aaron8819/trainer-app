@@ -40,6 +40,14 @@ export type RuntimeEditMutation =
       clonedFromSetIndex: number;
     }
   | {
+      kind: "remove_exercise";
+      workoutExerciseId: string;
+      exerciseId: string;
+      orderIndex: number;
+      section: "WARMUP" | "MAIN" | "ACCESSORY";
+      setCount: number;
+    }
+  | {
       kind: "replace_exercise";
       workoutExerciseId: string;
       fromExerciseId: string;
@@ -131,6 +139,22 @@ function buildRuntimeEditOperation(input: {
         workoutSetId: input.mutation.workoutSetId,
         setIndex: input.mutation.setIndex,
         clonedFromSetIndex: input.mutation.clonedFromSetIndex,
+      },
+    };
+  }
+
+  if (input.mutation.kind === "remove_exercise") {
+    return {
+      kind: "remove_exercise",
+      source: "api_workouts_remove_exercise",
+      appliedAt: input.appliedAt,
+      scope: "current_workout_only",
+      facts: {
+        workoutExerciseId: input.mutation.workoutExerciseId,
+        exerciseId: input.mutation.exerciseId,
+        orderIndex: input.mutation.orderIndex,
+        section: input.mutation.section,
+        setCount: input.mutation.setCount,
       },
     };
   }

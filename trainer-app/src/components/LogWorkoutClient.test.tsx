@@ -17,6 +17,7 @@ vi.mock("next/link", () => ({
 
 vi.mock("@/components/log-workout/api", () => ({
   addSetToExerciseRequest: vi.fn(),
+  deleteWorkoutExerciseRequest: vi.fn(),
   logSetRequest: vi.fn(),
   deleteSetLogRequest: vi.fn(),
   saveWorkoutRequest: vi.fn(),
@@ -24,6 +25,7 @@ vi.mock("@/components/log-workout/api", () => ({
 }));
 
 const mockedAddSetToExerciseRequest = vi.mocked(workoutApi.addSetToExerciseRequest);
+const mockedDeleteWorkoutExerciseRequest = vi.mocked(workoutApi.deleteWorkoutExerciseRequest);
 const mockedLogSetRequest = vi.mocked(workoutApi.logSetRequest);
 const mockedDeleteSetLogRequest = vi.mocked(workoutApi.deleteSetLogRequest);
 const mockedSaveWorkoutRequest = vi.mocked(workoutApi.saveWorkoutRequest);
@@ -344,6 +346,10 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
       },
       error: null,
     });
+    mockedDeleteWorkoutExerciseRequest.mockResolvedValue({
+      data: { ok: true, removedWorkoutExerciseId: "ex-added" },
+      error: null,
+    });
     mockedLogSetRequest.mockResolvedValue({ data: { status: "ok", wasCreated: true }, error: null });
     mockedDeleteSetLogRequest.mockResolvedValue({ data: { status: "ok" }, error: null });
     mockedSaveWorkoutRequest.mockResolvedValue(makeSaveWorkoutResponse("COMPLETED"));
@@ -450,9 +456,121 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     );
 
     expect(screen.getByText("Added exercise")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Remove" })).toBeInTheDocument();
     expect(
       screen.getByText("Added during workout. Session-only; future planning ignores it.")
     ).toBeInTheDocument();
+  });
+
+  it("removes an unlogged runtime-added exercise from the queue", async () => {
+    const user = userEvent.setup();
+    render(
+      <LogWorkoutClient
+        workoutId="workout-1"
+        exercises={{
+          main: [
+            {
+              workoutExerciseId: "ex-planned",
+              name: "Bench Press",
+              equipment: ["barbell"],
+              isMainLift: true,
+              section: "MAIN",
+              sets: [
+                {
+                  setId: "set-planned-1",
+                  setIndex: 1,
+                  targetReps: 8,
+                  targetLoad: 185,
+                  targetRpe: 8,
+                  restSeconds: 180,
+                },
+              ],
+            },
+          ],
+          accessory: [
+            {
+              workoutExerciseId: "ex-added",
+              name: "Pec Deck",
+              equipment: ["machine"],
+              isRuntimeAdded: true,
+              isMainLift: false,
+              section: "ACCESSORY",
+              sessionNote: "Added during workout. Session-only; future planning ignores it.",
+              sets: [
+                {
+                  setId: "set-added-1",
+                  setIndex: 1,
+                  targetReps: 12,
+                  targetLoad: 80,
+                  targetRpe: 7,
+                  restSeconds: 90,
+                },
+                {
+                  setId: "set-added-2",
+                  setIndex: 2,
+                  targetReps: 12,
+                  targetLoad: 80,
+                  targetRpe: 7,
+                  restSeconds: 90,
+                },
+              ],
+            },
+          ],
+        }}
+      />
+    );
+
+    expect(screen.getByText("3 sets remaining")).toBeInTheDocument();
+    const plannedRow = screen.getByTestId("queue-row-ex-planned");
+    expect(within(plannedRow).queryByRole("button", { name: "Remove" })).not.toBeInTheDocument();
+
+    const addedRow = screen.getByTestId("queue-row-ex-added");
+    await user.click(within(addedRow).getByRole("button", { name: "Remove" }));
+
+    await waitFor(() => {
+      expect(mockedDeleteWorkoutExerciseRequest).toHaveBeenCalledWith({
+        workoutId: "workout-1",
+        workoutExerciseId: "ex-added",
+      });
+      expect(screen.queryByTestId("queue-row-ex-added")).not.toBeInTheDocument();
+      expect(screen.queryByText("Pec Deck")).not.toBeInTheDocument();
+      expect(screen.getByText("1 sets remaining")).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Bench Press" })).toBeInTheDocument();
+    });
+  });
+
+  it("does not show Remove for runtime-added exercises after a set is logged", () => {
+    render(
+      <LogWorkoutClient
+        workoutId="workout-1"
+        exercises={[
+          {
+            workoutExerciseId: "ex-added",
+            name: "Pec Deck",
+            equipment: ["machine"],
+            isRuntimeAdded: true,
+            isMainLift: false,
+            section: "ACCESSORY",
+            sessionNote: "Added during workout. Session-only; future planning ignores it.",
+            sets: [
+              {
+                setId: "set-added-1",
+                setIndex: 1,
+                targetReps: 12,
+                actualReps: 12,
+                targetLoad: 80,
+                targetRpe: 7,
+                actualRpe: 7,
+                restSeconds: 90,
+              },
+            ],
+          },
+        ]}
+      />
+    );
+
+    expect(screen.getByText("Added exercise")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Remove" })).not.toBeInTheDocument();
   });
 
   it("returns to the new active logging context after adding an exercise", async () => {

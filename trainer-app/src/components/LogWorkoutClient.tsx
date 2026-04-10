@@ -421,6 +421,7 @@ export default function LogWorkoutClient({
 
   const {
     addingSetExerciseId,
+    removingExerciseId,
     savingSetId,
     status,
     error,
@@ -449,9 +450,10 @@ export default function LogWorkoutClient({
       updateSetFields,
       isBodyweightExercise,
       onAdvanceSet: jumpToActiveSet,
-    });
+  });
   const addExerciseAction = actions.addExercise;
   const addSetAction = actions.addSet;
+  const removeExerciseAction = actions.removeExercise;
 
   useEffect(() => {
     if (activeCardMode.kind !== "edit") {
@@ -630,6 +632,9 @@ export default function LogWorkoutClient({
               canAddSet: true,
               isAddingSet: addingSetExerciseId === exercise.workoutExerciseId,
               isSwapping: selectedSwapExerciseId === exercise.workoutExerciseId,
+              canRemove:
+                (exercise.isRuntimeAdded ?? false) && loggedCountForExercise === 0,
+              isRemoving: removingExerciseId === exercise.workoutExerciseId,
               chips: exercise.sets.map((set) => ({
                 setId: set.setId,
                 label: formatQueueSetSummary(
@@ -654,6 +659,7 @@ export default function LogWorkoutClient({
     satisfiedSetIds,
     resolvedActiveSetId,
     selectedSwapExerciseId,
+    removingExerciseId,
     addingSetExerciseId,
     savingSetId,
   ]);
@@ -811,6 +817,20 @@ export default function LogWorkoutClient({
       setExpandedSections,
     ]
   );
+  const handleRemoveExercise = useCallback(
+    (exerciseId: string) => {
+      requestEditModeExit(() => {
+        exitEditMode({ restoreLiveSet: false, discardChanges: true });
+        void (async () => {
+          const success = await removeExerciseAction(exerciseId);
+          if (success) {
+            setExpandedExerciseId((prev) => (prev === exerciseId ? null : prev));
+          }
+        })();
+      });
+    },
+    [exitEditMode, removeExerciseAction, requestEditModeExit, setExpandedExerciseId]
+  );
   const handleSwapApplied = useCallback(
     (exercise: LogExerciseInput) => {
       const resolvedSection =
@@ -956,6 +976,7 @@ export default function LogWorkoutClient({
             onSelectSet={handleQueueSetSelect}
             onAddSet={handleAddSet}
             onSwapExercise={handleSwapExercise}
+            onRemoveExercise={handleRemoveExercise}
             onExerciseRowRender={onQueueExerciseRowRender}
           />
         </ExerciseListPanel>

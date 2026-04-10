@@ -167,6 +167,52 @@ describe("reconcileRuntimeEditSelectionMetadata", () => {
     );
   });
 
+  it("records remove_exercise ops with current-workout-only provenance", () => {
+    const result = reconcileRuntimeEditSelectionMetadata({
+      selectionMetadata: generatedSelectionMetadata,
+      selectionMode: "INTENT",
+      sessionIntent: "push",
+      reconciledAt: "2026-03-23T10:00:00.000Z",
+      persistedExercises: [
+        {
+          exerciseId: "bench",
+          orderIndex: 0,
+          section: "MAIN",
+          exercise: { name: "Bench Press" },
+          sets: [{ setIndex: 1, targetReps: 8 }],
+        },
+      ],
+      mutation: {
+        kind: "remove_exercise",
+        workoutExerciseId: "we-2",
+        exerciseId: "fly",
+        orderIndex: 1,
+        section: "ACCESSORY",
+        setCount: 2,
+      },
+    });
+
+    expect(result.appendedOpKind).toBe("remove_exercise");
+    expect(result.runtimeEditReconciliation?.ops).toEqual([
+      {
+        kind: "remove_exercise",
+        source: "api_workouts_remove_exercise",
+        appliedAt: "2026-03-23T10:00:00.000Z",
+        scope: "current_workout_only",
+        facts: {
+          workoutExerciseId: "we-2",
+          exerciseId: "fly",
+          orderIndex: 1,
+          section: "ACCESSORY",
+          setCount: 2,
+        },
+      },
+    ]);
+    expect(result.workoutStructureState.reconciliation.changedFields).not.toContain(
+      "exercise_added"
+    );
+  });
+
   it("records replace_exercise ops with route-known reason values only", () => {
     const result = reconcileRuntimeEditSelectionMetadata({
       selectionMetadata: generatedSelectionMetadata,

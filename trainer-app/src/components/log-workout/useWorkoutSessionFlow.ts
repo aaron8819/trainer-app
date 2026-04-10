@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import {
   addSetToExerciseRequest,
+  deleteWorkoutExerciseRequest,
   deleteSetLogRequest,
   logSetRequest,
 } from "@/components/log-workout/api";
@@ -30,6 +31,7 @@ export type WorkoutSessionActions = {
   undo: () => Promise<void>;
   addExercise: (exercise: LogExerciseInput) => void;
   addSet: (workoutExerciseId: string) => Promise<boolean>;
+  removeExercise: (workoutExerciseId: string) => Promise<boolean>;
 };
 
 type SetPrefilledField = keyof PrefilledFieldState;
@@ -91,12 +93,20 @@ export function useWorkoutSessionFlow({
 }: UseWorkoutSessionFlowParams) {
   const [savingSetId, setSavingSetId] = useState<string | null>(null);
   const [addingSetExerciseId, setAddingSetExerciseId] = useState<string | null>(null);
+  const [removingExerciseId, setRemovingExerciseId] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [undoSnapshot, setUndoSnapshot] = useState<UndoSnapshot | null>(null);
   const [autoregHint, setAutoregHint] = useState<AutoregHint | null>(null);
   const statusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const errorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flatSetsRef = useRef(flatSets);
+  const loggedSetIdsRef = useRef(loggedSetIds);
+
+  useEffect(() => {
+    flatSetsRef.current = flatSets;
+    loggedSetIdsRef.current = loggedSetIds;
+  }, [flatSets, loggedSetIds]);
 
   const clearStatusTimer = useCallback(() => {
     if (statusTimeoutRef.current) {
@@ -442,6 +452,99 @@ export function useWorkoutSessionFlow({
     [clearFeedback, setActiveSetId, setData, showError, showStatus, workoutId]
   );
 
+  const handleRemoveExercise = useCallback(
+    async (workoutExerciseId: string): Promise<boolean> => {
+      clearFeedback();
+
+      const currentFlatSets = flatSetsRef.current;
+      const currentLoggedSetIds = loggedSetIdsRef.current;
+      const targetExercise = currentFlatSets.find(
+        (item) => item.exercise.workoutExerciseId === workoutExerciseId
+      )?.exercise;
+      if (!targetExercise) {
+        showError("Unable to find exercise");
+        return false;
+      }
+
+      const removedSetIds = targetExercise.sets.map((set) => set.setId);
+      setRemovingExerciseId(workoutExerciseId);
+
+      try {
+        const response = await deleteWorkoutExerciseRequest({
+          workoutId,
+          workoutExerciseId,
+        });
+
+        if (response.error) {
+          showError(response.error);
+          return false;
+        }
+
+        const removedSetIdSet = new Set(removedSetIds);
+        const remainingFlatSets = currentFlatSets.filter(
+          (item) => item.exercise.workoutExerciseId !== workoutExerciseId
+        );
+        const nextActiveSet =
+          remainingFlatSets.find((item) => !currentLoggedSetIds.has(item.set.setId)) ??
+          remainingFlatSets[0] ??
+          null;
+
+        setData((prev) => {
+          for (const section of Object.keys(prev) as Array<keyof NormalizedExercises>) {
+            const exerciseIndex = prev[section].findIndex(
+              (exercise) => exercise.workoutExerciseId === workoutExerciseId
+            );
+            if (exerciseIndex === -1) {
+              continue;
+            }
+
+            return {
+              ...prev,
+              [section]: prev[section].filter(
+                (exercise) => exercise.workoutExerciseId !== workoutExerciseId
+              ),
+            };
+          }
+
+          return prev;
+        });
+        setLoggedSetIds((prev) => {
+          const next = new Set(prev);
+          for (const setId of removedSetIds) {
+            next.delete(setId);
+          }
+          return next;
+        });
+        for (const setId of removedSetIds) {
+          clearDraft(setId);
+          clearDraftInputBuffers(setId);
+          setSetInputFieldsPrefilled(setId, setFieldPrefilled, false);
+        }
+        setUndoSnapshot((prev) =>
+          prev && removedSetIdSet.has(prev.setId) ? null : prev
+        );
+        setActiveSetId(nextActiveSet?.set.setId ?? null);
+        setAutoregHint(null);
+        showStatus("Exercise removed.");
+        return true;
+      } finally {
+        setRemovingExerciseId(null);
+      }
+    },
+    [
+      clearDraft,
+      clearDraftInputBuffers,
+      clearFeedback,
+      setActiveSetId,
+      setData,
+      setFieldPrefilled,
+      setLoggedSetIds,
+      showError,
+      showStatus,
+      workoutId,
+    ]
+  );
+
   const completion: WorkoutSessionCompletionController = useWorkoutSessionCompletion({
     workoutId,
     totalSets,
@@ -459,12 +562,14 @@ export function useWorkoutSessionFlow({
       undo: handleUndo,
       addExercise: handleAddExercise,
       addSet: handleAddSet,
+      removeExercise: handleRemoveExercise,
     }),
-    [handleAddExercise, handleAddSet, handleLogSet, handleUndo]
+    [handleAddExercise, handleAddSet, handleLogSet, handleRemoveExercise, handleUndo]
   );
 
   return {
     addingSetExerciseId,
+    removingExerciseId,
     savingSetId,
     status,
     error,

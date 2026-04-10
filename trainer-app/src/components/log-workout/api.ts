@@ -118,6 +118,20 @@ export async function addSetToExerciseRequest(payload: {
   return parseJsonResponse(response);
 }
 
+export async function deleteWorkoutExerciseRequest(payload: {
+  workoutId: string;
+  workoutExerciseId: string;
+}): Promise<ApiResult<{ ok: true; removedWorkoutExerciseId: string }>> {
+  const response = await fetch(
+    `/api/workouts/${payload.workoutId}/exercises/${payload.workoutExerciseId}`,
+    {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+    }
+  );
+  return parseJsonResponse(response);
+}
+
 export async function saveWorkoutRequest(payload: SaveWorkoutRequestPayload): Promise<ApiResult<SaveWorkoutResponse & {
   baselineSummary?: unknown;
 }>> {

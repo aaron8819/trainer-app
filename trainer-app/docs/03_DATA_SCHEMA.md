@@ -114,7 +114,8 @@ Lifecycle/handoff meanings:
 - `runtimeEditReconciliation` stores:
   - `version`
   - `lastReconciledAt`
-  - `ops[]` with v1 kinds `add_exercise`, `replace_exercise`, `rewrite_structure`
+  - `ops[]` with v1 kinds `add_exercise`, `add_set`, `remove_exercise`, `replace_exercise`, `rewrite_structure`
+  - `remove_exercise` facts keep the runtime-added `workoutExerciseId`, `exerciseId`, `orderIndex`, `section`, and removed `setCount` after the unlogged current-session row is deleted
   - `replace_exercise` facts keep `workoutExerciseId`, original/replacement exercise ids, original/replacement names, the route-known reason, and `setCount`
   - conservative directives `{ continuityAlias: "none", progressionAlias: "none", futureSessionGeneration: "ignore", futureSeedCarryForward: "ignore" }`
 - `selectionMetadata.sessionDecisionReceipt` remains the original generated/evidence payload even after mutation; `workoutStructureState` and `runtimeEditReconciliation` are additive companion records rather than receipt replacements.

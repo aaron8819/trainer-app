@@ -167,6 +167,9 @@ describe("runWorkoutAuditGeneration", () => {
       flags: {
         improvesChestSupport: true,
         improvesTricepsSupport: true,
+        improvesSideDeltSupport: false,
+        improvesRearDeltSupport: false,
+        reducesUpperSessionDuration: false,
         preservesRowAndVerticalPullWhereAppropriate: true,
         avoidsNewObviousOvershoot: true,
         preservesSlotIdentity: true,

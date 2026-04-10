@@ -46,6 +46,8 @@ export type SessionSlotShape = {
 export type ProtectedWeekOneCoverageMuscle =
   | "Chest"
   | "Triceps"
+  | "Side Delts"
+  | "Rear Delts"
   | "Hamstrings"
   | "Calves";
 
@@ -268,9 +270,9 @@ export function getProtectedWeekOneCoverageObligations(
 
   switch (slot?.slotArchetype) {
     case "upper_horizontal_balanced":
-      return ["Chest", "Triceps"];
+      return ["Chest", "Triceps", "Rear Delts"];
     case "upper_vertical_balanced":
-      return ["Chest", "Triceps"];
+      return ["Chest", "Triceps", "Side Delts"];
     case "lower_hinge_dominant":
       return ["Hamstrings", "Calves"];
     case "lower_squat_dominant":
@@ -285,9 +287,9 @@ function getProtectedWeekOneCoverageCompatibility(
 ): ProtectedWeekOneCoverageMuscle[] {
   switch (slot?.slotArchetype) {
     case "upper_horizontal_balanced":
-      return ["Chest", "Triceps"];
+      return ["Chest", "Triceps", "Rear Delts"];
     case "upper_vertical_balanced":
-      return ["Chest", "Triceps"];
+      return ["Chest", "Triceps", "Side Delts"];
     case "lower_squat_dominant":
       return ["Hamstrings", "Calves"];
     case "lower_hinge_dominant":

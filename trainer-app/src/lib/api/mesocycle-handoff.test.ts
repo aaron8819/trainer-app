@@ -77,7 +77,7 @@ function buildRecommendedDesign(): NextMesocycleDesign {
             supportCoverageContract: {
               preferredAccessoryPrimaryMuscles: ["Chest", "Upper Back", "Rear Delts"],
               requiredMovementPatterns: ["vertical_pull", "horizontal_pull"],
-              avoidDuplicatePatterns: ["horizontal_pull"],
+              avoidDuplicatePatterns: ["vertical_pull"],
             },
             continuityScope: "slot",
           },
@@ -134,7 +134,7 @@ function buildRecommendedDesign(): NextMesocycleDesign {
             supportCoverageContract: {
               preferredAccessoryPrimaryMuscles: ["Lats", "Front Delts", "Side Delts"],
               requiredMovementPatterns: ["horizontal_pull"],
-              avoidDuplicatePatterns: ["vertical_pull"],
+              avoidDuplicatePatterns: ["vertical_push", "vertical_pull"],
               supportPenaltyPatterns: ["vertical_push"],
               maxPreferredSupportPerPattern: 1,
             },

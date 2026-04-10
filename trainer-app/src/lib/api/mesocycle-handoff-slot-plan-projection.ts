@@ -120,6 +120,8 @@ type ProtectedWeekOneCoverageEvaluation = {
 const PROTECTED_WEEK_ONE_COVERAGE_MUSCLES: ProtectedWeekOneCoverageMuscle[] = [
   "Chest",
   "Triceps",
+  "Side Delts",
+  "Rear Delts",
   "Hamstrings",
   "Calves",
 ];
@@ -581,6 +583,156 @@ function countWorkoutWorkingSets(workout: WorkoutPlan): number {
   );
 }
 
+function workoutHasPrimaryMuscle(workout: WorkoutPlan, muscle: string): boolean {
+  return [...workout.mainLifts, ...workout.accessories].some((exercise) =>
+    (exercise.exercise.primaryMuscles ?? []).includes(muscle)
+  );
+}
+
+function selectSupportIsolation(input: {
+  exerciseLibrary: MappedGenerationContext["exerciseLibrary"];
+  selectedExerciseIds: Set<string>;
+  muscle: string;
+}): WorkoutExercise["exercise"] | undefined {
+  return input.exerciseLibrary
+    .filter((exercise) => !input.selectedExerciseIds.has(exercise.id))
+    .filter((exercise) => !(exercise.isCompound ?? false))
+    .filter((exercise) => !(exercise.isMainLiftEligible ?? false))
+    .filter((exercise) => (exercise.primaryMuscles ?? []).includes(input.muscle))
+    .sort((left, right) => {
+      const fatigueDelta = (left.fatigueCost ?? 3) - (right.fatigueCost ?? 3);
+      if (fatigueDelta !== 0) {
+        return fatigueDelta;
+      }
+      return left.name.localeCompare(right.name);
+    })[0];
+}
+
+function buildSupportAccessoryExercise(input: {
+  exercise: WorkoutExercise["exercise"];
+  template: WorkoutExercise | undefined;
+  orderIndex: number;
+}): WorkoutExercise {
+  const templateSets = input.template?.sets ?? [];
+  const sets = (templateSets.length > 0 ? templateSets : Array.from({ length: 4 }, (_, index) => ({
+    setIndex: index + 1,
+    targetReps: 12,
+    role: "accessory" as const,
+  }))).map((set, index) => ({
+    ...set,
+    setIndex: index + 1,
+    role: "accessory" as const,
+  }));
+
+  return {
+    id: `${input.exercise.id}:projection-support`,
+    exercise: input.exercise,
+    orderIndex: input.orderIndex,
+    isMainLift: false,
+    role: "accessory",
+    sets,
+  };
+}
+
+function removeAccessory(workout: WorkoutPlan, exerciseId: string): WorkoutPlan {
+  return {
+    ...workout,
+    accessories: workout.accessories
+      .filter((exercise) => exercise.exercise.id !== exerciseId)
+      .map((exercise, index) => ({ ...exercise, orderIndex: workout.mainLifts.length + index })),
+  };
+}
+
+function appendAccessory(workout: WorkoutPlan, exercise: WorkoutExercise): WorkoutPlan {
+  return {
+    ...workout,
+    accessories: [...workout.accessories, exercise].map((entry, index) => ({
+      ...entry,
+      orderIndex: workout.mainLifts.length + index,
+    })),
+  };
+}
+
+function rebalanceUpperSupportProjection(input: {
+  workout: WorkoutPlan;
+  slotPolicy: ReturnType<typeof resolveSessionSlotPolicy>["currentSession"];
+  exerciseLibrary: MappedGenerationContext["exerciseLibrary"];
+}): WorkoutPlan {
+  if (input.slotPolicy?.sessionIntent !== "upper") {
+    return input.workout;
+  }
+
+  const selectedExerciseIds = new Set(
+    [...input.workout.mainLifts, ...input.workout.accessories].map(
+      (exercise) => exercise.exercise.id
+    )
+  );
+
+  if (input.slotPolicy.slotArchetype === "upper_horizontal_balanced") {
+    const redundantLatAccessory = input.workout.accessories.find(
+      (exercise) =>
+        (exercise.exercise.primaryMuscles ?? []).includes("Lats") &&
+        (exercise.exercise.movementPatterns ?? []).some((pattern) =>
+          pattern === "horizontal_pull" || pattern === "vertical_pull"
+        )
+    );
+    let workout = redundantLatAccessory
+      ? removeAccessory(input.workout, redundantLatAccessory.exercise.id)
+      : input.workout;
+    if (!workoutHasPrimaryMuscle(workout, "Rear Delts")) {
+      const rearDeltExercise = selectSupportIsolation({
+        exerciseLibrary: input.exerciseLibrary,
+        selectedExerciseIds,
+        muscle: "Rear Delts",
+      });
+      if (rearDeltExercise) {
+        workout = appendAccessory(
+          workout,
+          buildSupportAccessoryExercise({
+            exercise: rearDeltExercise,
+            template: redundantLatAccessory ?? workout.accessories.at(-1),
+            orderIndex: workout.mainLifts.length + workout.accessories.length,
+          })
+        );
+      }
+    }
+    const bicepsIsolation = workout.accessories.find(
+      (exercise) =>
+        (exercise.exercise.primaryMuscles ?? []).includes("Biceps") &&
+        (exercise.exercise.movementPatterns ?? []).includes("flexion")
+    );
+    if (bicepsIsolation) {
+      workout = removeAccessory(workout, bicepsIsolation.exercise.id);
+    }
+    return workout;
+  }
+
+  if (input.slotPolicy.slotArchetype === "upper_vertical_balanced") {
+    const sideDeltSets = computeWorkoutContributionByMuscle(input.workout).get("Side Delts") ?? 0;
+    if (sideDeltSets >= VOLUME_LANDMARKS["Side Delts"].mev) {
+      return input.workout;
+    }
+    const sideDeltExercise = selectSupportIsolation({
+      exerciseLibrary: input.exerciseLibrary,
+      selectedExerciseIds,
+      muscle: "Side Delts",
+    });
+    if (!sideDeltExercise) {
+      return input.workout;
+    }
+    return appendAccessory(
+      input.workout,
+      buildSupportAccessoryExercise({
+        exercise: sideDeltExercise,
+        template: input.workout.accessories.at(-1),
+        orderIndex: input.workout.mainLifts.length + input.workout.accessories.length,
+      })
+    );
+  }
+
+  return input.workout;
+}
+
 export function preservesSlotIdentity(input: {
   slotPolicy: ReturnType<typeof resolveSessionSlotPolicy>["currentSession"];
   workout: WorkoutPlan;
@@ -963,15 +1115,19 @@ function projectSlotPlansPass(input: {
         });
       }
     }
-    const selectedWorkout = selectBestProjectedSlotComposition({
-      candidateWorkouts,
-      prioritizedProtectedMuscles: projectionRepairMuscles,
+    const selectedWorkout = rebalanceUpperSupportProjection({
+      workout: selectBestProjectedSlotComposition({
+        candidateWorkouts,
+        prioritizedProtectedMuscles: projectionRepairMuscles,
+        slotPolicy,
+        projectedSlots,
+        activeMesocycle,
+        slotSequence,
+        slotId: slot.slotId,
+        intent: slot.intent,
+      }),
       slotPolicy,
-      projectedSlots,
-      activeMesocycle,
-      slotSequence,
-      slotId: slot.slotId,
-      intent: slot.intent,
+      exerciseLibrary: projectionContext.mapped.exerciseLibrary,
     });
 
     const candidateProjectedSlot: ProjectedSlotWorkout = {

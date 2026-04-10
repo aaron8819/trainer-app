@@ -172,15 +172,15 @@ function buildUpperRepeatedSemantics(prefersVertical: boolean): MesocycleSlotAut
           preferredAccessoryPrimaryMuscles: ["Chest", "Triceps", "Side Delts"],
           protectedWeekOneCoverageMuscles: ["Chest", "Triceps"],
           requiredMovementPatterns: ["horizontal_pull"],
-          avoidDuplicatePatterns: ["vertical_pull"],
+          avoidDuplicatePatterns: ["vertical_push", "vertical_pull"],
           supportPenaltyPatterns: ["vertical_push", "vertical_pull"],
           maxPreferredSupportPerPattern: 1,
         }
       : {
-          preferredAccessoryPrimaryMuscles: ["Chest", "Triceps"],
+          preferredAccessoryPrimaryMuscles: ["Chest", "Triceps", "Rear Delts"],
           protectedWeekOneCoverageMuscles: ["Chest", "Triceps"],
           requiredMovementPatterns: ["vertical_pull", "horizontal_pull"],
-          avoidDuplicatePatterns: ["horizontal_pull"],
+          avoidDuplicatePatterns: ["vertical_pull"],
           supportPenaltyPatterns: ["horizontal_pull", "vertical_pull"],
           maxPreferredSupportPerPattern: 1,
         },
@@ -489,12 +489,27 @@ function parseAuthoredSlotSemantics(value: unknown): MesocycleSlotAuthoredSemant
     return undefined;
   }
 
-  return {
+  const parsed: MesocycleSlotAuthoredSemantics = {
     slotArchetype: record.slotArchetype as MesocycleSlotArchetype,
     primaryLaneContract: parsePrimaryLaneContract(record.primaryLaneContract),
     supportCoverageContract: parseSupportCoverageContract(record.supportCoverageContract),
     continuityScope,
   };
+
+  switch (parsed.slotArchetype) {
+    case "upper_horizontal_balanced":
+      return {
+        ...parsed,
+        supportCoverageContract: buildUpperRepeatedSemantics(false).supportCoverageContract,
+      };
+    case "upper_vertical_balanced":
+      return {
+        ...parsed,
+        supportCoverageContract: buildUpperRepeatedSemantics(true).supportCoverageContract,
+      };
+    default:
+      return parsed;
+  }
 }
 
 function buildLegacySlots(weeklySchedule: readonly string[]): NormalizedMesocycleSlot[] {

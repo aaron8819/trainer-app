@@ -55,10 +55,10 @@ describe("resolveSessionSlotPolicy", () => {
       },
       sessionShape: {
         id: "upper_horizontal_balanced",
-        preferredAccessoryPrimaryMuscles: ["Chest", "Triceps"],
+        preferredAccessoryPrimaryMuscles: ["Chest", "Triceps", "Rear Delts"],
         protectedWeekOneCoverageMuscles: ["Chest", "Triceps"],
         requiredMovementPatterns: ["vertical_pull", "horizontal_pull"],
-        avoidDuplicatePatterns: ["horizontal_pull"],
+        avoidDuplicatePatterns: ["vertical_pull"],
         supportPenaltyPatterns: ["horizontal_pull", "vertical_pull"],
         maxPreferredSupportPerPattern: 1,
       },
@@ -106,7 +106,7 @@ describe("resolveSessionSlotPolicy", () => {
         preferredAccessoryPrimaryMuscles: ["Chest", "Triceps", "Side Delts"],
         protectedWeekOneCoverageMuscles: ["Chest", "Triceps"],
         requiredMovementPatterns: ["horizontal_pull"],
-        avoidDuplicatePatterns: ["vertical_pull"],
+        avoidDuplicatePatterns: ["vertical_push", "vertical_pull"],
         supportPenaltyPatterns: ["vertical_push", "vertical_pull"],
         maxPreferredSupportPerPattern: 1,
       },
@@ -307,7 +307,7 @@ describe("resolveSessionSlotPolicy", () => {
           preferredAccessoryPrimaryMuscles: ["Chest", "Triceps", "Side Delts"],
           protectedWeekOneCoverageMuscles: ["Chest", "Triceps"],
           requiredMovementPatterns: ["horizontal_pull"],
-          avoidDuplicatePatterns: ["vertical_pull"],
+          avoidDuplicatePatterns: ["vertical_push", "vertical_pull"],
           supportPenaltyPatterns: ["vertical_push", "vertical_pull"],
           maxPreferredSupportPerPattern: 1,
         },
@@ -373,12 +373,12 @@ describe("resolveSessionSlotPolicy", () => {
     expect(
       getProjectionRepairCompatibleMuscles(
         upperA,
-        ["Chest", "Side Delts", "Triceps", "Hamstrings", "Calves"]
+        ["Chest", "Rear Delts", "Side Delts", "Triceps", "Hamstrings", "Calves"]
       )
-    ).toEqual(["Chest", "Triceps"]);
+    ).toEqual(["Chest", "Triceps", "Rear Delts"]);
     expect(
-      getProjectionRepairCompatibleMuscles(upperB, ["Chest", "Side Delts", "Triceps", "Hamstrings", "Calves"])
-    ).toEqual(["Chest", "Triceps"]);
+      getProjectionRepairCompatibleMuscles(upperB, ["Chest", "Rear Delts", "Side Delts", "Triceps", "Hamstrings", "Calves"])
+    ).toEqual(["Chest", "Triceps", "Side Delts"]);
     expect(
       getProjectionRepairCompatibleMuscles(lowerA, ["Chest", "Triceps", "Hamstrings", "Calves"])
     ).toEqual(["Hamstrings", "Calves"]);
@@ -461,7 +461,7 @@ describe("resolveSessionSlotPolicy", () => {
         upperB,
         ["Chest", "Side Delts", "Triceps", "Hamstrings", "Calves"]
       )
-    ).toEqual(["Chest", "Triceps"]);
+    ).toEqual(["Chest", "Triceps", "Side Delts"]);
     expect(
       getProjectionRepairCompatibleMuscles(
         lowerB,

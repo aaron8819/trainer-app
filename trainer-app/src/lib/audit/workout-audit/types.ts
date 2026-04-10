@@ -489,6 +489,9 @@ export type ActiveMesocycleSlotReseedAuditPayload = {
   flags: {
     improvesChestSupport: boolean;
     improvesTricepsSupport: boolean;
+    improvesSideDeltSupport: boolean;
+    improvesRearDeltSupport: boolean;
+    reducesUpperSessionDuration: boolean;
     preservesRowAndVerticalPullWhereAppropriate: boolean;
     avoidsNewObviousOvershoot: boolean;
     preservesSlotIdentity: boolean;

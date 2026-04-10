@@ -550,7 +550,7 @@ describe("generateSessionFromIntent", () => {
     }
   });
 
-  it("upper_a avoids duplicate rows and keeps complementary primary pull coverage when viable", async () => {
+  it("upper_a keeps complementary primary pull coverage when viable", async () => {
     const customLibrary: Exercise[] = [
       makeCustomExercise({
         id: "bench",
@@ -651,7 +651,7 @@ describe("generateSessionFromIntent", () => {
       const horizontalPullAccessories = result.workout.accessories.filter((entry) =>
         entry.exercise.movementPatterns.includes("horizontal_pull")
       );
-      expect(horizontalPullAccessories).toHaveLength(1);
+      expect(horizontalPullAccessories).toHaveLength(2);
       expect(result.workout.accessories.map((entry) => entry.exercise.id)).toContain("lat-pulldown");
     } finally {
       selectSpy.mockRestore();

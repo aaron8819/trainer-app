@@ -380,6 +380,13 @@ function buildAggregateFlags(slotDiffs: ActiveMesocycleSlotReseedSlotDiff[]) {
   return {
     improvesChestSupport: slotDiffs.some((slot) => slot.flags.improvesChestSupport),
     improvesTricepsSupport: slotDiffs.some((slot) => slot.flags.improvesTricepsSupport),
+    improvesSideDeltSupport: slotDiffs.some((slot) =>
+      slot.muscleContributionDiff.some((row) => row.muscle === "Side Delts" && row.delta > 0)
+    ),
+    improvesRearDeltSupport: slotDiffs.some((slot) =>
+      slot.muscleContributionDiff.some((row) => row.muscle === "Rear Delts" && row.delta > 0)
+    ),
+    reducesUpperSessionDuration: slotDiffs.some((slot) => (slot.estimatedMinutesDiff.delta ?? 0) < 0),
     preservesRowAndVerticalPullWhereAppropriate: slotDiffs.every(
       (slot) => slot.flags.preservesRowAndVerticalPullWhereAppropriate
     ),
@@ -404,8 +411,12 @@ function buildRecommendation(input: {
   reasons: string[];
 } {
   const reasons: string[] = [];
+  const improvesUpperDeltSupport =
+    input.aggregateFlags.improvesSideDeltSupport &&
+    input.aggregateFlags.improvesRearDeltSupport;
+  const improvesUpperSessionDuration = input.aggregateFlags.reducesUpperSessionDuration;
 
-  if (input.projectionError) {
+  if (input.projectionError && !improvesUpperDeltSupport && !improvesUpperSessionDuration) {
     return {
       verdict: "needs_projection_fix_first",
       reasons: [input.projectionError],
@@ -421,8 +432,13 @@ function buildRecommendation(input: {
   if (!input.aggregateFlags.avoidsNewObviousOvershoot) {
     reasons.push("candidate introduced obvious overshoot warnings");
   }
-  if (!input.aggregateFlags.improvesChestSupport && !input.aggregateFlags.improvesTricepsSupport) {
-    reasons.push("candidate did not materially improve chest or triceps support");
+  if (
+    !input.aggregateFlags.improvesChestSupport &&
+    !input.aggregateFlags.improvesTricepsSupport &&
+    !improvesUpperDeltSupport &&
+    !improvesUpperSessionDuration
+  ) {
+    reasons.push("candidate did not materially improve upper support coverage");
   }
 
   if (reasons.length > 0) {
@@ -440,6 +456,9 @@ function buildRecommendation(input: {
     reasons: [
       `push-support muscles improved by ${pushGain} projected effective sets`,
       `pull-support coverage remained present with ${pullTotal} projected effective sets across the upper-slot pair`,
+      ...(input.projectionError
+        ? [`upper-slot runtime diff cleared the bounded repair target despite projection warning: ${input.projectionError}`]
+        : []),
     ],
   };
 }
@@ -645,6 +664,9 @@ export async function evaluateActiveMesocycleSlotReseed(input: {
         improvesTricepsSupport: false,
         preservesRowAndVerticalPullWhereAppropriate: false,
         avoidsNewObviousOvershoot: false,
+        improvesSideDeltSupport: false,
+        improvesRearDeltSupport: false,
+        reducesUpperSessionDuration: false,
         preservesSlotIdentity: false,
         materiallyChangesExerciseSelection: false,
       },

@@ -700,6 +700,9 @@ describe("buildActiveMesocycleSlotReseedSummary", () => {
           flags: {
             improvesChestSupport: true,
             improvesTricepsSupport: true,
+            improvesSideDeltSupport: true,
+            improvesRearDeltSupport: false,
+            reducesUpperSessionDuration: false,
             preservesRowAndVerticalPullWhereAppropriate: true,
             avoidsNewObviousOvershoot: true,
             preservesSlotIdentity: true,

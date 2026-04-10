@@ -92,6 +92,7 @@ export type RuntimeExerciseSwapExercisePayload = {
   name: string;
   equipment: string[];
   movementPatterns: string[];
+  isRuntimeAdded: boolean;
   isMainLift: boolean;
   isSwapped: true;
   section: "WARMUP" | "MAIN" | "ACCESSORY";
@@ -205,6 +206,9 @@ function toPreviewExercise(input: {
     movementPatterns: input.replacementExercise.movementPatterns.map(
       (pattern) => pattern.toLowerCase(),
     ),
+    isRuntimeAdded: readRuntimeAddedExerciseIds(
+      input.context.workout.selectionMetadata,
+    ).has(input.context.workoutExercise.id),
     isMainLift: input.context.workoutExercise.isMainLift,
     isSwapped: true,
     section: normalizeWorkoutSection(input.context.workoutExercise.section),
@@ -235,11 +239,6 @@ function resolveSwapEligibilityError(
       return {
         message:
           "Exercise swaps are only available while the workout is still open.",
-        status: 409,
-      };
-    case "RUNTIME_ADDED_BLOCKED":
-      return {
-        message: "Runtime-added exercises cannot be swapped.",
         status: 409,
       };
     case "PARTIALLY_LOGGED_EXERCISE_BLOCKED":

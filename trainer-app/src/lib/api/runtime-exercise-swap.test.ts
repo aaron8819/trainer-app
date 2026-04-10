@@ -46,6 +46,18 @@ describe("runtime exercise swap constraints", () => {
     ).toEqual({ eligible: true });
   });
 
+  it("allows runtime-added source exercises when they are still unlogged", () => {
+    expect(
+      isSwapEligible(currentAccessory, {
+        status: "IN_PROGRESS",
+        loggedSetCount: 0,
+        totalSetCount: 3,
+        isRuntimeAdded: true,
+        isAlreadySwapped: false,
+      }),
+    ).toEqual({ eligible: true });
+  });
+
   it("returns strict reason codes for logged source exercises", () => {
     expect(
       isSwapEligible(currentAccessory, {

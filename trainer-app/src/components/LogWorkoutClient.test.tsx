@@ -1363,6 +1363,163 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     expect(screen.getByRole("button", { name: "Swap" })).toBeInTheDocument();
   });
 
+  it("shows swap for unlogged canonical and runtime-added rows without client movement-pattern gating", () => {
+    render(
+      <LogWorkoutClient
+        workoutId="workout-1"
+        exercises={{
+          main: [
+            {
+              workoutExerciseId: "ex-canonical",
+              name: "Leg Extension",
+              equipment: ["machine"],
+              movementPatterns: ["extension"],
+              isMainLift: false,
+              section: "MAIN",
+              sets: [
+                {
+                  setId: "set-canonical-1",
+                  setIndex: 1,
+                  targetReps: 12,
+                  targetLoad: 70,
+                  targetRpe: 8,
+                  restSeconds: 90,
+                },
+              ],
+            },
+          ],
+          accessory: [
+            {
+              workoutExerciseId: "ex-added",
+              name: "Pec Deck",
+              equipment: ["machine"],
+              isRuntimeAdded: true,
+              isMainLift: false,
+              section: "ACCESSORY",
+              sessionNote: "Added during workout. Session-only; future planning ignores it.",
+              sets: [
+                {
+                  setId: "set-added-1",
+                  setIndex: 1,
+                  targetReps: 12,
+                  targetLoad: 80,
+                  targetRpe: 7,
+                  restSeconds: 90,
+                },
+              ],
+            },
+          ],
+        }}
+        allowRuntimeExerciseSwap={true}
+      />
+    );
+
+    expect(within(screen.getByTestId("queue-row-ex-canonical")).getByRole("button", { name: "Swap" })).toBeEnabled();
+    expect(within(screen.getByTestId("queue-row-ex-added")).getByRole("button", { name: "Swap" })).toBeEnabled();
+    expect(within(screen.getByTestId("queue-row-ex-added")).getByRole("button", { name: "Remove" })).toBeEnabled();
+  });
+
+  it("shows disabled swap controls with stable explanations for logged and already-swapped rows", () => {
+    render(
+      <LogWorkoutClient
+        workoutId="workout-1"
+        exercises={{
+          main: [
+            {
+              workoutExerciseId: "ex-partial",
+              name: "T-Bar Row",
+              equipment: ["barbell"],
+              movementPatterns: ["horizontal_pull"],
+              isMainLift: false,
+              section: "MAIN",
+              sets: [
+                {
+                  setId: "set-partial-1",
+                  setIndex: 1,
+                  targetReps: 10,
+                  actualReps: 10,
+                  targetLoad: 120,
+                  actualLoad: 120,
+                  targetRpe: 8,
+                  actualRpe: 8,
+                  restSeconds: 120,
+                },
+                {
+                  setId: "set-partial-2",
+                  setIndex: 2,
+                  targetReps: 10,
+                  targetLoad: 120,
+                  targetRpe: 8,
+                  restSeconds: 120,
+                },
+              ],
+            },
+            {
+              workoutExerciseId: "ex-logged",
+              name: "Cable Row",
+              equipment: ["cable"],
+              movementPatterns: ["horizontal_pull"],
+              isMainLift: false,
+              section: "MAIN",
+              sets: [
+                {
+                  setId: "set-logged-1",
+                  setIndex: 1,
+                  targetReps: 12,
+                  actualReps: 12,
+                  targetLoad: 80,
+                  actualLoad: 80,
+                  targetRpe: 8,
+                  actualRpe: 8,
+                  restSeconds: 90,
+                },
+              ],
+            },
+            {
+              workoutExerciseId: "ex-swapped",
+              name: "Chest-Supported Dumbbell Row",
+              equipment: ["dumbbell"],
+              movementPatterns: ["horizontal_pull"],
+              isMainLift: false,
+              isSwapped: true,
+              section: "MAIN",
+              sessionNote:
+                "Swapped from T-Bar Row. Session-only; future progression stays exercise-specific.",
+              sets: [
+                {
+                  setId: "set-swapped-1",
+                  setIndex: 1,
+                  targetReps: 10,
+                  targetLoad: 40,
+                  targetRpe: 8,
+                  restSeconds: 120,
+                },
+              ],
+            },
+          ],
+          accessory: [],
+        }}
+        allowRuntimeExerciseSwap={true}
+      />
+    );
+
+    expect(
+      within(screen.getByTestId("queue-row-ex-partial")).getByRole("button", {
+        name: "Swap unavailable: Started rows cannot be swapped",
+      })
+    ).toBeDisabled();
+    expect(
+      within(screen.getByTestId("queue-row-ex-logged")).getByRole("button", {
+        name: "Swap unavailable: Logged rows cannot be swapped",
+      })
+    ).toBeDisabled();
+    expect(
+      within(screen.getByTestId("queue-row-ex-swapped")).getByRole("button", {
+        name: "Swap unavailable: Already swapped",
+      })
+    ).toBeDisabled();
+  });
+
   it("returns to the swapped active logging context after a runtime exercise swap", async () => {
     const user = userEvent.setup();
     const scrollIntoViewSpy = vi.fn();
@@ -1575,6 +1732,141 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
         "Swapped from T-Bar Row. Session-only; future progression stays exercise-specific."
       )
     ).toBeInTheDocument();
+  });
+
+  it("keeps runtime-added remove eligibility after an unlogged runtime-added row is swapped", async () => {
+    const user = userEvent.setup();
+    mockedFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const parsedUrl = new URL(String(input), "http://localhost");
+
+      if (
+        parsedUrl.pathname === "/api/workouts/workout-1/swap-exercise" &&
+        init?.method == null
+      ) {
+        return {
+          ok: true,
+          json: async () => ({
+            candidates: [
+              {
+                exerciseId: "machine-fly",
+                exerciseName: "Machine Fly",
+                primaryMuscles: ["chest"],
+                equipment: ["machine"],
+                reason: "Keeps the target muscle with lower setup friction.",
+              },
+            ],
+          }),
+        };
+      }
+
+      if (parsedUrl.pathname === "/api/workouts/workout-1/swap-exercise-preview") {
+        return {
+          ok: true,
+          json: async () => ({
+            exercise: {
+              workoutExerciseId: "ex-added",
+              exerciseId: "machine-fly",
+              name: "Machine Fly",
+              equipment: ["MACHINE"],
+              movementPatterns: ["horizontal_push"],
+              isRuntimeAdded: true,
+              isMainLift: false,
+              isSwapped: true,
+              section: "ACCESSORY",
+              sessionNote:
+                "Swapped from Pec Deck. Session-only; future progression stays exercise-specific.",
+              sets: [
+                {
+                  setId: "set-added-1",
+                  setIndex: 1,
+                  targetReps: 12,
+                  targetRepRange: { min: 10, max: 14 },
+                  targetLoad: 90,
+                  targetRpe: 7,
+                  restSeconds: 90,
+                },
+              ],
+            },
+          }),
+        };
+      }
+
+      if (
+        parsedUrl.pathname === "/api/workouts/workout-1/swap-exercise" &&
+        init?.method === "POST"
+      ) {
+        return {
+          ok: true,
+          json: async () => ({
+            exercise: {
+              workoutExerciseId: "ex-added",
+              exerciseId: "machine-fly",
+              name: "Machine Fly",
+              equipment: ["MACHINE"],
+              movementPatterns: ["horizontal_push"],
+              isRuntimeAdded: true,
+              isMainLift: false,
+              isSwapped: true,
+              section: "ACCESSORY",
+              sessionNote:
+                "Swapped from Pec Deck. Session-only; future progression stays exercise-specific.",
+              sets: [
+                {
+                  setId: "set-added-1",
+                  setIndex: 1,
+                  targetReps: 12,
+                  targetRepRange: { min: 10, max: 14 },
+                  targetLoad: 90,
+                  targetRpe: 7,
+                  restSeconds: 90,
+                },
+              ],
+            },
+          }),
+        };
+      }
+
+      throw new Error(`Unhandled fetch: ${String(input)}`);
+    });
+
+    render(
+      <LogWorkoutClient
+        workoutId="workout-1"
+        exercises={[
+          {
+            workoutExerciseId: "ex-added",
+            name: "Pec Deck",
+            equipment: ["machine"],
+            isRuntimeAdded: true,
+            isMainLift: false,
+            section: "ACCESSORY",
+            sessionNote: "Added during workout. Session-only; future planning ignores it.",
+            sets: [
+              {
+                setId: "set-added-1",
+                setIndex: 1,
+                targetReps: 12,
+                targetLoad: 80,
+                targetRpe: 7,
+                restSeconds: 90,
+              },
+            ],
+          },
+        ]}
+        allowRuntimeExerciseSwap={true}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: "Swap" }));
+    expect(await screen.findByText("Post-swap prescription")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Use swap" }));
+
+    await waitFor(() => {
+      const swappedRow = screen.getByTestId("queue-row-ex-added");
+      expect(within(swappedRow).getByText("Machine Fly")).toBeInTheDocument();
+      expect(within(swappedRow).getByText("Added exercise")).toBeInTheDocument();
+      expect(within(swappedRow).getByRole("button", { name: "Remove" })).toBeEnabled();
+    });
   });
 
   it("keeps the logging UI active after leave-for-now confirms a partial save", async () => {

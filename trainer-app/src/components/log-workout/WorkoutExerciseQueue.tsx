@@ -22,6 +22,7 @@ export type WorkoutQueueExerciseRowData = {
   canAddSet: boolean;
   isAddingSet: boolean;
   canSwap: boolean;
+  swapDisabledReason?: string | null;
   isSwapping: boolean;
   canRemove: boolean;
   isRemoving: boolean;
@@ -125,11 +126,17 @@ const ExerciseQueueRow = memo(
                 {row.isRemoving ? "Removing..." : "Remove"}
               </button>
             ) : null}
-            {row.canSwap && onSwapExercise ? (
+            {onSwapExercise && (row.canSwap || row.swapDisabledReason) ? (
               <button
                 className="inline-flex min-h-8 items-center justify-center rounded-full border border-slate-300 px-3 text-[11px] font-semibold text-slate-700 disabled:opacity-60"
-                disabled={row.isSwapping}
+                aria-label={
+                  row.swapDisabledReason
+                    ? `Swap unavailable: ${row.swapDisabledReason}`
+                    : undefined
+                }
+                disabled={row.isSwapping || !row.canSwap}
                 onClick={() => onSwapExercise(row.exerciseId)}
+                title={row.swapDisabledReason ?? undefined}
                 type="button"
               >
                 {row.isSwapping ? "Swapping..." : "Swap"}
@@ -178,6 +185,7 @@ const ExerciseQueueRow = memo(
     previous.row.canAddSet === next.row.canAddSet &&
     previous.row.isAddingSet === next.row.isAddingSet &&
     previous.row.canSwap === next.row.canSwap &&
+    previous.row.swapDisabledReason === next.row.swapDisabledReason &&
     previous.row.isSwapping === next.row.isSwapping &&
     previous.row.canRemove === next.row.canRemove &&
     previous.row.isRemoving === next.row.isRemoving &&

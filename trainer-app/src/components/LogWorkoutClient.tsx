@@ -76,12 +76,6 @@ function isDumbbellExercise(exercise: LogExerciseInput): boolean {
   return isDumbbellEquipment(exercise.equipment);
 }
 
-function supportsRuntimeExerciseSwap(exercise: LogExerciseInput): boolean {
-  return (exercise.movementPatterns ?? []).some(
-    (pattern) => pattern === "horizontal_pull" || pattern === "vertical_pull"
-  );
-}
-
 function resolveExerciseSection(section?: LogExerciseInput["section"]): ExerciseSection | null {
   if (section === "WARMUP") {
     return "warmup";
@@ -610,6 +604,17 @@ export default function LogWorkoutClient({
             const loggedCountForExercise = exercise.sets.filter((set) => satisfiedSetIds.has(set.setId)).length;
             const nextSet =
               exercise.sets.find((set) => !satisfiedSetIds.has(set.setId)) ?? exercise.sets[0] ?? null;
+            let swapDisabledReason: string | null = null;
+            if (allowRuntimeExerciseSwap) {
+              if (loggedCountForExercise > 0) {
+                swapDisabledReason =
+                  loggedCountForExercise >= exercise.sets.length && exercise.sets.length > 0
+                    ? "Logged rows cannot be swapped"
+                    : "Started rows cannot be swapped";
+              } else if (exercise.isSwapped) {
+                swapDisabledReason = "Already swapped";
+              }
+            }
 
             return {
               section,
@@ -623,12 +628,8 @@ export default function LogWorkoutClient({
                 loggedCountForExercise === exercise.sets.length && exercise.sets.length > 0,
               isExpanded: expandedExerciseId === exercise.workoutExerciseId,
               nextSetId: nextSet?.setId ?? null,
-              canSwap:
-                allowRuntimeExerciseSwap &&
-                !exercise.isRuntimeAdded &&
-                !exercise.isSwapped &&
-                supportsRuntimeExerciseSwap(exercise) &&
-                exercise.sets.every((set) => !satisfiedSetIds.has(set.setId)),
+              canSwap: allowRuntimeExerciseSwap && swapDisabledReason == null,
+              swapDisabledReason,
               canAddSet: true,
               isAddingSet: addingSetExerciseId === exercise.workoutExerciseId,
               isSwapping: selectedSwapExerciseId === exercise.workoutExerciseId,

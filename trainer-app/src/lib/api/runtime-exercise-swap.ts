@@ -14,7 +14,6 @@ export type RuntimeExerciseSwapProfile = {
 
 export type RuntimeExerciseSwapEligibilityBlockCode =
   | "WORKOUT_NOT_OPEN"
-  | "RUNTIME_ADDED_BLOCKED"
   | "PARTIALLY_LOGGED_EXERCISE_BLOCKED"
   | "FULLY_LOGGED_EXERCISE_BLOCKED"
   | "ALREADY_SWAPPED"
@@ -173,10 +172,6 @@ export function isSwapEligible(
     workoutState.status !== "PARTIAL"
   ) {
     return { eligible: false, reasonCode: "WORKOUT_NOT_OPEN" };
-  }
-
-  if (workoutState.isRuntimeAdded) {
-    return { eligible: false, reasonCode: "RUNTIME_ADDED_BLOCKED" };
   }
 
   if (

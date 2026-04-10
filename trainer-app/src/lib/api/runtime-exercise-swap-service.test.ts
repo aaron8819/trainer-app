@@ -77,6 +77,86 @@ import {
   resolveRuntimeExerciseSwapPreview,
 } from "./runtime-exercise-swap-service";
 
+const runtimeEditDirectives = {
+  continuityAlias: "none",
+  progressionAlias: "none",
+  futureSessionGeneration: "ignore",
+  futureSeedCarryForward: "ignore",
+} as const;
+
+function buildRuntimeAddedSelectionMetadata() {
+  return {
+    runtimeEditReconciliation: {
+      version: 1,
+      lastReconciledAt: "2026-03-01T00:00:00.000Z",
+      directives: runtimeEditDirectives,
+      ops: [
+        {
+          kind: "add_exercise",
+          source: "api_workouts_add_exercise",
+          appliedAt: "2026-03-01T00:00:00.000Z",
+          scope: "current_workout_only",
+          facts: {
+            workoutExerciseId: "we-1",
+            exerciseId: "t-bar-row",
+            orderIndex: 0,
+            section: "MAIN",
+            setCount: 2,
+            prescriptionSource: "session_accessory_defaults",
+          },
+        },
+      ],
+    },
+  };
+}
+
+function buildAlreadySwappedSelectionMetadata() {
+  return {
+    runtimeEditReconciliation: {
+      version: 1,
+      lastReconciledAt: "2026-03-01T00:00:00.000Z",
+      directives: runtimeEditDirectives,
+      ops: [
+        {
+          kind: "replace_exercise",
+          source: "api_workouts_swap_exercise",
+          appliedAt: "2026-03-01T00:00:00.000Z",
+          scope: "current_workout_only",
+          facts: {
+            workoutExerciseId: "we-1",
+            fromExerciseId: "t-bar-row",
+            fromExerciseName: "T-Bar Row",
+            toExerciseId: "chest-supported-db-row",
+            toExerciseName: "Chest-Supported Dumbbell Row",
+            reason: "equipment_availability_equivalent_pull_swap",
+            setCount: 2,
+          },
+        },
+      ],
+    },
+  };
+}
+
+function buildCloseoutSelectionMetadata() {
+  return {
+    weekCloseId: "week-close-1",
+    sessionDecisionReceipt: {
+      version: 1,
+      cycleContext: { weekInMeso: 4 },
+      readiness: { wasAutoregulated: false },
+      lifecycleVolume: { targets: [] },
+      targetMuscles: ["lats"],
+      sorenessSuppressedMuscles: [],
+      exceptions: [
+        {
+          code: "closeout_session",
+          message: "Marked as closeout session.",
+        },
+      ],
+    },
+  };
+}
+
 describe("runtime exercise swap service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -422,6 +502,105 @@ describe("runtime exercise swap service", () => {
         }),
       }),
     );
+  });
+
+  it("swaps runtime-added unlogged rows while preserving runtime-added provenance", async () => {
+    const runtimeAddedSelectionMetadata = buildRuntimeAddedSelectionMetadata();
+    mocks.workoutFindFirst.mockResolvedValue({
+      id: "workout-1",
+      status: "IN_PROGRESS",
+      selectionMode: "MANUAL",
+      sessionIntent: null,
+      exercises: [{ id: "we-1", exerciseId: "t-bar-row" }],
+      selectionMetadata: runtimeAddedSelectionMetadata,
+    });
+    mocks.txWorkoutFindUnique.mockResolvedValue({
+      selectionMetadata: runtimeAddedSelectionMetadata,
+      selectionMode: "MANUAL",
+      sessionIntent: null,
+    });
+
+    const input = {
+      workoutId: "workout-1",
+      workoutExerciseId: "we-1",
+      replacementExerciseId: "chest-supported-db-row",
+      userId: "user-1",
+    };
+
+    await expect(resolveRuntimeExerciseSwapPreview(input)).resolves.toMatchObject({
+      workoutExerciseId: "we-1",
+      exerciseId: "chest-supported-db-row",
+      isRuntimeAdded: true,
+      isSwapped: true,
+    });
+    await expect(applyRuntimeExerciseSwap(input)).resolves.toMatchObject({
+      workoutExerciseId: "we-1",
+      exerciseId: "chest-supported-db-row",
+      isRuntimeAdded: true,
+      isSwapped: true,
+    });
+
+    const updateCall = mocks.txWorkoutUpdate.mock.calls.at(-1)?.[0];
+    const selectionMetadata = updateCall?.data.selectionMetadata as {
+      runtimeEditReconciliation?: { ops?: Array<{ kind: string; facts: unknown }> };
+    };
+    expect(selectionMetadata.runtimeEditReconciliation?.ops?.map((op) => op.kind)).toEqual([
+      "add_exercise",
+      "replace_exercise",
+    ]);
+    expect(selectionMetadata.runtimeEditReconciliation?.ops?.[0]).toMatchObject({
+      kind: "add_exercise",
+      facts: expect.objectContaining({ workoutExerciseId: "we-1" }),
+    });
+  });
+
+  it("swaps closeout unlogged rows while preserving week-close receipt ownership", async () => {
+    const closeoutSelectionMetadata = buildCloseoutSelectionMetadata();
+    mocks.workoutFindFirst.mockResolvedValue({
+      id: "workout-1",
+      status: "IN_PROGRESS",
+      selectionMode: "MANUAL",
+      sessionIntent: null,
+      exercises: [{ id: "we-1", exerciseId: "t-bar-row" }],
+      selectionMetadata: closeoutSelectionMetadata,
+    });
+    mocks.txWorkoutFindUnique.mockResolvedValue({
+      selectionMetadata: closeoutSelectionMetadata,
+      selectionMode: "MANUAL",
+      sessionIntent: null,
+    });
+
+    await expect(
+      applyRuntimeExerciseSwap({
+        workoutId: "workout-1",
+        workoutExerciseId: "we-1",
+        replacementExerciseId: "chest-supported-db-row",
+        userId: "user-1",
+      }),
+    ).resolves.toMatchObject({
+      workoutExerciseId: "we-1",
+      exerciseId: "chest-supported-db-row",
+      isRuntimeAdded: false,
+      isSwapped: true,
+    });
+
+    const updateCall = mocks.txWorkoutUpdate.mock.calls.at(-1)?.[0];
+    const selectionMetadata = updateCall?.data.selectionMetadata as {
+      weekCloseId?: string;
+      sessionDecisionReceipt?: {
+        exceptions?: Array<{ code: string }>;
+        sessionSlot?: unknown;
+      };
+      runtimeEditReconciliation?: { ops?: Array<{ kind: string }> };
+    };
+    expect(selectionMetadata.weekCloseId).toBe("week-close-1");
+    expect(selectionMetadata.sessionDecisionReceipt?.exceptions).toEqual([
+      expect.objectContaining({ code: "closeout_session" }),
+    ]);
+    expect(selectionMetadata.sessionDecisionReceipt?.sessionSlot).toBeUndefined();
+    expect(selectionMetadata.runtimeEditReconciliation?.ops?.map((op) => op.kind)).toEqual([
+      "replace_exercise",
+    ]);
   });
 
   it("normalizes nullable sections back to MAIN", async () => {
@@ -815,6 +994,25 @@ describe("runtime exercise swap service", () => {
         userId: "user-1",
       }),
     ).rejects.toMatchObject({ code: "FULLY_LOGGED_EXERCISE_BLOCKED" });
+  });
+
+  it("blocks already-swapped source exercises with a reason code", async () => {
+    mocks.workoutFindFirst.mockResolvedValueOnce({
+      id: "workout-1",
+      status: "IN_PROGRESS",
+      selectionMode: "INTENT",
+      sessionIntent: "PULL",
+      exercises: [{ id: "we-1", exerciseId: "chest-supported-db-row" }],
+      selectionMetadata: buildAlreadySwappedSelectionMetadata(),
+    });
+
+    await expect(
+      resolveRuntimeExerciseSwapCandidates({
+        workoutId: "workout-1",
+        workoutExerciseId: "we-1",
+        userId: "user-1",
+      }),
+    ).rejects.toMatchObject({ code: "ALREADY_SWAPPED" });
   });
 
   it("blocks replacement exercises that already exist elsewhere in the workout", async () => {

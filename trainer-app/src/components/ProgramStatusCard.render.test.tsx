@@ -19,6 +19,7 @@ vi.mock("next/link", () => ({
 
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
 });
 
 function setupDialogMocks() {
@@ -550,5 +551,107 @@ describe("ProgramStatusCard volumeOnly variant", () => {
     expect(screen.queryByText("Week 4 of 5")).not.toBeInTheDocument();
     expect(screen.queryByText("3 sessions until scheduled lighter week")).not.toBeInTheDocument();
     expect(screen.queryByText("Build volume.")).not.toBeInTheDocument();
+  });
+
+  it("keeps summary badges in sync when navigating historical weeks and back", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn().mockResolvedValue({
+      json: async () =>
+        buildData(
+          [
+            withOpportunity({
+              muscle: "Back",
+              effectiveSets: 7,
+              directSets: 6,
+              indirectSets: 1,
+              target: 9,
+              mev: 6,
+              mav: 14,
+              mrv: 18,
+            }),
+            withOpportunity({
+              muscle: "Quads",
+              effectiveSets: 17,
+              directSets: 17,
+              indirectSets: 0,
+              target: 10,
+              mev: 6,
+              mav: 16,
+              mrv: 20,
+            }),
+          ],
+          { viewedWeek: 3 }
+        ),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <ProgramStatusCard
+        initialData={buildCurrentWeekData([
+          withOpportunity({
+            muscle: "Chest",
+            effectiveSets: 4,
+            directSets: 4,
+            indirectSets: 0,
+            target: 10,
+            mev: 6,
+            mav: 16,
+            mrv: 22,
+          }),
+          withOpportunity({
+            muscle: "Biceps",
+            effectiveSets: 8,
+            directSets: 8,
+            indirectSets: 0,
+            target: 8,
+            mev: 4,
+            mav: 14,
+            mrv: 18,
+          }),
+        ])}
+        variant="volumeOnly"
+      />
+    );
+
+    expect(screen.getByText("Volume This Week")).toBeInTheDocument();
+    expect(screen.getByText("1 Below MEV")).toBeInTheDocument();
+    expect(screen.getByText("1 On target")).toBeInTheDocument();
+    expect(screen.getByText("Chest")).toBeInTheDocument();
+    expect(screen.getByText("Biceps")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "View previous week" }));
+    await waitFor(() => {
+      expect(screen.getByText("Volume - Week 3 of 5")).toBeInTheDocument();
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/program?week=3");
+    expect(screen.getByText("1 In range")).toBeInTheDocument();
+    expect(screen.getByText("1 Near MRV")).toBeInTheDocument();
+    expect(screen.getByText("0 Below MEV")).toBeInTheDocument();
+    expect(screen.getByText("0 On target")).toBeInTheDocument();
+    expect(screen.getByText("Back")).toBeInTheDocument();
+    expect(screen.getByText("Quads")).toBeInTheDocument();
+    expect(screen.queryByText("Chest")).not.toBeInTheDocument();
+    expect(screen.queryByText("Biceps")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "View next week" }));
+    await waitFor(() => {
+      expect(screen.getByText("Volume This Week")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("1 Below MEV")).toBeInTheDocument();
+    expect(screen.getByText("1 On target")).toBeInTheDocument();
+    expect(screen.getByText("Chest")).toBeInTheDocument();
+    expect(screen.getByText("Biceps")).toBeInTheDocument();
+    expect(screen.queryByText("Back")).not.toBeInTheDocument();
+    expect(screen.queryByText("Quads")).not.toBeInTheDocument();
+  });
+
+  it("keeps the empty volume state without rendering stale summary badges", () => {
+    render(<ProgramStatusCard initialData={buildCurrentWeekData([])} variant="volumeOnly" />);
+
+    expect(screen.getByText("No volume data for this week.")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Weekly volume status summary")).not.toBeInTheDocument();
+    expect(screen.queryByText("0 Below MEV")).not.toBeInTheDocument();
   });
 });

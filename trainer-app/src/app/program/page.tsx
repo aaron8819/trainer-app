@@ -2,11 +2,6 @@ import Link from "next/link";
 import { resolveOwner } from "@/lib/api/workout-context";
 import { loadPendingMesocycleHandoff } from "@/lib/api/mesocycle-handoff";
 import { loadProgramPageData, type ProgramCurrentWeekPlanRow } from "@/lib/api/program-page";
-import {
-  formatWeeklyMuscleStatusLabel,
-  type WeeklyMuscleStatus,
-  type WeeklyMuscleStatusSummary,
-} from "@/lib/ui/weekly-muscle-status";
 import { CycleAnchorControls } from "@/components/CycleAnchorControls";
 import { ProgramStatusCard } from "@/components/ProgramStatusCard";
 import { WeekCompletionOutlookSection } from "./WeekCompletionOutlookSection";
@@ -58,31 +53,6 @@ function formatPlanStateLabel(value: ProgramCurrentWeekPlanRow["state"]): string
     default:
       return "Remaining";
   }
-}
-
-function OutcomeSummaryChips({
-  summary,
-}: {
-  summary: WeeklyMuscleStatusSummary;
-}) {
-  const badges: Array<{ status: WeeklyMuscleStatus; className: string }> = [
-    { status: "below_mev", className: "bg-slate-100 px-3 py-1 text-slate-700" },
-    { status: "in_range", className: "bg-yellow-50 px-3 py-1 text-yellow-700" },
-    { status: "near_target", className: "bg-yellow-50 px-3 py-1 text-yellow-700" },
-    { status: "on_target", className: "bg-emerald-50 px-3 py-1 text-emerald-700" },
-    { status: "near_mrv", className: "bg-orange-50 px-3 py-1 text-orange-700" },
-    { status: "at_mrv", className: "bg-red-50 px-3 py-1 text-red-700" },
-  ];
-
-  return (
-    <div className="flex flex-wrap gap-2 text-xs font-medium text-slate-700">
-      {badges.map((badge) => (
-        <span key={badge.status} className={`rounded-full ${badge.className}`}>
-          {summary[badge.status]} {formatWeeklyMuscleStatusLabel(badge.status)}
-        </span>
-      ))}
-    </div>
-  );
 }
 
 export default async function ProgramPage() {
@@ -359,12 +329,6 @@ export default async function ProgramPage() {
                 Use this as supporting diagnostic detail after checking the plan and projection
                 signals above.
               </p>
-
-              {data.volumeDetails.currentWeekStatusSummary ? (
-                <div className="mt-3">
-                  <OutcomeSummaryChips summary={data.volumeDetails.currentWeekStatusSummary} />
-                </div>
-              ) : null}
 
               <div className="mt-4">
                 <ProgramStatusCard initialData={data.volumeDetails.dashboard} variant="volumeOnly" />

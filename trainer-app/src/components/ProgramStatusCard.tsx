@@ -13,6 +13,8 @@ import { SlideUpSheet } from "@/components/ui/SlideUpSheet";
 import {
   formatWeeklyMuscleStatusLabel,
   getWeeklyMuscleStatus,
+  summarizeWeeklyMuscleStatuses,
+  type WeeklyMuscleStatus,
 } from "@/lib/ui/weekly-muscle-status";
 
 type ProgramStatusCardVariant = "default" | "homeCompact" | "volumeOnly";
@@ -94,6 +96,45 @@ const STATUS_STYLE: Record<string, string> = {
   near_mrv: "bg-orange-50 text-orange-700 border-orange-200",
   at_mrv: "bg-red-50 text-red-700 border-red-200",
 };
+
+const SUMMARY_CHIP_STYLE: Record<WeeklyMuscleStatus, string> = {
+  below_mev: "bg-slate-100 px-3 py-1 text-slate-700",
+  in_range: "bg-yellow-50 px-3 py-1 text-yellow-700",
+  near_target: "bg-yellow-50 px-3 py-1 text-yellow-700",
+  on_target: "bg-emerald-50 px-3 py-1 text-emerald-700",
+  near_mrv: "bg-orange-50 px-3 py-1 text-orange-700",
+  at_mrv: "bg-red-50 px-3 py-1 text-red-700",
+};
+
+const SUMMARY_STATUS_ORDER: WeeklyMuscleStatus[] = [
+  "below_mev",
+  "in_range",
+  "near_target",
+  "on_target",
+  "near_mrv",
+  "at_mrv",
+];
+
+function VolumeStatusSummaryChips({ rows }: { rows: ProgramVolumeRow[] }) {
+  if (rows.length === 0) {
+    return null;
+  }
+
+  const summary = summarizeWeeklyMuscleStatuses(rows);
+
+  return (
+    <div
+      aria-label="Weekly volume status summary"
+      className="flex flex-wrap gap-2 text-xs font-medium text-slate-700"
+    >
+      {SUMMARY_STATUS_ORDER.map((status) => (
+        <span key={status} className={`rounded-full ${SUMMARY_CHIP_STYLE[status]}`}>
+          {summary[status]} {formatWeeklyMuscleStatusLabel(status)}
+        </span>
+      ))}
+    </div>
+  );
+}
 
 function formatRawSetContext(directSets: number, indirectSets: number): string {
   if (indirectSets > 0) {
@@ -521,6 +562,10 @@ function ProgramStatusCardDefault({
           Viewing Week {viewedWeek} - read only
         </div>
       ) : null}
+
+      <div className="mt-3">
+        <VolumeStatusSummaryChips rows={relevantVolume} />
+      </div>
 
       {relevantVolume.length > 0 ? (
         <div

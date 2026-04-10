@@ -557,14 +557,7 @@ describe("loadProgramPageData", () => {
         },
       ],
     });
-    expect(result.volumeDetails.currentWeekStatusSummary).toEqual({
-      below_mev: 1,
-      in_range: 0,
-      near_target: 0,
-      on_target: 1,
-      near_mrv: 1,
-      at_mrv: 0,
-    });
+    expect(result.volumeDetails.dashboard.volumeThisWeek).toHaveLength(3);
     expect(result.advancedActions.availableActions).toEqual(["deload", "extend_phase", "reset"]);
   });
 

@@ -2,10 +2,6 @@ import type { WorkoutStatus } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { readSessionSlotSnapshot } from "@/lib/evidence/session-decision-receipt";
 import { formatSessionIdentityLabel } from "@/lib/ui/session-identity";
-import {
-  summarizeWeeklyMuscleStatuses,
-  type WeeklyMuscleStatusSummary,
-} from "@/lib/ui/weekly-muscle-status";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 import {
   buildAdvancingPerformedSlots,
@@ -149,7 +145,6 @@ export type ProgramPageData = {
   weekCompletionOutlook: ProgramWeekCompletionOutlook | null;
   volumeDetails: {
     dashboard: ProgramDashboardData;
-    currentWeekStatusSummary: WeeklyMuscleStatusSummary | null;
   };
   advancedActions: {
     availableActions: Array<"deload" | "extend_phase" | "reset">;
@@ -726,9 +721,6 @@ export async function loadProgramPageData(userId: string): Promise<ProgramPageDa
     weekCompletionOutlook,
     volumeDetails: {
       dashboard,
-      currentWeekStatusSummary: dashboard.volumeThisWeek.length
-        ? summarizeWeeklyMuscleStatuses(dashboard.volumeThisWeek)
-        : null,
     },
     advancedActions: {
       availableActions: ["deload", "extend_phase", "reset"],

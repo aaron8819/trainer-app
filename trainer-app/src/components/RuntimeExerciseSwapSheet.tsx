@@ -346,13 +346,13 @@ export function RuntimeExerciseSwapSheet({
     >
       <div className="space-y-4">
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
-          Narrow runtime swap. This keeps the planned slot, replaces the exercise in-place for this
-          session, and keeps future progression exercise-specific to the replacement.
+          This replaces the exercise in place for this session and keeps future progression
+          exercise-specific to the replacement.
         </div>
 
         <div className="space-y-2">
           <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-            Search eligible swaps
+            Search replacements
           </p>
           <input
             className="min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-base"
@@ -367,26 +367,26 @@ export function RuntimeExerciseSwapSheet({
           />
         </div>
 
-        {loadingInitial ? <p className="text-sm text-slate-500">Finding constrained equivalents...</p> : null}
+        {loadingInitial ? <p className="text-sm text-slate-500">Finding safe replacements...</p> : null}
 
         {!loadingInitial && trimmedSearchQuery.length === 1 ? (
-          <p className="text-sm text-slate-500">Type at least 2 letters to search eligible swaps.</p>
+          <p className="text-sm text-slate-500">Type at least 2 letters to search replacements.</p>
         ) : null}
 
-        {loadingSearch ? <p className="text-sm text-slate-500">Searching eligible swaps...</p> : null}
+        {loadingSearch ? <p className="text-sm text-slate-500">Searching replacements...</p> : null}
 
         {!loadingInitial &&
         !loadingSearch &&
         trimmedSearchQuery.length === 0 &&
         visibleCandidates.length === 0 ? (
-          <p className="text-sm text-slate-500">No safe swap candidates were found for this exercise.</p>
+          <p className="text-sm text-slate-500">No safe replacements found.</p>
         ) : null}
 
         {!loadingInitial &&
         !loadingSearch &&
         trimmedSearchQuery.length >= 2 &&
         visibleCandidates.length === 0 ? (
-          <p className="text-sm text-slate-500">No eligible swaps matched that search.</p>
+          <p className="text-sm text-slate-500">No safe replacements matched that search.</p>
         ) : null}
 
         {visibleCandidates.map((candidate) => {

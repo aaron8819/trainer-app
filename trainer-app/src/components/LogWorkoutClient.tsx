@@ -607,12 +607,9 @@ export default function LogWorkoutClient({
             let swapDisabledReason: string | null = null;
             if (allowRuntimeExerciseSwap) {
               if (loggedCountForExercise > 0) {
-                swapDisabledReason =
-                  loggedCountForExercise >= exercise.sets.length && exercise.sets.length > 0
-                    ? "Logged rows cannot be swapped"
-                    : "Started rows cannot be swapped";
+                swapDisabledReason = "Swap unavailable after sets are logged.";
               } else if (exercise.isSwapped) {
-                swapDisabledReason = "Already swapped";
+                swapDisabledReason = "This exercise was already swapped.";
               }
             }
 

@@ -92,6 +92,12 @@ const ExerciseQueueRow = memo(
       onRender?.(row.exerciseId);
     });
 
+    const swapUnavailableLabel = row.swapDisabledReason?.startsWith("Swap unavailable")
+      ? row.swapDisabledReason
+      : row.swapDisabledReason
+        ? `Swap unavailable: ${row.swapDisabledReason}`
+        : undefined;
+
     return (
       <div
         className="rounded-xl border border-slate-100"
@@ -129,11 +135,7 @@ const ExerciseQueueRow = memo(
             {onSwapExercise && (row.canSwap || row.swapDisabledReason) ? (
               <button
                 className="inline-flex min-h-8 items-center justify-center rounded-full border border-slate-300 px-3 text-[11px] font-semibold text-slate-700 disabled:opacity-60"
-                aria-label={
-                  row.swapDisabledReason
-                    ? `Swap unavailable: ${row.swapDisabledReason}`
-                    : undefined
-                }
+                aria-label={swapUnavailableLabel}
                 disabled={row.isSwapping || !row.canSwap}
                 onClick={() => onSwapExercise(row.exerciseId)}
                 title={row.swapDisabledReason ?? undefined}

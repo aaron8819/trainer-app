@@ -246,6 +246,15 @@ describe("RuntimeExerciseSwapSheet", () => {
       />
     );
 
+    expect(
+      screen.getByText(
+        "This replaces the exercise in place for this session and keeps future progression exercise-specific to the replacement."
+      )
+    ).toBeInTheDocument();
+    expect(screen.getByText("Search replacements")).toBeInTheDocument();
+    expect(screen.queryByText(/Narrow runtime swap/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/planned slot/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/constrained equivalents/i)).not.toBeInTheDocument();
     expect(await screen.findAllByText("Post-swap prescription")).toHaveLength(2);
     expect(
       screen.getByText("Set 1: 10 reps (8-12) | Load hint 27.5 lbs each | Target RPE 8 | 2 min rest")
@@ -479,5 +488,38 @@ describe("RuntimeExerciseSwapSheet", () => {
       String(requestUrl).startsWith("/api/workouts/workout-1/swap-exercise-preview?")
     );
     expect(previewCallsAfterSearch).toHaveLength(3);
+  });
+
+  it("renders an empty candidate state as a clean no-replacement outcome", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const parsedUrl = new URL(String(input), "http://localhost");
+
+      if (
+        parsedUrl.pathname === "/api/workouts/workout-1/swap-exercise" &&
+        init?.method == null
+      ) {
+        return {
+          ok: true,
+          json: async () => ({ candidates: [] }),
+        };
+      }
+
+      throw new Error(`Unhandled fetch: ${String(input)}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <RuntimeExerciseSwapSheet
+        isOpen
+        onClose={vi.fn()}
+        workoutId="workout-1"
+        exercise={{ workoutExerciseId: "we-1", name: "Closeout Cable Fly" }}
+        onSwap={vi.fn()}
+      />
+    );
+
+    expect(await screen.findByText("No safe replacements found.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Use swap" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/failed/i)).not.toBeInTheDocument();
   });
 });

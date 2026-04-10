@@ -1349,7 +1349,7 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     });
   });
 
-  it("shows constrained swap controls when runtime swap is enabled for an eligible exercise", () => {
+  it("shows swap controls when runtime swap is enabled for an eligible exercise", () => {
     render(
       <LogWorkoutClient
         workoutId="workout-gap-fill"
@@ -1363,7 +1363,7 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     expect(screen.getByRole("button", { name: "Swap" })).toBeInTheDocument();
   });
 
-  it("shows swap for unlogged canonical and runtime-added rows without client movement-pattern gating", () => {
+  it("shows swap for unlogged canonical, runtime-added, and closeout rows without client movement-pattern gating", () => {
     render(
       <LogWorkoutClient
         workoutId="workout-1"
@@ -1408,6 +1408,24 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
                 },
               ],
             },
+            {
+              workoutExerciseId: "ex-closeout",
+              name: "Closeout Cable Fly",
+              equipment: ["cable"],
+              isMainLift: false,
+              section: "ACCESSORY",
+              sessionNote: "Optional closeout work. Counts toward weekly volume without becoming a slot.",
+              sets: [
+                {
+                  setId: "set-closeout-1",
+                  setIndex: 1,
+                  targetReps: 15,
+                  targetLoad: 35,
+                  targetRpe: 7,
+                  restSeconds: 75,
+                },
+              ],
+            },
           ],
         }}
         allowRuntimeExerciseSwap={true}
@@ -1417,6 +1435,12 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     expect(within(screen.getByTestId("queue-row-ex-canonical")).getByRole("button", { name: "Swap" })).toBeEnabled();
     expect(within(screen.getByTestId("queue-row-ex-added")).getByRole("button", { name: "Swap" })).toBeEnabled();
     expect(within(screen.getByTestId("queue-row-ex-added")).getByRole("button", { name: "Remove" })).toBeEnabled();
+    expect(within(screen.getByTestId("queue-row-ex-closeout")).getByRole("button", { name: "Swap" })).toBeEnabled();
+    expect(
+      within(screen.getByTestId("queue-row-ex-closeout")).getByText(
+        "Optional closeout work. Counts toward weekly volume without becoming a slot."
+      )
+    ).toBeInTheDocument();
   });
 
   it("shows disabled swap controls with stable explanations for logged and already-swapped rows", () => {
@@ -1505,17 +1529,17 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
 
     expect(
       within(screen.getByTestId("queue-row-ex-partial")).getByRole("button", {
-        name: "Swap unavailable: Started rows cannot be swapped",
+        name: "Swap unavailable after sets are logged.",
       })
     ).toBeDisabled();
     expect(
       within(screen.getByTestId("queue-row-ex-logged")).getByRole("button", {
-        name: "Swap unavailable: Logged rows cannot be swapped",
+        name: "Swap unavailable after sets are logged.",
       })
     ).toBeDisabled();
     expect(
       within(screen.getByTestId("queue-row-ex-swapped")).getByRole("button", {
-        name: "Swap unavailable: Already swapped",
+        name: "Swap unavailable: This exercise was already swapped.",
       })
     ).toBeDisabled();
   });
@@ -1867,6 +1891,70 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
       expect(within(swappedRow).getByText("Added exercise")).toBeInTheDocument();
       expect(within(swappedRow).getByRole("button", { name: "Remove" })).toBeEnabled();
     });
+  });
+
+  it("opens the swap sheet for an unlogged closeout row and keeps closeout context visible", async () => {
+    const user = userEvent.setup();
+    mockedFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const parsedUrl = new URL(String(input), "http://localhost");
+
+      if (
+        parsedUrl.pathname === "/api/workouts/workout-closeout/swap-exercise" &&
+        init?.method == null
+      ) {
+        expect(parsedUrl.searchParams.get("workoutExerciseId")).toBe("ex-closeout");
+        return {
+          ok: true,
+          json: async () => ({ candidates: [] }),
+        };
+      }
+
+      throw new Error(`Unhandled fetch: ${String(input)}`);
+    });
+
+    render(
+      <LogWorkoutClient
+        workoutId="workout-closeout"
+        exercises={[
+          {
+            workoutExerciseId: "ex-closeout",
+            name: "Closeout Cable Fly",
+            equipment: ["cable"],
+            isMainLift: false,
+            section: "ACCESSORY",
+            sessionNote: "Optional closeout work. Counts toward weekly volume without becoming a slot.",
+            sets: [
+              {
+                setId: "set-closeout-1",
+                setIndex: 1,
+                targetReps: 15,
+                targetLoad: 35,
+                targetRpe: 7,
+                restSeconds: 75,
+              },
+            ],
+          },
+        ]}
+        allowRuntimeExerciseSwap={true}
+      />
+    );
+
+    const closeoutRow = screen.getByTestId("queue-row-ex-closeout");
+    expect(
+      within(closeoutRow).getByText(
+        "Optional closeout work. Counts toward weekly volume without becoming a slot."
+      )
+    ).toBeInTheDocument();
+
+    await user.click(within(closeoutRow).getByRole("button", { name: "Swap" }));
+
+    expect(await screen.findByText("Swap Closeout Cable Fly")).toBeInTheDocument();
+    expect(screen.getByText("No safe replacements found.")).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("queue-row-ex-closeout")).getByText(
+        "Optional closeout work. Counts toward weekly volume without becoming a slot."
+      )
+    ).toBeInTheDocument();
   });
 
   it("keeps the logging UI active after leave-for-now confirms a partial save", async () => {

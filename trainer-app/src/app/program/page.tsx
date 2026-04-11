@@ -250,14 +250,17 @@ export default async function ProgramPage() {
                               {slot.impact.summaryLabel}
                             </p>
                             <p className="mt-1 text-xs text-slate-600">
-                              {slot.impact.topMuscles
-                                .map(
+                              {[
+                                ...slot.impact.topMuscles.map(
                                   (muscle) =>
                                     `${muscle.muscle} ${formatProjectedSetCount(
                                       muscle.projectedEffectiveSets
                                     )}`
-                                )
-                                .join(" • ")}
+                                ),
+                                ...(slot.impact.hiddenMuscleCount > 0
+                                  ? [`+${slot.impact.hiddenMuscleCount} more`]
+                                  : []),
+                              ].join(" • ")}
                             </p>
                           </div>
                         ) : null}

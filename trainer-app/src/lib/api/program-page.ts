@@ -82,6 +82,7 @@ export type ProgramSlotImpact = {
     muscle: string;
     projectedEffectiveSets: number;
   }>;
+  hiddenMuscleCount: number;
   summaryLabel: string;
 };
 
@@ -159,6 +160,9 @@ const LINKED_WORKOUT_PRIORITY: Record<WorkoutStatus, number> = {
   COMPLETED: 3,
   SKIPPED: 4,
 };
+const IMPACT_VISIBLE_MUSCLE_COUNT = 3;
+const IMPACT_NEAR_TIE_TOLERANCE = 0.1;
+const IMPACT_COMPARISON_EPSILON = 1e-9;
 
 function isPerformedWorkoutStatus(status: WorkoutStatus): boolean {
   return (PERFORMED_WORKOUT_STATUSES as readonly string[]).includes(status);
@@ -286,7 +290,7 @@ function buildWeekCompletionOutlook(input: {
 function buildProgramSlotImpact(input: {
   projectedContributionByMuscle: Record<string, number>;
 }): ProgramSlotImpact | null {
-  const topMuscles = Object.entries(input.projectedContributionByMuscle)
+  const rankedMuscles = Object.entries(input.projectedContributionByMuscle)
     .filter((entry) => entry[1] > 0)
     .sort((left, right) => {
       if (right[1] !== left[1]) {
@@ -294,22 +298,32 @@ function buildProgramSlotImpact(input: {
       }
 
       return left[0].localeCompare(right[0]);
-    })
-    .slice(0, 3)
-    .map(([muscle, projectedEffectiveSets]) => ({
-      muscle,
-      projectedEffectiveSets,
-    }));
+    });
 
-  if (topMuscles.length === 0) {
+  if (rankedMuscles.length === 0) {
     return null;
   }
 
+  const baseVisibleCount = Math.min(IMPACT_VISIBLE_MUSCLE_COUNT, rankedMuscles.length);
+  const cutoff = rankedMuscles[baseVisibleCount - 1]?.[1] ?? 0;
+  const visibleEntries = rankedMuscles.filter(
+    ([, projectedEffectiveSets], index) =>
+      index < baseVisibleCount ||
+      projectedEffectiveSets >= cutoff - IMPACT_NEAR_TIE_TOLERANCE - IMPACT_COMPARISON_EPSILON
+  );
+  const topMuscles = visibleEntries.map(([muscle, projectedEffectiveSets]) => ({
+    muscle,
+    projectedEffectiveSets,
+  }));
+  const hiddenMuscleCount = rankedMuscles.length - topMuscles.length;
+  const overflowLabel = hiddenMuscleCount > 0 ? ` +${hiddenMuscleCount} more` : "";
+
   return {
     topMuscles,
+    hiddenMuscleCount,
     summaryLabel: `This session will increase ${topMuscles
       .map((muscle) => muscle.muscle)
-      .join(", ")}`,
+      .join(", ")}${overflowLabel}`,
   };
 }
 

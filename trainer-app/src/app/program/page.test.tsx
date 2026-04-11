@@ -95,7 +95,8 @@ describe("ProgramPage", () => {
                 { muscle: "Upper Back", projectedEffectiveSets: 2 },
                 { muscle: "Rear Delts", projectedEffectiveSets: 1.5 },
               ],
-              summaryLabel: "This session will increase Lats, Upper Back, Rear Delts",
+              hiddenMuscleCount: 2,
+              summaryLabel: "This session will increase Lats, Upper Back, Rear Delts +2 more",
             },
           },
         ],
@@ -226,9 +227,9 @@ describe("ProgramPage", () => {
     expect(screen.getByText("Lower 1")).toBeInTheDocument();
     expect(screen.getByText("Impact")).toBeInTheDocument();
     expect(
-      screen.getByText(/This session will increase Lats, Upper Back, Rear Delts/)
+      screen.getByText(/This session will increase Lats, Upper Back, Rear Delts \+2 more/)
     ).toBeInTheDocument();
-    expect(screen.getByText(/Lats 3 • Upper Back 2 • Rear Delts 1.5/)).toBeInTheDocument();
+    expect(screen.getByText(/Lats 3 • Upper Back 2 • Rear Delts 1.5 • \+2 more/)).toBeInTheDocument();
     expect(screen.getByText("Chest")).toBeInTheDocument();
     expect(screen.getByText("Quads")).toBeInTheDocument();
     expect(screen.getByText("-4 sets")).toBeInTheDocument();

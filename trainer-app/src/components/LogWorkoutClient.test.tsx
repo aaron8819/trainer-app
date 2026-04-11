@@ -436,6 +436,7 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
             workoutExerciseId: "ex-added",
             name: "Pec Deck",
             equipment: ["machine"],
+            muscleTags: ["Chest"],
             isRuntimeAdded: true,
             isMainLift: false,
             section: "ACCESSORY",
@@ -456,10 +457,71 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     );
 
     expect(screen.getByText("Added exercise")).toBeInTheDocument();
+    expect(screen.getByText("Chest")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Remove" })).toBeInTheDocument();
     expect(
       screen.getByText("Added during workout. Session-only; future planning ignores it.")
     ).toBeInTheDocument();
+  });
+
+  it("renders compact target muscle tags and keeps queue controls intact", () => {
+    render(
+      <LogWorkoutClient
+        workoutId="workout-1"
+        allowRuntimeExerciseSwap
+        exercises={[
+          {
+            workoutExerciseId: "ex-squat",
+            name: "Barbell Back Squat",
+            equipment: ["barbell"],
+            muscleTags: ["Quads", "Glutes", "Core", "Adductors"],
+            isMainLift: true,
+            section: "MAIN",
+            sets: [
+              {
+                setId: "set-squat-1",
+                setIndex: 1,
+                targetReps: 8,
+                targetLoad: 210,
+                targetRpe: 8,
+                restSeconds: 180,
+              },
+            ],
+          },
+          {
+            workoutExerciseId: "ex-curl",
+            name: "Seated Leg Curl",
+            equipment: ["machine"],
+            muscleTags: ["Hamstrings"],
+            isMainLift: false,
+            section: "ACCESSORY",
+            sets: [
+              {
+                setId: "set-curl-1",
+                setIndex: 1,
+                targetReps: 12,
+                targetLoad: 90,
+                targetRpe: 8,
+                restSeconds: 90,
+              },
+            ],
+          },
+        ]}
+      />
+    );
+
+    const squatRow = screen.getByTestId("queue-row-ex-squat");
+    expect(within(squatRow).getByText("Quads")).toBeInTheDocument();
+    expect(within(squatRow).getByText("Glutes")).toBeInTheDocument();
+    expect(within(squatRow).getByText("Core")).toBeInTheDocument();
+    expect(within(squatRow).getByText("+1 more")).toBeInTheDocument();
+    expect(within(squatRow).queryByText("Adductors")).not.toBeInTheDocument();
+    expect(within(squatRow).getByRole("button", { name: "Swap" })).toBeInTheDocument();
+    expect(within(squatRow).getByText("0/1")).toBeInTheDocument();
+
+    const curlRow = screen.getByTestId("queue-row-ex-curl");
+    expect(within(curlRow).getByText("Hamstrings")).toBeInTheDocument();
+    expect(within(curlRow).queryByText(/\+.*more/)).not.toBeInTheDocument();
   });
 
   it("removes an unlogged runtime-added exercise from the queue", async () => {

@@ -18,6 +18,7 @@ export type LogExerciseInput = {
   name: string;
   equipment?: string[];
   movementPatterns?: string[];
+  muscleTags?: string[];
   isRuntimeAdded?: boolean;
   isSwapped?: boolean;
   isMainLift: boolean;

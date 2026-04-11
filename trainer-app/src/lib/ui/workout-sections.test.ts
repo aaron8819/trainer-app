@@ -3,6 +3,97 @@ import { describe, expect, it } from "vitest";
 import { splitExercises } from "./workout-sections";
 
 describe("splitExercises", () => {
+  it("shapes compact target muscle tags from canonical exercise metadata", () => {
+    const result = splitExercises(
+      [
+        {
+          id: "we-squat",
+          isMainLift: true,
+          orderIndex: 0,
+          section: "MAIN",
+          exercise: {
+            id: "barbell-back-squat",
+            name: "Barbell Back Squat",
+            exerciseMuscles: [
+              { role: "PRIMARY", muscle: { name: "Quads" } },
+              { role: "PRIMARY", muscle: { name: "Glutes" } },
+              { role: "SECONDARY", muscle: { name: "Hamstrings" } },
+              { role: "SECONDARY", muscle: { name: "Core" } },
+              { role: "SECONDARY", muscle: { name: "Lower Back" } },
+              { role: "SECONDARY", muscle: { name: "Adductors" } },
+            ],
+            exerciseEquipment: [{ equipment: { type: "BARBELL" } }],
+          },
+          sets: [
+            {
+              id: "set-squat-1",
+              setIndex: 1,
+              targetReps: 8,
+              targetRepMin: 6,
+              targetRepMax: 10,
+              targetLoad: 210,
+              targetRpe: 8,
+              restSeconds: 180,
+            },
+          ],
+        },
+        {
+          id: "we-curl",
+          isMainLift: false,
+          orderIndex: 1,
+          section: "ACCESSORY",
+          exercise: {
+            id: "seated-leg-curl",
+            name: "Seated Leg Curl",
+            exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Hamstrings" } }],
+            exerciseEquipment: [{ equipment: { type: "MACHINE" } }],
+          },
+          sets: [
+            {
+              id: "set-curl-1",
+              setIndex: 1,
+              targetReps: 12,
+              targetRepMin: 10,
+              targetRepMax: 15,
+              targetLoad: 90,
+              targetRpe: 8,
+              restSeconds: 90,
+            },
+          ],
+        },
+        {
+          id: "we-calf",
+          isMainLift: false,
+          orderIndex: 2,
+          section: "ACCESSORY",
+          exercise: {
+            id: "seated-calf-raise",
+            name: "Seated Calf Raise",
+            exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Calves" } }],
+            exerciseEquipment: [{ equipment: { type: "MACHINE" } }],
+          },
+          sets: [
+            {
+              id: "set-calf-1",
+              setIndex: 1,
+              targetReps: 15,
+              targetRepMin: 12,
+              targetRepMax: 20,
+              targetLoad: 75,
+              targetRpe: 8,
+              restSeconds: 90,
+            },
+          ],
+        },
+      ],
+      {}
+    );
+
+    expect(result.main[0]?.muscleTags).toEqual(["Quads", "Glutes", "Core", "Adductors"]);
+    expect(result.accessory[0]?.muscleTags).toEqual(["Hamstrings"]);
+    expect(result.accessory[1]?.muscleTags).toEqual(["Calves"]);
+  });
+
   it("marks runtime-added exercises from canonical provenance for the log queue", () => {
     const result = splitExercises(
       [

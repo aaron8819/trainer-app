@@ -13,9 +13,11 @@ import {
   readRuntimeAddedExerciseIds,
   readRuntimeReplacedExercises,
 } from "@/lib/ui/selection-metadata";
+import { buildExerciseMuscleTags } from "@/lib/ui/exercise-muscle-tags";
 
 type ExerciseRecord = Prisma.ExerciseGetPayload<{
   include: {
+    aliases: true;
     exerciseEquipment: { include: { equipment: true } };
     exerciseMuscles: { include: { muscle: true } };
   };
@@ -34,6 +36,7 @@ type SwapWorkoutExerciseRecord = Prisma.WorkoutExerciseGetPayload<{
   include: {
     exercise: {
       include: {
+        aliases: true;
         exerciseEquipment: { include: { equipment: true } };
         exerciseMuscles: { include: { muscle: true } };
       };
@@ -92,6 +95,7 @@ export type RuntimeExerciseSwapExercisePayload = {
   name: string;
   equipment: string[];
   movementPatterns: string[];
+  muscleTags: string[];
   isRuntimeAdded: boolean;
   isMainLift: boolean;
   isSwapped: true;
@@ -206,6 +210,7 @@ function toPreviewExercise(input: {
     movementPatterns: input.replacementExercise.movementPatterns.map(
       (pattern) => pattern.toLowerCase(),
     ),
+    muscleTags: buildExerciseMuscleTags(input.replacementExercise),
     isRuntimeAdded: readRuntimeAddedExerciseIds(
       input.context.workout.selectionMetadata,
     ).has(input.context.workoutExercise.id),
@@ -301,6 +306,7 @@ async function loadRuntimeExerciseSwapContext(input: {
     include: {
       exercise: {
         include: {
+          aliases: true,
           exerciseEquipment: { include: { equipment: true } },
           exerciseMuscles: { include: { muscle: true } },
         },
@@ -357,6 +363,7 @@ async function loadRuntimeExerciseSwapContext(input: {
 async function loadExercisePool(): Promise<ExerciseRecord[]> {
   return prisma.exercise.findMany({
     include: {
+      aliases: true,
       exerciseEquipment: { include: { equipment: true } },
       exerciseMuscles: { include: { muscle: true } },
     },
@@ -378,6 +385,7 @@ async function loadExercisePoolByIds(
       },
     },
     include: {
+      aliases: true,
       exerciseEquipment: { include: { equipment: true } },
       exerciseMuscles: { include: { muscle: true } },
     },

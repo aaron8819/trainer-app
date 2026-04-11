@@ -54,6 +54,12 @@ export default async function LogWorkoutPage({
         include: {
           exercise: {
             include: {
+              aliases: true,
+              exerciseMuscles: {
+                include: {
+                  muscle: true,
+                },
+              },
               exerciseEquipment: {
                 include: {
                   equipment: true,

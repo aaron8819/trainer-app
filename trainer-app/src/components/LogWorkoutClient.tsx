@@ -617,6 +617,7 @@ export default function LogWorkoutClient({
               section,
               exerciseId: exercise.workoutExerciseId,
               exerciseName: exercise.name,
+              muscleTags: exercise.muscleTags ?? [],
               isRuntimeAdded: exercise.isRuntimeAdded ?? false,
               sessionNote: exercise.sessionNote,
               loggedCount: loggedCountForExercise,

@@ -11,6 +11,7 @@ export type WorkoutQueueExerciseRowData = {
   section: ExerciseSection;
   exerciseId: string;
   exerciseName: string;
+  muscleTags: string[];
   isRuntimeAdded: boolean;
   sessionNote?: string;
   loggedCount: number;
@@ -70,6 +71,14 @@ function areChipsEqual(previous: ExerciseSetChip[], next: ExerciseSetChip[]) {
   });
 }
 
+function areStringArraysEqual(previous: string[], next: string[]) {
+  if (previous.length !== next.length) {
+    return false;
+  }
+
+  return previous.every((value, index) => value === next[index]);
+}
+
 const ExerciseQueueRow = memo(
   function ExerciseQueueRow({
     row,
@@ -97,6 +106,9 @@ const ExerciseQueueRow = memo(
       : row.swapDisabledReason
         ? `Swap unavailable: ${row.swapDisabledReason}`
         : undefined;
+    const visibleMuscleTags = row.muscleTags.slice(0, 3);
+    const hiddenMuscleTagCount = Math.max(0, row.muscleTags.length - visibleMuscleTags.length);
+    const muscleTagsTitle = row.muscleTags.join(", ");
 
     return (
       <div
@@ -110,6 +122,26 @@ const ExerciseQueueRow = memo(
             type="button"
           >
             <span className="block truncate text-sm font-medium">{row.exerciseName}</span>
+            {visibleMuscleTags.length > 0 ? (
+              <span
+                className="mt-1 flex flex-wrap gap-1"
+                title={hiddenMuscleTagCount > 0 ? muscleTagsTitle : undefined}
+              >
+                {visibleMuscleTags.map((muscle) => (
+                  <span
+                    key={muscle}
+                    className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium leading-none text-slate-600"
+                  >
+                    {muscle}
+                  </span>
+                ))}
+                {hiddenMuscleTagCount > 0 ? (
+                  <span className="inline-flex rounded-full border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-medium leading-none text-slate-500">
+                    +{hiddenMuscleTagCount} more
+                  </span>
+                ) : null}
+              </span>
+            ) : null}
             {row.isRuntimeAdded ? (
               <span className="mt-1 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
                 {RUNTIME_ADDED_EXERCISE_BADGE_LABEL}
@@ -177,6 +209,7 @@ const ExerciseQueueRow = memo(
     previous.row.section === next.row.section &&
     previous.row.exerciseId === next.row.exerciseId &&
     previous.row.exerciseName === next.row.exerciseName &&
+    areStringArraysEqual(previous.row.muscleTags, next.row.muscleTags) &&
     previous.row.isRuntimeAdded === next.row.isRuntimeAdded &&
     previous.row.sessionNote === next.row.sessionNote &&
     previous.row.loggedCount === next.row.loggedCount &&

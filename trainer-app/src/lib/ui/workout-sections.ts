@@ -6,6 +6,7 @@ import {
   readRuntimeReplacedExercises,
   RUNTIME_ADDED_EXERCISE_SESSION_NOTE,
 } from "@/lib/ui/selection-metadata";
+import { buildExerciseMuscleTags } from "@/lib/ui/exercise-muscle-tags";
 
 type WorkoutExercise = {
   id: string;
@@ -13,8 +14,11 @@ type WorkoutExercise = {
   orderIndex: number;
   section?: "WARMUP" | "MAIN" | "ACCESSORY" | null;
   exercise: {
+    id?: string | null;
     name: string;
     movementPatterns?: string[] | null;
+    aliases?: { alias: string }[];
+    exerciseMuscles?: { role: string; muscle: { name: string } }[];
     exerciseEquipment?: { equipment: { type: string } }[];
   };
   sets: {
@@ -77,6 +81,12 @@ export function splitExercises(
       movementPatterns: (exercise.exercise.movementPatterns ?? []).map((pattern) =>
         pattern.toLowerCase()
       ),
+      muscleTags: buildExerciseMuscleTags({
+        id: exercise.exercise.id,
+        name: exercise.exercise.name,
+        aliases: exercise.exercise.aliases,
+        exerciseMuscles: exercise.exercise.exerciseMuscles,
+      }),
       isRuntimeAdded: runtimeAddedExerciseIds.has(exercise.id),
       isSwapped: swappedExerciseIds.has(exercise.id),
       isMainLift: exercise.isMainLift,

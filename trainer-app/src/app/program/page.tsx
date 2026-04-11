@@ -220,7 +220,6 @@ export default async function ProgramPage() {
             <div className="mt-5 grid gap-3">
               {currentWeekPlan.slots.map((slot) => {
                 const workoutStatusLabel = formatWorkoutStatusLabel(slot.linkedWorkoutStatus);
-                const nextSessionImpact = slot.state === "next" ? currentWeekPlan.nextSessionImpact : null;
                 return (
                   <div
                     key={slot.slotId}
@@ -242,19 +241,16 @@ export default async function ProgramPage() {
                         {workoutStatusLabel ? (
                           <p className="mt-1 text-xs text-slate-600">Workout: {workoutStatusLabel}</p>
                         ) : null}
-                        {nextSessionImpact ? (
+                        {slot.impact ? (
                           <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5">
                             <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-700">
                               Impact
                             </p>
                             <p className="mt-1 text-sm font-medium text-slate-900">
-                              {nextSessionImpact.summaryLabel.replace(
-                                "Next session impact: likely increases ",
-                                "This session will increase "
-                              )}
+                              {slot.impact.summaryLabel}
                             </p>
                             <p className="mt-1 text-xs text-slate-600">
-                              {nextSessionImpact.topMuscles
+                              {slot.impact.topMuscles
                                 .map(
                                   (muscle) =>
                                     `${muscle.muscle} ${formatProjectedSetCount(

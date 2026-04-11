@@ -80,6 +80,7 @@ describe("ProgramPage", () => {
             state: "completed",
             linkedWorkoutId: null,
             linkedWorkoutStatus: null,
+            impact: null,
           },
           {
             slotId: "lower_a",
@@ -88,17 +89,16 @@ describe("ProgramPage", () => {
             state: "next",
             linkedWorkoutId: "w-next",
             linkedWorkoutStatus: "planned",
+            impact: {
+              topMuscles: [
+                { muscle: "Lats", projectedEffectiveSets: 3 },
+                { muscle: "Upper Back", projectedEffectiveSets: 2 },
+                { muscle: "Rear Delts", projectedEffectiveSets: 1.5 },
+              ],
+              summaryLabel: "This session will increase Lats, Upper Back, Rear Delts",
+            },
           },
         ],
-        nextSessionImpact: {
-          slotLabel: "Lower 1",
-          topMuscles: [
-            { muscle: "Lats", projectedEffectiveSets: 3 },
-            { muscle: "Upper Back", projectedEffectiveSets: 2 },
-            { muscle: "Rear Delts", projectedEffectiveSets: 1.5 },
-          ],
-          summaryLabel: "Next session impact: likely increases Lats, Upper Back, Rear Delts",
-        },
       },
       closeout: null,
       weekCompletionOutlook: {
@@ -284,9 +284,9 @@ describe("ProgramPage", () => {
             state: "next",
             linkedWorkoutId: "w-next",
             linkedWorkoutStatus: "planned",
+            impact: null,
           },
         ],
-        nextSessionImpact: null,
       },
       closeout: {
         title: "Closeout",

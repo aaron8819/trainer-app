@@ -110,7 +110,6 @@ describe("buildProgramCurrentWeekPlan", () => {
 
     expect(result).toEqual({
       week: 2,
-      nextSessionImpact: null,
       slots: [
         {
           slotId: "upper_a",
@@ -119,6 +118,7 @@ describe("buildProgramCurrentWeekPlan", () => {
           state: "completed",
           linkedWorkoutId: null,
           linkedWorkoutStatus: null,
+          impact: null,
         },
         {
           slotId: "lower_a",
@@ -127,6 +127,7 @@ describe("buildProgramCurrentWeekPlan", () => {
           state: "next",
           linkedWorkoutId: "planned-lower",
           linkedWorkoutStatus: "planned",
+          impact: null,
         },
         {
           slotId: "upper_b",
@@ -135,6 +136,7 @@ describe("buildProgramCurrentWeekPlan", () => {
           state: "remaining",
           linkedWorkoutId: null,
           linkedWorkoutStatus: null,
+          impact: null,
         },
       ],
     });
@@ -225,6 +227,7 @@ describe("buildProgramCurrentWeekPlan", () => {
         state: "next",
         linkedWorkoutId: null,
         linkedWorkoutStatus: null,
+        impact: null,
       },
       {
         slotId: "lower_a",
@@ -233,6 +236,7 @@ describe("buildProgramCurrentWeekPlan", () => {
         state: "remaining",
         linkedWorkoutId: null,
         linkedWorkoutStatus: null,
+        impact: null,
       },
       {
         slotId: "upper_b",
@@ -241,6 +245,7 @@ describe("buildProgramCurrentWeekPlan", () => {
         state: "remaining",
         linkedWorkoutId: null,
         linkedWorkoutStatus: null,
+        impact: null,
       },
     ]);
   });
@@ -327,6 +332,30 @@ describe("loadProgramPageData", () => {
           totalSets: 14,
           projectedContributionByMuscle: {
             Chest: 4,
+          },
+        },
+        {
+          slotId: "lower_a",
+          intent: "lower",
+          isNext: false,
+          exerciseCount: 5,
+          totalSets: 15,
+          projectedContributionByMuscle: {
+            Quads: 9,
+            Glutes: 4.3,
+            Calves: 4,
+          },
+        },
+        {
+          slotId: "upper_b",
+          intent: "upper",
+          isNext: false,
+          exerciseCount: 5,
+          totalSets: 14,
+          projectedContributionByMuscle: {
+            Lats: 5,
+            "Upper Back": 4,
+            Chest: 3,
           },
         },
       ],
@@ -476,6 +505,15 @@ describe("loadProgramPageData", () => {
           state: "next",
           linkedWorkoutId: "planned-upper",
           linkedWorkoutStatus: "planned",
+          impact: {
+            topMuscles: [
+              {
+                muscle: "Chest",
+                projectedEffectiveSets: 4,
+              },
+            ],
+            summaryLabel: "This session will increase Chest",
+          },
         },
         {
           slotId: "lower_a",
@@ -484,6 +522,23 @@ describe("loadProgramPageData", () => {
           state: "remaining",
           linkedWorkoutId: null,
           linkedWorkoutStatus: null,
+          impact: {
+            topMuscles: [
+              {
+                muscle: "Quads",
+                projectedEffectiveSets: 9,
+              },
+              {
+                muscle: "Glutes",
+                projectedEffectiveSets: 4.3,
+              },
+              {
+                muscle: "Calves",
+                projectedEffectiveSets: 4,
+              },
+            ],
+            summaryLabel: "This session will increase Quads, Glutes, Calves",
+          },
         },
         {
           slotId: "upper_b",
@@ -492,18 +547,25 @@ describe("loadProgramPageData", () => {
           state: "remaining",
           linkedWorkoutId: null,
           linkedWorkoutStatus: null,
+          impact: {
+            topMuscles: [
+              {
+                muscle: "Lats",
+                projectedEffectiveSets: 5,
+              },
+              {
+                muscle: "Upper Back",
+                projectedEffectiveSets: 4,
+              },
+              {
+                muscle: "Chest",
+                projectedEffectiveSets: 3,
+              },
+            ],
+            summaryLabel: "This session will increase Lats, Upper Back, Chest",
+          },
         },
       ],
-      nextSessionImpact: {
-        slotLabel: "Upper 1",
-        topMuscles: [
-          {
-            muscle: "Chest",
-            projectedEffectiveSets: 4,
-          },
-        ],
-        summaryLabel: "Next session impact: likely increases Chest",
-      },
     });
     expect(result.closeout).toEqual({
       title: "Closeout",
@@ -561,6 +623,152 @@ describe("loadProgramPageData", () => {
     });
     expect(result.volumeDetails.dashboard.volumeThisWeek).toHaveLength(3);
     expect(result.advancedActions.availableActions).toEqual(["deload", "extend_phase", "reset"]);
+  });
+
+  it("keeps off-order slot impact attached to the matching canonical slot id", async () => {
+    mocks.workoutFindMany.mockResolvedValueOnce([
+      {
+        id: "completed-upper",
+        status: "COMPLETED",
+        scheduledDate: new Date("2026-03-02T00:00:00.000Z"),
+        sessionIntent: "UPPER",
+        selectionMode: "INTENT",
+        selectionMetadata: {
+          sessionDecisionReceipt: {
+            sessionSlot: {
+              slotId: "upper_a",
+              intent: "upper",
+              sequenceIndex: 0,
+              sequenceLength: 3,
+              source: "mesocycle_slot_sequence",
+            },
+          },
+        },
+        advancesSplit: true,
+      },
+    ]);
+    mocks.loadNextWorkoutContext.mockResolvedValueOnce({
+      intent: "lower",
+      slotId: "lower_a",
+      slotSequenceIndex: 1,
+      slotSequenceLength: 3,
+      slotSource: "mesocycle_slot_sequence",
+      existingWorkoutId: null,
+      isExisting: false,
+      source: "rotation",
+      weekInMeso: 2,
+      sessionInWeek: 2,
+      derivationTrace: [],
+      selectedIncompleteStatus: null,
+    });
+    mocks.loadProjectedWeekVolumeReport.mockResolvedValueOnce({
+      currentWeek: {
+        mesocycleId: "meso-1",
+        week: 2,
+        phase: "accumulation",
+        blockType: "accumulation",
+      },
+      projectionNotes: [],
+      completedVolumeByMuscle: {},
+      projectedSessions: [
+        {
+          slotId: "upper_a",
+          intent: "upper",
+          isNext: true,
+          exerciseCount: 5,
+          totalSets: 14,
+          projectedContributionByMuscle: {
+            Chest: 9,
+            Lats: 9,
+            "Upper Back": 8.6,
+          },
+        },
+        {
+          slotId: "lower_a",
+          intent: "lower",
+          isNext: false,
+          exerciseCount: 5,
+          totalSets: 15,
+          projectedContributionByMuscle: {
+            Quads: 9,
+            Glutes: 4.3,
+            Hamstrings: 4,
+            Calves: 4,
+            Adductors: 2.1,
+            Core: 1,
+          },
+        },
+      ],
+      fullWeekByMuscle: [],
+    });
+
+    const result = await loadProgramPageData("user-1");
+    const lowerSlot = result.currentWeekPlan?.slots.find((slot) => slot.slotId === "lower_a");
+
+    expect(lowerSlot).toMatchObject({
+      label: "Lower 1",
+      state: "next",
+      impact: {
+        topMuscles: [
+          { muscle: "Quads", projectedEffectiveSets: 9 },
+          { muscle: "Glutes", projectedEffectiveSets: 4.3 },
+          { muscle: "Calves", projectedEffectiveSets: 4 },
+        ],
+        summaryLabel: "This session will increase Quads, Glutes, Calves",
+      },
+    });
+    expect(lowerSlot?.impact?.topMuscles.map((row) => row.muscle)).not.toContain("Chest");
+    expect(lowerSlot?.impact?.topMuscles.map((row) => row.muscle)).not.toContain("Lats");
+  });
+
+  it("does not borrow impact from another projected session when a slot id match is absent", async () => {
+    mocks.loadNextWorkoutContext.mockResolvedValueOnce({
+      intent: "lower",
+      slotId: "lower_a",
+      slotSequenceIndex: 1,
+      slotSequenceLength: 3,
+      slotSource: "mesocycle_slot_sequence",
+      existingWorkoutId: null,
+      isExisting: false,
+      source: "rotation",
+      weekInMeso: 2,
+      sessionInWeek: 2,
+      derivationTrace: [],
+      selectedIncompleteStatus: null,
+    });
+    mocks.loadProjectedWeekVolumeReport.mockResolvedValueOnce({
+      currentWeek: {
+        mesocycleId: "meso-1",
+        week: 2,
+        phase: "accumulation",
+        blockType: "accumulation",
+      },
+      projectionNotes: [],
+      completedVolumeByMuscle: {},
+      projectedSessions: [
+        {
+          slotId: "upper_a",
+          intent: "upper",
+          isNext: true,
+          exerciseCount: 5,
+          totalSets: 14,
+          projectedContributionByMuscle: {
+            Chest: 9,
+            Lats: 9,
+          },
+        },
+      ],
+      fullWeekByMuscle: [],
+    });
+
+    const result = await loadProgramPageData("user-1");
+    const lowerSlot = result.currentWeekPlan?.slots.find((slot) => slot.slotId === "lower_a");
+
+    expect(lowerSlot).toMatchObject({
+      label: "Lower 1",
+      state: "next",
+      impact: null,
+    });
   });
 
   it("surfaces a previous-week closeout create action without adding it to the current week slot map", async () => {

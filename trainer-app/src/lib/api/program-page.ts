@@ -77,6 +77,14 @@ export type ProgramOutcomeSummary = {
   meaningfullyHigh: number;
 };
 
+export type ProgramSlotImpact = {
+  topMuscles: Array<{
+    muscle: string;
+    projectedEffectiveSets: number;
+  }>;
+  summaryLabel: string;
+};
+
 export type ProgramCurrentWeekPlanRow = {
   slotId: string;
   label: string;
@@ -84,12 +92,12 @@ export type ProgramCurrentWeekPlanRow = {
   state: "completed" | "next" | "remaining";
   linkedWorkoutId: string | null;
   linkedWorkoutStatus: string | null;
+  impact: ProgramSlotImpact | null;
 };
 
 export type ProgramCurrentWeekPlan = {
   week: number;
   slots: ProgramCurrentWeekPlanRow[];
-  nextSessionImpact: ProgramNextSessionImpact | null;
 };
 
 export type ProgramCloseoutSummary = {
@@ -111,15 +119,6 @@ function formatCloseoutTitle(
     ? `Week ${closeout.targetWeek} Closeout (Optional)`
     : "Closeout";
 }
-
-export type ProgramNextSessionImpact = {
-  slotLabel: string;
-  topMuscles: Array<{
-    muscle: string;
-    projectedEffectiveSets: number;
-  }>;
-  summaryLabel: string;
-};
 
 export type ProgramWeekCompletionOutlook = {
   assumptionLabel: string;
@@ -284,18 +283,10 @@ function buildWeekCompletionOutlook(input: {
   };
 }
 
-function buildNextSessionImpact(input: {
-  report: Awaited<ReturnType<typeof loadProjectedWeekVolumeReport>>;
-  currentWeekPlan: ProgramCurrentWeekPlan | null;
-}): ProgramNextSessionImpact | null {
-  const nextProjectedSession = input.report.projectedSessions.find((session) => session.isNext);
-  const nextSlot = input.currentWeekPlan?.slots.find((slot) => slot.state === "next");
-
-  if (!nextProjectedSession || !nextSlot) {
-    return null;
-  }
-
-  const topMuscles = Object.entries(nextProjectedSession.projectedContributionByMuscle)
+function buildProgramSlotImpact(input: {
+  projectedContributionByMuscle: Record<string, number>;
+}): ProgramSlotImpact | null {
+  const topMuscles = Object.entries(input.projectedContributionByMuscle)
     .filter((entry) => entry[1] > 0)
     .sort((left, right) => {
       if (right[1] !== left[1]) {
@@ -315,11 +306,37 @@ function buildNextSessionImpact(input: {
   }
 
   return {
-    slotLabel: nextSlot.label,
     topMuscles,
-    summaryLabel: `Next session impact: likely increases ${topMuscles
+    summaryLabel: `This session will increase ${topMuscles
       .map((muscle) => muscle.muscle)
       .join(", ")}`,
+  };
+}
+
+function attachProjectedSlotImpacts(input: {
+  currentWeekPlan: ProgramCurrentWeekPlan;
+  report: Awaited<ReturnType<typeof loadProjectedWeekVolumeReport>>;
+}): ProgramCurrentWeekPlan {
+  const projectedSessionBySlotId = new Map(
+    input.report.projectedSessions
+      .filter((session) => typeof session.slotId === "string" && session.slotId.length > 0)
+      .map((session) => [session.slotId, session])
+  );
+
+  return {
+    ...input.currentWeekPlan,
+    slots: input.currentWeekPlan.slots.map((slot) => {
+      const projectedSession = projectedSessionBySlotId.get(slot.slotId);
+
+      return {
+        ...slot,
+        impact: projectedSession
+          ? buildProgramSlotImpact({
+              projectedContributionByMuscle: projectedSession.projectedContributionByMuscle,
+            })
+          : null,
+      };
+    }),
   };
 }
 
@@ -547,9 +564,9 @@ export function buildProgramCurrentWeekPlan(input: {
         state,
         linkedWorkoutId: linkedWorkout?.id ?? null,
         linkedWorkoutStatus: linkedWorkout?.status ?? null,
+        impact: null,
       };
     }),
-    nextSessionImpact: null,
   };
 }
 
@@ -714,22 +731,17 @@ export async function loadProgramPageData(userId: string): Promise<ProgramPageDa
         report: projectedWeekReport,
       })
     : null;
-  const nextSessionImpact =
+  const currentWeekPlanWithImpacts =
     projectedWeekReport && currentWeekPlan
-      ? buildNextSessionImpact({
+      ? attachProjectedSlotImpacts({
           report: projectedWeekReport,
           currentWeekPlan,
         })
-      : null;
+      : currentWeekPlan;
 
   return {
     overview,
-    currentWeekPlan: currentWeekPlan
-      ? {
-          ...currentWeekPlan,
-          nextSessionImpact,
-        }
-      : null,
+    currentWeekPlan: currentWeekPlanWithImpacts,
     closeout,
     weekCompletionOutlook,
     volumeDetails: {

@@ -91,4 +91,56 @@ describe("exercise muscle display groups", () => {
       muscleTags: ["Adductors", "Core"],
     });
   });
+
+  it("renders sissy squat as a quad near-isolation", () => {
+    expect(
+      buildExerciseMuscleDisplayGroups(
+        exerciseInput({
+          id: "sissy-squat",
+          name: "Sissy Squat",
+          primaryMuscles: ["Quads"],
+        })
+      )
+    ).toEqual({
+      primaryMuscles: ["Quads"],
+      secondaryMuscles: [],
+      muscleTags: ["Quads"],
+    });
+  });
+
+  it("keeps supported seated rows from displaying lower-back noise", () => {
+    for (const name of ["Seated Cable Row", "Close-Grip Seated Cable Row"]) {
+      expect(
+        buildExerciseMuscleDisplayGroups(
+          exerciseInput({
+            id: name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""),
+            name,
+            primaryMuscles: ["Lats", "Upper Back"],
+            secondaryMuscles: ["Biceps", "Forearms"],
+          })
+        )
+      ).toEqual({
+        primaryMuscles: ["Upper Back", "Lats"],
+        secondaryMuscles: ["Biceps", "Rear Delts"],
+        muscleTags: ["Upper Back", "Lats", "Biceps", "Rear Delts"],
+      });
+    }
+  });
+
+  it("renders reverse hyperextension as glute and hamstring dominant with lower back secondary", () => {
+    expect(
+      buildExerciseMuscleDisplayGroups(
+        exerciseInput({
+          id: "reverse-hyperextension",
+          name: "Reverse Hyperextension",
+          primaryMuscles: ["Glutes", "Hamstrings"],
+          secondaryMuscles: ["Lower Back"],
+        })
+      )
+    ).toEqual({
+      primaryMuscles: ["Glutes", "Hamstrings"],
+      secondaryMuscles: ["Lower Back"],
+      muscleTags: ["Glutes", "Hamstrings", "Lower Back"],
+    });
+  });
 });

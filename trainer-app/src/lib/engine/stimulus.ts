@@ -185,6 +185,7 @@ export const INITIAL_STIMULUS_PROFILE_BY_NAME: Record<string, StimulusProfile> =
     ["adductors", 0.25],
     ["core", 0.2],
   ]);
+  const sissySquat = buildStimulusProfile([["quads", 1.0]]);
   const frontSquat = buildStimulusProfile([
     ["quads", 1.0],
     ["glutes", 0.35],
@@ -229,6 +230,10 @@ export const INITIAL_STIMULUS_PROFILE_BY_NAME: Record<string, StimulusProfile> =
     ["glutes", 0.75],
     ["lower_back", 0.45],
   ]);
+  const cablePullThrough = buildStimulusProfile([
+    ["glutes", 1.0],
+    ["hamstrings", 0.75],
+  ]);
   const axialHinge = buildStimulusProfile([
     ["hamstrings", 0.85],
     ["glutes", 0.7],
@@ -270,10 +275,12 @@ export const INITIAL_STIMULUS_PROFILE_BY_NAME: Record<string, StimulusProfile> =
     ["glutes", 0.65],
     ["hamstrings", 0.45],
   ]);
-  const plank = buildStimulusProfile([
-    ["core", 1.0],
-    ["abs", 0.8],
+  const reverseHyperextension = buildStimulusProfile([
+    ["glutes", 1.0],
+    ["hamstrings", 0.75],
+    ["lower_back", 0.35],
   ]);
+  const plank = buildStimulusProfile([["core", 1.0]]);
   const coreOnly = buildStimulusProfile([["core", 1.0]]);
   const sidePlank = buildStimulusProfile([
     ["core", 1.0],
@@ -370,10 +377,10 @@ export const INITIAL_STIMULUS_PROFILE_BY_NAME: Record<string, StimulusProfile> =
   );
   register(["Chest-Supported Dumbbell Row", "Chest-Supported T-Bar Row"], chestSupportedRow);
   register(
-    ["Barbell Row", "T-Bar Row", "Pendlay Row", "Meadows Row", "Dumbbell Row", "One-Arm Dumbbell Row", "Seated Cable Row", "Close-Grip Seated Cable Row"],
+    ["Barbell Row", "T-Bar Row", "Pendlay Row", "Meadows Row", "Dumbbell Row", "One-Arm Dumbbell Row"],
     horizontalRow
   );
-  register(["Inverted Row"], supportedHorizontalRow);
+  register(["Seated Cable Row", "Close-Grip Seated Cable Row", "Inverted Row"], supportedHorizontalRow);
   register(["Pull-Up", "Weighted Pull-Up", "Neutral Grip Pull-Up"], verticalPull);
   register(["Chin-Up"], buildStimulusProfile([
     ["lats", 1.0],
@@ -403,7 +410,8 @@ export const INITIAL_STIMULUS_PROFILE_BY_NAME: Record<string, StimulusProfile> =
   register(["Hammer Curl", "Cross-Body Hammer Curl"], hammerCurl);
   register(["Reverse Curl"], reverseCurl);
   register(["Wrist Curl", "Reverse Wrist Curl"], wristCurl);
-  register(["Back Squat", "Barbell Back Squat", "Goblet Squat", "Sissy Squat"], squat);
+  register(["Back Squat", "Barbell Back Squat", "Goblet Squat"], squat);
+  register(["Sissy Squat"], sissySquat);
   register(["Front Squat"], frontSquat);
   register(["Hack Squat"], hackSquat);
   register(["Leg Press"], legPress);
@@ -412,7 +420,8 @@ export const INITIAL_STIMULUS_PROFILE_BY_NAME: Record<string, StimulusProfile> =
   register(["Walking Lunge"], lunge);
   register(["Barbell Hip Thrust", "Single-Leg Hip Thrust"], hipThrust);
   register(["Glute Bridge"], gluteBridge);
-  register(["Romanian Deadlift", "Stiff-Legged Deadlift", "Cable Pull-Through"], hinge);
+  register(["Romanian Deadlift", "Stiff-Legged Deadlift"], hinge);
+  register(["Cable Pull-Through"], cablePullThrough);
   register(["Good Morning"], axialHinge);
   register(["Conventional Deadlift"], conventionalDeadlift);
   register(["Sumo Deadlift"], sumoDeadlift);
@@ -422,7 +431,8 @@ export const INITIAL_STIMULUS_PROFILE_BY_NAME: Record<string, StimulusProfile> =
   register(["Standing Calf Raise", "Seated Calf Raise", "Leg Press Calf Raise"], calfRaise);
   register(["Hip Abduction Machine", "Cable Hip Abduction"], hipAbduction);
   register(["Hip Adduction Machine"], hipAdduction);
-  register(["Back Extension (45 Degree)", "Reverse Hyperextension"], backExtension);
+  register(["Back Extension (45 Degree)"], backExtension);
+  register(["Reverse Hyperextension"], reverseHyperextension);
   register(["Plank"], plank);
   register(
     [

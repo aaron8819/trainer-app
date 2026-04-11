@@ -202,6 +202,27 @@ describe("stimulus helper", () => {
     expect(rowPrimeMover).toBeGreaterThan(profile.biceps ?? 0);
   });
 
+  it("keeps supported seated rows free of unsupported-row lower-back credit", () => {
+    for (const name of ["Seated Cable Row", "Close-Grip Seated Cable Row"]) {
+      const profile = resolveStimulusProfile(
+        makeExercise({
+          id: name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""),
+          name,
+          primaryMuscles: ["Upper Back", "Lats"],
+          secondaryMuscles: ["Biceps", "Forearms"],
+        })
+      );
+
+      expect(profile).toEqual({
+        upper_back: 1,
+        lats: 0.8,
+        biceps: 0.4,
+        rear_delts: 0.25,
+      });
+      expect(profile.lower_back ?? 0).toBe(0);
+    }
+  });
+
   it("keeps knee-dominant squats quad-dominant and non-hamstring-prime", () => {
     const squat = makeExercise({
       id: "barbell-back-squat",
@@ -213,6 +234,69 @@ describe("stimulus helper", () => {
 
     expect((profile.quads ?? 0)).toBeGreaterThan(profile.glutes ?? 0);
     expect(profile.hamstrings ?? 0).toBeLessThan(0.5);
+  });
+
+  it("keeps sissy squat quad-isolation dominant without generic squat-family secondary noise", () => {
+    const profile = resolveStimulusProfile(
+      makeExercise({
+        id: "sissy-squat",
+        name: "Sissy Squat",
+        primaryMuscles: ["Quads"],
+      })
+    );
+
+    expect(profile).toEqual({
+      quads: 1,
+    });
+  });
+
+  it("keeps cable pull-through glute and hamstring dominant without lower-back over-credit", () => {
+    const profile = resolveStimulusProfile(
+      makeExercise({
+        id: "cable-pull-through",
+        name: "Cable Pull-Through",
+        primaryMuscles: ["Glutes", "Hamstrings"],
+      })
+    );
+
+    expect(profile).toEqual({
+      glutes: 1,
+      hamstrings: 0.75,
+    });
+    expect(profile.lower_back ?? 0).toBe(0);
+  });
+
+  it("keeps reverse hyperextension glute and hamstring dominant with lower back secondary", () => {
+    const profile = resolveStimulusProfile(
+      makeExercise({
+        id: "reverse-hyperextension",
+        name: "Reverse Hyperextension",
+        primaryMuscles: ["Glutes", "Hamstrings"],
+        secondaryMuscles: ["Lower Back"],
+      })
+    );
+
+    expect(profile).toEqual({
+      glutes: 1,
+      hamstrings: 0.75,
+      lower_back: 0.35,
+    });
+    expect(profile.lower_back ?? 0).toBeLessThan(profile.glutes ?? 0);
+    expect(profile.lower_back ?? 0).toBeLessThan(profile.hamstrings ?? 0);
+  });
+
+  it("keeps plank to a single external Core-equivalent signal", () => {
+    const profile = resolveStimulusProfile(
+      makeExercise({
+        id: "plank",
+        name: "Plank",
+        primaryMuscles: ["Core"],
+      })
+    );
+
+    expect(profile).toEqual({
+      core: 1,
+    });
   });
 
   it("keeps vertical presses side-delt dominant with front-delt support", () => {

@@ -11,6 +11,7 @@
 
 # Local docs (plans, knowledgebase)
 trainer-app/docs/knowledgebase/
+/Notepad/
 
 # Generated output
 trainer-app/output/

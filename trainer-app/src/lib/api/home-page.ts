@@ -43,6 +43,8 @@ export type HomeCloseoutSummary = {
   detail: string;
   actionHref: string;
   actionLabel: string;
+  dismissActionHref: string | null;
+  dismissActionLabel: string | null;
 };
 
 function formatCloseoutTitle(
@@ -291,6 +293,8 @@ function buildHomeCloseoutSummary(
       actionHref: `/api/mesocycles/week-close/${closeout.weekCloseId}/closeout`,
       actionLabel:
         closeout.isPriorWeek ? `Create Week ${closeout.targetWeek} closeout` : "Create closeout",
+      dismissActionHref: null,
+      dismissActionLabel: null,
     };
   }
 
@@ -310,6 +314,8 @@ function buildHomeCloseoutSummary(
           : "Completed closeout counts toward this week's actual volume without changing the next-session plan.",
       actionHref: `/workout/${closeout.workoutId}`,
       actionLabel: "Review closeout",
+      dismissActionHref: null,
+      dismissActionLabel: null,
     };
   }
 
@@ -325,6 +331,8 @@ function buildHomeCloseoutSummary(
           : "Skipped closeout stays visible for this week, but it does not change continuity or the canonical slot plan.",
       actionHref: `/workout/${closeout.workoutId}`,
       actionLabel: "View closeout",
+      dismissActionHref: null,
+      dismissActionLabel: null,
     };
   }
 
@@ -339,6 +347,11 @@ function buildHomeCloseoutSummary(
         : "Optional manual closeout work for this week. It can add actual weekly volume without becoming your next canonical session.",
     actionHref: `/log/${closeout.workoutId}`,
     actionLabel: "Open closeout",
+    dismissActionHref:
+      normalizedStatus === "PLANNED"
+        ? `/api/workouts/${closeout.workoutId}/dismiss-closeout`
+        : null,
+    dismissActionLabel: normalizedStatus === "PLANNED" ? "Skip closeout" : null,
   };
 }
 
@@ -353,7 +366,7 @@ export async function loadHomePageData(userId: string): Promise<HomePageData> {
     prisma.workout.findMany({
       where: { userId },
       orderBy: { scheduledDate: "desc" },
-      take: 3,
+      take: 10,
       select: workoutListItemSelect,
     }),
   ]);
@@ -361,7 +374,10 @@ export async function loadHomePageData(userId: string): Promise<HomePageData> {
   const lastCompleted = latestCompletedRow
     ? buildWorkoutListSurfaceSummary(latestCompletedRow)
     : null;
-  const recentActivity = recentActivityRows.map(buildWorkoutListSurfaceSummary);
+  const recentActivity = recentActivityRows
+    .map(buildWorkoutListSurfaceSummary)
+    .filter((workout) => !workout.isCloseoutDismissed)
+    .slice(0, 3);
 
   if (pendingHandoff) {
     return {

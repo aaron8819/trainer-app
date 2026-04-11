@@ -7,10 +7,11 @@ import {
   formatWorkoutListExerciseLabel,
   formatWorkoutListIntentLabel,
   formatWorkoutListLoggedSetsLabel,
+  getWorkoutListDisplayStatusClasses,
+  getWorkoutListDisplayStatusLabel,
   getWorkoutListDebugLabel,
   getWorkoutListPrimaryLabel,
   getWorkoutListSecondaryLabel,
-  getWorkoutListStatusClasses,
   getWorkoutListStatusLabel,
   WORKOUT_LIST_STATUS_OPTIONS,
   type WorkoutListSurfaceSummary,
@@ -333,9 +334,9 @@ export default function HistoryClient({
                   </div>
                   <div className="flex items-center gap-3">
                     <span
-                      className={`rounded-full px-3 py-1 text-xs font-semibold ${getWorkoutListStatusClasses(workout.status)}`}
+                      className={`rounded-full px-3 py-1 text-xs font-semibold ${getWorkoutListDisplayStatusClasses(workout)}`}
                     >
-                      {getWorkoutListStatusLabel(workout.status)}
+                      {getWorkoutListDisplayStatusLabel(workout)}
                     </span>
                     <WorkoutRowActions workout={workout} />
                     <DeleteWorkoutButton

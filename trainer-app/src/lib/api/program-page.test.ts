@@ -514,6 +514,8 @@ describe("loadProgramPageData", () => {
         "Optional manual closeout work. It counts toward actual weekly volume once performed, but it is not a remaining slot.",
       actionHref: "/log/closeout-planned",
       actionLabel: "Open closeout",
+      dismissActionHref: "/api/workouts/closeout-planned/dismiss-closeout",
+      dismissActionLabel: "Skip closeout",
     });
     expect(result.weekCompletionOutlook).toEqual({
       assumptionLabel: "If you complete the remaining planned sessions this week, you will likely land here.",
@@ -649,6 +651,108 @@ describe("loadProgramPageData", () => {
         "Week 3 closeout is still available after rollover. It stays separate from Week 4 and does not become a slot.",
       actionHref: "/api/mesocycles/week-close/wc-3/closeout",
       actionLabel: "Create Week 3 closeout",
+      dismissActionHref: null,
+      dismissActionLabel: null,
     });
+  });
+
+  it("hides dismissed closeout rows without offering another create action", async () => {
+    mocks.workoutFindMany
+      .mockResolvedValueOnce([
+        {
+          id: "planned-upper",
+          status: "PLANNED",
+          scheduledDate: new Date("2026-03-02T00:00:00.000Z"),
+          sessionIntent: "UPPER",
+          selectionMode: "INTENT",
+          selectionMetadata: {
+            sessionDecisionReceipt: {
+              version: 1,
+              cycleContext: {
+                weekInMeso: 2,
+                weekInBlock: 2,
+                phase: "accumulation",
+                blockType: "accumulation",
+                isDeload: false,
+                source: "computed",
+              },
+              sessionSlot: {
+                slotId: "upper_a",
+                intent: "upper",
+                sequenceIndex: 0,
+                sequenceLength: 3,
+                source: "mesocycle_slot_sequence",
+              },
+              lifecycleVolume: { source: "unknown" },
+              sorenessSuppressedMuscles: [],
+              deloadDecision: {
+                mode: "none",
+                reason: [],
+                reductionPercent: 0,
+                appliedTo: "none",
+              },
+              readiness: {
+                wasAutoregulated: false,
+                signalAgeHours: null,
+                fatigueScoreOverall: null,
+                intensityScaling: {
+                  applied: false,
+                  exerciseIds: [],
+                  scaledUpCount: 0,
+                  scaledDownCount: 0,
+                },
+              },
+              exceptions: [],
+            },
+          },
+          advancesSplit: true,
+        },
+        {
+          id: "closeout-planned",
+          status: "PLANNED",
+          scheduledDate: new Date("2026-03-03T00:00:00.000Z"),
+          sessionIntent: null,
+          selectionMode: "MANUAL",
+          selectionMetadata: {
+            closeoutDismissed: true,
+            sessionDecisionReceipt: {
+              version: 1,
+              cycleContext: {
+                weekInMeso: 2,
+                weekInBlock: 2,
+                phase: "accumulation",
+                blockType: "accumulation",
+                isDeload: false,
+                source: "computed",
+              },
+              lifecycleVolume: { source: "unknown" },
+              sorenessSuppressedMuscles: [],
+              deloadDecision: {
+                mode: "none",
+                reason: [],
+                reductionPercent: 0,
+                appliedTo: "none",
+              },
+              readiness: {
+                wasAutoregulated: false,
+                signalAgeHours: null,
+                fatigueScoreOverall: null,
+                intensityScaling: {
+                  applied: false,
+                  exerciseIds: [],
+                  scaledUpCount: 0,
+                  scaledDownCount: 0,
+                },
+              },
+              exceptions: [{ code: "closeout_session", message: "Marked as closeout session." }],
+            },
+          },
+          advancesSplit: false,
+        },
+      ]);
+
+    const result = await loadProgramPageData("user-1");
+
+    expect(result.closeout).toBeNull();
   });
 });

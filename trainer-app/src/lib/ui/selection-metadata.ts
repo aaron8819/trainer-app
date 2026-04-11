@@ -18,6 +18,8 @@ export type SaveableSelectionMetadata = {
   selectedExerciseIds?: string[];
   perExerciseSetTargets?: Record<string, number>;
   weekCloseId?: string;
+  closeoutDismissed?: boolean;
+  closeoutDismissedAt?: string;
   sessionDecisionReceipt?: SessionDecisionReceipt;
   sessionAuditSnapshot?: SessionAuditSnapshot;
   workoutStructureState?: WorkoutStructureState;
@@ -640,6 +642,13 @@ export function sanitizeSelectionMetadataForSave(value: unknown): SaveableSelect
     output.weekCloseId = record.weekCloseId;
   }
 
+  if (record.closeoutDismissed === true) {
+    output.closeoutDismissed = true;
+    if (typeof record.closeoutDismissedAt === "string") {
+      output.closeoutDismissedAt = record.closeoutDismissedAt;
+    }
+  }
+
   const sessionDecisionReceipt = toObject(record.sessionDecisionReceipt);
   if (sessionDecisionReceipt) {
     const canonicalReceipt = extractSessionDecisionReceipt({
@@ -678,6 +687,19 @@ export function sanitizeSelectionMetadataForSave(value: unknown): SaveableSelect
 export function readWeekCloseIdFromSelectionMetadata(value: unknown): string | undefined {
   const record = toObject(value);
   return typeof record?.weekCloseId === "string" ? record.weekCloseId : undefined;
+}
+
+export function attachCloseoutDismissalMetadata(
+  selectionMetadata: unknown,
+  input: {
+    dismissedAt?: Date;
+  } = {}
+): SaveableSelectionMetadata {
+  return {
+    ...(toObject(selectionMetadata) ?? {}),
+    closeoutDismissed: true,
+    closeoutDismissedAt: (input.dismissedAt ?? new Date()).toISOString(),
+  };
 }
 
 export function readWorkoutStructureState(

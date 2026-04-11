@@ -15,7 +15,10 @@ import {
   isCanonicalDeloadPhase,
   isCanonicalDeloadReceipt,
 } from "@/lib/deload/semantics";
-import { isCloseoutSession } from "@/lib/session-semantics/closeout-classifier";
+import {
+  isCloseoutSession,
+  isDismissedCloseoutSession,
+} from "@/lib/session-semantics/closeout-classifier";
 import { isStrictSupplementalDeficitSession } from "@/lib/session-semantics/supplemental-classifier";
 
 export const workoutListItemSelect = {
@@ -79,6 +82,7 @@ export type WorkoutListSurfaceSummary = {
   isDeload: boolean;
   isGapFill?: boolean;
   isCloseout?: boolean;
+  isCloseoutDismissed?: boolean;
   isSupplementalDeficitSession?: boolean;
   gapFillTargetMuscles?: string[];
   exerciseCount: number;
@@ -138,10 +142,15 @@ export function getWorkoutListPrimaryLabel(
 }
 
 export function getWorkoutListSecondaryLabel(
-  workout: Pick<WorkoutListSurfaceSummary, "isGapFill" | "isCloseout" | "gapFillTargetMuscles">
+  workout: Pick<
+    WorkoutListSurfaceSummary,
+    "isGapFill" | "isCloseout" | "isCloseoutDismissed" | "gapFillTargetMuscles"
+  >
 ): string | null {
   if (workout.isCloseout) {
-    return "Optional manual closeout work";
+    return workout.isCloseoutDismissed
+      ? "Dismissed optional closeout"
+      : "Optional manual closeout work";
   }
 
   if (!workout.isGapFill) {
@@ -165,6 +174,20 @@ export function getWorkoutListStatusLabel(status: string): string {
 
 export function getWorkoutListStatusClasses(status: string): string {
   return WORKOUT_LIST_STATUS_CLASSES[status] ?? "bg-slate-100 text-slate-600";
+}
+
+export function getWorkoutListDisplayStatusLabel(
+  workout: Pick<WorkoutListSurfaceSummary, "status" | "isCloseoutDismissed">
+): string {
+  return workout.isCloseoutDismissed ? "Dismissed" : getWorkoutListStatusLabel(workout.status);
+}
+
+export function getWorkoutListDisplayStatusClasses(
+  workout: Pick<WorkoutListSurfaceSummary, "status" | "isCloseoutDismissed">
+): string {
+  return workout.isCloseoutDismissed
+    ? "bg-slate-100 text-slate-600"
+    : getWorkoutListStatusClasses(workout.status);
 }
 
 export function formatWorkoutListExerciseLabel(exerciseCount: number): string {
@@ -193,6 +216,7 @@ export function buildWorkoutListSurfaceSummary(
     sessionIntent: row.sessionIntent,
   });
   const isCloseout = isCloseoutSession(row.selectionMetadata);
+  const isCloseoutDismissed = isDismissedCloseoutSession(row.selectionMetadata);
   const isSupplementalDeficit = isStrictSupplementalDeficitSession({
     selectionMetadata: row.selectionMetadata,
     selectionMode: row.selectionMode,
@@ -237,6 +261,7 @@ export function buildWorkoutListSurfaceSummary(
     isDeload,
     isGapFill,
     isCloseout,
+    isCloseoutDismissed,
     isSupplementalDeficitSession: isSupplementalDeficit,
     gapFillTargetMuscles,
     exerciseCount: row._count.exercises,

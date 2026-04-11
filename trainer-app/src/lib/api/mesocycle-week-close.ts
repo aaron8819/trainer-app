@@ -13,8 +13,12 @@ import {
   getExposedVolumeLandmarkEntries,
   normalizeExposedMuscle,
 } from "@/lib/engine/volume-landmarks";
-import { isCloseoutSession } from "@/lib/session-semantics/closeout-classifier";
 import {
+  isCloseoutSession,
+  isDismissedCloseoutSession,
+} from "@/lib/session-semantics/closeout-classifier";
+import {
+  attachCloseoutDismissalMetadata,
   attachCloseoutSessionMetadata,
   buildCanonicalSelectionMetadata,
   readWeekCloseIdFromSelectionMetadata,
@@ -725,6 +729,14 @@ export type CreatedCloseoutWorkout = {
   revision: number;
 };
 
+export type DismissedCloseoutWorkout = {
+  id: string;
+  status: WorkoutStatus;
+  selectionMetadata: unknown;
+  revision: number;
+  outcome: "dismissed" | "already_dismissed";
+};
+
 export async function createCloseoutSessionForWeek(
   tx: Tx,
   input: {
@@ -857,6 +869,63 @@ export async function createCloseoutSessionForWeek(
       revision: true,
     },
   });
+}
+
+export async function dismissCloseoutSession(
+  tx: Tx,
+  input: {
+    userId: string;
+    workoutId: string;
+  }
+): Promise<DismissedCloseoutWorkout> {
+  const workout = await tx.workout.findFirst({
+    where: {
+      id: input.workoutId,
+      userId: input.userId,
+    },
+    select: {
+      id: true,
+      status: true,
+      selectionMetadata: true,
+      revision: true,
+    },
+  });
+
+  if (!workout) {
+    throw new Error("CLOSEOUT_WORKOUT_NOT_FOUND");
+  }
+  if (!isCloseoutSession(workout.selectionMetadata)) {
+    throw new Error("CLOSEOUT_DISMISSAL_NOT_CLOSEOUT");
+  }
+  if (isDismissedCloseoutSession(workout.selectionMetadata)) {
+    return {
+      ...workout,
+      outcome: "already_dismissed",
+    };
+  }
+  if (workout.status !== "PLANNED") {
+    throw new Error("CLOSEOUT_DISMISSAL_REQUIRES_PLANNED");
+  }
+
+  const selectionMetadata = attachCloseoutDismissalMetadata(workout.selectionMetadata);
+  const updated = await tx.workout.update({
+    where: { id: workout.id },
+    data: {
+      selectionMetadata: selectionMetadata as Prisma.InputJsonValue,
+      revision: { increment: 1 },
+    },
+    select: {
+      id: true,
+      status: true,
+      selectionMetadata: true,
+      revision: true,
+    },
+  });
+
+  return {
+    ...updated,
+    outcome: "dismissed",
+  };
 }
 
 async function resolveWeekCloseIfPending(

@@ -2,7 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   const workoutFindMany = vi.fn();
+  const workoutFindFirst = vi.fn();
   const workoutCreate = vi.fn();
+  const workoutUpdate = vi.fn();
   const weekCloseFindFirst = vi.fn();
   const weekCloseFindUnique = vi.fn();
   const weekCloseUpsert = vi.fn();
@@ -11,7 +13,9 @@ const mocks = vi.hoisted(() => {
 
   return {
     workoutFindMany,
+    workoutFindFirst,
     workoutCreate,
+    workoutUpdate,
     weekCloseFindFirst,
     weekCloseFindUnique,
     weekCloseUpsert,
@@ -20,7 +24,9 @@ const mocks = vi.hoisted(() => {
     tx: {
       workout: {
         findMany: workoutFindMany,
+        findFirst: workoutFindFirst,
         create: workoutCreate,
+        update: workoutUpdate,
       },
       mesocycleWeekClose: {
         findFirst: weekCloseFindFirst,
@@ -45,6 +51,7 @@ import {
   autoDismissPendingWeekCloseOnForwardProgress,
   buildWeekCloseDeficitSnapshot,
   createCloseoutSessionForWeek,
+  dismissCloseoutSession,
   dismissPendingWeekClose,
   evaluateWeekCloseAtBoundary,
   isAccumulationWeekBoundary,
@@ -57,6 +64,7 @@ describe("mesocycle week close", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.workoutFindMany.mockResolvedValue([]);
+    mocks.workoutFindFirst.mockResolvedValue(null);
     mocks.workoutCreate.mockResolvedValue({
       id: "workout-closeout-1",
       userId: "user-1",
@@ -113,6 +121,56 @@ describe("mesocycle week close", () => {
       mesocyclePhaseSnapshot: "ACCUMULATION",
       mesoSessionSnapshot: 4,
       revision: 1,
+    });
+    mocks.workoutUpdate.mockResolvedValue({
+      id: "workout-closeout-1",
+      status: "PLANNED",
+      selectionMetadata: {
+        weekCloseId: "wc-1",
+        closeoutDismissed: true,
+        closeoutDismissedAt: "2026-04-09T12:00:00.000Z",
+        sessionDecisionReceipt: {
+          version: 1,
+          cycleContext: {
+            weekInMeso: 4,
+            weekInBlock: 4,
+            blockDurationWeeks: 4,
+            mesocycleLength: 5,
+            phase: "accumulation",
+            blockType: "accumulation",
+            isDeload: false,
+            source: "computed",
+          },
+          lifecycleVolume: {
+            source: "unknown",
+          },
+          sorenessSuppressedMuscles: [],
+          deloadDecision: {
+            mode: "none",
+            reason: [],
+            reductionPercent: 0,
+            appliedTo: "none",
+          },
+          readiness: {
+            wasAutoregulated: false,
+            signalAgeHours: null,
+            fatigueScoreOverall: null,
+            intensityScaling: {
+              applied: false,
+              exerciseIds: [],
+              scaledUpCount: 0,
+              scaledDownCount: 0,
+            },
+          },
+          exceptions: [
+            {
+              code: "closeout_session",
+              message: "Marked as closeout session.",
+            },
+          ],
+        },
+      },
+      revision: 2,
     });
     mocks.weekCloseFindFirst.mockResolvedValue(null);
     mocks.weekCloseFindUnique.mockResolvedValue(null);
@@ -661,6 +719,142 @@ describe("mesocycle week close", () => {
       })
     ).rejects.toThrow("CLOSEOUT_ALREADY_EXISTS_FOR_WEEK");
     expect(mocks.workoutCreate).not.toHaveBeenCalled();
+  });
+
+  it("dismisses a planned closeout workout by marking selection metadata only", async () => {
+    mocks.workoutFindFirst.mockResolvedValueOnce({
+      id: "workout-closeout-1",
+      status: "PLANNED",
+      selectionMetadata: {
+        weekCloseId: "wc-1",
+        sessionDecisionReceipt: {
+          version: 1,
+          cycleContext: {
+            weekInMeso: 4,
+            weekInBlock: 4,
+            phase: "accumulation",
+            blockType: "accumulation",
+            isDeload: false,
+            source: "computed",
+          },
+          lifecycleVolume: { source: "unknown" },
+          sorenessSuppressedMuscles: [],
+          deloadDecision: {
+            mode: "none",
+            reason: [],
+            reductionPercent: 0,
+            appliedTo: "none",
+          },
+          readiness: {
+            wasAutoregulated: false,
+            signalAgeHours: null,
+            fatigueScoreOverall: null,
+            intensityScaling: {
+              applied: false,
+              exerciseIds: [],
+              scaledUpCount: 0,
+              scaledDownCount: 0,
+            },
+          },
+          exceptions: [
+            {
+              code: "closeout_session",
+              message: "Marked as closeout session.",
+            },
+          ],
+        },
+      },
+      revision: 1,
+    });
+
+    const result = await dismissCloseoutSession(mocks.tx as never, {
+      userId: "user-1",
+      workoutId: "workout-closeout-1",
+    });
+
+    expect(result.outcome).toBe("dismissed");
+    expect(mocks.workoutUpdate).toHaveBeenCalledWith({
+      where: { id: "workout-closeout-1" },
+      data: {
+        selectionMetadata: expect.objectContaining({
+          weekCloseId: "wc-1",
+          closeoutDismissed: true,
+          closeoutDismissedAt: expect.any(String),
+          sessionDecisionReceipt: expect.objectContaining({
+            exceptions: [
+              {
+                code: "closeout_session",
+                message: "Marked as closeout session.",
+              },
+            ],
+          }),
+        }),
+        revision: { increment: 1 },
+      },
+      select: {
+        id: true,
+        status: true,
+        selectionMetadata: true,
+        revision: true,
+      },
+    });
+    expect(mocks.weekCloseUpdateMany).not.toHaveBeenCalled();
+    expect(mocks.transitionMesocycleStateInTransaction).not.toHaveBeenCalled();
+  });
+
+  it("does not convert non-planned closeout workouts into dismissed rows", async () => {
+    mocks.workoutFindFirst.mockResolvedValueOnce({
+      id: "workout-closeout-1",
+      status: "COMPLETED",
+      selectionMetadata: {
+        sessionDecisionReceipt: {
+          version: 1,
+          cycleContext: {
+            weekInMeso: 4,
+            weekInBlock: 4,
+            phase: "accumulation",
+            blockType: "accumulation",
+            isDeload: false,
+            source: "computed",
+          },
+          lifecycleVolume: { source: "unknown" },
+          sorenessSuppressedMuscles: [],
+          deloadDecision: {
+            mode: "none",
+            reason: [],
+            reductionPercent: 0,
+            appliedTo: "none",
+          },
+          readiness: {
+            wasAutoregulated: false,
+            signalAgeHours: null,
+            fatigueScoreOverall: null,
+            intensityScaling: {
+              applied: false,
+              exerciseIds: [],
+              scaledUpCount: 0,
+              scaledDownCount: 0,
+            },
+          },
+          exceptions: [
+            {
+              code: "closeout_session",
+              message: "Marked as closeout session.",
+            },
+          ],
+        },
+      },
+      revision: 1,
+    });
+
+    await expect(
+      dismissCloseoutSession(mocks.tx as never, {
+        userId: "user-1",
+        workoutId: "workout-closeout-1",
+      })
+    ).rejects.toThrow("CLOSEOUT_DISMISSAL_REQUIRES_PLANNED");
+
+    expect(mocks.workoutUpdate).not.toHaveBeenCalled();
   });
 
   it("rejects closeout creation when the week-close is older than the previous active week", async () => {

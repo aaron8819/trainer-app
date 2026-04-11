@@ -244,7 +244,7 @@ describe("loadHomePageData", () => {
     expect(result.recentActivity).toHaveLength(3);
     expect(mocks.workoutFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        take: 3,
+        take: 10,
       })
     );
   });
@@ -397,6 +397,8 @@ describe("loadHomePageData", () => {
         "Optional manual closeout work for this week. It can add actual weekly volume without becoming your next canonical session.",
       actionHref: "/log/workout-closeout",
       actionLabel: "Open closeout",
+      dismissActionHref: "/api/workouts/workout-closeout/dismiss-closeout",
+      dismissActionLabel: "Skip closeout",
     });
   });
 
@@ -466,6 +468,68 @@ describe("loadHomePageData", () => {
         "Week 3 closeout is still available after rollover. It remains optional and does not change Week 4 continuity.",
       actionHref: "/api/mesocycles/week-close/wc-3/closeout",
       actionLabel: "Create Week 3 closeout",
+      dismissActionHref: null,
+      dismissActionLabel: null,
     });
+  });
+
+  it("filters dismissed closeouts from recent activity and fills from the lookback window", async () => {
+    mocks.workoutFindMany.mockResolvedValue([
+      makeWorkoutRow({
+        id: "dismissed-closeout",
+        status: "PLANNED",
+        completedAt: null,
+        selectionMetadata: {
+          closeoutDismissed: true,
+          sessionDecisionReceipt: {
+            version: 1,
+            cycleContext: {
+              weekInMeso: 2,
+              weekInBlock: 2,
+              phase: "accumulation",
+              blockType: "accumulation",
+              isDeload: false,
+              source: "computed",
+            },
+            lifecycleVolume: { source: "unknown" },
+            sorenessSuppressedMuscles: [],
+            deloadDecision: {
+              mode: "none",
+              reason: [],
+              reductionPercent: 0,
+              appliedTo: "none",
+            },
+            readiness: {
+              wasAutoregulated: false,
+              signalAgeHours: null,
+              fatigueScoreOverall: null,
+              intensityScaling: {
+                applied: false,
+                exerciseIds: [],
+                scaledUpCount: 0,
+                scaledDownCount: 0,
+              },
+            },
+            exceptions: [
+              {
+                code: "closeout_session",
+                message: "Marked as closeout session.",
+              },
+            ],
+          },
+        },
+      }),
+      makeWorkoutRow({ id: "activity-1" }),
+      makeWorkoutRow({ id: "activity-2" }),
+      makeWorkoutRow({ id: "activity-3" }),
+    ]);
+
+    const result = await loadHomePageData("user-1");
+
+    expect(result.recentActivity.map((workout) => workout.id)).toEqual([
+      "activity-1",
+      "activity-2",
+      "activity-3",
+    ]);
   });
 });

@@ -1087,6 +1087,96 @@ describe("loadHomeProgramSupport", () => {
     });
   });
 
+  it("hides dismissed closeouts without offering a replacement create action", async () => {
+    setupDashboardMocks(
+      {
+        state: "ACTIVE_ACCUMULATION",
+        sessionsPerWeek: 3,
+        accumulationSessionsCompleted: 9,
+      },
+      4
+    );
+    mocks.constraintsFindUnique.mockResolvedValue({
+      weeklySchedule: ["PUSH", "PULL", "LEGS"],
+    });
+    mocks.workoutFindMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          id: "workout-closeout",
+          status: "PLANNED",
+          scheduledDate: new Date("2026-03-25T00:00:00.000Z"),
+          selectionMetadata: {
+            closeoutDismissed: true,
+            sessionDecisionReceipt: {
+              version: 1,
+              cycleContext: {
+                weekInMeso: 4,
+                weekInBlock: 4,
+                phase: "accumulation",
+                blockType: "accumulation",
+                isDeload: false,
+                source: "computed",
+              },
+              lifecycleVolume: { source: "unknown" },
+              sorenessSuppressedMuscles: [],
+              deloadDecision: {
+                mode: "none",
+                reason: [],
+                reductionPercent: 0,
+                appliedTo: "none",
+              },
+              readiness: {
+                wasAutoregulated: false,
+                signalAgeHours: null,
+                fatigueScoreOverall: null,
+                intensityScaling: {
+                  applied: false,
+                  exerciseIds: [],
+                  scaledUpCount: 0,
+                  scaledDownCount: 0,
+                },
+              },
+              exceptions: [{ code: "closeout_session", message: "Marked as closeout session." }],
+            },
+          },
+        },
+      ]);
+    mocks.findRelevantWeekCloseForUser.mockResolvedValueOnce({
+      id: "wc-4",
+      mesocycleId: "meso-1",
+      targetWeek: 4,
+      targetPhase: "ACCUMULATION",
+      status: "PENDING_OPTIONAL_GAP_FILL",
+      resolution: null,
+      deficitSnapshot: null,
+      weekCloseState: {
+        workflowState: "PENDING_OPTIONAL_GAP_FILL",
+        deficitState: "OPEN",
+        remainingDeficitSets: 4,
+        remainingQualifyingMuscleCount: 1,
+        remainingTopTargetMuscles: ["Chest"],
+        remainingMuscles: [{ muscle: "Chest", target: 12, actual: 8, deficit: 4 }],
+      },
+      optionalWorkout: null,
+    });
+
+    const result = await loadHomeProgramSupport("user-1");
+
+    expect(result.nextSession.intent).toBe("push");
+    expect(result.closeout).toEqual({
+      visible: false,
+      workoutId: null,
+      weekCloseId: "wc-4",
+      status: null,
+      targetWeek: null,
+      isIncomplete: false,
+      isPriorWeek: false,
+      canCreate: false,
+    });
+  });
+
   it("surfaces a createable previous-week closeout after rollover without changing next-session support", async () => {
     setupDashboardMocks(
       {

@@ -46,6 +46,12 @@ vi.mock("@/components/CycleAnchorControls", () => ({
   ),
 }));
 
+vi.mock("@/components/CloseoutCard", () => ({
+  CloseoutCard: ({ closeout }: { closeout: { title: string; actionLabel: string } }) => (
+    <div>{`CloseoutCard:${closeout.title}:${closeout.actionLabel}`}</div>
+  ),
+}));
+
 describe("ProgramPage", () => {
   beforeEach(() => {
     mocks.resolveOwner.mockResolvedValue({ id: "user-1" });
@@ -291,6 +297,8 @@ describe("ProgramPage", () => {
           "Optional manual closeout work. It counts toward actual weekly volume once performed, but it is not a remaining slot.",
         actionHref: "/log/workout-closeout",
         actionLabel: "Open closeout",
+        dismissActionHref: "/api/workouts/workout-closeout/dismiss-closeout",
+        dismissActionLabel: "Skip closeout",
       },
       weekCompletionOutlook: null,
       volumeDetails: {
@@ -325,16 +333,7 @@ describe("ProgramPage", () => {
     render(ui);
 
     expect(screen.getByRole("heading", { name: "Ordered weekly slots" })).toBeInTheDocument();
-    expect(screen.getAllByText("Closeout")[0]).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "Optional manual closeout work. It counts toward actual weekly volume once performed, but it is not a remaining slot."
-      )
-    ).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Open closeout" })).toHaveAttribute(
-      "href",
-      "/log/workout-closeout"
-    );
+    expect(screen.getByText("CloseoutCard:Closeout:Open closeout")).toBeInTheDocument();
     expect(screen.getAllByText(/Upper 1/)).toHaveLength(1);
   });
 });

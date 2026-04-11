@@ -4,6 +4,7 @@ import { getWorkoutWorkflowState } from "@/lib/workout-workflow";
 export type WorkoutRowActionItem = {
   id: string;
   status: string;
+  isCloseoutDismissed?: boolean;
   mesocycleId?: string | null;
   mesocycleState?: string | null;
   mesocycleIsActive?: boolean | null;
@@ -13,6 +14,14 @@ const ACTION_LINK_CLASS =
   "inline-flex min-h-10 items-center rounded-full px-2 text-sm font-semibold text-slate-900";
 
 export function WorkoutRowActions({ workout }: { workout: WorkoutRowActionItem }) {
+  if (workout.isCloseoutDismissed) {
+    return (
+      <Link className={ACTION_LINK_CLASS} href={`/workout/${workout.id}`}>
+        View
+      </Link>
+    );
+  }
+
   const workflow = getWorkoutWorkflowState(workout.status, {
     mesocycleId: workout.mesocycleId,
     mesocycleState: workout.mesocycleState,

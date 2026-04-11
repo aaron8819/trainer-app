@@ -185,6 +185,33 @@ describe("HistoryClient", () => {
     expect(screen.getByText("Deload")).toBeInTheDocument();
   });
 
+  it("labels dismissed planned closeouts without exposing the Log action", () => {
+    render(
+      <HistoryClient
+        initialWorkouts={[
+          makeWorkout({
+            id: "closeout-1",
+            status: "PLANNED",
+            isCloseout: true,
+            isCloseoutDismissed: true,
+            exerciseCount: 3,
+          }),
+        ]}
+        initialNextCursor={null}
+        initialTotalCount={1}
+        mesocycles={NO_MESOCYCLES}
+      />
+    );
+
+    expect(screen.getByText("Dismissed")).toBeInTheDocument();
+    expect(screen.getByText("Dismissed optional closeout")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "View" })).toHaveAttribute(
+      "href",
+      "/workout/closeout-1"
+    );
+    expect(screen.queryByRole("link", { name: "Log" })).not.toBeInTheDocument();
+  });
+
   // ── H2: filter resets list and re-fetches ─────────────────────────────────
 
   it("filter change resets workout list and re-fetches from API", async () => {

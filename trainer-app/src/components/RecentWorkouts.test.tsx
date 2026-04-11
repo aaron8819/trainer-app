@@ -184,6 +184,23 @@ describe("PLANNED row", () => {
   });
 });
 
+describe("dismissed closeout row", () => {
+  it("renders Dismissed and View without reopening logging", () => {
+    renderRecent([
+      makeWorkout({
+        status: "PLANNED",
+        isCloseout: true,
+        isCloseoutDismissed: true,
+      }),
+    ]);
+
+    expect(screen.getByText("Dismissed")).toBeInTheDocument();
+    expect(screen.getByText("Dismissed optional closeout")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "View" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Log" })).not.toBeInTheDocument();
+  });
+});
+
 describe("IN_PROGRESS row", () => {
   it("renders Continue", () => {
     renderRecent([makeWorkout({ status: "IN_PROGRESS" })]);

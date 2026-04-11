@@ -100,6 +100,8 @@ export type ProgramCloseoutSummary = {
   detail: string;
   actionHref: string;
   actionLabel: string;
+  dismissActionHref: string | null;
+  dismissActionLabel: string | null;
 };
 
 function formatCloseoutTitle(
@@ -395,6 +397,8 @@ function buildProgramCloseoutSummary(
       actionHref: `/api/mesocycles/week-close/${closeout.weekCloseId}/closeout`,
       actionLabel:
         closeout.isPriorWeek ? `Create Week ${closeout.targetWeek} closeout` : "Create closeout",
+      dismissActionHref: null,
+      dismissActionLabel: null,
     };
   }
 
@@ -413,6 +417,8 @@ function buildProgramCloseoutSummary(
           : "Completed closeout is part of this week's actual landing, but it does not extend the remaining canonical slot plan.",
       actionHref: `/workout/${closeout.workoutId}`,
       actionLabel: "Review closeout",
+      dismissActionHref: null,
+      dismissActionLabel: null,
     };
   }
 
@@ -428,6 +434,8 @@ function buildProgramCloseoutSummary(
           : "Skipped closeout stays separate from the slot map and leaves next-session continuity unchanged.",
       actionHref: `/workout/${closeout.workoutId}`,
       actionLabel: "View closeout",
+      dismissActionHref: null,
+      dismissActionLabel: null,
     };
   }
 
@@ -442,6 +450,11 @@ function buildProgramCloseoutSummary(
         : "Optional manual closeout work. It counts toward actual weekly volume once performed, but it is not a remaining slot.",
     actionHref: `/log/${closeout.workoutId}`,
     actionLabel: "Open closeout",
+    dismissActionHref:
+      normalizedStatus === "PLANNED"
+        ? `/api/workouts/${closeout.workoutId}/dismiss-closeout`
+        : null,
+    dismissActionLabel: normalizedStatus === "PLANNED" ? "Skip closeout" : null,
   };
 }
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  attachCloseoutDismissalMetadata,
   attachCloseoutSessionMetadata,
   attachSupplementalSessionMetadata,
   buildWorkoutStructureState,
@@ -23,6 +24,8 @@ describe("sanitizeSelectionMetadataForSave", () => {
       },
       selectedExerciseIds: ["bench"],
       perExerciseSetTargets: { bench: 3 },
+      closeoutDismissed: true,
+      closeoutDismissedAt: "2026-04-09T12:00:00.000Z",
       sessionDecisionReceipt: {
         version: 1,
         cycleContext: {
@@ -77,6 +80,8 @@ describe("sanitizeSelectionMetadataForSave", () => {
       },
       selectedExerciseIds: ["bench"],
       perExerciseSetTargets: { bench: 3 },
+      closeoutDismissed: true,
+      closeoutDismissedAt: "2026-04-09T12:00:00.000Z",
       sessionDecisionReceipt: expect.objectContaining({
         version: 1,
       }),
@@ -689,5 +694,62 @@ describe("attachCloseoutSessionMetadata", () => {
         weekCloseId: "week-close-1",
       })
     ).toBe(metadata);
+  });
+});
+
+describe("attachCloseoutDismissalMetadata", () => {
+  it("marks closeout dismissal without changing receipt truth", () => {
+    const metadata: SaveableSelectionMetadata = {
+      weekCloseId: "week-close-1",
+      sessionDecisionReceipt: {
+        version: 1,
+        cycleContext: {
+          weekInMeso: 2,
+          weekInBlock: 2,
+          phase: "accumulation",
+          blockType: "accumulation",
+          isDeload: false,
+          source: "computed",
+        },
+        lifecycleVolume: {
+          source: "unknown",
+        },
+        sorenessSuppressedMuscles: [],
+        deloadDecision: {
+          mode: "none",
+          reason: [],
+          reductionPercent: 0,
+          appliedTo: "none",
+        },
+        readiness: {
+          wasAutoregulated: false,
+          signalAgeHours: null,
+          fatigueScoreOverall: null,
+          intensityScaling: {
+            applied: false,
+            exerciseIds: [],
+            scaledUpCount: 0,
+            scaledDownCount: 0,
+          },
+        },
+        exceptions: [
+          {
+            code: "closeout_session",
+            message: "Marked as closeout session.",
+          },
+        ],
+      },
+    };
+
+    const result = attachCloseoutDismissalMetadata(metadata, {
+      dismissedAt: new Date("2026-04-09T12:00:00.000Z"),
+    });
+
+    expect(result).toEqual({
+      ...metadata,
+      closeoutDismissed: true,
+      closeoutDismissedAt: "2026-04-09T12:00:00.000Z",
+    });
+    expect(result.sessionDecisionReceipt).toBe(metadata.sessionDecisionReceipt);
   });
 });

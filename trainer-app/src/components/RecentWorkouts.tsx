@@ -6,11 +6,11 @@ import DeleteWorkoutButton from "./DeleteWorkoutButton";
 import { WorkoutRowActions } from "./workout/WorkoutRowActions";
 import {
   formatWorkoutListExerciseLabel,
+  getWorkoutListDisplayStatusClasses,
+  getWorkoutListDisplayStatusLabel,
   getWorkoutListDebugLabel,
   getWorkoutListPrimaryLabel,
   getWorkoutListSecondaryLabel,
-  getWorkoutListStatusClasses,
-  getWorkoutListStatusLabel,
   type WorkoutListSurfaceSummary,
 } from "@/lib/ui/workout-list-items";
 import {
@@ -101,9 +101,9 @@ export default function RecentWorkouts({
                 </div>
                 <div className="flex items-center gap-3">
                   <span
-                    className={`rounded-full px-3 py-1 text-xs font-semibold ${getWorkoutListStatusClasses(workout.status)}`}
+                    className={`rounded-full px-3 py-1 text-xs font-semibold ${getWorkoutListDisplayStatusClasses(workout)}`}
                   >
-                    {getWorkoutListStatusLabel(workout.status)}
+                    {getWorkoutListDisplayStatusLabel(workout)}
                   </span>
                   <WorkoutRowActions workout={workout} />
                   {showDeleteActions ? (

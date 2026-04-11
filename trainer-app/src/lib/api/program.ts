@@ -29,7 +29,10 @@ import {
 import { loadRecentMuscleStimulus } from "./recent-muscle-stimulus";
 import { computeMuscleOpportunity, type OpportunityState } from "./opportunity";
 import { resolvePhaseBlockProfile } from "./generation-phase-block-context";
-import { isCloseoutSession } from "@/lib/session-semantics/closeout-classifier";
+import {
+  isCloseoutSession,
+  isDismissedCloseoutSession,
+} from "@/lib/session-semantics/closeout-classifier";
 
 export type ProgramMesoBlock = {
   blockType: string;
@@ -453,8 +456,11 @@ export function buildCurrentWeekCloseoutSupport(input: {
   weekCloseId: string | null;
   weekCloseStatus: "PENDING_OPTIONAL_GAP_FILL" | "RESOLVED" | null;
 }): CloseoutSupportData {
-  const closeout = [...input.workouts]
-    .filter((workout) => isCloseoutSession(workout.selectionMetadata))
+  const closeoutRows = [...input.workouts].filter((workout) =>
+    isCloseoutSession(workout.selectionMetadata)
+  );
+  const closeout = closeoutRows
+    .filter((workout) => !isDismissedCloseoutSession(workout.selectionMetadata))
     .sort((left, right) => {
       const leftPriority = CLOSEOUT_STATUS_PRIORITY[left.status] ?? 99;
       const rightPriority = CLOSEOUT_STATUS_PRIORITY[right.status] ?? 99;
@@ -467,6 +473,7 @@ export function buildCurrentWeekCloseoutSupport(input: {
 
   const canCreate =
     !closeout &&
+    closeoutRows.length === 0 &&
     input.targetWeek != null &&
     input.weekCloseStatus === "PENDING_OPTIONAL_GAP_FILL" &&
     Boolean(input.weekCloseId);

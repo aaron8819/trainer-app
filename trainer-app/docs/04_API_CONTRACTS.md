@@ -31,7 +31,7 @@ Sources of truth:
   - Matching Prisma enums in `prisma/schema.prisma`
 
 ## API route groups
-- Workouts: `src/app/api/workouts/**` (generate-from-intent, generate-from-template, save, `GET /api/workouts/history`)
+- Workouts: `src/app/api/workouts/**` (generate-from-intent, generate-from-template, save, `GET /api/workouts/history`, `POST /api/workouts/[id]/dismiss-closeout`)
 - Logging: `src/app/api/logs/set/route.ts`
 - Logging support reads: `GET /api/workouts/[id]/logging-weekly-volume-check` (`src/app/api/workouts/[id]/logging-weekly-volume-check/route.ts`)
 - Mesocycles: `GET /api/mesocycles` (`src/app/api/mesocycles/route.ts`) plus handoff endpoints `PATCH /api/mesocycles/[id]/draft` and `POST /api/mesocycles/[id]/accept-next-cycle`
@@ -251,6 +251,7 @@ Sources of truth:
   - `deficitState=CLOSED`: no qualifying weekly deficit remains
 - `resolution=NO_GAP_FILL_NEEDED` is the only resolution that implies deficit closure by itself. `GAP_FILL_COMPLETED`, `GAP_FILL_DISMISSED`, and `AUTO_DISMISSED` must not be interpreted as equivalent to `deficitState=CLOSED`.
 - `POST /api/mesocycles/week-close/[id]/closeout` is the canonical server-owned closeout creation path. The route resolves owner identity and delegates to `createCloseoutSessionForWeek()` in `src/lib/api/mesocycle-week-close.ts`, which validates the user-owned week-close row against the current or immediately previous active accumulation week in the same active mesocycle, rejects deload or duplicate closeouts, and creates a slotless `PLANNED` scaffold workout with `selectionMode=MANUAL`, `advancesSplit=false`, `selectionMetadata.weekCloseId`, and the canonical `closeout_session` receipt marker. `GET /api/mesocycles/week-close/[id]/closeout` uses the same seam for link-based UI creation and redirects to `/log/[workoutId]` after creation.
+- `POST /api/workouts/[id]/dismiss-closeout` is the canonical closeout skip path. The route resolves owner identity and delegates to `dismissCloseoutSession()` in `src/lib/api/mesocycle-week-close.ts`, which only marks planned receipt-backed closeout workouts with additive `selectionMetadata.closeoutDismissed=true` and `closeoutDismissedAt`, increments `Workout.revision`, and leaves workout status, week-close resolution, optional workout linkage, slot plan state, and the stored receipt untouched.
 
 ## Workout explanation response contract
 - Route: `GET /api/workouts/[id]/explanation` (`src/app/api/workouts/[id]/explanation/route.ts`).

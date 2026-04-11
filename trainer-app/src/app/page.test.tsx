@@ -59,6 +59,12 @@ vi.mock("@/components/OptionalGapFillCard", () => ({
   OptionalGapFillCard: () => <div>OptionalGapFillCard</div>,
 }));
 
+vi.mock("@/components/CloseoutCard", () => ({
+  CloseoutCard: ({ closeout }: { closeout: { title: string; actionLabel: string } }) => (
+    <div>{`CloseoutCard:${closeout.title}:${closeout.actionLabel}`}</div>
+  ),
+}));
+
 vi.mock("@/components/RecentWorkouts", () => ({
   default: ({
     heading,
@@ -300,6 +306,8 @@ describe("Home page", () => {
           "Optional manual closeout work for this week. It can add actual weekly volume without becoming your next canonical session.",
         actionHref: "/log/workout-closeout",
         actionLabel: "Open closeout",
+        dismissActionHref: "/api/workouts/workout-closeout/dismiss-closeout",
+        dismissActionLabel: "Skip closeout",
       },
       headerContext: "Week 2 - Accumulation",
       recentActivity: [],
@@ -310,12 +318,7 @@ describe("Home page", () => {
 
     render(ui);
 
-    expect(screen.getAllByText("Closeout")[0]).toBeInTheDocument();
-    expect(screen.getByText(/Optional manual closeout work for this week/)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Open closeout" })).toHaveAttribute(
-      "href",
-      "/log/workout-closeout"
-    );
+    expect(screen.getByText("CloseoutCard:Closeout:Open closeout")).toBeInTheDocument();
     expect(
       screen.getByText(
         "DashboardGenerateSection:lower:lower_a:Next in sequence:Nothing earlier is still open, so Lower 1 is next this week."

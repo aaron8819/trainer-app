@@ -25,6 +25,8 @@ export type HomeDecisionSummary = {
   nextSessionReasonLabel: string;
   nextSessionReason: string;
   activeWeekLabel: string | null;
+  completedAdvancingSessionsThisWeek: number;
+  totalAdvancingSessionsThisWeek: number;
 };
 
 export type HomeContinuitySummary = {
@@ -84,14 +86,30 @@ function buildHeaderContext(programData: ProgramDashboardData | null): string {
   return `Week ${programData.currentWeek} - ${phaseLabel ?? "Program"}`;
 }
 
-function buildActiveWeekLabel(nextSession: HomeProgramSupportData["nextSession"]): string | null {
-  const parts: string[] = [];
+function formatWeekProgressLabel(completed: number, total: number): string {
+  return `${completed} of ${total} session${total === 1 ? "" : "s"} complete`;
+}
 
-  if (nextSession.weekInMeso != null) {
-    parts.push(`Week ${nextSession.weekInMeso}`);
+function buildActiveWeekLabel(homeProgram: HomeProgramSupportData): string | null {
+  const { nextSession } = homeProgram;
+  const parts: string[] = [];
+  const week = homeProgram.activeWeek ?? nextSession.weekInMeso;
+
+  if (week != null) {
+    parts.push(`Week ${week}`);
   }
 
   if (
+    Number.isFinite(homeProgram.completedAdvancingSessionsThisWeek) &&
+    homeProgram.totalAdvancingSessionsThisWeek > 0
+  ) {
+    parts.push(
+      formatWeekProgressLabel(
+        homeProgram.completedAdvancingSessionsThisWeek,
+        homeProgram.totalAdvancingSessionsThisWeek
+      )
+    );
+  } else if (
     nextSession.slotSequenceIndex != null &&
     nextSession.slotSequenceLength != null &&
     nextSession.slotSequenceLength > 0
@@ -243,7 +261,9 @@ function buildDecisionSummary(
     nextSessionDescription: buildNextSessionDescriptor(homeProgram.nextSession),
     nextSessionReasonLabel: reason.label,
     nextSessionReason: reason.detail,
-    activeWeekLabel: buildActiveWeekLabel(homeProgram.nextSession),
+    activeWeekLabel: buildActiveWeekLabel(homeProgram),
+    completedAdvancingSessionsThisWeek: homeProgram.completedAdvancingSessionsThisWeek,
+    totalAdvancingSessionsThisWeek: homeProgram.totalAdvancingSessionsThisWeek,
   };
 }
 

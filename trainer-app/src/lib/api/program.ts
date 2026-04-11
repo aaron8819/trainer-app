@@ -33,6 +33,8 @@ import {
   isCloseoutSession,
   isDismissedCloseoutSession,
 } from "@/lib/session-semantics/closeout-classifier";
+import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-semantics";
+import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 
 export type ProgramMesoBlock = {
   blockType: string;
@@ -106,6 +108,9 @@ export type ProgramDashboardData = {
 
 export type HomeProgramSupportData = {
   nextSession: NextSessionData;
+  activeWeek: number | null;
+  completedAdvancingSessionsThisWeek: number;
+  totalAdvancingSessionsThisWeek: number;
   lastSessionSkipped: boolean;
   latestIncomplete: { id: string; status: string } | null;
   gapFill: GapFillSupportData;
@@ -441,6 +446,14 @@ type CloseoutWorkoutCandidate = {
   selectionMetadata: unknown;
 };
 
+type HomeWeekProgressWorkoutCandidate = {
+  advancesSplit: boolean | null;
+  selectionMetadata: unknown;
+  selectionMode: string | null;
+  sessionIntent: string | null;
+  mesocyclePhaseSnapshot: string | null;
+};
+
 const CLOSEOUT_STATUS_PRIORITY: Record<WorkoutStatus, number> = {
   IN_PROGRESS: 0,
   PARTIAL: 1,
@@ -495,6 +508,79 @@ export function buildCurrentWeekCloseoutSupport(input: {
       closeout?.status === "PARTIAL",
     isPriorWeek,
     canCreate,
+  };
+}
+
+function countAdvancingSessions(workouts: HomeWeekProgressWorkoutCandidate[]): number {
+  return workouts.filter((workout) => {
+    const semantics = deriveSessionSemantics({
+      advancesSplit: workout.advancesSplit,
+      selectionMetadata: workout.selectionMetadata,
+      selectionMode: workout.selectionMode,
+      sessionIntent: workout.sessionIntent,
+      mesocyclePhase: workout.mesocyclePhaseSnapshot,
+    });
+
+    return semantics.consumesWeeklyScheduleIntent;
+  }).length;
+}
+
+async function loadHomeWeekProgress(input: {
+  userId: string;
+  activeMesocycle: {
+    id: string;
+    startWeek: number;
+    sessionsPerWeek: number;
+    macroCycle: { startDate: Date };
+  } | null;
+  activeWeek: number | null;
+  nextSession: NextSessionData;
+}): Promise<{
+  completedAdvancingSessionsThisWeek: number;
+  totalAdvancingSessionsThisWeek: number;
+}> {
+  if (!input.activeMesocycle || input.activeWeek == null) {
+    return {
+      completedAdvancingSessionsThisWeek: 0,
+      totalAdvancingSessionsThisWeek: 0,
+    };
+  }
+
+  const mesoStart = new Date(input.activeMesocycle.macroCycle.startDate);
+  mesoStart.setDate(mesoStart.getDate() + input.activeMesocycle.startWeek * 7);
+  const weekStart = computeMesoWeekStart(mesoStart, input.activeWeek);
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekEnd.getDate() + 7);
+
+  const workouts = await prisma.workout.findMany({
+    where: {
+      userId: input.userId,
+      mesocycleId: input.activeMesocycle.id,
+      status: { in: [...PERFORMED_WORKOUT_STATUSES] as WorkoutStatus[] },
+      sessionIntent: { not: null },
+      OR: [
+        { mesocycleWeekSnapshot: input.activeWeek },
+        {
+          mesocycleWeekSnapshot: null,
+          scheduledDate: { gte: weekStart, lt: weekEnd },
+        },
+      ],
+    },
+    select: {
+      advancesSplit: true,
+      selectionMetadata: true,
+      selectionMode: true,
+      sessionIntent: true,
+      mesocyclePhaseSnapshot: true,
+    },
+  });
+
+  return {
+    completedAdvancingSessionsThisWeek: countAdvancingSessions(workouts),
+    totalAdvancingSessionsThisWeek: Math.max(
+      1,
+      input.nextSession.slotSequenceLength ?? input.activeMesocycle.sessionsPerWeek
+    ),
   };
 }
 
@@ -676,9 +762,17 @@ export async function loadHomeProgramSupport(userId: string): Promise<HomeProgra
     weekCloseStatus:
       relevantWeekClose?.targetWeek === closeoutTargetWeek ? relevantWeekClose.status : null,
   });
+  const weekProgress = await loadHomeWeekProgress({
+    userId,
+    activeMesocycle,
+    activeWeek,
+    nextSession,
+  });
 
   return {
     nextSession,
+    activeWeek,
+    ...weekProgress,
     lastSessionSkipped,
     latestIncomplete,
     gapFill,

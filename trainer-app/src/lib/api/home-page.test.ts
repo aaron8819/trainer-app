@@ -63,6 +63,13 @@ function makeWorkoutRow(overrides: Record<string, unknown> = {}) {
           isDeload: false,
           source: "computed",
         },
+        sessionSlot: {
+          slotId: "upper_a",
+          intent: "upper",
+          sequenceIndex: 1,
+          sequenceLength: 4,
+          source: "mesocycle_slot_sequence",
+        },
         lifecycleVolume: { source: "unknown" },
         sorenessSuppressedMuscles: [],
         deloadDecision: {
@@ -183,6 +190,9 @@ describe("loadHomePageData", () => {
         workoutId: null,
         isExisting: false,
       },
+      activeWeek: 2,
+      completedAdvancingSessionsThisWeek: 1,
+      totalAdvancingSessionsThisWeek: 4,
       lastSessionSkipped: false,
       latestIncomplete: null,
       gapFill: {
@@ -232,11 +242,13 @@ describe("loadHomePageData", () => {
       nextSessionDescription: "First lower session this week",
       nextSessionReasonLabel: "Next in sequence",
       nextSessionReason: "Nothing earlier is still open, so Lower 1 is next this week.",
-      activeWeekLabel: "Week 2 - Session 2 of 4",
+      activeWeekLabel: "Week 2 - 1 of 4 sessions complete",
+      completedAdvancingSessionsThisWeek: 1,
+      totalAdvancingSessionsThisWeek: 4,
     });
     expect(result.continuity).toMatchObject({
       nextDueLabel: "Lower 1",
-      lastCompletedDescriptor: "Upper session",
+      lastCompletedDescriptor: "First upper session this week",
       nextDueDescriptor: "First lower session this week",
       summary: null,
     });
@@ -281,6 +293,9 @@ describe("loadHomePageData", () => {
         workoutId: "workout-planned",
         isExisting: true,
       },
+      activeWeek: 2,
+      completedAdvancingSessionsThisWeek: 1,
+      totalAdvancingSessionsThisWeek: 4,
       lastSessionSkipped: false,
       latestIncomplete: {
         id: "workout-planned",
@@ -344,6 +359,9 @@ describe("loadHomePageData", () => {
         workoutId: null,
         isExisting: false,
       },
+      activeWeek: 2,
+      completedAdvancingSessionsThisWeek: 1,
+      totalAdvancingSessionsThisWeek: 4,
       lastSessionSkipped: false,
       latestIncomplete: null,
       gapFill: {
@@ -415,6 +433,9 @@ describe("loadHomePageData", () => {
         workoutId: null,
         isExisting: false,
       },
+      activeWeek: 4,
+      completedAdvancingSessionsThisWeek: 0,
+      totalAdvancingSessionsThisWeek: 4,
       lastSessionSkipped: false,
       latestIncomplete: null,
       gapFill: {
@@ -457,7 +478,7 @@ describe("loadHomePageData", () => {
 
     expect(result.decision).toMatchObject({
       nextSessionLabel: "Upper 1",
-      activeWeekLabel: "Week 4 - Session 1 of 4",
+      activeWeekLabel: "Week 4 - 0 of 4 sessions complete",
     });
     expect(result.closeout).toEqual({
       title: "Week 3 Closeout (Optional)",

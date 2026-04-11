@@ -117,6 +117,9 @@ describe("Home page", () => {
           workoutId: null,
           isExisting: false,
         },
+        activeWeek: 2,
+        completedAdvancingSessionsThisWeek: 1,
+        totalAdvancingSessionsThisWeek: 4,
         lastSessionSkipped: false,
         latestIncomplete: null,
         gapFill: {
@@ -149,7 +152,9 @@ describe("Home page", () => {
         nextSessionDescription: "First lower session this week",
         nextSessionReasonLabel: "Next in sequence",
         nextSessionReason: "Nothing earlier is still open, so Lower 1 is next this week.",
-        activeWeekLabel: "Week 2 - Session 2 of 4",
+        activeWeekLabel: "Week 2 - 1 of 4 sessions complete",
+        completedAdvancingSessionsThisWeek: 1,
+        totalAdvancingSessionsThisWeek: 4,
       },
       continuity: {
         summary: null,
@@ -246,6 +251,9 @@ describe("Home page", () => {
           workoutId: null,
           isExisting: false,
         },
+        activeWeek: 2,
+        completedAdvancingSessionsThisWeek: 1,
+        totalAdvancingSessionsThisWeek: 4,
         lastSessionSkipped: false,
         latestIncomplete: null,
         gapFill: {
@@ -288,7 +296,9 @@ describe("Home page", () => {
         nextSessionDescription: "First lower session this week",
         nextSessionReasonLabel: "Next in sequence",
         nextSessionReason: "Nothing earlier is still open, so Lower 1 is next this week.",
-        activeWeekLabel: "Week 2 - Session 2 of 4",
+        activeWeekLabel: "Week 2 - 1 of 4 sessions complete",
+        completedAdvancingSessionsThisWeek: 1,
+        totalAdvancingSessionsThisWeek: 4,
       },
       continuity: {
         summary: null,

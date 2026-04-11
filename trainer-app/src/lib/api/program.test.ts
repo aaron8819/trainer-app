@@ -81,6 +81,7 @@ type BaseMesoRecord = {
   volumeTarget: string;
   startWeek: number;
   state: "ACTIVE_ACCUMULATION" | "ACTIVE_DELOAD" | "COMPLETED";
+  slotSequenceJson?: unknown;
   rirBandConfig: {
     weekBands: {
       week1: { min: number; max: number };
@@ -124,6 +125,64 @@ const BASE_MESO: BaseMesoRecord = {
   blocks: [],
   macroCycle: { startDate: new Date("2026-01-01T00:00:00.000Z") },
 };
+
+function makeSelectionMetadata(input: {
+  weekInMeso?: number;
+  phase?: "accumulation" | "deload";
+  slot?: {
+    slotId: string;
+    intent: string;
+    sequenceIndex: number;
+    sequenceLength?: number;
+  };
+  exceptionCode?: "supplemental_deficit_session" | "closeout_session" | "optional_gap_fill";
+}) {
+  const phase = input.phase ?? "accumulation";
+
+  return {
+    sessionDecisionReceipt: {
+      version: 1,
+      cycleContext: {
+        weekInMeso: input.weekInMeso ?? 4,
+        weekInBlock: input.weekInMeso ?? 4,
+        phase,
+        blockType: phase,
+        isDeload: phase === "deload",
+        source: "computed",
+      },
+      ...(input.slot
+        ? {
+            sessionSlot: {
+              ...input.slot,
+              source: "mesocycle_slot_sequence",
+            },
+          }
+        : {}),
+      lifecycleVolume: { source: "unknown" },
+      sorenessSuppressedMuscles: [],
+      deloadDecision: {
+        mode: "none",
+        reason: [],
+        reductionPercent: 0,
+        appliedTo: "none",
+      },
+      readiness: {
+        wasAutoregulated: false,
+        signalAgeHours: null,
+        fatigueScoreOverall: null,
+        intensityScaling: {
+          applied: false,
+          exerciseIds: [],
+          scaledUpCount: 0,
+          scaledDownCount: 0,
+        },
+      },
+      exceptions: input.exceptionCode
+        ? [{ code: input.exceptionCode, message: `Marked as ${input.exceptionCode}.` }]
+        : [],
+    },
+  };
+}
 
 function setupDashboardMocks(
   mesoOverrides: Partial<BaseMesoRecord> | null = {},
@@ -796,6 +855,81 @@ describe("loadHomeProgramSupport", () => {
       isExisting: false,
     });
     expect(result.latestIncomplete).toBeNull();
+  });
+
+  it("counts actual current-week advancing performed sessions separately from next slot ordinal", async () => {
+    const slotSequenceJson = {
+      version: 1,
+      source: "handoff_draft",
+      sequenceMode: "ordered_flexible",
+      slots: [
+        { slotId: "lower_a", intent: "LOWER" },
+        { slotId: "upper_a", intent: "UPPER" },
+        { slotId: "lower_b", intent: "LOWER" },
+        { slotId: "upper_b", intent: "UPPER" },
+      ],
+    };
+    setupDashboardMocks(
+      {
+        accumulationSessionsCompleted: 13,
+        sessionsPerWeek: 4,
+        slotSequenceJson,
+      },
+      4
+    );
+    mocks.constraintsFindUnique.mockResolvedValue({
+      weeklySchedule: ["LOWER", "UPPER", "LOWER", "UPPER"],
+    });
+    const performedUpperA = {
+      advancesSplit: true,
+      selectionMetadata: makeSelectionMetadata({
+        slot: {
+          slotId: "upper_a",
+          intent: "upper",
+          sequenceIndex: 1,
+          sequenceLength: 4,
+        },
+      }),
+      selectionMode: "INTENT",
+      sessionIntent: "UPPER",
+      mesocyclePhaseSnapshot: "ACCUMULATION",
+    };
+    const nonAdvancingCloseout = {
+      advancesSplit: false,
+      selectionMetadata: makeSelectionMetadata({
+        exceptionCode: "closeout_session",
+      }),
+      selectionMode: "MANUAL",
+      sessionIntent: "UPPER",
+      mesocyclePhaseSnapshot: "ACCUMULATION",
+    };
+    const supplementalSession = {
+      advancesSplit: false,
+      selectionMetadata: makeSelectionMetadata({
+        exceptionCode: "supplemental_deficit_session",
+      }),
+      selectionMode: "INTENT",
+      sessionIntent: "BODY_PART",
+      mesocyclePhaseSnapshot: "ACCUMULATION",
+    };
+    mocks.workoutFindMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([performedUpperA, nonAdvancingCloseout, supplementalSession])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([performedUpperA, nonAdvancingCloseout, supplementalSession]);
+
+    const result = await loadHomeProgramSupport("user-1");
+
+    expect(result.nextSession).toMatchObject({
+      intent: "lower",
+      slotId: "lower_a",
+      slotSequenceIndex: 0,
+      slotSequenceLength: 4,
+      weekInMeso: 4,
+      sessionInWeek: 2,
+    });
+    expect(result.completedAdvancingSessionsThisWeek).toBe(1);
+    expect(result.totalAdvancingSessionsThisWeek).toBe(4);
   });
 
   it("detects when the most recent workout for the rotation intent was skipped", async () => {

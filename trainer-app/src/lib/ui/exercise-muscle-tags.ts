@@ -2,6 +2,7 @@ import { getEffectiveStimulusByMuscle } from "@/lib/engine/stimulus";
 import { normalizeExposedMuscle } from "@/lib/engine/volume-landmarks";
 
 const MIN_DISPLAY_STIMULUS_WEIGHT = 0.2;
+const PRIMARY_DISPLAY_STIMULUS_WEIGHT = 0.75;
 
 type ExerciseMuscleMapping = {
   role: string;
@@ -13,6 +14,15 @@ export type ExerciseMuscleTagSource = {
   name: string;
   aliases?: Array<string | { alias: string }> | null;
   exerciseMuscles?: ExerciseMuscleMapping[] | null;
+};
+
+export type ExerciseMuscleTagGroups = {
+  primaryMuscles: string[];
+  secondaryMuscles: string[];
+};
+
+export type ExerciseMuscleDisplayGroups = ExerciseMuscleTagGroups & {
+  muscleTags: string[];
 };
 
 function normalizeAlias(alias: string | { alias: string }): string {
@@ -62,7 +72,50 @@ function normalizeEffectiveStimulus(input: Map<string, number>): Map<string, num
   return normalized;
 }
 
-export function buildExerciseMuscleTags(exercise: ExerciseMuscleTagSource): string[] {
+function collectMuscleDisplayOrder(input: {
+  primaryMuscles: string[];
+  secondaryMuscles: string[];
+  effectiveStimulus: Map<string, number>;
+}): Map<string, number> {
+  const order = new Map<string, number>();
+  const add = (muscle: string) => {
+    const normalized = normalizeMuscleLabel(muscle);
+    if (!normalized || order.has(normalized)) {
+      return;
+    }
+
+    order.set(normalized, order.size);
+  };
+
+  input.primaryMuscles.forEach(add);
+  input.secondaryMuscles.forEach(add);
+  Array.from(input.effectiveStimulus.keys()).forEach(add);
+
+  return order;
+}
+
+function sortStimulusEntries(
+  entries: Array<[string, number]>,
+  displayOrder: Map<string, number>
+): Array<[string, number]> {
+  return [...entries].sort(([leftMuscle, leftWeight], [rightMuscle, rightWeight]) => {
+    if (rightWeight !== leftWeight) {
+      return rightWeight - leftWeight;
+    }
+
+    const leftOrder = displayOrder.get(leftMuscle) ?? Number.MAX_SAFE_INTEGER;
+    const rightOrder = displayOrder.get(rightMuscle) ?? Number.MAX_SAFE_INTEGER;
+    if (leftOrder !== rightOrder) {
+      return leftOrder - rightOrder;
+    }
+
+    return leftMuscle.localeCompare(rightMuscle);
+  });
+}
+
+export function buildExerciseMuscleDisplayGroups(
+  exercise: ExerciseMuscleTagSource
+): ExerciseMuscleDisplayGroups {
   const primaryMuscles = collectMusclesByRole(exercise.exerciseMuscles, "PRIMARY");
   const secondaryMuscles = collectMusclesByRole(exercise.exerciseMuscles, "SECONDARY");
   const effectiveStimulus = normalizeEffectiveStimulus(
@@ -78,46 +131,36 @@ export function buildExerciseMuscleTags(exercise: ExerciseMuscleTagSource): stri
       { logFallback: false }
     )
   );
+  const displayOrder = collectMuscleDisplayOrder({
+    primaryMuscles,
+    secondaryMuscles,
+    effectiveStimulus,
+  });
+  const meaningfulStimulus = sortStimulusEntries(
+    Array.from(effectiveStimulus.entries()).filter(
+      ([, weight]) => weight >= MIN_DISPLAY_STIMULUS_WEIGHT
+    ),
+    displayOrder
+  );
 
-  const tags: string[] = [];
-  const seen = new Set<string>();
-  const addTag = (muscle: string) => {
-    const normalized = normalizeMuscleLabel(muscle);
-    if (!normalized || seen.has(normalized)) {
-      return;
-    }
+  const primary = meaningfulStimulus
+    .filter(([, weight]) => weight >= PRIMARY_DISPLAY_STIMULUS_WEIGHT)
+    .map(([muscle]) => muscle);
+  const secondary = meaningfulStimulus
+    .filter(([, weight]) => weight < PRIMARY_DISPLAY_STIMULUS_WEIGHT)
+    .map(([muscle]) => muscle);
 
-    const weight = effectiveStimulus.get(normalized) ?? 0;
-    if (weight < MIN_DISPLAY_STIMULUS_WEIGHT) {
-      return;
-    }
+  if (primary.length === 0 && secondary.length > 0) {
+    primary.push(secondary.shift() as string);
+  }
 
-    seen.add(normalized);
-    tags.push(normalized);
+  return {
+    primaryMuscles: primary,
+    secondaryMuscles: secondary,
+    muscleTags: [...primary, ...secondary],
   };
+}
 
-  for (const muscle of primaryMuscles) {
-    addTag(muscle);
-  }
-
-  for (const muscle of secondaryMuscles) {
-    addTag(muscle);
-  }
-
-  const taxonomyMuscles = new Set([...primaryMuscles, ...secondaryMuscles]);
-  const additionalMuscles = Array.from(effectiveStimulus.entries())
-    .filter(([muscle, weight]) => !taxonomyMuscles.has(muscle) && weight >= MIN_DISPLAY_STIMULUS_WEIGHT)
-    .sort(([leftMuscle, leftWeight], [rightMuscle, rightWeight]) => {
-      if (rightWeight !== leftWeight) {
-        return rightWeight - leftWeight;
-      }
-
-      return leftMuscle.localeCompare(rightMuscle);
-    });
-
-  for (const [muscle] of additionalMuscles) {
-    addTag(muscle);
-  }
-
-  return tags;
+export function buildExerciseMuscleTags(exercise: ExerciseMuscleTagSource): string[] {
+  return buildExerciseMuscleDisplayGroups(exercise).muscleTags;
 }

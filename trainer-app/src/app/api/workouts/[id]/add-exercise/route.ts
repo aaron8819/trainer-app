@@ -5,7 +5,7 @@ import { resolveOwner } from "@/lib/api/workout-context";
 import { buildRuntimeAddedExercisePreview } from "@/lib/api/runtime-added-exercise-preview";
 import { reconcileRuntimeEditSelectionMetadata } from "@/lib/api/runtime-edit-reconciliation";
 import { RUNTIME_ADDED_EXERCISE_SESSION_NOTE } from "@/lib/ui/selection-metadata";
-import { buildExerciseMuscleTags } from "@/lib/ui/exercise-muscle-tags";
+import { buildExerciseMuscleDisplayGroups } from "@/lib/ui/exercise-muscle-tags";
 import type { TrainingAge, PrimaryGoal } from "@/lib/engine/types";
 import { Prisma } from "@prisma/client";
 import { isStrictOptionalGapFillSession } from "@/lib/gap-fill/classifier";
@@ -253,11 +253,16 @@ export async function POST(
   }
 
   // Return in LogExerciseInput format
+  const muscleTagGroups = buildExerciseMuscleDisplayGroups(exercise);
   const logExercise = {
     workoutExerciseId: workoutExercise.id,
     name: exercise.name,
     equipment: exercise.exerciseEquipment.map((eq) => eq.equipment.type),
-    muscleTags: buildExerciseMuscleTags(exercise),
+    muscleTags: muscleTagGroups.muscleTags,
+    muscleTagGroups: {
+      primaryMuscles: muscleTagGroups.primaryMuscles,
+      secondaryMuscles: muscleTagGroups.secondaryMuscles,
+    },
     isRuntimeAdded: true as const,
     isMainLift: false,
     section: "ACCESSORY" as const,

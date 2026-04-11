@@ -4,14 +4,20 @@ import {
   type ExerciseSetChip,
 } from "@/components/log-workout/ExerciseSetChipsEditor";
 import { formatSectionLabel } from "@/components/log-workout/useWorkoutLogState";
-import type { ExerciseSection } from "@/components/log-workout/types";
+import type {
+  ExerciseSection,
+  LogExerciseMuscleTagGroups,
+} from "@/components/log-workout/types";
 import { RUNTIME_ADDED_EXERCISE_BADGE_LABEL } from "@/lib/ui/selection-metadata";
+
+const MAX_VISIBLE_MUSCLE_TAGS = 4;
 
 export type WorkoutQueueExerciseRowData = {
   section: ExerciseSection;
   exerciseId: string;
   exerciseName: string;
   muscleTags: string[];
+  muscleTagGroups: LogExerciseMuscleTagGroups;
   isRuntimeAdded: boolean;
   sessionNote?: string;
   loggedCount: number;
@@ -79,6 +85,26 @@ function areStringArraysEqual(previous: string[], next: string[]) {
   return previous.every((value, index) => value === next[index]);
 }
 
+function areMuscleTagGroupsEqual(
+  previous: LogExerciseMuscleTagGroups,
+  next: LogExerciseMuscleTagGroups
+) {
+  return (
+    areStringArraysEqual(previous.primaryMuscles, next.primaryMuscles) &&
+    areStringArraysEqual(previous.secondaryMuscles, next.secondaryMuscles)
+  );
+}
+
+function buildVisibleMuscleTags(groups: LogExerciseMuscleTagGroups) {
+  const primary = groups.primaryMuscles.slice(0, MAX_VISIBLE_MUSCLE_TAGS);
+  const secondary = groups.secondaryMuscles.slice(
+    0,
+    Math.max(0, MAX_VISIBLE_MUSCLE_TAGS - primary.length)
+  );
+
+  return { primary, secondary };
+}
+
 const ExerciseQueueRow = memo(
   function ExerciseQueueRow({
     row,
@@ -106,8 +132,10 @@ const ExerciseQueueRow = memo(
       : row.swapDisabledReason
         ? `Swap unavailable: ${row.swapDisabledReason}`
         : undefined;
-    const visibleMuscleTags = row.muscleTags.slice(0, 3);
-    const hiddenMuscleTagCount = Math.max(0, row.muscleTags.length - visibleMuscleTags.length);
+    const visibleMuscleTags = buildVisibleMuscleTags(row.muscleTagGroups);
+    const visibleMuscleTagCount =
+      visibleMuscleTags.primary.length + visibleMuscleTags.secondary.length;
+    const hiddenMuscleTagCount = Math.max(0, row.muscleTags.length - visibleMuscleTagCount);
     const muscleTagsTitle = row.muscleTags.join(", ");
 
     return (
@@ -122,15 +150,25 @@ const ExerciseQueueRow = memo(
             type="button"
           >
             <span className="block truncate text-sm font-medium">{row.exerciseName}</span>
-            {visibleMuscleTags.length > 0 ? (
+            {visibleMuscleTagCount > 0 ? (
               <span
                 className="mt-1 flex flex-wrap gap-1"
                 title={hiddenMuscleTagCount > 0 ? muscleTagsTitle : undefined}
               >
-                {visibleMuscleTags.map((muscle) => (
+                {visibleMuscleTags.primary.map((muscle) => (
                   <span
                     key={muscle}
-                    className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium leading-none text-slate-600"
+                    className="inline-flex rounded-full border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] font-semibold leading-none text-slate-800"
+                    title="Primary muscle"
+                  >
+                    {muscle}
+                  </span>
+                ))}
+                {visibleMuscleTags.secondary.map((muscle) => (
+                  <span
+                    key={muscle}
+                    className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium leading-none text-slate-500"
+                    title="Secondary muscle"
                   >
                     {muscle}
                   </span>
@@ -210,6 +248,7 @@ const ExerciseQueueRow = memo(
     previous.row.exerciseId === next.row.exerciseId &&
     previous.row.exerciseName === next.row.exerciseName &&
     areStringArraysEqual(previous.row.muscleTags, next.row.muscleTags) &&
+    areMuscleTagGroupsEqual(previous.row.muscleTagGroups, next.row.muscleTagGroups) &&
     previous.row.isRuntimeAdded === next.row.isRuntimeAdded &&
     previous.row.sessionNote === next.row.sessionNote &&
     previous.row.loggedCount === next.row.loggedCount &&

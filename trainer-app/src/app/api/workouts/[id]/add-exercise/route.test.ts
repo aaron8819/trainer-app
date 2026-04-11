@@ -360,6 +360,11 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
     expect(body.exercise).toMatchObject({
       workoutExerciseId: "we-2",
       name: "Cable Fly",
+      muscleTags: ["Chest"],
+      muscleTagGroups: {
+        primaryMuscles: ["Chest"],
+        secondaryMuscles: [],
+      },
       isRuntimeAdded: true,
       sessionNote: "Added during workout. Session-only; future planning ignores it.",
     });

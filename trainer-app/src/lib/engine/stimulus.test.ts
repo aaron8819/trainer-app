@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { Exercise } from "./types";
+import type { Exercise, StimulusProfile } from "./types";
 import {
   collectStimulusFallbackExercises,
   getEffectiveStimulusByMuscle,
@@ -91,6 +91,44 @@ describe("stimulus helper", () => {
     expect(collectStimulusFallbackExercises(exercises)).toEqual([
       { id: "custom-row", name: "Custom Row" },
     ]);
+  });
+
+  it("explicitly covers the current core, carry, and sled audit warning list", () => {
+    const expectedProfiles: Array<{ name: string; profile: StimulusProfile }> = [
+      { name: "Ab Wheel Rollout", profile: { core: 1 } },
+      { name: "Bicycle Crunch", profile: { core: 1 } },
+      { name: "Cable Crunch", profile: { core: 1 } },
+      { name: "Copenhagen Plank", profile: { adductors: 1, core: 0.4 } },
+      { name: "Decline Sit-Up", profile: { core: 1 } },
+      { name: "Dragon Flag", profile: { core: 1 } },
+      { name: "Hanging Knee Raise", profile: { core: 1, forearms: 0.2 } },
+      { name: "Hanging Leg Raise", profile: { core: 1, forearms: 0.2 } },
+      { name: "Landmine Rotation", profile: { core: 1 } },
+      { name: "Machine Crunch", profile: { core: 1 } },
+      { name: "Overhead Carry", profile: { core: 0.8, front_delts: 0.35, upper_back: 0.25 } },
+      { name: "Pallof Press", profile: { core: 1 } },
+      { name: "Reverse Crunch", profile: { core: 1 } },
+      { name: "RKC Plank", profile: { core: 1 } },
+      { name: "Russian Twist", profile: { core: 1 } },
+      { name: "Side Plank", profile: { core: 1, abductors: 0.25 } },
+      { name: "Sled Drag", profile: { hamstrings: 0.75, glutes: 0.65, calves: 0.25, core: 0.2 } },
+      { name: "Sled Pull", profile: { hamstrings: 0.75, glutes: 0.65, upper_back: 0.25, core: 0.2 } },
+      { name: "Sled Push", profile: { quads: 0.8, glutes: 0.6, calves: 0.25, core: 0.2 } },
+      { name: "Suitcase Carry", profile: { core: 1, forearms: 0.6, upper_back: 0.25 } },
+      { name: "Wood Chop", profile: { core: 1 } },
+    ];
+    const exercises = expectedProfiles.map(({ name }) =>
+      makeExercise({
+        id: name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""),
+        name,
+      })
+    );
+
+    expect(collectStimulusFallbackExercises(exercises)).toEqual([]);
+    for (const exercise of exercises) {
+      const expectedProfile = expectedProfiles.find(({ name }) => name === exercise.name)?.profile;
+      expect(resolveStimulusProfile(exercise)).toEqual(expectedProfile);
+    }
   });
 
   it("can fail fast on uncovered stimulus profiles when strict coverage is enabled", () => {

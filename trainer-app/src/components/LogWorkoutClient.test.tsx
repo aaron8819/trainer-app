@@ -474,7 +474,11 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
             workoutExerciseId: "ex-squat",
             name: "Barbell Back Squat",
             equipment: ["barbell"],
-            muscleTags: ["Quads", "Glutes", "Core", "Adductors"],
+            muscleTags: ["Quads", "Glutes", "Adductors", "Core"],
+            muscleTagGroups: {
+              primaryMuscles: ["Quads"],
+              secondaryMuscles: ["Glutes", "Adductors", "Core"],
+            },
             isMainLift: true,
             section: "MAIN",
             sets: [
@@ -493,6 +497,10 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
             name: "Seated Leg Curl",
             equipment: ["machine"],
             muscleTags: ["Hamstrings"],
+            muscleTagGroups: {
+              primaryMuscles: ["Hamstrings"],
+              secondaryMuscles: [],
+            },
             isMainLift: false,
             section: "ACCESSORY",
             sets: [
@@ -513,14 +521,17 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     const squatRow = screen.getByTestId("queue-row-ex-squat");
     expect(within(squatRow).getByText("Quads")).toBeInTheDocument();
     expect(within(squatRow).getByText("Glutes")).toBeInTheDocument();
+    expect(within(squatRow).getByText("Adductors")).toBeInTheDocument();
     expect(within(squatRow).getByText("Core")).toBeInTheDocument();
-    expect(within(squatRow).getByText("+1 more")).toBeInTheDocument();
-    expect(within(squatRow).queryByText("Adductors")).not.toBeInTheDocument();
+    expect(within(squatRow).queryByText(/\+.*more/)).not.toBeInTheDocument();
+    expect(within(squatRow).getByText("Quads")).toHaveAttribute("title", "Primary muscle");
+    expect(within(squatRow).getByText("Glutes")).toHaveAttribute("title", "Secondary muscle");
     expect(within(squatRow).getByRole("button", { name: "Swap" })).toBeInTheDocument();
     expect(within(squatRow).getByText("0/1")).toBeInTheDocument();
 
     const curlRow = screen.getByTestId("queue-row-ex-curl");
     expect(within(curlRow).getByText("Hamstrings")).toBeInTheDocument();
+    expect(within(curlRow).getByText("Hamstrings")).toHaveAttribute("title", "Primary muscle");
     expect(within(curlRow).queryByText(/\+.*more/)).not.toBeInTheDocument();
   });
 

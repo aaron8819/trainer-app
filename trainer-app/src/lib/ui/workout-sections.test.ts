@@ -89,8 +89,16 @@ describe("splitExercises", () => {
       {}
     );
 
-    expect(result.main[0]?.muscleTags).toEqual(["Quads", "Glutes", "Core", "Adductors"]);
+    expect(result.main[0]?.muscleTags).toEqual(["Quads", "Glutes", "Adductors", "Core"]);
+    expect(result.main[0]?.muscleTagGroups).toEqual({
+      primaryMuscles: ["Quads"],
+      secondaryMuscles: ["Glutes", "Adductors", "Core"],
+    });
     expect(result.accessory[0]?.muscleTags).toEqual(["Hamstrings"]);
+    expect(result.accessory[0]?.muscleTagGroups).toEqual({
+      primaryMuscles: ["Hamstrings"],
+      secondaryMuscles: [],
+    });
     expect(result.accessory[1]?.muscleTags).toEqual(["Calves"]);
   });
 

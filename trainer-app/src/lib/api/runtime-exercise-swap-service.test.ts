@@ -406,6 +406,11 @@ describe("runtime exercise swap service", () => {
       workoutExerciseId: "we-1",
       exerciseId: "chest-supported-db-row",
       name: "Chest-Supported Dumbbell Row",
+      muscleTags: ["Upper Back", "Lats", "Biceps", "Rear Delts"],
+      muscleTagGroups: {
+        primaryMuscles: ["Upper Back", "Lats"],
+        secondaryMuscles: ["Biceps", "Rear Delts"],
+      },
       isSwapped: true,
       isMainLift: false,
       section: "MAIN",

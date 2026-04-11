@@ -6,7 +6,7 @@ import {
   readRuntimeReplacedExercises,
   RUNTIME_ADDED_EXERCISE_SESSION_NOTE,
 } from "@/lib/ui/selection-metadata";
-import { buildExerciseMuscleTags } from "@/lib/ui/exercise-muscle-tags";
+import { buildExerciseMuscleDisplayGroups } from "@/lib/ui/exercise-muscle-tags";
 
 type WorkoutExercise = {
   id: string;
@@ -74,6 +74,12 @@ export function splitExercises(
   const ordered = [...exercises].sort((a, b) => a.orderIndex - b.orderIndex);
 
   for (const exercise of ordered) {
+    const muscleTagGroups = buildExerciseMuscleDisplayGroups({
+      id: exercise.exercise.id,
+      name: exercise.exercise.name,
+      aliases: exercise.exercise.aliases,
+      exerciseMuscles: exercise.exercise.exerciseMuscles,
+    });
     const entry: LogExerciseInput = {
       workoutExerciseId: exercise.id,
       name: exercise.exercise.name,
@@ -81,12 +87,11 @@ export function splitExercises(
       movementPatterns: (exercise.exercise.movementPatterns ?? []).map((pattern) =>
         pattern.toLowerCase()
       ),
-      muscleTags: buildExerciseMuscleTags({
-        id: exercise.exercise.id,
-        name: exercise.exercise.name,
-        aliases: exercise.exercise.aliases,
-        exerciseMuscles: exercise.exercise.exerciseMuscles,
-      }),
+      muscleTags: muscleTagGroups.muscleTags,
+      muscleTagGroups: {
+        primaryMuscles: muscleTagGroups.primaryMuscles,
+        secondaryMuscles: muscleTagGroups.secondaryMuscles,
+      },
       isRuntimeAdded: runtimeAddedExerciseIds.has(exercise.id),
       isSwapped: swappedExerciseIds.has(exercise.id),
       isMainLift: exercise.isMainLift,

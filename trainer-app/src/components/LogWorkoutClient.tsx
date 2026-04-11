@@ -9,6 +9,7 @@ import type {
   ActiveSetDraftState,
   CompletedWorkoutExerciseSummary,
   ExerciseSection,
+  LogExerciseMuscleTagGroups,
   LogExerciseInput,
   LogSetInput,
   RpeAdherenceSummary,
@@ -87,6 +88,17 @@ function resolveExerciseSection(section?: LogExerciseInput["section"]): Exercise
     return "accessory";
   }
   return null;
+}
+
+function resolveMuscleTagGroups(exercise: LogExerciseInput): LogExerciseMuscleTagGroups {
+  if (exercise.muscleTagGroups) {
+    return exercise.muscleTagGroups;
+  }
+
+  return {
+    primaryMuscles: exercise.muscleTags ?? [],
+    secondaryMuscles: [],
+  };
 }
 
 function toInputNumberString(value: number | null | undefined): string {
@@ -618,6 +630,7 @@ export default function LogWorkoutClient({
               exerciseId: exercise.workoutExerciseId,
               exerciseName: exercise.name,
               muscleTags: exercise.muscleTags ?? [],
+              muscleTagGroups: resolveMuscleTagGroups(exercise),
               isRuntimeAdded: exercise.isRuntimeAdded ?? false,
               sessionNote: exercise.sessionNote,
               loggedCount: loggedCountForExercise,

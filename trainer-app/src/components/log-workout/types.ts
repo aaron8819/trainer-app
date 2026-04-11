@@ -13,12 +13,18 @@ export type LogSetInput = {
   wasSkipped?: boolean;
 };
 
+export type LogExerciseMuscleTagGroups = {
+  primaryMuscles: string[];
+  secondaryMuscles: string[];
+};
+
 export type LogExerciseInput = {
   workoutExerciseId: string;
   name: string;
   equipment?: string[];
   movementPatterns?: string[];
   muscleTags?: string[];
+  muscleTagGroups?: LogExerciseMuscleTagGroups;
   isRuntimeAdded?: boolean;
   isSwapped?: boolean;
   isMainLift: boolean;

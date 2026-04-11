@@ -13,7 +13,10 @@ import {
   readRuntimeAddedExerciseIds,
   readRuntimeReplacedExercises,
 } from "@/lib/ui/selection-metadata";
-import { buildExerciseMuscleTags } from "@/lib/ui/exercise-muscle-tags";
+import {
+  buildExerciseMuscleDisplayGroups,
+  type ExerciseMuscleTagGroups,
+} from "@/lib/ui/exercise-muscle-tags";
 
 type ExerciseRecord = Prisma.ExerciseGetPayload<{
   include: {
@@ -96,6 +99,7 @@ export type RuntimeExerciseSwapExercisePayload = {
   equipment: string[];
   movementPatterns: string[];
   muscleTags: string[];
+  muscleTagGroups: ExerciseMuscleTagGroups;
   isRuntimeAdded: boolean;
   isMainLift: boolean;
   isSwapped: true;
@@ -199,6 +203,7 @@ function toPreviewExercise(input: {
 }): RuntimeExerciseSwapExercisePayload {
   const targetReps = buildReplacementTargetReps(input.replacementExercise);
   const targetRepRange = buildTargetRepRange(input.replacementExercise);
+  const muscleTagGroups = buildExerciseMuscleDisplayGroups(input.replacementExercise);
 
   return {
     workoutExerciseId: input.context.workoutExercise.id,
@@ -210,7 +215,11 @@ function toPreviewExercise(input: {
     movementPatterns: input.replacementExercise.movementPatterns.map(
       (pattern) => pattern.toLowerCase(),
     ),
-    muscleTags: buildExerciseMuscleTags(input.replacementExercise),
+    muscleTags: muscleTagGroups.muscleTags,
+    muscleTagGroups: {
+      primaryMuscles: muscleTagGroups.primaryMuscles,
+      secondaryMuscles: muscleTagGroups.secondaryMuscles,
+    },
     isRuntimeAdded: readRuntimeAddedExerciseIds(
       input.context.workout.selectionMetadata,
     ).has(input.context.workoutExercise.id),

@@ -274,10 +274,51 @@ export const INITIAL_STIMULUS_PROFILE_BY_NAME: Record<string, StimulusProfile> =
     ["core", 1.0],
     ["abs", 0.8],
   ]);
+  const coreOnly = buildStimulusProfile([["core", 1.0]]);
+  const sidePlank = buildStimulusProfile([
+    ["core", 1.0],
+    ["abductors", 0.25],
+  ]);
+  const copenhagenPlank = buildStimulusProfile([
+    ["adductors", 1.0],
+    ["core", 0.4],
+  ]);
+  const hangingRaise = buildStimulusProfile([
+    ["core", 1.0],
+    ["forearms", 0.2],
+  ]);
+  const suitcaseCarry = buildStimulusProfile([
+    ["core", 1.0],
+    ["forearms", 0.6],
+    ["upper_back", 0.25],
+  ]);
+  const overheadCarry = buildStimulusProfile([
+    ["core", 0.8],
+    ["front_delts", 0.35],
+    ["upper_back", 0.25],
+  ]);
   const farmersCarry = buildStimulusProfile([
     ["forearms", 1.0],
     ["core", 0.6],
     ["upper_back", 0.35],
+  ]);
+  const sledPush = buildStimulusProfile([
+    ["quads", 0.8],
+    ["glutes", 0.6],
+    ["calves", 0.25],
+    ["core", 0.2],
+  ]);
+  const sledPull = buildStimulusProfile([
+    ["hamstrings", 0.75],
+    ["glutes", 0.65],
+    ["upper_back", 0.25],
+    ["core", 0.2],
+  ]);
+  const sledDrag = buildStimulusProfile([
+    ["hamstrings", 0.75],
+    ["glutes", 0.65],
+    ["calves", 0.25],
+    ["core", 0.2],
   ]);
 
   register(
@@ -383,7 +424,32 @@ export const INITIAL_STIMULUS_PROFILE_BY_NAME: Record<string, StimulusProfile> =
   register(["Hip Adduction Machine"], hipAdduction);
   register(["Back Extension (45 Degree)", "Reverse Hyperextension"], backExtension);
   register(["Plank"], plank);
+  register(
+    [
+      "Ab Wheel Rollout",
+      "Bicycle Crunch",
+      "Cable Crunch",
+      "Decline Sit-Up",
+      "Dragon Flag",
+      "Landmine Rotation",
+      "Machine Crunch",
+      "Pallof Press",
+      "Reverse Crunch",
+      "RKC Plank",
+      "Russian Twist",
+      "Wood Chop",
+    ],
+    coreOnly
+  );
+  register(["Copenhagen Plank"], copenhagenPlank);
+  register(["Hanging Knee Raise", "Hanging Leg Raise"], hangingRaise);
+  register(["Side Plank"], sidePlank);
   register(["Farmer's Carry"], farmersCarry);
+  register(["Overhead Carry"], overheadCarry);
+  register(["Sled Drag"], sledDrag);
+  register(["Sled Pull"], sledPull);
+  register(["Sled Push"], sledPush);
+  register(["Suitcase Carry"], suitcaseCarry);
 
   return registry;
 })();

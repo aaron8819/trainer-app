@@ -88,22 +88,22 @@ function getTodayAdvisoryClass(state: ProgramVolumeRow["opportunityState"]): str
   }
 }
 
-const STATUS_STYLE: Record<string, string> = {
-  below_mev: "bg-slate-50 text-slate-500 border-slate-200",
-  in_range: "bg-yellow-50 text-yellow-700 border-yellow-200",
-  near_target: "bg-yellow-50 text-yellow-700 border-yellow-200",
-  on_target: "bg-green-50 text-green-700 border-green-200",
-  near_mrv: "bg-orange-50 text-orange-700 border-orange-200",
-  at_mrv: "bg-red-50 text-red-700 border-red-200",
+const STATUS_STYLE: Record<WeeklyMuscleStatus, string> = {
+  below_mev: "bg-slate-50 text-slate-600 border-slate-200",
+  in_range: "bg-emerald-50 text-emerald-700 border-emerald-100",
+  near_target: "bg-emerald-100 text-emerald-800 border-emerald-200",
+  on_target: "bg-emerald-200 text-emerald-950 border-emerald-300",
+  near_mrv: "bg-amber-50 text-amber-800 border-amber-200",
+  at_mrv: "bg-red-50 text-red-800 border-red-200",
 };
 
 const SUMMARY_CHIP_STYLE: Record<WeeklyMuscleStatus, string> = {
   below_mev: "bg-slate-100 px-3 py-1 text-slate-700",
-  in_range: "bg-yellow-50 px-3 py-1 text-yellow-700",
-  near_target: "bg-yellow-50 px-3 py-1 text-yellow-700",
-  on_target: "bg-emerald-50 px-3 py-1 text-emerald-700",
-  near_mrv: "bg-orange-50 px-3 py-1 text-orange-700",
-  at_mrv: "bg-red-50 px-3 py-1 text-red-700",
+  in_range: "bg-emerald-50 px-3 py-1 text-emerald-700",
+  near_target: "bg-emerald-100 px-3 py-1 text-emerald-800",
+  on_target: "bg-emerald-200 px-3 py-1 text-emerald-950",
+  near_mrv: "bg-amber-50 px-3 py-1 text-amber-800",
+  at_mrv: "bg-red-50 px-3 py-1 text-red-800",
 };
 
 const SUMMARY_STATUS_ORDER: WeeklyMuscleStatus[] = [

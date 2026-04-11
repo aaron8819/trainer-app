@@ -69,6 +69,13 @@ function withOpportunity(
   };
 }
 
+function expectClassNames(element: Element | null, classNames: string[]) {
+  expect(element).not.toBeNull();
+  for (const className of classNames) {
+    expect(element).toHaveClass(className);
+  }
+}
+
 function buildCurrentWeekData(
   volumeThisWeek: ProgramDashboardData["volumeThisWeek"]
 ): ProgramDashboardData {
@@ -218,6 +225,126 @@ describe("ProgramStatusCard weekly status labels", () => {
 
     expect(screen.getByText("Near target")).toBeInTheDocument();
     expect(screen.queryByText("Building")).not.toBeInTheDocument();
+  });
+
+  it("renders productive weekly volume states as an increasing green ladder", () => {
+    const data = buildData([
+      withOpportunity({
+        muscle: "Chest",
+        effectiveSets: 4,
+        directSets: 4,
+        indirectSets: 0,
+        target: 10,
+        mev: 6,
+        mav: 16,
+        mrv: 22,
+      }),
+      withOpportunity({
+        muscle: "Upper Back",
+        effectiveSets: 7,
+        directSets: 7,
+        indirectSets: 0,
+        target: 14,
+        mev: 6,
+        mav: 16,
+        mrv: 22,
+      }),
+      withOpportunity({
+        muscle: "Biceps",
+        effectiveSets: 12,
+        directSets: 12,
+        indirectSets: 0,
+        target: 14,
+        mev: 6,
+        mav: 16,
+        mrv: 22,
+      }),
+      withOpportunity({
+        muscle: "Triceps",
+        effectiveSets: 14,
+        directSets: 14,
+        indirectSets: 0,
+        target: 14,
+        mev: 6,
+        mav: 16,
+        mrv: 22,
+      }),
+      withOpportunity({
+        muscle: "Quads",
+        effectiveSets: 19,
+        directSets: 19,
+        indirectSets: 0,
+        target: 14,
+        mev: 6,
+        mav: 16,
+        mrv: 22,
+      }),
+      withOpportunity({
+        muscle: "Hamstrings",
+        effectiveSets: 22,
+        directSets: 22,
+        indirectSets: 0,
+        target: 14,
+        mev: 6,
+        mav: 16,
+        mrv: 22,
+      }),
+    ]);
+
+    render(<ProgramStatusCard initialData={data} />);
+
+    expectClassNames(screen.getByText("1 Below MEV"), ["bg-slate-100", "text-slate-700"]);
+    expectClassNames(screen.getByText("1 In range"), ["bg-emerald-50", "text-emerald-700"]);
+    expectClassNames(screen.getByText("1 Near target"), ["bg-emerald-100", "text-emerald-800"]);
+    expectClassNames(screen.getByText("1 On target"), ["bg-emerald-200", "text-emerald-950"]);
+    expectClassNames(screen.getByText("1 Near MRV"), ["bg-amber-50", "text-amber-800"]);
+    expectClassNames(screen.getByText("1 At MRV"), ["bg-red-50", "text-red-800"]);
+
+    const chestCard = screen.getByRole("button", { name: "Chest weekly volume" });
+    expectClassNames(chestCard, ["bg-slate-50", "text-slate-600", "border-slate-200"]);
+
+    const inRangeCard = screen.getByRole("button", { name: "Upper Back weekly volume" });
+    expectClassNames(inRangeCard, ["bg-emerald-50", "text-emerald-700", "border-emerald-100"]);
+    expectClassNames(within(inRangeCard).getByText("In range"), [
+      "bg-emerald-50",
+      "text-emerald-700",
+      "border-emerald-100",
+    ]);
+
+    const nearTargetCard = screen.getByRole("button", { name: "Biceps weekly volume" });
+    expectClassNames(nearTargetCard, [
+      "bg-emerald-100",
+      "text-emerald-800",
+      "border-emerald-200",
+    ]);
+    expectClassNames(within(nearTargetCard).getByText("Near target"), [
+      "bg-emerald-100",
+      "text-emerald-800",
+      "border-emerald-200",
+    ]);
+
+    const onTargetCard = screen.getByRole("button", { name: "Triceps weekly volume" });
+    expectClassNames(onTargetCard, [
+      "bg-emerald-200",
+      "text-emerald-950",
+      "border-emerald-300",
+    ]);
+    expectClassNames(within(onTargetCard).getByText("On target"), [
+      "bg-emerald-200",
+      "text-emerald-950",
+      "border-emerald-300",
+    ]);
+
+    expectClassNames(screen.getByRole("button", { name: "Quads weekly volume" }), [
+      "bg-amber-50",
+      "text-amber-800",
+      "border-amber-200",
+    ]);
+    expectClassNames(screen.getByRole("button", { name: "Hamstrings weekly volume" }), [
+      "bg-red-50",
+      "text-red-800",
+      "border-red-200",
+    ]);
   });
 });
 

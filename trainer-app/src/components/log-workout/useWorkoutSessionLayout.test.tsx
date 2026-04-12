@@ -1,5 +1,8 @@
 /* eslint-disable react-hooks/refs */
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act } from "react";
+import { hydrateRoot } from "react-dom/client";
+import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useWorkoutSessionLayout } from "@/components/log-workout/useWorkoutSessionLayout";
 
@@ -78,6 +81,51 @@ describe("useWorkoutSessionLayout", () => {
       expect(HTMLElement.prototype.scrollIntoView).not.toHaveBeenCalled();
       expect(window.scrollTo).not.toHaveBeenCalled();
     });
+  });
+
+  it("keeps hydration stable before reading visualViewport metrics", async () => {
+    Object.defineProperty(window, "visualViewport", { configurable: true, value: undefined });
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 800 });
+
+    const markup = renderToString(<LayoutHarness />);
+    const container = document.createElement("div");
+    container.innerHTML = markup;
+    document.body.appendChild(container);
+
+    let root: ReturnType<typeof hydrateRoot> | null = null;
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      Object.defineProperty(window, "visualViewport", {
+        configurable: true,
+        value: {
+          height: 480,
+          offsetTop: 0,
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+        },
+      });
+
+      await act(async () => {
+        root = hydrateRoot(container, <LayoutHarness />);
+        await Promise.resolve();
+      });
+
+      expect(
+        consoleErrorSpy.mock.calls.some((call) =>
+          String(call[0]).includes("hydrated but some attributes")
+        )
+      ).toBe(false);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("root")).toHaveStyle({ paddingBottom: "336px" });
+      });
+    } finally {
+      await act(async () => {
+        root?.unmount();
+      });
+      document.body.removeChild(container);
+      consoleErrorSpy.mockRestore();
+    }
   });
 
   it("tracks non-keyboard visual viewport bottom offset separately from keyboard height", async () => {

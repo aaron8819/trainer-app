@@ -12,17 +12,19 @@ type VisualViewportMetrics = {
   bottomOffset: number;
 };
 
+const INITIAL_VISUAL_VIEWPORT_METRICS: VisualViewportMetrics = {
+  keyboardOpen: false,
+  keyboardHeight: 0,
+  bottomOffset: 0,
+};
+
 function roundViewportPixels(value: number): number {
   return Math.max(0, Math.round(value));
 }
 
 function readVisualViewportMetrics(): VisualViewportMetrics {
   if (typeof window === "undefined" || !window.visualViewport) {
-    return {
-      keyboardOpen: false,
-      keyboardHeight: 0,
-      bottomOffset: 0,
-    };
+    return INITIAL_VISUAL_VIEWPORT_METRICS;
   }
 
   const viewport = window.visualViewport;
@@ -41,8 +43,8 @@ function readVisualViewportMetrics(): VisualViewportMetrics {
 }
 
 export function useVisualViewportMetrics(): VisualViewportMetrics {
-  const [metrics, setMetrics] = useState<VisualViewportMetrics>(() =>
-    readVisualViewportMetrics()
+  const [metrics, setMetrics] = useState<VisualViewportMetrics>(
+    INITIAL_VISUAL_VIEWPORT_METRICS
   );
 
   useEffect(() => {

@@ -114,52 +114,56 @@ export default async function ProgramPage() {
         </p>
 
         {data.overview ? (
-          <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5">
+          <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 sm:mt-6 sm:p-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Active Mesocycle
                 </p>
-                <h2 className="mt-1 text-2xl font-semibold text-slate-900">
+                <h2 className="mt-1 text-xl font-semibold text-slate-900 sm:text-2xl">
                   Meso {data.overview.mesoNumber}: {data.overview.focus}
                 </h2>
-                <p className="mt-2 text-sm text-slate-600">{data.overview.coachingCue}</p>
+                <p className="mt-1.5 text-sm text-slate-600 sm:mt-2">
+                  {data.overview.coachingCue}
+                </p>
               </div>
               <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700">
                 {formatBlockLabel(data.overview.currentBlockType)}
               </span>
             </div>
 
-            <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Week</p>
-                <p className="mt-2 text-xl font-semibold text-slate-900">
+            <div className="mt-4 grid grid-cols-2 gap-2 sm:mt-5 sm:gap-3 lg:grid-cols-4">
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 sm:rounded-xl sm:p-4">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 sm:text-xs">
+                  Week
+                </p>
+                <p className="mt-1 text-lg font-semibold text-slate-900 sm:mt-2 sm:text-xl">
                   {data.overview.currentWeek} / {data.overview.durationWeeks}
                 </p>
               </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 sm:rounded-xl sm:p-4">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 sm:text-xs">
                   Progress
                 </p>
-                <p className="mt-2 text-xl font-semibold text-slate-900">
+                <p className="mt-1 text-lg font-semibold text-slate-900 sm:mt-2 sm:text-xl">
                   {data.overview.percentComplete}%
                 </p>
               </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 sm:rounded-xl sm:p-4">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 sm:text-xs">
                   Target RIR
                 </p>
-                <p className="mt-2 text-xl font-semibold text-slate-900">
+                <p className="mt-1 text-lg font-semibold text-slate-900 sm:mt-2 sm:text-xl">
                   {data.overview.rirTarget
                     ? `${data.overview.rirTarget.min}-${data.overview.rirTarget.max}`
                     : "n/a"}
                 </p>
               </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 sm:rounded-xl sm:p-4">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 sm:text-xs">
                   Lighter Week
                 </p>
-                <p className="mt-2 text-xl font-semibold text-slate-900">
+                <p className="mt-1 text-lg font-semibold text-slate-900 sm:mt-2 sm:text-xl">
                   {data.overview.sessionsUntilDeload === 0
                     ? "Scheduled"
                     : `${data.overview.sessionsUntilDeload} away`}
@@ -167,7 +171,7 @@ export default async function ProgramPage() {
               </div>
             </div>
 
-            <div className="mt-5 h-2 w-full rounded-full bg-slate-200">
+            <div className="mt-4 h-2 w-full rounded-full bg-slate-200 sm:mt-5">
               <div
                 className="h-2 rounded-full bg-slate-900 transition-all"
                 style={{ width: `${data.overview.percentComplete}%` }}
@@ -175,7 +179,7 @@ export default async function ProgramPage() {
             </div>
 
             {data.overview.blocks.length > 0 ? (
-              <div className="mt-5 flex flex-wrap gap-2">
+              <div className="mt-4 flex flex-wrap gap-1.5 sm:mt-5 sm:gap-2">
                 {data.overview.blocks.map((block) => {
                   const endWeek = block.startWeek + block.durationWeeks - 1;
                   return (

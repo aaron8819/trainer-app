@@ -226,6 +226,6 @@ Route-purpose shorthand:
 - Template analytics now distinguishes generated, performed, and completed template workouts instead of treating one completion percentage as the only usage signal.
 
 8. Cross-surface navigation simplification
-- Primary navigation now includes `/program` in addition to `/`, `/history`, and `/analytics` (`src/components/navigation/AppNavigation.tsx`).
+- Desktop primary navigation includes `/program` in addition to `/`, `/history`, and `/analytics`; the mobile bottom navigation is limited to `/`, `/program`, `/history`, `/analytics`, and `/settings` to keep the core mobile IA compact (`src/components/navigation/AppNavigation.tsx`).
 - Shared surface-purpose metadata lives in `src/lib/ui/app-surface-map.ts`, and `SurfaceGuideCard` uses it to show adjacent surfaces without duplicating route-purpose copy in multiple page-local implementations (`src/components/SurfaceGuideCard.tsx`).
 - Home keeps the operational actions for “what should I do now?”, while `/program`, `/history`, and `/analytics` each include a short cross-linking guide to reinforce “where should I go next?” without duplicating the home dashboard’s operational role.

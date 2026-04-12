@@ -60,14 +60,30 @@ const SettingsIcon = () => (
   </svg>
 );
 
-const NAV_ITEMS = [
-  { href: "/", label: "Home", icon: <HomeIcon /> },
-  { href: "/program", label: "Program", icon: <ProgramIcon /> },
-  { href: "/history", label: "History", icon: <HistoryIcon /> },
-  { href: "/templates", label: "Templates", icon: <TemplatesIcon /> },
-  { href: "/library", label: "Library", icon: <LibraryIcon /> },
-  { href: "/analytics", label: "Analytics", icon: <AnalyticsIcon /> },
-  { href: "/settings", label: "Settings", icon: <SettingsIcon /> },
+const HOME_NAV_ITEM = { href: "/", label: "Home", icon: <HomeIcon /> };
+const PROGRAM_NAV_ITEM = { href: "/program", label: "Program", icon: <ProgramIcon /> };
+const HISTORY_NAV_ITEM = { href: "/history", label: "History", icon: <HistoryIcon /> };
+const TEMPLATES_NAV_ITEM = { href: "/templates", label: "Templates", icon: <TemplatesIcon /> };
+const LIBRARY_NAV_ITEM = { href: "/library", label: "Library", icon: <LibraryIcon /> };
+const ANALYTICS_NAV_ITEM = { href: "/analytics", label: "Analytics", icon: <AnalyticsIcon /> };
+const SETTINGS_NAV_ITEM = { href: "/settings", label: "Settings", icon: <SettingsIcon /> };
+
+const DESKTOP_NAV_ITEMS = [
+  HOME_NAV_ITEM,
+  PROGRAM_NAV_ITEM,
+  HISTORY_NAV_ITEM,
+  TEMPLATES_NAV_ITEM,
+  LIBRARY_NAV_ITEM,
+  ANALYTICS_NAV_ITEM,
+  SETTINGS_NAV_ITEM,
+];
+
+const MOBILE_NAV_ITEMS = [
+  HOME_NAV_ITEM,
+  PROGRAM_NAV_ITEM,
+  HISTORY_NAV_ITEM,
+  ANALYTICS_NAV_ITEM,
+  SETTINGS_NAV_ITEM,
 ];
 
 export function AppNavigation() {
@@ -97,7 +113,7 @@ export function AppNavigation() {
         style={{ bottom: `${visualViewportBottomOffset}px` }}
       >
         <div className="mx-auto flex h-[var(--mobile-nav-height)] max-w-5xl items-stretch justify-between px-1">
-          {NAV_ITEMS.map((item) => (
+          {MOBILE_NAV_ITEMS.map((item) => (
             <NavLink
               key={item.href}
               href={item.href}
@@ -116,7 +132,7 @@ export function AppNavigation() {
     <nav className="sticky top-0 z-50 border-b border-slate-200 bg-white">
       <div className="mx-auto flex max-w-5xl items-center gap-1 px-4 py-2 sm:px-5 md:px-6">
         <span className="mr-6 text-lg font-bold text-slate-900">Trainer</span>
-        {NAV_ITEMS.map((item) => (
+        {DESKTOP_NAV_ITEMS.map((item) => (
           <NavLink
             key={item.href}
             href={item.href}

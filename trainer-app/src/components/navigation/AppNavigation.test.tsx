@@ -64,6 +64,10 @@ function renderMobileNav(
   return render(<AppNavigation />);
 }
 
+function linkLabels() {
+  return screen.getAllByRole("link").map((link) => link.textContent?.trim());
+}
+
 // Active desktop link has bg-slate-100 in its className
 function isActiveLink(el: HTMLElement) {
   return el.className.includes("bg-slate-100");
@@ -109,6 +113,28 @@ describe("L-5 — AppNavigation active tab on /log paths", () => {
     renderDesktopNav("/program");
     const programLink = screen.getByRole("link", { name: /Program/ });
     expect(isActiveLink(programLink)).toBe(true);
+  });
+
+  it("keeps the full desktop navigation", () => {
+    renderDesktopNav("/");
+
+    expect(linkLabels()).toEqual([
+      "Home",
+      "Program",
+      "History",
+      "Templates",
+      "Library",
+      "Analytics",
+      "Settings",
+    ]);
+  });
+
+  it("renders only the five core destinations in the mobile bottom navigation", async () => {
+    renderMobileNav("/");
+
+    await waitFor(() => {
+      expect(linkLabels()).toEqual(["Home", "Program", "History", "Analytics", "Settings"]);
+    });
   });
 
   it("applies visual viewport bottom compensation on mobile when browser chrome shrinks the viewport", async () => {

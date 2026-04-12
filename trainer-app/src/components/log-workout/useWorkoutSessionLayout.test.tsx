@@ -70,7 +70,9 @@ describe("useWorkoutSessionLayout", () => {
     Object.defineProperty(window, "innerHeight", { configurable: true, value: 800 });
 
     render(<LayoutHarness />);
-    fireEvent.focus(screen.getByLabelText("Reps"));
+    const repsInput = screen.getByLabelText("Reps");
+    repsInput.focus();
+    fireEvent.focusIn(repsInput);
     (HTMLElement.prototype.scrollIntoView as ReturnType<typeof vi.fn>).mockClear();
     mockViewport.height = 480;
     resizeHandler?.();
@@ -117,7 +119,7 @@ describe("useWorkoutSessionLayout", () => {
       ).toBe(false);
 
       await waitFor(() => {
-        expect(screen.getByTestId("root")).toHaveStyle({ paddingBottom: "336px" });
+        expect(screen.getByTestId("root")).toHaveStyle({ paddingBottom: "env(safe-area-inset-bottom, 16px)" });
       });
     } finally {
       await act(async () => {
@@ -148,6 +150,30 @@ describe("useWorkoutSessionLayout", () => {
     await waitFor(() => {
       expect(screen.getByTestId("keyboard-open")).toHaveTextContent("false");
       expect(screen.getByTestId("viewport-bottom-offset")).toHaveTextContent("40");
+      expect(screen.getByTestId("root")).toHaveStyle({ paddingBottom: "env(safe-area-inset-bottom, 16px)" });
+    });
+  });
+
+  it("does not classify a large viewport shrink as keyboard height without editable focus", async () => {
+    let resizeHandler: (() => void) | undefined;
+    const mockViewport = {
+      height: 800,
+      offsetTop: 0,
+      addEventListener: vi.fn((_event: string, handler: () => void) => {
+        resizeHandler = handler;
+      }),
+      removeEventListener: vi.fn(),
+    };
+    Object.defineProperty(window, "visualViewport", { configurable: true, value: mockViewport });
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 800 });
+
+    render(<LayoutHarness />);
+    mockViewport.height = 480;
+    resizeHandler?.();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("keyboard-open")).toHaveTextContent("false");
+      expect(screen.getByTestId("viewport-bottom-offset")).toHaveTextContent("0");
       expect(screen.getByTestId("root")).toHaveStyle({ paddingBottom: "env(safe-area-inset-bottom, 16px)" });
     });
   });

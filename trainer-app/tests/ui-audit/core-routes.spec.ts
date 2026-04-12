@@ -87,6 +87,12 @@ test.describe("lightweight fixture interaction checks", () => {
     await expect(page.getByRole("heading", { name: "Workout Log" })).toBeVisible();
     await expect(page.getByText("Active set")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Chest-Supported Row" })).toBeVisible();
+    await expectLogClientUsesClosedKeyboardPadding(page);
+
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await waitForStableRoute(page);
+    await expect(page.getByRole("heading", { name: "Workout Log" })).toBeVisible();
+    await expectLogClientUsesClosedKeyboardPadding(page);
     await expect(
       page.getByTestId("queue-row-ui-audit-pulldown-we").getByRole("button", { name: "Swap" })
     ).toHaveCount(0);
@@ -167,6 +173,20 @@ async function expectMobileBottomNav(page: Page) {
   for (const route of CORE_ROUTES) {
     await expect(nav.getByRole("link", { name: route.label })).toBeVisible();
   }
+}
+
+async function expectLogClientUsesClosedKeyboardPadding(page: Page) {
+  const inlinePaddingBottom = await page
+    .getByRole("button", { name: "... Workout options" })
+    .evaluate((button) => {
+      const root = button.closest(".mt-5");
+      if (!(root instanceof HTMLElement)) {
+        throw new Error("Could not find log workout client root");
+      }
+      return root.style.paddingBottom;
+    });
+
+  expect(inlinePaddingBottom).toBe("env(safe-area-inset-bottom, 16px)");
 }
 
 function escapeRegex(value: string) {

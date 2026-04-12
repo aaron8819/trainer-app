@@ -3098,6 +3098,9 @@ describe("L-2/L-3/L-1/T-1/T-3 — Layout and UX fixes", () => {
     await openRestTimerControls(user);
     expect(screen.getByTestId("rest-timer-expanded-controls")).toBeInTheDocument();
 
+    const repsInput = screen.getByLabelText("Reps");
+    repsInput.focus();
+    fireEvent.focusIn(repsInput);
     viewport.setHeight(480);
 
     await waitFor(() => {
@@ -3139,10 +3142,26 @@ describe("L-2/L-3/L-1/T-1/T-3 — Layout and UX fixes", () => {
     expect(root).toHaveStyle({ paddingBottom: "env(safe-area-inset-bottom, 16px)" });
 
     // Simulate keyboard opening (320px keyboard)
+    const repsInput = screen.getByLabelText("Reps");
+    repsInput.focus();
+    fireEvent.focusIn(repsInput);
     viewport.setHeight(480);
 
     await waitFor(() => {
       expect(root).toHaveStyle({ paddingBottom: "336px" }); // 320 + 16
+    });
+  });
+
+  it("does not reserve keyboard padding for a refresh-like viewport shrink without focused input", async () => {
+    const viewport = setupVisualViewport();
+
+    const { container } = render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
+    const root = container.firstChild as HTMLElement;
+
+    viewport.setHeight(480);
+
+    await waitFor(() => {
+      expect(root).toHaveStyle({ paddingBottom: "env(safe-area-inset-bottom, 16px)" });
     });
   });
 
@@ -3162,7 +3181,9 @@ describe("L-2/L-3/L-1/T-1/T-3 — Layout and UX fixes", () => {
     (HTMLElement.prototype.scrollIntoView as ReturnType<typeof vi.fn>).mockClear();
     (window.scrollTo as ReturnType<typeof vi.fn>).mockClear();
 
-    fireEvent.focus(screen.getByLabelText("Reps"));
+    const repsInput = screen.getByLabelText("Reps");
+    repsInput.focus();
+    fireEvent.focusIn(repsInput);
     viewport.setHeight(480);
 
     await waitFor(() => {
@@ -3173,7 +3194,7 @@ describe("L-2/L-3/L-1/T-1/T-3 — Layout and UX fixes", () => {
     });
   });
 
-  it("finish bar stays reachable with timer HUD and keyboard viewport changes", async () => {
+  it("finish bar stays reachable with timer HUD and ignores refresh-like viewport shrink without focused input", async () => {
     const viewport = setupVisualViewport();
     const user = userEvent.setup();
     const { container } = render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
@@ -3197,8 +3218,9 @@ describe("L-2/L-3/L-1/T-1/T-3 — Layout and UX fixes", () => {
     viewport.setHeight(480);
 
     await waitFor(() => {
-      expect(screen.getByTestId("workout-finish-bar")).toHaveStyle({ bottom: "320px" });
-      expect(root).toHaveStyle({ paddingBottom: "408px" });
+      expect(screen.getByTestId("workout-finish-bar").style.bottom).toBe("");
+      expect(root.style.paddingBottom).toContain("var(--mobile-nav-height)");
+      expect(root.style.paddingBottom).toContain("88px");
       expect(screen.getByRole("button", { name: "Finish workout" })).toBeInTheDocument();
     });
   });

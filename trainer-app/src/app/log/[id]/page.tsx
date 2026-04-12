@@ -141,12 +141,6 @@ export default async function LogWorkoutPage({
               {" | Tap to log each set quickly."}
             </p>
           </div>
-          <Link
-            className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-slate-300 px-5 py-2 text-sm font-semibold sm:w-auto"
-            href={`/workout/${workout.id}`}
-          >
-            View workout
-          </Link>
         </div>
 
         <LogWorkoutClient

@@ -981,15 +981,35 @@ export default function LogWorkoutClient({
         </ExerciseListPanel>
       ) : null}
 
-      {!sessionTerminated && allowBonusExerciseAdd ? (
-        <div className="flex justify-center">
-          <button
-            className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 px-5 text-sm font-semibold text-slate-700"
-            onClick={() => setShowBonusSheet(true)}
-            type="button"
-          >
-            + Add Exercise
-          </button>
+      {!sessionTerminated ? (
+        <div className="flex flex-wrap justify-center gap-3">
+          {allowBonusExerciseAdd ? (
+            <button
+              className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 px-5 text-sm font-semibold text-slate-700"
+              onClick={() => setShowBonusSheet(true)}
+              type="button"
+            >
+              + Add Exercise
+            </button>
+          ) : null}
+          <WorkoutSessionActions
+            mode={showFinishBar ? "optionsOnly" : "inline"}
+            workoutHref={`/workout/${workoutId}`}
+            loggedCount={loggedCount}
+            totalSets={totalSets}
+            completed={completion.completed}
+            skipped={completion.skipped}
+            showFinishBar={showFinishBar}
+            finishActionLabel={allSetsSkipped ? "Skip workout" : "Finish workout"}
+            showSkipOptions={completion.state.showSkipOptions}
+            skipReason={completion.state.skipReason}
+            sessionActionPending={completion.pending}
+            onFinish={() => completion.openConfirm("mark_completed")}
+            onLeaveForNow={() => completion.openConfirm("mark_partial")}
+            onToggleSkipOptions={completion.toggleSkipOptions}
+            onSkipReasonChange={completion.setSkipReason}
+            onConfirmSkip={() => completion.openConfirm("mark_skipped")}
+          />
         </div>
       ) : null}
 
@@ -1045,22 +1065,6 @@ export default function LogWorkoutClient({
               refreshKey={weeklyVolumeRefreshKey}
             />
           ) : null}
-        <WorkoutSessionActions
-          loggedCount={loggedCount}
-          totalSets={totalSets}
-          completed={completion.completed}
-          skipped={completion.skipped}
-          showFinishBar={showFinishBar}
-          finishActionLabel={allSetsSkipped ? "Skip workout" : "Finish workout"}
-          showSkipOptions={completion.state.showSkipOptions}
-          skipReason={completion.state.skipReason}
-          sessionActionPending={completion.pending}
-          onFinish={() => completion.openConfirm("mark_completed")}
-          onLeaveForNow={() => completion.openConfirm("mark_partial")}
-          onToggleSkipOptions={completion.toggleSkipOptions}
-          onSkipReasonChange={completion.setSkipReason}
-          onConfirmSkip={() => completion.openConfirm("mark_skipped")}
-        />
         </>
       ) : null}
 
@@ -1079,6 +1083,8 @@ export default function LogWorkoutClient({
             viewportBottomOffset={visualViewportBottomOffset}
           >
             <WorkoutSessionActions
+              mode="finishBar"
+              workoutHref={`/workout/${workoutId}`}
               loggedCount={loggedCount}
               totalSets={totalSets}
               completed={completion.completed}

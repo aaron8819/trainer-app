@@ -278,6 +278,7 @@ async function logAllSets(user: ReturnType<typeof userEvent.setup>) {
 async function openWorkoutOptions(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole("button", { name: "... Workout options" }));
   await screen.findByRole("heading", { name: "Workout options" });
+  expect(screen.getByRole("link", { name: "View workout" })).toHaveAttribute("href", "/workout/workout-1");
 }
 
 function setupVisualViewport(initialHeight = 800) {
@@ -1157,7 +1158,7 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     expect(finishBar.style.getPropertyValue("--workout-footer-viewport-offset")).toBe("0px");
     expect(screen.getByRole("button", { name: "Leave for now" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Finish workout" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "... Workout options" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "... Workout options" })).toBeInTheDocument();
     expect((container.firstChild as HTMLElement).style.paddingBottom).toContain("var(--mobile-nav-height)");
     expect((container.firstChild as HTMLElement).style.paddingBottom).toContain("88px");
   });

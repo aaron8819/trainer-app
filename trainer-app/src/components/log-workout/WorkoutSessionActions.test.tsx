@@ -6,6 +6,7 @@ import { WorkoutSessionActions } from "./WorkoutSessionActions";
 
 function renderSessionActions(overrides: Partial<ComponentProps<typeof WorkoutSessionActions>> = {}) {
   const props: ComponentProps<typeof WorkoutSessionActions> = {
+    workoutHref: "/workout/workout-1",
     loggedCount: 0,
     totalSets: 4,
     completed: false,
@@ -57,6 +58,7 @@ describe("WorkoutSessionActions", () => {
     await user.click(screen.getByRole("button", { name: "... Workout options" }));
 
     expect(screen.getByRole("heading", { name: "Workout options" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "View workout" })).toHaveAttribute("href", "/workout/workout-1");
     expect(screen.queryByRole("button", { name: "Leave for now" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Skip workout" })).toBeInTheDocument();
   });
@@ -77,5 +79,19 @@ describe("WorkoutSessionActions", () => {
     expect(screen.getByRole("button", { name: "Leave for now" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Finish workout" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "... Workout options" })).not.toBeInTheDocument();
+  });
+
+  it("can render the workout options button without finish actions", async () => {
+    const user = userEvent.setup();
+
+    renderSessionActions({ loggedCount: 4, mode: "optionsOnly", showFinishBar: true });
+
+    expect(screen.queryByRole("button", { name: "Leave for now" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Finish workout" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "... Workout options" }));
+
+    expect(screen.getByRole("link", { name: "View workout" })).toHaveAttribute("href", "/workout/workout-1");
+    expect(screen.getByRole("button", { name: "Skip workout" })).toBeInTheDocument();
   });
 });

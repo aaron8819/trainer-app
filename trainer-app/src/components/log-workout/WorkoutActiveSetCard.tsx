@@ -50,7 +50,6 @@ export type WorkoutActiveSetCardSummary = {
   autoregHintMessage: string | null;
   savingSetId: string | null;
   status: string | null;
-  hasPreviousSet: boolean;
 };
 
 export type WorkoutActiveSetCardFormActions = {
@@ -87,7 +86,6 @@ type WorkoutActiveSetCardProps = {
   resolvedValues: SetDraftNumericValues;
   onLogSet: () => void;
   onReturnToCurrentSet: () => void;
-  onUseSameAsLast: () => void;
   onSkipSet: () => void;
 };
 
@@ -103,7 +101,6 @@ export function WorkoutActiveSetCard({
   resolvedValues,
   onLogSet,
   onReturnToCurrentSet,
-  onUseSameAsLast,
   onSkipSet,
 }: WorkoutActiveSetCardProps) {
   const setId = activeSet.set.setId;
@@ -118,7 +115,6 @@ export function WorkoutActiveSetCard({
     autoregHintMessage,
     savingSetId,
     status,
-    hasPreviousSet,
   } = summary;
   const {
     draftBuffersBySet,
@@ -429,7 +425,7 @@ export function WorkoutActiveSetCard({
         </div>
       </div>
 
-      <div className="mt-3 grid gap-2 sm:grid-cols-3">
+      <div className="mt-3 grid grid-cols-2 gap-2">
         <button
           className="inline-flex min-h-11 items-center justify-center rounded-full bg-slate-900 px-6 py-2 text-sm font-semibold text-white disabled:opacity-60"
           onClick={onLogSet}
@@ -451,14 +447,6 @@ export function WorkoutActiveSetCard({
           ) : (
             "Log set"
           )}
-        </button>
-        <button
-          className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 px-6 py-2 text-sm font-semibold text-slate-700 disabled:opacity-60"
-          type="button"
-          onClick={onUseSameAsLast}
-          disabled={!hasPreviousSet}
-        >
-          Same as last
         </button>
         <button
           className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-200 px-6 py-2 text-sm font-medium text-rose-400 disabled:opacity-60"

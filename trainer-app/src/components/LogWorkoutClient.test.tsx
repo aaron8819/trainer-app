@@ -3279,22 +3279,10 @@ describe("I-2/I-4/I-5/E-4/E-5/E-6/L-4/S-5 — Remaining low-priority fixes", () 
     vi.useRealTimers();
   });
 
-  it("I-2: Same as last button is disabled when no previous set is logged", () => {
-    render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
-    const btn = screen.getByRole("button", { name: "Same as last" });
-    expect(btn).toBeDisabled();
-  });
-
-  it("I-2: Same as last button is enabled after first set is logged", async () => {
-    const user = userEvent.setup();
+  it("I-2: Same as last shortcut is not rendered", () => {
     render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
 
-    await user.click(screen.getByRole("button", { name: "Log set" }));
-    await waitFor(() => expect(mockedLogSetRequest).toHaveBeenCalledTimes(1));
-
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Same as last" })).not.toBeDisabled();
-    });
+    expect(screen.queryByRole("button", { name: "Same as last" })).not.toBeInTheDocument();
   });
 
   it("I-4: RPE preset buttons include 6", () => {

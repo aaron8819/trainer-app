@@ -39,7 +39,6 @@ import { usePersistedWorkoutSessionUi } from "@/components/log-workout/usePersis
 import { useRestTimerState } from "@/components/log-workout/useRestTimerState";
 import { useWorkoutSessionLayout } from "@/components/log-workout/useWorkoutSessionLayout";
 import { useWorkoutSessionFlow } from "@/components/log-workout/useWorkoutSessionFlow";
-import { useWorkoutSetHistoryActions } from "@/components/log-workout/useWorkoutSetHistoryActions";
 import { isSetSatisfied } from "@/components/log-workout/useWorkoutLogState";
 
 export type { LogExerciseInput, LogSetInput } from "@/components/log-workout/types";
@@ -890,16 +889,6 @@ export default function LogWorkoutClient({
     [data, exitEditMode, jumpToActiveSet, setActiveSetId, setData, setExpandedExerciseId, setExpandedSections]
   );
 
-  const { hasPreviousSet, useSameAsLast } = useWorkoutSetHistoryActions({
-    activeSet,
-    findPreviousLoggedSet,
-    markFieldTouched,
-    setFieldPrefilled,
-    setRepsValue,
-    updateDraftBuffer,
-    setRpeValue,
-    toInputNumberString,
-  });
   const activeSetDraftState: ActiveSetDraftState = {
     draftBuffersBySet,
     prefilledFieldsBySet,
@@ -918,7 +907,6 @@ export default function LogWorkoutClient({
     autoregHintMessage: showAutoregHint ? autoregHint.message : null,
     savingSetId,
     status,
-    hasPreviousSet,
   };
   const activeSetFormActions: WorkoutActiveSetCardFormActions = {
     handleNumericFieldFocus,
@@ -971,7 +959,6 @@ export default function LogWorkoutClient({
             resolvedValues={resolvedActiveSetValues}
             onLogSet={() => void submitActiveSet()}
             onReturnToCurrentSet={handleJumpToCurrentSet}
-            onUseSameAsLast={useSameAsLast}
             onSkipSet={() => void skipActiveSet()}
           />
         </ActiveSetPanel>

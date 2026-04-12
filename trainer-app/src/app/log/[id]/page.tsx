@@ -1,13 +1,9 @@
 import Link from "next/link";
-import { generateWorkoutExplanation } from "@/lib/api/explainability";
 import { resolveOwner } from "@/lib/api/workout-context";
-import { SessionContextCard } from "@/components/explainability";
 import LogWorkoutClient from "@/components/LogWorkoutClient";
 import { prisma } from "@/lib/db/prisma";
 import { parseExplainabilitySelectionMetadata } from "@/lib/ui/explainability";
-import { buildSessionSummaryModel } from "@/lib/ui/session-summary";
 import { splitExercises } from "@/lib/ui/workout-sections";
-import { resolveGapFillTargetMuscles } from "@/lib/ui/gap-fill";
 import {
   formatSessionIdentityLabel,
   formatSessionSlotTechnicalLabel,
@@ -117,11 +113,8 @@ export default async function LogWorkoutPage({
   }
 
   const exercises = splitExercises(workout.exercises, workout.selectionMetadata);
-  const explanationResult = await generateWorkoutExplanation(workout.id);
-  const explanation = "error" in explanationResult ? null : explanationResult;
   const selectionMetadata = parseExplainabilitySelectionMetadata(workout.selectionMetadata);
   const sessionDecisionReceipt = selectionMetadata.sessionDecisionReceipt;
-  const workoutStructureState = selectionMetadata.workoutStructureState;
   const sessionIdentityLabel = formatSessionIdentityLabel({
     intent: workout.sessionIntent,
     slotId: sessionDecisionReceipt?.sessionSlot?.slotId ?? null,
@@ -129,29 +122,11 @@ export default async function LogWorkoutPage({
   const sessionTechnicalLabel = formatSessionSlotTechnicalLabel(
     sessionDecisionReceipt?.sessionSlot?.slotId ?? null
   );
-  const lifecycleCurrentWeek = explanation?.sessionContext.progressionContext.weekInMesocycle ?? null;
-  const displayWeek = workout.mesocycleWeekSnapshot ?? lifecycleCurrentWeek;
-  const gapFillTargetMuscles = resolveGapFillTargetMuscles({
-    selectionMetadata: workout.selectionMetadata,
-  });
   const isStrictGapFill = isStrictOptionalGapFillSession({
     selectionMetadata: workout.selectionMetadata,
     selectionMode: workout.selectionMode,
     sessionIntent: workout.sessionIntent,
   });
-  const summary =
-    explanation != null
-      ? buildSessionSummaryModel({
-          context: explanation.sessionContext,
-          receipt: sessionDecisionReceipt,
-          selectionMode: workout.selectionMode,
-          sessionIntent: workout.sessionIntent,
-          displayWeek,
-          targetMuscles: gapFillTargetMuscles,
-          estimatedMinutes: workout.estimatedMinutes,
-          workoutStructureState,
-        })
-      : null;
 
   return (
     <main className="min-h-screen bg-white text-slate-900">
@@ -173,8 +148,6 @@ export default async function LogWorkoutPage({
             View workout
           </Link>
         </div>
-
-        {summary ? <SessionContextCard summary={summary} defaultCollapsed={true} /> : null}
 
         <LogWorkoutClient
           workoutId={workout.id}

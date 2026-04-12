@@ -6,6 +6,7 @@ import type { HistoryPageData } from "@/lib/api/history-page";
 import type { SettingsPageData } from "@/lib/api/settings-page";
 import type { WorkoutListSurfaceSummary } from "@/lib/ui/workout-list-items";
 import type { ExerciseListItem } from "@/lib/exercise-library/types";
+import type { SectionedExercises } from "@/components/log-workout/types";
 
 export const UI_AUDIT_FIXTURE_SCENARIOS = ["active", "empty", "handoff"] as const;
 
@@ -27,6 +28,13 @@ type AnalyticsFixtures = {
   templates: unknown;
 };
 
+type LogWorkoutFixture = {
+  workoutId: string;
+  sessionIdentityLabel: string;
+  sessionTechnicalLabel: string;
+  exercises: SectionedExercises;
+};
+
 export type UiAuditFixture = {
   scenario: UiAuditFixtureScenario;
   home?: HomePageData;
@@ -34,6 +42,7 @@ export type UiAuditFixture = {
   history?: HistoryPageData;
   settings?: SettingsPageData;
   analytics?: AnalyticsFixtures;
+  logWorkouts?: Record<string, LogWorkoutFixture>;
 };
 
 const ACTIVE_MESO_ID = "ui-audit-meso-active";
@@ -215,6 +224,99 @@ const activeHomeProgram = {
     canCreate: false,
   },
 } satisfies NonNullable<HomePageData["homeProgram"]>;
+
+const activeLogWorkout: LogWorkoutFixture = {
+  workoutId: "ui-audit-workout-planned",
+  sessionIdentityLabel: "Pull A",
+  sessionTechnicalLabel: "Week 3 Session 2",
+  exercises: {
+    main: [
+      {
+        workoutExerciseId: "ui-audit-row-we",
+        name: "Chest-Supported Row",
+        equipment: ["machine"],
+        movementPatterns: ["horizontal_pull"],
+        muscleTags: ["Lats", "Upper Back", "Biceps"],
+        muscleTagGroups: {
+          primaryMuscles: ["Lats", "Upper Back"],
+          secondaryMuscles: ["Biceps"],
+        },
+        isMainLift: false,
+        section: "MAIN",
+        sets: [
+          {
+            setId: "ui-audit-row-set-1",
+            setIndex: 1,
+            targetReps: 10,
+            targetRepRange: { min: 8, max: 12 },
+            targetLoad: 115,
+            targetRpe: 8,
+            restSeconds: 120,
+          },
+          {
+            setId: "ui-audit-row-set-2",
+            setIndex: 2,
+            targetReps: 10,
+            targetRepRange: { min: 8, max: 12 },
+            targetLoad: 115,
+            targetRpe: 8,
+            restSeconds: 120,
+          },
+        ],
+      },
+      {
+        workoutExerciseId: "ui-audit-pulldown-we",
+        name: "Lat Pulldown",
+        equipment: ["cable", "machine"],
+        movementPatterns: ["vertical_pull"],
+        muscleTags: ["Lats", "Biceps"],
+        muscleTagGroups: {
+          primaryMuscles: ["Lats"],
+          secondaryMuscles: ["Biceps"],
+        },
+        isMainLift: false,
+        section: "MAIN",
+        sets: [
+          {
+            setId: "ui-audit-pulldown-set-1",
+            setIndex: 1,
+            targetReps: 12,
+            targetRepRange: { min: 10, max: 14 },
+            targetLoad: 95,
+            targetRpe: 8,
+            restSeconds: 90,
+          },
+        ],
+      },
+    ],
+    accessory: [
+      {
+        workoutExerciseId: "ui-audit-curl-we",
+        name: "Cable Curl",
+        equipment: ["cable"],
+        movementPatterns: ["elbow_flexion"],
+        muscleTags: ["Biceps"],
+        muscleTagGroups: {
+          primaryMuscles: ["Biceps"],
+          secondaryMuscles: [],
+        },
+        isMainLift: false,
+        section: "ACCESSORY",
+        sets: [
+          {
+            setId: "ui-audit-curl-set-1",
+            setIndex: 1,
+            targetReps: 12,
+            targetRepRange: { min: 10, max: 15 },
+            targetLoad: 35,
+            targetRpe: 8,
+            restSeconds: 75,
+          },
+        ],
+      },
+    ],
+  },
+};
 
 const emptyHomeProgram = {
   ...activeHomeProgram,
@@ -817,6 +919,9 @@ const activeFixture: UiAuditFixture = {
         },
       ],
     },
+  },
+  logWorkouts: {
+    [activeLogWorkout.workoutId]: activeLogWorkout,
   },
 };
 

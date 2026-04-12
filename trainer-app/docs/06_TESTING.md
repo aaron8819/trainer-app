@@ -23,7 +23,7 @@ Sources of truth:
 
 ## Commands
 - `npm test`: full Vitest run
-- `npm run test:ui-audit`: Playwright core-route UI audit against mobile and desktop projects
+- `npm run test:ui-audit`: Playwright core-route UI audit plus lightweight fixture-backed interaction checks against mobile and desktop projects
 - `npm run test:ui-audit:update`: update Playwright baseline screenshots after an intentional visual/UI baseline change
 - `npm run test:watch`: watch mode
 - `npm run test:fast`: focused fast subset
@@ -40,7 +40,7 @@ Sources of truth:
 - Engine tests: `src/lib/engine/**/*.test.ts`
 - API helper tests: `src/lib/api/**/*.test.ts`
 - UI tests: component tests under `src/components/**`
-- Playwright UI audit tests: `tests/ui-audit/**/*.spec.ts`, with flat baseline screenshots named `<route>.<viewport>.<state>.png` under `tests/ui-audit/__screenshots__/`
+- Playwright UI audit tests: `tests/ui-audit/**/*.spec.ts`, with flat baseline screenshots named `<route>.<viewport>.<state>.png` under `tests/ui-audit/__screenshots__/`; the same harness also includes minimal fixture-backed interaction checks for the log screen and swap sheet.
 - Workout log UI regressions are covered in `src/components/LogWorkoutClient.test.tsx`, including all-skipped completion routing, timer resume/remount behavior, queue-chip targeting, queue-row scroll neutrality, skipped terminal state copy/actions, and reduced mobile edit-state chrome.
 - Timer/session-layout hook coverage lives in `src/components/log-workout/useRestTimerState.test.tsx` and `src/components/log-workout/useWorkoutSessionLayout.test.tsx`, covering visibility-return timer re-sync and explicit-only scroll correction.
 - UI session summary-model coverage: `src/lib/ui/session-summary.test.ts` (receipt-first summary text/tags/items, including deload, soreness hold, and readiness-scaling cases).
@@ -130,10 +130,10 @@ Sources of truth:
 - Environment: `jsdom`
 - Reporter: `dot`
 - Setup: `vitest.setup.ts`
-- Playwright config: `playwright.config.ts`; by default it starts a managed local Next dev server on port `3100` with `UI_AUDIT_FIXTURE_MODE=1` and runs the core-route audit at mobile (`390x844`) and desktop (`1366x768`) viewport sizes.
+- Playwright config: `playwright.config.ts`; by default it starts a managed local Next dev server on port `3100` with `UI_AUDIT_FIXTURE_MODE=1`, uses the isolated `.next-ui-audit/managed` output directory, and runs the core-route audit at mobile (`390x844`) and desktop (`1366x768`) viewport sizes.
 - The UI audit fixture harness is development-only. Fixture mode requires `UI_AUDIT_FIXTURE_MODE=1`, is disabled when `NODE_ENV=production`, and selects a named scenario through the `x-ui-audit-fixture` request header.
 - Current UI audit fixture scenarios:
-  - `active`: fixture-backed Home, Program, History, Analytics, and Settings routes with populated representative state.
+  - `active`: fixture-backed Home, Program, History, Analytics, Settings, and lightweight log-workout interaction state with populated representative data.
   - `empty`: fixture-backed Home and Program empty-ish setup state.
   - `handoff`: fixture-backed Home pending-handoff state.
 - Use `npm run test:ui-audit:update` only after an intentional baseline change, then review screenshots under `tests/ui-audit/__screenshots__/`.

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 const CORE_ROUTES = [
   { key: "home", label: "Home", path: "/", heading: /Today's Training|Mesocycle Handoff/i },
@@ -10,6 +10,7 @@ const CORE_ROUTES = [
 
 const MOBILE_NAV_ITEM_COUNT = CORE_ROUTES.length;
 const FIXTURE_HEADER = "x-ui-audit-fixture";
+const ACTIVE_LOG_WORKOUT_PATH = "/log/ui-audit-workout-planned";
 
 type CoreRoute = (typeof CORE_ROUTES)[number];
 type AuditScenarioKey = "active" | "empty" | "handoff";
@@ -73,6 +74,46 @@ test.describe("core route UI audit", () => {
   }
 });
 
+test.describe("lightweight fixture interaction checks", () => {
+  test("logging screen active set and swap sheet survive safe interactions", async ({ page }) => {
+    await page.setExtraHTTPHeaders({ [FIXTURE_HEADER]: "active" });
+    await installMutationGuards(page);
+    await installSwapFixtureRoutes(page);
+
+    await page.goto(ACTIVE_LOG_WORKOUT_PATH, { waitUntil: "domcontentloaded" });
+    await waitForStableRoute(page);
+
+    await expect(page).toHaveURL(new RegExp(`${escapeRegex(ACTIVE_LOG_WORKOUT_PATH)}/?$`));
+    await expect(page.getByRole("heading", { name: "Workout Log" })).toBeVisible();
+    await expect(page.getByText("Active set")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Chest-Supported Row" })).toBeVisible();
+
+    const repsInput = page.getByLabel("Reps");
+    await expect(repsInput).toBeVisible();
+    await repsInput.fill("10");
+    await repsInput.blur();
+    await expect(repsInput).toHaveValue("10");
+    await expect(page.getByRole("button", { name: "Log set" })).toBeEnabled();
+    await expectMainWithinViewport(page);
+    await expectNoAppError(page);
+
+    await page.getByRole("button", { name: "Swap" }).first().click();
+    await expect(page.getByRole("heading", { name: "Swap Chest-Supported Row" })).toBeVisible();
+    await expect(page.getByText("Search replacements")).toBeVisible();
+    await expect(page.getByText("Cable Row")).toBeVisible();
+    await expect(page.getByText("Post-swap prescription")).toBeVisible();
+    await expect(
+      page.getByText("Set 1: 10 reps (8-12) | Load hint 100 lbs | Target RPE 8 | 2 min rest")
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Use swap" })).toBeEnabled();
+    await expectElementWithinViewport(page, page.locator("dialog").first());
+
+    await page.getByRole("button", { name: "Close" }).click();
+    await expect(page.getByRole("heading", { name: "Swap Chest-Supported Row" })).toBeHidden();
+    await expectNoAppError(page);
+  });
+});
+
 async function openRoute(page: Page, route: CoreRoute) {
   await page.goto("/", { waitUntil: "domcontentloaded" });
 
@@ -96,13 +137,23 @@ async function waitForStableRoute(page: Page) {
 }
 
 async function expectMainWithinViewport(page: Page) {
+  await expectElementWithinViewport(page, page.locator("main").first());
+}
+
+async function expectElementWithinViewport(page: Page, locator: Locator) {
   const viewport = page.viewportSize();
   if (!viewport) {
     return;
   }
 
-  const box = await page.locator("main").first().boundingBox();
+  const box = await locator.boundingBox();
   expect(box?.width ?? 0).toBeLessThanOrEqual(viewport.width + 2);
+}
+
+async function expectNoAppError(page: Page) {
+  await expect(page.locator("body")).not.toContainText(
+    /Application error|Internal Server Error|Unhandled Runtime Error|This page could not be found/i
+  );
 }
 
 async function expectMobileBottomNav(page: Page) {
@@ -118,6 +169,7 @@ async function expectMobileBottomNav(page: Page) {
 function escapeRegex(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
+
 function buildAuditScreenshotName(input: {
   route: CoreRoute["key"];
   viewport: string;
@@ -139,4 +191,102 @@ function normalizeScreenshotSegment(value: string) {
   }
 
   return normalized;
+}
+
+async function installMutationGuards(page: Page) {
+  await page.route("**/api/logs/set", async (route) => {
+    await route.fulfill({
+      status: 405,
+      json: { error: "UI audit interaction check does not persist set logs." },
+    });
+  });
+  await page.route("**/api/workouts/save", async (route) => {
+    await route.fulfill({
+      status: 405,
+      json: { error: "UI audit interaction check does not persist workout saves." },
+    });
+  });
+}
+
+async function installSwapFixtureRoutes(page: Page) {
+  await page.route("**/api/workouts/ui-audit-workout-planned/**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+
+    if (
+      request.method() === "GET" &&
+      url.pathname === "/api/workouts/ui-audit-workout-planned/swap-exercise"
+    ) {
+      await route.fulfill({
+        json: {
+          candidates: [
+            {
+              exerciseId: "ui-audit-cable-row",
+              exerciseName: "Cable Row",
+              primaryMuscles: ["Lats", "Upper Back"],
+              equipment: ["cable"],
+              reason: "Keeps the pull pattern close and reduces setup friction.",
+            },
+          ],
+        },
+      });
+      return;
+    }
+
+    if (
+      request.method() === "GET" &&
+      url.pathname === "/api/workouts/ui-audit-workout-planned/swap-exercise-preview"
+    ) {
+      await route.fulfill({
+        json: {
+          exercise: {
+            workoutExerciseId: "ui-audit-row-we",
+            exerciseId: "ui-audit-cable-row",
+            name: "Cable Row",
+            equipment: ["cable"],
+            movementPatterns: ["horizontal_pull"],
+            isMainLift: false,
+            isSwapped: true,
+            section: "MAIN",
+            sessionNote:
+              "Swapped from Chest-Supported Row. Session-only; future progression stays exercise-specific.",
+            sets: [
+              {
+                setId: "ui-audit-row-set-1",
+                setIndex: 1,
+                targetReps: 10,
+                targetRepRange: { min: 8, max: 12 },
+                targetLoad: 100,
+                targetRpe: 8,
+                restSeconds: 120,
+              },
+              {
+                setId: "ui-audit-row-set-2",
+                setIndex: 2,
+                targetReps: 10,
+                targetRepRange: { min: 8, max: 12 },
+                targetLoad: 100,
+                targetRpe: 8,
+                restSeconds: 120,
+              },
+            ],
+          },
+        },
+      });
+      return;
+    }
+
+    if (
+      request.method() !== "GET" &&
+      url.pathname === "/api/workouts/ui-audit-workout-planned/swap-exercise"
+    ) {
+      await route.fulfill({
+        status: 405,
+        json: { error: "UI audit interaction check does not persist exercise swaps." },
+      });
+      return;
+    }
+
+    await route.continue();
+  });
 }

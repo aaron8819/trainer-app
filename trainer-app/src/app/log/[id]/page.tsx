@@ -10,6 +10,7 @@ import {
 } from "@/lib/ui/session-identity";
 import { isStrictOptionalGapFillSession } from "@/lib/gap-fill/classifier";
 import { getWorkoutWorkflowState } from "@/lib/workout-workflow";
+import { getUiAuditFixtureForServer } from "@/lib/ui-audit-fixtures/server";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -30,6 +31,37 @@ export default async function LogWorkoutPage({
           <Link className="mt-4 inline-block text-sm font-semibold text-slate-900" href="/">
             Back to dashboard
           </Link>
+        </div>
+      </main>
+    );
+  }
+
+  const fixture = await getUiAuditFixtureForServer();
+  const logFixture = fixture?.logWorkouts?.[resolvedParams.id] ?? null;
+  if (logFixture) {
+    return (
+      <main className="min-h-screen bg-white text-slate-900">
+        <div className="page-shell max-w-4xl">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm uppercase tracking-wide text-slate-500">Log Session</p>
+              <h1 className="page-title mt-1.5">Workout Log</h1>
+              <p className="mt-1.5 text-sm text-slate-600">
+                {logFixture.sessionIdentityLabel}
+                {logFixture.sessionTechnicalLabel ? ` | ${logFixture.sessionTechnicalLabel}` : ""}
+                {" | Tap to log each set quickly."}
+              </p>
+            </div>
+          </div>
+
+          <LogWorkoutClient
+            workoutId={logFixture.workoutId}
+            exercises={logFixture.exercises}
+            allowBonusExerciseAdd={false}
+            allowRuntimeExerciseSwap={true}
+            sessionIdentityLabel={logFixture.sessionIdentityLabel}
+            sessionTechnicalLabel={logFixture.sessionTechnicalLabel}
+          />
         </div>
       </main>
     );

@@ -1,6 +1,7 @@
 import { defineConfig } from "@playwright/test";
 
 const auditPort = process.env.UI_AUDIT_PORT ?? "3100";
+const auditDistDir = process.env.UI_AUDIT_NEXT_DIST_DIR ?? ".next-ui-audit/managed";
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${auditPort}`;
 const shouldStartManagedServer = !process.env.PLAYWRIGHT_BASE_URL;
 
@@ -33,6 +34,7 @@ export default defineConfig({
           timeout: 120_000,
           env: {
             UI_AUDIT_FIXTURE_MODE: "1",
+            UI_AUDIT_NEXT_DIST_DIR: auditDistDir,
           },
         },
       }

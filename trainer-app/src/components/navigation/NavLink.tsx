@@ -14,7 +14,7 @@ export function NavLink({ href, label, icon, isActive, mode }: NavLinkProps) {
   const baseClassName =
     mode === "desktop"
       ? "flex min-h-0 min-w-0 flex-none flex-row items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm transition-colors"
-      : "flex min-h-11 min-w-[4.25rem] flex-1 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1 text-xs leading-tight transition-colors";
+      : "flex min-h-11 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-lg px-1 py-1 text-xs leading-tight transition-colors";
 
   const stateClassName = isActive
     ? mode === "desktop"

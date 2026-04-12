@@ -9,6 +9,8 @@
         "start": "next start",
         "lint": "eslint",
         "test": "vitest run",
+        "test:ui-audit": "playwright test",
+        "test:ui-audit:update": "playwright test --update-snapshots",
         "test:audit:matrix": "vitest run src/lib/audit/workout-audit/future-week-explicit-intent-matrix.test.ts src/lib/audit/workout-audit/future-week-derived-intent-matrix.test.ts",
         "test:watch": "vitest --watch",
         "test:slow": "vitest run --passWithNoTests \"src/**/*.slow.test.ts\"",
@@ -56,6 +58,7 @@
         "zustand": "^5.0.11"
     },
     "devDependencies": {
+        "@playwright/test": "^1.59.1",
         "@storybook/addon-docs": "^10.3.5",
         "@storybook/nextjs-vite": "^10.3.5",
         "@tailwindcss/postcss": "^4",

@@ -18,6 +18,7 @@ import {
   type ProgramDashboardData,
 } from "./program";
 import { loadPendingMesocycleHandoff } from "./mesocycle-handoff";
+import { getUiAuditFixtureForServer } from "@/lib/ui-audit-fixtures/server";
 
 export type HomeDecisionSummary = {
   nextSessionLabel: string | null;
@@ -376,6 +377,11 @@ function buildHomeCloseoutSummary(
 }
 
 export async function loadHomePageData(userId: string): Promise<HomePageData> {
+  const fixture = await getUiAuditFixtureForServer();
+  if (fixture?.home) {
+    return fixture.home;
+  }
+
   const [pendingHandoff, latestCompletedRow, recentActivityRows] = await Promise.all([
     loadPendingMesocycleHandoff(userId),
     prisma.workout.findFirst({

@@ -6,8 +6,14 @@ import { WorkoutStatus } from "@prisma/client";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 import { buildRollingDaysAnalyticsWindow } from "@/lib/api/analytics-semantics";
 import { buildMuscleStimulusTimeline } from "@/lib/api/muscle-stimulus-timeline";
+import { getUiAuditFixtureFromHeaders } from "@/lib/ui-audit-fixtures/server";
 
-export async function GET() {
+export async function GET(request: Request) {
+  const fixture = getUiAuditFixtureFromHeaders(request.headers);
+  if (fixture?.analytics?.recovery) {
+    return NextResponse.json(fixture.analytics.recovery);
+  }
+
   const user = await resolveOwner();
   if (!user) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });

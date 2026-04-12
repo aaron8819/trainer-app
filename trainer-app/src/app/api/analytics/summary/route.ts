@@ -7,9 +7,15 @@ import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 import { WORKOUT_SELECTION_MODE_VALUES } from "@/lib/validation";
 import { WorkoutStatus } from "@prisma/client";
 import { buildAnalyticsSummary } from "@/lib/api/analytics-summary";
+import { getUiAuditFixtureFromHeaders } from "@/lib/ui-audit-fixtures/server";
 const TRACKED_SELECTION_MODES = WORKOUT_SELECTION_MODE_VALUES;
 
 export async function GET(request: Request) {
+  const fixture = getUiAuditFixtureFromHeaders(request.headers);
+  if (fixture?.analytics?.summary) {
+    return NextResponse.json(fixture.analytics.summary);
+  }
+
   const { searchParams } = new URL(request.url);
   const parsed = analyticsSummarySchema.safeParse({
     dateFrom: searchParams.get("dateFrom") ?? undefined,

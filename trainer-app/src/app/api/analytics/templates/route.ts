@@ -5,8 +5,13 @@ import {
   buildAllTimeAnalyticsWindow,
   countAnalyticsWorkoutStatuses,
 } from "@/lib/api/analytics-semantics";
+import { getUiAuditFixtureFromHeaders } from "@/lib/ui-audit-fixtures/server";
 
-export async function GET() {
+export async function GET(request: Request) {
+  const fixture = getUiAuditFixtureFromHeaders(request.headers);
+  if (fixture?.analytics?.templates) {
+    return NextResponse.json(fixture.analytics.templates);
+  }
 
   const user = await resolveOwner();
   if (!user) {

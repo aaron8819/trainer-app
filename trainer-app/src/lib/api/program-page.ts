@@ -30,6 +30,7 @@ import {
 } from "./muscle-outcome-review";
 import { loadProjectedWeekVolumeReport } from "./projected-week-volume";
 import { isCloseoutSession } from "@/lib/session-semantics/closeout-classifier";
+import { getUiAuditFixtureForServer } from "@/lib/ui-audit-fixtures/server";
 
 type ActiveProgramPageMesocycle = {
   id: string;
@@ -681,6 +682,11 @@ async function loadCurrentWeekPlan(input: {
 }
 
 export async function loadProgramPageData(userId: string): Promise<ProgramPageData> {
+  const fixture = await getUiAuditFixtureForServer();
+  if (fixture?.program) {
+    return fixture.program;
+  }
+
   const [dashboard, activeMesocycle, nextWorkoutContext] = await Promise.all([
     loadProgramDashboardData(userId),
     prisma.mesocycle.findFirst({

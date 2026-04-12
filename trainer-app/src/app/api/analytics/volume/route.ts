@@ -2,11 +2,18 @@ import { NextResponse } from "next/server";
 import { resolveOwner } from "@/lib/api/workout-context";
 import { computeWeeklyMuscleVolume, getVolumeLandmarks } from "@/lib/api/analytics";
 import { buildRollingIsoWeeksAnalyticsWindow } from "@/lib/api/analytics-semantics";
+import { getUiAuditFixtureFromHeaders } from "@/lib/ui-audit-fixtures/server";
+import { getUiAuditVolumeFixture } from "@/lib/ui-audit-fixtures/fixtures";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const weeks = parseInt(searchParams.get("weeks") ?? "4", 10);
   const clampedWeeks = Math.min(Math.max(weeks, 1), 12);
+  const fixture = getUiAuditFixtureFromHeaders(request.headers);
+  const volumeFixture = fixture ? getUiAuditVolumeFixture(fixture, clampedWeeks) : null;
+  if (volumeFixture) {
+    return NextResponse.json(volumeFixture);
+  }
 
   const user = await resolveOwner();
   if (!user) {

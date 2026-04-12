@@ -36,7 +36,7 @@ import { WorkoutTimerHud } from "@/components/log-workout/WorkoutTimerHud";
 import { WeeklyVolumeCheck } from "@/components/log-workout/WeeklyVolumeCheck";
 import { useActiveSetDraftState } from "@/components/log-workout/useActiveSetDraftState";
 import { usePersistedWorkoutSessionUi } from "@/components/log-workout/usePersistedWorkoutSessionUi";
-import { useRestTimerState } from "@/components/log-workout/useRestTimerState";
+import { useRestTimerState, type RestTimerSnapshot } from "@/components/log-workout/useRestTimerState";
 import { useWorkoutSessionLayout } from "@/components/log-workout/useWorkoutSessionLayout";
 import { useWorkoutSessionFlow } from "@/components/log-workout/useWorkoutSessionFlow";
 import { isSetSatisfied } from "@/components/log-workout/useWorkoutLogState";
@@ -145,6 +145,7 @@ export default function LogWorkoutClient({
   exercises,
   allowBonusExerciseAdd = true,
   allowRuntimeExerciseSwap = false,
+  initialRestTimer,
   onQueueExerciseRowRender,
   sessionIdentityLabel,
   sessionTechnicalLabel,
@@ -153,6 +154,7 @@ export default function LogWorkoutClient({
   exercises: LogExerciseInput[] | SectionedExercises;
   allowBonusExerciseAdd?: boolean;
   allowRuntimeExerciseSwap?: boolean;
+  initialRestTimer?: RestTimerSnapshot | null;
   onQueueExerciseRowRender?: (exerciseId: string) => void;
   sessionIdentityLabel?: string | null;
   sessionTechnicalLabel?: string | null;
@@ -177,8 +179,20 @@ export default function LogWorkoutClient({
   const [showDiscardEditConfirm, setShowDiscardEditConfirm] = useState(false);
   const [timerHudHeight, setTimerHudHeight] = useState(0);
   const activeCardModeRef = useRef<ActiveCardMode>(activeCardMode);
+  const initialRestTimerWorkoutRef = useRef<string | null>(null);
   const isDraftDirtyRef = useRef<(setId: string) => boolean>(() => false);
   const pendingEditExitActionRef = useRef<PendingEditExitAction | null>(null);
+
+  useEffect(() => {
+    if (initialRestTimerWorkoutRef.current === workoutId) {
+      return;
+    }
+
+    initialRestTimerWorkoutRef.current = workoutId;
+    if (initialRestTimer) {
+      restoreTimer(initialRestTimer);
+    }
+  }, [initialRestTimer, restoreTimer, workoutId]);
 
   const totalSets = flatSets.length;
   const selectedSwapExercise = useMemo(() => {

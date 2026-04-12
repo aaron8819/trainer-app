@@ -8,7 +8,7 @@ import type { WorkoutListSurfaceSummary } from "@/lib/ui/workout-list-items";
 import type { ExerciseListItem } from "@/lib/exercise-library/types";
 import type { SectionedExercises } from "@/components/log-workout/types";
 
-export const UI_AUDIT_FIXTURE_SCENARIOS = ["active", "empty", "handoff"] as const;
+export const UI_AUDIT_FIXTURE_SCENARIOS = ["active", "empty", "handoff", "timer-visible"] as const;
 
 export type UiAuditFixtureScenario = (typeof UI_AUDIT_FIXTURE_SCENARIOS)[number];
 
@@ -32,6 +32,7 @@ type LogWorkoutFixture = {
   workoutId: string;
   sessionIdentityLabel: string;
   sessionTechnicalLabel: string;
+  initialRestTimerDurationSeconds?: number;
   exercises: SectionedExercises;
 };
 
@@ -315,6 +316,36 @@ const activeLogWorkout: LogWorkoutFixture = {
         ],
       },
     ],
+  },
+};
+
+const timerVisibleLogWorkout: LogWorkoutFixture = {
+  ...activeLogWorkout,
+  workoutId: "ui-audit-workout-timer-visible",
+  initialRestTimerDurationSeconds: 300,
+  exercises: {
+    main: [
+      {
+        ...activeLogWorkout.exercises.main[0]!,
+        sets: [
+          {
+            ...activeLogWorkout.exercises.main[0]!.sets[0]!,
+            actualReps: 10,
+            actualLoad: 115,
+            actualRpe: 8,
+          },
+          { ...activeLogWorkout.exercises.main[0]!.sets[1]! },
+        ],
+      },
+      {
+        ...activeLogWorkout.exercises.main[1]!,
+        sets: activeLogWorkout.exercises.main[1]!.sets.map((set) => ({ ...set })),
+      },
+    ],
+    accessory: activeLogWorkout.exercises.accessory?.map((exercise) => ({
+      ...exercise,
+      sets: exercise.sets.map((set) => ({ ...set })),
+    })),
   },
 };
 
@@ -982,10 +1013,19 @@ const handoffFixture: UiAuditFixture = {
   },
 };
 
+const timerVisibleFixture: UiAuditFixture = {
+  ...activeFixture,
+  scenario: "timer-visible",
+  logWorkouts: {
+    [timerVisibleLogWorkout.workoutId]: timerVisibleLogWorkout,
+  },
+};
+
 const fixtures: Record<UiAuditFixtureScenario, UiAuditFixture> = {
   active: activeFixture,
   empty: emptyFixture,
   handoff: handoffFixture,
+  "timer-visible": timerVisibleFixture,
 };
 
 export function getUiAuditFixtureByScenario(scenario: UiAuditFixtureScenario): UiAuditFixture {

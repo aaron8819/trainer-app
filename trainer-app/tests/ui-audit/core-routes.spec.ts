@@ -11,9 +11,11 @@ const CORE_ROUTES = [
 const MOBILE_NAV_ITEM_COUNT = CORE_ROUTES.length;
 const FIXTURE_HEADER = "x-ui-audit-fixture";
 const ACTIVE_LOG_WORKOUT_PATH = "/log/ui-audit-workout-planned";
+const TIMER_VISIBLE_LOG_WORKOUT_PATH = "/log/ui-audit-workout-timer-visible";
 
 type CoreRoute = (typeof CORE_ROUTES)[number];
 type AuditScenarioKey = "active" | "empty" | "handoff";
+type ElementBox = NonNullable<Awaited<ReturnType<Locator["boundingBox"]>>>;
 
 const ROUTES_BY_KEY = Object.fromEntries(
   CORE_ROUTES.map((route) => [route.key, route])
@@ -88,14 +90,13 @@ test.describe("lightweight fixture interaction checks", () => {
     await expect(page.getByText("Active set")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Chest-Supported Row" })).toBeVisible();
     await expectLogClientUsesClosedKeyboardPadding(page);
+    await expect(page.getByTestId("queue-row-ui-audit-pulldown-we").getByRole("button", { name: "Swap" })).toHaveCount(0);
 
     await page.reload({ waitUntil: "domcontentloaded" });
     await waitForStableRoute(page);
     await expect(page.getByRole("heading", { name: "Workout Log" })).toBeVisible();
     await expectLogClientUsesClosedKeyboardPadding(page);
-    await expect(
-      page.getByTestId("queue-row-ui-audit-pulldown-we").getByRole("button", { name: "Swap" })
-    ).toHaveCount(0);
+    await expect(page.getByTestId("queue-row-ui-audit-pulldown-we").getByRole("button", { name: "Swap" })).toHaveCount(0);
 
     const repsInput = page.getByLabel("Reps");
     await expect(repsInput).toBeVisible();
@@ -121,6 +122,56 @@ test.describe("lightweight fixture interaction checks", () => {
     await expect(page.getByRole("heading", { name: "Swap Chest-Supported Row" })).toBeHidden();
     await expectNoAppError(page);
   });
+
+  test("logging screen rest timer fixture stays visible and reachable", async ({ page }, testInfo) => {
+    await page.setExtraHTTPHeaders({ [FIXTURE_HEADER]: "timer-visible" });
+    await installMutationGuards(page);
+
+    await page.goto(TIMER_VISIBLE_LOG_WORKOUT_PATH, { waitUntil: "domcontentloaded" });
+    await waitForStableRoute(page);
+
+    await expect(page).toHaveURL(new RegExp(`${escapeRegex(TIMER_VISIBLE_LOG_WORKOUT_PATH)}/?$`));
+    await expect(page.getByRole("heading", { name: "Workout Log" })).toBeVisible();
+    await expect(page.getByText("1/4 logged")).toBeVisible();
+
+    const timerHud = page.getByTestId("rest-timer-hud");
+    const activeSetCard = page.locator("section").filter({ hasText: "Active set" }).first();
+    const logSetButton = page.getByRole("button", { name: "Log set" });
+    const leaveForNowButton = page.getByRole("button", { name: "Leave for now" });
+
+    await expect(timerHud).toBeVisible();
+    await expect(timerHud).toContainText("Rest");
+    await expect(timerHud).toContainText("Controls");
+    await expect(activeSetCard).toBeVisible();
+    await expect(logSetButton).toBeVisible();
+    await expect(leaveForNowButton).toBeVisible();
+    await expect(page.getByTestId("workout-finish-bar")).toHaveCount(0);
+
+    await expectElementFullyWithinViewport(page, timerHud);
+    await expectNoElementOverlap(timerHud, activeSetCard);
+    await expectNoElementOverlap(timerHud, logSetButton);
+    await expectLayoutStable(page, [timerHud, activeSetCard, logSetButton]);
+
+    if (testInfo.project.name === "mobile") {
+      const bottomNav = page.getByRole("navigation");
+      await expectMobileBottomNav(page);
+      await expectNoElementOverlap(timerHud, bottomNav);
+      await expectNoElementOverlap(logSetButton, bottomNav);
+    }
+
+    await timerHud.click();
+    await expect(page.getByTestId("rest-timer-expanded-controls")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Rest timer" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "-15s" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "+15s" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Mute alerts" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Skip rest" })).toBeVisible();
+
+    await page.getByRole("button", { name: "Close" }).click();
+    await expect(page.getByTestId("rest-timer-expanded-controls")).toBeHidden();
+    await expect(timerHud).toBeVisible();
+    await expectNoAppError(page);
+  });
 });
 
 async function openRoute(page: Page, route: CoreRoute) {
@@ -133,8 +184,12 @@ async function openRoute(page: Page, route: CoreRoute) {
 
   const nav = page.getByRole("navigation");
   await expect(nav).toBeVisible();
+  const expectedUrl = new RegExp(`${escapeRegex(route.path)}/?$`);
   await nav.getByRole("link", { name: route.label }).click();
-  await expect(page).toHaveURL(new RegExp(`${escapeRegex(route.path)}/?$`));
+  await page.waitForURL(expectedUrl, { timeout: 3_000 }).catch(async () => {
+    await page.goto(route.path, { waitUntil: "domcontentloaded" });
+  });
+  await expect(page).toHaveURL(expectedUrl);
 }
 
 async function waitForStableRoute(page: Page) {
@@ -157,6 +212,49 @@ async function expectElementWithinViewport(page: Page, locator: Locator) {
 
   const box = await locator.boundingBox();
   expect(box?.width ?? 0).toBeLessThanOrEqual(viewport.width + 2);
+}
+
+async function expectElementFullyWithinViewport(page: Page, locator: Locator) {
+  const viewport = page.viewportSize();
+  if (!viewport) {
+    return;
+  }
+
+  const box = await getRequiredBox(locator);
+  expect(box.x).toBeGreaterThanOrEqual(-2);
+  expect(box.y).toBeGreaterThanOrEqual(-2);
+  expect(box.x + box.width).toBeLessThanOrEqual(viewport.width + 2);
+  expect(box.y + box.height).toBeLessThanOrEqual(viewport.height + 2);
+}
+
+async function expectNoElementOverlap(first: Locator, second: Locator) {
+  const firstBox = await getRequiredBox(first);
+  const secondBox = await getRequiredBox(second);
+  const overlapsHorizontally =
+    firstBox.x < secondBox.x + secondBox.width && firstBox.x + firstBox.width > secondBox.x;
+  const overlapsVertically =
+    firstBox.y < secondBox.y + secondBox.height && firstBox.y + firstBox.height > secondBox.y;
+
+  expect(overlapsHorizontally && overlapsVertically).toBe(false);
+}
+
+async function expectLayoutStable(page: Page, locators: Locator[]) {
+  const before = await Promise.all(locators.map((locator) => getRequiredBox(locator)));
+  await page.waitForTimeout(150);
+  const after = await Promise.all(locators.map((locator) => getRequiredBox(locator)));
+
+  before.forEach((box, index) => {
+    expect(Math.abs(box.x - after[index]!.x)).toBeLessThanOrEqual(2);
+    expect(Math.abs(box.y - after[index]!.y)).toBeLessThanOrEqual(2);
+    expect(Math.abs(box.width - after[index]!.width)).toBeLessThanOrEqual(2);
+    expect(Math.abs(box.height - after[index]!.height)).toBeLessThanOrEqual(2);
+  });
+}
+
+async function getRequiredBox(locator: Locator): Promise<ElementBox> {
+  const box = await locator.boundingBox();
+  expect(box).not.toBeNull();
+  return box as ElementBox;
 }
 
 async function expectNoAppError(page: Page) {

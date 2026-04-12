@@ -49,6 +49,18 @@ function LogWorkoutHeader({
   );
 }
 
+function buildInitialRestTimer(durationSeconds?: number | null) {
+  if (!durationSeconds || durationSeconds <= 0) {
+    return null;
+  }
+
+  const startedAtMs = Date.now();
+  return {
+    startedAtMs,
+    endAtMs: startedAtMs + durationSeconds * 1000,
+  };
+}
+
 export default async function LogWorkoutPage({
   params,
 }: {
@@ -85,6 +97,7 @@ export default async function LogWorkoutPage({
             exercises={logFixture.exercises}
             allowBonusExerciseAdd={false}
             allowRuntimeExerciseSwap={true}
+            initialRestTimer={buildInitialRestTimer(logFixture.initialRestTimerDurationSeconds)}
             sessionIdentityLabel={logFixture.sessionIdentityLabel}
             sessionTechnicalLabel={logFixture.sessionTechnicalLabel}
           />

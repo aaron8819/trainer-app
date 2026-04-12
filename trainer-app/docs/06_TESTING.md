@@ -136,5 +136,6 @@ Sources of truth:
   - `active`: fixture-backed Home, Program, History, Analytics, Settings, and lightweight log-workout interaction state with populated representative data.
   - `empty`: fixture-backed Home and Program empty-ish setup state.
   - `handoff`: fixture-backed Home pending-handoff state.
+  - `timer-visible`: fixture-backed log-workout state with one logged set and an active rest timer for direct layout audit coverage.
 - Use `npm run test:ui-audit:update` only after an intentional baseline change, then review screenshots under `tests/ui-audit/__screenshots__/`.
 - If `PLAYWRIGHT_BASE_URL` is set, Playwright targets that server instead of starting the managed fixture server. Start that server with `UI_AUDIT_FIXTURE_MODE=1` when the fixture-backed scenarios should be active.

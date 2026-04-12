@@ -6,22 +6,27 @@ export type ExerciseSetChip = {
   isSaving: boolean;
 };
 
+type ExerciseSetChipsEditorAction = {
+  label: string;
+  disabled?: boolean;
+  ariaLabel?: string;
+  title?: string;
+  variant?: "add" | "secondary";
+  onClick: () => void;
+};
+
 type ExerciseSetChipsEditorProps = {
   chips: ExerciseSetChip[];
   hasLoggedSets: boolean;
   onSelectSet: (setId: string) => void;
-  trailingAction?: {
-    label: string;
-    disabled?: boolean;
-    onClick: () => void;
-  };
+  trailingActions?: ExerciseSetChipsEditorAction[];
 };
 
 export function ExerciseSetChipsEditor({
   chips,
   hasLoggedSets,
   onSelectSet,
-  trailingAction,
+  trailingActions = [],
 }: ExerciseSetChipsEditorProps) {
   return (
     <div className="border-t border-slate-100 p-3">
@@ -47,16 +52,23 @@ export function ExerciseSetChipsEditor({
             {chip.label}
           </button>
         ))}
-        {trailingAction ? (
+        {trailingActions.map((action) => (
           <button
-            className="inline-flex min-h-11 items-center justify-center rounded-full border border-dashed border-slate-300 bg-slate-50 px-3 text-xs font-semibold text-slate-700 disabled:opacity-60"
-            disabled={trailingAction.disabled}
-            onClick={trailingAction.onClick}
+            key={action.label}
+            aria-label={action.ariaLabel}
+            className={`inline-flex min-h-11 items-center justify-center rounded-full border px-3 text-xs font-semibold disabled:opacity-60 ${
+              action.variant === "secondary"
+                ? "border-slate-300 text-slate-700"
+                : "border-dashed border-slate-300 bg-slate-50 text-slate-700"
+            }`}
+            disabled={action.disabled}
+            onClick={action.onClick}
+            title={action.title}
             type="button"
           >
-            {trailingAction.label}
+            {action.label}
           </button>
-        ) : null}
+        ))}
       </div>
     </div>
   );

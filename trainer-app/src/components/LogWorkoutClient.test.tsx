@@ -534,6 +534,11 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     expect(within(curlRow).getByText("Hamstrings")).toBeInTheDocument();
     expect(within(curlRow).getByText("Hamstrings")).toHaveAttribute("title", "Primary muscle");
     expect(within(curlRow).queryByText(/\+.*more/)).not.toBeInTheDocument();
+    expect(within(curlRow).queryByRole("button", { name: "Swap" })).not.toBeInTheDocument();
+
+    fireEvent.click(within(curlRow).getByRole("button", { name: /Seated Leg Curl/ }));
+
+    expect(within(curlRow).getByRole("button", { name: "Swap" })).toBeInTheDocument();
   });
 
   it("removes an unlogged runtime-added exercise from the queue", async () => {
@@ -1423,7 +1428,7 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     });
   });
 
-  it("shows swap controls when runtime swap is enabled for an eligible exercise", () => {
+  it("shows swap controls only in the expanded management area when runtime swap is enabled", () => {
     render(
       <LogWorkoutClient
         workoutId="workout-gap-fill"
@@ -1435,6 +1440,10 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
 
     expect(screen.queryByRole("button", { name: "+ Add Exercise" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Swap" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /T-Bar Row/ }));
+
+    expect(screen.queryByRole("button", { name: "Swap" })).not.toBeInTheDocument();
   });
 
   it("shows swap for unlogged canonical, runtime-added, and closeout rows without client movement-pattern gating", () => {
@@ -1507,8 +1516,16 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     );
 
     expect(within(screen.getByTestId("queue-row-ex-canonical")).getByRole("button", { name: "Swap" })).toBeEnabled();
+    expect(within(screen.getByTestId("queue-row-ex-added")).queryByRole("button", { name: "Swap" })).not.toBeInTheDocument();
+    fireEvent.click(within(screen.getByTestId("queue-row-ex-added")).getByRole("button", { name: /Pec Deck/ }));
     expect(within(screen.getByTestId("queue-row-ex-added")).getByRole("button", { name: "Swap" })).toBeEnabled();
     expect(within(screen.getByTestId("queue-row-ex-added")).getByRole("button", { name: "Remove" })).toBeEnabled();
+    expect(within(screen.getByTestId("queue-row-ex-closeout")).queryByRole("button", { name: "Swap" })).not.toBeInTheDocument();
+    fireEvent.click(
+      within(screen.getByTestId("queue-row-ex-closeout")).getByRole("button", {
+        name: /Closeout Cable Fly/,
+      })
+    );
     expect(within(screen.getByTestId("queue-row-ex-closeout")).getByRole("button", { name: "Swap" })).toBeEnabled();
     expect(
       within(screen.getByTestId("queue-row-ex-closeout")).getByText(
@@ -1607,10 +1624,26 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
       })
     ).toBeDisabled();
     expect(
+      within(screen.getByTestId("queue-row-ex-logged")).queryByRole("button", {
+        name: "Swap unavailable after sets are logged.",
+      })
+    ).not.toBeInTheDocument();
+    fireEvent.click(within(screen.getByTestId("queue-row-ex-logged")).getByRole("button", { name: /Cable Row/ }));
+    expect(
       within(screen.getByTestId("queue-row-ex-logged")).getByRole("button", {
         name: "Swap unavailable after sets are logged.",
       })
     ).toBeDisabled();
+    expect(
+      within(screen.getByTestId("queue-row-ex-swapped")).queryByRole("button", {
+        name: "Swap unavailable: This exercise was already swapped.",
+      })
+    ).not.toBeInTheDocument();
+    fireEvent.click(
+      within(screen.getByTestId("queue-row-ex-swapped")).getByRole("button", {
+        name: /Chest-Supported Dumbbell Row/,
+      })
+    );
     expect(
       within(screen.getByTestId("queue-row-ex-swapped")).getByRole("button", {
         name: "Swap unavailable: This exercise was already swapped.",
@@ -1807,7 +1840,9 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
       expect(screen.getByRole("button", { name: /Set 1 OK 135 x 8 @8/ })).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: "Swap" }));
+    const swapRow = screen.getByTestId("queue-row-ex-swap");
+    await user.click(within(swapRow).getByRole("button", { name: /T-Bar Row/ }));
+    await user.click(within(swapRow).getByRole("button", { name: "Swap" }));
     expect(await screen.findByText("Post-swap prescription")).toBeInTheDocument();
 
     scrollIntoViewSpy.mockClear();

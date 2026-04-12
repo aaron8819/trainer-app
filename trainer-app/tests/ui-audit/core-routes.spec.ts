@@ -87,6 +87,9 @@ test.describe("lightweight fixture interaction checks", () => {
     await expect(page.getByRole("heading", { name: "Workout Log" })).toBeVisible();
     await expect(page.getByText("Active set")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Chest-Supported Row" })).toBeVisible();
+    await expect(
+      page.getByTestId("queue-row-ui-audit-pulldown-we").getByRole("button", { name: "Swap" })
+    ).toHaveCount(0);
 
     const repsInput = page.getByLabel("Reps");
     await expect(repsInput).toBeVisible();

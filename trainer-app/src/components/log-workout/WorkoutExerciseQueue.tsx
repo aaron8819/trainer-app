@@ -202,18 +202,6 @@ const ExerciseQueueRow = memo(
                 {row.isRemoving ? "Removing..." : "Remove"}
               </button>
             ) : null}
-            {onSwapExercise && (row.canSwap || row.swapDisabledReason) ? (
-              <button
-                className="inline-flex min-h-8 items-center justify-center rounded-full border border-slate-300 px-3 text-[11px] font-semibold text-slate-700 disabled:opacity-60"
-                aria-label={swapUnavailableLabel}
-                disabled={row.isSwapping || !row.canSwap}
-                onClick={() => onSwapExercise(row.exerciseId)}
-                title={row.swapDisabledReason ?? undefined}
-                type="button"
-              >
-                {row.isSwapping ? "Swapping..." : "Swap"}
-              </button>
-            ) : null}
             <span
               className={`text-xs ${
                 row.allSetsLogged ? "font-semibold text-emerald-700" : "text-slate-500"
@@ -229,15 +217,29 @@ const ExerciseQueueRow = memo(
             chips={row.chips}
             hasLoggedSets={row.loggedCount > 0}
             onSelectSet={onSelectSet}
-            trailingAction={
-              row.canAddSet && onAddSet
-                ? {
-                    label: row.isAddingSet ? "Adding..." : "+ Add set",
-                    disabled: row.isAddingSet,
-                    onClick: () => onAddSet(row.exerciseId, row.section),
-                  }
-                : undefined
-            }
+            trailingActions={[
+              ...(row.canAddSet && onAddSet
+                ? [
+                    {
+                      label: row.isAddingSet ? "Adding..." : "+ Add set",
+                      disabled: row.isAddingSet,
+                      onClick: () => onAddSet(row.exerciseId, row.section),
+                    },
+                  ]
+                : []),
+              ...(onSwapExercise && (row.canSwap || row.swapDisabledReason)
+                ? [
+                    {
+                      label: row.isSwapping ? "Swapping..." : "Swap",
+                      ariaLabel: swapUnavailableLabel,
+                      disabled: row.isSwapping || !row.canSwap,
+                      onClick: () => onSwapExercise(row.exerciseId),
+                      title: row.swapDisabledReason ?? undefined,
+                      variant: "secondary" as const,
+                    },
+                  ]
+                : []),
+            ]}
           />
         ) : null}
       </div>

@@ -16,6 +16,39 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const runtime = "nodejs";
 
+function formatLogHeaderTechnicalLabel(label?: string | null): string | null {
+  const resolvedLabel = label?.trim() || null;
+  if (!resolvedLabel) {
+    return null;
+  }
+
+  return resolvedLabel.replace(/^Slot ID:\s*/, "Slot: ");
+}
+
+function LogWorkoutHeader({
+  sessionIdentityLabel,
+  sessionTechnicalLabel,
+}: {
+  sessionIdentityLabel?: string | null;
+  sessionTechnicalLabel?: string | null;
+}) {
+  const sessionContext = [
+    sessionIdentityLabel?.trim() || null,
+    formatLogHeaderTechnicalLabel(sessionTechnicalLabel),
+  ]
+    .filter(Boolean)
+    .join(" • ");
+
+  return (
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <h1 className="page-title">Workout Log</h1>
+        {sessionContext ? <p className="mt-1 text-sm text-slate-600">{sessionContext}</p> : null}
+      </div>
+    </div>
+  );
+}
+
 export default async function LogWorkoutPage({
   params,
 }: {
@@ -42,17 +75,10 @@ export default async function LogWorkoutPage({
     return (
       <main className="min-h-screen bg-white text-slate-900">
         <div className="page-shell max-w-4xl">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm uppercase tracking-wide text-slate-500">Log Session</p>
-              <h1 className="page-title mt-1.5">Workout Log</h1>
-              <p className="mt-1.5 text-sm text-slate-600">
-                {logFixture.sessionIdentityLabel}
-                {logFixture.sessionTechnicalLabel ? ` | ${logFixture.sessionTechnicalLabel}` : ""}
-                {" | Tap to log each set quickly."}
-              </p>
-            </div>
-          </div>
+          <LogWorkoutHeader
+            sessionIdentityLabel={logFixture.sessionIdentityLabel}
+            sessionTechnicalLabel={logFixture.sessionTechnicalLabel}
+          />
 
           <LogWorkoutClient
             workoutId={logFixture.workoutId}
@@ -163,17 +189,10 @@ export default async function LogWorkoutPage({
   return (
     <main className="min-h-screen bg-white text-slate-900">
       <div className="page-shell max-w-4xl">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-sm uppercase tracking-wide text-slate-500">Log Session</p>
-            <h1 className="page-title mt-1.5">Workout Log</h1>
-            <p className="mt-1.5 text-sm text-slate-600">
-              {sessionIdentityLabel}
-              {sessionTechnicalLabel ? ` | ${sessionTechnicalLabel}` : ""}
-              {" | Tap to log each set quickly."}
-            </p>
-          </div>
-        </div>
+        <LogWorkoutHeader
+          sessionIdentityLabel={sessionIdentityLabel}
+          sessionTechnicalLabel={sessionTechnicalLabel}
+        />
 
         <LogWorkoutClient
           workoutId={workout.id}

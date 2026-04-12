@@ -2,6 +2,7 @@
 /* eslint-disable react-hooks/incompatible-library */
 
 import { useState } from "react";
+import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { ExercisePicker } from "./library/ExercisePicker";
 import { ExercisePickerTrigger } from "./library/ExercisePickerTrigger";
@@ -93,7 +94,15 @@ export default function UserPreferencesForm({
       <input type="hidden" {...form.register("userId")} />
 
       <section className={sectionClassName}>
-        <h2 className="text-base font-semibold sm:text-lg">Training Preferences</h2>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-base font-semibold sm:text-lg">Training Preferences</h2>
+          <Link
+            href="/library"
+            className="inline-flex min-h-10 items-center justify-center rounded-full border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-900 hover:bg-slate-50"
+          >
+            Exercise Library
+          </Link>
+        </div>
         <p className="mt-1 text-sm text-slate-600">
           These influence exercise selection.
         </p>

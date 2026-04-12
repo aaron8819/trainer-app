@@ -228,4 +228,5 @@ Route-purpose shorthand:
 8. Cross-surface navigation simplification
 - Desktop primary navigation includes `/program` in addition to `/`, `/history`, and `/analytics`; the mobile bottom navigation is limited to `/`, `/program`, `/history`, `/analytics`, and `/settings` to keep the core mobile IA compact (`src/components/navigation/AppNavigation.tsx`).
 - Shared surface-purpose metadata lives in `src/lib/ui/app-surface-map.ts`, and `SurfaceGuideCard` uses it to show adjacent surfaces without duplicating route-purpose copy in multiple page-local implementations (`src/components/SurfaceGuideCard.tsx`).
+- Settings links from Training Preferences to `/library`, and the Analytics Templates tab links to `/templates`, so the routes removed from mobile bottom navigation remain reachable through contextual surfaces.
 - Home keeps the operational actions for “what should I do now?”, while `/program`, `/history`, and `/analytics` each include a short cross-linking guide to reinforce “where should I go next?” without duplicating the home dashboard’s operational role.

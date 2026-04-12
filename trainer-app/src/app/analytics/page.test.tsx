@@ -1,6 +1,15 @@
 import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import AnalyticsPage from "./page";
+
+vi.mock("next/link", () => ({
+  default: ({ children, href, ...props }: { children: React.ReactNode; href: string }) => (
+    <a href={href} {...props}>
+      {children}
+    </a>
+  ),
+}));
 
 vi.mock("@/components/analytics/AnalyticsSummaryPanel", () => ({
   AnalyticsSummaryPanel: () => <div>Summary Panel</div>,
@@ -51,5 +60,16 @@ describe("AnalyticsPage", () => {
     expect(
       screen.getByText(/This is analytics context, not dashboard opportunity or a go-train signal/i)
     ).toBeInTheDocument();
+  });
+
+  it("links from the templates tab to template management", async () => {
+    render(<AnalyticsPage />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Templates" }));
+
+    expect(screen.getByRole("link", { name: "Manage templates" })).toHaveAttribute(
+      "href",
+      "/templates"
+    );
   });
 });

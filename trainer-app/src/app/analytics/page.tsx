@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { AnalyticsSummaryPanel } from "@/components/analytics/AnalyticsSummaryPanel";
 import { SurfaceGuideCard } from "@/components/SurfaceGuideCard";
 import { MuscleRecoveryPanel } from "@/components/analytics/MuscleRecoveryPanel";
@@ -120,7 +121,15 @@ export default function AnalyticsPage() {
 
           {activeTab === "Templates" && (
             <div className="space-y-4">
-              <h2 className="text-base font-semibold sm:text-lg">Template Usage</h2>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-base font-semibold sm:text-lg">Template Usage</h2>
+                <Link
+                  href="/templates"
+                  className="inline-flex min-h-10 items-center justify-center rounded-full border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-900 hover:bg-slate-50"
+                >
+                  Manage templates
+                </Link>
+              </div>
               <p className="text-sm text-slate-500">
                 Generated template workouts, plus performed and completed follow-through rates.
               </p>

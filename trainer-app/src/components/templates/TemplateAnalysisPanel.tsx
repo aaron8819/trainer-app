@@ -9,6 +9,7 @@ import {
 import { TemplateScoreBadge } from "./TemplateScoreBadge";
 import type { ExerciseListItem } from "@/lib/exercise-library/types";
 import { TEMPLATE_METRIC_HELP } from "@/lib/ui/explainability";
+import { ProgressBar, type ProgressBarTone } from "@/components/ui/ProgressBar";
 
 type TemplateAnalysisPanelProps = {
   selectedExerciseIds: string[];
@@ -37,12 +38,7 @@ function toAnalysisInput(ex: ExerciseListItem, orderIndex: number): AnalysisExer
 }
 
 function ScoreBar({ label, score }: { label: string; score: number }) {
-  const barColor =
-    score >= 75
-      ? "bg-emerald-500"
-      : score >= 60
-        ? "bg-amber-500"
-        : "bg-rose-500";
+  const tone: ProgressBarTone = score >= 75 ? "success" : score >= 60 ? "warning" : "danger";
 
   return (
     <div className="space-y-1">
@@ -55,12 +51,7 @@ function ScoreBar({ label, score }: { label: string; score: number }) {
       {TEMPLATE_METRIC_HELP[label] ? (
         <p className="text-[11px] text-slate-500">{TEMPLATE_METRIC_HELP[label]}</p>
       ) : null}
-      <div className="h-1.5 rounded-full bg-slate-100">
-        <div
-          className={`h-1.5 rounded-full transition-all ${barColor}`}
-          style={{ width: `${score}%` }}
-        />
-      </div>
+      <ProgressBar value={score} tone={tone} size="compact" aria-label={`${label} score`} />
     </div>
   );
 }

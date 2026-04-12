@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { Alert } from "@/components/ui/Alert";
+import { Button, buttonClassName } from "@/components/ui/Button";
 
 export type CloseoutCardModel = {
   title: string;
@@ -72,23 +74,28 @@ export function CloseoutCard({
       </div>
       <div className="mt-4 flex flex-wrap gap-3">
         <Link
-          className="inline-flex min-h-11 items-center justify-center rounded-full border border-amber-300 bg-white px-5 py-2 text-sm font-semibold text-slate-900"
+          className={buttonClassName({ variant: "secondary", size: "touch" })}
           href={closeout.actionHref}
           prefetch={false}
         >
           {closeout.actionLabel}
         </Link>
         {closeout.dismissActionHref && closeout.dismissActionLabel ? (
-          <button
+          <Button
             type="button"
-            className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 bg-white px-5 py-2 text-sm font-semibold text-slate-900"
+            variant="secondary"
+            size="touch"
             onClick={handleDismiss}
           >
             {closeout.dismissActionLabel}
-          </button>
+          </Button>
         ) : null}
       </div>
-      {dismissError ? <p className="mt-2 text-sm text-rose-600">{dismissError}</p> : null}
+      {dismissError ? (
+        <Alert tone="critical" role="alert" className="mt-3 px-3 py-2 shadow-none">
+          {dismissError}
+        </Alert>
+      ) : null}
     </div>
   );
 }

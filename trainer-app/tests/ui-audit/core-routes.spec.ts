@@ -12,13 +12,14 @@ const MOBILE_NAV_ITEM_COUNT = CORE_ROUTES.length;
 const FIXTURE_HEADER = "x-ui-audit-fixture";
 
 type CoreRoute = (typeof CORE_ROUTES)[number];
+type AuditScenarioKey = "active" | "empty" | "handoff";
 
 const ROUTES_BY_KEY = Object.fromEntries(
   CORE_ROUTES.map((route) => [route.key, route])
 ) as Record<CoreRoute["key"], CoreRoute>;
 
 const AUDIT_SCENARIOS: Array<{
-  key: "active" | "empty" | "handoff";
+  key: AuditScenarioKey;
   description: string;
   routes: CoreRoute[];
 }> = [
@@ -59,7 +60,13 @@ test.describe("core route UI audit", () => {
             await expectMobileBottomNav(page);
           }
 
-          await expect(page).toHaveScreenshot([scenario.key, `${route.key}.png`]);
+          await expect(page).toHaveScreenshot(
+            buildAuditScreenshotName({
+              route: route.key,
+              viewport: testInfo.project.name,
+              state: scenario.key,
+            })
+          );
         });
       }
     });
@@ -110,4 +117,26 @@ async function expectMobileBottomNav(page: Page) {
 
 function escapeRegex(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+function buildAuditScreenshotName(input: {
+  route: CoreRoute["key"];
+  viewport: string;
+  state: AuditScenarioKey;
+}) {
+  const name = [
+    normalizeScreenshotSegment(input.route),
+    normalizeScreenshotSegment(input.viewport),
+    normalizeScreenshotSegment(input.state),
+  ].join(".") + ".png";
+
+  return [name];
+}
+
+function normalizeScreenshotSegment(value: string) {
+  const normalized = value.trim().toLowerCase();
+  if (!/^[a-z0-9-]+$/.test(normalized)) {
+    throw new Error(`Invalid UI audit screenshot segment: ${value}`);
+  }
+
+  return normalized;
 }

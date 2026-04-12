@@ -7,7 +7,7 @@ const shouldStartManagedServer = !process.env.PLAYWRIGHT_BASE_URL;
 export default defineConfig({
   testDir: "./tests/ui-audit",
   outputDir: "./test-results/ui-audit",
-  snapshotPathTemplate: "{testDir}/__screenshots__/{projectName}/{arg}{ext}",
+  snapshotPathTemplate: "{testDir}/__screenshots__/{arg}{ext}",
   fullyParallel: false,
   workers: 1,
   retries: process.env.CI ? 1 : 0,

@@ -40,7 +40,7 @@ Sources of truth:
 - Engine tests: `src/lib/engine/**/*.test.ts`
 - API helper tests: `src/lib/api/**/*.test.ts`
 - UI tests: component tests under `src/components/**`
-- Playwright UI audit tests: `tests/ui-audit/**/*.spec.ts`, with baseline screenshots grouped by viewport and fixture scenario under `tests/ui-audit/__screenshots__/`
+- Playwright UI audit tests: `tests/ui-audit/**/*.spec.ts`, with flat baseline screenshots named `<route>.<viewport>.<state>.png` under `tests/ui-audit/__screenshots__/`
 - Workout log UI regressions are covered in `src/components/LogWorkoutClient.test.tsx`, including all-skipped completion routing, timer resume/remount behavior, queue-chip targeting, queue-row scroll neutrality, skipped terminal state copy/actions, and reduced mobile edit-state chrome.
 - Timer/session-layout hook coverage lives in `src/components/log-workout/useRestTimerState.test.tsx` and `src/components/log-workout/useWorkoutSessionLayout.test.tsx`, covering visibility-return timer re-sync and explicit-only scroll correction.
 - UI session summary-model coverage: `src/lib/ui/session-summary.test.ts` (receipt-first summary text/tags/items, including deload, soreness hold, and readiness-scaling cases).
@@ -136,5 +136,5 @@ Sources of truth:
   - `active`: fixture-backed Home, Program, History, Analytics, and Settings routes with populated representative state.
   - `empty`: fixture-backed Home and Program empty-ish setup state.
   - `handoff`: fixture-backed Home pending-handoff state.
-- Use `npm run test:ui-audit:update` only after an intentional baseline change, then review screenshots under `tests/ui-audit/__screenshots__/{mobile,desktop}/{scenario}/`.
+- Use `npm run test:ui-audit:update` only after an intentional baseline change, then review screenshots under `tests/ui-audit/__screenshots__/`.
 - If `PLAYWRIGHT_BASE_URL` is set, Playwright targets that server instead of starting the managed fixture server. Start that server with `UI_AUDIT_FIXTURE_MODE=1` when the fixture-backed scenarios should be active.

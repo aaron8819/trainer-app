@@ -517,6 +517,42 @@ describe("resolveSessionSlotPolicy", () => {
     expect(lowerB?.compoundControl?.lanes[0]?.preferredPrimaryMuscles).toEqual(["Hamstrings"]);
   });
 
+  it("keeps upper_a and lower_b projection expectations direction-specific", () => {
+    const upperA = resolveSessionSlotPolicy({
+      sessionIntent: "upper",
+      slotId: "upper_a",
+      slotSequence,
+    }).currentSession;
+    const lowerB = resolveSessionSlotPolicy({
+      sessionIntent: "lower",
+      slotId: "lower_b",
+      slotSequence,
+    }).currentSession;
+
+    expect(upperA?.sessionShape?.preferredAccessoryPrimaryMuscles).toEqual([
+      "Chest",
+      "Triceps",
+      "Rear Delts",
+    ]);
+    expect(upperA?.sessionShape?.supportPenaltyPatterns).toEqual([
+      "horizontal_pull",
+      "vertical_pull",
+    ]);
+    expect(upperA?.sessionShape?.requiredMovementPatterns).toEqual([
+      "vertical_pull",
+      "horizontal_pull",
+    ]);
+    expect(lowerB?.compoundBias?.preferredMovementPatterns).toEqual(["hinge"]);
+    expect(lowerB?.compoundBias?.preferredPrimaryMuscles).toEqual(["Hamstrings"]);
+    expect(lowerB?.compoundControl?.lanes[0]).toEqual(
+      expect.objectContaining({
+        preferredMovementPatterns: ["hinge"],
+        fallbackOnlyMovementPatterns: ["squat"],
+        preferredPrimaryMuscles: ["Hamstrings"],
+      })
+    );
+  });
+
   it("prioritizes protected coverage muscles on the current slot session shape only when requested", () => {
     const policy = resolveSessionSlotPolicy({
       sessionIntent: "upper",

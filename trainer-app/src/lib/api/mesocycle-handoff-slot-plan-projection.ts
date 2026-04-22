@@ -678,6 +678,144 @@ function countWorkoutWorkingSets(workout: WorkoutPlan): number {
   );
 }
 
+function getWorkoutExercises(workout: WorkoutPlan): WorkoutExercise[] {
+  return [...workout.mainLifts, ...workout.accessories];
+}
+
+function exerciseMatchesMovementPattern(
+  exercise: Pick<WorkoutExercise["exercise"], "movementPatterns">,
+  pattern: string
+): boolean {
+  return (exercise.movementPatterns ?? []).includes(
+    pattern as NonNullable<WorkoutExercise["exercise"]["movementPatterns"]>[number]
+  );
+}
+
+function exerciseHasPrimaryMuscle(
+  exercise: Pick<WorkoutExercise["exercise"], "primaryMuscles">,
+  muscle: string
+): boolean {
+  return (exercise.primaryMuscles ?? []).some(
+    (primaryMuscle) => normalizeMuscleName(primaryMuscle) === normalizeMuscleName(muscle)
+  );
+}
+
+function exerciseHasAnyPrimaryMuscle(
+  exercise: Pick<WorkoutExercise["exercise"], "primaryMuscles">,
+  muscles: readonly string[]
+): boolean {
+  return muscles.some((muscle) => exerciseHasPrimaryMuscle(exercise, muscle));
+}
+
+function getRequiredMovementPatternCount(input: {
+  slotPolicy: ReturnType<typeof resolveSessionSlotPolicy>["currentSession"];
+  pattern: string;
+}): number {
+  return (input.slotPolicy?.sessionShape?.requiredMovementPatterns ?? []).filter(
+    (requiredPattern) => requiredPattern === input.pattern
+  ).length;
+}
+
+export function evaluateUpperSupportTypeQuality(input: {
+  slotPolicy: ReturnType<typeof resolveSessionSlotPolicy>["currentSession"];
+  workout: WorkoutPlan;
+  contributionByMuscle: ReadonlyMap<string, number>;
+}) {
+  const slotPolicy = input.slotPolicy;
+  if (slotPolicy?.sessionShape?.id !== "upper_horizontal_balanced") {
+    return {
+      isRelevant: false,
+      pushShortfallToFloor: 0,
+      directionalCoveredMuscleCount: 0,
+      directionalEffectiveSets: 0,
+      redundantPullSupportCount: 0,
+    };
+  }
+
+  const pushSupportMuscles: ProtectedWeekOneCoverageMuscle[] = ["Chest", "Triceps"];
+  const directionalSupportMuscles: ProtectedWeekOneCoverageMuscle[] = [
+    "Chest",
+    "Triceps",
+    "Rear Delts",
+  ];
+  const pushShortfallToFloor = pushSupportMuscles.reduce((shortfall, muscle) => {
+    const effectiveSets = input.contributionByMuscle.get(muscle) ?? 0;
+    return shortfall + Math.max(0, MEANINGFUL_UPPER_PROTECTED_SUPPORT_FLOOR - effectiveSets);
+  }, 0);
+  const directionalCoveredMuscleCount = directionalSupportMuscles.filter(
+    (muscle) =>
+      (input.contributionByMuscle.get(muscle) ?? 0) >=
+      MEANINGFUL_UPPER_PROTECTED_SUPPORT_FLOOR
+  ).length;
+  const directionalEffectiveSets = directionalSupportMuscles.reduce(
+    (sum, muscle) => sum + (input.contributionByMuscle.get(muscle) ?? 0),
+    0
+  );
+  const pullPatterns = ["horizontal_pull", "vertical_pull"];
+  const redundantPullSupportCount = pullPatterns.reduce((total, pattern) => {
+    const allowedPatternCount = getRequiredMovementPatternCount({ slotPolicy, pattern });
+    const nonDirectionalPullCount = getWorkoutExercises(input.workout).filter((exercise) => {
+      if (!exerciseMatchesMovementPattern(exercise.exercise, pattern)) {
+        return false;
+      }
+      return !exerciseHasAnyPrimaryMuscle(exercise.exercise, directionalSupportMuscles);
+    }).length;
+    return total + Math.max(0, nonDirectionalPullCount - allowedPatternCount);
+  }, 0);
+
+  return {
+    isRelevant: true,
+    pushShortfallToFloor: roundToTenth(pushShortfallToFloor),
+    directionalCoveredMuscleCount,
+    directionalEffectiveSets: roundToTenth(directionalEffectiveSets),
+    redundantPullSupportCount,
+  };
+}
+
+export function evaluateLowerPatternPrimacy(input: {
+  slotPolicy: ReturnType<typeof resolveSessionSlotPolicy>["currentSession"];
+  workout: WorkoutPlan;
+}) {
+  const slotPolicy = input.slotPolicy;
+  if (slotPolicy?.sessionShape?.id !== "lower_hinge_dominant") {
+    return {
+      isRelevant: false,
+      primaryPatternScore: 0,
+      hingeCompoundSetCount: 0,
+      squatCompoundSetCount: 0,
+      squatDominancePenalty: 0,
+    };
+  }
+
+  const compoundExercises = getWorkoutExercises(input.workout).filter(
+    (exercise) => exercise.exercise.isCompound ?? false
+  );
+  const firstCoreCompound =
+    input.workout.mainLifts.find((exercise) => exercise.exercise.isCompound ?? false) ??
+    compoundExercises[0];
+  const hingeCompoundSetCount = compoundExercises
+    .filter((exercise) => exerciseMatchesMovementPattern(exercise.exercise, "hinge"))
+    .reduce((sum, exercise) => sum + exercise.sets.length, 0);
+  const squatCompoundSetCount = compoundExercises
+    .filter((exercise) => exerciseMatchesMovementPattern(exercise.exercise, "squat"))
+    .reduce((sum, exercise) => sum + exercise.sets.length, 0);
+  const primaryPatternScore = firstCoreCompound
+    ? exerciseMatchesMovementPattern(firstCoreCompound.exercise, "hinge")
+      ? 2
+      : hingeCompoundSetCount > 0
+        ? 1
+        : 0
+    : 0;
+
+  return {
+    isRelevant: true,
+    primaryPatternScore,
+    hingeCompoundSetCount,
+    squatCompoundSetCount,
+    squatDominancePenalty: Math.max(0, squatCompoundSetCount - hingeCompoundSetCount),
+  };
+}
+
 function selectSupportIsolation(input: {
   exerciseLibrary: MappedGenerationContext["exerciseLibrary"];
   selectedExerciseIds: Set<string>;
@@ -847,6 +985,162 @@ function rebalanceUpperSupportProjection(input: {
   return workout;
 }
 
+function countNonDirectionalPullPattern(input: {
+  workout: WorkoutPlan;
+  pattern: string;
+  directionalSupportMuscles: readonly string[];
+}): number {
+  return getWorkoutExercises(input.workout).filter((exercise) => {
+    if (!exerciseMatchesMovementPattern(exercise.exercise, input.pattern)) {
+      return false;
+    }
+    return !exerciseHasAnyPrimaryMuscle(exercise.exercise, input.directionalSupportMuscles);
+  }).length;
+}
+
+function trimRedundantUpperPullSupportProjection(input: {
+  workout: WorkoutPlan;
+  slotPolicy: ReturnType<typeof resolveSessionSlotPolicy>["currentSession"];
+  protectedMuscles: readonly ProtectedWeekOneCoverageMuscle[];
+}): WorkoutPlan {
+  if (input.slotPolicy?.sessionShape?.id !== "upper_horizontal_balanced") {
+    return input.workout;
+  }
+
+  const directionalSupportMuscles: ProtectedWeekOneCoverageMuscle[] = [
+    "Chest",
+    "Triceps",
+    "Rear Delts",
+  ];
+  const protectedMuscles =
+    input.protectedMuscles.length > 0
+      ? input.protectedMuscles
+      : getProtectedWeekOneCoverageObligations(input.slotPolicy);
+  let workout = input.workout;
+
+  for (const pattern of ["horizontal_pull", "vertical_pull"]) {
+    const requiredPatternCount = getRequiredMovementPatternCount({
+      slotPolicy: input.slotPolicy,
+      pattern,
+    });
+    while (
+      countWorkoutExercises(workout) > SESSION_CAPS.minExercises &&
+      countNonDirectionalPullPattern({
+        workout,
+        pattern,
+        directionalSupportMuscles,
+      }) > requiredPatternCount
+    ) {
+      const redundantAccessory = workout.accessories.find(
+        (exercise) =>
+          exerciseMatchesMovementPattern(exercise.exercise, pattern) &&
+          !exerciseHasAnyPrimaryMuscle(exercise.exercise, directionalSupportMuscles)
+      );
+      if (!redundantAccessory) {
+        break;
+      }
+
+      const candidateWorkout = removeAccessory(workout, redundantAccessory.exercise.id);
+      const supportQuality = evaluateUpperProtectedSupportQuality({
+        slotPolicy: input.slotPolicy,
+        contributionByMuscle: computeWorkoutContributionByMuscle(candidateWorkout),
+        protectedMuscles,
+      });
+      if (
+        !supportQuality.satisfied ||
+        !preservesSlotIdentity({ slotPolicy: input.slotPolicy, workout: candidateWorkout })
+      ) {
+        break;
+      }
+
+      workout = candidateWorkout;
+    }
+  }
+
+  return workout;
+}
+
+function reindexWorkoutSections(workout: WorkoutPlan): WorkoutPlan {
+  return {
+    ...workout,
+    mainLifts: workout.mainLifts.map((exercise, index) => ({
+      ...exercise,
+      orderIndex: index,
+    })),
+    accessories: workout.accessories.map((exercise, index) => ({
+      ...exercise,
+      orderIndex: workout.mainLifts.length + index,
+    })),
+  };
+}
+
+function preserveLowerPatternPrimacy(input: {
+  workout: WorkoutPlan;
+  slotPolicy: ReturnType<typeof resolveSessionSlotPolicy>["currentSession"];
+}): WorkoutPlan {
+  if (input.slotPolicy?.sessionShape?.id !== "lower_hinge_dominant") {
+    return input.workout;
+  }
+
+  const firstMainLift = input.workout.mainLifts[0];
+  if (firstMainLift && exerciseMatchesMovementPattern(firstMainLift.exercise, "hinge")) {
+    return input.workout;
+  }
+
+  const hingeMainLiftIndex = input.workout.mainLifts.findIndex(
+    (exercise) =>
+      (exercise.exercise.isCompound ?? false) &&
+      exerciseMatchesMovementPattern(exercise.exercise, "hinge")
+  );
+  if (hingeMainLiftIndex > 0) {
+    const hingeMainLift = input.workout.mainLifts[hingeMainLiftIndex];
+    if (!hingeMainLift) {
+      return input.workout;
+    }
+    return reindexWorkoutSections({
+      ...input.workout,
+      mainLifts: [
+        hingeMainLift,
+        ...input.workout.mainLifts.filter((_, index) => index !== hingeMainLiftIndex),
+      ],
+    });
+  }
+
+  const hingeAccessoryIndex = input.workout.accessories.findIndex(
+    (exercise) =>
+      (exercise.exercise.isCompound ?? false) &&
+      exerciseMatchesMovementPattern(exercise.exercise, "hinge")
+  );
+  if (hingeAccessoryIndex < 0 || !firstMainLift) {
+    return input.workout;
+  }
+
+  const hingeAccessory = input.workout.accessories[hingeAccessoryIndex];
+  if (!hingeAccessory) {
+    return input.workout;
+  }
+
+  return reindexWorkoutSections({
+    ...input.workout,
+    mainLifts: [
+      {
+        ...hingeAccessory,
+        isMainLift: true,
+        role: "main",
+      },
+      ...input.workout.mainLifts.slice(1),
+    ],
+    accessories: [
+      {
+        ...firstMainLift,
+        isMainLift: false,
+        role: "accessory",
+      },
+      ...input.workout.accessories.filter((_, index) => index !== hingeAccessoryIndex),
+    ],
+  });
+}
+
 export function preservesSlotIdentity(input: {
   slotPolicy: ReturnType<typeof resolveSessionSlotPolicy>["currentSession"];
   workout: WorkoutPlan;
@@ -897,6 +1191,8 @@ type ProjectedSlotCompositionEvaluation = {
   totalDeficitCount: number;
   totalDeficitToPracticalFloor: number;
   meaningfulSupportQuality: ReturnType<typeof evaluateUpperProtectedSupportQuality>;
+  upperSupportTypeQuality: ReturnType<typeof evaluateUpperSupportTypeQuality>;
+  lowerPatternPrimacy: ReturnType<typeof evaluateLowerPatternPrimacy>;
   coverage: ReturnType<typeof scoreProtectedCoverageContribution>;
   preferredSupportCoverage: ReturnType<typeof scorePreferredSupportContribution>;
   exerciseCount: number;
@@ -940,6 +1236,38 @@ function compareProjectedSlotCompositionEvaluation(
     compareLower(
       candidate.meaningfulSupportQuality.shortfallToFloor,
       best.meaningfulSupportQuality.shortfallToFloor
+    ),
+    compareLower(
+      candidate.upperSupportTypeQuality.pushShortfallToFloor,
+      best.upperSupportTypeQuality.pushShortfallToFloor
+    ),
+    compareHigher(
+      candidate.upperSupportTypeQuality.directionalCoveredMuscleCount,
+      best.upperSupportTypeQuality.directionalCoveredMuscleCount
+    ),
+    compareLower(
+      candidate.upperSupportTypeQuality.redundantPullSupportCount,
+      best.upperSupportTypeQuality.redundantPullSupportCount
+    ),
+    compareHigher(
+      candidate.upperSupportTypeQuality.directionalEffectiveSets,
+      best.upperSupportTypeQuality.directionalEffectiveSets
+    ),
+    compareHigher(
+      candidate.lowerPatternPrimacy.primaryPatternScore,
+      best.lowerPatternPrimacy.primaryPatternScore
+    ),
+    compareLower(
+      candidate.lowerPatternPrimacy.squatDominancePenalty,
+      best.lowerPatternPrimacy.squatDominancePenalty
+    ),
+    compareHigher(
+      candidate.lowerPatternPrimacy.hingeCompoundSetCount,
+      best.lowerPatternPrimacy.hingeCompoundSetCount
+    ),
+    compareLower(
+      candidate.lowerPatternPrimacy.squatCompoundSetCount,
+      best.lowerPatternPrimacy.squatCompoundSetCount
     ),
     compareHigher(
       candidate.meaningfulSupportQuality.totalEffectiveSets,
@@ -1028,6 +1356,15 @@ function selectBestProjectedSlotComposition(input: {
       contributionByMuscle: projectedContributionByMuscle,
       protectedMuscles: getProtectedWeekOneCoverageObligations(input.slotPolicy),
     });
+    const upperSupportTypeQuality = evaluateUpperSupportTypeQuality({
+      slotPolicy: input.slotPolicy,
+      workout: candidate.workout,
+      contributionByMuscle: projectedContributionByMuscle,
+    });
+    const lowerPatternPrimacy = evaluateLowerPatternPrimacy({
+      slotPolicy: input.slotPolicy,
+      workout: candidate.workout,
+    });
     const evaluationSummary = {
       relevantDeficitCount: relevantDeficits.length,
       relevantDeficitToPracticalFloor: sumProtectedDeficitToPracticalFloor(relevantDeficits),
@@ -1036,6 +1373,8 @@ function selectBestProjectedSlotComposition(input: {
         hypotheticalEvaluation.deficitsBelowPracticalFloor
       ),
       meaningfulSupportQuality,
+      upperSupportTypeQuality,
+      lowerPatternPrimacy,
       coverage,
       preferredSupportCoverage,
       exerciseCount: countWorkoutExercises(candidate.workout),
@@ -1129,6 +1468,10 @@ function projectSlotPlansPass(input: {
       slot: slotPolicy,
       protectedMuscles: slotProtectedCoverageMuscles,
     });
+    const primaryPreferredTargetMuscles =
+      slotPolicy?.sessionShape?.id === "lower_hinge_dominant"
+        ? slotPolicy.compoundBias?.preferredPrimaryMuscles ?? []
+        : [];
     const useStructuralUpperTargeting = slotPolicy?.sessionIntent === "upper";
     const composed = composeIntentSessionFromMappedContext(projectionContext.mapped, {
       intent: toSessionIntent(slot.intent),
@@ -1184,6 +1527,23 @@ function projectSlotPlansPass(input: {
         });
       }
     }
+    if (primaryPreferredTargetMuscles.length > 0) {
+      const primaryPreferredComposed = composeIntentSessionFromMappedContext(
+        projectionContext.mapped,
+        {
+          intent: toSessionIntent(slot.intent),
+          slotId: slot.slotId,
+          roleListIncomplete: true,
+          targetMuscles: primaryPreferredTargetMuscles,
+        }
+      );
+      if (!("error" in primaryPreferredComposed)) {
+        candidateWorkouts.push({
+          workout: primaryPreferredComposed.generation.workout,
+          protectedMuscles: projectionRepairMuscles,
+        });
+      }
+    }
     if (projectionRepairMuscles.length > 1 && !useStructuralUpperTargeting) {
       const focusedComposed = composeIntentSessionFromMappedContext(projectionContext.mapped, {
         intent: toSessionIntent(slot.intent),
@@ -1228,6 +1588,15 @@ function projectSlotPlansPass(input: {
       slotPolicy,
       exerciseLibrary: projectionContext.mapped.exerciseLibrary,
       protectedMuscles: slotProtectedCoverageMuscles,
+    });
+    selectedWorkout = trimRedundantUpperPullSupportProjection({
+      workout: selectedWorkout,
+      slotPolicy,
+      protectedMuscles: slotProtectedCoverageMuscles,
+    });
+    selectedWorkout = preserveLowerPatternPrimacy({
+      workout: selectedWorkout,
+      slotPolicy,
     });
     const selectedContribution = computeWorkoutContributionByMuscle(selectedWorkout);
     const slotProtectedCoverageSatisfied = projectionRepairMuscles.every(

@@ -17,11 +17,14 @@ import type { NextCycleSeedDraft } from "./mesocycle-handoff-contract";
 import { buildFallbackDesignFromDraft } from "./mesocycle-genesis-policy";
 import {
   buildMesocycleSlotPlanSeed,
+  evaluateLowerPatternPrimacy,
   evaluateUpperProtectedSupportQuality,
+  evaluateUpperSupportTypeQuality,
   projectSuccessorSlotPlansFromSnapshot,
 } from "./mesocycle-handoff-slot-plan-projection";
 import { resolveSessionSlotPolicy } from "@/lib/planning/session-slot-profile";
 import type { PreloadedGenerationSnapshot } from "./template-session/context-loader";
+import type { MovementPatternV2, WorkoutExercise, WorkoutPlan } from "@/lib/engine/types";
 
 function makeRawExercise(input: {
   id: string;
@@ -60,6 +63,70 @@ function makeRawExercise(input: {
       })),
     ],
     aliases: [],
+  };
+}
+
+function makeProjectedExercise(input: {
+  id: string;
+  name: string;
+  movementPatterns: MovementPatternV2[];
+  primaryMuscles: string[];
+  sets?: number;
+  isMainLift?: boolean;
+  isCompound?: boolean;
+}): WorkoutExercise {
+  return {
+    id: `${input.id}:projected`,
+    exercise: {
+      id: input.id,
+      name: input.name,
+      movementPatterns: input.movementPatterns,
+      splitTags: [],
+      jointStress: "medium",
+      isMainLiftEligible: input.isMainLift ?? false,
+      isCompound: input.isCompound ?? true,
+      fatigueCost: 3,
+      equipment: ["machine"],
+      primaryMuscles: input.primaryMuscles,
+      secondaryMuscles: [],
+      sfrScore: 4,
+      lengthPositionScore: 3,
+    },
+    orderIndex: 0,
+    isMainLift: input.isMainLift ?? false,
+    role: input.isMainLift ? "main" : "accessory",
+    sets: Array.from({ length: input.sets ?? 3 }, (_, index) => ({
+      setIndex: index + 1,
+      targetReps: 10,
+      role: input.isMainLift ? "main" as const : "accessory" as const,
+    })),
+  };
+}
+
+function makeProjectedWorkout(input: {
+  mainLifts?: WorkoutExercise[];
+  accessories?: WorkoutExercise[];
+}): WorkoutPlan {
+  const mainLifts = (input.mainLifts ?? []).map((exercise, index) => ({
+    ...exercise,
+    orderIndex: index,
+    isMainLift: true,
+    role: "main" as const,
+  }));
+  const accessories = (input.accessories ?? []).map((exercise, index) => ({
+    ...exercise,
+    orderIndex: mainLifts.length + index,
+    isMainLift: false,
+    role: "accessory" as const,
+  }));
+
+  return {
+    id: "projection-test",
+    scheduledDate: "2026-03-19",
+    warmup: [],
+    mainLifts,
+    accessories,
+    estimatedMinutes: 60,
   };
 }
 
@@ -520,6 +587,174 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     expect(meaningfulCoverage.satisfied).toBe(true);
   });
 
+  it("treats redundant pull work as lower-quality upper_a support repair than directional push support", () => {
+    const slotPolicy = resolveSessionSlotPolicy({
+      sessionIntent: "upper",
+      slotId: "upper_a",
+      slotSequence: {
+        slots: [
+          { slotId: "upper_a", intent: "UPPER", sequenceIndex: 0 },
+          { slotId: "upper_b", intent: "UPPER", sequenceIndex: 1 },
+        ],
+      },
+    }).currentSession;
+    const basePulls = [
+      makeProjectedExercise({
+        id: "row",
+        name: "Row",
+        movementPatterns: ["horizontal_pull"],
+        primaryMuscles: ["Upper Back", "Lats"],
+      }),
+      makeProjectedExercise({
+        id: "pulldown",
+        name: "Pulldown",
+        movementPatterns: ["vertical_pull"],
+        primaryMuscles: ["Lats"],
+      }),
+    ];
+    const pullBloatWorkout = makeProjectedWorkout({
+      mainLifts: [
+        makeProjectedExercise({
+          id: "bench",
+          name: "Bench Press",
+          movementPatterns: ["horizontal_push"],
+          primaryMuscles: ["Chest"],
+        }),
+      ],
+      accessories: [
+        ...basePulls,
+        makeProjectedExercise({
+          id: "extra-row",
+          name: "Extra Row",
+          movementPatterns: ["horizontal_pull"],
+          primaryMuscles: ["Upper Back", "Lats"],
+        }),
+      ],
+    });
+    const directionalRepairWorkout = makeProjectedWorkout({
+      mainLifts: [
+        makeProjectedExercise({
+          id: "bench",
+          name: "Bench Press",
+          movementPatterns: ["horizontal_push"],
+          primaryMuscles: ["Chest"],
+        }),
+      ],
+      accessories: [
+        ...basePulls,
+        makeProjectedExercise({
+          id: "triceps",
+          name: "Triceps Pressdown",
+          movementPatterns: ["isolation"],
+          primaryMuscles: ["Triceps"],
+          isCompound: false,
+        }),
+        makeProjectedExercise({
+          id: "rear-delt",
+          name: "Rear Delt Fly",
+          movementPatterns: ["isolation"],
+          primaryMuscles: ["Rear Delts"],
+          isCompound: false,
+        }),
+      ],
+    });
+
+    const pullBloat = evaluateUpperSupportTypeQuality({
+      slotPolicy,
+      workout: pullBloatWorkout,
+      contributionByMuscle: new Map([
+        ["Chest", 2],
+        ["Triceps", 0.8],
+        ["Rear Delts", 0.8],
+      ]),
+    });
+    const directionalRepair = evaluateUpperSupportTypeQuality({
+      slotPolicy,
+      workout: directionalRepairWorkout,
+      contributionByMuscle: new Map([
+        ["Chest", 2],
+        ["Triceps", 2],
+        ["Rear Delts", 2],
+      ]),
+    });
+
+    expect(pullBloat.redundantPullSupportCount).toBeGreaterThan(0);
+    expect(directionalRepair.redundantPullSupportCount).toBe(0);
+    expect(directionalRepair.pushShortfallToFloor).toBeLessThan(
+      pullBloat.pushShortfallToFloor
+    );
+    expect(directionalRepair.directionalCoveredMuscleCount).toBeGreaterThan(
+      pullBloat.directionalCoveredMuscleCount
+    );
+  });
+
+  it("scores lower_b as higher quality when the hinge is the primary compound anchor", () => {
+    const slotPolicy = resolveSessionSlotPolicy({
+      sessionIntent: "lower",
+      slotId: "lower_b",
+      slotSequence: {
+        slots: [
+          { slotId: "lower_a", intent: "LOWER", sequenceIndex: 0 },
+          { slotId: "lower_b", intent: "LOWER", sequenceIndex: 1 },
+        ],
+      },
+    }).currentSession;
+    const squatFirst = evaluateLowerPatternPrimacy({
+      slotPolicy,
+      workout: makeProjectedWorkout({
+        mainLifts: [
+          makeProjectedExercise({
+            id: "squat",
+            name: "Back Squat",
+            movementPatterns: ["squat"],
+            primaryMuscles: ["Quads"],
+            sets: 4,
+          }),
+        ],
+        accessories: [
+          makeProjectedExercise({
+            id: "rdl",
+            name: "Romanian Deadlift",
+            movementPatterns: ["hinge"],
+            primaryMuscles: ["Hamstrings"],
+            sets: 3,
+          }),
+        ],
+      }),
+    });
+    const hingeFirst = evaluateLowerPatternPrimacy({
+      slotPolicy,
+      workout: makeProjectedWorkout({
+        mainLifts: [
+          makeProjectedExercise({
+            id: "rdl",
+            name: "Romanian Deadlift",
+            movementPatterns: ["hinge"],
+            primaryMuscles: ["Hamstrings"],
+            sets: 4,
+          }),
+        ],
+        accessories: [
+          makeProjectedExercise({
+            id: "squat",
+            name: "Squat Support",
+            movementPatterns: ["squat"],
+            primaryMuscles: ["Quads"],
+            sets: 2,
+          }),
+        ],
+      }),
+    });
+
+    expect(hingeFirst.primaryPatternScore).toBeGreaterThan(squatFirst.primaryPatternScore);
+    expect(hingeFirst.squatDominancePenalty).toBeLessThan(
+      squatFirst.squatDominancePenalty
+    );
+    expect(hingeFirst.hingeCompoundSetCount).toBeGreaterThanOrEqual(
+      hingeFirst.squatCompoundSetCount
+    );
+  });
+
   it("is deterministic for the same snapshot and draft inputs", () => {
     const input = {
       userId: "user-1",
@@ -693,6 +928,10 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
         ["row", "seated-row", "pulldown"].includes(exerciseId)
       )
     ).toBe(true);
+    expect(
+      upperAExerciseIds.filter((exerciseId) => ["row", "seated-row"].includes(exerciseId))
+        .length
+    ).toBeLessThanOrEqual(1);
     expect(upperAExerciseIds.length).toBeLessThanOrEqual(6);
     expect(upperBExerciseIds.length).toBeLessThanOrEqual(6);
   });

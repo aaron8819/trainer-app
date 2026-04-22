@@ -194,6 +194,47 @@ function getNonAnchorOvershootTolerance(weeklyTarget: number): number {
   );
 }
 
+function isRepeatedLowerCollateralGluteSoftCap(input: {
+  objective: SelectionObjective;
+  anchorMuscle: string;
+  muscle: string;
+}): boolean {
+  const currentSlot = input.objective.slotPolicy?.currentSession;
+  if (
+    currentSlot?.sessionIntent !== "lower" ||
+    !currentSlot.repeatedSlot ||
+    !(
+      currentSlot.slotArchetype === "lower_squat_dominant" ||
+      currentSlot.slotArchetype === "lower_hinge_dominant"
+    )
+  ) {
+    return false;
+  }
+
+  return (
+    normalizeMuscleName(input.muscle) === "glutes" &&
+    normalizeMuscleName(input.anchorMuscle) !== "glutes"
+  );
+}
+
+function getCollateralOvershootTarget(input: {
+  muscle: Muscle;
+  lifecycleWeeklyTargets: Record<string, number>;
+  objective: SelectionObjective;
+  useGluteSoftCap: boolean;
+}): number {
+  const weeklyTarget = getEffectiveWeeklyTargetForMuscle(
+    input.muscle,
+    input.lifecycleWeeklyTargets,
+    input.objective
+  );
+  if (!input.useGluteSoftCap) {
+    return weeklyTarget;
+  }
+
+  return Math.min(weeklyTarget, VOLUME_LANDMARKS.Glutes?.mav ?? weeklyTarget);
+}
+
 function getAdaptiveCollateralAllowance(params: {
   anchorRemaining: number;
   anchorContributionPerSet: number;
@@ -439,25 +480,33 @@ export function resolveRoleFixtureSetTarget(
         continue;
       }
       const muscle = toMuscleLabel(muscleId);
-      const nonAnchorWeeklyTarget = getEffectiveWeeklyTargetForMuscle(
+      const useGluteSoftCap = isRepeatedLowerCollateralGluteSoftCap({
+        objective,
+        anchorMuscle,
+        muscle,
+      });
+      const nonAnchorWeeklyTarget = getCollateralOvershootTarget({
         muscle,
         lifecycleWeeklyTargets,
-        objective
-      );
+        objective,
+        useGluteSoftCap,
+      });
       const tolerance = getNonAnchorOvershootTolerance(nonAnchorWeeklyTarget);
       const projectedEffectiveTotal =
         (objective.volumeContext.effectiveActual.get(muscle) ?? 0) +
         (assignedEffectiveByMuscleInSession.get(muscle) ?? 0) +
         effectiveSets;
       const collateralContributionPerSet = setCount > 0 ? effectiveSets / setCount : 0;
-      const adaptiveAllowance = getAdaptiveCollateralAllowance({
-        anchorRemaining: hasMaterialDeficit(anchorRemaining, getNonAnchorOvershootTolerance(weeklyTarget))
-          ? anchorRemaining
-          : 0,
-        anchorContributionPerSet,
-        collateralContributionPerSet,
-        collateralWeeklyTarget: nonAnchorWeeklyTarget,
-      });
+      const adaptiveAllowance = useGluteSoftCap
+        ? 0
+        : getAdaptiveCollateralAllowance({
+            anchorRemaining: hasMaterialDeficit(anchorRemaining, getNonAnchorOvershootTolerance(weeklyTarget))
+              ? anchorRemaining
+              : 0,
+            anchorContributionPerSet,
+            collateralContributionPerSet,
+            collateralWeeklyTarget: nonAnchorWeeklyTarget,
+          });
       if (projectedEffectiveTotal > nonAnchorWeeklyTarget + tolerance + adaptiveAllowance) {
         limitingMuscles.push(muscle);
       }

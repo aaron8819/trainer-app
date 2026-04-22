@@ -542,7 +542,7 @@ describe("buildSelectionObjective continuity bias", () => {
       },
       compoundBias: {
         preferredMovementPatterns: ["hinge"],
-        preferredPrimaryMuscles: ["Hamstrings", "Glutes"],
+        preferredPrimaryMuscles: ["Hamstrings"],
       },
       sessionShape: {
         id: "lower_hinge_dominant",
@@ -560,7 +560,7 @@ describe("buildSelectionObjective continuity bias", () => {
             preferredMovementPatterns: ["hinge"],
             compatibleMovementPatterns: [],
             fallbackOnlyMovementPatterns: ["squat"],
-            preferredPrimaryMuscles: ["Hamstrings", "Glutes"],
+            preferredPrimaryMuscles: ["Hamstrings"],
           },
         ],
       },
@@ -862,6 +862,7 @@ describe("buildSelectionObjective continuity bias", () => {
 
     expect(selectedCompoundPatterns(lowerA).slice(0, 2)).toEqual(["squat", "squat"]);
     expect(selectedCompoundPatterns(lowerB).slice(0, 2)).toEqual(["hinge", "hinge"]);
+    expect(lowerB.selected.find((candidate) => candidate.exercise.id === "rdl")).toBeDefined();
     expect(
       lowerB.selected.some((candidate) =>
         (candidate.exercise.primaryMuscles ?? []).includes("Quads")

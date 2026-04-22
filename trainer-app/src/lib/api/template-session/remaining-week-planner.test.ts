@@ -115,6 +115,7 @@ describe("buildRemainingWeekVolumeContext", () => {
             sessionIntent: "lower",
             slotId: "lower_b",
             sequenceIndex: 3,
+            slotArchetype: "lower_hinge_dominant",
             continuityScope: "slot",
             repeatedSlot: {
               occurrenceIndex: 1,
@@ -122,7 +123,7 @@ describe("buildRemainingWeekVolumeContext", () => {
             },
             compoundBias: {
               preferredMovementPatterns: ["hinge"],
-              preferredPrimaryMuscles: ["Hamstrings", "Glutes"],
+              preferredPrimaryMuscles: ["Hamstrings"],
             },
           },
         ],
@@ -155,6 +156,9 @@ describe("buildRemainingWeekVolumeContext", () => {
     expect(
       remainingWeek.futureOpportunityUnits?.get("Hamstrings")
     ).toBeGreaterThan(remainingWeek.futureOpportunityUnits?.get("Quads") ?? 0);
+    expect(
+      remainingWeek.futureOpportunityUnits?.get("Hamstrings")
+    ).toBeGreaterThan(remainingWeek.futureOpportunityUnits?.get("Glutes") ?? 0);
     expect(
       remainingWeek.futureCapacity.get("Hamstrings")
     ).toBeGreaterThan(remainingWeek.futureCapacity.get("Quads") ?? 0);

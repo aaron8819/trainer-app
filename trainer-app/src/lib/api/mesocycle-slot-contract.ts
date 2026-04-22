@@ -200,7 +200,7 @@ function buildLowerRepeatedSemantics(prefersVertical: boolean): MesocycleSlotAut
           compatibleMovementPatterns: [],
           fallbackOnlyMovementPatterns: [prefersVertical ? "squat" : "hinge"],
           preferredPrimaryMuscles: prefersVertical
-            ? ["Hamstrings", "Glutes"]
+            ? ["Hamstrings"]
             : ["Quads"],
         },
       ],
@@ -506,6 +506,11 @@ function parseAuthoredSlotSemantics(value: unknown): MesocycleSlotAuthoredSemant
       return {
         ...parsed,
         supportCoverageContract: buildUpperRepeatedSemantics(true).supportCoverageContract,
+      };
+    case "lower_hinge_dominant":
+      return {
+        ...parsed,
+        primaryLaneContract: buildLowerRepeatedSemantics(true).primaryLaneContract,
       };
     default:
       return parsed;

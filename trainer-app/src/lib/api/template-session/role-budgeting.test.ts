@@ -13,20 +13,27 @@ function makeExercise(
   id: string,
   name: string,
   primaryMuscles: string[],
-  secondaryMuscles: string[] = []
+  secondaryMuscles: string[] = [],
+  options?: Partial<
+    Pick<
+      Exercise,
+      "movementPatterns" | "splitTags" | "isMainLiftEligible" | "isCompound" | "stimulusProfile"
+    >
+  >
 ): Exercise {
   return {
     id,
     name,
-    movementPatterns: ["horizontal_push"],
-    splitTags: ["push"],
+    movementPatterns: options?.movementPatterns ?? ["horizontal_push"],
+    splitTags: options?.splitTags ?? ["push"],
     jointStress: "medium",
-    isMainLiftEligible: true,
-    isCompound: true,
+    isMainLiftEligible: options?.isMainLiftEligible ?? true,
+    isCompound: options?.isCompound ?? true,
     fatigueCost: 3,
     equipment: ["machine"],
     primaryMuscles,
     secondaryMuscles,
+    stimulusProfile: options?.stimulusProfile,
     sfrScore: 3,
     lengthPositionScore: 3,
   };
@@ -108,6 +115,24 @@ function makeMappedContext(
       body_part: new Map(),
     },
   };
+}
+
+function attachRepeatedLowerSlotSequence(mapped: MappedGenerationContext): void {
+  mapped.mappedConstraints.splitType = "upper_lower";
+  mapped.activeMesocycle = {
+    id: "meso-1",
+    slotSequenceJson: {
+      version: 1,
+      source: "handoff_draft",
+      sequenceMode: "ordered_flexible",
+      slots: [
+        { slotId: "upper_a", intent: "UPPER" },
+        { slotId: "lower_a", intent: "LOWER" },
+        { slotId: "upper_b", intent: "UPPER" },
+        { slotId: "lower_b", intent: "LOWER" },
+      ],
+    },
+  } as unknown as MappedGenerationContext["activeMesocycle"];
 }
 
 describe("role budgeting with remaining-week planning", () => {
@@ -354,5 +379,112 @@ describe("role budgeting with remaining-week planning", () => {
     expect(preferredDecision.plannedSets).toBe(2);
     expect(nonPreferredDecision.plannedSets).toBe(1);
     expect(preferredDecision.plannedSets).toBeGreaterThan(nonPreferredDecision.plannedSets);
+  });
+
+  it("reduces collateral glute overshoot in repeated lower role budgeting", () => {
+    const mapped = makeMappedContext(["upper", "lower", "upper", "lower"]);
+    attachRepeatedLowerSlotSequence(mapped);
+    mapped.lifecycleVolumeTargets = {
+      Quads: 12,
+      Hamstrings: 16,
+      Glutes: 10,
+      Calves: 8,
+    };
+
+    const hinge = makeExercise(
+      "rdl",
+      "Romanian Deadlift",
+      ["Hamstrings"],
+      ["Glutes"],
+      {
+        movementPatterns: ["hinge"],
+        splitTags: ["legs"],
+        stimulusProfile: { hamstrings: 1, glutes: 0.8 },
+      }
+    );
+    mapped.exerciseLibrary = [hinge] as MappedGenerationContext["exerciseLibrary"];
+
+    const objective = buildSelectionObjective(mapped, "lower", undefined, {
+      sessionSlotId: "lower_b",
+    });
+    objective.volumeContext.effectiveActual.set("Glutes", 6.8);
+    const roleMap = new Map([[hinge.id, "CORE_COMPOUND" as const]]);
+    const decision = resolveRoleFixtureSetTarget(
+      hinge,
+      hinge.id,
+      5,
+      objective,
+      "lower",
+      false,
+      mapped.lifecycleVolumeTargets,
+      new Map(),
+      buildRemainingRoleFixturesByAnchor(
+        [hinge.id],
+        new Map([[hinge.id, hinge]]),
+        roleMap,
+        objective,
+        "lower"
+      ),
+      "CORE_COMPOUND"
+    );
+
+    expect(decision.plannedSets).toBe(2);
+    expect(decision.overshootAdjustmentsApplied).toMatchObject({
+      initialSetTarget: 5,
+      finalSetTarget: 2,
+      reductionsApplied: 3,
+      limitingMuscles: ["Glutes"],
+    });
+  });
+
+  it("keeps a minimum viable lower hinge even when collateral glutes remain near the cap", () => {
+    const mapped = makeMappedContext(["upper", "lower", "upper", "lower"]);
+    attachRepeatedLowerSlotSequence(mapped);
+    mapped.lifecycleVolumeTargets = {
+      Quads: 12,
+      Hamstrings: 16,
+      Glutes: 10,
+      Calves: 8,
+    };
+
+    const hinge = makeExercise(
+      "rdl",
+      "Romanian Deadlift",
+      ["Hamstrings"],
+      ["Glutes"],
+      {
+        movementPatterns: ["hinge"],
+        splitTags: ["legs"],
+        stimulusProfile: { hamstrings: 1, glutes: 0.8 },
+      }
+    );
+    mapped.exerciseLibrary = [hinge] as MappedGenerationContext["exerciseLibrary"];
+
+    const objective = buildSelectionObjective(mapped, "lower", undefined, {
+      sessionSlotId: "lower_b",
+    });
+    objective.volumeContext.effectiveActual.set("Glutes", 8.8);
+    const roleMap = new Map([[hinge.id, "CORE_COMPOUND" as const]]);
+    const decision = resolveRoleFixtureSetTarget(
+      hinge,
+      hinge.id,
+      5,
+      objective,
+      "lower",
+      false,
+      mapped.lifecycleVolumeTargets,
+      new Map(),
+      buildRemainingRoleFixturesByAnchor(
+        [hinge.id],
+        new Map([[hinge.id, hinge]]),
+        roleMap,
+        objective,
+        "lower"
+      ),
+      "CORE_COMPOUND"
+    );
+
+    expect(decision.plannedSets).toBe(1);
+    expect(decision.overshootAdjustmentsApplied?.limitingMuscles).toEqual(["Glutes"]);
   });
 });

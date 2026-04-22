@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  resolveMesocycleSlotContract,
+} from "@/lib/api/mesocycle-slot-contract";
+import {
   classifyExerciseForCompoundLane,
   doesExerciseSatisfyRequiredSessionShapePattern,
   getFutureSlotOpportunityBias,
@@ -191,7 +194,7 @@ describe("resolveSessionSlotPolicy", () => {
       },
       compoundBias: {
         preferredMovementPatterns: ["hinge"],
-        preferredPrimaryMuscles: ["Hamstrings", "Glutes"],
+        preferredPrimaryMuscles: ["Hamstrings"],
       },
       sessionShape: {
         id: "lower_hinge_dominant",
@@ -209,7 +212,7 @@ describe("resolveSessionSlotPolicy", () => {
             preferredMovementPatterns: ["hinge"],
             compatibleMovementPatterns: [],
             fallbackOnlyMovementPatterns: ["squat"],
-            preferredPrimaryMuscles: ["Hamstrings", "Glutes"],
+            preferredPrimaryMuscles: ["Hamstrings"],
           },
         ],
       },
@@ -345,6 +348,7 @@ describe("resolveSessionSlotPolicy", () => {
     }
 
     expect(getFutureSlotOpportunityBias("Hamstrings", lowerB)).toBeGreaterThan(1);
+    expect(getFutureSlotOpportunityBias("Glutes", lowerB)).toBe(1);
     expect(getFutureSlotOpportunityBias("Quads", lowerB)).toBe(1);
   });
 
@@ -468,6 +472,49 @@ describe("resolveSessionSlotPolicy", () => {
         ["Chest", "Side Delts", "Triceps", "Hamstrings", "Calves"]
       )
     ).toEqual(["Hamstrings", "Calves"]);
+  });
+
+  it("normalizes persisted lower_b primary semantics to hamstring-led hinge", () => {
+    const persistedSlotContract = resolveMesocycleSlotContract({
+      slotSequenceJson: {
+        version: 1,
+        source: "handoff_draft",
+        sequenceMode: "ordered_flexible",
+        slots: [
+          { slotId: "lower_a", intent: "LOWER" },
+          {
+            slotId: "lower_b",
+            intent: "LOWER",
+            authoredSemantics: {
+              slotArchetype: "lower_hinge_dominant",
+              continuityScope: "slot",
+              primaryLaneContract: {
+                mode: "lane_control",
+                lanes: [
+                  {
+                    key: "primary",
+                    preferredMovementPatterns: ["hinge"],
+                    compatibleMovementPatterns: [],
+                    fallbackOnlyMovementPatterns: ["squat"],
+                    preferredPrimaryMuscles: ["Hamstrings", "Glutes"],
+                  },
+                ],
+              },
+              supportCoverageContract: null,
+            },
+          },
+        ],
+      },
+    });
+
+    const lowerB = resolveSessionSlotPolicy({
+      sessionIntent: "lower",
+      slotId: "lower_b",
+      slotSequence: persistedSlotContract,
+    }).currentSession;
+
+    expect(lowerB?.compoundBias?.preferredPrimaryMuscles).toEqual(["Hamstrings"]);
+    expect(lowerB?.compoundControl?.lanes[0]?.preferredPrimaryMuscles).toEqual(["Hamstrings"]);
   });
 
   it("prioritizes protected coverage muscles on the current slot session shape only when requested", () => {

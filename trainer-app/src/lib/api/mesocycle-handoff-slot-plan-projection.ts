@@ -42,6 +42,11 @@ import {
 } from "./mesocycle-handoff-projection";
 import type { MesocycleSlotSequence } from "./mesocycle-slot-contract";
 import { getWeeklyVolumeTarget } from "./mesocycle-lifecycle";
+import { SESSION_CAPS } from "./template-session/selection-adapter";
+import {
+  ACCESSORY_LANE_MUSCLES,
+  selectAccessoryLaneInsertion,
+} from "@/lib/planning/accessory-lane";
 
 export type ProjectedSuccessorSlotPlanExercise = {
   exerciseId: string;
@@ -189,6 +194,35 @@ function computeWorkoutContributionByMuscle(workout: WorkoutPlan): Map<string, n
   }
 
   return contributionByMuscle;
+}
+
+function computeProjectedWeeklyContributionByMuscle(input: {
+  projectedSlots: ReadonlyArray<ProjectedSlotWorkout>;
+  currentSlotContribution: ReadonlyMap<string, number>;
+}): Map<string, number> {
+  const contributionByMuscle = new Map<string, number>();
+
+  for (const projectedSlot of input.projectedSlots) {
+    for (const [muscle, effectiveSets] of projectedSlot.projectedContributionByMuscle) {
+      contributionByMuscle.set(muscle, (contributionByMuscle.get(muscle) ?? 0) + effectiveSets);
+    }
+  }
+  for (const [muscle, effectiveSets] of input.currentSlotContribution) {
+    contributionByMuscle.set(muscle, (contributionByMuscle.get(muscle) ?? 0) + effectiveSets);
+  }
+
+  return contributionByMuscle;
+}
+
+function buildAccessoryLaneWeeklyTargets(
+  activeMesocycle: NonNullable<MappedGenerationContext["activeMesocycle"]>
+): Map<string, number> {
+  return new Map(
+    ACCESSORY_LANE_MUSCLES.map((muscle) => [
+      muscle,
+      getWeeklyVolumeTarget(activeMesocycle, muscle, 1),
+    ])
+  );
 }
 
 function buildSlotSequenceEntries(
@@ -983,6 +1017,8 @@ function projectSlotPlansPass(input: {
   const projectedSlots: ProjectedSlotWorkout[] = [];
   const slotRepairMuscles: Record<string, ProtectedWeekOneCoverageMuscle[]> = {};
   const slotSequenceEntries = buildSlotSequenceEntries(slotSequence);
+  const accessoryLaneWeeklyTargets = buildAccessoryLaneWeeklyTargets(activeMesocycle);
+  let accessoryLaneInsertionCount = 0;
 
   for (const [index, slot] of slotSequence.entries()) {
     if (slot.intent === "BODY_PART") {
@@ -1115,7 +1151,7 @@ function projectSlotPlansPass(input: {
         });
       }
     }
-    const selectedWorkout = rebalanceUpperSupportProjection({
+    let selectedWorkout = rebalanceUpperSupportProjection({
       workout: selectBestProjectedSlotComposition({
         candidateWorkouts,
         prioritizedProtectedMuscles: projectionRepairMuscles,
@@ -1129,6 +1165,40 @@ function projectSlotPlansPass(input: {
       slotPolicy,
       exerciseLibrary: projectionContext.mapped.exerciseLibrary,
     });
+    const selectedContribution = computeWorkoutContributionByMuscle(selectedWorkout);
+    const slotProtectedCoverageSatisfied = projectionRepairMuscles.every(
+      (muscle) => (selectedContribution.get(muscle) ?? 0) > 0
+    );
+    const accessoryLaneDecision = selectAccessoryLaneInsertion({
+      slotIntent: toSessionIntent(slot.intent),
+      workout: selectedWorkout,
+      exerciseLibrary: projectionContext.mapped.exerciseLibrary,
+      weeklyTargetByMuscle: accessoryLaneWeeklyTargets,
+      projectedEffectiveSetsByMuscle: computeProjectedWeeklyContributionByMuscle({
+        projectedSlots,
+        currentSlotContribution: selectedContribution,
+      }),
+      maxExercises: SESSION_CAPS.maxExercises,
+      weeklyInsertionCount: accessoryLaneInsertionCount,
+      slotInsertionCount: 0,
+      slotQualityPreserved:
+        slotProtectedCoverageSatisfied &&
+        preservesSlotIdentity({ slotPolicy, workout: selectedWorkout }),
+    });
+    if (accessoryLaneDecision.insert) {
+      const candidateWorkout = appendAccessory(
+        selectedWorkout,
+        buildSupportAccessoryExercise({
+          exercise: accessoryLaneDecision.insertion.exercise,
+          template: selectedWorkout.accessories.at(-1),
+          orderIndex: selectedWorkout.mainLifts.length + selectedWorkout.accessories.length,
+        })
+      );
+      if (preservesSlotIdentity({ slotPolicy, workout: candidateWorkout })) {
+        selectedWorkout = candidateWorkout;
+        accessoryLaneInsertionCount += 1;
+      }
+    }
 
     const candidateProjectedSlot: ProjectedSlotWorkout = {
       slotPlan: mapProjectedWorkoutToSlotPlan({

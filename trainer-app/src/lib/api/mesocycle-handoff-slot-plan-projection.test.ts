@@ -16,6 +16,7 @@ vi.mock("./template-session", async (importOriginal) => {
 import type { NextCycleSeedDraft } from "./mesocycle-handoff-contract";
 import { buildFallbackDesignFromDraft } from "./mesocycle-genesis-policy";
 import {
+  buildMesocycleSlotPlanSeed,
   projectSuccessorSlotPlansFromSnapshot,
 } from "./mesocycle-handoff-slot-plan-projection";
 import type { PreloadedGenerationSnapshot } from "./template-session/context-loader";
@@ -494,6 +495,36 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     const second = projectSuccessorSlotPlansFromSnapshot(input);
 
     expect(first).toEqual(second);
+  });
+
+  it("keeps projected slot-plan seeds on the existing minimal exercise shape", () => {
+    const design = buildDesign();
+    const slotSequence = {
+      version: 1 as const,
+      source: "handoff_draft" as const,
+      sequenceMode: "ordered_flexible" as const,
+      slots: design.structure.slots,
+    };
+    const seed = buildMesocycleSlotPlanSeed({
+      slotSequence,
+      slotPlans: design.structure.slots.map((slot, index) => ({
+        slotId: slot.slotId,
+        intent: slot.intent,
+        exercises: [
+          {
+            exerciseId: index === 0 ? "plank" : `exercise-${index}`,
+            role: "ACCESSORY",
+          },
+        ],
+      })),
+    });
+
+    expect(seed.slots[0]?.exercises[0]).toEqual({
+      exerciseId: "plank",
+      role: "ACCESSORY",
+    });
+    expect(seed.slots[0]?.exercises[0]).not.toHaveProperty("setCount");
+    expect(seed.slots[0]).not.toHaveProperty("intent");
   });
 
   it("projects repeated intents into distinct slot plans in slot order", () => {

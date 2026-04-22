@@ -665,6 +665,134 @@ describe("buildWorkoutAuditArtifact", () => {
     });
   });
 
+  it("serializes weekly-retro projection delivery drift when present", () => {
+    const artifact = buildWorkoutAuditArtifact(
+      {
+        mode: "weekly-retro",
+        userId: "user-1",
+        week: 3,
+        mesocycleId: "meso-1",
+        projectionArtifactPath: "C:\\artifacts\\projection.json",
+      },
+      {
+        ...baseRun,
+        context: {
+          mode: "weekly-retro",
+          requestedMode: "weekly-retro",
+          userId: "user-1",
+          plannerDiagnosticsMode: "standard",
+          weeklyRetro: {
+            week: 3,
+            mesocycleId: "meso-1",
+            projectionArtifactPath: "C:\\artifacts\\projection.json",
+          },
+        },
+        generationResult: undefined,
+        weeklyRetro: {
+          version: 1,
+          week: 3,
+          mesocycleId: "meso-1",
+          executiveSummary: {
+            status: "stable",
+            generatedLayerCoverage: "full",
+            sessionCount: 3,
+            advancingSessionCount: 3,
+            progressionEligibleCount: 3,
+            progressionExcludedCount: 0,
+            driftSessionCount: 0,
+            belowMevCount: 0,
+            underTargetCount: 0,
+            overMavCount: 0,
+            slotIdentityIssueCount: 0,
+            highlights: [],
+          },
+          loadCalibration: {
+            status: "aligned",
+            comparableSessionCount: 3,
+            driftSessionCount: 0,
+            prescriptionChangeCount: 0,
+            selectionDriftCount: 0,
+            legacyLimitedSessionCount: 0,
+            highlightedSessions: [],
+          },
+          sessionExecution: {
+            summary: {
+              sessionCount: 3,
+              advancingCount: 3,
+              gapFillCount: 0,
+              supplementalCount: 0,
+              deloadCount: 0,
+              progressionEligibleCount: 3,
+              progressionExcludedCount: 0,
+              weekCloseRelevantCount: 0,
+              persistedSnapshotCount: 3,
+              reconstructedSnapshotCount: 0,
+              mutationDriftCount: 0,
+              statusCounts: { COMPLETED: 3 },
+              intentCounts: { PUSH: 1, PULL: 1, LEGS: 1 },
+            },
+            sessions: [],
+          },
+          slotBalance: {
+            status: "balanced",
+            advancingSessionCount: 3,
+            identifiedSlotCount: 3,
+            missingSlotIdentityCount: 0,
+            duplicateSlotCount: 0,
+            intentMismatchCount: 0,
+            missingSlotIdentityWorkoutIds: [],
+            duplicateSlots: [],
+            intentMismatches: [],
+          },
+          volumeTargeting: {
+            status: "within_expected_band",
+            belowMev: [],
+            underTargetOnly: [],
+            overMav: [],
+            overTargetOnly: [],
+            muscles: [],
+          },
+          projectionDeliveryDrift: {
+            status: "comparable",
+            baseline: {
+              generatedAt: "2026-04-01T12:00:00.000Z",
+              projectedSessionCount: 2,
+            },
+            summary: {
+              direction: "aligned",
+              materialUnderdeliveryCount: 0,
+              materialOverdeliveryCount: 0,
+              netEffectiveSetDelta: 0,
+            },
+            muscles: [],
+            limitations: [],
+          },
+          interventions: [],
+          rootCauses: [],
+          recommendedPriorities: [],
+        },
+      }
+    );
+
+    expect(artifact.mode).toBe("weekly-retro");
+    expect(artifact.weeklyRetro?.projectionDeliveryDrift).toEqual({
+      status: "comparable",
+      baseline: {
+        generatedAt: "2026-04-01T12:00:00.000Z",
+        projectedSessionCount: 2,
+      },
+      summary: {
+        direction: "aligned",
+        materialUnderdeliveryCount: 0,
+        materialOverdeliveryCount: 0,
+        netEffectiveSetDelta: 0,
+      },
+      muscles: [],
+      limitations: [],
+    });
+    expect(artifact.projectedWeekVolume).toBeUndefined();
+  });
+
   it("serializes current-week-audit payloads as projected-week output plus guidance fields", () => {
     const artifact = buildWorkoutAuditArtifact(
       {

@@ -67,6 +67,7 @@ export type WorkoutAuditRequest = {
   mesocycleId?: string;
   workoutId?: string;
   exerciseId?: string;
+  projectionArtifactPath?: string;
   plannerDiagnosticsMode?: PlannerDiagnosticsMode;
   sanitizationLevel?: "none" | "pii-safe";
 };
@@ -90,6 +91,7 @@ export type WorkoutAuditContext = {
   weeklyRetro?: {
     week: number;
     mesocycleId: string;
+    projectionArtifactPath?: string;
   };
   projectedWeekVolume?: {
     enabled: true;
@@ -228,6 +230,30 @@ export type WeeklyRetroAuditVolumeRow = {
   }>;
 };
 
+export type ProjectionDeliveryDriftPayload = {
+  status: "comparable" | "limited" | "not_available";
+  baseline: {
+    generatedAt: string;
+    projectedSessionCount: number;
+  };
+  summary: {
+    direction: "aligned" | "underdelivery" | "overdelivery" | "mixed";
+    materialUnderdeliveryCount: number;
+    materialOverdeliveryCount: number;
+    netEffectiveSetDelta: number;
+  };
+  muscles: Array<{
+    muscle: string;
+    projectedEffectiveSets: number;
+    actualEffectiveSets: number;
+    delta: number;
+    percentDelta: number | null;
+    classification: "aligned" | "underdelivered" | "overdelivered";
+    actualTargetStatus: string;
+  }>;
+  limitations: string[];
+};
+
 export type WeeklyRetroAuditSessionExecutionRow = {
   workoutId: string;
   scheduledDate: string;
@@ -309,6 +335,7 @@ export type WeeklyRetroAuditPayload = {
     overTargetOnly: string[];
     muscles: WeeklyRetroAuditVolumeRow[];
   };
+  projectionDeliveryDrift?: ProjectionDeliveryDriftPayload;
   interventions: Array<{
     priority: "high" | "medium" | "low";
     kind:

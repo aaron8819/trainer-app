@@ -75,8 +75,10 @@ export async function runWorkoutAuditGeneration(
       generatedAt: new Date().toISOString(),
       weeklyRetro: await buildWeeklyRetroAuditPayload({
         userId: context.userId,
+        ownerEmail: context.ownerEmail,
         week: context.weeklyRetro!.week,
         mesocycleId: context.weeklyRetro!.mesocycleId,
+        projectionArtifactPath: context.weeklyRetro!.projectionArtifactPath,
       }),
     };
   }

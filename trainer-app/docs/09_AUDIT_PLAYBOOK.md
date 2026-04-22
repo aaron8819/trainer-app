@@ -118,6 +118,12 @@ Command pattern:
 npm run audit:workout -- --env-file .env.local --mode weekly-retro --user-id <user-id> --week <week> --mesocycle-id <mesocycle-id>
 ```
 
+Optional projection-delivery comparison:
+
+```powershell
+npm run audit:workout -- --env-file .env.local --mode weekly-retro --user-id <user-id> --week <week> --mesocycle-id <mesocycle-id> --projection-artifact <projected-week-volume-artifact-path>
+```
+
 Fast operator loop:
 
 ```powershell
@@ -130,6 +136,7 @@ Inspect first:
 - `weeklyRetro.sessionExecution`
 - `weeklyRetro.slotBalance`
 - `weeklyRetro.volumeTargeting`
+- `weeklyRetro.projectionDeliveryDrift` when a prior projected-week-volume artifact was provided
 - `weeklyRetro.recommendedPriorities`
 
 Common red flags:

@@ -414,6 +414,121 @@ describe("buildWeeklyRetroAuditPayload", () => {
     expect(payload.recommendedPriorities[0]).toBe(
       "Repair missing session-slot receipts before trusting slot-balance conclusions."
     );
+    expect(payload.projectionDeliveryDrift).toBeUndefined();
+  });
+
+  it("attaches projection delivery drift when a projection artifact is provided", async () => {
+    const payload = await buildWeeklyRetroAuditPayload({
+      userId: "user-1",
+      ownerEmail: "owner@test.local",
+      week: 3,
+      mesocycleId: "meso-1",
+      projectionArtifact: {
+        version: 4,
+        generatedAt: "2026-04-01T12:00:00.000Z",
+        mode: "projected-week-volume",
+        identity: {
+          userId: "user-1",
+          ownerEmail: "owner@test.local",
+        },
+        projectedWeekVolume: {
+          version: 1,
+          currentWeek: {
+            mesocycleId: "meso-1",
+            week: 3,
+            phase: "accumulation",
+            blockType: "accumulation",
+          },
+          projectionNotes: [],
+          completedVolumeByMuscle: {},
+          projectedSessions: [
+            {
+              slotId: "push_a",
+              intent: "push",
+              isNext: true,
+              exerciseCount: 5,
+              totalSets: 15,
+              projectedContributionByMuscle: {},
+            },
+          ],
+          fullWeekByMuscle: [
+            {
+              muscle: "Chest",
+              completedEffectiveSets: 6,
+              projectedNextSessionEffectiveSets: 2,
+              projectedRemainingWeekEffectiveSets: 2,
+              projectedFullWeekEffectiveSets: 10,
+              weeklyTarget: 10,
+              mev: 8,
+              mav: 16,
+              deltaToTarget: 0,
+              deltaToMev: 2,
+              deltaToMav: -6,
+            },
+            {
+              muscle: "Lats",
+              completedEffectiveSets: 6,
+              projectedNextSessionEffectiveSets: 2,
+              projectedRemainingWeekEffectiveSets: 2,
+              projectedFullWeekEffectiveSets: 10,
+              weeklyTarget: 10,
+              mev: 8,
+              mav: 16,
+              deltaToTarget: 0,
+              deltaToMev: 2,
+              deltaToMav: -6,
+            },
+          ],
+        },
+      },
+    });
+
+    expect(payload.projectionDeliveryDrift).toMatchObject({
+      status: "comparable",
+      baseline: {
+        generatedAt: "2026-04-01T12:00:00.000Z",
+        projectedSessionCount: 1,
+      },
+      summary: {
+        direction: "mixed",
+        materialUnderdeliveryCount: 1,
+        materialOverdeliveryCount: 1,
+        netEffectiveSetDelta: 3,
+      },
+    });
+    expect(payload.projectionDeliveryDrift?.muscles).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          muscle: "Chest",
+          projectedEffectiveSets: 10,
+          actualEffectiveSets: 6,
+          classification: "underdelivered",
+        }),
+        expect.objectContaining({
+          muscle: "Lats",
+          projectedEffectiveSets: 10,
+          actualEffectiveSets: 17,
+          classification: "overdelivered",
+        }),
+      ])
+    );
+  });
+
+  it("returns not_available drift when a provided projection artifact path cannot be read", async () => {
+    const payload = await buildWeeklyRetroAuditPayload({
+      userId: "user-1",
+      week: 3,
+      mesocycleId: "meso-1",
+      projectionArtifactPath: "C:\\missing\\projection.json",
+    });
+
+    expect(payload.projectionDeliveryDrift).toMatchObject({
+      status: "not_available",
+      muscles: [],
+    });
+    expect(payload.projectionDeliveryDrift?.limitations[0]).toContain(
+      "Projection artifact could not be read:"
+    );
   });
 
   it("uses the exposed muscle scope so Core absorbs Abs and no separate Abs row is emitted", async () => {

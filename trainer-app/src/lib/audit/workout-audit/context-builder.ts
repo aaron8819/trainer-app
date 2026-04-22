@@ -70,6 +70,7 @@ export async function buildWorkoutAuditContext(
       weeklyRetro: {
         week: request.week as number,
         mesocycleId: request.mesocycleId,
+        projectionArtifactPath: request.projectionArtifactPath,
       },
     };
   }

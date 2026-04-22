@@ -415,8 +415,10 @@ describe("runWorkoutAuditGeneration", () => {
 
     expect(mocks.buildWeeklyRetroAuditPayload).toHaveBeenCalledWith({
       userId: "user-1",
+      ownerEmail: undefined,
       week: 2,
       mesocycleId: "meso-1",
+      projectionArtifactPath: undefined,
     });
     expect(mocks.generateSessionFromIntent).not.toHaveBeenCalled();
     expect(mocks.generateDeloadSessionFromIntent).not.toHaveBeenCalled();

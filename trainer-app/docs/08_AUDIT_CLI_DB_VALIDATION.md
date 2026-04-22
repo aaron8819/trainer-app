@@ -72,6 +72,12 @@ Retrospective completed-week volume and slot review:
 npm run audit:workout -- --mode weekly-retro --user-id <user-id> --week <week> --mesocycle-id <mesocycle-id>
 ```
 
+Retrospective projection-delivery drift review from a prior projected-week-volume artifact:
+
+```powershell
+npm run audit:workout -- --mode weekly-retro --user-id <user-id> --week <week> --mesocycle-id <mesocycle-id> --projection-artifact <projected-week-volume-artifact-path>
+```
+
 Future week for one explicit intent:
 
 ```powershell
@@ -105,6 +111,7 @@ Use this section as a quick validation smoke-check only. Full artifact interpret
 - `projectedWeekVolume.interventionHints`
 - `projectedWeekVolume.sessionRisks`
 - `projectedWeekVolume.fullWeekByMuscle[*]`
+- `weeklyRetro.projectionDeliveryDrift` when `--projection-artifact` is provided
 
 ## Expected Hardening Checks
 

@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { prisma } from "@/lib/db/prisma";
 import { getExposedVolumeLandmarkEntries } from "@/lib/engine/volume-landmarks";
 import { readSessionSlotSnapshot } from "@/lib/evidence/session-decision-receipt";
@@ -5,6 +6,7 @@ import { getWeeklyVolumeTarget } from "@/lib/api/mesocycle-lifecycle-math";
 import { loadMesocycleWeekMuscleVolume } from "@/lib/api/weekly-volume";
 import { WEEKLY_RETRO_AUDIT_PAYLOAD_VERSION } from "./constants";
 import { buildHistoricalWeekAuditPayload } from "./historical-week";
+import { buildProjectionDeliveryDrift } from "./projection-drift";
 import type {
   HistoricalWeekAuditSession,
   WeeklyRetroAuditPayload,
@@ -85,8 +87,11 @@ function sortVolumeRows(
 
 export async function buildWeeklyRetroAuditPayload(input: {
   userId: string;
+  ownerEmail?: string;
   week: number;
   mesocycleId: string;
+  projectionArtifact?: unknown;
+  projectionArtifactPath?: string;
 }): Promise<WeeklyRetroAuditPayload> {
   const [historicalWeek, mesocycle] = await Promise.all([
     buildHistoricalWeekAuditPayload({
@@ -441,7 +446,7 @@ export async function buildWeeklyRetroAuditPayload(input: {
     })
     .map((entry) => entry.summary);
 
-  return {
+  const payload: WeeklyRetroAuditPayload = {
     version: WEEKLY_RETRO_AUDIT_PAYLOAD_VERSION,
     week: input.week,
     mesocycleId: input.mesocycleId,
@@ -517,4 +522,31 @@ export async function buildWeeklyRetroAuditPayload(input: {
     rootCauses,
     recommendedPriorities,
   };
+
+  if (input.projectionArtifact !== undefined || input.projectionArtifactPath) {
+    let projectionArtifact = input.projectionArtifact;
+    let projectionArtifactReadError: string | undefined;
+
+    if (projectionArtifact === undefined && input.projectionArtifactPath) {
+      try {
+        projectionArtifact = JSON.parse(
+          await readFile(input.projectionArtifactPath, "utf8")
+        );
+      } catch (error) {
+        projectionArtifactReadError = error instanceof Error ? error.message : String(error);
+      }
+    }
+
+    payload.projectionDeliveryDrift = buildProjectionDeliveryDrift({
+      projectionArtifact,
+      projectionArtifactReadError,
+      weeklyRetro: payload,
+      actualIdentity: {
+        userId: input.userId,
+        ownerEmail: input.ownerEmail,
+      },
+    });
+  }
+
+  return payload;
 }

@@ -416,13 +416,22 @@ export function buildWeeklyRetroOperatorSummary(input: {
       .map((entry) => entry.kind)
       .join(", ") || "none";
   const recommendation = weeklyRetro.recommendedPriorities[0] ?? "no_further_action";
+  const projectionDrift = weeklyRetro.projectionDeliveryDrift;
 
-  return [
+  const lines = [
     `[workout-audit:retro] load_calibration=${weeklyRetro.loadCalibration.status} comparable_sessions=${weeklyRetro.loadCalibration.comparableSessionCount} drift_sessions=${weeklyRetro.loadCalibration.driftSessionCount} legacy_limited=${weeklyRetro.loadCalibration.legacyLimitedSessionCount}`,
     `[workout-audit:retro] under_target=${underTargetRows || "none"}`,
     `[workout-audit:retro] interventions=${interventions}`,
     `[workout-audit:retro] recommendation=${recommendation}`,
   ];
+
+  if (projectionDrift) {
+    lines.push(
+      `[workout-audit:retro] projection_delivery_drift=${projectionDrift.status} direction=${projectionDrift.summary.direction} under=${projectionDrift.summary.materialUnderdeliveryCount} over=${projectionDrift.summary.materialOverdeliveryCount} net=${formatSignedSetDelta(projectionDrift.summary.netEffectiveSetDelta)}`
+    );
+  }
+
+  return lines;
 }
 
 async function main(): Promise<void> {
@@ -473,6 +482,10 @@ async function main(): Promise<void> {
     mesocycleId: typeof args["mesocycle-id"] === "string" ? args["mesocycle-id"] : undefined,
     workoutId: typeof args["workout-id"] === "string" ? args["workout-id"] : undefined,
     exerciseId: typeof args["exercise-id"] === "string" ? args["exercise-id"] : undefined,
+    projectionArtifactPath:
+      typeof args["projection-artifact"] === "string"
+        ? args["projection-artifact"]
+        : undefined,
     plannerDiagnosticsMode: args.debug === true ? ("debug" as const) : ("standard" as const),
     sanitizationLevel: args.sanitization === "pii-safe" ? ("pii-safe" as const) : ("none" as const),
   };

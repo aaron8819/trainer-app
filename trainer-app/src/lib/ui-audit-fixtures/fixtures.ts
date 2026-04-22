@@ -614,6 +614,8 @@ const activeProgram: ProgramPageData = {
     actionLabel: "Open closeout",
     dismissActionHref: "/api/workouts/ui-audit-closeout/dismiss-closeout",
     dismissActionLabel: "Skip closeout",
+    targetWeek: 2,
+    isPriorWeek: true,
   },
   weekCompletionOutlook: {
     assumptionLabel: "If you complete the remaining planned sessions this week, you will likely land here.",

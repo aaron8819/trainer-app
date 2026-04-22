@@ -1,5 +1,5 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GapFillSupportData } from "@/lib/api/program";
 import { OptionalGapFillCard } from "./OptionalGapFillCard";
 
@@ -44,6 +44,11 @@ function buildGapFill(overrides: Partial<GapFillSupportData> = {}): GapFillSuppo
 describe("OptionalGapFillCard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
   });
 
   it("does not render when gapFill is ineligible", () => {
@@ -118,7 +123,7 @@ describe("OptionalGapFillCard", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<OptionalGapFillCard gapFill={buildGapFill()} />);
-    fireEvent.click(screen.getByRole("button", { name: "Generate gap-fill" }));
+    fireEvent.click(screen.getByRole("button", { name: "Generate recommended session" }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -161,7 +166,7 @@ describe("OptionalGapFillCard", () => {
         })}
       />
     );
-    fireEvent.click(screen.getByRole("button", { name: "Open gap-fill" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open recommended session" }));
 
     expect(fetchMock).not.toHaveBeenCalled();
     expect(pushMock).toHaveBeenCalledWith("/log/w-gap-existing");
@@ -180,9 +185,9 @@ describe("OptionalGapFillCard", () => {
       />
     );
 
-    expect(screen.getByText("Week Close")).toBeInTheDocument();
-    expect(screen.getByText("Week 3 workflow complete")).toBeInTheDocument();
-    expect(screen.getByText(/Training targets are still short/)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /generate gap-fill/i })).not.toBeInTheDocument();
+    expect(screen.getByText("Optional week completion")).toBeInTheDocument();
+    expect(screen.getByText("Recommended session")).toBeInTheDocument();
+    expect(screen.getByText(/recommended workflow is complete/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /generate recommended session/i })).not.toBeInTheDocument();
   });
 });

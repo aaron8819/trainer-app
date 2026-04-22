@@ -112,6 +112,8 @@ export type ProgramCloseoutSummary = {
   actionLabel: string;
   dismissActionHref: string | null;
   dismissActionLabel: string | null;
+  targetWeek: number | null;
+  isPriorWeek: boolean;
 };
 
 function formatCloseoutTitle(
@@ -431,6 +433,8 @@ function buildProgramCloseoutSummary(
         closeout.isPriorWeek ? `Create Week ${closeout.targetWeek} closeout` : "Create closeout",
       dismissActionHref: null,
       dismissActionLabel: null,
+      targetWeek: closeout.targetWeek,
+      isPriorWeek: closeout.isPriorWeek,
     };
   }
 
@@ -451,6 +455,8 @@ function buildProgramCloseoutSummary(
       actionLabel: "Review closeout",
       dismissActionHref: null,
       dismissActionLabel: null,
+      targetWeek: closeout.targetWeek,
+      isPriorWeek: closeout.isPriorWeek,
     };
   }
 
@@ -468,6 +474,8 @@ function buildProgramCloseoutSummary(
       actionLabel: "View closeout",
       dismissActionHref: null,
       dismissActionLabel: null,
+      targetWeek: closeout.targetWeek,
+      isPriorWeek: closeout.isPriorWeek,
     };
   }
 
@@ -487,6 +495,8 @@ function buildProgramCloseoutSummary(
         ? `/api/workouts/${closeout.workoutId}/dismiss-closeout`
         : null,
     dismissActionLabel: normalizedStatus === "PLANNED" ? "Skip closeout" : null,
+    targetWeek: closeout.targetWeek,
+    isPriorWeek: closeout.isPriorWeek,
   };
 }
 

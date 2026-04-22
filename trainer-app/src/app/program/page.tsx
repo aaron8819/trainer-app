@@ -5,6 +5,7 @@ import { loadProgramPageData, type ProgramCurrentWeekPlanRow } from "@/lib/api/p
 import { CycleAnchorControls } from "@/components/CycleAnchorControls";
 import { ProgramStatusCard } from "@/components/ProgramStatusCard";
 import { CloseoutCard } from "@/components/CloseoutCard";
+import { OptionalWeekCompletion } from "@/components/OptionalWeekCompletion";
 import { WeekCompletionOutlookSection } from "./WeekCompletionOutlookSection";
 
 export const dynamic = "force-dynamic";
@@ -103,6 +104,8 @@ export default async function ProgramPage() {
   const data = await loadProgramPageData(user.id);
   const currentWeekPlan = data.currentWeekPlan;
   const closeout = data.closeout;
+  const activeWeekCloseout = closeout && closeout.isPriorWeek !== true ? closeout : null;
+  const priorWeekCloseout = closeout && closeout.isPriorWeek === true ? closeout : null;
 
   return (
     <main className="min-h-screen bg-white text-slate-900">
@@ -290,10 +293,19 @@ export default async function ProgramPage() {
           </section>
         ) : null}
 
-        {closeout ? (
+        {activeWeekCloseout ? (
+          <section className="mt-7">
+            <OptionalWeekCompletion
+              activeWeek={data.overview?.currentWeek ?? data.volumeDetails.dashboard.currentWeek}
+              customSession={activeWeekCloseout}
+            />
+          </section>
+        ) : null}
+
+        {priorWeekCloseout ? (
           <section className="mt-7">
             <CloseoutCard
-              closeout={closeout}
+              closeout={priorWeekCloseout}
               titleElement="h2"
               titleClassName="mt-1 text-xl font-semibold text-slate-900"
             />

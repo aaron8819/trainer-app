@@ -55,8 +55,18 @@ vi.mock("@/components/ProgramStatusCard", () => ({
   ),
 }));
 
-vi.mock("@/components/OptionalGapFillCard", () => ({
-  OptionalGapFillCard: () => <div>OptionalGapFillCard</div>,
+vi.mock("@/components/OptionalWeekCompletion", () => ({
+  OptionalWeekCompletion: ({
+    gapFill,
+    customSession,
+  }: {
+    gapFill?: { visible: boolean };
+    customSession?: { actionHref: string } | null;
+  }) => (
+    <div>
+      {`OptionalWeekCompletion:${gapFill?.visible ? "gap" : "no-gap"}:${customSession?.actionHref ?? "no-custom"}`}
+    </div>
+  ),
 }));
 
 vi.mock("@/components/CloseoutCard", () => ({
@@ -217,7 +227,7 @@ describe("Home page", () => {
     expect(screen.queryByText("Next Session")).not.toBeInTheDocument();
   });
 
-  it("renders a separate closeout card without replacing the main next-session surface", async () => {
+  it("renders active-week custom work in optional completion without replacing the main next-session surface", async () => {
     mocks.loadHomePageData.mockResolvedValueOnce({
       pendingHandoff: null,
       programData: {
@@ -328,7 +338,9 @@ describe("Home page", () => {
 
     render(ui);
 
-    expect(screen.getByText("CloseoutCard:Closeout:Open closeout")).toBeInTheDocument();
+    expect(
+      screen.getByText("OptionalWeekCompletion:no-gap:/log/workout-closeout")
+    ).toBeInTheDocument();
     expect(
       screen.getByText(
         "DashboardGenerateSection:lower:lower_a:Next in sequence:Nothing earlier is still open, so Lower 1 is next this week."

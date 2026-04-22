@@ -3,8 +3,8 @@ import { resolveOwner } from "@/lib/api/workout-context";
 import { DashboardGenerateSection } from "@/components/DashboardGenerateSection";
 import RecentWorkouts from "@/components/RecentWorkouts";
 import { ProgramStatusCard } from "@/components/ProgramStatusCard";
-import { OptionalGapFillCard } from "@/components/OptionalGapFillCard";
 import { CloseoutCard } from "@/components/CloseoutCard";
+import { OptionalWeekCompletion } from "@/components/OptionalWeekCompletion";
 import { loadHomePageData } from "@/lib/api/home-page";
 import { getWorkoutListPrimaryLabel } from "@/lib/ui/workout-list-items";
 import { getWorkoutWorkflowState } from "@/lib/workout-workflow";
@@ -141,6 +141,10 @@ export default async function Home() {
       : "Resume Workout";
   const existingWorkoutActionLabel =
     existingWorkflow.kind === "planned" ? "Start logging" : "Continue logging";
+  const activeWeekCloseout =
+    closeout && homeProgram.closeout.isPriorWeek !== true ? closeout : null;
+  const priorWeekCloseout =
+    closeout && homeProgram.closeout.isPriorWeek === true ? closeout : null;
 
   return (
     <main className="min-h-screen bg-white text-slate-900">
@@ -279,10 +283,12 @@ export default async function Home() {
         ) : null}
 
         <section className="mt-8 space-y-6 md:mt-10">
-          {closeout ? (
-            <CloseoutCard closeout={closeout} />
-          ) : null}
-          {homeProgram.gapFill.visible ? <OptionalGapFillCard gapFill={homeProgram.gapFill} /> : null}
+          <OptionalWeekCompletion
+            activeWeek={homeProgram.activeWeek}
+            gapFill={homeProgram.gapFill}
+            customSession={activeWeekCloseout}
+          />
+          {priorWeekCloseout ? <CloseoutCard closeout={priorWeekCloseout} /> : null}
         </section>
 
         <section className="mt-8 md:mt-10">

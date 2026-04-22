@@ -52,6 +52,12 @@ vi.mock("@/components/CloseoutCard", () => ({
   ),
 }));
 
+vi.mock("@/components/OptionalWeekCompletion", () => ({
+  OptionalWeekCompletion: ({ customSession }: { customSession?: { actionHref: string } | null }) => (
+    <div>{`OptionalWeekCompletion:${customSession?.actionHref ?? "no-custom"}`}</div>
+  ),
+}));
+
 describe("ProgramPage", () => {
   beforeEach(() => {
     mocks.resolveOwner.mockResolvedValue({ id: "user-1" });
@@ -260,7 +266,7 @@ describe("ProgramPage", () => {
     expect(screen.queryByText(/skip_phase/i)).not.toBeInTheDocument();
   });
 
-  it("renders closeout separately from the ordered slot map", async () => {
+  it("renders active-week custom work separately from the ordered slot map", async () => {
     mocks.loadProgramPageData.mockResolvedValueOnce({
       overview: {
         mesoNumber: 2,
@@ -334,7 +340,7 @@ describe("ProgramPage", () => {
     render(ui);
 
     expect(screen.getByRole("heading", { name: "Ordered weekly slots" })).toBeInTheDocument();
-    expect(screen.getByText("CloseoutCard:Closeout:Open closeout")).toBeInTheDocument();
+    expect(screen.getByText("OptionalWeekCompletion:/log/workout-closeout")).toBeInTheDocument();
     expect(screen.getAllByText(/Upper 1/)).toHaveLength(1);
   });
 });

@@ -2,6 +2,7 @@ import { readSessionDecisionReceipt, readSessionSlotSnapshot } from "@/lib/evide
 import type { SessionSlotSnapshot } from "@/lib/evidence/types";
 import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-semantics";
 import { resolveMesocycleSlotContract } from "./mesocycle-slot-contract";
+import { parseSlotPlanSeedJson } from "./slot-plan-seed-parser";
 
 export const HISTORICAL_SESSION_SLOT_PERSISTENCE_FIX_CUTOFF_ISO =
   "2026-03-25T01:54:40.000Z";
@@ -72,10 +73,6 @@ export type HistoricalSessionSlotRepairResult =
       conflictingWorkoutIds: string[];
     });
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
 function normalizeIntent(value: string | null | undefined): string | null {
   if (typeof value !== "string") {
     return null;
@@ -112,34 +109,19 @@ function parseSeededSlots(input: {
     return null;
   }
 
-  const record = isRecord(input.slotPlanSeedJson) ? input.slotPlanSeedJson : null;
-  const slotsValue = Array.isArray(record?.slots) ? record.slots : null;
-  if (record?.version !== 1 || !slotsValue) {
+  const seed = parseSlotPlanSeedJson(input.slotPlanSeedJson);
+  if (!seed) {
     return null;
   }
 
   const seedExercisesBySlotId = new Map<string, string[]>();
-  for (const entry of slotsValue) {
-    const slot = isRecord(entry) ? entry : null;
-    const slotId = typeof slot?.slotId === "string" ? slot.slotId.trim() : "";
-    const exercisesValue = Array.isArray(slot?.exercises) ? slot.exercises : null;
-    if (!slot || !slotId || !exercisesValue) {
+  for (const slot of seed.slots) {
+    const exerciseIds = slot.exercises.map((exercise) => exercise.exerciseId);
+    if (exerciseIds.length === 0) {
       return null;
     }
 
-    const exerciseIds = exercisesValue.flatMap((exercise) => {
-      const seededExercise = isRecord(exercise) ? exercise : null;
-      const exerciseId =
-        typeof seededExercise?.exerciseId === "string"
-          ? seededExercise.exerciseId.trim()
-          : "";
-      return exerciseId ? [exerciseId] : [];
-    });
-    if (exerciseIds.length !== exercisesValue.length || exerciseIds.length === 0) {
-      return null;
-    }
-
-    seedExercisesBySlotId.set(slotId, exerciseIds);
+    seedExercisesBySlotId.set(slot.slotId, exerciseIds);
   }
 
   const normalizedSlots = slotContract.slots.flatMap((slot) => {

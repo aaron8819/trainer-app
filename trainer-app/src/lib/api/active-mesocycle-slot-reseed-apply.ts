@@ -1,23 +1,17 @@
 import type { Prisma } from "@prisma/client";
 import type { ActiveMesocycleSlotReseedRecommendation } from "@/lib/audit/workout-audit/types";
 import { prisma } from "@/lib/db/prisma";
+import {
+  parseSlotPlanSeedJson,
+  type ParsedSlotPlanSeed,
+  type ParsedSlotPlanSeedExercise,
+} from "./slot-plan-seed-parser";
 
 const TARGET_SLOT_IDS = ["upper_a", "upper_b"] as const;
 
 type TargetSlotId = (typeof TARGET_SLOT_IDS)[number];
-type SeedRole = "CORE_COMPOUND" | "ACCESSORY";
-type SeedSlotExercise = {
-  exerciseId: string;
-  role: SeedRole;
-};
-type SeedSlotEntry = {
-  slotId: string;
-  exercises: SeedSlotExercise[];
-};
-type ParsedSeedRecord = {
-  source: string;
-  slots: SeedSlotEntry[];
-};
+type SeedSlotExercise = ParsedSlotPlanSeedExercise;
+type ParsedSeedRecord = ParsedSlotPlanSeed & { source: string };
 
 export type ApplyActiveMesocycleBoundedUpperSlotReseedInput = {
   userId: string;
@@ -34,62 +28,15 @@ export type ApplyActiveMesocycleBoundedUpperSlotReseedResult = {
   applied: boolean;
 };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function isSeedRole(value: unknown): value is SeedRole {
-  return value === "CORE_COMPOUND" || value === "ACCESSORY";
-}
-
 function parseSeedRecord(slotPlanSeedJson: unknown): ParsedSeedRecord | null {
-  const record = isRecord(slotPlanSeedJson) ? slotPlanSeedJson : null;
-  const slotsValue = Array.isArray(record?.slots) ? record.slots : null;
-  if (record?.version !== 1 || !slotsValue) {
+  const parsed = parseSlotPlanSeedJson(slotPlanSeedJson);
+  if (!parsed) {
     return null;
   }
 
-  const slots: SeedSlotEntry[] = [];
-  for (const entry of slotsValue) {
-    const slot = isRecord(entry) ? entry : null;
-    const slotId = typeof slot?.slotId === "string" ? slot.slotId.trim() : "";
-    const exercisesValue = Array.isArray(slot?.exercises) ? slot.exercises : null;
-    if (!slotId || !exercisesValue) {
-      return null;
-    }
-
-    const exercises = exercisesValue.map((exercise) => {
-      const seededExercise = isRecord(exercise) ? exercise : null;
-      const exerciseId =
-        typeof seededExercise?.exerciseId === "string"
-          ? seededExercise.exerciseId.trim()
-          : "";
-      const role = seededExercise?.role;
-      if (!exerciseId || !isSeedRole(role)) {
-        return null;
-      }
-      return {
-        exerciseId,
-        role,
-      } satisfies SeedSlotExercise;
-    });
-
-    if (exercises.some((exercise) => exercise == null)) {
-      return null;
-    }
-
-    slots.push({
-      slotId,
-      exercises: exercises as SeedSlotExercise[],
-    });
-  }
-
   return {
-    source:
-      typeof record?.source === "string" && record.source.trim().length > 0
-        ? record.source
-        : "handoff_slot_plan_projection",
-    slots,
+    ...parsed,
+    source: parsed.source ?? "handoff_slot_plan_projection",
   };
 }
 

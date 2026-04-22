@@ -4,15 +4,15 @@ import {
   deriveNextRuntimeSlotSession,
   readRuntimeSlotSequence,
 } from "@/lib/api/mesocycle-slot-runtime";
+import {
+  parseSlotPlanSeedJson,
+  type SlotPlanSeedRole,
+} from "@/lib/api/slot-plan-seed-parser";
 import type { MappedGenerationContext } from "./types";
-
-type JsonRecord = Record<string, unknown>;
-
-type SeedRole = "CORE_COMPOUND" | "ACCESSORY";
 
 export type NormalizedSeededSlotExercise = {
   exerciseId: string;
-  role: SeedRole;
+  role: SlotPlanSeedRole;
 };
 
 export type NormalizedSeededSlot = {
@@ -46,14 +46,6 @@ function buildUnresolvableSeededSlotPlanError(input: {
   };
 }
 
-function isRecord(value: unknown): value is JsonRecord {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function isSeedRole(value: unknown): value is SeedRole {
-  return value === "CORE_COMPOUND" || value === "ACCESSORY";
-}
-
 export function readPersistedSeedSlots(input: {
   slotPlanSeedJson?: unknown;
   mapped: MappedGenerationContext;
@@ -71,39 +63,14 @@ export function readPersistedSeedSlots(input: {
     return null;
   }
 
-  const record = isRecord(input.slotPlanSeedJson) ? input.slotPlanSeedJson : null;
-  const slotsValue = Array.isArray(record?.slots) ? record.slots : null;
-  if (record?.version !== 1 || !slotsValue) {
+  const seed = parseSlotPlanSeedJson(input.slotPlanSeedJson);
+  if (!seed) {
     return null;
   }
 
   const seedBySlotId = new Map<string, NormalizedSeededSlotExercise[]>();
-  for (const entry of slotsValue) {
-    const slot = isRecord(entry) ? entry : null;
-    const exercisesValue = Array.isArray(slot?.exercises) ? slot.exercises : null;
-    if (!slot || typeof slot.slotId !== "string" || !exercisesValue || slot.slotId.trim().length === 0) {
-      return null;
-    }
-
-    const normalizedExercises = exercisesValue.flatMap((exercise) => {
-      const seededExercise = isRecord(exercise) ? exercise : null;
-      if (
-        !seededExercise ||
-        typeof seededExercise.exerciseId !== "string" ||
-        seededExercise.exerciseId.trim().length === 0 ||
-        !isSeedRole(seededExercise.role)
-      ) {
-        return [];
-      }
-      return [{
-        exerciseId: seededExercise.exerciseId,
-        role: seededExercise.role,
-      } satisfies NormalizedSeededSlotExercise];
-    });
-    if (normalizedExercises.length !== exercisesValue.length) {
-      return null;
-    }
-    seedBySlotId.set(slot.slotId, normalizedExercises);
+  for (const slot of seed.slots) {
+    seedBySlotId.set(slot.slotId, slot.exercises);
   }
 
   const normalizedSlots = slotSequence.slots.flatMap((slot) => {

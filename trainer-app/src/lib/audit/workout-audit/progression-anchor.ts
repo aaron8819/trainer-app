@@ -1,6 +1,11 @@
 import { prisma } from "@/lib/db/prisma";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 import { computeDoubleProgressionDecision } from "@/lib/engine/progression";
+import {
+  resolveCalibrationConfidenceScale,
+  resolveLoadCalibrationPolicy,
+  resolveProgressionEquipment,
+} from "@/lib/engine/load-calibration";
 import { buildCanonicalProgressionEvaluationInput } from "@/lib/progression/canonical-progression-input";
 import { derivePerformedExerciseSemantics } from "@/lib/session-semantics/performed-exercise-semantics";
 import { resolveTargetRepRange } from "@/lib/session-semantics/target-evaluation";
@@ -9,16 +14,6 @@ import { resolvePersistedOrReconstructedSessionAuditSnapshot } from "@/lib/evide
 import { resolveAuditCanonicalSemantics } from "./canonical-semantics";
 import type { ProgressionAnchorAuditPayload } from "./types";
 import { PROGRESSION_ANCHOR_AUDIT_PAYLOAD_VERSION } from "./constants";
-
-function resolveProgressionEquipment(
-  equipment: string[]
-): "barbell" | "dumbbell" | "cable" | "other" {
-  const normalized = equipment.map((entry) => entry.trim().toLowerCase());
-  if (normalized.includes("barbell")) return "barbell";
-  if (normalized.includes("dumbbell")) return "dumbbell";
-  if (normalized.includes("cable")) return "cable";
-  return "other";
-}
 
 function buildConfidenceNotes(selectionMode?: string | null): string[] {
   if (selectionMode === "INTENT") {
@@ -143,14 +138,23 @@ export async function buildProgressionAnchorAuditPayload(input: {
   const priorEligibleRows = eligibleRows.filter(
     (entry) => entry.workout.id !== current.workout.id
   );
+  const calibrationExercise = {
+    equipment: current.exercise.exerciseEquipment.map((entry) => entry.equipment.type),
+    isCompound: current.exercise.isCompound,
+  };
+  const calibrationPolicy = resolveLoadCalibrationPolicy(calibrationExercise);
+  const calibrationConfidenceScale = resolveCalibrationConfidenceScale(
+    calibrationPolicy,
+    Math.max(priorEligibleRows.length, 1)
+  );
   const progressionInput = buildCanonicalProgressionEvaluationInput({
     lastSets: performedSemantics.signalSets,
     repRange: effectiveRepRange,
-    equipment: resolveProgressionEquipment(
-      current.exercise.exerciseEquipment.map((entry) => entry.equipment.type)
-    ),
+    equipment: resolveProgressionEquipment(calibrationExercise),
     workingSetLoad: performedSemantics.workingSetLoad ?? undefined,
     historySessions: priorEligibleRows.map(buildHistorySession),
+    calibrationConfidenceScale,
+    calibrationConfidenceReason: calibrationPolicy.confidenceReason,
   });
   const decision = computeDoubleProgressionDecision(
     progressionInput.lastSets,

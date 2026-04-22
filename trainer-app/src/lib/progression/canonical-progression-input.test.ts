@@ -62,4 +62,28 @@ describe("buildCanonicalProgressionEvaluationInput", () => {
       "Previous INTENT history kept full progression confidence.",
     ]);
   });
+
+  it("combines calibration confidence with history confidence and appends the reason", () => {
+    const input = buildCanonicalProgressionEvaluationInput({
+      lastSets: [{ reps: 15, rpe: 7, load: 40 }],
+      repRange: [10, 15],
+      equipment: "cable",
+      workingSetLoad: 40,
+      historySessions: [
+        {
+          selectionMode: "INTENT",
+          confidence: 1,
+          confidenceNotes: ["Previous INTENT history kept full progression confidence."],
+        },
+      ],
+      calibrationConfidenceScale: 0.85,
+      calibrationConfidenceReason: "low load-reliability equipment scaled during early exposure.",
+    });
+
+    expect(input.context.historyConfidenceScale).toBe(0.85);
+    expect(input.context.confidenceReasons).toEqual([
+      "Previous INTENT history kept full progression confidence.",
+      "low load-reliability equipment scaled during early exposure.",
+    ]);
+  });
 });

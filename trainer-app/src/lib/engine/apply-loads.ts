@@ -40,6 +40,15 @@ import { quantizeLoad } from "@/lib/units/load-quantization";
 import {
   isCanonicalDeloadPhase,
 } from "@/lib/deload/semantics";
+import {
+  applyCalibrationToEstimate,
+  resolveCalibrationConfidenceScale,
+  resolveLoadCalibrationPolicy,
+  resolveLoadEquipment,
+  resolveProgressionEquipment,
+  type CalibrationEstimateSource,
+  type LoadCalibrationEquipment,
+} from "./load-calibration";
 
 export type BaselineInput = {
   exerciseId: string;
@@ -76,16 +85,7 @@ export type ApplyLoadsAudit = {
   >;
 };
 
-type LoadEquipment =
-  | "barbell"
-  | "dumbbell"
-  | "machine"
-  | "cable"
-  | "kettlebell"
-  | "band"
-  | "sled"
-  | "bodyweight"
-  | "other";
+type LoadEquipment = LoadCalibrationEquipment;
 
 type CrossIntentFallbackPolicy = {
   migrationDiscount: number;
@@ -642,7 +642,13 @@ function resolveLoadForExercise(
               : set
           )
         : latestSets;
-    const equipment = getPrimaryProgressionEquipment(exercise);
+    const equipment = resolveProgressionEquipment(exercise);
+    const calibrationPolicy = resolveLoadCalibrationPolicy(exercise);
+    const priorSessionCount = Math.max(historySessions?.length ?? 0, 1);
+    const calibrationConfidenceScale = resolveCalibrationConfidenceScale(
+      calibrationPolicy,
+      priorSessionCount
+    );
     const workingSetLoad = !useModalAnchoring
       ? resolveWorkingSetLoad({
           isMainLiftEligible: exercise.isMainLiftEligible,
@@ -660,6 +666,8 @@ function resolveLoadForExercise(
       equipment,
       historySessions,
       workingSetLoad,
+      calibrationConfidenceScale,
+      calibrationConfidenceReason: calibrationPolicy.confidenceReason,
     });
     const decision = computeDoubleProgressionDecision(
       progressionInput.lastSets,
@@ -695,12 +703,13 @@ function resolveLoadForExercise(
       }
     }
 
-  const estimatedLoad = estimateLoad(
+  const estimatedLoadForFallback = estimateLoad(
     exercise,
     baselineLoadIndex,
     historyTopLoadIndex,
     exerciseById,
-    weightKg
+    weightKg,
+    { applyCalibration: false }
   );
 
   const crossIntentFallbackLoad = resolveCrossIntentMainLiftFallbackLoad({
@@ -710,7 +719,7 @@ function resolveLoadForExercise(
     sessionIntent,
     targetReps,
     targetRpe,
-    estimatedLoad,
+    estimatedLoad: estimatedLoadForFallback,
   });
   if (crossIntentFallbackLoad !== undefined) {
     return { load: crossIntentFallbackLoad, source: "history" };
@@ -728,7 +737,13 @@ function resolveLoadForExercise(
   }
 
   return {
-    load: estimatedLoad,
+    load: estimateLoad(
+      exercise,
+      baselineLoadIndex,
+      historyTopLoadIndex,
+      exerciseById,
+      weightKg
+    ),
     source: "estimate",
   };
 }
@@ -761,14 +776,6 @@ function resolveDeloadReferenceLoad(
   return { load: load as number, source: "history" };
 }
 
-function getPrimaryProgressionEquipment(exercise: Exercise): "barbell" | "dumbbell" | "cable" | "other" {
-  const equipment = getLoadEquipment(exercise);
-  if (equipment === "barbell" || equipment === "dumbbell" || equipment === "cable") {
-    return equipment;
-  }
-  return "other";
-}
-
 function shouldUseModalAnchoring(exercise: Exercise): boolean {
   return resolveProgressionAnchorStrategy({
     isMainLiftEligible: exercise.isMainLiftEligible,
@@ -780,7 +787,8 @@ function estimateLoad(
   baselineIndex: Map<string, number>,
   historyTopLoadIndex: Map<string, number>,
   exerciseById: Record<string, Exercise>,
-  weightKg?: number
+  weightKg?: number,
+  options: { applyCalibration?: boolean } = {}
 ): number | undefined {
   if (isBodyweightOnly(exercise)) {
     return undefined;
@@ -795,26 +803,40 @@ function estimateLoad(
   }
 
   let estimate: number;
+  let estimateSource: CalibrationEstimateSource;
 
   const donorEstimate =
     estimateFromDonors(exercise, baselineIndex, exerciseById) ??
     estimateFromHistoryPatternDonors(exercise, historyTopLoadIndex, exerciseById);
   if (donorEstimate !== undefined) {
-    estimate = roundToHalf(donorEstimate);
+    estimate = donorEstimate;
+    estimateSource = "donor";
   } else if (weightKg !== undefined) {
     const ratio = getBodyweightRatio(exercise);
     if (ratio && ratio > 0) {
-      estimate = roundToHalf(weightKg * 2.20462 * ratio);
+      estimate = weightKg * 2.20462 * ratio;
     } else {
-      estimate = roundToHalf(getEquipmentDefault(exercise));
+      estimate = getEquipmentDefault(exercise);
     }
+    estimateSource = "cold_start";
   } else {
-    estimate = roundToHalf(getEquipmentDefault(exercise));
+    estimate = getEquipmentDefault(exercise);
+    estimateSource = "cold_start";
   }
+
+  if (options.applyCalibration !== false) {
+    estimate =
+      applyCalibrationToEstimate(
+        estimate,
+        resolveLoadCalibrationPolicy(exercise),
+        estimateSource
+      ) ?? estimate;
+  }
+  estimate = roundToHalf(estimate);
 
   // Machine selectorized equipment has a minimum practical load (10 lbs)
   // regardless of bodyweight ratios, which were calibrated for barbell/cable.
-  if (getLoadEquipment(exercise) === "machine") {
+  if (resolveLoadEquipment(exercise) === "machine") {
     return Math.max(estimate, 10);
   }
   return estimate;
@@ -963,7 +985,7 @@ function estimateFromDonors(
     return undefined;
   }
 
-  const targetEquipment = getLoadEquipment(target);
+  const targetEquipment = resolveLoadEquipment(target);
   const targetCompound = isCompound(target);
   const targetFatigue = target.fatigueCost ?? DEFAULT_FATIGUE_COST;
   const targetExpectsExternalLoad = expectsExternalLoad(target);
@@ -985,7 +1007,7 @@ function estimateFromDonors(
       continue;
     }
 
-    const donorEquipment = getLoadEquipment(donor);
+    const donorEquipment = resolveLoadEquipment(donor);
     const donorCompound = isCompound(donor);
     const donorFatigue = donor.fatigueCost ?? DEFAULT_FATIGUE_COST;
     const donorPatterns = donor.movementPatterns ?? [];
@@ -1037,7 +1059,7 @@ function estimateFromHistoryPatternDonors(
     return undefined;
   }
 
-  const targetEquipment = getLoadEquipment(target);
+  const targetEquipment = resolveLoadEquipment(target);
   const targetJointStress = target.jointStress;
   const targetCompound = isCompound(target);
   const targetExpectsExternalLoad = expectsExternalLoad(target);
@@ -1057,7 +1079,7 @@ function estimateFromHistoryPatternDonors(
       continue;
     }
 
-    const donorEquipment = getLoadEquipment(donor);
+    const donorEquipment = resolveLoadEquipment(donor);
     const donorJointStress = donor.jointStress;
     const donorCompound = isCompound(donor);
     const equipmentScale = getEquipmentScale(donorEquipment, targetEquipment);
@@ -1103,7 +1125,7 @@ function isLowerBodyLoadPattern(exercise: Exercise) {
 
 function isTargetedDumbbellPress(exercise: Exercise) {
   return (
-    getLoadEquipment(exercise) === "dumbbell" &&
+    resolveLoadEquipment(exercise) === "dumbbell" &&
     (exercise.movementPatterns ?? []).some(
       (pattern) => pattern === "horizontal_push" || pattern === "vertical_push"
     )
@@ -1112,14 +1134,14 @@ function isTargetedDumbbellPress(exercise: Exercise) {
 
 function isTargetedMachineLowerBodyLift(exercise: Exercise) {
   return (
-    getLoadEquipment(exercise) === "machine" &&
+    resolveLoadEquipment(exercise) === "machine" &&
     isCompound(exercise) &&
     isLowerBodyLoadPattern(exercise)
   );
 }
 
 function isTargetedBarbellLowerBodyLift(exercise: Exercise) {
-  if (getLoadEquipment(exercise) !== "barbell") {
+  if (resolveLoadEquipment(exercise) !== "barbell") {
     return false;
   }
 
@@ -1162,27 +1184,6 @@ function isValidExternalLoadDonor(
   return true;
 }
 
-function getLoadEquipment(exercise: Exercise): LoadEquipment {
-  const equipment = exercise.equipment ?? [];
-  const priority: LoadEquipment[] = [
-    "barbell",
-    "machine",
-    "cable",
-    "dumbbell",
-    "kettlebell",
-    "sled",
-    "band",
-    "bodyweight",
-  ];
-
-  for (const item of priority) {
-    if (equipment.includes(item)) {
-      return item;
-    }
-  }
-  return "other";
-}
-
 function getEquipmentScale(donor: LoadEquipment, target: LoadEquipment) {
   if (donor === target) {
     return 1.0;
@@ -1220,7 +1221,7 @@ function getCompoundScale(donorIsCompound: boolean, targetIsCompound: boolean) {
 }
 
 function getBodyweightRatio(exercise: Exercise) {
-  const equipment = getLoadEquipment(exercise);
+  const equipment = resolveLoadEquipment(exercise);
   const compound = isCompound(exercise) ? "compound" : "isolation";
   const base = BASE_BODYWEIGHT_RATIO[equipment]?.[compound];
   if (!base) {
@@ -1234,7 +1235,7 @@ function getBodyweightRatio(exercise: Exercise) {
 }
 
 function getEquipmentDefault(exercise: Exercise) {
-  const equipment = getLoadEquipment(exercise);
+  const equipment = resolveLoadEquipment(exercise);
   return EQUIPMENT_DEFAULTS[equipment] ?? 30;
 }
 

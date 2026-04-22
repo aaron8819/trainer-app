@@ -30,13 +30,25 @@ export function buildCanonicalProgressionEvaluationInput(input: {
   equipment: ProgressionEquipment;
   workingSetLoad?: number;
   historySessions?: CanonicalProgressionHistorySession[];
+  calibrationConfidenceScale?: number;
+  calibrationConfidenceReason?: string;
 }): CanonicalProgressionEvaluationInput {
   const historySessions = input.historySessions ?? [];
   const priorSessionCount = Math.max(historySessions.length, 1);
   const historyConfidenceScale =
     historySessions.length > 0 ? resolveProgressionHistoryConfidenceScale(historySessions) : 1;
-  const confidenceReasons =
-    historySessions.length > 0 ? collectProgressionConfidenceNotes(historySessions) : [];
+  const calibrationConfidenceScale = clampConfidenceScale(input.calibrationConfidenceScale);
+  const combinedHistoryConfidenceScale = Number(
+    (historyConfidenceScale * calibrationConfidenceScale).toFixed(2)
+  );
+  const confidenceReasons = [
+    ...(historySessions.length > 0 ? collectProgressionConfidenceNotes(historySessions) : []),
+    ...(
+      calibrationConfidenceScale < 1 && input.calibrationConfidenceReason
+        ? [input.calibrationConfidenceReason]
+        : []
+    ),
+  ];
 
   return {
     lastSets: input.lastSets,
@@ -45,13 +57,13 @@ export function buildCanonicalProgressionEvaluationInput(input: {
     decisionOptions: {
       workingSetLoad: input.workingSetLoad,
       priorSessionCount,
-      historyConfidenceScale,
+      historyConfidenceScale: combinedHistoryConfidenceScale,
       confidenceReasons,
     },
     context: {
       workingSetLoad: input.workingSetLoad,
       priorSessionCount,
-      historyConfidenceScale,
+      historyConfidenceScale: combinedHistoryConfidenceScale,
       confidenceReasons,
     },
   };
@@ -78,4 +90,11 @@ function collectProgressionConfidenceNotes(
   sessions: CanonicalProgressionHistorySession[]
 ): string[] {
   return [...new Set(sessions.flatMap((session) => session.confidenceNotes ?? []))];
+}
+
+function clampConfidenceScale(value?: number): number {
+  if (!Number.isFinite(value)) {
+    return 1;
+  }
+  return Math.min(1, Math.max(0, value as number));
 }

@@ -36,6 +36,13 @@ const cableCurl: Exercise = {
   repRangeMax: 15,
 };
 
+const cableMachineCurl: Exercise = {
+  ...cableCurl,
+  id: "cable-machine-curl",
+  name: "Cable Machine Curl",
+  equipment: ["machine", "cable"],
+};
+
 const bayesianCurl: Exercise = {
   id: "bayesian-curl",
   name: "Bayesian Curl",
@@ -583,9 +590,84 @@ describe("applyLoads correctness", () => {
     });
 
     const swappedLoad = swapped.accessories[0].sets[0].targetLoad ?? 0;
-    expect(swappedLoad).toBeGreaterThanOrEqual(18);
-    expect(swappedLoad).toBeLessThanOrEqual(21);
+    expect(swappedLoad).toBeGreaterThanOrEqual(16);
+    expect(swappedLoad).toBeLessThanOrEqual(18);
     expect(swappedLoad).not.toBe(40);
+  });
+
+  it("reduces early cable progression confidence without changing the modal history anchor", () => {
+    const result = applyLoadsWithAudit(upperAccessoryWorkout, {
+      history: [
+        {
+          date: "2026-03-20T00:00:00.000Z",
+          completed: true,
+          status: "COMPLETED",
+          sessionIntent: "upper",
+          selectionMode: "INTENT",
+          confidence: 1,
+          confidenceNotes: ["Previous INTENT history kept full progression confidence."],
+          exercises: [
+            {
+              exerciseId: "cable-curl",
+              sets: [
+                { exerciseId: "cable-curl", setIndex: 1, reps: 15, rpe: 7, load: 40 },
+                { exerciseId: "cable-curl", setIndex: 2, reps: 15, rpe: 7, load: 40 },
+              ],
+            },
+          ],
+        },
+      ],
+      baselines: [],
+      exerciseById: { "cable-curl": cableCurl },
+      primaryGoal: "hypertrophy",
+      profile: { trainingAge: "intermediate" },
+      sessionIntent: "upper",
+    });
+
+    const trace = result.audit.progressionTraces["cable-curl"];
+    expect(trace.anchor.anchorLoad).toBe(40);
+    expect(trace.confidence.priorSessionCount).toBe(1);
+    expect(trace.confidence.historyScale).toBe(0.85);
+    expect(trace.confidence.combinedScale).toBe(0.68);
+    expect(trace.confidence.reasons).toContain(
+      "low load-reliability equipment scaled during early exposure."
+    );
+  });
+
+  it("does not apply cable calibration confidence after three prior sessions", () => {
+    const result = applyLoadsWithAudit(upperAccessoryWorkout, {
+      history: [1, 2, 3].map((index) => ({
+        date: `2026-03-${20 - index}T00:00:00.000Z`,
+        completed: true,
+        status: "COMPLETED" as const,
+        sessionIntent: "upper" as const,
+        selectionMode: "INTENT" as const,
+        confidence: 1,
+        confidenceNotes: ["Previous INTENT history kept full progression confidence."],
+        exercises: [
+          {
+            exerciseId: "cable-curl",
+            sets: [
+              { exerciseId: "cable-curl", setIndex: 1, reps: 15, rpe: 7, load: 40 },
+              { exerciseId: "cable-curl", setIndex: 2, reps: 15, rpe: 7, load: 40 },
+            ],
+          },
+        ],
+      })),
+      baselines: [],
+      exerciseById: { "cable-curl": cableCurl },
+      primaryGoal: "hypertrophy",
+      profile: { trainingAge: "intermediate" },
+      sessionIntent: "upper",
+    });
+
+    const trace = result.audit.progressionTraces["cable-curl"];
+    expect(trace.confidence.priorSessionCount).toBe(3);
+    expect(trace.confidence.historyScale).toBe(1);
+    expect(trace.confidence.combinedScale).toBe(1);
+    expect(trace.confidence.reasons).not.toContain(
+      "low load-reliability equipment scaled during early exposure."
+    );
   });
 
   it("anchors progression to the modal performed load in the latest session", () => {
@@ -1161,7 +1243,7 @@ describe("applyLoads correctness", () => {
       sessionIntent: "push",
     });
 
-    expect(result.accessories[0].sets[0].targetLoad).toBe(60);
+    expect(result.accessories[0].sets[0].targetLoad).toBe(57.5);
   });
 
   it("weights MANUAL modal history at 0.7 vs INTENT when both exist", () => {
@@ -1479,7 +1561,7 @@ describe("applyLoads correctness", () => {
     });
 
     expect(result.audit.resolvedLoads["belt-squat"]?.source).toBe("estimate");
-    expect(result.workout.mainLifts[0].sets[0].targetLoad).toBe(60);
+    expect(result.workout.mainLifts[0].sets[0].targetLoad).toBe(57.5);
   });
 
   it("keeps pulldown fallback on the default conservative path", () => {
@@ -1609,6 +1691,50 @@ describe("applyLoads correctness", () => {
     });
 
     expect(result.audit.resolvedLoads["cable-curl"]?.source).toBe("estimate");
+    expect(result.workout.accessories[0].sets[0].targetLoad).toBe(35);
+  });
+
+  it("resolves mixed cable and machine equipment as cable for cold-start estimates", () => {
+    const workout: WorkoutPlan = {
+      id: "w-mixed-cable-machine",
+      scheduledDate: "2026-03-28T00:00:00.000Z",
+      warmup: [],
+      mainLifts: [],
+      accessories: [
+        {
+          id: "we-mixed-cable-machine",
+          exercise: cableMachineCurl,
+          orderIndex: 0,
+          isMainLift: false,
+          sets: [{ setIndex: 1, targetReps: 12, targetRpe: 8 }],
+        },
+      ],
+      estimatedMinutes: 20,
+    };
+
+    const result = applyLoadsWithAudit(workout, {
+      history: [],
+      baselines: [],
+      exerciseById: { "cable-machine-curl": cableMachineCurl },
+      primaryGoal: "hypertrophy",
+      profile: { trainingAge: "intermediate" },
+    });
+
+    expect(result.audit.resolvedLoads["cable-machine-curl"]?.source).toBe("estimate");
+    expect(result.workout.accessories[0].sets[0].targetLoad).toBe(35);
+  });
+
+  it("does not scale explicit cable baseline loads", () => {
+    const result = applyLoadsWithAudit(upperAccessoryWorkout, {
+      history: [],
+      baselines: [{ exerciseId: "cable-curl", context: "volume", topSetWeight: 40 }],
+      exerciseById: { "cable-curl": cableCurl },
+      primaryGoal: "hypertrophy",
+      profile: { trainingAge: "intermediate" },
+      sessionIntent: "upper",
+    });
+
+    expect(result.audit.resolvedLoads["cable-curl"]?.source).toBe("baseline");
     expect(result.workout.accessories[0].sets[0].targetLoad).toBe(40);
   });
 

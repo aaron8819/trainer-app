@@ -30,6 +30,7 @@ describe("buildProgressionAnchorAuditPayload", () => {
         exercise: {
           name: "T-Bar Row",
           isMainLiftEligible: true,
+          isCompound: true,
           exerciseEquipment: [
             {
               equipment: {
@@ -129,5 +130,88 @@ describe("buildProgressionAnchorAuditPayload", () => {
       updatesProgressionAnchor: true,
     });
     expect(payload.trace.outcome.action).toBeTypeOf("string");
+  });
+
+  it("uses shared calibration equipment resolution for mixed cable and machine exercises", async () => {
+    mocks.workoutExerciseFindMany.mockResolvedValue([
+      {
+        exerciseId: "mixed-cable-row",
+        exercise: {
+          name: "Cable Machine Row",
+          isMainLiftEligible: true,
+          isCompound: true,
+          exerciseEquipment: [
+            {
+              equipment: {
+                type: "machine",
+              },
+            },
+            {
+              equipment: {
+                type: "cable",
+              },
+            },
+          ],
+        },
+        workout: {
+          id: "workout-2",
+          scheduledDate: new Date("2026-03-10T17:00:05.413Z"),
+          revision: 1,
+          status: "COMPLETED",
+          advancesSplit: true,
+          selectionMode: "INTENT",
+          sessionIntent: "PULL",
+          selectionMetadata: {},
+          mesocycleId: "meso-1",
+          mesocycleWeekSnapshot: 1,
+          mesoSessionSnapshot: 1,
+          mesocyclePhaseSnapshot: "ACCUMULATION",
+        },
+        sets: [
+          {
+            setIndex: 1,
+            targetLoad: 40,
+            targetReps: 12,
+            targetRepMin: null,
+            targetRepMax: null,
+            logs: [
+              {
+                actualLoad: 40,
+                actualReps: 12,
+                actualRpe: 7,
+                wasSkipped: false,
+              },
+            ],
+          },
+          {
+            setIndex: 2,
+            targetLoad: 40,
+            targetReps: 12,
+            targetRepMin: null,
+            targetRepMax: null,
+            logs: [
+              {
+                actualLoad: 40,
+                actualReps: 12,
+                actualRpe: 7,
+                wasSkipped: false,
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    const payload = await buildProgressionAnchorAuditPayload({
+      userId: "user-1",
+      workoutId: "workout-2",
+      exerciseId: "mixed-cable-row",
+    });
+
+    expect(payload.trace.equipment).toBe("cable");
+    expect(payload.trace.confidence.historyScale).toBe(0.85);
+    expect(payload.trace.confidence.reasons).toContain(
+      "low load-reliability equipment scaled during early exposure."
+    );
   });
 });

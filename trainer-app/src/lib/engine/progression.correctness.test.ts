@@ -159,6 +159,51 @@ describe("progression correctness", () => {
     expect(decision?.trace.outcome.reasonCodes).toContain("same_exercise_catch_up_progression");
   });
 
+  it("clamps repeated intent drift to the prescribed target ceiling", () => {
+    const decision = computeDoubleProgressionDecision(
+      [
+        { reps: 6, rpe: 8, load: 155, targetLoad: 145, targetReps: 8 },
+        { reps: 6, rpe: 8, load: 155, targetLoad: 145, targetReps: 8 },
+        { reps: 7, rpe: 8, load: 155, targetLoad: 145, targetReps: 8 },
+      ],
+      [6, 10],
+      "barbell",
+      {
+        workingSetLoad: 155,
+        priorSessionCount: 3,
+        intentDeviation: { flagged: true, targetLoadCeiling: 145 },
+      }
+    );
+
+    expect(decision?.nextLoad).toBe(145);
+    expect(decision?.trace.outcome.action).toBe("decrease");
+    expect(decision?.trace.outcome.reasonCodes).toContain("intent_drift_detected");
+    expect(decision?.trace.outcome.reasonCodes).toContain("rep_range_restoration_bias");
+  });
+
+  it("blocks overshoot and catch-up promotion when intent drift is flagged", () => {
+    const decision = computeDoubleProgressionDecision(
+      [
+        { reps: 6, rpe: 7.5, load: 155, targetLoad: 145, targetReps: 8 },
+        { reps: 6, rpe: 7.5, load: 155, targetLoad: 145, targetReps: 8 },
+        { reps: 6, rpe: 8, load: 155, targetLoad: 145, targetReps: 8 },
+        { reps: 6, rpe: 8, load: 155, targetLoad: 145, targetReps: 8 },
+      ],
+      [6, 10],
+      "barbell",
+      {
+        workingSetLoad: 155,
+        priorSessionCount: 3,
+        intentDeviation: { flagged: true, targetLoadCeiling: 145 },
+      }
+    );
+
+    expect(decision?.path).not.toBe("path_5_overshoot");
+    expect(decision?.nextLoad).toBe(145);
+    expect(decision?.decisionLog.join(" | ")).not.toContain("Catch-up lane fired");
+    expect(decision?.trace.outcome.reasonCodes).not.toContain("same_exercise_catch_up_progression");
+  });
+
   it("earns an increase at RPE 8.5 when overshoot coverage is broad and load execution stays stable", () => {
     const decision = computeDoubleProgressionDecision(
       [

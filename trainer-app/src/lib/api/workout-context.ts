@@ -322,6 +322,9 @@ export function mapHistory(workouts: WorkoutWithRelations[]): WorkoutHistoryEntr
                 rpe: log.actualRpe ?? undefined,
                 load: log.actualLoad ?? undefined,
                 targetLoad: set.targetLoad ?? undefined,
+                targetReps: set.targetReps ?? undefined,
+                targetRepMin: set.targetRepMin ?? undefined,
+                targetRepMax: set.targetRepMax ?? undefined,
               },
             ];
           }),

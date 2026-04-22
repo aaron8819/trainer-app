@@ -459,6 +459,9 @@ type WorkoutSetHistory = {
   rpe?: number;
   load?: number;
   targetLoad?: number;
+  targetReps?: number;
+  targetRepMin?: number;
+  targetRepMax?: number;
 }[];
 type WorkoutSessionHistory = CanonicalProgressionHistorySession & {
   sets: WorkoutSetHistory;
@@ -762,7 +765,7 @@ function resolveDeloadReferenceLoad(
     : resolveWorkingSetLoad({
         isMainLiftEligible: exercise.isMainLiftEligible,
         sets: latestAccumulationSets.map((set) => ({
-          setIndex: set.setIndex,
+          setIndex: set.setIndex ?? 0,
           load: set.load,
           targetLoad: set.targetLoad,
           rpe: set.rpe,

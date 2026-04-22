@@ -4,7 +4,17 @@ import { roundLoad } from "./utils";
 import { isPerformedHistoryEntry } from "./history";
 import type { ProgressionDecisionTrace } from "@/lib/evidence/session-audit-types";
 
-export type ProgressionSet = { reps: number; rpe?: number; load?: number; targetLoad?: number };
+export type ProgressionSet = {
+  setIndex?: number;
+  reps: number;
+  rpe?: number;
+  load?: number;
+  targetLoad?: number;
+  targetReps?: number;
+  targetRepRange?: { min: number; max: number };
+  targetRepMin?: number;
+  targetRepMax?: number;
+};
 type HistorySet = WorkoutHistoryEntry["exercises"][number]["sets"][number];
 export type ProgressionEquipment = "barbell" | "dumbbell" | "cable" | "other";
 export type ProgressionDecisionPath =
@@ -28,6 +38,10 @@ export type DoubleProgressionDecisionOptions = {
   /** Canonical working-set load for this exposure when the caller has already
    *  resolved the representative working load. */
   workingSetLoad?: number;
+  intentDeviation?: {
+    flagged: boolean;
+    targetLoadCeiling?: number;
+  };
 };
 
 export const PROGRESSION_CONFIG = {
@@ -286,6 +300,47 @@ export function computeDoubleProgressionDecision(
         medianReps,
         modalRpe: modalRpe ?? null,
         reasonCodes: ["bodyweight_rep_progression_only", reasonCode],
+      }),
+    };
+  }
+
+  const intentDeviationClamp = resolveIntentDeviationClamp({
+    anchorLoad,
+    targetLoadCeiling: options?.intentDeviation?.targetLoadCeiling,
+    flagged: options?.intentDeviation?.flagged,
+  });
+  if (intentDeviationClamp) {
+    decisionLog.push(
+      `Intent drift detected: repeated high-load/low-rep history biases next exposure no higher than prescribed target ${intentDeviationClamp.targetLoadCeiling}.`
+    );
+    return {
+      nextLoad: intentDeviationClamp.nextLoad,
+      anchorLoad,
+      path: "fallback_hold",
+      decisionLog,
+      trace: buildProgressionDecisionTrace({
+        anchorLoad,
+        nextLoad: intentDeviationClamp.nextLoad,
+        path: "fallback_hold",
+        decisionLog,
+        anchorSource,
+        signalSetCount: signalSets.length,
+        effectiveSetCount: effectiveSets.length,
+        trimmedSetCount: signalSets.length - effectiveSets.length,
+        hasHighVariance,
+        minLoad,
+        maxLoad,
+        medianLoad,
+        priorSessionCount: options?.priorSessionCount ?? 0,
+        sampleConfidenceScale,
+        historyConfidenceScale,
+        progressionConfidenceScale,
+        confidenceReasons: options?.confidenceReasons ?? [],
+        repRange,
+        equipment,
+        medianReps,
+        modalRpe: modalRpe ?? null,
+        reasonCodes: ["intent_drift_detected", "rep_range_restoration_bias"],
       }),
     };
   }
@@ -550,6 +605,25 @@ export function computeDoubleProgressionDecision(
         ...(overshootEvaluation?.qualified === false ? [overshootEvaluation.reasonCode] : []),
       ],
     }),
+  };
+}
+
+function resolveIntentDeviationClamp(input: {
+  anchorLoad: number;
+  flagged?: boolean;
+  targetLoadCeiling?: number;
+}): { nextLoad: number; targetLoadCeiling: number } | null {
+  if (input.flagged !== true) {
+    return null;
+  }
+  if (!Number.isFinite(input.targetLoadCeiling) || (input.targetLoadCeiling ?? 0) < 0) {
+    return null;
+  }
+
+  const targetLoadCeiling = input.targetLoadCeiling as number;
+  return {
+    nextLoad: Math.min(roundLoad(input.anchorLoad), targetLoadCeiling),
+    targetLoadCeiling,
   };
 }
 

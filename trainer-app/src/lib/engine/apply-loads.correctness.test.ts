@@ -980,6 +980,103 @@ describe("applyLoads correctness", () => {
     expect(result.mainLifts[0].sets[0].targetLoad).toBe(150);
   });
 
+  it("biases repeated high-load low-rep drift back to the prescribed target ceiling", () => {
+    const squat: Exercise = {
+      id: "back-squat",
+      name: "Back Squat",
+      movementPatterns: ["squat"],
+      splitTags: ["legs"],
+      jointStress: "high",
+      isMainLiftEligible: true,
+      isCompound: true,
+      fatigueCost: 4,
+      equipment: ["barbell", "rack"],
+      primaryMuscles: ["Quads"],
+      repRangeMin: 5,
+      repRangeMax: 10,
+    };
+    const workout: WorkoutPlan = {
+      id: "w-intent-drift",
+      scheduledDate: "2026-02-20T00:00:00.000Z",
+      warmup: [],
+      mainLifts: [
+        {
+          id: "we-intent-drift",
+          exercise: squat,
+          orderIndex: 0,
+          isMainLift: true,
+          sets: [{ setIndex: 1, targetReps: 8, targetRpe: 8 }],
+        },
+      ],
+      accessories: [],
+      estimatedMinutes: 35,
+    };
+
+    const result = applyLoadsWithAudit(workout, {
+      history: [
+        {
+          date: "2026-02-19T00:00:00.000Z",
+          completed: true,
+          status: "COMPLETED",
+          sessionIntent: "legs",
+          exercises: [
+            {
+              exerciseId: "back-squat",
+              sets: [
+                { exerciseId: "back-squat", setIndex: 1, reps: 6, rpe: 7.5, load: 155, targetLoad: 145, targetReps: 8 },
+                { exerciseId: "back-squat", setIndex: 2, reps: 6, rpe: 8, load: 155, targetLoad: 145, targetReps: 8 },
+                { exerciseId: "back-squat", setIndex: 3, reps: 6, rpe: 8, load: 155, targetLoad: 145, targetReps: 8 },
+              ],
+            },
+          ],
+        },
+        {
+          date: "2026-02-16T00:00:00.000Z",
+          completed: true,
+          status: "COMPLETED",
+          sessionIntent: "legs",
+          exercises: [
+            {
+              exerciseId: "back-squat",
+              sets: [
+                { exerciseId: "back-squat", setIndex: 1, reps: 8, rpe: 8, load: 145, targetLoad: 145, targetReps: 8 },
+                { exerciseId: "back-squat", setIndex: 2, reps: 8, rpe: 8, load: 145, targetLoad: 145, targetReps: 8 },
+                { exerciseId: "back-squat", setIndex: 3, reps: 8, rpe: 8, load: 145, targetLoad: 145, targetReps: 8 },
+              ],
+            },
+          ],
+        },
+        {
+          date: "2026-02-12T00:00:00.000Z",
+          completed: true,
+          status: "COMPLETED",
+          sessionIntent: "legs",
+          exercises: [
+            {
+              exerciseId: "back-squat",
+              sets: [
+                { exerciseId: "back-squat", setIndex: 1, reps: 6, rpe: 7.5, load: 155, targetLoad: 145, targetReps: 8 },
+                { exerciseId: "back-squat", setIndex: 2, reps: 6, rpe: 8, load: 155, targetLoad: 145, targetReps: 8 },
+                { exerciseId: "back-squat", setIndex: 3, reps: 6, rpe: 8, load: 155, targetLoad: 145, targetReps: 8 },
+              ],
+            },
+          ],
+        },
+      ],
+      baselines: [],
+      exerciseById: { "back-squat": squat },
+      primaryGoal: "hypertrophy",
+      profile: { trainingAge: "intermediate" },
+      sessionIntent: "legs",
+    });
+
+    expect(result.workout.mainLifts[0].sets[0].targetLoad).toBe(145);
+    expect(result.audit.progressionTraces["back-squat"]?.outcome.action).toBe("decrease");
+    expect(result.audit.progressionTraces["back-squat"]?.outcome.reasonCodes).toContain(
+      "intent_drift_detected"
+    );
+  });
+
   it("uses conservative modal anchor when prior session has high load variance", () => {
     const inclineDb: Exercise = {
       id: "incline-db",

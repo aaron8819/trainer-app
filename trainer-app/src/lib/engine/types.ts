@@ -220,6 +220,9 @@ export type SetLog = {
   rpe?: number;
   load?: number;
   targetLoad?: number;
+  targetReps?: number;
+  targetRepMin?: number;
+  targetRepMax?: number;
 };
 
 export type WorkoutHistoryEntry = {

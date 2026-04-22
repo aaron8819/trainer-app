@@ -130,6 +130,13 @@ const PROTECTED_WEEK_ONE_COVERAGE_MUSCLES: ProtectedWeekOneCoverageMuscle[] = [
   "Hamstrings",
   "Calves",
 ];
+const MEANINGFUL_UPPER_PROTECTED_SUPPORT_FLOOR = 2;
+const UPPER_PROTECTED_SUPPORT_MUSCLES = new Set<ProtectedWeekOneCoverageMuscle>([
+  "Chest",
+  "Triceps",
+  "Side Delts",
+  "Rear Delts",
+]);
 
 function slotIdsAlignWithSlotSequence(input: {
   slotSequence: MesocycleSlotSequence;
@@ -259,7 +266,7 @@ function evaluateProtectedWeekOneCoverage(input: {
   }
 
   const muscles = PROTECTED_WEEK_ONE_COVERAGE_MUSCLES.map((muscle) => {
-    const slotCompatibility = input.slotSequence
+    const compatibleSlots = input.slotSequence
       .map((slot) => {
         const slotPolicy = resolveSessionSlotPolicy({
           sessionIntent: toSessionIntent(slot.intent),
@@ -269,12 +276,22 @@ function evaluateProtectedWeekOneCoverage(input: {
           },
         }).currentSession;
         const compatibleMuscles = getProjectionRepairCompatibleMuscles(slotPolicy, [muscle]);
-        return compatibleMuscles.includes(muscle) ? slot.slotId : null;
+        return compatibleMuscles.includes(muscle)
+          ? { slotId: slot.slotId, sessionIntent: slotPolicy?.sessionIntent }
+          : null;
       })
-      .filter((slotId): slotId is string => Boolean(slotId));
+      .filter(
+        (slot): slot is { slotId: string; sessionIntent: SessionIntent | undefined } =>
+          Boolean(slot)
+      );
     const mev = VOLUME_LANDMARKS[muscle].mev;
     const weeklyTarget = getWeeklyVolumeTarget(input.activeMesocycle, muscle, 1);
-    const practicalFloor = Math.max(mev, weeklyTarget);
+    const usesUpperSupportFloor =
+      UPPER_PROTECTED_SUPPORT_MUSCLES.has(muscle) &&
+      compatibleSlots.some((slot) => slot.sessionIntent === "upper");
+    const practicalFloor = usesUpperSupportFloor
+      ? MEANINGFUL_UPPER_PROTECTED_SUPPORT_FLOOR
+      : Math.max(mev, weeklyTarget);
     const projectedEffectiveSets = projectedTotals.get(muscle) ?? 0;
     const deficitToMev = Math.max(0, mev - projectedEffectiveSets);
     const deficitToTarget = Math.max(0, weeklyTarget - projectedEffectiveSets);
@@ -291,7 +308,7 @@ function evaluateProtectedWeekOneCoverage(input: {
       deficitToPracticalFloor: roundToTenth(deficitToPracticalFloor),
       belowMev: deficitToMev > 0,
       belowPracticalFloor: deficitToPracticalFloor > 0,
-      compatibleSlotIds: slotCompatibility,
+      compatibleSlotIds: compatibleSlots.map((slot) => slot.slotId),
     } satisfies ProtectedWeekOneCoverageRow;
   });
 
@@ -575,6 +592,50 @@ function scoreProtectedCoverageContribution(input: {
   };
 }
 
+export function evaluateUpperProtectedSupportQuality(input: {
+  slotPolicy: ReturnType<typeof resolveSessionSlotPolicy>["currentSession"];
+  contributionByMuscle: ReadonlyMap<string, number>;
+  protectedMuscles?: readonly ProtectedWeekOneCoverageMuscle[];
+}) {
+  const protectedMuscles =
+    input.protectedMuscles && input.protectedMuscles.length > 0
+      ? Array.from(new Set(input.protectedMuscles))
+      : getProtectedWeekOneCoverageObligations(input.slotPolicy);
+
+  if (input.slotPolicy?.sessionIntent !== "upper" || protectedMuscles.length === 0) {
+    return {
+      isRelevant: false,
+      satisfied: true,
+      meaningfulCoveredMuscleCount: 0,
+      totalEffectiveSets: 0,
+      shortfallToFloor: 0,
+      missingMuscles: [] as ProtectedWeekOneCoverageMuscle[],
+    };
+  }
+
+  let totalEffectiveSets = 0;
+  let shortfallToFloor = 0;
+  const missingMuscles: ProtectedWeekOneCoverageMuscle[] = [];
+
+  for (const muscle of protectedMuscles) {
+    const effectiveSets = input.contributionByMuscle.get(muscle) ?? 0;
+    totalEffectiveSets += effectiveSets;
+    if (effectiveSets < MEANINGFUL_UPPER_PROTECTED_SUPPORT_FLOOR) {
+      shortfallToFloor += MEANINGFUL_UPPER_PROTECTED_SUPPORT_FLOOR - effectiveSets;
+      missingMuscles.push(muscle);
+    }
+  }
+
+  return {
+    isRelevant: true,
+    satisfied: missingMuscles.length === 0,
+    meaningfulCoveredMuscleCount: protectedMuscles.length - missingMuscles.length,
+    totalEffectiveSets,
+    shortfallToFloor: roundToTenth(shortfallToFloor),
+    missingMuscles,
+  };
+}
+
 function normalizeMuscleName(muscle: string): string {
   return muscle.trim().toLowerCase();
 }
@@ -614,12 +675,6 @@ function countWorkoutWorkingSets(workout: WorkoutPlan): number {
   return [...workout.mainLifts, ...workout.accessories].reduce(
     (sum, exercise) => sum + exercise.sets.length,
     0
-  );
-}
-
-function workoutHasPrimaryMuscle(workout: WorkoutPlan, muscle: string): boolean {
-  return [...workout.mainLifts, ...workout.accessories].some((exercise) =>
-    (exercise.exercise.primaryMuscles ?? []).includes(muscle)
   );
 }
 
@@ -687,12 +742,84 @@ function appendAccessory(workout: WorkoutPlan, exercise: WorkoutExercise): Worko
   };
 }
 
+function accessoryTargetsProtectedMuscle(
+  exercise: WorkoutExercise,
+  protectedMuscles: ReadonlySet<string>
+): boolean {
+  return (exercise.exercise.primaryMuscles ?? []).some((muscle) =>
+    protectedMuscles.has(normalizeMuscleName(muscle))
+  );
+}
+
+function appendOrReplaceSupportAccessory(input: {
+  workout: WorkoutPlan;
+  slotPolicy: ReturnType<typeof resolveSessionSlotPolicy>["currentSession"];
+  exerciseLibrary: MappedGenerationContext["exerciseLibrary"];
+  selectedExerciseIds: Set<string>;
+  muscle: ProtectedWeekOneCoverageMuscle;
+  protectedMuscles: readonly ProtectedWeekOneCoverageMuscle[];
+}): WorkoutPlan {
+  const supportExercise = selectSupportIsolation({
+    exerciseLibrary: input.exerciseLibrary,
+    selectedExerciseIds: input.selectedExerciseIds,
+    muscle: input.muscle,
+  });
+  if (!supportExercise) {
+    return input.workout;
+  }
+
+  const buildAccessory = (workout: WorkoutPlan, template?: WorkoutExercise) =>
+    buildSupportAccessoryExercise({
+      exercise: supportExercise,
+      template: template ?? workout.accessories.at(-1),
+      orderIndex: workout.mainLifts.length + workout.accessories.length,
+    });
+
+  if (countWorkoutExercises(input.workout) < SESSION_CAPS.maxExercises) {
+    const candidateWorkout = appendAccessory(input.workout, buildAccessory(input.workout));
+    return preservesSlotIdentity({ slotPolicy: input.slotPolicy, workout: candidateWorkout })
+      ? candidateWorkout
+      : input.workout;
+  }
+
+  const protectedMuscleSet = new Set(input.protectedMuscles.map(normalizeMuscleName));
+  for (const accessory of input.workout.accessories) {
+    if (accessoryTargetsProtectedMuscle(accessory, protectedMuscleSet)) {
+      continue;
+    }
+    const workoutWithoutAccessory = removeAccessory(input.workout, accessory.exercise.id);
+    const candidateWorkout = appendAccessory(
+      workoutWithoutAccessory,
+      buildAccessory(workoutWithoutAccessory, accessory)
+    );
+    if (preservesSlotIdentity({ slotPolicy: input.slotPolicy, workout: candidateWorkout })) {
+      return candidateWorkout;
+    }
+  }
+
+  return input.workout;
+}
+
 function rebalanceUpperSupportProjection(input: {
   workout: WorkoutPlan;
   slotPolicy: ReturnType<typeof resolveSessionSlotPolicy>["currentSession"];
   exerciseLibrary: MappedGenerationContext["exerciseLibrary"];
+  protectedMuscles: readonly ProtectedWeekOneCoverageMuscle[];
 }): WorkoutPlan {
   if (input.slotPolicy?.sessionIntent !== "upper") {
+    return input.workout;
+  }
+
+  const protectedMuscles =
+    input.protectedMuscles.length > 0
+      ? input.protectedMuscles
+      : getProtectedWeekOneCoverageObligations(input.slotPolicy);
+  const initialQuality = evaluateUpperProtectedSupportQuality({
+    slotPolicy: input.slotPolicy,
+    contributionByMuscle: computeWorkoutContributionByMuscle(input.workout),
+    protectedMuscles,
+  });
+  if (!initialQuality.isRelevant || initialQuality.satisfied) {
     return input.workout;
   }
 
@@ -702,69 +829,22 @@ function rebalanceUpperSupportProjection(input: {
     )
   );
 
-  if (input.slotPolicy.slotArchetype === "upper_horizontal_balanced") {
-    const redundantLatAccessory = input.workout.accessories.find(
-      (exercise) =>
-        (exercise.exercise.primaryMuscles ?? []).includes("Lats") &&
-        (exercise.exercise.movementPatterns ?? []).some((pattern) =>
-          pattern === "horizontal_pull" || pattern === "vertical_pull"
-        )
-    );
-    let workout = redundantLatAccessory
-      ? removeAccessory(input.workout, redundantLatAccessory.exercise.id)
-      : input.workout;
-    if (!workoutHasPrimaryMuscle(workout, "Rear Delts")) {
-      const rearDeltExercise = selectSupportIsolation({
-        exerciseLibrary: input.exerciseLibrary,
-        selectedExerciseIds,
-        muscle: "Rear Delts",
-      });
-      if (rearDeltExercise) {
-        workout = appendAccessory(
-          workout,
-          buildSupportAccessoryExercise({
-            exercise: rearDeltExercise,
-            template: redundantLatAccessory ?? workout.accessories.at(-1),
-            orderIndex: workout.mainLifts.length + workout.accessories.length,
-          })
-        );
-      }
-    }
-    const bicepsIsolation = workout.accessories.find(
-      (exercise) =>
-        (exercise.exercise.primaryMuscles ?? []).includes("Biceps") &&
-        (exercise.exercise.movementPatterns ?? []).includes("flexion")
-    );
-    if (bicepsIsolation) {
-      workout = removeAccessory(workout, bicepsIsolation.exercise.id);
-    }
-    return workout;
-  }
-
-  if (input.slotPolicy.slotArchetype === "upper_vertical_balanced") {
-    const sideDeltSets = computeWorkoutContributionByMuscle(input.workout).get("Side Delts") ?? 0;
-    if (sideDeltSets >= VOLUME_LANDMARKS["Side Delts"].mev) {
-      return input.workout;
-    }
-    const sideDeltExercise = selectSupportIsolation({
+  let workout = input.workout;
+  for (const muscle of initialQuality.missingMuscles) {
+    workout = appendOrReplaceSupportAccessory({
+      workout,
+      slotPolicy: input.slotPolicy,
       exerciseLibrary: input.exerciseLibrary,
       selectedExerciseIds,
-      muscle: "Side Delts",
+      muscle,
+      protectedMuscles,
     });
-    if (!sideDeltExercise) {
-      return input.workout;
+    for (const exercise of [...workout.mainLifts, ...workout.accessories]) {
+      selectedExerciseIds.add(exercise.exercise.id);
     }
-    return appendAccessory(
-      input.workout,
-      buildSupportAccessoryExercise({
-        exercise: sideDeltExercise,
-        template: input.workout.accessories.at(-1),
-        orderIndex: input.workout.mainLifts.length + input.workout.accessories.length,
-      })
-    );
   }
 
-  return input.workout;
+  return workout;
 }
 
 export function preservesSlotIdentity(input: {
@@ -811,6 +891,79 @@ function sumProtectedDeficitToPracticalFloor(
   return roundToTenth(rows.reduce((sum, row) => sum + row.deficitToPracticalFloor, 0));
 }
 
+type ProjectedSlotCompositionEvaluation = {
+  relevantDeficitCount: number;
+  relevantDeficitToPracticalFloor: number;
+  totalDeficitCount: number;
+  totalDeficitToPracticalFloor: number;
+  meaningfulSupportQuality: ReturnType<typeof evaluateUpperProtectedSupportQuality>;
+  coverage: ReturnType<typeof scoreProtectedCoverageContribution>;
+  preferredSupportCoverage: ReturnType<typeof scorePreferredSupportContribution>;
+  exerciseCount: number;
+  workingSetCount: number;
+};
+
+function compareLower(candidateValue: number, bestValue: number): number {
+  if (candidateValue < bestValue) {
+    return 1;
+  }
+  if (candidateValue > bestValue) {
+    return -1;
+  }
+  return 0;
+}
+
+function compareHigher(candidateValue: number, bestValue: number): number {
+  if (candidateValue > bestValue) {
+    return 1;
+  }
+  if (candidateValue < bestValue) {
+    return -1;
+  }
+  return 0;
+}
+
+function compareProjectedSlotCompositionEvaluation(
+  candidate: ProjectedSlotCompositionEvaluation,
+  best: ProjectedSlotCompositionEvaluation
+): number {
+  const comparisons = [
+    compareLower(candidate.relevantDeficitCount, best.relevantDeficitCount),
+    compareLower(
+      candidate.relevantDeficitToPracticalFloor,
+      best.relevantDeficitToPracticalFloor
+    ),
+    compareHigher(
+      candidate.meaningfulSupportQuality.meaningfulCoveredMuscleCount,
+      best.meaningfulSupportQuality.meaningfulCoveredMuscleCount
+    ),
+    compareLower(
+      candidate.meaningfulSupportQuality.shortfallToFloor,
+      best.meaningfulSupportQuality.shortfallToFloor
+    ),
+    compareHigher(
+      candidate.meaningfulSupportQuality.totalEffectiveSets,
+      best.meaningfulSupportQuality.totalEffectiveSets
+    ),
+    compareHigher(candidate.coverage.coveredMuscleCount, best.coverage.coveredMuscleCount),
+    compareHigher(candidate.coverage.totalCoverage, best.coverage.totalCoverage),
+    compareHigher(
+      candidate.preferredSupportCoverage.coveredMuscleCount,
+      best.preferredSupportCoverage.coveredMuscleCount
+    ),
+    compareHigher(
+      candidate.preferredSupportCoverage.totalCoverage,
+      best.preferredSupportCoverage.totalCoverage
+    ),
+    compareLower(candidate.totalDeficitCount, best.totalDeficitCount),
+    compareLower(candidate.totalDeficitToPracticalFloor, best.totalDeficitToPracticalFloor),
+    compareLower(candidate.exerciseCount, best.exerciseCount),
+    compareLower(candidate.workingSetCount, best.workingSetCount),
+  ];
+
+  return comparisons.find((comparison) => comparison !== 0) ?? 0;
+}
+
 function selectBestProjectedSlotComposition(input: {
   candidateWorkouts: Array<{
     workout: WorkoutPlan;
@@ -831,16 +984,7 @@ function selectBestProjectedSlotComposition(input: {
   const prioritizedMuscleSet = new Set(input.prioritizedProtectedMuscles);
   const preferredSupportMuscles = getProjectionPreferredSupportMuscles(input.slotPolicy);
   let bestCandidate = input.candidateWorkouts[0];
-  let bestEvaluation: {
-    relevantDeficitCount: number;
-    relevantDeficitToPracticalFloor: number;
-    totalDeficitCount: number;
-    totalDeficitToPracticalFloor: number;
-    coverage: ReturnType<typeof scoreProtectedCoverageContribution>;
-    preferredSupportCoverage: ReturnType<typeof scorePreferredSupportContribution>;
-    exerciseCount: number;
-    workingSetCount: number;
-  } | null = null;
+  let bestEvaluation: ProjectedSlotCompositionEvaluation | null = null;
 
   for (const candidate of input.candidateWorkouts) {
     if (
@@ -879,6 +1023,11 @@ function selectBestProjectedSlotComposition(input: {
       contributionByMuscle: projectedContributionByMuscle,
       preferredMuscles: preferredSupportMuscles,
     });
+    const meaningfulSupportQuality = evaluateUpperProtectedSupportQuality({
+      slotPolicy: input.slotPolicy,
+      contributionByMuscle: projectedContributionByMuscle,
+      protectedMuscles: getProtectedWeekOneCoverageObligations(input.slotPolicy),
+    });
     const evaluationSummary = {
       relevantDeficitCount: relevantDeficits.length,
       relevantDeficitToPracticalFloor: sumProtectedDeficitToPracticalFloor(relevantDeficits),
@@ -886,100 +1035,14 @@ function selectBestProjectedSlotComposition(input: {
       totalDeficitToPracticalFloor: sumProtectedDeficitToPracticalFloor(
         hypotheticalEvaluation.deficitsBelowPracticalFloor
       ),
+      meaningfulSupportQuality,
       coverage,
       preferredSupportCoverage,
       exerciseCount: countWorkoutExercises(candidate.workout),
       workingSetCount: countWorkoutWorkingSets(candidate.workout),
     };
 
-    if (
-      !bestEvaluation ||
-      evaluationSummary.relevantDeficitCount < bestEvaluation.relevantDeficitCount ||
-      (evaluationSummary.relevantDeficitCount === bestEvaluation.relevantDeficitCount &&
-        evaluationSummary.relevantDeficitToPracticalFloor <
-          bestEvaluation.relevantDeficitToPracticalFloor) ||
-      (evaluationSummary.relevantDeficitCount === bestEvaluation.relevantDeficitCount &&
-        evaluationSummary.relevantDeficitToPracticalFloor ===
-          bestEvaluation.relevantDeficitToPracticalFloor &&
-        evaluationSummary.coverage.coveredMuscleCount > bestEvaluation.coverage.coveredMuscleCount) ||
-      (evaluationSummary.relevantDeficitCount === bestEvaluation.relevantDeficitCount &&
-        evaluationSummary.relevantDeficitToPracticalFloor ===
-          bestEvaluation.relevantDeficitToPracticalFloor &&
-        evaluationSummary.coverage.coveredMuscleCount ===
-          bestEvaluation.coverage.coveredMuscleCount &&
-        evaluationSummary.coverage.totalCoverage > bestEvaluation.coverage.totalCoverage) ||
-      (evaluationSummary.relevantDeficitCount === bestEvaluation.relevantDeficitCount &&
-        evaluationSummary.relevantDeficitToPracticalFloor ===
-          bestEvaluation.relevantDeficitToPracticalFloor &&
-        evaluationSummary.coverage.coveredMuscleCount ===
-          bestEvaluation.coverage.coveredMuscleCount &&
-        evaluationSummary.coverage.totalCoverage === bestEvaluation.coverage.totalCoverage &&
-        evaluationSummary.preferredSupportCoverage.coveredMuscleCount >
-          bestEvaluation.preferredSupportCoverage.coveredMuscleCount) ||
-      (evaluationSummary.relevantDeficitCount === bestEvaluation.relevantDeficitCount &&
-        evaluationSummary.relevantDeficitToPracticalFloor ===
-          bestEvaluation.relevantDeficitToPracticalFloor &&
-        evaluationSummary.coverage.coveredMuscleCount ===
-          bestEvaluation.coverage.coveredMuscleCount &&
-        evaluationSummary.coverage.totalCoverage === bestEvaluation.coverage.totalCoverage &&
-        evaluationSummary.preferredSupportCoverage.coveredMuscleCount ===
-          bestEvaluation.preferredSupportCoverage.coveredMuscleCount &&
-        evaluationSummary.preferredSupportCoverage.totalCoverage >
-          bestEvaluation.preferredSupportCoverage.totalCoverage) ||
-      (evaluationSummary.relevantDeficitCount === bestEvaluation.relevantDeficitCount &&
-        evaluationSummary.relevantDeficitToPracticalFloor ===
-          bestEvaluation.relevantDeficitToPracticalFloor &&
-        evaluationSummary.coverage.coveredMuscleCount ===
-          bestEvaluation.coverage.coveredMuscleCount &&
-        evaluationSummary.coverage.totalCoverage === bestEvaluation.coverage.totalCoverage &&
-        evaluationSummary.preferredSupportCoverage.coveredMuscleCount ===
-          bestEvaluation.preferredSupportCoverage.coveredMuscleCount &&
-        evaluationSummary.preferredSupportCoverage.totalCoverage ===
-          bestEvaluation.preferredSupportCoverage.totalCoverage &&
-        evaluationSummary.totalDeficitCount < bestEvaluation.totalDeficitCount) ||
-      (evaluationSummary.relevantDeficitCount === bestEvaluation.relevantDeficitCount &&
-        evaluationSummary.relevantDeficitToPracticalFloor ===
-          bestEvaluation.relevantDeficitToPracticalFloor &&
-        evaluationSummary.coverage.coveredMuscleCount ===
-          bestEvaluation.coverage.coveredMuscleCount &&
-        evaluationSummary.coverage.totalCoverage === bestEvaluation.coverage.totalCoverage &&
-        evaluationSummary.preferredSupportCoverage.coveredMuscleCount ===
-          bestEvaluation.preferredSupportCoverage.coveredMuscleCount &&
-        evaluationSummary.preferredSupportCoverage.totalCoverage ===
-          bestEvaluation.preferredSupportCoverage.totalCoverage &&
-        evaluationSummary.totalDeficitCount === bestEvaluation.totalDeficitCount &&
-        evaluationSummary.totalDeficitToPracticalFloor <
-          bestEvaluation.totalDeficitToPracticalFloor) ||
-      (evaluationSummary.relevantDeficitCount === bestEvaluation.relevantDeficitCount &&
-        evaluationSummary.relevantDeficitToPracticalFloor ===
-          bestEvaluation.relevantDeficitToPracticalFloor &&
-        evaluationSummary.coverage.coveredMuscleCount ===
-          bestEvaluation.coverage.coveredMuscleCount &&
-        evaluationSummary.coverage.totalCoverage === bestEvaluation.coverage.totalCoverage &&
-        evaluationSummary.preferredSupportCoverage.coveredMuscleCount ===
-          bestEvaluation.preferredSupportCoverage.coveredMuscleCount &&
-        evaluationSummary.preferredSupportCoverage.totalCoverage ===
-          bestEvaluation.preferredSupportCoverage.totalCoverage &&
-        evaluationSummary.totalDeficitCount === bestEvaluation.totalDeficitCount &&
-        evaluationSummary.totalDeficitToPracticalFloor ===
-          bestEvaluation.totalDeficitToPracticalFloor &&
-        evaluationSummary.exerciseCount < bestEvaluation.exerciseCount) ||
-      (evaluationSummary.relevantDeficitCount === bestEvaluation.relevantDeficitCount &&
-        evaluationSummary.relevantDeficitToPracticalFloor ===
-          bestEvaluation.relevantDeficitToPracticalFloor &&
-        evaluationSummary.coverage.coveredMuscleCount ===
-          bestEvaluation.coverage.coveredMuscleCount &&
-        evaluationSummary.coverage.totalCoverage === bestEvaluation.coverage.totalCoverage &&
-        evaluationSummary.preferredSupportCoverage.coveredMuscleCount ===
-          bestEvaluation.preferredSupportCoverage.coveredMuscleCount &&
-        evaluationSummary.preferredSupportCoverage.totalCoverage ===
-          bestEvaluation.preferredSupportCoverage.totalCoverage &&
-        evaluationSummary.totalDeficitCount === bestEvaluation.totalDeficitCount &&
-        evaluationSummary.totalDeficitToPracticalFloor ===
-          bestEvaluation.totalDeficitToPracticalFloor &&
-        evaluationSummary.exerciseCount === bestEvaluation.exerciseCount &&
-        evaluationSummary.workingSetCount < bestEvaluation.workingSetCount)
-    ) {
+    if (!bestEvaluation || compareProjectedSlotCompositionEvaluation(evaluationSummary, bestEvaluation) > 0) {
       bestCandidate = candidate;
       bestEvaluation = evaluationSummary;
     }
@@ -1164,11 +1227,17 @@ function projectSlotPlansPass(input: {
       }),
       slotPolicy,
       exerciseLibrary: projectionContext.mapped.exerciseLibrary,
+      protectedMuscles: slotProtectedCoverageMuscles,
     });
     const selectedContribution = computeWorkoutContributionByMuscle(selectedWorkout);
     const slotProtectedCoverageSatisfied = projectionRepairMuscles.every(
       (muscle) => (selectedContribution.get(muscle) ?? 0) > 0
     );
+    const meaningfulUpperProtectedSupport = evaluateUpperProtectedSupportQuality({
+      slotPolicy,
+      contributionByMuscle: selectedContribution,
+      protectedMuscles: slotProtectedCoverageMuscles,
+    });
     const accessoryLaneDecision = selectAccessoryLaneInsertion({
       slotIntent: toSessionIntent(slot.intent),
       workout: selectedWorkout,
@@ -1182,7 +1251,9 @@ function projectSlotPlansPass(input: {
       weeklyInsertionCount: accessoryLaneInsertionCount,
       slotInsertionCount: 0,
       slotQualityPreserved:
-        slotProtectedCoverageSatisfied &&
+        (meaningfulUpperProtectedSupport.isRelevant
+          ? meaningfulUpperProtectedSupport.satisfied
+          : slotProtectedCoverageSatisfied) &&
         preservesSlotIdentity({ slotPolicy, workout: selectedWorkout }),
     });
     if (accessoryLaneDecision.insert) {

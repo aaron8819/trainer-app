@@ -703,7 +703,7 @@ describe("buildSelectionObjective continuity bias", () => {
     expect(upperAObjective.slotPolicy?.currentSession?.sessionShape).toEqual({
       id: "upper_horizontal_balanced",
       preferredAccessoryPrimaryMuscles: ["Chest", "Triceps", "Rear Delts"],
-      protectedWeekOneCoverageMuscles: ["Chest", "Triceps"],
+      protectedWeekOneCoverageMuscles: ["Chest", "Triceps", "Rear Delts"],
       requiredMovementPatterns: ["vertical_pull", "horizontal_pull"],
       avoidDuplicatePatterns: ["vertical_pull"],
       supportPenaltyPatterns: ["horizontal_pull", "vertical_pull"],
@@ -712,7 +712,7 @@ describe("buildSelectionObjective continuity bias", () => {
     expect(upperBObjective.slotPolicy?.currentSession?.sessionShape).toEqual({
       id: "upper_vertical_balanced",
       preferredAccessoryPrimaryMuscles: ["Chest", "Triceps", "Side Delts"],
-      protectedWeekOneCoverageMuscles: ["Chest", "Triceps"],
+      protectedWeekOneCoverageMuscles: ["Chest", "Triceps", "Side Delts"],
       requiredMovementPatterns: ["horizontal_pull"],
       avoidDuplicatePatterns: ["vertical_push", "vertical_pull"],
       supportPenaltyPatterns: ["vertical_push", "vertical_pull"],

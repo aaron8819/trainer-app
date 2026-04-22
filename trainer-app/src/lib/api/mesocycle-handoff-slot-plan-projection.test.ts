@@ -17,8 +17,10 @@ import type { NextCycleSeedDraft } from "./mesocycle-handoff-contract";
 import { buildFallbackDesignFromDraft } from "./mesocycle-genesis-policy";
 import {
   buildMesocycleSlotPlanSeed,
+  evaluateUpperProtectedSupportQuality,
   projectSuccessorSlotPlansFromSnapshot,
 } from "./mesocycle-handoff-slot-plan-projection";
+import { resolveSessionSlotPolicy } from "@/lib/planning/session-slot-profile";
 import type { PreloadedGenerationSnapshot } from "./template-session/context-loader";
 
 function makeRawExercise(input: {
@@ -482,6 +484,42 @@ function getProtectedCoverageDiagnostics(
 }
 
 describe("projectSuccessorSlotPlansFromSnapshot", () => {
+  it("does not count incidental upper protected support trace as meaningful coverage", () => {
+    const slotPolicy = resolveSessionSlotPolicy({
+      sessionIntent: "upper",
+      slotId: "upper_a",
+      slotSequence: {
+        slots: [
+          { slotId: "upper_a", intent: "UPPER", sequenceIndex: 0 },
+          { slotId: "upper_b", intent: "UPPER", sequenceIndex: 1 },
+        ],
+      },
+    }).currentSession;
+
+    const incidentalTrace = evaluateUpperProtectedSupportQuality({
+      slotPolicy,
+      protectedMuscles: ["Chest", "Triceps", "Rear Delts"],
+      contributionByMuscle: new Map([
+        ["Chest", 2],
+        ["Triceps", 1.9],
+        ["Rear Delts", 2],
+      ]),
+    });
+    const meaningfulCoverage = evaluateUpperProtectedSupportQuality({
+      slotPolicy,
+      protectedMuscles: ["Chest", "Triceps", "Rear Delts"],
+      contributionByMuscle: new Map([
+        ["Chest", 2],
+        ["Triceps", 2],
+        ["Rear Delts", 2],
+      ]),
+    });
+
+    expect(incidentalTrace.satisfied).toBe(false);
+    expect(incidentalTrace.missingMuscles).toEqual(["Triceps"]);
+    expect(meaningfulCoverage.satisfied).toBe(true);
+  });
+
   it("is deterministic for the same snapshot and draft inputs", () => {
     const input = {
       userId: "user-1",
@@ -640,6 +678,9 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
         ["triceps-pressdown", "overhead-triceps-extension"].includes(exerciseId)
       )
     ).toBe(true);
+    expect(upperPairExerciseIds).toEqual(
+      expect.arrayContaining(["rear-delt-fly", "lateral-raise"])
+    );
     expect(
       upperPairExerciseIds.some((exerciseId) =>
         ["row", "seated-row", "pulldown"].includes(exerciseId)
@@ -874,11 +915,16 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
   });
 
   it("returns a constructor failure with diagnostics when protected viability still cannot be satisfied", async () => {
+    const snapshot = buildSnapshot();
+    snapshot.context.exercises = snapshot.context.exercises.filter(
+      (exercise) => exercise.id !== "calf-raise"
+    );
+
     const projected = projectSuccessorSlotPlansFromSnapshot({
       userId: "user-1",
       source: buildSource(),
       design: buildDesign(),
-      snapshot: buildSnapshot(),
+      snapshot,
       now: new Date("2026-03-19T12:00:00.000Z"),
     });
 

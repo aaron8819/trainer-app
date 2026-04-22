@@ -204,7 +204,7 @@ describe("HistoryClient", () => {
     );
 
     expect(screen.getByText("Dismissed")).toBeInTheDocument();
-    expect(screen.getByText("Dismissed optional closeout")).toBeInTheDocument();
+    expect(screen.getByText("Dismissed optional session")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "View" })).toHaveAttribute(
       "href",
       "/workout/closeout-1"

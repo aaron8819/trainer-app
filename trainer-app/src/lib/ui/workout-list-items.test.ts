@@ -239,8 +239,8 @@ describe("buildWorkoutListSurfaceSummary", () => {
     expect(summary.isCloseoutDismissed).toBe(false);
     expect(summary.sessionSlotId).toBeNull();
     expect(summary.sessionTechnicalLabel).toBeNull();
-    expect(getWorkoutListPrimaryLabel(summary)).toBe("Closeout");
-    expect(getWorkoutListSecondaryLabel(summary)).toBe("Optional manual closeout work");
+    expect(getWorkoutListPrimaryLabel(summary)).toBe("Manual session");
+    expect(getWorkoutListSecondaryLabel(summary)).toBe("Optional manual session");
   });
 
   it("labels dismissed closeouts without changing the persisted workout status", () => {
@@ -303,8 +303,8 @@ describe("buildWorkoutListSurfaceSummary", () => {
     expect(summary.status).toBe("PLANNED");
     expect(summary.isCloseout).toBe(true);
     expect(summary.isCloseoutDismissed).toBe(true);
-    expect(getWorkoutListPrimaryLabel(summary)).toBe("Closeout");
-    expect(getWorkoutListSecondaryLabel(summary)).toBe("Dismissed optional closeout");
+    expect(getWorkoutListPrimaryLabel(summary)).toBe("Manual session");
+    expect(getWorkoutListSecondaryLabel(summary)).toBe("Dismissed optional session");
     expect(getWorkoutListDisplayStatusLabel(summary)).toBe("Dismissed");
   });
 

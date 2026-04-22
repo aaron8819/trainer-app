@@ -120,8 +120,8 @@ function formatCloseoutTitle(
   closeout: Pick<CloseoutSupportData, "isPriorWeek" | "targetWeek">
 ): string {
   return closeout.isPriorWeek && closeout.targetWeek != null
-    ? `Week ${closeout.targetWeek} Closeout (Optional)`
-    : "Closeout";
+    ? `Week ${closeout.targetWeek} optional session`
+    : "Custom session";
 }
 
 export type ProgramWeekCompletionOutlook = {
@@ -426,11 +426,11 @@ function buildProgramCloseoutSummary(
       status: "available",
       statusLabel: "Available",
       detail: closeout.isPriorWeek
-        ? `Week ${closeout.targetWeek} closeout is still available after rollover. It stays separate from ${currentWeekLabel} and does not become a slot.`
-        : "Optional manual closeout work is available for this week. It stays separate from the canonical slot plan.",
+        ? `A Week ${closeout.targetWeek} optional session is still available after rollover. It stays separate from ${currentWeekLabel} and does not become a slot.`
+        : "Optional manual session is available for this week. It stays separate from the canonical slot plan.",
       actionHref: `/api/mesocycles/week-close/${closeout.weekCloseId}/closeout`,
       actionLabel:
-        closeout.isPriorWeek ? `Create Week ${closeout.targetWeek} closeout` : "Create closeout",
+        closeout.isPriorWeek ? `Create Week ${closeout.targetWeek} optional session` : "Create custom session",
       dismissActionHref: null,
       dismissActionLabel: null,
       targetWeek: closeout.targetWeek,
@@ -449,10 +449,10 @@ function buildProgramCloseoutSummary(
       statusLabel,
       detail:
         closeout.isPriorWeek && closeout.targetWeek != null
-          ? `Completed Week ${closeout.targetWeek} closeout is part of that week's actual landing, but it does not extend your current slot plan.`
-          : "Completed closeout is part of this week's actual landing, but it does not extend the remaining canonical slot plan.",
+          ? `Completed Week ${closeout.targetWeek} optional session is part of that week's actual landing, but it does not extend your current slot plan.`
+          : "Completed optional session is part of this week's actual landing, but it does not extend the remaining canonical slot plan.",
       actionHref: `/workout/${closeout.workoutId}`,
-      actionLabel: "Review closeout",
+      actionLabel: "Review custom session",
       dismissActionHref: null,
       dismissActionLabel: null,
       targetWeek: closeout.targetWeek,
@@ -468,10 +468,10 @@ function buildProgramCloseoutSummary(
       statusLabel,
       detail:
         closeout.isPriorWeek && closeout.targetWeek != null
-          ? `Skipped Week ${closeout.targetWeek} closeout stays separate from your current slot map and leaves continuity unchanged.`
-          : "Skipped closeout stays separate from the slot map and leaves next-session continuity unchanged.",
+          ? `Skipped Week ${closeout.targetWeek} optional session stays separate from your current slot map and leaves continuity unchanged.`
+          : "Skipped optional session stays separate from the slot map and leaves next-session continuity unchanged.",
       actionHref: `/workout/${closeout.workoutId}`,
-      actionLabel: "View closeout",
+      actionLabel: "Review custom session",
       dismissActionHref: null,
       dismissActionLabel: null,
       targetWeek: closeout.targetWeek,
@@ -486,15 +486,15 @@ function buildProgramCloseoutSummary(
     statusLabel,
     detail:
       closeout.isPriorWeek && closeout.targetWeek != null
-        ? `Optional manual closeout work for Week ${closeout.targetWeek}. It counts toward that week's actual volume once performed, but it is not part of your current slot map.`
-        : "Optional manual closeout work. It counts toward actual weekly volume once performed, but it is not a remaining slot.",
+        ? `Optional manual session for Week ${closeout.targetWeek}. It counts toward that week's actual volume once performed, but it is not part of your current slot map.`
+        : "Optional manual session. It counts toward actual weekly volume once performed, but it is not a remaining slot.",
     actionHref: `/log/${closeout.workoutId}`,
-    actionLabel: "Open closeout",
+    actionLabel: "Open custom session",
     dismissActionHref:
       normalizedStatus === "PLANNED"
         ? `/api/workouts/${closeout.workoutId}/dismiss-closeout`
         : null,
-    dismissActionLabel: normalizedStatus === "PLANNED" ? "Skip closeout" : null,
+    dismissActionLabel: normalizedStatus === "PLANNED" ? "Hide optional session" : null,
     targetWeek: closeout.targetWeek,
     isPriorWeek: closeout.isPriorWeek,
   };

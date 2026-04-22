@@ -50,7 +50,7 @@ export function CloseoutCard({
 
     if (!response.ok) {
       const body = await response.json().catch(() => ({}));
-      setDismissError(body.error ?? "Could not skip closeout.");
+      setDismissError(body.error ?? "Could not hide optional session.");
       setHidden(false);
       return;
     }
@@ -63,7 +63,7 @@ export function CloseoutCard({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">
-            Closeout
+            Optional Session
           </p>
           <Title className={titleClassName}>{closeout.title}</Title>
           <p className="mt-2 text-sm text-slate-700">{closeout.detail}</p>

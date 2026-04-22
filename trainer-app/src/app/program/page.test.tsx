@@ -218,7 +218,7 @@ describe("ProgramPage", () => {
     expect(screen.getByRole("heading", { name: "Weighted weekly volume" })).toBeInTheDocument();
     expect(
       screen.getByText(
-        "Review active or historical volume here. Program overview, slots, closeout, and projected landing above stay anchored to the active week."
+          "Review active or historical volume here. Program overview, slots, optional sessions, and projected landing above stay anchored to the active week."
       )
     ).toBeInTheDocument();
     expect(
@@ -296,16 +296,16 @@ describe("ProgramPage", () => {
         ],
       },
       closeout: {
-        title: "Closeout",
+        title: "Custom session",
         workoutId: "workout-closeout",
         status: "planned",
         statusLabel: "Planned",
         detail:
-          "Optional manual closeout work. It counts toward actual weekly volume once performed, but it is not a remaining slot.",
+          "Optional manual session. It counts toward actual weekly volume once performed, but it is not a remaining slot.",
         actionHref: "/log/workout-closeout",
-        actionLabel: "Open closeout",
+        actionLabel: "Open custom session",
         dismissActionHref: "/api/workouts/workout-closeout/dismiss-closeout",
-        dismissActionLabel: "Skip closeout",
+        dismissActionLabel: "Hide optional session",
       },
       weekCompletionOutlook: null,
       volumeDetails: {

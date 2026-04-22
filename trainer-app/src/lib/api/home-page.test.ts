@@ -346,7 +346,7 @@ describe("loadHomePageData", () => {
     });
   });
 
-  it("adds a separate closeout summary without altering the canonical next-session decision", async () => {
+  it("adds a separate optional-session summary without altering the canonical next-session decision", async () => {
     mocks.loadHomeProgramSupport.mockResolvedValue({
       nextSession: {
         intent: "lower",
@@ -407,20 +407,20 @@ describe("loadHomePageData", () => {
       nextSessionReasonLabel: "Next in sequence",
     });
     expect(result.closeout).toEqual({
-      title: "Closeout",
+      title: "Custom session",
       workoutId: "workout-closeout",
       status: "planned",
       statusLabel: "Planned",
       detail:
-        "Optional manual closeout work for this week. It can add actual weekly volume without becoming your next canonical session.",
+        "Optional manual session for this week. It can add actual weekly volume without becoming your next canonical session.",
       actionHref: "/log/workout-closeout",
-      actionLabel: "Open closeout",
+      actionLabel: "Open custom session",
       dismissActionHref: "/api/workouts/workout-closeout/dismiss-closeout",
-      dismissActionLabel: "Skip closeout",
+      dismissActionLabel: "Hide optional session",
     });
   });
 
-  it("adds a previous-week create closeout summary without altering the canonical next-session decision", async () => {
+  it("adds a previous-week create optional-session summary without altering the canonical next-session decision", async () => {
     mocks.loadHomeProgramSupport.mockResolvedValue({
       nextSession: {
         intent: "upper",
@@ -481,14 +481,14 @@ describe("loadHomePageData", () => {
       activeWeekLabel: "Week 4 - 0 of 4 sessions complete",
     });
     expect(result.closeout).toEqual({
-      title: "Week 3 Closeout (Optional)",
+      title: "Week 3 optional session",
       workoutId: null,
       status: "available",
       statusLabel: "Available",
       detail:
-        "Week 3 closeout is still available after rollover. It remains optional and does not change Week 4 continuity.",
+        "A Week 3 optional session is still available after rollover. It remains optional and does not change Week 4 continuity.",
       actionHref: "/api/mesocycles/week-close/wc-3/closeout",
-      actionLabel: "Create Week 3 closeout",
+      actionLabel: "Create Week 3 optional session",
       dismissActionHref: null,
       dismissActionLabel: null,
     });

@@ -46,20 +46,20 @@ describe("CloseoutCard", () => {
     render(
       <CloseoutCard
         closeout={{
-          title: "Closeout",
+          title: "Custom session",
           statusLabel: "Planned",
-          detail: "Optional manual closeout work.",
+          detail: "Optional manual session.",
           actionHref: "/log/workout-closeout",
-          actionLabel: "Open closeout",
+          actionLabel: "Open custom session",
           dismissActionHref: "/api/workouts/workout-closeout/dismiss-closeout",
-          dismissActionLabel: "Skip closeout",
+          dismissActionLabel: "Hide optional session",
         }}
       />
     );
 
-    await user.click(screen.getByRole("button", { name: "Skip closeout" }));
+    await user.click(screen.getByRole("button", { name: "Hide optional session" }));
 
-    expect(screen.queryByText("Optional manual closeout work.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Optional manual session.")).not.toBeInTheDocument();
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith("/api/workouts/workout-closeout/dismiss-closeout", {
         method: "POST",

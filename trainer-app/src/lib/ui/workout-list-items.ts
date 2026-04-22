@@ -135,7 +135,7 @@ export function getWorkoutListPrimaryLabel(
   }
 
   if (workout.isCloseout) {
-    return "Closeout";
+    return "Manual session";
   }
 
   return workout.sessionIdentityLabel;
@@ -149,8 +149,8 @@ export function getWorkoutListSecondaryLabel(
 ): string | null {
   if (workout.isCloseout) {
     return workout.isCloseoutDismissed
-      ? "Dismissed optional closeout"
-      : "Optional manual closeout work";
+      ? "Dismissed optional session"
+      : "Optional manual session";
   }
 
   if (!workout.isGapFill) {

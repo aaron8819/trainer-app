@@ -195,7 +195,7 @@ describe("dismissed closeout row", () => {
     ]);
 
     expect(screen.getByText("Dismissed")).toBeInTheDocument();
-    expect(screen.getByText("Dismissed optional closeout")).toBeInTheDocument();
+    expect(screen.getByText("Dismissed optional session")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "View" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Log" })).not.toBeInTheDocument();
   });

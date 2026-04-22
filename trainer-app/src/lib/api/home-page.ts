@@ -54,8 +54,8 @@ function formatCloseoutTitle(
   closeout: Pick<HomeProgramSupportData["closeout"], "isPriorWeek" | "targetWeek">
 ): string {
   return closeout.isPriorWeek && closeout.targetWeek != null
-    ? `Week ${closeout.targetWeek} Closeout (Optional)`
-    : "Closeout";
+    ? `Week ${closeout.targetWeek} optional session`
+    : "Custom session";
 }
 
 export type HomePageData = {
@@ -216,7 +216,7 @@ function buildSessionDescriptor(
   }
 
   if (session.isCloseout) {
-    return "Optional manual closeout work";
+    return "Optional manual session";
   }
 
   if (session.isSupplementalDeficitSession) {
@@ -309,11 +309,11 @@ function buildHomeCloseoutSummary(
       status: "available",
       statusLabel: "Available",
       detail: closeout.isPriorWeek
-        ? `Week ${closeout.targetWeek} closeout is still available after rollover. It remains optional and does not change ${nextWeekLabel} continuity.`
-        : "Optional manual closeout work is still available for this week. It does not replace your canonical next session.",
+        ? `A Week ${closeout.targetWeek} optional session is still available after rollover. It remains optional and does not change ${nextWeekLabel} continuity.`
+        : "An optional manual session is still available for this week. It does not replace your canonical next session.",
       actionHref: `/api/mesocycles/week-close/${closeout.weekCloseId}/closeout`,
       actionLabel:
-        closeout.isPriorWeek ? `Create Week ${closeout.targetWeek} closeout` : "Create closeout",
+        closeout.isPriorWeek ? `Create Week ${closeout.targetWeek} optional session` : "Create custom session",
       dismissActionHref: null,
       dismissActionLabel: null,
     };
@@ -331,10 +331,10 @@ function buildHomeCloseoutSummary(
       statusLabel,
       detail:
         closeout.isPriorWeek && closeout.targetWeek != null
-          ? `Completed Week ${closeout.targetWeek} closeout counts toward that week's actual volume without changing your current next-session plan.`
-          : "Completed closeout counts toward this week's actual volume without changing the next-session plan.",
+          ? `Completed Week ${closeout.targetWeek} optional session counts toward that week's actual volume without changing your current next-session plan.`
+          : "Completed optional session counts toward this week's actual volume without changing the next-session plan.",
       actionHref: `/workout/${closeout.workoutId}`,
-      actionLabel: "Review closeout",
+      actionLabel: "Review custom session",
       dismissActionHref: null,
       dismissActionLabel: null,
     };
@@ -348,10 +348,10 @@ function buildHomeCloseoutSummary(
       statusLabel,
       detail:
         closeout.isPriorWeek && closeout.targetWeek != null
-          ? `Skipped Week ${closeout.targetWeek} closeout stays separate from your current week and does not change continuity.`
-          : "Skipped closeout stays visible for this week, but it does not change continuity or the canonical slot plan.",
+          ? `Skipped Week ${closeout.targetWeek} optional session stays separate from your current week and does not change continuity.`
+          : "Skipped optional session stays visible for this week, but it does not change continuity or the canonical slot plan.",
       actionHref: `/workout/${closeout.workoutId}`,
-      actionLabel: "View closeout",
+      actionLabel: "Review custom session",
       dismissActionHref: null,
       dismissActionLabel: null,
     };
@@ -364,15 +364,15 @@ function buildHomeCloseoutSummary(
     statusLabel,
     detail:
       closeout.isPriorWeek && closeout.targetWeek != null
-        ? `Optional manual closeout work for Week ${closeout.targetWeek}. It can add actual volume to that week without becoming part of your current slot plan.`
-        : "Optional manual closeout work for this week. It can add actual weekly volume without becoming your next canonical session.",
+        ? `Optional manual session for Week ${closeout.targetWeek}. It can add actual volume to that week without becoming part of your current slot plan.`
+        : "Optional manual session for this week. It can add actual weekly volume without becoming your next canonical session.",
     actionHref: `/log/${closeout.workoutId}`,
-    actionLabel: "Open closeout",
+    actionLabel: "Open custom session",
     dismissActionHref:
       normalizedStatus === "PLANNED"
         ? `/api/workouts/${closeout.workoutId}/dismiss-closeout`
         : null,
-    dismissActionLabel: normalizedStatus === "PLANNED" ? "Skip closeout" : null,
+    dismissActionLabel: normalizedStatus === "PLANNED" ? "Hide optional session" : null,
   };
 }
 

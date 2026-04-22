@@ -579,16 +579,16 @@ describe("loadProgramPageData", () => {
       ],
     });
     expect(result.closeout).toEqual({
-      title: "Closeout",
+      title: "Custom session",
       workoutId: "closeout-planned",
       status: "planned",
       statusLabel: "Planned",
       detail:
-        "Optional manual closeout work. It counts toward actual weekly volume once performed, but it is not a remaining slot.",
+        "Optional manual session. It counts toward actual weekly volume once performed, but it is not a remaining slot.",
       actionHref: "/log/closeout-planned",
-      actionLabel: "Open closeout",
+      actionLabel: "Open custom session",
       dismissActionHref: "/api/workouts/closeout-planned/dismiss-closeout",
-      dismissActionLabel: "Skip closeout",
+      dismissActionLabel: "Hide optional session",
     });
     expect(result.weekCompletionOutlook).toEqual({
       assumptionLabel: "If you complete the remaining planned sessions this week, you will likely land here.",
@@ -784,7 +784,7 @@ describe("loadProgramPageData", () => {
     });
   });
 
-  it("surfaces a previous-week closeout create action without adding it to the current week slot map", async () => {
+  it("surfaces a previous-week optional-session create action without adding it to the current week slot map", async () => {
     mocks.loadProgramDashboardData.mockResolvedValue({
       activeMeso: {
         mesoNumber: 2,
@@ -864,14 +864,14 @@ describe("loadProgramPageData", () => {
       "Lower 2",
     ]);
     expect(result.closeout).toEqual({
-      title: "Week 3 Closeout (Optional)",
+      title: "Week 3 optional session",
       workoutId: null,
       status: "available",
       statusLabel: "Available",
       detail:
-        "Week 3 closeout is still available after rollover. It stays separate from Week 4 and does not become a slot.",
+        "A Week 3 optional session is still available after rollover. It stays separate from Week 4 and does not become a slot.",
       actionHref: "/api/mesocycles/week-close/wc-3/closeout",
-      actionLabel: "Create Week 3 closeout",
+      actionLabel: "Create Week 3 optional session",
       dismissActionHref: null,
       dismissActionLabel: null,
     });

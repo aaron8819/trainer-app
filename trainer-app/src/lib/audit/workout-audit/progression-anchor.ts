@@ -26,15 +26,38 @@ function buildConfidenceNotes(selectionMode?: string | null): string[] {
 }
 
 function buildHistorySession(entry: {
+  exercise: { isMainLiftEligible?: boolean | null };
   workout: { selectionMode: string | null };
+  sets: Array<{
+    setIndex: number;
+    targetLoad: number | null;
+    logs: Array<{
+      actualLoad: number | null;
+      actualReps: number | null;
+      actualRpe: number | null;
+      wasSkipped: boolean;
+    }>;
+  }>;
 }) {
   const selectionMode = entry.workout.selectionMode ?? undefined;
   const confidence =
     selectionMode === "INTENT" ? 1 : selectionMode === "MANUAL" ? 0.7 : 0.8;
+  const performedSemantics = derivePerformedExerciseSemantics({
+    isMainLiftEligible: entry.exercise.isMainLiftEligible,
+    sets: entry.sets.map((set) => ({
+      setIndex: set.setIndex,
+      targetLoad: set.targetLoad,
+      actualLoad: set.logs[0]?.actualLoad ?? null,
+      actualReps: set.logs[0]?.actualReps ?? null,
+      actualRpe: set.logs[0]?.actualRpe ?? null,
+      wasSkipped: set.logs[0]?.wasSkipped ?? false,
+    })),
+  });
   return {
     selectionMode: selectionMode as "INTENT" | "MANUAL" | undefined,
     confidence,
     confidenceNotes: buildConfidenceNotes(selectionMode),
+    sets: performedSemantics?.signalSets,
   };
 }
 

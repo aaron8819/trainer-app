@@ -15,7 +15,7 @@ describe("buildCanonicalProgressionEvaluationInput", () => {
       priorSessionCount: 1,
       historyConfidenceScale: 1,
       confidenceReasons: [],
-      intentDeviation: { flagged: false },
+      intentDeviation: { detected: false, severity: "none" },
     });
   });
 
@@ -88,109 +88,152 @@ describe("buildCanonicalProgressionEvaluationInput", () => {
     ]);
   });
 
-  it("detects repeated 2-of-3 high-load low-rep intent drift", () => {
+  it("does not detect a one-off under-range session", () => {
     const input = buildCanonicalProgressionEvaluationInput({
-      lastSets: [
-        { reps: 6, rpe: 8, load: 155, targetLoad: 145, targetReps: 8 },
-        { reps: 6, rpe: 8, load: 155, targetLoad: 145, targetReps: 8 },
-        { reps: 7, rpe: 8, load: 155, targetLoad: 145, targetReps: 8 },
-      ],
-      repRange: [6, 10],
+      lastSets: deviatingSets(165),
+      repRange: [8, 12],
       equipment: "barbell",
-      workingSetLoad: 155,
       historySessions: [
-        historySession([
-          { reps: 6, rpe: 8, load: 155, targetLoad: 145, targetReps: 8 },
-          { reps: 6, rpe: 8, load: 155, targetLoad: 145, targetReps: 8 },
-          { reps: 7, rpe: 8, load: 155, targetLoad: 145, targetReps: 8 },
-        ]),
-        historySession([
-          { reps: 8, rpe: 8, load: 145, targetLoad: 145, targetReps: 8 },
-          { reps: 8, rpe: 8, load: 145, targetLoad: 145, targetReps: 8 },
-          { reps: 8, rpe: 8, load: 145, targetLoad: 145, targetReps: 8 },
-        ]),
-        historySession([
-          { reps: 6, rpe: 8, load: 155, targetLoad: 145, targetReps: 8 },
-          { reps: 6, rpe: 8, load: 155, targetLoad: 145, targetReps: 8 },
-          { reps: 7, rpe: 8, load: 155, targetLoad: 145, targetReps: 8 },
-        ]),
+        historySession(deviatingSets(165)),
+        historySession(nonDeviatingSets()),
+        historySession(nonDeviatingSets()),
       ],
     });
 
     expect(input.context.intentDeviation).toEqual({
-      flagged: true,
-      targetLoadCeiling: 145,
+      detected: false,
+      severity: "none",
     });
+    expect(input.context.intentDeviationTargetLoadCeiling).toBeUndefined();
+  });
+
+  it("does not detect when load is only slightly above prescription", () => {
+    const input = buildCanonicalProgressionEvaluationInput({
+      lastSets: deviatingSets(155),
+      repRange: [8, 12],
+      equipment: "barbell",
+      historySessions: [
+        historySession(deviatingSets(155)),
+        historySession(deviatingSets(155)),
+        historySession(nonDeviatingSets()),
+      ],
+    });
+
+    expect(input.context.intentDeviation).toEqual({
+      detected: false,
+      severity: "none",
+    });
+  });
+
+  it("detects moderate severity when exactly 2 of the last 3 valid exposures deviate", () => {
+    const input = buildCanonicalProgressionEvaluationInput({
+      lastSets: deviatingSets(165),
+      repRange: [8, 12],
+      equipment: "barbell",
+      workingSetLoad: 165,
+      historySessions: [
+        historySession(deviatingSets(165)),
+        historySession(nonDeviatingSets()),
+        historySession(deviatingSets(165)),
+      ],
+    });
+
+    expect(input.context.intentDeviation).toEqual({
+      detected: true,
+      severity: "moderate",
+    });
+    expect(input.context.intentDeviationTargetLoadCeiling).toBe(145);
     expect(input.decisionOptions.intentDeviation).toEqual(input.context.intentDeviation);
+    expect(input.decisionOptions.intentDeviationTargetLoadCeiling).toBe(145);
   });
 
-  it("does not flag one-off deviation", () => {
+  it("detects strong severity when all 3 valid exposures deviate", () => {
     const input = buildCanonicalProgressionEvaluationInput({
-      lastSets: [{ reps: 6, rpe: 8, load: 155, targetLoad: 145, targetReps: 8 }],
-      repRange: [6, 10],
+      lastSets: deviatingSets(165),
+      repRange: [8, 12],
       equipment: "barbell",
       historySessions: [
-        historySession([{ reps: 6, rpe: 8, load: 155, targetLoad: 145, targetReps: 8 }]),
-        historySession([{ reps: 8, rpe: 8, load: 145, targetLoad: 145, targetReps: 8 }]),
-        historySession([{ reps: 8, rpe: 8, load: 145, targetLoad: 145, targetReps: 8 }]),
+        historySession(deviatingSets(165)),
+        historySession(deviatingSets(165)),
+        historySession(deviatingSets(165)),
       ],
     });
 
-    expect(input.context.intentDeviation.flagged).toBe(false);
-  });
-
-  it("does not flag missing targetLoad", () => {
-    const input = buildCanonicalProgressionEvaluationInput({
-      lastSets: [{ reps: 6, rpe: 8, load: 155, targetReps: 8 }],
-      repRange: [6, 10],
-      equipment: "barbell",
-      historySessions: [
-        historySession([{ reps: 6, rpe: 8, load: 155, targetReps: 8 }]),
-        historySession([{ reps: 6, rpe: 8, load: 155, targetReps: 8 }]),
-      ],
+    expect(input.context.intentDeviation).toEqual({
+      detected: true,
+      severity: "strong",
     });
-
-    expect(input.context.intentDeviation.flagged).toBe(false);
-  });
-
-  it("does not flag low reps without material load overshoot", () => {
-    const input = buildCanonicalProgressionEvaluationInput({
-      lastSets: [{ reps: 6, rpe: 8, load: 145, targetLoad: 145, targetReps: 8 }],
-      repRange: [6, 10],
-      equipment: "barbell",
-      historySessions: [
-        historySession([{ reps: 6, rpe: 8, load: 145, targetLoad: 145, targetReps: 8 }]),
-        historySession([{ reps: 6, rpe: 8, load: 145, targetLoad: 145, targetReps: 8 }]),
-      ],
-    });
-
-    expect(input.context.intentDeviation.flagged).toBe(false);
-  });
-
-  it("does not falsely trigger on slight under-range performance", () => {
-    const input = buildCanonicalProgressionEvaluationInput({
-      lastSets: [{ reps: 7, rpe: 8, load: 155, targetLoad: 145, targetReps: 8 }],
-      repRange: [6, 10],
-      equipment: "barbell",
-      historySessions: [
-        historySession([{ reps: 7, rpe: 8, load: 155, targetLoad: 145, targetReps: 8 }]),
-        historySession([{ reps: 7, rpe: 8, load: 155, targetLoad: 145, targetReps: 8 }]),
-      ],
-    });
-
-    expect(input.context.intentDeviation.flagged).toBe(false);
+    expect(input.context.intentDeviationTargetLoadCeiling).toBe(145);
   });
 });
 
-function historySession(
-  sets: Array<{
-    reps: number;
-    rpe: number;
-    load: number;
-    targetLoad?: number;
-    targetReps?: number;
-  }>
-) {
+function deviatingSets(load: number) {
+  return [
+    {
+      reps: 7,
+      rpe: 8,
+      load,
+      targetLoad: 145,
+      targetRepRange: { min: 8, max: 12 },
+    },
+    {
+      reps: 7,
+      rpe: 8,
+      load,
+      targetLoad: 145,
+      targetRepRange: { min: 8, max: 12 },
+    },
+    {
+      reps: 8,
+      rpe: 8,
+      load,
+      targetLoad: 145,
+      targetRepRange: { min: 8, max: 12 },
+    },
+    {
+      reps: 7,
+      rpe: 8,
+      load,
+      targetLoad: 145,
+      targetRepRange: { min: 8, max: 12 },
+    },
+    {
+      reps: 8,
+      rpe: 8,
+      load,
+      targetLoad: 145,
+      targetRepRange: { min: 8, max: 12 },
+    },
+  ];
+}
+
+function nonDeviatingSets() {
+  return [
+    {
+      reps: 8,
+      rpe: 8,
+      load: 145,
+      targetLoad: 145,
+      targetRepRange: { min: 8, max: 12 },
+    },
+    {
+      reps: 8,
+      rpe: 8,
+      load: 145,
+      targetLoad: 145,
+      targetRepRange: { min: 8, max: 12 },
+    },
+    {
+      reps: 9,
+      rpe: 8,
+      load: 145,
+      targetLoad: 145,
+      targetRepRange: { min: 8, max: 12 },
+    },
+  ];
+}
+
+function historySession(sets: ReturnType<typeof deviatingSets>) {
   return {
     confidence: 1,
     selectionMode: "INTENT" as const,

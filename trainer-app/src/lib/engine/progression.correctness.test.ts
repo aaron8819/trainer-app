@@ -232,42 +232,48 @@ describe("progression correctness", () => {
     expect(decision?.trace.outcome.reasonCodes).not.toContain("same_exercise_catch_up_progression");
   });
 
-  it("clamps repeated intent drift to the prescribed target ceiling", () => {
+  it("clamps repeated intent deviation to the prescribed target ceiling without changing the rep range", () => {
     const decision = computeDoubleProgressionDecision(
       [
-        { reps: 6, rpe: 8, load: 155, targetLoad: 145, targetReps: 8 },
-        { reps: 6, rpe: 8, load: 155, targetLoad: 145, targetReps: 8 },
-        { reps: 7, rpe: 8, load: 155, targetLoad: 145, targetReps: 8 },
+        { reps: 6, rpe: 8, load: 165, targetLoad: 145, targetRepRange: { min: 8, max: 12 } },
+        { reps: 6, rpe: 8, load: 165, targetLoad: 145, targetRepRange: { min: 8, max: 12 } },
+        { reps: 7, rpe: 8, load: 165, targetLoad: 145, targetRepRange: { min: 8, max: 12 } },
       ],
-      [6, 10],
+      [8, 12],
       "barbell",
       {
-        workingSetLoad: 155,
+        workingSetLoad: 165,
         priorSessionCount: 3,
-        intentDeviation: { flagged: true, targetLoadCeiling: 145 },
+        intentDeviation: { detected: true, severity: "moderate" },
+        intentDeviationTargetLoadCeiling: 145,
       }
     );
 
     expect(decision?.nextLoad).toBe(145);
     expect(decision?.trace.outcome.action).toBe("decrease");
+    expect(decision?.trace.repRange).toEqual({ min: 8, max: 12 });
+    expect(decision?.decisionLog.join(" | ")).toContain(
+      "rep-range restoration bias suppressed upward promotion"
+    );
     expect(decision?.trace.outcome.reasonCodes).toContain("intent_drift_detected");
     expect(decision?.trace.outcome.reasonCodes).toContain("rep_range_restoration_bias");
   });
 
-  it("blocks overshoot and catch-up promotion when intent drift is flagged", () => {
+  it("suppresses overshoot and catch-up promotion when intent deviation is detected", () => {
     const decision = computeDoubleProgressionDecision(
       [
-        { reps: 6, rpe: 7.5, load: 155, targetLoad: 145, targetReps: 8 },
-        { reps: 6, rpe: 7.5, load: 155, targetLoad: 145, targetReps: 8 },
-        { reps: 6, rpe: 8, load: 155, targetLoad: 145, targetReps: 8 },
-        { reps: 6, rpe: 8, load: 155, targetLoad: 145, targetReps: 8 },
+        { reps: 6, rpe: 7.5, load: 165, targetLoad: 145, targetRepRange: { min: 8, max: 12 } },
+        { reps: 6, rpe: 7.5, load: 165, targetLoad: 145, targetRepRange: { min: 8, max: 12 } },
+        { reps: 6, rpe: 8, load: 165, targetLoad: 145, targetRepRange: { min: 8, max: 12 } },
+        { reps: 6, rpe: 8, load: 165, targetLoad: 145, targetRepRange: { min: 8, max: 12 } },
       ],
-      [6, 10],
+      [8, 12],
       "barbell",
       {
-        workingSetLoad: 155,
+        workingSetLoad: 165,
         priorSessionCount: 3,
-        intentDeviation: { flagged: true, targetLoadCeiling: 145 },
+        intentDeviation: { detected: true, severity: "strong" },
+        intentDeviationTargetLoadCeiling: 145,
       }
     );
 

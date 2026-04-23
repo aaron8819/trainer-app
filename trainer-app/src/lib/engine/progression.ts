@@ -43,9 +43,10 @@ export type DoubleProgressionDecisionOptions = {
    *  resolved the representative working load. */
   workingSetLoad?: number;
   intentDeviation?: {
-    flagged: boolean;
-    targetLoadCeiling?: number;
+    detected: boolean;
+    severity: "none" | "moderate" | "strong";
   };
+  intentDeviationTargetLoadCeiling?: number;
 };
 
 export const PROGRESSION_CONFIG = {
@@ -317,12 +318,13 @@ export function computeDoubleProgressionDecision(
 
   const intentDeviationClamp = resolveIntentDeviationClamp({
     anchorLoad,
-    targetLoadCeiling: options?.intentDeviation?.targetLoadCeiling,
-    flagged: options?.intentDeviation?.flagged,
+    targetLoadCeiling: options?.intentDeviationTargetLoadCeiling,
+    detected: options?.intentDeviation?.detected,
+    severity: options?.intentDeviation?.severity,
   });
   if (intentDeviationClamp) {
     decisionLog.push(
-      `Intent drift detected: repeated high-load/low-rep history biases next exposure no higher than prescribed target ${intentDeviationClamp.targetLoadCeiling}.`
+      `Intent deviation detected (${intentDeviationClamp.severity}): rep-range restoration bias suppressed upward promotion and clamped next exposure no higher than prescribed target ${intentDeviationClamp.targetLoadCeiling}.`
     );
     return {
       nextLoad: intentDeviationClamp.nextLoad,
@@ -634,10 +636,11 @@ export function computeDoubleProgressionDecision(
 
 function resolveIntentDeviationClamp(input: {
   anchorLoad: number;
-  flagged?: boolean;
+  detected?: boolean;
+  severity?: "none" | "moderate" | "strong";
   targetLoadCeiling?: number;
-}): { nextLoad: number; targetLoadCeiling: number } | null {
-  if (input.flagged !== true) {
+}): { nextLoad: number; severity: "moderate" | "strong"; targetLoadCeiling: number } | null {
+  if (input.detected !== true || input.severity == null || input.severity === "none") {
     return null;
   }
   if (!Number.isFinite(input.targetLoadCeiling) || (input.targetLoadCeiling ?? 0) < 0) {
@@ -647,6 +650,7 @@ function resolveIntentDeviationClamp(input: {
   const targetLoadCeiling = input.targetLoadCeiling as number;
   return {
     nextLoad: Math.min(roundLoad(input.anchorLoad), targetLoadCeiling),
+    severity: input.severity,
     targetLoadCeiling,
   };
 }

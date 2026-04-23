@@ -1023,9 +1023,9 @@ describe("applyLoads correctness", () => {
             {
               exerciseId: "back-squat",
               sets: [
-                { exerciseId: "back-squat", setIndex: 1, reps: 6, rpe: 7.5, load: 155, targetLoad: 145, targetReps: 8 },
-                { exerciseId: "back-squat", setIndex: 2, reps: 6, rpe: 8, load: 155, targetLoad: 145, targetReps: 8 },
-                { exerciseId: "back-squat", setIndex: 3, reps: 6, rpe: 8, load: 155, targetLoad: 145, targetReps: 8 },
+                { exerciseId: "back-squat", setIndex: 1, reps: 6, rpe: 7.5, load: 165, targetLoad: 145, targetReps: 8 },
+                { exerciseId: "back-squat", setIndex: 2, reps: 6, rpe: 8, load: 165, targetLoad: 145, targetReps: 8 },
+                { exerciseId: "back-squat", setIndex: 3, reps: 6, rpe: 8, load: 165, targetLoad: 145, targetReps: 8 },
               ],
             },
           ],
@@ -1055,9 +1055,9 @@ describe("applyLoads correctness", () => {
             {
               exerciseId: "back-squat",
               sets: [
-                { exerciseId: "back-squat", setIndex: 1, reps: 6, rpe: 7.5, load: 155, targetLoad: 145, targetReps: 8 },
-                { exerciseId: "back-squat", setIndex: 2, reps: 6, rpe: 8, load: 155, targetLoad: 145, targetReps: 8 },
-                { exerciseId: "back-squat", setIndex: 3, reps: 6, rpe: 8, load: 155, targetLoad: 145, targetReps: 8 },
+                { exerciseId: "back-squat", setIndex: 1, reps: 6, rpe: 7.5, load: 165, targetLoad: 145, targetReps: 8 },
+                { exerciseId: "back-squat", setIndex: 2, reps: 6, rpe: 8, load: 165, targetLoad: 145, targetReps: 8 },
+                { exerciseId: "back-squat", setIndex: 3, reps: 6, rpe: 8, load: 165, targetLoad: 145, targetReps: 8 },
               ],
             },
           ],

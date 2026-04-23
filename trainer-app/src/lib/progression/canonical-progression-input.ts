@@ -12,8 +12,15 @@ export type CanonicalProgressionHistorySession = {
   sets?: ProgressionSet[];
 };
 
+export type IntentDeviationSeverity = "none" | "moderate" | "strong";
+
 export type IntentDeviationSignal = {
-  flagged: boolean;
+  detected: boolean;
+  severity: IntentDeviationSeverity;
+};
+
+type IntentDeviationResolution = {
+  signal: IntentDeviationSignal;
   targetLoadCeiling?: number;
 };
 
@@ -28,6 +35,7 @@ export type CanonicalProgressionEvaluationInput = {
     historyConfidenceScale: number;
     confidenceReasons: string[];
     intentDeviation: IntentDeviationSignal;
+    intentDeviationTargetLoadCeiling?: number;
   };
 };
 
@@ -71,14 +79,20 @@ export function buildCanonicalProgressionEvaluationInput(input: {
       priorSessionCount,
       historyConfidenceScale: combinedHistoryConfidenceScale,
       confidenceReasons,
-      intentDeviation,
+      intentDeviation: intentDeviation.signal,
+      ...(intentDeviation.targetLoadCeiling != null
+        ? { intentDeviationTargetLoadCeiling: intentDeviation.targetLoadCeiling }
+        : {}),
     },
     context: {
       workingSetLoad: input.workingSetLoad,
       priorSessionCount,
       historyConfidenceScale: combinedHistoryConfidenceScale,
       confidenceReasons,
-      intentDeviation,
+      intentDeviation: intentDeviation.signal,
+      ...(intentDeviation.targetLoadCeiling != null
+        ? { intentDeviationTargetLoadCeiling: intentDeviation.targetLoadCeiling }
+        : {}),
     },
   };
 }
@@ -87,36 +101,51 @@ function resolveIntentDeviationSignal(input: {
   sessions: CanonicalProgressionHistorySession[];
   repRange: [number, number];
   equipment: ProgressionEquipment;
-}): IntentDeviationSignal {
-  const recent = input.sessions.slice(0, 3);
-  if (recent.length === 0) {
-    return { flagged: false };
+}): IntentDeviationResolution {
+  const validEvaluations = input.sessions
+    .map((session) =>
+      evaluateIntentDeviationExposure({
+        sets: session.sets ?? [],
+        repRange: input.repRange,
+        equipment: input.equipment,
+      })
+    )
+    .filter((evaluation) => evaluation.valid)
+    .slice(0, 3);
+
+  if (validEvaluations.length < 3) {
+    return buildIntentDeviationResolution("none");
   }
 
-  const evaluations = recent.map((session) =>
-    evaluateIntentDeviationExposure({
-      sets: session.sets ?? [],
-      repRange: input.repRange,
-      equipment: input.equipment,
-    })
-  );
-  const latest = evaluations[0];
-  const validCount = evaluations.filter((evaluation) => evaluation.valid).length;
-  const deviatedCount = evaluations.filter((evaluation) => evaluation.deviated).length;
+  const latest = validEvaluations[0];
+  const deviatedCount = validEvaluations.filter((evaluation) => evaluation.deviated).length;
+  const severity =
+    latest?.deviated !== true
+      ? "none"
+      : deviatedCount === 3
+        ? "strong"
+        : deviatedCount === 2
+          ? "moderate"
+          : "none";
 
-  if (
-    validCount >= 2 &&
-    latest?.deviated === true &&
-    deviatedCount >= 2 &&
-    Number.isFinite(latest.targetLoadCeiling)
-  ) {
-    return {
-      flagged: true,
-      targetLoadCeiling: latest.targetLoadCeiling,
-    };
+  if (severity === "none" || !Number.isFinite(latest?.targetLoadCeiling)) {
+    return buildIntentDeviationResolution("none");
   }
 
-  return { flagged: false };
+  return buildIntentDeviationResolution(severity, latest.targetLoadCeiling as number);
+}
+
+function buildIntentDeviationResolution(
+  severity: IntentDeviationSeverity,
+  targetLoadCeiling?: number
+): IntentDeviationResolution {
+  return {
+    signal: {
+      detected: severity !== "none",
+      severity,
+    },
+    ...(targetLoadCeiling != null ? { targetLoadCeiling } : {}),
+  };
 }
 
 function evaluateIntentDeviationExposure(input: {
@@ -142,28 +171,20 @@ function evaluateIntentDeviationExposure(input: {
   const loads = targetBearingSets.map((set) => set.load as number);
   const targetLoads = targetBearingSets.map((set) => set.targetLoad as number);
   const repFloors = targetBearingSets.map((set) => resolveSetRepFloor(set, input.repRange[0]));
-  const medianLoad = median(loads);
-  const medianTargetLoad = median(targetLoads);
-  const medianReps = median(targetBearingSets.map((set) => set.reps));
-  const repFloor = median(repFloors);
-  const equipmentIncrement = resolveIntentDeviationIncrement(input.equipment);
-  const requiredLoadOvershoot = Math.max(equipmentIncrement, medianTargetLoad * 0.05);
-  const materiallyAbovePrescription =
-    medianLoad - medianTargetLoad >= requiredLoadOvershoot;
-  const materiallyBelowRepFloor =
-    medianReps <= repFloor - 2 || medianReps <= repFloor * 0.75;
   const belowFloorCount = targetBearingSets.filter(
     (set, index) => set.reps < repFloors[index]
   ).length;
-  const broadRepMiss = belowFloorCount >= Math.ceil(targetBearingSets.length / 2);
+  const belowFloorRatio = belowFloorCount / targetBearingSets.length;
+  const representativeLoad = median(loads);
+  const representativeTargetLoad = median(targetLoads);
+  const materiallyAbovePrescription =
+    representativeLoad - representativeTargetLoad >=
+    resolveMateriallyAboveThreshold(representativeTargetLoad, input.equipment);
 
   return {
     valid: true,
-    deviated:
-      materiallyAbovePrescription &&
-      materiallyBelowRepFloor &&
-      broadRepMiss,
-    targetLoadCeiling: resolveModalNumber(targetLoads),
+    deviated: belowFloorRatio >= 0.6 && materiallyAbovePrescription,
+    targetLoadCeiling: resolveModalNumber(targetLoads) ?? representativeTargetLoad,
   };
 }
 
@@ -189,6 +210,13 @@ function resolveIntentDeviationIncrement(equipment: ProgressionEquipment): numbe
   if (equipment === "dumbbell") return 2.5;
   if (equipment === "cable") return 2.5;
   return 2.5;
+}
+
+function resolveMateriallyAboveThreshold(
+  prescribedLoad: number,
+  equipment: ProgressionEquipment
+): number {
+  return Math.max(resolveIntentDeviationIncrement(equipment) * 2, prescribedLoad * 0.12);
 }
 
 function resolveModalNumber(values: number[]): number | undefined {

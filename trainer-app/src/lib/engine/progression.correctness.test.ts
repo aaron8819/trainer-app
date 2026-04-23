@@ -159,6 +159,79 @@ describe("progression correctness", () => {
     expect(decision?.trace.outcome.reasonCodes).toContain("same_exercise_catch_up_progression");
   });
 
+  it("keeps Tier 1 overshoot behavior unchanged when promotion policy stays at full confidence", () => {
+    const decision = computeDoubleProgressionDecision(
+      [
+        { reps: 8, rpe: 7.5, load: 145, targetLoad: 135 },
+        { reps: 8, rpe: 8, load: 145, targetLoad: 135 },
+        { reps: 7, rpe: 8, load: 140, targetLoad: 135 },
+      ],
+      [6, 10],
+      "barbell",
+      {
+        workingSetLoad: 145,
+        priorSessionCount: 3,
+        promotionPolicy: {
+          allowCatchUp: true,
+          overshootConfidenceScale: 1,
+        },
+      }
+    );
+
+    expect(decision?.path).toBe("path_5_overshoot");
+    expect(decision?.nextLoad).toBe(150);
+  });
+
+  it("mildly down-weights Tier 2 overshoot evidence without changing non-overshoot paths", () => {
+    const decision = computeDoubleProgressionDecision(
+      [
+        { reps: 10, rpe: 8, load: 65, targetLoad: 62.5 },
+        { reps: 10, rpe: 8, load: 65, targetLoad: 62.5 },
+      ],
+      [8, 12],
+      "other",
+      {
+        workingSetLoad: 65,
+        priorSessionCount: 3,
+        promotionPolicy: {
+          allowCatchUp: true,
+          overshootConfidenceScale: 0.9,
+        },
+      }
+    );
+
+    expect(decision?.path).toBe("path_4");
+    expect(decision?.nextLoad).toBe(65);
+    expect(decision?.decisionLog.join(" | ")).toContain("weighted confidence only counted as 1.80");
+    expect(decision?.trace.outcome.reasonCodes).toContain("overshoot_blocked_by_coverage");
+  });
+
+  it("disables Tier 3 catch-up before evaluation while keeping the base overshoot lane", () => {
+    const decision = computeDoubleProgressionDecision(
+      [
+        { reps: 8, rpe: 7.5, load: 155, targetLoad: 145 },
+        { reps: 8, rpe: 7.5, load: 155, targetLoad: 145 },
+        { reps: 7, rpe: 8, load: 155, targetLoad: 145 },
+        { reps: 7, rpe: 8, load: 155, targetLoad: 145 },
+      ],
+      [6, 10],
+      "cable",
+      {
+        workingSetLoad: 155,
+        priorSessionCount: 3,
+        promotionPolicy: {
+          allowCatchUp: false,
+          overshootConfidenceScale: 0.75,
+        },
+      }
+    );
+
+    expect(decision?.path).toBe("path_5_overshoot");
+    expect(decision?.nextLoad).toBe(157.5);
+    expect(decision?.decisionLog.join(" | ")).toContain("Catch-up lane skipped");
+    expect(decision?.trace.outcome.reasonCodes).not.toContain("same_exercise_catch_up_progression");
+  });
+
   it("clamps repeated intent drift to the prescribed target ceiling", () => {
     const decision = computeDoubleProgressionDecision(
       [
@@ -224,6 +297,32 @@ describe("progression correctness", () => {
     expect(decision?.trace.outcome.reasonCodes).toContain("controlled_hard_overshoot_progression");
   });
 
+  it("still allows Tier 3 overshoot at RPE 8.5 when the weighted evidence is broad enough", () => {
+    const decision = computeDoubleProgressionDecision(
+      [
+        { reps: 6, rpe: 8.5, load: 145, targetLoad: 135 },
+        { reps: 7, rpe: 8.5, load: 145, targetLoad: 135 },
+        { reps: 7, rpe: 8.5, load: 145, targetLoad: 135 },
+        { reps: 7, rpe: 8.5, load: 145, targetLoad: 135 },
+      ],
+      [6, 10],
+      "cable",
+      {
+        workingSetLoad: 145,
+        priorSessionCount: 3,
+        promotionPolicy: {
+          allowCatchUp: false,
+          overshootConfidenceScale: 0.75,
+        },
+      }
+    );
+
+    expect(decision?.path).toBe("path_5_overshoot");
+    expect(decision?.nextLoad).toBe(147.5);
+    expect(decision?.decisionLog.join(" | ")).toContain("Overshoot confidence=0.75");
+    expect(decision?.trace.outcome.reasonCodes).toContain("controlled_hard_overshoot_progression");
+  });
+
   it("does not promote a one-off overshoot without session-level evidence", () => {
     const decision = computeDoubleProgressionDecision(
       [
@@ -258,7 +357,9 @@ describe("progression correctness", () => {
 
     expect(decision?.path).toBe("fallback_hold");
     expect(decision?.nextLoad).toBe(145);
-    expect(decision?.decisionLog.join(" | ")).toContain("3/5 target-bearing sets beat prescription, but 4 were required");
+    expect(decision?.decisionLog.join(" | ")).toContain(
+      "3/5 target-bearing sets beat prescription, but weighted confidence only counted as 3.00 toward the 4 required"
+    );
     expect(decision?.trace.outcome.reasonCodes).toContain("overshoot_blocked_by_coverage");
   });
 

@@ -24,11 +24,33 @@ describe("load calibration", () => {
       reliabilityTier: "high",
       estimateScale: 1,
       earlyExposureConfidenceScale: 1,
+      allowCatchUp: true,
+      overshootConfidenceScale: 1,
     });
     expect(resolveLoadCalibrationPolicy({ equipment: ["dumbbell"] })).toMatchObject({
       reliabilityTier: "high",
       estimateScale: 1,
       earlyExposureConfidenceScale: 1,
+      allowCatchUp: true,
+      overshootConfidenceScale: 1,
+    });
+  });
+
+  it("assigns promotion guardrails by reliability tier", () => {
+    expect(resolveLoadCalibrationPolicy({ equipment: ["machine"], isCompound: true })).toMatchObject({
+      reliabilityTier: "medium",
+      allowCatchUp: true,
+      overshootConfidenceScale: 0.9,
+    });
+    expect(resolveLoadCalibrationPolicy({ equipment: ["machine"], isCompound: false })).toMatchObject({
+      reliabilityTier: "low",
+      allowCatchUp: false,
+      overshootConfidenceScale: 0.75,
+    });
+    expect(resolveLoadCalibrationPolicy({ equipment: ["cable"], isCompound: false })).toMatchObject({
+      reliabilityTier: "low",
+      allowCatchUp: false,
+      overshootConfidenceScale: 0.75,
     });
   });
 
@@ -57,6 +79,8 @@ describe("load calibration", () => {
       reliabilityTier: "bodyweight",
       estimateScale: 1,
       earlyExposureConfidenceScale: 1,
+      allowCatchUp: true,
+      overshootConfidenceScale: 1,
     });
   });
 });

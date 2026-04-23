@@ -676,7 +676,13 @@ function resolveLoadForExercise(
       progressionInput.lastSets,
       progressionInput.repRange,
       progressionInput.equipment,
-      progressionInput.decisionOptions
+      {
+        ...progressionInput.decisionOptions,
+        promotionPolicy: {
+          allowCatchUp: calibrationPolicy.allowCatchUp,
+          overshootConfidenceScale: calibrationPolicy.overshootConfidenceScale,
+        },
+      }
     );
     const anchorLoad = useModalAnchoring
       ? (decision?.anchorLoad ?? weightedHistoryModalLoad ?? getModalSessionLoad(latestSets))

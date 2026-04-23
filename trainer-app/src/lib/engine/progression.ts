@@ -35,6 +35,10 @@ export type DoubleProgressionDecisionOptions = {
   priorSessionCount?: number;
   historyConfidenceScale?: number;
   confidenceReasons?: string[];
+  promotionPolicy?: {
+    allowCatchUp?: boolean;
+    overshootConfidenceScale?: number;
+  };
   /** Canonical working-set load for this exposure when the caller has already
    *  resolved the representative working load. */
   workingSetLoad?: number;
@@ -239,6 +243,13 @@ export function computeDoubleProgressionDecision(
   const sampleConfidenceScale = resolveSampleSizeConfidenceScale(options?.priorSessionCount);
   const historyConfidenceScale = clampConfidenceScale(options?.historyConfidenceScale);
   const progressionConfidenceScale = Number((sampleConfidenceScale * historyConfidenceScale).toFixed(2));
+  const overshootConfidenceScale = clampConfidenceScale(
+    options?.promotionPolicy?.overshootConfidenceScale
+  );
+  const overshootConfidence = Number(
+    (progressionConfidenceScale * overshootConfidenceScale).toFixed(2)
+  );
+  const allowCatchUp = options?.promotionPolicy?.allowCatchUp !== false;
   const anchorSource =
     options?.workingSetLoad !== undefined ? "working_set" : "conservative_modal";
 
@@ -458,10 +469,16 @@ export function computeDoubleProgressionDecision(
     sets: effectiveSets,
     increment,
   });
+  if (overshootEvidence && overshootConfidenceScale < 1) {
+    decisionLog.push(
+      `Overshoot confidence=${overshootConfidence.toFixed(2)} after load-reliability scaling (${overshootConfidenceScale.toFixed(2)}).`
+    );
+  }
   const overshootEvaluation = evaluatePrescribedLoadOvershoot({
     overshootEvidence,
     modalRpe,
     hasHighVariance,
+    overshootConfidence,
   });
   if (
     overshootEvaluation?.qualified === true &&
@@ -471,13 +488,15 @@ export function computeDoubleProgressionDecision(
     if (!overshootEvidenceDetail) {
       throw new Error("Overshoot evaluation qualified without evidence.");
     }
-    const catchUpEvaluation = evaluateCatchUpProgression({
-      overshootEvidence: overshootEvidenceDetail,
-      modalRpe,
-      hasHighVariance,
-      increment,
-      priorSessionCount: options?.priorSessionCount ?? 0,
-    });
+    const catchUpEvaluation = allowCatchUp
+      ? evaluateCatchUpProgression({
+          overshootEvidence: overshootEvidenceDetail,
+          modalRpe,
+          hasHighVariance,
+          increment,
+          priorSessionCount: options?.priorSessionCount ?? 0,
+        })
+      : null;
     const scaledIncrement = increment * progressionConfidenceScale;
     const nextLoad = catchUpEvaluation
       ? roundLoad(anchorLoad + scaledIncrement + increment)
@@ -487,6 +506,11 @@ export function computeDoubleProgressionDecision(
         ? `Path 5 fired: performed load beat prescription on ${overshootEvidenceDetail.qualifyingSetCount}/${overshootEvidenceDetail.targetBearingSetCount} signal sets by at least ${increment} lbs, and the broader coverage justified progression even at RPE ${modalRpe ?? "n/a"}. Increment +${(nextLoad - anchorLoad).toFixed(1)}.`
         : `Path 5 fired: performed load beat prescription on ${overshootEvidenceDetail.qualifyingSetCount}/${overshootEvidenceDetail.targetBearingSetCount} signal sets by at least ${increment} lbs while effort stayed manageable. Increment +${(nextLoad - anchorLoad).toFixed(1)}.`
     );
+    if (!allowCatchUp) {
+      decisionLog.push(
+        "Catch-up lane skipped: load-reliability policy disabled the extra increment."
+      );
+    }
     if (catchUpEvaluation) {
       decisionLog.push(catchUpEvaluation.message);
     }
@@ -875,6 +899,7 @@ function evaluatePrescribedLoadOvershoot(input: {
     | null;
   modalRpe?: number;
   hasHighVariance: boolean;
+  overshootConfidence: number;
 }):
   | {
       qualified: true;
@@ -893,10 +918,13 @@ function evaluatePrescribedLoadOvershoot(input: {
   if (!evidence) {
     return null;
   }
+  const weightedQualifyingSetCount = Number(
+    (evidence.qualifyingSetCount * clampConfidenceScale(input.overshootConfidence)).toFixed(2)
+  );
 
   if (
     (input.modalRpe == null || input.modalRpe <= PROGRESSION_CONFIG.overshootStandardRpeCeiling) &&
-    evidence.qualifyingSetCount >= evidence.standardRequiredSetCount
+    weightedQualifyingSetCount >= evidence.standardRequiredSetCount
   ) {
     return { qualified: true, tier: "standard" };
   }
@@ -905,7 +933,7 @@ function evaluatePrescribedLoadOvershoot(input: {
     input.modalRpe != null &&
     input.modalRpe <= PROGRESSION_CONFIG.overshootControlledRpeCeiling &&
     !input.hasHighVariance &&
-    evidence.qualifyingSetCount >= evidence.controlledRequiredSetCount
+    weightedQualifyingSetCount >= evidence.controlledRequiredSetCount
   ) {
     return { qualified: true, tier: "controlled_hard" };
   }
@@ -942,7 +970,9 @@ function evaluatePrescribedLoadOvershoot(input: {
   return {
     qualified: false,
     reasonCode: "overshoot_blocked_by_coverage",
-    message: `Overshoot gate: ${evidence.qualifyingSetCount}/${evidence.targetBearingSetCount} target-bearing sets beat prescription, but ${requiredSetCount} were required at this effort level.`,
+    message:
+      `Overshoot gate: ${evidence.qualifyingSetCount}/${evidence.targetBearingSetCount} target-bearing sets beat prescription, ` +
+      `but weighted confidence only counted as ${weightedQualifyingSetCount.toFixed(2)} toward the ${requiredSetCount} required at this effort level.`,
   };
 }
 

@@ -160,7 +160,13 @@ export async function buildProgressionAnchorAuditPayload(input: {
     progressionInput.lastSets,
     progressionInput.repRange,
     progressionInput.equipment,
-    progressionInput.decisionOptions
+    {
+      ...progressionInput.decisionOptions,
+      promotionPolicy: {
+        allowCatchUp: calibrationPolicy.allowCatchUp,
+        overshootConfidenceScale: calibrationPolicy.overshootConfidenceScale,
+      },
+    }
   );
   if (!decision) {
     throw new Error(`Unable to compute progression decision for exerciseId=${input.exerciseId}`);

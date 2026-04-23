@@ -50,6 +50,7 @@ import {
   buildCanonicalProgressionEvaluationInput,
   type CanonicalProgressionHistorySession,
 } from "@/lib/progression/canonical-progression-input";
+import { resolveLoadCalibrationPolicy } from "@/lib/engine/load-calibration";
 import { derivePerformedExerciseSemantics } from "@/lib/session-semantics/performed-exercise-semantics";
 import { classifySetLog } from "@/lib/session-semantics/set-classification";
 import { resolveTargetRepRange } from "@/lib/session-semantics/target-evaluation";
@@ -232,7 +233,8 @@ export async function generateWorkoutExplanation(
       workout.scheduledDate,
       isMainLiftEligible,
       repRange,
-      equipmentTypes
+      equipmentTypes,
+      exercise.isCompound ?? undefined
     );
     const todayPrescription = summarizeTodayTopSet(engineSets);
     const currentSemantics = derivePerformedExerciseSemantics({
@@ -265,6 +267,7 @@ export async function generateWorkoutExplanation(
       currentSemantics,
       repRange,
       equipmentTypes,
+      exercise.isCompound ?? undefined,
       {
         userId: workout.userId,
         workoutId: workout.id,
@@ -823,7 +826,8 @@ async function loadLatestPerformedSetSummary(
   asOfDate: Date,
   isMainLiftEligible: boolean,
   repRange: [number, number],
-  equipment: string[]
+  equipment: string[],
+  isCompound?: boolean
 ): Promise<(ProgressionSetSummary & { decisionLog?: string[] }) | null> {
   const previous = await findLatestProgressionEligibleWorkoutExercise({
     userId,
@@ -860,6 +864,7 @@ async function loadLatestPerformedSetSummary(
     performedSemantics,
     repRange,
     equipment,
+    isCompound,
     {
       userId,
       workoutId,
@@ -873,7 +878,10 @@ async function loadLatestPerformedSetSummary(
     progressionInput.lastSets,
     progressionInput.repRange,
     progressionInput.equipment,
-    progressionInput.decisionOptions
+    {
+      ...progressionInput.decisionOptions,
+      promotionPolicy: progressionInput.promotionPolicy,
+    }
   );
 
   return {
@@ -1188,6 +1196,7 @@ async function buildNextExposureDecision(
   performedSemantics: ReturnType<typeof derivePerformedExerciseSemantics>,
   repRange: [number, number],
   equipment: string[],
+  isCompound: boolean | undefined,
   input: ExplainabilityConfidenceInput
 ): Promise<NextExposureDecision | null> {
   if (!performedSemantics) {
@@ -1198,13 +1207,17 @@ async function buildNextExposureDecision(
     performedSemantics,
     repRange,
     equipment,
+    isCompound,
     input
   );
   const decision = computeDoubleProgressionDecision(
     progressionInput.lastSets,
     progressionInput.repRange,
     progressionInput.equipment,
-    progressionInput.decisionOptions
+    {
+      ...progressionInput.decisionOptions,
+      promotionPolicy: progressionInput.promotionPolicy,
+    }
   );
   if (!decision) {
     return null;
@@ -1241,18 +1254,39 @@ async function buildExplainabilityCanonicalProgressionInput(
   performedSemantics: NonNullable<ReturnType<typeof derivePerformedExerciseSemantics>>,
   repRange: [number, number],
   equipment: string[],
+  isCompound: boolean | undefined,
   input: ExplainabilityConfidenceInput
 ) {
-  return buildCanonicalProgressionEvaluationInput({
-    lastSets: performedSemantics.signalSets,
-    repRange,
-    equipment: resolveProgressionEquipment(equipment),
-    workingSetLoad: performedSemantics.workingSetLoad ?? undefined,
-    historySessions: await loadExplainabilityProgressionSessions(input),
-  });
+  return {
+    ...buildCanonicalProgressionEvaluationInput({
+      lastSets: performedSemantics.signalSets,
+      repRange,
+      equipment: resolveProgressionEquipment(equipment),
+      workingSetLoad: performedSemantics.workingSetLoad ?? undefined,
+      historySessions: await loadExplainabilityProgressionSessions(input),
+    }),
+    promotionPolicy: buildExplainabilityPromotionPolicy({
+      equipment,
+      isCompound,
+    }),
+  };
 }
 
 type ExplainabilityProgressionSession = CanonicalProgressionHistorySession;
+
+function buildExplainabilityPromotionPolicy(input: {
+  equipment: string[];
+  isCompound?: boolean;
+}) {
+  const calibrationPolicy = resolveLoadCalibrationPolicy({
+    equipment: input.equipment,
+    isCompound: input.isCompound,
+  });
+  return {
+    allowCatchUp: calibrationPolicy.allowCatchUp,
+    overshootConfidenceScale: calibrationPolicy.overshootConfidenceScale,
+  };
+}
 
 async function loadExplainabilityProgressionSessions(
   input: ExplainabilityConfidenceInput

@@ -18,6 +18,8 @@ export type LoadCalibrationPolicy = {
   reliabilityTier: LoadReliabilityTier;
   estimateScale: number;
   earlyExposureConfidenceScale: number;
+  allowCatchUp: boolean;
+  overshootConfidenceScale: number;
   confidenceReason?: string;
 };
 
@@ -34,12 +36,35 @@ type LoadCalibrationExercise = {
 
 const CALIBRATION_BY_TIER: Record<
   LoadReliabilityTier,
-  Pick<LoadCalibrationPolicy, "estimateScale" | "earlyExposureConfidenceScale">
+  Pick<
+    LoadCalibrationPolicy,
+    "estimateScale" | "earlyExposureConfidenceScale" | "allowCatchUp" | "overshootConfidenceScale"
+  >
 > = {
-  high: { estimateScale: 1, earlyExposureConfidenceScale: 1 },
-  medium: { estimateScale: 0.95, earlyExposureConfidenceScale: 0.95 },
-  low: { estimateScale: 0.85, earlyExposureConfidenceScale: 0.85 },
-  bodyweight: { estimateScale: 1, earlyExposureConfidenceScale: 1 },
+  high: {
+    estimateScale: 1,
+    earlyExposureConfidenceScale: 1,
+    allowCatchUp: true,
+    overshootConfidenceScale: 1,
+  },
+  medium: {
+    estimateScale: 0.95,
+    earlyExposureConfidenceScale: 0.95,
+    allowCatchUp: true,
+    overshootConfidenceScale: 0.9,
+  },
+  low: {
+    estimateScale: 0.85,
+    earlyExposureConfidenceScale: 0.85,
+    allowCatchUp: false,
+    overshootConfidenceScale: 0.75,
+  },
+  bodyweight: {
+    estimateScale: 1,
+    earlyExposureConfidenceScale: 1,
+    allowCatchUp: true,
+    overshootConfidenceScale: 1,
+  },
 };
 
 export function resolveLoadEquipment(exercise: LoadCalibrationExercise): LoadCalibrationEquipment {

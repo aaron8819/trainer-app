@@ -1464,7 +1464,7 @@ describe("generateWorkoutExplanation progression receipt", () => {
       modalRpe: 8.5,
     });
     expect(result.nextExposureDecisions.get("ex1")?.reason).toContain(
-      "3/5 target-bearing sets beat prescription, but 4 were required"
+      "3/5 target-bearing sets beat prescription, but weighted confidence only counted as 2.70 toward the 4 required"
     );
     expect(result.nextExposureDecisions.get("ex1")?.decisionLog?.join(" | ")).toContain(
       "Overshoot gate:"

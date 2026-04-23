@@ -240,7 +240,7 @@ export function WorkoutActiveSetCard({
       {shouldUseBodyweightLoadLabel(activeSet.exercise, activeSet.set) ? (
         <p className="mt-2 text-xs text-slate-500">Bodyweight movement (load optional for weighted variation).</p>
       ) : null}
-      <div className="mt-2 min-h-9">
+      <div className="mt-2 min-h-5">
         {showDraftRestored ? <p className="text-xs text-slate-400">Draft restored</p> : null}
         {savingDraftSetId === setId ? (
           <p className="text-xs text-slate-500">Saving draft...</p>

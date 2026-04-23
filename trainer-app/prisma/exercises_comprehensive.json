@@ -4397,6 +4397,39 @@
       "timePerSetSec": 30
     },
     {
+      "name": "Torso Rotation Machine",
+      "movementPatterns": [
+        "rotation"
+      ],
+      "splitTag": "core",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Machine"
+      ],
+      "fatigueCost": 1,
+      "sfrScore": 4,
+      "lengthPositionScore": 2,
+      "stimulusBias": [
+        "metabolic"
+      ],
+      "contraindications": {
+        "low_back": true
+      },
+      "primaryMuscles": [
+        "Core"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 10,
+        "max": 20
+      },
+      "timePerSetSec": 35
+    },
+    {
       "name": "Wood Chop",
       "movementPatterns": [
         "rotation"

@@ -1232,7 +1232,7 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
 
     expect(projected.error).toContain("MESOCYCLE_HANDOFF_SLOT_PLAN_PROTECTED_COVERAGE_UNSATISFIED");
     expect(projected.diagnostics?.protectedCoverage.unresolvedProtectedMuscles).toEqual(
-      expect.arrayContaining(["Hamstrings"])
+      expect.arrayContaining(["Calves"])
     );
   });
 

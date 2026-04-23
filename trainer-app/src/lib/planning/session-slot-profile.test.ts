@@ -156,8 +156,8 @@ describe("resolveSessionSlotPolicy", () => {
       },
       sessionShape: {
         id: "lower_squat_dominant",
-        preferredAccessoryPrimaryMuscles: ["Quads", "Calves"],
-        protectedWeekOneCoverageMuscles: ["Calves"],
+        preferredAccessoryPrimaryMuscles: ["Hamstrings", "Calves"],
+        protectedWeekOneCoverageMuscles: ["Hamstrings", "Calves"],
         requiredMovementPatterns: ["hinge"],
         avoidDuplicatePatterns: ["squat"],
         supportPenaltyPatterns: ["hinge"],
@@ -272,8 +272,8 @@ describe("resolveSessionSlotPolicy", () => {
         },
         sessionShape: {
           id: "lower_squat_dominant",
-          preferredAccessoryPrimaryMuscles: ["Quads", "Calves"],
-          protectedWeekOneCoverageMuscles: ["Calves"],
+          preferredAccessoryPrimaryMuscles: ["Hamstrings", "Calves"],
+          protectedWeekOneCoverageMuscles: ["Hamstrings", "Calves"],
           requiredMovementPatterns: ["hinge"],
           avoidDuplicatePatterns: ["squat"],
           supportPenaltyPatterns: ["hinge"],

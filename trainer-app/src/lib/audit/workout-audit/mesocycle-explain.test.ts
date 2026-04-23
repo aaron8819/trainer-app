@@ -1,0 +1,547 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => {
+  const mesocycleFindFirst = vi.fn();
+  const constraintsFindUnique = vi.fn();
+  const workoutFindMany = vi.fn();
+  const mesocycleExerciseRoleFindMany = vi.fn();
+  const loadActiveMesocycle = vi.fn();
+  const loadHandoffSourceMesocycle = vi.fn();
+  const readMesocycleHandoffSummary = vi.fn();
+  const toHandoffProjectionSource = vi.fn();
+  const materializeHandoffArtifacts = vi.fn();
+  const projectSuccessorMesocycle = vi.fn();
+  const projectSuccessorSlotPlansFromSnapshot = vi.fn();
+  const buildMesocycleSlotPlanSeed = vi.fn();
+  const loadPreloadedGenerationSnapshot = vi.fn();
+  const buildMappedGenerationContextFromSnapshot = vi.fn();
+  const generateProjectedSession = vi.fn();
+  const appendWorkoutHistoryEntryToMappedContext = vi.fn();
+  const buildProjectedWorkoutHistoryEntry = vi.fn();
+  const listWorkoutExerciseNames = vi.fn();
+  const getLatestReadinessSignalForReader = vi.fn();
+  const readSessionSlotSnapshot = vi.fn();
+  const resolvePersistedOrReconstructedSessionAuditSnapshot = vi.fn();
+  const buildSessionAuditMutationSummary = vi.fn();
+  const resolveMesocycleSlotContract = vi.fn();
+
+  return {
+    mesocycleFindFirst,
+    constraintsFindUnique,
+    workoutFindMany,
+    mesocycleExerciseRoleFindMany,
+    loadActiveMesocycle,
+    loadHandoffSourceMesocycle,
+    readMesocycleHandoffSummary,
+    toHandoffProjectionSource,
+    materializeHandoffArtifacts,
+    projectSuccessorMesocycle,
+    projectSuccessorSlotPlansFromSnapshot,
+    buildMesocycleSlotPlanSeed,
+    loadPreloadedGenerationSnapshot,
+    buildMappedGenerationContextFromSnapshot,
+    generateProjectedSession,
+    appendWorkoutHistoryEntryToMappedContext,
+    buildProjectedWorkoutHistoryEntry,
+    listWorkoutExerciseNames,
+    getLatestReadinessSignalForReader,
+    readSessionSlotSnapshot,
+    resolvePersistedOrReconstructedSessionAuditSnapshot,
+    buildSessionAuditMutationSummary,
+    resolveMesocycleSlotContract,
+    prisma: {
+      mesocycle: {
+        findFirst: (...args: unknown[]) => mesocycleFindFirst(...args),
+      },
+      constraints: {
+        findUnique: (...args: unknown[]) => constraintsFindUnique(...args),
+      },
+      workout: {
+        findMany: (...args: unknown[]) => workoutFindMany(...args),
+      },
+      mesocycleExerciseRole: {
+        findMany: (...args: unknown[]) => mesocycleExerciseRoleFindMany(...args),
+      },
+    },
+  };
+});
+
+vi.mock("@/lib/db/prisma", () => ({
+  prisma: mocks.prisma,
+}));
+
+vi.mock("@/lib/api/mesocycle-lifecycle", () => ({
+  loadActiveMesocycle: (...args: unknown[]) => mocks.loadActiveMesocycle(...args),
+}));
+
+vi.mock("@/lib/api/mesocycle-handoff", () => ({
+  loadHandoffSourceMesocycle: (...args: unknown[]) => mocks.loadHandoffSourceMesocycle(...args),
+  readMesocycleHandoffSummary: (...args: unknown[]) => mocks.readMesocycleHandoffSummary(...args),
+  toHandoffProjectionSource: (...args: unknown[]) => mocks.toHandoffProjectionSource(...args),
+}));
+
+vi.mock("@/lib/api/mesocycle-handoff-artifacts", () => ({
+  materializeHandoffArtifacts: (...args: unknown[]) => mocks.materializeHandoffArtifacts(...args),
+}));
+
+vi.mock("@/lib/api/mesocycle-handoff-projection", () => ({
+  projectSuccessorMesocycle: (...args: unknown[]) => mocks.projectSuccessorMesocycle(...args),
+}));
+
+vi.mock("@/lib/api/mesocycle-handoff-slot-plan-projection", () => ({
+  projectSuccessorSlotPlansFromSnapshot: (...args: unknown[]) =>
+    mocks.projectSuccessorSlotPlansFromSnapshot(...args),
+  buildMesocycleSlotPlanSeed: (...args: unknown[]) => mocks.buildMesocycleSlotPlanSeed(...args),
+}));
+
+vi.mock("@/lib/api/projected-week-volume-shared", () => ({
+  loadPreloadedGenerationSnapshot: (...args: unknown[]) =>
+    mocks.loadPreloadedGenerationSnapshot(...args),
+  buildMappedGenerationContextFromSnapshot: (...args: unknown[]) =>
+    mocks.buildMappedGenerationContextFromSnapshot(...args),
+  generateProjectedSession: (...args: unknown[]) => mocks.generateProjectedSession(...args),
+  appendWorkoutHistoryEntryToMappedContext: (...args: unknown[]) =>
+    mocks.appendWorkoutHistoryEntryToMappedContext(...args),
+  buildProjectedWorkoutHistoryEntry: (...args: unknown[]) =>
+    mocks.buildProjectedWorkoutHistoryEntry(...args),
+  listWorkoutExerciseNames: (...args: unknown[]) => mocks.listWorkoutExerciseNames(...args),
+}));
+
+vi.mock("@/lib/api/readiness", () => ({
+  getLatestReadinessSignalForReader: (...args: unknown[]) =>
+    mocks.getLatestReadinessSignalForReader(...args),
+}));
+
+vi.mock("@/lib/evidence/session-decision-receipt", () => ({
+  readSessionSlotSnapshot: (...args: unknown[]) => mocks.readSessionSlotSnapshot(...args),
+}));
+
+vi.mock("@/lib/evidence/session-audit-snapshot", () => ({
+  resolvePersistedOrReconstructedSessionAuditSnapshot: (...args: unknown[]) =>
+    mocks.resolvePersistedOrReconstructedSessionAuditSnapshot(...args),
+  buildSessionAuditMutationSummary: (...args: unknown[]) =>
+    mocks.buildSessionAuditMutationSummary(...args),
+}));
+
+vi.mock("@/lib/api/mesocycle-slot-contract", () => ({
+  resolveMesocycleSlotContract: (...args: unknown[]) => mocks.resolveMesocycleSlotContract(...args),
+}));
+
+import { buildMesocycleExplainAuditPayload } from "./mesocycle-explain";
+
+describe("buildMesocycleExplainAuditPayload", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    const mesocycle = {
+      id: "meso-1",
+      macroCycleId: "macro-1",
+      mesoNumber: 2,
+      startWeek: 5,
+      durationWeeks: 5,
+      focus: "Hypertrophy",
+      volumeTarget: "MEDIUM",
+      intensityBias: "MODERATE",
+      isActive: true,
+      state: "ACTIVE_ACCUMULATION",
+      accumulationSessionsCompleted: 4,
+      deloadSessionsCompleted: 0,
+      sessionsPerWeek: 4,
+      daysPerWeek: 4,
+      splitType: "UPPER_LOWER",
+      slotSequenceJson: { version: 1, slots: [] },
+      slotPlanSeedJson: {
+        version: 1,
+        source: "handoff_slot_plan_projection",
+        slots: [
+          {
+            slotId: "upper_a",
+            exercises: [
+              { exerciseId: "ex-1", role: "CORE_COMPOUND" },
+            ],
+          },
+        ],
+      },
+      handoffSummaryJson: { version: 1 },
+      nextSeedDraftJson: null,
+      closedAt: null,
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+      blocks: [
+        {
+          id: "block-1",
+          mesocycleId: "meso-1",
+          blockNumber: 1,
+          blockType: "ACCUMULATION",
+          startWeek: 5,
+          durationWeeks: 5,
+          volumeTarget: "MEDIUM",
+          intensityBias: "MODERATE",
+          adaptationType: "HYPERTROPHY",
+          createdAt: new Date("2026-01-01T00:00:00.000Z"),
+          updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+        },
+      ],
+      macroCycle: {
+        userId: "user-1",
+      },
+    };
+
+    mocks.mesocycleFindFirst.mockResolvedValue(mesocycle);
+    mocks.constraintsFindUnique.mockResolvedValue({
+      weeklySchedule: ["UPPER", "LOWER"],
+    });
+    mocks.workoutFindMany.mockResolvedValue([
+      {
+        id: "workout-1",
+        scheduledDate: new Date("2026-02-01T00:00:00.000Z"),
+        status: "COMPLETED",
+        revision: 2,
+        advancesSplit: true,
+        selectionMode: "INTENT",
+        sessionIntent: "upper",
+        selectionMetadata: {},
+        mesocycleId: "meso-1",
+        mesocycleWeekSnapshot: 1,
+        mesoSessionSnapshot: 1,
+        mesocyclePhaseSnapshot: "ACCUMULATION",
+        exercises: [
+          {
+            exerciseId: "ex-1",
+            orderIndex: 0,
+            section: "main",
+            isMainLift: true,
+            exercise: {
+              name: "Incline Dumbbell Press",
+            },
+            sets: [],
+          },
+          {
+            exerciseId: "ex-2",
+            orderIndex: 1,
+            section: "accessory",
+            isMainLift: false,
+            exercise: {
+              name: "Cable Fly",
+            },
+            sets: [],
+          },
+        ],
+      },
+    ]);
+    mocks.loadHandoffSourceMesocycle.mockResolvedValue(mesocycle);
+    mocks.readMesocycleHandoffSummary.mockReturnValue({
+      recommendedDesign: {
+        version: 1,
+        designedAt: "2026-02-01T00:00:00.000Z",
+        sourceMesocycleId: "meso-1",
+        profile: {
+          focus: "Hypertrophy",
+          durationWeeks: 5,
+          volumeTarget: "MEDIUM",
+          intensityBias: "MODERATE",
+          blocks: [
+            {
+              blockNumber: 1,
+              blockType: "ACCUMULATION",
+              durationWeeks: 5,
+              volumeTarget: "MEDIUM",
+              intensityBias: "MODERATE",
+              adaptationType: "HYPERTROPHY",
+            },
+          ],
+        },
+        structure: {
+          splitType: "UPPER_LOWER",
+          sessionsPerWeek: 4,
+          daysPerWeek: 4,
+          sequenceMode: "ordered_flexible",
+          slots: [
+            {
+              slotId: "upper_a",
+              intent: "UPPER",
+              authoredSemantics: {
+                slotArchetype: "upper_primary",
+                continuityScope: "slot",
+                primaryLaneContract: null,
+                supportCoverageContract: null,
+              },
+            },
+          ],
+        },
+        carryForward: {
+          decisions: [
+            {
+              exerciseId: "ex-1",
+              role: "CORE_COMPOUND",
+              priorIntent: "UPPER",
+              action: "keep",
+              targetIntent: "UPPER",
+              targetSlotId: "upper_a",
+              signalQuality: "high",
+              reasonCodes: ["carry_forward_keep"],
+            },
+          ],
+        },
+        startingPoint: {
+          volumeEntry: "conservative",
+          baselineSource: "accumulation_preferred",
+          allowNonDeloadFallback: true,
+        },
+        explainability: {
+          profileReasonCodes: ["profile_reason"],
+          profileSignalQuality: "high",
+          structureReasonCodes: ["structure_reason"],
+          structureSignalQuality: "high",
+          startingPointReasonCodes: ["starting_point_reason"],
+          startingPointSignalQuality: "high",
+        },
+      },
+      recommendedNextSeed: {
+        version: 1,
+        sourceMesocycleId: "meso-1",
+        createdAt: "2026-02-01T00:00:00.000Z",
+        structure: {
+          splitType: "UPPER_LOWER",
+          sessionsPerWeek: 4,
+          daysPerWeek: 4,
+          sequenceMode: "ordered_flexible",
+          slots: [
+            { slotId: "upper_a", intent: "UPPER" },
+          ],
+        },
+        startingPoint: {
+          volumeEntry: "conservative",
+          baselineSource: "accumulation_preferred",
+          allowNonDeloadFallback: true,
+        },
+        carryForwardSelections: [],
+      },
+      carryForwardRecommendations: [
+        {
+          exerciseId: "ex-1",
+          exerciseName: "Incline Dumbbell Press",
+          sessionIntent: "UPPER",
+          role: "CORE_COMPOUND",
+          recommendation: "keep",
+          signalQuality: "high",
+          reasonCodes: ["carry_forward_keep"],
+        },
+      ],
+    });
+    mocks.toHandoffProjectionSource.mockImplementation((value: unknown) => value);
+    mocks.materializeHandoffArtifacts.mockImplementation(() => {
+      throw new Error("should not rematerialize when persisted handoff summary is present");
+    });
+    mocks.projectSuccessorMesocycle.mockReturnValue({
+      mesocycle: {
+        macroCycleId: "macro-1",
+        mesoNumber: 3,
+        startWeek: 10,
+        durationWeeks: 5,
+        focus: "Hypertrophy",
+        volumeTarget: "MEDIUM",
+        intensityBias: "MODERATE",
+        splitType: "UPPER_LOWER",
+        sessionsPerWeek: 4,
+        daysPerWeek: 4,
+        weeklySchedule: ["UPPER"],
+        slotSequence: {
+          slots: [
+            {
+              slotId: "upper_a",
+              intent: "UPPER",
+              sequenceIndex: 0,
+              authoredSemantics: {
+                slotArchetype: "upper_primary",
+                continuityScope: "slot",
+                primaryLaneContract: null,
+                supportCoverageContract: null,
+              },
+            },
+          ],
+        },
+      },
+      trainingBlocks: [
+        {
+          blockNumber: 1,
+          blockType: "ACCUMULATION",
+          startWeek: 10,
+          durationWeeks: 5,
+          volumeTarget: "MEDIUM",
+          intensityBias: "MODERATE",
+          adaptationType: "HYPERTROPHY",
+        },
+      ],
+    });
+    mocks.projectSuccessorSlotPlansFromSnapshot.mockReturnValue({
+      slotPlans: [
+        {
+          slotId: "upper_a",
+          intent: "UPPER",
+          exercises: [
+            { exerciseId: "ex-1", role: "CORE_COMPOUND" },
+          ],
+        },
+      ],
+      diagnostics: {
+        protectedCoverage: {
+          repairedSlotIds: [],
+        },
+      },
+    });
+    mocks.buildMesocycleSlotPlanSeed.mockReturnValue({
+      version: 1,
+      source: "handoff_slot_plan_projection",
+      slots: [
+        {
+          slotId: "upper_a",
+          exercises: [
+            { exerciseId: "ex-1", role: "CORE_COMPOUND" },
+          ],
+        },
+      ],
+    });
+    mocks.loadPreloadedGenerationSnapshot.mockResolvedValue({
+      context: {},
+      activeMesocycle: mesocycle,
+      rotationContext: new Map(),
+      mesocycleRoleRows: [],
+      phaseBlockContext: {},
+    });
+    mocks.buildMappedGenerationContextFromSnapshot.mockReturnValue({
+      history: [],
+      rotationContext: new Map(),
+      activeMesocycle: mesocycle,
+    });
+    mocks.generateProjectedSession.mockResolvedValue({
+      workout: {
+        warmup: [],
+        mainLifts: [
+          {
+            exercise: { id: "ex-1" },
+            sets: [{}, {}, {}],
+          },
+        ],
+        accessories: [],
+      },
+    });
+    mocks.buildProjectedWorkoutHistoryEntry.mockReturnValue({});
+    mocks.listWorkoutExerciseNames.mockReturnValue(["Incline Dumbbell Press"]);
+    mocks.getLatestReadinessSignalForReader.mockResolvedValue(null);
+    mocks.readSessionSlotSnapshot.mockReturnValue({
+      slotId: "upper_a",
+      sequenceIndex: 0,
+    });
+    mocks.resolvePersistedOrReconstructedSessionAuditSnapshot.mockReturnValue({
+      sessionSnapshot: {
+        version: 1,
+        generated: {
+          selectionMode: "INTENT",
+          sessionIntent: "upper",
+          semantics: {
+            kind: "advancing",
+          },
+          exerciseCount: 1,
+          hardSetCount: 3,
+          exercises: [
+            {
+              exerciseId: "ex-1",
+              exerciseName: "Incline Dumbbell Press",
+              orderIndex: 0,
+              section: "main",
+              isMainLift: true,
+              prescribedSetCount: 3,
+              prescribedSets: [],
+            },
+          ],
+          traces: {
+            progression: {},
+          },
+        },
+        saved: {
+          workoutId: "workout-1",
+          status: "COMPLETED",
+          advancesSplit: true,
+          semantics: {
+            kind: "advancing",
+          },
+        },
+      },
+      snapshotSource: "persisted",
+    });
+    mocks.buildSessionAuditMutationSummary.mockReturnValue({
+      version: 1,
+      comparisonState: "comparable",
+      hasDrift: true,
+      changedFields: ["exercise_added"],
+      addedExerciseIds: ["ex-2"],
+      removedExerciseIds: [],
+      exercisesWithSetCountChanges: [],
+      exercisesWithPrescriptionChanges: [],
+      generatedSelectionMode: "INTENT",
+      savedSelectionMode: "INTENT",
+      generatedSessionIntent: "upper",
+      savedSessionIntent: "upper",
+      generatedSemanticsKind: "advancing",
+      savedSemanticsKind: "advancing",
+    });
+    mocks.resolveMesocycleSlotContract.mockReturnValue({
+      slots: [
+        {
+          slotId: "upper_a",
+          intent: "UPPER",
+          authoredSemantics: {
+            slotArchetype: "upper_primary",
+            continuityScope: "slot",
+            primaryLaneContract: null,
+            supportCoverageContract: null,
+          },
+        },
+      ],
+    });
+  });
+
+  it("builds a truthful preview/seed/reality artifact with explicit source labeling and limitations", async () => {
+    const payload = await buildMesocycleExplainAuditPayload({
+      userId: "user-1",
+      ownerEmail: "aaron8819@gmail.com",
+      sourceMesocycleId: "meso-1",
+      retrospectiveMesocycleId: "meso-1",
+      plannerDiagnosticsMode: "debug",
+    });
+
+    expect(payload.version).toBe(1);
+    expect(payload.preview.slotPlans).toHaveLength(1);
+    expect(payload.seed.slotPlans).toHaveLength(1);
+    expect(payload.reality.generatedVsSaved).toHaveLength(1);
+    expect(payload.comparison.previewVsSeed.slotDiffs).toHaveLength(1);
+
+    expect(payload.preview.exerciseRationale[0]).toMatchObject({
+      exerciseId: "ex-1",
+      reasonSource: "persisted",
+      ranking: null,
+    });
+    expect(payload.seed.exerciseRationale[0]).toMatchObject({
+      exerciseId: "ex-1",
+      reasonSource: "persisted",
+    });
+    expect(payload.reality.exerciseRationale).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          exerciseId: "ex-1",
+          reasonSource: "persisted",
+        }),
+        expect.objectContaining({
+          exerciseId: "ex-2",
+          reasonSource: "reconstructed",
+        }),
+      ])
+    );
+    expect(payload.limitations).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("Historical acceptance-time candidate ranking rationale is not persisted"),
+      ])
+    );
+  });
+});

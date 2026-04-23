@@ -5,7 +5,7 @@ Last reviewed: 2026-03-16
 Purpose: Canonical operational playbook for recurring workout-audit CLI use. This doc tells operators and maintainers which audit to run, what to inspect first, what counts as a red flag, and when to escalate into deeper code-level investigation.
 
 This doc covers:
-- Recurring operational use of `historical-week`, `weekly-retro`, `future-week`, `projected-week-volume`, `current-week-audit`, `deload`, and `progression-anchor`
+- Recurring operational use of `historical-week`, `weekly-retro`, `future-week`, `projected-week-volume`, `current-week-audit`, `mesocycle-explain`, `deload`, and `progression-anchor`
 - Active-mesocycle dry-run reseed review for bounded slot-seed repair
 - Default audit workflows for common review scenarios
 - Artifact-reading guidance for the current audit JSON vocabulary
@@ -35,6 +35,7 @@ Use this playbook when you need a fast, repeatable audit of:
 - a completed training week
 - a retrospective actual-vs-target week audit
 - the next generated session or week path
+- the next mesocycle structure, accepted seed, and runtime drift in one artifact
 - a deload preview or live deload routing path
 - a suspicious progression / anchor decision for one exercise
 
@@ -297,6 +298,58 @@ Escalate when:
 - the guidance contradicts `fullWeekByMuscle`
 - hints suggest additions for muscles already near MAV
 - session risks point at a repeated slot-shape issue across the week rather than an isolated audit readout
+
+### `mesocycle-explain`
+
+When to use it:
+- explain what the next mesocycle would look like if generated now
+- compare that preview against a current or previous mesocycle's accepted seed
+- inspect where runtime execution drifted from the canonical seed
+- keep preview, accepted seed, and lived reality aligned without inventing historical ranking rationale
+
+Primary questions it answers:
+- what next-mesocycle slot plans the canonical handoff path would produce now
+- which exercise-level explanations are persisted truth, deterministic reconstruction, or unavailable
+- how preview slot plans differ from a target mesocycle's accepted seed
+- where generated-vs-saved and seed-vs-reality drift occurred during execution
+
+Command pattern:
+
+```powershell
+npm run audit:workout -- --env-file .env.local --mode mesocycle-explain --owner aaron8819@gmail.com
+```
+
+Optional targeting:
+
+```powershell
+npm run audit:workout -- --env-file .env.local --mode mesocycle-explain --owner aaron8819@gmail.com --source-mesocycle-id <source-mesocycle-id> --retrospective-mesocycle-id <retrospective-mesocycle-id>
+```
+
+Inspect first:
+- `mesocycleExplain.preview.designBasis`
+- `mesocycleExplain.preview.slotPlans`
+- `mesocycleExplain.seed.slotPlans`
+- `mesocycleExplain.reality.runtimeDrift`
+- `mesocycleExplain.comparison.previewVsSeed`
+- `mesocycleExplain.comparison.seedVsReality`
+- `mesocycleExplain.limitations`
+
+Important interpretation rule:
+- preview-side slot obligation and carry-forward continuity can be reconstructed truthfully from canonical handoff seams
+- accepted historical per-exercise ranking rationale is not recoverable unless it was explicitly persisted
+- the artifact must therefore keep `persisted`, `reconstructed`, and `unavailable` explanation sources distinct
+
+Common red flags:
+- `seed.available=false` when the retrospective mesocycle should have a canonical accepted seed
+- `comparison.previewVsSeed.slotDiffs[*].comparable=false` for slots you expected to align
+- `reality.runtimeDrift[*].seedDrift.addedExerciseIds.length > 0` without a corresponding mutation explanation
+- any consumer treating unavailable historical ranking as persisted truth
+
+Escalate when:
+- preview slot plans disagree with the canonical handoff/slot-plan projection seams
+- accepted seed normalization fails for a mesocycle that should have `slotPlanSeedJson`
+- runtime drift appears without corresponding generated-vs-saved or slot-identity evidence
+- someone is relying on unavailable historical ranking rationale as if it were persisted truth
 
 ### `active-mesocycle-slot-reseed`
 

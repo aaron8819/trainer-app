@@ -38,6 +38,12 @@ Future week:
 npm run audit:workout -- --mode future-week --user-id <user-id>
 ```
 
+Mesocycle explainability preview vs seed vs reality:
+
+```powershell
+npm run audit:workout -- --env-file .env.local --mode mesocycle-explain --owner aaron8819@gmail.com
+```
+
 Projected current week volume:
 
 ```powershell

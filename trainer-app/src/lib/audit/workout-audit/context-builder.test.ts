@@ -119,4 +119,26 @@ describe("buildWorkoutAuditContext", () => {
     });
     expect(mocks.loadNextWorkoutContext).not.toHaveBeenCalled();
   });
+
+  it("builds mesocycle-explain context without loading next-session intent", async () => {
+    const context = await buildWorkoutAuditContext({
+      mode: "mesocycle-explain",
+      userId: "user-1",
+      sourceMesocycleId: "meso-source",
+      retrospectiveMesocycleId: "meso-retro",
+      plannerDiagnosticsMode: "debug",
+    });
+
+    expect(context).toMatchObject({
+      mode: "mesocycle-explain",
+      requestedMode: "mesocycle-explain",
+      userId: "user-1",
+      plannerDiagnosticsMode: "debug",
+      mesocycleExplain: {
+        sourceMesocycleId: "meso-source",
+        retrospectiveMesocycleId: "meso-retro",
+      },
+    });
+    expect(mocks.loadNextWorkoutContext).not.toHaveBeenCalled();
+  });
 });

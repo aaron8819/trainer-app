@@ -15,6 +15,7 @@ import type { AuditSessionGenerationResult } from "./exposed-muscles";
 import {
   ACTIVE_MESOCYCLE_SLOT_RESEED_AUDIT_PAYLOAD_VERSION,
   HISTORICAL_WEEK_AUDIT_PAYLOAD_VERSION,
+  MESOCYCLE_EXPLAIN_AUDIT_PAYLOAD_VERSION,
   PROJECTED_WEEK_VOLUME_AUDIT_PAYLOAD_VERSION,
   PROGRESSION_ANCHOR_AUDIT_PAYLOAD_VERSION,
   WEEKLY_RETRO_AUDIT_PAYLOAD_VERSION,
@@ -65,6 +66,8 @@ export type WorkoutAuditRequest = {
   targetMuscles?: string[];
   week?: number;
   mesocycleId?: string;
+  sourceMesocycleId?: string;
+  retrospectiveMesocycleId?: string;
   workoutId?: string;
   exerciseId?: string;
   projectionArtifactPath?: string;
@@ -102,6 +105,10 @@ export type WorkoutAuditContext = {
   progressionAnchor?: {
     workoutId?: string;
     exerciseId: string;
+  };
+  mesocycleExplain?: {
+    sourceMesocycleId?: string;
+    retrospectiveMesocycleId?: string;
   };
 };
 
@@ -530,6 +537,139 @@ export type ActiveMesocycleSlotReseedAuditPayload = {
   };
 };
 
+export type MesocycleExplainReasonSource = "persisted" | "reconstructed" | "unavailable";
+
+export type MesocycleExplainExerciseRow = {
+  exerciseId: string;
+  exerciseName: string;
+  role: string | null;
+};
+
+export type MesocycleExplainSlotRow = {
+  slotId: string;
+  slotIndex: number;
+  intent: string;
+  exercises: MesocycleExplainExerciseRow[];
+};
+
+export type MesocycleExplainExerciseRationale = {
+  exerciseId: string;
+  exerciseName: string;
+  slotId: string | null;
+  slotIndex: number | null;
+  intent: string | null;
+  role: string | null;
+  reasonSource: MesocycleExplainReasonSource;
+  slotObligation: string[];
+  constraints: string[];
+  continuity: string[];
+  ranking: null;
+};
+
+export type MesocycleExplainPreviewProjectedSession = {
+  sessionIndex: number;
+  slotId: string;
+  slotIndex: number;
+  intent: string;
+  exerciseCount: number;
+  totalSets: number;
+  exerciseIds: string[];
+};
+
+export type MesocycleExplainRealityWorkout = {
+  workoutId: string;
+  scheduledDate: string;
+  status: string;
+  selectionMode?: string;
+  sessionIntent?: string;
+  slotId: string | null;
+  slotIndex: number | null;
+  generatedVsSaved: SessionAuditMutationSummary;
+  seedDrift: {
+    comparable: boolean;
+    comparisonBasis: "slot_id" | "slot_sequence_index" | "none";
+    addedExerciseIds: string[];
+    removedExerciseIds: string[];
+    notes: string[];
+  };
+};
+
+export type MesocycleExplainComparisonSlotDiff = {
+  comparisonKey: string;
+  previewSlotId: string | null;
+  retrospectiveSlotId: string | null;
+  previewIntent: string | null;
+  retrospectiveIntent: string | null;
+  previewOnlyExerciseIds: string[];
+  retrospectiveOnlyExerciseIds: string[];
+  sharedExerciseIds: string[];
+  comparable: boolean;
+};
+
+export type MesocycleExplainAuditPayload = {
+  version: typeof MESOCYCLE_EXPLAIN_AUDIT_PAYLOAD_VERSION;
+  ownerEmail?: string;
+  sourceMesocycleId: string;
+  retrospectiveMesocycleId: string;
+  preview: {
+    sourceMesocycleId: string;
+    rationaleBasis: "persisted_handoff_summary" | "reconstructed_now";
+    designBasis: {
+      focus: string;
+      splitType: string;
+      sessionsPerWeek: number;
+      daysPerWeek: number;
+      durationWeeks: number;
+      volumeTarget: string;
+      intensityBias: string;
+      profileReasonCodes: string[];
+      structureReasonCodes: string[];
+      startingPointReasonCodes: string[];
+    };
+    carryForwardReasons: Array<{
+      exerciseId: string;
+      exerciseName: string;
+      sessionIntent: string;
+      role: string;
+      recommendation: string;
+      signalQuality: string;
+      reasonCodes: string[];
+    }>;
+    slotPlans: MesocycleExplainSlotRow[];
+    projectedSessions: MesocycleExplainPreviewProjectedSession[];
+    exerciseRationale: MesocycleExplainExerciseRationale[];
+  };
+  seed: {
+    mesocycleId: string;
+    available: boolean;
+    slotPlans: MesocycleExplainSlotRow[];
+    exerciseRationale: MesocycleExplainExerciseRationale[];
+  };
+  reality: {
+    mesocycleId: string;
+    workoutCount: number;
+    generatedVsSaved: MesocycleExplainRealityWorkout[];
+    runtimeDrift: MesocycleExplainRealityWorkout[];
+    exerciseRationale: MesocycleExplainExerciseRationale[];
+  };
+  comparison: {
+    previewVsSeed: {
+      comparable: boolean;
+      slotDiffs: MesocycleExplainComparisonSlotDiff[];
+    };
+    seedVsReality: {
+      comparable: boolean;
+      workoutDrift: MesocycleExplainRealityWorkout[];
+    };
+    previewVsReality: {
+      comparable: boolean;
+      comparisonBasis: "latest_saved_by_slot" | "none";
+      slotDiffs: MesocycleExplainComparisonSlotDiff[];
+    };
+  };
+  limitations: string[];
+};
+
 export type WorkoutAuditRun = {
   context: WorkoutAuditContext;
   generatedAt: string;
@@ -540,6 +680,7 @@ export type WorkoutAuditRun = {
   weeklyRetro?: WeeklyRetroAuditPayload;
   projectedWeekVolume?: ProjectedWeekVolumeAuditPayload;
   activeMesocycleSlotReseed?: ActiveMesocycleSlotReseedAuditPayload;
+  mesocycleExplain?: MesocycleExplainAuditPayload;
   progressionAnchor?: ProgressionAnchorAuditPayload;
 };
 
@@ -564,6 +705,7 @@ export type WorkoutAuditArtifact = {
   weeklyRetro?: WeeklyRetroAuditPayload;
   projectedWeekVolume?: ProjectedWeekVolumeAuditPayload;
   activeMesocycleSlotReseed?: ActiveMesocycleSlotReseedAuditPayload;
+  mesocycleExplain?: MesocycleExplainAuditPayload;
   progressionAnchor?: ProgressionAnchorAuditPayload;
   warningSummary: AuditWarningSummary;
 };

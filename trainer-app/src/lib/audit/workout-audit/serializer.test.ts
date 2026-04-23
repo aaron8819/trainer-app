@@ -930,4 +930,93 @@ describe("buildWorkoutAuditArtifact", () => {
     });
     expect(artifact.generation).toBeUndefined();
   });
+
+  it("serializes mesocycle-explain payloads without attaching generation fields", () => {
+    const artifact = buildWorkoutAuditArtifact(
+      {
+        mode: "mesocycle-explain",
+        userId: "user-1",
+        ownerEmail: "owner@test.local",
+        sourceMesocycleId: "meso-source",
+        retrospectiveMesocycleId: "meso-retro",
+      },
+      {
+        ...baseRun,
+        context: {
+          mode: "mesocycle-explain",
+          requestedMode: "mesocycle-explain",
+          userId: "user-1",
+          ownerEmail: "owner@test.local",
+          plannerDiagnosticsMode: "standard",
+          mesocycleExplain: {
+            sourceMesocycleId: "meso-source",
+            retrospectiveMesocycleId: "meso-retro",
+          },
+        },
+        generationResult: undefined,
+        mesocycleExplain: {
+          version: 1,
+          sourceMesocycleId: "meso-source",
+          retrospectiveMesocycleId: "meso-retro",
+          preview: {
+            sourceMesocycleId: "meso-source",
+            rationaleBasis: "reconstructed_now",
+            designBasis: {
+              focus: "hypertrophy",
+              splitType: "UPPER_LOWER",
+              sessionsPerWeek: 4,
+              daysPerWeek: 4,
+              durationWeeks: 5,
+              volumeTarget: "MEDIUM",
+              intensityBias: "MODERATE",
+              profileReasonCodes: [],
+              structureReasonCodes: [],
+              startingPointReasonCodes: [],
+            },
+            carryForwardReasons: [],
+            slotPlans: [],
+            projectedSessions: [],
+            exerciseRationale: [],
+          },
+          seed: {
+            mesocycleId: "meso-retro",
+            available: false,
+            slotPlans: [],
+            exerciseRationale: [],
+          },
+          reality: {
+            mesocycleId: "meso-retro",
+            workoutCount: 0,
+            generatedVsSaved: [],
+            runtimeDrift: [],
+            exerciseRationale: [],
+          },
+          comparison: {
+            previewVsSeed: {
+              comparable: false,
+              slotDiffs: [],
+            },
+            seedVsReality: {
+              comparable: false,
+              workoutDrift: [],
+            },
+            previewVsReality: {
+              comparable: false,
+              comparisonBasis: "none",
+              slotDiffs: [],
+            },
+          },
+          limitations: ["historical ranking unavailable"],
+        },
+      }
+    );
+
+    expect(artifact.mode).toBe("mesocycle-explain");
+    expect(artifact.generation).toBeUndefined();
+    expect(artifact.mesocycleExplain).toMatchObject({
+      sourceMesocycleId: "meso-source",
+      retrospectiveMesocycleId: "meso-retro",
+      limitations: ["historical ranking unavailable"],
+    });
+  });
 });

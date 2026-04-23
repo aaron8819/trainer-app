@@ -101,6 +101,20 @@ export async function buildWorkoutAuditContext(
     };
   }
 
+  if (mode === "mesocycle-explain") {
+    return {
+      mode,
+      requestedMode: request.mode,
+      userId: identity.userId,
+      ownerEmail: identity.ownerEmail,
+      plannerDiagnosticsMode,
+      mesocycleExplain: {
+        sourceMesocycleId: request.sourceMesocycleId,
+        retrospectiveMesocycleId: request.retrospectiveMesocycleId,
+      },
+    };
+  }
+
   if (mode === "progression-anchor") {
     if (!request.exerciseId) {
       throw new Error("progression-anchor mode requires --exercise-id");

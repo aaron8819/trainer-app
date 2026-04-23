@@ -480,6 +480,14 @@ async function main(): Promise<void> {
         ? Number(args.week)
         : undefined,
     mesocycleId: typeof args["mesocycle-id"] === "string" ? args["mesocycle-id"] : undefined,
+    sourceMesocycleId:
+      typeof args["source-mesocycle-id"] === "string"
+        ? args["source-mesocycle-id"]
+        : undefined,
+    retrospectiveMesocycleId:
+      typeof args["retrospective-mesocycle-id"] === "string"
+        ? args["retrospective-mesocycle-id"]
+        : undefined,
     workoutId: typeof args["workout-id"] === "string" ? args["workout-id"] : undefined,
     exerciseId: typeof args["exercise-id"] === "string" ? args["exercise-id"] : undefined,
     projectionArtifactPath:
@@ -524,6 +532,8 @@ async function main(): Promise<void> {
       ? `week=${run.projectedWeekVolume.currentWeek.week} projected_sessions=${run.projectedWeekVolume.projectedSessions.length}`
       : run.activeMesocycleSlotReseed
         ? `week=${run.activeMesocycleSlotReseed.activeMesocycle.week} verdict=${run.activeMesocycleSlotReseed.recommendation.verdict}`
+      : run.mesocycleExplain
+        ? `source=${run.mesocycleExplain.sourceMesocycleId} retrospective=${run.mesocycleExplain.retrospectiveMesocycleId} preview_slots=${run.mesocycleExplain.preview.slotPlans.length}`
       : run.progressionAnchor
         ? `exercise=${run.progressionAnchor.exerciseId} action=${run.progressionAnchor.trace.outcome.action}`
         : !run.generationResult

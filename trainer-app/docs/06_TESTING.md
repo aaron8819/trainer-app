@@ -90,7 +90,7 @@ Sources of truth:
 - UI program-card copy guard: `src/components/ProgramStatusCard.render.test.tsx` covers the rendered `rirTarget` value, while timeline pill copy intentionally stays generic so phase tooltips do not encode a second hardcoded RIR policy.
 - Dashboard opportunity model coverage: `src/lib/api/opportunity.test.ts` (weekly pressure, covered-vs-deprioritize rules, downward-only readiness modulation, and rationale text) plus `src/lib/api/recent-muscle-stimulus.test.ts` (recent weighted local stimulus uses the canonical weighted stimulus engine rather than analytics recovery percent).
 - Save-route canonical receipt enforcement coverage: `src/app/api/workouts/save/route.integration.test.ts`.
-- Audit harness context/generation/serialization coverage: `src/lib/audit/workout-audit/context-builder.test.ts`, `src/lib/audit/workout-audit/generation-runner.test.ts`, `src/lib/audit/workout-audit/serializer.test.ts`, `src/lib/audit/workout-audit/weekly-retro.test.ts`, and `src/lib/audit/workout-audit/workout-audit-cli.test.ts`.
+- Audit harness context/generation/serialization coverage: `src/lib/audit/workout-audit/context-builder.test.ts`, `src/lib/audit/workout-audit/generation-runner.test.ts`, `src/lib/audit/workout-audit/serializer.test.ts`, `src/lib/audit/workout-audit/mesocycle-explain.test.ts`, `src/lib/audit/workout-audit/weekly-retro.test.ts`, and `src/lib/audit/workout-audit/workout-audit-cli.test.ts`.
 - Focused audit semantics coverage: `src/lib/audit/workout-audit/scenario-audits.test.ts` and `src/lib/api/template-session/remaining-week-planner.test.ts` assert off-order sequencing behavior and the `advancesSplit=false` accounting split between weekly accounting and split advancement.
 - Read-side session-semantics regression coverage: `src/lib/progression/progression-eligibility.test.ts`, `src/lib/api/workout-context.test.ts`, `src/lib/api/template-session/remaining-week-planner.test.ts`, and `src/lib/api/next-session.test.ts` assert that the derived helper preserves existing progression, history, remaining-week, and next-session behavior.
 - Bundled split-sanity audit coverage: `src/lib/audit/workout-audit/bundle.test.ts` verifies compact summary emission, optional rich-artifact emission, and automatic failure when unresolved same-intent deficits remain with `futureCapacity=0`.
@@ -102,6 +102,7 @@ Sources of truth:
 
 ## Audit commands
 - `npm run audit:workout -- --env-file .env.local --mode future-week --owner owner@local`: canonical owner-scoped future-week artifact with preflight and conclusion blocks
+- `npm run audit:workout -- --env-file .env.local --mode mesocycle-explain --owner aaron8819@gmail.com`: canonical mesocycle preview vs accepted-seed vs runtime-drift artifact for the real runtime owner
 - `npm run audit:sequencing`: emits the focused sequencing audit artifact under `artifacts/audits/sequencing/`
 - `npm run audit:accounting -- --env-file .env.local --owner owner@local --selection-mode MANUAL --status COMPLETED --advances-split false --optional-gap-fill true`: emits the focused accounting semantics artifact under `artifacts/audits/accounting/`
 - `npm run audit:week-close-handoff -- --env-file .env.local --owner owner@local --target-week 3`: emits the boundary-aware week-close handoff artifact for one concrete owner/week

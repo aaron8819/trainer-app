@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => {
   const generateDeloadSessionFromIntent = vi.fn();
   const buildWeeklyRetroAuditPayload = vi.fn();
   const buildActiveMesocycleSlotReseedAuditPayload = vi.fn();
+  const buildMesocycleExplainAuditPayload = vi.fn();
   return {
     loadActiveMesocycle,
     loadProjectedWeekVolumeReport,
@@ -15,6 +16,7 @@ const mocks = vi.hoisted(() => {
     generateDeloadSessionFromIntent,
     buildWeeklyRetroAuditPayload,
     buildActiveMesocycleSlotReseedAuditPayload,
+    buildMesocycleExplainAuditPayload,
   };
 });
 
@@ -41,6 +43,11 @@ vi.mock("./weekly-retro", () => ({
 vi.mock("./active-mesocycle-slot-reseed", () => ({
   buildActiveMesocycleSlotReseedAuditPayload: (...args: unknown[]) =>
     mocks.buildActiveMesocycleSlotReseedAuditPayload(...args),
+}));
+
+vi.mock("./mesocycle-explain", () => ({
+  buildMesocycleExplainAuditPayload: (...args: unknown[]) =>
+    mocks.buildMesocycleExplainAuditPayload(...args),
 }));
 
 import { runWorkoutAuditGeneration } from "./generation-runner";
@@ -179,6 +186,60 @@ describe("runWorkoutAuditGeneration", () => {
         verdict: "safe_to_apply_bounded_reseed",
         reasons: ["push support improved"],
       },
+    });
+    mocks.buildMesocycleExplainAuditPayload.mockResolvedValue({
+      version: 1,
+      sourceMesocycleId: "meso-source",
+      retrospectiveMesocycleId: "meso-retro",
+      preview: {
+        sourceMesocycleId: "meso-source",
+        rationaleBasis: "reconstructed_now",
+        designBasis: {
+          focus: "hypertrophy",
+          splitType: "UPPER_LOWER",
+          sessionsPerWeek: 4,
+          daysPerWeek: 4,
+          durationWeeks: 5,
+          volumeTarget: "MEDIUM",
+          intensityBias: "MODERATE",
+          profileReasonCodes: [],
+          structureReasonCodes: [],
+          startingPointReasonCodes: [],
+        },
+        carryForwardReasons: [],
+        slotPlans: [],
+        projectedSessions: [],
+        exerciseRationale: [],
+      },
+      seed: {
+        mesocycleId: "meso-retro",
+        available: false,
+        slotPlans: [],
+        exerciseRationale: [],
+      },
+      reality: {
+        mesocycleId: "meso-retro",
+        workoutCount: 0,
+        generatedVsSaved: [],
+        runtimeDrift: [],
+        exerciseRationale: [],
+      },
+      comparison: {
+        previewVsSeed: {
+          comparable: false,
+          slotDiffs: [],
+        },
+        seedVsReality: {
+          comparable: false,
+          workoutDrift: [],
+        },
+        previewVsReality: {
+          comparable: false,
+          comparisonBasis: "none",
+          slotDiffs: [],
+        },
+      },
+      limitations: [],
     });
     mocks.generateSessionFromIntent.mockResolvedValue(okGenerationResult);
     mocks.generateDeloadSessionFromIntent.mockResolvedValue(okGenerationResult);
@@ -458,5 +519,31 @@ describe("runWorkoutAuditGeneration", () => {
         verdict: "safe_to_apply_bounded_reseed",
       },
     });
+  });
+
+  it("routes mesocycle-explain through the dedicated read-only builder", async () => {
+    const context: WorkoutAuditContext = {
+      mode: "mesocycle-explain",
+      requestedMode: "mesocycle-explain",
+      userId: "user-1",
+      ownerEmail: "owner@test.local",
+      plannerDiagnosticsMode: "debug",
+      mesocycleExplain: {
+        sourceMesocycleId: "meso-source",
+        retrospectiveMesocycleId: "meso-retro",
+      },
+    };
+
+    const run = await runWorkoutAuditGeneration(context);
+
+    expect(mocks.buildMesocycleExplainAuditPayload).toHaveBeenCalledWith({
+      userId: "user-1",
+      ownerEmail: "owner@test.local",
+      sourceMesocycleId: "meso-source",
+      retrospectiveMesocycleId: "meso-retro",
+      plannerDiagnosticsMode: "debug",
+    });
+    expect(run.mesocycleExplain?.sourceMesocycleId).toBe("meso-source");
+    expect(run.generationResult).toBeUndefined();
   });
 });

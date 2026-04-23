@@ -79,6 +79,7 @@ export function buildWorkoutAuditArtifact(
     weeklyRetro: run.weeklyRetro,
     projectedWeekVolume: run.projectedWeekVolume,
     activeMesocycleSlotReseed: run.activeMesocycleSlotReseed,
+    mesocycleExplain: run.mesocycleExplain,
     progressionAnchor: run.progressionAnchor,
     warningSummary: buildGenerationWarningSummary({
       generation: normalizedGeneration,

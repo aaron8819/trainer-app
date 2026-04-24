@@ -48,6 +48,7 @@ export type ProtectedWeekOneCoverageMuscle =
   | "Triceps"
   | "Side Delts"
   | "Rear Delts"
+  | "Biceps"
   | "Hamstrings"
   | "Calves";
 
@@ -287,9 +288,9 @@ function getProtectedWeekOneCoverageCompatibility(
 ): ProtectedWeekOneCoverageMuscle[] {
   switch (slot?.slotArchetype) {
     case "upper_horizontal_balanced":
-      return ["Chest", "Triceps", "Rear Delts"];
+      return ["Chest", "Triceps", "Rear Delts", "Side Delts", "Biceps"];
     case "upper_vertical_balanced":
-      return ["Chest", "Triceps", "Side Delts"];
+      return ["Chest", "Triceps", "Side Delts", "Rear Delts", "Biceps"];
     case "lower_squat_dominant":
       return ["Hamstrings", "Calves"];
     case "lower_hinge_dominant":

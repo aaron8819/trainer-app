@@ -85,6 +85,9 @@ export interface SelectionObjective {
 
   /** Session intent (push/pull/legs/etc.) for intent-specific constraints */
   sessionIntent?: SessionIntent;
+
+  /** 1-indexed mesocycle lifecycle week for bounded week-specific planning policy. */
+  lifecycleWeek?: number;
 }
 
 /**

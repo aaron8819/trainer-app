@@ -487,4 +487,72 @@ describe("role budgeting with remaining-week planning", () => {
     expect(decision.plannedSets).toBe(1);
     expect(decision.overshootAdjustmentsApplied?.limitingMuscles).toEqual(["Glutes"]);
   });
+
+  it("applies the Week 1 support floor to selected support accessories without broadening later weeks", () => {
+    const mapped = makeMappedContext(["upper", "lower", "upper", "lower"]);
+    mapped.lifecycleWeek = 1;
+    mapped.weekInBlock = 1;
+    mapped.lifecycleVolumeTargets = {
+      "Side Delts": 4,
+    };
+
+    const lateralRaise = makeExercise(
+      "lateral-raise",
+      "Lateral Raise",
+      ["Side Delts"],
+      [],
+      {
+        movementPatterns: ["isolation"],
+        splitTags: ["push"],
+        isMainLiftEligible: false,
+        isCompound: false,
+        stimulusProfile: { side_delts: 1 },
+      }
+    );
+    mapped.exerciseLibrary = [lateralRaise] as MappedGenerationContext["exerciseLibrary"];
+    const objective = buildSelectionObjective(mapped, "upper");
+    objective.volumeContext.effectiveActual.set("Side Delts", 4);
+    const roleMap = new Map([[lateralRaise.id, "ACCESSORY" as const]]);
+    const weekOneDecision = resolveRoleFixtureSetTarget(
+      lateralRaise,
+      lateralRaise.id,
+      4,
+      objective,
+      "upper",
+      false,
+      mapped.lifecycleVolumeTargets,
+      new Map(),
+      buildRemainingRoleFixturesByAnchor(
+        [lateralRaise.id],
+        new Map([[lateralRaise.id, lateralRaise]]),
+        roleMap,
+        objective,
+        "upper"
+      ),
+      "ACCESSORY"
+    );
+
+    objective.lifecycleWeek = 2;
+    const laterWeekDecision = resolveRoleFixtureSetTarget(
+      lateralRaise,
+      lateralRaise.id,
+      4,
+      objective,
+      "upper",
+      false,
+      mapped.lifecycleVolumeTargets,
+      new Map(),
+      buildRemainingRoleFixturesByAnchor(
+        [lateralRaise.id],
+        new Map([[lateralRaise.id, lateralRaise]]),
+        roleMap,
+        objective,
+        "upper"
+      ),
+      "ACCESSORY"
+    );
+
+    expect(weekOneDecision.plannedSets).toBe(2);
+    expect(laterWeekDecision.plannedSets).toBeLessThan(weekOneDecision.plannedSets);
+  });
 });

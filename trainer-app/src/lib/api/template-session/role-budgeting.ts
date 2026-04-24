@@ -25,6 +25,15 @@ const NON_ANCHOR_OVERSHOOT_TOLERANCE_FRACTION = 0.1;
 const MAX_ADAPTIVE_COLLATERAL_ALLOWANCE_FRACTION = 0.6;
 const COLLATERAL_COUPLING_ALLOWANCE_FACTOR = 1.0;
 const PREFERRED_SUPPORT_ACCESSORY_MIN_CURRENT_SLOT_FRACTION = 0.5;
+const MAX_WEEK_ONE_SUPPORT_FLOOR_SET_BUMP = 2;
+
+export const WEEK_ONE_SUPPORT_FLOOR_BY_MUSCLE: Partial<Record<Muscle, number>> = {
+  Calves: 8,
+  "Side Delts": 8,
+  Triceps: 5,
+  "Rear Delts": 4,
+  Biceps: 6,
+};
 
 type SelectionObjective = ReturnType<typeof buildSelectionObjective>;
 
@@ -187,6 +196,18 @@ function normalizeMuscleName(muscle: string): string {
   return muscle.trim().toLowerCase();
 }
 
+export function getWeekOneSupportFloor(muscle: string): number | undefined {
+  const normalized = normalizeMuscleName(muscle);
+  const match = Object.entries(WEEK_ONE_SUPPORT_FLOOR_BY_MUSCLE).find(
+    ([supportMuscle]) => normalizeMuscleName(supportMuscle) === normalized
+  );
+  return match?.[1];
+}
+
+function isWeekOneSupportFloorActive(objective: SelectionObjective): boolean {
+  return objective.lifecycleWeek === 1 || objective.blockContext?.weekInMeso === 1;
+}
+
 function getNonAnchorOvershootTolerance(weeklyTarget: number): number {
   return Math.max(
     MIN_NON_ANCHOR_OVERSHOOT_TOLERANCE,
@@ -304,6 +325,43 @@ function shouldKeepPreferredUpperSupportAccessoryCurrent(input: {
   return preferredSupportMuscles.some(
     (muscle) => normalizeMuscleName(muscle) === normalizeMuscleName(input.anchorMuscle)
   );
+}
+
+function resolveWeekOneSupportFloorSetTarget(input: {
+  objective: SelectionObjective;
+  role: "CORE_COMPOUND" | "ACCESSORY" | undefined;
+  anchorMuscle: string;
+  anchorContributionPerSet: number;
+  performedThisWeek: number;
+  assignedInSession: number;
+  reservedFloorForRemaining: number;
+  currentSetTarget: number;
+}): number {
+  if (input.role !== "ACCESSORY" || !isWeekOneSupportFloorActive(input.objective)) {
+    return input.currentSetTarget;
+  }
+
+  const supportFloor = getWeekOneSupportFloor(input.anchorMuscle);
+  if (supportFloor == null || input.anchorContributionPerSet <= 0) {
+    return input.currentSetTarget;
+  }
+
+  const floorRemaining = Math.max(
+    0,
+    supportFloor -
+      (input.performedThisWeek + input.assignedInSession + input.reservedFloorForRemaining)
+  );
+  if (floorRemaining <= 0) {
+    return input.currentSetTarget;
+  }
+
+  const setsNeededForFloor = Math.ceil(floorRemaining / input.anchorContributionPerSet - 1e-9);
+  const boundedFloorTarget = Math.min(
+    input.currentSetTarget + MAX_WEEK_ONE_SUPPORT_FLOOR_SET_BUMP,
+    setsNeededForFloor
+  );
+
+  return Math.max(input.currentSetTarget, boundedFloorTarget);
 }
 
 export function buildRemainingRoleFixturesByAnchor(
@@ -469,6 +527,16 @@ export function resolveRoleFixtureSetTarget(
   let candidateSets = Math.floor(anchorConstrainedContinuousSets + 1e-9);
   candidateSets = Math.min(applyRoleCap(desiredSetTarget), candidateSets);
   candidateSets = Math.max(candidateSets, minimumViableSets);
+  candidateSets = resolveWeekOneSupportFloorSetTarget({
+    objective,
+    role,
+    anchorMuscle,
+    anchorContributionPerSet,
+    performedThisWeek,
+    assignedInSession,
+    reservedFloorForRemaining,
+    currentSetTarget: candidateSets,
+  });
 
   const getOvershootLimitingMuscles = (setCount: number): string[] => {
     if (setCount <= 0) {

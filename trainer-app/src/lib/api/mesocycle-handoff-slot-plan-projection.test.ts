@@ -37,6 +37,7 @@ function makeRawExercise(input: {
   isMainLiftEligible?: boolean;
   isCompound?: boolean;
   fatigueCost?: number;
+  stimulusProfile?: Record<string, number>;
 }) {
   return {
     id: input.id,
@@ -63,6 +64,7 @@ function makeRawExercise(input: {
       })),
     ],
     aliases: [],
+    ...(input.stimulusProfile ? { stimulusProfile: input.stimulusProfile } : {}),
   };
 }
 
@@ -550,6 +552,15 @@ function getProtectedCoverageDiagnostics(
   return projected.diagnostics?.protectedCoverage;
 }
 
+function getCoverageRow(
+  projected: ReturnType<typeof projectSuccessorSlotPlansFromSnapshot>,
+  muscle: string
+) {
+  return getProtectedCoverageDiagnostics(projected)?.afterRepair.muscles.find(
+    (row) => row.muscle === muscle
+  );
+}
+
 describe("projectSuccessorSlotPlansFromSnapshot", () => {
   it("does not count incidental upper protected support trace as meaningful coverage", () => {
     const slotPolicy = resolveSessionSlotPolicy({
@@ -1005,6 +1016,83 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     expect(lowerBExerciseIds.length).toBeLessThanOrEqual(6);
   });
 
+  it("closes Week 1 support floors by bumping existing calf and side-delt accessories", () => {
+    const projected = projectSuccessorSlotPlansFromSnapshot({
+      userId: "user-1",
+      source: buildSource(),
+      design: buildDesign(buildRepairSensitiveDraft()),
+      snapshot: buildProtectedCoverageSatisfiedSnapshot(),
+      now: new Date("2026-03-19T12:00:00.000Z"),
+    });
+
+    const calves = getCoverageRow(projected, "Calves");
+    const sideDelts = getCoverageRow(projected, "Side Delts");
+    const biceps = getCoverageRow(projected, "Biceps");
+    const triceps = getCoverageRow(projected, "Triceps");
+    const rearDelts = getCoverageRow(projected, "Rear Delts");
+    const slotPlans = getProjectedSlotPlans(projected);
+    const upperB = slotPlans.find((slot) => slot.slotId === "upper_b");
+    const lowerB = slotPlans.find((slot) => slot.slotId === "lower_b");
+
+    expect(calves?.projectedEffectiveSets).toBeGreaterThanOrEqual(8);
+    expect(sideDelts?.projectedEffectiveSets).toBeGreaterThanOrEqual(8);
+    expect(biceps?.projectedEffectiveSets).toBeGreaterThanOrEqual(6);
+    expect(triceps?.projectedEffectiveSets ?? 0).toBeGreaterThan(0);
+    expect(rearDelts?.projectedEffectiveSets ?? 0).toBeGreaterThan(0);
+    expect(upperB?.exercises.length ?? 0).toBeLessThanOrEqual(6);
+    expect(upperB?.exercises.some((exercise) => exercise.exerciseId === "lateral-raise")).toBe(true);
+    expect(lowerB?.exercises[0]?.exerciseId).toBe("rdl");
+    expect(
+      projected.diagnostics?.protectedCoverage.supportFloorRepairReasons.Calves
+    ).toContain("existing_accessory_set_bump");
+    expect(
+      projected.diagnostics?.protectedCoverage.supportFloorRepairReasons["Side Delts"]
+    ).toContain("existing_accessory_set_bump");
+  });
+
+  it("keeps repairing when raw support sets overstate weighted effective coverage", () => {
+    const snapshot = buildProtectedCoverageSatisfiedSnapshot();
+    const lateralRaise = snapshot.context.exercises.find(
+      (exercise) => exercise.id === "lateral-raise"
+    ) as { stimulusProfile?: Record<string, number> } | undefined;
+    if (lateralRaise) {
+      lateralRaise.stimulusProfile = { side_delts: 0.5 };
+    }
+
+    const projected = projectSuccessorSlotPlansFromSnapshot({
+      userId: "user-1",
+      source: buildSource(),
+      design: buildDesign(buildRepairSensitiveDraft()),
+      snapshot,
+      now: new Date("2026-03-19T12:00:00.000Z"),
+    });
+
+    expect(
+      projected.diagnostics?.protectedCoverage.supportFloorRepairReasons["Side Delts"]
+    ).toContain("existing_accessory_set_bump");
+    expect(getCoverageRow(projected, "Side Delts")?.projectedEffectiveSets ?? 0).toBeGreaterThan(5);
+  });
+
+  it("emits an explicit support-floor reason when no compatible side-delt exercise exists", () => {
+    const snapshot = buildProtectedCoverageSatisfiedSnapshot();
+    snapshot.context.exercises = snapshot.context.exercises.filter(
+      (exercise) => exercise.id !== "lateral-raise"
+    );
+
+    const projected = projectSuccessorSlotPlansFromSnapshot({
+      userId: "user-1",
+      source: buildSource(),
+      design: buildDesign(buildRepairSensitiveDraft()),
+      snapshot,
+      now: new Date("2026-03-19T12:00:00.000Z"),
+    });
+
+    expect("error" in projected).toBe(true);
+    expect(
+      projected.diagnostics?.protectedCoverage.supportFloorRepairReasons["Side Delts"]
+    ).toContain("no_compatible_exercise");
+  });
+
   it("allows lower_b squat fallback when no hinge compound anchor is viable", () => {
     const projected = projectSuccessorSlotPlansFromSnapshot({
       userId: "user-1",
@@ -1118,17 +1206,15 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
         lower_b: expect.arrayContaining(["Calves"]),
       })
     );
-    const repairedMevShortfall =
-      repairedDiagnostics?.afterRepair.muscles.reduce(
-        (sum, row) => sum + row.deficitToMev,
-        0
-      ) ?? 0;
-    const unrepairedMevShortfall =
-      unrepairedDiagnostics?.afterRepair.muscles.reduce(
-        (sum, row) => sum + row.deficitToMev,
-        0
-      ) ?? 0;
-    expect(repairedMevShortfall).toBeLessThan(unrepairedMevShortfall);
+    const repairedCalves = repairedDiagnostics?.afterRepair.muscles.find(
+      (row) => row.muscle === "Calves"
+    );
+    const unrepairedCalves = unrepairedDiagnostics?.afterRepair.muscles.find(
+      (row) => row.muscle === "Calves"
+    );
+    expect(repairedCalves?.projectedEffectiveSets ?? 0).toBeGreaterThanOrEqual(
+      unrepairedCalves?.projectedEffectiveSets ?? 0
+    );
     expect(repairedDiagnostics?.afterRepair.unresolvedProtectedMuscles).not.toContain("Triceps");
 
     const repairedSlotPlans = getProjectedSlotPlans(repaired);
@@ -1232,7 +1318,7 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
 
     expect(projected.error).toContain("MESOCYCLE_HANDOFF_SLOT_PLAN_PROTECTED_COVERAGE_UNSATISFIED");
     expect(projected.diagnostics?.protectedCoverage.unresolvedProtectedMuscles).toEqual(
-      expect.arrayContaining(["Calves"])
+      expect.arrayContaining(["Hamstrings"])
     );
   });
 

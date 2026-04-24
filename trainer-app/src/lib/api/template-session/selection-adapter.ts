@@ -478,6 +478,7 @@ export function buildSelectionObjective(
     goals: mapped.mappedGoals,
     trainingAge: mapped.mappedProfile.trainingAge,
     sessionIntent,
+    lifecycleWeek: mapped.lifecycleWeek,
     projectionRepairMuscles: new Set((options?.projectionRepairMuscles ?? []) as Muscle[]),
   };
 }

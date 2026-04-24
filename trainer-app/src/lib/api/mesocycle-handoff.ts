@@ -102,6 +102,24 @@ const pendingHandoffRowSelect = {
   nextSeedDraftJson: true,
 } satisfies Prisma.MesocycleSelect;
 
+type HandoffAcceptanceSourceRow = PendingHandoffRow & {
+  macroCycleId: string;
+};
+
+const handoffAcceptanceSourceRowSelect = {
+  ...pendingHandoffRowSelect,
+  macroCycleId: true,
+} satisfies Prisma.MesocycleSelect;
+
+type HandoffAcceptancePreparation = {
+  userId: string;
+  source: HandoffSourceMesocycle;
+  pendingRow: PendingHandoffRow;
+  draftFingerprint: string;
+  projection: ReturnType<typeof projectSuccessorMesocycle>;
+  slotPlanSeed: Awaited<ReturnType<typeof buildAcceptedMesocycleSlotPlanSeed>>;
+};
+
 export type PendingMesocycleHandoff = {
   mesocycleId: string;
   mesoNumber: number;
@@ -738,7 +756,13 @@ async function buildAcceptedMesocycleSlotPlanSeed(input: {
   });
 
   if ("error" in slotPlanProjection) {
-    return null;
+    if (!slotPlanProjection.slotPlans) {
+      return null;
+    }
+    return buildMesocycleSlotPlanSeed({
+      slotSequence: input.slotSequence,
+      slotPlans: slotPlanProjection.slotPlans,
+    });
   }
 
   return buildMesocycleSlotPlanSeed({
@@ -747,20 +771,130 @@ async function buildAcceptedMesocycleSlotPlanSeed(input: {
   });
 }
 
-export async function acceptMesocycleHandoffInTransaction(
-  tx: Tx,
-  mesocycleId: string
-): Promise<Mesocycle> {
-  const source = await loadHandoffSourceMesocycle(tx, mesocycleId);
-  const pendingRow = await tx.mesocycle.findUnique({
-    where: { id: mesocycleId },
-    select: pendingHandoffRowSelect,
-  });
-  const refreshedPendingRow = await refreshPendingHandoffArtifactsIfNeeded(tx, pendingRow);
+function canPrepareAcceptanceFromState(
+  state: Mesocycle["state"],
+  options?: { allowCompletedSource?: boolean }
+): boolean {
+  return state === "AWAITING_HANDOFF" || (options?.allowCompletedSource === true && state === "COMPLETED");
+}
 
-  if (!refreshedPendingRow || refreshedPendingRow.state !== "AWAITING_HANDOFF") {
+function assertAcceptanceSourceState(
+  state: Mesocycle["state"],
+  options?: { allowCompletedSource?: boolean }
+) {
+  if (!canPrepareAcceptanceFromState(state, options)) {
     throw new Error("MESOCYCLE_HANDOFF_NOT_PENDING");
   }
+}
+
+function buildAcceptanceDraftFingerprint(draft: NextCycleSeedDraft): string {
+  return JSON.stringify({
+    sourceMesocycleId: draft.sourceMesocycleId,
+    structure: draft.structure,
+    carryForwardSelections: draft.carryForwardSelections.map((selection) => ({
+      exerciseId: selection.exerciseId,
+      sessionIntent: selection.sessionIntent,
+      role: selection.role,
+      action: selection.action,
+    })),
+  });
+}
+
+async function findAcceptedSuccessorInTransaction(
+  tx: Tx,
+  source: Pick<HandoffAcceptanceSourceRow, "macroCycleId" | "mesoNumber">
+): Promise<Mesocycle | null> {
+  return tx.mesocycle.findFirst({
+    where: {
+      macroCycleId: source.macroCycleId,
+      mesoNumber: source.mesoNumber + 1,
+      isActive: true,
+    },
+  });
+}
+
+async function loadAcceptedSuccessorForCompletedHandoffInTransaction(
+  tx: Tx,
+  input: { userId: string; mesocycleId: string }
+): Promise<Mesocycle> {
+  const source = await tx.mesocycle.findFirst({
+    where: {
+      id: input.mesocycleId,
+      state: "COMPLETED",
+      macroCycle: { userId: input.userId },
+    },
+    select: handoffAcceptanceSourceRowSelect,
+  });
+
+  if (!source) {
+    throw new Error("MESOCYCLE_HANDOFF_NOT_PENDING");
+  }
+
+  const successor = await findAcceptedSuccessorInTransaction(tx, source);
+  if (!successor) {
+    throw new Error("MESOCYCLE_HANDOFF_NOT_PENDING");
+  }
+
+  return successor;
+}
+
+async function repairAcceptedSuccessorSeedInTransaction(
+  tx: Tx,
+  prepared: HandoffAcceptancePreparation
+): Promise<Mesocycle> {
+  const source = await tx.mesocycle.findFirst({
+    where: {
+      id: prepared.source.id,
+      state: "COMPLETED",
+      macroCycle: { userId: prepared.userId },
+    },
+    select: handoffAcceptanceSourceRowSelect,
+  });
+
+  if (!source) {
+    throw new Error("MESOCYCLE_HANDOFF_NOT_PENDING");
+  }
+
+  const successor = await findAcceptedSuccessorInTransaction(tx, source);
+  if (!successor) {
+    throw new Error("MESOCYCLE_HANDOFF_NOT_PENDING");
+  }
+  if (successor.slotPlanSeedJson || !prepared.slotPlanSeed) {
+    return successor;
+  }
+
+  return tx.mesocycle.update({
+    where: { id: successor.id },
+    data: {
+      slotPlanSeedJson: prepared.slotPlanSeed as Prisma.InputJsonValue,
+    },
+  });
+}
+
+export async function prepareMesocycleHandoffAcceptance(input: {
+  userId: string;
+  mesocycleId: string;
+  reader?: PendingHandoffArtifactReader & HandoffSourceMesocycleReader;
+  allowCompletedSource?: boolean;
+}): Promise<HandoffAcceptancePreparation> {
+  const reader = input.reader ?? prisma;
+  const source = await loadHandoffSourceMesocycle(reader, input.mesocycleId);
+  if (source.macroCycle.userId !== input.userId) {
+    throw new Error("MESOCYCLE_HANDOFF_NOT_FOUND");
+  }
+
+  const pendingRow = await reader.mesocycle.findUnique({
+    where: { id: input.mesocycleId },
+    select: pendingHandoffRowSelect,
+  });
+  const refreshedPendingRow = await refreshPendingHandoffArtifactsIfNeeded(reader, pendingRow);
+
+  if (!refreshedPendingRow) {
+    throw new Error("MESOCYCLE_HANDOFF_NOT_PENDING");
+  }
+  assertAcceptanceSourceState(refreshedPendingRow.state, {
+    allowCompletedSource: input.allowCompletedSource,
+  });
 
   const summary = readMesocycleHandoffSummary(refreshedPendingRow.handoffSummaryJson);
   const storedDraft = readNextCycleSeedDraft(refreshedPendingRow.nextSeedDraftJson);
@@ -775,7 +909,7 @@ export async function acceptMesocycleHandoffInTransaction(
           carryForwardRecommendations: summary.carryForwardRecommendations,
         }
       : await loadMaterializedHandoffArtifactsForPendingHandoff({
-          reader: tx,
+          reader,
           source,
           summary,
           closedAt: refreshedPendingRow.closedAt ?? new Date(),
@@ -801,6 +935,81 @@ export async function acceptMesocycleHandoffInTransaction(
     slotSequence: projection.mesocycle.slotSequence,
   });
 
+  return {
+    userId: input.userId,
+    source,
+    pendingRow: refreshedPendingRow,
+    draftFingerprint: buildAcceptanceDraftFingerprint(draft),
+    projection,
+    slotPlanSeed,
+  };
+}
+
+export async function acceptPreparedMesocycleHandoffInTransaction(
+  tx: Tx,
+  prepared: HandoffAcceptancePreparation
+): Promise<Mesocycle> {
+  const current = await tx.mesocycle.findFirst({
+    where: {
+      id: prepared.source.id,
+      macroCycle: { userId: prepared.userId },
+    },
+    select: handoffAcceptanceSourceRowSelect,
+  });
+
+  if (!current) {
+    throw new Error("MESOCYCLE_HANDOFF_NOT_FOUND");
+  }
+
+  if (current.state === "COMPLETED") {
+    const successor = await findAcceptedSuccessorInTransaction(tx, current);
+    if (successor) {
+      return successor;
+    }
+    throw new Error("MESOCYCLE_HANDOFF_NOT_PENDING");
+  }
+
+  if (current.state !== "AWAITING_HANDOFF") {
+    throw new Error("MESOCYCLE_HANDOFF_NOT_PENDING");
+  }
+
+  const existingSuccessor = await tx.mesocycle.findFirst({
+    where: {
+      macroCycleId: current.macroCycleId,
+      mesoNumber: current.mesoNumber + 1,
+    },
+  });
+  if (existingSuccessor) {
+    if (!existingSuccessor.isActive) {
+      throw new Error("MESOCYCLE_HANDOFF_SUCCESSOR_CONFLICT");
+    }
+    await tx.mesocycle.update({
+      where: { id: current.id },
+      data: {
+        state: "COMPLETED",
+        isActive: false,
+      },
+    });
+    return existingSuccessor;
+  }
+
+  const summary = readMesocycleHandoffSummary(current.handoffSummaryJson);
+  const storedDraft = readNextCycleSeedDraft(current.nextSeedDraftJson);
+  if (!summary || !storedDraft || !summary.recommendedNextSeed) {
+    throw new Error("MESOCYCLE_HANDOFF_DRAFT_MISSING");
+  }
+  const draft = sanitizeNextCycleSeedDraft({
+    draft: storedDraft,
+    sourceMesocycleId: prepared.source.id,
+    fallbackDraft: summary.recommendedNextSeed,
+  });
+  if (buildAcceptanceDraftFingerprint(draft) !== prepared.draftFingerprint) {
+    throw new Error("MESOCYCLE_HANDOFF_DRAFT_CHANGED");
+  }
+
+  const projection = prepared.projection;
+  const slotPlanSeed = prepared.slotPlanSeed;
+
   const next = await tx.mesocycle.create({
     data: {
       macroCycleId: projection.mesocycle.macroCycleId,
@@ -821,6 +1030,17 @@ export async function acceptMesocycleHandoffInTransaction(
       ...(slotPlanSeed
         ? { slotPlanSeedJson: slotPlanSeed as Prisma.InputJsonValue }
         : {}),
+    },
+  });
+
+  await tx.mesocycle.updateMany({
+    where: {
+      macroCycleId: current.macroCycleId,
+      id: { not: next.id },
+      isActive: true,
+    },
+    data: {
+      isActive: false,
     },
   });
 
@@ -853,14 +1073,14 @@ export async function acceptMesocycleHandoffInTransaction(
   }
 
   await tx.constraints.upsert({
-    where: { userId: source.macroCycle.userId },
+    where: { userId: prepared.userId },
     update: {
       daysPerWeek: projection.mesocycle.daysPerWeek,
       splitType: projection.mesocycle.splitType,
       weeklySchedule: projection.mesocycle.weeklySchedule,
     },
     create: {
-      userId: source.macroCycle.userId,
+      userId: prepared.userId,
       daysPerWeek: projection.mesocycle.daysPerWeek,
       splitType: projection.mesocycle.splitType,
       weeklySchedule: projection.mesocycle.weeklySchedule,
@@ -868,7 +1088,7 @@ export async function acceptMesocycleHandoffInTransaction(
   });
 
   await tx.mesocycle.update({
-    where: { id: source.id },
+    where: { id: current.id },
     data: {
       state: "COMPLETED",
       isActive: false,
@@ -876,6 +1096,57 @@ export async function acceptMesocycleHandoffInTransaction(
   });
 
   return next;
+}
+
+export async function acceptMesocycleHandoff(input: {
+  userId: string;
+  mesocycleId: string;
+}): Promise<Mesocycle> {
+  const source = await prisma.mesocycle.findFirst({
+    where: {
+      id: input.mesocycleId,
+      macroCycle: { userId: input.userId },
+    },
+    select: {
+      id: true,
+      state: true,
+      macroCycleId: true,
+      mesoNumber: true,
+    },
+  });
+
+  if (!source) {
+    throw new Error("MESOCYCLE_HANDOFF_NOT_FOUND");
+  }
+
+  if (source.state === "COMPLETED") {
+    const successor = await prisma.mesocycle.findFirst({
+      where: {
+        macroCycleId: source.macroCycleId,
+        mesoNumber: source.mesoNumber + 1,
+        isActive: true,
+      },
+      select: { slotPlanSeedJson: true },
+    });
+    if (successor?.slotPlanSeedJson) {
+      return prisma.$transaction((tx) =>
+        loadAcceptedSuccessorForCompletedHandoffInTransaction(tx, input)
+      );
+    }
+
+    const prepared = await prepareMesocycleHandoffAcceptance({
+      ...input,
+      allowCompletedSource: true,
+    });
+    return prisma.$transaction((tx) => repairAcceptedSuccessorSeedInTransaction(tx, prepared));
+  }
+
+  if (source.state !== "AWAITING_HANDOFF") {
+    throw new Error("MESOCYCLE_HANDOFF_NOT_PENDING");
+  }
+
+  const prepared = await prepareMesocycleHandoffAcceptance(input);
+  return prisma.$transaction((tx) => acceptPreparedMesocycleHandoffInTransaction(tx, prepared));
 }
 
 export async function updateMesocycleHandoffDraftInTransaction(

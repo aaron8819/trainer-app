@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { resolveOwner } from "@/lib/api/workout-context";
-import { acceptMesocycleHandoffInTransaction } from "@/lib/api/mesocycle-handoff";
+import { acceptMesocycleHandoff } from "@/lib/api/mesocycle-handoff";
 
 export async function POST(
   _request: Request,
@@ -20,8 +20,6 @@ export async function POST(
     },
     select: {
       id: true,
-      state: true,
-      nextSeedDraftJson: true,
     },
   });
 
@@ -29,24 +27,11 @@ export async function POST(
     return NextResponse.json({ error: "Mesocycle not found" }, { status: 404 });
   }
 
-  if (mesocycle.state !== "AWAITING_HANDOFF") {
-    return NextResponse.json(
-      { error: "Mesocycle handoff is not pending." },
-      { status: 409 }
-    );
-  }
-
-  if (!mesocycle.nextSeedDraftJson) {
-    return NextResponse.json(
-      { error: "Mesocycle handoff draft is missing." },
-      { status: 409 }
-    );
-  }
-
   try {
-    const nextMesocycle = await prisma.$transaction((tx) =>
-      acceptMesocycleHandoffInTransaction(tx, id)
-    );
+    const nextMesocycle = await acceptMesocycleHandoff({
+      userId: owner.id,
+      mesocycleId: id,
+    });
 
     return NextResponse.json({
       ok: true,
@@ -58,6 +43,9 @@ export async function POST(
       },
     });
   } catch (error) {
+    if (error instanceof Error && error.message === "MESOCYCLE_HANDOFF_NOT_FOUND") {
+      return NextResponse.json({ error: "Mesocycle not found" }, { status: 404 });
+    }
     if (error instanceof Error && error.message === "MESOCYCLE_HANDOFF_NOT_PENDING") {
       return NextResponse.json(
         { error: "Mesocycle handoff is not pending." },
@@ -82,6 +70,18 @@ export async function POST(
     ) {
       return NextResponse.json(
         { error: error.message.split(":").slice(1).join(":") },
+        { status: 409 }
+      );
+    }
+    if (error instanceof Error && error.message === "MESOCYCLE_HANDOFF_DRAFT_CHANGED") {
+      return NextResponse.json(
+        { error: "Mesocycle handoff draft changed. Retry accept-next-cycle." },
+        { status: 409 }
+      );
+    }
+    if (error instanceof Error && error.message === "MESOCYCLE_HANDOFF_SUCCESSOR_CONFLICT") {
+      return NextResponse.json(
+        { error: "Mesocycle handoff successor state is inconsistent." },
         { status: 409 }
       );
     }

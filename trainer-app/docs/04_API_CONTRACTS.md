@@ -128,9 +128,9 @@ Sources of truth:
   - validation behavior:
     - `400` when the draft payload is structurally invalid
 - `POST /api/mesocycles/[id]/accept-next-cycle` (`src/app/api/mesocycles/[id]/accept-next-cycle/route.ts`)
-  - state gate: target mesocycle must exist for the owner, be in `AWAITING_HANDOFF`, and have a readable stored draft
+  - state gate: target mesocycle must exist for the owner, be in `AWAITING_HANDOFF`, and have a readable stored draft; retries after a completed accept may return the already-active successor when the source is already `COMPLETED`
   - success: `{ ok: true, priorMesocycleId, nextMesocycle }`
-  - acceptance semantics are transactional: sanitize the stored draft, reuse the shared handoff projection source seam, create the successor mesocycle, persist `slotSequenceJson`, persist aligned minimal `slotPlanSeedJson` from the raw canonical handoff slot-plan projection when available, copy allowed carry-forward roles, update `Constraints`, then mark the source mesocycle `COMPLETED`
+  - acceptance semantics are prepare-then-transactional: sanitize the stored draft and build deterministic successor projection plus aligned minimal `slotPlanSeedJson` before the Prisma interactive transaction; inside the transaction, re-read/revalidate the source, create or reuse the successor mesocycle, persist `slotSequenceJson`, persist the prepared `slotPlanSeedJson` when materialized slot plans are available, copy allowed carry-forward roles, update `Constraints`, then mark the source mesocycle `COMPLETED`
   - persisted `slotSequenceJson` is placement plus authored slot semantics for new accepted mesocycles. The canonical authored fields are `slotArchetype`, `primaryLaneContract`, `supportCoverageContract`, and `continuityScope`, normalized through `src/lib/api/mesocycle-slot-contract.ts`.
   - `slotPlanSeedJson` stores ordered `slotId -> exercises[{ exerciseId, role }]` data from the raw canonical handoff slot-plan projection, remains distinct from setup display DTOs, and becomes the canonical seeded runtime composition source for supported accepted mesocycles
   - unsupported raw slot-plan projection cases such as current `BODY_PART` projection limits do not change accept behavior yet; acceptance still succeeds without persisting `slotPlanSeedJson`

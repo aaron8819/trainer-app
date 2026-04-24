@@ -20,11 +20,12 @@ vi.mock("./mesocycle-handoff-slot-plan-projection", async (importOriginal) => {
 });
 
 import {
-  acceptMesocycleHandoffInTransaction,
+  acceptPreparedMesocycleHandoffInTransaction,
   enterMesocycleHandoffInTransaction,
   findIncompatibleCarryForwardKeeps,
   formatCarryForwardConflictMessage,
   loadClosedMesocycleArchive,
+  prepareMesocycleHandoffAcceptance,
   readMesocycleHandoffSummary,
   readNextCycleSeedDraft,
   sanitizeNextCycleSeedDraft,
@@ -33,6 +34,29 @@ import {
   type NextCycleSeedDraft,
   updateMesocycleHandoffDraftInTransaction,
 } from "./mesocycle-handoff";
+
+async function prepareThenAcceptMesocycleHandoff(tx: unknown, mesocycleId = "meso-1") {
+  const prepared = await prepareMesocycleHandoffAcceptance({
+    userId: "user-1",
+    mesocycleId,
+    reader: tx as never,
+  });
+  const client = tx as {
+    mesocycle: {
+      findFirst?: ReturnType<typeof vi.fn>;
+      updateMany?: ReturnType<typeof vi.fn>;
+    };
+  };
+  client.mesocycle.findFirst ??= vi
+    .fn()
+    .mockResolvedValueOnce({
+      ...prepared.pendingRow,
+      macroCycleId: prepared.source.macroCycleId,
+    })
+    .mockResolvedValueOnce(null);
+  client.mesocycle.updateMany ??= vi.fn();
+  return acceptPreparedMesocycleHandoffInTransaction(tx as never, prepared);
+}
 
 function buildRecommendedDesign(): NextMesocycleDesign {
   return {
@@ -1023,7 +1047,7 @@ describe("handoff draft persistence", () => {
     const constraintsUpsert = vi.fn();
     const mesocycleUpdate = vi.fn();
 
-    await acceptMesocycleHandoffInTransaction(
+    await prepareThenAcceptMesocycleHandoff(
       {
         mesocycle: {
           findUnique: mesocycleFindUnique,
@@ -1040,7 +1064,6 @@ describe("handoff draft persistence", () => {
           upsert: constraintsUpsert,
         },
       } as never,
-      "meso-1"
     );
 
     expect(mesocycleCreate).toHaveBeenCalledWith(
@@ -1134,6 +1157,320 @@ describe("handoff draft persistence", () => {
         }),
       })
     );
+    expect(mesocycleUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "meso-1" },
+        data: expect.objectContaining({ state: "COMPLETED", isActive: false }),
+      })
+    );
+  });
+
+  it("keeps slot-plan projection outside the persistence transaction", async () => {
+    const recommendedDraft = buildRecommendedDraft();
+    mocks.loadPreloadedGenerationSnapshot.mockClear();
+    mocks.projectSuccessorSlotPlansFromSnapshot.mockClear();
+    mocks.loadPreloadedGenerationSnapshot.mockResolvedValue({ context: {} });
+    mocks.projectSuccessorSlotPlansFromSnapshot.mockReturnValue({
+      slotPlans: [
+        {
+          slotId: "upper_a",
+          intent: "UPPER",
+          exercises: [{ exerciseId: "bench", role: "CORE_COMPOUND" }],
+        },
+        {
+          slotId: "lower_a",
+          intent: "LOWER",
+          exercises: [{ exerciseId: "squat", role: "CORE_COMPOUND" }],
+        },
+        {
+          slotId: "upper_b",
+          intent: "UPPER",
+          exercises: [{ exerciseId: "row", role: "ACCESSORY" }],
+        },
+        {
+          slotId: "lower_b",
+          intent: "LOWER",
+          exercises: [{ exerciseId: "split-squat", role: "ACCESSORY" }],
+        },
+      ],
+    });
+
+    const tx = {
+      mesocycle: {
+        findUnique: vi
+          .fn()
+          .mockResolvedValueOnce({
+            id: "meso-1",
+            macroCycleId: "macro-1",
+            mesoNumber: 1,
+            startWeek: 0,
+            durationWeeks: 5,
+            focus: "Upper Hypertrophy",
+            volumeTarget: "HIGH",
+            intensityBias: "HYPERTROPHY",
+            sessionsPerWeek: 4,
+            daysPerWeek: 4,
+            splitType: "UPPER_LOWER",
+            accumulationSessionsCompleted: 8,
+            deloadSessionsCompleted: 1,
+            blocks: [],
+            macroCycle: { userId: "user-1" },
+          })
+          .mockResolvedValueOnce({
+            id: "meso-1",
+            state: "AWAITING_HANDOFF",
+            mesoNumber: 1,
+            focus: "Upper Hypertrophy",
+            closedAt: new Date("2026-04-01T00:00:00.000Z"),
+            handoffSummaryJson: buildHandoffSummaryJson(recommendedDraft),
+            nextSeedDraftJson: recommendedDraft,
+          }),
+        findFirst: vi
+          .fn()
+          .mockResolvedValueOnce({
+            id: "meso-1",
+            state: "AWAITING_HANDOFF",
+            mesoNumber: 1,
+            focus: "Upper Hypertrophy",
+            closedAt: new Date("2026-04-01T00:00:00.000Z"),
+            handoffSummaryJson: buildHandoffSummaryJson(recommendedDraft),
+            nextSeedDraftJson: recommendedDraft,
+            macroCycleId: "macro-1",
+          })
+          .mockResolvedValueOnce(null),
+        create: vi.fn().mockResolvedValue({
+          id: "meso-2",
+          state: "ACTIVE_ACCUMULATION",
+          mesoNumber: 2,
+        }),
+        update: vi.fn(),
+        updateMany: vi.fn(),
+      },
+      trainingBlock: {
+        createMany: vi.fn(),
+      },
+      mesocycleExerciseRole: {
+        createMany: vi.fn(),
+      },
+      constraints: {
+        upsert: vi.fn(),
+      },
+    };
+
+    const prepared = await prepareMesocycleHandoffAcceptance({
+      userId: "user-1",
+      mesocycleId: "meso-1",
+      reader: tx as never,
+    });
+    expect(mocks.loadPreloadedGenerationSnapshot).toHaveBeenCalledOnce();
+
+    mocks.loadPreloadedGenerationSnapshot.mockClear();
+    mocks.projectSuccessorSlotPlansFromSnapshot.mockClear();
+
+    await acceptPreparedMesocycleHandoffInTransaction(tx as never, prepared);
+
+    expect(mocks.loadPreloadedGenerationSnapshot).not.toHaveBeenCalled();
+    expect(mocks.projectSuccessorSlotPlansFromSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("is idempotent when retry sees an already-active successor", async () => {
+    const recommendedDraft = buildRecommendedDraft();
+    mocks.loadPreloadedGenerationSnapshot.mockResolvedValue({ context: {} });
+    mocks.projectSuccessorSlotPlansFromSnapshot.mockReturnValue({
+      slotPlans: [
+        {
+          slotId: "upper_a",
+          intent: "UPPER",
+          exercises: [{ exerciseId: "bench", role: "CORE_COMPOUND" }],
+        },
+        {
+          slotId: "lower_a",
+          intent: "LOWER",
+          exercises: [{ exerciseId: "squat", role: "CORE_COMPOUND" }],
+        },
+        {
+          slotId: "upper_b",
+          intent: "UPPER",
+          exercises: [{ exerciseId: "row", role: "ACCESSORY" }],
+        },
+        {
+          slotId: "lower_b",
+          intent: "LOWER",
+          exercises: [{ exerciseId: "split-squat", role: "ACCESSORY" }],
+        },
+      ],
+    });
+    const existingSuccessor = {
+      id: "meso-2",
+      state: "ACTIVE_ACCUMULATION",
+      mesoNumber: 2,
+      isActive: true,
+    };
+    const mesocycleCreate = vi.fn();
+    const mesocycleUpdate = vi.fn();
+    const tx = {
+      mesocycle: {
+        findUnique: vi
+          .fn()
+          .mockResolvedValueOnce({
+            id: "meso-1",
+            macroCycleId: "macro-1",
+            mesoNumber: 1,
+            startWeek: 0,
+            durationWeeks: 5,
+            focus: "Upper Hypertrophy",
+            volumeTarget: "HIGH",
+            intensityBias: "HYPERTROPHY",
+            sessionsPerWeek: 4,
+            daysPerWeek: 4,
+            splitType: "UPPER_LOWER",
+            accumulationSessionsCompleted: 8,
+            deloadSessionsCompleted: 1,
+            blocks: [],
+            macroCycle: { userId: "user-1" },
+          })
+          .mockResolvedValueOnce({
+            id: "meso-1",
+            state: "AWAITING_HANDOFF",
+            mesoNumber: 1,
+            focus: "Upper Hypertrophy",
+            closedAt: new Date("2026-04-01T00:00:00.000Z"),
+            handoffSummaryJson: buildHandoffSummaryJson(recommendedDraft),
+            nextSeedDraftJson: recommendedDraft,
+          }),
+        findFirst: vi
+          .fn()
+          .mockResolvedValueOnce({
+            id: "meso-1",
+            state: "AWAITING_HANDOFF",
+            mesoNumber: 1,
+            focus: "Upper Hypertrophy",
+            closedAt: new Date("2026-04-01T00:00:00.000Z"),
+            handoffSummaryJson: buildHandoffSummaryJson(recommendedDraft),
+            nextSeedDraftJson: recommendedDraft,
+            macroCycleId: "macro-1",
+          })
+          .mockResolvedValueOnce(existingSuccessor),
+        create: mesocycleCreate,
+        update: mesocycleUpdate,
+        updateMany: vi.fn(),
+      },
+    };
+
+    const prepared = await prepareMesocycleHandoffAcceptance({
+      userId: "user-1",
+      mesocycleId: "meso-1",
+      reader: tx as never,
+    });
+
+    await expect(
+      acceptPreparedMesocycleHandoffInTransaction(tx as never, prepared)
+    ).resolves.toBe(existingSuccessor);
+    expect(mesocycleCreate).not.toHaveBeenCalled();
+    expect(mesocycleUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "meso-1" },
+        data: { state: "COMPLETED", isActive: false },
+      })
+    );
+  });
+
+  it("does not mark the source completed when successor creation fails", async () => {
+    const recommendedDraft = buildRecommendedDraft();
+    mocks.loadPreloadedGenerationSnapshot.mockResolvedValue({ context: {} });
+    mocks.projectSuccessorSlotPlansFromSnapshot.mockReturnValue({
+      slotPlans: [
+        {
+          slotId: "upper_a",
+          intent: "UPPER",
+          exercises: [{ exerciseId: "bench", role: "CORE_COMPOUND" }],
+        },
+        {
+          slotId: "lower_a",
+          intent: "LOWER",
+          exercises: [{ exerciseId: "squat", role: "CORE_COMPOUND" }],
+        },
+        {
+          slotId: "upper_b",
+          intent: "UPPER",
+          exercises: [{ exerciseId: "row", role: "ACCESSORY" }],
+        },
+        {
+          slotId: "lower_b",
+          intent: "LOWER",
+          exercises: [{ exerciseId: "split-squat", role: "ACCESSORY" }],
+        },
+      ],
+    });
+    const mesocycleUpdate = vi.fn();
+    const tx = {
+      mesocycle: {
+        findUnique: vi
+          .fn()
+          .mockResolvedValueOnce({
+            id: "meso-1",
+            macroCycleId: "macro-1",
+            mesoNumber: 1,
+            startWeek: 0,
+            durationWeeks: 5,
+            focus: "Upper Hypertrophy",
+            volumeTarget: "HIGH",
+            intensityBias: "HYPERTROPHY",
+            sessionsPerWeek: 4,
+            daysPerWeek: 4,
+            splitType: "UPPER_LOWER",
+            accumulationSessionsCompleted: 8,
+            deloadSessionsCompleted: 1,
+            blocks: [],
+            macroCycle: { userId: "user-1" },
+          })
+          .mockResolvedValueOnce({
+            id: "meso-1",
+            state: "AWAITING_HANDOFF",
+            mesoNumber: 1,
+            focus: "Upper Hypertrophy",
+            closedAt: new Date("2026-04-01T00:00:00.000Z"),
+            handoffSummaryJson: buildHandoffSummaryJson(recommendedDraft),
+            nextSeedDraftJson: recommendedDraft,
+          }),
+        findFirst: vi
+          .fn()
+          .mockResolvedValueOnce({
+            id: "meso-1",
+            state: "AWAITING_HANDOFF",
+            mesoNumber: 1,
+            focus: "Upper Hypertrophy",
+            closedAt: new Date("2026-04-01T00:00:00.000Z"),
+            handoffSummaryJson: buildHandoffSummaryJson(recommendedDraft),
+            nextSeedDraftJson: recommendedDraft,
+            macroCycleId: "macro-1",
+          })
+          .mockResolvedValueOnce(null),
+        create: vi.fn().mockRejectedValue(new Error("timeout")),
+        update: mesocycleUpdate,
+        updateMany: vi.fn(),
+      },
+      trainingBlock: {
+        createMany: vi.fn(),
+      },
+      mesocycleExerciseRole: {
+        createMany: vi.fn(),
+      },
+      constraints: {
+        upsert: vi.fn(),
+      },
+    };
+
+    const prepared = await prepareMesocycleHandoffAcceptance({
+      userId: "user-1",
+      mesocycleId: "meso-1",
+      reader: tx as never,
+    });
+
+    await expect(acceptPreparedMesocycleHandoffInTransaction(tx as never, prepared)).rejects.toThrow(
+      "timeout"
+    );
+    expect(mesocycleUpdate).not.toHaveBeenCalled();
   });
 
   it("refreshes stale pending handoff artifacts before accept sanitizes the stored draft", async () => {
@@ -1309,7 +1646,7 @@ describe("handoff draft persistence", () => {
     });
 
     await expect(
-      acceptMesocycleHandoffInTransaction(
+      prepareThenAcceptMesocycleHandoff(
         {
           mesocycle: {
             findUnique: mesocycleFindUnique,
@@ -1421,7 +1758,6 @@ describe("handoff draft persistence", () => {
             createMany: vi.fn(),
           },
         } as never,
-        "meso-1"
       )
     ).resolves.toMatchObject({
       id: "meso-2",
@@ -1518,7 +1854,7 @@ describe("handoff draft persistence", () => {
     });
 
     await expect(
-      acceptMesocycleHandoffInTransaction(
+      prepareThenAcceptMesocycleHandoff(
         {
           mesocycle: {
             findUnique: mesocycleFindUnique,
@@ -1535,7 +1871,6 @@ describe("handoff draft persistence", () => {
             upsert: vi.fn(),
           },
         } as never,
-        "meso-1"
       )
     ).resolves.toMatchObject({
       id: "meso-2",
@@ -1568,6 +1903,111 @@ describe("handoff draft persistence", () => {
     );
     const createData = mesocycleCreate.mock.calls[0]?.[0]?.data as Record<string, unknown>;
     expect(createData).not.toHaveProperty("slotPlanSeedJson");
+  });
+
+  it("persists materialized slot plans even when projection reports a coverage diagnostic", async () => {
+    const recommendedDraft = buildRecommendedDraft();
+    mocks.loadPreloadedGenerationSnapshot.mockResolvedValue({
+      context: {},
+    });
+    mocks.projectSuccessorSlotPlansFromSnapshot.mockReturnValue({
+      error: "MESOCYCLE_HANDOFF_SLOT_PLAN_PROTECTED_COVERAGE_UNSATISFIED:Side Delts",
+      slotPlans: [
+        {
+          slotId: "upper_a",
+          intent: "UPPER",
+          exercises: [{ exerciseId: "bench", role: "CORE_COMPOUND" }],
+        },
+        {
+          slotId: "lower_a",
+          intent: "LOWER",
+          exercises: [{ exerciseId: "squat", role: "CORE_COMPOUND" }],
+        },
+        {
+          slotId: "upper_b",
+          intent: "UPPER",
+          exercises: [{ exerciseId: "row", role: "ACCESSORY" }],
+        },
+        {
+          slotId: "lower_b",
+          intent: "LOWER",
+          exercises: [{ exerciseId: "split-squat", role: "ACCESSORY" }],
+        },
+      ],
+    });
+
+    const mesocycleFindUnique = vi
+      .fn()
+      .mockResolvedValueOnce({
+        id: "meso-1",
+        macroCycleId: "macro-1",
+        mesoNumber: 1,
+        startWeek: 0,
+        durationWeeks: 5,
+        focus: "Upper Hypertrophy",
+        volumeTarget: "HIGH",
+        intensityBias: "HYPERTROPHY",
+        sessionsPerWeek: 4,
+        daysPerWeek: 4,
+        splitType: "UPPER_LOWER",
+        accumulationSessionsCompleted: 8,
+        deloadSessionsCompleted: 1,
+        blocks: [],
+        macroCycle: { userId: "user-1" },
+      })
+      .mockResolvedValueOnce({
+        id: "meso-1",
+        state: "AWAITING_HANDOFF",
+        handoffSummaryJson: buildHandoffSummaryJson(recommendedDraft),
+        nextSeedDraftJson: recommendedDraft,
+        closedAt: new Date("2026-04-01T00:00:00.000Z"),
+      });
+    const mesocycleCreate = vi.fn().mockResolvedValue({
+      id: "meso-2",
+      state: "ACTIVE_ACCUMULATION",
+      mesoNumber: 2,
+    });
+
+    await expect(
+      prepareThenAcceptMesocycleHandoff(
+        {
+          mesocycle: {
+            findUnique: mesocycleFindUnique,
+            create: mesocycleCreate,
+            update: vi.fn(),
+          },
+          trainingBlock: {
+            createMany: vi.fn(),
+          },
+          mesocycleExerciseRole: {
+            createMany: vi.fn(),
+          },
+          constraints: {
+            upsert: vi.fn(),
+          },
+        } as never,
+      )
+    ).resolves.toMatchObject({
+      id: "meso-2",
+      state: "ACTIVE_ACCUMULATION",
+      mesoNumber: 2,
+    });
+
+    expect(mesocycleCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          slotPlanSeedJson: expect.objectContaining({
+            source: "handoff_slot_plan_projection",
+            slots: [
+              expect.objectContaining({ slotId: "upper_a" }),
+              expect.objectContaining({ slotId: "lower_a" }),
+              expect.objectContaining({ slotId: "upper_b" }),
+              expect.objectContaining({ slotId: "lower_b" }),
+            ],
+          }),
+        }),
+      })
+    );
   });
 
   it("rejects acceptance when a kept selection no longer matches the edited split", async () => {
@@ -1615,7 +2055,7 @@ describe("handoff draft persistence", () => {
       });
 
     await expect(
-      acceptMesocycleHandoffInTransaction(
+      prepareThenAcceptMesocycleHandoff(
         {
           mesocycle: {
             findUnique: mesocycleFindUnique,
@@ -1632,7 +2072,6 @@ describe("handoff draft persistence", () => {
             upsert: vi.fn(),
           },
         } as never,
-        "meso-1"
       )
     ).rejects.toThrow("MESOCYCLE_HANDOFF_KEEP_SELECTION_CONFLICT:");
   });

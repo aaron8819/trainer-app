@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   getClosedMesocycleWorkoutFenceReason,
+  getLogWorkoutPageState,
   getWorkoutDetailTitle,
   getWorkoutWorkflowState,
 } from "./workout-workflow";
@@ -73,5 +74,32 @@ describe("workout workflow semantics", () => {
     expect(getWorkoutDetailTitle("PLANNED")).toBe("Session Overview");
     expect(getWorkoutDetailTitle("PARTIAL")).toBe("Partial Session");
     expect(getWorkoutDetailTitle("COMPLETED")).toBe("Session Review");
+  });
+
+  it("derives log page mutability from workflow state", () => {
+    expect(getLogWorkoutPageState("PLANNED")).toEqual({
+      uiState: "active",
+      mutability: "editable",
+      primaryAction: "log",
+    });
+    expect(getLogWorkoutPageState("COMPLETED")).toEqual({
+      uiState: "completed",
+      mutability: "review_only",
+      primaryAction: "review",
+      reason: "This session is completed and is now read-only.",
+    });
+    expect(
+      getLogWorkoutPageState("PARTIAL", {
+        mesocycleId: "meso-1",
+        mesocycleState: "AWAITING_HANDOFF",
+        mesocycleIsActive: false,
+      })
+    ).toEqual({
+      uiState: "blocked",
+      mutability: "blocked",
+      primaryAction: "resolve",
+      reason:
+        "This workout belongs to a closed mesocycle with handoff pending and can no longer be resumed.",
+    });
   });
 });

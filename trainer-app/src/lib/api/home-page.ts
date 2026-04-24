@@ -19,6 +19,8 @@ import {
 } from "./program";
 import { loadPendingMesocycleHandoff } from "./mesocycle-handoff";
 import { getUiAuditFixtureForServer } from "@/lib/ui-audit-fixtures/server";
+import type { CanonicalUiState } from "@/lib/ui-state-contract";
+import { getWorkoutWorkflowState } from "@/lib/workout-workflow";
 
 export type HomeDecisionSummary = {
   nextSessionLabel: string | null;
@@ -51,6 +53,45 @@ export type HomeCloseoutSummary = {
   dismissActionLabel: string | null;
 };
 
+export type HomePrimaryAction =
+  | {
+      state: Extract<CanonicalUiState, "active">;
+      label: "Resume workout";
+      href: string;
+      reasonLabel?: string;
+      reason?: string;
+    }
+  | {
+      state: Extract<CanonicalUiState, "planned">;
+      mode: "existing" | "generate";
+      label: "Start workout";
+      href?: string;
+      action?: "generate-required-workout";
+      initialIntent?: string;
+      initialSlotId?: string;
+      reasonLabel?: string;
+      reason?: string;
+    }
+  | {
+      state: Extract<CanonicalUiState, "completed">;
+      label: "Week complete";
+      description: string;
+      href?: string;
+    }
+  | {
+      state: Extract<CanonicalUiState, "optional">;
+      label: "Create optional session";
+      action: "post-closeout";
+      description: string;
+      href: string;
+    }
+  | {
+      state: Extract<CanonicalUiState, "blocked">;
+      label: string;
+      reason: string;
+      href?: string;
+    };
+
 function formatCloseoutTitle(
   closeout: Pick<HomeProgramSupportData["closeout"], "isPriorWeek" | "targetWeek">
 ): string {
@@ -63,6 +104,7 @@ export type HomePageData = {
   pendingHandoff: Awaited<ReturnType<typeof loadPendingMesocycleHandoff>>;
   programData: ProgramDashboardData | null;
   homeProgram: HomeProgramSupportData | null;
+  primaryAction: HomePrimaryAction | null;
   decision: HomeDecisionSummary | null;
   continuity: HomeContinuitySummary | null;
   closeout: HomeCloseoutSummary | null;
@@ -377,6 +419,84 @@ function buildHomeCloseoutSummary(
   };
 }
 
+function buildHomePrimaryAction(input: {
+  homeProgram: HomeProgramSupportData;
+  decision: HomeDecisionSummary;
+  closeout: HomeCloseoutSummary | null;
+}): HomePrimaryAction {
+  const { homeProgram, decision, closeout } = input;
+  const latestIncomplete = homeProgram.latestIncomplete;
+  const workoutId = homeProgram.nextSession.workoutId ?? latestIncomplete?.id ?? null;
+  const workflow = getWorkoutWorkflowState(latestIncomplete?.status ?? null);
+
+  if (
+    workoutId &&
+    latestIncomplete &&
+    (workflow.kind === "in_progress" || workflow.kind === "partial")
+  ) {
+    return {
+      state: "active",
+      label: "Resume workout",
+      href: `/log/${workoutId}`,
+      reasonLabel: decision.nextSessionReasonLabel,
+      reason: decision.nextSessionReason,
+    };
+  }
+
+  if (workoutId && latestIncomplete && workflow.kind === "planned") {
+    return {
+      state: "planned",
+      mode: "existing",
+      label: "Start workout",
+      href: `/log/${workoutId}`,
+      reasonLabel: decision.nextSessionReasonLabel,
+      reason: decision.nextSessionReason,
+    };
+  }
+
+  const requiredWeekComplete =
+    decision.totalAdvancingSessionsThisWeek > 0 &&
+    decision.completedAdvancingSessionsThisWeek >= decision.totalAdvancingSessionsThisWeek;
+  if (requiredWeekComplete) {
+    return {
+      state: "completed",
+      label: "Week complete",
+      description: "Required sessions are done for this week. Optional sessions stay separate below.",
+      href: "/program",
+    };
+  }
+
+  if (homeProgram.nextSession.intent) {
+    return {
+      state: "planned",
+      mode: "generate",
+      label: "Start workout",
+      action: "generate-required-workout",
+      initialIntent: homeProgram.nextSession.intent,
+      initialSlotId: homeProgram.nextSession.slotId ?? undefined,
+      reasonLabel: decision.nextSessionReasonLabel,
+      reason: decision.nextSessionReason,
+    };
+  }
+
+  if (closeout?.actionMethod === "post") {
+    return {
+      state: "optional",
+      label: "Create optional session",
+      action: "post-closeout",
+      description: closeout.detail,
+      href: closeout.actionHref,
+    };
+  }
+
+  return {
+    state: "blocked",
+    label: "No required workout available",
+    reason: "Required workout creation is unavailable until the program has a next session.",
+    href: "/program",
+  };
+}
+
 export async function loadHomePageData(userId: string): Promise<HomePageData> {
   const fixture = await getUiAuditFixtureForServer();
   if (fixture?.home) {
@@ -411,6 +531,12 @@ export async function loadHomePageData(userId: string): Promise<HomePageData> {
       pendingHandoff,
       programData: null,
       homeProgram: null,
+      primaryAction: {
+        state: "blocked",
+        label: "Review handoff",
+        reason: "Training is paused until you accept the next cycle.",
+        href: `/mesocycles/${pendingHandoff.mesocycleId}/review`,
+      },
       decision: null,
       continuity: buildContinuitySummary({
         lastCompleted,
@@ -428,18 +554,24 @@ export async function loadHomePageData(userId: string): Promise<HomePageData> {
     loadHomeProgramSupport(userId),
   ]);
   const decision = buildDecisionSummary(homeProgram);
+  const closeout = buildHomeCloseoutSummary(homeProgram);
 
   return {
     pendingHandoff: null,
     programData,
     homeProgram,
+    primaryAction: buildHomePrimaryAction({
+      homeProgram,
+      decision,
+      closeout,
+    }),
     decision,
     continuity: buildContinuitySummary({
       lastCompleted,
       decision,
       homeProgram,
     }),
-    closeout: buildHomeCloseoutSummary(homeProgram),
+    closeout,
     headerContext: buildHeaderContext(programData),
     recentActivity,
   };

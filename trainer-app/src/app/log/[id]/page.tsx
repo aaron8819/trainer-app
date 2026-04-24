@@ -8,7 +8,7 @@ import {
   formatSessionIdentityLabel,
 } from "@/lib/ui/session-identity";
 import { isStrictOptionalGapFillSession } from "@/lib/gap-fill/classifier";
-import { getWorkoutWorkflowState } from "@/lib/workout-workflow";
+import { getLogWorkoutPageState } from "@/lib/workout-workflow";
 import { getUiAuditFixtureForServer } from "@/lib/ui-audit-fixtures/server";
 
 export const dynamic = "force-dynamic";
@@ -151,28 +151,23 @@ export default async function LogWorkoutPage({
       </main>
     );
   }
-  const workflow = getWorkoutWorkflowState(workout.status, {
+  const pageState = getLogWorkoutPageState(workout.status, {
     mesocycleId: workout.mesocycleId,
     mesocycleState: workout.mesocycle?.state ?? null,
     mesocycleIsActive: workout.mesocycle?.isActive ?? null,
   });
-  const resumeBlockedReason = workflow.resumeBlockedReason;
-  if (!workflow.isResumable) {
-    const reason =
-      resumeBlockedReason ??
-      (workflow.kind === "completed"
-        ? "This session is completed and is now read-only."
-        : workflow.kind === "skipped"
-          ? "This session was skipped and is now read-only."
-          : "This workout is unavailable for logging.");
+  if (pageState.mutability !== "editable") {
+    const isBlocked = pageState.uiState === "blocked";
     return (
       <main className="min-h-screen bg-white text-slate-900">
         <div className="page-shell max-w-4xl">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Read-only
+            {isBlocked ? "Blocked" : "Read-only"}
           </p>
-          <h1 className="mt-2 text-2xl font-semibold">Session review only</h1>
-          <p className="mt-3 text-sm text-slate-600">{reason}</p>
+          <h1 className="mt-2 text-2xl font-semibold">
+            {isBlocked ? "Workout unavailable" : "Session review only"}
+          </h1>
+          <p className="mt-3 text-sm text-slate-600">{pageState.reason}</p>
           <div className="mt-5 flex flex-wrap gap-3">
             <Link
               className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 px-5 py-2 text-sm font-semibold text-slate-900"
@@ -218,7 +213,7 @@ export default async function LogWorkoutPage({
           workoutId={workout.id}
           exercises={exercises}
           allowBonusExerciseAdd={!isStrictGapFill}
-          allowRuntimeExerciseSwap={workflow.isResumable}
+          allowRuntimeExerciseSwap={pageState.mutability === "editable"}
           sessionIdentityLabel={sessionIdentityLabel}
           sessionTechnicalLabel={sessionTechnicalLabel}
         />

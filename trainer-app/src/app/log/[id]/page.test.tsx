@@ -80,4 +80,77 @@ describe("LogWorkoutPage", () => {
       "/workout/workout-1"
     );
   });
+
+  it("does not mount the log editor for skipped workouts", async () => {
+    mocks.workoutFindFirst.mockResolvedValue({
+      id: "workout-1",
+      userId: "user-1",
+      status: "SKIPPED",
+      mesocycleId: "meso-1",
+      mesocycle: {
+        state: "ACTIVE_ACCUMULATION",
+        isActive: true,
+      },
+    });
+
+    const { default: LogWorkoutPage } = await import("./page");
+    const ui = await LogWorkoutPage({ params: Promise.resolve({ id: "workout-1" }) });
+
+    render(ui);
+
+    expect(screen.getByText("Session review only")).toBeInTheDocument();
+    expect(screen.getByText("This session was skipped and is now read-only.")).toBeInTheDocument();
+    expect(screen.queryByText("LogWorkoutClient mounted")).not.toBeInTheDocument();
+  });
+
+  it("mounts the log editor for active resumable workouts", async () => {
+    mocks.workoutFindFirst.mockResolvedValue({
+      id: "workout-1",
+      userId: "user-1",
+      status: "IN_PROGRESS",
+      mesocycleId: "meso-1",
+      mesocycle: {
+        state: "ACTIVE_ACCUMULATION",
+        isActive: true,
+      },
+      exercises: [],
+      selectionMetadata: null,
+      selectionMode: "INTENT",
+      sessionIntent: "UPPER",
+    });
+
+    const { default: LogWorkoutPage } = await import("./page");
+    const ui = await LogWorkoutPage({ params: Promise.resolve({ id: "workout-1" }) });
+
+    render(ui);
+
+    expect(screen.getByText("LogWorkoutClient mounted")).toBeInTheDocument();
+  });
+
+  it("shows blocker navigation for closed-mesocycle workouts", async () => {
+    mocks.workoutFindFirst.mockResolvedValue({
+      id: "workout-1",
+      userId: "user-1",
+      status: "PARTIAL",
+      mesocycleId: "meso-1",
+      mesocycle: {
+        state: "AWAITING_HANDOFF",
+        isActive: false,
+      },
+    });
+
+    const { default: LogWorkoutPage } = await import("./page");
+    const ui = await LogWorkoutPage({ params: Promise.resolve({ id: "workout-1" }) });
+
+    render(ui);
+
+    expect(screen.getByText("Workout unavailable")).toBeInTheDocument();
+    expect(screen.getByText(/handoff pending/)).toBeInTheDocument();
+    expect(screen.queryByText("LogWorkoutClient mounted")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "View workout" })).toHaveAttribute(
+      "href",
+      "/workout/workout-1"
+    );
+    expect(screen.getByRole("link", { name: "Back to dashboard" })).toHaveAttribute("href", "/");
+  });
 });

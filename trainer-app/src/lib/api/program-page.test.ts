@@ -119,7 +119,10 @@ describe("buildProgramCurrentWeekPlan", () => {
           slotId: "upper_a",
           label: "Upper 1",
           sessionInWeek: 1,
-          state: "completed",
+          uiState: "completed",
+          statusLabel: "Completed",
+          statusDescription: "Session 1 is counted from actual completed volume.",
+          volumeBasis: "actual_completed",
           linkedWorkoutId: null,
           linkedWorkoutStatus: null,
           impact: null,
@@ -128,7 +131,10 @@ describe("buildProgramCurrentWeekPlan", () => {
           slotId: "lower_a",
           label: "Lower 1",
           sessionInWeek: 2,
-          state: "next",
+          uiState: "planned",
+          statusLabel: "Planned",
+          statusDescription: "Session 2 already has a planned workout ready to log.",
+          volumeBasis: "projected_next",
           linkedWorkoutId: "planned-lower",
           linkedWorkoutStatus: "planned",
           impact: null,
@@ -137,7 +143,10 @@ describe("buildProgramCurrentWeekPlan", () => {
           slotId: "upper_b",
           label: "Upper 2",
           sessionInWeek: 3,
-          state: "remaining",
+          uiState: "projected",
+          statusLabel: "Projected",
+          statusDescription: "Session 3 is unresolved; its volume is projected as remaining work.",
+          volumeBasis: "projected_remaining",
           linkedWorkoutId: null,
           linkedWorkoutStatus: null,
           impact: null,
@@ -228,7 +237,11 @@ describe("buildProgramCurrentWeekPlan", () => {
         slotId: "upper_a",
         label: "Upper 1",
         sessionInWeek: 1,
-        state: "next",
+        uiState: "planned",
+        statusLabel: "Planned next",
+        statusDescription:
+          "Session 1 is the next required slot; its volume is projected from the next-session plan.",
+        volumeBasis: "projected_next",
         linkedWorkoutId: null,
         linkedWorkoutStatus: null,
         impact: null,
@@ -237,7 +250,10 @@ describe("buildProgramCurrentWeekPlan", () => {
         slotId: "lower_a",
         label: "Lower 1",
         sessionInWeek: 2,
-        state: "remaining",
+        uiState: "projected",
+        statusLabel: "Projected",
+        statusDescription: "Session 2 is unresolved; its volume is projected as remaining work.",
+        volumeBasis: "projected_remaining",
         linkedWorkoutId: null,
         linkedWorkoutStatus: null,
         impact: null,
@@ -246,7 +262,10 @@ describe("buildProgramCurrentWeekPlan", () => {
         slotId: "upper_b",
         label: "Upper 2",
         sessionInWeek: 3,
-        state: "remaining",
+        uiState: "projected",
+        statusLabel: "Projected",
+        statusDescription: "Session 3 is unresolved; its volume is projected as remaining work.",
+        volumeBasis: "projected_remaining",
         linkedWorkoutId: null,
         linkedWorkoutStatus: null,
         impact: null,
@@ -377,6 +396,7 @@ describe("loadProgramPageData", () => {
           weeklyTarget: 10,
           mev: 6,
           mav: 16,
+          mrv: 22,
           deltaToTarget: -2,
           deltaToMev: 2,
           deltaToMav: -8,
@@ -390,6 +410,7 @@ describe("loadProgramPageData", () => {
           weeklyTarget: 10,
           mev: 6,
           mav: 16,
+          mrv: 20,
           deltaToTarget: 5,
           deltaToMev: 9,
           deltaToMav: -1,
@@ -510,7 +531,10 @@ describe("loadProgramPageData", () => {
           slotId: "upper_a",
           label: "Upper 1",
           sessionInWeek: 1,
-          state: "next",
+          uiState: "planned",
+          statusLabel: "Planned",
+          statusDescription: "Session 1 already has a planned workout ready to log.",
+          volumeBasis: "projected_next",
           linkedWorkoutId: "planned-upper",
           linkedWorkoutStatus: "planned",
           impact: {
@@ -528,7 +552,10 @@ describe("loadProgramPageData", () => {
           slotId: "lower_a",
           label: "Lower 1",
           sessionInWeek: 2,
-          state: "remaining",
+          uiState: "projected",
+          statusLabel: "Projected",
+          statusDescription: "Session 2 is unresolved; its volume is projected as remaining work.",
+          volumeBasis: "projected_remaining",
           linkedWorkoutId: null,
           linkedWorkoutStatus: null,
           impact: {
@@ -558,7 +585,10 @@ describe("loadProgramPageData", () => {
           slotId: "upper_b",
           label: "Upper 2",
           sessionInWeek: 3,
-          state: "remaining",
+          uiState: "projected",
+          statusLabel: "Projected",
+          statusDescription: "Session 3 is unresolved; its volume is projected as remaining work.",
+          volumeBasis: "projected_remaining",
           linkedWorkoutId: null,
           linkedWorkoutStatus: null,
           impact: {
@@ -605,36 +635,96 @@ describe("loadProgramPageData", () => {
         slightlyHigh: 0,
         meaningfullyHigh: 1,
       },
+      badges: [
+        {
+          status: "meaningfully_low",
+          label: "meaningfully low",
+          count: 0,
+          activeDescription: "Showing all projected muscles in the Meaningfully low bucket.",
+        },
+        {
+          status: "slightly_low",
+          label: "below target",
+          count: 1,
+          activeDescription: "Showing all projected muscles in the Below target bucket.",
+        },
+        {
+          status: "on_target",
+          label: "on target",
+          count: 0,
+          activeDescription: "Showing all projected muscles in the On target bucket.",
+        },
+        {
+          status: "slightly_high",
+          label: "slightly high",
+          count: 0,
+          activeDescription: "Showing all projected muscles in the Slightly high bucket.",
+        },
+        {
+          status: "meaningfully_high",
+          label: "meaningfully high",
+          count: 1,
+          activeDescription: "Showing all projected muscles in the Meaningfully high bucket.",
+        },
+      ],
       rows: [
         {
           muscle: "Quads",
           status: "meaningfully_high",
-          projectedFullWeekEffectiveSets: 15,
-          targetSets: 10,
-          delta: 5,
+          statusLabel: "Meaningfully high",
+          statusDescription: "15 projected vs 10 target; 12 completed so far.",
+          deltaLabel: "+5 sets",
+          comparisonLabel: "15 projected vs 10 target",
+          badges: [
+            { status: "near_mrv", label: "Near MRV" },
+            { status: "actual_completed", label: "Actual completed", count: 12 },
+            { status: "projected_next", label: "Projected next", count: 0 },
+            { status: "projected_remaining", label: "Projected remaining", count: 3 },
+          ],
         },
         {
           muscle: "Chest",
           status: "slightly_low",
-          projectedFullWeekEffectiveSets: 8,
-          targetSets: 10,
-          delta: -2,
+          statusLabel: "Below target",
+          statusDescription: "8 projected vs 10 target; 4 completed so far.",
+          deltaLabel: "-2 sets",
+          comparisonLabel: "8 projected vs 10 target",
+          badges: [
+            { status: "in_range", label: "In range" },
+            { status: "actual_completed", label: "Actual completed", count: 4 },
+            { status: "projected_next", label: "Projected next", count: 4 },
+            { status: "projected_remaining", label: "Projected remaining", count: 0 },
+          ],
         },
       ],
       defaultRows: [
         {
           muscle: "Quads",
           status: "meaningfully_high",
-          projectedFullWeekEffectiveSets: 15,
-          targetSets: 10,
-          delta: 5,
+          statusLabel: "Meaningfully high",
+          statusDescription: "15 projected vs 10 target; 12 completed so far.",
+          deltaLabel: "+5 sets",
+          comparisonLabel: "15 projected vs 10 target",
+          badges: [
+            { status: "near_mrv", label: "Near MRV" },
+            { status: "actual_completed", label: "Actual completed", count: 12 },
+            { status: "projected_next", label: "Projected next", count: 0 },
+            { status: "projected_remaining", label: "Projected remaining", count: 3 },
+          ],
         },
         {
           muscle: "Chest",
           status: "slightly_low",
-          projectedFullWeekEffectiveSets: 8,
-          targetSets: 10,
-          delta: -2,
+          statusLabel: "Below target",
+          statusDescription: "8 projected vs 10 target; 4 completed so far.",
+          deltaLabel: "-2 sets",
+          comparisonLabel: "8 projected vs 10 target",
+          badges: [
+            { status: "in_range", label: "In range" },
+            { status: "actual_completed", label: "Actual completed", count: 4 },
+            { status: "projected_next", label: "Projected next", count: 4 },
+            { status: "projected_remaining", label: "Projected remaining", count: 0 },
+          ],
         },
       ],
     });
@@ -724,7 +814,9 @@ describe("loadProgramPageData", () => {
 
     expect(lowerSlot).toMatchObject({
       label: "Lower 1",
-      state: "next",
+      uiState: "planned",
+      statusLabel: "Planned next",
+      volumeBasis: "projected_next",
       impact: {
         topMuscles: [
           { muscle: "Quads", projectedEffectiveSets: 9 },
@@ -738,6 +830,78 @@ describe("loadProgramPageData", () => {
     });
     expect(lowerSlot?.impact?.topMuscles.map((row) => row.muscle)).not.toContain("Chest");
     expect(lowerSlot?.impact?.topMuscles.map((row) => row.muscle)).not.toContain("Lats");
+  });
+
+  it("server-provides distinct below-MEV and below-target outlook labels", async () => {
+    mocks.loadProjectedWeekVolumeReport.mockResolvedValueOnce({
+      currentWeek: {
+        mesocycleId: "meso-1",
+        week: 2,
+        phase: "accumulation",
+        blockType: "accumulation",
+      },
+      projectionNotes: [],
+      completedVolumeByMuscle: {},
+      projectedSessions: [
+        {
+          slotId: "upper_a",
+          intent: "upper",
+          isNext: true,
+          exerciseCount: 5,
+          totalSets: 14,
+          projectedContributionByMuscle: {
+            Chest: 4,
+          },
+        },
+      ],
+      fullWeekByMuscle: [
+        {
+          muscle: "Chest",
+          completedEffectiveSets: 2,
+          projectedNextSessionEffectiveSets: 2,
+          projectedRemainingWeekEffectiveSets: 0,
+          projectedFullWeekEffectiveSets: 4,
+          weeklyTarget: 10,
+          mev: 6,
+          mav: 16,
+          mrv: 22,
+          deltaToTarget: -6,
+          deltaToMev: -2,
+          deltaToMav: -12,
+        },
+        {
+          muscle: "Lats",
+          completedEffectiveSets: 6,
+          projectedNextSessionEffectiveSets: 2,
+          projectedRemainingWeekEffectiveSets: 0,
+          projectedFullWeekEffectiveSets: 8,
+          weeklyTarget: 10,
+          mev: 6,
+          mav: 14,
+          mrv: 18,
+          deltaToTarget: -2,
+          deltaToMev: 2,
+          deltaToMav: -6,
+        },
+      ],
+    });
+
+    const result = await loadProgramPageData("user-1");
+
+    expect(result.weekCompletionOutlook?.rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          muscle: "Chest",
+          statusLabel: "Below MEV",
+          statusDescription: "4 projected is still below MEV after the planned week.",
+        }),
+        expect.objectContaining({
+          muscle: "Lats",
+          statusLabel: "Below target",
+          statusDescription: "8 projected vs 10 target; 6 completed so far.",
+        }),
+      ])
+    );
   });
 
   it("does not borrow impact from another projected session when a slot id match is absent", async () => {
@@ -785,7 +949,9 @@ describe("loadProgramPageData", () => {
 
     expect(lowerSlot).toMatchObject({
       label: "Lower 1",
-      state: "next",
+      uiState: "planned",
+      statusLabel: "Planned next",
+      volumeBasis: "projected_next",
       impact: null,
     });
   });

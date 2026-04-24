@@ -31,6 +31,11 @@ import {
 import { loadProjectedWeekVolumeReport } from "./projected-week-volume";
 import { isCloseoutSession } from "@/lib/session-semantics/closeout-classifier";
 import { getUiAuditFixtureForServer } from "@/lib/ui-audit-fixtures/server";
+import type { CanonicalUiState } from "@/lib/ui-state-contract";
+import {
+  formatWeeklyMuscleStatusLabel,
+  getWeeklyMuscleStatus,
+} from "@/lib/ui/weekly-muscle-status";
 
 type ActiveProgramPageMesocycle = {
   id: string;
@@ -91,7 +96,10 @@ export type ProgramCurrentWeekPlanRow = {
   slotId: string;
   label: string;
   sessionInWeek: number;
-  state: "completed" | "next" | "remaining";
+  uiState: Extract<CanonicalUiState, "planned" | "active" | "completed" | "projected" | "blocked">;
+  statusLabel: string;
+  statusDescription: string;
+  volumeBasis: "actual_completed" | "projected_next" | "projected_remaining" | "optional";
   linkedWorkoutId: string | null;
   linkedWorkoutStatus: string | null;
   impact: ProgramSlotImpact | null;
@@ -128,20 +136,26 @@ function formatCloseoutTitle(
 export type ProgramWeekCompletionOutlook = {
   assumptionLabel: string;
   summary: ProgramOutcomeSummary;
-  rows: Array<{
-    muscle: string;
-    status: MuscleOutcomeStatus;
-    projectedFullWeekEffectiveSets: number;
-    targetSets: number;
-    delta: number;
-  }>;
-  defaultRows: Array<{
-    muscle: string;
-    status: MuscleOutcomeStatus;
-    projectedFullWeekEffectiveSets: number;
-    targetSets: number;
-    delta: number;
-  }>;
+  badges: ProgramVolumeDisplayBadge[];
+  rows: ProgramVolumeDisplayRow[];
+  defaultRows: ProgramVolumeDisplayRow[];
+};
+
+export type ProgramVolumeDisplayBadge = {
+  status: string;
+  label: string;
+  count?: number;
+  activeDescription?: string;
+};
+
+export type ProgramVolumeDisplayRow = {
+  muscle: string;
+  status: MuscleOutcomeStatus;
+  statusLabel: string;
+  statusDescription: string;
+  deltaLabel: string;
+  comparisonLabel: string;
+  badges: ProgramVolumeDisplayBadge[];
 };
 
 export type ProgramPageData = {
@@ -229,6 +243,127 @@ function buildOutcomeSummary(
   );
 }
 
+function formatSetCount(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+function formatSignedSetDelta(value: number): string {
+  if (value === 0) {
+    return "on target";
+  }
+
+  return `${value > 0 ? "+" : "-"}${formatSetCount(Math.abs(value))} sets`;
+}
+
+function formatOutcomeStatusLabel(status: MuscleOutcomeStatus): string {
+  switch (status) {
+    case "meaningfully_low":
+      return "Meaningfully low";
+    case "slightly_low":
+      return "Below target";
+    case "on_target":
+      return "On target";
+    case "slightly_high":
+      return "Slightly high";
+    case "meaningfully_high":
+      return "Meaningfully high";
+  }
+}
+
+function buildOutlookBadges(summary: ProgramOutcomeSummary): ProgramVolumeDisplayBadge[] {
+  return [
+    {
+      status: "meaningfully_low",
+      label: "meaningfully low",
+      count: summary.meaningfullyLow,
+      activeDescription: "Showing all projected muscles in the Meaningfully low bucket.",
+    },
+    {
+      status: "slightly_low",
+      label: "below target",
+      count: summary.slightlyLow,
+      activeDescription: "Showing all projected muscles in the Below target bucket.",
+    },
+    {
+      status: "on_target",
+      label: "on target",
+      count: summary.onTarget,
+      activeDescription: "Showing all projected muscles in the On target bucket.",
+    },
+    {
+      status: "slightly_high",
+      label: "slightly high",
+      count: summary.slightlyHigh,
+      activeDescription: "Showing all projected muscles in the Slightly high bucket.",
+    },
+    {
+      status: "meaningfully_high",
+      label: "meaningfully high",
+      count: summary.meaningfullyHigh,
+      activeDescription: "Showing all projected muscles in the Meaningfully high bucket.",
+    },
+  ];
+}
+
+function buildProgramVolumeDisplayRow(input: {
+  muscle: string;
+  status: MuscleOutcomeStatus;
+  projectedFullWeekEffectiveSets: number;
+  targetSets: number;
+  delta: number;
+  mev: number;
+  mrv: number;
+  completedEffectiveSets: number;
+  projectedNextSessionEffectiveSets: number;
+  projectedRemainingWeekEffectiveSets: number;
+}): ProgramVolumeDisplayRow {
+  const weeklyStatus = getWeeklyMuscleStatus({
+    effectiveSets: input.projectedFullWeekEffectiveSets,
+    target: input.targetSets,
+    mev: input.mev,
+    mrv: input.mrv,
+  });
+  const weeklyStatusLabel = formatWeeklyMuscleStatusLabel(weeklyStatus);
+  const statusLabel =
+    weeklyStatus === "below_mev" ? weeklyStatusLabel : formatOutcomeStatusLabel(input.status);
+  const projectedLabel = `${formatSetCount(input.projectedFullWeekEffectiveSets)} projected`;
+  const targetLabel = `${formatSetCount(input.targetSets)} target`;
+  const completedLabel = `${formatSetCount(input.completedEffectiveSets)} completed`;
+
+  return {
+    muscle: input.muscle,
+    status: input.status,
+    statusLabel,
+    statusDescription:
+      weeklyStatus === "below_mev"
+        ? `${projectedLabel} is still below MEV after the planned week.`
+        : `${projectedLabel} vs ${targetLabel}; ${completedLabel} so far.`,
+    deltaLabel: formatSignedSetDelta(input.delta),
+    comparisonLabel: `${projectedLabel} vs ${targetLabel}`,
+    badges: [
+      {
+        status: weeklyStatus,
+        label: weeklyStatusLabel,
+      },
+      {
+        status: "actual_completed",
+        label: "Actual completed",
+        count: input.completedEffectiveSets,
+      },
+      {
+        status: "projected_next",
+        label: "Projected next",
+        count: input.projectedNextSessionEffectiveSets,
+      },
+      {
+        status: "projected_remaining",
+        label: "Projected remaining",
+        count: input.projectedRemainingWeekEffectiveSets,
+      },
+    ],
+  };
+}
+
 function buildWeekCompletionOutlook(input: {
   report: Awaited<ReturnType<typeof loadProjectedWeekVolumeReport>>;
 }): ProgramWeekCompletionOutlook | null {
@@ -254,6 +389,11 @@ function buildWeekCompletionOutlook(input: {
       targetSets: row.weeklyTarget,
       delta: outcome.delta,
       percentDelta: outcome.percentDelta,
+      mev: row.mev,
+      mrv: row.mav,
+      completedEffectiveSets: row.completedEffectiveSets,
+      projectedNextSessionEffectiveSets: row.projectedNextSessionEffectiveSets,
+      projectedRemainingWeekEffectiveSets: row.projectedRemainingWeekEffectiveSets,
     };
   });
 
@@ -271,22 +411,31 @@ function buildWeekCompletionOutlook(input: {
 
       return left.muscle.localeCompare(right.muscle);
     });
-  const rowsWithoutPercentDelta = rows.map((row) => ({
-    muscle: row.muscle,
-    status: row.status,
-    projectedFullWeekEffectiveSets: row.projectedFullWeekEffectiveSets,
-    targetSets: row.targetSets,
-    delta: row.delta,
-  }));
+  const displayRows = rows.map((row) =>
+    buildProgramVolumeDisplayRow({
+      muscle: row.muscle,
+      status: row.status,
+      projectedFullWeekEffectiveSets: row.projectedFullWeekEffectiveSets,
+      targetSets: row.targetSets,
+      delta: row.delta,
+      mev: row.mev,
+      mrv: row.mrv,
+      completedEffectiveSets: row.completedEffectiveSets,
+      projectedNextSessionEffectiveSets: row.projectedNextSessionEffectiveSets,
+      projectedRemainingWeekEffectiveSets: row.projectedRemainingWeekEffectiveSets,
+    })
+  );
+  const summary = buildOutcomeSummary(rows);
 
-  const defaultRows = rowsWithoutPercentDelta
+  const defaultRows = displayRows
     .filter((row) => row.status !== "on_target")
     .slice(0, 4);
 
   return {
     assumptionLabel: "If you complete the remaining planned sessions this week, you will likely land here.",
-    summary: buildOutcomeSummary(rows),
-    rows: rowsWithoutPercentDelta,
+    summary,
+    badges: buildOutlookBadges(summary),
+    rows: displayRows,
     defaultRows,
   };
 }
@@ -530,6 +679,62 @@ function resolveNextSlotId(input: {
   return input.remainingSlots[0]?.slotId ?? null;
 }
 
+function resolvePlanRowPresentation(input: {
+  slot: { sequenceIndex: number };
+  isCompletedSlot: boolean;
+  isNextSlot: boolean;
+  linkedWorkoutStatus: string | null;
+}): Pick<
+  ProgramCurrentWeekPlanRow,
+  "uiState" | "statusLabel" | "statusDescription" | "volumeBasis"
+> {
+  const sessionLabel = `Session ${input.slot.sequenceIndex + 1}`;
+  const linkedStatus = input.linkedWorkoutStatus?.trim().toLowerCase() ?? null;
+
+  if (linkedStatus === "in_progress" || linkedStatus === "partial") {
+    return {
+      uiState: "active",
+      statusLabel: "Active",
+      statusDescription: `${sessionLabel} has started and remains editable.`,
+      volumeBasis: "projected_next",
+    };
+  }
+
+  if (input.isCompletedSlot) {
+    return {
+      uiState: "completed",
+      statusLabel: "Completed",
+      statusDescription: `${sessionLabel} is counted from actual completed volume.`,
+      volumeBasis: "actual_completed",
+    };
+  }
+
+  if (linkedStatus === "planned") {
+    return {
+      uiState: "planned",
+      statusLabel: "Planned",
+      statusDescription: `${sessionLabel} already has a planned workout ready to log.`,
+      volumeBasis: input.isNextSlot ? "projected_next" : "projected_remaining",
+    };
+  }
+
+  if (input.isNextSlot) {
+    return {
+      uiState: "planned",
+      statusLabel: "Planned next",
+      statusDescription: `${sessionLabel} is the next required slot; its volume is projected from the next-session plan.`,
+      volumeBasis: "projected_next",
+    };
+  }
+
+  return {
+    uiState: "projected",
+    statusLabel: "Projected",
+    statusDescription: `${sessionLabel} is unresolved; its volume is projected as remaining work.`,
+    volumeBasis: "projected_remaining",
+  };
+}
+
 export function buildProgramCurrentWeekPlan(input: {
   week: number;
   slotSequenceJson?: unknown;
@@ -571,14 +776,17 @@ export function buildProgramCurrentWeekPlan(input: {
   return {
     week: input.week,
     slots: slotSequence.slots.map((slot) => {
-      const state: ProgramCurrentWeekPlanRow["state"] = !remainingSlotIds.has(slot.slotId)
-        ? "completed"
-        : slot.slotId === nextSlotId
-          ? "next"
-          : "remaining";
+      const isCompletedSlot = !remainingSlotIds.has(slot.slotId);
+      const isNextSlot = slot.slotId === nextSlotId;
       const linkedWorkout =
         slotWorkoutLookup.get(slot.slotId) ??
-        (state === "next" ? existingNextWorkout : null);
+        (isNextSlot ? existingNextWorkout : null);
+      const presentation = resolvePlanRowPresentation({
+        slot,
+        isCompletedSlot,
+        isNextSlot,
+        linkedWorkoutStatus: linkedWorkout?.status ?? null,
+      });
 
       return {
         slotId: slot.slotId,
@@ -587,7 +795,7 @@ export function buildProgramCurrentWeekPlan(input: {
           slotId: slot.slotId,
         }),
         sessionInWeek: slot.sequenceIndex + 1,
-        state,
+        ...presentation,
         linkedWorkoutId: linkedWorkout?.id ?? null,
         linkedWorkoutStatus: linkedWorkout?.status ?? null,
         impact: null,

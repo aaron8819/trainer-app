@@ -1,74 +1,37 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type {
-  ProgramOutcomeSummary,
-  ProgramWeekCompletionOutlook,
-} from "@/lib/api/program-page";
+import type { ProgramWeekCompletionOutlook } from "@/lib/api/program-page";
 import type { MuscleOutcomeStatus } from "@/lib/api/muscle-outcome-review";
 
-type SummaryKey = keyof ProgramOutcomeSummary;
-
-const BADGE_CONFIG: Array<{
-  summaryKey: SummaryKey;
-  status: MuscleOutcomeStatus;
-  label: string;
-  baseClassName: string;
-  activeClassName: string;
-}> = [
+const BADGE_STYLE: Record<
+  MuscleOutcomeStatus,
   {
-    summaryKey: "meaningfullyLow",
-    status: "meaningfully_low",
-    label: "meaningfully low",
+    baseClassName: string;
+    activeClassName: string;
+  }
+> = {
+  meaningfully_low: {
     baseClassName: "bg-rose-50 text-rose-700",
     activeClassName: "ring-2 ring-rose-300",
   },
-  {
-    summaryKey: "slightlyLow",
-    status: "slightly_low",
-    label: "slightly low",
+  slightly_low: {
     baseClassName: "bg-amber-50 text-amber-700",
     activeClassName: "ring-2 ring-amber-300",
   },
-  {
-    summaryKey: "onTarget",
-    status: "on_target",
-    label: "on target",
+  on_target: {
     baseClassName: "bg-emerald-50 text-emerald-700",
     activeClassName: "ring-2 ring-emerald-300",
   },
-  {
-    summaryKey: "slightlyHigh",
-    status: "slightly_high",
-    label: "slightly high",
+  slightly_high: {
     baseClassName: "bg-sky-50 text-sky-700",
     activeClassName: "ring-2 ring-sky-300",
   },
-  {
-    summaryKey: "meaningfullyHigh",
-    status: "meaningfully_high",
-    label: "meaningfully high",
+  meaningfully_high: {
     baseClassName: "bg-indigo-50 text-indigo-700",
     activeClassName: "ring-2 ring-indigo-300",
   },
-];
-
-function formatSignedSetDelta(value: number): string {
-  if (value === 0) {
-    return "on target";
-  }
-
-  const absValue = Number.isInteger(value) ? Math.abs(value).toString() : Math.abs(value).toFixed(1);
-  return `${value > 0 ? "+" : "-"}${absValue}`;
-}
-
-function formatOutcomeLabel(value: string): string {
-  return value
-    .split("_")
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
-    .join(" ");
-}
+};
 
 export function WeekCompletionOutlookSection({
   outlook,
@@ -84,6 +47,9 @@ export function WeekCompletionOutlookSection({
 
     return outlook.rows.filter((row) => row.status === selectedStatus);
   }, [outlook.defaultRows, outlook.rows, selectedStatus]);
+  const selectedBadge = selectedStatus
+    ? outlook.badges.find((badge) => badge.status === selectedStatus)
+    : null;
 
   return (
     <section className="mt-7 rounded-3xl border border-sky-200 bg-sky-50/50 p-5 shadow-sm">
@@ -94,12 +60,14 @@ export function WeekCompletionOutlookSection({
       <p className="mt-2 text-sm text-slate-600">{outlook.assumptionLabel}</p>
 
       <div className="mt-4 flex flex-wrap gap-2 text-xs font-medium text-slate-700">
-        {BADGE_CONFIG.map((badge) => {
-          const count = outlook.summary[badge.summaryKey];
-          const isSelected = selectedStatus === badge.status;
+        {outlook.badges.map((badge) => {
+          const status = badge.status as MuscleOutcomeStatus;
+          const count = badge.count ?? 0;
+          const isSelected = selectedStatus === status;
+          const style = BADGE_STYLE[status];
           const className = `rounded-full px-3 py-1 transition ${
-            badge.baseClassName
-          } ${isSelected ? badge.activeClassName : ""} ${
+            style.baseClassName
+          } ${isSelected ? style.activeClassName : ""} ${
             count > 0 ? "cursor-pointer shadow-sm" : "cursor-default opacity-60"
           }`;
 
@@ -117,9 +85,7 @@ export function WeekCompletionOutlookSection({
               type="button"
               className={className}
               aria-pressed={isSelected}
-              onClick={() =>
-                setSelectedStatus((current) => (current === badge.status ? null : badge.status))
-              }
+              onClick={() => setSelectedStatus((current) => (current === status ? null : status))}
             >
               {count} {badge.label}
             </button>
@@ -127,9 +93,9 @@ export function WeekCompletionOutlookSection({
         })}
       </div>
 
-      {selectedStatus ? (
+      {selectedBadge?.activeDescription ? (
         <p className="mt-3 text-xs font-medium text-slate-600">
-          Showing all projected muscles in the {formatOutcomeLabel(selectedStatus)} bucket.
+          {selectedBadge.activeDescription}
         </p>
       ) : null}
 
@@ -143,13 +109,10 @@ export function WeekCompletionOutlookSection({
               <div>
                 <p className="text-sm font-semibold text-slate-900">{row.muscle}</p>
                 <p className="mt-1 text-xs text-slate-600">
-                  {formatOutcomeLabel(row.status)} • {row.projectedFullWeekEffectiveSets} projected vs{" "}
-                  {row.targetSets} target
+                  {row.statusLabel} - {row.comparisonLabel}
                 </p>
               </div>
-              <p className="text-sm font-semibold text-slate-700">
-                {formatSignedSetDelta(row.delta)} sets
-              </p>
+              <p className="text-sm font-semibold text-slate-700">{row.deltaLabel}</p>
             </div>
           ))}
         </div>

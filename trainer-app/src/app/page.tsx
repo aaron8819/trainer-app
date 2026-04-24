@@ -7,7 +7,6 @@ import { CloseoutCard } from "@/components/CloseoutCard";
 import { OptionalWeekCompletion } from "@/components/OptionalWeekCompletion";
 import { loadHomePageData } from "@/lib/api/home-page";
 import { getWorkoutListPrimaryLabel } from "@/lib/ui/workout-list-items";
-import { getWorkoutWorkflowState } from "@/lib/workout-workflow";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -117,37 +116,18 @@ export default async function Home() {
   const continuity = homePage.continuity;
   const closeout = homePage.closeout;
 
-  if (!programData || !homeProgram || !decision || !continuity) {
+  if (!programData || !homeProgram || !homePage.primaryAction || !decision || !continuity) {
     return null;
   }
 
-  const latestIncomplete = homeProgram.latestIncomplete;
-  // Validate intent type for DashboardGenerateSection (typed prop).
-  const nextSessionTyped = isSessionIntent(homeProgram.nextSession.intent)
-    ? homeProgram.nextSession.intent
+  const primaryAction = homePage.primaryAction;
+  const primaryActionInitialIntent =
+    primaryAction.state === "planned" && primaryAction.mode === "generate"
+      ? primaryAction.initialIntent ?? null
+      : null;
+  const primaryActionIntent: SessionIntent | null = isSessionIntent(primaryActionInitialIntent)
+    ? primaryActionInitialIntent
     : null;
-  const existingWorkoutStatus = latestIncomplete?.status ?? null;
-  const existingWorkflow = getWorkoutWorkflowState(existingWorkoutStatus);
-  const hasExistingWorkout = Boolean(
-    homeProgram.nextSession.isExisting &&
-      homeProgram.nextSession.workoutId &&
-      latestIncomplete
-  );
-  const existingWorkoutTitle =
-    existingWorkflow.kind === "planned"
-      ? "Start workout"
-      : existingWorkflow.kind === "partial"
-      ? "Resume workout"
-      : "Resume workout";
-  const existingWorkoutActionLabel =
-    existingWorkflow.kind === "planned" ? "Start workout" : "Resume workout";
-  const isWeekComplete =
-    !hasExistingWorkout &&
-    decision.totalAdvancingSessionsThisWeek > 0 &&
-    decision.completedAdvancingSessionsThisWeek >= decision.totalAdvancingSessionsThisWeek;
-  const isActiveExistingWorkout =
-    hasExistingWorkout &&
-    (existingWorkflow.kind === "in_progress" || existingWorkflow.kind === "partial");
   const activeWeekCloseout =
     closeout && homeProgram.closeout.isPriorWeek !== true ? closeout : null;
   const priorWeekCloseout =
@@ -165,12 +145,12 @@ export default async function Home() {
         </header>
 
         <section className="space-y-6">
-          {hasExistingWorkout && homeProgram.nextSession.workoutId && latestIncomplete ? (
+          {primaryAction.state === "active" ? (
             <div className="rounded-2xl border border-slate-200 p-6 shadow-sm">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Today&apos;s Action
               </p>
-              <h2 className="mt-2 text-2xl font-semibold">{existingWorkoutTitle}</h2>
+              <h2 className="mt-2 text-2xl font-semibold">{primaryAction.label}</h2>
               {decision.nextSessionLabel ? (
                 <p className="mt-2 text-sm text-slate-500">
                   Next due: {decision.nextSessionLabel}
@@ -180,51 +160,108 @@ export default async function Home() {
                 <p className="mt-1 text-xs text-slate-500">{decision.activeWeekLabel}</p>
               ) : null}
               <p className="mt-2 text-sm font-medium text-slate-800">
-                {decision.nextSessionReasonLabel}
+                {primaryAction.reasonLabel}
               </p>
-              <p className="mt-2 text-slate-600">{decision.nextSessionReason}</p>
+              {primaryAction.reason ? (
+                <p className="mt-2 text-slate-600">{primaryAction.reason}</p>
+              ) : null}
               <div className="mt-4 flex flex-wrap items-center gap-3">
                 <Link
                   className="inline-flex min-h-11 items-center justify-center rounded-full bg-slate-900 px-5 py-2 text-sm font-semibold text-white"
-                  href={`/log/${homeProgram.nextSession.workoutId}`}
+                  href={primaryAction.href}
                 >
-                  {existingWorkoutActionLabel}
+                  {primaryAction.label}
                 </Link>
-                {!isActiveExistingWorkout ? (
-                  <Link
-                    className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 px-5 py-2 text-sm font-semibold"
-                    href={`/workout/${latestIncomplete.id}`}
-                  >
-                    View plan
-                  </Link>
-                ) : null}
               </div>
             </div>
-          ) : isWeekComplete ? (
+          ) : primaryAction.state === "planned" && primaryAction.mode === "existing" ? (
+            <div className="rounded-2xl border border-slate-200 p-6 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Today&apos;s Action
+              </p>
+              <h2 className="mt-2 text-2xl font-semibold">{primaryAction.label}</h2>
+              {decision.nextSessionLabel ? (
+                <p className="mt-2 text-sm text-slate-500">
+                  Next due: {decision.nextSessionLabel}
+                </p>
+              ) : null}
+              {decision.activeWeekLabel ? (
+                <p className="mt-1 text-xs text-slate-500">{decision.activeWeekLabel}</p>
+              ) : null}
+              <p className="mt-2 text-sm font-medium text-slate-800">
+                {primaryAction.reasonLabel}
+              </p>
+              {primaryAction.reason ? (
+                <p className="mt-2 text-slate-600">{primaryAction.reason}</p>
+              ) : null}
+              {primaryAction.href ? (
+                <div className="mt-4 flex flex-wrap items-center gap-3">
+                  <Link
+                    className="inline-flex min-h-11 items-center justify-center rounded-full bg-slate-900 px-5 py-2 text-sm font-semibold text-white"
+                    href={primaryAction.href}
+                  >
+                    {primaryAction.label}
+                  </Link>
+                </div>
+              ) : null}
+            </div>
+          ) : primaryAction.state === "completed" ? (
             <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-6 shadow-sm">
               <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
                 Completed
               </p>
-              <h2 className="mt-2 text-2xl font-semibold">Week complete</h2>
-              <p className="mt-2 text-sm text-slate-700">
-                Required sessions are done for this week. Optional sessions stay separate below.
+              <h2 className="mt-2 text-2xl font-semibold">{primaryAction.label}</h2>
+              <p className="mt-2 text-sm text-slate-700">{primaryAction.description}</p>
+              {primaryAction.href ? (
+                <div className="mt-4">
+                  <Link
+                    className="inline-flex min-h-11 items-center justify-center rounded-full border border-emerald-300 bg-white px-5 py-2 text-sm font-semibold text-slate-900"
+                    href={primaryAction.href}
+                  >
+                    Review program
+                  </Link>
+                </div>
+              ) : null}
+            </div>
+          ) : primaryAction.state === "optional" ? (
+            <div className="rounded-2xl border border-slate-200 p-6 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Optional
               </p>
+              <h2 className="mt-2 text-2xl font-semibold">{primaryAction.label}</h2>
+              <p className="mt-2 text-sm text-slate-700">{primaryAction.description}</p>
               <div className="mt-4">
                 <Link
-                  className="inline-flex min-h-11 items-center justify-center rounded-full border border-emerald-300 bg-white px-5 py-2 text-sm font-semibold text-slate-900"
-                  href="/program"
+                  className="inline-flex min-h-11 items-center justify-center rounded-full bg-slate-900 px-5 py-2 text-sm font-semibold text-white"
+                  href={primaryAction.href}
                 >
-                  Review program
+                  {primaryAction.label}
                 </Link>
               </div>
             </div>
-          ) : (
+          ) : primaryAction.state === "planned" && primaryAction.mode === "generate" ? (
             <DashboardGenerateSection
-              initialIntent={nextSessionTyped ?? undefined}
-              initialSlotId={homeProgram.nextSession.slotId}
-              recommendedReasonLabel={decision.nextSessionReasonLabel}
-              recommendedReasonDetail={decision.nextSessionReason}
+              initialIntent={primaryActionIntent ?? undefined}
+              initialSlotId={primaryAction.initialSlotId}
+              recommendedReasonLabel={primaryAction.reasonLabel}
+              recommendedReasonDetail={primaryAction.reason}
             />
+          ) : (
+            <div className="rounded-2xl border border-slate-200 p-6 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Blocked
+              </p>
+              <h2 className="mt-2 text-2xl font-semibold">{primaryAction.label}</h2>
+              <p className="mt-2 text-sm text-slate-700">{primaryAction.reason}</p>
+              {primaryAction.href ? (
+                <Link
+                  className="mt-4 inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 px-5 py-2 text-sm font-semibold text-slate-900"
+                  href={primaryAction.href}
+                >
+                  Review program
+                </Link>
+              ) : null}
+            </div>
           )}
         </section>
 

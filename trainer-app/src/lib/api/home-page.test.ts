@@ -241,6 +241,16 @@ describe("loadHomePageData", () => {
 
     expect(result.pendingHandoff).toBeNull();
     expect(result.headerContext).toBe("Week 2 - Accumulation");
+    expect(result.primaryAction).toEqual({
+      state: "planned",
+      mode: "generate",
+      label: "Start workout",
+      action: "generate-required-workout",
+      initialIntent: "lower",
+      initialSlotId: "lower_a",
+      reasonLabel: "Next in sequence",
+      reason: "Nothing earlier is still open, so Lower 1 is next this week.",
+    });
     expect(result.decision).toEqual({
       nextSessionLabel: "Lower 1",
       nextSessionDescription: "First lower session this week",
@@ -279,6 +289,12 @@ describe("loadHomePageData", () => {
     });
     expect(result.programData).toBeNull();
     expect(result.homeProgram).toBeNull();
+    expect(result.primaryAction).toEqual({
+      state: "blocked",
+      label: "Review handoff",
+      reason: "Training is paused until you accept the next cycle.",
+      href: "/mesocycles/meso-1/review",
+    });
     expect(mocks.loadProgramDashboardData).not.toHaveBeenCalled();
     expect(mocks.loadHomeProgramSupport).not.toHaveBeenCalled();
     expect(result.recentActivity).toHaveLength(3);
@@ -348,6 +364,147 @@ describe("loadHomePageData", () => {
       nextSessionReasonLabel: "Up next",
       nextSessionReason: "A planned workout already exists, so you can start logging right away.",
     });
+    expect(result.primaryAction).toEqual({
+      state: "planned",
+      mode: "existing",
+      label: "Start workout",
+      href: "/log/workout-planned",
+      reasonLabel: "Up next",
+      reason: "A planned workout already exists, so you can start logging right away.",
+    });
+  });
+
+  it("makes an active workout the primary action", async () => {
+    mocks.loadHomeProgramSupport.mockResolvedValue({
+      nextSession: {
+        intent: "lower",
+        slotId: "lower_a",
+        slotSequenceIndex: 1,
+        slotSequenceLength: 4,
+        slotSource: "mesocycle_slot_sequence",
+        weekInMeso: 2,
+        sessionInWeek: 2,
+        workoutId: "workout-active",
+        isExisting: true,
+      },
+      activeWeek: 2,
+      completedAdvancingSessionsThisWeek: 1,
+      totalAdvancingSessionsThisWeek: 4,
+      lastSessionSkipped: false,
+      latestIncomplete: {
+        id: "workout-active",
+        status: "in_progress",
+      },
+      gapFill: {
+        eligible: false,
+        visible: false,
+        reason: "no_pending_week_close",
+        weekCloseId: null,
+        anchorWeek: null,
+        targetWeek: null,
+        targetPhase: null,
+        resolution: null,
+        workflowState: null,
+        deficitState: null,
+        remainingDeficitSets: 0,
+        targetMuscles: [],
+        deficitSummary: [],
+        alreadyUsedThisWeek: false,
+        suppressedByStartedNextWeek: false,
+        linkedWorkout: null,
+        policy: {
+          requiredSessionsPerWeek: 4,
+          maxOptionalGapFillSessionsPerWeek: 1,
+          maxGeneratedHardSets: 12,
+          maxGeneratedExercises: 4,
+        },
+      },
+      closeout: {
+        visible: false,
+        workoutId: null,
+        weekCloseId: null,
+        status: null,
+        targetWeek: null,
+        isIncomplete: false,
+        isPriorWeek: false,
+        canCreate: false,
+      },
+    });
+
+    const result = await loadHomePageData("user-1");
+
+    expect(result.primaryAction).toEqual({
+      state: "active",
+      label: "Resume workout",
+      href: "/log/workout-active",
+      reasonLabel: "Resume session",
+      reason: "You already started this workout, so finish it before generating another.",
+    });
+  });
+
+  it("blocks required generation when the required week is complete", async () => {
+    mocks.loadHomeProgramSupport.mockResolvedValue({
+      nextSession: {
+        intent: "lower",
+        slotId: "lower_a",
+        slotSequenceIndex: 1,
+        slotSequenceLength: 4,
+        slotSource: "mesocycle_slot_sequence",
+        weekInMeso: 2,
+        sessionInWeek: 2,
+        workoutId: null,
+        isExisting: false,
+      },
+      activeWeek: 2,
+      completedAdvancingSessionsThisWeek: 4,
+      totalAdvancingSessionsThisWeek: 4,
+      lastSessionSkipped: false,
+      latestIncomplete: null,
+      gapFill: {
+        eligible: false,
+        visible: false,
+        reason: "no_pending_week_close",
+        weekCloseId: null,
+        anchorWeek: null,
+        targetWeek: null,
+        targetPhase: null,
+        resolution: null,
+        workflowState: null,
+        deficitState: null,
+        remainingDeficitSets: 0,
+        targetMuscles: [],
+        deficitSummary: [],
+        alreadyUsedThisWeek: false,
+        suppressedByStartedNextWeek: false,
+        linkedWorkout: null,
+        policy: {
+          requiredSessionsPerWeek: 4,
+          maxOptionalGapFillSessionsPerWeek: 1,
+          maxGeneratedHardSets: 12,
+          maxGeneratedExercises: 4,
+        },
+      },
+      closeout: {
+        visible: true,
+        workoutId: null,
+        weekCloseId: "wc-2",
+        status: null,
+        targetWeek: 2,
+        isIncomplete: false,
+        isPriorWeek: false,
+        canCreate: true,
+      },
+    });
+
+    const result = await loadHomePageData("user-1");
+
+    expect(result.primaryAction).toEqual({
+      state: "completed",
+      label: "Week complete",
+      description:
+        "Required sessions are done for this week. Optional sessions stay separate below.",
+      href: "/program",
+    });
   });
 
   it("adds a separate optional-session summary without altering the canonical next-session decision", async () => {
@@ -409,6 +566,11 @@ describe("loadHomePageData", () => {
     expect(result.decision).toMatchObject({
       nextSessionLabel: "Lower 1",
       nextSessionReasonLabel: "Next in sequence",
+    });
+    expect(result.primaryAction).toMatchObject({
+      state: "planned",
+      mode: "generate",
+      action: "generate-required-workout",
     });
     expect(result.closeout).toEqual({
       title: "Custom session",

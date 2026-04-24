@@ -83,7 +83,10 @@ describe("ProgramPage", () => {
             slotId: "upper_a",
             label: "Upper 1",
             sessionInWeek: 1,
-            state: "completed",
+            uiState: "completed",
+            statusLabel: "Completed",
+            statusDescription: "Session 1 is counted from actual completed volume.",
+            volumeBasis: "actual_completed",
             linkedWorkoutId: null,
             linkedWorkoutStatus: null,
             impact: null,
@@ -92,7 +95,10 @@ describe("ProgramPage", () => {
             slotId: "lower_a",
             label: "Lower 1",
             sessionInWeek: 2,
-            state: "next",
+            uiState: "planned",
+            statusLabel: "Planned",
+            statusDescription: "Session 2 already has a planned workout ready to log.",
+            volumeBasis: "projected_next",
             linkedWorkoutId: "w-next",
             linkedWorkoutStatus: "planned",
             impact: {
@@ -118,57 +124,103 @@ describe("ProgramPage", () => {
           slightlyHigh: 1,
           meaningfullyHigh: 1,
         },
+        badges: [
+          {
+            status: "meaningfully_low",
+            label: "meaningfully low",
+            count: 1,
+            activeDescription: "Showing all projected muscles in the Meaningfully low bucket.",
+          },
+          {
+            status: "slightly_low",
+            label: "below target",
+            count: 1,
+            activeDescription: "Showing all projected muscles in the Below target bucket.",
+          },
+          {
+            status: "on_target",
+            label: "on target",
+            count: 1,
+            activeDescription: "Showing all projected muscles in the On target bucket.",
+          },
+          {
+            status: "slightly_high",
+            label: "slightly high",
+            count: 1,
+            activeDescription: "Showing all projected muscles in the Slightly high bucket.",
+          },
+          {
+            status: "meaningfully_high",
+            label: "meaningfully high",
+            count: 1,
+            activeDescription: "Showing all projected muscles in the Meaningfully high bucket.",
+          },
+        ],
         rows: [
           {
             muscle: "Chest",
             status: "meaningfully_low",
-            projectedFullWeekEffectiveSets: 8,
-            targetSets: 12,
-            delta: -4,
+            statusLabel: "Below MEV",
+            statusDescription: "8 projected is still below MEV after the planned week.",
+            deltaLabel: "-4 sets",
+            comparisonLabel: "8 projected vs 12 target",
+            badges: [],
           },
           {
             muscle: "Lats",
             status: "slightly_low",
-            projectedFullWeekEffectiveSets: 10,
-            targetSets: 12,
-            delta: -2,
+            statusLabel: "Below target",
+            statusDescription: "10 projected vs 12 target; 6 completed so far.",
+            deltaLabel: "-2 sets",
+            comparisonLabel: "10 projected vs 12 target",
+            badges: [],
           },
           {
             muscle: "Rear Delts",
             status: "slightly_high",
-            projectedFullWeekEffectiveSets: 7,
-            targetSets: 6,
-            delta: 1,
+            statusLabel: "Slightly high",
+            statusDescription: "7 projected vs 6 target; 4 completed so far.",
+            deltaLabel: "+1 sets",
+            comparisonLabel: "7 projected vs 6 target",
+            badges: [],
           },
           {
             muscle: "Quads",
             status: "meaningfully_high",
-            projectedFullWeekEffectiveSets: 15,
-            targetSets: 10,
-            delta: 5,
+            statusLabel: "Meaningfully high",
+            statusDescription: "15 projected vs 10 target; 12 completed so far.",
+            deltaLabel: "+5 sets",
+            comparisonLabel: "15 projected vs 10 target",
+            badges: [],
           },
           {
             muscle: "Biceps",
             status: "on_target",
-            projectedFullWeekEffectiveSets: 8,
-            targetSets: 8,
-            delta: 0,
+            statusLabel: "On target",
+            statusDescription: "8 projected vs 8 target; 8 completed so far.",
+            deltaLabel: "on target",
+            comparisonLabel: "8 projected vs 8 target",
+            badges: [],
           },
         ],
         defaultRows: [
           {
             muscle: "Chest",
             status: "meaningfully_low",
-            projectedFullWeekEffectiveSets: 8,
-            targetSets: 12,
-            delta: -4,
+            statusLabel: "Below MEV",
+            statusDescription: "8 projected is still below MEV after the planned week.",
+            deltaLabel: "-4 sets",
+            comparisonLabel: "8 projected vs 12 target",
+            badges: [],
           },
           {
             muscle: "Quads",
             status: "meaningfully_high",
-            projectedFullWeekEffectiveSets: 15,
-            targetSets: 10,
-            delta: 5,
+            statusLabel: "Meaningfully high",
+            statusDescription: "15 projected vs 10 target; 12 completed so far.",
+            deltaLabel: "+5 sets",
+            comparisonLabel: "15 projected vs 10 target",
+            badges: [],
           },
         ],
       },
@@ -227,7 +279,7 @@ describe("ProgramPage", () => {
       )
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "1 meaningfully low" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "1 slightly low" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "1 below target" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "1 on target" })).toBeInTheDocument();
     expect(screen.getByText("Upper 1")).toBeInTheDocument();
     expect(screen.getByText("Lower 1")).toBeInTheDocument();
@@ -244,17 +296,17 @@ describe("ProgramPage", () => {
     expect(screen.queryByText("Rear Delts")).not.toBeInTheDocument();
     expect(screen.queryByText("Biceps")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "1 slightly low" }));
+    await user.click(screen.getByRole("button", { name: "1 below target" }));
 
-    expect(screen.getByText("Showing all projected muscles in the Slightly Low bucket.")).toBeInTheDocument();
+    expect(screen.getByText("Showing all projected muscles in the Below target bucket.")).toBeInTheDocument();
     expect(screen.getByText("Lats")).toBeInTheDocument();
     expect(screen.queryByText("Chest")).not.toBeInTheDocument();
     expect(screen.queryByText("Quads")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "1 slightly low" }));
+    await user.click(screen.getByRole("button", { name: "1 below target" }));
 
     expect(
-      screen.queryByText("Showing all projected muscles in the Slightly Low bucket.")
+      screen.queryByText("Showing all projected muscles in the Below target bucket.")
     ).not.toBeInTheDocument();
     expect(screen.getByText("Chest")).toBeInTheDocument();
     expect(screen.getByText("Quads")).toBeInTheDocument();
@@ -288,7 +340,10 @@ describe("ProgramPage", () => {
             slotId: "upper_a",
             label: "Upper 1",
             sessionInWeek: 1,
-            state: "next",
+            uiState: "planned",
+            statusLabel: "Planned",
+            statusDescription: "Session 1 already has a planned workout ready to log.",
+            volumeBasis: "projected_next",
             linkedWorkoutId: "w-next",
             linkedWorkoutStatus: "planned",
             impact: null,

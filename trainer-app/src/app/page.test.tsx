@@ -157,6 +157,16 @@ describe("Home page", () => {
           },
         },
       },
+      primaryAction: {
+        state: "planned",
+        mode: "generate",
+        label: "Start workout",
+        action: "generate-required-workout",
+        initialIntent: "lower",
+        initialSlotId: "lower_a",
+        reasonLabel: "Next in sequence",
+        reason: "Nothing earlier is still open, so Lower 1 is next this week.",
+      },
       decision: {
         nextSessionLabel: "Lower 1",
         nextSessionDescription: "First lower session this week",
@@ -300,6 +310,16 @@ describe("Home page", () => {
           isPriorWeek: false,
           canCreate: false,
         },
+      },
+      primaryAction: {
+        state: "planned",
+        mode: "generate",
+        label: "Start workout",
+        action: "generate-required-workout",
+        initialIntent: "lower",
+        initialSlotId: "lower_a",
+        reasonLabel: "Next in sequence",
+        reason: "Nothing earlier is still open, so Lower 1 is next this week.",
       },
       decision: {
         nextSessionLabel: "Lower 1",

@@ -12,10 +12,12 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const runtime = "nodejs";
 
-const CURRENT_WEEK_PLAN_STATE_STYLE: Record<ProgramCurrentWeekPlanRow["state"], string> = {
+const CURRENT_WEEK_PLAN_STATE_STYLE: Record<ProgramCurrentWeekPlanRow["uiState"], string> = {
   completed: "border-emerald-200 bg-emerald-50/80 text-emerald-800",
-  next: "border-blue-300 bg-white text-blue-900 shadow-sm ring-1 ring-blue-200/80",
-  remaining: "border-slate-200 bg-slate-50/80 text-slate-700",
+  active: "border-blue-300 bg-white text-blue-900 shadow-sm ring-1 ring-blue-200/80",
+  planned: "border-blue-300 bg-white text-blue-900 shadow-sm ring-1 ring-blue-200/80",
+  projected: "border-slate-200 bg-slate-50/80 text-slate-700",
+  blocked: "border-rose-200 bg-rose-50/80 text-rose-800",
 };
 
 function formatBlockLabel(value: string | null): string {
@@ -30,31 +32,8 @@ function formatBlockLabel(value: string | null): string {
     .join(" ");
 }
 
-function formatWorkoutStatusLabel(value: string | null): string | null {
-  if (!value) {
-    return null;
-  }
-
-  return value
-    .split("_")
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
-
 function formatProjectedSetCount(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
-}
-
-function formatPlanStateLabel(value: ProgramCurrentWeekPlanRow["state"]): string {
-  switch (value) {
-    case "next":
-      return "Next up";
-    case "completed":
-      return "Completed";
-    default:
-      return "Remaining";
-  }
 }
 
 export default async function ProgramPage() {
@@ -226,17 +205,16 @@ export default async function ProgramPage() {
 
             <div className="mt-5 grid gap-3">
               {currentWeekPlan.slots.map((slot) => {
-                const workoutStatusLabel = formatWorkoutStatusLabel(slot.linkedWorkoutStatus);
                 return (
                   <div
                     key={slot.slotId}
-                    className={`rounded-2xl border px-4 py-4 transition-colors sm:px-5 ${CURRENT_WEEK_PLAN_STATE_STYLE[slot.state]}`}
+                    className={`rounded-2xl border px-4 py-4 transition-colors sm:px-5 ${CURRENT_WEEK_PLAN_STATE_STYLE[slot.uiState]}`}
                   >
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="text-base font-semibold text-slate-900">{slot.label}</p>
-                          {slot.state === "next" ? (
+                          {slot.volumeBasis === "projected_next" ? (
                             <span className="rounded-full bg-blue-100 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-blue-800">
                               Primary
                             </span>
@@ -245,9 +223,7 @@ export default async function ProgramPage() {
                         <p className="mt-1 text-xs text-slate-600">
                           Session {slot.sessionInWeek} of {currentWeekPlan.slots.length}
                         </p>
-                        {workoutStatusLabel ? (
-                          <p className="mt-1 text-xs text-slate-600">Workout: {workoutStatusLabel}</p>
-                        ) : null}
+                        <p className="mt-1 text-xs text-slate-600">{slot.statusDescription}</p>
                         {slot.impact ? (
                           <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5">
                             <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-700">
@@ -274,7 +250,7 @@ export default async function ProgramPage() {
                       </div>
                       <div className="flex items-center gap-2 self-start">
                         <span className="rounded-full border border-current px-2.5 py-1 text-xs font-semibold">
-                          {formatPlanStateLabel(slot.state)}
+                          {slot.statusLabel}
                         </span>
                         {slot.linkedWorkoutId ? (
                           <Link

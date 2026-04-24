@@ -15,6 +15,25 @@ export type WorkoutWorkflowState = {
   resumeBlockedReason: string | null;
 };
 
+export type LogWorkoutPageState =
+  | {
+      uiState: "active";
+      mutability: "editable";
+      primaryAction: "log";
+    }
+  | {
+      uiState: "completed";
+      mutability: "review_only";
+      primaryAction: "review";
+      reason: string;
+    }
+  | {
+      uiState: "blocked";
+      mutability: "blocked";
+      primaryAction: "resolve";
+      reason: string;
+    };
+
 export type WorkoutWorkflowMesocycleContext = {
   mesocycleId?: string | null;
   mesocycleState?: string | null;
@@ -122,4 +141,53 @@ export function getWorkoutDetailTitle(
     return "Session Review";
   }
   return "Session Overview";
+}
+
+export function getLogWorkoutPageState(
+  status: string | null | undefined,
+  context: WorkoutWorkflowMesocycleContext = {}
+): LogWorkoutPageState {
+  const workflow = getWorkoutWorkflowState(status, context);
+
+  if (workflow.resumeBlockedReason) {
+    return {
+      uiState: "blocked",
+      mutability: "blocked",
+      primaryAction: "resolve",
+      reason: workflow.resumeBlockedReason,
+    };
+  }
+
+  if (workflow.kind === "completed") {
+    return {
+      uiState: "completed",
+      mutability: "review_only",
+      primaryAction: "review",
+      reason: "This session is completed and is now read-only.",
+    };
+  }
+
+  if (workflow.kind === "skipped") {
+    return {
+      uiState: "completed",
+      mutability: "review_only",
+      primaryAction: "review",
+      reason: "This session was skipped and is now read-only.",
+    };
+  }
+
+  if (workflow.isResumable && !workflow.isTerminalForWorkflow) {
+    return {
+      uiState: "active",
+      mutability: "editable",
+      primaryAction: "log",
+    };
+  }
+
+  return {
+    uiState: "blocked",
+    mutability: "blocked",
+    primaryAction: "resolve",
+    reason: "This workout is unavailable for logging.",
+  };
 }

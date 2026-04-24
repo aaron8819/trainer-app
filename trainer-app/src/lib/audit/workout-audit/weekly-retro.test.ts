@@ -243,10 +243,25 @@ describe("buildWeeklyRetroAuditPayload", () => {
             source: "mesocycle_slot_sequence",
           },
         },
+        exercises: [
+          {
+            exerciseId: "bench",
+            sets: [{ id: "bench-set-1" }, { id: "bench-set-2" }, { id: "bench-set-3" }, { id: "bench-set-4" }],
+            exercise: {
+              name: "Bench Press",
+              aliases: [],
+              exerciseMuscles: [
+                { role: "PRIMARY", muscle: { name: "Chest" } },
+                { role: "SECONDARY", muscle: { name: "Triceps" } },
+              ],
+            },
+          },
+        ],
       },
       {
         id: "workout-2",
         selectionMetadata: {},
+        exercises: [],
       },
       {
         id: "workout-3",
@@ -258,6 +273,7 @@ describe("buildWeeklyRetroAuditPayload", () => {
             source: "mesocycle_slot_sequence",
           },
         },
+        exercises: [],
       },
     ]);
     mocks.getWeeklyVolumeTarget.mockImplementation(
@@ -511,6 +527,223 @@ describe("buildWeeklyRetroAuditPayload", () => {
           classification: "overdelivered",
         }),
       ])
+    );
+  });
+
+  it("separates explained runtime additions from missed planned work and mutation drift", async () => {
+    mocks.buildHistoricalWeekAuditPayload.mockResolvedValue({
+      version: 1,
+      week: 3,
+      mesocycleId: "meso-1",
+      sessions: [
+        {
+          workoutId: "workout-1",
+          scheduledDate: "2026-03-15T00:00:00.000Z",
+          status: "COMPLETED",
+          sessionIntent: "PUSH",
+          selectionMode: "INTENT",
+          snapshotSource: "persisted",
+          sessionSnapshot: {
+            generated: {
+              selectionMode: "INTENT",
+              sessionIntent: "PUSH",
+              semantics: {
+                kind: "advancing",
+                isCloseout: false,
+                isDeload: false,
+                consumesWeeklyScheduleIntent: true,
+                countsTowardProgressionHistory: true,
+              },
+              exerciseCount: 1,
+              hardSetCount: 4,
+              exercises: [
+                {
+                  exerciseId: "bench",
+                  exerciseName: "Bench Press",
+                  orderIndex: 0,
+                  section: "main",
+                  isMainLift: true,
+                  prescribedSetCount: 4,
+                  prescribedSets: [],
+                },
+              ],
+              traces: { progression: {} },
+            },
+            saved: {
+              mesocycleSnapshot: {
+                mesocycleId: "meso-1",
+                week: 3,
+                session: 1,
+                phase: "accumulation",
+              },
+              semantics: {
+                kind: "advancing",
+                isCloseout: false,
+                isDeload: false,
+                consumesWeeklyScheduleIntent: true,
+              },
+            },
+          },
+          canonicalSemantics: {
+            sourceLayer: "saved",
+            phase: "accumulation",
+            isDeload: false,
+            countsTowardProgressionHistory: true,
+            countsTowardPerformanceHistory: true,
+            updatesProgressionAnchor: true,
+          },
+          progressionEvidence: {
+            countsTowardProgressionHistory: true,
+            countsTowardPerformanceHistory: true,
+            updatesProgressionAnchor: true,
+            reasonCodes: ["advances_split_true"],
+          },
+          reconciliation: {
+            version: 1,
+            comparisonState: "comparable",
+            hasDrift: true,
+            changedFields: ["exercise_added"],
+            addedExerciseIds: ["cable-crunch"],
+            removedExerciseIds: [],
+            exercisesWithSetCountChanges: [],
+            exercisesWithPrescriptionChanges: [],
+          },
+        },
+      ],
+      summary: {
+        sessionCount: 1,
+        advancingCount: 1,
+        gapFillCount: 0,
+        supplementalCount: 0,
+        deloadCount: 0,
+        progressionEligibleCount: 1,
+        progressionExcludedCount: 0,
+        weekCloseRelevantCount: 0,
+        persistedSnapshotCount: 1,
+        reconstructedSnapshotCount: 0,
+        mutationDriftCount: 1,
+        statusCounts: { COMPLETED: 1 },
+        intentCounts: { PUSH: 1 },
+      },
+      comparabilityCoverage: {
+        comparableSessionCount: 1,
+        missingGeneratedSnapshotCount: 0,
+        persistedSnapshotCount: 1,
+        reconstructedSnapshotCount: 0,
+        generatedLayerCoverage: "full",
+        limitations: [],
+      },
+    });
+    mocks.loadMesocycleWeekMuscleVolume.mockResolvedValue({
+      Core: {
+        directSets: 3,
+        indirectSets: 0,
+        effectiveSets: 5,
+        contributions: [
+          {
+            exerciseId: "cable-crunch",
+            exerciseName: "Cable Crunch",
+            effectiveSets: 3,
+            performedSets: 3,
+          },
+        ],
+      },
+    });
+    mocks.workoutFindMany.mockResolvedValue([
+      {
+        id: "workout-1",
+        selectionMetadata: {
+          runtimeEditReconciliation: {
+            version: 1,
+            lastReconciledAt: "2026-03-15T12:00:00.000Z",
+            directives: {
+              continuityAlias: "none",
+              progressionAlias: "none",
+              futureSessionGeneration: "ignore",
+              futureSeedCarryForward: "ignore",
+            },
+            ops: [
+              {
+                kind: "add_exercise",
+                source: "api_workouts_add_exercise",
+                appliedAt: "2026-03-15T12:00:00.000Z",
+                scope: "current_workout_only",
+                facts: {
+                  workoutExerciseId: "we-core",
+                  exerciseId: "cable-crunch",
+                  orderIndex: 1,
+                  section: "ACCESSORY",
+                  setCount: 3,
+                  prescriptionSource: "session_accessory_defaults",
+                },
+              },
+            ],
+          },
+          slot: {
+            slotId: "slot-1",
+            intent: "push",
+            sequenceIndex: 0,
+            source: "mesocycle_slot_sequence",
+          },
+        },
+        exercises: [
+          {
+            exerciseId: "bench",
+            sets: [{ id: "bench-set-1" }, { id: "bench-set-2" }, { id: "bench-set-3" }, { id: "bench-set-4" }],
+            exercise: {
+              name: "Bench Press",
+              aliases: [],
+              exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Chest" } }],
+            },
+          },
+          {
+            exerciseId: "cable-crunch",
+            sets: [{ id: "core-set-1" }, { id: "core-set-2" }, { id: "core-set-3" }],
+            exercise: {
+              name: "Cable Crunch",
+              aliases: [],
+              exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Core" } }],
+            },
+          },
+        ],
+      },
+    ]);
+    mocks.getWeeklyVolumeTarget.mockImplementation(
+      (_mesocycle: unknown, muscle: string) => (muscle === "Core" ? 8 : 0)
+    );
+
+    const payload = await buildWeeklyRetroAuditPayload({
+      userId: "user-1",
+      week: 3,
+      mesocycleId: "meso-1",
+    });
+
+    expect(payload.planAdherence).toMatchObject({
+      plannedWorkCompletedPercent: 100,
+      plannedWorkMissedSets: 0,
+      plannedWorkTotalSets: 4,
+      plannedWorkCompletedSets: 4,
+      explainedAdditions: {
+        totalSets: 3,
+        byIntent: {
+          target_gap_closure: 3,
+        },
+      },
+      substitutions: 0,
+      painFatigueDeviations: 0,
+      unclassifiedDrift: 0,
+      engineConfidenceImpact: "low",
+    });
+    expect(payload.planAdherence.interpretations[0]).toMatchObject({
+      intent: "target_gap_closure",
+      confidence: "high",
+      setDelta: 3,
+      muscles: ["Core"],
+    });
+    expect(payload.loadCalibration.status).toBe("aligned");
+    expect(payload.rootCauses.map((entry) => entry.code)).not.toContain("mutation_drift");
+    expect(payload.rootCauses.map((entry) => entry.code)).not.toContain(
+      "unclassified_runtime_drift"
     );
   });
 

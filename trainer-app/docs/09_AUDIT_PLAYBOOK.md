@@ -133,6 +133,7 @@ npm run audit:week:retro -- --user-id <user-id> --week <week> --mesocycle-id <me
 
 Inspect first:
 - `weeklyRetro.executiveSummary`
+- `weeklyRetro.planAdherence`
 - `weeklyRetro.loadCalibration`
 - `weeklyRetro.sessionExecution`
 - `weeklyRetro.slotBalance`
@@ -142,13 +143,16 @@ Inspect first:
 
 Common red flags:
 - `loadCalibration.status !== "aligned"` when you expected clean comparable modern coverage
+- `planAdherence.engineConfidenceImpact` is `medium` or `high`
+- `planAdherence.plannedWorkMissedSets > 0` when the week should have preserved the original plan
+- `planAdherence.unclassifiedDrift > 0`
 - `slotBalance.missingSlotIdentityCount > 0` or `slotBalance.duplicateSlotCount > 0`
 - `volumeTargeting.belowMev.length > 0`
 - `rootCauses[*].code` points at reconciliation drift or legacy coverage gaps you did not expect
 
 Escalate when:
 - slot identity receipts are missing or duplicated for advancing sessions
-- reconciliation drift changes the meaning of the week enough that actual-vs-target conclusions are suspect
+- unclassified runtime drift, missed planned work, or selection/semantic drift changes the meaning of the week enough that actual-vs-target conclusions are suspect
 - actual completed volume still lands below MEV or above MAV after reading the top contributors
 - legacy saved-only reconstruction prevents a trustworthy retrospective answer
 
@@ -330,6 +334,7 @@ Inspect first:
 - `mesocycleExplain.preview.slotPlans`
 - `mesocycleExplain.seed.slotPlans`
 - `mesocycleExplain.reality.runtimeDrift`
+- `mesocycleExplain.reality.runtimeDrift[*].runtimeDriftLabels`
 - `mesocycleExplain.comparison.previewVsSeed`
 - `mesocycleExplain.comparison.seedVsReality`
 - `mesocycleExplain.limitations`
@@ -338,6 +343,7 @@ Important interpretation rule:
 - preview-side slot obligation and carry-forward continuity can be reconstructed truthfully from canonical handoff seams
 - accepted historical per-exercise ranking rationale is not recoverable unless it was explicitly persisted
 - the artifact must therefore keep `persisted`, `reconstructed`, and `unavailable` explanation sources distinct
+- runtime-added exercises are labeled as runtime edits when evidence exists; they should not be read as accepted-seed quality failures unless seed-vs-reality also supports that conclusion
 
 Common red flags:
 - `seed.available=false` when the retrospective mesocycle should have a canonical accepted seed
@@ -507,12 +513,13 @@ Escalate when:
    - `interventions`
    - `recommendation`
 3. Open `weeklyRetro.executiveSummary` and confirm the artifact is scoped to the intended week and mesocycle.
-4. Read `weeklyRetro.loadCalibration` before trusting actual-vs-target conclusions.
-5. Read `weeklyRetro.sessionExecution` for compact completed/skipped status, slot identity, progression eligibility, week-close visibility, and reconciliation context before drilling into historical-week.
-6. Read `weeklyRetro.slotBalance` and resolve any missing or duplicate slot identity first.
-7. Read `weeklyRetro.volumeTargeting` for actual weekly target / MEV / MAV comparisons and contributor context.
-8. Follow `weeklyRetro.recommendedPriorities` in order.
-9. Escalate if slot integrity, reconciliation drift, or legacy coverage limitations make the retrospective answer unreliable.
+4. Read `weeklyRetro.planAdherence` to separate planned work completion from runtime-added work. Explained additions such as `target_gap_closure` should not hide missed planned sets, and unclassified drift should still reduce confidence.
+5. Read `weeklyRetro.loadCalibration` before trusting actual-vs-target conclusions.
+6. Read `weeklyRetro.sessionExecution` for compact completed/skipped status, slot identity, progression eligibility, week-close visibility, and reconciliation context before drilling into historical-week.
+7. Read `weeklyRetro.slotBalance` and resolve any missing or duplicate slot identity first.
+8. Read `weeklyRetro.volumeTargeting` for actual weekly target / MEV / MAV comparisons and contributor context.
+9. Follow `weeklyRetro.recommendedPriorities` in order.
+10. Escalate if slot integrity, unclassified runtime drift, missed planned work, or legacy coverage limitations make the retrospective answer unreliable.
 
 ### Upcoming week preview
 1. Run `future-week`.
@@ -635,6 +642,7 @@ Read these fields in this order unless the audit type says otherwise.
 - `comparisonState="missing_generated_snapshot"` means no real generated-vs-saved comparison was possible.
 - `hasDrift=true` means the saved workout diverged materially from the generated layer.
 - `changedFields` is the first field to read.
+- In `weekly-retro`, read `planAdherence.interpretations` before treating drift as engine instability. Runtime additions can be classified as `target_gap_closure`, `opportunistic_extra`, substitutions, pain/fatigue deviations, or unclassified drift without rewriting the original generated plan.
 
 ### Deload trace provenance fields
 - Use these together:

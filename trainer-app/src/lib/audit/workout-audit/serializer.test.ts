@@ -752,6 +752,21 @@ describe("buildWorkoutAuditArtifact", () => {
             overTargetOnly: [],
             muscles: [],
           },
+          planAdherence: {
+            plannedWorkCompletedPercent: 100,
+            plannedWorkMissedSets: 0,
+            plannedWorkTotalSets: 45,
+            plannedWorkCompletedSets: 45,
+            explainedAdditions: {
+              totalSets: 0,
+              byIntent: {},
+            },
+            substitutions: 0,
+            painFatigueDeviations: 0,
+            unclassifiedDrift: 0,
+            engineConfidenceImpact: "none",
+            interpretations: [],
+          },
           projectionDeliveryDrift: {
             status: "comparable",
             baseline: {

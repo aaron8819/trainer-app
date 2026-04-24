@@ -417,9 +417,16 @@ export function buildWeeklyRetroOperatorSummary(input: {
       .join(", ") || "none";
   const recommendation = weeklyRetro.recommendedPriorities[0] ?? "no_further_action";
   const projectionDrift = weeklyRetro.projectionDeliveryDrift;
+  const planAdherence = weeklyRetro.planAdherence;
+  const explainedByIntent = Object.entries(planAdherence.explainedAdditions.byIntent)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([intent, sets]) => `${intent}:${formatSignedSetDelta(sets ?? 0)}`)
+    .join(", ") || "none";
 
   const lines = [
     `[workout-audit:retro] load_calibration=${weeklyRetro.loadCalibration.status} comparable_sessions=${weeklyRetro.loadCalibration.comparableSessionCount} drift_sessions=${weeklyRetro.loadCalibration.driftSessionCount} legacy_limited=${weeklyRetro.loadCalibration.legacyLimitedSessionCount}`,
+    `[workout-audit:retro] plan_adherence planned_completed=${planAdherence.plannedWorkCompletedPercent}% (${planAdherence.plannedWorkCompletedSets}/${planAdherence.plannedWorkTotalSets} sets) missed=${planAdherence.plannedWorkMissedSets} explained_additions=${formatSignedSetDelta(planAdherence.explainedAdditions.totalSets)} substitutions=${planAdherence.substitutions} unclassified=${planAdherence.unclassifiedDrift} engine_confidence=${planAdherence.engineConfidenceImpact}`,
+    `[workout-audit:retro] explained_additions_by_intent=${explainedByIntent}`,
     `[workout-audit:retro] under_target=${underTargetRows || "none"}`,
     `[workout-audit:retro] interventions=${interventions}`,
     `[workout-audit:retro] recommendation=${recommendation}`,

@@ -488,6 +488,24 @@ describe("buildWeeklyRetroOperatorSummary", () => {
               },
             ],
           },
+          planAdherence: {
+            plannedWorkCompletedPercent: 92,
+            plannedWorkMissedSets: 4,
+            plannedWorkTotalSets: 50,
+            plannedWorkCompletedSets: 46,
+            explainedAdditions: {
+              totalSets: 6,
+              byIntent: {
+                target_gap_closure: 4,
+                opportunistic_extra: 2,
+              },
+            },
+            substitutions: 1,
+            painFatigueDeviations: 0,
+            unclassifiedDrift: 0,
+            engineConfidenceImpact: "low",
+            interpretations: [],
+          },
           interventions: [
             {
               priority: "high",
@@ -510,6 +528,8 @@ describe("buildWeeklyRetroOperatorSummary", () => {
 
     expect(summary).toEqual([
       "[workout-audit:retro] load_calibration=attention_required comparable_sessions=2 drift_sessions=1 legacy_limited=1",
+      "[workout-audit:retro] plan_adherence planned_completed=92% (46/50 sets) missed=4 explained_additions=+6.0 substitutions=1 unclassified=0 engine_confidence=low",
+      "[workout-audit:retro] explained_additions_by_intent=opportunistic_extra:+2.0, target_gap_closure:+4.0",
       "[workout-audit:retro] under_target=Chest (-4.0), Calves (-1.0)",
       "[workout-audit:retro] interventions=slot_identity, volume_deficit",
       "[workout-audit:retro] recommendation=Repair missing slot receipts.",
@@ -582,6 +602,21 @@ describe("buildWeeklyRetroOperatorSummary", () => {
             overMav: [],
             overTargetOnly: [],
             muscles: [],
+          },
+          planAdherence: {
+            plannedWorkCompletedPercent: 100,
+            plannedWorkMissedSets: 0,
+            plannedWorkTotalSets: 45,
+            plannedWorkCompletedSets: 45,
+            explainedAdditions: {
+              totalSets: 0,
+              byIntent: {},
+            },
+            substitutions: 0,
+            painFatigueDeviations: 0,
+            unclassifiedDrift: 0,
+            engineConfidenceImpact: "none",
+            interpretations: [],
           },
           projectionDeliveryDrift: {
             status: "comparable",
@@ -677,6 +712,21 @@ describe("buildWeeklyRetroOperatorSummary", () => {
             overTargetOnly: [],
             muscles: [],
           },
+          planAdherence: {
+            plannedWorkCompletedPercent: 100,
+            plannedWorkMissedSets: 0,
+            plannedWorkTotalSets: 45,
+            plannedWorkCompletedSets: 45,
+            explainedAdditions: {
+              totalSets: 0,
+              byIntent: {},
+            },
+            substitutions: 0,
+            painFatigueDeviations: 0,
+            unclassifiedDrift: 0,
+            engineConfidenceImpact: "none",
+            interpretations: [],
+          },
           interventions: [],
           rootCauses: [],
           recommendedPriorities: [],
@@ -686,6 +736,8 @@ describe("buildWeeklyRetroOperatorSummary", () => {
 
     expect(summary).toEqual([
       "[workout-audit:retro] load_calibration=aligned comparable_sessions=3 drift_sessions=0 legacy_limited=0",
+      "[workout-audit:retro] plan_adherence planned_completed=100% (45/45 sets) missed=0 explained_additions=0.0 substitutions=0 unclassified=0 engine_confidence=none",
+      "[workout-audit:retro] explained_additions_by_intent=none",
       "[workout-audit:retro] under_target=none",
       "[workout-audit:retro] interventions=none",
       "[workout-audit:retro] recommendation=no_further_action",

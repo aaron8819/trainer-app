@@ -32,12 +32,17 @@ import {
 import { getLatestReadinessSignalForReader } from "@/lib/api/readiness";
 import type { SessionIntent } from "@/lib/engine/session-types";
 import { readSessionSlotSnapshot } from "@/lib/evidence/session-decision-receipt";
+import { readRuntimeEditReconciliation } from "@/lib/ui/selection-metadata";
 import {
   buildSessionAuditMutationSummary,
   resolvePersistedOrReconstructedSessionAuditSnapshot,
 } from "@/lib/evidence/session-audit-snapshot";
 import { resolveSessionSlotPolicy } from "@/lib/planning/session-slot-profile";
 import { MESOCYCLE_EXPLAIN_AUDIT_PAYLOAD_VERSION } from "./constants";
+import {
+  interpretRuntimeEdits,
+  type RuntimeEditExerciseContext,
+} from "./runtime-edit-interpretation";
 import type {
   MesocycleExplainAuditPayload,
   MesocycleExplainComparisonSlotDiff,
@@ -77,6 +82,7 @@ type ExplainWorkoutRow = Prisma.WorkoutGetPayload<{
     exercises: {
       orderBy: [{ orderIndex: "asc" }, { id: "asc" }];
       select: {
+        id: true;
         exerciseId: true;
         orderIndex: true;
         section: true;
@@ -84,6 +90,21 @@ type ExplainWorkoutRow = Prisma.WorkoutGetPayload<{
         exercise: {
           select: {
             name: true;
+            aliases: {
+              select: {
+                alias: true;
+              };
+            };
+            exerciseMuscles: {
+              select: {
+                role: true;
+                muscle: {
+                  select: {
+                    name: true;
+                  };
+                };
+              };
+            };
           };
         };
         sets: {
@@ -661,6 +682,49 @@ function resolveSeedSlotForWorkout(input: {
   };
 }
 
+function buildRuntimeExerciseContexts(
+  workout: ExplainWorkoutRow
+): RuntimeEditExerciseContext[] {
+  return workout.exercises.map((workoutExercise) => ({
+    exerciseId: workoutExercise.exerciseId,
+    exerciseName: workoutExercise.exercise.name,
+    primaryMuscles: workoutExercise.exercise.exerciseMuscles
+      .filter((mapping) => mapping.role === "PRIMARY")
+      .map((mapping) => mapping.muscle.name),
+    secondaryMuscles: workoutExercise.exercise.exerciseMuscles
+      .filter((mapping) => mapping.role === "SECONDARY")
+      .map((mapping) => mapping.muscle.name),
+    aliases: workoutExercise.exercise.aliases.map((alias) => alias.alias),
+  }));
+}
+
+function buildRuntimeDriftLabels(
+  interpretations: MesocycleExplainRealityWorkout["runtimeInterpretations"]
+): string[] {
+  return Array.from(
+    new Set(
+      interpretations.map((interpretation) => {
+        if (interpretation.intent === "target_gap_closure") {
+          return "runtime_addition_target_gap_closure";
+        }
+        if (interpretation.intent === "opportunistic_extra") {
+          return "runtime_addition_opportunistic_extra";
+        }
+        if (interpretation.intent === "substitution") {
+          return "runtime_substitution";
+        }
+        if (
+          interpretation.intent === "pain_avoidance" ||
+          interpretation.intent === "fatigue_adjustment"
+        ) {
+          return `runtime_${interpretation.intent}`;
+        }
+        return "runtime_unclassified_drift";
+      })
+    )
+  ).sort((left, right) => left.localeCompare(right));
+}
+
 function buildRealityRows(input: {
   workouts: ExplainWorkoutRow[];
   seedSlots: NormalizedSeedSlot[];
@@ -697,6 +761,11 @@ function buildRealityRows(input: {
       slotIndex: slotSnapshot?.sequenceIndex ?? null,
     });
     const seedExerciseIds = resolvedSeed.seedSlot?.exercises.map((exercise) => exercise.exerciseId) ?? [];
+    const runtimeInterpretations = interpretRuntimeEdits({
+      runtimeEditReconciliation: readRuntimeEditReconciliation(workout.selectionMetadata),
+      exerciseContexts: buildRuntimeExerciseContexts(workout),
+      legacyReconciliation: generatedVsSaved,
+    });
     const row: MesocycleExplainRealityWorkout = {
       workoutId: workout.id,
       scheduledDate: workout.scheduledDate.toISOString(),
@@ -716,6 +785,8 @@ function buildRealityRows(input: {
             ? ["no_matching_seed_slot"]
             : [],
       },
+      runtimeInterpretations,
+      runtimeDriftLabels: buildRuntimeDriftLabels(runtimeInterpretations),
     };
 
     if (row.slotId || row.slotIndex != null) {
@@ -772,6 +843,11 @@ function buildRealityExerciseRationale(input: {
       savedSessionIntent: workout.sessionIntent,
       persistedExercises: workout.exercises,
     });
+    const runtimeInterpretations = interpretRuntimeEdits({
+      runtimeEditReconciliation: readRuntimeEditReconciliation(workout.selectionMetadata),
+      exerciseContexts: buildRuntimeExerciseContexts(workout),
+      legacyReconciliation: mutation,
+    });
     const slotSnapshot = readSessionSlotSnapshot(workout.selectionMetadata);
     const resolvedSeed = resolveSeedSlotForWorkout({
       seedSlots: input.seedSlots,
@@ -785,6 +861,9 @@ function buildRealityExerciseRationale(input: {
     return workout.exercises.map((exercise) => {
       const fromSeed = seedExerciseIds.has(exercise.exerciseId);
       const runtimeAdded = mutation.addedExerciseIds.includes(exercise.exerciseId);
+      const runtimeIntent = runtimeInterpretations.find(
+        (interpretation) => interpretation.exerciseId === exercise.exerciseId
+      )?.intent;
       const reasonSource: MesocycleExplainReasonSource =
         fromSeed ? "persisted" : runtimeAdded ? "reconstructed" : "unavailable";
 
@@ -805,7 +884,10 @@ function buildRealityExerciseRationale(input: {
                 weeklySchedule: input.weeklySchedule,
               })
             : [],
-        constraints: runtimeAdded ? ["runtime_edit_added_exercise"] : [],
+        constraints: [
+          ...(runtimeAdded ? ["runtime_edit_added_exercise"] : []),
+          ...(runtimeIntent ? [`runtime_intent:${runtimeIntent}`] : []),
+        ],
         continuity: fromSeed ? ["present_in_canonical_seed"] : [],
         ranking: null,
       };
@@ -919,6 +1001,7 @@ export async function buildMesocycleExplainAuditPayload(input: {
       exercises: {
         orderBy: [{ orderIndex: "asc" }, { id: "asc" }],
         select: {
+          id: true,
           exerciseId: true,
           orderIndex: true,
           section: true,
@@ -926,6 +1009,21 @@ export async function buildMesocycleExplainAuditPayload(input: {
           exercise: {
             select: {
               name: true,
+              aliases: {
+                select: {
+                  alias: true,
+                },
+              },
+              exerciseMuscles: {
+                select: {
+                  role: true,
+                  muscle: {
+                    select: {
+                      name: true,
+                    },
+                  },
+                },
+              },
             },
           },
           sets: {

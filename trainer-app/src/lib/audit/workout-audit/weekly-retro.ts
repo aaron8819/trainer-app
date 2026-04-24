@@ -4,12 +4,21 @@ import { getExposedVolumeLandmarkEntries } from "@/lib/engine/volume-landmarks";
 import { readSessionSlotSnapshot } from "@/lib/evidence/session-decision-receipt";
 import { getWeeklyVolumeTarget } from "@/lib/api/mesocycle-lifecycle-math";
 import { loadMesocycleWeekMuscleVolume } from "@/lib/api/weekly-volume";
+import { readRuntimeEditReconciliation } from "@/lib/ui/selection-metadata";
 import { WEEKLY_RETRO_AUDIT_PAYLOAD_VERSION } from "./constants";
 import { buildHistoricalWeekAuditPayload } from "./historical-week";
 import { buildProjectionDeliveryDrift } from "./projection-drift";
+import {
+  interpretRuntimeEdits,
+  type RuntimeEditExerciseContext,
+  type RuntimeEditTargetContext,
+} from "./runtime-edit-interpretation";
 import type {
   HistoricalWeekAuditSession,
+  RuntimeEditIntent,
+  RuntimeEditInterpretation,
   WeeklyRetroAuditPayload,
+  WeeklyRetroPlanAdherence,
   WeeklyRetroAuditSessionExecutionRow,
   WeeklyRetroAuditVolumeRow,
 } from "./types";
@@ -17,6 +26,27 @@ import type {
 const DEFAULT_FALLBACK_LANDMARK = {
   mev: 0,
   mav: 10,
+};
+
+type WeeklyRetroRuntimeWorkoutRow = {
+  id: string;
+  selectionMetadata: unknown;
+  exercises: Array<{
+    exerciseId: string;
+    sets: Array<{
+      logs?: Array<{
+        wasSkipped: boolean;
+      }>;
+    }>;
+    exercise: {
+      name: string;
+      aliases: Array<{ alias: string }>;
+      exerciseMuscles: Array<{
+        role: string;
+        muscle: { name: string };
+      }>;
+    };
+  }>;
 };
 
 function roundToTenth(value: number): number {
@@ -39,6 +69,280 @@ function resolveSessionSemantics(session: HistoricalWeekAuditSession) {
 
 function normalizeIntent(intent: string | undefined): string | undefined {
   return typeof intent === "string" ? intent.trim().toLowerCase() : undefined;
+}
+
+function sumPositiveSetDeltas(
+  interpretations: RuntimeEditInterpretation[],
+  predicate: (interpretation: RuntimeEditInterpretation) => boolean
+): number {
+  return interpretations.reduce(
+    (sum, interpretation) =>
+      interpretation.setDelta > 0 && predicate(interpretation)
+        ? sum + interpretation.setDelta
+        : sum,
+    0
+  );
+}
+
+function countGeneratedPlannedSets(session: HistoricalWeekAuditSession): number {
+  return (
+    session.sessionSnapshot.generated?.exercises.reduce(
+      (sum, exercise) => sum + exercise.prescribedSetCount,
+      0
+    ) ?? 0
+  );
+}
+
+function buildGeneratedSetCounts(
+  session: HistoricalWeekAuditSession
+): Map<string, number> {
+  return new Map(
+    (session.sessionSnapshot.generated?.exercises ?? []).map((exercise) => [
+      exercise.exerciseId,
+      exercise.prescribedSetCount,
+    ])
+  );
+}
+
+function buildSavedSetCounts(
+  workout: WeeklyRetroRuntimeWorkoutRow | undefined
+): Map<string, number> {
+  return new Map(
+    (workout?.exercises ?? []).map((exercise) => [
+      exercise.exerciseId,
+      countCompletedOrStructuredSets(exercise.sets),
+    ])
+  );
+}
+
+function countCompletedOrStructuredSets(
+  sets: WeeklyRetroRuntimeWorkoutRow["exercises"][number]["sets"]
+): number {
+  if (sets.some((set) => Array.isArray(set.logs))) {
+    return sets.filter((set) => (set.logs?.length ?? 0) > 0 && !set.logs?.[0]?.wasSkipped).length;
+  }
+  return sets.length;
+}
+
+function buildReplacementMap(
+  runtimeEditReconciliation: ReturnType<typeof readRuntimeEditReconciliation>
+): Map<string, string> {
+  const replacements = new Map<string, string>();
+  for (const op of runtimeEditReconciliation?.ops ?? []) {
+    if (op.kind === "replace_exercise") {
+      replacements.set(op.facts.fromExerciseId, op.facts.toExerciseId);
+    }
+  }
+  return replacements;
+}
+
+function computePlannedSetCompletion(input: {
+  session: HistoricalWeekAuditSession;
+  workout?: WeeklyRetroRuntimeWorkoutRow;
+}): {
+  total: number;
+  completed: number;
+  missed: number;
+} {
+  const generatedSetCounts = buildGeneratedSetCounts(input.session);
+  const savedSetCounts = buildSavedSetCounts(input.workout);
+  const replacementByOriginal = buildReplacementMap(
+    readRuntimeEditReconciliation(input.workout?.selectionMetadata)
+  );
+  let completed = 0;
+
+  for (const [exerciseId, plannedSets] of generatedSetCounts) {
+    const replacementExerciseId = replacementByOriginal.get(exerciseId);
+    const savedSets =
+      savedSetCounts.get(exerciseId) ??
+      (replacementExerciseId ? savedSetCounts.get(replacementExerciseId) : undefined) ??
+      0;
+    completed += Math.min(plannedSets, savedSets);
+  }
+
+  const total = countGeneratedPlannedSets(input.session);
+  return {
+    total,
+    completed,
+    missed: Math.max(0, total - completed),
+  };
+}
+
+function buildExerciseContexts(
+  workouts: WeeklyRetroRuntimeWorkoutRow[]
+): RuntimeEditExerciseContext[] {
+  const byId = new Map<string, RuntimeEditExerciseContext>();
+  for (const workout of workouts) {
+    for (const workoutExercise of workout.exercises) {
+      if (byId.has(workoutExercise.exerciseId)) {
+        continue;
+      }
+      byId.set(workoutExercise.exerciseId, {
+        exerciseId: workoutExercise.exerciseId,
+        exerciseName: workoutExercise.exercise.name,
+        primaryMuscles: workoutExercise.exercise.exerciseMuscles
+          .filter((mapping) => mapping.role === "PRIMARY")
+          .map((mapping) => mapping.muscle.name),
+        secondaryMuscles: workoutExercise.exercise.exerciseMuscles
+          .filter((mapping) => mapping.role === "SECONDARY")
+          .map((mapping) => mapping.muscle.name),
+        aliases: workoutExercise.exercise.aliases.map((alias) => alias.alias),
+      });
+    }
+  }
+  return Array.from(byId.values());
+}
+
+function buildTargetContext(
+  volumeRows: WeeklyRetroAuditVolumeRow[]
+): RuntimeEditTargetContext[] {
+  return volumeRows.map((row) => ({
+    muscle: row.muscle,
+    actualEffectiveSets: row.actualEffectiveSets,
+    weeklyTarget: row.weeklyTarget,
+    mev: row.mev,
+  }));
+}
+
+function computeEngineConfidenceImpact(input: {
+  plannedWorkCompletedPercent: number;
+  plannedWorkMissedSets: number;
+  explainedAdditionSets: number;
+  substitutions: number;
+  painFatigueDeviations: number;
+  unclassifiedDrift: number;
+  legacyLimitedSessionCount: number;
+  unclassifiedNegativeOrRewriteCount: number;
+}): WeeklyRetroPlanAdherence["engineConfidenceImpact"] {
+  if (
+    input.unclassifiedDrift >= 4 ||
+    input.unclassifiedNegativeOrRewriteCount >= 2 ||
+    input.plannedWorkMissedSets >= 8 ||
+    input.plannedWorkCompletedPercent < 70 ||
+    input.painFatigueDeviations >= 3
+  ) {
+    return "high";
+  }
+
+  if (
+    input.plannedWorkMissedSets >= 3 ||
+    input.plannedWorkCompletedPercent < 90 ||
+    input.unclassifiedDrift >= 2 ||
+    input.legacyLimitedSessionCount > 0
+  ) {
+    return "medium";
+  }
+
+  if (
+    input.plannedWorkMissedSets > 0 ||
+    input.unclassifiedDrift > 0 ||
+    input.substitutions > 0 ||
+    input.painFatigueDeviations > 0 ||
+    input.explainedAdditionSets > 2
+  ) {
+    return "low";
+  }
+
+  return "none";
+}
+
+function buildPlanAdherence(input: {
+  sessions: HistoricalWeekAuditSession[];
+  workoutsById: Map<string, WeeklyRetroRuntimeWorkoutRow>;
+  volumeRows: WeeklyRetroAuditVolumeRow[];
+  legacyLimitedSessionCount: number;
+}): WeeklyRetroPlanAdherence {
+  const targetContext = buildTargetContext(input.volumeRows);
+  const exerciseContexts = buildExerciseContexts(Array.from(input.workoutsById.values()));
+  const interpretations: RuntimeEditInterpretation[] = [];
+  let plannedWorkTotalSets = 0;
+  let plannedWorkCompletedSets = 0;
+
+  for (const session of input.sessions) {
+    const workout = input.workoutsById.get(session.workoutId);
+    const completion = computePlannedSetCompletion({ session, workout });
+    plannedWorkTotalSets += completion.total;
+    plannedWorkCompletedSets += completion.completed;
+    interpretations.push(
+      ...interpretRuntimeEdits({
+        runtimeEditReconciliation: readRuntimeEditReconciliation(workout?.selectionMetadata),
+        exerciseContexts,
+        targetContext,
+        legacyReconciliation: session.reconciliation,
+      })
+    );
+  }
+
+  const explainedAdditionIntents = new Set<RuntimeEditIntent>([
+    "target_gap_closure",
+    "opportunistic_extra",
+    "user_preference",
+  ]);
+  const explainedAdditionsByIntent: Partial<Record<RuntimeEditIntent, number>> = {};
+  for (const interpretation of interpretations) {
+    if (
+      interpretation.setDelta <= 0 ||
+      !explainedAdditionIntents.has(interpretation.intent)
+    ) {
+      continue;
+    }
+    explainedAdditionsByIntent[interpretation.intent] =
+      (explainedAdditionsByIntent[interpretation.intent] ?? 0) +
+      interpretation.setDelta;
+  }
+
+  const plannedWorkMissedSets = Math.max(
+    0,
+    plannedWorkTotalSets - plannedWorkCompletedSets
+  );
+  const plannedWorkCompletedPercent =
+    plannedWorkTotalSets > 0
+      ? Math.round((plannedWorkCompletedSets / plannedWorkTotalSets) * 100)
+      : 100;
+  const explainedAdditionSets = sumPositiveSetDeltas(interpretations, (interpretation) =>
+    explainedAdditionIntents.has(interpretation.intent)
+  );
+  const substitutions = interpretations.filter(
+    (interpretation) => interpretation.intent === "substitution"
+  ).length;
+  const painFatigueDeviations = interpretations.filter(
+    (interpretation) =>
+      interpretation.intent === "pain_avoidance" ||
+      interpretation.intent === "fatigue_adjustment"
+  ).length;
+  const unclassifiedDrift = interpretations.filter(
+    (interpretation) => interpretation.intent === "unclassified"
+  ).length;
+  const unclassifiedNegativeOrRewriteCount = interpretations.filter(
+    (interpretation) =>
+      interpretation.intent === "unclassified" &&
+      (interpretation.setDelta < 0 || interpretation.opKind === "rewrite_structure")
+  ).length;
+
+  return {
+    plannedWorkCompletedPercent,
+    plannedWorkMissedSets,
+    plannedWorkTotalSets,
+    plannedWorkCompletedSets,
+    explainedAdditions: {
+      totalSets: explainedAdditionSets,
+      byIntent: explainedAdditionsByIntent,
+    },
+    substitutions,
+    painFatigueDeviations,
+    unclassifiedDrift,
+    engineConfidenceImpact: computeEngineConfidenceImpact({
+      plannedWorkCompletedPercent,
+      plannedWorkMissedSets,
+      explainedAdditionSets,
+      substitutions,
+      painFatigueDeviations,
+      unclassifiedDrift,
+      legacyLimitedSessionCount: input.legacyLimitedSessionCount,
+      unclassifiedNegativeOrRewriteCount,
+    }),
+    interpretations,
+  };
 }
 
 function buildSessionExecutionRows(input: {
@@ -154,10 +458,51 @@ export async function buildWeeklyRetroAuditPayload(input: {
       select: {
         id: true,
         selectionMetadata: true,
+        exercises: {
+          select: {
+            exerciseId: true,
+            sets: {
+              select: {
+                id: true,
+                logs: {
+                  orderBy: {
+                    completedAt: "desc",
+                  },
+                  take: 1,
+                  select: {
+                    wasSkipped: true,
+                  },
+                },
+              },
+            },
+            exercise: {
+              select: {
+                name: true,
+                aliases: {
+                  select: {
+                    alias: true,
+                  },
+                },
+                exerciseMuscles: {
+                  select: {
+                    role: true,
+                    muscle: {
+                      select: {
+                        name: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     }),
   ]);
 
+  const runtimeWorkouts = slotIdentityRows as WeeklyRetroRuntimeWorkoutRow[];
+  const runtimeWorkoutsById = new Map(runtimeWorkouts.map((row) => [row.id, row]));
   const slotIdentityByWorkoutId = new Map(
     slotIdentityRows.map((row) => [row.id, readSessionSlotSnapshot(row.selectionMetadata)])
   );
@@ -275,6 +620,12 @@ export async function buildWeeklyRetroAuditPayload(input: {
     )
   ).length;
   const legacyLimitedSessionCount = historicalWeek.comparabilityCoverage.reconstructedSnapshotCount;
+  const planAdherence = buildPlanAdherence({
+    sessions: historicalWeek.sessions,
+    workoutsById: runtimeWorkoutsById,
+    volumeRows,
+    legacyLimitedSessionCount,
+  });
   const slotIdentityIssueCount =
     missingSlotIdentityWorkoutIds.length + duplicateSlots.length + intentMismatches.length;
 
@@ -284,9 +635,18 @@ export async function buildWeeklyRetroAuditPayload(input: {
       `Legacy saved-only coverage limits ${legacyLimitedSessionCount} session(s).`
     );
   }
-  if (driftSessions.length > 0) {
+  if (planAdherence.unclassifiedDrift > 0) {
     executiveHighlights.push(
-      `${driftSessions.length} comparable session(s) drifted from generated prescription.`
+      `${planAdherence.unclassifiedDrift} runtime edit interpretation(s) remain unclassified.`
+    );
+  } else if (driftSessions.length > 0) {
+    executiveHighlights.push(
+      `${driftSessions.length} comparable session(s) had runtime edits with classified audit context.`
+    );
+  }
+  if (planAdherence.plannedWorkMissedSets > 0) {
+    executiveHighlights.push(
+      `${planAdherence.plannedWorkMissedSets} planned set(s) were not preserved in saved workout structure.`
     );
   }
   if (belowMev.length > 0) {
@@ -359,21 +719,77 @@ export async function buildWeeklyRetroAuditPayload(input: {
     });
   }
 
-  if (driftSessions.length > 0) {
+  if (planAdherence.unclassifiedDrift > 0) {
+    rootCauses.push({
+      code: "unclassified_runtime_drift",
+      summary: "Some runtime edits could not be explained from persisted operation facts and audit context.",
+      evidence: planAdherence.interpretations
+        .filter((interpretation) => interpretation.intent === "unclassified")
+        .map(
+          (interpretation) =>
+            `${interpretation.opKind}: ${interpretation.evidence.join("; ")}`
+        ),
+    });
+    interventions.push({
+      priority:
+        planAdherence.engineConfidenceImpact === "high" ? "high" : "medium",
+      kind: "unclassified_runtime_drift",
+      summary: "Inspect unclassified runtime edits before treating the week as clean calibration evidence.",
+      evidence: [
+        `${planAdherence.unclassifiedDrift} runtime edit interpretation(s) are unclassified.`,
+      ],
+    });
+  }
+
+  if (planAdherence.plannedWorkMissedSets > 0) {
+    rootCauses.push({
+      code: "missed_planned_work",
+      summary: "Saved workout structure did not preserve all originally planned sets.",
+      evidence: [
+        `Planned work completed ${planAdherence.plannedWorkCompletedPercent}% (${planAdherence.plannedWorkCompletedSets}/${planAdherence.plannedWorkTotalSets} sets).`,
+        `Missed planned sets: ${planAdherence.plannedWorkMissedSets}.`,
+      ],
+    });
+    interventions.push({
+      priority:
+        planAdherence.engineConfidenceImpact === "high" ? "high" : "medium",
+      kind: "missed_planned_work",
+      summary: "Review missed planned work separately from runtime-added volume.",
+      evidence: [
+        `${planAdherence.plannedWorkMissedSets} planned set(s) were not completed/preserved by saved structure.`,
+      ],
+    });
+  }
+
+  if (
+    selectionDriftCount > 0 &&
+    planAdherence.engineConfidenceImpact !== "none"
+  ) {
     rootCauses.push({
       code: "mutation_drift",
-      summary: "Generated-vs-saved reconciliation shows meaningful prescription drift.",
-      evidence: driftSessions.map(
-        (session) =>
-          `${session.workoutId}: ${session.reconciliation.changedFields.join(", ")}`
-      ),
+      summary: "Generated-vs-saved reconciliation shows selection or semantic drift beyond explained additions.",
+      evidence: driftSessions
+        .filter((session) =>
+          session.reconciliation.changedFields.some((field) =>
+            [
+              "selection_mode",
+              "session_intent",
+              "semantics_kind",
+              "progression_history_eligibility",
+            ].includes(field)
+          )
+        )
+        .map(
+          (session) =>
+            `${session.workoutId}: ${session.reconciliation.changedFields.join(", ")}`
+        ),
     });
     interventions.push({
       priority: "high",
       kind: "mutation_drift",
-      summary: "Inspect saved-vs-generated drift before drawing load-calibration conclusions.",
+      summary: "Inspect selection/semantic drift before drawing load-calibration conclusions.",
       evidence: [
-        `${driftSessions.length} comparable session(s) carry reconciliation drift.`,
+        `${selectionDriftCount} session(s) carry selection or semantic drift.`,
       ],
     });
   }
@@ -452,7 +868,8 @@ export async function buildWeeklyRetroAuditPayload(input: {
     mesocycleId: input.mesocycleId,
     executiveSummary: {
       status:
-        driftSessions.length > 0 ||
+        planAdherence.engineConfidenceImpact === "high" ||
+        planAdherence.engineConfidenceImpact === "medium" ||
         legacyLimitedSessionCount > 0 ||
         belowMev.length > 0 ||
         underTargetOnly.length > 0 ||
@@ -474,7 +891,10 @@ export async function buildWeeklyRetroAuditPayload(input: {
     },
     loadCalibration: {
       status:
-        driftSessions.length > 0
+        planAdherence.engineConfidenceImpact === "high" ||
+        (planAdherence.engineConfidenceImpact === "medium" &&
+          legacyLimitedSessionCount === 0) ||
+        selectionDriftCount > 0
           ? "attention_required"
           : legacyLimitedSessionCount > 0
             ? "limited_by_legacy_coverage"
@@ -518,6 +938,7 @@ export async function buildWeeklyRetroAuditPayload(input: {
       overTargetOnly,
       muscles: volumeRows,
     },
+    planAdherence,
     interventions,
     rootCauses,
     recommendedPriorities,

@@ -125,4 +125,5 @@ Use this section as a quick validation smoke-check only. Full artifact interpret
 - Historical week entries expose whether a session counted toward progression history without reading code.
 - Historical week entries surface linked or target-week-close state when relevant.
 - Reconciliation reports generated-vs-saved drift without flattening the generated/saved layers.
+- Weekly-retro exposes `planAdherence` so planned-work completion, explained runtime additions, substitutions, and unclassified drift remain separate.
 - Projected-week-volume separates completed weighted volume from projected next-session, projected remaining-week, and projected full-week totals.

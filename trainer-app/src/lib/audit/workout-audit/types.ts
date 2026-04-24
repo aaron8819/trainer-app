@@ -237,6 +237,46 @@ export type WeeklyRetroAuditVolumeRow = {
   }>;
 };
 
+export type RuntimeEditIntent =
+  | "target_gap_closure"
+  | "user_preference"
+  | "substitution"
+  | "fatigue_adjustment"
+  | "pain_avoidance"
+  | "opportunistic_extra"
+  | "unclassified";
+
+export type RuntimeEditConfidence = "high" | "medium" | "low";
+
+export type RuntimeEditInterpretation = {
+  opKind: string;
+  intent: RuntimeEditIntent;
+  confidence: RuntimeEditConfidence;
+  source: "persisted_op" | "audit_inferred" | "legacy_reconstructed";
+  setDelta: number;
+  exerciseId?: string;
+  workoutExerciseId?: string;
+  muscles: string[];
+  timing?: "early_session" | "mid_session" | "end_session" | "post_session" | "unknown";
+  evidence: string[];
+};
+
+export type WeeklyRetroPlanAdherence = {
+  plannedWorkCompletedPercent: number;
+  plannedWorkMissedSets: number;
+  plannedWorkTotalSets: number;
+  plannedWorkCompletedSets: number;
+  explainedAdditions: {
+    totalSets: number;
+    byIntent: Partial<Record<RuntimeEditIntent, number>>;
+  };
+  substitutions: number;
+  painFatigueDeviations: number;
+  unclassifiedDrift: number;
+  engineConfidenceImpact: "none" | "low" | "medium" | "high";
+  interpretations: RuntimeEditInterpretation[];
+};
+
 export type ProjectionDeliveryDriftPayload = {
   status: "comparable" | "limited" | "not_available";
   baseline: {
@@ -342,6 +382,7 @@ export type WeeklyRetroAuditPayload = {
     overTargetOnly: string[];
     muscles: WeeklyRetroAuditVolumeRow[];
   };
+  planAdherence: WeeklyRetroPlanAdherence;
   projectionDeliveryDrift?: ProjectionDeliveryDriftPayload;
   interventions: Array<{
     priority: "high" | "medium" | "low";
@@ -350,7 +391,9 @@ export type WeeklyRetroAuditPayload = {
       | "mutation_drift"
       | "legacy_coverage"
       | "volume_deficit"
-      | "volume_overshoot";
+      | "volume_overshoot"
+      | "missed_planned_work"
+      | "unclassified_runtime_drift";
     summary: string;
     evidence: string[];
   }>;
@@ -360,6 +403,8 @@ export type WeeklyRetroAuditPayload = {
       | "slot_identity_duplicate"
       | "slot_identity_intent_mismatch"
       | "mutation_drift"
+      | "missed_planned_work"
+      | "unclassified_runtime_drift"
       | "legacy_coverage_gap"
       | "below_mev"
       | "over_mav";
@@ -592,6 +637,8 @@ export type MesocycleExplainRealityWorkout = {
     removedExerciseIds: string[];
     notes: string[];
   };
+  runtimeInterpretations: RuntimeEditInterpretation[];
+  runtimeDriftLabels: string[];
 };
 
 export type MesocycleExplainComparisonSlotDiff = {

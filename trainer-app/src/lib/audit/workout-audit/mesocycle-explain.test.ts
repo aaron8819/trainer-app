@@ -207,22 +207,32 @@ describe("buildMesocycleExplainAuditPayload", () => {
         mesocyclePhaseSnapshot: "ACCUMULATION",
         exercises: [
           {
+            id: "we-1",
             exerciseId: "ex-1",
             orderIndex: 0,
             section: "main",
             isMainLift: true,
             exercise: {
               name: "Incline Dumbbell Press",
+              aliases: [],
+              exerciseMuscles: [
+                { role: "PRIMARY", muscle: { name: "Chest" } },
+              ],
             },
             sets: [],
           },
           {
+            id: "we-2",
             exerciseId: "ex-2",
             orderIndex: 1,
             section: "accessory",
             isMainLift: false,
             exercise: {
               name: "Cable Fly",
+              aliases: [],
+              exerciseMuscles: [
+                { role: "PRIMARY", muscle: { name: "Chest" } },
+              ],
             },
             sets: [],
           },

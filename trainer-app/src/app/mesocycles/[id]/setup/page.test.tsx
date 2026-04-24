@@ -75,7 +75,7 @@ describe("MesocycleSetupPage", () => {
     expect(screen.getByRole("heading", { name: "Meso 3 handoff setup" })).toBeInTheDocument();
     expect(
       screen.getByText(
-        /This screen edits the pending setup draft that starts from the frozen system recommendation/i
+        /This screen edits the pending setup draft that starts from the saved handoff recommendation/i
       )
     ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Back to review" })).toHaveAttribute(

@@ -99,7 +99,7 @@ export default function AnalyticsPage() {
               <div>
                 <h2 className="text-base font-semibold sm:text-lg">Workout Summary</h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  Training consistency, performed history, and telemetry all use the same canonical
+                  Training consistency, performed history, and telemetry all use the same saved
                   workout-status model.
                 </p>
                 <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200 p-3.5 sm:mt-4 sm:p-4">

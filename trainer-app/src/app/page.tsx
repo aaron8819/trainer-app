@@ -135,12 +135,19 @@ export default async function Home() {
   );
   const existingWorkoutTitle =
     existingWorkflow.kind === "planned"
-      ? "Start Workout"
+      ? "Start workout"
       : existingWorkflow.kind === "partial"
-      ? "Resume Partial Workout"
-      : "Resume Workout";
+      ? "Resume workout"
+      : "Resume workout";
   const existingWorkoutActionLabel =
-    existingWorkflow.kind === "planned" ? "Start logging" : "Continue logging";
+    existingWorkflow.kind === "planned" ? "Start workout" : "Resume workout";
+  const isWeekComplete =
+    !hasExistingWorkout &&
+    decision.totalAdvancingSessionsThisWeek > 0 &&
+    decision.completedAdvancingSessionsThisWeek >= decision.totalAdvancingSessionsThisWeek;
+  const isActiveExistingWorkout =
+    hasExistingWorkout &&
+    (existingWorkflow.kind === "in_progress" || existingWorkflow.kind === "partial");
   const activeWeekCloseout =
     closeout && homeProgram.closeout.isPriorWeek !== true ? closeout : null;
   const priorWeekCloseout =
@@ -183,11 +190,31 @@ export default async function Home() {
                 >
                   {existingWorkoutActionLabel}
                 </Link>
+                {!isActiveExistingWorkout ? (
+                  <Link
+                    className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 px-5 py-2 text-sm font-semibold"
+                    href={`/workout/${latestIncomplete.id}`}
+                  >
+                    View plan
+                  </Link>
+                ) : null}
+              </div>
+            </div>
+          ) : isWeekComplete ? (
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-6 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                Completed
+              </p>
+              <h2 className="mt-2 text-2xl font-semibold">Week complete</h2>
+              <p className="mt-2 text-sm text-slate-700">
+                Required sessions are done for this week. Optional sessions stay separate below.
+              </p>
+              <div className="mt-4">
                 <Link
-                  className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 px-5 py-2 text-sm font-semibold"
-                  href={`/workout/${latestIncomplete.id}`}
+                  className="inline-flex min-h-11 items-center justify-center rounded-full border border-emerald-300 bg-white px-5 py-2 text-sm font-semibold text-slate-900"
+                  href="/program"
                 >
-                  View workout
+                  Review program
                 </Link>
               </div>
             </div>

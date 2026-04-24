@@ -12,6 +12,7 @@ import {
 } from "@/lib/api/mesocycle-handoff-contract";
 import type { FrozenRecommendationPresentation } from "@/lib/api/mesocycle-handoff-presentation";
 import type { MesocycleSetupPreview } from "@/lib/api/mesocycle-setup";
+import { formatSessionIdentityLabel } from "@/lib/ui/session-identity";
 
 type MesocycleSetupEditorProps = {
   mesocycleId: string;
@@ -45,6 +46,16 @@ function formatSplitType(value: string): string {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" / ");
+}
+
+function formatHandoffDisplayCopy(value: string): string {
+  return value
+    .replace(/\bfrozen\b/gi, "saved")
+    .replace(/\bcanonical\s+/gi, "");
+}
+
+function formatSlotDisplayLabel(slot: { intent: WorkoutSessionIntent; slotId: string }): string {
+  return formatSessionIdentityLabel({ intent: slot.intent, slotId: slot.slotId });
 }
 
 function buildComparableDraftSnapshot(draft: NextCycleSeedDraft): string {
@@ -406,20 +417,20 @@ export function MesocycleSetupEditor({
       <section className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-2xl border border-amber-300 bg-amber-50 p-6">
           <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">
-            Frozen system recommendation
+            Saved handoff recommendation
           </p>
           <h2 className="mt-2 text-xl font-semibold">Evidence-based design baseline</h2>
           <p className="mt-2 text-sm text-slate-700">
-            {recommendation.summary}
+            {formatHandoffDisplayCopy(recommendation.summary)}
           </p>
           {recommendation.structureReasons.length > 0 ? (
             <div className="mt-4 rounded-xl border border-amber-200 bg-white/80 p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Why the system recommended this design
+                Why this design was recommended
               </p>
               <div className="mt-3 space-y-2 text-sm text-slate-700">
                 {recommendation.structureReasons.map((reason) => (
-                  <p key={reason}>{reason}</p>
+                  <p key={reason}>{formatHandoffDisplayCopy(reason)}</p>
                 ))}
               </div>
             </div>
@@ -431,15 +442,17 @@ export function MesocycleSetupEditor({
                   Slot {index + 1}
                 </p>
                 <p className="mt-1 font-medium text-slate-900">{INTENT_LABELS[slot.intent]}</p>
-                <p className="mt-1 text-xs text-slate-500">{slot.slotId.replace("_", " ")}</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {formatSlotDisplayLabel(slot)}
+                </p>
               </div>
             ))}
           </div>
           <p className="mt-4 text-sm text-slate-600">
-            {recommendation.carryForwardSummary}
+            {formatHandoffDisplayCopy(recommendation.carryForwardSummary)}
           </p>
           <p className="mt-2 text-sm text-slate-600">
-            {recommendation.startingPointSummary}
+            {formatHandoffDisplayCopy(recommendation.startingPointSummary)}
           </p>
         </div>
 
@@ -449,16 +462,16 @@ export function MesocycleSetupEditor({
           </p>
           <h2 className="mt-2 text-xl font-semibold">Draft override inputs</h2>
           <p className="mt-2 text-sm text-slate-600">
-            Edit the pending setup draft here. This draft is your override of the frozen system
+            Edit the pending setup draft here. This draft is your override of the saved handoff
             recommendation. Preview and Accept both continue from the current draft against the
             same handoff baseline.
           </p>
           <div className="mt-4 rounded-xl bg-slate-50 p-4 text-sm text-slate-700">
             {drift.matchesRecommendation ? (
-              <p>Current draft still matches the system recommendation.</p>
+              <p>Current draft still matches the saved recommendation.</p>
             ) : (
               <p>
-                Current draft overrides the system recommendation for: {drift.changedFields.join(", ")}.
+                Current draft overrides the saved recommendation for: {drift.changedFields.join(", ")}.
                 {drift.carryForwardChangedCount > 0
                   ? ` ${drift.carryForwardChangedCount} carry-forward actions changed.`
                   : ""}
@@ -507,8 +520,8 @@ export function MesocycleSetupEditor({
         </p>
         <h2 className="mt-2 text-xl font-semibold">Editable slot order</h2>
         <p className="mt-2 text-sm text-slate-600">
-          {recommendation.slotOrderSummary} Change the intent in each slot only if you want a
-          different next-cycle sequence than the system recommendation.
+          {formatHandoffDisplayCopy(recommendation.slotOrderSummary)} Change the intent in each slot only if you want a
+          different next-cycle sequence than the saved recommendation.
         </p>
         <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {draft.structure.slots.map((slot, index) => (
@@ -516,7 +529,9 @@ export function MesocycleSetupEditor({
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Slot {index + 1}
               </p>
-              <p className="mt-1 text-xs text-slate-500">{slot.slotId.replace("_", " ")}</p>
+              <p className="mt-1 text-xs text-slate-500">
+                  {formatSlotDisplayLabel(slot)}
+              </p>
               <select
                 className="mt-3 h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm"
                 value={slot.intent}
@@ -707,7 +722,7 @@ export function MesocycleSetupEditor({
                 Frequency: {preview.summary.sessionsPerWeek} sessions per week
               </p>
               <p className="mt-2 text-sm text-slate-700">
-                {recommendation.startingPointSummary}
+                {formatHandoffDisplayCopy(recommendation.startingPointSummary)}
               </p>
             </div>
             <div className="rounded-2xl bg-slate-50 p-5">
@@ -729,7 +744,7 @@ export function MesocycleSetupEditor({
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
                           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                            {slot.slotId.replace("_", " ")}
+                            {slot.label}
                           </p>
                           <p className="mt-1 font-medium text-slate-900">{slot.label}</p>
                           <p className="mt-1 text-xs text-slate-500">{INTENT_LABELS[slot.intent]}</p>

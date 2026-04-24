@@ -122,7 +122,8 @@ describe("WorkoutDetailPage", { timeout: 15000 }, () => {
     render(ui);
 
     expect(screen.getByText("Partial Session")).toBeInTheDocument();
-    expect(screen.getByText("Push 2 | Slot ID: push_b | Estimated 55 minutes")).toBeInTheDocument();
+    expect(screen.getByText("Push 2 | Estimated 55 minutes")).toBeInTheDocument();
+    expect(screen.queryByText(/Slot ID/)).not.toBeInTheDocument();
   });
 
   it("renders the post-workout insights hierarchy for performed workouts", async () => {

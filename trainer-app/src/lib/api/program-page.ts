@@ -110,6 +110,7 @@ export type ProgramCloseoutSummary = {
   detail: string;
   actionHref: string;
   actionLabel: string;
+  actionMethod?: "link" | "post";
   dismissActionHref: string | null;
   dismissActionLabel: string | null;
   targetWeek: number | null;
@@ -324,7 +325,7 @@ function buildProgramSlotImpact(input: {
   return {
     topMuscles,
     hiddenMuscleCount,
-    summaryLabel: `This session will increase ${topMuscles
+    summaryLabel: `Projected: adds ${topMuscles
       .map((muscle) => muscle.muscle)
       .join(", ")}${overflowLabel}`,
   };
@@ -427,10 +428,10 @@ function buildProgramCloseoutSummary(
       statusLabel: "Available",
       detail: closeout.isPriorWeek
         ? `A Week ${closeout.targetWeek} optional session is still available after rollover. It stays separate from ${currentWeekLabel} and does not become a slot.`
-        : "Optional manual session is available for this week. It stays separate from the canonical slot plan.",
+        : "Optional manual session is available for this week. It stays separate from the weekly slot plan.",
       actionHref: `/api/mesocycles/week-close/${closeout.weekCloseId}/closeout`,
-      actionLabel:
-        closeout.isPriorWeek ? `Create Week ${closeout.targetWeek} optional session` : "Create custom session",
+      actionLabel: "Create optional session",
+      actionMethod: "post",
       dismissActionHref: null,
       dismissActionLabel: null,
       targetWeek: closeout.targetWeek,
@@ -450,7 +451,7 @@ function buildProgramCloseoutSummary(
       detail:
         closeout.isPriorWeek && closeout.targetWeek != null
           ? `Completed Week ${closeout.targetWeek} optional session is part of that week's actual landing, but it does not extend your current slot plan.`
-          : "Completed optional session is part of this week's actual landing, but it does not extend the remaining canonical slot plan.",
+          : "Completed optional session is part of this week's actual landing, but it does not extend the remaining weekly slot plan.",
       actionHref: `/workout/${closeout.workoutId}`,
       actionLabel: "Review custom session",
       dismissActionHref: null,
@@ -494,7 +495,7 @@ function buildProgramCloseoutSummary(
       normalizedStatus === "PLANNED"
         ? `/api/workouts/${closeout.workoutId}/dismiss-closeout`
         : null,
-    dismissActionLabel: normalizedStatus === "PLANNED" ? "Hide optional session" : null,
+    dismissActionLabel: normalizedStatus === "PLANNED" ? "Dismiss optional session" : null,
     targetWeek: closeout.targetWeek,
     isPriorWeek: closeout.isPriorWeek,
   };

@@ -12,6 +12,7 @@ export type CloseoutCardModel = {
   detail: string;
   actionHref: string;
   actionLabel: string;
+  actionMethod?: "link" | "post";
   dismissActionHref: string | null;
   dismissActionLabel: string | null;
 };
@@ -30,6 +31,8 @@ export function CloseoutCard({
   const router = useRouter();
   const [hidden, setHidden] = useState(false);
   const [dismissError, setDismissError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
   const Title = titleElement;
 
   if (hidden) {
@@ -58,6 +61,33 @@ export function CloseoutCard({
     router.refresh();
   };
 
+  const handleCreate = async () => {
+    setActionLoading(true);
+    setActionError(null);
+
+    const response = await fetch(closeout.actionHref, {
+      method: "POST",
+    });
+
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      setActionError(body.error ?? "Could not create optional session.");
+      setActionLoading(false);
+      return;
+    }
+
+    const body = await response.json().catch(() => ({}));
+    const workoutId = body.workout?.id;
+    if (typeof workoutId === "string" && workoutId.length > 0) {
+      router.push(`/log/${workoutId}`);
+      router.refresh();
+      return;
+    }
+
+    setActionError("Optional session was created, but no workout was returned.");
+    setActionLoading(false);
+  };
+
   return (
     <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -73,13 +103,25 @@ export function CloseoutCard({
         </span>
       </div>
       <div className="mt-4 flex flex-wrap gap-3">
-        <Link
-          className={buttonClassName({ variant: "secondary", size: "touch" })}
-          href={closeout.actionHref}
-          prefetch={false}
-        >
-          {closeout.actionLabel}
-        </Link>
+        {closeout.actionMethod === "post" ? (
+          <Button
+            type="button"
+            variant="secondary"
+            size="touch"
+            onClick={handleCreate}
+            disabled={actionLoading}
+          >
+            {actionLoading ? "Creating..." : closeout.actionLabel}
+          </Button>
+        ) : (
+          <Link
+            className={buttonClassName({ variant: "secondary", size: "touch" })}
+            href={closeout.actionHref}
+            prefetch={false}
+          >
+            {closeout.actionLabel}
+          </Link>
+        )}
         {closeout.dismissActionHref && closeout.dismissActionLabel ? (
           <Button
             type="button"
@@ -94,6 +136,11 @@ export function CloseoutCard({
       {dismissError ? (
         <Alert tone="critical" role="alert" className="mt-3 px-3 py-2 shadow-none">
           {dismissError}
+        </Alert>
+      ) : null}
+      {actionError ? (
+        <Alert tone="critical" role="alert" className="mt-3 px-3 py-2 shadow-none">
+          {actionError}
         </Alert>
       ) : null}
     </div>

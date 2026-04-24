@@ -362,7 +362,7 @@ describe("MesocycleSetupEditor", () => {
 
     expect(
       screen.getByText(
-        "4x/week Upper / Lower. This frozen recommendation is the evidence-based design baseline saved at handoff close."
+        "4x/week Upper / Lower. This saved recommendation is the evidence-based design baseline saved at handoff close."
       )
     ).toBeInTheDocument();
     expect(
@@ -399,8 +399,8 @@ describe("MesocycleSetupEditor", () => {
         "This is the server-owned projection of what Accept would create from the current draft. No mesocycle has been created yet."
       )
     ).toBeInTheDocument();
-    expect(screen.getByText("Upper 1")).toBeInTheDocument();
-    expect(screen.getByText("Upper 2")).toBeInTheDocument();
+    expect(screen.getAllByText("Upper 1").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Upper 2").length).toBeGreaterThan(0);
     expect(screen.getByText("Chest-Supported Row")).toBeInTheDocument();
   });
 });

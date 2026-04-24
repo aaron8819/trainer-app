@@ -203,11 +203,10 @@ describe("buildSessionSummaryModel", () => {
           label: "Session identity",
           value: "Second upper session in your current weekly order.",
         }),
-        expect.objectContaining({
-          label: "Slot ID",
-          value: "Canonical slot ID upper_b from your ordered weekly slot sequence.",
-        }),
       ])
+    );
+    expect(summary.items).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ label: "Slot ID" })])
     );
   });
 
@@ -319,6 +318,6 @@ describe("buildSessionSummaryModel", () => {
         tone: "caution",
       })
     );
-    expect(summary.truthNote?.value).toContain("canonical saved workout");
+    expect(summary.truthNote?.value).toContain("saved workout");
   });
 });

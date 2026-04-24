@@ -81,7 +81,7 @@ export function MuscleOutcomeReviewPanel() {
   return (
     <div className="space-y-4">
       <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-600">
-        Week {data.review.week} outcome review. Targets use canonical lifecycle volume targets and
+        Week {data.review.week} outcome review. Targets use saved lifecycle volume targets and
         actuals use weighted effective stimulus from performed workouts only.
       </div>
 

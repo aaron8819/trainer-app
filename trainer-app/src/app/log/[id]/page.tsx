@@ -6,7 +6,6 @@ import { parseExplainabilitySelectionMetadata } from "@/lib/ui/explainability";
 import { splitExercises } from "@/lib/ui/workout-sections";
 import {
   formatSessionIdentityLabel,
-  formatSessionSlotTechnicalLabel,
 } from "@/lib/ui/session-identity";
 import { isStrictOptionalGapFillSession } from "@/lib/gap-fill/classifier";
 import { getWorkoutWorkflowState } from "@/lib/workout-workflow";
@@ -22,7 +21,7 @@ function formatLogHeaderTechnicalLabel(label?: string | null): string | null {
     return null;
   }
 
-  return resolvedLabel.replace(/^Slot ID:\s*/, "Slot: ");
+  return null;
 }
 
 function LogWorkoutHeader({
@@ -158,12 +157,22 @@ export default async function LogWorkoutPage({
     mesocycleIsActive: workout.mesocycle?.isActive ?? null,
   });
   const resumeBlockedReason = workflow.resumeBlockedReason;
-  if (resumeBlockedReason) {
+  if (!workflow.isResumable) {
+    const reason =
+      resumeBlockedReason ??
+      (workflow.kind === "completed"
+        ? "This session is completed and is now read-only."
+        : workflow.kind === "skipped"
+          ? "This session was skipped and is now read-only."
+          : "This workout is unavailable for logging.");
     return (
       <main className="min-h-screen bg-white text-slate-900">
         <div className="page-shell max-w-4xl">
-          <h1 className="text-2xl font-semibold">Workout unavailable for logging</h1>
-          <p className="mt-3 text-sm text-slate-600">{resumeBlockedReason}</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Read-only
+          </p>
+          <h1 className="mt-2 text-2xl font-semibold">Session review only</h1>
+          <p className="mt-3 text-sm text-slate-600">{reason}</p>
           <div className="mt-5 flex flex-wrap gap-3">
             <Link
               className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 px-5 py-2 text-sm font-semibold text-slate-900"
@@ -190,9 +199,7 @@ export default async function LogWorkoutPage({
     intent: workout.sessionIntent,
     slotId: sessionDecisionReceipt?.sessionSlot?.slotId ?? null,
   });
-  const sessionTechnicalLabel = formatSessionSlotTechnicalLabel(
-    sessionDecisionReceipt?.sessionSlot?.slotId ?? null
-  );
+  const sessionTechnicalLabel = null;
   const isStrictGapFill = isStrictOptionalGapFillSession({
     selectionMetadata: workout.selectionMetadata,
     selectionMode: workout.selectionMode,

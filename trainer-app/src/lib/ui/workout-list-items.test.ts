@@ -367,9 +367,9 @@ describe("buildWorkoutListSurfaceSummary", () => {
 
     expect(summary.sessionIdentityLabel).toBe("Upper 2");
     expect(summary.sessionSlotId).toBe("upper_b");
-    expect(summary.sessionTechnicalLabel).toBe("Slot ID: upper_b");
+    expect(summary.sessionTechnicalLabel).toBeNull();
     expect(getWorkoutListPrimaryLabel(summary)).toBe("Upper 2");
-    expect(getWorkoutListDebugLabel(summary)).toBe("Slot ID: upper_b");
+    expect(getWorkoutListDebugLabel(summary)).toBeNull();
   });
 
   it("marks strict supplemental deficit sessions without changing body-part primary labeling", () => {

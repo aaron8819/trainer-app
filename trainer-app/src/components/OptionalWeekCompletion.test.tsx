@@ -92,7 +92,7 @@ describe("OptionalWeekCompletion", () => {
       "/log/custom-1"
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Hide options" }));
+    fireEvent.click(screen.getByRole("button", { name: "Collapse for now" }));
 
     expect(
       screen.getByText("Optional week completion hidden for this active week.")
@@ -113,7 +113,7 @@ describe("OptionalWeekCompletion", () => {
       />
     );
 
-    expect(screen.getByRole("link", { name: "Create custom session" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create optional session" })).toBeInTheDocument();
     expect(screen.queryByText(/closeout/i)).not.toBeInTheDocument();
   });
 });

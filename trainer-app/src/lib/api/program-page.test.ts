@@ -66,6 +66,10 @@ vi.mock("./mesocycle-week-close", () => ({
   findRelevantWeekCloseForUser: (...args: unknown[]) => mocks.findRelevantWeekCloseForUser(...args),
 }));
 
+vi.mock("@/lib/ui-audit-fixtures/server", () => ({
+  getUiAuditFixtureForServer: vi.fn(async () => null),
+}));
+
 import { buildMesocycleSlotSequence } from "./mesocycle-slot-contract";
 import { buildProgramCurrentWeekPlan, loadProgramPageData } from "./program-page";
 
@@ -517,7 +521,7 @@ describe("loadProgramPageData", () => {
               },
             ],
             hiddenMuscleCount: 0,
-            summaryLabel: "This session will increase Chest",
+            summaryLabel: "Projected: adds Chest",
           },
         },
         {
@@ -547,7 +551,7 @@ describe("loadProgramPageData", () => {
               },
             ],
             hiddenMuscleCount: 0,
-            summaryLabel: "This session will increase Quads, Glutes, Calves, Hamstrings",
+            summaryLabel: "Projected: adds Quads, Glutes, Calves, Hamstrings",
           },
         },
         {
@@ -573,7 +577,7 @@ describe("loadProgramPageData", () => {
               },
             ],
             hiddenMuscleCount: 3,
-            summaryLabel: "This session will increase Lats, Upper Back, Chest +3 more",
+            summaryLabel: "Projected: adds Lats, Upper Back, Chest +3 more",
           },
         },
       ],
@@ -588,7 +592,9 @@ describe("loadProgramPageData", () => {
       actionHref: "/log/closeout-planned",
       actionLabel: "Open custom session",
       dismissActionHref: "/api/workouts/closeout-planned/dismiss-closeout",
-      dismissActionLabel: "Hide optional session",
+      dismissActionLabel: "Dismiss optional session",
+      targetWeek: 2,
+      isPriorWeek: false,
     });
     expect(result.weekCompletionOutlook).toEqual({
       assumptionLabel: "If you complete the remaining planned sessions this week, you will likely land here.",
@@ -727,7 +733,7 @@ describe("loadProgramPageData", () => {
           { muscle: "Hamstrings", projectedEffectiveSets: 3.9 },
         ],
         hiddenMuscleCount: 2,
-        summaryLabel: "This session will increase Quads, Glutes, Calves, Hamstrings +2 more",
+        summaryLabel: "Projected: adds Quads, Glutes, Calves, Hamstrings +2 more",
       },
     });
     expect(lowerSlot?.impact?.topMuscles.map((row) => row.muscle)).not.toContain("Chest");
@@ -871,9 +877,12 @@ describe("loadProgramPageData", () => {
       detail:
         "A Week 3 optional session is still available after rollover. It stays separate from Week 4 and does not become a slot.",
       actionHref: "/api/mesocycles/week-close/wc-3/closeout",
-      actionLabel: "Create Week 3 optional session",
+      actionLabel: "Create optional session",
+      actionMethod: "post",
       dismissActionHref: null,
       dismissActionLabel: null,
+      targetWeek: 3,
+      isPriorWeek: true,
     });
   });
 

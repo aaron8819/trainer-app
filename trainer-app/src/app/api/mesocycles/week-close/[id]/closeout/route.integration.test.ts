@@ -32,7 +32,7 @@ vi.mock("@/lib/api/mesocycle-week-close", async (importOriginal) => {
   };
 });
 
-import { GET, POST } from "./route";
+import * as route from "./route";
 
 describe("POST /api/mesocycles/week-close/[id]/closeout", () => {
   beforeEach(() => {
@@ -93,7 +93,7 @@ describe("POST /api/mesocycles/week-close/[id]/closeout", () => {
   });
 
   it("creates a closeout scaffold workout through the week-close seam", async () => {
-    const response = await POST(
+    const response = await route.POST(
       new Request("http://localhost/api/mesocycles/week-close/wc-1/closeout", {
         method: "POST",
       }),
@@ -115,26 +115,15 @@ describe("POST /api/mesocycles/week-close/[id]/closeout", () => {
     });
   });
 
-  it("creates a closeout scaffold and redirects to logging for link-based creation", async () => {
-    const response = await GET(
-      new Request("http://localhost/api/mesocycles/week-close/wc-1/closeout", {
-        method: "GET",
-      }),
-      { params: Promise.resolve({ id: "wc-1" }) }
-    );
-
-    expect(response.status).toBe(303);
-    expect(response.headers.get("location")).toBe("http://localhost/log/workout-closeout-1");
-    expect(mocks.createCloseoutSessionForWeek).toHaveBeenCalledWith(mocks.tx, {
-      userId: "user-1",
-      weekCloseId: "wc-1",
-    });
+  it("does not expose GET creation", async () => {
+    expect("GET" in route).toBe(false);
+    expect(mocks.createCloseoutSessionForWeek).not.toHaveBeenCalled();
   });
 
   it("returns 404 when the week-close row is not found for the user", async () => {
     mocks.createCloseoutSessionForWeek.mockRejectedValueOnce(new Error("WEEK_CLOSE_NOT_FOUND"));
 
-    const response = await POST(
+    const response = await route.POST(
       new Request("http://localhost/api/mesocycles/week-close/wc-missing/closeout", {
         method: "POST",
       }),
@@ -152,7 +141,7 @@ describe("POST /api/mesocycles/week-close/[id]/closeout", () => {
       new Error("CLOSEOUT_ALREADY_EXISTS_FOR_WEEK")
     );
 
-    const response = await POST(
+    const response = await route.POST(
       new Request("http://localhost/api/mesocycles/week-close/wc-1/closeout", {
         method: "POST",
       }),

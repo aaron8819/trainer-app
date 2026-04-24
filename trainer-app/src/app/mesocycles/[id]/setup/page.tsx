@@ -32,8 +32,8 @@ export default async function MesocycleSetupPage({ params }: { params: Params })
           <p className="mt-4 text-sm uppercase tracking-wide text-slate-500">Next-Cycle Setup</p>
           <h1 className="page-title mt-2">Meso {setup.mesoNumber} handoff setup</h1>
           <p className="mt-2 text-sm text-slate-600">
-            This screen edits the pending setup draft that starts from the frozen system
-            recommendation. The preview is the server projection of your current draft against that
+            This screen edits the pending setup draft that starts from the saved handoff
+            recommendation. The preview is the projected next cycle from your current draft against that
             same handoff baseline.
           </p>
         </header>

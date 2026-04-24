@@ -79,7 +79,7 @@ describe("SessionContextCard", () => {
           truthNote: {
             label: "Current structure",
             value:
-              "Workout structure changed after generation. The exercise list on this page is the canonical saved workout; this card describes the original generated plan.",
+              "Workout structure changed after generation. The exercise list on this page is the saved workout; this card describes the original generated plan.",
             tone: "caution",
           },
         }}
@@ -88,6 +88,6 @@ describe("SessionContextCard", () => {
 
     expect(screen.getByText("Original plan context")).toBeInTheDocument();
     expect(screen.getByText("Current structure")).toBeInTheDocument();
-    expect(screen.getByText(/canonical saved workout/)).toBeInTheDocument();
+    expect(screen.getByText(/saved workout/)).toBeInTheDocument();
   });
 });

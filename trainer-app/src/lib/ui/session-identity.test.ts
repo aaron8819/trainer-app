@@ -29,18 +29,18 @@ describe("session identity helpers", () => {
   });
 
   it("formats technical slot labels from canonical slot ids", () => {
-    expect(formatSessionSlotTechnicalLabel("upper_b")).toBe("Slot ID: upper_b");
+    expect(formatSessionSlotTechnicalLabel("upper_b")).toBeNull();
     expect(
       formatSessionSlotTechnicalDescription({
         slotId: "upper_b",
         source: "mesocycle_slot_sequence",
       })
-    ).toBe("Canonical slot ID upper_b from your ordered weekly slot sequence.");
+    ).toBe("This session comes from your ordered weekly slot sequence.");
     expect(
       formatSessionSlotTechnicalDescription({
         slotId: "upper_b",
         source: "legacy_weekly_schedule",
       })
-    ).toBe("Canonical slot ID upper_b from your saved weekly schedule.");
+    ).toBe("This session comes from your saved weekly schedule.");
   });
 });

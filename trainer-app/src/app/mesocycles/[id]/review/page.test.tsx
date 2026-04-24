@@ -155,7 +155,7 @@ describe("MesocycleReviewPage", () => {
     vi.clearAllMocks();
   });
 
-  it("renders frozen handoff facts and live-derived mesocycle review sections", async () => {
+  it("renders saved handoff facts and live-derived mesocycle review sections", async () => {
     const { default: MesocycleReviewPage } = await import("./page");
     const ui = await MesocycleReviewPage({ params: Promise.resolve({ id: "meso-1" }) });
 
@@ -163,14 +163,14 @@ describe("MesocycleReviewPage", () => {
 
     expect(screen.getByRole("heading", { name: "Meso 3 complete" })).toBeInTheDocument();
     expect(screen.getByText("Pending Handoff Review")).toBeInTheDocument();
-    expect(screen.getAllByText("Frozen handoff summary")).toHaveLength(2);
+    expect(screen.getAllByText("Saved handoff summary")).toHaveLength(2);
     expect(screen.getAllByText("Closeout analysis")).toHaveLength(2);
     expect(
-      screen.getByText(/They do not change the frozen recommendation saved at handoff/i)
+      screen.getByText(/They do not change the saved recommendation saved at handoff/i)
     ).toBeInTheDocument();
     expect(screen.getAllByText("Bench Press").length).toBeGreaterThan(0);
     expect(
-      screen.getByText(/This frozen recommendation is the evidence-based design baseline saved at handoff close/i)
+      screen.getByText(/This saved recommendation is the evidence-based design baseline saved at handoff close/i)
     ).toBeInTheDocument();
     expect(screen.getByText("Carry-forward policy decisions")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Review and edit next-cycle setup" })).toHaveAttribute(

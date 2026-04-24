@@ -159,7 +159,7 @@ describe("HistoryClient", () => {
     );
 
     expect(screen.getByText("Upper 2")).toBeInTheDocument();
-    expect(screen.getByText("Slot ID: upper_b")).toBeInTheDocument();
+    expect(screen.queryByText("Slot ID: upper_b")).not.toBeInTheDocument();
   });
 
   it("renders a Deload badge on deload workouts", () => {

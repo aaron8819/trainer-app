@@ -15,6 +15,7 @@ export type OptionalWeekCustomSession = {
   status: string;
   statusLabel: string;
   actionHref: string;
+  actionMethod?: "link" | "post";
   workoutId: string | null;
 };
 
@@ -95,7 +96,7 @@ function buildCustomDetail(customSession: OptionalWeekCustomSession): string {
 
 function buildCustomActionLabel(customSession: OptionalWeekCustomSession): string {
   if (!customSession.workoutId) {
-    return "Create custom session";
+    return "Create optional session";
   }
 
   const status = customSession.status.trim().toUpperCase();
@@ -120,6 +121,7 @@ export function OptionalWeekCompletion({
 }: OptionalWeekCompletionProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [creatingCustom, setCreatingCustom] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dismissedWeekKey, setDismissedWeekKey] = useState<string | null>(null);
   const showRecommended = Boolean(
@@ -249,6 +251,36 @@ export function OptionalWeekCompletion({
     router.refresh();
   };
 
+  const handleCustomAction = async () => {
+    if (!customSession) {
+      return;
+    }
+
+    setCreatingCustom(true);
+    setError(null);
+
+    const response = await fetch(customSession.actionHref, {
+      method: "POST",
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      setError(body.error ?? "Failed to create optional session.");
+      setCreatingCustom(false);
+      return;
+    }
+
+    const body = await response.json().catch(() => ({}));
+    const workoutId = body.workout?.id;
+    if (typeof workoutId === "string" && workoutId.length > 0) {
+      router.push(`/log/${workoutId}`);
+      router.refresh();
+      return;
+    }
+
+    setError("Optional session was created, but no workout was returned.");
+    setCreatingCustom(false);
+  };
+
   return (
     <section className="rounded-2xl border border-amber-200 bg-amber-50/40 p-5">
       <h2 className="text-lg font-semibold text-slate-900">Optional week completion</h2>
@@ -302,13 +334,24 @@ export function OptionalWeekCompletion({
                 {customSession.statusLabel}
               </span>
             </div>
-            <Link
-              className="mt-4 inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 px-5 py-2 text-sm font-semibold text-slate-900"
-              href={customSession.actionHref}
-              prefetch={false}
-            >
-              {buildCustomActionLabel(customSession)}
-            </Link>
+            {customSession.actionMethod === "post" || !customSession.workoutId ? (
+              <button
+                type="button"
+                className="mt-4 inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 px-5 py-2 text-sm font-semibold text-slate-900 disabled:opacity-60"
+                onClick={handleCustomAction}
+                disabled={creatingCustom}
+              >
+                {creatingCustom ? "Creating..." : buildCustomActionLabel(customSession)}
+              </button>
+            ) : (
+              <Link
+                className="mt-4 inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 px-5 py-2 text-sm font-semibold text-slate-900"
+                href={customSession.actionHref}
+                prefetch={false}
+              >
+                {buildCustomActionLabel(customSession)}
+              </Link>
+            )}
           </div>
         ) : null}
       </div>
@@ -318,7 +361,7 @@ export function OptionalWeekCompletion({
         className="mt-4 inline-flex min-h-10 items-center justify-center rounded-full border border-amber-300 bg-white px-4 py-2 text-sm font-semibold text-slate-900"
         onClick={() => setDismissedWeekKey(weekKey)}
       >
-        Hide options
+        Collapse for now
       </button>
       {error ? <p className="mt-2 text-sm text-rose-600">{error}</p> : null}
     </section>

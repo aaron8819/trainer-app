@@ -41,7 +41,6 @@ export function CompletedWorkoutReview({
   rpeAdherence,
   performanceSummary,
   sessionIdentityLabel,
-  sessionTechnicalLabel,
 }: CompletedWorkoutReviewProps) {
   const [explanation, setExplanation] = useState<WorkoutExplanation | null>(null);
   const [isLoadingExplanation, setIsLoadingExplanation] = useState(true);
@@ -88,7 +87,6 @@ export function CompletedWorkoutReview({
         {sessionIdentityLabel ? (
           <p className="mt-2 text-sm text-emerald-800">
             {sessionIdentityLabel}
-            {sessionTechnicalLabel ? ` | ${sessionTechnicalLabel}` : ""}
           </p>
         ) : null}
         <div className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-4">

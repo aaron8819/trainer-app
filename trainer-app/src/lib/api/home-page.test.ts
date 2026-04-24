@@ -38,6 +38,10 @@ vi.mock("./program", () => ({
     mocks.loadHomeProgramSupport(...args),
 }));
 
+vi.mock("@/lib/ui-audit-fixtures/server", () => ({
+  getUiAuditFixtureForServer: vi.fn(async () => null),
+}));
+
 import { loadHomePageData } from "./home-page";
 
 function makeWorkoutRow(overrides: Record<string, unknown> = {}) {
@@ -412,11 +416,11 @@ describe("loadHomePageData", () => {
       status: "planned",
       statusLabel: "Planned",
       detail:
-        "Optional manual session for this week. It can add actual weekly volume without becoming your next canonical session.",
+        "Optional manual session for this week. It can add actual weekly volume without becoming required work.",
       actionHref: "/log/workout-closeout",
       actionLabel: "Open custom session",
       dismissActionHref: "/api/workouts/workout-closeout/dismiss-closeout",
-      dismissActionLabel: "Hide optional session",
+      dismissActionLabel: "Dismiss optional session",
     });
   });
 
@@ -488,7 +492,8 @@ describe("loadHomePageData", () => {
       detail:
         "A Week 3 optional session is still available after rollover. It remains optional and does not change Week 4 continuity.",
       actionHref: "/api/mesocycles/week-close/wc-3/closeout",
-      actionLabel: "Create Week 3 optional session",
+      actionLabel: "Create optional session",
+      actionMethod: "post",
       dismissActionHref: null,
       dismissActionLabel: null,
     });

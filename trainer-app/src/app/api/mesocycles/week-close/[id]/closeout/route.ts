@@ -69,32 +69,3 @@ export async function POST(
     return buildCloseoutErrorResponse(error);
   }
 }
-
-export async function GET(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const user = await resolveOwner();
-  if (!user) {
-    return NextResponse.json({ error: "User not found" }, { status: 404 });
-  }
-
-  const { id } = await params;
-  if (!id) {
-    return NextResponse.json({ error: "Week-close id required" }, { status: 400 });
-  }
-
-  try {
-    const workout = await createCloseoutForRequest({
-      userId: user.id,
-      weekCloseId: id,
-    });
-
-    return NextResponse.redirect(new URL(`/log/${workout.id}`, request.url), { status: 303 });
-  } catch (error) {
-    if (!(error instanceof Error)) {
-      throw error;
-    }
-    return buildCloseoutErrorResponse(error);
-  }
-}

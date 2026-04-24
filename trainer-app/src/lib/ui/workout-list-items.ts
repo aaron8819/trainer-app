@@ -165,7 +165,7 @@ export function getWorkoutListSecondaryLabel(
 export function getWorkoutListDebugLabel(
   workout: Pick<WorkoutListSurfaceSummary, "sessionTechnicalLabel">
 ): string | null {
-  return workout.sessionTechnicalLabel;
+  return null;
 }
 
 export function getWorkoutListStatusLabel(status: string): string {

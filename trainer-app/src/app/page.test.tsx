@@ -323,11 +323,11 @@ describe("Home page", () => {
         status: "planned",
         statusLabel: "Planned",
         detail:
-          "Optional manual session for this week. It can add actual weekly volume without becoming your next canonical session.",
+          "Optional manual session for this week. It can add actual weekly volume without becoming required work.",
         actionHref: "/log/workout-closeout",
         actionLabel: "Open custom session",
         dismissActionHref: "/api/workouts/workout-closeout/dismiss-closeout",
-        dismissActionLabel: "Hide optional session",
+        dismissActionLabel: "Dismiss optional session",
       },
       headerContext: "Week 2 - Accumulation",
       recentActivity: [],

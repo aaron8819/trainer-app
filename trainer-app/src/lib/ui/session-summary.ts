@@ -17,7 +17,6 @@ import {
 import {
   formatSessionIdentityDescription,
   formatSessionIdentityLabel,
-  formatSessionSlotTechnicalDescription,
 } from "./session-identity";
 
 export type SessionSummaryTone = "neutral" | "positive" | "caution";
@@ -287,14 +286,6 @@ export function buildSessionSummaryModel(input: {
                 slotId: receipt.sessionSlot.slotId,
               }) ?? `${sessionIdentityLabel} session in your current weekly order.`,
           } satisfies SessionSummaryItem,
-          {
-            label: "Slot ID",
-            value:
-              formatSessionSlotTechnicalDescription({
-                slotId: receipt.sessionSlot.slotId,
-                source: receipt.sessionSlot.source,
-              }) ?? `Canonical slot ID ${receipt.sessionSlot.slotId}.`,
-          } satisfies SessionSummaryItem,
         ]),
     {
       label: "Target effort",
@@ -345,7 +336,7 @@ export function buildSessionSummaryModel(input: {
       ? {
           label: "Current structure",
           value:
-            "Workout structure changed after generation. The exercise list on this page is the canonical saved workout; this card describes the original generated plan.",
+            "Workout structure changed after generation. The exercise list on this page is the saved workout; this card describes the original generated plan.",
           tone: "caution",
         }
       : undefined,

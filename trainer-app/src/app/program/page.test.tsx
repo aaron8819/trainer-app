@@ -102,7 +102,7 @@ describe("ProgramPage", () => {
                 { muscle: "Rear Delts", projectedEffectiveSets: 1.5 },
               ],
               hiddenMuscleCount: 2,
-              summaryLabel: "This session will increase Lats, Upper Back, Rear Delts +2 more",
+              summaryLabel: "Projected: adds Lats, Upper Back, Rear Delts +2 more",
             },
           },
         ],
@@ -233,7 +233,7 @@ describe("ProgramPage", () => {
     expect(screen.getByText("Lower 1")).toBeInTheDocument();
     expect(screen.getByText("Impact")).toBeInTheDocument();
     expect(
-      screen.getByText(/This session will increase Lats, Upper Back, Rear Delts \+2 more/)
+      screen.getByText(/Projected: adds Lats, Upper Back, Rear Delts \+2 more/)
     ).toBeInTheDocument();
     expect(screen.getByText(/Lats 3 • Upper Back 2 • Rear Delts 1.5 • \+2 more/)).toBeInTheDocument();
     expect(screen.getByText("Chest")).toBeInTheDocument();
@@ -305,7 +305,7 @@ describe("ProgramPage", () => {
         actionHref: "/log/workout-closeout",
         actionLabel: "Open custom session",
         dismissActionHref: "/api/workouts/workout-closeout/dismiss-closeout",
-        dismissActionLabel: "Hide optional session",
+        dismissActionLabel: "Dismiss optional session",
       },
       weekCompletionOutlook: null,
       volumeDetails: {

@@ -117,7 +117,7 @@ export function formatSessionSlotTechnicalLabel(slotId?: string | null): string 
     return null;
   }
 
-  return `Slot ID: ${resolvedSlotId}`;
+  return null;
 }
 
 export function formatSessionSlotTechnicalDescription(input: {
@@ -130,8 +130,8 @@ export function formatSessionSlotTechnicalDescription(input: {
   }
 
   if (input.source === "legacy_weekly_schedule") {
-    return `Canonical slot ID ${resolvedSlotId} from your saved weekly schedule.`;
+    return "This session comes from your saved weekly schedule.";
   }
 
-  return `Canonical slot ID ${resolvedSlotId} from your ordered weekly slot sequence.`;
+  return "This session comes from your ordered weekly slot sequence.";
 }

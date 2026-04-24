@@ -208,7 +208,7 @@ describe("CompletedWorkoutReview", () => {
     expect(screen.queryByText("Added exercise")).not.toBeInTheDocument();
   });
 
-  it("renders the canonical session identity and slot id when provided", () => {
+  it("renders the session identity without exposing slot ids", () => {
     render(
       <CompletedWorkoutReview
         workoutId="workout-1"
@@ -219,7 +219,8 @@ describe("CompletedWorkoutReview", () => {
       />
     );
 
-    expect(screen.getByText("Upper 2 | Slot ID: upper_b")).toBeInTheDocument();
+    expect(screen.getByText("Upper 2")).toBeInTheDocument();
+    expect(screen.queryByText("Slot ID: upper_b")).not.toBeInTheDocument();
   });
 
   it("separates planned, completed, skipped, and extra set counts in the summary header", () => {

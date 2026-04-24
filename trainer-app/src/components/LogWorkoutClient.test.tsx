@@ -442,6 +442,7 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
             isMainLift: false,
             section: "ACCESSORY",
             sessionNote: "Added during workout. Session-only; future planning ignores it.",
+            capabilities: { canAddSet: true, canRemove: true, canSwap: true },
             sets: [
               {
                 setId: "set-added-1",
@@ -575,6 +576,7 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
               isMainLift: false,
               section: "ACCESSORY",
               sessionNote: "Added during workout. Session-only; future planning ignores it.",
+              capabilities: { canAddSet: true, canRemove: true, canSwap: true },
               sets: [
                 {
                   setId: "set-added-1",
@@ -631,6 +633,7 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
             isMainLift: false,
             section: "ACCESSORY",
             sessionNote: "Added during workout. Session-only; future planning ignores it.",
+            capabilities: { canAddSet: true, canRemove: false, canSwap: false },
             sets: [
               {
                 setId: "set-added-1",
@@ -650,6 +653,55 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
 
     expect(screen.getByText("Added exercise")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Remove" })).not.toBeInTheDocument();
+  });
+
+  it("gates log controls from server-provided capabilities", () => {
+    render(
+      <LogWorkoutClient
+        workoutId="workout-1"
+        capabilities={{
+          canAddSet: false,
+          canRemoveSet: false,
+          canSwapExercise: false,
+          canAddExercise: false,
+          canFinish: false,
+          showWeeklyCheck: false,
+        }}
+        exercises={[
+          {
+            workoutExerciseId: "ex-added",
+            name: "Pec Deck",
+            equipment: ["machine"],
+            isRuntimeAdded: true,
+            isMainLift: false,
+            section: "ACCESSORY",
+            sessionNote: "Added during workout. Session-only; future planning ignores it.",
+            capabilities: { canAddSet: false, canRemove: false, canSwap: false },
+            sets: [
+              {
+                setId: "set-added-1",
+                setIndex: 1,
+                targetReps: 12,
+                actualReps: 12,
+                targetLoad: 80,
+                actualLoad: 80,
+                targetRpe: 7,
+                actualRpe: 7,
+                restSeconds: 90,
+              },
+            ],
+          },
+        ]}
+      />
+    );
+
+    const queueRow = screen.getByTestId("queue-row-ex-added");
+    expect(screen.queryByRole("button", { name: "+ Add Exercise" })).not.toBeInTheDocument();
+    expect(within(queueRow).queryByRole("button", { name: "+ Add set" })).not.toBeInTheDocument();
+    expect(within(queueRow).queryByRole("button", { name: "Swap" })).not.toBeInTheDocument();
+    expect(within(queueRow).queryByRole("button", { name: "Remove" })).not.toBeInTheDocument();
+    expect(screen.queryByTestId("workout-finish-bar")).not.toBeInTheDocument();
+    expect(mockedLoadWeeklyVolumeCheckRequest).not.toHaveBeenCalled();
   });
 
   it("returns to the new active logging context after adding an exercise", async () => {
@@ -737,6 +789,7 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
               isMainLift: false,
               section: "ACCESSORY",
               sessionNote: "Added during workout. Session-only; future planning ignores it.",
+              capabilities: { canAddSet: true, canRemove: true, canSwap: true },
               sets: [
                 {
                   setId: "set-added-1",
@@ -1480,6 +1533,7 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
               isMainLift: false,
               section: "ACCESSORY",
               sessionNote: "Added during workout. Session-only; future planning ignores it.",
+              capabilities: { canAddSet: true, canRemove: true, canSwap: true },
               sets: [
                 {
                   setId: "set-added-1",
@@ -1908,6 +1962,7 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
               section: "ACCESSORY",
               sessionNote:
                 "Swapped from Pec Deck. Session-only; future progression stays exercise-specific.",
+              capabilities: { canAddSet: true, canRemove: true, canSwap: false },
               sets: [
                 {
                   setId: "set-added-1",
@@ -1943,6 +1998,7 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
               section: "ACCESSORY",
               sessionNote:
                 "Swapped from Pec Deck. Session-only; future progression stays exercise-specific.",
+              capabilities: { canAddSet: true, canRemove: true, canSwap: false },
               sets: [
                 {
                   setId: "set-added-1",
@@ -1974,6 +2030,7 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
             isMainLift: false,
             section: "ACCESSORY",
             sessionNote: "Added during workout. Session-only; future planning ignores it.",
+            capabilities: { canAddSet: true, canRemove: true, canSwap: true },
             sets: [
               {
                 setId: "set-added-1",

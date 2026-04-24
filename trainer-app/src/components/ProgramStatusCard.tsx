@@ -10,28 +10,16 @@ import type {
   ProgramVolumeRow,
 } from "@/lib/api/program";
 import { SlideUpSheet } from "@/components/ui/SlideUpSheet";
-import {
-  formatWeeklyMuscleStatusLabel,
-  getWeeklyMuscleStatus,
-  summarizeWeeklyMuscleStatuses,
-  type WeeklyMuscleStatus,
-} from "@/lib/ui/weekly-muscle-status";
 
 type ProgramStatusCardVariant = "default" | "homeCompact" | "volumeOnly";
 
-export function getVolumeDotClass(
-  effectiveSets: number,
-  target: number,
-  mev: number,
-  mav: number,
-  mrv: number
-): string {
-  if (effectiveSets >= mrv) return "bg-rose-500";
-  if (effectiveSets > mav && effectiveSets < mrv) return "bg-amber-400";
-  if (effectiveSets > target && effectiveSets <= mav) return "bg-emerald-300";
-  if (effectiveSets >= mev && effectiveSets <= target) return "bg-emerald-500";
-  return "bg-slate-300";
-}
+type VolumeStatusToken =
+  | "below_mev"
+  | "in_range"
+  | "near_target"
+  | "on_target"
+  | "near_mrv"
+  | "at_mrv";
 
 function formatSetCount(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
@@ -88,7 +76,7 @@ function getTodayAdvisoryClass(state: ProgramVolumeRow["opportunityState"]): str
   }
 }
 
-const STATUS_STYLE: Record<WeeklyMuscleStatus, string> = {
+const STATUS_STYLE: Record<VolumeStatusToken, string> = {
   below_mev: "bg-slate-50 text-slate-600 border-slate-200",
   in_range: "bg-emerald-50 text-emerald-700 border-emerald-100",
   near_target: "bg-emerald-100 text-emerald-800 border-emerald-200",
@@ -97,7 +85,7 @@ const STATUS_STYLE: Record<WeeklyMuscleStatus, string> = {
   at_mrv: "bg-red-50 text-red-800 border-red-200",
 };
 
-const SUMMARY_CHIP_STYLE: Record<WeeklyMuscleStatus, string> = {
+const SUMMARY_CHIP_STYLE: Record<VolumeStatusToken, string> = {
   below_mev: "bg-slate-100 px-3 py-1 text-slate-700",
   in_range: "bg-emerald-50 px-3 py-1 text-emerald-700",
   near_target: "bg-emerald-100 px-3 py-1 text-emerald-800",
@@ -106,7 +94,7 @@ const SUMMARY_CHIP_STYLE: Record<WeeklyMuscleStatus, string> = {
   at_mrv: "bg-red-50 px-3 py-1 text-red-800",
 };
 
-const SUMMARY_STATUS_ORDER: WeeklyMuscleStatus[] = [
+const SUMMARY_STATUS_ORDER: VolumeStatusToken[] = [
   "below_mev",
   "in_range",
   "near_target",
@@ -115,21 +103,45 @@ const SUMMARY_STATUS_ORDER: WeeklyMuscleStatus[] = [
   "at_mrv",
 ];
 
+function isVolumeStatusToken(value: string): value is VolumeStatusToken {
+  return value in STATUS_STYLE;
+}
+
+function getServerStatus(row: ProgramVolumeRow): VolumeStatusToken | null {
+  const status = row.badges[0]?.status;
+  return status && isVolumeStatusToken(status) ? status : null;
+}
+
 function VolumeStatusSummaryChips({ rows }: { rows: ProgramVolumeRow[] }) {
   if (rows.length === 0) {
     return null;
   }
 
-  const summary = summarizeWeeklyMuscleStatuses(rows);
+  const summary = rows.reduce<Partial<Record<VolumeStatusToken, { count: number; label: string }>>>(
+    (acc, row) => {
+      const badge = row.badges[0];
+      if (badge?.status && isVolumeStatusToken(badge.status)) {
+        acc[badge.status] ??= { count: 0, label: badge.label || row.statusLabel };
+        const entry = acc[badge.status];
+        if (entry) {
+          entry.count += 1;
+          entry.label = badge.label || row.statusLabel;
+        }
+      }
+      return acc;
+    },
+    {}
+  );
+  const visibleStatuses = SUMMARY_STATUS_ORDER.filter((status) => summary[status]);
 
   return (
     <div
       aria-label="Weekly volume status summary"
       className="flex flex-wrap gap-2 text-xs font-medium text-slate-700"
     >
-      {SUMMARY_STATUS_ORDER.map((status) => (
+      {visibleStatuses.map((status) => (
         <span key={status} className={`rounded-full ${SUMMARY_CHIP_STYLE[status]}`}>
-          {summary[status]} {formatWeeklyMuscleStatusLabel(status)}
+          {summary[status]?.count} {summary[status]?.label}
         </span>
       ))}
     </div>
@@ -536,9 +548,6 @@ function ProgramStatusCardDefault({
           <p className={`mt-0.5 text-xs ${isVolumeOnly ? "text-slate-400" : "text-slate-500"}`}>
             {volumeScopeCopy}
           </p>
-          <p className={`mt-0.5 text-xs ${isVolumeOnly ? "text-slate-400" : "text-slate-400"}`}>
-            MEV = minimum effective, MAV = productive upper range, MRV = recoverable ceiling.
-          </p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
           <button
@@ -582,15 +591,10 @@ function ProgramStatusCardDefault({
           }`}
         >
           {relevantVolume.map((row) => {
-            const status = getWeeklyMuscleStatus({
-              effectiveSets: row.effectiveSets,
-              target: row.target,
-              mev: row.mev,
-              mrv: row.mrv,
-            });
-            const cls = STATUS_STYLE[status];
-            const barWidth =
-              row.target > 0 ? Math.min(100, Math.round((row.effectiveSets / row.target) * 100)) : 0;
+            const status = getServerStatus(row);
+            const cls = status
+              ? STATUS_STYLE[status]
+              : "bg-slate-50 text-slate-600 border-slate-200";
             const hasBreakdown = Boolean(row.breakdown?.contributions.length);
             return (
               <button
@@ -624,9 +628,12 @@ function ProgramStatusCardDefault({
                   <span
                     className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium ${cls}`}
                   >
-                    {formatWeeklyMuscleStatusLabel(status)}
+                    {row.statusLabel}
                   </span>
                 </div>
+                {row.statusDescription ? (
+                  <p className="mt-1 text-[11px] opacity-70">{row.statusDescription}</p>
+                ) : null}
                 {!isHistorical ? (
                   <p
                     className={`mt-1 text-[11px] opacity-70 ${getTodayAdvisoryClass(
@@ -641,15 +648,6 @@ function ProgramStatusCardDefault({
                     {formatRawSetContext(row.directSets, row.indirectSets)}
                   </p>
                 ) : null}
-                <div className="mt-2 h-1 w-full rounded-full bg-current opacity-20">
-                  <div
-                    className="h-1 rounded-full bg-current opacity-80 transition-all"
-                    style={{ width: `${barWidth}%` }}
-                  />
-                </div>
-                <p className="mt-1 text-xs opacity-60">
-                  MEV {row.mev} · MAV {row.mav} · MRV {row.mrv}
-                </p>
                 {hasBreakdown ? (
                   <p className="mt-2 text-[11px] font-medium opacity-70">Tap for breakdown</p>
                 ) : null}

@@ -11,6 +11,7 @@ import type {
   ExerciseSection,
   LogExerciseMuscleTagGroups,
   LogExerciseInput,
+  LogWorkoutCapabilities,
   LogSetInput,
   RpeAdherenceSummary,
   SectionedExercises,
@@ -145,6 +146,14 @@ export default function LogWorkoutClient({
   exercises,
   allowBonusExerciseAdd = true,
   allowRuntimeExerciseSwap = false,
+  capabilities = {
+    canAddSet: true,
+    canRemoveSet: true,
+    canSwapExercise: allowRuntimeExerciseSwap,
+    canAddExercise: allowBonusExerciseAdd,
+    canFinish: true,
+    showWeeklyCheck: true,
+  },
   initialRestTimer,
   onQueueExerciseRowRender,
   sessionIdentityLabel,
@@ -154,6 +163,7 @@ export default function LogWorkoutClient({
   exercises: LogExerciseInput[] | SectionedExercises;
   allowBonusExerciseAdd?: boolean;
   allowRuntimeExerciseSwap?: boolean;
+  capabilities?: LogWorkoutCapabilities;
   initialRestTimer?: RestTimerSnapshot | null;
   onQueueExerciseRowRender?: (exerciseId: string) => void;
   sessionIdentityLabel?: string | null;
@@ -629,8 +639,15 @@ export default function LogWorkoutClient({
             const loggedCountForExercise = exercise.sets.filter((set) => satisfiedSetIds.has(set.setId)).length;
             const nextSet =
               exercise.sets.find((set) => !satisfiedSetIds.has(set.setId)) ?? exercise.sets[0] ?? null;
+            const exerciseCapabilities = exercise.capabilities;
+            const canSwapFromServer =
+              exerciseCapabilities?.canSwap ?? capabilities.canSwapExercise;
+            const canAddSetFromServer =
+              exerciseCapabilities?.canAddSet ?? capabilities.canAddSet;
+            const canRemoveFromServer =
+              exerciseCapabilities?.canRemove ?? false;
             let swapDisabledReason: string | null = null;
-            if (allowRuntimeExerciseSwap) {
+            if (canSwapFromServer) {
               if (loggedCountForExercise > 0) {
                 swapDisabledReason = "Swap unavailable after sets are logged.";
               } else if (exercise.isSwapped) {
@@ -652,13 +669,12 @@ export default function LogWorkoutClient({
                 loggedCountForExercise === exercise.sets.length && exercise.sets.length > 0,
               isExpanded: expandedExerciseId === exercise.workoutExerciseId,
               nextSetId: nextSet?.setId ?? null,
-              canSwap: allowRuntimeExerciseSwap && swapDisabledReason == null,
+              canSwap: canSwapFromServer && swapDisabledReason == null,
               swapDisabledReason,
-              canAddSet: true,
+              canAddSet: canAddSetFromServer,
               isAddingSet: addingSetExerciseId === exercise.workoutExerciseId,
               isSwapping: selectedSwapExerciseId === exercise.workoutExerciseId,
-              canRemove:
-                (exercise.isRuntimeAdded ?? false) && loggedCountForExercise === 0,
+              canRemove: canRemoveFromServer,
               isRemoving: removingExerciseId === exercise.workoutExerciseId,
               chips: exercise.sets.map((set) => ({
                 setId: set.setId,
@@ -680,7 +696,7 @@ export default function LogWorkoutClient({
     data,
     expandedExerciseId,
     expandedSections,
-    allowRuntimeExerciseSwap,
+    capabilities,
     satisfiedSetIds,
     resolvedActiveSetId,
     selectedSwapExerciseId,
@@ -708,7 +724,7 @@ export default function LogWorkoutClient({
     activeSet !== null &&
     autoregHint.exerciseId === activeSet.exercise.workoutExerciseId;
   const sessionTerminated = completion.completed || completion.skipped;
-  const showFinishBar = !sessionTerminated && allSetsLogged;
+  const showFinishBar = capabilities.canFinish && !sessionTerminated && allSetsLogged;
   const shouldShowActiveEditor =
     !sessionTerminated && activeSet != null && (activeCardMode.kind === "edit" || !allSetsLogged);
   const plannedSetSummary = useMemo(() => {
@@ -734,7 +750,7 @@ export default function LogWorkoutClient({
     };
   }, [flatSets, satisfiedSetIds]);
   const showWeeklyVolumeCheck =
-    !sessionTerminated && plannedSetSummary.plannedCheckpointReached;
+    capabilities.showWeeklyCheck && !sessionTerminated && plannedSetSummary.plannedCheckpointReached;
   const weeklyVolumeRefreshKey = useMemo(
     () =>
       JSON.stringify(
@@ -997,7 +1013,7 @@ export default function LogWorkoutClient({
 
       {!sessionTerminated ? (
         <div className="flex flex-wrap justify-center gap-3">
-          {allowBonusExerciseAdd ? (
+          {capabilities.canAddExercise ? (
             <button
               className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 px-5 text-sm font-semibold text-slate-700"
               onClick={() => setShowBonusSheet(true)}

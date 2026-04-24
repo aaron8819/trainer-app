@@ -123,6 +123,7 @@ export type ProgramCloseoutSummary = {
   dismissActionLabel: string | null;
   targetWeek: number | null;
   isPriorWeek: boolean;
+  canDismiss: boolean;
 };
 
 function formatCloseoutTitle(
@@ -585,6 +586,7 @@ function buildProgramCloseoutSummary(
       dismissActionLabel: null,
       targetWeek: closeout.targetWeek,
       isPriorWeek: closeout.isPriorWeek,
+      canDismiss: true,
     };
   }
 
@@ -607,6 +609,7 @@ function buildProgramCloseoutSummary(
       dismissActionLabel: null,
       targetWeek: closeout.targetWeek,
       isPriorWeek: closeout.isPriorWeek,
+      canDismiss: true,
     };
   }
 
@@ -626,6 +629,7 @@ function buildProgramCloseoutSummary(
       dismissActionLabel: null,
       targetWeek: closeout.targetWeek,
       isPriorWeek: closeout.isPriorWeek,
+      canDismiss: true,
     };
   }
 
@@ -647,6 +651,7 @@ function buildProgramCloseoutSummary(
     dismissActionLabel: normalizedStatus === "PLANNED" ? "Dismiss optional session" : null,
     targetWeek: closeout.targetWeek,
     isPriorWeek: closeout.isPriorWeek,
+    canDismiss: true,
   };
 }
 

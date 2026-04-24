@@ -51,6 +51,7 @@ export type HomeCloseoutSummary = {
   actionMethod?: "link" | "post";
   dismissActionHref: string | null;
   dismissActionLabel: string | null;
+  canDismiss: boolean;
 };
 
 export type HomePrimaryAction =
@@ -359,6 +360,7 @@ function buildHomeCloseoutSummary(
       actionMethod: "post",
       dismissActionHref: null,
       dismissActionLabel: null,
+      canDismiss: true,
     };
   }
 
@@ -380,6 +382,7 @@ function buildHomeCloseoutSummary(
       actionLabel: "Review custom session",
       dismissActionHref: null,
       dismissActionLabel: null,
+      canDismiss: true,
     };
   }
 
@@ -397,6 +400,7 @@ function buildHomeCloseoutSummary(
       actionLabel: "Review custom session",
       dismissActionHref: null,
       dismissActionLabel: null,
+      canDismiss: true,
     };
   }
 
@@ -416,6 +420,7 @@ function buildHomeCloseoutSummary(
         ? `/api/workouts/${closeout.workoutId}/dismiss-closeout`
         : null,
     dismissActionLabel: normalizedStatus === "PLANNED" ? "Dismiss optional session" : null,
+    canDismiss: true,
   };
 }
 

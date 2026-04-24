@@ -59,14 +59,46 @@ function buildData(
 }
 
 function withOpportunity(
-  row: Omit<ProgramVolumeRow, "opportunityScore" | "opportunityState" | "opportunityRationale">
+  row: Omit<
+    ProgramVolumeRow,
+    | "opportunityScore"
+    | "opportunityState"
+    | "opportunityRationale"
+    | "statusLabel"
+    | "statusDescription"
+    | "badges"
+  > &
+    Partial<Pick<ProgramVolumeRow, "statusLabel" | "statusDescription" | "badges">>
 ): ProgramVolumeRow {
+  const serverStatus = buildServerStatus(row);
+  const statusLabel = row.statusLabel ?? serverStatus.label;
   return {
     ...row,
+    statusLabel,
+    statusDescription:
+      row.statusDescription ?? `${row.effectiveSets} weighted sets from server.`,
+    badges: row.badges ?? [{ status: serverStatus.status, label: statusLabel }],
     opportunityScore: 0,
     opportunityState: "covered",
     opportunityRationale: "Weekly target is already covered in this volume snapshot.",
   };
+}
+
+function buildServerStatus(row: {
+  effectiveSets: number;
+  target: number;
+  mev: number;
+  mrv: number;
+}): { status: string; label: string } {
+  if (row.effectiveSets >= row.mrv) return { status: "at_mrv", label: "At MRV" };
+  if (row.effectiveSets >= row.mrv * 0.85) return { status: "near_mrv", label: "Near MRV" };
+  if (row.effectiveSets >= row.target) return { status: "on_target", label: "On target" };
+  if (row.effectiveSets >= row.mev) {
+    return row.effectiveSets >= row.target * 0.85
+      ? { status: "near_target", label: "Near target" }
+      : { status: "in_range", label: "In range" };
+  }
+  return { status: "below_mev", label: "Below MEV" };
 }
 
 function expectClassNames(element: Element | null, classNames: string[]) {
@@ -758,8 +790,8 @@ describe("ProgramStatusCard volumeOnly variant", () => {
     expect(screen.getByText("Viewing historical volume for Week 3. Read-only.")).toBeInTheDocument();
     expect(screen.getByText("1 In range")).toBeInTheDocument();
     expect(screen.getByText("1 Near MRV")).toBeInTheDocument();
-    expect(screen.getByText("0 Below MEV")).toBeInTheDocument();
-    expect(screen.getByText("0 On target")).toBeInTheDocument();
+    expect(screen.queryByText("0 Below MEV")).not.toBeInTheDocument();
+    expect(screen.queryByText("0 On target")).not.toBeInTheDocument();
     expect(screen.getByText("Back")).toBeInTheDocument();
     expect(screen.getByText("Quads")).toBeInTheDocument();
     expect(screen.queryByText("Chest")).not.toBeInTheDocument();

@@ -17,17 +17,17 @@ describe("IntentWorkoutCard", () => {
       <IntentWorkoutCard
         initialIntent="lower"
         initialSlotId="lower_a"
-        recommendedReasonLabel="Next in sequence"
-        recommendedReasonDetail="Nothing earlier is still open, so Lower 1 is next this week."
+        primaryAction={{ label: "Start workout", state: "planned", mode: "generate" }}
+        nextSessionLabel="Lower 1"
+        nextSessionDescription="First lower session this week"
       />
     );
 
+    expect(screen.queryByText("Generate Workout")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Start workout" })).toBeInTheDocument();
     expect(screen.getByText("Recommended next session:")).toBeInTheDocument();
     expect(screen.getByText("Lower 1")).toBeInTheDocument();
-    expect(screen.getByText("Next in sequence")).toBeInTheDocument();
-    expect(
-      screen.getByText("Nothing earlier is still open, so Lower 1 is next this week.")
-    ).toBeInTheDocument();
+    expect(screen.getByText("First lower session this week")).toBeInTheDocument();
   });
 
   it("round-trips supplemental deficit metadata unchanged and saves as non-advancing", async () => {
@@ -114,28 +114,35 @@ describe("IntentWorkoutCard", () => {
       });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<IntentWorkoutCard initialIntent="body_part" />);
+    render(
+      <IntentWorkoutCard
+        initialIntent="body_part"
+        primaryAction={{ label: "Start workout", state: "planned", mode: "generate" }}
+        nextSessionLabel="Body Part"
+        nextSessionDescription="Server-provided body-part session"
+      />
+    );
 
     fireEvent.change(screen.getByPlaceholderText("e.g., chest, triceps"), {
       target: { value: "rear delts" },
     });
-    fireEvent.click(screen.getByLabelText("Supplemental deficit session"));
-    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start workout" }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
-    expect(screen.getByText("Session")).toBeInTheDocument();
-    expect(screen.getByText("Body Part 1")).toBeInTheDocument();
+    expect(screen.queryByText("Body Part 1")).not.toBeInTheDocument();
 
     const generateCall = fetchMock.mock.calls[0];
     expect(generateCall[0]).toBe("/api/workouts/generate-from-intent");
     expect(JSON.parse(generateCall[1].body as string)).toMatchObject({
       intent: "body_part",
       targetMuscles: ["rear delts"],
-      supplementalDeficitSession: true,
     });
+    expect(JSON.parse(generateCall[1].body as string)).not.toHaveProperty(
+      "supplementalDeficitSession"
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Save Workout" }));
 
@@ -146,7 +153,7 @@ describe("IntentWorkoutCard", () => {
     const saveCall = fetchMock.mock.calls[1];
     expect(saveCall[0]).toBe("/api/workouts/save");
     const savePayload = JSON.parse(saveCall[1].body as string);
-    expect(savePayload.advancesSplit).toBe(false);
+    expect(savePayload).not.toHaveProperty("advancesSplit");
     expect(savePayload.selectionMode).toBe("INTENT");
     expect(savePayload.sessionIntent).toBe("BODY_PART");
     expect(savePayload.selectionMetadata).toEqual(selectionMetadata);

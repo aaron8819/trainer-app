@@ -267,6 +267,11 @@ export async function POST(
     isMainLift: false,
     section: "ACCESSORY" as const,
     sessionNote: RUNTIME_ADDED_EXERCISE_SESSION_NOTE,
+    capabilities: {
+      canAddSet: true,
+      canRemove: true,
+      canSwap: true,
+    },
     sets: workoutExercise.sets.map((set) => ({
       setId: set.id,
       setIndex: set.setIndex,

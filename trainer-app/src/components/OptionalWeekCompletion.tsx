@@ -14,8 +14,11 @@ import {
 export type OptionalWeekCustomSession = {
   status: string;
   statusLabel: string;
+  detail: string;
   actionHref: string;
+  actionLabel: string;
   actionMethod?: "link" | "post";
+  canDismiss?: boolean;
   workoutId: string | null;
 };
 
@@ -50,61 +53,6 @@ function buildDeficitSummary(gapFill: GapFillSupportData | null | undefined): st
   return "No remaining deficits are currently reported.";
 }
 
-function buildRecommendedDetail(gapFill: GapFillSupportData): string {
-  if (gapFill.workflowState === "COMPLETED") {
-    return "The recommended workflow is complete. Current deficit state may still show remaining work.";
-  }
-
-  if (gapFill.deficitState === "PARTIAL") {
-    return "Current week data still shows partial remaining deficits.";
-  }
-
-  if (gapFill.deficitState === "OPEN") {
-    return "Targets the remaining deficits from current week data.";
-  }
-
-  return "Uses current week data to guide the optional session.";
-}
-
-function buildRecommendedActionLabel(gapFill: GapFillSupportData): string {
-  if (!gapFill.linkedWorkout) {
-    return "Generate recommended session";
-  }
-
-  const status = gapFill.linkedWorkout.status.trim().toUpperCase();
-  return status === "COMPLETED" || status === "SKIPPED"
-    ? "Review recommended session"
-    : "Open recommended session";
-}
-
-function buildCustomDetail(customSession: OptionalWeekCustomSession): string {
-  const status = customSession.status.trim().toUpperCase();
-  if (!customSession.workoutId) {
-    return "Create your own optional session for this active week.";
-  }
-
-  if (status === "COMPLETED") {
-    return "Your custom optional session is recorded for this active week.";
-  }
-
-  if (status === "SKIPPED") {
-    return "This custom optional session was skipped and stays separate from week progress.";
-  }
-
-  return "Manual optional work for this active week. It stays separate from the recommended session.";
-}
-
-function buildCustomActionLabel(customSession: OptionalWeekCustomSession): string {
-  if (!customSession.workoutId) {
-    return "Create optional session";
-  }
-
-  const status = customSession.status.trim().toUpperCase();
-  return status === "COMPLETED" || status === "SKIPPED"
-    ? "Review custom session"
-    : "Open custom session";
-}
-
 function buildWeekKey(input: OptionalWeekCompletionProps): string {
   const week =
     input.activeWeek ??
@@ -126,7 +74,7 @@ export function OptionalWeekCompletion({
   const [error, setError] = useState<string | null>(null);
   const [dismissedWeekKey, setDismissedWeekKey] = useState<string | null>(null);
   const showRecommended = Boolean(
-    gapFill?.visible && (gapFill.weekCloseId || gapFill.linkedWorkout)
+    gapFill?.visible && gapFill.actionLabel && gapFill.actionHref
   );
   const showCustom = Boolean(customSession);
 
@@ -155,13 +103,13 @@ export function OptionalWeekCompletion({
   }
 
   const targetWeek = gapFill?.targetWeek ?? gapFill?.anchorWeek ?? activeWeek;
-  const canGenerateRecommended =
-    gapFill?.eligible === true && gapFill.workflowState === "PENDING_OPTIONAL_GAP_FILL";
-  const canDismissPendingWeekClose = Boolean(
-    gapFill?.workflowState === "PENDING_OPTIONAL_GAP_FILL" && gapFill.weekCloseId
-  );
-  const hasLinkedRecommended = Boolean(gapFill?.linkedWorkout);
+  const canCreateRecommended =
+    gapFill?.actionMethod === "post" && Boolean(gapFill.actionHref);
+  const canOpenRecommended =
+    gapFill?.actionMethod === "link" && Boolean(gapFill.actionHref);
+  const canDismissPendingWeekClose = Boolean(gapFill?.canDismiss && gapFill.weekCloseId);
   const deficitSummary = buildDeficitSummary(gapFill);
+  const canCollapse = Boolean(gapFill?.canDismiss || customSession?.canDismiss);
 
   const handleRecommendedAction = async () => {
     if (!gapFill || targetWeek == null || !gapFill.weekCloseId) {
@@ -169,12 +117,9 @@ export function OptionalWeekCompletion({
     }
 
     if (gapFill.linkedWorkout) {
-      const status = gapFill.linkedWorkout.status.trim().toUpperCase();
-      router.push(
-        status === "COMPLETED" || status === "SKIPPED"
-          ? `/workout/${gapFill.linkedWorkout.id}`
-          : `/log/${gapFill.linkedWorkout.id}`
-      );
+      if (gapFill.actionHref) {
+        router.push(gapFill.actionHref);
+      }
       router.refresh();
       return;
     }
@@ -182,7 +127,7 @@ export function OptionalWeekCompletion({
     setLoading(true);
     setError(null);
 
-    const generateResponse = await fetch("/api/workouts/generate-from-intent", {
+    const generateResponse = await fetch(gapFill.actionHref ?? "/api/workouts/generate-from-intent", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -217,7 +162,6 @@ export function OptionalWeekCompletion({
       selectionMode: "INTENT",
       sessionIntent: "BODY_PART",
       selectionMetadata: canonicalSelectionMetadata,
-      advancesSplit: false,
       mesocycleWeekSnapshot: targetWeek,
       filteredExercises: generatedBody.filteredExercises,
       exercises: [
@@ -330,21 +274,29 @@ export function OptionalWeekCompletion({
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="text-sm font-semibold text-slate-900">Recommended session</p>
-                <p className="mt-1 text-sm text-slate-600">{buildRecommendedDetail(gapFill)}</p>
+                <p className="mt-1 text-sm text-slate-600">{gapFill.detail}</p>
               </div>
               <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
                 Primary
               </span>
             </div>
-            {canGenerateRecommended || hasLinkedRecommended ? (
+            {canCreateRecommended ? (
               <button
                 type="button"
                 className="mt-4 inline-flex min-h-11 items-center justify-center rounded-full bg-slate-900 px-5 py-2 text-sm font-semibold text-white disabled:opacity-60"
                 onClick={handleRecommendedAction}
                 disabled={loading}
               >
-                {loading ? "Generating..." : buildRecommendedActionLabel(gapFill)}
+                {loading ? "Working..." : gapFill.actionLabel}
               </button>
+            ) : null}
+            {canOpenRecommended && gapFill.actionHref ? (
+              <Link
+                className="mt-4 inline-flex min-h-11 items-center justify-center rounded-full bg-slate-900 px-5 py-2 text-sm font-semibold text-white"
+                href={gapFill.actionHref}
+              >
+                {gapFill.actionLabel}
+              </Link>
             ) : null}
             {canDismissPendingWeekClose ? (
               <button
@@ -364,7 +316,7 @@ export function OptionalWeekCompletion({
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="text-sm font-semibold text-slate-900">Custom session</p>
-                <p className="mt-1 text-sm text-slate-600">{buildCustomDetail(customSession)}</p>
+                <p className="mt-1 text-sm text-slate-600">{customSession.detail}</p>
               </div>
               <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
                 {customSession.statusLabel}
@@ -377,7 +329,7 @@ export function OptionalWeekCompletion({
                 onClick={handleCustomAction}
                 disabled={creatingCustom}
               >
-                {creatingCustom ? "Creating..." : buildCustomActionLabel(customSession)}
+                {creatingCustom ? "Creating..." : customSession.actionLabel}
               </button>
             ) : (
               <Link
@@ -385,20 +337,22 @@ export function OptionalWeekCompletion({
                 href={customSession.actionHref}
                 prefetch={false}
               >
-                {buildCustomActionLabel(customSession)}
+                {customSession.actionLabel}
               </Link>
             )}
           </div>
         ) : null}
       </div>
 
-      <button
-        type="button"
-        className="mt-4 inline-flex min-h-10 items-center justify-center rounded-full border border-amber-300 bg-white px-4 py-2 text-sm font-semibold text-slate-900"
-        onClick={() => setDismissedWeekKey(weekKey)}
-      >
-        Collapse for now
-      </button>
+      {canCollapse ? (
+        <button
+          type="button"
+          className="mt-4 inline-flex min-h-10 items-center justify-center rounded-full border border-amber-300 bg-white px-4 py-2 text-sm font-semibold text-slate-900"
+          onClick={() => setDismissedWeekKey(weekKey)}
+        >
+          Collapse for now
+        </button>
+      ) : null}
       {error ? <p className="mt-2 text-sm text-rose-600">{error}</p> : null}
     </section>
   );

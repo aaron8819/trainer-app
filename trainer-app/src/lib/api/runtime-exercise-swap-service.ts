@@ -105,6 +105,11 @@ export type RuntimeExerciseSwapExercisePayload = {
   isSwapped: true;
   section: "WARMUP" | "MAIN" | "ACCESSORY";
   sessionNote: string;
+  capabilities: {
+    canAddSet: boolean;
+    canRemove: boolean;
+    canSwap: boolean;
+  };
   sets: RuntimeExerciseSwapPreviewSet[];
 };
 
@@ -230,6 +235,13 @@ function toPreviewExercise(input: {
       fromExerciseName: input.context.workoutExercise.exercise.name,
       fromExerciseId: input.context.workoutExercise.exerciseId,
     }),
+    capabilities: {
+      canAddSet: true,
+      canRemove: readRuntimeAddedExerciseIds(
+        input.context.workout.selectionMetadata,
+      ).has(input.context.workoutExercise.id),
+      canSwap: false,
+    },
     sets: input.context.workoutExercise.sets.map((set) => ({
       setId: set.id,
       setIndex: set.setIndex,

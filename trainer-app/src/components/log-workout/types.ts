@@ -13,6 +13,21 @@ export type LogSetInput = {
   wasSkipped?: boolean;
 };
 
+export type LogExerciseCapabilities = {
+  canAddSet: boolean;
+  canRemove: boolean;
+  canSwap: boolean;
+};
+
+export type LogWorkoutCapabilities = {
+  canAddSet: boolean;
+  canRemoveSet: boolean;
+  canSwapExercise: boolean;
+  canAddExercise: boolean;
+  canFinish: boolean;
+  showWeeklyCheck: boolean;
+};
+
 export type LogExerciseMuscleTagGroups = {
   primaryMuscles: string[];
   secondaryMuscles: string[];
@@ -30,6 +45,7 @@ export type LogExerciseInput = {
   isMainLift: boolean;
   section?: "WARMUP" | "MAIN" | "ACCESSORY";
   sessionNote?: string;
+  capabilities?: LogExerciseCapabilities;
   sets: LogSetInput[];
 };
 

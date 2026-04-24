@@ -34,17 +34,19 @@ vi.mock("@/components/DashboardGenerateSection", () => ({
   DashboardGenerateSection: ({
     initialIntent,
     initialSlotId,
-    recommendedReasonLabel,
-    recommendedReasonDetail,
+    primaryAction,
+    nextSessionLabel,
+    nextSessionDescription,
   }: {
     initialIntent?: string;
     initialSlotId?: string | null;
-    recommendedReasonLabel?: string | null;
-    recommendedReasonDetail?: string | null;
+    primaryAction?: { label: string };
+    nextSessionLabel?: string | null;
+    nextSessionDescription?: string | null;
   }) =>
     (
       <div>
-        {`DashboardGenerateSection:${initialIntent ?? "none"}:${initialSlotId ?? "none"}:${recommendedReasonLabel ?? "none"}:${recommendedReasonDetail ?? "none"}`}
+        {`DashboardGenerateSection:${initialIntent ?? "none"}:${initialSlotId ?? "none"}:${primaryAction?.label ?? "none"}:${nextSessionLabel ?? "none"}:${nextSessionDescription ?? "none"}`}
       </div>
     ),
 }));
@@ -224,7 +226,7 @@ describe("Home page", () => {
     expect(screen.getByText("Week 2 - Accumulation")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "DashboardGenerateSection:lower:lower_a:Next in sequence:Nothing earlier is still open, so Lower 1 is next this week."
+        "DashboardGenerateSection:lower:lower_a:Start workout:Lower 1:First lower session this week"
       )
     ).toBeInTheDocument();
     expect(screen.getByText("Continuity")).toBeInTheDocument();
@@ -363,7 +365,7 @@ describe("Home page", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        "DashboardGenerateSection:lower:lower_a:Next in sequence:Nothing earlier is still open, so Lower 1 is next this week."
+        "DashboardGenerateSection:lower:lower_a:Start workout:Lower 1:First lower session this week"
       )
     ).toBeInTheDocument();
   });

@@ -54,6 +54,11 @@ function buildGapFill(overrides: Partial<GapFillSupportData> = {}): GapFillSuppo
       maxGeneratedHardSets: 12,
       maxGeneratedExercises: 4,
     },
+    detail: "Targets the remaining deficits from current week data.",
+    actionLabel: "Generate recommended session",
+    actionMethod: "post",
+    actionHref: "/api/workouts/generate-from-intent",
+    canDismiss: true,
     ...overrides,
   };
 }
@@ -81,7 +86,10 @@ describe("OptionalWeekCompletion", () => {
           workoutId: "custom-1",
           status: "planned",
           statusLabel: "Planned",
+          detail: "Server custom detail.",
           actionHref: "/log/custom-1",
+          actionLabel: "Open custom session",
+          canDismiss: true,
         }}
       />
     );
@@ -118,7 +126,10 @@ describe("OptionalWeekCompletion", () => {
           workoutId: null,
           status: "available",
           statusLabel: "Available",
+          detail: "Server custom detail.",
           actionHref: "/api/mesocycles/week-close/wc-1/closeout",
+          actionLabel: "Create optional session",
+          canDismiss: true,
         }}
       />
     );
@@ -137,11 +148,17 @@ describe("OptionalWeekCompletion", () => {
             id: "w-gap-fill",
             status: "SKIPPED",
           },
+          actionLabel: "Review recommended session",
+          actionMethod: "link",
+          actionHref: "/workout/w-gap-fill",
         })}
       />
     );
 
-    expect(screen.getByRole("button", { name: "Review recommended session" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Review recommended session" })).toHaveAttribute(
+      "href",
+      "/workout/w-gap-fill"
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Dismiss optional work and continue" }));
 

@@ -4,11 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import type { GenerateFromIntentResponse } from "@/lib/api/template-session/types";
 import type { SaveWorkoutRequestPayload } from "@/components/log-workout/api";
-import { isStrictSupplementalDeficitSession } from "@/lib/session-semantics/supplemental-classifier";
-import {
-  formatSessionIdentityDescription,
-  formatSessionIdentityLabel,
-} from "@/lib/ui/session-identity";
+import type { HomeDecisionSummary } from "@/lib/api/home-page";
 
 type SessionIntent = "push" | "pull" | "legs" | "upper" | "lower" | "full_body" | "body_part";
 
@@ -93,19 +89,20 @@ function parseTargetMuscles(input: string): string[] {
 type IntentWorkoutCardProps = {
   initialIntent?: SessionIntent;
   initialSlotId?: string | null;
-  recommendedReasonLabel?: string | null;
-  recommendedReasonDetail?: string | null;
+  primaryAction: { label: string; state: "planned"; mode: "generate" };
+  nextSessionLabel: HomeDecisionSummary["nextSessionLabel"];
+  nextSessionDescription: HomeDecisionSummary["nextSessionDescription"];
 };
 
 export function IntentWorkoutCard({
   initialIntent = "push",
   initialSlotId = null,
-  recommendedReasonLabel = null,
-  recommendedReasonDetail = null,
+  primaryAction,
+  nextSessionLabel,
+  nextSessionDescription,
 }: IntentWorkoutCardProps) {
   const [intent, setIntent] = useState<SessionIntent>(initialIntent);
   const [targetMusclesInput, setTargetMusclesInput] = useState("");
-  const [supplementalMode, setSupplementalMode] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   const [workout, setWorkout] = useState<WorkoutPlan | null>(null);
@@ -118,12 +115,6 @@ export function IntentWorkoutCard({
   useEffect(() => {
     setIntent(initialIntent);
   }, [initialIntent]);
-
-  useEffect(() => {
-    if (intent !== "body_part") {
-      setSupplementalMode(false);
-    }
-  }, [intent]);
 
   const allExercises = useMemo(
     () => [...(workout?.mainLifts ?? []), ...(workout?.accessories ?? [])],
@@ -143,7 +134,6 @@ export function IntentWorkoutCard({
         intent,
         slotId: intent === initialIntent ? initialSlotId : undefined,
         targetMuscles: intent === "body_part" ? targetMuscles : undefined,
-        supplementalDeficitSession: intent === "body_part" ? supplementalMode : undefined,
       }),
     });
 
@@ -170,11 +160,6 @@ export function IntentWorkoutCard({
     if (!workout) return;
     setSaving(true);
     setError(null);
-    const isSupplementalSession = isStrictSupplementalDeficitSession({
-      selectionMetadata: generatedMetadata?.selectionMetadata,
-      selectionMode: generatedMetadata?.selectionMode,
-      sessionIntent: toDbSessionIntent(generatedMetadata?.sessionIntent ?? intent),
-    });
 
     const payload: SaveWorkoutRequestPayload = {
       workoutId: workout.id,
@@ -184,7 +169,6 @@ export function IntentWorkoutCard({
       sessionIntent: toDbSessionIntent(generatedMetadata?.sessionIntent ?? intent),
       selectionMetadata: generatedMetadata?.selectionMetadata,
       filteredExercises: generatedMetadata?.filteredExercises,
-      advancesSplit: isSupplementalSession ? false : true,
       exercises: [
         ...workout.warmup.map((exercise) => ({ ...exercise, section: "WARMUP" as const })),
         ...workout.mainLifts.map((exercise) => ({ ...exercise, section: "MAIN" as const })),
@@ -223,44 +207,19 @@ export function IntentWorkoutCard({
   const readinessPreview = generatedMetadata?.selectionMetadata?.sessionDecisionReceipt?.readiness;
   const showReadinessPreview =
     Boolean(readinessPreview?.rationale) || readinessPreview?.signalAgeHours != null;
-  const generatedSessionSlot = generatedMetadata?.selectionMetadata?.sessionDecisionReceipt?.sessionSlot;
-  const generatedSessionLabel = generatedSessionSlot
-    ? formatSessionIdentityLabel({
-        intent: generatedSessionSlot.intent,
-        slotId: generatedSessionSlot.slotId,
-      })
-    : null;
-  const generatedSessionDescription = generatedSessionSlot
-    ? formatSessionIdentityDescription({
-        intent: generatedSessionSlot.intent,
-        slotId: generatedSessionSlot.slotId,
-      })
-    : null;
-  const recommendedSessionLabel = initialSlotId
-    ? formatSessionIdentityLabel({
-        intent: initialIntent,
-        slotId: initialSlotId,
-      })
-    : null;
 
   return (
     <div className="w-full min-w-0 rounded-2xl border border-slate-200 p-5 shadow-sm sm:p-6">
-      <h2 className="text-xl font-semibold">Generate Workout</h2>
-      <p className="mt-2 text-slate-600">
-        Pick an intent and generate a session. Use Templates for fixed, reusable sessions.
-      </p>
-      {recommendedSessionLabel ? (
+      <h2 className="text-xl font-semibold">{primaryAction.label}</h2>
+      {nextSessionDescription ? (
+        <p className="mt-2 text-slate-600">{nextSessionDescription}</p>
+      ) : null}
+      {nextSessionLabel ? (
         <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
           <p>
             Recommended next session:{" "}
-            <span className="font-semibold text-slate-900">{recommendedSessionLabel}</span>
+            <span className="font-semibold text-slate-900">{nextSessionLabel}</span>
           </p>
-          {recommendedReasonLabel ? (
-            <p className="mt-1 font-medium text-slate-800">{recommendedReasonLabel}</p>
-          ) : null}
-          {recommendedReasonDetail ? (
-            <p className="mt-1 text-xs text-slate-600">{recommendedReasonDetail}</p>
-          ) : null}
         </div>
       ) : null}
 
@@ -293,17 +252,6 @@ export function IntentWorkoutCard({
                 placeholder="e.g., chest, triceps"
               />
             </label>
-            <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
-              <input
-                type="checkbox"
-                className="mt-1 h-4 w-4 rounded border-slate-300"
-                checked={supplementalMode}
-                onChange={(event) => setSupplementalMode(event.target.checked)}
-              />
-              <span>
-                Supplemental deficit session
-              </span>
-            </label>
           </>
         ) : null}
       </div>
@@ -315,7 +263,7 @@ export function IntentWorkoutCard({
           onClick={handleGenerate}
           disabled={loading}
         >
-          {loading ? "Generating..." : "Generate"}
+          {loading ? "Preparing..." : primaryAction.label}
         </button>
         {workout ? (
           <button
@@ -380,15 +328,6 @@ export function IntentWorkoutCard({
 
       {workout ? (
         <div className="mt-6 space-y-4">
-          {generatedSessionLabel ? (
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-sm text-slate-500">Session</p>
-              <p className="text-lg font-semibold text-slate-900">{generatedSessionLabel}</p>
-              {generatedSessionDescription ? (
-                <p className="mt-1 text-sm text-slate-600">{generatedSessionDescription}</p>
-              ) : null}
-            </div>
-          ) : null}
           <div className="rounded-xl border border-slate-200 p-4">
             <p className="text-sm text-slate-500">Estimated time</p>
             <p className="text-lg font-semibold">{workout.estimatedMinutes} minutes</p>

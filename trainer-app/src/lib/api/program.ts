@@ -35,6 +35,10 @@ import {
 } from "@/lib/session-semantics/closeout-classifier";
 import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-semantics";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
+import {
+  formatWeeklyMuscleStatusLabel,
+  getWeeklyMuscleStatus,
+} from "@/lib/ui/weekly-muscle-status";
 
 export type ProgramMesoBlock = {
   blockType: string;
@@ -61,10 +65,19 @@ export type ProgramVolumeRow = {
   mev: number;
   mav: number;
   mrv: number;
+  statusLabel: string;
+  statusDescription: string;
+  badges: ProgramVolumeDisplayBadge[];
   opportunityScore: number;
   opportunityState: OpportunityState;
   opportunityRationale: string;
   breakdown?: ProgramMuscleContributionBreakdown;
+};
+
+export type ProgramVolumeDisplayBadge = {
+  status: string;
+  label: string;
+  count?: number;
 };
 
 export type ProgramMuscleContribution = WeeklyMuscleExerciseContribution;
@@ -149,6 +162,11 @@ export type GapFillSupportData = {
   suppressedByStartedNextWeek: boolean;
   linkedWorkout: { id: string; status: string } | null;
   policy: GapFillPolicy;
+  detail: string;
+  actionLabel: string | null;
+  actionMethod: "link" | "post" | null;
+  actionHref: string | null;
+  canDismiss: boolean;
 };
 
 export type CloseoutSupportData = {
@@ -305,6 +323,10 @@ function resolveBlockTypeForWeek(input: {
 function formatRirTarget(rirTarget: { min: number; max: number } | null | undefined): string | null {
   if (!rirTarget) return null;
   return `${rirTarget.min}-${rirTarget.max} RIR`;
+}
+
+function formatSetCount(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
 function getDescriptiveCoachingCueForBlockType(
@@ -724,6 +746,14 @@ export async function loadHomeProgramSupport(userId: string): Promise<HomeProgra
     relevantWeekClose?.status === "PENDING_OPTIONAL_GAP_FILL" &&
     !linkedWorkoutWasSkipped &&
     targetMuscles.length > 0;
+  const linkedWorkoutStatus = linkedWorkout?.status.trim().toUpperCase() ?? null;
+  const gapFillActionHref = linkedWorkout
+    ? linkedWorkoutStatus === "COMPLETED" || linkedWorkoutStatus === "SKIPPED"
+      ? `/workout/${linkedWorkout.id}`
+      : `/log/${linkedWorkout.id}`
+    : canGenerateGapFill
+      ? "/api/workouts/generate-from-intent"
+      : null;
 
   const gapFill: GapFillSupportData = {
     eligible: canGenerateGapFill,
@@ -754,6 +784,27 @@ export async function loadHomeProgramSupport(userId: string): Promise<HomeProgra
     suppressedByStartedNextWeek: false,
     linkedWorkout,
     policy,
+    detail:
+      (weekCloseState?.workflowState ?? null) === "COMPLETED"
+        ? "The recommended workflow is complete. Current deficit state may still show remaining work."
+        : (weekCloseState?.deficitState ?? null) === "PARTIAL"
+          ? "Current week data still shows partial remaining deficits."
+          : (weekCloseState?.deficitState ?? null) === "OPEN"
+            ? "Targets the remaining deficits from current week data."
+            : "Uses current week data to guide the optional session.",
+    actionLabel: linkedWorkout
+      ? linkedWorkoutStatus === "COMPLETED" || linkedWorkoutStatus === "SKIPPED"
+        ? "Review recommended session"
+        : "Open recommended session"
+      : canGenerateGapFill
+        ? "Generate recommended session"
+        : null,
+    actionMethod: linkedWorkout ? "link" : canGenerateGapFill ? "post" : null,
+    actionHref: gapFillActionHref,
+    canDismiss: Boolean(
+      (weekCloseState?.workflowState ?? null) === "PENDING_OPTIONAL_GAP_FILL" &&
+        relevantWeekClose?.id
+    ),
   };
   const closeout = buildCurrentWeekCloseoutSupport({
     workouts: currentWeekCloseoutRows,
@@ -805,6 +856,13 @@ function buildProgramVolumeRows(input: {
     .map(([muscle, landmarks]) => {
       const data = weekMuscles[muscle] ?? { directSets: 0, indirectSets: 0, effectiveSets: 0 };
       const target = mesoRecord ? getWeeklyVolumeTarget(mesoRecord, muscle, week) : landmarks.mev;
+      const weeklyStatus = getWeeklyMuscleStatus({
+        effectiveSets: data.effectiveSets,
+        target,
+        mev: landmarks.mev,
+        mrv: landmarks.mrv,
+      });
+      const statusLabel = formatWeeklyMuscleStatusLabel(weeklyStatus);
       return {
         muscle,
         effectiveSets: data.effectiveSets,
@@ -814,6 +872,16 @@ function buildProgramVolumeRows(input: {
         mev: landmarks.mev,
         mav: landmarks.mav,
         mrv: landmarks.mrv,
+        statusLabel,
+        statusDescription: `${formatSetCount(data.effectiveSets)} weighted sets against ${formatSetCount(
+          target
+        )} target.`,
+        badges: [
+          {
+            status: weeklyStatus,
+            label: statusLabel,
+          },
+        ],
         opportunityScore: 0,
         opportunityState: "covered" as OpportunityState,
         opportunityRationale: "Weekly target is already covered; no need to prioritize more work today.",

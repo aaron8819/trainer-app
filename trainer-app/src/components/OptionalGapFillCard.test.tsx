@@ -37,6 +37,11 @@ function buildGapFill(overrides: Partial<GapFillSupportData> = {}): GapFillSuppo
       maxGeneratedHardSets: 12,
       maxGeneratedExercises: 4,
     },
+    detail: "Targets the remaining deficits from current week data.",
+    actionLabel: "Generate recommended session",
+    actionMethod: "post",
+    actionHref: "/api/workouts/generate-from-intent",
+    canDismiss: true,
     ...overrides,
   };
 }
@@ -56,7 +61,7 @@ describe("OptionalGapFillCard", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("generates through intent route with caps and saves as non-advancing optional gap-fill", async () => {
+  it("generates through the server-provided action route and saves optional gap-fill metadata", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce({
@@ -142,7 +147,7 @@ describe("OptionalGapFillCard", () => {
     const saveCall = fetchMock.mock.calls[1];
     expect(saveCall[0]).toBe("/api/workouts/save");
     const savePayload = JSON.parse(saveCall[1].body as string);
-    expect(savePayload.advancesSplit).toBe(false);
+    expect(savePayload).not.toHaveProperty("advancesSplit");
     expect(savePayload.selectionMode).toBe("INTENT");
     expect(savePayload.sessionIntent).toBe("BODY_PART");
     expect(savePayload.mesocycleWeekSnapshot).toBe(3);
@@ -163,13 +168,18 @@ describe("OptionalGapFillCard", () => {
       <OptionalGapFillCard
         gapFill={buildGapFill({
           linkedWorkout: { id: "w-gap-existing", status: "PLANNED" },
+          actionLabel: "Open recommended session",
+          actionMethod: "link",
+          actionHref: "/log/w-gap-existing",
         })}
       />
     );
-    fireEvent.click(screen.getByRole("button", { name: "Open recommended session" }));
 
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(pushMock).toHaveBeenCalledWith("/log/w-gap-existing");
+    expect(screen.getByRole("link", { name: "Open recommended session" })).toHaveAttribute(
+      "href",
+      "/log/w-gap-existing"
+    );
   });
 
   it("surfaces partial training closure after workflow completion without a generate CTA", () => {
@@ -181,6 +191,10 @@ describe("OptionalGapFillCard", () => {
           deficitState: "PARTIAL",
           resolution: "GAP_FILL_COMPLETED",
           linkedWorkout: null,
+          detail: "The recommended workflow is complete.",
+          actionLabel: "Review recommended session",
+          actionMethod: "link",
+          actionHref: "/workout/w-gap-1",
         })}
       />
     );
@@ -188,6 +202,10 @@ describe("OptionalGapFillCard", () => {
     expect(screen.getByText("Optional week completion")).toBeInTheDocument();
     expect(screen.getByText("Recommended session")).toBeInTheDocument();
     expect(screen.getByText(/recommended workflow is complete/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Review recommended session" })).toHaveAttribute(
+      "href",
+      "/workout/w-gap-1"
+    );
     expect(screen.queryByRole("button", { name: /generate recommended session/i })).not.toBeInTheDocument();
   });
 });

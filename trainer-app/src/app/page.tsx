@@ -240,12 +240,17 @@ export default async function Home() {
               </div>
             </div>
           ) : primaryAction.state === "planned" && primaryAction.mode === "generate" ? (
-            <DashboardGenerateSection
-              initialIntent={primaryActionIntent ?? undefined}
-              initialSlotId={primaryAction.initialSlotId}
-              recommendedReasonLabel={primaryAction.reasonLabel}
-              recommendedReasonDetail={primaryAction.reason}
-            />
+              <DashboardGenerateSection
+                initialIntent={primaryActionIntent ?? undefined}
+                initialSlotId={primaryAction.initialSlotId}
+                primaryAction={{
+                  label: primaryAction.label,
+                  state: primaryAction.state,
+                  mode: primaryAction.mode,
+                }}
+                nextSessionLabel={decision.nextSessionLabel}
+                nextSessionDescription={decision.nextSessionDescription}
+              />
           ) : (
             <div className="rounded-2xl border border-slate-200 p-6 shadow-sm">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">

@@ -1,6 +1,11 @@
 import Link from "next/link";
 import { resolveOwner } from "@/lib/api/workout-context";
 import LogWorkoutClient from "@/components/LogWorkoutClient";
+import type {
+  LogExerciseInput,
+  LogWorkoutCapabilities,
+  SectionedExercises,
+} from "@/components/log-workout/types";
 import { prisma } from "@/lib/db/prisma";
 import { parseExplainabilitySelectionMetadata } from "@/lib/ui/explainability";
 import { splitExercises } from "@/lib/ui/workout-sections";
@@ -60,6 +65,45 @@ function buildInitialRestTimer(durationSeconds?: number | null) {
   };
 }
 
+function countResolvedSets(exercise: LogExerciseInput): number {
+  return exercise.sets.filter(
+    (set) =>
+      set.wasSkipped === true ||
+      set.actualReps != null ||
+      set.actualLoad != null ||
+      set.actualRpe != null
+  ).length;
+}
+
+function attachLogExerciseCapabilities(
+  exercises: SectionedExercises,
+  capabilities: LogWorkoutCapabilities
+): SectionedExercises {
+  const attach = (exercise: LogExerciseInput): LogExerciseInput => {
+    const resolvedSetCount = countResolvedSets(exercise);
+    return {
+      ...exercise,
+      capabilities: {
+        canAddSet: capabilities.canAddSet,
+        canRemove:
+          capabilities.canRemoveSet &&
+          (exercise.isRuntimeAdded ?? false) &&
+          resolvedSetCount === 0,
+        canSwap:
+          capabilities.canSwapExercise &&
+          resolvedSetCount === 0 &&
+          !(exercise.isSwapped ?? false),
+      },
+    };
+  };
+
+  return {
+    warmup: exercises.warmup?.map(attach) ?? [],
+    main: exercises.main.map(attach),
+    accessory: exercises.accessory?.map(attach) ?? [],
+  };
+}
+
 export default async function LogWorkoutPage({
   params,
 }: {
@@ -83,6 +127,14 @@ export default async function LogWorkoutPage({
   const fixture = await getUiAuditFixtureForServer();
   const logFixture = fixture?.logWorkouts?.[resolvedParams.id] ?? null;
   if (logFixture) {
+    const fixtureCapabilities: LogWorkoutCapabilities = {
+      canAddSet: true,
+      canRemoveSet: true,
+      canSwapExercise: true,
+      canAddExercise: false,
+      canFinish: true,
+      showWeeklyCheck: true,
+    };
     return (
       <main className="min-h-screen bg-white text-slate-900">
         <div className="page-shell max-w-4xl">
@@ -93,9 +145,10 @@ export default async function LogWorkoutPage({
 
           <LogWorkoutClient
             workoutId={logFixture.workoutId}
-            exercises={logFixture.exercises}
+            exercises={attachLogExerciseCapabilities(logFixture.exercises, fixtureCapabilities)}
             allowBonusExerciseAdd={false}
             allowRuntimeExerciseSwap={true}
+            capabilities={fixtureCapabilities}
             initialRestTimer={buildInitialRestTimer(logFixture.initialRestTimerDurationSeconds)}
             sessionIdentityLabel={logFixture.sessionIdentityLabel}
             sessionTechnicalLabel={logFixture.sessionTechnicalLabel}
@@ -200,6 +253,14 @@ export default async function LogWorkoutPage({
     selectionMode: workout.selectionMode,
     sessionIntent: workout.sessionIntent,
   });
+  const logCapabilities: LogWorkoutCapabilities = {
+    canAddSet: pageState.mutability === "editable",
+    canRemoveSet: pageState.mutability === "editable",
+    canSwapExercise: pageState.mutability === "editable",
+    canAddExercise: pageState.mutability === "editable" && !isStrictGapFill,
+    canFinish: pageState.mutability === "editable",
+    showWeeklyCheck: pageState.mutability === "editable",
+  };
 
   return (
     <main className="min-h-screen bg-white text-slate-900">
@@ -211,9 +272,10 @@ export default async function LogWorkoutPage({
 
         <LogWorkoutClient
           workoutId={workout.id}
-          exercises={exercises}
+          exercises={attachLogExerciseCapabilities(exercises, logCapabilities)}
           allowBonusExerciseAdd={!isStrictGapFill}
           allowRuntimeExerciseSwap={pageState.mutability === "editable"}
+          capabilities={logCapabilities}
           sessionIdentityLabel={sessionIdentityLabel}
           sessionTechnicalLabel={sessionTechnicalLabel}
         />

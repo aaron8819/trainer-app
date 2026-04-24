@@ -713,6 +713,7 @@ export async function loadHomeProgramSupport(userId: string): Promise<HomeProgra
         status: relevantWeekClose.optionalWorkout.status,
       }
     : null;
+  const linkedWorkoutWasSkipped = linkedWorkout?.status === "SKIPPED";
   const isRelevantToActiveHomeWeek = isWeekCloseVisibleOnHome({
     activeMesocycleId: activeMesocycle?.id ?? null,
     activeWeek,
@@ -721,6 +722,7 @@ export async function loadHomeProgramSupport(userId: string): Promise<HomeProgra
   const canGenerateGapFill =
     isRelevantToActiveHomeWeek &&
     relevantWeekClose?.status === "PENDING_OPTIONAL_GAP_FILL" &&
+    !linkedWorkoutWasSkipped &&
     targetMuscles.length > 0;
 
   const gapFill: GapFillSupportData = {

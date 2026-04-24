@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => {
   const evaluateWeekCloseAtBoundary = vi.fn();
   const linkOptionalWorkoutToWeekClose = vi.fn();
   const resolveWeekCloseOnOptionalGapFillCompletion = vi.fn();
+  const dismissPendingWeekClose = vi.fn();
   const updateExerciseExposure = vi.fn();
 
   const tx = {
@@ -73,6 +74,7 @@ const mocks = vi.hoisted(() => {
     evaluateWeekCloseAtBoundary,
     linkOptionalWorkoutToWeekClose,
     resolveWeekCloseOnOptionalGapFillCompletion,
+    dismissPendingWeekClose,
     updateExerciseExposure,
   };
 });
@@ -105,6 +107,7 @@ vi.mock("@/lib/api/mesocycle-week-close", async (importOriginal) => {
     evaluateWeekCloseAtBoundary: mocks.evaluateWeekCloseAtBoundary,
     linkOptionalWorkoutToWeekClose: mocks.linkOptionalWorkoutToWeekClose,
     resolveWeekCloseOnOptionalGapFillCompletion: mocks.resolveWeekCloseOnOptionalGapFillCompletion,
+    dismissPendingWeekClose: mocks.dismissPendingWeekClose,
   };
 });
 
@@ -339,6 +342,7 @@ describe("POST /api/workouts/save", () => {
     mocks.evaluateWeekCloseAtBoundary.mockReset();
     mocks.linkOptionalWorkoutToWeekClose.mockReset();
     mocks.resolveWeekCloseOnOptionalGapFillCompletion.mockReset();
+    mocks.dismissPendingWeekClose.mockReset();
     mocks.updateExerciseExposure.mockReset();
     mocks.tx.mesocycle.findUnique.mockReset();
     mocks.tx.mesocycle.findFirst.mockReset();
@@ -407,6 +411,18 @@ describe("POST /api/workouts/save", () => {
       weekCloseId: "wc-1",
       status: "RESOLVED",
       resolution: "GAP_FILL_COMPLETED",
+      weekCloseState: {
+        workflowState: "COMPLETED",
+        deficitState: "PARTIAL",
+        remainingDeficitSets: 4,
+      },
+      advancedLifecycle: false,
+      outcome: "resolved",
+    });
+    mocks.dismissPendingWeekClose.mockResolvedValue({
+      weekCloseId: "wc-1",
+      status: "RESOLVED",
+      resolution: "GAP_FILL_DISMISSED",
       weekCloseState: {
         workflowState: "COMPLETED",
         deficitState: "PARTIAL",
@@ -2590,6 +2606,70 @@ describe("POST /api/workouts/save", () => {
     });
     expect(mocks.tx.mesocycle.update).not.toHaveBeenCalled();
     expect(mocks.transitionMesocycleStateInTransaction).not.toHaveBeenCalled();
+  });
+
+  it("dismisses a linked optional gap-fill week-close when the optional workout is skipped", async () => {
+    mocks.workoutFindUnique.mockResolvedValueOnce({
+      id: "workout-gap",
+      userId: "user-1",
+      status: "PLANNED",
+      revision: 1,
+      mesocycleId: "meso-1",
+      advancesSplit: false,
+      selectionMode: "INTENT",
+      sessionIntent: "BODY_PART",
+      selectionMetadata: {
+        ...buildOptionalGapFillSelectionMetadata(),
+        weekCloseId: "wc-1",
+      },
+    });
+    mocks.tx.mesocycle.findUnique.mockResolvedValueOnce({
+      id: "meso-1",
+      state: "ACTIVE_DELOAD",
+      durationWeeks: 5,
+      accumulationSessionsCompleted: 12,
+      deloadSessionsCompleted: 0,
+      sessionsPerWeek: 3,
+      startWeek: 0,
+      macroCycle: {
+        startDate: new Date("2026-03-01T00:00:00.000Z"),
+      },
+    });
+    mocks.workoutUpsert.mockResolvedValueOnce({
+      id: "workout-gap",
+      revision: 2,
+      mesocycleId: "meso-1",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workoutId: "workout-gap", action: "mark_skipped" }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      workoutStatus: "SKIPPED",
+      weekClose: {
+        weekCloseId: "wc-1",
+        resolution: "GAP_FILL_DISMISSED",
+        workflowState: "COMPLETED",
+        deficitState: "PARTIAL",
+        remainingDeficitSets: 4,
+      },
+    });
+    expect(mocks.linkOptionalWorkoutToWeekClose).toHaveBeenCalledWith(mocks.tx, {
+      weekCloseId: "wc-1",
+      workoutId: "workout-gap",
+    });
+    expect(mocks.dismissPendingWeekClose).toHaveBeenCalledWith(mocks.tx, {
+      weekCloseId: "wc-1",
+    });
+    expect(mocks.resolveWeekCloseOnOptionalGapFillCompletion).not.toHaveBeenCalled();
+    expect(mocks.tx.mesocycle.update).not.toHaveBeenCalled();
+    expect(mocks.updateExerciseExposure).not.toHaveBeenCalled();
   });
 
   it("rejects linked optional gap-fill completion with 409 when the week-close row is no longer pending", async () => {

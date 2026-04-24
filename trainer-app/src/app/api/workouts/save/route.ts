@@ -23,6 +23,7 @@ import {
 } from "@/lib/api/mesocycle-lifecycle-state";
 import {
   autoDismissPendingWeekCloseOnForwardProgress,
+  dismissPendingWeekClose,
   linkOptionalWorkoutToWeekClose,
   evaluateWeekCloseAtBoundary,
   resolveWeekCloseOnOptionalGapFillCompletion,
@@ -670,6 +671,20 @@ export async function POST(request: Request) {
           weekCloseId: resolvedWeekClose.weekCloseId,
           resolution: resolvedWeekClose.resolution,
           weekCloseState: resolvedWeekClose.weekCloseState,
+        };
+      }
+      if (
+        isOptionalGapFill &&
+        finalStatus === "SKIPPED" &&
+        linkedWeekCloseId
+      ) {
+        const dismissedWeekClose = await dismissPendingWeekClose(tx, {
+          weekCloseId: linkedWeekCloseId,
+        });
+        weekCloseResult = {
+          weekCloseId: dismissedWeekClose.weekCloseId,
+          resolution: dismissedWeekClose.resolution,
+          weekCloseState: dismissedWeekClose.weekCloseState,
         };
       }
       if (

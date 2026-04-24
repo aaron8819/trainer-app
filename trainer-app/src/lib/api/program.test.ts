@@ -1149,6 +1149,63 @@ describe("loadHomeProgramSupport", () => {
     expect(result.gapFill.weekCloseId).toBe("wc-4");
   });
 
+  it("keeps a skipped linked optional gap-fill visible but not generation-eligible", async () => {
+    setupDashboardMocks(
+      {
+        state: "ACTIVE_ACCUMULATION",
+        sessionsPerWeek: 3,
+        accumulationSessionsCompleted: 9,
+      },
+      4
+    );
+    mocks.findRelevantWeekCloseForUser.mockResolvedValueOnce({
+      id: "wc-4",
+      mesocycleId: "meso-1",
+      targetWeek: 4,
+      targetPhase: "ACCUMULATION",
+      status: "PENDING_OPTIONAL_GAP_FILL",
+      resolution: null,
+      deficitSnapshot: {
+        version: 1,
+        policy: {
+          requiredSessionsPerWeek: 3,
+          maxOptionalGapFillSessionsPerWeek: 1,
+          maxGeneratedHardSets: 12,
+          maxGeneratedExercises: 4,
+        },
+        summary: {
+          totalDeficitSets: 4,
+          qualifyingMuscleCount: 1,
+          topTargetMuscles: ["Chest"],
+        },
+        muscles: [{ muscle: "Chest", target: 12, actual: 8, deficit: 4 }],
+      },
+      weekCloseState: {
+        workflowState: "PENDING_OPTIONAL_GAP_FILL",
+        deficitState: "OPEN",
+        remainingDeficitSets: 4,
+        remainingQualifyingMuscleCount: 1,
+        remainingTopTargetMuscles: ["Chest"],
+        remainingMuscles: [{ muscle: "Chest", target: 12, actual: 8, deficit: 4 }],
+      },
+      optionalWorkout: {
+        id: "w-gap-fill",
+        status: "SKIPPED",
+        scheduledDate: new Date("2026-03-25T00:00:00.000Z"),
+      },
+    });
+
+    const result = await loadHomeProgramSupport("user-1");
+
+    expect(result.gapFill.visible).toBe(true);
+    expect(result.gapFill.eligible).toBe(false);
+    expect(result.gapFill.workflowState).toBe("PENDING_OPTIONAL_GAP_FILL");
+    expect(result.gapFill.linkedWorkout).toEqual({
+      id: "w-gap-fill",
+      status: "SKIPPED",
+    });
+  });
+
   it("surfaces a same-week closeout separately from next-session support", async () => {
     setupDashboardMocks(
       {

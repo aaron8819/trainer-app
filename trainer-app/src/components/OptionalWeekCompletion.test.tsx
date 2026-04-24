@@ -1,10 +1,11 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GapFillSupportData } from "@/lib/api/program";
 import { OptionalWeekCompletion } from "./OptionalWeekCompletion";
 
 const pushMock = vi.fn();
 const refreshMock = vi.fn();
+const fetchMock = vi.fn();
 
 vi.mock("next/link", () => ({
   default: ({
@@ -60,6 +61,15 @@ function buildGapFill(overrides: Partial<GapFillSupportData> = {}): GapFillSuppo
 describe("OptionalWeekCompletion", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubGlobal("fetch", fetchMock);
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({}),
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it("renders recommended work before custom work and hides with UI-only dismissal", () => {
@@ -115,5 +125,31 @@ describe("OptionalWeekCompletion", () => {
 
     expect(screen.getByRole("button", { name: "Create optional session" })).toBeInTheDocument();
     expect(screen.queryByText(/closeout/i)).not.toBeInTheDocument();
+  });
+
+  it("dismisses pending optional work through the week-close dismiss route", async () => {
+    render(
+      <OptionalWeekCompletion
+        activeWeek={3}
+        gapFill={buildGapFill({
+          eligible: false,
+          linkedWorkout: {
+            id: "w-gap-fill",
+            status: "SKIPPED",
+          },
+        })}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "Review recommended session" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss optional work and continue" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/api/mesocycles/week-close/wc-1/dismiss", {
+        method: "POST",
+      });
+    });
+    expect(refreshMock).toHaveBeenCalled();
   });
 });

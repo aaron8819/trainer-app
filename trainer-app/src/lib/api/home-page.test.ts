@@ -507,6 +507,84 @@ describe("loadHomePageData", () => {
     });
   });
 
+  it("keeps skipped optional gap-fill separate from the completed required-week action", async () => {
+    mocks.loadHomeProgramSupport.mockResolvedValue({
+      nextSession: {
+        intent: null,
+        slotId: null,
+        slotSequenceIndex: null,
+        slotSequenceLength: 4,
+        slotSource: "mesocycle_slot_sequence",
+        weekInMeso: 4,
+        sessionInWeek: null,
+        workoutId: null,
+        isExisting: false,
+      },
+      activeWeek: 4,
+      completedAdvancingSessionsThisWeek: 4,
+      totalAdvancingSessionsThisWeek: 4,
+      lastSessionSkipped: false,
+      latestIncomplete: null,
+      gapFill: {
+        eligible: false,
+        visible: true,
+        reason: null,
+        weekCloseId: "wc-4",
+        anchorWeek: 4,
+        targetWeek: 4,
+        targetPhase: "ACCUMULATION",
+        resolution: null,
+        workflowState: "PENDING_OPTIONAL_GAP_FILL",
+        deficitState: "OPEN",
+        remainingDeficitSets: 4,
+        targetMuscles: ["Chest"],
+        deficitSummary: [{ muscle: "Chest", target: 12, actual: 8, deficit: 4 }],
+        alreadyUsedThisWeek: false,
+        suppressedByStartedNextWeek: false,
+        linkedWorkout: {
+          id: "w-gap-fill",
+          status: "SKIPPED",
+        },
+        policy: {
+          requiredSessionsPerWeek: 4,
+          maxOptionalGapFillSessionsPerWeek: 1,
+          maxGeneratedHardSets: 12,
+          maxGeneratedExercises: 4,
+        },
+      },
+      closeout: {
+        visible: false,
+        workoutId: null,
+        weekCloseId: null,
+        status: null,
+        targetWeek: null,
+        isIncomplete: false,
+        isPriorWeek: false,
+        canCreate: false,
+      },
+    });
+
+    const result = await loadHomePageData("user-1");
+
+    expect(result.primaryAction).toEqual({
+      state: "completed",
+      label: "Week complete",
+      description:
+        "Required sessions are done for this week. Optional sessions stay separate below.",
+      href: "/program",
+    });
+    expect(result.homeProgram?.gapFill).toMatchObject({
+      eligible: false,
+      visible: true,
+      weekCloseId: "wc-4",
+      workflowState: "PENDING_OPTIONAL_GAP_FILL",
+      linkedWorkout: {
+        id: "w-gap-fill",
+        status: "SKIPPED",
+      },
+    });
+  });
+
   it("adds a separate optional-session summary without altering the canonical next-session decision", async () => {
     mocks.loadHomeProgramSupport.mockResolvedValue({
       nextSession: {

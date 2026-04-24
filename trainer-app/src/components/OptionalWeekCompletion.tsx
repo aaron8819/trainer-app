@@ -122,6 +122,7 @@ export function OptionalWeekCompletion({
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [creatingCustom, setCreatingCustom] = useState(false);
+  const [dismissingWeekClose, setDismissingWeekClose] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dismissedWeekKey, setDismissedWeekKey] = useState<string | null>(null);
   const showRecommended = Boolean(
@@ -156,6 +157,9 @@ export function OptionalWeekCompletion({
   const targetWeek = gapFill?.targetWeek ?? gapFill?.anchorWeek ?? activeWeek;
   const canGenerateRecommended =
     gapFill?.eligible === true && gapFill.workflowState === "PENDING_OPTIONAL_GAP_FILL";
+  const canDismissPendingWeekClose = Boolean(
+    gapFill?.workflowState === "PENDING_OPTIONAL_GAP_FILL" && gapFill.weekCloseId
+  );
   const hasLinkedRecommended = Boolean(gapFill?.linkedWorkout);
   const deficitSummary = buildDeficitSummary(gapFill);
 
@@ -251,6 +255,28 @@ export function OptionalWeekCompletion({
     router.refresh();
   };
 
+  const handleDismissWeekClose = async () => {
+    if (!gapFill?.weekCloseId) {
+      return;
+    }
+
+    setDismissingWeekClose(true);
+    setError(null);
+
+    const response = await fetch(`/api/mesocycles/week-close/${gapFill.weekCloseId}/dismiss`, {
+      method: "POST",
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      setError(body.error ?? "Failed to dismiss optional work.");
+      setDismissingWeekClose(false);
+      return;
+    }
+
+    router.refresh();
+    setDismissingWeekClose(false);
+  };
+
   const handleCustomAction = async () => {
     if (!customSession) {
       return;
@@ -318,6 +344,16 @@ export function OptionalWeekCompletion({
                 disabled={loading}
               >
                 {loading ? "Generating..." : buildRecommendedActionLabel(gapFill)}
+              </button>
+            ) : null}
+            {canDismissPendingWeekClose ? (
+              <button
+                type="button"
+                className="mt-3 inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 px-5 py-2 text-sm font-semibold text-slate-900 disabled:opacity-60"
+                onClick={handleDismissWeekClose}
+                disabled={dismissingWeekClose}
+              >
+                {dismissingWeekClose ? "Dismissing..." : "Dismiss optional work and continue"}
               </button>
             ) : null}
           </div>

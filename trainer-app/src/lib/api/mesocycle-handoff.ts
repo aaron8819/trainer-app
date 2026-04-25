@@ -759,9 +759,30 @@ async function buildAcceptedMesocycleSlotPlanSeed(input: {
     if (!slotPlanProjection.slotPlans) {
       return null;
     }
+    if (
+      slotPlanProjection.error.startsWith(
+        "MESOCYCLE_HANDOFF_SLOT_PLAN_PROTECTED_COVERAGE_UNSATISFIED:"
+      )
+    ) {
+      throw new Error(slotPlanProjection.error);
+    }
+    const protectedCoverageDiagnostics = slotPlanProjection.diagnostics?.protectedCoverage;
     return buildMesocycleSlotPlanSeed({
       slotSequence: input.slotSequence,
       slotPlans: slotPlanProjection.slotPlans,
+      diagnostics: {
+        projectionStatus: "partial_acceptable",
+        ...(protectedCoverageDiagnostics
+          ? {
+              protectedCoverage: {
+                unresolvedProtectedMuscles:
+                  protectedCoverageDiagnostics.unresolvedProtectedMuscles,
+                supportFloorRepairReasons:
+                  protectedCoverageDiagnostics.supportFloorRepairReasons,
+              },
+            }
+          : {}),
+      },
     });
   }
 

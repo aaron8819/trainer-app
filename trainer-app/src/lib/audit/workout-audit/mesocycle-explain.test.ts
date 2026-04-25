@@ -157,7 +157,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
           {
             slotId: "upper_a",
             exercises: [
-              { exerciseId: "ex-1", role: "CORE_COMPOUND" },
+              { exerciseId: "ex-1", role: "CORE_COMPOUND", setCount: 4 },
             ],
           },
         ],
@@ -390,7 +390,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
           slotId: "upper_a",
           intent: "UPPER",
           exercises: [
-            { exerciseId: "ex-1", role: "CORE_COMPOUND" },
+            { exerciseId: "ex-1", role: "CORE_COMPOUND", setCount: 3 },
           ],
         },
       ],
@@ -407,7 +407,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
         {
           slotId: "upper_a",
           exercises: [
-            { exerciseId: "ex-1", role: "CORE_COMPOUND" },
+            { exerciseId: "ex-1", role: "CORE_COMPOUND", setCount: 3 },
           ],
         },
       ],
@@ -524,8 +524,27 @@ describe("buildMesocycleExplainAuditPayload", () => {
     expect(payload.version).toBe(1);
     expect(payload.preview.slotPlans).toHaveLength(1);
     expect(payload.seed.slotPlans).toHaveLength(1);
+    expect(payload.seed.slotPlans[0]?.exercises[0]).toMatchObject({
+      exerciseId: "ex-1",
+      setCount: 4,
+    });
     expect(payload.reality.generatedVsSaved).toHaveLength(1);
     expect(payload.comparison.previewVsSeed.slotDiffs).toHaveLength(1);
+    expect(payload.comparison.previewVsSeed).toMatchObject({
+      comparable: false,
+      comparisonBasis: "fresh_reprojection",
+    });
+    expect(payload.comparison.previewVsSeed.slotDiffs[0]).toMatchObject({
+      comparable: false,
+      exactMatch: false,
+      setCountMismatches: [
+        {
+          exerciseId: "ex-1",
+          previewSetCount: 3,
+          retrospectiveSetCount: 4,
+        },
+      ],
+    });
 
     expect(payload.preview.exerciseRationale[0]).toMatchObject({
       exerciseId: "ex-1",
@@ -551,6 +570,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
     expect(payload.limitations).toEqual(
       expect.arrayContaining([
         expect.stringContaining("Historical acceptance-time candidate ranking rationale is not persisted"),
+        expect.stringContaining("fresh reprojections"),
       ])
     );
   });

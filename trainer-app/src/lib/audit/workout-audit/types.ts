@@ -588,6 +588,7 @@ export type MesocycleExplainExerciseRow = {
   exerciseId: string;
   exerciseName: string;
   role: string | null;
+  setCount?: number;
 };
 
 export type MesocycleExplainSlotRow = {
@@ -650,6 +651,18 @@ export type MesocycleExplainComparisonSlotDiff = {
   previewOnlyExerciseIds: string[];
   retrospectiveOnlyExerciseIds: string[];
   sharedExerciseIds: string[];
+  orderedExerciseIdsMatch: boolean;
+  roleMismatches: Array<{
+    exerciseId: string;
+    previewRole: string | null;
+    retrospectiveRole: string | null;
+  }>;
+  setCountMismatches: Array<{
+    exerciseId: string;
+    previewSetCount: number | null;
+    retrospectiveSetCount: number | null;
+  }>;
+  exactMatch: boolean;
   comparable: boolean;
 };
 
@@ -702,6 +715,7 @@ export type MesocycleExplainAuditPayload = {
   comparison: {
     previewVsSeed: {
       comparable: boolean;
+      comparisonBasis: "fresh_reprojection" | "accepted_projection_artifact" | "none";
       slotDiffs: MesocycleExplainComparisonSlotDiff[];
     };
     seedVsReality: {

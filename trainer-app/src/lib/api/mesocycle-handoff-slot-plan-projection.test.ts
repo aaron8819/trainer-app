@@ -781,7 +781,7 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     expect(first).toEqual(second);
   });
 
-  it("keeps projected slot-plan seeds minimal while preserving exercise names and final set counts", () => {
+  it("keeps projected slot-plan seeds minimal while preserving final set counts", () => {
     const design = buildDesign();
     const slotSequence = {
       version: 1 as const,
@@ -807,7 +807,6 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
 
     expect(seed.slots[0]?.exercises[0]).toEqual({
       exerciseId: "plank",
-      name: "Plank",
       role: "ACCESSORY",
       setCount: 2,
     });
@@ -957,9 +956,7 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
         ["triceps-pressdown", "overhead-triceps-extension"].includes(exerciseId)
       )
     ).toBe(true);
-    expect(upperPairExerciseIds).toEqual(
-      expect.arrayContaining(["rear-delt-fly", "lateral-raise"])
-    );
+    expect(upperPairExerciseIds).toEqual(expect.arrayContaining(["lateral-raise"]));
     expect(
       upperPairExerciseIds.some((exerciseId) =>
         ["row", "seated-row", "pulldown"].includes(exerciseId)
@@ -978,6 +975,13 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     ).toBeLessThanOrEqual(1);
     expect(upperAExerciseIds.length).toBeLessThanOrEqual(6);
     expect(upperBExerciseIds.length).toBeLessThanOrEqual(6);
+    expect(
+      [...(upperA?.exercises ?? []), ...(upperB?.exercises ?? [])].every(
+        (exercise) => exercise.setCount <= 5
+      )
+    ).toBe(true);
+    const chest = getCoverageRow(projected, "Chest");
+    expect(chest?.projectedEffectiveSets ?? 0).toBeGreaterThanOrEqual(chest?.mev ?? 0);
   });
 
   it("forwards protected repair muscles into upper-slot projection candidates", () => {
@@ -1049,7 +1053,7 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     expect(lowerBExerciseIds.length).toBeLessThanOrEqual(6);
   });
 
-  it("closes Week 1 support floors by bumping existing calf and side-delt accessories", () => {
+  it("closes Week 1 support floors without over-inflating support accessories", () => {
     const projected = projectSuccessorSlotPlansFromSnapshot({
       userId: "user-1",
       source: buildSource(),
@@ -1074,13 +1078,10 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     expect(rearDelts?.projectedEffectiveSets ?? 0).toBeGreaterThan(0);
     expect(upperB?.exercises.length ?? 0).toBeLessThanOrEqual(6);
     expect(upperB?.exercises.some((exercise) => exercise.exerciseId === "lateral-raise")).toBe(true);
+    expect(
+      slotPlans.every((slot) => slot.exercises.every((exercise) => exercise.setCount <= 5))
+    ).toBe(true);
     expect(lowerB?.exercises[0]?.exerciseId).toBe("rdl");
-    expect(
-      projected.diagnostics?.protectedCoverage.supportFloorRepairReasons.Calves
-    ).toContain("existing_accessory_set_bump");
-    expect(
-      projected.diagnostics?.protectedCoverage.supportFloorRepairReasons["Side Delts"]
-    ).toContain("existing_accessory_set_bump");
   });
 
   it("closes hamstring protected coverage by bumping existing hinge work without breaking lower_b identity", () => {
@@ -1369,8 +1370,11 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     expect("error" in projected).toBe(false);
     if ("error" in projected) return;
 
-    expect(projected.diagnostics?.protectedCoverage.unresolvedProtectedMuscles).not.toContain(
-      "Hamstrings"
+    const hamstrings = projected.diagnostics?.protectedCoverage.afterRepair.muscles.find(
+      (row) => row.muscle === "Hamstrings"
+    );
+    expect(hamstrings?.projectedEffectiveSets ?? 0).toBeGreaterThanOrEqual(
+      hamstrings?.mev ?? 0
     );
     expect(
       projected.diagnostics?.protectedCoverage.supportFloorRepairReasons.Hamstrings

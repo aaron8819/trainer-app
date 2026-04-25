@@ -126,6 +126,7 @@ function resolveGenerationSessionSlotSnapshot(
 function buildSeededSelectionFromWorkout(input: {
   sessionIntent: GenerateIntentSessionInput["intent"];
   templateExercises: TemplateExerciseInput[];
+  seededSetCountOverrides?: Record<string, number>;
   workout: IntentSessionCompositionResult["generation"]["workout"];
   targetMuscles?: string[];
 }): SelectionOutput {
@@ -143,7 +144,7 @@ function buildSeededSelectionFromWorkout(input: {
     perExerciseSetTargets: Object.fromEntries(
       [...input.workout.mainLifts, ...input.workout.accessories].map((exercise) => [
         exercise.exercise.id,
-        exercise.sets.length,
+        input.seededSetCountOverrides?.[exercise.exercise.id] ?? exercise.sets.length,
       ])
     ),
     volumePlanByMuscle: {},
@@ -189,7 +190,7 @@ function composeSeededIntentSessionFromMappedContext(
   const generation = runSessionGeneration(mapped, seededSlotPlan.templateExercises, {
     sessionIntent: seededSlotPlan.intent,
     selectionMode: "INTENT",
-    setCountOverrides: {},
+    setCountOverrides: seededSlotPlan.setCountOverrides ?? {},
     mainLiftSlotCap: seededSlotPlan.exercises.filter((exercise) => exercise.role === "CORE_COMPOUND").length,
     selection: {
       selectedExerciseIds: seededSlotPlan.templateExercises.map((exercise) => exercise.exercise.id),
@@ -218,6 +219,7 @@ function composeSeededIntentSessionFromMappedContext(
       selection: buildSeededSelectionFromWorkout({
         sessionIntent: seededSlotPlan.intent,
         templateExercises: seededSlotPlan.templateExercises,
+        seededSetCountOverrides: seededSlotPlan.setCountOverrides,
         workout: generation.workout,
         targetMuscles: input.targetMuscles,
       }),

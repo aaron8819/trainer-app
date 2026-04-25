@@ -1009,6 +1009,7 @@ describe("buildWorkoutAuditArtifact", () => {
           comparison: {
             previewVsSeed: {
               comparable: false,
+              comparisonBasis: "none",
               slotDiffs: [],
             },
             seedVsReality: {

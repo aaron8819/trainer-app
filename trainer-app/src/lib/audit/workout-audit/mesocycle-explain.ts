@@ -137,7 +137,11 @@ type ComparisonSlotShape = {
   slotId: string | null;
   slotIndex: number | null;
   intent: string | null;
-  exerciseIds: string[];
+  exercises: Array<{
+    exerciseId: string;
+    role: string | null;
+    setCount?: number;
+  }>;
 };
 
 function countWorkoutExercises(workout: {
@@ -281,6 +285,7 @@ function normalizeSeedSlots(input: {
         exerciseId: exercise.exerciseId,
         exerciseName: input.exerciseNameById.get(exercise.exerciseId) ?? exercise.exerciseId,
         role: exercise.role,
+        ...(exercise.setCount != null ? { setCount: exercise.setCount } : {}),
       })),
     }];
   });
@@ -425,6 +430,7 @@ function buildPreviewSlotRows(input: {
     exercises: Array<{
       exerciseId: string;
       role: string;
+      setCount?: number;
     }>;
   }>;
   exerciseNameById: Map<string, string>;
@@ -437,6 +443,7 @@ function buildPreviewSlotRows(input: {
       exerciseId: exercise.exerciseId,
       exerciseName: input.exerciseNameById.get(exercise.exerciseId) ?? exercise.exerciseId,
       role: exercise.role,
+      ...(exercise.setCount != null ? { setCount: exercise.setCount } : {}),
     })),
   }));
 }
@@ -797,7 +804,11 @@ function buildRealityRows(input: {
           slotId: row.slotId,
           slotIndex: row.slotIndex,
           intent: normalizeIntent(workout.sessionIntent),
-          exerciseIds: actualExerciseIds,
+          exercises: workout.exercises.map((exercise) => ({
+            exerciseId: exercise.exerciseId,
+            role: exercise.isMainLift ? "CORE_COMPOUND" : "ACCESSORY",
+            setCount: exercise.sets.length,
+          })),
           scheduledDate: row.scheduledDate,
         });
       }
@@ -812,7 +823,7 @@ function buildRealityRows(input: {
       slotId: entry.slotId,
       slotIndex: entry.slotIndex,
       intent: entry.intent,
-      exerciseIds: entry.exerciseIds,
+      exercises: entry.exercises,
     })),
   };
 }
@@ -898,6 +909,7 @@ function buildRealityExerciseRationale(input: {
 function buildComparisonSlotDiffs(input: {
   previewSlots: ComparisonSlotShape[];
   retrospectiveSlots: ComparisonSlotShape[];
+  slotsComparable?: boolean;
 }): MesocycleExplainComparisonSlotDiff[] {
   const previewByKey = new Map(
     input.previewSlots.map((slot) => [buildComparisonKey(slot.slotIndex, slot.slotId), slot])
@@ -910,8 +922,44 @@ function buildComparisonSlotDiffs(input: {
   return keys.map((key) => {
     const preview = previewByKey.get(key) ?? null;
     const retrospective = retrospectiveByKey.get(key) ?? null;
-    const previewExerciseIds = preview?.exerciseIds ?? [];
-    const retrospectiveExerciseIds = retrospective?.exerciseIds ?? [];
+    const previewExercises = preview?.exercises ?? [];
+    const retrospectiveExercises = retrospective?.exercises ?? [];
+    const previewExerciseIds = previewExercises.map((exercise) => exercise.exerciseId);
+    const retrospectiveExerciseIds = retrospectiveExercises.map((exercise) => exercise.exerciseId);
+    const retrospectiveByExerciseId = new Map(
+      retrospectiveExercises.map((exercise) => [exercise.exerciseId, exercise])
+    );
+    const sharedExerciseIds = previewExerciseIds.filter((exerciseId) =>
+      retrospectiveExerciseIds.includes(exerciseId)
+    );
+    const roleMismatches = sharedExerciseIds.flatMap((exerciseId) => {
+      const previewExercise = previewExercises.find((exercise) => exercise.exerciseId === exerciseId);
+      const retrospectiveExercise = retrospectiveByExerciseId.get(exerciseId);
+      const previewRole = previewExercise?.role ?? null;
+      const retrospectiveRole = retrospectiveExercise?.role ?? null;
+      return previewRole !== retrospectiveRole
+        ? [{ exerciseId, previewRole, retrospectiveRole }]
+        : [];
+    });
+    const setCountMismatches = sharedExerciseIds.flatMap((exerciseId) => {
+      const previewExercise = previewExercises.find((exercise) => exercise.exerciseId === exerciseId);
+      const retrospectiveExercise = retrospectiveByExerciseId.get(exerciseId);
+      const previewSetCount = previewExercise?.setCount ?? null;
+      const retrospectiveSetCount = retrospectiveExercise?.setCount ?? null;
+      return previewSetCount !== retrospectiveSetCount
+        ? [{ exerciseId, previewSetCount, retrospectiveSetCount }]
+        : [];
+    });
+    const orderedExerciseIdsMatch =
+      previewExerciseIds.length === retrospectiveExerciseIds.length &&
+      previewExerciseIds.every((exerciseId, index) => retrospectiveExerciseIds[index] === exerciseId);
+    const exactMatch =
+      preview != null &&
+      retrospective != null &&
+      normalizeIntent(preview.intent) === normalizeIntent(retrospective.intent) &&
+      orderedExerciseIdsMatch &&
+      roleMismatches.length === 0 &&
+      setCountMismatches.length === 0;
 
     return {
       comparisonKey: key,
@@ -925,10 +973,12 @@ function buildComparisonSlotDiffs(input: {
       retrospectiveOnlyExerciseIds: retrospectiveExerciseIds.filter(
         (exerciseId) => !previewExerciseIds.includes(exerciseId)
       ),
-      sharedExerciseIds: previewExerciseIds.filter((exerciseId) =>
-        retrospectiveExerciseIds.includes(exerciseId)
-      ),
-      comparable: preview != null && retrospective != null,
+      sharedExerciseIds,
+      orderedExerciseIdsMatch,
+      roleMismatches,
+      setCountMismatches,
+      exactMatch,
+      comparable: input.slotsComparable !== false && preview != null && retrospective != null,
     };
   });
 }
@@ -1114,21 +1164,34 @@ export async function buildMesocycleExplainAuditPayload(input: {
       slotId: slot.slotId,
       slotIndex: slot.slotIndex,
       intent: slot.intent,
-      exerciseIds: slot.exercises.map((exercise) => exercise.exerciseId),
+      exercises: slot.exercises.map((exercise) => ({
+        exerciseId: exercise.exerciseId,
+        role: exercise.role,
+        setCount: exercise.setCount,
+      })),
     })),
     retrospectiveSlots: seedSlots.map((slot) => ({
       slotId: slot.slotId,
       slotIndex: slot.slotIndex,
       intent: slot.intent,
-      exerciseIds: slot.exercises.map((exercise) => exercise.exerciseId),
+      exercises: slot.exercises.map((exercise) => ({
+        exerciseId: exercise.exerciseId,
+        role: exercise.role,
+        setCount: exercise.setCount,
+      })),
     })),
+    slotsComparable: false,
   });
   const previewVsReality = buildComparisonSlotDiffs({
     previewSlots: previewSlotPlans.map((slot) => ({
       slotId: slot.slotId,
       slotIndex: slot.slotIndex,
       intent: slot.intent,
-      exerciseIds: slot.exercises.map((exercise) => exercise.exerciseId),
+      exercises: slot.exercises.map((exercise) => ({
+        exerciseId: exercise.exerciseId,
+        role: exercise.role,
+        setCount: exercise.setCount,
+      })),
     })),
     retrospectiveSlots: reality.latestRealityBySlot,
   });
@@ -1138,6 +1201,9 @@ export async function buildMesocycleExplainAuditPayload(input: {
   );
   limitations.push(
     "Preview exercise rationale is strongest for slot obligation, carry-forward continuity, and protected-coverage reconstruction; per-candidate winner-over-alternative ranking is not claimed unless canonically persisted."
+  );
+  limitations.push(
+    "Preview slot plans are fresh reprojections from the current canonical handoff projection seam, not persisted acceptance-time projection artifacts; preview-vs-seed diffs are diagnostic and are not marked comparable to the accepted seed."
   );
   if (sourceMesocycle.id !== retrospectiveMesocycle.id) {
     limitations.push(
@@ -1230,7 +1296,9 @@ export async function buildMesocycleExplainAuditPayload(input: {
     },
     comparison: {
       previewVsSeed: {
-        comparable: seedSlots.length > 0 && previewSlotPlans.length > 0,
+        comparable: false,
+        comparisonBasis:
+          seedSlots.length > 0 && previewSlotPlans.length > 0 ? "fresh_reprojection" : "none",
         slotDiffs: previewVsSeed,
       },
       seedVsReality: {

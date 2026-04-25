@@ -1998,24 +1998,24 @@ describe("generateSessionFromIntent", () => {
           {
             slotId: "upper_a",
             exercises: [
-              { exerciseId: "bench", role: "CORE_COMPOUND" },
-              { exerciseId: "row", role: "ACCESSORY" },
+              { exerciseId: "bench", role: "CORE_COMPOUND", setCount: 4 },
+              { exerciseId: "row", role: "ACCESSORY", setCount: 3 },
             ],
           },
           {
             slotId: "lower_a",
-            exercises: [{ exerciseId: "bench", role: "CORE_COMPOUND" }],
+            exercises: [{ exerciseId: "bench", role: "CORE_COMPOUND", setCount: 4 }],
           },
           {
             slotId: "upper_b",
             exercises: [
-              { exerciseId: "incline-db-press", role: "CORE_COMPOUND" },
-              { exerciseId: "lat-pulldown", role: "ACCESSORY" },
+              { exerciseId: "incline-db-press", role: "CORE_COMPOUND", setCount: 5 },
+              { exerciseId: "lat-pulldown", role: "ACCESSORY", setCount: 4 },
             ],
           },
           {
             slotId: "lower_b",
-            exercises: [{ exerciseId: "row", role: "CORE_COMPOUND" }],
+            exercises: [{ exerciseId: "row", role: "CORE_COMPOUND", setCount: 4 }],
           },
         ],
       },
@@ -2043,6 +2043,12 @@ describe("generateSessionFromIntent", () => {
       expect(result.workout.accessories.map((entry) => entry.exercise.id)).toEqual([
         "lat-pulldown",
       ]);
+      expect(result.workout.mainLifts[0]?.sets).toHaveLength(5);
+      expect(result.workout.accessories[0]?.sets).toHaveLength(4);
+      expect(result.selection.perExerciseSetTargets).toMatchObject({
+        "incline-db-press": 5,
+        "lat-pulldown": 4,
+      });
       expect(result.selection.sessionDecisionReceipt).toBeDefined();
       expect(result.audit?.progressionTraces).toBeDefined();
     } finally {

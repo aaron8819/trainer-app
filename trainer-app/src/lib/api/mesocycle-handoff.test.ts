@@ -995,19 +995,19 @@ describe("handoff draft persistence", () => {
           slotId: "push_a",
           intent: "PUSH",
           exercises: [
-            { exerciseId: "bench", role: "CORE_COMPOUND" },
-            { exerciseId: "machine-press", role: "ACCESSORY" },
+            { exerciseId: "bench", role: "CORE_COMPOUND", setCount: 4 },
+            { exerciseId: "machine-press", role: "ACCESSORY", setCount: 3 },
           ],
         },
         {
           slotId: "pull_a",
           intent: "PULL",
-          exercises: [{ exerciseId: "row", role: "ACCESSORY" }],
+          exercises: [{ exerciseId: "row", role: "ACCESSORY", setCount: 3 }],
         },
         {
           slotId: "legs_a",
           intent: "LEGS",
-          exercises: [{ exerciseId: "squat", role: "CORE_COMPOUND" }],
+          exercises: [{ exerciseId: "squat", role: "CORE_COMPOUND", setCount: 4 }],
         },
       ],
     });
@@ -1116,17 +1116,17 @@ describe("handoff draft persistence", () => {
               {
                 slotId: "push_a",
                 exercises: [
-                  { exerciseId: "bench", role: "CORE_COMPOUND" },
-                  { exerciseId: "machine-press", role: "ACCESSORY" },
+                  { exerciseId: "bench", role: "CORE_COMPOUND", setCount: 4 },
+                  { exerciseId: "machine-press", role: "ACCESSORY", setCount: 3 },
                 ],
               },
               {
                 slotId: "pull_a",
-                exercises: [{ exerciseId: "row", role: "ACCESSORY" }],
+                exercises: [{ exerciseId: "row", role: "ACCESSORY", setCount: 3 }],
               },
               {
                 slotId: "legs_a",
-                exercises: [{ exerciseId: "squat", role: "CORE_COMPOUND" }],
+                exercises: [{ exerciseId: "squat", role: "CORE_COMPOUND", setCount: 4 }],
               },
             ],
           },
@@ -1149,6 +1149,7 @@ describe("handoff draft persistence", () => {
     );
     expect(createData.slotPlanSeedJson?.slots[0]).not.toHaveProperty("intent");
     expect(createData.slotPlanSeedJson?.slots[0]?.exercises[0]).not.toHaveProperty("exerciseName");
+    expect(createData.slotPlanSeedJson?.slots[0]?.exercises[0]).not.toHaveProperty("name");
     expect(exerciseRoleCreateMany).not.toHaveBeenCalled();
     expect(constraintsUpsert).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1175,22 +1176,22 @@ describe("handoff draft persistence", () => {
         {
           slotId: "upper_a",
           intent: "UPPER",
-          exercises: [{ exerciseId: "bench", role: "CORE_COMPOUND" }],
+          exercises: [{ exerciseId: "bench", role: "CORE_COMPOUND", setCount: 4 }],
         },
         {
           slotId: "lower_a",
           intent: "LOWER",
-          exercises: [{ exerciseId: "squat", role: "CORE_COMPOUND" }],
+          exercises: [{ exerciseId: "squat", role: "CORE_COMPOUND", setCount: 4 }],
         },
         {
           slotId: "upper_b",
           intent: "UPPER",
-          exercises: [{ exerciseId: "row", role: "ACCESSORY" }],
+          exercises: [{ exerciseId: "row", role: "ACCESSORY", setCount: 3 }],
         },
         {
           slotId: "lower_b",
           intent: "LOWER",
-          exercises: [{ exerciseId: "split-squat", role: "ACCESSORY" }],
+          exercises: [{ exerciseId: "split-squat", role: "ACCESSORY", setCount: 3 }],
         },
       ],
     });
@@ -1281,22 +1282,22 @@ describe("handoff draft persistence", () => {
         {
           slotId: "upper_a",
           intent: "UPPER",
-          exercises: [{ exerciseId: "bench", role: "CORE_COMPOUND" }],
+          exercises: [{ exerciseId: "bench", role: "CORE_COMPOUND", setCount: 4 }],
         },
         {
           slotId: "lower_a",
           intent: "LOWER",
-          exercises: [{ exerciseId: "squat", role: "CORE_COMPOUND" }],
+          exercises: [{ exerciseId: "squat", role: "CORE_COMPOUND", setCount: 4 }],
         },
         {
           slotId: "upper_b",
           intent: "UPPER",
-          exercises: [{ exerciseId: "row", role: "ACCESSORY" }],
+          exercises: [{ exerciseId: "row", role: "ACCESSORY", setCount: 3 }],
         },
         {
           slotId: "lower_b",
           intent: "LOWER",
-          exercises: [{ exerciseId: "split-squat", role: "ACCESSORY" }],
+          exercises: [{ exerciseId: "split-squat", role: "ACCESSORY", setCount: 3 }],
         },
       ],
     });
@@ -1383,22 +1384,22 @@ describe("handoff draft persistence", () => {
         {
           slotId: "upper_a",
           intent: "UPPER",
-          exercises: [{ exerciseId: "bench", role: "CORE_COMPOUND" }],
+          exercises: [{ exerciseId: "bench", role: "CORE_COMPOUND", setCount: 4 }],
         },
         {
           slotId: "lower_a",
           intent: "LOWER",
-          exercises: [{ exerciseId: "squat", role: "CORE_COMPOUND" }],
+          exercises: [{ exerciseId: "squat", role: "CORE_COMPOUND", setCount: 4 }],
         },
         {
           slotId: "upper_b",
           intent: "UPPER",
-          exercises: [{ exerciseId: "row", role: "ACCESSORY" }],
+          exercises: [{ exerciseId: "row", role: "ACCESSORY", setCount: 3 }],
         },
         {
           slotId: "lower_b",
           intent: "LOWER",
-          exercises: [{ exerciseId: "split-squat", role: "ACCESSORY" }],
+          exercises: [{ exerciseId: "split-squat", role: "ACCESSORY", setCount: 3 }],
         },
       ],
     });
@@ -1516,22 +1517,22 @@ describe("handoff draft persistence", () => {
         {
           slotId: "upper_a",
           intent: "UPPER",
-          exercises: [{ exerciseId: "bench", role: "CORE_COMPOUND" }],
+          exercises: [{ exerciseId: "bench", role: "CORE_COMPOUND", setCount: 4 }],
         },
         {
           slotId: "lower_a",
           intent: "LOWER",
-          exercises: [{ exerciseId: "squat", role: "CORE_COMPOUND" }],
+          exercises: [{ exerciseId: "squat", role: "CORE_COMPOUND", setCount: 4 }],
         },
         {
           slotId: "upper_b",
           intent: "UPPER",
-          exercises: [{ exerciseId: "row", role: "ACCESSORY" }],
+          exercises: [{ exerciseId: "row", role: "ACCESSORY", setCount: 3 }],
         },
         {
           slotId: "lower_b",
           intent: "LOWER",
-          exercises: [{ exerciseId: "split-squat", role: "ACCESSORY" }],
+          exercises: [{ exerciseId: "split-squat", role: "ACCESSORY", setCount: 3 }],
         },
       ],
     });
@@ -1905,7 +1906,7 @@ describe("handoff draft persistence", () => {
     expect(createData).not.toHaveProperty("slotPlanSeedJson");
   });
 
-  it("persists materialized slot plans even when projection reports a coverage diagnostic", async () => {
+  it("rejects acceptance when projection reports unresolved blocking protected coverage", async () => {
     const recommendedDraft = buildRecommendedDraft();
     mocks.loadPreloadedGenerationSnapshot.mockResolvedValue({
       context: {},
@@ -1916,22 +1917,22 @@ describe("handoff draft persistence", () => {
         {
           slotId: "upper_a",
           intent: "UPPER",
-          exercises: [{ exerciseId: "bench", role: "CORE_COMPOUND" }],
+          exercises: [{ exerciseId: "bench", role: "CORE_COMPOUND", setCount: 4 }],
         },
         {
           slotId: "lower_a",
           intent: "LOWER",
-          exercises: [{ exerciseId: "squat", role: "CORE_COMPOUND" }],
+          exercises: [{ exerciseId: "squat", role: "CORE_COMPOUND", setCount: 4 }],
         },
         {
           slotId: "upper_b",
           intent: "UPPER",
-          exercises: [{ exerciseId: "row", role: "ACCESSORY" }],
+          exercises: [{ exerciseId: "row", role: "ACCESSORY", setCount: 3 }],
         },
         {
           slotId: "lower_b",
           intent: "LOWER",
-          exercises: [{ exerciseId: "split-squat", role: "ACCESSORY" }],
+          exercises: [{ exerciseId: "split-squat", role: "ACCESSORY", setCount: 3 }],
         },
       ],
     });
@@ -1987,27 +1988,9 @@ describe("handoff draft persistence", () => {
           },
         } as never,
       )
-    ).resolves.toMatchObject({
-      id: "meso-2",
-      state: "ACTIVE_ACCUMULATION",
-      mesoNumber: 2,
-    });
+    ).rejects.toThrow("MESOCYCLE_HANDOFF_SLOT_PLAN_PROTECTED_COVERAGE_UNSATISFIED:Side Delts");
 
-    expect(mesocycleCreate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          slotPlanSeedJson: expect.objectContaining({
-            source: "handoff_slot_plan_projection",
-            slots: [
-              expect.objectContaining({ slotId: "upper_a" }),
-              expect.objectContaining({ slotId: "lower_a" }),
-              expect.objectContaining({ slotId: "upper_b" }),
-              expect.objectContaining({ slotId: "lower_b" }),
-            ],
-          }),
-        }),
-      })
-    );
+    expect(mesocycleCreate).not.toHaveBeenCalled();
   });
 
   it("rejects acceptance when a kept selection no longer matches the edited split", async () => {

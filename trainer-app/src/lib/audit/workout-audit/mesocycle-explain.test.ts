@@ -398,6 +398,133 @@ describe("buildMesocycleExplainAuditPayload", () => {
         protectedCoverage: {
           repairedSlotIds: [],
         },
+        weeklyObligations: {
+          plan: {
+            muscles: {},
+          },
+          slotEvaluations: [
+            {
+              slotId: "upper_a",
+              muscle: "Chest",
+              minEffectiveSets: 4,
+              projectedEffectiveSets: 3,
+              shortfall: 1,
+              zeroContribution: false,
+            },
+          ],
+          zeroContributionSlots: [],
+          weeklyHardMuscleTotals: {
+            Chest: 3,
+          },
+        },
+        duplicateExerciseReuse: [
+          {
+            exerciseId: "ex-1",
+            name: "Incline Dumbbell Press",
+            repeatedInSlotId: "upper_a",
+            previousSlotIds: ["upper_b"],
+            role: "main",
+            hasCompatibleAlternative: false,
+            reason: "main_lift_continuity_allowed",
+          },
+        ],
+        programQuality: {
+          constraintPriority: {
+            P0: "weekly_obligations_slot_identity",
+            P1: "movement_pattern_coverage",
+            P2: "per_exercise_efficiency",
+            P3: "stimulus_diversity",
+            P4: "duplicate_penalties",
+            P5: "isolation_completeness",
+          },
+          penaltyModel: {
+            type: "additive",
+            monotonic: true,
+          },
+          appliedDiagnostics: [
+            {
+              priority: "P5",
+              constraint: "isolation_completeness",
+              penalty: 0,
+              slotId: "upper_a",
+              exerciseId: "ex-3",
+              name: "Cable Lateral Raise",
+              muscle: "Side Delts",
+              reason: "injected_direct_isolation_for_deficit",
+              details: {
+                projectedEffectiveSets: 1,
+                threshold: 2,
+              },
+            },
+          ],
+          evaluation: {
+            totalPenalty: 5,
+            constraintCounts: {
+              per_exercise_efficiency: 1,
+              stimulus_diversity: 1,
+              cross_slot_duplicate: 1,
+              weekly_pattern_balance: 1,
+            },
+            diagnostics: [
+              {
+                priority: "P2",
+                constraint: "per_exercise_efficiency",
+                penalty: 1.25,
+                slotId: "upper_a",
+                exerciseId: "ex-1",
+                name: "Incline Dumbbell Press",
+                muscle: "Chest",
+                reason: "soft_cap_exceeded_higher_priority_or_capacity_bound",
+                details: {
+                  setCount: 5,
+                  softCap: 4,
+                  hardCap: 5,
+                },
+              },
+              {
+                priority: "P3",
+                constraint: "stimulus_diversity",
+                penalty: 1,
+                muscle: "Chest",
+                pattern: "push",
+                reason: "single_pattern_share_exceeded",
+                details: {
+                  muscleSets: 10,
+                  patternSets: 8,
+                  share: 0.8,
+                  maxShare: 0.7,
+                },
+              },
+              {
+                priority: "P4",
+                constraint: "cross_slot_duplicate",
+                penalty: 0.5,
+                slotId: "upper_a",
+                exerciseId: "ex-1",
+                name: "Incline Dumbbell Press",
+                reason: "main_lift_continuity_allowed",
+                details: {
+                  previousSlotIds: ["upper_b"],
+                  role: "main",
+                  hasCompatibleAlternative: false,
+                },
+              },
+              {
+                priority: "P1",
+                constraint: "weekly_pattern_balance",
+                penalty: 2,
+                pattern: "hinge",
+                reason: "lower_hinge_share_exceeded",
+                details: {
+                  hingeSets: 7,
+                  lowerPatternSets: 10,
+                  share: 0.7,
+                  maxShare: 0.6,
+                },
+              },
+            ],
+          },
+        },
       },
     });
     mocks.buildMesocycleSlotPlanSeed.mockReturnValue({
@@ -551,6 +678,60 @@ describe("buildMesocycleExplainAuditPayload", () => {
       reasonSource: "persisted",
       ranking: null,
     });
+    expect(payload.preview.projectionDiagnostics).toMatchObject({
+      label: "projection diagnostics",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      summary: {
+        setStackingPressure: 1,
+        duplicateExercisePressure: 1,
+        diversityPenalties: 1,
+        hingeSquatBalance: 1,
+        isolationInjectionTriggers: 1,
+        softCapsOverriddenByP0: 1,
+      },
+    });
+    expect(payload.preview.projectionDiagnostics.constraintsTriggered).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: "projection diagnostics",
+          category: "set_stacking_pressure",
+          constraint: "per_exercise_efficiency",
+          reason: "soft_cap_exceeded_higher_priority_or_capacity_bound",
+        }),
+        expect.objectContaining({
+          label: "projection diagnostics",
+          category: "duplicate_exercise_pressure",
+          constraint: "cross_slot_duplicate",
+        }),
+        expect.objectContaining({
+          label: "projection diagnostics",
+          category: "diversity_penalty",
+          constraint: "stimulus_diversity",
+        }),
+        expect.objectContaining({
+          label: "projection diagnostics",
+          category: "hinge_squat_balance",
+          constraint: "weekly_pattern_balance",
+        }),
+      ])
+    );
+    expect(payload.preview.projectionDiagnostics.tradeoffs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          category: "isolation_injection_trigger",
+          reason: "injected_direct_isolation_for_deficit",
+          why: expect.stringContaining("direct isolation was inserted"),
+        }),
+      ])
+    );
+    expect(payload.preview.projectionDiagnostics.softCapOverridesByP0).toEqual([
+      expect.objectContaining({
+        category: "soft_cap_overridden_by_p0",
+        exerciseId: "ex-1",
+        why: expect.stringContaining("soft set cap yielded to P0"),
+      }),
+    ]);
     expect(payload.seed.exerciseRationale[0]).toMatchObject({
       exerciseId: "ex-1",
       reasonSource: "persisted",

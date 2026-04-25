@@ -224,6 +224,22 @@ describe("runWorkoutAuditGeneration", () => {
         carryForwardReasons: [],
         slotPlans: [],
         projectedSessions: [],
+        projectionDiagnostics: {
+          label: "projection diagnostics",
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          summary: {
+            setStackingPressure: 0,
+            duplicateExercisePressure: 0,
+            diversityPenalties: 0,
+            hingeSquatBalance: 0,
+            isolationInjectionTriggers: 0,
+            softCapsOverriddenByP0: 0,
+          },
+          constraintsTriggered: [],
+          tradeoffs: [],
+          softCapOverridesByP0: [],
+        },
         exerciseRationale: [],
       },
       seed: {

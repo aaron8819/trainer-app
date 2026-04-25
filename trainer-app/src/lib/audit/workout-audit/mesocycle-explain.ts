@@ -18,6 +18,7 @@ import { projectSuccessorMesocycle } from "@/lib/api/mesocycle-handoff-projectio
 import {
   buildMesocycleSlotPlanSeed,
   projectSuccessorSlotPlansFromSnapshot,
+  type SuccessorSlotPlanProjection,
 } from "@/lib/api/mesocycle-handoff-slot-plan-projection";
 import { resolveMesocycleSlotContract } from "@/lib/api/mesocycle-slot-contract";
 import { parseSlotPlanSeedJson } from "@/lib/api/slot-plan-seed-parser";
@@ -49,6 +50,9 @@ import type {
   MesocycleExplainExerciseRationale,
   MesocycleExplainExerciseRow,
   MesocycleExplainPreviewProjectedSession,
+  MesocycleExplainProjectionDiagnosticCategory,
+  MesocycleExplainProjectionDiagnosticRow,
+  MesocycleExplainProjectionDiagnostics,
   MesocycleExplainRealityWorkout,
   MesocycleExplainReasonSource,
   MesocycleExplainSlotRow,
@@ -144,6 +148,17 @@ type ComparisonSlotShape = {
   }>;
 };
 
+type SlotPlanProjectionDiagnostics = SuccessorSlotPlanProjection["diagnostics"];
+type ProgramQualityDiagnostic = NonNullable<
+  NonNullable<SlotPlanProjectionDiagnostics>["programQuality"]
+>["evaluation"]["diagnostics"][number];
+type DuplicateExerciseReuseDiagnostic = NonNullable<
+  NonNullable<SlotPlanProjectionDiagnostics>["duplicateExerciseReuse"]
+>[number];
+type SlotObligationEvaluation = NonNullable<
+  NonNullable<SlotPlanProjectionDiagnostics>["weeklyObligations"]
+>["slotEvaluations"][number];
+
 function countWorkoutExercises(workout: {
   warmup: unknown[];
   mainLifts: unknown[];
@@ -172,6 +187,218 @@ function normalizeReasonCodes(reasonCodes: string[]): string[] {
     .map((code) => code.trim())
     .filter((code) => code.length > 0)
     .sort((left, right) => left.localeCompare(right));
+}
+
+function categorizeProgramQualityDiagnostic(
+  diagnostic: Pick<ProgramQualityDiagnostic, "constraint" | "reason" | "pattern">
+): MesocycleExplainProjectionDiagnosticCategory {
+  if (
+    diagnostic.constraint === "per_exercise_efficiency" &&
+    diagnostic.reason.includes("soft_cap")
+  ) {
+    return "set_stacking_pressure";
+  }
+  if (diagnostic.constraint === "cross_slot_duplicate" || diagnostic.constraint === "redundancy") {
+    return "duplicate_exercise_pressure";
+  }
+  if (
+    diagnostic.constraint === "stimulus_diversity" ||
+    diagnostic.constraint === "single_exercise_volume_share"
+  ) {
+    return "diversity_penalty";
+  }
+  if (diagnostic.constraint === "session_composition" && diagnostic.reason === "same_pattern_count_exceeded") {
+    return "diversity_penalty";
+  }
+  if (
+    diagnostic.constraint === "weekly_pattern_balance" &&
+    (diagnostic.pattern === "hinge" || diagnostic.pattern === "squat")
+  ) {
+    return "hinge_squat_balance";
+  }
+  if (diagnostic.constraint === "isolation_completeness") {
+    return "isolation_injection_trigger";
+  }
+  return "other_projection_quality";
+}
+
+function explainProjectionDiagnostic(input: {
+  category: MesocycleExplainProjectionDiagnosticCategory;
+  reason: string;
+  constraint: string;
+  source: MesocycleExplainProjectionDiagnosticRow["source"];
+}): string {
+  if (input.category === "set_stacking_pressure") {
+    return input.reason === "soft_cap_exceeded_higher_priority_or_capacity_bound"
+      ? "A set-count soft cap remained exceeded because P0 weekly obligations, slot identity, or real slot capacity took precedence over further spreading."
+      : "The projection detected pressure from stacking more sets on one exercise than the soft cap prefers.";
+  }
+  if (input.category === "duplicate_exercise_pressure") {
+    return "The projection reused or paired similar work because continuity, inventory, or slot constraints beat the duplicate-pressure penalty.";
+  }
+  if (input.category === "diversity_penalty") {
+    return "The projection detected concentrated stimulus from one exercise or movement pattern after higher-priority coverage was satisfied.";
+  }
+  if (input.category === "hinge_squat_balance") {
+    return "The lower-body projection favored hinge/squat coverage enough to trip the weekly movement-pattern balance readout.";
+  }
+  if (input.category === "isolation_injection_trigger") {
+    return input.source === "program_quality_application"
+      ? "A direct isolation was inserted only after projected support remained below the existing Week 1 support floor and a compatible slot had room."
+      : "The projection detected a direct-isolation support deficit against the existing Week 1 support floor.";
+  }
+  if (input.category === "soft_cap_overridden_by_p0") {
+    return "This is a read-only marker that a soft set cap yielded to P0 weekly obligation or slot-identity constraints.";
+  }
+  return `The projection emitted ${input.constraint} as a non-blocking program-quality diagnostic.`;
+}
+
+function mapProgramQualityDiagnostic(input: {
+  diagnostic: ProgramQualityDiagnostic;
+  source: "program_quality_evaluation" | "program_quality_application";
+  category?: MesocycleExplainProjectionDiagnosticCategory;
+}): MesocycleExplainProjectionDiagnosticRow {
+  const category = input.category ?? categorizeProgramQualityDiagnostic(input.diagnostic);
+  return {
+    label: "projection diagnostics",
+    category,
+    priority: input.diagnostic.priority,
+    constraint: input.diagnostic.constraint,
+    reason: input.diagnostic.reason,
+    why: explainProjectionDiagnostic({
+      category,
+      reason: input.diagnostic.reason,
+      constraint: input.diagnostic.constraint,
+      source: input.source,
+    }),
+    source: input.source,
+    ...(input.diagnostic.slotId ? { slotId: input.diagnostic.slotId } : {}),
+    ...(input.diagnostic.exerciseId ? { exerciseId: input.diagnostic.exerciseId } : {}),
+    ...(input.diagnostic.name ? { exerciseName: input.diagnostic.name } : {}),
+    ...(input.diagnostic.muscle ? { muscle: input.diagnostic.muscle } : {}),
+    ...(input.diagnostic.pattern ? { pattern: input.diagnostic.pattern } : {}),
+    penalty: input.diagnostic.penalty,
+    ...(input.diagnostic.details ? { details: input.diagnostic.details } : {}),
+  };
+}
+
+function mapDuplicateReuseDiagnostic(
+  diagnostic: DuplicateExerciseReuseDiagnostic
+): MesocycleExplainProjectionDiagnosticRow {
+  return {
+    label: "projection diagnostics",
+    category: "duplicate_exercise_pressure",
+    priority: "P4",
+    constraint: "cross_slot_duplicate",
+    reason: diagnostic.reason,
+    why: explainProjectionDiagnostic({
+      category: "duplicate_exercise_pressure",
+      reason: diagnostic.reason,
+      constraint: "cross_slot_duplicate",
+      source: "duplicate_reuse",
+    }),
+    source: "duplicate_reuse",
+    slotId: diagnostic.repeatedInSlotId,
+    exerciseId: diagnostic.exerciseId,
+    exerciseName: diagnostic.name,
+    details: {
+      previousSlotIds: diagnostic.previousSlotIds,
+      role: diagnostic.role,
+      hasCompatibleAlternative: diagnostic.hasCompatibleAlternative,
+    },
+  };
+}
+
+function mapWeeklyObligationDiagnostic(
+  row: SlotObligationEvaluation
+): MesocycleExplainProjectionDiagnosticRow {
+  return {
+    label: "projection diagnostics",
+    category: "soft_cap_overridden_by_p0",
+    priority: "P0",
+    constraint: "weekly_obligation",
+    reason: row.zeroContribution ? "p0_zero_contribution" : "p0_shortfall",
+    why: "A hard Week 1 obligation remained visible as projection context; downstream soft constraints must yield to this slot-level obligation.",
+    source: "weekly_obligation",
+    slotId: row.slotId,
+    muscle: row.muscle,
+    details: {
+      minEffectiveSets: row.minEffectiveSets,
+      projectedEffectiveSets: row.projectedEffectiveSets,
+      shortfall: row.shortfall,
+      zeroContribution: row.zeroContribution,
+    },
+  };
+}
+
+function buildProjectionDiagnostics(
+  diagnostics: SlotPlanProjectionDiagnostics
+): MesocycleExplainProjectionDiagnostics {
+  const programQuality = diagnostics?.programQuality;
+  const evaluationRows =
+    programQuality?.evaluation.diagnostics.map((diagnostic) =>
+      mapProgramQualityDiagnostic({
+        diagnostic,
+        source: "program_quality_evaluation",
+      })
+    ) ?? [];
+  const appliedRows =
+    programQuality?.appliedDiagnostics.map((diagnostic) =>
+      mapProgramQualityDiagnostic({
+        diagnostic,
+        source: "program_quality_application",
+      })
+    ) ?? [];
+  const programDuplicateKeys = new Set(
+    evaluationRows
+      .filter((row) => row.constraint === "cross_slot_duplicate")
+      .map((row) => `${row.slotId ?? ""}:${row.exerciseId ?? ""}`)
+  );
+  const duplicateRows = (diagnostics?.duplicateExerciseReuse ?? [])
+    .map(mapDuplicateReuseDiagnostic)
+    .filter((row) => !programDuplicateKeys.has(`${row.slotId ?? ""}:${row.exerciseId ?? ""}`));
+  const weeklyObligationRows = (diagnostics?.weeklyObligations?.slotEvaluations ?? [])
+    .filter((row) => row.shortfall > 0 || row.zeroContribution)
+    .map(mapWeeklyObligationDiagnostic);
+  const constraintsTriggered = [
+    ...evaluationRows,
+    ...duplicateRows,
+    ...weeklyObligationRows,
+  ];
+  const softCapOverridesByP0 = evaluationRows
+    .filter(
+      (row) =>
+        row.constraint === "per_exercise_efficiency" &&
+        row.reason === "soft_cap_exceeded_higher_priority_or_capacity_bound"
+    )
+    .map((row) => ({
+      ...row,
+      category: "soft_cap_overridden_by_p0" as const,
+      why: explainProjectionDiagnostic({
+        category: "soft_cap_overridden_by_p0",
+        reason: row.reason,
+        constraint: row.constraint,
+        source: row.source,
+      }),
+    }));
+  const allRows = [...constraintsTriggered, ...appliedRows, ...softCapOverridesByP0];
+
+  return {
+    label: "projection diagnostics",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    summary: {
+      setStackingPressure: allRows.filter((row) => row.category === "set_stacking_pressure").length,
+      duplicateExercisePressure: allRows.filter((row) => row.category === "duplicate_exercise_pressure").length,
+      diversityPenalties: allRows.filter((row) => row.category === "diversity_penalty").length,
+      hingeSquatBalance: allRows.filter((row) => row.category === "hinge_squat_balance").length,
+      isolationInjectionTriggers: allRows.filter((row) => row.category === "isolation_injection_trigger").length,
+      softCapsOverriddenByP0: softCapOverridesByP0.length,
+    },
+    constraintsTriggered,
+    tradeoffs: appliedRows,
+    softCapOverridesByP0,
+  };
 }
 
 function buildComparisonKey(slotIndex: number | null, slotId: string | null): string {
@@ -1248,6 +1475,7 @@ export async function buildMesocycleExplainAuditPayload(input: {
       })),
       slotPlans: previewSlotPlans,
       projectedSessions: previewProjectedSessions,
+      projectionDiagnostics: buildProjectionDiagnostics(slotPlanProjection.diagnostics),
       exerciseRationale: buildPreviewExerciseRationale({
         previewSlots: previewSlotPlans,
         design: previewArtifacts.artifacts.recommendedDesign,

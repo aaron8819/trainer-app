@@ -666,6 +666,53 @@ export type MesocycleExplainComparisonSlotDiff = {
   comparable: boolean;
 };
 
+export type MesocycleExplainProjectionDiagnosticCategory =
+  | "set_stacking_pressure"
+  | "duplicate_exercise_pressure"
+  | "diversity_penalty"
+  | "hinge_squat_balance"
+  | "isolation_injection_trigger"
+  | "soft_cap_overridden_by_p0"
+  | "other_projection_quality";
+
+export type MesocycleExplainProjectionDiagnosticRow = {
+  label: "projection diagnostics";
+  category: MesocycleExplainProjectionDiagnosticCategory;
+  priority: string;
+  constraint: string;
+  reason: string;
+  why: string;
+  source:
+    | "program_quality_evaluation"
+    | "program_quality_application"
+    | "duplicate_reuse"
+    | "weekly_obligation";
+  slotId?: string;
+  exerciseId?: string;
+  exerciseName?: string;
+  muscle?: string;
+  pattern?: string;
+  penalty?: number;
+  details?: Record<string, number | string | boolean | string[]>;
+};
+
+export type MesocycleExplainProjectionDiagnostics = {
+  label: "projection diagnostics";
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+  summary: {
+    setStackingPressure: number;
+    duplicateExercisePressure: number;
+    diversityPenalties: number;
+    hingeSquatBalance: number;
+    isolationInjectionTriggers: number;
+    softCapsOverriddenByP0: number;
+  };
+  constraintsTriggered: MesocycleExplainProjectionDiagnosticRow[];
+  tradeoffs: MesocycleExplainProjectionDiagnosticRow[];
+  softCapOverridesByP0: MesocycleExplainProjectionDiagnosticRow[];
+};
+
 export type MesocycleExplainAuditPayload = {
   version: typeof MESOCYCLE_EXPLAIN_AUDIT_PAYLOAD_VERSION;
   ownerEmail?: string;
@@ -697,6 +744,7 @@ export type MesocycleExplainAuditPayload = {
     }>;
     slotPlans: MesocycleExplainSlotRow[];
     projectedSessions: MesocycleExplainPreviewProjectedSession[];
+    projectionDiagnostics: MesocycleExplainProjectionDiagnostics;
     exerciseRationale: MesocycleExplainExerciseRationale[];
   };
   seed: {

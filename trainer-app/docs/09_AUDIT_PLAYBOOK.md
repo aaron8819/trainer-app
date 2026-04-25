@@ -334,6 +334,7 @@ npm run audit:workout -- --env-file .env.local --mode mesocycle-explain --owner 
 Inspect first:
 - `mesocycleExplain.preview.designBasis`
 - `mesocycleExplain.preview.slotPlans`
+- `mesocycleExplain.preview.projectionDiagnostics`
 - `mesocycleExplain.seed.slotPlans`
 - `mesocycleExplain.reality.runtimeDrift`
 - `mesocycleExplain.reality.runtimeDrift[*].runtimeDriftLabels`
@@ -343,6 +344,7 @@ Inspect first:
 
 Important interpretation rule:
 - preview-side slot obligation and carry-forward continuity can be reconstructed truthfully from canonical handoff seams
+- `preview.projectionDiagnostics` is a read-only projection diagnostics block, not an error list; use it to inspect set stacking pressure, duplicate exercise pressure, diversity penalties, hinge/squat balance, isolation injection triggers, and soft-cap overrides by P0 weekly obligations / slot identity
 - accepted historical per-exercise ranking rationale is not recoverable unless it was explicitly persisted
 - the artifact must therefore keep `persisted`, `reconstructed`, and `unavailable` explanation sources distinct
 - runtime-added exercises are labeled as runtime edits when evidence exists; they should not be read as accepted-seed quality failures unless seed-vs-reality also supports that conclusion

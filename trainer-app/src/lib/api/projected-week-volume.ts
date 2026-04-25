@@ -1,5 +1,5 @@
 import type { Prisma } from "@prisma/client";
-import { WorkoutStatus } from "@prisma/client";
+import { WorkoutSessionIntent, WorkoutStatus } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import {
   getExposedVolumeLandmarkEntries,
@@ -7,6 +7,10 @@ import {
   type VolumeSoftTargetRange,
   type VolumeTargetKind,
 } from "@/lib/engine/volume-landmarks";
+import {
+  getWeeklyMuscleDisplayGroup,
+  type WeeklyMuscleDisplayGroup,
+} from "@/lib/ui/weekly-muscle-status";
 import type { SessionIntent } from "@/lib/engine/session-types";
 import type { MovementPatternV2, WorkoutPlan } from "@/lib/engine/types";
 import { readSessionSlotSnapshot } from "@/lib/evidence/session-decision-receipt";
@@ -27,6 +31,8 @@ import {
   listWorkoutExerciseNames,
   loadPreloadedGenerationSnapshot,
 } from "./projected-week-volume-shared";
+import { buildSlotSequenceEntries } from "./mesocycle-handoff-slot-plan-projection.coverage-evaluation";
+import { applyFinalMinimumViableSetRedistribution } from "./mesocycle-handoff-slot-plan-projection.repair-engine";
 import { loadMesocycleWeekMuscleVolume } from "./weekly-volume";
 
 type ProjectedWeekVolumeByMuscle = {
@@ -58,6 +64,7 @@ export type ProjectedWeekVolumeMuscleRow = {
   muscle: string;
   targetKind?: VolumeTargetKind;
   targetRange?: VolumeSoftTargetRange | null;
+  displayGroup?: WeeklyMuscleDisplayGroup;
   completedEffectiveSets: number;
   projectedNextSessionEffectiveSets: number;
   projectedRemainingWeekEffectiveSets: number;
@@ -128,6 +135,43 @@ function countWorkoutMovementPatterns(workout: WorkoutPlan): Record<string, numb
   return Object.fromEntries(
     Array.from(counts.entries()).sort(([left], [right]) => left.localeCompare(right))
   );
+}
+
+function toWorkoutSessionIntent(intent: string): WorkoutSessionIntent {
+  return intent.toUpperCase() as WorkoutSessionIntent;
+}
+
+function enforceProjectedSessionMinimumSets(input: {
+  workout: WorkoutPlan;
+  slotId: string | null;
+  intent: string;
+  orderedProjectedSlots: ReadonlyArray<{ slotId: string | null; intent: string }>;
+}): WorkoutPlan {
+  const fallbackSlotId = input.slotId ?? "projected_slot";
+  const [projectedSlot] = applyFinalMinimumViableSetRedistribution({
+    projectedSlots: [
+      {
+        slotPlan: {
+          slotId: fallbackSlotId,
+          intent: toWorkoutSessionIntent(input.intent),
+          exercises: [],
+        },
+        workout: input.workout,
+        projectedContributionByMuscle: new Map(
+          Object.entries(computeWorkoutContributionByMuscle(input.workout))
+        ),
+        repairMuscles: [],
+      },
+    ],
+    slotSequenceEntries: buildSlotSequenceEntries(
+      input.orderedProjectedSlots.map((slot, index) => ({
+        slotId: slot.slotId ?? `projected_slot_${index + 1}`,
+        intent: toWorkoutSessionIntent(slot.intent),
+      }))
+    ),
+  });
+
+  return projectedSlot?.workout ?? input.workout;
 }
 
 function summarizeWorkoutExercises(workout: WorkoutPlan): ProjectedWeekVolumeExerciseSummary[] {
@@ -213,6 +257,7 @@ function buildFullWeekRows(input: {
         muscle,
         targetKind: targetSemantics.targetKind,
         targetRange: targetSemantics.softTargetRange,
+        displayGroup: getWeeklyMuscleDisplayGroup(targetSemantics.targetKind),
         completedEffectiveSets,
         projectedNextSessionEffectiveSets: roundToTenth(
           projectedNextSessionEffectiveSets
@@ -400,18 +445,24 @@ export async function loadProjectedWeekVolumeReport(input: {
       );
     }
 
+    const projectedWorkout = enforceProjectedSessionMinimumSets({
+      workout: generation.workout,
+      slotId: slot.slotId ?? null,
+      intent: slot.intent,
+      orderedProjectedSlots,
+    });
     const projectedContributionByMuscle = computeWorkoutContributionByMuscle(
-      generation.workout
+      projectedWorkout
     );
     projectedSessions.push({
       slotId: slot.slotId ?? null,
       intent: slot.intent,
       isNext: index === 0,
-      exerciseCount: countWorkoutExercises(generation.workout),
-      totalSets: countWorkoutSets(generation.workout),
-      exercises: summarizeWorkoutExercises(generation.workout),
-      estimatedMinutes: generation.workout.estimatedMinutes ?? null,
-      movementPatternCounts: countWorkoutMovementPatterns(generation.workout),
+      exerciseCount: countWorkoutExercises(projectedWorkout),
+      totalSets: countWorkoutSets(projectedWorkout),
+      exercises: summarizeWorkoutExercises(projectedWorkout),
+      estimatedMinutes: projectedWorkout.estimatedMinutes ?? null,
+      movementPatternCounts: countWorkoutMovementPatterns(projectedWorkout),
       projectedContributionByMuscle,
     });
 
@@ -420,7 +471,7 @@ export async function loadProjectedWeekVolumeReport(input: {
       mapped,
       historyEntry: buildProjectedWorkoutHistoryEntry({
         mapped,
-        workout: generation.workout,
+        workout: projectedWorkout,
         slotId: slot.slotId ?? null,
         intent: slot.intent as SessionIntent,
         week: currentWeek,
@@ -428,7 +479,7 @@ export async function loadProjectedWeekVolumeReport(input: {
         occurredAt: projectedAt,
       }),
       occurredAt: projectedAt,
-      rotationExerciseNames: listWorkoutExerciseNames(generation.workout),
+      rotationExerciseNames: listWorkoutExerciseNames(projectedWorkout),
     });
   }
 

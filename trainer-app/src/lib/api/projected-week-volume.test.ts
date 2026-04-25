@@ -127,6 +127,44 @@ function buildWorkout(exerciseNames: string[]) {
   };
 }
 
+function buildWorkoutWithSetCounts(input: {
+  mainLifts: Array<{ name: string; sets: number }>;
+  accessories: Array<{ name: string; sets: number }>;
+}) {
+  const buildExercise = (
+    entry: { name: string; sets: number },
+    index: number,
+    isMainLift: boolean
+  ) => ({
+    id: `we-${entry.name}-${index}`,
+    orderIndex: index,
+    isMainLift,
+    exercise: {
+      id: entry.name,
+      name: entry.name,
+      primaryMuscles: [entry.name],
+      secondaryMuscles: [],
+    },
+    sets: Array.from({ length: entry.sets }, (_, setIndex) => ({
+      setIndex: setIndex + 1,
+      targetReps: 8,
+      targetRpe: 8,
+      targetLoad: 100,
+    })),
+  });
+
+  return {
+    id: "workout-projected",
+    scheduledDate: "2026-03-24",
+    warmup: [],
+    mainLifts: input.mainLifts.map((entry, index) => buildExercise(entry, index, true)),
+    accessories: input.accessories.map((entry, index) =>
+      buildExercise(entry, input.mainLifts.length + index, false)
+    ),
+    estimatedMinutes: 45,
+  };
+}
+
 describe("loadProjectedWeekVolumeReport", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -348,6 +386,8 @@ describe("loadProjectedWeekVolumeReport", () => {
     const quadsRow = report.fullWeekByMuscle.find((row) => row.muscle === "Quads");
 
     expect(chestRow).toMatchObject({
+      targetKind: "hard",
+      displayGroup: "primary",
       completedEffectiveSets: 4,
       projectedNextSessionEffectiveSets: 1,
       projectedRemainingWeekEffectiveSets: 0,
@@ -411,6 +451,7 @@ describe("loadProjectedWeekVolumeReport", () => {
     expect(report.fullWeekByMuscle.find((row) => row.muscle === "Core")).toMatchObject({
       targetKind: "soft",
       targetRange: { min: 4, max: 6 },
+      displayGroup: "secondary",
       completedEffectiveSets: 2,
       projectedNextSessionEffectiveSets: 1,
       projectedFullWeekEffectiveSets: 3,
@@ -418,7 +459,57 @@ describe("loadProjectedWeekVolumeReport", () => {
     expect(report.fullWeekByMuscle.find((row) => row.muscle === "Forearms")).toMatchObject({
       targetKind: "soft",
       targetRange: { min: 2, max: 4 },
+      displayGroup: "secondary",
       weeklyTarget: 0,
     });
+  });
+
+  it("removes or merges sub-floor projected exercises before summarizing volume", async () => {
+    mocks.generateSessionFromMappedContext
+      .mockReset()
+      .mockReturnValueOnce({
+        workout: buildWorkoutWithSetCounts({
+          mainLifts: [
+            { name: "Chest", sets: 3 },
+            { name: "Lats", sets: 1 },
+            { name: "Upper Back", sets: 2 },
+          ],
+          accessories: [
+            { name: "Chest Accessory", sets: 1 },
+            { name: "Triceps", sets: 2 },
+            { name: "Rear Delts", sets: 1 },
+          ],
+        }),
+        selection: {},
+        selectionMode: "INTENT",
+        sessionIntent: "upper",
+        sraWarnings: [],
+        substitutions: [],
+        volumePlanByMuscle: {},
+      })
+      .mockReturnValueOnce({
+        workout: buildWorkout(["Quads"]),
+        selection: {},
+        selectionMode: "INTENT",
+        sessionIntent: "lower",
+        sraWarnings: [],
+        substitutions: [],
+        volumePlanByMuscle: {},
+      });
+
+    const report = await loadProjectedWeekVolumeReport({
+      userId: "user-1",
+      plannerDiagnosticsMode: "standard",
+    });
+    const nextSession = report.projectedSessions[0];
+
+    expect(nextSession?.totalSets).toBe(10);
+    expect(nextSession?.exerciseCount).toBeLessThan(6);
+    expect(nextSession?.exercises?.some((exercise) => exercise.setCount === 1)).toBe(false);
+    expect(
+      nextSession?.exercises?.every((exercise) =>
+        exercise.role === "primary" ? exercise.setCount >= 3 : exercise.setCount >= 2
+      )
+    ).toBe(true);
   });
 });

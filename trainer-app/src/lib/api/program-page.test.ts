@@ -853,7 +853,7 @@ describe("loadProgramPageData", () => {
       isPriorWeek: false,
       canDismiss: true,
     });
-    expect(result.weekCompletionOutlook).toEqual({
+    expect(result.weekCompletionOutlook).toMatchObject({
       assumptionLabel: "If you complete the remaining planned sessions this week, you will likely land here.",
       summary: {
         meaningfullyLow: 0,
@@ -935,7 +935,7 @@ describe("loadProgramPageData", () => {
             positionLabel: "Current: within MEV-MAV",
           },
           badges: [
-            { status: "in_range", label: "In range" },
+            { status: "in_range", label: "On target" },
             { status: "actual_completed", label: "Actual completed", count: 4 },
             { status: "projected_next", label: "Projected next", count: 4 },
             { status: "projected_remaining", label: "Projected remaining", count: 0 },
@@ -983,13 +983,23 @@ describe("loadProgramPageData", () => {
             positionLabel: "Current: within MEV-MAV",
           },
           badges: [
-            { status: "in_range", label: "In range" },
+            { status: "in_range", label: "On target" },
             { status: "actual_completed", label: "Actual completed", count: 4 },
             { status: "projected_next", label: "Projected next", count: 4 },
             { status: "projected_remaining", label: "Projected remaining", count: 0 },
           ],
         },
       ],
+    });
+    expect(result.weekCompletionOutlook?.primaryRows?.map((row) => row.muscle)).toEqual([
+      "Quads",
+      "Chest",
+    ]);
+    expect(result.weekCompletionOutlook?.secondaryRows).toEqual([]);
+    expect(result.weekCompletionOutlook?.secondarySummary).toEqual({
+      belowSoftRange: 0,
+      withinSoftRange: 0,
+      aboveSoftRange: 0,
     });
     expect(result.volumeDetails.dashboard.volumeThisWeek).toHaveLength(3);
     expect(result.advancedActions.availableActions).toEqual(["deload", "extend_phase", "reset"]);
@@ -1156,16 +1166,16 @@ describe("loadProgramPageData", () => {
           targetKind: "soft",
           targetRange: { min: 2, max: 4 },
           completedEffectiveSets: 0,
-          projectedNextSessionEffectiveSets: 3,
+          projectedNextSessionEffectiveSets: 5,
           projectedRemainingWeekEffectiveSets: 0,
-          projectedFullWeekEffectiveSets: 3,
+          projectedFullWeekEffectiveSets: 5,
           weeklyTarget: 0,
           mev: 0,
           mav: 6,
           mrv: 12,
-          deltaToTarget: 3,
-          deltaToMev: 3,
-          deltaToMav: -3,
+          deltaToTarget: 5,
+          deltaToMev: 5,
+          deltaToMav: -1,
         },
       ],
     });
@@ -1186,15 +1196,28 @@ describe("loadProgramPageData", () => {
         }),
         expect.objectContaining({
           muscle: "Forearms",
-          status: "on_target",
+          status: "slightly_high",
           targetLabel: "Soft target: 2-4 weighted sets",
-          statusLabel: "On target",
-          statusDescription: "3 projected vs 2-4 soft target; 0 completed so far.",
-          deltaLabel: "in soft range",
-          comparisonLabel: "3 projected vs 2-4 soft target",
+          displayGroup: "secondary",
+          statusLabel: "Above soft range",
+          statusDescription: "5 projected vs 2-4 soft target; 0 completed so far. Non-blocking.",
+          deltaLabel: "+1 sets",
+          comparisonLabel: "5 projected vs 2-4 soft target",
         }),
       ])
     );
+    expect(result.weekCompletionOutlook?.summary.meaningfullyHigh).toBe(0);
+    expect(result.weekCompletionOutlook?.secondarySummary).toEqual({
+      belowSoftRange: 0,
+      withinSoftRange: 0,
+      aboveSoftRange: 1,
+    });
+    expect(result.weekCompletionOutlook?.secondaryRows).toEqual([
+      expect.objectContaining({
+        muscle: "Forearms",
+        statusLabel: "Above soft range",
+      }),
+    ]);
   });
 
   it("does not borrow impact from another projected session when a slot id match is absent", async () => {

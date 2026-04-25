@@ -40,13 +40,16 @@ export function WeekCompletionOutlookSection({
 }) {
   const [selectedStatus, setSelectedStatus] = useState<MuscleOutcomeStatus | null>(null);
 
+  const primaryRows = outlook.primaryRows ?? outlook.rows.filter((row) => row.displayGroup !== "secondary");
+  const secondaryRows = outlook.secondaryRows ?? outlook.rows.filter((row) => row.displayGroup === "secondary");
+  const secondaryBadges = outlook.secondaryBadges ?? [];
   const visibleRows = useMemo(() => {
     if (!selectedStatus) {
       return outlook.defaultRows;
     }
 
-    return outlook.rows.filter((row) => row.status === selectedStatus);
-  }, [outlook.defaultRows, outlook.rows, selectedStatus]);
+    return primaryRows.filter((row) => row.status === selectedStatus);
+  }, [outlook.defaultRows, primaryRows, selectedStatus]);
   const selectedBadge = selectedStatus
     ? outlook.badges.find((badge) => badge.status === selectedStatus)
     : null;
@@ -59,7 +62,14 @@ export function WeekCompletionOutlookSection({
       <h2 className="mt-1 text-xl font-semibold text-slate-900">Projected week landing</h2>
       <p className="mt-2 text-sm text-slate-600">{outlook.assumptionLabel}</p>
 
-      <div className="mt-4 flex flex-wrap gap-2 text-xs font-medium text-slate-700">
+      <div className="mt-4">
+        <h3 className="text-sm font-semibold text-slate-900">Primary hypertrophy targets</h3>
+        <p className="mt-0.5 text-xs text-slate-600">
+          Hard-target bucket counts only include generation-facing hypertrophy targets.
+        </p>
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-2 text-xs font-medium text-slate-700">
         {outlook.badges.map((badge) => {
           const status = badge.status as MuscleOutcomeStatus;
           const count = badge.count ?? 0;
@@ -121,6 +131,46 @@ export function WeekCompletionOutlookSection({
           No major projected misses if you finish the planned week.
         </p>
       )}
+
+      {secondaryRows.length > 0 ? (
+        <div className="mt-5 border-t border-sky-100 pt-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold text-slate-800">Secondary targets</h3>
+              <p className="mt-0.5 text-xs text-slate-600">
+                Tracked for balance and awareness. These do not drive generation or block progression.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2 text-xs font-medium text-slate-600">
+              {secondaryBadges.map((badge) => (
+                <span
+                  key={badge.status}
+                  className="rounded-full bg-white/80 px-3 py-1 shadow-sm"
+                >
+                  {badge.count ?? 0} {badge.label}
+                </span>
+              ))}
+            </div>
+          </div>
+          <div className="mt-3 space-y-2">
+            {secondaryRows.map((row) => (
+              <div
+                key={`${row.status}:${row.muscle}:secondary`}
+                className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white/75 px-4 py-3"
+              >
+                <div>
+                  <p className="text-sm font-semibold text-slate-800">{row.muscle}</p>
+                  <p className="mt-1 text-xs text-slate-600">
+                    {row.statusLabel} - {row.comparisonLabel}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-slate-500">Non-blocking</p>
+                </div>
+                <p className="text-sm font-semibold text-slate-600">{row.deltaLabel}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

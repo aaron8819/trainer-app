@@ -71,6 +71,9 @@ function withOpportunity(
     | "deltaLabel"
     | "landmarkContext"
     | "badges"
+    | "targetKind"
+    | "targetRange"
+    | "displayGroup"
   > &
     Partial<
       Pick<
@@ -82,6 +85,9 @@ function withOpportunity(
         | "deltaLabel"
         | "landmarkContext"
         | "badges"
+        | "targetKind"
+        | "targetRange"
+        | "displayGroup"
       >
     >
 ): ProgramVolumeRow {
@@ -90,8 +96,13 @@ function withOpportunity(
   const mevLabel = `MEV ${row.mev}`;
   const mavLabel = `MAV ${row.mav}`;
   const mrvLabel = `MRV ${row.mrv}`;
+  const targetKind = row.targetKind ?? "hard";
+  const displayGroup = row.displayGroup ?? (targetKind === "soft" ? "secondary" : "primary");
   return {
     ...row,
+    targetKind,
+    targetRange: row.targetRange ?? null,
+    displayGroup,
     weightedSetsLabel: row.weightedSetsLabel ?? `${row.effectiveSets} weighted sets`,
     targetLabel: row.targetLabel ?? `Target: ${row.target} weighted sets`,
     statusLabel,
@@ -759,6 +770,55 @@ describe("ProgramStatusCard homeCompact variant", () => {
 });
 
 describe("ProgramStatusCard volumeOnly variant", () => {
+  it("splits primary and secondary target sections without counting soft rows in hard summary", () => {
+    const data = buildCurrentWeekData([
+      withOpportunity({
+        muscle: "Chest",
+        effectiveSets: 4,
+        directSets: 4,
+        indirectSets: 0,
+        target: 10,
+        mev: 6,
+        mav: 16,
+        mrv: 22,
+        statusLabel: "Below MEV",
+        badges: [{ status: "below_mev", label: "Below MEV" }],
+      }),
+      withOpportunity({
+        muscle: "Core",
+        targetKind: "soft",
+        targetRange: { min: 4, max: 6 },
+        displayGroup: "secondary",
+        effectiveSets: 2,
+        directSets: 2,
+        indirectSets: 0,
+        target: 0,
+        mev: 0,
+        mav: 12,
+        mrv: 20,
+        targetLabel: "Soft target: 4-6 weighted sets",
+        statusLabel: "Below soft range",
+        statusDescription: "Current: below soft range. Non-blocking.",
+        landmarkContext: undefined,
+        badges: [{ status: "below_mev", label: "Below soft range" }],
+      }),
+    ]);
+
+    render(<ProgramStatusCard initialData={data} variant="volumeOnly" />);
+
+    const primarySection = screen.getByText("Primary hypertrophy targets").closest("section");
+    const secondarySection = screen.getByText("Secondary targets").closest("section");
+
+    expect(primarySection).not.toBeNull();
+    expect(secondarySection).not.toBeNull();
+    expect(within(primarySection as HTMLElement).getByText("Chest")).toBeInTheDocument();
+    expect(within(primarySection as HTMLElement).getByText("1 Below MEV")).toBeInTheDocument();
+    expect(within(primarySection as HTMLElement).queryByText("Core")).not.toBeInTheDocument();
+    expect(within(secondarySection as HTMLElement).getByText("Core")).toBeInTheDocument();
+    expect(within(secondarySection as HTMLElement).getByText("1 Below soft range")).toBeInTheDocument();
+    expect(screen.getByText("Current: below soft range. Non-blocking.")).toBeInTheDocument();
+  });
+
   it("keeps the weekly volume grid but hides the duplicated mesocycle chrome and coaching cue", () => {
     const data = buildCurrentWeekData([
       withOpportunity({

@@ -112,7 +112,13 @@ function getServerStatus(row: ProgramVolumeRow): VolumeStatusToken | null {
   return status && isVolumeStatusToken(status) ? status : null;
 }
 
-function VolumeStatusSummaryChips({ rows }: { rows: ProgramVolumeRow[] }) {
+function VolumeStatusSummaryChips({
+  rows,
+  ariaLabel = "Weekly volume status summary",
+}: {
+  rows: ProgramVolumeRow[];
+  ariaLabel?: string;
+}) {
   if (rows.length === 0) {
     return null;
   }
@@ -136,7 +142,7 @@ function VolumeStatusSummaryChips({ rows }: { rows: ProgramVolumeRow[] }) {
 
   return (
     <div
-      aria-label="Weekly volume status summary"
+      aria-label={ariaLabel}
       className="flex flex-wrap gap-2 text-xs font-medium text-slate-700"
     >
       {visibleStatuses.map((status) => (
@@ -153,6 +159,105 @@ function formatRawSetContext(directSets: number, indirectSets: number): string {
     return `Raw sets: ${directSets} direct, ${indirectSets} indirect`;
   }
   return `Raw sets: ${directSets} direct`;
+}
+
+function VolumeRowGrid({
+  rows,
+  isVolumeOnly,
+  isHistorical,
+  loading,
+  onSelectMuscle,
+}: {
+  rows: ProgramVolumeRow[];
+  isVolumeOnly: boolean;
+  isHistorical: boolean;
+  loading: boolean;
+  onSelectMuscle: (muscle: string) => void;
+}) {
+  return (
+    <div
+      className={`mt-3 grid ${
+        isVolumeOnly ? "grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3" : "grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4"
+      } transition-opacity ${
+        loading ? "opacity-50" : ""
+      }`}
+    >
+      {rows.map((row) => {
+        const status = getServerStatus(row);
+        const statusClass = status
+          ? STATUS_STYLE[status]
+          : "bg-slate-50 text-slate-600 border-slate-200";
+        const cardClass =
+          row.displayGroup === "secondary"
+            ? "border-slate-200 bg-slate-50 text-slate-700"
+            : statusClass;
+        const hasBreakdown = Boolean(row.breakdown?.contributions.length);
+        return (
+          <button
+            key={row.muscle}
+            type="button"
+            onClick={() => {
+              if (hasBreakdown) {
+                onSelectMuscle(row.muscle);
+              }
+            }}
+            disabled={!hasBreakdown}
+            aria-label={
+              hasBreakdown
+                ? `Show where ${row.muscle} sets came from`
+                : `${row.muscle} weekly volume`
+            }
+            className={`rounded-xl border text-left ${cardClass} ${
+              isVolumeOnly ? "p-2.5" : "p-3"
+            } ${
+              hasBreakdown ? "transition-shadow hover:shadow-sm" : "cursor-default"
+            }`}
+          >
+            <p className={`${isVolumeOnly ? "text-[11px]" : "text-xs"} font-semibold`}>
+              {row.muscle}
+            </p>
+            <p className={`mt-0.5 ${isVolumeOnly ? "text-base" : "text-lg"} font-bold leading-none`}>
+              {row.weightedSetsLabel}
+            </p>
+            <p className="text-xs opacity-75">{row.targetLabel}</p>
+            <div className="mt-1.5">
+              <span
+                className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium ${statusClass}`}
+              >
+                {row.statusLabel}
+              </span>
+            </div>
+            {row.landmarkContext ? (
+              <div className="mt-1 space-y-0.5 text-[11px] leading-tight opacity-75">
+                <p>{row.landmarkContext.rangeSummaryLabel}</p>
+                <p>{row.landmarkContext.positionLabel}</p>
+              </div>
+            ) : null}
+            {row.statusDescription ? (
+              <p className="mt-1 text-[11px] opacity-70">{row.statusDescription}</p>
+            ) : null}
+            {!isHistorical && row.displayGroup !== "secondary" ? (
+              <p
+                className={`mt-1 text-[11px] opacity-70 ${getTodayAdvisoryClass(
+                  row.opportunityState
+                )}`}
+              >
+                {formatOpportunityStateLabel(row.opportunityState)}
+              </p>
+            ) : null}
+            {row.directSets > 0 || row.indirectSets > 0 ? (
+              <p className="mt-0.5 text-xs opacity-65">
+                {formatRawSetContext(row.directSets, row.indirectSets)}
+              </p>
+            ) : null}
+            {hasBreakdown ? (
+              <p className="mt-2 text-[11px] font-medium opacity-70">Tap for breakdown</p>
+            ) : null}
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 function formatContributionFormula(contribution: ProgramMuscleContribution): string {
@@ -489,8 +594,10 @@ function ProgramStatusCardDefault({
   const isVolumeOnly = !showOverviewChrome;
   const blockType = viewedBlockType ?? activeMeso.currentBlockType ?? "accumulation";
   const relevantVolume = activeData.volumeThisWeek.filter(
-    (v) => v.mev > 0 || v.target > 0 || v.effectiveSets > 0
+    (v) => v.mev > 0 || v.target > 0 || v.effectiveSets > 0 || v.targetKind === "soft"
   );
+  const primaryVolume = relevantVolume.filter((row) => row.displayGroup !== "secondary");
+  const secondaryVolume = relevantVolume.filter((row) => row.displayGroup === "secondary");
   const selectedRow = relevantVolume.find((row) => row.muscle === selectedMuscle) ?? null;
   const selectedBreakdown = selectedRow?.breakdown ?? null;
   const volumeHeading = isHistorical
@@ -578,88 +685,61 @@ function ProgramStatusCardDefault({
         </div>
       ) : null}
 
-      <div className="mt-3">
-        <VolumeStatusSummaryChips rows={relevantVolume} />
-      </div>
-
       {relevantVolume.length > 0 ? (
-        <div
-          className={`mt-3 grid ${
-            isVolumeOnly ? "grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3" : "grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4"
-          } transition-opacity ${
-            loading ? "opacity-50" : ""
-          }`}
-        >
-          {relevantVolume.map((row) => {
-            const status = getServerStatus(row);
-            const cls = status
-              ? STATUS_STYLE[status]
-              : "bg-slate-50 text-slate-600 border-slate-200";
-            const hasBreakdown = Boolean(row.breakdown?.contributions.length);
-            return (
-              <button
-                key={row.muscle}
-                type="button"
-                onClick={() => {
-                  if (hasBreakdown) {
-                    setSelectedMuscle(row.muscle);
-                  }
-                }}
-                disabled={!hasBreakdown}
-                aria-label={
-                  hasBreakdown
-                    ? `Show where ${row.muscle} sets came from`
-                    : `${row.muscle} weekly volume`
-                }
-                className={`rounded-xl border text-left ${cls} ${
-                  isVolumeOnly ? "p-2.5" : "p-3"
-                } ${
-                  hasBreakdown ? "transition-shadow hover:shadow-sm" : "cursor-default"
-                }`}
-              >
-                <p className={`${isVolumeOnly ? "text-[11px]" : "text-xs"} font-semibold`}>
-                  {row.muscle}
+        <div className="mt-4 space-y-5">
+          <section>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900">
+                  Primary hypertrophy targets
+                </h3>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  These are the main muscle targets used to evaluate weekly training quality.
                 </p>
-                <p className={`mt-0.5 ${isVolumeOnly ? "text-base" : "text-lg"} font-bold leading-none`}>
-                  {row.weightedSetsLabel}
-                </p>
-                <p className="text-xs opacity-75">{row.targetLabel}</p>
-                <div className="mt-1.5">
-                  <span
-                    className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium ${cls}`}
-                  >
-                    {row.statusLabel}
-                  </span>
+              </div>
+              <VolumeStatusSummaryChips
+                rows={primaryVolume}
+                ariaLabel="Primary weekly volume status summary"
+              />
+            </div>
+            {primaryVolume.length > 0 ? (
+              <VolumeRowGrid
+                rows={primaryVolume}
+                isVolumeOnly={isVolumeOnly}
+                isHistorical={isHistorical}
+                loading={loading}
+                onSelectMuscle={setSelectedMuscle}
+              />
+            ) : (
+              <p className="mt-3 text-sm text-slate-500">No primary volume data for this week.</p>
+            )}
+          </section>
+
+          {secondaryVolume.length > 0 ? (
+            <section className="border-t border-slate-200 pt-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-800">
+                    Secondary targets
+                  </h3>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    Tracked for balance and awareness. These do not drive generation or block progression.
+                  </p>
                 </div>
-                {row.landmarkContext ? (
-                  <div className="mt-1 space-y-0.5 text-[11px] leading-tight opacity-75">
-                    <p>{row.landmarkContext.rangeSummaryLabel}</p>
-                    <p>{row.landmarkContext.positionLabel}</p>
-                  </div>
-                ) : null}
-                {row.statusDescription ? (
-                  <p className="mt-1 text-[11px] opacity-70">{row.statusDescription}</p>
-                ) : null}
-                {!isHistorical ? (
-                  <p
-                    className={`mt-1 text-[11px] opacity-70 ${getTodayAdvisoryClass(
-                      row.opportunityState
-                    )}`}
-                  >
-                    {formatOpportunityStateLabel(row.opportunityState)}
-                  </p>
-                ) : null}
-                {row.directSets > 0 || row.indirectSets > 0 ? (
-                  <p className="mt-0.5 text-xs opacity-65">
-                    {formatRawSetContext(row.directSets, row.indirectSets)}
-                  </p>
-                ) : null}
-                {hasBreakdown ? (
-                  <p className="mt-2 text-[11px] font-medium opacity-70">Tap for breakdown</p>
-                ) : null}
-              </button>
-            );
-          })}
+                <VolumeStatusSummaryChips
+                  rows={secondaryVolume}
+                  ariaLabel="Secondary weekly volume status summary"
+                />
+              </div>
+              <VolumeRowGrid
+                rows={secondaryVolume}
+                isVolumeOnly={isVolumeOnly}
+                isHistorical={isHistorical}
+                loading={loading}
+                onSelectMuscle={setSelectedMuscle}
+              />
+            </section>
+          ) : null}
         </div>
       ) : (
         <p className="mt-3 text-sm text-slate-500">No volume data for this week.</p>

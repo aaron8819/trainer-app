@@ -309,6 +309,23 @@ describe("loadProgramDashboardData", () => {
       setupDashboardMocks();
       const result = await loadProgramDashboardData("user-1");
       expect(result.volumeThisWeek.map((row) => row.muscle)).toContain("Front Delts");
+      expect(result.volumeThisWeek.find((row) => row.muscle === "Front Delts")).toMatchObject({
+        targetKind: "hard",
+        displayGroup: "primary",
+      });
+    });
+
+    it("keeps zero-volume soft targets visible as secondary readouts", async () => {
+      setupDashboardMocks();
+      const result = await loadProgramDashboardData("user-1");
+
+      expect(result.volumeThisWeek.find((row) => row.muscle === "Core")).toMatchObject({
+        targetKind: "soft",
+        targetRange: { min: 4, max: 6 },
+        displayGroup: "secondary",
+        effectiveSets: 0,
+        statusLabel: "Below soft range",
+      });
     });
 
     it("uses weighted effective sets as the canonical dashboard actual while keeping raw counts contextual", async () => {
@@ -391,14 +408,18 @@ describe("loadProgramDashboardData", () => {
       expect(result.volumeThisWeek.find((row) => row.muscle === "Core")).toMatchObject({
         targetKind: "soft",
         targetRange: { min: 4, max: 6 },
+        displayGroup: "secondary",
         target: 0,
         targetLabel: "Soft target: 4-6 weighted sets",
+        statusLabel: "Below soft range",
+        statusDescription: "Current: below soft range. Non-blocking.",
         directSets: 2,
         effectiveSets: 2,
       });
       expect(result.volumeThisWeek.find((row) => row.muscle === "Lower Back")).toMatchObject({
         targetKind: "soft",
         targetRange: { min: 3, max: 6 },
+        displayGroup: "secondary",
         target: 0,
         targetLabel: "Soft target: 3-6 weighted sets",
         indirectSets: 2,

@@ -18,13 +18,18 @@ export type WeeklyMuscleStatusInput = {
 };
 
 export type WeeklyMuscleStatusSummary = Record<WeeklyMuscleStatus, number>;
+export type WeeklyMuscleDisplayGroup = "primary" | "secondary";
+
+export function getWeeklyMuscleDisplayGroup(
+  targetKind?: VolumeTargetKind
+): WeeklyMuscleDisplayGroup {
+  return targetKind === "soft" ? "secondary" : "primary";
+}
 
 export function getWeeklyMuscleStatus(input: WeeklyMuscleStatusInput): WeeklyMuscleStatus {
   const { effectiveSets, target, mev, mrv, softTargetRange, targetKind } = input;
   if (targetKind === "soft" && softTargetRange) {
-    if (effectiveSets >= mrv) return "at_mrv";
-    if (effectiveSets >= mrv * 0.85) return "near_mrv";
-    if (effectiveSets > softTargetRange.max) return "on_target";
+    if (effectiveSets > softTargetRange.max) return "near_mrv";
     if (effectiveSets >= softTargetRange.min) return "on_target";
     return "below_mev";
   }
@@ -61,7 +66,39 @@ export function summarizeWeeklyMuscleStatuses(
   );
 }
 
-export function formatWeeklyMuscleStatusLabel(status: WeeklyMuscleStatus): string {
+export function formatWeeklyMuscleStatusLabel(
+  status: WeeklyMuscleStatus,
+  options?: { targetKind?: VolumeTargetKind }
+): string {
+  if (options?.targetKind === "soft") {
+    switch (status) {
+      case "below_mev":
+        return "Below soft range";
+      case "near_mrv":
+      case "at_mrv":
+        return "Above soft range";
+      case "in_range":
+      case "near_target":
+      case "on_target":
+        return "Within soft range";
+    }
+  }
+
+  if (options?.targetKind === "hard") {
+    switch (status) {
+      case "below_mev":
+        return "Below MEV";
+      case "near_mrv":
+        return "Slightly high";
+      case "at_mrv":
+        return "Meaningfully high";
+      case "in_range":
+      case "near_target":
+      case "on_target":
+        return "On target";
+    }
+  }
+
   switch (status) {
     case "below_mev":
       return "Below MEV";

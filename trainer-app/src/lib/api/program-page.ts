@@ -35,7 +35,9 @@ import { getUiAuditFixtureForServer } from "@/lib/ui-audit-fixtures/server";
 import type { CanonicalUiState } from "@/lib/ui-state-contract";
 import {
   formatWeeklyMuscleStatusLabel,
+  getWeeklyMuscleDisplayGroup,
   getWeeklyMuscleStatus,
+  type WeeklyMuscleDisplayGroup,
 } from "@/lib/ui/weekly-muscle-status";
 import type {
   VolumeSoftTargetRange,
@@ -101,6 +103,12 @@ export type ProgramOutcomeSummary = {
   meaningfullyHigh: number;
 };
 
+export type ProgramSoftTargetSummary = {
+  belowSoftRange: number;
+  withinSoftRange: number;
+  aboveSoftRange: number;
+};
+
 export type ProgramSlotImpact = {
   topMuscles: Array<{
     muscle: string;
@@ -163,8 +171,12 @@ function formatCloseoutTitle(
 export type ProgramWeekCompletionOutlook = {
   assumptionLabel: string;
   summary: ProgramOutcomeSummary;
+  secondarySummary?: ProgramSoftTargetSummary;
   badges: ProgramVolumeDisplayBadge[];
+  secondaryBadges?: ProgramVolumeDisplayBadge[];
   rows: ProgramVolumeDisplayRow[];
+  primaryRows?: ProgramVolumeDisplayRow[];
+  secondaryRows?: ProgramVolumeDisplayRow[];
   defaultRows: ProgramVolumeDisplayRow[];
 };
 
@@ -178,6 +190,9 @@ export type ProgramVolumeDisplayBadge = {
 export type ProgramVolumeDisplayRow = {
   muscle: string;
   status: MuscleOutcomeStatus;
+  targetKind?: VolumeTargetKind;
+  targetRange?: VolumeSoftTargetRange | null;
+  displayGroup?: WeeklyMuscleDisplayGroup;
   weightedSetsLabel: string;
   targetLabel: string;
   statusLabel: string;
@@ -436,13 +451,55 @@ function buildOutlookBadges(summary: ProgramOutcomeSummary): ProgramVolumeDispla
   ];
 }
 
+function buildSoftTargetSummary(rows: ProgramVolumeDisplayRow[]): ProgramSoftTargetSummary {
+  return rows.reduce<ProgramSoftTargetSummary>(
+    (summary, row) => {
+      const status = row.badges[0]?.status;
+      if (status === "below_mev") {
+        summary.belowSoftRange += 1;
+      } else if (status === "near_mrv" || status === "at_mrv") {
+        summary.aboveSoftRange += 1;
+      } else {
+        summary.withinSoftRange += 1;
+      }
+      return summary;
+    },
+    {
+      belowSoftRange: 0,
+      withinSoftRange: 0,
+      aboveSoftRange: 0,
+    }
+  );
+}
+
+function buildSoftTargetBadges(summary: ProgramSoftTargetSummary): ProgramVolumeDisplayBadge[] {
+  return [
+    {
+      status: "below_soft_range",
+      label: "below soft range",
+      count: summary.belowSoftRange,
+    },
+    {
+      status: "within_soft_range",
+      label: "within soft range",
+      count: summary.withinSoftRange,
+    },
+    {
+      status: "above_soft_range",
+      label: "above soft range",
+      count: summary.aboveSoftRange,
+    },
+  ];
+}
+
 function buildProgramVolumeDisplayRow(input: {
   muscle: string;
   status: MuscleOutcomeStatus;
+  targetKind: VolumeTargetKind;
+  targetRange: VolumeSoftTargetRange | null;
+  displayGroup: WeeklyMuscleDisplayGroup;
   projectedFullWeekEffectiveSets: number;
   targetSets: number;
-  targetKind?: VolumeTargetKind;
-  targetRange?: VolumeSoftTargetRange | null;
   delta: number;
   mev: number;
   mav: number;
@@ -459,9 +516,14 @@ function buildProgramVolumeDisplayRow(input: {
     targetKind: input.targetKind,
     softTargetRange: input.targetRange,
   });
-  const weeklyStatusLabel = formatWeeklyMuscleStatusLabel(weeklyStatus);
+  const weeklyStatusLabel = formatWeeklyMuscleStatusLabel(weeklyStatus, {
+    targetKind: input.targetKind,
+  });
+  const isSoftTarget = input.targetKind === "soft";
   const statusLabel =
-    weeklyStatus === "below_mev" ? weeklyStatusLabel : formatOutcomeStatusLabel(input.status);
+    isSoftTarget || weeklyStatus === "below_mev"
+      ? weeklyStatusLabel
+      : formatOutcomeStatusLabel(input.status);
   const projectedLabel = `${formatSetCount(input.projectedFullWeekEffectiveSets)} projected`;
   const targetLabel = formatTargetLabel({
     targetSets: input.targetSets,
@@ -473,6 +535,9 @@ function buildProgramVolumeDisplayRow(input: {
   return {
     muscle: input.muscle,
     status: input.status,
+    targetKind: input.targetKind,
+    targetRange: input.targetRange,
+    displayGroup: input.displayGroup,
     weightedSetsLabel: formatWeightedSetsLabel(input.projectedFullWeekEffectiveSets),
     targetLabel: formatTargetDisplayLabel({
       targetSets: input.targetSets,
@@ -481,7 +546,9 @@ function buildProgramVolumeDisplayRow(input: {
     }),
     statusLabel,
     statusDescription:
-      weeklyStatus === "below_mev"
+      isSoftTarget
+        ? `${projectedLabel} vs ${targetLabel}; ${completedLabel} so far. Non-blocking.`
+        : weeklyStatus === "below_mev"
         ? `${projectedLabel} is still below MEV after the planned week.`
         : `${projectedLabel} vs ${targetLabel}; ${completedLabel} so far.`,
     deltaLabel: formatTargetDeltaLabel({
@@ -491,12 +558,14 @@ function buildProgramVolumeDisplayRow(input: {
       targetRange: input.targetRange,
     }),
     comparisonLabel: `${projectedLabel} vs ${targetLabel}`,
-    landmarkContext: buildVolumeLandmarkContext({
-      effectiveSets: input.projectedFullWeekEffectiveSets,
-      mev: input.mev,
-      mav: input.mav,
-      mrv: input.mrv,
-    }),
+    landmarkContext: isSoftTarget
+      ? undefined
+      : buildVolumeLandmarkContext({
+          effectiveSets: input.projectedFullWeekEffectiveSets,
+          mev: input.mev,
+          mav: input.mav,
+          mrv: input.mrv,
+        }),
     badges: [
       {
         status: weeklyStatus,
@@ -537,9 +606,12 @@ function buildWeekCompletionOutlook(input: {
   };
 
   const classifiedRows = input.report.fullWeekByMuscle.map((row) => {
+    const targetKind = row.targetKind ?? "hard";
+    const targetRange = row.targetRange ?? null;
+    const displayGroup = row.displayGroup ?? getWeeklyMuscleDisplayGroup(targetKind);
     const outcome = classifyMuscleOutcome(row.weeklyTarget, row.projectedFullWeekEffectiveSets, {
-      targetKind: row.targetKind,
-      targetRange: row.targetRange,
+      targetKind,
+      targetRange,
     });
 
     return {
@@ -547,8 +619,9 @@ function buildWeekCompletionOutlook(input: {
       status: outcome.status,
       projectedFullWeekEffectiveSets: row.projectedFullWeekEffectiveSets,
       targetSets: row.weeklyTarget,
-      targetKind: row.targetKind,
-      targetRange: row.targetRange,
+      targetKind,
+      targetRange,
+      displayGroup,
       delta: outcome.delta,
       percentDelta: outcome.percentDelta,
       mev: row.mev,
@@ -578,10 +651,11 @@ function buildWeekCompletionOutlook(input: {
     buildProgramVolumeDisplayRow({
       muscle: row.muscle,
       status: row.status,
-      projectedFullWeekEffectiveSets: row.projectedFullWeekEffectiveSets,
-      targetSets: row.targetSets,
       targetKind: row.targetKind,
       targetRange: row.targetRange,
+      displayGroup: row.displayGroup,
+      projectedFullWeekEffectiveSets: row.projectedFullWeekEffectiveSets,
+      targetSets: row.targetSets,
       delta: row.delta,
       mev: row.mev,
       mav: row.mav,
@@ -591,17 +665,24 @@ function buildWeekCompletionOutlook(input: {
       projectedRemainingWeekEffectiveSets: row.projectedRemainingWeekEffectiveSets,
     })
   );
-  const summary = buildOutcomeSummary(rows);
+  const primaryRows = displayRows.filter((row) => row.displayGroup === "primary");
+  const secondaryRows = displayRows.filter((row) => row.displayGroup === "secondary");
+  const summary = buildOutcomeSummary(rows.filter((row) => row.displayGroup === "primary"));
+  const secondarySummary = buildSoftTargetSummary(secondaryRows);
 
-  const defaultRows = displayRows
+  const defaultRows = primaryRows
     .filter((row) => row.status !== "on_target")
     .slice(0, 4);
 
   return {
     assumptionLabel: "If you complete the remaining planned sessions this week, you will likely land here.",
     summary,
+    secondarySummary,
     badges: buildOutlookBadges(summary),
+    secondaryBadges: buildSoftTargetBadges(secondarySummary),
     rows: displayRows,
+    primaryRows,
+    secondaryRows,
     defaultRows,
   };
 }

@@ -40,7 +40,9 @@ import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-s
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 import {
   formatWeeklyMuscleStatusLabel,
+  getWeeklyMuscleDisplayGroup,
   getWeeklyMuscleStatus,
+  type WeeklyMuscleDisplayGroup,
 } from "@/lib/ui/weekly-muscle-status";
 
 export type ProgramMesoBlock = {
@@ -63,6 +65,7 @@ export type ProgramVolumeRow = {
   muscle: string;
   targetKind?: VolumeTargetKind;
   targetRange?: VolumeSoftTargetRange | null;
+  displayGroup?: WeeklyMuscleDisplayGroup;
   effectiveSets: number;
   directSets: number;
   indirectSets: number;
@@ -378,11 +381,13 @@ function formatTargetStatusDescription(input: {
   target: number;
   targetKind: VolumeTargetKind;
   targetRange: VolumeSoftTargetRange | null;
+  statusLabel?: string;
 }): string {
   if (input.targetKind === "soft" && input.targetRange) {
-    return `${formatSetCount(input.effectiveSets)} weighted sets against ${formatSetCount(
-      input.targetRange.min
-    )}-${formatSetCount(input.targetRange.max)} soft target.`;
+    const currentLabel = input.statusLabel
+      ? `${input.statusLabel.charAt(0).toLowerCase()}${input.statusLabel.slice(1)}`
+      : "within soft range";
+    return `Current: ${currentLabel}. Non-blocking.`;
   }
 
   return `${formatSetCount(input.effectiveSets)} weighted sets against ${formatSetCount(
@@ -967,6 +972,7 @@ function buildProgramVolumeRows(input: {
       const data = weekMuscles[muscle] ?? { directSets: 0, indirectSets: 0, effectiveSets: 0 };
       const target = mesoRecord ? getWeeklyVolumeTarget(mesoRecord, muscle, week) : landmarks.mev;
       const targetSemantics = getMuscleTargetSemantics(muscle);
+      const displayGroup = getWeeklyMuscleDisplayGroup(targetSemantics.targetKind);
       const weeklyStatus = getWeeklyMuscleStatus({
         effectiveSets: data.effectiveSets,
         target,
@@ -975,11 +981,14 @@ function buildProgramVolumeRows(input: {
         targetKind: targetSemantics.targetKind,
         softTargetRange: targetSemantics.softTargetRange,
       });
-      const statusLabel = formatWeeklyMuscleStatusLabel(weeklyStatus);
+      const statusLabel = formatWeeklyMuscleStatusLabel(weeklyStatus, {
+        targetKind: targetSemantics.targetKind,
+      });
       return {
         muscle,
         targetKind: targetSemantics.targetKind,
         targetRange: targetSemantics.softTargetRange,
+        displayGroup,
         effectiveSets: data.effectiveSets,
         directSets: data.directSets,
         indirectSets: data.indirectSets,
@@ -999,6 +1008,7 @@ function buildProgramVolumeRows(input: {
           target,
           targetKind: targetSemantics.targetKind,
           targetRange: targetSemantics.softTargetRange,
+          statusLabel,
         }),
         deltaLabel: formatTargetDeltaLabel({
           effectiveSets: data.effectiveSets,
@@ -1006,12 +1016,15 @@ function buildProgramVolumeRows(input: {
           targetKind: targetSemantics.targetKind,
           targetRange: targetSemantics.softTargetRange,
         }),
-        landmarkContext: buildVolumeLandmarkContext({
-          effectiveSets: data.effectiveSets,
-          mev: landmarks.mev,
-          mav: landmarks.mav,
-          mrv: landmarks.mrv,
-        }),
+        landmarkContext:
+          displayGroup === "primary"
+            ? buildVolumeLandmarkContext({
+                effectiveSets: data.effectiveSets,
+                mev: landmarks.mev,
+                mav: landmarks.mav,
+                mrv: landmarks.mrv,
+              })
+            : undefined,
         badges: [
           {
             status: weeklyStatus,
@@ -1033,7 +1046,11 @@ function buildProgramVolumeRows(input: {
           : {}),
       };
     })
-    .filter((row) => row.mav > 0 && (row.target > 0 || row.effectiveSets > 0))
+    .filter(
+      (row) =>
+        row.mav > 0 &&
+        (row.target > 0 || row.effectiveSets > 0 || row.targetKind === "soft")
+    )
     .sort((left, right) => {
       const leftRatio = left.target === 0 ? 0 : left.effectiveSets / left.target;
       const rightRatio = right.target === 0 ? 0 : right.effectiveSets / right.target;

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   formatWeeklyMuscleStatusLabel,
+  getWeeklyMuscleDisplayGroup,
   getWeeklyMuscleStatus,
   summarizeWeeklyMuscleStatuses,
 } from "./weekly-muscle-status";
@@ -95,6 +96,17 @@ describe("weekly muscle status", () => {
         softTargetRange: { min: 4, max: 6 },
       })
     ).toBe("on_target");
+
+    expect(
+      getWeeklyMuscleStatus({
+        effectiveSets: 7,
+        target: 0,
+        mev: 0,
+        mrv: 20,
+        targetKind: "soft",
+        softTargetRange: { min: 4, max: 6 },
+      })
+    ).toBe("near_mrv");
   });
 
   it("formats the canonical labels used by dashboard and review surfaces", () => {
@@ -104,6 +116,22 @@ describe("weekly muscle status", () => {
     expect(formatWeeklyMuscleStatusLabel("on_target")).toBe("On target");
     expect(formatWeeklyMuscleStatusLabel("near_mrv")).toBe("Near MRV");
     expect(formatWeeklyMuscleStatusLabel("at_mrv")).toBe("At MRV");
+  });
+
+  it("formats primary and secondary Program volume labels", () => {
+    expect(formatWeeklyMuscleStatusLabel("below_mev", { targetKind: "hard" })).toBe("Below MEV");
+    expect(formatWeeklyMuscleStatusLabel("near_target", { targetKind: "hard" })).toBe("On target");
+    expect(formatWeeklyMuscleStatusLabel("near_mrv", { targetKind: "hard" })).toBe("Slightly high");
+    expect(formatWeeklyMuscleStatusLabel("at_mrv", { targetKind: "hard" })).toBe("Meaningfully high");
+    expect(formatWeeklyMuscleStatusLabel("below_mev", { targetKind: "soft" })).toBe("Below soft range");
+    expect(formatWeeklyMuscleStatusLabel("on_target", { targetKind: "soft" })).toBe("Within soft range");
+    expect(formatWeeklyMuscleStatusLabel("near_mrv", { targetKind: "soft" })).toBe("Above soft range");
+  });
+
+  it("maps soft targets into the secondary display group", () => {
+    expect(getWeeklyMuscleDisplayGroup("hard")).toBe("primary");
+    expect(getWeeklyMuscleDisplayGroup("soft")).toBe("secondary");
+    expect(getWeeklyMuscleDisplayGroup("none")).toBe("primary");
   });
 
   it("summarizes the same status buckets used by the volume cards", () => {

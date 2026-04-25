@@ -403,6 +403,17 @@ function buildProtectedCoverageSatisfiedSnapshot(): PreloadedGenerationSnapshot 
       isMainLiftEligible: false,
       isCompound: false,
       fatigueCost: 1,
+    }) as never,
+    makeRawExercise({
+      id: "cable-lateral-raise",
+      name: "Cable Lateral Raise",
+      movementPatterns: ["isolation"],
+      splitTags: ["push"],
+      equipment: ["CABLE"],
+      primaryMuscles: ["Side Delts"],
+      isMainLiftEligible: false,
+      isCompound: false,
+      fatigueCost: 1,
     }) as never
   );
   return snapshot;
@@ -837,8 +848,13 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
 
     expect(seededExercises.find((exercise) => exercise.exerciseId.includes("calf"))?.setCount)
       .toBeGreaterThanOrEqual(4);
-    expect(seededExercises.find((exercise) => exercise.exerciseId === "lateral-raise")?.setCount)
-      .toBeGreaterThanOrEqual(4);
+    expect(
+      seededExercises
+        .filter((exercise) =>
+          ["lateral-raise", "cable-lateral-raise"].includes(exercise.exerciseId)
+        )
+        .reduce((sum, exercise) => sum + exercise.setCount, 0)
+    ).toBeGreaterThanOrEqual(4);
     expect(seededExercises.every((exercise) => exercise.setCount > 0))
       .toBe(true);
   });
@@ -1079,8 +1095,18 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     expect(upperB?.exercises.length ?? 0).toBeLessThanOrEqual(6);
     expect(upperB?.exercises.some((exercise) => exercise.exerciseId === "lateral-raise")).toBe(true);
     expect(
-      slotPlans.every((slot) => slot.exercises.every((exercise) => exercise.setCount <= 5))
+      slotPlans.every((slot) =>
+        slot.exercises.every((exercise) =>
+          exercise.role === "CORE_COMPOUND" ? exercise.setCount <= 5 : exercise.setCount <= 4
+        )
+      )
     ).toBe(true);
+    expect(
+      slotPlans
+        .flatMap((slot) => slot.exercises)
+        .filter((exercise) => ["lateral-raise", "cable-lateral-raise"].includes(exercise.exerciseId))
+        .map((exercise) => exercise.exerciseId)
+    ).toEqual(expect.arrayContaining(["lateral-raise", "cable-lateral-raise"]));
     expect(lowerB?.exercises[0]?.exerciseId).toBe("rdl");
   });
 
@@ -1121,14 +1147,20 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
 
     expect(
       projected.diagnostics?.protectedCoverage.supportFloorRepairReasons["Side Delts"]
-    ).toContain("existing_accessory_set_bump");
+    ).toContain("support_accessory_replacement");
     expect(getCoverageRow(projected, "Side Delts")?.projectedEffectiveSets ?? 0).toBeGreaterThan(5);
+    expect(
+      getProjectedSlotPlans(projected)
+        .flatMap((slot) => slot.exercises)
+        .filter((exercise) => ["lateral-raise", "cable-lateral-raise"].includes(exercise.exerciseId))
+        .every((exercise) => exercise.setCount <= 4)
+    ).toBe(true);
   });
 
   it("downgrades unresolvable side-delt support to an explicit diagnostic", () => {
     const snapshot = buildProtectedCoverageSatisfiedSnapshot();
     snapshot.context.exercises = snapshot.context.exercises.filter(
-      (exercise) => exercise.id !== "lateral-raise"
+      (exercise) => !["lateral-raise", "cable-lateral-raise"].includes(exercise.id)
     );
 
     const projected = projectSuccessorSlotPlansFromSnapshot({

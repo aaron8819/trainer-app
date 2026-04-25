@@ -39,6 +39,7 @@ import {
   appendAccessory,
   applyExistingAccessorySupportFloorBumps,
   applyFinalMavTrim,
+  applyFinalSetDistributionCaps,
   applyFinalSupportFloorClosure,
   buildSupportAccessoryExercise,
   preserveLowerPatternPrimacy,
@@ -378,6 +379,10 @@ function projectSlotPlansPass(input: {
     });
   }
 
+  projectedSlots = applyFinalSetDistributionCaps({
+    projectedSlots,
+    slotSequenceEntries,
+  });
   const finalSupportFloorClosure = applyFinalSupportFloorClosure({
     projectedSlots,
     exerciseLibrary: projectionContext.mapped.exerciseLibrary,

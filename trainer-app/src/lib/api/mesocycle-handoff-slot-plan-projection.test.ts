@@ -27,7 +27,17 @@ import {
   MIN_PROJECTED_ACCESSORY_SETS_PER_EXERCISE,
   MIN_PROJECTED_MAIN_LIFT_SETS_PER_EXERCISE,
 } from "./mesocycle-handoff-slot-plan-projection.repair-engine";
+import {
+  applyProgramQualityConstraints,
+  evaluateProgramQualityConstraints,
+  PROGRAM_QUALITY_CONSTRAINT_PRIORITY,
+  PROGRAM_QUALITY_PENALTY_MODEL,
+} from "./mesocycle-handoff-slot-plan-projection.program-quality";
 import { buildSlotSequenceEntries } from "./mesocycle-handoff-slot-plan-projection.coverage-evaluation";
+import {
+  evaluateDuplicateExerciseReuse,
+  type WeeklyMuscleObligationPlan,
+} from "./mesocycle-handoff-slot-plan-projection.weekly-obligations";
 import { resolveSessionSlotPolicy } from "@/lib/planning/session-slot-profile";
 import type { PreloadedGenerationSnapshot } from "./template-session/context-loader";
 import type { MovementPatternV2, WorkoutExercise, WorkoutPlan } from "@/lib/engine/types";
@@ -136,6 +146,38 @@ function makeProjectedWorkout(input: {
     accessories,
     estimatedMinutes: 60,
   };
+}
+
+function makeProjectedSlot(input: {
+  slotId: string;
+  intent: "UPPER" | "LOWER" | "PULL" | "PUSH";
+  workout: WorkoutPlan;
+}) {
+  return {
+    slotPlan: {
+      slotId: input.slotId,
+      intent: input.intent,
+      exercises: [],
+    },
+    workout: input.workout,
+    projectedContributionByMuscle: new Map<string, number>(),
+    repairMuscles: [],
+  };
+}
+
+function emptyWeeklyObligationPlan(): WeeklyMuscleObligationPlan {
+  return {
+    muscles: {
+      Chest: { targetSets: 0, allocatedSlots: [] },
+      Lats: { targetSets: 0, allocatedSlots: [] },
+      Quads: { targetSets: 0, allocatedSlots: [] },
+      Hamstrings: { targetSets: 0, allocatedSlots: [] },
+    },
+  };
+}
+
+function getProjectedExercises(workout: WorkoutPlan) {
+  return [...workout.mainLifts, ...workout.accessories];
 }
 
 function buildSnapshot(): PreloadedGenerationSnapshot {
@@ -585,6 +627,346 @@ function getMinimumViableSetCount(role: string) {
 }
 
 describe("projectSuccessorSlotPlansFromSnapshot", () => {
+  it("exposes additive monotonic program quality priorities without changing seed contracts", () => {
+    expect(PROGRAM_QUALITY_CONSTRAINT_PRIORITY).toEqual({
+      P0: "weekly_obligations_slot_identity",
+      P1: "movement_pattern_coverage",
+      P2: "per_exercise_efficiency",
+      P3: "stimulus_diversity",
+      P4: "duplicate_penalties",
+      P5: "isolation_completeness",
+    });
+    expect(PROGRAM_QUALITY_PENALTY_MODEL).toEqual({
+      type: "additive",
+      monotonic: true,
+    });
+  });
+
+  it("spreads soft-cap overflow across existing same-muscle alternatives when viable", () => {
+    const bench = makeProjectedExercise({
+      id: "bench",
+      name: "Bench Press",
+      movementPatterns: ["horizontal_push"],
+      primaryMuscles: ["Chest"],
+      sets: 5,
+      isMainLift: true,
+    });
+    const fly = makeProjectedExercise({
+      id: "cable-fly",
+      name: "Cable Fly",
+      movementPatterns: ["isolation"],
+      primaryMuscles: ["Chest"],
+      sets: 3,
+      isCompound: false,
+    });
+    const machinePress = makeProjectedExercise({
+      id: "machine-press",
+      name: "Machine Chest Press",
+      movementPatterns: ["horizontal_push"],
+      primaryMuscles: ["Chest"],
+      sets: 2,
+    });
+    const slotSequenceEntries = buildSlotSequenceEntries([
+      { slotId: "upper_a", intent: "UPPER" },
+    ]);
+
+    const result = applyProgramQualityConstraints({
+      projectedSlots: [
+        makeProjectedSlot({
+          slotId: "upper_a",
+          intent: "UPPER",
+          workout: makeProjectedWorkout({
+            mainLifts: [bench],
+            accessories: [fly, machinePress],
+          }),
+        }),
+      ],
+      exerciseLibrary: [bench.exercise, fly.exercise, machinePress.exercise] as never,
+      weeklyObligationPlan: emptyWeeklyObligationPlan(),
+      slotSequenceEntries,
+    });
+
+    const exerciseSetCounts = Object.fromEntries(
+      getProjectedExercises(result.projectedSlots[0]?.workout as WorkoutPlan).map((exercise) => [
+        exercise.exercise.id,
+        exercise.sets.length,
+      ])
+    );
+    const maxChestShare =
+      result.evaluation.diagnostics.find(
+        (diagnostic) => diagnostic.constraint === "single_exercise_volume_share"
+      ) ?? null;
+
+    expect(exerciseSetCounts.bench).toBeLessThanOrEqual(4);
+    expect(Math.max(...Object.values(exerciseSetCounts))).toBeLessThanOrEqual(4);
+    expect(maxChestShare).toBeNull();
+    expect(result.appliedDiagnostics).toContainEqual(
+      expect.objectContaining({
+        constraint: "per_exercise_efficiency",
+        reason: "moved_one_set_to_existing_alternative",
+      })
+    );
+  });
+
+  it("only enforces stimulus diversity once the muscle volume threshold is meaningful", () => {
+    const lowVolumeSlot = makeProjectedSlot({
+      slotId: "upper_a",
+      intent: "UPPER",
+      workout: makeProjectedWorkout({
+        mainLifts: [
+          makeProjectedExercise({
+            id: "bench",
+            name: "Bench Press",
+            movementPatterns: ["horizontal_push"],
+            primaryMuscles: ["Chest"],
+            sets: 4,
+            isMainLift: true,
+          }),
+        ],
+        accessories: [
+          makeProjectedExercise({
+            id: "machine-press",
+            name: "Machine Chest Press",
+            movementPatterns: ["horizontal_push"],
+            primaryMuscles: ["Chest"],
+            sets: 3,
+          }),
+        ],
+      }),
+    });
+    const highVolumeSlot = makeProjectedSlot({
+      slotId: "upper_a",
+      intent: "UPPER",
+      workout: makeProjectedWorkout({
+        mainLifts: [
+          makeProjectedExercise({
+            id: "bench",
+            name: "Bench Press",
+            movementPatterns: ["horizontal_push"],
+            primaryMuscles: ["Chest"],
+            sets: 5,
+            isMainLift: true,
+          }),
+        ],
+        accessories: [
+          makeProjectedExercise({
+            id: "machine-press",
+            name: "Machine Chest Press",
+            movementPatterns: ["horizontal_push"],
+            primaryMuscles: ["Chest"],
+            sets: 3,
+          }),
+        ],
+      }),
+    });
+
+    const lowVolumeEvaluation = evaluateProgramQualityConstraints({
+      projectedSlots: [lowVolumeSlot],
+      exerciseLibrary: [] as never,
+    });
+    const highVolumeEvaluation = evaluateProgramQualityConstraints({
+      projectedSlots: [highVolumeSlot],
+      exerciseLibrary: [] as never,
+    });
+
+    expect(
+      lowVolumeEvaluation.diagnostics.some(
+        (diagnostic) => diagnostic.constraint === "stimulus_diversity"
+      )
+    ).toBe(false);
+    expect(highVolumeEvaluation.diagnostics).toContainEqual(
+      expect.objectContaining({
+        constraint: "stimulus_diversity",
+        reason: "single_pattern_share_exceeded",
+        muscle: "Chest",
+      })
+    );
+  });
+
+  it("flags hinge dominance across the weekly lower-slot pair", () => {
+    const lowerA = makeProjectedSlot({
+      slotId: "lower_a",
+      intent: "LOWER",
+      workout: makeProjectedWorkout({
+        mainLifts: [
+          makeProjectedExercise({
+            id: "rdl",
+            name: "Romanian Deadlift",
+            movementPatterns: ["hinge"],
+            primaryMuscles: ["Hamstrings"],
+            sets: 4,
+            isMainLift: true,
+          }),
+        ],
+      }),
+    });
+    const lowerB = makeProjectedSlot({
+      slotId: "lower_b",
+      intent: "LOWER",
+      workout: makeProjectedWorkout({
+        mainLifts: [
+          makeProjectedExercise({
+            id: "hip-thrust",
+            name: "Hip Thrust",
+            movementPatterns: ["hinge"],
+            primaryMuscles: ["Glutes"],
+            sets: 3,
+            isMainLift: true,
+          }),
+          makeProjectedExercise({
+            id: "hack-squat",
+            name: "Hack Squat",
+            movementPatterns: ["squat"],
+            primaryMuscles: ["Quads"],
+            sets: 3,
+            isMainLift: true,
+          }),
+        ],
+      }),
+    });
+
+    const evaluation = evaluateProgramQualityConstraints({
+      projectedSlots: [lowerA, lowerB],
+      exerciseLibrary: [] as never,
+    });
+
+    expect(evaluation.diagnostics).toContainEqual(
+      expect.objectContaining({
+        constraint: "weekly_pattern_balance",
+        reason: "lower_hinge_share_exceeded",
+        pattern: "hinge",
+      })
+    );
+  });
+
+  it("injects direct arm or lateral-delt isolation only when the projected week has a deficit", () => {
+    const row = makeProjectedExercise({
+      id: "row",
+      name: "Chest-Supported Row",
+      movementPatterns: ["horizontal_pull"],
+      primaryMuscles: ["Lats"],
+      sets: 3,
+      isMainLift: true,
+    });
+    const curl = makeProjectedExercise({
+      id: "curl",
+      name: "Cable Curl",
+      movementPatterns: ["isolation"],
+      primaryMuscles: ["Biceps"],
+      sets: 2,
+      isCompound: false,
+    });
+    const slotSequenceEntries = buildSlotSequenceEntries([
+      { slotId: "pull_a", intent: "PULL" },
+    ]);
+
+    const deficitResult = applyProgramQualityConstraints({
+      projectedSlots: [
+        makeProjectedSlot({
+          slotId: "pull_a",
+          intent: "PULL",
+          workout: makeProjectedWorkout({ mainLifts: [row] }),
+        }),
+      ],
+      exerciseLibrary: [row.exercise, curl.exercise] as never,
+      weeklyObligationPlan: emptyWeeklyObligationPlan(),
+      slotSequenceEntries,
+    });
+    const noDeficitResult = applyProgramQualityConstraints({
+      projectedSlots: [
+        makeProjectedSlot({
+          slotId: "pull_a",
+          intent: "PULL",
+          workout: makeProjectedWorkout({
+            mainLifts: [row],
+            accessories: [
+              makeProjectedExercise({
+                id: "curl-existing",
+                name: "Existing Cable Curl",
+                movementPatterns: ["isolation"],
+                primaryMuscles: ["Biceps"],
+                sets: 6,
+                isCompound: false,
+              }),
+            ],
+          }),
+        }),
+      ],
+      exerciseLibrary: [row.exercise, curl.exercise] as never,
+      weeklyObligationPlan: emptyWeeklyObligationPlan(),
+      slotSequenceEntries,
+    });
+
+    expect(getProjectedExercises(deficitResult.projectedSlots[0]?.workout as WorkoutPlan).map(
+      (exercise) => exercise.exercise.id
+    )).toContain("curl");
+    expect(deficitResult.appliedDiagnostics).toContainEqual(
+      expect.objectContaining({
+        constraint: "isolation_completeness",
+        reason: "injected_direct_isolation_for_deficit",
+        muscle: "Biceps",
+      })
+    );
+    expect(noDeficitResult.appliedDiagnostics).not.toContainEqual(
+      expect.objectContaining({
+        constraint: "isolation_completeness",
+        reason: "injected_direct_isolation_for_deficit",
+      })
+    );
+  });
+
+  it("demotes excess main compounds without removing selected exercises", () => {
+    const slotSequenceEntries = buildSlotSequenceEntries([
+      { slotId: "upper_a", intent: "UPPER" },
+    ]);
+    const workout = makeProjectedWorkout({
+      mainLifts: [
+        makeProjectedExercise({
+          id: "bench",
+          name: "Bench Press",
+          movementPatterns: ["horizontal_push"],
+          primaryMuscles: ["Chest"],
+          isMainLift: true,
+        }),
+        makeProjectedExercise({
+          id: "row",
+          name: "Row",
+          movementPatterns: ["horizontal_pull"],
+          primaryMuscles: ["Lats"],
+          isMainLift: true,
+        }),
+        makeProjectedExercise({
+          id: "overhead-press",
+          name: "Overhead Press",
+          movementPatterns: ["vertical_push"],
+          primaryMuscles: ["Front Delts"],
+          isMainLift: true,
+        }),
+      ],
+    });
+
+    const result = applyProgramQualityConstraints({
+      projectedSlots: [
+        makeProjectedSlot({
+          slotId: "upper_a",
+          intent: "UPPER",
+          workout,
+        }),
+      ],
+      exerciseLibrary: getProjectedExercises(workout).map((exercise) => exercise.exercise) as never,
+      weeklyObligationPlan: emptyWeeklyObligationPlan(),
+      slotSequenceEntries,
+    });
+    const projectedWorkout = result.projectedSlots[0]?.workout;
+
+    expect(projectedWorkout?.mainLifts.length).toBeLessThanOrEqual(2);
+    expect(getProjectedExercises(projectedWorkout as WorkoutPlan).map((exercise) => exercise.exercise.id)).toEqual([
+      "bench",
+      "row",
+      "overhead-press",
+    ]);
+  });
+
   it("does not count incidental upper protected support trace as meaningful coverage", () => {
     const slotPolicy = resolveSessionSlotPolicy({
       sessionIntent: "upper",
@@ -1076,6 +1458,109 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     ).toBe(true);
     const chest = getCoverageRow(projected, "Chest");
     expect(chest?.projectedEffectiveSets ?? 0).toBeGreaterThanOrEqual(chest?.mev ?? 0);
+  });
+
+  it("allocates hard weekly primary obligations across compatible slots before support repair", () => {
+    const projected = projectSuccessorSlotPlansFromSnapshot({
+      userId: "user-1",
+      source: buildSource(),
+      design: buildDesign(buildRepairSensitiveDraft()),
+      snapshot: buildProtectedCoverageSatisfiedSnapshot(),
+      now: new Date("2026-03-19T12:00:00.000Z"),
+    });
+
+    const plan = projected.diagnostics?.weeklyObligations?.plan;
+
+    expect(plan?.muscles.Chest.targetSets).toBe(10);
+    expect(plan?.muscles.Lats.targetSets).toBe(8);
+    expect(plan?.muscles.Quads.targetSets).toBe(8);
+    expect(plan?.muscles.Hamstrings.targetSets).toBe(6);
+    expect(plan?.muscles.Chest.allocatedSlots.map((slot) => slot.slotId)).toEqual([
+      "upper_a",
+      "upper_b",
+    ]);
+    expect(plan?.muscles.Lats.allocatedSlots.map((slot) => slot.slotId)).toEqual([
+      "upper_a",
+      "upper_b",
+    ]);
+    expect(plan?.muscles.Quads.allocatedSlots.map((slot) => slot.slotId)).toEqual([
+      "lower_a",
+      "lower_b",
+    ]);
+    expect(plan?.muscles.Hamstrings.allocatedSlots.map((slot) => slot.slotId)).toEqual([
+      "lower_a",
+      "lower_b",
+    ]);
+  });
+
+  it("prevents upper_b from finishing with zero Chest while Chest remains a hard weekly obligation", () => {
+    const projected = projectSuccessorSlotPlansFromSnapshot({
+      userId: "user-1",
+      source: buildSource(),
+      design: buildDesign(buildRepairSensitiveDraft()),
+      snapshot: buildProtectedCoverageSatisfiedSnapshot(),
+      now: new Date("2026-03-19T12:00:00.000Z"),
+    });
+
+    const upperBChest =
+      projected.diagnostics?.weeklyObligations?.slotEvaluations.find(
+        (row) => row.slotId === "upper_b" && row.muscle === "Chest"
+      );
+    const zeroContributionSlots =
+      projected.diagnostics?.weeklyObligations?.zeroContributionSlots ?? [];
+    const chest = getCoverageRow(projected, "Chest");
+
+    expect(upperBChest?.projectedEffectiveSets ?? 0).toBeGreaterThan(0);
+    expect(zeroContributionSlots).not.toContainEqual(
+      expect.objectContaining({ slotId: "upper_b", muscle: "Chest" })
+    );
+    expect(chest?.projectedEffectiveSets ?? 0).toBeGreaterThanOrEqual(chest?.mev ?? 0);
+  });
+
+  it("diagnoses repeated Lat Pulldown accessories when another lat pull alternative exists", () => {
+    const pulldown = makeProjectedExercise({
+      id: "pulldown",
+      name: "Lat Pulldown",
+      movementPatterns: ["vertical_pull"],
+      primaryMuscles: ["Lats"],
+      isCompound: false,
+    });
+    const seatedRow = makeProjectedExercise({
+      id: "seated-row",
+      name: "Seated Cable Row",
+      movementPatterns: ["horizontal_pull"],
+      primaryMuscles: ["Lats"],
+      isCompound: false,
+    });
+    const previousSlot = {
+      slotPlan: {
+        slotId: "upper_a",
+        intent: "UPPER" as const,
+        exercises: [],
+      },
+      workout: makeProjectedWorkout({ accessories: [pulldown] }),
+      projectedContributionByMuscle: new Map([["Lats", 3]]),
+      repairMuscles: [],
+    };
+
+    const reuse = evaluateDuplicateExerciseReuse({
+      projectedSlots: [previousSlot],
+      workout: makeProjectedWorkout({ accessories: [pulldown] }),
+      slotId: "upper_b",
+      exerciseLibrary: [pulldown.exercise, seatedRow.exercise] as never,
+    });
+
+    expect(reuse.penalty).toBeGreaterThan(0);
+    expect(reuse.diagnostics).toContainEqual(
+      expect.objectContaining({
+        exerciseId: "pulldown",
+        repeatedInSlotId: "upper_b",
+        previousSlotIds: ["upper_a"],
+        role: "accessory",
+        hasCompatibleAlternative: true,
+        reason: "accessory_repeat_discouraged",
+      })
+    );
   });
 
   it("forwards protected repair muscles into upper-slot projection candidates", () => {

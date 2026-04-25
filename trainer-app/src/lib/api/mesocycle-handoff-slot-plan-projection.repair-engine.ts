@@ -38,6 +38,12 @@ import {
   toSessionIntent,
   WEEK_ONE_SUPPORT_FLOOR_REPAIR_PRIORITY,
 } from "./mesocycle-handoff-slot-plan-projection.coverage-evaluation";
+import {
+  evaluateSlotWeeklyObligations,
+  getSlotWeeklyObligations,
+  type HardWeeklyObligationMuscle,
+  type WeeklyMuscleObligationPlan,
+} from "./mesocycle-handoff-slot-plan-projection.weekly-obligations";
 
 function selectSupportIsolation(input: {
   exerciseLibrary: MappedGenerationContext["exerciseLibrary"];
@@ -50,6 +56,37 @@ function selectSupportIsolation(input: {
     .filter((exercise) => !(exercise.isMainLiftEligible ?? false))
     .filter((exercise) => (exercise.primaryMuscles ?? []).includes(input.muscle))
     .sort((left, right) => {
+      const fatigueDelta = (left.fatigueCost ?? 3) - (right.fatigueCost ?? 3);
+      if (fatigueDelta !== 0) {
+        return fatigueDelta;
+      }
+      return left.name.localeCompare(right.name);
+    })[0];
+}
+
+function selectHardObligationExercise(input: {
+  exerciseLibrary: MappedGenerationContext["exerciseLibrary"];
+  selectedExerciseIds: Set<string>;
+  muscle: HardWeeklyObligationMuscle;
+}): WorkoutExercise["exercise"] | undefined {
+  return input.exerciseLibrary
+    .filter((exercise) => !input.selectedExerciseIds.has(exercise.id))
+    .filter((exercise) =>
+      (exercise.primaryMuscles ?? []).some(
+        (muscle) => normalizeMuscleName(muscle) === normalizeMuscleName(input.muscle)
+      )
+    )
+    .sort((left, right) => {
+      const leftMain = left.isMainLiftEligible ? 1 : 0;
+      const rightMain = right.isMainLiftEligible ? 1 : 0;
+      if (leftMain !== rightMain) {
+        return leftMain - rightMain;
+      }
+      const leftEffective = getEffectiveStimulusByMuscle(left, 1).get(input.muscle) ?? 0;
+      const rightEffective = getEffectiveStimulusByMuscle(right, 1).get(input.muscle) ?? 0;
+      if (rightEffective !== leftEffective) {
+        return rightEffective - leftEffective;
+      }
       const fatigueDelta = (left.fatigueCost ?? 3) - (right.fatigueCost ?? 3);
       if (fatigueDelta !== 0) {
         return fatigueDelta;
@@ -1213,6 +1250,137 @@ export function applyFinalSetDistributionCaps(input: {
         ? updateProjectedSlotWorkout(projectedSlot, trimmedWorkout)
         : projectedSlot
     );
+  }
+
+  return projectedSlots;
+}
+
+export function applyFinalWeeklyObligationClosure(input: {
+  projectedSlots: ReadonlyArray<ProjectedSlotWorkout>;
+  weeklyObligationPlan: WeeklyMuscleObligationPlan;
+  exerciseLibrary: MappedGenerationContext["exerciseLibrary"];
+  slotSequenceEntries: ReturnType<typeof buildSlotSequenceEntries>;
+}): ProjectedSlotWorkout[] {
+  let projectedSlots = [...input.projectedSlots];
+
+  for (let pass = 0; pass < 2; pass += 1) {
+    let appliedAny = false;
+
+    for (const [slotIndex, projectedSlot] of projectedSlots.entries()) {
+      const slotPolicy = resolveSessionSlotPolicy({
+        sessionIntent: toSessionIntent(projectedSlot.slotPlan.intent),
+        slotId: projectedSlot.slotPlan.slotId,
+        slotSequence: {
+          slots: input.slotSequenceEntries,
+        },
+      }).currentSession;
+      const obligations = getSlotWeeklyObligations({
+        plan: input.weeklyObligationPlan,
+        slotId: projectedSlot.slotPlan.slotId,
+      });
+      if (obligations.length === 0) {
+        continue;
+      }
+
+      let workout = projectedSlot.workout;
+      const selectedExerciseIds = new Set(
+        projectedSlots.flatMap((slot) =>
+          getWorkoutExercises(slot.workout).map((exercise) => exercise.exercise.id)
+        )
+      );
+
+      for (const obligation of obligations) {
+        const evaluation = evaluateSlotWeeklyObligations({
+          plan: input.weeklyObligationPlan,
+          slotId: projectedSlot.slotPlan.slotId,
+          contributionByMuscle: computeWorkoutContributionByMuscle(workout),
+        }).find((row) => row.muscle === obligation.muscle);
+        if (!evaluation || evaluation.shortfall <= SUPPORT_FLOOR_EPSILON) {
+          continue;
+        }
+        if (countWorkoutExercises(workout) >= SESSION_CAPS.maxExercises) {
+          const existingExercise = findExistingSupportExercise({
+            workout,
+            muscle: obligation.muscle,
+            includeMainLifts: true,
+          });
+          if (!existingExercise) {
+            continue;
+          }
+          const effectivePerSet = getEffectiveContributionPerSet(
+            existingExercise,
+            obligation.muscle
+          );
+          if (effectivePerSet <= 0) {
+            continue;
+          }
+          const setBump = Math.min(
+            getMaxPracticalSetBump(
+              existingExercise,
+              Math.ceil(evaluation.shortfall / effectivePerSet - SUPPORT_FLOOR_EPSILON)
+            ),
+            MAX_PROJECTED_SUPPORT_FLOOR_SET_BUMP
+          );
+          if (setBump <= 0) {
+            continue;
+          }
+          const candidateWorkout = replaceWorkoutExercise(
+            workout,
+            withAdditionalAccessorySets(existingExercise, setBump)
+          );
+          if (
+            preservesSlotIdentity({ slotPolicy, workout }) &&
+            !preservesSlotIdentity({ slotPolicy, workout: candidateWorkout })
+          ) {
+            continue;
+          }
+          workout = candidateWorkout;
+          appliedAny = true;
+          continue;
+        }
+
+        const exercise = selectHardObligationExercise({
+          exerciseLibrary: input.exerciseLibrary,
+          selectedExerciseIds,
+          muscle: obligation.muscle,
+        });
+        if (!exercise) {
+          continue;
+        }
+
+        const candidateWorkout = appendAccessory(
+          workout,
+          buildSupportAccessoryExercise({
+            exercise,
+            template: workout.accessories.at(-1),
+            orderIndex: workout.mainLifts.length + workout.accessories.length,
+            muscle: obligation.muscle,
+            practicalFloor: input.weeklyObligationPlan.muscles[obligation.muscle].targetSets,
+            requestedEffectiveSets: evaluation.shortfall,
+          })
+        );
+        if (
+          preservesSlotIdentity({ slotPolicy, workout }) &&
+          !preservesSlotIdentity({ slotPolicy, workout: candidateWorkout })
+        ) {
+          continue;
+        }
+
+        workout = candidateWorkout;
+        selectedExerciseIds.add(exercise.id);
+        appliedAny = true;
+      }
+
+      if (workout !== projectedSlot.workout) {
+        projectedSlots = projectedSlots.map((slot, index) =>
+          index === slotIndex ? updateProjectedSlotWorkout(slot, workout) : slot
+        );
+      }
+    }
+
+    if (!appliedAny) {
+      break;
+    }
   }
 
   return projectedSlots;

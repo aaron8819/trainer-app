@@ -51,6 +51,12 @@ import {
   PRIMARY_WEEK_ONE_SUPPORT_FLOOR_MUSCLES,
   toSessionIntent,
 } from "./mesocycle-handoff-slot-plan-projection.coverage-evaluation";
+import {
+  evaluateDuplicateExerciseReuse,
+  sumSlotObligationShortfall,
+  type DuplicateExerciseReuseDiagnostic,
+  type WeeklyMuscleObligationPlan,
+} from "./mesocycle-handoff-slot-plan-projection.weekly-obligations";
 
 export type SyntheticProjectionContext = {
   mapped: MappedGenerationContext;
@@ -296,6 +302,8 @@ type ProjectedSlotCompositionEvaluation = {
   lowerPatternPrimacy: ReturnType<typeof evaluateLowerPatternPrimacy>;
   coverage: ReturnType<typeof scoreProtectedCoverageContribution>;
   preferredSupportCoverage: ReturnType<typeof scorePreferredSupportContribution>;
+  slotObligationShortfall: number;
+  duplicateReusePenalty: number;
   exerciseCount: number;
   workingSetCount: number;
 };
@@ -354,6 +362,7 @@ function compareProjectedSlotCompositionEvaluation(
       candidate.upperSupportTypeQuality.redundantPullSupportCount,
       best.upperSupportTypeQuality.redundantPullSupportCount
     ),
+    compareLower(candidate.slotObligationShortfall, best.slotObligationShortfall),
     compareHigher(
       candidate.upperSupportTypeQuality.directionalEffectiveSets,
       best.upperSupportTypeQuality.directionalEffectiveSets
@@ -388,6 +397,7 @@ function compareProjectedSlotCompositionEvaluation(
       candidate.preferredSupportCoverage.totalCoverage,
       best.preferredSupportCoverage.totalCoverage
     ),
+    compareLower(candidate.duplicateReusePenalty, best.duplicateReusePenalty),
     compareLower(candidate.totalDeficitCount, best.totalDeficitCount),
     compareLower(candidate.totalDeficitToPracticalFloor, best.totalDeficitToPracticalFloor),
     compareLower(candidate.exerciseCount, best.exerciseCount),
@@ -413,6 +423,8 @@ export function selectBestProjectedSlotComposition(input: {
   }>;
   slotId: string;
   intent: WorkoutSessionIntent;
+  weeklyObligationPlan?: WeeklyMuscleObligationPlan;
+  exerciseLibrary?: MappedGenerationContext["exerciseLibrary"];
 }): WorkoutPlan {
   const prioritizedMuscleSet = new Set(input.prioritizedProtectedMuscles);
   const preferredSupportMuscles = getProjectionPreferredSupportMuscles(input.slotPolicy);
@@ -459,6 +471,24 @@ export function selectBestProjectedSlotComposition(input: {
       contributionByMuscle: projectedContributionByMuscle,
       preferredMuscles: preferredSupportMuscles,
     });
+    const slotObligationShortfall = input.weeklyObligationPlan
+      ? sumSlotObligationShortfall({
+          plan: input.weeklyObligationPlan,
+          slotId: input.slotId,
+          workout: candidate.workout,
+        })
+      : 0;
+    const duplicateReuse = input.exerciseLibrary
+      ? evaluateDuplicateExerciseReuse({
+          projectedSlots: input.projectedSlots,
+          workout: candidate.workout,
+          slotId: input.slotId,
+          exerciseLibrary: input.exerciseLibrary,
+        })
+      : ({ penalty: 0, diagnostics: [] } satisfies {
+          penalty: number;
+          diagnostics: DuplicateExerciseReuseDiagnostic[];
+        });
     const meaningfulSupportQuality = evaluateUpperProtectedSupportQuality({
       slotPolicy: input.slotPolicy,
       contributionByMuscle: projectedContributionByMuscle,
@@ -486,6 +516,8 @@ export function selectBestProjectedSlotComposition(input: {
       lowerPatternPrimacy,
       coverage,
       preferredSupportCoverage,
+      slotObligationShortfall,
+      duplicateReusePenalty: duplicateReuse.penalty,
       exerciseCount: countWorkoutExercises(candidate.workout),
       workingSetCount: countWorkoutWorkingSets(candidate.workout),
     };

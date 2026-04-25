@@ -42,6 +42,7 @@ import {
   applyFinalMinimumViableSetRedistribution,
   applyFinalSetDistributionCaps,
   applyFinalSupportFloorClosure,
+  applyFinalWeeklyObligationClosure,
   buildSupportAccessoryExercise,
   preserveLowerPatternPrimacy,
   rebalanceUpperSupportProjection,
@@ -51,6 +52,24 @@ import {
   mapProjectedWorkoutToSlotPlan,
   type ProjectedSuccessorSlotPlan,
 } from "./mesocycle-handoff-slot-plan-projection.seed-serialization";
+import {
+  applyProgramQualityConstraints,
+  evaluateProgramQualityConstraints,
+  PROGRAM_QUALITY_CONSTRAINT_PRIORITY,
+  PROGRAM_QUALITY_PENALTY_MODEL,
+  type ProgramQualityDiagnostic,
+  type ProgramQualityEvaluation,
+} from "./mesocycle-handoff-slot-plan-projection.program-quality";
+import {
+  buildWeeklyMuscleObligationPlan,
+  evaluateDuplicateExerciseReuse,
+  evaluateWeeklyObligationPlan,
+  getSlotWeeklyObligations,
+  sumWeeklyHardMuscleTotals,
+  type DuplicateExerciseReuseDiagnostic,
+  type SlotObligationEvaluation,
+  type WeeklyMuscleObligationPlan,
+} from "./mesocycle-handoff-slot-plan-projection.weekly-obligations";
 
 export {
   evaluateLowerPatternPrimacy,
@@ -78,6 +97,19 @@ export type SuccessorSlotPlanProjection = {
       supportFloorRepairReasons: Partial<Record<ProtectedWeekOneCoverageMuscle, SupportFloorRepairReason[]>>;
       unresolvedProtectedMuscles: ProtectedWeekOneCoverageMuscle[];
     };
+    weeklyObligations?: {
+      plan: WeeklyMuscleObligationPlan;
+      slotEvaluations: SlotObligationEvaluation[];
+      zeroContributionSlots: SlotObligationEvaluation[];
+      weeklyHardMuscleTotals: Record<string, number>;
+    };
+    duplicateExerciseReuse?: DuplicateExerciseReuseDiagnostic[];
+    programQuality?: {
+      constraintPriority: typeof PROGRAM_QUALITY_CONSTRAINT_PRIORITY;
+      penaltyModel: typeof PROGRAM_QUALITY_PENALTY_MODEL;
+      appliedDiagnostics: ProgramQualityDiagnostic[];
+      evaluation: ProgramQualityEvaluation;
+    };
   };
 };
 
@@ -99,6 +131,9 @@ function projectSlotPlansPass(input: {
       slotRepairMuscles: Record<string, ProtectedWeekOneCoverageMuscle[]>;
       supportFloorRepairReasons: Partial<Record<ProtectedWeekOneCoverageMuscle, SupportFloorRepairReason[]>>;
       activeMesocycle: NonNullable<MappedGenerationContext["activeMesocycle"]>;
+      weeklyObligationPlan: WeeklyMuscleObligationPlan;
+      exerciseLibrary: MappedGenerationContext["exerciseLibrary"];
+      programQualityAppliedDiagnostics: ProgramQualityDiagnostic[];
     }
   | { error: string } {
   const projectionContext = buildSyntheticProjectionContext({
@@ -121,7 +156,13 @@ function projectSlotPlansPass(input: {
   > = {};
   const slotSequenceEntries = buildSlotSequenceEntries(slotSequence);
   const accessoryLaneWeeklyTargets = buildAccessoryLaneWeeklyTargets(activeMesocycle);
+  const weeklyObligationPlan = buildWeeklyMuscleObligationPlan({
+    activeMesocycle,
+    slotSequence,
+    slotSequenceEntries,
+  });
   let accessoryLaneInsertionCount = 0;
+  const programQualityAppliedDiagnostics: ProgramQualityDiagnostic[] = [];
 
   for (const [index, slot] of slotSequence.entries()) {
     if (slot.intent === "BODY_PART") {
@@ -164,7 +205,21 @@ function projectSlotPlansPass(input: {
         slotProtectedCoverageMuscles.includes(muscle) ||
         !futurePrimaryProtectedMuscles.has(muscle)
     );
-    const projectionRepairMuscles = compatibleRepairMuscles;
+    const slotWeeklyObligations = getSlotWeeklyObligations({
+      plan: weeklyObligationPlan,
+      slotId: slot.slotId,
+    });
+    const projectionRepairMuscles = Array.from(
+      new Set([
+        ...compatibleRepairMuscles,
+        ...slotWeeklyObligations.map((obligation) => obligation.muscle),
+      ])
+    ).filter((muscle) =>
+      getProjectionRepairCompatibleMuscles(slotPolicy, [muscle]).includes(muscle)
+    );
+    const obligationTargetMuscles = slotWeeklyObligations.map(
+      (obligation) => obligation.muscle
+    );
     const preferredSupportTargetMuscles = getProjectionPreferredSupportMuscles(slotPolicy);
     const softPreferredSupportTargetMuscles = getProjectionSoftPreferredSupportMuscles({
       slot: slotPolicy,
@@ -208,6 +263,24 @@ function projectSlotPlansPass(input: {
       if (!("error" in preferredSupportComposed)) {
         candidateWorkouts.push({
           workout: preferredSupportComposed.generation.workout,
+          protectedMuscles: projectionRepairMuscles,
+        });
+      }
+    }
+    if (obligationTargetMuscles.length > 0) {
+      const obligationComposed = composeIntentSessionFromMappedContext(
+        projectionContext.mapped,
+        {
+          intent: toSessionIntent(slot.intent),
+          slotId: slot.slotId,
+          roleListIncomplete: true,
+          projectionRepairMuscles,
+          targetMuscles: obligationTargetMuscles,
+        }
+      );
+      if (!("error" in obligationComposed)) {
+        candidateWorkouts.push({
+          workout: obligationComposed.generation.workout,
           protectedMuscles: projectionRepairMuscles,
         });
       }
@@ -286,6 +359,8 @@ function projectSlotPlansPass(input: {
         slotSequence,
         slotId: slot.slotId,
         intent: slot.intent,
+        weeklyObligationPlan,
+        exerciseLibrary: projectionContext.mapped.exerciseLibrary,
       }),
       slotPolicy,
       exerciseLibrary: projectionContext.mapped.exerciseLibrary,
@@ -380,6 +455,27 @@ function projectSlotPlansPass(input: {
     });
   }
 
+  const initialProgramQualityPass = applyProgramQualityConstraints({
+    projectedSlots,
+    exerciseLibrary: projectionContext.mapped.exerciseLibrary,
+    weeklyObligationPlan,
+    slotSequenceEntries,
+  });
+  projectedSlots = initialProgramQualityPass.projectedSlots;
+  programQualityAppliedDiagnostics.push(
+    ...initialProgramQualityPass.appliedDiagnostics
+  );
+
+  projectedSlots = applyFinalSetDistributionCaps({
+    projectedSlots,
+    slotSequenceEntries,
+  });
+  projectedSlots = applyFinalWeeklyObligationClosure({
+    projectedSlots,
+    weeklyObligationPlan,
+    exerciseLibrary: projectionContext.mapped.exerciseLibrary,
+    slotSequenceEntries,
+  });
   projectedSlots = applyFinalSetDistributionCaps({
     projectedSlots,
     slotSequenceEntries,
@@ -400,6 +496,36 @@ function projectSlotPlansPass(input: {
     projectedSlots,
     slotSequenceEntries,
   });
+  projectedSlots = applyFinalWeeklyObligationClosure({
+    projectedSlots,
+    weeklyObligationPlan,
+    exerciseLibrary: projectionContext.mapped.exerciseLibrary,
+    slotSequenceEntries,
+  });
+  projectedSlots = applyFinalSetDistributionCaps({
+    projectedSlots,
+    slotSequenceEntries,
+  });
+  const postObligationSupportFloorClosure = applyFinalSupportFloorClosure({
+    projectedSlots,
+    exerciseLibrary: projectionContext.mapped.exerciseLibrary,
+    activeMesocycle,
+    slotSequence,
+    slotSequenceEntries,
+  });
+  projectedSlots = postObligationSupportFloorClosure.projectedSlots;
+  mergeSupportFloorRepairReasons(
+    supportFloorRepairReasons,
+    postObligationSupportFloorClosure.reasons
+  );
+  const finalProgramQualityPass = applyProgramQualityConstraints({
+    projectedSlots,
+    exerciseLibrary: projectionContext.mapped.exerciseLibrary,
+    weeklyObligationPlan,
+    slotSequenceEntries,
+  });
+  projectedSlots = finalProgramQualityPass.projectedSlots;
+  programQualityAppliedDiagnostics.push(...finalProgramQualityPass.appliedDiagnostics);
   projectedSlots = applyFinalMavTrim({
     projectedSlots,
     activeMesocycle,
@@ -412,7 +538,32 @@ function projectSlotPlansPass(input: {
     slotRepairMuscles,
     supportFloorRepairReasons,
     activeMesocycle,
+    weeklyObligationPlan,
+    exerciseLibrary: projectionContext.mapped.exerciseLibrary,
+    programQualityAppliedDiagnostics,
   };
+}
+
+function collectDuplicateExerciseReuseDiagnostics(input: {
+  projectedSlots: ReadonlyArray<ProjectedSlotWorkout>;
+  exerciseLibrary: MappedGenerationContext["exerciseLibrary"];
+}): DuplicateExerciseReuseDiagnostic[] {
+  const diagnostics: DuplicateExerciseReuseDiagnostic[] = [];
+  const previousSlots: ProjectedSlotWorkout[] = [];
+
+  for (const projectedSlot of input.projectedSlots) {
+    diagnostics.push(
+      ...evaluateDuplicateExerciseReuse({
+        projectedSlots: previousSlots,
+        workout: projectedSlot.workout,
+        slotId: projectedSlot.slotPlan.slotId,
+        exerciseLibrary: input.exerciseLibrary,
+      }).diagnostics
+    );
+    previousSlots.push(projectedSlot);
+  }
+
+  return diagnostics;
 }
 
 export function projectSuccessorSlotPlansFromSnapshot(input: {
@@ -439,6 +590,33 @@ export function projectSuccessorSlotPlansFromSnapshot(input: {
     activeMesocycle: pass.activeMesocycle,
     slotSequence: input.design.structure.slots,
   });
+  const weeklyObligationEvaluations = evaluateWeeklyObligationPlan({
+    plan: pass.weeklyObligationPlan,
+    projectedSlots: pass.projectedSlots,
+  });
+  const weeklyObligationDiagnostics = {
+    plan: pass.weeklyObligationPlan,
+    slotEvaluations: weeklyObligationEvaluations,
+    zeroContributionSlots: weeklyObligationEvaluations.filter(
+      (row) => row.zeroContribution
+    ),
+    weeklyHardMuscleTotals: sumWeeklyHardMuscleTotals({
+      projectedSlots: pass.projectedSlots,
+    }),
+  };
+  const duplicateExerciseReuse = collectDuplicateExerciseReuseDiagnostics({
+    projectedSlots: pass.projectedSlots,
+    exerciseLibrary: pass.exerciseLibrary,
+  });
+  const programQuality = {
+    constraintPriority: PROGRAM_QUALITY_CONSTRAINT_PRIORITY,
+    penaltyModel: PROGRAM_QUALITY_PENALTY_MODEL,
+    appliedDiagnostics: pass.programQualityAppliedDiagnostics,
+    evaluation: evaluateProgramQualityConstraints({
+      projectedSlots: pass.projectedSlots,
+      exerciseLibrary: pass.exerciseLibrary,
+    }),
+  };
   const supportFloorRepairReasons = { ...pass.supportFloorRepairReasons };
   for (const row of finalEvaluation.deficitsBelowPracticalFloor) {
     const existingReasons = supportFloorRepairReasons[row.muscle] ?? [];
@@ -481,6 +659,9 @@ export function projectSuccessorSlotPlansFromSnapshot(input: {
           supportFloorRepairReasons,
           unresolvedProtectedMuscles: blockingDeficits.map((row) => row.muscle),
         },
+        weeklyObligations: weeklyObligationDiagnostics,
+        duplicateExerciseReuse,
+        programQuality,
       },
     };
   }
@@ -497,6 +678,9 @@ export function projectSuccessorSlotPlansFromSnapshot(input: {
         supportFloorRepairReasons,
         unresolvedProtectedMuscles: finalEvaluation.unresolvedProtectedMuscles,
       },
+      weeklyObligations: weeklyObligationDiagnostics,
+      duplicateExerciseReuse,
+      programQuality,
     },
   };
 }

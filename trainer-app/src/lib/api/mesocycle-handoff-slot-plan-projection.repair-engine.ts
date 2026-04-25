@@ -28,6 +28,7 @@ import {
   getWorkoutExercises,
   MAX_PROJECTED_SUPPORT_FLOOR_SET_BUMP,
   normalizeMuscleName,
+  PRIMARY_WEEK_ONE_MEV_MUSCLES,
   preservesSlotIdentity,
   PRIMARY_WEEK_ONE_SUPPORT_FLOOR_MUSCLES,
   ProjectedSlotWorkout,
@@ -60,6 +61,8 @@ function selectSupportIsolation(input: {
 const MAX_PROJECTED_ACCESSORY_SETS_PER_EXERCISE = 4;
 const MAX_PROJECTED_MAIN_LIFT_SETS_PER_EXERCISE = 5;
 const MAX_PROJECTED_EXERCISE_MUSCLE_CONTRIBUTION_RATIO = 0.5;
+export const MIN_PROJECTED_MAIN_LIFT_SETS_PER_EXERCISE = 3;
+export const MIN_PROJECTED_ACCESSORY_SETS_PER_EXERCISE = 2;
 
 function getMaxProjectedSetCount(exercise: Pick<WorkoutExercise, "isMainLift" | "role">): number {
   return exercise.isMainLift || exercise.role === "main"
@@ -97,7 +100,10 @@ function getDistributionAwareSupportSetCount(input: {
     );
   }
 
-  return Math.max(1, Math.min(input.defaultSetCount, maxSetCount));
+  return Math.max(
+    MIN_PROJECTED_ACCESSORY_SETS_PER_EXERCISE,
+    Math.min(input.defaultSetCount, maxSetCount)
+  );
 }
 
 export function buildSupportAccessoryExercise(input: {
@@ -199,6 +205,27 @@ function withOneFewerSet(exercise: WorkoutExercise): WorkoutExercise {
   return {
     ...exercise,
     sets: exercise.sets.slice(0, -1).map((set, index) => ({
+      ...set,
+      setIndex: index + 1,
+    })),
+  };
+}
+
+function withSetCount(exercise: WorkoutExercise, setCount: number): WorkoutExercise {
+  const sets = exercise.sets.slice(0, setCount);
+  while (sets.length < setCount) {
+    sets.push(
+      buildProjectionSetFromTemplate(
+        sets.at(-1),
+        sets.length + 1,
+        exercise.role ?? "accessory"
+      )
+    );
+  }
+
+  return {
+    ...exercise,
+    sets: sets.map((set, index) => ({
       ...set,
       setIndex: index + 1,
     })),
@@ -349,6 +376,17 @@ function getSupportFloorRepairPriority(muscle: string): number {
     (entry) => normalizeMuscleName(entry) === normalized
   );
   return index >= 0 ? index : WEEK_ONE_SUPPORT_FLOOR_REPAIR_PRIORITY.length;
+}
+
+function getReplacementProtectedMuscles(
+  slotPolicy: ReturnType<typeof resolveSessionSlotPolicy>["currentSession"]
+): ProtectedWeekOneCoverageMuscle[] {
+  return Array.from(
+    new Set([
+      ...getProtectedWeekOneCoverageObligations(slotPolicy),
+      ...PRIMARY_WEEK_ONE_MEV_MUSCLES,
+    ])
+  );
 }
 
 function canReplaceForHigherPrioritySupport(input: {
@@ -586,7 +624,7 @@ export function applyExistingAccessorySupportFloorBumps(input: {
         exerciseLibrary: input.exerciseLibrary,
         selectedExerciseIds,
         muscle: row.muscle,
-        protectedMuscles: getProtectedWeekOneCoverageObligations(input.slotPolicy),
+        protectedMuscles: getReplacementProtectedMuscles(input.slotPolicy),
         practicalFloor: row.practicalFloor,
         requestedEffectiveSets: row.deficitToPracticalFloor,
         allowLowerPriorityProtectedReplacement:
@@ -694,8 +732,18 @@ export function updateProjectedSlotWorkout(
   };
 }
 
+function removeWorkoutExercise(workout: WorkoutPlan, exerciseId: string): WorkoutPlan {
+  return reindexWorkoutSections({
+    ...workout,
+    mainLifts: workout.mainLifts.filter((exercise) => exercise.exercise.id !== exerciseId),
+    accessories: workout.accessories.filter((exercise) => exercise.exercise.id !== exerciseId),
+  });
+}
+
 function getMinimumProjectedSetCount(exercise: WorkoutExercise): number {
-  return exercise.isMainLift || exercise.role === "main" ? 2 : 1;
+  return exercise.isMainLift || exercise.role === "main"
+    ? MIN_PROJECTED_MAIN_LIFT_SETS_PER_EXERCISE
+    : MIN_PROJECTED_ACCESSORY_SETS_PER_EXERCISE;
 }
 
 function getOverMavMuscles(projectedSlots: ReadonlyArray<ProjectedSlotWorkout>): string[] {
@@ -728,6 +776,278 @@ function preservesProtectedMev(input: {
       slotSequence: input.slotSequence,
     }).deficitsBelowMev.length === 0
   );
+}
+
+function workoutWorkingSetCount(workout: WorkoutPlan): number {
+  return getWorkoutExercises(workout).reduce((sum, exercise) => sum + exercise.sets.length, 0);
+}
+
+function sharesPrimaryMuscle(left: WorkoutExercise, right: WorkoutExercise): boolean {
+  const rightPrimaries = new Set((right.exercise.primaryMuscles ?? []).map(normalizeMuscleName));
+  return (left.exercise.primaryMuscles ?? []).some((muscle) =>
+    rightPrimaries.has(normalizeMuscleName(muscle))
+  );
+}
+
+function canAcceptMinimumSetWorkout(input: {
+  slotPolicy: ReturnType<typeof resolveSessionSlotPolicy>["currentSession"];
+  currentWorkout: WorkoutPlan;
+  candidateWorkout: WorkoutPlan;
+}): boolean {
+  return (
+    !preservesSlotIdentity({
+      slotPolicy: input.slotPolicy,
+      workout: input.currentWorkout,
+    }) ||
+    preservesSlotIdentity({
+      slotPolicy: input.slotPolicy,
+      workout: input.candidateWorkout,
+    })
+  );
+}
+
+function redistributeSetsWithinWorkout(input: {
+  workout: WorkoutPlan;
+  removedExercise: WorkoutExercise;
+  setBudget: number;
+}): WorkoutPlan {
+  let workout = input.workout;
+  let remainingBudget = input.setBudget;
+
+  while (remainingBudget > 0) {
+    const recipient = getWorkoutExercises(workout)
+      .filter((exercise) => exercise.sets.length < getMaxProjectedSetCount(exercise))
+      .sort((left, right) => {
+        const leftShared = sharesPrimaryMuscle(left, input.removedExercise) ? 1 : 0;
+        const rightShared = sharesPrimaryMuscle(right, input.removedExercise) ? 1 : 0;
+        if (leftShared !== rightShared) {
+          return rightShared - leftShared;
+        }
+        if (left.sets.length !== right.sets.length) {
+          return left.sets.length - right.sets.length;
+        }
+        const leftMain = left.isMainLift || left.role === "main" ? 1 : 0;
+        const rightMain = right.isMainLift || right.role === "main" ? 1 : 0;
+        return leftMain - rightMain;
+      })[0];
+    if (!recipient) {
+      break;
+    }
+    workout = replaceWorkoutExercise(
+      workout,
+      withAdditionalAccessorySets(recipient, 1)
+    );
+    remainingBudget -= 1;
+  }
+
+  return workout;
+}
+
+function tryRemoveAndRedistributeSubfloorExercise(input: {
+  workout: WorkoutPlan;
+  exercise: WorkoutExercise;
+  slotPolicy: ReturnType<typeof resolveSessionSlotPolicy>["currentSession"];
+}): WorkoutPlan | null {
+  const workoutWithoutExercise = removeWorkoutExercise(input.workout, input.exercise.exercise.id);
+  if (countWorkoutExercises(workoutWithoutExercise) < SESSION_CAPS.minExercises) {
+    return null;
+  }
+
+  const redistributedWorkout = redistributeSetsWithinWorkout({
+    workout: workoutWithoutExercise,
+    removedExercise: input.exercise,
+    setBudget: input.exercise.sets.length,
+  });
+  if (
+    workoutWorkingSetCount(redistributedWorkout) > workoutWorkingSetCount(input.workout) ||
+    !canAcceptMinimumSetWorkout({
+      slotPolicy: input.slotPolicy,
+      currentWorkout: input.workout,
+      candidateWorkout: redistributedWorkout,
+    })
+  ) {
+    return null;
+  }
+
+  return redistributedWorkout;
+}
+
+function tryBorrowSetsToMeetMinimum(input: {
+  workout: WorkoutPlan;
+  exercise: WorkoutExercise;
+  slotPolicy: ReturnType<typeof resolveSessionSlotPolicy>["currentSession"];
+}): WorkoutPlan | null {
+  const minimumSetCount = getMinimumProjectedSetCount(input.exercise);
+  let workout = input.workout;
+
+  while (true) {
+    const target = getWorkoutExercises(workout).find(
+      (exercise) => exercise.exercise.id === input.exercise.exercise.id
+    );
+    if (!target || target.sets.length >= minimumSetCount) {
+      break;
+    }
+
+    const donor = getWorkoutExercises(workout)
+      .filter((exercise) => exercise.exercise.id !== target.exercise.id)
+      .filter((exercise) => exercise.sets.length > getMinimumProjectedSetCount(exercise))
+      .sort((left, right) => {
+        if (right.sets.length !== left.sets.length) {
+          return right.sets.length - left.sets.length;
+        }
+        const leftShared = sharesPrimaryMuscle(left, target) ? 1 : 0;
+        const rightShared = sharesPrimaryMuscle(right, target) ? 1 : 0;
+        return rightShared - leftShared;
+      })[0];
+    if (!donor) {
+      return null;
+    }
+
+    const candidateWorkout = replaceWorkoutExercise(
+      replaceWorkoutExercise(workout, withSetCount(target, target.sets.length + 1)),
+      withSetCount(donor, donor.sets.length - 1)
+    );
+    if (
+      !canAcceptMinimumSetWorkout({
+        slotPolicy: input.slotPolicy,
+        currentWorkout: workout,
+        candidateWorkout,
+      })
+    ) {
+      return null;
+    }
+
+    workout = candidateWorkout;
+  }
+
+  return workout;
+}
+
+function tryMergeAnotherExerciseIntoSubfloorTarget(input: {
+  workout: WorkoutPlan;
+  exercise: WorkoutExercise;
+  slotPolicy: ReturnType<typeof resolveSessionSlotPolicy>["currentSession"];
+}): WorkoutPlan | null {
+  const minimumSetCount = getMinimumProjectedSetCount(input.exercise);
+  const candidates = getWorkoutExercises(input.workout)
+    .filter((exercise) => exercise.exercise.id !== input.exercise.exercise.id)
+    .sort((left, right) => {
+      const leftMain = left.isMainLift || left.role === "main" ? 1 : 0;
+      const rightMain = right.isMainLift || right.role === "main" ? 1 : 0;
+      if (leftMain !== rightMain) {
+        return leftMain - rightMain;
+      }
+      if (left.sets.length !== right.sets.length) {
+        return left.sets.length - right.sets.length;
+      }
+      const leftShared = sharesPrimaryMuscle(left, input.exercise) ? 1 : 0;
+      const rightShared = sharesPrimaryMuscle(right, input.exercise) ? 1 : 0;
+      return leftShared - rightShared;
+    });
+
+  for (const removedExercise of candidates) {
+    let workout = removeWorkoutExercise(input.workout, removedExercise.exercise.id);
+    if (countWorkoutExercises(workout) < SESSION_CAPS.minExercises) {
+      continue;
+    }
+
+    const target = getWorkoutExercises(workout).find(
+      (exercise) => exercise.exercise.id === input.exercise.exercise.id
+    );
+    if (!target) {
+      continue;
+    }
+
+    const setBump = Math.min(
+      removedExercise.sets.length,
+      minimumSetCount - target.sets.length,
+      getMaxProjectedSetCount(target) - target.sets.length
+    );
+    if (setBump <= 0 || target.sets.length + setBump < minimumSetCount) {
+      continue;
+    }
+
+    workout = replaceWorkoutExercise(workout, withSetCount(target, target.sets.length + setBump));
+    workout = redistributeSetsWithinWorkout({
+      workout,
+      removedExercise,
+      setBudget: removedExercise.sets.length - setBump,
+    });
+
+    if (
+      workoutWorkingSetCount(workout) > workoutWorkingSetCount(input.workout) ||
+      !canAcceptMinimumSetWorkout({
+        slotPolicy: input.slotPolicy,
+        currentWorkout: input.workout,
+        candidateWorkout: workout,
+      })
+    ) {
+      continue;
+    }
+
+    return workout;
+  }
+
+  return null;
+}
+
+export function applyFinalMinimumViableSetRedistribution(input: {
+  projectedSlots: ReadonlyArray<ProjectedSlotWorkout>;
+  slotSequenceEntries: ReturnType<typeof buildSlotSequenceEntries>;
+}): ProjectedSlotWorkout[] {
+  return input.projectedSlots.map((projectedSlot) => {
+    const slotPolicy = resolveSessionSlotPolicy({
+      sessionIntent: toSessionIntent(projectedSlot.slotPlan.intent),
+      slotId: projectedSlot.slotPlan.slotId,
+      slotSequence: {
+        slots: input.slotSequenceEntries,
+      },
+    }).currentSession;
+    let workout = projectedSlot.workout;
+
+    for (let pass = 0; pass < 12; pass += 1) {
+      const subfloorExercise = getWorkoutExercises(workout)
+        .filter((exercise) => exercise.sets.length < getMinimumProjectedSetCount(exercise))
+        .sort((left, right) => {
+          if (left.sets.length !== right.sets.length) {
+            return left.sets.length - right.sets.length;
+          }
+          const leftMain = left.isMainLift || left.role === "main" ? 1 : 0;
+          const rightMain = right.isMainLift || right.role === "main" ? 1 : 0;
+          return leftMain - rightMain;
+        })[0];
+      if (!subfloorExercise) {
+        break;
+      }
+
+      const redistributedWorkout =
+        tryBorrowSetsToMeetMinimum({
+          workout,
+          exercise: subfloorExercise,
+          slotPolicy,
+        }) ??
+        tryRemoveAndRedistributeSubfloorExercise({
+          workout,
+          exercise: subfloorExercise,
+          slotPolicy,
+        }) ??
+        tryMergeAnotherExerciseIntoSubfloorTarget({
+          workout,
+          exercise: subfloorExercise,
+          slotPolicy,
+        });
+
+      if (!redistributedWorkout || redistributedWorkout === workout) {
+        break;
+      }
+
+      workout = redistributedWorkout;
+    }
+
+    return workout === projectedSlot.workout
+      ? projectedSlot
+      : updateProjectedSlotWorkout(projectedSlot, workout);
+  });
 }
 
 export function applyFinalMavTrim(input: {
@@ -967,7 +1287,7 @@ export function applyFinalSupportFloorClosure(input: {
             exerciseLibrary: input.exerciseLibrary,
             selectedExerciseIds,
             muscle: row.muscle,
-            protectedMuscles: getProtectedWeekOneCoverageObligations(slotPolicy),
+            protectedMuscles: getReplacementProtectedMuscles(slotPolicy),
             practicalFloor: row.practicalFloor,
             requestedEffectiveSets: row.deficitToPracticalFloor,
             allowLowerPriorityProtectedReplacement:
@@ -1243,7 +1563,28 @@ export function preserveLowerPatternPrimacy(input: {
       (exercise.exercise.isCompound ?? false) &&
       exerciseMatchesMovementPattern(exercise.exercise, "hinge")
   );
-  if (hingeAccessoryIndex < 0 || !firstMainLift) {
+  if (!firstMainLift) {
+    const fallbackCompoundIndex = input.workout.accessories.findIndex(
+      (exercise) => exercise.exercise.isCompound ?? false
+    );
+    const fallbackCompound = input.workout.accessories[fallbackCompoundIndex];
+    if (!fallbackCompound) {
+      return input.workout;
+    }
+    return reindexWorkoutSections({
+      ...input.workout,
+      mainLifts: [
+        {
+          ...fallbackCompound,
+          isMainLift: true,
+          role: "main",
+        },
+      ],
+      accessories: input.workout.accessories.filter((_, index) => index !== fallbackCompoundIndex),
+    });
+  }
+
+  if (hingeAccessoryIndex < 0) {
     return input.workout;
   }
 

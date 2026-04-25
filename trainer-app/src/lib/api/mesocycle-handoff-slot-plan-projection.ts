@@ -39,6 +39,7 @@ import {
   appendAccessory,
   applyExistingAccessorySupportFloorBumps,
   applyFinalMavTrim,
+  applyFinalMinimumViableSetRedistribution,
   applyFinalSetDistributionCaps,
   applyFinalSupportFloorClosure,
   buildSupportAccessoryExercise,
@@ -395,6 +396,10 @@ function projectSlotPlansPass(input: {
     supportFloorRepairReasons,
     finalSupportFloorClosure.reasons
   );
+  projectedSlots = applyFinalMinimumViableSetRedistribution({
+    projectedSlots,
+    slotSequenceEntries,
+  });
   projectedSlots = applyFinalMavTrim({
     projectedSlots,
     activeMesocycle,

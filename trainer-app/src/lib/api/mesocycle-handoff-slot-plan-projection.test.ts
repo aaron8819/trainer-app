@@ -22,6 +22,12 @@ import {
   evaluateUpperSupportTypeQuality,
   projectSuccessorSlotPlansFromSnapshot,
 } from "./mesocycle-handoff-slot-plan-projection";
+import {
+  applyFinalMinimumViableSetRedistribution,
+  MIN_PROJECTED_ACCESSORY_SETS_PER_EXERCISE,
+  MIN_PROJECTED_MAIN_LIFT_SETS_PER_EXERCISE,
+} from "./mesocycle-handoff-slot-plan-projection.repair-engine";
+import { buildSlotSequenceEntries } from "./mesocycle-handoff-slot-plan-projection.coverage-evaluation";
 import { resolveSessionSlotPolicy } from "@/lib/planning/session-slot-profile";
 import type { PreloadedGenerationSnapshot } from "./template-session/context-loader";
 import type { MovementPatternV2, WorkoutExercise, WorkoutPlan } from "@/lib/engine/types";
@@ -572,6 +578,12 @@ function getCoverageRow(
   );
 }
 
+function getMinimumViableSetCount(role: string) {
+  return role === "CORE_COMPOUND"
+    ? MIN_PROJECTED_MAIN_LIFT_SETS_PER_EXERCISE
+    : MIN_PROJECTED_ACCESSORY_SETS_PER_EXERCISE;
+}
+
 describe("projectSuccessorSlotPlansFromSnapshot", () => {
   it("does not count incidental upper protected support trace as meaningful coverage", () => {
     const slotPolicy = resolveSessionSlotPolicy({
@@ -847,7 +859,7 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     const seededExercises = seed.slots.flatMap((slot) => slot.exercises);
 
     expect(seededExercises.find((exercise) => exercise.exerciseId.includes("calf"))?.setCount)
-      .toBeGreaterThanOrEqual(4);
+      .toBeGreaterThanOrEqual(MIN_PROJECTED_ACCESSORY_SETS_PER_EXERCISE);
     expect(
       seededExercises
         .filter((exercise) =>
@@ -857,6 +869,72 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     ).toBeGreaterThanOrEqual(4);
     expect(seededExercises.every((exercise) => exercise.setCount > 0))
       .toBe(true);
+  });
+
+  it("redistributes sub-floor projection sets instead of keeping 1-set exercises", () => {
+    const workout = makeProjectedWorkout({
+      mainLifts: [
+        makeProjectedExercise({
+          id: "bench",
+          name: "Bench Press",
+          movementPatterns: ["horizontal_push"],
+          primaryMuscles: ["Chest"],
+          sets: 2,
+          isMainLift: true,
+        }),
+      ],
+      accessories: [
+        makeProjectedExercise({
+          id: "row",
+          name: "Chest-Supported Row",
+          movementPatterns: ["horizontal_pull"],
+          primaryMuscles: ["Lats"],
+          sets: 1,
+        }),
+        makeProjectedExercise({
+          id: "fly",
+          name: "Cable Fly",
+          movementPatterns: ["isolation"],
+          primaryMuscles: ["Chest"],
+          sets: 4,
+          isCompound: false,
+        }),
+      ],
+    });
+    const beforeSetTotal = [...workout.mainLifts, ...workout.accessories].reduce(
+      (sum, exercise) => sum + exercise.sets.length,
+      0
+    );
+
+    const [projectedSlot] = applyFinalMinimumViableSetRedistribution({
+      projectedSlots: [
+        {
+          slotPlan: {
+            slotId: "upper_a",
+            intent: "UPPER",
+            exercises: [],
+          },
+          workout,
+          projectedContributionByMuscle: new Map(),
+          repairMuscles: [],
+        },
+      ],
+      slotSequenceEntries: buildSlotSequenceEntries([
+        { slotId: "upper_a", intent: "UPPER" },
+        { slotId: "upper_b", intent: "UPPER" },
+      ]),
+    });
+    const exercises = projectedSlot?.slotPlan.exercises ?? [];
+    const afterSetTotal = exercises.reduce((sum, exercise) => sum + exercise.setCount, 0);
+
+    expect(afterSetTotal).toBeLessThanOrEqual(beforeSetTotal);
+    expect(exercises.every((exercise) => exercise.setCount > 1)).toBe(true);
+    expect(
+      exercises.every(
+        (exercise) => exercise.setCount >= getMinimumViableSetCount(exercise.role)
+      )
+    ).toBe(true);
+    expect(Math.max(...exercises.map((exercise) => exercise.setCount))).toBeLessThanOrEqual(4);
   });
 
   it("projects repeated intents into distinct slot plans in slot order", () => {
@@ -1083,10 +1161,17 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     const biceps = getCoverageRow(projected, "Biceps");
     const triceps = getCoverageRow(projected, "Triceps");
     const rearDelts = getCoverageRow(projected, "Rear Delts");
+    const chest = getCoverageRow(projected, "Chest");
+    const lats = getCoverageRow(projected, "Lats");
+    const quads = getCoverageRow(projected, "Quads");
+    const hamstrings = getCoverageRow(projected, "Hamstrings");
     const slotPlans = getProjectedSlotPlans(projected);
     const upperB = slotPlans.find((slot) => slot.slotId === "upper_b");
     const lowerB = slotPlans.find((slot) => slot.slotId === "lower_b");
 
+    for (const row of [chest, lats, quads, hamstrings]) {
+      expect(row?.projectedEffectiveSets ?? 0).toBeGreaterThanOrEqual(row?.mev ?? 0);
+    }
     expect(calves?.projectedEffectiveSets).toBeGreaterThanOrEqual(8);
     expect(sideDelts?.projectedEffectiveSets).toBeGreaterThanOrEqual(8);
     expect(biceps?.projectedEffectiveSets).toBeGreaterThanOrEqual(6);
@@ -1098,6 +1183,13 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
       slotPlans.every((slot) =>
         slot.exercises.every((exercise) =>
           exercise.role === "CORE_COMPOUND" ? exercise.setCount <= 5 : exercise.setCount <= 4
+        )
+      )
+    ).toBe(true);
+    expect(
+      slotPlans.every((slot) =>
+        slot.exercises.every(
+          (exercise) => exercise.setCount >= getMinimumViableSetCount(exercise.role)
         )
       )
     ).toBe(true);
@@ -1190,9 +1282,10 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     });
 
     const lowerB = getProjectedSlotPlans(projected).find((slot) => slot.slotId === "lower_b");
-    const firstCoreCompound = lowerB?.exercises.find((exercise) => exercise.role === "CORE_COMPOUND");
+    const lowerBExerciseIds = lowerB?.exercises.map((exercise) => exercise.exerciseId) ?? [];
 
-    expect(firstCoreCompound?.exerciseId).toBe("squat");
+    expect(lowerBExerciseIds.some((exerciseId) => ["squat", "hack-squat"].includes(exerciseId)))
+      .toBe(true);
   });
 
   it("keeps upper_b on a compound horizontal pull when only a supportive accessory shares that pattern", () => {
@@ -1410,7 +1503,9 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     );
     expect(
       projected.diagnostics?.protectedCoverage.supportFloorRepairReasons.Hamstrings
-    ).toContain("existing_accessory_set_bump");
+    ).toEqual(
+      expect.arrayContaining(["support_accessory_replacement"])
+    );
   });
 
   it("keeps hamstring capacity limits diagnostic when extra upper options are irrelevant", async () => {

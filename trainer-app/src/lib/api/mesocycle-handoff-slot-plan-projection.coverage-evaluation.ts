@@ -56,13 +56,22 @@ export type SupportFloorRepairReason =
 
 export const PROTECTED_WEEK_ONE_COVERAGE_MUSCLES: ProtectedWeekOneCoverageMuscle[] = [
   "Chest",
+  "Lats",
+  "Quads",
+  "Hamstrings",
   "Triceps",
   "Side Delts",
   "Rear Delts",
   "Biceps",
-  "Hamstrings",
   "Calves",
 ];
+
+export const PRIMARY_WEEK_ONE_MEV_MUSCLES = new Set<ProtectedWeekOneCoverageMuscle>([
+  "Chest",
+  "Lats",
+  "Quads",
+  "Hamstrings",
+]);
 
 export const MEANINGFUL_UPPER_PROTECTED_SUPPORT_FLOOR = 2;
 
@@ -81,9 +90,11 @@ export const PRIMARY_WEEK_ONE_SUPPORT_FLOOR_MUSCLES = new Set<ProtectedWeekOneCo
 
 export const WEEK_ONE_SUPPORT_FLOOR_REPAIR_PRIORITY: ProtectedWeekOneCoverageMuscle[] = [
   "Chest",
+  "Lats",
+  "Quads",
+  "Hamstrings",
   "Calves",
   "Side Delts",
-  "Hamstrings",
   "Biceps",
   "Triceps",
   "Rear Delts",
@@ -197,6 +208,7 @@ export function sortSupportFloorDeficits(
 
 export function isRepairableProtectedCoverageDeficit(row: ProtectedWeekOneCoverageRow): boolean {
   return (
+    PRIMARY_WEEK_ONE_MEV_MUSCLES.has(row.muscle) ||
     getWeekOneSupportFloor(row.muscle) != null ||
     row.muscle === "Chest" ||
     row.muscle === "Hamstrings"
@@ -273,13 +285,12 @@ export function evaluateProtectedWeekOneCoverage(input: {
       compatibleSlots.some((slot) => slot.sessionIntent === "upper");
     const supportFloor = getWeekOneSupportFloor(muscle);
     const practicalFloor =
-      muscle === "Chest"
+      PRIMARY_WEEK_ONE_MEV_MUSCLES.has(muscle)
         ? mev
-        : 
-      supportFloor ??
-      (usesUpperSupportFloor
-        ? MEANINGFUL_UPPER_PROTECTED_SUPPORT_FLOOR
-        : Math.max(mev, weeklyTarget));
+        : supportFloor ??
+          (usesUpperSupportFloor
+            ? MEANINGFUL_UPPER_PROTECTED_SUPPORT_FLOOR
+            : Math.max(mev, weeklyTarget));
     const projectedEffectiveSets = projectedTotals.get(muscle) ?? 0;
     const deficitToMev = Math.max(0, mev - projectedEffectiveSets);
     const deficitToTarget = Math.max(0, weeklyTarget - projectedEffectiveSets);

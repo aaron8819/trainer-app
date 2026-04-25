@@ -380,6 +380,7 @@ function projectSlotPlansPass(input: {
 
   const finalSupportFloorClosure = applyFinalSupportFloorClosure({
     projectedSlots,
+    exerciseLibrary: projectionContext.mapped.exerciseLibrary,
     activeMesocycle,
     slotSequence,
     slotSequenceEntries,

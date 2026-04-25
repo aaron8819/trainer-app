@@ -567,32 +567,41 @@ export function applyExistingAccessorySupportFloorBumps(input: {
 
     let appliedAnyBump = false;
     for (const row of repairRows) {
+      const selectedExerciseIds = new Set(
+        [
+          ...input.projectedSlots.flatMap((slot) =>
+            getWorkoutExercises(slot.workout).map((exercise) => exercise.exercise.id)
+          ),
+          ...getWorkoutExercises(workout).map((exercise) => exercise.exercise.id),
+        ]
+      );
+      const repairedWorkout = appendOrReplaceSupportAccessory({
+        workout,
+        slotPolicy: input.slotPolicy,
+        exerciseLibrary: input.exerciseLibrary,
+        selectedExerciseIds,
+        muscle: row.muscle,
+        protectedMuscles: getProtectedWeekOneCoverageObligations(input.slotPolicy),
+        practicalFloor: row.practicalFloor,
+        requestedEffectiveSets: row.deficitToPracticalFloor,
+        allowLowerPriorityProtectedReplacement:
+          row.muscle !== "Chest" &&
+          getSupportFloorRepairPriority(row.muscle) <
+            WEEK_ONE_SUPPORT_FLOOR_REPAIR_PRIORITY.length,
+      });
+      if (repairedWorkout !== workout) {
+        workout = repairedWorkout;
+        addSupportFloorRepairReason(reasons, row.muscle, "support_accessory_replacement");
+        appliedAnyBump = true;
+        continue;
+      }
+
       const existingAccessory = findExistingSupportExercise({
         workout,
         muscle: row.muscle,
         includeMainLifts: row.muscle === "Chest" || row.muscle === "Hamstrings",
       });
       if (!existingAccessory) {
-        const selectedExerciseIds = new Set(
-          getWorkoutExercises(workout).map((exercise) => exercise.exercise.id)
-        );
-        const repairedWorkout = appendOrReplaceSupportAccessory({
-          workout,
-          slotPolicy: input.slotPolicy,
-          exerciseLibrary: input.exerciseLibrary,
-          selectedExerciseIds,
-          muscle: row.muscle,
-          protectedMuscles: getProtectedWeekOneCoverageObligations(input.slotPolicy),
-          allowLowerPriorityProtectedReplacement:
-            row.muscle !== "Chest" &&
-            getSupportFloorRepairPriority(row.muscle) < WEEK_ONE_SUPPORT_FLOOR_REPAIR_PRIORITY.length,
-        });
-        if (repairedWorkout !== workout) {
-          workout = repairedWorkout;
-          addSupportFloorRepairReason(reasons, row.muscle, "support_accessory_replacement");
-          appliedAnyBump = true;
-          continue;
-        }
         const supportExercise = selectSupportIsolation({
           exerciseLibrary: input.exerciseLibrary,
           selectedExerciseIds,
@@ -624,7 +633,12 @@ export function applyExistingAccessorySupportFloorBumps(input: {
         MAX_PROJECTED_SUPPORT_FLOOR_SET_BUMP,
         Math.ceil(row.deficitToPracticalFloor / effectivePerSet - SUPPORT_FLOOR_EPSILON)
       );
-      const practicalSetBump = getMaxPracticalSetBump(existingAccessory, requestedSetBump);
+      const practicalSetBump = getMaxContributionSetBump({
+        exercise: existingAccessory,
+        muscle: row.muscle,
+        practicalFloor: row.practicalFloor,
+        requestedSetBump: getMaxPracticalSetBump(existingAccessory, requestedSetBump),
+      });
       if (practicalSetBump <= 0) {
         addSupportFloorRepairReason(reasons, row.muscle, "capacity_blocked");
         continue;

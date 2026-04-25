@@ -1083,6 +1083,24 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     ).toContain("existing_accessory_set_bump");
   });
 
+  it("closes hamstring protected coverage by bumping existing hinge work without breaking lower_b identity", () => {
+    const projected = projectSuccessorSlotPlansFromSnapshot({
+      userId: "user-1",
+      source: buildSource(),
+      design: buildDesign(buildRepairSensitiveDraft()),
+      snapshot: buildProtectedCoverageSatisfiedSnapshot(),
+      now: new Date("2026-03-19T12:00:00.000Z"),
+    });
+
+    const hamstrings = getCoverageRow(projected, "Hamstrings");
+    const lowerB = getProjectedSlotPlans(projected).find((slot) => slot.slotId === "lower_b");
+
+    expect(hamstrings?.projectedEffectiveSets ?? 0).toBeGreaterThanOrEqual(
+      hamstrings?.practicalFloor ?? 0
+    );
+    expect(lowerB?.exercises[0]?.exerciseId).toBe("rdl");
+  });
+
   it("keeps repairing when raw support sets overstate weighted effective coverage", () => {
     const snapshot = buildProtectedCoverageSatisfiedSnapshot();
     const lateralRaise = snapshot.context.exercises.find(
@@ -1106,7 +1124,7 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     expect(getCoverageRow(projected, "Side Delts")?.projectedEffectiveSets ?? 0).toBeGreaterThan(5);
   });
 
-  it("emits an explicit support-floor reason when no compatible side-delt exercise exists", () => {
+  it("downgrades unresolvable side-delt support to an explicit diagnostic", () => {
     const snapshot = buildProtectedCoverageSatisfiedSnapshot();
     snapshot.context.exercises = snapshot.context.exercises.filter(
       (exercise) => exercise.id !== "lateral-raise"
@@ -1120,10 +1138,13 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
       now: new Date("2026-03-19T12:00:00.000Z"),
     });
 
-    expect("error" in projected).toBe(true);
+    expect("error" in projected).toBe(false);
     expect(
       projected.diagnostics?.protectedCoverage.supportFloorRepairReasons["Side Delts"]
     ).toContain("no_compatible_exercise");
+    expect(
+      projected.diagnostics?.protectedCoverage.unresolvedProtectedMuscles
+    ).toContain("Side Delts");
   });
 
   it("allows lower_b squat fallback when no hinge compound anchor is viable", () => {
@@ -1272,7 +1293,7 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     ).toBe(true);
   });
 
-  it("returns a constructor failure with diagnostics when protected viability still cannot be satisfied", async () => {
+  it("keeps unrepairable protected coverage visible as a non-blocking diagnostic", async () => {
     const snapshot = buildSnapshot();
     snapshot.context.exercises = snapshot.context.exercises.filter(
       (exercise) => exercise.id !== "calf-raise"
@@ -1286,15 +1307,14 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
       now: new Date("2026-03-19T12:00:00.000Z"),
     });
 
-    expect("error" in projected).toBe(true);
-    if (!("error" in projected)) return;
+    expect("error" in projected).toBe(false);
+    if ("error" in projected) return;
 
-    expect(projected.error).toContain("MESOCYCLE_HANDOFF_SLOT_PLAN_PROTECTED_COVERAGE_UNSATISFIED");
-    expect(projected.slotPlans?.length).toBe(4);
+    expect(projected.slotPlans.length).toBe(4);
     expect(projected.diagnostics?.protectedCoverage.unresolvedProtectedMuscles.length).toBeGreaterThan(0);
   });
 
-  it("still rejects the seed when lowered MEV would clear but practical protected week-one targets remain underbuilt", async () => {
+  it("closes raised practical-floor hamstring shortfalls when hinge support is present", async () => {
     vi.resetModules();
     vi.doMock("@/lib/engine/volume-landmarks", async (importOriginal) => {
       const original =
@@ -1346,16 +1366,18 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     vi.doUnmock("@/lib/engine/volume-landmarks");
     vi.doUnmock("./mesocycle-lifecycle");
 
-    expect("error" in projected).toBe(true);
-    if (!("error" in projected)) return;
+    expect("error" in projected).toBe(false);
+    if ("error" in projected) return;
 
-    expect(projected.error).toContain("MESOCYCLE_HANDOFF_SLOT_PLAN_PROTECTED_COVERAGE_UNSATISFIED");
-    expect(projected.diagnostics?.protectedCoverage.unresolvedProtectedMuscles).toEqual(
-      expect.arrayContaining(["Hamstrings"])
+    expect(projected.diagnostics?.protectedCoverage.unresolvedProtectedMuscles).not.toContain(
+      "Hamstrings"
     );
+    expect(
+      projected.diagnostics?.protectedCoverage.supportFloorRepairReasons.Hamstrings
+    ).toContain("existing_accessory_set_bump");
   });
 
-  it("still rejects the seed when extra triceps options are present but hamstring protected viability remains unsatisfied", async () => {
+  it("keeps hamstring capacity limits diagnostic when extra upper options are irrelevant", async () => {
     vi.resetModules();
     vi.doMock("@/lib/engine/volume-landmarks", async (importOriginal) => {
       const original =
@@ -1412,10 +1434,9 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     vi.doUnmock("@/lib/engine/volume-landmarks");
     vi.doUnmock("./mesocycle-lifecycle");
 
-    expect("error" in projected).toBe(true);
-    if (!("error" in projected)) return;
+    expect("error" in projected).toBe(false);
+    if ("error" in projected) return;
 
-    expect(projected.error).toContain("MESOCYCLE_HANDOFF_SLOT_PLAN_PROTECTED_COVERAGE_UNSATISFIED");
     expect(projected.diagnostics?.protectedCoverage.attemptedRepair).toBe(false);
     expect(projected.diagnostics?.protectedCoverage.unresolvedProtectedMuscles).toEqual(
       expect.arrayContaining(["Hamstrings"])

@@ -55,7 +55,8 @@ Do NOT include:
 - Prefer bullet points over paragraphs
 - Avoid repetition
 - Avoid filler language
-- Use `none` for sections that do not apply.
+- Omit sections or bullets that do not apply.
+- Do not duplicate the normal final answer; include only retrospective-specific lessons and artifacts.
 
 ## What To Capture
 
@@ -149,6 +150,18 @@ Be concrete and actionable.
 - AGENTS.md updates:
 ```
 
-## Placement
+## Final Response Placement
 
-Produce the retrospective before the final response when the session meets the trigger conditions. If the user requested a specific final format, include the retrospective only when it does not conflict with that format; otherwise preserve the user's requested final format and summarize the retrospective-relevant findings inside it.
+When this skill runs and produces retrospective content, append that content to the final user-facing response after the normal answer. The retrospective must be visible to the user, clearly separated from the main result, and must not replace the main answer.
+
+Use this wrapper exactly:
+
+```markdown
+## Session Retrospective
+
+<retrospective output>
+```
+
+Preserve the normal final answer first. Append the retrospective only after that answer, keep it concise and skimmable, omit empty sections, and preserve useful command or artifact paths.
+
+If the user requested a specific final format, include the retrospective only when it does not conflict with that format; otherwise preserve the requested final format and include the retrospective-relevant findings in the closest compatible user-facing section. Do not expose hidden reasoning, private scratchpad notes, or unsupported internal process.

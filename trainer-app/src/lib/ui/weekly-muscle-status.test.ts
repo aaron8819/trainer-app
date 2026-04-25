@@ -62,6 +62,17 @@ describe("weekly muscle status", () => {
     ).toBe("at_mrv");
   });
 
+  it("does not call tiny nonzero volume in range when the target is still clearly missed", () => {
+    expect(
+      getWeeklyMuscleStatus({
+        effectiveSets: 0.8,
+        target: 6,
+        mev: 0,
+        mrv: 12,
+      })
+    ).toBe("below_mev");
+  });
+
   it("formats the canonical labels used by dashboard and review surfaces", () => {
     expect(formatWeeklyMuscleStatusLabel("below_mev")).toBe("Below MEV");
     expect(formatWeeklyMuscleStatusLabel("in_range")).toBe("In range");

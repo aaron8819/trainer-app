@@ -57,7 +57,7 @@ const CALIBRATION_BY_TIER: Record<
     estimateScale: 0.85,
     earlyExposureConfidenceScale: 0.85,
     allowCatchUp: false,
-    overshootConfidenceScale: 0.75,
+    overshootConfidenceScale: 0.6,
   },
   bodyweight: {
     estimateScale: 1,

@@ -45,12 +45,12 @@ describe("load calibration", () => {
     expect(resolveLoadCalibrationPolicy({ equipment: ["machine"], isCompound: false })).toMatchObject({
       reliabilityTier: "low",
       allowCatchUp: false,
-      overshootConfidenceScale: 0.75,
+      overshootConfidenceScale: 0.6,
     });
     expect(resolveLoadCalibrationPolicy({ equipment: ["cable"], isCompound: false })).toMatchObject({
       reliabilityTier: "low",
       allowCatchUp: false,
-      overshootConfidenceScale: 0.75,
+      overshootConfidenceScale: 0.6,
     });
   });
 

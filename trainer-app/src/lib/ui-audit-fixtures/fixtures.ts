@@ -54,6 +54,59 @@ const WEEK_STARTS = [
   "2026-04-06T00:00:00.000Z",
 ];
 
+function formatFixtureSetCount(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+function buildFixtureLandmarkContext(input: {
+  effectiveSets: number;
+  mev: number;
+  mav: number;
+  mrv: number;
+}) {
+  const mevLabel = `MEV ${formatFixtureSetCount(input.mev)}`;
+  const mavLabel = `MAV ${formatFixtureSetCount(input.mav)}`;
+  const mrvLabel = `MRV ${formatFixtureSetCount(input.mrv)}`;
+  const positionLabel =
+    input.effectiveSets < input.mev
+      ? "Current: below MEV"
+      : input.effectiveSets === input.mev
+        ? "Current: at MEV"
+        : input.effectiveSets > input.mav && input.effectiveSets < input.mrv
+          ? "Current: above MAV"
+          : input.effectiveSets >= input.mrv
+            ? "Current: at or above MRV"
+            : "Current: within MEV-MAV";
+
+  return {
+    mevLabel,
+    mavLabel,
+    mrvLabel,
+    rangeSummaryLabel: `${mevLabel} · ${mavLabel} · ${mrvLabel}`,
+    positionLabel,
+  };
+}
+
+function buildFixtureVolumeDisplay(input: {
+  effectiveSets: number;
+  target: number;
+  mev: number;
+  mav: number;
+  mrv: number;
+}) {
+  const delta = input.effectiveSets - input.target;
+
+  return {
+    weightedSetsLabel: `${formatFixtureSetCount(input.effectiveSets)} weighted sets`,
+    targetLabel: `Target: ${formatFixtureSetCount(input.target)} weighted sets`,
+    deltaLabel:
+      delta === 0
+        ? "on target"
+        : `${delta > 0 ? "+" : "-"}${formatFixtureSetCount(Math.abs(delta))} sets`,
+    landmarkContext: buildFixtureLandmarkContext(input),
+  };
+}
+
 const activeDashboard: ProgramDashboardData = {
   activeMeso: {
     mesoNumber: 4,
@@ -82,6 +135,7 @@ const activeDashboard: ProgramDashboardData = {
       mev: 8,
       mav: 16,
       mrv: 20,
+      ...buildFixtureVolumeDisplay({ effectiveSets: 10, target: 12, mev: 8, mav: 16, mrv: 20 }),
       statusLabel: "In range",
       statusDescription: "10 weighted sets against 12 target.",
       badges: [{ status: "in_range", label: "In range" }],
@@ -121,6 +175,7 @@ const activeDashboard: ProgramDashboardData = {
       mev: 8,
       mav: 14,
       mrv: 18,
+      ...buildFixtureVolumeDisplay({ effectiveSets: 7, target: 10, mev: 8, mav: 14, mrv: 18 }),
       statusLabel: "Below MEV",
       statusDescription: "7 weighted sets against 10 target.",
       badges: [{ status: "below_mev", label: "Below MEV" }],
@@ -137,6 +192,7 @@ const activeDashboard: ProgramDashboardData = {
       mev: 8,
       mav: 16,
       mrv: 20,
+      ...buildFixtureVolumeDisplay({ effectiveSets: 13, target: 12, mev: 8, mav: 16, mrv: 20 }),
       statusLabel: "On target",
       statusDescription: "13 weighted sets against 12 target.",
       badges: [{ status: "on_target", label: "On target" }],
@@ -153,6 +209,7 @@ const activeDashboard: ProgramDashboardData = {
       mev: 6,
       mav: 14,
       mrv: 18,
+      ...buildFixtureVolumeDisplay({ effectiveSets: 5, target: 9, mev: 6, mav: 14, mrv: 18 }),
       statusLabel: "Below MEV",
       statusDescription: "5 weighted sets against 9 target.",
       badges: [{ status: "below_mev", label: "Below MEV" }],
@@ -697,6 +754,7 @@ const activeProgram: ProgramPageData = {
       {
         muscle: "Lats",
         status: "meaningfully_low",
+        ...buildFixtureVolumeDisplay({ effectiveSets: 7, target: 10, mev: 8, mav: 14, mrv: 18 }),
         statusLabel: "Below MEV",
         statusDescription: "7 projected is still below MEV after the planned week.",
         deltaLabel: "-3 sets",
@@ -706,6 +764,7 @@ const activeProgram: ProgramPageData = {
       {
         muscle: "Hamstrings",
         status: "slightly_low",
+        ...buildFixtureVolumeDisplay({ effectiveSets: 7.5, target: 9, mev: 6, mav: 14, mrv: 18 }),
         statusLabel: "Below target",
         statusDescription: "7.5 projected vs 9 target; 5 completed so far.",
         deltaLabel: "-1.5 sets",
@@ -715,6 +774,7 @@ const activeProgram: ProgramPageData = {
       {
         muscle: "Chest",
         status: "on_target",
+        ...buildFixtureVolumeDisplay({ effectiveSets: 12, target: 12, mev: 8, mav: 16, mrv: 20 }),
         statusLabel: "On target",
         statusDescription: "12 projected vs 12 target; 8 completed so far.",
         deltaLabel: "on target",
@@ -724,6 +784,7 @@ const activeProgram: ProgramPageData = {
       {
         muscle: "Quads",
         status: "slightly_high",
+        ...buildFixtureVolumeDisplay({ effectiveSets: 14, target: 12, mev: 8, mav: 16, mrv: 20 }),
         statusLabel: "Slightly high",
         statusDescription: "14 projected vs 12 target; 9 completed so far.",
         deltaLabel: "+2 sets",
@@ -735,6 +796,7 @@ const activeProgram: ProgramPageData = {
       {
         muscle: "Lats",
         status: "meaningfully_low",
+        ...buildFixtureVolumeDisplay({ effectiveSets: 7, target: 10, mev: 8, mav: 14, mrv: 18 }),
         statusLabel: "Below MEV",
         statusDescription: "7 projected is still below MEV after the planned week.",
         deltaLabel: "-3 sets",
@@ -744,6 +806,7 @@ const activeProgram: ProgramPageData = {
       {
         muscle: "Hamstrings",
         status: "slightly_low",
+        ...buildFixtureVolumeDisplay({ effectiveSets: 7.5, target: 9, mev: 6, mav: 14, mrv: 18 }),
         statusLabel: "Below target",
         statusDescription: "7.5 projected vs 9 target; 5 completed so far.",
         deltaLabel: "-1.5 sets",
@@ -753,6 +816,7 @@ const activeProgram: ProgramPageData = {
       {
         muscle: "Quads",
         status: "slightly_high",
+        ...buildFixtureVolumeDisplay({ effectiveSets: 14, target: 12, mev: 8, mav: 16, mrv: 20 }),
         statusLabel: "Slightly high",
         statusDescription: "14 projected vs 12 target; 9 completed so far.",
         deltaLabel: "+2 sets",

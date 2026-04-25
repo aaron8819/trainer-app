@@ -221,7 +221,7 @@ describe("progression correctness", () => {
         priorSessionCount: 3,
         promotionPolicy: {
           allowCatchUp: false,
-          overshootConfidenceScale: 0.75,
+          overshootConfidenceScale: 0.6,
         },
       }
     );
@@ -303,7 +303,7 @@ describe("progression correctness", () => {
     expect(decision?.trace.outcome.reasonCodes).toContain("controlled_hard_overshoot_progression");
   });
 
-  it("still allows Tier 3 overshoot at RPE 8.5 when the weighted evidence is broad enough", () => {
+  it("still treats Tier 3 8.5-RPE overshoot as an evidence failure rather than a hard effort block", () => {
     const decision = computeDoubleProgressionDecision(
       [
         { reps: 6, rpe: 8.5, load: 145, targetLoad: 135 },
@@ -318,15 +318,16 @@ describe("progression correctness", () => {
         priorSessionCount: 3,
         promotionPolicy: {
           allowCatchUp: false,
-          overshootConfidenceScale: 0.75,
+          overshootConfidenceScale: 0.6,
         },
       }
     );
 
-    expect(decision?.path).toBe("path_5_overshoot");
-    expect(decision?.nextLoad).toBe(147.5);
-    expect(decision?.decisionLog.join(" | ")).toContain("Overshoot confidence=0.75");
-    expect(decision?.trace.outcome.reasonCodes).toContain("controlled_hard_overshoot_progression");
+    expect(decision?.path).toBe("fallback_hold");
+    expect(decision?.nextLoad).toBe(145);
+    expect(decision?.decisionLog.join(" | ")).toContain("Overshoot confidence=0.60");
+    expect(decision?.trace.outcome.reasonCodes).toContain("overshoot_blocked_by_coverage");
+    expect(decision?.trace.outcome.reasonCodes).not.toContain("overshoot_blocked_by_effort");
   });
 
   it("does not promote a one-off overshoot without session-level evidence", () => {

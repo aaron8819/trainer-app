@@ -17,12 +17,13 @@ export type WeeklyMuscleStatusSummary = Record<WeeklyMuscleStatus, number>;
 
 export function getWeeklyMuscleStatus(input: WeeklyMuscleStatusInput): WeeklyMuscleStatus {
   const { effectiveSets, target, mev, mrv } = input;
+  const minimumEffectiveFloor = mev > 0 ? mev : Math.min(target, 1);
 
   if (mev === 0 && effectiveSets === 0) return "below_mev";
   if (effectiveSets >= mrv) return "at_mrv";
   if (effectiveSets >= mrv * 0.85) return "near_mrv";
   if (effectiveSets >= target) return "on_target";
-  if (effectiveSets >= mev) {
+  if (effectiveSets >= minimumEffectiveFloor) {
     return effectiveSets >= target * 0.85 ? "near_target" : "in_range";
   }
   return "below_mev";

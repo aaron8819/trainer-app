@@ -621,9 +621,9 @@ function ProgramStatusCardDefault({
                   {row.muscle}
                 </p>
                 <p className={`mt-0.5 ${isVolumeOnly ? "text-base" : "text-lg"} font-bold leading-none`}>
-                  {formatSetCount(row.effectiveSets)} weighted sets
+                  {row.weightedSetsLabel}
                 </p>
-                <p className="text-xs opacity-75">target {row.target} weighted sets</p>
+                <p className="text-xs opacity-75">{row.targetLabel}</p>
                 <div className="mt-1.5">
                   <span
                     className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium ${cls}`}
@@ -631,6 +631,12 @@ function ProgramStatusCardDefault({
                     {row.statusLabel}
                   </span>
                 </div>
+                {row.landmarkContext ? (
+                  <div className="mt-1 space-y-0.5 text-[11px] leading-tight opacity-75">
+                    <p>{row.landmarkContext.rangeSummaryLabel}</p>
+                    <p>{row.landmarkContext.positionLabel}</p>
+                  </div>
+                ) : null}
                 {row.statusDescription ? (
                   <p className="mt-1 text-[11px] opacity-70">{row.statusDescription}</p>
                 ) : null}

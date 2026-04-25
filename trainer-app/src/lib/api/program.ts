@@ -65,8 +65,12 @@ export type ProgramVolumeRow = {
   mev: number;
   mav: number;
   mrv: number;
+  weightedSetsLabel: string;
+  targetLabel: string;
   statusLabel: string;
   statusDescription: string;
+  deltaLabel: string;
+  landmarkContext?: ProgramVolumeLandmarkContext;
   badges: ProgramVolumeDisplayBadge[];
   opportunityScore: number;
   opportunityState: OpportunityState;
@@ -78,6 +82,15 @@ export type ProgramVolumeDisplayBadge = {
   status: string;
   label: string;
   count?: number;
+  activeDescription?: string;
+};
+
+export type ProgramVolumeLandmarkContext = {
+  mevLabel: string;
+  mavLabel: string;
+  mrvLabel: string;
+  rangeSummaryLabel: string;
+  positionLabel: string;
 };
 
 export type ProgramMuscleContribution = WeeklyMuscleExerciseContribution;
@@ -327,6 +340,48 @@ function formatRirTarget(rirTarget: { min: number; max: number } | null | undefi
 
 function formatSetCount(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+function formatWeightedSetsLabel(value: number): string {
+  return `${formatSetCount(value)} weighted sets`;
+}
+
+function formatSignedSetDelta(value: number): string {
+  if (value === 0) {
+    return "on target";
+  }
+
+  return `${value > 0 ? "+" : "-"}${formatSetCount(Math.abs(value))} sets`;
+}
+
+function buildVolumeLandmarkContext(input: {
+  effectiveSets: number;
+  mev: number;
+  mav: number;
+  mrv: number;
+}): ProgramVolumeLandmarkContext {
+  const mevLabel = `MEV ${formatSetCount(input.mev)}`;
+  const mavLabel = `MAV ${formatSetCount(input.mav)}`;
+  const mrvLabel = `MRV ${formatSetCount(input.mrv)}`;
+  let positionLabel = "Current: within MEV-MAV";
+
+  if (input.effectiveSets < input.mev) {
+    positionLabel = "Current: below MEV";
+  } else if (input.effectiveSets === input.mev) {
+    positionLabel = "Current: at MEV";
+  } else if (input.effectiveSets > input.mav && input.effectiveSets < input.mrv) {
+    positionLabel = "Current: above MAV";
+  } else if (input.effectiveSets >= input.mrv) {
+    positionLabel = "Current: at or above MRV";
+  }
+
+  return {
+    mevLabel,
+    mavLabel,
+    mrvLabel,
+    rangeSummaryLabel: `${mevLabel} · ${mavLabel} · ${mrvLabel}`,
+    positionLabel,
+  };
 }
 
 function getDescriptiveCoachingCueForBlockType(
@@ -872,10 +927,19 @@ function buildProgramVolumeRows(input: {
         mev: landmarks.mev,
         mav: landmarks.mav,
         mrv: landmarks.mrv,
+        weightedSetsLabel: formatWeightedSetsLabel(data.effectiveSets),
+        targetLabel: `Target: ${formatWeightedSetsLabel(target)}`,
         statusLabel,
         statusDescription: `${formatSetCount(data.effectiveSets)} weighted sets against ${formatSetCount(
           target
         )} target.`,
+        deltaLabel: formatSignedSetDelta(data.effectiveSets - target),
+        landmarkContext: buildVolumeLandmarkContext({
+          effectiveSets: data.effectiveSets,
+          mev: landmarks.mev,
+          mav: landmarks.mav,
+          mrv: landmarks.mrv,
+        }),
         badges: [
           {
             status: weeklyStatus,

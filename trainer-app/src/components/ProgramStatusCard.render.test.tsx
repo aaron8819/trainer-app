@@ -66,17 +66,45 @@ function withOpportunity(
     | "opportunityRationale"
     | "statusLabel"
     | "statusDescription"
+    | "weightedSetsLabel"
+    | "targetLabel"
+    | "deltaLabel"
+    | "landmarkContext"
     | "badges"
   > &
-    Partial<Pick<ProgramVolumeRow, "statusLabel" | "statusDescription" | "badges">>
+    Partial<
+      Pick<
+        ProgramVolumeRow,
+        | "statusLabel"
+        | "statusDescription"
+        | "weightedSetsLabel"
+        | "targetLabel"
+        | "deltaLabel"
+        | "landmarkContext"
+        | "badges"
+      >
+    >
 ): ProgramVolumeRow {
   const serverStatus = buildServerStatus(row);
   const statusLabel = row.statusLabel ?? serverStatus.label;
+  const mevLabel = `MEV ${row.mev}`;
+  const mavLabel = `MAV ${row.mav}`;
+  const mrvLabel = `MRV ${row.mrv}`;
   return {
     ...row,
+    weightedSetsLabel: row.weightedSetsLabel ?? `${row.effectiveSets} weighted sets`,
+    targetLabel: row.targetLabel ?? `Target: ${row.target} weighted sets`,
     statusLabel,
     statusDescription:
       row.statusDescription ?? `${row.effectiveSets} weighted sets from server.`,
+    deltaLabel: row.deltaLabel ?? `${row.effectiveSets - row.target} sets`,
+    landmarkContext: row.landmarkContext ?? {
+      mevLabel,
+      mavLabel,
+      mrvLabel,
+      rangeSummaryLabel: `${mevLabel} · ${mavLabel} · ${mrvLabel}`,
+      positionLabel: row.effectiveSets < row.mev ? "Current: below MEV" : "Current: within MEV-MAV",
+    },
     badges: row.badges ?? [{ status: serverStatus.status, label: statusLabel }],
     opportunityScore: 0,
     opportunityState: "covered",
@@ -212,13 +240,54 @@ describe("ProgramStatusCard indirect volume context", () => {
 
     const scoped = within(card);
     expect(scoped.getByText("0.9 weighted sets")).toBeInTheDocument();
-    expect(scoped.getByText("target 5 weighted sets")).toBeInTheDocument();
+    expect(scoped.getByText("Target: 5 weighted sets")).toBeInTheDocument();
     expect(scoped.getByText("Below MEV")).toBeInTheDocument();
     expect(scoped.getByText("Raw sets: 0 direct, 3 indirect")).toBeInTheDocument();
   });
 });
 
 describe("ProgramStatusCard weekly status labels", () => {
+  it("renders server-provided landmark context without deriving labels in the component", () => {
+    const data = buildCurrentWeekData([
+      withOpportunity({
+        muscle: "Chest",
+        effectiveSets: 0.8,
+        directSets: 0,
+        indirectSets: 2,
+        target: 6,
+        mev: 99,
+        mav: 100,
+        mrv: 101,
+        weightedSetsLabel: "0.8 weighted sets",
+        targetLabel: "Target: 6 weighted sets",
+        statusLabel: "Below MEV",
+        statusDescription: "0.8 weighted sets against 6 target.",
+        deltaLabel: "-5.2 sets",
+        landmarkContext: {
+          mevLabel: "MEV 6",
+          mavLabel: "MAV 10",
+          mrvLabel: "MRV 16",
+          rangeSummaryLabel: "MEV 6 · MAV 10 · MRV 16",
+          positionLabel: "Current: below MEV",
+        },
+        badges: [{ status: "below_mev", label: "Below MEV" }],
+      }),
+    ]);
+
+    render(<ProgramStatusCard initialData={data} variant="volumeOnly" />);
+
+    const card = screen.getByRole("button", { name: "Chest weekly volume" });
+    const scoped = within(card);
+    expect(scoped.getByText("0.8 weighted sets")).toBeInTheDocument();
+    expect(scoped.getByText("Target: 6 weighted sets")).toBeInTheDocument();
+    expect(scoped.getByText("MEV 6 · MAV 10 · MRV 16")).toBeInTheDocument();
+    expect(scoped.getByText("Current: below MEV")).toBeInTheDocument();
+    expect(scoped.getByText("Below MEV")).toBeInTheDocument();
+    expect(scoped.queryByText(/MEV 99/)).not.toBeInTheDocument();
+    expect(scoped.queryByText("In range")).not.toBeInTheDocument();
+    expect(card).toHaveClass("p-2.5");
+  });
+
   it("uses a more precise in-range label when above MEV but still meaningfully below target", () => {
     const data = buildData([
       withOpportunity({
@@ -403,7 +472,7 @@ describe("ProgramStatusCard opportunity state", () => {
     render(<ProgramStatusCard initialData={data} />);
 
     expect(screen.getByText("4 weighted sets")).toBeInTheDocument();
-    expect(screen.getByText("target 10 weighted sets")).toBeInTheDocument();
+    expect(screen.getByText("Target: 10 weighted sets")).toBeInTheDocument();
     expect(screen.getByText("Below MEV")).toBeInTheDocument();
     expect(screen.getByText("Today: room for more")).toBeInTheDocument();
     expect(screen.queryByText("Volume opportunity")).not.toBeInTheDocument();

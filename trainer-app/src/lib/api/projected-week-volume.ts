@@ -1,7 +1,12 @@
 import type { Prisma } from "@prisma/client";
 import { WorkoutStatus } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
-import { getExposedVolumeLandmarkEntries } from "@/lib/engine/volume-landmarks";
+import {
+  getExposedVolumeLandmarkEntries,
+  getMuscleTargetSemantics,
+  type VolumeSoftTargetRange,
+  type VolumeTargetKind,
+} from "@/lib/engine/volume-landmarks";
 import type { SessionIntent } from "@/lib/engine/session-types";
 import type { MovementPatternV2, WorkoutPlan } from "@/lib/engine/types";
 import { readSessionSlotSnapshot } from "@/lib/evidence/session-decision-receipt";
@@ -51,6 +56,8 @@ export type ProjectedWeekVolumeExerciseSummary = {
 
 export type ProjectedWeekVolumeMuscleRow = {
   muscle: string;
+  targetKind?: VolumeTargetKind;
+  targetRange?: VolumeSoftTargetRange | null;
   completedEffectiveSets: number;
   projectedNextSessionEffectiveSets: number;
   projectedRemainingWeekEffectiveSets: number;
@@ -200,9 +207,12 @@ function buildFullWeekRows(input: {
         muscle,
         input.week
       );
+      const targetSemantics = getMuscleTargetSemantics(muscle);
 
       return {
         muscle,
+        targetKind: targetSemantics.targetKind,
+        targetRange: targetSemantics.softTargetRange,
         completedEffectiveSets,
         projectedNextSessionEffectiveSets: roundToTenth(
           projectedNextSessionEffectiveSets

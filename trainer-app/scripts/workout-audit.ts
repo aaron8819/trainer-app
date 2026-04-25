@@ -152,6 +152,12 @@ function formatMuscleContributorSessions(input: {
   return contributors.length > 0 ? contributors.join(", ") : "none";
 }
 
+function isHardTargetProjectionRow(
+  row: ProjectedWeekVolumeAuditPayload["fullWeekByMuscle"][number]
+): boolean {
+  return row.targetKind !== "soft";
+}
+
 function formatCurrentWeekUnderTargetClusters(
   clusters: NonNullable<ProjectedWeekVolumeAuditPayload["currentWeekAudit"]>["underTargetClusters"],
   limit = 4
@@ -249,7 +255,7 @@ export function buildProjectedWeekOperatorSummary(input: {
   );
   const belowTargetOnly = formatMuscleBucket(
     projectedWeekVolume.fullWeekByMuscle,
-    (row) => row.deltaToTarget < 0 && row.deltaToMev >= 0,
+    (row) => isHardTargetProjectionRow(row) && row.deltaToTarget < 0 && row.deltaToMev >= 0,
     (row) => row.deltaToTarget,
     "ascending"
   );
@@ -261,7 +267,7 @@ export function buildProjectedWeekOperatorSummary(input: {
   );
   const overTargetOnly = formatMuscleBucket(
     projectedWeekVolume.fullWeekByMuscle,
-    (row) => row.deltaToTarget > 0 && row.deltaToMav <= 0,
+    (row) => isHardTargetProjectionRow(row) && row.deltaToTarget > 0 && row.deltaToMav <= 0,
     (row) => row.deltaToTarget,
     "descending"
   );
@@ -299,7 +305,7 @@ export function buildProjectedWeekDebugSummary(input: {
   );
   const belowTargetOnlyRows = selectMuscleRows(
     projectedWeekVolume.fullWeekByMuscle,
-    (row) => row.deltaToTarget < 0 && row.deltaToMev >= 0,
+    (row) => isHardTargetProjectionRow(row) && row.deltaToTarget < 0 && row.deltaToMev >= 0,
     (row) => row.deltaToTarget,
     "ascending"
   );

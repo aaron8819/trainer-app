@@ -8,6 +8,9 @@ import { prisma } from "@/lib/db/prisma";
 import {
   VOLUME_LANDMARKS,
   getExposedVolumeLandmarkEntries,
+  getMuscleTargetSemantics,
+  type VolumeSoftTargetRange,
+  type VolumeTargetKind,
 } from "@/lib/engine/volume-landmarks";
 import { getLatestReadinessSignal } from "./readiness";
 import {
@@ -58,6 +61,8 @@ export type ProgramMesoSummary = {
 
 export type ProgramVolumeRow = {
   muscle: string;
+  targetKind?: VolumeTargetKind;
+  targetRange?: VolumeSoftTargetRange | null;
   effectiveSets: number;
   directSets: number;
   indirectSets: number;
@@ -352,6 +357,56 @@ function formatSignedSetDelta(value: number): string {
   }
 
   return `${value > 0 ? "+" : "-"}${formatSetCount(Math.abs(value))} sets`;
+}
+
+function formatTargetLabel(input: {
+  target: number;
+  targetKind: VolumeTargetKind;
+  targetRange: VolumeSoftTargetRange | null;
+}): string {
+  if (input.targetKind === "soft" && input.targetRange) {
+    return `Soft target: ${formatSetCount(input.targetRange.min)}-${formatSetCount(
+      input.targetRange.max
+    )} weighted sets`;
+  }
+
+  return `Target: ${formatWeightedSetsLabel(input.target)}`;
+}
+
+function formatTargetStatusDescription(input: {
+  effectiveSets: number;
+  target: number;
+  targetKind: VolumeTargetKind;
+  targetRange: VolumeSoftTargetRange | null;
+}): string {
+  if (input.targetKind === "soft" && input.targetRange) {
+    return `${formatSetCount(input.effectiveSets)} weighted sets against ${formatSetCount(
+      input.targetRange.min
+    )}-${formatSetCount(input.targetRange.max)} soft target.`;
+  }
+
+  return `${formatSetCount(input.effectiveSets)} weighted sets against ${formatSetCount(
+    input.target
+  )} target.`;
+}
+
+function formatTargetDeltaLabel(input: {
+  effectiveSets: number;
+  target: number;
+  targetKind: VolumeTargetKind;
+  targetRange: VolumeSoftTargetRange | null;
+}): string {
+  if (input.targetKind === "soft" && input.targetRange) {
+    if (input.effectiveSets < input.targetRange.min) {
+      return formatSignedSetDelta(input.effectiveSets - input.targetRange.min);
+    }
+    if (input.effectiveSets > input.targetRange.max) {
+      return formatSignedSetDelta(input.effectiveSets - input.targetRange.max);
+    }
+    return "in soft range";
+  }
+
+  return formatSignedSetDelta(input.effectiveSets - input.target);
 }
 
 function buildVolumeLandmarkContext(input: {
@@ -911,15 +966,20 @@ function buildProgramVolumeRows(input: {
     .map(([muscle, landmarks]) => {
       const data = weekMuscles[muscle] ?? { directSets: 0, indirectSets: 0, effectiveSets: 0 };
       const target = mesoRecord ? getWeeklyVolumeTarget(mesoRecord, muscle, week) : landmarks.mev;
+      const targetSemantics = getMuscleTargetSemantics(muscle);
       const weeklyStatus = getWeeklyMuscleStatus({
         effectiveSets: data.effectiveSets,
         target,
         mev: landmarks.mev,
         mrv: landmarks.mrv,
+        targetKind: targetSemantics.targetKind,
+        softTargetRange: targetSemantics.softTargetRange,
       });
       const statusLabel = formatWeeklyMuscleStatusLabel(weeklyStatus);
       return {
         muscle,
+        targetKind: targetSemantics.targetKind,
+        targetRange: targetSemantics.softTargetRange,
         effectiveSets: data.effectiveSets,
         directSets: data.directSets,
         indirectSets: data.indirectSets,
@@ -928,12 +988,24 @@ function buildProgramVolumeRows(input: {
         mav: landmarks.mav,
         mrv: landmarks.mrv,
         weightedSetsLabel: formatWeightedSetsLabel(data.effectiveSets),
-        targetLabel: `Target: ${formatWeightedSetsLabel(target)}`,
+        targetLabel: formatTargetLabel({
+          target,
+          targetKind: targetSemantics.targetKind,
+          targetRange: targetSemantics.softTargetRange,
+        }),
         statusLabel,
-        statusDescription: `${formatSetCount(data.effectiveSets)} weighted sets against ${formatSetCount(
-          target
-        )} target.`,
-        deltaLabel: formatSignedSetDelta(data.effectiveSets - target),
+        statusDescription: formatTargetStatusDescription({
+          effectiveSets: data.effectiveSets,
+          target,
+          targetKind: targetSemantics.targetKind,
+          targetRange: targetSemantics.softTargetRange,
+        }),
+        deltaLabel: formatTargetDeltaLabel({
+          effectiveSets: data.effectiveSets,
+          target,
+          targetKind: targetSemantics.targetKind,
+          targetRange: targetSemantics.softTargetRange,
+        }),
         landmarkContext: buildVolumeLandmarkContext({
           effectiveSets: data.effectiveSets,
           mev: landmarks.mev,

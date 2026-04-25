@@ -73,6 +73,30 @@ describe("weekly muscle status", () => {
     ).toBe("below_mev");
   });
 
+  it("uses soft ranges for low-priority readout targets", () => {
+    expect(
+      getWeeklyMuscleStatus({
+        effectiveSets: 3,
+        target: 0,
+        mev: 0,
+        mrv: 20,
+        targetKind: "soft",
+        softTargetRange: { min: 4, max: 6 },
+      })
+    ).toBe("below_mev");
+
+    expect(
+      getWeeklyMuscleStatus({
+        effectiveSets: 4,
+        target: 0,
+        mev: 0,
+        mrv: 20,
+        targetKind: "soft",
+        softTargetRange: { min: 4, max: 6 },
+      })
+    ).toBe("on_target");
+  });
+
   it("formats the canonical labels used by dashboard and review surfaces", () => {
     expect(formatWeeklyMuscleStatusLabel("below_mev")).toBe("Below MEV");
     expect(formatWeeklyMuscleStatusLabel("in_range")).toBe("In range");

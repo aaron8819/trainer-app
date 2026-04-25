@@ -389,10 +389,18 @@ describe("loadProgramDashboardData", () => {
       );
       expect(muscles).not.toContain("Abs");
       expect(result.volumeThisWeek.find((row) => row.muscle === "Core")).toMatchObject({
+        targetKind: "soft",
+        targetRange: { min: 4, max: 6 },
+        target: 0,
+        targetLabel: "Soft target: 4-6 weighted sets",
         directSets: 2,
         effectiveSets: 2,
       });
       expect(result.volumeThisWeek.find((row) => row.muscle === "Lower Back")).toMatchObject({
+        targetKind: "soft",
+        targetRange: { min: 3, max: 6 },
+        target: 0,
+        targetLabel: "Soft target: 3-6 weighted sets",
         indirectSets: 2,
         effectiveSets: 0.6,
       });

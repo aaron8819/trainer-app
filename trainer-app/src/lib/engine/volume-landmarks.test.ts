@@ -3,6 +3,7 @@ import {
   VOLUME_LANDMARKS,
   computeWeeklyVolumeTarget,
   getExposedVolumeLandmarkEntries,
+  getMuscleTargetSemantics,
   normalizeExposedMuscle,
 } from "./volume-landmarks";
 
@@ -62,5 +63,38 @@ describe("computeWeeklyVolumeTarget", () => {
     expect(exposedMuscles).toEqual(
       expect.arrayContaining(["Forearms", "Adductors", "Abductors", "Lower Back"])
     );
+  });
+
+  it("keeps secondary soft targets separate from hard lifecycle MEV values", () => {
+    expect(VOLUME_LANDMARKS.Core.mev).toBe(0);
+    expect(VOLUME_LANDMARKS.Forearms.mev).toBe(0);
+    expect(VOLUME_LANDMARKS.Adductors.mev).toBe(0);
+    expect(VOLUME_LANDMARKS.Abductors.mev).toBe(0);
+    expect(VOLUME_LANDMARKS["Lower Back"].mev).toBe(0);
+
+    expect(getMuscleTargetSemantics("Core")).toEqual({
+      targetKind: "soft",
+      softTargetRange: { min: 4, max: 6 },
+    });
+    expect(getMuscleTargetSemantics("Abs")).toEqual({
+      targetKind: "soft",
+      softTargetRange: { min: 4, max: 6 },
+    });
+    expect(getMuscleTargetSemantics("Forearms")).toEqual({
+      targetKind: "soft",
+      softTargetRange: { min: 2, max: 4 },
+    });
+    expect(getMuscleTargetSemantics("Lower Back")).toEqual({
+      targetKind: "soft",
+      softTargetRange: { min: 3, max: 6 },
+    });
+    expect(getMuscleTargetSemantics("Chest")).toEqual({
+      targetKind: "hard",
+      softTargetRange: null,
+    });
+    expect(getMuscleTargetSemantics("Unknown")).toEqual({
+      targetKind: "none",
+      softTargetRange: null,
+    });
   });
 });

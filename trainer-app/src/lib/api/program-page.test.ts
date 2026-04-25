@@ -1151,6 +1151,22 @@ describe("loadProgramPageData", () => {
           deltaToMev: 2,
           deltaToMav: -6,
         },
+        {
+          muscle: "Forearms",
+          targetKind: "soft",
+          targetRange: { min: 2, max: 4 },
+          completedEffectiveSets: 0,
+          projectedNextSessionEffectiveSets: 3,
+          projectedRemainingWeekEffectiveSets: 0,
+          projectedFullWeekEffectiveSets: 3,
+          weeklyTarget: 0,
+          mev: 0,
+          mav: 6,
+          mrv: 12,
+          deltaToTarget: 3,
+          deltaToMev: 3,
+          deltaToMav: -3,
+        },
       ],
     });
 
@@ -1167,6 +1183,15 @@ describe("loadProgramPageData", () => {
           muscle: "Lats",
           statusLabel: "Below target",
           statusDescription: "8 projected vs 10 target; 6 completed so far.",
+        }),
+        expect.objectContaining({
+          muscle: "Forearms",
+          status: "on_target",
+          targetLabel: "Soft target: 2-4 weighted sets",
+          statusLabel: "On target",
+          statusDescription: "3 projected vs 2-4 soft target; 0 completed so far.",
+          deltaLabel: "in soft range",
+          comparisonLabel: "3 projected vs 2-4 soft target",
         }),
       ])
     );

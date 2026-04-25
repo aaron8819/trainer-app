@@ -1,3 +1,5 @@
+import type { VolumeSoftTargetRange, VolumeTargetKind } from "@/lib/engine/volume-landmarks";
+
 export type WeeklyMuscleStatus =
   | "below_mev"
   | "in_range"
@@ -11,12 +13,22 @@ export type WeeklyMuscleStatusInput = {
   target: number;
   mev: number;
   mrv: number;
+  targetKind?: VolumeTargetKind;
+  softTargetRange?: VolumeSoftTargetRange | null;
 };
 
 export type WeeklyMuscleStatusSummary = Record<WeeklyMuscleStatus, number>;
 
 export function getWeeklyMuscleStatus(input: WeeklyMuscleStatusInput): WeeklyMuscleStatus {
-  const { effectiveSets, target, mev, mrv } = input;
+  const { effectiveSets, target, mev, mrv, softTargetRange, targetKind } = input;
+  if (targetKind === "soft" && softTargetRange) {
+    if (effectiveSets >= mrv) return "at_mrv";
+    if (effectiveSets >= mrv * 0.85) return "near_mrv";
+    if (effectiveSets > softTargetRange.max) return "on_target";
+    if (effectiveSets >= softTargetRange.min) return "on_target";
+    return "below_mev";
+  }
+
   const minimumEffectiveFloor = mev > 0 ? mev : Math.min(target, 1);
 
   if (mev === 0 && effectiveSets === 0) return "below_mev";

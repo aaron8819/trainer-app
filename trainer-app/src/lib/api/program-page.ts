@@ -37,6 +37,10 @@ import {
   formatWeeklyMuscleStatusLabel,
   getWeeklyMuscleStatus,
 } from "@/lib/ui/weekly-muscle-status";
+import type {
+  VolumeSoftTargetRange,
+  VolumeTargetKind,
+} from "@/lib/engine/volume-landmarks";
 
 type ActiveProgramPageMesocycle = {
   id: string;
@@ -301,6 +305,57 @@ function formatWeightedSetsLabel(value: number): string {
   return `${formatSetCount(value)} weighted sets`;
 }
 
+function formatTargetLabel(input: {
+  targetSets: number;
+  targetKind?: VolumeTargetKind;
+  targetRange?: VolumeSoftTargetRange | null;
+}): string {
+  if (input.targetKind === "soft" && input.targetRange) {
+    return `${formatSetCount(input.targetRange.min)}-${formatSetCount(
+      input.targetRange.max
+    )} soft target`;
+  }
+
+  return `${formatSetCount(input.targetSets)} target`;
+}
+
+function formatTargetDisplayLabel(input: {
+  targetSets: number;
+  targetKind?: VolumeTargetKind;
+  targetRange?: VolumeSoftTargetRange | null;
+}): string {
+  if (input.targetKind === "soft" && input.targetRange) {
+    return `Soft target: ${formatSetCount(input.targetRange.min)}-${formatSetCount(
+      input.targetRange.max
+    )} weighted sets`;
+  }
+
+  return `Target: ${formatWeightedSetsLabel(input.targetSets)}`;
+}
+
+function formatTargetDeltaLabel(input: {
+  projectedFullWeekEffectiveSets: number;
+  targetSets: number;
+  targetKind?: VolumeTargetKind;
+  targetRange?: VolumeSoftTargetRange | null;
+}): string {
+  if (input.targetKind === "soft" && input.targetRange) {
+    if (input.projectedFullWeekEffectiveSets < input.targetRange.min) {
+      return formatSignedSetDelta(
+        input.projectedFullWeekEffectiveSets - input.targetRange.min
+      );
+    }
+    if (input.projectedFullWeekEffectiveSets > input.targetRange.max) {
+      return formatSignedSetDelta(
+        input.projectedFullWeekEffectiveSets - input.targetRange.max
+      );
+    }
+    return "in soft range";
+  }
+
+  return formatSignedSetDelta(input.projectedFullWeekEffectiveSets - input.targetSets);
+}
+
 function buildVolumeLandmarkContext(input: {
   effectiveSets: number;
   mev: number;
@@ -386,6 +441,8 @@ function buildProgramVolumeDisplayRow(input: {
   status: MuscleOutcomeStatus;
   projectedFullWeekEffectiveSets: number;
   targetSets: number;
+  targetKind?: VolumeTargetKind;
+  targetRange?: VolumeSoftTargetRange | null;
   delta: number;
   mev: number;
   mav: number;
@@ -399,25 +456,40 @@ function buildProgramVolumeDisplayRow(input: {
     target: input.targetSets,
     mev: input.mev,
     mrv: input.mrv,
+    targetKind: input.targetKind,
+    softTargetRange: input.targetRange,
   });
   const weeklyStatusLabel = formatWeeklyMuscleStatusLabel(weeklyStatus);
   const statusLabel =
     weeklyStatus === "below_mev" ? weeklyStatusLabel : formatOutcomeStatusLabel(input.status);
   const projectedLabel = `${formatSetCount(input.projectedFullWeekEffectiveSets)} projected`;
-  const targetLabel = `${formatSetCount(input.targetSets)} target`;
+  const targetLabel = formatTargetLabel({
+    targetSets: input.targetSets,
+    targetKind: input.targetKind,
+    targetRange: input.targetRange,
+  });
   const completedLabel = `${formatSetCount(input.completedEffectiveSets)} completed`;
 
   return {
     muscle: input.muscle,
     status: input.status,
     weightedSetsLabel: formatWeightedSetsLabel(input.projectedFullWeekEffectiveSets),
-    targetLabel: `Target: ${formatWeightedSetsLabel(input.targetSets)}`,
+    targetLabel: formatTargetDisplayLabel({
+      targetSets: input.targetSets,
+      targetKind: input.targetKind,
+      targetRange: input.targetRange,
+    }),
     statusLabel,
     statusDescription:
       weeklyStatus === "below_mev"
         ? `${projectedLabel} is still below MEV after the planned week.`
         : `${projectedLabel} vs ${targetLabel}; ${completedLabel} so far.`,
-    deltaLabel: formatSignedSetDelta(input.delta),
+    deltaLabel: formatTargetDeltaLabel({
+      projectedFullWeekEffectiveSets: input.projectedFullWeekEffectiveSets,
+      targetSets: input.targetSets,
+      targetKind: input.targetKind,
+      targetRange: input.targetRange,
+    }),
     comparisonLabel: `${projectedLabel} vs ${targetLabel}`,
     landmarkContext: buildVolumeLandmarkContext({
       effectiveSets: input.projectedFullWeekEffectiveSets,
@@ -465,13 +537,18 @@ function buildWeekCompletionOutlook(input: {
   };
 
   const classifiedRows = input.report.fullWeekByMuscle.map((row) => {
-    const outcome = classifyMuscleOutcome(row.weeklyTarget, row.projectedFullWeekEffectiveSets);
+    const outcome = classifyMuscleOutcome(row.weeklyTarget, row.projectedFullWeekEffectiveSets, {
+      targetKind: row.targetKind,
+      targetRange: row.targetRange,
+    });
 
     return {
       muscle: row.muscle,
       status: outcome.status,
       projectedFullWeekEffectiveSets: row.projectedFullWeekEffectiveSets,
       targetSets: row.weeklyTarget,
+      targetKind: row.targetKind,
+      targetRange: row.targetRange,
       delta: outcome.delta,
       percentDelta: outcome.percentDelta,
       mev: row.mev,
@@ -503,6 +580,8 @@ function buildWeekCompletionOutlook(input: {
       status: row.status,
       projectedFullWeekEffectiveSets: row.projectedFullWeekEffectiveSets,
       targetSets: row.targetSets,
+      targetKind: row.targetKind,
+      targetRange: row.targetRange,
       delta: row.delta,
       mev: row.mev,
       mav: row.mav,

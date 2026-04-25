@@ -212,6 +212,7 @@ Primary questions it answers:
 - what each remaining advancing slot is projected to add
 - what the projected full-week total is for each muscle
 - how projected full-week totals compare against weekly target, MEV, and MAV
+- whether a row is a hard target or readout-only soft target; soft rows should be interpreted against their range rather than as high solely because the hard lifecycle target is zero
 
 Command pattern:
 
@@ -253,6 +254,7 @@ Common red flags:
 - projected session order does not match runtime slot order
 - `projectedSessions[0].isNext` does not align with the expected next advancing slot
 - `fullWeekByMuscle` suggests major under-target or over-MAV outcomes that contradict the chained projected sessions
+- soft-target rows for Core, Forearms, Adductors, Abductors, or Lower Back are interpreted as hard blocking target failures rather than readout context
 - projection notes indicate an ignored incomplete workout when you expected saved-state continuation
 
 Escalate when:

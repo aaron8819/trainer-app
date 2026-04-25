@@ -409,9 +409,16 @@ describe("loadProjectedWeekVolumeReport", () => {
     );
     expect(report.fullWeekByMuscle.map((row) => row.muscle)).not.toContain("Abs");
     expect(report.fullWeekByMuscle.find((row) => row.muscle === "Core")).toMatchObject({
+      targetKind: "soft",
+      targetRange: { min: 4, max: 6 },
       completedEffectiveSets: 2,
       projectedNextSessionEffectiveSets: 1,
       projectedFullWeekEffectiveSets: 3,
+    });
+    expect(report.fullWeekByMuscle.find((row) => row.muscle === "Forearms")).toMatchObject({
+      targetKind: "soft",
+      targetRange: { min: 2, max: 4 },
+      weeklyTarget: 0,
     });
   });
 });

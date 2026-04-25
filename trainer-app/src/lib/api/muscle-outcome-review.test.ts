@@ -29,6 +29,29 @@ describe("classifyMuscleOutcome", () => {
       status: "meaningfully_high",
     });
   });
+
+  it("classifies soft targets by range instead of treating zero hard target as high", () => {
+    expect(
+      classifyMuscleOutcome(0, 3, {
+        targetKind: "soft",
+        targetRange: { min: 2, max: 4 },
+      })
+    ).toMatchObject({
+      delta: 0,
+      percentDelta: 0,
+      status: "on_target",
+    });
+
+    expect(
+      classifyMuscleOutcome(0, 5.5, {
+        targetKind: "soft",
+        targetRange: { min: 2, max: 4 },
+      })
+    ).toMatchObject({
+      delta: 1.5,
+      status: "meaningfully_high",
+    });
+  });
 });
 
 describe("loadWeeklyMuscleOutcome", () => {
@@ -214,9 +237,9 @@ describe("loadWeeklyMuscleOutcome", () => {
     expect(result?.rows.map((row) => row.muscle)).toContain("Lower Back");
     expect(result?.rows.map((row) => row.muscle)).not.toContain("Abs");
     expect(result?.rows.find((row) => row.muscle === "Core")).toMatchObject({
-      actualEffectiveSets: 3.6,
+      actualEffectiveSets: 2,
       contributingExerciseCount: 1,
-      topContributors: [{ exerciseName: "Plank", effectiveSets: 3.6 }],
+      topContributors: [{ exerciseName: "Plank", effectiveSets: 2 }],
     });
   });
 });

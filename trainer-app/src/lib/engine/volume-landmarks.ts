@@ -11,6 +11,18 @@ export type VolumeLandmarks = {
   sraHours: number;
 };
 
+export type VolumeTargetKind = "hard" | "soft" | "none";
+
+export type VolumeSoftTargetRange = {
+  min: number;
+  max: number;
+};
+
+export type MuscleTargetSemantics = {
+  targetKind: VolumeTargetKind;
+  softTargetRange: VolumeSoftTargetRange | null;
+};
+
 export const VOLUME_LANDMARKS: Record<string, VolumeLandmarks> = {
   "Chest":       { mv: 6,  mev: 10, mav: 16, mrv: 22, sraHours: 60 },
   "Lats":        { mv: 6,  mev: 8,  mav: 16, mrv: 24, sraHours: 60 },
@@ -32,6 +44,14 @@ export const VOLUME_LANDMARKS: Record<string, VolumeLandmarks> = {
   "Abs":         { mv: 0,  mev: 0,  mav: 10, mrv: 16, sraHours: 36 },
 };
 
+export const SOFT_VOLUME_TARGET_RANGES: Record<string, VolumeSoftTargetRange> = {
+  "Core": { min: 4, max: 6 },
+  "Forearms": { min: 2, max: 4 },
+  "Adductors": { min: 2, max: 4 },
+  "Abductors": { min: 2, max: 4 },
+  "Lower Back": { min: 3, max: 6 },
+};
+
 const EXPOSED_MUSCLE_ALIAS_MAP: Record<string, string> = {
   Abs: "Core",
 };
@@ -45,6 +65,30 @@ const EXPOSED_VOLUME_LANDMARK_ENTRIES = Object.freeze(
 
 export function normalizeExposedMuscle(muscle: string): string {
   return EXPOSED_MUSCLE_ALIAS_MAP[muscle] ?? muscle;
+}
+
+export function getMuscleTargetSemantics(muscle: string): MuscleTargetSemantics {
+  const exposedMuscle = normalizeExposedMuscle(muscle);
+  const softTargetRange = SOFT_VOLUME_TARGET_RANGES[exposedMuscle] ?? null;
+
+  if (softTargetRange) {
+    return {
+      targetKind: "soft",
+      softTargetRange,
+    };
+  }
+
+  if (VOLUME_LANDMARKS[exposedMuscle]) {
+    return {
+      targetKind: "hard",
+      softTargetRange: null,
+    };
+  }
+
+  return {
+    targetKind: "none",
+    softTargetRange: null,
+  };
 }
 
 export function getExposedVolumeLandmarkEntries(): ReadonlyArray<

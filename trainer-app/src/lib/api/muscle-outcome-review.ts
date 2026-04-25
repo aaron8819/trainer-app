@@ -1,6 +1,11 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
-import { getExposedVolumeLandmarkEntries } from "@/lib/engine/volume-landmarks";
+import {
+  getExposedVolumeLandmarkEntries,
+  getMuscleTargetSemantics,
+  type VolumeSoftTargetRange,
+  type VolumeTargetKind,
+} from "@/lib/engine/volume-landmarks";
 import { getCurrentMesoWeek, getWeeklyVolumeTarget } from "./mesocycle-lifecycle-math";
 import {
   loadMesocycleWeekMuscleVolume,
@@ -21,6 +26,8 @@ export type MuscleOutcomeStatus =
 
 export type WeeklyMuscleOutcomeRow = {
   muscle: string;
+  targetKind?: VolumeTargetKind;
+  targetRange?: VolumeSoftTargetRange | null;
   targetSets: number;
   actualEffectiveSets: number;
   delta: number;
@@ -69,8 +76,39 @@ function computeMesoWeekStartDate(mesoStartDate: Date, week: number): Date {
 
 export function classifyMuscleOutcome(
   targetSets: number,
-  actualEffectiveSets: number
+  actualEffectiveSets: number,
+  options?: {
+    targetKind?: VolumeTargetKind;
+    targetRange?: VolumeSoftTargetRange | null;
+  }
 ): Pick<WeeklyMuscleOutcomeRow, "delta" | "percentDelta" | "status"> {
+  if (options?.targetKind === "soft" && options.targetRange) {
+    const range = options.targetRange;
+    if (actualEffectiveSets < range.min) {
+      const delta = roundToTenth(actualEffectiveSets - range.min);
+      const percentDelta = Number((delta / range.min).toFixed(3));
+      return {
+        delta,
+        percentDelta,
+        status: percentDelta < -0.25 ? "meaningfully_low" : "slightly_low",
+      };
+    }
+    if (actualEffectiveSets > range.max) {
+      const delta = roundToTenth(actualEffectiveSets - range.max);
+      const percentDelta = Number((delta / range.max).toFixed(3));
+      return {
+        delta,
+        percentDelta,
+        status: percentDelta > 0.25 ? "meaningfully_high" : "slightly_high",
+      };
+    }
+    return {
+      delta: 0,
+      percentDelta: 0,
+      status: "on_target",
+    };
+  }
+
   const delta = roundToTenth(actualEffectiveSets - targetSets);
 
   if (targetSets <= 0) {
@@ -111,11 +149,17 @@ function buildMuscleOutcomeRow(
   weeklyVolumeRow: WeeklyMuscleVolumeRow | undefined
 ): WeeklyMuscleOutcomeRow {
   const actualEffectiveSets = weeklyVolumeRow?.effectiveSets ?? 0;
-  const outcome = classifyMuscleOutcome(targetSets, actualEffectiveSets);
+  const targetSemantics = getMuscleTargetSemantics(muscle);
+  const outcome = classifyMuscleOutcome(targetSets, actualEffectiveSets, {
+    targetKind: targetSemantics.targetKind,
+    targetRange: targetSemantics.softTargetRange,
+  });
   const contributions = weeklyVolumeRow?.contributions ?? [];
 
   return {
     muscle,
+    targetKind: targetSemantics.targetKind,
+    targetRange: targetSemantics.softTargetRange,
     targetSets,
     actualEffectiveSets,
     ...outcome,

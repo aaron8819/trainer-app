@@ -88,7 +88,9 @@ function buildPreview(overrides?: Partial<{
       intent: "UPPER" | "LOWER" | "PUSH" | "PULL" | "LEGS" | "FULL_BODY" | "BODY_PART";
       exercises: Array<{
         exerciseId: string;
+        name: string;
         role: "CORE_COMPOUND" | "ACCESSORY";
+        setCount: number;
       }>;
     }>;
   } | null;
@@ -170,7 +172,9 @@ function buildPreview(overrides?: Partial<{
         intent: slot.intent,
         exercises: slot.exercises.map((exercise) => ({
           exerciseId: exercise.exerciseId,
+          name: exercise.exerciseName,
           role: exercise.role,
+          setCount: exercise.role === "CORE_COMPOUND" ? 4 : 3,
         })),
       })),
     },
@@ -296,7 +300,7 @@ describe("MesocycleSetupEditor", () => {
               {
                 slotId: "upper_a",
                 intent: "UPPER",
-                exercises: [{ exerciseId: "bench", role: "CORE_COMPOUND" }],
+                exercises: [{ exerciseId: "bench", name: "Bench Press", role: "CORE_COMPOUND", setCount: 4 }],
               },
               {
                 slotId: "lower_a",
@@ -306,7 +310,7 @@ describe("MesocycleSetupEditor", () => {
               {
                 slotId: "upper_b",
                 intent: "UPPER",
-                exercises: [{ exerciseId: "row", role: "ACCESSORY" }],
+                exercises: [{ exerciseId: "row", name: "Chest-Supported Row", role: "ACCESSORY", setCount: 3 }],
               },
             ],
           },

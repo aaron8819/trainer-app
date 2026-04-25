@@ -2,7 +2,11 @@ export type SlotPlanSeedRole = "CORE_COMPOUND" | "ACCESSORY";
 
 export type ParsedSlotPlanSeedExercise = {
   exerciseId: string;
+  name?: string;
   role: SlotPlanSeedRole;
+  setCount?: number;
+  hasExplicitName: boolean;
+  hasExplicitSetCount: boolean;
 };
 
 export type ParsedSlotPlanSeedSlot = {
@@ -48,13 +52,32 @@ export function parseSlotPlanSeedJson(slotPlanSeedJson: unknown): ParsedSlotPlan
           ? seededExercise.exerciseId.trim()
           : "";
       const role = seededExercise?.role;
+      const rawName = seededExercise?.name;
+      const name = typeof rawName === "string" ? rawName.trim() : undefined;
+      const hasExplicitName = rawName !== undefined;
+      const rawSetCount = seededExercise?.setCount;
+      const hasExplicitSetCount = rawSetCount !== undefined;
+      const setCount =
+        typeof rawSetCount === "number" && Number.isInteger(rawSetCount) && rawSetCount > 0
+          ? rawSetCount
+          : undefined;
       if (!exerciseId || !isSlotPlanSeedRole(role)) {
+        return null;
+      }
+      if (hasExplicitSetCount && setCount == null) {
+        return null;
+      }
+      if (hasExplicitName && !name) {
         return null;
       }
 
       exercises.push({
         exerciseId,
+        ...(name ? { name } : {}),
         role,
+        ...(setCount != null ? { setCount } : {}),
+        hasExplicitName,
+        hasExplicitSetCount,
       });
     }
 

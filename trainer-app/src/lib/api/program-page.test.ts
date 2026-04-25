@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => {
   const mesocycleFindFirst = vi.fn();
   const constraintsFindUnique = vi.fn();
   const workoutFindMany = vi.fn();
+  const exerciseFindMany = vi.fn();
 
   return {
     loadProgramDashboardData,
@@ -17,10 +18,12 @@ const mocks = vi.hoisted(() => {
     mesocycleFindFirst,
     constraintsFindUnique,
     workoutFindMany,
+    exerciseFindMany,
     prisma: {
       mesocycle: { findFirst: mesocycleFindFirst },
       constraints: { findUnique: constraintsFindUnique },
       workout: { findMany: workoutFindMany },
+      exercise: { findMany: exerciseFindMany },
     },
   };
 });
@@ -125,6 +128,7 @@ describe("buildProgramCurrentWeekPlan", () => {
           volumeBasis: "actual_completed",
           linkedWorkoutId: null,
           linkedWorkoutStatus: null,
+          exercises: [],
           impact: null,
         },
         {
@@ -132,11 +136,12 @@ describe("buildProgramCurrentWeekPlan", () => {
           label: "Lower 1",
           sessionInWeek: 2,
           uiState: "planned",
-          statusLabel: "Planned",
+          statusLabel: "Planned next",
           statusDescription: "Session 2 already has a planned workout ready to log.",
           volumeBasis: "projected_next",
           linkedWorkoutId: "planned-lower",
           linkedWorkoutStatus: "planned",
+          exercises: [],
           impact: null,
         },
         {
@@ -149,6 +154,7 @@ describe("buildProgramCurrentWeekPlan", () => {
           volumeBasis: "projected_remaining",
           linkedWorkoutId: null,
           linkedWorkoutStatus: null,
+          exercises: [],
           impact: null,
         },
       ],
@@ -244,6 +250,7 @@ describe("buildProgramCurrentWeekPlan", () => {
         volumeBasis: "projected_next",
         linkedWorkoutId: null,
         linkedWorkoutStatus: null,
+        exercises: [],
         impact: null,
       },
       {
@@ -256,6 +263,7 @@ describe("buildProgramCurrentWeekPlan", () => {
         volumeBasis: "projected_remaining",
         linkedWorkoutId: null,
         linkedWorkoutStatus: null,
+        exercises: [],
         impact: null,
       },
       {
@@ -268,9 +276,127 @@ describe("buildProgramCurrentWeekPlan", () => {
         volumeBasis: "projected_remaining",
         linkedWorkoutId: null,
         linkedWorkoutStatus: null,
+        exercises: [],
         impact: null,
       },
     ]);
+  });
+
+  it("uses seeded slot order and seed setCount when a slot workout exists", () => {
+    const slotSequenceJson = buildMesocycleSlotSequence([
+      { slotId: "upper_a", intent: "UPPER" },
+    ]);
+
+    const result = buildProgramCurrentWeekPlan({
+      week: 2,
+      slotSequenceJson,
+      slotPlanSeedJson: {
+        version: 1,
+        slots: [
+          {
+            slotId: "upper_a",
+            exercises: [
+              { exerciseId: "bench", name: "Incline DB Bench", role: "CORE_COMPOUND", setCount: 4 },
+              { exerciseId: "row", name: "T-Bar Row", role: "ACCESSORY", setCount: 3 },
+            ],
+          },
+        ],
+      },
+      seedExerciseNameById: {
+        bench: "Incline DB Bench",
+        row: "T-Bar Row",
+      },
+      weeklySchedule: [],
+      currentWeekWorkouts: [
+        {
+          id: "completed-upper",
+          status: "COMPLETED",
+          scheduledDate: new Date("2026-03-02T00:00:00.000Z"),
+          sessionIntent: "UPPER",
+          selectionMode: "INTENT",
+          selectionMetadata: {
+            sessionDecisionReceipt: {
+              version: 1,
+              cycleContext: {
+                weekInMeso: 2,
+                weekInBlock: 2,
+                phase: "accumulation",
+                blockType: "accumulation",
+                isDeload: false,
+                source: "computed",
+              },
+              sessionSlot: {
+                slotId: "upper_a",
+                intent: "upper",
+                sequenceIndex: 0,
+                sequenceLength: 1,
+                source: "mesocycle_slot_sequence",
+              },
+              lifecycleVolume: { source: "unknown" },
+              sorenessSuppressedMuscles: [],
+              deloadDecision: {
+                mode: "none",
+                reason: [],
+                reductionPercent: 0,
+                appliedTo: "none",
+              },
+              readiness: {
+                wasAutoregulated: false,
+                signalAgeHours: null,
+                fatigueScoreOverall: null,
+                intensityScaling: {
+                  applied: false,
+                  exerciseIds: [],
+                  scaledUpCount: 0,
+                  scaledDownCount: 0,
+                },
+              },
+              exceptions: [],
+            },
+          },
+          advancesSplit: true,
+          exercises: [
+            {
+              exerciseId: "row",
+              orderIndex: 0,
+              isMainLift: false,
+              exercise: { id: "row", name: "Runtime Row Name" },
+              sets: [{ id: "row-1" }, { id: "row-2" }],
+            },
+            {
+              exerciseId: "bench",
+              orderIndex: 1,
+              isMainLift: true,
+              exercise: { id: "bench", name: "Runtime Bench Name" },
+              sets: [{ id: "bench-1" }, { id: "bench-2" }, { id: "bench-3" }],
+            },
+          ],
+        },
+      ],
+      nextWorkoutContext: {
+        intent: null,
+        slotId: null,
+        slotSequenceIndex: null,
+        slotSequenceLength: null,
+        slotSource: null,
+        existingWorkoutId: null,
+        isExisting: false,
+        source: "rotation",
+        weekInMeso: 2,
+        sessionInWeek: 1,
+        derivationTrace: [],
+        selectedIncompleteStatus: null,
+      },
+    });
+
+    expect(result?.slots[0]).toMatchObject({
+      label: "Upper 1",
+      statusLabel: "Completed",
+      exercises: [
+        { exerciseId: "bench", name: "Incline DB Bench", setCount: 4, role: "primary" },
+        { exerciseId: "row", name: "T-Bar Row", setCount: 3, role: "accessory" },
+      ],
+    });
   });
 });
 
@@ -353,6 +479,10 @@ describe("loadProgramPageData", () => {
           isNext: true,
           exerciseCount: 5,
           totalSets: 14,
+          exercises: [
+            { exerciseId: "incline-db-bench", name: "Incline DB Bench", setCount: 3, role: "primary" },
+            { exerciseId: "tbar-row", name: "T-Bar Row", setCount: 3, role: "primary" },
+          ],
           projectedContributionByMuscle: {
             Chest: 4,
           },
@@ -363,6 +493,10 @@ describe("loadProgramPageData", () => {
           isNext: false,
           exerciseCount: 5,
           totalSets: 15,
+          exercises: [
+            { exerciseId: "leg-press", name: "Leg Press", setCount: 4, role: "primary" },
+            { exerciseId: "leg-curl", name: "Leg Curl", setCount: 3, role: "accessory" },
+          ],
           projectedContributionByMuscle: {
             Quads: 9,
             Glutes: 4.3,
@@ -376,6 +510,10 @@ describe("loadProgramPageData", () => {
           isNext: false,
           exerciseCount: 5,
           totalSets: 14,
+          exercises: [
+            { exerciseId: "lat-pulldown", name: "Lat Pulldown", setCount: 3, role: "primary" },
+            { exerciseId: "face-pull", name: "Face Pull", setCount: 2, role: "accessory" },
+          ],
           projectedContributionByMuscle: {
             Lats: 5,
             "Upper Back": 4,
@@ -430,8 +568,42 @@ describe("loadProgramPageData", () => {
         { slotId: "lower_a", intent: "LOWER" },
         { slotId: "upper_b", intent: "UPPER" },
       ]),
+      slotPlanSeedJson: {
+        version: 1,
+        slots: [
+          {
+            slotId: "upper_a",
+            exercises: [
+              { exerciseId: "incline-db-bench", role: "CORE_COMPOUND" },
+              { exerciseId: "tbar-row", role: "CORE_COMPOUND" },
+            ],
+          },
+          {
+            slotId: "lower_a",
+            exercises: [
+              { exerciseId: "leg-press", role: "CORE_COMPOUND" },
+              { exerciseId: "leg-curl", role: "ACCESSORY" },
+            ],
+          },
+          {
+            slotId: "upper_b",
+            exercises: [
+              { exerciseId: "lat-pulldown", role: "CORE_COMPOUND" },
+              { exerciseId: "face-pull", role: "ACCESSORY" },
+            ],
+          },
+        ],
+      },
       macroCycle: { startDate: new Date("2026-03-02T00:00:00.000Z") },
     });
+    mocks.exerciseFindMany.mockResolvedValue([
+      { id: "incline-db-bench", name: "Incline DB Bench" },
+      { id: "tbar-row", name: "T-Bar Row" },
+      { id: "leg-press", name: "Leg Press" },
+      { id: "leg-curl", name: "Leg Curl" },
+      { id: "lat-pulldown", name: "Lat Pulldown" },
+      { id: "face-pull", name: "Face Pull" },
+    ]);
     mocks.constraintsFindUnique.mockResolvedValue({
       weeklySchedule: ["UPPER", "LOWER", "UPPER"],
     });
@@ -455,6 +627,22 @@ describe("loadProgramPageData", () => {
           },
         },
         advancesSplit: true,
+        exercises: [
+          {
+            exerciseId: "incline-db-bench",
+            orderIndex: 0,
+            isMainLift: true,
+            exercise: { id: "incline-db-bench", name: "Incline DB Bench" },
+            sets: [{ id: "set-1" }, { id: "set-2" }, { id: "set-3" }],
+          },
+          {
+            exerciseId: "tbar-row",
+            orderIndex: 1,
+            isMainLift: true,
+            exercise: { id: "tbar-row", name: "T-Bar Row" },
+            sets: [{ id: "set-4" }, { id: "set-5" }, { id: "set-6" }],
+          },
+        ],
       },
       {
         id: "closeout-planned",
@@ -532,11 +720,25 @@ describe("loadProgramPageData", () => {
           label: "Upper 1",
           sessionInWeek: 1,
           uiState: "planned",
-          statusLabel: "Planned",
+          statusLabel: "Planned next",
           statusDescription: "Session 1 already has a planned workout ready to log.",
           volumeBasis: "projected_next",
           linkedWorkoutId: "planned-upper",
           linkedWorkoutStatus: "planned",
+          exercises: [
+            {
+              exerciseId: "incline-db-bench",
+              name: "Incline DB Bench",
+              setCount: 3,
+              role: "primary",
+            },
+            {
+              exerciseId: "tbar-row",
+              name: "T-Bar Row",
+              setCount: 3,
+              role: "primary",
+            },
+          ],
           impact: {
             topMuscles: [
               {
@@ -545,7 +747,7 @@ describe("loadProgramPageData", () => {
               },
             ],
             hiddenMuscleCount: 0,
-            summaryLabel: "Projected: adds Chest",
+            summaryLabel: "Chest +4",
           },
         },
         {
@@ -558,6 +760,20 @@ describe("loadProgramPageData", () => {
           volumeBasis: "projected_remaining",
           linkedWorkoutId: null,
           linkedWorkoutStatus: null,
+          exercises: [
+            {
+              exerciseId: "leg-press",
+              name: "Leg Press",
+              setCount: 4,
+              role: "primary",
+            },
+            {
+              exerciseId: "leg-curl",
+              name: "Leg Curl",
+              setCount: 3,
+              role: "accessory",
+            },
+          ],
           impact: {
             topMuscles: [
               {
@@ -572,13 +788,9 @@ describe("loadProgramPageData", () => {
                 muscle: "Calves",
                 projectedEffectiveSets: 4,
               },
-              {
-                muscle: "Hamstrings",
-                projectedEffectiveSets: 4,
-              },
             ],
-            hiddenMuscleCount: 0,
-            summaryLabel: "Projected: adds Quads, Glutes, Calves, Hamstrings",
+            hiddenMuscleCount: 1,
+            summaryLabel: "Quads +9 \u00b7 Glutes +4.3 \u00b7 Calves +4 \u00b7 +1 more",
           },
         },
         {
@@ -591,6 +803,20 @@ describe("loadProgramPageData", () => {
           volumeBasis: "projected_remaining",
           linkedWorkoutId: null,
           linkedWorkoutStatus: null,
+          exercises: [
+            {
+              exerciseId: "lat-pulldown",
+              name: "Lat Pulldown",
+              setCount: 3,
+              role: "primary",
+            },
+            {
+              exerciseId: "face-pull",
+              name: "Face Pull",
+              setCount: 2,
+              role: "accessory",
+            },
+          ],
           impact: {
             topMuscles: [
               {
@@ -607,7 +833,7 @@ describe("loadProgramPageData", () => {
               },
             ],
             hiddenMuscleCount: 3,
-            summaryLabel: "Projected: adds Lats, Upper Back, Chest +3 more",
+            summaryLabel: "Lats +5 \u00b7 Upper Back +4 \u00b7 Chest +3 \u00b7 +3 more",
           },
         },
       ],
@@ -625,6 +851,7 @@ describe("loadProgramPageData", () => {
       dismissActionLabel: "Dismiss optional session",
       targetWeek: 2,
       isPriorWeek: false,
+      canDismiss: true,
     });
     expect(result.weekCompletionOutlook).toEqual({
       assumptionLabel: "If you complete the remaining planned sessions this week, you will likely land here.",
@@ -671,12 +898,21 @@ describe("loadProgramPageData", () => {
         {
           muscle: "Quads",
           status: "meaningfully_high",
+          weightedSetsLabel: "15 weighted sets",
+          targetLabel: "Target: 10 weighted sets",
           statusLabel: "Meaningfully high",
           statusDescription: "15 projected vs 10 target; 12 completed so far.",
           deltaLabel: "+5 sets",
           comparisonLabel: "15 projected vs 10 target",
+          landmarkContext: {
+            mevLabel: "MEV 6",
+            mavLabel: "MAV 16",
+            mrvLabel: "MRV 20",
+            rangeSummaryLabel: "MEV 6 · MAV 16 · MRV 20",
+            positionLabel: "Current: within MEV-MAV",
+          },
           badges: [
-            { status: "near_mrv", label: "Near MRV" },
+            { status: "on_target", label: "On target" },
             { status: "actual_completed", label: "Actual completed", count: 12 },
             { status: "projected_next", label: "Projected next", count: 0 },
             { status: "projected_remaining", label: "Projected remaining", count: 3 },
@@ -685,10 +921,19 @@ describe("loadProgramPageData", () => {
         {
           muscle: "Chest",
           status: "slightly_low",
+          weightedSetsLabel: "8 weighted sets",
+          targetLabel: "Target: 10 weighted sets",
           statusLabel: "Below target",
           statusDescription: "8 projected vs 10 target; 4 completed so far.",
           deltaLabel: "-2 sets",
           comparisonLabel: "8 projected vs 10 target",
+          landmarkContext: {
+            mevLabel: "MEV 6",
+            mavLabel: "MAV 16",
+            mrvLabel: "MRV 22",
+            rangeSummaryLabel: "MEV 6 · MAV 16 · MRV 22",
+            positionLabel: "Current: within MEV-MAV",
+          },
           badges: [
             { status: "in_range", label: "In range" },
             { status: "actual_completed", label: "Actual completed", count: 4 },
@@ -701,12 +946,21 @@ describe("loadProgramPageData", () => {
         {
           muscle: "Quads",
           status: "meaningfully_high",
+          weightedSetsLabel: "15 weighted sets",
+          targetLabel: "Target: 10 weighted sets",
           statusLabel: "Meaningfully high",
           statusDescription: "15 projected vs 10 target; 12 completed so far.",
           deltaLabel: "+5 sets",
           comparisonLabel: "15 projected vs 10 target",
+          landmarkContext: {
+            mevLabel: "MEV 6",
+            mavLabel: "MAV 16",
+            mrvLabel: "MRV 20",
+            rangeSummaryLabel: "MEV 6 · MAV 16 · MRV 20",
+            positionLabel: "Current: within MEV-MAV",
+          },
           badges: [
-            { status: "near_mrv", label: "Near MRV" },
+            { status: "on_target", label: "On target" },
             { status: "actual_completed", label: "Actual completed", count: 12 },
             { status: "projected_next", label: "Projected next", count: 0 },
             { status: "projected_remaining", label: "Projected remaining", count: 3 },
@@ -715,10 +969,19 @@ describe("loadProgramPageData", () => {
         {
           muscle: "Chest",
           status: "slightly_low",
+          weightedSetsLabel: "8 weighted sets",
+          targetLabel: "Target: 10 weighted sets",
           statusLabel: "Below target",
           statusDescription: "8 projected vs 10 target; 4 completed so far.",
           deltaLabel: "-2 sets",
           comparisonLabel: "8 projected vs 10 target",
+          landmarkContext: {
+            mevLabel: "MEV 6",
+            mavLabel: "MAV 16",
+            mrvLabel: "MRV 22",
+            rangeSummaryLabel: "MEV 6 · MAV 16 · MRV 22",
+            positionLabel: "Current: within MEV-MAV",
+          },
           badges: [
             { status: "in_range", label: "In range" },
             { status: "actual_completed", label: "Actual completed", count: 4 },
@@ -784,6 +1047,7 @@ describe("loadProgramPageData", () => {
           isNext: true,
           exerciseCount: 5,
           totalSets: 14,
+          exercises: [],
           projectedContributionByMuscle: {
             Chest: 9,
             Lats: 9,
@@ -796,6 +1060,10 @@ describe("loadProgramPageData", () => {
           isNext: false,
           exerciseCount: 5,
           totalSets: 15,
+          exercises: [
+            { exerciseId: "leg-press", name: "Leg Press", setCount: 4, role: "primary" },
+            { exerciseId: "leg-curl", name: "Leg Curl", setCount: 3, role: "accessory" },
+          ],
           projectedContributionByMuscle: {
             Quads: 9,
             Glutes: 4.3,
@@ -822,10 +1090,9 @@ describe("loadProgramPageData", () => {
           { muscle: "Quads", projectedEffectiveSets: 9 },
           { muscle: "Glutes", projectedEffectiveSets: 4.3 },
           { muscle: "Calves", projectedEffectiveSets: 4 },
-          { muscle: "Hamstrings", projectedEffectiveSets: 3.9 },
         ],
-        hiddenMuscleCount: 2,
-        summaryLabel: "Projected: adds Quads, Glutes, Calves, Hamstrings +2 more",
+        hiddenMuscleCount: 3,
+        summaryLabel: "Quads +9 \u00b7 Glutes +4.3 \u00b7 Calves +4 \u00b7 +3 more",
       },
     });
     expect(lowerSlot?.impact?.topMuscles.map((row) => row.muscle)).not.toContain("Chest");
@@ -849,6 +1116,7 @@ describe("loadProgramPageData", () => {
           isNext: true,
           exerciseCount: 5,
           totalSets: 14,
+          exercises: [],
           projectedContributionByMuscle: {
             Chest: 4,
           },
@@ -935,6 +1203,7 @@ describe("loadProgramPageData", () => {
           isNext: true,
           exerciseCount: 5,
           totalSets: 14,
+          exercises: [],
           projectedContributionByMuscle: {
             Chest: 9,
             Lats: 9,
@@ -1049,6 +1318,7 @@ describe("loadProgramPageData", () => {
       dismissActionLabel: null,
       targetWeek: 3,
       isPriorWeek: true,
+      canDismiss: true,
     });
   });
 

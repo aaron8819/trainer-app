@@ -36,9 +36,17 @@ export type ProjectedWeekVolumeSessionSummary = {
   isNext: boolean;
   exerciseCount: number;
   totalSets: number;
+  exercises?: ProjectedWeekVolumeExerciseSummary[];
   estimatedMinutes?: number | null;
   movementPatternCounts?: Record<string, number>;
   projectedContributionByMuscle: Record<string, number>;
+};
+
+export type ProjectedWeekVolumeExerciseSummary = {
+  exerciseId: string;
+  name: string;
+  setCount: number;
+  role: "primary" | "accessory";
 };
 
 export type ProjectedWeekVolumeMuscleRow = {
@@ -50,6 +58,7 @@ export type ProjectedWeekVolumeMuscleRow = {
   weeklyTarget: number;
   mev: number;
   mav: number;
+  mrv?: number;
   deltaToTarget: number;
   deltaToMev: number;
   deltaToMav: number;
@@ -112,6 +121,23 @@ function countWorkoutMovementPatterns(workout: WorkoutPlan): Record<string, numb
   return Object.fromEntries(
     Array.from(counts.entries()).sort(([left], [right]) => left.localeCompare(right))
   );
+}
+
+function summarizeWorkoutExercises(workout: WorkoutPlan): ProjectedWeekVolumeExerciseSummary[] {
+  return [
+    ...workout.mainLifts.map((exercise) => ({
+      exerciseId: exercise.exercise.id,
+      name: exercise.exercise.name,
+      setCount: exercise.sets.length,
+      role: "primary" as const,
+    })),
+    ...workout.accessories.map((exercise) => ({
+      exerciseId: exercise.exercise.id,
+      name: exercise.exercise.name,
+      setCount: exercise.sets.length,
+      role: "accessory" as const,
+    })),
+  ];
 }
 
 function toProjectedWeekVolumeByMuscle(
@@ -188,6 +214,7 @@ function buildFullWeekRows(input: {
         weeklyTarget,
         mev: landmarks.mev,
         mav: landmarks.mav,
+        mrv: landmarks.mrv,
         deltaToTarget: roundToTenth(projectedFullWeekEffectiveSets - weeklyTarget),
         deltaToMev: roundToTenth(projectedFullWeekEffectiveSets - landmarks.mev),
         deltaToMav: roundToTenth(projectedFullWeekEffectiveSets - landmarks.mav),
@@ -372,6 +399,7 @@ export async function loadProjectedWeekVolumeReport(input: {
       isNext: index === 0,
       exerciseCount: countWorkoutExercises(generation.workout),
       totalSets: countWorkoutSets(generation.workout),
+      exercises: summarizeWorkoutExercises(generation.workout),
       estimatedMinutes: generation.workout.estimatedMinutes ?? null,
       movementPatternCounts: countWorkoutMovementPatterns(generation.workout),
       projectedContributionByMuscle,

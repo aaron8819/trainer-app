@@ -89,6 +89,9 @@ describe("ProgramPage", () => {
             volumeBasis: "actual_completed",
             linkedWorkoutId: null,
             linkedWorkoutStatus: null,
+            exercises: [
+              { exerciseId: "incline-db-bench", name: "Incline DB Bench", setCount: 3, role: "primary" },
+            ],
             impact: null,
           },
           {
@@ -96,11 +99,15 @@ describe("ProgramPage", () => {
             label: "Lower 1",
             sessionInWeek: 2,
             uiState: "planned",
-            statusLabel: "Planned",
+            statusLabel: "Planned next",
             statusDescription: "Session 2 already has a planned workout ready to log.",
             volumeBasis: "projected_next",
             linkedWorkoutId: "w-next",
             linkedWorkoutStatus: "planned",
+            exercises: [
+              { exerciseId: "tbar-row", name: "T-Bar Row", setCount: 3, role: "primary" },
+              { exerciseId: "face-pull", name: "Face Pull", setCount: 2, role: "accessory" },
+            ],
             impact: {
               topMuscles: [
                 { muscle: "Lats", projectedEffectiveSets: 3 },
@@ -108,7 +115,7 @@ describe("ProgramPage", () => {
                 { muscle: "Rear Delts", projectedEffectiveSets: 1.5 },
               ],
               hiddenMuscleCount: 2,
-              summaryLabel: "Projected: adds Lats, Upper Back, Rear Delts +2 more",
+              summaryLabel: "Lats +3 \u00b7 Upper Back +2 \u00b7 Rear Delts +1.5 \u00b7 +2 more",
             },
           },
         ],
@@ -283,11 +290,13 @@ describe("ProgramPage", () => {
     expect(screen.getByRole("button", { name: "1 on target" })).toBeInTheDocument();
     expect(screen.getByText("Upper 1")).toBeInTheDocument();
     expect(screen.getByText("Lower 1")).toBeInTheDocument();
-    expect(screen.getByText("Impact")).toBeInTheDocument();
+    expect(screen.getAllByText("Exercises").length).toBeGreaterThan(0);
+    expect(screen.getByText("T-Bar Row")).toBeInTheDocument();
+    expect(screen.getAllByText("3 sets").length).toBeGreaterThan(0);
+    expect(screen.getByText("Projected weekly contribution")).toBeInTheDocument();
     expect(
-      screen.getByText(/Projected: adds Lats, Upper Back, Rear Delts \+2 more/)
+      screen.getByText(/Lats \+3 · Upper Back \+2 · Rear Delts \+1.5 · \+2 more/)
     ).toBeInTheDocument();
-    expect(screen.getByText(/Lats 3 • Upper Back 2 • Rear Delts 1.5 • \+2 more/)).toBeInTheDocument();
     expect(screen.getByText("Chest")).toBeInTheDocument();
     expect(screen.getByText("Quads")).toBeInTheDocument();
     expect(screen.getByText("-4 sets")).toBeInTheDocument();
@@ -341,11 +350,12 @@ describe("ProgramPage", () => {
             label: "Upper 1",
             sessionInWeek: 1,
             uiState: "planned",
-            statusLabel: "Planned",
+            statusLabel: "Planned next",
             statusDescription: "Session 1 already has a planned workout ready to log.",
             volumeBasis: "projected_next",
             linkedWorkoutId: "w-next",
             linkedWorkoutStatus: "planned",
+            exercises: [],
             impact: null,
           },
         ],
@@ -395,6 +405,7 @@ describe("ProgramPage", () => {
     render(ui);
 
     expect(screen.getByRole("heading", { name: "Ordered weekly slots" })).toBeInTheDocument();
+    expect(screen.getByText("Exercises unavailable")).toBeInTheDocument();
     expect(screen.getByText("OptionalWeekCompletion:/log/workout-closeout")).toBeInTheDocument();
     expect(screen.getAllByText(/Upper 1/)).toHaveLength(1);
   });

@@ -61,10 +61,14 @@ function normalizeTargetSlotIds(targetSlotIds: string[]): TargetSlotId[] {
   return [...TARGET_SLOT_IDS];
 }
 
-function cloneExercises(exercises: SeedSlotExercise[]): SeedSlotExercise[] {
+function cloneExercises(
+  exercises: SeedSlotExercise[]
+): Array<{ exerciseId: string; name?: string; role: SeedSlotExercise["role"]; setCount?: number }> {
   return exercises.map((exercise) => ({
     exerciseId: exercise.exerciseId,
+    ...(exercise.name ? { name: exercise.name } : {}),
     role: exercise.role,
+    ...(exercise.setCount != null ? { setCount: exercise.setCount } : {}),
   }));
 }
 
@@ -73,7 +77,10 @@ function exercisesEqual(left: SeedSlotExercise[], right: SeedSlotExercise[]): bo
     left.length === right.length &&
     left.every(
       (exercise, index) =>
-        exercise.exerciseId === right[index]?.exerciseId && exercise.role === right[index]?.role
+        exercise.exerciseId === right[index]?.exerciseId &&
+        exercise.name === right[index]?.name &&
+        exercise.role === right[index]?.role &&
+        exercise.setCount === right[index]?.setCount
     )
   );
 }

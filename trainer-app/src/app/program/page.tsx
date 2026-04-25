@@ -32,8 +32,8 @@ function formatBlockLabel(value: string | null): string {
     .join(" ");
 }
 
-function formatProjectedSetCount(value: number): string {
-  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+function formatPlannedSetLabel(value: number): string {
+  return `${value} ${value === 1 ? "set" : "sets"}`;
 }
 
 export default async function ProgramPage() {
@@ -205,6 +205,7 @@ export default async function ProgramPage() {
 
             <div className="mt-5 grid gap-3">
               {currentWeekPlan.slots.map((slot) => {
+                const slotExercises = slot.exercises ?? [];
                 return (
                   <div
                     key={slot.slotId}
@@ -224,26 +225,37 @@ export default async function ProgramPage() {
                           Session {slot.sessionInWeek} of {currentWeekPlan.slots.length}
                         </p>
                         <p className="mt-1 text-xs text-slate-600">{slot.statusDescription}</p>
+                        <div className="mt-3">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                            Exercises
+                          </p>
+                          {slotExercises.length > 0 ? (
+                            <div className="mt-1.5 grid gap-1.5">
+                              {slotExercises.map((exercise) => (
+                                <div
+                                  key={`${slot.slotId}:${exercise.exerciseId ?? exercise.name}`}
+                                  className="flex items-baseline justify-between gap-3 text-sm text-slate-800"
+                                >
+                                  <span className="min-w-0 truncate">{exercise.name}</span>
+                                  <span className="shrink-0 text-xs font-semibold tabular-nums text-slate-600">
+                                    {formatPlannedSetLabel(exercise.setCount)}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="mt-1.5 text-sm text-slate-500">
+                              Exercises unavailable
+                            </p>
+                          )}
+                        </div>
                         {slot.impact ? (
                           <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5">
                             <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-700">
-                              Impact
+                              Projected weekly contribution
                             </p>
                             <p className="mt-1 text-sm font-medium text-slate-900">
                               {slot.impact.summaryLabel}
-                            </p>
-                            <p className="mt-1 text-xs text-slate-600">
-                              {[
-                                ...slot.impact.topMuscles.map(
-                                  (muscle) =>
-                                    `${muscle.muscle} ${formatProjectedSetCount(
-                                      muscle.projectedEffectiveSets
-                                    )}`
-                                ),
-                                ...(slot.impact.hiddenMuscleCount > 0
-                                  ? [`+${slot.impact.hiddenMuscleCount} more`]
-                                  : []),
-                              ].join(" • ")}
                             </p>
                           </div>
                         ) : null}

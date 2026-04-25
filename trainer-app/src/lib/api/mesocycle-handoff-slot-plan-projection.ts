@@ -51,13 +51,21 @@ import {
 
 export type ProjectedSuccessorSlotPlanExercise = {
   exerciseId: string;
+  name: string;
   role: MesocycleExerciseRoleType;
+  setCount: number;
 };
 
 export type ProjectedSuccessorSlotPlan = {
   slotId: string;
   intent: WorkoutSessionIntent;
   exercises: ProjectedSuccessorSlotPlanExercise[];
+};
+
+export type MesocycleSlotPlanSeedExercise = {
+  exerciseId: string;
+  role: MesocycleExerciseRoleType;
+  setCount: number;
 };
 
 export type SuccessorSlotPlanProjection = {
@@ -86,8 +94,15 @@ export type MesocycleSlotPlanSeed = {
   source: "handoff_slot_plan_projection";
   slots: Array<{
     slotId: string;
-    exercises: ProjectedSuccessorSlotPlanExercise[];
+    exercises: MesocycleSlotPlanSeedExercise[];
   }>;
+  diagnostics?: {
+    projectionStatus: "partial_acceptable";
+    protectedCoverage?: {
+      unresolvedProtectedMuscles: ProtectedWeekOneCoverageMuscle[];
+      supportFloorRepairReasons: Partial<Record<ProtectedWeekOneCoverageMuscle, SupportFloorRepairReason[]>>;
+    };
+  };
 };
 
 type SyntheticProjectionContext = {
@@ -178,6 +193,7 @@ function slotIdsAlignWithSlotSequence(input: {
 export function buildMesocycleSlotPlanSeed(input: {
   slotSequence: MesocycleSlotSequence;
   slotPlans: ReadonlyArray<ProjectedSuccessorSlotPlan>;
+  diagnostics?: MesocycleSlotPlanSeed["diagnostics"];
 }): MesocycleSlotPlanSeed {
   if (!slotIdsAlignWithSlotSequence(input)) {
     throw new Error("MESOCYCLE_SLOT_PLAN_SEED_ALIGNMENT_INVALID");
@@ -188,11 +204,23 @@ export function buildMesocycleSlotPlanSeed(input: {
     source: "handoff_slot_plan_projection",
     slots: input.slotPlans.map((slotPlan) => ({
       slotId: slotPlan.slotId,
-      exercises: slotPlan.exercises.map((exercise) => ({
-        exerciseId: exercise.exerciseId,
-        role: exercise.role,
-      })),
+      exercises: slotPlan.exercises.map((exercise) => {
+        const name = exercise.name.trim();
+        if (!name) {
+          throw new Error("MESOCYCLE_SLOT_PLAN_SEED_EXERCISE_NAME_INVALID");
+        }
+        if (!Number.isInteger(exercise.setCount) || exercise.setCount <= 0) {
+          throw new Error("MESOCYCLE_SLOT_PLAN_SEED_SET_COUNT_INVALID");
+        }
+        return {
+          exerciseId: exercise.exerciseId,
+          name,
+          role: exercise.role,
+          setCount: exercise.setCount,
+        };
+      }),
     })),
+    ...(input.diagnostics ? { diagnostics: input.diagnostics } : {}),
   };
 }
 
@@ -584,7 +612,9 @@ function mapWorkoutExercisesToProjectedSlotPlan(
 ): ProjectedSuccessorSlotPlanExercise[] {
   return workoutExercises.map((exercise) => ({
     exerciseId: exercise.exercise.id,
+    name: exercise.exercise.name,
     role,
+    setCount: exercise.sets.length,
   }));
 }
 

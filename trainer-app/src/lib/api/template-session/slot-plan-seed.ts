@@ -12,7 +12,11 @@ import type { MappedGenerationContext } from "./types";
 
 export type NormalizedSeededSlotExercise = {
   exerciseId: string;
+  name?: string;
   role: SlotPlanSeedRole;
+  setCount?: number;
+  hasExplicitName: boolean;
+  hasExplicitSetCount: boolean;
 };
 
 export type NormalizedSeededSlot = {
@@ -28,6 +32,8 @@ export type ResolvedSeededSlotPlan = {
   sequenceIndex: number;
   exercises: NormalizedSeededSlotExercise[];
   templateExercises: TemplateExerciseInput[];
+  setCountOverrides?: Record<string, number>;
+  usesLegacySetCountFallback: boolean;
 };
 
 function buildUnresolvableSeededSlotPlanError(input: {
@@ -199,6 +205,18 @@ function resolveSeededSlotPlan(input: {
         `Missing exercise ids: ${missingExerciseIds.join(", ")}`,
     };
   }
+  const seedHasMissingSetCounts = selectedSlot.exercises.some(
+    (exercise) => !exercise.hasExplicitSetCount
+  );
+  if (seedHasMissingSetCounts) {
+    console.warn(
+      [
+        "Persisted slot plan seed is missing setCount for seeded runtime replay.",
+        "Using legacy set prescription fallback for compatibility.",
+        `slotId=${selectedSlot.slotId}`,
+      ].join(" ")
+    );
+  }
 
   return {
     slotId: selectedSlot.slotId,
@@ -210,6 +228,17 @@ function resolveSeededSlotPlan(input: {
       orderIndex,
       mesocycleRole: exercise.role,
     })),
+    ...(!seedHasMissingSetCounts
+      ? {
+          setCountOverrides: Object.fromEntries(
+            selectedSlot.exercises.map((exercise) => [
+              exercise.exerciseId,
+              exercise.setCount!,
+            ])
+          ),
+        }
+      : {}),
+    usesLegacySetCountFallback: seedHasMissingSetCounts,
   };
 }
 

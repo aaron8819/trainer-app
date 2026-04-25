@@ -30,6 +30,7 @@ import {
 } from "./muscle-outcome-review";
 import { loadProjectedWeekVolumeReport } from "./projected-week-volume";
 import { isCloseoutSession } from "@/lib/session-semantics/closeout-classifier";
+import { parseSlotPlanSeedJson, type SlotPlanSeedRole } from "./slot-plan-seed-parser";
 import { getUiAuditFixtureForServer } from "@/lib/ui-audit-fixtures/server";
 import type { CanonicalUiState } from "@/lib/ui-state-contract";
 import {
@@ -46,6 +47,7 @@ type ActiveProgramPageMesocycle = {
   sessionsPerWeek: number;
   state: "ACTIVE_ACCUMULATION" | "ACTIVE_DELOAD" | "AWAITING_HANDOFF" | "COMPLETED";
   slotSequenceJson: unknown;
+  slotPlanSeedJson: unknown;
   macroCycle: {
     startDate: Date;
   };
@@ -59,6 +61,18 @@ type CurrentWeekWorkoutRow = {
   selectionMode: string | null;
   selectionMetadata: unknown;
   advancesSplit: boolean | null;
+  exercises?: CurrentWeekWorkoutExerciseRow[];
+};
+
+type CurrentWeekWorkoutExerciseRow = {
+  exerciseId: string;
+  orderIndex: number;
+  isMainLift: boolean;
+  exercise: {
+    id: string;
+    name: string;
+  };
+  sets: Array<{ id: string }>;
 };
 
 export type ProgramPageOverview = {
@@ -92,6 +106,13 @@ export type ProgramSlotImpact = {
   summaryLabel: string;
 };
 
+export type ProgramSlotExercise = {
+  exerciseId?: string;
+  name: string;
+  setCount: number;
+  role?: "primary" | "accessory";
+};
+
 export type ProgramCurrentWeekPlanRow = {
   slotId: string;
   label: string;
@@ -102,6 +123,7 @@ export type ProgramCurrentWeekPlanRow = {
   volumeBasis: "actual_completed" | "projected_next" | "projected_remaining" | "optional";
   linkedWorkoutId: string | null;
   linkedWorkoutStatus: string | null;
+  exercises?: ProgramSlotExercise[];
   impact: ProgramSlotImpact | null;
 };
 
@@ -152,11 +174,22 @@ export type ProgramVolumeDisplayBadge = {
 export type ProgramVolumeDisplayRow = {
   muscle: string;
   status: MuscleOutcomeStatus;
+  weightedSetsLabel: string;
+  targetLabel: string;
   statusLabel: string;
   statusDescription: string;
   deltaLabel: string;
   comparisonLabel: string;
+  landmarkContext?: ProgramVolumeLandmarkContext;
   badges: ProgramVolumeDisplayBadge[];
+};
+
+export type ProgramVolumeLandmarkContext = {
+  mevLabel: string;
+  mavLabel: string;
+  mrvLabel: string;
+  rangeSummaryLabel: string;
+  positionLabel: string;
 };
 
 export type ProgramPageData = {
@@ -180,8 +213,12 @@ const LINKED_WORKOUT_PRIORITY: Record<WorkoutStatus, number> = {
   SKIPPED: 4,
 };
 const IMPACT_VISIBLE_MUSCLE_COUNT = 3;
-const IMPACT_NEAR_TIE_TOLERANCE = 0.1;
-const IMPACT_COMPARISON_EPSILON = 1e-9;
+
+type LinkedSlotWorkout = {
+  id: string;
+  status: string;
+  exercises: ProgramSlotExercise[];
+};
 
 function isPerformedWorkoutStatus(status: WorkoutStatus): boolean {
   return (PERFORMED_WORKOUT_STATUSES as readonly string[]).includes(status);
@@ -248,12 +285,50 @@ function formatSetCount(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
+function formatSignedCompactSets(value: number): string {
+  return `+${formatSetCount(value)}`;
+}
+
 function formatSignedSetDelta(value: number): string {
   if (value === 0) {
     return "on target";
   }
 
   return `${value > 0 ? "+" : "-"}${formatSetCount(Math.abs(value))} sets`;
+}
+
+function formatWeightedSetsLabel(value: number): string {
+  return `${formatSetCount(value)} weighted sets`;
+}
+
+function buildVolumeLandmarkContext(input: {
+  effectiveSets: number;
+  mev: number;
+  mav: number;
+  mrv: number;
+}): ProgramVolumeLandmarkContext {
+  const mevLabel = `MEV ${formatSetCount(input.mev)}`;
+  const mavLabel = `MAV ${formatSetCount(input.mav)}`;
+  const mrvLabel = `MRV ${formatSetCount(input.mrv)}`;
+  let positionLabel = "Current: within MEV-MAV";
+
+  if (input.effectiveSets < input.mev) {
+    positionLabel = "Current: below MEV";
+  } else if (input.effectiveSets === input.mev) {
+    positionLabel = "Current: at MEV";
+  } else if (input.effectiveSets > input.mav && input.effectiveSets < input.mrv) {
+    positionLabel = "Current: above MAV";
+  } else if (input.effectiveSets >= input.mrv) {
+    positionLabel = "Current: at or above MRV";
+  }
+
+  return {
+    mevLabel,
+    mavLabel,
+    mrvLabel,
+    rangeSummaryLabel: `${mevLabel} · ${mavLabel} · ${mrvLabel}`,
+    positionLabel,
+  };
 }
 
 function formatOutcomeStatusLabel(status: MuscleOutcomeStatus): string {
@@ -313,6 +388,7 @@ function buildProgramVolumeDisplayRow(input: {
   targetSets: number;
   delta: number;
   mev: number;
+  mav: number;
   mrv: number;
   completedEffectiveSets: number;
   projectedNextSessionEffectiveSets: number;
@@ -334,6 +410,8 @@ function buildProgramVolumeDisplayRow(input: {
   return {
     muscle: input.muscle,
     status: input.status,
+    weightedSetsLabel: formatWeightedSetsLabel(input.projectedFullWeekEffectiveSets),
+    targetLabel: `Target: ${formatWeightedSetsLabel(input.targetSets)}`,
     statusLabel,
     statusDescription:
       weeklyStatus === "below_mev"
@@ -341,6 +419,12 @@ function buildProgramVolumeDisplayRow(input: {
         : `${projectedLabel} vs ${targetLabel}; ${completedLabel} so far.`,
     deltaLabel: formatSignedSetDelta(input.delta),
     comparisonLabel: `${projectedLabel} vs ${targetLabel}`,
+    landmarkContext: buildVolumeLandmarkContext({
+      effectiveSets: input.projectedFullWeekEffectiveSets,
+      mev: input.mev,
+      mav: input.mav,
+      mrv: input.mrv,
+    }),
     badges: [
       {
         status: weeklyStatus,
@@ -391,7 +475,8 @@ function buildWeekCompletionOutlook(input: {
       delta: outcome.delta,
       percentDelta: outcome.percentDelta,
       mev: row.mev,
-      mrv: row.mav,
+      mav: row.mav,
+      mrv: row.mrv ?? row.mav,
       completedEffectiveSets: row.completedEffectiveSets,
       projectedNextSessionEffectiveSets: row.projectedNextSessionEffectiveSets,
       projectedRemainingWeekEffectiveSets: row.projectedRemainingWeekEffectiveSets,
@@ -420,6 +505,7 @@ function buildWeekCompletionOutlook(input: {
       targetSets: row.targetSets,
       delta: row.delta,
       mev: row.mev,
+      mav: row.mav,
       mrv: row.mrv,
       completedEffectiveSets: row.completedEffectiveSets,
       projectedNextSessionEffectiveSets: row.projectedNextSessionEffectiveSets,
@@ -458,32 +544,107 @@ function buildProgramSlotImpact(input: {
     return null;
   }
 
-  const baseVisibleCount = Math.min(IMPACT_VISIBLE_MUSCLE_COUNT, rankedMuscles.length);
-  const cutoff = rankedMuscles[baseVisibleCount - 1]?.[1] ?? 0;
-  const visibleEntries = rankedMuscles.filter(
-    ([, projectedEffectiveSets], index) =>
-      index < baseVisibleCount ||
-      projectedEffectiveSets >= cutoff - IMPACT_NEAR_TIE_TOLERANCE - IMPACT_COMPARISON_EPSILON
-  );
+  const visibleEntries = rankedMuscles.slice(0, IMPACT_VISIBLE_MUSCLE_COUNT);
   const topMuscles = visibleEntries.map(([muscle, projectedEffectiveSets]) => ({
     muscle,
     projectedEffectiveSets,
   }));
   const hiddenMuscleCount = rankedMuscles.length - topMuscles.length;
-  const overflowLabel = hiddenMuscleCount > 0 ? ` +${hiddenMuscleCount} more` : "";
+  const overflowLabel = hiddenMuscleCount > 0 ? ` \u00b7 +${hiddenMuscleCount} more` : "";
 
   return {
     topMuscles,
     hiddenMuscleCount,
-    summaryLabel: `Projected: adds ${topMuscles
-      .map((muscle) => muscle.muscle)
-      .join(", ")}${overflowLabel}`,
+    summaryLabel: `${topMuscles
+      .map((muscle) => `${muscle.muscle} ${formatSignedCompactSets(muscle.projectedEffectiveSets)}`)
+      .join(" \u00b7 ")}${overflowLabel}`,
   };
 }
 
-function attachProjectedSlotImpacts(input: {
+function mapSeedRole(role: SlotPlanSeedRole): ProgramSlotExercise["role"] {
+  return role === "CORE_COMPOUND" ? "primary" : "accessory";
+}
+
+function mapWorkoutExercisesToProgramSlotExercises(
+  exercises: readonly CurrentWeekWorkoutExerciseRow[] | undefined
+): ProgramSlotExercise[] {
+  return [...(exercises ?? [])]
+    .sort((left, right) => left.orderIndex - right.orderIndex)
+    .map((exercise) => ({
+      exerciseId: exercise.exerciseId,
+      name: exercise.exercise.name,
+      setCount: exercise.sets.length,
+      role: exercise.isMainLift ? "primary" : "accessory",
+    }));
+}
+
+function collectSeedExerciseIds(slotPlanSeedJson: unknown): string[] {
+  const seed = parseSlotPlanSeedJson(slotPlanSeedJson);
+  if (!seed) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      seed.slots.flatMap((slot) => slot.exercises.map((exercise) => exercise.exerciseId))
+    )
+  );
+}
+
+function resolveSeededSlotExercises(input: {
+  slotPlanSeedJson?: unknown;
+  slotId: string;
+  linkedExercises?: ProgramSlotExercise[];
+  projectedExercises?: ProgramSlotExercise[];
+  exerciseNameById?: Record<string, string>;
+}): ProgramSlotExercise[] {
+  const seed = parseSlotPlanSeedJson(input.slotPlanSeedJson);
+  const seedSlot = seed?.slots.find((slot) => slot.slotId === input.slotId) ?? null;
+  if (!seedSlot) {
+    return [];
+  }
+
+  const linkedById = new Map(
+    (input.linkedExercises ?? [])
+      .filter((exercise) => exercise.exerciseId)
+      .map((exercise) => [exercise.exerciseId!, exercise])
+  );
+  const projectedById = new Map(
+    (input.projectedExercises ?? [])
+      .filter((exercise) => exercise.exerciseId)
+      .map((exercise) => [exercise.exerciseId!, exercise])
+  );
+
+  const exercises = seedSlot.exercises.flatMap((seedExercise) => {
+    const matchedExercise =
+      linkedById.get(seedExercise.exerciseId) ?? projectedById.get(seedExercise.exerciseId) ?? null;
+    const name =
+      seedExercise.name ??
+      input.exerciseNameById?.[seedExercise.exerciseId] ??
+      matchedExercise?.name ??
+      null;
+    const setCount = seedExercise.setCount ?? matchedExercise?.setCount ?? null;
+
+    if (!name || typeof setCount !== "number") {
+      return [];
+    }
+
+    return [{
+      exerciseId: seedExercise.exerciseId,
+      name,
+      setCount,
+      role: mapSeedRole(seedExercise.role),
+    } satisfies ProgramSlotExercise];
+  });
+
+  return exercises.length === seedSlot.exercises.length ? exercises : [];
+}
+
+function attachProjectedSlotDetails(input: {
   currentWeekPlan: ProgramCurrentWeekPlan;
   report: Awaited<ReturnType<typeof loadProjectedWeekVolumeReport>>;
+  slotPlanSeedJson?: unknown;
+  seedExerciseNameById?: Record<string, string>;
 }): ProgramCurrentWeekPlan {
   const projectedSessionBySlotId = new Map(
     input.report.projectedSessions
@@ -495,9 +656,29 @@ function attachProjectedSlotImpacts(input: {
     ...input.currentWeekPlan,
     slots: input.currentWeekPlan.slots.map((slot) => {
       const projectedSession = projectedSessionBySlotId.get(slot.slotId);
+      const projectedExercises =
+        (projectedSession?.exercises ?? []).map((exercise) => ({
+          exerciseId: exercise.exerciseId,
+          name: exercise.name,
+          setCount: exercise.setCount,
+          role: exercise.role,
+        } satisfies ProgramSlotExercise)) ?? [];
+      const seededExercises = resolveSeededSlotExercises({
+        slotPlanSeedJson: input.slotPlanSeedJson,
+        slotId: slot.slotId,
+        linkedExercises: slot.exercises ?? [],
+        projectedExercises,
+        exerciseNameById: input.seedExerciseNameById,
+      });
 
       return {
         ...slot,
+        exercises:
+          seededExercises.length > 0
+            ? seededExercises
+            : (slot.exercises ?? []).length > 0
+              ? slot.exercises
+              : projectedExercises,
         impact: projectedSession
           ? buildProgramSlotImpact({
               projectedContributionByMuscle: projectedSession.projectedContributionByMuscle,
@@ -510,8 +691,8 @@ function attachProjectedSlotImpacts(input: {
 
 function buildSlotWorkoutLookup(
   workouts: CurrentWeekWorkoutRow[]
-): Map<string, { id: string; status: string }> {
-  const bySlotId = new Map<string, { id: string; status: string; priority: number }>();
+): Map<string, LinkedSlotWorkout> {
+  const bySlotId = new Map<string, LinkedSlotWorkout & { priority: number }>();
 
   for (const workout of workouts) {
     if (isCloseoutSession(workout.selectionMetadata)) {
@@ -529,6 +710,7 @@ function buildSlotWorkoutLookup(
       bySlotId.set(slotId, {
         id: workout.id,
         status: workout.status.toLowerCase(),
+        exercises: mapWorkoutExercisesToProgramSlotExercises(workout.exercises),
         priority,
       });
     }
@@ -537,7 +719,7 @@ function buildSlotWorkoutLookup(
   return new Map(
     Array.from(bySlotId.entries()).map(([slotId, workout]) => [
       slotId,
-      { id: workout.id, status: workout.status },
+      { id: workout.id, status: workout.status, exercises: workout.exercises },
     ])
   );
 }
@@ -717,7 +899,7 @@ function resolvePlanRowPresentation(input: {
   if (linkedStatus === "planned") {
     return {
       uiState: "planned",
-      statusLabel: "Planned",
+      statusLabel: input.isNextSlot ? "Planned next" : "Planned",
       statusDescription: `${sessionLabel} already has a planned workout ready to log.`,
       volumeBasis: input.isNextSlot ? "projected_next" : "projected_remaining",
     };
@@ -743,6 +925,8 @@ function resolvePlanRowPresentation(input: {
 export function buildProgramCurrentWeekPlan(input: {
   week: number;
   slotSequenceJson?: unknown;
+  slotPlanSeedJson?: unknown;
+  seedExerciseNameById?: Record<string, string>;
   weeklySchedule: string[];
   currentWeekWorkouts: CurrentWeekWorkoutRow[];
   nextWorkoutContext: NextWorkoutContext;
@@ -770,11 +954,22 @@ export function buildProgramCurrentWeekPlan(input: {
     remainingSlots,
   });
   const slotWorkoutLookup = buildSlotWorkoutLookup(input.currentWeekWorkouts);
+  const workoutById = new Map(
+    input.currentWeekWorkouts.map((workout) => [
+      workout.id,
+      {
+        id: workout.id,
+        status: workout.status.toLowerCase(),
+        exercises: mapWorkoutExercisesToProgramSlotExercises(workout.exercises),
+      } satisfies LinkedSlotWorkout,
+    ])
+  );
   const existingNextWorkout =
     input.nextWorkoutContext.existingWorkoutId && input.nextWorkoutContext.selectedIncompleteStatus
-      ? {
+      ? workoutById.get(input.nextWorkoutContext.existingWorkoutId) ?? {
           id: input.nextWorkoutContext.existingWorkoutId,
           status: input.nextWorkoutContext.selectedIncompleteStatus,
+          exercises: [],
         }
       : null;
 
@@ -786,6 +981,13 @@ export function buildProgramCurrentWeekPlan(input: {
       const linkedWorkout =
         slotWorkoutLookup.get(slot.slotId) ??
         (isNextSlot ? existingNextWorkout : null);
+      const linkedExercises = linkedWorkout?.exercises ?? [];
+      const seededExercises = resolveSeededSlotExercises({
+        slotPlanSeedJson: input.slotPlanSeedJson,
+        slotId: slot.slotId,
+        linkedExercises,
+        exerciseNameById: input.seedExerciseNameById,
+      });
       const presentation = resolvePlanRowPresentation({
         slot,
         isCompletedSlot,
@@ -803,6 +1005,7 @@ export function buildProgramCurrentWeekPlan(input: {
         ...presentation,
         linkedWorkoutId: linkedWorkout?.id ?? null,
         linkedWorkoutStatus: linkedWorkout?.status ?? null,
+        exercises: seededExercises.length > 0 ? seededExercises : linkedExercises,
         impact: null,
       };
     }),
@@ -839,6 +1042,25 @@ async function loadCurrentWeekWorkouts(input: {
       selectionMode: true,
       selectionMetadata: true,
       advancesSplit: true,
+      exercises: {
+        orderBy: { orderIndex: "asc" },
+        select: {
+          exerciseId: true,
+          orderIndex: true,
+          isMainLift: true,
+          exercise: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          sets: {
+            select: {
+              id: true,
+            },
+          },
+        },
+      },
     },
   });
 }
@@ -854,6 +1076,7 @@ async function loadCurrentWeekPlan(input: {
 }): Promise<{
   plan: ProgramCurrentWeekPlan | null;
   closeout: ProgramCloseoutSummary | null;
+  seedExerciseNameById: Record<string, string>;
 }> {
   const mesoStart = new Date(input.activeMesocycle.macroCycle.startDate);
   mesoStart.setDate(mesoStart.getDate() + input.activeMesocycle.startWeek * 7);
@@ -864,7 +1087,8 @@ async function loadCurrentWeekPlan(input: {
       ? currentWeekStart
       : computeMesoWeekStart(mesoStart, closeoutTargetWeek);
 
-  const [constraints, currentWeekWorkouts, closeoutWeekWorkouts] = await Promise.all([
+  const seedExerciseIds = collectSeedExerciseIds(input.activeMesocycle.slotPlanSeedJson);
+  const [constraints, currentWeekWorkouts, closeoutWeekWorkouts, seedExercises] = await Promise.all([
     prisma.constraints.findUnique({
       where: { userId: input.userId },
       select: { weeklySchedule: true },
@@ -883,12 +1107,23 @@ async function loadCurrentWeekPlan(input: {
           week: closeoutTargetWeek,
           weekStart: closeoutWeekStart,
         }),
+    seedExerciseIds.length > 0
+      ? prisma.exercise.findMany({
+          where: { id: { in: seedExerciseIds } },
+          select: { id: true, name: true },
+        })
+      : Promise.resolve([]),
   ]);
+  const seedExerciseNameById = Object.fromEntries(
+    seedExercises.map((exercise) => [exercise.id, exercise.name])
+  );
 
   return {
     plan: buildProgramCurrentWeekPlan({
       week: input.currentWeek,
       slotSequenceJson: input.activeMesocycle.slotSequenceJson,
+      slotPlanSeedJson: input.activeMesocycle.slotPlanSeedJson,
+      seedExerciseNameById,
       weeklySchedule: (constraints?.weeklySchedule ?? []).map((intent) => intent.toLowerCase()),
       currentWeekWorkouts,
       nextWorkoutContext: input.nextWorkoutContext,
@@ -902,6 +1137,7 @@ async function loadCurrentWeekPlan(input: {
         weekCloseStatus: input.weekCloseStatus,
       })
     ),
+    seedExerciseNameById,
   };
 }
 
@@ -924,6 +1160,7 @@ export async function loadProgramPageData(userId: string): Promise<ProgramPageDa
         sessionsPerWeek: true,
         state: true,
         slotSequenceJson: true,
+        slotPlanSeedJson: true,
         macroCycle: {
           select: { startDate: true },
         },
@@ -977,9 +1214,11 @@ export async function loadProgramPageData(userId: string): Promise<ProgramPageDa
     : null;
   const currentWeekPlanWithImpacts =
     projectedWeekReport && currentWeekPlan
-      ? attachProjectedSlotImpacts({
+      ? attachProjectedSlotDetails({
           report: projectedWeekReport,
           currentWeekPlan,
+          slotPlanSeedJson: activeMesocycle?.slotPlanSeedJson,
+          seedExerciseNameById: currentWeekSurface?.seedExerciseNameById,
         })
       : currentWeekPlan;
 

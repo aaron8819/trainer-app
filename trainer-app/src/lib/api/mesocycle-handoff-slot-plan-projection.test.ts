@@ -781,7 +781,7 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     expect(first).toEqual(second);
   });
 
-  it("keeps projected slot-plan seeds on the existing minimal exercise shape", () => {
+  it("keeps projected slot-plan seeds minimal while preserving exercise names and final set counts", () => {
     const design = buildDesign();
     const slotSequence = {
       version: 1 as const,
@@ -797,7 +797,9 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
         exercises: [
           {
             exerciseId: index === 0 ? "plank" : `exercise-${index}`,
+            name: index === 0 ? "Plank" : `Exercise ${index}`,
             role: "ACCESSORY",
+            setCount: index + 2,
           },
         ],
       })),
@@ -805,10 +807,41 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
 
     expect(seed.slots[0]?.exercises[0]).toEqual({
       exerciseId: "plank",
+      name: "Plank",
       role: "ACCESSORY",
+      setCount: 2,
     });
-    expect(seed.slots[0]?.exercises[0]).not.toHaveProperty("setCount");
     expect(seed.slots[0]).not.toHaveProperty("intent");
+  });
+
+  it("builds seeds from the final repaired projection set counts", () => {
+    const projected = projectSuccessorSlotPlansFromSnapshot({
+      userId: "user-1",
+      source: buildSource(),
+      design: buildDesign(buildRepairSensitiveDraft()),
+      snapshot: buildProtectedCoverageSatisfiedSnapshot(),
+      now: new Date("2026-03-19T12:00:00.000Z"),
+    });
+    expect("error" in projected).toBe(false);
+    if ("error" in projected) return;
+
+    const seed = buildMesocycleSlotPlanSeed({
+      slotSequence: {
+        version: 1,
+        source: "handoff_draft",
+        sequenceMode: "ordered_flexible",
+        slots: buildDesign(buildRepairSensitiveDraft()).structure.slots,
+      },
+      slotPlans: projected.slotPlans,
+    });
+    const seededExercises = seed.slots.flatMap((slot) => slot.exercises);
+
+    expect(seededExercises.find((exercise) => exercise.exerciseId.includes("calf"))?.setCount)
+      .toBeGreaterThanOrEqual(4);
+    expect(seededExercises.find((exercise) => exercise.exerciseId === "lateral-raise")?.setCount)
+      .toBeGreaterThanOrEqual(4);
+    expect(seededExercises.every((exercise) => exercise.setCount > 0))
+      .toBe(true);
   });
 
   it("projects repeated intents into distinct slot plans in slot order", () => {

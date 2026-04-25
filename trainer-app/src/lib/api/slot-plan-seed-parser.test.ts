@@ -12,8 +12,8 @@ describe("parseSlotPlanSeedJson", () => {
           {
             slotId: " upper_a ",
             exercises: [
-              { exerciseId: " bench ", role: "CORE_COMPOUND" },
-              { exerciseId: " row ", role: "ACCESSORY" },
+              { exerciseId: " bench ", name: " Incline DB Bench ", role: "CORE_COMPOUND", setCount: 4 },
+              { exerciseId: " row ", name: " T-Bar Row ", role: "ACCESSORY", setCount: 3 },
             ],
           },
         ],
@@ -25,15 +25,29 @@ describe("parseSlotPlanSeedJson", () => {
         {
           slotId: "upper_a",
           exercises: [
-            { exerciseId: "bench", role: "CORE_COMPOUND" },
-            { exerciseId: "row", role: "ACCESSORY" },
+            {
+              exerciseId: "bench",
+              name: "Incline DB Bench",
+              role: "CORE_COMPOUND",
+              setCount: 4,
+              hasExplicitName: true,
+              hasExplicitSetCount: true,
+            },
+            {
+              exerciseId: "row",
+              name: "T-Bar Row",
+              role: "ACCESSORY",
+              setCount: 3,
+              hasExplicitName: true,
+              hasExplicitSetCount: true,
+            },
           ],
         },
       ],
     });
   });
 
-  it("keeps source optional so callers own source fallback behavior", () => {
+  it("keeps source and setCount optional so callers own legacy fallback behavior", () => {
     expect(
       parseSlotPlanSeedJson({
         version: 1,
@@ -50,7 +64,12 @@ describe("parseSlotPlanSeedJson", () => {
       slots: [
         {
           slotId: "upper_a",
-          exercises: [{ exerciseId: "bench", role: "CORE_COMPOUND" }],
+          exercises: [{
+            exerciseId: "bench",
+            role: "CORE_COMPOUND",
+            hasExplicitName: false,
+            hasExplicitSetCount: false,
+          }],
         },
       ],
     });
@@ -84,6 +103,17 @@ describe("parseSlotPlanSeedJson", () => {
           {
             slotId: "upper_a",
             exercises: [{ exerciseId: "", role: "ACCESSORY" }],
+          },
+        ],
+      })
+    ).toBeNull();
+    expect(
+      parseSlotPlanSeedJson({
+        version: 1,
+        slots: [
+          {
+            slotId: "upper_a",
+            exercises: [{ exerciseId: "bench", role: "ACCESSORY", setCount: 0 }],
           },
         ],
       })

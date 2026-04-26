@@ -1760,6 +1760,40 @@ describe("buildPlanningRealitySummary", () => {
                     ],
                   },
                 ],
+                exerciseClassUnresolvedCauses: [
+                    {
+                      slotId: "upper_b",
+                      muscle: "Chest",
+                      targetStatus: "hard",
+                      demandType: "direct_required",
+                      initialAlignment: "missing",
+                      finalAlignment: "partial",
+                      owningCause: "duplicate_continuity_conflict",
+                      recommendedOwner: "duplicate_continuity_policy",
+                      behaviorReadiness: "needs_duplicate_policy",
+                      evidence: ["duplicate:Incline DB Bench"],
+                      limitations: [
+                        "diagnostic_read_only_no_generation_scoring_repair_seed_or_runtime_effect",
+                      ],
+                    },
+                    {
+                      slotId: "lower_b",
+                      muscle: "Calves",
+                      targetStatus: "soft",
+                      demandType: "soft_direct_allowed",
+                      initialAlignment: "satisfied",
+                      finalAlignment: "satisfied",
+                      owningCause: "duplicate_continuity_conflict",
+                      recommendedOwner: "duplicate_continuity_policy",
+                      behaviorReadiness: "needs_duplicate_policy",
+                      evidence: [
+                        "same_session_duplicate_class:Calves:calf_raise",
+                      ],
+                      limitations: [
+                        "diagnostic_read_only_no_generation_scoring_repair_seed_or_runtime_effect",
+                      ],
+                    },
+                ],
                 exerciseClassAlignment: {
                   version: 1,
                   source: "diagnostic_shadow_planner",
@@ -1875,6 +1909,16 @@ describe("buildPlanningRealitySummary", () => {
         "- Chest: duplicate Incline / distinct class unresolved",
         "- lower_b Hamstrings: hinge + curl satisfied",
         "- Calves: duplicate isolation class warning",
+        "Exercise Class Unresolved Causes",
+        "--------------------------------",
+        "selection blind spots: 0",
+        "duplicate/continuity conflicts: 2",
+        "support-floor late repairs: 0",
+        "repair identity churn: 0",
+        "diagnostic-only: 0",
+        "- Chest: duplicate continuity conflict",
+        "- lower_b Hamstrings: class satisfied; duplicate risk separate",
+        "- Calves: duplicate isolation policy",
       ])
     );
   });

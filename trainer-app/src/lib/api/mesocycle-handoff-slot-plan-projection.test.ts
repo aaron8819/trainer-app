@@ -288,6 +288,16 @@ function getClassAlignment(
     ?.muscleAlignments.find((row) => row.muscle === muscle);
 }
 
+function getClassCause(
+  diagnostic: ReturnType<typeof buildWeeklyDemandSlotAllocationDiagnostic>,
+  slotId: string,
+  muscle: string,
+) {
+  return diagnostic.exerciseClassUnresolvedCauses.find(
+    (row) => row.slotId === slotId && row.muscle === muscle,
+  );
+}
+
 function buildSnapshot(): PreloadedGenerationSnapshot {
   return {
     context: {
@@ -2324,6 +2334,7 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
         unresolvedClassIntentCount: expect.any(Number),
       }),
     });
+    expect(diagnostic?.exerciseClassUnresolvedCauses).toEqual(expect.any(Array));
     expect(JSON.stringify(diagnostic?.exerciseClassAlignment).length).toBeLessThan(30000);
     expect(JSON.stringify(projected.slotPlans)).not.toContain(
       "exerciseClassAlignment",
@@ -2474,6 +2485,11 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
         "chest_isolation",
       ]),
       limitations: expect.arrayContaining(["lower_slots_forbid_chest_targeting"]),
+    });
+    expect(getClassCause(diagnostic!, "lower_b", "Chest")).toMatchObject({
+      owningCause: "diagnostic_only_not_actionable",
+      recommendedOwner: "leave_unresolved",
+      behaviorReadiness: "do_not_act",
     });
     expect(upperBSideDelts).toMatchObject({
       targetStatus: "soft",
@@ -3988,6 +4004,14 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
         expect.stringContaining("duplicate:Incline DB Bench"),
       ]),
     });
+    expect(getClassCause(diagnostic, "upper_b", "Chest")).toMatchObject({
+      owningCause: "duplicate_continuity_conflict",
+      recommendedOwner: "duplicate_continuity_policy",
+      behaviorReadiness: "needs_duplicate_policy",
+      evidence: expect.arrayContaining([
+        expect.stringContaining("duplicate:Incline DB Bench"),
+      ]),
+    });
   });
 
   it("marks lower_b Hamstrings dirty when Stiff-Legged Deadlift carries concentration or cap cleanup pressure", () => {
@@ -4215,7 +4239,240 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
         }),
       ]),
     });
+    expect(getClassCause(diagnostic, "lower_b", "Hamstrings")).toMatchObject({
+      owningCause: "repair_identity_churn",
+      recommendedOwner: "repair_safety_net",
+    });
+    expect(getClassCause(diagnostic, "lower_b", "Hamstrings")).not.toMatchObject({
+      owningCause: "inventory_classification_gap",
+    });
     expect(diagnostic.exerciseClassAlignment.summary.identityChurnCount).toBeGreaterThanOrEqual(1);
+  });
+
+  it("classifies unresolved class intent with visible compatible candidate and capacity as selection blind spot", () => {
+    const slotSequence = [{ slotId: "lower_b", intent: "LOWER" as const }];
+    const sldl = makeProjectedExercise({
+      id: "sldl",
+      name: "SLDL",
+      movementPatterns: ["hinge"],
+      primaryMuscles: ["Hamstrings"],
+      sets: 3,
+      isMainLift: true,
+      stimulusProfile: { hamstrings: 1, glutes: 0.5, lower_back: 0.4 },
+    });
+    const nordic = makeProjectedExercise({
+      id: "nordic-hamstring-curl",
+      name: "Nordic Hamstring Curl",
+      movementPatterns: ["flexion"],
+      primaryMuscles: ["Hamstrings"],
+      sets: 3,
+      isMainLift: false,
+      isCompound: false,
+      stimulusProfile: { hamstrings: 1 },
+    });
+
+    const diagnostic = buildWeeklyDemandSlotAllocationDiagnostic({
+      activeMesocycle: buildSource() as never,
+      slotSequence,
+      exerciseLibrary: [sldl.exercise, nordic.exercise] as never,
+      initialProjectedSlots: [
+        makeProjectedSlotWithContributions({
+          slotId: "lower_b",
+          intent: "LOWER",
+          workout: makeProjectedWorkout({ mainLifts: [sldl] }),
+        }),
+      ],
+      finalProjectedSlots: [
+        makeProjectedSlotWithContributions({
+          slotId: "lower_b",
+          intent: "LOWER",
+          workout: makeProjectedWorkout({ mainLifts: [sldl] }),
+        }),
+      ],
+      weeklyObligationPlan: weeklyObligationPlan({
+        Hamstrings: {
+          targetSets: 5,
+          allocatedSlots: [
+            { slotId: "lower_b", minEffectiveSets: 5, priority: "primary" },
+          ],
+        },
+      }),
+      weeklyObligationEvaluations: [],
+      protectedCoverage: {
+        muscles: [],
+        deficitsBelowMev: [],
+        deficitsBelowPracticalFloor: [],
+        unresolvedProtectedMuscles: [],
+      },
+      supportFloorRepairReasons: {},
+      programQualityAppliedDiagnostics: [],
+      programQualityEvaluation: {
+        totalPenalty: 0,
+        diagnostics: [],
+        constraintCounts: {},
+      },
+    });
+
+    expect(getClassAlignment(diagnostic, "lower_b", "Hamstrings")).toMatchObject({
+      finalAlignment: "partial",
+    });
+    expect(getClassCause(diagnostic, "lower_b", "Hamstrings")).toMatchObject({
+      owningCause: "selection_blind_spot",
+      recommendedOwner: "selection_objective",
+      behaviorReadiness: "ready_for_bounded_trial",
+      evidence: expect.arrayContaining([
+        "compatible_candidate_visible",
+      ]),
+    });
+  });
+
+  it("does not mark selection blind spots ready when material repair diagnostics are still unresolved", () => {
+    const slotSequence = [{ slotId: "lower_b", intent: "LOWER" as const }];
+    const sldl = makeProjectedExercise({
+      id: "sldl",
+      name: "SLDL",
+      movementPatterns: ["hinge"],
+      primaryMuscles: ["Hamstrings"],
+      sets: 3,
+      isMainLift: true,
+      stimulusProfile: { hamstrings: 1, glutes: 0.5, lower_back: 0.4 },
+    });
+    const nordic = makeProjectedExercise({
+      id: "nordic-hamstring-curl",
+      name: "Nordic Hamstring Curl",
+      movementPatterns: ["flexion"],
+      primaryMuscles: ["Hamstrings"],
+      sets: 3,
+      isMainLift: false,
+      isCompound: false,
+      stimulusProfile: { hamstrings: 1 },
+    });
+    const lateralRaise = makeProjectedExercise({
+      id: "lateral-raise",
+      name: "Lateral Raise",
+      movementPatterns: ["isolation"],
+      primaryMuscles: ["Side Delts"],
+      sets: 3,
+      isMainLift: false,
+      isCompound: false,
+      stimulusProfile: { side_delts: 1 },
+    });
+
+    const diagnostic = buildWeeklyDemandSlotAllocationDiagnostic({
+      activeMesocycle: buildSource() as never,
+      slotSequence,
+      exerciseLibrary: [sldl.exercise, nordic.exercise, lateralRaise.exercise] as never,
+      initialProjectedSlots: [
+        makeProjectedSlotWithContributions({
+          slotId: "lower_b",
+          intent: "LOWER",
+          workout: makeProjectedWorkout({ mainLifts: [sldl] }),
+        }),
+      ],
+      finalProjectedSlots: [
+        makeProjectedSlotWithContributions({
+          slotId: "lower_b",
+          intent: "LOWER",
+          workout: makeProjectedWorkout({
+            mainLifts: [sldl],
+            accessories: [lateralRaise],
+          }),
+        }),
+      ],
+      weeklyObligationPlan: weeklyObligationPlan({
+        Hamstrings: {
+          targetSets: 5,
+          allocatedSlots: [
+            { slotId: "lower_b", minEffectiveSets: 5, priority: "primary" },
+          ],
+        },
+      }),
+      weeklyObligationEvaluations: [],
+      protectedCoverage: {
+        muscles: [],
+        deficitsBelowMev: [],
+        deficitsBelowPracticalFloor: [],
+        unresolvedProtectedMuscles: [],
+      },
+      supportFloorRepairReasons: {},
+      programQualityAppliedDiagnostics: [],
+      programQualityEvaluation: {
+        totalPenalty: 0,
+        diagnostics: [],
+        constraintCounts: {},
+      },
+    });
+
+    expect(diagnostic.repairMaterialityAfterShadowAllocation.length).toBeGreaterThan(0);
+    expect(getClassCause(diagnostic, "lower_b", "Hamstrings")).toMatchObject({
+      owningCause: "selection_blind_spot",
+      behaviorReadiness: "do_not_act",
+    });
+  });
+
+  it("classifies unresolved class intent with no compatible inventory as inventory classification gap", () => {
+    const slotSequence = [{ slotId: "lower_b", intent: "LOWER" as const }];
+    const sldl = makeProjectedExercise({
+      id: "sldl",
+      name: "SLDL",
+      movementPatterns: ["hinge"],
+      primaryMuscles: ["Hamstrings"],
+      sets: 3,
+      isMainLift: true,
+      stimulusProfile: { hamstrings: 1, glutes: 0.5, lower_back: 0.4 },
+    });
+
+    const diagnostic = buildWeeklyDemandSlotAllocationDiagnostic({
+      activeMesocycle: buildSource() as never,
+      slotSequence,
+      exerciseLibrary: [sldl.exercise] as never,
+      initialProjectedSlots: [
+        makeProjectedSlotWithContributions({
+          slotId: "lower_b",
+          intent: "LOWER",
+          workout: makeProjectedWorkout({ mainLifts: [sldl] }),
+        }),
+      ],
+      finalProjectedSlots: [
+        makeProjectedSlotWithContributions({
+          slotId: "lower_b",
+          intent: "LOWER",
+          workout: makeProjectedWorkout({ mainLifts: [sldl] }),
+        }),
+      ],
+      weeklyObligationPlan: weeklyObligationPlan({
+        Hamstrings: {
+          targetSets: 5,
+          allocatedSlots: [
+            { slotId: "lower_b", minEffectiveSets: 5, priority: "primary" },
+          ],
+        },
+      }),
+      weeklyObligationEvaluations: [],
+      protectedCoverage: {
+        muscles: [],
+        deficitsBelowMev: [],
+        deficitsBelowPracticalFloor: [],
+        unresolvedProtectedMuscles: [],
+      },
+      supportFloorRepairReasons: {},
+      programQualityAppliedDiagnostics: [],
+      programQualityEvaluation: {
+        totalPenalty: 0,
+        diagnostics: [],
+        constraintCounts: {},
+      },
+    });
+
+    expect(getClassAlignment(diagnostic, "lower_b", "Hamstrings")).toMatchObject({
+      finalAlignment: "partial",
+    });
+    expect(getClassCause(diagnostic, "lower_b", "Hamstrings")).toMatchObject({
+      owningCause: "inventory_classification_gap",
+      recommendedOwner: "exercise_inventory_classification",
+      behaviorReadiness: "needs_inventory_fix",
+      evidence: expect.arrayContaining(["compatible_candidate_not_visible"]),
+    });
   });
 
   it("reports lower-compatible Hamstrings curl inventory even when curls are not selected in lower_b", () => {
@@ -4488,6 +4745,84 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
         }),
       ]),
     });
+    expect(getClassCause(diagnostic, "upper_b", "Side Delts")).toMatchObject({
+      owningCause: "selection_blind_spot",
+      recommendedOwner: "selection_objective",
+      behaviorReadiness: "ready_for_bounded_trial",
+    });
+  });
+
+  it("classifies support-floor late direct rows as support demand planner ownership", () => {
+    const slotSequence = [
+      { slotId: "upper_a", intent: "UPPER" as const },
+      { slotId: "upper_b", intent: "UPPER" as const },
+    ];
+    const cableLateralRaise = makeProjectedExercise({
+      id: "cable-lateral-raise",
+      name: "Cable Lateral Raise",
+      movementPatterns: ["isolation"],
+      primaryMuscles: ["Side Delts"],
+      sets: 2,
+      isMainLift: false,
+      isCompound: false,
+      stimulusProfile: { side_delts: 1 },
+    });
+
+    const diagnostic = buildWeeklyDemandSlotAllocationDiagnostic({
+      activeMesocycle: buildSource() as never,
+      slotSequence,
+      initialProjectedSlots: [
+        makeProjectedSlotWithContributions({
+          slotId: "upper_a",
+          intent: "UPPER",
+          workout: makeProjectedWorkout({}),
+        }),
+        makeProjectedSlotWithContributions({
+          slotId: "upper_b",
+          intent: "UPPER",
+          workout: makeProjectedWorkout({}),
+        }),
+      ],
+      finalProjectedSlots: [
+        makeProjectedSlotWithContributions({
+          slotId: "upper_a",
+          intent: "UPPER",
+          workout: makeProjectedWorkout({}),
+        }),
+        makeProjectedSlotWithContributions({
+          slotId: "upper_b",
+          intent: "UPPER",
+          workout: makeProjectedWorkout({ accessories: [cableLateralRaise] }),
+        }),
+      ],
+      weeklyObligationPlan: emptyWeeklyObligationPlan(),
+      weeklyObligationEvaluations: [],
+      protectedCoverage: {
+        muscles: [],
+        deficitsBelowMev: [],
+        deficitsBelowPracticalFloor: [],
+        unresolvedProtectedMuscles: [],
+      },
+      supportFloorRepairReasons: {
+        "Side Delts": ["support_accessory_replacement"],
+      },
+      programQualityAppliedDiagnostics: [],
+      programQualityEvaluation: {
+        totalPenalty: 0,
+        diagnostics: [],
+        constraintCounts: {},
+      },
+    });
+
+    expect(getClassAlignment(diagnostic, "upper_b", "Side Delts")).toMatchObject({
+      initialAlignment: "missing",
+      finalAlignment: "satisfied",
+    });
+    expect(getClassCause(diagnostic, "upper_b", "Side Delts")).toMatchObject({
+      owningCause: "support_floor_late_repair",
+      recommendedOwner: "support_demand_planner",
+      behaviorReadiness: "needs_planner_ownership",
+    });
   });
 
   it("shows duplicate calf isolation variants as class-aligned with a duplicate-policy warning", () => {
@@ -4577,6 +4912,10 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
         expect.stringContaining("same_session_duplicate_class:Calves:calf_raise"),
       ]),
     );
+    expect(getClassCause(diagnostic, "lower_b", "Calves")).toMatchObject({
+      owningCause: "duplicate_continuity_conflict",
+      recommendedOwner: "duplicate_continuity_policy",
+    });
   });
 
   it("separates likely avoidable shadow repairs from suspicious downstream repair artifacts", () => {

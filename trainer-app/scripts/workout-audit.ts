@@ -807,6 +807,73 @@ function buildExerciseClassAlignmentSummaryLines(
   ];
 }
 
+function formatExerciseClassCauseLabel(cause: string): string {
+  return cause.replace(/_/g, " ");
+}
+
+function buildExerciseClassUnresolvedCauseSummaryLines(
+  alignment:
+    | PlanningRealityDiagnostic["exerciseClassAlignment"]
+    | null
+    | undefined,
+  unresolvedCauses:
+    | PlanningRealityDiagnostic["exerciseClassUnresolvedCauses"]
+    | null
+    | undefined
+): string[] | null {
+  const rows = asArray(unresolvedCauses);
+  if (rows.length === 0) {
+    return null;
+  }
+
+  const countCause = (cause: string): number =>
+    rows.filter((row) => row.owningCause === cause).length;
+  const notable: string[] = [];
+  const hasCause = (muscle: string, cause: string): boolean =>
+    rows.some((row) => row.muscle === muscle && row.owningCause === cause);
+  const hasSatisfied = (muscle: string, slotId?: string): boolean =>
+    asArray(alignment?.slots).some((slot) =>
+      (!slotId || slot.slotId === slotId) &&
+      asArray(slot.muscleAlignments).some(
+        (row) => row.muscle === muscle && row.finalAlignment === "satisfied"
+      )
+    );
+
+  if (hasCause("Chest", "duplicate_continuity_conflict")) {
+    notable.push("Chest: duplicate continuity conflict");
+  } else if (hasCause("Chest", "selection_blind_spot")) {
+    notable.push("Chest: selection blind spot");
+  } else if (hasCause("Chest", "repair_identity_churn")) {
+    notable.push("Chest: repair identity churn");
+  }
+  if (hasSatisfied("Hamstrings", "lower_b")) {
+    notable.push("lower_b Hamstrings: class satisfied; duplicate risk separate");
+  }
+  if (hasCause("Calves", "duplicate_continuity_conflict")) {
+    notable.push("Calves: duplicate isolation policy");
+  }
+
+  return [
+    "Exercise Class Unresolved Causes",
+    "--------------------------------",
+    `selection blind spots: ${countCause("selection_blind_spot")}`,
+    `duplicate/continuity conflicts: ${countCause("duplicate_continuity_conflict")}`,
+    `support-floor late repairs: ${countCause("support_floor_late_repair")}`,
+    `repair identity churn: ${countCause("repair_identity_churn")}`,
+    `diagnostic-only: ${countCause("diagnostic_only_not_actionable")}`,
+    "",
+    "Notable:",
+    ...(notable.length > 0
+      ? notable.map((line) => `- ${line}`)
+      : rows
+          .slice(0, 5)
+          .map(
+            (row) =>
+              `- ${row.muscle}: ${formatExerciseClassCauseLabel(row.owningCause)}`
+          )),
+  ];
+}
+
 function buildAccumulationWeekProjectionSummaryLines(
   projection:
     | PlanningRealityDiagnostic["accumulationWeekProjection"]
@@ -1331,6 +1398,14 @@ export function buildPlanningRealitySummary(input: {
     );
   if (exerciseClassAlignmentSummary) {
     lines.push("", ...exerciseClassAlignmentSummary);
+  }
+  const exerciseClassUnresolvedCauseSummary =
+    buildExerciseClassUnresolvedCauseSummaryLines(
+      planningReality.exerciseClassAlignment,
+      planningReality.exerciseClassUnresolvedCauses
+    );
+  if (exerciseClassUnresolvedCauseSummary) {
+    lines.push("", ...exerciseClassUnresolvedCauseSummary);
   }
 
   const accumulationWeekProjectionSummary =

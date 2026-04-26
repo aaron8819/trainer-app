@@ -810,6 +810,53 @@ export type ExerciseClassDistributionBySlot = {
   affectsScoringOrGeneration: false;
 };
 
+export type ExerciseClassUnresolvedCause = {
+  slotId: string;
+  muscle: string;
+  targetStatus: "hard" | "soft" | "diagnostic" | "forbidden";
+  demandType: string;
+  initialAlignment:
+    | "satisfied"
+    | "partial"
+    | "missing"
+    | "violated"
+    | "not_applicable";
+  finalAlignment:
+    | "satisfied"
+    | "partial"
+    | "missing"
+    | "violated"
+    | "not_applicable";
+  owningCause:
+    | "selection_blind_spot"
+    | "inventory_classification_gap"
+    | "slot_capacity_issue"
+    | "duplicate_continuity_conflict"
+    | "support_floor_late_repair"
+    | "cap_cleanup_or_final_shaping"
+    | "repair_identity_churn"
+    | "true_unresolved_demand"
+    | "diagnostic_only_not_actionable";
+  recommendedOwner:
+    | "selection_objective"
+    | "exercise_inventory_classification"
+    | "slot_capacity_policy"
+    | "duplicate_continuity_policy"
+    | "support_demand_planner"
+    | "program_quality_cleanup"
+    | "repair_safety_net"
+    | "leave_unresolved";
+  behaviorReadiness:
+    | "ready_for_bounded_trial"
+    | "needs_inventory_fix"
+    | "needs_duplicate_policy"
+    | "needs_capacity_policy"
+    | "needs_planner_ownership"
+    | "do_not_act";
+  evidence: string[];
+  limitations: string[];
+};
+
 export type ExerciseClassAlignment = {
   version: 1;
   source: "diagnostic_shadow_planner";
@@ -997,6 +1044,7 @@ export type SlotPlanPlanningRealityDiagnostic = {
   slotDemandAllocationByWeek: SlotDemandAllocationByWeek;
   exerciseClassDistributionBySlot: ExerciseClassDistributionBySlot[];
   exerciseClassAlignment: ExerciseClassAlignment;
+  exerciseClassUnresolvedCauses: ExerciseClassUnresolvedCause[];
   accumulationWeekProjection: AccumulationWeekProjection;
   forbiddenCleanupReroute?: ForbiddenCleanupRerouteDiagnostic;
   rearDeltCollateralSummary?: RearDeltCollateralSummary;
@@ -5291,15 +5339,422 @@ function findDuplicatePolicyWarnings(input: {
   return compactDiagnosticStrings(warnings, 8);
 }
 
+type ExerciseClassUnresolvedOwningCause =
+  ExerciseClassUnresolvedCause["owningCause"];
+
+function mapExerciseClassCauseOwner(
+  owningCause: ExerciseClassUnresolvedOwningCause,
+): ExerciseClassUnresolvedCause["recommendedOwner"] {
+  switch (owningCause) {
+    case "selection_blind_spot":
+      return "selection_objective";
+    case "inventory_classification_gap":
+      return "exercise_inventory_classification";
+    case "slot_capacity_issue":
+      return "slot_capacity_policy";
+    case "duplicate_continuity_conflict":
+      return "duplicate_continuity_policy";
+    case "support_floor_late_repair":
+      return "support_demand_planner";
+    case "cap_cleanup_or_final_shaping":
+      return "program_quality_cleanup";
+    case "repair_identity_churn":
+      return "repair_safety_net";
+    case "true_unresolved_demand":
+    case "diagnostic_only_not_actionable":
+      return "leave_unresolved";
+  }
+}
+
+function mapExerciseClassBehaviorReadiness(input: {
+  owningCause: ExerciseClassUnresolvedOwningCause;
+  hasBlockingRepairOrSuspiciousEvidence: boolean;
+}): ExerciseClassUnresolvedCause["behaviorReadiness"] {
+  if (
+    input.owningCause === "selection_blind_spot" &&
+    !input.hasBlockingRepairOrSuspiciousEvidence
+  ) {
+    return "ready_for_bounded_trial";
+  }
+  switch (input.owningCause) {
+    case "inventory_classification_gap":
+      return "needs_inventory_fix";
+    case "duplicate_continuity_conflict":
+      return "needs_duplicate_policy";
+    case "slot_capacity_issue":
+      return "needs_capacity_policy";
+    case "support_floor_late_repair":
+      return "needs_planner_ownership";
+    case "selection_blind_spot":
+    case "cap_cleanup_or_final_shaping":
+    case "repair_identity_churn":
+    case "true_unresolved_demand":
+    case "diagnostic_only_not_actionable":
+      return "do_not_act";
+  }
+}
+
+function parseSlotExerciseCount(evidence: ReadonlyArray<string>): number | null {
+  for (const row of evidence) {
+    const match = /^slot_exercise_count:(\d+)$/.exec(row);
+    if (match) {
+      return Number(match[1]);
+    }
+  }
+  return null;
+}
+
+function hasVisibleCompatibleClassCandidate(input: {
+  demand: ExerciseClassDistributionMuscle;
+  intendedClasses: ReadonlyArray<string>;
+  initialSelectedClasses: ReadonlyArray<InitialExerciseClassSelection>;
+  finalSelectedClasses: ReadonlyArray<FinalExerciseClassSelection>;
+}): boolean {
+  const selectedClasses = [
+    ...input.initialSelectedClasses,
+    ...input.finalSelectedClasses,
+  ];
+  const unsatisfiedRequiredClasses = input.demand.requiredExerciseClasses.filter(
+    (requiredClass) =>
+      !selectedClasses.some((row) =>
+        classSatisfiesIntent(row.exerciseClass, requiredClass),
+      ),
+  );
+  const candidateTargetClasses =
+    unsatisfiedRequiredClasses.length > 0
+      ? unsatisfiedRequiredClasses
+      : input.intendedClasses;
+  const selectedCandidateVisible = [
+    ...input.initialSelectedClasses,
+    ...input.finalSelectedClasses,
+  ].some((row) =>
+    selectedExerciseClassMatchesAny(row.exerciseClass, candidateTargetClasses),
+  );
+  if (selectedCandidateVisible) {
+    return true;
+  }
+
+  return input.demand.inventoryEvidence.some((row) => {
+    if (!row.startsWith("inventory:")) {
+      return false;
+    }
+    const classMatch = /:class=([^:]+)/.exec(row);
+    const availabilityMatch = /:availability=([^:]+)/.exec(row);
+    const candidateClass = classMatch?.[1] ?? "";
+    const availability = availabilityMatch?.[1] ?? "";
+    const classCompatible = candidateTargetClasses.some((intendedClass) =>
+      classSatisfiesIntent(candidateClass, intendedClass),
+    );
+    const availabilityCompatible =
+      availability === "clean_available" ||
+      availability === "available_but_already_used_elsewhere";
+    return classCompatible && availabilityCompatible;
+  });
+}
+
+function hasInventoryClassificationGapEvidence(input: {
+  demand: ExerciseClassDistributionMuscle;
+  intendedClasses: ReadonlyArray<string>;
+  compatibleCandidateVisible: boolean;
+}): boolean {
+  if (input.compatibleCandidateVisible) {
+    return false;
+  }
+  const inventoryEvidence = input.demand.inventoryEvidence;
+  if (inventoryEvidence.length === 0) {
+    return true;
+  }
+  return inventoryEvidence.some(
+    (row) =>
+      row.includes("classification_mismatch") ||
+      row.includes("available_but_classification_mismatch") ||
+      row.includes("dirty_not_clean_candidate") ||
+      (row.startsWith("inventory:") &&
+        !input.intendedClasses.some((intendedClass) => {
+          const classMatch = /:class=([^:]+)/.exec(row);
+          return classSatisfiesIntent(classMatch?.[1] ?? "", intendedClass);
+        })),
+  );
+}
+
+function hasSlotCapacityIssueEvidence(
+  demand: ExerciseClassDistributionMuscle,
+): boolean {
+  if (
+    demand.inventoryEvidence.some((row) =>
+      row.includes("available_but_capacity_blocked"),
+    )
+  ) {
+    return true;
+  }
+  const slotExerciseCount = parseSlotExerciseCount(demand.inventoryEvidence);
+  return slotExerciseCount != null && slotExerciseCount >= SESSION_CAPS.maxExercises;
+}
+
+function hasSupportFloorLateRepairEvidence(input: {
+  repairRows: ReadonlyArray<ShadowRepairMaterialityDiagnostic>;
+  demand: ExerciseClassDistributionMuscle;
+}): boolean {
+  return (
+    input.repairRows.some((row) =>
+      row.repairMechanism.toLowerCase().includes("support_floor"),
+    ) ||
+    input.demand.repairEvidence.some((row) =>
+      row.toLowerCase().includes("support_floor"),
+    )
+  );
+}
+
+function hasCapCleanupOrFinalShapingEvidence(input: {
+  repairRows: ReadonlyArray<ShadowRepairMaterialityDiagnostic>;
+  guardRows: ReadonlyArray<DistributionGuardAction>;
+  concentrationRows: ReadonlyArray<ExerciseConcentrationDiagnostic>;
+  demand: ExerciseClassDistributionMuscle;
+}): boolean {
+  return (
+    input.repairRows.some(
+      (row) =>
+        row.action === "set_trimmed" ||
+        row.action === "removed" ||
+        row.shadowAllocationBasis === "diagnostic_or_cap_cleanup" ||
+        row.repairMechanism.toLowerCase().includes("cap") ||
+        row.repairMechanism.toLowerCase().includes("program_quality"),
+    ) ||
+    input.guardRows.length > 0 ||
+    input.concentrationRows.some((row) => row.producedOrIncreasedByRepair) ||
+    input.demand.repairEvidence.some(
+      (row) =>
+        row.includes("distribution_guard") ||
+        row.toLowerCase().includes("cap_cleanup"),
+    )
+  );
+}
+
+function hasRepairIdentityChurnEvidence(input: {
+  alignment: ExerciseClassAlignmentMuscle;
+  repairRows: ReadonlyArray<ShadowRepairMaterialityDiagnostic>;
+}): boolean {
+  return (
+    input.alignment.repairEffect === "created_identity_churn" ||
+    input.repairRows.some(
+      (row) =>
+        row.changedExerciseIdentity &&
+        (row.action === "added" || row.action === "removed"),
+    ) ||
+    input.alignment.finalSelectedClasses.some(
+      (row) => row.producedOrIncreasedByRepair,
+    )
+  );
+}
+
+function hasBlockingRepairOrSuspiciousEvidence(input: {
+  repairRows: ReadonlyArray<ShadowRepairMaterialityDiagnostic>;
+  suspiciousRows: ReadonlyArray<SuspiciousRepairNotEligibleForPromotion>;
+}): boolean {
+  return (
+    input.suspiciousRows.length > 0 ||
+    input.repairRows.some(
+      (row) => row.materiality === "moderate" || row.materiality === "major",
+    )
+  );
+}
+
+function shouldEmitExerciseClassCause(input: {
+  alignment: ExerciseClassAlignmentMuscle;
+  duplicateWarnings: ReadonlyArray<string>;
+  owningCause: ExerciseClassUnresolvedOwningCause;
+  hasSupportFloorLateRepair: boolean;
+  hasRepairIdentityChurn: boolean;
+  hasCapCleanupOrFinalShaping: boolean;
+}): boolean {
+  if (
+    input.alignment.finalAlignment === "missing" ||
+    input.alignment.finalAlignment === "partial" ||
+    input.alignment.finalAlignment === "violated"
+  ) {
+    return true;
+  }
+  if (input.owningCause === "diagnostic_only_not_actionable") {
+    return true;
+  }
+  return (
+    input.duplicateWarnings.length > 0 ||
+    input.hasSupportFloorLateRepair ||
+    input.hasRepairIdentityChurn ||
+    input.hasCapCleanupOrFinalShaping
+  );
+}
+
+function classifyExerciseClassUnresolvedCause(input: {
+  slotId: string;
+  demand: ExerciseClassDistributionMuscle;
+  alignment: ExerciseClassAlignmentMuscle;
+  duplicateWarnings: ReadonlyArray<string>;
+  repairRows: ReadonlyArray<ShadowRepairMaterialityDiagnostic>;
+  suspiciousRows: ReadonlyArray<SuspiciousRepairNotEligibleForPromotion>;
+  globalBlockingRepairOrSuspiciousEvidence: boolean;
+  guardRows: ReadonlyArray<DistributionGuardAction>;
+  concentrationRows: ReadonlyArray<ExerciseConcentrationDiagnostic>;
+}): ExerciseClassUnresolvedCause | null {
+  const compatibleCandidateVisible = hasVisibleCompatibleClassCandidate({
+    demand: input.demand,
+    intendedClasses: input.alignment.intendedClasses,
+    initialSelectedClasses: input.alignment.initialSelectedClasses,
+    finalSelectedClasses: input.alignment.finalSelectedClasses,
+  });
+  const slotCapacityIssue = hasSlotCapacityIssueEvidence(input.demand);
+  const supportFloorLateRepair = hasSupportFloorLateRepairEvidence({
+    repairRows: input.repairRows,
+    demand: input.demand,
+  });
+  const capCleanupOrFinalShaping = hasCapCleanupOrFinalShapingEvidence({
+    repairRows: input.repairRows,
+    guardRows: input.guardRows,
+    concentrationRows: input.concentrationRows,
+    demand: input.demand,
+  });
+  const repairIdentityChurn = hasRepairIdentityChurnEvidence({
+    alignment: input.alignment,
+    repairRows: input.repairRows,
+  });
+  const inventoryClassificationGap = hasInventoryClassificationGapEvidence({
+    demand: input.demand,
+    intendedClasses: input.alignment.intendedClasses,
+    compatibleCandidateVisible,
+  });
+  const duplicateConflict =
+    input.duplicateWarnings.length > 0 ||
+    input.demand.duplicatePolicy === "block_if_clean_alternative_exists";
+  const initialMissesClass =
+    input.alignment.initialAlignment === "missing" ||
+    input.alignment.initialAlignment === "partial";
+  const finalStillUnresolved =
+    input.alignment.finalAlignment === "missing" ||
+    input.alignment.finalAlignment === "partial" ||
+    input.alignment.finalAlignment === "violated";
+  const hasBlockingEvidence = hasBlockingRepairOrSuspiciousEvidence({
+    repairRows: input.repairRows,
+    suspiciousRows: input.suspiciousRows,
+  }) || input.globalBlockingRepairOrSuspiciousEvidence;
+
+  let owningCause: ExerciseClassUnresolvedOwningCause;
+  if (
+    input.alignment.targetStatus === "diagnostic" ||
+    input.alignment.demandType === "diagnostic_only" ||
+    (input.alignment.targetStatus === "forbidden" &&
+      input.alignment.finalAlignment !== "violated")
+  ) {
+    owningCause = "diagnostic_only_not_actionable";
+  } else if (supportFloorLateRepair) {
+    owningCause = "support_floor_late_repair";
+  } else if (duplicateConflict) {
+    owningCause = "duplicate_continuity_conflict";
+  } else if (repairIdentityChurn) {
+    owningCause = "repair_identity_churn";
+  } else if (capCleanupOrFinalShaping) {
+    owningCause = "cap_cleanup_or_final_shaping";
+  } else if (slotCapacityIssue) {
+    owningCause = "slot_capacity_issue";
+  } else if (
+    compatibleCandidateVisible &&
+    !slotCapacityIssue &&
+    initialMissesClass &&
+    (finalStillUnresolved ||
+      input.alignment.repairEffect === "improved_alignment")
+  ) {
+    owningCause = "selection_blind_spot";
+  } else if (inventoryClassificationGap) {
+    owningCause = "inventory_classification_gap";
+  } else {
+    owningCause = "true_unresolved_demand";
+  }
+
+  if (
+    !shouldEmitExerciseClassCause({
+      alignment: input.alignment,
+      duplicateWarnings: input.duplicateWarnings,
+      owningCause,
+      hasSupportFloorLateRepair: supportFloorLateRepair,
+      hasRepairIdentityChurn: repairIdentityChurn,
+      hasCapCleanupOrFinalShaping: capCleanupOrFinalShaping,
+    })
+  ) {
+    return null;
+  }
+
+  const evidence = compactDiagnosticStrings(
+    [
+      `initial_alignment:${input.alignment.initialAlignment}`,
+      `final_alignment:${input.alignment.finalAlignment}`,
+      compatibleCandidateVisible
+        ? "compatible_candidate_visible"
+        : "compatible_candidate_not_visible",
+      slotCapacityIssue ? "slot_capacity_blocked" : "slot_capacity_available",
+      ...input.duplicateWarnings,
+      ...input.repairRows.map(
+        (row) =>
+          `repair:${row.exerciseName ?? row.exerciseId ?? "unknown"}:${row.action}:${row.repairMechanism}`,
+      ),
+      ...input.suspiciousRows.map(
+        (row) =>
+          `suspicious_repair:${row.exerciseName ?? "unknown"}:${row.repairMechanism}`,
+      ),
+      ...input.guardRows.map(
+        (row) =>
+          `distribution_guard:${row.exerciseName}:${row.attemptedAction}:${row.decision}`,
+      ),
+      ...input.demand.inventoryEvidence.filter(
+        (row) =>
+          row.startsWith("inventory:") ||
+          row.startsWith("duplicate:") ||
+          row.startsWith("slot_exercise_count:"),
+      ),
+    ],
+    3,
+  );
+  const limitations = compactDiagnosticStrings(
+    [
+      ...(hasBlockingEvidence
+        ? ["repair_materiality_or_suspicious_repairs_block_behavior_readiness"]
+        : []),
+      "diagnostic_read_only_no_generation_scoring_repair_seed_or_runtime_effect",
+      "uses_existing_planningReality_rows_only",
+      "does_not_replay_candidate_ranking_or_selection_trials",
+    ],
+    2,
+  );
+
+  return {
+    slotId: input.slotId,
+    muscle: input.alignment.muscle,
+    targetStatus: input.alignment.targetStatus,
+    demandType: input.alignment.demandType,
+    initialAlignment: input.alignment.initialAlignment,
+    finalAlignment: input.alignment.finalAlignment,
+    owningCause,
+    recommendedOwner: mapExerciseClassCauseOwner(owningCause),
+    behaviorReadiness: mapExerciseClassBehaviorReadiness({
+      owningCause,
+      hasBlockingRepairOrSuspiciousEvidence: hasBlockingEvidence,
+    }),
+    evidence,
+    limitations,
+  };
+}
+
 function buildExerciseClassAlignment(input: {
   exerciseClassDistributionBySlot: ReadonlyArray<ExerciseClassDistributionBySlot>;
   initialSlotComposition: ReadonlyArray<SlotCompositionSnapshotDiagnostic>;
   finalSlotPlan: ReadonlyArray<SlotCompositionSnapshotDiagnostic>;
   repairMaterialityAfterShadowAllocation: ReadonlyArray<ShadowRepairMaterialityDiagnostic>;
+  suspiciousRepairsNotEligibleForPromotion: ReadonlyArray<SuspiciousRepairNotEligibleForPromotion>;
   exerciseConcentration: ReadonlyArray<ExerciseConcentrationDiagnostic>;
   weakPreselectionConsumption: ReadonlyArray<WeakPreselectionConsumptionDiagnostic>;
   distributionGuardActions: ReadonlyArray<DistributionGuardAction>;
-}): ExerciseClassAlignment {
+}): {
+  alignment: ExerciseClassAlignment;
+  unresolvedCauses: ExerciseClassUnresolvedCause[];
+} {
   const initialSlotById = new Map(
     input.initialSlotComposition.map((slot) => [slot.slotId, slot]),
   );
@@ -5311,6 +5766,12 @@ function buildExerciseClassAlignment(input: {
       slot.week === 1 &&
       slot.projectionStatus === "projected_from_current_evidence",
   );
+  const globalBlockingRepairOrSuspiciousEvidence =
+    input.suspiciousRepairsNotEligibleForPromotion.length > 0 ||
+    input.repairMaterialityAfterShadowAllocation.some(
+      (row) => row.materiality === "moderate" || row.materiality === "major",
+    );
+  const unresolvedCauses: ExerciseClassUnresolvedCause[] = [];
 
   const slots: ExerciseClassAlignmentSlot[] = weekOneClassDistributions.map(
     (slot) => {
@@ -5370,8 +5831,24 @@ function buildExerciseClassAlignment(input: {
           muscle: demand.muscle,
           repairRows: input.repairMaterialityAfterShadowAllocation,
         });
-        const repairEvidence = input.repairMaterialityAfterShadowAllocation
-          .filter((row) => row.slotId === slot.slotId && row.muscle === demand.muscle)
+        const matchingRepairRows = input.repairMaterialityAfterShadowAllocation
+          .filter((row) => row.slotId === slot.slotId && row.muscle === demand.muscle);
+        const matchingSuspiciousRows =
+          input.suspiciousRepairsNotEligibleForPromotion.filter(
+            (row) => row.slotId === slot.slotId && row.muscle === demand.muscle,
+          );
+        const matchingGuardRows = input.distributionGuardActions.filter(
+          (row) => row.slotId === slot.slotId && row.muscle === demand.muscle,
+        );
+        const matchingConcentrationRows = input.exerciseConcentration.filter(
+          (row) =>
+            row.slotId === slot.slotId &&
+            Object.prototype.hasOwnProperty.call(
+              row.percentageOfWeeklyProjectedStimulusByMuscle,
+              demand.muscle,
+            ),
+        );
+        const repairEvidence = matchingRepairRows
           .map(
             (row) =>
               `repair:${row.exerciseName ?? row.exerciseId ?? "unknown"}:${row.action}:${row.effectiveStimulusDelta}`,
@@ -5411,7 +5888,7 @@ function buildExerciseClassAlignment(input: {
           ...demand.limitations,
         ], 8);
 
-        return {
+        const alignment: ExerciseClassAlignmentMuscle = {
           muscle: demand.muscle,
           targetStatus: demand.targetStatus,
           demandType: demand.demandType,
@@ -5430,6 +5907,21 @@ function buildExerciseClassAlignment(input: {
           evidence,
           limitations,
         };
+        const unresolvedCause = classifyExerciseClassUnresolvedCause({
+          slotId: slot.slotId,
+          demand,
+          alignment,
+          duplicateWarnings,
+          repairRows: matchingRepairRows,
+          suspiciousRows: matchingSuspiciousRows,
+          globalBlockingRepairOrSuspiciousEvidence,
+          guardRows: matchingGuardRows,
+          concentrationRows: matchingConcentrationRows,
+        });
+        if (unresolvedCause) {
+          unresolvedCauses.push(unresolvedCause);
+        }
+        return alignment;
       });
 
       return {
@@ -5444,40 +5936,48 @@ function buildExerciseClassAlignment(input: {
 
   const allAlignments = slots.flatMap((slot) => slot.muscleAlignments);
   return {
-    version: 1,
-    source: "diagnostic_shadow_planner",
-    readOnly: true,
-    affectsScoringOrGeneration: false,
-    slots,
-    summary: {
-      initiallySatisfied: allAlignments.filter(
-        (row) => row.initialAlignment === "satisfied",
-      ).length,
-      finallySatisfied: allAlignments.filter(
-        (row) => row.finalAlignment === "satisfied",
-      ).length,
-      improvedByRepair: allAlignments.filter(
-        (row) => row.repairEffect === "improved_alignment",
-      ).length,
-      worsenedByRepair: allAlignments.filter(
-        (row) => row.repairEffect === "worsened_alignment",
-      ).length,
-      identityChurnCount: allAlignments.filter((row) =>
-        input.repairMaterialityAfterShadowAllocation.some(
-          (repair) =>
-            repair.slotId ===
-              slots.find((slot) => slot.muscleAlignments.includes(row))?.slotId &&
-            repair.muscle === row.muscle &&
-            repair.changedExerciseIdentity,
-        ),
-      ).length,
-      unresolvedClassIntentCount: allAlignments.filter(
-        (row) =>
-          row.finalAlignment === "missing" ||
-          row.finalAlignment === "partial" ||
-          row.finalAlignment === "violated",
-      ).length,
+    alignment: {
+      version: 1,
+      source: "diagnostic_shadow_planner",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      slots,
+      summary: {
+        initiallySatisfied: allAlignments.filter(
+          (row) => row.initialAlignment === "satisfied",
+        ).length,
+        finallySatisfied: allAlignments.filter(
+          (row) => row.finalAlignment === "satisfied",
+        ).length,
+        improvedByRepair: allAlignments.filter(
+          (row) => row.repairEffect === "improved_alignment",
+        ).length,
+        worsenedByRepair: allAlignments.filter(
+          (row) => row.repairEffect === "worsened_alignment",
+        ).length,
+        identityChurnCount: allAlignments.filter((row) =>
+          input.repairMaterialityAfterShadowAllocation.some(
+            (repair) =>
+              repair.slotId ===
+                slots.find((slot) => slot.muscleAlignments.includes(row))?.slotId &&
+              repair.muscle === row.muscle &&
+              repair.changedExerciseIdentity,
+          ),
+        ).length,
+        unresolvedClassIntentCount: allAlignments.filter(
+          (row) =>
+            row.finalAlignment === "missing" ||
+            row.finalAlignment === "partial" ||
+            row.finalAlignment === "violated",
+        ).length,
+      },
     },
+    unresolvedCauses: unresolvedCauses.sort(
+      (left, right) =>
+        left.slotId.localeCompare(right.slotId) ||
+        left.muscle.localeCompare(right.muscle) ||
+        left.owningCause.localeCompare(right.owningCause),
+    ),
   };
 }
 
@@ -7991,11 +8491,15 @@ export function buildWeeklyDemandSlotAllocationDiagnostic(input: {
     exerciseConcentration,
     duplicateExerciseReuse: input.duplicateExerciseReuse ?? [],
   });
-  const exerciseClassAlignment = buildExerciseClassAlignment({
+  const {
+    alignment: exerciseClassAlignment,
+    unresolvedCauses: exerciseClassUnresolvedCauses,
+  } = buildExerciseClassAlignment({
     exerciseClassDistributionBySlot,
     initialSlotComposition,
     finalSlotPlan,
     repairMaterialityAfterShadowAllocation,
+    suspiciousRepairsNotEligibleForPromotion,
     exerciseConcentration,
     weakPreselectionConsumption,
     distributionGuardActions,
@@ -8063,6 +8567,7 @@ export function buildWeeklyDemandSlotAllocationDiagnostic(input: {
     slotDemandAllocationByWeek,
     exerciseClassDistributionBySlot,
     exerciseClassAlignment,
+    exerciseClassUnresolvedCauses,
     accumulationWeekProjection,
     ...(input.forbiddenCleanupReroute
       ? { forbiddenCleanupReroute: input.forbiddenCleanupReroute }

@@ -571,6 +571,44 @@ describe("buildMesocycleExplainAuditPayload", () => {
             },
           ],
           slotDemandAllocation: [],
+          shadowWeeklyDemand: [
+            {
+              muscle: "Chest",
+              targetTier: "A_PRIMARY",
+              targetStatus: "hard",
+              minEffectiveSets: 10,
+              preferredEffectiveSets: 10,
+              maxEffectiveSets: 16,
+              desiredExposureCount: 1,
+              priority: "primary",
+              source: ["weekly_obligation_plan:getWeeklyVolumeTarget(week=1)"],
+              rationale: ["A primary driver has an explicit Week 1 weekly obligation before slot composition."],
+            },
+          ],
+          shadowSlotDemandAllocation: [
+            {
+              slotId: "upper_a",
+              slotIndex: 0,
+              slotArchetype: "upper_horizontal_balanced",
+              intent: "upper",
+              allocatedMuscles: [
+                {
+                  muscle: "Chest",
+                  role: "primary",
+                  targetStatus: "hard",
+                  minEffectiveSets: 4,
+                  preferredEffectiveSets: 4,
+                  maxEffectiveSets: 16,
+                  allocationReason: ["weekly_obligation_allocated_to_compatible_slot"],
+                },
+              ],
+            },
+          ],
+          initialSlotComposition: [],
+          finalSlotPlan: [],
+          allocationVsInitialDelta: [],
+          allocationVsFinalDelta: [],
+          repairMaterialityAfterShadowAllocation: [],
           projectedDelivery: [],
           repairMateriality: [],
           exerciseConcentration: [],
@@ -810,6 +848,24 @@ describe("buildMesocycleExplainAuditPayload", () => {
           muscle: "Chest",
           targetStatus: "hard",
           explicitUpstream: true,
+        }),
+      ],
+      shadowWeeklyDemand: [
+        expect.objectContaining({
+          muscle: "Chest",
+          targetStatus: "hard",
+          priority: "primary",
+        }),
+      ],
+      shadowSlotDemandAllocation: [
+        expect.objectContaining({
+          slotId: "upper_a",
+          allocatedMuscles: [
+            expect.objectContaining({
+              muscle: "Chest",
+              role: "primary",
+            }),
+          ],
         }),
       ],
     });

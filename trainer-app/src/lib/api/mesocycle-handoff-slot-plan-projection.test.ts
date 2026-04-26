@@ -2138,6 +2138,112 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
         }),
       ])
     );
+    expect(diagnostic?.shadowWeeklyDemand).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          muscle: "Chest",
+          targetTier: "A_PRIMARY",
+          targetStatus: "hard",
+          priority: "primary",
+          desiredExposureCount: expect.any(Number),
+        }),
+        expect.objectContaining({
+          muscle: "Lats",
+          targetTier: "A_PRIMARY",
+          targetStatus: "hard",
+        }),
+        expect.objectContaining({
+          muscle: "Quads",
+          targetTier: "A_PRIMARY",
+          targetStatus: "hard",
+        }),
+        expect.objectContaining({
+          muscle: "Hamstrings",
+          targetTier: "A_PRIMARY",
+          targetStatus: "hard",
+        }),
+        expect.objectContaining({
+          muscle: "Side Delts",
+          targetTier: "B_SUPPORT",
+          targetStatus: "soft",
+          priority: "support",
+        }),
+        expect.objectContaining({
+          muscle: "Rear Delts",
+          targetTier: "B_SUPPORT",
+          targetStatus: "soft",
+        }),
+        expect.objectContaining({
+          muscle: "Triceps",
+          targetTier: "B_SUPPORT",
+          targetStatus: "soft",
+        }),
+        expect.objectContaining({
+          muscle: "Biceps",
+          targetTier: "B_SUPPORT",
+          targetStatus: "soft",
+        }),
+        expect.objectContaining({
+          muscle: "Calves",
+          targetTier: "B_SUPPORT",
+          targetStatus: "soft",
+        }),
+      ])
+    );
+    expect(diagnostic?.shadowSlotDemandAllocation).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          slotId: "upper_a",
+          slotIndex: 0,
+          slotArchetype: "upper_horizontal_balanced",
+          allocatedMuscles: expect.arrayContaining([
+            expect.objectContaining({ muscle: "Chest", targetStatus: "hard" }),
+            expect.objectContaining({ muscle: "Lats", targetStatus: "hard" }),
+            expect.objectContaining({ muscle: "Triceps", targetStatus: "soft" }),
+            expect.objectContaining({ muscle: "Rear Delts", targetStatus: "soft" }),
+            expect.objectContaining({ muscle: "Biceps", targetStatus: "soft" }),
+          ]),
+        }),
+        expect.objectContaining({
+          slotId: "lower_a",
+          slotArchetype: "lower_squat_dominant",
+          allocatedMuscles: expect.arrayContaining([
+            expect.objectContaining({ muscle: "Quads", targetStatus: "hard" }),
+            expect.objectContaining({ muscle: "Hamstrings", targetStatus: "hard" }),
+            expect.objectContaining({ muscle: "Calves", targetStatus: "soft" }),
+          ]),
+        }),
+      ])
+    );
+    expect(diagnostic?.initialSlotComposition).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          slotId: "upper_a",
+          exerciseCount: expect.any(Number),
+          projectedEffectiveStimulusByMuscle: expect.any(Object),
+        }),
+      ])
+    );
+    expect(diagnostic?.finalSlotPlan.map((slot) => slot.slotId)).toEqual(
+      getProjectedSlotPlans(projected).map((slot) => slot.slotId)
+    );
+    expect(diagnostic?.allocationVsInitialDelta).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          comparison: "allocation_vs_initial",
+          underAllocatedMuscles: expect.any(Array),
+        }),
+      ])
+    );
+    expect(diagnostic?.allocationVsFinalDelta).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          comparison: "allocation_vs_final",
+          responsibilityLoad: expect.stringMatching(/^(clear|overloaded|unclear)$/),
+        }),
+      ])
+    );
+    expect(diagnostic?.repairMaterialityAfterShadowAllocation).toEqual(expect.any(Array));
     expect(diagnostic?.projectedDelivery).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -2162,6 +2268,7 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     expect(diagnostic?.limitations).toEqual(
       expect.arrayContaining([expect.stringContaining("read-only")])
     );
+    expect(JSON.stringify(getProjectedSlotPlans(projected))).not.toContain("shadow");
   });
 
   it("prevents upper_b from finishing with zero Chest while Chest remains a hard weekly obligation", () => {

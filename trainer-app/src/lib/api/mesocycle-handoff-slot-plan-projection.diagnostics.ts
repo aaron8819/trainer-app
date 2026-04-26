@@ -10,6 +10,7 @@ import {
 } from "@/lib/engine/volume-landmarks";
 import {
   getProjectionPreferredSupportMuscles,
+  getProjectionRepairCompatibleMuscles,
   getProjectionSoftPreferredSupportMuscles,
   getProtectedWeekOneCoverageObligations,
   resolveSessionSlotPolicy,
@@ -66,8 +67,89 @@ export type WeeklyMuscleDemandDiagnostic = {
   source: string[];
 };
 
+export type ShadowWeeklyMuscleDemand = {
+  muscle: string;
+  targetTier: MuscleTargetTier;
+  targetStatus: "hard" | "soft" | "diagnostic";
+  minEffectiveSets: number | null;
+  preferredEffectiveSets: number | null;
+  maxEffectiveSets: number | null;
+  desiredExposureCount: number | null;
+  priority: "primary" | "support" | "secondary" | "implicit";
+  source: string[];
+  rationale: string[];
+};
+
+export type ShadowSlotDemandAllocation = {
+  slotId: string;
+  slotIndex: number;
+  slotArchetype: string;
+  intent: string;
+  allocatedMuscles: Array<{
+    muscle: string;
+    role: "primary" | "support" | "secondary" | "implicit";
+    targetStatus: "hard" | "soft" | "diagnostic";
+    minEffectiveSets: number | null;
+    preferredEffectiveSets: number | null;
+    maxEffectiveSets: number | null;
+    allocationReason: string[];
+  }>;
+  fatigueBudget?: {
+    systemic?: "low" | "moderate" | "high";
+    axial?: "low" | "moderate" | "high";
+  };
+};
+
+export type SlotCompositionSnapshotDiagnostic = {
+  slotId: string;
+  slotIndex: number;
+  intent: string;
+  exerciseCount: number;
+  totalSets: number;
+  projectedEffectiveStimulusByMuscle: Record<string, number>;
+  exercises: Array<{
+    exerciseId: string;
+    exerciseName: string;
+    role: "main" | "accessory";
+    setCount: number;
+    primaryMuscles: string[];
+    effectiveStimulusByMuscle: Record<string, number>;
+  }>;
+};
+
+export type AllocationVsCompositionDelta = {
+  slotId: string;
+  slotIndex: number;
+  comparison: "allocation_vs_initial" | "allocation_vs_final";
+  responsibilityLoad: "clear" | "overloaded" | "unclear";
+  underAllocatedMuscles: Array<{
+    muscle: string;
+    role: ShadowSlotDemandAllocation["allocatedMuscles"][number]["role"];
+    targetStatus: ShadowSlotDemandAllocation["allocatedMuscles"][number]["targetStatus"];
+    expectedEffectiveSets: number | null;
+    actualEffectiveSets: number;
+    shortfall: number | null;
+  }>;
+  unallocatedStimulusMuscles: Array<{
+    muscle: string;
+    actualEffectiveSets: number;
+  }>;
+  notes: string[];
+};
+
+export type ShadowRepairMaterialityDiagnostic = RepairMaterialityDiagnostic & {
+  likelyAvoidableWithShadowAllocation: boolean;
+  shadowAllocationBasis:
+    | "slot_owned_muscle_before_selection"
+    | "weekly_demand_owned_elsewhere"
+    | "not_shadow_allocated"
+    | "diagnostic_or_cap_cleanup";
+  shadowRationale: string[];
+};
+
 export type SlotDemandAllocationDiagnostic = {
   slotId: string;
+  slotIndex: number;
   slotLabel: string;
   intent: string;
   authoredSlotRole: string | null;
@@ -186,6 +268,13 @@ export type SlotPlanPlanningRealityDiagnostic = {
   };
   weeklyMuscleDemand: WeeklyMuscleDemandDiagnostic[];
   slotDemandAllocation: SlotDemandAllocationDiagnostic[];
+  shadowWeeklyDemand: ShadowWeeklyMuscleDemand[];
+  shadowSlotDemandAllocation: ShadowSlotDemandAllocation[];
+  initialSlotComposition: SlotCompositionSnapshotDiagnostic[];
+  finalSlotPlan: SlotCompositionSnapshotDiagnostic[];
+  allocationVsInitialDelta: AllocationVsCompositionDelta[];
+  allocationVsFinalDelta: AllocationVsCompositionDelta[];
+  repairMaterialityAfterShadowAllocation: ShadowRepairMaterialityDiagnostic[];
   projectedDelivery: ProjectedDeliveryDiagnostic[];
   repairMateriality: RepairMaterialityDiagnostic[];
   exerciseConcentration: ExerciseConcentrationDiagnostic[];
@@ -448,6 +537,539 @@ function appendSlotObligation(
   }
 }
 
+function getNormalizedTargetTier(muscle: string): MuscleTargetTier {
+  return getMuscleTargetSemantics(muscle).targetTier ?? "IMPLICIT";
+}
+
+function getShadowDemandTargets(input: {
+  activeMesocycle: ActiveMesocycleForDiagnostics;
+  weeklyObligationPlan: WeeklyMuscleObligationPlan;
+  muscle: string;
+}): Pick<
+  ShadowWeeklyMuscleDemand,
+  "targetTier" | "targetStatus" | "minEffectiveSets" | "preferredEffectiveSets" | "maxEffectiveSets" | "priority"
+> & { source: string[]; rationale: string[] } {
+  const targetTier = getNormalizedTargetTier(input.muscle);
+  const targetSemantics = getMuscleTargetSemantics(input.muscle);
+  const landmark = VOLUME_LANDMARKS[input.muscle] ?? null;
+  const weeklyObligation = getWeeklyObligationEntry(input.weeklyObligationPlan, input.muscle);
+  const supportFloor = getWeekOneSupportFloor(input.muscle);
+  const source = [`volume_landmarks:target_tier:${targetTier}`];
+  const rationale: string[] = [];
+
+  if (weeklyObligation && (weeklyObligation.targetSets > 0 || weeklyObligation.allocatedSlots.length > 0)) {
+    source.push("weekly_obligation_plan:getWeeklyVolumeTarget(week=1)");
+    rationale.push("A primary driver has an explicit Week 1 weekly obligation before slot composition.");
+    return {
+      targetTier,
+      targetStatus: "hard",
+      minEffectiveSets: landmark?.mev ?? weeklyObligation.targetSets,
+      preferredEffectiveSets: weeklyObligation.targetSets,
+      maxEffectiveSets: landmark?.mav ?? null,
+      priority: "primary",
+      source,
+      rationale,
+    };
+  }
+
+  if (targetTier === "B_SUPPORT") {
+    if (supportFloor != null) {
+      source.push("week_one_support_floor");
+    }
+    rationale.push("Support-tier muscle should be visible upstream as protected or preferred support, not only late repair.");
+    return {
+      targetTier,
+      targetStatus: supportFloor != null ? "soft" : "diagnostic",
+      minEffectiveSets: supportFloor ?? null,
+      preferredEffectiveSets: supportFloor ?? null,
+      maxEffectiveSets: landmark?.mav ?? null,
+      priority: "support",
+      source,
+      rationale,
+    };
+  }
+
+  if (targetTier === "C_SECONDARY") {
+    if (targetSemantics.softTargetRange) {
+      source.push("volume_landmarks:soft_target_range");
+    }
+    rationale.push("Secondary muscle remains a diagnostic/readout unless an authored slot explicitly owns it.");
+    return {
+      targetTier,
+      targetStatus: "diagnostic",
+      minEffectiveSets: targetSemantics.softTargetRange?.min ?? null,
+      preferredEffectiveSets: targetSemantics.softTargetRange
+        ? roundToTenth((targetSemantics.softTargetRange.min + targetSemantics.softTargetRange.max) / 2)
+        : null,
+      maxEffectiveSets: targetSemantics.softTargetRange?.max ?? landmark?.mav ?? null,
+      priority: "secondary",
+      source,
+      rationale,
+    };
+  }
+
+  rationale.push("Implicit muscle is fatigue/readout context unless explicitly targeted by a slot.");
+  return {
+    targetTier,
+    targetStatus: "diagnostic",
+    minEffectiveSets: null,
+    preferredEffectiveSets: null,
+    maxEffectiveSets: null,
+    priority: "implicit",
+    source,
+    rationale,
+  };
+}
+
+function getAllocationFatigueBudget(slotArchetype: string | null | undefined): ShadowSlotDemandAllocation["fatigueBudget"] {
+  switch (slotArchetype) {
+    case "lower_hinge_dominant":
+      return { systemic: "high", axial: "high" };
+    case "lower_squat_dominant":
+      return { systemic: "high", axial: "moderate" };
+    case "upper_horizontal_balanced":
+    case "upper_vertical_balanced":
+      return { systemic: "moderate", axial: "low" };
+    default:
+      return { systemic: "moderate", axial: "moderate" };
+  }
+}
+
+function appendAllocatedMuscle(
+  allocatedMuscles: ShadowSlotDemandAllocation["allocatedMuscles"],
+  allocation: ShadowSlotDemandAllocation["allocatedMuscles"][number]
+): void {
+  const existing = allocatedMuscles.find((row) => row.muscle === allocation.muscle);
+  if (!existing) {
+    allocatedMuscles.push(allocation);
+    return;
+  }
+
+  const roleOrder: Record<ShadowSlotDemandAllocation["allocatedMuscles"][number]["role"], number> = {
+    primary: 0,
+    support: 1,
+    secondary: 2,
+    implicit: 3,
+  };
+  const statusOrder: Record<ShadowSlotDemandAllocation["allocatedMuscles"][number]["targetStatus"], number> = {
+    hard: 0,
+    soft: 1,
+    diagnostic: 2,
+  };
+
+  existing.role = roleOrder[allocation.role] < roleOrder[existing.role] ? allocation.role : existing.role;
+  existing.targetStatus =
+    statusOrder[allocation.targetStatus] < statusOrder[existing.targetStatus]
+      ? allocation.targetStatus
+      : existing.targetStatus;
+  existing.minEffectiveSets =
+    existing.minEffectiveSets == null
+      ? allocation.minEffectiveSets
+      : allocation.minEffectiveSets == null
+        ? existing.minEffectiveSets
+        : Math.max(existing.minEffectiveSets, allocation.minEffectiveSets);
+  existing.preferredEffectiveSets =
+    existing.preferredEffectiveSets == null
+      ? allocation.preferredEffectiveSets
+      : allocation.preferredEffectiveSets == null
+        ? existing.preferredEffectiveSets
+        : Math.max(existing.preferredEffectiveSets, allocation.preferredEffectiveSets);
+  existing.maxEffectiveSets =
+    existing.maxEffectiveSets == null
+      ? allocation.maxEffectiveSets
+      : allocation.maxEffectiveSets == null
+        ? existing.maxEffectiveSets
+        : Math.min(existing.maxEffectiveSets, allocation.maxEffectiveSets);
+  existing.allocationReason = Array.from(
+    new Set([...existing.allocationReason, ...allocation.allocationReason])
+  );
+}
+
+function getCompatibleShadowSupportSlots(input: {
+  muscle: string;
+  slotSequence: ReadonlyArray<SlotSequenceEntry>;
+  slotSequenceEntries: ReturnType<typeof buildSlotSequenceEntries>;
+}): string[] {
+  return input.slotSequence.flatMap((slot) => {
+    const slotPolicy = resolveSessionSlotPolicy({
+      sessionIntent: toSessionIntent(slot.intent),
+      slotId: slot.slotId,
+      slotSequence: { slots: input.slotSequenceEntries },
+    }).currentSession;
+    return getProjectionRepairCompatibleMuscles(slotPolicy, [input.muscle]).includes(
+      input.muscle as ProtectedWeekOneCoverageMuscle
+    )
+      ? [slot.slotId]
+      : [];
+  });
+}
+
+function buildShadowSlotDemandAllocation(input: {
+  activeMesocycle: ActiveMesocycleForDiagnostics;
+  slotSequence: ReadonlyArray<SlotSequenceEntry>;
+  weeklyObligationPlan: WeeklyMuscleObligationPlan;
+  relevantMuscles: string[];
+}): ShadowSlotDemandAllocation[] {
+  const slotSequenceEntries = buildSlotSequenceEntries(input.slotSequence);
+  const supportMuscles = Array.from(
+    new Set([
+      ...input.relevantMuscles.filter((muscle) => getNormalizedTargetTier(muscle) === "B_SUPPORT"),
+      ...Object.keys(VOLUME_LANDMARKS).filter(
+        (muscle) => getNormalizedTargetTier(muscle) === "B_SUPPORT" && getWeekOneSupportFloor(muscle) != null
+      ),
+    ])
+  );
+  const compatibleSupportSlotIdsByMuscle = new Map(
+    supportMuscles.map((muscle) => [
+      muscle,
+      getCompatibleShadowSupportSlots({
+        muscle,
+        slotSequence: input.slotSequence,
+        slotSequenceEntries,
+      }),
+    ])
+  );
+
+  return input.slotSequence.map((slot, slotIndex) => {
+    const slotPolicy = resolveSessionSlotPolicy({
+      sessionIntent: toSessionIntent(slot.intent),
+      slotId: slot.slotId,
+      slotSequence: { slots: slotSequenceEntries },
+    }).currentSession;
+    const allocatedMuscles: ShadowSlotDemandAllocation["allocatedMuscles"] = [];
+
+    for (const obligation of getSlotWeeklyObligations({
+      plan: input.weeklyObligationPlan,
+      slotId: slot.slotId,
+    })) {
+      const demand = getShadowDemandTargets({
+        activeMesocycle: input.activeMesocycle,
+        weeklyObligationPlan: input.weeklyObligationPlan,
+        muscle: obligation.muscle,
+      });
+      appendAllocatedMuscle(allocatedMuscles, {
+        muscle: obligation.muscle,
+        role: obligation.priority === "primary" ? "primary" : "support",
+        targetStatus: "hard",
+        minEffectiveSets: obligation.minEffectiveSets,
+        preferredEffectiveSets: obligation.minEffectiveSets,
+        maxEffectiveSets: demand.maxEffectiveSets,
+        allocationReason: [
+          "weekly_obligation_allocated_to_compatible_slot",
+          `weekly_priority:${obligation.priority}`,
+        ],
+      });
+    }
+
+    for (const muscle of getProtectedWeekOneCoverageObligations(slotPolicy)) {
+      const demand = getShadowDemandTargets({
+        activeMesocycle: input.activeMesocycle,
+        weeklyObligationPlan: input.weeklyObligationPlan,
+        muscle,
+      });
+      appendAllocatedMuscle(allocatedMuscles, {
+        muscle,
+        role: demand.priority === "primary" ? "primary" : "support",
+        targetStatus: demand.targetStatus === "hard" ? "hard" : "soft",
+        minEffectiveSets: demand.targetStatus === "hard" ? null : demand.minEffectiveSets,
+        preferredEffectiveSets: demand.targetStatus === "hard" ? null : demand.preferredEffectiveSets,
+        maxEffectiveSets: demand.maxEffectiveSets,
+        allocationReason: ["authored_protected_week_one_coverage"],
+      });
+    }
+
+    for (const muscle of slotPolicy?.compoundBias?.preferredPrimaryMuscles ?? []) {
+      const normalizedMuscle = normalizeMuscle(muscle);
+      const demand = getShadowDemandTargets({
+        activeMesocycle: input.activeMesocycle,
+        weeklyObligationPlan: input.weeklyObligationPlan,
+        muscle: normalizedMuscle,
+      });
+      appendAllocatedMuscle(allocatedMuscles, {
+        muscle: normalizedMuscle,
+        role: demand.priority === "primary" ? "primary" : "secondary",
+        targetStatus: demand.targetStatus,
+        minEffectiveSets: null,
+        preferredEffectiveSets: demand.targetStatus === "hard" ? null : demand.preferredEffectiveSets,
+        maxEffectiveSets: demand.maxEffectiveSets,
+        allocationReason: ["authored_primary_lane_preferred_muscle"],
+      });
+    }
+
+    for (const muscle of getProjectionPreferredSupportMuscles(slotPolicy)) {
+      const normalizedMuscle = normalizeMuscle(muscle);
+      const demand = getShadowDemandTargets({
+        activeMesocycle: input.activeMesocycle,
+        weeklyObligationPlan: input.weeklyObligationPlan,
+        muscle: normalizedMuscle,
+      });
+      appendAllocatedMuscle(allocatedMuscles, {
+        muscle: normalizedMuscle,
+        role: demand.priority === "primary" ? "primary" : "support",
+        targetStatus: demand.targetStatus === "hard" ? "hard" : "soft",
+        minEffectiveSets: demand.targetStatus === "hard" ? null : demand.minEffectiveSets,
+        preferredEffectiveSets: demand.targetStatus === "hard" ? null : demand.preferredEffectiveSets,
+        maxEffectiveSets: demand.maxEffectiveSets,
+        allocationReason: ["authored_preferred_support_muscle"],
+      });
+    }
+
+    for (const muscle of supportMuscles) {
+      const compatibleSlotIds = compatibleSupportSlotIdsByMuscle.get(muscle) ?? [];
+      if (!compatibleSlotIds.includes(slot.slotId)) {
+        continue;
+      }
+      const supportFloor = getWeekOneSupportFloor(muscle);
+      const perSlotPreferred =
+        supportFloor != null && compatibleSlotIds.length > 0
+          ? roundToTenth(supportFloor / compatibleSlotIds.length)
+          : null;
+      const demand = getShadowDemandTargets({
+        activeMesocycle: input.activeMesocycle,
+        weeklyObligationPlan: input.weeklyObligationPlan,
+        muscle,
+      });
+      appendAllocatedMuscle(allocatedMuscles, {
+        muscle,
+        role: "support",
+        targetStatus: demand.targetStatus === "diagnostic" ? "diagnostic" : "soft",
+        minEffectiveSets: null,
+        preferredEffectiveSets: perSlotPreferred,
+        maxEffectiveSets: demand.maxEffectiveSets,
+        allocationReason: ["slot_profile_support_compatible", "support_floor_distributed_across_compatible_slots"],
+      });
+    }
+
+    return {
+      slotId: slot.slotId,
+      slotIndex,
+      slotArchetype: slotPolicy?.slotArchetype ?? "unresolved",
+      intent: toSessionIntent(slot.intent),
+      allocatedMuscles: allocatedMuscles.sort((left, right) => {
+        const roleOrder: Record<typeof left.role, number> = {
+          primary: 0,
+          support: 1,
+          secondary: 2,
+          implicit: 3,
+        };
+        return roleOrder[left.role] - roleOrder[right.role] || left.muscle.localeCompare(right.muscle);
+      }),
+      fatigueBudget: getAllocationFatigueBudget(slotPolicy?.slotArchetype),
+    };
+  });
+}
+
+function buildShadowWeeklyDemand(input: {
+  activeMesocycle: ActiveMesocycleForDiagnostics;
+  weeklyObligationPlan: WeeklyMuscleObligationPlan;
+  relevantMuscles: string[];
+  shadowSlotDemandAllocation: ShadowSlotDemandAllocation[];
+}): ShadowWeeklyMuscleDemand[] {
+  const allocatedMuscles = new Set(
+    input.shadowSlotDemandAllocation.flatMap((slot) =>
+      slot.allocatedMuscles.map((allocation) => allocation.muscle)
+    )
+  );
+  const muscles = Array.from(
+    new Set([
+      ...input.relevantMuscles,
+      ...allocatedMuscles,
+      ...Object.keys(VOLUME_LANDMARKS).filter(
+        (muscle) => getNormalizedTargetTier(muscle) === "B_SUPPORT" && getWeekOneSupportFloor(muscle) != null
+      ),
+    ])
+  ).sort((left, right) => left.localeCompare(right));
+
+  return muscles.map((muscle) => {
+    const demand = getShadowDemandTargets({
+      activeMesocycle: input.activeMesocycle,
+      weeklyObligationPlan: input.weeklyObligationPlan,
+      muscle,
+    });
+    const desiredExposureCount = input.shadowSlotDemandAllocation.filter((slot) =>
+      slot.allocatedMuscles.some((allocation) => allocation.muscle === muscle)
+    ).length;
+
+    return {
+      muscle,
+      targetTier: demand.targetTier,
+      targetStatus: demand.targetStatus,
+      minEffectiveSets: demand.minEffectiveSets,
+      preferredEffectiveSets: demand.preferredEffectiveSets,
+      maxEffectiveSets: demand.maxEffectiveSets,
+      desiredExposureCount: desiredExposureCount > 0 ? desiredExposureCount : null,
+      priority: demand.priority,
+      source: Array.from(
+        new Set([
+          ...demand.source,
+          ...(desiredExposureCount > 0 ? ["shadow_slot_demand_allocation"] : []),
+        ])
+      ),
+      rationale:
+        desiredExposureCount > 0
+          ? [...demand.rationale, "At least one authored slot can own this demand before exercise selection."]
+          : demand.rationale,
+    };
+  });
+}
+
+function buildSlotCompositionSnapshots(input: {
+  slotSequence: ReadonlyArray<SlotSequenceEntry>;
+  projectedSlots: ReadonlyArray<ProjectedSlotWorkout>;
+}): SlotCompositionSnapshotDiagnostic[] {
+  const projectedSlotById = new Map(
+    input.projectedSlots.map((slot) => [slot.slotPlan.slotId, slot])
+  );
+
+  return input.slotSequence.map((slot, slotIndex) => {
+    const projectedSlot = projectedSlotById.get(slot.slotId);
+    const exerciseRows = projectedSlot ? buildExerciseRows([projectedSlot]) : [];
+    return {
+      slotId: slot.slotId,
+      slotIndex,
+      intent: toSessionIntent(slot.intent),
+      exerciseCount: exerciseRows.length,
+      totalSets: exerciseRows.reduce((sum, row) => sum + row.setCount, 0),
+      projectedEffectiveStimulusByMuscle: toRoundedRecord(
+        projectedSlot?.projectedContributionByMuscle ?? new Map()
+      ),
+      exercises: exerciseRows.map((row) => ({
+        exerciseId: row.exercise.exercise.id,
+        exerciseName: row.exercise.exercise.name,
+        role: row.role,
+        setCount: row.setCount,
+        primaryMuscles: [...(row.exercise.exercise.primaryMuscles ?? [])].map(normalizeMuscle),
+        effectiveStimulusByMuscle: row.contributionByMuscle,
+      })),
+    };
+  });
+}
+
+function classifyResponsibilityLoad(
+  allocation: ShadowSlotDemandAllocation | undefined
+): AllocationVsCompositionDelta["responsibilityLoad"] {
+  if (!allocation || allocation.allocatedMuscles.length === 0) {
+    return "unclear";
+  }
+  const actionable = allocation.allocatedMuscles.filter(
+    (row) => row.targetStatus === "hard" || row.targetStatus === "soft"
+  );
+  const hard = allocation.allocatedMuscles.filter((row) => row.targetStatus === "hard");
+  return actionable.length > 6 || hard.length > 3 ? "overloaded" : "clear";
+}
+
+function buildAllocationDeltas(input: {
+  shadowSlotDemandAllocation: ShadowSlotDemandAllocation[];
+  composition: SlotCompositionSnapshotDiagnostic[];
+  comparison: AllocationVsCompositionDelta["comparison"];
+}): AllocationVsCompositionDelta[] {
+  const allocationBySlotId = new Map(
+    input.shadowSlotDemandAllocation.map((slot) => [slot.slotId, slot])
+  );
+
+  return input.composition.map((slot) => {
+    const allocation = allocationBySlotId.get(slot.slotId);
+    const allocatedByMuscle = new Map(
+      (allocation?.allocatedMuscles ?? []).map((row) => [row.muscle, row])
+    );
+    const underAllocatedMuscles = (allocation?.allocatedMuscles ?? [])
+      .flatMap((row) => {
+        const expected = row.targetStatus === "hard"
+          ? row.minEffectiveSets
+          : row.preferredEffectiveSets;
+        const actual = roundToTenth(slot.projectedEffectiveStimulusByMuscle[row.muscle] ?? 0);
+        if (expected == null || actual + 1e-9 >= expected) {
+          return [];
+        }
+        return [{
+          muscle: row.muscle,
+          role: row.role,
+          targetStatus: row.targetStatus,
+          expectedEffectiveSets: expected,
+          actualEffectiveSets: actual,
+          shortfall: roundToTenth(expected - actual),
+        }];
+      })
+      .sort((left, right) => (right.shortfall ?? 0) - (left.shortfall ?? 0) || left.muscle.localeCompare(right.muscle));
+    const unallocatedStimulusMuscles = Object.entries(slot.projectedEffectiveStimulusByMuscle)
+      .filter(([muscle, effectiveSets]) => !allocatedByMuscle.has(muscle) && effectiveSets >= 2)
+      .map(([muscle, actualEffectiveSets]) => ({ muscle, actualEffectiveSets }))
+      .sort((left, right) => right.actualEffectiveSets - left.actualEffectiveSets || left.muscle.localeCompare(right.muscle));
+    const responsibilityLoad = classifyResponsibilityLoad(allocation);
+    const notes = [
+      ...(responsibilityLoad === "unclear" ? ["no_shadow_slot_allocation"] : []),
+      ...(responsibilityLoad === "overloaded" ? ["shadow_slot_has_many_actionable_responsibilities"] : []),
+      ...(underAllocatedMuscles.length > 0 ? ["allocated_muscles_under_initial_or_final_composition"] : []),
+      ...(unallocatedStimulusMuscles.length > 0 ? ["composition_serves_muscles_not_owned_by_shadow_slot"] : []),
+    ];
+
+    return {
+      slotId: slot.slotId,
+      slotIndex: slot.slotIndex,
+      comparison: input.comparison,
+      responsibilityLoad,
+      underAllocatedMuscles,
+      unallocatedStimulusMuscles,
+      notes,
+    };
+  });
+}
+
+function buildShadowRepairMateriality(input: {
+  repairMateriality: RepairMaterialityDiagnostic[];
+  shadowWeeklyDemand: ShadowWeeklyMuscleDemand[];
+  shadowSlotDemandAllocation: ShadowSlotDemandAllocation[];
+}): ShadowRepairMaterialityDiagnostic[] {
+  const demandByMuscle = new Map(input.shadowWeeklyDemand.map((row) => [row.muscle, row]));
+  const allocationBySlotId = new Map(
+    input.shadowSlotDemandAllocation.map((slot) => [slot.slotId, slot])
+  );
+  const allocatedMuscles = new Set(
+    input.shadowSlotDemandAllocation.flatMap((slot) =>
+      slot.allocatedMuscles.map((allocation) => allocation.muscle)
+    )
+  );
+
+  return input.repairMateriality.map((row) => {
+    const demand = row.muscle ? demandByMuscle.get(row.muscle) : undefined;
+    const slotAllocation = row.slotId ? allocationBySlotId.get(row.slotId) : undefined;
+    const sameSlotAllocation = slotAllocation?.allocatedMuscles.find(
+      (allocation) => allocation.muscle === row.muscle
+    );
+    const materialRepair = row.materiality === "major" || row.materiality === "moderate";
+    const likelyAvoidableWithShadowAllocation = Boolean(
+      materialRepair &&
+        row.muscle &&
+        sameSlotAllocation &&
+        (row.action === "added" || row.action === "set_bumped") &&
+        sameSlotAllocation.targetStatus !== "diagnostic"
+    );
+    const shadowAllocationBasis: ShadowRepairMaterialityDiagnostic["shadowAllocationBasis"] =
+      sameSlotAllocation
+        ? "slot_owned_muscle_before_selection"
+        : row.muscle && allocatedMuscles.has(row.muscle)
+          ? "weekly_demand_owned_elsewhere"
+          : row.materiality === "none" || row.action === "set_trimmed" || row.action === "removed"
+            ? "diagnostic_or_cap_cleanup"
+            : "not_shadow_allocated";
+
+    return {
+      ...row,
+      likelyAvoidableWithShadowAllocation,
+      shadowAllocationBasis,
+      shadowRationale: [
+        ...(sameSlotAllocation
+          ? [`shadow_slot_allocation:${sameSlotAllocation.role}:${sameSlotAllocation.targetStatus}`]
+          : []),
+        ...(demand ? [`shadow_weekly_demand:${demand.priority}:${demand.targetStatus}`] : []),
+        ...(likelyAvoidableWithShadowAllocation
+          ? ["repair likely represents demand that should move upstream before exercise selection"]
+          : ["repair remains cap cleanup, unowned stimulus, or unresolved by current shadow allocation"]),
+      ],
+    };
+  });
+}
+
 function buildSlotDemandAllocation(input: {
   slotSequence: ReadonlyArray<SlotSequenceEntry>;
   weeklyObligationPlan: WeeklyMuscleObligationPlan;
@@ -547,6 +1169,7 @@ function buildSlotDemandAllocation(input: {
 
     return {
       slotId: slot.slotId,
+      slotIndex: index,
       slotLabel: `${slot.intent}@${slot.slotId}`,
       intent: toSessionIntent(slot.intent),
       authoredSlotRole: slotPolicy?.slotArchetype ?? null,
@@ -1286,6 +1909,36 @@ export function buildWeeklyDemandSlotAllocationDiagnostic(input: {
     weeklyObligationPlan: input.weeklyObligationPlan,
     finalProjectedSlots: input.finalProjectedSlots,
   });
+  const shadowSlotDemandAllocation = buildShadowSlotDemandAllocation({
+    activeMesocycle: input.activeMesocycle,
+    slotSequence: input.slotSequence,
+    weeklyObligationPlan: input.weeklyObligationPlan,
+    relevantMuscles,
+  });
+  const shadowWeeklyDemand = buildShadowWeeklyDemand({
+    activeMesocycle: input.activeMesocycle,
+    weeklyObligationPlan: input.weeklyObligationPlan,
+    relevantMuscles,
+    shadowSlotDemandAllocation,
+  });
+  const initialSlotComposition = buildSlotCompositionSnapshots({
+    slotSequence: input.slotSequence,
+    projectedSlots: input.initialProjectedSlots,
+  });
+  const finalSlotPlan = buildSlotCompositionSnapshots({
+    slotSequence: input.slotSequence,
+    projectedSlots: input.finalProjectedSlots,
+  });
+  const allocationVsInitialDelta = buildAllocationDeltas({
+    shadowSlotDemandAllocation,
+    composition: initialSlotComposition,
+    comparison: "allocation_vs_initial",
+  });
+  const allocationVsFinalDelta = buildAllocationDeltas({
+    shadowSlotDemandAllocation,
+    composition: finalSlotPlan,
+    comparison: "allocation_vs_final",
+  });
   const finalExerciseRows = buildExerciseRows(input.finalProjectedSlots);
   const projectedDelivery = buildProjectedDelivery({
     activeMesocycle: input.activeMesocycle,
@@ -1304,6 +1957,11 @@ export function buildWeeklyDemandSlotAllocationDiagnostic(input: {
     supportFloorRepairReasons: input.supportFloorRepairReasons,
     programQualityAppliedDiagnostics: input.programQualityAppliedDiagnostics,
     programQualityEvaluation: input.programQualityEvaluation,
+  });
+  const repairMaterialityAfterShadowAllocation = buildShadowRepairMateriality({
+    repairMateriality,
+    shadowWeeklyDemand,
+    shadowSlotDemandAllocation,
   });
   const exerciseConcentration = buildExerciseConcentration({
     initialProjectedSlots: input.initialProjectedSlots,
@@ -1351,11 +2009,19 @@ export function buildWeeklyDemandSlotAllocationDiagnostic(input: {
     },
     weeklyMuscleDemand,
     slotDemandAllocation,
+    shadowWeeklyDemand,
+    shadowSlotDemandAllocation,
+    initialSlotComposition,
+    finalSlotPlan,
+    allocationVsInitialDelta,
+    allocationVsFinalDelta,
+    repairMaterialityAfterShadowAllocation,
     projectedDelivery,
     repairMateriality,
     exerciseConcentration,
     warnings,
     limitations: [
+      "Shadow weekly demand and slot demand allocation are upstream-planning diagnostics only; they are not consumed by slot-local selection, repair, scoring, seed serialization, or runtime replay.",
       "Initial slot composition means the selected slot workout after slot-local candidate selection and before final program-quality/support-floor/weekly-obligation shaping.",
       "Repair materiality is inferred from initial-vs-final projection deltas plus existing program-quality and coverage diagnostics; historical candidate ranking internals are not persisted here.",
       "This diagnostic is read-only and does not feed scoring, generation, seed parsing, or runtime replay.",

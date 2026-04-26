@@ -1120,6 +1120,125 @@ describe("buildPlanningRealitySummary", () => {
     );
   });
 
+  it("prints compact preselection distribution policy limitations when present", () => {
+    const summary = buildPlanningRealitySummary({
+      artifact: {
+        mesocycleExplain: {
+          preview: {
+            projectionDiagnostics: {
+              planningReality: {
+                summary: {
+                  planningShape: "mostly_repair_shaped",
+                  explicitWeeklyDemandMuscles: 4,
+                  inferredDemandMuscles: 3,
+                  slotsWithExplicitWeeklyDemand: 2,
+                  slotsWithOnlyLocalOrInferredSemantics: 1,
+                  materialRepairCount: 20,
+                  majorRepairCount: 10,
+                  highExerciseConcentrationCount: 4,
+                  warningCodes: [],
+                },
+                preselectionDistributionPolicyByWeek: {
+                  mesocycleId: "meso-1",
+                  source: "diagnostic_shadow_planner",
+                  readOnly: true,
+                  affectsScoringOrGeneration: false,
+                  limitations: [
+                    "weeks_2_to_4_unprojected",
+                    "missing_weekly_demand_curve",
+                    "missing_accumulation_progression_policy",
+                    "deload_distribution_not_projected",
+                  ],
+                  weeks: [
+                    {
+                      week: 1,
+                      phase: "accumulation",
+                      projectionStatus: "projected_from_current_week_evidence",
+                      weekScope: "week_1_only",
+                      slots: [
+                        {
+                          slotId: "upper_a",
+                          slotArchetype: "upper_horizontal_balanced",
+                          muscleDistributions: [],
+                        },
+                      ],
+                      weekLevelWarnings: [],
+                    },
+                    {
+                      week: 2,
+                      phase: "accumulation",
+                      projectionStatus:
+                        "not_projected_missing_weekly_demand_curve",
+                      weekScope: "accumulation_weeks",
+                      slots: [],
+                      weekLevelWarnings: ["weeks_2_to_4_unprojected"],
+                    },
+                    {
+                      week: 3,
+                      phase: "accumulation",
+                      projectionStatus:
+                        "not_projected_missing_accumulation_policy",
+                      weekScope: "accumulation_weeks",
+                      slots: [],
+                      weekLevelWarnings: [
+                        "missing_accumulation_progression_policy",
+                      ],
+                    },
+                    {
+                      week: 4,
+                      phase: "accumulation",
+                      projectionStatus:
+                        "not_projected_missing_accumulation_policy",
+                      weekScope: "accumulation_weeks",
+                      slots: [],
+                      weekLevelWarnings: [
+                        "missing_per_week_slot_distribution",
+                      ],
+                    },
+                    {
+                      week: 5,
+                      phase: "deload",
+                      projectionStatus: "not_projected_missing_deload_policy",
+                      weekScope: "deload_week",
+                      slots: [],
+                      weekLevelWarnings: ["deload_distribution_not_projected"],
+                    },
+                  ],
+                  candidateBehaviorSlices: [
+                    {
+                      candidate:
+                        "chest_upper_slot_distinct_exercise_distribution",
+                      weekScope: "accumulation_weeks",
+                      expectedBenefit:
+                        "Chest is the safest future behavior once week projection exists.",
+                      risk:
+                        "Blocked from behavior now because no week-by-week projection exists.",
+                      prereqs: ["week-by-week Chest demand"],
+                      recommendation: "best_future_behavior",
+                    },
+                  ],
+                  recommendedNextStep: "add_weekly_demand_curve_diagnostic",
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    expect(summary).toEqual(
+      expect.arrayContaining([
+        "Preselection Distribution Policy",
+        "--------------------------------",
+        "Week 1: projected from current evidence",
+        "Weeks 2-4: not projected - missing weekly demand curve / accumulation policy",
+        "Deload: not projected - missing deload preservation policy",
+        "Best future behavior: Chest upper-slot distinct exercise distribution",
+        "Blocked from behavior now: no week-by-week projection yet",
+      ])
+    );
+  });
+
   it("returns null when mesocycle-explain does not include planningReality", () => {
     expect(
       buildPlanningRealitySummary({

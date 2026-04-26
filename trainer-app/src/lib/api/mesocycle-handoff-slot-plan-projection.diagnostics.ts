@@ -532,6 +532,101 @@ export type SetDistributionIntent = {
   affectsScoringOrGeneration: false;
 };
 
+export type PreselectionDistributionPolicyByWeek = {
+  mesocycleId: string | null;
+  source: "diagnostic_shadow_planner";
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+  limitations: string[];
+  weeks: Array<{
+    week: number;
+    phase: "accumulation" | "peak" | "deload" | "unknown";
+    projectionStatus:
+      | "projected_from_current_week_evidence"
+      | "not_projected_missing_weekly_demand_curve"
+      | "not_projected_missing_accumulation_policy"
+      | "not_projected_missing_deload_policy";
+    weekScope:
+      | "week_1_only"
+      | "accumulation_weeks"
+      | "peak_week"
+      | "deload_week"
+      | "whole_mesocycle";
+    slots: Array<{
+      slotId: string;
+      slotArchetype: string;
+      muscleDistributions: Array<{
+        muscle: string;
+        targetStatus: "hard" | "soft" | "diagnostic" | "forbidden";
+        role: "primary" | "support" | "collateral";
+        demandType:
+          | "direct_required"
+          | "overlap_preferred"
+          | "direct_if_under_floor"
+          | "soft_direct_allowed"
+          | "diagnostic_only"
+          | "do_not_train_here";
+        targetEffectiveSets: number | null;
+        minEffectiveSets: number | null;
+        maxEffectiveSets: number | null;
+        requiredExerciseClasses?: string[];
+        preferredExerciseClasses?: string[];
+        forbiddenExerciseClasses?: string[];
+        maxSingleExerciseShare: number | null;
+        maxSinglePatternShare: number | null;
+        preferredSetSplit:
+          | "anchor_plus_isolation"
+          | "two_distinct_exercises"
+          | "overlap_first_then_isolation"
+          | "single_anchor_allowed"
+          | "diagnostic_only"
+          | "forbidden";
+        duplicatePolicy:
+          | "allow_continuity"
+          | "discourage_if_alternative_exists"
+          | "block_duplicate_if_alternative_exists";
+        unresolvedBehavior: "leave_unresolved" | "allow_repair_safety_net";
+        affects: {
+          volumeProgression: boolean;
+          exerciseContinuity: boolean;
+          setDistribution: boolean;
+          fatigueManagement: boolean;
+          deloadPreservation: boolean;
+          runtimeAdaptation: boolean;
+        };
+        evidence: string[];
+        limitations: string[];
+      }>;
+    }>;
+    weekLevelWarnings: string[];
+  }>;
+  candidateBehaviorSlices: Array<{
+    candidate:
+      | "chest_upper_slot_distinct_exercise_distribution"
+      | "hamstrings_weekly_overdelivery_control"
+      | "side_delt_second_slot_support"
+      | "duplicate_main_lift_suppression"
+      | "calf_duplicate_suppression";
+    weekScope:
+      | "week_1_only"
+      | "accumulation_weeks"
+      | "whole_mesocycle"
+      | "deload_week";
+    expectedBenefit: string;
+    risk: string;
+    prereqs: string[];
+    recommendation:
+      | "best_future_behavior"
+      | "diagnostic_only"
+      | "not_first"
+      | "later_cleanup";
+  }>;
+  recommendedNextStep:
+    | "add_behavior_after_weekly_projection"
+    | "add_weekly_demand_curve_diagnostic"
+    | "keep_diagnostic_only";
+};
+
 export type SlotPlanPlanningRealityDiagnostic = {
   label: "weekly demand / slot allocation diagnostics";
   readOnly: true;
@@ -568,6 +663,7 @@ export type SlotPlanPlanningRealityDiagnostic = {
   setDistributionIntents: SetDistributionIntent[];
   distributionGuardActions: DistributionGuardAction[];
   preselectionFeasibility: CleanPreselectionFeasibility[];
+  preselectionDistributionPolicyByWeek: PreselectionDistributionPolicyByWeek;
   forbiddenCleanupReroute?: ForbiddenCleanupRerouteDiagnostic;
   rearDeltCollateralSummary?: RearDeltCollateralSummary;
   projectedDelivery: ProjectedDeliveryDiagnostic[];
@@ -2563,6 +2659,485 @@ function buildSetDistributionIntents(input: {
   });
 }
 
+type DistributionPolicyWeek =
+  PreselectionDistributionPolicyByWeek["weeks"][number];
+type DistributionPolicySlot = DistributionPolicyWeek["slots"][number];
+type DistributionPolicyMuscle =
+  DistributionPolicySlot["muscleDistributions"][number];
+type SlotMusclePrescription =
+  SlotPrescriptionIntent["musclePrescriptions"][number];
+type SetDistributionPolicy = SetDistributionIntent["musclePolicies"][number];
+
+function getDiagnosticMesocycleId(
+  activeMesocycle: ActiveMesocycleForDiagnostics,
+): string | null {
+  const value = (activeMesocycle as { id?: unknown }).id;
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function getDiagnosticDurationWeeks(
+  activeMesocycle: ActiveMesocycleForDiagnostics,
+): number {
+  const value = (activeMesocycle as { durationWeeks?: unknown }).durationWeeks;
+  return typeof value === "number" && Number.isFinite(value) && value >= 2
+    ? Math.floor(value)
+    : 5;
+}
+
+function toPolicyRole(
+  role: SlotMusclePrescription["role"],
+): DistributionPolicyMuscle["role"] {
+  return role === "primary" || role === "support" ? role : "collateral";
+}
+
+function toPreferredSetSplit(
+  preferredDistribution: SetDistributionPolicy["preferredDistribution"],
+): DistributionPolicyMuscle["preferredSetSplit"] {
+  switch (preferredDistribution) {
+    case "single_anchor_plus_accessory":
+      return "anchor_plus_isolation";
+    case "two_exercise_split":
+      return "two_distinct_exercises";
+    case "overlap_first":
+    case "direct_isolation_only_if_needed":
+      return "overlap_first_then_isolation";
+    case "diagnostic_only":
+      return "diagnostic_only";
+    case "forbidden":
+      return "forbidden";
+  }
+}
+
+function uniqueSorted(values: ReadonlyArray<string>): string[] {
+  return Array.from(
+    new Set(values.filter((value) => value.trim().length > 0)),
+  ).sort((left, right) => left.localeCompare(right));
+}
+
+function exerciseMatchesMuscle(
+  exercise: SlotCompositionSnapshotDiagnostic["exercises"][number],
+  muscle: string,
+): boolean {
+  return exercise.primaryMuscles.map(normalizeMuscle).includes(muscle);
+}
+
+function findDuplicateRowsForMuscle(input: {
+  slot: SlotCompositionSnapshotDiagnostic | undefined;
+  policy: SetDistributionPolicy;
+  duplicateExerciseReuse: ReadonlyArray<DuplicateExerciseReuseDiagnostic>;
+}): DuplicateExerciseReuseDiagnostic[] {
+  if (!input.slot) {
+    return [];
+  }
+  const exerciseIds = new Set(
+    input.slot.exercises
+      .filter((exercise) => exerciseMatchesMuscle(exercise, input.policy.muscle))
+      .flatMap((exercise) => [exercise.exerciseId, exercise.exerciseName]),
+  );
+  return input.duplicateExerciseReuse.filter(
+    (row) =>
+      row.repeatedInSlotId === input.slot?.slotId &&
+      (exerciseIds.has(row.exerciseId) || exerciseIds.has(row.name)),
+  );
+}
+
+function chooseDuplicatePolicy(input: {
+  policy: SetDistributionPolicy;
+  duplicateRows: ReadonlyArray<DuplicateExerciseReuseDiagnostic>;
+}): DistributionPolicyMuscle["duplicatePolicy"] {
+  if (input.policy.targetStatus === "forbidden") {
+    return "block_duplicate_if_alternative_exists";
+  }
+  if (
+    input.duplicateRows.some(
+      (row) => row.hasCompatibleAlternative && row.role === "main",
+    )
+  ) {
+    return "block_duplicate_if_alternative_exists";
+  }
+  if (
+    input.duplicateRows.length > 0 ||
+    input.policy.muscle === "Calves" ||
+    input.policy.muscle === "Side Delts"
+  ) {
+    return "discourage_if_alternative_exists";
+  }
+  return "allow_continuity";
+}
+
+function buildDistributionEvidence(input: {
+  slotId: string;
+  policy: SetDistributionPolicy;
+  prescription?: SlotMusclePrescription;
+  setDistributionIntent: SetDistributionIntent;
+  projectedDelivery: ReadonlyArray<ProjectedDeliveryDiagnostic>;
+  warnings: SlotPlanPlanningRealityDiagnostic["warnings"];
+  duplicateRows: ReadonlyArray<DuplicateExerciseReuseDiagnostic>;
+}): string[] {
+  const delivery = input.projectedDelivery.find(
+    (row) => row.muscle === input.policy.muscle,
+  );
+  const warningEvidence = input.warnings.flatMap((warning) => {
+    const evidence = warning.evidence.filter((entry) =>
+      entry.includes(input.policy.muscle),
+    );
+    return evidence.map((entry) => `${warning.code}:${entry}`);
+  });
+  const distributionEvidence = [
+    ...input.setDistributionIntent.evidence.concentrationRows.filter((row) =>
+      row.includes(input.policy.muscle),
+    ),
+    ...input.setDistributionIntent.evidence.repairRowsStillRepairOwned.filter(
+      (row) => row.includes(input.policy.muscle),
+    ),
+  ];
+  const duplicateEvidence = input.duplicateRows.map(
+    (row) =>
+      `duplicate:${row.name}:role=${row.role}:previous=${row.previousSlotIds.join("+")}:alternative=${row.hasCompatibleAlternative}`,
+  );
+
+  return uniqueSorted([
+    `${input.slotId}:${input.policy.muscle}:${input.policy.targetStatus}:${input.policy.demandType}`,
+    ...(delivery
+      ? [
+          `projectedDelivery:${input.policy.muscle}:initial=${formatNullableNumber(delivery.projectedEffectiveStimulusAfterInitialSlotComposition)}:final=${delivery.projectedEffectiveStimulusAfterRepairAndFinalShaping}:target=${formatNullableNumber(delivery.preferredTarget)}`,
+        ]
+      : []),
+    ...(input.prescription?.reasons ?? []),
+    ...distributionEvidence,
+    ...warningEvidence,
+    ...duplicateEvidence,
+  ]);
+}
+
+function formatNullableNumber(value: number | null | undefined): string {
+  return typeof value === "number" && Number.isFinite(value)
+    ? String(value)
+    : "null";
+}
+
+function buildWeekOnePolicySlots(input: {
+  slotPrescriptionIntents: ReadonlyArray<SlotPrescriptionIntent>;
+  setDistributionIntents: ReadonlyArray<SetDistributionIntent>;
+  finalSlotPlan: ReadonlyArray<SlotCompositionSnapshotDiagnostic>;
+  projectedDelivery: ReadonlyArray<ProjectedDeliveryDiagnostic>;
+  duplicateExerciseReuse: ReadonlyArray<DuplicateExerciseReuseDiagnostic>;
+  warnings: SlotPlanPlanningRealityDiagnostic["warnings"];
+}): DistributionPolicySlot[] {
+  const prescriptionBySlotId = new Map(
+    input.slotPrescriptionIntents.map((slot) => [slot.slotId, slot]),
+  );
+  const finalSlotById = new Map(
+    input.finalSlotPlan.map((slot) => [slot.slotId, slot]),
+  );
+
+  return input.setDistributionIntents.map((intent) => {
+    const slotPrescription = prescriptionBySlotId.get(intent.slotId);
+    const finalSlot = finalSlotById.get(intent.slotId);
+    return {
+      slotId: intent.slotId,
+      slotArchetype: intent.slotArchetype ?? "unknown",
+      muscleDistributions: intent.musclePolicies.map((policy) => {
+        const prescription = slotPrescription?.musclePrescriptions.find(
+          (row) => row.muscle === policy.muscle,
+        );
+        const duplicateRows = findDuplicateRowsForMuscle({
+          slot: finalSlot,
+          policy,
+          duplicateExerciseReuse: input.duplicateExerciseReuse,
+        });
+        const requiredExerciseClasses =
+          policy.targetStatus === "hard" &&
+          policy.demandType === "direct_required"
+            ? (prescription?.allowedExerciseClasses ?? [])
+            : [];
+        const preferredExerciseClasses =
+          requiredExerciseClasses.length === 0
+            ? (prescription?.allowedExerciseClasses ?? [])
+            : [];
+        const forbiddenExerciseClasses =
+          prescription?.forbiddenExerciseClasses ?? [];
+
+        return {
+          muscle: policy.muscle,
+          targetStatus: policy.targetStatus,
+          role: toPolicyRole(policy.role),
+          demandType: policy.demandType,
+          targetEffectiveSets: policy.preferredEffectiveSets,
+          minEffectiveSets: policy.minEffectiveSets,
+          maxEffectiveSets: policy.maxEffectiveSets,
+          ...(requiredExerciseClasses.length > 0
+            ? { requiredExerciseClasses }
+            : {}),
+          ...(preferredExerciseClasses.length > 0
+            ? { preferredExerciseClasses }
+            : {}),
+          ...(forbiddenExerciseClasses.length > 0
+            ? { forbiddenExerciseClasses }
+            : {}),
+          maxSingleExerciseShare: policy.maxSingleExerciseShare,
+          maxSinglePatternShare: policy.maxSinglePatternShare,
+          preferredSetSplit: toPreferredSetSplit(policy.preferredDistribution),
+          duplicatePolicy: chooseDuplicatePolicy({ policy, duplicateRows }),
+          unresolvedBehavior:
+            policy.whenAtLimit === "leave_unresolved" ||
+            policy.targetStatus === "forbidden"
+              ? "leave_unresolved"
+              : "allow_repair_safety_net",
+          affects: {
+            volumeProgression: policy.targetStatus === "hard",
+            exerciseContinuity:
+              duplicateRows.length > 0 || policy.targetStatus !== "diagnostic",
+            setDistribution:
+              policy.targetStatus === "hard" || policy.targetStatus === "soft",
+            fatigueManagement:
+              duplicateRows.length > 0 ||
+              policy.muscle === "Hamstrings" ||
+              policy.muscle === "Lower Back" ||
+              policy.muscle === "Glutes",
+            deloadPreservation:
+              policy.targetStatus === "hard" ||
+              duplicateRows.some((row) => row.role === "main"),
+            runtimeAdaptation: false,
+          },
+          evidence: buildDistributionEvidence({
+            slotId: intent.slotId,
+            policy,
+            prescription,
+            setDistributionIntent: intent,
+            projectedDelivery: input.projectedDelivery,
+            warnings: input.warnings,
+            duplicateRows,
+          }),
+          limitations: [
+            "week_1_evidence_only",
+            "diagnostic_shadow_policy_not_behavior",
+            "does_not_affect_scoring_generation_repair_seed_or_runtime",
+          ],
+        };
+      }),
+    };
+  });
+}
+
+function buildWeekOnePolicyWarnings(input: {
+  warnings: SlotPlanPlanningRealityDiagnostic["warnings"];
+  duplicateExerciseReuse: ReadonlyArray<DuplicateExerciseReuseDiagnostic>;
+  finalSlotPlan: ReadonlyArray<SlotCompositionSnapshotDiagnostic>;
+}): string[] {
+  const calfExerciseKeys = new Set(
+    input.finalSlotPlan.flatMap((slot) =>
+      slot.exercises
+        .filter((exercise) => exerciseMatchesMuscle(exercise, "Calves"))
+        .flatMap((exercise) => [
+          `${slot.slotId}:${exercise.exerciseId}`,
+          `${slot.slotId}:${exercise.exerciseName}`,
+        ]),
+    ),
+  );
+  const duplicateWarnings = input.duplicateExerciseReuse.flatMap((row) => {
+    const base =
+      row.role === "main"
+        ? [
+            `duplicate_main_lift_pressure:${row.name}:${row.previousSlotIds.join("+")}->${row.repeatedInSlotId}`,
+          ]
+        : [];
+    const calfDuplicate = calfExerciseKeys.has(`${row.repeatedInSlotId}:${row.exerciseId}`) ||
+      calfExerciseKeys.has(`${row.repeatedInSlotId}:${row.name}`)
+        ? [
+            `calf_duplicate_isolation_pressure:${row.name}:${row.previousSlotIds.join("+")}->${row.repeatedInSlotId}`,
+          ]
+        : [];
+    return [...base, ...calfDuplicate];
+  });
+  const shapeWarnings = input.warnings.flatMap((warning) =>
+    warning.evidence.length > 0
+      ? warning.evidence.map((entry) => `${warning.code}:${entry}`)
+      : [warning.code],
+  );
+  return uniqueSorted([...shapeWarnings, ...duplicateWarnings]);
+}
+
+function buildUnprojectedWeek(input: {
+  week: number;
+  phase: DistributionPolicyWeek["phase"];
+  projectionStatus: DistributionPolicyWeek["projectionStatus"];
+  weekScope: DistributionPolicyWeek["weekScope"];
+  warnings: string[];
+}): DistributionPolicyWeek {
+  return {
+    week: input.week,
+    phase: input.phase,
+    projectionStatus: input.projectionStatus,
+    weekScope: input.weekScope,
+    slots: [],
+    weekLevelWarnings: input.warnings,
+  };
+}
+
+function buildCandidateBehaviorSlices(): PreselectionDistributionPolicyByWeek["candidateBehaviorSlices"] {
+  return [
+    {
+      candidate: "chest_upper_slot_distinct_exercise_distribution",
+      weekScope: "accumulation_weeks",
+      expectedBenefit:
+        "Chest is a hard primary target, is currently under target, direct Chest evidence is concentrated in repeated Incline DB Bench exposure, and lower-slot Chest repair is blocked; a projected week-by-week distinct upper-slot press/fly distribution is the safest future behavior slice.",
+      risk:
+        "Implementing it before weekly projection would optimize Week 1 evidence while pretending to solve the whole mesocycle.",
+      prereqs: [
+        "inventory/class visibility for distinct chest press/fly options",
+        "week-by-week Chest demand",
+        "duplicate continuity justification",
+      ],
+      recommendation: "best_future_behavior",
+    },
+    {
+      candidate: "hamstrings_weekly_overdelivery_control",
+      weekScope: "accumulation_weeks",
+      expectedBenefit:
+        "Could cap weekly Hamstrings overdelivery once demand curves and carryover exist.",
+      risk:
+        "Hamstrings are already high and lower_b recently improved through a clean curl route; starting here risks breaking the hinge/curl distinction or broadening Hamstrings demand.",
+      prereqs: [
+        "week-by-week Hamstrings demand",
+        "hinge versus knee-flexion preservation checks",
+        "fatigue carryover model",
+      ],
+      recommendation: "not_first",
+    },
+    {
+      candidate: "side_delt_second_slot_support",
+      weekScope: "accumulation_weeks",
+      expectedBenefit:
+        "Can make the successful upper_b Side Delts support path visible across the block without relying on late support-floor repair.",
+      risk:
+        "Side Delts remain low, but behavior needs an OHP/lateral-raise spam guard before promotion.",
+      prereqs: [
+        "per-week Side Delts support demand",
+        "duplicate lateral-raise pressure visibility",
+        "press-overlap versus isolation split policy",
+      ],
+      recommendation: "diagnostic_only",
+    },
+    {
+      candidate: "duplicate_main_lift_suppression",
+      weekScope: "whole_mesocycle",
+      expectedBenefit:
+        "Would reduce repeated anchor fatigue across accumulation weeks and improve exercise diversity.",
+      risk:
+        "High leverage but high blast radius; needs a persisted duplicate-continuity justification model before it can safely alter selection.",
+      prereqs: [
+        "persisted duplicate justification model",
+        "week-by-week anchor continuity policy",
+        "deload identity preservation expectations",
+      ],
+      recommendation: "not_first",
+    },
+    {
+      candidate: "calf_duplicate_suppression",
+      weekScope: "accumulation_weeks",
+      expectedBenefit:
+        "Would reduce duplicate calf-isolation noise once larger distribution policy is in place.",
+      risk:
+        "Low architecture leverage compared with hard primary distribution and duplicate main-lift fatigue.",
+      prereqs: [
+        "per-week Calves support demand",
+        "duplicate isolation variant visibility",
+        "slot capacity after hard primary floors",
+      ],
+      recommendation: "later_cleanup",
+    },
+  ];
+}
+
+function buildPreselectionDistributionPolicyByWeek(input: {
+  activeMesocycle: ActiveMesocycleForDiagnostics;
+  slotPrescriptionIntents: ReadonlyArray<SlotPrescriptionIntent>;
+  setDistributionIntents: ReadonlyArray<SetDistributionIntent>;
+  finalSlotPlan: ReadonlyArray<SlotCompositionSnapshotDiagnostic>;
+  projectedDelivery: ReadonlyArray<ProjectedDeliveryDiagnostic>;
+  duplicateExerciseReuse: ReadonlyArray<DuplicateExerciseReuseDiagnostic>;
+  warnings: SlotPlanPlanningRealityDiagnostic["warnings"];
+}): PreselectionDistributionPolicyByWeek {
+  const durationWeeks = getDiagnosticDurationWeeks(input.activeMesocycle);
+  const accumulationWeeks = Math.max(1, durationWeeks - 1);
+  const weekOneWarnings = buildWeekOnePolicyWarnings({
+    warnings: input.warnings,
+    duplicateExerciseReuse: input.duplicateExerciseReuse,
+    finalSlotPlan: input.finalSlotPlan,
+  });
+  const futureAccumulationWarnings = [
+    "weeks_2_to_4_unprojected",
+    "missing_weekly_demand_curve",
+    "missing_accumulation_progression_policy",
+    "missing_per_week_slot_distribution",
+    "missing_fatigue_carryover_model",
+  ];
+  const deloadWarnings = [
+    "deload_distribution_not_projected",
+    "missing_deload_identity_preservation_policy",
+    "missing_deload_set_reduction_projection",
+  ];
+
+  const weeks: DistributionPolicyWeek[] = [
+    {
+      week: 1,
+      phase: "accumulation",
+      projectionStatus: "projected_from_current_week_evidence",
+      weekScope: "week_1_only",
+      slots: buildWeekOnePolicySlots(input),
+      weekLevelWarnings: weekOneWarnings,
+    },
+  ];
+
+  for (let week = 2; week <= accumulationWeeks; week += 1) {
+    weeks.push(
+      buildUnprojectedWeek({
+        week,
+        phase: "accumulation",
+        projectionStatus:
+          week === 2
+            ? "not_projected_missing_weekly_demand_curve"
+            : "not_projected_missing_accumulation_policy",
+        weekScope: "accumulation_weeks",
+        warnings: futureAccumulationWarnings,
+      }),
+    );
+  }
+
+  weeks.push(
+    buildUnprojectedWeek({
+      week: durationWeeks,
+      phase: "deload",
+      projectionStatus: "not_projected_missing_deload_policy",
+      weekScope: "deload_week",
+      warnings: deloadWarnings,
+    }),
+  );
+
+  return {
+    mesocycleId: getDiagnosticMesocycleId(input.activeMesocycle),
+    source: "diagnostic_shadow_planner",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    limitations: [
+      "diagnostic_read_only_no_generation_scoring_repair_seed_or_runtime_effect",
+      "week_1_supported_by_current_projection_evidence_only",
+      "weeks_2_to_4_unprojected",
+      "missing_weekly_demand_curve",
+      "missing_accumulation_progression_policy",
+      "missing_per_week_slot_distribution",
+      "missing_fatigue_carryover_model",
+      "deload_distribution_not_projected",
+      "missing_deload_identity_preservation_policy",
+      "missing_deload_set_reduction_projection",
+    ],
+    weeks,
+    candidateBehaviorSlices: buildCandidateBehaviorSlices(),
+    recommendedNextStep: "add_weekly_demand_curve_diagnostic",
+  };
+}
+
 function buildSlotDemandAllocation(input: {
   slotSequence: ReadonlyArray<SlotSequenceEntry>;
   weeklyObligationPlan: WeeklyMuscleObligationPlan;
@@ -4396,6 +4971,16 @@ export function buildWeeklyDemandSlotAllocationDiagnostic(input: {
     exerciseConcentration,
     rearDeltCollateralSummary,
   });
+  const preselectionDistributionPolicyByWeek =
+    buildPreselectionDistributionPolicyByWeek({
+      activeMesocycle: input.activeMesocycle,
+      slotPrescriptionIntents,
+      setDistributionIntents,
+      finalSlotPlan,
+      projectedDelivery,
+      duplicateExerciseReuse: input.duplicateExerciseReuse ?? [],
+      warnings,
+    });
   const materialRepairCount = repairMateriality.filter(
     (row) => row.materiality === "moderate" || row.materiality === "major"
   ).length;
@@ -4446,6 +5031,7 @@ export function buildWeeklyDemandSlotAllocationDiagnostic(input: {
     setDistributionIntents,
     distributionGuardActions,
     preselectionFeasibility,
+    preselectionDistributionPolicyByWeek,
     ...(input.forbiddenCleanupReroute
       ? { forbiddenCleanupReroute: input.forbiddenCleanupReroute }
       : {}),

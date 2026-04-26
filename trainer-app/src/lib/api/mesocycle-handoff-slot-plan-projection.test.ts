@@ -2426,6 +2426,137 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
         }),
       ]),
     );
+    const policy = diagnostic?.preselectionDistributionPolicyByWeek;
+    expect(policy).toMatchObject({
+      mesocycleId: expect.any(String),
+      source: "diagnostic_shadow_planner",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      recommendedNextStep: "add_weekly_demand_curve_diagnostic",
+    });
+    expect(policy?.limitations).toEqual(
+      expect.arrayContaining([
+        "weeks_2_to_4_unprojected",
+        "missing_weekly_demand_curve",
+        "missing_accumulation_progression_policy",
+        "missing_per_week_slot_distribution",
+        "missing_fatigue_carryover_model",
+        "deload_distribution_not_projected",
+        "missing_deload_identity_preservation_policy",
+        "missing_deload_set_reduction_projection",
+      ]),
+    );
+    const policyWeekOne = policy?.weeks.find((week) => week.week === 1);
+    expect(policyWeekOne).toMatchObject({
+      phase: "accumulation",
+      projectionStatus: "projected_from_current_week_evidence",
+      weekScope: "week_1_only",
+    });
+    const weekOneMusclePolicies =
+      policyWeekOne?.slots.flatMap((slot) => slot.muscleDistributions) ?? [];
+    expect(weekOneMusclePolicies).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          muscle: "Chest",
+          targetStatus: "hard",
+          role: "primary",
+          demandType: "direct_required",
+          preferredSetSplit: "two_distinct_exercises",
+          affects: expect.objectContaining({
+            volumeProgression: true,
+            setDistribution: true,
+            runtimeAdaptation: false,
+          }),
+        }),
+        expect.objectContaining({
+          muscle: "Hamstrings",
+          targetStatus: "hard",
+          role: "primary",
+          demandType: "direct_required",
+          preferredSetSplit: "two_distinct_exercises",
+          affects: expect.objectContaining({
+            fatigueManagement: true,
+          }),
+        }),
+        expect.objectContaining({
+          muscle: "Side Delts",
+          targetStatus: "soft",
+          role: "support",
+          demandType: "soft_direct_allowed",
+        }),
+        expect.objectContaining({
+          muscle: "Calves",
+          targetStatus: "soft",
+        }),
+      ]),
+    );
+    expect(policy?.weeks.filter((week) => [2, 3, 4].includes(week.week))).toEqual(
+      [
+        expect.objectContaining({
+          week: 2,
+          projectionStatus: "not_projected_missing_weekly_demand_curve",
+          slots: [],
+          weekLevelWarnings: expect.arrayContaining([
+            "weeks_2_to_4_unprojected",
+            "missing_weekly_demand_curve",
+            "missing_accumulation_progression_policy",
+          ]),
+        }),
+        expect.objectContaining({
+          week: 3,
+          projectionStatus: "not_projected_missing_accumulation_policy",
+          slots: [],
+        }),
+        expect.objectContaining({
+          week: 4,
+          projectionStatus: "not_projected_missing_accumulation_policy",
+          slots: [],
+        }),
+      ],
+    );
+    expect(policy?.weeks.find((week) => week.phase === "deload")).toEqual(
+      expect.objectContaining({
+        week: 5,
+        projectionStatus: "not_projected_missing_deload_policy",
+        slots: [],
+        weekLevelWarnings: expect.arrayContaining([
+          "deload_distribution_not_projected",
+          "missing_deload_identity_preservation_policy",
+          "missing_deload_set_reduction_projection",
+        ]),
+      }),
+    );
+    expect(policy?.candidateBehaviorSlices).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          candidate: "chest_upper_slot_distinct_exercise_distribution",
+          recommendation: "best_future_behavior",
+          weekScope: "accumulation_weeks",
+          prereqs: expect.arrayContaining([
+            "inventory/class visibility for distinct chest press/fly options",
+            "week-by-week Chest demand",
+            "duplicate continuity justification",
+          ]),
+        }),
+        expect.objectContaining({
+          candidate: "hamstrings_weekly_overdelivery_control",
+          recommendation: "not_first",
+          risk: expect.stringContaining("Hamstrings are already high"),
+        }),
+        expect.objectContaining({
+          candidate: "side_delt_second_slot_support",
+          recommendation: "diagnostic_only",
+        }),
+        expect.objectContaining({
+          candidate: "duplicate_main_lift_suppression",
+          recommendation: "not_first",
+        }),
+        expect.objectContaining({
+          candidate: "calf_duplicate_suppression",
+          recommendation: "later_cleanup",
+        }),
+      ]),
+    );
     expect(upperASetDistribution).toMatchObject({
       readOnly: true,
       affectsScoringOrGeneration: false,
@@ -2657,6 +2788,9 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     );
     expect(JSON.stringify(getProjectedSlotPlans(projected))).not.toContain(
       "setDistributionIntents",
+    );
+    expect(JSON.stringify(getProjectedSlotPlans(projected))).not.toContain(
+      "preselectionDistributionPolicyByWeek",
     );
   });
 

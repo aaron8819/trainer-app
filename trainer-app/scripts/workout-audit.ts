@@ -428,6 +428,72 @@ function buildSetDistributionSummaryLines(
   ];
 }
 
+function formatPreselectionCandidate(
+  candidate: string | null | undefined
+): string {
+  switch (candidate) {
+    case "chest_upper_slot_distinct_exercise_distribution":
+      return "Chest upper-slot distinct exercise distribution";
+    case "hamstrings_weekly_overdelivery_control":
+      return "Hamstrings weekly overdelivery control";
+    case "side_delt_second_slot_support":
+      return "Side Delt second-slot support";
+    case "duplicate_main_lift_suppression":
+      return "Duplicate main-lift suppression";
+    case "calf_duplicate_suppression":
+      return "Calf duplicate suppression";
+    default:
+      return "none";
+  }
+}
+
+function buildPreselectionDistributionPolicySummaryLines(
+  policy:
+    | PlanningRealityDiagnostic["preselectionDistributionPolicyByWeek"]
+    | null
+    | undefined
+): string[] | null {
+  if (!policy) {
+    return null;
+  }
+
+  const weeks = asArray(policy.weeks);
+  const weekOne = weeks.find((week) => week.week === 1);
+  const accumulationUnprojected = weeks.filter(
+    (week) =>
+      week.week >= 2 &&
+      week.phase !== "deload" &&
+      week.projectionStatus !== "projected_from_current_week_evidence"
+  );
+  const deload = weeks.find((week) => week.phase === "deload");
+  const bestFutureBehavior = asArray(policy.candidateBehaviorSlices).find(
+    (slice) => slice.recommendation === "best_future_behavior"
+  );
+
+  return [
+    "Preselection Distribution Policy",
+    "--------------------------------",
+    `Week 1: ${
+      weekOne?.projectionStatus === "projected_from_current_week_evidence"
+        ? "projected from current evidence"
+        : "not projected"
+    }`,
+    `Weeks 2-4: ${
+      accumulationUnprojected.length > 0
+        ? "not projected - missing weekly demand curve / accumulation policy"
+        : "not listed"
+    }`,
+    `Deload: ${
+      deload && deload.projectionStatus !== "projected_from_current_week_evidence"
+        ? "not projected - missing deload preservation policy"
+        : "not listed"
+    }`,
+    "",
+    `Best future behavior: ${formatPreselectionCandidate(bestFutureBehavior?.candidate)}`,
+    "Blocked from behavior now: no week-by-week projection yet",
+  ];
+}
+
 function buildCleanPreselectionFeasibilitySummaryLines(
   rows: PlanningRealityDiagnostic["preselectionFeasibility"] | null | undefined
 ): string[] | null {
@@ -866,6 +932,14 @@ export function buildPlanningRealitySummary(input: {
   );
   if (setDistributionSummary) {
     lines.push("", ...setDistributionSummary);
+  }
+
+  const preselectionDistributionPolicySummary =
+    buildPreselectionDistributionPolicySummaryLines(
+      planningReality.preselectionDistributionPolicyByWeek
+    );
+  if (preselectionDistributionPolicySummary) {
+    lines.push("", ...preselectionDistributionPolicySummary);
   }
 
   lines.push("", "Slot allocation:");

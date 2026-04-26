@@ -744,6 +744,154 @@ describe("buildMesocycleExplainAuditPayload", () => {
               affectsScoringOrGeneration: false,
             },
           ],
+          distributionGuardActions: [],
+          preselectionFeasibility: [],
+          preselectionDistributionPolicyByWeek: {
+            mesocycleId: "meso-1",
+            source: "diagnostic_shadow_planner",
+            readOnly: true,
+            affectsScoringOrGeneration: false,
+            limitations: [
+              "weeks_2_to_4_unprojected",
+              "missing_weekly_demand_curve",
+              "missing_accumulation_progression_policy",
+              "missing_per_week_slot_distribution",
+              "missing_fatigue_carryover_model",
+              "deload_distribution_not_projected",
+              "missing_deload_identity_preservation_policy",
+              "missing_deload_set_reduction_projection",
+            ],
+            weeks: [
+              {
+                week: 1,
+                phase: "accumulation",
+                projectionStatus: "projected_from_current_week_evidence",
+                weekScope: "week_1_only",
+                slots: [
+                  {
+                    slotId: "upper_a",
+                    slotArchetype: "upper_primary",
+                    muscleDistributions: [
+                      {
+                        muscle: "Chest",
+                        targetStatus: "hard",
+                        role: "primary",
+                        demandType: "direct_required",
+                        targetEffectiveSets: 4,
+                        minEffectiveSets: 4,
+                        maxEffectiveSets: 16,
+                        requiredExerciseClasses: ["press"],
+                        maxSingleExerciseShare: 0.5,
+                        maxSinglePatternShare: 0.7,
+                        preferredSetSplit: "two_distinct_exercises",
+                        duplicatePolicy: "discourage_if_alternative_exists",
+                        unresolvedBehavior: "allow_repair_safety_net",
+                        affects: {
+                          volumeProgression: true,
+                          exerciseContinuity: true,
+                          setDistribution: true,
+                          fatigueManagement: false,
+                          deloadPreservation: true,
+                          runtimeAdaptation: false,
+                        },
+                        evidence: [
+                          "upper_a:Chest:hard:direct_required",
+                          "upper_a:Incline Dumbbell Press:Chest:57.1%",
+                        ],
+                        limitations: [
+                          "week_1_evidence_only",
+                          "diagnostic_shadow_policy_not_behavior",
+                        ],
+                      },
+                    ],
+                  },
+                ],
+                weekLevelWarnings: [
+                  "EXERCISE_CONCENTRATION_HIGH:upper_a:Incline Dumbbell Press",
+                ],
+              },
+              {
+                week: 2,
+                phase: "accumulation",
+                projectionStatus: "not_projected_missing_weekly_demand_curve",
+                weekScope: "accumulation_weeks",
+                slots: [],
+                weekLevelWarnings: ["weeks_2_to_4_unprojected"],
+              },
+              {
+                week: 3,
+                phase: "accumulation",
+                projectionStatus: "not_projected_missing_accumulation_policy",
+                weekScope: "accumulation_weeks",
+                slots: [],
+                weekLevelWarnings: ["missing_accumulation_progression_policy"],
+              },
+              {
+                week: 4,
+                phase: "accumulation",
+                projectionStatus: "not_projected_missing_accumulation_policy",
+                weekScope: "accumulation_weeks",
+                slots: [],
+                weekLevelWarnings: ["missing_per_week_slot_distribution"],
+              },
+              {
+                week: 5,
+                phase: "deload",
+                projectionStatus: "not_projected_missing_deload_policy",
+                weekScope: "deload_week",
+                slots: [],
+                weekLevelWarnings: ["deload_distribution_not_projected"],
+              },
+            ],
+            candidateBehaviorSlices: [
+              {
+                candidate: "chest_upper_slot_distinct_exercise_distribution",
+                weekScope: "accumulation_weeks",
+                expectedBenefit:
+                  "Chest is under target and needs distinct upper-slot distribution once weeks are projected.",
+                risk: "Not immediate behavior without week-by-week projection.",
+                prereqs: [
+                  "inventory/class visibility for distinct chest press/fly options",
+                  "week-by-week Chest demand",
+                  "duplicate continuity justification",
+                ],
+                recommendation: "best_future_behavior",
+              },
+              {
+                candidate: "hamstrings_weekly_overdelivery_control",
+                weekScope: "accumulation_weeks",
+                expectedBenefit: "Can control overdelivery later.",
+                risk: "Hamstrings are already high.",
+                prereqs: ["week-by-week Hamstrings demand"],
+                recommendation: "not_first",
+              },
+              {
+                candidate: "side_delt_second_slot_support",
+                weekScope: "accumulation_weeks",
+                expectedBenefit: "Keeps second-slot support visible.",
+                risk: "Avoid OHP/lateral raise spam.",
+                prereqs: ["per-week Side Delts support demand"],
+                recommendation: "diagnostic_only",
+              },
+              {
+                candidate: "duplicate_main_lift_suppression",
+                weekScope: "whole_mesocycle",
+                expectedBenefit: "Reduces repeated anchor fatigue.",
+                risk: "Needs persisted duplicate justification model.",
+                prereqs: ["persisted duplicate justification model"],
+                recommendation: "not_first",
+              },
+              {
+                candidate: "calf_duplicate_suppression",
+                weekScope: "accumulation_weeks",
+                expectedBenefit: "Reduces duplicate calf-isolation noise.",
+                risk: "Low architecture leverage.",
+                prereqs: ["per-week Calves support demand"],
+                recommendation: "later_cleanup",
+              },
+            ],
+            recommendedNextStep: "add_weekly_demand_curve_diagnostic",
+          },
           rearDeltCollateralSummary: {
             directRearDeltStimulusBefore: 0,
             directRearDeltStimulusAfter: 2,
@@ -1054,6 +1202,67 @@ describe("buildMesocycleExplainAuditPayload", () => {
             }),
           }),
         ],
+        preselectionDistributionPolicyByWeek: expect.objectContaining({
+          source: "diagnostic_shadow_planner",
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          limitations: expect.arrayContaining([
+            "weeks_2_to_4_unprojected",
+            "missing_weekly_demand_curve",
+            "deload_distribution_not_projected",
+          ]),
+          weeks: expect.arrayContaining([
+            expect.objectContaining({
+              week: 1,
+              projectionStatus: "projected_from_current_week_evidence",
+              slots: expect.arrayContaining([
+                expect.objectContaining({
+                  slotId: "upper_a",
+                  muscleDistributions: expect.arrayContaining([
+                    expect.objectContaining({
+                      muscle: "Chest",
+                      targetStatus: "hard",
+                      role: "primary",
+                      demandType: "direct_required",
+                    }),
+                  ]),
+                }),
+              ]),
+            }),
+            expect.objectContaining({
+              week: 2,
+              projectionStatus: "not_projected_missing_weekly_demand_curve",
+              slots: [],
+            }),
+            expect.objectContaining({
+              week: 5,
+              projectionStatus: "not_projected_missing_deload_policy",
+              slots: [],
+            }),
+          ]),
+          candidateBehaviorSlices: expect.arrayContaining([
+            expect.objectContaining({
+              candidate: "chest_upper_slot_distinct_exercise_distribution",
+              recommendation: "best_future_behavior",
+            }),
+            expect.objectContaining({
+              candidate: "hamstrings_weekly_overdelivery_control",
+              recommendation: "not_first",
+            }),
+            expect.objectContaining({
+              candidate: "side_delt_second_slot_support",
+              recommendation: "diagnostic_only",
+            }),
+            expect.objectContaining({
+              candidate: "duplicate_main_lift_suppression",
+              recommendation: "not_first",
+            }),
+            expect.objectContaining({
+              candidate: "calf_duplicate_suppression",
+              recommendation: "later_cleanup",
+            }),
+          ]),
+        }),
         rearDeltCollateralSummary: expect.objectContaining({
           rearDeltPreselectionConsumed: true,
           verdict: "clean_improvement",

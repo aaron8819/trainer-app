@@ -147,6 +147,38 @@ export type ShadowRepairMaterialityDiagnostic = RepairMaterialityDiagnostic & {
   shadowRationale: string[];
 };
 
+export type ShadowRepairSummary = {
+  materialRepairCount: number;
+  majorRepairCount: number;
+  likelyAvoidableMaterialRepairCount: number;
+  remainingMaterialRepairCount: number;
+  likelyAvoidableMajorRepairCount: number;
+  remainingMajorRepairCount: number;
+  likelyAvoidableByMuscle: Record<string, number>;
+  remainingByMuscle: Record<string, number>;
+};
+
+export type SuspiciousRepairNotEligibleForPromotion = {
+  slotId: string;
+  muscle: string;
+  exerciseName: string | null;
+  repairMechanism: string;
+  reason: string;
+  recommendation: string;
+};
+
+export type PromotionCandidate = {
+  slotId: string;
+  muscle: string;
+  role: "primary" | "support";
+  targetStatus: "hard" | "soft";
+  evidence: string[];
+  suggestedPromotion:
+    | "slot_preselection_demand"
+    | "set_distribution_hint"
+    | "selection_scoring_hint";
+};
+
 export type SlotDemandAllocationDiagnostic = {
   slotId: string;
   slotIndex: number;
@@ -275,6 +307,9 @@ export type SlotPlanPlanningRealityDiagnostic = {
   allocationVsInitialDelta: AllocationVsCompositionDelta[];
   allocationVsFinalDelta: AllocationVsCompositionDelta[];
   repairMaterialityAfterShadowAllocation: ShadowRepairMaterialityDiagnostic[];
+  shadowRepairSummary: ShadowRepairSummary;
+  suspiciousRepairsNotEligibleForPromotion: SuspiciousRepairNotEligibleForPromotion[];
+  promotionCandidates: PromotionCandidate[];
   projectedDelivery: ProjectedDeliveryDiagnostic[];
   repairMateriality: RepairMaterialityDiagnostic[];
   exerciseConcentration: ExerciseConcentrationDiagnostic[];
@@ -1068,6 +1103,275 @@ function buildShadowRepairMateriality(input: {
       ],
     };
   });
+}
+
+function isMaterialRepair(row: Pick<RepairMaterialityDiagnostic, "materiality">): boolean {
+  return row.materiality === "major" || row.materiality === "moderate";
+}
+
+function toSortedCountRecord(entries: string[]): Record<string, number> {
+  const counts = new Map<string, number>();
+  for (const entry of entries) {
+    counts.set(entry, (counts.get(entry) ?? 0) + 1);
+  }
+  return Object.fromEntries(
+    Array.from(counts.entries()).sort(
+      ([leftMuscle, leftCount], [rightMuscle, rightCount]) =>
+        rightCount - leftCount || leftMuscle.localeCompare(rightMuscle)
+    )
+  );
+}
+
+function buildShadowRepairSummary(
+  repairRows: ReadonlyArray<ShadowRepairMaterialityDiagnostic>
+): ShadowRepairSummary {
+  const materialRows = repairRows.filter(isMaterialRepair);
+  const majorRows = repairRows.filter((row) => row.materiality === "major");
+  const likelyAvoidableMaterialRows = materialRows.filter(
+    (row) => row.likelyAvoidableWithShadowAllocation
+  );
+  const remainingMaterialRows = materialRows.filter(
+    (row) => !row.likelyAvoidableWithShadowAllocation
+  );
+  const likelyAvoidableMajorRows = majorRows.filter(
+    (row) => row.likelyAvoidableWithShadowAllocation
+  );
+
+  return {
+    materialRepairCount: materialRows.length,
+    majorRepairCount: majorRows.length,
+    likelyAvoidableMaterialRepairCount: likelyAvoidableMaterialRows.length,
+    remainingMaterialRepairCount: remainingMaterialRows.length,
+    likelyAvoidableMajorRepairCount: likelyAvoidableMajorRows.length,
+    remainingMajorRepairCount: majorRows.length - likelyAvoidableMajorRows.length,
+    likelyAvoidableByMuscle: toSortedCountRecord(
+      likelyAvoidableMaterialRows.flatMap((row) => (row.muscle ? [row.muscle] : []))
+    ),
+    remainingByMuscle: toSortedCountRecord(
+      remainingMaterialRows.flatMap((row) => (row.muscle ? [row.muscle] : []))
+    ),
+  };
+}
+
+const UPPER_BODY_PROMOTION_MUSCLES = new Set([
+  "Biceps",
+  "Chest",
+  "Front Delts",
+  "Lats",
+  "Rear Delts",
+  "Side Delts",
+  "Triceps",
+  "Upper Back",
+]);
+
+const LOWER_BODY_PROMOTION_MUSCLES = new Set([
+  "Abductors",
+  "Adductors",
+  "Calves",
+  "Glutes",
+  "Hamstrings",
+  "Quads",
+]);
+
+function getSlotRegion(slot: ShadowSlotDemandAllocation | undefined): "upper" | "lower" | "other" {
+  const slotArchetype = slot?.slotArchetype ?? "";
+  const intent = slot?.intent ?? "";
+  const slotId = slot?.slotId ?? "";
+  if (
+    slotArchetype.startsWith("upper_") ||
+    intent.toLowerCase() === "upper" ||
+    slotId.toLowerCase().startsWith("upper")
+  ) {
+    return "upper";
+  }
+  if (
+    slotArchetype.startsWith("lower_") ||
+    intent.toLowerCase() === "lower" ||
+    slotId.toLowerCase().startsWith("lower")
+  ) {
+    return "lower";
+  }
+  return "other";
+}
+
+function buildSuspiciousRepairReasons(input: {
+  row: ShadowRepairMaterialityDiagnostic;
+  slotAllocation: ShadowSlotDemandAllocation | undefined;
+}): string[] {
+  const row = input.row;
+  const reasons: string[] = [];
+  const materialRepair = isMaterialRepair(row);
+  const positiveRepair = row.action === "added" || row.action === "set_bumped";
+  const muscle = row.muscle ?? "";
+  const slotRegion = getSlotRegion(input.slotAllocation);
+
+  if (
+    materialRepair &&
+    positiveRepair &&
+    row.shadowAllocationBasis === "weekly_demand_owned_elsewhere"
+  ) {
+    reasons.push("shadow allocation marks this muscle as weekly_demand_owned_elsewhere");
+  }
+  if (
+    materialRepair &&
+    positiveRepair &&
+    slotRegion === "lower" &&
+    UPPER_BODY_PROMOTION_MUSCLES.has(muscle)
+  ) {
+    reasons.push("upper-body primary/support muscle was materially repaired into a lower-body slot");
+  }
+  if (
+    materialRepair &&
+    positiveRepair &&
+    slotRegion === "upper" &&
+    LOWER_BODY_PROMOTION_MUSCLES.has(muscle)
+  ) {
+    reasons.push("lower-body primary/support muscle was materially repaired into an upper-body slot");
+  }
+  if (
+    materialRepair &&
+    row.changedExerciseIdentity &&
+    row.shadowAllocationBasis !== "slot_owned_muscle_before_selection"
+  ) {
+    reasons.push("repair added exercise identity in a slot that does not shadow-own the muscle");
+  }
+  if (
+    materialRepair &&
+    (row.action === "removed" ||
+      row.action === "set_trimmed" ||
+      row.shadowAllocationBasis === "diagnostic_or_cap_cleanup")
+  ) {
+    reasons.push("repair is cap cleanup, removal, or diagnostic collateral rather than promote-ready demand");
+  }
+
+  return Array.from(new Set(reasons));
+}
+
+function buildSuspiciousRepairs(input: {
+  repairRows: ReadonlyArray<ShadowRepairMaterialityDiagnostic>;
+  shadowSlotDemandAllocation: ReadonlyArray<ShadowSlotDemandAllocation>;
+}): SuspiciousRepairNotEligibleForPromotion[] {
+  const allocationBySlotId = new Map(
+    input.shadowSlotDemandAllocation.map((slot) => [slot.slotId, slot])
+  );
+
+  return input.repairRows
+    .flatMap((row) => {
+      if (!row.slotId || !row.muscle) {
+        return [];
+      }
+      const reasons = buildSuspiciousRepairReasons({
+        row,
+        slotAllocation: allocationBySlotId.get(row.slotId),
+      });
+      if (reasons.length === 0) {
+        return [];
+      }
+      return [{
+        slotId: row.slotId,
+        muscle: row.muscle,
+        exerciseName: row.exerciseName,
+        repairMechanism: row.repairMechanism,
+        reason: reasons.join("; "),
+        recommendation:
+          "Do not promote this repair upstream; inspect slot ownership, compatibility, or cleanup cause first.",
+      }];
+    })
+    .sort((left, right) =>
+      left.slotId.localeCompare(right.slotId) ||
+      left.muscle.localeCompare(right.muscle) ||
+      (left.exerciseName ?? "").localeCompare(right.exerciseName ?? "")
+    );
+}
+
+function getPromotionSuggestion(
+  row: ShadowRepairMaterialityDiagnostic,
+  allocation: ShadowSlotDemandAllocation["allocatedMuscles"][number]
+): PromotionCandidate["suggestedPromotion"] {
+  if (allocation.role === "primary" && allocation.targetStatus === "hard") {
+    return "slot_preselection_demand";
+  }
+  if (row.action === "set_bumped") {
+    return "set_distribution_hint";
+  }
+  return row.changedExerciseIdentity ? "selection_scoring_hint" : "set_distribution_hint";
+}
+
+function buildPromotionCandidates(input: {
+  repairRows: ReadonlyArray<ShadowRepairMaterialityDiagnostic>;
+  shadowWeeklyDemand: ReadonlyArray<ShadowWeeklyMuscleDemand>;
+  shadowSlotDemandAllocation: ReadonlyArray<ShadowSlotDemandAllocation>;
+  suspiciousRepairs: ReadonlyArray<SuspiciousRepairNotEligibleForPromotion>;
+}): PromotionCandidate[] {
+  const demandByMuscle = new Map(input.shadowWeeklyDemand.map((row) => [row.muscle, row]));
+  const allocationBySlotId = new Map(
+    input.shadowSlotDemandAllocation.map((slot) => [slot.slotId, slot])
+  );
+  const suspiciousKeys = new Set(
+    input.suspiciousRepairs.map((row) =>
+      `${row.slotId}:${row.muscle}:${row.exerciseName ?? ""}:${row.repairMechanism}`
+    )
+  );
+
+  const candidates = input.repairRows
+    .flatMap((row) => {
+      if (!row.slotId || !row.muscle || !row.likelyAvoidableWithShadowAllocation) {
+        return [];
+      }
+      const suspiciousKey = `${row.slotId}:${row.muscle}:${row.exerciseName ?? ""}:${row.repairMechanism}`;
+      if (suspiciousKeys.has(suspiciousKey)) {
+        return [];
+      }
+      const demand = demandByMuscle.get(row.muscle);
+      if (!demand || demand.priority === "secondary" || demand.priority === "implicit") {
+        return [];
+      }
+      const allocation = allocationBySlotId
+        .get(row.slotId)
+        ?.allocatedMuscles.find((entry) => entry.muscle === row.muscle);
+      if (
+        !allocation ||
+        (allocation.role !== "primary" && allocation.role !== "support") ||
+        allocation.targetStatus === "diagnostic"
+      ) {
+        return [];
+      }
+      const role = allocation.role;
+      const targetStatus = allocation.targetStatus;
+      return [{
+        slotId: row.slotId,
+        muscle: row.muscle,
+        role,
+        targetStatus,
+        evidence: Array.from(
+          new Set([
+            `repair:${row.action}:${row.materiality}`,
+            `mechanism:${row.repairMechanism}`,
+            `shadow_allocation:${row.shadowAllocationBasis}`,
+            ...row.shadowRationale,
+          ])
+        ),
+        suggestedPromotion: getPromotionSuggestion(row, allocation),
+      }];
+    });
+  const deduped = new Map<string, PromotionCandidate>();
+  for (const candidate of candidates) {
+    const key = `${candidate.slotId}:${candidate.muscle}:${candidate.role}:${candidate.targetStatus}:${candidate.suggestedPromotion}`;
+    const existing = deduped.get(key);
+    if (!existing) {
+      deduped.set(key, candidate);
+      continue;
+    }
+    existing.evidence = Array.from(
+      new Set([...existing.evidence, ...candidate.evidence])
+    ).sort((left, right) => left.localeCompare(right));
+  }
+
+  return Array.from(deduped.values()).sort((left, right) =>
+    left.slotId.localeCompare(right.slotId) ||
+    left.muscle.localeCompare(right.muscle) ||
+    left.suggestedPromotion.localeCompare(right.suggestedPromotion)
+  );
 }
 
 function buildSlotDemandAllocation(input: {
@@ -1963,6 +2267,17 @@ export function buildWeeklyDemandSlotAllocationDiagnostic(input: {
     shadowWeeklyDemand,
     shadowSlotDemandAllocation,
   });
+  const shadowRepairSummary = buildShadowRepairSummary(repairMaterialityAfterShadowAllocation);
+  const suspiciousRepairsNotEligibleForPromotion = buildSuspiciousRepairs({
+    repairRows: repairMaterialityAfterShadowAllocation,
+    shadowSlotDemandAllocation,
+  });
+  const promotionCandidates = buildPromotionCandidates({
+    repairRows: repairMaterialityAfterShadowAllocation,
+    shadowWeeklyDemand,
+    shadowSlotDemandAllocation,
+    suspiciousRepairs: suspiciousRepairsNotEligibleForPromotion,
+  });
   const exerciseConcentration = buildExerciseConcentration({
     initialProjectedSlots: input.initialProjectedSlots,
     finalProjectedSlots: input.finalProjectedSlots,
@@ -2016,6 +2331,9 @@ export function buildWeeklyDemandSlotAllocationDiagnostic(input: {
     allocationVsInitialDelta,
     allocationVsFinalDelta,
     repairMaterialityAfterShadowAllocation,
+    shadowRepairSummary,
+    suspiciousRepairsNotEligibleForPromotion,
+    promotionCandidates,
     projectedDelivery,
     repairMateriality,
     exerciseConcentration,

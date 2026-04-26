@@ -959,6 +959,75 @@ describe("buildMesocycleExplainAuditPayload", () => {
               },
             ],
           },
+          accumulationWeekProjection: {
+            mesocycleId: "meso-1",
+            source: "diagnostic_shadow_planner",
+            readOnly: true,
+            affectsScoringOrGeneration: false,
+            projectionBasis: {
+              sourceWeek: 1,
+              method: "repeat_week_1_final_shape",
+              limitations: [
+                "does_not_apply_true_progression_policy",
+                "does_not_project_deload_identity_or_set_reduction",
+              ],
+            },
+            weeks: [
+              {
+                week: 2,
+                phase: "accumulation",
+                projectionStatus: "partially_projected_missing_progression",
+                projectedMuscles: [
+                  {
+                    muscle: "Chest",
+                    targetStatus: "hard",
+                    projectedEffectiveSets: 7,
+                    preferredEffectiveSets: 10,
+                    minEffectiveSets: 10,
+                    maxEffectiveSets: 16,
+                    status: "below",
+                    trend: "persistent_under_target",
+                    evidence: ["week1_final=7:preferred=10"],
+                    limitations: ["repeated_week_1_final_shape_only"],
+                  },
+                ],
+                projectedSlotRisks: [
+                  {
+                    slotId: "upper_a",
+                    risk: "duplicate_exercise_reuse",
+                    severity: "warning",
+                    evidence: ["Incline Dumbbell Press"],
+                  },
+                ],
+                weekLevelWarnings: [
+                  "missing_true_accumulation_progression_policy",
+                ],
+              },
+            ],
+            crossWeekWarnings: [
+              {
+                code: "CHEST_UNDER_TARGET_ACROSS_ACCUMULATION",
+                muscle: "Chest",
+                evidence: ["week1_final=7:preferred=10"],
+                severity: "warning",
+              },
+              {
+                code: "DELOAD_PRESERVATION_STILL_UNPROJECTED",
+                evidence: ["missing_deload_identity_preservation_policy"],
+                severity: "warning",
+              },
+            ],
+            candidateBehaviorReadiness: [
+              {
+                candidate: "chest_upper_slot_distinct_exercise_distribution",
+                readiness: "ready_for_bounded_trial",
+                reason: "Chest remains under target.",
+                requiredGuardrails: [
+                  "bounded_to_upper_chest_distribution_only",
+                ],
+              },
+            ],
+          },
           rearDeltCollateralSummary: {
             directRearDeltStimulusBefore: 0,
             directRearDeltStimulusAfter: 2,
@@ -1363,6 +1432,47 @@ describe("buildMesocycleExplainAuditPayload", () => {
           crossWeekAllocationWarnings: expect.arrayContaining([
             expect.objectContaining({
               code: "WEEKLY_SLOT_ALLOCATION_POLICY_MISSING",
+            }),
+          ]),
+        }),
+        accumulationWeekProjection: expect.objectContaining({
+          source: "diagnostic_shadow_planner",
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          projectionBasis: expect.objectContaining({
+            sourceWeek: 1,
+            method: "repeat_week_1_final_shape",
+            limitations: expect.arrayContaining([
+              "does_not_apply_true_progression_policy",
+              "does_not_project_deload_identity_or_set_reduction",
+            ]),
+          }),
+          weeks: expect.arrayContaining([
+            expect.objectContaining({
+              week: 2,
+              projectionStatus: "partially_projected_missing_progression",
+              projectedMuscles: expect.arrayContaining([
+                expect.objectContaining({
+                  muscle: "Chest",
+                  status: "below",
+                  trend: "persistent_under_target",
+                }),
+              ]),
+            }),
+          ]),
+          crossWeekWarnings: expect.arrayContaining([
+            expect.objectContaining({
+              code: "CHEST_UNDER_TARGET_ACROSS_ACCUMULATION",
+              muscle: "Chest",
+            }),
+            expect.objectContaining({
+              code: "DELOAD_PRESERVATION_STILL_UNPROJECTED",
+            }),
+          ]),
+          candidateBehaviorReadiness: expect.arrayContaining([
+            expect.objectContaining({
+              candidate: "chest_upper_slot_distinct_exercise_distribution",
+              readiness: "ready_for_bounded_trial",
             }),
           ]),
         }),

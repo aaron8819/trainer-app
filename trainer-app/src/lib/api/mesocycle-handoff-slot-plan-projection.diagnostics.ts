@@ -745,6 +745,91 @@ export type SlotDemandAllocationByWeek = {
   }>;
 };
 
+export type AccumulationWeekProjection = {
+  mesocycleId: string | null;
+  source: "diagnostic_shadow_planner";
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+  projectionBasis: {
+    sourceWeek: number;
+    method:
+      | "repeat_week_1_final_shape"
+      | "scale_from_weekly_demand_curve"
+      | "limited_missing_progression_policy";
+    limitations: string[];
+  };
+  weeks: Array<{
+    week: number;
+    phase: "accumulation" | "peak" | "unknown";
+    projectionStatus:
+      | "projected_from_week_1_shape"
+      | "partially_projected_missing_progression"
+      | "not_projected_missing_policy";
+    projectedMuscles: Array<{
+      muscle: string;
+      targetStatus: "hard" | "soft" | "diagnostic";
+      projectedEffectiveSets: number | null;
+      preferredEffectiveSets: number | null;
+      minEffectiveSets: number | null;
+      maxEffectiveSets: number | null;
+      status:
+        | "below"
+        | "within"
+        | "above"
+        | "diagnostic_only"
+        | "unknown";
+      trend:
+        | "persistent_under_target"
+        | "persistent_over_target"
+        | "stable"
+        | "unknown";
+      evidence: string[];
+      limitations: string[];
+    }>;
+    projectedSlotRisks: Array<{
+      slotId: string;
+      risk:
+        | "duplicate_exercise_reuse"
+        | "single_exercise_concentration"
+        | "collateral_fatigue"
+        | "support_floor_late"
+        | "cap_trim_likely"
+        | "under_allocated_primary"
+        | "over_allocated_primary";
+      severity: "info" | "warning";
+      evidence: string[];
+    }>;
+    weekLevelWarnings: string[];
+  }>;
+  crossWeekWarnings: Array<{
+    code:
+      | "CHEST_UNDER_TARGET_ACROSS_ACCUMULATION"
+      | "HAMSTRINGS_OVERDELIVERED_ACROSS_ACCUMULATION"
+      | "SIDE_DELTS_UNDER_TARGET_ACROSS_ACCUMULATION"
+      | "DUPLICATE_MAIN_LIFT_REUSE_ACROSS_ACCUMULATION"
+      | "COLLATERAL_FATIGUE_RISK_ACROSS_ACCUMULATION"
+      | "DELOAD_PRESERVATION_STILL_UNPROJECTED";
+    muscle?: string;
+    evidence: string[];
+    severity: "info" | "warning";
+  }>;
+  candidateBehaviorReadiness: Array<{
+    candidate:
+      | "chest_upper_slot_distinct_exercise_distribution"
+      | "hamstrings_weekly_overdelivery_control"
+      | "side_delt_second_slot_support"
+      | "duplicate_main_lift_suppression"
+      | "calf_duplicate_suppression";
+    readiness:
+      | "ready_for_bounded_trial"
+      | "needs_more_projection"
+      | "not_first"
+      | "diagnostic_only";
+    reason: string;
+    requiredGuardrails: string[];
+  }>;
+};
+
 export type SlotPlanPlanningRealityDiagnostic = {
   label: "weekly demand / slot allocation diagnostics";
   readOnly: true;
@@ -784,6 +869,7 @@ export type SlotPlanPlanningRealityDiagnostic = {
   preselectionDistributionPolicyByWeek: PreselectionDistributionPolicyByWeek;
   weeklyDemandCurve: WeeklyDemandCurve;
   slotDemandAllocationByWeek: SlotDemandAllocationByWeek;
+  accumulationWeekProjection: AccumulationWeekProjection;
   forbiddenCleanupReroute?: ForbiddenCleanupRerouteDiagnostic;
   rearDeltCollateralSummary?: RearDeltCollateralSummary;
   projectedDelivery: ProjectedDeliveryDiagnostic[];
@@ -3956,6 +4042,558 @@ function buildSlotDemandAllocationByWeek(input: {
   };
 }
 
+type AccumulationProjectionWeek = AccumulationWeekProjection["weeks"][number];
+type AccumulationProjectedMuscle =
+  AccumulationProjectionWeek["projectedMuscles"][number];
+type AccumulationProjectedSlotRisk =
+  AccumulationProjectionWeek["projectedSlotRisks"][number];
+
+function toAccumulationProjectionPhase(
+  phase: WeeklyDemandCurve["weeks"][number]["phase"],
+): AccumulationProjectionWeek["phase"] {
+  if (phase === "accumulation") {
+    return "accumulation";
+  }
+  if (phase === "peak") {
+    return "peak";
+  }
+  return "unknown";
+}
+
+function getAccumulationProjectionStatus(
+  phase: WeeklyDemandCurve["weeks"][number]["phase"],
+): AccumulationProjectionWeek["projectionStatus"] {
+  return phase === "accumulation" || phase === "peak"
+    ? "partially_projected_missing_progression"
+    : "not_projected_missing_policy";
+}
+
+function getProjectedMuscleStatus(input: {
+  targetStatus: AccumulationProjectedMuscle["targetStatus"];
+  projectedEffectiveSets: number | null;
+  preferredEffectiveSets: number | null;
+}): AccumulationProjectedMuscle["status"] {
+  if (input.targetStatus === "diagnostic") {
+    return "diagnostic_only";
+  }
+  if (
+    input.projectedEffectiveSets == null ||
+    input.preferredEffectiveSets == null
+  ) {
+    return "unknown";
+  }
+  if (input.projectedEffectiveSets + 1e-9 < input.preferredEffectiveSets) {
+    return "below";
+  }
+  if (input.projectedEffectiveSets > input.preferredEffectiveSets + 1e-9) {
+    return "above";
+  }
+  return "within";
+}
+
+function getProjectedMuscleTrend(
+  status: AccumulationProjectedMuscle["status"],
+): AccumulationProjectedMuscle["trend"] {
+  switch (status) {
+    case "below":
+      return "persistent_under_target";
+    case "above":
+      return "persistent_over_target";
+    case "within":
+      return "stable";
+    case "diagnostic_only":
+    case "unknown":
+      return "unknown";
+  }
+}
+
+function buildRepeatedExerciseEvidence(
+  finalSlotPlan: ReadonlyArray<SlotCompositionSnapshotDiagnostic>,
+): string[] {
+  const byExercise = new Map<
+    string,
+    { name: string; slotIds: Set<string>; isMain: boolean }
+  >();
+
+  for (const slot of finalSlotPlan) {
+    for (const exercise of slot.exercises) {
+      const key = exercise.exerciseId || exercise.exerciseName;
+      const existing =
+        byExercise.get(key) ??
+        {
+          name: exercise.exerciseName,
+          slotIds: new Set<string>(),
+          isMain: false,
+        };
+      existing.slotIds.add(slot.slotId);
+      if (exercise.role === "main") {
+        existing.isMain = true;
+      }
+      byExercise.set(key, existing);
+    }
+  }
+
+  return Array.from(byExercise.values())
+    .filter((row) => row.slotIds.size > 1)
+    .map(
+      (row) =>
+        `duplicate:${row.name}:slots=${Array.from(row.slotIds)
+          .sort((left, right) => left.localeCompare(right))
+          .join("+")}:role=${row.isMain ? "main" : "accessory"}`,
+    )
+    .sort((left, right) => left.localeCompare(right));
+}
+
+function buildDuplicateProjectionEvidence(input: {
+  finalSlotPlan: ReadonlyArray<SlotCompositionSnapshotDiagnostic>;
+  duplicateExerciseReuse: ReadonlyArray<DuplicateExerciseReuseDiagnostic>;
+}): string[] {
+  return uniqueSorted([
+    ...input.duplicateExerciseReuse.map(
+      (row) =>
+        `duplicate:${row.name}:slot=${row.repeatedInSlotId}:previous=${row.previousSlotIds.join(
+          "+",
+        )}:role=${row.role}:alternative=${row.hasCompatibleAlternative}`,
+    ),
+    ...buildRepeatedExerciseEvidence(input.finalSlotPlan),
+  ]);
+}
+
+function buildAccumulationProjectionMuscles(input: {
+  week: WeeklyDemandCurve["weeks"][number];
+  projectedDelivery: ReadonlyArray<ProjectedDeliveryDiagnostic>;
+}): AccumulationProjectedMuscle[] {
+  const deliveryByMuscle = new Map(
+    input.projectedDelivery.map((row) => [row.muscle, row]),
+  );
+
+  return input.week.muscles.map((muscle) => {
+    const delivery = deliveryByMuscle.get(muscle.muscle);
+    const projectedEffectiveSets =
+      delivery?.projectedEffectiveStimulusAfterRepairAndFinalShaping ?? null;
+    const preferredEffectiveSets =
+      delivery?.preferredTarget ?? muscle.preferredEffectiveSets;
+    const status = getProjectedMuscleStatus({
+      targetStatus: muscle.targetStatus,
+      projectedEffectiveSets,
+      preferredEffectiveSets,
+    });
+    const evidence = uniqueSorted([
+      ...(delivery ? formatCurveEvidenceForDelivery(delivery) : []),
+      `week_${input.week.week}_uses_repeated_week_1_final_shape`,
+      ...(status === "below" ? ["repeated_week_1_shape_stays_below_target"] : []),
+      ...(status === "above" ? ["repeated_week_1_shape_stays_above_target"] : []),
+    ]);
+
+    return {
+      muscle: muscle.muscle,
+      targetStatus: muscle.targetStatus,
+      projectedEffectiveSets,
+      preferredEffectiveSets,
+      minEffectiveSets: muscle.minEffectiveSets,
+      maxEffectiveSets: muscle.maxEffectiveSets,
+      status,
+      trend: getProjectedMuscleTrend(status),
+      evidence,
+      limitations: uniqueSorted([
+        "repeated_week_1_final_shape_only",
+        "not_true_week_progression",
+        "missing_per_week_slot_distribution",
+        "missing_fatigue_carryover_model",
+        "does_not_affect_scoring_generation_repair_seed_or_runtime",
+        ...muscle.limitations,
+      ]),
+    };
+  });
+}
+
+function firstContributorSlot(
+  delivery: ProjectedDeliveryDiagnostic | undefined,
+): string {
+  return delivery?.majorContributingExercises[0]?.slotId ?? "week";
+}
+
+function buildRepeatedShapeSlotRisks(input: {
+  projectedDelivery: ReadonlyArray<ProjectedDeliveryDiagnostic>;
+  duplicateExerciseReuse: ReadonlyArray<DuplicateExerciseReuseDiagnostic>;
+  exerciseConcentration: ReadonlyArray<ExerciseConcentrationDiagnostic>;
+}): AccumulationProjectedSlotRisk[] {
+  const risks: AccumulationProjectedSlotRisk[] = [];
+  const addRisk = (risk: AccumulationProjectedSlotRisk) => {
+    const key = `${risk.slotId}:${risk.risk}:${risk.evidence.join("|")}`;
+    if (
+      risks.some(
+        (existing) =>
+          `${existing.slotId}:${existing.risk}:${existing.evidence.join("|")}` ===
+          key,
+      )
+    ) {
+      return;
+    }
+    risks.push(risk);
+  };
+
+  for (const row of input.duplicateExerciseReuse) {
+    addRisk({
+      slotId: row.repeatedInSlotId,
+      risk: "duplicate_exercise_reuse",
+      severity: row.role === "main" ? "warning" : "info",
+      evidence: [
+        `${row.name}:previous=${row.previousSlotIds.join("+")}:reason=${row.reason}`,
+      ],
+    });
+  }
+
+  for (const row of input.exerciseConcentration) {
+    const concentrationFlags = row.flags.filter(
+      (flag) =>
+        flag === "COMPOUND_GT_5_SETS" ||
+        flag === "ISOLATION_GT_5_SETS" ||
+        flag.includes("EXERCISE_SUPPLIES_OVER"),
+    );
+    if (concentrationFlags.length === 0) {
+      continue;
+    }
+    addRisk({
+      slotId: row.slotId,
+      risk: "single_exercise_concentration",
+      severity: "warning",
+      evidence: [`${row.exerciseName}:${row.setCount} sets:${concentrationFlags.join("+")}`],
+    });
+  }
+
+  for (const delivery of input.projectedDelivery) {
+    if (
+      ["Front Delts", "Glutes", "Lower Back", "Upper Back"].includes(
+        delivery.muscle,
+      ) &&
+      delivery.projectedEffectiveStimulusAfterRepairAndFinalShaping > 0
+    ) {
+      addRisk({
+        slotId: firstContributorSlot(delivery),
+        risk: "collateral_fatigue",
+        severity: "info",
+        evidence: formatCurveEvidenceForDelivery(delivery),
+      });
+    }
+    if (
+      delivery.targetStatus === "hard" &&
+      delivery.preferredTarget != null &&
+      delivery.projectedEffectiveStimulusAfterRepairAndFinalShaping + 1e-9 <
+        delivery.preferredTarget
+    ) {
+      addRisk({
+        slotId: firstContributorSlot(delivery),
+        risk: "under_allocated_primary",
+        severity: "warning",
+        evidence: formatCurveEvidenceForDelivery(delivery),
+      });
+    }
+    if (
+      delivery.targetStatus === "hard" &&
+      delivery.preferredTarget != null &&
+      delivery.projectedEffectiveStimulusAfterRepairAndFinalShaping >
+        delivery.preferredTarget + 1e-9
+    ) {
+      addRisk({
+        slotId: firstContributorSlot(delivery),
+        risk: "over_allocated_primary",
+        severity: delivery.muscle === "Hamstrings" ? "warning" : "info",
+        evidence: formatCurveEvidenceForDelivery(delivery),
+      });
+    }
+  }
+
+  return risks.sort(
+    (left, right) =>
+      left.slotId.localeCompare(right.slotId) ||
+      left.risk.localeCompare(right.risk),
+  );
+}
+
+function findProjectionDelivery(
+  rows: ReadonlyArray<ProjectedDeliveryDiagnostic>,
+  muscle: string,
+): ProjectedDeliveryDiagnostic | undefined {
+  return rows.find((row) => row.muscle === muscle);
+}
+
+function isUnderPreferred(
+  delivery: ProjectedDeliveryDiagnostic | undefined,
+): boolean {
+  return (
+    delivery?.preferredTarget != null &&
+    delivery.projectedEffectiveStimulusAfterRepairAndFinalShaping + 1e-9 <
+      delivery.preferredTarget
+  );
+}
+
+function isOverPreferred(
+  delivery: ProjectedDeliveryDiagnostic | undefined,
+): boolean {
+  return (
+    delivery?.preferredTarget != null &&
+    delivery.projectedEffectiveStimulusAfterRepairAndFinalShaping >
+      delivery.preferredTarget + 1e-9
+  );
+}
+
+function buildAccumulationProjectionWarnings(input: {
+  projectedDelivery: ReadonlyArray<ProjectedDeliveryDiagnostic>;
+  duplicateEvidence: ReadonlyArray<string>;
+}): AccumulationWeekProjection["crossWeekWarnings"] {
+  const warnings: AccumulationWeekProjection["crossWeekWarnings"] = [];
+  const add = (
+    warning: AccumulationWeekProjection["crossWeekWarnings"][number],
+  ) => {
+    if (
+      warnings.some(
+        (existing) =>
+          existing.code === warning.code && existing.muscle === warning.muscle,
+      )
+    ) {
+      return;
+    }
+    warnings.push(warning);
+  };
+
+  const chest = findProjectionDelivery(input.projectedDelivery, "Chest");
+  if (isUnderPreferred(chest)) {
+    add({
+      code: "CHEST_UNDER_TARGET_ACROSS_ACCUMULATION",
+      muscle: "Chest",
+      evidence: [
+        ...formatCurveEvidenceForDelivery(chest),
+        "repeated_week_1_final_shape_projects_chest_shortfall_across_accumulation",
+      ],
+      severity: "warning",
+    });
+  }
+
+  const hamstrings = findProjectionDelivery(input.projectedDelivery, "Hamstrings");
+  if (isOverPreferred(hamstrings)) {
+    add({
+      code: "HAMSTRINGS_OVERDELIVERED_ACROSS_ACCUMULATION",
+      muscle: "Hamstrings",
+      evidence: [
+        ...formatCurveEvidenceForDelivery(hamstrings),
+        "repeated_week_1_final_shape_projects_hamstrings_overdelivery_across_accumulation",
+      ],
+      severity: "warning",
+    });
+  }
+
+  const sideDelts = findProjectionDelivery(input.projectedDelivery, "Side Delts");
+  if (isUnderPreferred(sideDelts)) {
+    add({
+      code: "SIDE_DELTS_UNDER_TARGET_ACROSS_ACCUMULATION",
+      muscle: "Side Delts",
+      evidence: [
+        ...formatCurveEvidenceForDelivery(sideDelts),
+        "repeated_week_1_final_shape_projects_side_delts_shortfall_across_accumulation",
+      ],
+      severity: "warning",
+    });
+  }
+
+  if (input.duplicateEvidence.length > 0) {
+    add({
+      code: "DUPLICATE_MAIN_LIFT_REUSE_ACROSS_ACCUMULATION",
+      evidence: [
+        ...input.duplicateEvidence.slice(0, 8),
+        "repeated_week_1_final_shape_would_repeat_duplicate_identity_pressure",
+      ],
+      severity: "warning",
+    });
+  }
+
+  const collateralEvidence = ["Front Delts", "Glutes", "Lower Back", "Upper Back"]
+    .flatMap((muscle) => {
+      const delivery = findProjectionDelivery(input.projectedDelivery, muscle);
+      return delivery &&
+        delivery.projectedEffectiveStimulusAfterRepairAndFinalShaping > 0
+        ? formatCurveEvidenceForDelivery(delivery)
+        : [];
+    })
+    .slice(0, 8);
+  if (collateralEvidence.length > 0) {
+    add({
+      code: "COLLATERAL_FATIGUE_RISK_ACROSS_ACCUMULATION",
+      evidence: [
+        ...collateralEvidence,
+        "repeated_week_1_final_shape_keeps_collateral_readouts_visible",
+      ],
+      severity: "info",
+    });
+  }
+
+  add({
+    code: "DELOAD_PRESERVATION_STILL_UNPROJECTED",
+    evidence: [
+      "missing_deload_identity_preservation_policy",
+      "missing_deload_set_reduction_projection",
+      "accumulation_projection_does_not_project_deload",
+    ],
+    severity: "warning",
+  });
+
+  return warnings.sort(
+    (left, right) =>
+      left.code.localeCompare(right.code) ||
+      (left.muscle ?? "").localeCompare(right.muscle ?? ""),
+  );
+}
+
+function buildCandidateBehaviorReadiness(input: {
+  projectedDelivery: ReadonlyArray<ProjectedDeliveryDiagnostic>;
+  duplicateEvidence: ReadonlyArray<string>;
+  crossWeekWarnings: AccumulationWeekProjection["crossWeekWarnings"];
+}): AccumulationWeekProjection["candidateBehaviorReadiness"] {
+  const hasWarning = (
+    code: AccumulationWeekProjection["crossWeekWarnings"][number]["code"],
+  ) => input.crossWeekWarnings.some((warning) => warning.code === code);
+  const chestConcentrationEvidence = [
+    ...input.duplicateEvidence,
+    ...formatCurveEvidenceForDelivery(
+      findProjectionDelivery(input.projectedDelivery, "Chest"),
+    ),
+  ].some((entry) => /incline|bench|contributor/i.test(entry));
+  const chestReady =
+    hasWarning("CHEST_UNDER_TARGET_ACROSS_ACCUMULATION") &&
+    chestConcentrationEvidence;
+
+  return [
+    {
+      candidate: "chest_upper_slot_distinct_exercise_distribution",
+      readiness: chestReady
+        ? "ready_for_bounded_trial"
+        : "needs_more_projection",
+      reason: chestReady
+        ? "Repeated Week 1 shape keeps Chest under target and keeps Chest exercise concentration/duplicate evidence visible across accumulation."
+        : "Needs accumulation projection evidence that Chest remains under target and concentrated in one repeated pressing identity.",
+      requiredGuardrails: [
+        "bounded_to_upper_chest_distribution_only",
+        "preserve_upper_slot_pull_identity",
+        "do_not_change_seed_schema_or_runtime_replay",
+        "do_not_increase_front_delt_or_triceps_collateral_without_diagnostic_evidence",
+      ],
+    },
+    {
+      candidate: "hamstrings_weekly_overdelivery_control",
+      readiness: "not_first",
+      reason:
+        "Hamstrings overdelivery is visible, but lower_b was recently improved and the fix requires whole-week control rather than a local repair tweak.",
+      requiredGuardrails: [
+        "preserve_lower_b_hinge_identity",
+        "keep_clean_knee_flexion_route_visible",
+        "avoid_glutes_lower_back_collateral_increase",
+      ],
+    },
+    {
+      candidate: "side_delt_second_slot_support",
+      readiness: "diagnostic_only",
+      reason:
+        "Side Delts under-target remains visible, but support should stay diagnostic until projection proves it avoids OHP/lateral-raise overconcentration.",
+      requiredGuardrails: [
+        "preserve_upper_b_preselection_success",
+        "cap_duplicate_lateral_raise_identities",
+        "avoid_pressing_collateral_as_fake_side_delt_support",
+      ],
+    },
+    {
+      candidate: "duplicate_main_lift_suppression",
+      readiness: "needs_more_projection",
+      reason:
+        "Duplicate reuse is visible, but broad duplicate suppression has high blast radius and needs per-week identity and fatigue policy first.",
+      requiredGuardrails: [
+        "persist_duplicate_justification",
+        "preserve_required_slot_anchors",
+        "prove_no_target_regression_across_weeks_1_to_4",
+      ],
+    },
+    {
+      candidate: "calf_duplicate_suppression",
+      readiness: "not_first",
+      reason:
+        "Calf cleanup is lower leverage than Chest distribution and whole-week Hamstrings control.",
+      requiredGuardrails: [
+        "keep_calf_support_floor_visible",
+        "avoid_bumping_past_single_exercise_share_limits",
+      ],
+    },
+  ];
+}
+
+function buildAccumulationWeekProjection(input: {
+  activeMesocycle: ActiveMesocycleForDiagnostics;
+  weeklyDemandCurve: WeeklyDemandCurve;
+  finalSlotPlan: ReadonlyArray<SlotCompositionSnapshotDiagnostic>;
+  projectedDelivery: ReadonlyArray<ProjectedDeliveryDiagnostic>;
+  duplicateExerciseReuse: ReadonlyArray<DuplicateExerciseReuseDiagnostic>;
+  exerciseConcentration: ReadonlyArray<ExerciseConcentrationDiagnostic>;
+}): AccumulationWeekProjection {
+  const duplicateEvidence = buildDuplicateProjectionEvidence({
+    finalSlotPlan: input.finalSlotPlan,
+    duplicateExerciseReuse: input.duplicateExerciseReuse,
+  });
+  const crossWeekWarnings = buildAccumulationProjectionWarnings({
+    projectedDelivery: input.projectedDelivery,
+    duplicateEvidence,
+  });
+  const projectedSlotRisks = buildRepeatedShapeSlotRisks({
+    projectedDelivery: input.projectedDelivery,
+    duplicateExerciseReuse: input.duplicateExerciseReuse,
+    exerciseConcentration: input.exerciseConcentration,
+  });
+  const weeks = input.weeklyDemandCurve.weeks
+    .filter((week) => week.week > 1 && week.phase !== "deload")
+    .map((week) => ({
+      week: week.week,
+      phase: toAccumulationProjectionPhase(week.phase),
+      projectionStatus: getAccumulationProjectionStatus(week.phase),
+      projectedMuscles: buildAccumulationProjectionMuscles({
+        week,
+        projectedDelivery: input.projectedDelivery,
+      }),
+      projectedSlotRisks,
+      weekLevelWarnings: uniqueSorted([
+        "repeated_week_1_final_shape_only",
+        "missing_true_accumulation_progression_policy",
+        "missing_per_week_slot_distribution",
+        "missing_fatigue_carryover_model",
+        "deload_not_projected_here",
+        "diagnostic_read_only_no_generation_scoring_repair_seed_or_runtime_effect",
+        ...week.weekLevelLimitations,
+      ]),
+    }));
+
+  return {
+    mesocycleId: getDiagnosticMesocycleId(input.activeMesocycle),
+    source: "diagnostic_shadow_planner",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    projectionBasis: {
+      sourceWeek: 1,
+      method: "repeat_week_1_final_shape",
+      limitations: [
+        "repeats_week_1_final_slot_plan_shape_for_accumulation_diagnostics_only",
+        "does_not_apply_true_progression_policy",
+        "does_not_allocate_new_week_2_to_4_slot_distribution",
+        "does_not_model_fatigue_carryover_or_exercise_staleness_adaptation",
+        "does_not_project_deload_identity_or_set_reduction",
+        "does_not_affect_scoring_generation_repair_seed_or_runtime",
+      ],
+    },
+    weeks,
+    crossWeekWarnings,
+    candidateBehaviorReadiness: buildCandidateBehaviorReadiness({
+      projectedDelivery: input.projectedDelivery,
+      duplicateEvidence,
+      crossWeekWarnings,
+    }),
+  };
+}
+
 function buildPreselectionDistributionPolicyByWeek(input: {
   activeMesocycle: ActiveMesocycleForDiagnostics;
   slotPrescriptionIntents: ReadonlyArray<SlotPrescriptionIntent>;
@@ -5902,6 +6540,14 @@ export function buildWeeklyDemandSlotAllocationDiagnostic(input: {
     duplicateExerciseReuse: input.duplicateExerciseReuse ?? [],
     exerciseConcentration,
   });
+  const accumulationWeekProjection = buildAccumulationWeekProjection({
+    activeMesocycle: input.activeMesocycle,
+    weeklyDemandCurve,
+    finalSlotPlan,
+    projectedDelivery,
+    duplicateExerciseReuse: input.duplicateExerciseReuse ?? [],
+    exerciseConcentration,
+  });
   const materialRepairCount = repairMateriality.filter(
     (row) => row.materiality === "moderate" || row.materiality === "major"
   ).length;
@@ -5955,6 +6601,7 @@ export function buildWeeklyDemandSlotAllocationDiagnostic(input: {
     preselectionDistributionPolicyByWeek,
     weeklyDemandCurve,
     slotDemandAllocationByWeek,
+    accumulationWeekProjection,
     ...(input.forbiddenCleanupReroute
       ? { forbiddenCleanupReroute: input.forbiddenCleanupReroute }
       : {}),

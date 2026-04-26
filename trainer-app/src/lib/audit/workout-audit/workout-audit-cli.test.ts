@@ -1535,6 +1535,100 @@ describe("buildPlanningRealitySummary", () => {
     );
   });
 
+  it("prints compact accumulation week projection risks when present", () => {
+    const summary = buildPlanningRealitySummary({
+      artifact: {
+        mesocycleExplain: {
+          preview: {
+            projectionDiagnostics: {
+              planningReality: {
+                summary: {
+                  planningShape: "mostly_repair_shaped",
+                  explicitWeeklyDemandMuscles: 4,
+                  inferredDemandMuscles: 3,
+                  slotsWithExplicitWeeklyDemand: 2,
+                  slotsWithOnlyLocalOrInferredSemantics: 1,
+                  materialRepairCount: 20,
+                  majorRepairCount: 10,
+                  highExerciseConcentrationCount: 4,
+                  warningCodes: [],
+                },
+                accumulationWeekProjection: {
+                  mesocycleId: "meso-1",
+                  source: "diagnostic_shadow_planner",
+                  readOnly: true,
+                  affectsScoringOrGeneration: false,
+                  projectionBasis: {
+                    sourceWeek: 1,
+                    method: "repeat_week_1_final_shape",
+                    limitations: [
+                      "does_not_apply_true_progression_policy",
+                    ],
+                  },
+                  weeks: [],
+                  crossWeekWarnings: [
+                    {
+                      code: "CHEST_UNDER_TARGET_ACROSS_ACCUMULATION",
+                      muscle: "Chest",
+                      evidence: ["week1_final=7:preferred=10"],
+                      severity: "warning",
+                    },
+                    {
+                      code: "HAMSTRINGS_OVERDELIVERED_ACROSS_ACCUMULATION",
+                      muscle: "Hamstrings",
+                      evidence: ["week1_final=8:preferred=6"],
+                      severity: "warning",
+                    },
+                    {
+                      code: "SIDE_DELTS_UNDER_TARGET_ACROSS_ACCUMULATION",
+                      muscle: "Side Delts",
+                      evidence: ["week1_final=1:preferred=8"],
+                      severity: "warning",
+                    },
+                    {
+                      code: "DUPLICATE_MAIN_LIFT_REUSE_ACROSS_ACCUMULATION",
+                      evidence: ["duplicate:Incline DB Bench"],
+                      severity: "warning",
+                    },
+                    {
+                      code: "COLLATERAL_FATIGUE_RISK_ACROSS_ACCUMULATION",
+                      evidence: ["Front Delts"],
+                      severity: "info",
+                    },
+                  ],
+                  candidateBehaviorReadiness: [
+                    {
+                      candidate:
+                        "chest_upper_slot_distinct_exercise_distribution",
+                      readiness: "ready_for_bounded_trial",
+                      reason: "Chest remains under target.",
+                      requiredGuardrails: [],
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    expect(summary).toEqual(
+      expect.arrayContaining([
+        "Accumulation Week Projection",
+        "----------------------------",
+        "Basis: repeat Week 1 final shape / limited",
+        "Risks:",
+        "- Chest under target across accumulation",
+        "- Hamstrings overdelivered across accumulation",
+        "- Side Delts under target across accumulation",
+        "- Duplicate main-lift reuse",
+        "- Collateral fatigue risk",
+        "Best bounded candidate: Chest upper-slot distinct exercise distribution",
+      ])
+    );
+  });
+
   it("returns null when mesocycle-explain does not include planningReality", () => {
     expect(
       buildPlanningRealitySummary({

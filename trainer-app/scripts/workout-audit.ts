@@ -675,6 +675,53 @@ function buildSlotDemandAllocationByWeekSummaryLines(
   ];
 }
 
+function buildAccumulationWeekProjectionSummaryLines(
+  projection:
+    | PlanningRealityDiagnostic["accumulationWeekProjection"]
+    | null
+    | undefined
+): string[] | null {
+  if (!projection) {
+    return null;
+  }
+
+  const warnings = asArray(projection.crossWeekWarnings);
+  const hasWarning = (code: string): boolean =>
+    warnings.some((warning) => warning.code === code);
+  const risks: string[] = [];
+  if (hasWarning("CHEST_UNDER_TARGET_ACROSS_ACCUMULATION")) {
+    risks.push("Chest under target across accumulation");
+  }
+  if (hasWarning("HAMSTRINGS_OVERDELIVERED_ACROSS_ACCUMULATION")) {
+    risks.push("Hamstrings overdelivered across accumulation");
+  }
+  if (hasWarning("SIDE_DELTS_UNDER_TARGET_ACROSS_ACCUMULATION")) {
+    risks.push("Side Delts under target across accumulation");
+  }
+  if (hasWarning("DUPLICATE_MAIN_LIFT_REUSE_ACROSS_ACCUMULATION")) {
+    risks.push("Duplicate main-lift reuse");
+  }
+  if (hasWarning("COLLATERAL_FATIGUE_RISK_ACROSS_ACCUMULATION")) {
+    risks.push("Collateral fatigue risk");
+  }
+  const bestCandidate = asArray(projection.candidateBehaviorReadiness).find(
+    (candidate) => candidate.readiness === "ready_for_bounded_trial"
+  );
+
+  return [
+    "Accumulation Week Projection",
+    "----------------------------",
+    `Basis: ${
+      projection.projectionBasis.method === "repeat_week_1_final_shape"
+        ? "repeat Week 1 final shape"
+        : projection.projectionBasis.method
+    } / limited`,
+    "Risks:",
+    ...(risks.length > 0 ? risks.map((risk) => `- ${risk}`) : ["- none"]),
+    `Best bounded candidate: ${formatPreselectionCandidate(bestCandidate?.candidate)}`,
+  ];
+}
+
 function buildCleanPreselectionFeasibilitySummaryLines(
   rows: PlanningRealityDiagnostic["preselectionFeasibility"] | null | undefined
 ): string[] | null {
@@ -1136,6 +1183,14 @@ export function buildPlanningRealitySummary(input: {
     );
   if (slotDemandAllocationByWeekSummary) {
     lines.push("", ...slotDemandAllocationByWeekSummary);
+  }
+
+  const accumulationWeekProjectionSummary =
+    buildAccumulationWeekProjectionSummaryLines(
+      planningReality.accumulationWeekProjection
+    );
+  if (accumulationWeekProjectionSummary) {
+    lines.push("", ...accumulationWeekProjectionSummary);
   }
 
   lines.push("", "Slot allocation:");

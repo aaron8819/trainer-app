@@ -73,6 +73,12 @@ export interface SelectionObjective {
   projectionRepairMuscles?: Set<Muscle>;
 
   /**
+   * Projection-only slot-owned demand promoted before local exercise selection.
+   * No-op for normal runtime generation and seeded replay.
+   */
+  slotPreselectionDemands?: SlotPreselectionDemand[];
+
+  /**
    * Training goals (for rep range estimation and set-count multiplier)
    */
   goals?: Goals;
@@ -89,6 +95,16 @@ export interface SelectionObjective {
   /** 1-indexed mesocycle lifecycle week for bounded week-specific planning policy. */
   lifecycleWeek?: number;
 }
+
+export type SlotPreselectionDemand = {
+  slotId: string;
+  muscle: string;
+  role: "primary" | "support";
+  targetStatus: "hard" | "soft";
+  preferredEffectiveSets?: number;
+  minEffectiveSets?: number;
+  source: "shadow_owned_promotion" | "weekly_obligation" | "authored_slot_support";
+};
 
 /**
  * Hard constraints that MUST be satisfied

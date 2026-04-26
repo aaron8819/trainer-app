@@ -207,11 +207,16 @@ type PartialPlanningRealityDiagnostic = Partial<PlanningRealityDiagnostic> & {
   summary?: Partial<PlanningRealityDiagnostic["summary"]>;
 };
 
+type PreselectionDemandDiagnostic = NonNullable<
+  NonNullable<WorkoutAuditArtifact["mesocycleExplain"]>["preview"]["projectionDiagnostics"]["preselectionDemands"]
+>[number];
+
 type PlanningRealitySummaryArtifact = {
   mesocycleExplain?: {
     preview?: {
       projectionDiagnostics?: {
         planningReality?: PartialPlanningRealityDiagnostic | null;
+        preselectionDemands?: PreselectionDemandDiagnostic[] | null;
       } | null;
     } | null;
   } | null;
@@ -243,9 +248,141 @@ function formatPlanningRealityNumber(value: number | null | undefined): string {
   return typeof value === "number" && Number.isFinite(value) ? String(value) : "unknown";
 }
 
-function formatPlanningRealityArchitectureImplication(
-  planningShape: string | null | undefined
+function isMaterialPlanningRealityRepair(input: {
+  materiality?: string | null;
+}): boolean {
+  return input.materiality === "moderate" || input.materiality === "major";
+}
+
+function formatShadowRepairRow(
+  row: PlanningRealityDiagnostic["repairMaterialityAfterShadowAllocation"][number]
 ): string {
+  const slotId = row.slotId ?? "unknown_slot";
+  const muscle = row.muscle ?? "unknown muscle";
+  const exercise = row.exerciseName ?? row.exerciseId ?? "unknown exercise";
+  return `${slotId} ${muscle} via ${exercise}`;
+}
+
+function formatShadowRepairList(
+  rows: PlanningRealityDiagnostic["repairMaterialityAfterShadowAllocation"][number][],
+  limit = 6
+): string {
+  if (rows.length === 0) {
+    return "none";
+  }
+  const visible = rows.slice(0, limit).map(formatShadowRepairRow).join("; ");
+  const remaining = rows.length - limit;
+  return remaining > 0 ? `${visible}; +${remaining} more` : visible;
+}
+
+function countShadowRowsByMuscle(
+  rows: Array<{ muscle?: string | null }>
+): Record<string, number> {
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    if (!row.muscle) {
+      continue;
+    }
+    counts.set(row.muscle, (counts.get(row.muscle) ?? 0) + 1);
+  }
+  return Object.fromEntries(
+    Array.from(counts.entries()).sort(
+      ([leftMuscle, leftCount], [rightMuscle, rightCount]) =>
+        rightCount - leftCount || leftMuscle.localeCompare(rightMuscle)
+    )
+  );
+}
+
+function deriveShadowRepairSummary(
+  rows: PlanningRealityDiagnostic["repairMaterialityAfterShadowAllocation"]
+): PlanningRealityDiagnostic["shadowRepairSummary"] {
+  const materialRows = rows.filter(isMaterialPlanningRealityRepair);
+  const majorRows = rows.filter((row) => row.materiality === "major");
+  const likelyAvoidableMaterialRows = materialRows.filter(
+    (row) => row.likelyAvoidableWithShadowAllocation
+  );
+  const remainingMaterialRows = materialRows.filter(
+    (row) => !row.likelyAvoidableWithShadowAllocation
+  );
+  const likelyAvoidableMajorRows = majorRows.filter(
+    (row) => row.likelyAvoidableWithShadowAllocation
+  );
+
+  return {
+    materialRepairCount: materialRows.length,
+    majorRepairCount: majorRows.length,
+    likelyAvoidableMaterialRepairCount: likelyAvoidableMaterialRows.length,
+    remainingMaterialRepairCount: remainingMaterialRows.length,
+    likelyAvoidableMajorRepairCount: likelyAvoidableMajorRows.length,
+    remainingMajorRepairCount: majorRows.length - likelyAvoidableMajorRows.length,
+    likelyAvoidableByMuscle: countShadowRowsByMuscle(likelyAvoidableMaterialRows),
+    remainingByMuscle: countShadowRowsByMuscle(remainingMaterialRows),
+  };
+}
+
+function formatCountByMuscle(record: Record<string, number> | null | undefined): string[] {
+  const entries = Object.entries(record ?? {}).sort(
+    ([leftMuscle, leftCount], [rightMuscle, rightCount]) =>
+      rightCount - leftCount || leftMuscle.localeCompare(rightMuscle)
+  );
+  return entries.length > 0
+    ? entries.map(([muscle, count]) => `- ${muscle}: ${count}`)
+    : ["- none"];
+}
+
+function formatSuspiciousRepairs(
+  rows: PlanningRealityDiagnostic["suspiciousRepairsNotEligibleForPromotion"],
+  limit = 8
+): string[] {
+  if (rows.length === 0) {
+    return ["- none"];
+  }
+  const lines = rows
+    .slice(0, limit)
+    .map((row) => `- ${row.slotId}: ${row.muscle} via ${row.exerciseName ?? "unknown exercise"}`);
+  const remaining = rows.length - limit;
+  return remaining > 0 ? [...lines, `- +${remaining} more`] : lines;
+}
+
+function formatPromotionCandidates(
+  rows: PlanningRealityDiagnostic["promotionCandidates"],
+  limit = 8
+): string[] {
+  if (rows.length === 0) {
+    return ["- none"];
+  }
+  const lines = rows
+    .slice(0, limit)
+    .map(
+      (row) =>
+        `- ${row.slotId}: ${row.muscle} (${row.role}, ${row.targetStatus}) -> ${row.suggestedPromotion}`
+    );
+  const remaining = rows.length - limit;
+  return remaining > 0 ? [...lines, `- +${remaining} more`] : lines;
+}
+
+function formatPlanningRealityArchitectureImplication(
+  planningShape: string | null | undefined,
+  shadowRepairSignal?: {
+    likelyAvoidableCount: number;
+    remainingMaterialRepairCount: number | null;
+    suspiciousCount: number;
+    cleanupCount: number;
+  }
+): string {
+  if (shadowRepairSignal?.suspiciousCount) {
+    return "Suspicious downstream repairs block promotion. Resolve ownership smells first, then promote only bounded slot-owned demand.";
+  }
+  if (shadowRepairSignal?.likelyAvoidableCount) {
+    return "Promote only bounded, slot-owned, non-suspicious demand into pre-selection planning before tuning repair.";
+  }
+  if (
+    shadowRepairSignal &&
+    shadowRepairSignal.cleanupCount > 0 &&
+    shadowRepairSignal.remainingMaterialRepairCount === shadowRepairSignal.cleanupCount
+  ) {
+    return "Remaining material repairs look like repair/cap cleanup. Focus set distribution and concentration policy, not demand allocation.";
+  }
   switch (planningShape) {
     case "mostly_repair_shaped":
       return "The plan is mostly repair-shaped. Next move should be upstream WeeklyMuscleDemand -> SlotDemandAllocation ownership before selection.";
@@ -305,6 +442,15 @@ export function buildPlanningRealitySummary(input: {
   const exerciseConcentration = asArray(planningReality.exerciseConcentration);
   const slotDemandAllocation = asArray(planningReality.slotDemandAllocation);
   const finalDeltas = asArray(planningReality.allocationVsFinalDelta);
+  const shadowRepairMateriality = asArray(
+    planningReality.repairMaterialityAfterShadowAllocation
+  );
+  const shadowRepairSummary =
+    planningReality.shadowRepairSummary ?? deriveShadowRepairSummary(shadowRepairMateriality);
+  const promotionCandidates = asArray(planningReality.promotionCandidates);
+  const preselectionDemands = asArray(
+    input.artifact.mesocycleExplain?.preview?.projectionDiagnostics?.preselectionDemands
+  );
 
   const explicitMuscles = weeklyDemand
     .filter((row) => row.explicitUpstream)
@@ -349,6 +495,67 @@ export function buildPlanningRealitySummary(input: {
         left.exerciseName.localeCompare(right.exerciseName)
     );
   const finalDeltaBySlot = new Map(finalDeltas.map((delta) => [delta.slotId, delta]));
+  const materialShadowRepairs = shadowRepairMateriality.filter(isMaterialPlanningRealityRepair);
+  const likelyAvoidableRepairs = materialShadowRepairs
+    .filter((row) => row.likelyAvoidableWithShadowAllocation)
+    .sort(
+      (left, right) =>
+        (left.slotId ?? "").localeCompare(right.slotId ?? "") ||
+        (left.muscle ?? "").localeCompare(right.muscle ?? "") ||
+        (left.exerciseName ?? "").localeCompare(right.exerciseName ?? "")
+    );
+  const fallbackSuspiciousRepairRows = materialShadowRepairs
+    .filter(
+      (row) =>
+        !row.likelyAvoidableWithShadowAllocation &&
+        row.shadowAllocationBasis === "weekly_demand_owned_elsewhere"
+    )
+    .sort(
+      (left, right) =>
+        (left.slotId ?? "").localeCompare(right.slotId ?? "") ||
+        (left.muscle ?? "").localeCompare(right.muscle ?? "") ||
+        (left.exerciseName ?? "").localeCompare(right.exerciseName ?? "")
+    );
+  const suspiciousRepairsNotEligibleForPromotion = asArray(
+    planningReality.suspiciousRepairsNotEligibleForPromotion
+  );
+  const suspiciousRepairsForOutput =
+    suspiciousRepairsNotEligibleForPromotion.length > 0
+      ? suspiciousRepairsNotEligibleForPromotion
+      : fallbackSuspiciousRepairRows.map((row) => ({
+          slotId: row.slotId ?? "unknown_slot",
+          muscle: row.muscle ?? "unknown muscle",
+          exerciseName: row.exerciseName ?? row.exerciseId ?? null,
+          repairMechanism: row.repairMechanism,
+          reason: "shadow allocation marks this muscle as weekly_demand_owned_elsewhere",
+          recommendation:
+            "Do not promote this repair upstream; inspect slot ownership, compatibility, or cleanup cause first.",
+        }));
+  const remainingRepairCleanupRows = materialShadowRepairs
+    .filter(
+      (row) =>
+        !row.likelyAvoidableWithShadowAllocation &&
+        row.shadowAllocationBasis !== "weekly_demand_owned_elsewhere"
+    )
+    .sort(
+      (left, right) =>
+        (left.slotId ?? "").localeCompare(right.slotId ?? "") ||
+        (left.muscle ?? "").localeCompare(right.muscle ?? "") ||
+        (left.exerciseName ?? "").localeCompare(right.exerciseName ?? "")
+    );
+  const materialRepairCount =
+    typeof shadowRepairSummary.materialRepairCount === "number"
+      ? shadowRepairSummary.materialRepairCount
+      : typeof planningReality.summary?.materialRepairCount === "number"
+        ? planningReality.summary.materialRepairCount
+        : materialShadowRepairs.length;
+  const remainingMaterialRepairCount = shadowRepairSummary.remainingMaterialRepairCount;
+  const shadowRepairSignal = {
+    likelyAvoidableCount: shadowRepairSummary.likelyAvoidableMaterialRepairCount,
+    remainingMaterialRepairCount,
+    suspiciousCount: suspiciousRepairsForOutput.length,
+    cleanupCount: remainingRepairCleanupRows.length,
+  };
 
   const lines = ["Planning Reality Summary", "------------------------"];
   if (input.outputPath) {
@@ -356,13 +563,43 @@ export function buildPlanningRealitySummary(input: {
   }
 
   const planningShape = planningReality.summary?.planningShape;
+  const architectureImplication = formatPlanningRealityArchitectureImplication(
+    planningShape,
+    shadowRepairSignal
+  );
   lines.push(`Planning shape: ${planningShape ?? "unknown"}`, "");
+  lines.push("Architecture Signal:");
+  lines.push(`- planningShape: ${planningShape ?? "unknown"}`);
+  lines.push(`- materialRepairCount: ${formatPlanningRealityNumber(materialRepairCount)}`);
+  lines.push(
+    `- majorRepairCount: ${formatPlanningRealityNumber(planningReality.summary?.majorRepairCount)}`
+  );
+  lines.push(
+    `- likelyUpstreamAvoidableMaterialRepairs: ${shadowRepairSummary.likelyAvoidableMaterialRepairCount}`
+  );
+  lines.push(
+    `- remainingMaterialRepairs: ${formatPlanningRealityNumber(remainingMaterialRepairCount)}`
+  );
+  lines.push(
+    `- suspiciousRepairsNotEligibleForPromotion: ${suspiciousRepairsForOutput.length}`
+  );
+  const promotionCandidateSignal =
+    promotionCandidates.length > 0
+      ? promotionCandidates
+          .map((row) => `${row.slotId} ${row.muscle} -> ${row.suggestedPromotion}`)
+          .slice(0, 6)
+          .join("; ")
+      : formatShadowRepairList(likelyAvoidableRepairs);
+  lines.push(
+    `- promotionCandidates: ${promotionCandidateSignal || "none"}`
+  );
+  lines.push(`- highest-leverage next move: ${architectureImplication}`, "");
   lines.push("Demand:");
   lines.push(`- Explicit upstream muscles: ${formatNameList(explicitMuscles)}`);
   lines.push(`- Inferred downstream muscles: ${formatNameList(inferredMuscles)}`, "");
   lines.push("Repair:");
   lines.push(
-    `- Material repairs: ${formatPlanningRealityNumber(planningReality.summary?.materialRepairCount)}`
+    `- Material repairs: ${formatPlanningRealityNumber(materialRepairCount)}`
   );
   lines.push(
     `- Major repairs: ${formatPlanningRealityNumber(planningReality.summary?.majorRepairCount)}`
@@ -379,6 +616,49 @@ export function buildPlanningRealitySummary(input: {
     const remaining = addedExerciseIdentities.length - 8;
     if (remaining > 0) {
       lines.push(`  - +${remaining} more`);
+    }
+  }
+
+  lines.push("", "Shadow Repair Summary");
+  lines.push("---------------------");
+  lines.push(`Material repairs: ${formatPlanningRealityNumber(shadowRepairSummary.materialRepairCount)}`);
+  lines.push(`Major repairs: ${formatPlanningRealityNumber(shadowRepairSummary.majorRepairCount)}`);
+  lines.push(
+    `Likely upstream-avoidable: ${formatPlanningRealityNumber(shadowRepairSummary.likelyAvoidableMaterialRepairCount)}`
+  );
+  lines.push(`Remaining: ${formatPlanningRealityNumber(shadowRepairSummary.remainingMaterialRepairCount)}`);
+  lines.push(
+    `Likely upstream-avoidable major: ${formatPlanningRealityNumber(shadowRepairSummary.likelyAvoidableMajorRepairCount)}`
+  );
+  lines.push(`Remaining major: ${formatPlanningRealityNumber(shadowRepairSummary.remainingMajorRepairCount)}`);
+  lines.push("", "Likely avoidable by muscle:");
+  lines.push(...formatCountByMuscle(shadowRepairSummary.likelyAvoidableByMuscle));
+  lines.push("", "Remaining by muscle:");
+  lines.push(...formatCountByMuscle(shadowRepairSummary.remainingByMuscle));
+  lines.push("", "Remaining repair/cap cleanup:");
+  lines.push(...formatShadowRepairList(remainingRepairCleanupRows).split("; ").map((row) => `- ${row}`));
+  lines.push("", "Suspicious repairs not eligible for promotion:");
+  lines.push(...formatSuspiciousRepairs(suspiciousRepairsForOutput));
+  lines.push("", "Promotion candidates:");
+  if (promotionCandidates.length > 0) {
+    lines.push(...formatPromotionCandidates(promotionCandidates));
+  } else {
+    lines.push(...formatShadowRepairList(likelyAvoidableRepairs).split("; ").map((row) => `- ${row}`));
+  }
+  lines.push("", "Pre-selection demand consumed:");
+  if (preselectionDemands.length === 0) {
+    lines.push("- none");
+  } else {
+    for (const row of preselectionDemands.slice(0, 10)) {
+      lines.push(
+        `- ${row.slotId}: ${row.muscle} (${row.role}, ${row.targetStatus}, ${row.source}) ` +
+          `selected ${formatPlanningRealityNumber(row.selectedEffectiveSets)} effective sets; ` +
+          `consumed=${formatBooleanFlag(row.consumedBySelection)} targetMet=${formatBooleanFlag(row.targetMet)}`
+      );
+    }
+    const remaining = preselectionDemands.length - 10;
+    if (remaining > 0) {
+      lines.push(`- +${remaining} more`);
     }
   }
 
@@ -424,7 +704,7 @@ export function buildPlanningRealitySummary(input: {
   }
 
   lines.push("", "Architecture implication:");
-  lines.push(formatPlanningRealityArchitectureImplication(planningShape));
+  lines.push(architectureImplication);
 
   return lines;
 }

@@ -33,7 +33,11 @@ import {
   PROGRAM_QUALITY_CONSTRAINT_PRIORITY,
   PROGRAM_QUALITY_PENALTY_MODEL,
 } from "./mesocycle-handoff-slot-plan-projection.program-quality";
-import { buildSlotSequenceEntries } from "./mesocycle-handoff-slot-plan-projection.coverage-evaluation";
+import {
+  buildSlotSequenceEntries,
+  computeWorkoutContributionByMuscle,
+} from "./mesocycle-handoff-slot-plan-projection.coverage-evaluation";
+import { buildWeeklyDemandSlotAllocationDiagnostic } from "./mesocycle-handoff-slot-plan-projection.diagnostics";
 import {
   evaluateDuplicateExerciseReuse,
   type WeeklyMuscleObligationPlan,
@@ -167,6 +171,17 @@ function makeProjectedSlot(input: {
     workout: input.workout,
     projectedContributionByMuscle: new Map<string, number>(),
     repairMuscles: [],
+  };
+}
+
+function makeProjectedSlotWithContributions(input: {
+  slotId: string;
+  intent: "UPPER" | "LOWER" | "PULL" | "PUSH";
+  workout: WorkoutPlan;
+}) {
+  return {
+    ...makeProjectedSlot(input),
+    projectedContributionByMuscle: computeWorkoutContributionByMuscle(input.workout),
   };
 }
 
@@ -2271,6 +2286,113 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     expect(JSON.stringify(getProjectedSlotPlans(projected))).not.toContain("shadow");
   });
 
+  it("separates likely avoidable shadow repairs from suspicious downstream repair artifacts", () => {
+    const slotSequence = [
+      { slotId: "upper_a", intent: "UPPER" as const },
+      { slotId: "upper_b", intent: "UPPER" as const },
+      { slotId: "lower_b", intent: "LOWER" as const },
+    ];
+    const emptyUpperB = makeProjectedSlotWithContributions({
+      slotId: "upper_b",
+      intent: "UPPER",
+      workout: makeProjectedWorkout({}),
+    });
+    const emptyLowerB = makeProjectedSlotWithContributions({
+      slotId: "lower_b",
+      intent: "LOWER",
+      workout: makeProjectedWorkout({}),
+    });
+    const sideDeltRepair = makeProjectedSlotWithContributions({
+      slotId: "upper_b",
+      intent: "UPPER",
+      workout: makeProjectedWorkout({
+        accessories: [
+          makeProjectedExercise({
+            id: "cable-lateral-raise",
+            name: "Cable Lateral Raise",
+            movementPatterns: ["isolation"],
+            primaryMuscles: ["Side Delts"],
+            sets: 3,
+            isCompound: false,
+            stimulusProfile: { side_delts: 1 },
+          }),
+        ],
+      }),
+    });
+    const lowerChestRepair = makeProjectedSlotWithContributions({
+      slotId: "lower_b",
+      intent: "LOWER",
+      workout: makeProjectedWorkout({
+        accessories: [
+          makeProjectedExercise({
+            id: "cable-crossover",
+            name: "Cable Crossover",
+            movementPatterns: ["isolation"],
+            primaryMuscles: ["Chest"],
+            sets: 3,
+            isCompound: false,
+            stimulusProfile: { chest: 1 },
+          }),
+        ],
+      }),
+    });
+
+    const diagnostic = buildWeeklyDemandSlotAllocationDiagnostic({
+      activeMesocycle: buildSource() as never,
+      slotSequence,
+      initialProjectedSlots: [emptyUpperB, emptyLowerB],
+      finalProjectedSlots: [sideDeltRepair, lowerChestRepair],
+      weeklyObligationPlan: weeklyObligationPlan({
+        Chest: {
+          targetSets: 10,
+          allocatedSlots: [{ slotId: "upper_a", minEffectiveSets: 5, priority: "primary" }],
+        },
+      }),
+      weeklyObligationEvaluations: [],
+      protectedCoverage: {
+        muscles: [],
+        deficitsBelowMev: [],
+        deficitsBelowPracticalFloor: [],
+        unresolvedProtectedMuscles: [],
+      },
+      supportFloorRepairReasons: {},
+      programQualityAppliedDiagnostics: [],
+      programQualityEvaluation: {
+        totalPenalty: 0,
+        diagnostics: [],
+        constraintCounts: {},
+      },
+    });
+
+    expect(diagnostic.shadowRepairSummary).toMatchObject({
+      materialRepairCount: 2,
+      majorRepairCount: 2,
+      likelyAvoidableMaterialRepairCount: 1,
+      remainingMaterialRepairCount: 1,
+      likelyAvoidableMajorRepairCount: 1,
+      remainingMajorRepairCount: 1,
+      likelyAvoidableByMuscle: { "Side Delts": 1 },
+      remainingByMuscle: { Chest: 1 },
+    });
+    expect(diagnostic.suspiciousRepairsNotEligibleForPromotion).toEqual([
+      expect.objectContaining({
+        slotId: "lower_b",
+        muscle: "Chest",
+        exerciseName: "Cable Crossover",
+        repairMechanism: expect.any(String),
+        reason: expect.stringContaining("weekly_demand_owned_elsewhere"),
+      }),
+    ]);
+    expect(diagnostic.promotionCandidates).toEqual([
+      expect.objectContaining({
+        slotId: "upper_b",
+        muscle: "Side Delts",
+        role: "support",
+        targetStatus: "soft",
+      }),
+    ]);
+  });
+
   it("prevents upper_b from finishing with zero Chest while Chest remains a hard weekly obligation", () => {
     const projected = projectSuccessorSlotPlansFromSnapshot({
       userId: "user-1",
@@ -2415,6 +2537,64 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
         )
       )
     ).toBe(true);
+  });
+
+  it("promotes only compatible slot-owned preselection demand before repair", () => {
+    composeIntentSessionFromMappedContextSpy.mockClear();
+
+    const projected = projectSuccessorSlotPlansFromSnapshot({
+      userId: "user-1",
+      source: buildSource(),
+      design: buildDesign(buildRepairSensitiveDraft()),
+      snapshot: buildProtectedCoverageSatisfiedSnapshot(),
+      now: new Date("2026-03-19T12:00:00.000Z"),
+    });
+
+    const demandCalls = composeIntentSessionFromMappedContextSpy.mock.calls
+      .map(([, input]) => input)
+      .filter((input) => Array.isArray(input.slotPreselectionDemands));
+    const allDemands = demandCalls.flatMap((input) => input.slotPreselectionDemands ?? []);
+    const lowerBDemands = allDemands.filter((demand) => demand.slotId === "lower_b");
+
+    expect(allDemands).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          slotId: "upper_b",
+          muscle: "Side Delts",
+          role: "support",
+          targetStatus: "soft",
+          source: "authored_slot_support",
+        }),
+      ])
+    );
+    expect(lowerBDemands).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ muscle: "Chest" }),
+      ])
+    );
+    expect(allDemands).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ muscle: "Front Delts" }),
+        expect.objectContaining({ muscle: "Upper Back" }),
+        expect.objectContaining({ muscle: "Lower Back" }),
+        expect.objectContaining({ muscle: "Core" }),
+        expect.objectContaining({ muscle: "Adductors" }),
+        expect.objectContaining({ muscle: "Forearms" }),
+      ])
+    );
+
+    expect(projected.diagnostics?.preselectionDemands).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          slotId: "upper_b",
+          muscle: "Side Delts",
+          selectedEffectiveSets: expect.any(Number),
+          consumedBySelection: expect.any(Boolean),
+          targetMet: expect.any(Boolean),
+        }),
+      ])
+    );
+    expect(JSON.stringify(getProjectedSlotPlans(projected))).not.toContain("preselection");
   });
 
   it("persists lower_b with a hinge-led core anchor when a hinge compound is viable", () => {
@@ -2810,10 +2990,18 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     expect(hamstrings?.projectedEffectiveSets ?? 0).toBeGreaterThanOrEqual(
       hamstrings?.mev ?? 0
     );
-    expect(
-      projected.diagnostics?.protectedCoverage.supportFloorRepairReasons.Hamstrings
-    ).toEqual(
-      expect.arrayContaining(["support_accessory_replacement"])
+    const hamstringPreselection =
+      projected.diagnostics?.preselectionDemands?.filter(
+        (demand) => demand.muscle === "Hamstrings" && demand.consumedBySelection
+      ) ?? [];
+    const closureSignals = [
+      ...(projected.diagnostics?.protectedCoverage.supportFloorRepairReasons.Hamstrings ?? []),
+      ...hamstringPreselection.map(() => "preselection_demand_consumed"),
+    ];
+    expect(closureSignals).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/^(support_accessory_replacement|preselection_demand_consumed)$/),
+      ])
     );
   });
 

@@ -52,7 +52,8 @@ export type SupportFloorRepairReason =
   | "no_compatible_exercise"
   | "slot_identity_blocked"
   | "exercise_cap_blocked"
-  | "effective_weight_shortfall";
+  | "effective_weight_shortfall"
+  | "preselection_demand_consumed";
 
 export const PROTECTED_WEEK_ONE_COVERAGE_MUSCLES: ProtectedWeekOneCoverageMuscle[] = [
   "Chest",

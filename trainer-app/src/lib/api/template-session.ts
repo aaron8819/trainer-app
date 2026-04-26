@@ -2312,6 +2312,7 @@ export function composeIntentSessionFromMappedContext(
     supplementalPlannerProfile: input.supplementalPlannerProfile,
     sessionSlotId,
     projectionRepairMuscles: input.projectionRepairMuscles,
+    slotPreselectionDemands: input.slotPreselectionDemands,
   });
   const isDeloadSession = mapped.effectivePeriodization.isDeload;
   const planningInventoryKind = getSessionPlanningInventoryKind(input);

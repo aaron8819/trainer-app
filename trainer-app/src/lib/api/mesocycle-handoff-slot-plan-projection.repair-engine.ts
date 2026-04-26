@@ -1409,12 +1409,14 @@ export function applyFinalSupportFloorClosure(input: {
     authoredSemantics?: MesocycleSlotSequence["slots"][number]["authoredSemantics"];
   }>;
   slotSequenceEntries: ReturnType<typeof buildSlotSequenceEntries>;
+  satisfiedPreselectionMuscles?: readonly ProtectedWeekOneCoverageMuscle[];
 }): {
   projectedSlots: ProjectedSlotWorkout[];
   reasons: Partial<Record<ProtectedWeekOneCoverageMuscle, SupportFloorRepairReason[]>>;
 } {
   const reasons: Partial<Record<ProtectedWeekOneCoverageMuscle, SupportFloorRepairReason[]>> = {};
   let projectedSlots = [...input.projectedSlots];
+  const satisfiedPreselectionMuscles = new Set(input.satisfiedPreselectionMuscles ?? []);
 
   for (let pass = 0; pass < 2; pass += 1) {
     const evaluation = evaluateProtectedWeekOneCoverage({
@@ -1422,7 +1424,19 @@ export function applyFinalSupportFloorClosure(input: {
       activeMesocycle: input.activeMesocycle,
       slotSequence: input.slotSequence,
     });
-    const repairRows = sortSupportFloorDeficits(evaluation.deficitsBelowPracticalFloor);
+    const repairRows = sortSupportFloorDeficits(
+      evaluation.deficitsBelowPracticalFloor
+    ).filter((row) => {
+      if (!satisfiedPreselectionMuscles.has(row.muscle)) {
+        return true;
+      }
+      addSupportFloorRepairReason(
+        reasons,
+        row.muscle,
+        "preselection_demand_consumed"
+      );
+      return false;
+    });
     if (repairRows.length === 0) {
       break;
     }

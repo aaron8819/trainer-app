@@ -399,6 +399,9 @@ function buildProjectionDiagnostics(
     constraintsTriggered,
     tradeoffs: appliedRows,
     softCapOverridesByP0,
+    ...(diagnostics?.preselectionDemands
+      ? { preselectionDemands: diagnostics.preselectionDemands }
+      : {}),
     ...(diagnostics?.planningReality
       ? { planningReality: diagnostics.planningReality }
       : {}),

@@ -320,6 +320,33 @@ describe("buildSelectionObjective continuity bias", () => {
     expect(objective.constraints.maxExercises).toBe(SESSION_CAPS.maxExercises);
   });
 
+  it("uses slot preselection demand as a projection-only selection signal", () => {
+    const objective = buildSelectionObjective(makeMappedContext([]), "upper", undefined, {
+      sessionSlotId: "upper_b",
+      slotPreselectionDemands: [
+        {
+          slotId: "upper_b",
+          muscle: "Side Delts",
+          role: "support",
+          targetStatus: "soft",
+          preferredEffectiveSets: 2,
+          minEffectiveSets: 2,
+          source: "authored_slot_support",
+        },
+      ],
+    });
+
+    expect(objective.constraints.maxExercises).toBe(SESSION_CAPS.maxExercises);
+    expect(objective.projectionRepairMuscles?.has("Side Delts")).toBe(true);
+    expect(objective.slotPreselectionDemands).toEqual([
+      expect.objectContaining({
+        slotId: "upper_b",
+        muscle: "Side Delts",
+        source: "authored_slot_support",
+      }),
+    ]);
+  });
+
   it("derives a remaining-week context from schedule order and current-week performed sessions", () => {
     const history: WorkoutHistoryEntry[] = [
       {

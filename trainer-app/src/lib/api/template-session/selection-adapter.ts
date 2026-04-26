@@ -243,6 +243,7 @@ export function buildSelectionObjective(
     supplementalPlannerProfile?: boolean;
     sessionSlotId?: string;
     projectionRepairMuscles?: string[];
+    slotPreselectionDemands?: SelectionObjective["slotPreselectionDemands"];
   }
 ): SelectionObjective {
   const fatigueState = deriveFatigueState(mapped.history, mapped.mappedCheckIn);
@@ -277,6 +278,18 @@ export function buildSelectionObjective(
     targetCount > 1
       ? SUPPLEMENTAL_SESSION_CAPS.maxExercisesMultiTarget
       : SUPPLEMENTAL_SESSION_CAPS.maxExercisesSingleTarget;
+  const slotPreselectionDemands = (options?.slotPreselectionDemands ?? []).filter(
+    (demand) =>
+      demand.slotId === (options?.sessionSlotId ?? "") &&
+      (demand.role === "primary" || demand.role === "support") &&
+      (demand.targetStatus === "hard" || demand.targetStatus === "soft")
+  );
+  const projectionRepairMuscleSet = new Set(
+    [
+      ...(options?.projectionRepairMuscles ?? []),
+      ...slotPreselectionDemands.map((demand) => demand.muscle),
+    ] as Muscle[]
+  );
   const matchesIntentMuscle = (muscle: string): boolean =>
     getSessionMuscleOpportunityWeight(sessionIntent, muscle, {
       targetMuscles: normalizedTargets.size > 0 ? Array.from(normalizedTargets) : targetMuscles,
@@ -288,7 +301,7 @@ export function buildSelectionObjective(
   const slotPolicy = resolveSessionSlotPolicy({
     sessionIntent,
     slotId: options?.sessionSlotId,
-    projectionRepairMuscles: options?.projectionRepairMuscles,
+    projectionRepairMuscles: Array.from(projectionRepairMuscleSet),
     slotSequence: runtimeSlotSequence,
     futureSlots: buildRemainingFutureSlotsFromRuntime({
       slotSequenceJson: mapped.activeMesocycle?.slotSequenceJson,
@@ -362,6 +375,22 @@ export function buildSelectionObjective(
       weeklyActual.set(muscle as Muscle, sets);
       effectiveActual.set(muscle as Muscle, sets);
     }
+  }
+
+  for (const demand of slotPreselectionDemands) {
+    if (demand.muscle !== "Side Delts" || !matchesIntentMuscle(demand.muscle)) {
+      continue;
+    }
+    const targetSets = demand.preferredEffectiveSets ?? demand.minEffectiveSets ?? 0;
+    if (targetSets <= 0) {
+      continue;
+    }
+    const muscle = demand.muscle as Muscle;
+    const currentActual = effectiveActual.get(muscle) ?? 0;
+    weeklyTarget.set(
+      muscle,
+      Math.max(weeklyTarget.get(muscle) ?? 0, currentActual + targetSets)
+    );
   }
 
   const userAvoids = new Set(mapped.mappedPreferences?.avoidExerciseIds ?? []);
@@ -479,7 +508,8 @@ export function buildSelectionObjective(
     trainingAge: mapped.mappedProfile.trainingAge,
     sessionIntent,
     lifecycleWeek: mapped.lifecycleWeek,
-    projectionRepairMuscles: new Set((options?.projectionRepairMuscles ?? []) as Muscle[]),
+    projectionRepairMuscles: projectionRepairMuscleSet,
+    slotPreselectionDemands,
   };
 }
 

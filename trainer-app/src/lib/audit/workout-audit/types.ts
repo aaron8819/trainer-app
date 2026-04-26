@@ -6,6 +6,7 @@ import type {
   ProjectedWeekVolumeSessionSummary,
 } from "@/lib/api/projected-week-volume";
 import type { SlotPlanPlanningRealityDiagnostic } from "@/lib/api/mesocycle-handoff-slot-plan-projection.diagnostics";
+import type { SlotPreselectionDemandDiagnostic } from "@/lib/api/mesocycle-handoff-slot-plan-projection";
 import type { SessionGenerationResult } from "@/lib/api/template-session/types";
 import type {
   ProgressionDecisionTrace,
@@ -717,6 +718,7 @@ export type MesocycleExplainProjectionDiagnostics = {
   constraintsTriggered: MesocycleExplainProjectionDiagnosticRow[];
   tradeoffs: MesocycleExplainProjectionDiagnosticRow[];
   softCapOverridesByP0: MesocycleExplainProjectionDiagnosticRow[];
+  preselectionDemands?: SlotPreselectionDemandDiagnostic[];
   planningReality?: SlotPlanPlanningRealityDiagnostic;
 };
 

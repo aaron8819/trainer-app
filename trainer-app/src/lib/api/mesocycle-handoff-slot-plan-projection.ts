@@ -1,4 +1,6 @@
 import type { WorkoutPlan } from "@/lib/engine/types";
+import type { SlotPreselectionDemand } from "@/lib/engine/selection-v2";
+import { getEffectiveStimulusByMuscle } from "@/lib/engine/stimulus";
 import {
   getProjectionPreferredSupportMuscles,
   getProjectionRepairCompatibleMuscles,
@@ -32,6 +34,7 @@ import {
   preservesSlotIdentity,
   ProjectedSlotWorkout,
   ProtectedWeekOneCoverageEvaluation,
+  roundToTenth,
   SupportFloorRepairReason,
   toSessionIntent,
 } from "./mesocycle-handoff-slot-plan-projection.coverage-evaluation";
@@ -107,6 +110,7 @@ export type SuccessorSlotPlanProjection = {
       zeroContributionSlots: SlotObligationEvaluation[];
       weeklyHardMuscleTotals: Record<string, number>;
     };
+    preselectionDemands?: SlotPreselectionDemandDiagnostic[];
     duplicateExerciseReuse?: DuplicateExerciseReuseDiagnostic[];
     programQuality?: {
       constraintPriority: typeof PROGRAM_QUALITY_CONSTRAINT_PRIORITY;
@@ -116,6 +120,12 @@ export type SuccessorSlotPlanProjection = {
     };
     planningReality?: SlotPlanPlanningRealityDiagnostic;
   };
+};
+
+export type SlotPreselectionDemandDiagnostic = SlotPreselectionDemand & {
+  selectedEffectiveSets: number;
+  consumedBySelection: boolean;
+  targetMet: boolean;
 };
 
 type FailedSuccessorSlotPlanProjection = {
@@ -140,6 +150,7 @@ function projectSlotPlansPass(input: {
       exerciseLibrary: MappedGenerationContext["exerciseLibrary"];
       programQualityAppliedDiagnostics: ProgramQualityDiagnostic[];
       initialProjectedSlots: ProjectedSlotWorkout[];
+      preselectionDemandDiagnostics: SlotPreselectionDemandDiagnostic[];
     }
   | { error: string } {
   const projectionContext = buildSyntheticProjectionContext({
@@ -169,6 +180,7 @@ function projectSlotPlansPass(input: {
   });
   let accessoryLaneInsertionCount = 0;
   const programQualityAppliedDiagnostics: ProgramQualityDiagnostic[] = [];
+  const preselectionDemandDiagnostics: SlotPreselectionDemandDiagnostic[] = [];
 
   for (const [index, slot] of slotSequence.entries()) {
     if (slot.intent === "BODY_PART") {
@@ -226,6 +238,17 @@ function projectSlotPlansPass(input: {
     const obligationTargetMuscles = slotWeeklyObligations.map(
       (obligation) => obligation.muscle
     );
+    const slotPreselectionDemands = buildSlotPreselectionDemands({
+      slotId: slot.slotId,
+      slotPolicy,
+      slotWeeklyObligations,
+    });
+    const prioritizedPreselectionMuscles = Array.from(
+      new Set([
+        ...projectionRepairMuscles,
+        ...slotPreselectionDemands.map((demand) => demand.muscle),
+      ])
+    ) as ProtectedWeekOneCoverageMuscle[];
     const preferredSupportTargetMuscles = getProjectionPreferredSupportMuscles(slotPolicy);
     const softPreferredSupportTargetMuscles = getProjectionSoftPreferredSupportMuscles({
       slot: slotPolicy,
@@ -241,6 +264,7 @@ function projectSlotPlansPass(input: {
       slotId: slot.slotId,
       roleListIncomplete: true,
       ...(projectionRepairMuscles.length > 0 ? { projectionRepairMuscles } : {}),
+      ...(slotPreselectionDemands.length > 0 ? { slotPreselectionDemands } : {}),
     });
     if ("error" in composed) {
       return {
@@ -263,6 +287,7 @@ function projectSlotPlansPass(input: {
           intent: toSessionIntent(slot.intent),
           slotId: slot.slotId,
           roleListIncomplete: true,
+          ...(slotPreselectionDemands.length > 0 ? { slotPreselectionDemands } : {}),
           targetMuscles: preferredSupportTargetMuscles,
         }
       );
@@ -281,6 +306,7 @@ function projectSlotPlansPass(input: {
           slotId: slot.slotId,
           roleListIncomplete: true,
           projectionRepairMuscles,
+          ...(slotPreselectionDemands.length > 0 ? { slotPreselectionDemands } : {}),
           targetMuscles: obligationTargetMuscles,
         }
       );
@@ -298,6 +324,7 @@ function projectSlotPlansPass(input: {
           intent: toSessionIntent(slot.intent),
           slotId: slot.slotId,
           roleListIncomplete: true,
+          ...(slotPreselectionDemands.length > 0 ? { slotPreselectionDemands } : {}),
           targetMuscles: softPreferredSupportTargetMuscles,
         }
       );
@@ -315,6 +342,7 @@ function projectSlotPlansPass(input: {
           intent: toSessionIntent(slot.intent),
           slotId: slot.slotId,
           roleListIncomplete: true,
+          ...(slotPreselectionDemands.length > 0 ? { slotPreselectionDemands } : {}),
           targetMuscles: primaryPreferredTargetMuscles,
         }
       );
@@ -325,12 +353,32 @@ function projectSlotPlansPass(input: {
         });
       }
     }
+    for (const demand of slotPreselectionDemands) {
+      const preselectionComposed = composeIntentSessionFromMappedContext(
+        projectionContext.mapped,
+        {
+          intent: toSessionIntent(slot.intent),
+          slotId: slot.slotId,
+          roleListIncomplete: true,
+          projectionRepairMuscles: [demand.muscle],
+          slotPreselectionDemands,
+          targetMuscles: [demand.muscle],
+        }
+      );
+      if (!("error" in preselectionComposed)) {
+        candidateWorkouts.push({
+          workout: preselectionComposed.generation.workout,
+          protectedMuscles: [demand.muscle as ProtectedWeekOneCoverageMuscle],
+        });
+      }
+    }
     if (projectionRepairMuscles.length > 1 && !useStructuralUpperTargeting) {
       const focusedComposed = composeIntentSessionFromMappedContext(projectionContext.mapped, {
         intent: toSessionIntent(slot.intent),
         slotId: slot.slotId,
         roleListIncomplete: true,
         projectionRepairMuscles,
+        ...(slotPreselectionDemands.length > 0 ? { slotPreselectionDemands } : {}),
         targetMuscles: projectionRepairMuscles,
       });
       if (!("error" in focusedComposed)) {
@@ -346,6 +394,7 @@ function projectSlotPlansPass(input: {
         slotId: slot.slotId,
         roleListIncomplete: true,
         projectionRepairMuscles: [muscle],
+        ...(slotPreselectionDemands.length > 0 ? { slotPreselectionDemands } : {}),
         targetMuscles: [muscle],
       });
       if (!("error" in focusedSingleMuscle)) {
@@ -358,7 +407,7 @@ function projectSlotPlansPass(input: {
     let selectedWorkout = rebalanceUpperSupportProjection({
       workout: selectBestProjectedSlotComposition({
         candidateWorkouts,
-        prioritizedProtectedMuscles: projectionRepairMuscles,
+        prioritizedProtectedMuscles: prioritizedPreselectionMuscles,
         slotPolicy,
         projectedSlots,
         activeMesocycle,
@@ -371,7 +420,7 @@ function projectSlotPlansPass(input: {
       slotPolicy,
       exerciseLibrary: projectionContext.mapped.exerciseLibrary,
       protectedMuscles: Array.from(
-        new Set([...slotProtectedCoverageMuscles, ...projectionRepairMuscles])
+        new Set([...slotProtectedCoverageMuscles, ...prioritizedPreselectionMuscles])
       ),
     });
     selectedWorkout = trimRedundantUpperPullSupportProjection({
@@ -392,6 +441,10 @@ function projectSlotPlansPass(input: {
       slotSequence,
     });
     selectedWorkout = supportFloorBumpResult.workout;
+    selectedWorkout = applySlotPreselectionDemandSetBumps({
+      workout: selectedWorkout,
+      demands: slotPreselectionDemands,
+    });
     mergeSupportFloorRepairReasons(
       supportFloorRepairReasons,
       supportFloorBumpResult.reasons
@@ -448,6 +501,12 @@ function projectSlotPlansPass(input: {
       projectedContributionByMuscle: computeWorkoutContributionByMuscle(selectedWorkout),
       repairMuscles: projectionRepairMuscles,
     };
+    preselectionDemandDiagnostics.push(
+      ...buildSlotPreselectionDemandDiagnostics({
+        demands: slotPreselectionDemands,
+        contributionByMuscle: candidateProjectedSlot.projectedContributionByMuscle,
+      })
+    );
     projectedSlots.push(candidateProjectedSlot);
     if (slotProtectedCoverageMuscles.length > 0) {
       slotRepairMuscles[slot.slotId] = slotProtectedCoverageMuscles;
@@ -488,12 +547,16 @@ function projectSlotPlansPass(input: {
     projectedSlots,
     slotSequenceEntries,
   });
+  const satisfiedPreselectionMuscles = getSatisfiedPreselectionMuscles(
+    preselectionDemandDiagnostics
+  );
   const finalSupportFloorClosure = applyFinalSupportFloorClosure({
     projectedSlots,
     exerciseLibrary: projectionContext.mapped.exerciseLibrary,
     activeMesocycle,
     slotSequence,
     slotSequenceEntries,
+    satisfiedPreselectionMuscles,
   });
   projectedSlots = finalSupportFloorClosure.projectedSlots;
   mergeSupportFloorRepairReasons(
@@ -520,6 +583,7 @@ function projectSlotPlansPass(input: {
     activeMesocycle,
     slotSequence,
     slotSequenceEntries,
+    satisfiedPreselectionMuscles,
   });
   projectedSlots = postObligationSupportFloorClosure.projectedSlots;
   mergeSupportFloorRepairReasons(
@@ -550,7 +614,221 @@ function projectSlotPlansPass(input: {
     exerciseLibrary: projectionContext.mapped.exerciseLibrary,
     programQualityAppliedDiagnostics,
     initialProjectedSlots,
+    preselectionDemandDiagnostics,
   };
+}
+
+const PRESELECTION_ACCESSORY_SET_CAP = 4;
+const SOFT_SUPPORT_PRESELECTION_EFFECTIVE_SET_FLOOR = 2;
+
+function appendWorkingSet(
+  exercise: ProjectedSlotWorkout["workout"]["accessories"][number]
+): ProjectedSlotWorkout["workout"]["accessories"][number] {
+  const lastSet = exercise.sets.at(-1);
+  return {
+    ...exercise,
+    sets: [
+      ...exercise.sets,
+      {
+        ...(lastSet ?? { targetReps: 10, role: "accessory" as const }),
+        setIndex: exercise.sets.length + 1,
+      },
+    ],
+  };
+}
+
+function applySlotPreselectionDemandSetBumps(input: {
+  workout: WorkoutPlan;
+  demands: ReadonlyArray<SlotPreselectionDemand>;
+}): WorkoutPlan {
+  if (input.demands.length === 0) {
+    return input.workout;
+  }
+
+  let workout = input.workout;
+  for (const demand of input.demands) {
+    if (
+      demand.role !== "primary" &&
+      !(
+        (demand.muscle === "Side Delts" || demand.muscle === "Rear Delts") &&
+        demand.targetStatus === "soft"
+      )
+    ) {
+      continue;
+    }
+    const target = demand.preferredEffectiveSets ?? demand.minEffectiveSets ?? 0;
+    if (target <= 0) {
+      continue;
+    }
+    let contribution = computeWorkoutContributionByMuscle(workout).get(demand.muscle) ?? 0;
+    if (contribution >= target) {
+      continue;
+    }
+
+    const accessoryIndex = workout.accessories.findIndex(
+      (exercise) =>
+        (exercise.exercise.primaryMuscles ?? []).includes(demand.muscle) &&
+        exercise.sets.length < PRESELECTION_ACCESSORY_SET_CAP
+    );
+    if (accessoryIndex < 0) {
+      continue;
+    }
+
+    const accessories = workout.accessories.map((exercise) => ({
+      ...exercise,
+      sets: exercise.sets.map((set) => ({ ...set })),
+    }));
+    const exercise = accessories[accessoryIndex];
+    const effectivePerSet =
+      getEffectiveStimulusByMuscle(exercise.exercise, 1).get(demand.muscle) ?? 0;
+    if (effectivePerSet <= 0) {
+      continue;
+    }
+
+    while (
+      contribution < target &&
+      accessories[accessoryIndex].sets.length < PRESELECTION_ACCESSORY_SET_CAP
+    ) {
+      accessories[accessoryIndex] = appendWorkingSet(accessories[accessoryIndex]);
+      contribution += effectivePerSet;
+    }
+
+    workout = {
+      ...workout,
+      accessories,
+    };
+  }
+
+  return workout;
+}
+
+function upsertSlotPreselectionDemand(
+  demands: SlotPreselectionDemand[],
+  demand: SlotPreselectionDemand
+): void {
+  const existing = demands.find((row) => row.slotId === demand.slotId && row.muscle === demand.muscle);
+  if (!existing) {
+    demands.push(demand);
+    return;
+  }
+
+  const existingRank = existing.role === "primary" ? 0 : 1;
+  const incomingRank = demand.role === "primary" ? 0 : 1;
+  if (incomingRank < existingRank) {
+    existing.role = demand.role;
+  }
+  if (demand.targetStatus === "hard") {
+    existing.targetStatus = "hard";
+  }
+  existing.minEffectiveSets =
+    existing.minEffectiveSets == null
+      ? demand.minEffectiveSets
+      : demand.minEffectiveSets == null
+        ? existing.minEffectiveSets
+        : Math.max(existing.minEffectiveSets, demand.minEffectiveSets);
+  existing.preferredEffectiveSets =
+    existing.preferredEffectiveSets == null
+      ? demand.preferredEffectiveSets
+      : demand.preferredEffectiveSets == null
+        ? existing.preferredEffectiveSets
+        : Math.max(existing.preferredEffectiveSets, demand.preferredEffectiveSets);
+  if (existing.source !== "weekly_obligation" && demand.source === "weekly_obligation") {
+    existing.source = demand.source;
+  }
+}
+
+function buildSlotPreselectionDemands(input: {
+  slotId: string;
+  slotPolicy: ReturnType<typeof resolveSessionSlotPolicy>["currentSession"];
+  slotWeeklyObligations: ReturnType<typeof getSlotWeeklyObligations>;
+}): SlotPreselectionDemand[] {
+  const demands: SlotPreselectionDemand[] = [];
+  const appendIfCompatible = (demand: SlotPreselectionDemand) => {
+    if (
+      !getProjectionRepairCompatibleMuscles(input.slotPolicy, [demand.muscle]).includes(
+        demand.muscle as ProtectedWeekOneCoverageMuscle
+      )
+    ) {
+      return;
+    }
+    upsertSlotPreselectionDemand(demands, demand);
+  };
+  const weeklyObligationMuscles = new Set<string>(
+    input.slotWeeklyObligations.map((obligation) => obligation.muscle)
+  );
+
+  if (!input.slotPolicy?.slotArchetype?.startsWith("upper_")) {
+    return demands.sort((left, right) =>
+      left.slotId.localeCompare(right.slotId) || left.muscle.localeCompare(right.muscle)
+    );
+  }
+
+  for (const muscle of getProtectedWeekOneCoverageObligations(input.slotPolicy)) {
+    if (muscle !== "Side Delts") {
+      continue;
+    }
+    if (weeklyObligationMuscles.has(muscle)) {
+      continue;
+    }
+    const supportFloor = getWeekOneSupportFloor(muscle);
+    if (supportFloor == null) {
+      continue;
+    }
+    appendIfCompatible({
+      slotId: input.slotId,
+      muscle,
+      role: "support",
+      targetStatus: "soft",
+      minEffectiveSets: Math.min(
+        supportFloor,
+        SOFT_SUPPORT_PRESELECTION_EFFECTIVE_SET_FLOOR
+      ),
+      preferredEffectiveSets: Math.min(
+        supportFloor,
+        SOFT_SUPPORT_PRESELECTION_EFFECTIVE_SET_FLOOR
+      ),
+      source: "authored_slot_support",
+    });
+  }
+
+  return demands.sort((left, right) =>
+    left.slotId.localeCompare(right.slotId) || left.muscle.localeCompare(right.muscle)
+  );
+}
+
+function getSatisfiedPreselectionMuscles(
+  diagnostics: ReadonlyArray<SlotPreselectionDemandDiagnostic>
+): ProtectedWeekOneCoverageMuscle[] {
+  return Array.from(
+    new Set(
+      diagnostics
+        .filter(
+          (demand) =>
+            demand.source === "authored_slot_support" &&
+            demand.targetStatus === "soft" &&
+            demand.targetMet
+        )
+        .map((demand) => demand.muscle as ProtectedWeekOneCoverageMuscle)
+    )
+  );
+}
+
+function buildSlotPreselectionDemandDiagnostics(input: {
+  demands: ReadonlyArray<SlotPreselectionDemand>;
+  contributionByMuscle: ReadonlyMap<string, number>;
+}): SlotPreselectionDemandDiagnostic[] {
+  return input.demands.map((demand) => {
+    const selectedEffectiveSets = roundToTenth(
+      input.contributionByMuscle.get(demand.muscle) ?? 0
+    );
+    const target = demand.minEffectiveSets ?? demand.preferredEffectiveSets ?? 0;
+    return {
+      ...demand,
+      selectedEffectiveSets,
+      consumedBySelection: selectedEffectiveSets > 0,
+      targetMet: target > 0 ? selectedEffectiveSets >= target : selectedEffectiveSets > 0,
+    };
+  });
 }
 
 function cloneProjectedSlotsForDiagnostics(
@@ -751,6 +1029,7 @@ export function projectSuccessorSlotPlansFromSnapshot(input: {
           unresolvedProtectedMuscles: blockingDeficits.map((row) => row.muscle),
         },
         weeklyObligations: weeklyObligationDiagnostics,
+        preselectionDemands: pass.preselectionDemandDiagnostics,
         duplicateExerciseReuse,
         programQuality,
         planningReality,
@@ -771,6 +1050,7 @@ export function projectSuccessorSlotPlansFromSnapshot(input: {
         unresolvedProtectedMuscles: finalEvaluation.unresolvedProtectedMuscles,
       },
       weeklyObligations: weeklyObligationDiagnostics,
+      preselectionDemands: pass.preselectionDemandDiagnostics,
       duplicateExerciseReuse,
       programQuality,
       planningReality,

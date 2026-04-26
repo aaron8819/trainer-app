@@ -24,6 +24,7 @@ export type {
   SelectionRationale,
   BeamState,
   BeamSearchConfig,
+  SlotPreselectionDemand,
 } from "./types";
 
 export {

@@ -494,6 +494,80 @@ function buildPreselectionDistributionPolicySummaryLines(
   ];
 }
 
+function buildWeeklyDemandCurveSummaryLines(
+  curve:
+    | PlanningRealityDiagnostic["weeklyDemandCurve"]
+    | null
+    | undefined
+): string[] | null {
+  if (!curve) {
+    return null;
+  }
+
+  const weeks = asArray(curve.weeks);
+  const weekOne = weeks.find((week) => week.week === 1);
+  const accumulationWeeks = weeks.filter(
+    (week) => week.week >= 2 && week.week <= 4 && week.phase !== "deload"
+  );
+  const deload = weeks.find((week) => week.phase === "deload");
+  const warnings = asArray(curve.crossWeekWarnings);
+  const hasWarning = (
+    code: string,
+    muscle?: string,
+  ): boolean =>
+    warnings.some(
+      (warning) =>
+        warning.code === code && (!muscle || warning.muscle === muscle)
+    );
+  const accumulationLimited =
+    accumulationWeeks.length > 0 &&
+    accumulationWeeks.some(
+      (week) => week.projectionStatus !== "projected_from_policy"
+    );
+  const risks: string[] = [];
+  if (hasWarning("PRIMARY_UNDER_TARGET_ACROSS_ACCUMULATION", "Chest")) {
+    risks.push("Chest under target across accumulation");
+  }
+  if (hasWarning("MUSCLE_OVERDELIVERED_ACROSS_ACCUMULATION", "Hamstrings")) {
+    risks.push("Hamstrings overdelivered if repeated");
+  }
+  if (hasWarning("SUPPORT_UNDER_TARGET_ACROSS_ACCUMULATION", "Side Delts")) {
+    risks.push("Side Delts under target");
+  }
+
+  return [
+    "Weekly Demand Curve",
+    "-------------------",
+    `Week 1: ${
+      weekOne
+        ? "projected from current evidence"
+        : "not listed"
+    }`,
+    `Weeks 2-4: ${
+      accumulationLimited
+        ? "limited / missing accumulation policy"
+        : accumulationWeeks.length > 0
+          ? "projected from policy"
+          : "not listed"
+    }`,
+    `Week ${deload?.week ?? 5} deload: ${
+      deload && deload.projectionStatus === "projected_from_policy"
+        ? "projected from policy"
+        : "limited / missing deload demand projection"
+    }`,
+    "",
+    "Risks:",
+    ...(risks.length > 0 ? risks.map((risk) => `- ${risk}`) : ["- none"]),
+    `Candidate gate: ${
+      curve.candidateBehaviorGate?.likelyBestFutureBehavior
+        ? formatPreselectionCandidate(
+            curve.candidateBehaviorGate.likelyBestFutureBehavior
+          )
+        : "none"
+    } blocked until weekly curve answers cross-week questions`,
+  ];
+}
+
 function buildCleanPreselectionFeasibilitySummaryLines(
   rows: PlanningRealityDiagnostic["preselectionFeasibility"] | null | undefined
 ): string[] | null {
@@ -940,6 +1014,13 @@ export function buildPlanningRealitySummary(input: {
     );
   if (preselectionDistributionPolicySummary) {
     lines.push("", ...preselectionDistributionPolicySummary);
+  }
+
+  const weeklyDemandCurveSummary = buildWeeklyDemandCurveSummaryLines(
+    planningReality.weeklyDemandCurve
+  );
+  if (weeklyDemandCurveSummary) {
+    lines.push("", ...weeklyDemandCurveSummary);
   }
 
   lines.push("", "Slot allocation:");

@@ -627,6 +627,72 @@ export type PreselectionDistributionPolicyByWeek = {
     | "keep_diagnostic_only";
 };
 
+export type WeeklyDemandCurve = {
+  mesocycleId: string | null;
+  source: "diagnostic_shadow_planner";
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+  designBasis: {
+    durationWeeks: number;
+    intensityBias: string | null;
+    focus: string | null;
+    volumeTarget: string | null;
+    splitType: string | null;
+    sessionsPerWeek: number | null;
+  };
+  weeks: Array<{
+    week: number;
+    phase: "entry" | "accumulation" | "peak" | "deload" | "unknown";
+    projectionStatus:
+      | "projected_from_policy"
+      | "partially_projected_from_week_1"
+      | "not_projected_missing_policy";
+    muscles: Array<{
+      muscle: string;
+      targetTier: MuscleTargetTier | "IMPLICIT";
+      targetStatus: "hard" | "soft" | "diagnostic";
+      role: "primary" | "support" | "secondary" | "implicit";
+      minEffectiveSets: number | null;
+      preferredEffectiveSets: number | null;
+      maxEffectiveSets: number | null;
+      currentEvidenceEffectiveSets: number | null;
+      desiredExposureCount: number | null;
+      progressionIntent:
+        | "hold"
+        | "increase"
+        | "peak"
+        | "reduce"
+        | "deload"
+        | "diagnostic_only";
+      source: string[];
+      limitations: string[];
+    }>;
+    weekLevelLimitations: string[];
+  }>;
+  crossWeekWarnings: Array<{
+    code:
+      | "PRIMARY_UNDER_TARGET_ACROSS_ACCUMULATION"
+      | "MUSCLE_OVERDELIVERED_ACROSS_ACCUMULATION"
+      | "SUPPORT_UNDER_TARGET_ACROSS_ACCUMULATION"
+      | "DUPLICATE_EXERCISE_FATIGUE_RISK"
+      | "DELOAD_PRESERVATION_UNPROJECTED"
+      | "WEEKLY_DEMAND_POLICY_MISSING";
+    muscle?: string;
+    evidence: string[];
+    severity: "info" | "warning";
+  }>;
+  candidateBehaviorGate: {
+    status: "blocked_until_weekly_curve_is_visible";
+    likelyBestFutureBehavior: "chest_upper_slot_distinct_exercise_distribution";
+    requiredQuestions: Array<
+      | "would_this_improve_weeks_1_to_4_not_just_week_1"
+      | "would_this_preserve_deload_quality"
+      | "would_this_increase_fatigue_concentration"
+    >;
+    evidence: string[];
+  };
+};
+
 export type SlotPlanPlanningRealityDiagnostic = {
   label: "weekly demand / slot allocation diagnostics";
   readOnly: true;
@@ -664,6 +730,7 @@ export type SlotPlanPlanningRealityDiagnostic = {
   distributionGuardActions: DistributionGuardAction[];
   preselectionFeasibility: CleanPreselectionFeasibility[];
   preselectionDistributionPolicyByWeek: PreselectionDistributionPolicyByWeek;
+  weeklyDemandCurve: WeeklyDemandCurve;
   forbiddenCleanupReroute?: ForbiddenCleanupRerouteDiagnostic;
   rearDeltCollateralSummary?: RearDeltCollateralSummary;
   projectedDelivery: ProjectedDeliveryDiagnostic[];
@@ -3050,6 +3117,440 @@ function buildCandidateBehaviorSlices(): PreselectionDistributionPolicyByWeek["c
   ];
 }
 
+function getDiagnosticStringField(
+  activeMesocycle: ActiveMesocycleForDiagnostics,
+  field: "intensityBias" | "focus" | "volumeTarget" | "splitType",
+): string | null {
+  const value = (activeMesocycle as Record<string, unknown>)[field];
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function getDiagnosticNumberField(
+  activeMesocycle: ActiveMesocycleForDiagnostics,
+  field: "sessionsPerWeek",
+): number | null {
+  const value = (activeMesocycle as Record<string, unknown>)[field];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function toWeeklyDemandRole(
+  priority: ShadowWeeklyMuscleDemand["priority"],
+): WeeklyDemandCurve["weeks"][number]["muscles"][number]["role"] {
+  return priority === "primary" ||
+    priority === "support" ||
+    priority === "secondary"
+    ? priority
+    : "implicit";
+}
+
+function getWeeklyDemandCurvePhase(input: {
+  week: number;
+  durationWeeks: number;
+}): WeeklyDemandCurve["weeks"][number]["phase"] {
+  if (input.week === 1) {
+    return "entry";
+  }
+  if (input.week === input.durationWeeks) {
+    return "deload";
+  }
+  if (input.week === input.durationWeeks - 1) {
+    return "peak";
+  }
+  if (input.week > 1 && input.week < input.durationWeeks) {
+    return "accumulation";
+  }
+  return "unknown";
+}
+
+function getWeeklyDemandCurveProgressionIntent(input: {
+  phase: WeeklyDemandCurve["weeks"][number]["phase"];
+  targetStatus: ShadowWeeklyMuscleDemand["targetStatus"];
+}): WeeklyDemandCurve["weeks"][number]["muscles"][number]["progressionIntent"] {
+  if (input.targetStatus === "diagnostic") {
+    return "diagnostic_only";
+  }
+  switch (input.phase) {
+    case "entry":
+      return "hold";
+    case "accumulation":
+      return "increase";
+    case "peak":
+      return "peak";
+    case "deload":
+      return "deload";
+    case "unknown":
+      return "diagnostic_only";
+  }
+}
+
+function getWeekLevelLimitations(
+  phase: WeeklyDemandCurve["weeks"][number]["phase"],
+): string[] {
+  if (phase === "entry") {
+    return [
+      "week_1_current_projection_evidence_only",
+      "does_not_affect_scoring_generation_repair_seed_or_runtime",
+    ];
+  }
+  if (phase === "deload") {
+    return [
+      "missing_deload_demand_curve",
+      "missing_deload_identity_preservation_policy",
+      "missing_deload_set_reduction_projection",
+      "does_not_affect_scoring_generation_repair_seed_or_runtime",
+    ];
+  }
+  return [
+    "partially_projected_from_week_1",
+    "missing_per_week_slot_distribution",
+    "missing_fatigue_carryover_model",
+    "missing_cross_week_exercise_continuity_policy",
+    "does_not_affect_scoring_generation_repair_seed_or_runtime",
+  ];
+}
+
+function getWeeklyDemandCurveProjectionStatus(
+  phase: WeeklyDemandCurve["weeks"][number]["phase"],
+): WeeklyDemandCurve["weeks"][number]["projectionStatus"] {
+  if (phase === "deload") {
+    return "not_projected_missing_policy";
+  }
+  return "partially_projected_from_week_1";
+}
+
+function getPolicyTargetForCurve(input: {
+  activeMesocycle: ActiveMesocycleForDiagnostics;
+  demand: ShadowWeeklyMuscleDemand;
+  week: number;
+  phase: WeeklyDemandCurve["weeks"][number]["phase"];
+}): {
+  minEffectiveSets: number | null;
+  preferredEffectiveSets: number | null;
+  maxEffectiveSets: number | null;
+  source: string[];
+  limitations: string[];
+} {
+  const source = [...input.demand.source];
+  const limitations: string[] = [];
+
+  if (input.phase === "deload") {
+    return {
+      minEffectiveSets: null,
+      preferredEffectiveSets: null,
+      maxEffectiveSets: null,
+      source: uniqueSorted([...source, "deload_week_present_but_demand_curve_unprojected"]),
+      limitations: [
+        "missing_deload_demand_curve",
+        "missing_deload_identity_preservation_policy",
+        "missing_deload_set_reduction_projection",
+      ],
+    };
+  }
+
+  if (input.demand.targetStatus === "hard") {
+    source.push(`getWeeklyVolumeTarget(week=${input.week})`);
+    limitations.push(
+      "volume_target_policy_visible_but_slot_distribution_policy_missing",
+    );
+    return {
+      minEffectiveSets: input.demand.minEffectiveSets,
+      preferredEffectiveSets: roundToTenth(
+        getWeeklyVolumeTarget(
+          input.activeMesocycle,
+          input.demand.muscle,
+          input.week,
+        ),
+      ),
+      maxEffectiveSets: input.demand.maxEffectiveSets,
+      source: uniqueSorted(source),
+      limitations,
+    };
+  }
+
+  if (input.demand.targetStatus === "soft") {
+    limitations.push(
+      "support_floor_not_scaled_by_week",
+      "missing_per_week_support_demand_policy",
+    );
+  } else {
+    limitations.push(
+      "diagnostic_collateral_readout_only_not_hard_demand",
+    );
+  }
+
+  return {
+    minEffectiveSets: input.demand.minEffectiveSets,
+    preferredEffectiveSets: input.demand.preferredEffectiveSets,
+    maxEffectiveSets: input.demand.maxEffectiveSets,
+    source: uniqueSorted(source),
+    limitations,
+  };
+}
+
+function formatCurveEvidenceForDelivery(
+  delivery: ProjectedDeliveryDiagnostic | undefined,
+): string[] {
+  if (!delivery) {
+    return [];
+  }
+  const target =
+    delivery.preferredTarget == null ? "null" : String(delivery.preferredTarget);
+  return [
+    `week1_final=${delivery.projectedEffectiveStimulusAfterRepairAndFinalShaping}:preferred=${target}`,
+    ...delivery.majorContributingExercises
+      .slice(0, 2)
+      .map(
+        (row) =>
+          `week1_contributor=${row.slotId}:${row.exerciseName}:${row.effectiveStimulus}`,
+      ),
+  ];
+}
+
+function addWeeklyDemandCurveWarning(
+  warnings: WeeklyDemandCurve["crossWeekWarnings"],
+  warning: WeeklyDemandCurve["crossWeekWarnings"][number],
+): void {
+  const key = `${warning.code}:${warning.muscle ?? ""}`;
+  if (
+    warnings.some(
+      (existing) => `${existing.code}:${existing.muscle ?? ""}` === key,
+    )
+  ) {
+    return;
+  }
+  warnings.push(warning);
+}
+
+function buildWeeklyDemandCurveWarnings(input: {
+  projectedDelivery: ReadonlyArray<ProjectedDeliveryDiagnostic>;
+  exerciseConcentration: ReadonlyArray<ExerciseConcentrationDiagnostic>;
+}): WeeklyDemandCurve["crossWeekWarnings"] {
+  const warnings: WeeklyDemandCurve["crossWeekWarnings"] = [];
+  const deliveryByMuscle = new Map(
+    input.projectedDelivery.map((row) => [row.muscle, row]),
+  );
+
+  for (const delivery of input.projectedDelivery) {
+    if (delivery.preferredTarget == null) {
+      continue;
+    }
+    const evidence = formatCurveEvidenceForDelivery(delivery);
+    if (
+      delivery.targetStatus === "hard" &&
+      delivery.projectedEffectiveStimulusAfterRepairAndFinalShaping + 1e-9 <
+        delivery.preferredTarget
+    ) {
+      addWeeklyDemandCurveWarning(warnings, {
+        code: "PRIMARY_UNDER_TARGET_ACROSS_ACCUMULATION",
+        muscle: delivery.muscle,
+        evidence: [
+          ...evidence,
+          "if_week_1_distribution_repeats_accumulation_shortfall_persists",
+        ],
+        severity: "warning",
+      });
+    }
+    if (
+      delivery.targetStatus === "hard" &&
+      delivery.projectedEffectiveStimulusAfterRepairAndFinalShaping >
+        delivery.preferredTarget + 1e-9
+    ) {
+      addWeeklyDemandCurveWarning(warnings, {
+        code: "MUSCLE_OVERDELIVERED_ACROSS_ACCUMULATION",
+        muscle: delivery.muscle,
+        evidence: [
+          ...evidence,
+          "if_week_1_distribution_repeats_accumulation_overdelivery_persists",
+        ],
+        severity:
+          delivery.muscle === "Hamstrings" ? "warning" : "info",
+      });
+    }
+    if (
+      delivery.targetStatus === "soft" &&
+      delivery.projectedEffectiveStimulusAfterRepairAndFinalShaping + 1e-9 <
+        delivery.preferredTarget
+    ) {
+      addWeeklyDemandCurveWarning(warnings, {
+        code: "SUPPORT_UNDER_TARGET_ACROSS_ACCUMULATION",
+        muscle: delivery.muscle,
+        evidence: [
+          ...evidence,
+          "support_floor_still_under_target_if_week_1_repeats",
+        ],
+        severity:
+          delivery.muscle === "Side Delts" ? "warning" : "info",
+      });
+    }
+  }
+
+  const fatigueConcentrationRows = input.exerciseConcentration.filter((row) =>
+    row.flags.some(
+      (flag) =>
+        flag === "COMPOUND_GT_5_SETS" ||
+        flag === "ISOLATION_GT_5_SETS" ||
+        flag.includes("EXERCISE_SUPPLIES_OVER"),
+    ),
+  );
+  if (fatigueConcentrationRows.length > 0) {
+    addWeeklyDemandCurveWarning(warnings, {
+      code: "DUPLICATE_EXERCISE_FATIGUE_RISK",
+      evidence: fatigueConcentrationRows
+        .slice(0, 6)
+        .map(
+          (row) =>
+            `${row.slotId}:${row.exerciseName}:${row.setCount} sets:${row.flags.join("+")}`,
+        ),
+      severity: "warning",
+    });
+  }
+
+  for (const muscle of ["Glutes", "Front Delts", "Lower Back", "Upper Back"]) {
+    const delivery = deliveryByMuscle.get(muscle);
+    if (
+      delivery &&
+      delivery.targetStatus === "diagnostic" &&
+      delivery.projectedEffectiveStimulusAfterRepairAndFinalShaping > 0
+    ) {
+      addWeeklyDemandCurveWarning(warnings, {
+        code: "MUSCLE_OVERDELIVERED_ACROSS_ACCUMULATION",
+        muscle,
+        evidence: [
+          ...formatCurveEvidenceForDelivery(delivery),
+          "diagnostic_collateral_risk_only_not_hard_demand",
+        ],
+        severity: "info",
+      });
+    }
+  }
+
+  addWeeklyDemandCurveWarning(warnings, {
+    code: "DELOAD_PRESERVATION_UNPROJECTED",
+    evidence: [
+      "missing_deload_demand_curve",
+      "missing_deload_identity_preservation_policy",
+      "missing_deload_set_reduction_projection",
+    ],
+    severity: "warning",
+  });
+  addWeeklyDemandCurveWarning(warnings, {
+    code: "WEEKLY_DEMAND_POLICY_MISSING",
+    evidence: [
+      "weeks_2_to_4_have_volume_target_visibility_but_missing_per_week_slot_distribution",
+      "missing_fatigue_carryover_model",
+      "missing_cross_week_exercise_continuity_policy",
+    ],
+    severity: "info",
+  });
+
+  return warnings.sort(
+    (left, right) =>
+      left.code.localeCompare(right.code) ||
+      (left.muscle ?? "").localeCompare(right.muscle ?? ""),
+  );
+}
+
+function buildWeeklyDemandCurve(input: {
+  activeMesocycle: ActiveMesocycleForDiagnostics;
+  shadowWeeklyDemand: ReadonlyArray<ShadowWeeklyMuscleDemand>;
+  projectedDelivery: ReadonlyArray<ProjectedDeliveryDiagnostic>;
+  exerciseConcentration: ReadonlyArray<ExerciseConcentrationDiagnostic>;
+}): WeeklyDemandCurve {
+  const durationWeeks = getDiagnosticDurationWeeks(input.activeMesocycle);
+  const deliveryByMuscle = new Map(
+    input.projectedDelivery.map((row) => [row.muscle, row]),
+  );
+  const warnings = buildWeeklyDemandCurveWarnings({
+    projectedDelivery: input.projectedDelivery,
+    exerciseConcentration: input.exerciseConcentration,
+  });
+
+  return {
+    mesocycleId: getDiagnosticMesocycleId(input.activeMesocycle),
+    source: "diagnostic_shadow_planner",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    designBasis: {
+      durationWeeks,
+      intensityBias: getDiagnosticStringField(input.activeMesocycle, "intensityBias"),
+      focus: getDiagnosticStringField(input.activeMesocycle, "focus"),
+      volumeTarget: getDiagnosticStringField(input.activeMesocycle, "volumeTarget"),
+      splitType: getDiagnosticStringField(input.activeMesocycle, "splitType"),
+      sessionsPerWeek: getDiagnosticNumberField(input.activeMesocycle, "sessionsPerWeek"),
+    },
+    weeks: Array.from({ length: durationWeeks }, (_, index) => {
+      const week = index + 1;
+      const phase = getWeeklyDemandCurvePhase({ week, durationWeeks });
+      const weekLevelLimitations = getWeekLevelLimitations(phase);
+      return {
+        week,
+        phase,
+        projectionStatus: getWeeklyDemandCurveProjectionStatus(phase),
+        muscles: input.shadowWeeklyDemand.map((demand) => {
+          const target = getPolicyTargetForCurve({
+            activeMesocycle: input.activeMesocycle,
+            demand,
+            week,
+            phase,
+          });
+          const delivery = deliveryByMuscle.get(demand.muscle);
+          return {
+            muscle: demand.muscle,
+            targetTier: demand.targetTier ?? "IMPLICIT",
+            targetStatus: demand.targetStatus,
+            role: toWeeklyDemandRole(demand.priority),
+            minEffectiveSets: target.minEffectiveSets,
+            preferredEffectiveSets: target.preferredEffectiveSets,
+            maxEffectiveSets: target.maxEffectiveSets,
+            currentEvidenceEffectiveSets:
+              week === 1
+                ? (delivery?.projectedEffectiveStimulusAfterRepairAndFinalShaping ?? null)
+                : null,
+            desiredExposureCount: demand.desiredExposureCount,
+            progressionIntent: getWeeklyDemandCurveProgressionIntent({
+              phase,
+              targetStatus: demand.targetStatus,
+            }),
+            source: uniqueSorted([
+              ...target.source,
+              ...(week === 1 ? formatCurveEvidenceForDelivery(delivery) : []),
+            ]),
+            limitations: uniqueSorted([
+              ...target.limitations,
+              ...weekLevelLimitations,
+            ]),
+          };
+        }),
+        weekLevelLimitations,
+      };
+    }),
+    crossWeekWarnings: warnings,
+    candidateBehaviorGate: {
+      status: "blocked_until_weekly_curve_is_visible",
+      likelyBestFutureBehavior: "chest_upper_slot_distinct_exercise_distribution",
+      requiredQuestions: [
+        "would_this_improve_weeks_1_to_4_not_just_week_1",
+        "would_this_preserve_deload_quality",
+        "would_this_increase_fatigue_concentration",
+      ],
+      evidence: [
+        "chest_upper_slot_distinct_exercise_distribution_is_likely_best_future_behavior",
+        "behavior_must_remain_blocked_until_weekly_curve_answers_cross_week_questions",
+        ...warnings
+          .filter((warning) =>
+            [
+              "PRIMARY_UNDER_TARGET_ACROSS_ACCUMULATION",
+              "DUPLICATE_EXERCISE_FATIGUE_RISK",
+              "DELOAD_PRESERVATION_UNPROJECTED",
+            ].includes(warning.code),
+          )
+          .flatMap((warning) => warning.evidence)
+          .slice(0, 8),
+      ],
+    },
+  };
+}
+
 function buildPreselectionDistributionPolicyByWeek(input: {
   activeMesocycle: ActiveMesocycleForDiagnostics;
   slotPrescriptionIntents: ReadonlyArray<SlotPrescriptionIntent>;
@@ -4981,6 +5482,12 @@ export function buildWeeklyDemandSlotAllocationDiagnostic(input: {
       duplicateExerciseReuse: input.duplicateExerciseReuse ?? [],
       warnings,
     });
+  const weeklyDemandCurve = buildWeeklyDemandCurve({
+    activeMesocycle: input.activeMesocycle,
+    shadowWeeklyDemand,
+    projectedDelivery,
+    exerciseConcentration,
+  });
   const materialRepairCount = repairMateriality.filter(
     (row) => row.materiality === "moderate" || row.materiality === "major"
   ).length;
@@ -5032,6 +5539,7 @@ export function buildWeeklyDemandSlotAllocationDiagnostic(input: {
     distributionGuardActions,
     preselectionFeasibility,
     preselectionDistributionPolicyByWeek,
+    weeklyDemandCurve,
     ...(input.forbiddenCleanupReroute
       ? { forbiddenCleanupReroute: input.forbiddenCleanupReroute }
       : {}),

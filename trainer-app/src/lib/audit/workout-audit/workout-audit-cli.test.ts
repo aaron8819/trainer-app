@@ -1239,6 +1239,139 @@ describe("buildPlanningRealitySummary", () => {
     );
   });
 
+  it("prints compact weekly demand curve risks when present", () => {
+    const summary = buildPlanningRealitySummary({
+      artifact: {
+        mesocycleExplain: {
+          preview: {
+            projectionDiagnostics: {
+              planningReality: {
+                summary: {
+                  planningShape: "mostly_repair_shaped",
+                  explicitWeeklyDemandMuscles: 4,
+                  inferredDemandMuscles: 3,
+                  slotsWithExplicitWeeklyDemand: 2,
+                  slotsWithOnlyLocalOrInferredSemantics: 1,
+                  materialRepairCount: 20,
+                  majorRepairCount: 10,
+                  highExerciseConcentrationCount: 4,
+                  warningCodes: [],
+                },
+                weeklyDemandCurve: {
+                  mesocycleId: "meso-1",
+                  source: "diagnostic_shadow_planner",
+                  readOnly: true,
+                  affectsScoringOrGeneration: false,
+                  designBasis: {
+                    durationWeeks: 5,
+                    intensityBias: "HYPERTROPHY",
+                    focus: "Strength-Hypertrophy",
+                    volumeTarget: "MODERATE",
+                    splitType: "UPPER_LOWER",
+                    sessionsPerWeek: 4,
+                  },
+                  weeks: [
+                    {
+                      week: 1,
+                      phase: "entry",
+                      projectionStatus: "partially_projected_from_week_1",
+                      muscles: [],
+                      weekLevelLimitations: [],
+                    },
+                    {
+                      week: 2,
+                      phase: "accumulation",
+                      projectionStatus: "partially_projected_from_week_1",
+                      muscles: [],
+                      weekLevelLimitations: [
+                        "missing_per_week_slot_distribution",
+                      ],
+                    },
+                    {
+                      week: 3,
+                      phase: "accumulation",
+                      projectionStatus: "partially_projected_from_week_1",
+                      muscles: [],
+                      weekLevelLimitations: [
+                        "missing_fatigue_carryover_model",
+                      ],
+                    },
+                    {
+                      week: 4,
+                      phase: "peak",
+                      projectionStatus: "partially_projected_from_week_1",
+                      muscles: [],
+                      weekLevelLimitations: [
+                        "missing_cross_week_exercise_continuity_policy",
+                      ],
+                    },
+                    {
+                      week: 5,
+                      phase: "deload",
+                      projectionStatus: "not_projected_missing_policy",
+                      muscles: [],
+                      weekLevelLimitations: [
+                        "missing_deload_demand_curve",
+                      ],
+                    },
+                  ],
+                  crossWeekWarnings: [
+                    {
+                      code: "PRIMARY_UNDER_TARGET_ACROSS_ACCUMULATION",
+                      muscle: "Chest",
+                      evidence: ["week1_final=7:preferred=10"],
+                      severity: "warning",
+                    },
+                    {
+                      code: "MUSCLE_OVERDELIVERED_ACROSS_ACCUMULATION",
+                      muscle: "Hamstrings",
+                      evidence: ["week1_final=8:preferred=6"],
+                      severity: "warning",
+                    },
+                    {
+                      code: "SUPPORT_UNDER_TARGET_ACROSS_ACCUMULATION",
+                      muscle: "Side Delts",
+                      evidence: ["week1_final=1:preferred=2"],
+                      severity: "warning",
+                    },
+                  ],
+                  candidateBehaviorGate: {
+                    status: "blocked_until_weekly_curve_is_visible",
+                    likelyBestFutureBehavior:
+                      "chest_upper_slot_distinct_exercise_distribution",
+                    requiredQuestions: [
+                      "would_this_improve_weeks_1_to_4_not_just_week_1",
+                      "would_this_preserve_deload_quality",
+                      "would_this_increase_fatigue_concentration",
+                    ],
+                    evidence: [
+                      "behavior_must_remain_blocked_until_weekly_curve_answers_cross_week_questions",
+                    ],
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    expect(summary).toEqual(
+      expect.arrayContaining([
+        "Weekly Demand Curve",
+        "-------------------",
+        "Week 1: projected from current evidence",
+        "Weeks 2-4: limited / missing accumulation policy",
+        "Week 5 deload: limited / missing deload demand projection",
+        "Risks:",
+        "- Chest under target across accumulation",
+        "- Hamstrings overdelivered if repeated",
+        "- Side Delts under target",
+        "Candidate gate: Chest upper-slot distinct exercise distribution blocked until weekly curve answers cross-week questions",
+      ])
+    );
+  });
+
   it("returns null when mesocycle-explain does not include planningReality", () => {
     expect(
       buildPlanningRealitySummary({

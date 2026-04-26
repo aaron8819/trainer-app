@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { findFinalSlotForbiddenPrescriptionViolations } from "./planning-reality-invariants.test-helper";
+import {
+  findDistributionGuardActionInvariantViolations,
+  findFinalSlotForbiddenPrescriptionViolations,
+} from "./planning-reality-invariants.test-helper";
 
 const mocks = vi.hoisted(() => {
   const mesocycleFindFirst = vi.fn();
@@ -892,6 +895,70 @@ describe("buildMesocycleExplainAuditPayload", () => {
             ],
             recommendedNextStep: "add_weekly_demand_curve_diagnostic",
           },
+          slotDemandAllocationByWeek: {
+            mesocycleId: "meso-1",
+            source: "diagnostic_shadow_planner",
+            readOnly: true,
+            affectsScoringOrGeneration: false,
+            weeks: [
+              {
+                week: 1,
+                phase: "entry",
+                projectionStatus: "allocated_from_current_week_evidence",
+                slots: [
+                  {
+                    slotId: "upper_a",
+                    slotIndex: 0,
+                    slotArchetype: "upper_primary",
+                    intent: "upper",
+                    allocatedMuscles: [
+                      {
+                        muscle: "Chest",
+                        role: "primary",
+                        targetStatus: "hard",
+                        minEffectiveSets: 4,
+                        preferredEffectiveSets: 4,
+                        maxEffectiveSets: 16,
+                        weekScope: "week_1_only",
+                        allocationConfidence: "high",
+                        allocationReason: [
+                          "weekly_obligation_allocated_to_compatible_slot",
+                        ],
+                        limitations: [
+                          "week_1_current_projection_evidence_only",
+                        ],
+                      },
+                    ],
+                    slotLevelWarnings: [],
+                  },
+                ],
+                weekLevelWarnings: [
+                  "week_1_current_projection_evidence_only",
+                ],
+              },
+              {
+                week: 2,
+                phase: "accumulation",
+                projectionStatus: "not_allocated_missing_weekly_projection",
+                slots: [],
+                weekLevelWarnings: ["missing_per_week_slot_composition"],
+              },
+              {
+                week: 5,
+                phase: "deload",
+                projectionStatus: "not_allocated_missing_deload_policy",
+                slots: [],
+                weekLevelWarnings: ["deload_slot_allocation_unprojected"],
+              },
+            ],
+            crossWeekAllocationWarnings: [
+              {
+                code: "WEEKLY_SLOT_ALLOCATION_POLICY_MISSING",
+                evidence: ["missing_per_week_slot_distribution"],
+                severity: "info",
+              },
+            ],
+          },
           rearDeltCollateralSummary: {
             directRearDeltStimulusBefore: 0,
             directRearDeltStimulusAfter: 2,
@@ -1196,9 +1263,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
               }),
             ],
             evidence: expect.objectContaining({
-              concentrationRows: [
-                "upper_a:Incline Dumbbell Press:Chest:57.1%",
-              ],
+              concentrationRows: ["upper_a:Incline Dumbbell Press:Chest:57.1%"],
             }),
           }),
         ],
@@ -1263,6 +1328,44 @@ describe("buildMesocycleExplainAuditPayload", () => {
             }),
           ]),
         }),
+        slotDemandAllocationByWeek: expect.objectContaining({
+          source: "diagnostic_shadow_planner",
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          weeks: expect.arrayContaining([
+            expect.objectContaining({
+              week: 1,
+              projectionStatus: "allocated_from_current_week_evidence",
+              slots: expect.arrayContaining([
+                expect.objectContaining({
+                  slotId: "upper_a",
+                  allocatedMuscles: expect.arrayContaining([
+                    expect.objectContaining({
+                      muscle: "Chest",
+                      targetStatus: "hard",
+                      role: "primary",
+                    }),
+                  ]),
+                }),
+              ]),
+            }),
+            expect.objectContaining({
+              week: 2,
+              projectionStatus: "not_allocated_missing_weekly_projection",
+              slots: [],
+            }),
+            expect.objectContaining({
+              week: 5,
+              projectionStatus: "not_allocated_missing_deload_policy",
+              slots: [],
+            }),
+          ]),
+          crossWeekAllocationWarnings: expect.arrayContaining([
+            expect.objectContaining({
+              code: "WEEKLY_SLOT_ALLOCATION_POLICY_MISSING",
+            }),
+          ]),
+        }),
         rearDeltCollateralSummary: expect.objectContaining({
           rearDeltPreselectionConsumed: true,
           verdict: "clean_improvement",
@@ -1273,6 +1376,21 @@ describe("buildMesocycleExplainAuditPayload", () => {
       payload.preview.projectionDiagnostics.planningReality;
     expect(
       findFinalSlotForbiddenPrescriptionViolations(planningReality),
+    ).toEqual([]);
+    expect(
+      findDistributionGuardActionInvariantViolations({
+        ...planningReality,
+        distributionGuardActions: [
+          {
+            slotId: "upper_a",
+            exerciseName: "Incline Dumbbell Press",
+            muscle: "Chest",
+            attemptedAction: "set_bump",
+            decision: "left_unresolved",
+            reason: "single_exercise_share_limit",
+          },
+        ],
+      }),
     ).toEqual([]);
     expect(
       findFinalSlotForbiddenPrescriptionViolations({

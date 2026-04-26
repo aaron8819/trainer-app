@@ -2634,6 +2634,101 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
         }),
       ]),
     });
+    const slotDemandAllocationByWeek =
+      diagnostic?.slotDemandAllocationByWeek;
+    expect(slotDemandAllocationByWeek).toMatchObject({
+      mesocycleId: expect.any(String),
+      source: "diagnostic_shadow_planner",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+    });
+    expect(slotDemandAllocationByWeek?.weeks.map((week) => week.week)).toEqual([
+      1, 2, 3, 4, 5,
+    ]);
+    expect(slotDemandAllocationByWeek?.weeks[0]).toMatchObject({
+      week: 1,
+      phase: "entry",
+      projectionStatus: "allocated_from_current_week_evidence",
+      weekLevelWarnings: expect.arrayContaining([
+        "week_1_current_projection_evidence_only",
+        "later_week_slot_allocation_not_inferred_from_week_1",
+      ]),
+      slots: expect.arrayContaining([
+        expect.objectContaining({
+          slotId: "upper_a",
+          allocatedMuscles: expect.arrayContaining([
+            expect.objectContaining({
+              muscle: "Chest",
+              role: "primary",
+              targetStatus: "hard",
+              weekScope: "week_1_only",
+              allocationConfidence: "high",
+            }),
+            expect.objectContaining({
+              muscle: "Lats",
+              targetStatus: "hard",
+            }),
+          ]),
+        }),
+        expect.objectContaining({
+          slotId: "upper_b",
+          allocatedMuscles: expect.arrayContaining([
+            expect.objectContaining({
+              muscle: "Side Delts",
+              role: "support",
+              targetStatus: "soft",
+            }),
+          ]),
+        }),
+        expect.objectContaining({
+          slotId: "lower_a",
+          allocatedMuscles: expect.arrayContaining([
+            expect.objectContaining({
+              muscle: "Quads",
+              role: "primary",
+              targetStatus: "hard",
+            }),
+            expect.objectContaining({
+              muscle: "Hamstrings",
+              role: "primary",
+              targetStatus: "hard",
+            }),
+          ]),
+        }),
+      ]),
+    });
+    expect(slotDemandAllocationByWeek?.weeks.filter((week) => [2, 3, 4].includes(week.week))).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          week: 2,
+          projectionStatus: "not_allocated_missing_weekly_projection",
+          slots: [],
+          weekLevelWarnings: expect.arrayContaining([
+            "missing_per_week_slot_composition",
+            "missing_fatigue_carryover_model",
+            "missing_progression_adjusted_set_targets",
+            "missing_cross_week_duplicate_justification",
+            "missing_weekly_exercise_identity_policy",
+          ]),
+        }),
+        expect.objectContaining({
+          week: 4,
+          projectionStatus: "not_allocated_missing_weekly_projection",
+          slots: [],
+        }),
+      ]),
+    );
+    expect(slotDemandAllocationByWeek?.weeks.find((week) => week.phase === "deload")).toMatchObject({
+      week: 5,
+      projectionStatus: "not_allocated_missing_deload_policy",
+      slots: [],
+      weekLevelWarnings: expect.arrayContaining([
+        "deload_slot_allocation_unprojected",
+        "missing_deload_identity_preservation",
+        "missing_deload_set_reduction_projection",
+        "missing_deload_hard_support_target_adjustment",
+      ]),
+    });
     for (const collateralMuscle of [
       "Glutes",
       "Front Delts",
@@ -2887,6 +2982,9 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     expect(JSON.stringify(getProjectedSlotPlans(projected))).not.toContain(
       "weeklyDemandCurve",
     );
+    expect(JSON.stringify(getProjectedSlotPlans(projected))).not.toContain(
+      "slotDemandAllocationByWeek",
+    );
   });
 
   it("surfaces cross-week demand risks without promoting behavior", () => {
@@ -3073,6 +3171,118 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
         }),
       ]),
     );
+    const allocationByWeek = diagnostic.slotDemandAllocationByWeek;
+    const weekOneAllocation = allocationByWeek.weeks.find(
+      (week) => week.week === 1,
+    );
+    const upperAAllocation = weekOneAllocation?.slots.find(
+      (slot) => slot.slotId === "upper_a",
+    );
+    const lowerBAllocation = weekOneAllocation?.slots.find(
+      (slot) => slot.slotId === "lower_b",
+    );
+    const upperBAllocation = weekOneAllocation?.slots.find(
+      (slot) => slot.slotId === "upper_b",
+    );
+
+    expect(allocationByWeek).toMatchObject({
+      source: "diagnostic_shadow_planner",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      crossWeekAllocationWarnings: expect.arrayContaining([
+        expect.objectContaining({
+          code: "MUSCLE_UNDER_ALLOCATED_ACROSS_ACCUMULATION",
+          muscle: "Chest",
+          severity: "warning",
+        }),
+        expect.objectContaining({
+          code: "MUSCLE_OVER_ALLOCATED_ACROSS_ACCUMULATION",
+          muscle: "Hamstrings",
+          severity: "warning",
+        }),
+        expect.objectContaining({
+          code: "MUSCLE_UNDER_ALLOCATED_ACROSS_ACCUMULATION",
+          muscle: "Side Delts",
+          severity: "warning",
+        }),
+        expect.objectContaining({
+          code: "DELOAD_SLOT_ALLOCATION_UNPROJECTED",
+        }),
+        expect.objectContaining({
+          code: "WEEKLY_SLOT_ALLOCATION_POLICY_MISSING",
+        }),
+      ]),
+    });
+    expect(upperAAllocation?.allocatedMuscles).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          muscle: "Chest",
+          targetStatus: "hard",
+          limitations: expect.arrayContaining([
+            "week_1_under_preferred_target",
+          ]),
+          allocationReason: expect.arrayContaining([
+            "weekly_obligation_allocated_to_compatible_slot",
+            "week1_total=7:preferred=10",
+          ]),
+        }),
+      ]),
+    );
+    expect(lowerBAllocation?.allocatedMuscles).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          muscle: "Hamstrings",
+          targetStatus: "hard",
+          limitations: expect.arrayContaining([
+            "week_1_over_preferred_target",
+          ]),
+          allocationReason: expect.arrayContaining([
+            "week1_total=8:preferred=6",
+          ]),
+        }),
+      ]),
+    );
+    expect(upperBAllocation?.allocatedMuscles).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          muscle: "Side Delts",
+          targetStatus: "soft",
+          role: "support",
+          limitations: expect.arrayContaining([
+            "week_1_under_preferred_target",
+          ]),
+        }),
+      ]),
+    );
+    expect(
+      allocationByWeek.weeks.filter((week) => [2, 3, 4].includes(week.week)),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          projectionStatus: "not_allocated_missing_weekly_projection",
+          slots: [],
+          weekLevelWarnings: expect.arrayContaining([
+            "missing_per_week_slot_composition",
+            "missing_fatigue_carryover_model",
+            "missing_progression_adjusted_set_targets",
+            "missing_cross_week_duplicate_justification",
+            "missing_weekly_exercise_identity_policy",
+          ]),
+        }),
+      ]),
+    );
+    expect(allocationByWeek.weeks.find((week) => week.phase === "deload")).toEqual(
+      expect.objectContaining({
+        projectionStatus: "not_allocated_missing_deload_policy",
+        slots: [],
+        weekLevelWarnings: expect.arrayContaining([
+          "deload_slot_allocation_unprojected",
+          "missing_deload_identity_preservation",
+          "missing_deload_set_reduction_projection",
+          "missing_deload_hard_support_target_adjustment",
+        ]),
+      }),
+    );
     for (const muscle of [
       "Glutes",
       "Front Delts",
@@ -3087,6 +3297,15 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
           "diagnostic_collateral_readout_only_not_hard_demand",
         ]),
       });
+      const allocationRows = allocationByWeek.weeks.flatMap((week) =>
+        week.slots.flatMap((slot) =>
+          slot.allocatedMuscles.filter((row) => row.muscle === muscle),
+        ),
+      );
+      for (const row of allocationRows) {
+        expect(row.targetStatus).toBe("diagnostic");
+        expect(row.role).not.toBe("primary");
+      }
     }
     expect(curve.candidateBehaviorGate).toMatchObject({
       status: "blocked_until_weekly_curve_is_visible",

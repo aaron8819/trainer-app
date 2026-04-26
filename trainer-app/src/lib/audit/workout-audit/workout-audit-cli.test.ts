@@ -1372,6 +1372,169 @@ describe("buildPlanningRealitySummary", () => {
     );
   });
 
+  it("prints compact slot demand allocation by week limitations when present", () => {
+    const summary = buildPlanningRealitySummary({
+      artifact: {
+        mesocycleExplain: {
+          preview: {
+            projectionDiagnostics: {
+              planningReality: {
+                summary: {
+                  planningShape: "mostly_repair_shaped",
+                  explicitWeeklyDemandMuscles: 4,
+                  inferredDemandMuscles: 3,
+                  slotsWithExplicitWeeklyDemand: 2,
+                  slotsWithOnlyLocalOrInferredSemantics: 1,
+                  materialRepairCount: 20,
+                  majorRepairCount: 10,
+                  highExerciseConcentrationCount: 4,
+                  warningCodes: [],
+                },
+                slotDemandAllocationByWeek: {
+                  mesocycleId: "meso-1",
+                  source: "diagnostic_shadow_planner",
+                  readOnly: true,
+                  affectsScoringOrGeneration: false,
+                  weeks: [
+                    {
+                      week: 1,
+                      phase: "entry",
+                      projectionStatus:
+                        "allocated_from_current_week_evidence",
+                      slots: [
+                        {
+                          slotId: "upper_a",
+                          slotIndex: 0,
+                          slotArchetype: "upper_horizontal_balanced",
+                          intent: "upper",
+                          allocatedMuscles: [
+                            {
+                              muscle: "Chest",
+                              role: "primary",
+                              targetStatus: "hard",
+                              minEffectiveSets: 5,
+                              preferredEffectiveSets: 5,
+                              maxEffectiveSets: 16,
+                              weekScope: "week_1_only",
+                              allocationConfidence: "high",
+                              allocationReason: [],
+                              limitations: ["week_1_under_preferred_target"],
+                            },
+                          ],
+                          slotLevelWarnings: [],
+                        },
+                        {
+                          slotId: "lower_b",
+                          slotIndex: 3,
+                          slotArchetype: "lower_hinge_dominant",
+                          intent: "lower",
+                          allocatedMuscles: [
+                            {
+                              muscle: "Hamstrings",
+                              role: "primary",
+                              targetStatus: "hard",
+                              minEffectiveSets: 6,
+                              preferredEffectiveSets: 6,
+                              maxEffectiveSets: 14,
+                              weekScope: "week_1_only",
+                              allocationConfidence: "high",
+                              allocationReason: [],
+                              limitations: ["week_1_over_preferred_target"],
+                            },
+                          ],
+                          slotLevelWarnings: [],
+                        },
+                        {
+                          slotId: "upper_b",
+                          slotIndex: 2,
+                          slotArchetype: "upper_vertical_balanced",
+                          intent: "upper",
+                          allocatedMuscles: [
+                            {
+                              muscle: "Side Delts",
+                              role: "support",
+                              targetStatus: "soft",
+                              minEffectiveSets: 2,
+                              preferredEffectiveSets: 2,
+                              maxEffectiveSets: 16,
+                              weekScope: "week_1_only",
+                              allocationConfidence: "medium",
+                              allocationReason: [],
+                              limitations: ["week_1_under_preferred_target"],
+                            },
+                          ],
+                          slotLevelWarnings: [],
+                        },
+                      ],
+                      weekLevelWarnings: [
+                        "week_1_current_projection_evidence_only",
+                      ],
+                    },
+                    {
+                      week: 2,
+                      phase: "accumulation",
+                      projectionStatus:
+                        "not_allocated_missing_weekly_projection",
+                      slots: [],
+                      weekLevelWarnings: [
+                        "missing_per_week_slot_composition",
+                      ],
+                    },
+                    {
+                      week: 3,
+                      phase: "accumulation",
+                      projectionStatus:
+                        "not_allocated_missing_weekly_projection",
+                      slots: [],
+                      weekLevelWarnings: [
+                        "missing_fatigue_carryover_model",
+                      ],
+                    },
+                    {
+                      week: 4,
+                      phase: "peak",
+                      projectionStatus:
+                        "not_allocated_missing_weekly_projection",
+                      slots: [],
+                      weekLevelWarnings: [
+                        "missing_weekly_exercise_identity_policy",
+                      ],
+                    },
+                    {
+                      week: 5,
+                      phase: "deload",
+                      projectionStatus:
+                        "not_allocated_missing_deload_policy",
+                      slots: [],
+                      weekLevelWarnings: [
+                        "deload_slot_allocation_unprojected",
+                      ],
+                    },
+                  ],
+                  crossWeekAllocationWarnings: [],
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    expect(summary).toEqual(
+      expect.arrayContaining([
+        "Slot Demand Allocation By Week",
+        "------------------------------",
+        "Week 1: allocated from current evidence",
+        "Weeks 2-4: not allocated - missing weekly projection",
+        "Deload: not allocated - missing deload policy",
+        "Key Week 1 ownership gaps:",
+        "- Chest owned by upper_a but under-delivered",
+        "- Hamstrings owned by lower_b but over-delivered",
+        "- Side Delts support gap remains in upper_b",
+      ])
+    );
+  });
+
   it("returns null when mesocycle-explain does not include planningReality", () => {
     expect(
       buildPlanningRealitySummary({

@@ -693,6 +693,58 @@ export type WeeklyDemandCurve = {
   };
 };
 
+export type SlotDemandAllocationByWeek = {
+  mesocycleId: string | null;
+  source: "diagnostic_shadow_planner";
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+  weeks: Array<{
+    week: number;
+    phase: "entry" | "accumulation" | "peak" | "deload" | "unknown";
+    projectionStatus:
+      | "allocated_from_current_week_evidence"
+      | "partially_allocated_from_weekly_demand_curve"
+      | "not_allocated_missing_weekly_projection"
+      | "not_allocated_missing_deload_policy";
+    slots: Array<{
+      slotId: string;
+      slotIndex: number;
+      slotArchetype: string;
+      intent: string;
+      allocatedMuscles: Array<{
+        muscle: string;
+        role: "primary" | "support" | "secondary" | "collateral";
+        targetStatus: "hard" | "soft" | "diagnostic" | "forbidden";
+        minEffectiveSets: number | null;
+        preferredEffectiveSets: number | null;
+        maxEffectiveSets: number | null;
+        weekScope:
+          | "week_1_only"
+          | "accumulation_weeks"
+          | "peak_week"
+          | "deload_week"
+          | "whole_mesocycle";
+        allocationConfidence: "high" | "medium" | "low" | "unknown";
+        allocationReason: string[];
+        limitations: string[];
+      }>;
+      slotLevelWarnings: string[];
+    }>;
+    weekLevelWarnings: string[];
+  }>;
+  crossWeekAllocationWarnings: Array<{
+    code:
+      | "MUSCLE_UNDER_ALLOCATED_ACROSS_ACCUMULATION"
+      | "MUSCLE_OVER_ALLOCATED_ACROSS_ACCUMULATION"
+      | "DUPLICATE_SLOT_OWNERSHIP_RISK"
+      | "DELOAD_SLOT_ALLOCATION_UNPROJECTED"
+      | "WEEKLY_SLOT_ALLOCATION_POLICY_MISSING";
+    muscle?: string;
+    evidence: string[];
+    severity: "info" | "warning";
+  }>;
+};
+
 export type SlotPlanPlanningRealityDiagnostic = {
   label: "weekly demand / slot allocation diagnostics";
   readOnly: true;
@@ -731,6 +783,7 @@ export type SlotPlanPlanningRealityDiagnostic = {
   preselectionFeasibility: CleanPreselectionFeasibility[];
   preselectionDistributionPolicyByWeek: PreselectionDistributionPolicyByWeek;
   weeklyDemandCurve: WeeklyDemandCurve;
+  slotDemandAllocationByWeek: SlotDemandAllocationByWeek;
   forbiddenCleanupReroute?: ForbiddenCleanupRerouteDiagnostic;
   rearDeltCollateralSummary?: RearDeltCollateralSummary;
   projectedDelivery: ProjectedDeliveryDiagnostic[];
@@ -3551,6 +3604,358 @@ function buildWeeklyDemandCurve(input: {
   };
 }
 
+type SlotDemandAllocationWeek = SlotDemandAllocationByWeek["weeks"][number];
+type SlotDemandAllocationWeekSlot =
+  SlotDemandAllocationWeek["slots"][number];
+type SlotDemandAllocationWeekMuscle =
+  SlotDemandAllocationWeekSlot["allocatedMuscles"][number];
+
+function toSlotDemandAllocationRole(
+  role: ShadowSlotDemandAllocation["allocatedMuscles"][number]["role"],
+): SlotDemandAllocationWeekMuscle["role"] {
+  return role === "implicit" ? "collateral" : role;
+}
+
+function getAllocationConfidence(
+  allocation: ShadowSlotDemandAllocation["allocatedMuscles"][number],
+): SlotDemandAllocationWeekMuscle["allocationConfidence"] {
+  if (
+    allocation.targetStatus === "hard" &&
+    allocation.allocationReason.some((reason) =>
+      reason.includes("weekly_obligation"),
+    )
+  ) {
+    return "high";
+  }
+  if (
+    allocation.allocationReason.some(
+      (reason) =>
+        reason.includes("authored_protected") ||
+        reason.includes("authored_preferred") ||
+        reason.includes("authored_primary"),
+    )
+  ) {
+    return allocation.targetStatus === "diagnostic" ? "low" : "medium";
+  }
+  if (allocation.targetStatus === "diagnostic") {
+    return "low";
+  }
+  return "medium";
+}
+
+function getDeliveryLimitations(
+  delivery: ProjectedDeliveryDiagnostic | undefined,
+): string[] {
+  if (!delivery) {
+    return ["week_1_delivery_evidence_missing"];
+  }
+  const limitations: string[] = [];
+  if (
+    delivery.preferredTarget != null &&
+    delivery.projectedEffectiveStimulusAfterRepairAndFinalShaping + 1e-9 <
+      delivery.preferredTarget
+  ) {
+    limitations.push("week_1_under_preferred_target");
+  }
+  if (
+    delivery.preferredTarget != null &&
+    delivery.projectedEffectiveStimulusAfterRepairAndFinalShaping >
+      delivery.preferredTarget + 1e-9
+  ) {
+    limitations.push("week_1_over_preferred_target");
+  }
+  if (delivery.targetStatus === "diagnostic") {
+    limitations.push("diagnostic_collateral_readout_only_not_hard_demand");
+  }
+  return limitations;
+}
+
+function getSlotMuscleDuplicateEvidence(input: {
+  slot: SlotCompositionSnapshotDiagnostic | undefined;
+  muscle: string;
+  duplicateExerciseReuse: ReadonlyArray<DuplicateExerciseReuseDiagnostic>;
+}): string[] {
+  if (!input.slot) {
+    return [];
+  }
+  const exerciseKeys = new Set(
+    input.slot.exercises
+      .filter((exercise) => exerciseMatchesMuscle(exercise, input.muscle))
+      .flatMap((exercise) => [exercise.exerciseId, exercise.exerciseName]),
+  );
+  return input.duplicateExerciseReuse
+    .filter(
+      (row) =>
+        row.repeatedInSlotId === input.slot?.slotId &&
+        (exerciseKeys.has(row.exerciseId) || exerciseKeys.has(row.name)),
+    )
+    .map(
+      (row) =>
+        `duplicate:${row.name}:previous=${row.previousSlotIds.join("+")}:alternative=${row.hasCompatibleAlternative}`,
+    );
+}
+
+function getSlotMuscleConcentrationEvidence(input: {
+  slotId: string;
+  muscle: string;
+  exerciseConcentration: ReadonlyArray<ExerciseConcentrationDiagnostic>;
+}): string[] {
+  return input.exerciseConcentration
+    .filter(
+      (row) =>
+        row.slotId === input.slotId &&
+        Object.prototype.hasOwnProperty.call(
+          row.percentageOfWeeklyProjectedStimulusByMuscle,
+          input.muscle,
+        ) &&
+        row.flags.some(
+          (flag) =>
+            flag === "COMPOUND_GT_5_SETS" ||
+            flag === "ISOLATION_GT_5_SETS" ||
+            flag.includes("EXERCISE_SUPPLIES_OVER"),
+        ),
+    )
+    .map(
+      (row) =>
+        `concentration:${row.exerciseName}:${input.muscle}:${row.percentageOfWeeklyProjectedStimulusByMuscle[input.muscle]}%`,
+    );
+}
+
+function buildWeekOneSlotDemandAllocationSlots(input: {
+  shadowSlotDemandAllocation: ReadonlyArray<ShadowSlotDemandAllocation>;
+  finalSlotPlan: ReadonlyArray<SlotCompositionSnapshotDiagnostic>;
+  projectedDelivery: ReadonlyArray<ProjectedDeliveryDiagnostic>;
+  duplicateExerciseReuse: ReadonlyArray<DuplicateExerciseReuseDiagnostic>;
+  exerciseConcentration: ReadonlyArray<ExerciseConcentrationDiagnostic>;
+}): SlotDemandAllocationWeekSlot[] {
+  const finalSlotById = new Map(
+    input.finalSlotPlan.map((slot) => [slot.slotId, slot]),
+  );
+  const deliveryByMuscle = new Map(
+    input.projectedDelivery.map((row) => [row.muscle, row]),
+  );
+
+  return input.shadowSlotDemandAllocation.map((slot) => {
+    const finalSlot = finalSlotById.get(slot.slotId);
+    const allocatedMuscles: SlotDemandAllocationWeekMuscle[] =
+      slot.allocatedMuscles.map((allocation) => {
+      const delivery = deliveryByMuscle.get(allocation.muscle);
+      const duplicateEvidence = getSlotMuscleDuplicateEvidence({
+        slot: finalSlot,
+        muscle: allocation.muscle,
+        duplicateExerciseReuse: input.duplicateExerciseReuse,
+      });
+      const concentrationEvidence = getSlotMuscleConcentrationEvidence({
+        slotId: slot.slotId,
+        muscle: allocation.muscle,
+        exerciseConcentration: input.exerciseConcentration,
+      });
+      const limitations = uniqueSorted([
+        "week_1_current_projection_evidence_only",
+        "diagnostic_read_only_no_generation_scoring_repair_seed_or_runtime_effect",
+        ...getDeliveryLimitations(delivery),
+        ...(duplicateEvidence.length > 0
+          ? ["duplicate_exercise_variant_pressure_visible"]
+          : []),
+        ...(concentrationEvidence.length > 0
+          ? ["exercise_concentration_visible"]
+          : []),
+      ]);
+
+      return {
+        muscle: allocation.muscle,
+        role: toSlotDemandAllocationRole(allocation.role),
+        targetStatus: allocation.targetStatus,
+        minEffectiveSets: allocation.minEffectiveSets,
+        preferredEffectiveSets: allocation.preferredEffectiveSets,
+        maxEffectiveSets: allocation.maxEffectiveSets,
+        weekScope: "week_1_only",
+        allocationConfidence: getAllocationConfidence(allocation),
+        allocationReason: uniqueSorted([
+          ...allocation.allocationReason,
+          ...(delivery
+            ? [
+                `week1_total=${delivery.projectedEffectiveStimulusAfterRepairAndFinalShaping}:preferred=${formatNullableNumber(delivery.preferredTarget)}`,
+              ]
+            : []),
+          ...duplicateEvidence,
+          ...concentrationEvidence,
+        ]),
+        limitations,
+      };
+    });
+
+    const slotLevelWarnings = uniqueSorted(
+      allocatedMuscles.flatMap((allocation) =>
+        allocation.limitations
+          .filter(
+            (limitation) =>
+              limitation === "week_1_under_preferred_target" ||
+              limitation === "week_1_over_preferred_target" ||
+              limitation === "duplicate_exercise_variant_pressure_visible" ||
+              limitation === "exercise_concentration_visible",
+          )
+          .map((limitation) => `${allocation.muscle}:${limitation}`),
+      ),
+    );
+
+    return {
+      slotId: slot.slotId,
+      slotIndex: slot.slotIndex,
+      slotArchetype: slot.slotArchetype,
+      intent: slot.intent,
+      allocatedMuscles,
+      slotLevelWarnings,
+    };
+  });
+}
+
+function buildFutureSlotAllocationWeek(
+  week: WeeklyDemandCurve["weeks"][number],
+): SlotDemandAllocationWeek {
+  const isDeload = week.phase === "deload";
+  const missingWeeklyProjectionWarnings = [
+    "not_allocated_missing_weekly_projection",
+    "missing_per_week_slot_composition",
+    "missing_fatigue_carryover_model",
+    "missing_progression_adjusted_set_targets",
+    "missing_cross_week_duplicate_justification",
+    "missing_weekly_exercise_identity_policy",
+  ];
+  const deloadWarnings = [
+    "deload_slot_allocation_unprojected",
+    "missing_deload_identity_preservation",
+    "missing_deload_set_reduction_projection",
+    "missing_deload_hard_support_target_adjustment",
+  ];
+  const canPartiallyReadWeeklyCurve =
+    !isDeload &&
+    week.projectionStatus === "projected_from_policy" &&
+    !week.weekLevelLimitations.includes("missing_per_week_slot_distribution");
+
+  return {
+    week: week.week,
+    phase: week.phase,
+    projectionStatus: isDeload
+      ? "not_allocated_missing_deload_policy"
+      : canPartiallyReadWeeklyCurve
+        ? "partially_allocated_from_weekly_demand_curve"
+        : "not_allocated_missing_weekly_projection",
+    slots: [],
+    weekLevelWarnings: isDeload
+      ? deloadWarnings
+      : uniqueSorted([
+          ...missingWeeklyProjectionWarnings,
+          ...week.weekLevelLimitations,
+        ]),
+  };
+}
+
+function mapWeeklyDemandCurveWarningToSlotAllocationWarning(
+  warning: WeeklyDemandCurve["crossWeekWarnings"][number],
+): SlotDemandAllocationByWeek["crossWeekAllocationWarnings"][number] | null {
+  switch (warning.code) {
+    case "PRIMARY_UNDER_TARGET_ACROSS_ACCUMULATION":
+    case "SUPPORT_UNDER_TARGET_ACROSS_ACCUMULATION":
+      return {
+        code: "MUSCLE_UNDER_ALLOCATED_ACROSS_ACCUMULATION",
+        muscle: warning.muscle,
+        evidence: warning.evidence,
+        severity: warning.severity,
+      };
+    case "MUSCLE_OVERDELIVERED_ACROSS_ACCUMULATION":
+      return {
+        code: "MUSCLE_OVER_ALLOCATED_ACROSS_ACCUMULATION",
+        muscle: warning.muscle,
+        evidence: warning.evidence,
+        severity: warning.severity,
+      };
+    case "DUPLICATE_EXERCISE_FATIGUE_RISK":
+      return {
+        code: "DUPLICATE_SLOT_OWNERSHIP_RISK",
+        evidence: warning.evidence,
+        severity: warning.severity,
+      };
+    case "DELOAD_PRESERVATION_UNPROJECTED":
+      return {
+        code: "DELOAD_SLOT_ALLOCATION_UNPROJECTED",
+        evidence: warning.evidence,
+        severity: warning.severity,
+      };
+    case "WEEKLY_DEMAND_POLICY_MISSING":
+      return {
+        code: "WEEKLY_SLOT_ALLOCATION_POLICY_MISSING",
+        evidence: warning.evidence,
+        severity: warning.severity,
+      };
+  }
+  return null;
+}
+
+function buildSlotDemandAllocationByWeek(input: {
+  activeMesocycle: ActiveMesocycleForDiagnostics;
+  weeklyDemandCurve: WeeklyDemandCurve;
+  shadowSlotDemandAllocation: ReadonlyArray<ShadowSlotDemandAllocation>;
+  finalSlotPlan: ReadonlyArray<SlotCompositionSnapshotDiagnostic>;
+  projectedDelivery: ReadonlyArray<ProjectedDeliveryDiagnostic>;
+  duplicateExerciseReuse: ReadonlyArray<DuplicateExerciseReuseDiagnostic>;
+  exerciseConcentration: ReadonlyArray<ExerciseConcentrationDiagnostic>;
+}): SlotDemandAllocationByWeek {
+  const weeks = input.weeklyDemandCurve.weeks.map((week) => {
+    if (week.week === 1) {
+      return {
+        week: week.week,
+        phase: week.phase,
+        projectionStatus: "allocated_from_current_week_evidence" as const,
+        slots: buildWeekOneSlotDemandAllocationSlots({
+          shadowSlotDemandAllocation: input.shadowSlotDemandAllocation,
+          finalSlotPlan: input.finalSlotPlan,
+          projectedDelivery: input.projectedDelivery,
+          duplicateExerciseReuse: input.duplicateExerciseReuse,
+          exerciseConcentration: input.exerciseConcentration,
+        }),
+        weekLevelWarnings: uniqueSorted([
+          "week_1_current_projection_evidence_only",
+          "later_week_slot_allocation_not_inferred_from_week_1",
+          "diagnostic_read_only_no_generation_scoring_repair_seed_or_runtime_effect",
+        ]),
+      };
+    }
+    return buildFutureSlotAllocationWeek(week);
+  });
+
+  const crossWeekAllocationWarnings = input.weeklyDemandCurve.crossWeekWarnings
+    .map(mapWeeklyDemandCurveWarningToSlotAllocationWarning)
+    .filter(
+      (
+        warning,
+      ): warning is SlotDemandAllocationByWeek["crossWeekAllocationWarnings"][number] =>
+        warning != null,
+    )
+    .filter(
+      (warning, index, rows) =>
+        rows.findIndex(
+          (candidate) =>
+            candidate.code === warning.code &&
+            candidate.muscle === warning.muscle,
+        ) === index,
+    )
+    .sort(
+      (left, right) =>
+        left.code.localeCompare(right.code) ||
+        (left.muscle ?? "").localeCompare(right.muscle ?? ""),
+    );
+
+  return {
+    mesocycleId: getDiagnosticMesocycleId(input.activeMesocycle),
+    source: "diagnostic_shadow_planner",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    weeks,
+    crossWeekAllocationWarnings,
+  };
+}
+
 function buildPreselectionDistributionPolicyByWeek(input: {
   activeMesocycle: ActiveMesocycleForDiagnostics;
   slotPrescriptionIntents: ReadonlyArray<SlotPrescriptionIntent>;
@@ -5488,6 +5893,15 @@ export function buildWeeklyDemandSlotAllocationDiagnostic(input: {
     projectedDelivery,
     exerciseConcentration,
   });
+  const slotDemandAllocationByWeek = buildSlotDemandAllocationByWeek({
+    activeMesocycle: input.activeMesocycle,
+    weeklyDemandCurve,
+    shadowSlotDemandAllocation,
+    finalSlotPlan,
+    projectedDelivery,
+    duplicateExerciseReuse: input.duplicateExerciseReuse ?? [],
+    exerciseConcentration,
+  });
   const materialRepairCount = repairMateriality.filter(
     (row) => row.materiality === "moderate" || row.materiality === "major"
   ).length;
@@ -5540,6 +5954,7 @@ export function buildWeeklyDemandSlotAllocationDiagnostic(input: {
     preselectionFeasibility,
     preselectionDistributionPolicyByWeek,
     weeklyDemandCurve,
+    slotDemandAllocationByWeek,
     ...(input.forbiddenCleanupReroute
       ? { forbiddenCleanupReroute: input.forbiddenCleanupReroute }
       : {}),

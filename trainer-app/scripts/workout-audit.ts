@@ -568,6 +568,113 @@ function buildWeeklyDemandCurveSummaryLines(
   ];
 }
 
+function buildSlotDemandAllocationByWeekSummaryLines(
+  allocation:
+    | PlanningRealityDiagnostic["slotDemandAllocationByWeek"]
+    | null
+    | undefined
+): string[] | null {
+  if (!allocation) {
+    return null;
+  }
+
+  const weeks = asArray(allocation.weeks);
+  const weekOne = weeks.find((week) => week.week === 1);
+  const accumulationWeeks = weeks.filter(
+    (week) => week.week >= 2 && week.week <= 4 && week.phase !== "deload"
+  );
+  const deload = weeks.find((week) => week.phase === "deload");
+  const weekOneMuscles = asArray(weekOne?.slots).flatMap((slot) =>
+    asArray(slot.allocatedMuscles).map((muscle) => ({
+      slotId: slot.slotId,
+      ...muscle,
+    }))
+  );
+  const warnings = asArray(allocation.crossWeekAllocationWarnings);
+  const hasAllocationWarning = (code: string, muscle?: string): boolean =>
+    warnings.some(
+      (warning) =>
+        warning.code === code && (!muscle || warning.muscle === muscle)
+    );
+  const hasWeekOneLimitation = (muscle: string, limitation: string): boolean =>
+    weekOneMuscles.some(
+      (row) => row.muscle === muscle && asArray(row.limitations).includes(limitation)
+    );
+
+  const gaps: string[] = [];
+  if (
+    hasWeekOneLimitation("Chest", "week_1_under_preferred_target") ||
+    hasAllocationWarning("MUSCLE_UNDER_ALLOCATED_ACROSS_ACCUMULATION", "Chest")
+  ) {
+    const slots = formatNameList(
+      weekOneMuscles
+        .filter((row) => row.muscle === "Chest")
+        .map((row) => row.slotId),
+      4
+    );
+    gaps.push(`Chest owned by ${slots} but under-delivered`);
+  }
+  if (
+    hasWeekOneLimitation("Hamstrings", "week_1_over_preferred_target") ||
+    hasAllocationWarning("MUSCLE_OVER_ALLOCATED_ACROSS_ACCUMULATION", "Hamstrings")
+  ) {
+    const slots = formatNameList(
+      weekOneMuscles
+        .filter((row) => row.muscle === "Hamstrings")
+        .map((row) => row.slotId),
+      4
+    );
+    gaps.push(`Hamstrings owned by ${slots} but over-delivered`);
+  }
+  if (
+    hasWeekOneLimitation("Side Delts", "week_1_under_preferred_target") ||
+    hasAllocationWarning("MUSCLE_UNDER_ALLOCATED_ACROSS_ACCUMULATION", "Side Delts")
+  ) {
+    const slots = formatNameList(
+      weekOneMuscles
+        .filter((row) => row.muscle === "Side Delts")
+        .map((row) => row.slotId),
+      4
+    );
+    gaps.push(`Side Delts support gap remains in ${slots}`);
+  }
+  if (hasWeekOneLimitation("Calves", "duplicate_exercise_variant_pressure_visible")) {
+    gaps.push("Calves target met but duplicate lower-slot variant pressure exists");
+  }
+
+  const accumulationMissing = accumulationWeeks.some(
+    (week) =>
+      week.projectionStatus === "not_allocated_missing_weekly_projection"
+  );
+
+  return [
+    "Slot Demand Allocation By Week",
+    "------------------------------",
+    `Week 1: ${
+      weekOne?.projectionStatus === "allocated_from_current_week_evidence"
+        ? "allocated from current evidence"
+        : "not allocated"
+    }`,
+    `Weeks 2-4: ${
+      accumulationMissing
+        ? "not allocated - missing weekly projection"
+        : accumulationWeeks.length > 0
+          ? "partially allocated from weekly demand curve"
+          : "not listed"
+    }`,
+    `Deload: ${
+      deload?.projectionStatus === "not_allocated_missing_deload_policy"
+        ? "not allocated - missing deload policy"
+        : deload
+          ? "partially allocated"
+          : "not listed"
+    }`,
+    "",
+    "Key Week 1 ownership gaps:",
+    ...(gaps.length > 0 ? gaps.map((gap) => `- ${gap}`) : ["- none"]),
+  ];
+}
+
 function buildCleanPreselectionFeasibilitySummaryLines(
   rows: PlanningRealityDiagnostic["preselectionFeasibility"] | null | undefined
 ): string[] | null {
@@ -1021,6 +1128,14 @@ export function buildPlanningRealitySummary(input: {
   );
   if (weeklyDemandCurveSummary) {
     lines.push("", ...weeklyDemandCurveSummary);
+  }
+
+  const slotDemandAllocationByWeekSummary =
+    buildSlotDemandAllocationByWeekSummaryLines(
+      planningReality.slotDemandAllocationByWeek
+    );
+  if (slotDemandAllocationByWeekSummary) {
+    lines.push("", ...slotDemandAllocationByWeekSummary);
   }
 
   lines.push("", "Slot allocation:");

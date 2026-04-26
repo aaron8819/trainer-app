@@ -1629,6 +1629,157 @@ describe("buildPlanningRealitySummary", () => {
     );
   });
 
+  it("prints exercise-class distribution intent when planningReality includes it", () => {
+    const baseDemand = {
+      role: "primary" as const,
+      targetStatus: "hard" as const,
+      demandType: "direct_required" as const,
+      desiredEffectiveSets: 4,
+      minEffectiveSets: 3,
+      maxEffectiveSets: null,
+      requiredExerciseClasses: [],
+      forbiddenExerciseClasses: [],
+      preferredMovementPatterns: [],
+      forbiddenMovementPatterns: [],
+      duplicatePolicy: "discourage_if_alternative_exists" as const,
+      duplicateJustifications: [],
+      unresolvedBehavior: "repair_safety_net" as const,
+      collateralLimits: [],
+      inventoryEvidence: [],
+      repairEvidence: [],
+      limitations: [],
+    };
+    const summary = buildPlanningRealitySummary({
+      artifact: {
+        mesocycleExplain: {
+          preview: {
+            projectionDiagnostics: {
+              planningReality: {
+                summary: {
+                  planningShape: "mostly_repair_shaped",
+                  explicitWeeklyDemandMuscles: 4,
+                  inferredDemandMuscles: 3,
+                  slotsWithExplicitWeeklyDemand: 2,
+                  slotsWithOnlyLocalOrInferredSemantics: 1,
+                  materialRepairCount: 20,
+                  majorRepairCount: 10,
+                  highExerciseConcentrationCount: 4,
+                  warningCodes: [],
+                },
+                exerciseClassDistributionBySlot: [
+                  {
+                    version: 1,
+                    source: "diagnostic_shadow_planner",
+                    mesocycleId: "meso-1",
+                    week: 1,
+                    phase: "accumulation",
+                    projectionStatus: "projected_from_current_evidence",
+                    slotId: "upper_b",
+                    slotIndex: 1,
+                    slotArchetype: "upper_horizontal_balanced",
+                    intent: "upper",
+                    readOnly: true,
+                    affectsScoringOrGeneration: false,
+                    muscleDemands: [
+                      {
+                        ...baseDemand,
+                        muscle: "Chest",
+                        preferredExerciseClasses: ["press", "machine_press"],
+                        requiredExerciseClasses: ["press"],
+                        preferredSetSplit: "two_distinct_exercises",
+                        duplicatePolicy: "block_if_clean_alternative_exists",
+                        inventoryEvidence: ["duplicate:Incline DB Bench"],
+                        limitations: [
+                          "duplicate_exercise_class_reuse_requires_explicit_justification",
+                        ],
+                      },
+                      {
+                        ...baseDemand,
+                        muscle: "Side Delts",
+                        role: "support",
+                        targetStatus: "soft",
+                        demandType: "soft_direct_allowed",
+                        preferredExerciseClasses: ["lateral_raise"],
+                        preferredSetSplit: "overlap_first_then_isolation",
+                        unresolvedBehavior: "leave_unresolved",
+                        limitations: ["avoid_ohp_overconcentration"],
+                      },
+                    ],
+                  },
+                  {
+                    version: 1,
+                    source: "diagnostic_shadow_planner",
+                    mesocycleId: "meso-1",
+                    week: 1,
+                    phase: "accumulation",
+                    projectionStatus: "projected_from_current_evidence",
+                    slotId: "lower_b",
+                    slotIndex: 3,
+                    slotArchetype: "lower_hinge_dominant",
+                    intent: "lower",
+                    readOnly: true,
+                    affectsScoringOrGeneration: false,
+                    muscleDemands: [
+                      {
+                        ...baseDemand,
+                        muscle: "Hamstrings",
+                        preferredExerciseClasses: [
+                          "hinge_compound",
+                          "knee_flexion_curl",
+                        ],
+                        requiredExerciseClasses: [
+                          "hinge_compound",
+                          "knee_flexion_curl",
+                        ],
+                        forbiddenExerciseClasses: ["back_extension"],
+                        preferredMovementPatterns: ["hinge", "knee_flexion"],
+                        forbiddenMovementPatterns: ["extension"],
+                        preferredSetSplit: "anchor_plus_isolation",
+                        duplicatePolicy: "block_if_clean_alternative_exists",
+                        inventoryEvidence: ["duplicate:SLDL"],
+                        limitations: [
+                          "back_extension_is_not_clean_hamstrings_closure",
+                        ],
+                      },
+                      {
+                        ...baseDemand,
+                        muscle: "Calves",
+                        role: "support",
+                        targetStatus: "soft",
+                        demandType: "soft_direct_allowed",
+                        preferredExerciseClasses: ["calf_raise"],
+                        forbiddenExerciseClasses: [
+                          "same_session_duplicate_calf_isolation",
+                        ],
+                        preferredSetSplit: "overlap_first_then_isolation",
+                        unresolvedBehavior: "leave_unresolved",
+                        limitations: [
+                          "avoid_same_session_duplicate_calf_variants",
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+            },
+          },
+        },
+      },
+    });
+
+    expect(summary).toEqual(
+      expect.arrayContaining([
+        "Exercise Class Distribution",
+        "---------------------------",
+        "- Chest: upper slots need distinct class intent; duplicate Incline requires justification",
+        "- Hamstrings lower_b: hinge anchor + knee-flexion curl; Back Extension not clean closure",
+        "- Side Delts: lateral raise / vertical press overlap, avoid OHP concentration",
+        "- Calves: one isolation per lower slot; avoid same-session duplicate variants",
+        "- Duplicates: Incline DB Bench, Lat Pulldown, SLDL, Back Squat require justification",
+      ])
+    );
+  });
+
   it("returns null when mesocycle-explain does not include planningReality", () => {
     expect(
       buildPlanningRealitySummary({

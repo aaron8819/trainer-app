@@ -2297,8 +2297,15 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     );
     expect(diagnostic?.slotPrescriptionIntents).toEqual(expect.any(Array));
     expect(diagnostic?.setDistributionIntents).toEqual(expect.any(Array));
+    expect(diagnostic?.exerciseClassDistributionBySlot).toEqual(expect.any(Array));
+    expect(diagnostic?.exerciseClassDistributionBySlot[0]).toMatchObject({
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+    });
     const slotPrescriptionIntents = diagnostic?.slotPrescriptionIntents ?? [];
     const setDistributionIntents = diagnostic?.setDistributionIntents ?? [];
+    const exerciseClassDistributions =
+      diagnostic?.exerciseClassDistributionBySlot ?? [];
     const upperAIntent = slotPrescriptionIntents.find(
       (intent) => intent.slotId === "upper_a",
     );
@@ -2357,6 +2364,38 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
       lowerBSetDistribution?.musclePolicies.find(
         (row) => row.muscle === "Chest",
       );
+    const upperAChestClass =
+      exerciseClassDistributions
+        .find((slot) => slot.week === 1 && slot.slotId === "upper_a")
+        ?.muscleDemands.find((row) => row.muscle === "Chest");
+    const upperBChestClass =
+      exerciseClassDistributions
+        .find((slot) => slot.week === 1 && slot.slotId === "upper_b")
+        ?.muscleDemands.find((row) => row.muscle === "Chest");
+    const lowerBChestClass =
+      exerciseClassDistributions
+        .find((slot) => slot.week === 1 && slot.slotId === "lower_b")
+        ?.muscleDemands.find((row) => row.muscle === "Chest");
+    const lowerBHamstringsClass =
+      exerciseClassDistributions
+        .find((slot) => slot.week === 1 && slot.slotId === "lower_b")
+        ?.muscleDemands.find((row) => row.muscle === "Hamstrings");
+    const upperBSideDeltsClass =
+      exerciseClassDistributions
+        .find((slot) => slot.week === 1 && slot.slotId === "upper_b")
+        ?.muscleDemands.find((row) => row.muscle === "Side Delts");
+    const upperARearDeltsClass =
+      exerciseClassDistributions
+        .find((slot) => slot.week === 1 && slot.slotId === "upper_a")
+        ?.muscleDemands.find((row) => row.muscle === "Rear Delts");
+    const upperATricepsClass =
+      exerciseClassDistributions
+        .find((slot) => slot.week === 1 && slot.slotId === "upper_a")
+        ?.muscleDemands.find((row) => row.muscle === "Triceps");
+    const lowerBCalvesClass =
+      exerciseClassDistributions
+        .find((slot) => slot.week === 1 && slot.slotId === "lower_b")
+        ?.muscleDemands.find((row) => row.muscle === "Calves");
 
     expect(upperAChest).toMatchObject({
       role: "primary",
@@ -2374,6 +2413,42 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
       demandType: "do_not_train_here",
       maxEffectiveSets: 0,
     });
+    expect(upperAChestClass).toMatchObject({
+      targetStatus: "hard",
+      demandType: "direct_required",
+      preferredSetSplit: "two_distinct_exercises",
+      requiredExerciseClasses: expect.arrayContaining(["press"]),
+      preferredExerciseClasses: expect.arrayContaining([
+        "press",
+        "horizontal_press",
+        "incline_press",
+        "machine_press",
+        "chest_fly",
+        "cable_fly",
+        "chest_isolation",
+      ]),
+      limitations: expect.arrayContaining([
+        "upper_chest_slots_should_use_distinct_class_intent_when_inventory_supports_it",
+      ]),
+    });
+    expect(upperBChestClass?.preferredExerciseClasses).toEqual(
+      expect.arrayContaining(["machine_press", "chest_fly", "cable_fly"]),
+    );
+    expect(lowerBChestClass).toMatchObject({
+      targetStatus: "forbidden",
+      demandType: "do_not_train_here",
+      preferredSetSplit: "forbidden",
+      forbiddenExerciseClasses: expect.arrayContaining([
+        "press",
+        "horizontal_press",
+        "incline_press",
+        "machine_press",
+        "chest_fly",
+        "cable_fly",
+        "chest_isolation",
+      ]),
+      limitations: expect.arrayContaining(["lower_slots_forbid_chest_targeting"]),
+    });
     expect(upperBSideDelts).toMatchObject({
       targetStatus: "soft",
       demandType: "soft_direct_allowed",
@@ -2383,6 +2458,20 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
         "cap_duplicate_lateral_raise_identities_and_set_stacking",
       ]),
     );
+    expect(upperBSideDeltsClass).toMatchObject({
+      targetStatus: "soft",
+      demandType: "soft_direct_allowed",
+      preferredExerciseClasses: expect.arrayContaining([
+        "lateral_raise",
+        "vertical_press_overlap",
+      ]),
+      duplicatePolicy: "discourage_if_alternative_exists",
+      limitations: expect.arrayContaining([
+        "prefer_low_collateral_direct_or_vertical_press_overlap",
+        "avoid_ohp_overconcentration",
+        "avoid_duplicate_lateral_raise_spam",
+      ]),
+    });
     expect(upperARearDelts?.collateralLimits).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ muscle: "Upper Back" }),
@@ -2395,9 +2484,29 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
         "pull_pattern_pressure_must_remain_capped",
       ]),
     );
+    expect(upperARearDeltsClass).toMatchObject({
+      preferredExerciseClasses: expect.arrayContaining([
+        "rear_delt_isolation",
+        "pull_overlap_with_direct_rear_delt_stimulus",
+      ]),
+      limitations: expect.arrayContaining([
+        "direct_rear_delt_isolation_useful_but_pull_and_upper_back_collateral_constrained",
+      ]),
+    });
     expect(["overlap_preferred", "direct_if_under_floor"]).toContain(
       upperATriceps?.demandType,
     );
+    expect(upperATricepsClass).toMatchObject({
+      preferredExerciseClasses: expect.arrayContaining([
+        "press_overlap",
+        "triceps_isolation_if_under_floor",
+      ]),
+      preferredSetSplit: "overlap_first_then_isolation",
+      limitations: expect.arrayContaining([
+        "press_overlap_first_isolation_only_if_under_floor",
+        "consumed_but_unmet_is_weak_evidence",
+      ]),
+    });
     expect(["overlap_preferred", "direct_if_under_floor"]).toContain(
       upperABiceps?.demandType,
     );
@@ -2416,6 +2525,42 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
         "hinge_is_not_equivalent_to_curl",
       ]),
     );
+    expect(lowerBHamstringsClass).toMatchObject({
+      requiredExerciseClasses: expect.arrayContaining([
+        "hinge_compound",
+        "knee_flexion_curl",
+      ]),
+      preferredExerciseClasses: expect.arrayContaining([
+        "stiff_leg_deadlift",
+        "knee_flexion_curl",
+        "leg_curl",
+        "nordic_curl",
+      ]),
+      forbiddenExerciseClasses: expect.arrayContaining([
+        "back_extension",
+        "dirty_extension",
+      ]),
+      preferredSetSplit: "anchor_plus_isolation",
+      limitations: expect.arrayContaining([
+        "back_extension_is_not_clean_hamstrings_closure",
+        "hinge_anchor_should_pair_with_knee_flexion_curl_when_clean_inventory_exists",
+      ]),
+    });
+    expect(lowerBCalvesClass).toMatchObject({
+      preferredExerciseClasses: expect.arrayContaining([
+        "calf_raise",
+        "standing_calf_raise",
+        "seated_calf_raise",
+      ]),
+      forbiddenExerciseClasses: expect.arrayContaining([
+        "same_session_duplicate_calf_isolation",
+      ]),
+      duplicatePolicy: "discourage_if_alternative_exists",
+      limitations: expect.arrayContaining([
+        "one_calf_isolation_per_lower_slot_unless_specialization",
+        "avoid_same_session_duplicate_calf_variants",
+      ]),
+    });
     expect(diagnostic?.preselectionFeasibility).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -3067,6 +3212,9 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
       "slotDemandAllocationByWeek",
     );
     expect(JSON.stringify(getProjectedSlotPlans(projected))).not.toContain(
+      "exerciseClassDistributionBySlot",
+    );
+    expect(JSON.stringify(getProjectedSlotPlans(projected))).not.toContain(
       "accumulationWeekProjection",
     );
   });
@@ -3702,6 +3850,24 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
         expect.objectContaining({ signal: "lower_back_collateral" }),
       ]),
     );
+    const hamstringsClass = diagnostic.exerciseClassDistributionBySlot
+      .find((slot) => slot.week === 1 && slot.slotId === "lower_b")
+      ?.muscleDemands.find((row) => row.muscle === "Hamstrings");
+    expect(hamstringsClass).toMatchObject({
+      preferredSetSplit: "anchor_plus_isolation",
+      requiredExerciseClasses: expect.arrayContaining([
+        "hinge_compound",
+        "knee_flexion_curl",
+      ]),
+      forbiddenExerciseClasses: expect.arrayContaining([
+        "back_extension",
+        "dirty_extension",
+      ]),
+      repairEvidence: expect.arrayContaining([
+        "feasibility:dirty_candidate:do_not_promote_yet",
+        "dirty:back_extension_closure",
+      ]),
+    });
   });
 
   it("marks lower_b Hamstrings dirty when Stiff-Legged Deadlift carries concentration or cap cleanup pressure", () => {
@@ -4784,6 +4950,219 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
         hasCompatibleAlternative: true,
         reason: "main_lift_duplicate_discouraged",
       }),
+    );
+  });
+
+  it("requires explicit class-level justification for repeated diagnostic exercises", () => {
+    const slotSequence = [
+      { slotId: "upper_a", intent: "UPPER" as const },
+      { slotId: "upper_b", intent: "UPPER" as const },
+      { slotId: "lower_a", intent: "LOWER" as const },
+      { slotId: "lower_b", intent: "LOWER" as const },
+    ];
+    const incline = makeProjectedExercise({
+      id: "incline-db-bench",
+      name: "Incline DB Bench",
+      movementPatterns: ["horizontal_push"],
+      primaryMuscles: ["Chest"],
+      sets: 3,
+      isMainLift: true,
+      stimulusProfile: { chest: 1 },
+    });
+    const latPulldown = makeProjectedExercise({
+      id: "lat-pulldown",
+      name: "Lat Pulldown",
+      movementPatterns: ["vertical_pull"],
+      primaryMuscles: ["Lats"],
+      sets: 3,
+      isCompound: false,
+      stimulusProfile: { lats: 1 },
+    });
+    const sldl = makeProjectedExercise({
+      id: "sldl",
+      name: "SLDL",
+      movementPatterns: ["hinge"],
+      primaryMuscles: ["Hamstrings"],
+      sets: 3,
+      isMainLift: true,
+      stimulusProfile: { hamstrings: 1, glutes: 0.6, lower_back: 0.4 },
+    });
+    const backSquat = makeProjectedExercise({
+      id: "back-squat",
+      name: "Barbell Back Squat",
+      movementPatterns: ["squat"],
+      primaryMuscles: ["Quads"],
+      sets: 3,
+      isMainLift: true,
+      stimulusProfile: { quads: 1, glutes: 0.5, core: 0.3 },
+    });
+
+    const diagnostic = buildWeeklyDemandSlotAllocationDiagnostic({
+      activeMesocycle: buildSource() as never,
+      slotSequence,
+      initialProjectedSlots: [
+        makeProjectedSlotWithContributions({
+          slotId: "upper_a",
+          intent: "UPPER",
+          workout: makeProjectedWorkout({ mainLifts: [incline], accessories: [latPulldown] }),
+        }),
+        makeProjectedSlotWithContributions({
+          slotId: "upper_b",
+          intent: "UPPER",
+          workout: makeProjectedWorkout({ mainLifts: [incline], accessories: [latPulldown] }),
+        }),
+        makeProjectedSlotWithContributions({
+          slotId: "lower_a",
+          intent: "LOWER",
+          workout: makeProjectedWorkout({ mainLifts: [sldl, backSquat] }),
+        }),
+        makeProjectedSlotWithContributions({
+          slotId: "lower_b",
+          intent: "LOWER",
+          workout: makeProjectedWorkout({ mainLifts: [sldl, backSquat] }),
+        }),
+      ],
+      finalProjectedSlots: [
+        makeProjectedSlotWithContributions({
+          slotId: "upper_a",
+          intent: "UPPER",
+          workout: makeProjectedWorkout({ mainLifts: [incline], accessories: [latPulldown] }),
+        }),
+        makeProjectedSlotWithContributions({
+          slotId: "upper_b",
+          intent: "UPPER",
+          workout: makeProjectedWorkout({ mainLifts: [incline], accessories: [latPulldown] }),
+        }),
+        makeProjectedSlotWithContributions({
+          slotId: "lower_a",
+          intent: "LOWER",
+          workout: makeProjectedWorkout({ mainLifts: [sldl, backSquat] }),
+        }),
+        makeProjectedSlotWithContributions({
+          slotId: "lower_b",
+          intent: "LOWER",
+          workout: makeProjectedWorkout({ mainLifts: [sldl, backSquat] }),
+        }),
+      ],
+      weeklyObligationPlan: weeklyObligationPlan({
+        Chest: {
+          targetSets: 6,
+          allocatedSlots: [
+            { slotId: "upper_a", minEffectiveSets: 3, priority: "primary" },
+            { slotId: "upper_b", minEffectiveSets: 3, priority: "primary" },
+          ],
+        },
+        Lats: {
+          targetSets: 6,
+          allocatedSlots: [
+            { slotId: "upper_a", minEffectiveSets: 3, priority: "primary" },
+            { slotId: "upper_b", minEffectiveSets: 3, priority: "primary" },
+          ],
+        },
+        Quads: {
+          targetSets: 6,
+          allocatedSlots: [
+            { slotId: "lower_a", minEffectiveSets: 3, priority: "primary" },
+            { slotId: "lower_b", minEffectiveSets: 3, priority: "primary" },
+          ],
+        },
+        Hamstrings: {
+          targetSets: 6,
+          allocatedSlots: [
+            { slotId: "lower_a", minEffectiveSets: 3, priority: "primary" },
+            { slotId: "lower_b", minEffectiveSets: 3, priority: "primary" },
+          ],
+        },
+      }),
+      weeklyObligationEvaluations: [],
+      protectedCoverage: {
+        muscles: [],
+        deficitsBelowMev: [],
+        deficitsBelowPracticalFloor: [],
+        unresolvedProtectedMuscles: [],
+      },
+      supportFloorRepairReasons: {},
+      programQualityAppliedDiagnostics: [],
+      programQualityEvaluation: {
+        totalPenalty: 0,
+        diagnostics: [],
+        constraintCounts: {},
+      },
+      duplicateExerciseReuse: [
+        {
+          exerciseId: "incline-db-bench",
+          name: "Incline DB Bench",
+          repeatedInSlotId: "upper_b",
+          previousSlotIds: ["upper_a"],
+          role: "main",
+          hasCompatibleAlternative: true,
+          reason: "main_lift_duplicate_discouraged",
+        },
+        {
+          exerciseId: "lat-pulldown",
+          name: "Lat Pulldown",
+          repeatedInSlotId: "upper_b",
+          previousSlotIds: ["upper_a"],
+          role: "accessory",
+          hasCompatibleAlternative: true,
+          reason: "accessory_repeat_discouraged",
+        },
+        {
+          exerciseId: "sldl",
+          name: "SLDL",
+          repeatedInSlotId: "lower_b",
+          previousSlotIds: ["lower_a"],
+          role: "main",
+          hasCompatibleAlternative: true,
+          reason: "main_lift_duplicate_discouraged",
+        },
+        {
+          exerciseId: "back-squat",
+          name: "Barbell Back Squat",
+          repeatedInSlotId: "lower_b",
+          previousSlotIds: ["lower_a"],
+          role: "main",
+          hasCompatibleAlternative: true,
+          reason: "main_lift_duplicate_discouraged",
+        },
+      ],
+    });
+
+    const classRows = diagnostic.exerciseClassDistributionBySlot;
+    const findDemand = (slotId: string, muscle: string) =>
+      classRows
+        .find((slot) => slot.week === 1 && slot.slotId === slotId)
+        ?.muscleDemands.find((row) => row.muscle === muscle);
+
+    for (const demand of [
+      findDemand("upper_b", "Chest"),
+      findDemand("upper_b", "Lats"),
+      findDemand("lower_b", "Hamstrings"),
+      findDemand("lower_b", "Quads"),
+    ]) {
+      expect(demand).toMatchObject({
+        duplicatePolicy: "block_if_clean_alternative_exists",
+        duplicateJustifications: [],
+        limitations: expect.arrayContaining([
+          "duplicate_exercise_class_reuse_requires_explicit_justification",
+        ]),
+      });
+    }
+    expect(findDemand("upper_b", "Chest")?.inventoryEvidence).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("duplicate:Incline DB Bench"),
+      ]),
+    );
+    expect(findDemand("upper_b", "Lats")?.inventoryEvidence).toEqual(
+      expect.arrayContaining([expect.stringContaining("duplicate:Lat Pulldown")]),
+    );
+    expect(findDemand("lower_b", "Hamstrings")?.inventoryEvidence).toEqual(
+      expect.arrayContaining([expect.stringContaining("duplicate:SLDL")]),
+    );
+    expect(findDemand("lower_b", "Quads")?.inventoryEvidence).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("duplicate:Barbell Back Squat"),
+      ]),
     );
   });
 

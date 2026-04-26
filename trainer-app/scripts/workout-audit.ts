@@ -675,6 +675,79 @@ function buildSlotDemandAllocationByWeekSummaryLines(
   ];
 }
 
+function buildExerciseClassDistributionSummaryLines(
+  distributions:
+    | PlanningRealityDiagnostic["exerciseClassDistributionBySlot"]
+    | null
+    | undefined
+): string[] | null {
+  const rows = asArray(distributions);
+  if (rows.length === 0) {
+    return null;
+  }
+
+  const weekOneRows = rows.filter(
+    (row) => row.week === 1 && row.projectionStatus === "projected_from_current_evidence"
+  );
+  const allDemands = weekOneRows.flatMap((slot) =>
+    asArray(slot.muscleDemands).map((demand) => ({
+      slotId: slot.slotId,
+      ...demand,
+    }))
+  );
+  const hasDemand = (muscle: string, slotId?: string): boolean =>
+    allDemands.some(
+      (demand) => demand.muscle === muscle && (!slotId || demand.slotId === slotId)
+    );
+  const hasEvidence = (needle: string): boolean =>
+    allDemands.some(
+      (demand) =>
+        asArray(demand.inventoryEvidence).some((row) => row.includes(needle)) ||
+        asArray(demand.limitations).some((row) => row.includes(needle))
+    );
+
+  const lines = [
+    "Exercise Class Distribution",
+    "---------------------------",
+  ];
+  if (hasDemand("Chest")) {
+    lines.push(
+      "- Chest: upper slots need distinct class intent; duplicate Incline requires justification"
+    );
+  }
+  if (hasDemand("Hamstrings", "lower_b")) {
+    lines.push(
+      "- Hamstrings lower_b: hinge anchor + knee-flexion curl; Back Extension not clean closure"
+    );
+  }
+  if (hasDemand("Side Delts")) {
+    lines.push(
+      "- Side Delts: lateral raise / vertical press overlap, avoid OHP concentration"
+    );
+  }
+  if (hasDemand("Rear Delts") || hasDemand("Triceps")) {
+    lines.push(
+      "- Rear Delts / Triceps: collateral and target-met cautions stay diagnostic"
+    );
+  }
+  if (hasDemand("Calves")) {
+    lines.push(
+      "- Calves: one isolation per lower slot; avoid same-session duplicate variants"
+    );
+  }
+  if (
+    ["Incline DB Bench", "Lat Pulldown", "SLDL", "Barbell Back Squat"].some(
+      hasEvidence
+    )
+  ) {
+    lines.push(
+      "- Duplicates: Incline DB Bench, Lat Pulldown, SLDL, Back Squat require justification"
+    );
+  }
+
+  return lines.length > 2 ? lines : null;
+}
+
 function buildAccumulationWeekProjectionSummaryLines(
   projection:
     | PlanningRealityDiagnostic["accumulationWeekProjection"]
@@ -1183,6 +1256,14 @@ export function buildPlanningRealitySummary(input: {
     );
   if (slotDemandAllocationByWeekSummary) {
     lines.push("", ...slotDemandAllocationByWeekSummary);
+  }
+
+  const exerciseClassDistributionSummary =
+    buildExerciseClassDistributionSummaryLines(
+      planningReality.exerciseClassDistributionBySlot
+    );
+  if (exerciseClassDistributionSummary) {
+    lines.push("", ...exerciseClassDistributionSummary);
   }
 
   const accumulationWeekProjectionSummary =

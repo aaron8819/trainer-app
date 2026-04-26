@@ -745,6 +745,71 @@ export type SlotDemandAllocationByWeek = {
   }>;
 };
 
+export type ExerciseClassDistributionBySlot = {
+  version: 1;
+  source: "diagnostic_shadow_planner" | "accepted_planner_intent";
+  mesocycleId: string | null;
+  week: number;
+  phase: "entry" | "accumulation" | "peak" | "deload" | "unknown";
+  projectionStatus:
+    | "projected_from_current_evidence"
+    | "partially_projected_missing_policy"
+    | "not_projected_missing_policy";
+  slotId: string;
+  slotIndex: number;
+  slotArchetype: string | null;
+  intent: string;
+  muscleDemands: Array<{
+    muscle: string;
+    role: "primary" | "support" | "secondary" | "implicit" | "collateral";
+    targetStatus: "hard" | "soft" | "diagnostic" | "forbidden";
+    demandType:
+      | "direct_required"
+      | "overlap_preferred"
+      | "direct_if_under_floor"
+      | "soft_direct_allowed"
+      | "diagnostic_only"
+      | "do_not_train_here";
+    desiredEffectiveSets: number | null;
+    minEffectiveSets: number | null;
+    maxEffectiveSets: number | null;
+    preferredExerciseClasses: string[];
+    requiredExerciseClasses: string[];
+    forbiddenExerciseClasses: string[];
+    preferredMovementPatterns: string[];
+    forbiddenMovementPatterns: string[];
+    preferredSetSplit:
+      | "single_anchor"
+      | "anchor_plus_isolation"
+      | "two_distinct_exercises"
+      | "overlap_first_then_isolation"
+      | "diagnostic_only"
+      | "forbidden";
+    duplicatePolicy:
+      | "allow_with_justification"
+      | "discourage_if_alternative_exists"
+      | "block_if_clean_alternative_exists";
+    duplicateJustifications: Array<
+      | "continuity_anchor"
+      | "limited_inventory"
+      | "exact_demand_fit"
+      | "user_preference"
+      | "no_clean_alternative"
+      | "deload_skill_preservation"
+    >;
+    unresolvedBehavior: "leave_unresolved" | "repair_safety_net";
+    collateralLimits: Array<{
+      muscle: string;
+      maxAddedEffectiveSets: number;
+    }>;
+    inventoryEvidence: string[];
+    repairEvidence: string[];
+    limitations: string[];
+  }>;
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+};
+
 export type AccumulationWeekProjection = {
   mesocycleId: string | null;
   source: "diagnostic_shadow_planner";
@@ -869,6 +934,7 @@ export type SlotPlanPlanningRealityDiagnostic = {
   preselectionDistributionPolicyByWeek: PreselectionDistributionPolicyByWeek;
   weeklyDemandCurve: WeeklyDemandCurve;
   slotDemandAllocationByWeek: SlotDemandAllocationByWeek;
+  exerciseClassDistributionBySlot: ExerciseClassDistributionBySlot[];
   accumulationWeekProjection: AccumulationWeekProjection;
   forbiddenCleanupReroute?: ForbiddenCleanupRerouteDiagnostic;
   rearDeltCollateralSummary?: RearDeltCollateralSummary;
@@ -4042,6 +4108,702 @@ function buildSlotDemandAllocationByWeek(input: {
   };
 }
 
+type ExerciseClassDistributionMuscle =
+  ExerciseClassDistributionBySlot["muscleDemands"][number];
+
+const DUPLICATE_JUSTIFICATION_EXERCISE_NAMES = [
+  "Incline DB Bench",
+  "Lat Pulldown",
+  "SLDL",
+  "Stiff-Legged Deadlift",
+  "Barbell Back Squat",
+] as const;
+
+const EXERCISE_CLASS_DIAGNOSTIC_MUSCLES = new Set([
+  "Chest",
+  "Hamstrings",
+  "Side Delts",
+  "Rear Delts",
+  "Triceps",
+  "Calves",
+  "Lats",
+  "Quads",
+]);
+
+function shouldIncludeExerciseClassDemand(input: {
+  prescription: MusclePrescription;
+  slotId: string;
+}): boolean {
+  if (!EXERCISE_CLASS_DIAGNOSTIC_MUSCLES.has(input.prescription.muscle)) {
+    return false;
+  }
+  if (input.prescription.targetStatus === "diagnostic") {
+    return false;
+  }
+  if (input.prescription.targetStatus === "forbidden") {
+    return input.prescription.muscle === "Chest";
+  }
+  return true;
+}
+
+function toExerciseClassProjectionStatus(
+  status: SlotDemandAllocationByWeek["weeks"][number]["projectionStatus"],
+): ExerciseClassDistributionBySlot["projectionStatus"] {
+  switch (status) {
+    case "allocated_from_current_week_evidence":
+      return "projected_from_current_evidence";
+    case "partially_allocated_from_weekly_demand_curve":
+      return "partially_projected_missing_policy";
+    case "not_allocated_missing_weekly_projection":
+    case "not_allocated_missing_deload_policy":
+      return "not_projected_missing_policy";
+  }
+}
+
+function toExerciseClassSetSplit(input: {
+  prescription: MusclePrescription;
+  policy: SetDistributionPolicy | undefined;
+  slotId: string;
+}): ExerciseClassDistributionMuscle["preferredSetSplit"] {
+  if (input.prescription.targetStatus === "forbidden") {
+    return "forbidden";
+  }
+  if (
+    input.prescription.targetStatus === "diagnostic" ||
+    input.prescription.demandType === "diagnostic_only"
+  ) {
+    return "diagnostic_only";
+  }
+  if (input.prescription.muscle === "Hamstrings" && input.slotId === "lower_b") {
+    return "anchor_plus_isolation";
+  }
+  switch (input.policy?.preferredDistribution) {
+    case "single_anchor_plus_accessory":
+      return "anchor_plus_isolation";
+    case "two_exercise_split":
+      return "two_distinct_exercises";
+    case "overlap_first":
+    case "direct_isolation_only_if_needed":
+      return "overlap_first_then_isolation";
+    case "diagnostic_only":
+      return "diagnostic_only";
+    case "forbidden":
+      return "forbidden";
+    case undefined:
+      return input.prescription.role === "primary"
+        ? "single_anchor"
+        : "overlap_first_then_isolation";
+  }
+}
+
+function getExerciseClassPreferredClasses(
+  prescription: MusclePrescription,
+): string[] {
+  switch (prescription.muscle) {
+    case "Chest":
+      return prescription.targetStatus === "forbidden"
+        ? []
+        : [
+            "press",
+            "horizontal_press",
+            "incline_press",
+            "machine_press",
+            "chest_fly",
+            "cable_fly",
+            "chest_isolation",
+          ];
+    case "Hamstrings":
+      return prescription.targetStatus === "forbidden"
+        ? []
+        : [
+            "hinge_compound",
+            "stiff_leg_deadlift",
+            "romanian_deadlift",
+            "knee_flexion_curl",
+            "leg_curl",
+            "nordic_curl",
+          ];
+    case "Side Delts":
+      return prescription.targetStatus === "forbidden"
+        ? []
+        : [
+            "lateral_raise",
+            "cable_lateral_raise",
+            "machine_lateral_raise",
+            "vertical_press_overlap",
+          ];
+    case "Rear Delts":
+      return prescription.targetStatus === "forbidden"
+        ? []
+        : [
+            "rear_delt_isolation",
+            "reverse_fly",
+            "face_pull",
+            "pull_overlap_with_direct_rear_delt_stimulus",
+          ];
+    case "Triceps":
+      return prescription.targetStatus === "forbidden"
+        ? []
+        : ["press_overlap", "triceps_isolation_if_under_floor"];
+    case "Calves":
+      return prescription.targetStatus === "forbidden"
+        ? []
+        : ["calf_raise", "standing_calf_raise", "seated_calf_raise"];
+    default:
+      return prescription.allowedExerciseClasses;
+  }
+}
+
+function getExerciseClassRequiredClasses(input: {
+  prescription: MusclePrescription;
+  slotId: string;
+}): string[] {
+  if (input.prescription.targetStatus !== "hard") {
+    return [];
+  }
+  if (input.prescription.muscle === "Hamstrings" && input.slotId === "lower_b") {
+    return ["hinge_compound", "knee_flexion_curl"];
+  }
+  if (
+    input.prescription.muscle === "Chest" &&
+    input.prescription.demandType === "direct_required"
+  ) {
+    return ["press"];
+  }
+  return input.prescription.demandType === "direct_required"
+    ? input.prescription.allowedExerciseClasses
+    : [];
+}
+
+function getExerciseClassForbiddenClasses(
+  prescription: MusclePrescription,
+): string[] {
+  const base = [...prescription.forbiddenExerciseClasses];
+  switch (prescription.muscle) {
+    case "Chest":
+      return prescription.targetStatus === "forbidden"
+        ? uniqueSorted([
+            ...base,
+            "press",
+            "horizontal_press",
+            "incline_press",
+            "machine_press",
+            "chest_fly",
+            "cable_fly",
+            "chest_isolation",
+          ])
+        : base;
+    case "Hamstrings":
+      return uniqueSorted([...base, "back_extension", "dirty_extension"]);
+    case "Side Delts":
+      return uniqueSorted([
+        ...base,
+        "high_collateral_overhead_press",
+        "duplicate_lateral_raise_variant",
+      ]);
+    case "Rear Delts":
+      return uniqueSorted([
+        ...base,
+        "generic_upper_back_row_as_clean_rear_delt_closure",
+      ]);
+    case "Calves":
+      return uniqueSorted([
+        ...base,
+        "same_session_duplicate_calf_isolation",
+      ]);
+    default:
+      return base;
+  }
+}
+
+function getExerciseClassPreferredPatterns(
+  prescription: MusclePrescription,
+): string[] {
+  switch (prescription.muscle) {
+    case "Hamstrings":
+      return prescription.targetStatus === "forbidden"
+        ? []
+        : uniqueSorted([...prescription.allowedPatterns, "knee_flexion"]);
+    case "Side Delts":
+      return prescription.targetStatus === "forbidden"
+        ? []
+        : uniqueSorted([...prescription.allowedPatterns, "low_collateral_isolation"]);
+    default:
+      return prescription.allowedPatterns;
+  }
+}
+
+function getExerciseClassForbiddenPatterns(
+  prescription: MusclePrescription,
+): string[] {
+  if (prescription.muscle === "Hamstrings") {
+    return uniqueSorted([...prescription.forbiddenPatterns, "extension"]);
+  }
+  if (prescription.muscle === "Side Delts") {
+    return uniqueSorted([
+      ...prescription.forbiddenPatterns,
+      "high_collateral_vertical_push_overconcentration",
+    ]);
+  }
+  return prescription.forbiddenPatterns;
+}
+
+function exerciseClassMatchesMuscle(
+  exercise: SlotCompositionSnapshotDiagnostic["exercises"][number],
+  muscle: string,
+): boolean {
+  const effectiveStimulus =
+    exercise.effectiveStimulusByMuscle ?? {};
+  return (
+    (exercise.primaryMuscles ?? []).map(normalizeMuscle).includes(muscle) ||
+    Object.prototype.hasOwnProperty.call(
+      effectiveStimulus,
+      muscle,
+    )
+  );
+}
+
+function findSelectedExerciseClassEvidence(input: {
+  slot: SlotCompositionSnapshotDiagnostic | undefined;
+  muscle: string;
+}): string[] {
+  if (!input.slot) {
+    return [];
+  }
+  return input.slot.exercises
+    .filter((exercise) => exerciseClassMatchesMuscle(exercise, input.muscle))
+    .map((exercise) => {
+      const movementPatterns =
+        (exercise as { movementPatterns?: string[] }).movementPatterns ?? [];
+      const patterns = movementPatterns.length > 0
+        ? movementPatterns.join("+")
+        : "unknown";
+      return `selected:${exercise.exerciseName}:patterns=${patterns}:sets=${exercise.setCount}`;
+    });
+}
+
+function findRepeatedExerciseEvidence(
+  finalSlotPlan: ReadonlyArray<SlotCompositionSnapshotDiagnostic>,
+): Map<string, string[]> {
+  const byExercise = new Map<
+    string,
+    { name: string; slotIds: Set<string>; role: "main" | "accessory" }
+  >();
+  for (const slot of finalSlotPlan) {
+    for (const exercise of slot.exercises) {
+      if (
+        !DUPLICATE_JUSTIFICATION_EXERCISE_NAMES.some(
+          (name) => exercise.exerciseName === name,
+        )
+      ) {
+        continue;
+      }
+      const existing =
+        byExercise.get(exercise.exerciseId) ??
+        {
+          name: exercise.exerciseName,
+          slotIds: new Set<string>(),
+          role: exercise.role,
+        };
+      existing.slotIds.add(slot.slotId);
+      if (exercise.role === "main") {
+        existing.role = "main";
+      }
+      byExercise.set(exercise.exerciseId, existing);
+    }
+  }
+
+  const evidenceBySlot = new Map<string, string[]>();
+  for (const row of byExercise.values()) {
+    if (row.slotIds.size <= 1) {
+      continue;
+    }
+    const slots = Array.from(row.slotIds).sort((left, right) =>
+      left.localeCompare(right),
+    );
+    for (const slotId of slots) {
+      evidenceBySlot.set(slotId, [
+        ...(evidenceBySlot.get(slotId) ?? []),
+        `duplicate_class:${row.name}:slots=${slots.join("+")}:role=${row.role}:requires_explicit_justification`,
+      ]);
+    }
+  }
+  return evidenceBySlot;
+}
+
+function getExerciseClassDuplicateJustifications(input: {
+  prescription: MusclePrescription;
+  duplicateRows: ReadonlyArray<DuplicateExerciseReuseDiagnostic>;
+  selectedExerciseEvidence: ReadonlyArray<string>;
+  slotId: string;
+}): ExerciseClassDistributionMuscle["duplicateJustifications"] {
+  const justifications = new Set<
+    ExerciseClassDistributionMuscle["duplicateJustifications"][number]
+  >();
+  if (
+    input.prescription.muscle === "Chest" &&
+    input.slotId === "upper_a" &&
+    input.selectedExerciseEvidence.some((row) => row.includes("Incline DB Bench"))
+  ) {
+    justifications.add("continuity_anchor");
+  }
+  for (const row of input.duplicateRows) {
+    if (!row.hasCompatibleAlternative) {
+      justifications.add("no_clean_alternative");
+      justifications.add("limited_inventory");
+    }
+    if (row.reason.includes("exact_demand")) {
+      justifications.add("exact_demand_fit");
+    }
+    if (row.reason.includes("preference")) {
+      justifications.add("user_preference");
+    }
+    if (row.reason.includes("deload")) {
+      justifications.add("deload_skill_preservation");
+    }
+    if (row.reason.includes("continuity")) {
+      justifications.add("continuity_anchor");
+    }
+  }
+  return Array.from(justifications).sort((left, right) =>
+    left.localeCompare(right),
+  );
+}
+
+function getExerciseClassDuplicatePolicy(input: {
+  prescription: MusclePrescription;
+  duplicateRows: ReadonlyArray<DuplicateExerciseReuseDiagnostic>;
+  repeatedExerciseEvidence: ReadonlyArray<string>;
+}): ExerciseClassDistributionMuscle["duplicatePolicy"] {
+  if (input.prescription.targetStatus === "forbidden") {
+    return "block_if_clean_alternative_exists";
+  }
+  if (
+    input.duplicateRows.some((row) => row.hasCompatibleAlternative) ||
+    input.repeatedExerciseEvidence.length > 0
+  ) {
+    return "block_if_clean_alternative_exists";
+  }
+  if (
+    input.prescription.muscle === "Chest" ||
+    input.prescription.muscle === "Side Delts" ||
+    input.prescription.muscle === "Calves"
+  ) {
+    return "discourage_if_alternative_exists";
+  }
+  return "allow_with_justification";
+}
+
+function buildExerciseClassInventoryEvidence(input: {
+  slotId: string;
+  muscle: string;
+  slot: SlotCompositionSnapshotDiagnostic | undefined;
+  preselectionFeasibility: ReadonlyArray<CleanPreselectionFeasibility>;
+  selectedExerciseEvidence: ReadonlyArray<string>;
+  duplicateRows: ReadonlyArray<DuplicateExerciseReuseDiagnostic>;
+  repeatedExerciseEvidence: ReadonlyArray<string>;
+}): string[] {
+  const hamstringsInventory = input.preselectionFeasibility
+    .filter(
+      (row) => row.slotId === input.slotId && row.muscle === input.muscle,
+    )
+    .flatMap((row) =>
+      row.candidateInventory.map(
+        (candidate) =>
+          `inventory:${candidate.exerciseName}:class=${candidate.candidateClass}:availability=${candidate.availability}`,
+      ),
+    );
+  const duplicateEvidence = input.duplicateRows.map(
+    (row) =>
+      `duplicate:${row.name}:role=${row.role}:previous=${row.previousSlotIds.join("+")}:alternative=${row.hasCompatibleAlternative}`,
+  );
+  return uniqueSorted([
+    ...input.selectedExerciseEvidence,
+    ...hamstringsInventory,
+    ...duplicateEvidence,
+    ...input.repeatedExerciseEvidence,
+    ...(input.slot
+      ? [`slot_exercise_count:${input.slot.exerciseCount}`]
+      : ["slot_final_plan_missing"]),
+  ]);
+}
+
+function buildExerciseClassRepairEvidence(input: {
+  slotId: string;
+  muscle: string;
+  repairRows: ReadonlyArray<ShadowRepairMaterialityDiagnostic>;
+  concentrationRows: ReadonlyArray<ExerciseConcentrationDiagnostic>;
+  weakPreselectionConsumption: ReadonlyArray<WeakPreselectionConsumptionDiagnostic>;
+  preselectionFeasibility: ReadonlyArray<CleanPreselectionFeasibility>;
+}): string[] {
+  const repairEvidence = input.repairRows
+    .filter((row) => row.slotId === input.slotId && row.muscle === input.muscle)
+    .map(
+      (row) =>
+        `repair:${row.exerciseName ?? row.exerciseId ?? "unknown"}:${row.action}:${row.shadowAllocationBasis}`,
+    );
+  const concentrationEvidence = input.concentrationRows
+    .filter(
+      (row) =>
+        row.slotId === input.slotId &&
+        Object.prototype.hasOwnProperty.call(
+          row.percentageOfWeeklyProjectedStimulusByMuscle,
+          input.muscle,
+        ),
+    )
+    .map(
+      (row) =>
+        `concentration:${row.exerciseName}:${input.muscle}:${roundToTenth(row.percentageOfWeeklyProjectedStimulusByMuscle[input.muscle])}%`,
+    );
+  const weakConsumptionEvidence = input.weakPreselectionConsumption
+    .filter((row) => row.slotId === input.slotId && row.muscle === input.muscle)
+    .map(
+      (row) =>
+        `weak_preselection_consumption:selected=${roundToTenth(row.selectedEffectiveSets)}:targetMet=${row.targetMet}`,
+    );
+  const feasibilityEvidence = input.preselectionFeasibility
+    .filter((row) => row.slotId === input.slotId && row.muscle === input.muscle)
+    .flatMap((row) => [
+      `feasibility:${row.candidateStatus}:${row.recommendation}`,
+      ...row.dirtyClosureSignals.map((signal) => `dirty:${signal.signal}`),
+    ]);
+  return uniqueSorted([
+    ...repairEvidence,
+    ...concentrationEvidence,
+    ...weakConsumptionEvidence,
+    ...feasibilityEvidence,
+  ]);
+}
+
+function getExerciseClassLimitations(input: {
+  prescription: MusclePrescription;
+  slotId: string;
+  duplicateRows: ReadonlyArray<DuplicateExerciseReuseDiagnostic>;
+  repeatedExerciseEvidence: ReadonlyArray<string>;
+  projectionStatus: ExerciseClassDistributionBySlot["projectionStatus"];
+}): string[] {
+  const limitations = [
+    "diagnostic_read_only_no_generation_scoring_repair_seed_or_runtime_effect",
+  ];
+  if (input.projectionStatus !== "projected_from_current_evidence") {
+    limitations.push("missing_per_week_exercise_class_policy");
+  }
+  if (input.prescription.targetStatus === "forbidden") {
+    limitations.push("do_not_train_this_muscle_in_this_slot");
+  }
+  if (input.prescription.muscle === "Chest") {
+    if (input.slotId.startsWith("lower")) {
+      limitations.push("lower_slots_forbid_chest_targeting");
+    } else {
+      limitations.push("upper_chest_slots_should_use_distinct_class_intent_when_inventory_supports_it");
+      limitations.push("duplicate_incline_press_requires_explicit_justification");
+    }
+  }
+  if (input.prescription.muscle === "Hamstrings" && input.slotId === "lower_b") {
+    limitations.push("back_extension_is_not_clean_hamstrings_closure");
+    limitations.push("hinge_anchor_should_pair_with_knee_flexion_curl_when_clean_inventory_exists");
+  }
+  if (input.prescription.muscle === "Side Delts") {
+    limitations.push("prefer_low_collateral_direct_or_vertical_press_overlap");
+    limitations.push("avoid_ohp_overconcentration");
+    limitations.push("avoid_duplicate_lateral_raise_spam");
+  }
+  if (input.prescription.muscle === "Rear Delts") {
+    limitations.push("direct_rear_delt_isolation_useful_but_pull_and_upper_back_collateral_constrained");
+  }
+  if (input.prescription.muscle === "Triceps") {
+    limitations.push("press_overlap_first_isolation_only_if_under_floor");
+    limitations.push("consumed_but_unmet_is_weak_evidence");
+  }
+  if (input.prescription.muscle === "Calves") {
+    limitations.push("one_calf_isolation_per_lower_slot_unless_specialization");
+    limitations.push("avoid_same_session_duplicate_calf_variants");
+  }
+  if (
+    input.duplicateRows.length > 0 ||
+    input.repeatedExerciseEvidence.length > 0
+  ) {
+    limitations.push("duplicate_exercise_class_reuse_requires_explicit_justification");
+  }
+  return uniqueSorted(limitations);
+}
+
+function buildExerciseClassDistributionBySlot(input: {
+  activeMesocycle: ActiveMesocycleForDiagnostics;
+  slotPrescriptionIntents: ReadonlyArray<SlotPrescriptionIntent>;
+  setDistributionIntents: ReadonlyArray<SetDistributionIntent>;
+  slotDemandAllocationByWeek: SlotDemandAllocationByWeek;
+  finalSlotPlan: ReadonlyArray<SlotCompositionSnapshotDiagnostic>;
+  preselectionFeasibility: ReadonlyArray<CleanPreselectionFeasibility>;
+  weakPreselectionConsumption: ReadonlyArray<WeakPreselectionConsumptionDiagnostic>;
+  repairMaterialityAfterShadowAllocation: ReadonlyArray<ShadowRepairMaterialityDiagnostic>;
+  exerciseConcentration: ReadonlyArray<ExerciseConcentrationDiagnostic>;
+  duplicateExerciseReuse: ReadonlyArray<DuplicateExerciseReuseDiagnostic>;
+}): ExerciseClassDistributionBySlot[] {
+  const prescriptionBySlotId = new Map(
+    input.slotPrescriptionIntents.map((slot) => [slot.slotId, slot]),
+  );
+  const setDistributionBySlotId = new Map(
+    input.setDistributionIntents.map((slot) => [slot.slotId, slot]),
+  );
+  const finalSlotById = new Map(
+    input.finalSlotPlan.map((slot) => [slot.slotId, slot]),
+  );
+  const repeatedEvidenceBySlotId = findRepeatedExerciseEvidence(input.finalSlotPlan);
+
+  return input.slotDemandAllocationByWeek.weeks.flatMap((week) => {
+    const slots = week.slots.map((slot) => ({
+      slotId: slot.slotId,
+      slotIndex: slot.slotIndex,
+      slotArchetype: slot.slotArchetype,
+      intent: slot.intent,
+    }));
+    const projectionStatus = toExerciseClassProjectionStatus(
+      week.projectionStatus,
+    );
+
+    return slots.map((slot) => {
+      const slotPrescription = prescriptionBySlotId.get(slot.slotId);
+      const setDistribution = setDistributionBySlotId.get(slot.slotId);
+      const finalSlot = finalSlotById.get(slot.slotId);
+      const repeatedExerciseEvidence =
+        repeatedEvidenceBySlotId.get(slot.slotId) ?? [];
+      const muscleDemands: ExerciseClassDistributionMuscle[] =
+        projectionStatus === "projected_from_current_evidence"
+          ? (slotPrescription?.musclePrescriptions ?? [])
+              .filter((prescription) =>
+                shouldIncludeExerciseClassDemand({
+                  prescription,
+                  slotId: slot.slotId,
+                }),
+              )
+              .map((prescription) => {
+              const policy = setDistribution?.musclePolicies.find(
+                (row) => row.muscle === prescription.muscle,
+              );
+              const duplicateRows = findDuplicateRowsForMuscle({
+                slot: finalSlot,
+                policy: policy ?? {
+                  muscle: prescription.muscle,
+                  role: prescription.role,
+                  targetStatus: prescription.targetStatus,
+                  demandType: prescription.demandType,
+                  preferredEffectiveSets: prescription.desiredEffectiveSets,
+                  minEffectiveSets: prescription.minEffectiveSets,
+                  maxEffectiveSets: prescription.maxEffectiveSets,
+                  maxSingleExerciseShare: null,
+                  maxSinglePatternShare: null,
+                  maxSetsPerExercise: null,
+                  maxDirectExercises: null,
+                  maxDuplicateExerciseClasses: null,
+                  preferredDistribution: "diagnostic_only",
+                  whenAtLimit: "leave_unresolved",
+                },
+                duplicateExerciseReuse: input.duplicateExerciseReuse,
+              });
+              const selectedExerciseEvidence = findSelectedExerciseClassEvidence({
+                slot: finalSlot,
+                muscle: prescription.muscle,
+              });
+              const muscleRepeatedEvidence = repeatedExerciseEvidence.filter((row) =>
+                selectedExerciseEvidence.some((selected) => {
+                  const exerciseName = selected.split(":")[1] ?? "";
+                  return row.includes(exerciseName);
+                }),
+              );
+              const duplicateJustifications =
+                getExerciseClassDuplicateJustifications({
+                  prescription,
+                  duplicateRows,
+                  selectedExerciseEvidence,
+                  slotId: slot.slotId,
+                });
+
+              return {
+                muscle: prescription.muscle,
+                role: prescription.role,
+                targetStatus: prescription.targetStatus,
+                demandType: prescription.demandType,
+                desiredEffectiveSets: prescription.desiredEffectiveSets,
+                minEffectiveSets: prescription.minEffectiveSets,
+                maxEffectiveSets: prescription.maxEffectiveSets,
+                preferredExerciseClasses: getExerciseClassPreferredClasses(
+                  prescription,
+                ),
+                requiredExerciseClasses: getExerciseClassRequiredClasses({
+                  prescription,
+                  slotId: slot.slotId,
+                }),
+                forbiddenExerciseClasses:
+                  getExerciseClassForbiddenClasses(prescription),
+                preferredMovementPatterns:
+                  getExerciseClassPreferredPatterns(prescription),
+                forbiddenMovementPatterns:
+                  getExerciseClassForbiddenPatterns(prescription),
+                preferredSetSplit: toExerciseClassSetSplit({
+                  prescription,
+                  policy,
+                  slotId: slot.slotId,
+                }),
+                duplicatePolicy: getExerciseClassDuplicatePolicy({
+                  prescription,
+                  duplicateRows,
+                  repeatedExerciseEvidence: muscleRepeatedEvidence,
+                }),
+                duplicateJustifications,
+                unresolvedBehavior:
+                  prescription.targetStatus === "hard" ||
+                  prescription.demandType === "direct_if_under_floor"
+                    ? ("repair_safety_net" as const)
+                    : ("leave_unresolved" as const),
+                collateralLimits: prescription.collateralLimits,
+                inventoryEvidence: buildExerciseClassInventoryEvidence({
+                  slotId: slot.slotId,
+                  muscle: prescription.muscle,
+                  slot: finalSlot,
+                  preselectionFeasibility: input.preselectionFeasibility,
+                  selectedExerciseEvidence,
+                  duplicateRows,
+                  repeatedExerciseEvidence: muscleRepeatedEvidence,
+                }),
+                repairEvidence: buildExerciseClassRepairEvidence({
+                  slotId: slot.slotId,
+                  muscle: prescription.muscle,
+                  repairRows: input.repairMaterialityAfterShadowAllocation,
+                  concentrationRows: input.exerciseConcentration,
+                  weakPreselectionConsumption: input.weakPreselectionConsumption,
+                  preselectionFeasibility: input.preselectionFeasibility,
+                }),
+                limitations: getExerciseClassLimitations({
+                  prescription,
+                  slotId: slot.slotId,
+                  duplicateRows,
+                  repeatedExerciseEvidence: muscleRepeatedEvidence,
+                  projectionStatus,
+                }),
+              };
+            })
+          : [];
+
+      return {
+        version: 1,
+        source: "diagnostic_shadow_planner",
+        mesocycleId: getDiagnosticMesocycleId(input.activeMesocycle),
+        week: week.week,
+        phase: week.phase,
+        projectionStatus,
+        slotId: slot.slotId,
+        slotIndex: slot.slotIndex,
+        slotArchetype: slot.slotArchetype,
+        intent: slot.intent,
+        muscleDemands,
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+      };
+    });
+  });
+}
+
 type AccumulationProjectionWeek = AccumulationWeekProjection["weeks"][number];
 type AccumulationProjectedMuscle =
   AccumulationProjectionWeek["projectedMuscles"][number];
@@ -6540,6 +7302,18 @@ export function buildWeeklyDemandSlotAllocationDiagnostic(input: {
     duplicateExerciseReuse: input.duplicateExerciseReuse ?? [],
     exerciseConcentration,
   });
+  const exerciseClassDistributionBySlot = buildExerciseClassDistributionBySlot({
+    activeMesocycle: input.activeMesocycle,
+    slotPrescriptionIntents,
+    setDistributionIntents,
+    slotDemandAllocationByWeek,
+    finalSlotPlan,
+    preselectionFeasibility,
+    weakPreselectionConsumption,
+    repairMaterialityAfterShadowAllocation,
+    exerciseConcentration,
+    duplicateExerciseReuse: input.duplicateExerciseReuse ?? [],
+  });
   const accumulationWeekProjection = buildAccumulationWeekProjection({
     activeMesocycle: input.activeMesocycle,
     weeklyDemandCurve,
@@ -6601,6 +7375,7 @@ export function buildWeeklyDemandSlotAllocationDiagnostic(input: {
     preselectionDistributionPolicyByWeek,
     weeklyDemandCurve,
     slotDemandAllocationByWeek,
+    exerciseClassDistributionBySlot,
     accumulationWeekProjection,
     ...(input.forbiddenCleanupReroute
       ? { forbiddenCleanupReroute: input.forbiddenCleanupReroute }

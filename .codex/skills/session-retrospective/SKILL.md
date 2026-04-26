@@ -19,13 +19,30 @@ Run this skill ONLY if at least one of the following is true:
 
 Otherwise: do not run.
 
+## Leverage Requirement
+
+At least one retrospective recommendation must materially improve one of:
+
+- future session success rate
+- prompt quality or reusability
+- repo workflow sequencing
+- verification strategy
+- audit harness effectiveness
+- `AGENTS.md` or skill guidance
+- canonical seam or invariant protection
+
+Low-impact formatting or wording-only suggestions do not satisfy this requirement unless the observed session shows they directly prevented confusion, delay, or rework.
+
+If no high-leverage improvement is supported by evidence, explicitly state:
+
+"No high-leverage improvements identified from the available evidence."
+
 ## Minimum Value Requirement
 
-The retrospective must include at least ONE concrete improvement to:
+The retrospective must include at least ONE concrete improvement that is both:
 
-- prompt wording, OR
-- workflow sequencing, OR
-- repo/architecture understanding
+- evidence-backed, and
+- assigned to a destination such as prompt wording, workflow sequencing, verification strategy, `AGENTS.md`, an existing Codex skill, a new Codex skill idea, audit harness/test coverage, or repo documentation.
 
 If none exist, explicitly state:
 
@@ -57,6 +74,8 @@ Do NOT include:
 - Avoid filler language
 - Omit sections or bullets that do not apply.
 - Do not duplicate the normal final answer; include only retrospective-specific lessons and artifacts.
+- Rank action items by leverage and urgency.
+- Do not require code, docs, or process changes solely because the retrospective ran.
 
 ## What To Capture
 
@@ -71,6 +90,34 @@ Include lessons about:
 - architecture and canonical-seam lessons
 - future skill or `AGENTS.md` improvements
 
+## High-Leverage Actions
+
+Replace passive follow-ups with ranked, destination-bound actions. Each action must include:
+
+- Action
+- Evidence
+- Target destination/seam/file
+- Expected impact
+- Priority: Must do / Should do / Defer
+- Timing: next session / next similar task / next mesocycle / repo docs / skill update
+
+Only include actions supported by the session evidence. Prefer one to three high-signal actions over long lists.
+
+## System Injection Points
+
+State where each durable lesson should live. Choose one or more:
+
+- Prompt library
+- `AGENTS.md`
+- Existing skill
+- New skill
+- Repo docs
+- Test/audit harness
+- Engine/API/UI seam
+- No persistent change recommended
+
+If no persistent change is warranted, say so and give the evidence-based reason.
+
 ## Prompt Improvements
 
 Include at least one of:
@@ -80,6 +127,20 @@ Include at least one of:
 - an improved version for reuse
 
 Focus on making future prompts clearer and more precise.
+
+## Convert to Reusable Asset
+
+If the session produced a repeatable lesson, identify whether it should become one of:
+
+- reusable prompt
+- `AGENTS.md` rule
+- Codex skill update
+- new Codex skill
+- audit harness check
+- test pattern
+- repo doc note
+
+If yes, provide the exact proposed artifact text or a concise draft. If no, say why not.
 
 ## Useful Commands / Artifacts
 
@@ -105,6 +166,12 @@ Be concrete and actionable.
 - Files/seams changed:
 - Verification:
 
+## Evidence Summary
+- Files changed:
+- Commands/tests/audits:
+- Errors/corrections:
+- Artifacts:
+
 ## Challenges Encountered
 - Prompt ambiguities:
 - Repo/seam confusion:
@@ -112,12 +179,23 @@ Be concrete and actionable.
 - Test/audit issues:
 - Incorrect assumptions corrected:
 
-## Process Improvements
-- Better prompt wording next time:
-- Better task sequencing:
-- Better verification strategy:
-- Commands/artifacts to capture earlier:
-- Things to avoid repeating:
+## High-Leverage Actions
+1. Action:
+   Evidence:
+   Target destination/seam/file:
+   Expected impact:
+   Priority: Must do / Should do / Defer
+   Timing: next session / next similar task / next mesocycle / repo docs / skill update
+
+## System Injection Points
+- Prompt library:
+- AGENTS.md:
+- Existing skill:
+- New skill:
+- Repo docs:
+- Test/audit harness:
+- Engine/API/UI seam:
+- No persistent change recommended:
 
 ## Prompt Improvements
 - Worked well:
@@ -134,20 +212,15 @@ Be concrete and actionable.
 - Invariants to preserve:
 - Docs/AGENTS/skills worth updating:
 
+## Convert to Reusable Asset
+- Asset type:
+- Draft text:
+- Why / why not:
+
 ## Avoid Next Time
 - 1:
 - 2:
 - 3:
-
-## Follow-Up Recommendations
-1. Must do:
-2. Should do:
-3. Defer:
-
-## Workflow Skill Improvements
-- Existing skills to update:
-- New skill ideas:
-- AGENTS.md updates:
 ```
 
 ## Final Response Placement

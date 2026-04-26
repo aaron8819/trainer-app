@@ -70,7 +70,7 @@ For `mesocycle-explain`, read the compact CLI summary first when present:
 
 - Run `npm run audit:workout -- --env-file .env.local --mode mesocycle-explain --owner aaron8819@gmail.com --operator-debug`.
 - Read `Planning Reality Summary` before opening the full JSON.
-- Then inspect `mesocycleExplain.preview.projectionDiagnostics.planningReality.summary.planningShape`, `materialRepairCount`, `majorRepairCount`, `warnings`, `repairMateriality`, `exerciseConcentration`, and `slotDemandAllocation`.
+- Then inspect `mesocycleExplain.preview.projectionDiagnostics.planningReality.summary.planningShape`, `materialRepairCount`, `majorRepairCount`, `warnings`, `repairMateriality`, `repairMaterialityAfterShadowAllocation`, `exerciseConcentration`, and `slotDemandAllocation`.
 
 Interpretation frame:
 
@@ -78,6 +78,23 @@ Interpretation frame:
 - `mixed_upstream_plus_repair_shaped`: identify the repaired muscles and slots that should be promoted upstream.
 - `mostly_upstream_planned`: focus on validators, concentration, and set distribution quality.
 - Missing `planningReality`: call out insufficient instrumentation instead of inferring the architecture signal.
+- When `repairMaterialityAfterShadowAllocation` exists, always report:
+  - `planningShape`
+  - `materialRepairCount`
+  - `majorRepairCount`
+  - likely upstream-avoidable material repairs
+  - remaining material repairs
+  - suspicious repairs not eligible for promotion
+  - promotion candidates
+  - highest-leverage next move
+- Classify shadow repair rows into exactly these buckets:
+  - promote-ready upstream demand: material repairs with `likelyAvoidableWithShadowAllocation=true`; only these are candidates for bounded, slot-owned pre-selection planning.
+  - remaining repair/cap cleanup: material repairs not likely avoidable and not owned elsewhere; these point toward set distribution, concentration, or cap policy.
+  - suspicious downstream repair that must not be promoted: material repairs with `shadowAllocationBasis="weekly_demand_owned_elsewhere"`.
+- If suspicious repairs exist, call them out as blockers before behavior promotion. Example: `lower_b Chest via Cable Crossover` is not eligible for upstream promotion because Chest is owned by upper slots / elsewhere in shadow allocation.
+- If likely avoidable repairs exist, recommend promoting only bounded, slot-owned, non-suspicious demand into pre-selection planning.
+- Before implementing any shadow-demand promotion, follow the `Safe Promotion Trial Protocol` in `trainer-app/docs/09_AUDIT_PLAYBOOK.md`: baseline `mesocycle-explain --operator-debug`, change one candidate class, re-run the same audit, keep only improving/non-regressing deltas, and revert if material/major/suspicious repairs or cross-region smells worsen. Never promote candidates wholesale.
+- If remaining repairs are mostly cap cleanup, recommend set distribution / concentration policy rather than demand allocation.
 
 ## Classify the issue
 

@@ -99,10 +99,11 @@ When the session touches generation, projection, slot allocation, repair, mesocy
 - `planningReality.summary.majorRepairCount`
 - `planningReality.warnings`
 - `planningReality.repairMateriality`
+- `planningReality.repairMaterialityAfterShadowAllocation`
 - `planningReality.exerciseConcentration`
 - `planningReality.slotDemandAllocation`
 
-Report whether the evidence suggests upstream architecture improvement, downstream patch risk, or safe tooling/readout improvement. Do not stop at "tests passed" when `planningReality` is available.
+Report whether the evidence suggests upstream architecture improvement, downstream patch risk, remaining repair/cap cleanup, or safe tooling/readout improvement. Do not stop at "tests passed" when `planningReality` is available.
 
 Use this compact form:
 
@@ -111,14 +112,19 @@ Use this compact form:
 - planningShape:
 - materialRepairCount:
 - majorRepairCount:
-- key warning codes:
-- highest-leverage next move:
+- likely avoidable:
+- remaining:
+- suspicious repairs:
+- next architecture move:
 ```
 
 Interpretation:
 
 - Mostly repair-shaped -> recommend upstream WeeklyMuscleDemand -> SlotDemandAllocation ownership before selection.
 - Mixed upstream plus repair-shaped -> name the muscles/slots that need upstream promotion.
+- `repairMaterialityAfterShadowAllocation.likelyAvoidableWithShadowAllocation=true` -> promote only bounded, slot-owned, non-suspicious demand into pre-selection planning.
+- `shadowAllocationBasis="weekly_demand_owned_elsewhere"` -> suspicious downstream repair; name it as not eligible for upstream promotion.
+- Remaining repairs that are mostly cap cleanup -> recommend set distribution / concentration policy, not demand allocation.
 - Mostly upstream-planned -> focus on validators, set distribution quality, and concentration guardrails.
 - Missing or incomplete planningReality -> say instrumentation is insufficient and avoid architecture claims.
 

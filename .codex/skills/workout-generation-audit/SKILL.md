@@ -43,6 +43,7 @@ Do not mark the task complete, and do not claim generation behavior is correct, 
    - next generated session or explicit intent path: `npm run audit:workout -- --env-file .env.local --mode future-week --owner owner@local`
    - explicit intent preview: add `--intent <intent>`
    - deload behavior or deload reroute: `npm run audit:workout -- --env-file .env.local --mode deload --owner owner@local --intent <intent>`
+   - next-mesocycle projection, slot allocation, or repair diagnostics: `npm run audit:workout -- --env-file .env.local --mode mesocycle-explain --owner aaron8819@gmail.com --operator-debug`
    - suspicious next-load decision: `npm run audit:workout -- --env-file .env.local --mode progression-anchor --owner owner@local --exercise-id <exercise-id> --workout-id <workout-id>`
    - week-close or optional-gap-fill ownership: `npm run audit:week-close-handoff -- --env-file .env.local --owner owner@local --target-week <n>`
    - cross-intent generation stability or planner diagnostics gating: `npm run test:audit:matrix`
@@ -74,6 +75,22 @@ For historical or ownership-sensitive questions, inspect:
 - `historicalWeek.sessions[*].progressionEvidence`
 - `historicalWeek.sessions[*].reconciliation`
 - `historicalWeek.sessions[*].weekClose`
+
+For `mesocycle-explain` projection and repair audits, inspect:
+
+- CLI `Architecture Signal` from `Planning Reality Summary`
+- `mesocycleExplain.preview.projectionDiagnostics.planningReality.summary.planningShape`
+- `materialRepairCount` and `majorRepairCount`
+- `repairMaterialityAfterShadowAllocation[*].likelyAvoidableWithShadowAllocation`
+- `repairMaterialityAfterShadowAllocation[*].shadowAllocationBasis`
+- promotion candidates, remaining repair/cap cleanup, and suspicious downstream repairs not eligible for promotion
+
+Interpretation:
+
+- `mostly_repair_shaped` means upstream WeeklyMuscleDemand -> SlotDemandAllocation work should come before tuning repair.
+- Likely avoidable repairs may be promoted only when bounded, slot-owned, and non-suspicious.
+- `shadowAllocationBasis="weekly_demand_owned_elsewhere"` is a promotion blocker; name the offending slot/muscle/exercise.
+- Remaining repairs that are mostly cap cleanup point toward set distribution and concentration policy, not demand allocation.
 
 ## Determinism checks
 

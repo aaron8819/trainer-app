@@ -1,5 +1,6 @@
 import type { WorkoutSessionIntent } from "@prisma/client";
 import { getEffectiveStimulusByMuscle } from "@/lib/engine/stimulus";
+import { isExerciseEligibleForSessionInventory } from "@/lib/planning/session-opportunities";
 import {
   getMuscleTargetSemantics,
   normalizeExposedMuscle,
@@ -51,6 +52,7 @@ import {
 import {
   getSlotWeeklyObligations,
   HARD_WEEKLY_OBLIGATION_MUSCLES,
+  type DuplicateExerciseReuseDiagnostic,
   type SlotObligationEvaluation,
   type WeeklyMuscleObligationPlan,
 } from "./mesocycle-handoff-slot-plan-projection.weekly-obligations";
@@ -216,6 +218,38 @@ export type RearDeltCollateralSummary = {
   reasons: string[];
 };
 
+export type CleanPreselectionCandidateInventory = {
+  exerciseId: string;
+  exerciseName: string;
+  candidateClass:
+    | "knee_flexion_curl"
+    | "hinge_compound"
+    | "dirty_extension"
+    | "unknown";
+  primaryMuscles: string[];
+  secondaryMuscles: string[];
+  movementPatterns: string[];
+  hamstringsStimulusPerSet: number | null;
+  glutesStimulusPerSet: number | null;
+  lowerBackStimulusPerSet: number | null;
+  lowerSlotCompatible: boolean;
+  lowerBCompatible: boolean;
+  alreadySelectedInWeek: boolean;
+  alreadySelectedSlotIds: string[];
+  selectedInLowerBInitial: boolean;
+  selectedInLowerBFinal: boolean;
+  availability:
+    | "clean_available"
+    | "available_but_already_used_elsewhere"
+    | "available_but_capacity_blocked"
+    | "available_but_duplicate_blocked"
+    | "available_but_role_budget_blocked"
+    | "available_but_classification_mismatch"
+    | "dirty_not_clean_candidate"
+    | "unknown_blocker";
+  reasons: string[];
+};
+
 export type CleanPreselectionFeasibility = {
   slotId: string;
   muscle: string;
@@ -254,6 +288,7 @@ export type CleanPreselectionFeasibility = {
     glutesDelta: number | null;
     lowerBackDelta: number | null;
   };
+  candidateInventory: CleanPreselectionCandidateInventory[];
   recommendation:
     | "safe_to_trial_preselection"
     | "do_not_promote_yet"
@@ -3350,6 +3385,8 @@ const STIFF_LEGGED_DEADLIFT_NAME_PATTERN = /stiff[- ]leg(?:ged)? deadlift/i;
 const LEG_CURL_NAME_PATTERN = /\bcurl\b/i;
 const HINGE_NAME_PATTERN = /\b(deadlift|rdl|romanian|good morning|hinge)\b/i;
 const MATERIAL_COLLATERAL_DELTA = 1;
+type DiagnosticExerciseLibrary = MappedGenerationContext["exerciseLibrary"];
+type DiagnosticExercise = DiagnosticExerciseLibrary[number];
 
 function findSlotSnapshot(
   slots: ReadonlyArray<SlotCompositionSnapshotDiagnostic>,
@@ -3393,6 +3430,278 @@ function isHingeCompound(
     HINGE_NAME_PATTERN.test(exercise.exerciseName) &&
     !BACK_EXTENSION_NAME_PATTERN.test(exercise.exerciseName)
   );
+}
+
+function normalizeExerciseMuscles(values: ReadonlyArray<string> | undefined): string[] {
+  return sortPrescriptionStrings((values ?? []).map(normalizeMuscle));
+}
+
+function getExerciseStimulusPerSet(
+  exercise: DiagnosticExercise,
+  muscle: string
+): number | null {
+  const value = getEffectiveStimulusByMuscle(exercise, 1, {
+    logFallback: false,
+  }).get(muscle);
+  return value == null || value <= 0 ? null : roundToTenth(value);
+}
+
+function hasMuscleStimulus(exercise: DiagnosticExercise, muscle: string): boolean {
+  return (getExerciseStimulusPerSet(exercise, muscle) ?? 0) > 0;
+}
+
+function classifyCleanPreselectionCandidate(
+  exercise: DiagnosticExercise
+): CleanPreselectionCandidateInventory["candidateClass"] {
+  const primaryMuscles = normalizeExerciseMuscles(exercise.primaryMuscles);
+  const movementPatterns = exercise.movementPatterns ?? [];
+  const isHamstringsPrimary = primaryMuscles.includes(CLEAN_PRESELECTION_MUSCLE);
+  if (
+    BACK_EXTENSION_NAME_PATTERN.test(exercise.name) ||
+    (isHamstringsPrimary &&
+      movementPatterns.includes("extension") &&
+      primaryMuscles.includes("Lower Back"))
+  ) {
+    return "dirty_extension";
+  }
+  if (
+    isHamstringsPrimary &&
+    (LEG_CURL_NAME_PATTERN.test(exercise.name) || movementPatterns.includes("flexion"))
+  ) {
+    return "knee_flexion_curl";
+  }
+  if (
+    isHamstringsPrimary &&
+    ((exercise.isCompound ?? false) || movementPatterns.includes("hinge")) &&
+    (movementPatterns.includes("hinge") || HINGE_NAME_PATTERN.test(exercise.name))
+  ) {
+    return "hinge_compound";
+  }
+  return "unknown";
+}
+
+function getCandidateClassRank(
+  candidateClass: CleanPreselectionCandidateInventory["candidateClass"]
+): number {
+  switch (candidateClass) {
+    case "knee_flexion_curl":
+      return 0;
+    case "hinge_compound":
+      return 1;
+    case "dirty_extension":
+      return 2;
+    case "unknown":
+      return 3;
+  }
+}
+
+function collectSelectedSlotIdsByExercise(input: {
+  initialSlotComposition: ReadonlyArray<SlotCompositionSnapshotDiagnostic>;
+  finalSlotPlan: ReadonlyArray<SlotCompositionSnapshotDiagnostic>;
+}): Map<string, string[]> {
+  const byExercise = new Map<string, Set<string>>();
+  const append = (exerciseId: string, slotId: string) => {
+    const slots = byExercise.get(exerciseId) ?? new Set<string>();
+    slots.add(slotId);
+    byExercise.set(exerciseId, slots);
+  };
+
+  for (const slot of [...input.initialSlotComposition, ...input.finalSlotPlan]) {
+    for (const exercise of slot.exercises) {
+      append(exercise.exerciseId, slot.slotId);
+    }
+  }
+
+  return new Map(
+    Array.from(byExercise.entries()).map(([exerciseId, slotIds]) => [
+      exerciseId,
+      Array.from(slotIds).sort((left, right) => left.localeCompare(right)),
+    ])
+  );
+}
+
+function isExerciseSelectedInSlot(input: {
+  slots: ReadonlyArray<SlotCompositionSnapshotDiagnostic>;
+  slotId: string;
+  exerciseId: string;
+}): boolean {
+  return Boolean(
+    input.slots
+      .find((slot) => slot.slotId === input.slotId)
+      ?.exercises.some((exercise) => exercise.exerciseId === input.exerciseId)
+  );
+}
+
+function isInventoryCandidateRelevant(exercise: DiagnosticExercise): boolean {
+  const primaryMuscles = normalizeExerciseMuscles(exercise.primaryMuscles);
+  const secondaryMuscles = normalizeExerciseMuscles(exercise.secondaryMuscles);
+  return (
+    primaryMuscles.includes(CLEAN_PRESELECTION_MUSCLE) ||
+    secondaryMuscles.includes(CLEAN_PRESELECTION_MUSCLE) ||
+    hasMuscleStimulus(exercise, CLEAN_PRESELECTION_MUSCLE) ||
+    LEG_CURL_NAME_PATTERN.test(exercise.name) ||
+    BACK_EXTENSION_NAME_PATTERN.test(exercise.name) ||
+    STIFF_LEGGED_DEADLIFT_NAME_PATTERN.test(exercise.name)
+  );
+}
+
+function buildCandidateInventory(input: {
+  exerciseLibrary: ReadonlyArray<DiagnosticExercise>;
+  prescription: MusclePrescription;
+  slotIntent: SlotPrescriptionIntent | undefined;
+  initialSlotComposition: ReadonlyArray<SlotCompositionSnapshotDiagnostic>;
+  finalSlotPlan: ReadonlyArray<SlotCompositionSnapshotDiagnostic>;
+  duplicateExerciseReuse: ReadonlyArray<DuplicateExerciseReuseDiagnostic>;
+}): CleanPreselectionCandidateInventory[] {
+  const selectedSlotIdsByExercise = collectSelectedSlotIdsByExercise({
+    initialSlotComposition: input.initialSlotComposition,
+    finalSlotPlan: input.finalSlotPlan,
+  });
+  const lowerBFinalExerciseCount =
+    findSlotSnapshot(input.finalSlotPlan, CLEAN_PRESELECTION_SLOT_ID)?.exerciseCount ?? 0;
+  const lowerBCapacityAvailable = lowerBFinalExerciseCount < SESSION_CAPS.maxExercises;
+
+  return input.exerciseLibrary
+    .filter(isInventoryCandidateRelevant)
+    .map((exercise) => {
+      const candidateClass = classifyCleanPreselectionCandidate(exercise);
+      const primaryMuscles = normalizeExerciseMuscles(exercise.primaryMuscles);
+      const secondaryMuscles = normalizeExerciseMuscles(exercise.secondaryMuscles);
+      const movementPatterns = sortPrescriptionStrings(exercise.movementPatterns ?? []);
+      const hamstringsStimulusPerSet = getExerciseStimulusPerSet(
+        exercise,
+        CLEAN_PRESELECTION_MUSCLE
+      );
+      const glutesStimulusPerSet = getExerciseStimulusPerSet(exercise, "Glutes");
+      const lowerBackStimulusPerSet = getExerciseStimulusPerSet(
+        exercise,
+        "Lower Back"
+      );
+      const lowerSlotCompatible = isExerciseEligibleForSessionInventory(
+        exercise,
+        "lower",
+        "standard"
+      );
+      const classAllowed =
+        candidateClass !== "unknown" &&
+        input.prescription.allowedExerciseClasses.includes(candidateClass);
+      const patternAllowed = movementPatterns.some((pattern) =>
+        input.prescription.allowedPatterns.includes(pattern)
+      );
+      const classPatternBridgeMismatch =
+        classAllowed && movementPatterns.length > 0 && !patternAllowed;
+      const selectedInLowerBInitial = isExerciseSelectedInSlot({
+        slots: input.initialSlotComposition,
+        slotId: CLEAN_PRESELECTION_SLOT_ID,
+        exerciseId: exercise.id,
+      });
+      const selectedInLowerBFinal = isExerciseSelectedInSlot({
+        slots: input.finalSlotPlan,
+        slotId: CLEAN_PRESELECTION_SLOT_ID,
+        exerciseId: exercise.id,
+      });
+      const alreadySelectedSlotIds = selectedSlotIdsByExercise.get(exercise.id) ?? [];
+      const alreadySelectedInWeek = alreadySelectedSlotIds.length > 0;
+      const selectedOutsideLowerB = alreadySelectedSlotIds.some(
+        (slotId) => slotId !== CLEAN_PRESELECTION_SLOT_ID
+      );
+      const duplicateDiagnostic = input.duplicateExerciseReuse.find(
+        (row) =>
+          row.exerciseId === exercise.id &&
+          row.repeatedInSlotId === CLEAN_PRESELECTION_SLOT_ID
+      );
+      const lowerBCompatible =
+        lowerSlotCompatible &&
+        input.prescription.targetStatus !== "forbidden" &&
+        candidateClass !== "dirty_extension" &&
+        candidateClass !== "unknown" &&
+        (classAllowed || patternAllowed);
+      const reasons = sortPrescriptionStrings([
+        `candidate_class:${candidateClass}`,
+        `lower_slot_compatible:${lowerSlotCompatible ? "yes" : "no"}`,
+        `lower_b_compatible:${lowerBCompatible ? "yes" : "no"}`,
+        `lower_b_capacity:${lowerBFinalExerciseCount}/${SESSION_CAPS.maxExercises}`,
+        ...(lowerBCapacityAvailable ? ["lower_b_capacity_available"] : ["lower_b_capacity_full"]),
+        ...(classAllowed ? [`allowed_exercise_class:${candidateClass}`] : []),
+        ...(patternAllowed
+          ? movementPatterns
+              .filter((pattern) => input.prescription.allowedPatterns.includes(pattern))
+              .map((pattern) => `allowed_pattern:${pattern}`)
+          : []),
+        ...(classPatternBridgeMismatch
+          ? [
+              `classification_mismatch:movementPatterns_${movementPatterns.join("+")}_not_in_allowedPatterns_${input.prescription.allowedPatterns.join("+") || "none"}_but_class_${candidateClass}_is_allowed`,
+            ]
+          : []),
+        ...(alreadySelectedInWeek
+          ? [`already_selected_slots:${alreadySelectedSlotIds.join(",")}`]
+          : ["not_selected_in_projected_week"]),
+        ...(selectedOutsideLowerB
+          ? ["duplicate_week_placement_possible_blocker"]
+          : []),
+        ...(duplicateDiagnostic
+          ? [
+              `duplicate_diagnostic:${duplicateDiagnostic.reason}`,
+              `duplicate_previous_slots:${duplicateDiagnostic.previousSlotIds.join(",")}`,
+              `duplicate_has_compatible_alternative:${duplicateDiagnostic.hasCompatibleAlternative ? "yes" : "no"}`,
+            ]
+          : ["duplicate_reuse_diagnostic_not_present_for_lower_b"]),
+        ...(input.slotIntent
+          ? [`slot_prescription_intent:${input.slotIntent.slotArchetype ?? "unknown"}`]
+          : ["slot_prescription_intent_missing"]),
+        ...(candidateClass === "dirty_extension"
+          ? ["not_clean_closure:extension_collateral_sensitive"]
+          : []),
+        ...(candidateClass === "hinge_compound"
+          ? ["not_knee_flexion_curl:hinge_collateral_sensitive"]
+          : []),
+      ]);
+
+      let availability: CleanPreselectionCandidateInventory["availability"];
+      if (candidateClass === "dirty_extension" || candidateClass === "hinge_compound") {
+        availability = "dirty_not_clean_candidate";
+      } else if (candidateClass === "unknown") {
+        availability = "unknown_blocker";
+      } else if (!lowerBCompatible && classPatternBridgeMismatch) {
+        availability = "available_but_classification_mismatch";
+      } else if (!lowerBCompatible) {
+        availability = "unknown_blocker";
+      } else if (duplicateDiagnostic) {
+        availability = "available_but_duplicate_blocked";
+      } else if (selectedOutsideLowerB && !selectedInLowerBFinal) {
+        availability = "available_but_already_used_elsewhere";
+      } else if (!lowerBCapacityAvailable && !selectedInLowerBFinal) {
+        availability = "available_but_capacity_blocked";
+      } else {
+        availability = "clean_available";
+      }
+
+      return {
+        exerciseId: exercise.id,
+        exerciseName: exercise.name,
+        candidateClass,
+        primaryMuscles,
+        secondaryMuscles,
+        movementPatterns,
+        hamstringsStimulusPerSet,
+        glutesStimulusPerSet,
+        lowerBackStimulusPerSet,
+        lowerSlotCompatible,
+        lowerBCompatible,
+        alreadySelectedInWeek,
+        alreadySelectedSlotIds,
+        selectedInLowerBInitial,
+        selectedInLowerBFinal,
+        availability,
+        reasons,
+      };
+    })
+    .sort(
+      (left, right) =>
+        getCandidateClassRank(left.candidateClass) -
+          getCandidateClassRank(right.candidateClass) ||
+        left.exerciseName.localeCompare(right.exerciseName)
+    );
 }
 
 function formatExerciseEvidence(
@@ -3464,6 +3773,7 @@ function appendDirtySignal(
 }
 
 function buildCleanPreselectionFeasibility(input: {
+  exerciseLibrary?: ReadonlyArray<DiagnosticExercise>;
   initialSlotComposition: ReadonlyArray<SlotCompositionSnapshotDiagnostic>;
   finalSlotPlan: ReadonlyArray<SlotCompositionSnapshotDiagnostic>;
   allocationVsInitialDelta: ReadonlyArray<AllocationVsCompositionDelta>;
@@ -3474,6 +3784,7 @@ function buildCleanPreselectionFeasibility(input: {
   slotPrescriptionIntents: ReadonlyArray<SlotPrescriptionIntent>;
   setDistributionIntents: ReadonlyArray<SetDistributionIntent>;
   distributionGuardActions: ReadonlyArray<DistributionGuardAction>;
+  duplicateExerciseReuse?: ReadonlyArray<DuplicateExerciseReuseDiagnostic>;
 }): CleanPreselectionFeasibility[] {
   const slotIntent = input.slotPrescriptionIntents.find(
     (intent) => intent.slotId === CLEAN_PRESELECTION_SLOT_ID
@@ -3499,6 +3810,14 @@ function buildCleanPreselectionFeasibility(input: {
     currentInitialEffectiveSets
   );
   const preferredCleanPath = collectCleanPathEvidence({ initialSlot, finalSlot });
+  const candidateInventory = buildCandidateInventory({
+    exerciseLibrary: input.exerciseLibrary ?? [],
+    prescription,
+    slotIntent,
+    initialSlotComposition: input.initialSlotComposition,
+    finalSlotPlan: input.finalSlotPlan,
+    duplicateExerciseReuse: input.duplicateExerciseReuse ?? [],
+  });
   const glutesDelta = roundToTenth(
     (slotStimulus(finalSlot, "Glutes") ?? 0) - (slotStimulus(initialSlot, "Glutes") ?? 0)
   );
@@ -3679,6 +3998,9 @@ function buildCleanPreselectionFeasibility(input: {
       ? ["existing_promotion_candidate_slot_preselection_demand"]
       : []),
     ...(cleanPathAvailable ? ["clean_knee_flexion_path_evidence_present"] : ["clean_path_evidence_missing_or_incomplete"]),
+    ...(candidateInventory.some((candidate) => candidate.candidateClass === "knee_flexion_curl")
+      ? ["inventory_clean_knee_flexion_candidates_visible"]
+      : ["inventory_clean_knee_flexion_candidates_missing_or_not_passed"]),
     ...(targetMet ? ["final_target_met"] : ["final_target_not_met_or_unknown"]),
     ...dirtyClosureSignals.map((row) => `dirty_signal:${row.signal}`),
   ]);
@@ -3703,6 +4025,7 @@ function buildCleanPreselectionFeasibility(input: {
         glutesDelta,
         lowerBackDelta,
       },
+      candidateInventory,
       recommendation,
       reasons,
       readOnly: true,
@@ -3902,6 +4225,7 @@ function classifyPlanningShape(input: {
 export function buildWeeklyDemandSlotAllocationDiagnostic(input: {
   activeMesocycle: ActiveMesocycleForDiagnostics;
   slotSequence: ReadonlyArray<SlotSequenceEntry>;
+  exerciseLibrary?: ReadonlyArray<DiagnosticExercise>;
   initialProjectedSlots: ReadonlyArray<ProjectedSlotWorkout>;
   finalProjectedSlots: ReadonlyArray<ProjectedSlotWorkout>;
   weeklyObligationPlan: WeeklyMuscleObligationPlan;
@@ -3911,6 +4235,7 @@ export function buildWeeklyDemandSlotAllocationDiagnostic(input: {
   programQualityAppliedDiagnostics: ReadonlyArray<ProgramQualityDiagnostic>;
   programQualityEvaluation: ProgramQualityEvaluation;
   preselectionDemands?: ReadonlyArray<PreselectionDemandDiagnosticLike>;
+  duplicateExerciseReuse?: ReadonlyArray<DuplicateExerciseReuseDiagnostic>;
   distributionGuardActions?: ReadonlyArray<DistributionGuardAction>;
   forbiddenCleanupReroute?: ForbiddenCleanupRerouteDiagnostic;
 }): SlotPlanPlanningRealityDiagnostic {
@@ -4050,6 +4375,7 @@ export function buildWeeklyDemandSlotAllocationDiagnostic(input: {
     exerciseConcentration,
   });
   const preselectionFeasibility = buildCleanPreselectionFeasibility({
+    exerciseLibrary: input.exerciseLibrary,
     initialSlotComposition,
     finalSlotPlan,
     allocationVsInitialDelta,
@@ -4060,6 +4386,7 @@ export function buildWeeklyDemandSlotAllocationDiagnostic(input: {
     slotPrescriptionIntents,
     setDistributionIntents,
     distributionGuardActions,
+    duplicateExerciseReuse: input.duplicateExerciseReuse,
   });
   const warnings = buildWarnings({
     weeklyMuscleDemand,

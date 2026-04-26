@@ -459,6 +459,25 @@ function buildCleanPreselectionFeasibilitySummaryLines(
     lines.push(
       `Collateral estimate: Glutes ${formatSignedSetDelta(row.collateralEstimate?.glutesDelta ?? 0)}, Lower Back ${formatSignedSetDelta(row.collateralEstimate?.lowerBackDelta ?? 0)}.`
     );
+    const inventory = asArray(row.candidateInventory);
+    if (inventory.length > 0) {
+      lines.push("Candidate inventory:");
+      for (const candidate of inventory.slice(0, 8)) {
+        const selectedSlots = asArray(candidate.alreadySelectedSlotIds);
+        const selectedText =
+          selectedSlots.length > 0
+            ? `already selected in ${selectedSlots.join(", ")}`
+            : "not selected";
+        lines.push(
+          `- ${candidate.exerciseName}: ${candidate.candidateClass}, ${candidate.availability}, ` +
+            `lower_b=${formatBooleanFlag(candidate.lowerBCompatible)}, ${selectedText}`
+        );
+      }
+      const hidden = inventory.length - 8;
+      if (hidden > 0) {
+        lines.push(`- +${hidden} more`);
+      }
+    }
   }
   const remaining = feasibilityRows.length - 6;
   if (remaining > 0) {

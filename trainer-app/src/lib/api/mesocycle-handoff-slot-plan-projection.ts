@@ -1221,6 +1221,7 @@ export function projectSuccessorSlotPlansFromSnapshot(input: {
   const planningReality = buildWeeklyDemandSlotAllocationDiagnostic({
     activeMesocycle: pass.activeMesocycle,
     slotSequence: input.design.structure.slots,
+    exerciseLibrary: pass.exerciseLibrary,
     initialProjectedSlots: pass.initialProjectedSlots,
     finalProjectedSlots: pass.projectedSlots,
     weeklyObligationPlan: pass.weeklyObligationPlan,
@@ -1230,6 +1231,7 @@ export function projectSuccessorSlotPlansFromSnapshot(input: {
     programQualityAppliedDiagnostics: programQuality.appliedDiagnostics,
     programQualityEvaluation,
     preselectionDemands: pass.preselectionDemandDiagnostics,
+    duplicateExerciseReuse,
     distributionGuardActions: pass.distributionGuardActions,
     forbiddenCleanupReroute: pass.forbiddenCleanupReroute,
   });

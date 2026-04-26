@@ -43,6 +43,7 @@ import {
   applyPostForbiddenCleanupReroute,
   applyExistingAccessorySupportFloorBumps,
   applyFinalMavTrim,
+  applyLowerBCleanCurlSetDistribution,
   applyFinalMinimumViableSetRedistribution,
   applyFinalSetDistributionCaps,
   applyFinalSupportFloorClosure,
@@ -755,6 +756,11 @@ function projectSlotPlansPass(input: {
       distributionGuardActions,
     });
   }
+  projectedSlots = applyLowerBCleanCurlSetDistribution({
+    projectedSlots,
+    weeklyObligationPlan,
+    slotSequenceEntries,
+  });
   const postForbiddenObligationCleanup =
     removeForbiddenSlotPrimaryRepairExercises({
       projectedSlots,

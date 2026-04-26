@@ -22,13 +22,16 @@ import {
   evaluateLowerPatternPrimacy,
   evaluateUpperProtectedSupportQuality,
   evaluateUpperSupportTypeQuality,
+  preservesSlotIdentity,
   projectSuccessorSlotPlansFromSnapshot,
 } from "./mesocycle-handoff-slot-plan-projection";
 import {
   applyExistingAccessorySupportFloorBumps,
+  applyFinalSupportFloorClosure,
   applyFinalWeeklyObligationClosure,
   applyFinalMinimumViableSetRedistribution,
   applyPostForbiddenCleanupReroute,
+  applyLowerBCleanCurlSetDistribution,
   MIN_PROJECTED_ACCESSORY_SETS_PER_EXERCISE,
   MIN_PROJECTED_MAIN_LIFT_SETS_PER_EXERCISE,
   removeForbiddenSlotPrimaryRepairExercises,
@@ -1396,6 +1399,16 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
       fatigueCost: 1,
       stimulusProfile: { hamstrings: 1 },
     });
+    const backExtension = makeProjectedExercise({
+      id: "back-extension-45",
+      name: "Back Extension (45 Degree)",
+      movementPatterns: ["extension"],
+      primaryMuscles: ["Glutes", "Hamstrings", "Lower Back"],
+      sets: 2,
+      isCompound: false,
+      fatigueCost: 0,
+      stimulusProfile: { hamstrings: 0.45, glutes: 0.65, lower_back: 0.9 },
+    });
     const slotSequenceEntries = buildSlotSequenceEntries([
       { slotId: "lower_a", intent: "LOWER" },
       { slotId: "lower_b", intent: "LOWER" },
@@ -1426,6 +1439,7 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
         sldl.exercise,
         duplicateSquat.exercise,
         gobletSquat.exercise,
+        backExtension.exercise,
         legCurl.exercise,
       ] as never,
       weeklyObligationPlan: weeklyObligationPlan({
@@ -1457,6 +1471,7 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
 
     expect(counts.sldl).toBe(3);
     expect(counts["leg-curl"]).toBeGreaterThanOrEqual(2);
+    expect(counts["back-extension-45"]).toBeUndefined();
     expect(counts["goblet-squat"]).toBeUndefined();
     expect(getMuscleSetTotal(lowerB, "Hamstrings")).toBeGreaterThanOrEqual(2);
     expect(afterGlutes).toBeLessThan(beforeGlutes);
@@ -4622,6 +4637,323 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
         reason: "affected_hard_demand_not_cleanly_rerouted",
       }),
     ]);
+  });
+
+  it("prefers an unused lower_b Hamstrings knee-flexion curl over dirty Back Extension weekly closure", () => {
+    const slotSequenceEntries = buildSlotSequenceEntries([
+      { slotId: "lower_a", intent: "LOWER" },
+      {
+        slotId: "lower_b",
+        intent: "LOWER",
+        authoredSemantics: {
+          slotArchetype: "lower_hinge_dominant",
+          primaryLaneContract: null,
+          continuityScope: "slot",
+          supportCoverageContract: {
+            preferredAccessoryPrimaryMuscles: ["Hamstrings"],
+            protectedWeekOneCoverageMuscles: ["Hamstrings"],
+          },
+        },
+      },
+    ]);
+    const lyingLegCurl = makeProjectedExercise({
+      id: "lying-leg-curl",
+      name: "Lying Leg Curl",
+      movementPatterns: ["flexion"],
+      primaryMuscles: ["Hamstrings"],
+      sets: 2,
+      isCompound: false,
+      fatigueCost: 1,
+      stimulusProfile: { hamstrings: 1 },
+    });
+    const seatedLegCurl = makeProjectedExercise({
+      id: "seated-leg-curl",
+      name: "Seated Leg Curl",
+      movementPatterns: ["flexion"],
+      primaryMuscles: ["Hamstrings"],
+      sets: 2,
+      isCompound: false,
+      fatigueCost: 1,
+      stimulusProfile: { hamstrings: 1 },
+    });
+    const nordicHamstringCurl = makeProjectedExercise({
+      id: "nordic-hamstring-curl",
+      name: "Nordic Hamstring Curl",
+      movementPatterns: ["flexion"],
+      primaryMuscles: ["Hamstrings"],
+      secondaryMuscles: ["Glutes"],
+      sets: 2,
+      isCompound: false,
+      fatigueCost: 3,
+      stimulusProfile: { hamstrings: 1 },
+    });
+    const backExtension = makeProjectedExercise({
+      id: "back-extension-45",
+      name: "Back Extension (45 Degree)",
+      movementPatterns: ["extension"],
+      primaryMuscles: ["Glutes", "Hamstrings", "Lower Back"],
+      sets: 2,
+      isCompound: false,
+      fatigueCost: 1,
+      stimulusProfile: { hamstrings: 1.2, glutes: 0.65, lower_back: 0.9 },
+    });
+    const stiffLegDeadlift = makeProjectedExercise({
+      id: "stiff-legged-deadlift",
+      name: "Stiff-Legged Deadlift",
+      movementPatterns: ["hinge"],
+      primaryMuscles: ["Hamstrings"],
+      secondaryMuscles: ["Glutes", "Lower Back"],
+      sets: 3,
+      isMainLift: true,
+      stimulusProfile: { hamstrings: 1, glutes: 0.75, lower_back: 0.45 },
+    });
+
+    const projected = applyFinalWeeklyObligationClosure({
+      projectedSlots: [
+        makeProjectedSlotWithContributions({
+          slotId: "lower_a",
+          intent: "LOWER",
+          workout: makeProjectedWorkout({
+            accessories: [lyingLegCurl, seatedLegCurl],
+          }),
+        }),
+        makeProjectedSlotWithContributions({
+          slotId: "lower_b",
+          intent: "LOWER",
+          workout: makeProjectedWorkout({ mainLifts: [stiffLegDeadlift] }),
+        }),
+      ],
+      weeklyObligationPlan: weeklyObligationPlan({
+        Hamstrings: {
+          targetSets: 8,
+          allocatedSlots: [
+            { slotId: "lower_b", minEffectiveSets: 5, priority: "primary" },
+          ],
+        },
+      }),
+      exerciseLibrary: [
+        lyingLegCurl.exercise,
+        seatedLegCurl.exercise,
+        backExtension.exercise,
+        nordicHamstringCurl.exercise,
+      ] as never,
+      slotSequenceEntries,
+    });
+
+    const lowerB = projected.find((slot) => slot.slotPlan.slotId === "lower_b");
+    const lowerBExerciseIds =
+      lowerB?.slotPlan.exercises.map((exercise) => exercise.exerciseId) ?? [];
+
+    expect(lowerBExerciseIds).toContain("stiff-legged-deadlift");
+    expect(lowerBExerciseIds).toContain("nordic-hamstring-curl");
+    expect(lowerBExerciseIds).not.toContain("back-extension-45");
+    expect(lowerBExerciseIds).not.toContain("lying-leg-curl");
+    expect(lowerBExerciseIds).not.toContain("seated-leg-curl");
+    expect(
+      getEffectiveMuscleSetTotal(lowerB!.workout, "Lower Back"),
+    ).toBeCloseTo(1.35);
+  });
+
+  it("keeps the clean curl preference scoped to lower_b Hamstrings", () => {
+    const slotSequenceEntries = buildSlotSequenceEntries([
+      { slotId: "lower_a", intent: "LOWER" },
+    ]);
+    const nordicHamstringCurl = makeProjectedExercise({
+      id: "nordic-hamstring-curl",
+      name: "Nordic Hamstring Curl",
+      movementPatterns: ["flexion"],
+      primaryMuscles: ["Hamstrings"],
+      sets: 2,
+      isCompound: true,
+      fatigueCost: 3,
+      stimulusProfile: { hamstrings: 1 },
+    });
+    const backExtension = makeProjectedExercise({
+      id: "back-extension-45",
+      name: "Back Extension (45 Degree)",
+      movementPatterns: ["extension"],
+      primaryMuscles: ["Glutes", "Hamstrings", "Lower Back"],
+      sets: 2,
+      isCompound: false,
+      fatigueCost: 1,
+      stimulusProfile: { hamstrings: 1.2, glutes: 0.65, lower_back: 0.9 },
+    });
+
+    const projected = applyFinalWeeklyObligationClosure({
+      projectedSlots: [
+        makeProjectedSlotWithContributions({
+          slotId: "lower_a",
+          intent: "LOWER",
+          workout: makeProjectedWorkout({}),
+        }),
+      ],
+      weeklyObligationPlan: weeklyObligationPlan({
+        Hamstrings: {
+          targetSets: 4,
+          allocatedSlots: [
+            { slotId: "lower_a", minEffectiveSets: 2, priority: "primary" },
+          ],
+        },
+      }),
+      exerciseLibrary: [
+        backExtension.exercise,
+        nordicHamstringCurl.exercise,
+      ] as never,
+      slotSequenceEntries,
+    });
+
+    expect(
+      projected[0]?.slotPlan.exercises.map((exercise) => exercise.exerciseId),
+    ).toContain("back-extension-45");
+  });
+
+  it("uses a clean unused lower_b Hamstrings curl for support-floor repair before dirty Back Extension", () => {
+    const slotSequence = [
+      {
+        slotId: "lower_b",
+        intent: "LOWER" as const,
+        authoredSemantics: {
+          slotArchetype: "lower_hinge_dominant" as const,
+          primaryLaneContract: null,
+          continuityScope: "slot" as const,
+          supportCoverageContract: {
+            preferredAccessoryPrimaryMuscles: ["Hamstrings"],
+            protectedWeekOneCoverageMuscles: ["Hamstrings"],
+          },
+        },
+      },
+    ];
+    const slotSequenceEntries = buildSlotSequenceEntries(slotSequence);
+    const slotPolicy = resolveSessionSlotPolicy({
+      sessionIntent: "lower",
+      slotId: "lower_b",
+      slotSequence: { slots: slotSequenceEntries },
+    }).currentSession;
+    const stiffLegDeadlift = makeProjectedExercise({
+      id: "stiff-legged-deadlift",
+      name: "Stiff-Legged Deadlift",
+      movementPatterns: ["hinge"],
+      primaryMuscles: ["Hamstrings"],
+      sets: 3,
+      isMainLift: true,
+      stimulusProfile: { hamstrings: 1, glutes: 0.75, lower_back: 0.45 },
+    });
+    const nordicHamstringCurl = makeProjectedExercise({
+      id: "nordic-hamstring-curl",
+      name: "Nordic Hamstring Curl",
+      movementPatterns: ["flexion"],
+      primaryMuscles: ["Hamstrings"],
+      sets: 2,
+      isCompound: true,
+      fatigueCost: 3,
+      stimulusProfile: { hamstrings: 1 },
+    });
+    const backExtension = makeProjectedExercise({
+      id: "back-extension-45",
+      name: "Back Extension (45 Degree)",
+      movementPatterns: ["extension"],
+      primaryMuscles: ["Glutes", "Hamstrings", "Lower Back"],
+      sets: 2,
+      isCompound: false,
+      fatigueCost: 1,
+      stimulusProfile: { hamstrings: 0.45, glutes: 0.65, lower_back: 0.9 },
+    });
+    const lowerB = makeProjectedSlotWithContributions({
+      slotId: "lower_b",
+      intent: "LOWER",
+      workout: makeProjectedWorkout({ mainLifts: [stiffLegDeadlift] }),
+    });
+
+    const result = applyFinalSupportFloorClosure({
+      projectedSlots: [lowerB],
+      exerciseLibrary: [
+        backExtension.exercise,
+        nordicHamstringCurl.exercise,
+      ] as never,
+      activeMesocycle: buildSource() as never,
+      slotSequence,
+      slotSequenceEntries,
+    });
+    const repairedLowerB = result.projectedSlots.find(
+      (slot) => slot.slotPlan.slotId === "lower_b",
+    );
+    const exerciseIds =
+      repairedLowerB?.slotPlan.exercises.map((exercise) => exercise.exerciseId) ??
+      [];
+
+    expect(
+      preservesSlotIdentity({ slotPolicy, workout: repairedLowerB!.workout }),
+    ).toBe(true);
+    expect(exerciseIds).toContain("stiff-legged-deadlift");
+    expect(exerciseIds).toContain("nordic-hamstring-curl");
+    expect(exerciseIds).not.toContain("back-extension-45");
+    expect(result.distributionGuardActions).toEqual([]);
+  });
+
+  it("redistributes lower_b Hamstrings sets from hinge anchor to selected clean curl without breaking hard demand", () => {
+    const slotSequenceEntries = buildSlotSequenceEntries([
+      {
+        slotId: "lower_b",
+        intent: "LOWER",
+        authoredSemantics: {
+          slotArchetype: "lower_hinge_dominant",
+          primaryLaneContract: null,
+          continuityScope: "slot",
+          supportCoverageContract: {
+            preferredAccessoryPrimaryMuscles: ["Hamstrings"],
+            protectedWeekOneCoverageMuscles: ["Hamstrings"],
+          },
+        },
+      },
+    ]);
+    const stiffLegDeadlift = makeProjectedExercise({
+      id: "stiff-legged-deadlift",
+      name: "Stiff-Legged Deadlift",
+      movementPatterns: ["hinge"],
+      primaryMuscles: ["Hamstrings"],
+      sets: 4,
+      isMainLift: true,
+      stimulusProfile: { hamstrings: 1, glutes: 0.75, lower_back: 0.45 },
+    });
+    const nordicHamstringCurl = makeProjectedExercise({
+      id: "nordic-hamstring-curl",
+      name: "Nordic Hamstring Curl",
+      movementPatterns: ["flexion"],
+      primaryMuscles: ["Hamstrings"],
+      sets: 2,
+      isCompound: true,
+      stimulusProfile: { hamstrings: 1 },
+    });
+
+    const projected = applyLowerBCleanCurlSetDistribution({
+      projectedSlots: [
+        makeProjectedSlotWithContributions({
+          slotId: "lower_b",
+          intent: "LOWER",
+          workout: makeProjectedWorkout({
+            mainLifts: [stiffLegDeadlift],
+            accessories: [nordicHamstringCurl],
+          }),
+        }),
+      ],
+      weeklyObligationPlan: weeklyObligationPlan({
+        Hamstrings: {
+          targetSets: 6,
+          allocatedSlots: [
+            { slotId: "lower_b", minEffectiveSets: 6, priority: "primary" },
+          ],
+        },
+      }),
+      slotSequenceEntries,
+    });
+
+    expect(getExerciseSetCounts(projected[0]!.workout)).toMatchObject({
+      "stiff-legged-deadlift": 3,
+      "nordic-hamstring-curl": 3,
+    });
+    expect(
+      getEffectiveMuscleSetTotal(projected[0]!.workout, "Lower Back"),
+    ).toBeCloseTo(1.35);
   });
 
   it("blocks a hard-obligation set bump when it would worsen an already concentrated exercise", () => {

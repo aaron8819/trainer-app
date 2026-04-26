@@ -1304,6 +1304,18 @@ function replaceAccessoryExercise(
   });
 }
 
+function isCleanHamstringsKneeFlexionCurlCandidate(
+  exercise: WorkoutExercise["exercise"],
+): boolean {
+  const primaryMuscles = exercise.primaryMuscles ?? [];
+  const movementPatterns = exercise.movementPatterns ?? [];
+  return (
+    primaryMuscles.includes("Hamstrings") &&
+    !/back extension/i.test(exercise.name) &&
+    (/\bcurl\b/i.test(exercise.name) || movementPatterns.includes("flexion"))
+  );
+}
+
 function selectLowerFatigueSupportAlternative(input: {
   exerciseLibrary: MappedGenerationContext["exerciseLibrary"];
   selectedExerciseIds: Set<string>;
@@ -1320,6 +1332,15 @@ function selectLowerFatigueSupportAlternative(input: {
       );
     })
     .sort((left, right) => {
+      const leftCleanCurl = isCleanHamstringsKneeFlexionCurlCandidate(left)
+        ? 1
+        : 0;
+      const rightCleanCurl = isCleanHamstringsKneeFlexionCurlCandidate(right)
+        ? 1
+        : 0;
+      if (leftCleanCurl !== rightCleanCurl) {
+        return rightCleanCurl - leftCleanCurl;
+      }
       const leftHamstring = (left.primaryMuscles ?? []).includes("Hamstrings") ? 1 : 0;
       const rightHamstring = (right.primaryMuscles ?? []).includes("Hamstrings") ? 1 : 0;
       if (leftHamstring !== rightHamstring) {
@@ -1520,6 +1541,61 @@ function applyLowerPairFatigueShaping(input: {
         fromSetCount: hingeDonor.sets.length,
         toExerciseId: kneeFlexionReceiver.exercise.id,
         toSetCount: kneeFlexionReceiver.sets.length + 1,
+      },
+    });
+  }
+
+  for (let pass = 0; pass < 2; pass += 1) {
+    const currentLowerB = slots[lowerBIndex];
+    if (!currentLowerB) {
+      break;
+    }
+    const hingeDonor = getWorkoutExercises(currentLowerB.workout)
+      .filter((exercise) => getBroadMovementPattern(exercise.exercise) === "hinge")
+      .filter((exercise) => exercise.sets.length > getMinimumSetCount(exercise))
+      .sort((left, right) => right.sets.length - left.sets.length || left.exercise.name.localeCompare(right.exercise.name))[0];
+    const cleanCurlReceiver = currentLowerB.workout.accessories
+      .filter((exercise) =>
+        isCleanHamstringsKneeFlexionCurlCandidate(exercise.exercise)
+      )
+      .filter((exercise) => exercise.sets.length < getHardSetCap(exercise))
+      .sort((left, right) => left.sets.length - right.sets.length || left.exercise.name.localeCompare(right.exercise.name))[0];
+    if (!hingeDonor || !cleanCurlReceiver) {
+      break;
+    }
+    const candidateSlots = withUpdatedSlotWorkout(
+      slots,
+      lowerBIndex,
+      moveOneSet({
+        workout: currentLowerB.workout,
+        donor: hingeDonor,
+        receiver: cleanCurlReceiver,
+      })
+    );
+    const accepted = tryAcceptRedistribution({
+      beforeSlots: slots,
+      afterSlots: candidateSlots,
+      slotSequenceEntries: input.slotSequenceEntries,
+      weeklyObligationPlan: input.weeklyObligationPlan,
+    });
+    if ("blockReason" in accepted) {
+      break;
+    }
+    slots = accepted.projectedSlots;
+    input.appliedDiagnostics.push({
+      priority: "P1",
+      constraint: "weekly_pattern_balance",
+      penalty: 0,
+      slotId: currentLowerB.slotPlan.slotId,
+      exerciseId: hingeDonor.exercise.id,
+      name: hingeDonor.exercise.name,
+      muscle: "Hamstrings",
+      pattern: "hinge",
+      reason: "moved_hinge_hamstring_work_to_knee_flexion",
+      details: {
+        fromSetCount: hingeDonor.sets.length,
+        toExerciseId: cleanCurlReceiver.exercise.id,
+        toSetCount: cleanCurlReceiver.sets.length + 1,
       },
     });
   }

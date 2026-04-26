@@ -12,6 +12,7 @@ import {
   resolveSessionSlotPolicy,
   type ProtectedWeekOneCoverageMuscle,
 } from "@/lib/planning/session-slot-profile";
+import { isExerciseEligibleForSessionInventory } from "@/lib/planning/session-opportunities";
 import { SESSION_CAPS } from "./template-session/selection-adapter";
 import type { MappedGenerationContext } from "./template-session/types";
 import type { MesocycleSlotSequence } from "./mesocycle-slot-contract";
@@ -99,6 +100,40 @@ function exercisePrimaryMatchesMuscle(
   );
 }
 
+function isLowerBHamstringsCleanCurlTrial(input: {
+  slotPolicy: ProjectionRepairSlotPolicy;
+  muscle: string;
+}): boolean {
+  return (
+    input.slotPolicy?.slotId === "lower_b" &&
+    normalizeMuscleName(input.muscle) === normalizeMuscleName("Hamstrings")
+  );
+}
+
+function isCleanLowerBHamstringsCurlCandidate(
+  exercise: WorkoutExercise["exercise"],
+): boolean {
+  const movementPatterns = exercise.movementPatterns ?? [];
+  return (
+    !(exercise.isMainLiftEligible ?? false) &&
+    exercisePrimaryMatchesMuscle(exercise, "Hamstrings") &&
+    isExerciseEligibleForSessionInventory(exercise, "lower", "standard") &&
+    !/back extension/i.test(exercise.name) &&
+    (/\bcurl\b/i.test(exercise.name) || movementPatterns.includes("flexion"))
+  );
+}
+
+function getLowerBHamstringsCleanCurlPreference(input: {
+  exercise: WorkoutExercise["exercise"];
+  muscle: string;
+  slotPolicy: ProjectionRepairSlotPolicy;
+}): number {
+  if (!isLowerBHamstringsCleanCurlTrial(input)) {
+    return 0;
+  }
+  return isCleanLowerBHamstringsCurlCandidate(input.exercise) ? 0 : 1;
+}
+
 function isForbiddenSlotPrimaryRepair(input: {
   slotPolicy: ProjectionRepairSlotPolicy;
   muscle: string;
@@ -157,7 +192,12 @@ function selectSupportIsolation(input: {
 }): WorkoutExercise["exercise"] | undefined {
   return input.exerciseLibrary
     .filter((exercise) => !input.selectedExerciseIds.has(exercise.id))
-    .filter((exercise) => !(exercise.isCompound ?? false))
+    .filter(
+      (exercise) =>
+        !(exercise.isCompound ?? false) ||
+        (isLowerBHamstringsCleanCurlTrial(input) &&
+          isCleanLowerBHamstringsCurlCandidate(exercise)),
+    )
     .filter((exercise) => !(exercise.isMainLiftEligible ?? false))
     .filter((exercise) => exercisePrimaryMatchesMuscle(exercise, input.muscle))
     .filter(
@@ -169,6 +209,20 @@ function selectSupportIsolation(input: {
         }),
     )
     .sort((left, right) => {
+      const cleanCurlDelta =
+        getLowerBHamstringsCleanCurlPreference({
+          exercise: left,
+          muscle: input.muscle,
+          slotPolicy: input.slotPolicy,
+        }) -
+        getLowerBHamstringsCleanCurlPreference({
+          exercise: right,
+          muscle: input.muscle,
+          slotPolicy: input.slotPolicy,
+        });
+      if (cleanCurlDelta !== 0) {
+        return cleanCurlDelta;
+      }
       const fatigueDelta = (left.fatigueCost ?? 3) - (right.fatigueCost ?? 3);
       if (fatigueDelta !== 0) {
         return fatigueDelta;
@@ -200,6 +254,20 @@ function selectHardObligationExercise(input: {
         }),
     )
     .sort((left, right) => {
+      const cleanCurlDelta =
+        getLowerBHamstringsCleanCurlPreference({
+          exercise: left,
+          muscle: input.muscle,
+          slotPolicy: input.slotPolicy,
+        }) -
+        getLowerBHamstringsCleanCurlPreference({
+          exercise: right,
+          muscle: input.muscle,
+          slotPolicy: input.slotPolicy,
+        });
+      if (cleanCurlDelta !== 0) {
+        return cleanCurlDelta;
+      }
       const leftMain = left.isMainLiftEligible ? 1 : 0;
       const rightMain = right.isMainLiftEligible ? 1 : 0;
       if (leftMain !== rightMain) {
@@ -2285,6 +2353,78 @@ export function applyFinalWeeklyObligationClosure(input: {
     }
   }
 
+  return projectedSlots;
+}
+
+export function applyLowerBCleanCurlSetDistribution(input: {
+  projectedSlots: ReadonlyArray<ProjectedSlotWorkout>;
+  weeklyObligationPlan: WeeklyMuscleObligationPlan;
+  slotSequenceEntries: ReturnType<typeof buildSlotSequenceEntries>;
+}): ProjectedSlotWorkout[] {
+  let projectedSlots = [...input.projectedSlots];
+  const slotIndex = projectedSlots.findIndex(
+    (slot) => slot.slotPlan.slotId === "lower_b",
+  );
+  const projectedSlot = projectedSlots[slotIndex];
+  if (!projectedSlot) {
+    return projectedSlots;
+  }
+
+  const slotPolicy = resolveSessionSlotPolicy({
+    sessionIntent: toSessionIntent(projectedSlot.slotPlan.intent),
+    slotId: projectedSlot.slotPlan.slotId,
+    slotSequence: {
+      slots: input.slotSequenceEntries,
+    },
+  }).currentSession;
+  const cleanCurl = projectedSlot.workout.accessories.find(
+    (exercise) =>
+      isCleanLowerBHamstringsCurlCandidate(exercise.exercise) &&
+      exercise.sets.length < getMaxProjectedSetCount(exercise),
+  );
+  if (!cleanCurl) {
+    return projectedSlots;
+  }
+
+  const hingeDonor = getWorkoutExercises(projectedSlot.workout)
+    .filter((exercise) => exerciseMatchesMovementPattern(exercise.exercise, "hinge"))
+    .filter(
+      (exercise) =>
+        getEffectiveContributionPerSet(exercise, "Hamstrings") > 0 &&
+        exercise.sets.length > getMinimumProjectedSetCount(exercise),
+    )
+    .sort(
+      (left, right) =>
+        right.sets.length - left.sets.length ||
+        left.exercise.name.localeCompare(right.exercise.name),
+    )[0];
+  if (!hingeDonor) {
+    return projectedSlots;
+  }
+
+  const candidateWorkout = replaceWorkoutExercise(
+    replaceWorkoutExercise(projectedSlot.workout, withOneFewerSet(hingeDonor)),
+    withAdditionalAccessorySets(cleanCurl, 1),
+  );
+  if (
+    preservesSlotIdentity({ slotPolicy, workout: projectedSlot.workout }) &&
+    !preservesSlotIdentity({ slotPolicy, workout: candidateWorkout })
+  ) {
+    return projectedSlots;
+  }
+  const candidateContribution = computeWorkoutContributionByMuscle(candidateWorkout);
+  const hamstringEvaluation = evaluateSlotWeeklyObligations({
+    plan: input.weeklyObligationPlan,
+    slotId: projectedSlot.slotPlan.slotId,
+    contributionByMuscle: candidateContribution,
+  }).find((row) => row.muscle === "Hamstrings");
+  if (hamstringEvaluation && hamstringEvaluation.shortfall > SUPPORT_FLOOR_EPSILON) {
+    return projectedSlots;
+  }
+
+  projectedSlots = projectedSlots.map((slot, index) =>
+    index === slotIndex ? updateProjectedSlotWorkout(slot, candidateWorkout) : slot,
+  );
   return projectedSlots;
 }
 

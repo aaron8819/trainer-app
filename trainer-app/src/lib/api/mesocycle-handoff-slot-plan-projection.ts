@@ -40,6 +40,7 @@ import {
 } from "./mesocycle-handoff-slot-plan-projection.coverage-evaluation";
 import {
   appendAccessory,
+  applyPostForbiddenCleanupReroute,
   applyExistingAccessorySupportFloorBumps,
   applyFinalMavTrim,
   applyFinalMinimumViableSetRedistribution,
@@ -51,6 +52,7 @@ import {
   rebalanceUpperSupportProjection,
   removeForbiddenSlotPrimaryRepairExercises,
   trimRedundantUpperPullSupportProjection,
+  type ForbiddenCleanupRerouteDiagnostic,
 } from "./mesocycle-handoff-slot-plan-projection.repair-engine";
 import {
   mapProjectedWorkoutToSlotPlan,
@@ -137,6 +139,31 @@ type FailedSuccessorSlotPlanProjection = {
   diagnostics?: SuccessorSlotPlanProjection["diagnostics"];
 };
 
+function mergeForbiddenCleanupRerouteDiagnostics(
+  existing: ForbiddenCleanupRerouteDiagnostic | undefined,
+  next: ForbiddenCleanupRerouteDiagnostic,
+): ForbiddenCleanupRerouteDiagnostic | undefined {
+  if (
+    next.removedExercises.length === 0 &&
+    next.reroutedDemand.length === 0 &&
+    next.unresolvedDemand.length === 0
+  ) {
+    return existing;
+  }
+
+  return {
+    removedExercises: [
+      ...(existing?.removedExercises ?? []),
+      ...next.removedExercises,
+    ],
+    reroutedDemand: [...(existing?.reroutedDemand ?? []), ...next.reroutedDemand],
+    unresolvedDemand: [
+      ...(existing?.unresolvedDemand ?? []),
+      ...next.unresolvedDemand,
+    ],
+  };
+}
+
 function projectSlotPlansPass(input: {
   userId: string;
   source: SuccessorMesocycleProjectionSource;
@@ -156,6 +183,7 @@ function projectSlotPlansPass(input: {
       programQualityAppliedDiagnostics: ProgramQualityDiagnostic[];
       initialProjectedSlots: ProjectedSlotWorkout[];
       preselectionDemandDiagnostics: SlotPreselectionDemandDiagnostic[];
+      forbiddenCleanupReroute?: ForbiddenCleanupRerouteDiagnostic;
     }
   | { error: string } {
   const projectionContext = buildSyntheticProjectionContext({
@@ -191,6 +219,7 @@ function projectSlotPlansPass(input: {
   let accessoryLaneInsertionCount = 0;
   const programQualityAppliedDiagnostics: ProgramQualityDiagnostic[] = [];
   const preselectionDemandDiagnostics: SlotPreselectionDemandDiagnostic[] = [];
+  let forbiddenCleanupReroute: ForbiddenCleanupRerouteDiagnostic | undefined;
 
   for (const [index, slot] of slotSequence.entries()) {
     if (slot.intent === "BODY_PART") {
@@ -597,12 +626,27 @@ function projectSlotPlansPass(input: {
     projectedSlots,
     slotSequenceEntries,
   });
-  projectedSlots = applyFinalWeeklyObligationClosure({
-    projectedSlots,
-    weeklyObligationPlan,
-    exerciseLibrary: projectionContext.mapped.exerciseLibrary,
-    slotSequenceEntries,
-  });
+  if (initialForbiddenSlotRepairCleanup.removedExercises.length > 0) {
+    const initialForbiddenCleanupReroute = applyPostForbiddenCleanupReroute({
+      projectedSlots,
+      weeklyObligationPlan,
+      exerciseLibrary: projectionContext.mapped.exerciseLibrary,
+      slotSequenceEntries,
+      removedExercises: initialForbiddenSlotRepairCleanup.removedExercises,
+    });
+    projectedSlots = initialForbiddenCleanupReroute.projectedSlots;
+    forbiddenCleanupReroute = mergeForbiddenCleanupRerouteDiagnostics(
+      forbiddenCleanupReroute,
+      initialForbiddenCleanupReroute.diagnostic,
+    );
+  } else {
+    projectedSlots = applyFinalWeeklyObligationClosure({
+      projectedSlots,
+      weeklyObligationPlan,
+      exerciseLibrary: projectionContext.mapped.exerciseLibrary,
+      slotSequenceEntries,
+    });
+  }
   projectedSlots = applyFinalSetDistributionCaps({
     projectedSlots,
     slotSequenceEntries,
@@ -675,12 +719,27 @@ function projectSlotPlansPass(input: {
     supportFloorRepairReasons,
     forbiddenSlotRepairCleanup.reasons,
   );
-  projectedSlots = applyFinalWeeklyObligationClosure({
-    projectedSlots,
-    weeklyObligationPlan,
-    exerciseLibrary: projectionContext.mapped.exerciseLibrary,
-    slotSequenceEntries,
-  });
+  if (forbiddenSlotRepairCleanup.removedExercises.length > 0) {
+    const postForbiddenCleanupReroute = applyPostForbiddenCleanupReroute({
+      projectedSlots,
+      weeklyObligationPlan,
+      exerciseLibrary: projectionContext.mapped.exerciseLibrary,
+      slotSequenceEntries,
+      removedExercises: forbiddenSlotRepairCleanup.removedExercises,
+    });
+    projectedSlots = postForbiddenCleanupReroute.projectedSlots;
+    forbiddenCleanupReroute = mergeForbiddenCleanupRerouteDiagnostics(
+      forbiddenCleanupReroute,
+      postForbiddenCleanupReroute.diagnostic,
+    );
+  } else {
+    projectedSlots = applyFinalWeeklyObligationClosure({
+      projectedSlots,
+      weeklyObligationPlan,
+      exerciseLibrary: projectionContext.mapped.exerciseLibrary,
+      slotSequenceEntries,
+    });
+  }
   const postForbiddenObligationCleanup =
     removeForbiddenSlotPrimaryRepairExercises({
       projectedSlots,
@@ -690,6 +749,14 @@ function projectSlotPlansPass(input: {
   mergeSupportFloorRepairReasons(
     supportFloorRepairReasons,
     postForbiddenObligationCleanup.reasons,
+  );
+  forbiddenCleanupReroute = mergeForbiddenCleanupRerouteDiagnostics(
+    forbiddenCleanupReroute,
+    {
+      removedExercises: postForbiddenObligationCleanup.removedExercises,
+      reroutedDemand: [],
+      unresolvedDemand: [],
+    },
   );
 
   return {
@@ -702,6 +769,7 @@ function projectSlotPlansPass(input: {
     programQualityAppliedDiagnostics,
     initialProjectedSlots,
     preselectionDemandDiagnostics,
+    ...(forbiddenCleanupReroute ? { forbiddenCleanupReroute } : {}),
   };
 }
 
@@ -1146,6 +1214,7 @@ export function projectSuccessorSlotPlansFromSnapshot(input: {
     programQualityAppliedDiagnostics: programQuality.appliedDiagnostics,
     programQualityEvaluation,
     preselectionDemands: pass.preselectionDemandDiagnostics,
+    forbiddenCleanupReroute: pass.forbiddenCleanupReroute,
   });
   if (blockingDeficits.length > 0) {
     return {

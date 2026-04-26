@@ -45,6 +45,7 @@ import {
   MAX_PROJECTED_MAIN_LIFT_SETS_PER_EXERCISE,
   MIN_PROJECTED_ACCESSORY_SETS_PER_EXERCISE,
   MIN_PROJECTED_MAIN_LIFT_SETS_PER_EXERCISE,
+  type ForbiddenCleanupRerouteDiagnostic,
 } from "./mesocycle-handoff-slot-plan-projection.repair-engine";
 import {
   getSlotWeeklyObligations,
@@ -409,6 +410,7 @@ export type SlotPlanPlanningRealityDiagnostic = {
   suspiciousRepairsNotEligibleForPromotion: SuspiciousRepairNotEligibleForPromotion[];
   promotionCandidates: PromotionCandidate[];
   slotPrescriptionIntents: SlotPrescriptionIntent[];
+  forbiddenCleanupReroute?: ForbiddenCleanupRerouteDiagnostic;
   rearDeltCollateralSummary?: RearDeltCollateralSummary;
   projectedDelivery: ProjectedDeliveryDiagnostic[];
   repairMateriality: RepairMaterialityDiagnostic[];
@@ -3140,6 +3142,7 @@ export function buildWeeklyDemandSlotAllocationDiagnostic(input: {
   programQualityAppliedDiagnostics: ReadonlyArray<ProgramQualityDiagnostic>;
   programQualityEvaluation: ProgramQualityEvaluation;
   preselectionDemands?: ReadonlyArray<PreselectionDemandDiagnosticLike>;
+  forbiddenCleanupReroute?: ForbiddenCleanupRerouteDiagnostic;
 }): SlotPlanPlanningRealityDiagnostic {
   const relevantMuscles = collectRelevantMuscles({
     initialProjectedSlots: input.initialProjectedSlots,
@@ -3301,6 +3304,9 @@ export function buildWeeklyDemandSlotAllocationDiagnostic(input: {
     suspiciousRepairsNotEligibleForPromotion,
     promotionCandidates,
     slotPrescriptionIntents,
+    ...(input.forbiddenCleanupReroute
+      ? { forbiddenCleanupReroute: input.forbiddenCleanupReroute }
+      : {}),
     ...(rearDeltCollateralSummary ? { rearDeltCollateralSummary } : {}),
     projectedDelivery,
     repairMateriality,

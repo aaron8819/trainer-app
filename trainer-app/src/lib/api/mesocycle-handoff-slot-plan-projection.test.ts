@@ -27,8 +27,10 @@ import {
 import {
   applyExistingAccessorySupportFloorBumps,
   applyFinalMinimumViableSetRedistribution,
+  applyPostForbiddenCleanupReroute,
   MIN_PROJECTED_ACCESSORY_SETS_PER_EXERCISE,
   MIN_PROJECTED_MAIN_LIFT_SETS_PER_EXERCISE,
+  removeForbiddenSlotPrimaryRepairExercises,
 } from "./mesocycle-handoff-slot-plan-projection.repair-engine";
 import {
   applyProgramQualityConstraints,
@@ -3265,9 +3267,20 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     const lowerB = slotPlans.find((slot) => slot.slotId === "lower_b");
 
     for (const row of [chest, lats, quads, hamstrings]) {
-      expect(row?.projectedEffectiveSets ?? 0).toBeGreaterThanOrEqual(
-        row?.mev ?? 0,
-      );
+      if ((row?.projectedEffectiveSets ?? 0) < (row?.mev ?? 0)) {
+        expect(
+          projected.diagnostics?.planningReality?.forbiddenCleanupReroute
+            ?.unresolvedDemand,
+        ).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ muscle: row?.muscle }),
+          ]),
+        );
+      } else {
+        expect(row?.projectedEffectiveSets ?? 0).toBeGreaterThanOrEqual(
+          row?.mev ?? 0,
+        );
+      }
     }
     expect(calves?.projectedEffectiveSets).toBeGreaterThanOrEqual(8);
     expect(sideDelts?.projectedEffectiveSets).toBeGreaterThanOrEqual(8);
@@ -3563,6 +3576,270 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
         exerciseId: "cable-crossover",
         exerciseName: "Cable Crossover",
       },
+    ]);
+  });
+
+  it("reroutes only hard demand affected by forbidden cleanup into compatible owning slots", () => {
+    const slotSequenceEntries = buildSlotSequenceEntries([
+      {
+        slotId: "upper_a",
+        intent: "UPPER",
+        authoredSemantics: {
+          slotArchetype: "upper_horizontal_balanced",
+          primaryLaneContract: null,
+          continuityScope: "slot",
+          supportCoverageContract: {
+            preferredAccessoryPrimaryMuscles: ["Chest"],
+            protectedWeekOneCoverageMuscles: ["Chest"],
+          },
+        },
+      },
+      {
+        slotId: "lower_b",
+        intent: "LOWER",
+        authoredSemantics: {
+          slotArchetype: "lower_hinge_dominant",
+          primaryLaneContract: null,
+          continuityScope: "slot",
+          supportCoverageContract: {
+            preferredAccessoryPrimaryMuscles: ["Hamstrings"],
+            protectedWeekOneCoverageMuscles: ["Hamstrings"],
+          },
+        },
+      },
+    ]);
+    const bench = makeProjectedExercise({
+      id: "bench",
+      name: "Bench Press",
+      movementPatterns: ["horizontal_push"],
+      primaryMuscles: ["Chest"],
+      sets: 2,
+      isMainLift: true,
+      stimulusProfile: { chest: 1 },
+    });
+    const cableCrossover = makeProjectedExercise({
+      id: "cable-crossover",
+      name: "Cable Crossover",
+      movementPatterns: ["isolation"],
+      primaryMuscles: ["Chest"],
+      sets: 3,
+      isCompound: false,
+      fatigueCost: 1,
+      stimulusProfile: { chest: 1 },
+    });
+    const cableFly = makeProjectedExercise({
+      id: "cable-fly",
+      name: "Cable Fly",
+      movementPatterns: ["isolation"],
+      primaryMuscles: ["Chest"],
+      sets: 3,
+      isCompound: false,
+      fatigueCost: 1,
+      stimulusProfile: { chest: 1 },
+    });
+    const gobletSquat = makeProjectedExercise({
+      id: "goblet-squat",
+      name: "Goblet Squat",
+      movementPatterns: ["squat"],
+      primaryMuscles: ["Quads", "Glutes"],
+      sets: 3,
+      isCompound: true,
+      fatigueCost: 3,
+      stimulusProfile: { quads: 1, glutes: 0.75, adductors: 0.5, core: 0.25 },
+    });
+    const cleanup = removeForbiddenSlotPrimaryRepairExercises({
+      projectedSlots: [
+        makeProjectedSlotWithContributions({
+          slotId: "upper_a",
+          intent: "UPPER",
+          workout: makeProjectedWorkout({ mainLifts: [bench] }),
+        }),
+        makeProjectedSlotWithContributions({
+          slotId: "lower_b",
+          intent: "LOWER",
+          workout: makeProjectedWorkout({ accessories: [cableCrossover] }),
+        }),
+      ],
+      slotSequenceEntries,
+    });
+
+    const rerouted = applyPostForbiddenCleanupReroute({
+      projectedSlots: cleanup.projectedSlots,
+      weeklyObligationPlan: weeklyObligationPlan({
+        Chest: {
+          targetSets: 5,
+          allocatedSlots: [
+            { slotId: "upper_a", minEffectiveSets: 5, priority: "primary" },
+          ],
+        },
+        Quads: {
+          targetSets: 5,
+          allocatedSlots: [
+            { slotId: "lower_b", minEffectiveSets: 5, priority: "primary" },
+          ],
+        },
+      }),
+      exerciseLibrary: [cableFly.exercise, gobletSquat.exercise] as never,
+      slotSequenceEntries,
+      removedExercises: cleanup.removedExercises,
+    });
+
+    const upperA = rerouted.projectedSlots.find(
+      (slot) => slot.slotPlan.slotId === "upper_a",
+    )?.slotPlan;
+    const lowerB = rerouted.projectedSlots.find(
+      (slot) => slot.slotPlan.slotId === "lower_b",
+    )?.slotPlan;
+
+    expect(cleanup.removedExercises).toEqual([
+      expect.objectContaining({
+        slotId: "lower_b",
+        exerciseId: "cable-crossover",
+        exerciseName: "Cable Crossover",
+        forbiddenPrimaryMuscles: ["Chest"],
+        effectiveStimulusRemovedByMuscle: { Chest: 3 },
+      }),
+    ]);
+    expect(upperA?.exercises.map((exercise) => exercise.exerciseId)).toEqual(
+      expect.arrayContaining(["bench", "cable-fly"]),
+    );
+    expect(lowerB?.exercises.map((exercise) => exercise.exerciseId)).toEqual(
+      [],
+    );
+    expect(JSON.stringify(rerouted.projectedSlots)).not.toContain(
+      "goblet-squat",
+    );
+    expect(rerouted.diagnostic.reroutedDemand).toEqual([
+      expect.objectContaining({
+        muscle: "Chest",
+        fromSlotId: "lower_b",
+        toSlotId: "upper_a",
+        action: "add_alternative",
+        reason: "clean_compatible_alternative",
+      }),
+    ]);
+    expect(rerouted.diagnostic.reroutedDemand).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ muscle: "Quads" }),
+        expect.objectContaining({ muscle: "Hamstrings" }),
+        expect.objectContaining({ muscle: "Calves" }),
+        expect.objectContaining({ muscle: "Side Delts" }),
+      ]),
+    );
+  });
+
+  it("leaves affected hard demand unresolved instead of inserting collateral-heavy repairs", () => {
+    const slotSequenceEntries = buildSlotSequenceEntries([
+      {
+        slotId: "upper_a",
+        intent: "UPPER",
+        authoredSemantics: {
+          slotArchetype: "upper_horizontal_balanced",
+          primaryLaneContract: null,
+          continuityScope: "slot",
+          supportCoverageContract: {
+            preferredAccessoryPrimaryMuscles: ["Chest"],
+            protectedWeekOneCoverageMuscles: ["Chest"],
+          },
+        },
+      },
+      {
+        slotId: "lower_b",
+        intent: "LOWER",
+        authoredSemantics: {
+          slotArchetype: "lower_hinge_dominant",
+          primaryLaneContract: null,
+          continuityScope: "slot",
+          supportCoverageContract: {
+            preferredAccessoryPrimaryMuscles: ["Hamstrings"],
+            protectedWeekOneCoverageMuscles: ["Hamstrings"],
+          },
+        },
+      },
+    ]);
+    const fillers = Array.from({ length: 6 }, (_, index) =>
+      makeProjectedExercise({
+        id: `upper-filler-${index}`,
+        name: `Upper Filler ${index}`,
+        movementPatterns: ["horizontal_pull"],
+        primaryMuscles: ["Lats"],
+        sets: 2,
+        stimulusProfile: { lats: 1 },
+      }),
+    );
+    const cableCrossover = makeProjectedExercise({
+      id: "cable-crossover",
+      name: "Cable Crossover",
+      movementPatterns: ["isolation"],
+      primaryMuscles: ["Chest"],
+      sets: 3,
+      isCompound: false,
+      fatigueCost: 1,
+      stimulusProfile: { chest: 1 },
+    });
+    const gobletSquat = makeProjectedExercise({
+      id: "goblet-squat",
+      name: "Goblet Squat",
+      movementPatterns: ["squat"],
+      primaryMuscles: ["Quads", "Glutes"],
+      sets: 3,
+      isCompound: true,
+      fatigueCost: 3,
+      stimulusProfile: { quads: 1, glutes: 0.75, adductors: 0.5, core: 0.25 },
+    });
+    const cleanup = removeForbiddenSlotPrimaryRepairExercises({
+      projectedSlots: [
+        makeProjectedSlotWithContributions({
+          slotId: "upper_a",
+          intent: "UPPER",
+          workout: makeProjectedWorkout({ accessories: fillers }),
+        }),
+        makeProjectedSlotWithContributions({
+          slotId: "lower_b",
+          intent: "LOWER",
+          workout: makeProjectedWorkout({ accessories: [cableCrossover] }),
+        }),
+      ],
+      slotSequenceEntries,
+    });
+
+    const rerouted = applyPostForbiddenCleanupReroute({
+      projectedSlots: cleanup.projectedSlots,
+      weeklyObligationPlan: weeklyObligationPlan({
+        Chest: {
+          targetSets: 5,
+          allocatedSlots: [
+            { slotId: "upper_a", minEffectiveSets: 5, priority: "primary" },
+          ],
+        },
+        Quads: {
+          targetSets: 5,
+          allocatedSlots: [
+            { slotId: "lower_b", minEffectiveSets: 5, priority: "primary" },
+          ],
+        },
+      }),
+      exerciseLibrary: [gobletSquat.exercise] as never,
+      slotSequenceEntries,
+      removedExercises: cleanup.removedExercises,
+    });
+
+    expect(JSON.stringify(rerouted.projectedSlots)).not.toContain(
+      "goblet-squat",
+    );
+    expect(rerouted.diagnostic.reroutedDemand).toEqual([
+      expect.objectContaining({
+        muscle: "Chest",
+        action: "unresolved",
+        reason: "no_clean_capacity_for_alternative",
+      }),
+    ]);
+    expect(rerouted.diagnostic.unresolvedDemand).toEqual([
+      expect.objectContaining({
+        muscle: "Chest",
+        amount: 3,
+        reason: "affected_hard_demand_not_cleanly_rerouted",
+      }),
     ]);
   });
 

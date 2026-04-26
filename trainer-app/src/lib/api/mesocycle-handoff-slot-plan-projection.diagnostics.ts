@@ -394,6 +394,60 @@ export type SlotPrescriptionIntent = {
   };
 };
 
+export type SetDistributionIntent = {
+  version: 1;
+  slotId: string;
+  slotIndex: number;
+  intent: string;
+  slotArchetype: string | null;
+  musclePolicies: Array<{
+    muscle: string;
+    role: "primary" | "support" | "secondary" | "implicit" | "collateral";
+    targetStatus: "hard" | "soft" | "diagnostic" | "forbidden";
+    demandType:
+      | "direct_required"
+      | "overlap_preferred"
+      | "direct_if_under_floor"
+      | "soft_direct_allowed"
+      | "diagnostic_only"
+      | "do_not_train_here";
+    preferredEffectiveSets: number | null;
+    minEffectiveSets: number | null;
+    maxEffectiveSets: number | null;
+    maxSingleExerciseShare: number | null;
+    maxSinglePatternShare: number | null;
+    maxSetsPerExercise: number | null;
+    maxDirectExercises: number | null;
+    maxDuplicateExerciseClasses: number | null;
+    preferredDistribution:
+      | "single_anchor_plus_accessory"
+      | "two_exercise_split"
+      | "overlap_first"
+      | "direct_isolation_only_if_needed"
+      | "diagnostic_only"
+      | "forbidden";
+    whenAtLimit:
+      | "prefer_alternative"
+      | "do_not_bump"
+      | "leave_unresolved"
+      | "allow_if_no_clean_alternative";
+  }>;
+  slotBudget: {
+    preferredTotalSets: number;
+    maxTotalSets: number;
+    maxMainLifts: number;
+    maxAccessories: number;
+    maxDirectIsolationExercises: number;
+  };
+  evidence: {
+    concentrationRows: string[];
+    capCleanupRows: string[];
+    repairRowsStillRepairOwned: string[];
+  };
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+};
+
 export type SlotPlanPlanningRealityDiagnostic = {
   label: "weekly demand / slot allocation diagnostics";
   readOnly: true;
@@ -427,6 +481,7 @@ export type SlotPlanPlanningRealityDiagnostic = {
   promotionCandidates: PromotionCandidate[];
   weakPreselectionConsumption: WeakPreselectionConsumptionDiagnostic[];
   slotPrescriptionIntents: SlotPrescriptionIntent[];
+  setDistributionIntents: SetDistributionIntent[];
   forbiddenCleanupReroute?: ForbiddenCleanupRerouteDiagnostic;
   rearDeltCollateralSummary?: RearDeltCollateralSummary;
   projectedDelivery: ProjectedDeliveryDiagnostic[];
@@ -2172,6 +2227,256 @@ function buildSlotPrescriptionIntents(input: {
   });
 }
 
+type SetDistributionMusclePolicy = SetDistributionIntent["musclePolicies"][number];
+
+const SET_DISTRIBUTION_MAX_MAIN_LIFTS = 2;
+
+function countDirectExercisesForMuscle(
+  slot: SlotCompositionSnapshotDiagnostic | undefined,
+  muscle: string
+): number {
+  return (
+    slot?.exercises.filter((exercise) =>
+      exercise.primaryMuscles.map(normalizeMuscle).includes(muscle)
+    ).length ?? 0
+  );
+}
+
+function getPreferredDistribution(input: {
+  prescription: MusclePrescription;
+  finalSlot: SlotCompositionSnapshotDiagnostic | undefined;
+}): SetDistributionMusclePolicy["preferredDistribution"] {
+  const muscle = input.prescription.muscle;
+  if (input.prescription.targetStatus === "forbidden") {
+    return "forbidden";
+  }
+  if (
+    input.prescription.targetStatus === "diagnostic" ||
+    input.prescription.demandType === "diagnostic_only"
+  ) {
+    return "diagnostic_only";
+  }
+  if (muscle === "Chest" || muscle === "Lats" || muscle === "Quads" || muscle === "Hamstrings") {
+    return "two_exercise_split";
+  }
+  if (muscle === "Side Delts") {
+    return countDirectExercisesForMuscle(input.finalSlot, muscle) > 1
+      ? "two_exercise_split"
+      : "overlap_first";
+  }
+  if (muscle === "Rear Delts" || muscle === "Calves") {
+    return "direct_isolation_only_if_needed";
+  }
+  if (muscle === "Triceps" || muscle === "Biceps") {
+    return "overlap_first";
+  }
+  return input.prescription.role === "primary"
+    ? "single_anchor_plus_accessory"
+    : "direct_isolation_only_if_needed";
+}
+
+function getWhenAtLimit(
+  prescription: MusclePrescription
+): SetDistributionMusclePolicy["whenAtLimit"] {
+  const muscle = prescription.muscle;
+  if (prescription.targetStatus === "forbidden") {
+    return "do_not_bump";
+  }
+  if (
+    prescription.targetStatus === "diagnostic" ||
+    prescription.demandType === "diagnostic_only"
+  ) {
+    return "leave_unresolved";
+  }
+  if (muscle === "Triceps" || muscle === "Biceps") {
+    return prescription.demandType === "direct_if_under_floor"
+      ? "allow_if_no_clean_alternative"
+      : "do_not_bump";
+  }
+  if (muscle === "Calves") {
+    return "allow_if_no_clean_alternative";
+  }
+  return "prefer_alternative";
+}
+
+function getMaxDirectExercises(
+  prescription: MusclePrescription
+): number | null {
+  if (prescription.targetStatus === "forbidden") {
+    return 0;
+  }
+  if (prescription.targetStatus === "diagnostic") {
+    return null;
+  }
+  if (
+    prescription.muscle === "Chest" ||
+    prescription.muscle === "Lats" ||
+    prescription.muscle === "Quads" ||
+    prescription.muscle === "Hamstrings"
+  ) {
+    return 2;
+  }
+  return 1;
+}
+
+function getMaxSetsPerExercise(input: {
+  prescription: MusclePrescription;
+  slotIntent: SlotPrescriptionIntent;
+}): number | null {
+  if (input.prescription.targetStatus === "forbidden") {
+    return 0;
+  }
+  if (input.prescription.targetStatus === "diagnostic") {
+    return null;
+  }
+  return input.prescription.role === "primary"
+    ? input.slotIntent.setBudget.maxSetsPerMain
+    : input.slotIntent.setBudget.maxSetsPerAccessory;
+}
+
+function formatConcentrationEvidenceRow(
+  row: ExerciseConcentrationDiagnostic
+): string[] {
+  const highShareRows = Object.entries(row.percentageOfWeeklyProjectedStimulusByMuscle)
+    .filter(([, percent]) => percent >= 50)
+    .sort(([leftMuscle], [rightMuscle]) => leftMuscle.localeCompare(rightMuscle))
+    .map(
+      ([muscle, percent]) =>
+        `${row.slotId}:${row.exerciseName}:${muscle}:${roundToTenth(percent)}%`
+    );
+
+  if (highShareRows.length > 0) {
+    return highShareRows;
+  }
+  if (
+    row.flags.includes("COMPOUND_GT_5_SETS") ||
+    row.flags.includes("ISOLATION_GT_5_SETS")
+  ) {
+    return [`${row.slotId}:${row.exerciseName}:sets:${row.setCount}`];
+  }
+  return [];
+}
+
+function formatCapCleanupRow(row: ShadowRepairMaterialityDiagnostic): string {
+  const slotId = row.slotId ?? "week";
+  const exercise = row.exerciseName ?? row.exerciseId ?? "unknown exercise";
+  const delta = row.rawSetDelta !== 0 ? row.rawSetDelta : row.action;
+  return `${slotId}:${exercise}:${delta}`;
+}
+
+function formatStillRepairOwnedRow(row: ShadowRepairMaterialityDiagnostic): string | null {
+  if (!row.muscle && !row.exerciseName && !row.exerciseId) {
+    return null;
+  }
+  const slotId = row.slotId ?? "week";
+  const exercise = row.exerciseName ?? row.exerciseId ?? "unknown exercise";
+  const muscle = row.muscle ?? "unknown muscle";
+  return `${slotId}:${exercise}:${muscle}:${row.shadowAllocationBasis}`;
+}
+
+function buildSetDistributionIntents(input: {
+  slotPrescriptionIntents: ReadonlyArray<SlotPrescriptionIntent>;
+  finalSlotPlan: ReadonlyArray<SlotCompositionSnapshotDiagnostic>;
+  exerciseConcentration: ReadonlyArray<ExerciseConcentrationDiagnostic>;
+  repairMaterialityAfterShadowAllocation: ReadonlyArray<ShadowRepairMaterialityDiagnostic>;
+}): SetDistributionIntent[] {
+  const finalSlotById = new Map(input.finalSlotPlan.map((slot) => [slot.slotId, slot]));
+  const concentrationRowsBySlotId = new Map<string, string[]>();
+  for (const row of input.exerciseConcentration) {
+    for (const evidence of formatConcentrationEvidenceRow(row)) {
+      concentrationRowsBySlotId.set(row.slotId, [
+        ...(concentrationRowsBySlotId.get(row.slotId) ?? []),
+        evidence,
+      ]);
+    }
+  }
+  const capCleanupRowsBySlotId = new Map<string, string[]>();
+  const stillRepairRowsBySlotId = new Map<string, string[]>();
+  for (const row of input.repairMaterialityAfterShadowAllocation) {
+    if (!row.slotId) {
+      continue;
+    }
+    if (row.action === "set_trimmed" || row.action === "removed") {
+      capCleanupRowsBySlotId.set(row.slotId, [
+        ...(capCleanupRowsBySlotId.get(row.slotId) ?? []),
+        formatCapCleanupRow(row),
+      ]);
+    }
+    if (
+      !row.likelyAvoidableWithShadowAllocation ||
+      row.action === "set_trimmed" ||
+      row.action === "removed"
+    ) {
+      const evidence = formatStillRepairOwnedRow(row);
+      if (!evidence) {
+        continue;
+      }
+      stillRepairRowsBySlotId.set(row.slotId, [
+        ...(stillRepairRowsBySlotId.get(row.slotId) ?? []),
+        evidence,
+      ]);
+    }
+  }
+
+  return input.slotPrescriptionIntents.map((slotIntent) => {
+    const finalSlot = finalSlotById.get(slotIntent.slotId);
+    return {
+      version: 1,
+      slotId: slotIntent.slotId,
+      slotIndex: slotIntent.slotIndex,
+      intent: slotIntent.intent,
+      slotArchetype: slotIntent.slotArchetype,
+      musclePolicies: slotIntent.musclePrescriptions.map((prescription) => ({
+        muscle: prescription.muscle,
+        role: prescription.role,
+        targetStatus: prescription.targetStatus,
+        demandType: prescription.demandType,
+        preferredEffectiveSets: prescription.desiredEffectiveSets,
+        minEffectiveSets: prescription.minEffectiveSets,
+        maxEffectiveSets: prescription.maxEffectiveSets,
+        maxSingleExerciseShare:
+          prescription.targetStatus === "diagnostic"
+            ? null
+            : slotIntent.diversityBudget.maxExerciseShareByMuscle,
+        maxSinglePatternShare:
+          prescription.targetStatus === "diagnostic"
+            ? null
+            : slotIntent.diversityBudget.maxPatternShareByMuscle,
+        maxSetsPerExercise: getMaxSetsPerExercise({ prescription, slotIntent }),
+        maxDirectExercises: getMaxDirectExercises(prescription),
+        maxDuplicateExerciseClasses:
+          prescription.targetStatus === "diagnostic"
+            ? null
+            : prescription.targetStatus === "forbidden"
+              ? 0
+              : slotIntent.diversityBudget.maxDuplicateIsolationVariantsByMuscle,
+        preferredDistribution: getPreferredDistribution({ prescription, finalSlot }),
+        whenAtLimit: getWhenAtLimit(prescription),
+      })),
+      slotBudget: {
+        preferredTotalSets: slotIntent.setBudget.preferredTotalSets,
+        maxTotalSets: slotIntent.setBudget.maxTotalSets,
+        maxMainLifts: Math.min(SET_DISTRIBUTION_MAX_MAIN_LIFTS, SESSION_CAPS.maxExercises),
+        maxAccessories: Math.max(0, SESSION_CAPS.maxExercises - 1),
+        maxDirectIsolationExercises: slotIntent.setBudget.maxDirectIsolationExercises ?? 0,
+      },
+      evidence: {
+        concentrationRows: sortPrescriptionStrings(
+          concentrationRowsBySlotId.get(slotIntent.slotId) ?? []
+        ),
+        capCleanupRows: sortPrescriptionStrings(
+          capCleanupRowsBySlotId.get(slotIntent.slotId) ?? []
+        ),
+        repairRowsStillRepairOwned: sortPrescriptionStrings(
+          stillRepairRowsBySlotId.get(slotIntent.slotId) ?? []
+        ),
+      },
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+    };
+  });
+}
+
 function buildSlotDemandAllocation(input: {
   slotSequence: ReadonlyArray<SlotSequenceEntry>;
   weeklyObligationPlan: WeeklyMuscleObligationPlan;
@@ -3290,6 +3595,12 @@ export function buildWeeklyDemandSlotAllocationDiagnostic(input: {
     initialProjectedSlots: input.initialProjectedSlots,
     finalProjectedSlots: input.finalProjectedSlots,
   });
+  const setDistributionIntents = buildSetDistributionIntents({
+    slotPrescriptionIntents,
+    finalSlotPlan,
+    exerciseConcentration,
+    repairMaterialityAfterShadowAllocation,
+  });
   const rearDeltCollateralSummary = buildRearDeltCollateralSummary({
     initialProjectedSlots: input.initialProjectedSlots,
     finalProjectedSlots: input.finalProjectedSlots,
@@ -3353,6 +3664,7 @@ export function buildWeeklyDemandSlotAllocationDiagnostic(input: {
     promotionCandidates,
     weakPreselectionConsumption,
     slotPrescriptionIntents,
+    setDistributionIntents,
     ...(input.forbiddenCleanupReroute
       ? { forbiddenCleanupReroute: input.forbiddenCleanupReroute }
       : {}),

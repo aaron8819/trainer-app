@@ -848,6 +848,108 @@ describe("buildPlanningRealitySummary", () => {
     );
   });
 
+  it("prints compact set distribution intent evidence when present", () => {
+    const summary = buildPlanningRealitySummary({
+      artifact: {
+        mesocycleExplain: {
+          preview: {
+            projectionDiagnostics: {
+              planningReality: {
+                summary: {
+                  planningShape: "mostly_repair_shaped",
+                  explicitWeeklyDemandMuscles: 4,
+                  inferredDemandMuscles: 3,
+                  slotsWithExplicitWeeklyDemand: 2,
+                  slotsWithOnlyLocalOrInferredSemantics: 1,
+                  materialRepairCount: 22,
+                  majorRepairCount: 14,
+                  highExerciseConcentrationCount: 4,
+                  warningCodes: [],
+                },
+                setDistributionIntents: [
+                  {
+                    version: 1,
+                    slotId: "upper_b",
+                    slotIndex: 2,
+                    intent: "upper",
+                    slotArchetype: "upper_vertical_balanced",
+                    musclePolicies: [
+                      {
+                        muscle: "Chest",
+                        role: "primary",
+                        targetStatus: "hard",
+                        demandType: "direct_required",
+                        preferredEffectiveSets: 5,
+                        minEffectiveSets: 5,
+                        maxEffectiveSets: 16,
+                        maxSingleExerciseShare: 0.5,
+                        maxSinglePatternShare: 0.7,
+                        maxSetsPerExercise: 5,
+                        maxDirectExercises: 2,
+                        maxDuplicateExerciseClasses: 1,
+                        preferredDistribution: "two_exercise_split",
+                        whenAtLimit: "prefer_alternative",
+                      },
+                      {
+                        muscle: "Upper Back",
+                        role: "collateral",
+                        targetStatus: "diagnostic",
+                        demandType: "diagnostic_only",
+                        preferredEffectiveSets: null,
+                        minEffectiveSets: null,
+                        maxEffectiveSets: null,
+                        maxSingleExerciseShare: null,
+                        maxSinglePatternShare: null,
+                        maxSetsPerExercise: null,
+                        maxDirectExercises: null,
+                        maxDuplicateExerciseClasses: null,
+                        preferredDistribution: "diagnostic_only",
+                        whenAtLimit: "leave_unresolved",
+                      },
+                    ],
+                    slotBudget: {
+                      preferredTotalSets: 18,
+                      maxTotalSets: 25,
+                      maxMainLifts: 2,
+                      maxAccessories: 5,
+                      maxDirectIsolationExercises: 2,
+                    },
+                    evidence: {
+                      concentrationRows: [
+                        "upper_b:Incline DB Bench:Chest:57.1%",
+                      ],
+                      capCleanupRows: ["upper_b:Cable Pullover:-2"],
+                      repairRowsStillRepairOwned: [
+                        "upper_b:Cable Pullover:Lats:diagnostic_or_cap_cleanup",
+                      ],
+                    },
+                    readOnly: true,
+                    affectsScoringOrGeneration: false,
+                  },
+                ],
+              },
+            },
+          },
+        },
+      },
+    });
+
+    expect(summary).toEqual(
+      expect.arrayContaining([
+        "Set Distribution Intent",
+        "-----------------------",
+        "High concentration:",
+        "- upper_b:Incline DB Bench:Chest:57.1%",
+        "Cap cleanup:",
+        "- upper_b:Cable Pullover:-2",
+        "Likely next policy:",
+        "- avoid set-bumping concentrated exercises",
+        "- leave collateral or no-clean-path demand unresolved",
+        "- prefer clean alternative before cap cleanup",
+      ])
+    );
+  });
+
   it("returns null when mesocycle-explain does not include planningReality", () => {
     expect(
       buildPlanningRealitySummary({

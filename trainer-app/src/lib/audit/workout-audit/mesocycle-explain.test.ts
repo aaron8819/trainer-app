@@ -701,6 +701,49 @@ describe("buildMesocycleExplainAuditPayload", () => {
               },
             },
           ],
+          setDistributionIntents: [
+            {
+              version: 1,
+              slotId: "upper_a",
+              slotIndex: 0,
+              intent: "upper",
+              slotArchetype: "upper_primary",
+              musclePolicies: [
+                {
+                  muscle: "Chest",
+                  role: "primary",
+                  targetStatus: "hard",
+                  demandType: "direct_required",
+                  preferredEffectiveSets: 4,
+                  minEffectiveSets: 4,
+                  maxEffectiveSets: 16,
+                  maxSingleExerciseShare: 0.5,
+                  maxSinglePatternShare: 0.7,
+                  maxSetsPerExercise: 5,
+                  maxDirectExercises: 2,
+                  maxDuplicateExerciseClasses: 1,
+                  preferredDistribution: "two_exercise_split",
+                  whenAtLimit: "prefer_alternative",
+                },
+              ],
+              slotBudget: {
+                preferredTotalSets: 10,
+                maxTotalSets: 25,
+                maxMainLifts: 2,
+                maxAccessories: 5,
+                maxDirectIsolationExercises: 2,
+              },
+              evidence: {
+                concentrationRows: [
+                  "upper_a:Incline Dumbbell Press:Chest:57.1%",
+                ],
+                capCleanupRows: [],
+                repairRowsStillRepairOwned: [],
+              },
+              readOnly: true,
+              affectsScoringOrGeneration: false,
+            },
+          ],
           rearDeltCollateralSummary: {
             directRearDeltStimulusBefore: 0,
             directRearDeltStimulusAfter: 2,
@@ -988,6 +1031,25 @@ describe("buildMesocycleExplainAuditPayload", () => {
             diagnostic: expect.objectContaining({
               priorRepairsPrevented: [
                 "upper_a:Chest:direct_required:slot_preselection_demand",
+              ],
+            }),
+          }),
+        ],
+        setDistributionIntents: [
+          expect.objectContaining({
+            slotId: "upper_a",
+            readOnly: true,
+            affectsScoringOrGeneration: false,
+            musclePolicies: [
+              expect.objectContaining({
+                muscle: "Chest",
+                preferredDistribution: "two_exercise_split",
+                whenAtLimit: "prefer_alternative",
+              }),
+            ],
+            evidence: expect.objectContaining({
+              concentrationRows: [
+                "upper_a:Incline Dumbbell Press:Chest:57.1%",
               ],
             }),
           }),

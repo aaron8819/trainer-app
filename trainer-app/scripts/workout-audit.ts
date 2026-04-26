@@ -361,6 +361,60 @@ function formatPromotionCandidates(
   return remaining > 0 ? [...lines, `- +${remaining} more`] : lines;
 }
 
+function formatUniqueEvidenceRows(values: string[], limit = 8): string[] {
+  const rows = Array.from(new Set(values))
+    .filter((value) => value.trim().length > 0)
+    .sort((left, right) => left.localeCompare(right));
+  if (rows.length === 0) {
+    return ["- none"];
+  }
+  const lines = rows.slice(0, limit).map((row) => `- ${row}`);
+  const remaining = rows.length - limit;
+  return remaining > 0 ? [...lines, `- +${remaining} more`] : lines;
+}
+
+function buildSetDistributionSummaryLines(
+  intents: PlanningRealityDiagnostic["setDistributionIntents"] | null | undefined
+): string[] | null {
+  const rows = asArray(intents);
+  if (rows.length === 0) {
+    return null;
+  }
+  const concentrationRows = rows.flatMap((intent) =>
+    asArray(intent.evidence?.concentrationRows)
+  );
+  const capCleanupRows = rows.flatMap((intent) =>
+    asArray(intent.evidence?.capCleanupRows)
+  );
+  const unresolvedPolicyCount = rows.flatMap((intent) =>
+    asArray(intent.musclePolicies)
+  ).filter((policy) => policy.whenAtLimit === "leave_unresolved").length;
+  const likelyPolicyRows = [
+    ...(concentrationRows.length > 0
+      ? ["avoid set-bumping concentrated exercises"]
+      : []),
+    ...(capCleanupRows.length > 0
+      ? ["prefer clean alternative before cap cleanup"]
+      : []),
+    ...(unresolvedPolicyCount > 0
+      ? ["leave collateral or no-clean-path demand unresolved"]
+      : []),
+  ];
+
+  return [
+    "Set Distribution Intent",
+    "-----------------------",
+    "High concentration:",
+    ...formatUniqueEvidenceRows(concentrationRows, 6),
+    "",
+    "Cap cleanup:",
+    ...formatUniqueEvidenceRows(capCleanupRows, 6),
+    "",
+    "Likely next policy:",
+    ...formatUniqueEvidenceRows(likelyPolicyRows, 6),
+  ];
+}
+
 function formatPlanningRealityArchitectureImplication(
   planningShape: string | null | undefined,
   shadowRepairSignal?: {
@@ -727,6 +781,13 @@ export function buildPlanningRealitySummary(input: {
     if (remaining > 0) {
       lines.push(`- +${remaining} more`);
     }
+  }
+
+  const setDistributionSummary = buildSetDistributionSummaryLines(
+    planningReality.setDistributionIntents
+  );
+  if (setDistributionSummary) {
+    lines.push("", ...setDistributionSummary);
   }
 
   lines.push("", "Slot allocation:");

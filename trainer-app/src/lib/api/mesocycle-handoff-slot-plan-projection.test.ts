@@ -2261,7 +2261,9 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
       ]),
     );
     expect(diagnostic?.slotPrescriptionIntents).toEqual(expect.any(Array));
+    expect(diagnostic?.setDistributionIntents).toEqual(expect.any(Array));
     const slotPrescriptionIntents = diagnostic?.slotPrescriptionIntents ?? [];
+    const setDistributionIntents = diagnostic?.setDistributionIntents ?? [];
     const upperAIntent = slotPrescriptionIntents.find(
       (intent) => intent.slotId === "upper_a",
     );
@@ -2295,6 +2297,31 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     const lowerBHams = lowerBIntent?.musclePrescriptions.find(
       (row) => row.muscle === "Hamstrings",
     );
+    const upperASetDistribution = setDistributionIntents.find(
+      (intent) => intent.slotId === "upper_a",
+    );
+    const upperBSetDistribution = setDistributionIntents.find(
+      (intent) => intent.slotId === "upper_b",
+    );
+    const lowerBSetDistribution = setDistributionIntents.find(
+      (intent) => intent.slotId === "lower_b",
+    );
+    const upperAChestDistribution =
+      upperASetDistribution?.musclePolicies.find(
+        (row) => row.muscle === "Chest",
+      );
+    const upperBSetSideDelts =
+      upperBSetDistribution?.musclePolicies.find(
+        (row) => row.muscle === "Side Delts",
+      );
+    const upperAUpperBackDistribution =
+      upperASetDistribution?.musclePolicies.find(
+        (row) => row.muscle === "Upper Back",
+      );
+    const lowerBChestDistribution =
+      lowerBSetDistribution?.musclePolicies.find(
+        (row) => row.muscle === "Chest",
+      );
 
     expect(upperAChest).toMatchObject({
       role: "primary",
@@ -2354,6 +2381,51 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
         "hinge_is_not_equivalent_to_curl",
       ]),
     );
+    expect(upperASetDistribution).toMatchObject({
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      slotBudget: {
+        preferredTotalSets: expect.any(Number),
+        maxTotalSets: expect.any(Number),
+        maxMainLifts: 2,
+        maxDirectIsolationExercises: expect.any(Number),
+      },
+      evidence: {
+        concentrationRows: expect.any(Array),
+        capCleanupRows: expect.any(Array),
+        repairRowsStillRepairOwned: expect.any(Array),
+      },
+    });
+    expect(upperAChestDistribution).toMatchObject({
+      targetStatus: "hard",
+      demandType: "direct_required",
+      preferredDistribution: "two_exercise_split",
+      whenAtLimit: "prefer_alternative",
+      maxSingleExerciseShare: 0.5,
+      maxSinglePatternShare: 0.7,
+    });
+    expect(lowerBChestDistribution).toMatchObject({
+      targetStatus: "forbidden",
+      demandType: "do_not_train_here",
+      preferredDistribution: "forbidden",
+      whenAtLimit: "do_not_bump",
+      maxDirectExercises: 0,
+    });
+    expect(upperBSetSideDelts).toMatchObject({
+      targetStatus: "soft",
+      demandType: "soft_direct_allowed",
+      whenAtLimit: "prefer_alternative",
+    });
+    expect(["overlap_first", "two_exercise_split"]).toContain(
+      upperBSetSideDelts?.preferredDistribution,
+    );
+    expect(upperAUpperBackDistribution).toMatchObject({
+      targetStatus: "diagnostic",
+      demandType: "diagnostic_only",
+      preferredDistribution: "diagnostic_only",
+      whenAtLimit: "leave_unresolved",
+      maxSingleExerciseShare: null,
+    });
     for (const collateralMuscle of [
       "Front Delts",
       "Upper Back",
@@ -2537,6 +2609,91 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     );
     expect(JSON.stringify(getProjectedSlotPlans(projected))).not.toContain(
       "slotPrescriptionIntents",
+    );
+    expect(JSON.stringify(getProjectedSlotPlans(projected))).not.toContain(
+      "setDistributionIntents",
+    );
+  });
+
+  it("represents high concentration and cap cleanup in set distribution evidence", () => {
+    const slotSequence = [{ slotId: "lower_b", intent: "LOWER" as const }];
+    const stiffLegDeadlift = makeProjectedExercise({
+      id: "stiff-legged-deadlift",
+      name: "Stiff-Legged Deadlift",
+      movementPatterns: ["hinge"],
+      primaryMuscles: ["Hamstrings"],
+      sets: 5,
+      isMainLift: true,
+      stimulusProfile: { hamstrings: 1, glutes: 0.5, lower_back: 0.5 },
+    });
+    const trimmedStiffLegDeadlift = {
+      ...stiffLegDeadlift,
+      sets: stiffLegDeadlift.sets.slice(0, 3),
+    };
+    const backSquat = makeProjectedExercise({
+      id: "barbell-back-squat",
+      name: "Barbell Back Squat",
+      movementPatterns: ["squat"],
+      primaryMuscles: ["Quads"],
+      sets: 6,
+      isMainLift: true,
+      stimulusProfile: { quads: 1, core: 0.5, adductors: 0.5, glutes: 0.5 },
+    });
+
+    const diagnostic = buildWeeklyDemandSlotAllocationDiagnostic({
+      activeMesocycle: buildSource() as never,
+      slotSequence,
+      initialProjectedSlots: [
+        makeProjectedSlotWithContributions({
+          slotId: "lower_b",
+          intent: "LOWER",
+          workout: makeProjectedWorkout({ mainLifts: [stiffLegDeadlift] }),
+        }),
+      ],
+      finalProjectedSlots: [
+        makeProjectedSlotWithContributions({
+          slotId: "lower_b",
+          intent: "LOWER",
+          workout: makeProjectedWorkout({
+            mainLifts: [trimmedStiffLegDeadlift, backSquat],
+          }),
+        }),
+      ],
+      weeklyObligationPlan: emptyWeeklyObligationPlan(),
+      weeklyObligationEvaluations: [],
+      protectedCoverage: {
+        muscles: [],
+        deficitsBelowMev: [],
+        deficitsBelowPracticalFloor: [],
+        unresolvedProtectedMuscles: [],
+      },
+      supportFloorRepairReasons: {},
+      programQualityAppliedDiagnostics: [],
+      programQualityEvaluation: {
+        totalPenalty: 0,
+        diagnostics: [],
+        constraintCounts: {},
+      },
+    });
+
+    const lowerBIntent = diagnostic.setDistributionIntents.find(
+      (intent) => intent.slotId === "lower_b",
+    );
+
+    expect(lowerBIntent?.evidence.concentrationRows).toEqual(
+      expect.arrayContaining([
+        "lower_b:Barbell Back Squat:Adductors:100%",
+        "lower_b:Barbell Back Squat:Core:100%",
+        "lower_b:Barbell Back Squat:Quads:100%",
+      ]),
+    );
+    expect(lowerBIntent?.evidence.capCleanupRows).toEqual([
+      "lower_b:Stiff-Legged Deadlift:-2",
+    ]);
+    expect(lowerBIntent?.evidence.repairRowsStillRepairOwned).toEqual(
+      expect.arrayContaining([
+        "lower_b:Stiff-Legged Deadlift:Hamstrings:diagnostic_or_cap_cleanup",
+      ]),
     );
   });
 
@@ -3146,6 +3303,15 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
         expect.objectContaining({ slotId: "upper_b", muscle: "Side Delts" }),
       ]),
     );
+    expect(
+      projected.diagnostics?.planningReality?.setDistributionIntents
+        .find((intent) => intent.slotId === "upper_b")
+        ?.musclePolicies.find((policy) => policy.muscle === "Side Delts"),
+    ).toMatchObject({
+      targetStatus: "soft",
+      demandType: "soft_direct_allowed",
+      whenAtLimit: "prefer_alternative",
+    });
   });
 
   it("prevents upper_b from finishing with zero Chest while Chest remains a hard weekly obligation", () => {

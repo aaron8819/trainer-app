@@ -254,7 +254,7 @@ Common red flags:
 - projected session order does not match runtime slot order
 - `projectedSessions[0].isNext` does not align with the expected next advancing slot
 - `fullWeekByMuscle` suggests major under-target or over-MAV outcomes that contradict the chained projected sessions
-- soft-target rows for Core, Forearms, Adductors, Abductors, or Lower Back are interpreted as hard blocking target failures rather than readout context
+- support, secondary, or implicit rows are interpreted as hard blocking target failures rather than tiered readout context; hard warning buckets should come from Tier A primary-driver rows only
 - projection notes indicate an ignored incomplete workout when you expected saved-state continuation
 
 Escalate when:

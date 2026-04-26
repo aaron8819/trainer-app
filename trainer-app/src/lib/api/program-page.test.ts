@@ -995,6 +995,7 @@ describe("loadProgramPageData", () => {
       "Quads",
       "Chest",
     ]);
+    expect(result.weekCompletionOutlook?.supportRows).toEqual([]);
     expect(result.weekCompletionOutlook?.secondaryRows).toEqual([]);
     expect(result.weekCompletionOutlook?.secondarySummary).toEqual({
       belowSoftRange: 0,
@@ -1162,6 +1163,25 @@ describe("loadProgramPageData", () => {
           deltaToMav: -6,
         },
         {
+          muscle: "Side Delts",
+          targetKind: "hard",
+          displayGroup: "primary",
+          targetTier: "B_SUPPORT",
+          warningSeverity: "soft",
+          dashboardGroup: "support_driver",
+          completedEffectiveSets: 3,
+          projectedNextSessionEffectiveSets: 2,
+          projectedRemainingWeekEffectiveSets: 0,
+          projectedFullWeekEffectiveSets: 5,
+          weeklyTarget: 8,
+          mev: 8,
+          mav: 19,
+          mrv: 26,
+          deltaToTarget: -3,
+          deltaToMev: -3,
+          deltaToMav: -14,
+        },
+        {
           muscle: "Forearms",
           targetKind: "soft",
           targetRange: { min: 2, max: 4 },
@@ -1195,6 +1215,13 @@ describe("loadProgramPageData", () => {
           statusDescription: "8 projected vs 10 target; 6 completed so far.",
         }),
         expect.objectContaining({
+          muscle: "Side Delts",
+          targetKind: "hard",
+          targetTier: "B_SUPPORT",
+          warningSeverity: "soft",
+          dashboardGroup: "support_driver",
+        }),
+        expect.objectContaining({
           muscle: "Forearms",
           status: "slightly_high",
           targetLabel: "Soft target: 2-4 weighted sets",
@@ -1207,6 +1234,13 @@ describe("loadProgramPageData", () => {
       ])
     );
     expect(result.weekCompletionOutlook?.summary.meaningfullyHigh).toBe(0);
+    expect(result.weekCompletionOutlook?.supportRows).toEqual([
+      expect.objectContaining({
+        muscle: "Side Delts",
+        statusLabel: "Below MEV",
+        dashboardGroup: "support_driver",
+      }),
+    ]);
     expect(result.weekCompletionOutlook?.secondarySummary).toEqual({
       belowSoftRange: 0,
       withinSoftRange: 0,

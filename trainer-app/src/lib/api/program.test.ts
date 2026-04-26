@@ -305,13 +305,24 @@ describe("loadProgramDashboardData", () => {
       expect(chestRow?.directSets).toBe(2);
     });
 
-    it("includes Front Delts when baseline target is non-zero even without direct sets", async () => {
+    it("hides implicit Front Delts by default while keeping support and secondary groups visible", async () => {
       setupDashboardMocks();
       const result = await loadProgramDashboardData("user-1");
-      expect(result.volumeThisWeek.map((row) => row.muscle)).toContain("Front Delts");
-      expect(result.volumeThisWeek.find((row) => row.muscle === "Front Delts")).toMatchObject({
+
+      expect(result.volumeThisWeek.map((row) => row.muscle)).not.toContain("Front Delts");
+      expect(result.volumeThisWeek.find((row) => row.muscle === "Chest")).toMatchObject({
         targetKind: "hard",
         displayGroup: "primary",
+        targetTier: "A_PRIMARY",
+        warningSeverity: "hard",
+        dashboardGroup: "primary_driver",
+      });
+      expect(result.volumeThisWeek.find((row) => row.muscle === "Side Delts")).toMatchObject({
+        targetKind: "hard",
+        displayGroup: "primary",
+        targetTier: "B_SUPPORT",
+        warningSeverity: "soft",
+        dashboardGroup: "support_driver",
       });
     });
 
@@ -323,6 +334,9 @@ describe("loadProgramDashboardData", () => {
         targetKind: "soft",
         targetRange: { min: 4, max: 6 },
         displayGroup: "secondary",
+        targetTier: "C_SECONDARY",
+        warningSeverity: "info",
+        dashboardGroup: "secondary",
         effectiveSets: 0,
         statusLabel: "Below soft range",
       });
@@ -358,6 +372,9 @@ describe("loadProgramDashboardData", () => {
       const frontDeltRow = result.volumeThisWeek.find((row) => row.muscle === "Front Delts");
 
       expect(frontDeltRow).toMatchObject({
+        targetTier: "IMPLICIT",
+        warningSeverity: "hidden",
+        dashboardGroup: "implicit",
         effectiveSets: 0.6,
         directSets: 0,
         indirectSets: 2,
@@ -546,6 +563,12 @@ describe("loadProgramDashboardData", () => {
 
       const result = await loadProgramDashboardData("user-1");
       expect(result.volumeThisWeek.map((row) => row.muscle)).toContain("Front Delts");
+      expect(result.volumeThisWeek.find((row) => row.muscle === "Front Delts")).toMatchObject({
+        targetTier: "IMPLICIT",
+        warningSeverity: "hidden",
+        dashboardGroup: "implicit",
+        effectiveSets: 1,
+      });
     });
 
     it("sorts muscles by lowest direct-set to target ratio first", async () => {

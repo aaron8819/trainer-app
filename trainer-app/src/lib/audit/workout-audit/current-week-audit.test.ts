@@ -68,6 +68,7 @@ describe("buildCurrentWeekAuditEvaluation", () => {
             weeklyTarget: 12,
             mev: 8,
             mav: 16,
+            warningSeverity: "hard",
             deltaToTarget: -6,
             deltaToMev: -2,
             deltaToMav: -10,
@@ -94,6 +95,9 @@ describe("buildCurrentWeekAuditEvaluation", () => {
             weeklyTarget: 10,
             mev: 6,
             mav: 7,
+            targetTier: "B_SUPPORT",
+            warningSeverity: "soft",
+            dashboardGroup: "support_driver",
             deltaToTarget: -6,
             deltaToMev: -2,
             deltaToMav: -3,
@@ -102,17 +106,11 @@ describe("buildCurrentWeekAuditEvaluation", () => {
       })
     );
 
-    expect(evaluation.currentWeekAudit.belowMEV).toEqual(["Biceps", "Chest"]);
+    expect(evaluation.currentWeekAudit.belowMEV).toEqual(["Chest"]);
     expect(evaluation.currentWeekAudit.underTargetClusters).toEqual([
-      { muscle: "Biceps", deficit: 6 },
       { muscle: "Chest", deficit: 6 },
     ]);
     expect(evaluation.interventionHints).toEqual([
-      {
-        muscle: "Biceps",
-        suggestedSets: 2,
-        reason: "Projected 2.0 sets below MEV",
-      },
       {
         muscle: "Chest",
         suggestedSets: 2,
@@ -170,6 +168,7 @@ describe("buildCurrentWeekAuditEvaluation", () => {
             weeklyTarget: 12,
             mev: 8,
             mav: 16,
+            warningSeverity: "hard",
             deltaToTarget: 6,
             deltaToMev: 10,
             deltaToMav: 2,
@@ -183,6 +182,9 @@ describe("buildCurrentWeekAuditEvaluation", () => {
             weeklyTarget: 13,
             mev: 4,
             mav: 12,
+            targetTier: "B_SUPPORT",
+            warningSeverity: "soft",
+            dashboardGroup: "support_driver",
             deltaToTarget: -3,
             deltaToMev: 6,
             deltaToMav: -2,

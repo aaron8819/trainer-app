@@ -40,6 +40,9 @@ import {
   type WeeklyMuscleDisplayGroup,
 } from "@/lib/ui/weekly-muscle-status";
 import type {
+  MuscleDashboardGroup,
+  MuscleTargetTier,
+  MuscleTargetWarningSeverity,
   VolumeSoftTargetRange,
   VolumeTargetKind,
 } from "@/lib/engine/volume-landmarks";
@@ -176,6 +179,7 @@ export type ProgramWeekCompletionOutlook = {
   secondaryBadges?: ProgramVolumeDisplayBadge[];
   rows: ProgramVolumeDisplayRow[];
   primaryRows?: ProgramVolumeDisplayRow[];
+  supportRows?: ProgramVolumeDisplayRow[];
   secondaryRows?: ProgramVolumeDisplayRow[];
   defaultRows: ProgramVolumeDisplayRow[];
 };
@@ -193,6 +197,9 @@ export type ProgramVolumeDisplayRow = {
   targetKind?: VolumeTargetKind;
   targetRange?: VolumeSoftTargetRange | null;
   displayGroup?: WeeklyMuscleDisplayGroup;
+  targetTier?: MuscleTargetTier | null;
+  warningSeverity?: MuscleTargetWarningSeverity;
+  dashboardGroup?: MuscleDashboardGroup | null;
   weightedSetsLabel: string;
   targetLabel: string;
   statusLabel: string;
@@ -498,6 +505,9 @@ function buildProgramVolumeDisplayRow(input: {
   targetKind: VolumeTargetKind;
   targetRange: VolumeSoftTargetRange | null;
   displayGroup: WeeklyMuscleDisplayGroup;
+  targetTier?: MuscleTargetTier | null;
+  warningSeverity?: MuscleTargetWarningSeverity;
+  dashboardGroup?: MuscleDashboardGroup | null;
   projectedFullWeekEffectiveSets: number;
   targetSets: number;
   delta: number;
@@ -538,6 +548,9 @@ function buildProgramVolumeDisplayRow(input: {
     targetKind: input.targetKind,
     targetRange: input.targetRange,
     displayGroup: input.displayGroup,
+    targetTier: input.targetTier,
+    warningSeverity: input.warningSeverity,
+    dashboardGroup: input.dashboardGroup,
     weightedSetsLabel: formatWeightedSetsLabel(input.projectedFullWeekEffectiveSets),
     targetLabel: formatTargetDisplayLabel({
       targetSets: input.targetSets,
@@ -609,6 +622,9 @@ function buildWeekCompletionOutlook(input: {
     const targetKind = row.targetKind ?? "hard";
     const targetRange = row.targetRange ?? null;
     const displayGroup = row.displayGroup ?? getWeeklyMuscleDisplayGroup(targetKind);
+    const dashboardGroup =
+      row.dashboardGroup ??
+      (displayGroup === "secondary" ? "secondary" : "primary_driver");
     const outcome = classifyMuscleOutcome(row.weeklyTarget, row.projectedFullWeekEffectiveSets, {
       targetKind,
       targetRange,
@@ -622,6 +638,9 @@ function buildWeekCompletionOutlook(input: {
       targetKind,
       targetRange,
       displayGroup,
+      targetTier: row.targetTier,
+      warningSeverity: row.warningSeverity,
+      dashboardGroup,
       delta: outcome.delta,
       percentDelta: outcome.percentDelta,
       mev: row.mev,
@@ -654,6 +673,9 @@ function buildWeekCompletionOutlook(input: {
       targetKind: row.targetKind,
       targetRange: row.targetRange,
       displayGroup: row.displayGroup,
+      targetTier: row.targetTier,
+      warningSeverity: row.warningSeverity,
+      dashboardGroup: row.dashboardGroup,
       projectedFullWeekEffectiveSets: row.projectedFullWeekEffectiveSets,
       targetSets: row.targetSets,
       delta: row.delta,
@@ -665,12 +687,19 @@ function buildWeekCompletionOutlook(input: {
       projectedRemainingWeekEffectiveSets: row.projectedRemainingWeekEffectiveSets,
     })
   );
-  const primaryRows = displayRows.filter((row) => row.displayGroup === "primary");
-  const secondaryRows = displayRows.filter((row) => row.displayGroup === "secondary");
-  const summary = buildOutcomeSummary(rows.filter((row) => row.displayGroup === "primary"));
+  const primaryDriverRows = displayRows.filter(
+    (row) => (row.dashboardGroup ?? row.displayGroup) === "primary_driver"
+  );
+  const supportRows = displayRows.filter((row) => row.dashboardGroup === "support_driver");
+  const secondaryRows = displayRows.filter(
+    (row) => (row.dashboardGroup ?? row.displayGroup) === "secondary"
+  );
+  const summary = buildOutcomeSummary(
+    rows.filter((row) => (row.dashboardGroup ?? row.displayGroup) === "primary_driver")
+  );
   const secondarySummary = buildSoftTargetSummary(secondaryRows);
 
-  const defaultRows = primaryRows
+  const defaultRows = primaryDriverRows
     .filter((row) => row.status !== "on_target")
     .slice(0, 4);
 
@@ -681,7 +710,8 @@ function buildWeekCompletionOutlook(input: {
     badges: buildOutlookBadges(summary),
     secondaryBadges: buildSoftTargetBadges(secondarySummary),
     rows: displayRows,
-    primaryRows,
+    primaryRows: primaryDriverRows,
+    supportRows,
     secondaryRows,
     defaultRows,
   };

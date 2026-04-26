@@ -106,10 +106,18 @@ function collectProjectedWeekRecommendationReasons(
   if (projectedWeekVolume.projectionNotes.length > 0) {
     recommendationReasons.push("projection_notes");
   }
-  if (projectedWeekVolume.fullWeekByMuscle.some((row) => row.deltaToMev < 0)) {
+  if (
+    projectedWeekVolume.fullWeekByMuscle.some(
+      (row) => isHardTargetProjectionRow(row) && row.deltaToMev < 0
+    )
+  ) {
     recommendationReasons.push("below_mev");
   }
-  if (projectedWeekVolume.fullWeekByMuscle.some((row) => row.deltaToMav > 0)) {
+  if (
+    projectedWeekVolume.fullWeekByMuscle.some(
+      (row) => isHardTargetProjectionRow(row) && row.deltaToMav > 0
+    )
+  ) {
     recommendationReasons.push("over_mav");
   }
 
@@ -155,6 +163,9 @@ function formatMuscleContributorSessions(input: {
 function isHardTargetProjectionRow(
   row: ProjectedWeekVolumeAuditPayload["fullWeekByMuscle"][number]
 ): boolean {
+  if (row.warningSeverity) {
+    return row.warningSeverity === "hard";
+  }
   return row.targetKind !== "soft";
 }
 
@@ -249,7 +260,7 @@ export function buildProjectedWeekOperatorSummary(input: {
 
   const belowMev = formatMuscleBucket(
     projectedWeekVolume.fullWeekByMuscle,
-    (row) => row.deltaToMev < 0,
+    (row) => isHardTargetProjectionRow(row) && row.deltaToMev < 0,
     (row) => row.deltaToMev,
     "ascending"
   );
@@ -261,7 +272,7 @@ export function buildProjectedWeekOperatorSummary(input: {
   );
   const overMav = formatMuscleBucket(
     projectedWeekVolume.fullWeekByMuscle,
-    (row) => row.deltaToMav > 0,
+    (row) => isHardTargetProjectionRow(row) && row.deltaToMav > 0,
     (row) => row.deltaToMav,
     "descending"
   );
@@ -299,7 +310,7 @@ export function buildProjectedWeekDebugSummary(input: {
   const lines: string[] = [];
   const belowMevRows = selectMuscleRows(
     projectedWeekVolume.fullWeekByMuscle,
-    (row) => row.deltaToMev < 0,
+    (row) => isHardTargetProjectionRow(row) && row.deltaToMev < 0,
     (row) => row.deltaToMev,
     "ascending"
   );

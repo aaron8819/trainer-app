@@ -388,6 +388,9 @@ describe("loadProjectedWeekVolumeReport", () => {
     expect(chestRow).toMatchObject({
       targetKind: "hard",
       displayGroup: "primary",
+      targetTier: "A_PRIMARY",
+      warningSeverity: "hard",
+      dashboardGroup: "primary_driver",
       completedEffectiveSets: 4,
       projectedNextSessionEffectiveSets: 1,
       projectedRemainingWeekEffectiveSets: 0,
@@ -396,12 +399,20 @@ describe("loadProjectedWeekVolumeReport", () => {
       deltaToTarget: -5,
     });
     expect(quadsRow).toMatchObject({
+      targetTier: "A_PRIMARY",
+      warningSeverity: "hard",
+      dashboardGroup: "primary_driver",
       completedEffectiveSets: 3,
       projectedNextSessionEffectiveSets: 0,
       projectedRemainingWeekEffectiveSets: 1,
       projectedFullWeekEffectiveSets: 4,
       weeklyTarget: 8,
       deltaToTarget: -4,
+    });
+    expect(report.fullWeekByMuscle.find((row) => row.muscle === "Front Delts")).toMatchObject({
+      targetTier: "IMPLICIT",
+      warningSeverity: "hidden",
+      dashboardGroup: "implicit",
     });
   });
 
@@ -452,6 +463,9 @@ describe("loadProjectedWeekVolumeReport", () => {
       targetKind: "soft",
       targetRange: { min: 4, max: 6 },
       displayGroup: "secondary",
+      targetTier: "C_SECONDARY",
+      warningSeverity: "info",
+      dashboardGroup: "secondary",
       completedEffectiveSets: 2,
       projectedNextSessionEffectiveSets: 1,
       projectedFullWeekEffectiveSets: 3,
@@ -460,7 +474,62 @@ describe("loadProjectedWeekVolumeReport", () => {
       targetKind: "soft",
       targetRange: { min: 2, max: 4 },
       displayGroup: "secondary",
+      targetTier: "C_SECONDARY",
+      warningSeverity: "info",
+      dashboardGroup: "secondary",
       weeklyTarget: 0,
+    });
+  });
+
+  it("keeps implicit Front Delts only when actual volume exists or debug output asks for implicit rows", async () => {
+    mocks.loadMesocycleWeekMuscleVolume.mockResolvedValue({
+      "Front Delts": { directSets: 0, indirectSets: 2, effectiveSets: 0.6 },
+    });
+
+    const standardReport = await loadProjectedWeekVolumeReport({
+      userId: "user-1",
+      plannerDiagnosticsMode: "standard",
+    });
+
+    expect(standardReport.fullWeekByMuscle.find((row) => row.muscle === "Front Delts")).toMatchObject({
+      targetKind: "hard",
+      targetTier: "IMPLICIT",
+      warningSeverity: "hidden",
+      dashboardGroup: "implicit",
+      completedEffectiveSets: 0.6,
+    });
+
+    mocks.loadMesocycleWeekMuscleVolume.mockResolvedValue({});
+    mocks.generateSessionFromMappedContext
+      .mockReset()
+      .mockReturnValueOnce({
+        workout: buildWorkout(["Chest"]),
+        selection: {},
+        selectionMode: "INTENT",
+        sessionIntent: "upper",
+        sraWarnings: [],
+        substitutions: [],
+        volumePlanByMuscle: {},
+      })
+      .mockReturnValueOnce({
+        workout: buildWorkout(["Quads"]),
+        selection: {},
+        selectionMode: "INTENT",
+        sessionIntent: "lower",
+        sraWarnings: [],
+        substitutions: [],
+        volumePlanByMuscle: {},
+      });
+
+    const debugReport = await loadProjectedWeekVolumeReport({
+      userId: "user-1",
+      plannerDiagnosticsMode: "debug",
+    });
+
+    expect(debugReport.fullWeekByMuscle.find((row) => row.muscle === "Front Delts")).toMatchObject({
+      targetTier: "IMPLICIT",
+      warningSeverity: "hidden",
+      dashboardGroup: "implicit",
     });
   });
 

@@ -1,4 +1,8 @@
-import type { VolumeSoftTargetRange, VolumeTargetKind } from "@/lib/engine/volume-landmarks";
+import type {
+  MuscleDashboardGroup,
+  VolumeSoftTargetRange,
+  VolumeTargetKind,
+} from "@/lib/engine/volume-landmarks";
 
 export type WeeklyMuscleStatus =
   | "below_mev"
@@ -24,6 +28,16 @@ export function getWeeklyMuscleDisplayGroup(
   targetKind?: VolumeTargetKind
 ): WeeklyMuscleDisplayGroup {
   return targetKind === "soft" ? "secondary" : "primary";
+}
+
+export function getWeeklyMuscleDashboardGroup(input: {
+  dashboardGroup?: MuscleDashboardGroup | null;
+  targetKind?: VolumeTargetKind;
+}): MuscleDashboardGroup {
+  if (input.dashboardGroup) {
+    return input.dashboardGroup;
+  }
+  return input.targetKind === "soft" ? "secondary" : "primary_driver";
 }
 
 export function getWeeklyMuscleStatus(input: WeeklyMuscleStatusInput): WeeklyMuscleStatus {

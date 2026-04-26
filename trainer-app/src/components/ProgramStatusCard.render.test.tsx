@@ -343,6 +343,7 @@ describe("ProgramStatusCard weekly status labels", () => {
     const data = buildData([
       withOpportunity({
         muscle: "Chest",
+        dashboardGroup: "primary_driver",
         effectiveSets: 4,
         directSets: 4,
         indirectSets: 0,
@@ -785,6 +786,21 @@ describe("ProgramStatusCard volumeOnly variant", () => {
         badges: [{ status: "below_mev", label: "Below MEV" }],
       }),
       withOpportunity({
+        muscle: "Side Delts",
+        targetTier: "B_SUPPORT",
+        warningSeverity: "soft",
+        dashboardGroup: "support_driver",
+        effectiveSets: 5,
+        directSets: 5,
+        indirectSets: 0,
+        target: 8,
+        mev: 8,
+        mav: 19,
+        mrv: 26,
+        statusLabel: "Below MEV",
+        badges: [{ status: "below_mev", label: "Below MEV" }],
+      }),
+      withOpportunity({
         muscle: "Core",
         targetKind: "soft",
         targetRange: { min: 4, max: 6 },
@@ -807,13 +823,18 @@ describe("ProgramStatusCard volumeOnly variant", () => {
     render(<ProgramStatusCard initialData={data} variant="volumeOnly" />);
 
     const primarySection = screen.getByText("Primary hypertrophy targets").closest("section");
+    const supportSection = screen.getByText("Support targets").closest("section");
     const secondarySection = screen.getByText("Secondary targets").closest("section");
 
     expect(primarySection).not.toBeNull();
+    expect(supportSection).not.toBeNull();
     expect(secondarySection).not.toBeNull();
     expect(within(primarySection as HTMLElement).getByText("Chest")).toBeInTheDocument();
     expect(within(primarySection as HTMLElement).getByText("1 Below MEV")).toBeInTheDocument();
+    expect(within(primarySection as HTMLElement).queryByText("Side Delts")).not.toBeInTheDocument();
     expect(within(primarySection as HTMLElement).queryByText("Core")).not.toBeInTheDocument();
+    expect(within(supportSection as HTMLElement).getByText("Side Delts")).toBeInTheDocument();
+    expect(within(supportSection as HTMLElement).getByText("1 Below MEV")).toBeInTheDocument();
     expect(within(secondarySection as HTMLElement).getByText("Core")).toBeInTheDocument();
     expect(within(secondarySection as HTMLElement).getByText("1 Below soft range")).toBeInTheDocument();
     expect(screen.getByText("Current: below soft range. Non-blocking.")).toBeInTheDocument();

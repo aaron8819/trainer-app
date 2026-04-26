@@ -22,6 +22,15 @@ const STACKING_PATTERNS = [
   "lunge",
 ] as const;
 
+function isHardWarningRow(
+  row: ProjectedWeekVolumeAuditPayload["fullWeekByMuscle"][number]
+): boolean {
+  if (row.warningSeverity) {
+    return row.warningSeverity === "hard";
+  }
+  return row.targetKind !== "soft";
+}
+
 function roundToTenth(value: number): number {
   return Math.round(value * 10) / 10;
 }
@@ -117,6 +126,7 @@ function buildInterventionHints(
   rows: ProjectedWeekVolumeAuditPayload["fullWeekByMuscle"]
 ): CurrentWeekAuditInterventionHint[] {
   return rows
+    .filter(isHardWarningRow)
     .map((row) => {
       const deficitToTarget = roundToTenth(
         row.weeklyTarget - row.projectedFullWeekEffectiveSets
@@ -173,12 +183,15 @@ export function buildCurrentWeekAuditEvaluation(
   sessionRisks: CurrentWeekAuditSessionRisk[];
 } {
   const belowMevRows = projectedWeekVolume.fullWeekByMuscle
+    .filter(isHardWarningRow)
     .filter((row) => row.deltaToMev < 0)
     .sort((left, right) => left.deltaToMev - right.deltaToMev || left.muscle.localeCompare(right.muscle));
   const overMavRows = projectedWeekVolume.fullWeekByMuscle
+    .filter(isHardWarningRow)
     .filter((row) => row.deltaToMav > 0)
     .sort((left, right) => right.deltaToMav - left.deltaToMav || left.muscle.localeCompare(right.muscle));
   const underTargetClusters = projectedWeekVolume.fullWeekByMuscle
+    .filter(isHardWarningRow)
     .map((row) => ({
       muscle: row.muscle,
       deficit: roundToTenth(row.weeklyTarget - row.projectedFullWeekEffectiveSets),

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   formatWeeklyMuscleStatusLabel,
+  getWeeklyMuscleDashboardGroup,
   getWeeklyMuscleDisplayGroup,
   getWeeklyMuscleStatus,
   summarizeWeeklyMuscleStatuses,
@@ -132,6 +133,18 @@ describe("weekly muscle status", () => {
     expect(getWeeklyMuscleDisplayGroup("hard")).toBe("primary");
     expect(getWeeklyMuscleDisplayGroup("soft")).toBe("secondary");
     expect(getWeeklyMuscleDisplayGroup("none")).toBe("primary");
+  });
+
+  it("preserves explicit dashboard priority groups when supplied", () => {
+    expect(getWeeklyMuscleDashboardGroup({ dashboardGroup: "primary_driver" })).toBe(
+      "primary_driver"
+    );
+    expect(getWeeklyMuscleDashboardGroup({ dashboardGroup: "support_driver" })).toBe(
+      "support_driver"
+    );
+    expect(getWeeklyMuscleDashboardGroup({ dashboardGroup: "implicit" })).toBe("implicit");
+    expect(getWeeklyMuscleDashboardGroup({ targetKind: "soft" })).toBe("secondary");
+    expect(getWeeklyMuscleDashboardGroup({ targetKind: "hard" })).toBe("primary_driver");
   });
 
   it("summarizes the same status buckets used by the volume cards", () => {

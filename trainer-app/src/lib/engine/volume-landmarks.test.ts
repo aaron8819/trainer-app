@@ -72,29 +72,73 @@ describe("computeWeeklyVolumeTarget", () => {
     expect(VOLUME_LANDMARKS.Abductors.mev).toBe(0);
     expect(VOLUME_LANDMARKS["Lower Back"].mev).toBe(0);
 
-    expect(getMuscleTargetSemantics("Core")).toEqual({
+    expect(getMuscleTargetSemantics("Core")).toMatchObject({
       targetKind: "soft",
       softTargetRange: { min: 4, max: 6 },
+      targetTier: "C_SECONDARY",
+      generationWeight: 0,
+      warningSeverity: "info",
+      canBlockOrDriveRepair: false,
+      dashboardGroup: "secondary",
     });
-    expect(getMuscleTargetSemantics("Abs")).toEqual({
+    expect(getMuscleTargetSemantics("Abs")).toMatchObject({
       targetKind: "soft",
       softTargetRange: { min: 4, max: 6 },
+      targetTier: "C_SECONDARY",
+      dashboardGroup: "secondary",
     });
-    expect(getMuscleTargetSemantics("Forearms")).toEqual({
+    expect(getMuscleTargetSemantics("Forearms")).toMatchObject({
       targetKind: "soft",
       softTargetRange: { min: 2, max: 4 },
+      targetTier: "C_SECONDARY",
+      dashboardGroup: "secondary",
     });
-    expect(getMuscleTargetSemantics("Lower Back")).toEqual({
+    expect(getMuscleTargetSemantics("Lower Back")).toMatchObject({
       targetKind: "soft",
       softTargetRange: { min: 3, max: 6 },
+      targetTier: "C_SECONDARY",
+      dashboardGroup: "secondary",
     });
-    expect(getMuscleTargetSemantics("Chest")).toEqual({
+    expect(getMuscleTargetSemantics("Chest")).toMatchObject({
       targetKind: "hard",
       softTargetRange: null,
+      targetTier: "A_PRIMARY",
+      generationWeight: 1,
+      warningSeverity: "hard",
+      canBlockOrDriveRepair: true,
+      dashboardGroup: "primary_driver",
     });
-    expect(getMuscleTargetSemantics("Unknown")).toEqual({
+    expect(getMuscleTargetSemantics("Unknown")).toMatchObject({
       targetKind: "none",
       softTargetRange: null,
+      targetTier: null,
+      generationWeight: 0,
+      warningSeverity: "hidden",
+      canBlockOrDriveRepair: false,
+      dashboardGroup: null,
+    });
+  });
+
+  it("classifies support and implicit muscle targets without changing landmark presence", () => {
+    expect(VOLUME_LANDMARKS["Front Delts"]).toBeDefined();
+
+    expect(getMuscleTargetSemantics("Side Delts")).toMatchObject({
+      targetKind: "hard",
+      softTargetRange: null,
+      targetTier: "B_SUPPORT",
+      generationWeight: 0.7,
+      warningSeverity: "soft",
+      canBlockOrDriveRepair: "limited",
+      dashboardGroup: "support_driver",
+    });
+    expect(getMuscleTargetSemantics("Front Delts")).toMatchObject({
+      targetKind: "hard",
+      softTargetRange: null,
+      targetTier: "IMPLICIT",
+      generationWeight: 0,
+      warningSeverity: "hidden",
+      canBlockOrDriveRepair: false,
+      dashboardGroup: "implicit",
     });
   });
 });

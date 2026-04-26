@@ -9,6 +9,9 @@ import {
   VOLUME_LANDMARKS,
   getExposedVolumeLandmarkEntries,
   getMuscleTargetSemantics,
+  type MuscleDashboardGroup,
+  type MuscleTargetTier,
+  type MuscleTargetWarningSeverity,
   type VolumeSoftTargetRange,
   type VolumeTargetKind,
 } from "@/lib/engine/volume-landmarks";
@@ -40,6 +43,7 @@ import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-s
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 import {
   formatWeeklyMuscleStatusLabel,
+  getWeeklyMuscleDashboardGroup,
   getWeeklyMuscleDisplayGroup,
   getWeeklyMuscleStatus,
   type WeeklyMuscleDisplayGroup,
@@ -66,6 +70,9 @@ export type ProgramVolumeRow = {
   targetKind?: VolumeTargetKind;
   targetRange?: VolumeSoftTargetRange | null;
   displayGroup?: WeeklyMuscleDisplayGroup;
+  targetTier?: MuscleTargetTier | null;
+  warningSeverity?: MuscleTargetWarningSeverity;
+  dashboardGroup?: MuscleDashboardGroup | null;
   effectiveSets: number;
   directSets: number;
   indirectSets: number;
@@ -973,6 +980,10 @@ function buildProgramVolumeRows(input: {
       const target = mesoRecord ? getWeeklyVolumeTarget(mesoRecord, muscle, week) : landmarks.mev;
       const targetSemantics = getMuscleTargetSemantics(muscle);
       const displayGroup = getWeeklyMuscleDisplayGroup(targetSemantics.targetKind);
+      const dashboardGroup = getWeeklyMuscleDashboardGroup({
+        dashboardGroup: targetSemantics.dashboardGroup,
+        targetKind: targetSemantics.targetKind,
+      });
       const weeklyStatus = getWeeklyMuscleStatus({
         effectiveSets: data.effectiveSets,
         target,
@@ -989,6 +1000,9 @@ function buildProgramVolumeRows(input: {
         targetKind: targetSemantics.targetKind,
         targetRange: targetSemantics.softTargetRange,
         displayGroup,
+        targetTier: targetSemantics.targetTier,
+        warningSeverity: targetSemantics.warningSeverity,
+        dashboardGroup,
         effectiveSets: data.effectiveSets,
         directSets: data.directSets,
         indirectSets: data.indirectSets,
@@ -1047,9 +1061,16 @@ function buildProgramVolumeRows(input: {
       };
     })
     .filter(
-      (row) =>
-        row.mav > 0 &&
-        (row.target > 0 || row.effectiveSets > 0 || row.targetKind === "soft")
+      (row) => {
+        if (row.dashboardGroup === "implicit") {
+          return row.effectiveSets > 0 || row.directSets > 0 || row.indirectSets > 0;
+        }
+
+        return (
+          row.mav > 0 &&
+          (row.target > 0 || row.effectiveSets > 0 || row.targetKind === "soft")
+        );
+      }
     )
     .sort((left, right) => {
       const leftRatio = left.target === 0 ? 0 : left.effectiveSets / left.target;

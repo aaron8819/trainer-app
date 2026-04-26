@@ -112,6 +112,10 @@ function getServerStatus(row: ProgramVolumeRow): VolumeStatusToken | null {
   return status && isVolumeStatusToken(status) ? status : null;
 }
 
+function getDashboardGroup(row: ProgramVolumeRow): NonNullable<ProgramVolumeRow["dashboardGroup"]> {
+  return row.dashboardGroup ?? (row.displayGroup === "secondary" ? "secondary" : "primary_driver");
+}
+
 function VolumeStatusSummaryChips({
   rows,
   ariaLabel = "Weekly volume status summary",
@@ -594,10 +598,17 @@ function ProgramStatusCardDefault({
   const isVolumeOnly = !showOverviewChrome;
   const blockType = viewedBlockType ?? activeMeso.currentBlockType ?? "accumulation";
   const relevantVolume = activeData.volumeThisWeek.filter(
-    (v) => v.mev > 0 || v.target > 0 || v.effectiveSets > 0 || v.targetKind === "soft"
+    (v) =>
+      getDashboardGroup(v) !== "implicit" &&
+      (v.mev > 0 || v.target > 0 || v.effectiveSets > 0 || v.targetKind === "soft")
   );
-  const primaryVolume = relevantVolume.filter((row) => row.displayGroup !== "secondary");
-  const secondaryVolume = relevantVolume.filter((row) => row.displayGroup === "secondary");
+  const primaryVolume = relevantVolume.filter(
+    (row) => getDashboardGroup(row) === "primary_driver"
+  );
+  const supportVolume = relevantVolume.filter(
+    (row) => getDashboardGroup(row) === "support_driver"
+  );
+  const secondaryVolume = relevantVolume.filter((row) => getDashboardGroup(row) === "secondary");
   const selectedRow = relevantVolume.find((row) => row.muscle === selectedMuscle) ?? null;
   const selectedBreakdown = selectedRow?.breakdown ?? null;
   const volumeHeading = isHistorical
@@ -694,7 +705,7 @@ function ProgramStatusCardDefault({
                   Primary hypertrophy targets
                 </h3>
                 <p className="mt-0.5 text-xs text-slate-500">
-                  These are the main muscle targets used to evaluate weekly training quality.
+                  Primary drivers used for hard weekly training-quality checks.
                 </p>
               </div>
               <VolumeStatusSummaryChips
@@ -714,6 +725,32 @@ function ProgramStatusCardDefault({
               <p className="mt-3 text-sm text-slate-500">No primary volume data for this week.</p>
             )}
           </section>
+
+          {supportVolume.length > 0 ? (
+            <section className="border-t border-slate-200 pt-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-800">
+                    Support targets
+                  </h3>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    Hypertrophy support work tracked separately from hard primary drivers.
+                  </p>
+                </div>
+                <VolumeStatusSummaryChips
+                  rows={supportVolume}
+                  ariaLabel="Support weekly volume status summary"
+                />
+              </div>
+              <VolumeRowGrid
+                rows={supportVolume}
+                isVolumeOnly={isVolumeOnly}
+                isHistorical={isHistorical}
+                loading={loading}
+                onSelectMuscle={setSelectedMuscle}
+              />
+            </section>
+          ) : null}
 
           {secondaryVolume.length > 0 ? (
             <section className="border-t border-slate-200 pt-4">

@@ -40,8 +40,17 @@ export function WeekCompletionOutlookSection({
 }) {
   const [selectedStatus, setSelectedStatus] = useState<MuscleOutcomeStatus | null>(null);
 
-  const primaryRows = outlook.primaryRows ?? outlook.rows.filter((row) => row.displayGroup !== "secondary");
-  const secondaryRows = outlook.secondaryRows ?? outlook.rows.filter((row) => row.displayGroup === "secondary");
+  const primaryRows =
+    outlook.primaryRows ??
+    outlook.rows.filter(
+      (row) => (row.dashboardGroup ?? row.displayGroup) === "primary_driver"
+    );
+  const supportRows =
+    outlook.supportRows ??
+    outlook.rows.filter((row) => row.dashboardGroup === "support_driver");
+  const secondaryRows =
+    outlook.secondaryRows ??
+    outlook.rows.filter((row) => (row.dashboardGroup ?? row.displayGroup) === "secondary");
   const secondaryBadges = outlook.secondaryBadges ?? [];
   const visibleRows = useMemo(() => {
     if (!selectedStatus) {
@@ -131,6 +140,33 @@ export function WeekCompletionOutlookSection({
           No major projected misses if you finish the planned week.
         </p>
       )}
+
+      {supportRows.length > 0 ? (
+        <div className="mt-5 border-t border-sky-100 pt-4">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-800">Support targets</h3>
+            <p className="mt-0.5 text-xs text-slate-600">
+              Support hypertrophy targets are tracked separately from hard primary-driver counts.
+            </p>
+          </div>
+          <div className="mt-3 space-y-2">
+            {supportRows.map((row) => (
+              <div
+                key={`${row.status}:${row.muscle}:support`}
+                className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white/75 px-4 py-3"
+              >
+                <div>
+                  <p className="text-sm font-semibold text-slate-800">{row.muscle}</p>
+                  <p className="mt-1 text-xs text-slate-600">
+                    {row.statusLabel} - {row.comparisonLabel}
+                  </p>
+                </div>
+                <p className="text-sm font-semibold text-slate-600">{row.deltaLabel}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {secondaryRows.length > 0 ? (
         <div className="mt-5 border-t border-sky-100 pt-4">

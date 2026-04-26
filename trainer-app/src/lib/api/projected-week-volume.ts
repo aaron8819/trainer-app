@@ -4,10 +4,14 @@ import { prisma } from "@/lib/db/prisma";
 import {
   getExposedVolumeLandmarkEntries,
   getMuscleTargetSemantics,
+  type MuscleDashboardGroup,
+  type MuscleTargetTier,
+  type MuscleTargetWarningSeverity,
   type VolumeSoftTargetRange,
   type VolumeTargetKind,
 } from "@/lib/engine/volume-landmarks";
 import {
+  getWeeklyMuscleDashboardGroup,
   getWeeklyMuscleDisplayGroup,
   type WeeklyMuscleDisplayGroup,
 } from "@/lib/ui/weekly-muscle-status";
@@ -65,6 +69,9 @@ export type ProjectedWeekVolumeMuscleRow = {
   targetKind?: VolumeTargetKind;
   targetRange?: VolumeSoftTargetRange | null;
   displayGroup?: WeeklyMuscleDisplayGroup;
+  targetTier?: MuscleTargetTier | null;
+  warningSeverity?: MuscleTargetWarningSeverity;
+  dashboardGroup?: MuscleDashboardGroup | null;
   completedEffectiveSets: number;
   projectedNextSessionEffectiveSets: number;
   projectedRemainingWeekEffectiveSets: number;
@@ -220,6 +227,7 @@ function buildFullWeekRows(input: {
   week: number;
   completedVolumeByMuscle: Record<string, ProjectedWeekVolumeByMuscle>;
   projectedSessions: ProjectedWeekVolumeSessionSummary[];
+  includeImplicitRows?: boolean;
 }): ProjectedWeekVolumeMuscleRow[] {
   const nextSessionContribution = new Map<string, number>(
     Object.entries(input.projectedSessions[0]?.projectedContributionByMuscle ?? {})
@@ -236,9 +244,10 @@ function buildFullWeekRows(input: {
   }
 
   return getExposedVolumeLandmarkEntries()
-    .map(([muscle, landmarks]) => {
+    .flatMap(([muscle, landmarks]) => {
+      const completedVolume = input.completedVolumeByMuscle[muscle];
       const completedEffectiveSets =
-        input.completedVolumeByMuscle[muscle]?.effectiveSets ?? 0;
+        completedVolume?.effectiveSets ?? 0;
       const projectedNextSessionEffectiveSets =
         nextSessionContribution.get(muscle) ?? 0;
       const projectedRemainingWeekEffectiveSets =
@@ -252,12 +261,33 @@ function buildFullWeekRows(input: {
         input.week
       );
       const targetSemantics = getMuscleTargetSemantics(muscle);
+      const dashboardGroup = getWeeklyMuscleDashboardGroup({
+        dashboardGroup: targetSemantics.dashboardGroup,
+        targetKind: targetSemantics.targetKind,
+      });
+      const hasCompletedActual =
+        completedEffectiveSets > 0 ||
+        (completedVolume?.directSets ?? 0) > 0 ||
+        (completedVolume?.indirectSets ?? 0) > 0;
+      const shouldInclude =
+        dashboardGroup === "implicit"
+          ? Boolean(input.includeImplicitRows || hasCompletedActual)
+          : weeklyTarget > 0 ||
+            completedEffectiveSets > 0 ||
+            projectedFullWeekEffectiveSets > 0;
 
-      return {
+      if (!shouldInclude) {
+        return [];
+      }
+
+      return [{
         muscle,
         targetKind: targetSemantics.targetKind,
         targetRange: targetSemantics.softTargetRange,
         displayGroup: getWeeklyMuscleDisplayGroup(targetSemantics.targetKind),
+        targetTier: targetSemantics.targetTier,
+        warningSeverity: targetSemantics.warningSeverity,
+        dashboardGroup,
         completedEffectiveSets,
         projectedNextSessionEffectiveSets: roundToTenth(
           projectedNextSessionEffectiveSets
@@ -273,14 +303,8 @@ function buildFullWeekRows(input: {
         deltaToTarget: roundToTenth(projectedFullWeekEffectiveSets - weeklyTarget),
         deltaToMev: roundToTenth(projectedFullWeekEffectiveSets - landmarks.mev),
         deltaToMav: roundToTenth(projectedFullWeekEffectiveSets - landmarks.mav),
-      } satisfies ProjectedWeekVolumeMuscleRow;
+      } satisfies ProjectedWeekVolumeMuscleRow];
     })
-    .filter(
-      (row) =>
-        row.weeklyTarget > 0 ||
-        row.completedEffectiveSets > 0 ||
-        row.projectedFullWeekEffectiveSets > 0
-    )
     .sort((left, right) => {
       const leftProjected = Math.abs(left.deltaToTarget);
       const rightProjected = Math.abs(right.deltaToTarget);
@@ -505,6 +529,7 @@ export async function loadProjectedWeekVolumeReport(input: {
       week: currentWeek,
       completedVolumeByMuscle: toProjectedWeekVolumeByMuscle(completedVolume),
       projectedSessions,
+      includeImplicitRows: plannerDiagnosticsMode === "debug",
     }),
   };
 }

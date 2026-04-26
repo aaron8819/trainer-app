@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { findFinalSlotForbiddenPrescriptionViolations } from "./planning-reality-invariants.test-helper";
 
 const mocks = vi.hoisted(() => {
   const mesocycleFindFirst = vi.fn();
@@ -60,7 +61,8 @@ const mocks = vi.hoisted(() => {
         findMany: (...args: unknown[]) => workoutFindMany(...args),
       },
       mesocycleExerciseRole: {
-        findMany: (...args: unknown[]) => mesocycleExerciseRoleFindMany(...args),
+        findMany: (...args: unknown[]) =>
+          mesocycleExerciseRoleFindMany(...args),
       },
     },
   };
@@ -71,27 +73,34 @@ vi.mock("@/lib/db/prisma", () => ({
 }));
 
 vi.mock("@/lib/api/mesocycle-lifecycle", () => ({
-  loadActiveMesocycle: (...args: unknown[]) => mocks.loadActiveMesocycle(...args),
+  loadActiveMesocycle: (...args: unknown[]) =>
+    mocks.loadActiveMesocycle(...args),
 }));
 
 vi.mock("@/lib/api/mesocycle-handoff", () => ({
-  loadHandoffSourceMesocycle: (...args: unknown[]) => mocks.loadHandoffSourceMesocycle(...args),
-  readMesocycleHandoffSummary: (...args: unknown[]) => mocks.readMesocycleHandoffSummary(...args),
-  toHandoffProjectionSource: (...args: unknown[]) => mocks.toHandoffProjectionSource(...args),
+  loadHandoffSourceMesocycle: (...args: unknown[]) =>
+    mocks.loadHandoffSourceMesocycle(...args),
+  readMesocycleHandoffSummary: (...args: unknown[]) =>
+    mocks.readMesocycleHandoffSummary(...args),
+  toHandoffProjectionSource: (...args: unknown[]) =>
+    mocks.toHandoffProjectionSource(...args),
 }));
 
 vi.mock("@/lib/api/mesocycle-handoff-artifacts", () => ({
-  materializeHandoffArtifacts: (...args: unknown[]) => mocks.materializeHandoffArtifacts(...args),
+  materializeHandoffArtifacts: (...args: unknown[]) =>
+    mocks.materializeHandoffArtifacts(...args),
 }));
 
 vi.mock("@/lib/api/mesocycle-handoff-projection", () => ({
-  projectSuccessorMesocycle: (...args: unknown[]) => mocks.projectSuccessorMesocycle(...args),
+  projectSuccessorMesocycle: (...args: unknown[]) =>
+    mocks.projectSuccessorMesocycle(...args),
 }));
 
 vi.mock("@/lib/api/mesocycle-handoff-slot-plan-projection", () => ({
   projectSuccessorSlotPlansFromSnapshot: (...args: unknown[]) =>
     mocks.projectSuccessorSlotPlansFromSnapshot(...args),
-  buildMesocycleSlotPlanSeed: (...args: unknown[]) => mocks.buildMesocycleSlotPlanSeed(...args),
+  buildMesocycleSlotPlanSeed: (...args: unknown[]) =>
+    mocks.buildMesocycleSlotPlanSeed(...args),
 }));
 
 vi.mock("@/lib/api/projected-week-volume-shared", () => ({
@@ -99,12 +108,14 @@ vi.mock("@/lib/api/projected-week-volume-shared", () => ({
     mocks.loadPreloadedGenerationSnapshot(...args),
   buildMappedGenerationContextFromSnapshot: (...args: unknown[]) =>
     mocks.buildMappedGenerationContextFromSnapshot(...args),
-  generateProjectedSession: (...args: unknown[]) => mocks.generateProjectedSession(...args),
+  generateProjectedSession: (...args: unknown[]) =>
+    mocks.generateProjectedSession(...args),
   appendWorkoutHistoryEntryToMappedContext: (...args: unknown[]) =>
     mocks.appendWorkoutHistoryEntryToMappedContext(...args),
   buildProjectedWorkoutHistoryEntry: (...args: unknown[]) =>
     mocks.buildProjectedWorkoutHistoryEntry(...args),
-  listWorkoutExerciseNames: (...args: unknown[]) => mocks.listWorkoutExerciseNames(...args),
+  listWorkoutExerciseNames: (...args: unknown[]) =>
+    mocks.listWorkoutExerciseNames(...args),
 }));
 
 vi.mock("@/lib/api/readiness", () => ({
@@ -113,7 +124,8 @@ vi.mock("@/lib/api/readiness", () => ({
 }));
 
 vi.mock("@/lib/evidence/session-decision-receipt", () => ({
-  readSessionSlotSnapshot: (...args: unknown[]) => mocks.readSessionSlotSnapshot(...args),
+  readSessionSlotSnapshot: (...args: unknown[]) =>
+    mocks.readSessionSlotSnapshot(...args),
 }));
 
 vi.mock("@/lib/evidence/session-audit-snapshot", () => ({
@@ -124,7 +136,8 @@ vi.mock("@/lib/evidence/session-audit-snapshot", () => ({
 }));
 
 vi.mock("@/lib/api/mesocycle-slot-contract", () => ({
-  resolveMesocycleSlotContract: (...args: unknown[]) => mocks.resolveMesocycleSlotContract(...args),
+  resolveMesocycleSlotContract: (...args: unknown[]) =>
+    mocks.resolveMesocycleSlotContract(...args),
 }));
 
 import { buildMesocycleExplainAuditPayload } from "./mesocycle-explain";
@@ -215,9 +228,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
             exercise: {
               name: "Incline Dumbbell Press",
               aliases: [],
-              exerciseMuscles: [
-                { role: "PRIMARY", muscle: { name: "Chest" } },
-              ],
+              exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Chest" } }],
             },
             sets: [],
           },
@@ -230,9 +241,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
             exercise: {
               name: "Cable Fly",
               aliases: [],
-              exerciseMuscles: [
-                { role: "PRIMARY", muscle: { name: "Chest" } },
-              ],
+              exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Chest" } }],
             },
             sets: [],
           },
@@ -316,9 +325,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
           sessionsPerWeek: 4,
           daysPerWeek: 4,
           sequenceMode: "ordered_flexible",
-          slots: [
-            { slotId: "upper_a", intent: "UPPER" },
-          ],
+          slots: [{ slotId: "upper_a", intent: "UPPER" }],
         },
         startingPoint: {
           volumeEntry: "conservative",
@@ -339,9 +346,13 @@ describe("buildMesocycleExplainAuditPayload", () => {
         },
       ],
     });
-    mocks.toHandoffProjectionSource.mockImplementation((value: unknown) => value);
+    mocks.toHandoffProjectionSource.mockImplementation(
+      (value: unknown) => value,
+    );
     mocks.materializeHandoffArtifacts.mockImplementation(() => {
-      throw new Error("should not rematerialize when persisted handoff summary is present");
+      throw new Error(
+        "should not rematerialize when persisted handoff summary is present",
+      );
     });
     mocks.projectSuccessorMesocycle.mockReturnValue({
       mesocycle: {
@@ -582,7 +593,9 @@ describe("buildMesocycleExplainAuditPayload", () => {
               desiredExposureCount: 1,
               priority: "primary",
               source: ["weekly_obligation_plan:getWeeklyVolumeTarget(week=1)"],
-              rationale: ["A primary driver has an explicit Week 1 weekly obligation before slot composition."],
+              rationale: [
+                "A primary driver has an explicit Week 1 weekly obligation before slot composition.",
+              ],
             },
           ],
           shadowSlotDemandAllocation: [
@@ -599,7 +612,9 @@ describe("buildMesocycleExplainAuditPayload", () => {
                   minEffectiveSets: 4,
                   preferredEffectiveSets: 4,
                   maxEffectiveSets: 16,
-                  allocationReason: ["weekly_obligation_allocated_to_compatible_slot"],
+                  allocationReason: [
+                    "weekly_obligation_allocated_to_compatible_slot",
+                  ],
                 },
               ],
             },
@@ -678,7 +693,9 @@ describe("buildMesocycleExplainAuditPayload", () => {
                 },
               },
               diagnostic: {
-                priorRepairsPrevented: ["upper_a:Chest:direct_required:slot_preselection_demand"],
+                priorRepairsPrevented: [
+                  "upper_a:Chest:direct_required:slot_preselection_demand",
+                ],
                 priorRepairsStillRepairOwned: [],
                 blockedRepairs: [],
               },
@@ -705,7 +722,8 @@ describe("buildMesocycleExplainAuditPayload", () => {
             {
               code: "EXERCISE_CONCENTRATION_HIGH",
               severity: "warning",
-              message: "One exercise supplies a high share of a muscle's projected weekly stimulus.",
+              message:
+                "One exercise supplies a high share of a muscle's projected weekly stimulus.",
               evidence: ["upper_a:Incline Dumbbell Press"],
             },
           ],
@@ -900,7 +918,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
           category: "hinge_squat_balance",
           constraint: "weekly_pattern_balance",
         }),
-      ])
+      ]),
     );
     expect(payload.preview.projectionDiagnostics.tradeoffs).toEqual(
       expect.arrayContaining([
@@ -914,7 +932,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
           reason: "redistribution_blocked_stacking_allowed",
           blockReason: "no_compatible_exercise",
         }),
-      ])
+      ]),
     );
     expect(payload.preview.projectionDiagnostics.softCapOverridesByP0).toEqual([
       expect.objectContaining({
@@ -923,61 +941,106 @@ describe("buildMesocycleExplainAuditPayload", () => {
         why: expect.stringContaining("soft set cap yielded to P0"),
       }),
     ]);
-    expect(payload.preview.projectionDiagnostics.planningReality).toMatchObject({
-      label: "weekly demand / slot allocation diagnostics",
-      readOnly: true,
-      affectsScoringOrGeneration: false,
-      summary: {
-        planningShape: "mixed_upstream_plus_repair_shaped",
-        explicitWeeklyDemandMuscles: 4,
-        warningCodes: ["EXERCISE_CONCENTRATION_HIGH"],
-      },
-      weeklyMuscleDemand: [
-        expect.objectContaining({
-          muscle: "Chest",
-          targetStatus: "hard",
-          explicitUpstream: true,
-        }),
-      ],
-      shadowWeeklyDemand: [
-        expect.objectContaining({
-          muscle: "Chest",
-          targetStatus: "hard",
-          priority: "primary",
-        }),
-      ],
-      shadowSlotDemandAllocation: [
-        expect.objectContaining({
-          slotId: "upper_a",
-          allocatedMuscles: [
-            expect.objectContaining({
-              muscle: "Chest",
-              role: "primary",
-            }),
-          ],
-        }),
-      ],
-      slotPrescriptionIntents: [
-        expect.objectContaining({
-          slotId: "upper_a",
-          musclePrescriptions: [
-            expect.objectContaining({
-              muscle: "Chest",
-              demandType: "direct_required",
-            }),
-          ],
-          diagnostic: expect.objectContaining({
-            priorRepairsPrevented: [
-              "upper_a:Chest:direct_required:slot_preselection_demand",
+    expect(payload.preview.projectionDiagnostics.planningReality).toMatchObject(
+      {
+        label: "weekly demand / slot allocation diagnostics",
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+        summary: {
+          planningShape: "mixed_upstream_plus_repair_shaped",
+          explicitWeeklyDemandMuscles: 4,
+          warningCodes: ["EXERCISE_CONCENTRATION_HIGH"],
+        },
+        weeklyMuscleDemand: [
+          expect.objectContaining({
+            muscle: "Chest",
+            targetStatus: "hard",
+            explicitUpstream: true,
+          }),
+        ],
+        shadowWeeklyDemand: [
+          expect.objectContaining({
+            muscle: "Chest",
+            targetStatus: "hard",
+            priority: "primary",
+          }),
+        ],
+        shadowSlotDemandAllocation: [
+          expect.objectContaining({
+            slotId: "upper_a",
+            allocatedMuscles: [
+              expect.objectContaining({
+                muscle: "Chest",
+                role: "primary",
+              }),
             ],
           }),
+        ],
+        slotPrescriptionIntents: [
+          expect.objectContaining({
+            slotId: "upper_a",
+            musclePrescriptions: [
+              expect.objectContaining({
+                muscle: "Chest",
+                demandType: "direct_required",
+              }),
+            ],
+            diagnostic: expect.objectContaining({
+              priorRepairsPrevented: [
+                "upper_a:Chest:direct_required:slot_preselection_demand",
+              ],
+            }),
+          }),
+        ],
+        rearDeltCollateralSummary: expect.objectContaining({
+          rearDeltPreselectionConsumed: true,
+          verdict: "clean_improvement",
         }),
-      ],
-      rearDeltCollateralSummary: expect.objectContaining({
-        rearDeltPreselectionConsumed: true,
-        verdict: "clean_improvement",
+      },
+    );
+    const planningReality =
+      payload.preview.projectionDiagnostics.planningReality;
+    expect(
+      findFinalSlotForbiddenPrescriptionViolations(planningReality),
+    ).toEqual([]);
+    expect(
+      findFinalSlotForbiddenPrescriptionViolations({
+        ...planningReality,
+        finalSlotPlan: [
+          ...(planningReality?.finalSlotPlan ?? []),
+          {
+            slotId: "lower_b",
+            exercises: [
+              {
+                exerciseId: "cable-crossover",
+                exerciseName: "Cable Crossover",
+                primaryMuscles: ["Chest"],
+              },
+            ],
+          },
+        ],
+        slotPrescriptionIntents: [
+          ...(planningReality?.slotPrescriptionIntents ?? []),
+          {
+            slotId: "lower_b",
+            musclePrescriptions: [
+              {
+                muscle: "Chest",
+                targetStatus: "forbidden",
+                demandType: "do_not_train_here",
+              },
+            ],
+          },
+        ],
       }),
-    });
+    ).toEqual([
+      {
+        slotId: "lower_b",
+        muscle: "Chest",
+        exerciseId: "cable-crossover",
+        exerciseName: "Cable Crossover",
+      },
+    ]);
     expect(payload.seed.exerciseRationale[0]).toMatchObject({
       exerciseId: "ex-1",
       reasonSource: "persisted",
@@ -992,13 +1055,15 @@ describe("buildMesocycleExplainAuditPayload", () => {
           exerciseId: "ex-2",
           reasonSource: "reconstructed",
         }),
-      ])
+      ]),
     );
     expect(payload.limitations).toEqual(
       expect.arrayContaining([
-        expect.stringContaining("Historical acceptance-time candidate ranking rationale is not persisted"),
+        expect.stringContaining(
+          "Historical acceptance-time candidate ranking rationale is not persisted",
+        ),
         expect.stringContaining("fresh reprojections"),
-      ])
+      ]),
     );
   });
 });

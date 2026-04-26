@@ -1,5 +1,9 @@
 import type { WorkoutSessionIntent } from "@prisma/client";
-import type { WorkoutExercise, WorkoutPlan, WorkoutSet } from "@/lib/engine/types";
+import type {
+  WorkoutExercise,
+  WorkoutPlan,
+  WorkoutSet,
+} from "@/lib/engine/types";
 import { VOLUME_LANDMARKS } from "@/lib/engine/volume-landmarks";
 import { getEffectiveStimulusByMuscle } from "@/lib/engine/stimulus";
 import {
@@ -45,16 +49,117 @@ import {
   type WeeklyMuscleObligationPlan,
 } from "./mesocycle-handoff-slot-plan-projection.weekly-obligations";
 
+type ProjectionRepairSlotPolicy = ReturnType<
+  typeof resolveSessionSlotPolicy
+>["currentSession"];
+
+const UPPER_SLOT_FORBIDDEN_PRIMARY_REPAIR_MUSCLES: ProtectedWeekOneCoverageMuscle[] =
+  ["Quads", "Hamstrings", "Calves"];
+const LOWER_SLOT_FORBIDDEN_PRIMARY_REPAIR_MUSCLES: ProtectedWeekOneCoverageMuscle[] =
+  ["Chest", "Lats", "Side Delts", "Rear Delts", "Triceps", "Biceps"];
+
+function getRepairSlotRegion(
+  slotPolicy: ProjectionRepairSlotPolicy,
+): "upper" | "lower" | "other" {
+  const slotArchetype = (slotPolicy?.slotArchetype ?? "").toLowerCase();
+  const sessionIntent = (slotPolicy?.sessionIntent ?? "").toLowerCase();
+  const slotId = (slotPolicy?.slotId ?? "").toLowerCase();
+  if (
+    slotArchetype.startsWith("upper_") ||
+    sessionIntent === "upper" ||
+    slotId.startsWith("upper")
+  ) {
+    return "upper";
+  }
+  if (
+    slotArchetype.startsWith("lower_") ||
+    sessionIntent === "lower" ||
+    slotId.startsWith("lower")
+  ) {
+    return "lower";
+  }
+  return "other";
+}
+
+function exercisePrimaryMatchesMuscle(
+  exercise: WorkoutExercise["exercise"],
+  muscle: string,
+): boolean {
+  const normalizedMuscle = normalizeMuscleName(muscle);
+  return (exercise.primaryMuscles ?? []).some(
+    (primary) => normalizeMuscleName(primary) === normalizedMuscle,
+  );
+}
+
+function isForbiddenSlotPrimaryRepair(input: {
+  slotPolicy: ProjectionRepairSlotPolicy;
+  muscle: string;
+  exercise: WorkoutExercise["exercise"];
+}): boolean {
+  const forbiddenMuscles = getForbiddenPrimaryRepairMuscles(input.slotPolicy);
+  if (forbiddenMuscles.length === 0) {
+    return false;
+  }
+  const normalizedMuscle = normalizeMuscleName(input.muscle);
+  return (
+    forbiddenMuscles.some(
+      (muscle) => normalizeMuscleName(muscle) === normalizedMuscle,
+    ) && exercisePrimaryMatchesMuscle(input.exercise, normalizedMuscle)
+  );
+}
+
+function getForbiddenPrimaryRepairMuscles(
+  slotPolicy: ProjectionRepairSlotPolicy,
+): ProtectedWeekOneCoverageMuscle[] {
+  const region = getRepairSlotRegion(slotPolicy);
+  if (region === "upper") {
+    return UPPER_SLOT_FORBIDDEN_PRIMARY_REPAIR_MUSCLES;
+  }
+  if (region === "lower") {
+    return LOWER_SLOT_FORBIDDEN_PRIMARY_REPAIR_MUSCLES;
+  }
+  return [];
+}
+
+function hasForbiddenSupportIsolationCandidate(input: {
+  exerciseLibrary: MappedGenerationContext["exerciseLibrary"];
+  selectedExerciseIds: Set<string>;
+  muscle: string;
+  slotPolicy: ProjectionRepairSlotPolicy;
+}): boolean {
+  return input.exerciseLibrary.some(
+    (exercise) =>
+      !input.selectedExerciseIds.has(exercise.id) &&
+      !(exercise.isCompound ?? false) &&
+      !(exercise.isMainLiftEligible ?? false) &&
+      exercisePrimaryMatchesMuscle(exercise, input.muscle) &&
+      isForbiddenSlotPrimaryRepair({
+        slotPolicy: input.slotPolicy,
+        muscle: input.muscle,
+        exercise,
+      }),
+  );
+}
+
 function selectSupportIsolation(input: {
   exerciseLibrary: MappedGenerationContext["exerciseLibrary"];
   selectedExerciseIds: Set<string>;
   muscle: string;
+  slotPolicy: ProjectionRepairSlotPolicy;
 }): WorkoutExercise["exercise"] | undefined {
   return input.exerciseLibrary
     .filter((exercise) => !input.selectedExerciseIds.has(exercise.id))
     .filter((exercise) => !(exercise.isCompound ?? false))
     .filter((exercise) => !(exercise.isMainLiftEligible ?? false))
-    .filter((exercise) => (exercise.primaryMuscles ?? []).includes(input.muscle))
+    .filter((exercise) => exercisePrimaryMatchesMuscle(exercise, input.muscle))
+    .filter(
+      (exercise) =>
+        !isForbiddenSlotPrimaryRepair({
+          slotPolicy: input.slotPolicy,
+          muscle: input.muscle,
+          exercise,
+        }),
+    )
     .sort((left, right) => {
       const fatigueDelta = (left.fatigueCost ?? 3) - (right.fatigueCost ?? 3);
       if (fatigueDelta !== 0) {
@@ -68,13 +173,23 @@ function selectHardObligationExercise(input: {
   exerciseLibrary: MappedGenerationContext["exerciseLibrary"];
   selectedExerciseIds: Set<string>;
   muscle: HardWeeklyObligationMuscle;
+  slotPolicy: ProjectionRepairSlotPolicy;
 }): WorkoutExercise["exercise"] | undefined {
   return input.exerciseLibrary
     .filter((exercise) => !input.selectedExerciseIds.has(exercise.id))
     .filter((exercise) =>
       (exercise.primaryMuscles ?? []).some(
-        (muscle) => normalizeMuscleName(muscle) === normalizeMuscleName(input.muscle)
-      )
+        (muscle) =>
+          normalizeMuscleName(muscle) === normalizeMuscleName(input.muscle),
+      ),
+    )
+    .filter(
+      (exercise) =>
+        !isForbiddenSlotPrimaryRepair({
+          slotPolicy: input.slotPolicy,
+          muscle: input.muscle,
+          exercise,
+        }),
     )
     .sort((left, right) => {
       const leftMain = left.isMainLiftEligible ? 1 : 0;
@@ -82,8 +197,10 @@ function selectHardObligationExercise(input: {
       if (leftMain !== rightMain) {
         return leftMain - rightMain;
       }
-      const leftEffective = getEffectiveStimulusByMuscle(left, 1).get(input.muscle) ?? 0;
-      const rightEffective = getEffectiveStimulusByMuscle(right, 1).get(input.muscle) ?? 0;
+      const leftEffective =
+        getEffectiveStimulusByMuscle(left, 1).get(input.muscle) ?? 0;
+      const rightEffective =
+        getEffectiveStimulusByMuscle(right, 1).get(input.muscle) ?? 0;
       if (rightEffective !== leftEffective) {
         return rightEffective - leftEffective;
       }
@@ -101,7 +218,9 @@ const MAX_PROJECTED_EXERCISE_MUSCLE_CONTRIBUTION_RATIO = 0.5;
 export const MIN_PROJECTED_MAIN_LIFT_SETS_PER_EXERCISE = 3;
 export const MIN_PROJECTED_ACCESSORY_SETS_PER_EXERCISE = 2;
 
-function getMaxProjectedSetCount(exercise: Pick<WorkoutExercise, "isMainLift" | "role">): number {
+function getMaxProjectedSetCount(
+  exercise: Pick<WorkoutExercise, "isMainLift" | "role">,
+): number {
   return exercise.isMainLift || exercise.role === "main"
     ? MAX_PROJECTED_MAIN_LIFT_SETS_PER_EXERCISE
     : MAX_PROJECTED_ACCESSORY_SETS_PER_EXERCISE;
@@ -123,23 +242,26 @@ function getDistributionAwareSupportSetCount(input: {
     maxSetCount = Math.min(
       maxSetCount,
       Math.floor(
-        (input.practicalFloor * MAX_PROJECTED_EXERCISE_MUSCLE_CONTRIBUTION_RATIO +
+        (input.practicalFloor *
+          MAX_PROJECTED_EXERCISE_MUSCLE_CONTRIBUTION_RATIO +
           SUPPORT_FLOOR_EPSILON) /
-          effectivePerSet
-      )
+          effectivePerSet,
+      ),
     );
   }
 
   if (effectivePerSet > 0 && input.requestedEffectiveSets != null) {
     maxSetCount = Math.min(
       maxSetCount,
-      Math.ceil(input.requestedEffectiveSets / effectivePerSet - SUPPORT_FLOOR_EPSILON)
+      Math.ceil(
+        input.requestedEffectiveSets / effectivePerSet - SUPPORT_FLOOR_EPSILON,
+      ),
     );
   }
 
   return Math.max(
     MIN_PROJECTED_ACCESSORY_SETS_PER_EXERCISE,
-    Math.min(input.defaultSetCount, maxSetCount)
+    Math.min(input.defaultSetCount, maxSetCount),
   );
 }
 
@@ -152,11 +274,14 @@ export function buildSupportAccessoryExercise(input: {
   requestedEffectiveSets?: number;
 }): WorkoutExercise {
   const templateSets = input.template?.sets ?? [];
-  const baseSets = templateSets.length > 0 ? templateSets : Array.from({ length: 4 }, (_, index) => ({
-    setIndex: index + 1,
-    targetReps: 12,
-    role: "accessory" as const,
-  }));
+  const baseSets =
+    templateSets.length > 0
+      ? templateSets
+      : Array.from({ length: 4 }, (_, index) => ({
+          setIndex: index + 1,
+          targetReps: 12,
+          role: "accessory" as const,
+        }));
   const setCount = getDistributionAwareSupportSetCount({
     exercise: input.exercise,
     defaultSetCount: baseSets.length,
@@ -180,16 +305,25 @@ export function buildSupportAccessoryExercise(input: {
   };
 }
 
-function removeAccessory(workout: WorkoutPlan, exerciseId: string): WorkoutPlan {
+function removeAccessory(
+  workout: WorkoutPlan,
+  exerciseId: string,
+): WorkoutPlan {
   return {
     ...workout,
     accessories: workout.accessories
       .filter((exercise) => exercise.exercise.id !== exerciseId)
-      .map((exercise, index) => ({ ...exercise, orderIndex: workout.mainLifts.length + index })),
+      .map((exercise, index) => ({
+        ...exercise,
+        orderIndex: workout.mainLifts.length + index,
+      })),
   };
 }
 
-export function appendAccessory(workout: WorkoutPlan, exercise: WorkoutExercise): WorkoutPlan {
+export function appendAccessory(
+  workout: WorkoutPlan,
+  exercise: WorkoutExercise,
+): WorkoutPlan {
   return {
     ...workout,
     accessories: [...workout.accessories, exercise].map((entry, index) => ({
@@ -202,7 +336,7 @@ export function appendAccessory(workout: WorkoutPlan, exercise: WorkoutExercise)
 function buildProjectionSetFromTemplate(
   template: WorkoutSet | undefined,
   setIndex: number,
-  role: WorkoutExercise["role"]
+  role: WorkoutExercise["role"],
 ): WorkoutSet {
   return {
     ...(template ?? {
@@ -215,7 +349,7 @@ function buildProjectionSetFromTemplate(
 
 function withAdditionalAccessorySets(
   exercise: WorkoutExercise,
-  additionalSets: number
+  additionalSets: number,
 ): WorkoutExercise {
   if (additionalSets <= 0) {
     return exercise;
@@ -227,8 +361,8 @@ function withAdditionalAccessorySets(
       buildProjectionSetFromTemplate(
         sets.at(-1),
         sets.length + 1,
-        exercise.role ?? "accessory"
-      )
+        exercise.role ?? "accessory",
+      ),
     );
   }
 
@@ -248,15 +382,18 @@ function withOneFewerSet(exercise: WorkoutExercise): WorkoutExercise {
   };
 }
 
-function withSetCount(exercise: WorkoutExercise, setCount: number): WorkoutExercise {
+function withSetCount(
+  exercise: WorkoutExercise,
+  setCount: number,
+): WorkoutExercise {
   const sets = exercise.sets.slice(0, setCount);
   while (sets.length < setCount) {
     sets.push(
       buildProjectionSetFromTemplate(
         sets.at(-1),
         sets.length + 1,
-        exercise.role ?? "accessory"
-      )
+        exercise.role ?? "accessory",
+      ),
     );
   }
 
@@ -271,33 +408,36 @@ function withSetCount(exercise: WorkoutExercise, setCount: number): WorkoutExerc
 
 function replaceWorkoutExercise(
   workout: WorkoutPlan,
-  replacement: WorkoutExercise
+  replacement: WorkoutExercise,
 ): WorkoutPlan {
   return {
     ...workout,
     mainLifts: workout.mainLifts.map((exercise) =>
-      exercise.exercise.id === replacement.exercise.id ? replacement : exercise
+      exercise.exercise.id === replacement.exercise.id ? replacement : exercise,
     ),
     accessories: workout.accessories.map((exercise) =>
-      exercise.exercise.id === replacement.exercise.id ? replacement : exercise
+      exercise.exercise.id === replacement.exercise.id ? replacement : exercise,
     ),
   };
 }
 
 function getEffectiveContributionPerSet(
   exercise: WorkoutExercise,
-  muscle: ProtectedWeekOneCoverageMuscle
+  muscle: ProtectedWeekOneCoverageMuscle,
 ): number {
   return getEffectiveStimulusByMuscle(exercise.exercise, 1).get(muscle) ?? 0;
 }
 
-function getMaxPracticalSetBump(exercise: WorkoutExercise, requestedSetBump: number): number {
+function getMaxPracticalSetBump(
+  exercise: WorkoutExercise,
+  requestedSetBump: number,
+): number {
   return Math.max(
     0,
     Math.min(
       requestedSetBump,
-      getMaxProjectedSetCount(exercise) - exercise.sets.length
-    )
+      getMaxProjectedSetCount(exercise) - exercise.sets.length,
+    ),
   );
 }
 
@@ -307,7 +447,10 @@ function getMaxContributionSetBump(input: {
   practicalFloor: number;
   requestedSetBump: number;
 }): number {
-  const effectivePerSet = getEffectiveContributionPerSet(input.exercise, input.muscle);
+  const effectivePerSet = getEffectiveContributionPerSet(
+    input.exercise,
+    input.muscle,
+  );
   if (effectivePerSet <= 0) {
     return 0;
   }
@@ -320,9 +463,10 @@ function getMaxContributionSetBump(input: {
     Math.min(
       input.requestedSetBump,
       Math.floor(
-        (maxContribution - currentContribution + SUPPORT_FLOOR_EPSILON) / effectivePerSet
-      )
-    )
+        (maxContribution - currentContribution + SUPPORT_FLOOR_EPSILON) /
+          effectivePerSet,
+      ),
+    ),
   );
 }
 
@@ -334,7 +478,7 @@ function getMaxMavSafeSetBump(input: {
   let maxSetBump = input.requestedSetBump;
   for (const [muscle, effectiveSetsPerSet] of getEffectiveStimulusByMuscle(
     input.exercise.exercise,
-    1
+    1,
   )) {
     if (effectiveSetsPerSet <= 0) {
       continue;
@@ -346,7 +490,9 @@ function getMaxMavSafeSetBump(input: {
     const remainingToMav = mav - (input.projectedTotals.get(muscle) ?? 0);
     maxSetBump = Math.min(
       maxSetBump,
-      Math.floor((remainingToMav + SUPPORT_FLOOR_EPSILON) / effectiveSetsPerSet)
+      Math.floor(
+        (remainingToMav + SUPPORT_FLOOR_EPSILON) / effectiveSetsPerSet,
+      ),
     );
   }
   return Math.max(0, maxSetBump);
@@ -362,20 +508,33 @@ function findExistingSupportExercise(input: {
       ? [...input.workout.accessories, ...input.workout.mainLifts]
       : [...input.workout.accessories];
   return exercises
-    .filter((exercise) => getEffectiveContributionPerSet(exercise, input.muscle) > 0)
+    .filter(
+      (exercise) => getEffectiveContributionPerSet(exercise, input.muscle) > 0,
+    )
     .sort((left, right) => {
-      const leftAccessory = left.role === "accessory" || !left.isMainLift ? 1 : 0;
-      const rightAccessory = right.role === "accessory" || !right.isMainLift ? 1 : 0;
+      const leftAccessory =
+        left.role === "accessory" || !left.isMainLift ? 1 : 0;
+      const rightAccessory =
+        right.role === "accessory" || !right.isMainLift ? 1 : 0;
       if (leftAccessory !== rightAccessory) {
         return rightAccessory - leftAccessory;
       }
-      const leftPrimary = exerciseHasPrimaryMuscle(left.exercise, input.muscle) ? 1 : 0;
-      const rightPrimary = exerciseHasPrimaryMuscle(right.exercise, input.muscle) ? 1 : 0;
+      const leftPrimary = exerciseHasPrimaryMuscle(left.exercise, input.muscle)
+        ? 1
+        : 0;
+      const rightPrimary = exerciseHasPrimaryMuscle(
+        right.exercise,
+        input.muscle,
+      )
+        ? 1
+        : 0;
       if (leftPrimary !== rightPrimary) {
         return rightPrimary - leftPrimary;
       }
-      const leftCanAddSets = left.sets.length < getMaxProjectedSetCount(left) ? 1 : 0;
-      const rightCanAddSets = right.sets.length < getMaxProjectedSetCount(right) ? 1 : 0;
+      const leftCanAddSets =
+        left.sets.length < getMaxProjectedSetCount(left) ? 1 : 0;
+      const rightCanAddSets =
+        right.sets.length < getMaxProjectedSetCount(right) ? 1 : 0;
       if (leftCanAddSets !== rightCanAddSets) {
         return rightCanAddSets - leftCanAddSets;
       }
@@ -391,16 +550,16 @@ function findExistingSupportExercise(input: {
 
 function accessoryTargetsProtectedMuscle(
   exercise: WorkoutExercise,
-  protectedMuscles: ReadonlySet<string>
+  protectedMuscles: ReadonlySet<string>,
 ): boolean {
   return (exercise.exercise.primaryMuscles ?? []).some((muscle) =>
-    protectedMuscles.has(normalizeMuscleName(muscle))
+    protectedMuscles.has(normalizeMuscleName(muscle)),
   );
 }
 
 function getProtectedPrimaryMuscles(
   exercise: WorkoutExercise,
-  protectedMuscles: ReadonlySet<string>
+  protectedMuscles: ReadonlySet<string>,
 ): string[] {
   return (exercise.exercise.primaryMuscles ?? [])
     .map(normalizeMuscleName)
@@ -410,19 +569,19 @@ function getProtectedPrimaryMuscles(
 function getSupportFloorRepairPriority(muscle: string): number {
   const normalized = normalizeMuscleName(muscle);
   const index = WEEK_ONE_SUPPORT_FLOOR_REPAIR_PRIORITY.findIndex(
-    (entry) => normalizeMuscleName(entry) === normalized
+    (entry) => normalizeMuscleName(entry) === normalized,
   );
   return index >= 0 ? index : WEEK_ONE_SUPPORT_FLOOR_REPAIR_PRIORITY.length;
 }
 
 function getReplacementProtectedMuscles(
-  slotPolicy: ReturnType<typeof resolveSessionSlotPolicy>["currentSession"]
+  slotPolicy: ReturnType<typeof resolveSessionSlotPolicy>["currentSession"],
 ): ProtectedWeekOneCoverageMuscle[] {
   return Array.from(
     new Set([
       ...getProtectedWeekOneCoverageObligations(slotPolicy),
       ...PRIMARY_WEEK_ONE_MEV_MUSCLES,
-    ])
+    ]),
   );
 }
 
@@ -431,15 +590,18 @@ function canReplaceForHigherPrioritySupport(input: {
   accessory: WorkoutExercise;
   protectedMuscleSet: ReadonlySet<string>;
 }): boolean {
-  const requestedPriority = getSupportFloorRepairPriority(input.requestedMuscle);
+  const requestedPriority = getSupportFloorRepairPriority(
+    input.requestedMuscle,
+  );
   const protectedPrimaries = getProtectedPrimaryMuscles(
     input.accessory,
-    input.protectedMuscleSet
+    input.protectedMuscleSet,
   );
   return (
     protectedPrimaries.length > 0 &&
     protectedPrimaries.every(
-      (protectedMuscle) => getSupportFloorRepairPriority(protectedMuscle) > requestedPriority
+      (protectedMuscle) =>
+        getSupportFloorRepairPriority(protectedMuscle) > requestedPriority,
     )
   );
 }
@@ -459,6 +621,7 @@ function appendOrReplaceSupportAccessory(input: {
     exerciseLibrary: input.exerciseLibrary,
     selectedExerciseIds: input.selectedExerciseIds,
     muscle: input.muscle,
+    slotPolicy: input.slotPolicy,
   });
   if (!supportExercise) {
     return input.workout;
@@ -475,14 +638,25 @@ function appendOrReplaceSupportAccessory(input: {
     });
 
   if (countWorkoutExercises(input.workout) < SESSION_CAPS.maxExercises) {
-    const candidateWorkout = appendAccessory(input.workout, buildAccessory(input.workout));
-    return preservesSlotIdentity({ slotPolicy: input.slotPolicy, workout: candidateWorkout }) ||
-      !preservesSlotIdentity({ slotPolicy: input.slotPolicy, workout: input.workout })
+    const candidateWorkout = appendAccessory(
+      input.workout,
+      buildAccessory(input.workout),
+    );
+    return preservesSlotIdentity({
+      slotPolicy: input.slotPolicy,
+      workout: candidateWorkout,
+    }) ||
+      !preservesSlotIdentity({
+        slotPolicy: input.slotPolicy,
+        workout: input.workout,
+      })
       ? candidateWorkout
       : input.workout;
   }
 
-  const protectedMuscleSet = new Set(input.protectedMuscles.map(normalizeMuscleName));
+  const protectedMuscleSet = new Set(
+    input.protectedMuscles.map(normalizeMuscleName),
+  );
   for (const accessory of input.workout.accessories) {
     if (
       accessoryTargetsProtectedMuscle(accessory, protectedMuscleSet) &&
@@ -497,41 +671,63 @@ function appendOrReplaceSupportAccessory(input: {
     ) {
       continue;
     }
-    const workoutWithoutAccessory = removeAccessory(input.workout, accessory.exercise.id);
+    const workoutWithoutAccessory = removeAccessory(
+      input.workout,
+      accessory.exercise.id,
+    );
     const candidateWorkout = appendAccessory(
       workoutWithoutAccessory,
-      buildAccessory(workoutWithoutAccessory, accessory)
+      buildAccessory(workoutWithoutAccessory, accessory),
     );
-    if (preservesSlotIdentity({ slotPolicy: input.slotPolicy, workout: candidateWorkout })) {
+    if (
+      preservesSlotIdentity({
+        slotPolicy: input.slotPolicy,
+        workout: candidateWorkout,
+      })
+    ) {
       return candidateWorkout;
     }
   }
   const requestedMuscle = normalizeMuscleName(input.muscle);
   for (const accessory of input.workout.accessories) {
-    const accessoryProtectedPrimaries = getProtectedPrimaryMuscles(accessory, protectedMuscleSet);
+    const accessoryProtectedPrimaries = getProtectedPrimaryMuscles(
+      accessory,
+      protectedMuscleSet,
+    );
     if (
       accessoryProtectedPrimaries.length === 0 ||
       accessoryProtectedPrimaries.includes(requestedMuscle)
     ) {
       continue;
     }
-    const hasDuplicateProtectedPrimary = accessoryProtectedPrimaries.some((protectedMuscle) =>
-      getWorkoutExercises(input.workout).some(
-        (other) =>
-          other.exercise.id !== accessory.exercise.id &&
-          getProtectedPrimaryMuscles(other, protectedMuscleSet).includes(protectedMuscle)
-      )
+    const hasDuplicateProtectedPrimary = accessoryProtectedPrimaries.some(
+      (protectedMuscle) =>
+        getWorkoutExercises(input.workout).some(
+          (other) =>
+            other.exercise.id !== accessory.exercise.id &&
+            getProtectedPrimaryMuscles(other, protectedMuscleSet).includes(
+              protectedMuscle,
+            ),
+        ),
     );
     if (!hasDuplicateProtectedPrimary) {
       continue;
     }
 
-    const workoutWithoutAccessory = removeAccessory(input.workout, accessory.exercise.id);
+    const workoutWithoutAccessory = removeAccessory(
+      input.workout,
+      accessory.exercise.id,
+    );
     const candidateWorkout = appendAccessory(
       workoutWithoutAccessory,
-      buildAccessory(workoutWithoutAccessory, accessory)
+      buildAccessory(workoutWithoutAccessory, accessory),
     );
-    if (preservesSlotIdentity({ slotPolicy: input.slotPolicy, workout: candidateWorkout })) {
+    if (
+      preservesSlotIdentity({
+        slotPolicy: input.slotPolicy,
+        workout: candidateWorkout,
+      })
+    ) {
       return candidateWorkout;
     }
   }
@@ -564,8 +760,8 @@ export function rebalanceUpperSupportProjection(input: {
 
   const selectedExerciseIds = new Set(
     [...input.workout.mainLifts, ...input.workout.accessories].map(
-      (exercise) => exercise.exercise.id
-    )
+      (exercise) => exercise.exercise.id,
+    ),
   );
 
   let workout = input.workout;
@@ -573,11 +769,14 @@ export function rebalanceUpperSupportProjection(input: {
     (muscle) =>
       PRIMARY_WEEK_ONE_SUPPORT_FLOOR_MUSCLES.has(muscle) &&
       !getWorkoutExercises(workout).some((exercise) =>
-        exerciseHasPrimaryMuscle(exercise.exercise, muscle)
-      )
+        exerciseHasPrimaryMuscle(exercise.exercise, muscle),
+      ),
   );
   const repairMuscles = Array.from(
-    new Set([...initialQuality.missingMuscles, ...missingPrimarySupportMuscles])
+    new Set([
+      ...initialQuality.missingMuscles,
+      ...missingPrimarySupportMuscles,
+    ]),
   );
   for (const muscle of repairMuscles) {
     workout = appendOrReplaceSupportAccessory({
@@ -588,7 +787,9 @@ export function rebalanceUpperSupportProjection(input: {
       muscle,
       protectedMuscles,
       allowLowerPriorityProtectedReplacement:
-        muscle !== "Chest" && getSupportFloorRepairPriority(muscle) < WEEK_ONE_SUPPORT_FLOOR_REPAIR_PRIORITY.length,
+        muscle !== "Chest" &&
+        getSupportFloorRepairPriority(muscle) <
+          WEEK_ONE_SUPPORT_FLOOR_REPAIR_PRIORITY.length,
     });
     for (const exercise of [...workout.mainLifts, ...workout.accessories]) {
       selectedExerciseIds.add(exercise.exercise.id);
@@ -611,9 +812,13 @@ export function applyExistingAccessorySupportFloorBumps(input: {
   }>;
 }): {
   workout: WorkoutPlan;
-  reasons: Partial<Record<ProtectedWeekOneCoverageMuscle, SupportFloorRepairReason[]>>;
+  reasons: Partial<
+    Record<ProtectedWeekOneCoverageMuscle, SupportFloorRepairReason[]>
+  >;
 } {
-  const reasons: Partial<Record<ProtectedWeekOneCoverageMuscle, SupportFloorRepairReason[]>> = {};
+  const reasons: Partial<
+    Record<ProtectedWeekOneCoverageMuscle, SupportFloorRepairReason[]>
+  > = {};
   let workout = input.workout;
 
   for (let pass = 0; pass < 2; pass += 1) {
@@ -628,7 +833,8 @@ export function applyExistingAccessorySupportFloorBumps(input: {
             workout,
           }),
           workout,
-          projectedContributionByMuscle: computeWorkoutContributionByMuscle(workout),
+          projectedContributionByMuscle:
+            computeWorkoutContributionByMuscle(workout),
           repairMuscles: [],
         },
       ],
@@ -637,8 +843,10 @@ export function applyExistingAccessorySupportFloorBumps(input: {
     });
     const repairRows = sortSupportFloorDeficits(
       evaluation.deficitsBelowPracticalFloor.filter((row) =>
-        getProjectionRepairCompatibleMuscles(input.slotPolicy, [row.muscle]).includes(row.muscle)
-      )
+        getProjectionRepairCompatibleMuscles(input.slotPolicy, [
+          row.muscle,
+        ]).includes(row.muscle),
+      ),
     );
 
     if (repairRows.length === 0) {
@@ -647,14 +855,14 @@ export function applyExistingAccessorySupportFloorBumps(input: {
 
     let appliedAnyBump = false;
     for (const row of repairRows) {
-      const selectedExerciseIds = new Set(
-        [
-          ...input.projectedSlots.flatMap((slot) =>
-            getWorkoutExercises(slot.workout).map((exercise) => exercise.exercise.id)
+      const selectedExerciseIds = new Set([
+        ...input.projectedSlots.flatMap((slot) =>
+          getWorkoutExercises(slot.workout).map(
+            (exercise) => exercise.exercise.id,
           ),
-          ...getWorkoutExercises(workout).map((exercise) => exercise.exercise.id),
-        ]
-      );
+        ),
+        ...getWorkoutExercises(workout).map((exercise) => exercise.exercise.id),
+      ]);
       const repairedWorkout = appendOrReplaceSupportAccessory({
         workout,
         slotPolicy: input.slotPolicy,
@@ -671,7 +879,11 @@ export function applyExistingAccessorySupportFloorBumps(input: {
       });
       if (repairedWorkout !== workout) {
         workout = repairedWorkout;
-        addSupportFloorRepairReason(reasons, row.muscle, "support_accessory_replacement");
+        addSupportFloorRepairReason(
+          reasons,
+          row.muscle,
+          "support_accessory_replacement",
+        );
         appliedAnyBump = true;
         continue;
       }
@@ -682,26 +894,42 @@ export function applyExistingAccessorySupportFloorBumps(input: {
         includeMainLifts: row.muscle === "Chest" || row.muscle === "Hamstrings",
       });
       if (!existingAccessory) {
+        const forbiddenSupportExercise = hasForbiddenSupportIsolationCandidate({
+          exerciseLibrary: input.exerciseLibrary,
+          selectedExerciseIds,
+          muscle: row.muscle,
+          slotPolicy: input.slotPolicy,
+        });
         const supportExercise = selectSupportIsolation({
           exerciseLibrary: input.exerciseLibrary,
           selectedExerciseIds,
           muscle: row.muscle,
+          slotPolicy: input.slotPolicy,
         });
         addSupportFloorRepairReason(
           reasons,
           row.muscle,
-          supportExercise
-            ? countWorkoutExercises(workout) >= SESSION_CAPS.maxExercises
-              ? "exercise_cap_blocked"
-              : "slot_identity_blocked"
-            : "no_compatible_exercise"
+          forbiddenSupportExercise
+            ? "forbidden_slot_blocked"
+            : supportExercise
+              ? countWorkoutExercises(workout) >= SESSION_CAPS.maxExercises
+                ? "exercise_cap_blocked"
+                : "slot_identity_blocked"
+              : "no_compatible_exercise",
         );
         continue;
       }
 
-      const effectivePerSet = getEffectiveContributionPerSet(existingAccessory, row.muscle);
+      const effectivePerSet = getEffectiveContributionPerSet(
+        existingAccessory,
+        row.muscle,
+      );
       if (effectivePerSet <= 0) {
-        addSupportFloorRepairReason(reasons, row.muscle, "effective_weight_shortfall");
+        addSupportFloorRepairReason(
+          reasons,
+          row.muscle,
+          "effective_weight_shortfall",
+        );
         continue;
       }
 
@@ -711,13 +939,18 @@ export function applyExistingAccessorySupportFloorBumps(input: {
       });
       const requestedSetBump = Math.min(
         MAX_PROJECTED_SUPPORT_FLOOR_SET_BUMP,
-        Math.ceil(row.deficitToPracticalFloor / effectivePerSet - SUPPORT_FLOOR_EPSILON)
+        Math.ceil(
+          row.deficitToPracticalFloor / effectivePerSet - SUPPORT_FLOOR_EPSILON,
+        ),
       );
       const practicalSetBump = getMaxContributionSetBump({
         exercise: existingAccessory,
         muscle: row.muscle,
         practicalFloor: row.practicalFloor,
-        requestedSetBump: getMaxPracticalSetBump(existingAccessory, requestedSetBump),
+        requestedSetBump: getMaxPracticalSetBump(
+          existingAccessory,
+          requestedSetBump,
+        ),
       });
       if (practicalSetBump <= 0) {
         addSupportFloorRepairReason(reasons, row.muscle, "capacity_blocked");
@@ -736,11 +969,19 @@ export function applyExistingAccessorySupportFloorBumps(input: {
 
       workout = replaceWorkoutExercise(
         workout,
-        withAdditionalAccessorySets(existingAccessory, safeSetBump)
+        withAdditionalAccessorySets(existingAccessory, safeSetBump),
       );
-      addSupportFloorRepairReason(reasons, row.muscle, "existing_accessory_set_bump");
+      addSupportFloorRepairReason(
+        reasons,
+        row.muscle,
+        "existing_accessory_set_bump",
+      );
       if (safeSetBump < requestedSetBump) {
-        addSupportFloorRepairReason(reasons, row.muscle, "effective_weight_shortfall");
+        addSupportFloorRepairReason(
+          reasons,
+          row.muscle,
+          "effective_weight_shortfall",
+        );
       }
       appliedAnyBump = true;
     }
@@ -755,7 +996,7 @@ export function applyExistingAccessorySupportFloorBumps(input: {
 
 export function updateProjectedSlotWorkout(
   projectedSlot: ProjectedSlotWorkout,
-  workout: WorkoutPlan
+  workout: WorkoutPlan,
 ): ProjectedSlotWorkout {
   return {
     ...projectedSlot,
@@ -769,11 +1010,68 @@ export function updateProjectedSlotWorkout(
   };
 }
 
-function removeWorkoutExercise(workout: WorkoutPlan, exerciseId: string): WorkoutPlan {
+export function removeForbiddenSlotPrimaryRepairExercises(input: {
+  projectedSlots: ReadonlyArray<ProjectedSlotWorkout>;
+  slotSequenceEntries: ReturnType<typeof buildSlotSequenceEntries>;
+}): {
+  projectedSlots: ProjectedSlotWorkout[];
+  reasons: Partial<
+    Record<ProtectedWeekOneCoverageMuscle, SupportFloorRepairReason[]>
+  >;
+} {
+  const reasons: Partial<
+    Record<ProtectedWeekOneCoverageMuscle, SupportFloorRepairReason[]>
+  > = {};
+  const projectedSlots = input.projectedSlots.map((projectedSlot) => {
+    const slotPolicy = resolveSessionSlotPolicy({
+      sessionIntent: toSessionIntent(projectedSlot.slotPlan.intent),
+      slotId: projectedSlot.slotPlan.slotId,
+      slotSequence: {
+        slots: input.slotSequenceEntries,
+      },
+    }).currentSession;
+    let workout = projectedSlot.workout;
+
+    for (const exercise of getWorkoutExercises(projectedSlot.workout)) {
+      for (const muscle of getForbiddenPrimaryRepairMuscles(slotPolicy)) {
+        if (
+          isForbiddenSlotPrimaryRepair({
+            slotPolicy,
+            muscle,
+            exercise: exercise.exercise,
+          })
+        ) {
+          workout = removeWorkoutExercise(workout, exercise.exercise.id);
+          addSupportFloorRepairReason(
+            reasons,
+            muscle,
+            "forbidden_slot_blocked",
+          );
+          break;
+        }
+      }
+    }
+
+    return workout === projectedSlot.workout
+      ? projectedSlot
+      : updateProjectedSlotWorkout(projectedSlot, workout);
+  });
+
+  return { projectedSlots, reasons };
+}
+
+function removeWorkoutExercise(
+  workout: WorkoutPlan,
+  exerciseId: string,
+): WorkoutPlan {
   return reindexWorkoutSections({
     ...workout,
-    mainLifts: workout.mainLifts.filter((exercise) => exercise.exercise.id !== exerciseId),
-    accessories: workout.accessories.filter((exercise) => exercise.exercise.id !== exerciseId),
+    mainLifts: workout.mainLifts.filter(
+      (exercise) => exercise.exercise.id !== exerciseId,
+    ),
+    accessories: workout.accessories.filter(
+      (exercise) => exercise.exercise.id !== exerciseId,
+    ),
   });
 }
 
@@ -783,7 +1081,9 @@ function getMinimumProjectedSetCount(exercise: WorkoutExercise): number {
     : MIN_PROJECTED_ACCESSORY_SETS_PER_EXERCISE;
 }
 
-function getOverMavMuscles(projectedSlots: ReadonlyArray<ProjectedSlotWorkout>): string[] {
+function getOverMavMuscles(
+  projectedSlots: ReadonlyArray<ProjectedSlotWorkout>,
+): string[] {
   const projectedTotals = computeProjectedWeeklyContributionByMuscle({
     projectedSlots,
     currentSlotContribution: new Map(),
@@ -816,13 +1116,21 @@ function preservesProtectedMev(input: {
 }
 
 function workoutWorkingSetCount(workout: WorkoutPlan): number {
-  return getWorkoutExercises(workout).reduce((sum, exercise) => sum + exercise.sets.length, 0);
+  return getWorkoutExercises(workout).reduce(
+    (sum, exercise) => sum + exercise.sets.length,
+    0,
+  );
 }
 
-function sharesPrimaryMuscle(left: WorkoutExercise, right: WorkoutExercise): boolean {
-  const rightPrimaries = new Set((right.exercise.primaryMuscles ?? []).map(normalizeMuscleName));
+function sharesPrimaryMuscle(
+  left: WorkoutExercise,
+  right: WorkoutExercise,
+): boolean {
+  const rightPrimaries = new Set(
+    (right.exercise.primaryMuscles ?? []).map(normalizeMuscleName),
+  );
   return (left.exercise.primaryMuscles ?? []).some((muscle) =>
-    rightPrimaries.has(normalizeMuscleName(muscle))
+    rightPrimaries.has(normalizeMuscleName(muscle)),
   );
 }
 
@@ -853,10 +1161,16 @@ function redistributeSetsWithinWorkout(input: {
 
   while (remainingBudget > 0) {
     const recipient = getWorkoutExercises(workout)
-      .filter((exercise) => exercise.sets.length < getMaxProjectedSetCount(exercise))
+      .filter(
+        (exercise) => exercise.sets.length < getMaxProjectedSetCount(exercise),
+      )
       .sort((left, right) => {
-        const leftShared = sharesPrimaryMuscle(left, input.removedExercise) ? 1 : 0;
-        const rightShared = sharesPrimaryMuscle(right, input.removedExercise) ? 1 : 0;
+        const leftShared = sharesPrimaryMuscle(left, input.removedExercise)
+          ? 1
+          : 0;
+        const rightShared = sharesPrimaryMuscle(right, input.removedExercise)
+          ? 1
+          : 0;
         if (leftShared !== rightShared) {
           return rightShared - leftShared;
         }
@@ -872,7 +1186,7 @@ function redistributeSetsWithinWorkout(input: {
     }
     workout = replaceWorkoutExercise(
       workout,
-      withAdditionalAccessorySets(recipient, 1)
+      withAdditionalAccessorySets(recipient, 1),
     );
     remainingBudget -= 1;
   }
@@ -885,8 +1199,13 @@ function tryRemoveAndRedistributeSubfloorExercise(input: {
   exercise: WorkoutExercise;
   slotPolicy: ReturnType<typeof resolveSessionSlotPolicy>["currentSession"];
 }): WorkoutPlan | null {
-  const workoutWithoutExercise = removeWorkoutExercise(input.workout, input.exercise.exercise.id);
-  if (countWorkoutExercises(workoutWithoutExercise) < SESSION_CAPS.minExercises) {
+  const workoutWithoutExercise = removeWorkoutExercise(
+    input.workout,
+    input.exercise.exercise.id,
+  );
+  if (
+    countWorkoutExercises(workoutWithoutExercise) < SESSION_CAPS.minExercises
+  ) {
     return null;
   }
 
@@ -896,7 +1215,8 @@ function tryRemoveAndRedistributeSubfloorExercise(input: {
     setBudget: input.exercise.sets.length,
   });
   if (
-    workoutWorkingSetCount(redistributedWorkout) > workoutWorkingSetCount(input.workout) ||
+    workoutWorkingSetCount(redistributedWorkout) >
+      workoutWorkingSetCount(input.workout) ||
     !canAcceptMinimumSetWorkout({
       slotPolicy: input.slotPolicy,
       currentWorkout: input.workout,
@@ -919,7 +1239,7 @@ function tryBorrowSetsToMeetMinimum(input: {
 
   while (true) {
     const target = getWorkoutExercises(workout).find(
-      (exercise) => exercise.exercise.id === input.exercise.exercise.id
+      (exercise) => exercise.exercise.id === input.exercise.exercise.id,
     );
     if (!target || target.sets.length >= minimumSetCount) {
       break;
@@ -927,7 +1247,10 @@ function tryBorrowSetsToMeetMinimum(input: {
 
     const donor = getWorkoutExercises(workout)
       .filter((exercise) => exercise.exercise.id !== target.exercise.id)
-      .filter((exercise) => exercise.sets.length > getMinimumProjectedSetCount(exercise))
+      .filter(
+        (exercise) =>
+          exercise.sets.length > getMinimumProjectedSetCount(exercise),
+      )
       .sort((left, right) => {
         if (right.sets.length !== left.sets.length) {
           return right.sets.length - left.sets.length;
@@ -941,8 +1264,11 @@ function tryBorrowSetsToMeetMinimum(input: {
     }
 
     const candidateWorkout = replaceWorkoutExercise(
-      replaceWorkoutExercise(workout, withSetCount(target, target.sets.length + 1)),
-      withSetCount(donor, donor.sets.length - 1)
+      replaceWorkoutExercise(
+        workout,
+        withSetCount(target, target.sets.length + 1),
+      ),
+      withSetCount(donor, donor.sets.length - 1),
     );
     if (
       !canAcceptMinimumSetWorkout({
@@ -983,13 +1309,16 @@ function tryMergeAnotherExerciseIntoSubfloorTarget(input: {
     });
 
   for (const removedExercise of candidates) {
-    let workout = removeWorkoutExercise(input.workout, removedExercise.exercise.id);
+    let workout = removeWorkoutExercise(
+      input.workout,
+      removedExercise.exercise.id,
+    );
     if (countWorkoutExercises(workout) < SESSION_CAPS.minExercises) {
       continue;
     }
 
     const target = getWorkoutExercises(workout).find(
-      (exercise) => exercise.exercise.id === input.exercise.exercise.id
+      (exercise) => exercise.exercise.id === input.exercise.exercise.id,
     );
     if (!target) {
       continue;
@@ -998,13 +1327,16 @@ function tryMergeAnotherExerciseIntoSubfloorTarget(input: {
     const setBump = Math.min(
       removedExercise.sets.length,
       minimumSetCount - target.sets.length,
-      getMaxProjectedSetCount(target) - target.sets.length
+      getMaxProjectedSetCount(target) - target.sets.length,
     );
     if (setBump <= 0 || target.sets.length + setBump < minimumSetCount) {
       continue;
     }
 
-    workout = replaceWorkoutExercise(workout, withSetCount(target, target.sets.length + setBump));
+    workout = replaceWorkoutExercise(
+      workout,
+      withSetCount(target, target.sets.length + setBump),
+    );
     workout = redistributeSetsWithinWorkout({
       workout,
       removedExercise,
@@ -1044,7 +1376,10 @@ export function applyFinalMinimumViableSetRedistribution(input: {
 
     for (let pass = 0; pass < 12; pass += 1) {
       const subfloorExercise = getWorkoutExercises(workout)
-        .filter((exercise) => exercise.sets.length < getMinimumProjectedSetCount(exercise))
+        .filter(
+          (exercise) =>
+            exercise.sets.length < getMinimumProjectedSetCount(exercise),
+        )
         .sort((left, right) => {
           if (left.sets.length !== right.sets.length) {
             return left.sets.length - right.sets.length;
@@ -1116,10 +1451,13 @@ export function applyFinalMavTrim(input: {
         }).currentSession;
 
         return getWorkoutExercises(projectedSlot.workout)
-          .filter((exercise) => exercise.sets.length > getMinimumProjectedSetCount(exercise))
+          .filter(
+            (exercise) =>
+              exercise.sets.length > getMinimumProjectedSetCount(exercise),
+          )
           .map((exercise) => {
             const overMavContributionPerSet = Array.from(
-              getEffectiveStimulusByMuscle(exercise.exercise, 1).entries()
+              getEffectiveStimulusByMuscle(exercise.exercise, 1).entries(),
             )
               .filter(([muscle]) => overMavSet.has(muscle))
               .reduce((sum, [, effectiveSets]) => sum + effectiveSets, 0);
@@ -1134,11 +1472,17 @@ export function applyFinalMavTrim(input: {
           .filter((candidate) => candidate.overMavContributionPerSet > 0);
       })
       .sort((left, right) => {
-        if (right.overMavContributionPerSet !== left.overMavContributionPerSet) {
-          return right.overMavContributionPerSet - left.overMavContributionPerSet;
+        if (
+          right.overMavContributionPerSet !== left.overMavContributionPerSet
+        ) {
+          return (
+            right.overMavContributionPerSet - left.overMavContributionPerSet
+          );
         }
-        const leftMain = left.exercise.isMainLift || left.exercise.role === "main" ? 1 : 0;
-        const rightMain = right.exercise.isMainLift || right.exercise.role === "main" ? 1 : 0;
+        const leftMain =
+          left.exercise.isMainLift || left.exercise.role === "main" ? 1 : 0;
+        const rightMain =
+          right.exercise.isMainLift || right.exercise.role === "main" ? 1 : 0;
         if (leftMain !== rightMain) {
           return leftMain - rightMain;
         }
@@ -1149,22 +1493,26 @@ export function applyFinalMavTrim(input: {
     for (const candidate of candidates) {
       const trimmedWorkout = replaceWorkoutExercise(
         candidate.projectedSlot.workout,
-        withOneFewerSet(candidate.exercise)
+        withOneFewerSet(candidate.exercise),
       );
       if (
         preservesSlotIdentity({
           slotPolicy: candidate.slotPolicy,
           workout: candidate.projectedSlot.workout,
         }) &&
-        !preservesSlotIdentity({ slotPolicy: candidate.slotPolicy, workout: trimmedWorkout })
+        !preservesSlotIdentity({
+          slotPolicy: candidate.slotPolicy,
+          workout: trimmedWorkout,
+        })
       ) {
         continue;
       }
 
-      const candidateProjectedSlots = projectedSlots.map((projectedSlot, index) =>
-        index === candidate.slotIndex
-          ? updateProjectedSlotWorkout(projectedSlot, trimmedWorkout)
-          : projectedSlot
+      const candidateProjectedSlots = projectedSlots.map(
+        (projectedSlot, index) =>
+          index === candidate.slotIndex
+            ? updateProjectedSlotWorkout(projectedSlot, trimmedWorkout)
+            : projectedSlot,
       );
       if (
         !preservesProtectedMev({
@@ -1207,7 +1555,10 @@ export function applyFinalSetDistributionCaps(input: {
         }).currentSession;
 
         return getWorkoutExercises(projectedSlot.workout)
-          .filter((exercise) => exercise.sets.length > getMaxProjectedSetCount(exercise))
+          .filter(
+            (exercise) =>
+              exercise.sets.length > getMaxProjectedSetCount(exercise),
+          )
           .map((exercise) => ({
             projectedSlot,
             slotIndex,
@@ -1216,13 +1567,17 @@ export function applyFinalSetDistributionCaps(input: {
           }));
       })
       .sort((left, right) => {
-        const leftOverflow = left.exercise.sets.length - getMaxProjectedSetCount(left.exercise);
-        const rightOverflow = right.exercise.sets.length - getMaxProjectedSetCount(right.exercise);
+        const leftOverflow =
+          left.exercise.sets.length - getMaxProjectedSetCount(left.exercise);
+        const rightOverflow =
+          right.exercise.sets.length - getMaxProjectedSetCount(right.exercise);
         if (rightOverflow !== leftOverflow) {
           return rightOverflow - leftOverflow;
         }
-        const leftMain = left.exercise.isMainLift || left.exercise.role === "main" ? 1 : 0;
-        const rightMain = right.exercise.isMainLift || right.exercise.role === "main" ? 1 : 0;
+        const leftMain =
+          left.exercise.isMainLift || left.exercise.role === "main" ? 1 : 0;
+        const rightMain =
+          right.exercise.isMainLift || right.exercise.role === "main" ? 1 : 0;
         return leftMain - rightMain;
       });
 
@@ -1233,14 +1588,17 @@ export function applyFinalSetDistributionCaps(input: {
 
     const trimmedWorkout = replaceWorkoutExercise(
       candidate.projectedSlot.workout,
-      withOneFewerSet(candidate.exercise)
+      withOneFewerSet(candidate.exercise),
     );
     if (
       preservesSlotIdentity({
         slotPolicy: candidate.slotPolicy,
         workout: candidate.projectedSlot.workout,
       }) &&
-      !preservesSlotIdentity({ slotPolicy: candidate.slotPolicy, workout: trimmedWorkout })
+      !preservesSlotIdentity({
+        slotPolicy: candidate.slotPolicy,
+        workout: trimmedWorkout,
+      })
     ) {
       break;
     }
@@ -1248,7 +1606,7 @@ export function applyFinalSetDistributionCaps(input: {
     projectedSlots = projectedSlots.map((projectedSlot, index) =>
       index === candidate.slotIndex
         ? updateProjectedSlotWorkout(projectedSlot, trimmedWorkout)
-        : projectedSlot
+        : projectedSlot,
     );
   }
 
@@ -1285,8 +1643,10 @@ export function applyFinalWeeklyObligationClosure(input: {
       let workout = projectedSlot.workout;
       const selectedExerciseIds = new Set(
         projectedSlots.flatMap((slot) =>
-          getWorkoutExercises(slot.workout).map((exercise) => exercise.exercise.id)
-        )
+          getWorkoutExercises(slot.workout).map(
+            (exercise) => exercise.exercise.id,
+          ),
+        ),
       );
 
       for (const obligation of obligations) {
@@ -1309,7 +1669,7 @@ export function applyFinalWeeklyObligationClosure(input: {
           }
           const effectivePerSet = getEffectiveContributionPerSet(
             existingExercise,
-            obligation.muscle
+            obligation.muscle,
           );
           if (effectivePerSet <= 0) {
             continue;
@@ -1317,16 +1677,18 @@ export function applyFinalWeeklyObligationClosure(input: {
           const setBump = Math.min(
             getMaxPracticalSetBump(
               existingExercise,
-              Math.ceil(evaluation.shortfall / effectivePerSet - SUPPORT_FLOOR_EPSILON)
+              Math.ceil(
+                evaluation.shortfall / effectivePerSet - SUPPORT_FLOOR_EPSILON,
+              ),
             ),
-            MAX_PROJECTED_SUPPORT_FLOOR_SET_BUMP
+            MAX_PROJECTED_SUPPORT_FLOOR_SET_BUMP,
           );
           if (setBump <= 0) {
             continue;
           }
           const candidateWorkout = replaceWorkoutExercise(
             workout,
-            withAdditionalAccessorySets(existingExercise, setBump)
+            withAdditionalAccessorySets(existingExercise, setBump),
           );
           if (
             preservesSlotIdentity({ slotPolicy, workout }) &&
@@ -1343,6 +1705,7 @@ export function applyFinalWeeklyObligationClosure(input: {
           exerciseLibrary: input.exerciseLibrary,
           selectedExerciseIds,
           muscle: obligation.muscle,
+          slotPolicy,
         });
         if (!exercise) {
           continue;
@@ -1355,9 +1718,10 @@ export function applyFinalWeeklyObligationClosure(input: {
             template: workout.accessories.at(-1),
             orderIndex: workout.mainLifts.length + workout.accessories.length,
             muscle: obligation.muscle,
-            practicalFloor: input.weeklyObligationPlan.muscles[obligation.muscle].targetSets,
+            practicalFloor:
+              input.weeklyObligationPlan.muscles[obligation.muscle].targetSets,
             requestedEffectiveSets: evaluation.shortfall,
-          })
+          }),
         );
         if (
           preservesSlotIdentity({ slotPolicy, workout }) &&
@@ -1373,7 +1737,9 @@ export function applyFinalWeeklyObligationClosure(input: {
 
       if (workout !== projectedSlot.workout) {
         projectedSlots = projectedSlots.map((slot, index) =>
-          index === slotIndex ? updateProjectedSlotWorkout(slot, workout) : slot
+          index === slotIndex
+            ? updateProjectedSlotWorkout(slot, workout)
+            : slot,
         );
       }
     }
@@ -1390,7 +1756,10 @@ function getFinalRepairSlotPreference(input: {
   muscle: ProtectedWeekOneCoverageMuscle;
   slot: ProjectedSlotWorkout;
 }): number {
-  if (input.muscle === "Side Delts" && input.slot.slotPlan.slotId === "upper_b") {
+  if (
+    input.muscle === "Side Delts" &&
+    input.slot.slotPlan.slotId === "upper_b"
+  ) {
     return 0;
   }
   if (input.muscle === "Calves" && input.slot.slotPlan.intent === "LOWER") {
@@ -1412,11 +1781,17 @@ export function applyFinalSupportFloorClosure(input: {
   satisfiedPreselectionMuscles?: readonly ProtectedWeekOneCoverageMuscle[];
 }): {
   projectedSlots: ProjectedSlotWorkout[];
-  reasons: Partial<Record<ProtectedWeekOneCoverageMuscle, SupportFloorRepairReason[]>>;
+  reasons: Partial<
+    Record<ProtectedWeekOneCoverageMuscle, SupportFloorRepairReason[]>
+  >;
 } {
-  const reasons: Partial<Record<ProtectedWeekOneCoverageMuscle, SupportFloorRepairReason[]>> = {};
+  const reasons: Partial<
+    Record<ProtectedWeekOneCoverageMuscle, SupportFloorRepairReason[]>
+  > = {};
   let projectedSlots = [...input.projectedSlots];
-  const satisfiedPreselectionMuscles = new Set(input.satisfiedPreselectionMuscles ?? []);
+  const satisfiedPreselectionMuscles = new Set(
+    input.satisfiedPreselectionMuscles ?? [],
+  );
 
   for (let pass = 0; pass < 2; pass += 1) {
     const evaluation = evaluateProtectedWeekOneCoverage({
@@ -1425,7 +1800,7 @@ export function applyFinalSupportFloorClosure(input: {
       slotSequence: input.slotSequence,
     });
     const repairRows = sortSupportFloorDeficits(
-      evaluation.deficitsBelowPracticalFloor
+      evaluation.deficitsBelowPracticalFloor,
     ).filter((row) => {
       if (!satisfiedPreselectionMuscles.has(row.muscle)) {
         return true;
@@ -1433,7 +1808,7 @@ export function applyFinalSupportFloorClosure(input: {
       addSupportFloorRepairReason(
         reasons,
         row.muscle,
-        "preselection_demand_consumed"
+        "preselection_demand_consumed",
       );
       return false;
     });
@@ -1445,8 +1820,10 @@ export function applyFinalSupportFloorClosure(input: {
     for (const row of repairRows) {
       const selectedExerciseIds = new Set(
         projectedSlots.flatMap((slot) =>
-          getWorkoutExercises(slot.workout).map((exercise) => exercise.exercise.id)
-        )
+          getWorkoutExercises(slot.workout).map(
+            (exercise) => exercise.exercise.id,
+          ),
+        ),
       );
       const addCandidates = projectedSlots
         .map((projectedSlot, index) => {
@@ -1483,17 +1860,23 @@ export function applyFinalSupportFloorClosure(input: {
         })
         .filter(
           (
-            candidate
+            candidate,
           ): candidate is {
             projectedSlot: ProjectedSlotWorkout;
             index: number;
             repairedWorkout: WorkoutPlan;
-          } => Boolean(candidate)
+          } => Boolean(candidate),
         )
         .sort((left, right) => {
           const preferenceDelta =
-            getFinalRepairSlotPreference({ muscle: row.muscle, slot: left.projectedSlot }) -
-            getFinalRepairSlotPreference({ muscle: row.muscle, slot: right.projectedSlot });
+            getFinalRepairSlotPreference({
+              muscle: row.muscle,
+              slot: left.projectedSlot,
+            }) -
+            getFinalRepairSlotPreference({
+              muscle: row.muscle,
+              slot: right.projectedSlot,
+            });
           if (preferenceDelta !== 0) {
             return preferenceDelta;
           }
@@ -1503,10 +1886,17 @@ export function applyFinalSupportFloorClosure(input: {
       if (addCandidate) {
         projectedSlots = projectedSlots.map((projectedSlot, index) =>
           index === addCandidate.index
-            ? updateProjectedSlotWorkout(projectedSlot, addCandidate.repairedWorkout)
-            : projectedSlot
+            ? updateProjectedSlotWorkout(
+                projectedSlot,
+                addCandidate.repairedWorkout,
+              )
+            : projectedSlot,
         );
-        addSupportFloorRepairReason(reasons, row.muscle, "support_accessory_replacement");
+        addSupportFloorRepairReason(
+          reasons,
+          row.muscle,
+          "support_accessory_replacement",
+        );
         appliedAnyBump = true;
         continue;
       }
@@ -1533,18 +1923,28 @@ export function applyFinalSupportFloorClosure(input: {
           return { projectedSlot, index, slotPolicy, accessory, compatible };
         })
         .filter(
-          (candidate): candidate is {
+          (
+            candidate,
+          ): candidate is {
             projectedSlot: ProjectedSlotWorkout;
             index: number;
-            slotPolicy: ReturnType<typeof resolveSessionSlotPolicy>["currentSession"];
+            slotPolicy: ReturnType<
+              typeof resolveSessionSlotPolicy
+            >["currentSession"];
             accessory: WorkoutExercise;
             compatible: true;
-          } => Boolean(candidate.compatible && candidate.accessory)
+          } => Boolean(candidate.compatible && candidate.accessory),
         )
         .sort((left, right) => {
           const preferenceDelta =
-            getFinalRepairSlotPreference({ muscle: row.muscle, slot: left.projectedSlot }) -
-            getFinalRepairSlotPreference({ muscle: row.muscle, slot: right.projectedSlot });
+            getFinalRepairSlotPreference({
+              muscle: row.muscle,
+              slot: left.projectedSlot,
+            }) -
+            getFinalRepairSlotPreference({
+              muscle: row.muscle,
+              slot: right.projectedSlot,
+            });
           if (preferenceDelta !== 0) {
             return preferenceDelta;
           }
@@ -1553,19 +1953,58 @@ export function applyFinalSupportFloorClosure(input: {
 
       const candidate = candidates[0];
       if (!candidate) {
-        addSupportFloorRepairReason(reasons, row.muscle, "no_compatible_exercise");
+        const forbiddenSupportExercise = projectedSlots.some(
+          (projectedSlot) => {
+            const slotPolicy = resolveSessionSlotPolicy({
+              sessionIntent: toSessionIntent(projectedSlot.slotPlan.intent),
+              slotId: projectedSlot.slotPlan.slotId,
+              slotSequence: {
+                slots: input.slotSequenceEntries,
+              },
+            }).currentSession;
+            const compatible = getProjectionRepairCompatibleMuscles(
+              slotPolicy,
+              [row.muscle],
+            ).includes(row.muscle);
+            return (
+              compatible &&
+              hasForbiddenSupportIsolationCandidate({
+                exerciseLibrary: input.exerciseLibrary,
+                selectedExerciseIds,
+                muscle: row.muscle,
+                slotPolicy,
+              })
+            );
+          },
+        );
+        addSupportFloorRepairReason(
+          reasons,
+          row.muscle,
+          forbiddenSupportExercise
+            ? "forbidden_slot_blocked"
+            : "no_compatible_exercise",
+        );
         continue;
       }
 
-      const effectivePerSet = getEffectiveContributionPerSet(candidate.accessory, row.muscle);
+      const effectivePerSet = getEffectiveContributionPerSet(
+        candidate.accessory,
+        row.muscle,
+      );
       if (effectivePerSet <= 0) {
-        addSupportFloorRepairReason(reasons, row.muscle, "effective_weight_shortfall");
+        addSupportFloorRepairReason(
+          reasons,
+          row.muscle,
+          "effective_weight_shortfall",
+        );
         continue;
       }
 
       const requestedSetBump = Math.min(
         MAX_PROJECTED_SUPPORT_FLOOR_SET_BUMP,
-        Math.ceil(row.deficitToPracticalFloor / effectivePerSet - SUPPORT_FLOOR_EPSILON)
+        Math.ceil(
+          row.deficitToPracticalFloor / effectivePerSet - SUPPORT_FLOOR_EPSILON,
+        ),
       );
       const projectedTotals = computeProjectedWeeklyContributionByMuscle({
         projectedSlots,
@@ -1578,7 +2017,10 @@ export function applyFinalSupportFloorClosure(input: {
           exercise: candidate.accessory,
           muscle: row.muscle,
           practicalFloor: row.practicalFloor,
-          requestedSetBump: getMaxPracticalSetBump(candidate.accessory, requestedSetBump),
+          requestedSetBump: getMaxPracticalSetBump(
+            candidate.accessory,
+            requestedSetBump,
+          ),
         }),
       });
       if (safeSetBump <= 0) {
@@ -1588,25 +2030,42 @@ export function applyFinalSupportFloorClosure(input: {
 
       const bumpedWorkout = replaceWorkoutExercise(
         candidate.projectedSlot.workout,
-        withAdditionalAccessorySets(candidate.accessory, safeSetBump)
+        withAdditionalAccessorySets(candidate.accessory, safeSetBump),
       );
       if (
         preservesSlotIdentity({
           slotPolicy: candidate.slotPolicy,
           workout: candidate.projectedSlot.workout,
         }) &&
-        !preservesSlotIdentity({ slotPolicy: candidate.slotPolicy, workout: bumpedWorkout })
+        !preservesSlotIdentity({
+          slotPolicy: candidate.slotPolicy,
+          workout: bumpedWorkout,
+        })
       ) {
-        addSupportFloorRepairReason(reasons, row.muscle, "slot_identity_blocked");
+        addSupportFloorRepairReason(
+          reasons,
+          row.muscle,
+          "slot_identity_blocked",
+        );
         continue;
       }
 
       projectedSlots = projectedSlots.map((projectedSlot, index) =>
-        index === candidate.index ? updateProjectedSlotWorkout(projectedSlot, bumpedWorkout) : projectedSlot
+        index === candidate.index
+          ? updateProjectedSlotWorkout(projectedSlot, bumpedWorkout)
+          : projectedSlot,
       );
-      addSupportFloorRepairReason(reasons, row.muscle, "existing_accessory_set_bump");
+      addSupportFloorRepairReason(
+        reasons,
+        row.muscle,
+        "existing_accessory_set_bump",
+      );
       if (safeSetBump < requestedSetBump) {
-        addSupportFloorRepairReason(reasons, row.muscle, "effective_weight_shortfall");
+        addSupportFloorRepairReason(
+          reasons,
+          row.muscle,
+          "effective_weight_shortfall",
+        );
       }
       appliedAnyBump = true;
     }
@@ -1628,7 +2087,10 @@ function countNonDirectionalPullPattern(input: {
     if (!exerciseMatchesMovementPattern(exercise.exercise, input.pattern)) {
       return false;
     }
-    return !exerciseHasAnyPrimaryMuscle(exercise.exercise, input.directionalSupportMuscles);
+    return !exerciseHasAnyPrimaryMuscle(
+      exercise.exercise,
+      input.directionalSupportMuscles,
+    );
   }).length;
 }
 
@@ -1668,21 +2130,31 @@ export function trimRedundantUpperPullSupportProjection(input: {
       const redundantAccessory = workout.accessories.find(
         (exercise) =>
           exerciseMatchesMovementPattern(exercise.exercise, pattern) &&
-          !exerciseHasAnyPrimaryMuscle(exercise.exercise, directionalSupportMuscles)
+          !exerciseHasAnyPrimaryMuscle(
+            exercise.exercise,
+            directionalSupportMuscles,
+          ),
       );
       if (!redundantAccessory) {
         break;
       }
 
-      const candidateWorkout = removeAccessory(workout, redundantAccessory.exercise.id);
+      const candidateWorkout = removeAccessory(
+        workout,
+        redundantAccessory.exercise.id,
+      );
       const supportQuality = evaluateUpperProtectedSupportQuality({
         slotPolicy: input.slotPolicy,
-        contributionByMuscle: computeWorkoutContributionByMuscle(candidateWorkout),
+        contributionByMuscle:
+          computeWorkoutContributionByMuscle(candidateWorkout),
         protectedMuscles,
       });
       if (
         !supportQuality.satisfied ||
-        !preservesSlotIdentity({ slotPolicy: input.slotPolicy, workout: candidateWorkout })
+        !preservesSlotIdentity({
+          slotPolicy: input.slotPolicy,
+          workout: candidateWorkout,
+        })
       ) {
         break;
       }
@@ -1717,14 +2189,17 @@ export function preserveLowerPatternPrimacy(input: {
   }
 
   const firstMainLift = input.workout.mainLifts[0];
-  if (firstMainLift && exerciseMatchesMovementPattern(firstMainLift.exercise, "hinge")) {
+  if (
+    firstMainLift &&
+    exerciseMatchesMovementPattern(firstMainLift.exercise, "hinge")
+  ) {
     return input.workout;
   }
 
   const hingeMainLiftIndex = input.workout.mainLifts.findIndex(
     (exercise) =>
       (exercise.exercise.isCompound ?? false) &&
-      exerciseMatchesMovementPattern(exercise.exercise, "hinge")
+      exerciseMatchesMovementPattern(exercise.exercise, "hinge"),
   );
   if (hingeMainLiftIndex > 0) {
     const hingeMainLift = input.workout.mainLifts[hingeMainLiftIndex];
@@ -1735,7 +2210,9 @@ export function preserveLowerPatternPrimacy(input: {
       ...input.workout,
       mainLifts: [
         hingeMainLift,
-        ...input.workout.mainLifts.filter((_, index) => index !== hingeMainLiftIndex),
+        ...input.workout.mainLifts.filter(
+          (_, index) => index !== hingeMainLiftIndex,
+        ),
       ],
     });
   }
@@ -1743,11 +2220,11 @@ export function preserveLowerPatternPrimacy(input: {
   const hingeAccessoryIndex = input.workout.accessories.findIndex(
     (exercise) =>
       (exercise.exercise.isCompound ?? false) &&
-      exerciseMatchesMovementPattern(exercise.exercise, "hinge")
+      exerciseMatchesMovementPattern(exercise.exercise, "hinge"),
   );
   if (!firstMainLift) {
     const fallbackCompoundIndex = input.workout.accessories.findIndex(
-      (exercise) => exercise.exercise.isCompound ?? false
+      (exercise) => exercise.exercise.isCompound ?? false,
     );
     const fallbackCompound = input.workout.accessories[fallbackCompoundIndex];
     if (!fallbackCompound) {
@@ -1762,7 +2239,9 @@ export function preserveLowerPatternPrimacy(input: {
           role: "main",
         },
       ],
-      accessories: input.workout.accessories.filter((_, index) => index !== fallbackCompoundIndex),
+      accessories: input.workout.accessories.filter(
+        (_, index) => index !== fallbackCompoundIndex,
+      ),
     });
   }
 
@@ -1791,7 +2270,9 @@ export function preserveLowerPatternPrimacy(input: {
         isMainLift: false,
         role: "accessory",
       },
-      ...input.workout.accessories.filter((_, index) => index !== hingeAccessoryIndex),
+      ...input.workout.accessories.filter(
+        (_, index) => index !== hingeAccessoryIndex,
+      ),
     ],
   });
 }

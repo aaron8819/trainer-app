@@ -51,6 +51,7 @@ export type SupportFloorRepairReason =
   | "capacity_blocked"
   | "no_compatible_exercise"
   | "slot_identity_blocked"
+  | "forbidden_slot_blocked"
   | "exercise_cap_blocked"
   | "effective_weight_shortfall"
   | "preselection_demand_consumed";

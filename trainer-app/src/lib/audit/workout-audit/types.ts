@@ -460,6 +460,7 @@ export type CurrentWeekAuditSessionRisk = {
 };
 
 export type ActiveMesocycleSlotReseedRecommendation =
+  | "safe_to_accept_upgrade"
   | "safe_to_apply_bounded_reseed"
   | "not_safe_to_apply"
   | "needs_projection_fix_first";
@@ -570,6 +571,9 @@ export type ActiveMesocycleSlotReseedAuditPayload = {
     improvesTricepsSupport: boolean;
     improvesSideDeltSupport: boolean;
     improvesRearDeltSupport: boolean;
+    improvesTierBSupport: boolean;
+    reducesStackingPressure: boolean;
+    reducesLowerFatigue: boolean;
     reducesUpperSessionDuration: boolean;
     preservesRowAndVerticalPullWhereAppropriate: boolean;
     avoidsNewObviousOvershoot: boolean;

@@ -56,20 +56,27 @@ Current-week pre-execution guidance:
 npm run audit:workout -- --mode current-week-audit --user-id <user-id>
 ```
 
-Active mesocycle dry-run upper-slot reseed audit:
+Active mesocycle dry-run slot-plan reseed audit:
 
 ```powershell
 npm run audit:workout -- --mode active-mesocycle-slot-reseed --owner <owner-email>
 ```
 
-Active mesocycle bounded upper-slot reseed apply:
+Active mesocycle full slot-plan upgrade accept:
+
+```powershell
+npm run audit:workout -- --mode active-mesocycle-slot-reseed --owner <owner-email> --accept-slot-plan-upgrade
+```
+
+Legacy bounded upper-slot reseed apply:
 
 ```powershell
 npm run audit:workout -- --mode active-mesocycle-slot-reseed --owner <owner-email> --apply-bounded-reseed
 ```
 
-- The apply path is server-side only and mutates only the active mesocycle's persisted `upper_a` / `upper_b` seed entries.
-- The command still emits the dry-run diff artifact first, then applies only when the live verdict is exactly `safe_to_apply_bounded_reseed`.
+- The full accept path is server-side only and replaces only the active mesocycle's `slotPlanSeedJson`.
+- The command still emits the dry-run diff artifact first, then accepts only when the live verdict is exactly `safe_to_accept_upgrade`.
+- Structural guards reject candidate seeds that change slot order, omit explicit `setCount`, or reference missing exercises.
 - `needs_projection_fix_first` and `not_safe_to_apply` remain hard stop verdicts.
 
 Retrospective completed-week volume and slot review:

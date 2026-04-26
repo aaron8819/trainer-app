@@ -461,6 +461,7 @@ export function buildWeeklyRetroOperatorSummary(input: {
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const shouldApplyBoundedReseed = args["apply-bounded-reseed"] === true;
+  const shouldAcceptSlotPlanUpgrade = args["accept-slot-plan-upgrade"] === true;
   const env = loadAuditEnv(typeof args["env-file"] === "string" ? args["env-file"] : undefined);
   const normalizedIntent = normalizeAuditIntentArg(
     typeof args.intent === "string" ? args.intent : undefined
@@ -523,6 +524,12 @@ async function main(): Promise<void> {
   };
   if (shouldApplyBoundedReseed && request.mode !== "active-mesocycle-slot-reseed") {
     throw new Error("--apply-bounded-reseed requires --mode active-mesocycle-slot-reseed");
+  }
+  if (shouldAcceptSlotPlanUpgrade && request.mode !== "active-mesocycle-slot-reseed") {
+    throw new Error("--accept-slot-plan-upgrade requires --mode active-mesocycle-slot-reseed");
+  }
+  if (shouldApplyBoundedReseed && shouldAcceptSlotPlanUpgrade) {
+    throw new Error("Use only one reseed apply flag: --apply-bounded-reseed or --accept-slot-plan-upgrade");
   }
 
   const { result, warnings } = await captureAuditWarnings(
@@ -605,23 +612,38 @@ async function main(): Promise<void> {
     }
   }
   let activeMesocycleSlotReseedApplySummary: string[] | null = null;
-  if (shouldApplyBoundedReseed) {
-    const [{ evaluateActiveMesocycleSlotReseed }, { applyActiveMesocycleBoundedUpperSlotReseed }] =
-      await Promise.all([
-        import("@/lib/audit/workout-audit/active-mesocycle-slot-reseed"),
-        import("@/lib/api/active-mesocycle-slot-reseed-apply"),
-      ]);
+  if (shouldApplyBoundedReseed || shouldAcceptSlotPlanUpgrade) {
+    const [
+      { evaluateActiveMesocycleSlotReseed },
+      {
+        acceptActiveMesocycleSlotPlanSeedUpgrade,
+        applyActiveMesocycleBoundedUpperSlotReseed,
+      },
+    ] = await Promise.all([
+      import("@/lib/audit/workout-audit/active-mesocycle-slot-reseed"),
+      import("@/lib/api/active-mesocycle-slot-reseed-apply"),
+    ]);
     const evaluation = await evaluateActiveMesocycleSlotReseed({
       userId: context.userId,
       plannerDiagnosticsMode: context.plannerDiagnosticsMode,
     });
-    const applyResult = await applyActiveMesocycleBoundedUpperSlotReseed({
-      userId: context.userId,
-      activeMesocycleId: evaluation.activeMesocycleId,
-      candidateSlotPlanSeedJson: evaluation.candidateSlotPlanSeed,
-      targetSlotIds: evaluation.targetSlotIds,
-      dryRunVerdict: evaluation.auditPayload.recommendation.verdict,
-    });
+    const applyResult = shouldAcceptSlotPlanUpgrade
+      ? await acceptActiveMesocycleSlotPlanSeedUpgrade({
+          userId: context.userId,
+          activeMesocycleId: evaluation.activeMesocycleId,
+          candidateSlotPlanSeedJson: evaluation.candidateSlotPlanSeed,
+          dryRunVerdict: evaluation.auditPayload.recommendation.verdict,
+        })
+      : await applyActiveMesocycleBoundedUpperSlotReseed({
+          userId: context.userId,
+          activeMesocycleId: evaluation.activeMesocycleId,
+          candidateSlotPlanSeedJson: evaluation.candidateSlotPlanSeed,
+          targetSlotIds: ["upper_a", "upper_b"],
+          dryRunVerdict:
+            evaluation.auditPayload.recommendation.verdict === "safe_to_accept_upgrade"
+              ? "safe_to_apply_bounded_reseed"
+              : evaluation.auditPayload.recommendation.verdict,
+        });
     activeMesocycleSlotReseedApplySummary = buildActiveMesocycleSlotReseedApplySummary({
       result: applyResult,
     });

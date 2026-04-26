@@ -364,15 +364,15 @@ Escalate when:
 ### `active-mesocycle-slot-reseed`
 
 When to use it:
-- dry-run review of a bounded active-cycle slot-seed repair
-- compare persisted seeded upper-slot composition against a fresh reprojection
-- answer whether a bounded reseed is safe before any mutation is approved
+- dry-run review of an active-cycle accepted seed upgrade
+- compare persisted seeded slot composition against a fresh reprojection
+- answer whether an explicit seed upgrade is safe before any mutation is approved
 
 Primary questions it answers:
-- what would change in `upper_a` / `upper_b` if current projection logic rebuilt the seed today
-- whether chest / triceps support improves materially
-- whether row / vertical-pull support and slot identity stay intact
-- whether the result is `safe_to_apply_bounded_reseed`, `not_safe_to_apply`, or `needs_projection_fix_first`
+- what would change across the accepted slot sequence if current projection logic rebuilt the seed today
+- whether set stacking is removed, lower fatigue pressure improves, and Tier B support coverage improves
+- whether required movement support and slot identity stay intact
+- whether the result is `safe_to_accept_upgrade`, `not_safe_to_apply`, or `needs_projection_fix_first`
 
 Command pattern:
 
@@ -380,19 +380,21 @@ Command pattern:
 npm run audit:workout -- --env-file .env.local --mode active-mesocycle-slot-reseed --owner <owner-email>
 ```
 
-Bounded apply variant:
+Explicit accept variant:
 
 ```powershell
-npm run audit:workout -- --env-file .env.local --mode active-mesocycle-slot-reseed --owner <owner-email> --apply-bounded-reseed
+npm run audit:workout -- --env-file .env.local --mode active-mesocycle-slot-reseed --owner <owner-email> --accept-slot-plan-upgrade
 ```
 
 Apply guardrails:
 - the command writes only the current active mesocycle
-- only `upper_a` / `upper_b` are eligible
+- the full accept path replaces only `Mesocycle.slotPlanSeedJson`
 - the persisted diff artifact is still emitted before mutation
-- apply is allowed only when `recommendation.verdict="safe_to_apply_bounded_reseed"`
+- accept is allowed only when `recommendation.verdict="safe_to_accept_upgrade"`
+- slot ids and slot order must match the currently accepted seed exactly
+- candidate exercises must remain resolvable and carry explicit `setCount` values for deterministic replay
 - `needs_projection_fix_first` and `not_safe_to_apply` are hard stops
-- lower-slot seeds, runtime hot patching, and non-active mesocycles stay out of scope
+- runtime hot patching, workout/log mutation, receipt rewriting, and non-active mesocycles stay out of scope
 
 Inspect first:
 - `activeMesocycleSlotReseed.executiveSummary`
@@ -565,9 +567,9 @@ Escalate when:
 ### Active seeded-slot reseed review
 1. Run `active-mesocycle-slot-reseed`.
 2. Read `executiveSummary` and `recommendation` first.
-3. Confirm the artifact is scoped to the intended active mesocycle and `upper_a` / `upper_b`.
+3. Confirm the artifact is scoped to the intended active mesocycle and accepted slot sequence.
 4. Read `flags` before trusting the candidate diff.
-5. Read `aggregateMuscleDiff` for chest / triceps / side-delt movement.
+5. Read `aggregateMuscleDiff` for set redistribution, support coverage, and fatigue-sensitive muscle movement.
 6. Inspect each `slotDiffs[*]` row for exercise swaps, set-count changes, and warnings.
 7. Escalate immediately if the verdict is `needs_projection_fix_first` or if slot-identity / pull-support guards fail.
 
@@ -617,7 +619,8 @@ Read these fields in this order unless the audit type says otherwise.
 
 ### `activeMesocycleSlotReseed.recommendation`
 - Present for `active-mesocycle-slot-reseed`.
-- This is the top-line dry-run verdict for bounded reseed safety.
+- This is the top-line dry-run verdict for explicit accepted-seed upgrade safety.
+- `safe_to_accept_upgrade` means the candidate can replace the active mesocycle seed through the explicit accept path.
 - `needs_projection_fix_first` means the current canonical projection path still fails a gating coverage condition even before mutation is considered.
 
 ### `comparabilityCoverage`

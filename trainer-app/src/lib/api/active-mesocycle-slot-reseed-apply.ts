@@ -8,6 +8,7 @@ import {
 } from "./slot-plan-seed-parser";
 
 const TARGET_SLOT_IDS = ["upper_a", "upper_b"] as const;
+const SAFE_FULL_UPGRADE_VERDICT = "safe_to_accept_upgrade";
 
 type TargetSlotId = (typeof TARGET_SLOT_IDS)[number];
 type SeedSlotExercise = ParsedSlotPlanSeedExercise;
@@ -25,6 +26,20 @@ export type ApplyActiveMesocycleBoundedUpperSlotReseedResult = {
   mesocycleId: string;
   targetSlotIds: TargetSlotId[];
   changedSlotIds: TargetSlotId[];
+  applied: boolean;
+};
+
+export type AcceptActiveMesocycleSlotPlanSeedUpgradeInput = {
+  userId: string;
+  activeMesocycleId: string;
+  candidateSlotPlanSeedJson: unknown;
+  dryRunVerdict: ActiveMesocycleSlotReseedRecommendation;
+};
+
+export type AcceptActiveMesocycleSlotPlanSeedUpgradeResult = {
+  mesocycleId: string;
+  targetSlotIds: string[];
+  changedSlotIds: string[];
   applied: boolean;
 };
 
@@ -83,6 +98,100 @@ function exercisesEqual(left: SeedSlotExercise[], right: SeedSlotExercise[]): bo
         exercise.setCount === right[index]?.setCount
     )
   );
+}
+
+function assertUniqueSlotIds(seed: ParsedSeedRecord, errorCode: string): void {
+  const seen = new Set<string>();
+  for (const slot of seed.slots) {
+    if (seen.has(slot.slotId)) {
+      throw new Error(`${errorCode}:${slot.slotId}`);
+    }
+    seen.add(slot.slotId);
+  }
+}
+
+function assertCandidateSeedRuntimeReplayable(candidate: ParsedSeedRecord): void {
+  for (const slot of candidate.slots) {
+    if (slot.exercises.length === 0) {
+      throw new Error(`ACTIVE_MESOCYCLE_RESEED_CANDIDATE_SLOT_EMPTY:${slot.slotId}`);
+    }
+    for (const exercise of slot.exercises) {
+      if (!exercise.hasExplicitSetCount) {
+        throw new Error(
+          `ACTIVE_MESOCYCLE_RESEED_CANDIDATE_SET_COUNT_MISSING:${slot.slotId}:${exercise.exerciseId}`
+        );
+      }
+    }
+  }
+}
+
+function assertSlotSequenceCompatible(input: {
+  persisted: ParsedSeedRecord;
+  candidate: ParsedSeedRecord;
+}): void {
+  const persistedSlotIds = input.persisted.slots.map((slot) => slot.slotId);
+  const candidateSlotIds = input.candidate.slots.map((slot) => slot.slotId);
+  const compatible =
+    persistedSlotIds.length === candidateSlotIds.length &&
+    persistedSlotIds.every((slotId, index) => candidateSlotIds[index] === slotId);
+
+  if (!compatible) {
+    throw new Error("ACTIVE_MESOCYCLE_RESEED_SLOT_SEQUENCE_CHANGED");
+  }
+}
+
+function collectExerciseIds(seed: ParsedSeedRecord): string[] {
+  return Array.from(
+    new Set(
+      seed.slots.flatMap((slot) => slot.exercises.map((exercise) => exercise.exerciseId))
+    )
+  ).sort((left, right) => left.localeCompare(right));
+}
+
+export function buildSlotPlanSeedUpgradeReplacement(input: {
+  persistedSeedRecord: ParsedSeedRecord;
+  candidateSeedRecord: ParsedSeedRecord;
+}): {
+  targetSlotIds: string[];
+  changedSlotIds: string[];
+  replacementSeed: Prisma.InputJsonValue;
+} {
+  assertUniqueSlotIds(
+    input.persistedSeedRecord,
+    "ACTIVE_MESOCYCLE_RESEED_PERSISTED_SLOT_DUPLICATE"
+  );
+  assertUniqueSlotIds(
+    input.candidateSeedRecord,
+    "ACTIVE_MESOCYCLE_RESEED_CANDIDATE_SLOT_DUPLICATE"
+  );
+  assertSlotSequenceCompatible({
+    persisted: input.persistedSeedRecord,
+    candidate: input.candidateSeedRecord,
+  });
+  assertCandidateSeedRuntimeReplayable(input.candidateSeedRecord);
+
+  const changedSlotIds = input.persistedSeedRecord.slots
+    .filter((persistedSlot, index) => {
+      const candidateSlot = input.candidateSeedRecord.slots[index];
+      return (
+        Boolean(candidateSlot) &&
+        !exercisesEqual(persistedSlot.exercises, candidateSlot.exercises)
+      );
+    })
+    .map((slot) => slot.slotId);
+
+  return {
+    targetSlotIds: input.persistedSeedRecord.slots.map((slot) => slot.slotId),
+    changedSlotIds,
+    replacementSeed: {
+      version: 1,
+      source: input.candidateSeedRecord.source,
+      slots: input.candidateSeedRecord.slots.map((slot) => ({
+        slotId: slot.slotId,
+        exercises: cloneExercises(slot.exercises),
+      })),
+    } satisfies Prisma.InputJsonValue,
+  };
 }
 
 export async function applyActiveMesocycleBoundedUpperSlotReseed(
@@ -182,6 +291,88 @@ export async function applyActiveMesocycleBoundedUpperSlotReseed(
       mesocycleId: activeMesocycle.id,
       targetSlotIds,
       changedSlotIds,
+      applied: true,
+    };
+  });
+}
+
+export async function acceptActiveMesocycleSlotPlanSeedUpgrade(
+  input: AcceptActiveMesocycleSlotPlanSeedUpgradeInput
+): Promise<AcceptActiveMesocycleSlotPlanSeedUpgradeResult> {
+  if (input.dryRunVerdict !== SAFE_FULL_UPGRADE_VERDICT) {
+    throw new Error(
+      `ACTIVE_MESOCYCLE_RESEED_ACCEPT_REQUIRES_SAFE_VERDICT:${input.dryRunVerdict}`
+    );
+  }
+
+  const candidateSeedRecord = parseSeedRecord(input.candidateSlotPlanSeedJson);
+  if (!candidateSeedRecord) {
+    throw new Error("ACTIVE_MESOCYCLE_RESEED_CANDIDATE_SEED_INVALID");
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const activeMesocycle = await tx.mesocycle.findFirst({
+      where: {
+        id: input.activeMesocycleId,
+        isActive: true,
+        state: "ACTIVE_ACCUMULATION",
+        macroCycle: { userId: input.userId },
+      },
+      select: {
+        id: true,
+        slotPlanSeedJson: true,
+      },
+    });
+
+    if (!activeMesocycle) {
+      throw new Error("ACTIVE_MESOCYCLE_RESEED_TARGET_NOT_FOUND");
+    }
+
+    const persistedSeedRecord = parseSeedRecord(activeMesocycle.slotPlanSeedJson);
+    if (!persistedSeedRecord) {
+      throw new Error("ACTIVE_MESOCYCLE_RESEED_PERSISTED_SEED_INVALID");
+    }
+
+    const replacement = buildSlotPlanSeedUpgradeReplacement({
+      persistedSeedRecord,
+      candidateSeedRecord,
+    });
+
+    const candidateExerciseIds = collectExerciseIds(candidateSeedRecord);
+    const foundExercises = await tx.exercise.findMany({
+      where: { id: { in: candidateExerciseIds } },
+      select: { id: true },
+    });
+    const foundExerciseIds = new Set(foundExercises.map((exercise) => exercise.id));
+    const missingExerciseIds = candidateExerciseIds.filter(
+      (exerciseId) => !foundExerciseIds.has(exerciseId)
+    );
+    if (missingExerciseIds.length > 0) {
+      throw new Error(
+        `ACTIVE_MESOCYCLE_RESEED_CANDIDATE_EXERCISE_MISSING:${missingExerciseIds.join(",")}`
+      );
+    }
+
+    if (replacement.changedSlotIds.length === 0) {
+      return {
+        mesocycleId: activeMesocycle.id,
+        targetSlotIds: replacement.targetSlotIds,
+        changedSlotIds: replacement.changedSlotIds,
+        applied: false,
+      };
+    }
+
+    await tx.mesocycle.update({
+      where: { id: activeMesocycle.id },
+      data: {
+        slotPlanSeedJson: replacement.replacementSeed,
+      },
+    });
+
+    return {
+      mesocycleId: activeMesocycle.id,
+      targetSlotIds: replacement.targetSlotIds,
+      changedSlotIds: replacement.changedSlotIds,
       applied: true,
     };
   });

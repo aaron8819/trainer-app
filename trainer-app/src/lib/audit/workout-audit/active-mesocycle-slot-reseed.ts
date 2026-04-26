@@ -38,9 +38,16 @@ import type {
   ActiveMesocycleSlotReseedSlotDiff,
 } from "./types";
 
-const TARGET_SLOT_IDS = ["upper_a", "upper_b"] as const;
 const PUSH_SUPPORT_MUSCLES = ["Chest", "Triceps", "Side Delts"] as const;
 const PULL_SUPPORT_MUSCLES = ["Lats", "Upper Back", "Rear Delts", "Biceps"] as const;
+const TIER_B_SUPPORT_MUSCLES = [
+  "Biceps",
+  "Triceps",
+  "Side Delts",
+  "Rear Delts",
+  "Calves",
+] as const;
+const LOWER_FATIGUE_MUSCLES = ["Glutes", "Lower Back"] as const;
 
 export type ActiveMesocycleSlotReseedEvaluation = {
   auditPayload: ActiveMesocycleSlotReseedAuditPayload;
@@ -377,6 +384,8 @@ function buildOvershootWarnings(input: {
 }
 
 function buildAggregateFlags(slotDiffs: ActiveMesocycleSlotReseedSlotDiff[]) {
+  const muscleDiffs = slotDiffs.flatMap((slot) => slot.muscleContributionDiff);
+
   return {
     improvesChestSupport: slotDiffs.some((slot) => slot.flags.improvesChestSupport),
     improvesTricepsSupport: slotDiffs.some((slot) => slot.flags.improvesTricepsSupport),
@@ -385,6 +394,23 @@ function buildAggregateFlags(slotDiffs: ActiveMesocycleSlotReseedSlotDiff[]) {
     ),
     improvesRearDeltSupport: slotDiffs.some((slot) =>
       slot.muscleContributionDiff.some((row) => row.muscle === "Rear Delts" && row.delta > 0)
+    ),
+    improvesTierBSupport: muscleDiffs.some(
+      (row) =>
+        TIER_B_SUPPORT_MUSCLES.includes(
+          row.muscle as (typeof TIER_B_SUPPORT_MUSCLES)[number]
+        ) && row.delta > 0
+    ),
+    reducesStackingPressure: slotDiffs.some((slot) =>
+      slot.setDiffByExercise.some(
+        (row) => row.beforeSetCount >= 5 && row.afterSetCount < row.beforeSetCount
+      )
+    ),
+    reducesLowerFatigue: muscleDiffs.some(
+      (row) =>
+        LOWER_FATIGUE_MUSCLES.includes(
+          row.muscle as (typeof LOWER_FATIGUE_MUSCLES)[number]
+        ) && row.delta < 0
     ),
     reducesUpperSessionDuration: slotDiffs.some((slot) => (slot.estimatedMinutesDiff.delta ?? 0) < 0),
     preservesRowAndVerticalPullWhereAppropriate: slotDiffs.every(
@@ -415,8 +441,17 @@ function buildRecommendation(input: {
     input.aggregateFlags.improvesSideDeltSupport &&
     input.aggregateFlags.improvesRearDeltSupport;
   const improvesUpperSessionDuration = input.aggregateFlags.reducesUpperSessionDuration;
+  const materialImprovements = [
+    input.aggregateFlags.improvesChestSupport,
+    input.aggregateFlags.improvesTricepsSupport,
+    improvesUpperDeltSupport,
+    input.aggregateFlags.improvesTierBSupport,
+    input.aggregateFlags.reducesStackingPressure,
+    input.aggregateFlags.reducesLowerFatigue,
+    improvesUpperSessionDuration,
+  ];
 
-  if (input.projectionError && !improvesUpperDeltSupport && !improvesUpperSessionDuration) {
+  if (input.projectionError && !materialImprovements.some(Boolean)) {
     return {
       verdict: "needs_projection_fix_first",
       reasons: [input.projectionError],
@@ -432,13 +467,8 @@ function buildRecommendation(input: {
   if (!input.aggregateFlags.avoidsNewObviousOvershoot) {
     reasons.push("candidate introduced obvious overshoot warnings");
   }
-  if (
-    !input.aggregateFlags.improvesChestSupport &&
-    !input.aggregateFlags.improvesTricepsSupport &&
-    !improvesUpperDeltSupport &&
-    !improvesUpperSessionDuration
-  ) {
-    reasons.push("candidate did not materially improve upper support coverage");
+  if (!materialImprovements.some(Boolean)) {
+    reasons.push("candidate did not materially improve seed quality");
   }
 
   if (reasons.length > 0) {
@@ -452,10 +482,21 @@ function buildRecommendation(input: {
   const pullTotal = sumMuscles(input.aggregateMuscleDiff, PULL_SUPPORT_MUSCLES);
 
   return {
-    verdict: "safe_to_apply_bounded_reseed",
+    verdict: "safe_to_accept_upgrade",
     reasons: [
-      `push-support muscles improved by ${pushGain} projected effective sets`,
+      ...(pushGain > 0
+        ? [`push-support muscles improved by ${pushGain} projected effective sets`]
+        : []),
       `pull-support coverage remained present with ${pullTotal} projected effective sets across the upper-slot pair`,
+      ...(input.aggregateFlags.reducesStackingPressure
+        ? ["set stacking was reduced by redistributing oversized exercise prescriptions"]
+        : []),
+      ...(input.aggregateFlags.reducesLowerFatigue
+        ? ["lower-body fatigue pressure was reduced in fatigue-sensitive muscles"]
+        : []),
+      ...(input.aggregateFlags.improvesTierBSupport
+        ? ["Tier B support coverage improved without changing slot identity"]
+        : []),
       ...(input.projectionError
         ? [`upper-slot runtime diff cleared the bounded repair target despite projection warning: ${input.projectionError}`]
         : []),
@@ -474,10 +515,13 @@ function buildExecutiveSummary(input: {
     input.aggregateMuscleDiff.find((row) => row.muscle === "Triceps")?.delta ?? 0;
   const sideDeltDelta =
     input.aggregateMuscleDiff.find((row) => row.muscle === "Side Delts")?.delta ?? 0;
+  const gluteDelta =
+    input.aggregateMuscleDiff.find((row) => row.muscle === "Glutes")?.delta ?? 0;
 
   return [
     `Verdict: ${input.recommendation.verdict}.`,
     `Upper-slot pair delta: Chest ${chestDelta >= 0 ? "+" : ""}${chestDelta}, Triceps ${tricepsDelta >= 0 ? "+" : ""}${tricepsDelta}, Side Delts ${sideDeltDelta >= 0 ? "+" : ""}${sideDeltDelta}.`,
+    `Lower-fatigue delta: Glutes ${gluteDelta >= 0 ? "+" : ""}${gluteDelta}.`,
     `Slots reviewed: ${input.slotDiffs.length > 0 ? input.slotDiffs.map((slot) => slot.slotId).join(", ") : "none"}.`,
     ...input.recommendation.reasons.map((reason) => `${reason}.`),
   ];
@@ -599,13 +643,8 @@ export async function evaluateActiveMesocycleSlotReseed(input: {
     throw new Error("Active mesocycle slotPlanSeedJson could not be normalized for reseed audit.");
   }
 
-  const targetPersistedSlots = TARGET_SLOT_IDS.map((slotId) => {
-    const slot = persistedSeedSlots.find((entry) => entry.slotId === slotId);
-    if (!slot) {
-      throw new Error(`Active mesocycle reseed audit requires persisted slot ${slotId}.`);
-    }
-    return slot;
-  });
+  const targetPersistedSlots = persistedSeedSlots;
+  const targetSlotIds = targetPersistedSlots.map((slot) => slot.slotId);
 
   const exerciseNameById = new Map(
     persistedMapped.exerciseLibrary.map((exercise) => [exercise.id, exercise.name])
@@ -633,7 +672,7 @@ export async function evaluateActiveMesocycleSlotReseed(input: {
         state: activeMesocycle.state,
         week: deriveCurrentMesocycleSession(activeMesocycle).week,
         splitType: activeMesocycle.splitType,
-        targetSlotIds: [...TARGET_SLOT_IDS],
+        targetSlotIds,
       },
       executiveSummary: buildExecutiveSummary({
         recommendation,
@@ -667,6 +706,9 @@ export async function evaluateActiveMesocycleSlotReseed(input: {
         improvesSideDeltSupport: false,
         improvesRearDeltSupport: false,
         reducesUpperSessionDuration: false,
+        improvesTierBSupport: false,
+        reducesStackingPressure: false,
+        reducesLowerFatigue: false,
         preservesSlotIdentity: false,
         materiallyChangesExerciseSelection: false,
       },
@@ -676,7 +718,7 @@ export async function evaluateActiveMesocycleSlotReseed(input: {
       auditPayload,
       activeMesocycleId: activeMesocycle.id,
       candidateSlotPlanSeed: null,
-      targetSlotIds: [...TARGET_SLOT_IDS],
+      targetSlotIds,
     };
   }
 
@@ -700,7 +742,7 @@ export async function evaluateActiveMesocycleSlotReseed(input: {
     throw new Error("Candidate slot-plan seed could not be normalized for reseed audit.");
   }
 
-  const targetCandidateSlots = TARGET_SLOT_IDS.map((slotId) => {
+  const targetCandidateSlots = targetSlotIds.map((slotId) => {
     const slot = candidateSeedSlots.find((entry) => entry.slotId === slotId);
     if (!slot) {
       throw new Error(`Candidate slot-plan seed is missing slot ${slotId}.`);
@@ -776,7 +818,7 @@ export async function evaluateActiveMesocycleSlotReseed(input: {
       state: activeMesocycle.state,
       week: deriveCurrentMesocycleSession(activeMesocycle).week,
       splitType: activeMesocycle.splitType,
-      targetSlotIds: [...TARGET_SLOT_IDS],
+      targetSlotIds,
     },
     executiveSummary: buildExecutiveSummary({
       recommendation,
@@ -809,7 +851,7 @@ export async function evaluateActiveMesocycleSlotReseed(input: {
     auditPayload,
     activeMesocycleId: activeMesocycle.id,
     candidateSlotPlanSeed: candidateSeed,
-    targetSlotIds: [...TARGET_SLOT_IDS],
+    targetSlotIds,
   };
 }
 

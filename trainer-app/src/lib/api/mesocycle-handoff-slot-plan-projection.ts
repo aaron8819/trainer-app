@@ -1011,6 +1011,7 @@ export function projectSuccessorSlotPlansFromSnapshot(input: {
     supportFloorRepairReasons,
     programQualityAppliedDiagnostics: programQuality.appliedDiagnostics,
     programQualityEvaluation,
+    preselectionDemands: pass.preselectionDemandDiagnostics,
   });
   if (blockingDeficits.length > 0) {
     return {

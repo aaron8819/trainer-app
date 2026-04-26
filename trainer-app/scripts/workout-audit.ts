@@ -661,6 +661,30 @@ export function buildPlanningRealitySummary(input: {
       lines.push(`- +${remaining} more`);
     }
   }
+  if (planningReality.rearDeltCollateralSummary) {
+    const rearDelt = planningReality.rearDeltCollateralSummary;
+    lines.push("", "Rear Delts collateral guard:");
+    lines.push(`- verdict: ${rearDelt.verdict}`);
+    lines.push(
+      `- directRearDeltStimulus: ${formatPlanningRealityNumber(rearDelt.directRearDeltStimulusBefore)} -> ${formatPlanningRealityNumber(rearDelt.directRearDeltStimulusAfter)}`
+    );
+    lines.push(
+      `- rearDeltPreselectionConsumed: ${formatBooleanFlag(rearDelt.rearDeltPreselectionConsumed)}`
+    );
+    lines.push(
+      `- upperBackCollateralDelta: ${formatPlanningRealityNumber(rearDelt.upperBackCollateralDelta)}`
+    );
+    lines.push(
+      `- pullPatternConcentrationDelta: ${formatPlanningRealityNumber(rearDelt.pullPatternConcentrationDelta)}`
+    );
+    lines.push(
+      `- suspiciousRepairDelta: ${formatPlanningRealityNumber(rearDelt.suspiciousRepairDelta)}`
+    );
+    lines.push(
+      `- capTrimOrRemovalDelta: ${formatPlanningRealityNumber(rearDelt.capTrimOrRemovalDelta)}`
+    );
+    lines.push(`- reasons: ${formatNameList(rearDelt.reasons)}`);
+  }
 
   lines.push("", "Warnings:");
   if (materialWarnings.length === 0) {

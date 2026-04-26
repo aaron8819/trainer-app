@@ -2393,6 +2393,316 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     ]);
   });
 
+  it("marks consumed Rear Delts preselection with new suspicious repair burden as worse collateral", () => {
+    const slotSequence = [{ slotId: "upper_a", intent: "UPPER" as const }];
+    const initialUpper = makeProjectedSlotWithContributions({
+      slotId: "upper_a",
+      intent: "UPPER",
+      workout: makeProjectedWorkout({}),
+    });
+    const finalUpper = makeProjectedSlotWithContributions({
+      slotId: "upper_a",
+      intent: "UPPER",
+      workout: makeProjectedWorkout({
+        accessories: [
+          makeProjectedExercise({
+            id: "rear-delt-fly",
+            name: "Cable Rear Delt Fly",
+            movementPatterns: ["isolation"],
+            primaryMuscles: ["Rear Delts"],
+            sets: 2,
+            isCompound: false,
+            stimulusProfile: { rear_delts: 1 },
+          }),
+          makeProjectedExercise({
+            id: "concentration-curl",
+            name: "Concentration Curl",
+            movementPatterns: ["isolation"],
+            primaryMuscles: ["Forearms"],
+            sets: 3,
+            isCompound: false,
+            stimulusProfile: { forearms: 1 },
+          }),
+        ],
+      }),
+    });
+
+    const diagnostic = buildWeeklyDemandSlotAllocationDiagnostic({
+      activeMesocycle: buildSource() as never,
+      slotSequence,
+      initialProjectedSlots: [initialUpper],
+      finalProjectedSlots: [finalUpper],
+      weeklyObligationPlan: emptyWeeklyObligationPlan(),
+      weeklyObligationEvaluations: [],
+      protectedCoverage: {
+        muscles: [],
+        deficitsBelowMev: [],
+        deficitsBelowPracticalFloor: [],
+        unresolvedProtectedMuscles: [],
+      },
+      supportFloorRepairReasons: {},
+      programQualityAppliedDiagnostics: [],
+      programQualityEvaluation: {
+        totalPenalty: 0,
+        diagnostics: [],
+        constraintCounts: {},
+      },
+      preselectionDemands: [
+        {
+          slotId: "upper_a",
+          muscle: "Rear Delts",
+          selectedEffectiveSets: 2,
+          consumedBySelection: true,
+          targetMet: true,
+        },
+      ],
+    });
+
+    expect(diagnostic.rearDeltCollateralSummary).toMatchObject({
+      directRearDeltStimulusBefore: 0,
+      directRearDeltStimulusAfter: 2,
+      rearDeltPreselectionConsumed: true,
+      suspiciousRepairDelta: 1,
+      verdict: "worse_collateral",
+    });
+    expect(diagnostic.rearDeltCollateralSummary?.reasons).toEqual(
+      expect.arrayContaining([
+        "REAR_DELT_COLLATERAL_SUSPICIOUS_REPAIR_INCREASE",
+        "REAR_DELT_PRESELECTION_CONSUMED_BUT_PROGRAM_WORSE",
+        "consumed_preselection_demand_alone_is_not_success",
+      ])
+    );
+    expect(diagnostic.warnings.map((warning) => warning.code)).toEqual(
+      expect.arrayContaining([
+        "REAR_DELT_COLLATERAL_SUSPICIOUS_REPAIR_INCREASE",
+        "REAR_DELT_PRESELECTION_CONSUMED_BUT_PROGRAM_WORSE",
+      ])
+    );
+  });
+
+  it("flags material Upper Back collateral when Rear Delts preselection is consumed", () => {
+    const slotSequence = [{ slotId: "upper_a", intent: "UPPER" as const }];
+    const row = makeProjectedExercise({
+      id: "chest-supported-row",
+      name: "Chest Supported Row",
+      movementPatterns: ["horizontal_pull"],
+      primaryMuscles: ["Upper Back"],
+      sets: 2,
+      isCompound: true,
+      stimulusProfile: { upper_back: 1 },
+    });
+    const initialUpper = makeProjectedSlotWithContributions({
+      slotId: "upper_a",
+      intent: "UPPER",
+      workout: makeProjectedWorkout({ mainLifts: [row] }),
+    });
+    const finalUpper = makeProjectedSlotWithContributions({
+      slotId: "upper_a",
+      intent: "UPPER",
+      workout: makeProjectedWorkout({
+        mainLifts: [
+          {
+            ...row,
+            sets: Array.from({ length: 4 }, (_, index) => ({
+              setIndex: index + 1,
+              targetReps: 10,
+              role: "main" as const,
+            })),
+          },
+        ],
+        accessories: [
+          makeProjectedExercise({
+            id: "rear-delt-fly",
+            name: "Cable Rear Delt Fly",
+            movementPatterns: ["isolation"],
+            primaryMuscles: ["Rear Delts"],
+            sets: 2,
+            isCompound: false,
+            stimulusProfile: { rear_delts: 1 },
+          }),
+        ],
+      }),
+    });
+
+    const diagnostic = buildWeeklyDemandSlotAllocationDiagnostic({
+      activeMesocycle: buildSource() as never,
+      slotSequence,
+      initialProjectedSlots: [initialUpper],
+      finalProjectedSlots: [finalUpper],
+      weeklyObligationPlan: emptyWeeklyObligationPlan(),
+      weeklyObligationEvaluations: [],
+      protectedCoverage: {
+        muscles: [],
+        deficitsBelowMev: [],
+        deficitsBelowPracticalFloor: [],
+        unresolvedProtectedMuscles: [],
+      },
+      supportFloorRepairReasons: {},
+      programQualityAppliedDiagnostics: [],
+      programQualityEvaluation: {
+        totalPenalty: 0,
+        diagnostics: [],
+        constraintCounts: {},
+      },
+      preselectionDemands: [
+        {
+          slotId: "upper_a",
+          muscle: "Rear Delts",
+          selectedEffectiveSets: 2,
+          consumedBySelection: true,
+          targetMet: true,
+        },
+      ],
+    });
+
+    expect(diagnostic.rearDeltCollateralSummary).toMatchObject({
+      upperBackCollateralDelta: 2,
+      rearDeltPreselectionConsumed: true,
+    });
+    expect(diagnostic.rearDeltCollateralSummary?.verdict).toMatch(/^(mixed|worse)_collateral$/);
+    expect(diagnostic.warnings.map((warning) => warning.code)).toContain(
+      "REAR_DELT_COLLATERAL_UPPER_BACK_INCREASE"
+    );
+  });
+
+  it("treats direct Rear Delts closure without collateral burden as a clean improvement", () => {
+    const slotSequence = [{ slotId: "upper_a", intent: "UPPER" as const }];
+    const initialUpper = makeProjectedSlotWithContributions({
+      slotId: "upper_a",
+      intent: "UPPER",
+      workout: makeProjectedWorkout({}),
+    });
+    const finalUpper = makeProjectedSlotWithContributions({
+      slotId: "upper_a",
+      intent: "UPPER",
+      workout: makeProjectedWorkout({
+        accessories: [
+          makeProjectedExercise({
+            id: "rear-delt-fly",
+            name: "Cable Rear Delt Fly",
+            movementPatterns: ["isolation"],
+            primaryMuscles: ["Rear Delts"],
+            sets: 2,
+            isCompound: false,
+            stimulusProfile: { rear_delts: 1 },
+          }),
+        ],
+      }),
+    });
+
+    const diagnostic = buildWeeklyDemandSlotAllocationDiagnostic({
+      activeMesocycle: buildSource() as never,
+      slotSequence,
+      initialProjectedSlots: [initialUpper],
+      finalProjectedSlots: [finalUpper],
+      weeklyObligationPlan: emptyWeeklyObligationPlan(),
+      weeklyObligationEvaluations: [],
+      protectedCoverage: {
+        muscles: [],
+        deficitsBelowMev: [],
+        deficitsBelowPracticalFloor: [],
+        unresolvedProtectedMuscles: [],
+      },
+      supportFloorRepairReasons: {},
+      programQualityAppliedDiagnostics: [],
+      programQualityEvaluation: {
+        totalPenalty: 0,
+        diagnostics: [],
+        constraintCounts: {},
+      },
+      preselectionDemands: [
+        {
+          slotId: "upper_a",
+          muscle: "Rear Delts",
+          selectedEffectiveSets: 2,
+          consumedBySelection: true,
+          targetMet: true,
+        },
+      ],
+    });
+
+    expect(diagnostic.rearDeltCollateralSummary).toMatchObject({
+      directRearDeltStimulusBefore: 0,
+      directRearDeltStimulusAfter: 2,
+      upperBackCollateralDelta: 0,
+      pullPatternConcentrationDelta: 0,
+      suspiciousRepairDelta: 0,
+      capTrimOrRemovalDelta: 0,
+      verdict: "clean_improvement",
+    });
+    expect(diagnostic.warnings.map((warning) => warning.code)).not.toContain(
+      "REAR_DELT_PRESELECTION_CONSUMED_BUT_PROGRAM_WORSE"
+    );
+  });
+
+  it("does not emit Rear Delts collateral warnings for non-Rear-Delts promotions", () => {
+    const slotSequence = [{ slotId: "upper_b", intent: "UPPER" as const }];
+    const initialUpper = makeProjectedSlotWithContributions({
+      slotId: "upper_b",
+      intent: "UPPER",
+      workout: makeProjectedWorkout({}),
+    });
+    const finalUpper = makeProjectedSlotWithContributions({
+      slotId: "upper_b",
+      intent: "UPPER",
+      workout: makeProjectedWorkout({
+        accessories: [
+          makeProjectedExercise({
+            id: "cable-lateral-raise",
+            name: "Cable Lateral Raise",
+            movementPatterns: ["isolation"],
+            primaryMuscles: ["Side Delts"],
+            sets: 2,
+            isCompound: false,
+            stimulusProfile: { side_delts: 1 },
+          }),
+        ],
+      }),
+    });
+
+    const diagnostic = buildWeeklyDemandSlotAllocationDiagnostic({
+      activeMesocycle: buildSource() as never,
+      slotSequence,
+      initialProjectedSlots: [initialUpper],
+      finalProjectedSlots: [finalUpper],
+      weeklyObligationPlan: emptyWeeklyObligationPlan(),
+      weeklyObligationEvaluations: [],
+      protectedCoverage: {
+        muscles: [],
+        deficitsBelowMev: [],
+        deficitsBelowPracticalFloor: [],
+        unresolvedProtectedMuscles: [],
+      },
+      supportFloorRepairReasons: {},
+      programQualityAppliedDiagnostics: [],
+      programQualityEvaluation: {
+        totalPenalty: 0,
+        diagnostics: [],
+        constraintCounts: {},
+      },
+      preselectionDemands: [
+        {
+          slotId: "upper_b",
+          muscle: "Side Delts",
+          selectedEffectiveSets: 2,
+          consumedBySelection: true,
+          targetMet: true,
+        },
+      ],
+    });
+
+    expect(diagnostic.rearDeltCollateralSummary).toBeUndefined();
+    expect(diagnostic.warnings.map((warning) => warning.code)).not.toEqual(
+      expect.arrayContaining([
+        "REAR_DELT_COLLATERAL_UPPER_BACK_INCREASE",
+        "REAR_DELT_COLLATERAL_PULL_CONCENTRATION",
+        "REAR_DELT_COLLATERAL_CAP_TRIM",
+        "REAR_DELT_COLLATERAL_SUSPICIOUS_REPAIR_INCREASE",
+        "REAR_DELT_PRESELECTION_CONSUMED_BUT_PROGRAM_WORSE",
+      ])
+    );
+  });
+
   it("prevents upper_b from finishing with zero Chest while Chest remains a hard weekly obligation", () => {
     const projected = projectSuccessorSlotPlansFromSnapshot({
       userId: "user-1",

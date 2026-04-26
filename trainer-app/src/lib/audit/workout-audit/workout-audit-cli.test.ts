@@ -727,6 +727,80 @@ describe("buildPlanningRealitySummary", () => {
     ]);
   });
 
+  it("prints the Rear Delts collateral verdict when planningReality includes it", () => {
+    const summary = buildPlanningRealitySummary({
+      artifact: {
+        mesocycleExplain: {
+          preview: {
+            projectionDiagnostics: {
+              planningReality: {
+                summary: {
+                  planningShape: "mixed_upstream_plus_repair_shaped",
+                  explicitWeeklyDemandMuscles: 0,
+                  inferredDemandMuscles: 0,
+                  slotsWithExplicitWeeklyDemand: 0,
+                  slotsWithOnlyLocalOrInferredSemantics: 0,
+                  materialRepairCount: 26,
+                  majorRepairCount: 18,
+                  highExerciseConcentrationCount: 0,
+                  warningCodes: [],
+                },
+                weeklyMuscleDemand: [],
+                repairMateriality: [],
+                warnings: [],
+                exerciseConcentration: [],
+                slotDemandAllocation: [],
+                allocationVsFinalDelta: [],
+                repairMaterialityAfterShadowAllocation: [],
+                shadowRepairSummary: {
+                  materialRepairCount: 26,
+                  majorRepairCount: 18,
+                  likelyAvoidableMaterialRepairCount: 11,
+                  remainingMaterialRepairCount: 15,
+                  likelyAvoidableMajorRepairCount: 0,
+                  remainingMajorRepairCount: 18,
+                  likelyAvoidableByMuscle: {},
+                  remainingByMuscle: {},
+                },
+                suspiciousRepairsNotEligibleForPromotion: [],
+                promotionCandidates: [],
+                rearDeltCollateralSummary: {
+                  directRearDeltStimulusBefore: 0,
+                  directRearDeltStimulusAfter: 2,
+                  rearDeltPreselectionConsumed: true,
+                  upperBackCollateralDelta: 2,
+                  pullPatternConcentrationDelta: 1,
+                  suspiciousRepairDelta: 1,
+                  capTrimOrRemovalDelta: 0,
+                  verdict: "worse_collateral",
+                  reasons: [
+                    "REAR_DELT_COLLATERAL_UPPER_BACK_INCREASE",
+                    "REAR_DELT_PRESELECTION_CONSUMED_BUT_PROGRAM_WORSE",
+                    "consumed_preselection_demand_alone_is_not_success",
+                  ],
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    expect(summary).toEqual(
+      expect.arrayContaining([
+        "Rear Delts collateral guard:",
+        "- verdict: worse_collateral",
+        "- directRearDeltStimulus: 0 -> 2",
+        "- rearDeltPreselectionConsumed: yes",
+        "- upperBackCollateralDelta: 2",
+        "- pullPatternConcentrationDelta: 1",
+        "- suspiciousRepairDelta: 1",
+        "- capTrimOrRemovalDelta: 0",
+        "- reasons: consumed_preselection_demand_alone_is_not_success, REAR_DELT_COLLATERAL_UPPER_BACK_INCREASE, REAR_DELT_PRESELECTION_CONSUMED_BUT_PROGRAM_WORSE",
+      ])
+    );
+  });
+
   it("returns null when mesocycle-explain does not include planningReality", () => {
     expect(
       buildPlanningRealitySummary({

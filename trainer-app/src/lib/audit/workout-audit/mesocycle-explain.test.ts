@@ -621,6 +621,20 @@ describe("buildMesocycleExplainAuditPayload", () => {
           },
           suspiciousRepairsNotEligibleForPromotion: [],
           promotionCandidates: [],
+          rearDeltCollateralSummary: {
+            directRearDeltStimulusBefore: 0,
+            directRearDeltStimulusAfter: 2,
+            rearDeltPreselectionConsumed: true,
+            upperBackCollateralDelta: 0,
+            pullPatternConcentrationDelta: 0,
+            suspiciousRepairDelta: 0,
+            capTrimOrRemovalDelta: 0,
+            verdict: "clean_improvement",
+            reasons: [
+              "rear_delt_preselection_consumed",
+              "direct_rear_delt_stimulus_increased",
+            ],
+          },
           projectedDelivery: [],
           repairMateriality: [],
           exerciseConcentration: [],
@@ -880,6 +894,10 @@ describe("buildMesocycleExplainAuditPayload", () => {
           ],
         }),
       ],
+      rearDeltCollateralSummary: expect.objectContaining({
+        rearDeltPreselectionConsumed: true,
+        verdict: "clean_improvement",
+      }),
     });
     expect(payload.seed.exerciseRationale[0]).toMatchObject({
       exerciseId: "ex-1",

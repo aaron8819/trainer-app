@@ -51,7 +51,12 @@ export type ProgramShapeWarningCode =
   | "SLOT_ALLOCATION_NOT_EXPLICIT"
   | "PRIMARY_MUSCLE_BELOW_TARGET_BEFORE_REPAIR"
   | "SUPPORT_FLOOR_CLOSED_LATE"
-  | "FINAL_CAP_TRIM_REQUIRED";
+  | "FINAL_CAP_TRIM_REQUIRED"
+  | "REAR_DELT_COLLATERAL_UPPER_BACK_INCREASE"
+  | "REAR_DELT_COLLATERAL_PULL_CONCENTRATION"
+  | "REAR_DELT_COLLATERAL_CAP_TRIM"
+  | "REAR_DELT_COLLATERAL_SUSPICIOUS_REPAIR_INCREASE"
+  | "REAR_DELT_PRESELECTION_CONSUMED_BUT_PROGRAM_WORSE";
 
 export type WeeklyMuscleDemandDiagnostic = {
   muscle: string;
@@ -177,6 +182,22 @@ export type PromotionCandidate = {
     | "slot_preselection_demand"
     | "set_distribution_hint"
     | "selection_scoring_hint";
+};
+
+export type RearDeltCollateralSummary = {
+  directRearDeltStimulusBefore: number;
+  directRearDeltStimulusAfter: number;
+  rearDeltPreselectionConsumed: boolean;
+  upperBackCollateralDelta: number;
+  pullPatternConcentrationDelta: number | null;
+  suspiciousRepairDelta: number | null;
+  capTrimOrRemovalDelta: number | null;
+  verdict:
+    | "clean_improvement"
+    | "mixed_collateral"
+    | "worse_collateral"
+    | "not_applicable";
+  reasons: string[];
 };
 
 export type SlotDemandAllocationDiagnostic = {
@@ -310,6 +331,7 @@ export type SlotPlanPlanningRealityDiagnostic = {
   shadowRepairSummary: ShadowRepairSummary;
   suspiciousRepairsNotEligibleForPromotion: SuspiciousRepairNotEligibleForPromotion[];
   promotionCandidates: PromotionCandidate[];
+  rearDeltCollateralSummary?: RearDeltCollateralSummary;
   projectedDelivery: ProjectedDeliveryDiagnostic[];
   repairMateriality: RepairMaterialityDiagnostic[];
   exerciseConcentration: ExerciseConcentrationDiagnostic[];
@@ -337,6 +359,14 @@ type ExerciseRow = {
   role: "main" | "accessory";
   setCount: number;
   contributionByMuscle: Record<string, number>;
+};
+
+type PreselectionDemandDiagnosticLike = {
+  slotId: string;
+  muscle: string;
+  selectedEffectiveSets: number;
+  consumedBySelection: boolean;
+  targetMet: boolean;
 };
 
 function normalizeMuscle(muscle: string): string {
@@ -2038,12 +2068,164 @@ function buildExerciseConcentration(input: {
   });
 }
 
+const REAR_DELT_DIRECT_MUSCLE = "Rear Delts";
+const UPPER_BACK_COLLATERAL_MUSCLE = "Upper Back";
+const MATERIAL_UPPER_BACK_COLLATERAL_DELTA = 1;
+const PULL_COLLATERAL_CONCENTRATION_MUSCLES = new Set([
+  "Biceps",
+  "Forearms",
+  "Lats",
+  "Upper Back",
+]);
+
+function exercisePrimaryMuscles(row: ExerciseRow): string[] {
+  return [...(row.exercise.exercise.primaryMuscles ?? [])].map(normalizeMuscle);
+}
+
+function sumDirectStimulusForMuscle(
+  rows: ReadonlyArray<ExerciseRow>,
+  muscle: string
+): number {
+  return roundToTenth(
+    rows
+      .filter((row) => exercisePrimaryMuscles(row).includes(muscle))
+      .reduce((sum, row) => sum + (row.contributionByMuscle[muscle] ?? 0), 0)
+  );
+}
+
+function sumEffectiveStimulusForMuscle(
+  rows: ReadonlyArray<ExerciseRow>,
+  muscle: string
+): number {
+  return roundToTenth(
+    rows.reduce((sum, row) => sum + (row.contributionByMuscle[muscle] ?? 0), 0)
+  );
+}
+
+function isPullCollateralConcentration(row: ExerciseConcentrationDiagnostic): boolean {
+  const muscles = new Set([
+    ...row.primaryMuscles.map(normalizeMuscle),
+    ...Object.keys(row.effectiveStimulusContributionByMuscle).map(normalizeMuscle),
+  ]);
+  return (
+    row.producedOrIncreasedByRepair &&
+    row.flags.some(
+      (flag) =>
+        flag === "COMPOUND_GT_5_SETS" ||
+        flag === "ISOLATION_GT_5_SETS" ||
+        flag.includes("EXERCISE_SUPPLIES_OVER")
+    ) &&
+    Array.from(muscles).some((muscle) => PULL_COLLATERAL_CONCENTRATION_MUSCLES.has(muscle))
+  );
+}
+
+function buildRearDeltCollateralSummary(input: {
+  initialProjectedSlots: ReadonlyArray<ProjectedSlotWorkout>;
+  finalProjectedSlots: ReadonlyArray<ProjectedSlotWorkout>;
+  preselectionDemands: ReadonlyArray<PreselectionDemandDiagnosticLike>;
+  repairMaterialityAfterShadowAllocation: ReadonlyArray<ShadowRepairMaterialityDiagnostic>;
+  suspiciousRepairsNotEligibleForPromotion: ReadonlyArray<SuspiciousRepairNotEligibleForPromotion>;
+  exerciseConcentration: ReadonlyArray<ExerciseConcentrationDiagnostic>;
+}): RearDeltCollateralSummary | null {
+  const rearDeltPreselectionDemands = input.preselectionDemands.filter(
+    (demand) => normalizeMuscle(demand.muscle) === REAR_DELT_DIRECT_MUSCLE
+  );
+  if (rearDeltPreselectionDemands.length === 0) {
+    return null;
+  }
+
+  const initialRows = buildExerciseRows(input.initialProjectedSlots);
+  const finalRows = buildExerciseRows(input.finalProjectedSlots);
+  const directRearDeltStimulusBefore = sumDirectStimulusForMuscle(
+    initialRows,
+    REAR_DELT_DIRECT_MUSCLE
+  );
+  const directRearDeltStimulusAfter = sumDirectStimulusForMuscle(
+    finalRows,
+    REAR_DELT_DIRECT_MUSCLE
+  );
+  const upperBackCollateralDelta = roundToTenth(
+    sumEffectiveStimulusForMuscle(finalRows, UPPER_BACK_COLLATERAL_MUSCLE) -
+      sumEffectiveStimulusForMuscle(initialRows, UPPER_BACK_COLLATERAL_MUSCLE)
+  );
+  const rearDeltPreselectionConsumed = rearDeltPreselectionDemands.some(
+    (demand) => demand.consumedBySelection
+  );
+  const suspiciousRepairDelta = input.suspiciousRepairsNotEligibleForPromotion.filter(
+    (row) => normalizeMuscle(row.muscle) !== REAR_DELT_DIRECT_MUSCLE
+  ).length;
+  const pullPatternConcentrationDelta = input.exerciseConcentration.filter(
+    isPullCollateralConcentration
+  ).length;
+  const capTrimOrRemovalDelta = input.repairMaterialityAfterShadowAllocation.filter(
+    (row) => isMaterialRepair(row) && (row.action === "set_trimmed" || row.action === "removed")
+  ).length;
+  const directRearDeltImproved =
+    directRearDeltStimulusAfter > directRearDeltStimulusBefore;
+  const upperBackCollateralMaterial =
+    upperBackCollateralDelta >= MATERIAL_UPPER_BACK_COLLATERAL_DELTA;
+  const programWorse =
+    suspiciousRepairDelta > 0 ||
+    pullPatternConcentrationDelta > 0 ||
+    capTrimOrRemovalDelta > 0;
+  const reasons: string[] = [];
+
+  if (!rearDeltPreselectionConsumed) {
+    reasons.push("rear_delt_preselection_not_consumed");
+  } else {
+    reasons.push("rear_delt_preselection_consumed");
+    if (directRearDeltImproved) {
+      reasons.push("direct_rear_delt_stimulus_increased");
+    } else {
+      reasons.push("rear_delt_preselection_consumed_without_direct_closure");
+    }
+  }
+  if (upperBackCollateralMaterial) {
+    reasons.push("REAR_DELT_COLLATERAL_UPPER_BACK_INCREASE");
+  }
+  if (pullPatternConcentrationDelta > 0) {
+    reasons.push("REAR_DELT_COLLATERAL_PULL_CONCENTRATION");
+  }
+  if (capTrimOrRemovalDelta > 0) {
+    reasons.push("REAR_DELT_COLLATERAL_CAP_TRIM");
+  }
+  if (suspiciousRepairDelta > 0) {
+    reasons.push("REAR_DELT_COLLATERAL_SUSPICIOUS_REPAIR_INCREASE");
+  }
+  if (rearDeltPreselectionConsumed && (programWorse || upperBackCollateralMaterial || !directRearDeltImproved)) {
+    reasons.push("REAR_DELT_PRESELECTION_CONSUMED_BUT_PROGRAM_WORSE");
+    reasons.push("consumed_preselection_demand_alone_is_not_success");
+  }
+
+  const verdict: RearDeltCollateralSummary["verdict"] =
+    !rearDeltPreselectionConsumed
+      ? "not_applicable"
+      : programWorse || !directRearDeltImproved
+        ? "worse_collateral"
+        : upperBackCollateralMaterial
+          ? "mixed_collateral"
+          : "clean_improvement";
+
+  return {
+    directRearDeltStimulusBefore,
+    directRearDeltStimulusAfter,
+    rearDeltPreselectionConsumed,
+    upperBackCollateralDelta,
+    pullPatternConcentrationDelta,
+    suspiciousRepairDelta,
+    capTrimOrRemovalDelta,
+    verdict,
+    reasons: Array.from(new Set(reasons)),
+  };
+}
+
 function buildWarnings(input: {
   weeklyMuscleDemand: WeeklyMuscleDemandDiagnostic[];
   slotDemandAllocation: SlotDemandAllocationDiagnostic[];
   projectedDelivery: ProjectedDeliveryDiagnostic[];
   repairMateriality: RepairMaterialityDiagnostic[];
   exerciseConcentration: ExerciseConcentrationDiagnostic[];
+  rearDeltCollateralSummary?: RearDeltCollateralSummary | null;
 }): SlotPlanPlanningRealityDiagnostic["warnings"] {
   const warnings: SlotPlanPlanningRealityDiagnostic["warnings"] = [];
   const add = (
@@ -2152,6 +2334,50 @@ function buildWarnings(input: {
     );
   }
 
+  const rearDelt = input.rearDeltCollateralSummary;
+  if (rearDelt?.rearDeltPreselectionConsumed) {
+    if (rearDelt.upperBackCollateralDelta >= MATERIAL_UPPER_BACK_COLLATERAL_DELTA) {
+      add(
+        "REAR_DELT_COLLATERAL_UPPER_BACK_INCREASE",
+        "warning",
+        "Rear Delts preselection was consumed while Upper Back collateral stimulus increased materially.",
+        [`Upper Back +${rearDelt.upperBackCollateralDelta}`]
+      );
+    }
+    if ((rearDelt.pullPatternConcentrationDelta ?? 0) > 0) {
+      add(
+        "REAR_DELT_COLLATERAL_PULL_CONCENTRATION",
+        "warning",
+        "Rear Delts preselection was consumed while pull-pattern concentration burden increased.",
+        [`pullPatternConcentrationDelta:${rearDelt.pullPatternConcentrationDelta}`]
+      );
+    }
+    if ((rearDelt.capTrimOrRemovalDelta ?? 0) > 0) {
+      add(
+        "REAR_DELT_COLLATERAL_CAP_TRIM",
+        "warning",
+        "Rear Delts preselection was consumed while final cap trim or removal burden remained.",
+        [`capTrimOrRemovalDelta:${rearDelt.capTrimOrRemovalDelta}`]
+      );
+    }
+    if ((rearDelt.suspiciousRepairDelta ?? 0) > 0) {
+      add(
+        "REAR_DELT_COLLATERAL_SUSPICIOUS_REPAIR_INCREASE",
+        "warning",
+        "Rear Delts preselection was consumed while suspicious repair burden increased.",
+        [`suspiciousRepairDelta:${rearDelt.suspiciousRepairDelta}`]
+      );
+    }
+    if (rearDelt.verdict === "mixed_collateral" || rearDelt.verdict === "worse_collateral") {
+      add(
+        "REAR_DELT_PRESELECTION_CONSUMED_BUT_PROGRAM_WORSE",
+        "warning",
+        "Consumed Rear Delts preselection demand alone is not success when total-program collateral worsens.",
+        rearDelt.reasons
+      );
+    }
+  }
+
   return warnings;
 }
 
@@ -2192,6 +2418,7 @@ export function buildWeeklyDemandSlotAllocationDiagnostic(input: {
   supportFloorRepairReasons: Partial<Record<ProtectedWeekOneCoverageMuscle, SupportFloorRepairReason[]>>;
   programQualityAppliedDiagnostics: ReadonlyArray<ProgramQualityDiagnostic>;
   programQualityEvaluation: ProgramQualityEvaluation;
+  preselectionDemands?: ReadonlyArray<PreselectionDemandDiagnosticLike>;
 }): SlotPlanPlanningRealityDiagnostic {
   const relevantMuscles = collectRelevantMuscles({
     initialProjectedSlots: input.initialProjectedSlots,
@@ -2282,12 +2509,21 @@ export function buildWeeklyDemandSlotAllocationDiagnostic(input: {
     initialProjectedSlots: input.initialProjectedSlots,
     finalProjectedSlots: input.finalProjectedSlots,
   });
+  const rearDeltCollateralSummary = buildRearDeltCollateralSummary({
+    initialProjectedSlots: input.initialProjectedSlots,
+    finalProjectedSlots: input.finalProjectedSlots,
+    preselectionDemands: input.preselectionDemands ?? [],
+    repairMaterialityAfterShadowAllocation,
+    suspiciousRepairsNotEligibleForPromotion,
+    exerciseConcentration,
+  });
   const warnings = buildWarnings({
     weeklyMuscleDemand,
     slotDemandAllocation,
     projectedDelivery,
     repairMateriality,
     exerciseConcentration,
+    rearDeltCollateralSummary,
   });
   const materialRepairCount = repairMateriality.filter(
     (row) => row.materiality === "moderate" || row.materiality === "major"
@@ -2334,6 +2570,7 @@ export function buildWeeklyDemandSlotAllocationDiagnostic(input: {
     shadowRepairSummary,
     suspiciousRepairsNotEligibleForPromotion,
     promotionCandidates,
+    ...(rearDeltCollateralSummary ? { rearDeltCollateralSummary } : {}),
     projectedDelivery,
     repairMateriality,
     exerciseConcentration,

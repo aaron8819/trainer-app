@@ -848,6 +848,97 @@ describe("buildPlanningRealitySummary", () => {
     );
   });
 
+  it("prints clean preselection feasibility when planningReality includes it", () => {
+    const summary = buildPlanningRealitySummary({
+      artifact: {
+        mesocycleExplain: {
+          preview: {
+            projectionDiagnostics: {
+              planningReality: {
+                summary: {
+                  planningShape: "mostly_repair_shaped",
+                  explicitWeeklyDemandMuscles: 4,
+                  inferredDemandMuscles: 3,
+                  slotsWithExplicitWeeklyDemand: 2,
+                  slotsWithOnlyLocalOrInferredSemantics: 1,
+                  materialRepairCount: 22,
+                  majorRepairCount: 14,
+                  highExerciseConcentrationCount: 4,
+                  warningCodes: [],
+                },
+                preselectionFeasibility: [
+                  {
+                    slotId: "lower_b",
+                    muscle: "Hamstrings",
+                    role: "primary",
+                    targetStatus: "hard",
+                    demandType: "direct_required",
+                    candidateStatus: "dirty_candidate",
+                    targetEffectiveSets: 4,
+                    currentInitialEffectiveSets: 0,
+                    currentFinalEffectiveSets: 4,
+                    shortfallBeforeRepair: 4,
+                    preferredCleanPath: [
+                      {
+                        exerciseClass: "knee_flexion_curl",
+                        available: false,
+                        evidence: [],
+                      },
+                      {
+                        exerciseClass: "hinge_compound",
+                        available: false,
+                        evidence: [],
+                      },
+                      {
+                        exerciseClass: "existing_anchor_plus_curl",
+                        available: false,
+                        evidence: [],
+                      },
+                    ],
+                    dirtyClosureSignals: [
+                      {
+                        signal: "back_extension_closure",
+                        evidence: [
+                          "lower_b:Back Extension (45 Degree):weekly_obligation_closure:added",
+                        ],
+                      },
+                      {
+                        signal: "glute_collateral",
+                        evidence: ["collateralEstimate:Glutes:+2"],
+                      },
+                    ],
+                    collateralEstimate: {
+                      glutesDelta: 2,
+                      lowerBackDelta: 2,
+                    },
+                    recommendation: "do_not_promote_yet",
+                    reasons: [
+                      "candidate_scope:lower_b_Hamstrings",
+                      "dirty_signal:back_extension_closure",
+                    ],
+                    readOnly: true,
+                    affectsScoringOrGeneration: false,
+                  },
+                ],
+              },
+            },
+          },
+        },
+      },
+    });
+
+    expect(summary).toEqual(
+      expect.arrayContaining([
+        "Clean Preselection Feasibility",
+        "--------------------------------",
+        "lower_b Hamstrings: do_not_promote_yet (dirty_candidate)",
+        "Reason: back_extension_closure, glute_collateral.",
+        "Preferred clean path: none proven.",
+        "Collateral estimate: Glutes +2.0, Lower Back +2.0.",
+      ])
+    );
+  });
+
   it("prints compact set distribution intent evidence when present", () => {
     const summary = buildPlanningRealitySummary({
       artifact: {

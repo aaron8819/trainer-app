@@ -428,6 +428,45 @@ function buildSetDistributionSummaryLines(
   ];
 }
 
+function buildCleanPreselectionFeasibilitySummaryLines(
+  rows: PlanningRealityDiagnostic["preselectionFeasibility"] | null | undefined
+): string[] | null {
+  const feasibilityRows = asArray(rows);
+  if (feasibilityRows.length === 0) {
+    return null;
+  }
+
+  const lines = [
+    "Clean Preselection Feasibility",
+    "--------------------------------",
+  ];
+  for (const row of feasibilityRows.slice(0, 6)) {
+    const dirtySignals = asArray(row.dirtyClosureSignals).map(
+      (signal) => signal.signal
+    );
+    const preferredPath = asArray(row.preferredCleanPath)
+      .filter((path) => path.available)
+      .map((path) => path.exerciseClass);
+    lines.push(
+      `${row.slotId} ${row.muscle}: ${row.recommendation} (${row.candidateStatus})`
+    );
+    lines.push(
+      `Reason: ${formatNameList(dirtySignals.length > 0 ? dirtySignals : row.reasons, 6)}.`
+    );
+    lines.push(
+      `Preferred clean path: ${preferredPath.length > 0 ? preferredPath.join(" or ") : "none proven"}.`
+    );
+    lines.push(
+      `Collateral estimate: Glutes ${formatSignedSetDelta(row.collateralEstimate?.glutesDelta ?? 0)}, Lower Back ${formatSignedSetDelta(row.collateralEstimate?.lowerBackDelta ?? 0)}.`
+    );
+  }
+  const remaining = feasibilityRows.length - 6;
+  if (remaining > 0) {
+    lines.push(`+${remaining} more`);
+  }
+  return lines;
+}
+
 function formatPlanningRealityArchitectureImplication(
   planningShape: string | null | undefined,
   shadowRepairSignal?: {
@@ -745,6 +784,12 @@ export function buildPlanningRealitySummary(input: {
     if (remaining > 0) {
       lines.push(`- +${remaining} more`);
     }
+  }
+  const cleanFeasibilitySummary = buildCleanPreselectionFeasibilitySummaryLines(
+    planningReality.preselectionFeasibility
+  );
+  if (cleanFeasibilitySummary) {
+    lines.push("", ...cleanFeasibilitySummary);
   }
   if (planningReality.rearDeltCollateralSummary) {
     const rearDelt = planningReality.rearDeltCollateralSummary;

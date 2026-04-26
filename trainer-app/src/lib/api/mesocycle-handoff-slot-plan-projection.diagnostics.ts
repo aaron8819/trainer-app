@@ -216,6 +216,54 @@ export type RearDeltCollateralSummary = {
   reasons: string[];
 };
 
+export type CleanPreselectionFeasibility = {
+  slotId: string;
+  muscle: string;
+  role: "primary" | "support";
+  targetStatus: "hard" | "soft";
+  demandType: string;
+  candidateStatus:
+    | "clean_candidate"
+    | "dirty_candidate"
+    | "not_feasible"
+    | "needs_more_inventory_detail";
+  targetEffectiveSets: number | null;
+  currentInitialEffectiveSets: number | null;
+  currentFinalEffectiveSets: number | null;
+  shortfallBeforeRepair: number | null;
+  preferredCleanPath: Array<{
+    exerciseClass:
+      | "knee_flexion_curl"
+      | "hinge_compound"
+      | "existing_anchor_plus_curl";
+    available: boolean;
+    evidence: string[];
+  }>;
+  dirtyClosureSignals: Array<{
+    signal:
+      | "back_extension_closure"
+      | "lower_back_collateral"
+      | "glute_collateral"
+      | "sldl_concentration"
+      | "cap_cleanup"
+      | "suspicious_repair"
+      | "weak_preselection_risk";
+    evidence: string[];
+  }>;
+  collateralEstimate: {
+    glutesDelta: number | null;
+    lowerBackDelta: number | null;
+  };
+  recommendation:
+    | "safe_to_trial_preselection"
+    | "do_not_promote_yet"
+    | "requires_distribution_policy_first"
+    | "requires_inventory_or_exercise_class_fix";
+  reasons: string[];
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+};
+
 export type WeakPreselectionConsumptionDiagnostic = {
   slotId: string;
   muscle: string;
@@ -484,6 +532,7 @@ export type SlotPlanPlanningRealityDiagnostic = {
   slotPrescriptionIntents: SlotPrescriptionIntent[];
   setDistributionIntents: SetDistributionIntent[];
   distributionGuardActions: DistributionGuardAction[];
+  preselectionFeasibility: CleanPreselectionFeasibility[];
   forbiddenCleanupReroute?: ForbiddenCleanupRerouteDiagnostic;
   rearDeltCollateralSummary?: RearDeltCollateralSummary;
   projectedDelivery: ProjectedDeliveryDiagnostic[];
@@ -3294,6 +3343,374 @@ function buildRearDeltCollateralSummary(input: {
   };
 }
 
+const CLEAN_PRESELECTION_SLOT_ID = "lower_b";
+const CLEAN_PRESELECTION_MUSCLE = "Hamstrings";
+const BACK_EXTENSION_NAME_PATTERN = /back extension/i;
+const STIFF_LEGGED_DEADLIFT_NAME_PATTERN = /stiff[- ]leg(?:ged)? deadlift/i;
+const LEG_CURL_NAME_PATTERN = /\bcurl\b/i;
+const HINGE_NAME_PATTERN = /\b(deadlift|rdl|romanian|good morning|hinge)\b/i;
+const MATERIAL_COLLATERAL_DELTA = 1;
+
+function findSlotSnapshot(
+  slots: ReadonlyArray<SlotCompositionSnapshotDiagnostic>,
+  slotId: string
+): SlotCompositionSnapshotDiagnostic | undefined {
+  return slots.find((slot) => slot.slotId === slotId);
+}
+
+function slotStimulus(
+  slot: SlotCompositionSnapshotDiagnostic | undefined,
+  muscle: string
+): number | null {
+  return slot ? roundToTenth(slot.projectedEffectiveStimulusByMuscle[muscle] ?? 0) : null;
+}
+
+function computeShortfall(target: number | null, actual: number | null): number | null {
+  if (target == null || actual == null) {
+    return null;
+  }
+  return roundToTenth(Math.max(0, target - actual));
+}
+
+function isHamstringExercise(
+  exercise: SlotCompositionSnapshotDiagnostic["exercises"][number]
+): boolean {
+  return exercise.primaryMuscles.map(normalizeMuscle).includes(CLEAN_PRESELECTION_MUSCLE);
+}
+
+function isKneeFlexionCurl(
+  exercise: SlotCompositionSnapshotDiagnostic["exercises"][number]
+): boolean {
+  return isHamstringExercise(exercise) && LEG_CURL_NAME_PATTERN.test(exercise.exerciseName);
+}
+
+function isHingeCompound(
+  exercise: SlotCompositionSnapshotDiagnostic["exercises"][number]
+): boolean {
+  return (
+    isHamstringExercise(exercise) &&
+    exercise.role === "main" &&
+    HINGE_NAME_PATTERN.test(exercise.exerciseName) &&
+    !BACK_EXTENSION_NAME_PATTERN.test(exercise.exerciseName)
+  );
+}
+
+function formatExerciseEvidence(
+  slotId: string,
+  source: "initialSlotComposition" | "finalSlotPlan",
+  exercise: SlotCompositionSnapshotDiagnostic["exercises"][number]
+): string {
+  return `${source}:${slotId}:${exercise.exerciseName}:${exercise.setCount} sets`;
+}
+
+function collectCleanPathEvidence(input: {
+  initialSlot: SlotCompositionSnapshotDiagnostic | undefined;
+  finalSlot: SlotCompositionSnapshotDiagnostic | undefined;
+}): CleanPreselectionFeasibility["preferredCleanPath"] {
+  const rows = [
+    ...(input.initialSlot?.exercises ?? []).map((exercise) => ({
+      source: "initialSlotComposition" as const,
+      exercise,
+    })),
+    ...(input.finalSlot?.exercises ?? []).map((exercise) => ({
+      source: "finalSlotPlan" as const,
+      exercise,
+    })),
+  ];
+  const curlEvidence = rows
+    .filter((row) => isKneeFlexionCurl(row.exercise))
+    .map((row) => formatExerciseEvidence(CLEAN_PRESELECTION_SLOT_ID, row.source, row.exercise));
+  const hingeEvidence = rows
+    .filter((row) => isHingeCompound(row.exercise))
+    .map((row) => formatExerciseEvidence(CLEAN_PRESELECTION_SLOT_ID, row.source, row.exercise));
+
+  return [
+    {
+      exerciseClass: "knee_flexion_curl",
+      available: curlEvidence.length > 0,
+      evidence: sortPrescriptionStrings(curlEvidence),
+    },
+    {
+      exerciseClass: "hinge_compound",
+      available: hingeEvidence.length > 0,
+      evidence: sortPrescriptionStrings(hingeEvidence),
+    },
+    {
+      exerciseClass: "existing_anchor_plus_curl",
+      available: curlEvidence.length > 0 && hingeEvidence.length > 0,
+      evidence: sortPrescriptionStrings([...hingeEvidence, ...curlEvidence]),
+    },
+  ];
+}
+
+function appendDirtySignal(
+  signals: CleanPreselectionFeasibility["dirtyClosureSignals"],
+  signal: CleanPreselectionFeasibility["dirtyClosureSignals"][number]["signal"],
+  evidence: ReadonlyArray<string>
+): void {
+  const normalizedEvidence = sortPrescriptionStrings(evidence);
+  if (normalizedEvidence.length === 0) {
+    return;
+  }
+  const existing = signals.find((row) => row.signal === signal);
+  if (!existing) {
+    signals.push({ signal, evidence: normalizedEvidence });
+    return;
+  }
+  existing.evidence = sortPrescriptionStrings([
+    ...existing.evidence,
+    ...normalizedEvidence,
+  ]);
+}
+
+function buildCleanPreselectionFeasibility(input: {
+  initialSlotComposition: ReadonlyArray<SlotCompositionSnapshotDiagnostic>;
+  finalSlotPlan: ReadonlyArray<SlotCompositionSnapshotDiagnostic>;
+  allocationVsInitialDelta: ReadonlyArray<AllocationVsCompositionDelta>;
+  repairMaterialityAfterShadowAllocation: ReadonlyArray<ShadowRepairMaterialityDiagnostic>;
+  suspiciousRepairsNotEligibleForPromotion: ReadonlyArray<SuspiciousRepairNotEligibleForPromotion>;
+  promotionCandidates: ReadonlyArray<PromotionCandidate>;
+  weakPreselectionConsumption: ReadonlyArray<WeakPreselectionConsumptionDiagnostic>;
+  slotPrescriptionIntents: ReadonlyArray<SlotPrescriptionIntent>;
+  setDistributionIntents: ReadonlyArray<SetDistributionIntent>;
+  distributionGuardActions: ReadonlyArray<DistributionGuardAction>;
+}): CleanPreselectionFeasibility[] {
+  const slotIntent = input.slotPrescriptionIntents.find(
+    (intent) => intent.slotId === CLEAN_PRESELECTION_SLOT_ID
+  );
+  const prescription = slotIntent?.musclePrescriptions.find(
+    (row) =>
+      row.muscle === CLEAN_PRESELECTION_MUSCLE &&
+      row.targetStatus !== "forbidden" &&
+      row.demandType === "direct_required"
+  );
+  if (!prescription) {
+    return [];
+  }
+
+  const initialSlot = findSlotSnapshot(input.initialSlotComposition, CLEAN_PRESELECTION_SLOT_ID);
+  const finalSlot = findSlotSnapshot(input.finalSlotPlan, CLEAN_PRESELECTION_SLOT_ID);
+  const targetEffectiveSets =
+    prescription.minEffectiveSets ?? prescription.desiredEffectiveSets ?? null;
+  const currentInitialEffectiveSets = slotStimulus(initialSlot, CLEAN_PRESELECTION_MUSCLE);
+  const currentFinalEffectiveSets = slotStimulus(finalSlot, CLEAN_PRESELECTION_MUSCLE);
+  const shortfallBeforeRepair = computeShortfall(
+    targetEffectiveSets,
+    currentInitialEffectiveSets
+  );
+  const preferredCleanPath = collectCleanPathEvidence({ initialSlot, finalSlot });
+  const glutesDelta = roundToTenth(
+    (slotStimulus(finalSlot, "Glutes") ?? 0) - (slotStimulus(initialSlot, "Glutes") ?? 0)
+  );
+  const lowerBackDelta = roundToTenth(
+    (slotStimulus(finalSlot, "Lower Back") ?? 0) -
+      (slotStimulus(initialSlot, "Lower Back") ?? 0)
+  );
+  const dirtyClosureSignals: CleanPreselectionFeasibility["dirtyClosureSignals"] = [];
+  const lowerBRepairRows = input.repairMaterialityAfterShadowAllocation.filter(
+    (row) => row.slotId === CLEAN_PRESELECTION_SLOT_ID
+  );
+  const positiveRepairRows = lowerBRepairRows.filter(
+    (row) =>
+      (row.action === "added" || row.action === "set_bumped") &&
+      (row.effectiveStimulusDelta > 0 || row.effectiveStimulusAdded > 0)
+  );
+  const backExtensionRows = positiveRepairRows.filter(
+    (row) =>
+      BACK_EXTENSION_NAME_PATTERN.test(row.exerciseName ?? "") &&
+      [CLEAN_PRESELECTION_MUSCLE, "Glutes", "Lower Back"].includes(row.muscle ?? "")
+  );
+  appendDirtySignal(
+    dirtyClosureSignals,
+    "back_extension_closure",
+    backExtensionRows
+      .filter((row) => row.muscle === CLEAN_PRESELECTION_MUSCLE)
+      .map((row) => `${row.slotId}:${row.exerciseName}:${row.repairMechanism}:${row.action}`)
+  );
+  appendDirtySignal(
+    dirtyClosureSignals,
+    "glute_collateral",
+    [
+      ...backExtensionRows
+        .filter((row) => row.muscle === "Glutes")
+        .map((row) => `${row.slotId}:${row.exerciseName}:${row.muscle}:${row.effectiveStimulusDelta}`),
+      ...(glutesDelta >= MATERIAL_COLLATERAL_DELTA
+        ? [`collateralEstimate:Glutes:+${glutesDelta}`]
+        : []),
+    ]
+  );
+  appendDirtySignal(
+    dirtyClosureSignals,
+    "lower_back_collateral",
+    [
+      ...backExtensionRows
+        .filter((row) => row.muscle === "Lower Back")
+        .map((row) => `${row.slotId}:${row.exerciseName}:${row.muscle}:${row.effectiveStimulusDelta}`),
+      ...(lowerBackDelta >= MATERIAL_COLLATERAL_DELTA
+        ? [`collateralEstimate:Lower Back:+${lowerBackDelta}`]
+        : []),
+    ]
+  );
+  appendDirtySignal(
+    dirtyClosureSignals,
+    "suspicious_repair",
+    input.suspiciousRepairsNotEligibleForPromotion
+      .filter(
+        (row) =>
+          row.slotId === CLEAN_PRESELECTION_SLOT_ID &&
+          [CLEAN_PRESELECTION_MUSCLE, "Glutes", "Lower Back"].includes(row.muscle) &&
+          !row.reason.includes("cap cleanup")
+      )
+      .map((row) => `${row.slotId}:${row.muscle}:${row.exerciseName ?? row.repairMechanism}:${row.reason}`)
+  );
+
+  const setDistributionIntent = input.setDistributionIntents.find(
+    (intent) => intent.slotId === CLEAN_PRESELECTION_SLOT_ID
+  );
+  appendDirtySignal(
+    dirtyClosureSignals,
+    "sldl_concentration",
+    [
+      ...input.repairMaterialityAfterShadowAllocation
+        .filter(
+          (row) =>
+            row.slotId === CLEAN_PRESELECTION_SLOT_ID &&
+            STIFF_LEGGED_DEADLIFT_NAME_PATTERN.test(row.exerciseName ?? "") &&
+            row.muscle === CLEAN_PRESELECTION_MUSCLE &&
+            row.action !== "set_trimmed" &&
+            row.action !== "removed"
+        )
+        .map((row) => `${row.slotId}:${row.exerciseName}:${row.repairMechanism}:${row.action}`),
+      ...(setDistributionIntent?.evidence.concentrationRows ?? []).filter((row) =>
+        STIFF_LEGGED_DEADLIFT_NAME_PATTERN.test(row)
+      ),
+    ]
+  );
+  appendDirtySignal(
+    dirtyClosureSignals,
+    "cap_cleanup",
+    [
+      ...lowerBRepairRows
+        .filter(
+          (row) =>
+            (row.action === "set_trimmed" || row.action === "removed") &&
+            (row.muscle === CLEAN_PRESELECTION_MUSCLE ||
+              STIFF_LEGGED_DEADLIFT_NAME_PATTERN.test(row.exerciseName ?? ""))
+        )
+        .map((row) => `${row.slotId}:${row.exerciseName ?? row.exerciseId}:${row.muscle}:${row.action}`),
+      ...(setDistributionIntent?.evidence.capCleanupRows ?? []),
+      ...input.distributionGuardActions
+        .filter(
+          (row) =>
+            row.slotId === CLEAN_PRESELECTION_SLOT_ID &&
+            row.muscle === CLEAN_PRESELECTION_MUSCLE
+        )
+        .map((row) => `${row.slotId}:${row.exerciseName}:${row.attemptedAction}:${row.decision}:${row.reason ?? "no_reason"}`),
+    ]
+  );
+
+  const allocationDelta = input.allocationVsInitialDelta.find(
+    (row) => row.slotId === CLEAN_PRESELECTION_SLOT_ID
+  );
+  const initialHamstringShortfall = allocationDelta?.underAllocatedMuscles.find(
+    (row) => row.muscle === CLEAN_PRESELECTION_MUSCLE
+  );
+  appendDirtySignal(
+    dirtyClosureSignals,
+    "weak_preselection_risk",
+    [
+      ...input.weakPreselectionConsumption
+        .filter(
+          (row) =>
+            row.slotId === CLEAN_PRESELECTION_SLOT_ID &&
+            row.muscle === CLEAN_PRESELECTION_MUSCLE
+        )
+        .map((row) => `${row.slotId}:${row.muscle}:selected_${row.selectedEffectiveSets}:targetMet_${row.targetMet}`),
+      ...(initialHamstringShortfall && (currentInitialEffectiveSets ?? 0) > 0
+        ? [
+            `${CLEAN_PRESELECTION_SLOT_ID}:${CLEAN_PRESELECTION_MUSCLE}:initial_${currentInitialEffectiveSets}_shortfall_${initialHamstringShortfall.shortfall ?? "unknown"}`,
+          ]
+        : []),
+    ]
+  );
+
+  const cleanPathAvailable = preferredCleanPath.some(
+    (path) =>
+      path.available &&
+      (path.exerciseClass === "knee_flexion_curl" ||
+        path.exerciseClass === "existing_anchor_plus_curl")
+  );
+  const targetMet =
+    targetEffectiveSets != null &&
+    currentFinalEffectiveSets != null &&
+    currentFinalEffectiveSets + 1e-9 >= targetEffectiveSets;
+  const hasDirtySignals = dirtyClosureSignals.length > 0;
+  const hasDistributionOnlyDirtySignals =
+    hasDirtySignals &&
+    dirtyClosureSignals.every((row) =>
+      row.signal === "sldl_concentration" || row.signal === "cap_cleanup"
+    );
+  const candidateStatus: CleanPreselectionFeasibility["candidateStatus"] =
+    hasDirtySignals
+      ? "dirty_candidate"
+      : cleanPathAvailable && targetMet
+        ? "clean_candidate"
+        : currentFinalEffectiveSets === 0
+          ? "not_feasible"
+          : "needs_more_inventory_detail";
+  const recommendation: CleanPreselectionFeasibility["recommendation"] =
+    candidateStatus === "clean_candidate"
+      ? "safe_to_trial_preselection"
+      : hasDistributionOnlyDirtySignals
+        ? "requires_distribution_policy_first"
+        : candidateStatus === "needs_more_inventory_detail" || candidateStatus === "not_feasible"
+          ? "requires_inventory_or_exercise_class_fix"
+          : "do_not_promote_yet";
+  const reasons = sortPrescriptionStrings([
+    "read_only_diagnostic_only",
+    "candidate_scope:lower_b_Hamstrings",
+    "derived_from_planningReality_existing_rows",
+    ...(input.promotionCandidates.some(
+      (row) =>
+        row.slotId === CLEAN_PRESELECTION_SLOT_ID &&
+        row.muscle === CLEAN_PRESELECTION_MUSCLE &&
+        row.suggestedPromotion === "slot_preselection_demand"
+    )
+      ? ["existing_promotion_candidate_slot_preselection_demand"]
+      : []),
+    ...(cleanPathAvailable ? ["clean_knee_flexion_path_evidence_present"] : ["clean_path_evidence_missing_or_incomplete"]),
+    ...(targetMet ? ["final_target_met"] : ["final_target_not_met_or_unknown"]),
+    ...dirtyClosureSignals.map((row) => `dirty_signal:${row.signal}`),
+  ]);
+
+  return [
+    {
+      slotId: CLEAN_PRESELECTION_SLOT_ID,
+      muscle: CLEAN_PRESELECTION_MUSCLE,
+      role: prescription.role === "support" ? "support" : "primary",
+      targetStatus: prescription.targetStatus === "soft" ? "soft" : "hard",
+      demandType: prescription.demandType,
+      candidateStatus,
+      targetEffectiveSets,
+      currentInitialEffectiveSets,
+      currentFinalEffectiveSets,
+      shortfallBeforeRepair,
+      preferredCleanPath,
+      dirtyClosureSignals: dirtyClosureSignals.sort((left, right) =>
+        left.signal.localeCompare(right.signal)
+      ),
+      collateralEstimate: {
+        glutesDelta,
+        lowerBackDelta,
+      },
+      recommendation,
+      reasons,
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+    },
+  ];
+}
+
 function buildWarnings(input: {
   weeklyMuscleDemand: WeeklyMuscleDemandDiagnostic[];
   slotDemandAllocation: SlotDemandAllocationDiagnostic[];
@@ -3632,6 +4049,18 @@ export function buildWeeklyDemandSlotAllocationDiagnostic(input: {
     suspiciousRepairsNotEligibleForPromotion,
     exerciseConcentration,
   });
+  const preselectionFeasibility = buildCleanPreselectionFeasibility({
+    initialSlotComposition,
+    finalSlotPlan,
+    allocationVsInitialDelta,
+    repairMaterialityAfterShadowAllocation,
+    suspiciousRepairsNotEligibleForPromotion,
+    promotionCandidates,
+    weakPreselectionConsumption,
+    slotPrescriptionIntents,
+    setDistributionIntents,
+    distributionGuardActions,
+  });
   const warnings = buildWarnings({
     weeklyMuscleDemand,
     slotDemandAllocation,
@@ -3689,6 +4118,7 @@ export function buildWeeklyDemandSlotAllocationDiagnostic(input: {
     slotPrescriptionIntents,
     setDistributionIntents,
     distributionGuardActions,
+    preselectionFeasibility,
     ...(input.forbiddenCleanupReroute
       ? { forbiddenCleanupReroute: input.forbiddenCleanupReroute }
       : {}),

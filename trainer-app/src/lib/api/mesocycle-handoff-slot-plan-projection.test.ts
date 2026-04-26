@@ -257,6 +257,14 @@ function getEffectiveMuscleSetTotal(workout: WorkoutPlan, muscle: string) {
   );
 }
 
+function getLowerBHamstringsFeasibility(
+  diagnostic: ReturnType<typeof buildWeeklyDemandSlotAllocationDiagnostic>,
+) {
+  return diagnostic.preselectionFeasibility.find(
+    (row) => row.slotId === "lower_b" && row.muscle === "Hamstrings",
+  );
+}
+
 function buildSnapshot(): PreloadedGenerationSnapshot {
   return {
     context: {
@@ -2383,6 +2391,16 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
         "hinge_is_not_equivalent_to_curl",
       ]),
     );
+    expect(diagnostic?.preselectionFeasibility).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          slotId: "lower_b",
+          muscle: "Hamstrings",
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+        }),
+      ]),
+    );
     expect(upperASetDistribution).toMatchObject({
       readOnly: true,
       affectsScoringOrGeneration: false,
@@ -2697,6 +2715,232 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
         "lower_b:Stiff-Legged Deadlift:Hamstrings:diagnostic_or_cap_cleanup",
       ]),
     );
+  });
+
+  it("marks lower_b Hamstrings dirty when Back Extension closes the shortfall with glute and lower-back collateral", () => {
+    const slotSequence = [{ slotId: "lower_b", intent: "LOWER" as const }];
+    const backExtension = makeProjectedExercise({
+      id: "back-extension-45",
+      name: "Back Extension (45 Degree)",
+      movementPatterns: ["hinge"],
+      primaryMuscles: ["Hamstrings"],
+      sets: 4,
+      isMainLift: false,
+      isCompound: true,
+      stimulusProfile: { hamstrings: 1, glutes: 0.5, lower_back: 0.5 },
+    });
+
+    const diagnostic = buildWeeklyDemandSlotAllocationDiagnostic({
+      activeMesocycle: buildSource() as never,
+      slotSequence,
+      initialProjectedSlots: [
+        makeProjectedSlotWithContributions({
+          slotId: "lower_b",
+          intent: "LOWER",
+          workout: makeProjectedWorkout({}),
+        }),
+      ],
+      finalProjectedSlots: [
+        makeProjectedSlotWithContributions({
+          slotId: "lower_b",
+          intent: "LOWER",
+          workout: makeProjectedWorkout({ accessories: [backExtension] }),
+        }),
+      ],
+      weeklyObligationPlan: weeklyObligationPlan({
+        Hamstrings: {
+          targetSets: 4,
+          allocatedSlots: [
+            { slotId: "lower_b", minEffectiveSets: 4, priority: "primary" },
+          ],
+        },
+      }),
+      weeklyObligationEvaluations: [],
+      protectedCoverage: {
+        muscles: [],
+        deficitsBelowMev: [],
+        deficitsBelowPracticalFloor: [],
+        unresolvedProtectedMuscles: [],
+      },
+      supportFloorRepairReasons: {},
+      programQualityAppliedDiagnostics: [],
+      programQualityEvaluation: {
+        totalPenalty: 0,
+        diagnostics: [],
+        constraintCounts: {},
+      },
+    });
+
+    const feasibility = getLowerBHamstringsFeasibility(diagnostic);
+
+    expect(feasibility).toMatchObject({
+      candidateStatus: "dirty_candidate",
+      recommendation: "do_not_promote_yet",
+      targetEffectiveSets: 4,
+      currentInitialEffectiveSets: 0,
+      currentFinalEffectiveSets: 4,
+      shortfallBeforeRepair: 4,
+      collateralEstimate: {
+        glutesDelta: 2,
+        lowerBackDelta: 2,
+      },
+    });
+    expect(feasibility?.dirtyClosureSignals).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ signal: "back_extension_closure" }),
+        expect.objectContaining({ signal: "glute_collateral" }),
+        expect.objectContaining({ signal: "lower_back_collateral" }),
+      ]),
+    );
+  });
+
+  it("marks lower_b Hamstrings dirty when Stiff-Legged Deadlift carries concentration or cap cleanup pressure", () => {
+    const slotSequence = [{ slotId: "lower_b", intent: "LOWER" as const }];
+    const stiffLegDeadlift = makeProjectedExercise({
+      id: "stiff-legged-deadlift",
+      name: "Stiff-Legged Deadlift",
+      movementPatterns: ["hinge"],
+      primaryMuscles: ["Hamstrings"],
+      sets: 5,
+      isMainLift: true,
+      stimulusProfile: { hamstrings: 1, glutes: 0.5, lower_back: 0.5 },
+    });
+    const trimmedStiffLegDeadlift = {
+      ...stiffLegDeadlift,
+      sets: stiffLegDeadlift.sets.slice(0, 3),
+    };
+
+    const diagnostic = buildWeeklyDemandSlotAllocationDiagnostic({
+      activeMesocycle: buildSource() as never,
+      slotSequence,
+      initialProjectedSlots: [
+        makeProjectedSlotWithContributions({
+          slotId: "lower_b",
+          intent: "LOWER",
+          workout: makeProjectedWorkout({ mainLifts: [stiffLegDeadlift] }),
+        }),
+      ],
+      finalProjectedSlots: [
+        makeProjectedSlotWithContributions({
+          slotId: "lower_b",
+          intent: "LOWER",
+          workout: makeProjectedWorkout({ mainLifts: [trimmedStiffLegDeadlift] }),
+        }),
+      ],
+      weeklyObligationPlan: weeklyObligationPlan({
+        Hamstrings: {
+          targetSets: 4,
+          allocatedSlots: [
+            { slotId: "lower_b", minEffectiveSets: 4, priority: "primary" },
+          ],
+        },
+      }),
+      weeklyObligationEvaluations: [],
+      protectedCoverage: {
+        muscles: [],
+        deficitsBelowMev: [],
+        deficitsBelowPracticalFloor: [],
+        unresolvedProtectedMuscles: [],
+      },
+      supportFloorRepairReasons: {},
+      programQualityAppliedDiagnostics: [],
+      programQualityEvaluation: {
+        totalPenalty: 0,
+        diagnostics: [],
+        constraintCounts: {},
+      },
+    });
+
+    const feasibility = getLowerBHamstringsFeasibility(diagnostic);
+
+    expect(feasibility).toMatchObject({
+      candidateStatus: "dirty_candidate",
+      recommendation: "requires_distribution_policy_first",
+    });
+    expect(feasibility?.dirtyClosureSignals).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ signal: "sldl_concentration" }),
+        expect.objectContaining({ signal: "cap_cleanup" }),
+      ]),
+    );
+  });
+
+  it("marks lower_b Hamstrings safe only when a clean knee-flexion curl path satisfies the target without collateral", () => {
+    const slotSequence = [{ slotId: "lower_b", intent: "LOWER" as const }];
+    const seatedLegCurl = makeProjectedExercise({
+      id: "seated-leg-curl",
+      name: "Seated Leg Curl",
+      movementPatterns: ["isolation"],
+      primaryMuscles: ["Hamstrings"],
+      sets: 4,
+      isMainLift: false,
+      isCompound: false,
+      stimulusProfile: { hamstrings: 1 },
+    });
+
+    const diagnostic = buildWeeklyDemandSlotAllocationDiagnostic({
+      activeMesocycle: buildSource() as never,
+      slotSequence,
+      initialProjectedSlots: [
+        makeProjectedSlotWithContributions({
+          slotId: "lower_b",
+          intent: "LOWER",
+          workout: makeProjectedWorkout({}),
+        }),
+      ],
+      finalProjectedSlots: [
+        makeProjectedSlotWithContributions({
+          slotId: "lower_b",
+          intent: "LOWER",
+          workout: makeProjectedWorkout({ accessories: [seatedLegCurl] }),
+        }),
+      ],
+      weeklyObligationPlan: weeklyObligationPlan({
+        Hamstrings: {
+          targetSets: 4,
+          allocatedSlots: [
+            { slotId: "lower_b", minEffectiveSets: 4, priority: "primary" },
+          ],
+        },
+      }),
+      weeklyObligationEvaluations: [],
+      protectedCoverage: {
+        muscles: [],
+        deficitsBelowMev: [],
+        deficitsBelowPracticalFloor: [],
+        unresolvedProtectedMuscles: [],
+      },
+      supportFloorRepairReasons: {},
+      programQualityAppliedDiagnostics: [],
+      programQualityEvaluation: {
+        totalPenalty: 0,
+        diagnostics: [],
+        constraintCounts: {},
+      },
+    });
+
+    const feasibility = getLowerBHamstringsFeasibility(diagnostic);
+
+    expect(feasibility).toMatchObject({
+      candidateStatus: "clean_candidate",
+      recommendation: "safe_to_trial_preselection",
+      collateralEstimate: {
+        glutesDelta: 0,
+        lowerBackDelta: 0,
+      },
+    });
+    expect(feasibility?.preferredCleanPath).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          exerciseClass: "knee_flexion_curl",
+          available: true,
+          evidence: expect.arrayContaining([
+            "finalSlotPlan:lower_b:Seated Leg Curl:4 sets",
+          ]),
+        }),
+      ]),
+    );
+    expect(feasibility?.dirtyClosureSignals).toEqual([]);
   });
 
   it("separates likely avoidable shadow repairs from suspicious downstream repair artifacts", () => {

@@ -1,6 +1,10 @@
 import type { Exercise, WorkoutExercise, WorkoutPlan, WorkoutSet } from "@/lib/engine/types";
 import { getEffectiveStimulusByMuscle } from "@/lib/engine/stimulus";
 import {
+  MUSCLE_TARGET_TIER_BY_MUSCLE,
+  VOLUME_LANDMARKS,
+} from "@/lib/engine/volume-landmarks";
+import {
   getProjectionRepairCompatibleMuscles,
   resolveSessionSlotPolicy,
   type ProtectedWeekOneCoverageMuscle,
@@ -11,6 +15,7 @@ import type { MappedGenerationContext } from "./template-session/types";
 import {
   buildSlotSequenceEntries,
   computeProjectedWeeklyContributionByMuscle,
+  computeWorkoutContributionByMuscle,
   countWorkoutExercises,
   exerciseHasPrimaryMuscle,
   getWorkoutExercises,
@@ -28,7 +33,7 @@ import {
 } from "./mesocycle-handoff-slot-plan-projection.repair-engine";
 import {
   evaluateDuplicateExerciseReuse,
-  evaluateWeeklyObligationPlan,
+  HARD_WEEKLY_OBLIGATION_MUSCLES,
   type DuplicateExerciseReuseDiagnostic,
   type WeeklyMuscleObligationPlan,
 } from "./mesocycle-handoff-slot-plan-projection.weekly-obligations";
@@ -65,6 +70,13 @@ const ISOLATION_COMPLETENESS_TARGETS: ProtectedWeekOneCoverageMuscle[] = [
 
 type ProgramQualityPriority = keyof typeof PROGRAM_QUALITY_CONSTRAINT_PRIORITY;
 type BroadMovementPattern = "push" | "pull" | "squat" | "hinge" | "lunge" | "isolation" | "other";
+type ProgramQualityBlockReason =
+  | "no_compatible_alternative"
+  | "would_break_slot_identity"
+  | "would_exceed_hard_cap"
+  | "would_break_weekly_target"
+  | "would_worsen_fatigue";
+type RedistributionScope = "same_slot" | "paired_slot" | "elsewhere_week" | "added_alternative";
 
 export type ProgramQualityDiagnostic = {
   priority: ProgramQualityPriority;
@@ -84,6 +96,7 @@ export type ProgramQualityDiagnostic = {
   muscle?: string;
   pattern?: string;
   reason: string;
+  blockReason?: ProgramQualityBlockReason;
   details?: Record<string, number | string | boolean | string[]>;
 };
 
@@ -227,6 +240,106 @@ function penalty(overage: number, weight = 1): number {
 
 function getExerciseMuscleContribution(exercise: WorkoutExercise, muscle: string): number {
   return (getEffectiveStimulusByMuscle(exercise.exercise, exercise.sets.length).get(muscle) ?? 0);
+}
+
+function getWeeklyContribution(slots: ReadonlyArray<ProjectedSlotWorkout>): Map<string, number> {
+  return computeProjectedWeeklyContributionByMuscle({
+    projectedSlots: slots,
+    currentSlotContribution: new Map(),
+  });
+}
+
+function redundancyPenalty(slots: ReadonlyArray<ProjectedSlotWorkout>): number {
+  return evaluateRedundancy(slots).reduce((sum, diagnostic) => sum + diagnostic.penalty, 0);
+}
+
+function getWeeklyHardTargetFloor(input: {
+  muscle: (typeof HARD_WEEKLY_OBLIGATION_MUSCLES)[number];
+  beforeTotal: number;
+  weeklyObligationPlan: WeeklyMuscleObligationPlan;
+}): number {
+  const targetSets = input.weeklyObligationPlan.muscles[input.muscle].targetSets;
+  if (targetSets <= 0) {
+    return 0;
+  }
+  return input.beforeTotal >= targetSets ? targetSets : input.beforeTotal;
+}
+
+function getSlotPrimaryIdentityMuscles(input: {
+  slot: ProjectedSlotWorkout;
+  slotSequenceEntries: SlotSequenceEntries;
+}): string[] {
+  const slotPolicy = getSlotPolicy({
+    slot: input.slot,
+    slotSequenceEntries: input.slotSequenceEntries,
+  });
+  if (!slotPolicy) {
+    return [];
+  }
+
+  const lanePrimaries =
+    slotPolicy.compoundControl?.lanes.flatMap((lane) => lane.preferredPrimaryMuscles ?? []) ??
+    [];
+  const biasPrimaries = slotPolicy.compoundBias?.preferredPrimaryMuscles ?? [];
+  return Array.from(new Set([...lanePrimaries, ...biasPrimaries]));
+}
+
+function getSlotPrimaryContributionFloor(input: {
+  weeklyObligationPlan: WeeklyMuscleObligationPlan;
+  slotId: string;
+  muscle: string;
+}): number {
+  const hardMuscle = HARD_WEEKLY_OBLIGATION_MUSCLES.find((candidate) => candidate === input.muscle);
+  const authoredFloor = hardMuscle
+    ? input.weeklyObligationPlan.muscles[hardMuscle].allocatedSlots.find(
+        (slot) => slot.slotId === input.slotId
+      )?.minEffectiveSets
+    : undefined;
+  return Math.min(2, authoredFloor ?? 2);
+}
+
+function preservesSlotPrimaryContributionFloor(input: {
+  beforeSlot: ProjectedSlotWorkout;
+  afterSlot: ProjectedSlotWorkout;
+  slotSequenceEntries: SlotSequenceEntries;
+  weeklyObligationPlan: WeeklyMuscleObligationPlan;
+}): boolean {
+  const primaryMuscles = getSlotPrimaryIdentityMuscles({
+    slot: input.beforeSlot,
+    slotSequenceEntries: input.slotSequenceEntries,
+  });
+  if (primaryMuscles.length === 0) {
+    return true;
+  }
+
+  const beforeContribution = computeWorkoutContributionByMuscle(input.beforeSlot.workout);
+  const afterContribution = computeWorkoutContributionByMuscle(input.afterSlot.workout);
+  return primaryMuscles.every((muscle) => {
+    const floor = getSlotPrimaryContributionFloor({
+      weeklyObligationPlan: input.weeklyObligationPlan,
+      slotId: input.beforeSlot.slotPlan.slotId,
+      muscle,
+    });
+    const beforeSatisfied = (beforeContribution.get(muscle) ?? 0) + 1e-9 >= floor;
+    if (!beforeSatisfied) {
+      return true;
+    }
+    return (afterContribution.get(muscle) ?? 0) + 1e-9 >= floor;
+  });
+}
+
+function getHardCapBlockReason(slots: ReadonlyArray<ProjectedSlotWorkout>): ProgramQualityBlockReason | null {
+  for (const slot of slots) {
+    if (countWorkoutExercises(slot.workout) > SESSION_CAPS.maxExercises) {
+      return "would_exceed_hard_cap";
+    }
+    for (const exercise of getWorkoutExercises(slot.workout)) {
+      if (exercise.sets.length > getHardSetCap(exercise)) {
+        return "would_exceed_hard_cap";
+      }
+    }
+  }
+  return null;
 }
 
 function hasSameSlotSpreadReceiver(input: {
@@ -377,6 +490,49 @@ function countPatternSets(slots: ReadonlyArray<ProjectedSlotWorkout>, patterns: 
   );
 }
 
+function countLowerBDuplicateSquatPressure(slots: ReadonlyArray<ProjectedSlotWorkout>): number {
+  const lowerSlots = slots.filter((slot) => slot.slotPlan.intent === "LOWER");
+  const lowerB = lowerSlots.find((slot) => slot.slotPlan.slotId.endsWith("_b"));
+  if (!lowerB) {
+    return 0;
+  }
+  const earlierSquatIds = new Set(
+    lowerSlots
+      .filter((slot) => slot.slotPlan.slotId !== lowerB.slotPlan.slotId)
+      .flatMap((slot) =>
+        getWorkoutExercises(slot.workout)
+          .filter((exercise) => getBroadMovementPattern(exercise.exercise) === "squat")
+          .map((exercise) => exercise.exercise.id)
+      )
+  );
+  const lowerBSquats = getWorkoutExercises(lowerB.workout).filter(
+    (exercise) => getBroadMovementPattern(exercise.exercise) === "squat"
+  );
+  const duplicateSquats = lowerBSquats.filter((exercise) => earlierSquatIds.has(exercise.exercise.id)).length;
+  const extraSquatAccessories = Math.max(
+    0,
+    lowerB.workout.accessories.filter(
+      (exercise) => getBroadMovementPattern(exercise.exercise) === "squat"
+    ).length - 1
+  );
+  return duplicateSquats + extraSquatAccessories;
+}
+
+function lowerFatigueRiskScore(slots: ReadonlyArray<ProjectedSlotWorkout>): number {
+  const lowerSlots = slots.filter((slot) => slot.slotPlan.intent === "LOWER");
+  if (lowerSlots.length === 0) {
+    return 0;
+  }
+  const totals = getWeeklyContribution(slots);
+  const gluteMav = VOLUME_LANDMARKS.Glutes?.mav ?? Number.POSITIVE_INFINITY;
+  const gluteOverMav = Math.max(0, (totals.get("Glutes") ?? 0) - gluteMav);
+  const hingeSets = countPatternSets(lowerSlots, ["hinge"]);
+  const lowerPatternSets = countPatternSets(lowerSlots, ["hinge", "squat", "lunge"]);
+  const hingeShare = lowerPatternSets > 0 ? hingeSets / lowerPatternSets : 0;
+  const hingeOver = Math.max(0, hingeShare - LOWER_HINGE_SHARE_MAX) * 10;
+  return roundToTenth(gluteOverMav + hingeOver + countLowerBDuplicateSquatPressure(slots));
+}
+
 function evaluateWeeklyPatternBalance(slots: ReadonlyArray<ProjectedSlotWorkout>): ProgramQualityDiagnostic[] {
   const lowerSlots = slots.filter((slot) => slot.slotPlan.intent === "LOWER");
   const upperSlots = slots.filter((slot) => ["UPPER", "PUSH", "PULL"].includes(slot.slotPlan.intent));
@@ -519,7 +675,9 @@ function evaluateDuplicateDiagnostics(input: {
         priority: "P4" as const,
         constraint: "cross_slot_duplicate" as const,
         penalty:
-          diagnostic.role === "main" ? 0.5 : diagnostic.hasCompatibleAlternative ? 3 : 0.5,
+          diagnostic.role === "main"
+            ? diagnostic.hasCompatibleAlternative ? 4 : 0.5
+            : diagnostic.hasCompatibleAlternative ? 3 : 0.5,
         slotId: diagnostic.repeatedInSlotId,
         exerciseId: diagnostic.exerciseId,
         name: diagnostic.name,
@@ -594,24 +752,100 @@ function preservesP0WeeklyObligations(input: {
   afterSlots: ReadonlyArray<ProjectedSlotWorkout>;
   weeklyObligationPlan: WeeklyMuscleObligationPlan;
 }): boolean {
-  const beforeRows = evaluateWeeklyObligationPlan({
-    plan: input.weeklyObligationPlan,
-    projectedSlots: input.beforeSlots,
-  });
-  const afterRows = evaluateWeeklyObligationPlan({
-    plan: input.weeklyObligationPlan,
-    projectedSlots: input.afterSlots,
-  });
+  const beforeTotals = getWeeklyContribution(input.beforeSlots);
+  const afterTotals = getWeeklyContribution(input.afterSlots);
 
-  return beforeRows.every((beforeRow) => {
-    if (beforeRow.shortfall > 0) {
-      return true;
-    }
-    const afterRow = afterRows.find(
-      (row) => row.slotId === beforeRow.slotId && row.muscle === beforeRow.muscle
-    );
-    return (afterRow?.shortfall ?? 0) <= 0;
+  return HARD_WEEKLY_OBLIGATION_MUSCLES.every((muscle) => {
+    const beforeTotal = beforeTotals.get(muscle) ?? 0;
+    const requiredWeeklyFloor = getWeeklyHardTargetFloor({
+      muscle,
+      beforeTotal,
+      weeklyObligationPlan: input.weeklyObligationPlan,
+    });
+    return (afterTotals.get(muscle) ?? 0) + 1e-9 >= requiredWeeklyFloor;
   });
+}
+
+function getSlotIdentityBlockReason(input: {
+  beforeSlots: ReadonlyArray<ProjectedSlotWorkout>;
+  afterSlots: ReadonlyArray<ProjectedSlotWorkout>;
+  slotSequenceEntries: SlotSequenceEntries;
+  weeklyObligationPlan: WeeklyMuscleObligationPlan;
+}): ProgramQualityBlockReason | null {
+  for (const [index, beforeSlot] of input.beforeSlots.entries()) {
+    const afterSlot = input.afterSlots[index];
+    if (!afterSlot) {
+      continue;
+    }
+    const slotPolicy = getSlotPolicy({
+      slot: beforeSlot,
+      slotSequenceEntries: input.slotSequenceEntries,
+    });
+    if (
+      preservesSlotIdentity({ slotPolicy, workout: beforeSlot.workout }) &&
+      !preservesSlotIdentity({ slotPolicy, workout: afterSlot.workout })
+    ) {
+      return "would_break_slot_identity";
+    }
+    if (
+      !preservesSlotPrimaryContributionFloor({
+        beforeSlot,
+        afterSlot,
+        slotSequenceEntries: input.slotSequenceEntries,
+        weeklyObligationPlan: input.weeklyObligationPlan,
+      })
+    ) {
+      return "would_break_slot_identity";
+    }
+  }
+  return null;
+}
+
+function getCandidateBlockReason(input: {
+  beforeSlots: ReadonlyArray<ProjectedSlotWorkout>;
+  afterSlots: ReadonlyArray<ProjectedSlotWorkout>;
+  slotSequenceEntries: SlotSequenceEntries;
+  weeklyObligationPlan: WeeklyMuscleObligationPlan;
+}): ProgramQualityBlockReason | null {
+  const slotIdentityBlock = getSlotIdentityBlockReason({
+    beforeSlots: input.beforeSlots,
+    afterSlots: input.afterSlots,
+    slotSequenceEntries: input.slotSequenceEntries,
+    weeklyObligationPlan: input.weeklyObligationPlan,
+  });
+  if (slotIdentityBlock) {
+    return slotIdentityBlock;
+  }
+  const hardCapBlock = getHardCapBlockReason(input.afterSlots);
+  if (hardCapBlock) {
+    return hardCapBlock;
+  }
+  if (
+    !preservesP0WeeklyObligations({
+      beforeSlots: input.beforeSlots,
+      afterSlots: input.afterSlots,
+      weeklyObligationPlan: input.weeklyObligationPlan,
+    })
+  ) {
+    return "would_break_weekly_target";
+  }
+  if (lowerFatigueRiskScore(input.afterSlots) > lowerFatigueRiskScore(input.beforeSlots) + 1e-9) {
+    return "would_worsen_fatigue";
+  }
+  if (redundancyPenalty(input.afterSlots) > redundancyPenalty(input.beforeSlots)) {
+    return "no_compatible_alternative";
+  }
+  return null;
+}
+
+function withUpdatedSlotWorkout(
+  slots: ReadonlyArray<ProjectedSlotWorkout>,
+  slotIndex: number,
+  workout: WorkoutPlan
+): ProjectedSlotWorkout[] {
+  return slots.map((projectedSlot, index) =>
+    index === slotIndex ? updateProjectedSlotWorkout(projectedSlot, workout) : projectedSlot
+  );
 }
 
 function tryReplaceSlotWorkout(input: {
@@ -625,21 +859,13 @@ function tryReplaceSlotWorkout(input: {
   if (!slot) {
     return null;
   }
-  const slotPolicy = getSlotPolicy({ slot, slotSequenceEntries: input.slotSequenceEntries });
-  if (
-    preservesSlotIdentity({ slotPolicy, workout: slot.workout }) &&
-    !preservesSlotIdentity({ slotPolicy, workout: input.workout })
-  ) {
-    return null;
-  }
-  const candidateSlots = input.slots.map((projectedSlot, index) =>
-    index === input.slotIndex ? updateProjectedSlotWorkout(projectedSlot, input.workout) : projectedSlot
-  );
-  return preservesP0WeeklyObligations({
+  const candidateSlots = withUpdatedSlotWorkout(input.slots, input.slotIndex, input.workout);
+  return getCandidateBlockReason({
     beforeSlots: input.slots,
     afterSlots: candidateSlots,
+    slotSequenceEntries: input.slotSequenceEntries,
     weeklyObligationPlan: input.weeklyObligationPlan,
-  })
+  }) == null
     ? candidateSlots
     : null;
 }
@@ -659,29 +885,6 @@ function getReceiverScore(input: {
   );
 }
 
-function findSetSpreadReceiver(input: {
-  workout: WorkoutPlan;
-  donor: WorkoutExercise;
-  muscle: string;
-  requireDifferentPattern?: boolean;
-}): WorkoutExercise | undefined {
-  const donorPattern = getBroadMovementPattern(input.donor.exercise);
-  return getWorkoutExercises(input.workout)
-    .filter((candidate) => candidate.exercise.id !== input.donor.exercise.id)
-    .filter((candidate) => candidate.sets.length < getHardSetCap(candidate))
-    .filter((candidate) => !input.requireDifferentPattern || getBroadMovementPattern(candidate.exercise) !== donorPattern)
-    .filter((candidate) => (getEffectiveStimulusByMuscle(candidate.exercise, 1).get(input.muscle) ?? 0) > 0)
-    .sort((left, right) => {
-      const scoreDelta =
-        getReceiverScore({ donor: input.donor, receiver: right, muscle: input.muscle }) -
-        getReceiverScore({ donor: input.donor, receiver: left, muscle: input.muscle });
-      if (scoreDelta !== 0) {
-        return scoreDelta;
-      }
-      return left.exercise.name.localeCompare(right.exercise.name);
-    })[0];
-}
-
 function moveOneSet(input: {
   workout: WorkoutPlan;
   donor: WorkoutExercise;
@@ -690,6 +893,837 @@ function moveOneSet(input: {
   const donor = withSetCount(input.donor, input.donor.sets.length - 1);
   const receiver = withSetCount(input.receiver, input.receiver.sets.length + 1);
   return replaceWorkoutExercise(replaceWorkoutExercise(input.workout, donor), receiver);
+}
+
+function getPairedSlotId(slotId: string): string | null {
+  if (slotId.endsWith("_a")) {
+    return `${slotId.slice(0, -2)}_b`;
+  }
+  if (slotId.endsWith("_b")) {
+    return `${slotId.slice(0, -2)}_a`;
+  }
+  return null;
+}
+
+function getReceiverSlotIndexes(input: {
+  slots: ReadonlyArray<ProjectedSlotWorkout>;
+  donorSlotIndex: number;
+  scope: Exclude<RedistributionScope, "added_alternative">;
+}): number[] {
+  const donorSlot = input.slots[input.donorSlotIndex];
+  if (!donorSlot) {
+    return [];
+  }
+  if (input.scope === "same_slot") {
+    return [input.donorSlotIndex];
+  }
+  const pairedSlotId = getPairedSlotId(donorSlot.slotPlan.slotId);
+  if (input.scope === "paired_slot") {
+    const pairedIndex = pairedSlotId
+      ? input.slots.findIndex((slot) => slot.slotPlan.slotId === pairedSlotId)
+      : -1;
+    return pairedIndex >= 0 ? [pairedIndex] : [];
+  }
+  return input.slots
+    .map((slot, index) => ({ slot, index }))
+    .filter(({ slot, index }) => index !== input.donorSlotIndex && slot.slotPlan.slotId !== pairedSlotId)
+    .map(({ index }) => index);
+}
+
+function getTriggerMuscles(exercise: WorkoutExercise, preferredMuscle?: string): string[] {
+  const contributions = Array.from(getEffectiveStimulusByMuscle(exercise.exercise, 1).entries())
+    .filter(([, effectiveSets]) => effectiveSets > 0)
+    .map(([muscle]) => muscle);
+  const primaryMuscles = exercise.exercise.primaryMuscles ?? [];
+  return Array.from(
+    new Set([
+      ...(preferredMuscle ? [preferredMuscle] : []),
+      ...primaryMuscles.filter((muscle) => contributions.includes(muscle)),
+      ...contributions,
+    ])
+  );
+}
+
+function getCurrentExercise(
+  workout: WorkoutPlan,
+  exerciseId: string
+): WorkoutExercise | undefined {
+  return getWorkoutExercises(workout).find((exercise) => exercise.exercise.id === exerciseId);
+}
+
+function chooseBlockReason(reasons: ReadonlySet<ProgramQualityBlockReason>): ProgramQualityBlockReason {
+  for (const reason of [
+    "would_break_weekly_target",
+    "would_break_slot_identity",
+    "would_exceed_hard_cap",
+    "would_worsen_fatigue",
+    "no_compatible_alternative",
+  ] as const) {
+    if (reasons.has(reason)) {
+      return reason;
+    }
+  }
+  return "no_compatible_alternative";
+}
+
+function buildRedistributionDiagnostic(input: {
+  priority: ProgramQualityPriority;
+  constraint: ProgramQualityDiagnostic["constraint"];
+  slotId: string;
+  donor: WorkoutExercise;
+  muscle: string;
+  reason: string;
+  scope: RedistributionScope;
+  fromSetCount: number;
+  toExerciseId?: string;
+  toSetCount?: number;
+  blockReason?: ProgramQualityBlockReason;
+}): ProgramQualityDiagnostic {
+  return {
+    priority: input.priority,
+    constraint: input.constraint,
+    penalty: 0,
+    slotId: input.slotId,
+    exerciseId: input.donor.exercise.id,
+    name: input.donor.exercise.name,
+    muscle: input.muscle,
+    reason: input.reason,
+    ...(input.blockReason ? { blockReason: input.blockReason } : {}),
+    details: {
+      redistributionScope: input.scope,
+      fromSetCount: input.fromSetCount,
+      ...(input.toExerciseId ? { toExerciseId: input.toExerciseId } : {}),
+      ...(input.toSetCount != null ? { toSetCount: input.toSetCount } : {}),
+    },
+  };
+}
+
+function tryAcceptRedistribution(input: {
+  beforeSlots: ReadonlyArray<ProjectedSlotWorkout>;
+  afterSlots: ReadonlyArray<ProjectedSlotWorkout>;
+  slotSequenceEntries: SlotSequenceEntries;
+  weeklyObligationPlan: WeeklyMuscleObligationPlan;
+}): { projectedSlots: ProjectedSlotWorkout[] } | { blockReason: ProgramQualityBlockReason } {
+  const blockReason = getCandidateBlockReason({
+    beforeSlots: input.beforeSlots,
+    afterSlots: input.afterSlots,
+    slotSequenceEntries: input.slotSequenceEntries,
+    weeklyObligationPlan: input.weeklyObligationPlan,
+  });
+  return blockReason ? { blockReason } : { projectedSlots: [...input.afterSlots] };
+}
+
+function tryMoveOneSetToExistingReceiver(input: {
+  slots: ReadonlyArray<ProjectedSlotWorkout>;
+  donorSlotIndex: number;
+  donor: WorkoutExercise;
+  muscle: string;
+  scope: Exclude<RedistributionScope, "added_alternative">;
+  slotSequenceEntries: SlotSequenceEntries;
+  weeklyObligationPlan: WeeklyMuscleObligationPlan;
+}):
+  | {
+      projectedSlots: ProjectedSlotWorkout[];
+      receiver: WorkoutExercise;
+      receiverSlotId: string;
+    }
+  | { blockReasons: Set<ProgramQualityBlockReason> } {
+  const blockReasons = new Set<ProgramQualityBlockReason>();
+  const receiverIndexes = getReceiverSlotIndexes({
+    slots: input.slots,
+    donorSlotIndex: input.donorSlotIndex,
+    scope: input.scope,
+  });
+  const receiverCandidates = receiverIndexes
+    .flatMap((slotIndex) => {
+      const slot = input.slots[slotIndex];
+      if (!slot) {
+        return [];
+      }
+      return getWorkoutExercises(slot.workout)
+        .filter((candidate) => candidate.exercise.id !== input.donor.exercise.id)
+        .filter((candidate) => candidate.sets.length < getSoftSetCap(candidate))
+        .filter((candidate) => getExerciseMuscleContribution(candidate, input.muscle) > 0)
+        .map((candidate) => ({ slot, slotIndex, candidate }));
+    })
+    .sort((left, right) => {
+      const scoreDelta =
+        getReceiverScore({ donor: input.donor, receiver: right.candidate, muscle: input.muscle }) -
+        getReceiverScore({ donor: input.donor, receiver: left.candidate, muscle: input.muscle });
+      if (scoreDelta !== 0) {
+        return scoreDelta;
+      }
+      if (left.slotIndex !== right.slotIndex) {
+        return left.slotIndex - right.slotIndex;
+      }
+      return left.candidate.exercise.name.localeCompare(right.candidate.exercise.name);
+    });
+
+  if (receiverCandidates.length === 0) {
+    blockReasons.add("no_compatible_alternative");
+    return { blockReasons };
+  }
+
+  for (const receiverCandidate of receiverCandidates) {
+    let candidateSlots: ProjectedSlotWorkout[];
+    if (receiverCandidate.slotIndex === input.donorSlotIndex) {
+      candidateSlots = withUpdatedSlotWorkout(
+        input.slots,
+        input.donorSlotIndex,
+        moveOneSet({
+          workout: receiverCandidate.slot.workout,
+          donor: input.donor,
+          receiver: receiverCandidate.candidate,
+        })
+      );
+    } else {
+      const donorSlot = input.slots[input.donorSlotIndex];
+      if (!donorSlot) {
+        continue;
+      }
+      candidateSlots = withUpdatedSlotWorkout(
+        input.slots,
+        input.donorSlotIndex,
+        replaceWorkoutExercise(donorSlot.workout, withSetCount(input.donor, input.donor.sets.length - 1))
+      );
+      const updatedReceiverSlot = candidateSlots[receiverCandidate.slotIndex];
+      if (!updatedReceiverSlot) {
+        continue;
+      }
+      candidateSlots = withUpdatedSlotWorkout(
+        candidateSlots,
+        receiverCandidate.slotIndex,
+        replaceWorkoutExercise(
+          updatedReceiverSlot.workout,
+          withSetCount(receiverCandidate.candidate, receiverCandidate.candidate.sets.length + 1)
+        )
+      );
+    }
+
+    const accepted = tryAcceptRedistribution({
+      beforeSlots: input.slots,
+      afterSlots: candidateSlots,
+      slotSequenceEntries: input.slotSequenceEntries,
+      weeklyObligationPlan: input.weeklyObligationPlan,
+    });
+    if ("projectedSlots" in accepted) {
+      return {
+        projectedSlots: accepted.projectedSlots,
+        receiver: receiverCandidate.candidate,
+        receiverSlotId: receiverCandidate.slot.slotPlan.slotId,
+      };
+    }
+    blockReasons.add(accepted.blockReason);
+  }
+
+  return { blockReasons };
+}
+
+function selectCompatibleAlternativeExercise(input: {
+  exerciseLibrary: MappedGenerationContext["exerciseLibrary"];
+  selectedExerciseIds: Set<string>;
+  donor: WorkoutExercise;
+  muscle: string;
+}) {
+  const donorPattern = getBroadMovementPattern(input.donor.exercise);
+  return input.exerciseLibrary
+    .filter((exercise) => !input.selectedExerciseIds.has(exercise.id))
+    .filter((exercise) => (getEffectiveStimulusByMuscle(exercise, 1).get(input.muscle) ?? 0) > 0)
+    .filter((exercise) => exerciseHasPrimaryMuscle(exercise, input.muscle))
+    .sort((left, right) => {
+      const leftDifferentPattern = getBroadMovementPattern(left) !== donorPattern ? 1 : 0;
+      const rightDifferentPattern = getBroadMovementPattern(right) !== donorPattern ? 1 : 0;
+      if (leftDifferentPattern !== rightDifferentPattern) {
+        return rightDifferentPattern - leftDifferentPattern;
+      }
+      const leftMainEligible = left.isMainLiftEligible ? 1 : 0;
+      const rightMainEligible = right.isMainLiftEligible ? 1 : 0;
+      if (leftMainEligible !== rightMainEligible) {
+        return leftMainEligible - rightMainEligible;
+      }
+      const contributionDelta =
+        (getEffectiveStimulusByMuscle(right, 1).get(input.muscle) ?? 0) -
+        (getEffectiveStimulusByMuscle(left, 1).get(input.muscle) ?? 0);
+      if (contributionDelta !== 0) {
+        return contributionDelta;
+      }
+      const fatigueDelta = (left.fatigueCost ?? 3) - (right.fatigueCost ?? 3);
+      if (fatigueDelta !== 0) {
+        return fatigueDelta;
+      }
+      return left.name.localeCompare(right.name);
+    })[0];
+}
+
+function buildAlternativeWorkoutExercise(input: {
+  exercise: WorkoutExercise["exercise"];
+  template: WorkoutExercise | undefined;
+  orderIndex: number;
+  setCount: number;
+}): WorkoutExercise {
+  return withSetCount(
+    buildSupportAccessoryExercise({
+      exercise: input.exercise,
+      template: input.template,
+      orderIndex: input.orderIndex,
+    }),
+    input.setCount
+  );
+}
+
+function getAlternativeSlotIndexes(input: {
+  slots: ReadonlyArray<ProjectedSlotWorkout>;
+  donorSlotIndex: number;
+}): number[] {
+  return [
+    ...getReceiverSlotIndexes({ ...input, scope: "same_slot" }),
+    ...getReceiverSlotIndexes({ ...input, scope: "paired_slot" }),
+    ...getReceiverSlotIndexes({ ...input, scope: "elsewhere_week" }),
+  ];
+}
+
+function tryAddCompatibleAlternative(input: {
+  slots: ReadonlyArray<ProjectedSlotWorkout>;
+  donorSlotIndex: number;
+  donor: WorkoutExercise;
+  muscle: string;
+  exerciseLibrary: MappedGenerationContext["exerciseLibrary"];
+  slotSequenceEntries: SlotSequenceEntries;
+  weeklyObligationPlan: WeeklyMuscleObligationPlan;
+}):
+  | {
+      projectedSlots: ProjectedSlotWorkout[];
+      exercise: WorkoutExercise["exercise"];
+      setCount: number;
+      slotId: string;
+    }
+  | { blockReasons: Set<ProgramQualityBlockReason> } {
+  const blockReasons = new Set<ProgramQualityBlockReason>();
+  const donorCapacity = input.donor.sets.length - getMinimumSetCount(input.donor);
+  const transferSetCount = Math.min(
+    SOFT_ACCESSORY_SET_CAP,
+    donorCapacity,
+    Math.max(MIN_PROJECTED_ACCESSORY_SETS_PER_EXERCISE, input.donor.sets.length - getSoftSetCap(input.donor))
+  );
+  if (transferSetCount < MIN_PROJECTED_ACCESSORY_SETS_PER_EXERCISE) {
+    blockReasons.add("would_break_slot_identity");
+    return { blockReasons };
+  }
+
+  const selectedExerciseIds = new Set(
+    input.slots.flatMap((slot) => getWorkoutExercises(slot.workout).map((exercise) => exercise.exercise.id))
+  );
+  const alternative = selectCompatibleAlternativeExercise({
+    exerciseLibrary: input.exerciseLibrary,
+    selectedExerciseIds,
+    donor: input.donor,
+    muscle: input.muscle,
+  });
+  if (!alternative) {
+    blockReasons.add("no_compatible_alternative");
+    return { blockReasons };
+  }
+
+  const targetSlotIndexes = getAlternativeSlotIndexes({
+    slots: input.slots,
+    donorSlotIndex: input.donorSlotIndex,
+  });
+  if (
+    targetSlotIndexes.every((slotIndex) => {
+      const slot = input.slots[slotIndex];
+      return !slot || countWorkoutExercises(slot.workout) >= SESSION_CAPS.maxExercises;
+    })
+  ) {
+    blockReasons.add("would_exceed_hard_cap");
+    return { blockReasons };
+  }
+
+  for (const targetSlotIndex of targetSlotIndexes) {
+    const targetSlot = input.slots[targetSlotIndex];
+    const donorSlot = input.slots[input.donorSlotIndex];
+    if (!targetSlot || !donorSlot || countWorkoutExercises(targetSlot.workout) >= SESSION_CAPS.maxExercises) {
+      continue;
+    }
+
+    let candidateSlots = withUpdatedSlotWorkout(
+      input.slots,
+      input.donorSlotIndex,
+      replaceWorkoutExercise(donorSlot.workout, withSetCount(input.donor, input.donor.sets.length - transferSetCount))
+    );
+    const updatedTargetSlot = candidateSlots[targetSlotIndex];
+    if (!updatedTargetSlot) {
+      continue;
+    }
+    const targetWorkout = appendAccessory(
+      updatedTargetSlot.workout,
+      buildAlternativeWorkoutExercise({
+        exercise: alternative,
+        template: updatedTargetSlot.workout.accessories.at(-1),
+        orderIndex: countWorkoutExercises(updatedTargetSlot.workout),
+        setCount: transferSetCount,
+      })
+    );
+    candidateSlots = withUpdatedSlotWorkout(candidateSlots, targetSlotIndex, targetWorkout);
+
+    const accepted = tryAcceptRedistribution({
+      beforeSlots: input.slots,
+      afterSlots: candidateSlots,
+      slotSequenceEntries: input.slotSequenceEntries,
+      weeklyObligationPlan: input.weeklyObligationPlan,
+    });
+    if ("projectedSlots" in accepted) {
+      return {
+        projectedSlots: accepted.projectedSlots,
+        exercise: alternative,
+        setCount: transferSetCount,
+        slotId: targetSlot.slotPlan.slotId,
+      };
+    }
+    blockReasons.add(accepted.blockReason);
+  }
+
+  return { blockReasons };
+}
+
+function replaceAccessoryExercise(
+  workout: WorkoutPlan,
+  originalExerciseId: string,
+  replacement: WorkoutExercise
+): WorkoutPlan {
+  return reindexWorkout({
+    ...workout,
+    accessories: workout.accessories.map((exercise) =>
+      exercise.exercise.id === originalExerciseId ? replacement : exercise
+    ),
+  });
+}
+
+function selectLowerFatigueSupportAlternative(input: {
+  exerciseLibrary: MappedGenerationContext["exerciseLibrary"];
+  selectedExerciseIds: Set<string>;
+}): WorkoutExercise["exercise"] | undefined {
+  return input.exerciseLibrary
+    .filter((exercise) => !input.selectedExerciseIds.has(exercise.id))
+    .filter((exercise) => !(exercise.isMainLiftEligible ?? false))
+    .filter((exercise) => {
+      const primaryMuscles = exercise.primaryMuscles ?? [];
+      const pattern = getBroadMovementPattern(exercise);
+      return (
+        (primaryMuscles.includes("Hamstrings") && pattern !== "hinge") ||
+        primaryMuscles.includes("Calves")
+      );
+    })
+    .sort((left, right) => {
+      const leftHamstring = (left.primaryMuscles ?? []).includes("Hamstrings") ? 1 : 0;
+      const rightHamstring = (right.primaryMuscles ?? []).includes("Hamstrings") ? 1 : 0;
+      if (leftHamstring !== rightHamstring) {
+        return rightHamstring - leftHamstring;
+      }
+      const fatigueDelta = (left.fatigueCost ?? 3) - (right.fatigueCost ?? 3);
+      if (fatigueDelta !== 0) {
+        return fatigueDelta;
+      }
+      return left.name.localeCompare(right.name);
+    })[0];
+}
+
+function hasLowerPairFatiguePressure(slots: ReadonlyArray<ProjectedSlotWorkout>): boolean {
+  const lowerSlots = slots.filter((slot) => slot.slotPlan.intent === "LOWER");
+  if (lowerSlots.length < 2) {
+    return false;
+  }
+  const totals = getWeeklyContribution(slots);
+  const gluteMav = VOLUME_LANDMARKS.Glutes?.mav ?? Number.POSITIVE_INFINITY;
+  const hingeSets = countPatternSets(lowerSlots, ["hinge"]);
+  const lowerPatternSets = countPatternSets(lowerSlots, ["hinge", "squat", "lunge"]);
+  const hingeShare = lowerPatternSets > 0 ? hingeSets / lowerPatternSets : 0;
+  return (
+    (totals.get("Glutes") ?? 0) > gluteMav ||
+    hingeShare > LOWER_HINGE_SHARE_MAX ||
+    countLowerBDuplicateSquatPressure(slots) > 0
+  );
+}
+
+function applyLowerPairFatigueShaping(input: {
+  slots: ReadonlyArray<ProjectedSlotWorkout>;
+  exerciseLibrary: MappedGenerationContext["exerciseLibrary"];
+  slotSequenceEntries: SlotSequenceEntries;
+  weeklyObligationPlan: WeeklyMuscleObligationPlan;
+  appliedDiagnostics: ProgramQualityDiagnostic[];
+}): ProjectedSlotWorkout[] {
+  let slots = [...input.slots];
+  if (!hasLowerPairFatiguePressure(slots)) {
+    return slots;
+  }
+
+  const lowerBIndex = slots.findIndex(
+    (slot) => slot.slotPlan.intent === "LOWER" && slot.slotPlan.slotId.endsWith("_b")
+  );
+  const lowerB = slots[lowerBIndex];
+  if (!lowerB) {
+    return slots;
+  }
+  const lowerBPolicy = getSlotPolicy({
+    slot: lowerB,
+    slotSequenceEntries: input.slotSequenceEntries,
+  });
+  if (lowerBPolicy?.sessionShape?.id !== "lower_hinge_dominant") {
+    return slots;
+  }
+
+  const selectedExerciseIds = new Set(
+    slots.flatMap((slot) => getWorkoutExercises(slot.workout).map((exercise) => exercise.exercise.id))
+  );
+  const supportAlternative = selectLowerFatigueSupportAlternative({
+    exerciseLibrary: input.exerciseLibrary,
+    selectedExerciseIds,
+  });
+
+  if (supportAlternative) {
+    const requiredSquatSupports = lowerBPolicy.sessionShape.requiredMovementPatterns?.includes("squat")
+      ? 1
+      : 0;
+    const squatAccessories = lowerB.workout.accessories.filter(
+      (exercise) => getBroadMovementPattern(exercise.exercise) === "squat"
+    );
+    for (const accessory of squatAccessories.slice(requiredSquatSupports)) {
+      const replacement = buildAlternativeWorkoutExercise({
+        exercise: supportAlternative,
+        template: accessory,
+        orderIndex: accessory.orderIndex,
+        setCount: Math.min(accessory.sets.length, SOFT_ACCESSORY_SET_CAP),
+      });
+      const candidate = tryReplaceSlotWorkout({
+        slots,
+        slotIndex: lowerBIndex,
+        workout: replaceAccessoryExercise(lowerB.workout, accessory.exercise.id, replacement),
+        slotSequenceEntries: input.slotSequenceEntries,
+        weeklyObligationPlan: input.weeklyObligationPlan,
+      });
+      if (!candidate) {
+        continue;
+      }
+      slots = candidate;
+      selectedExerciseIds.add(supportAlternative.id);
+      input.appliedDiagnostics.push({
+        priority: "P1",
+        constraint: "weekly_pattern_balance",
+        penalty: 0,
+        slotId: lowerB.slotPlan.slotId,
+        exerciseId: accessory.exercise.id,
+        name: accessory.exercise.name,
+        pattern: "squat",
+        reason: "replaced_duplicate_squat_support_for_lower_fatigue",
+        details: {
+          toExerciseId: supportAlternative.id,
+        },
+      });
+      break;
+    }
+  }
+
+  for (let pass = 0; pass < 4 && lowerFatigueRiskScore(slots) > 0; pass += 1) {
+    const currentLowerB = slots[lowerBIndex];
+    if (!currentLowerB) {
+      break;
+    }
+    const duplicateSquatSupport = currentLowerB.workout.accessories
+      .filter((exercise) => getBroadMovementPattern(exercise.exercise) === "squat")
+      .filter((exercise) => exercise.sets.length > getMinimumSetCount(exercise))
+      .sort((left, right) => right.sets.length - left.sets.length || left.exercise.name.localeCompare(right.exercise.name))[0];
+    if (!duplicateSquatSupport) {
+      break;
+    }
+    const candidate = tryReplaceSlotWorkout({
+      slots,
+      slotIndex: lowerBIndex,
+      workout: replaceWorkoutExercise(
+        currentLowerB.workout,
+        withSetCount(duplicateSquatSupport, duplicateSquatSupport.sets.length - 1)
+      ),
+      slotSequenceEntries: input.slotSequenceEntries,
+      weeklyObligationPlan: input.weeklyObligationPlan,
+    });
+    if (!candidate || lowerFatigueRiskScore(candidate) >= lowerFatigueRiskScore(slots)) {
+      break;
+    }
+    slots = candidate;
+    input.appliedDiagnostics.push({
+      priority: "P1",
+      constraint: "weekly_pattern_balance",
+      penalty: 0,
+      slotId: currentLowerB.slotPlan.slotId,
+      exerciseId: duplicateSquatSupport.exercise.id,
+      name: duplicateSquatSupport.exercise.name,
+      pattern: "squat",
+      reason: "reduced_duplicate_squat_support_for_lower_fatigue",
+      details: {
+        fromSetCount: duplicateSquatSupport.sets.length,
+        toSetCount: duplicateSquatSupport.sets.length - 1,
+      },
+    });
+  }
+
+  for (let pass = 0; pass < 2 && lowerFatigueRiskScore(slots) > 0; pass += 1) {
+    const currentLowerB = slots[lowerBIndex];
+    if (!currentLowerB) {
+      break;
+    }
+    const hingeDonor = getWorkoutExercises(currentLowerB.workout)
+      .filter((exercise) => getBroadMovementPattern(exercise.exercise) === "hinge")
+      .filter((exercise) => exercise.sets.length > getMinimumSetCount(exercise))
+      .sort((left, right) => right.sets.length - left.sets.length || left.exercise.name.localeCompare(right.exercise.name))[0];
+    const kneeFlexionReceiver = currentLowerB.workout.accessories
+      .filter((exercise) => getBroadMovementPattern(exercise.exercise) !== "hinge")
+      .filter((exercise) => getExerciseMuscleContribution(exercise, "Hamstrings") > 0)
+      .filter((exercise) => exercise.sets.length < getHardSetCap(exercise))
+      .sort((left, right) => left.sets.length - right.sets.length || left.exercise.name.localeCompare(right.exercise.name))[0];
+    if (!hingeDonor || !kneeFlexionReceiver) {
+      break;
+    }
+    const candidateSlots = withUpdatedSlotWorkout(
+      slots,
+      lowerBIndex,
+      moveOneSet({
+        workout: currentLowerB.workout,
+        donor: hingeDonor,
+        receiver: kneeFlexionReceiver,
+      })
+    );
+    const accepted = tryAcceptRedistribution({
+      beforeSlots: slots,
+      afterSlots: candidateSlots,
+      slotSequenceEntries: input.slotSequenceEntries,
+      weeklyObligationPlan: input.weeklyObligationPlan,
+    });
+    if ("blockReason" in accepted || lowerFatigueRiskScore(accepted.projectedSlots) >= lowerFatigueRiskScore(slots)) {
+      break;
+    }
+    slots = accepted.projectedSlots;
+    input.appliedDiagnostics.push({
+      priority: "P1",
+      constraint: "weekly_pattern_balance",
+      penalty: 0,
+      slotId: currentLowerB.slotPlan.slotId,
+      exerciseId: hingeDonor.exercise.id,
+      name: hingeDonor.exercise.name,
+      muscle: "Hamstrings",
+      pattern: "hinge",
+      reason: "moved_hinge_hamstring_work_to_knee_flexion",
+      details: {
+        fromSetCount: hingeDonor.sets.length,
+        toExerciseId: kneeFlexionReceiver.exercise.id,
+        toSetCount: kneeFlexionReceiver.sets.length + 1,
+      },
+    });
+  }
+
+  return slots;
+}
+
+type RedistributionTrigger = {
+  priority: ProgramQualityPriority;
+  constraint: ProgramQualityDiagnostic["constraint"];
+  slotIndex: number;
+  slotId: string;
+  donor: WorkoutExercise;
+  muscle?: string;
+  key: string;
+};
+
+function findRedistributionTrigger(
+  slots: ReadonlyArray<ProjectedSlotWorkout>,
+  blockedKeys: ReadonlySet<string>
+): RedistributionTrigger | null {
+  const softCapTrigger = slots
+    .flatMap((slot, slotIndex) =>
+      getWorkoutExercises(slot.workout)
+        .filter((exercise) => exercise.sets.length > getSoftSetCap(exercise))
+        .filter((exercise) => exercise.sets.length > getMinimumSetCount(exercise))
+        .map((exercise) => ({
+          priority: "P2" as const,
+          constraint: "per_exercise_efficiency" as const,
+          slotIndex,
+          slotId: slot.slotPlan.slotId,
+          donor: exercise,
+          muscle: exercise.exercise.primaryMuscles?.[0],
+          key: `soft-cap:${slot.slotPlan.slotId}:${exercise.exercise.id}`,
+        }))
+    )
+    .filter((trigger) => !blockedKeys.has(trigger.key))
+    .sort((left, right) => {
+      const leftOverage = left.donor.sets.length - getSoftSetCap(left.donor);
+      const rightOverage = right.donor.sets.length - getSoftSetCap(right.donor);
+      if (rightOverage !== leftOverage) {
+        return rightOverage - leftOverage;
+      }
+      if (right.donor.sets.length !== left.donor.sets.length) {
+        return right.donor.sets.length - left.donor.sets.length;
+      }
+      return left.donor.exercise.name.localeCompare(right.donor.exercise.name);
+    })[0];
+  if (softCapTrigger) {
+    return softCapTrigger;
+  }
+
+  const dominanceTrigger = evaluateStimulusDiversity(slots)
+    .filter((diagnostic) => diagnostic.constraint === "single_exercise_volume_share")
+    .flatMap((diagnostic) => {
+      const slotIndex = slots.findIndex((slot) => slot.slotPlan.slotId === diagnostic.slotId);
+      const slot = slots[slotIndex];
+      const donor = slot && diagnostic.exerciseId
+        ? getCurrentExercise(slot.workout, diagnostic.exerciseId)
+        : undefined;
+      if (!slot || !donor || donor.sets.length <= getMinimumSetCount(donor)) {
+        return [];
+      }
+      return [
+        {
+          priority: "P3" as const,
+          constraint: "single_exercise_volume_share" as const,
+          slotIndex,
+          slotId: slot.slotPlan.slotId,
+          donor,
+          muscle: diagnostic.muscle,
+          key: `dominance:${slot.slotPlan.slotId}:${donor.exercise.id}:${diagnostic.muscle ?? ""}`,
+        },
+      ];
+    })
+    .filter((trigger) => !blockedKeys.has(trigger.key))
+    .sort((left, right) => left.slotIndex - right.slotIndex || left.donor.exercise.name.localeCompare(right.donor.exercise.name))[0];
+
+  return dominanceTrigger ?? null;
+}
+
+function mustRedistributeExcessSets(input: {
+  slots: ReadonlyArray<ProjectedSlotWorkout>;
+  exerciseLibrary: MappedGenerationContext["exerciseLibrary"];
+  slotSequenceEntries: SlotSequenceEntries;
+  weeklyObligationPlan: WeeklyMuscleObligationPlan;
+  appliedDiagnostics: ProgramQualityDiagnostic[];
+}): ProjectedSlotWorkout[] {
+  let slots = [...input.slots];
+  const blockedKeys = new Set<string>();
+
+  for (let pass = 0; pass < 48; pass += 1) {
+    const trigger = findRedistributionTrigger(slots, blockedKeys);
+    if (!trigger) {
+      break;
+    }
+    const donorSlot = slots[trigger.slotIndex];
+    if (!donorSlot) {
+      blockedKeys.add(trigger.key);
+      continue;
+    }
+    const donor = getCurrentExercise(donorSlot.workout, trigger.donor.exercise.id) ?? trigger.donor;
+    const muscles = getTriggerMuscles(donor, trigger.muscle);
+    const blockReasons = new Set<ProgramQualityBlockReason>();
+    let redistributed = false;
+
+    for (const scope of ["same_slot", "paired_slot", "elsewhere_week"] as const) {
+      for (const muscle of muscles) {
+        const result = tryMoveOneSetToExistingReceiver({
+          slots,
+          donorSlotIndex: trigger.slotIndex,
+          donor,
+          muscle,
+          scope,
+          slotSequenceEntries: input.slotSequenceEntries,
+          weeklyObligationPlan: input.weeklyObligationPlan,
+        });
+        if ("projectedSlots" in result) {
+          slots = result.projectedSlots;
+          input.appliedDiagnostics.push(
+            buildRedistributionDiagnostic({
+              priority: trigger.priority,
+              constraint: trigger.constraint,
+              slotId: trigger.slotId,
+              donor,
+              muscle,
+              reason:
+                scope === "same_slot"
+                  ? "moved_one_set_to_existing_same_slot_alternative"
+                  : scope === "paired_slot"
+                    ? "moved_one_set_to_existing_paired_slot_alternative"
+                    : "moved_one_set_to_existing_week_alternative",
+              scope,
+              fromSetCount: donor.sets.length,
+              toExerciseId: result.receiver.exercise.id,
+              toSetCount: result.receiver.sets.length + 1,
+            })
+          );
+          redistributed = true;
+          break;
+        }
+        for (const reason of result.blockReasons) {
+          blockReasons.add(reason);
+        }
+      }
+      if (redistributed) {
+        break;
+      }
+    }
+
+    if (redistributed) {
+      continue;
+    }
+
+    for (const muscle of muscles) {
+      const result = tryAddCompatibleAlternative({
+        slots,
+        donorSlotIndex: trigger.slotIndex,
+        donor,
+        muscle,
+        exerciseLibrary: input.exerciseLibrary,
+        slotSequenceEntries: input.slotSequenceEntries,
+        weeklyObligationPlan: input.weeklyObligationPlan,
+      });
+      if ("projectedSlots" in result) {
+        slots = result.projectedSlots;
+        input.appliedDiagnostics.push(
+          buildRedistributionDiagnostic({
+            priority: trigger.priority,
+            constraint: trigger.constraint,
+            slotId: trigger.slotId,
+            donor,
+            muscle,
+            reason: "added_compatible_alternative_for_redistribution",
+            scope: "added_alternative",
+            fromSetCount: donor.sets.length,
+            toExerciseId: result.exercise.id,
+            toSetCount: result.setCount,
+          })
+        );
+        redistributed = true;
+        break;
+      }
+      for (const reason of result.blockReasons) {
+        blockReasons.add(reason);
+      }
+    }
+
+    if (redistributed) {
+      continue;
+    }
+
+    const blockReason = chooseBlockReason(blockReasons);
+    input.appliedDiagnostics.push(
+      buildRedistributionDiagnostic({
+        priority: trigger.priority,
+        constraint: trigger.constraint,
+        slotId: trigger.slotId,
+        donor,
+        muscle: muscles[0] ?? trigger.muscle ?? "",
+        reason: "redistribution_blocked_stacking_allowed",
+        scope: "added_alternative",
+        fromSetCount: donor.sets.length,
+        blockReason,
+      })
+    );
+    blockedKeys.add(trigger.key);
+  }
+
+  return slots;
 }
 
 function applyMainCompoundLimit(input: {
@@ -752,186 +1786,9 @@ function applySetSpread(input: {
   slotSequenceEntries: SlotSequenceEntries;
   weeklyObligationPlan: WeeklyMuscleObligationPlan;
   appliedDiagnostics: ProgramQualityDiagnostic[];
+  exerciseLibrary: MappedGenerationContext["exerciseLibrary"];
 }): ProjectedSlotWorkout[] {
-  let slots = [...input.slots];
-  for (let pass = 0; pass < 24; pass += 1) {
-    let applied = false;
-    for (const [slotIndex, slot] of slots.entries()) {
-      const donor = getWorkoutExercises(slot.workout)
-        .filter((exercise) => exercise.sets.length > getSoftSetCap(exercise))
-        .filter((exercise) => exercise.sets.length > getMinimumSetCount(exercise))
-        .sort((left, right) => {
-          const leftOverage = left.sets.length - getSoftSetCap(left);
-          const rightOverage = right.sets.length - getSoftSetCap(right);
-          if (rightOverage !== leftOverage) {
-            return rightOverage - leftOverage;
-          }
-          return right.sets.length - left.sets.length;
-        })[0];
-      if (!donor) {
-        continue;
-      }
-      const donorMuscles = Array.from(getEffectiveStimulusByMuscle(donor.exercise, 1).entries())
-        .filter(([, effectiveSets]) => effectiveSets > 0)
-        .map(([muscle]) => muscle);
-      const receiver = donorMuscles
-        .flatMap((muscle) => {
-          const candidate = findSetSpreadReceiver({ workout: slot.workout, donor, muscle });
-          return candidate ? [{ muscle, candidate }] : [];
-        })
-        .sort((left, right) =>
-          getReceiverScore({ donor, receiver: right.candidate, muscle: right.muscle }) -
-          getReceiverScore({ donor, receiver: left.candidate, muscle: left.muscle })
-        )[0];
-      if (!receiver) {
-        if (getExerciseRole(donor) !== "main") {
-          continue;
-        }
-        const candidate = tryReplaceSlotWorkout({
-          slots,
-          slotIndex,
-          workout: replaceWorkoutExercise(
-            slot.workout,
-            withSetCount(donor, donor.sets.length - 1)
-          ),
-          slotSequenceEntries: input.slotSequenceEntries,
-          weeklyObligationPlan: input.weeklyObligationPlan,
-        });
-        if (!candidate) {
-          continue;
-        }
-        slots = candidate;
-        input.appliedDiagnostics.push({
-          priority: "P2",
-          constraint: "per_exercise_efficiency",
-          penalty: 0,
-          slotId: slot.slotPlan.slotId,
-          exerciseId: donor.exercise.id,
-          name: donor.exercise.name,
-          muscle: donorMuscles[0],
-          reason: "trimmed_one_main_set_above_soft_cap",
-          details: {
-            fromSetCount: donor.sets.length,
-            toSetCount: donor.sets.length - 1,
-          },
-        });
-        applied = true;
-        break;
-      }
-      const candidate = tryReplaceSlotWorkout({
-        slots,
-        slotIndex,
-        workout: moveOneSet({
-          workout: slot.workout,
-          donor,
-          receiver: receiver.candidate,
-        }),
-        slotSequenceEntries: input.slotSequenceEntries,
-        weeklyObligationPlan: input.weeklyObligationPlan,
-      });
-      if (!candidate) {
-        continue;
-      }
-      slots = candidate;
-      input.appliedDiagnostics.push({
-        priority: "P2",
-        constraint: "per_exercise_efficiency",
-        penalty: 0,
-        slotId: slot.slotPlan.slotId,
-        exerciseId: donor.exercise.id,
-        name: donor.exercise.name,
-        muscle: receiver.muscle,
-        reason: "moved_one_set_to_existing_alternative",
-        details: {
-          fromSetCount: donor.sets.length,
-          toExerciseId: receiver.candidate.exercise.id,
-          toSetCount: receiver.candidate.sets.length + 1,
-        },
-      });
-      applied = true;
-      break;
-    }
-    if (!applied) {
-      break;
-    }
-  }
-  return slots;
-}
-
-function applyStimulusSpread(input: {
-  slots: ReadonlyArray<ProjectedSlotWorkout>;
-  slotSequenceEntries: SlotSequenceEntries;
-  weeklyObligationPlan: WeeklyMuscleObligationPlan;
-  appliedDiagnostics: ProgramQualityDiagnostic[];
-}): ProjectedSlotWorkout[] {
-  let slots = [...input.slots];
-  for (let pass = 0; pass < 16; pass += 1) {
-    const diversityDiagnostic = evaluateStimulusDiversity(slots).find(
-      (diagnostic) =>
-        diagnostic.constraint === "single_exercise_volume_share" ||
-        diagnostic.constraint === "stimulus_diversity"
-    );
-    if (!diversityDiagnostic?.muscle) {
-      break;
-    }
-    const rows = getExerciseContributionRows(slots).filter(
-      (row) => row.muscle === diversityDiagnostic.muscle
-    );
-    const donor = rows
-      .filter((row) =>
-        diversityDiagnostic.exerciseId
-          ? row.exercise.exercise.id === diversityDiagnostic.exerciseId
-          : row.broadPattern === diversityDiagnostic.pattern
-      )
-      .filter((row) => row.exercise.sets.length > getMinimumSetCount(row.exercise))
-      .sort((left, right) => right.effectiveSets - left.effectiveSets)[0];
-    if (!donor) {
-      break;
-    }
-    const slotIndex = slots.findIndex((slot) => slot.slotPlan.slotId === donor.slotId);
-    const slot = slots[slotIndex];
-    if (!slot) {
-      break;
-    }
-    const receiver = findSetSpreadReceiver({
-      workout: slot.workout,
-      donor: donor.exercise,
-      muscle: donor.muscle,
-      requireDifferentPattern: diversityDiagnostic.constraint === "stimulus_diversity",
-    });
-    if (!receiver) {
-      break;
-    }
-    const candidate = tryReplaceSlotWorkout({
-      slots,
-      slotIndex,
-      workout: moveOneSet({
-        workout: slot.workout,
-        donor: donor.exercise,
-        receiver,
-      }),
-      slotSequenceEntries: input.slotSequenceEntries,
-      weeklyObligationPlan: input.weeklyObligationPlan,
-    });
-    if (!candidate) {
-      break;
-    }
-    slots = candidate;
-    input.appliedDiagnostics.push({
-      priority: "P3",
-      constraint: diversityDiagnostic.constraint,
-      penalty: 0,
-      slotId: slot.slotPlan.slotId,
-      exerciseId: donor.exercise.exercise.id,
-      name: donor.exercise.exercise.name,
-      muscle: donor.muscle,
-      reason: "moved_one_set_for_stimulus_spread",
-      details: {
-        toExerciseId: receiver.exercise.id,
-      },
-    });
-  }
-  return slots;
+  return mustRedistributeExcessSets(input);
 }
 
 function selectIsolationExercise(input: {
@@ -965,6 +1822,52 @@ function isIsolationCompatibleWithSlot(input: {
     return sessionIntent === "push" || sessionIntent === "upper";
   }
   return false;
+}
+
+function getTierAFloor(input: {
+  muscle: string;
+  weeklyObligationPlan: WeeklyMuscleObligationPlan;
+}): number {
+  const hardMuscle = HARD_WEEKLY_OBLIGATION_MUSCLES.find((muscle) => muscle === input.muscle);
+  return hardMuscle
+    ? input.weeklyObligationPlan.muscles[hardMuscle].targetSets
+    : VOLUME_LANDMARKS[input.muscle]?.mev ?? 0;
+}
+
+function findReplaceableTierARedundancy(input: {
+  workout: WorkoutPlan;
+  totals: ReadonlyMap<string, number>;
+  weeklyObligationPlan: WeeklyMuscleObligationPlan;
+}): WorkoutExercise | undefined {
+  return input.workout.accessories
+    .filter((exercise) => {
+      const primaryMuscles = exercise.exercise.primaryMuscles ?? [];
+      if (primaryMuscles.length === 0) {
+        return false;
+      }
+      if (primaryMuscles.some((muscle) => MUSCLE_TARGET_TIER_BY_MUSCLE[muscle] === "B_SUPPORT")) {
+        return false;
+      }
+      return primaryMuscles.every((muscle) => {
+        const tier = MUSCLE_TARGET_TIER_BY_MUSCLE[muscle];
+        if (tier !== "A_PRIMARY" && tier !== "IMPLICIT") {
+          return false;
+        }
+        const floor = getTierAFloor({
+          muscle,
+          weeklyObligationPlan: input.weeklyObligationPlan,
+        });
+        return (input.totals.get(muscle) ?? 0) + 1e-9 >= floor;
+      });
+    })
+    .sort((left, right) => {
+      const leftFatigue = left.exercise.fatigueCost ?? 3;
+      const rightFatigue = right.exercise.fatigueCost ?? 3;
+      if (rightFatigue !== leftFatigue) {
+        return rightFatigue - leftFatigue;
+      }
+      return left.exercise.name.localeCompare(right.exercise.name);
+    })[0];
 }
 
 function applyDeficitDrivenIsolation(input: {
@@ -1020,31 +1923,82 @@ function applyDeficitDrivenIsolation(input: {
       )
       .sort((left, right) => left.index - right.index);
     const targetSlot = slotCandidates[0];
-    if (!targetSlot) {
-      continue;
-    }
     const requestedEffectiveSets = threshold - currentTotal;
-    const workout = appendAccessory(
-      targetSlot.slot.workout,
+    const buildIsolation = (workout: WorkoutPlan, template?: WorkoutExercise) =>
       buildSupportAccessoryExercise({
         exercise,
-        template: targetSlot.slot.workout.accessories.at(-1),
-        orderIndex:
-          targetSlot.slot.workout.mainLifts.length + targetSlot.slot.workout.accessories.length,
+        template: template ?? workout.accessories.at(-1),
+        orderIndex: workout.mainLifts.length + workout.accessories.length,
         muscle,
         practicalFloor: threshold,
         requestedEffectiveSets,
-      })
-    );
-    const candidate = tryReplaceSlotWorkout({
-      slots,
-      slotIndex: targetSlot.index,
-      workout,
-      slotSequenceEntries: input.slotSequenceEntries,
-      weeklyObligationPlan: input.weeklyObligationPlan,
-    });
+      });
+
+    let candidate: ProjectedSlotWorkout[] | null = null;
+    let appliedSlot = targetSlot;
+    let replacedExercise: WorkoutExercise | undefined;
+
+    if (targetSlot) {
+      candidate = tryReplaceSlotWorkout({
+        slots,
+        slotIndex: targetSlot.index,
+        workout: appendAccessory(targetSlot.slot.workout, buildIsolation(targetSlot.slot.workout)),
+        slotSequenceEntries: input.slotSequenceEntries,
+        weeklyObligationPlan: input.weeklyObligationPlan,
+      });
+    }
+
     if (!candidate) {
-      continue;
+      const replacementCandidate = slots
+        .map((slot, index) => {
+          const slotPolicy = getSlotPolicy({ slot, slotSequenceEntries: input.slotSequenceEntries });
+          const compatible =
+            getProjectionRepairCompatibleMuscles(slotPolicy, [muscle]).includes(muscle) ||
+            isIsolationCompatibleWithSlot({ muscle, slotPolicy });
+          if (!compatible) {
+            return null;
+          }
+          const redundantExercise = findReplaceableTierARedundancy({
+            workout: slot.workout,
+            totals,
+            weeklyObligationPlan: input.weeklyObligationPlan,
+          });
+          return redundantExercise ? { slot, index, redundantExercise, slotPolicy } : null;
+        })
+        .filter(
+          (
+            entry
+          ): entry is {
+            slot: ProjectedSlotWorkout;
+            index: number;
+            redundantExercise: WorkoutExercise;
+            slotPolicy: ReturnType<typeof resolveSessionSlotPolicy>["currentSession"];
+          } => Boolean(entry)
+        )
+        .sort((left, right) => left.index - right.index)[0];
+      if (!replacementCandidate) {
+        continue;
+      }
+      const replacement = buildIsolation(
+        replacementCandidate.slot.workout,
+        replacementCandidate.redundantExercise
+      );
+      candidate = tryReplaceSlotWorkout({
+        slots,
+        slotIndex: replacementCandidate.index,
+        workout: replaceAccessoryExercise(
+          replacementCandidate.slot.workout,
+          replacementCandidate.redundantExercise.exercise.id,
+          replacement
+        ),
+        slotSequenceEntries: input.slotSequenceEntries,
+        weeklyObligationPlan: input.weeklyObligationPlan,
+      });
+      if (!candidate) {
+        continue;
+      }
+      appliedSlot = replacementCandidate;
+      replacedExercise = replacementCandidate.redundantExercise;
     }
     slots = candidate;
     selectedExerciseIds.add(exercise.id);
@@ -1052,14 +2006,17 @@ function applyDeficitDrivenIsolation(input: {
       priority: "P5",
       constraint: "isolation_completeness",
       penalty: 0,
-      slotId: targetSlot.slot.slotPlan.slotId,
+      slotId: appliedSlot.slot.slotPlan.slotId,
       exerciseId: exercise.id,
       name: exercise.name,
       muscle,
-      reason: "injected_direct_isolation_for_deficit",
+      reason: replacedExercise
+        ? "replaced_tier_a_redundancy_for_tier_b_deficit"
+        : "injected_direct_isolation_for_deficit",
       details: {
         projectedEffectiveSets: roundToTenth(currentTotal),
         threshold,
+        ...(replacedExercise ? { replacedExerciseId: replacedExercise.exercise.id } : {}),
       },
     });
   }
@@ -1076,6 +2033,13 @@ export function applyProgramQualityConstraints(input: {
   const appliedDiagnostics: ProgramQualityDiagnostic[] = [];
   let projectedSlots = normalizeProjectedSlots(input.projectedSlots);
 
+  projectedSlots = applyLowerPairFatigueShaping({
+    slots: projectedSlots,
+    exerciseLibrary: input.exerciseLibrary,
+    slotSequenceEntries: input.slotSequenceEntries,
+    weeklyObligationPlan: input.weeklyObligationPlan,
+    appliedDiagnostics,
+  });
   projectedSlots = applyMainCompoundLimit({
     slots: projectedSlots,
     slotSequenceEntries: input.slotSequenceEntries,
@@ -1087,12 +2051,7 @@ export function applyProgramQualityConstraints(input: {
     slotSequenceEntries: input.slotSequenceEntries,
     weeklyObligationPlan: input.weeklyObligationPlan,
     appliedDiagnostics,
-  });
-  projectedSlots = applyStimulusSpread({
-    slots: projectedSlots,
-    slotSequenceEntries: input.slotSequenceEntries,
-    weeklyObligationPlan: input.weeklyObligationPlan,
-    appliedDiagnostics,
+    exerciseLibrary: input.exerciseLibrary,
   });
   projectedSlots = applyDeficitDrivenIsolation({
     slots: projectedSlots,
@@ -1118,7 +2077,10 @@ export function mapDuplicateReuseToProgramQualityDiagnostics(
   return diagnostics.map((diagnostic) => ({
     priority: "P4",
     constraint: "cross_slot_duplicate",
-    penalty: diagnostic.role === "main" ? 0.5 : diagnostic.hasCompatibleAlternative ? 3 : 0.5,
+    penalty:
+      diagnostic.role === "main"
+        ? diagnostic.hasCompatibleAlternative ? 4 : 0.5
+        : diagnostic.hasCompatibleAlternative ? 3 : 0.5,
     slotId: diagnostic.repeatedInSlotId,
     exerciseId: diagnostic.exerciseId,
     name: diagnostic.name,

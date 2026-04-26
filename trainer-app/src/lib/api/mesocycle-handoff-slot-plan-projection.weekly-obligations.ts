@@ -59,7 +59,11 @@ export type DuplicateExerciseReuseDiagnostic = {
   previousSlotIds: string[];
   role: "main" | "accessory";
   hasCompatibleAlternative: boolean;
-  reason: "main_lift_continuity_allowed" | "accessory_repeat_discouraged" | "limited_inventory";
+  reason:
+    | "main_lift_duplicate_discouraged"
+    | "main_lift_continuity_allowed"
+    | "accessory_repeat_discouraged"
+    | "limited_inventory";
 };
 
 type SlotSequenceEntries = ReturnType<typeof buildSlotSequenceEntries>;
@@ -296,7 +300,9 @@ export function evaluateDuplicateExerciseReuse(input: {
         role: isMainLift ? ("main" as const) : ("accessory" as const),
         hasCompatibleAlternative: hasAlternative,
         reason: isMainLift
-          ? ("main_lift_continuity_allowed" as const)
+          ? hasAlternative
+            ? ("main_lift_duplicate_discouraged" as const)
+            : ("main_lift_continuity_allowed" as const)
           : hasAlternative
             ? ("accessory_repeat_discouraged" as const)
             : ("limited_inventory" as const),
@@ -306,7 +312,7 @@ export function evaluateDuplicateExerciseReuse(input: {
 
   const penalty = diagnostics.reduce((sum, diagnostic) => {
     if (diagnostic.role === "main") {
-      return sum + 0.5;
+      return sum + (diagnostic.hasCompatibleAlternative ? 4 : 0.5);
     }
     return sum + (diagnostic.hasCompatibleAlternative ? 3 : 0.5);
   }, 0);

@@ -443,6 +443,21 @@ describe("buildMesocycleExplainAuditPayload", () => {
           },
           appliedDiagnostics: [
             {
+              priority: "P2",
+              constraint: "per_exercise_efficiency",
+              penalty: 0,
+              slotId: "upper_a",
+              exerciseId: "ex-1",
+              name: "Incline Dumbbell Press",
+              muscle: "Chest",
+              reason: "redistribution_blocked_stacking_allowed",
+              blockReason: "no_compatible_exercise",
+              details: {
+                fromSetCount: 5,
+                redistributionScope: "added_alternative",
+              },
+            },
+            {
               priority: "P5",
               constraint: "isolation_completeness",
               penalty: 0,
@@ -524,6 +539,50 @@ describe("buildMesocycleExplainAuditPayload", () => {
               },
             ],
           },
+        },
+        planningReality: {
+          label: "weekly demand / slot allocation diagnostics",
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          summary: {
+            planningShape: "mixed_upstream_plus_repair_shaped",
+            explicitWeeklyDemandMuscles: 4,
+            inferredDemandMuscles: 3,
+            slotsWithExplicitWeeklyDemand: 1,
+            slotsWithOnlyLocalOrInferredSemantics: 0,
+            materialRepairCount: 1,
+            majorRepairCount: 0,
+            highExerciseConcentrationCount: 1,
+            warningCodes: ["EXERCISE_CONCENTRATION_HIGH"],
+          },
+          weeklyMuscleDemand: [
+            {
+              muscle: "Chest",
+              targetTier: "A_PRIMARY",
+              targetKind: "hard",
+              targetStatus: "hard",
+              targetRange: null,
+              preferredTarget: 10,
+              mev: 10,
+              mav: 16,
+              explicitUpstream: true,
+              inferredDownstream: false,
+              source: ["weekly_obligation_plan:getWeeklyVolumeTarget(week=1)"],
+            },
+          ],
+          slotDemandAllocation: [],
+          projectedDelivery: [],
+          repairMateriality: [],
+          exerciseConcentration: [],
+          warnings: [
+            {
+              code: "EXERCISE_CONCENTRATION_HIGH",
+              severity: "warning",
+              message: "One exercise supplies a high share of a muscle's projected weekly stimulus.",
+              evidence: ["upper_a:Incline Dumbbell Press"],
+            },
+          ],
+          limitations: ["read-only test diagnostic"],
         },
       },
     });
@@ -723,6 +782,11 @@ describe("buildMesocycleExplainAuditPayload", () => {
           reason: "injected_direct_isolation_for_deficit",
           why: expect.stringContaining("direct isolation was inserted"),
         }),
+        expect.objectContaining({
+          category: "other_projection_quality",
+          reason: "redistribution_blocked_stacking_allowed",
+          blockReason: "no_compatible_exercise",
+        }),
       ])
     );
     expect(payload.preview.projectionDiagnostics.softCapOverridesByP0).toEqual([
@@ -732,6 +796,23 @@ describe("buildMesocycleExplainAuditPayload", () => {
         why: expect.stringContaining("soft set cap yielded to P0"),
       }),
     ]);
+    expect(payload.preview.projectionDiagnostics.planningReality).toMatchObject({
+      label: "weekly demand / slot allocation diagnostics",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      summary: {
+        planningShape: "mixed_upstream_plus_repair_shaped",
+        explicitWeeklyDemandMuscles: 4,
+        warningCodes: ["EXERCISE_CONCENTRATION_HIGH"],
+      },
+      weeklyMuscleDemand: [
+        expect.objectContaining({
+          muscle: "Chest",
+          targetStatus: "hard",
+          explicitUpstream: true,
+        }),
+      ],
+    });
     expect(payload.seed.exerciseRationale[0]).toMatchObject({
       exerciseId: "ex-1",
       reasonSource: "persisted",

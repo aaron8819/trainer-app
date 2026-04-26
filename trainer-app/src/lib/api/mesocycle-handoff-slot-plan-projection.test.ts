@@ -2091,6 +2091,79 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     ]);
   });
 
+  it("emits read-only weekly demand, slot allocation, repair, and concentration diagnostics", () => {
+    const projected = projectSuccessorSlotPlansFromSnapshot({
+      userId: "user-1",
+      source: buildSource(),
+      design: buildDesign(buildRepairSensitiveDraft()),
+      snapshot: buildProtectedCoverageSatisfiedSnapshot(),
+      now: new Date("2026-03-19T12:00:00.000Z"),
+    });
+
+    expect("error" in projected).toBe(false);
+    if ("error" in projected) return;
+
+    const diagnostic = projected.diagnostics?.planningReality;
+    expect(diagnostic).toMatchObject({
+      label: "weekly demand / slot allocation diagnostics",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      summary: {
+        explicitWeeklyDemandMuscles: 4,
+      },
+    });
+    expect(diagnostic?.summary.planningShape).toMatch(
+      /^(mostly_upstream_planned|mixed_upstream_plus_repair_shaped|mostly_repair_shaped)$/
+    );
+    expect(diagnostic?.weeklyMuscleDemand).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          muscle: "Chest",
+          targetStatus: "hard",
+          explicitUpstream: true,
+        }),
+        expect.objectContaining({
+          muscle: "Side Delts",
+          targetStatus: "soft",
+          inferredDownstream: true,
+        }),
+      ])
+    );
+    expect(diagnostic?.slotDemandAllocation).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          slotId: "upper_a",
+          allocationBasis: "explicit_weekly_demand",
+          satisfiesKnownWeeklyDemand: true,
+        }),
+      ])
+    );
+    expect(diagnostic?.projectedDelivery).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          muscle: "Chest",
+          projectedEffectiveStimulusAfterInitialSlotComposition: expect.any(Number),
+          projectedEffectiveStimulusAfterRepairAndFinalShaping: expect.any(Number),
+          exposureCount: expect.any(Number),
+        }),
+      ])
+    );
+    expect(diagnostic?.repairMateriality).toEqual(expect.any(Array));
+    expect(diagnostic?.exerciseConcentration).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          slotId: expect.any(String),
+          exerciseName: expect.any(String),
+          setCount: expect.any(Number),
+          percentageOfWeeklyProjectedStimulusByMuscle: expect.any(Object),
+        }),
+      ])
+    );
+    expect(diagnostic?.limitations).toEqual(
+      expect.arrayContaining([expect.stringContaining("read-only")])
+    );
+  });
+
   it("prevents upper_b from finishing with zero Chest while Chest remains a hard weekly obligation", () => {
     const projected = projectSuccessorSlotPlansFromSnapshot({
       userId: "user-1",

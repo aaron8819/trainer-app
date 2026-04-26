@@ -61,6 +61,10 @@ import {
   type ProgramQualityEvaluation,
 } from "./mesocycle-handoff-slot-plan-projection.program-quality";
 import {
+  buildWeeklyDemandSlotAllocationDiagnostic,
+  type SlotPlanPlanningRealityDiagnostic,
+} from "./mesocycle-handoff-slot-plan-projection.diagnostics";
+import {
   buildWeeklyMuscleObligationPlan,
   evaluateDuplicateExerciseReuse,
   evaluateWeeklyObligationPlan,
@@ -110,6 +114,7 @@ export type SuccessorSlotPlanProjection = {
       appliedDiagnostics: ProgramQualityDiagnostic[];
       evaluation: ProgramQualityEvaluation;
     };
+    planningReality?: SlotPlanPlanningRealityDiagnostic;
   };
 };
 
@@ -134,6 +139,7 @@ function projectSlotPlansPass(input: {
       weeklyObligationPlan: WeeklyMuscleObligationPlan;
       exerciseLibrary: MappedGenerationContext["exerciseLibrary"];
       programQualityAppliedDiagnostics: ProgramQualityDiagnostic[];
+      initialProjectedSlots: ProjectedSlotWorkout[];
     }
   | { error: string } {
   const projectionContext = buildSyntheticProjectionContext({
@@ -455,6 +461,8 @@ function projectSlotPlansPass(input: {
     });
   }
 
+  const initialProjectedSlots = cloneProjectedSlotsForDiagnostics(projectedSlots);
+
   const initialProgramQualityPass = applyProgramQualityConstraints({
     projectedSlots,
     exerciseLibrary: projectionContext.mapped.exerciseLibrary,
@@ -541,6 +549,39 @@ function projectSlotPlansPass(input: {
     weeklyObligationPlan,
     exerciseLibrary: projectionContext.mapped.exerciseLibrary,
     programQualityAppliedDiagnostics,
+    initialProjectedSlots,
+  };
+}
+
+function cloneProjectedSlotsForDiagnostics(
+  projectedSlots: ReadonlyArray<ProjectedSlotWorkout>
+): ProjectedSlotWorkout[] {
+  return projectedSlots.map((projectedSlot) => ({
+    ...projectedSlot,
+    slotPlan: {
+      ...projectedSlot.slotPlan,
+      exercises: projectedSlot.slotPlan.exercises.map((exercise) => ({ ...exercise })),
+    },
+    workout: {
+      ...projectedSlot.workout,
+      warmup: projectedSlot.workout.warmup.map(cloneWorkoutExerciseForDiagnostics),
+      mainLifts: projectedSlot.workout.mainLifts.map(cloneWorkoutExerciseForDiagnostics),
+      accessories: projectedSlot.workout.accessories.map(cloneWorkoutExerciseForDiagnostics),
+    },
+    projectedContributionByMuscle: new Map(projectedSlot.projectedContributionByMuscle),
+    repairMuscles: [...projectedSlot.repairMuscles],
+  }));
+}
+
+function cloneWorkoutExerciseForDiagnostics(
+  exercise: ProjectedSlotWorkout["workout"]["mainLifts"][number]
+): ProjectedSlotWorkout["workout"]["mainLifts"][number] {
+  return {
+    ...exercise,
+    sets: exercise.sets.map((set) => ({ ...set })),
+    ...(exercise.warmupSets
+      ? { warmupSets: exercise.warmupSets.map((set) => ({ ...set })) }
+      : {}),
   };
 }
 
@@ -564,6 +605,40 @@ function collectDuplicateExerciseReuseDiagnostics(input: {
   }
 
   return diagnostics;
+}
+
+function getProgramQualityDiagnosticKey(diagnostic: ProgramQualityDiagnostic): string {
+  return [
+    diagnostic.constraint,
+    diagnostic.slotId ?? "",
+    diagnostic.exerciseId ?? "",
+    diagnostic.muscle ?? "",
+  ].join(":");
+}
+
+function filterStaleBlockedProgramQualityDiagnostics(input: {
+  appliedDiagnostics: ProgramQualityDiagnostic[];
+  evaluation: ProgramQualityEvaluation;
+}): ProgramQualityDiagnostic[] {
+  const unresolvedKeys = new Set(
+    input.evaluation.diagnostics.map((diagnostic) => getProgramQualityDiagnosticKey(diagnostic))
+  );
+  const seenBlockedKeys = new Set<string>();
+  return input.appliedDiagnostics.filter((diagnostic) => {
+    if (diagnostic.reason !== "redistribution_blocked_stacking_allowed") {
+      return true;
+    }
+    const key = [
+      getProgramQualityDiagnosticKey(diagnostic),
+      diagnostic.reason,
+      diagnostic.blockReason ?? "",
+    ].join(":");
+    if (!unresolvedKeys.has(getProgramQualityDiagnosticKey(diagnostic)) || seenBlockedKeys.has(key)) {
+      return false;
+    }
+    seenBlockedKeys.add(key);
+    return true;
+  });
 }
 
 export function projectSuccessorSlotPlansFromSnapshot(input: {
@@ -608,14 +683,18 @@ export function projectSuccessorSlotPlansFromSnapshot(input: {
     projectedSlots: pass.projectedSlots,
     exerciseLibrary: pass.exerciseLibrary,
   });
+  const programQualityEvaluation = evaluateProgramQualityConstraints({
+    projectedSlots: pass.projectedSlots,
+    exerciseLibrary: pass.exerciseLibrary,
+  });
   const programQuality = {
     constraintPriority: PROGRAM_QUALITY_CONSTRAINT_PRIORITY,
     penaltyModel: PROGRAM_QUALITY_PENALTY_MODEL,
-    appliedDiagnostics: pass.programQualityAppliedDiagnostics,
-    evaluation: evaluateProgramQualityConstraints({
-      projectedSlots: pass.projectedSlots,
-      exerciseLibrary: pass.exerciseLibrary,
+    appliedDiagnostics: filterStaleBlockedProgramQualityDiagnostics({
+      appliedDiagnostics: pass.programQualityAppliedDiagnostics,
+      evaluation: programQualityEvaluation,
     }),
+    evaluation: programQualityEvaluation,
   };
   const supportFloorRepairReasons = { ...pass.supportFloorRepairReasons };
   for (const row of finalEvaluation.deficitsBelowPracticalFloor) {
@@ -643,6 +722,18 @@ export function projectSuccessorSlotPlansFromSnapshot(input: {
   const blockingDeficits = finalEvaluation.deficitsBelowPracticalFloor.filter(
     (row) => (supportFloorRepairReasons[row.muscle] ?? []).length === 0
   );
+  const planningReality = buildWeeklyDemandSlotAllocationDiagnostic({
+    activeMesocycle: pass.activeMesocycle,
+    slotSequence: input.design.structure.slots,
+    initialProjectedSlots: pass.initialProjectedSlots,
+    finalProjectedSlots: pass.projectedSlots,
+    weeklyObligationPlan: pass.weeklyObligationPlan,
+    weeklyObligationEvaluations,
+    protectedCoverage: finalEvaluation,
+    supportFloorRepairReasons,
+    programQualityAppliedDiagnostics: programQuality.appliedDiagnostics,
+    programQualityEvaluation,
+  });
   if (blockingDeficits.length > 0) {
     return {
       error:
@@ -662,6 +753,7 @@ export function projectSuccessorSlotPlansFromSnapshot(input: {
         weeklyObligations: weeklyObligationDiagnostics,
         duplicateExerciseReuse,
         programQuality,
+        planningReality,
       },
     };
   }
@@ -681,6 +773,7 @@ export function projectSuccessorSlotPlansFromSnapshot(input: {
       weeklyObligations: weeklyObligationDiagnostics,
       duplicateExerciseReuse,
       programQuality,
+      planningReality,
     },
   };
 }

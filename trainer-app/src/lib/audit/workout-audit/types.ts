@@ -5,6 +5,7 @@ import type {
   ProjectedWeekVolumeMuscleRow,
   ProjectedWeekVolumeSessionSummary,
 } from "@/lib/api/projected-week-volume";
+import type { SlotPlanPlanningRealityDiagnostic } from "@/lib/api/mesocycle-handoff-slot-plan-projection.diagnostics";
 import type { SessionGenerationResult } from "@/lib/api/template-session/types";
 import type {
   ProgressionDecisionTrace,
@@ -685,6 +686,7 @@ export type MesocycleExplainProjectionDiagnosticRow = {
   priority: string;
   constraint: string;
   reason: string;
+  blockReason?: string;
   why: string;
   source:
     | "program_quality_evaluation"
@@ -715,6 +717,7 @@ export type MesocycleExplainProjectionDiagnostics = {
   constraintsTriggered: MesocycleExplainProjectionDiagnosticRow[];
   tradeoffs: MesocycleExplainProjectionDiagnosticRow[];
   softCapOverridesByP0: MesocycleExplainProjectionDiagnosticRow[];
+  planningReality?: SlotPlanPlanningRealityDiagnostic;
 };
 
 export type MesocycleExplainAuditPayload = {

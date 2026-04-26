@@ -335,6 +335,7 @@ Inspect first:
 - `mesocycleExplain.preview.designBasis`
 - `mesocycleExplain.preview.slotPlans`
 - `mesocycleExplain.preview.projectionDiagnostics`
+- `mesocycleExplain.preview.projectionDiagnostics.planningReality`
 - `mesocycleExplain.seed.slotPlans`
 - `mesocycleExplain.reality.runtimeDrift`
 - `mesocycleExplain.reality.runtimeDrift[*].runtimeDriftLabels`
@@ -345,6 +346,7 @@ Inspect first:
 Important interpretation rule:
 - preview-side slot obligation and carry-forward continuity can be reconstructed truthfully from canonical handoff seams
 - `preview.projectionDiagnostics` is a read-only projection diagnostics block, not an error list; use it to inspect set stacking pressure, duplicate exercise pressure, diversity penalties, hinge/squat balance, isolation injection triggers, and soft-cap overrides by P0 weekly obligations / slot identity
+- `preview.projectionDiagnostics.planningReality` is also read-only; use it to inspect weekly muscle demand ownership, slot demand allocation, pre-final vs final projected delivery, repair materiality, per-exercise concentration, and warnings such as `SLOT_ALLOCATION_NOT_EXPLICIT`, `SUPPORT_FLOOR_CLOSED_LATE`, `FINAL_CAP_TRIM_REQUIRED`, and `EXERCISE_CONCENTRATION_HIGH`
 - accepted historical per-exercise ranking rationale is not recoverable unless it was explicitly persisted
 - the artifact must therefore keep `persisted`, `reconstructed`, and `unavailable` explanation sources distinct
 - runtime-added exercises are labeled as runtime edits when evidence exists; they should not be read as accepted-seed quality failures unless seed-vs-reality also supports that conclusion

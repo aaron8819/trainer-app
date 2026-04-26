@@ -265,6 +265,7 @@ function mapProgramQualityDiagnostic(input: {
     priority: input.diagnostic.priority,
     constraint: input.diagnostic.constraint,
     reason: input.diagnostic.reason,
+    ...(input.diagnostic.blockReason ? { blockReason: input.diagnostic.blockReason } : {}),
     why: explainProjectionDiagnostic({
       category,
       reason: input.diagnostic.reason,
@@ -398,6 +399,9 @@ function buildProjectionDiagnostics(
     constraintsTriggered,
     tradeoffs: appliedRows,
     softCapOverridesByP0,
+    ...(diagnostics?.planningReality
+      ? { planningReality: diagnostics.planningReality }
+      : {}),
   };
 }
 

@@ -748,6 +748,65 @@ function buildExerciseClassDistributionSummaryLines(
   return lines.length > 2 ? lines : null;
 }
 
+function buildExerciseClassAlignmentSummaryLines(
+  alignment:
+    | PlanningRealityDiagnostic["exerciseClassAlignment"]
+    | null
+    | undefined
+): string[] | null {
+  if (!alignment) {
+    return null;
+  }
+
+  const allAlignments = asArray(alignment.slots).flatMap((slot) =>
+    asArray(slot.muscleAlignments).map((row) => ({
+      slotId: slot.slotId,
+      ...row,
+    }))
+  );
+  const hasEvidence = (muscle: string, needle: string): boolean =>
+    allAlignments.some(
+      (row) =>
+        row.muscle === muscle &&
+        asArray(row.evidence).some((evidence) => evidence.includes(needle))
+    );
+  const hasFinalStatus = (
+    muscle: string,
+    status: string,
+    slotId?: string
+  ): boolean =>
+    allAlignments.some(
+      (row) =>
+        row.muscle === muscle &&
+        row.finalAlignment === status &&
+        (!slotId || row.slotId === slotId)
+    );
+
+  const notable: string[] = [];
+  if (hasEvidence("Chest", "Incline")) {
+    notable.push("Chest: duplicate Incline / distinct class unresolved");
+  }
+  if (hasFinalStatus("Hamstrings", "satisfied", "lower_b")) {
+    notable.push("lower_b Hamstrings: hinge + curl satisfied");
+  }
+  if (hasEvidence("Calves", "same_session_duplicate_class")) {
+    notable.push("Calves: duplicate isolation class warning");
+  }
+
+  return [
+    "Exercise Class Alignment",
+    "------------------------",
+    `Initial satisfied: ${alignment.summary.initiallySatisfied}`,
+    `Final satisfied: ${alignment.summary.finallySatisfied}`,
+    `Improved by repair: ${alignment.summary.improvedByRepair}`,
+    `Identity churn: ${alignment.summary.identityChurnCount}`,
+    `Unresolved class intents: ${alignment.summary.unresolvedClassIntentCount}`,
+    "",
+    "Notable:",
+    ...(notable.length > 0 ? notable.map((line) => `- ${line}`) : ["- none"]),
+  ];
+}
+
 function buildAccumulationWeekProjectionSummaryLines(
   projection:
     | PlanningRealityDiagnostic["accumulationWeekProjection"]
@@ -1264,6 +1323,14 @@ export function buildPlanningRealitySummary(input: {
     );
   if (exerciseClassDistributionSummary) {
     lines.push("", ...exerciseClassDistributionSummary);
+  }
+
+  const exerciseClassAlignmentSummary =
+    buildExerciseClassAlignmentSummaryLines(
+      planningReality.exerciseClassAlignment
+    );
+  if (exerciseClassAlignmentSummary) {
+    lines.push("", ...exerciseClassAlignmentSummary);
   }
 
   const accumulationWeekProjectionSummary =

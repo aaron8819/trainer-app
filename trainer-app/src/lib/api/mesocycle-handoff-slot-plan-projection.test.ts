@@ -278,6 +278,16 @@ function getLowerBHamstringsCandidate(
   );
 }
 
+function getClassAlignment(
+  diagnostic: ReturnType<typeof buildWeeklyDemandSlotAllocationDiagnostic>,
+  slotId: string,
+  muscle: string,
+) {
+  return diagnostic.exerciseClassAlignment.slots
+    .find((slot) => slot.slotId === slotId)
+    ?.muscleAlignments.find((row) => row.muscle === muscle);
+}
+
 function buildSnapshot(): PreloadedGenerationSnapshot {
   return {
     context: {
@@ -2302,6 +2312,22 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
       readOnly: true,
       affectsScoringOrGeneration: false,
     });
+    expect(diagnostic?.exerciseClassAlignment).toMatchObject({
+      version: 1,
+      source: "diagnostic_shadow_planner",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      summary: expect.objectContaining({
+        initiallySatisfied: expect.any(Number),
+        finallySatisfied: expect.any(Number),
+        identityChurnCount: expect.any(Number),
+        unresolvedClassIntentCount: expect.any(Number),
+      }),
+    });
+    expect(JSON.stringify(diagnostic?.exerciseClassAlignment).length).toBeLessThan(30000);
+    expect(JSON.stringify(projected.slotPlans)).not.toContain(
+      "exerciseClassAlignment",
+    );
     const slotPrescriptionIntents = diagnostic?.slotPrescriptionIntents ?? [];
     const setDistributionIntents = diagnostic?.setDistributionIntents ?? [];
     const exerciseClassDistributions =
@@ -3868,6 +3894,100 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
         "dirty:back_extension_closure",
       ]),
     });
+    expect(getClassAlignment(diagnostic, "lower_b", "Hamstrings")).toMatchObject({
+      finalAlignment: "violated",
+      forbiddenClasses: expect.arrayContaining(["back_extension", "dirty_extension"]),
+      finalSelectedClasses: expect.arrayContaining([
+        expect.objectContaining({
+          exerciseName: "Back Extension (45 Degree)",
+          exerciseClass: "dirty_extension",
+        }),
+      ]),
+    });
+  });
+
+  it("reports duplicated upper-slot Incline class as unresolved distinct Chest alignment", () => {
+    const slotSequence = [
+      { slotId: "upper_a", intent: "UPPER" as const },
+      { slotId: "upper_b", intent: "UPPER" as const },
+    ];
+    const incline = makeProjectedExercise({
+      id: "incline-db-bench",
+      name: "Incline DB Bench",
+      movementPatterns: ["horizontal_push"],
+      primaryMuscles: ["Chest"],
+      sets: 3,
+      isMainLift: true,
+      stimulusProfile: { chest: 1, triceps: 0.3, front_delts: 0.3 },
+    });
+
+    const diagnostic = buildWeeklyDemandSlotAllocationDiagnostic({
+      activeMesocycle: buildSource() as never,
+      slotSequence,
+      initialProjectedSlots: slotSequence.map((slot) =>
+        makeProjectedSlotWithContributions({
+          slotId: slot.slotId,
+          intent: "UPPER",
+          workout: makeProjectedWorkout({ mainLifts: [incline] }),
+        }),
+      ),
+      finalProjectedSlots: slotSequence.map((slot) =>
+        makeProjectedSlotWithContributions({
+          slotId: slot.slotId,
+          intent: "UPPER",
+          workout: makeProjectedWorkout({ mainLifts: [incline] }),
+        }),
+      ),
+      weeklyObligationPlan: weeklyObligationPlan({
+        Chest: {
+          targetSets: 6,
+          allocatedSlots: [
+            { slotId: "upper_a", minEffectiveSets: 3, priority: "primary" },
+            { slotId: "upper_b", minEffectiveSets: 3, priority: "primary" },
+          ],
+        },
+      }),
+      weeklyObligationEvaluations: [],
+      protectedCoverage: {
+        muscles: [],
+        deficitsBelowMev: [],
+        deficitsBelowPracticalFloor: [],
+        unresolvedProtectedMuscles: [],
+      },
+      supportFloorRepairReasons: {},
+      programQualityAppliedDiagnostics: [],
+      programQualityEvaluation: {
+        totalPenalty: 0,
+        diagnostics: [],
+        constraintCounts: {},
+      },
+      duplicateExerciseReuse: [
+        {
+          exerciseId: "incline-db-bench",
+          name: "Incline DB Bench",
+          repeatedInSlotId: "upper_b",
+          previousSlotIds: ["upper_a"],
+          role: "main",
+          hasCompatibleAlternative: true,
+          reason: "main_lift_duplicate_discouraged",
+        },
+      ],
+    });
+
+    expect(getClassAlignment(diagnostic, "upper_b", "Chest")).toMatchObject({
+      initialAlignment: "partial",
+      finalAlignment: "partial",
+      intendedClasses: expect.arrayContaining(["press"]),
+      finalSelectedClasses: expect.arrayContaining([
+        expect.objectContaining({
+          exerciseName: "Incline DB Bench",
+          exerciseClass: "incline_press",
+        }),
+      ]),
+      evidence: expect.arrayContaining([
+        expect.stringContaining("duplicate:Incline DB Bench"),
+      ]),
+    });
   });
 
   it("marks lower_b Hamstrings dirty when Stiff-Legged Deadlift carries concentration or cap cleanup pressure", () => {
@@ -4017,6 +4137,85 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
       ]),
     );
     expect(feasibility?.dirtyClosureSignals).toEqual([]);
+  });
+
+  it("marks lower_b Hamstrings class alignment satisfied when hinge and knee-flexion curl are both final-selected", () => {
+    const slotSequence = [{ slotId: "lower_b", intent: "LOWER" as const }];
+    const sldl = makeProjectedExercise({
+      id: "sldl",
+      name: "SLDL",
+      movementPatterns: ["hinge"],
+      primaryMuscles: ["Hamstrings"],
+      sets: 3,
+      isMainLift: true,
+      stimulusProfile: { hamstrings: 1, glutes: 0.5, lower_back: 0.5 },
+    });
+    const nordic = makeProjectedExercise({
+      id: "nordic-curl",
+      name: "Nordic Curl",
+      movementPatterns: ["flexion"],
+      primaryMuscles: ["Hamstrings"],
+      sets: 2,
+      isMainLift: false,
+      isCompound: false,
+      stimulusProfile: { hamstrings: 1 },
+    });
+
+    const diagnostic = buildWeeklyDemandSlotAllocationDiagnostic({
+      activeMesocycle: buildSource() as never,
+      slotSequence,
+      initialProjectedSlots: [
+        makeProjectedSlotWithContributions({
+          slotId: "lower_b",
+          intent: "LOWER",
+          workout: makeProjectedWorkout({ mainLifts: [sldl] }),
+        }),
+      ],
+      finalProjectedSlots: [
+        makeProjectedSlotWithContributions({
+          slotId: "lower_b",
+          intent: "LOWER",
+          workout: makeProjectedWorkout({ mainLifts: [sldl], accessories: [nordic] }),
+        }),
+      ],
+      weeklyObligationPlan: weeklyObligationPlan({
+        Hamstrings: {
+          targetSets: 5,
+          allocatedSlots: [
+            { slotId: "lower_b", minEffectiveSets: 5, priority: "primary" },
+          ],
+        },
+      }),
+      weeklyObligationEvaluations: [],
+      protectedCoverage: {
+        muscles: [],
+        deficitsBelowMev: [],
+        deficitsBelowPracticalFloor: [],
+        unresolvedProtectedMuscles: [],
+      },
+      supportFloorRepairReasons: {},
+      programQualityAppliedDiagnostics: [],
+      programQualityEvaluation: {
+        totalPenalty: 0,
+        diagnostics: [],
+        constraintCounts: {},
+      },
+    });
+
+    expect(getClassAlignment(diagnostic, "lower_b", "Hamstrings")).toMatchObject({
+      initialAlignment: "partial",
+      finalAlignment: "satisfied",
+      repairEffect: "improved_alignment",
+      finalSelectedClasses: expect.arrayContaining([
+        expect.objectContaining({ exerciseClass: "stiff_leg_deadlift" }),
+        expect.objectContaining({
+          exerciseName: "Nordic Curl",
+          exerciseClass: "nordic_curl",
+          producedOrIncreasedByRepair: true,
+        }),
+      ]),
+    });
+    expect(diagnostic.exerciseClassAlignment.summary.identityChurnCount).toBeGreaterThanOrEqual(1);
   });
 
   it("reports lower-compatible Hamstrings curl inventory even when curls are not selected in lower_b", () => {
@@ -4214,6 +4413,168 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     expect(extension?.reasons).toEqual(
       expect.arrayContaining([
         "not_clean_closure:extension_collateral_sensitive",
+      ]),
+    );
+  });
+
+  it("does not treat OHP-only Side Delts work as full direct-class satisfaction", () => {
+    const slotSequence = [
+      { slotId: "upper_a", intent: "UPPER" as const },
+      { slotId: "upper_b", intent: "UPPER" as const },
+    ];
+    const overheadPress = makeProjectedExercise({
+      id: "overhead-press",
+      name: "Overhead Press",
+      movementPatterns: ["vertical_push"],
+      primaryMuscles: ["Side Delts"],
+      secondaryMuscles: ["Front Delts", "Triceps"],
+      sets: 3,
+      isMainLift: true,
+      stimulusProfile: { side_delts: 1, front_delts: 0.5, triceps: 0.3 },
+    });
+
+    const diagnostic = buildWeeklyDemandSlotAllocationDiagnostic({
+      activeMesocycle: buildSource() as never,
+      slotSequence,
+      initialProjectedSlots: [
+        makeProjectedSlotWithContributions({
+          slotId: "upper_a",
+          intent: "UPPER",
+          workout: makeProjectedWorkout({}),
+        }),
+        makeProjectedSlotWithContributions({
+          slotId: "upper_b",
+          intent: "UPPER",
+          workout: makeProjectedWorkout({ mainLifts: [overheadPress] }),
+        }),
+      ],
+      finalProjectedSlots: [
+        makeProjectedSlotWithContributions({
+          slotId: "upper_a",
+          intent: "UPPER",
+          workout: makeProjectedWorkout({}),
+        }),
+        makeProjectedSlotWithContributions({
+          slotId: "upper_b",
+          intent: "UPPER",
+          workout: makeProjectedWorkout({ mainLifts: [overheadPress] }),
+        }),
+      ],
+      weeklyObligationPlan: emptyWeeklyObligationPlan(),
+      weeklyObligationEvaluations: [],
+      protectedCoverage: {
+        muscles: [],
+        deficitsBelowMev: [],
+        deficitsBelowPracticalFloor: [],
+        unresolvedProtectedMuscles: [],
+      },
+      supportFloorRepairReasons: {},
+      programQualityAppliedDiagnostics: [],
+      programQualityEvaluation: {
+        totalPenalty: 0,
+        diagnostics: [],
+        constraintCounts: {},
+      },
+    });
+
+    expect(getClassAlignment(diagnostic, "upper_b", "Side Delts")).toMatchObject({
+      initialAlignment: "partial",
+      finalAlignment: "partial",
+      intendedClasses: expect.arrayContaining(["lateral_raise"]),
+      finalSelectedClasses: expect.arrayContaining([
+        expect.objectContaining({
+          exerciseName: "Overhead Press",
+          exerciseClass: "vertical_press_overlap",
+        }),
+      ]),
+    });
+  });
+
+  it("shows duplicate calf isolation variants as class-aligned with a duplicate-policy warning", () => {
+    const slotSequence = [
+      { slotId: "lower_a", intent: "LOWER" as const },
+      { slotId: "lower_b", intent: "LOWER" as const },
+    ];
+    const standingCalfRaise = makeProjectedExercise({
+      id: "standing-calf-raise",
+      name: "Standing Calf Raise",
+      movementPatterns: ["isolation"],
+      primaryMuscles: ["Calves"],
+      sets: 2,
+      isMainLift: false,
+      isCompound: false,
+      stimulusProfile: { calves: 1 },
+    });
+    const seatedCalfRaise = makeProjectedExercise({
+      id: "seated-calf-raise",
+      name: "Seated Calf Raise",
+      movementPatterns: ["isolation"],
+      primaryMuscles: ["Calves"],
+      sets: 2,
+      isMainLift: false,
+      isCompound: false,
+      stimulusProfile: { calves: 1 },
+    });
+
+    const diagnostic = buildWeeklyDemandSlotAllocationDiagnostic({
+      activeMesocycle: buildSource() as never,
+      slotSequence,
+      initialProjectedSlots: [
+        makeProjectedSlotWithContributions({
+          slotId: "lower_a",
+          intent: "LOWER",
+          workout: makeProjectedWorkout({}),
+        }),
+        makeProjectedSlotWithContributions({
+          slotId: "lower_b",
+          intent: "LOWER",
+          workout: makeProjectedWorkout({ accessories: [standingCalfRaise] }),
+        }),
+      ],
+      finalProjectedSlots: [
+        makeProjectedSlotWithContributions({
+          slotId: "lower_a",
+          intent: "LOWER",
+          workout: makeProjectedWorkout({}),
+        }),
+        makeProjectedSlotWithContributions({
+          slotId: "lower_b",
+          intent: "LOWER",
+          workout: makeProjectedWorkout({
+            accessories: [standingCalfRaise, seatedCalfRaise],
+          }),
+        }),
+      ],
+      weeklyObligationPlan: emptyWeeklyObligationPlan(),
+      weeklyObligationEvaluations: [],
+      protectedCoverage: {
+        muscles: [],
+        deficitsBelowMev: [],
+        deficitsBelowPracticalFloor: [],
+        unresolvedProtectedMuscles: [],
+      },
+      supportFloorRepairReasons: {},
+      programQualityAppliedDiagnostics: [],
+      programQualityEvaluation: {
+        totalPenalty: 0,
+        diagnostics: [],
+        constraintCounts: {},
+      },
+    });
+
+    expect(getClassAlignment(diagnostic, "lower_b", "Calves")).toMatchObject({
+      finalAlignment: "satisfied",
+      finalSelectedClasses: expect.arrayContaining([
+        expect.objectContaining({ exerciseClass: "standing_calf_raise" }),
+        expect.objectContaining({ exerciseClass: "seated_calf_raise" }),
+      ]),
+    });
+    expect(
+      diagnostic.exerciseClassAlignment.slots.find((slot) => slot.slotId === "lower_b")
+        ?.slotWarnings,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("same_session_duplicate_class:Calves:calf_raise"),
       ]),
     );
   });
@@ -5162,6 +5523,24 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     expect(findDemand("lower_b", "Quads")?.inventoryEvidence).toEqual(
       expect.arrayContaining([
         expect.stringContaining("duplicate:Barbell Back Squat"),
+      ]),
+    );
+    const upperBAlignmentWarnings =
+      diagnostic.exerciseClassAlignment.slots.find((slot) => slot.slotId === "upper_b")
+        ?.slotWarnings ?? [];
+    const lowerBAlignmentWarnings =
+      diagnostic.exerciseClassAlignment.slots.find((slot) => slot.slotId === "lower_b")
+        ?.slotWarnings ?? [];
+    expect(upperBAlignmentWarnings).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("Incline DB Bench"),
+        expect.stringContaining("Lat Pulldown"),
+      ]),
+    );
+    expect(lowerBAlignmentWarnings).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("SLDL"),
+        expect.stringContaining("Barbell Back Squat"),
       ]),
     );
   });

@@ -810,6 +810,67 @@ export type ExerciseClassDistributionBySlot = {
   affectsScoringOrGeneration: false;
 };
 
+export type ExerciseClassAlignment = {
+  version: 1;
+  source: "diagnostic_shadow_planner";
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+  slots: Array<{
+    slotId: string;
+    slotIndex: number;
+    slotArchetype: string | null;
+    muscleAlignments: Array<{
+      muscle: string;
+      targetStatus: "hard" | "soft" | "diagnostic" | "forbidden";
+      demandType: string;
+      intendedClasses: string[];
+      forbiddenClasses: string[];
+      initialSelectedClasses: Array<{
+        exerciseName: string;
+        exerciseClass: string;
+        setCount: number;
+        effectiveSets: number | null;
+      }>;
+      finalSelectedClasses: Array<{
+        exerciseName: string;
+        exerciseClass: string;
+        setCount: number;
+        effectiveSets: number | null;
+        producedOrIncreasedByRepair: boolean;
+      }>;
+      initialAlignment:
+        | "satisfied"
+        | "partial"
+        | "missing"
+        | "violated"
+        | "not_applicable";
+      finalAlignment:
+        | "satisfied"
+        | "partial"
+        | "missing"
+        | "violated"
+        | "not_applicable";
+      repairEffect:
+        | "improved_alignment"
+        | "worsened_alignment"
+        | "unchanged"
+        | "created_identity_churn"
+        | "not_applicable";
+      evidence: string[];
+      limitations: string[];
+    }>;
+    slotWarnings: string[];
+  }>;
+  summary: {
+    initiallySatisfied: number;
+    finallySatisfied: number;
+    improvedByRepair: number;
+    worsenedByRepair: number;
+    identityChurnCount: number;
+    unresolvedClassIntentCount: number;
+  };
+};
+
 export type AccumulationWeekProjection = {
   mesocycleId: string | null;
   source: "diagnostic_shadow_planner";
@@ -935,6 +996,7 @@ export type SlotPlanPlanningRealityDiagnostic = {
   weeklyDemandCurve: WeeklyDemandCurve;
   slotDemandAllocationByWeek: SlotDemandAllocationByWeek;
   exerciseClassDistributionBySlot: ExerciseClassDistributionBySlot[];
+  exerciseClassAlignment: ExerciseClassAlignment;
   accumulationWeekProjection: AccumulationWeekProjection;
   forbiddenCleanupReroute?: ForbiddenCleanupRerouteDiagnostic;
   rearDeltCollateralSummary?: RearDeltCollateralSummary;
@@ -4804,6 +4866,621 @@ function buildExerciseClassDistributionBySlot(input: {
   });
 }
 
+type ExerciseClassAlignmentSlot = ExerciseClassAlignment["slots"][number];
+type ExerciseClassAlignmentMuscle =
+  ExerciseClassAlignmentSlot["muscleAlignments"][number];
+type InitialExerciseClassSelection =
+  ExerciseClassAlignmentMuscle["initialSelectedClasses"][number];
+type FinalExerciseClassSelection =
+  ExerciseClassAlignmentMuscle["finalSelectedClasses"][number];
+type ExerciseClassAlignmentStatus =
+  ExerciseClassAlignmentMuscle["initialAlignment"];
+
+function compactDiagnosticStrings(
+  values: ReadonlyArray<string>,
+  limit = 10,
+): string[] {
+  const unique = uniqueSorted(values).filter((value) => value.length > 0);
+  if (unique.length <= limit) {
+    return unique;
+  }
+  return [...unique.slice(0, limit), `+${unique.length - limit} more`];
+}
+
+function classifySelectedExerciseClass(input: {
+  exercise: SlotCompositionSnapshotDiagnostic["exercises"][number];
+  muscle: string;
+}): string {
+  const name = input.exercise.exerciseName.toLowerCase();
+  if (name.includes("back extension")) {
+    return "dirty_extension";
+  }
+  if (name.includes("nordic")) {
+    return "nordic_curl";
+  }
+  if (name.includes("leg curl") || name.includes("hamstring curl")) {
+    return "leg_curl";
+  }
+  if (
+    name.includes("stiff-legged") ||
+    name.includes("stiff leg") ||
+    name === "sldl" ||
+    name.includes("romanian deadlift") ||
+    name.includes("rdl")
+  ) {
+    return "stiff_leg_deadlift";
+  }
+  if (name.includes("deadlift") || name.includes("hinge")) {
+    return "hinge_compound";
+  }
+  if (name.includes("incline") && (name.includes("bench") || name.includes("press"))) {
+    return "incline_press";
+  }
+  if (name.includes("machine") && name.includes("press") && input.muscle === "Chest") {
+    return "machine_press";
+  }
+  if (name.includes("fly") || name.includes("pec deck")) {
+    return name.includes("cable") ? "cable_fly" : "chest_fly";
+  }
+  if (name.includes("bench") || name.includes("chest press")) {
+    return "horizontal_press";
+  }
+  if (name.includes("overhead press") || name.includes("ohp") || name.includes("shoulder press")) {
+    return "vertical_press_overlap";
+  }
+  if (name.includes("lateral raise")) {
+    if (name.includes("cable")) {
+      return "cable_lateral_raise";
+    }
+    if (name.includes("machine")) {
+      return "machine_lateral_raise";
+    }
+    return "lateral_raise";
+  }
+  if (name.includes("reverse fly")) {
+    return "reverse_fly";
+  }
+  if (name.includes("face pull")) {
+    return "face_pull";
+  }
+  if (name.includes("rear delt")) {
+    return "rear_delt_isolation";
+  }
+  if (name.includes("triceps") || name.includes("pushdown") || name.includes("skullcrusher")) {
+    return "triceps_isolation_if_under_floor";
+  }
+  if (name.includes("pulldown")) {
+    return "vertical_pull";
+  }
+  if (name.includes("row")) {
+    return "horizontal_pull";
+  }
+  if (name.includes("back squat") || name.includes("squat")) {
+    return "squat_compound";
+  }
+  if (name.includes("standing calf")) {
+    return "standing_calf_raise";
+  }
+  if (name.includes("seated calf")) {
+    return "seated_calf_raise";
+  }
+  if (name.includes("calf raise")) {
+    return "calf_raise";
+  }
+  if (input.exercise.role === "main") {
+    return "compound_overlap";
+  }
+  return "unclassified";
+}
+
+function classSatisfiesIntent(
+  exerciseClass: string,
+  intendedClass: string,
+): boolean {
+  if (exerciseClass === intendedClass) {
+    return true;
+  }
+  const aliases: Record<string, string[]> = {
+    press: ["horizontal_press", "incline_press", "machine_press", "vertical_press_overlap"],
+    horizontal_press: ["incline_press", "machine_press"],
+    hinge_compound: ["stiff_leg_deadlift", "romanian_deadlift"],
+    knee_flexion_curl: ["leg_curl", "nordic_curl"],
+    lateral_raise: ["cable_lateral_raise", "machine_lateral_raise"],
+    rear_delt_isolation: ["reverse_fly", "face_pull"],
+    pull_overlap_with_direct_rear_delt_stimulus: [
+      "horizontal_pull",
+      "vertical_pull",
+      "face_pull",
+    ],
+    press_overlap: [
+      "horizontal_press",
+      "incline_press",
+      "machine_press",
+      "vertical_press_overlap",
+    ],
+    calf_raise: ["standing_calf_raise", "seated_calf_raise"],
+  };
+  return aliases[intendedClass]?.includes(exerciseClass) ?? false;
+}
+
+function selectedExerciseClassMatchesAny(
+  exerciseClass: string,
+  intendedClasses: ReadonlyArray<string>,
+): boolean {
+  return intendedClasses.some((intendedClass) =>
+    classSatisfiesIntent(exerciseClass, intendedClass),
+  );
+}
+
+function toDuplicatePolicyClass(exerciseClass: string): string {
+  if (["standing_calf_raise", "seated_calf_raise"].includes(exerciseClass)) {
+    return "calf_raise";
+  }
+  if (["leg_curl", "nordic_curl"].includes(exerciseClass)) {
+    return "knee_flexion_curl";
+  }
+  if (["stiff_leg_deadlift", "romanian_deadlift"].includes(exerciseClass)) {
+    return "hinge_compound";
+  }
+  if (["cable_lateral_raise", "machine_lateral_raise"].includes(exerciseClass)) {
+    return "lateral_raise";
+  }
+  return exerciseClass;
+}
+
+function buildSelectedExerciseClasses(input: {
+  slot: SlotCompositionSnapshotDiagnostic | undefined;
+  muscle: string;
+}): InitialExerciseClassSelection[] {
+  if (!input.slot) {
+    return [];
+  }
+  return input.slot.exercises
+    .filter((exercise) => exerciseClassMatchesMuscle(exercise, input.muscle))
+    .map((exercise) => ({
+      exerciseName: exercise.exerciseName,
+      exerciseClass: classifySelectedExerciseClass({
+        exercise,
+        muscle: input.muscle,
+      }),
+      setCount: exercise.setCount,
+      effectiveSets:
+        typeof exercise.effectiveStimulusByMuscle[input.muscle] === "number"
+          ? roundToTenth(exercise.effectiveStimulusByMuscle[input.muscle])
+          : null,
+    }))
+    .sort(
+      (left, right) =>
+        left.exerciseName.localeCompare(right.exerciseName) ||
+        left.exerciseClass.localeCompare(right.exerciseClass),
+    );
+}
+
+function hasProducedOrIncreasedRepair(input: {
+  slotId: string;
+  muscle: string;
+  exerciseName: string;
+  repairRows: ReadonlyArray<ShadowRepairMaterialityDiagnostic>;
+  concentrationRows: ReadonlyArray<ExerciseConcentrationDiagnostic>;
+}): boolean {
+  return (
+    input.repairRows.some(
+      (row) =>
+        row.slotId === input.slotId &&
+        row.muscle === input.muscle &&
+        row.exerciseName === input.exerciseName &&
+        (row.action === "added" || row.action === "set_bumped") &&
+        row.effectiveStimulusDelta > 0,
+    ) ||
+    input.concentrationRows.some(
+      (row) =>
+        row.slotId === input.slotId &&
+        row.exerciseName === input.exerciseName &&
+        row.producedOrIncreasedByRepair,
+    )
+  );
+}
+
+function withFinalRepairFlags(input: {
+  slotId: string;
+  muscle: string;
+  selected: ReadonlyArray<InitialExerciseClassSelection>;
+  repairRows: ReadonlyArray<ShadowRepairMaterialityDiagnostic>;
+  concentrationRows: ReadonlyArray<ExerciseConcentrationDiagnostic>;
+}): FinalExerciseClassSelection[] {
+  return input.selected.map((selection) => ({
+    ...selection,
+    producedOrIncreasedByRepair: hasProducedOrIncreasedRepair({
+      slotId: input.slotId,
+      muscle: input.muscle,
+      exerciseName: selection.exerciseName,
+      repairRows: input.repairRows,
+      concentrationRows: input.concentrationRows,
+    }),
+  }));
+}
+
+function hasDirectSideDeltClass(
+  selected: ReadonlyArray<InitialExerciseClassSelection>,
+): boolean {
+  return selected.some((row) =>
+    ["lateral_raise", "cable_lateral_raise", "machine_lateral_raise"].includes(
+      row.exerciseClass,
+    ),
+  );
+}
+
+function hasDirectRearDeltClass(
+  selected: ReadonlyArray<InitialExerciseClassSelection>,
+): boolean {
+  return selected.some((row) =>
+    ["rear_delt_isolation", "reverse_fly", "face_pull"].includes(
+      row.exerciseClass,
+    ),
+  );
+}
+
+function evaluateExerciseClassAlignment(input: {
+  muscle: string;
+  targetStatus: ExerciseClassAlignmentMuscle["targetStatus"];
+  requiredClasses: ReadonlyArray<string>;
+  intendedClasses: ReadonlyArray<string>;
+  forbiddenClasses: ReadonlyArray<string>;
+  duplicatePolicyFailure: boolean;
+  selected: ReadonlyArray<InitialExerciseClassSelection>;
+}): ExerciseClassAlignmentStatus {
+  if (input.targetStatus === "diagnostic") {
+    return "not_applicable";
+  }
+  if (input.targetStatus === "forbidden") {
+    return input.selected.length > 0 ? "violated" : "not_applicable";
+  }
+  if (input.intendedClasses.length === 0) {
+    return "not_applicable";
+  }
+  if (
+    input.selected.some((row) =>
+      selectedExerciseClassMatchesAny(row.exerciseClass, input.forbiddenClasses),
+    )
+  ) {
+    return "violated";
+  }
+  if (input.selected.length === 0) {
+    return "missing";
+  }
+
+  if (input.requiredClasses.length > 0) {
+    const satisfiedCount = input.requiredClasses.filter((requiredClass) =>
+      input.selected.some((row) =>
+        classSatisfiesIntent(row.exerciseClass, requiredClass),
+      ),
+    ).length;
+    if (satisfiedCount === input.requiredClasses.length) {
+      return input.duplicatePolicyFailure ? "partial" : "satisfied";
+    }
+    return satisfiedCount > 0 ? "partial" : "missing";
+  }
+
+  if (input.muscle === "Side Delts") {
+    if (hasDirectSideDeltClass(input.selected)) {
+      return input.duplicatePolicyFailure ? "partial" : "satisfied";
+    }
+    return input.selected.some((row) => row.exerciseClass === "vertical_press_overlap")
+      ? "partial"
+      : "missing";
+  }
+
+  if (input.muscle === "Rear Delts") {
+    if (hasDirectRearDeltClass(input.selected)) {
+      return input.duplicatePolicyFailure ? "partial" : "satisfied";
+    }
+    return input.selected.some((row) =>
+      ["horizontal_pull", "vertical_pull"].includes(row.exerciseClass),
+    )
+      ? "partial"
+      : "missing";
+  }
+
+  if (input.muscle === "Triceps") {
+    return input.selected.some((row) =>
+      selectedExerciseClassMatchesAny(row.exerciseClass, input.intendedClasses),
+    )
+      ? input.duplicatePolicyFailure
+        ? "partial"
+        : "satisfied"
+      : "missing";
+  }
+
+  const hasAnyIntendedClass = input.selected.some((row) =>
+    selectedExerciseClassMatchesAny(row.exerciseClass, input.intendedClasses),
+  );
+  return hasAnyIntendedClass
+    ? input.duplicatePolicyFailure
+      ? "partial"
+      : "satisfied"
+    : "missing";
+}
+
+function alignmentRank(status: ExerciseClassAlignmentStatus): number | null {
+  switch (status) {
+    case "satisfied":
+      return 3;
+    case "partial":
+      return 2;
+    case "missing":
+      return 1;
+    case "violated":
+      return 0;
+    case "not_applicable":
+      return null;
+  }
+}
+
+function hasIdentityChurn(input: {
+  slotId: string;
+  muscle: string;
+  repairRows: ReadonlyArray<ShadowRepairMaterialityDiagnostic>;
+}): boolean {
+  return input.repairRows.some(
+    (row) =>
+      row.slotId === input.slotId &&
+      row.muscle === input.muscle &&
+      row.changedExerciseIdentity,
+  );
+}
+
+function classifyRepairEffect(input: {
+  initialAlignment: ExerciseClassAlignmentStatus;
+  finalAlignment: ExerciseClassAlignmentStatus;
+  identityChurn: boolean;
+  hasRepairEvidence: boolean;
+}): ExerciseClassAlignmentMuscle["repairEffect"] {
+  const initialRank = alignmentRank(input.initialAlignment);
+  const finalRank = alignmentRank(input.finalAlignment);
+  if (initialRank == null || finalRank == null) {
+    return input.identityChurn ? "created_identity_churn" : "not_applicable";
+  }
+  if (finalRank > initialRank) {
+    return "improved_alignment";
+  }
+  if (finalRank < initialRank) {
+    return "worsened_alignment";
+  }
+  if (input.identityChurn) {
+    return "created_identity_churn";
+  }
+  return input.hasRepairEvidence ? "unchanged" : "not_applicable";
+}
+
+function findDuplicatePolicyWarnings(input: {
+  muscle: string;
+  demand: ExerciseClassDistributionMuscle;
+  finalSelected: ReadonlyArray<InitialExerciseClassSelection>;
+}): string[] {
+  const warnings: string[] = [];
+  const duplicateEvidence = [
+    ...input.demand.inventoryEvidence,
+    ...input.demand.repairEvidence,
+  ].filter(
+    (row) =>
+      row.includes("duplicate:") ||
+      row.includes("duplicate_class:") ||
+      row.includes("duplicate_exercise_class"),
+  );
+  warnings.push(...duplicateEvidence);
+
+  const byClass = new Map<string, string[]>();
+  for (const selection of input.finalSelected) {
+    const classKey = toDuplicatePolicyClass(selection.exerciseClass);
+    byClass.set(classKey, [
+      ...(byClass.get(classKey) ?? []),
+      selection.exerciseName,
+    ]);
+  }
+  for (const [classKey, names] of byClass.entries()) {
+    const distinctNames = uniqueSorted(names);
+    if (distinctNames.length <= 1) {
+      continue;
+    }
+    if (input.muscle === "Calves" || input.demand.duplicatePolicy !== "allow_with_justification") {
+      warnings.push(
+        `same_session_duplicate_class:${input.muscle}:${classKey}:${distinctNames.join("+")}`,
+      );
+    }
+  }
+  return compactDiagnosticStrings(warnings, 8);
+}
+
+function buildExerciseClassAlignment(input: {
+  exerciseClassDistributionBySlot: ReadonlyArray<ExerciseClassDistributionBySlot>;
+  initialSlotComposition: ReadonlyArray<SlotCompositionSnapshotDiagnostic>;
+  finalSlotPlan: ReadonlyArray<SlotCompositionSnapshotDiagnostic>;
+  repairMaterialityAfterShadowAllocation: ReadonlyArray<ShadowRepairMaterialityDiagnostic>;
+  exerciseConcentration: ReadonlyArray<ExerciseConcentrationDiagnostic>;
+  weakPreselectionConsumption: ReadonlyArray<WeakPreselectionConsumptionDiagnostic>;
+  distributionGuardActions: ReadonlyArray<DistributionGuardAction>;
+}): ExerciseClassAlignment {
+  const initialSlotById = new Map(
+    input.initialSlotComposition.map((slot) => [slot.slotId, slot]),
+  );
+  const finalSlotById = new Map(
+    input.finalSlotPlan.map((slot) => [slot.slotId, slot]),
+  );
+  const weekOneClassDistributions = input.exerciseClassDistributionBySlot.filter(
+    (slot) =>
+      slot.week === 1 &&
+      slot.projectionStatus === "projected_from_current_evidence",
+  );
+
+  const slots: ExerciseClassAlignmentSlot[] = weekOneClassDistributions.map(
+    (slot) => {
+      const initialSlot = initialSlotById.get(slot.slotId);
+      const finalSlot = finalSlotById.get(slot.slotId);
+      const slotWarnings: string[] = [];
+      const muscleAlignments = slot.muscleDemands.map((demand) => {
+        const intendedClasses =
+          demand.requiredExerciseClasses.length > 0
+            ? demand.requiredExerciseClasses
+            : demand.preferredExerciseClasses;
+        const initialSelectedClasses = buildSelectedExerciseClasses({
+          slot: initialSlot,
+          muscle: demand.muscle,
+        });
+        const finalSelectedBase = buildSelectedExerciseClasses({
+          slot: finalSlot,
+          muscle: demand.muscle,
+        });
+        const finalSelectedClasses = withFinalRepairFlags({
+          slotId: slot.slotId,
+          muscle: demand.muscle,
+          selected: finalSelectedBase,
+          repairRows: input.repairMaterialityAfterShadowAllocation,
+          concentrationRows: input.exerciseConcentration,
+        });
+        const duplicateWarnings = findDuplicatePolicyWarnings({
+          muscle: demand.muscle,
+          demand,
+          finalSelected: finalSelectedBase,
+        });
+        slotWarnings.push(...duplicateWarnings);
+        const duplicatePolicyFailure =
+          demand.muscle === "Chest" &&
+          demand.duplicatePolicy === "block_if_clean_alternative_exists" &&
+          duplicateWarnings.length > 0;
+        const initialAlignment = evaluateExerciseClassAlignment({
+          muscle: demand.muscle,
+          targetStatus: demand.targetStatus,
+          requiredClasses: demand.requiredExerciseClasses,
+          intendedClasses,
+          forbiddenClasses: demand.forbiddenExerciseClasses,
+          duplicatePolicyFailure,
+          selected: initialSelectedClasses,
+        });
+        const finalAlignment = evaluateExerciseClassAlignment({
+          muscle: demand.muscle,
+          targetStatus: demand.targetStatus,
+          requiredClasses: demand.requiredExerciseClasses,
+          intendedClasses,
+          forbiddenClasses: demand.forbiddenExerciseClasses,
+          duplicatePolicyFailure,
+          selected: finalSelectedBase,
+        });
+        const identityChurn = hasIdentityChurn({
+          slotId: slot.slotId,
+          muscle: demand.muscle,
+          repairRows: input.repairMaterialityAfterShadowAllocation,
+        });
+        const repairEvidence = input.repairMaterialityAfterShadowAllocation
+          .filter((row) => row.slotId === slot.slotId && row.muscle === demand.muscle)
+          .map(
+            (row) =>
+              `repair:${row.exerciseName ?? row.exerciseId ?? "unknown"}:${row.action}:${row.effectiveStimulusDelta}`,
+          );
+        const weakConsumptionEvidence = input.weakPreselectionConsumption
+          .filter((row) => row.slotId === slot.slotId && row.muscle === demand.muscle)
+          .map(
+            (row) =>
+              `weak_preselection_consumption:selected=${roundToTenth(row.selectedEffectiveSets)}:targetMet=${row.targetMet}`,
+          );
+        const guardEvidence = input.distributionGuardActions
+          .filter((row) => row.slotId === slot.slotId && row.muscle === demand.muscle)
+          .map(
+            (row) =>
+              `distribution_guard:${row.exerciseName}:${row.attemptedAction}:${row.decision}`,
+          );
+        const evidence = compactDiagnosticStrings([
+          `initial_alignment:${initialAlignment}`,
+          `final_alignment:${finalAlignment}`,
+          ...initialSelectedClasses.map(
+            (row) =>
+              `initial:${row.exerciseName}:${row.exerciseClass}:${row.setCount} sets`,
+          ),
+          ...finalSelectedClasses.map(
+            (row) =>
+              `final:${row.exerciseName}:${row.exerciseClass}:${row.setCount} sets:repair=${row.producedOrIncreasedByRepair}`,
+          ),
+          ...duplicateWarnings,
+          ...repairEvidence,
+          ...weakConsumptionEvidence,
+          ...guardEvidence,
+        ]);
+        const limitations = compactDiagnosticStrings([
+          "diagnostic_read_only_no_generation_scoring_repair_seed_or_runtime_effect",
+          "exercise_class_is_inferred_from_existing_projection_rows",
+          "does_not_replay_candidate_ranking_or_selection_trials",
+          ...demand.limitations,
+        ], 8);
+
+        return {
+          muscle: demand.muscle,
+          targetStatus: demand.targetStatus,
+          demandType: demand.demandType,
+          intendedClasses: uniqueSorted(intendedClasses),
+          forbiddenClasses: demand.forbiddenExerciseClasses,
+          initialSelectedClasses,
+          finalSelectedClasses,
+          initialAlignment,
+          finalAlignment,
+          repairEffect: classifyRepairEffect({
+            initialAlignment,
+            finalAlignment,
+            identityChurn,
+            hasRepairEvidence: repairEvidence.length > 0,
+          }),
+          evidence,
+          limitations,
+        };
+      });
+
+      return {
+        slotId: slot.slotId,
+        slotIndex: slot.slotIndex,
+        slotArchetype: slot.slotArchetype,
+        muscleAlignments,
+        slotWarnings: compactDiagnosticStrings(slotWarnings, 8),
+      };
+    },
+  );
+
+  const allAlignments = slots.flatMap((slot) => slot.muscleAlignments);
+  return {
+    version: 1,
+    source: "diagnostic_shadow_planner",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    slots,
+    summary: {
+      initiallySatisfied: allAlignments.filter(
+        (row) => row.initialAlignment === "satisfied",
+      ).length,
+      finallySatisfied: allAlignments.filter(
+        (row) => row.finalAlignment === "satisfied",
+      ).length,
+      improvedByRepair: allAlignments.filter(
+        (row) => row.repairEffect === "improved_alignment",
+      ).length,
+      worsenedByRepair: allAlignments.filter(
+        (row) => row.repairEffect === "worsened_alignment",
+      ).length,
+      identityChurnCount: allAlignments.filter((row) =>
+        input.repairMaterialityAfterShadowAllocation.some(
+          (repair) =>
+            repair.slotId ===
+              slots.find((slot) => slot.muscleAlignments.includes(row))?.slotId &&
+            repair.muscle === row.muscle &&
+            repair.changedExerciseIdentity,
+        ),
+      ).length,
+      unresolvedClassIntentCount: allAlignments.filter(
+        (row) =>
+          row.finalAlignment === "missing" ||
+          row.finalAlignment === "partial" ||
+          row.finalAlignment === "violated",
+      ).length,
+    },
+  };
+}
+
 type AccumulationProjectionWeek = AccumulationWeekProjection["weeks"][number];
 type AccumulationProjectedMuscle =
   AccumulationProjectionWeek["projectedMuscles"][number];
@@ -7314,6 +7991,15 @@ export function buildWeeklyDemandSlotAllocationDiagnostic(input: {
     exerciseConcentration,
     duplicateExerciseReuse: input.duplicateExerciseReuse ?? [],
   });
+  const exerciseClassAlignment = buildExerciseClassAlignment({
+    exerciseClassDistributionBySlot,
+    initialSlotComposition,
+    finalSlotPlan,
+    repairMaterialityAfterShadowAllocation,
+    exerciseConcentration,
+    weakPreselectionConsumption,
+    distributionGuardActions,
+  });
   const accumulationWeekProjection = buildAccumulationWeekProjection({
     activeMesocycle: input.activeMesocycle,
     weeklyDemandCurve,
@@ -7376,6 +8062,7 @@ export function buildWeeklyDemandSlotAllocationDiagnostic(input: {
     weeklyDemandCurve,
     slotDemandAllocationByWeek,
     exerciseClassDistributionBySlot,
+    exerciseClassAlignment,
     accumulationWeekProjection,
     ...(input.forbiddenCleanupReroute
       ? { forbiddenCleanupReroute: input.forbiddenCleanupReroute }

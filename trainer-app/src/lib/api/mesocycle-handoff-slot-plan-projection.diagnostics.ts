@@ -215,6 +215,22 @@ export type RearDeltCollateralSummary = {
   reasons: string[];
 };
 
+export type WeakPreselectionConsumptionDiagnostic = {
+  slotId: string;
+  muscle: string;
+  role: "primary" | "support";
+  targetStatus: "hard" | "soft";
+  selectedEffectiveSets: number;
+  preferredEffectiveSets: number | null;
+  minEffectiveSets: number | null;
+  targetMet: boolean;
+  consumedBySelection: boolean;
+  reason:
+    | "consumed_but_target_not_met"
+    | "incidental_overlap_only"
+    | "no_metric_improvement";
+};
+
 export type SlotDemandAllocationDiagnostic = {
   slotId: string;
   slotIndex: number;
@@ -409,6 +425,7 @@ export type SlotPlanPlanningRealityDiagnostic = {
   shadowRepairSummary: ShadowRepairSummary;
   suspiciousRepairsNotEligibleForPromotion: SuspiciousRepairNotEligibleForPromotion[];
   promotionCandidates: PromotionCandidate[];
+  weakPreselectionConsumption: WeakPreselectionConsumptionDiagnostic[];
   slotPrescriptionIntents: SlotPrescriptionIntent[];
   forbiddenCleanupReroute?: ForbiddenCleanupRerouteDiagnostic;
   rearDeltCollateralSummary?: RearDeltCollateralSummary;
@@ -444,7 +461,11 @@ type ExerciseRow = {
 type PreselectionDemandDiagnosticLike = {
   slotId: string;
   muscle: string;
+  role?: "primary" | "support";
+  targetStatus?: "hard" | "soft";
   selectedEffectiveSets: number;
+  preferredEffectiveSets?: number;
+  minEffectiveSets?: number;
   consumedBySelection: boolean;
   targetMet: boolean;
 };
@@ -1482,6 +1503,30 @@ function buildPromotionCandidates(input: {
     left.muscle.localeCompare(right.muscle) ||
     left.suggestedPromotion.localeCompare(right.suggestedPromotion)
   );
+}
+
+function buildWeakPreselectionConsumption(input: {
+  preselectionDemands: ReadonlyArray<PreselectionDemandDiagnosticLike>;
+}): WeakPreselectionConsumptionDiagnostic[] {
+  return input.preselectionDemands
+    .filter((demand) => demand.consumedBySelection && !demand.targetMet)
+    .map((demand) => ({
+      slotId: demand.slotId,
+      muscle: demand.muscle,
+      role: demand.role ?? "support",
+      targetStatus: demand.targetStatus ?? "soft",
+      selectedEffectiveSets: demand.selectedEffectiveSets,
+      preferredEffectiveSets: demand.preferredEffectiveSets ?? null,
+      minEffectiveSets: demand.minEffectiveSets ?? null,
+      targetMet: demand.targetMet,
+      consumedBySelection: demand.consumedBySelection,
+      reason: "consumed_but_target_not_met" as const,
+    }))
+    .sort((left, right) =>
+      left.slotId.localeCompare(right.slotId) ||
+      left.muscle.localeCompare(right.muscle) ||
+      left.reason.localeCompare(right.reason)
+    );
 }
 
 type MusclePrescription = SlotPrescriptionIntent["musclePrescriptions"][number];
@@ -3229,6 +3274,9 @@ export function buildWeeklyDemandSlotAllocationDiagnostic(input: {
     shadowSlotDemandAllocation,
     suspiciousRepairs: suspiciousRepairsNotEligibleForPromotion,
   });
+  const weakPreselectionConsumption = buildWeakPreselectionConsumption({
+    preselectionDemands: input.preselectionDemands ?? [],
+  });
   const slotPrescriptionIntents = buildSlotPrescriptionIntents({
     slotSequence: input.slotSequence,
     slotDemandAllocation,
@@ -3303,6 +3351,7 @@ export function buildWeeklyDemandSlotAllocationDiagnostic(input: {
     shadowRepairSummary,
     suspiciousRepairsNotEligibleForPromotion,
     promotionCandidates,
+    weakPreselectionConsumption,
     slotPrescriptionIntents,
     ...(input.forbiddenCleanupReroute
       ? { forbiddenCleanupReroute: input.forbiddenCleanupReroute }

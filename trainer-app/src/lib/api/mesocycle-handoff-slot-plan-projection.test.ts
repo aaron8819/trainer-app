@@ -2988,6 +2988,166 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     );
   });
 
+  it("flags consumed preselection demand when the target is not met", () => {
+    const diagnostic = buildWeeklyDemandSlotAllocationDiagnostic({
+      activeMesocycle: buildSource() as never,
+      slotSequence: [{ slotId: "upper_b", intent: "UPPER" as const }],
+      initialProjectedSlots: [],
+      finalProjectedSlots: [],
+      weeklyObligationPlan: emptyWeeklyObligationPlan(),
+      weeklyObligationEvaluations: [],
+      protectedCoverage: {
+        muscles: [],
+        deficitsBelowMev: [],
+        deficitsBelowPracticalFloor: [],
+        unresolvedProtectedMuscles: [],
+      },
+      supportFloorRepairReasons: {},
+      programQualityAppliedDiagnostics: [],
+      programQualityEvaluation: {
+        totalPenalty: 0,
+        diagnostics: [],
+        constraintCounts: {},
+      },
+      preselectionDemands: [
+        {
+          slotId: "upper_b",
+          muscle: "Triceps",
+          role: "support",
+          targetStatus: "soft",
+          selectedEffectiveSets: 0.9,
+          preferredEffectiveSets: 5,
+          minEffectiveSets: 5,
+          consumedBySelection: true,
+          targetMet: false,
+        },
+      ],
+    });
+
+    expect(diagnostic.weakPreselectionConsumption).toEqual([
+      {
+        slotId: "upper_b",
+        muscle: "Triceps",
+        role: "support",
+        targetStatus: "soft",
+        selectedEffectiveSets: 0.9,
+        preferredEffectiveSets: 5,
+        minEffectiveSets: 5,
+        consumedBySelection: true,
+        targetMet: false,
+        reason: "consumed_but_target_not_met",
+      },
+    ]);
+  });
+
+  it("does not flag consumed preselection demand when the target is met", () => {
+    const diagnostic = buildWeeklyDemandSlotAllocationDiagnostic({
+      activeMesocycle: buildSource() as never,
+      slotSequence: [{ slotId: "upper_b", intent: "UPPER" as const }],
+      initialProjectedSlots: [],
+      finalProjectedSlots: [],
+      weeklyObligationPlan: emptyWeeklyObligationPlan(),
+      weeklyObligationEvaluations: [],
+      protectedCoverage: {
+        muscles: [],
+        deficitsBelowMev: [],
+        deficitsBelowPracticalFloor: [],
+        unresolvedProtectedMuscles: [],
+      },
+      supportFloorRepairReasons: {},
+      programQualityAppliedDiagnostics: [],
+      programQualityEvaluation: {
+        totalPenalty: 0,
+        diagnostics: [],
+        constraintCounts: {},
+      },
+      preselectionDemands: [
+        {
+          slotId: "upper_b",
+          muscle: "Side Delts",
+          role: "support",
+          targetStatus: "soft",
+          selectedEffectiveSets: 2,
+          preferredEffectiveSets: 2,
+          minEffectiveSets: 2,
+          consumedBySelection: true,
+          targetMet: true,
+        },
+      ],
+    });
+
+    expect(diagnostic.weakPreselectionConsumption).toEqual([]);
+  });
+
+  it("does not treat non-consumed preselection demand as weak consumption", () => {
+    const diagnostic = buildWeeklyDemandSlotAllocationDiagnostic({
+      activeMesocycle: buildSource() as never,
+      slotSequence: [{ slotId: "upper_b", intent: "UPPER" as const }],
+      initialProjectedSlots: [],
+      finalProjectedSlots: [],
+      weeklyObligationPlan: emptyWeeklyObligationPlan(),
+      weeklyObligationEvaluations: [],
+      protectedCoverage: {
+        muscles: [],
+        deficitsBelowMev: [],
+        deficitsBelowPracticalFloor: [],
+        unresolvedProtectedMuscles: [],
+      },
+      supportFloorRepairReasons: {},
+      programQualityAppliedDiagnostics: [],
+      programQualityEvaluation: {
+        totalPenalty: 0,
+        diagnostics: [],
+        constraintCounts: {},
+      },
+      preselectionDemands: [
+        {
+          slotId: "upper_b",
+          muscle: "Triceps",
+          role: "support",
+          targetStatus: "soft",
+          selectedEffectiveSets: 0,
+          preferredEffectiveSets: 5,
+          minEffectiveSets: 5,
+          consumedBySelection: false,
+          targetMet: false,
+        },
+      ],
+    });
+
+    expect(diagnostic.weakPreselectionConsumption).toEqual([]);
+  });
+
+  it("keeps successful Side Delts preselection clean", () => {
+    const projected = projectSuccessorSlotPlansFromSnapshot({
+      userId: "user-1",
+      source: buildSource(),
+      design: buildDesign(buildRepairSensitiveDraft()),
+      snapshot: buildProtectedCoverageSatisfiedSnapshot(),
+      now: new Date("2026-03-19T12:00:00.000Z"),
+    });
+
+    expect("error" in projected).toBe(false);
+    if ("error" in projected) return;
+
+    const sideDeltDemand =
+      projected.diagnostics?.preselectionDemands?.find(
+        (demand) => demand.slotId === "upper_b" && demand.muscle === "Side Delts",
+      );
+
+    expect(sideDeltDemand).toMatchObject({
+      consumedBySelection: true,
+      targetMet: true,
+    });
+    expect(
+      projected.diagnostics?.planningReality?.weakPreselectionConsumption,
+    ).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ slotId: "upper_b", muscle: "Side Delts" }),
+      ]),
+    );
+  });
+
   it("prevents upper_b from finishing with zero Chest while Chest remains a hard weekly obligation", () => {
     const projected = projectSuccessorSlotPlansFromSnapshot({
       userId: "user-1",

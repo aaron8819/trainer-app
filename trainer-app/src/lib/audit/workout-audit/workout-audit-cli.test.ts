@@ -801,6 +801,53 @@ describe("buildPlanningRealitySummary", () => {
     );
   });
 
+  it("prints weak pre-selection consumption when consumed demand misses target", () => {
+    const summary = buildPlanningRealitySummary({
+      artifact: {
+        mesocycleExplain: {
+          preview: {
+            projectionDiagnostics: {
+              planningReality: {
+                summary: {
+                  planningShape: "mostly_repair_shaped",
+                  explicitWeeklyDemandMuscles: 4,
+                  inferredDemandMuscles: 3,
+                  slotsWithExplicitWeeklyDemand: 2,
+                  slotsWithOnlyLocalOrInferredSemantics: 1,
+                  materialRepairCount: 22,
+                  majorRepairCount: 14,
+                  highExerciseConcentrationCount: 4,
+                  warningCodes: [],
+                },
+                weakPreselectionConsumption: [
+                  {
+                    slotId: "upper_b",
+                    muscle: "Triceps",
+                    role: "support",
+                    targetStatus: "soft",
+                    selectedEffectiveSets: 0.9,
+                    preferredEffectiveSets: 5,
+                    minEffectiveSets: 5,
+                    consumedBySelection: true,
+                    targetMet: false,
+                    reason: "consumed_but_target_not_met",
+                  },
+                ],
+              },
+            },
+          },
+        },
+      },
+    });
+
+    expect(summary).toEqual(
+      expect.arrayContaining([
+        "Weak pre-selection consumption:",
+        "- upper_b: Triceps selected 0.9 / target 5, targetMet=no",
+      ])
+    );
+  });
+
   it("returns null when mesocycle-explain does not include planningReality", () => {
     expect(
       buildPlanningRealitySummary({

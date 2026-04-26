@@ -451,6 +451,9 @@ export function buildPlanningRealitySummary(input: {
   const preselectionDemands = asArray(
     input.artifact.mesocycleExplain?.preview?.projectionDiagnostics?.preselectionDemands
   );
+  const weakPreselectionConsumption = asArray(
+    planningReality.weakPreselectionConsumption
+  );
 
   const explicitMuscles = weeklyDemand
     .filter((row) => row.explicitUpstream)
@@ -657,6 +660,21 @@ export function buildPlanningRealitySummary(input: {
       );
     }
     const remaining = preselectionDemands.length - 10;
+    if (remaining > 0) {
+      lines.push(`- +${remaining} more`);
+    }
+  }
+  if (weakPreselectionConsumption.length > 0) {
+    lines.push("", "Weak pre-selection consumption:");
+    for (const row of weakPreselectionConsumption.slice(0, 10)) {
+      const target = row.minEffectiveSets ?? row.preferredEffectiveSets;
+      lines.push(
+        `- ${row.slotId}: ${row.muscle} selected ` +
+          `${formatPlanningRealityNumber(row.selectedEffectiveSets)} / target ` +
+          `${formatPlanningRealityNumber(target)}, targetMet=${formatBooleanFlag(row.targetMet)}`
+      );
+    }
+    const remaining = weakPreselectionConsumption.length - 10;
     if (remaining > 0) {
       lines.push(`- +${remaining} more`);
     }

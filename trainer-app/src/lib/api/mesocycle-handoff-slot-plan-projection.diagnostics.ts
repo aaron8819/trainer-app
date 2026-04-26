@@ -45,6 +45,7 @@ import {
   MAX_PROJECTED_MAIN_LIFT_SETS_PER_EXERCISE,
   MIN_PROJECTED_ACCESSORY_SETS_PER_EXERCISE,
   MIN_PROJECTED_MAIN_LIFT_SETS_PER_EXERCISE,
+  type DistributionGuardAction,
   type ForbiddenCleanupRerouteDiagnostic,
 } from "./mesocycle-handoff-slot-plan-projection.repair-engine";
 import {
@@ -482,6 +483,7 @@ export type SlotPlanPlanningRealityDiagnostic = {
   weakPreselectionConsumption: WeakPreselectionConsumptionDiagnostic[];
   slotPrescriptionIntents: SlotPrescriptionIntent[];
   setDistributionIntents: SetDistributionIntent[];
+  distributionGuardActions: DistributionGuardAction[];
   forbiddenCleanupReroute?: ForbiddenCleanupRerouteDiagnostic;
   rearDeltCollateralSummary?: RearDeltCollateralSummary;
   projectedDelivery: ProjectedDeliveryDiagnostic[];
@@ -3492,6 +3494,7 @@ export function buildWeeklyDemandSlotAllocationDiagnostic(input: {
   programQualityAppliedDiagnostics: ReadonlyArray<ProgramQualityDiagnostic>;
   programQualityEvaluation: ProgramQualityEvaluation;
   preselectionDemands?: ReadonlyArray<PreselectionDemandDiagnosticLike>;
+  distributionGuardActions?: ReadonlyArray<DistributionGuardAction>;
   forbiddenCleanupReroute?: ForbiddenCleanupRerouteDiagnostic;
 }): SlotPlanPlanningRealityDiagnostic {
   const relevantMuscles = collectRelevantMuscles({
@@ -3601,6 +3604,26 @@ export function buildWeeklyDemandSlotAllocationDiagnostic(input: {
     exerciseConcentration,
     repairMaterialityAfterShadowAllocation,
   });
+  const distributionGuardActions = Array.from(
+    new Map(
+      (input.distributionGuardActions ?? []).map((action) => [
+        [
+          action.slotId,
+          action.exerciseName,
+          action.muscle,
+          action.attemptedAction,
+          action.decision,
+          action.alternativeExerciseName ?? "",
+        ].join(":"),
+        action,
+      ]),
+    ).values(),
+  ).sort(
+    (left, right) =>
+      left.slotId.localeCompare(right.slotId) ||
+      left.muscle.localeCompare(right.muscle) ||
+      left.exerciseName.localeCompare(right.exerciseName),
+  );
   const rearDeltCollateralSummary = buildRearDeltCollateralSummary({
     initialProjectedSlots: input.initialProjectedSlots,
     finalProjectedSlots: input.finalProjectedSlots,
@@ -3665,6 +3688,7 @@ export function buildWeeklyDemandSlotAllocationDiagnostic(input: {
     weakPreselectionConsumption,
     slotPrescriptionIntents,
     setDistributionIntents,
+    distributionGuardActions,
     ...(input.forbiddenCleanupReroute
       ? { forbiddenCleanupReroute: input.forbiddenCleanupReroute }
       : {}),

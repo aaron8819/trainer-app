@@ -374,10 +374,12 @@ function formatUniqueEvidenceRows(values: string[], limit = 8): string[] {
 }
 
 function buildSetDistributionSummaryLines(
-  intents: PlanningRealityDiagnostic["setDistributionIntents"] | null | undefined
+  intents: PlanningRealityDiagnostic["setDistributionIntents"] | null | undefined,
+  guardActions?: PlanningRealityDiagnostic["distributionGuardActions"] | null
 ): string[] | null {
   const rows = asArray(intents);
-  if (rows.length === 0) {
+  const actions = asArray(guardActions);
+  if (rows.length === 0 && actions.length === 0) {
     return null;
   }
   const concentrationRows = rows.flatMap((intent) =>
@@ -409,6 +411,17 @@ function buildSetDistributionSummaryLines(
     "",
     "Cap cleanup:",
     ...formatUniqueEvidenceRows(capCleanupRows, 6),
+    "",
+    "Distribution guard actions:",
+    ...formatUniqueEvidenceRows(
+      actions.map((action) => {
+        const alternative = action.alternativeExerciseName
+          ? ` -> ${action.alternativeExerciseName}`
+          : "";
+        return `${action.slotId}:${action.exerciseName}:${action.muscle}:${action.decision}${alternative}`;
+      }),
+      6
+    ),
     "",
     "Likely next policy:",
     ...formatUniqueEvidenceRows(likelyPolicyRows, 6),
@@ -784,7 +797,8 @@ export function buildPlanningRealitySummary(input: {
   }
 
   const setDistributionSummary = buildSetDistributionSummaryLines(
-    planningReality.setDistributionIntents
+    planningReality.setDistributionIntents,
+    planningReality.distributionGuardActions
   );
   if (setDistributionSummary) {
     lines.push("", ...setDistributionSummary);

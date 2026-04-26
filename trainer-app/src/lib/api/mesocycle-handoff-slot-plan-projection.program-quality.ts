@@ -32,6 +32,12 @@ import {
   updateProjectedSlotWorkout,
 } from "./mesocycle-handoff-slot-plan-projection.repair-engine";
 import {
+  MAX_SINGLE_EXERCISE_MUSCLE_SHARE,
+  MAX_SINGLE_PATTERN_MUSCLE_SHARE,
+  SINGLE_EXERCISE_SHARE_ACTIVATION_SETS,
+  STIMULUS_DIVERSITY_ACTIVATION_SETS,
+} from "./mesocycle-handoff-slot-plan-projection.distribution-policy";
+import {
   evaluateDuplicateExerciseReuse,
   HARD_WEEKLY_OBLIGATION_MUSCLES,
   type DuplicateExerciseReuseDiagnostic,
@@ -54,10 +60,10 @@ export const PROGRAM_QUALITY_PENALTY_MODEL = {
 
 export const SOFT_MAIN_LIFT_SET_CAP = 4;
 export const SOFT_ACCESSORY_SET_CAP = 3;
-const STIMULUS_DIVERSITY_ACTIVATION_SETS = 8;
-const SINGLE_EXERCISE_SHARE_ACTIVATION_SETS = 10;
-export const MAX_SINGLE_EXERCISE_MUSCLE_SHARE = 0.5;
-export const MAX_SINGLE_PATTERN_MUSCLE_SHARE = 0.7;
+export {
+  MAX_SINGLE_EXERCISE_MUSCLE_SHARE,
+  MAX_SINGLE_PATTERN_MUSCLE_SHARE,
+};
 export const LOWER_HINGE_SHARE_MAX = 0.6;
 export const UPPER_PUSH_PULL_SHARE_MAX = 0.65;
 export const MAX_SAME_PATTERN_PER_SESSION = 2;

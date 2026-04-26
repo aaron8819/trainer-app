@@ -26,11 +26,13 @@ import {
 } from "./mesocycle-handoff-slot-plan-projection";
 import {
   applyExistingAccessorySupportFloorBumps,
+  applyFinalWeeklyObligationClosure,
   applyFinalMinimumViableSetRedistribution,
   applyPostForbiddenCleanupReroute,
   MIN_PROJECTED_ACCESSORY_SETS_PER_EXERCISE,
   MIN_PROJECTED_MAIN_LIFT_SETS_PER_EXERCISE,
   removeForbiddenSlotPrimaryRepairExercises,
+  type DistributionGuardAction,
 } from "./mesocycle-handoff-slot-plan-projection.repair-engine";
 import {
   applyProgramQualityConstraints,
@@ -4167,6 +4169,240 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
         reason: "affected_hard_demand_not_cleanly_rerouted",
       }),
     ]);
+  });
+
+  it("blocks a hard-obligation set bump when it would worsen an already concentrated exercise", () => {
+    const slotSequenceEntries = buildSlotSequenceEntries([
+      {
+        slotId: "upper_a",
+        intent: "UPPER",
+        authoredSemantics: {
+          slotArchetype: "upper_horizontal_balanced",
+          primaryLaneContract: null,
+          continuityScope: "slot",
+          supportCoverageContract: {
+            preferredAccessoryPrimaryMuscles: ["Chest"],
+            protectedWeekOneCoverageMuscles: ["Chest"],
+          },
+        },
+      },
+    ]);
+    const concentratedFly = makeProjectedExercise({
+      id: "concentrated-fly",
+      name: "Concentrated Fly",
+      movementPatterns: ["isolation"],
+      primaryMuscles: ["Chest"],
+      sets: 3,
+      isCompound: false,
+      stimulusProfile: { chest: 1 },
+    });
+    const fillers = Array.from({ length: 5 }, (_, index) =>
+      makeProjectedExercise({
+        id: `filler-${index}`,
+        name: `Filler ${index}`,
+        movementPatterns: ["horizontal_pull"],
+        primaryMuscles: ["Lats"],
+        sets: 2,
+        stimulusProfile: { lats: 1 },
+      }),
+    );
+    const distributionGuardActions: DistributionGuardAction[] = [];
+
+    const projected = applyFinalWeeklyObligationClosure({
+      projectedSlots: [
+        makeProjectedSlotWithContributions({
+          slotId: "upper_a",
+          intent: "UPPER",
+          workout: makeProjectedWorkout({
+            accessories: [concentratedFly, ...fillers],
+          }),
+        }),
+      ],
+      weeklyObligationPlan: weeklyObligationPlan({
+        Chest: {
+          targetSets: 4,
+          allocatedSlots: [
+            { slotId: "upper_a", minEffectiveSets: 4, priority: "primary" },
+          ],
+        },
+      }),
+      exerciseLibrary: [] as never,
+      slotSequenceEntries,
+      distributionGuardActions,
+    });
+
+    expect(getExerciseSetCounts(projected[0]!.workout)).toMatchObject({
+      "concentrated-fly": 3,
+    });
+    expect(distributionGuardActions).toEqual([
+      expect.objectContaining({
+        slotId: "upper_a",
+        exerciseName: "Concentrated Fly",
+        muscle: "Chest",
+        attemptedAction: "set_bump",
+        decision: "left_unresolved",
+        reason: "single_exercise_share_limit",
+      }),
+    ]);
+  });
+
+  it("reroutes a blocked set bump to a clean existing compatible alternative", () => {
+    const slotSequenceEntries = buildSlotSequenceEntries([
+      {
+        slotId: "upper_a",
+        intent: "UPPER",
+        authoredSemantics: {
+          slotArchetype: "upper_horizontal_balanced",
+          primaryLaneContract: null,
+          continuityScope: "slot",
+          supportCoverageContract: {
+            preferredAccessoryPrimaryMuscles: ["Chest"],
+            protectedWeekOneCoverageMuscles: ["Chest"],
+          },
+        },
+      },
+    ]);
+    const concentratedFly = makeProjectedExercise({
+      id: "concentrated-fly",
+      name: "A Concentrated Fly",
+      movementPatterns: ["isolation"],
+      primaryMuscles: ["Chest"],
+      sets: 3,
+      isCompound: false,
+      stimulusProfile: { chest: 1 },
+    });
+    const cleanPress = makeProjectedExercise({
+      id: "clean-press",
+      name: "B Clean Press",
+      movementPatterns: ["horizontal_push"],
+      primaryMuscles: ["Chest"],
+      sets: 2,
+      isCompound: false,
+      stimulusProfile: { chest: 1 },
+    });
+    const fillers = Array.from({ length: 4 }, (_, index) =>
+      makeProjectedExercise({
+        id: `reroute-filler-${index}`,
+        name: `Reroute Filler ${index}`,
+        movementPatterns: ["horizontal_pull"],
+        primaryMuscles: ["Lats"],
+        sets: 2,
+        stimulusProfile: { lats: 1 },
+      }),
+    );
+    const distributionGuardActions: DistributionGuardAction[] = [];
+
+    const projected = applyFinalWeeklyObligationClosure({
+      projectedSlots: [
+        makeProjectedSlotWithContributions({
+          slotId: "upper_a",
+          intent: "UPPER",
+          workout: makeProjectedWorkout({
+            accessories: [concentratedFly, cleanPress, ...fillers],
+          }),
+        }),
+      ],
+      weeklyObligationPlan: weeklyObligationPlan({
+        Chest: {
+          targetSets: 6,
+          allocatedSlots: [
+            { slotId: "upper_a", minEffectiveSets: 6, priority: "primary" },
+          ],
+        },
+      }),
+      exerciseLibrary: [] as never,
+      slotSequenceEntries,
+      distributionGuardActions,
+    });
+
+    expect(getExerciseSetCounts(projected[0]!.workout)).toMatchObject({
+      "concentrated-fly": 3,
+      "clean-press": 3,
+    });
+    expect(distributionGuardActions).toEqual([
+      expect.objectContaining({
+        exerciseName: "A Concentrated Fly",
+        muscle: "Chest",
+        decision: "rerouted",
+        alternativeExerciseName: "B Clean Press",
+      }),
+    ]);
+  });
+
+  it("does not block normal set bumps below the concentration limit", () => {
+    const slotSequenceEntries = buildSlotSequenceEntries([
+      {
+        slotId: "upper_a",
+        intent: "UPPER",
+        authoredSemantics: {
+          slotArchetype: "upper_horizontal_balanced",
+          primaryLaneContract: null,
+          continuityScope: "slot",
+          supportCoverageContract: {
+            preferredAccessoryPrimaryMuscles: ["Chest"],
+            protectedWeekOneCoverageMuscles: ["Chest"],
+          },
+        },
+      },
+    ]);
+    const firstPress = makeProjectedExercise({
+      id: "first-press",
+      name: "A First Press",
+      movementPatterns: ["horizontal_push"],
+      primaryMuscles: ["Chest"],
+      sets: 3,
+      isCompound: false,
+      stimulusProfile: { chest: 1 },
+    });
+    const secondPress = makeProjectedExercise({
+      id: "second-press",
+      name: "B Second Press",
+      movementPatterns: ["horizontal_push"],
+      primaryMuscles: ["Chest"],
+      sets: 3,
+      isCompound: false,
+      stimulusProfile: { chest: 1 },
+    });
+    const fillers = Array.from({ length: 4 }, (_, index) =>
+      makeProjectedExercise({
+        id: `normal-filler-${index}`,
+        name: `Normal Filler ${index}`,
+        movementPatterns: ["horizontal_pull"],
+        primaryMuscles: ["Lats"],
+        sets: 2,
+        stimulusProfile: { lats: 1 },
+      }),
+    );
+    const distributionGuardActions: DistributionGuardAction[] = [];
+
+    const projected = applyFinalWeeklyObligationClosure({
+      projectedSlots: [
+        makeProjectedSlotWithContributions({
+          slotId: "upper_a",
+          intent: "UPPER",
+          workout: makeProjectedWorkout({
+            accessories: [firstPress, secondPress, ...fillers],
+          }),
+        }),
+      ],
+      weeklyObligationPlan: weeklyObligationPlan({
+        Chest: {
+          targetSets: 7,
+          allocatedSlots: [
+            { slotId: "upper_a", minEffectiveSets: 7, priority: "primary" },
+          ],
+        },
+      }),
+      exerciseLibrary: [] as never,
+      slotSequenceEntries,
+      distributionGuardActions,
+    });
+
+    expect(getExerciseSetCounts(projected[0]!.workout)).toMatchObject({
+      "first-press": 4,
+      "second-press": 3,
+    });
+    expect(distributionGuardActions).toEqual([]);
   });
 
   it("allows lower_b squat fallback when no hinge compound anchor is viable", () => {

@@ -66,6 +66,19 @@ Interpretation frame:
 - Read `projectionNotes` before trusting the totals.
 - Mid-week deficits are not structural failures if remaining projected slots close the gap.
 
+For `mesocycle-explain`, read the compact CLI summary first when present:
+
+- Run `npm run audit:workout -- --env-file .env.local --mode mesocycle-explain --owner aaron8819@gmail.com --operator-debug`.
+- Read `Planning Reality Summary` before opening the full JSON.
+- Then inspect `mesocycleExplain.preview.projectionDiagnostics.planningReality.summary.planningShape`, `materialRepairCount`, `majorRepairCount`, `warnings`, `repairMateriality`, `exerciseConcentration`, and `slotDemandAllocation`.
+
+Interpretation frame:
+
+- `mostly_repair_shaped`: recommend upstream WeeklyMuscleDemand -> SlotDemandAllocation ownership before selection, not more downstream repair.
+- `mixed_upstream_plus_repair_shaped`: identify the repaired muscles and slots that should be promoted upstream.
+- `mostly_upstream_planned`: focus on validators, concentration, and set distribution quality.
+- Missing `planningReality`: call out insufficient instrumentation instead of inferring the architecture signal.
+
 ## Classify the issue
 
 - `tooling/readout`: wrong mode, misleading labels, missing caveat, serializer/report mismatch, or targeting confusion

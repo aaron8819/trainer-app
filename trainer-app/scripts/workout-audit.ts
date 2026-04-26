@@ -199,6 +199,236 @@ function formatBooleanFlag(value: boolean): string {
   return value ? "yes" : "no";
 }
 
+type PlanningRealityDiagnostic = NonNullable<
+  NonNullable<WorkoutAuditArtifact["mesocycleExplain"]>["preview"]["projectionDiagnostics"]["planningReality"]
+>;
+
+type PartialPlanningRealityDiagnostic = Partial<PlanningRealityDiagnostic> & {
+  summary?: Partial<PlanningRealityDiagnostic["summary"]>;
+};
+
+type PlanningRealitySummaryArtifact = {
+  mesocycleExplain?: {
+    preview?: {
+      projectionDiagnostics?: {
+        planningReality?: PartialPlanningRealityDiagnostic | null;
+      } | null;
+    } | null;
+  } | null;
+};
+
+function asArray<T>(value: readonly T[] | null | undefined): T[] {
+  return Array.isArray(value) ? [...value] : [];
+}
+
+function formatNameList(values: readonly string[] | null | undefined, limit = 12): string {
+  const normalized = Array.from(
+    new Set(
+      asArray(values)
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0)
+    )
+  ).sort((left, right) => left.localeCompare(right));
+
+  if (normalized.length === 0) {
+    return "none";
+  }
+
+  const visible = normalized.slice(0, limit).join(", ");
+  const remaining = normalized.length - limit;
+  return remaining > 0 ? `${visible}, +${remaining} more` : visible;
+}
+
+function formatPlanningRealityNumber(value: number | null | undefined): string {
+  return typeof value === "number" && Number.isFinite(value) ? String(value) : "unknown";
+}
+
+function formatPlanningRealityArchitectureImplication(
+  planningShape: string | null | undefined
+): string {
+  switch (planningShape) {
+    case "mostly_repair_shaped":
+      return "The plan is mostly repair-shaped. Next move should be upstream WeeklyMuscleDemand -> SlotDemandAllocation ownership before selection.";
+    case "mixed_upstream_plus_repair_shaped":
+      return "The plan is mixed upstream plus repair-shaped. Next move should promote repaired muscles and local-only slots into upstream demand allocation.";
+    case "mostly_upstream_planned":
+      return "The plan is mostly upstream-planned. Next move should focus on validators, set distribution quality, and concentration guardrails.";
+    case "unclear_due_to_missing_instrumentation":
+      return "Planning shape is unclear. Next move should improve planningReality instrumentation before making architecture conclusions.";
+    default:
+      return "Planning shape is unavailable. Next move should inspect the full artifact before making architecture conclusions.";
+  }
+}
+
+function formatSlotAllocationStatus(input: {
+  slot: PlanningRealityDiagnostic["slotDemandAllocation"][number];
+  finalDelta?: PlanningRealityDiagnostic["allocationVsFinalDelta"][number];
+}): string {
+  const explicitObligations = asArray(input.slot.expectedMuscleObligations).filter(
+    (entry) => entry.explicitUpstream
+  );
+  if (explicitObligations.length === 0) {
+    return "no explicit weekly demand allocation";
+  }
+
+  const underAllocated = asArray(input.finalDelta?.underAllocatedMuscles).filter((entry) =>
+    explicitObligations.some((obligation) => obligation.muscle === entry.muscle)
+  );
+  if (underAllocated.length === 0 && input.slot.satisfiesKnownWeeklyDemand) {
+    return "explicit demand satisfied";
+  }
+
+  const servedMuscles = new Set(asArray(input.slot.meaningfullyServedMuscles));
+  const servedExplicitCount = explicitObligations.filter((entry) =>
+    servedMuscles.has(entry.muscle)
+  ).length;
+  if (servedExplicitCount > 0 && servedExplicitCount < explicitObligations.length) {
+    return "explicit demand partially satisfied";
+  }
+
+  return "explicit demand not fully satisfied locally";
+}
+
+export function buildPlanningRealitySummary(input: {
+  artifact: PlanningRealitySummaryArtifact;
+  outputPath?: string;
+}): string[] | null {
+  const planningReality =
+    input.artifact.mesocycleExplain?.preview?.projectionDiagnostics?.planningReality ?? undefined;
+  if (!planningReality) {
+    return null;
+  }
+
+  const weeklyDemand = asArray(planningReality.weeklyMuscleDemand);
+  const repairMateriality = asArray(planningReality.repairMateriality);
+  const warnings = asArray(planningReality.warnings);
+  const exerciseConcentration = asArray(planningReality.exerciseConcentration);
+  const slotDemandAllocation = asArray(planningReality.slotDemandAllocation);
+  const finalDeltas = asArray(planningReality.allocationVsFinalDelta);
+
+  const explicitMuscles = weeklyDemand
+    .filter((row) => row.explicitUpstream)
+    .map((row) => row.muscle);
+  const inferredMuscles = weeklyDemand
+    .filter((row) => row.inferredDownstream)
+    .map((row) => row.muscle);
+  const addedExerciseIdentityByKey = new Map<
+    string,
+    PlanningRealityDiagnostic["repairMateriality"][number]
+  >();
+  for (const row of repairMateriality) {
+    if (!row.changedExerciseIdentity || row.action !== "added") {
+      continue;
+    }
+    const key = `${row.slotId ?? "unknown_slot"}:${row.exerciseId ?? row.exerciseName ?? "unknown"}`;
+    if (!addedExerciseIdentityByKey.has(key)) {
+      addedExerciseIdentityByKey.set(key, row);
+    }
+  }
+  const addedExerciseIdentities = Array.from(addedExerciseIdentityByKey.values()).sort(
+    (left, right) =>
+      (left.slotId ?? "").localeCompare(right.slotId ?? "") ||
+      (left.exerciseName ?? "").localeCompare(right.exerciseName ?? "") ||
+      (left.muscle ?? "").localeCompare(right.muscle ?? "")
+  );
+  const materialWarnings = warnings
+    .filter((warning) => asArray(warning.evidence).length > 0)
+    .sort((left, right) => left.code.localeCompare(right.code));
+  const concentratedExercises = exerciseConcentration
+    .filter((row) =>
+      asArray(row.flags).some(
+        (flag) =>
+          flag === "COMPOUND_GT_5_SETS" ||
+          flag === "ISOLATION_GT_5_SETS" ||
+          flag.includes("EXERCISE_SUPPLIES_OVER")
+      )
+    )
+    .sort(
+      (left, right) =>
+        left.slotId.localeCompare(right.slotId) ||
+        left.exerciseName.localeCompare(right.exerciseName)
+    );
+  const finalDeltaBySlot = new Map(finalDeltas.map((delta) => [delta.slotId, delta]));
+
+  const lines = ["Planning Reality Summary", "------------------------"];
+  if (input.outputPath) {
+    lines.push(`Artifact: ${input.outputPath}`);
+  }
+
+  const planningShape = planningReality.summary?.planningShape;
+  lines.push(`Planning shape: ${planningShape ?? "unknown"}`, "");
+  lines.push("Demand:");
+  lines.push(`- Explicit upstream muscles: ${formatNameList(explicitMuscles)}`);
+  lines.push(`- Inferred downstream muscles: ${formatNameList(inferredMuscles)}`, "");
+  lines.push("Repair:");
+  lines.push(
+    `- Material repairs: ${formatPlanningRealityNumber(planningReality.summary?.materialRepairCount)}`
+  );
+  lines.push(
+    `- Major repairs: ${formatPlanningRealityNumber(planningReality.summary?.majorRepairCount)}`
+  );
+  lines.push("- Added exercise identities:");
+  if (addedExerciseIdentities.length === 0) {
+    lines.push("  - none");
+  } else {
+    for (const row of addedExerciseIdentities.slice(0, 8)) {
+      lines.push(
+        `  - ${row.slotId ?? "unknown_slot"}: ${row.exerciseName ?? row.exerciseId ?? "unknown exercise"}`
+      );
+    }
+    const remaining = addedExerciseIdentities.length - 8;
+    if (remaining > 0) {
+      lines.push(`  - +${remaining} more`);
+    }
+  }
+
+  lines.push("", "Warnings:");
+  if (materialWarnings.length === 0) {
+    lines.push("- none");
+  } else {
+    for (const warning of materialWarnings) {
+      lines.push(`- ${warning.code}: ${formatNameList(warning.evidence, 6)}`);
+    }
+  }
+
+  lines.push("", "Exercise concentration:");
+  if (concentratedExercises.length === 0) {
+    lines.push("- none");
+  } else {
+    for (const row of concentratedExercises.slice(0, 6)) {
+      const flags = asArray(row.flags).join(",") || "flagged";
+      lines.push(
+        `- ${row.slotId} ${row.exerciseName}: ${row.setCount} sets (${flags})`
+      );
+    }
+    const remaining = concentratedExercises.length - 6;
+    if (remaining > 0) {
+      lines.push(`- +${remaining} more`);
+    }
+  }
+
+  lines.push("", "Slot allocation:");
+  if (slotDemandAllocation.length === 0) {
+    lines.push("- none");
+  } else {
+    for (const slot of slotDemandAllocation.sort(
+      (left, right) => left.slotId.localeCompare(right.slotId)
+    )) {
+      lines.push(
+        `- ${slot.slotId}: ${formatSlotAllocationStatus({
+          slot,
+          finalDelta: finalDeltaBySlot.get(slot.slotId),
+        })}`
+      );
+    }
+  }
+
+  lines.push("", "Architecture implication:");
+  lines.push(formatPlanningRealityArchitectureImplication(planningShape));
+
+  return lines;
+}
+
 export function buildActiveMesocycleSlotReseedSummary(input: {
   artifact: Pick<WorkoutAuditArtifact, "activeMesocycleSlotReseed">;
   outputPath: string;
@@ -599,6 +829,15 @@ async function main(): Promise<void> {
   });
   if (weeklyRetroSummary) {
     for (const line of weeklyRetroSummary) {
+      console.log(line);
+    }
+  }
+  const planningRealitySummary = buildPlanningRealitySummary({
+    artifact,
+    outputPath,
+  });
+  if (planningRealitySummary) {
+    for (const line of planningRealitySummary) {
       console.log(line);
     }
   }

@@ -325,6 +325,15 @@ Command pattern:
 npm run audit:workout -- --env-file .env.local --mode mesocycle-explain --owner aaron8819@gmail.com
 ```
 
+Compact planning-reality readout:
+
+```powershell
+npm run audit:workout -- --env-file .env.local --mode mesocycle-explain --owner aaron8819@gmail.com --operator-debug
+```
+
+- Prints `Planning Reality Summary` from `mesocycleExplain.preview.projectionDiagnostics.planningReality`.
+- Use this first for architecture audits before opening the full JSON.
+
 Optional targeting:
 
 ```powershell
@@ -332,6 +341,7 @@ npm run audit:workout -- --env-file .env.local --mode mesocycle-explain --owner 
 ```
 
 Inspect first:
+- CLI `Planning Reality Summary` when present
 - `mesocycleExplain.preview.designBasis`
 - `mesocycleExplain.preview.slotPlans`
 - `mesocycleExplain.preview.projectionDiagnostics`
@@ -346,7 +356,8 @@ Inspect first:
 Important interpretation rule:
 - preview-side slot obligation and carry-forward continuity can be reconstructed truthfully from canonical handoff seams
 - `preview.projectionDiagnostics` is a read-only projection diagnostics block, not an error list; use it to inspect set stacking pressure, duplicate exercise pressure, diversity penalties, hinge/squat balance, isolation injection triggers, and soft-cap overrides by P0 weekly obligations / slot identity
-- `preview.projectionDiagnostics.planningReality` is also read-only; use it to inspect weekly muscle demand ownership, slot demand allocation, pre-final vs final projected delivery, repair materiality, per-exercise concentration, and warnings such as `SLOT_ALLOCATION_NOT_EXPLICIT`, `SUPPORT_FLOOR_CLOSED_LATE`, `FINAL_CAP_TRIM_REQUIRED`, and `EXERCISE_CONCENTRATION_HIGH`
+- `preview.projectionDiagnostics.planningReality` is also read-only; use it to inspect weekly muscle demand ownership, shadow upstream demand/allocation, pre-final vs final projected delivery, repair materiality, per-exercise concentration, and warnings such as `SLOT_ALLOCATION_NOT_EXPLICIT`, `SUPPORT_FLOOR_CLOSED_LATE`, `FINAL_CAP_TRIM_REQUIRED`, and `EXERCISE_CONCENTRATION_HIGH`. The shadow fields compare `shadowWeeklyDemand` and `shadowSlotDemandAllocation` against `initialSlotComposition` and `finalSlotPlan`, then mark repair rows in `repairMaterialityAfterShadowAllocation` that likely represent demand which should move upstream before exercise selection.
+- When `planningReality` exists, classify the architecture signal from its own fields: `summary.planningShape`, `summary.materialRepairCount`, `summary.majorRepairCount`, `warnings`, `repairMateriality`, `exerciseConcentration`, and `slotDemandAllocation`. Mostly repair-shaped output points toward upstream WeeklyMuscleDemand -> SlotDemandAllocation ownership before selection; mixed output points toward promoting the specific repaired muscles/slots upstream; mostly upstream-planned output points toward validators, concentration, and set-distribution quality.
 - accepted historical per-exercise ranking rationale is not recoverable unless it was explicitly persisted
 - the artifact must therefore keep `persisted`, `reconstructed`, and `unavailable` explanation sources distinct
 - runtime-added exercises are labeled as runtime edits when evidence exists; they should not be read as accepted-seed quality failures unless seed-vs-reality also supports that conclusion
@@ -359,6 +370,9 @@ Common red flags:
 
 Escalate when:
 - preview slot plans disagree with the canonical handoff/slot-plan projection seams
+- `planningReality.summary.planningShape` is mostly repair-shaped with material or major repairs and the next proposed fix would add more downstream repair instead of upstream demand/allocation ownership
+- `planningReality.exerciseConcentration` shows an exercise over 5 sets or supplying more than half of a muscle's weekly projected stimulus, especially when produced or increased by repair
+- `planningReality.slotDemandAllocation` shows explicit weekly demand not being satisfied locally in the slot that owns it
 - accepted seed normalization fails for a mesocycle that should have `slotPlanSeedJson`
 - runtime drift appears without corresponding generated-vs-saved or slot-identity evidence
 - someone is relying on unavailable historical ranking rationale as if it were persisted truth

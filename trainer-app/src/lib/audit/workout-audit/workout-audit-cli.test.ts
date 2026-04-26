@@ -3,6 +3,7 @@ import {
   buildActiveMesocycleSlotReseedApplySummary,
   buildActiveMesocycleSlotReseedSummary,
   buildCurrentWeekAuditOperatorSummary,
+  buildPlanningRealitySummary,
   buildProjectedWeekDebugSummary,
   buildProjectedWeekOperatorSummary,
   buildWeeklyRetroOperatorSummary,
@@ -322,6 +323,268 @@ describe("buildProjectedWeekDebugSummary", () => {
       "[workout-audit:week:debug] semantic_warning=none",
       "[workout-audit:week:debug] background_warning=none",
     ]);
+  });
+});
+
+describe("buildPlanningRealitySummary", () => {
+  it("prints a compact deterministic planningReality readout from mesocycle-explain", () => {
+    const summary = buildPlanningRealitySummary({
+      artifact: {
+        mesocycleExplain: {
+          preview: {
+            projectionDiagnostics: {
+              planningReality: {
+                label: "weekly demand / slot allocation diagnostics",
+                readOnly: true,
+                affectsScoringOrGeneration: false,
+                summary: {
+                  planningShape: "mostly_repair_shaped",
+                  explicitWeeklyDemandMuscles: 4,
+                  inferredDemandMuscles: 3,
+                  slotsWithExplicitWeeklyDemand: 2,
+                  slotsWithOnlyLocalOrInferredSemantics: 1,
+                  materialRepairCount: 29,
+                  majorRepairCount: 20,
+                  highExerciseConcentrationCount: 1,
+                  warningCodes: [
+                    "REPAIR_ADDED_EXERCISE_IDENTITY",
+                    "EXERCISE_CONCENTRATION_HIGH",
+                  ],
+                },
+                weeklyMuscleDemand: [
+                  {
+                    muscle: "Chest",
+                    targetTier: "A_PRIMARY",
+                    targetKind: "hard",
+                    targetStatus: "hard",
+                    targetRange: null,
+                    preferredTarget: 10,
+                    mev: 8,
+                    mav: 16,
+                    explicitUpstream: true,
+                    inferredDownstream: false,
+                    source: [],
+                  },
+                  {
+                    muscle: "Lats",
+                    targetTier: "A_PRIMARY",
+                    targetKind: "hard",
+                    targetStatus: "hard",
+                    targetRange: null,
+                    preferredTarget: 10,
+                    mev: 8,
+                    mav: 16,
+                    explicitUpstream: true,
+                    inferredDownstream: false,
+                    source: [],
+                  },
+                  {
+                    muscle: "Side Delts",
+                    targetTier: "B_SUPPORT",
+                    targetKind: "soft",
+                    targetStatus: "soft",
+                    targetRange: null,
+                    preferredTarget: 8,
+                    mev: 6,
+                    mav: 16,
+                    explicitUpstream: false,
+                    inferredDownstream: true,
+                    source: [],
+                  },
+                ],
+                slotDemandAllocation: [
+                  {
+                    slotId: "upper_a",
+                    slotLabel: "upper_a",
+                    slotProfile: {
+                      slotArchetype: "upper_horizontal_balanced",
+                      continuityScope: "slot",
+                      requiredMovementPatterns: [],
+                      preferredPrimaryMuscles: [],
+                      preferredSupportMuscles: [],
+                      protectedCoverageMuscles: [],
+                    },
+                    slotIndex: 0,
+                    intent: "UPPER",
+                    authoredSlotRole: null,
+                    expectedMuscleObligations: [
+                      {
+                        muscle: "Chest",
+                        source: "weekly_obligation",
+                        targetStatus: "hard",
+                        explicitUpstream: true,
+                        minEffectiveSets: 4,
+                        priority: "primary",
+                      },
+                    ],
+                    projectedEffectiveStimulusByMuscle: { Chest: 4 },
+                    meaningfullyServedMuscles: ["Chest"],
+                    allocationBasis: "explicit_weekly_demand",
+                    satisfiesKnownWeeklyDemand: true,
+                  },
+                  {
+                    slotId: "upper_b",
+                    slotLabel: "upper_b",
+                    slotProfile: {
+                      slotArchetype: "upper_vertical_balanced",
+                      continuityScope: "slot",
+                      requiredMovementPatterns: [],
+                      preferredPrimaryMuscles: [],
+                      preferredSupportMuscles: [],
+                      protectedCoverageMuscles: [],
+                    },
+                    slotIndex: 2,
+                    intent: "UPPER",
+                    authoredSlotRole: null,
+                    expectedMuscleObligations: [
+                      {
+                        muscle: "Lats",
+                        source: "weekly_obligation",
+                        targetStatus: "hard",
+                        explicitUpstream: true,
+                        minEffectiveSets: 4,
+                        priority: "primary",
+                      },
+                    ],
+                    projectedEffectiveStimulusByMuscle: { Lats: 2 },
+                    meaningfullyServedMuscles: [],
+                    allocationBasis: "explicit_weekly_demand",
+                    satisfiesKnownWeeklyDemand: false,
+                  },
+                ],
+                shadowWeeklyDemand: [],
+                shadowSlotDemandAllocation: [],
+                initialSlotComposition: [],
+                finalSlotPlan: [],
+                allocationVsInitialDelta: [],
+                allocationVsFinalDelta: [
+                  {
+                    slotId: "upper_b",
+                    slotIndex: 2,
+                    comparison: "allocation_vs_final",
+                    responsibilityLoad: "clear",
+                    underAllocatedMuscles: [
+                      {
+                        muscle: "Lats",
+                        role: "primary",
+                        targetStatus: "hard",
+                        expectedEffectiveSets: 4,
+                        actualEffectiveSets: 2,
+                        shortfall: 2,
+                      },
+                    ],
+                    unallocatedStimulusMuscles: [],
+                    notes: [],
+                  },
+                ],
+                projectedDelivery: [],
+                repairMaterialityAfterShadowAllocation: [],
+                repairMateriality: [
+                  {
+                    repairMechanism: "support_floor:added",
+                    materiality: "major",
+                    muscle: "Side Delts",
+                    slotId: "upper_b",
+                    exerciseId: "lat-raise",
+                    exerciseName: "Cable Lateral Raise",
+                    action: "added",
+                    effectiveStimulusAdded: 3,
+                    effectiveStimulusDelta: 3,
+                    rawSetsAdded: 3,
+                    rawSetDelta: 3,
+                    changedExerciseIdentity: true,
+                    changedSlotShapeMaterially: true,
+                    behaviorClass: "program_shaping",
+                    source: "protected_coverage_support_floor",
+                    rationale: "support-floor repair",
+                  },
+                ],
+                exerciseConcentration: [
+                  {
+                    slotId: "lower_a",
+                    intent: "LOWER",
+                    exerciseId: "squat",
+                    exerciseName: "Barbell Back Squat",
+                    setCount: 6,
+                    role: "main",
+                    isCompound: true,
+                    primaryMuscles: ["Quads"],
+                    effectiveStimulusContributionByMuscle: { Quads: 6 },
+                    percentageOfWeeklyProjectedStimulusByMuscle: { Quads: 60 },
+                    producedOrIncreasedByRepair: false,
+                    flags: [
+                      "COMPOUND_GT_5_SETS",
+                      "EXERCISE_SUPPLIES_OVER_60_PERCENT_WEEKLY_STIMULUS",
+                    ],
+                  },
+                ],
+                warnings: [
+                  {
+                    code: "EXERCISE_CONCENTRATION_HIGH",
+                    severity: "warning",
+                    message: "One exercise supplies a high share.",
+                    evidence: ["lower_a:Barbell Back Squat"],
+                  },
+                  {
+                    code: "REPAIR_ADDED_EXERCISE_IDENTITY",
+                    severity: "warning",
+                    message: "Repair added exercise identity.",
+                    evidence: ["upper_b:Cable Lateral Raise"],
+                  },
+                ],
+                limitations: [],
+              },
+            },
+          },
+        },
+      },
+      outputPath: "C:\\artifacts\\audits\\mesocycle-explain.json",
+    });
+
+    expect(summary).toEqual([
+      "Planning Reality Summary",
+      "------------------------",
+      "Artifact: C:\\artifacts\\audits\\mesocycle-explain.json",
+      "Planning shape: mostly_repair_shaped",
+      "",
+      "Demand:",
+      "- Explicit upstream muscles: Chest, Lats",
+      "- Inferred downstream muscles: Side Delts",
+      "",
+      "Repair:",
+      "- Material repairs: 29",
+      "- Major repairs: 20",
+      "- Added exercise identities:",
+      "  - upper_b: Cable Lateral Raise",
+      "",
+      "Warnings:",
+      "- EXERCISE_CONCENTRATION_HIGH: lower_a:Barbell Back Squat",
+      "- REPAIR_ADDED_EXERCISE_IDENTITY: upper_b:Cable Lateral Raise",
+      "",
+      "Exercise concentration:",
+      "- lower_a Barbell Back Squat: 6 sets (COMPOUND_GT_5_SETS,EXERCISE_SUPPLIES_OVER_60_PERCENT_WEEKLY_STIMULUS)",
+      "",
+      "Slot allocation:",
+      "- upper_a: explicit demand satisfied",
+      "- upper_b: explicit demand not fully satisfied locally",
+      "",
+      "Architecture implication:",
+      "The plan is mostly repair-shaped. Next move should be upstream WeeklyMuscleDemand -> SlotDemandAllocation ownership before selection.",
+    ]);
+  });
+
+  it("returns null when mesocycle-explain does not include planningReality", () => {
+    expect(
+      buildPlanningRealitySummary({
+        artifact: {
+          mesocycleExplain: {
+            preview: {
+              projectionDiagnostics: {},
+            },
+          },
+        },
+      })
+    ).toBeNull();
   });
 });
 

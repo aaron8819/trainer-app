@@ -90,6 +90,38 @@ Include lessons about:
 - architecture and canonical-seam lessons
 - future skill or `AGENTS.md` improvements
 
+## Architecture Signal For Planning Audits
+
+When the session touches generation, projection, slot allocation, repair, mesocycle explainability, or workout-audit output and the artifact includes `planningReality`, include a concise `Architecture Signal` subsection. Base it only on:
+
+- `planningReality.summary.planningShape`
+- `planningReality.summary.materialRepairCount`
+- `planningReality.summary.majorRepairCount`
+- `planningReality.warnings`
+- `planningReality.repairMateriality`
+- `planningReality.exerciseConcentration`
+- `planningReality.slotDemandAllocation`
+
+Report whether the evidence suggests upstream architecture improvement, downstream patch risk, or safe tooling/readout improvement. Do not stop at "tests passed" when `planningReality` is available.
+
+Use this compact form:
+
+```markdown
+## Architecture Signal
+- planningShape:
+- materialRepairCount:
+- majorRepairCount:
+- key warning codes:
+- highest-leverage next move:
+```
+
+Interpretation:
+
+- Mostly repair-shaped -> recommend upstream WeeklyMuscleDemand -> SlotDemandAllocation ownership before selection.
+- Mixed upstream plus repair-shaped -> name the muscles/slots that need upstream promotion.
+- Mostly upstream-planned -> focus on validators, set distribution quality, and concentration guardrails.
+- Missing or incomplete planningReality -> say instrumentation is insufficient and avoid architecture claims.
+
 ## High-Leverage Actions
 
 Replace passive follow-ups with ranked, destination-bound actions. Each action must include:

@@ -34,11 +34,25 @@ import type {
   ProgramQualityEvaluation,
 } from "./mesocycle-handoff-slot-plan-projection.program-quality";
 import {
+  MAX_SAME_PATTERN_PER_SESSION,
+  MAX_SINGLE_EXERCISE_MUSCLE_SHARE,
+  MAX_SINGLE_PATTERN_MUSCLE_SHARE,
+  SOFT_ACCESSORY_SET_CAP,
+  SOFT_MAIN_LIFT_SET_CAP,
+} from "./mesocycle-handoff-slot-plan-projection.program-quality";
+import {
+  MAX_PROJECTED_ACCESSORY_SETS_PER_EXERCISE,
+  MAX_PROJECTED_MAIN_LIFT_SETS_PER_EXERCISE,
+  MIN_PROJECTED_ACCESSORY_SETS_PER_EXERCISE,
+  MIN_PROJECTED_MAIN_LIFT_SETS_PER_EXERCISE,
+} from "./mesocycle-handoff-slot-plan-projection.repair-engine";
+import {
   getSlotWeeklyObligations,
   HARD_WEEKLY_OBLIGATION_MUSCLES,
   type SlotObligationEvaluation,
   type WeeklyMuscleObligationPlan,
 } from "./mesocycle-handoff-slot-plan-projection.weekly-obligations";
+import { SESSION_CAPS } from "./template-session/selection-adapter";
 import { getWeekOneSupportFloor } from "./template-session/role-budgeting";
 import type { MappedGenerationContext } from "./template-session/types";
 
@@ -300,6 +314,69 @@ export type ExerciseConcentrationDiagnostic = {
   >;
 };
 
+export type SlotPrescriptionIntent = {
+  version: 1;
+  slotId: string;
+  slotIndex: number;
+  intent: string;
+  slotArchetype: string | null;
+  musclePrescriptions: Array<{
+    muscle: string;
+    role: "primary" | "support" | "secondary" | "implicit" | "collateral";
+    targetStatus: "hard" | "soft" | "diagnostic" | "forbidden";
+    demandType:
+      | "direct_required"
+      | "overlap_preferred"
+      | "direct_if_under_floor"
+      | "soft_direct_allowed"
+      | "diagnostic_only"
+      | "do_not_train_here";
+    desiredEffectiveSets: number | null;
+    minEffectiveSets: number | null;
+    maxEffectiveSets: number | null;
+    allowedPatterns: string[];
+    allowedExerciseClasses: string[];
+    forbiddenPatterns: string[];
+    forbiddenExerciseClasses: string[];
+    collateralLimits: Array<{
+      muscle: string;
+      maxAddedEffectiveSets: number;
+    }>;
+    reasons: string[];
+  }>;
+  movementLanePrescriptions: Array<{
+    lane: "press" | "pull" | "squat" | "hinge" | "knee_flexion" | "calf" | "isolation";
+    required: boolean;
+    preferredPatterns: string[];
+    fallbackPatterns: string[];
+    maxSamePatternCount: number | null;
+  }>;
+  setBudget: {
+    minTotalSets: number;
+    preferredTotalSets: number;
+    maxTotalSets: number;
+    maxSetsPerMain: number;
+    maxSetsPerAccessory: number;
+    maxDirectIsolationExercises: number | null;
+  };
+  diversityBudget: {
+    maxExerciseShareByMuscle: number;
+    maxPatternShareByMuscle: number;
+    maxDuplicateIsolationVariantsByMuscle: number;
+    maxDuplicateResistanceProfiles: number;
+  };
+  fatigueBudget: {
+    systemic: "low" | "moderate" | "high";
+    axial: "low" | "moderate" | "high";
+    collateralMaxByMuscle: Record<string, number>;
+  };
+  diagnostic: {
+    priorRepairsPrevented: string[];
+    priorRepairsStillRepairOwned: string[];
+    blockedRepairs: string[];
+  };
+};
+
 export type SlotPlanPlanningRealityDiagnostic = {
   label: "weekly demand / slot allocation diagnostics";
   readOnly: true;
@@ -331,6 +408,7 @@ export type SlotPlanPlanningRealityDiagnostic = {
   shadowRepairSummary: ShadowRepairSummary;
   suspiciousRepairsNotEligibleForPromotion: SuspiciousRepairNotEligibleForPromotion[];
   promotionCandidates: PromotionCandidate[];
+  slotPrescriptionIntents: SlotPrescriptionIntent[];
   rearDeltCollateralSummary?: RearDeltCollateralSummary;
   projectedDelivery: ProjectedDeliveryDiagnostic[];
   repairMateriality: RepairMaterialityDiagnostic[];
@@ -1402,6 +1480,649 @@ function buildPromotionCandidates(input: {
     left.muscle.localeCompare(right.muscle) ||
     left.suggestedPromotion.localeCompare(right.suggestedPromotion)
   );
+}
+
+type MusclePrescription = SlotPrescriptionIntent["musclePrescriptions"][number];
+type MovementLanePrescription = SlotPrescriptionIntent["movementLanePrescriptions"][number];
+
+const DIAGNOSTIC_COLLATERAL_MUSCLES = [
+  "Front Delts",
+  "Upper Back",
+  "Lower Back",
+  "Glutes",
+  "Forearms",
+  "Core",
+  "Adductors",
+  "Abductors",
+] as const;
+
+const UPPER_SLOT_FORBIDDEN_MUSCLES = ["Quads", "Hamstrings", "Calves"] as const;
+const LOWER_SLOT_FORBIDDEN_MUSCLES = [
+  "Chest",
+  "Lats",
+  "Side Delts",
+  "Rear Delts",
+  "Triceps",
+  "Biceps",
+] as const;
+
+function sortPrescriptionStrings(values: ReadonlyArray<string>): string[] {
+  return Array.from(new Set(values)).sort((left, right) => left.localeCompare(right));
+}
+
+function getSlotRegionFromIntent(input: {
+  slotId: string;
+  intent: string;
+  slotArchetype: string | null | undefined;
+}): "upper" | "lower" | "other" {
+  const slotId = input.slotId.toLowerCase();
+  const intent = input.intent.toLowerCase();
+  const slotArchetype = input.slotArchetype ?? "";
+  if (slotArchetype.startsWith("upper_") || ["upper", "push", "pull"].includes(intent) || slotId.startsWith("upper")) {
+    return "upper";
+  }
+  if (slotArchetype.startsWith("lower_") || ["lower", "legs"].includes(intent) || slotId.startsWith("lower")) {
+    return "lower";
+  }
+  return "other";
+}
+
+function getMusclePrescriptionTemplate(input: {
+  muscle: string;
+  slotRegion: "upper" | "lower" | "other";
+  slotArchetype: string | null | undefined;
+}): Pick<
+  MusclePrescription,
+  | "allowedPatterns"
+  | "allowedExerciseClasses"
+  | "forbiddenPatterns"
+  | "forbiddenExerciseClasses"
+  | "collateralLimits"
+  | "reasons"
+> {
+  switch (input.muscle) {
+    case "Chest":
+      return input.slotRegion === "lower"
+        ? {
+            allowedPatterns: [],
+            allowedExerciseClasses: [],
+            forbiddenPatterns: ["horizontal_push", "vertical_push", "isolation"],
+            forbiddenExerciseClasses: ["chest_fly", "chest_isolation", "press"],
+            collateralLimits: [],
+            reasons: ["lower_slot_does_not_own_chest", "blocked_repairs_should_not_become_valid_prescription"],
+          }
+        : {
+            allowedPatterns: ["horizontal_push", "vertical_push", "isolation"],
+            allowedExerciseClasses: ["chest_fly", "chest_isolation", "press"],
+            forbiddenPatterns: [],
+            forbiddenExerciseClasses: [],
+            collateralLimits: [
+              { muscle: "Front Delts", maxAddedEffectiveSets: 2 },
+              { muscle: "Triceps", maxAddedEffectiveSets: 3 },
+            ],
+            reasons: ["upper_press_or_fly_slot_can_own_chest", "use_stimulus_profile_effective_sets"],
+          };
+    case "Lats":
+      return {
+        allowedPatterns: ["vertical_pull", "horizontal_pull"],
+        allowedExerciseClasses: ["lat_pull", "row_with_lat_stimulus"],
+        forbiddenPatterns: input.slotRegion === "lower" ? ["hinge", "squat", "lunge"] : [],
+        forbiddenExerciseClasses: input.slotRegion === "lower" ? ["lower_body_compound"] : [],
+        collateralLimits: [{ muscle: "Upper Back", maxAddedEffectiveSets: 3 }],
+        reasons: [
+          "upper_pull_lane_owned",
+          "generic_upper_back_collateral_is_not_clean_lats_closure_without_stimulus_profile_support",
+        ],
+      };
+    case "Side Delts":
+      return {
+        allowedPatterns: ["vertical_push", "isolation"],
+        allowedExerciseClasses: ["lateral_raise", "vertical_press_overlap"],
+        forbiddenPatterns: input.slotRegion === "lower" ? ["squat", "hinge", "lunge"] : [],
+        forbiddenExerciseClasses: input.slotRegion === "lower" ? ["lower_body_compound"] : [],
+        collateralLimits: [{ muscle: "Front Delts", maxAddedEffectiveSets: 2 }],
+        reasons: [
+          "compatible_upper_support",
+          "direct_lateral_raise_and_vertical_press_overlap_allowed",
+          "cap_duplicate_lateral_raise_identities_and_set_stacking",
+        ],
+      };
+    case "Rear Delts":
+      return {
+        allowedPatterns: ["horizontal_pull", "vertical_pull", "isolation"],
+        allowedExerciseClasses: ["rear_delt_isolation_when_slot_owned", "pull_overlap_with_direct_rear_delt_stimulus"],
+        forbiddenPatterns: input.slotRegion === "lower" ? ["squat", "hinge", "lunge"] : [],
+        forbiddenExerciseClasses: input.slotRegion === "lower" ? ["lower_body_compound"] : [],
+        collateralLimits: [
+          { muscle: "Upper Back", maxAddedEffectiveSets: 2 },
+          { muscle: "Lats", maxAddedEffectiveSets: 2 },
+        ],
+        reasons: [
+          "support_but_collateral_sensitive",
+          "generic_rows_or_pulls_do_not_count_as_clean_direct_rear_delt_closure",
+          "pull_pattern_pressure_must_remain_capped",
+        ],
+      };
+    case "Triceps":
+      return {
+        allowedPatterns: ["horizontal_push", "vertical_push", "isolation"],
+        allowedExerciseClasses: ["press_overlap", "triceps_isolation_if_under_floor"],
+        forbiddenPatterns: [],
+        forbiddenExerciseClasses: [],
+        collateralLimits: [{ muscle: "Front Delts", maxAddedEffectiveSets: 2 }],
+        reasons: ["prefer_pressing_overlap", "direct_isolation_only_if_below_support_floor", "do_not_replace_pull_biceps_or_slot_balance_work_for_triceps_closure"],
+      };
+    case "Biceps":
+      return {
+        allowedPatterns: ["vertical_pull", "horizontal_pull", "isolation"],
+        allowedExerciseClasses: ["pull_overlap", "biceps_isolation_if_under_floor"],
+        forbiddenPatterns: [],
+        forbiddenExerciseClasses: [],
+        collateralLimits: [
+          { muscle: "Forearms", maxAddedEffectiveSets: 2 },
+          { muscle: "Upper Back", maxAddedEffectiveSets: 2 },
+        ],
+        reasons: ["prefer_pulling_overlap", "direct_isolation_only_if_below_support_floor", "cap_forearm_collateral_and_pulling_redundancy"],
+      };
+    case "Quads":
+      return {
+        allowedPatterns: ["squat", "lunge", "isolation"],
+        allowedExerciseClasses: ["squat", "lunge", "leg_extension"],
+        forbiddenPatterns: input.slotRegion === "upper" ? ["horizontal_push", "vertical_push", "horizontal_pull", "vertical_pull"] : [],
+        forbiddenExerciseClasses: input.slotRegion === "upper" ? ["upper_body_compound"] : [],
+        collateralLimits: [
+          { muscle: "Glutes", maxAddedEffectiveSets: 3 },
+          { muscle: "Adductors", maxAddedEffectiveSets: 2 },
+        ],
+        reasons: ["hard_lower_primary", "protect_lower_slot_identity"],
+      };
+    case "Hamstrings":
+      return {
+        allowedPatterns: ["hinge", "isolation"],
+        allowedExerciseClasses: ["hinge_compound", "knee_flexion_curl"],
+        forbiddenPatterns: input.slotRegion === "upper" ? ["horizontal_push", "vertical_push", "horizontal_pull", "vertical_pull"] : [],
+        forbiddenExerciseClasses: input.slotRegion === "upper" ? ["upper_body_compound"] : [],
+        collateralLimits: [
+          { muscle: "Lower Back", maxAddedEffectiveSets: 2 },
+          { muscle: "Glutes", maxAddedEffectiveSets: 3 },
+        ],
+        reasons: ["hard_lower_primary", "hinge_stimulus_and_knee_flexion_curl_stimulus_are_distinct", "hinge_is_not_equivalent_to_curl"],
+      };
+    case "Calves":
+      return {
+        allowedPatterns: ["isolation"],
+        allowedExerciseClasses: ["calf_raise"],
+        forbiddenPatterns: input.slotRegion === "upper" ? ["horizontal_push", "vertical_push", "horizontal_pull", "vertical_pull"] : [],
+        forbiddenExerciseClasses: input.slotRegion === "upper" ? ["upper_body_compound"] : [],
+        collateralLimits: [],
+        reasons: ["low_fatigue_direct_support", "distribute_across_lower_slots", "avoid_duplicate_calf_variants_unless_specialization_is_explicit"],
+      };
+    default:
+      return {
+        allowedPatterns: [],
+        allowedExerciseClasses: [],
+        forbiddenPatterns: [],
+        forbiddenExerciseClasses: [],
+        collateralLimits: [],
+        reasons: ["diagnostic_collateral_only_unless_explicitly_slot_owned"],
+      };
+  }
+}
+
+function chooseDemandType(input: {
+  muscle: string;
+  role: ShadowSlotDemandAllocation["allocatedMuscles"][number]["role"];
+  targetStatus: ShadowSlotDemandAllocation["allocatedMuscles"][number]["targetStatus"] | "forbidden";
+  actualEffectiveSets: number;
+  minEffectiveSets: number | null;
+}): MusclePrescription["demandType"] {
+  if (input.targetStatus === "forbidden") {
+    return "do_not_train_here";
+  }
+  if (input.targetStatus === "diagnostic" || input.role === "implicit" || input.role === "secondary") {
+    return "diagnostic_only";
+  }
+  if (input.muscle === "Triceps" || input.muscle === "Biceps") {
+    return input.minEffectiveSets != null && input.actualEffectiveSets < input.minEffectiveSets
+      ? "direct_if_under_floor"
+      : "overlap_preferred";
+  }
+  if (input.muscle === "Side Delts") {
+    return "soft_direct_allowed";
+  }
+  if (input.muscle === "Rear Delts" || input.muscle === "Calves") {
+    return input.minEffectiveSets != null && input.actualEffectiveSets < input.minEffectiveSets
+      ? "direct_if_under_floor"
+      : "soft_direct_allowed";
+  }
+  return input.targetStatus === "hard" && input.role === "primary"
+    ? "direct_required"
+    : input.targetStatus === "hard"
+      ? "overlap_preferred"
+      : "soft_direct_allowed";
+}
+
+function buildOwnedMusclePrescription(input: {
+  allocation: ShadowSlotDemandAllocation["allocatedMuscles"][number];
+  projectedEffectiveStimulusByMuscle: Record<string, number>;
+  slotRegion: "upper" | "lower" | "other";
+  slotArchetype: string | null | undefined;
+}): MusclePrescription {
+  const actualEffectiveSets = input.projectedEffectiveStimulusByMuscle[input.allocation.muscle] ?? 0;
+  const template = getMusclePrescriptionTemplate({
+    muscle: input.allocation.muscle,
+    slotRegion: input.slotRegion,
+    slotArchetype: input.slotArchetype,
+  });
+  const demandType = chooseDemandType({
+    muscle: input.allocation.muscle,
+    role: input.allocation.role,
+    targetStatus: input.allocation.targetStatus,
+    actualEffectiveSets,
+    minEffectiveSets: input.allocation.minEffectiveSets,
+  });
+
+  return {
+    muscle: input.allocation.muscle,
+    role: input.allocation.role,
+    targetStatus: input.allocation.targetStatus,
+    demandType,
+    desiredEffectiveSets: input.allocation.preferredEffectiveSets,
+    minEffectiveSets: input.allocation.minEffectiveSets,
+    maxEffectiveSets: input.allocation.maxEffectiveSets,
+    allowedPatterns: sortPrescriptionStrings(template.allowedPatterns),
+    allowedExerciseClasses: sortPrescriptionStrings(template.allowedExerciseClasses),
+    forbiddenPatterns: sortPrescriptionStrings(template.forbiddenPatterns),
+    forbiddenExerciseClasses: sortPrescriptionStrings(template.forbiddenExerciseClasses),
+    collateralLimits: template.collateralLimits,
+    reasons: sortPrescriptionStrings([
+      ...template.reasons,
+      ...input.allocation.allocationReason,
+      `current_projected_effective_sets:${roundToTenth(actualEffectiveSets)}`,
+      `program_quality_soft_caps:main_${SOFT_MAIN_LIFT_SET_CAP}:accessory_${SOFT_ACCESSORY_SET_CAP}`,
+      demandType,
+    ]),
+  };
+}
+
+function buildForbiddenMusclePrescription(input: {
+  muscle: string;
+  slotRegion: "upper" | "lower" | "other";
+  slotArchetype: string | null | undefined;
+}): MusclePrescription {
+  const template = getMusclePrescriptionTemplate({
+    muscle: input.muscle,
+    slotRegion: input.slotRegion,
+    slotArchetype: input.slotArchetype,
+  });
+  return {
+    muscle: input.muscle,
+    role: "collateral",
+    targetStatus: "forbidden",
+    demandType: "do_not_train_here",
+    desiredEffectiveSets: null,
+    minEffectiveSets: null,
+    maxEffectiveSets: 0,
+    allowedPatterns: [],
+    allowedExerciseClasses: [],
+    forbiddenPatterns: sortPrescriptionStrings(template.forbiddenPatterns),
+    forbiddenExerciseClasses: sortPrescriptionStrings(template.forbiddenExerciseClasses),
+    collateralLimits: [],
+    reasons: sortPrescriptionStrings([
+      ...template.reasons,
+      "forbidden_cross_slot_target_chasing",
+    ]),
+  };
+}
+
+function buildCollateralPrescription(muscle: string): MusclePrescription {
+  return {
+    muscle,
+    role: "collateral",
+    targetStatus: "diagnostic",
+    demandType: "diagnostic_only",
+    desiredEffectiveSets: null,
+    minEffectiveSets: null,
+    maxEffectiveSets: null,
+    allowedPatterns: [],
+    allowedExerciseClasses: [],
+    forbiddenPatterns: [],
+    forbiddenExerciseClasses: [],
+    collateralLimits: [{ muscle, maxAddedEffectiveSets: 2 }],
+    reasons: [
+      "diagnostic_collateral_only_unless_explicitly_slot_owned",
+      "do_not_target_chase_from_planning_reality",
+    ],
+  };
+}
+
+function dedupeMusclePrescriptions(prescriptions: MusclePrescription[]): MusclePrescription[] {
+  const order: Record<MusclePrescription["targetStatus"], number> = {
+    hard: 0,
+    soft: 1,
+    forbidden: 2,
+    diagnostic: 3,
+  };
+  const byMuscle = new Map<string, MusclePrescription>();
+  for (const prescription of prescriptions) {
+    const existing = byMuscle.get(prescription.muscle);
+    if (!existing || order[prescription.targetStatus] < order[existing.targetStatus]) {
+      byMuscle.set(prescription.muscle, prescription);
+    }
+  }
+  return Array.from(byMuscle.values()).sort((left, right) => {
+    const statusDelta = order[left.targetStatus] - order[right.targetStatus];
+    return statusDelta || left.muscle.localeCompare(right.muscle);
+  });
+}
+
+function toLaneFromPattern(pattern: string): MovementLanePrescription["lane"] | null {
+  if (pattern === "horizontal_push" || pattern === "vertical_push") {
+    return "press";
+  }
+  if (pattern === "horizontal_pull" || pattern === "vertical_pull") {
+    return "pull";
+  }
+  if (pattern === "squat" || pattern === "lunge") {
+    return "squat";
+  }
+  if (pattern === "hinge") {
+    return "hinge";
+  }
+  if (pattern === "isolation") {
+    return "isolation";
+  }
+  return null;
+}
+
+function appendLane(
+  lanes: MovementLanePrescription[],
+  lane: MovementLanePrescription
+): void {
+  const existing = lanes.find((entry) => entry.lane === lane.lane);
+  if (!existing) {
+    lanes.push(lane);
+    return;
+  }
+  existing.required = existing.required || lane.required;
+  existing.preferredPatterns = sortPrescriptionStrings([
+    ...existing.preferredPatterns,
+    ...lane.preferredPatterns,
+  ]);
+  existing.fallbackPatterns = sortPrescriptionStrings([
+    ...existing.fallbackPatterns,
+    ...lane.fallbackPatterns,
+  ]);
+  existing.maxSamePatternCount =
+    existing.maxSamePatternCount == null
+      ? lane.maxSamePatternCount
+      : lane.maxSamePatternCount == null
+        ? existing.maxSamePatternCount
+        : Math.min(existing.maxSamePatternCount, lane.maxSamePatternCount);
+}
+
+function buildMovementLanePrescriptions(input: {
+  slot: SlotSequenceEntry;
+  musclePrescriptions: ReadonlyArray<MusclePrescription>;
+  slotSequenceEntries: ReturnType<typeof buildSlotSequenceEntries>;
+}): MovementLanePrescription[] {
+  const slotPolicy = resolveSessionSlotPolicy({
+    sessionIntent: toSessionIntent(input.slot.intent),
+    slotId: input.slot.slotId,
+    slotSequence: { slots: input.slotSequenceEntries },
+  }).currentSession;
+  const lanes: MovementLanePrescription[] = [];
+
+  for (const lane of slotPolicy?.compoundControl?.lanes ?? []) {
+    const resolvedLane: MovementLanePrescription["lane"] =
+      lane.key === "press"
+        ? "press"
+        : lane.key === "pull"
+          ? "pull"
+          : slotPolicy?.slotArchetype === "lower_hinge_dominant"
+            ? "hinge"
+            : "squat";
+    appendLane(lanes, {
+      lane: resolvedLane,
+      required: true,
+      preferredPatterns: [...lane.preferredMovementPatterns],
+      fallbackPatterns: [...lane.fallbackOnlyMovementPatterns],
+      maxSamePatternCount: MAX_SAME_PATTERN_PER_SESSION,
+    });
+  }
+
+  for (const pattern of slotPolicy?.sessionShape?.requiredMovementPatterns ?? []) {
+    const lane = toLaneFromPattern(pattern);
+    if (!lane) {
+      continue;
+    }
+    appendLane(lanes, {
+      lane,
+      required: true,
+      preferredPatterns: [pattern],
+      fallbackPatterns: [],
+      maxSamePatternCount: MAX_SAME_PATTERN_PER_SESSION,
+    });
+  }
+
+  if (input.musclePrescriptions.some((prescription) => prescription.muscle === "Hamstrings" && prescription.targetStatus !== "forbidden")) {
+    appendLane(lanes, {
+      lane: "knee_flexion",
+      required: false,
+      preferredPatterns: ["isolation"],
+      fallbackPatterns: ["hinge"],
+      maxSamePatternCount: MAX_SAME_PATTERN_PER_SESSION,
+    });
+  }
+  if (input.musclePrescriptions.some((prescription) => prescription.muscle === "Calves" && prescription.targetStatus !== "forbidden")) {
+    appendLane(lanes, {
+      lane: "calf",
+      required: false,
+      preferredPatterns: ["isolation"],
+      fallbackPatterns: [],
+      maxSamePatternCount: MAX_SAME_PATTERN_PER_SESSION,
+    });
+  }
+  if (input.musclePrescriptions.some((prescription) =>
+    ["soft_direct_allowed", "direct_if_under_floor"].includes(prescription.demandType)
+  )) {
+    appendLane(lanes, {
+      lane: "isolation",
+      required: false,
+      preferredPatterns: ["isolation"],
+      fallbackPatterns: [],
+      maxSamePatternCount: MAX_SAME_PATTERN_PER_SESSION,
+    });
+  }
+
+  return lanes.sort((left, right) => left.lane.localeCompare(right.lane));
+}
+
+function buildCollateralMaxByMuscle(input: {
+  slotRegion: "upper" | "lower" | "other";
+  musclePrescriptions: ReadonlyArray<MusclePrescription>;
+}): Record<string, number> {
+  const limits = new Map<string, number>();
+  const seed =
+    input.slotRegion === "lower"
+      ? { "Lower Back": 2, Glutes: 4, Adductors: 2, Abductors: 2, Core: 2 }
+      : input.slotRegion === "upper"
+        ? { "Front Delts": 2, "Upper Back": 3, Forearms: 2, Core: 2 }
+        : { Core: 2 };
+
+  for (const [muscle, max] of Object.entries(seed)) {
+    limits.set(muscle, max);
+  }
+  for (const prescription of input.musclePrescriptions) {
+    for (const limit of prescription.collateralLimits) {
+      limits.set(
+        limit.muscle,
+        Math.min(limits.get(limit.muscle) ?? limit.maxAddedEffectiveSets, limit.maxAddedEffectiveSets)
+      );
+    }
+  }
+
+  return Object.fromEntries(
+    Array.from(limits.entries()).sort(([left], [right]) => left.localeCompare(right))
+  );
+}
+
+function buildSlotDiagnosticRepairStrings(input: {
+  slotId: string;
+  musclePrescriptions: ReadonlyArray<MusclePrescription>;
+  promotionCandidates: ReadonlyArray<PromotionCandidate>;
+  suspiciousRepairs: ReadonlyArray<SuspiciousRepairNotEligibleForPromotion>;
+  repairRows: ReadonlyArray<ShadowRepairMaterialityDiagnostic>;
+}): SlotPrescriptionIntent["diagnostic"] {
+  const blockedRepairs = input.suspiciousRepairs
+    .filter((row) => row.slotId === input.slotId)
+    .map((row) => {
+      const prescription = input.musclePrescriptions.find(
+        (entry) => entry.muscle === row.muscle
+      );
+      const reason = prescription?.targetStatus === "forbidden"
+        ? "blocked_do_not_train_here"
+        : "blocked_suspicious_not_promoted";
+      return `${row.slotId}:${row.muscle}:${row.exerciseName ?? row.repairMechanism}:${reason}`;
+    });
+  const priorRepairsPrevented = input.promotionCandidates
+    .filter((row) => row.slotId === input.slotId)
+    .map((row) =>
+      `${row.slotId}:${row.muscle}:${row.targetStatus === "hard" ? "direct_required" : "soft_direct_allowed"}:${row.suggestedPromotion}`
+    );
+  const priorRepairsStillRepairOwned = input.repairRows
+    .filter((row) => row.slotId === input.slotId)
+    .filter((row) => !row.likelyAvoidableWithShadowAllocation || row.action === "removed" || row.action === "set_trimmed")
+    .map((row) => {
+      const muscle = row.muscle ?? "week";
+      const reason =
+        row.action === "removed" || row.action === "set_trimmed" ||
+        row.shadowAllocationBasis === "diagnostic_or_cap_cleanup"
+          ? "cap_cleanup"
+          : row.muscle === "Rear Delts" || row.muscle === "Upper Back"
+            ? "pull_collateral"
+            : row.shadowAllocationBasis === "weekly_demand_owned_elsewhere"
+              ? "non_owned_stimulus"
+              : "repair_cleanup";
+      return `${row.slotId}:${muscle}:still_repair_owned_${reason}`;
+    });
+
+  return {
+    priorRepairsPrevented: sortPrescriptionStrings(priorRepairsPrevented),
+    priorRepairsStillRepairOwned: sortPrescriptionStrings(priorRepairsStillRepairOwned),
+    blockedRepairs: sortPrescriptionStrings(blockedRepairs),
+  };
+}
+
+function buildSlotPrescriptionIntents(input: {
+  slotSequence: ReadonlyArray<SlotSequenceEntry>;
+  slotDemandAllocation: ReadonlyArray<SlotDemandAllocationDiagnostic>;
+  shadowSlotDemandAllocation: ReadonlyArray<ShadowSlotDemandAllocation>;
+  finalSlotPlan: ReadonlyArray<SlotCompositionSnapshotDiagnostic>;
+  repairMaterialityAfterShadowAllocation: ReadonlyArray<ShadowRepairMaterialityDiagnostic>;
+  suspiciousRepairsNotEligibleForPromotion: ReadonlyArray<SuspiciousRepairNotEligibleForPromotion>;
+  promotionCandidates: ReadonlyArray<PromotionCandidate>;
+}): SlotPrescriptionIntent[] {
+  const slotSequenceEntries = buildSlotSequenceEntries(input.slotSequence);
+  const allocationBySlotId = new Map(
+    input.shadowSlotDemandAllocation.map((slot) => [slot.slotId, slot])
+  );
+  const slotDemandBySlotId = new Map(
+    input.slotDemandAllocation.map((slot) => [slot.slotId, slot])
+  );
+  const finalSlotBySlotId = new Map(input.finalSlotPlan.map((slot) => [slot.slotId, slot]));
+
+  return input.slotSequence.map((slot, slotIndex) => {
+    const shadowAllocation = allocationBySlotId.get(slot.slotId);
+    const slotDemand = slotDemandBySlotId.get(slot.slotId);
+    const slotRegion = getSlotRegionFromIntent({
+      slotId: slot.slotId,
+      intent: toSessionIntent(slot.intent),
+      slotArchetype: shadowAllocation?.slotArchetype ?? slotDemand?.slotProfile.slotArchetype,
+    });
+    const ownedPrescriptions = (shadowAllocation?.allocatedMuscles ?? []).map((allocation) =>
+      buildOwnedMusclePrescription({
+        allocation,
+        projectedEffectiveStimulusByMuscle: slotDemand?.projectedEffectiveStimulusByMuscle ?? {},
+        slotRegion,
+        slotArchetype: shadowAllocation?.slotArchetype ?? slotDemand?.slotProfile.slotArchetype,
+      })
+    );
+    const ownedMuscles = new Set(ownedPrescriptions.map((prescription) => prescription.muscle));
+    const forbiddenMuscles =
+      slotRegion === "lower"
+        ? LOWER_SLOT_FORBIDDEN_MUSCLES
+        : slotRegion === "upper"
+          ? UPPER_SLOT_FORBIDDEN_MUSCLES
+          : [];
+    const forbiddenPrescriptions = forbiddenMuscles
+      .filter((muscle) => !ownedMuscles.has(muscle))
+      .map((muscle) =>
+        buildForbiddenMusclePrescription({
+          muscle,
+          slotRegion,
+          slotArchetype: shadowAllocation?.slotArchetype ?? slotDemand?.slotProfile.slotArchetype,
+        })
+      );
+    const collateralPrescriptions = DIAGNOSTIC_COLLATERAL_MUSCLES
+      .filter((muscle) => !ownedMuscles.has(muscle))
+      .map(buildCollateralPrescription);
+    const musclePrescriptions = dedupeMusclePrescriptions([
+      ...ownedPrescriptions,
+      ...forbiddenPrescriptions,
+      ...collateralPrescriptions,
+    ]);
+    const finalSlot = finalSlotBySlotId.get(slot.slotId);
+    const fatigueBudget = shadowAllocation?.fatigueBudget ??
+      getAllocationFatigueBudget(shadowAllocation?.slotArchetype ?? slotDemand?.slotProfile.slotArchetype);
+
+    return {
+      version: 1,
+      slotId: slot.slotId,
+      slotIndex,
+      intent: toSessionIntent(slot.intent),
+      slotArchetype: shadowAllocation?.slotArchetype ?? slotDemand?.slotProfile.slotArchetype ?? null,
+      musclePrescriptions,
+      movementLanePrescriptions: buildMovementLanePrescriptions({
+        slot,
+        musclePrescriptions,
+        slotSequenceEntries,
+      }),
+      setBudget: {
+        minTotalSets:
+          MIN_PROJECTED_MAIN_LIFT_SETS_PER_EXERCISE +
+          (SESSION_CAPS.minExercises - 1) * MIN_PROJECTED_ACCESSORY_SETS_PER_EXERCISE,
+        preferredTotalSets: finalSlot?.totalSets ?? 0,
+        maxTotalSets:
+          MAX_PROJECTED_MAIN_LIFT_SETS_PER_EXERCISE +
+          (SESSION_CAPS.maxExercises - 1) * MAX_PROJECTED_ACCESSORY_SETS_PER_EXERCISE,
+        maxSetsPerMain: MAX_PROJECTED_MAIN_LIFT_SETS_PER_EXERCISE,
+        maxSetsPerAccessory: MAX_PROJECTED_ACCESSORY_SETS_PER_EXERCISE,
+        maxDirectIsolationExercises: 2,
+      },
+      diversityBudget: {
+        maxExerciseShareByMuscle: MAX_SINGLE_EXERCISE_MUSCLE_SHARE,
+        maxPatternShareByMuscle: MAX_SINGLE_PATTERN_MUSCLE_SHARE,
+        maxDuplicateIsolationVariantsByMuscle: 1,
+        maxDuplicateResistanceProfiles: 1,
+      },
+      fatigueBudget: {
+        systemic: fatigueBudget?.systemic ?? "moderate",
+        axial: fatigueBudget?.axial ?? "moderate",
+        collateralMaxByMuscle: buildCollateralMaxByMuscle({
+          slotRegion,
+          musclePrescriptions,
+        }),
+      },
+      diagnostic: buildSlotDiagnosticRepairStrings({
+        slotId: slot.slotId,
+        musclePrescriptions,
+        promotionCandidates: input.promotionCandidates,
+        suspiciousRepairs: input.suspiciousRepairsNotEligibleForPromotion,
+        repairRows: input.repairMaterialityAfterShadowAllocation,
+      }),
+    };
+  });
 }
 
 function buildSlotDemandAllocation(input: {
@@ -2505,6 +3226,15 @@ export function buildWeeklyDemandSlotAllocationDiagnostic(input: {
     shadowSlotDemandAllocation,
     suspiciousRepairs: suspiciousRepairsNotEligibleForPromotion,
   });
+  const slotPrescriptionIntents = buildSlotPrescriptionIntents({
+    slotSequence: input.slotSequence,
+    slotDemandAllocation,
+    shadowSlotDemandAllocation,
+    finalSlotPlan,
+    repairMaterialityAfterShadowAllocation,
+    suspiciousRepairsNotEligibleForPromotion,
+    promotionCandidates,
+  });
   const exerciseConcentration = buildExerciseConcentration({
     initialProjectedSlots: input.initialProjectedSlots,
     finalProjectedSlots: input.finalProjectedSlots,
@@ -2570,6 +3300,7 @@ export function buildWeeklyDemandSlotAllocationDiagnostic(input: {
     shadowRepairSummary,
     suspiciousRepairsNotEligibleForPromotion,
     promotionCandidates,
+    slotPrescriptionIntents,
     ...(rearDeltCollateralSummary ? { rearDeltCollateralSummary } : {}),
     projectedDelivery,
     repairMateriality,

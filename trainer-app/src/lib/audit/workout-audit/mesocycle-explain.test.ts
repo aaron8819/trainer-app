@@ -621,6 +621,69 @@ describe("buildMesocycleExplainAuditPayload", () => {
           },
           suspiciousRepairsNotEligibleForPromotion: [],
           promotionCandidates: [],
+          slotPrescriptionIntents: [
+            {
+              version: 1,
+              slotId: "upper_a",
+              slotIndex: 0,
+              intent: "upper",
+              slotArchetype: "upper_primary",
+              musclePrescriptions: [
+                {
+                  muscle: "Chest",
+                  role: "primary",
+                  targetStatus: "hard",
+                  demandType: "direct_required",
+                  desiredEffectiveSets: 4,
+                  minEffectiveSets: 4,
+                  maxEffectiveSets: 16,
+                  allowedPatterns: ["horizontal_push", "vertical_push"],
+                  allowedExerciseClasses: ["press"],
+                  forbiddenPatterns: [],
+                  forbiddenExerciseClasses: [],
+                  collateralLimits: [
+                    { muscle: "Front Delts", maxAddedEffectiveSets: 2 },
+                  ],
+                  reasons: ["weekly_obligation_allocated_to_compatible_slot"],
+                },
+              ],
+              movementLanePrescriptions: [
+                {
+                  lane: "press",
+                  required: true,
+                  preferredPatterns: ["horizontal_push"],
+                  fallbackPatterns: ["vertical_push"],
+                  maxSamePatternCount: 2,
+                },
+              ],
+              setBudget: {
+                minTotalSets: 7,
+                preferredTotalSets: 10,
+                maxTotalSets: 25,
+                maxSetsPerMain: 5,
+                maxSetsPerAccessory: 4,
+                maxDirectIsolationExercises: 2,
+              },
+              diversityBudget: {
+                maxExerciseShareByMuscle: 0.5,
+                maxPatternShareByMuscle: 0.7,
+                maxDuplicateIsolationVariantsByMuscle: 1,
+                maxDuplicateResistanceProfiles: 1,
+              },
+              fatigueBudget: {
+                systemic: "moderate",
+                axial: "low",
+                collateralMaxByMuscle: {
+                  "Front Delts": 2,
+                },
+              },
+              diagnostic: {
+                priorRepairsPrevented: ["upper_a:Chest:direct_required:slot_preselection_demand"],
+                priorRepairsStillRepairOwned: [],
+                blockedRepairs: [],
+              },
+            },
+          ],
           rearDeltCollateralSummary: {
             directRearDeltStimulusBefore: 0,
             directRearDeltStimulusAfter: 2,
@@ -892,6 +955,22 @@ describe("buildMesocycleExplainAuditPayload", () => {
               role: "primary",
             }),
           ],
+        }),
+      ],
+      slotPrescriptionIntents: [
+        expect.objectContaining({
+          slotId: "upper_a",
+          musclePrescriptions: [
+            expect.objectContaining({
+              muscle: "Chest",
+              demandType: "direct_required",
+            }),
+          ],
+          diagnostic: expect.objectContaining({
+            priorRepairsPrevented: [
+              "upper_a:Chest:direct_required:slot_preselection_demand",
+            ],
+          }),
         }),
       ],
       rearDeltCollateralSummary: expect.objectContaining({

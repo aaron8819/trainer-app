@@ -2153,6 +2153,100 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
         }),
       ])
     );
+    expect(diagnostic?.slotPrescriptionIntents).toEqual(expect.any(Array));
+    const slotPrescriptionIntents = diagnostic?.slotPrescriptionIntents ?? [];
+    const upperAIntent = slotPrescriptionIntents.find((intent) => intent.slotId === "upper_a");
+    const upperBIntent = slotPrescriptionIntents.find((intent) => intent.slotId === "upper_b");
+    const lowerAIntent = slotPrescriptionIntents.find((intent) => intent.slotId === "lower_a");
+    const lowerBIntent = slotPrescriptionIntents.find((intent) => intent.slotId === "lower_b");
+    const upperAChest = upperAIntent?.musclePrescriptions.find((row) => row.muscle === "Chest");
+    const lowerBChest = lowerBIntent?.musclePrescriptions.find((row) => row.muscle === "Chest");
+    const upperBSideDelts = upperBIntent?.musclePrescriptions.find((row) => row.muscle === "Side Delts");
+    const upperARearDelts = upperAIntent?.musclePrescriptions.find((row) => row.muscle === "Rear Delts");
+    const upperATriceps = upperAIntent?.musclePrescriptions.find((row) => row.muscle === "Triceps");
+    const upperABiceps = upperAIntent?.musclePrescriptions.find((row) => row.muscle === "Biceps");
+    const lowerBHams = lowerBIntent?.musclePrescriptions.find((row) => row.muscle === "Hamstrings");
+
+    expect(upperAChest).toMatchObject({
+      role: "primary",
+      targetStatus: "hard",
+      demandType: "direct_required",
+    });
+    expect(lowerAIntent?.musclePrescriptions.find((row) => row.muscle === "Chest")).toMatchObject({
+      targetStatus: "forbidden",
+      demandType: "do_not_train_here",
+    });
+    expect(lowerBChest).toMatchObject({
+      targetStatus: "forbidden",
+      demandType: "do_not_train_here",
+      maxEffectiveSets: 0,
+    });
+    expect(upperBSideDelts).toMatchObject({
+      targetStatus: "soft",
+      demandType: "soft_direct_allowed",
+    });
+    expect(upperBSideDelts?.reasons).toEqual(
+      expect.arrayContaining(["cap_duplicate_lateral_raise_identities_and_set_stacking"])
+    );
+    expect(upperARearDelts?.collateralLimits).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ muscle: "Upper Back" }),
+        expect.objectContaining({ muscle: "Lats" }),
+      ])
+    );
+    expect(upperARearDelts?.reasons).toEqual(
+      expect.arrayContaining([
+        "generic_rows_or_pulls_do_not_count_as_clean_direct_rear_delt_closure",
+        "pull_pattern_pressure_must_remain_capped",
+      ])
+    );
+    expect(["overlap_preferred", "direct_if_under_floor"]).toContain(upperATriceps?.demandType);
+    expect(["overlap_preferred", "direct_if_under_floor"]).toContain(upperABiceps?.demandType);
+    expect(lowerBHams?.allowedExerciseClasses).toEqual(
+      expect.arrayContaining(["hinge_compound", "knee_flexion_curl"])
+    );
+    expect(lowerBHams?.collateralLimits).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ muscle: "Lower Back" }),
+        expect.objectContaining({ muscle: "Glutes" }),
+      ])
+    );
+    expect(lowerBHams?.reasons).toEqual(
+      expect.arrayContaining([
+        "hinge_stimulus_and_knee_flexion_curl_stimulus_are_distinct",
+        "hinge_is_not_equivalent_to_curl",
+      ])
+    );
+    for (const collateralMuscle of [
+      "Front Delts",
+      "Upper Back",
+      "Lower Back",
+      "Glutes",
+      "Forearms",
+      "Core",
+      "Adductors",
+      "Abductors",
+    ]) {
+      const prescription = upperAIntent?.musclePrescriptions.find(
+        (row) => row.muscle === collateralMuscle
+      );
+      if (prescription) {
+        expect(prescription).toMatchObject({
+          role: "collateral",
+          targetStatus: "diagnostic",
+          demandType: "diagnostic_only",
+        });
+      }
+    }
+    expect(upperAIntent?.setBudget).toMatchObject({
+      maxSetsPerMain: 5,
+      maxSetsPerAccessory: 4,
+    });
+    expect(upperAIntent?.diversityBudget).toMatchObject({
+      maxExerciseShareByMuscle: 0.5,
+      maxPatternShareByMuscle: 0.7,
+      maxDuplicateIsolationVariantsByMuscle: 1,
+    });
     expect(diagnostic?.shadowWeeklyDemand).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -2284,6 +2378,7 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
       expect.arrayContaining([expect.stringContaining("read-only")])
     );
     expect(JSON.stringify(getProjectedSlotPlans(projected))).not.toContain("shadow");
+    expect(JSON.stringify(getProjectedSlotPlans(projected))).not.toContain("slotPrescriptionIntents");
   });
 
   it("separates likely avoidable shadow repairs from suspicious downstream repair artifacts", () => {
@@ -2383,6 +2478,20 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
         reason: expect.stringContaining("weekly_demand_owned_elsewhere"),
       }),
     ]);
+    expect(
+      diagnostic.slotPrescriptionIntents.find((intent) => intent.slotId === "lower_b")?.diagnostic.blockedRepairs
+    ).toContain("lower_b:Chest:Cable Crossover:blocked_do_not_train_here");
+    expect(
+      diagnostic.slotPrescriptionIntents.find((intent) => intent.slotId === "lower_b")?.musclePrescriptions
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          muscle: "Chest",
+          targetStatus: "forbidden",
+          demandType: "do_not_train_here",
+        }),
+      ])
+    );
     expect(diagnostic.promotionCandidates).toEqual([
       expect.objectContaining({
         slotId: "upper_b",
@@ -2391,6 +2500,13 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
         targetStatus: "soft",
       }),
     ]);
+    expect(
+      diagnostic.slotPrescriptionIntents.find((intent) => intent.slotId === "upper_b")?.diagnostic.priorRepairsPrevented
+    ).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("upper_b:Side Delts:soft_direct_allowed"),
+      ])
+    );
   });
 
   it("marks consumed Rear Delts preselection with new suspicious repair burden as worse collateral", () => {

@@ -64,6 +64,7 @@ import {
   buildExerciseClassDistributionBySlot,
 } from "./selection-alignment";
 import { buildCleanupCandidateFeasibility } from "./cleanup-feasibility";
+import { buildTopDownMesocyclePlan } from "./top-down-mesocycle-plan";
 
 export type * from "./types";
 function classifyPlanningShape(input: {
@@ -348,32 +349,52 @@ export function buildWeeklyDemandSlotAllocationDiagnostic(input: {
   const highExerciseConcentrationCount = exerciseConcentration.filter((row) =>
     row.flags.some((flag) => flag.includes("EXERCISE_SUPPLIES_OVER"))
   ).length;
+  const summary: SlotPlanPlanningRealityDiagnostic["summary"] = {
+    planningShape: classifyPlanningShape({
+      weeklyMuscleDemand,
+      slotDemandAllocation,
+      repairMateriality,
+    }),
+    explicitWeeklyDemandMuscles: weeklyMuscleDemand.filter((row) => row.explicitUpstream).length,
+    inferredDemandMuscles: weeklyMuscleDemand.filter((row) => row.inferredDownstream).length,
+    slotsWithExplicitWeeklyDemand: slotDemandAllocation.filter(
+      (row) => row.allocationBasis === "explicit_weekly_demand"
+    ).length,
+    slotsWithOnlyLocalOrInferredSemantics: slotDemandAllocation.filter(
+      (row) =>
+        row.allocationBasis === "local_movement_or_lane_semantics" ||
+        row.allocationBasis === "unclear"
+    ).length,
+    materialRepairCount,
+    majorRepairCount,
+    highExerciseConcentrationCount,
+    warningCodes: warnings.map((warning) => warning.code),
+  };
+  const topDownMesocyclePlan = buildTopDownMesocyclePlan({
+    summary,
+    weeklyMuscleDemand,
+    projectedDelivery,
+    finalSlotPlan,
+    shadowRepairSummary,
+    repairMaterialityAfterShadowAllocation,
+    suspiciousRepairCount: suspiciousRepairsNotEligibleForPromotion.length,
+    weakPreselectionConsumption,
+    slotDemandAllocationByWeek,
+    exerciseClassDistributionBySlot,
+    exerciseClassAlignment,
+    exerciseClassUnresolvedCauses,
+    duplicateContinuityJustification,
+    cleanupCandidateFeasibility,
+    accumulationWeekProjection,
+    exerciseConcentration,
+    forbiddenCleanupReroute: input.forbiddenCleanupReroute,
+  });
 
   return {
     label: "weekly demand / slot allocation diagnostics",
     readOnly: true,
     affectsScoringOrGeneration: false,
-    summary: {
-      planningShape: classifyPlanningShape({
-        weeklyMuscleDemand,
-        slotDemandAllocation,
-        repairMateriality,
-      }),
-      explicitWeeklyDemandMuscles: weeklyMuscleDemand.filter((row) => row.explicitUpstream).length,
-      inferredDemandMuscles: weeklyMuscleDemand.filter((row) => row.inferredDownstream).length,
-      slotsWithExplicitWeeklyDemand: slotDemandAllocation.filter(
-        (row) => row.allocationBasis === "explicit_weekly_demand"
-      ).length,
-      slotsWithOnlyLocalOrInferredSemantics: slotDemandAllocation.filter(
-        (row) =>
-          row.allocationBasis === "local_movement_or_lane_semantics" ||
-          row.allocationBasis === "unclear"
-      ).length,
-      materialRepairCount,
-      majorRepairCount,
-      highExerciseConcentrationCount,
-      warningCodes: warnings.map((warning) => warning.code),
-    },
+    summary,
     weeklyMuscleDemand,
     slotDemandAllocation,
     shadowWeeklyDemand,
@@ -399,6 +420,7 @@ export function buildWeeklyDemandSlotAllocationDiagnostic(input: {
     exerciseClassUnresolvedCauses,
     duplicateContinuityJustification,
     cleanupCandidateFeasibility,
+    topDownMesocyclePlan,
     accumulationWeekProjection,
     ...(input.forbiddenCleanupReroute
       ? { forbiddenCleanupReroute: input.forbiddenCleanupReroute }

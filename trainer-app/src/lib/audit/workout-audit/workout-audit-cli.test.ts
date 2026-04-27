@@ -464,6 +464,83 @@ describe("planningReality size budget summary", () => {
 });
 
 describe("buildPlanningRealitySummary", () => {
+  it("prints the compact top-down mesocycle plan summary when present", () => {
+    const summary = buildPlanningRealitySummary({
+      artifact: {
+        mesocycleExplain: {
+          preview: {
+            projectionDiagnostics: {
+              planningReality: {
+                label: "weekly demand / slot allocation diagnostics",
+                readOnly: true,
+                affectsScoringOrGeneration: false,
+                summary: {
+                  planningShape: "mostly_repair_shaped",
+                  explicitWeeklyDemandMuscles: 0,
+                  inferredDemandMuscles: 0,
+                  slotsWithExplicitWeeklyDemand: 0,
+                  slotsWithOnlyLocalOrInferredSemantics: 0,
+                  materialRepairCount: 20,
+                  majorRepairCount: 10,
+                  highExerciseConcentrationCount: 0,
+                  warningCodes: [],
+                },
+                topDownMesocyclePlan: {
+                  version: 1,
+                  source: "first_principles_target_spec",
+                  targetSpecPath:
+                    "docs/10_HYPERTROPHY_MESOCYCLE_ENGINE_TARGET_SPEC.md",
+                  readOnly: true,
+                  affectsScoringOrGeneration: false,
+                  planStatus: "blocked_by_repair_shape",
+                  targetFlow: ["MesocycleDemand", "Runtime"],
+                  slotTargets: [],
+                  targetAcceptanceChecks: [],
+                  summary: {
+                    matchedTargetLanes: 8,
+                    partialTargetLanes: 10,
+                    missingTargetLanes: 3,
+                    repairShapedTargetLanes: 5,
+                    blockedMigrationCandidates: 4,
+                    readyMigrationCandidates: 0,
+                  },
+                  migrationReadiness: [
+                    {
+                      candidate: "chest_upper_distinct_class_distribution",
+                      readiness: "blocked_by_repair_materiality",
+                      reason: "repair materiality gate failed",
+                      evidenceRefs: ["material:20"],
+                      gateMetricsRequired: ["materialRepairCount_non_increasing"],
+                    },
+                    {
+                      candidate: "calf_duplicate_distribution",
+                      readiness: "blocked_by_feasibility",
+                      reason: "single calf variant cannot satisfy floor",
+                      evidenceRefs: [
+                        "cleanupCandidateFeasibility.recommendation:do_not_trial_behavior",
+                      ],
+                      gateMetricsRequired: ["calf_floor_preserved"],
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    expect(summary).toEqual(
+      expect.arrayContaining([
+        "Top-Down Mesocycle Plan",
+        "Status: blocked_by_repair_shape",
+        "Matched lanes: 8",
+        "- chest_upper_distinct_class_distribution: blocked_by_repair_materiality",
+        "- calf_duplicate_distribution: blocked_by_feasibility",
+      ]),
+    );
+  });
+
   it("prints a compact deterministic planningReality readout from mesocycle-explain", () => {
     const summary = buildPlanningRealitySummary({
       artifact: {

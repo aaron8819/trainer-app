@@ -2344,9 +2344,102 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     });
     expect(diagnostic?.exerciseClassUnresolvedCauses).toEqual(expect.any(Array));
     expect(diagnostic?.cleanupCandidateFeasibility).toEqual(expect.any(Array));
+    expect(diagnostic?.topDownMesocyclePlan).toMatchObject({
+      version: 1,
+      source: "first_principles_target_spec",
+      targetSpecPath: "docs/10_HYPERTROPHY_MESOCYCLE_ENGINE_TARGET_SPEC.md",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+    });
+    const topDownMesocyclePlan = diagnostic?.topDownMesocyclePlan;
+    expect(topDownMesocyclePlan).toBeDefined();
+    if (!topDownMesocyclePlan) {
+      throw new Error("Expected topDownMesocyclePlan diagnostic");
+    }
+    expect(
+      topDownMesocyclePlan.slotTargets.map((slot) => slot.slotId),
+    ).toEqual(["upper_a", "lower_a", "upper_b", "lower_b"]);
+    expect(
+      topDownMesocyclePlan.slotTargets.find(
+        (slot) => slot.slotId === "upper_a",
+      )?.requiredClassLanes.map((lane) => lane.lane),
+    ).toEqual([
+      "chest_anchor",
+      "row_anchor",
+      "vertical_pull",
+      "chest_secondary",
+      "rear_delt",
+      "triceps",
+    ]);
+    expect(
+      topDownMesocyclePlan.slotTargets.find(
+        (slot) => slot.slotId === "lower_b",
+      )?.requiredClassLanes.map((lane) => lane.lane),
+    ).toEqual([
+      "hinge_anchor",
+      "knee_flexion_curl",
+      "quad_support",
+      "calves",
+      "optional_core_adductor_glute",
+    ]);
+    expect(
+      topDownMesocyclePlan.targetAcceptanceChecks.map(
+        (row) => row.check,
+      ),
+    ).toEqual([
+      "primary_muscles_above_minimum",
+      "no_forbidden_slot_primary_solution",
+      "no_unjustified_gt_5_sets",
+      "no_material_repair_for_basic_shape",
+      "no_duplicate_main_lift_if_clean_alternative_exists",
+      "no_excessive_axial_fatigue_stacking",
+      "no_single_exercise_over_50_60_percent_without_intent",
+      "slot_demand_allocation_before_selection",
+      "exercise_class_intent_before_selection",
+      "runtime_seed_replay_without_reselection",
+    ]);
+    expect(
+      topDownMesocyclePlan.targetAcceptanceChecks.find(
+        (row) => row.check === "runtime_seed_replay_without_reselection",
+      ),
+    ).toMatchObject({
+      currentStatus: "pass",
+      evidenceRefs: expect.arrayContaining(["seedReplay:pass"]),
+    });
+    expect(
+      topDownMesocyclePlan.migrationReadiness.find(
+        (row) => row.candidate === "chest_upper_distinct_class_distribution",
+      ),
+    ).toMatchObject({
+      readiness: "blocked_by_repair_materiality",
+    });
+    expect(
+      topDownMesocyclePlan.migrationReadiness.find(
+        (row) => row.candidate === "calf_duplicate_distribution",
+      ),
+    ).toMatchObject({
+      readiness: "blocked_by_feasibility",
+      evidenceRefs: expect.arrayContaining([
+        "cleanupCandidateFeasibility.recommendation:do_not_trial_behavior",
+      ]),
+    });
+    for (const lane of
+      topDownMesocyclePlan.slotTargets
+        .find((slot) => slot.slotId === "lower_b")
+        ?.requiredClassLanes.filter((row) =>
+          ["hinge_anchor", "knee_flexion_curl"].includes(row.lane),
+        ) ?? []) {
+      expect(["matched", "partial"]).toContain(lane.currentStatus);
+    }
+    expect(
+      JSON.stringify(topDownMesocyclePlan).length,
+    ).toBeLessThan(8192);
     expect(JSON.stringify(diagnostic?.exerciseClassAlignment).length).toBeLessThan(30000);
     expect(JSON.stringify(projected.slotPlans)).not.toContain(
       "exerciseClassAlignment",
+    );
+    expect(JSON.stringify(projected.slotPlans)).not.toContain(
+      "topDownMesocyclePlan",
     );
     expect(JSON.stringify(projected.slotPlans)).not.toContain(
       "cleanupCandidateFeasibility",

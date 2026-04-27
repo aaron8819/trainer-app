@@ -1118,6 +1118,7 @@ function buildCleanupCandidateFeasibilitySummaryLines(
   }
   return lines;
 }
+
 function formatPlanningRealityArchitectureImplication(
   planningShape: string | null | undefined,
   shadowRepairSignal?: {
@@ -1181,6 +1182,43 @@ function formatSlotAllocationStatus(input: {
   }
 
   return "explicit demand not fully satisfied locally";
+}
+
+function buildTopDownMesocyclePlanSummaryLines(
+  plan: PartialPlanningRealityDiagnostic["topDownMesocyclePlan"] | null | undefined
+): string[] | null {
+  if (!plan) {
+    return null;
+  }
+  const summary = plan.summary;
+  const blockedMigrations = asArray(plan.migrationReadiness).filter((row) =>
+    row.readiness?.startsWith("blocked_by_")
+  );
+  const lines = [
+    "Top-Down Mesocycle Plan",
+    "-----------------------",
+    `Status: ${plan.planStatus ?? "unknown"}`,
+    `Matched lanes: ${formatPlanningRealityNumber(summary?.matchedTargetLanes)}`,
+    `Partial lanes: ${formatPlanningRealityNumber(summary?.partialTargetLanes)}`,
+    `Missing lanes: ${formatPlanningRealityNumber(summary?.missingTargetLanes)}`,
+    `Repair-shaped lanes: ${formatPlanningRealityNumber(summary?.repairShapedTargetLanes)}`,
+    "",
+    "Blocked migrations:",
+  ];
+
+  if (blockedMigrations.length === 0) {
+    lines.push("- none");
+  } else {
+    for (const row of blockedMigrations.slice(0, 5)) {
+      lines.push(`- ${row.candidate}: ${row.readiness}`);
+    }
+    const remaining = blockedMigrations.length - 5;
+    if (remaining > 0) {
+      lines.push(`- +${remaining} more`);
+    }
+  }
+
+  return lines;
 }
 
 export function computePlanningRealitySizeBudget(input: {
@@ -1649,6 +1687,13 @@ export function buildPlanningRealitySummary(input: {
     );
   if (accumulationWeekProjectionSummary) {
     lines.push("", ...accumulationWeekProjectionSummary);
+  }
+
+  const topDownMesocyclePlanSummary = buildTopDownMesocyclePlanSummaryLines(
+    planningReality.topDownMesocyclePlan
+  );
+  if (topDownMesocyclePlanSummary) {
+    lines.push("", ...topDownMesocyclePlanSummary);
   }
 
   lines.push("", "Slot allocation:");

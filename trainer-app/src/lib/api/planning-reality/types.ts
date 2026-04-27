@@ -974,6 +974,115 @@ export type CleanupCandidateFeasibility = {
   readOnly: true;
   affectsScoringOrGeneration: false;
 };
+
+export type TopDownMesocycleTargetFlow =
+  | "MesocycleDemand"
+  | "WeeklyDemandByWeek"
+  | "SlotDemandAllocationByWeek"
+  | "ExerciseClassDistributionBySlot"
+  | "SetDistributionIntent"
+  | "SelectionObjective"
+  | "Prescription"
+  | "Validation"
+  | "Receipt"
+  | "Runtime";
+
+export type TopDownMesocycleLane =
+  | "chest_anchor"
+  | "chest_secondary"
+  | "row_anchor"
+  | "vertical_pull"
+  | "vertical_press"
+  | "side_delt_isolation"
+  | "rear_delt"
+  | "triceps"
+  | "biceps"
+  | "squat_anchor"
+  | "quad_isolation"
+  | "hinge_anchor"
+  | "knee_flexion_curl"
+  | "calves"
+  | "quad_support"
+  | "optional_core_adductor_glute";
+
+export type TopDownTargetLaneStatus =
+  | "matched"
+  | "partial"
+  | "missing"
+  | "overdelivered"
+  | "blocked";
+
+export type TopDownMesocyclePlan = {
+  version: 1;
+  source: "first_principles_target_spec";
+  targetSpecPath: "docs/10_HYPERTROPHY_MESOCYCLE_ENGINE_TARGET_SPEC.md";
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+  planStatus:
+    | "diagnostic_only"
+    | "partially_modeled"
+    | "ready_for_selection_consumption"
+    | "blocked_by_repair_shape";
+  targetFlow: TopDownMesocycleTargetFlow[];
+  slotTargets: Array<{
+    slotId: "upper_a" | "lower_a" | "upper_b" | "lower_b" | string;
+    targetIntent: string;
+    requiredClassLanes: Array<{
+      lane: TopDownMesocycleLane;
+      preferredClasses: string[];
+      targetSets: string;
+      currentStatus: TopDownTargetLaneStatus;
+      evidenceRefs: string[];
+      limitations: string[];
+    }>;
+    slotStatus: "matched" | "partial" | "repair_shaped" | "blocked";
+  }>;
+  targetAcceptanceChecks: Array<{
+    check:
+      | "primary_muscles_above_minimum"
+      | "no_forbidden_slot_primary_solution"
+      | "no_unjustified_gt_5_sets"
+      | "no_material_repair_for_basic_shape"
+      | "no_duplicate_main_lift_if_clean_alternative_exists"
+      | "no_excessive_axial_fatigue_stacking"
+      | "no_single_exercise_over_50_60_percent_without_intent"
+      | "slot_demand_allocation_before_selection"
+      | "exercise_class_intent_before_selection"
+      | "runtime_seed_replay_without_reselection";
+    currentStatus: "pass" | "fail" | "partial" | "unknown";
+    evidenceRefs: string[];
+    blockingReason?: string;
+  }>;
+  migrationReadiness: Array<{
+    candidate:
+      | "chest_upper_distinct_class_distribution"
+      | "lower_b_hinge_curl_distribution"
+      | "side_delt_direct_support"
+      | "calf_duplicate_distribution"
+      | "duplicate_main_lift_policy"
+      | "support_floor_planner_ownership"
+      | "repair_path_demotion";
+    readiness:
+      | "ready_for_bounded_trial"
+      | "diagnostic_only"
+      | "blocked_by_repair_materiality"
+      | "blocked_by_suspicious_repair"
+      | "blocked_by_cross_week_uncertainty"
+      | "blocked_by_feasibility";
+    reason: string;
+    evidenceRefs: string[];
+    gateMetricsRequired: string[];
+  }>;
+  summary: {
+    matchedTargetLanes: number;
+    partialTargetLanes: number;
+    missingTargetLanes: number;
+    repairShapedTargetLanes: number;
+    blockedMigrationCandidates: number;
+    readyMigrationCandidates: number;
+  };
+};
+
 export type AccumulationWeekProjection = {
   mesocycleId: string | null;
   source: "diagnostic_shadow_planner";
@@ -1103,6 +1212,7 @@ export type SlotPlanPlanningRealityDiagnostic = {
   exerciseClassUnresolvedCauses: ExerciseClassUnresolvedCause[];
   duplicateContinuityJustification: DuplicateContinuityJustification;
   cleanupCandidateFeasibility: CleanupCandidateFeasibility[];
+  topDownMesocyclePlan?: TopDownMesocyclePlan;
   accumulationWeekProjection: AccumulationWeekProjection;
   forbiddenCleanupReroute?: ForbiddenCleanupRerouteDiagnostic;
   rearDeltCollateralSummary?: RearDeltCollateralSummary;

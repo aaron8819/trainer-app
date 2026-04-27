@@ -143,7 +143,452 @@ vi.mock("@/lib/api/mesocycle-slot-contract", () => ({
     mocks.resolveMesocycleSlotContract(...args),
 }));
 
-import { buildMesocycleExplainAuditPayload } from "./mesocycle-explain";
+import {
+  buildMesocycleExplainAuditPayload,
+  buildPlannerOnlyDryRunComparison,
+} from "./mesocycle-explain";
+
+type PlannerOnlyPlanningReality = NonNullable<
+  Parameters<typeof buildPlannerOnlyDryRunComparison>[0]
+>;
+
+function makeCalfPlanningReality(overrides: {
+  lowerACalfSets?: number;
+  lowerBCalfShapes?: Array<{ name: string; sets: number }>;
+  lowerBHingeCurl?: boolean;
+  weeksProjected?: boolean;
+  materialRepairCount?: number;
+  majorRepairCount?: number;
+  suspiciousRepairCount?: number;
+  lowerAFourSetAllocation?: boolean;
+  lowerACalfUnresolved?: boolean;
+  capKnown?: boolean;
+}) {
+  const lowerACalfSets = overrides.lowerACalfSets ?? 2;
+  const lowerBCalfShapes = overrides.lowerBCalfShapes ?? [
+    { name: "Seated Calf Raise", sets: 4 },
+    { name: "Leg Press Calf Raise", sets: 4 },
+  ];
+  const lowerBHamstringExercises = overrides.lowerBHingeCurl === false
+    ? [
+        {
+          exerciseId: "sldl",
+          exerciseName: "Stiff-Legged Deadlift",
+          role: "main",
+          setCount: 3,
+          primaryMuscles: ["Hamstrings"],
+          movementPatterns: ["hinge"],
+          effectiveStimulusByMuscle: { Hamstrings: 3 },
+        },
+      ]
+    : [
+        {
+          exerciseId: "sldl",
+          exerciseName: "Stiff-Legged Deadlift",
+          role: "main",
+          setCount: 3,
+          primaryMuscles: ["Hamstrings"],
+          movementPatterns: ["hinge"],
+          effectiveStimulusByMuscle: { Hamstrings: 3 },
+        },
+        {
+          exerciseId: "curl",
+          exerciseName: "Nordic Hamstring Curl",
+          role: "accessory",
+          setCount: 3,
+          primaryMuscles: ["Hamstrings"],
+          movementPatterns: ["flexion"],
+          effectiveStimulusByMuscle: { Hamstrings: 3 },
+        },
+      ];
+  const weekTwoStatus = overrides.weeksProjected
+    ? "allocated_from_policy"
+    : "not_allocated_missing_weekly_projection";
+  const preselectionWeekTwoStatus = overrides.weeksProjected
+    ? "projected_from_policy"
+    : "not_projected_missing_weekly_demand_curve";
+  const lowerATarget = overrides.lowerAFourSetAllocation ? 4 : 8;
+  const capKnown = overrides.capKnown !== false;
+  const suspiciousRows = Array.from(
+    { length: overrides.suspiciousRepairCount ?? 0 },
+    (_, index) => ({
+      slotId: "lower_b",
+      muscle: "Calves",
+      exerciseName: `Suspicious Calf ${index + 1}`,
+      repairMechanism: "support_floor",
+      reason: "test suspicious repair",
+      recommendation: "Do not promote this repair upstream.",
+    }),
+  );
+
+  return {
+    label: "weekly demand / slot allocation diagnostics",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    summary: {
+      planningShape: "mostly_upstream_planned",
+      explicitWeeklyDemandMuscles: 1,
+      inferredDemandMuscles: 0,
+      slotsWithExplicitWeeklyDemand: 2,
+      slotsWithOnlyLocalOrInferredSemantics: 0,
+      materialRepairCount: overrides.materialRepairCount ?? 0,
+      majorRepairCount: overrides.majorRepairCount ?? 0,
+      highExerciseConcentrationCount: 0,
+      warningCodes: [],
+    },
+    weeklyMuscleDemand: [
+      {
+        muscle: "Calves",
+        targetTier: "B_SUPPORT",
+        targetKind: "soft",
+        targetStatus: "soft",
+        targetRange: null,
+        preferredTarget: 8,
+        mev: 8,
+        mav: 14,
+        explicitUpstream: true,
+        inferredDownstream: false,
+        source: ["test"],
+      },
+    ],
+    slotDemandAllocation: [],
+    shadowWeeklyDemand: [
+      {
+        muscle: "Calves",
+        targetTier: "B_SUPPORT",
+        targetStatus: "soft",
+        minEffectiveSets: 8,
+        preferredEffectiveSets: 8,
+        maxEffectiveSets: 14,
+        desiredExposureCount: 2,
+        priority: "support",
+        source: ["test"],
+        rationale: ["test"],
+      },
+    ],
+    shadowSlotDemandAllocation: [
+      {
+        slotId: "lower_a",
+        slotIndex: 0,
+        slotArchetype: "lower_squat",
+        intent: "lower",
+        allocatedMuscles: [
+          {
+            muscle: "Calves",
+            role: "support",
+            targetStatus: "soft",
+            minEffectiveSets: lowerATarget,
+            preferredEffectiveSets: lowerATarget,
+            maxEffectiveSets: 14,
+            allocationReason: ["test"],
+          },
+        ],
+      },
+      {
+        slotId: "lower_b",
+        slotIndex: 1,
+        slotArchetype: "lower_hinge",
+        intent: "lower",
+        allocatedMuscles: [
+          {
+            muscle: "Calves",
+            role: "support",
+            targetStatus: "soft",
+            minEffectiveSets: 4,
+            preferredEffectiveSets: 4,
+            maxEffectiveSets: 14,
+            allocationReason: ["test"],
+          },
+        ],
+      },
+    ],
+    initialSlotComposition: [
+      {
+        slotId: "lower_a",
+        slotIndex: 0,
+        intent: "lower",
+        exerciseCount: 1,
+        totalSets: lowerACalfSets,
+        projectedEffectiveStimulusByMuscle: { Calves: lowerACalfSets },
+        exercises: [
+          {
+            exerciseId: "standing-calf",
+            exerciseName: "Standing Calf Raise",
+            role: "accessory",
+            setCount: lowerACalfSets,
+            primaryMuscles: ["Calves"],
+            movementPatterns: ["isolation"],
+            effectiveStimulusByMuscle: { Calves: lowerACalfSets },
+          },
+        ],
+      },
+      {
+        slotId: "lower_b",
+        slotIndex: 1,
+        intent: "lower",
+        exerciseCount: lowerBCalfShapes.length + lowerBHamstringExercises.length,
+        totalSets:
+          lowerBCalfShapes.reduce((sum, row) => sum + row.sets, 0) +
+          lowerBHamstringExercises.reduce((sum, row) => sum + row.setCount, 0),
+        projectedEffectiveStimulusByMuscle: {
+          Calves: lowerBCalfShapes.reduce((sum, row) => sum + row.sets, 0),
+          Hamstrings: lowerBHamstringExercises.reduce(
+            (sum, row) => sum + (row.effectiveStimulusByMuscle.Hamstrings ?? 0),
+            0,
+          ),
+        },
+        exercises: [
+          ...lowerBHamstringExercises,
+          ...lowerBCalfShapes.map((row, index) => ({
+            exerciseId: `lower-b-calf-${index + 1}`,
+            exerciseName: row.name,
+            role: "accessory",
+            setCount: row.sets,
+            primaryMuscles: ["Calves"],
+            movementPatterns: ["isolation"],
+            effectiveStimulusByMuscle: { Calves: row.sets },
+          })),
+        ],
+      },
+    ],
+    finalSlotPlan: [],
+    allocationVsInitialDelta: overrides.lowerACalfUnresolved === false
+      ? []
+      : [
+          {
+            slotId: "lower_a",
+            slotIndex: 0,
+            comparison: "allocation_vs_initial",
+            responsibilityLoad: "clear",
+            underAllocatedMuscles: [
+              {
+                muscle: "Calves",
+                role: "support",
+                targetStatus: "soft",
+                expectedEffectiveSets: lowerATarget,
+                actualEffectiveSets: lowerACalfSets,
+                shortfall: Math.max(0, lowerATarget - lowerACalfSets),
+              },
+            ],
+            unallocatedStimulusMuscles: [],
+            notes: [],
+          },
+        ],
+    allocationVsFinalDelta: [],
+    repairMaterialityAfterShadowAllocation: [],
+    shadowRepairSummary: {
+      materialRepairCount: overrides.materialRepairCount ?? 0,
+      majorRepairCount: overrides.majorRepairCount ?? 0,
+      likelyAvoidableMaterialRepairCount: 0,
+      remainingMaterialRepairCount: 0,
+      likelyAvoidableMajorRepairCount: 0,
+      remainingMajorRepairCount: 0,
+      likelyAvoidableByMuscle: {},
+      remainingByMuscle: {},
+    },
+    suspiciousRepairsNotEligibleForPromotion: suspiciousRows,
+    promotionCandidates: [],
+    slotPrescriptionIntents: [],
+    setDistributionIntents: [
+      {
+        version: 1,
+        slotId: "lower_a",
+        slotIndex: 0,
+        intent: "lower",
+        slotArchetype: "lower_squat",
+        musclePolicies: [
+          {
+            muscle: "Calves",
+            role: "support",
+            targetStatus: "soft",
+            demandType: "soft_direct_allowed",
+            preferredEffectiveSets: lowerATarget,
+            minEffectiveSets: lowerATarget,
+            maxEffectiveSets: 14,
+            maxSingleExerciseShare: 1,
+            maxSinglePatternShare: 1,
+            maxSetsPerExercise: 4,
+            maxDirectExercises: 1,
+            maxDuplicateExerciseClasses: 1,
+            preferredDistribution: "single_exercise",
+            whenAtLimit: "leave_unresolved",
+          },
+        ],
+        slotBudget: {
+          preferredTotalSets: 12,
+          maxTotalSets: capKnown ? 25 : null,
+          maxMainLifts: 2,
+          maxAccessories: 5,
+          maxDirectIsolationExercises: 2,
+        },
+        evidence: {
+          concentrationRows: [],
+          capCleanupRows: [],
+          repairRowsStillRepairOwned: [],
+        },
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+      },
+      {
+        version: 1,
+        slotId: "lower_b",
+        slotIndex: 1,
+        intent: "lower",
+        slotArchetype: "lower_hinge",
+        musclePolicies: [
+          {
+            muscle: "Calves",
+            role: "support",
+            targetStatus: "soft",
+            demandType: "soft_direct_allowed",
+            preferredEffectiveSets: 4,
+            minEffectiveSets: 4,
+            maxEffectiveSets: 14,
+            maxSingleExerciseShare: 1,
+            maxSinglePatternShare: 1,
+            maxSetsPerExercise: 4,
+            maxDirectExercises: 1,
+            maxDuplicateExerciseClasses: 1,
+            preferredDistribution: "single_exercise",
+            whenAtLimit: "leave_unresolved",
+          },
+        ],
+        slotBudget: {
+          preferredTotalSets: 16,
+          maxTotalSets: capKnown ? 25 : null,
+          maxMainLifts: 2,
+          maxAccessories: 5,
+          maxDirectIsolationExercises: 2,
+        },
+        evidence: {
+          concentrationRows: [],
+          capCleanupRows: [],
+          repairRowsStillRepairOwned: [],
+        },
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+      },
+    ],
+    distributionGuardActions: [],
+    preselectionFeasibility: [],
+    preselectionDistributionPolicyByWeek: {
+      mesocycleId: "meso-1",
+      source: "diagnostic_shadow_planner",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      limitations: overrides.weeksProjected ? [] : ["weeks_2_to_4_unprojected"],
+      weeks: [
+        { week: 1, phase: "accumulation", projectionStatus: "projected_from_current_week_evidence", slots: [], weekLevelWarnings: [] },
+        { week: 2, phase: "accumulation", projectionStatus: preselectionWeekTwoStatus, slots: [], weekLevelWarnings: [] },
+        { week: 3, phase: "accumulation", projectionStatus: preselectionWeekTwoStatus, slots: [], weekLevelWarnings: [] },
+        { week: 4, phase: "accumulation", projectionStatus: preselectionWeekTwoStatus, slots: [], weekLevelWarnings: [] },
+      ],
+      candidateBehaviorSlices: [],
+      recommendedNextStep: "test",
+    },
+    slotDemandAllocationByWeek: {
+      mesocycleId: "meso-1",
+      source: "diagnostic_shadow_planner",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      weeks: [
+        {
+          week: 1,
+          phase: "entry",
+          projectionStatus: "allocated_from_current_week_evidence",
+          slots: [
+            {
+              slotId: "lower_a",
+              slotIndex: 0,
+              slotArchetype: "lower_squat",
+              intent: "lower",
+              allocatedMuscles: [
+                {
+                  muscle: "Calves",
+                  role: "support",
+                  targetStatus: "soft",
+                  minEffectiveSets: lowerATarget,
+                  preferredEffectiveSets: lowerATarget,
+                  maxEffectiveSets: 14,
+                  weekScope: "week_1_only",
+                  allocationConfidence: "high",
+                  allocationReason: ["test"],
+                  limitations: [],
+                },
+              ],
+              slotLevelWarnings: [],
+            },
+          ],
+          weekLevelWarnings: [],
+        },
+        { week: 2, phase: "accumulation", projectionStatus: weekTwoStatus, slots: [], weekLevelWarnings: [] },
+        { week: 3, phase: "accumulation", projectionStatus: weekTwoStatus, slots: [], weekLevelWarnings: [] },
+        { week: 4, phase: "accumulation", projectionStatus: weekTwoStatus, slots: [], weekLevelWarnings: [] },
+      ],
+      crossWeekAllocationWarnings: [],
+    },
+    projectedDelivery: [],
+    repairMateriality: [
+      {
+        repairMechanism: "support_floor_closure",
+        materiality: "minor",
+        muscle: "Calves",
+        slotId: "lower_a",
+        exerciseId: "standing-calf",
+        exerciseName: "Standing Calf Raise",
+        action: "set_bumped",
+        effectiveStimulusAdded: 1,
+        effectiveStimulusDelta: 1,
+        rawSetsAdded: 1,
+        rawSetDelta: 1,
+        changedExerciseIdentity: false,
+        changedSlotShapeMaterially: false,
+        behaviorClass: "program_shaping",
+        source: "support_floor_closure",
+        rationale: "support floor closure",
+      },
+    ],
+    exerciseClassUnresolvedCauses: [],
+    duplicateContinuityJustification: {
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      version: 1,
+      source: "test",
+      summary: {
+        totalDuplicates: lowerBCalfShapes.length > 1 ? 1 : 0,
+        justifiedDuplicates: 0,
+        unjustifiedOrUnknown: lowerBCalfShapes.length > 1 ? 1 : 0,
+        cleanAlternativeAvailable: 0,
+        highRiskDuplicates: 0,
+      },
+      duplicates: lowerBCalfShapes.length > 1
+        ? [
+            {
+              exerciseId: "calf-duplicate",
+              exerciseName: "Leg Press Calf Raise + Seated Calf Raise",
+              exerciseClass: "calf_raise",
+              movementPatterns: ["isolation"],
+              primaryMuscles: ["Calves"],
+              duplicateType: "same_session_variant",
+              duplicatedInSlots: ["lower_b"],
+              roleBySlot: { lower_b: "accessory" },
+              setCountBySlot: { lower_b: 8 },
+              compatibleAlternativeExists: false,
+              compatibleAlternatives: [],
+              justification: "unjustified",
+              policyRecommendation: "discourage_duplicate",
+              risk: "low",
+              evidence: [],
+              limitations: [],
+            },
+          ]
+        : [],
+    },
+    exerciseConcentration: [],
+    warnings: [],
+    limitations: [],
+  } as unknown as PlannerOnlyPlanningReality;
+}
 
 describe("buildMesocycleExplainAuditPayload", () => {
   beforeEach(() => {
@@ -1765,5 +2210,96 @@ describe("buildMesocycleExplainAuditPayload", () => {
     );
     expect(mocks.projectSuccessorSlotPlansFromSnapshot).toHaveBeenCalledTimes(1);
     expect(mocks.buildMesocycleSlotPlanSeed).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps Calves 4+4 diagnostic read-only and blocks behavior when materiality or cross-week risk is unknown", async () => {
+    const payload = await buildMesocycleExplainAuditPayload({
+      userId: "user-1",
+      ownerEmail: "aaron8819@gmail.com",
+      sourceMesocycleId: "meso-1",
+      retrospectiveMesocycleId: "meso-1",
+      plannerDiagnosticsMode: "debug",
+      plannerOnlyDryRun: {
+        enabled: true,
+        compareRepaired: true,
+      },
+    });
+
+    expect(payload.plannerOnlyDryRun?.calvesFourFourCandidate).toMatchObject({
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      status: "blocked",
+      recommendation: expect.not.stringMatching("safe_to_trial_behavior"),
+      blockedReasons: expect.arrayContaining([
+        "weeks_2_to_4_unprojected",
+        "insufficient_candidate_evidence",
+        "would_risk_lower_b_hamstrings_route",
+        "cap_trim_risk_unknown",
+        "materiality_delta_unknown",
+      ]),
+    });
+    expect(mocks.projectSuccessorSlotPlansFromSnapshot).toHaveBeenCalledTimes(1);
+    expect(mocks.buildMesocycleSlotPlanSeed).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports blocked when one-slot calf cleanup cannot satisfy the floor without lower_a policy", () => {
+    const dryRun = buildPlannerOnlyDryRunComparison(
+      makeCalfPlanningReality({
+        lowerAFourSetAllocation: false,
+        materialRepairCount: 19,
+        majorRepairCount: 8,
+        suspiciousRepairCount: 6,
+      }),
+      true,
+    );
+
+    expect(dryRun.calvesFourFourCandidate).toMatchObject({
+      status: "blocked",
+      lowerAProjectedCalfSets: 4,
+      lowerBProjectedCalfSets: 4,
+      weeklyProjectedCalfEffectiveSets: 8,
+      wouldRemoveLowerBSameSessionCalfDuplicate: true,
+      wouldReduceSupportFloorClosureRows: true,
+      wouldIncreaseCapTrimRows: false,
+      preservesLowerBHingeCurlRoute: true,
+      recommendation: "needs_more_projection",
+      blockedReasons: expect.arrayContaining([
+        "weeks_2_to_4_unprojected",
+        "would_mutate_lower_a_without_policy",
+        "materiality_delta_unknown",
+      ]),
+    });
+  });
+
+  it("can report pass when 4+4 Calves distribution is feasible and all gate metrics are safe", () => {
+    const dryRun = buildPlannerOnlyDryRunComparison(
+      makeCalfPlanningReality({
+        lowerAFourSetAllocation: true,
+        weeksProjected: true,
+        materialRepairCount: 0,
+        majorRepairCount: 0,
+        suspiciousRepairCount: 0,
+      }),
+      true,
+    );
+
+    expect(dryRun.calvesFourFourCandidate).toMatchObject({
+      status: "pass",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      lowerAProjectedCalfSets: 4,
+      lowerBProjectedCalfSets: 4,
+      weeklyProjectedCalfEffectiveSets: 8,
+      wouldRemoveLowerBSameSessionCalfDuplicate: true,
+      wouldReduceSupportFloorClosureRows: true,
+      wouldReduceSetBumps: true,
+      wouldIncreaseCapTrimRows: false,
+      wouldChangeMaterialRepairCount: "flat",
+      wouldChangeMajorRepairCount: "flat",
+      wouldChangeSuspiciousRepairCount: "flat",
+      preservesLowerBHingeCurlRoute: true,
+      blockedReasons: [],
+      recommendation: "safe_to_trial_behavior",
+    });
   });
 });

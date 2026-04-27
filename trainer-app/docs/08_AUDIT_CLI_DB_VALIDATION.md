@@ -53,6 +53,7 @@ npm run audit:workout -- --env-file .env.local --mode mesocycle-explain --owner 
 - `--planner-only-dry-run` currently requires `--compare-repaired`.
 - The artifact adds `mesocycleExplain.plannerOnlyDryRun` only for flagged runs.
 - This path is diagnostic-only and must not write accepted seeds, planned workouts, receipts, replay data, or performed workouts.
+- The flagged payload may include `plannerOnlyDryRun.calvesFourFourCandidate`, a read-only Calves 4+4 lower-slot classifier. It is evidence for future implementation planning only; blocked or unknown materiality, cap, cross-week, lower_a ownership, or Hamstrings-route checks must keep behavior unapproved.
 
 Projected current week volume:
 

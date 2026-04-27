@@ -163,6 +163,9 @@ type DuplicateExerciseReuseDiagnostic = NonNullable<
 type SlotObligationEvaluation = NonNullable<
   NonNullable<SlotPlanProjectionDiagnostics>["weeklyObligations"]
 >["slotEvaluations"][number];
+type CalvesFourFourCandidate = NonNullable<
+  MesocycleExplainPlannerOnlyDryRun["calvesFourFourCandidate"]
+>;
 
 function countWorkoutExercises(workout: {
   warmup: unknown[];
@@ -453,6 +456,314 @@ function getSlotMuscleStimulus(
   muscle: string
 ): number {
   return roundOne(slot?.projectedEffectiveStimulusByMuscle[muscle] ?? 0);
+}
+
+function isCalfExercise(
+  exercise: SlotCompositionSnapshot["exercises"][number]
+): boolean {
+  return (
+    exercise.primaryMuscles.includes("Calves") ||
+    (exercise.effectiveStimulusByMuscle.Calves ?? 0) > 0
+  );
+}
+
+function buildCalfShape(
+  slot: SlotCompositionSnapshot | undefined
+): CalvesFourFourCandidate["currentLowerAShape"] {
+  return (slot?.exercises ?? [])
+    .filter(isCalfExercise)
+    .map((exercise) => ({
+      exerciseName: exercise.exerciseName,
+      sets: exercise.setCount,
+      effectiveCalfSets: roundOne(
+        exercise.effectiveStimulusByMuscle.Calves ?? 0
+      ),
+    }));
+}
+
+function getSlotSetBudget(
+  planningReality: PlanningRealityDiagnostic,
+  slotId: string
+): number | null {
+  return (
+    planningReality.setDistributionIntents.find((intent) => intent.slotId === slotId)
+      ?.slotBudget.maxTotalSets ?? null
+  );
+}
+
+function hasWeeksTwoToFourUnprojected(
+  planningReality: PlanningRealityDiagnostic
+): boolean {
+  const allocationWeeks =
+    planningReality.slotDemandAllocationByWeek?.weeks.filter(
+      (week) => week.week >= 2 && week.week <= 4
+    ) ?? [];
+  const preselectionWeeks =
+    planningReality.preselectionDistributionPolicyByWeek?.weeks.filter(
+      (week) => week.week >= 2 && week.week <= 4
+    ) ?? [];
+  return [...allocationWeeks, ...preselectionWeeks].some((week) =>
+    week.projectionStatus.includes("not_") ||
+    week.projectionStatus.includes("missing") ||
+    week.projectionStatus.includes("unprojected")
+  );
+}
+
+function slotHasHamstringsHingeAndCurl(
+  slot: SlotCompositionSnapshot | undefined
+): boolean | null {
+  if (!slot) {
+    return null;
+  }
+  const hamstringExercises = slot.exercises.filter(
+    (exercise) =>
+      exercise.primaryMuscles.includes("Hamstrings") ||
+      (exercise.effectiveStimulusByMuscle.Hamstrings ?? 0) > 0
+  );
+  const hasHinge = hamstringExercises.some((exercise) =>
+    exercise.movementPatterns.some((pattern) =>
+      pattern.toLowerCase().includes("hinge")
+    )
+  );
+  const hasCurl = hamstringExercises.some((exercise) => {
+    const name = exercise.exerciseName.toLowerCase();
+    return (
+      name.includes("curl") ||
+      exercise.movementPatterns.some((pattern) => {
+        const normalized = pattern.toLowerCase();
+        return normalized.includes("knee_flexion") || normalized.includes("flexion");
+      })
+    );
+  });
+  return hasHinge && hasCurl;
+}
+
+function parseRepairDependencyCount(
+  consequence: string,
+  suffix: string
+): number {
+  const match = consequence.match(
+    new RegExp(`repair_would_be_needed_here:(\\d+)_${suffix}`)
+  );
+  return match ? Number(match[1]) : 0;
+}
+
+function buildProposedCalfShape(
+  currentShape: CalvesFourFourCandidate["currentLowerAShape"],
+  slotLabel: "lower_a" | "lower_b"
+): CalvesFourFourCandidate["proposedLowerAShape"] {
+  if (currentShape.length === 0) {
+    return [];
+  }
+  return [
+    {
+      exerciseClass: "calf_raise",
+      proposedSets: 4,
+      reason:
+        slotLabel === "lower_a"
+          ? "lower_a_four_set_direct_calf_allocation_candidate"
+          : "lower_b_single_calf_identity_four_set_candidate",
+    },
+  ];
+}
+
+function hasExplicitFourSetCalfAllocation(
+  planningReality: PlanningRealityDiagnostic,
+  slotId: "lower_a" | "lower_b"
+): boolean {
+  const weekOne = planningReality.slotDemandAllocationByWeek?.weeks.find(
+    (week) => week.week === 1
+  );
+  const row = weekOne?.slots
+    .find((slot) => slot.slotId === slotId)
+    ?.allocatedMuscles.find((muscle) => muscle.muscle === "Calves");
+  return row?.minEffectiveSets === 4 || row?.preferredEffectiveSets === 4;
+}
+
+function buildCalvesFourFourCandidate(input: {
+  planningReality: PlanningRealityDiagnostic;
+  slotComparisons: MesocycleExplainPlannerOnlyDryRun["slotComparisons"];
+  repairDependencies: MesocycleExplainPlannerOnlyDryRun["repairDependencies"];
+}): CalvesFourFourCandidate {
+  const lowerA = getSlotById(input.planningReality.initialSlotComposition, "lower_a");
+  const lowerB = getSlotById(input.planningReality.initialSlotComposition, "lower_b");
+  const currentLowerAShape = buildCalfShape(lowerA);
+  const currentLowerBShape = buildCalfShape(lowerB);
+  const proposedLowerAShape = buildProposedCalfShape(currentLowerAShape, "lower_a");
+  const proposedLowerBShape = buildProposedCalfShape(currentLowerBShape, "lower_b");
+  const lowerAProjectedCalfSets =
+    proposedLowerAShape.length > 0 ? proposedLowerAShape[0].proposedSets : null;
+  const lowerBProjectedCalfSets =
+    proposedLowerBShape.length > 0 ? proposedLowerBShape[0].proposedSets : null;
+  const weeklyProjectedCalfEffectiveSets =
+    lowerAProjectedCalfSets != null && lowerBProjectedCalfSets != null
+      ? roundOne(lowerAProjectedCalfSets + lowerBProjectedCalfSets)
+      : null;
+  const currentLowerAEffective = roundOne(
+    currentLowerAShape.reduce((sum, row) => sum + row.effectiveCalfSets, 0)
+  );
+  const currentLowerBEffective = roundOne(
+    currentLowerBShape.reduce((sum, row) => sum + row.effectiveCalfSets, 0)
+  );
+  const currentWeeklyEffective = roundOne(currentLowerAEffective + currentLowerBEffective);
+  const lowerACalfUnresolved =
+    input.slotComparisons
+      .find((slot) => slot.slotId === "lower_a")
+      ?.unresolvedDemand.some(
+        (row) =>
+          row.includes("Calves") && row.includes("repair_would_be_needed_here")
+      ) ?? false;
+  const lowerBDuplicate =
+    currentLowerBShape.length > 1 ||
+    (input.slotComparisons
+      .find((slot) => slot.slotId === "lower_b")
+      ?.duplicateViolations.some((row) => row.includes("Calf")) ?? false);
+  const lowerASetDelta =
+    lowerAProjectedCalfSets == null ? null : lowerAProjectedCalfSets - currentLowerAEffective;
+  const lowerBSetDelta =
+    lowerBProjectedCalfSets == null ? null : lowerBProjectedCalfSets - currentLowerBEffective;
+  const lowerACap = getSlotSetBudget(input.planningReality, "lower_a");
+  const lowerBCap = getSlotSetBudget(input.planningReality, "lower_b");
+  const lowerATotalAfter =
+    lowerA && lowerASetDelta != null ? roundOne(lowerA.totalSets + lowerASetDelta) : null;
+  const lowerBTotalAfter =
+    lowerB && lowerBSetDelta != null ? roundOne(lowerB.totalSets + lowerBSetDelta) : null;
+  const wouldIncreaseCapTrimRows =
+    lowerATotalAfter == null || lowerBTotalAfter == null
+      ? null
+      : lowerACap == null || lowerBCap == null
+        ? null
+        : lowerATotalAfter > lowerACap || lowerBTotalAfter > lowerBCap;
+  const materialRepairCount =
+    input.planningReality.shadowRepairSummary?.materialRepairCount ??
+    input.planningReality.summary.materialRepairCount;
+  const majorRepairCount =
+    input.planningReality.shadowRepairSummary?.majorRepairCount ??
+    input.planningReality.summary.majorRepairCount;
+  const suspiciousRepairCount =
+    input.planningReality.suspiciousRepairsNotEligibleForPromotion?.length ?? 0;
+  const repairedLowerB =
+    getSlotById(input.planningReality.finalSlotPlan, "lower_b") ?? lowerB;
+  const preservesLowerBHingeCurlRoute = slotHasHamstringsHingeAndCurl(repairedLowerB);
+  const supportRows = input.repairDependencies.find(
+    (dependency) => dependency.path === "support-floor closure"
+  );
+  const setBumpRows = input.repairDependencies.find(
+    (dependency) => dependency.path === "set bumping"
+  );
+  const supportFloorClosureCount = supportRows
+    ? parseRepairDependencyCount(supportRows.consequenceWithoutRepair, "support_rows")
+    : 0;
+  const setBumpCount = setBumpRows
+    ? parseRepairDependencyCount(setBumpRows.consequenceWithoutRepair, "set_bumps")
+    : 0;
+  const wouldReduceSupportFloorClosureRows =
+    weeklyProjectedCalfEffectiveSets == null
+      ? null
+      : lowerACalfUnresolved || supportFloorClosureCount > 0
+        ? (lowerACalfUnresolved &&
+            lowerAProjectedCalfSets != null &&
+            lowerAProjectedCalfSets > currentLowerAEffective) ||
+          weeklyProjectedCalfEffectiveSets >= 8
+        : false;
+  const wouldReduceSetBumps =
+    weeklyProjectedCalfEffectiveSets == null
+      ? null
+      : setBumpCount > 0
+        ? weeklyProjectedCalfEffectiveSets <= currentWeeklyEffective
+        : false;
+  const blockedReasons = new Set<CalvesFourFourCandidate["blockedReasons"][number]>();
+
+  if (hasWeeksTwoToFourUnprojected(input.planningReality)) {
+    blockedReasons.add("weeks_2_to_4_unprojected");
+  }
+  if (
+    lowerAProjectedCalfSets == null ||
+    lowerBProjectedCalfSets == null ||
+    weeklyProjectedCalfEffectiveSets == null
+  ) {
+    blockedReasons.add("insufficient_candidate_evidence");
+  }
+  if (lowerASetDelta != null && Math.abs(lowerASetDelta) > 0.1) {
+    if (!hasExplicitFourSetCalfAllocation(input.planningReality, "lower_a")) {
+      blockedReasons.add("would_mutate_lower_a_without_policy");
+    }
+  }
+  if (lowerAProjectedCalfSets != null && lowerAProjectedCalfSets > 4) {
+    blockedReasons.add("requires_specialization_cap_override");
+  }
+  if (lowerBProjectedCalfSets != null && lowerBProjectedCalfSets > 4) {
+    blockedReasons.add("requires_specialization_cap_override");
+  }
+  if (preservesLowerBHingeCurlRoute !== true) {
+    blockedReasons.add("would_risk_lower_b_hamstrings_route");
+  }
+  if (wouldIncreaseCapTrimRows == null) {
+    blockedReasons.add("cap_trim_risk_unknown");
+  }
+  if (materialRepairCount > 0 || majorRepairCount > 0 || suspiciousRepairCount > 0) {
+    blockedReasons.add("materiality_delta_unknown");
+  }
+
+  const calfDemandDecreases =
+    lowerACalfUnresolved &&
+    lowerAProjectedCalfSets != null &&
+    lowerAProjectedCalfSets > currentLowerAEffective;
+  const duplicateBecomesAvoidable = lowerBDuplicate && currentLowerBShape.length > 1;
+  const materialitySafe =
+    materialRepairCount === 0 && majorRepairCount === 0 && suspiciousRepairCount === 0;
+  const gatePasses =
+    calfDemandDecreases &&
+    duplicateBecomesAvoidable &&
+    wouldReduceSupportFloorClosureRows === true &&
+    wouldReduceSetBumps !== null &&
+    wouldIncreaseCapTrimRows === false &&
+    materialitySafe &&
+    preservesLowerBHingeCurlRoute === true &&
+    blockedReasons.size === 0;
+  const status: CalvesFourFourCandidate["status"] =
+    gatePasses
+      ? "pass"
+      : blockedReasons.size > 0
+        ? "blocked"
+        : !calfDemandDecreases || !duplicateBecomesAvoidable
+          ? "fail"
+          : "ambiguous";
+  const hardDoNotTrial =
+    blockedReasons.has("requires_specialization_cap_override") ||
+    blockedReasons.has("would_risk_lower_b_hamstrings_route");
+  const recommendation: CalvesFourFourCandidate["recommendation"] =
+    gatePasses
+      ? "safe_to_trial_behavior"
+      : hardDoNotTrial
+        ? "do_not_trial_behavior"
+        : "needs_more_projection";
+
+  return {
+    status,
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    lowerAProjectedCalfSets,
+    lowerBProjectedCalfSets,
+    weeklyProjectedCalfEffectiveSets,
+    currentLowerAShape,
+    currentLowerBShape,
+    proposedLowerAShape,
+    proposedLowerBShape,
+    wouldRemoveLowerBSameSessionCalfDuplicate:
+      currentLowerBShape.length === 0 ? null : lowerBDuplicate,
+    wouldReduceSupportFloorClosureRows,
+    wouldReduceSetBumps,
+    wouldIncreaseCapTrimRows,
+    wouldChangeMaterialRepairCount: materialRepairCount === 0 ? "flat" : "unknown",
+    wouldChangeMajorRepairCount: majorRepairCount === 0 ? "flat" : "unknown",
+    wouldChangeSuspiciousRepairCount: suspiciousRepairCount === 0 ? "flat" : "unknown",
+    preservesLowerBHingeCurlRoute,
+    blockedReasons: Array.from(blockedReasons).sort((left, right) =>
+      left.localeCompare(right)
+    ),
+    recommendation,
+  };
 }
 
 function buildPlannerOnlyWeeklyMuscleComparison(
@@ -1055,7 +1366,7 @@ function buildPlannerOnlyRepairDependencies(
   ];
 }
 
-function buildPlannerOnlyDryRunComparison(
+export function buildPlannerOnlyDryRunComparison(
   planningReality: PlanningRealityDiagnostic | undefined,
   compareRepaired: boolean
 ): MesocycleExplainPlannerOnlyDryRun {
@@ -1093,6 +1404,11 @@ function buildPlannerOnlyDryRunComparison(
     weeklyMuscleComparison
   );
   const repairDependencies = buildPlannerOnlyRepairDependencies(planningReality);
+  const calvesFourFourCandidate = buildCalvesFourFourCandidate({
+    planningReality,
+    slotComparisons,
+    repairDependencies,
+  });
   const acceptancePassed = acceptanceChecks.filter((check) => check.status === "pass").length;
   const acceptanceFailed = acceptanceChecks.filter((check) => check.status === "fail").length;
   const unresolvedDemandCount = slotComparisons.reduce(
@@ -1131,6 +1447,7 @@ function buildPlannerOnlyDryRunComparison(
     weeklyMuscleComparison,
     acceptanceChecks,
     repairDependencies,
+    calvesFourFourCandidate,
   };
 }
 

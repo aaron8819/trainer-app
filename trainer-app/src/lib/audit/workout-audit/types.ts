@@ -768,6 +768,55 @@ export type MesocycleExplainPlannerOnlyDryRun = {
     consequenceWithoutRepair: string;
     plannerOwnerRequired: string;
   }>;
+  calvesFourFourCandidate?: {
+    status: "pass" | "fail" | "blocked" | "ambiguous";
+    readOnly: true;
+    affectsScoringOrGeneration: false;
+    lowerAProjectedCalfSets: number | null;
+    lowerBProjectedCalfSets: number | null;
+    weeklyProjectedCalfEffectiveSets: number | null;
+    currentLowerAShape: Array<{
+      exerciseName: string;
+      sets: number;
+      effectiveCalfSets: number;
+    }>;
+    currentLowerBShape: Array<{
+      exerciseName: string;
+      sets: number;
+      effectiveCalfSets: number;
+    }>;
+    proposedLowerAShape: Array<{
+      exerciseClass: "calf_raise";
+      proposedSets: number;
+      reason: string;
+    }>;
+    proposedLowerBShape: Array<{
+      exerciseClass: "calf_raise";
+      proposedSets: number;
+      reason: string;
+    }>;
+    wouldRemoveLowerBSameSessionCalfDuplicate: boolean | null;
+    wouldReduceSupportFloorClosureRows: boolean | null;
+    wouldReduceSetBumps: boolean | null;
+    wouldIncreaseCapTrimRows: boolean | null;
+    wouldChangeMaterialRepairCount: "decrease" | "flat" | "increase" | "unknown";
+    wouldChangeMajorRepairCount: "decrease" | "flat" | "increase" | "unknown";
+    wouldChangeSuspiciousRepairCount: "decrease" | "flat" | "increase" | "unknown";
+    preservesLowerBHingeCurlRoute: boolean | null;
+    blockedReasons: Array<
+      | "weeks_2_to_4_unprojected"
+      | "requires_specialization_cap_override"
+      | "would_mutate_lower_a_without_policy"
+      | "would_risk_lower_b_hamstrings_route"
+      | "cap_trim_risk_unknown"
+      | "materiality_delta_unknown"
+      | "insufficient_candidate_evidence"
+    >;
+    recommendation:
+      | "safe_to_trial_behavior"
+      | "do_not_trial_behavior"
+      | "needs_more_projection";
+  };
 };
 
 export type MesocycleExplainAuditPayload = {

@@ -263,6 +263,10 @@ function formatPlanningRealityNumber(value: number | null | undefined): string {
   return typeof value === "number" && Number.isFinite(value) ? String(value) : "unknown";
 }
 
+function formatPlannerOnlyNullableBoolean(value: boolean | null | undefined): string {
+  return typeof value === "boolean" ? formatBooleanFlag(value) : "unknown";
+}
+
 function isMaterialPlanningRealityRepair(input: {
   materiality?: string | null;
 }): boolean {
@@ -1749,6 +1753,21 @@ export function buildPlannerOnlyDryRunSummary(input: {
       (dependency) =>
         `- ${dependency.path}: ${dependency.consequenceWithoutRepair}`
     );
+  const calvesCandidate = dryRun.calvesFourFourCandidate;
+  const calvesCandidateLines = calvesCandidate
+    ? [
+        "",
+        "Calves 4+4 Candidate",
+        "--------------------",
+        `Status: ${calvesCandidate.status}`,
+        `Lower A projected calf sets: ${formatPlanningRealityNumber(calvesCandidate.lowerAProjectedCalfSets)}`,
+        `Lower B projected calf sets: ${formatPlanningRealityNumber(calvesCandidate.lowerBProjectedCalfSets)}`,
+        `Weekly projected calf sets: ${formatPlanningRealityNumber(calvesCandidate.weeklyProjectedCalfEffectiveSets)}`,
+        `Would remove lower_b duplicate: ${formatPlannerOnlyNullableBoolean(calvesCandidate.wouldRemoveLowerBSameSessionCalfDuplicate)}`,
+        `Recommendation: ${calvesCandidate.recommendation}`,
+        `Blocked reasons: ${calvesCandidate.blockedReasons.join(", ") || "none"}`,
+      ]
+    : [];
 
   return [
     "Planner-Only Dry Run",
@@ -1768,6 +1787,7 @@ export function buildPlannerOnlyDryRunSummary(input: {
     "",
     "Repair dependencies still required:",
     ...(activeDependencies.length > 0 ? activeDependencies : ["- none"]),
+    ...calvesCandidateLines,
   ];
 }
 

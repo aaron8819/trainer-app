@@ -2420,6 +2420,60 @@ describe("buildPlannerOnlyDryRunSummary", () => {
                 plannerOwnerRequired: "Support demand planner",
               },
             ],
+            calvesFourFourCandidate: {
+              status: "blocked",
+              readOnly: true,
+              affectsScoringOrGeneration: false,
+              lowerAProjectedCalfSets: 4,
+              lowerBProjectedCalfSets: 4,
+              weeklyProjectedCalfEffectiveSets: 8,
+              currentLowerAShape: [
+                {
+                  exerciseName: "Standing Calf Raise",
+                  sets: 2,
+                  effectiveCalfSets: 2,
+                },
+              ],
+              currentLowerBShape: [
+                {
+                  exerciseName: "Seated Calf Raise",
+                  sets: 4,
+                  effectiveCalfSets: 4,
+                },
+                {
+                  exerciseName: "Leg Press Calf Raise",
+                  sets: 4,
+                  effectiveCalfSets: 4,
+                },
+              ],
+              proposedLowerAShape: [
+                {
+                  exerciseClass: "calf_raise",
+                  proposedSets: 4,
+                  reason: "lower_a_four_set_direct_calf_allocation_candidate",
+                },
+              ],
+              proposedLowerBShape: [
+                {
+                  exerciseClass: "calf_raise",
+                  proposedSets: 4,
+                  reason: "lower_b_single_calf_identity_four_set_candidate",
+                },
+              ],
+              wouldRemoveLowerBSameSessionCalfDuplicate: true,
+              wouldReduceSupportFloorClosureRows: true,
+              wouldReduceSetBumps: false,
+              wouldIncreaseCapTrimRows: false,
+              wouldChangeMaterialRepairCount: "unknown",
+              wouldChangeMajorRepairCount: "unknown",
+              wouldChangeSuspiciousRepairCount: "unknown",
+              preservesLowerBHingeCurlRoute: true,
+              blockedReasons: [
+                "materiality_delta_unknown",
+                "weeks_2_to_4_unprojected",
+              ],
+              recommendation: "needs_more_projection",
+            },
           },
         },
       },
@@ -2443,6 +2497,16 @@ describe("buildPlannerOnlyDryRunSummary", () => {
       "",
       "Repair dependencies still required:",
       "- support-floor closure: repair_would_be_needed_here:1_support_rows",
+      "",
+      "Calves 4+4 Candidate",
+      "--------------------",
+      "Status: blocked",
+      "Lower A projected calf sets: 4",
+      "Lower B projected calf sets: 4",
+      "Weekly projected calf sets: 8",
+      "Would remove lower_b duplicate: yes",
+      "Recommendation: needs_more_projection",
+      "Blocked reasons: materiality_delta_unknown, weeks_2_to_4_unprojected",
     ]);
   });
 });
